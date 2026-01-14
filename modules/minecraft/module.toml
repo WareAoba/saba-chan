@@ -1,0 +1,51 @@
+[module]
+name = "minecraft"
+version = "1.0.0"
+description = "Minecraft server management module"
+entry = "lifecycle.py"
+
+[config]
+java_path = "/usr/bin/java"
+server_jar = "server.jar"
+eula = true
+process_name = "java.exe"
+default_port = 25565
+rcon_port = 25575
+
+[detection]
+# 프로세스 자동 감지 설정
+process_patterns = ["java.exe", "minecraft_server"]
+common_paths = [
+    "C:\\Users\\*\\Desktop\\MinecraftServer",
+    "C:\\MinecraftServer",
+    "C:\\Games\\Minecraft\\server",
+    "D:\\MinecraftServer"
+]
+
+[commands]
+# 사용 가능한 명령어 목록
+
+[[commands.list]]
+name = "stop"
+description = "서버를 정상 종료합니다"
+command = "/stop"
+method = "stdin"
+
+[[commands.list]]
+name = "save"
+description = "월드를 저장합니다"
+command = "/save-all"
+method = "stdin"
+
+[[commands.list]]
+name = "list"
+description = "접속 중인 플레이어 목록을 표시합니다"
+command = "/list"
+method = "stdin"
+
+[[commands.list]]
+name = "say"
+description = "전체 채팅 메시지를 보냅니다"
+command = "/say {message}"
+method = "stdin"
+params = ["message"]

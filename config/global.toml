@@ -1,0 +1,21 @@
+ipc_socket = "./ipc.sock"
+
+# 서버 인스턴스 설정 (모듈 기반)
+# 모듈은 modules/ 디렉터리에서 동적으로 발견됨
+# 이 설정만으로 Core Daemon 재시작 없이 서버 추가 가능
+
+[[servers]]
+name = "minecraft-main"
+module = "minecraft"  # 사용할 모듈 이름
+
+[servers.resource]
+ram = "8G"
+cpu = 4
+
+[[servers]]
+name = "palworld-01"
+module = "palworld"
+
+[servers.resource]
+ram = "16G"
+cpu = 8

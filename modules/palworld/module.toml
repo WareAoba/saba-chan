@@ -1,0 +1,45 @@
+[module]
+name = "palworld"
+version = "1.0.0"
+description = "Palworld server management module"
+entry = "lifecycle.py"
+
+[config]
+server_executable = "PalServer.exe"
+process_name = "PalServer-Win64-Shipping-Cmd"
+port = 8211
+
+[detection]
+process_patterns = ["PalServer-Win64-Shipping-Cmd", "PalServer", "PalServer-Win64"]
+common_paths = [
+    "C:\\Program Files (x86)\\Steam\\steamapps\\common\\PalServer",
+    "D:\\SteamLibrary\\steamapps\\common\\PalServer",
+    "C:\\Games\\Palworld\\server"
+]
+
+[commands]
+
+[[commands.list]]
+name = "shutdown"
+description = "서버를 종료합니다"
+command = "Shutdown 10"
+method = "rcon"
+
+[[commands.list]]
+name = "info"
+description = "서버 정보를 표시합니다"
+command = "Info"
+method = "rcon"
+
+[[commands.list]]
+name = "save"
+description = "게임을 저장합니다"
+command = "Save"
+method = "rcon"
+
+[[commands.list]]
+name = "broadcast"
+description = "전체 공지를 보냅니다"
+command = "Broadcast {message}"
+method = "rcon"
+params = ["message"]
