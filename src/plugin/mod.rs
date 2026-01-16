@@ -11,23 +11,64 @@ pub async fn run_plugin(module_path: &str, function: &str, config: Value) -> Res
     // Construct command: python module_path function config_json
     let config_json = serde_json::to_string(&config)?;
     
-    let output = Command::new("python")
+    // Try to find working Python command
+    let python_cmd = detect_python_command().unwrap_or("python");
+    
+    tracing::info!("Using Python command: {}", python_cmd);
+    
+    let output = Command::new(python_cmd)
         .arg(module_path)
         .arg(function)
         .arg(&config_json)
         .output()?;
 
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    
+    // Log stderr for debugging (not necessarily an error)
+    if !stderr.is_empty() {
+        tracing::debug!("Plugin stderr: {}", stderr);
+    }
+
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        tracing::error!("Plugin failed with exit code: {:?}", output.status.code());
         tracing::error!("Plugin stderr: {}", stderr);
+        tracing::error!("Plugin stdout: {}", stdout);
         return Err(anyhow::anyhow!("Plugin execution failed: {}", stderr));
     }
 
-    let stdout = String::from_utf8(output.stdout)?;
-    let result = serde_json::from_str::<Value>(&stdout)?;
+    // Try to parse JSON from stdout
+    match serde_json::from_str::<Value>(&stdout) {
+        Ok(result) => {
+            tracing::info!("Plugin result: {:?}", result);
+            Ok(result)
+        }
+        Err(e) => {
+            tracing::error!("Failed to parse plugin output as JSON: {}", e);
+            tracing::error!("Raw stdout: {}", stdout);
+            tracing::error!("Raw stderr: {}", stderr);
+            Err(anyhow::anyhow!("Invalid JSON from plugin: {}\nOutput: {}", e, stdout))
+        }
+    }
+}
+
+/// Detect available Python command
+fn detect_python_command() -> Option<&'static str> {
+    // Try commands in order of preference
+    let candidates = vec!["python", "python3", "py"];
     
-    tracing::info!("Plugin result: {:?}", result);
-    Ok(result)
+    for cmd in candidates {
+        if let Ok(output) = Command::new(cmd).arg("--version").output() {
+            if output.status.success() {
+                let version = String::from_utf8_lossy(&output.stdout);
+                tracing::debug!("Found Python: {} -> {}", cmd, version.trim());
+                return Some(cmd);
+            }
+        }
+    }
+    
+    tracing::warn!("No Python command found, defaulting to 'python'");
+    None
 }
 
 #[cfg(test)]

@@ -2,9 +2,12 @@
 name = "palworld"
 version = "1.0.0"
 description = "Palworld server management module"
+game_name = "Palworld"  # 게임 영어명 (기본 별명)
+display_name = "팰월드"  # 게임 한국어명
 entry = "lifecycle.py"
 
 [config]
+executable_path = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\PalServer\\PalServer.exe"
 server_executable = "PalServer.exe"
 process_name = "PalServer-Win64-Shipping-Cmd"
 port = 8211
@@ -17,29 +20,134 @@ common_paths = [
     "C:\\Games\\Palworld\\server"
 ]
 
+[settings]
+# 설정 화면에 표시될 필드들
+# GUI는 이 스키마를 읽어서 동적으로 폼을 생성
+
+[[settings.fields]]
+name = "executable_path"
+type = "file"
+label = "Server Executable Path"
+description = "서버 실행 파일의 경로"
+required = true
+
+[[settings.fields]]
+name = "port"
+type = "number"
+label = "Server Port"
+description = "게임 서버 포트"
+default = 8211
+min = 1024
+max = 65535
+
+[[settings.fields]]
+name = "rcon_port"
+type = "number"
+label = "RCON Port"
+description = "RCON 포트"
+default = 25575
+min = 1024
+max = 65535
+
+[[settings.fields]]
+name = "rcon_password"
+type = "password"
+label = "RCON Password"
+description = "원격 명령어 실행 비밀번호"
+required = false
+
+[[settings.fields]]
+name = "rest_host"
+type = "text"
+label = "REST API Host"
+description = "REST API 호스트 (기본 127.0.0.1)"
+default = "127.0.0.1"
+
+[[settings.fields]]
+name = "rest_port"
+type = "number"
+label = "REST API Port"
+description = "REST API 포트 (기본 8212)"
+default = 8212
+min = 1
+max = 65535
+
+[[settings.fields]]
+name = "rest_username"
+type = "text"
+label = "REST Username"
+description = "REST Basic Auth 사용자명"
+required = false
+
+[[settings.fields]]
+name = "rest_password"
+type = "password"
+label = "REST Password"
+description = "REST Basic Auth 비밀번호"
+required = false
+
 [commands]
+# 명령어 정의: RCON을 통해 서버에 전달
+# 입력 파라미터가 필요한 경우 inputs 배열에 정의
 
-[[commands.list]]
-name = "shutdown"
-description = "서버를 종료합니다"
-command = "Shutdown 10"
+[[commands.fields]]
+name = "say"
+label = "채팅 메시지 전송"
+description = "서버에 메시지를 브로드캐스트합니다"
 method = "rcon"
+command_template = "say {message}"
+inputs = [
+    { name = "message", type = "text", label = "메시지", required = true, placeholder = "전송할 메시지를 입력하세요" }
+]
 
-[[commands.list]]
-name = "info"
-description = "서버 정보를 표시합니다"
-command = "Info"
-method = "rcon"
-
-[[commands.list]]
-name = "save"
-description = "게임을 저장합니다"
-command = "Save"
-method = "rcon"
-
-[[commands.list]]
+[[commands.fields]]
 name = "broadcast"
-description = "전체 공지를 보냅니다"
-command = "Broadcast {message}"
+label = "공지 메시지"
+description = "전체 공지 메시지를 전송합니다"
 method = "rcon"
-params = ["message"]
+command_template = "Broadcast {message}"
+inputs = [
+    { name = "message", type = "text", label = "공지 메시지", required = true, placeholder = "공지할 내용을 입력하세요" }
+]
+
+[[commands.fields]]
+name = "save"
+label = "월드 저장"
+description = "게임 월드를 저장합니다"
+method = "rcon"
+command_template = "Save"
+inputs = []
+
+[[commands.fields]]
+name = "info"
+label = "서버 정보"
+description = "서버 정보를 조회합니다"
+method = "rcon"
+command_template = "Info"
+inputs = []
+
+[[commands.fields]]
+name = "shutdown"
+label = "서버 종료"
+description = "서버를 종료합니다"
+method = "rcon"
+command_template = "Shutdown {seconds}"
+inputs = [
+    { name = "seconds", type = "number", label = "종료까지 대기 시간 (초)", required = true, default = 10, min = 0, max = 600 }
+]
+
+[aliases]
+# Discord 봇 연동용 별명
+# 모듈 별명: 이 모듈을 부를 때 사용할 수 있는 이름들
+module_aliases = ["팰월드", "팔월드", "pw", "palworld"]
+
+# 명령어 별명: 각 명령어의 한국어 별명 및 단축키
+[aliases.commands]
+start = { aliases = ["시작", "실행", "켜기"], description = "서버를 시작합니다" }
+stop = { aliases = ["정지", "끝내기", "끄기"], description = "서버를 종료합니다" }
+status = { aliases = ["상태", "상황", "확인"], description = "서버의 상태를 확인합니다" }
+say = { aliases = ["말", "채팅", "메시지"], description = "서버에 메시지를 브로드캐스트합니다" }
+broadcast = { aliases = ["공지", "공지사항", "알림"], description = "전체 공지를 전송합니다" }
+save = { aliases = ["저장"], description = "게임 월드를 저장합니다" }
+info = { aliases = ["정보", "인포"], description = "서버 정보를 조회합니다" }
+shutdown = { aliases = ["종료", "셧다운"], description = "서버를 종료합니다" }

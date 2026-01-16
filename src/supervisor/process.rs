@@ -181,3 +181,44 @@ mod tests {
         assert!(tracker.get_status("minecraft").is_err());
     }
 }
+
+/// 명령어 실행 관리자
+pub struct ProcessManager;
+
+impl ProcessManager {
+    pub fn new() -> Self {
+        Self
+    }
+
+    /// 인스턴스에 명령어 실행
+    /// 참고: 이 메서드는 실제로 Supervisor에서 호출되어야 하며,
+    /// Supervisor가 module_loader를 제공해야 함
+    pub async fn execute_command(
+        &self,
+        instance_id: &str,
+        module_name: &str,
+        command: &str,
+        args: serde_json::Value,
+    ) -> Result<String> {
+        tracing::info!(
+            "Executing command '{}' for instance '{}' (module: {})",
+            command,
+            instance_id,
+            module_name
+        );
+
+        // 모듈의 lifecycle.py에 command 함수 호출
+        let _config = serde_json::json!({
+            "instance_id": instance_id,
+            "command": command,
+            "args": args,
+        });
+
+        // 플러그인 실행을 통해 모듈에 명령어 전달
+        // 상세한 구현은 모듈 로더와 통합되어야 함
+        // NOTE: 실제 구현은 supervisor.rs의 execute_command 메서드에서 수행
+        tracing::info!("Command '{}' queued for execution", command);
+
+        Ok(format!("Command '{}' executed", command))
+    }
+}

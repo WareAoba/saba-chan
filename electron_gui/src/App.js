@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
+import { SuccessModal, FailureModal, NotificationModal, QuestionModal } from './Modals';
+import CommandModal from './CommandModal';
 
 function App() {
     const [servers, setServers] = useState([]);
@@ -10,8 +12,37 @@ function App() {
     const [showModuleManager, setShowModuleManager] = useState(false);
     const [newServerName, setNewServerName] = useState('');
     const [selectedModule, setSelectedModule] = useState('');
+    const [executablePath, setExecutablePath] = useState('');
     const [modulesPath, setModulesPath] = useState(''); // 설정에서 로드
     const [settingsPath, setSettingsPath] = useState('');
+    
+    // Settings 모달 상태
+    const [showSettingsModal, setShowSettingsModal] = useState(false);
+    const [settingsServer, setSettingsServer] = useState(null);
+    const [settingsValues, setSettingsValues] = useState({});
+    const [settingsActiveTab, setSettingsActiveTab] = useState('general'); // 'general' | 'aliases'
+    
+    // Command 모달 상태
+    const [showCommandModal, setShowCommandModal] = useState(false);
+    const [commandServer, setCommandServer] = useState(null);
+    
+    // 모달 상태 (Success/Failure/Notification)
+    const [modal, setModal] = useState(null);
+
+    // Discord Bot 상태
+    const [discordBotStatus, setDiscordBotStatus] = useState('stopped'); // stopped | running | error
+    const [discordToken, setDiscordToken] = useState('');
+    const [showDiscordSection, setShowDiscordSection] = useState(false);
+    const [discordPrefix, setDiscordPrefix] = useState('!saba');  // 기본값: !saba
+    const [discordAutoStart, setDiscordAutoStart] = useState(false);
+    const [discordModuleAliases, setDiscordModuleAliases] = useState({});  // 저장된 사용자 커스텀 모듈 별명
+    const [discordCommandAliases, setDiscordCommandAliases] = useState({});  // 저장된 사용자 커스텀 명령어 별명
+
+    // 모듈별 별명 (각 모듈의 module.toml에서 정의한 별명들)
+    const [moduleAliasesPerModule, setModuleAliasesPerModule] = useState({});  // { moduleName: { moduleAliases: [...], commands: {...} } }
+    const [selectedModuleForAliases, setSelectedModuleForAliases] = useState(null);
+    const [editingModuleAliases, setEditingModuleAliases] = useState({});
+    const [editingCommandAliases, setEditingCommandAliases] = useState({});
 
     // 설정 로드
     useEffect(() => {
@@ -20,6 +51,8 @@ function App() {
                 const settings = await window.api.settingsLoad();
                 if (settings) {
                     setAutoRefresh(settings.autoRefresh ?? true);
+                    setDiscordToken(settings.discordToken || '');
+                    setDiscordAutoStart(settings.discordAutoStart ?? false);
                     setRefreshInterval(settings.refreshInterval ?? 2000);
                     setModulesPath(settings.modulesPath || '');
                 }
@@ -33,13 +66,29 @@ function App() {
         loadSettings();
     }, []);
 
-    // 설정 저장 함수
+    // bot-config.json 로드
+    const loadBotConfig = async () => {
+        try {
+            const botCfg = await window.api.botConfigLoad();
+            if (botCfg) {
+                setDiscordPrefix(botCfg.prefix || '!saba');
+                setDiscordModuleAliases(botCfg.moduleAliases || {});
+                setDiscordCommandAliases(botCfg.commandAliases || {});
+            }
+        } catch (err) {
+            console.error('Failed to load bot config:', err);
+        }
+    };
+
+    // 설정 저장 함수 (settings.json - Discord 별칭 제외)
     const saveCurrentSettings = async () => {
         try {
             await window.api.settingsSave({
                 autoRefresh,
                 refreshInterval,
-                modulesPath
+                modulesPath,
+                discordToken,
+                discordAutoStart
             });
             console.log('Settings saved');
         } catch (error) {
@@ -54,10 +103,113 @@ function App() {
         }
     }, [autoRefresh, refreshInterval]);
 
+    // Discord Bot 상태 폴링
+    useEffect(() => {
+        const pollBotStatus = async () => {
+            try {
+                const status = await window.api.discordBotStatus();
+                setDiscordBotStatus(status || 'stopped');
+            } catch (e) {
+                setDiscordBotStatus('stopped');
+            }
+        };
+        pollBotStatus();
+        const interval = setInterval(pollBotStatus, 5000);
+        return () => clearInterval(interval);
+    }, []);
+
+    // Discord Bot 시작
+    const handleStartDiscordBot = async () => {
+        if (!discordToken) {
+            setModal({ type: 'failure', title: '토큰 없음', message: 'Discord Bot 토큰을 입력하세요.' });
+            return;
+        }
+        if (!discordPrefix) {
+            setModal({ type: 'failure', title: 'Prefix 없음', message: '봇 별명(Prefix)을 설정하세요. 예: !pal, !mc' });
+            return;
+        }
+        try {
+            await saveCurrentSettings();
+            const botConfig = {
+                token: discordToken,
+                prefix: discordPrefix,
+                moduleAliases: discordModuleAliases,
+                commandAliases: discordCommandAliases
+            };
+            const result = await window.api.discordBotStart(botConfig);
+            if (result.error) {
+                setModal({ type: 'failure', title: 'Bot 시작 실패', message: result.error });
+            } else {
+                setDiscordBotStatus('running');
+                setModal({ type: 'success', title: 'Discord Bot', message: 'Bot이 시작되었습니다.' });
+            }
+        } catch (e) {
+            setModal({ type: 'failure', title: 'Bot 시작 예외', message: e.message });
+        }
+    };
+
+    // Discord Bot 자동 시작
+    useEffect(() => {
+        if (discordAutoStart && discordToken && discordBotStatus === 'stopped') {
+            handleStartDiscordBot();
+        }
+    }, [discordAutoStart, discordToken]);
+
+    // Discord Bot 정지
+    const handleStopDiscordBot = async () => {
+        try {
+            const result = await window.api.discordBotStop();
+            if (result.error) {
+                setModal({ type: 'failure', title: 'Bot 정지 실패', message: result.error });
+            } else {
+                setDiscordBotStatus('stopped');
+                setModal({ type: 'notification', title: 'Discord Bot', message: 'Bot이 정지되었습니다.' });
+            }
+        } catch (e) {
+            setModal({ type: 'failure', title: 'Bot 정지 예외', message: e.message });
+        }
+    };
+
     useEffect(() => {
         console.log('App mounted, fetching initial data...');
         fetchServers();
         fetchModules();
+        loadBotConfig();  // bot-config.json 로드
+        
+        // 앱 종료 요청 리스너 등록
+        if (window.api.onCloseRequest) {
+            window.api.onCloseRequest(() => {
+                setModal({
+                    type: 'question',
+                    title: '종료 확인',
+                    message: '어떻게 종료하시겠습니까?',
+                    detail: 'GUI만 닫기: 백그라운드에서 계속 실행 (트레이에서 다시 열기 가능)\n완전히 종료: 데몬까지 모두 종료',
+                    buttons: [
+                        {
+                            label: 'GUI만 닫기',
+                            action: () => {
+                                window.api.closeResponse('hide');
+                                setModal(null);
+                            }
+                        },
+                        {
+                            label: '완전히 종료',
+                            action: () => {
+                                window.api.closeResponse('quit');
+                                setModal(null);
+                            }
+                        },
+                        {
+                            label: '취소',
+                            action: () => {
+                                window.api.closeResponse('cancel');
+                                setModal(null);
+                            }
+                        }
+                    ]
+                });
+            });
+        }
         
         // 자동 새로고침
         const interval = setInterval(() => {
@@ -81,15 +233,30 @@ function App() {
             if (data && data.modules) {
                 console.log('Setting modules:', data.modules.length, 'modules');
                 setModules(data.modules);
+                
+                // 각 모듈의 메타데이터 로드 (별명 포함)
+                const aliasesMap = {};
+                for (const module of data.modules) {
+                    try {
+                        const metadata = await window.api.moduleGetMetadata(module.name);
+                        if (metadata && metadata.toml && metadata.toml.aliases) {
+                            aliasesMap[module.name] = metadata.toml.aliases;
+                        }
+                    } catch (e) {
+                        console.warn(`Failed to load metadata for module ${module.name}:`, e);
+                    }
+                }
+                setModuleAliasesPerModule(aliasesMap);
+                console.log('Module aliases loaded:', aliasesMap);
             } else if (data && data.error) {
                 console.error('Module fetch error:', data.error);
-                alert('Failed to load modules: ' + data.error);
+                setModal({ type: 'failure', title: '모듈 로드 실패', message: data.error });
             } else {
                 console.warn('No modules data:', data);
             }
         } catch (error) {
             console.error('Failed to fetch modules:', error);
-            alert('Exception fetching modules: ' + error.message);
+            setModal({ type: 'failure', title: '모듈 로드 예외', message: error.message });
         }
     };
 
@@ -113,13 +280,13 @@ function App() {
         try {
             const result = await window.api.serverStart(name, { module });
             if (result.error) {
-                alert(`Error starting server: ${result.error}`);
+                setModal({ type: 'failure', title: '서버 시작 실패', message: result.error });
             } else {
-                alert(`Server ${name} is starting...`);
+                setModal({ type: 'notification', title: '서버 시작 중', message: `${name} 서버가 시작되고 있습니다...` });
             }
             fetchServers();
         } catch (error) {
-            alert(`Failed to start server: ${error.message}`);
+            setModal({ type: 'failure', title: '서버 시작 예외', message: error.message });
         }
     };
 
@@ -128,13 +295,13 @@ function App() {
             try {
                 const result = await window.api.serverStop(name, { force: false });
                 if (result.error) {
-                    alert(`Error stopping server: ${result.error}`);
+                    setModal({ type: 'failure', title: '서버 정지 실패', message: result.error });
                 } else {
-                    alert(`Server ${name} is stopping...`);
+                    setModal({ type: 'notification', title: '서버 정지 중', message: `${name} 서버가 정지되고 있습니다...` });
                 }
                 fetchServers();
             } catch (error) {
-                alert(`Failed to stop server: ${error.message}`);
+                setModal({ type: 'failure', title: '서버 정지 예외', message: error.message });
             }
         }
     };
@@ -143,46 +310,376 @@ function App() {
         try {
             const result = await window.api.serverStatus(name);
             const statusInfo = `Status: ${result.status}\nPID: ${result.pid || 'N/A'}\nUptime: ${result.uptime_seconds ? Math.floor(result.uptime_seconds / 60) + 'm' : 'N/A'}`;
-            alert(`${name}\n${statusInfo}`);
+            setModal({ type: 'notification', title: name, message: statusInfo });
         } catch (error) {
-            alert(`Failed to get status: ${error.message}`);
+            setModal({ type: 'failure', title: '상태 조회 실패', message: error.message });
         }
     };
 
     const handleAddServer = async () => {
         if (!newServerName.trim()) {
-            alert('Please enter a server name');
+            setModal({ type: 'failure', title: '입력 오류', message: '서버 이름을 입력하세요' });
             return;
         }
         if (!selectedModule) {
-            alert('Please select a module');
+            setModal({ type: 'failure', title: '입력 오류', message: '모듈을 선택하세요' });
             return;
         }
 
         try {
-            console.log('Adding instance:', newServerName, selectedModule);
-            const result = await window.api.instanceCreate({
+            // 선택된 모듈의 기본 executable_path 가져오기
+            const selectedModuleData = modules.find(m => m.name === selectedModule);
+            
+            const instanceData = {
                 name: newServerName.trim(),
-                module_name: selectedModule
-            });
+                module_name: selectedModule,
+                executable_path: selectedModuleData?.executable_path || null
+            };
+
+            console.log('Adding instance:', instanceData);
+            const result = await window.api.instanceCreate(instanceData);
             
             if (result.error) {
-                alert('Failed to add instance: ' + result.error);
+                setModal({ type: 'failure', title: '인스턴스 추가 실패', message: result.error });
             } else {
-                alert(`Instance "${newServerName}" added successfully!`);
+                setModal({ type: 'success', title: '성공', message: `인스턴스 "${newServerName}" 추가되었습니다` });
+                // 폼 초기화
                 setNewServerName('');
                 setSelectedModule('');
                 setShowModuleManager(false);
-                fetchServers(); // 새로고침
+                fetchServers();
             }
         } catch (error) {
-            alert(`Failed to add instance: ${error.message}`);
+            setModal({ type: 'failure', title: '인스턴스 추가 예외', message: error.message });
         }
     };
 
-    // 모듈 선택 시 자동으로 서버 이름 생성
+    const handleDeleteServer = async (server) => {
+        // Question 모달 표시
+        setModal({
+            type: 'question',
+            title: '서버 삭제 확인',
+            message: `정말로 "${server.name}" 서버를 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`,
+            onConfirm: () => performDeleteServer(server),
+        });
+    };
+
+    const performDeleteServer = async (server) => {
+        setModal(null); // 질문 모달 닫기
+
+        try {
+            const result = await window.api.instanceDelete(server.id);
+            
+            if (result.error) {
+                setModal({ type: 'failure', title: '인스턴스 삭제 실패', message: result.error });
+            } else {
+                console.log(`Instance "${server.name}" (ID: ${server.id}) deleted`);
+                setModal({ type: 'success', title: '성공', message: `"${server.name}" 서버가 삭제되었습니다` });
+                fetchServers(); // 새로고침
+            }
+        } catch (error) {
+            setModal({ type: 'failure', title: '인스턴스 삭제 예외', message: error.message });
+        }
+    };
+
+    const handleOpenSettings = (server) => {
+        setSettingsServer(server);
+        // 선택된 모듈의 settings schema 찾기
+        const module = modules.find(m => m.name === server.module);
+        if (module && module.settings && module.settings.fields) {
+            // 초기값 설정: instances.json에서 저장된 값 우선, 없으면 default
+            const initial = {};
+            module.settings.fields.forEach(field => {
+                let value = '';
+                
+                // 1. instances.json에서 이미 저장된 값이 있는지 확인
+                if (server[field.name] !== undefined && server[field.name] !== null) {
+                    value = String(server[field.name]);
+                    console.log(`Loaded ${field.name} from instance:`, value);
+                }
+                // 2. 없으면 module.toml의 default 값 사용
+                else if (field.default !== undefined && field.default !== null) {
+                    value = String(field.default);
+                    console.log(`Using default for ${field.name}:`, value);
+                }
+                
+                initial[field.name] = value;
+            });
+            console.log('Initialized settings values:', initial);
+            setSettingsValues(initial);
+        } else {
+            setSettingsValues({});
+        }
+        
+        // 별칭 로드 (settingsServer.module 사용)
+        const moduleName = server.module;
+        if (moduleAliasesPerModule[moduleName]) {
+            const aliases = moduleAliasesPerModule[moduleName];
+            
+            // 저장된 모듈 별명 로드
+            if (moduleName in discordModuleAliases) {
+                const saved = discordModuleAliases[moduleName] || '';
+                const parsed = saved.split(',').map(a => a.trim()).filter(a => a.length > 0);
+                setEditingModuleAliases(parsed);
+            } else {
+                setEditingModuleAliases(aliases.module_aliases || []);
+            }
+            
+            // 명령어 별명 로드
+            const cmdAliases = aliases.commands || {};
+            const normalized = {};
+            for (const [cmd, data] of Object.entries(cmdAliases)) {
+                let baseAliases = [];
+                if (Array.isArray(data)) {
+                    baseAliases = data;
+                } else if (data.aliases) {
+                    baseAliases = data.aliases;
+                }
+
+                const hasSavedCmd = discordCommandAliases[moduleName] && 
+                    (cmd in discordCommandAliases[moduleName]);
+                const merged = hasSavedCmd
+                    ? (discordCommandAliases[moduleName][cmd] || '').split(',').map(a => a.trim()).filter(a => a.length > 0)
+                    : baseAliases;
+
+                normalized[cmd] = {
+                    aliases: merged,
+                    description: (data && data.description) || ''
+                };
+            }
+            setEditingCommandAliases(normalized);
+        }
+        
+        setSettingsActiveTab('general'); // 탭 초기화
+        setShowSettingsModal(true);
+    };
+
+    const handleSettingChange = (fieldName, value) => {
+        console.log(`Setting ${fieldName} changed to:`, value);
+        setSettingsValues(prev => {
+            const updated = {
+                ...prev,
+                [fieldName]: String(value)
+            };
+            console.log('Updated settings values:', updated);
+            return updated;
+        });
+    };
+
+    const handleSaveSettings = async () => {
+        if (!settingsServer) return;
+        
+        try {
+            console.log('Saving settings for', settingsServer.name, settingsValues);
+            
+            // 설정값 타입 변환 (number 필드는 숫자로 변환)
+            const module = modules.find(m => m.name === settingsServer.module);
+            const convertedSettings = {};
+            
+            if (module && module.settings && module.settings.fields) {
+                module.settings.fields.forEach(field => {
+                    const value = settingsValues[field.name];
+                    
+                    if (value === '' || value === null || value === undefined) {
+                        return; // 빈 값은 전송하지 않음
+                    }
+                    
+                    if (field.field_type === 'number') {
+                        convertedSettings[field.name] = Number(value);
+                    } else {
+                        convertedSettings[field.name] = value;
+                    }
+                });
+            }
+            
+            console.log('Converted settings:', convertedSettings);
+            console.log('Calling instanceUpdateSettings with id:', settingsServer.id);
+            const result = await window.api.instanceUpdateSettings(settingsServer.id, convertedSettings);
+            console.log('API Response:', result);
+            
+            if (result.error) {
+                setModal({ type: 'failure', title: '설정 저장 실패', message: result.error });
+                console.error('Error response:', result.error);
+            } else {
+                setModal({ type: 'success', title: '성공', message: `"${settingsServer.name}" 설정이 저장되었습니다` });
+                setShowSettingsModal(false);
+                fetchServers(); // 새로고침
+            }
+        } catch (error) {
+            console.error('Exception in handleSaveSettings:', error);
+            setModal({ type: 'failure', title: '설정 저장 예외', message: error.message });
+        }
+    };
+
+    // 모듈/명령어 별명 저장 (bot-config.json)
+    const handleSaveAliases = async () => {
+        if (!selectedModuleForAliases) return;
+        try {
+            const current = await window.api.botConfigLoad();
+            const moduleAliases = { ...(current.moduleAliases || {}) };
+            const commandAliases = { ...(current.commandAliases || {}) };
+
+            // 모듈 별명 저장 (콤마 구분 문자열)
+            moduleAliases[selectedModuleForAliases] = (editingModuleAliases || []).join(',');
+
+            // 명령어 별명 저장 (모듈별 객체)
+            const cmdMap = {};
+            Object.entries(editingCommandAliases || {}).forEach(([cmd, data]) => {
+                const list = (data.aliases || []).join(',');
+                cmdMap[cmd] = list;
+            });
+            commandAliases[selectedModuleForAliases] = cmdMap;
+
+            const payload = {
+                prefix: current.prefix || discordPrefix || '!saba',
+                moduleAliases,
+                commandAliases,
+            };
+
+            const res = await window.api.botConfigSave(payload);
+            if (res.error) {
+                setModal({ type: 'failure', title: '별명 저장 실패', message: res.error });
+            } else {
+                // API에서 저장된 설정을 다시 로드
+                const saved = await window.api.botConfigLoad();
+                setDiscordModuleAliases(saved.moduleAliases || {});
+                setDiscordCommandAliases(saved.commandAliases || {});
+                setModal({ type: 'success', title: '저장됨', message: '별명이 저장되었습니다.' });
+            }
+        } catch (error) {
+            console.error('Failed to save aliases:', error);
+            setModal({ type: 'failure', title: '별명 저장 예외', message: error.message });
+        }
+    };
+
+    // 모듈/명령어 별명 초기화 (기본값으로)
+    const handleResetAliases = async () => {
+        if (!selectedModuleForAliases) return;
+        try {
+            // UI 입력을 모두 비우기 (런타임 기본값은 모듈명/명령어명으로 처리됨)
+            setEditingModuleAliases([]);
+            const clearedCmds = {};
+            const defaults = moduleAliasesPerModule[selectedModuleForAliases];
+            if (defaults && defaults.commands) {
+                for (const [cmd, data] of Object.entries(defaults.commands)) {
+                    clearedCmds[cmd] = { aliases: [], description: data.description || '' };
+                }
+            }
+            setEditingCommandAliases(clearedCmds);
+
+            // 저장된 사용자 별명 제거 후 저장
+            const current = await window.api.botConfigLoad();
+            const moduleAliases = { ...(current.moduleAliases || {}) };
+            const commandAliases = { ...(current.commandAliases || {}) };
+            delete moduleAliases[selectedModuleForAliases];
+            delete commandAliases[selectedModuleForAliases];
+
+            const payload = {
+                prefix: current.prefix || discordPrefix || '!saba',
+                moduleAliases,
+                commandAliases,
+            };
+
+            const res = await window.api.botConfigSave(payload);
+            if (res.error) {
+                setModal({ type: 'failure', title: '초기화 실패', message: res.error });
+            } else {
+                // API에서 저장된 설정을 다시 로드
+                const saved = await window.api.botConfigLoad();
+                setDiscordModuleAliases(saved.moduleAliases || {});
+                setDiscordCommandAliases(saved.commandAliases || {});
+                setModal({ type: 'success', title: '초기화 완료', message: '별명이 기본값으로 초기화되었습니다.' });
+            }
+        } catch (error) {
+            console.error('Failed to reset aliases:', error);
+            setModal({ type: 'failure', title: '초기화 예외', message: error.message });
+        }
+    };
+
+    // Settings 모달에서 사용할 모듈별 별명 저장 함수
+    const handleSaveAliasesForModule = async (moduleName) => {
+        try {
+            const current = await window.api.botConfigLoad();
+            const moduleAliases = { ...(current.moduleAliases || {}) };
+            const commandAliases = { ...(current.commandAliases || {}) };
+
+            // 모듈 별명 저장
+            moduleAliases[moduleName] = (editingModuleAliases || []).join(',');
+
+            // 명령어 별명 저장
+            const cmdMap = {};
+            Object.entries(editingCommandAliases || {}).forEach(([cmd, data]) => {
+                cmdMap[cmd] = (data.aliases || []).join(',');
+            });
+            commandAliases[moduleName] = cmdMap;
+
+            const payload = {
+                prefix: current.prefix || discordPrefix || '!saba',
+                moduleAliases,
+                commandAliases,
+            };
+
+            const res = await window.api.botConfigSave(payload);
+            if (res.error) {
+                setModal({ type: 'failure', title: '별명 저장 실패', message: res.error });
+            } else {
+                const saved = await window.api.botConfigLoad();
+                setDiscordModuleAliases(saved.moduleAliases || {});
+                setDiscordCommandAliases(saved.commandAliases || {});
+                setModal({ type: 'success', title: '저장됨', message: '별명이 저장되었습니다.' });
+            }
+        } catch (error) {
+            console.error('Failed to save aliases:', error);
+            setModal({ type: 'failure', title: '별명 저장 예외', message: error.message });
+        }
+    };
+
+    // Settings 모달에서 사용할 모듈별 별명 초기화 함수
+    const handleResetAliasesForModule = async (moduleName) => {
+        try {
+            // UI 초기화
+            setEditingModuleAliases([]);
+            const clearedCmds = {};
+            const defaults = moduleAliasesPerModule[moduleName];
+            if (defaults && defaults.commands) {
+                for (const [cmd, data] of Object.entries(defaults.commands)) {
+                    clearedCmds[cmd] = { aliases: [], description: data.description || '' };
+                }
+            }
+            setEditingCommandAliases(clearedCmds);
+
+            // 저장된 별명 제거
+            const current = await window.api.botConfigLoad();
+            const moduleAliases = { ...(current.moduleAliases || {}) };
+            const commandAliases = { ...(current.commandAliases || {}) };
+            delete moduleAliases[moduleName];
+            delete commandAliases[moduleName];
+
+            const payload = {
+                prefix: current.prefix || discordPrefix || '!saba',
+                moduleAliases,
+                commandAliases,
+            };
+
+            const res = await window.api.botConfigSave(payload);
+            if (res.error) {
+                setModal({ type: 'failure', title: '초기화 실패', message: res.error });
+            } else {
+                const saved = await window.api.botConfigLoad();
+                setDiscordModuleAliases(saved.moduleAliases || {});
+                setDiscordCommandAliases(saved.commandAliases || {});
+                setModal({ type: 'success', title: '초기화 완료', message: '별명이 기본값으로 초기화되었습니다.' });
+            }
+        } catch (error) {
+            console.error('Failed to reset aliases:', error);
+            setModal({ type: 'failure', title: '초기화 예외', message: error.message });
+        }
+    };
+
+    // Handle module selection and auto-generate server name
     const handleModuleSelect = (moduleName) => {
         setSelectedModule(moduleName);
+        
         // 이름이 비어있거나 자동 생성된 이름인 경우에만 자동완성
         if (!newServerName || newServerName.startsWith('my-')) {
             const existingCount = servers.filter(s => s.module === moduleName).length;
@@ -242,6 +739,12 @@ function App() {
                     >
                         ➕ Add Server
                     </button>
+                    <button 
+                        className={`btn btn-discord ${discordBotStatus === 'running' ? 'btn-discord-active' : ''}`}
+                        onClick={() => setShowDiscordSection(!showDiscordSection)}
+                    >
+                        🤖 Discord Bot {discordBotStatus === 'running' ? '(Online)' : ''}
+                    </button>
                     <label>
                         <input 
                             type="checkbox" 
@@ -293,29 +796,39 @@ function App() {
                     </div>
                     
                     <div className="add-server-form">
-                        <input 
-                            type="text"
-                            placeholder="Server Name (e.g., minecraft-main)"
-                            value={newServerName}
-                            onChange={(e) => setNewServerName(e.target.value)}
-                        />
-                        <select 
-                            value={selectedModule}
-                            onChange={(e) => handleModuleSelect(e.target.value)}
-                        >
-                            <option value="">Select Module</option>
-                            {modules.map(m => (
-                                <option key={m.name} value={m.name}>
-                                    {m.name} v{m.version}
-                                </option>
-                            ))}
-                        </select>
-                        <button className="btn btn-confirm" onClick={handleAddServer}>
-                            Add Instance
-                        </button>
-                        <button className="btn btn-cancel" onClick={() => setShowModuleManager(false)}>
-                            Cancel
-                        </button>
+                        <div className="form-row">
+                            <label>Server Name *</label>
+                            <input 
+                                type="text"
+                                placeholder="e.g., my-palworld-1"
+                                value={newServerName}
+                                onChange={(e) => setNewServerName(e.target.value)}
+                            />
+                        </div>
+
+                        <div className="form-row">
+                            <label>Game Module *</label>
+                            <select 
+                                value={selectedModule}
+                                onChange={(e) => handleModuleSelect(e.target.value)}
+                            >
+                                <option value="">Select Module</option>
+                                {modules.map(m => (
+                                    <option key={m.name} value={m.name}>
+                                        {m.name} v{m.version}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="form-actions">
+                            <button className="btn btn-confirm" onClick={handleAddServer}>
+                                ✅ Add Server
+                            </button>
+                            <button className="btn btn-cancel" onClick={() => setShowModuleManager(false)}>
+                                ❌ Cancel
+                            </button>
+                        </div>
                     </div>
                     
                     <div className="module-list">
@@ -327,6 +840,87 @@ function App() {
                                 <small>{module.path}</small>
                             </div>
                         ))}
+                    </div>
+                </div>
+            )}
+
+
+
+            {showDiscordSection && (
+                <div className="discord-section">
+                    <h3>🤖 Discord Bot</h3>
+                    <div className="discord-status">
+                        <span className="status-label">상태:</span>
+                        <span className={`status-value status-${discordBotStatus}`}>
+                            {discordBotStatus === 'running' ? '🟢 Online' : discordBotStatus === 'error' ? '🔴 Error' : '⚪ Offline'}
+                        </span>
+                    </div>
+
+                    <div className="discord-config-grid">
+                        <div className="discord-token-form">
+                            <label>Bot Token</label>
+                            <input
+                                type="password"
+                                placeholder="Discord Bot Token을 입력하세요"
+                                value={discordToken}
+                                onChange={(e) => setDiscordToken(e.target.value)}
+                            />
+                        </div>
+
+                        <div className="discord-prefix-form">
+                            <label>봇 별명 (Prefix) *</label>
+                            <input
+                                type="text"
+                                placeholder="예: !pal, !mc, !서버 등"
+                                value={discordPrefix}
+                                onChange={(e) => setDiscordPrefix(e.target.value)}
+                            />
+                            <small>봇이 반응할 명령어 접두사 (필수)</small>
+                            {!discordPrefix && <small className="warning-text">⚠️ Prefix를 설정해주세요</small>}
+                        </div>
+
+                        <div className="discord-autostart">
+                            <label>
+                                <input
+                                    type="checkbox"
+                                    checked={discordAutoStart}
+                                    onChange={(e) => setDiscordAutoStart(e.target.checked)}
+                                />
+                                GUI 시작 시 봇 자동 실행
+                            </label>
+                        </div>
+                    </div>
+
+                    <div className="discord-info-box">
+                        <h4>💡 봇 사용 방법</h4>
+                        <p>Discord에서 다음 형식으로 명령어를 사용하세요:</p>
+                        <code>{discordPrefix || '!saba'} [모듈명] [명령어]</code>
+                        <p className="info-note">
+                            모듈별 별명과 명령어 별명은 각 서버의 <strong>Settings → Discord 별명</strong> 탭에서 설정할 수 있습니다.
+                        </p>
+                    </div>
+
+                    <div className="discord-actions">
+                        <button
+                            className="btn btn-start"
+                            onClick={handleStartDiscordBot}
+                            disabled={discordBotStatus === 'running'}
+                        >
+                            ▶ Start Bot
+                        </button>
+                        <button
+                            className="btn btn-stop"
+                            onClick={handleStopDiscordBot}
+                            disabled={discordBotStatus !== 'running'}
+                        >
+                            ⏹ Stop Bot
+                        </button>
+                        <button
+                            className="btn btn-save"
+                            onClick={saveCurrentSettings}
+                        >
+                            💾 설정 저장
+                        </button>
                     </div>
                 </div>
             )}
@@ -396,15 +990,274 @@ function App() {
                                 >
                                     ℹ Info
                                 </button>
+                                <button 
+                                    className="btn btn-settings"
+                                    onClick={() => handleOpenSettings(server)}
+                                    title="Edit server settings"
+                                >
+                                    ⚙️ Settings
+                                </button>
+                                <button 
+                                    className="btn btn-command"
+                                    onClick={() => {
+                                        setCommandServer(server);
+                                        setShowCommandModal(true);
+                                    }}
+                                    disabled={server.status !== 'running'}
+                                    title="Execute server command (server must be running)"
+                                >
+                                    💻 Command
+                                </button>
+                                <button 
+                                    className="btn btn-delete"
+                                    onClick={() => handleDeleteServer(server)}
+                                    disabled={server.status === 'running' || server.status === 'starting'}
+                                    title="Delete this server instance"
+                                >
+                                    🗑️ Delete
+                                </button>
                             </div>
                         </div>
                     ))
                 )}
             </div>
 
+            {showSettingsModal && settingsServer && (
+                <div className="modal-overlay">
+                    <div className="modal-content modal-content-large">
+                        <div className="modal-header">
+                            <h3>⚙️ {settingsServer.name} - Settings</h3>
+                            <button className="modal-close" onClick={() => setShowSettingsModal(false)}>✕</button>
+                        </div>
+                        
+                        {/* 탭 헤더 */}
+                        <div className="settings-tabs">
+                            <button 
+                                className={`settings-tab ${settingsActiveTab === 'general' ? 'active' : ''}`}
+                                onClick={() => setSettingsActiveTab('general')}
+                            >
+                                🎮 일반 설정
+                            </button>
+                            <button 
+                                className={`settings-tab ${settingsActiveTab === 'aliases' ? 'active' : ''}`}
+                                onClick={() => setSettingsActiveTab('aliases')}
+                            >
+                                💬 Discord 별명
+                            </button>
+                        </div>
+                        
+                        <div className="modal-body">
+                            {/* 일반 설정 탭 */}
+                            {settingsActiveTab === 'general' && (() => {
+                                const module = modules.find(m => m.name === settingsServer.module);
+                                if (!module || !module.settings) {
+                                    return <p className="no-settings">This module has no configurable settings.</p>;
+                                }
+                                return (
+                                    <div className="settings-form">
+                                        {module.settings.fields.map((field) => (
+                                            <div key={field.name} className="settings-field">
+                                                <label>{field.label} {field.required ? '*' : ''}</label>
+                                                {field.field_type === 'text' && (
+                                                    <input 
+                                                        type="text"
+                                                        value={String(settingsValues[field.name] || '')}
+                                                        onChange={(e) => handleSettingChange(field.name, e.target.value)}
+                                                        placeholder={field.description || ''}
+                                                    />
+                                                )}
+                                                {field.field_type === 'password' && (
+                                                    <input 
+                                                        type="password"
+                                                        value={String(settingsValues[field.name] || '')}
+                                                        onChange={(e) => handleSettingChange(field.name, e.target.value)}
+                                                        placeholder={field.description || ''}
+                                                    />
+                                                )}
+                                                {field.field_type === 'number' && (
+                                                    <input 
+                                                        type="number"
+                                                        value={String(settingsValues[field.name] || '')}
+                                                        onChange={(e) => handleSettingChange(field.name, e.target.value)}
+                                                        min={field.min}
+                                                        max={field.max}
+                                                        placeholder={field.description || ''}
+                                                    />
+                                                )}
+                                                {field.field_type === 'file' && (
+                                                    <input 
+                                                        type="text"
+                                                        value={String(settingsValues[field.name] || '')}
+                                                        onChange={(e) => handleSettingChange(field.name, e.target.value)}
+                                                        placeholder={field.description || ''}
+                                                    />
+                                                )}
+                                                {field.field_type === 'select' && (
+                                                    <select 
+                                                        value={String(settingsValues[field.name] || '')}
+                                                        onChange={(e) => handleSettingChange(field.name, e.target.value)}
+                                                    >
+                                                        <option value="">Select {field.label}</option>
+                                                        {field.options && field.options.map(opt => (
+                                                            <option key={opt} value={opt}>{opt}</option>
+                                                        ))}
+                                                    </select>
+                                                )}
+                                                {field.description && (
+                                                    <small className="field-description">{field.description}</small>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                );
+                            })()}
+                            
+                            {/* Discord 별명 탭 */}
+                            {settingsActiveTab === 'aliases' && (
+                                <div className="aliases-tab-content">
+                                    <div className="module-aliases-detail">
+                                        <h4>📝 모듈 별명 (Discord에서 이 서버를 부를 이름)</h4>
+                                        <small>공백으로 구분하여 여러 개 입력 가능. 예: {settingsServer.module} pw palworld</small>
+                                        <div className="module-aliases-input">
+                                            <input
+                                                type="text"
+                                                placeholder={`예: ${settingsServer.module}`}
+                                                value={editingModuleAliases.join(' ')}
+                                                onChange={(e) => {
+                                                    const aliases = e.target.value.split(/\s+/).filter(a => a.length > 0);
+                                                    setEditingModuleAliases(aliases);
+                                                }}
+                                            />
+                                            {editingModuleAliases.length === 0 && (
+                                                <div className="placeholder-hint">
+                                                    <small>💡 공백 시 기본값: <code>{settingsServer.module}</code></small>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="aliases-display">
+                                            {editingModuleAliases.map((alias, idx) => (
+                                                <span key={idx} className="alias-badge">{alias}</span>
+                                            ))}
+                                        </div>
+
+                                        <h4>⚡ 명령어 별명 (커스텀 명령어)</h4>
+                                        <small>콤마로 구분하여 여러 별명 입력. 예: 시작, start, 실행</small>
+                                        <div className="command-aliases-input">
+                                            {Object.entries(editingCommandAliases).map(([cmd, cmdData]) => {
+                                                const aliases = cmdData.aliases || [];
+                                                const description = cmdData.description || '';
+                                                return (
+                                                    <div key={cmd} className="command-alias-editor">
+                                                        <div className="cmd-header">
+                                                            <span className="cmd-name">{cmd}</span>
+                                                            {description && <span className="cmd-help" title={description}>?</span>}
+                                                        </div>
+                                                        <input
+                                                            type="text"
+                                                            placeholder={`예: ${cmd}`}
+                                                            value={aliases.join(', ')}
+                                                            onChange={(e) => {
+                                                                const newAliases = e.target.value.split(',').map(a => a.trim()).filter(a => a.length > 0);
+                                                                setEditingCommandAliases({
+                                                                    ...editingCommandAliases,
+                                                                    [cmd]: { ...cmdData, aliases: newAliases }
+                                                                });
+                                                            }}
+                                                        />
+                                                        <div className="aliases-display">
+                                                            {aliases.length === 0 ? (
+                                                                <span className="alias-badge-default">{cmd}</span>
+                                                            ) : (
+                                                                aliases.map((alias, idx) => (
+                                                                    <span key={idx} className="alias-badge-sm">{alias}</span>
+                                                                ))
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                        
+                                        <div className="module-aliases-actions">
+                                            <button className="btn btn-save" onClick={() => {
+                                                // settingsServer.module을 사용하여 저장
+                                                const moduleName = settingsServer.module;
+                                                handleSaveAliasesForModule(moduleName);
+                                            }}>
+                                                💾 별명 저장
+                                            </button>
+                                            <button className="btn btn-reset" onClick={() => {
+                                                const moduleName = settingsServer.module;
+                                                handleResetAliasesForModule(moduleName);
+                                            }}>
+                                                🔄 초기화
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        
+                        <div className="modal-footer">
+                            {settingsActiveTab === 'general' && (
+                                <button className="btn btn-confirm" onClick={handleSaveSettings}>
+                                    💾 설정 저장
+                                </button>
+                            )}
+                            <button className="btn btn-cancel" onClick={() => setShowSettingsModal(false)}>
+                                ✕ 닫기
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <footer className="app-footer">
                 <p>Connected to Core Daemon at localhost:57474</p>
             </footer>
+
+            {/* 모달 렌더링 */}
+            {modal && modal.type === 'success' && (
+                <SuccessModal
+                    title={modal.title}
+                    message={modal.message}
+                    onClose={() => setModal(null)}
+                />
+            )}
+            {modal && modal.type === 'failure' && (
+                <FailureModal
+                    title={modal.title}
+                    message={modal.message}
+                    onClose={() => setModal(null)}
+                />
+            )}
+            {modal && modal.type === 'notification' && (
+                <NotificationModal
+                    title={modal.title}
+                    message={modal.message}
+                    onClose={() => setModal(null)}
+                />
+            )}
+            {modal && modal.type === 'question' && (
+                <QuestionModal
+                    title={modal.title}
+                    message={modal.message}
+                    detail={modal.detail}
+                    buttons={modal.buttons}
+                    onConfirm={modal.onConfirm}
+                    onCancel={() => setModal(null)}
+                />
+            )}
+
+            {/* CommandModal 렌더링 */}
+            {showCommandModal && commandServer && (
+                <CommandModal
+                    server={commandServer}
+                    modules={modules}
+                    onClose={() => setShowCommandModal(false)}
+                    onExecute={setModal}
+                />
+            )}
         </div>
     );
 }

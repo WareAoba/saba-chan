@@ -38,6 +38,14 @@ modules/.extracted/
 # User data (개인 설정)
 instances.json
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.pyc
+
 # Build outputs
 *.exe
 !run-daemon.bat

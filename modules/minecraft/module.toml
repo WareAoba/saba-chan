@@ -2,9 +2,12 @@
 name = "minecraft"
 version = "1.0.0"
 description = "Minecraft server management module"
+game_name = "Minecraft"  # 게임 영어명 (기본 별명)
+display_name = "마인크래프트"  # 게임 한국어명
 entry = "lifecycle.py"
 
 [config]
+executable_path = "C:\\MinecraftServer\\server.jar"
 java_path = "/usr/bin/java"
 server_jar = "server.jar"
 eula = true
@@ -22,30 +25,117 @@ common_paths = [
     "D:\\MinecraftServer"
 ]
 
+[settings]
+# Minecraft 서버 설정 필드
+
+[[settings.fields]]
+name = "executable_path"
+type = "file"
+label = "Server JAR Path"
+description = "server.jar 파일의 경로"
+required = true
+
+[[settings.fields]]
+name = "port"
+type = "number"
+label = "Server Port"
+description = "게임 서버 포트"
+default = 25565
+min = 1024
+max = 65535
+
+[[settings.fields]]
+name = "difficulty"
+type = "select"
+label = "Difficulty"
+description = "게임 난이도"
+options = ["peaceful", "easy", "normal", "hard"]
+default = "normal"
+
+[[settings.fields]]
+name = "max_players"
+type = "number"
+label = "Max Players"
+description = "최대 플레이어 수"
+default = 20
+min = 1
+max = 100
+
 [commands]
-# 사용 가능한 명령어 목록
+# 명령어 정의: STDIN을 통해 서버 콘솔에 전달
 
-[[commands.list]]
-name = "stop"
-description = "서버를 정상 종료합니다"
-command = "/stop"
-method = "stdin"
-
-[[commands.list]]
-name = "save"
-description = "월드를 저장합니다"
-command = "/save-all"
-method = "stdin"
-
-[[commands.list]]
-name = "list"
-description = "접속 중인 플레이어 목록을 표시합니다"
-command = "/list"
-method = "stdin"
-
-[[commands.list]]
+[[commands.fields]]
 name = "say"
-description = "전체 채팅 메시지를 보냅니다"
-command = "/say {message}"
+label = "채팅 메시지 전송"
+description = "서버에 메시지를 브로드캐스트합니다"
 method = "stdin"
-params = ["message"]
+command_template = "/say {message}"
+inputs = [
+    { name = "message", type = "text", label = "메시지", required = true, placeholder = "전송할 메시지를 입력하세요" }
+]
+
+[[commands.fields]]
+name = "give"
+label = "아이템 지급"
+description = "플레이어에게 아이템을 지급합니다"
+method = "stdin"
+command_template = "/give {player} {item} {amount}"
+inputs = [
+    { name = "player", type = "text", label = "플레이어 이름", required = true, placeholder = "플레이어 닉네임" },
+    { name = "item", type = "text", label = "아이템 ID", required = true, placeholder = "예: diamond, iron_ore" },
+    { name = "amount", type = "number", label = "개수", required = true, default = 1, min = 1, max = 64 }
+]
+
+[[commands.fields]]
+name = "save-all"
+label = "월드 저장"
+description = "게임 월드를 저장합니다"
+method = "stdin"
+command_template = "/save-all"
+inputs = []
+
+[[commands.fields]]
+name = "list"
+label = "플레이어 목록"
+description = "접속 중인 플레이어 목록을 조회합니다"
+method = "stdin"
+command_template = "/list"
+inputs = []
+
+[[commands.fields]]
+name = "weather"
+label = "날씨 변경"
+description = "서버의 날씨를 변경합니다"
+method = "stdin"
+command_template = "/weather {type} {duration}"
+inputs = [
+    { name = "type", type = "select", label = "날씨", required = true, options = ["clear", "rain", "thunder"] },
+    { name = "duration", type = "number", label = "지속 시간 (초)", required = true, default = 1000, min = 1, max = 1000000 }
+]
+
+[[commands.fields]]
+name = "difficulty"
+label = "난이도 변경"
+description = "게임 난이도를 변경합니다"
+method = "stdin"
+command_template = "/difficulty {level}"
+inputs = [
+    { name = "level", type = "select", label = "난이도", required = true, options = ["peaceful", "easy", "normal", "hard"] }
+]
+
+[aliases]
+# Discord 봇 연동용 별명
+# 모듈 별명: 이 모듈을 부를 때 사용할 수 있는 이름들
+module_aliases = ["마인크래프트", "마크", "mc", "minecraft"]
+
+# 명령어 별명: 각 명령어의 한국어 별명 및 단축키
+[aliases.commands]
+start = { aliases = ["시작", "실행", "켜기"], description = "서버를 시작합니다" }
+stop = { aliases = ["정지", "끝내기", "끄기"], description = "서버를 종료합니다" }
+status = { aliases = ["상태", "상황", "확인"], description = "서버의 상태를 확인합니다" }
+say = { aliases = ["말", "채팅", "메시지"], description = "서버에 메시지를 브로드캐스트합니다" }
+give = { aliases = ["지급", "줘", "item"], description = "플레이어에게 아이템을 지급합니다" }
+save-all = { aliases = ["저장"], description = "월드를 저장합니다" }
+list = { aliases = ["목록", "플레이어", "유저"], description = "접속 플레이어 목록을 조회합니다" }
+weather = { aliases = ["날씨", "웨더"], description = "서버의 날씨를 변경합니다" }
+difficulty = { aliases = ["난이도", "어려움"], description = "게임 난이도를 변경합니다" }

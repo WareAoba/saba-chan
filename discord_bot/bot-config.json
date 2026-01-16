@@ -1,0 +1,30 @@
+{
+  "prefix": "사바쨩",
+  "moduleAliases": {
+    "palworld": "팰월드",
+    "minecraft": "bccc"
+  },
+  "commandAliases": {
+    "palworld": {
+      "status": "상태",
+      "shutdown": "종료",
+      "save": "저장",
+      "broadcast": "공지",
+      "info": "정보",
+      "say": "",
+      "stop": "정지",
+      "start": "실행"
+    },
+    "minecraft": {
+      "give": "",
+      "stop": "",
+      "start": "",
+      "weather": "",
+      "save-all": "",
+      "difficulty": "",
+      "list": "",
+      "status": "",
+      "say": ""
+    }
+  }
+}

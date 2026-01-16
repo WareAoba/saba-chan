@@ -14,6 +14,27 @@ pub struct ModuleMetadata {
     pub entry: String,  // lifecycle.py 경로
     pub process_name: Option<String>,  // config.process_name
     pub default_port: Option<u16>,  // config.default_port
+    pub executable_path: Option<String>,  // config.executable_path
+    #[serde(default)]
+    pub settings: Option<ModuleSettings>,  // 설정 스키마
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModuleSettings {
+    pub fields: Vec<SettingField>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SettingField {
+    pub name: String,
+    pub field_type: String,  // "text", "number", "password", "file", "select", etc.
+    pub label: String,
+    pub description: Option<String>,
+    pub required: Option<bool>,
+    pub default: Option<toml::Value>,
+    pub min: Option<i64>,
+    pub max: Option<i64>,
+    pub options: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -142,6 +163,12 @@ impl ModuleLoader {
                 .and_then(|c| c.get("default_port"))
                 .and_then(|v| v.as_integer())
                 .map(|i| i as u16),
+            executable_path: data
+                .get("config")
+                .and_then(|c| c.get("executable_path"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            settings: parse_settings(&data),
         };
 
         Ok(LoadedModule {
@@ -207,6 +234,12 @@ impl ModuleLoader {
                 .and_then(|c| c.get("default_port"))
                 .and_then(|v| v.as_integer())
                 .map(|i| i as u16),
+            executable_path: data
+                .get("config")
+                .and_then(|c| c.get("executable_path"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            settings: parse_settings(&data),
         };
 
         // 임시 디렉토리에 압축 해제
@@ -284,4 +317,82 @@ fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+/// TOML 데이터에서 settings 스키마 파싱
+fn parse_settings(data: &toml::Value) -> Option<ModuleSettings> {
+    let settings_table = data.get("settings")?;
+    let fields_array = settings_table.get("fields")?;
+    
+    let mut fields = Vec::new();
+    
+    if let Some(array) = fields_array.as_array() {
+        for field_value in array {
+            if let Some(field_table) = field_value.as_table() {
+                let name = field_table
+                    .get("name")
+                    .and_then(|v: &toml::Value| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                
+                let field_type = field_table
+                    .get("type")
+                    .and_then(|v: &toml::Value| v.as_str())
+                    .unwrap_or("text")
+                    .to_string();
+                
+                let label = field_table
+                    .get("label")
+                    .and_then(|v: &toml::Value| v.as_str())
+                    .unwrap_or(&name)
+                    .to_string();
+                
+                let description = field_table
+                    .get("description")
+                    .and_then(|v: &toml::Value| v.as_str())
+                    .map(|s: &str| s.to_string());
+                
+                let required = field_table
+                    .get("required")
+                    .and_then(|v: &toml::Value| v.as_bool());
+                
+                let default = field_table.get("default").cloned();
+                
+                let min = field_table
+                    .get("min")
+                    .and_then(|v: &toml::Value| v.as_integer());
+                
+                let max = field_table
+                    .get("max")
+                    .and_then(|v: &toml::Value| v.as_integer());
+                
+                let options = field_table
+                    .get("options")
+                    .and_then(|v: &toml::Value| v.as_array())
+                    .map(|arr: &Vec<toml::Value>| {
+                        arr.iter()
+                            .filter_map(|v: &toml::Value| v.as_str().map(|s: &str| s.to_string()))
+                            .collect()
+                    });
+                
+                fields.push(SettingField {
+                    name,
+                    field_type,
+                    label,
+                    description,
+                    required,
+                    default,
+                    min,
+                    max,
+                    options,
+                });
+            }
+        }
+    }
+    
+    if fields.is_empty() {
+        None
+    } else {
+        Some(ModuleSettings { fields })
+    }
 }

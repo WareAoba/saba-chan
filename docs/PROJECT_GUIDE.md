@@ -137,6 +137,54 @@ c:\Git\Bot\
 
 ---
 
+## ✅ 최근 해결된 문제 (2026-01-16)
+
+### 1. stop_server_handler 하드코딩 해결 ✅
+- **문제**: 모듈명이 "minecraft"로 하드코딩되어 다른 게임 서버 중지 불가
+- **해결**: instance에서 module_name을 조회하여 동적으로 사용
+- **파일**: `src/ipc/mod.rs`
+
+### 2. start_server payload 구조 통일 ✅
+- **문제**: App.js는 `{ module }`, Backend는 `payload.resource.module` 파싱
+- **해결**: `ServerStartRequest` 구조 간소화
+  ```rust
+  pub struct ServerStartRequest {
+      pub module: String,
+      pub config: Value,
+  }
+  ```
+- **파일**: `src/ipc/mod.rs`, `electron_gui/main.js`
+
+### 3. get_server_status 하드코딩 해결 ✅
+- **문제**: 모듈명이 "minecraft"로 하드코딩
+- **해결**: instance에서 module_name 조회
+- **파일**: `src/ipc/mod.rs`
+
+### 4. 프로세스 간 통신 표준화 완료 ✅
+- **추가**: `COMMUNICATION_SPEC.md` 생성
+- **내용**: 모든 API 엔드포인트, 요청/응답 구조, IPC 브릿지 명세
+- **효과**: 일관된 통신 구조로 유지보수성 향상
+
+### 5. lifecycle.py 서버 시작 기능 구현 ✅
+- **문제**: 서버 시작 시 "파일을 찾을 수 없습니다" 에러
+- **해결**:
+  - instance의 `executable_path`, `working_dir` 정보를 config로 전달
+  - lifecycle.py에서 경로 검증 및 명확한 에러 메시지 제공
+  - Windows 프로세스 생성 플래그 추가 (DETACHED_PROCESS)
+  - Python 명령어 자동 감지 (python3 우선, python 폴백)
+- **파일**: `src/supervisor/mod.rs`, `src/plugin/mod.rs`, `modules/*/lifecycle.py`
+
+### 6. 서버 중지 기능 개선 ✅
+- **개선**: Windows taskkill, Unix kill 명령어 분기 처리
+- **추가**: force 옵션 지원 (`/F` 플래그)
+- **파일**: `modules/*/lifecycle.py`
+
+### 7. 사용자 가이드 작성 ✅
+- **추가**: `USAGE_GUIDE.md` 생성
+- **내용**: 서버 시작 전 설정 방법, 에러 해결, instances.json 편집 가이드
+
+---
+
 ## ❌ 미구현 / 해결 못한 내용
 
 ### 높은 우선순위
@@ -149,9 +197,9 @@ c:\Git\Bot\
    - 참고: https://github.com/juunini/palworld-discord-bot
    - 주의: Palworld RCON은 Non-ASCII 미지원
 
-3. **서버 시작/중지 기능**
-   - 현재 API만 존재, 실제 구현 없음
-   - `lifecycle.py` 스크립트 실행 필요
+3. **GUI에서 instance 경로 설정**
+   - 현재는 instances.json 직접 편집 필요
+   - executable_path, working_dir 입력 UI 추가 필요
 
 ### 중간 우선순위
 4. **다중 서버 동일 모듈**
@@ -172,39 +220,34 @@ c:\Git\Bot\
 
 ---
 
-## � 잠재적 문제점 및 개선 필요 사항
+## 🔴 잠재적 문제점 및 개선 필요 사항
 
 > ⚠️ **참고**: 아래 항목들은 당장 해결이 필요한 것이 아닙니다. 코드 리뷰 중 발견된 사항을 기록해둔 것으로, 필요시 참고하세요.
 
-### 🔴 높은 우선순위 (기능에 영향)
+### 🟢 최근 해결됨 (2026-01-16)
 
-#### 1. stop_server_handler 모듈명 하드코딩
-- **파일**: `src/ipc/mod.rs` (190-207줄)
-- **문제**: `let module_name = "minecraft";`로 하드코딩됨
-- **영향**: palworld 등 다른 서버 중지 불가
-- **해결방향**: 인스턴스에서 module_name 조회 필요
+#### ~~1. stop_server_handler 모듈명 하드코딩~~ ✅
+- **해결**: instance에서 module_name 조회하도록 수정
 
-#### 2. Electron-Backend 간 payload 불일치
-- **파일**: `electron_gui/main.js` (162-170줄), `electron_gui/src/App.js` (113줄)
-- **문제**: 
-  - App.js: `{ module }` 전송
-  - main.js: `options.resource` 기대
-  - Backend: `payload.resource.module` 찾음
-- **영향**: 서버 시작 기능 작동 안 함
+#### ~~2. Electron-Backend 간 payload 불일치~~ ✅
+- **해결**: `ServerStartRequest` 구조 간소화 (`resource` 제거, `module`과 `config` 직접 사용)
+
+#### ~~3. get_server_status 모듈명 하드코딩~~ ✅
+- **해결**: instance에서 module_name 조회하도록 수정
 
 ### 🟡 중간 우선순위 (안정성/완성도)
 
-#### 3. Daemon 시작 타이밍 문제
+#### 4. Daemon 시작 타이밍 문제
 - **파일**: `electron_gui/main.js` (141-145줄)
 - **문제**: `setTimeout(createWindow, 3000)` - 고정 타임아웃
 - **개선**: Health check 폴링으로 대체 권장
 
-#### 4. 프로세스 추적 기능 미완성
+#### 5. 프로세스 추적 기능 미완성
 - **파일**: `src/supervisor/process.rs`
 - **증상**: 대부분 메서드가 `#[allow(dead_code)]`
 - **의미**: ProcessTracker 기능이 실제로 활용되지 않음
 
-#### 5. State Machine 미사용
+#### 6. State Machine 미사용
 - **파일**: `src/supervisor/state_machine.rs`
 - **증상**: `State::Crashed` variant 미생성 경고
 - **의미**: 상태 머신이 정의만 되고 통합 안 됨
@@ -237,6 +280,13 @@ c:\Git\Bot\
 #### 11. create_instance 검증 부족
 - **파일**: `src/ipc/mod.rs` (255-288줄)
 - **개선**: 중복 ID 체크, 유효 모듈 검증 추가
+
+### 🟢 낮은 우선순위 (코드 품질)
+
+#### 12. 미사용 경고
+- **파일**: 여러 파일
+- **증상**: unused imports, dead_code 경고
+- **상태**: 2026-01-16 일부 정리 완료 (Path, ServerInstance import 제거)
 
 ### 참고: 보안 관련
 - IPC 서버 `127.0.0.1` 바인딩으로 로컬 전용 - 현재는 OK
@@ -315,6 +365,20 @@ Invoke-RestMethod -Uri "http://127.0.0.1:57474/api/servers" | ConvertTo-Json -De
 | 2026-01-14 | 설정 저장 기능 추가 |
 | 2026-01-15 | PROJECT_GUIDE.md 생성 |
 | 2026-01-15 | 잠재적 문제점 및 개선 필요 사항 섹션 추가 |
+| 2026-01-16 | **치명적 이슈 3개 해결** |
+| 2026-01-16 | stop_server/get_status 하드코딩 제거 |
+| 2026-01-16 | ServerStartRequest payload 구조 간소화 |
+| 2026-01-16 | COMMUNICATION_SPEC.md 생성 (프로세스 간 통신 표준화) |
+| 2026-01-16 | 미사용 import 정리 (Path, ServerInstance) |
+| 2026-01-16 | **서버 시작/중지 기능 완전 구현** ✅ |
+| 2026-01-16 | lifecycle.py 개선 (경로 검증, 에러 메시지, Windows 프로세스 처리) |
+| 2026-01-16 | Python 명령어 자동 감지 (python3 우선) |
+| 2026-01-16 | USAGE_GUIDE.md 생성 (사용자 가이드) |
+| 2026-01-16 | 아키텍처 정정: Add Server는 간단한 3필드만 (이름, 모듈, 실행파일) |
+| 2026-01-16 | 게임별 상세 설정은 별도 "Settings" 화면에서 관리 (미구현) |
+| 2026-01-16 | **모듈 기반 실행파일 경로 자동 로드** |
+| 2026-01-16 | module.toml에 executable_path 필드 추가 |
+| 2026-01-16 | 모듈 선택 시 executable_path 자동으로 폼에 채워짐 |
 
 ---
 

@@ -8,14 +8,16 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
 /// IPC 요청/응답 타입
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerStartRequest {
+    pub module: String,
     #[serde(default)]
-    pub resource: Option<Value>,
+    pub config: Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,17 +27,49 @@ pub struct ServerStopRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommandRequest {
+    pub command: String,
+    #[serde(default)]
+    pub args: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommandResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BotConfig {
+    pub prefix: String,
+    #[serde(default)]
+    pub moduleAliases: HashMap<String, String>,
+    #[serde(default)]
+    pub commandAliases: HashMap<String, HashMap<String, String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerListResponse {
     pub servers: Vec<ServerInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerInfo {
+    pub id: String,
     pub name: String,
     pub module: String,
     pub status: String,
     pub pid: Option<u32>,
     pub uptime_seconds: Option<u64>,
+    // 설정값들
+    pub executable_path: Option<String>,
+    pub port: Option<u16>,
+    pub rcon_port: Option<u16>,
+    pub rcon_password: Option<String>,
+    pub rest_host: Option<String>,
+    pub rest_port: Option<u16>,
+    pub rest_username: Option<String>,
+    pub rest_password: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,6 +78,8 @@ pub struct ModuleInfo {
     pub version: String,
     pub description: Option<String>,
     pub path: String,
+    pub executable_path: Option<String>,
+    pub settings: Option<crate::supervisor::module_loader::ModuleSettings>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,8 +113,11 @@ impl IPCServer {
             .route("/api/server/:name/start", post(start_server_handler))
             .route("/api/server/:name/stop", post(stop_server_handler))
             .route("/api/modules", get(list_modules))
+            .route("/api/module/:name", get(get_module_metadata))
             .route("/api/instances", get(list_instances).post(create_instance))
-            .route("/api/instance/:id", get(get_instance).delete(delete_instance))
+            .route("/api/instance/:id", get(get_instance).delete(delete_instance).patch(update_instance_settings))
+            .route("/api/instance/:id/command", post(execute_command))
+            .route("/api/config/bot", get(get_bot_config).put(save_bot_config))
             .with_state(self.clone());
 
         // TCP 리스너
@@ -107,11 +146,20 @@ async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
         };
         
         servers.push(ServerInfo {
+            id: instance.id.clone(),
             name: instance.name.clone(),
             module: instance.module_name.clone(),
             status,
             pid,
             uptime_seconds: None,
+            executable_path: instance.executable_path.clone(),
+            port: instance.port,
+            rcon_port: instance.rcon_port,
+            rcon_password: instance.rcon_password.clone(),
+            rest_host: instance.rest_host.clone(),
+            rest_port: instance.rest_port,
+            rest_username: instance.rest_username.clone(),
+            rest_password: instance.rest_password.clone(),
         });
     }
 
@@ -131,9 +179,69 @@ async fn list_modules(State(state): State<IPCServer>) -> impl IntoResponse {
                     version: m.metadata.version,
                     description: m.metadata.description,
                     path: m.path,
+                    executable_path: m.metadata.executable_path,
+                    settings: m.metadata.settings,
                 })
                 .collect();
             (StatusCode::OK, Json(ModuleListResponse { modules: module_infos })).into_response()
+        }
+        Err(e) => {
+            let error = json!({ "error": format!("Failed to list modules: {}", e) });
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+        }
+    }
+}
+
+/// GET /api/module/:name - 모듈 메타데이터 조회 (별명 포함)
+async fn get_module_metadata(
+    Path(name): Path<String>,
+    State(state): State<IPCServer>,
+) -> impl IntoResponse {
+    let supervisor = state.supervisor.read().await;
+    
+    match supervisor.list_modules() {
+        Ok(modules) => {
+            if let Some(module) = modules.iter().find(|m| m.metadata.name == name) {
+                // TOML에서 aliases 섹션 읽기 시도
+                let module_path = format!("{}/module.toml", module.path);
+                match std::fs::read_to_string(&module_path) {
+                    Ok(content) => {
+                        match toml::from_str::<serde_json::Value>(&content) {
+                            Ok(parsed) => {
+                                return (StatusCode::OK, Json(json!({
+                                    "name": &module.metadata.name,
+                                    "version": &module.metadata.version,
+                                    "description": &module.metadata.description,
+                                    "path": &module.path,
+                                    "metadata": &module.metadata,
+                                    "toml": parsed,
+                                }))).into_response();
+                            }
+                            Err(_) => {
+                                return (StatusCode::OK, Json(json!({
+                                    "name": &module.metadata.name,
+                                    "version": &module.metadata.version,
+                                    "description": &module.metadata.description,
+                                    "path": &module.path,
+                                    "metadata": &module.metadata,
+                                }))).into_response();
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        return (StatusCode::OK, Json(json!({
+                            "name": &module.metadata.name,
+                            "version": &module.metadata.version,
+                            "description": &module.metadata.description,
+                            "path": &module.path,
+                            "metadata": &module.metadata,
+                        }))).into_response();
+                    }
+                }
+            } else {
+                let error = json!({ "error": format!("Module '{}' not found", name) });
+                return (StatusCode::NOT_FOUND, Json(error)).into_response();
+            }
         }
         Err(e) => {
             let error = json!({ "error": format!("Failed to list modules: {}", e) });
@@ -149,15 +257,22 @@ async fn get_server_status(
 ) -> impl IntoResponse {
     let supervisor = state.supervisor.read().await;
     
-    // TODO: 서버의 모듈명을 어떻게 알지?
-    let module_name = "minecraft";
+    // instance에서 모듈명 조회
+    let instance = supervisor.instance_store.list()
+        .iter()
+        .find(|i| i.name == name);
     
-    match supervisor.get_server_status(&name, module_name).await {
-        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
-        Err(e) => {
-            let error = json!({ "error": format!("Failed to get status: {}", e) });
-            (StatusCode::NOT_FOUND, Json(error)).into_response()
+    if let Some(inst) = instance {
+        match supervisor.get_server_status(&name, &inst.module_name).await {
+            Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+            Err(e) => {
+                let error = json!({ "error": format!("Failed to get status: {}", e) });
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+            }
         }
+    } else {
+        let error = json!({ "error": format!("Server '{}' not found", name) });
+        (StatusCode::NOT_FOUND, Json(error)).into_response()
     }
 }
 
@@ -169,17 +284,7 @@ async fn start_server_handler(
 ) -> impl IntoResponse {
     let supervisor = state.supervisor.read().await;
     
-    // payload.resource에서 module 이름 추출
-    let module_name = payload.resource
-        .as_ref()
-        .and_then(|r| r.get("module"))
-        .and_then(|m| m.as_str())
-        .unwrap_or("minecraft") // 기본값
-        .to_string(); // 부분 복사
-    
-    let config = payload.resource.unwrap_or_else(|| json!({}));
-    
-    match supervisor.start_server(&name, &module_name, config).await {
+    match supervisor.start_server(&name, &payload.module, payload.config).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => {
             let error = json!({ "error": format!("Failed to start server: {}", e) });
@@ -196,15 +301,22 @@ async fn stop_server_handler(
 ) -> impl IntoResponse {
     let supervisor = state.supervisor.read().await;
     
-    // TODO: 서버의 모듈명을 어떻게 알지? 일단 기본값 사용
-    let module_name = "minecraft"; // 서버-모듈 매핑 필요
+    // instance에서 모듈명 조회
+    let instance = supervisor.instance_store.list()
+        .iter()
+        .find(|i| i.name == name);
     
-    match supervisor.stop_server(&name, module_name, payload.force).await {
-        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
-        Err(e) => {
-            let error = json!({ "error": format!("Failed to stop server: {}", e) });
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+    if let Some(inst) = instance {
+        match supervisor.stop_server(&name, &inst.module_name, payload.force).await {
+            Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+            Err(e) => {
+                let error = json!({ "error": format!("Failed to stop server: {}", e) });
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+            }
         }
+    } else {
+        let error = json!({ "error": format!("Server '{}' not found", name) });
+        (StatusCode::NOT_FOUND, Json(error)).into_response()
     }
 }
 
@@ -307,6 +419,106 @@ async fn delete_instance(
     }
 }
 
+/// PATCH /api/instance/:id - 인스턴스 설정 업데이트
+async fn update_instance_settings(
+    State(state): State<IPCServer>,
+    Path(id): Path<String>,
+    Json(settings): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let mut supervisor = state.supervisor.write().await;
+    
+    // 인스턴스 찾기
+    let instance = match supervisor.instance_store.get(&id) {
+        Some(inst) => inst,
+        None => {
+            let error = json!({ "error": "Instance not found" });
+            return (StatusCode::NOT_FOUND, Json(error)).into_response();
+        }
+    };
+    
+    // 설정값 업데이트
+    let mut updated = instance.clone();
+    
+    // common settings
+    // port: 숫자 또는 문자열 수용
+    if let Some(port_value) = settings.get("port") {
+        match port_value {
+            serde_json::Value::Number(n) => {
+                if let Some(port) = n.as_u64() {
+                    updated.port = Some(port as u16);
+                }
+            }
+            serde_json::Value::String(s) => {
+                if let Ok(port) = s.parse::<u16>() {
+                    updated.port = Some(port);
+                }
+            }
+            _ => {}
+        }
+    }
+    
+    // rcon_port: 숫자 또는 문자열 수용
+    if let Some(rcon_port_value) = settings.get("rcon_port") {
+        match rcon_port_value {
+            serde_json::Value::Number(n) => {
+                if let Some(rcon_port) = n.as_u64() {
+                    updated.rcon_port = Some(rcon_port as u16);
+                }
+            }
+            serde_json::Value::String(s) => {
+                if let Ok(rcon_port) = s.parse::<u16>() {
+                    updated.rcon_port = Some(rcon_port);
+                }
+            }
+            _ => {}
+        }
+    }
+    
+    if let Some(rcon_password) = settings.get("rcon_password").and_then(|v| v.as_str()) {
+        updated.rcon_password = Some(rcon_password.to_string());
+    }
+
+    if let Some(rest_host) = settings.get("rest_host").and_then(|v| v.as_str()) {
+        updated.rest_host = Some(rest_host.to_string());
+    }
+    if let Some(rest_port_value) = settings.get("rest_port") {
+        match rest_port_value {
+            serde_json::Value::Number(n) => {
+                if let Some(rest_port) = n.as_u64() {
+                    updated.rest_port = Some(rest_port as u16);
+                }
+            }
+            serde_json::Value::String(s) => {
+                if let Ok(rest_port) = s.parse::<u16>() {
+                    updated.rest_port = Some(rest_port);
+                }
+            }
+            _ => {}
+        }
+    }
+    if let Some(rest_username) = settings.get("rest_username").and_then(|v| v.as_str()) {
+        updated.rest_username = Some(rest_username.to_string());
+    }
+    if let Some(rest_password) = settings.get("rest_password").and_then(|v| v.as_str()) {
+        updated.rest_password = Some(rest_password.to_string());
+    }
+
+    if let Some(executable_path) = settings.get("executable_path").and_then(|v| v.as_str()) {
+        updated.executable_path = Some(executable_path.to_string());
+    }
+    
+    tracing::info!("Updating instance {} with settings: port={:?}, rcon_port={:?}, rcon_password={:?}, executable_path={:?}, rest_host={:?}, rest_port={:?}", 
+        id, updated.port, updated.rcon_port, updated.rcon_password, updated.executable_path, updated.rest_host, updated.rest_port);
+    
+    // 저장
+    if let Err(e) = supervisor.instance_store.update(&id, updated) {
+        let error = json!({ "error": format!("Failed to update instance: {}", e) });
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response();
+    }
+    
+    (StatusCode::OK, Json(json!({ "success": true }))).into_response()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -319,5 +531,129 @@ mod tests {
             "result": "ok"
         });
         assert!(response["success"].as_bool().unwrap());
+    }
+}
+
+/// POST /api/instance/:id/command - 명령어 실행
+async fn execute_command(
+    Path(id): Path<String>,
+    State(state): State<IPCServer>,
+    Json(req): Json<CommandRequest>,
+) -> impl IntoResponse {
+    let supervisor = state.supervisor.read().await;
+
+    // 인스턴스 확인
+    let instance = match supervisor.instance_store.get(&id) {
+        Some(instance) => instance,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": format!("Instance not found: {}", id)
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    // Supervisor를 통해 명령어 전달
+    let result = supervisor
+        .execute_command(&instance.id, &instance.module_name, &req.command, req.args)
+        .await;
+
+    match result {
+        Ok(message) => (
+            StatusCode::OK,
+            Json(json!({
+                "success": true,
+                "message": message
+            })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": e.to_string()
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// GET /api/config/bot - 봇 설정 조회
+async fn get_bot_config(State(_state): State<IPCServer>) -> impl IntoResponse {
+    match std::fs::read_to_string(crate::supervisor::get_discord_bot_config_path()) {
+        Ok(content) => {
+            match serde_json::from_str::<BotConfig>(&content) {
+                Ok(config) => (StatusCode::OK, Json(config)).into_response(),
+                Err(e) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({
+                        "error": format!("Failed to parse bot config: {}", e)
+                    })),
+                )
+                    .into_response(),
+            }
+        }
+        Err(_) => (
+            StatusCode::OK,
+            Json(BotConfig {
+                prefix: "!saba".to_string(),
+                moduleAliases: Default::default(),
+                commandAliases: Default::default(),
+            }),
+        )
+            .into_response(),
+    }
+}
+
+/// PUT /api/config/bot - 봇 설정 저장
+async fn save_bot_config(
+    State(_state): State<IPCServer>,
+    Json(config): Json<BotConfig>,
+) -> impl IntoResponse {
+    let config_path = crate::supervisor::get_discord_bot_config_path();
+    
+    // 파일 경로의 부모 디렉토리 생성
+    if let Some(parent) = std::path::Path::new(&config_path).parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "error": format!("Failed to create config directory: {}", e)
+                })),
+            )
+                .into_response();
+        }
+    }
+
+    // 설정을 JSON으로 저장
+    match serde_json::to_string_pretty(&config) {
+        Ok(json_str) => {
+            match std::fs::write(&config_path, json_str) {
+                Ok(_) => (
+                    StatusCode::OK,
+                    Json(json!({
+                        "success": true,
+                        "message": "Bot config saved"
+                    })),
+                )
+                    .into_response(),
+                Err(e) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({
+                        "error": format!("Failed to write bot config: {}", e)
+                    })),
+                )
+                    .into_response(),
+            }
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "error": format!("Failed to serialize bot config: {}", e)
+            })),
+        )
+            .into_response(),
     }
 }

@@ -16,6 +16,14 @@ pub struct ServerInstance {
     pub port: Option<u16>,             // 서버 포트
     pub rcon_port: Option<u16>,        // RCON 포트 (있는 경우)
     pub rcon_password: Option<String>, // RCON 비밀번호
+    #[serde(default)]
+    pub rest_host: Option<String>,     // REST API 호스트
+    #[serde(default)]
+    pub rest_port: Option<u16>,        // REST API 포트
+    #[serde(default)]
+    pub rest_username: Option<String>, // REST API 사용자명 (Basic Auth)
+    #[serde(default)]
+    pub rest_password: Option<String>, // REST API 비밀번호 (Basic Auth)
 }
 
 impl ServerInstance {
@@ -31,6 +39,10 @@ impl ServerInstance {
             port: None,
             rcon_port: None,
             rcon_password: None,
+            rest_host: None,
+            rest_port: None,
+            rest_username: None,
+            rest_password: None,
         }
     }
 }

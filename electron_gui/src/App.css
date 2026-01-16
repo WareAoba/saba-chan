@@ -208,12 +208,12 @@ body {
 }
 
 .button-group {
-    display: flex;
-    gap: 10px;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
 }
 
 .btn {
-    flex: 1;
     padding: 10px 12px;
     border: none;
     border-radius: 4px;
@@ -250,6 +250,33 @@ body {
     background-color: #0b7dda;
 }
 
+.btn-settings {
+    background-color: #FF9800;
+    color: white;
+}
+
+.btn-settings:hover:not(:disabled) {
+    background-color: #F57C00;
+}
+
+.btn-command {
+    background-color: #667eea;
+    color: white;
+}
+
+.btn-command:hover:not(:disabled) {
+    background-color: #5568d3;
+}
+
+.btn-delete {
+    background-color: #9e9e9e;
+    color: white;
+}
+
+.btn-delete:hover:not(:disabled) {
+    background-color: #f44336;
+}
+
 .btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
@@ -266,6 +293,288 @@ body {
 .module-manager h3 {
     margin-bottom: 15px;
     color: #333;
+}
+
+/* Discord Bot Section */
+.discord-section {
+    background: white;
+    margin: 0 20px 20px 20px;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    border-left: 4px solid #5865F2;
+}
+
+.discord-section h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #5865F2;
+}
+
+.discord-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.discord-status .status-label {
+    color: #666;
+    font-weight: bold;
+}
+
+.discord-status .status-value {
+    font-weight: bold;
+}
+
+.discord-status .status-running {
+    color: #4CAF50;
+}
+
+.discord-status .status-stopped {
+    color: #888;
+}
+
+.discord-status .status-error {
+    color: #f44336;
+}
+
+.discord-token-form {
+    margin-bottom: 15px;
+}
+
+.discord-token-form label {
+    display: block;
+    margin-bottom: 5px;
+    color: #555;
+    font-weight: bold;
+}
+
+.discord-token-form input {
+    width: 100%;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #ddd;
+    background: #f9f9f9;
+    color: #333;
+    font-family: monospace;
+    box-sizing: border-box;
+}
+
+.discord-token-form input:focus {
+    outline: none;
+    border-color: #5865F2;
+}
+
+.discord-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.btn-discord {
+    background: #5865F2;
+    color: white;
+}
+
+.btn-discord:hover {
+    background: #4752c4;
+}
+
+.btn-discord-active {
+    background: #3ba55d;
+}
+
+.btn-discord-active:hover {
+    background: #2d8049;
+}
+
+.discord-config-grid {
+    display: grid;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.discord-prefix-form label,
+.discord-autostart label {
+    display: block;
+    margin-bottom: 5px;
+    color: #555;
+    font-weight: bold;
+}
+
+.discord-prefix-form input {
+    width: 150px;
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid #ddd;
+    background: #f9f9f9;
+    font-family: monospace;
+    font-size: 14px;
+}
+
+.discord-prefix-form small {
+    display: block;
+    color: #888;
+    font-size: 11px;
+    margin-top: 4px;
+}
+
+.discord-prefix-form .warning-text {
+    color: #f44336;
+    font-weight: bold;
+}
+
+.discord-autostart {
+    display: flex;
+    align-items: center;
+}
+
+.discord-autostart input[type="checkbox"] {
+    margin-right: 8px;
+    width: 18px;
+    height: 18px;
+}
+
+.discord-aliases-section {
+    background: #f5f5f5;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+.discord-aliases-section h4 {
+    margin: 0 0 5px 0;
+    color: #333;
+    font-size: 14px;
+}
+
+.discord-aliases-section > small {
+    display: block;
+    color: #888;
+    margin-bottom: 10px;
+    font-size: 11px;
+}
+
+.alias-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.alias-item {
+    display: flex;
+    align-items: center;
+    background: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    font-size: 13px;
+}
+
+.alias-key {
+    color: #5865F2;
+    font-weight: bold;
+}
+
+.alias-arrow {
+    margin: 0 6px;
+    color: #999;
+}
+
+.alias-value {
+    color: #333;
+    font-family: monospace;
+}
+
+.btn-alias-remove {
+    margin-left: 8px;
+    background: none;
+    border: none;
+    color: #f44336;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 4px;
+}
+
+.btn-alias-remove:hover {
+    color: #d32f2f;
+}
+
+.alias-add-form {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.alias-add-form input {
+    padding: 6px 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 13px;
+    width: 120px;
+}
+
+.btn-small {
+    padding: 6px 12px;
+    font-size: 12px;
+    background: #5865F2;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.btn-small:hover {
+    background: #4752c4;
+}
+
+.discord-usage-hint {
+    background: #e8f4fd;
+    padding: 10px 15px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    border-left: 3px solid #2196F3;
+}
+
+.discord-usage-hint h4 {
+    margin: 0 0 5px 0;
+    color: #1976D2;
+    font-size: 13px;
+}
+
+.discord-usage-hint code {
+    background: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-family: monospace;
+    color: #333;
+}
+
+.discord-usage-hint .hint-placeholder {
+    color: #999;
+    font-style: italic;
+}
+
+.discord-usage-hint .hint-desc {
+    display: block;
+    margin-top: 8px;
+    color: #666;
+    font-size: 12px;
+}
+
+.discord-usage-hint .hint-desc code {
+    padding: 2px 6px;
+    font-size: 12px;
+}
+
+.btn-save {
+    background: #4CAF50;
+    color: white;
+}
+
+.btn-save:hover {
+    background: #43a047;
 }
 
 .path-config {
@@ -324,19 +633,88 @@ body {
 }
 
 .add-server-form {
-    display: flex;
-    gap: 10px;
+    background: #f9f9f9;
+    padding: 20px;
+    border-radius: 8px;
     margin-bottom: 20px;
-    flex-wrap: wrap;
 }
 
-.add-server-form input,
-.add-server-form select {
-    flex: 1;
-    min-width: 200px;
+.form-row {
+    margin-bottom: 15px;
+}
+
+.form-row label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 5px;
+    color: #333;
+    font-size: 13px;
+}
+
+.form-row input,
+.form-row select {
+    width: 100%;
     padding: 10px;
     border: 2px solid #ddd;
     border-radius: 6px;
+    font-size: 14px;
+    transition: border-color 0.2s;
+}
+
+.form-row input:focus,
+.form-row select:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.form-row input[type="number"] {
+    width: 100%;
+}
+
+.path-input-group {
+    display: flex;
+    gap: 8px;
+}
+
+.path-input-group input {
+    flex: 1;
+}
+
+.btn-browse {
+    background-color: #607D8B;
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+.btn-browse:hover {
+    background-color: #546E7A;
+}
+
+.field-hint {
+    display: block;
+    color: #666;
+    font-size: 11px;
+    margin-top: 4px;
+    font-style: italic;
+}
+
+.form-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid #ddd;
+}
+
+.form-actions .btn {
+    flex: 1;
+    padding: 12px;
     font-size: 14px;
 }
 
@@ -401,6 +779,115 @@ body {
     font-size: 12px;
 }
 
+/* Settings Modal Styles */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    width: 90%;
+    max-width: 600px;
+    max-height: 80vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-header {
+    padding: 20px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h3 {
+    margin: 0;
+    color: #333;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #999;
+}
+
+.modal-close:hover {
+    color: #333;
+}
+
+.modal-body {
+    padding: 20px;
+    flex: 1;
+    overflow-y: auto;
+}
+
+.modal-footer {
+    padding: 20px;
+    border-top: 1px solid #eee;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.settings-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.settings-field label {
+    font-weight: 600;
+    color: #333;
+}
+
+.settings-field input,
+.settings-field select {
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.settings-field input:focus,
+.settings-field select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+}
+
+.field-description {
+    color: #666;
+    font-size: 12px;
+    font-style: italic;
+}
+
+.no-settings {
+    text-align: center;
+    color: #999;
+    padding: 40px 20px;
+}
+
 .app-footer {
     background: white;
     padding: 15px;
@@ -414,3 +901,429 @@ body {
 .refresh-btn:hover {
     background-color: #218838;
 }
+/* 모듈별 별명 관리 섹션 */
+.modules-aliases-section {
+    background: white;
+    margin: 20px;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.modules-aliases-section h3 {
+    color: #333;
+    margin-bottom: 10px;
+    font-size: 18px;
+}
+
+.modules-aliases-section > small {
+    display: block;
+    color: #666;
+    margin-bottom: 15px;
+    font-size: 13px;
+}
+
+.module-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    border-bottom: 2px solid #eee;
+    padding-bottom: 10px;
+}
+
+.module-tab {
+    background: #f5f5f5;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #666;
+    transition: all 0.2s;
+    border-bottom: 3px solid transparent;
+}
+
+.module-tab:hover {
+    background: #e8e8e8;
+}
+
+.module-tab.active {
+    background: #667eea;
+    color: white;
+    border-bottom-color: #764ba2;
+}
+
+.module-aliases-detail {
+    background: #f9f9f9;
+    padding: 15px;
+    border-radius: 4px;
+    border-left: 4px solid #667eea;
+}
+
+.module-aliases-detail.no-data {
+    text-align: center;
+    color: #999;
+    padding: 40px 20px;
+    border-left-color: #ddd;
+}
+
+.module-aliases-detail h4 {
+    color: #333;
+    margin-top: 15px;
+    margin-bottom: 8px;
+    font-size: 14px;
+}
+
+.module-aliases-detail h4:first-child {
+    margin-top: 0;
+}
+
+.module-aliases-detail > small {
+    display: block;
+    color: #999;
+    margin-bottom: 12px;
+    font-size: 12px;
+    font-style: italic;
+}
+
+.aliases-display {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 15px;
+}
+
+.alias-badge {
+    background: #667eea;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 16px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.command-aliases-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.command-alias-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    background: white;
+    border-radius: 4px;
+    border: 1px solid #eee;
+}
+
+.cmd-name {
+    background: #f0f0f0;
+    padding: 4px 8px;
+    border-radius: 3px;
+    font-weight: 600;
+    color: #333;
+    min-width: 80px;
+    text-align: center;
+}
+
+.cmd-aliases {
+    flex: 1;
+    color: #666;
+    font-size: 13px;
+}
+
+/* 모듈 별명 입력 섹션 */
+.module-aliases-input {
+    position: relative;
+    margin-bottom: 15px;
+}
+
+.module-aliases-input input {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #e0e0e0;
+    border-radius: 4px;
+    font-size: 14px;
+    font-family: 'Segoe UI', sans-serif;
+    transition: border-color 0.2s;
+}
+
+.module-aliases-input input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.placeholder-hint {
+    margin-top: 8px;
+    padding: 10px;
+    background: #f5f5f5;
+    border-radius: 4px;
+    color: #999;
+}
+
+/* 명령어 별명 입력 섹션 */
+.command-aliases-input {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.command-alias-editor {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 12px;
+    transition: all 0.2s;
+}
+
+.command-alias-editor:hover {
+    border-color: #667eea;
+    box-shadow: 0 2px 4px rgba(102, 126, 234, 0.1);
+}
+
+.cmd-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    position: relative;
+}
+
+.cmd-header .cmd-name {
+    background: #667eea;
+    color: white;
+    padding: 4px 10px;
+    border-radius: 3px;
+    font-weight: 600;
+    font-size: 12px;
+    min-width: 70px;
+    text-align: center;
+}
+
+.cmd-help {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    background: #f0f0f0;
+    border: 1px solid #ddd;
+    border-radius: 50%;
+    cursor: help;
+    font-weight: bold;
+    color: #666;
+    font-size: 12px;
+    position: relative;
+    transition: all 0.2s;
+}
+
+.cmd-help:hover {
+    background: #e8e8e8;
+    border-color: #999;
+}
+
+.cmd-tooltip {
+    position: absolute;
+    bottom: 125%;
+    left: 0;
+    background: #333;
+    color: white;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.cmd-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 8px;
+    border: 5px solid transparent;
+    border-top-color: #333;
+}
+
+.cmd-help:hover ~ .cmd-tooltip,
+.cmd-help:hover + .cmd-tooltip {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.command-alias-editor:hover .cmd-tooltip {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.command-alias-editor input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+
+.command-alias-editor input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+}
+
+.alias-badge-sm {
+    display: inline-block;
+    background: #e8e8ff;
+    color: #667eea;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+    margin-right: 6px;
+    margin-top: 4px;
+}
+
+.alias-badge-default {
+    display: inline-block;
+    background: #f0f0f0;
+    color: #888;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+    margin-right: 6px;
+    margin-top: 4px;
+    font-style: italic;
+}
+
+.module-aliases-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.module-aliases-actions .btn {
+    padding: 10px 14px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: transform 0.1s ease, box-shadow 0.2s ease;
+}
+
+.module-aliases-actions .btn-save {
+    background: linear-gradient(135deg, #4caf50, #66bb6a);
+    color: #fff;
+    box-shadow: 0 4px 10px rgba(76, 175, 80, 0.2);
+}
+
+.module-aliases-actions .btn-reset {
+    background: #f0f0f0;
+    color: #555;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
+}
+
+.module-aliases-actions .btn:hover {
+    transform: translateY(-1px);
+}
+
+/* Discord Info Box */
+.discord-info-box {
+    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+    border-left: 4px solid #2196f3;
+    padding: 20px;
+    border-radius: 8px;
+    margin: 20px 0;
+}
+
+.discord-info-box h4 {
+    color: #1976d2;
+    margin-bottom: 12px;
+    font-size: 16px;
+}
+
+.discord-info-box p {
+    color: #424242;
+    margin-bottom: 10px;
+    line-height: 1.6;
+}
+
+.discord-info-box code {
+    background: #fff;
+    color: #d32f2f;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    display: inline-block;
+    margin: 8px 0;
+}
+
+.discord-info-box .info-note {
+    margin-top: 12px;
+    font-size: 14px;
+    color: #555;
+}
+
+.discord-info-box .info-note strong {
+    color: #1976d2;
+}
+
+/* Settings Modal Tabs */
+.modal-content-large {
+    max-width: 700px;
+    max-height: 85vh;
+}
+
+.settings-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 2px solid #e0e0e0;
+    margin: -15px -20px 0;
+    padding: 0 20px;
+}
+
+.settings-tab {
+    padding: 12px 24px;
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 14px;
+    color: #666;
+    transition: all 0.2s ease;
+}
+
+.settings-tab:hover {
+    background: #f5f5f5;
+    color: #333;
+}
+
+.settings-tab.active {
+    color: #667eea;
+    border-bottom-color: #667eea;
+    background: #f9f9ff;
+}
+
+.aliases-tab-content {
+    padding: 20px 0;
+}
+
+.aliases-tab-content .module-aliases-detail {
+    margin-top: 0;
+}
+
+.aliases-tab-content .module-aliases-actions {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid #e0e0e0;
+}
+
