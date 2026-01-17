@@ -179,6 +179,12 @@ impl Supervisor {
         self.module_loader.discover_modules()
     }
 
+    /// 모듈 캐시를 새로고침하고 모든 모듈을 다시 발견합니다
+    pub fn refresh_modules(&self) -> Result<Vec<LoadedModule>> {
+        self.module_loader.invalidate_cache();
+        self.module_loader.discover_modules()
+    }
+
     /// 서버에 명령어 실행
     pub async fn execute_command(
         &self,

@@ -1,0 +1,62 @@
+.status-bar {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    background: white;
+    color: #333;
+    padding: 14px 18px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    border: 1px solid #ddd;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    z-index: 9999;
+    animation: statusBarSlideUp 0.3s ease-out;
+    max-width: 300px;
+    word-break: break-word;
+}
+
+.status-bar .status-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+    display: inline-block;
+    animation: statusBarSpin 1s linear infinite;
+}
+
+.status-bar .status-message {
+    display: inline;
+}
+
+.status-bar.fade-out {
+    animation: statusBarFadeOut 0.5s ease-out forwards;
+}
+
+@keyframes statusBarSlideUp {
+    from {
+        opacity: 0;
+        transform: translateX(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes statusBarFadeOut {
+    to {
+        opacity: 0;
+        transform: translateX(-20px);
+    }
+}
+
+@keyframes statusBarSpin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}

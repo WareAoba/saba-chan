@@ -7,10 +7,66 @@ const fs = require('fs');
 
 const IPC_BASE = 'http://127.0.0.1:57474'; // localhost 대신 127.0.0.1 명시
 
+// 네트워크 호출 기본 타임아웃을 짧게 설정해 초기 체감 지연을 줄입니다.
+axios.defaults.timeout = 1200;
+
 let mainWindow;
 let daemonProcess = null;
 let daemonStartedByApp = false;
 let tray = null;
+
+// 상태 업데이트를 렌더러로 전달 (없으면 무시)
+function sendStatus(step, message) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('status:update', {
+            step,
+            message,
+            ts: Date.now(),
+        });
+    }
+}
+
+// 짧은 대기 헬퍼
+function wait(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Bot Config 경로 (AppData에 저장)
+function getBotConfigPath() {
+    const userDataPath = app.getPath('userData');
+    return path.join(userDataPath, 'bot-config.json');
+}
+
+function loadBotConfig() {
+    const configPath = getBotConfigPath();
+    try {
+        if (fs.existsSync(configPath)) {
+            const data = fs.readFileSync(configPath, 'utf8');
+            const parsed = JSON.parse(data);
+            console.log('Bot config loaded from:', configPath);
+            return parsed;
+        }
+    } catch (error) {
+        console.error('Failed to load bot config:', error);
+    }
+    return { prefix: '!saba', moduleAliases: {}, commandAliases: {} };
+}
+
+function saveBotConfig(config) {
+    const configPath = getBotConfigPath();
+    try {
+        const dir = path.dirname(configPath);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+        console.log('Bot config saved to:', configPath);
+        return true;
+    } catch (error) {
+        console.error('Failed to save bot config:', error);
+        return false;
+    }
+}
 
 // Settings 관리
 function getSettingsPath() {
@@ -55,52 +111,166 @@ function saveSettings(settings) {
 
 // Core Daemon 시작
 function startDaemon() {
-    // Release 빌드 우선, 없으면 debug 빌드 사용
-    const releasePath = path.join(__dirname, '..', 'target', 'release', 'core_daemon.exe');
-    const debugPath = path.join(__dirname, '..', 'target', 'debug', 'core_daemon.exe');
+    // Electron 포터블 exe 내에서는 bin 폴더에 binary 포함
+    const isDev = !app.isPackaged;
+    let daemonPath;
     
-    const daemonPath = fs.existsSync(releasePath) ? releasePath : debugPath;
+    if (isDev) {
+        // 개발 환경: electron_gui/bin 폴더
+        daemonPath = path.join(__dirname, 'bin', 'core_daemon.exe');
+    } else {
+        // 패키징된 앱: resources/app/bin 폴더
+        daemonPath = path.join(__dirname, 'bin', 'core_daemon.exe');
+    }
     
     console.log('Starting Core Daemon:', daemonPath);
+    console.log('Is Packaged:', !isDev);
     
     if (!fs.existsSync(daemonPath)) {
         console.error('Core Daemon executable not found at:', daemonPath);
         return;
     }
     
+    // 프로젝트 루트 디렉토리 설정 (모듈이 이곳에서 로드됨)
+    const projectRoot = path.join(__dirname, '..');
+    
     daemonProcess = spawn(daemonPath, [], {
-        cwd: path.join(__dirname, '..'),
+        cwd: projectRoot,  // 프로젝트 루트에서 실행하여 "./modules" 경로가 올바르게 작동
         env: { ...process.env, RUST_LOG: 'info' },
-        stdio: ['ignore', 'pipe', 'pipe'] // stdout, stderr를 pipe로 받음
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: false  // Electron 프로세스에 연결되어 있으므로 자동으로 종료됨
     });
     daemonStartedByApp = true;
     
-    // stdout 로그 출력
-    daemonProcess.stdout.on('data', (data) => {
-        console.log('[Daemon]', data.toString().trim());
-    });
+    console.log(`Daemon process spawned with PID: ${daemonProcess.pid}`);
     
-    // stderr 로그 출력
-    daemonProcess.stderr.on('data', (data) => {
-        console.error('[Daemon Error]', data.toString().trim());
-    });
+    // stdout/stderr 이벤트 핸들 (stdio가 'pipe'가 아니면 건너뜀)
+    if (daemonProcess.stdout) {
+        daemonProcess.stdout.on('data', (data) => {
+            console.log('[Daemon]', data.toString().trim());
+        });
+    }
+    
+    if (daemonProcess.stderr) {
+        daemonProcess.stderr.on('data', (data) => {
+            console.error('[Daemon Error]', data.toString().trim());
+        });
+    }
     
     daemonProcess.on('error', (err) => {
         console.error('Failed to start Core Daemon:', err);
+        daemonProcess = null;
+        daemonStartedByApp = false;
     });
     
-    daemonProcess.on('exit', (code) => {
-        console.log(`Core Daemon exited with code ${code}`);
+    daemonProcess.on('exit', (code, signal) => {
+        console.log(`Core Daemon exited with code ${code}, signal ${signal}`);
         daemonProcess = null;
+        daemonStartedByApp = false;
+        
+        // 트레이 메뉴 업데이트
+        if (tray) {
+            updateTrayMenu();
+        }
+    });
+    
+    daemonProcess.on('close', (code, signal) => {
+        console.log(`Core Daemon closed with code ${code}, signal ${signal}`);
     });
 }
 
 // Core Daemon 종료
 function stopDaemon() {
-    if (daemonProcess && daemonStartedByApp) {
-        console.log('Stopping Core Daemon...');
-        daemonProcess.kill('SIGTERM');
+    if (!daemonProcess) {
+        console.log('Daemon is not running');
+        return;
+    }
+
+    console.log(`Attempting to stop daemon (PID: ${daemonProcess.pid})`);
+    
+    try {
+        // Windows에서는 taskkill 사용 (더 안정적인 종료)
+        if (process.platform === 'win32') {
+            require('child_process').execSync(`taskkill /PID ${daemonProcess.pid} /F /T`);
+            console.log('Daemon forcefully terminated via taskkill');
+        } else {
+            // Unix 계열에서는 SIGTERM 먼저 시도
+            if (!daemonProcess.killed) {
+                daemonProcess.kill('SIGTERM');
+                
+                // 2초 후에도 살아있으면 SIGKILL
+                const killTimeout = setTimeout(() => {
+                    if (daemonProcess && !daemonProcess.killed) {
+                        console.warn('SIGTERM failed, sending SIGKILL');
+                        daemonProcess.kill('SIGKILL');
+                    }
+                }, 2000);
+                
+                daemonProcess.once('exit', () => {
+                    clearTimeout(killTimeout);
+                });
+            }
+        }
+        
+        // 프로세스 참조 제거
         daemonProcess = null;
+        daemonStartedByApp = false;
+        console.log('Daemon stopped');
+        
+    } catch (error) {
+        console.error('Error stopping daemon:', error);
+        daemonProcess = null;
+    }
+}
+
+// 안전한 종료 함수
+async function cleanQuit() {
+    console.log('Starting clean quit sequence...');
+    
+    try {
+        // 1. 데몬 종료
+        stopDaemon();
+        
+        // 2. 데몬이 종료될 때까지 대기 (최대 3초)
+        let attempts = 0;
+        while (daemonProcess && !daemonProcess.killed && attempts < 6) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            attempts++;
+        }
+        
+        if (daemonProcess) {
+            console.warn('Daemon still running after waiting, force killing');
+            try {
+                if (process.platform === 'win32') {
+                    require('child_process').execSync(`taskkill /PID ${daemonProcess.pid} /F /T 2>nul`, { stdio: 'ignore' });
+                } else {
+                    daemonProcess.kill('SIGKILL');
+                }
+            } catch (e) {
+                // 무시
+            }
+        }
+        
+        daemonProcess = null;
+        
+        // 3. 트레이 정리
+        if (tray) {
+            tray.destroy();
+            tray = null;
+        }
+        
+        // 4. 메인 윈도우 정리
+        if (mainWindow) {
+            mainWindow.destroy();
+            mainWindow = null;
+        }
+        
+        console.log('Clean quit sequence completed');
+        app.quit();
+        
+    } catch (error) {
+        console.error('Error during clean quit:', error);
+        app.quit();
     }
 }
 
@@ -108,23 +278,79 @@ function stopDaemon() {
 async function ensureDaemon() {
     try {
         // 여러 엔드포인트로 체크 (일부 엔드포인트가 500을 반환해도 데몬은 실행 중)
+        sendStatus('daemon', '데몬 확인 중...');
         const response = await axios.get(`${IPC_BASE}/api/modules`, { timeout: 1000 });
         if (response.status === 200) {
             console.log('Existing daemon detected on IPC port. Skipping launch.');
             daemonStartedByApp = false;
+            sendStatus('daemon', '기존 데몬이 실행 중입니다');
             return;
         }
     } catch (err) {
         // ECONNREFUSED = 데몬이 안 떠있음, 그 외 에러 = 데몬은 떠있지만 문제 발생
-        if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND') {
-            console.log('No daemon detected, launching new one...');
-            startDaemon();
+        if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.message.includes('timeout')) {
+            console.log('No daemon detected, attempting to launch new one...');
+            sendStatus('daemon', '데몬을 시작합니다...');
+            try {
+                startDaemon();
+                // Daemon 시작 후 대기 및 재시도
+                let attempts = 0;
+                const maxAttempts = 8; // 최대 4초 대기
+                while (attempts < maxAttempts) {
+                    await wait(500);
+                    try {
+                        const checkResponse = await axios.get(`${IPC_BASE}/api/modules`, { timeout: 800 });
+                        if (checkResponse.status === 200) {
+                            console.log('✓ Daemon is now running');
+                            sendStatus('daemon', '데몬 시작 완료');
+                            return;
+                        }
+                    } catch (checkErr) {
+                        // 아직 준비 안 됨, 계속 재시도
+                    }
+                    attempts++;
+                }
+                // 최대 시도 후에도 응답 없음
+                console.warn('Daemon did not respond after startup, but continuing...');
+                sendStatus('daemon', '데몬 준비 중... (타임아웃)');
+            } catch (daemonErr) {
+                console.error('Failed to start daemon:', daemonErr);
+                sendStatus('daemon', '❌ 데몬 시작 실패 - 직접 실행해주세요');
+            }
+            return;
         } else {
-            console.log('Daemon might be running (got error but not connection refused):', err.message);
-            daemonStartedByApp = false;
+            // 다른 에러는 무시하고 계속
+            console.warn('Unexpected error checking daemon:', err.message);
+            sendStatus('daemon', `데몬 확인 중 경고: ${err.message}`);
         }
     }
 }
+
+async function preloadLightData() {
+    const tasks = [
+        axios
+            .get(`${IPC_BASE}/api/modules`, { timeout: 1200 })
+            .then(() => sendStatus('modules', '모듈 목록 준비 완료'))
+            .catch((err) => sendStatus('modules', `모듈 로드 실패: ${err.message}`)),
+        axios
+            .get(`${IPC_BASE}/api/instances`, { timeout: 1200 })
+            .then(() => sendStatus('instances', '인스턴스 목록 준비 완료'))
+            .catch((err) => sendStatus('instances', `인스턴스 로드 실패: ${err.message}`)),
+    ];
+
+    await Promise.allSettled(tasks);
+}
+
+async function runBackgroundInit() {
+    sendStatus('init', '초기화 시작');
+    await ensureDaemon();
+    updateTrayMenu();
+    await preloadLightData();
+    sendStatus('ready', '백그라운드 초기화 완료');
+    // Discord Bot 자동 시작은 React App.js에서 처리
+}
+
+// runDeferredTasks 제거됨 - Discord Bot 자동 시작은 React에서 처리
 
 function createWindow() {
     const settings = loadSettings();
@@ -133,11 +359,19 @@ function createWindow() {
     mainWindow = new BrowserWindow({
         width,
         height,
+        show: false,  // 준비될 때까지 보이지 않음
+        frame: false,  // Windows 기본 프레임 제거
+        icon: path.join(__dirname, '..', 'assets', 'icon.png'),  // 아이콘 (있으면)
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true
         }
+    });
+
+    // 준비 완료 후 표시
+    mainWindow.once('ready-to-show', () => {
+        mainWindow.show();
     });
 
     // 윈도우 크기 변경 시 저장
@@ -160,8 +394,10 @@ function createWindow() {
     const startURL = process.env.ELECTRON_START_URL || 'http://localhost:3000';
     mainWindow.loadURL(startURL);
 
-    // Dev tools - 디버깅 활성화
-    mainWindow.webContents.openDevTools();
+    // DevTools는 비활성화 (개발 시 필요하면 수동으로 열기: Ctrl+Shift+I)
+    
+    // 메뉴바 제거
+    mainWindow.removeMenu();
 }
 
 // React에서 종료 선택 응답 처리
@@ -170,11 +406,10 @@ ipcMain.on('app:closeResponse', (event, choice) => {
         // GUI만 닫기 - 트레이로 최소화
         mainWindow.hide();
     } else if (choice === 'quit') {
-        // 완전히 종료
+        // 완전히 종료 - cleanQuit 사용
         mainWindow.removeAllListeners('close'); // close 이벤트 리스너 제거
         mainWindow.close();
-        stopDaemon();
-        app.quit();
+        cleanQuit();
     }
     // choice === 'cancel'이면 아무것도 안 함
 });
@@ -199,9 +434,8 @@ function createTray() {
         },
         { type: 'separator' },
         {
-            label: '🔄 데몬 상태',
-            enabled: false,
-            label: daemonProcess ? '🟢 데몬 실행 중' : '⚪ 데몬 중지됨'
+            label: daemonProcess ? '🟢 데몬 실행 중' : '⚪ 데몬 중지됨',
+            enabled: false
         },
         {
             label: '🛑 데몬 종료',
@@ -221,12 +455,7 @@ function createTray() {
         {
             label: '❌ 완전히 종료',
             click: () => {
-                stopDaemon();
-                if (tray) {
-                    tray.destroy();
-                    tray = null;
-                }
-                app.quit();
+                cleanQuit();
             }
         }
     ]);
@@ -282,12 +511,7 @@ function updateTrayMenu() {
         {
             label: '❌ 완전히 종료',
             click: () => {
-                stopDaemon();
-                if (tray) {
-                    tray.destroy();
-                    tray = null;
-                }
-                app.quit();
+                cleanQuit();
             }
         }
     ]);
@@ -297,13 +521,16 @@ function updateTrayMenu() {
 
 app.on('ready', () => {
     createTray();
-    ensureDaemon().then(() => {
-        // Daemon이 시작될 시간을 주기 위해 약간 대기
-        setTimeout(() => {
-            createWindow();
-            updateTrayMenu();
-        }, 1500);
-    });
+    createWindow();
+    updateTrayMenu();
+
+    // UI가 준비된 뒤 백그라운드 초기화를 시작
+    if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.once('did-finish-load', () => {
+            sendStatus('ui', 'UI 로드 완료');
+            runBackgroundInit();
+        });
+    }
 });
 
 app.on('window-all-closed', () => {
@@ -316,10 +543,37 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+    console.log('App is quitting, cleaning up...');
+    
+    // 데몬 프로세스 종료
     stopDaemon();
+    
+    // 트레이 제거
     if (tray) {
         tray.destroy();
         tray = null;
+    }
+    
+    // 메인 윈도우 제거
+    if (mainWindow) {
+        mainWindow.destroy();
+        mainWindow = null;
+    }
+    
+    console.log('Cleanup completed');
+});
+
+// 앱이 완전히 종료되기 전 최후의 보루
+process.on('exit', () => {
+    console.log('Process exiting');
+    // 혹시 남아있을 데몬 프로세스 강제 종료
+    if (daemonProcess && !daemonProcess.killed) {
+        try {
+            console.log('Force killing daemon process at exit');
+            daemonProcess.kill('SIGKILL');
+        } catch (e) {
+            // 무시
+        }
     }
 });
 
@@ -370,6 +624,18 @@ ipcMain.handle('module:list', async () => {
         const response = await axios.get(`${IPC_BASE}/api/modules`);
         return response.data;
     } catch (error) {
+        return { error: error.message };
+    }
+});
+
+ipcMain.handle('module:refresh', async () => {
+    try {
+        sendStatus('modules', '모듈을 새로고침하는 중...');
+        const response = await axios.post(`${IPC_BASE}/api/modules/refresh`);
+        sendStatus('modules', '모듈 새로고침 완료');
+        return response.data;
+    } catch (error) {
+        sendStatus('modules', `모듈 새로고침 실패: ${error.message}`);
         return { error: error.message };
     }
 });
@@ -426,6 +692,16 @@ ipcMain.handle('instance:executeCommand', async (event, id, command) => {
     } catch (error) {
         console.error(`[Main] Error executing command:`, error.message);
         return { error: error.message };
+    }
+});
+
+// Daemon 상태 확인 IPC 핸들러
+ipcMain.handle('daemon:status', async () => {
+    try {
+        const response = await axios.get(`${IPC_BASE}/api/modules`, { timeout: 1000 });
+        return { running: true, message: 'Daemon is running' };
+    } catch (err) {
+        return { running: false, message: `Daemon not responding: ${err.message}` };
     }
 });
 
@@ -491,22 +767,35 @@ ipcMain.handle('discord:start', async (event, config) => {
         return { error: `Bot script not found: ${indexPath}` };
     }
 
-    // Write bot config to a temp file for the bot to read
-    const configPath = path.join(botPath, 'bot-config.json');
+    // 현재 설정을 저장 (AppData와 discord_bot 폴더 모두)
+    const configToSave = {
+        prefix: config.prefix || '!saba',
+        moduleAliases: config.moduleAliases || {},
+        commandAliases: config.commandAliases || {}
+    };
+    
+    // AppData에 저장
+    saveBotConfig(configToSave);
+    
+    // discord_bot 폴더에도 저장
+    const localConfigPath = path.join(botPath, 'bot-config.json');
     try {
-        fs.writeFileSync(configPath, JSON.stringify({
-            prefix: config.prefix || '!pal',
-            moduleAliases: config.moduleAliases || {},
-            commandAliases: config.commandAliases || {}
-        }, null, 2), 'utf8');
+        fs.writeFileSync(localConfigPath, JSON.stringify(configToSave, null, 2), 'utf8');
     } catch (e) {
         return { error: `Failed to write bot config: ${e.message}` };
     }
 
     try {
+        // AppData 설정 경로를 환경 변수로 전달
+        const appDataConfigPath = getBotConfigPath();
         discordBotProcess = spawn('node', [indexPath], {
             cwd: botPath,
-            env: { ...process.env, DISCORD_TOKEN: config.token, IPC_BASE: IPC_BASE },
+            env: { 
+                ...process.env, 
+                DISCORD_TOKEN: config.token, 
+                IPC_BASE: IPC_BASE,
+                BOT_CONFIG_PATH: appDataConfigPath 
+            },
             stdio: ['ignore', 'pipe', 'pipe']
         });
 
@@ -535,31 +824,83 @@ ipcMain.handle('discord:start', async (event, config) => {
 });
 
 ipcMain.handle('discord:stop', () => {
-    if (discordBotProcess) {
+    if (discordBotProcess && !discordBotProcess.killed) {
+        console.log('[Discord] Stopping bot process with SIGTERM');
         discordBotProcess.kill('SIGTERM');
-        discordBotProcess = null;
+        
+        // SIGTERM에 응답하지 않으면 5초 후 강제 종료
+        const killTimeout = setTimeout(() => {
+            if (discordBotProcess && !discordBotProcess.killed) {
+                console.log('[Discord] Force killing bot process with SIGKILL');
+                discordBotProcess.kill('SIGKILL');
+            }
+        }, 5000);
+        
+        discordBotProcess.once('exit', () => {
+            clearTimeout(killTimeout);
+        });
+        
         return { success: true };
     }
     return { error: 'Bot is not running' };
 });
 
-// Bot Config API
+// Bot Config API - AppData에 직접 저장/로드
 ipcMain.handle('botConfig:load', async () => {
-    try {
-        const response = await axios.get(`${IPC_BASE}/api/config/bot`);
-        return response.data;
-    } catch (error) {
-        console.error('Failed to load bot config:', error.message);
-        return { prefix: '!saba', moduleAliases: {}, commandAliases: {} };
-    }
+    return loadBotConfig();
 });
 
 ipcMain.handle('botConfig:save', async (event, config) => {
     try {
-        const response = await axios.put(`${IPC_BASE}/api/config/bot`, config);
-        return { success: true, message: response.data.message };
+        const configToSave = {
+            prefix: config.prefix || '!saba',
+            moduleAliases: config.moduleAliases || {},
+            commandAliases: config.commandAliases || {}
+        };
+        
+        // 1. AppData에 저장
+        const success = saveBotConfig(configToSave);
+        if (!success) {
+            return { error: 'Failed to save bot config to AppData' };
+        }
+        
+        // 2. discord_bot 폴더에도 복사 (봇이 직접 읽을 수 있도록)
+        const botPath = path.join(__dirname, '..', 'discord_bot');
+        const botConfigPath = path.join(botPath, 'bot-config.json');
+        
+        try {
+            fs.writeFileSync(botConfigPath, JSON.stringify(configToSave, null, 2), 'utf8');
+            console.log('Bot config also saved to:', botConfigPath);
+        } catch (fileError) {
+            console.warn('Failed to save bot config to discord_bot folder:', fileError.message);
+        }
+        
+        return { success: true, message: 'Bot config saved' };
     } catch (error) {
         console.error('Failed to save bot config:', error.message);
         return { error: error.message };
+    }
+});
+
+// Window Controls (Title Bar)
+ipcMain.on('window:minimize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.minimize();
+    }
+});
+
+ipcMain.on('window:maximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMaximized()) {
+            mainWindow.restore();
+        } else {
+            mainWindow.maximize();
+        }
+    }
+});
+
+ipcMain.on('window:close', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.close();
     }
 });

@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('api', {
     serverStop: (name, options = {}) => ipcRenderer.invoke('server:stop', name, options),
     serverStatus: (name) => ipcRenderer.invoke('server:status', name),
     moduleList: () => ipcRenderer.invoke('module:list'),
+    moduleRefresh: () => ipcRenderer.invoke('module:refresh'),
     moduleGetMetadata: (name) => ipcRenderer.invoke('module:getMetadata', name),
     instanceCreate: (data) => ipcRenderer.invoke('instance:create', data),
     instanceDelete: (id) => ipcRenderer.invoke('instance:delete', id),
@@ -27,5 +28,20 @@ contextBridge.exposeInMainWorld('api', {
     botConfigSave: (config) => ipcRenderer.invoke('botConfig:save', config),
     // App Lifecycle
     onCloseRequest: (callback) => ipcRenderer.on('app:closeRequest', callback),
-    closeResponse: (choice) => ipcRenderer.send('app:closeResponse', choice)
+    closeResponse: (choice) => ipcRenderer.send('app:closeResponse', choice),
+    // Status Update Events
+    onStatusUpdate: (callback) => ipcRenderer.on('status:update', (event, data) => callback(data)),
+    // Daemon Status
+    daemonStatus: () => ipcRenderer.invoke('daemon:status'),
+    // Window Controls (Title Bar)
+    minimizeWindow: () => ipcRenderer.send('window:minimize'),
+    maximizeWindow: () => ipcRenderer.send('window:maximize'),
+    closeWindow: () => ipcRenderer.send('window:close')
+});
+
+// window.electron 객체로도 노출
+contextBridge.exposeInMainWorld('electron', {
+    minimizeWindow: () => ipcRenderer.send('window:minimize'),
+    maximizeWindow: () => ipcRenderer.send('window:maximize'),
+    closeWindow: () => ipcRenderer.send('window:close')
 });

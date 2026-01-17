@@ -1,0 +1,142 @@
+.toast-container {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 12px;
+    z-index: 9998;
+    max-width: 350px;
+    pointer-events: none;
+    align-items: flex-start;
+}
+
+.toast-container > * {
+    pointer-events: auto;
+}
+
+.toast {
+    background: white;
+    color: #333;
+    padding: 12px 14px;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    border: 1px solid #d0d0d0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    animation: toastSlideIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    min-height: auto;
+    white-space: normal;
+    word-break: break-word;
+    line-height: 1.4;
+    max-width: 100%;
+    cursor: pointer;
+    transition: box-shadow 0.2s;
+}
+
+.toast:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.toast.toast-success {
+    background: white;
+}
+
+.toast.toast-error {
+    background: white;
+}
+
+.toast.toast-warning {
+    background: white;
+}
+
+.toast.toast-info {
+    background: white;
+}
+
+.toast.toast-discord {
+    background: white;
+}
+
+/* 상태 토스트 (StatusBar 대체) */
+.toast.toast-status-daemon {
+    display: none;
+}
+
+.toast.toast-status-modules {
+    display: none;
+}
+
+.toast.toast-status-instances {
+    display: none;
+}
+
+.toast.toast-status-init {
+    background: white;
+}
+
+.toast.toast-status-ready {
+    background: white;
+    font-weight: 600;
+}
+
+.toast.toast-status-ui {
+    background: white;
+}
+
+.toast-message {
+    flex: 1;
+    word-break: break-word;
+    line-height: 1.5;
+    overflow-wrap: break-word;
+    white-space: normal;
+}
+
+.toast-close {
+    background: none;
+    border: none;
+    color: #999;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px 8px;
+    flex-shrink: 0;
+    transition: color 0.2s;
+}
+
+.toast-close:hover {
+    color: #666;
+}
+
+@keyframes toastSlideIn {
+    from {
+        opacity: 0;
+        transform: translateX(-30px);
+        max-height: 0;
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+        max-height: 100px;
+    }
+}
+
+@keyframes toastSlideOut {
+    from {
+        opacity: 1;
+        transform: translateX(0);
+        max-height: 100px;
+    }
+    to {
+        opacity: 0;
+        transform: translateX(-30px);
+        max-height: 0;
+    }
+}
+
+.toast.toast-removing {
+    animation: toastSlideOut 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}

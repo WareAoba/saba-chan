@@ -20,16 +20,27 @@ let botConfig = {
     commandAliases: {}  // 사용자가 GUI에서 추가
 };
 
-const configPath = path.join(__dirname, 'bot-config.json');
-if (fs.existsSync(configPath)) {
-    try {
-        const loaded = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        botConfig = { ...botConfig, ...loaded };
-        console.log('Bot config loaded:', botConfig);
-    } catch (e) {
-        console.error('Failed to load bot-config.json:', e.message);
+// 설정 파일 경로: 환경 변수 > 로컬 파일
+const configPath = process.env.BOT_CONFIG_PATH || path.join(__dirname, 'bot-config.json');
+console.log('Bot config path:', configPath);
+
+// 설정 파일 로드 함수
+function loadBotConfig() {
+    if (fs.existsSync(configPath)) {
+        try {
+            const loaded = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            botConfig = { ...botConfig, ...loaded };
+            console.log('Bot config loaded:', botConfig);
+        } catch (e) {
+            console.error('Failed to load bot-config.json:', e.message);
+        }
+    } else {
+        console.log('bot-config.json not found at:', configPath, '- using default config');
     }
 }
+
+// 초기 로드
+loadBotConfig();
 
 // Module metadata (loaded from IPC)
 let moduleMetadata = {};

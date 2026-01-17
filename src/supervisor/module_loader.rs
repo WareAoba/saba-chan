@@ -57,6 +57,12 @@ impl ModuleLoader {
         }
     }
 
+    /// 캐시를 무효화합니다 (새로운 모듈이 추가되었을 때 호출)
+    pub fn invalidate_cache(&self) {
+        *self.cached_modules.write().unwrap() = None;
+        tracing::info!("Module cache invalidated");
+    }
+
     /// 모듈 디렉터리에서 모든 사용 가능한 모듈 발견 (ZIP 및 폴더 모두 지원)
     pub fn discover_modules(&self) -> Result<Vec<LoadedModule>> {
         // 캐시 확인

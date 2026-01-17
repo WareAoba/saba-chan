@@ -113,6 +113,7 @@ impl IPCServer {
             .route("/api/server/:name/start", post(start_server_handler))
             .route("/api/server/:name/stop", post(stop_server_handler))
             .route("/api/modules", get(list_modules))
+            .route("/api/modules/refresh", post(refresh_modules))
             .route("/api/module/:name", get(get_module_metadata))
             .route("/api/instances", get(list_instances).post(create_instance))
             .route("/api/instance/:id", get(get_instance).delete(delete_instance).patch(update_instance_settings))
@@ -187,6 +188,33 @@ async fn list_modules(State(state): State<IPCServer>) -> impl IntoResponse {
         }
         Err(e) => {
             let error = json!({ "error": format!("Failed to list modules: {}", e) });
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+        }
+    }
+}
+
+/// POST /api/modules/refresh - 모듈 캐시를 새로고침하고 다시 발견
+async fn refresh_modules(State(state): State<IPCServer>) -> impl IntoResponse {
+    let supervisor = state.supervisor.read().await;
+    
+    match supervisor.refresh_modules() {
+        Ok(modules) => {
+            let module_infos: Vec<ModuleInfo> = modules
+                .into_iter()
+                .map(|m| ModuleInfo {
+                    name: m.metadata.name,
+                    version: m.metadata.version,
+                    description: m.metadata.description,
+                    path: m.path,
+                    executable_path: m.metadata.executable_path,
+                    settings: m.metadata.settings,
+                })
+                .collect();
+            tracing::info!("Module cache refreshed. Found {} modules", module_infos.len());
+            (StatusCode::OK, Json(ModuleListResponse { modules: module_infos })).into_response()
+        }
+        Err(e) => {
+            let error = json!({ "error": format!("Failed to refresh modules: {}", e) });
             (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
         }
     }

@@ -1,7 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
-import { SuccessModal, FailureModal, NotificationModal, QuestionModal } from './Modals';
-import CommandModal from './CommandModal';
+import { 
+    SuccessModal, 
+    FailureModal, 
+    NotificationModal, 
+    QuestionModal,
+    CommandModal,
+    Toast,
+    TitleBar,
+    SettingsModal
+} from './components';
 
 function App() {
     const [servers, setServers] = useState([]);
@@ -26,6 +34,9 @@ function App() {
     const [showCommandModal, setShowCommandModal] = useState(false);
     const [commandServer, setCommandServer] = useState(null);
     
+    // GUI 설정 모달 상태
+    const [showGuiSettingsModal, setShowGuiSettingsModal] = useState(false);
+    
     // 모달 상태 (Success/Failure/Notification)
     const [modal, setModal] = useState(null);
 
@@ -38,6 +49,11 @@ function App() {
     const [discordModuleAliases, setDiscordModuleAliases] = useState({});  // 저장된 사용자 커스텀 모듈 별명
     const [discordCommandAliases, setDiscordCommandAliases] = useState({});  // 저장된 사용자 커스텀 명령어 별명
 
+    // 초기화 완료 플래그 (state로 변경)
+    const [botStatusReady, setBotStatusReady] = useState(false);
+    const [settingsReady, setSettingsReady] = useState(false);
+    const autoStartDoneRef = useRef(false);
+
     // 모듈별 별명 (각 모듈의 module.toml에서 정의한 별명들)
     const [moduleAliasesPerModule, setModuleAliasesPerModule] = useState({});  // { moduleName: { moduleAliases: [...], commands: {...} } }
     const [selectedModuleForAliases, setSelectedModuleForAliases] = useState(null);
@@ -48,19 +64,36 @@ function App() {
     useEffect(() => {
         const loadSettings = async () => {
             try {
+                // 1. GUI 설정 로드
                 const settings = await window.api.settingsLoad();
+                console.log('[Settings] Loaded:', settings);
                 if (settings) {
                     setAutoRefresh(settings.autoRefresh ?? true);
-                    setDiscordToken(settings.discordToken || '');
-                    setDiscordAutoStart(settings.discordAutoStart ?? false);
                     setRefreshInterval(settings.refreshInterval ?? 2000);
                     setModulesPath(settings.modulesPath || '');
+                    setDiscordToken(settings.discordToken || '');
+                    setDiscordAutoStart(settings.discordAutoStart ?? false);
+                    console.log('[Settings] discordAutoStart:', settings.discordAutoStart, 'discordToken:', settings.discordToken ? 'YES' : 'NO');
                 }
                 const path = await window.api.settingsGetPath();
                 setSettingsPath(path);
-                console.log('Settings loaded from:', path);
+                console.log('[Settings] GUI settings loaded from:', path);
+                
+                // 2. Bot 설정 로드 (별도)
+                const botCfg = await window.api.botConfigLoad();
+                if (botCfg) {
+                    setDiscordPrefix(botCfg.prefix || '!saba');
+                    setDiscordModuleAliases(botCfg.moduleAliases || {});
+                    setDiscordCommandAliases(botCfg.commandAliases || {});
+                    console.log('[Settings] Bot config loaded, prefix:', botCfg.prefix);
+                }
+                
+                // 설정 로드 완료
+                setSettingsReady(true);
+                console.log('[Settings] Ready flag set to true');
             } catch (error) {
-                console.error('Failed to load settings:', error);
+                console.error('[Settings] Failed to load settings:', error);
+                setSettingsReady(true);
             }
         };
         loadSettings();
@@ -82,6 +115,10 @@ function App() {
 
     // 설정 저장 함수 (settings.json - Discord 별칭 제외)
     const saveCurrentSettings = async () => {
+        if (!settingsPath) {
+            console.warn('[Settings] Settings path not initialized, skipping save');
+            return;
+        }
         try {
             await window.api.settingsSave({
                 autoRefresh,
@@ -90,10 +127,63 @@ function App() {
                 discordToken,
                 discordAutoStart
             });
-            console.log('Settings saved');
+            console.log('[Settings] GUI settings saved');
         } catch (error) {
-            console.error('Failed to save settings:', error);
+            console.error('[Settings] Failed to save GUI settings:', error);
         }
+    };
+
+    // Bot Config 저장 함수 (prefix, moduleAliases, commandAliases)
+    const saveBotConfig = async (newPrefix = discordPrefix) => {
+        try {
+            const payload = {
+                prefix: newPrefix || '!saba',
+                moduleAliases: discordModuleAliases,
+                commandAliases: discordCommandAliases
+            };
+            const res = await window.api.botConfigSave(payload);
+            if (res.error) {
+                console.error('[Settings] Failed to save bot config:', res.error);
+            } else {
+                console.log('[Settings] Bot config saved, prefix:', newPrefix);
+            }
+        } catch (error) {
+            console.error('[Settings] Failed to save bot config:', error);
+        }
+    };
+
+    // API 호출 재시도 헬퍼 (exponential backoff)
+    const retryWithBackoff = async (fn, maxRetries = 3, initialDelay = 500) => {
+        for (let i = 0; i < maxRetries; i++) {
+            try {
+                return await fn();
+            } catch (error) {
+                if (i === maxRetries - 1) {
+                    throw error;
+                }
+                const delay = initialDelay * Math.pow(2, i);
+                console.warn(`Attempt ${i + 1} failed, retrying in ${delay}ms...`, error.message);
+                await new Promise((resolve) => setTimeout(resolve, delay));
+            }
+        }
+    };
+
+    // Daemon 준비 확인
+    const waitForDaemon = async (timeout = 10000) => {
+        const start = Date.now();
+        while (Date.now() - start < timeout) {
+            try {
+                const status = await window.api.daemonStatus();
+                if (status.running) {
+                    console.log('✓ Daemon is ready');
+                    return true;
+                }
+            } catch (err) {
+                // 무시
+            }
+            await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+        throw new Error('Daemon startup timeout');
     };
 
     // autoRefresh 또는 refreshInterval 변경 시 저장
@@ -103,19 +193,59 @@ function App() {
         }
     }, [autoRefresh, refreshInterval]);
 
+    // discordPrefix 변경 시 bot config 저장
+    useEffect(() => {
+        // 초기 로드 완료 후에만 저장 (빈 문자열 제외)
+        if (settingsReady && settingsPath && discordPrefix && discordPrefix.trim()) {
+            console.log('[Settings] Prefix changed, saving bot config:', discordPrefix);
+            saveBotConfig(discordPrefix);
+        }
+    }, [discordPrefix]);
+
     // Discord Bot 상태 폴링
     useEffect(() => {
-        const pollBotStatus = async () => {
+        let mounted = true;
+        
+        // 초기 상태 확인 (약간의 지연을 두고)
+        const checkBotStatusInitially = async () => {
+            try {
+                // Electron IPC 준비 시간 확보
+                await new Promise(resolve => setTimeout(resolve, 200));
+                const status = await window.api.discordBotStatus();
+                
+                if (mounted) {
+                    const botRunning = status === 'running';
+                    setDiscordBotStatus(botRunning ? 'running' : 'stopped');
+                    setBotStatusReady(true);
+                    console.log('[Init] Discord bot initial status:', botRunning ? 'running' : 'stopped');
+                    console.log('[Init] BotStatusReady flag set to true');
+                }
+            } catch (e) {
+                if (mounted) {
+                    setDiscordBotStatus('stopped');
+                    setBotStatusReady(true);
+                    console.log('[Init] Discord bot status check failed, assuming stopped');
+                }
+            }
+        };
+        
+        checkBotStatusInitially();
+        
+        // 5초마다 폴링
+        const interval = setInterval(async () => {
+            if (!mounted) return;
             try {
                 const status = await window.api.discordBotStatus();
                 setDiscordBotStatus(status || 'stopped');
             } catch (e) {
                 setDiscordBotStatus('stopped');
             }
+        }, 5000);
+        
+        return () => {
+            mounted = false;
+            clearInterval(interval);
         };
-        pollBotStatus();
-        const interval = setInterval(pollBotStatus, 5000);
-        return () => clearInterval(interval);
     }, []);
 
     // Discord Bot 시작
@@ -138,35 +268,52 @@ function App() {
             };
             const result = await window.api.discordBotStart(botConfig);
             if (result.error) {
-                setModal({ type: 'failure', title: 'Bot 시작 실패', message: result.error });
+                window.showToast(`❌ Discord 봇 시작 실패: ${result.error}`, 'error', 4000);
             } else {
                 setDiscordBotStatus('running');
-                setModal({ type: 'success', title: 'Discord Bot', message: 'Bot이 시작되었습니다.' });
+                window.showToast('✅ Discord 봇이 시작되었습니다', 'discord', 3000);
             }
         } catch (e) {
-            setModal({ type: 'failure', title: 'Bot 시작 예외', message: e.message });
+            window.showToast(`❌ Discord 봇 시작 예외: ${e.message}`, 'error', 4000);
         }
     };
 
-    // Discord Bot 자동 시작
+    // 자동시작 (설정과 봇 상태 모두 준비되면 실행)
     useEffect(() => {
-        if (discordAutoStart && discordToken && discordBotStatus === 'stopped') {
-            handleStartDiscordBot();
+        console.log('[Auto-start] Effect triggered', {
+            botStatusReady,
+            settingsReady,
+            autoStartDone: autoStartDoneRef.current,
+            discordAutoStart,
+            tokenExists: !!discordToken,
+            prefixExists: !!discordPrefix,
+            botStatus: discordBotStatus
+        });
+
+        if (botStatusReady && settingsReady && !autoStartDoneRef.current) {
+            autoStartDoneRef.current = true;
+            
+            if (discordAutoStart && discordToken && discordPrefix && discordBotStatus === 'stopped') {
+                console.log('[Auto-start] ✅ Starting Discord bot automatically!');
+                handleStartDiscordBot();
+            } else {
+                console.log('[Auto-start] ❌ Skipping - conditions not met');
+            }
         }
-    }, [discordAutoStart, discordToken]);
+    }, [botStatusReady, settingsReady, discordAutoStart, discordToken, discordPrefix, discordBotStatus]);
 
     // Discord Bot 정지
     const handleStopDiscordBot = async () => {
         try {
             const result = await window.api.discordBotStop();
             if (result.error) {
-                setModal({ type: 'failure', title: 'Bot 정지 실패', message: result.error });
+                window.showToast(`❌ Discord 봇 정지 실패: ${result.error}`, 'error', 4000);
             } else {
                 setDiscordBotStatus('stopped');
-                setModal({ type: 'notification', title: 'Discord Bot', message: 'Bot이 정지되었습니다.' });
+                window.showToast('⏹️ Discord 봇이 정지되었습니다', 'discord', 3000);
             }
         } catch (e) {
-            setModal({ type: 'failure', title: 'Bot 정지 예외', message: e.message });
+            window.showToast(`❌ Discord 봇 정지 예외: ${e.message}`, 'error', 4000);
         }
     };
 
@@ -228,7 +375,20 @@ function App() {
     const fetchModules = async () => {
         try {
             console.log('Fetching modules...');
-            const data = await window.api.moduleList();
+            // Daemon이 준비될 때까지 대기
+            try {
+                await waitForDaemon(5000);
+            } catch (err) {
+                console.warn('Daemon not ready, but continuing:', err.message);
+            }
+            
+            // 재시도 로직 적용
+            const data = await retryWithBackoff(
+                () => window.api.moduleList(),
+                3,
+                800
+            );
+            
             console.log('Module data received:', data);
             if (data && data.modules) {
                 console.log('Setting modules:', data.modules.length, 'modules');
@@ -250,19 +410,26 @@ function App() {
                 console.log('Module aliases loaded:', aliasesMap);
             } else if (data && data.error) {
                 console.error('Module fetch error:', data.error);
-                setModal({ type: 'failure', title: '모듈 로드 실패', message: data.error });
+                window.showToast(`❌ 모듈 로드 실패: ${data.error}`, 'error', 4000);
             } else {
                 console.warn('No modules data:', data);
+                window.showToast('⚠️ 모듈 목록이 비어있습니다', 'warning', 3000);
             }
         } catch (error) {
             console.error('Failed to fetch modules:', error);
+            window.showToast(`❌ 모듈 검색 실패: ${error.message}. 데몬을 확인해주세요.`, 'error', 5000);
             setModal({ type: 'failure', title: '모듈 로드 예외', message: error.message });
         }
     };
 
     const fetchServers = async () => {
         try {
-            const data = await window.api.serverList();
+            // 재시도 로직 적용
+            const data = await retryWithBackoff(
+                () => window.api.serverList(),
+                3,
+                800
+            );
             if (data && data.servers) {
                 setServers(data.servers);
             } else {
@@ -270,6 +437,7 @@ function App() {
             }
         } catch (error) {
             console.error('Failed to fetch servers:', error);
+            window.showToast(`⚠️ 서버 목록 업데이트 실패: ${error.message}`, 'warning', 3000);
             setServers([]);
         } finally {
             setLoading(false);
@@ -291,19 +459,26 @@ function App() {
     };
 
     const handleStop = async (name) => {
-        if (window.confirm(`Are you sure you want to stop ${name}?`)) {
-            try {
-                const result = await window.api.serverStop(name, { force: false });
-                if (result.error) {
-                    setModal({ type: 'failure', title: '서버 정지 실패', message: result.error });
-                } else {
-                    setModal({ type: 'notification', title: '서버 정지 중', message: `${name} 서버가 정지되고 있습니다...` });
+        setModal({
+            type: 'question',
+            title: '서버 정지',
+            message: `${name} 서버를 정지하시겠습니까?`,
+            onConfirm: async () => {
+                setModal(null);
+                try {
+                    const result = await window.api.serverStop(name, { force: false });
+                    if (result.error) {
+                        setModal({ type: 'failure', title: '서버 정지 실패', message: result.error });
+                    } else {
+                        setModal({ type: 'notification', title: '서버 정지 중', message: `${name} 서버가 정지되고 있습니다...` });
+                    }
+                    fetchServers();
+                } catch (error) {
+                    setModal({ type: 'failure', title: '서버 정지 예외', message: error.message });
                 }
-                fetchServers();
-            } catch (error) {
-                setModal({ type: 'failure', title: '서버 정지 예외', message: error.message });
-            }
-        }
+            },
+            onCancel: () => setModal(null)
+        });
     };
 
     const handleStatus = async (name) => {
@@ -730,6 +905,8 @@ function App() {
 
     return (
         <div className="App">
+            <TitleBar />
+            <Toast />
             <header className="app-header">
                 <h1>🎮 Game Server Manager</h1>
                 <div className="header-controls">
@@ -744,6 +921,13 @@ function App() {
                         onClick={() => setShowDiscordSection(!showDiscordSection)}
                     >
                         🤖 Discord Bot {discordBotStatus === 'running' ? '(Online)' : ''}
+                    </button>
+                    <button 
+                        className="btn btn-settings"
+                        onClick={() => setShowGuiSettingsModal(true)}
+                        title="GUI 설정"
+                    >
+                        ⚙️
                     </button>
                     <label>
                         <input 
@@ -1248,6 +1432,9 @@ function App() {
                     onCancel={() => setModal(null)}
                 />
             )}
+
+            {/* SettingsModal 렌더링 */}
+            <SettingsModal isOpen={showGuiSettingsModal} onClose={() => setShowGuiSettingsModal(false)} />
 
             {/* CommandModal 렌더링 */}
             {showCommandModal && commandServer && (

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import './CommandModal.css';
+import './Modals.css';
 
 function CommandModal({ server, modules, onClose, onExecute }) {
     const [commandInput, setCommandInput] = useState('');

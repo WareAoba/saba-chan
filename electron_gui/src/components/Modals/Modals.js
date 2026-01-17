@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import './Modal.css';
+import './Modals.css';
 
 // Success Modal - 자동으로 2초 후 닫힘
 export function SuccessModal({ title, message, onClose }) {
