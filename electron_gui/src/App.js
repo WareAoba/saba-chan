@@ -8,7 +8,9 @@ import {
     CommandModal,
     Toast,
     TitleBar,
-    SettingsModal
+    SettingsModal,
+    DiscordBotModal,
+    BackgroundModal
 } from './components';
 
 function App() {
@@ -44,6 +46,7 @@ function App() {
     const [discordBotStatus, setDiscordBotStatus] = useState('stopped'); // stopped | running | error
     const [discordToken, setDiscordToken] = useState('');
     const [showDiscordSection, setShowDiscordSection] = useState(false);
+    const [showBackgroundSection, setShowBackgroundSection] = useState(false);
     const [discordPrefix, setDiscordPrefix] = useState('!saba');  // 기본값: !saba
     const [discordAutoStart, setDiscordAutoStart] = useState(false);
     const [discordModuleAliases, setDiscordModuleAliases] = useState({});  // 저장된 사용자 커스텀 모듈 별명
@@ -186,7 +189,7 @@ function App() {
         throw new Error('Daemon startup timeout');
     };
 
-    // autoRefresh 또는 refreshInterval 변경 시 저장
+    // refreshInterval 변경 시 저장 (autoRefresh는 항상 true로 고정)
     useEffect(() => {
         if (settingsPath) { // 초기 로드 이후에만 저장
             saveCurrentSettings();
@@ -905,51 +908,85 @@ function App() {
 
     return (
         <div className="App">
+            {/* Discord overlay backdrop */}
+            {showDiscordSection && (
+                <div 
+                    className="discord-backdrop" 
+                    onClick={() => setShowDiscordSection(false)}
+                />
+            )}
+            {/* Background overlay backdrop */}
+            {showBackgroundSection && (
+                <div 
+                    className="discord-backdrop" 
+                    onClick={() => setShowBackgroundSection(false)}
+                />
+            )}
             <TitleBar />
             <Toast />
             <header className="app-header">
-                <h1>🎮 Game Server Manager</h1>
-                <div className="header-controls">
+                {/* 첫 번째 줄: 타이틀과 설정 */}
+                <div className="header-row header-row-title">
+                    <div className="app-title-section">
+                        <div className="app-logo">🌌</div>
+                        <h1>Saba-chan</h1>
+                    </div>
+                    <button 
+                        className="btn btn-settings-icon-solo"
+                        onClick={() => setShowGuiSettingsModal(true)}
+                        title="GUI 설정"
+                    >
+                        ⚙️
+                    </button>
+                </div>
+                
+                {/* 두 번째 줄: 기능 버튼들 */}
+                <div className="header-row header-row-controls">
                     <button 
                         className="btn btn-add"
                         onClick={() => setShowModuleManager(!showModuleManager)}
                     >
                         ➕ Add Server
                     </button>
-                    <button 
-                        className={`btn btn-discord ${discordBotStatus === 'running' ? 'btn-discord-active' : ''}`}
-                        onClick={() => setShowDiscordSection(!showDiscordSection)}
-                    >
-                        🤖 Discord Bot {discordBotStatus === 'running' ? '(Online)' : ''}
-                    </button>
-                    <button 
-                        className="btn btn-settings"
-                        onClick={() => setShowGuiSettingsModal(true)}
-                        title="GUI 설정"
-                    >
-                        ⚙️
-                    </button>
-                    <label>
-                        <input 
-                            type="checkbox" 
-                            checked={autoRefresh}
-                            onChange={(e) => setAutoRefresh(e.target.checked)}
+                    <div className="header-spacer"></div>
+                    <div className="discord-button-wrapper">
+                        <button 
+                            className={`btn btn-discord ${discordBotStatus === 'running' ? 'btn-discord-active' : ''}`}
+                            onClick={() => setShowDiscordSection(!showDiscordSection)}
+                        >
+                            <span className={`status-indicator ${discordBotStatus === 'running' ? 'status-online' : 'status-offline'}`}></span>
+                            Discord Bot
+                        </button>
+                        {/* Discord Bot Modal */}
+                        <DiscordBotModal
+                            isOpen={showDiscordSection}
+                            onClose={() => setShowDiscordSection(false)}
+                            discordBotStatus={discordBotStatus}
+                            discordToken={discordToken}
+                            setDiscordToken={setDiscordToken}
+                            discordPrefix={discordPrefix}
+                            setDiscordPrefix={setDiscordPrefix}
+                            discordAutoStart={discordAutoStart}
+                            setDiscordAutoStart={setDiscordAutoStart}
+                            handleStartDiscordBot={handleStartDiscordBot}
+                            handleStopDiscordBot={handleStopDiscordBot}
+                            saveCurrentSettings={saveCurrentSettings}
                         />
-                        Auto Refresh
-                    </label>
-                    <select 
-                        value={refreshInterval}
-                        onChange={(e) => setRefreshInterval(Number(e.target.value))}
-                        disabled={!autoRefresh}
-                    >
-                        <option value={1000}>1s</option>
-                        <option value={2000}>2s</option>
-                        <option value={5000}>5s</option>
-                        <option value={10000}>10s</option>
-                    </select>
-                    <button className="refresh-btn" onClick={fetchServers}>
-                        🔄 Refresh Now
-                    </button>
+                    </div>
+                    <div className="background-button-wrapper">
+                        <button 
+                            className="btn btn-background btn-background-active"
+                            onClick={() => setShowBackgroundSection(!showBackgroundSection)}
+                        >
+                            <span className="status-indicator status-online"></span>
+                            Background
+                        </button>
+                        {/* Background Modal */}
+                        <BackgroundModal
+                            isOpen={showBackgroundSection}
+                            onClose={() => setShowBackgroundSection(false)}
+                        />
+                    </div>
                 </div>
             </header>
 
@@ -1028,87 +1065,6 @@ function App() {
                 </div>
             )}
 
-
-
-            {showDiscordSection && (
-                <div className="discord-section">
-                    <h3>🤖 Discord Bot</h3>
-                    <div className="discord-status">
-                        <span className="status-label">상태:</span>
-                        <span className={`status-value status-${discordBotStatus}`}>
-                            {discordBotStatus === 'running' ? '🟢 Online' : discordBotStatus === 'error' ? '🔴 Error' : '⚪ Offline'}
-                        </span>
-                    </div>
-
-                    <div className="discord-config-grid">
-                        <div className="discord-token-form">
-                            <label>Bot Token</label>
-                            <input
-                                type="password"
-                                placeholder="Discord Bot Token을 입력하세요"
-                                value={discordToken}
-                                onChange={(e) => setDiscordToken(e.target.value)}
-                            />
-                        </div>
-
-                        <div className="discord-prefix-form">
-                            <label>봇 별명 (Prefix) *</label>
-                            <input
-                                type="text"
-                                placeholder="예: !pal, !mc, !서버 등"
-                                value={discordPrefix}
-                                onChange={(e) => setDiscordPrefix(e.target.value)}
-                            />
-                            <small>봇이 반응할 명령어 접두사 (필수)</small>
-                            {!discordPrefix && <small className="warning-text">⚠️ Prefix를 설정해주세요</small>}
-                        </div>
-
-                        <div className="discord-autostart">
-                            <label>
-                                <input
-                                    type="checkbox"
-                                    checked={discordAutoStart}
-                                    onChange={(e) => setDiscordAutoStart(e.target.checked)}
-                                />
-                                GUI 시작 시 봇 자동 실행
-                            </label>
-                        </div>
-                    </div>
-
-                    <div className="discord-info-box">
-                        <h4>💡 봇 사용 방법</h4>
-                        <p>Discord에서 다음 형식으로 명령어를 사용하세요:</p>
-                        <code>{discordPrefix || '!saba'} [모듈명] [명령어]</code>
-                        <p className="info-note">
-                            모듈별 별명과 명령어 별명은 각 서버의 <strong>Settings → Discord 별명</strong> 탭에서 설정할 수 있습니다.
-                        </p>
-                    </div>
-
-                    <div className="discord-actions">
-                        <button
-                            className="btn btn-start"
-                            onClick={handleStartDiscordBot}
-                            disabled={discordBotStatus === 'running'}
-                        >
-                            ▶ Start Bot
-                        </button>
-                        <button
-                            className="btn btn-stop"
-                            onClick={handleStopDiscordBot}
-                            disabled={discordBotStatus !== 'running'}
-                        >
-                            ⏹ Stop Bot
-                        </button>
-                        <button
-                            className="btn btn-save"
-                            onClick={saveCurrentSettings}
-                        >
-                            💾 설정 저장
-                        </button>
-                    </div>
-                </div>
-            )}
-
             <div className="server-list">
                 {servers.length === 0 ? (
                     <div className="no-servers">
@@ -1155,18 +1111,21 @@ function App() {
 
                             <div className="button-group">
                                 <button 
-                                    className="btn btn-start"
-                                    onClick={() => handleStart(server.name, server.module)}
-                                    disabled={server.status === 'running' || server.status === 'starting'}
+                                    className={`btn ${
+                                        server.status === 'running' || server.status === 'starting'
+                                            ? 'btn-stop' 
+                                            : 'btn-start'
+                                    }`}
+                                    onClick={() => {
+                                        if (server.status === 'running' || server.status === 'starting') {
+                                            handleStop(server.name);
+                                        } else {
+                                            handleStart(server.name, server.module);
+                                        }
+                                    }}
+                                    disabled={server.status === 'starting' || server.status === 'stopping'}
                                 >
-                                    ▶ Start
-                                </button>
-                                <button 
-                                    className="btn btn-stop"
-                                    onClick={() => handleStop(server.name)}
-                                    disabled={server.status === 'stopped' || server.status === 'stopping'}
-                                >
-                                    ⏹ Stop
+                                    {server.status === 'running' || server.status === 'starting' ? '⏹ Stop' : '▶ Start'}
                                 </button>
                                 <button 
                                     className="btn btn-status"
@@ -1396,10 +1355,6 @@ function App() {
                 </div>
             )}
 
-            <footer className="app-footer">
-                <p>Connected to Core Daemon at localhost:57474</p>
-            </footer>
-
             {/* 모달 렌더링 */}
             {modal && modal.type === 'success' && (
                 <SuccessModal
@@ -1434,7 +1389,12 @@ function App() {
             )}
 
             {/* SettingsModal 렌더링 */}
-            <SettingsModal isOpen={showGuiSettingsModal} onClose={() => setShowGuiSettingsModal(false)} />
+            <SettingsModal 
+                isOpen={showGuiSettingsModal} 
+                onClose={() => setShowGuiSettingsModal(false)}
+                refreshInterval={refreshInterval}
+                onRefreshIntervalChange={setRefreshInterval}
+            />
 
             {/* CommandModal 렌더링 */}
             {showCommandModal && commandServer && (

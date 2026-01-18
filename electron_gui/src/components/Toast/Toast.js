@@ -90,6 +90,7 @@ function Toast() {
                     className={`toast toast-${toast.type} ${removingToasts.has(toast.id) ? 'toast-removing' : ''}`}
                     onClick={() => removeToast(toast.id)}
                 >
+                    {toast.icon && <span className="toast-icon">{toast.icon}</span>}
                     <span className="toast-message">{toast.message}</span>
                 </div>
             ))}

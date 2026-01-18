@@ -5,3 +5,5 @@ export { default as StatusBar } from './StatusBar/StatusBar';
 export { SuccessModal, FailureModal, NotificationModal, QuestionModal } from './Modals/Modals';
 export { default as CommandModal } from './Modals/CommandModal';
 export { default as SettingsModal } from './Modals/SettingsModal';
+export { default as DiscordBotModal } from './Modals/DiscordBotModal';
+export { default as BackgroundModal } from './Modals/BackgroundModal';

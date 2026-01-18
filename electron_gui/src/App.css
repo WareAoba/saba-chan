@@ -4,35 +4,55 @@
     box-sizing: border-box;
 }
 
+:root {
+    --btn-height: 44px;
+    --btn-radius: 8px;
+}
+
+/* 텍스트 선택 금지 (입력 요소 제외) */
+* {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+input,
+textarea,
+[contenteditable="true"] {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+}
+
 /* 커스텀 스크롤바 */
 ::-webkit-scrollbar {
-    width: 12px;
-    height: 12px;
+    width: 6px;
+    height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.05);
-    border-radius: 10px;
+    background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 10px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
+    background: #d0d0d0;
+    border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(135deg, #5568d3 0%, #653a8a 100%);
+    background: #b0b0b0;
 }
 
 ::-webkit-scrollbar-thumb:active {
-    background: linear-gradient(135deg, #4a5bc4 0%, #563375 100%);
+    background: #909090;
 }
 
 /* Firefox 스크롤바 */
 * {
     scrollbar-width: thin;
-    scrollbar-color: #667eea rgba(0, 0, 0, 0.05);
+    scrollbar-color: #d0d0d0 transparent;
 }
 
 body {
@@ -52,39 +72,127 @@ body {
     padding-top: 40px; /* 타이틀 바 높이만큼 여백 추가 */
 }
 
+.discord-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1999;
+    pointer-events: none;
+}
+
+.discord-backdrop::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: auto;
+}
+
 .app-header {
     background: white;
     padding: 20px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.header-row {
+    display: flex;
+    align-items: center;
+    min-height: 48px;
+}
+
+.header-row-title {
+    justify-content: space-between;
+}
+
+.header-row-controls {
+    gap: 15px;
+}
+
+.app-title-section {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 15px;
+}
+
+.app-logo {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
 .app-header h1 {
     color: #333;
-    margin-bottom: 15px;
+    margin: 0;
     font-size: 28px;
+    font-weight: 700;
 }
 
-.header-controls {
+.header-spacer {
+    flex: 1;
+}
+
+.btn-settings-icon-solo {
+    background: white;
+    color: #666;
+    padding: 0;
+    min-width: var(--btn-height);
+    height: var(--btn-height);
     display: flex;
-    gap: 15px;
     align-items: center;
-    flex-wrap: wrap;
+    justify-content: center;
+    font-size: 20px;
+    border: 1px solid #e0e0e0;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.btn-settings-icon-solo:hover {
+    background: #f5f5f5;
+    transform: rotate(90deg);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.discord-button-wrapper,
+.background-button-wrapper {
+    position: relative;
 }
 
 .btn-add {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
     border: none;
-    padding: 10px 20px;
-    border-radius: 6px;
+    padding: 0 20px;
+    height: var(--btn-height);
+    border-radius: var(--btn-radius);
     cursor: pointer;
     font-weight: bold;
-    transition: transform 0.2s;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .btn-add:hover {
-    transform: scale(1.05);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
 }
 
 .header-controls label {
@@ -162,7 +270,7 @@ body {
 
 .server-card {
     background: white;
-    border-radius: 8px;
+    border-radius: var(--btn-radius);
     padding: 20px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     transition: transform 0.2s, box-shadow 0.2s;
@@ -241,18 +349,23 @@ body {
 
 .button-group {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 8px;
 }
 
 .btn {
-    padding: 10px 12px;
+    padding: 0 12px;
     border: none;
-    border-radius: 4px;
+    height: var(--btn-height);
+    border-radius: var(--btn-radius);
     cursor: pointer;
     font-size: 13px;
     font-weight: bold;
     transition: background-color 0.2s, opacity 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
 }
 
 .btn-start {
@@ -318,7 +431,7 @@ body {
     background: white;
     margin: 0 20px 20px 20px;
     padding: 20px;
-    border-radius: 12px;
+    border-radius: var(--btn-radius);
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
@@ -404,20 +517,98 @@ body {
 }
 
 .btn-discord {
-    background: #5865F2;
-    color: white;
+    background: white;
+    color: #333;
+    border: 1px solid #e0e0e0;
+    padding: 0 16px;
+    height: var(--btn-height);
+    border-radius: var(--btn-radius);
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .btn-discord:hover {
-    background: #4752c4;
+    background: #f5f5f5;
+    border-color: #d0d0d0;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
 }
 
 .btn-discord-active {
-    background: #3ba55d;
+    background: white;
+    border-color: #3ba55d;
 }
 
 .btn-discord-active:hover {
-    background: #2d8049;
+    background: #f0fdf4;
+    border-color: #3ba55d;
+}
+
+.btn-background {
+    background: white;
+    color: #333;
+    border: 1px solid #e0e0e0;
+    padding: 0 16px;
+    height: var(--btn-height);
+    border-radius: var(--btn-radius);
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.btn-background:hover {
+    background: #f5f5f5;
+    border-color: #d0d0d0;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+}
+
+.btn-background-active {
+    background: white;
+    border-color: #3ba55d;
+}
+
+.btn-background-active:hover {
+    background: #f0fdf4;
+    border-color: #3ba55d;
+}
+
+.status-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.status-online {
+    background: #3ba55d;
+    box-shadow: 0 0 0 2px rgba(59, 165, 93, 0.2);
+}
+
+.status-offline {
+    background: #ed4245;
+    box-shadow: 0 0 0 2px rgba(237, 66, 69, 0.2);
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
 }
 
 .btn-settings {
@@ -429,10 +620,17 @@ body {
     align-items: center;
     justify-content: center;
     font-size: 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(108, 117, 125, 0.2);
 }
 
 .btn-settings:hover {
     background: #5a6268;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(108, 117, 125, 0.4);
 }
 
 .discord-config-grid {
@@ -775,20 +973,28 @@ body {
     background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
     color: white;
     border: none;
-    padding: 10px 20px;
-    border-radius: 6px;
+    padding: 0 20px;
+    height: var(--btn-height);
+    border-radius: var(--btn-radius);
     cursor: pointer;
     font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .btn-cancel {
     background: #f44336;
     color: white;
     border: none;
-    padding: 10px 20px;
-    border-radius: 6px;
+    padding: 0 20px;
+    height: var(--btn-height);
+    border-radius: var(--btn-radius);
     cursor: pointer;
     font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .module-list {
@@ -806,7 +1012,7 @@ body {
     background: #f9f9f9;
     padding: 12px;
     margin-bottom: 10px;
-    border-radius: 6px;
+    border-radius: var(--btn-radius);
     border-left: 4px solid #667eea;
 }
 

@@ -104,13 +104,17 @@
 }
 
 .modal-button {
-    padding: 10px 24px;
+    padding: 0 24px;
     border: none;
-    border-radius: 6px;
+    height: 44px;
+    border-radius: 8px;
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .failure-button {
@@ -484,6 +488,56 @@
     margin: 0;
 }
 
+/* 설정 항목 스타일 */
+.setting-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin-bottom: 12px;
+}
+
+.setting-label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.setting-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+}
+
+.setting-description {
+    font-size: 12px;
+    color: #666;
+}
+
+.setting-select {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: white;
+    font-size: 14px;
+    color: #333;
+    cursor: pointer;
+    min-width: 100px;
+    transition: border-color 0.2s;
+}
+
+.setting-select:hover {
+    border-color: #667eea;
+}
+
+.setting-select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
 .settings-modal-footer {
     display: flex;
     justify-content: flex-end;
@@ -493,10 +547,11 @@
 }
 
 .settings-btn-cancel {
-    padding: 10px 24px;
+    padding: 0 24px;
     border: 1px solid #ddd;
     background: white;
-    border-radius: 6px;
+    height: 44px;
+    border-radius: 8px;
     cursor: pointer;
     font-size: 14px;
     font-weight: 600;
@@ -507,4 +562,456 @@
 .settings-btn-cancel:hover {
     background: #f5f5f5;
     border-color: #bbb;
+}
+
+/* ===== Discord Bot Modal ===== */
+.discord-modal-container {
+    position: absolute;
+    top: calc(100% + 12px);
+    right: 0;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+    width: 480px;
+    max-height: min(600px, calc(100vh - 160px));
+    display: flex;
+    flex-direction: column;
+    animation: dropdownSlide 0.3s ease-out;
+    border: 1px solid #e0e0e0;
+    z-index: 2000;
+}
+
+/* 말풍선 화살표 - Discord 버튼 중앙 바로 아래 */
+.discord-modal-container::before {
+    content: '';
+    position: absolute;
+    top: -8px;
+    right: 65px;
+    width: 16px;
+    height: 16px;
+    background: white;
+    border-left: 1px solid #e0e0e0;
+    border-top: 1px solid #e0e0e0;
+    transform: rotate(45deg);
+}
+
+@keyframes dropdownSlide {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.discord-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 24px;
+    border-bottom: 1px solid #eee;
+}
+
+.discord-modal-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.discord-modal-title h2 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+    color: #333;
+}
+
+.discord-modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    color: #999;
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    transition: all 0.2s;
+}
+
+.discord-modal-close:hover {
+    background: #f5f5f5;
+    color: #333;
+}
+
+.discord-modal-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+}
+
+.discord-status-section {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin-bottom: 24px;
+}
+
+.discord-status-section .status-label {
+    font-weight: 600;
+    color: #666;
+}
+
+.discord-status-section .status-value {
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 14px;
+}
+
+.discord-status-section .status-running {
+    background: #d4edda;
+    color: #155724;
+}
+
+.discord-status-section .status-stopped {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.discord-status-section .status-error {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.discord-config-section {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    margin-bottom: 24px;
+}
+
+.discord-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.discord-form-group label {
+    font-weight: 600;
+    font-size: 14px;
+    color: #333;
+}
+
+.discord-form-group small {
+    font-size: 12px;
+    color: #666;
+}
+
+.discord-form-group .warning-text {
+    color: #dc3545;
+    font-weight: 600;
+}
+
+.discord-input {
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.discord-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.discord-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    padding: 8px 0;
+}
+
+.discord-checkbox-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+.discord-info-box {
+    background: #e7f3ff;
+    border-left: 4px solid #667eea;
+    padding: 16px;
+    border-radius: 8px;
+}
+
+.discord-info-box h4 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    color: #333;
+}
+
+.discord-info-box p {
+    margin: 8px 0;
+    font-size: 13px;
+    color: #555;
+}
+
+.discord-info-box code {
+    display: block;
+    background: #fff;
+    padding: 12px;
+    border-radius: 6px;
+    font-family: 'Courier New', monospace;
+    margin: 12px 0;
+    color: #667eea;
+    font-weight: 600;
+}
+
+.discord-info-box .info-note {
+    font-size: 12px;
+    color: #666;
+    margin-top: 12px;
+}
+
+.discord-modal-footer {
+    display: flex;
+    gap: 12px;
+    padding: 20px 24px;
+    border-top: 1px solid #eee;
+    background: #fafafa;
+    border-radius: 0 0 16px 16px;
+}
+
+.discord-btn {
+    flex: 1;
+    padding: 0 20px;
+    border: none;
+    height: 44px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.discord-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.discord-btn-start {
+    background: linear-gradient(135deg, #3ba55d 0%, #2d8049 100%);
+    color: white;
+}
+
+.discord-btn-start:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(59, 165, 93, 0.3);
+}
+
+.discord-btn-stop {
+    background: linear-gradient(135deg, #ed4245 0%, #c03537 100%);
+    color: white;
+}
+
+.discord-btn-stop:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(237, 66, 69, 0.3);
+}
+
+.discord-btn-save {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.discord-btn-save:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+/* ===== Background Modal ===== */
+.background-modal-container {
+    position: absolute;
+    top: calc(100% + 12px);
+    right: 0;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+    width: 420px;
+    max-height: min(500px, calc(100vh - 160px));
+    display: flex;
+    flex-direction: column;
+    animation: dropdownSlide 0.3s ease-out;
+    border: 1px solid #e0e0e0;
+    z-index: 2000;
+}
+
+/* 말풍선 화살표 */
+.background-modal-container::before {
+    content: '';
+    position: absolute;
+    top: -8px;
+    right: 65px;
+    width: 16px;
+    height: 16px;
+    background: white;
+    border-left: 1px solid #e0e0e0;
+    border-top: 1px solid #e0e0e0;
+    transform: rotate(45deg);
+}
+
+.background-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid #eee;
+}
+
+.background-modal-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.background-modal-title h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: #333;
+}
+
+.background-modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    color: #999;
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    transition: all 0.2s;
+}
+
+.background-modal-close:hover {
+    background: #f5f5f5;
+    color: #333;
+}
+
+.background-modal-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+.background-status-section {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.background-status-section .status-label {
+    font-weight: 600;
+    color: #666;
+}
+
+.background-status-section .status-value {
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 14px;
+}
+
+.background-info-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    background: #fafafa;
+    border-radius: 6px;
+}
+
+.info-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #555;
+}
+
+.info-value {
+    font-size: 14px;
+    font-family: 'Courier New', monospace;
+    color: #667eea;
+    font-weight: 600;
+}
+
+.background-info-box {
+    background: #e7f3ff;
+    border-left: 4px solid #667eea;
+    padding: 16px;
+    border-radius: 8px;
+}
+
+.background-info-box h4 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    color: #333;
+}
+
+.background-info-box p {
+    margin: 8px 0;
+    font-size: 13px;
+    color: #555;
+    line-height: 1.5;
+}
+
+.background-info-box .info-note {
+    font-size: 12px;
+    color: #666;
+    margin-top: 12px;
+}
+
+/* 작은 화면 대응 */
+@media (max-width: 768px) {
+    .discord-modal-container {
+        right: 10px;
+        left: 10px;
+        width: auto;
+        max-width: none;
+        transform: none;
+    }
+    
+    .discord-modal-container::before {
+        left: auto;
+        right: 80px;
+    }
+}
+
+@media (max-width: 600px) {
+    .discord-modal-container {
+        max-height: min(500px, calc(100vh - 120px));
+    }
 }
