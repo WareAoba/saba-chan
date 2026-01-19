@@ -17,11 +17,42 @@ pub struct ModuleMetadata {
     pub executable_path: Option<String>,  // config.executable_path
     #[serde(default)]
     pub settings: Option<ModuleSettings>,  // 설정 스키마
+    #[serde(default)]
+    pub commands: Option<ModuleCommands>,  // 명령어 스키마
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModuleSettings {
     pub fields: Vec<SettingField>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModuleCommands {
+    pub fields: Vec<CommandField>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommandField {
+    pub name: String,
+    pub label: String,
+    pub description: Option<String>,
+    pub method: Option<String>,  // "rest", "rcon", etc.
+    pub http_method: Option<String>,  // "GET", "POST"
+    pub endpoint_template: Option<String>,
+    #[serde(default)]
+    pub inputs: Vec<CommandInput>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommandInput {
+    pub name: String,
+    pub label: Option<String>,
+    #[serde(rename = "type")]
+    pub input_type: Option<String>,
+    pub required: Option<bool>,
+    pub placeholder: Option<String>,
+    #[serde(default)]
+    pub default: Option<toml::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -175,6 +206,7 @@ impl ModuleLoader {
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
             settings: parse_settings(&data),
+            commands: parse_commands(&data),
         };
 
         Ok(LoadedModule {
@@ -246,6 +278,7 @@ impl ModuleLoader {
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
             settings: parse_settings(&data),
+            commands: parse_commands(&data),
         };
 
         // 임시 디렉토리에 압축 해제
@@ -400,5 +433,110 @@ fn parse_settings(data: &toml::Value) -> Option<ModuleSettings> {
         None
     } else {
         Some(ModuleSettings { fields })
+    }
+}
+
+fn parse_commands(data: &toml::Value) -> Option<ModuleCommands> {
+    let commands_table = data.get("commands")?;
+    tracing::debug!("Found commands table: {:?}", commands_table);
+    
+    let fields_array = commands_table.get("fields")?;
+    tracing::debug!("Found commands.fields array with {} items", fields_array.as_array()?.len());
+    
+    let mut fields = Vec::new();
+    
+    if let Some(array) = fields_array.as_array() {
+        for field_value in array {
+            if let Some(field_table) = field_value.as_table() {
+                let name = field_table
+                    .get("name")
+                    .and_then(|v: &toml::Value| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                
+                let label = field_table
+                    .get("label")
+                    .and_then(|v: &toml::Value| v.as_str())
+                    .unwrap_or(&name)
+                    .to_string();
+                
+                let description = field_table
+                    .get("description")
+                    .and_then(|v: &toml::Value| v.as_str())
+                    .map(|s: &str| s.to_string());
+                
+                let method = field_table
+                    .get("method")
+                    .and_then(|v: &toml::Value| v.as_str())
+                    .map(|s: &str| s.to_string());
+                
+                let http_method = field_table
+                    .get("http_method")
+                    .and_then(|v: &toml::Value| v.as_str())
+                    .map(|s: &str| s.to_string());
+                
+                let endpoint_template = field_table
+                    .get("endpoint_template")
+                    .and_then(|v: &toml::Value| v.as_str())
+                    .map(|s: &str| s.to_string());
+                
+                // inputs 파싱
+                let inputs = if let Some(inputs_value) = field_table.get("inputs") {
+                    if let Some(inputs_array) = inputs_value.as_array() {
+                        inputs_array
+                            .iter()
+                            .filter_map(|input_value| {
+                                // 인라인 테이블도 as_table()로 파싱 가능
+                                input_value.as_table().map(|input_table| {
+                                    CommandInput {
+                                        name: input_table
+                                            .get("name")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("unknown")
+                                            .to_string(),
+                                        label: input_table
+                                            .get("label")
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| s.to_string()),
+                                        input_type: input_table
+                                            .get("type")
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| s.to_string()),
+                                        required: input_table
+                                            .get("required")
+                                            .and_then(|v| v.as_bool()),
+                                        placeholder: input_table
+                                            .get("placeholder")
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| s.to_string()),
+                                        default: input_table.get("default").cloned(),
+                                    }
+                                })
+                            })
+                            .collect()
+                    } else {
+                        Vec::new()
+                    }
+                } else {
+                    Vec::new()
+                };
+                
+                fields.push(CommandField {
+                    name,
+                    label,
+                    description,
+                    method,
+                    http_method,
+                    endpoint_template,
+                    inputs,
+                });
+            }
+        }
+    }
+    
+    if fields.is_empty() {
+        None
+    } else {
+        Some(ModuleCommands { fields })
     }
 }

@@ -18,13 +18,26 @@ impl ProcessMonitor {
 
     /// Windows에서 실행 중인 모든 프로세스 목록 가져오기 (PowerShell 사용)
     pub fn get_running_processes() -> Result<Vec<RunningProcess>> {
-        let output = Command::new("powershell")
+        // PowerShell 명령 실행 (오류 시 안전하게 처리)
+        let output = match Command::new("powershell")
             .args(&[
                 "-NoProfile",
                 "-Command",
                 "Get-Process | Select-Object Id,ProcessName,Path | ConvertTo-Csv -NoTypeInformation",
             ])
-            .output()?;
+            .output() {
+                Ok(out) => out,
+                Err(e) => {
+                    tracing::warn!("Failed to execute PowerShell: {}", e);
+                    return Ok(Vec::new()); // 빈 목록 반환 (Panic 방지)
+                }
+            };
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            tracing::warn!("PowerShell command failed: {}", stderr);
+            return Ok(Vec::new()); // 빈 목록 반환 (Panic 방지)
+        }
 
         let output_str = String::from_utf8_lossy(&output.stdout);
         let mut processes = Vec::new();
@@ -50,16 +63,23 @@ impl ProcessMonitor {
                     None
                 };
                 
-                if let Ok(pid) = pid_str.parse::<u32>() {
-                    processes.push(RunningProcess {
-                        pid,
-                        name: name.to_string(),
-                        executable_path: path,
-                    });
+                match pid_str.parse::<u32>() {
+                    Ok(pid) => {
+                        processes.push(RunningProcess {
+                            pid,
+                            name: name.to_string(),
+                            executable_path: path,
+                        });
+                    }
+                    Err(e) => {
+                        tracing::debug!("Failed to parse PID '{}': {}", pid_str, e);
+                        // 파싱 실패한 줄은 무시하고 계속
+                    }
                 }
             }
         }
 
+        tracing::debug!("Found {} running processes", processes.len());
         Ok(processes)
     }
 

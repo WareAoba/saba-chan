@@ -87,53 +87,111 @@ description = "REST Basic Auth 비밀번호"
 required = false
 
 [commands]
-# 명령어 정의: RCON을 통해 서버에 전달
-# 입력 파라미터가 필요한 경우 inputs 배열에 정의
+# 명령어 정의: Palworld REST API를 통해 전달
+# 공식 API 문서: https://docs.palworldgame.com/ja/api/rest-api/
+# HTTP 메서드는 각 엔드포인트별로 명시
 
 [[commands.fields]]
-name = "say"
-label = "채팅 메시지 전송"
-description = "서버에 메시지를 브로드캐스트합니다"
-method = "rcon"
-command_template = "say {message}"
-inputs = [
-    { name = "message", type = "text", label = "메시지", required = true, placeholder = "전송할 메시지를 입력하세요" }
-]
-
-[[commands.fields]]
-name = "broadcast"
-label = "공지 메시지"
-description = "전체 공지 메시지를 전송합니다"
-method = "rcon"
-command_template = "Broadcast {message}"
+name = "announce"
+label = "공지사항 전송"
+description = "Palworld REST API - POST /v1/api/announce"
+method = "rest"
+http_method = "POST"
+endpoint_template = "/v1/api/announce"
 inputs = [
     { name = "message", type = "text", label = "공지 메시지", required = true, placeholder = "공지할 내용을 입력하세요" }
 ]
 
 [[commands.fields]]
-name = "save"
-label = "월드 저장"
-description = "게임 월드를 저장합니다"
-method = "rcon"
-command_template = "Save"
+name = "info"
+label = "서버 정보"
+description = "Palworld REST API - GET /v1/api/info"
+method = "rest"
+http_method = "GET"
+endpoint_template = "/v1/api/info"
 inputs = []
 
 [[commands.fields]]
-name = "info"
-label = "서버 정보"
-description = "서버 정보를 조회합니다"
-method = "rcon"
-command_template = "Info"
+name = "players"
+label = "플레이어 목록"
+description = "Palworld REST API - GET /v1/api/players"
+method = "rest"
+http_method = "GET"
+endpoint_template = "/v1/api/players"
+inputs = []
+
+[[commands.fields]]
+name = "metrics"
+label = "서버 통계"
+description = "Palworld REST API - GET /v1/api/metrics"
+method = "rest"
+http_method = "GET"
+endpoint_template = "/v1/api/metrics"
+inputs = []
+
+[[commands.fields]]
+name = "settings"
+label = "서버 설정"
+description = "Palworld REST API - GET /v1/api/settings"
+method = "rest"
+http_method = "GET"
+endpoint_template = "/v1/api/settings"
+inputs = []
+
+[[commands.fields]]
+name = "save"
+label = "월드 저장"
+description = "Palworld REST API - POST /v1/api/save"
+method = "rest"
+http_method = "POST"
+endpoint_template = "/v1/api/save"
 inputs = []
 
 [[commands.fields]]
 name = "shutdown"
 label = "서버 종료"
-description = "서버를 종료합니다"
-method = "rcon"
-command_template = "Shutdown {seconds}"
+description = "Palworld REST API - POST /v1/api/shutdown"
+method = "rest"
+http_method = "POST"
+endpoint_template = "/v1/api/shutdown"
 inputs = [
-    { name = "seconds", type = "number", label = "종료까지 대기 시간 (초)", required = true, default = 10, min = 0, max = 600 }
+    { name = "waittime", type = "number", label = "종료까지 대기 시간 (초)", required = true, default = 30, min = 0, max = 600 },
+    { name = "message", type = "text", label = "종료 메시지", required = false, placeholder = "서버 종료 공지 메시지" }
+]
+
+[[commands.fields]]
+name = "kick"
+label = "플레이어 강제 퇴장"
+description = "Palworld REST API - POST /v1/api/kick"
+method = "rest"
+http_method = "POST"
+endpoint_template = "/v1/api/kick"
+inputs = [
+    { name = "userid", type = "text", label = "플레이어 ID", required = true, placeholder = "강제 퇴장할 플레이어 ID를 입력하세요" },
+    { name = "message", type = "text", label = "퇴장 메시지", required = false, placeholder = "선택사항: 퇴장 메시지" }
+]
+
+[[commands.fields]]
+name = "ban"
+label = "플레이어 차단"
+description = "Palworld REST API - POST /v1/api/ban"
+method = "rest"
+http_method = "POST"
+endpoint_template = "/v1/api/ban"
+inputs = [
+    { name = "userid", type = "text", label = "플레이어 ID", required = true, placeholder = "차단할 플레이어 ID를 입력하세요" },
+    { name = "message", type = "text", label = "차단 메시지", required = false, placeholder = "선택사항: 차단 메시지" }
+]
+
+[[commands.fields]]
+name = "unban"
+label = "플레이어 차단 해제"
+description = "Palworld REST API - POST /v1/api/unban"
+method = "rest"
+http_method = "POST"
+endpoint_template = "/v1/api/unban"
+inputs = [
+    { name = "userid", type = "text", label = "플레이어 ID", required = true, placeholder = "차단 해제할 플레이어 ID를 입력하세요" }
 ]
 
 [aliases]

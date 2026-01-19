@@ -210,7 +210,7 @@ impl Supervisor {
 
         // 명령어 config 구성 (RCON 설정 포함)
         let pid = self.tracker.get_pid(&instance.id).ok();
-        let mut config = json!({
+        let config = json!({
             "command": command,
             "args": args,
             "rcon_host": "127.0.0.1",
@@ -251,14 +251,20 @@ impl Supervisor {
         use crate::process_monitor::ProcessMonitor;
         
         let instances = self.instance_store.list().to_vec();
+        let mut tracked_count = 0;
+        let mut auto_detected_count = 0;
         
         for instance in instances {
             // 이미 추적 중이면 상태만 확인
             if let Ok(pid) = self.tracker.get_pid(&instance.id) {
+                tracked_count += 1;
+                
                 if !ProcessMonitor::is_running(pid) {
                     tracing::warn!("Process {} for instance '{}' is no longer running, removing from tracker", pid, instance.name);
                     // tracker에서 제거하여 다음 사이클에서 다시 감지할 수 있도록 함
-                    let _ = self.tracker.untrack(&instance.id);
+                    if let Err(e) = self.tracker.untrack(&instance.id) {
+                        tracing::error!("Failed to untrack process: {}", e);
+                    }
                 }
                 continue;
             }
@@ -269,6 +275,7 @@ impl Supervisor {
                     match ProcessMonitor::find_by_name(process_name) {
                         Ok(processes) => {
                             if let Some(process) = processes.first() {
+                                auto_detected_count += 1;
                                 tracing::info!(
                                     "Auto-detected process '{}' (PID: {}) for instance '{}'",
                                     process_name, process.pid, instance.name
@@ -280,12 +287,14 @@ impl Supervisor {
                         }
                         Err(e) => {
                             tracing::debug!("Failed to search for process '{}': {}", process_name, e);
+                            // ProcessMonitor 오류는 로깅만 하고 계속
                         }
                     }
                 }
             }
         }
         
+        tracing::debug!("Monitor cycle: {} tracked, {} auto-detected", tracked_count, auto_detected_count);
         Ok(())
     }
 

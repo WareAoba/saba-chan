@@ -9,6 +9,12 @@ import json
 import subprocess
 import os
 import psutil
+import urllib.request
+import urllib.error
+import urllib.parse
+
+# Daemon API endpoint (localhost by default)
+DAEMON_API_URL = os.environ.get('DAEMON_API_URL', 'http://127.0.0.1:57474')
 
 class MinecraftProcessPipe:
     """Helper class to communicate with Minecraft server process via STDIN/STDOUT"""
@@ -183,11 +189,11 @@ def status(config):
         }
 
 def command(config):
-    """Execute server command via process STDIN"""
+    """Execute server command via daemon RCON API"""
     try:
         command_text = config.get("command")
         args = config.get("args", {})
-        pid = config.get("pid")
+        instance_id = config.get("instance_id")
         
         if not command_text:
             return {
@@ -195,7 +201,13 @@ def command(config):
                 "message": "No command specified"
             }
         
-        print(f"[Minecraft] Executing command: {command_text} with args: {args}", file=sys.stderr)
+        if not instance_id:
+            return {
+                "success": False,
+                "message": "No instance_id specified"
+            }
+        
+        print(f"[Minecraft] Executing command via daemon: {command_text} with args: {args}", file=sys.stderr)
         
         # Format command text
         formatted_command = command_text
@@ -230,39 +242,46 @@ def command(config):
             level = args.get("level", "normal")
             formatted_command = f"difficulty {level}"
         
-        # Try to send command to process
-        if pid:
-            try:
-                pipe = MinecraftProcessPipe(int(pid))
-                if pipe.connect():
-                    if pipe.send_command(formatted_command):
-                        print(f"[Minecraft] Sent command to PID {pid}: {formatted_command}", file=sys.stderr)
-                        return {
-                            "success": True,
-                            "message": f"Command sent: {formatted_command}"
-                        }
-                    else:
-                        return {
-                            "success": False,
-                            "message": f"Failed to send command to process"
-                        }
-                else:
-                    return {
-                        "success": False,
-                        "message": f"Process {pid} not found or not running"
-                    }
-            except Exception as e:
-                print(f"[Minecraft] Error communicating with process: {e}", file=sys.stderr)
+        # Call daemon RCON API
+        api_url = f"{DAEMON_API_URL}/api/instance/{instance_id}/rcon"
+        payload = json.dumps({
+            "command": formatted_command
+        }).encode('utf-8')
+        
+        try:
+            req = urllib.request.Request(
+                api_url,
+                data=payload,
+                headers={'Content-Type': 'application/json'},
+                method='POST'
+            )
+            
+            with urllib.request.urlopen(req, timeout=5) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                print(f"[Minecraft] Daemon RCON response: {result}", file=sys.stderr)
+                
                 return {
-                    "success": False,
-                    "message": f"Failed to communicate with server: {str(e)}"
+                    "success": result.get("success", True),
+                    "message": f"RCON command executed: {formatted_command}"
                 }
-        else:
-            # No PID provided - just acknowledge the command
-            print(f"[Minecraft] Command acknowledged (no PID): {formatted_command}", file=sys.stderr)
+        
+        except urllib.error.URLError as e:
+            print(f"[Minecraft] Daemon connection error: {e}", file=sys.stderr)
             return {
-                "success": True,
-                "message": f"Command acknowledged: {formatted_command}"
+                "success": False,
+                "message": f"Failed to connect to daemon: {str(e)}"
+            }
+        except json.JSONDecodeError as e:
+            print(f"[Minecraft] Invalid JSON response from daemon: {e}", file=sys.stderr)
+            return {
+                "success": False,
+                "message": f"Invalid daemon response: {str(e)}"
+            }
+        except Exception as e:
+            print(f"[Minecraft] Daemon error: {e}", file=sys.stderr)
+            return {
+                "success": False,
+                "message": f"Failed to execute via daemon: {str(e)}"
             }
     
     except Exception as e:

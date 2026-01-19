@@ -394,7 +394,10 @@ function createWindow() {
     const startURL = process.env.ELECTRON_START_URL || 'http://localhost:3000';
     mainWindow.loadURL(startURL);
 
-    // DevTools는 비활성화 (개발 시 필요하면 수동으로 열기: Ctrl+Shift+I)
+    // 개발 모드에서 DevTools 자동 열기
+    if (process.env.NODE_ENV !== 'production') {
+        mainWindow.webContents.openDevTools();
+    }
     
     // 메뉴바 제거
     mainWindow.removeMenu();
@@ -684,13 +687,120 @@ ipcMain.handle('instance:updateSettings', async (event, id, settings) => {
 ipcMain.handle('instance:executeCommand', async (event, id, command) => {
     try {
         console.log(`[Main] Executing command for instance ${id}:`, command);
-        const url = `${IPC_BASE}/api/instance/${id}/command`;
-        console.log(`[Main] POST request to: ${url}`);
-        const response = await axios.post(url, command);
+
+        // 사용자가 "announce hi" 같이 입력하면 첫 단어는 명령어, 나머지는 메시지로 분리
+        const rawCommand = command.command || '';
+        const [cmdName, ...restParts] = rawCommand.trim().split(/\s+/);
+        const inlineMessage = restParts.join(' ');
+        
+        // Step 1: 인스턴스 정보 가져오기
+        const instanceUrl = `${IPC_BASE}/api/instance/${id}`;
+        const instanceResponse = await axios.get(instanceUrl);
+        const instance = instanceResponse.data;
+        
+        console.log(`[Main] Instance module: ${instance.module_name}`);
+        console.log(`[Main] Instance data:`, {
+            module: instance.module_name,
+            rcon_port: instance.rcon_port,
+            rcon_password: instance.rcon_password,
+            rest_host: instance.rest_host,
+            rest_port: instance.rest_port
+        });
+        
+        // Step 2: 모듈에 따라 적절한 프로토콜 선택
+        let protocolUrl;
+        let commandPayload;
+        
+        if (instance.module_name === 'minecraft') {
+            // Minecraft는 RCON 사용 (권장)
+            console.log(`[Main] Using RCON protocol for Minecraft`);
+            protocolUrl = `${IPC_BASE}/api/instance/${id}/rcon`;
+            commandPayload = {
+                command: cmdName,
+                args: command.args || {},
+                instance_id: id,
+                rcon_port: instance.rcon_port,
+                rcon_password: instance.rcon_password
+            };
+        } else if (instance.module_name === 'palworld') {
+            // Palworld는 REST API 사용 (권장)
+            console.log(`[Main] Using REST API protocol for Palworld`);
+            protocolUrl = `${IPC_BASE}/api/instance/${id}/rest`;
+            
+            // 명령 메타데이터에서 http_method와 입력 스키마 읽기
+            const httpMethod = command.commandMetadata?.http_method || 'POST';
+            const inputSchema = command.commandMetadata?.inputs || [];
+            
+            console.log(`[Main] HTTP Method from metadata: ${httpMethod}`);
+            console.log(`[Main] Input schema:`, inputSchema);
+            
+            // 입력값 검증 및 정규화
+            const validatedBody = {};
+            for (const field of inputSchema) {
+                const value = command.args?.[field.name];
+                
+                // 필수 필드 확인
+                if (field.required && (value === undefined || value === null || value === '')) {
+                    throw new Error(`필수 필드 '${field.label}'이(가) 누락되었습니다`);
+                }
+                
+                // 값이 있으면 타입 검증 및 추가
+                if (value !== undefined && value !== null && value !== '') {
+                    if (field.type === 'number') {
+                        const numValue = Number(value);
+                        if (isNaN(numValue)) {
+                            throw new Error(`'${field.label}'은(는) 숫자여야 합니다`);
+                        }
+                        validatedBody[field.name] = numValue;
+                    } else {
+                        validatedBody[field.name] = String(value);
+                    }
+                } else if (field.default !== undefined) {
+                    // 기본값 적용
+                    validatedBody[field.name] = field.default;
+                }
+            }
+            
+            console.log(`[Main] Validated body:`, validatedBody);
+            
+            // REST 요청 구성 - Palworld API 형식: /v1/api/{endpoint}
+            commandPayload = {
+                endpoint: `/v1/api/${cmdName}`,
+                method: httpMethod,
+                body: validatedBody,
+                instance_id: id,
+                rest_host: instance.rest_host,
+                rest_port: instance.rest_port,
+                username: instance.rest_username,
+                password: instance.rest_password
+            };
+
+            // 사용자가 메시지를 인라인으로 입력한 경우 announce 본문으로 설정
+            if (inlineMessage && Object.keys(validatedBody).length === 0) {
+                commandPayload.body = { message: inlineMessage };
+            }
+        } else {
+            // 기타 모듈은 기본 command 엔드포인트 사용
+            console.log(`[Main] Using default command protocol for ${instance.module_name}`);
+            protocolUrl = `${IPC_BASE}/api/instance/${id}/command`;
+            commandPayload = {
+                command: cmdName,
+                args: command.args || {},
+                instance_id: id
+            };
+        }
+        
+        console.log(`[Main] POST request to: ${protocolUrl}`);
+        console.log(`[Main] Payload:`, commandPayload);
+        const response = await axios.post(protocolUrl, commandPayload);
         console.log(`[Main] Response:`, response.data);
+        
         return response.data;
     } catch (error) {
         console.error(`[Main] Error executing command:`, error.message);
+        if (error.response?.data) {
+            return { error: error.response.data.error || error.message };
+        }
         return { error: error.message };
     }
 });

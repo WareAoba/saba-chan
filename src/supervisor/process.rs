@@ -52,7 +52,13 @@ impl ProcessTracker {
             start_time: now,
             last_check: now,
         };
-        let mut processes = self.processes.lock().unwrap();
+        let mut processes = match self.processes.lock() {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::error!("Failed to acquire ProcessTracker lock: {}", e);
+                return Err(anyhow::anyhow!("Mutex lock failed"));
+            }
+        };
         processes.insert(server_name.to_string(), info);
         tracing::info!("Now tracking server '{}' with pid: {}", server_name, pid);
         Ok(())
@@ -61,7 +67,13 @@ impl ProcessTracker {
     /// Get server status by name
     #[allow(dead_code)]
     pub fn get_status(&self, server_name: &str) -> Result<ProcessStatus, ProcessError> {
-        let processes = self.processes.lock().unwrap();
+        let processes = match self.processes.lock() {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::error!("Failed to acquire ProcessTracker lock: {}", e);
+                return Err(ProcessError::NotFound { pid: 0 });
+            }
+        };
         processes
             .get(server_name)
             .map(|p| p.status)
@@ -71,7 +83,13 @@ impl ProcessTracker {
     /// Get PID by server name
     #[allow(dead_code)]
     pub fn get_pid(&self, server_name: &str) -> Result<u32, ProcessError> {
-        let processes = self.processes.lock().unwrap();
+        let processes = match self.processes.lock() {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::error!("Failed to acquire ProcessTracker lock: {}", e);
+                return Err(ProcessError::NotFound { pid: 0 });
+            }
+        };
         processes
             .get(server_name)
             .map(|p| p.pid)
@@ -114,7 +132,13 @@ impl ProcessTracker {
     /// Stop tracking a server by name
     #[allow(dead_code)]
     pub fn untrack(&self, server_name: &str) -> Result<(), ProcessError> {
-        let mut processes = self.processes.lock().unwrap();
+        let mut processes = match self.processes.lock() {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::error!("Failed to acquire ProcessTracker lock: {}", e);
+                return Err(ProcessError::NotFound { pid: 0 });
+            }
+        };
         processes
             .remove(server_name)
             .ok_or(ProcessError::NotFound { pid: 0 })?;
@@ -175,7 +199,7 @@ mod tests {
 
     #[test]
     fn test_untrack() {
-        let mut tracker = ProcessTracker::new();
+        let tracker = ProcessTracker::new();
         tracker.track("minecraft", 1234).unwrap();
         tracker.untrack("minecraft").unwrap();
         assert!(tracker.get_status("minecraft").is_err());

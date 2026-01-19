@@ -15,6 +15,10 @@ import random
 import base64
 import urllib.request
 import urllib.error
+import urllib.parse
+
+# Daemon API endpoint (localhost by default)
+DAEMON_API_URL = os.environ.get('DAEMON_API_URL', 'http://127.0.0.1:57474')
 
 class PalworldRconClient:
     """Palworld RCON client implementing the correct protocol"""
@@ -455,11 +459,11 @@ def status(config):
         }
 
 def command(config):
-    """Execute server command via RCON or stdin"""
+    """Execute server command via daemon REST API"""
     try:
         command_text = config.get("command")
         args = config.get("args", {})
-        pid = config.get("pid")
+        instance_id = config.get("instance_id")
         
         if not command_text:
             return {
@@ -467,125 +471,115 @@ def command(config):
                 "message": "No command specified"
             }
         
-        print(f"[Palworld] Executing command: {command_text} with args: {args}", file=sys.stderr)
+        if not instance_id:
+            return {
+                "success": False,
+                "message": "No instance_id specified"
+            }
         
-        # Process special command formats (used for RCON fallback)
-        formatted_command = command_text
+        print(f"[Palworld] Executing command via daemon: {command_text} with args: {args}", file=sys.stderr)
         
-        # Normalize once for branching
+        # Normalize command for branching
         command_lower = command_text.lower()
         
-        # Special handlers for known commands with parameters (RCON formatting)
-        if command_lower == "say":
-            message = args.get("message", "")
-            if not message:
-                return {"success": False, "message": "Message parameter required"}
-            formatted_command = f"say {message}"
+        # Map commands to REST API endpoints
+        endpoint = None
+        body = None
         
-        elif command_lower == "broadcast":
+        if command_lower == "say" or command_lower == "broadcast":
             message = args.get("message", "")
             if not message:
                 return {"success": False, "message": "Message parameter required"}
-            formatted_command = f"Broadcast {message.replace(' ', '_')}"
+            endpoint = "/api/announce"
+            body = {"message": message}
+        
+        elif command_lower == "kick":
+            userid = args.get("userid") or args.get("player_id") or args.get("steam_id")
+            if not userid:
+                return {"success": False, "message": "userid (player id) is required"}
+            message = args.get("message", "Kicked from server")
+            endpoint = "/api/kick"
+            body = {"userid": userid, "message": message}
+        
+        elif command_lower == "ban":
+            userid = args.get("userid") or args.get("player_id") or args.get("steam_id")
+            if not userid:
+                return {"success": False, "message": "userid (player id) is required"}
+            message = args.get("message", "Banned from server")
+            endpoint = "/api/ban"
+            body = {"userid": userid, "message": message}
+        
+        elif command_lower == "unban":
+            userid = args.get("userid") or args.get("player_id") or args.get("steam_id")
+            if not userid:
+                return {"success": False, "message": "userid (player id) is required"}
+            endpoint = "/api/unban"
+            body = {"userid": userid}
+        
+        elif command_lower == "info":
+            endpoint = "/api/info"
+        
+        elif command_lower == "players":
+            endpoint = "/api/players"
+        
+        elif command_lower == "metrics":
+            endpoint = "/api/metrics"
         
         elif command_lower == "shutdown":
             seconds = int(args.get("seconds", 10))
-            formatted_command = f"Shutdown {seconds} Server_shutting_down"
+            endpoint = "/api/shutdown"
+            body = {"seconds": seconds, "message": "Server shutting down"}
         
-        # REST API configuration
-        rest_host = config.get("rest_host", "127.0.0.1")
-        rest_port = config.get("rest_port", 8212)
-        rest_username = config.get("rest_username", "")
-        rest_password = config.get("rest_password", "")
-        rest_client = PalworldRestClient(host=rest_host, port=rest_port, username=rest_username, password=rest_password)
-        
-        def execute_via_rest():
-            try:
-                if command_lower in ("broadcast", "announce", "say"):
-                    message = args.get("message", "")
-                    if not message:
-                        return {"success": False, "message": "Message parameter required"}
-                    rest_client.announce(message)
-                    return {"success": True, "message": f"✅ Announced via REST: {message}"}
-                
-                if command_lower == "info":
-                    data = rest_client.info()
-                    return {"success": True, "message": "✅ Info fetched via REST", "data": data}
-                
-                if command_lower == "players":
-                    data = rest_client.players()
-                    return {"success": True, "message": "✅ Players fetched via REST", "data": data}
-                
-                if command_lower == "metrics":
-                    data = rest_client.metrics()
-                    return {"success": True, "message": "✅ Metrics fetched via REST", "data": data}
-                
-                if command_lower == "kick":
-                    userid = args.get("userid") or args.get("player_id") or args.get("steam_id")
-                    if not userid:
-                        return {"success": False, "message": "userid (player id) is required"}
-                    message = args.get("message")
-                    rest_client.kick(userid, message)
-                    return {"success": True, "message": f"✅ Kicked {userid} via REST"}
-                
-                if command_lower == "ban":
-                    userid = args.get("userid") or args.get("player_id") or args.get("steam_id")
-                    if not userid:
-                        return {"success": False, "message": "userid (player id) is required"}
-                    message = args.get("message")
-                    rest_client.ban(userid, message)
-                    return {"success": True, "message": f"✅ Banned {userid} via REST"}
-                
-                if command_lower == "unban":
-                    userid = args.get("userid") or args.get("player_id") or args.get("steam_id")
-                    if not userid:
-                        return {"success": False, "message": "userid (player id) is required"}
-                    rest_client.unban(userid)
-                    return {"success": True, "message": f"✅ Unbanned {userid} via REST"}
-                
-                return None  # Not a REST-supported command
-            except Exception as e:
-                print(f"[REST] ❌ {e}", file=sys.stderr)
-                return {"success": False, "message": f"REST error: {e}"}
-        
-        rest_result = execute_via_rest()
-        if rest_result and rest_result.get("success"):
-            return rest_result
-        elif rest_result:
-            print(f"[REST] Falling back to RCON after error: {rest_result.get('message')}", file=sys.stderr)
-        
-        # RCON fallback
-        rcon_host = config.get("rcon_host", "127.0.0.1")
-        rcon_port = config.get("rcon_port", 25575)
-        rcon_password = config.get("rcon_password", "")
-        
-        print(f"[Palworld] Attempting RCON connection to {rcon_host}:{rcon_port}", file=sys.stderr)
-        rcon = PalworldRconClient(host=rcon_host, port=rcon_port, password=rcon_password)
-        
-        if rcon.connect():
-            try:
-                print(f"[RCON] Sending: {formatted_command}", file=sys.stderr)
-                response = rcon.send_command(formatted_command)
-                rcon.disconnect()
-                
-                if response is not None:
-                    print(f"[RCON] Response: {response}", file=sys.stderr)
-                    return {
-                        "success": True,
-                        "message": f"✅ Command executed via RCON: {formatted_command}"
-                    }
-            except Exception as e:
-                print(f"[RCON] RCON failed: {e}", file=sys.stderr)
-                rcon.disconnect()
         else:
-            print(f"[Palworld] RCON connection failed, command will be logged but not executed", file=sys.stderr)
+            # For unknown commands, use generic endpoint
+            endpoint = "/api/command"
+            body = {"command": command_text}
         
-        # If we reach here, log for reference
-        print(f"[Palworld] Command logged: {formatted_command}", file=sys.stderr)
-        return {
-            "success": True,
-            "message": f"Command acknowledged: {formatted_command} (Note: RCON not responding, command not transmitted)"
-        }
+        # Call daemon REST API
+        api_url = f"{DAEMON_API_URL}/api/instance/{instance_id}/rest"
+        
+        payload = json.dumps({
+            "endpoint": endpoint,
+            "method": "POST" if body else "GET",
+            "body": body
+        }).encode('utf-8')
+        
+        try:
+            req = urllib.request.Request(
+                api_url,
+                data=payload,
+                headers={'Content-Type': 'application/json'},
+                method='POST'
+            )
+            
+            with urllib.request.urlopen(req, timeout=5) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                print(f"[Palworld] Daemon REST response: {result}", file=sys.stderr)
+                
+                return {
+                    "success": result.get("success", True),
+                    "message": f"REST API command executed: {command_text}",
+                    "data": result.get("data")
+                }
+        
+        except urllib.error.URLError as e:
+            print(f"[Palworld] Daemon connection error: {e}", file=sys.stderr)
+            return {
+                "success": False,
+                "message": f"Failed to connect to daemon: {str(e)}"
+            }
+        except json.JSONDecodeError as e:
+            print(f"[Palworld] Invalid JSON response from daemon: {e}", file=sys.stderr)
+            return {
+                "success": False,
+                "message": f"Invalid daemon response: {str(e)}"
+            }
+        except Exception as e:
+            print(f"[Palworld] Daemon error: {e}", file=sys.stderr)
+            return {
+                "success": False,
+                "message": f"Failed to execute via daemon: {str(e)}"
+            }
     
     except Exception as e:
         import traceback

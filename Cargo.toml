@@ -28,6 +28,9 @@ zip = "0.6"
 tempfile = "3.8"
 uuid = { version = "1.0", features = ["v4", "serde"] }
 glob = "0.3"
+byteorder = "1.5"
+ureq = { version = "2.9", default-features = true, features = ["json", "tls"] }
+base64 = "0.21"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["processthreadsapi", "winnt", "handleapi"] }

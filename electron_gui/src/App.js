@@ -14,6 +14,12 @@ import {
 } from './components';
 
 function App() {
+    // 로딩 화면 상태
+    const [daemonReady, setDaemonReady] = useState(false);
+    const [initStatus, setInitStatus] = useState('🚀 초기화 중...');
+    const [initProgress, setInitProgress] = useState(0);
+    const [serversInitializing, setServersInitializing] = useState(true); // 서버 상태 안정화 대기
+    
     const [servers, setServers] = useState([]);
     const [modules, setModules] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -62,6 +68,43 @@ function App() {
     const [selectedModuleForAliases, setSelectedModuleForAliases] = useState(null);
     const [editingModuleAliases, setEditingModuleAliases] = useState({});
     const [editingCommandAliases, setEditingCommandAliases] = useState({});
+
+    // 초기화 상태 모니터링
+    useEffect(() => {
+        if (window.api && window.api.onStatusUpdate) {
+            window.api.onStatusUpdate((data) => {
+                console.log('[Init Status]', data.step, ':', data.message);
+                
+                const statusMessages = {
+                    init: '🚀 초기화 시작...',
+                    ui: '🎨 UI 로드 완료',
+                    daemon: '⚙️ 데몬 준비 중...',
+                    modules: '📦 모듈 로드 중...',
+                    instances: '💾 인스턴스 로드 중...',
+                    ready: '✅ 준비 완료!'
+                };
+                
+                const progressValues = {
+                    init: 10,
+                    ui: 20,
+                    daemon: 50,
+                    modules: 70,
+                    instances: 90,
+                    ready: 100
+                };
+                
+                setInitStatus(statusMessages[data.step] || data.message);
+                setInitProgress(progressValues[data.step] || initProgress);
+                
+                // 'ready' 상태에 도달하면 UI 활성화
+                if (data.step === 'ready') {
+                    setTimeout(() => setDaemonReady(true), 600);
+                    // 서버 상태 안정화 대기 (3초 후 초기화 완료)
+                    setTimeout(() => setServersInitializing(false), 3500);
+                }
+            });
+        }
+    }, []);
 
     // 설정 로드
     useEffect(() => {
@@ -189,21 +232,51 @@ function App() {
         throw new Error('Daemon startup timeout');
     };
 
+    // 이전 설정값 추적 (초기 로드와 사용자 변경 구분)
+    const prevSettingsRef = useRef(null);
+    const prevPrefixRef = useRef(null);
+
     // refreshInterval 변경 시 저장 (autoRefresh는 항상 true로 고정)
     useEffect(() => {
-        if (settingsPath) { // 초기 로드 이후에만 저장
-            saveCurrentSettings();
+        // 초기 로드 완료 전에는 저장하지 않음
+        if (!settingsReady || !settingsPath) return;
+        
+        const currentSettings = { autoRefresh, refreshInterval };
+        
+        // 첫 번째 호출 시 초기값 저장만 하고 저장하지 않음
+        if (prevSettingsRef.current === null) {
+            prevSettingsRef.current = currentSettings;
+            return;
         }
-    }, [autoRefresh, refreshInterval]);
+        
+        // 실제로 값이 변경되었을 때만 저장
+        if (prevSettingsRef.current.autoRefresh !== autoRefresh ||
+            prevSettingsRef.current.refreshInterval !== refreshInterval) {
+            console.log('[Settings] Settings changed, saving...');
+            saveCurrentSettings();
+            prevSettingsRef.current = currentSettings;
+        }
+    }, [settingsReady, autoRefresh, refreshInterval]);
 
     // discordPrefix 변경 시 bot config 저장
     useEffect(() => {
-        // 초기 로드 완료 후에만 저장 (빈 문자열 제외)
-        if (settingsReady && settingsPath && discordPrefix && discordPrefix.trim()) {
+        // 초기 로드 완료 전에는 저장하지 않음
+        if (!settingsReady || !settingsPath) return;
+        if (!discordPrefix || !discordPrefix.trim()) return;
+        
+        // 첫 번째 호출 시 초기값 저장만 하고 저장하지 않음
+        if (prevPrefixRef.current === null) {
+            prevPrefixRef.current = discordPrefix;
+            return;
+        }
+        
+        // 실제로 값이 변경되었을 때만 저장
+        if (prevPrefixRef.current !== discordPrefix) {
             console.log('[Settings] Prefix changed, saving bot config:', discordPrefix);
             saveBotConfig(discordPrefix);
+            prevPrefixRef.current = discordPrefix;
         }
-    }, [discordPrefix]);
+    }, [settingsReady, discordPrefix]);
 
     // Discord Bot 상태 폴링
     useEffect(() => {
@@ -251,6 +324,15 @@ function App() {
         };
     }, []);
 
+    // 안전한 토스트 호출 헬퍼
+    const safeShowToast = (message, type, duration) => {
+        if (typeof window.showToast === 'function') {
+            window.showToast(message, type, duration);
+        } else {
+            console.warn('[Toast] window.showToast not ready, message:', message);
+        }
+    };
+
     // Discord Bot 시작
     const handleStartDiscordBot = async () => {
         if (!discordToken) {
@@ -262,7 +344,8 @@ function App() {
             return;
         }
         try {
-            await saveCurrentSettings();
+            // Note: 봇 시작 시 설정 저장은 사용자가 명시적으로 저장 버튼을 눌렀을 때만 수행
+            // 자동시작 시에는 이미 저장된 설정을 사용하므로 저장 불필요
             const botConfig = {
                 token: discordToken,
                 prefix: discordPrefix,
@@ -271,13 +354,13 @@ function App() {
             };
             const result = await window.api.discordBotStart(botConfig);
             if (result.error) {
-                window.showToast(`❌ Discord 봇 시작 실패: ${result.error}`, 'error', 4000);
+                safeShowToast(`❌ Discord 봇 시작 실패: ${result.error}`, 'error', 4000);
             } else {
                 setDiscordBotStatus('running');
-                window.showToast('✅ Discord 봇이 시작되었습니다', 'discord', 3000);
+                safeShowToast('✅ Discord 봇이 시작되었습니다', 'discord', 3000);
             }
         } catch (e) {
-            window.showToast(`❌ Discord 봇 시작 예외: ${e.message}`, 'error', 4000);
+            safeShowToast(`❌ Discord 봇 시작 예외: ${e.message}`, 'error', 4000);
         }
     };
 
@@ -310,13 +393,13 @@ function App() {
         try {
             const result = await window.api.discordBotStop();
             if (result.error) {
-                window.showToast(`❌ Discord 봇 정지 실패: ${result.error}`, 'error', 4000);
+                safeShowToast(`❌ Discord 봇 정지 실패: ${result.error}`, 'error', 4000);
             } else {
                 setDiscordBotStatus('stopped');
-                window.showToast('⏹️ Discord 봇이 정지되었습니다', 'discord', 3000);
+                safeShowToast('⏹️ Discord 봇이 정지되었습니다', 'discord', 3000);
             }
         } catch (e) {
-            window.showToast(`❌ Discord 봇 정지 예외: ${e.message}`, 'error', 4000);
+            safeShowToast(`❌ Discord 봇 정지 예외: ${e.message}`, 'error', 4000);
         }
     };
 
@@ -372,7 +455,13 @@ function App() {
     }, [autoRefresh, refreshInterval]);
 
     useEffect(() => {
-        console.log('Modules state updated:', modules);
+        console.log('[DEBUG] Modules state updated:', modules);
+        if (modules.length > 0) {
+            console.log('[DEBUG] Available modules:', modules.map(m => ({
+                name: m.name,
+                commands: m.commands?.fields?.map(c => c.name) || []
+            })));
+        }
     }, [modules]);
 
     const fetchModules = async () => {
@@ -413,14 +502,14 @@ function App() {
                 console.log('Module aliases loaded:', aliasesMap);
             } else if (data && data.error) {
                 console.error('Module fetch error:', data.error);
-                window.showToast(`❌ 모듈 로드 실패: ${data.error}`, 'error', 4000);
+                safeShowToast(`❌ 모듈 로드 실패: ${data.error}`, 'error', 4000);
             } else {
                 console.warn('No modules data:', data);
-                window.showToast('⚠️ 모듈 목록이 비어있습니다', 'warning', 3000);
+                safeShowToast('⚠️ 모듈 목록이 비어있습니다', 'warning', 3000);
             }
         } catch (error) {
             console.error('Failed to fetch modules:', error);
-            window.showToast(`❌ 모듈 검색 실패: ${error.message}. 데몬을 확인해주세요.`, 'error', 5000);
+            safeShowToast(`❌ 모듈 검색 실패: ${error.message}. 데몬을 확인해주세요.`, 'error', 5000);
             setModal({ type: 'failure', title: '모듈 로드 예외', message: error.message });
         }
     };
@@ -440,7 +529,7 @@ function App() {
             }
         } catch (error) {
             console.error('Failed to fetch servers:', error);
-            window.showToast(`⚠️ 서버 목록 업데이트 실패: ${error.message}`, 'warning', 3000);
+            safeShowToast(`⚠️ 서버 목록 업데이트 실패: ${error.message}`, 'warning', 3000);
             setServers([]);
         } finally {
             setLoading(false);
@@ -896,7 +985,31 @@ function App() {
         }
     };
 
-    if (loading && servers.length === 0) {
+    // 로딩 화면 (Daemon 준비 전)
+    if (!daemonReady) {
+        return (
+            <div className="loading-screen">
+                <TitleBar />
+                <div className="loading-content">
+                    <div className="loading-logo">🐟</div>
+                    <div className="loading-title">Saba-chan</div>
+                    <div className="loading-spinner"></div>
+                    <div className="loading-status">{initStatus}</div>
+                    <div className="loading-progress-bar">
+                        <div 
+                            className="loading-progress-fill" 
+                            style={{ width: `${initProgress}%` }}
+                        ></div>
+                    </div>
+                    <div className="loading-tips">
+                        💡 팁: 여러 게임 서버를 동시에 관리할 수 있습니다
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (loading) {
         return (
             <div className="App">
                 <div className="loading">
@@ -1066,6 +1179,16 @@ function App() {
             )}
 
             <div className="server-list">
+                {/* 서버 상태 초기화 중 오버레이 */}
+                {serversInitializing && servers.length > 0 && (
+                    <div className="servers-initializing-overlay">
+                        <div className="servers-initializing-content">
+                            <div className="servers-initializing-spinner"></div>
+                            <span>서버 상태 확인 중...</span>
+                        </div>
+                    </div>
+                )}
+                
                 {servers.length === 0 ? (
                     <div className="no-servers">
                         <p>No servers configured</p>

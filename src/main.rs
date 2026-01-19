@@ -1,5 +1,6 @@
 mod supervisor;
 mod plugin;
+mod protocol;
 mod ipc;
 mod resource;
 mod config;
@@ -34,12 +35,32 @@ async fn main() -> anyhow::Result<()> {
     // 백그라운드 모니터링 태스크 시작
     let supervisor_monitor = supervisor.clone();
     tokio::spawn(async move {
+        let mut error_count = 0;
+        let max_consecutive_errors = 10;
+        
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
             
             let mut sup = supervisor_monitor.write().await;
-            if let Err(e) = sup.monitor_processes().await {
-                tracing::error!("Monitor error: {}", e);
+            match sup.monitor_processes().await {
+                Ok(_) => {
+                    if error_count > 0 {
+                        tracing::info!("Monitor recovered after {} errors", error_count);
+                    }
+                    error_count = 0;
+                }
+                Err(e) => {
+                    error_count += 1;
+                    if error_count <= 3 || error_count % 10 == 0 {
+                        // 처음 3번과 이후 10번마다 로깅하여 반복 로그 방지
+                        tracing::error!("Monitor error (count: {}): {}", error_count, e);
+                    }
+                    
+                    if error_count >= max_consecutive_errors {
+                        tracing::error!("Monitor has failed {} consecutive times, restarting monitoring", error_count);
+                        error_count = 0; // 리셋하여 무한 루프 방지
+                    }
+                }
             }
         }
     });

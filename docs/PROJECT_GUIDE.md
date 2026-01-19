@@ -185,6 +185,34 @@ c:\Git\Bot\
 
 ---
 
+## ✅ 최근 해결된 문제 (2026-01-19)
+
+### REST 명령어 시스템 완전 구현 ✅
+- **문제**: REST 명령어가 "성공"이라고 표시되지만 실제로 서버에 실행되지 않음
+- **원인**: HTTP 클라이언트가 스텁 코드였음 (실제 HTTP 요청 안 함)
+- **해결**: 
+  - ureq 기반 실제 HTTP 클라이언트 구현
+  - Basic Auth 지원
+  - `response_text` 필드 추가로 서버 응답 표시
+
+### ModuleInfo commands 필드 누락 수정 ✅
+- **문제**: GUI에서 `commandMetadata`가 undefined로 전달됨
+- **원인**: `ModuleInfo` 구조체에 `commands` 필드가 없었음
+- **해결**: 
+  - `src/ipc/mod.rs`의 `ModuleInfo`에 `commands: Option<ModuleCommands>` 추가
+  - `list_modules`, `refresh_modules` 함수에서 commands 매핑 추가
+- **파일**: `src/ipc/mod.rs`
+
+### module.toml 명령어 정의 체계화 ✅
+- **문제**: 명령어 스펙이 JavaScript에 하드코딩되어 있었음
+- **해결**: `module.toml`에 완전한 명령어 정의 추가
+  - `http_method`: GET/POST 구분
+  - `inputs`: 명령어 파라미터 스키마 정의
+  - `endpoint_template`: REST 엔드포인트 패턴
+- **파일**: `modules/palworld/module.toml`
+
+---
+
 ## ❌ 미구현 / 해결 못한 내용
 
 ### 높은 우선순위

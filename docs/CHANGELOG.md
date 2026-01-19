@@ -1,5 +1,201 @@
 # Changelog
 
+## [Unreleased] - 2026-01-20
+
+### 🧪 테스트 강화
+
+#### Rust 백엔드 테스트 추가 ([ipc/mod.rs](src/ipc/mod.rs))
+- **ModuleInfo 직렬화 테스트**: commands 필드 포함 여부 검증
+- **ModuleListResponse 테스트**: 다중 명령어, http_method, inputs 필드 검증
+- **HTTP 메서드 파싱 테스트**: GET/POST/PUT/DELETE 및 기본값 처리 확인
+- **CommandInput 직렬화 테스트**: 필수 필드와 type 필드 직렬화 검증
+- **테스트 결과**: 6개 테스트 모두 통과 ✅
+
+#### React 프론트엔드 테스트 추가 ([App.test.js](electron_gui/src/test/App.test.js))
+- **safeShowToast 안전 호출 테스트**: window.showToast 미정의 시 에러 방지 확인
+- **모듈 목록 API 응답 테스트**: commands 필드 포함 및 http_method 검증
+- **REST 명령어 실행 테스트**: GET/POST 메서드 및 body 전송 검증
+- **연결 실패 테스트**: 서버 목록/모듈 로드 실패 시 토스트 표시 확인
+- **테스트 결과**: 25개 테스트 모두 통과 ✅
+
+### 🐛 버그 수정
+
+#### 서버 종료 후 상태 즉시 반영 안 되는 문제 해결 ([ipc/mod.rs](src/ipc/mod.rs))
+- **문제**: GUI에서 서버 종료해도 상태가 "running"으로 유지됨
+- **원인**: `stop_server_handler`가 프로세스 종료 후 tracker에서 untrack하지 않음
+- **해결**: 서버 종료 성공 시 즉시 `tracker.untrack()` 호출하여 상태 즉시 반영
+- **결과**: 서버 종료 후 바로 "stopped" 상태로 전환, Stop 버튼이 Start로 변경됨
+
+#### safeShowToast 헬퍼 추가 ([App.js](electron_gui/src/App.js))
+- **문제**: Toast 컴포넌트 마운트 전 `window.showToast` 호출 시 에러 발생
+- **해결**: `safeShowToast()` 래퍼 함수로 안전한 호출 보장
+- **영향 범위**: Discord 봇 시작/정지, 모듈 로드, 서버 목록 업데이트
+
+#### Settings 반복 저장 문제 해결 ([App.js](electron_gui/src/App.js))
+- **문제**: 설정이 매 렌더마다 반복 저장됨
+- **원인**: useEffect 의존성과 handleStartDiscordBot에서의 중복 저장 호출
+- **해결**: 
+  - useRef로 이전 값 추적하여 실제 변경 시에만 저장
+  - handleStartDiscordBot에서 불필요한 saveCurrentSettings() 호출 제거
+
+---
+
+## [Unreleased] - 2026-01-19
+
+### 🎮 REST 명령어 시스템 완성
+
+#### HTTP 클라이언트 실제 구현
+- **ureq 기반 실제 HTTP 요청**: 스텁 코드를 실제 HTTP 클라이언트로 교체 ([ipc/mod.rs](src/ipc/mod.rs))
+- **Basic Auth 지원**: 사용자명/비밀번호 인증으로 Palworld REST API 호출
+- **응답 텍스트 캡처**: `response_text` 필드 추가로 서버 응답 메시지 GUI에 표시
+
+#### 모듈 명령어 메타데이터 전달 수정 (핵심 버그 수정)
+- **ModuleInfo 구조체 확장** ([ipc/mod.rs](src/ipc/mod.rs)):
+  - `commands: Option<ModuleCommands>` 필드 추가
+  - `list_modules`, `refresh_modules` 함수에서 commands 매핑 추가
+- **문제**: GUI에서 `commandMetadata`가 undefined로 전달되어 HTTP 메서드 정보 누락
+- **원인**: API 응답에 commands 필드가 포함되지 않았음
+- **해결**: ModuleInfo에 commands 필드 추가하여 React까지 메타데이터 전달
+
+#### module.toml 명령어 정의 완성
+- **Palworld 모듈** ([modules/palworld/module.toml](modules/palworld/module.toml)):
+  - 10개 REST 엔드포인트 완전 정의 (info, players, metrics, settings, announce, save, shutdown, kick, ban, unban)
+  - `http_method` 필드로 GET/POST 구분
+  - `inputs` 스키마로 명령어 파라미터 정의
+
+#### 입력 검증 레이어 추가
+- **React 검증**: CommandModal에서 필수 필드 검증
+- **Node.js 검증**: main.js에서 타입 및 기본값 처리
+
+---
+
+### 🔧 백엔드 안정성 개선 (간헐적 종료 문제 해결)
+
+#### ProcessMonitor 강화
+- **안전한 오류 처리**: PowerShell 명령 실패 시 Panic 대신 빈 목록 반환 ([process_monitor.rs](src/process_monitor.rs))
+- **CSV 파싱 오류 복원력**: 파싱 실패 줄은 무시하고 계속 진행
+- **상세 로깅**: PowerShell 오류 시 경고 레벨로 로깅 추가
+
+#### 모니터링 루프 강화
+- **오류 카운팅 및 자동 리셋** ([main.rs](src/main.rs)): 
+  - 연속 10회 이상 오류 시 자동 리셋하여 무한 루프 방지
+  - 오류 횟수 추적으로 시스템 상태 모니터링
+- **로그 반복 방지**: 첫 3회 오류와 이후 10회마다만 로깅하여 로그 폭증 방지
+- **세밀한 모니터 통계**: 추적 서버 수, 자동 감지 수 등 상세 정보 로깅
+
+#### ProcessTracker 안전성 개선
+- **뮤텍스 데드락 방지** ([process.rs](src/supervisor/process.rs)):
+  - 모든 `.unwrap()` 호출 → `match` 패턴으로 변경
+  - 잠금 획득 실패 시 로깅 후 정적 오류 반환
+  - 데드락 시 Panic 대신 에러 값 반환
+- **모든 메서드에 안전한 오류 처리**:
+  - `track()`, `get_status()`, `get_pid()`, `untrack()` 등 모든 함수 업데이트
+
+#### 코드 품질 개선
+- **경고 제거**:
+  - `mut` 불필요한 변수 제거 ([supervisor/mod.rs](src/supervisor/mod.rs))
+  - snake_case 필드명 적용: `moduleAliases` → `module_aliases` ([ipc/mod.rs](src/ipc/mod.rs))
+  - serde rename으로 이전 필드명 호환성 유지
+- **테스트 강화**:
+  - 모든 ProcessTracker 메서드 단위 테스트 추가
+  - 16개 라이브러리 테스트 모두 통과 ✅
+
+#### 스트레스 테스트 추가
+- **안정성 시뮬레이션** ([tests/stress_test.rs](tests/stress_test.rs)):
+  - test_concurrent_mutex_access: 20 스레드 × 100회 = 2,000회 동시 뮤텍스 획득 ✅
+  - test_process_detection_loop: 50회 PowerShell 호출 → 리소스 누수 없음 ✅
+  - test_error_recovery_in_parsing: CSV 파싱 오류 복원력 ✅
+  - test_error_logging_throttle: 50회 오류 → 13-15개 로그만 출력 ✅
+  - test_thread_safe_hashmap_access: 10 스레드 × 100회 = 1,000회 HashMap 수정 ✅
+  - test_memory_allocation_cleanup: 10,000개 × 1KB 할당/해제 → 메모리 누수 없음 ✅
+  - test_no_panic_on_common_errors: 모든 에러 상황에서 Panic 없음 ✅
+- **테스트 결과**: 7개 테스트 모두 통과 (약 9.5초)
+
+#### 문서 추가
+- [BACKEND_TESTING_GUIDE.md](docs/BACKEND_TESTING_GUIDE.md) 작성:
+  - 개선사항 요약
+  - 테스트 실행 방법 및 결과
+  - 모니터링 명령어
+  - 다음 단계 로드맵
+
+---
+
+### 🎨 GUI 개선
+
+#### 로딩 화면 추가
+- **초기 로딩 화면**: Daemon 준비 전 표시되는 로딩 화면 추가 ([App.js](src/App.js) / [App.css](src/App.css))
+  - 🐟 물고기 로고 + 플로팅 애니메이션 (`@keyframes float`)
+  - 진행률 바 (0% → 100%) + 상태 메시지 (초기화 시작, 데몬 준비, 모듈 로드, 인스턴스 로드, 준비 완료)
+  - 팁 표시 영역 (무작위 팁 순환)
+  - State 추가: `daemonReady`, `initStatus`, `initProgress`
+  - IPC 이벤트: `status:update` 리스너로 진행상황 실시간 업데이트
+- **서버 카드 초기화 로딩**: 서버 상태 안정화 대기 중 오버레이 표시 ([App.js](src/App.js) / [App.css](src/App.css))
+  - 반투명 흰색 배경 + blur 효과 (`.servers-initializing-overlay`)
+  - 스피너 + "서버 상태 확인 중..." 텍스트
+  - State 추가: `serversInitializing`
+  - 타이머: ready 상태 수신 후 3.5초 후 자동 제거
+  - 조건부 렌더링: `serversInitializing && servers.length > 0` 일 때만 표시
+
+#### 앱 구동 방식 개선 (Architecture 변경)
+- **변경 전**: 
+  - Rust Daemon 완료 대기 → GUI 창 렌더링
+  - 프로세스: Daemon 시작 → Daemon 초기화 (3-5초) → GUI 표시 (추가 2-3초)
+  - 총 소요 시간: 5-7초
+- **변경 후**:
+  - GUI 창 즉시 렌더링 (로딩 화면) → Daemon 백그라운드 초기화
+  - 프로세스: GUI 창 표시 (즉시) → 로딩 화면 표시 → Daemon IPC 통신으로 진행률 업데이트
+  - 총 소요 시간: 1-2초 (체감 개선)
+  - 이점: 사용자 반응성 향상, 진행 상황 시각화
+
+#### CSS 애니메이션 개선
+- **Spinner 애니메이션**: `.loading-spinner` 회전 (`@keyframes spin`)
+  - 1.5초 순환, 선형 무한 반복
+- **로고 플로팅 애니메이션**: `.loading-logo` 상하 움직임 (`@keyframes float`)
+  - 3초 순환, ease-in-out
+- **진행률 바 애니메이션**: `.loading-progress-fill` 너비 변경
+  - 0.3초 transition, ease-out
+
+### 🔧 기술적 변경
+
+#### Fluent Icons 시도 후 롤백 (`package.json` / `package-lock.json`)
+- `@fluentui/react-icons` 패키지 설치 시도
+  - npm으로 설치 후 React 컴포넌트에 적용
+  - 이모지 아이콘 → Fluent UI 아이콘 변경 시도
+- 문제 발생: webpack 컴파일 실패
+  - 여러 아이콘 이름 오류 (예: 잘못된 심볼 참조)
+  - 대소문자 구분 문제로 인한 모듈 로드 실패
+- **최종 해결**: 패키지 제거 및 이모지 유지
+  - 아이콘 통합이 필요한 추후 프로젝트에서는 Lucide React 검토 필요
+  - 현재는 이모지로 충분한 시각적 구별성 확보
+
+#### GitHub Actions 수정 (`.github/workflows/test.yml`)
+- **문제**: 
+  - `npm ci`: package.json과 package-lock.json 불일치 오류
+  - npm 캐시: 이전 버전의 오래된 패키지 참조
+- **해결**:
+  - `npm ci` → `npm install` 변경
+  - npm 캐시 설정 제거 (`cache: 'npm'` 라인 삭제)
+  - cache-dependency-path 설정 제거
+- **결과**: CI/CD 파이프라인 성공 (테스트 실행 가능)
+
+### 🧪 테스트 추가
+
+#### 로딩 화면 테스트 ([App.test.js](src/test/App.test.js))
+- **초기 로딩 화면 표시 테스트**: 
+  - `daemonReady=false` 상태에서 로딩 화면 렌더링 확인
+  - 초기화 메시지 표시 검증
+- **ready 상태 전환 테스트**: 
+  - `onStatusUpdate` 콜백으로 `ready` 상태 수신 시뮬레이션
+  - 600ms 후 `daemonReady=true` 전환 확인
+  - 로딩 화면 사라짐 및 메인 UI 표시 검증
+- **서버 카드 초기화 로딩 타이머 테스트**: 
+  - `jest.useFakeTimers()` 사용
+  - ready 상태 수신 후 3.5초 경과 시뮬레이션
+  - `serversInitializing=false` 전환 확인
+  - 오버레이 제거 검증
+
+---
+
 ## [Unreleased] - 2026-01-17
 
 ### 🎯 주요 기능 추가

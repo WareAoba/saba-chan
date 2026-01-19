@@ -49,12 +49,37 @@ function CommandModal({ server, modules, onClose, onExecute }) {
             return;
         }
 
+        // 선택된 command 객체 찾기
+        const selectedCommand = commands.find(c => c.name === cmdName);
+        
+        // 디버깅 로그
+        console.log(`[CommandModal] cmdName: ${cmdName}`);
+        console.log(`[CommandModal] Available commands:`, commands);
+        console.log(`[CommandModal] Selected command:`, selectedCommand);
+
+        // 필수 필드 검증 (selectedCommand가 있으면)
+        if (selectedCommand && selectedCommand.inputs && selectedCommand.inputs.length > 0) {
+            for (const field of selectedCommand.inputs) {
+                const value = commandInputs[field.name];
+                if (field.required && (!value || value === '')) {
+                    onExecute({ 
+                        type: 'failure', 
+                        title: '입력 오류', 
+                        message: `필수 필드 '${field.label}'을(를) 입력하세요` 
+                    });
+                    return;
+                }
+            }
+        }
+
         setLoading(true);
 
         try {
+            // 선택된 command 객체 전체를 전달 (http_method, inputs 포함)
             const result = await window.api.executeCommand(server.id, {
                 command: cmdName,
-                args: commandInputs
+                args: commandInputs,
+                commandMetadata: selectedCommand  // 모듈에서 정의한 명령 메타데이터 (없을 수도 있음)
             });
 
             if (result.error) {

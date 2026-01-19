@@ -11,6 +11,8 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use crate::protocol;
+use crate::protocol::{CommandType, HttpMethod, ServerCommand, client::ProtocolClient};
 
 /// IPC 요청/응답 타입
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,9 +45,11 @@ pub struct CommandResponse {
 pub struct BotConfig {
     pub prefix: String,
     #[serde(default)]
-    pub moduleAliases: HashMap<String, String>,
+    #[serde(rename = "moduleAliases")]
+    pub module_aliases: HashMap<String, String>,
     #[serde(default)]
-    pub commandAliases: HashMap<String, HashMap<String, String>>,
+    #[serde(rename = "commandAliases")]
+    pub command_aliases: HashMap<String, HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,6 +84,7 @@ pub struct ModuleInfo {
     pub path: String,
     pub executable_path: Option<String>,
     pub settings: Option<crate::supervisor::module_loader::ModuleSettings>,
+    pub commands: Option<crate::supervisor::module_loader::ModuleCommands>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -118,6 +123,8 @@ impl IPCServer {
             .route("/api/instances", get(list_instances).post(create_instance))
             .route("/api/instance/:id", get(get_instance).delete(delete_instance).patch(update_instance_settings))
             .route("/api/instance/:id/command", post(execute_command))
+            .route("/api/instance/:id/rcon", post(execute_rcon_command))
+            .route("/api/instance/:id/rest", post(execute_rest_command))
             .route("/api/config/bot", get(get_bot_config).put(save_bot_config))
             .with_state(self.clone());
 
@@ -182,6 +189,7 @@ async fn list_modules(State(state): State<IPCServer>) -> impl IntoResponse {
                     path: m.path,
                     executable_path: m.metadata.executable_path,
                     settings: m.metadata.settings,
+                    commands: m.metadata.commands,
                 })
                 .collect();
             (StatusCode::OK, Json(ModuleListResponse { modules: module_infos })).into_response()
@@ -208,6 +216,7 @@ async fn refresh_modules(State(state): State<IPCServer>) -> impl IntoResponse {
                     path: m.path,
                     executable_path: m.metadata.executable_path,
                     settings: m.metadata.settings,
+                    commands: m.metadata.commands,
                 })
                 .collect();
             tracing::info!("Module cache refreshed. Found {} modules", module_infos.len());
@@ -329,14 +338,23 @@ async fn stop_server_handler(
 ) -> impl IntoResponse {
     let supervisor = state.supervisor.read().await;
     
-    // instance에서 모듈명 조회
+    // instance에서 모듈명과 ID 조회
     let instance = supervisor.instance_store.list()
         .iter()
-        .find(|i| i.name == name);
+        .find(|i| i.name == name)
+        .cloned();
     
     if let Some(inst) = instance {
         match supervisor.stop_server(&name, &inst.module_name, payload.force).await {
-            Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+            Ok(result) => {
+                // 서버 종료 성공 시 tracker에서 즉시 제거하여 상태 즉시 반영
+                if let Err(e) = supervisor.tracker.untrack(&inst.id) {
+                    tracing::warn!("Failed to untrack stopped server '{}': {}", name, e);
+                } else {
+                    tracing::info!("Server '{}' untracked from process tracker", name);
+                }
+                (StatusCode::OK, Json(result)).into_response()
+            }
             Err(e) => {
                 let error = json!({ "error": format!("Failed to stop server: {}", e) });
                 (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
@@ -560,6 +578,186 @@ mod tests {
         });
         assert!(response["success"].as_bool().unwrap());
     }
+
+    // === 2026-01-20 추가: ModuleInfo commands 필드 테스트 ===
+
+    #[test]
+    fn test_module_info_serialization_with_commands() {
+        // ModuleInfo가 commands 필드를 포함하여 직렬화되는지 확인
+        let module_info = ModuleInfo {
+            name: "palworld".to_string(),
+            version: "1.0.0".to_string(),
+            description: Some("Palworld 서버 관리".to_string()),
+            path: "/modules/palworld".to_string(),
+            executable_path: Some("PalServer.exe".to_string()),
+            settings: None,
+            commands: Some(crate::supervisor::module_loader::ModuleCommands {
+                fields: vec![
+                    crate::supervisor::module_loader::CommandField {
+                        name: "players".to_string(),
+                        label: "플레이어 목록".to_string(),
+                        description: Some("현재 접속 중인 플레이어 조회".to_string()),
+                        method: Some("rest".to_string()),
+                        http_method: Some("GET".to_string()),
+                        endpoint_template: Some("/v1/api/players".to_string()),
+                        inputs: vec![],
+                    },
+                ],
+            }),
+        };
+
+        let json = serde_json::to_value(&module_info).unwrap();
+        
+        // commands 필드가 존재하는지 확인
+        assert!(json.get("commands").is_some(), "commands field should exist");
+        
+        // commands.fields가 배열인지 확인
+        let commands = json.get("commands").unwrap();
+        assert!(commands.get("fields").is_some(), "commands.fields should exist");
+        
+        // 첫 번째 명령어가 올바른 http_method를 가지는지 확인
+        let fields = commands.get("fields").unwrap().as_array().unwrap();
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].get("http_method").unwrap().as_str().unwrap(), "GET");
+        assert_eq!(fields[0].get("name").unwrap().as_str().unwrap(), "players");
+    }
+
+    #[test]
+    fn test_module_info_without_commands() {
+        // commands가 None일 때도 정상 직렬화되는지 확인
+        let module_info = ModuleInfo {
+            name: "test".to_string(),
+            version: "1.0.0".to_string(),
+            description: None,
+            path: "/modules/test".to_string(),
+            executable_path: None,
+            settings: None,
+            commands: None,
+        };
+
+        let json = serde_json::to_value(&module_info).unwrap();
+        
+        // commands가 null로 직렬화되어야 함
+        assert!(json.get("commands").is_some());
+        assert!(json.get("commands").unwrap().is_null());
+    }
+
+    #[test]
+    fn test_module_list_response_includes_commands() {
+        // ModuleListResponse가 commands를 포함한 모듈 목록을 반환하는지 확인
+        let response = ModuleListResponse {
+            modules: vec![
+                ModuleInfo {
+                    name: "palworld".to_string(),
+                    version: "1.0.0".to_string(),
+                    description: Some("Palworld".to_string()),
+                    path: "/modules/palworld".to_string(),
+                    executable_path: None,
+                    settings: None,
+                    commands: Some(crate::supervisor::module_loader::ModuleCommands {
+                        fields: vec![
+                            crate::supervisor::module_loader::CommandField {
+                                name: "info".to_string(),
+                                label: "서버 정보".to_string(),
+                                description: None,
+                                method: Some("rest".to_string()),
+                                http_method: Some("GET".to_string()),
+                                endpoint_template: Some("/v1/api/info".to_string()),
+                                inputs: vec![],
+                            },
+                            crate::supervisor::module_loader::CommandField {
+                                name: "announce".to_string(),
+                                label: "공지 전송".to_string(),
+                                description: None,
+                                method: Some("rest".to_string()),
+                                http_method: Some("POST".to_string()),
+                                endpoint_template: Some("/v1/api/announce".to_string()),
+                                inputs: vec![
+                                    crate::supervisor::module_loader::CommandInput {
+                                        name: "message".to_string(),
+                                        label: Some("메시지".to_string()),
+                                        input_type: Some("string".to_string()),
+                                        required: Some(true),
+                                        placeholder: Some("공지 내용".to_string()),
+                                        default: None,
+                                    },
+                                ],
+                            },
+                        ],
+                    }),
+                },
+            ],
+        };
+
+        let json = serde_json::to_value(&response).unwrap();
+        let modules = json.get("modules").unwrap().as_array().unwrap();
+        
+        assert_eq!(modules.len(), 1);
+        
+        let palworld = &modules[0];
+        let commands = palworld.get("commands").unwrap();
+        let fields = commands.get("fields").unwrap().as_array().unwrap();
+        
+        assert_eq!(fields.len(), 2);
+        
+        // GET 메서드 명령어 확인
+        assert_eq!(fields[0].get("http_method").unwrap().as_str().unwrap(), "GET");
+        
+        // POST 메서드 명령어 확인
+        assert_eq!(fields[1].get("http_method").unwrap().as_str().unwrap(), "POST");
+        
+        // inputs 필드 확인
+        let announce_inputs = fields[1].get("inputs").unwrap().as_array().unwrap();
+        assert_eq!(announce_inputs.len(), 1);
+        assert_eq!(announce_inputs[0].get("name").unwrap().as_str().unwrap(), "message");
+        assert_eq!(announce_inputs[0].get("required").unwrap().as_bool().unwrap(), true);
+    }
+
+    #[test]
+    fn test_http_method_parsing() {
+        // HTTP 메서드 파싱 로직 테스트
+        let test_cases = vec![
+            ("GET", crate::protocol::HttpMethod::Get),
+            ("get", crate::protocol::HttpMethod::Get),
+            ("POST", crate::protocol::HttpMethod::Post),
+            ("post", crate::protocol::HttpMethod::Post),
+            ("PUT", crate::protocol::HttpMethod::Put),
+            ("DELETE", crate::protocol::HttpMethod::Delete),
+            ("UNKNOWN", crate::protocol::HttpMethod::Get),  // 기본값은 GET
+            ("", crate::protocol::HttpMethod::Get),
+        ];
+
+        for (input, expected) in test_cases {
+            let result = match input.to_uppercase().as_str() {
+                "POST" => crate::protocol::HttpMethod::Post,
+                "PUT" => crate::protocol::HttpMethod::Put,
+                "DELETE" => crate::protocol::HttpMethod::Delete,
+                _ => crate::protocol::HttpMethod::Get,
+            };
+            assert_eq!(result, expected, "Failed for input: {}", input);
+        }
+    }
+
+    #[test]
+    fn test_command_input_serialization() {
+        // CommandInput 직렬화 테스트
+        let input = crate::supervisor::module_loader::CommandInput {
+            name: "user_id".to_string(),
+            label: Some("유저 ID".to_string()),
+            input_type: Some("string".to_string()),
+            required: Some(true),
+            placeholder: Some("steam_xxxxxxxxx".to_string()),
+            default: None,
+        };
+
+        let json = serde_json::to_value(&input).unwrap();
+        
+        assert_eq!(json.get("name").unwrap().as_str().unwrap(), "user_id");
+        assert_eq!(json.get("label").unwrap().as_str().unwrap(), "유저 ID");
+        assert_eq!(json.get("type").unwrap().as_str().unwrap(), "string");
+        assert_eq!(json.get("required").unwrap().as_bool().unwrap(), true);
+        assert_eq!(json.get("placeholder").unwrap().as_str().unwrap(), "steam_xxxxxxxxx");
+    }
 }
 
 /// POST /api/instance/:id/command - 명령어 실행
@@ -627,8 +825,8 @@ async fn get_bot_config(State(_state): State<IPCServer>) -> impl IntoResponse {
             StatusCode::OK,
             Json(BotConfig {
                 prefix: "!saba".to_string(),
-                moduleAliases: Default::default(),
-                commandAliases: Default::default(),
+                module_aliases: Default::default(),
+                command_aliases: Default::default(),
             }),
         )
             .into_response(),
@@ -680,6 +878,251 @@ async fn save_bot_config(
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({
                 "error": format!("Failed to serialize bot config: {}", e)
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// POST /api/instance/:id/rcon - RCON 명령어 실행
+async fn execute_rcon_command(
+    Path(id): Path<String>,
+    State(state): State<IPCServer>,
+    Json(payload): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let supervisor = state.supervisor.read().await;
+
+    // 인스턴스 확인
+    let instance = match supervisor.instance_store.get(&id) {
+        Some(instance) => instance,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": format!("Instance not found: {}", id)
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    // RCON 커맨드 추출
+    let command = match payload.get("command").and_then(|v| v.as_str()) {
+        Some(cmd) => cmd,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": "Missing 'command' field"
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    // RCON 정보 확인
+    let rcon_host = "127.0.0.1".to_string(); // RCON은 항상 localhost
+
+    let rcon_port = match payload.get("rcon_port").and_then(|v| v.as_u64()) {
+        Some(port) => port as u16,
+        None => instance.rcon_port.unwrap_or(25575),
+    };
+
+    let rcon_password = match payload.get("rcon_password").and_then(|v| v.as_str()) {
+        Some(pass) => pass.to_string(),
+        None => match &instance.rcon_password {
+            Some(pass) => pass.clone(),
+            None => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "error": "RCON password not configured"
+                    })),
+                )
+                    .into_response();
+            }
+        },
+    };
+
+    // RCON 클라이언트 생성 및 실행
+    let mut client = crate::protocol::client::ProtocolClient::new_rcon(
+        rcon_host.clone(),
+        rcon_port,
+        rcon_password.clone(),
+    );
+
+    match client.connect_rcon(std::time::Duration::from_secs(5)) {
+        Ok(_) => {
+            let cmd = crate::protocol::ServerCommand {
+                command_type: crate::protocol::CommandType::Rcon,
+                command: Some(command.to_string()),
+                endpoint: None,
+                method: None,
+                body: None,
+                timeout_secs: payload.get("timeout").and_then(|v| v.as_u64()),
+            };
+
+            match client.execute(cmd) {
+                Ok(response) => (
+                    StatusCode::OK,
+                    Json(json!({
+                        "success": response.success,
+                        "data": response.data,
+                        "error": response.error,
+                        "command": command,
+                        "host": rcon_host,
+                        "port": rcon_port,
+                        "protocol": "rcon"
+                    })),
+                )
+                    .into_response(),
+                Err(e) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({
+                        "error": format!("RCON execution failed: {}", e)
+                    })),
+                )
+                    .into_response(),
+            }
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "error": format!("RCON connection failed: {}", e)
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// POST /api/instance/:id/rest - REST API 명령어 실행
+async fn execute_rest_command(
+    Path(id): Path<String>,
+    State(state): State<IPCServer>,
+    Json(payload): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let supervisor = state.supervisor.read().await;
+
+    // 인스턴스 확인
+    let instance = match supervisor.instance_store.get(&id) {
+        Some(instance) => instance,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": format!("Instance not found: {}", id)
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    // REST 엔드포인트 추출
+    let endpoint = match payload.get("endpoint").and_then(|v| v.as_str()) {
+        Some(ep) => ep,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": "Missing 'endpoint' field"
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    // REST 정보 확인 - payload에서 먼저 찾고, 없으면 instance에서 찾음
+    let rest_host = payload.get("rest_host")
+        .and_then(|v| v.as_str())
+        .or_else(|| instance.rest_host.as_deref())
+        .unwrap_or("127.0.0.1");
+
+    let rest_port = payload.get("rest_port")
+        .and_then(|v| v.as_u64())
+        .map(|p| p as u16)
+        .or(instance.rest_port)
+        .unwrap_or(8212);
+
+    let use_https = payload.get("use_https")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    tracing::info!("REST command for instance {}: host={}:{} endpoint={}", 
+        id, rest_host, rest_port, endpoint);
+
+    // REST 클라이언트 생성
+    let mut client = crate::protocol::client::ProtocolClient::new_rest(
+        rest_host.to_string(),
+        rest_port,
+        use_https,
+    );
+
+    // 선택적 Basic Auth
+    let username = payload.get("username")
+        .and_then(|v| v.as_str())
+        .or_else(|| instance.rest_username.as_deref());
+    let password = payload.get("password")
+        .and_then(|v| v.as_str())
+        .or_else(|| instance.rest_password.as_deref());
+
+    if let (Some(user), Some(pass)) = (username, password) {
+        tracing::debug!("REST: Basic auth provided: {}@{}:{}", user, rest_host, rest_port);
+        // 클라이언트에 인증 정보 설정
+        client = client.with_basic_auth(user.to_string(), pass.to_string());
+    }
+
+    // REST 연결 검증
+    if let Err(e) = client.connect_rest(std::time::Duration::from_secs(5)) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "error": format!("REST connection failed: {}", e)
+            })),
+        )
+            .into_response();
+    }
+
+    // 메서드 결정
+    let method = payload.get("method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("GET");
+
+    let http_method = match method.to_uppercase().as_str() {
+        "POST" => crate::protocol::HttpMethod::Post,
+        "PUT" => crate::protocol::HttpMethod::Put,
+        "DELETE" => crate::protocol::HttpMethod::Delete,
+        _ => crate::protocol::HttpMethod::Get,
+    };
+
+    // 명령어 구성 - endpoint는 모듈에서 완전한 형식으로 전달됨
+    let cmd = crate::protocol::ServerCommand {
+        command_type: crate::protocol::CommandType::Rest,
+        command: None,
+        endpoint: Some(endpoint.to_string()),
+        method: Some(http_method),
+        body: payload.get("body").cloned(),
+        timeout_secs: payload.get("timeout").and_then(|v| v.as_u64()),
+    };
+
+    match client.execute(cmd) {
+        Ok(response) => (
+            StatusCode::OK,
+            Json(json!({
+                "success": response.success,
+                "data": response.data,
+                "error": response.error,
+                "endpoint": endpoint,
+                "method": method,
+                "host": rest_host,
+                "port": rest_port,
+                "protocol": "rest"
+            })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "error": format!("REST execution failed: {}", e)
             })),
         )
             .into_response(),
