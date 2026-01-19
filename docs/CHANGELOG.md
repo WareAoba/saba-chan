@@ -1,8 +1,55 @@
 # Changelog
 
 ## [Unreleased] - 2026-01-20
+### 🤖 Discord 봇 개선
 
-### 🧪 테스트 강화
+#### 메시지 수정 방식 적용 ([discord_bot/index.js](discord_bot/index.js))
+- **변경 전**: "⏳ 실행 중..." 메시지와 "✅ 완료!" 메시지가 각각 전송됨 (2개)
+- **변경 후**: "⏳ 실행 중..." 메시지가 "✅ 완료!"로 수정됨 (1개)
+- **적용 범위**: start, stop, REST 명령어 모두
+- **구현**: `message.reply()` 반환값을 저장 후 `.edit()`로 메시지 내용 갱신
+
+#### 중복 메시지 처리 방지 ([discord_bot/index.js](discord_bot/index.js))
+- **문제**: Discord.js 이벤트 중복으로 같은 명령이 두 번 실행되는 현상
+- **해결**: `processedMessages` Set으로 메시지 ID 캐싱, 5초 TTL로 중복 필터링
+- **효과**: 동일 메시지에 대한 중복 API 호출 방지
+
+### 🎨 GUI 개선
+
+#### 모듈 명령어 별명 UI 확장 ([App.js](electron_gui/src/App.js))
+- **변경 전**: `[aliases.commands]`에 정의된 명령어만 별명 편집 가능
+- **변경 후**: `[commands.fields]`의 REST 명령어도 별명 지정 가능
+- **표시 정보**: 명령어 영문명 + 한글 라벨 (예: `announce (공지사항 전송)`)
+- **대상 명령어**: announce, info, players, metrics, settings, save, shutdown, kick, ban, unban 등
+
+#### CSS 스타일 추가 ([App.css](electron_gui/src/App.css))
+- `.cmd-label` 스타일: 명령어 한글 라벨 표시용
+
+---
+### � Discord 봇 REST 명령어 지원 추가
+
+#### module.toml commands 연동 ([discord_bot/index.js](discord_bot/index.js))
+- **명령어 자동 로드**: `/api/modules`에서 commands 필드 파싱하여 사용 가능한 명령어 목록 구축
+- **REST 명령어 실행**: `!saba palworld players`, `!saba pw info` 등 REST API 호출 지원
+- **입력 파라미터 처리**: 필수 인자 검증 및 누락 시 안내 메시지 표시
+- **응답 포맷팅**: players, info, metrics 등 주요 명령어 결과를 읽기 쉬운 형식으로 출력
+
+#### 도움말 시스템 개선
+- `!saba` - 전체 도움말 + 모듈별 사용 가능 명령어 표시
+- `!saba <모듈>` - 해당 모듈의 모든 명령어 목록 및 사용법 표시
+- `!saba <모듈> <명령어>` - 명령어 실행
+
+#### 사용 예시
+```
+!saba palworld players     → 접속 중인 플레이어 목록
+!saba pw info              → 서버 정보 조회
+!saba palworld announce 안녕하세요  → 공지 전송
+!saba pw kick steam_xxxxx  → 플레이어 강퇴
+```
+
+---
+
+### �🧪 테스트 강화
 
 #### Rust 백엔드 테스트 추가 ([ipc/mod.rs](src/ipc/mod.rs))
 - **ModuleInfo 직렬화 테스트**: commands 필드 포함 여부 검증

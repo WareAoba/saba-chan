@@ -491,8 +491,51 @@ function App() {
                 for (const module of data.modules) {
                     try {
                         const metadata = await window.api.moduleGetMetadata(module.name);
-                        if (metadata && metadata.toml && metadata.toml.aliases) {
-                            aliasesMap[module.name] = metadata.toml.aliases;
+                        if (metadata && metadata.toml) {
+                            // [aliases] 섹션 기본값
+                            const aliases = metadata.toml.aliases || {};
+                            const aliasCommands = aliases.commands || {};
+                            
+                            // [commands.fields]에서 정의된 명령어들 추출
+                            const commandFields = metadata.toml.commands?.fields || [];
+                            
+                            // commands.fields의 명령어들을 aliases.commands 형식으로 병합
+                            const mergedCommands = {};
+                            
+                            // 먼저 aliases.commands에서 정의된 것들 복사
+                            for (const [cmdName, cmdData] of Object.entries(aliasCommands)) {
+                                mergedCommands[cmdName] = {
+                                    aliases: cmdData.aliases || [],
+                                    description: cmdData.description || '',
+                                    label: cmdName  // 기본적으로 영문 이름 사용
+                                };
+                            }
+                            
+                            // commands.fields의 명령어들 추가/보완
+                            for (const cmdField of commandFields) {
+                                const cmdName = cmdField.name;
+                                if (!mergedCommands[cmdName]) {
+                                    // aliases에 없으면 기본 구조 생성
+                                    mergedCommands[cmdName] = {
+                                        aliases: [],
+                                        description: cmdField.description || '',
+                                        label: cmdField.label || cmdName
+                                    };
+                                } else {
+                                    // 이미 있으면 label과 description 보완
+                                    if (!mergedCommands[cmdName].description && cmdField.description) {
+                                        mergedCommands[cmdName].description = cmdField.description;
+                                    }
+                                    if (cmdField.label) {
+                                        mergedCommands[cmdName].label = cmdField.label;
+                                    }
+                                }
+                            }
+                            
+                            aliasesMap[module.name] = {
+                                ...aliases,
+                                commands: mergedCommands
+                            };
                         }
                     } catch (e) {
                         console.warn(`Failed to load metadata for module ${module.name}:`, e);
@@ -711,7 +754,8 @@ function App() {
 
                 normalized[cmd] = {
                     aliases: merged,
-                    description: (data && data.description) || ''
+                    description: (data && data.description) || '',
+                    label: (data && data.label) || cmd
                 };
             }
             setEditingCommandAliases(normalized);
@@ -829,7 +873,7 @@ function App() {
             const defaults = moduleAliasesPerModule[selectedModuleForAliases];
             if (defaults && defaults.commands) {
                 for (const [cmd, data] of Object.entries(defaults.commands)) {
-                    clearedCmds[cmd] = { aliases: [], description: data.description || '' };
+                    clearedCmds[cmd] = { aliases: [], description: data.description || '', label: data.label || cmd };
                 }
             }
             setEditingCommandAliases(clearedCmds);
@@ -910,7 +954,7 @@ function App() {
             const defaults = moduleAliasesPerModule[moduleName];
             if (defaults && defaults.commands) {
                 for (const [cmd, data] of Object.entries(defaults.commands)) {
-                    clearedCmds[cmd] = { aliases: [], description: data.description || '' };
+                    clearedCmds[cmd] = { aliases: [], description: data.description || '', label: data.label || cmd };
                 }
             }
             setEditingCommandAliases(clearedCmds);
@@ -1412,10 +1456,12 @@ function App() {
                                             {Object.entries(editingCommandAliases).map(([cmd, cmdData]) => {
                                                 const aliases = cmdData.aliases || [];
                                                 const description = cmdData.description || '';
+                                                const label = cmdData.label || cmd;
                                                 return (
                                                     <div key={cmd} className="command-alias-editor">
                                                         <div className="cmd-header">
                                                             <span className="cmd-name">{cmd}</span>
+                                                            {label !== cmd && <span className="cmd-label">({label})</span>}
                                                             {description && <span className="cmd-help" title={description}>?</span>}
                                                         </div>
                                                         <input

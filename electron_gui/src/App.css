@@ -1478,6 +1478,13 @@ body {
     text-align: center;
 }
 
+.cmd-label {
+    color: #888;
+    font-size: 11px;
+    margin-left: 6px;
+    font-weight: 400;
+}
+
 .cmd-help {
     display: inline-flex;
     align-items: center;

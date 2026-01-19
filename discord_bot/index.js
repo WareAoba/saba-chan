@@ -42,16 +42,28 @@ function loadBotConfig() {
 // 초기 로드
 loadBotConfig();
 
-// Module metadata (loaded from IPC)
+// Module metadata (loaded from IPC) - includes commands from module.toml
 let moduleMetadata = {};
+// Module commands (parsed from module list API)
+let moduleCommands = {};  // { moduleName: { cmdName: CommandField } }
 
-// Load all module aliases from IPC
+// Load all module aliases and commands from IPC
 async function loadModuleMetadata() {
     try {
         const response = await axios.get(`${IPC_BASE}/api/modules`);
         const modules = response.data.modules || [];
         
         for (const module of modules) {
+            // Store commands from module.toml (via /api/modules)
+            if (module.commands && module.commands.fields) {
+                moduleCommands[module.name] = {};
+                for (const cmd of module.commands.fields) {
+                    moduleCommands[module.name][cmd.name] = cmd;
+                    console.log(`[Discord] Loaded command '${cmd.name}' for module ${module.name} (${cmd.http_method || 'N/A'})`);
+                }
+            }
+            
+            // Load additional metadata (aliases)
             try {
                 const metaRes = await axios.get(`${IPC_BASE}/api/module/${module.name}`);
                 const toml = metaRes.data.toml || {};
@@ -61,9 +73,16 @@ async function loadModuleMetadata() {
                 console.warn(`[Discord] Could not load metadata for module ${module.name}:`, e.message);
             }
         }
+        
+        console.log(`[Discord] Total modules with commands: ${Object.keys(moduleCommands).length}`);
     } catch (error) {
         console.error('[Discord] Failed to load module metadata:', error.message);
     }
+}
+
+// Get available commands for a module (from module.toml commands)
+function getModuleCommands(moduleName) {
+    return moduleCommands[moduleName] || {};
 }
 
 // Get module aliases: GUI > module.toml > default (module name)
@@ -176,9 +195,21 @@ function resolveAlias(input, aliases) {
 
 client.commands = new Collection();
 
+// 중복 메시지 처리 방지를 위한 캐시
+const processedMessages = new Set();
+const MESSAGE_CACHE_TTL = 5000; // 5초
+
 // 메시지 리스닝
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
+
+    // 중복 메시지 처리 방지
+    if (processedMessages.has(message.id)) {
+        console.log(`[Discord] Duplicate message detected: ${message.id}`);
+        return;
+    }
+    processedMessages.add(message.id);
+    setTimeout(() => processedMessages.delete(message.id), MESSAGE_CACHE_TTL);
 
     const content = message.content.trim();
     const prefix = botConfig.prefix;
@@ -193,41 +224,34 @@ client.on('messageCreate', async (message) => {
     // Parse: "!prefix 모듈별명 명령어별명 [추가인자...]"
     const args = content.slice(prefix.length).trim().split(/\s+/);
     
-    if (args.length === 0 || args[0] === '') {
-        // Just prefix, show help
-        // 사용자 커스텀 별명만 수집
-        const userModuleAliases = [];
-        for (const [moduleName, aliasStr] of Object.entries(botConfig.moduleAliases || {})) {
-            if (typeof aliasStr === 'string' && aliasStr.trim().length > 0) {
-                const aliases = aliasStr.split(',').map(a => a.trim()).filter(a => a.length > 0);
-                userModuleAliases.push(...aliases);
+    // Build help message with module commands
+    function buildHelpMessage() {
+        const moduleList = Object.keys(moduleMetadata).join(', ') || '없음';
+        
+        // Collect all commands from all modules
+        let moduleCommandsHelp = '';
+        for (const [modName, cmds] of Object.entries(moduleCommands)) {
+            const cmdNames = Object.keys(cmds);
+            if (cmdNames.length > 0) {
+                moduleCommandsHelp += `\n• **${modName}**: ${cmdNames.map(c => `\`${c}\``).join(', ')}`;
             }
         }
-        const moduleList = [...new Set([...Object.keys(moduleMetadata), ...userModuleAliases])].join(', ');
 
-        const userCommandAliases = [];
-        for (const [moduleName, cmds] of Object.entries(botConfig.commandAliases || {})) {
-            if (typeof cmds === 'object') {
-                for (const [cmd, aliasStr] of Object.entries(cmds)) {
-                    if (typeof aliasStr === 'string' && aliasStr.trim().length > 0) {
-                        const aliases = aliasStr.split(',').map(a => a.trim()).filter(a => a.length > 0);
-                        userCommandAliases.push(...aliases);
-                    }
-                }
-            }
-        }
-        const commandList = [...new Set(['start', 'stop', 'status', ...userCommandAliases])].join(', ');
-
-        await message.reply(
+        return (
             `📖 **${prefix} 사용법**\n` +
             `• \`${prefix} 목록\` - 서버 목록 조회\n` +
-            `• \`${prefix} <모듈> 실행\` - 서버 시작\n` +
-            `• \`${prefix} <모듈> 정지\` - 서버 정지\n` +
-            `• \`${prefix} <모듈> 상태\` - 서버 상태\n` +
+            `• \`${prefix} <모듈> start\` - 서버 시작\n` +
+            `• \`${prefix} <모듈> stop\` - 서버 정지\n` +
+            `• \`${prefix} <모듈> status\` - 서버 상태\n` +
+            `• \`${prefix} <모듈> <명령어>\` - REST 명령어 실행\n` +
             `• \`${prefix} 도움\` - 이 도움말\n\n` +
-            `**사용 가능한 모듈:** ${moduleList || '없음'}\n` +
-            `**사용 가능한 명령어:** ${commandList || '없음'}`
+            `**사용 가능한 모듈:** ${moduleList}\n` +
+            `**모듈별 명령어:**${moduleCommandsHelp || ' (없음)'}`
         );
+    }
+    
+    if (args.length === 0 || args[0] === '') {
+        await message.reply(buildHelpMessage());
         return;
     }
 
@@ -236,38 +260,39 @@ client.on('messageCreate', async (message) => {
 
     // Special commands
     if (firstArg === '도움' || firstArg === 'help') {
-        // 사용자 커스텀 별명만 수집
-        const userModuleAliases = [];
-        for (const [moduleName, aliasStr] of Object.entries(botConfig.moduleAliases || {})) {
-            if (typeof aliasStr === 'string' && aliasStr.trim().length > 0) {
-                const aliases = aliasStr.split(',').map(a => a.trim()).filter(a => a.length > 0);
-                userModuleAliases.push(...aliases);
-            }
-        }
-        const moduleList = [...new Set([...Object.keys(moduleMetadata), ...userModuleAliases])].join(', ');
+        await message.reply(buildHelpMessage());
+        return;
+    }
 
-        const userCommandAliases = [];
-        for (const [moduleName, cmds] of Object.entries(botConfig.commandAliases || {})) {
-            if (typeof cmds === 'object') {
-                for (const [cmd, aliasStr] of Object.entries(cmds)) {
-                    if (typeof aliasStr === 'string' && aliasStr.trim().length > 0) {
-                        const aliases = aliasStr.split(',').map(a => a.trim()).filter(a => a.length > 0);
-                        userCommandAliases.push(...aliases);
-                    }
-                }
+    // Module-specific help: "!prefix palworld" or "!prefix pw"
+    if (!secondArg) {
+        const moduleName = resolveAlias(firstArg, moduleAliases);
+        const cmds = getModuleCommands(moduleName);
+        const cmdList = Object.keys(cmds);
+        
+        if (cmdList.length > 0) {
+            let cmdHelp = `📖 **${moduleName} 명령어**\n`;
+            cmdHelp += `• \`${prefix} ${firstArg} start\` - 서버 시작\n`;
+            cmdHelp += `• \`${prefix} ${firstArg} stop\` - 서버 정지\n`;
+            cmdHelp += `• \`${prefix} ${firstArg} status\` - 서버 상태\n\n`;
+            cmdHelp += `**REST 명령어:**\n`;
+            
+            for (const [cmdName, cmdMeta] of Object.entries(cmds)) {
+                const inputsStr = cmdMeta.inputs && cmdMeta.inputs.length > 0
+                    ? cmdMeta.inputs.map(i => i.required ? `<${i.name}>` : `[${i.name}]`).join(' ')
+                    : '';
+                cmdHelp += `• \`${prefix} ${firstArg} ${cmdName}${inputsStr ? ' ' + inputsStr : ''}\` - ${cmdMeta.label || cmdName}\n`;
             }
+            
+            await message.reply(cmdHelp);
+        } else {
+            await message.reply(
+                `📖 **${moduleName} 명령어**\n` +
+                `• \`${prefix} ${firstArg} start\` - 서버 시작\n` +
+                `• \`${prefix} ${firstArg} stop\` - 서버 정지\n` +
+                `• \`${prefix} ${firstArg} status\` - 서버 상태`
+            );
         }
-        const commandList = [...new Set(['start', 'stop', 'status', ...userCommandAliases])].join(', ');
-
-        await message.reply(
-            `📖 **${prefix} 사용법**\n` +
-            `• \`${prefix} 목록\` - 서버 목록 조회\n` +
-            `• \`${prefix} <모듈> 실행\` - 서버 시작\n` +
-            `• \`${prefix} <모듈> 정지\` - 서버 정지\n` +
-            `• \`${prefix} <모듈> 상태\` - 서버 상태\n\n` +
-            `**사용 가능한 모듈:** ${moduleList || '없음'}\n` +
-            `**사용 가능한 명령어:** ${commandList || '없음'}`
-        );
         return;
     }
 
@@ -288,15 +313,11 @@ client.on('messageCreate', async (message) => {
     }
 
     // Module + Command pattern: "!prefix 모듈 명령어"
-    if (!secondArg) {
-        await message.reply(`❓ 명령어가 필요합니다. 예: \`${prefix} ${firstArg} 실행\``);
-        return;
-    }
-
     const moduleName = resolveAlias(firstArg, moduleAliases);
     const commandName = resolveAlias(secondArg, commandAliases);
+    const extraArgs = args.slice(2);  // 추가 인자들
 
-    console.log(`[Discord] ${message.author.tag}: ${prefix} ${firstArg} ${secondArg} → module=${moduleName}, command=${commandName}`);
+    console.log(`[Discord] ${message.author.tag}: ${prefix} ${firstArg} ${secondArg} → module=${moduleName}, command=${commandName}, args=${extraArgs.join(' ')}`);
 
     try {
         // Find server by module name
@@ -309,27 +330,127 @@ client.on('messageCreate', async (message) => {
             return;
         }
 
-        // Execute command
+        // Built-in commands (start, stop, status)
         if (commandName === 'start') {
-            await message.reply(`⏳ **${server.name}** 서버를 시작합니다...`);
+            const statusMsg = await message.reply(`⏳ **${server.name}** 서버를 시작합니다...`);
             const result = await axios.post(`${IPC_BASE}/api/server/${server.name}/start`, {
                 module: server.module,
                 config: {}
             });
-            await message.reply(`✅ **${server.name}** 시작 요청 완료!`);
+            await statusMsg.edit(`✅ **${server.name}** 시작 요청 완료!`);
+            return;
         } 
         else if (commandName === 'stop') {
-            await message.reply(`⏳ **${server.name}** 서버를 정지합니다...`);
+            const statusMsg = await message.reply(`⏳ **${server.name}** 서버를 정지합니다...`);
             const result = await axios.post(`${IPC_BASE}/api/server/${server.name}/stop`, { force: false });
-            await message.reply(`✅ **${server.name}** 정지 요청 완료!`);
+            await statusMsg.edit(`✅ **${server.name}** 정지 요청 완료!`);
+            return;
         }
         else if (commandName === 'status') {
             const statusText = server.status === 'running' ? '🟢 실행 중' : '⚪ 정지됨';
             const pidText = server.pid ? `PID: ${server.pid}` : '';
             await message.reply(`📊 **${server.name}** 상태: ${statusText} ${pidText}`);
+            return;
         }
-        else {
-            await message.reply(`❓ 알 수 없는 명령어: "${secondArg}" (${commandName})`);
+
+        // Check if command exists in module.toml commands
+        const cmds = getModuleCommands(moduleName);
+        const cmdMeta = cmds[commandName];
+
+        if (!cmdMeta) {
+            // List available commands
+            const availableCmds = Object.keys(cmds);
+            if (availableCmds.length > 0) {
+                await message.reply(
+                    `❓ 알 수 없는 명령어: "${secondArg}" (${commandName})\n` +
+                    `**사용 가능한 명령어:** ${availableCmds.map(c => `\`${c}\``).join(', ')}`
+                );
+            } else {
+                await message.reply(`❓ 알 수 없는 명령어: "${secondArg}" (${commandName})`);
+            }
+            return;
+        }
+
+        // Execute REST command from module.toml
+        if (cmdMeta.method === 'rest') {
+            const endpoint = cmdMeta.endpoint_template || `/v1/api/${commandName}`;
+            const httpMethod = (cmdMeta.http_method || 'GET').toUpperCase();
+            
+            // Build request body from extra args and inputs schema
+            const body = {};
+            if (cmdMeta.inputs && cmdMeta.inputs.length > 0) {
+                for (let i = 0; i < cmdMeta.inputs.length; i++) {
+                    const input = cmdMeta.inputs[i];
+                    if (extraArgs[i]) {
+                        body[input.name] = extraArgs[i];
+                    } else if (input.required) {
+                        await message.reply(
+                            `❌ 필수 인자가 부족합니다: \`${input.name}\`\n` +
+                            `사용법: \`${prefix} ${firstArg} ${secondArg} <${input.name}>\`\n` +
+                            `설명: ${input.label || input.name}`
+                        );
+                        return;
+                    }
+                }
+            }
+
+            const statusMsg = await message.reply(`⏳ **${server.name}** - \`${commandName}\` 실행 중...`);
+
+            // Call REST API via daemon
+            const payload = {
+                endpoint,
+                method: httpMethod,
+                body,
+                instance_id: server.id,
+                rest_host: server.rest_host || '127.0.0.1',
+                rest_port: server.rest_port || 8212,
+                username: server.rest_username || 'admin',
+                password: server.rest_password || ''
+            };
+
+            console.log(`[Discord] REST call: ${httpMethod} ${endpoint}`, payload);
+
+            const result = await axios.post(`${IPC_BASE}/api/instance/${server.id}/rest`, payload);
+
+            if (result.data.success) {
+                // Format response based on command type
+                let responseText = '';
+                const data = result.data.data;
+
+                if (commandName === 'players' && data?.response?.players) {
+                    const players = data.response.players;
+                    if (players.length === 0) {
+                        responseText = '현재 접속 중인 플레이어가 없습니다.';
+                    } else {
+                        responseText = `**접속 중인 플레이어 (${players.length}명)**\n`;
+                        responseText += players.map(p => 
+                            `• **${p.name}** - Lv.${p.level || '?'} (Ping: ${p.ping || '?'}ms)`
+                        ).join('\n');
+                    }
+                } else if (commandName === 'info' && data?.response) {
+                    const info = data.response;
+                    responseText = `**서버 정보**\n` +
+                        `• 버전: ${info.version || 'N/A'}\n` +
+                        `• 서버명: ${info.servername || 'N/A'}\n` +
+                        `• 설명: ${info.description || 'N/A'}`;
+                } else if (commandName === 'metrics' && data?.response) {
+                    const m = data.response;
+                    responseText = `**서버 메트릭**\n` +
+                        `• 현재 플레이어: ${m.currentplayernum || 0}/${m.maxplayernum || 0}\n` +
+                        `• 서버 FPS: ${m.serverfps || 'N/A'}\n` +
+                        `• 가동 시간: ${m.uptime ? Math.floor(m.uptime / 60) + '분' : 'N/A'}`;
+                } else if (data?.response_text) {
+                    responseText = data.response_text || '(응답 없음)';
+                } else {
+                    responseText = '✅ 명령어 실행 완료!';
+                }
+
+                await statusMsg.edit(`📡 **${server.name}** - \`${commandName}\`\n${responseText}`);
+            } else {
+                await statusMsg.edit(`❌ 실행 실패: ${result.data.error || '알 수 없는 오류'}`);
+            }
+        } else {
+            await message.reply(`❓ 지원되지 않는 명령어 타입: ${cmdMeta.method || 'unknown'}`);
         }
 
     } catch (error) {
