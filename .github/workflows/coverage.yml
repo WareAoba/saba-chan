@@ -33,8 +33,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd electron_gui && npm ci
-          cd ../discord_bot && npm ci
+          cd electron_gui && rm -rf node_modules && npm ci
+          cd ../discord_bot && rm -rf node_modules && npm ci
 
       - name: Generate Rust coverage
         run: cargo tarpaulin --test daemon_integration --out Xml --output-dir coverage
