@@ -7,11 +7,17 @@ pub struct PluginManager {
     python_cmd: Option<String>,
 }
 
-impl PluginManager {
-    pub fn new() -> Self {
+impl Default for PluginManager {
+    fn default() -> Self {
         Self {
             python_cmd: detect_python_command().map(|s| s.to_string()),
         }
+    }
+}
+
+impl PluginManager {
+    pub fn new() -> Self {
+        Self::default()
     }
     
     pub fn detect_python(&self) -> Option<String> {

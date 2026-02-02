@@ -11,16 +11,22 @@ pub struct RunningProcess {
 
 pub struct ProcessMonitor;
 
+impl Default for ProcessMonitor {
+    fn default() -> Self {
+        Self
+    }
+}
+
 impl ProcessMonitor {
     pub fn new() -> Self {
-        Self
+        Self::default()
     }
 
     /// Windows에서 실행 중인 모든 프로세스 목록 가져오기 (PowerShell 사용)
     pub fn get_running_processes() -> Result<Vec<RunningProcess>> {
         // PowerShell 명령 실행 (오류 시 안전하게 처리)
         let output = match Command::new("powershell")
-            .args(&[
+            .args([
                 "-NoProfile",
                 "-Command",
                 "Get-Process | Select-Object Id,ProcessName,Path | ConvertTo-Csv -NoTypeInformation",
@@ -96,7 +102,6 @@ impl ProcessMonitor {
     pub fn is_running(pid: u32) -> bool {
         #[cfg(target_os = "windows")]
         {
-            use std::ptr;
             use winapi::um::processthreadsapi::OpenProcess;
             use winapi::um::winnt::PROCESS_QUERY_INFORMATION;
             use winapi::um::handleapi::CloseHandle;

@@ -35,11 +35,17 @@ pub struct ProcessTracker {
     processes: Mutex<HashMap<String, ProcessInfo>>,
 }
 
-impl ProcessTracker {
-    pub fn new() -> Self {
+impl Default for ProcessTracker {
+    fn default() -> Self {
         Self {
             processes: Mutex::new(HashMap::new()),
         }
+    }
+}
+
+impl ProcessTracker {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Track a server process by name
@@ -209,9 +215,15 @@ mod tests {
 /// 명령어 실행 관리자
 pub struct ProcessManager;
 
+impl Default for ProcessManager {
+    fn default() -> Self {
+        Self
+    }
+}
+
 impl ProcessManager {
     pub fn new() -> Self {
-        Self
+        Self::default()
     }
 
     /// 인스턴스에 명령어 실행

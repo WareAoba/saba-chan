@@ -99,7 +99,7 @@ impl ProtocolClient {
             CommandType::Both => {
                 // RCON 먼저 시도
                 match self.execute_rcon(cmd.clone()) {
-                    Ok(response) => return Ok(response),
+                    Ok(response) => Ok(response),
                     Err(e) => {
                         tracing::warn!("RCON failed, attempting REST: {}", e);
                         // RCON 실패 시 REST로 폴백

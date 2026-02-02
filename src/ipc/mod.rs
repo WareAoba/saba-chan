@@ -245,39 +245,39 @@ async fn get_module_metadata(
                     Ok(content) => {
                         match toml::from_str::<serde_json::Value>(&content) {
                             Ok(parsed) => {
-                                return (StatusCode::OK, Json(json!({
+                                (StatusCode::OK, Json(json!({
                                     "name": &module.metadata.name,
                                     "version": &module.metadata.version,
                                     "description": &module.metadata.description,
                                     "path": &module.path,
                                     "metadata": &module.metadata,
                                     "toml": parsed,
-                                }))).into_response();
+                                }))).into_response()
                             }
                             Err(_) => {
-                                return (StatusCode::OK, Json(json!({
+                                (StatusCode::OK, Json(json!({
                                     "name": &module.metadata.name,
                                     "version": &module.metadata.version,
                                     "description": &module.metadata.description,
                                     "path": &module.path,
                                     "metadata": &module.metadata,
-                                }))).into_response();
+                                }))).into_response()
                             }
                         }
                     }
                     Err(_) => {
-                        return (StatusCode::OK, Json(json!({
+                        (StatusCode::OK, Json(json!({
                             "name": &module.metadata.name,
                             "version": &module.metadata.version,
                             "description": &module.metadata.description,
                             "path": &module.path,
                             "metadata": &module.metadata,
-                        }))).into_response();
+                        }))).into_response()
                     }
                 }
             } else {
                 let error = json!({ "error": format!("Module '{}' not found", name) });
-                return (StatusCode::NOT_FOUND, Json(error)).into_response();
+                (StatusCode::NOT_FOUND, Json(error)).into_response()
             }
         }
         Err(e) => {
@@ -1081,10 +1081,10 @@ async fn execute_rest_command(
     // 선택적 Basic Auth
     let username = payload.get("username")
         .and_then(|v| v.as_str())
-        .or_else(|| instance.rest_username.as_deref());
+        .or(instance.rest_username.as_deref());
     let password = payload.get("password")
         .and_then(|v| v.as_str())
-        .or_else(|| instance.rest_password.as_deref());
+        .or(instance.rest_password.as_deref());
 
     if let (Some(user), Some(pass)) = (username, password) {
         tracing::debug!("REST: Basic auth provided: {}@{}:{}", user, rest_host, rest_port);

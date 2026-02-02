@@ -21,22 +21,31 @@ pub struct StateMachine {
     pub state: State,
 }
 
+impl Default for StateMachine {
+    fn default() -> Self {
+        Self { state: State::Stopped }
+    }
+}
+
 impl StateMachine {
     #[allow(dead_code)]
     pub fn new() -> Self {
-        Self { state: State::Stopped }
+        Self::default()
     }
 
     #[allow(dead_code)]
     pub fn can_transition(&self, to: &State) -> bool {
-        match (&self.state, to) {
-            (State::Stopped, State::Starting) => true,
-            (State::Starting, State::Running) | (State::Starting, State::Crashed) => true,
-            (State::Running, State::Stopping) | (State::Running, State::Crashed) => true,
-            (State::Stopping, State::Stopped) | (State::Stopping, State::Crashed) => true,
-            (State::Crashed, State::Stopped) => true,
-            _ => false,
-        }
+        matches!(
+            (&self.state, to),
+            (State::Stopped, State::Starting)
+                | (State::Starting, State::Running)
+                | (State::Starting, State::Crashed)
+                | (State::Running, State::Stopping)
+                | (State::Running, State::Crashed)
+                | (State::Stopping, State::Stopped)
+                | (State::Stopping, State::Crashed)
+                | (State::Crashed, State::Stopped)
+        )
     }
 
     #[allow(dead_code)]
