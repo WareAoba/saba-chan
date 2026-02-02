@@ -82,9 +82,9 @@ impl RconClient {
             // 패킷 생성: [ID][타입][페이로드][패딩]
             let mut packet = Vec::new();
             packet.write_i32::<LittleEndian>(request_id as i32)
-                .map_err(|e| ProtocolError::ProtocolError(format!("Failed to write request ID: {}", e)))?;
+                .map_err(|e| ProtocolError::Protocol(format!("Failed to write request ID: {}", e)))?;
             packet.write_i32::<LittleEndian>(command_type)
-                .map_err(|e| ProtocolError::ProtocolError(format!("Failed to write command type: {}", e)))?;
+                .map_err(|e| ProtocolError::Protocol(format!("Failed to write command type: {}", e)))?;
             packet.extend_from_slice(payload.as_bytes());
             packet.extend_from_slice(&[0, 0]); // 패딩
 
@@ -93,9 +93,9 @@ impl RconClient {
 
             // 전송: [크기][패킷]
             stream.write_u32::<LittleEndian>(packet_size)
-                .map_err(|e| ProtocolError::ProtocolError(format!("Failed to write packet size: {}", e)))?;
+                .map_err(|e| ProtocolError::Protocol(format!("Failed to write packet size: {}", e)))?;
             stream.write_all(&packet)
-                .map_err(|e| ProtocolError::ProtocolError(format!("Failed to send packet: {}", e)))?;
+                .map_err(|e| ProtocolError::Protocol(format!("Failed to send packet: {}", e)))?;
         }
 
         // 응답 수신
@@ -109,21 +109,21 @@ impl RconClient {
 
         // 패킷 크기 읽기
         let packet_size = stream.read_u32::<LittleEndian>()
-            .map_err(|e| ProtocolError::ProtocolError(format!("Failed to read packet size: {}", e)))? as usize;
+            .map_err(|e| ProtocolError::Protocol(format!("Failed to read packet size: {}", e)))? as usize;
 
         if packet_size > 4096 {
-            return Err(ProtocolError::ProtocolError(format!("Packet size too large: {}", packet_size)));
+            return Err(ProtocolError::Protocol(format!("Packet size too large: {}", packet_size)));
         }
 
         // 패킷 데이터 읽기
         let mut packet = vec![0u8; packet_size];
         stream.read_exact(&mut packet)
-            .map_err(|e| ProtocolError::ProtocolError(format!("Failed to read packet data: {}", e)))?;
+            .map_err(|e| ProtocolError::Protocol(format!("Failed to read packet data: {}", e)))?;
 
         // Request ID 읽기
         let mut cursor = &packet[..];
         let request_id = cursor.read_i32::<LittleEndian>()
-            .map_err(|e| ProtocolError::ProtocolError(format!("Failed to parse request ID: {}", e)))?;
+            .map_err(|e| ProtocolError::Protocol(format!("Failed to parse request ID: {}", e)))?;
 
         Ok(request_id)
     }

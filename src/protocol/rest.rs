@@ -27,6 +27,7 @@ impl RestClient {
     }
 
     /// Basic Auth 설정
+    #[allow(dead_code)]
     pub fn with_basic_auth(mut self, username: String, password: String) -> Self {
         self.username = Some(username);
         self.password = Some(password);
@@ -102,7 +103,7 @@ impl RestClient {
         let resp = match resp {
             Ok(r) => r,
             Err(e) => {
-                return Err(ProtocolError::ProtocolError(format!(
+                return Err(ProtocolError::Protocol(format!(
                     "HTTP {} {} failed: {}",
                     method,
                     url,
@@ -130,7 +131,7 @@ impl RestClient {
                 error: None,
             })
         } else {
-            Err(ProtocolError::ProtocolError(format!(
+            Err(ProtocolError::Protocol(format!(
                 "HTTP {} {} failed with status {}: {}",
                 method,
                 url,

@@ -223,12 +223,13 @@ impl Default for ProcessManager {
 
 impl ProcessManager {
     pub fn new() -> Self {
-        Self::default()
+        Self
     }
 
     /// 인스턴스에 명령어 실행
     /// 참고: 이 메서드는 실제로 Supervisor에서 호출되어야 하며,
     /// Supervisor가 module_loader를 제공해야 함
+    #[allow(dead_code)]
     pub async fn execute_command(
         &self,
         instance_id: &str,

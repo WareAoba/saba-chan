@@ -41,6 +41,7 @@ impl ProtocolClient {
     }
 
     /// RCON과 REST 모두 사용 (RCON 우선, 실패 시 REST로 fallback)
+    #[allow(dead_code)]
     pub fn new_both(
         rcon_host: String, rcon_port: u16, rcon_password: String,
         rest_host: String, rest_port: u16, use_https: bool,
@@ -53,6 +54,7 @@ impl ProtocolClient {
     }
 
     /// 모든 프로토콜 연결
+    #[allow(dead_code)]
     pub fn connect_all(&mut self, timeout: Duration) -> Result<(), ProtocolError> {
         if let Some(rcon) = &mut self.rcon {
             if let Err(e) = rcon.connect(timeout) {

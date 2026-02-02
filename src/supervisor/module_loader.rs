@@ -107,6 +107,7 @@ pub struct SettingField {
 pub struct LoadedModule {
     pub metadata: ModuleMetadata,
     pub path: String,  // 압축 해제된 디렉토리 또는 원본 디렉토리 절대 경로
+    #[allow(dead_code)]
     pub is_zip: bool,  // ZIP에서 로드되었는지 여부
 }
 

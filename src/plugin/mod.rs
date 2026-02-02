@@ -3,6 +3,7 @@ use std::process::Command;
 use serde_json::Value;
 
 /// Plugin manager for executing Python modules
+#[allow(dead_code)]
 pub struct PluginManager {
     python_cmd: Option<String>,
 }
@@ -15,6 +16,7 @@ impl Default for PluginManager {
     }
 }
 
+#[allow(dead_code)]
 impl PluginManager {
     pub fn new() -> Self {
         Self::default()

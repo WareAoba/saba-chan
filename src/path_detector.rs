@@ -2,8 +2,10 @@ use std::path::PathBuf;
 use anyhow::Result;
 use glob::glob;
 
+#[allow(dead_code)]
 pub struct PathDetector;
 
+#[allow(dead_code)]
 impl PathDetector {
     /// 모듈 설정에 정의된 common_paths에서 서버 실행 파일 찾기
     pub fn detect_server_path(

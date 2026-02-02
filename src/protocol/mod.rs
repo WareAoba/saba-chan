@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 /// 프로토콜 통신 오류 타입
 #[derive(Error, Debug)]
+#[allow(dead_code)]
 pub enum ProtocolError {
     #[error("Connection failed: {0}")]
     ConnectionError(String),
@@ -20,8 +21,8 @@ pub enum ProtocolError {
     #[error("Command error: {0}")]
     CommandError(String),
 
-    #[error("Protocol error: {0}")]
-    ProtocolError(String),
+    #[error("Protocol-specific error: {0}")]
+    Protocol(String),
 
     #[error("Invalid configuration: {0}")]
     ConfigError(String),
@@ -97,6 +98,7 @@ pub struct ServerResponse {
 }
 
 impl ServerResponse {
+    #[allow(dead_code)]
     pub fn success(data: serde_json::Value) -> Self {
         Self {
             success: true,
@@ -105,6 +107,7 @@ impl ServerResponse {
         }
     }
 
+    #[allow(dead_code)]
     pub fn error(error: String) -> Self {
         Self {
             success: false,

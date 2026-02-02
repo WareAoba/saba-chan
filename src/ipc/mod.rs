@@ -34,6 +34,7 @@ pub struct CommandRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct CommandResponse {
     pub success: bool,
     pub message: String,

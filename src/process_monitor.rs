@@ -18,8 +18,9 @@ impl Default for ProcessMonitor {
 }
 
 impl ProcessMonitor {
+    #[allow(dead_code)]
     pub fn new() -> Self {
-        Self::default()
+        Self
     }
 
     /// Windows에서 실행 중인 모든 프로세스 목록 가져오기 (PowerShell 사용)

@@ -13,6 +13,7 @@ pub struct Supervisor {
     #[allow(dead_code)]
     pub module_loader: ModuleLoader,
     pub instance_store: InstanceStore,
+    #[allow(dead_code)]
     pub process_manager: ProcessManager,
 }
 
