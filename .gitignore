@@ -50,3 +50,13 @@ __pycache__/
 *.exe
 !run-daemon.bat
 !start-all.bat
+
+# Test coverage
+coverage/
+*.profraw
+*.profdata
+electron_gui/coverage/
+discord_bot/coverage/
+
+# GitHub Actions
+.github/cache/

@@ -42,7 +42,7 @@ impl Supervisor {
     }
 
     /// Start a server by name (e.g., "minecraft-main")
-    #[allow(dead_code)]
+    /// Called by IPC API: POST /api/server/:name/start
     pub async fn start_server(&self, server_name: &str, module_name: &str, config: Value) -> Result<Value> {
         tracing::info!("Starting server '{}' with module '{}'", server_name, module_name);
 
@@ -97,7 +97,7 @@ impl Supervisor {
     }
 
     /// Stop a server by name
-    #[allow(dead_code)]
+    /// Called by IPC API: POST /api/server/:name/stop
     pub async fn stop_server(&self, server_name: &str, module_name: &str, force: bool) -> Result<Value> {
         tracing::info!("Stopping server '{}' (force: {})", server_name, force);
 
@@ -131,7 +131,7 @@ impl Supervisor {
     }
 
     /// Get server status by name
-    #[allow(dead_code)]
+    /// Called by IPC API: GET /api/server/:name/status
     pub async fn get_server_status(&self, server_name: &str, module_name: &str) -> Result<Value> {
         tracing::info!("Getting status for server '{}'", server_name);
 
@@ -208,19 +208,26 @@ impl Supervisor {
         let module = self.module_loader.get_module(module_name)?;
         let module_path = format!("{}/lifecycle.py", module.path);
 
+        // 모듈의 기본값 가져오기 (하드코딩 대신 모듈 설정 사용)
+        let default_rcon_port = module.metadata.default_rcon_port();
+        let default_rest_port = module.metadata.default_rest_port();
+        let default_rest_host = module.metadata.default_rest_host();
+
         // 명령어 config 구성 (RCON 설정 포함)
         let pid = self.tracker.get_pid(&instance.id).ok();
         let config = json!({
             "command": command,
             "args": args,
+            "protocol_mode": &instance.protocol_mode,  // "rest" 또는 "rcon"
             "rcon_host": "127.0.0.1",
-            "rcon_port": instance.rcon_port.unwrap_or(25575),
+            "rcon_port": instance.rcon_port.unwrap_or(default_rcon_port),
             "rcon_password": instance.rcon_password.clone().unwrap_or_default(),
-            "rest_host": instance.rest_host.clone().unwrap_or_else(|| "127.0.0.1".to_string()),
-            "rest_port": instance.rest_port.unwrap_or(8212),
+            "rest_host": instance.rest_host.clone().unwrap_or(default_rest_host),
+            "rest_port": instance.rest_port.unwrap_or(default_rest_port),
             "rest_username": instance.rest_username.clone().unwrap_or_default(),
             "rest_password": instance.rest_password.clone().unwrap_or_default(),
             "pid": pid,
+            "instance_id": instance_id,
         });
 
         // 플러그인 실행
@@ -323,4 +330,78 @@ pub async fn run() -> Result<()> {
     supervisor.initialize().await?;
     supervisor.monitor().await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn test_supervisor_initialization() {
+        let supervisor = Supervisor::new("./modules");
+        
+        // Supervisor가 정상적으로 생성되었는지 확인
+        assert_eq!(supervisor.instance_store.list().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_module_discovery() {
+        let supervisor = Supervisor::new("./modules");
+        
+        // 모듈 발견 (modules 디렉토리가 없어도 에러 없이 빈 리스트 반환)
+        let modules = supervisor.list_modules();
+        assert!(modules.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_refresh_modules() {
+        let supervisor = Supervisor::new("./modules");
+        
+        // 첫 번째 발견
+        let _ = supervisor.list_modules();
+        
+        // 캐시 무효화 및 재발견
+        let refreshed = supervisor.refresh_modules();
+        assert!(refreshed.is_ok());
+    }
+
+    #[test]
+    fn test_discord_bot_config_path() {
+        let path = get_discord_bot_config_path();
+        
+        // 경로에 discord_bot/bot-config.json이 포함되어야 함
+        assert!(path.contains("discord_bot"));
+        assert!(path.contains("bot-config.json"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_command_error_handling() {
+        let supervisor = Supervisor::new("./modules");
+        
+        // 존재하지 않는 인스턴스에 명령어 실행 시도
+        let result = supervisor
+            .execute_command(
+                "nonexistent-instance",
+                "test-module",
+                "test-command",
+                json!({})
+            )
+            .await;
+        
+        // 에러가 발생해야 함
+        assert!(result.is_err());
+        
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("Instance not found"));
+    }
+
+    #[tokio::test]
+    async fn test_process_monitoring() {
+        let mut supervisor = Supervisor::new("./modules");
+        
+        // 모니터링이 에러 없이 실행되어야 함
+        let result = supervisor.monitor_processes().await;
+        assert!(result.is_ok());
+    }
 }

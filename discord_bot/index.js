@@ -3,6 +3,7 @@ const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const { buildModuleAliasMap, buildCommandAliasMap, resolveAlias } = require('./utils/aliasResolver');
 
 const client = new Client({ 
     intents: [
@@ -11,7 +12,7 @@ const client = new Client({
         GatewayIntentBits.MessageContent
     ] 
 });
-const IPC_BASE = process.env.IPC_BASE || 'http://localhost:57474';
+const IPC_BASE = process.env.IPC_BASE || 'http://127.0.0.1:57474';
 
 // Load bot config (written by Electron main process)
 let botConfig = {
@@ -85,114 +86,6 @@ function getModuleCommands(moduleName) {
     return moduleCommands[moduleName] || {};
 }
 
-// Get module aliases: GUI > module.toml > default (module name)
-function getModuleAliases() {
-    const combined = { ...botConfig.moduleAliases };
-    
-    // Add default: module name itself as alias
-    for (const moduleName of Object.keys(moduleMetadata)) {
-        if (!Object.values(combined).includes(moduleName)) {
-            combined[moduleName] = moduleName;
-        }
-    }
-    
-    // Add all module aliases from module.toml [aliases].module_aliases
-    for (const [moduleName, metadata] of Object.entries(moduleMetadata)) {
-        if (metadata.aliases && metadata.aliases.module_aliases) {
-            for (const alias of metadata.aliases.module_aliases) {
-                combined[alias] = moduleName;
-            }
-        }
-    }
-    
-    // Add custom GUI aliases with default fallback
-    for (const [moduleName, customAlias] of Object.entries(botConfig.moduleAliases || {})) {
-        const aliasStr = customAlias.trim();
-        if (aliasStr.length > 0) {
-            // User provided custom alias
-            combined[aliasStr] = moduleName;
-        } else {
-            // Empty: use default (module name)
-            combined[moduleName] = moduleName;
-        }
-    }
-    
-    return combined;
-}
-
-function getCommandAliases() {
-    const combined = {};
-    
-    // Add default: command name itself as alias
-    const defaultCommands = ['start', 'stop', 'status', 'difficulty'];
-    for (const cmd of defaultCommands) {
-        combined[cmd] = cmd;
-    }
-    
-    // Add all command aliases from module.toml [aliases].commands
-    for (const [moduleName, metadata] of Object.entries(moduleMetadata)) {
-        if (metadata.aliases && metadata.aliases.commands) {
-            for (const [cmdName, cmdData] of Object.entries(metadata.aliases.commands)) {
-                // Default: command name itself
-                combined[cmdName] = cmdName;
-                
-                // Handle both array format (legacy) and object format (new)
-                const aliases = cmdData.aliases || (Array.isArray(cmdData) ? cmdData : []);
-                for (const alias of aliases) {
-                    combined[alias] = cmdName;
-                }
-            }
-        }
-    }
-    
-    // Add custom GUI aliases from bot-config.json (flatten nested structure)
-    // botConfig.commandAliases: {module: {cmd: "alias1,alias2"}}
-    for (const [moduleName, moduleCommands] of Object.entries(botConfig.commandAliases || {})) {
-        if (typeof moduleCommands === 'object' && moduleCommands !== null) {
-            for (const [cmdName, aliasStr] of Object.entries(moduleCommands)) {
-                // Always add command name itself
-                combined[cmdName] = cmdName;
-                
-                if (typeof aliasStr === 'string' && aliasStr.trim().length > 0) {
-                    // Parse comma-separated aliases
-                    const aliases = aliasStr.split(',').map(a => a.trim()).filter(a => a.length > 0);
-                    for (const alias of aliases) {
-                        combined[alias] = cmdName;
-                    }
-                }
-            }
-        }
-    }
-    
-    return combined;
-}
-
-// Reverse lookup helper (case-insensitive)
-function resolveAlias(input, aliases) {
-    const lowerInput = input.toLowerCase();
-    
-    // Check if input is an alias (case-insensitive)
-    for (const [key, value] of Object.entries(aliases)) {
-        if (key.toLowerCase() === lowerInput) {
-            // Ensure value is a string
-            return typeof value === 'string' ? value : String(value);
-        }
-    }
-    
-    // Check if input is already the actual value (case-insensitive)
-    const values = Object.values(aliases);
-    for (const val of values) {
-        // Skip non-string values
-        if (typeof val !== 'string') continue;
-        if (val.toLowerCase() === lowerInput) {
-            return val;
-        }
-    }
-    
-    // Return input as-is (might be direct module/command name)
-    return input;
-}
-
 client.commands = new Collection();
 
 // 중복 메시지 처리 방지를 위한 캐시
@@ -218,8 +111,8 @@ client.on('messageCreate', async (message) => {
     if (!content.startsWith(prefix)) return;
 
     // Get current aliases (dynamic from modules + GUI)
-    const moduleAliases = getModuleAliases();
-    const commandAliases = getCommandAliases();
+    const moduleAliases = buildModuleAliasMap(botConfig, moduleMetadata);
+    const commandAliases = buildCommandAliasMap(botConfig, moduleMetadata);
 
     // Parse: "!prefix 모듈별명 명령어별명 [추가인자...]"
     const args = content.slice(prefix.length).trim().split(/\s+/);
@@ -371,11 +264,16 @@ client.on('messageCreate', async (message) => {
             return;
         }
 
-        // Execute REST command from module.toml
-        if (cmdMeta.method === 'rest') {
-            const endpoint = cmdMeta.endpoint_template || `/v1/api/${commandName}`;
-            const httpMethod = (cmdMeta.http_method || 'GET').toUpperCase();
-            
+        // Execute REST command from module.toml (method = 'rest' or 'dual')
+        if (cmdMeta.method === 'rest' || cmdMeta.method === 'dual') {
+            // 서버 실행 상태 확인
+            if (server.status !== 'running') {
+                const moduleErrors = moduleMetadata[moduleName]?.errors || {};
+                const errorMsg = moduleErrors.server_not_running || '서버가 실행중이지 않습니다. 먼저 서버를 시작해주세요';
+                await message.reply(`❌ **${server.name}**: ${errorMsg}`);
+                return;
+            }
+
             // Build request body from extra args and inputs schema
             const body = {};
             if (cmdMeta.inputs && cmdMeta.inputs.length > 0) {
@@ -396,58 +294,109 @@ client.on('messageCreate', async (message) => {
 
             const statusMsg = await message.reply(`⏳ **${server.name}** - \`${commandName}\` 실행 중...`);
 
-            // Call REST API via daemon
-            const payload = {
-                endpoint,
-                method: httpMethod,
-                body,
-                instance_id: server.id,
-                rest_host: server.rest_host || '127.0.0.1',
-                rest_port: server.rest_port || 8212,
-                username: server.rest_username || 'admin',
-                password: server.rest_password || ''
-            };
-
-            console.log(`[Discord] REST call: ${httpMethod} ${endpoint}`, payload);
-
-            const result = await axios.post(`${IPC_BASE}/api/instance/${server.id}/rest`, payload);
+            let result;
+            
+            // 'dual' 메서드는 Python 모듈을 통해 실행 (플레이어 ID 변환 포함)
+            // 'rest' 메서드는 REST API 직접 호출
+            if (cmdMeta.method === 'dual') {
+                // 모듈 커맨드 엔드포인트 사용 (플레이어 ID 자동 변환)
+                const payload = {
+                    command: commandName,
+                    args: body,
+                    instance_id: server.id
+                };
+                console.log(`[Discord] Module call: ${commandName}`, payload);
+                result = await axios.post(`${IPC_BASE}/api/instance/${server.id}/command`, payload);
+            } else {
+                // REST 직접 호출
+                const endpoint = cmdMeta.endpoint_template || `/v1/api/${commandName}`;
+                const httpMethod = (cmdMeta.http_method || 'GET').toUpperCase();
+                
+                const payload = {
+                    endpoint,
+                    method: httpMethod,
+                    body,
+                    instance_id: server.id,
+                    rest_host: server.rest_host || '127.0.0.1',
+                    rest_port: server.rest_port || 8212,
+                    username: server.rest_username || 'admin',
+                    password: server.rest_password || ''
+                };
+                console.log(`[Discord] REST call: ${httpMethod} ${endpoint}`, payload);
+                result = await axios.post(`${IPC_BASE}/api/instance/${server.id}/rest`, payload);
+            }
 
             if (result.data.success) {
                 // Format response based on command type
                 let responseText = '';
                 const data = result.data.data;
 
-                if (commandName === 'players' && data?.response?.players) {
-                    const players = data.response.players;
+                console.log(`[Discord] Response data structure:`, JSON.stringify(data, null, 2));
+
+                // Palworld REST API 응답은 data 안에 바로 들어있음
+                const apiResponse = data;
+
+                if (commandName === 'players') {
+                    // players 응답: data.players 배열
+                    const players = apiResponse?.players || [];
                     if (players.length === 0) {
                         responseText = '현재 접속 중인 플레이어가 없습니다.';
                     } else {
                         responseText = `**접속 중인 플레이어 (${players.length}명)**\n`;
                         responseText += players.map(p => 
-                            `• **${p.name}** - Lv.${p.level || '?'} (Ping: ${p.ping || '?'}ms)`
+                            `• **${p.name}** - Lv.${p.level || '?'} (${p.userid || 'Unknown ID'})`
                         ).join('\n');
                     }
-                } else if (commandName === 'info' && data?.response) {
-                    const info = data.response;
+                } else if (commandName === 'info') {
+                    // info 응답: data에 바로 서버 정보
                     responseText = `**서버 정보**\n` +
-                        `• 버전: ${info.version || 'N/A'}\n` +
-                        `• 서버명: ${info.servername || 'N/A'}\n` +
-                        `• 설명: ${info.description || 'N/A'}`;
-                } else if (commandName === 'metrics' && data?.response) {
-                    const m = data.response;
+                        `• 버전: ${apiResponse?.version || 'N/A'}\n` +
+                        `• 서버명: ${apiResponse?.servername || 'N/A'}\n` +
+                        `• 설명: ${apiResponse?.description || 'N/A'}`;
+                } else if (commandName === 'metrics') {
+                    // metrics 응답
                     responseText = `**서버 메트릭**\n` +
-                        `• 현재 플레이어: ${m.currentplayernum || 0}/${m.maxplayernum || 0}\n` +
-                        `• 서버 FPS: ${m.serverfps || 'N/A'}\n` +
-                        `• 가동 시간: ${m.uptime ? Math.floor(m.uptime / 60) + '분' : 'N/A'}`;
-                } else if (data?.response_text) {
-                    responseText = data.response_text || '(응답 없음)';
+                        `• 현재 플레이어: ${apiResponse?.currentplayernum || 0}/${apiResponse?.maxplayernum || 0}\n` +
+                        `• 서버 FPS: ${apiResponse?.serverfps || 'N/A'}\n` +
+                        `• 가동 시간: ${apiResponse?.uptime ? Math.floor(apiResponse.uptime / 60) + '분' : 'N/A'}`;
+                } else if (commandName === 'announce') {
+                    responseText = '✅ 공지사항이 전송되었습니다';
+                } else if (commandName === 'save') {
+                    responseText = '✅ 월드가 저장되었습니다';
+                } else if (commandName === 'kick' || commandName === 'ban') {
+                    responseText = `✅ 명령어가 실행되었습니다`;
                 } else {
-                    responseText = '✅ 명령어 실행 완료!';
+                    // 기타 명령어는 data를 그대로 표시하거나 성공 메시지
+                    if (typeof apiResponse === 'string') {
+                        responseText = apiResponse;
+                    } else if (apiResponse && Object.keys(apiResponse).length > 0) {
+                        responseText = `\`\`\`json\n${JSON.stringify(apiResponse, null, 2)}\n\`\`\``;
+                    } else {
+                        responseText = '✅ 명령어 실행 완료!';
+                    }
                 }
 
                 await statusMsg.edit(`📡 **${server.name}** - \`${commandName}\`\n${responseText}`);
             } else {
-                await statusMsg.edit(`❌ 실행 실패: ${result.data.error || '알 수 없는 오류'}`);
+                // 에러 메시지를 모듈별 정의에서 가져오기
+                const errorText = result.data.error || '알 수 없는 오류';
+                const moduleErrors = moduleMetadata[moduleName]?.errors || {};
+                
+                let friendlyError = errorText;
+                // 모듈에 정의된 에러 메시지 매칭
+                if (errorText.includes('인증') || errorText.includes('auth')) {
+                    friendlyError = moduleErrors.auth_failed || errorText;
+                } else if (errorText.includes('플레이어') || errorText.includes('player')) {
+                    friendlyError = moduleErrors.player_not_found || errorText;
+                } else if (errorText.includes('내부 오류') || errorText.includes('500')) {
+                    friendlyError = moduleErrors.internal_server_error || errorText;
+                } else if (errorText.includes('REST API')) {
+                    friendlyError = moduleErrors.rest_api_disabled || errorText;
+                } else if (errorText.includes('RCON')) {
+                    friendlyError = moduleErrors.rcon_disabled || errorText;
+                }
+                
+                await statusMsg.edit(`❌ **${server.name}** 실행 실패\n${friendlyError}`);
             }
         } else {
             await message.reply(`❓ 지원되지 않는 명령어 타입: ${cmdMeta.method || 'unknown'}`);
@@ -455,7 +404,36 @@ client.on('messageCreate', async (message) => {
 
     } catch (error) {
         console.error('[Discord] Command error:', error.message);
-        await message.reply(`❌ 오류: ${error.response?.data?.error || error.message}`);
+        const moduleErrors = moduleMetadata[moduleName]?.errors || {};
+        
+        let errorMsg = error.message;
+        
+        // 네트워크 에러 구분
+        if (error.code === 'ECONNREFUSED') {
+            errorMsg = moduleErrors.connection_refused || '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요';
+        } else if (error.code === 'ETIMEDOUT') {
+            errorMsg = moduleErrors.timeout || '서버 응답 시간 초과. 서버 상태를 확인해주세요';
+        } else if (error.code === 'ENOTFOUND') {
+            errorMsg = '서버를 찾을 수 없습니다. 네트워크 설정을 확인해주세요';
+        } else if (error.response) {
+            // HTTP 에러 응답이 있는 경우
+            const status = error.response.status;
+            const data = error.response.data;
+            
+            if (status === 401 || status === 403) {
+                errorMsg = moduleErrors.auth_failed || '인증 실패';
+            } else if (status === 404) {
+                errorMsg = '명령어를 찾을 수 없습니다';
+            } else if (status === 500) {
+                errorMsg = moduleErrors.internal_server_error || '서버 내부 오류';
+            } else if (status === 503) {
+                errorMsg = moduleErrors.server_not_running || '서버가 응답하지 않습니다';
+            } else {
+                errorMsg = data?.error || error.message;
+            }
+        }
+        
+        await message.reply(`❌ 오류: ${errorMsg}`);
     }
 });
 
@@ -483,8 +461,8 @@ client.once('ready', async () => {
     console.log('Loading module metadata from IPC...');
     await loadModuleMetadata();
     
-    const moduleAliases = getModuleAliases();
-    const commandAliases = getCommandAliases();
+    const moduleAliases = buildModuleAliasMap(botConfig, moduleMetadata);
+    const commandAliases = buildCommandAliasMap(botConfig, moduleMetadata);
     
     console.log(`Module aliases (combined): ${JSON.stringify(moduleAliases)}`);
     console.log(`Command aliases (combined): ${JSON.stringify(commandAliases)}`);

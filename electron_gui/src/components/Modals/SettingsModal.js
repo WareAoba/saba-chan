@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './Modals.css';
+import { Icon } from '../Icon';
 
 function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChange }) {
     const [activeTab, setActiveTab] = useState('general');
@@ -26,7 +27,7 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
         <div className="settings-modal-overlay" onClick={onClose}>
             <div className="settings-modal-container" onClick={(e) => e.stopPropagation()}>
                 <div className="settings-modal-header">
-                    <h2>⚙️ GUI 설정</h2>
+                    <h2><Icon name="settings" size="md" /> GUI 설정</h2>
                     <button className="settings-modal-close" onClick={onClose}>✕</button>
                 </div>
 

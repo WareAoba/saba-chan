@@ -24,6 +24,12 @@ pub struct ServerInstance {
     pub rest_username: Option<String>, // REST API 사용자명 (Basic Auth)
     #[serde(default)]
     pub rest_password: Option<String>, // REST API 비밀번호 (Basic Auth)
+    #[serde(default = "default_protocol_mode")]
+    pub protocol_mode: String,         // 명령어 실행 방식: "rest", "rcon", "auto"
+}
+
+fn default_protocol_mode() -> String {
+    "rest".to_string()
 }
 
 impl ServerInstance {
@@ -43,6 +49,7 @@ impl ServerInstance {
             rest_port: None,
             rest_username: None,
             rest_password: None,
+            protocol_mode: "rest".to_string(),
         }
     }
 }

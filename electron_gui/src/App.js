@@ -10,13 +10,25 @@ import {
     TitleBar,
     SettingsModal,
     DiscordBotModal,
-    BackgroundModal
+    BackgroundModal,
+    Icon
 } from './components';
 
 function App() {
+    // 테스트 환경 감지 (Jest 실행 중인지 확인)
+    const isTestEnv = process.env.NODE_ENV === 'test' || typeof jest !== 'undefined';
+    
+    // 테스트 환경에서만 로그 억제
+    const debugLog = (...args) => {
+        if (!isTestEnv) console.log(...args);
+    };
+    const debugWarn = (...args) => {
+        if (!isTestEnv) console.warn(...args);
+    };
+    
     // 로딩 화면 상태
     const [daemonReady, setDaemonReady] = useState(false);
-    const [initStatus, setInitStatus] = useState('🚀 초기화 중...');
+    const [initStatus, setInitStatus] = useState('초기화 중...');
     const [initProgress, setInitProgress] = useState(0);
     const [serversInitializing, setServersInitializing] = useState(true); // 서버 상태 안정화 대기
     
@@ -76,12 +88,12 @@ function App() {
                 console.log('[Init Status]', data.step, ':', data.message);
                 
                 const statusMessages = {
-                    init: '🚀 초기화 시작...',
-                    ui: '🎨 UI 로드 완료',
-                    daemon: '⚙️ 데몬 준비 중...',
-                    modules: '📦 모듈 로드 중...',
-                    instances: '💾 인스턴스 로드 중...',
-                    ready: '✅ 준비 완료!'
+                    init: '초기화 시작...',
+                    ui: 'UI 로드 완료',
+                    daemon: '데몬 준비 중...',
+                    modules: '모듈 로드 중...',
+                    instances: '인스턴스 로드 중...',
+                    ready: '준비 완료!'
                 };
                 
                 const progressValues = {
@@ -110,20 +122,22 @@ function App() {
     useEffect(() => {
         const loadSettings = async () => {
             try {
+                const isTestEnv = process.env.NODE_ENV === 'test' || typeof jest !== 'undefined';
+                
                 // 1. GUI 설정 로드
                 const settings = await window.api.settingsLoad();
-                console.log('[Settings] Loaded:', settings);
+                if (!isTestEnv) console.log('[Settings] Loaded:', settings);
                 if (settings) {
                     setAutoRefresh(settings.autoRefresh ?? true);
                     setRefreshInterval(settings.refreshInterval ?? 2000);
                     setModulesPath(settings.modulesPath || '');
                     setDiscordToken(settings.discordToken || '');
                     setDiscordAutoStart(settings.discordAutoStart ?? false);
-                    console.log('[Settings] discordAutoStart:', settings.discordAutoStart, 'discordToken:', settings.discordToken ? 'YES' : 'NO');
+                    if (!isTestEnv) console.log('[Settings] discordAutoStart:', settings.discordAutoStart, 'discordToken:', settings.discordToken ? 'YES' : 'NO');
                 }
                 const path = await window.api.settingsGetPath();
                 setSettingsPath(path);
-                console.log('[Settings] GUI settings loaded from:', path);
+                if (!isTestEnv) console.log('[Settings] GUI settings loaded from:', path);
                 
                 // 2. Bot 설정 로드 (별도)
                 const botCfg = await window.api.botConfigLoad();
@@ -131,12 +145,12 @@ function App() {
                     setDiscordPrefix(botCfg.prefix || '!saba');
                     setDiscordModuleAliases(botCfg.moduleAliases || {});
                     setDiscordCommandAliases(botCfg.commandAliases || {});
-                    console.log('[Settings] Bot config loaded, prefix:', botCfg.prefix);
+                    if (!isTestEnv) console.log('[Settings] Bot config loaded, prefix:', botCfg.prefix);
                 }
                 
                 // 설정 로드 완료
                 setSettingsReady(true);
-                console.log('[Settings] Ready flag set to true');
+                if (!isTestEnv) console.log('[Settings] Ready flag set to true');
             } catch (error) {
                 console.error('[Settings] Failed to load settings:', error);
                 setSettingsReady(true);
@@ -208,7 +222,7 @@ function App() {
                     throw error;
                 }
                 const delay = initialDelay * Math.pow(2, i);
-                console.warn(`Attempt ${i + 1} failed, retrying in ${delay}ms...`, error.message);
+                debugWarn(`Attempt ${i + 1} failed, retrying in ${delay}ms...`, error.message);
                 await new Promise((resolve) => setTimeout(resolve, delay));
             }
         }
@@ -327,9 +341,10 @@ function App() {
     // 안전한 토스트 호출 헬퍼
     const safeShowToast = (message, type, duration) => {
         if (typeof window.showToast === 'function') {
-            window.showToast(message, type, duration);
+            return window.showToast(message, type, duration);
         } else {
             console.warn('[Toast] window.showToast not ready, message:', message);
+            return null;
         }
     };
 
@@ -354,37 +369,40 @@ function App() {
             };
             const result = await window.api.discordBotStart(botConfig);
             if (result.error) {
-                safeShowToast(`❌ Discord 봇 시작 실패: ${result.error}`, 'error', 4000);
+                safeShowToast(`Discord 봇 시작 실패: ${result.error}`, 'error', 4000);
             } else {
                 setDiscordBotStatus('running');
-                safeShowToast('✅ Discord 봇이 시작되었습니다', 'discord', 3000);
+                safeShowToast('Discord 봇이 시작되었습니다', 'discord', 3000);
             }
         } catch (e) {
-            safeShowToast(`❌ Discord 봇 시작 예외: ${e.message}`, 'error', 4000);
+            safeShowToast(`Discord 봇 시작 예외: ${e.message}`, 'error', 4000);
         }
     };
 
     // 자동시작 (설정과 봇 상태 모두 준비되면 실행)
     useEffect(() => {
-        console.log('[Auto-start] Effect triggered', {
-            botStatusReady,
-            settingsReady,
-            autoStartDone: autoStartDoneRef.current,
-            discordAutoStart,
-            tokenExists: !!discordToken,
-            prefixExists: !!discordPrefix,
-            botStatus: discordBotStatus
-        });
+        const isTestEnv = process.env.NODE_ENV === 'test' || typeof jest !== 'undefined';
+        if (!isTestEnv) {
+            console.log('[Auto-start] Effect triggered', {
+                botStatusReady,
+                settingsReady,
+                autoStartDone: autoStartDoneRef.current,
+                discordAutoStart,
+                tokenExists: !!discordToken,
+                prefixExists: !!discordPrefix,
+                botStatus: discordBotStatus
+            });
+        }
 
         if (botStatusReady && settingsReady && !autoStartDoneRef.current) {
             autoStartDoneRef.current = true;
             
             if (discordAutoStart && discordToken && discordPrefix && discordBotStatus === 'stopped') {
-                console.log('[Auto-start] ✅ Starting Discord bot automatically!');
+                const isTestEnv = process.env.NODE_ENV === 'test' || typeof jest !== 'undefined';
+                if (!isTestEnv) console.log('[Auto-start] Starting Discord bot automatically!');
                 handleStartDiscordBot();
-            } else {
-                console.log('[Auto-start] ❌ Skipping - conditions not met');
             }
+            // else: 조건 미충족 시 조용히 스킵
         }
     }, [botStatusReady, settingsReady, discordAutoStart, discordToken, discordPrefix, discordBotStatus]);
 
@@ -393,18 +411,19 @@ function App() {
         try {
             const result = await window.api.discordBotStop();
             if (result.error) {
-                safeShowToast(`❌ Discord 봇 정지 실패: ${result.error}`, 'error', 4000);
+                safeShowToast(`Discord 봇 정지 실패: ${result.error}`, 'error', 4000);
             } else {
                 setDiscordBotStatus('stopped');
-                safeShowToast('⏹️ Discord 봇이 정지되었습니다', 'discord', 3000);
+                safeShowToast('Discord 봇이 정지되었습니다', 'discord', 3000);
             }
         } catch (e) {
-            safeShowToast(`❌ Discord 봇 정지 예외: ${e.message}`, 'error', 4000);
+            safeShowToast(`Discord 봇 정지 예외: ${e.message}`, 'error', 4000);
         }
     };
 
     useEffect(() => {
-        console.log('App mounted, fetching initial data...');
+        const isTestEnv = process.env.NODE_ENV === 'test' || typeof jest !== 'undefined';
+        if (!isTestEnv) console.log('App mounted, fetching initial data...');
         fetchServers();
         fetchModules();
         loadBotConfig();  // bot-config.json 로드
@@ -455,12 +474,8 @@ function App() {
     }, [autoRefresh, refreshInterval]);
 
     useEffect(() => {
-        console.log('[DEBUG] Modules state updated:', modules);
         if (modules.length > 0) {
-            console.log('[DEBUG] Available modules:', modules.map(m => ({
-                name: m.name,
-                commands: m.commands?.fields?.map(c => c.name) || []
-            })));
+            // Modules loaded successfully
         }
     }, [modules]);
 
@@ -471,7 +486,7 @@ function App() {
             try {
                 await waitForDaemon(5000);
             } catch (err) {
-                console.warn('Daemon not ready, but continuing:', err.message);
+                debugWarn('Daemon not ready, but continuing:', err.message);
             }
             
             // 재시도 로직 적용
@@ -545,14 +560,14 @@ function App() {
                 console.log('Module aliases loaded:', aliasesMap);
             } else if (data && data.error) {
                 console.error('Module fetch error:', data.error);
-                safeShowToast(`❌ 모듈 로드 실패: ${data.error}`, 'error', 4000);
+                safeShowToast(`모듈 로드 실패: ${data.error}`, 'error', 4000);
             } else {
-                console.warn('No modules data:', data);
-                safeShowToast('⚠️ 모듈 목록이 비어있습니다', 'warning', 3000);
+                debugWarn('No modules data:', data);
+                safeShowToast('모듈 목록이 비어있습니다', 'warning', 3000);
             }
         } catch (error) {
             console.error('Failed to fetch modules:', error);
-            safeShowToast(`❌ 모듈 검색 실패: ${error.message}. 데몬을 확인해주세요.`, 'error', 5000);
+            safeShowToast(`모듈 검색 실패: ${error.message}. 데몬을 확인해주세요.`, 'error', 5000);
             setModal({ type: 'failure', title: '모듈 로드 예외', message: error.message });
         }
     };
@@ -567,12 +582,32 @@ function App() {
             );
             if (data && data.servers) {
                 setServers(data.servers);
+            } else if (data && data.error) {
+                console.error('Server list error:', data.error);
+                // 초기 로딩이 아닐 때만 토스트 표시
+                if (!loading) {
+                    safeShowToast(`⚠️ ${data.error}`, 'warning', 3000);
+                }
+                setServers([]);
             } else {
                 setServers([]);
             }
         } catch (error) {
             console.error('Failed to fetch servers:', error);
-            safeShowToast(`⚠️ 서버 목록 업데이트 실패: ${error.message}`, 'warning', 3000);
+            
+            let errorMsg = '⚠️ 서버 목록 업데이트 실패: ';
+            if (error.message.includes('ECONNREFUSED')) {
+                errorMsg += '데몬에 연결할 수 없습니다';
+            } else if (error.message.includes('ETIMEDOUT')) {
+                errorMsg += '응답 시간 초과';
+            } else {
+                errorMsg += error.message;
+            }
+            
+            // 초기 로딩이 아닐 때만 토스트 표시
+            if (!loading) {
+                safeShowToast(errorMsg, 'warning', 3000);
+            }
             setServers([]);
         } finally {
             setLoading(false);
@@ -580,16 +615,56 @@ function App() {
     };
 
     const handleStart = async (name, module) => {
+        let toastId = null;
         try {
             const result = await window.api.serverStart(name, { module });
             if (result.error) {
-                setModal({ type: 'failure', title: '서버 시작 실패', message: result.error });
+                // 에러 메시지 파싱 개선
+                let errorMsg = result.error;
+                if (errorMsg.includes('ECONNREFUSED')) {
+                    errorMsg = '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요';
+                }
+                safeShowToast(`❌ 서버 시작 실패: ${errorMsg}`, 'error', 4000);
             } else {
-                setModal({ type: 'notification', title: '서버 시작 중', message: `${name} 서버가 시작되고 있습니다...` });
+                // 시작 명령 성공 - 상태 확인 시작
+                toastId = safeShowToast(`⏳ ${name} 서버를 시작하는 중...`, 'info', 0);
+                
+                // 서버 상태가 running이 될 때까지 대기 (최대 10초)
+                let attempts = 0;
+                const maxAttempts = 20; // 10초 (500ms * 20)
+                const checkInterval = 500;
+                
+                const checkStatus = setInterval(async () => {
+                    attempts++;
+                    try {
+                        const statusResult = await window.api.serverStatus(name);
+                        if (statusResult.status === 'running') {
+                            clearInterval(checkStatus);
+                            if (toastId && window.updateToast) {
+                                window.updateToast(toastId, `✅ ${name} 서버 시작 완료!`, 'success', 3000);
+                            }
+                            fetchServers();
+                        } else if (attempts >= maxAttempts) {
+                            clearInterval(checkStatus);
+                            if (toastId && window.updateToast) {
+                                window.updateToast(toastId, `⚠️ ${name} 서버 시작 중... (시간이 걸릴 수 있습니다)`, 'warning', 3000);
+                            }
+                            fetchServers();
+                        }
+                    } catch (error) {
+                        if (attempts >= maxAttempts) {
+                            clearInterval(checkStatus);
+                            fetchServers();
+                        }
+                    }
+                }, checkInterval);
             }
-            fetchServers();
         } catch (error) {
-            setModal({ type: 'failure', title: '서버 시작 예외', message: error.message });
+            let errorMsg = error.message;
+            if (errorMsg.includes('ECONNREFUSED')) {
+                errorMsg = '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요';
+            }
+            safeShowToast(`❌ 서버 시작 실패: ${errorMsg}`, 'error', 4000);
         }
     };
 
@@ -600,16 +675,55 @@ function App() {
             message: `${name} 서버를 정지하시겠습니까?`,
             onConfirm: async () => {
                 setModal(null);
+                let toastId = null;
                 try {
                     const result = await window.api.serverStop(name, { force: false });
                     if (result.error) {
-                        setModal({ type: 'failure', title: '서버 정지 실패', message: result.error });
+                        let errorMsg = result.error;
+                        if (errorMsg.includes('ECONNREFUSED')) {
+                            errorMsg = '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요';
+                        }
+                        safeShowToast(`❌ 서버 정지 실패: ${errorMsg}`, 'error', 4000);
                     } else {
-                        setModal({ type: 'notification', title: '서버 정지 중', message: `${name} 서버가 정지되고 있습니다...` });
+                        // 정지 명령 성공 - 상태 확인 시작
+                        toastId = safeShowToast(`⏳ ${name} 서버를 정지하는 중...`, 'info', 0);
+                        
+                        // 서버 상태가 stopped가 될 때까지 대기 (최대 10초)
+                        let attempts = 0;
+                        const maxAttempts = 20; // 10초 (500ms * 20)
+                        const checkInterval = 500;
+                        
+                        const checkStatus = setInterval(async () => {
+                            attempts++;
+                            try {
+                                const statusResult = await window.api.serverStatus(name);
+                                if (statusResult.status === 'stopped') {
+                                    clearInterval(checkStatus);
+                                    if (toastId && window.updateToast) {
+                                        window.updateToast(toastId, `✅ ${name} 서버 정지 완료!`, 'success', 3000);
+                                    }
+                                    fetchServers();
+                                } else if (attempts >= maxAttempts) {
+                                    clearInterval(checkStatus);
+                                    if (toastId && window.updateToast) {
+                                        window.updateToast(toastId, `⚠️ ${name} 서버 정지 중... (시간이 걸릴 수 있습니다)`, 'warning', 3000);
+                                    }
+                                    fetchServers();
+                                }
+                            } catch (error) {
+                                if (attempts >= maxAttempts) {
+                                    clearInterval(checkStatus);
+                                    fetchServers();
+                                }
+                            }
+                        }, checkInterval);
                     }
-                    fetchServers();
                 } catch (error) {
-                    setModal({ type: 'failure', title: '서버 정지 예외', message: error.message });
+                    let errorMsg = error.message;
+                    if (errorMsg.includes('ECONNREFUSED')) {
+                        errorMsg = '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요';
+                    }
+                    safeShowToast(`❌ 서버 정지 실패: ${errorMsg}`, 'error', 4000);
                 }
             },
             onCancel: () => setModal(null)
@@ -619,10 +733,22 @@ function App() {
     const handleStatus = async (name) => {
         try {
             const result = await window.api.serverStatus(name);
-            const statusInfo = `Status: ${result.status}\nPID: ${result.pid || 'N/A'}\nUptime: ${result.uptime_seconds ? Math.floor(result.uptime_seconds / 60) + 'm' : 'N/A'}`;
-            setModal({ type: 'notification', title: name, message: statusInfo });
+            if (result.error) {
+                let errorMsg = result.error;
+                if (errorMsg.includes('ECONNREFUSED')) {
+                    errorMsg = '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요';
+                }
+                setModal({ type: 'failure', title: '상태 조회 실패', message: errorMsg });
+            } else {
+                const statusInfo = `Status: ${result.status}\nPID: ${result.pid || 'N/A'}\nUptime: ${result.uptime_seconds ? Math.floor(result.uptime_seconds / 60) + 'm' : 'N/A'}`;
+                setModal({ type: 'notification', title: name, message: statusInfo });
+            }
         } catch (error) {
-            setModal({ type: 'failure', title: '상태 조회 실패', message: error.message });
+            let errorMsg = error.message;
+            if (errorMsg.includes('ECONNREFUSED')) {
+                errorMsg = '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요';
+            }
+            setModal({ type: 'failure', title: '상태 조회 실패', message: errorMsg });
         }
     };
 
@@ -650,7 +776,11 @@ function App() {
             const result = await window.api.instanceCreate(instanceData);
             
             if (result.error) {
-                setModal({ type: 'failure', title: '인스턴스 추가 실패', message: result.error });
+                let errorMsg = result.error;
+                if (errorMsg.includes('ECONNREFUSED')) {
+                    errorMsg = '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요';
+                }
+                setModal({ type: 'failure', title: '인스턴스 추가 실패', message: errorMsg });
             } else {
                 setModal({ type: 'success', title: '성공', message: `인스턴스 "${newServerName}" 추가되었습니다` });
                 // 폼 초기화
@@ -660,7 +790,11 @@ function App() {
                 fetchServers();
             }
         } catch (error) {
-            setModal({ type: 'failure', title: '인스턴스 추가 예외', message: error.message });
+            let errorMsg = error.message;
+            if (errorMsg.includes('ECONNREFUSED')) {
+                errorMsg = '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요';
+            }
+            setModal({ type: 'failure', title: '인스턴스 추가 예외', message: errorMsg });
         }
     };
 
@@ -681,21 +815,44 @@ function App() {
             const result = await window.api.instanceDelete(server.id);
             
             if (result.error) {
-                setModal({ type: 'failure', title: '인스턴스 삭제 실패', message: result.error });
+                let errorMsg = result.error;
+                if (errorMsg.includes('ECONNREFUSED')) {
+                    errorMsg = '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요';
+                }
+                setModal({ type: 'failure', title: '인스턴스 삭제 실패', message: errorMsg });
             } else {
                 console.log(`Instance "${server.name}" (ID: ${server.id}) deleted`);
                 setModal({ type: 'success', title: '성공', message: `"${server.name}" 서버가 삭제되었습니다` });
                 fetchServers(); // 새로고침
             }
         } catch (error) {
-            setModal({ type: 'failure', title: '인스턴스 삭제 예외', message: error.message });
+            let errorMsg = error.message;
+            if (errorMsg.includes('ECONNREFUSED')) {
+                errorMsg = '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요';
+            }
+            setModal({ type: 'failure', title: '인스턴스 삭제 예외', message: errorMsg });
         }
     };
 
-    const handleOpenSettings = (server) => {
-        setSettingsServer(server);
+    const handleOpenSettings = async (server) => {
+        // 최신 서버 데이터를 API에서 직접 가져옴
+        let latestServer = server;
+        try {
+            const data = await window.api.serverList();
+            if (data && data.servers) {
+                const found = data.servers.find(s => s.id === server.id);
+                if (found) {
+                    latestServer = found;
+                    console.log('Loaded latest server data:', latestServer);
+                }
+            }
+        } catch (error) {
+            console.warn('Failed to fetch latest server data:', error);
+        }
+        
+        setSettingsServer(latestServer);
         // 선택된 모듈의 settings schema 찾기
-        const module = modules.find(m => m.name === server.module);
+        const module = modules.find(m => m.name === latestServer.module);
         if (module && module.settings && module.settings.fields) {
             // 초기값 설정: instances.json에서 저장된 값 우선, 없으면 default
             const initial = {};
@@ -703,8 +860,8 @@ function App() {
                 let value = '';
                 
                 // 1. instances.json에서 이미 저장된 값이 있는지 확인
-                if (server[field.name] !== undefined && server[field.name] !== null) {
-                    value = String(server[field.name]);
+                if (latestServer[field.name] !== undefined && latestServer[field.name] !== null) {
+                    value = String(latestServer[field.name]);
                     console.log(`Loaded ${field.name} from instance:`, value);
                 }
                 // 2. 없으면 module.toml의 default 값 사용
@@ -715,14 +872,22 @@ function App() {
                 
                 initial[field.name] = value;
             });
+            
+            // protocol_mode 초기화 (별도 처리)
+            initial.protocol_mode = latestServer.protocol_mode || 'rest';
+            console.log('Loaded protocol_mode:', initial.protocol_mode);
+            
             console.log('Initialized settings values:', initial);
             setSettingsValues(initial);
         } else {
-            setSettingsValues({});
+            // 모듈 설정이 없어도 protocol_mode는 설정
+            setSettingsValues({
+                protocol_mode: latestServer.protocol_mode || 'rest'
+            });
         }
         
         // 별칭 로드 (settingsServer.module 사용)
-        const moduleName = server.module;
+        const moduleName = latestServer.module;
         if (moduleAliasesPerModule[moduleName]) {
             const aliases = moduleAliasesPerModule[moduleName];
             
@@ -803,7 +968,11 @@ function App() {
                 });
             }
             
+            // protocol_mode는 항상 전송 (기본값 'rest')
+            convertedSettings.protocol_mode = settingsValues.protocol_mode || 'rest';
+            
             console.log('Converted settings:', convertedSettings);
+            console.log('protocol_mode being sent:', convertedSettings.protocol_mode);
             console.log('Calling instanceUpdateSettings with id:', settingsServer.id);
             const result = await window.api.instanceUpdateSettings(settingsServer.id, convertedSettings);
             console.log('API Response:', result);
@@ -1035,10 +1204,12 @@ function App() {
             <div className="loading-screen">
                 <TitleBar />
                 <div className="loading-content">
-                    <div className="loading-logo">🐟</div>
+                    <div className="loading-logo" style={{ fontSize: '72px' }}>🐟</div>
                     <div className="loading-title">Saba-chan</div>
                     <div className="loading-spinner"></div>
-                    <div className="loading-status">{initStatus}</div>
+                    <div className="loading-status">
+                        <Icon name="loader" size="sm" /> {initStatus}
+                    </div>
                     <div className="loading-progress-bar">
                         <div 
                             className="loading-progress-fill" 
@@ -1046,7 +1217,7 @@ function App() {
                         ></div>
                     </div>
                     <div className="loading-tips">
-                        💡 팁: 여러 게임 서버를 동시에 관리할 수 있습니다
+                        <Icon name="info" size="sm" /> 팁: 여러 게임 서버를 동시에 관리할 수 있습니다
                     </div>
                 </div>
             </div>
@@ -1093,7 +1264,7 @@ function App() {
                         onClick={() => setShowGuiSettingsModal(true)}
                         title="GUI 설정"
                     >
-                        ⚙️
+                        <Icon name="settings" size="md" />
                     </button>
                 </div>
                 
@@ -1103,7 +1274,7 @@ function App() {
                         className="btn btn-add"
                         onClick={() => setShowModuleManager(!showModuleManager)}
                     >
-                        ➕ Add Server
+                        <Icon name="plus" size="sm" /> Add Server
                     </button>
                     <div className="header-spacer"></div>
                     <div className="discord-button-wrapper">
@@ -1161,14 +1332,14 @@ function App() {
                             placeholder="c:\Git\Bot\modules"
                         />
                         <button className="btn btn-refresh-modules" onClick={fetchModules}>
-                            🔄 Reload Modules
+                            <Icon name="refresh" size="sm" /> Reload Modules
                         </button>
                         <small className="path-hint">
-                            📁 Place .zip files or folders with module.toml here
+                            <Icon name="folder" size="sm" /> Place .zip files or folders with module.toml here
                         </small>
                         {settingsPath && (
                             <small className="settings-path">
-                                💾 Settings: {settingsPath}
+                                <Icon name="database" size="sm" /> Settings: {settingsPath}
                             </small>
                         )}
                     </div>
@@ -1201,10 +1372,10 @@ function App() {
 
                         <div className="form-actions">
                             <button className="btn btn-confirm" onClick={handleAddServer}>
-                                ✅ Add Server
+                                <Icon name="checkCircle" size="sm" /> Add Server
                             </button>
                             <button className="btn btn-cancel" onClick={() => setShowModuleManager(false)}>
-                                ❌ Cancel
+                                <Icon name="xCircle" size="sm" /> Cancel
                             </button>
                         </div>
                     </div>
@@ -1292,40 +1463,43 @@ function App() {
                                     }}
                                     disabled={server.status === 'starting' || server.status === 'stopping'}
                                 >
-                                    {server.status === 'running' || server.status === 'starting' ? '⏹ Stop' : '▶ Start'}
+                                    {server.status === 'running' || server.status === 'starting' ? <><Icon name="stop" size="sm" /> Stop</> : <><Icon name="play" size="sm" /> Start</>}
                                 </button>
                                 <button 
                                     className="btn btn-status"
                                     onClick={() => handleStatus(server.name)}
                                 >
-                                    ℹ Info
+                                    <Icon name="info" size="sm" /> Info
                                 </button>
                                 <button 
                                     className="btn btn-settings"
                                     onClick={() => handleOpenSettings(server)}
                                     title="Edit server settings"
                                 >
-                                    ⚙️ Settings
+                                    <Icon name="settings" size="sm" /> Settings
                                 </button>
-                                <button 
-                                    className="btn btn-command"
-                                    onClick={() => {
-                                        setCommandServer(server);
-                                        setShowCommandModal(true);
-                                    }}
-                                    disabled={server.status !== 'running'}
-                                    title="Execute server command (server must be running)"
-                                >
-                                    💻 Command
-                                </button>
-                                <button 
-                                    className="btn btn-delete"
-                                    onClick={() => handleDeleteServer(server)}
-                                    disabled={server.status === 'running' || server.status === 'starting'}
-                                    title="Delete this server instance"
-                                >
-                                    🗑️ Delete
-                                </button>
+                                {/* 실행 중: Command 버튼, 정지 상태: Delete 버튼 */}
+                                {server.status === 'running' ? (
+                                    <button 
+                                        className="btn btn-command"
+                                        onClick={() => {
+                                            setCommandServer(server);
+                                            setShowCommandModal(true);
+                                        }}
+                                        title="Execute server command"
+                                    >
+                                        <Icon name="terminal" size="sm" /> Command
+                                    </button>
+                                ) : (
+                                    <button 
+                                        className="btn btn-delete"
+                                        onClick={() => handleDeleteServer(server)}
+                                        disabled={server.status === 'starting' || server.status === 'stopping'}
+                                        title="Delete this server instance"
+                                    >
+                                        <Icon name="trash" size="sm" /> Delete
+                                    </button>
+                                )}
                             </div>
                         </div>
                     ))
@@ -1336,7 +1510,7 @@ function App() {
                 <div className="modal-overlay">
                     <div className="modal-content modal-content-large">
                         <div className="modal-header">
-                            <h3>⚙️ {settingsServer.name} - Settings</h3>
+                            <h3><Icon name="settings" size="md" /> {settingsServer.name} - Settings</h3>
                             <button className="modal-close" onClick={() => setShowSettingsModal(false)}>✕</button>
                         </div>
                         
@@ -1346,13 +1520,13 @@ function App() {
                                 className={`settings-tab ${settingsActiveTab === 'general' ? 'active' : ''}`}
                                 onClick={() => setSettingsActiveTab('general')}
                             >
-                                🎮 일반 설정
+                                <Icon name="gamepad" size="sm" /> 일반 설정
                             </button>
                             <button 
                                 className={`settings-tab ${settingsActiveTab === 'aliases' ? 'active' : ''}`}
                                 onClick={() => setSettingsActiveTab('aliases')}
                             >
-                                💬 Discord 별명
+                                <Icon name="messageSquare" size="sm" /> Discord 별명
                             </button>
                         </div>
                         
@@ -1360,64 +1534,100 @@ function App() {
                             {/* 일반 설정 탭 */}
                             {settingsActiveTab === 'general' && (() => {
                                 const module = modules.find(m => m.name === settingsServer.module);
-                                if (!module || !module.settings) {
-                                    return <p className="no-settings">This module has no configurable settings.</p>;
-                                }
+                                const hasModuleSettings = module && module.settings && module.settings.fields && module.settings.fields.length > 0;
+                                
                                 return (
                                     <div className="settings-form">
-                                        {module.settings.fields.map((field) => (
-                                            <div key={field.name} className="settings-field">
-                                                <label>{field.label} {field.required ? '*' : ''}</label>
-                                                {field.field_type === 'text' && (
-                                                    <input 
-                                                        type="text"
-                                                        value={String(settingsValues[field.name] || '')}
-                                                        onChange={(e) => handleSettingChange(field.name, e.target.value)}
-                                                        placeholder={field.description || ''}
-                                                    />
-                                                )}
-                                                {field.field_type === 'password' && (
-                                                    <input 
-                                                        type="password"
-                                                        value={String(settingsValues[field.name] || '')}
-                                                        onChange={(e) => handleSettingChange(field.name, e.target.value)}
-                                                        placeholder={field.description || ''}
-                                                    />
-                                                )}
-                                                {field.field_type === 'number' && (
-                                                    <input 
-                                                        type="number"
-                                                        value={String(settingsValues[field.name] || '')}
-                                                        onChange={(e) => handleSettingChange(field.name, e.target.value)}
-                                                        min={field.min}
-                                                        max={field.max}
-                                                        placeholder={field.description || ''}
-                                                    />
-                                                )}
-                                                {field.field_type === 'file' && (
-                                                    <input 
-                                                        type="text"
-                                                        value={String(settingsValues[field.name] || '')}
-                                                        onChange={(e) => handleSettingChange(field.name, e.target.value)}
-                                                        placeholder={field.description || ''}
-                                                    />
-                                                )}
-                                                {field.field_type === 'select' && (
-                                                    <select 
-                                                        value={String(settingsValues[field.name] || '')}
-                                                        onChange={(e) => handleSettingChange(field.name, e.target.value)}
-                                                    >
-                                                        <option value="">Select {field.label}</option>
-                                                        {field.options && field.options.map(opt => (
-                                                            <option key={opt} value={opt}>{opt}</option>
-                                                        ))}
-                                                    </select>
-                                                )}
-                                                {field.description && (
-                                                    <small className="field-description">{field.description}</small>
-                                                )}
+                                        {/* 프로토콜 모드 토글 - 항상 표시 */}
+                                        <div className="protocol-mode-section">
+                                            <div className="protocol-mode-header">
+                                                <span className="protocol-mode-title">🔌 서버 조작 방식</span>
                                             </div>
-                                        ))}
+                                            <p className="protocol-mode-description">
+                                                서버 명령어를 실행할 때 사용할 프로토콜을 선택합니다.
+                                            </p>
+                                            <div className="protocol-toggle-container">
+                                                <span className={`protocol-label ${settingsValues.protocol_mode === 'rest' ? 'active' : ''}`}>
+                                                    REST
+                                                </span>
+                                                <label className="toggle-switch">
+                                                    <input 
+                                                        type="checkbox"
+                                                        checked={settingsValues.protocol_mode === 'rcon'}
+                                                        onChange={(e) => handleSettingChange('protocol_mode', e.target.checked ? 'rcon' : 'rest')}
+                                                    />
+                                                    <span className="toggle-slider"></span>
+                                                </label>
+                                                <span className={`protocol-label ${settingsValues.protocol_mode === 'rcon' ? 'active' : ''}`}>
+                                                    RCON
+                                                </span>
+                                            </div>
+                                            <p className="protocol-mode-hint">
+                                                <span className="hint-icon">💡</span>
+                                                {settingsValues.protocol_mode === 'rest' 
+                                                    ? 'REST API는 HTTP 기반으로 안정적이며 인증이 용이합니다.'
+                                                    : 'RCON은 실시간 콘솔 명령어를 직접 전송합니다.'}
+                                            </p>
+                                        </div>
+
+                                        {/* 모듈 설정 필드 */}
+                                        {hasModuleSettings ? (
+                                            module.settings.fields.map((field) => (
+                                                <div key={field.name} className="settings-field">
+                                                    <label>{field.label} {field.required ? '*' : ''}</label>
+                                                    {field.field_type === 'text' && (
+                                                        <input 
+                                                            type="text"
+                                                            value={String(settingsValues[field.name] || '')}
+                                                            onChange={(e) => handleSettingChange(field.name, e.target.value)}
+                                                            placeholder={field.description || ''}
+                                                        />
+                                                    )}
+                                                    {field.field_type === 'password' && (
+                                                        <input 
+                                                            type="password"
+                                                            value={String(settingsValues[field.name] || '')}
+                                                            onChange={(e) => handleSettingChange(field.name, e.target.value)}
+                                                            placeholder={field.description || ''}
+                                                        />
+                                                    )}
+                                                    {field.field_type === 'number' && (
+                                                        <input 
+                                                            type="number"
+                                                            value={String(settingsValues[field.name] || '')}
+                                                            onChange={(e) => handleSettingChange(field.name, e.target.value)}
+                                                            min={field.min}
+                                                            max={field.max}
+                                                            placeholder={field.description || ''}
+                                                        />
+                                                    )}
+                                                    {field.field_type === 'file' && (
+                                                        <input 
+                                                            type="text"
+                                                            value={String(settingsValues[field.name] || '')}
+                                                            onChange={(e) => handleSettingChange(field.name, e.target.value)}
+                                                            placeholder={field.description || ''}
+                                                        />
+                                                    )}
+                                                    {field.field_type === 'select' && (
+                                                        <select 
+                                                            value={String(settingsValues[field.name] || '')}
+                                                            onChange={(e) => handleSettingChange(field.name, e.target.value)}
+                                                        >
+                                                            <option value="">Select {field.label}</option>
+                                                            {field.options && field.options.map(opt => (
+                                                                <option key={opt} value={opt}>{opt}</option>
+                                                            ))}
+                                                        </select>
+                                                    )}
+                                                    {field.description && (
+                                                        <small className="field-description">{field.description}</small>
+                                                    )}
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <p className="no-settings" style={{marginTop: '16px'}}>이 모듈에는 추가 설정 항목이 없습니다.</p>
+                                        )}
                                     </div>
                                 );
                             })()}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './Toast.css';
+import { Icon } from '../Icon';
 
 function Toast() {
     const [toasts, setToasts] = useState([]);
@@ -14,6 +15,22 @@ function Toast() {
             setToasts((prev) => [...prev, newToast]);
 
             // 모든 토스트는 자동으로 사라짐
+            if (duration > 0) {
+                setTimeout(() => {
+                    removeToast(id);
+                }, duration);
+            }
+            
+            return id; // ID 반환하여 나중에 업데이트 가능
+        };
+
+        // 토스트 업데이트 기능
+        window.updateToast = (id, message, type, duration = 3000) => {
+            setToasts((prev) => prev.map(toast => 
+                toast.id === id ? { ...toast, message, type } : toast
+            ));
+            
+            // 기존 타이머 취소하고 새 타이머 설정
             if (duration > 0) {
                 setTimeout(() => {
                     removeToast(id);
@@ -36,13 +53,8 @@ function Toast() {
                 ui: 'status-ui'
             };
             const type = typeMap[step] || 'info';
-            const statusIcon = {
-                init: '⚙️',
-                ready: '✅',
-                ui: '🎨'
-            };
-            const fullMessage = statusIcon[step] ? `${statusIcon[step]} ${message}` : message;
-            const newToast = { id, message: fullMessage, type, isStatus: true, step };
+            const fullMessage = message;
+            const newToast = { id, message: fullMessage, type, isStatus: true, step, icon: step };
             setToasts((prev) => [...prev, newToast]);
 
             // 모든 상태 토스트도 자동으로 사라짐
@@ -63,6 +75,7 @@ function Toast() {
 
         return () => {
             delete window.showToast;
+            delete window.updateToast;
             delete window.showStatus;
         };
     }, []);

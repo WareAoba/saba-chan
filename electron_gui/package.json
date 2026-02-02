@@ -11,7 +11,8 @@
     "electron-start": "wait-on http://localhost:3000 && electron .",
     "start": "concurrently --kill-others --raw \"npm run react-start\" \"npm run electron-start\"",
     "build": "npm run react-build && electron-builder",
-    "test": "react-scripts test",
+    "test": "react-scripts test --verbose",
+    "test:silent": "react-scripts test",
     "test:coverage": "react-scripts test --coverage --watchAll=false"
   },
   "dependencies": {

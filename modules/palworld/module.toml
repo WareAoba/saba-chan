@@ -1,4 +1,4 @@
-[module]
+﻿[module]
 name = "palworld"
 version = "1.0.0"
 description = "Palworld server management module"
@@ -87,17 +87,19 @@ description = "REST Basic Auth 비밀번호"
 required = false
 
 [commands]
-# 명령어 정의: Palworld REST API를 통해 전달
-# 공식 API 문서: https://docs.palworldgame.com/ja/api/rest-api/
-# HTTP 메서드는 각 엔드포인트별로 명시
+# 명령어 정의: REST API와 RCON 둘 다 지원
+# protocol_mode 설정에 따라 자동으로 적절한 프로토콜 사용
+# - endpoint_template: REST API 엔드포인트
+# - rcon_template: RCON 명령어 템플릿
 
 [[commands.fields]]
 name = "announce"
 label = "공지사항 전송"
-description = "Palworld REST API - POST /v1/api/announce"
-method = "rest"
+description = "서버 전체에 메시지 브로드캐스트"
+method = "dual"
 http_method = "POST"
 endpoint_template = "/v1/api/announce"
+rcon_template = "Broadcast {message}"
 inputs = [
     { name = "message", type = "text", label = "공지 메시지", required = true, placeholder = "공지할 내용을 입력하세요" }
 ]
@@ -105,25 +107,27 @@ inputs = [
 [[commands.fields]]
 name = "info"
 label = "서버 정보"
-description = "Palworld REST API - GET /v1/api/info"
-method = "rest"
+description = "서버 정보 조회"
+method = "dual"
 http_method = "GET"
 endpoint_template = "/v1/api/info"
+rcon_template = "Info"
 inputs = []
 
 [[commands.fields]]
 name = "players"
 label = "플레이어 목록"
-description = "Palworld REST API - GET /v1/api/players"
-method = "rest"
+description = "현재 접속 중인 플레이어 목록"
+method = "dual"
 http_method = "GET"
 endpoint_template = "/v1/api/players"
+rcon_template = "ShowPlayers"
 inputs = []
 
 [[commands.fields]]
 name = "metrics"
 label = "서버 통계"
-description = "Palworld REST API - GET /v1/api/metrics"
+description = "서버 성능 통계 (REST 전용)"
 method = "rest"
 http_method = "GET"
 endpoint_template = "/v1/api/metrics"
@@ -132,7 +136,7 @@ inputs = []
 [[commands.fields]]
 name = "settings"
 label = "서버 설정"
-description = "Palworld REST API - GET /v1/api/settings"
+description = "서버 설정 조회 (REST 전용)"
 method = "rest"
 http_method = "GET"
 endpoint_template = "/v1/api/settings"
@@ -141,19 +145,21 @@ inputs = []
 [[commands.fields]]
 name = "save"
 label = "월드 저장"
-description = "Palworld REST API - POST /v1/api/save"
-method = "rest"
+description = "게임 월드 저장"
+method = "dual"
 http_method = "POST"
 endpoint_template = "/v1/api/save"
+rcon_template = "Save"
 inputs = []
 
 [[commands.fields]]
 name = "shutdown"
 label = "서버 종료"
-description = "Palworld REST API - POST /v1/api/shutdown"
-method = "rest"
+description = "서버 종료 (대기 시간 설정 가능)"
+method = "dual"
 http_method = "POST"
 endpoint_template = "/v1/api/shutdown"
+rcon_template = "Shutdown {waittime} {message}"
 inputs = [
     { name = "waittime", type = "number", label = "종료까지 대기 시간 (초)", required = true, default = 30, min = 0, max = 600 },
     { name = "message", type = "text", label = "종료 메시지", required = false, placeholder = "서버 종료 공지 메시지" }
@@ -162,50 +168,67 @@ inputs = [
 [[commands.fields]]
 name = "kick"
 label = "플레이어 강제 퇴장"
-description = "Palworld REST API - POST /v1/api/kick"
-method = "rest"
+description = "플레이어를 서버에서 강제 퇴장"
+method = "dual"
 http_method = "POST"
 endpoint_template = "/v1/api/kick"
+rcon_template = "KickPlayer {userid}"
 inputs = [
-    { name = "userid", type = "text", label = "플레이어 ID", required = true, placeholder = "강제 퇴장할 플레이어 ID를 입력하세요" },
+    { name = "userid", type = "text", label = "플레이어 (닉네임 또는 SteamID)", required = true, placeholder = "플레이어 닉네임 또는 steam_xxxxxxxxx" },
     { name = "message", type = "text", label = "퇴장 메시지", required = false, placeholder = "선택사항: 퇴장 메시지" }
 ]
 
 [[commands.fields]]
 name = "ban"
 label = "플레이어 차단"
-description = "Palworld REST API - POST /v1/api/ban"
-method = "rest"
+description = "플레이어를 영구 차단"
+method = "dual"
 http_method = "POST"
 endpoint_template = "/v1/api/ban"
+rcon_template = "BanPlayer {userid}"
 inputs = [
-    { name = "userid", type = "text", label = "플레이어 ID", required = true, placeholder = "차단할 플레이어 ID를 입력하세요" },
+    { name = "userid", type = "text", label = "플레이어 (닉네임 또는 SteamID)", required = true, placeholder = "플레이어 닉네임 또는 steam_xxxxxxxxx" },
     { name = "message", type = "text", label = "차단 메시지", required = false, placeholder = "선택사항: 차단 메시지" }
 ]
 
 [[commands.fields]]
 name = "unban"
 label = "플레이어 차단 해제"
-description = "Palworld REST API - POST /v1/api/unban"
-method = "rest"
+description = "차단된 플레이어 해제"
+method = "dual"
 http_method = "POST"
 endpoint_template = "/v1/api/unban"
+rcon_template = "UnBanPlayer {userid}"
 inputs = [
-    { name = "userid", type = "text", label = "플레이어 ID", required = true, placeholder = "차단 해제할 플레이어 ID를 입력하세요" }
+    { name = "userid", type = "text", label = "플레이어 (닉네임 또는 SteamID)", required = true, placeholder = "플레이어 닉네임 또는 steam_xxxxxxxxx" }
 ]
+
+[errors]
+# 에러 메시지 정의 (한국어)
+# 각 HTTP 상태 코드별 사용자 친화적인 에러 메시지
+server_not_running = "서버가 실행중이지 않습니다. 먼저 서버를 시작해주세요"
+auth_failed = "인증 실패: REST API 사용자명/비밀번호 또는 RCON 비밀번호를 확인해주세요"
+player_not_found = "플레이어를 찾을 수 없습니다. 닉네임 또는 SteamID를 확인해주세요"
+connection_refused = "서버에 연결할 수 없습니다. 서버 포트와 REST API 설정을 확인해주세요"
+timeout = "서버 응답 시간 초과. 서버 상태를 확인해주세요"
+rest_api_disabled = "REST API가 비활성화되어 있습니다. 서버 설정에서 REST API를 활성화해주세요"
+rcon_disabled = "RCON이 비활성화되어 있습니다. 서버 설정에서 RCON을 활성화해주세요"
+internal_server_error = "서버 내부 오류가 발생했습니다"
 
 [aliases]
 # Discord 봇 연동용 별명
-# 모듈 별명: 이 모듈을 부를 때 사용할 수 있는 이름들
 module_aliases = ["팰월드", "팔월드", "pw", "palworld"]
 
-# 명령어 별명: 각 명령어의 한국어 별명 및 단축키
+# 명령어 별명: 실제 존재하는 명령어만 포함
 [aliases.commands]
 start = { aliases = ["시작", "실행", "켜기"], description = "서버를 시작합니다" }
 stop = { aliases = ["정지", "끝내기", "끄기"], description = "서버를 종료합니다" }
 status = { aliases = ["상태", "상황", "확인"], description = "서버의 상태를 확인합니다" }
-say = { aliases = ["말", "채팅", "메시지"], description = "서버에 메시지를 브로드캐스트합니다" }
-broadcast = { aliases = ["공지", "공지사항", "알림"], description = "전체 공지를 전송합니다" }
+announce = { aliases = ["공지", "공지사항", "알림"], description = "전체 공지를 전송합니다" }
 save = { aliases = ["저장"], description = "게임 월드를 저장합니다" }
 info = { aliases = ["정보", "인포"], description = "서버 정보를 조회합니다" }
+players = { aliases = ["플레이어", "접속자", "유저"], description = "접속 중인 플레이어 목록" }
 shutdown = { aliases = ["종료", "셧다운"], description = "서버를 종료합니다" }
+kick = { aliases = ["킥", "강퇴", "추방"], description = "플레이어를 강제 퇴장시킵니다" }
+ban = { aliases = ["밴", "차단", "영구밴"], description = "플레이어를 차단합니다" }
+unban = { aliases = ["언밴", "차단해제"], description = "플레이어 차단을 해제합니다" }

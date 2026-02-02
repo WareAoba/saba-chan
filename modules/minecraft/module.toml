@@ -123,6 +123,15 @@ inputs = [
     { name = "level", type = "select", label = "난이도", required = true, options = ["peaceful", "easy", "normal", "hard"] }
 ]
 
+[errors]
+# 에러 메시지 정의 (한국어)
+server_not_running = "서버가 실행중이지 않습니다. 먼저 서버를 시작해주세요"
+auth_failed = "RCON 인증 실패: 비밀번호를 확인해주세요"
+connection_refused = "서버에 연결할 수 없습니다. RCON 포트와 설정을 확인해주세요"
+timeout = "서버 응답 시간 초과. 서버 상태를 확인해주세요"
+rcon_disabled = "RCON이 비활성화되어 있습니다. server.properties에서 enable-rcon=true로 설정해주세요"
+internal_server_error = "서버 내부 오류가 발생했습니다"
+
 [aliases]
 # Discord 봇 연동용 별명
 # 모듈 별명: 이 모듈을 부를 때 사용할 수 있는 이름들

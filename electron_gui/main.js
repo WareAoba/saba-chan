@@ -5,7 +5,7 @@ const axios = require('axios');
 const { spawn } = require('child_process');
 const fs = require('fs');
 
-const IPC_BASE = 'http://127.0.0.1:57474'; // localhost 대신 127.0.0.1 명시
+const IPC_BASE = process.env.IPC_BASE || 'http://127.0.0.1:57474'; // Core Daemon endpoint
 
 // 네트워크 호출 기본 타임아웃을 짧게 설정해 초기 체감 지연을 줄입니다.
 axios.defaults.timeout = 1200;
@@ -374,14 +374,6 @@ function createWindow() {
         mainWindow.show();
     });
 
-    // 윈도우 크기 변경 시 저장
-    mainWindow.on('resize', () => {
-        const bounds = mainWindow.getBounds();
-        const currentSettings = loadSettings();
-        currentSettings.windowBounds = { width: bounds.width, height: bounds.height };
-        saveSettings(currentSettings);
-    });
-
     // 윈도우 닫기 이벤트 가로채기 - React QuestionModal로 확인
     mainWindow.on('close', (e) => {
         e.preventDefault(); // 기본 닫기 동작 중단
@@ -586,7 +578,17 @@ ipcMain.handle('server:list', async () => {
         const response = await axios.get(`${IPC_BASE}/api/servers`);
         return response.data;
     } catch (error) {
-        return { error: error.message };
+        if (error.response) {
+            const status = error.response.status;
+            const data = error.response.data;
+            return { error: `서버 목록 조회 실패 (HTTP ${status}): ${data.error || error.message}` };
+        }
+        
+        if (error.code === 'ECONNREFUSED') {
+            return { error: '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요' };
+        }
+        
+        return { error: `서버 목록 조회 실패: ${error.message}` };
     }
 });
 
@@ -599,7 +601,29 @@ ipcMain.handle('server:start', async (event, name, options = {}) => {
         const response = await axios.post(`${IPC_BASE}/api/server/${name}/start`, body);
         return response.data;
     } catch (error) {
-        return { error: error.message };
+        if (error.response) {
+            const status = error.response.status;
+            const data = error.response.data;
+            
+            switch (status) {
+                case 400:
+                    return { error: `시작 실패: ${data.error || '서버 설정을 확인해주세요'}` };
+                case 404:
+                    return { error: `서버 '${name}'을(를) 찾을 수 없습니다` };
+                case 409:
+                    return { error: `서버 '${name}'은(는) 이미 실행중입니다` };
+                case 500:
+                    return { error: `서버 시작 오류: ${data.error || data.message || '내부 오류 발생'}` };
+                default:
+                    return { error: `시작 실패 (HTTP ${status}): ${data.error || error.message}` };
+            }
+        }
+        
+        if (error.code === 'ECONNREFUSED') {
+            return { error: '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요' };
+        }
+        
+        return { error: `서버 시작 실패: ${error.message}` };
     }
 });
 
@@ -609,7 +633,27 @@ ipcMain.handle('server:stop', async (event, name, options = {}) => {
         const response = await axios.post(`${IPC_BASE}/api/server/${name}/stop`, body);
         return response.data;
     } catch (error) {
-        return { error: error.message };
+        if (error.response) {
+            const status = error.response.status;
+            const data = error.response.data;
+            
+            switch (status) {
+                case 400:
+                    return { error: `정지 실패: ${data.error || '서버가 실행중이지 않습니다'}` };
+                case 404:
+                    return { error: `서버 '${name}'을(를) 찾을 수 없습니다` };
+                case 500:
+                    return { error: `서버 정지 오류: ${data.error || data.message || '내부 오류 발생'}` };
+                default:
+                    return { error: `정지 실패 (HTTP ${status}): ${data.error || error.message}` };
+            }
+        }
+        
+        if (error.code === 'ECONNREFUSED') {
+            return { error: '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요' };
+        }
+        
+        return { error: `서버 정지 실패: ${error.message}` };
     }
 });
 
@@ -618,7 +662,25 @@ ipcMain.handle('server:status', async (event, name) => {
         const response = await axios.get(`${IPC_BASE}/api/server/${name}/status`);
         return response.data;
     } catch (error) {
-        return { error: error.message };
+        if (error.response) {
+            const status = error.response.status;
+            const data = error.response.data;
+            
+            switch (status) {
+                case 404:
+                    return { error: `서버 '${name}'을(를) 찾을 수 없습니다` };
+                case 500:
+                    return { error: `상태 조회 오류: ${data.error || data.message || '내부 오류 발생'}` };
+                default:
+                    return { error: `조회 실패 (HTTP ${status}): ${data.error || error.message}` };
+            }
+        }
+        
+        if (error.code === 'ECONNREFUSED') {
+            return { error: '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요' };
+        }
+        
+        return { error: `상태 조회 실패: ${error.message}` };
     }
 });
 
@@ -627,7 +689,17 @@ ipcMain.handle('module:list', async () => {
         const response = await axios.get(`${IPC_BASE}/api/modules`);
         return response.data;
     } catch (error) {
-        return { error: error.message };
+        if (error.response) {
+            const status = error.response.status;
+            const data = error.response.data;
+            return { error: `모듈 목록 조회 실패 (HTTP ${status}): ${data.error || error.message}` };
+        }
+        
+        if (error.code === 'ECONNREFUSED') {
+            return { error: '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요' };
+        }
+        
+        return { error: `모듈 목록 조회 실패: ${error.message}` };
     }
 });
 
@@ -638,8 +710,20 @@ ipcMain.handle('module:refresh', async () => {
         sendStatus('modules', '모듈 새로고침 완료');
         return response.data;
     } catch (error) {
-        sendStatus('modules', `모듈 새로고침 실패: ${error.message}`);
-        return { error: error.message };
+        let errorMsg = '모듈 새로고침 실패: ';
+        
+        if (error.response) {
+            const status = error.response.status;
+            const data = error.response.data;
+            errorMsg += `${data.error || error.message}`;
+        } else if (error.code === 'ECONNREFUSED') {
+            errorMsg = '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요';
+        } else {
+            errorMsg += error.message;
+        }
+        
+        sendStatus('modules', errorMsg);
+        return { error: errorMsg };
     }
 });
 
@@ -648,7 +732,23 @@ ipcMain.handle('module:getMetadata', async (event, moduleName) => {
         const response = await axios.get(`${IPC_BASE}/api/module/${moduleName}`);
         return response.data;
     } catch (error) {
-        return { error: error.message };
+        if (error.response) {
+            const status = error.response.status;
+            const data = error.response.data;
+            
+            switch (status) {
+                case 404:
+                    return { error: `모듈 '${moduleName}'을(를) 찾을 수 없습니다` };
+                default:
+                    return { error: `모듈 메타데이터 조회 실패 (HTTP ${status}): ${data.error || error.message}` };
+            }
+        }
+        
+        if (error.code === 'ECONNREFUSED') {
+            return { error: '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요' };
+        }
+        
+        return { error: `모듈 메타데이터 조회 실패: ${error.message}` };
     }
 });
 
@@ -657,7 +757,27 @@ ipcMain.handle('instance:create', async (event, data) => {
         const response = await axios.post(`${IPC_BASE}/api/instances`, data);
         return response.data;
     } catch (error) {
-        return { error: error.message };
+        if (error.response) {
+            const status = error.response.status;
+            const errData = error.response.data;
+            
+            switch (status) {
+                case 400:
+                    return { error: `잘못된 요청: ${errData.error || '입력값을 확인해주세요'}` };
+                case 409:
+                    return { error: `이미 존재하는 인스턴스 이름입니다` };
+                case 500:
+                    return { error: `인스턴스 생성 오류: ${errData.error || errData.message || '내부 오류 발생'}` };
+                default:
+                    return { error: `생성 실패 (HTTP ${status}): ${errData.error || error.message}` };
+            }
+        }
+        
+        if (error.code === 'ECONNREFUSED') {
+            return { error: '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요' };
+        }
+        
+        return { error: `인스턴스 생성 실패: ${error.message}` };
     }
 });
 
@@ -666,7 +786,27 @@ ipcMain.handle('instance:delete', async (event, id) => {
         const response = await axios.delete(`${IPC_BASE}/api/instance/${id}`);
         return response.data;
     } catch (error) {
-        return { error: error.message };
+        if (error.response) {
+            const status = error.response.status;
+            const data = error.response.data;
+            
+            switch (status) {
+                case 404:
+                    return { error: `인스턴스를 찾을 수 없습니다` };
+                case 409:
+                    return { error: `실행중인 인스턴스는 삭제할 수 없습니다. 먼저 정지해주세요` };
+                case 500:
+                    return { error: `인스턴스 삭제 오류: ${data.error || data.message || '내부 오류 발생'}` };
+                default:
+                    return { error: `삭제 실패 (HTTP ${status}): ${data.error || error.message}` };
+            }
+        }
+        
+        if (error.code === 'ECONNREFUSED') {
+            return { error: '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요' };
+        }
+        
+        return { error: `인스턴스 삭제 실패: ${error.message}` };
     }
 });
 
@@ -680,7 +820,28 @@ ipcMain.handle('instance:updateSettings', async (event, id, settings) => {
         return response.data;
     } catch (error) {
         console.error(`[Main] Error updating settings:`, error.message);
-        return { error: error.message };
+        
+        if (error.response) {
+            const status = error.response.status;
+            const data = error.response.data;
+            
+            switch (status) {
+                case 400:
+                    return { error: `잘못된 설정값: ${data.error || '입력값을 확인해주세요'}` };
+                case 404:
+                    return { error: `인스턴스를 찾을 수 없습니다` };
+                case 500:
+                    return { error: `설정 저장 오류: ${data.error || data.message || '내부 오류 발생'}` };
+                default:
+                    return { error: `설정 저장 실패 (HTTP ${status}): ${data.error || error.message}` };
+            }
+        }
+        
+        if (error.code === 'ECONNREFUSED') {
+            return { error: '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요' };
+        }
+        
+        return { error: `설정 저장 실패: ${error.message}` };
     }
 });
 
@@ -723,61 +884,76 @@ ipcMain.handle('instance:executeCommand', async (event, id, command) => {
                 rcon_password: instance.rcon_password
             };
         } else if (instance.module_name === 'palworld') {
-            // Palworld는 REST API 사용 (권장)
-            console.log(`[Main] Using REST API protocol for Palworld`);
-            protocolUrl = `${IPC_BASE}/api/instance/${id}/rest`;
+            // Palworld 명령어 처리
+            console.log(`[Main] Processing Palworld command: ${cmdName}`);
             
-            // 명령 메타데이터에서 http_method와 입력 스키마 읽기
-            const httpMethod = command.commandMetadata?.http_method || 'POST';
-            const inputSchema = command.commandMetadata?.inputs || [];
-            
-            console.log(`[Main] HTTP Method from metadata: ${httpMethod}`);
-            console.log(`[Main] Input schema:`, inputSchema);
-            
-            // 입력값 검증 및 정규화
-            const validatedBody = {};
-            for (const field of inputSchema) {
-                const value = command.args?.[field.name];
+            // kick, ban, unban은 플레이어 ID 변환이 필요하므로 Python 모듈을 통해 실행
+            const playerCommands = ['kick', 'ban', 'unban'];
+            if (playerCommands.includes(cmdName.toLowerCase())) {
+                console.log(`[Main] Using command endpoint for player command: ${cmdName}`);
+                protocolUrl = `${IPC_BASE}/api/instance/${id}/command`;
+                commandPayload = {
+                    command: cmdName,
+                    args: command.args || {},
+                    instance_id: id
+                };
+            } else {
+                // 그 외 명령어는 REST API 직접 호출
+                console.log(`[Main] Using REST API protocol for Palworld`);
+                protocolUrl = `${IPC_BASE}/api/instance/${id}/rest`;
                 
-                // 필수 필드 확인
-                if (field.required && (value === undefined || value === null || value === '')) {
-                    throw new Error(`필수 필드 '${field.label}'이(가) 누락되었습니다`);
-                }
+                // 명령 메타데이터에서 http_method와 입력 스키마 읽기
+                const httpMethod = command.commandMetadata?.http_method || 'POST';
+                const inputSchema = command.commandMetadata?.inputs || [];
                 
-                // 값이 있으면 타입 검증 및 추가
-                if (value !== undefined && value !== null && value !== '') {
-                    if (field.type === 'number') {
-                        const numValue = Number(value);
-                        if (isNaN(numValue)) {
-                            throw new Error(`'${field.label}'은(는) 숫자여야 합니다`);
-                        }
-                        validatedBody[field.name] = numValue;
-                    } else {
-                        validatedBody[field.name] = String(value);
+                console.log(`[Main] HTTP Method from metadata: ${httpMethod}`);
+                console.log(`[Main] Input schema:`, inputSchema);
+                
+                // 입력값 검증 및 정규화
+                const validatedBody = {};
+                for (const field of inputSchema) {
+                    const value = command.args?.[field.name];
+                    
+                    // 필수 필드 확인
+                    if (field.required && (value === undefined || value === null || value === '')) {
+                        throw new Error(`필수 필드 '${field.label}'이(가) 누락되었습니다`);
                     }
-                } else if (field.default !== undefined) {
-                    // 기본값 적용
-                    validatedBody[field.name] = field.default;
+                    
+                    // 값이 있으면 타입 검증 및 추가
+                    if (value !== undefined && value !== null && value !== '') {
+                        if (field.type === 'number') {
+                            const numValue = Number(value);
+                            if (isNaN(numValue)) {
+                                throw new Error(`'${field.label}'은(는) 숫자여야 합니다`);
+                            }
+                            validatedBody[field.name] = numValue;
+                        } else {
+                            validatedBody[field.name] = String(value);
+                        }
+                    } else if (field.default !== undefined) {
+                        // 기본값 적용
+                        validatedBody[field.name] = field.default;
+                    }
                 }
-            }
-            
-            console.log(`[Main] Validated body:`, validatedBody);
-            
-            // REST 요청 구성 - Palworld API 형식: /v1/api/{endpoint}
-            commandPayload = {
-                endpoint: `/v1/api/${cmdName}`,
-                method: httpMethod,
-                body: validatedBody,
-                instance_id: id,
-                rest_host: instance.rest_host,
-                rest_port: instance.rest_port,
-                username: instance.rest_username,
-                password: instance.rest_password
-            };
+                
+                console.log(`[Main] Validated body:`, validatedBody);
+                
+                // REST 요청 구성 - Palworld API 형식: /v1/api/{endpoint}
+                commandPayload = {
+                    endpoint: `/v1/api/${cmdName}`,
+                    method: httpMethod,
+                    body: validatedBody,
+                    instance_id: id,
+                    rest_host: instance.rest_host,
+                    rest_port: instance.rest_port,
+                    username: instance.rest_username,
+                    password: instance.rest_password
+                };
 
-            // 사용자가 메시지를 인라인으로 입력한 경우 announce 본문으로 설정
-            if (inlineMessage && Object.keys(validatedBody).length === 0) {
-                commandPayload.body = { message: inlineMessage };
+                // 사용자가 메시지를 인라인으로 입력한 경우 announce 본문으로 설정
+                if (inlineMessage && Object.keys(validatedBody).length === 0) {
+                    commandPayload.body = { message: inlineMessage };
+                }
             }
         } else {
             // 기타 모듈은 기본 command 엔드포인트 사용
@@ -798,10 +974,51 @@ ipcMain.handle('instance:executeCommand', async (event, id, command) => {
         return response.data;
     } catch (error) {
         console.error(`[Main] Error executing command:`, error.message);
-        if (error.response?.data) {
-            return { error: error.response.data.error || error.message };
+        
+        // HTTP 응답 에러 처리
+        if (error.response) {
+            const status = error.response.status;
+            const data = error.response.data;
+            
+            let errorMsg = '';
+            switch (status) {
+                case 400:
+                    errorMsg = `잘못된 요청: ${data.error || data.message || '입력값을 확인해주세요'}`;
+                    break;
+                case 401:
+                    errorMsg = `인증 실패: 서버 설정에서 REST 사용자명/비밀번호를 확인해주세요`;
+                    break;
+                case 403:
+                    errorMsg = `접근 거부: 권한이 없습니다`;
+                    break;
+                case 404:
+                    errorMsg = `명령어를 찾을 수 없음: '${cmdName}' 명령어가 존재하지 않거나 서버가 실행중이지 않습니다`;
+                    break;
+                case 500:
+                    errorMsg = `서버 내부 오류: ${data.error || data.message || '서버에서 오류가 발생했습니다'}`;
+                    break;
+                case 503:
+                    errorMsg = `서비스 사용 불가: 서버가 응답하지 않습니다. 서버 상태를 확인해주세요`;
+                    break;
+                default:
+                    errorMsg = `오류 (HTTP ${status}): ${data.error || data.message || error.message}`;
+            }
+            
+            return { error: errorMsg };
         }
-        return { error: error.message };
+        
+        // 네트워크 에러 처리
+        if (error.code === 'ECONNREFUSED') {
+            return { error: '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요' };
+        }
+        if (error.code === 'ETIMEDOUT') {
+            return { error: '요청 시간 초과: 서버가 응답하지 않습니다' };
+        }
+        if (error.code === 'ENOTFOUND') {
+            return { error: '서버를 찾을 수 없습니다. 네트워크 설정을 확인해주세요' };
+        }
+        
+        return { error: `명령어 실행 실패: ${error.message}` };
     }
 });
 

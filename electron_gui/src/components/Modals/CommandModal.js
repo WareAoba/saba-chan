@@ -49,6 +49,16 @@ function CommandModal({ server, modules, onClose, onExecute }) {
             return;
         }
 
+        // 서버 실행 상태 확인
+        if (server.status !== 'running') {
+            onExecute({ 
+                type: 'failure', 
+                title: '서버가 실행중이지 않습니다', 
+                message: `'${server.name}' 서버가 실행 중이어야 명령어를 실행할 수 있습니다.\n\n현재 상태: ${server.status}` 
+            });
+            return;
+        }
+
         // 선택된 command 객체 찾기
         const selectedCommand = commands.find(c => c.name === cmdName);
         

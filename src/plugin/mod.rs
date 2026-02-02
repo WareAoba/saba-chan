@@ -2,9 +2,30 @@ use anyhow::Result;
 use std::process::Command;
 use serde_json::Value;
 
+/// Plugin manager for executing Python modules
+pub struct PluginManager {
+    python_cmd: Option<String>,
+}
+
+impl PluginManager {
+    pub fn new() -> Self {
+        Self {
+            python_cmd: detect_python_command().map(|s| s.to_string()),
+        }
+    }
+    
+    pub fn detect_python(&self) -> Option<String> {
+        self.python_cmd.clone()
+    }
+    
+    pub async fn run_plugin(&self, module_path: &str, function: &str, config: Value) -> Result<Value> {
+        run_plugin(module_path, function, config).await
+    }
+}
+
 /// Plugin runner executes Python modules (short-lived)
 /// Returns JSON output from stdout only
-#[allow(dead_code)]
+/// Called by Supervisor for module lifecycle management
 pub async fn run_plugin(module_path: &str, function: &str, config: Value) -> Result<Value> {
     tracing::info!("Executing plugin: {} -> {}", module_path, function);
 
@@ -25,9 +46,9 @@ pub async fn run_plugin(module_path: &str, function: &str, config: Value) -> Res
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     
-    // Log stderr for debugging (not necessarily an error)
+    // Log stderr for debugging (always show for troubleshooting)
     if !stderr.is_empty() {
-        tracing::debug!("Plugin stderr: {}", stderr);
+        tracing::info!("Plugin stderr: {}", stderr);
     }
 
     if !output.status.success() {
@@ -75,6 +96,30 @@ fn detect_python_command() -> Option<&'static str> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn test_detect_python_command() {
+        // Python 명령어 탐지
+        let result = detect_python_command();
+        
+        // 결과가 Some이거나 None일 수 있음 (환경에 따라)
+        match result {
+            Some(cmd) => println!("Detected Python: {}", cmd),
+            None => println!("No Python found, will use default 'python'"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_plugin_with_invalid_path() {
+        let result = run_plugin(
+            "nonexistent/module.py",
+            "test_function",
+            json!({"test": "data"})
+        ).await;
+
+        // 존재하지 않는 파일이므로 에러가 발생해야 함
+        assert!(result.is_err());
+    }
 
     #[tokio::test]
     async fn test_plugin_runner_stub() {

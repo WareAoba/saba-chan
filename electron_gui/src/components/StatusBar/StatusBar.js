@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './StatusBar.css';
+import { Icon } from '../Icon';
 
 function StatusBar() {
     const [status, setStatus] = useState(null);
@@ -31,27 +32,20 @@ function StatusBar() {
     }
 
     const getIcon = (step) => {
-        switch (step) {
-            case 'daemon':
-                return '🔧';
-            case 'modules':
-                return '📦';
-            case 'instances':
-                return '🖥️';
-            case 'init':
-                return '⚙️';
-            case 'ready':
-                return '✅';
-            case 'ui':
-                return '🎨';
-            default:
-                return '⏳';
-        }
+        const iconMap = {
+            daemon: 'settings',
+            modules: 'package',
+            instances: 'server',
+            init: 'refresh',
+            ready: 'checkCircle',
+            ui: 'palette'
+        };
+        return iconMap[step] || 'loader';
     };
 
     return (
         <div className={`status-bar ${fadeOut ? 'fade-out' : ''}`}>
-            <span className="status-icon">{getIcon(status.step)}</span>
+            <span className="status-icon"><Icon name={getIcon(status.step)} size="sm" /></span>
             <span className="status-message">{status.message}</span>
         </div>
     );

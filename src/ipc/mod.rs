@@ -11,8 +11,6 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use crate::protocol;
-use crate::protocol::{CommandType, HttpMethod, ServerCommand, client::ProtocolClient};
 
 /// IPC 요청/응답 타입
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,6 +72,7 @@ pub struct ServerInfo {
     pub rest_port: Option<u16>,
     pub rest_username: Option<String>,
     pub rest_password: Option<String>,
+    pub protocol_mode: String,  // "rest", "rcon", "auto"
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,7 +94,7 @@ pub struct ModuleListResponse {
 /// IPC Server State
 #[derive(Clone)]
 pub struct IPCServer {
-    #[allow(dead_code)]
+    /// Shared supervisor instance used by all handlers
     pub supervisor: Arc<RwLock<crate::supervisor::Supervisor>>,
     pub listen_addr: String,
 }
@@ -168,6 +167,7 @@ async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
             rest_port: instance.rest_port,
             rest_username: instance.rest_username.clone(),
             rest_password: instance.rest_password.clone(),
+            protocol_mode: instance.protocol_mode.clone(),
         });
     }
 
@@ -553,8 +553,13 @@ async fn update_instance_settings(
         updated.executable_path = Some(executable_path.to_string());
     }
     
-    tracing::info!("Updating instance {} with settings: port={:?}, rcon_port={:?}, rcon_password={:?}, executable_path={:?}, rest_host={:?}, rest_port={:?}", 
-        id, updated.port, updated.rcon_port, updated.rcon_password, updated.executable_path, updated.rest_host, updated.rest_port);
+    // protocol_mode 설정 (rest 또는 rcon)
+    if let Some(protocol_mode) = settings.get("protocol_mode").and_then(|v| v.as_str()) {
+        updated.protocol_mode = protocol_mode.to_string();
+    }
+    
+    tracing::info!("Updating instance {} with settings: port={:?}, rcon_port={:?}, rcon_password={:?}, executable_path={:?}, rest_host={:?}, rest_port={:?}, protocol_mode={}", 
+        id, updated.port, updated.rcon_port, updated.rcon_password, updated.executable_path, updated.rest_host, updated.rest_port, updated.protocol_mode);
     
     // 저장
     if let Err(e) = supervisor.instance_store.update(&id, updated) {
@@ -600,6 +605,7 @@ mod tests {
                         method: Some("rest".to_string()),
                         http_method: Some("GET".to_string()),
                         endpoint_template: Some("/v1/api/players".to_string()),
+                        rcon_template: None,
                         inputs: vec![],
                     },
                 ],
@@ -663,6 +669,7 @@ mod tests {
                                 method: Some("rest".to_string()),
                                 http_method: Some("GET".to_string()),
                                 endpoint_template: Some("/v1/api/info".to_string()),
+                                rcon_template: None,
                                 inputs: vec![],
                             },
                             crate::supervisor::module_loader::CommandField {
@@ -672,6 +679,7 @@ mod tests {
                                 method: Some("rest".to_string()),
                                 http_method: Some("POST".to_string()),
                                 endpoint_template: Some("/v1/api/announce".to_string()),
+                                rcon_template: None,
                                 inputs: vec![
                                     crate::supervisor::module_loader::CommandInput {
                                         name: "message".to_string(),
@@ -906,6 +914,12 @@ async fn execute_rcon_command(
         }
     };
 
+    // 모듈에서 기본값 가져오기
+    let (default_rcon_port, _default_rest_port) = match supervisor.module_loader.get_module(&instance.module_name) {
+        Ok(module) => (module.metadata.default_rcon_port(), module.metadata.default_rest_port()),
+        Err(_) => (25575, 8212), // 모듈을 찾을 수 없으면 기존 기본값 사용
+    };
+
     // RCON 커맨드 추출
     let command = match payload.get("command").and_then(|v| v.as_str()) {
         Some(cmd) => cmd,
@@ -925,7 +939,7 @@ async fn execute_rcon_command(
 
     let rcon_port = match payload.get("rcon_port").and_then(|v| v.as_u64()) {
         Some(port) => port as u16,
-        None => instance.rcon_port.unwrap_or(25575),
+        None => instance.rcon_port.unwrap_or(default_rcon_port),
     };
 
     let rcon_password = match payload.get("rcon_password").and_then(|v| v.as_str()) {
@@ -1017,6 +1031,12 @@ async fn execute_rest_command(
         }
     };
 
+    // 모듈에서 기본값 가져오기
+    let (default_rest_port, default_rest_host) = match supervisor.module_loader.get_module(&instance.module_name) {
+        Ok(module) => (module.metadata.default_rest_port(), module.metadata.default_rest_host()),
+        Err(_) => (8212, "127.0.0.1".to_string()), // 모듈을 찾을 수 없으면 기존 기본값 사용
+    };
+
     // REST 엔드포인트 추출
     let endpoint = match payload.get("endpoint").and_then(|v| v.as_str()) {
         Some(ep) => ep,
@@ -1031,17 +1051,18 @@ async fn execute_rest_command(
         }
     };
 
-    // REST 정보 확인 - payload에서 먼저 찾고, 없으면 instance에서 찾음
+    // REST 정보 확인 - payload에서 먼저 찾고, 없으면 instance에서 찾음, 그래도 없으면 모듈 기본값
     let rest_host = payload.get("rest_host")
         .and_then(|v| v.as_str())
-        .or_else(|| instance.rest_host.as_deref())
-        .unwrap_or("127.0.0.1");
+        .map(|s| s.to_string())
+        .or_else(|| instance.rest_host.clone())
+        .unwrap_or(default_rest_host);
 
     let rest_port = payload.get("rest_port")
         .and_then(|v| v.as_u64())
         .map(|p| p as u16)
         .or(instance.rest_port)
-        .unwrap_or(8212);
+        .unwrap_or(default_rest_port);
 
     let use_https = payload.get("use_https")
         .and_then(|v| v.as_bool())

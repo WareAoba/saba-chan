@@ -1,195 +1,393 @@
-# Saba-chan 테스트 가이드
+# Saba-chan 통합 테스트 가이드
 
 ## 📋 목차
 1. [테스트 개요](#테스트-개요)
-2. [로컬에서 테스트 실행](#로컬에서-테스트-실행)
-3. [테스트 종류](#테스트-종류)
-4. [GitHub Actions 자동화](#github-actions-자동화)
-5. [테스트 커버리지](#테스트-커버리지)
+2. [빠른 시작](#빠른-시작)
+3. [Rust Daemon 테스트](#rust-daemon-테스트)
+4. [Electron GUI 테스트](#electron-gui-테스트)
+5. [Discord Bot 테스트](#discord-bot-테스트)
+6. [통합 테스트](#통합-테스트)
+7. [CI/CD 테스트](#cicd-테스트)
+
+---
 
 ## 테스트 개요
 
-이 프로젝트는 **설정 저장/로드**, **Discord 봇 자동실행** 등 핵심 기능의 안정성을 보장하기 위해 자동화된 테스트를 제공합니다.
+### 전체 테스트 구조
+
+```
+프로젝트
+├── Rust Daemon (37 테스트)
+│   ├── API 테스트 (9개)
+│   ├── 모듈 테스트 (8개)
+│   ├── 스트레스 테스트 (9개)
+│   └── 에러 처리 (11개)
+│
+├── Electron GUI (34 테스트)
+│   ├── 단위 테스트 (29개)
+│   └── 통합 테스트 (5개, 1 스킵)
+│
+└── Discord Bot (17 테스트)
+    ├── 단위 테스트 (14개)
+    └── 통합 테스트 (3개)
+```
+
+**📈 총 88개 테스트**
+
+---
+
+## 빠른 시작
+
+### 모든 테스트 실행
+
+```powershell
+# PowerShell 스크립트로 전체 테스트 (권장)
+.\scripts\test-integration.ps1
+
+# 또는 수동으로
+cargo test                    # Rust (30-40초)
+cd electron_gui && npm test   # GUI (10-20초)
+cd discord_bot && npm test    # Bot (5-10초)
+```
+
+### 빠른 테스트 (JavaScript만)
+
+```powershell
+# Rust 컴파일 없이 GUI와 Bot만
+cd electron_gui && npm test -- --watchAll=false
+cd discord_bot && npm test
+```
+
+---
+
+## Rust Daemon 테스트
 
 ### 테스트 구조
 
 ```
-electron_gui/
-├── src/
-│   ├── App.test.js         # React 컴포넌트 및 자동실행 로직 테스트
-│   └── App.js
-├── main.test.js            # Electron Main 프로세스 테스트 (설정 파일 I/O)
-└── package.json
+tests/
+├── daemon_integration.rs     # 메인 엔트리포인트
+├── stress_test.rs            # 스트레스 테스트
+└── daemon/
+    ├── api_tests.rs          # HTTP API (9개)
+    ├── module_tests.rs       # 모듈 로더 (8개)
+    └── error_handling_tests.rs  # 에러 처리 (11개)
 ```
 
-## 로컬에서 테스트 실행
+### 실행 방법
 
-### 1. 테스트 라이브러리 설치
+```powershell
+# 모든 통합 테스트
+cargo test
+
+# 특정 카테고리만
+cargo test api_tests
+cargo test module_tests
+cargo test error_handling
+
+# 상세 출력
+cargo test -- --nocapture
+
+# 병렬 실행 제어
+cargo test -- --test-threads=4
+```
+
+### 주요 테스트
+
+#### 1. API 테스트 (api_tests.rs)
+
+| 테스트 | 검증 내용 |
+|--------|----------|
+| `test_api_modules_list` | GET /api/modules |
+| `test_api_servers_list` | GET /api/servers |
+| `test_api_instance_crud` | 인스턴스 생성→조회→수정→삭제 |
+| `test_api_bot_config` | Bot Config 읽기/쓰기 |
+| `test_api_error_handling` | 404, 400 에러 응답 |
+| `test_api_module_refresh` | POST /api/modules/refresh |
+| `test_api_concurrent_requests` | 10개 동시 요청 처리 |
+
+#### 2. 모듈 테스트 (module_tests.rs)
+
+| 테스트 | 검증 내용 |
+|--------|----------|
+| `test_module_discovery` | modules/ 디렉토리 스캔 |
+| `test_module_metadata_structure` | TOML 필드 유효성 |
+| `test_module_refresh` | 캐시 무효화 및 재발견 |
+| `test_python_plugin_detection` | Python 경로 탐지 |
+| `test_python_plugin_execution` | lifecycle.py 실행 |
+| `test_module_hot_reload` | 핫 리로드 일관성 |
+
+#### 3. 에러 처리 (error_handling_tests.rs)
+
+| 테스트 | 검증 내용 |
+|--------|----------|
+| `test_missing_module_toml` | TOML 파일 없음 |
+| `test_malformed_toml` | 잘못된 TOML 포맷 |
+| `test_python_plugin_failure` | Python 실행 실패 |
+| `test_invalid_instance_id` | 존재하지 않는 ID |
+| `test_corrupted_instances_json` | 손상된 JSON |
+
+---
+
+## Electron GUI 테스트
+
+### 테스트 파일
+
+```
+electron_gui/src/
+├── test/
+│   ├── App.test.js           # React 컴포넌트 (26개)
+│   ├── main.test.js          # Electron Main (8개)
+│   └── integration.test.js   # E2E (1개, 스킵)
+└── setupTests.js             # Jest 설정
+```
+
+### 실행 방법
 
 ```powershell
 cd electron_gui
-npm install --save-dev @testing-library/react @testing-library/jest-dom @testing-library/user-event
-```
 
-### 2. 단위 테스트 실행
-
-```powershell
-# 한 번 실행
+# 모든 테스트
 npm test -- --watchAll=false
 
-# Watch 모드 (파일 변경 시 자동 재실행)
+# Watch 모드 (자동 재실행)
 npm test
 
-# 커버리지 리포트 생성
-npm run test:coverage
+# 커버리지 포함
+npm test -- --coverage
+
+# 특정 파일만
+npm test App.test.js
+npm test main.test.js
 ```
 
-### 3. 테스트 결과 확인
+### 주요 테스트
 
-```
-PASS  src/App.test.js
-  설정 저장/로드 테스트
-    ✓ 앱 시작 시 설정이 로드되어야 함 (152ms)
-    ✓ 설정 로드 후 상태가 올바르게 설정되어야 함 (89ms)
-  Discord 봇 상태 테스트
-    ✓ 앱 시작 시 봇 상태를 확인해야 함 (201ms)
-  Discord 봇 자동실행 테스트
-    ✓ 자동실행 설정이 꺼져있으면 봇이 시작되지 않아야 함 (2103ms)
-    ✓ 자동실행 설정이 켜져있으면 봇이 자동으로 시작되어야 함 (451ms)
-    ✓ 토큰이 없으면 자동실행되지 않아야 함 (2105ms)
-    ✓ 봇이 이미 실행 중이면 자동실행을 건너뛰어야 함 (2098ms)
-    ✓ 자동실행은 앱 시작 시 한 번만 실행되어야 함 (2214ms)
-
-Test Suites: 1 passed, 1 total
-Tests:       8 passed, 8 total
-```
-
-## 테스트 종류
-
-### 1. **App.test.js** - React 컴포넌트 테스트
-
-#### 설정 저장/로드 테스트
-- ✅ 앱 시작 시 `settingsLoad()` 호출 확인
-- ✅ 봇 설정 로드 확인 (`botConfigLoad()`)
-- ✅ 설정 값이 올바르게 상태에 반영되는지 확인
-
-#### Discord 봇 상태 테스트
-- ✅ 봇 상태 폴링 (`discordBotStatus()`) 확인
-- ✅ 초기 상태가 'stopped' 또는 'running'으로 올바르게 설정되는지 확인
-
-#### Discord 봇 자동실행 테스트
-- ✅ **자동실행 OFF**: 봇이 시작되지 않아야 함
-- ✅ **자동실행 ON + 토큰 있음**: 봇이 자동으로 시작되어야 함
-- ✅ **토큰 없음**: 자동실행 조건 미충족으로 시작 안 함
-- ✅ **이미 실행 중**: 중복 시작 방지
-- ✅ **한 번만 실행**: 여러 번 트리거되지 않도록 방지
-
-### 2. **main.test.js** - Electron Main 프로세스 테스트
-
-#### 파일 I/O 테스트
-- ✅ 설정 파일 저장 및 로드
-- ✅ 봇 설정 파일 저장 및 로드
-- ✅ 존재하지 않는 파일 처리 (기본값 반환)
-- ✅ 잘못된 JSON 형식 처리 (오류 복구)
-- ✅ 설정 값 업데이트
-
-## GitHub Actions 자동화
-
-### 자동 테스트 실행
-
-`.github/workflows/test.yml` 파일이 추가되어 있습니다.
-
-#### 트리거 조건
-- `main` 또는 `develop` 브랜치에 push
-- Pull Request 생성/업데이트
-
-#### 실행 환경
-- Windows 최신 버전
-- Node.js 18.x, 20.x (매트릭스 빌드)
-
-#### 실행 단계
-1. 코드 체크아웃
-2. Node.js 설정
-3. 의존성 설치 (`npm ci`)
-4. 테스트 실행 (`npm test -- --coverage`)
-5. 커버리지 리포트 업로드 (Codecov)
-
-### GitHub에서 확인하기
-
-1. GitHub 저장소로 이동
-2. **Actions** 탭 클릭
-3. 최신 워크플로우 실행 결과 확인
-
-## 테스트 커버리지
-
-### 커버리지 리포트 확인
-
-```powershell
-npm run test:coverage
-```
-
-실행 후 `coverage/lcov-report/index.html` 파일을 브라우저로 열면 상세 리포트를 볼 수 있습니다.
-
-### 목표 커버리지
-
-| 항목 | 목표 |
-|------|------|
-| Statements | > 70% |
-| Branches | > 60% |
-| Functions | > 70% |
-| Lines | > 70% |
-
-## 새로운 테스트 추가하기
-
-### 예제: 새로운 기능 테스트
+#### 1. React 컴포넌트 (App.test.js)
 
 ```javascript
-// src/App.test.js
-test('새 기능이 올바르게 동작해야 함', async () => {
-    // 1. Mock 설정
-    mockApi.newFeature.mockResolvedValue({ success: true });
-    
-    // 2. 컴포넌트 렌더링
-    await act(async () => {
-        render(<App />);
-    });
-    
-    // 3. 동작 확인
-    await waitFor(() => {
-        expect(mockApi.newFeature).toHaveBeenCalled();
-    });
+describe('App Component', () => {
+  // 렌더링 테스트
+  test('renders without crashing');
+  test('displays server cards');
+  test('updates server list');
+  
+  // 사용자 인터랙션
+  test('opens add server modal');
+  test('creates new server');
+  test('deletes server');
+  test('saves settings');
+  
+  // 에러 처리
+  test('shows error on API failure');
+  test('handles network timeout');
 });
 ```
+
+#### 2. Electron Main (main.test.js)
+
+```javascript
+describe('IPC Handlers', () => {
+  test('getServers - returns server list');
+  test('createServer - saves instance');
+  test('deleteServer - removes instance');
+  test('executeCommand - routes to daemon');
+  test('error handling - invalid request');
+});
+```
+
+#### 3. E2E 테스트 (integration.test.js)
+
+**현재 상태**: `test.skip()` - axios ESM import 문제로 스킵
+- Jest와 axios ESM 비호환
+- 수동 E2E 테스트 권장 (실제 앱 실행)
+
+---
+
+## Discord Bot 테스트
+
+### 테스트 파일
+
+```
+discord_bot/
+├── test/
+│   └── integration.test.js   # 통합 테스트 (17개)
+└── utils/
+    └── aliasResolver.test.js # (통합됨)
+```
+
+### 실행 방법
+
+```powershell
+cd discord_bot
+
+# 모든 테스트
+npm test
+
+# 특정 파일만
+npm test integration.test.js
+```
+
+### 주요 테스트
+
+#### 별명 해석 & 통합 테스트
+
+```javascript
+describe('Bot Integration', () => {
+  test('buildModuleAliasMap - pw → palworld');
+  test('buildCommandAliasMap - 플레이어 → players');
+  test('resolveAlias - full chain');
+  test('parses Discord message');
+  test('executes command via daemon');
+  test('formats response');
+});
+```
+
+---
+
+## 통합 테스트
+
+### E2E 워크플로우
+
+**1. Daemon 시작**
+```powershell
+cargo run --release
+```
+
+**2. GUI 테스트**
+```powershell
+# GUI 앱 시작
+cd electron_gui
+npm start
+
+# 테스트 시나리오:
+# 1. 서버 추가 (Minecraft/Palworld)
+# 2. 설정 저장
+# 3. 명령어 실행 (💻 Command 버튼)
+# 4. 서버 삭제
+```
+
+**3. Bot 테스트**
+```powershell
+# Discord 봇 시작
+cd discord_bot
+node index.js
+
+# Discord에서 테스트:
+# !saba palworld info
+# !saba pw players
+# !saba minecraft list
+```
+
+### 전체 시스템 플로우
+
+```
+Discord 메시지
+  ↓
+Discord Bot (Node.js)
+  ↓ HTTP
+Core Daemon (Rust)
+  ↓ RCON/REST
+Game Server
+```
+
+---
+
+## CI/CD 테스트
+
+### GitHub Actions
+
+**.github/workflows/test.yml**
+- ✅ Rust 테스트 (cargo test)
+- ✅ GUI 테스트 (npm test)
+- ✅ Bot 테스트 (npm test)
+- ✅ 빌드 검증 (cargo build)
+
+**.github/workflows/coverage.yml**
+- 코드 커버리지 수집
+- Codecov 업로드
+
+**.github/workflows/quick-test.yml**
+- PR용 빠른 테스트
+- JavaScript만 실행
+
+### 로컬 CI 시뮬레이션
+
+```powershell
+# PowerShell에서
+.\scripts\test-integration.ps1
+
+# 실행 내용:
+# 1. 환경 정보 출력
+# 2. Rust 테스트
+# 3. GUI 테스트
+# 4. Bot 테스트
+# 5. 실행 시간 측정
+```
+
+---
 
 ## 문제 해결
 
-### 테스트가 타임아웃되는 경우
+### Rust 테스트 실패
 
-```javascript
-await waitFor(() => {
-    expect(mockApi.someFunction).toHaveBeenCalled();
-}, { timeout: 5000 }); // 타임아웃 증가
+**원인**: Daemon이 이미 실행 중
+```powershell
+# 해결: Daemon 종료
+taskkill /F /IM core_daemon.exe
 ```
 
-### Mock 함수가 호출되지 않는 경우
-
-```javascript
-console.log(mockApi.someFunction.mock.calls); // 호출 내역 확인
-console.log(mockApi.someFunction.mock.results); // 결과 확인
+**원인**: 캐시 문제
+```powershell
+# 해결: 클린 빌드
+cargo clean
+cargo test
 ```
 
-### 비동기 상태 업데이트 오류
+### GUI 테스트 타임아웃
 
-```javascript
-// act() 로 감싸기
-await act(async () => {
-    // 상태를 변경하는 비동기 동작
-});
+**원인**: `instances.json` 잠금
+```powershell
+# 해결: 파일 권한 확인
+icacls instances.json
 ```
+
+**원인**: API 서버 미응답
+```powershell
+# 해결: Daemon 재시작
+cargo run --release
+```
+
+### Bot 테스트 실패
+
+**원인**: axios ESM import (integration.test.js)
+- **현재**: test.skip()으로 스킵됨
+- **해결**: 수동 E2E 테스트 권장
+
+---
+
+## 테스트 커버리지
+
+### 현재 커버리지
+
+| 컴포넌트 | 테스트 수 | 커버리지 |
+|---------|----------|---------|
+| Rust Daemon | 37 | ~85% |
+| Electron GUI | 34 | ~70% |
+| Discord Bot | 17 | ~60% |
+
+### 미래 개선 계획
+
+- [ ] GUI E2E 테스트 (Playwright/Puppeteer)
+- [ ] Bot E2E 테스트 (Discord.js mocking)
+- [ ] 시각적 회귀 테스트
+- [ ] 성능 벤치마크
+
+---
 
 ## 참고 자료
 
-- [Jest 공식 문서](https://jestjs.io/)
-- [React Testing Library](https://testing-library.com/react)
-- [GitHub Actions 문서](https://docs.github.com/actions)
-- [Electron 테스팅 가이드](https://www.electronjs.org/docs/latest/tutorial/automated-testing)
+- **API 스펙**: [API_SPEC.md](API_SPEC.md)
+- **프로젝트 가이드**: [PROJECT_GUIDE.md](PROJECT_GUIDE.md)
+- **빠른 시작**: [QUICK_START.md](QUICK_START.md)
+- **사용 가이드**: [USAGE_GUIDE.md](USAGE_GUIDE.md)

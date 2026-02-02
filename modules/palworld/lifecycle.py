@@ -247,6 +247,94 @@ class PalworldRestClient:
         return self._request("POST", "/unban", {"userid": userid})
 
 
+def resolve_player_id(instance_id, player_input, config):
+    """
+    플레이어 입력값을 SteamID로 변환합니다.
+    - 이미 SteamID 형식(steam_xxxxxxxxx 또는 숫자만)이면 그대로 반환
+    - 닉네임이면 플레이어 목록에서 검색하여 SteamID로 변환
+    
+    Returns:
+        tuple: (success, steamid_or_error_message)
+    """
+    # 이미 SteamID 형식인지 확인 (steam_로 시작하거나 숫자만 있는 경우)
+    if player_input.startswith("steam_") or player_input.isdigit():
+        print(f"[Palworld] Input '{player_input}' is already a SteamID format", file=sys.stderr)
+        return (True, player_input)
+    
+    # 닉네임으로 간주하고 플레이어 목록에서 검색
+    print(f"[Palworld] Resolving nickname '{player_input}' to SteamID...", file=sys.stderr)
+    
+    try:
+        # config에서 REST 설정 가져오기
+        rest_host = config.get("rest_host", "127.0.0.1")
+        rest_port = config.get("rest_port", 8212)
+        rest_username = config.get("rest_username", "")
+        rest_password = config.get("rest_password", "")
+        
+        # 직접 Palworld 서버에 REST 요청 (Daemon을 거치지 않음 - 데드락 방지)
+        palworld_url = f"http://{rest_host}:{rest_port}/v1/api/players"
+        print(f"[Palworld] Fetching players from: {palworld_url}", file=sys.stderr)
+        
+        req = urllib.request.Request(palworld_url, method='GET')
+        
+        # Basic Auth 설정
+        if rest_username and rest_password:
+            credentials = f"{rest_username}:{rest_password}"
+            encoded_credentials = base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
+            req.add_header('Authorization', f'Basic {encoded_credentials}')
+        
+        with urllib.request.urlopen(req, timeout=5) as response:
+            result = json.loads(response.read().decode('utf-8'))
+            
+            # Palworld API 직접 응답 구조
+            players = result.get("players", [])
+            
+            print(f"[Palworld] Found {len(players)} online players", file=sys.stderr)
+            
+            # 닉네임으로 플레이어 검색 (대소문자 무시)
+            # name (캐릭터 이름)과 accountName (Steam 계정 이름) 둘 다 검색
+            player_input_lower = player_input.lower()
+            for player in players:
+                player_name = player.get("name", "")
+                account_name = player.get("accountName", "")
+                player_userid = player.get("userId") or player.get("playerId") or player.get("steamId")
+                
+                # 정확 일치 (캐릭터 이름 또는 Steam 계정 이름)
+                if player_name.lower() == player_input_lower or account_name.lower() == player_input_lower:
+                    matched_name = account_name if account_name.lower() == player_input_lower else player_name
+                    print(f"[Palworld] Found player: {matched_name} (char: {player_name}) -> {player_userid}", file=sys.stderr)
+                    return (True, player_userid)
+            
+            # 부분 일치 검색
+            partial_matches = []
+            for player in players:
+                player_name = player.get("name", "")
+                account_name = player.get("accountName", "")
+                player_userid = player.get("userId") or player.get("playerId") or player.get("steamId")
+                
+                # 부분 일치 (캐릭터 이름 또는 Steam 계정 이름)
+                if player_input_lower in player_name.lower() or player_input_lower in account_name.lower():
+                    display_name = f"{account_name} ({player_name})" if account_name else player_name
+                    partial_matches.append((display_name, player_userid))
+            
+            if len(partial_matches) == 1:
+                name, userid = partial_matches[0]
+                print(f"[Palworld] Found partial match: {name} -> {userid}", file=sys.stderr)
+                return (True, userid)
+            elif len(partial_matches) > 1:
+                names = [m[0] for m in partial_matches]
+                return (False, f"Multiple players match '{player_input}': {', '.join(names)}. Please be more specific.")
+            
+            return (False, f"Player '{player_input}' not found online. Please check the name or use SteamID directly.")
+    
+    except urllib.error.URLError as e:
+        print(f"[Palworld] Failed to fetch player list: {e}", file=sys.stderr)
+        return (False, f"Failed to connect to server: {str(e)}")
+    except Exception as e:
+        print(f"[Palworld] Error resolving player: {e}", file=sys.stderr)
+        return (False, f"Error resolving player: {str(e)}")
+
+
 def start(config):
     """Start Palworld server"""
     try:
@@ -459,127 +547,55 @@ def status(config):
         }
 
 def command(config):
-    """Execute server command via daemon REST API"""
+    """Execute server command via daemon REST/RCON API based on protocol_mode"""
     try:
+        # 디버그: 전달받은 config 출력
+        print(f"[Palworld] Received config keys: {list(config.keys())}", file=sys.stderr)
+        
         command_text = config.get("command")
         args = config.get("args", {})
         instance_id = config.get("instance_id")
+        protocol_mode = config.get("protocol_mode", "rest")  # "rest", "rcon", "auto"
+        
+        print(f"[Palworld] command={command_text}, instance_id={instance_id}, protocol_mode={protocol_mode}", file=sys.stderr)
         
         if not command_text:
             return {
                 "success": False,
-                "message": "No command specified"
+                "message": f"No command specified. Config keys: {list(config.keys())}"
             }
         
         if not instance_id:
             return {
                 "success": False,
-                "message": "No instance_id specified"
+                "message": f"No instance_id specified. Config keys: {list(config.keys())}, config: {str(config)[:300]}"
             }
         
-        print(f"[Palworld] Executing command via daemon: {command_text} with args: {args}", file=sys.stderr)
+        print(f"[Palworld] Executing command '{command_text}' via protocol_mode='{protocol_mode}' with args: {args}", file=sys.stderr)
         
         # Normalize command for branching
         command_lower = command_text.lower()
         
-        # Map commands to REST API endpoints
-        endpoint = None
-        body = None
+        # 플레이어 ID 변환 (kick, ban, unban 명령어의 경우)
+        if command_lower in ["kick", "ban", "unban"]:
+            player_input = args.get("userid") or args.get("player_id") or args.get("steam_id") or args.get("name") or args.get("player")
+            if player_input:
+                success, result = resolve_player_id(instance_id, player_input, config)
+                if success:
+                    args = dict(args)  # 원본 수정 방지
+                    args["userid"] = result
+                elif command_lower != "unban":
+                    # unban은 오프라인일 수 있으므로 실패해도 진행
+                    return {"success": False, "message": result}
+                else:
+                    print(f"[Palworld] Player lookup failed for unban, using original: {player_input}", file=sys.stderr)
         
-        if command_lower == "say" or command_lower == "broadcast":
-            message = args.get("message", "")
-            if not message:
-                return {"success": False, "message": "Message parameter required"}
-            endpoint = "/api/announce"
-            body = {"message": message}
+        # === RCON 모드 ===
+        if protocol_mode == "rcon":
+            return execute_command_via_rcon(instance_id, command_lower, args, config)
         
-        elif command_lower == "kick":
-            userid = args.get("userid") or args.get("player_id") or args.get("steam_id")
-            if not userid:
-                return {"success": False, "message": "userid (player id) is required"}
-            message = args.get("message", "Kicked from server")
-            endpoint = "/api/kick"
-            body = {"userid": userid, "message": message}
-        
-        elif command_lower == "ban":
-            userid = args.get("userid") or args.get("player_id") or args.get("steam_id")
-            if not userid:
-                return {"success": False, "message": "userid (player id) is required"}
-            message = args.get("message", "Banned from server")
-            endpoint = "/api/ban"
-            body = {"userid": userid, "message": message}
-        
-        elif command_lower == "unban":
-            userid = args.get("userid") or args.get("player_id") or args.get("steam_id")
-            if not userid:
-                return {"success": False, "message": "userid (player id) is required"}
-            endpoint = "/api/unban"
-            body = {"userid": userid}
-        
-        elif command_lower == "info":
-            endpoint = "/api/info"
-        
-        elif command_lower == "players":
-            endpoint = "/api/players"
-        
-        elif command_lower == "metrics":
-            endpoint = "/api/metrics"
-        
-        elif command_lower == "shutdown":
-            seconds = int(args.get("seconds", 10))
-            endpoint = "/api/shutdown"
-            body = {"seconds": seconds, "message": "Server shutting down"}
-        
-        else:
-            # For unknown commands, use generic endpoint
-            endpoint = "/api/command"
-            body = {"command": command_text}
-        
-        # Call daemon REST API
-        api_url = f"{DAEMON_API_URL}/api/instance/{instance_id}/rest"
-        
-        payload = json.dumps({
-            "endpoint": endpoint,
-            "method": "POST" if body else "GET",
-            "body": body
-        }).encode('utf-8')
-        
-        try:
-            req = urllib.request.Request(
-                api_url,
-                data=payload,
-                headers={'Content-Type': 'application/json'},
-                method='POST'
-            )
-            
-            with urllib.request.urlopen(req, timeout=5) as response:
-                result = json.loads(response.read().decode('utf-8'))
-                print(f"[Palworld] Daemon REST response: {result}", file=sys.stderr)
-                
-                return {
-                    "success": result.get("success", True),
-                    "message": f"REST API command executed: {command_text}",
-                    "data": result.get("data")
-                }
-        
-        except urllib.error.URLError as e:
-            print(f"[Palworld] Daemon connection error: {e}", file=sys.stderr)
-            return {
-                "success": False,
-                "message": f"Failed to connect to daemon: {str(e)}"
-            }
-        except json.JSONDecodeError as e:
-            print(f"[Palworld] Invalid JSON response from daemon: {e}", file=sys.stderr)
-            return {
-                "success": False,
-                "message": f"Invalid daemon response: {str(e)}"
-            }
-        except Exception as e:
-            print(f"[Palworld] Daemon error: {e}", file=sys.stderr)
-            return {
-                "success": False,
-                "message": f"Failed to execute via daemon: {str(e)}"
-            }
+        # === REST 모드 (기본값) ===
+        return execute_command_via_rest(instance_id, command_lower, args, config)
     
     except Exception as e:
         import traceback
@@ -591,7 +607,283 @@ def command(config):
         }
 
 
+def execute_command_via_rest(instance_id, command_lower, args, config):
+    """Execute command via REST API - 직접 Palworld 서버에 요청 (Daemon 데드락 방지)"""
+    endpoint = None
+    body = None
+    method = "POST"
+    
+    if command_lower == "announce":
+        message = args.get("message", "")
+        if not message:
+            return {"success": False, "message": "Message parameter required"}
+        endpoint = "/v1/api/announce"
+        body = {"message": message}
+    
+    elif command_lower == "kick":
+        userid = args.get("userid")
+        if not userid:
+            return {"success": False, "message": "userid is required"}
+        message = args.get("message", "Kicked from server")
+        endpoint = "/v1/api/kick"
+        body = {"userid": userid, "message": message}
+    
+    elif command_lower == "ban":
+        userid = args.get("userid")
+        if not userid:
+            return {"success": False, "message": "userid is required"}
+        message = args.get("message", "Banned from server")
+        endpoint = "/v1/api/ban"
+        body = {"userid": userid, "message": message}
+    
+    elif command_lower == "unban":
+        userid = args.get("userid")
+        if not userid:
+            return {"success": False, "message": "userid is required"}
+        endpoint = "/v1/api/unban"
+        body = {"userid": userid}
+    
+    elif command_lower == "info":
+        endpoint = "/v1/api/info"
+        method = "GET"
+    
+    elif command_lower == "players":
+        endpoint = "/v1/api/players"
+        method = "GET"
+    
+    elif command_lower == "metrics":
+        endpoint = "/v1/api/metrics"
+        method = "GET"
+    
+    elif command_lower == "settings":
+        endpoint = "/v1/api/settings"
+        method = "GET"
+    
+    elif command_lower == "save":
+        endpoint = "/v1/api/save"
+        body = {}
+    
+    elif command_lower == "shutdown":
+        waittime = int(args.get("waittime", args.get("seconds", 30)))
+        message = args.get("message", "Server shutting down")
+        endpoint = "/v1/api/shutdown"
+        body = {"waittime": waittime, "message": message}
+    
+    else:
+        return {"success": False, "message": f"Unknown REST command: {command_lower}"}
+    
+    # 직접 Palworld 서버에 요청 (Daemon을 거치지 않음 - 데드락 방지)
+    return execute_rest_direct(endpoint, body, method, command_lower, config)
+
+
+def execute_rest_direct(endpoint, body, method, command_text, config):
+    """직접 Palworld 서버에 REST API 요청 (Daemon을 거치지 않음)"""
+    rest_host = config.get("rest_host", "127.0.0.1")
+    rest_port = config.get("rest_port", 8212)
+    rest_username = config.get("rest_username", "")
+    rest_password = config.get("rest_password", "")
+    
+    url = f"http://{rest_host}:{rest_port}{endpoint}"
+    print(f"[Palworld] Direct REST request: {method} {url}", file=sys.stderr)
+    if body:
+        print(f"[Palworld] Request body: {body}", file=sys.stderr)
+    
+    try:
+        if method == "GET":
+            req = urllib.request.Request(url, method='GET')
+        else:
+            data = json.dumps(body).encode('utf-8') if body else None
+            req = urllib.request.Request(url, data=data, method=method)
+            req.add_header('Content-Type', 'application/json')
+        
+        # Basic Auth 설정
+        if rest_username and rest_password:
+            credentials = f"{rest_username}:{rest_password}"
+            encoded_credentials = base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
+            req.add_header('Authorization', f'Basic {encoded_credentials}')
+        
+        with urllib.request.urlopen(req, timeout=10) as response:
+            response_text = response.read().decode('utf-8')
+            status_code = response.getcode()
+            
+            print(f"[Palworld] Response status: {status_code}", file=sys.stderr)
+            print(f"[Palworld] Response: {response_text[:200]}", file=sys.stderr)
+            
+            # 응답 파싱 시도
+            try:
+                result = json.loads(response_text) if response_text else {}
+            except json.JSONDecodeError:
+                result = {"raw": response_text}
+            
+            return {
+                "success": True,
+                "message": f"REST command '{command_text}' executed successfully",
+                "data": result,
+                "protocol": "rest"
+            }
+    
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode('utf-8') if e.fp else str(e)
+        print(f"[Palworld] HTTP Error {e.code}: {error_body}", file=sys.stderr)
+        return {
+            "success": False,
+            "message": f"HTTP Error {e.code}: {error_body}"
+        }
+    except urllib.error.URLError as e:
+        print(f"[Palworld] Connection error: {e}", file=sys.stderr)
+        return {
+            "success": False,
+            "message": f"Failed to connect to Palworld server: {str(e)}"
+        }
+    except Exception as e:
+        print(f"[Palworld] Error: {e}", file=sys.stderr)
+        return {
+            "success": False,
+            "message": f"Failed to execute REST command: {str(e)}"
+        }
+
+
+def execute_command_via_rcon(instance_id, command_lower, args, config):
+    """Execute command via RCON"""
+    
+    # RCON 명령어 템플릿 매핑
+    rcon_templates = {
+        "announce": "Broadcast {message}",
+        "info": "Info",
+        "players": "ShowPlayers",
+        "save": "Save",
+        "shutdown": "Shutdown {waittime} {message}",
+        "kick": "KickPlayer {userid}",
+        "ban": "BanPlayer {userid}",
+        "unban": "UnBanPlayer {userid}",
+    }
+    
+    if command_lower not in rcon_templates:
+        return {
+            "success": False,
+            "message": f"Command '{command_lower}' is not available via RCON. Try using REST mode."
+        }
+    
+    # 템플릿에서 RCON 명령어 생성
+    template = rcon_templates[command_lower]
+    
+    # 인자 치환
+    rcon_cmd = template
+    for key, value in args.items():
+        rcon_cmd = rcon_cmd.replace("{" + key + "}", str(value) if value else "")
+    
+    # 남은 플레이스홀더 제거 및 공백 정리
+    import re
+    rcon_cmd = re.sub(r'\{[^}]+\}', '', rcon_cmd)
+    rcon_cmd = ' '.join(rcon_cmd.split())  # 연속 공백 제거
+    
+    print(f"[Palworld] RCON command: {rcon_cmd}", file=sys.stderr)
+    
+    return execute_rcon_via_daemon(instance_id, rcon_cmd)
+
+
+def execute_rest_via_daemon(instance_id, endpoint, body, command_text):
+    """Execute REST API command via daemon"""
+    api_url = f"{DAEMON_API_URL}/api/instance/{instance_id}/rest"
+    
+    payload = json.dumps({
+        "endpoint": endpoint,
+        "method": "POST" if body else "GET",
+        "body": body
+    }).encode('utf-8')
+    
+    try:
+        req = urllib.request.Request(
+            api_url,
+            data=payload,
+            headers={'Content-Type': 'application/json'},
+            method='POST'
+        )
+        
+        with urllib.request.urlopen(req, timeout=5) as response:
+            result = json.loads(response.read().decode('utf-8'))
+            print(f"[Palworld] Daemon REST response: {result}", file=sys.stderr)
+            
+            return {
+                "success": result.get("success", True),
+                "message": f"REST API command executed: {command_text}",
+                "data": result.get("data"),
+                "protocol": "rest"
+            }
+    
+    except urllib.error.URLError as e:
+        print(f"[Palworld] Daemon connection error: {e}", file=sys.stderr)
+        return {
+            "success": False,
+            "message": f"Failed to connect to daemon: {str(e)}"
+        }
+    except json.JSONDecodeError as e:
+        print(f"[Palworld] Invalid JSON response from daemon: {e}", file=sys.stderr)
+        return {
+            "success": False,
+            "message": f"Invalid daemon response: {str(e)}"
+        }
+    except Exception as e:
+        print(f"[Palworld] Daemon error: {e}", file=sys.stderr)
+        return {
+            "success": False,
+            "message": f"Failed to execute via daemon: {str(e)}"
+        }
+
+
+def execute_rcon_via_daemon(instance_id, rcon_cmd):
+    """Execute RCON command via daemon"""
+    api_url = f"{DAEMON_API_URL}/api/instance/{instance_id}/rcon"
+    
+    payload = json.dumps({
+        "command": rcon_cmd
+    }).encode('utf-8')
+    
+    try:
+        req = urllib.request.Request(
+            api_url,
+            data=payload,
+            headers={'Content-Type': 'application/json'},
+            method='POST'
+        )
+        
+        with urllib.request.urlopen(req, timeout=10) as response:
+            result = json.loads(response.read().decode('utf-8'))
+            print(f"[Palworld] Daemon RCON response: {result}", file=sys.stderr)
+            
+            return {
+                "success": result.get("success", True),
+                "message": f"RCON command executed: {rcon_cmd}",
+                "data": result.get("data"),
+                "protocol": "rcon"
+            }
+    
+    except urllib.error.URLError as e:
+        print(f"[Palworld] Daemon RCON connection error: {e}", file=sys.stderr)
+        return {
+            "success": False,
+            "message": f"Failed to connect to daemon for RCON: {str(e)}"
+        }
+    except json.JSONDecodeError as e:
+        print(f"[Palworld] Invalid JSON response from daemon RCON: {e}", file=sys.stderr)
+        return {
+            "success": False,
+            "message": f"Invalid daemon RCON response: {str(e)}"
+        }
+    except Exception as e:
+        print(f"[Palworld] Daemon RCON error: {e}", file=sys.stderr)
+        return {
+            "success": False,
+            "message": f"Failed to execute RCON via daemon: {str(e)}"
+        }
+
+
 if __name__ == "__main__":
+    # DEBUG: 모든 입력 인자 출력
+    print(f"[Palworld] sys.argv count: {len(sys.argv)}", file=sys.stderr)
+    for i, arg in enumerate(sys.argv):
+        print(f"[Palworld] sys.argv[{i}]: {arg[:200] if len(arg) > 200 else arg}", file=sys.stderr)
+    
     if len(sys.argv) < 3:
         print(json.dumps({"success": False, "message": "Usage: lifecycle.py <function> <config_json>"}))
         sys.exit(1)
@@ -599,10 +891,14 @@ if __name__ == "__main__":
     function_name = sys.argv[1]
     config_json = sys.argv[2]
     
+    print(f"[Palworld] Parsing config_json: {config_json[:200]}", file=sys.stderr)
+    
     try:
         config = json.loads(config_json)
-    except:
-        print(json.dumps({"success": False, "message": "Invalid JSON config"}))
+        print(f"[Palworld] Parsed config keys: {list(config.keys())}", file=sys.stderr)
+    except Exception as e:
+        print(json.dumps({"success": False, "message": f"Invalid JSON config: {str(e)}, input: {config_json[:100]}"}))
+        print(f"[Palworld] JSON parse error: {e}", file=sys.stderr)
         sys.exit(1)
     
     # Call function

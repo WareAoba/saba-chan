@@ -21,6 +21,40 @@ pub struct ModuleMetadata {
     pub commands: Option<ModuleCommands>,  // 명령어 스키마
 }
 
+impl ModuleMetadata {
+    /// 설정 필드의 기본값을 가져옵니다
+    pub fn get_setting_default<T: std::str::FromStr>(&self, field_name: &str) -> Option<T> {
+        self.settings.as_ref().and_then(|s| {
+            s.fields.iter().find(|f| f.name == field_name).and_then(|f| {
+                f.default.as_ref().and_then(|d| {
+                    match d {
+                        toml::Value::Integer(i) => i.to_string().parse().ok(),
+                        toml::Value::String(s) => s.parse().ok(),
+                        toml::Value::Float(f) => f.to_string().parse().ok(),
+                        toml::Value::Boolean(b) => b.to_string().parse().ok(),
+                        _ => None,
+                    }
+                })
+            })
+        })
+    }
+    
+    /// RCON 기본 포트를 가져옵니다 (모듈에 정의되지 않으면 25575)
+    pub fn default_rcon_port(&self) -> u16 {
+        self.get_setting_default("rcon_port").unwrap_or(25575)
+    }
+    
+    /// REST API 기본 포트를 가져옵니다 (모듈에 정의되지 않으면 8212)
+    pub fn default_rest_port(&self) -> u16 {
+        self.get_setting_default("rest_port").unwrap_or(8212)
+    }
+    
+    /// REST API 기본 호스트를 가져옵니다 (모듈에 정의되지 않으면 127.0.0.1)
+    pub fn default_rest_host(&self) -> String {
+        self.get_setting_default("rest_host").unwrap_or_else(|| "127.0.0.1".to_string())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModuleSettings {
     pub fields: Vec<SettingField>,
@@ -36,9 +70,10 @@ pub struct CommandField {
     pub name: String,
     pub label: String,
     pub description: Option<String>,
-    pub method: Option<String>,  // "rest", "rcon", etc.
-    pub http_method: Option<String>,  // "GET", "POST"
-    pub endpoint_template: Option<String>,
+    pub method: Option<String>,  // "rest", "rcon", "both"
+    pub http_method: Option<String>,  // "GET", "POST" (REST only)
+    pub endpoint_template: Option<String>,  // REST endpoint template
+    pub rcon_template: Option<String>,  // RCON command template (e.g., "kick {userid}")
     #[serde(default)]
     pub inputs: Vec<CommandInput>,
 }
@@ -480,6 +515,11 @@ fn parse_commands(data: &toml::Value) -> Option<ModuleCommands> {
                     .and_then(|v: &toml::Value| v.as_str())
                     .map(|s: &str| s.to_string());
                 
+                let rcon_template = field_table
+                    .get("rcon_template")
+                    .and_then(|v: &toml::Value| v.as_str())
+                    .map(|s: &str| s.to_string());
+                
                 // inputs 파싱
                 let inputs = if let Some(inputs_value) = field_table.get("inputs") {
                     if let Some(inputs_array) = inputs_value.as_array() {
@@ -528,6 +568,7 @@ fn parse_commands(data: &toml::Value) -> Option<ModuleCommands> {
                     method,
                     http_method,
                     endpoint_template,
+                    rcon_template,
                     inputs,
                 });
             }

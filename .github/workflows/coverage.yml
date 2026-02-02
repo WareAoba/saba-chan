@@ -1,0 +1,62 @@
+name: Coverage
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  coverage:
+    name: Code Coverage
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Tarpaulin
+        run: cargo install cargo-tarpaulin
+
+      - name: Install dependencies
+        run: |
+          cd electron_gui && npm ci
+          cd ../discord_bot && npm ci
+
+      - name: Generate Rust coverage
+        run: cargo tarpaulin --test daemon_integration --out Xml --output-dir coverage
+
+      - name: Generate JavaScript coverage
+        run: |
+          cd electron_gui && npm test -- --coverage --coverageDirectory=../coverage/gui
+          cd ../discord_bot && npm test -- --coverage --coverageDirectory=../coverage/bot
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: |
+            coverage/cobertura.xml
+            coverage/gui/lcov.info
+            coverage/bot/lcov.info
+          flags: unittests
+          name: saba-chan-coverage
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-reports
+          path: coverage/
+          retention-days: 14

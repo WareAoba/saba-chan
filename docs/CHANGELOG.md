@@ -1,5 +1,31 @@
 # Changelog
 
+## [Unreleased] - 2026-02-01
+### 🎮 Palworld 플레이어 ID 자동 변환 기능
+
+#### kick/ban/unban 명령어 개선 ([lifecycle.py](modules/palworld/lifecycle.py))
+- **닉네임 → Steam ID 자동 변환**: 사용자가 닉네임을 입력하면 자동으로 Steam ID로 변환
+  - `accountName` (Steam 계정 이름) 검색 지원
+  - `name` (게임 내 캐릭터 이름) 검색 지원
+  - 정확 일치 및 부분 일치 검색 지원
+- **직접 REST 요청**: Daemon 데드락 방지를 위해 Palworld 서버에 직접 요청
+  - `resolve_player_id()` 함수 개선
+  - `execute_rest_direct()` 함수 추가
+
+#### GUI 명령어 라우팅 변경 ([main.js](electron_gui/main.js))
+- **플레이어 명령어 분기 처리**: kick, ban, unban 명령어를 `/api/instance/:id/command` 엔드포인트로 라우팅
+- **Python 모듈 연동**: 플레이어 ID 변환 로직이 있는 Python 모듈을 통해 명령어 실행
+
+#### 사용 예시
+```
+kick KimchiMayo        → steam_76561199507076069 으로 자동 변환 후 kick 실행
+kick 김마무            → 캐릭터 이름으로도 검색 가능
+ban KimchiMayo         → 동일하게 자동 변환 후 ban 실행
+kick steam_76561199507076069  → Steam ID 직접 입력도 가능
+```
+
+---
+
 ## [Unreleased] - 2026-01-20
 ### 🤖 Discord 봇 개선
 
