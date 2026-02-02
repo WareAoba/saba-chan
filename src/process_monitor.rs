@@ -103,7 +103,7 @@ impl ProcessMonitor {
 
             unsafe {
                 let handle = OpenProcess(PROCESS_QUERY_INFORMATION, 0, pid);
-                if handle != ptr::null_mut() {
+                if !handle.is_null() {
                     CloseHandle(handle);
                     true
                 } else {
