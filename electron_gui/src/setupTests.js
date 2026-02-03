@@ -1,11 +1,15 @@
-// jest-dom adds custom jest matchers for asserting on DOM nodes.
+// vitest-dom adds custom matchers for asserting on DOM nodes.
 // allows you to do things like:
 // expect(element).toHaveTextContent(/react/i)
 // learn more: https://github.com/testing-library/jest-dom
 import '@testing-library/jest-dom';
+import { expect, afterEach, vi } from 'vitest';
+import { cleanup } from '@testing-library/react';
 
-// 전역 테스트 타임아웃 설정 (10초)
-jest.setTimeout(10000);
+// Cleanup after each test case (e.g. clearing jsdom)
+afterEach(() => {
+  cleanup();
+});
 
 // 테스트 환경에서 디버깅 로그 억제 (에러는 유지)
 const originalConsoleLog = console.log;
@@ -38,20 +42,20 @@ console.warn = (...args) => {
 // Mock window.api globally (jsdom 환경에서만)
 if (typeof window !== 'undefined') {
     global.window.api = {
-        settingsLoad: jest.fn(),
-        settingsSave: jest.fn(),
-        settingsGetPath: jest.fn(),
-        botConfigLoad: jest.fn(),
-        botConfigSave: jest.fn(),
-        discordBotStatus: jest.fn(),
-        discordBotStart: jest.fn(),
-        discordBotStop: jest.fn(),
-        serverList: jest.fn(),          // 추가
-        moduleList: jest.fn(),          // 추가
-        getServers: jest.fn(),
-        getModules: jest.fn(),
+        settingsLoad: vi.fn(),
+        settingsSave: vi.fn(),
+        settingsGetPath: vi.fn(),
+        botConfigLoad: vi.fn(),
+        botConfigSave: vi.fn(),
+        discordBotStatus: vi.fn(),
+        discordBotStart: vi.fn(),
+        discordBotStop: vi.fn(),
+        serverList: vi.fn(),          // 추가
+        moduleList: vi.fn(),          // 추가
+        getServers: vi.fn(),
+        getModules: vi.fn(),
     };
     
-    global.window.showToast = jest.fn();
-    global.window.showStatus = jest.fn();
+    global.window.showToast = vi.fn();
+    global.window.showStatus = vi.fn();
 }

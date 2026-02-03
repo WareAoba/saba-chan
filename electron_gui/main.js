@@ -179,7 +179,7 @@ function startDaemon() {
     });
 }
 
-// Core Daemon 종료
+// Core Daemon 종료 (크로스 플랫폼)
 function stopDaemon() {
     if (!daemonProcess) {
         console.log('Daemon is not running');
@@ -189,20 +189,30 @@ function stopDaemon() {
     console.log(`Attempting to stop daemon (PID: ${daemonProcess.pid})`);
     
     try {
-        // Windows에서는 taskkill 사용 (더 안정적인 종료)
-        if (process.platform === 'win32') {
-            require('child_process').execSync(`taskkill /PID ${daemonProcess.pid} /F /T`);
-            console.log('Daemon forcefully terminated via taskkill');
-        } else {
-            // Unix 계열에서는 SIGTERM 먼저 시도
-            if (!daemonProcess.killed) {
+        if (!daemonProcess.killed) {
+            if (process.platform === 'win32') {
+                // Windows: taskkill로 프로세스 트리 전체 종료
+                try {
+                    require('child_process').execSync(`taskkill /PID ${daemonProcess.pid} /F /T`, { stdio: 'ignore' });
+                    console.log('Daemon terminated via taskkill');
+                } catch (e) {
+                    console.warn('taskkill failed, trying process.kill:', e.message);
+                    daemonProcess.kill('SIGTERM');
+                }
+            } else {
+                // Unix/Linux/macOS: SIGTERM으로 우아하게 종료 시도
                 daemonProcess.kill('SIGTERM');
+                console.log('Sent SIGTERM to daemon');
                 
                 // 2초 후에도 살아있으면 SIGKILL
                 const killTimeout = setTimeout(() => {
                     if (daemonProcess && !daemonProcess.killed) {
-                        console.warn('SIGTERM failed, sending SIGKILL');
-                        daemonProcess.kill('SIGKILL');
+                        console.warn('SIGTERM timeout, sending SIGKILL');
+                        try {
+                            daemonProcess.kill('SIGKILL');
+                        } catch (e) {
+                            console.error('SIGKILL failed:', e);
+                        }
                     }
                 }, 2000);
                 
@@ -242,12 +252,14 @@ async function cleanQuit() {
             console.warn('Daemon still running after waiting, force killing');
             try {
                 if (process.platform === 'win32') {
+                    // Windows: taskkill로 강제 종료
                     require('child_process').execSync(`taskkill /PID ${daemonProcess.pid} /F /T 2>nul`, { stdio: 'ignore' });
                 } else {
+                    // Unix/Linux/macOS: SIGKILL로 강제 종료
                     daemonProcess.kill('SIGKILL');
                 }
             } catch (e) {
-                // 무시
+                console.debug('Force kill error (process may already be dead):', e.message);
             }
         }
         
@@ -359,6 +371,8 @@ function createWindow() {
     mainWindow = new BrowserWindow({
         width,
         height,
+        minWidth: 400,
+        minHeight: 500,
         show: false,  // 준비될 때까지 보이지 않음
         frame: false,  // Windows 기본 프레임 제거
         icon: path.join(__dirname, '..', 'assets', 'icon.png'),  // 아이콘 (있으면)
@@ -382,8 +396,8 @@ function createWindow() {
         mainWindow.webContents.send('app:closeRequest');
     });
 
-    // 개발 모드: http://localhost:3000, 프로덕션: build/index.html
-    const startURL = process.env.ELECTRON_START_URL || 'http://localhost:3000';
+    // 개발 모드: http://localhost:5173 (Vite), 프로덕션: build/index.html
+    const startURL = process.env.ELECTRON_START_URL || 'http://localhost:5173';
     mainWindow.loadURL(startURL);
 
     // 개발 모드에서 DevTools 자동 열기

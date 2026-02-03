@@ -16,6 +16,8 @@ pub struct ModuleMetadata {
     pub default_port: Option<u16>,  // config.default_port
     pub executable_path: Option<String>,  // config.executable_path
     #[serde(default)]
+    pub icon: Option<String>,  // 아이콘 파일명 (icon.png 등)
+    #[serde(default)]
     pub settings: Option<ModuleSettings>,  // 설정 스키마
     #[serde(default)]
     pub commands: Option<ModuleCommands>,  // 명령어 스키마
@@ -241,6 +243,10 @@ impl ModuleLoader {
                 .and_then(|c| c.get("executable_path"))
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
+            icon: module_section
+                .get("icon")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
             settings: parse_settings(&data),
             commands: parse_commands(&data),
         };
@@ -311,6 +317,10 @@ impl ModuleLoader {
             executable_path: data
                 .get("config")
                 .and_then(|c| c.get("executable_path"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            icon: module_section
+                .get("icon")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
             settings: parse_settings(&data),

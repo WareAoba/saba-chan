@@ -38,24 +38,51 @@ impl PathDetector {
         Ok(None)
     }
 
-    /// 기본 게임 서버 설치 경로 검색
+    /// 기본 게임 서버 설치 경로 검색 (크로스 플랫폼)
     pub fn get_default_game_paths() -> Vec<PathBuf> {
         let mut paths = Vec::new();
 
-        // Steam 기본 경로
-        if let Some(program_files_x86) = std::env::var_os("ProgramFiles(x86)") {
-            paths.push(PathBuf::from(program_files_x86).join("Steam").join("steamapps").join("common"));
+        #[cfg(target_os = "windows")]
+        {
+            // Windows: Steam 기본 경로
+            if let Some(program_files_x86) = std::env::var_os("ProgramFiles(x86)") {
+                paths.push(PathBuf::from(program_files_x86).join("Steam").join("steamapps").join("common"));
+            }
+
+            // 사용자 지정 Steam 라이브러리 경로들
+            for drive in &["C:", "D:", "E:", "F:"] {
+                paths.push(PathBuf::from(format!("{}\\SteamLibrary\\steamapps\\common", drive)));
+                paths.push(PathBuf::from(format!("{}\\Games", drive)));
+            }
+
+            // 데스크탑
+            if let Some(userprofile) = std::env::var_os("USERPROFILE") {
+                paths.push(PathBuf::from(userprofile).join("Desktop"));
+            }
         }
 
-        // 사용자 지정 Steam 라이브러리 경로들
-        for drive in &["C:", "D:", "E:", "F:"] {
-            paths.push(PathBuf::from(format!("{}\\SteamLibrary\\steamapps\\common", drive)));
-            paths.push(PathBuf::from(format!("{}\\Games", drive)));
+        #[cfg(target_os = "linux")]
+        {
+            // Linux: Steam 기본 경로
+            if let Some(home) = std::env::var_os("HOME") {
+                let home = PathBuf::from(home);
+                paths.push(home.join(".steam").join("steam").join("steamapps").join("common"));
+                paths.push(home.join(".local").join("share").join("Steam").join("steamapps").join("common"));
+                
+                // Flatpak Steam
+                paths.push(home.join(".var").join("app").join("com.valvesoftware.Steam")
+                    .join(".steam").join("steam").join("steamapps").join("common"));
+            }
         }
 
-        // 데스크탑
-        if let Some(userprofile) = std::env::var_os("USERPROFILE") {
-            paths.push(PathBuf::from(userprofile).join("Desktop"));
+        #[cfg(target_os = "macos")]
+        {
+            // macOS: Steam 기본 경로
+            if let Some(home) = std::env::var_os("HOME") {
+                let home = PathBuf::from(home);
+                paths.push(home.join("Library").join("Application Support").join("Steam")
+                    .join("steamapps").join("common"));
+            }
         }
 
         paths

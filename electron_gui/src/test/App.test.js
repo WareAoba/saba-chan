@@ -1,6 +1,7 @@
-import React from 'react';
+﻿import React from 'react';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
 import App from '../App';
 import fs from 'fs';
 import path from 'path';
@@ -36,30 +37,30 @@ afterAll(() => {
 
 // Mock window.api
 const mockApi = {
-    settingsLoad: jest.fn(),
-    settingsSave: jest.fn(),
-    settingsGetPath: jest.fn(),
-    botConfigLoad: jest.fn(),
-    botConfigSave: jest.fn(),
-    discordBotStatus: jest.fn(),
-    discordBotStart: jest.fn(),
-    discordBotStop: jest.fn(),
-    serverList: jest.fn(),
-    moduleList: jest.fn(),
-    getServers: jest.fn(),
-    getModules: jest.fn(),
+    settingsLoad: vi.fn(),
+    settingsSave: vi.fn(),
+    settingsGetPath: vi.fn(),
+    botConfigLoad: vi.fn(),
+    botConfigSave: vi.fn(),
+    discordBotStatus: vi.fn(),
+    discordBotStart: vi.fn(),
+    discordBotStop: vi.fn(),
+    serverList: vi.fn(),
+    moduleList: vi.fn(),
+    getServers: vi.fn(),
+    getModules: vi.fn(),
 };
 
-const mockShowToast = jest.fn();
+const mockShowToast = vi.fn();
 
 beforeEach(() => {
     // Reset all mocks
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     
     // Setup window.api
     global.window.api = mockApi;
     global.window.showToast = mockShowToast;
-    global.window.showStatus = jest.fn();
+    global.window.showStatus = vi.fn();
     
     // Default mock responses
     mockApi.settingsLoad.mockResolvedValue({
@@ -87,7 +88,7 @@ beforeEach(() => {
 });
 
 describe('설정 저장/로드 테스트', () => {
-    test('앱 시작 시 설정이 로드되어야 함', async () => {
+    it('앱 시작 시 설정이 로드되어야 함', async () => {
         await act(async () => {
             render(<App />);
         });
@@ -98,7 +99,7 @@ describe('설정 저장/로드 테스트', () => {
         });
     });
 
-    test('설정 로드 후 상태가 올바르게 설정되어야 함', async () => {
+    it('설정 로드 후 상태가 올바르게 설정되어야 함', async () => {
         mockApi.settingsLoad.mockResolvedValue({
             autoRefresh: false,
             refreshInterval: 5000,
@@ -118,7 +119,7 @@ describe('설정 저장/로드 테스트', () => {
         // Note: 실제 검증은 UI 렌더링이나 다른 부수효과로 확인
     });
 
-    test('봇 설정 로드 후 prefix가 올바르게 설정되어야 함', async () => {
+    it('봇 설정 로드 후 prefix가 올바르게 설정되어야 함', async () => {
         mockApi.botConfigLoad.mockResolvedValue({
             prefix: '!test',
             moduleAliases: { minecraft: 'mc' },
@@ -136,7 +137,7 @@ describe('설정 저장/로드 테스트', () => {
 });
 
 describe('Discord 봇 상태 테스트', () => {
-    test('앱 시작 시 봇 상태를 확인해야 함', async () => {
+    it('앱 시작 시 봇 상태를 확인해야 함', async () => {
         await act(async () => {
             render(<App />);
         });
@@ -146,7 +147,7 @@ describe('Discord 봇 상태 테스트', () => {
         }, { timeout: 3000 });
     });
 
-    test('봇이 stopped 상태로 시작되어야 함', async () => {
+    it('봇이 stopped 상태로 시작되어야 함', async () => {
         mockApi.discordBotStatus.mockResolvedValue('stopped');
 
         await act(async () => {
@@ -158,7 +159,7 @@ describe('Discord 봇 상태 테스트', () => {
         }, { timeout: 3000 });
     });
 
-    test('봇이 이미 실행 중이면 running 상태여야 함', async () => {
+    it('봇이 이미 실행 중이면 running 상태여야 함', async () => {
         mockApi.discordBotStatus.mockResolvedValue('running');
 
         await act(async () => {
@@ -172,7 +173,7 @@ describe('Discord 봇 상태 테스트', () => {
 });
 
 describe('Discord 봇 자동실행 테스트', () => {
-    test('자동실행 설정이 꺼져있으면 봇이 시작되지 않아야 함', async () => {
+    it('자동실행 설정이 꺼져있으면 봇이 시작되지 않아야 함', async () => {
         mockApi.settingsLoad.mockResolvedValue({
             autoRefresh: true,
             refreshInterval: 2000,
@@ -196,7 +197,7 @@ describe('Discord 봇 자동실행 테스트', () => {
         expect(mockApi.discordBotStart).not.toHaveBeenCalled();
     });
 
-    test('자동실행 설정이 켜져있으면 봇이 자동으로 시작되어야 함', async () => {
+    it('자동실행 설정이 켜져있으면 봇이 자동으로 시작되어야 함', async () => {
         mockApi.settingsLoad.mockResolvedValue({
             autoRefresh: true,
             refreshInterval: 2000,
@@ -233,7 +234,7 @@ describe('Discord 봇 자동실행 테스트', () => {
         }, { timeout: 3000 });
     });
 
-    test('토큰이 없으면 자동실행되지 않아야 함', async () => {
+    it('토큰이 없으면 자동실행되지 않아야 함', async () => {
         mockApi.settingsLoad.mockResolvedValue({
             autoRefresh: true,
             refreshInterval: 2000,
@@ -257,7 +258,7 @@ describe('Discord 봇 자동실행 테스트', () => {
         expect(mockApi.discordBotStart).not.toHaveBeenCalled();
     });
 
-    test('봇이 이미 실행 중이면 자동실행을 건너뛰어야 함', async () => {
+    it('봇이 이미 실행 중이면 자동실행을 건너뛰어야 함', async () => {
         mockApi.settingsLoad.mockResolvedValue({
             autoRefresh: true,
             refreshInterval: 2000,
@@ -281,7 +282,7 @@ describe('Discord 봇 자동실행 테스트', () => {
         expect(mockApi.discordBotStart).not.toHaveBeenCalled();
     });
 
-    test('자동실행은 앱 시작 시 한 번만 실행되어야 함', async () => {
+    it('자동실행은 앱 시작 시 한 번만 실행되어야 함', async () => {
         mockApi.settingsLoad.mockResolvedValue({
             autoRefresh: true,
             refreshInterval: 2000,
@@ -311,7 +312,7 @@ describe('Discord 봇 자동실행 테스트', () => {
 });
 
 describe('설정 저장 테스트', () => {
-    test('prefix 변경 시 봇 설정이 저장되어야 함', async () => {
+    it('prefix 변경 시 봇 설정이 저장되어야 함', async () => {
         // 이 테스트는 실제 UI 상호작용이 필요하므로 E2E 테스트로 이동하는 것이 좋음
         // 여기서는 기본적인 동작만 확인
         await act(async () => {
@@ -325,9 +326,9 @@ describe('설정 저장 테스트', () => {
 });
 
 describe('로딩 화면 테스트', () => {
-    test('초기 로딩 화면이 표시되어야 함', async () => {
+    it('초기 로딩 화면이 표시되어야 함', async () => {
         // onStatusUpdate 이벤트 모킹
-        mockApi.onStatusUpdate = jest.fn((callback) => {
+        mockApi.onStatusUpdate = vi.fn((callback) => {
             // 이벤트 리스너 등록만 확인
         });
 
@@ -340,9 +341,9 @@ describe('로딩 화면 테스트', () => {
         expect(screen.getByText(/초기화/i)).toBeInTheDocument();
     });
 
-    test('ready 상태 수신 시 로딩 화면이 사라져야 함', async () => {
+    it('ready 상태 수신 시 로딩 화면이 사라져야 함', async () => {
         let statusCallback = null;
-        mockApi.onStatusUpdate = jest.fn((callback) => {
+        mockApi.onStatusUpdate = vi.fn((callback) => {
             statusCallback = callback;
         });
 
@@ -364,13 +365,13 @@ describe('로딩 화면 테스트', () => {
         }, { timeout: 2000 });
     });
 
-    test('서버 카드 초기화 로딩이 3.5초 후 사라져야 함', async () => {
+    it('서버 카드 초기화 로딩이 3.5초 후 사라져야 함', async () => {
         // 이 테스트는 타이머 기반이므로 매우 긴 타임아웃 필요
         // 실제 CI에서는 스킵하거나 모킹으로 대체 권장
-        jest.useFakeTimers();
+        vi.useFakeTimers();
         
         let statusCallback = null;
-        mockApi.onStatusUpdate = jest.fn((callback) => {
+        mockApi.onStatusUpdate = vi.fn((callback) => {
             statusCallback = callback;
         });
 
@@ -387,19 +388,19 @@ describe('로딩 화면 테스트', () => {
 
         // 3.5초 경과
         await act(async () => {
-            jest.advanceTimersByTime(3500);
+            vi.advanceTimersByTime(3500);
         });
 
         // serversInitializing=false 로 전환되어 오버레이가 사라져야 함
         expect(screen.queryByText('서버 상태 확인 중...')).not.toBeInTheDocument();
         
-        jest.useRealTimers();
+        vi.useRealTimers();
     });
 });
 // === 2026-01-20 추가: safeShowToast 및 통신 테스트 ===
 
 describe('safeShowToast 안전 호출 테스트', () => {
-    test('window.showToast가 정의되지 않았을 때 에러가 발생하지 않아야 함', async () => {
+    it('window.showToast가 정의되지 않았을 때 에러가 발생하지 않아야 함', async () => {
         // showToast 제거
         delete global.window.showToast;
 
@@ -413,7 +414,7 @@ describe('safeShowToast 안전 호출 테스트', () => {
         });
     });
 
-    test('window.showToast가 정의되어 있으면 정상 호출되어야 함', async () => {
+    it('window.showToast가 정의되어 있으면 정상 호출되어야 함', async () => {
         global.window.showToast = mockShowToast;
 
         mockApi.discordBotStart.mockResolvedValue({ success: true });
@@ -440,7 +441,7 @@ describe('safeShowToast 안전 호출 테스트', () => {
         }, { timeout: 3000 });
     });
 
-    test('Discord 봇 시작 실패 시 에러 토스트가 표시되어야 함', async () => {
+    it('Discord 봇 시작 실패 시 에러 토스트가 표시되어야 함', async () => {
         global.window.showToast = mockShowToast;
 
         mockApi.discordBotStart.mockResolvedValue({ error: '토큰이 유효하지 않습니다' });
@@ -472,7 +473,7 @@ describe('safeShowToast 안전 호출 테스트', () => {
 });
 
 describe('모듈 목록 API 응답 테스트', () => {
-    test('모듈 목록에 commands 필드가 포함되어야 함', async () => {
+    it('모듈 목록에 commands 필드가 포함되어야 함', async () => {
         const mockModulesWithCommands = {
             modules: [
                 {
@@ -507,7 +508,7 @@ describe('모듈 목록 API 응답 테스트', () => {
             ]
         };
 
-        mockApi.moduleList = jest.fn().mockResolvedValue(mockModulesWithCommands);
+        mockApi.moduleList = vi.fn().mockResolvedValue(mockModulesWithCommands);
 
         // 모듈 데이터 검증
         const result = await mockApi.moduleList();
@@ -528,7 +529,7 @@ describe('모듈 목록 API 응답 테스트', () => {
         expect(announceCmd.inputs[0].required).toBe(true);
     });
 
-    test('commands가 없는 모듈도 정상 처리되어야 함', async () => {
+    it('commands가 없는 모듈도 정상 처리되어야 함', async () => {
         const mockModulesWithoutCommands = {
             modules: [
                 {
@@ -542,7 +543,7 @@ describe('모듈 목록 API 응답 테스트', () => {
             ]
         };
 
-        mockApi.moduleList = jest.fn().mockResolvedValue(mockModulesWithoutCommands);
+        mockApi.moduleList = vi.fn().mockResolvedValue(mockModulesWithoutCommands);
 
         const result = await mockApi.moduleList();
         
@@ -552,8 +553,8 @@ describe('모듈 목록 API 응답 테스트', () => {
 });
 
 describe('REST 명령어 실행 테스트', () => {
-    test('GET 메서드 명령어가 올바르게 전송되어야 함', async () => {
-        const mockExecuteCommand = jest.fn().mockResolvedValue({
+    it('GET 메서드 명령어가 올바르게 전송되어야 함', async () => {
+        const mockExecuteCommand = vi.fn().mockResolvedValue({
             success: true,
             data: { players: [{ name: 'TestPlayer', level: 10 }] },
             endpoint: '/v1/api/players',
@@ -572,8 +573,8 @@ describe('REST 명령어 실행 테스트', () => {
         expect(result.data.players).toHaveLength(1);
     });
 
-    test('POST 메서드 명령어가 body와 함께 전송되어야 함', async () => {
-        const mockExecuteCommand = jest.fn().mockResolvedValue({
+    it('POST 메서드 명령어가 body와 함께 전송되어야 함', async () => {
+        const mockExecuteCommand = vi.fn().mockResolvedValue({
             success: true,
             message: '공지가 전송되었습니다',
             endpoint: '/v1/api/announce',
@@ -599,8 +600,8 @@ describe('REST 명령어 실행 테스트', () => {
         }));
     });
 
-    test('REST 연결 실패 시 에러가 반환되어야 함', async () => {
-        const mockExecuteCommand = jest.fn().mockResolvedValue({
+    it('REST 연결 실패 시 에러가 반환되어야 함', async () => {
+        const mockExecuteCommand = vi.fn().mockResolvedValue({
             success: false,
             error: 'REST connection failed: Connection refused'
         });
@@ -618,7 +619,7 @@ describe('REST 명령어 실행 테스트', () => {
 });
 
 describe('서버 목록 업데이트 실패 테스트', () => {
-    test('서버 목록 조회 실패 시 토스트가 표시되어야 함', async () => {
+    it('서버 목록 조회 실패 시 토스트가 표시되어야 함', async () => {
         global.window.showToast = mockShowToast;
 
         // 초기에는 성공하고, 나중에 실패하도록 설정
@@ -651,10 +652,10 @@ describe('서버 목록 업데이트 실패 테스트', () => {
 });
 
 describe('모듈 로드 실패 테스트', () => {
-    test('모듈 로드 실패 시 에러 토스트가 표시되어야 함', async () => {
+    it('모듈 로드 실패 시 에러 토스트가 표시되어야 함', async () => {
         global.window.showToast = mockShowToast;
 
-        mockApi.moduleList = jest.fn().mockResolvedValue({ error: '모듈 경로를 찾을 수 없습니다' });
+        mockApi.moduleList = vi.fn().mockResolvedValue({ error: '모듈 경로를 찾을 수 없습니다' });
 
         await act(async () => {
             render(<App />);

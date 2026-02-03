@@ -7,4 +7,5 @@ export { default as CommandModal } from './Modals/CommandModal';
 export { default as SettingsModal } from './Modals/SettingsModal';
 export { default as DiscordBotModal } from './Modals/DiscordBotModal';
 export { default as BackgroundModal } from './Modals/BackgroundModal';
+export { AddServerModal } from './Modals/AddServerModal';
 export { Icon } from './Icon';

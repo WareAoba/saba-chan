@@ -5,6 +5,12 @@ description = "Minecraft server management module"
 game_name = "Minecraft"  # 게임 영어명 (기본 별명)
 display_name = "마인크래프트"  # 게임 한국어명
 entry = "lifecycle.py"
+icon = "icon.png"  # 모듈 폴더 내 아이콘 파일
+
+[protocols]
+# 이 모듈이 지원하는 프로토콜
+supported = ["rcon"]  # 지원하는 프로토콜 목록 (마인크래프트는 RCON만 지원)
+default = "rcon"  # 기본 프로토콜
 
 [config]
 executable_path = "C:\\MinecraftServer\\server.jar"

@@ -11,6 +11,7 @@ import {
     SettingsModal,
     DiscordBotModal,
     BackgroundModal,
+    AddServerModal,
     Icon
 } from './components';
 
@@ -572,6 +573,9 @@ function App() {
         }
     };
 
+    // 마지막 에러 토스트 표시 시간 추적 (중복 방지)
+    const lastErrorToastRef = useRef(0);
+    
     const fetchServers = async () => {
         try {
             // 재시도 로직 적용
@@ -581,16 +585,30 @@ function App() {
                 800
             );
             if (data && data.servers) {
-                setServers(data.servers);
+                // 기존 expanded 상태 보존하면서 서버 목록 업데이트
+                setServers(prev => {
+                    return data.servers.map(newServer => {
+                        const existing = prev.find(s => s.name === newServer.name);
+                        return {
+                            ...newServer,
+                            expanded: existing?.expanded || false
+                        };
+                    });
+                });
             } else if (data && data.error) {
                 console.error('Server list error:', data.error);
-                // 초기 로딩이 아닐 때만 토스트 표시
-                if (!loading) {
+                // 초기 로딩이 아니고, 최근 5초 이내에 에러 토스트를 표시하지 않았을 때만 표시
+                const now = Date.now();
+                if (!loading && (now - lastErrorToastRef.current) > 5000) {
                     safeShowToast(`⚠️ ${data.error}`, 'warning', 3000);
+                    lastErrorToastRef.current = now;
                 }
-                setServers([]);
+                // 에러 발생 시 서버 목록을 비우지 않고 기존 상태 유지
             } else {
-                setServers([]);
+                // 데이터가 없을 때만 빈 배열로 설정
+                if (loading) {
+                    setServers([]);
+                }
             }
         } catch (error) {
             console.error('Failed to fetch servers:', error);
@@ -604,11 +622,13 @@ function App() {
                 errorMsg += error.message;
             }
             
-            // 초기 로딩이 아닐 때만 토스트 표시
-            if (!loading) {
+            // 초기 로딩이 아니고, 최근 5초 이내에 에러 토스트를 표시하지 않았을 때만 표시
+            const now = Date.now();
+            if (!loading && (now - lastErrorToastRef.current) > 5000) {
                 safeShowToast(errorMsg, 'warning', 3000);
+                lastErrorToastRef.current = now;
             }
-            setServers([]);
+            // 에러 발생 시 서버 목록을 비우지 않고 기존 상태 유지
         } finally {
             setLoading(false);
         }
@@ -752,23 +772,23 @@ function App() {
         }
     };
 
-    const handleAddServer = async () => {
-        if (!newServerName.trim()) {
+    const handleAddServer = async (serverName, moduleName) => {
+        if (!serverName || !serverName.trim()) {
             setModal({ type: 'failure', title: '입력 오류', message: '서버 이름을 입력하세요' });
             return;
         }
-        if (!selectedModule) {
+        if (!moduleName) {
             setModal({ type: 'failure', title: '입력 오류', message: '모듈을 선택하세요' });
             return;
         }
 
         try {
             // 선택된 모듈의 기본 executable_path 가져오기
-            const selectedModuleData = modules.find(m => m.name === selectedModule);
+            const selectedModuleData = modules.find(m => m.name === moduleName);
             
             const instanceData = {
-                name: newServerName.trim(),
-                module_name: selectedModule,
+                name: serverName.trim(),
+                module_name: moduleName,
                 executable_path: selectedModuleData?.executable_path || null
             };
 
@@ -782,10 +802,7 @@ function App() {
                 }
                 setModal({ type: 'failure', title: '인스턴스 추가 실패', message: errorMsg });
             } else {
-                setModal({ type: 'success', title: '성공', message: `인스턴스 "${newServerName}" 추가되었습니다` });
-                // 폼 초기화
-                setNewServerName('');
-                setSelectedModule('');
+                setModal({ type: 'success', title: '성공', message: `인스턴스 "${serverName}" 추가되었습니다` });
                 setShowModuleManager(false);
                 fetchServers();
             }
@@ -968,8 +985,19 @@ function App() {
                 });
             }
             
-            // protocol_mode는 항상 전송 (기본값 'rest')
-            convertedSettings.protocol_mode = settingsValues.protocol_mode || 'rest';
+            // 프로토콜 지원 여부 확인
+            const protocols = module?.protocols || {};
+            const supportedProtocols = protocols.supported || [];
+            
+            // 프로토콜이 지원되는 경우에만 protocol_mode 전송
+            if (supportedProtocols.length > 0) {
+                // 모듈이 둘 다 지원하면 사용자 선택값, 하나만 지원하면 기본값 사용
+                if (supportedProtocols.includes('rest') && supportedProtocols.includes('rcon')) {
+                    convertedSettings.protocol_mode = settingsValues.protocol_mode || protocols.default || 'rest';
+                } else {
+                    convertedSettings.protocol_mode = supportedProtocols[0];
+                }
+            }
             
             console.log('Converted settings:', convertedSettings);
             console.log('protocol_mode being sent:', convertedSettings.protocol_mode);
@@ -1260,11 +1288,11 @@ function App() {
                         <h1>Saba-chan</h1>
                     </div>
                     <button 
-                        className="btn btn-settings-icon-solo"
+                        className="btn-settings-icon-solo"
                         onClick={() => setShowGuiSettingsModal(true)}
                         title="GUI 설정"
                     >
-                        <Icon name="settings" size="md" />
+                        <Icon name="settings" size="lg" />
                     </button>
                 </div>
                 
@@ -1318,82 +1346,21 @@ function App() {
                 </div>
             </header>
 
-            {showModuleManager && (
-                <div className="module-manager">
-                    <h3>Add New Server</h3>
-                    
-                    <div className="path-config">
-                        <label>Modules Directory:</label>
-                        <input 
-                            type="text"
-                            className="path-input"
-                            value={modulesPath}
-                            onChange={(e) => setModulesPath(e.target.value)}
-                            placeholder="c:\Git\Bot\modules"
-                        />
-                        <button className="btn btn-refresh-modules" onClick={fetchModules}>
-                            <Icon name="refresh" size="sm" /> Reload Modules
-                        </button>
-                        <small className="path-hint">
-                            <Icon name="folder" size="sm" /> Place .zip files or folders with module.toml here
-                        </small>
-                        {settingsPath && (
-                            <small className="settings-path">
-                                <Icon name="database" size="sm" /> Settings: {settingsPath}
-                            </small>
-                        )}
-                    </div>
-                    
-                    <div className="add-server-form">
-                        <div className="form-row">
-                            <label>Server Name *</label>
-                            <input 
-                                type="text"
-                                placeholder="e.g., my-palworld-1"
-                                value={newServerName}
-                                onChange={(e) => setNewServerName(e.target.value)}
-                            />
-                        </div>
+            {/* AddServerModal */}
+            <AddServerModal
+                isOpen={showModuleManager}
+                onClose={() => setShowModuleManager(false)}
+                modules={modules}
+                servers={servers}
+                modulesPath={modulesPath}
+                settingsPath={settingsPath}
+                onModulesPathChange={setModulesPath}
+                onRefreshModules={fetchModules}
+                onAddServer={handleAddServer}
+            />
 
-                        <div className="form-row">
-                            <label>Game Module *</label>
-                            <select 
-                                value={selectedModule}
-                                onChange={(e) => handleModuleSelect(e.target.value)}
-                            >
-                                <option value="">Select Module</option>
-                                {modules.map(m => (
-                                    <option key={m.name} value={m.name}>
-                                        {m.name} v{m.version}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-
-                        <div className="form-actions">
-                            <button className="btn btn-confirm" onClick={handleAddServer}>
-                                <Icon name="checkCircle" size="sm" /> Add Server
-                            </button>
-                            <button className="btn btn-cancel" onClick={() => setShowModuleManager(false)}>
-                                <Icon name="xCircle" size="sm" /> Cancel
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div className="module-list">
-                        <h4>Available Modules:</h4>
-                        {modules.map(module => (
-                            <div key={module.name} className="module-item">
-                                <strong>{module.name}</strong> v{module.version}
-                                <p>{module.description || 'No description'}</p>
-                                <small>{module.path}</small>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            <div className="server-list">
+            <main className="app-main">
+                <div className="server-list">
                 {/* 서버 상태 초기화 중 오버레이 */}
                 {serversInitializing && servers.length > 0 && (
                     <div className="servers-initializing-overlay">
@@ -1409,102 +1376,140 @@ function App() {
                         <p>No servers configured</p>
                     </div>
                 ) : (
-                    servers.map((server) => (
-                        <div key={server.name} className="server-card">
-                            <div className="server-header">
-                                <div className="server-info">
-                                    <h2>{server.name}</h2>
-                                    <p className="module-label">Module: {server.module}</p>
-                                </div>
+                    servers.map((server) => {
+                        // 모듈 메타데이터에서 게임 이름 가져오기
+                        const moduleData = modules.find(m => m.name === server.module);
+                        const gameName = moduleData?.game_name || server.module;
+                        const gameIcon = moduleData?.icon || null; // 모듈에서 base64 인코딩된 아이콘 가져오기
+                        
+                        return (
+                            <div key={server.name} className={`server-card ${server.expanded ? 'expanded' : ''}`}>
                                 <div 
-                                    className="status-badge"
-                                    style={{ backgroundColor: getStatusColor(server.status) }}
-                                    title={server.status}
+                                    className="server-card-header"
+                                    onClick={(e) => {
+                                        // 버튼 클릭은 무시
+                                        if (e.target.closest('button')) return;
+                                        // expanded 상태 토글
+                                        setServers(prev => prev.map(s => 
+                                            s.name === server.name ? { ...s, expanded: !s.expanded } : s
+                                        ));
+                                    }}
+                                    style={{ cursor: 'pointer' }}
                                 >
-                                    <span className="status-icon">{getStatusIcon(server.status)}</span>
-                                    <span className="status-text">{server.status}</span>
+                                    {/* 게임 아이콘 영역 */}
+                                    <div className="game-icon-container">
+                                        {gameIcon ? (
+                                            <img src={gameIcon} alt={gameName} className="game-icon" />
+                                        ) : (
+                                            <div className="game-icon-placeholder">
+                                                <Icon name="gamepad" size="lg" />
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    {/* 서버 정보 */}
+                                    <div className="server-card-info">
+                                        <h2>{server.name}</h2>
+                                        <p className="game-name">{gameName}</p>
+                                    </div>
+                                    
+                                    {/* 상태 버튼 (인디케이터 + 텍스트) */}
+                                    <button 
+                                        className={`status-button status-${server.status}`}
+                                        onClick={() => {
+                                            if (server.status === 'starting' || server.status === 'stopping') {
+                                                return; // 전환 중에는 클릭 불가
+                                            }
+                                            if (server.status === 'running' || server.status === 'starting') {
+                                                handleStop(server.name);
+                                            } else {
+                                                handleStart(server.name, server.module);
+                                            }
+                                        }}
+                                        disabled={server.status === 'starting' || server.status === 'stopping'}
+                                        title={server.status === 'running' || server.status === 'starting' ? 'Click to stop' : 'Click to start'}
+                                    >
+                                        <span className="status-label status-label-default">
+                                            {server.status === 'running' ? '실행중' : 
+                                             server.status === 'starting' ? 'Starting...' :
+                                             server.status === 'stopping' ? 'Stopping...' : '정지중'}
+                                        </span>
+                                        <span className="status-label status-label-hover">
+                                            {server.status === 'running' ? '정지' : 
+                                             server.status === 'starting' ? 'Starting...' :
+                                             server.status === 'stopping' ? 'Stopping...' : '실행'}
+                                        </span>
+                                        <span className="status-dot"></span>
+                                    </button>
+                                </div>
+
+                                <div className="server-card-collapsible">
+                                    <div className="server-details">
+                                    {server.pid && (
+                                        <div className="detail-row">
+                                            <span className="label">PID:</span>
+                                            <span className="value">{server.pid}</span>
+                                        </div>
+                                    )}
+                                    {server.resource && (
+                                        <>
+                                            <div className="detail-row">
+                                                <span className="label">RAM:</span>
+                                                <span className="value">{server.resource.ram || 'N/A'}</span>
+                                            </div>
+                                            <div className="detail-row">
+                                                <span className="label">CPU:</span>
+                                                <span className="value">{server.resource.cpu || 'N/A'}</span>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+
+                                {/* 아이콘 버튼들 (좌하단) */}
+                                <div className="server-actions">
+                                    <button 
+                                        className="action-icon"
+                                        onClick={() => handleOpenSettings(server)}
+                                        title="Settings"
+                                    >
+                                        <Icon name="settings" size="md" />
+                                    </button>
+                                    <button 
+                                        className="action-icon"
+                                        onClick={() => handleStatus(server.name)}
+                                        title="Info"
+                                    >
+                                        <Icon name="info" size="md" />
+                                    </button>
+                                    {server.status === 'running' ? (
+                                        <button 
+                                            className="action-icon"
+                                            onClick={() => {
+                                                setCommandServer(server);
+                                                setShowCommandModal(true);
+                                            }}
+                                            title="Command"
+                                        >
+                                            <Icon name="terminal" size="md" />
+                                        </button>
+                                    ) : (
+                                        <button 
+                                            className="action-icon action-delete"
+                                            onClick={() => handleDeleteServer(server)}
+                                            disabled={server.status === 'starting' || server.status === 'stopping'}
+                                            title="Delete"
+                                        >
+                                            <Icon name="trash" size="md" />
+                                        </button>
+                                    )}
+                                </div>
                                 </div>
                             </div>
-
-                            <div className="server-details">
-                                {server.pid && (
-                                    <div className="detail-row">
-                                        <span className="label">PID:</span>
-                                        <span className="value">{server.pid}</span>
-                                    </div>
-                                )}
-                                {server.resource && (
-                                    <>
-                                        <div className="detail-row">
-                                            <span className="label">RAM:</span>
-                                            <span className="value">{server.resource.ram || 'N/A'}</span>
-                                        </div>
-                                        <div className="detail-row">
-                                            <span className="label">CPU Cores:</span>
-                                            <span className="value">{server.resource.cpu || 'N/A'}</span>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-
-                            <div className="button-group">
-                                <button 
-                                    className={`btn ${
-                                        server.status === 'running' || server.status === 'starting'
-                                            ? 'btn-stop' 
-                                            : 'btn-start'
-                                    }`}
-                                    onClick={() => {
-                                        if (server.status === 'running' || server.status === 'starting') {
-                                            handleStop(server.name);
-                                        } else {
-                                            handleStart(server.name, server.module);
-                                        }
-                                    }}
-                                    disabled={server.status === 'starting' || server.status === 'stopping'}
-                                >
-                                    {server.status === 'running' || server.status === 'starting' ? <><Icon name="stop" size="sm" /> Stop</> : <><Icon name="play" size="sm" /> Start</>}
-                                </button>
-                                <button 
-                                    className="btn btn-status"
-                                    onClick={() => handleStatus(server.name)}
-                                >
-                                    <Icon name="info" size="sm" /> Info
-                                </button>
-                                <button 
-                                    className="btn btn-settings"
-                                    onClick={() => handleOpenSettings(server)}
-                                    title="Edit server settings"
-                                >
-                                    <Icon name="settings" size="sm" /> Settings
-                                </button>
-                                {/* 실행 중: Command 버튼, 정지 상태: Delete 버튼 */}
-                                {server.status === 'running' ? (
-                                    <button 
-                                        className="btn btn-command"
-                                        onClick={() => {
-                                            setCommandServer(server);
-                                            setShowCommandModal(true);
-                                        }}
-                                        title="Execute server command"
-                                    >
-                                        <Icon name="terminal" size="sm" /> Command
-                                    </button>
-                                ) : (
-                                    <button 
-                                        className="btn btn-delete"
-                                        onClick={() => handleDeleteServer(server)}
-                                        disabled={server.status === 'starting' || server.status === 'stopping'}
-                                        title="Delete this server instance"
-                                    >
-                                        <Icon name="trash" size="sm" /> Delete
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    ))
+                        );
+                    })
                 )}
-            </div>
+                </div>
+            </main>
 
             {showSettingsModal && settingsServer && (
                 <div className="modal-overlay">
@@ -1536,39 +1541,58 @@ function App() {
                                 const module = modules.find(m => m.name === settingsServer.module);
                                 const hasModuleSettings = module && module.settings && module.settings.fields && module.settings.fields.length > 0;
                                 
+                                // 프로토콜 지원 여부 확인
+                                const protocols = module?.protocols || {};
+                                const supportedProtocols = protocols.supported || [];
+                                const showProtocolToggle = supportedProtocols.includes('rest') && supportedProtocols.includes('rcon');
+                                
                                 return (
                                     <div className="settings-form">
-                                        {/* 프로토콜 모드 토글 - 항상 표시 */}
-                                        <div className="protocol-mode-section">
-                                            <div className="protocol-mode-header">
-                                                <span className="protocol-mode-title">🔌 서버 조작 방식</span>
+                                        {/* 프로토콜 모드 토글 - 모듈이 REST와 RCON을 모두 지원할 때만 표시 */}
+                                        {showProtocolToggle && (
+                                            <div className="protocol-mode-section">
+                                                <div className="protocol-mode-header">
+                                                    <span className="protocol-mode-title">🔌 서버 조작 방식</span>
+                                                </div>
+                                                <p className="protocol-mode-description">
+                                                    서버 명령어를 실행할 때 사용할 프로토콜을 선택합니다.
+                                                </p>
+                                                <div className="protocol-toggle-container">
+                                                    <span className={`protocol-label ${settingsValues.protocol_mode === 'rest' ? 'active' : ''}`}>
+                                                        REST
+                                                    </span>
+                                                    <label className="toggle-switch">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={settingsValues.protocol_mode === 'rcon'}
+                                                            onChange={(e) => handleSettingChange('protocol_mode', e.target.checked ? 'rcon' : 'rest')}
+                                                        />
+                                                        <span className="toggle-slider"></span>
+                                                    </label>
+                                                    <span className={`protocol-label ${settingsValues.protocol_mode === 'rcon' ? 'active' : ''}`}>
+                                                        RCON
+                                                    </span>
+                                                </div>
+                                                <p className="protocol-mode-hint">
+                                                    <span className="hint-icon">💡</span>
+                                                    {settingsValues.protocol_mode === 'rest' 
+                                                        ? 'REST API는 HTTP 기반으로 안정적이며 인증이 용이합니다.'
+                                                        : 'RCON은 실시간 콘솔 명령어를 직접 전송합니다.'}
+                                                </p>
                                             </div>
-                                            <p className="protocol-mode-description">
-                                                서버 명령어를 실행할 때 사용할 프로토콜을 선택합니다.
-                                            </p>
-                                            <div className="protocol-toggle-container">
-                                                <span className={`protocol-label ${settingsValues.protocol_mode === 'rest' ? 'active' : ''}`}>
-                                                    REST
-                                                </span>
-                                                <label className="toggle-switch">
-                                                    <input 
-                                                        type="checkbox"
-                                                        checked={settingsValues.protocol_mode === 'rcon'}
-                                                        onChange={(e) => handleSettingChange('protocol_mode', e.target.checked ? 'rcon' : 'rest')}
-                                                    />
-                                                    <span className="toggle-slider"></span>
-                                                </label>
-                                                <span className={`protocol-label ${settingsValues.protocol_mode === 'rcon' ? 'active' : ''}`}>
-                                                    RCON
-                                                </span>
+                                        )}
+                                        
+                                        {/* 프로토콜이 하나만 지원될 때 정보 표시 */}
+                                        {!showProtocolToggle && supportedProtocols.length > 0 && (
+                                            <div className="protocol-mode-section protocol-mode-info">
+                                                <div className="protocol-mode-header">
+                                                    <span className="protocol-mode-title">🔌 서버 조작 방식</span>
+                                                </div>
+                                                <p className="protocol-mode-description">
+                                                    이 모듈은 <strong>{supportedProtocols[0].toUpperCase()}</strong> 프로토콜만 지원합니다.
+                                                </p>
                                             </div>
-                                            <p className="protocol-mode-hint">
-                                                <span className="hint-icon">💡</span>
-                                                {settingsValues.protocol_mode === 'rest' 
-                                                    ? 'REST API는 HTTP 기반으로 안정적이며 인증이 용이합니다.'
-                                                    : 'RCON은 실시간 콘솔 명령어를 직접 전송합니다.'}
-                                            </p>
-                                        </div>
+                                        )}
 
                                         {/* 모듈 설정 필드 */}
                                         {hasModuleSettings ? (

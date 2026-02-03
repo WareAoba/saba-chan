@@ -1,5 +1,150 @@
 # Changelog
 
+## [Unreleased] - 2026-02-04
+### � 크로스 플랫폼 지원 및 빌드 시스템 현대화
+
+#### Rust 크로스 플랫폼 마이그레이션
+- **ProcessMonitor 개선**: PowerShell 의존성 제거, sysinfo 크레이트로 전환
+  - Windows 전용 PowerShell 명령 제거 (Get-Process, tasklist 등)
+  - `sysinfo::System`을 사용한 크로스 플랫폼 프로세스 모니터링
+  - PID 확인, 프로세스 목록 조회 모두 네이티브 API 사용
+- **PathDetector 확장**: Linux/macOS 게임 경로 지원 추가
+  - Windows: Steam, Epic Games 경로 유지
+  - Linux: `~/.steam/steam`, `~/.var/app/com.valvesoftware.Steam` (Flatpak)
+  - macOS: `~/Library/Application Support/Steam`
+- **Process Termination**: 플랫폼별 프로세스 종료 구현
+  - Windows: `winapi` 크레이트 (`TerminateProcess`, `PROCESS_TERMINATE`)
+  - Unix: `nix` 크레이트 (`kill()`, SIGTERM/SIGKILL 시그널)
+- **Electron GUI**: `taskkill` 명령 크로스 플랫폼 처리 강화
+  - Windows/Unix 분기 처리 개선 ([main.js#L95-L110](electron_gui/main.js#L95-L110))
+
+#### Vite/Vitest 빌드 시스템 마이그레이션
+- **Webpack → Vite 전환**:
+  - `react-scripts` 제거, `vite` 6.0.7 설치
+  - `vite.config.js` 생성 (JSX 로더, 포트 5173 설정)
+  - 개발 서버 포트: localhost:3000 → localhost:5173
+  - esbuild 기반 빌드로 성능 향상
+- **Jest → Vitest 마이그레이션**:
+  - 모든 테스트 파일 변환 (App.test.js, integration.test.js, main.test.js)
+  - `jest.fn()` → `vi.fn()`, `jest.useFakeTimers()` → `vi.useFakeTimers()`
+  - `setupTests.js`를 Vitest 방식으로 변경
+  - 34개 테스트 모두 통과 (1개 스킵)
+- **package.json 스크립트 업데이트**:
+  - `dev`: `vite` (기존 `react-scripts start`)
+  - `test`: `vitest` (기존 `react-scripts test`)
+  - `build`: `vite build` (기존 `react-scripts build`)
+- **의존성 정리**: 72개 패키지 추가, 1098개 제거, 총 551개 패키지
+
+#### Cargo.toml 의존성 추가
+```toml
+[dependencies]
+sysinfo = "0.30"  # 크로스 플랫폼 시스템 정보
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.27", features = ["signal"] }  # Unix 시그널 처리
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["processthreadsapi", "handleapi"] }
+```
+
+#### 빌드 검증
+- **Rust**: `cargo build --release` 성공 (38.32초, 6.2MB 바이너리)
+- **Electron GUI**: Vite 개발 서버 정상 실행 (localhost:5173)
+- **전체 테스트**: 
+  - Rust: 91개 테스트 통과
+  - GUI: 34개 테스트 통과 (Vitest)
+  - Bot: 17개 테스트 통과
+  - **총 142개 테스트 통과** 🎉
+
+---
+
+### �🔧 CI/CD 및 코드 품질 개선
+
+#### Clippy 에러 수정 (15개 해결)
+- **unit struct default() 제거**: ProcessMonitor, ProcessManager에서 `Self::default()` → `Self` 변경
+- **dead_code 경고 처리**: 미사용 함수/구조체에 `#[allow(dead_code)]` 추가
+  - PluginManager, PathDetector, ProcessManager::execute_command
+  - ProtocolError variants (TimeoutError, ConfigError, Unknown)
+  - ServerResponse::error, RestClient::with_basic_auth
+  - ProtocolClient::new_both, connect_all
+- **enum variant 이름 충돌 해결**: `ProtocolError::ProtocolError` → `ProtocolError::Protocol`
+- **코드 스타일 개선**:
+  - needless return 제거 (5곳)
+  - needless_borrows 수정
+  - matches! 매크로 사용
+  - or_else → or 변경 (2곳)
+  - std::ptr 미사용 import 제거
+- **결과**: `cargo clippy -- -D warnings` 통과 ✅
+
+#### GitHub Actions 캐시 문제 해결
+- **문제**: npm ci 실행 시 `yaml@2.8.2` 캐시 불일치 오류
+- **해결**: 모든 워크플로우에서 `npm ci` 전 `rm -rf node_modules` 추가
+  - test.yml, quick-test.yml, coverage.yml 수정
+  - 깨끗한 상태에서 의존성 설치 보장
+
+#### 테스트 결과
+- **Rust**: 51개 테스트 통과 (Unit 42개 + Integration 7개 + Stress 2개)
+- **GUI**: 34개 테스트 통과 (1개 스킵)
+- **Discord Bot**: 17개 테스트 통과
+- **총 91개 테스트 통과** 🎉
+
+---
+
+## [Unreleased] - 2026-02-03
+### 🎨 GUI 대규모 리팩토링
+
+#### 게임 아이콘 시스템 구현 ([module_loader.rs](src/supervisor/module_loader.rs), [mod.rs](src/ipc/mod.rs), [App.js](electron_gui/src/App.js))
+- **모듈별 게임 아이콘 지원**:
+  - `ModuleMetadata`에 `icon` 필드 추가 (module.toml에서 읽음)
+  - `ModuleInfo`에 `icon` 필드 추가 (base64 인코딩된 이미지 데이터)
+  - module.toml에 `icon = "icon.png"` 설정 추가
+- **아이콘 로딩 및 전송**:
+  - 백엔드에서 모듈 폴더의 `icon.png` 파일을 읽어 base64로 인코딩
+  - `/api/modules` 응답에 `data:image/png;base64,...` 형식으로 포함
+  - 프론트엔드에서 base64 이미지를 `<img>` 태그로 직접 표시
+- **폴백 처리**: 아이콘이 없으면 gamepad 아이콘 placeholder 표시
+- **구현 위치**: 
+  - 각 모듈 폴더에 `icon.png` 배치 (예: `modules/palworld/icon.png`)
+  - `list_modules`와 `refresh_modules`에서 base64 인코딩 처리
+
+#### 서버 카드 UI 완전 재설계 ([App.js](electron_gui/src/App.js), [App.css](electron_gui/src/App.css))
+- **게임 아이콘 영역 추가**: 각 서버 카드에 게임 아이콘 표시 (40x40px)
+- **상태 버튼 개선**:
+  - 인디케이터 + 텍스트 조합으로 변경
+  - 호버 시 텍스트만 변경 (실행중 ↔ 정지, 정지중 ↔ 실행)
+  - 인디케이터 위치 고정 (min-width로 레이아웃 안정화)
+- **카드 접기/펼치기 기능**:
+  - 헤더 클릭 시 상세 정보 및 액션 버튼 표시/숨김
+  - max-height 트랜지션 (0.4s ease) 적용
+  - expanded 상태를 fetchServers 시에도 보존
+- **액션 아이콘 버튼 재배치**: 설정, 정보, 명령어/삭제 아이콘을 카드 하단에 배치
+- **스타일 최적화**:
+  - 여백 대폭 축소 (padding 12px, gap 최소화)
+  - 폰트 크기 조정 (서버 이름 16px, 게임 이름 12px)
+  - 호버 시 배경 fill 제거, transform만 적용
+
+#### 레이아웃 구조 리팩토링
+- **main 태그 추가**: 스크롤 영역을 명확히 분리 (.app-main)
+- **그리드 레이아웃 개선**:
+  - 카드 최대 2개 제한 (max-width: 1200px)
+  - 각 카드 높이 독립성 보장 (align-items: start)
+  - 최소 카드 폭 480px로 증가
+- **스크롤 영역 최적화**:
+  - App 컨테이너: height 100vh, overflow hidden
+  - app-main: flex 1, overflow-y auto
+  - 호버 시 카드 상단 잘림 방지 (padding-top 10px)
+
+#### AddServerModal 개선
+- 서버 추가를 모달 방식으로 변경
+- 모듈 선택 후 서버 이름 입력하는 2단계 프로세스
+
+#### 버그 수정
+- **fetchServers 시 expanded 상태 보존**: 자동 새로고침 시 펼친 카드가 닫히던 문제 해결
+- **중복 CSS 제거**: .server-list 중복 정의 제거
+- **창 최소 크기 제한**: 400x500으로 설정 ([main.js](electron_gui/main.js))
+
+---
+
 ## [Unreleased] - 2026-02-01
 ### 🎮 Palworld 플레이어 ID 자동 변환 기능
 

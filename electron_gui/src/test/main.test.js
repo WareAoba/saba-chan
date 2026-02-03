@@ -1,6 +1,7 @@
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 // main.js의 설정 저장/로드 함수 테스트
 describe('Electron Main Process - 설정 관리 테스트', () => {

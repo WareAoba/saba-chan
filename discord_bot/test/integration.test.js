@@ -258,7 +258,7 @@ describe('Discord Bot 명령어 처리 통합 테스트', () => {
                 for (const [cmdName, cmdMeta] of Object.entries(commands)) {
                     expect(cmdMeta.name).toBe(cmdName);
                     expect(cmdMeta.label).toBeDefined();
-                    expect(['rest', 'rcon', 'dual']).toContain(cmdMeta.method);
+                    expect(['rest', 'rcon', 'dual', 'stdin']).toContain(cmdMeta.method);
                     
                     if (cmdMeta.method === 'rest' || cmdMeta.method === 'dual') {
                         expect(cmdMeta.http_method).toBeDefined();

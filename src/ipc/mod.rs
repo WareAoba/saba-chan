@@ -83,6 +83,7 @@ pub struct ModuleInfo {
     pub description: Option<String>,
     pub path: String,
     pub executable_path: Option<String>,
+    pub icon: Option<String>,  // base64 인코딩된 아이콘 이미지
     pub settings: Option<crate::supervisor::module_loader::ModuleSettings>,
     pub commands: Option<crate::supervisor::module_loader::ModuleCommands>,
 }
@@ -183,14 +184,26 @@ async fn list_modules(State(state): State<IPCServer>) -> impl IntoResponse {
         Ok(modules) => {
             let module_infos: Vec<ModuleInfo> = modules
                 .into_iter()
-                .map(|m| ModuleInfo {
-                    name: m.metadata.name,
-                    version: m.metadata.version,
-                    description: m.metadata.description,
-                    path: m.path,
-                    executable_path: m.metadata.executable_path,
-                    settings: m.metadata.settings,
-                    commands: m.metadata.commands,
+                .map(|m| {
+                    // 아이콘 파일을 base64로 인코딩
+                    let icon_base64 = m.metadata.icon.as_ref().and_then(|icon_file| {
+                        let icon_path = std::path::Path::new(&m.path).join(icon_file);
+                        std::fs::read(&icon_path).ok().map(|data| {
+                            use base64::{Engine as _, engine::general_purpose};
+                            format!("data:image/png;base64,{}", general_purpose::STANDARD.encode(&data))
+                        })
+                    });
+                    
+                    ModuleInfo {
+                        name: m.metadata.name,
+                        version: m.metadata.version,
+                        description: m.metadata.description,
+                        path: m.path,
+                        executable_path: m.metadata.executable_path,
+                        icon: icon_base64,
+                        settings: m.metadata.settings,
+                        commands: m.metadata.commands,
+                    }
                 })
                 .collect();
             (StatusCode::OK, Json(ModuleListResponse { modules: module_infos })).into_response()
@@ -210,14 +223,26 @@ async fn refresh_modules(State(state): State<IPCServer>) -> impl IntoResponse {
         Ok(modules) => {
             let module_infos: Vec<ModuleInfo> = modules
                 .into_iter()
-                .map(|m| ModuleInfo {
-                    name: m.metadata.name,
-                    version: m.metadata.version,
-                    description: m.metadata.description,
-                    path: m.path,
-                    executable_path: m.metadata.executable_path,
-                    settings: m.metadata.settings,
-                    commands: m.metadata.commands,
+                .map(|m| {
+                    // 아이콘 파일을 base64로 인코딩
+                    let icon_base64 = m.metadata.icon.as_ref().and_then(|icon_file| {
+                        let icon_path = std::path::Path::new(&m.path).join(icon_file);
+                        std::fs::read(&icon_path).ok().map(|data| {
+                            use base64::{Engine as _, engine::general_purpose};
+                            format!("data:image/png;base64,{}", general_purpose::STANDARD.encode(&data))
+                        })
+                    });
+                    
+                    ModuleInfo {
+                        name: m.metadata.name,
+                        version: m.metadata.version,
+                        description: m.metadata.description,
+                        path: m.path,
+                        executable_path: m.metadata.executable_path,
+                        icon: icon_base64,
+                        settings: m.metadata.settings,
+                        commands: m.metadata.commands,
+                    }
                 })
                 .collect();
             tracing::info!("Module cache refreshed. Found {} modules", module_infos.len());

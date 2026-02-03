@@ -3,17 +3,16 @@
   "version": "0.1.0",
   "description": "Saba-chan - Modular Game Server Management GUI",
   "main": "main.js",
-  "homepage": "./",
-  "homepage_renderer": "./",
   "scripts": {
-    "react-start": "cross-env BROWSER=none react-scripts start",
-    "react-build": "react-scripts build",
-    "electron-start": "wait-on http://localhost:3000 && electron .",
-    "start": "concurrently --kill-others --raw \"npm run react-start\" \"npm run electron-start\"",
-    "build": "npm run react-build && electron-builder",
-    "test": "react-scripts test --verbose",
-    "test:silent": "react-scripts test",
-    "test:coverage": "react-scripts test --coverage --watchAll=false"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron-start": "wait-on http://localhost:5173 && electron .",
+    "start": "concurrently --kill-others --raw \"npm run dev\" \"npm run electron-start\"",
+    "package": "npm run build && electron-builder",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@fluentui/react-icons": "^2.0.316",
@@ -25,11 +24,15 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^14.3.1",
     "@testing-library/user-event": "^14.6.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "@vitest/ui": "^2.1.8",
     "concurrently": "^8.2.0",
     "cross-env": "^7.0.3",
     "electron": "^28.0.0",
     "electron-builder": "^24.0.0",
-    "react-scripts": "^5.0.1",
+    "jsdom": "^25.0.1",
+    "vite": "^6.0.7",
+    "vitest": "^2.1.8",
     "wait-on": "^7.2.0"
   },
   "browserslist": {
