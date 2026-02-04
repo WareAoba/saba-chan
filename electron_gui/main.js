@@ -114,25 +114,30 @@ function startDaemon() {
     // Electron 포터블 exe 내에서는 bin 폴더에 binary 포함
     const isDev = !app.isPackaged;
     let daemonPath;
+    let projectRoot;
+    
+    // 플랫폼별 실행 파일 이름
+    const daemonFileName = process.platform === 'win32' ? 'core_daemon.exe' : 'core_daemon';
     
     if (isDev) {
         // 개발 환경: electron_gui/bin 폴더
-        daemonPath = path.join(__dirname, 'bin', 'core_daemon.exe');
+        daemonPath = path.join(__dirname, 'bin', daemonFileName);
+        projectRoot = path.join(__dirname, '..');
     } else {
-        // 패키징된 앱: resources/app/bin 폴더
-        daemonPath = path.join(__dirname, 'bin', 'core_daemon.exe');
+        // 패키징된 앱: win-unpacked/bin 폴더
+        const appDir = path.dirname(app.getPath('exe'));
+        daemonPath = path.join(appDir, 'bin', daemonFileName);
+        projectRoot = path.join(appDir, 'resources');  // resources 폴더 (modules 폴더가 여기 있음)
     }
     
     console.log('Starting Core Daemon:', daemonPath);
     console.log('Is Packaged:', !isDev);
+    console.log('Project Root:', projectRoot);
     
     if (!fs.existsSync(daemonPath)) {
         console.error('Core Daemon executable not found at:', daemonPath);
         return;
     }
-    
-    // 프로젝트 루트 디렉토리 설정 (모듈이 이곳에서 로드됨)
-    const projectRoot = path.join(__dirname, '..');
     
     daemonProcess = spawn(daemonPath, [], {
         cwd: projectRoot,  // 프로젝트 루트에서 실행하여 "./modules" 경로가 올바르게 작동
@@ -397,12 +402,15 @@ function createWindow() {
     });
 
     // 개발 모드: http://localhost:5173 (Vite), 프로덕션: build/index.html
-    const startURL = process.env.ELECTRON_START_URL || 'http://localhost:5173';
-    mainWindow.loadURL(startURL);
-
-    // 개발 모드에서 DevTools 자동 열기
-    if (process.env.NODE_ENV !== 'production') {
+    const isDev = !app.isPackaged;
+    if (isDev) {
+        const startURL = process.env.ELECTRON_START_URL || 'http://localhost:5173';
+        mainWindow.loadURL(startURL);
+        // 개발 모드에서 DevTools 자동 열기
         mainWindow.webContents.openDevTools();
+    } else {
+        // 프로덕션: 빌드된 파일 로드
+        mainWindow.loadFile(path.join(__dirname, 'build', 'index.html'));
     }
     
     // 메뉴바 제거
@@ -1061,12 +1069,28 @@ ipcMain.handle('settings:getPath', () => {
 
 // File dialog handlers
 ipcMain.handle('dialog:openFile', async (event, options) => {
-    const result = await dialog.showOpenDialog({
-        properties: ['openFile'],
-        filters: options?.filters || [
+    // 플랫폼별 기본 필터 설정
+    let defaultFilters;
+    if (process.platform === 'win32') {
+        defaultFilters = [
             { name: 'Executable Files', extensions: ['exe'] },
             { name: 'All Files', extensions: ['*'] }
-        ]
+        ];
+    } else if (process.platform === 'darwin') {
+        defaultFilters = [
+            { name: 'Applications', extensions: ['app'] },
+            { name: 'All Files', extensions: ['*'] }
+        ];
+    } else {
+        // Linux: 일반적으로 확장자 없음
+        defaultFilters = [
+            { name: 'All Files', extensions: ['*'] }
+        ];
+    }
+    
+    const result = await dialog.showOpenDialog({
+        properties: ['openFile'],
+        filters: options?.filters || defaultFilters
     });
     
     if (result.canceled) {

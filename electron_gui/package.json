@@ -46,5 +46,50 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "build": {
+    "appId": "com.saba-chan.app",
+    "productName": "Saba-chan",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "build/**/*",
+      "main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "extraFiles": [
+      {
+        "from": "bin",
+        "to": "bin"
+      }
+    ],
+    "extraResources": [
+      {
+        "from": "../modules",
+        "to": "modules"
+      },
+      {
+        "from": "../instances.json",
+        "to": "instances.json"
+      },
+      {
+        "from": "../discord_bot",
+        "to": "discord_bot",
+        "filter": [
+          "**/*",
+          "!.env",
+          "!test/**/*"
+        ]
+      }
+    ],
+    "asarUnpack": [
+      "bin/**/*"
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "public/icon.png"
+    }
   }
 }

@@ -90,18 +90,25 @@ def start(config):
         print(f"Starting server: {' '.join(cmd)}", file=sys.stderr)
         print(f"Working directory: {working_dir}", file=sys.stderr)
         
-        # Start process (detached, Windows-compatible)
-        creationflags = 0
+        # Start process (detached, cross-platform)
         if sys.platform == 'win32':
             creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
-        
-        proc = subprocess.Popen(
-            cmd,
-            cwd=working_dir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            creationflags=creationflags
-        )
+            proc = subprocess.Popen(
+                cmd,
+                cwd=working_dir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                creationflags=creationflags
+            )
+        else:
+            # Unix/Linux/macOS: Use start_new_session for detached process
+            proc = subprocess.Popen(
+                cmd,
+                cwd=working_dir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True
+            )
         
         return {
             "success": True,

@@ -60,3 +60,5 @@ discord_bot/coverage/
 
 # GitHub Actions
 .github/cache/
+
+installer/
