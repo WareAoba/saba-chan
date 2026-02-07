@@ -1,0 +1,51 @@
+{
+  "app_name": "Saba-chan",
+  "app_description": "Modulare Verwaltungsplattform für Spielserver",
+  "success": "Erfolg",
+  "error": "Fehler",
+  "warning": "Warnung",
+  "info": "Information",
+  "confirm": "Bestätigen",
+  "cancel": "Abbrechen",
+  "save": "Speichern",
+  "delete": "Löschen",
+  "edit": "Bearbeiten",
+  "close": "Schließen",
+  "settings": "Einstellungen",
+  "language": "Sprache",
+  "yes": "Ja",
+  "no": "Nein",
+  "daemon": {
+    "checking": "Daemon wird überprüft...",
+    "existing_running": "Vorhandener Daemon läuft",
+    "starting": "Daemon wird gestartet...",
+    "started": "Daemon gestartet",
+    "preparing": "Daemon wird vorbereitet... (Zeitüberschreitung)",
+    "failed_to_start": "Daemon-Start fehlgeschlagen - bitte manuell ausführen",
+    "check_warning": "Warnung beim Überprüfen des Daemon: {{error}}"
+  },
+  "modules": {
+    "refreshing": "Module werden aktualisiert...",
+    "refresh_complete": "Modulaktualisierung abgeschlossen"
+  },
+  "server": {
+    "list_failed": "Abrufen der Serverliste fehlgeschlagen (HTTP {{status}}): {{error}}",
+    "start_failed": "Start fehlgeschlagen: {{error}}",
+    "stop_failed": "Stop fehlgeschlagen: {{error}}",
+    "status_check_failed": "Statusprüfung fehlgeschlagen (HTTP {{status}}): {{error}}",
+    "module_not_found": "Modul '{{module}}' nicht gefunden",
+    "invalid_request": "Ungültige Anfrage: {{error}}",
+    "not_found": "Server '{{name}}' nicht gefunden",
+    "already_running": "Server '{{name}}' läuft bereits",
+    "missing_required_field": "Erforderliches Feld '{{field}}' fehlt",
+    "creation_failed": "Instanz-Erstellung fehlgeschlagen: {{error}}",
+    "delete_failed": "Instanz-Löschung fehlgeschlagen: {{error}}",
+    "update_failed": "Instanz-Aktualisierung fehlgeschlagen: {{error}}",
+    "settings_save_failed": "Speichern der Einstellungen fehlgeschlagen: {{error}}"
+  },
+  "network": {
+    "connection_refused": "Verbindung zum Daemon nicht möglich. Bitte überprüfen Sie, ob der Daemon läuft",
+    "timeout": "Anfrage-Zeitüberschreitung: Server antwortete nicht",
+    "not_found": "Server nicht gefunden. Bitte überprüfen Sie die Netzwerkeinstellungen"
+  }
+}

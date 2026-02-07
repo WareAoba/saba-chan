@@ -7,32 +7,22 @@ const loadTranslations = () => {
     const localesPath = path.join(__dirname, '..', 'locales');
     const resources = {};
     
-    // Load English
-    const enCommon = JSON.parse(fs.readFileSync(path.join(localesPath, 'en', 'common.json'), 'utf8'));
-    const enBot = JSON.parse(fs.readFileSync(path.join(localesPath, 'en', 'bot.json'), 'utf8'));
+    const languages = ['en', 'ko', 'ja', 'zh-CN', 'zh-TW', 'es', 'pt-BR', 'ru', 'de', 'fr'];
     
-    // Load Korean
-    const koCommon = JSON.parse(fs.readFileSync(path.join(localesPath, 'ko', 'common.json'), 'utf8'));
-    const koBot = JSON.parse(fs.readFileSync(path.join(localesPath, 'ko', 'bot.json'), 'utf8'));
-    
-    // Load Japanese
-    const jaCommon = JSON.parse(fs.readFileSync(path.join(localesPath, 'ja', 'common.json'), 'utf8'));
-    const jaBot = JSON.parse(fs.readFileSync(path.join(localesPath, 'ja', 'bot.json'), 'utf8'));
-    
-    resources.en = {
-        common: enCommon,
-        bot: enBot,
-    };
-    
-    resources.ko = {
-        common: koCommon,
-        bot: koBot,
-    };
-    
-    resources.ja = {
-        common: jaCommon,
-        bot: jaBot,
-    };
+    languages.forEach(lang => {
+        const commonPath = path.join(localesPath, lang, 'common.json');
+        const botPath = path.join(localesPath, lang, 'bot.json');
+        
+        if (fs.existsSync(commonPath) && fs.existsSync(botPath)) {
+            const common = JSON.parse(fs.readFileSync(commonPath, 'utf8'));
+            const bot = JSON.parse(fs.readFileSync(botPath, 'utf8'));
+            
+            resources[lang] = {
+                common: common,
+                bot: bot,
+            };
+        }
+    });
     
     return resources;
 };

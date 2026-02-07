@@ -1,0 +1,88 @@
+{
+  "commands": {
+    "start": "Iniciar servidor",
+    "stop": "Parar servidor",
+    "status": "Status do servidor",
+    "restart": "Reiniciar servidor"
+  },
+  "help": {
+    "title": "📖 Guia de Uso",
+    "list": "Ver lista de servidores",
+    "start": "Iniciar servidor",
+    "stop": "Parar servidor",
+    "status": "Verificar status do servidor",
+    "rest_command": "Executar comando REST",
+    "help": "Mostrar esta mensagem de ajuda",
+    "available_modules": "**Módulos disponíveis:** {{modules}}",
+    "no_modules": "Nenhum",
+    "module_commands": "**Comandos do módulo:**{{commands}}",
+    "module_title": "**Comandos {{module}}**",
+    "command_format": "Comando desconhecido: \"{{command}}\" ({{resolved}})",
+    "available_commands": "{{commands}}"
+  },
+  "modules": {
+    "help_start": "Iniciar servidor",
+    "help_stop": "Parar servidor",
+    "help_status": "Verificar status do servidor",
+    "help_rest_title": "**Comandos REST:**"
+  },
+  "list": {
+    "title": "🎮 **Lista de Servidores**",
+    "empty": "📭 Nenhum servidor registrado",
+    "item": "• **{{name}}** ({{module}}) - {{status}} {{status_icon}}"
+  },
+  "status": {
+    "running": "🟢 Em execução",
+    "stopped": "⚪ Parado"
+  },
+  "server": {
+    "start_request": "⏳ Iniciando servidor **{{name}}**...",
+    "start_complete": "✅ Solicitação de início de **{{name}}** concluída!",
+    "stop_request": "⏳ Parando servidor **{{name}}**...",
+    "stop_complete": "✅ Solicitação de parada de **{{name}}** concluída!",
+    "status_check": "📊 Status de **{{name}}**: {{status}} {{pid_info}}",
+    "not_found": "❌ Nenhum servidor encontrado para o módulo \"{{alias}}\" ({{resolved}})",
+    "not_running": "❌ **{{name}}**: {{error}}",
+    "not_running_default": "O servidor não está em execução. Por favor, inicie o servidor primeiro"
+  },
+  "command": {
+    "executing": "⏳ **{{name}}** - `{{command}}` executando...",
+    "missing_required": "❌ Argumento obrigatório ausente: `{{arg_name}}`\nUso: `{{prefix}} {{alias}} {{command}} <{{arg_name}}>`\nDescrição: {{description}}",
+    "execute_complete": "📡 **{{name}}** - `{{command}}`\n{{response}}",
+    "execute_failed": "❌ Falha na execução em **{{name}}**\n{{error}}",
+    "unknown_command": "❓ Comando desconhecido: \"{{command}}\" ({{resolved}})",
+    "no_available": "❓ Comando desconhecido: \"{{command}}\" ({{resolved}})"
+  },
+  "responses": {
+    "info_title": "**Informações do Servidor**",
+    "info_version": "• Versão: {{version}}",
+    "info_name": "• Nome do servidor: {{name}}",
+    "info_description": "• Descrição: {{description}}",
+    "players_title": "**Jogadores Conectados ({{count}})**",
+    "players_empty": "Nenhum jogador conectado",
+    "players_item": "• **{{name}}** - Nv.{{level}} ({{id}})",
+    "metrics_title": "**Métricas do Servidor**",
+    "metrics_players": "• Jogadores atuais: {{current}}/{{max}}",
+    "metrics_fps": "• FPS do servidor: {{fps}}",
+    "metrics_uptime": "• Tempo de atividade: {{uptime}} minutos",
+    "announce_success": "✅ Anúncio enviado",
+    "save_success": "✅ Mundo salvo",
+    "command_executed": "✅ Comando executado",
+    "command_complete": "✅ Comando executado com sucesso!"
+  },
+  "errors": {
+    "error_title": "Erro ao executar comando",
+    "unknown": "Erro desconhecido",
+    "auth_failed": "Falha na autenticação",
+    "player_not_found": "Jogador não encontrado",
+    "internal_server_error": "Erro interno do servidor",
+    "rest_api_disabled": "API REST desabilitada",
+    "rcon_disabled": "RCON desabilitado"
+  },
+  "messages": {
+    "server_started": "Servidor iniciado com sucesso",
+    "server_stopped": "Servidor parado",
+    "server_not_running": "O servidor não está em execução",
+    "command_error": "Erro ao executar comando"
+  }
+}

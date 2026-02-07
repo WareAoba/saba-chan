@@ -458,10 +458,6 @@ client.on('messageCreate', async (message) => {
             const unsupportedMsg = i18n.t('bot:messages.command_error');
             await message.reply(`❓ ${unsupportedMsg}: ${cmdMeta.method || 'unknown'}`);
         }
-            }
-        } else {
-            await message.reply(`❓ 지원되지 않는 명령어 타입: ${cmdMeta.method || 'unknown'}`);
-        }
 
     } catch (error) {
         console.error('[Discord] Command error:', error.message);

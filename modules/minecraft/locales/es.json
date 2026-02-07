@@ -1,0 +1,26 @@
+{
+  "errors": {
+    "server_jar_not_specified": "server_jar no especificado en la configuración de la instancia. Por favor agregue la ruta a server.jar",
+    "server_jar_not_found": "Archivo jar del servidor no encontrado: {{path}}. Por favor verifique la ruta en la configuración de instancia.",
+    "failed_to_start": "Falló al iniciar: {{error}}",
+    "no_pid_provided": "No se proporcionó PID",
+    "failed_to_kill": "Falló al terminar el proceso: {{error}}",
+    "failed_to_stop": "Falló al detener: {{error}}",
+    "daemon_connection_error": "Error de conexión al daemon: {{error}}",
+    "invalid_json_response": "Respuesta JSON inválida del daemon: {{error}}",
+    "daemon_error": "Error del daemon: {{error}}"
+  },
+  "messages": {
+    "starting_server": "Iniciando servidor: {{command}}",
+    "working_directory": "Directorio de trabajo: {{path}}",
+    "server_starting": "Servidor Minecraft iniciándose con PID {{pid}}",
+    "shutdown_signal_sent": "Señal de apagado enviada al PID {{pid}}",
+    "force_killed": "PID {{pid}} terminado forzosamente",
+    "signal_sent": "Señal {{signal}} enviada al PID {{pid}}",
+    "no_process_running": "Ningún proceso en ejecución",
+    "would_send_command": "Enviaría al PID {{pid}}: {{command}}",
+    "failed_send_command": "Falló al enviar comando: {{error}}",
+    "executing_command": "Ejecutando comando via daemon: {{command}} con args: {{args}}",
+    "daemon_rcon_response": "Respuesta RCON del daemon: {{result}}"
+  }
+}

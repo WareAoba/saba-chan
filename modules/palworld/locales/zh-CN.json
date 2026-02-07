@@ -1,0 +1,27 @@
+{
+  "errors": {
+    "failed_to_start": "启动失败：{{error}}",
+    "no_pid_provided": "未提供PID",
+    "failed_to_kill": "进程终止失败：{{error}}",
+    "failed_to_stop": "停止失败：{{error}}",
+    "daemon_connection_error": "守护程序连接错误：{{error}}",
+    "invalid_json_response": "来自守护程序的无效JSON响应：{{error}}",
+    "daemon_error": "守护程序错误：{{error}}",
+    "player_list_failed": "获取玩家列表失败：{{error}}",
+    "server_info_failed": "获取服务器信息失败：{{error}}"
+  },
+  "messages": {
+    "starting_server": "启动服务器：{{command}}",
+    "working_directory": "工作目录：{{path}}",
+    "server_starting": "Palworld服务器启动，PID为{{pid}}",
+    "shutdown_signal_sent": "向PID {{pid}}发送关闭信号",
+    "force_killed": "强制终止PID {{pid}}",
+    "signal_sent": "向PID {{pid}}发送信号{{signal}}",
+    "no_process_running": "没有运行的进程",
+    "executing_command": "通过守护程序执行命令：{{command}}，参数：{{args}}",
+    "daemon_rcon_response": "守护程序RCON响应：{{result}}",
+    "broadcast_message": "广播消息：{{message}}",
+    "save_triggered": "服务器保存已触发",
+    "shutdown_initiated": "服务器关闭已启动（{{seconds}}秒倒计时）"
+  }
+}

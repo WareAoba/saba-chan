@@ -1,0 +1,26 @@
+{
+  "errors": {
+    "server_jar_not_specified": "module.toml中未指定server_jar。請新增server.jar的路徑",
+    "server_jar_not_found": "找不到伺服器jar：{{path}}。請檢查實例設定中的路徑。",
+    "failed_to_start": "啟動失敗：{{error}}",
+    "no_pid_provided": "未提供PID",
+    "failed_to_kill": "程序終止失敗：{{error}}",
+    "failed_to_stop": "停止失敗：{{error}}",
+    "daemon_connection_error": "守護程序連線錯誤：{{error}}",
+    "invalid_json_response": "來自守護程序的無效JSON回應：{{error}}",
+    "daemon_error": "守護程序錯誤：{{error}}"
+  },
+  "messages": {
+    "starting_server": "啟動伺服器：{{command}}",
+    "working_directory": "工作目錄：{{path}}",
+    "server_starting": "Minecraft伺服器啟動，PID為{{pid}}",
+    "shutdown_signal_sent": "向PID {{pid}}傳送關閉訊號",
+    "force_killed": "強制終止PID {{pid}}",
+    "signal_sent": "向PID {{pid}}傳送訊號{{signal}}",
+    "no_process_running": "沒有執行中的程序",
+    "would_send_command": "將向PID {{pid}}傳送：{{command}}",
+    "failed_send_command": "傳送命令失敗：{{error}}",
+    "executing_command": "透過守護程序執行命令：{{command}}，參數：{{args}}",
+    "daemon_rcon_response": "守護程序RCON回應：{{result}}"
+  }
+}

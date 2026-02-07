@@ -1,0 +1,88 @@
+{
+  "commands": {
+    "start": "Démarrer le serveur",
+    "stop": "Arrêter le serveur",
+    "status": "Statut du serveur",
+    "restart": "Redémarrer le serveur"
+  },
+  "help": {
+    "title": "📖 Guide d'utilisation",
+    "list": "Afficher la liste des serveurs",
+    "start": "Démarrer le serveur",
+    "stop": "Arrêter le serveur",
+    "status": "Vérifier l'état du serveur",
+    "rest_command": "Exécuter une commande REST",
+    "help": "Afficher ce message d'aide",
+    "available_modules": "**Modules disponibles:** {{modules}}",
+    "no_modules": "Aucun",
+    "module_commands": "**Commandes du module:**{{commands}}",
+    "module_title": "**Commandes {{module}}**",
+    "command_format": "Commande inconnue: \"{{command}}\" ({{resolved}})",
+    "available_commands": "{{commands}}"
+  },
+  "modules": {
+    "help_start": "Démarrer le serveur",
+    "help_stop": "Arrêter le serveur",
+    "help_status": "Vérifier l'état du serveur",
+    "help_rest_title": "**Commandes REST:**"
+  },
+  "list": {
+    "title": "🎮 **Liste des serveurs**",
+    "empty": "📭 Aucun serveur enregistré",
+    "item": "• **{{name}}** ({{module}}) - {{status}} {{status_icon}}"
+  },
+  "status": {
+    "running": "🟢 En cours d'exécution",
+    "stopped": "⚪ Arrêté"
+  },
+  "server": {
+    "start_request": "⏳ Démarrage du serveur **{{name}}**...",
+    "start_complete": "✅ Demande de démarrage de **{{name}}** terminée!",
+    "stop_request": "⏳ Arrêt du serveur **{{name}}**...",
+    "stop_complete": "✅ Demande d'arrêt de **{{name}}** terminée!",
+    "status_check": "📊 Statut de **{{name}}**: {{status}} {{pid_info}}",
+    "not_found": "❌ Aucun serveur trouvé pour le module \"{{alias}}\" ({{resolved}})",
+    "not_running": "❌ **{{name}}**: {{error}}",
+    "not_running_default": "Le serveur n'est pas en cours d'exécution. Veuillez d'abord démarrer le serveur"
+  },
+  "command": {
+    "executing": "⏳ **{{name}}** - `{{command}}` en cours d'exécution...",
+    "missing_required": "❌ Argument obligatoire manquant: `{{arg_name}}`\nUtilisation: `{{prefix}} {{alias}} {{command}} <{{arg_name}}>`\nDescription: {{description}}",
+    "execute_complete": "📡 **{{name}}** - `{{command}}`\n{{response}}",
+    "execute_failed": "❌ Échec de l'exécution sur **{{name}}**\n{{error}}",
+    "unknown_command": "❓ Commande inconnue: \"{{command}}\" ({{resolved}})",
+    "no_available": "❓ Commande inconnue: \"{{command}}\" ({{resolved}})"
+  },
+  "responses": {
+    "info_title": "**Informations du serveur**",
+    "info_version": "• Version: {{version}}",
+    "info_name": "• Nom du serveur: {{name}}",
+    "info_description": "• Description: {{description}}",
+    "players_title": "**Joueurs connectés ({{count}})**",
+    "players_empty": "Aucun joueur connecté",
+    "players_item": "• **{{name}}** - Niv.{{level}} ({{id}})",
+    "metrics_title": "**Métriques du serveur**",
+    "metrics_players": "• Joueurs actuels: {{current}}/{{max}}",
+    "metrics_fps": "• FPS du serveur: {{fps}}",
+    "metrics_uptime": "• Durée de fonctionnement: {{uptime}} minutes",
+    "announce_success": "✅ Annonce envoyée",
+    "save_success": "✅ Monde sauvegardé",
+    "command_executed": "✅ Commande exécutée",
+    "command_complete": "✅ Commande exécutée avec succès!"
+  },
+  "errors": {
+    "error_title": "Erreur lors de l'exécution de la commande",
+    "unknown": "Erreur inconnue",
+    "auth_failed": "Échec de l'authentification",
+    "player_not_found": "Joueur introuvable",
+    "internal_server_error": "Erreur interne du serveur",
+    "rest_api_disabled": "API REST désactivée",
+    "rcon_disabled": "RCON désactivé"
+  },
+  "messages": {
+    "server_started": "Serveur démarré avec succès",
+    "server_stopped": "Serveur arrêté",
+    "server_not_running": "Le serveur n'est pas en cours d'exécution",
+    "command_error": "Erreur lors de l'exécution de la commande"
+  }
+}

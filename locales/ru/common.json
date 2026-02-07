@@ -1,0 +1,51 @@
+{
+  "app_name": "Saba-chan",
+  "app_description": "Модульная платформа управления игровыми серверами",
+  "success": "Успех",
+  "error": "Ошибка",
+  "warning": "Предупреждение",
+  "info": "Информация",
+  "confirm": "Подтвердить",
+  "cancel": "Отмена",
+  "save": "Сохранить",
+  "delete": "Удалить",
+  "edit": "Редактировать",
+  "close": "Закрыть",
+  "settings": "Параметры",
+  "language": "Язык",
+  "yes": "Да",
+  "no": "Нет",
+  "daemon": {
+    "checking": "Проверка демона...",
+    "existing_running": "Существующий демон запущен",
+    "starting": "Запуск демона...",
+    "started": "Демон запущен",
+    "preparing": "Подготовка демона... (время истекло)",
+    "failed_to_start": "Ошибка запуска демона - запустите вручную",
+    "check_warning": "Предупреждение при проверке демона: {{error}}"
+  },
+  "modules": {
+    "refreshing": "Обновление модулей...",
+    "refresh_complete": "Обновление модулей завершено"
+  },
+  "server": {
+    "list_failed": "Ошибка получения списка серверов (HTTP {{status}}): {{error}}",
+    "start_failed": "Ошибка запуска: {{error}}",
+    "stop_failed": "Ошибка остановки: {{error}}",
+    "status_check_failed": "Ошибка проверки статуса (HTTP {{status}}): {{error}}",
+    "module_not_found": "Модуль '{{module}}' не найден",
+    "invalid_request": "Недействительный запрос: {{error}}",
+    "not_found": "Сервер '{{name}}' не найден",
+    "already_running": "Сервер '{{name}}' уже запущен",
+    "missing_required_field": "Отсутствует обязательное поле '{{field}}'",
+    "creation_failed": "Ошибка создания экземпляра: {{error}}",
+    "delete_failed": "Ошибка удаления экземпляра: {{error}}",
+    "update_failed": "Ошибка обновления экземпляра: {{error}}",
+    "settings_save_failed": "Ошибка сохранения параметров: {{error}}"
+  },
+  "network": {
+    "connection_refused": "Невозможно подключиться к демону. Проверьте, запущен ли демон",
+    "timeout": "Время ожидания истекло: Сервер не ответил",
+    "not_found": "Сервер не найден. Проверьте параметры сети"
+  }
+}

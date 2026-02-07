@@ -1,0 +1,88 @@
+{
+  "commands": {
+    "start": "Server starten",
+    "stop": "Server stoppen",
+    "status": "Server-Status",
+    "restart": "Server neu starten"
+  },
+  "help": {
+    "title": "📖 Benutzerhandbuch",
+    "list": "Serverliste anzeigen",
+    "start": "Server starten",
+    "stop": "Server stoppen",
+    "status": "Server-Status überprüfen",
+    "rest_command": "REST-Befehl ausführen",
+    "help": "Diese Hilfemeldung anzeigen",
+    "available_modules": "**Verfügbare Module:** {{modules}}",
+    "no_modules": "Keine",
+    "module_commands": "**Modulbefehle:**{{commands}}",
+    "module_title": "**{{module}}-Befehle**",
+    "command_format": "Unbekannter Befehl: \"{{command}}\" ({{resolved}})",
+    "available_commands": "{{commands}}"
+  },
+  "modules": {
+    "help_start": "Server starten",
+    "help_stop": "Server stoppen",
+    "help_status": "Server-Status überprüfen",
+    "help_rest_title": "**REST-Befehle:**"
+  },
+  "list": {
+    "title": "🎮 **Serverliste**",
+    "empty": "📭 Keine Server registriert",
+    "item": "• **{{name}}** ({{module}}) - {{status}} {{status_icon}}"
+  },
+  "status": {
+    "running": "🟢 Läuft",
+    "stopped": "⚪ Gestoppt"
+  },
+  "server": {
+    "start_request": "⏳ Starten von **{{name}}**-Server...",
+    "start_complete": "✅ Start-Anfrage für **{{name}}** abgeschlossen!",
+    "stop_request": "⏳ Stoppen von **{{name}}**-Server...",
+    "stop_complete": "✅ Stop-Anfrage für **{{name}}** abgeschlossen!",
+    "status_check": "📊 Status von **{{name}}**: {{status}} {{pid_info}}",
+    "not_found": "❌ Kein Server gefunden für Modul \"{{alias}}\" ({{resolved}})",
+    "not_running": "❌ **{{name}}**: {{error}}",
+    "not_running_default": "Server läuft nicht. Bitte starten Sie zuerst den Server"
+  },
+  "command": {
+    "executing": "⏳ **{{name}}** - `{{command}}` wird ausgeführt...",
+    "missing_required": "❌ Erforderliches Argument fehlt: `{{arg_name}}`\nVerwendung: `{{prefix}} {{alias}} {{command}} <{{arg_name}}>`\nBeschreibung: {{description}}",
+    "execute_complete": "📡 **{{name}}** - `{{command}}`\n{{response}}",
+    "execute_failed": "❌ Ausführung auf **{{name}}** fehlgeschlagen\n{{error}}",
+    "unknown_command": "❓ Unbekannter Befehl: \"{{command}}\" ({{resolved}})",
+    "no_available": "❓ Unbekannter Befehl: \"{{command}}\" ({{resolved}})"
+  },
+  "responses": {
+    "info_title": "**Serverinformationen**",
+    "info_version": "• Version: {{version}}",
+    "info_name": "• Servername: {{name}}",
+    "info_description": "• Beschreibung: {{description}}",
+    "players_title": "**Verbundene Spieler ({{count}})**",
+    "players_empty": "Keine verbundenen Spieler",
+    "players_item": "• **{{name}}** - Stufe {{level}} ({{id}})",
+    "metrics_title": "**Server-Metriken**",
+    "metrics_players": "• Aktuelle Spieler: {{current}}/{{max}}",
+    "metrics_fps": "• Server-FPS: {{fps}}",
+    "metrics_uptime": "• Laufzeit: {{uptime}} Minuten",
+    "announce_success": "✅ Ankündigung gesendet",
+    "save_success": "✅ Welt gespeichert",
+    "command_executed": "✅ Befehl ausgeführt",
+    "command_complete": "✅ Befehl erfolgreich ausgeführt!"
+  },
+  "errors": {
+    "error_title": "Fehler beim Ausführen des Befehls",
+    "unknown": "Unbekannter Fehler",
+    "auth_failed": "Authentifizierung fehlgeschlagen",
+    "player_not_found": "Spieler nicht gefunden",
+    "internal_server_error": "Interner Serverfehler",
+    "rest_api_disabled": "REST-API deaktiviert",
+    "rcon_disabled": "RCON deaktiviert"
+  },
+  "messages": {
+    "server_started": "Server erfolgreich gestartet",
+    "server_stopped": "Server gestoppt",
+    "server_not_running": "Server läuft nicht",
+    "command_error": "Fehler beim Ausführen des Befehls"
+  }
+}

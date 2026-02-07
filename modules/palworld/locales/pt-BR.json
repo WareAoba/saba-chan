@@ -1,0 +1,27 @@
+{
+  "errors": {
+    "failed_to_start": "Falha ao iniciar: {{error}}",
+    "no_pid_provided": "Nenhum PID fornecido",
+    "failed_to_kill": "Falha ao terminar processo: {{error}}",
+    "failed_to_stop": "Falha ao parar: {{error}}",
+    "daemon_connection_error": "Erro de conexão do daemon: {{error}}",
+    "invalid_json_response": "Resposta JSON inválida do daemon: {{error}}",
+    "daemon_error": "Erro do daemon: {{error}}",
+    "player_list_failed": "Falha ao obter lista de jogadores: {{error}}",
+    "server_info_failed": "Falha ao obter informações do servidor: {{error}}"
+  },
+  "messages": {
+    "starting_server": "Iniciando servidor: {{command}}",
+    "working_directory": "Diretório de trabalho: {{path}}",
+    "server_starting": "Servidor Palworld iniciando com PID {{pid}}",
+    "shutdown_signal_sent": "Sinal de desligamento enviado para PID {{pid}}",
+    "force_killed": "PID {{pid}} forçadamente terminado",
+    "signal_sent": "Sinal {{signal}} enviado para PID {{pid}}",
+    "no_process_running": "Nenhum processo em execução",
+    "executing_command": "Executando comando via daemon: {{command}} com args: {{args}}",
+    "daemon_rcon_response": "Resposta RCON do daemon: {{result}}",
+    "broadcast_message": "Mensagem de transmissão: {{message}}",
+    "save_triggered": "Salvamento do servidor acionado",
+    "shutdown_initiated": "Desligamento do servidor iniciado (contagem regressiva de {{seconds}}s)"
+  }
+}

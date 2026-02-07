@@ -1,0 +1,88 @@
+{
+  "commands": {
+    "start": "启动服务器",
+    "stop": "停止服务器",
+    "status": "服务器状态",
+    "restart": "重启服务器"
+  },
+  "help": {
+    "title": "📖 使用指南",
+    "list": "查看服务器列表",
+    "start": "启动服务器",
+    "stop": "停止服务器",
+    "status": "检查服务器状态",
+    "rest_command": "执行REST命令",
+    "help": "显示此帮助消息",
+    "available_modules": "**可用模块：** {{modules}}",
+    "no_modules": "无",
+    "module_commands": "**模块命令：**{{commands}}",
+    "module_title": "**{{module}} 命令**",
+    "command_format": "未知命令：\"{{command}}\"（{{resolved}}）",
+    "available_commands": "{{commands}}"
+  },
+  "modules": {
+    "help_start": "启动服务器",
+    "help_stop": "停止服务器",
+    "help_status": "检查服务器状态",
+    "help_rest_title": "**REST 命令：**"
+  },
+  "list": {
+    "title": "🎮 **服务器列表**",
+    "empty": "📭 未注册服务器",
+    "item": "• **{{name}}** ({{module}}) - {{status}} {{status_icon}}"
+  },
+  "status": {
+    "running": "🟢 运行中",
+    "stopped": "⚪ 已停止"
+  },
+  "server": {
+    "start_request": "⏳ 正在启动 **{{name}}** 服务器...",
+    "start_complete": "✅ **{{name}}** 启动请求已完成！",
+    "stop_request": "⏳ 正在停止 **{{name}}** 服务器...",
+    "stop_complete": "✅ **{{name}}** 停止请求已完成！",
+    "status_check": "📊 **{{name}}** 状态：{{status}} {{pid_info}}",
+    "not_found": "❌ 找不到模块 \"{{alias}}\" 的服务器（{{resolved}}）",
+    "not_running": "❌ **{{name}}**：{{error}}",
+    "not_running_default": "服务器未运行。请先启动服务器"
+  },
+  "command": {
+    "executing": "⏳ **{{name}}** - `{{command}}` 执行中...",
+    "missing_required": "❌ 缺少必需参数：`{{arg_name}}`\n用法：`{{prefix}} {{alias}} {{command}} <{{arg_name}}>`\n描述：{{description}}",
+    "execute_complete": "📡 **{{name}}** - `{{command}}`\n{{response}}",
+    "execute_failed": "❌ **{{name}}** 执行失败\n{{error}}",
+    "unknown_command": "❓ 未知命令：\"{{command}}\"（{{resolved}}）",
+    "no_available": "❓ 未知命令：\"{{command}}\"（{{resolved}}）"
+  },
+  "responses": {
+    "info_title": "**服务器信息**",
+    "info_version": "• 版本：{{version}}",
+    "info_name": "• 服务器名称：{{name}}",
+    "info_description": "• 描述：{{description}}",
+    "players_title": "**连接的玩家（{{count}}）**",
+    "players_empty": "当前没有玩家在线",
+    "players_item": "• **{{name}}** - Lv.{{level}}（{{id}}）",
+    "metrics_title": "**服务器指标**",
+    "metrics_players": "• 当前玩家数：{{current}}/{{max}}",
+    "metrics_fps": "• 服务器FPS：{{fps}}",
+    "metrics_uptime": "• 运行时间：{{uptime}} 分钟",
+    "announce_success": "✅ 公告已发送",
+    "save_success": "✅ 世界已保存",
+    "command_executed": "✅ 命令已执行",
+    "command_complete": "✅ 命令执行成功！"
+  },
+  "errors": {
+    "error_title": "执行命令出错",
+    "unknown": "未知错误",
+    "auth_failed": "身份验证失败",
+    "player_not_found": "找不到玩家",
+    "internal_server_error": "内部服务器错误",
+    "rest_api_disabled": "REST API 已禁用",
+    "rcon_disabled": "RCON 已禁用"
+  },
+  "messages": {
+    "server_started": "服务器成功启动",
+    "server_stopped": "服务器已停止",
+    "server_not_running": "服务器未运行",
+    "command_error": "执行命令出错"
+  }
+}

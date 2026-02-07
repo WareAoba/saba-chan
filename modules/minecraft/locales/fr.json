@@ -1,0 +1,26 @@
+{
+  "errors": {
+    "server_jar_not_specified": "server_jar non spécifié dans la configuration de l'instance. Veuillez ajouter le chemin vers server.jar",
+    "server_jar_not_found": "Fichier jar du serveur non trouvé: {{path}}. Veuillez vérifier le chemin dans les paramètres d'instance.",
+    "failed_to_start": "Échec du démarrage: {{error}}",
+    "no_pid_provided": "Aucun PID fourni",
+    "failed_to_kill": "Échec de la terminaison du processus: {{error}}",
+    "failed_to_stop": "Échec de l'arrêt: {{error}}",
+    "daemon_connection_error": "Erreur de connexion au daemon: {{error}}",
+    "invalid_json_response": "Réponse JSON invalide du daemon: {{error}}",
+    "daemon_error": "Erreur du daemon: {{error}}"
+  },
+  "messages": {
+    "starting_server": "Démarrage du serveur: {{command}}",
+    "working_directory": "Répertoire de travail: {{path}}",
+    "server_starting": "Serveur Minecraft démarrant avec PID {{pid}}",
+    "shutdown_signal_sent": "Signal d'arrêt envoyé au PID {{pid}}",
+    "force_killed": "PID {{pid}} tué de force",
+    "signal_sent": "Signal {{signal}} envoyé au PID {{pid}}",
+    "no_process_running": "Aucun processus en cours d'exécution",
+    "would_send_command": "Enverrait au PID {{pid}}: {{command}}",
+    "failed_send_command": "Échec de l'envoi de la commande: {{error}}",
+    "executing_command": "Exécution de la commande via daemon: {{command}} avec args: {{args}}",
+    "daemon_rcon_response": "Réponse RCON du daemon: {{result}}"
+  }
+}

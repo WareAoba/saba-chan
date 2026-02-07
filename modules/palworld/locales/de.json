@@ -1,0 +1,27 @@
+{
+  "errors": {
+    "failed_to_start": "Start fehlgeschlagen: {{error}}",
+    "no_pid_provided": "Keine PID angegeben",
+    "failed_to_kill": "Prozess beendigung fehlgeschlagen: {{error}}",
+    "failed_to_stop": "Stopp fehlgeschlagen: {{error}}",
+    "daemon_connection_error": "Daemon-Verbindungsfehler: {{error}}",
+    "invalid_json_response": "Ungültige JSON-Antwort vom Daemon: {{error}}",
+    "daemon_error": "Daemon-Fehler: {{error}}",
+    "player_list_failed": "Fehler beim Abrufen der Spielerliste: {{error}}",
+    "server_info_failed": "Fehler beim Abrufen der Serverinformationen: {{error}}"
+  },
+  "messages": {
+    "starting_server": "Server wird gestartet: {{command}}",
+    "working_directory": "Arbeitsverzeichnis: {{path}}",
+    "server_starting": "Palworld-Server startet mit PID {{pid}}",
+    "shutdown_signal_sent": "Shutdown-Signal an PID {{pid}} gesendet",
+    "force_killed": "PID {{pid}} erzwungen beendet",
+    "signal_sent": "Signal {{signal}} an PID {{pid}} gesendet",
+    "no_process_running": "Kein Prozess läuft",
+    "executing_command": "Befehl wird über Daemon ausgeführt: {{command}} mit Argumenten: {{args}}",
+    "daemon_rcon_response": "Daemon RCON-Antwort: {{result}}",
+    "broadcast_message": "Rundfunk-Nachricht: {{message}}",
+    "save_triggered": "Serverspeicherung ausgelöst",
+    "shutdown_initiated": "Server-Herunterfahren eingeleitet ({{seconds}}s Countdown)"
+  }
+}

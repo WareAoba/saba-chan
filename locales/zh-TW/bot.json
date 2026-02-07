@@ -1,0 +1,88 @@
+{
+  "commands": {
+    "start": "啟動伺服器",
+    "stop": "停止伺服器",
+    "status": "伺服器狀態",
+    "restart": "重新啟動伺服器"
+  },
+  "help": {
+    "title": "📖 使用指南",
+    "list": "檢查伺服器列表",
+    "start": "啟動伺服器",
+    "stop": "停止伺服器",
+    "status": "檢查伺服器狀態",
+    "rest_command": "執行REST命令",
+    "help": "顯示此幫助訊息",
+    "available_modules": "**可用模組：** {{modules}}",
+    "no_modules": "無",
+    "module_commands": "**模組命令：**{{commands}}",
+    "module_title": "**{{module}} 命令**",
+    "command_format": "未知命令：\"{{command}}\"（{{resolved}}）",
+    "available_commands": "{{commands}}"
+  },
+  "modules": {
+    "help_start": "啟動伺服器",
+    "help_stop": "停止伺服器",
+    "help_status": "檢查伺服器狀態",
+    "help_rest_title": "**REST 命令：**"
+  },
+  "list": {
+    "title": "🎮 **伺服器清單**",
+    "empty": "📭 未登錄伺服器",
+    "item": "• **{{name}}** ({{module}}) - {{status}} {{status_icon}}"
+  },
+  "status": {
+    "running": "🟢 執行中",
+    "stopped": "⚪ 已停止"
+  },
+  "server": {
+    "start_request": "⏳ 正在啟動 **{{name}}** 伺服器...",
+    "start_complete": "✅ **{{name}}** 啟動要求已完成！",
+    "stop_request": "⏳ 正在停止 **{{name}}** 伺服器...",
+    "stop_complete": "✅ **{{name}}** 停止要求已完成！",
+    "status_check": "📊 **{{name}}** 狀態：{{status}} {{pid_info}}",
+    "not_found": "❌ 找不到模組 \"{{alias}}\" 的伺服器（{{resolved}}）",
+    "not_running": "❌ **{{name}}**：{{error}}",
+    "not_running_default": "伺服器未執行。請先啟動伺服器"
+  },
+  "command": {
+    "executing": "⏳ **{{name}}** - `{{command}}` 執行中...",
+    "missing_required": "❌ 缺少必要參數：`{{arg_name}}`\n用法：`{{prefix}} {{alias}} {{command}} <{{arg_name}}>`\n描述：{{description}}",
+    "execute_complete": "📡 **{{name}}** - `{{command}}`\n{{response}}",
+    "execute_failed": "❌ **{{name}}** 執行失敗\n{{error}}",
+    "unknown_command": "❓ 未知命令：\"{{command}}\"（{{resolved}}）",
+    "no_available": "❓ 未知命令：\"{{command}}\"（{{resolved}}）"
+  },
+  "responses": {
+    "info_title": "**伺服器資訊**",
+    "info_version": "• 版本：{{version}}",
+    "info_name": "• 伺服器名稱：{{name}}",
+    "info_description": "• 描述：{{description}}",
+    "players_title": "**連接的玩家（{{count}}）**",
+    "players_empty": "目前沒有玩家在線",
+    "players_item": "• **{{name}}** - Lv.{{level}}（{{id}}）",
+    "metrics_title": "**伺服器指標**",
+    "metrics_players": "• 目前玩家數：{{current}}/{{max}}",
+    "metrics_fps": "• 伺服器FPS：{{fps}}",
+    "metrics_uptime": "• 執行時間：{{uptime}} 分鐘",
+    "announce_success": "✅ 公告已傳送",
+    "save_success": "✅ 世界已保存",
+    "command_executed": "✅ 命令已執行",
+    "command_complete": "✅ 命令執行成功！"
+  },
+  "errors": {
+    "error_title": "執行命令出錯",
+    "unknown": "未知錯誤",
+    "auth_failed": "身份驗證失敗",
+    "player_not_found": "找不到玩家",
+    "internal_server_error": "內部伺服器錯誤",
+    "rest_api_disabled": "REST API 已停用",
+    "rcon_disabled": "RCON 已停用"
+  },
+  "messages": {
+    "server_started": "伺服器成功啟動",
+    "server_stopped": "伺服器已停止",
+    "server_not_running": "伺服器未執行",
+    "command_error": "執行命令出錯"
+  }
+}

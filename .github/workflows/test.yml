@@ -47,12 +47,14 @@ jobs:
 
       - name: Install Electron GUI dependencies
         working-directory: electron_gui
+        shell: bash
         run: |
           rm -rf node_modules
           npm ci
 
       - name: Install Discord Bot dependencies
         working-directory: discord_bot
+        shell: bash
         run: |
           rm -rf node_modules
           npm ci

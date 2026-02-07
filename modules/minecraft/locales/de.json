@@ -1,0 +1,26 @@
+{
+  "errors": {
+    "server_jar_not_specified": "server_jar in der Instanzkonfiguration nicht angegeben. Bitte fügen Sie den Pfad zu server.jar hinzu",
+    "server_jar_not_found": "Server-Jar nicht gefunden: {{path}}. Bitte überprüfen Sie den Pfad in den Instanzeinstellungen.",
+    "failed_to_start": "Start fehlgeschlagen: {{error}}",
+    "no_pid_provided": "Keine PID angegeben",
+    "failed_to_kill": "Prozess beendigung fehlgeschlagen: {{error}}",
+    "failed_to_stop": "Stopp fehlgeschlagen: {{error}}",
+    "daemon_connection_error": "Daemon-Verbindungsfehler: {{error}}",
+    "invalid_json_response": "Ungültige JSON-Antwort vom Daemon: {{error}}",
+    "daemon_error": "Daemon-Fehler: {{error}}"
+  },
+  "messages": {
+    "starting_server": "Server wird gestartet: {{command}}",
+    "working_directory": "Arbeitsverzeichnis: {{path}}",
+    "server_starting": "Minecraft-Server startet mit PID {{pid}}",
+    "shutdown_signal_sent": "Shutdown-Signal an PID {{pid}} gesendet",
+    "force_killed": "PID {{pid}} erzwungen beendet",
+    "signal_sent": "Signal {{signal}} an PID {{pid}} gesendet",
+    "no_process_running": "Kein Prozess läuft",
+    "would_send_command": "Würde an PID {{pid}} senden: {{command}}",
+    "failed_send_command": "Befehl senden fehlgeschlagen: {{error}}",
+    "executing_command": "Befehl wird über Daemon ausgeführt: {{command}} mit Argumenten: {{args}}",
+    "daemon_rcon_response": "Daemon RCON-Antwort: {{result}}"
+  }
+}

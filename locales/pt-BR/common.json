@@ -1,0 +1,51 @@
+{
+  "app_name": "Saba-chan",
+  "app_description": "Plataforma Modular de Gerenciamento de Servidores de Jogos",
+  "success": "Sucesso",
+  "error": "Erro",
+  "warning": "Aviso",
+  "info": "Informação",
+  "confirm": "Confirmar",
+  "cancel": "Cancelar",
+  "save": "Salvar",
+  "delete": "Deletar",
+  "edit": "Editar",
+  "close": "Fechar",
+  "settings": "Configurações",
+  "language": "Idioma",
+  "yes": "Sim",
+  "no": "Não",
+  "daemon": {
+    "checking": "Verificando daemon...",
+    "existing_running": "Daemon existente está em execução",
+    "starting": "Iniciando daemon...",
+    "started": "Daemon iniciado",
+    "preparing": "Preparando daemon... (tempo limite excedido)",
+    "failed_to_start": "Falha ao iniciar daemon - execute manualmente",
+    "check_warning": "Aviso ao verificar daemon: {{error}}"
+  },
+  "modules": {
+    "refreshing": "Atualizando módulos...",
+    "refresh_complete": "Atualização de módulos concluída"
+  },
+  "server": {
+    "list_failed": "Falha ao obter lista de servidores (HTTP {{status}}): {{error}}",
+    "start_failed": "Falha ao iniciar: {{error}}",
+    "stop_failed": "Falha ao parar: {{error}}",
+    "status_check_failed": "Falha ao verificar status (HTTP {{status}}): {{error}}",
+    "module_not_found": "Módulo '{{module}}' não encontrado",
+    "invalid_request": "Solicitação inválida: {{error}}",
+    "not_found": "Servidor '{{name}}' não encontrado",
+    "already_running": "Servidor '{{name}}' já está em execução",
+    "missing_required_field": "Campo obrigatório '{{field}}' ausente",
+    "creation_failed": "Falha ao criar instância: {{error}}",
+    "delete_failed": "Falha ao deletar instância: {{error}}",
+    "update_failed": "Falha ao atualizar instância: {{error}}",
+    "settings_save_failed": "Falha ao salvar configurações: {{error}}"
+  },
+  "network": {
+    "connection_refused": "Não é possível conectar ao daemon. Verifique se o daemon está em execução",
+    "timeout": "Tempo de solicitação excedido: O servidor não respondeu",
+    "not_found": "Servidor não encontrado. Verifique as configurações de rede"
+  }
+}

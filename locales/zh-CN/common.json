@@ -1,0 +1,51 @@
+{
+  "app_name": "Saba-chan",
+  "app_description": "模块化游戏服务器管理平台",
+  "success": "成功",
+  "error": "错误",
+  "warning": "警告",
+  "info": "信息",
+  "confirm": "确认",
+  "cancel": "取消",
+  "save": "保存",
+  "delete": "删除",
+  "edit": "编辑",
+  "close": "关闭",
+  "settings": "设置",
+  "language": "语言",
+  "yes": "是",
+  "no": "否",
+  "daemon": {
+    "checking": "检查守护程序...",
+    "existing_running": "现有守护程序正在运行",
+    "starting": "启动守护程序...",
+    "started": "守护程序已启动",
+    "preparing": "准备守护程序...（超时）",
+    "failed_to_start": "启动守护程序失败 - 请手动运行",
+    "check_warning": "检查守护程序时出现警告：{{error}}"
+  },
+  "modules": {
+    "refreshing": "刷新模块...",
+    "refresh_complete": "模块刷新完成"
+  },
+  "server": {
+    "list_failed": "无法获取服务器列表（HTTP {{status}}）：{{error}}",
+    "start_failed": "启动失败：{{error}}",
+    "stop_failed": "停止失败：{{error}}",
+    "status_check_failed": "状态检查失败（HTTP {{status}}）：{{error}}",
+    "module_not_found": "找不到模块'{{module}}'",
+    "invalid_request": "无效请求：{{error}}",
+    "not_found": "找不到服务器'{{name}}'",
+    "already_running": "服务器'{{name}}'已在运行",
+    "missing_required_field": "缺少必需字段'{{field}}'",
+    "creation_failed": "创建实例失败：{{error}}",
+    "delete_failed": "删除实例失败：{{error}}",
+    "update_failed": "更新实例失败：{{error}}",
+    "settings_save_failed": "保存设置失败：{{error}}"
+  },
+  "network": {
+    "connection_refused": "无法连接到守护程序。请检查守护程序是否正在运行",
+    "timeout": "请求超时：服务器未响应",
+    "not_found": "找不到服务器。请检查网络设置"
+  }
+}

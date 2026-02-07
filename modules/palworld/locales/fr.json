@@ -1,0 +1,27 @@
+{
+  "errors": {
+    "failed_to_start": "Échec du démarrage: {{error}}",
+    "no_pid_provided": "Aucun PID fourni",
+    "failed_to_kill": "Échec de la terminaison du processus: {{error}}",
+    "failed_to_stop": "Échec de l'arrêt: {{error}}",
+    "daemon_connection_error": "Erreur de connexion au daemon: {{error}}",
+    "invalid_json_response": "Réponse JSON invalide du daemon: {{error}}",
+    "daemon_error": "Erreur du daemon: {{error}}",
+    "player_list_failed": "Échec de la récupération de la liste des joueurs: {{error}}",
+    "server_info_failed": "Échec de la récupération des informations du serveur: {{error}}"
+  },
+  "messages": {
+    "starting_server": "Démarrage du serveur: {{command}}",
+    "working_directory": "Répertoire de travail: {{path}}",
+    "server_starting": "Serveur Palworld démarrant avec PID {{pid}}",
+    "shutdown_signal_sent": "Signal d'arrêt envoyé au PID {{pid}}",
+    "force_killed": "PID {{pid}} tué de force",
+    "signal_sent": "Signal {{signal}} envoyé au PID {{pid}}",
+    "no_process_running": "Aucun processus en cours d'exécution",
+    "executing_command": "Exécution de la commande via daemon: {{command}} avec args: {{args}}",
+    "daemon_rcon_response": "Réponse RCON du daemon: {{result}}",
+    "broadcast_message": "Message de diffusion: {{message}}",
+    "save_triggered": "Sauvegarde du serveur déclenchée",
+    "shutdown_initiated": "Arrêt du serveur initié (compte à rebours {{seconds}}s)"
+  }
+}

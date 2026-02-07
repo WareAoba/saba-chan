@@ -1,0 +1,27 @@
+{
+  "errors": {
+    "failed_to_start": "Ошибка запуска: {{error}}",
+    "no_pid_provided": "PID не предоставлен",
+    "failed_to_kill": "Ошибка завершения процесса: {{error}}",
+    "failed_to_stop": "Ошибка остановки: {{error}}",
+    "daemon_connection_error": "Ошибка подключения демона: {{error}}",
+    "invalid_json_response": "Недействительный JSON ответ от демона: {{error}}",
+    "daemon_error": "Ошибка демона: {{error}}",
+    "player_list_failed": "Ошибка получения списка игроков: {{error}}",
+    "server_info_failed": "Ошибка получения информации о сервере: {{error}}"
+  },
+  "messages": {
+    "starting_server": "Запуск сервера: {{command}}",
+    "working_directory": "Рабочий каталог: {{path}}",
+    "server_starting": "Сервер Palworld запускается с PID {{pid}}",
+    "shutdown_signal_sent": "Сигнал выключения отправлен на PID {{pid}}",
+    "force_killed": "PID {{pid}} принудительно завершен",
+    "signal_sent": "Сигнал {{signal}} отправлен на PID {{pid}}",
+    "no_process_running": "Нет запущенных процессов",
+    "executing_command": "Выполнение команды через демон: {{command}} с аргументами: {{args}}",
+    "daemon_rcon_response": "RCON ответ демона: {{result}}",
+    "broadcast_message": "Трансляция сообщения: {{message}}",
+    "save_triggered": "Сохранение сервера инициировано",
+    "shutdown_initiated": "Выключение сервера инициировано ({{seconds}}s обратный отсчет)"
+  }
+}

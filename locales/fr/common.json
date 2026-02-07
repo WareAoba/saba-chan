@@ -1,0 +1,51 @@
+{
+  "app_name": "Saba-chan",
+  "app_description": "Plateforme de gestion des serveurs de jeux modulaire",
+  "success": "Succès",
+  "error": "Erreur",
+  "warning": "Avertissement",
+  "info": "Information",
+  "confirm": "Confirmer",
+  "cancel": "Annuler",
+  "save": "Enregistrer",
+  "delete": "Supprimer",
+  "edit": "Modifier",
+  "close": "Fermer",
+  "settings": "Paramètres",
+  "language": "Langue",
+  "yes": "Oui",
+  "no": "Non",
+  "daemon": {
+    "checking": "Vérification du daemon...",
+    "existing_running": "Le daemon existant est en cours d'exécution",
+    "starting": "Démarrage du daemon...",
+    "started": "Daemon démarré",
+    "preparing": "Préparation du daemon... (délai dépassé)",
+    "failed_to_start": "Échec du démarrage du daemon - veuillez l'exécuter manuellement",
+    "check_warning": "Avertissement lors de la vérification du daemon: {{error}}"
+  },
+  "modules": {
+    "refreshing": "Actualisation des modules...",
+    "refresh_complete": "Actualisation des modules terminée"
+  },
+  "server": {
+    "list_failed": "Impossible de récupérer la liste des serveurs (HTTP {{status}}): {{error}}",
+    "start_failed": "Démarrage échoué: {{error}}",
+    "stop_failed": "Arrêt échoué: {{error}}",
+    "status_check_failed": "Vérification du statut échouée (HTTP {{status}}): {{error}}",
+    "module_not_found": "Module '{{module}}' non trouvé",
+    "invalid_request": "Demande invalide: {{error}}",
+    "not_found": "Serveur '{{name}}' non trouvé",
+    "already_running": "Le serveur '{{name}}' est déjà en cours d'exécution",
+    "missing_required_field": "Le champ obligatoire '{{field}}' est manquant",
+    "creation_failed": "Impossible de créer l'instance: {{error}}",
+    "delete_failed": "Impossible de supprimer l'instance: {{error}}",
+    "update_failed": "Impossible de mettre à jour l'instance: {{error}}",
+    "settings_save_failed": "Impossible d'enregistrer les paramètres: {{error}}"
+  },
+  "network": {
+    "connection_refused": "Impossible de se connecter au daemon. Veuillez vérifier que le daemon est en cours d'exécution",
+    "timeout": "Délai d'attente de la demande dépassé: Le serveur n'a pas répondu",
+    "not_found": "Serveur non trouvé. Veuillez vérifier vos paramètres réseau"
+  }
+}

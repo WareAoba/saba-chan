@@ -1,0 +1,51 @@
+{
+  "app_name": "Saba-chan",
+  "app_description": "模組化遊戲伺服器管理平台",
+  "success": "成功",
+  "error": "錯誤",
+  "warning": "警告",
+  "info": "資訊",
+  "confirm": "確認",
+  "cancel": "取消",
+  "save": "儲存",
+  "delete": "刪除",
+  "edit": "編輯",
+  "close": "關閉",
+  "settings": "設定",
+  "language": "語言",
+  "yes": "是",
+  "no": "否",
+  "daemon": {
+    "checking": "檢查守護程序...",
+    "existing_running": "現有守護程序正在執行",
+    "starting": "啟動守護程序...",
+    "started": "守護程序已啟動",
+    "preparing": "準備守護程序...（逾時）",
+    "failed_to_start": "啟動守護程序失敗 - 請手動執行",
+    "check_warning": "檢查守護程序時出現警告：{{error}}"
+  },
+  "modules": {
+    "refreshing": "重新整理模組...",
+    "refresh_complete": "模組重新整理完成"
+  },
+  "server": {
+    "list_failed": "無法取得伺服器清單（HTTP {{status}}）：{{error}}",
+    "start_failed": "啟動失敗：{{error}}",
+    "stop_failed": "停止失敗：{{error}}",
+    "status_check_failed": "狀態檢查失敗（HTTP {{status}}）：{{error}}",
+    "module_not_found": "找不到模組'{{module}}'",
+    "invalid_request": "無效的請求：{{error}}",
+    "not_found": "找不到伺服器'{{name}}'",
+    "already_running": "伺服器'{{name}}'已在執行",
+    "missing_required_field": "缺少必要欄位'{{field}}'",
+    "creation_failed": "建立實例失敗：{{error}}",
+    "delete_failed": "刪除實例失敗：{{error}}",
+    "update_failed": "更新實例失敗：{{error}}",
+    "settings_save_failed": "儲存設定失敗：{{error}}"
+  },
+  "network": {
+    "connection_refused": "無法連線到守護程序。請檢查守護程序是否在執行",
+    "timeout": "請求逾時：伺服器無回應",
+    "not_found": "找不到伺服器。請檢查網路設定"
+  }
+}

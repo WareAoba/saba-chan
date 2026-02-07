@@ -1,0 +1,51 @@
+{
+  "app_name": "Saba-chan",
+  "app_description": "Plataforma de Gestión de Servidores de Juegos Modular",
+  "success": "Éxito",
+  "error": "Error",
+  "warning": "Advertencia",
+  "info": "Información",
+  "confirm": "Confirmar",
+  "cancel": "Cancelar",
+  "save": "Guardar",
+  "delete": "Eliminar",
+  "edit": "Editar",
+  "close": "Cerrar",
+  "settings": "Configuración",
+  "language": "Idioma",
+  "yes": "Sí",
+  "no": "No",
+  "daemon": {
+    "checking": "Verificando demonio...",
+    "existing_running": "El demonio existente se está ejecutando",
+    "starting": "Iniciando demonio...",
+    "started": "Demonio iniciado",
+    "preparing": "Preparando demonio... (agotado el tiempo)",
+    "failed_to_start": "Error al iniciar el demonio - por favor ejecute manualmente",
+    "check_warning": "Advertencia al verificar demonio: {{error}}"
+  },
+  "modules": {
+    "refreshing": "Actualizando módulos...",
+    "refresh_complete": "Actualización de módulos completada"
+  },
+  "server": {
+    "list_failed": "Error al obtener lista de servidores (HTTP {{status}}): {{error}}",
+    "start_failed": "Error al iniciar: {{error}}",
+    "stop_failed": "Error al detener: {{error}}",
+    "status_check_failed": "Error al verificar estado (HTTP {{status}}): {{error}}",
+    "module_not_found": "Módulo '{{module}}' no encontrado",
+    "invalid_request": "Solicitud inválida: {{error}}",
+    "not_found": "Servidor '{{name}}' no encontrado",
+    "already_running": "El servidor '{{name}}' ya se está ejecutando",
+    "missing_required_field": "Falta el campo requerido '{{field}}'",
+    "creation_failed": "Error al crear instancia: {{error}}",
+    "delete_failed": "Error al eliminar instancia: {{error}}",
+    "update_failed": "Error al actualizar instancia: {{error}}",
+    "settings_save_failed": "Error al guardar configuración: {{error}}"
+  },
+  "network": {
+    "connection_refused": "No se puede conectar al demonio. Por favor verifique si el demonio se está ejecutando",
+    "timeout": "Tiempo de solicitud agotado: El servidor no respondió",
+    "not_found": "Servidor no encontrado. Por favor verifique la configuración de red"
+  }
+}
