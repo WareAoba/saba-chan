@@ -1,0 +1,36 @@
+{
+  "errors": {
+    "server_jar_not_specified": "インスタンス設定で server_jar が指定されていません。server.jar のパスを追加してください",
+    "server_jar_not_found": "サーバー jar が見つかりません: {{path}}。インスタンス設定でパスを確認してください。",
+    "failed_to_start": "起動に失敗しました: {{error}}",
+    "no_pid_provided": "PID が指定されていません",
+    "failed_to_kill": "プロセスの終了に失敗しました: {{error}}",
+    "failed_to_stop": "停止に失敗しました: {{error}}",
+    "daemon_connection_error": "デーモン接続エラー: {{error}}",
+    "invalid_json_response": "デーモンからの無効な JSON 応答: {{error}}",
+    "daemon_error": "デーモンエラー: {{error}}"
+  },
+  "messages": {
+    "starting_server": "サーバーを起動しています: {{command}}",
+    "working_directory": "作業ディレクトリ: {{path}}",
+    "server_starting": "Minecraft サーバーが PID {{pid}} で起動しています",
+    "shutdown_signal_sent": "PID {{pid}} にシャットダウンシグナルを送信しました",
+    "force_killed": "PID {{pid}} を強制終了しました",
+    "signal_sent": "PID {{pid}} にシグナル {{signal}} を送信しました",
+    "no_process_running": "実行中のプロセスがありません",
+    "would_send_command": "PID {{pid}} に送信します: {{command}}",
+    "failed_send_command": "コマンド送信失敗: {{error}}",
+    "executing_command": "デーモン経由でコマンドを実行しています: {{command}} (引数: {{args}})",
+    "daemon_rcon_response": "デーモン RCON レスポンス: {{result}}"
+  },
+  "rcon": {
+    "connecting": "{{host}}:{{port}} に接続中...",
+    "connected": "接続されました!",
+    "authentication_failed": "認証に失敗しました",
+    "authenticated": "認証されました!",
+    "connection_failed": "接続に失敗しました: {{error}}",
+    "sending_command": "コマンドを送信しています: {{command}}",
+    "response_received": "レスポンスを受信しました: {{response}}",
+    "command_failed": "コマンド失敗: {{error}}"
+  }
+}

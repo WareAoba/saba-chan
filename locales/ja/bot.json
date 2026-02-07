@@ -1,0 +1,88 @@
+{
+  "commands": {
+    "start": "サーバーを起動",
+    "stop": "サーバーを停止",
+    "status": "サーバーステータス",
+    "restart": "サーバーを再起動"
+  },
+  "help": {
+    "title": "📖 使用ガイド",
+    "list": "サーバーリストを確認",
+    "start": "サーバーを起動",
+    "stop": "サーバーを停止",
+    "status": "サーバーステータスを確認",
+    "rest_command": "REST コマンドを実行",
+    "help": "このヘルプメッセージを表示",
+    "available_modules": "**利用可能なモジュール:** {{modules}}",
+    "no_modules": "なし",
+    "module_commands": "**モジュールコマンド:**{{commands}}",
+    "module_title": "**{{module}} コマンド**",
+    "command_format": "不明なコマンド: \"{{command}}\" ({{resolved}})",
+    "available_commands": "{{commands}}"
+  },
+  "modules": {
+    "help_start": "サーバーを起動",
+    "help_stop": "サーバーを停止",
+    "help_status": "サーバーステータスを確認",
+    "help_rest_title": "**REST コマンド:**"
+  },
+  "list": {
+    "title": "🎮 **サーバーリスト**",
+    "empty": "📭 登録されたサーバーがありません",
+    "item": "• **{{name}}** ({{module}}) - {{status}} {{status_icon}}"
+  },
+  "status": {
+    "running": "🟢 実行中",
+    "stopped": "⚪ 停止中"
+  },
+  "server": {
+    "start_request": "⏳ **{{name}}** サーバーを起動しています...",
+    "start_complete": "✅ **{{name}}** 起動リクエストが完了しました!",
+    "stop_request": "⏳ **{{name}}** サーバーを停止しています...",
+    "stop_complete": "✅ **{{name}}** 停止リクエストが完了しました!",
+    "status_check": "📊 **{{name}}** ステータス: {{status}} {{pid_info}}",
+    "not_found": "❌ モジュール \"{{alias}}\" のサーバーが見つかりません ({{resolved}})",
+    "not_running": "❌ **{{name}}**: {{error}}",
+    "not_running_default": "サーバーが実行されていません。最初にサーバーを起動してください"
+  },
+  "command": {
+    "executing": "⏳ **{{name}}** - `{{command}}` 実行中...",
+    "missing_required": "❌ 必須引数がありません: `{{arg_name}}`\n使用方法: `{{prefix}} {{alias}} {{command}} <{{arg_name}}>`\n説明: {{description}}",
+    "execute_complete": "📡 **{{name}}** - `{{command}}`\n{{response}}",
+    "execute_failed": "❌ **{{name}}** 実行失敗\n{{error}}",
+    "unknown_command": "❓ 不明なコマンド: \"{{command}}\" ({{resolved}})",
+    "no_available": "❓ 不明なコマンド: \"{{command}}\" ({{resolved}})"
+  },
+  "responses": {
+    "info_title": "**サーバー情報**",
+    "info_version": "• バージョン: {{version}}",
+    "info_name": "• サーバー名: {{name}}",
+    "info_description": "• 説明: {{description}}",
+    "players_title": "**接続プレイヤー ({{count}})**",
+    "players_empty": "現在接続しているプレイヤーはいません",
+    "players_item": "• **{{name}}** - Lv.{{level}} ({{id}})",
+    "metrics_title": "**サーバーメトリクス**",
+    "metrics_players": "• 現在のプレイヤー数: {{current}}/{{max}}",
+    "metrics_fps": "• サーバー FPS: {{fps}}",
+    "metrics_uptime": "• 稼働時間: {{uptime}} 分",
+    "announce_success": "✅ アナウンスを送信しました",
+    "save_success": "✅ ワールドを保存しました",
+    "command_executed": "✅ コマンドを実行しました",
+    "command_complete": "✅ コマンドを正常に実行しました!"
+  },
+  "errors": {
+    "error_title": "コマンド実行エラー",
+    "unknown": "不明なエラー",
+    "auth_failed": "認証失敗",
+    "player_not_found": "プレイヤーが見つかりません",
+    "internal_server_error": "内部サーバーエラー",
+    "rest_api_disabled": "REST API が無効です",
+    "rcon_disabled": "RCON が無効です"
+  },
+  "messages": {
+    "server_started": "サーバーが正常に起動しました",
+    "server_stopped": "サーバーが停止しました",
+    "server_not_running": "サーバーが実行されていません",
+    "command_error": "コマンド実行エラー"
+  }
+}

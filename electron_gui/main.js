@@ -14,6 +14,50 @@ let mainWindow;
 let daemonProcess = null;
 let daemonStartedByApp = false;
 let tray = null;
+let translations = {}; // 번역 객체 캐시
+
+// 번역 파일 로드 (메인 프로세스용)
+function loadTranslations() {
+    const lang = getLanguage();
+    const commonPath = path.join(__dirname, '..', 'locales', lang, 'common.json');
+    try {
+        if (fs.existsSync(commonPath)) {
+            return JSON.parse(fs.readFileSync(commonPath, 'utf8'));
+        }
+    } catch (error) {
+        console.error('Failed to load translations:', error);
+    }
+    // Fallback to English
+    const fallbackPath = path.join(__dirname, '..', 'locales', 'en', 'common.json');
+    try {
+        return JSON.parse(fs.readFileSync(fallbackPath, 'utf8'));
+    } catch (error) {
+        console.error('Failed to load fallback translations:', error);
+    }
+    return {};
+}
+
+// 번역 함수 (dot notation 지원)
+function t(key, variables = {}) {
+    const keys = key.split('.');
+    let value = translations;
+    for (const k of keys) {
+        if (value && typeof value === 'object' && k in value) {
+            value = value[k];
+        } else {
+            return key; // 없으면 키 그대로 반환
+        }
+    }
+    
+    if (typeof value === 'string') {
+        // 템플릿 보간: {{error}} -> variables.error
+        return value.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
+            return variables[varName] || match;
+        });
+    }
+    
+    return key;
+}
 
 // 상태 업데이트를 렌더러로 전달 (없으면 무시)
 function sendStatus(step, message) {
@@ -68,6 +112,38 @@ function saveBotConfig(config) {
     }
 }
 
+// 시스템 언어 가져오기
+function getSystemLanguage() {
+    try {
+        const locale = app.getLocale(); // 예: 'en-US', 'ko-KR', 'ja-JP', 'zh-CN'
+        const language = locale.split('-')[0]; // 언어 코드만 추출 (en, ko, ja, etc)
+        
+        // 지원하는 언어인지 확인 (en, ko, ja만 지원)
+        if (['en', 'ko', 'ja'].includes(language)) {
+            return language;
+        }
+        
+        // 지원하지 않는 언어면 영어로 기본 설정
+        return 'en';
+    } catch (error) {
+        console.error('Failed to get system language:', error);
+        return 'en';
+    }
+}
+
+// 언어 설정 가져오기
+function getLanguage() {
+    const settings = loadSettings();
+    return settings.language || getSystemLanguage();
+}
+
+// 언어 설정 저장
+function setLanguage(language) {
+    const settings = loadSettings();
+    settings.language = language;
+    return saveSettings(settings);
+}
+
 // Settings 관리
 function getSettingsPath() {
     const userDataPath = app.getPath('userData'); // %APPDATA%/game-server-gui
@@ -84,12 +160,14 @@ function loadSettings() {
     } catch (error) {
         console.error('Failed to load settings:', error);
     }
-    // 기본 설정
+    // 기본 설정 (시스템 언어로 초기화)
+    const systemLanguage = getSystemLanguage();
     return {
         modulesPath: path.join(__dirname, '..', 'modules'),
         autoRefresh: true,
         refreshInterval: 2000,
-        windowBounds: { width: 1200, height: 800 }
+        windowBounds: { width: 1200, height: 800 },
+        language: systemLanguage
     };
 }
 
@@ -139,9 +217,17 @@ function startDaemon() {
         return;
     }
     
+    // 언어 설정 가져오기
+    const currentLanguage = getLanguage();
+    console.log(`Starting daemon with language: ${currentLanguage}`);
+    
     daemonProcess = spawn(daemonPath, [], {
         cwd: projectRoot,  // 프로젝트 루트에서 실행하여 "./modules" 경로가 올바르게 작동
-        env: { ...process.env, RUST_LOG: 'info' },
+        env: { 
+            ...process.env, 
+            RUST_LOG: 'info',
+            SABA_LANG: currentLanguage  // Python 모듈에 언어 설정 전달
+        },
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: false  // Electron 프로세스에 연결되어 있으므로 자동으로 종료됨
     });
@@ -295,19 +381,19 @@ async function cleanQuit() {
 async function ensureDaemon() {
     try {
         // 여러 엔드포인트로 체크 (일부 엔드포인트가 500을 반환해도 데몬은 실행 중)
-        sendStatus('daemon', '데몬 확인 중...');
+        sendStatus('daemon', t('daemon.checking'));
         const response = await axios.get(`${IPC_BASE}/api/modules`, { timeout: 1000 });
         if (response.status === 200) {
             console.log('Existing daemon detected on IPC port. Skipping launch.');
             daemonStartedByApp = false;
-            sendStatus('daemon', '기존 데몬이 실행 중입니다');
+            sendStatus('daemon', t('daemon.existing_running'));
             return;
         }
     } catch (err) {
         // ECONNREFUSED = 데몬이 안 떠있음, 그 외 에러 = 데몬은 떠있지만 문제 발생
         if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.message.includes('timeout')) {
             console.log('No daemon detected, attempting to launch new one...');
-            sendStatus('daemon', '데몬을 시작합니다...');
+            sendStatus('daemon', t('daemon.starting'));
             try {
                 startDaemon();
                 // Daemon 시작 후 대기 및 재시도
@@ -319,7 +405,7 @@ async function ensureDaemon() {
                         const checkResponse = await axios.get(`${IPC_BASE}/api/modules`, { timeout: 800 });
                         if (checkResponse.status === 200) {
                             console.log('✓ Daemon is now running');
-                            sendStatus('daemon', '데몬 시작 완료');
+                            sendStatus('daemon', t('daemon.started'));
                             return;
                         }
                     } catch (checkErr) {
@@ -329,16 +415,16 @@ async function ensureDaemon() {
                 }
                 // 최대 시도 후에도 응답 없음
                 console.warn('Daemon did not respond after startup, but continuing...');
-                sendStatus('daemon', '데몬 준비 중... (타임아웃)');
+                sendStatus('daemon', t('daemon.preparing'));
             } catch (daemonErr) {
                 console.error('Failed to start daemon:', daemonErr);
-                sendStatus('daemon', '❌ 데몬 시작 실패 - 직접 실행해주세요');
+                sendStatus('daemon', t('daemon.failed_to_start'));
             }
             return;
         } else {
             // 다른 에러는 무시하고 계속
             console.warn('Unexpected error checking daemon:', err.message);
-            sendStatus('daemon', `데몬 확인 중 경고: ${err.message}`);
+            sendStatus('daemon', t('daemon.check_warning', { error: err.message }));
         }
     }
 }
@@ -537,6 +623,9 @@ function updateTrayMenu() {
 }
 
 app.on('ready', () => {
+    // 번역 초기화
+    translations = loadTranslations();
+    
     createTray();
     createWindow();
     updateTrayMenu();
@@ -603,14 +692,14 @@ ipcMain.handle('server:list', async () => {
         if (error.response) {
             const status = error.response.status;
             const data = error.response.data;
-            return { error: `서버 목록 조회 실패 (HTTP ${status}): ${data.error || error.message}` };
+            return { error: t('server.list_failed', { status, error: data.error || error.message }) };
         }
         
         if (error.code === 'ECONNREFUSED') {
-            return { error: '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요' };
+            return { error: t('network.connection_refused') };
         }
         
-        return { error: `서버 목록 조회 실패: ${error.message}` };
+        return { error: `${t('error')}: ${error.message}` };
     }
 });
 
@@ -629,23 +718,23 @@ ipcMain.handle('server:start', async (event, name, options = {}) => {
             
             switch (status) {
                 case 400:
-                    return { error: `시작 실패: ${data.error || '서버 설정을 확인해주세요'}` };
+                    return { error: t('server.start_failed', { error: data.error || t('info') }) };
                 case 404:
-                    return { error: `서버 '${name}'을(를) 찾을 수 없습니다` };
+                    return { error: t('server.not_found', { name }) };
                 case 409:
-                    return { error: `서버 '${name}'은(는) 이미 실행중입니다` };
+                    return { error: t('server.already_running', { name }) };
                 case 500:
-                    return { error: `서버 시작 오류: ${data.error || data.message || '내부 오류 발생'}` };
+                    return { error: `${t('error')}: ${data.error || data.message}` };
                 default:
-                    return { error: `시작 실패 (HTTP ${status}): ${data.error || error.message}` };
+                    return { error: t('server.start_failed', { error: data.error || error.message }) };
             }
         }
         
         if (error.code === 'ECONNREFUSED') {
-            return { error: '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요' };
+            return { error: t('network.connection_refused') };
         }
         
-        return { error: `서버 시작 실패: ${error.message}` };
+        return { error: `${t('error')}: ${error.message}` };
     }
 });
 
@@ -661,21 +750,21 @@ ipcMain.handle('server:stop', async (event, name, options = {}) => {
             
             switch (status) {
                 case 400:
-                    return { error: `정지 실패: ${data.error || '서버가 실행중이지 않습니다'}` };
+                    return { error: t('server.stop_failed', { error: data.error || t('info') }) };
                 case 404:
-                    return { error: `서버 '${name}'을(를) 찾을 수 없습니다` };
+                    return { error: t('server.not_found', { name }) };
                 case 500:
-                    return { error: `서버 정지 오류: ${data.error || data.message || '내부 오류 발생'}` };
+                    return { error: `${t('error')}: ${data.error || data.message}` };
                 default:
-                    return { error: `정지 실패 (HTTP ${status}): ${data.error || error.message}` };
+                    return { error: t('server.stop_failed', { error: data.error || error.message }) };
             }
         }
         
         if (error.code === 'ECONNREFUSED') {
-            return { error: '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요' };
+            return { error: t('network.connection_refused') };
         }
         
-        return { error: `서버 정지 실패: ${error.message}` };
+        return { error: `${t('error')}: ${error.message}` };
     }
 });
 
@@ -690,19 +779,19 @@ ipcMain.handle('server:status', async (event, name) => {
             
             switch (status) {
                 case 404:
-                    return { error: `서버 '${name}'을(를) 찾을 수 없습니다` };
+                    return { error: t('server.not_found', { name }) };
                 case 500:
-                    return { error: `상태 조회 오류: ${data.error || data.message || '내부 오류 발생'}` };
+                    return { error: `${t('error')}: ${data.error || data.message}` };
                 default:
-                    return { error: `조회 실패 (HTTP ${status}): ${data.error || error.message}` };
+                    return { error: t('server.status_check_failed', { status, error: data.error || error.message }) };
             }
         }
         
         if (error.code === 'ECONNREFUSED') {
-            return { error: '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요' };
+            return { error: t('network.connection_refused') };
         }
         
-        return { error: `상태 조회 실패: ${error.message}` };
+        return { error: `${t('error')}: ${error.message}` };
     }
 });
 
@@ -714,32 +803,32 @@ ipcMain.handle('module:list', async () => {
         if (error.response) {
             const status = error.response.status;
             const data = error.response.data;
-            return { error: `모듈 목록 조회 실패 (HTTP ${status}): ${data.error || error.message}` };
+            return { error: t('server.list_failed', { status, error: data.error || error.message }) };
         }
         
         if (error.code === 'ECONNREFUSED') {
-            return { error: '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요' };
+            return { error: t('network.connection_refused') };
         }
         
-        return { error: `모듈 목록 조회 실패: ${error.message}` };
+        return { error: `${t('error')}: ${error.message}` };
     }
 });
 
 ipcMain.handle('module:refresh', async () => {
     try {
-        sendStatus('modules', '모듈을 새로고침하는 중...');
+        sendStatus('modules', t('modules.refreshing'));
         const response = await axios.post(`${IPC_BASE}/api/modules/refresh`);
-        sendStatus('modules', '모듈 새로고침 완료');
+        sendStatus('modules', t('modules.refresh_complete'));
         return response.data;
     } catch (error) {
-        let errorMsg = '모듈 새로고침 실패: ';
+        let errorMsg = t('modules.refreshing') + ': ';
         
         if (error.response) {
             const status = error.response.status;
             const data = error.response.data;
-            errorMsg += `${data.error || error.message}`;
+            errorMsg = t('server.list_failed', { status, error: data.error || error.message });
         } else if (error.code === 'ECONNREFUSED') {
-            errorMsg = '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요';
+            errorMsg = t('network.connection_refused');
         } else {
             errorMsg += error.message;
         }
@@ -760,17 +849,17 @@ ipcMain.handle('module:getMetadata', async (event, moduleName) => {
             
             switch (status) {
                 case 404:
-                    return { error: `모듈 '${moduleName}'을(를) 찾을 수 없습니다` };
+                    return { error: t('server.module_not_found', { module: moduleName }) };
                 default:
-                    return { error: `모듈 메타데이터 조회 실패 (HTTP ${status}): ${data.error || error.message}` };
+                    return { error: t('server.status_check_failed', { status, error: data.error || error.message }) };
             }
         }
         
         if (error.code === 'ECONNREFUSED') {
-            return { error: '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요' };
+            return { error: t('network.connection_refused') };
         }
         
-        return { error: `모듈 메타데이터 조회 실패: ${error.message}` };
+        return { error: `${t('error')}: ${error.message}` };
     }
 });
 
@@ -1054,6 +1143,25 @@ ipcMain.handle('daemon:status', async () => {
     }
 });
 
+// Daemon 재시작 IPC 핸들러
+ipcMain.handle('daemon:restart', async () => {
+    try {
+        if (daemonProcess && !daemonProcess.killed) {
+            console.log('Killing existing daemon process...');
+            daemonProcess.kill();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        console.log('Starting daemon...');
+        startDaemon();
+        // 데몬이 시작될 때까지 잠시 대기
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        return { success: true, message: 'Daemon restarted successfully' };
+    } catch (err) {
+        console.error('Failed to restart daemon:', err);
+        return { success: false, error: err.message };
+    }
+});
+
 // Settings IPC handlers
 ipcMain.handle('settings:load', () => {
     return loadSettings();
@@ -1065,6 +1173,55 @@ ipcMain.handle('settings:save', (event, settings) => {
 
 ipcMain.handle('settings:getPath', () => {
     return getSettingsPath();
+});
+
+// Language IPC handlers
+ipcMain.handle('language:get', () => {
+    return getLanguage();
+});
+
+ipcMain.handle('language:set', (event, language) => {
+    const success = setLanguage(language);
+    
+    // 번역 다시 로드
+    translations = loadTranslations();
+    
+    // 데몬이 실행 중이면 재시작하여 새 언어 설정 적용
+    if (daemonStartedByApp && daemonProcess) {
+        console.log('Restarting daemon to apply new language setting...');
+        stopDaemon();
+        setTimeout(() => startDaemon(), 1000);
+    }
+    
+    // Discord 봇이 실행 중이면 재시작하여 새 언어 설정 적용
+    const botRunning = discordBotProcess && !discordBotProcess.killed;
+    if (botRunning) {
+        console.log('Restarting Discord bot to apply new language setting...');
+        discordBotProcess.kill('SIGTERM');
+        
+        // 봇이 종료될 때까지 잠시 대기
+        setTimeout(() => {
+            // 설정 파일에서 봇 토큰과 설정을 다시 로드하여 재시작
+            try {
+                const botConfigPath = getBotConfigPath();
+                if (fs.existsSync(botConfigPath)) {
+                    const botConfig = JSON.parse(fs.readFileSync(botConfigPath, 'utf8'));
+                    // 봇 닫기/재시작을 위해 IPC 이벤트 발생 (mainWindow가 있을 때만)
+                    if (mainWindow) {
+                        mainWindow.webContents.send('bot:relaunch', botConfig);
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to relaunch Discord bot:', error);
+            }
+        }, 500);
+    }
+    
+    return { success, language };
+});
+
+ipcMain.handle('language:getSystem', () => {
+    return getSystemLanguage();
 });
 
 // File dialog handlers
@@ -1153,13 +1310,16 @@ ipcMain.handle('discord:start', async (event, config) => {
     try {
         // AppData 설정 경로를 환경 변수로 전달
         const appDataConfigPath = getBotConfigPath();
+        const currentLanguage = getLanguage();
+        
         discordBotProcess = spawn('node', [indexPath], {
             cwd: botPath,
             env: { 
                 ...process.env, 
                 DISCORD_TOKEN: config.token, 
                 IPC_BASE: IPC_BASE,
-                BOT_CONFIG_PATH: appDataConfigPath 
+                BOT_CONFIG_PATH: appDataConfigPath,
+                SABA_LANG: currentLanguage  // Discord bot에 언어 설정 전달
             },
             stdio: ['ignore', 'pipe', 'pipe']
         });

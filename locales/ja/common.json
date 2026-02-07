@@ -1,0 +1,51 @@
+{
+  "app_name": "サバちゃん",
+  "app_description": "モジュラーゲームサーバー管理プラットフォーム",
+  "success": "成功",
+  "error": "エラー",
+  "warning": "警告",
+  "info": "情報",
+  "confirm": "確認",
+  "cancel": "キャンセル",
+  "save": "保存",
+  "delete": "削除",
+  "edit": "編集",
+  "close": "閉じる",
+  "settings": "設定",
+  "language": "言語",
+  "yes": "はい",
+  "no": "いいえ",
+  "daemon": {
+    "checking": "デーモンをチェック中...",
+    "existing_running": "既存のデーモンが実行されています",
+    "starting": "デーモンを起動中...",
+    "started": "デーモンが起動しました",
+    "preparing": "デーモンを準備中... (タイムアウト)",
+    "failed_to_start": "デーモンの起動に失敗しました - 手動で実行してください",
+    "check_warning": "デーモンチェック警告: {{error}}"
+  },
+  "modules": {
+    "refreshing": "モジュールを更新中...",
+    "refresh_complete": "モジュール更新が完了しました"
+  },
+  "server": {
+    "list_failed": "サーバーリストの取得に失敗しました (HTTP {{status}}): {{error}}",
+    "start_failed": "起動に失敗しました: {{error}}",
+    "stop_failed": "停止に失敗しました: {{error}}",
+    "status_check_failed": "ステータスチェックに失敗しました (HTTP {{status}}): {{error}}",
+    "module_not_found": "モジュール '{{module}}' が見つかりません",
+    "invalid_request": "無効なリクエスト: {{error}}",
+    "not_found": "サーバー '{{name}}' が見つかりません",
+    "already_running": "サーバー '{{name}}' は既に実行中です",
+    "missing_required_field": "必須フィールド '{{field}}' がありません",
+    "creation_failed": "インスタンスの作成に失敗しました: {{error}}",
+    "delete_failed": "インスタンスの削除に失敗しました: {{error}}",
+    "update_failed": "インスタンスの更新に失敗しました: {{error}}",
+    "settings_save_failed": "設定の保存に失敗しました: {{error}}"
+  },
+  "network": {
+    "connection_refused": "デーモンに接続できません。デーモンが実行されているか確認してください",
+    "timeout": "リクエストタイムアウト: サーバーが応答しません",
+    "not_found": "サーバーが見つかりません。ネットワーク設定を確認してください"
+  }
+}

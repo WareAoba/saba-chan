@@ -1,0 +1,86 @@
+{
+  "commands": {
+    "start": "서버 시작",
+    "stop": "서버 중지",
+    "status": "서버 상태",
+    "restart": "서버 재시작"
+  },  "help": {
+    "title": "� 사용법",
+    "list": "서버 목록 조회",
+    "start": "서버 시작",
+    "stop": "서버 정지",
+    "status": "서버 상태",
+    "rest_command": "REST 명령어 실행",
+    "help": "이 도움말",
+    "available_modules": "**사용 가능한 모듈:** {{modules}}",
+    "no_modules": "없음",
+    "module_commands": "**모듈별 명령어:**{{commands}}",
+    "module_title": "**{{module}} 명령어**",
+    "command_format": "알 수 없는 명령어: \"{{command}}\" ({{resolved}})",
+    "available_commands": "{{commands}}"
+  },
+  "modules": {
+    "help_start": "서버 시작",
+    "help_stop": "서버 정지",
+    "help_status": "서버 상태",
+    "help_rest_title": "**REST 명령어:**"
+  },
+  "list": {
+    "title": "🎮 **서버 목록**",
+    "empty": "📭 등록된 서버가 없습니다",
+    "item": "• **{{name}}** ({{module}}) - {{status}} {{status_icon}}"
+  },
+  "status": {
+    "running": "🟢 실행 중",
+    "stopped": "⚪ 정지됨"
+  },
+  "server": {
+    "start_request": "⏳ **{{name}}** 서버를 시작합니다...",
+    "start_complete": "✅ **{{name}}** 시작 요청 완료!",
+    "stop_request": "⏳ **{{name}}** 서버를 정지합니다...",
+    "stop_complete": "✅ **{{name}}** 정지 요청 완료!",
+    "status_check": "📊 **{{name}}** 상태: {{status}} {{pid_info}}",
+    "not_found": "❌ 모듈 \"{{alias}}\" ({{resolved}})에 해당하는 서버를 찾을 수 없습니다",
+    "not_running": "❌ **{{name}}**: {{error}}",
+    "not_running_default": "서버가 실행중이지 않습니다. 먼저 서버를 시작해주세요"
+  },
+  "command": {
+    "executing": "⏳ **{{name}}** - `{{command}}` 실행 중...",
+    "missing_required": "❌ 필수 인자가 부족합니다: `{{arg_name}}`\n사용법: `{{prefix}} {{alias}} {{command}} <{{arg_name}}>`\n설명: {{description}}",
+    "execute_complete": "📡 **{{name}}** - `{{command}}`\n{{response}}",
+    "execute_failed": "❌ **{{name}}** 실행 실패\n{{error}}",
+    "unknown_command": "❓ 알 수 없는 명령어: \"{{command}}\" ({{resolved}})",
+    "no_available": "❓ 알 수 없는 명령어: \"{{command}}\" ({{resolved}})"
+  },
+  "responses": {
+    "info_title": "**서버 정보**",
+    "info_version": "• 버전: {{version}}",
+    "info_name": "• 서버명: {{name}}",
+    "info_description": "• 설명: {{description}}",
+    "players_title": "**접속 중인 플레이어 ({{count}}명)**",
+    "players_empty": "현재 접속 중인 플레이어가 없습니다",
+    "players_item": "• **{{name}}** - Lv.{{level}} ({{id}})",
+    "metrics_title": "**서버 메트릭**",
+    "metrics_players": "• 현재 플레이어: {{current}}/{{max}}",
+    "metrics_fps": "• 서버 FPS: {{fps}}",
+    "metrics_uptime": "• 가동 시간: {{uptime}}분",
+    "announce_success": "✅ 공지사항이 전송되었습니다",
+    "save_success": "✅ 월드가 저장되었습니다",
+    "command_executed": "✅ 명령어가 실행되었습니다",
+    "command_complete": "✅ 명령어 실행 완료!"
+  },
+  "errors": {
+    "error_title": "명령어 실행 오류",
+    "unknown": "알 수 없는 오류",
+    "auth_failed": "인증 실패",
+    "player_not_found": "플레이어를 찾을 수 없습니다",
+    "internal_server_error": "내부 서버 오류",
+    "rest_api_disabled": "REST API 비활성화됨",
+    "rcon_disabled": "RCON 비활성화됨"
+  },  "messages": {
+    "server_started": "서버가 성공적으로 시작되었습니다",
+    "server_stopped": "서버가 중지되었습니다",
+    "server_not_running": "서버가 실행 중이 아닙니다",
+    "command_error": "명령 실행 오류"
+  }
+}

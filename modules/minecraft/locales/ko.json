@@ -1,0 +1,36 @@
+{
+  "errors": {
+    "server_jar_not_specified": "인스턴스 구성에 server_jar가 지정되지 않았습니다. server.jar 경로를 추가해주세요",
+    "server_jar_not_found": "서버 jar를 찾을 수 없습니다: {{path}}. 인스턴스 설정의 경로를 확인해주세요.",
+    "failed_to_start": "시작 실패: {{error}}",
+    "no_pid_provided": "PID가 제공되지 않았습니다",
+    "failed_to_kill": "프로세스 종료 실패: {{error}}",
+    "failed_to_stop": "중지 실패: {{error}}",
+    "daemon_connection_error": "데몬 연결 오류: {{error}}",
+    "invalid_json_response": "데몬의 잘못된 JSON 응답: {{error}}",
+    "daemon_error": "데몬 오류: {{error}}"
+  },
+  "messages": {
+    "starting_server": "서버 시작 중: {{command}}",
+    "working_directory": "작업 디렉토리: {{path}}",
+    "server_starting": "마인크래프트 서버가 PID {{pid}}로 시작 중입니다",
+    "shutdown_signal_sent": "PID {{pid}}에 종료 신호를 전송했습니다",
+    "force_killed": "PID {{pid}}를 강제 종료했습니다",
+    "signal_sent": "PID {{pid}}에 신호 {{signal}}를 전송했습니다",
+    "no_process_running": "실행 중인 프로세스가 없습니다",
+    "would_send_command": "PID {{pid}}에 전송할 명령: {{command}}",
+    "failed_send_command": "명령 전송 실패: {{error}}",
+    "executing_command": "데몬을 통해 명령 실행 중: {{command}}, 인자: {{args}}",
+    "daemon_rcon_response": "데몬 RCON 응답: {{result}}"
+  },
+  "rcon": {
+    "connecting": "{{host}}:{{port}}에 연결 중...",
+    "connected": "연결됨!",
+    "authentication_failed": "인증 실패",
+    "authenticated": "인증됨!",
+    "connection_failed": "연결 실패: {{error}}",
+    "sending_command": "명령 전송 중: {{command}}",
+    "response_received": "응답 수신: {{response}}",
+    "command_failed": "명령 실패: {{error}}"
+  }
+}

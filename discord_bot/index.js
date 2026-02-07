@@ -4,6 +4,7 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { buildModuleAliasMap, buildCommandAliasMap, resolveAlias } = require('./utils/aliasResolver');
+const i18n = require('./i18n'); // Initialize i18n
 
 const client = new Client({ 
     intents: [
@@ -119,7 +120,9 @@ client.on('messageCreate', async (message) => {
     
     // Build help message with module commands
     function buildHelpMessage() {
-        const moduleList = Object.keys(moduleMetadata).join(', ') || '없음';
+        const moduleList = Object.keys(moduleMetadata).length > 0 
+            ? Object.keys(moduleMetadata).join(', ') 
+            : i18n.t('bot:help.no_modules');
         
         // Collect all commands from all modules
         let moduleCommandsHelp = '';
@@ -130,16 +133,27 @@ client.on('messageCreate', async (message) => {
             }
         }
 
+        const prefix = botConfig.prefix;
+        const helpTitle = `📖 **${prefix} ${i18n.t('bot:help.title')}**`;
+        const helpList = `\`${prefix} list\` - ${i18n.t('bot:help.list')}`;
+        const helpStart = `\`${prefix} <module> start\` - ${i18n.t('bot:help.start')}`;
+        const helpStop = `\`${prefix} <module> stop\` - ${i18n.t('bot:help.stop')}`;
+        const helpStatus = `\`${prefix} <module> status\` - ${i18n.t('bot:help.status')}`;
+        const helpRest = `\`${prefix} <module> <command>\` - ${i18n.t('bot:help.rest_command')}`;
+        const helpHelp = `\`${prefix} help\` - ${i18n.t('bot:help.help')}`;
+        const availableModules = i18n.t('bot:help.available_modules', { modules: moduleList });
+        const moduleCommandsTitle = i18n.t('bot:help.module_commands', { commands: moduleCommandsHelp || ' (none)' });
+
         return (
-            `📖 **${prefix} 사용법**\n` +
-            `• \`${prefix} 목록\` - 서버 목록 조회\n` +
-            `• \`${prefix} <모듈> start\` - 서버 시작\n` +
-            `• \`${prefix} <모듈> stop\` - 서버 정지\n` +
-            `• \`${prefix} <모듈> status\` - 서버 상태\n` +
-            `• \`${prefix} <모듈> <명령어>\` - REST 명령어 실행\n` +
-            `• \`${prefix} 도움\` - 이 도움말\n\n` +
-            `**사용 가능한 모듈:** ${moduleList}\n` +
-            `**모듈별 명령어:**${moduleCommandsHelp || ' (없음)'}`
+            `${helpTitle}\n` +
+            `• ${helpList}\n` +
+            `• ${helpStart}\n` +
+            `• ${helpStop}\n` +
+            `• ${helpStatus}\n` +
+            `• ${helpRest}\n` +
+            `• ${helpHelp}\n\n` +
+            `${availableModules}\n` +
+            `${moduleCommandsTitle}`
         );
     }
     
@@ -164,11 +178,18 @@ client.on('messageCreate', async (message) => {
         const cmdList = Object.keys(cmds);
         
         if (cmdList.length > 0) {
-            let cmdHelp = `📖 **${moduleName} 명령어**\n`;
-            cmdHelp += `• \`${prefix} ${firstArg} start\` - 서버 시작\n`;
-            cmdHelp += `• \`${prefix} ${firstArg} stop\` - 서버 정지\n`;
-            cmdHelp += `• \`${prefix} ${firstArg} status\` - 서버 상태\n\n`;
-            cmdHelp += `**REST 명령어:**\n`;
+            const prefix = botConfig.prefix;
+            const moduleTitle = i18n.t('bot:help.module_title', { module: moduleName });
+            const helpStart = i18n.t('bot:modules.help_start');
+            const helpStop = i18n.t('bot:modules.help_stop');
+            const helpStatus = i18n.t('bot:modules.help_status');
+            const restTitle = i18n.t('bot:modules.help_rest_title');
+            
+            let cmdHelp = `${moduleTitle}\n`;
+            cmdHelp += `• \`${prefix} ${firstArg} start\` - ${helpStart}\n`;
+            cmdHelp += `• \`${prefix} ${firstArg} stop\` - ${helpStop}\n`;
+            cmdHelp += `• \`${prefix} ${firstArg} status\` - ${helpStatus}\n\n`;
+            cmdHelp += `${restTitle}\n`;
             
             for (const [cmdName, cmdMeta] of Object.entries(cmds)) {
                 const inputsStr = cmdMeta.inputs && cmdMeta.inputs.length > 0
@@ -179,11 +200,17 @@ client.on('messageCreate', async (message) => {
             
             await message.reply(cmdHelp);
         } else {
+            const prefix = botConfig.prefix;
+            const moduleTitle = i18n.t('bot:help.module_title', { module: moduleName });
+            const helpStart = i18n.t('bot:modules.help_start');
+            const helpStop = i18n.t('bot:modules.help_stop');
+            const helpStatus = i18n.t('bot:modules.help_status');
+            
             await message.reply(
-                `📖 **${moduleName} 명령어**\n` +
-                `• \`${prefix} ${firstArg} start\` - 서버 시작\n` +
-                `• \`${prefix} ${firstArg} stop\` - 서버 정지\n` +
-                `• \`${prefix} ${firstArg} status\` - 서버 상태`
+                `${moduleTitle}\n` +
+                `• \`${prefix} ${firstArg} start\` - ${helpStart}\n` +
+                `• \`${prefix} ${firstArg} stop\` - ${helpStop}\n` +
+                `• \`${prefix} ${firstArg} status\` - ${helpStatus}`
             );
         }
         return;
@@ -194,13 +221,22 @@ client.on('messageCreate', async (message) => {
             const response = await axios.get(`${IPC_BASE}/api/servers`);
             const servers = response.data.servers || [];
             if (servers.length === 0) {
-                await message.reply('📭 등록된 서버가 없습니다.');
+                const emptyMsg = i18n.t('bot:list.empty');
+                await message.reply(emptyMsg);
             } else {
-                const list = servers.map(s => `• **${s.name}** (${s.module}) - ${s.status === 'running' ? '🟢' : '⚪'} ${s.status}`).join('\n');
-                await message.reply(`🎮 **서버 목록**\n${list}`);
+                const listTitle = i18n.t('bot:list.title');
+                const list = servers.map(s => {
+                    const statusIcon = s.status === 'running' ? '🟢' : '⚪';
+                    const statusText = s.status === 'running' 
+                        ? i18n.t('bot:status.running')
+                        : i18n.t('bot:status.stopped');
+                    return i18n.t('bot:list.item', { name: s.name, module: s.module, status: statusText, status_icon: statusIcon });
+                }).join('\n');
+                await message.reply(`${listTitle}\n${list}`);
             }
         } catch (error) {
-            await message.reply(`❌ 오류: ${error.message}`);
+            const errorMsg = i18n.t('bot:messages.command_error');
+            await message.reply(`❌ ${errorMsg}: ${error.message}`);
         }
         return;
     }
@@ -219,30 +255,38 @@ client.on('messageCreate', async (message) => {
         const server = servers.find(s => s.module === moduleName || s.name.includes(moduleName));
 
         if (!server) {
-            await message.reply(`❌ 모듈 "${firstArg}" (${moduleName})에 해당하는 서버를 찾을 수 없습니다.`);
+            const notFoundMsg = i18n.t('bot:server.not_found', { alias: firstArg, resolved: moduleName });
+            await message.reply(notFoundMsg);
             return;
         }
 
         // Built-in commands (start, stop, status)
         if (commandName === 'start') {
-            const statusMsg = await message.reply(`⏳ **${server.name}** 서버를 시작합니다...`);
+            const startMsg = i18n.t('bot:server.start_request', { name: server.name });
+            const statusMsg = await message.reply(startMsg);
             const result = await axios.post(`${IPC_BASE}/api/server/${server.name}/start`, {
                 module: server.module,
                 config: {}
             });
-            await statusMsg.edit(`✅ **${server.name}** 시작 요청 완료!`);
+            const completeMsg = i18n.t('bot:server.start_complete', { name: server.name });
+            await statusMsg.edit(completeMsg);
             return;
         } 
         else if (commandName === 'stop') {
-            const statusMsg = await message.reply(`⏳ **${server.name}** 서버를 정지합니다...`);
+            const stopMsg = i18n.t('bot:server.stop_request', { name: server.name });
+            const statusMsg = await message.reply(stopMsg);
             const result = await axios.post(`${IPC_BASE}/api/server/${server.name}/stop`, { force: false });
-            await statusMsg.edit(`✅ **${server.name}** 정지 요청 완료!`);
+            const completeMsg = i18n.t('bot:server.stop_complete', { name: server.name });
+            await statusMsg.edit(completeMsg);
             return;
         }
         else if (commandName === 'status') {
-            const statusText = server.status === 'running' ? '🟢 실행 중' : '⚪ 정지됨';
+            const statusText = server.status === 'running' 
+                ? i18n.t('bot:status.running')
+                : i18n.t('bot:status.stopped');
             const pidText = server.pid ? `PID: ${server.pid}` : '';
-            await message.reply(`📊 **${server.name}** 상태: ${statusText} ${pidText}`);
+            const checkMsg = i18n.t('bot:server.status_check', { name: server.name, status: statusText, pid_info: pidText });
+            await message.reply(checkMsg);
             return;
         }
 
@@ -254,12 +298,12 @@ client.on('messageCreate', async (message) => {
             // List available commands
             const availableCmds = Object.keys(cmds);
             if (availableCmds.length > 0) {
-                await message.reply(
-                    `❓ 알 수 없는 명령어: "${secondArg}" (${commandName})\n` +
-                    `**사용 가능한 명령어:** ${availableCmds.map(c => `\`${c}\``).join(', ')}`
-                );
+                const unknownMsg = i18n.t('bot:command.unknown_command', { command: secondArg, resolved: commandName });
+                const availableMsg = i18n.t('bot:help.available_commands', { commands: availableCmds.map(c => `\`${c}\``).join(', ') });
+                await message.reply(`${unknownMsg}\n${availableMsg}`);
             } else {
-                await message.reply(`❓ 알 수 없는 명령어: "${secondArg}" (${commandName})`);
+                const unknownMsg = i18n.t('bot:command.no_available', { command: secondArg, resolved: commandName });
+                await message.reply(unknownMsg);
             }
             return;
         }
@@ -269,8 +313,10 @@ client.on('messageCreate', async (message) => {
             // 서버 실행 상태 확인
             if (server.status !== 'running') {
                 const moduleErrors = moduleMetadata[moduleName]?.errors || {};
-                const errorMsg = moduleErrors.server_not_running || '서버가 실행중이지 않습니다. 먼저 서버를 시작해주세요';
-                await message.reply(`❌ **${server.name}**: ${errorMsg}`);
+                const defaultMsg = i18n.t('bot:server.not_running_default');
+                const errorMsg = moduleErrors.server_not_running || defaultMsg;
+                const notRunningMsg = i18n.t('bot:server.not_running', { name: server.name, error: errorMsg });
+                await message.reply(notRunningMsg);
                 return;
             }
 
@@ -282,17 +328,21 @@ client.on('messageCreate', async (message) => {
                     if (extraArgs[i]) {
                         body[input.name] = extraArgs[i];
                     } else if (input.required) {
-                        await message.reply(
-                            `❌ 필수 인자가 부족합니다: \`${input.name}\`\n` +
-                            `사용법: \`${prefix} ${firstArg} ${secondArg} <${input.name}>\`\n` +
-                            `설명: ${input.label || input.name}`
-                        );
+                        const missingMsg = i18n.t('bot:command.missing_required', { 
+                            arg_name: input.name,
+                            prefix,
+                            alias: firstArg,
+                            command: secondArg,
+                            description: input.label || input.name
+                        });
+                        await message.reply(missingMsg);
                         return;
                     }
                 }
             }
 
-            const statusMsg = await message.reply(`⏳ **${server.name}** - \`${commandName}\` 실행 중...`);
+            const executingMsg = i18n.t('bot:command.executing', { name: server.name, command: commandName });
+            const statusMsg = await message.reply(executingMsg);
 
             let result;
             
@@ -340,31 +390,35 @@ client.on('messageCreate', async (message) => {
                     // players 응답: data.players 배열
                     const players = apiResponse?.players || [];
                     if (players.length === 0) {
-                        responseText = '현재 접속 중인 플레이어가 없습니다.';
+                        responseText = i18n.t('bot:responses.players_empty');
                     } else {
-                        responseText = `**접속 중인 플레이어 (${players.length}명)**\n`;
-                        responseText += players.map(p => 
-                            `• **${p.name}** - Lv.${p.level || '?'} (${p.userid || 'Unknown ID'})`
+                        const playersTitle = i18n.t('bot:responses.players_title', { count: players.length });
+                        const playersList = players.map(p => 
+                            i18n.t('bot:responses.players_item', { name: p.name, level: p.level || '?', id: p.userid || 'Unknown ID' })
                         ).join('\n');
+                        responseText = `${playersTitle}\n${playersList}`;
                     }
                 } else if (commandName === 'info') {
                     // info 응답: data에 바로 서버 정보
-                    responseText = `**서버 정보**\n` +
-                        `• 버전: ${apiResponse?.version || 'N/A'}\n` +
-                        `• 서버명: ${apiResponse?.servername || 'N/A'}\n` +
-                        `• 설명: ${apiResponse?.description || 'N/A'}`;
+                    const infoTitle = i18n.t('bot:responses.info_title');
+                    const infoVersion = i18n.t('bot:responses.info_version', { version: apiResponse?.version || 'N/A' });
+                    const infoName = i18n.t('bot:responses.info_name', { name: apiResponse?.servername || 'N/A' });
+                    const infoDesc = i18n.t('bot:responses.info_description', { description: apiResponse?.description || 'N/A' });
+                    responseText = `${infoTitle}\n${infoVersion}\n${infoName}\n${infoDesc}`;
                 } else if (commandName === 'metrics') {
                     // metrics 응답
-                    responseText = `**서버 메트릭**\n` +
-                        `• 현재 플레이어: ${apiResponse?.currentplayernum || 0}/${apiResponse?.maxplayernum || 0}\n` +
-                        `• 서버 FPS: ${apiResponse?.serverfps || 'N/A'}\n` +
-                        `• 가동 시간: ${apiResponse?.uptime ? Math.floor(apiResponse.uptime / 60) + '분' : 'N/A'}`;
+                    const metricsTitle = i18n.t('bot:responses.metrics_title');
+                    const metricsPlayers = i18n.t('bot:responses.metrics_players', { current: apiResponse?.currentplayernum || 0, max: apiResponse?.maxplayernum || 0 });
+                    const metricsFps = i18n.t('bot:responses.metrics_fps', { fps: apiResponse?.serverfps || 'N/A' });
+                    const uptime = apiResponse?.uptime ? Math.floor(apiResponse.uptime / 60) : 'N/A';
+                    const metricsUptime = i18n.t('bot:responses.metrics_uptime', { uptime });
+                    responseText = `${metricsTitle}\n${metricsPlayers}\n${metricsFps}\n${metricsUptime}`;
                 } else if (commandName === 'announce') {
-                    responseText = '✅ 공지사항이 전송되었습니다';
+                    responseText = i18n.t('bot:responses.announce_success');
                 } else if (commandName === 'save') {
-                    responseText = '✅ 월드가 저장되었습니다';
+                    responseText = i18n.t('bot:responses.save_success');
                 } else if (commandName === 'kick' || commandName === 'ban') {
-                    responseText = `✅ 명령어가 실행되었습니다`;
+                    responseText = i18n.t('bot:responses.command_executed');
                 } else {
                     // 기타 명령어는 data를 그대로 표시하거나 성공 메시지
                     if (typeof apiResponse === 'string') {
@@ -372,31 +426,38 @@ client.on('messageCreate', async (message) => {
                     } else if (apiResponse && Object.keys(apiResponse).length > 0) {
                         responseText = `\`\`\`json\n${JSON.stringify(apiResponse, null, 2)}\n\`\`\``;
                     } else {
-                        responseText = '✅ 명령어 실행 완료!';
+                        responseText = i18n.t('bot:responses.command_complete');
                     }
                 }
 
-                await statusMsg.edit(`📡 **${server.name}** - \`${commandName}\`\n${responseText}`);
+                const completeMsg = i18n.t('bot:command.execute_complete', { name: server.name, command: commandName, response: responseText });
+                await statusMsg.edit(completeMsg);
             } else {
                 // 에러 메시지를 모듈별 정의에서 가져오기
-                const errorText = result.data.error || '알 수 없는 오류';
+                const errorText = result.data.error || i18n.t('bot:errors.unknown');
                 const moduleErrors = moduleMetadata[moduleName]?.errors || {};
                 
                 let friendlyError = errorText;
                 // 모듈에 정의된 에러 메시지 매칭
                 if (errorText.includes('인증') || errorText.includes('auth')) {
-                    friendlyError = moduleErrors.auth_failed || errorText;
+                    friendlyError = moduleErrors.auth_failed || i18n.t('bot:errors.auth_failed');
                 } else if (errorText.includes('플레이어') || errorText.includes('player')) {
-                    friendlyError = moduleErrors.player_not_found || errorText;
+                    friendlyError = moduleErrors.player_not_found || i18n.t('bot:errors.player_not_found');
                 } else if (errorText.includes('내부 오류') || errorText.includes('500')) {
-                    friendlyError = moduleErrors.internal_server_error || errorText;
+                    friendlyError = moduleErrors.internal_server_error || i18n.t('bot:errors.internal_server_error');
                 } else if (errorText.includes('REST API')) {
-                    friendlyError = moduleErrors.rest_api_disabled || errorText;
+                    friendlyError = moduleErrors.rest_api_disabled || i18n.t('bot:errors.rest_api_disabled');
                 } else if (errorText.includes('RCON')) {
-                    friendlyError = moduleErrors.rcon_disabled || errorText;
+                    friendlyError = moduleErrors.rcon_disabled || i18n.t('bot:errors.rcon_disabled');
                 }
                 
-                await statusMsg.edit(`❌ **${server.name}** 실행 실패\n${friendlyError}`);
+                const failedMsg = i18n.t('bot:command.execute_failed', { name: server.name, error: friendlyError });
+                await statusMsg.edit(failedMsg);
+            }
+        } else {
+            const unsupportedMsg = i18n.t('bot:messages.command_error');
+            await message.reply(`❓ ${unsupportedMsg}: ${cmdMeta.method || 'unknown'}`);
+        }
             }
         } else {
             await message.reply(`❓ 지원되지 않는 명령어 타입: ${cmdMeta.method || 'unknown'}`);
@@ -410,30 +471,30 @@ client.on('messageCreate', async (message) => {
         
         // 네트워크 에러 구분
         if (error.code === 'ECONNREFUSED') {
-            errorMsg = moduleErrors.connection_refused || '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요';
+            errorMsg = moduleErrors.connection_refused || i18n.t('bot:errors.auth_failed');
         } else if (error.code === 'ETIMEDOUT') {
-            errorMsg = moduleErrors.timeout || '서버 응답 시간 초과. 서버 상태를 확인해주세요';
+            errorMsg = moduleErrors.timeout || i18n.t('bot:errors.unknown');
         } else if (error.code === 'ENOTFOUND') {
-            errorMsg = '서버를 찾을 수 없습니다. 네트워크 설정을 확인해주세요';
+            errorMsg = i18n.t('bot:errors.unknown');
         } else if (error.response) {
             // HTTP 에러 응답이 있는 경우
             const status = error.response.status;
             const data = error.response.data;
             
             if (status === 401 || status === 403) {
-                errorMsg = moduleErrors.auth_failed || '인증 실패';
+                errorMsg = moduleErrors.auth_failed || i18n.t('bot:errors.auth_failed');
             } else if (status === 404) {
-                errorMsg = '명령어를 찾을 수 없습니다';
+                errorMsg = i18n.t('bot:errors.unknown');
             } else if (status === 500) {
-                errorMsg = moduleErrors.internal_server_error || '서버 내부 오류';
+                errorMsg = moduleErrors.internal_server_error || i18n.t('bot:errors.internal_server_error');
             } else if (status === 503) {
-                errorMsg = moduleErrors.server_not_running || '서버가 응답하지 않습니다';
+                errorMsg = moduleErrors.server_not_running || i18n.t('bot:errors.unknown');
             } else {
                 errorMsg = data?.error || error.message;
             }
         }
         
-        await message.reply(`❌ 오류: ${errorMsg}`);
+        await message.reply(`❌ ${i18n.t('bot:errors.error_title')}: ${errorMsg}`);
     }
 });
 

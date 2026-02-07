@@ -12,6 +12,11 @@ import psutil
 import urllib.request
 import urllib.error
 import urllib.parse
+from i18n import I18n
+
+# Initialize i18n
+MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+i18n = I18n(MODULE_DIR)
 
 # Daemon API endpoint (localhost by default)
 DAEMON_API_URL = os.environ.get('DAEMON_API_URL', 'http://127.0.0.1:57474')
@@ -45,10 +50,10 @@ class MinecraftProcessPipe:
             # - Reading from server log files
             # - Using rcon4j or similar library
             
-            print(f"[Minecraft] Would send to PID {self.pid}: {command}", file=sys.stderr)
+            print(f"[Minecraft] {i18n.t('messages.would_send_command', pid=self.pid, command=command)}", file=sys.stderr)
             return True
         except Exception as e:
-            print(f"[Minecraft] Failed to send command: {e}", file=sys.stderr)
+            print(f"[Minecraft] {i18n.t('messages.failed_send_command', error=str(e))}", file=sys.stderr)
             return False
 
 def start(config):
@@ -60,14 +65,14 @@ def start(config):
         if not server_jar:
             return {
                 "success": False,
-                "message": "server_jar not specified in instance configuration. Please add the path to server.jar"
+                "message": i18n.t('errors.server_jar_not_specified')
             }
         
         # Check if jar exists
         if not os.path.exists(server_jar):
             return {
                 "success": False,
-                "message": f"Server jar not found: {server_jar}. Please check the path in instance settings."
+                "message": i18n.t('errors.server_jar_not_found', path=server_jar)
             }
         
         ram = config.get("ram", "8G")
@@ -87,8 +92,8 @@ def start(config):
         ]
         
         # Log for debugging
-        print(f"Starting server: {' '.join(cmd)}", file=sys.stderr)
-        print(f"Working directory: {working_dir}", file=sys.stderr)
+        print(i18n.t('messages.starting_server', command=' '.join(cmd)), file=sys.stderr)
+        print(i18n.t('messages.working_directory', path=working_dir), file=sys.stderr)
         
         # Start process (detached, cross-platform)
         if sys.platform == 'win32':
@@ -113,7 +118,7 @@ def start(config):
         return {
             "success": True,
             "pid": proc.pid,
-            "message": f"Minecraft server starting with PID {proc.pid}"
+            "message": i18n.t('messages.server_starting', pid=proc.pid)
         }
     except Exception as e:
         import traceback
@@ -121,7 +126,7 @@ def start(config):
         print(f"Error details: {error_details}", file=sys.stderr)
         return {
             "success": False,
-            "message": f"Failed to start: {str(e)}"
+            "message": i18n.t('errors.failed_to_start', error=str(e))
         }
 
 def stop(config):
@@ -129,7 +134,7 @@ def stop(config):
     try:
         pid = config.get("pid")
         if not pid:
-            return {"success": False, "message": "No PID provided"}
+            return {"success": False, "message": i18n.t('errors.no_pid_provided')}
         
         force = config.get("force", False)
         
@@ -140,18 +145,18 @@ def stop(config):
                     subprocess.run(['taskkill', '/PID', str(pid)], check=True)
                     return {
                         "success": True,
-                        "message": f"Sent shutdown signal to PID {pid}"
+                        "message": i18n.t('messages.shutdown_signal_sent', pid=pid)
                     }
                 else:
                     subprocess.run(['taskkill', '/F', '/PID', str(pid)], check=True)
                     return {
                         "success": True,
-                        "message": f"Force killed PID {pid}"
+                        "message": i18n.t('messages.force_killed', pid=pid)
                     }
             except subprocess.CalledProcessError as e:
                 return {
                     "success": False,
-                    "message": f"Failed to kill process: {str(e)}"
+                    "message": i18n.t('errors.failed_to_kill', error=str(e))
                 }
         else:
             # Unix-like: Use os.kill
@@ -159,12 +164,12 @@ def stop(config):
             os.kill(pid, signal_num)
             return {
                 "success": True,
-                "message": f"Sent signal {signal_num} to PID {pid}"
+                "message": i18n.t('messages.signal_sent', signal=signal_num, pid=pid)
             }
     except Exception as e:
         return {
             "success": False,
-            "message": f"Failed to stop: {str(e)}"
+            "message": i18n.t('errors.failed_to_stop', error=str(e))
         }
 
 def status(config):
@@ -172,7 +177,7 @@ def status(config):
     try:
         pid = config.get("pid")
         if not pid:
-            return {"success": True, "status": "stopped", "message": "No process running"}
+            return {"success": True, "status": "stopped", "message": i18n.t('messages.no_process_running')}
         
         # Check if process exists
         try:
@@ -214,7 +219,7 @@ def command(config):
                 "message": "No instance_id specified"
             }
         
-        print(f"[Minecraft] Executing command via daemon: {command_text} with args: {args}", file=sys.stderr)
+        print(f"[Minecraft] {i18n.t('messages.executing_command', command=command_text, args=str(args))}", file=sys.stderr)
         
         # Format command text
         formatted_command = command_text
@@ -265,7 +270,7 @@ def command(config):
             
             with urllib.request.urlopen(req, timeout=5) as response:
                 result = json.loads(response.read().decode('utf-8'))
-                print(f"[Minecraft] Daemon RCON response: {result}", file=sys.stderr)
+                print(f"[Minecraft] {i18n.t('messages.daemon_rcon_response', result=str(result))}", file=sys.stderr)
                 
                 return {
                     "success": result.get("success", True),
@@ -273,22 +278,22 @@ def command(config):
                 }
         
         except urllib.error.URLError as e:
-            print(f"[Minecraft] Daemon connection error: {e}", file=sys.stderr)
+            print(f"[Minecraft] {i18n.t('errors.daemon_connection_error', error=str(e))}", file=sys.stderr)
             return {
                 "success": False,
-                "message": f"Failed to connect to daemon: {str(e)}"
+                "message": i18n.t('errors.daemon_connection_error', error=str(e))
             }
         except json.JSONDecodeError as e:
-            print(f"[Minecraft] Invalid JSON response from daemon: {e}", file=sys.stderr)
+            print(f"[Minecraft] {i18n.t('errors.invalid_json_response', error=str(e))}", file=sys.stderr)
             return {
                 "success": False,
-                "message": f"Invalid daemon response: {str(e)}"
+                "message": i18n.t('errors.invalid_json_response', error=str(e))
             }
         except Exception as e:
-            print(f"[Minecraft] Daemon error: {e}", file=sys.stderr)
+            print(f"[Minecraft] {i18n.t('errors.daemon_error', error=str(e))}", file=sys.stderr)
             return {
                 "success": False,
-                "message": f"Failed to execute via daemon: {str(e)}"
+                "message": i18n.t('errors.daemon_error', error=str(e))
             }
     
     except Exception as e:

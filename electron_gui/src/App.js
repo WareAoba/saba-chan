@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import './App.css';
 import { 
     SuccessModal, 
@@ -16,6 +17,8 @@ import {
 } from './components';
 
 function App() {
+    const { t } = useTranslation('gui');
+    
     // 테스트 환경 감지 (Jest 실행 중인지 확인)
     const isTestEnv = process.env.NODE_ENV === 'test' || typeof jest !== 'undefined';
     
@@ -27,9 +30,90 @@ function App() {
         if (!isTestEnv) console.warn(...args);
     };
     
+    // 에러 메시지 변환 함수 (사용자 친화적으로)
+    const translateError = (errorMessage) => {
+        if (!errorMessage) return t('errors.unknown_error');
+        
+        const msg = String(errorMessage);
+        
+        // 파일 경로 관련 에러
+        if (msg.includes('Executable not found') || msg.includes('executable not found')) {
+            return t('errors.executable_not_found');
+        }
+        if (msg.includes('No such file or directory')) {
+            return t('errors.file_not_found');
+        }
+        if (msg.includes('Permission denied')) {
+            return t('errors.permission_denied');
+        }
+        
+        // 네트워크 연결 에러
+        if (msg.includes('ECONNREFUSED')) {
+            return t('errors.daemon_connection_refused');
+        }
+        if (msg.includes('ETIMEDOUT')) {
+            return t('errors.request_timeout');
+        }
+        if (msg.includes('ENOTFOUND')) {
+            return t('errors.server_not_found');
+        }
+        if (msg.includes('Network Error') || msg.includes('network error')) {
+            return t('errors.network_error');
+        }
+        
+        // 서버 시작/정지 에러
+        if (msg.includes('Module failed to start')) {
+            return t('errors.module_failed_to_start');
+        }
+        if (msg.includes('Failed to stop')) {
+            return t('errors.failed_to_stop');
+        }
+        if (msg.includes('Already running')) {
+            return t('errors.already_running');
+        }
+        if (msg.includes('Not running')) {
+            return t('errors.not_running');
+        }
+        
+        // 프로세스 관련 에러
+        if (msg.includes('Process not found')) {
+            return t('errors.process_not_found');
+        }
+        if (msg.includes('Process crashed')) {
+            return t('errors.process_crashed');
+        }
+        
+        // 설정 관련 에러
+        if (msg.includes('Invalid configuration') || msg.includes('invalid config')) {
+            return t('errors.invalid_configuration');
+        }
+        if (msg.includes('Missing required field')) {
+            return t('errors.missing_required_field');
+        }
+        
+        // 모듈 관련 에러
+        if (msg.includes('Module not found')) {
+            return t('errors.module_not_found');
+        }
+        if (msg.includes('Failed to load module')) {
+            return t('errors.failed_to_load_module');
+        }
+        
+        // Discord 봇 관련 에러
+        if (msg.includes('Invalid token') || msg.includes('invalid token')) {
+            return t('errors.invalid_token');
+        }
+        if (msg.includes('Bot connection failed')) {
+            return t('errors.network_error');
+        }
+        
+        // 일반적인 에러 (원본 메시지 반환)
+        return msg;
+    };
+    
     // 로딩 화면 상태
     const [daemonReady, setDaemonReady] = useState(false);
-    const [initStatus, setInitStatus] = useState('초기화 중...');
+    const [initStatus, setInitStatus] = useState('Initialize...');
     const [initProgress, setInitProgress] = useState(0);
     const [serversInitializing, setServersInitializing] = useState(true); // 서버 상태 안정화 대기
     
@@ -71,6 +155,9 @@ function App() {
     const [discordModuleAliases, setDiscordModuleAliases] = useState({});  // 저장된 사용자 커스텀 모듈 별명
     const [discordCommandAliases, setDiscordCommandAliases] = useState({});  // 저장된 사용자 커스텀 명령어 별명
 
+    // Background Daemon 상태
+    const [backgroundDaemonStatus, setBackgroundDaemonStatus] = useState('checking'); // checking | running | stopped | error
+
     // 초기화 완료 플래그 (state로 변경)
     const [botStatusReady, setBotStatusReady] = useState(false);
     const [settingsReady, setSettingsReady] = useState(false);
@@ -89,12 +176,12 @@ function App() {
                 console.log('[Init Status]', data.step, ':', data.message);
                 
                 const statusMessages = {
-                    init: '초기화 시작...',
-                    ui: 'UI 로드 완료',
-                    daemon: '데몬 준비 중...',
-                    modules: '모듈 로드 중...',
-                    instances: '인스턴스 로드 중...',
-                    ready: '준비 완료!'
+                    init: 'Initialize...',
+                    ui: 'UI loaded',
+                    daemon: 'Daemon preparing...',
+                    modules: 'Loading modules...',
+                    instances: 'Loading instances...',
+                    ready: 'Ready!'
                 };
                 
                 const progressValues = {
@@ -159,6 +246,33 @@ function App() {
         };
         loadSettings();
     }, []);
+
+    // Background Daemon 상태 주기적 확인
+    useEffect(() => {
+        if (!daemonReady) return;
+
+        const checkDaemonStatus = async () => {
+            try {
+                if (window.api && window.api.daemonStatus) {
+                    const status = await window.api.daemonStatus();
+                    setBackgroundDaemonStatus(status.running ? 'running' : 'stopped');
+                } else {
+                    setBackgroundDaemonStatus('error');
+                }
+            } catch (error) {
+                console.error('Failed to check daemon status:', error);
+                setBackgroundDaemonStatus('error');
+            }
+        };
+
+        // 초기 상태 확인
+        checkDaemonStatus();
+
+        // 5초마다 상태 확인
+        const interval = setInterval(checkDaemonStatus, 5000);
+
+        return () => clearInterval(interval);
+    }, [daemonReady]);
 
     // bot-config.json 로드
     const loadBotConfig = async () => {
@@ -352,11 +466,11 @@ function App() {
     // Discord Bot 시작
     const handleStartDiscordBot = async () => {
         if (!discordToken) {
-            setModal({ type: 'failure', title: '토큰 없음', message: 'Discord Bot 토큰을 입력하세요.' });
+            setModal({ type: 'failure', title: t('discord_bot.token_missing_title'), message: t('discord_bot.token_missing_message') });
             return;
         }
         if (!discordPrefix) {
-            setModal({ type: 'failure', title: 'Prefix 없음', message: '봇 별명(Prefix)을 설정하세요. 예: !pal, !mc' });
+            setModal({ type: 'failure', title: t('discord_bot.prefix_missing_title'), message: t('discord_bot.prefix_missing_message') });
             return;
         }
         try {
@@ -370,13 +484,13 @@ function App() {
             };
             const result = await window.api.discordBotStart(botConfig);
             if (result.error) {
-                safeShowToast(`Discord 봇 시작 실패: ${result.error}`, 'error', 4000);
+                safeShowToast(t('discord_bot.start_failed_toast', { error: translateError(result.error) }), 'error', 4000);
             } else {
                 setDiscordBotStatus('running');
-                safeShowToast('Discord 봇이 시작되었습니다', 'discord', 3000);
+                safeShowToast(t('discord_bot.started_toast'), 'discord', 3000);
             }
         } catch (e) {
-            safeShowToast(`Discord 봇 시작 예외: ${e.message}`, 'error', 4000);
+            safeShowToast(t('discord_bot.start_error_toast', { error: translateError(e.message) }), 'error', 4000);
         }
     };
 
@@ -412,13 +526,13 @@ function App() {
         try {
             const result = await window.api.discordBotStop();
             if (result.error) {
-                safeShowToast(`Discord 봇 정지 실패: ${result.error}`, 'error', 4000);
+                safeShowToast(t('discord_bot.stop_failed_toast', { error: translateError(result.error) }), 'error', 4000);
             } else {
                 setDiscordBotStatus('stopped');
-                safeShowToast('Discord 봇이 정지되었습니다', 'discord', 3000);
+                safeShowToast(t('discord_bot.stopped_toast'), 'discord', 3000);
             }
         } catch (e) {
-            safeShowToast(`Discord 봇 정지 예외: ${e.message}`, 'error', 4000);
+            safeShowToast(t('discord_bot.stop_error_toast', { error: translateError(e.message) }), 'error', 4000);
         }
     };
 
@@ -434,26 +548,26 @@ function App() {
             window.api.onCloseRequest(() => {
                 setModal({
                     type: 'question',
-                    title: '종료 확인',
-                    message: '어떻게 종료하시겠습니까?',
-                    detail: 'GUI만 닫기: 백그라운드에서 계속 실행 (트레이에서 다시 열기 가능)\n완전히 종료: 데몬까지 모두 종료',
+                    title: t('app_exit.confirm_title'),
+                    message: t('app_exit.confirm_message'),
+                    detail: t('app_exit.confirm_detail'),
                     buttons: [
                         {
-                            label: 'GUI만 닫기',
+                            label: t('app_exit.hide_only_label'),
                             action: () => {
                                 window.api.closeResponse('hide');
                                 setModal(null);
                             }
                         },
                         {
-                            label: '완전히 종료',
+                            label: t('app_exit.quit_all_label'),
                             action: () => {
                                 window.api.closeResponse('quit');
                                 setModal(null);
                             }
                         },
                         {
-                            label: '취소',
+                            label: t('modals.cancel'),
                             action: () => {
                                 window.api.closeResponse('cancel');
                                 setModal(null);
@@ -461,6 +575,24 @@ function App() {
                         }
                     ]
                 });
+            });
+        }
+        
+        // Discord 봇 언어 변경 시 재시작 신호 리스너
+        if (window.api.onBotRelaunch) {
+            window.api.onBotRelaunch((botConfig) => {
+                console.log('[Bot Relaunch] Received signal to relaunch bot with new language settings');
+                // Discord 봇 프로세스가 재시작될 때까지 대기
+                setTimeout(async () => {
+                    // 봇을 재시작
+                    const result = await window.api.discordBotStart(botConfig);
+                    if (result.error) {
+                        console.error('[Bot Relaunch] Failed to relaunch bot:', result.error);
+                    } else {
+                        console.log('[Bot Relaunch] Bot relaunched successfully');
+                        setDiscordBotStatus('running');
+                    }
+                }, 1000);
             });
         }
         
@@ -561,15 +693,15 @@ function App() {
                 console.log('Module aliases loaded:', aliasesMap);
             } else if (data && data.error) {
                 console.error('Module fetch error:', data.error);
-                safeShowToast(`모듈 로드 실패: ${data.error}`, 'error', 4000);
+                safeShowToast(t('modules.load_failed_toast', { error: translateError(data.error) }), 'error', 4000);
             } else {
                 debugWarn('No modules data:', data);
-                safeShowToast('모듈 목록이 비어있습니다', 'warning', 3000);
+                safeShowToast(t('modules.list_empty'), 'warning', 3000);
             }
         } catch (error) {
             console.error('Failed to fetch modules:', error);
-            safeShowToast(`모듈 검색 실패: ${error.message}. 데몬을 확인해주세요.`, 'error', 5000);
-            setModal({ type: 'failure', title: '모듈 로드 예외', message: error.message });
+            safeShowToast(t('modules.fetch_failed_toast', { error: translateError(error.message) }), 'error', 5000);
+            setModal({ type: 'failure', title: t('modules.load_error_title'), message: translateError(error.message) });
         }
     };
 
@@ -600,7 +732,7 @@ function App() {
                 // 초기 로딩이 아니고, 최근 5초 이내에 에러 토스트를 표시하지 않았을 때만 표시
                 const now = Date.now();
                 if (!loading && (now - lastErrorToastRef.current) > 5000) {
-                    safeShowToast(`⚠️ ${data.error}`, 'warning', 3000);
+                    safeShowToast(t('servers.fetch_failed_toast', { error: translateError(data.error) }), 'warning', 3000);
                     lastErrorToastRef.current = now;
                 }
                 // 에러 발생 시 서버 목록을 비우지 않고 기존 상태 유지
@@ -613,19 +745,12 @@ function App() {
         } catch (error) {
             console.error('Failed to fetch servers:', error);
             
-            let errorMsg = '⚠️ 서버 목록 업데이트 실패: ';
-            if (error.message.includes('ECONNREFUSED')) {
-                errorMsg += '데몬에 연결할 수 없습니다';
-            } else if (error.message.includes('ETIMEDOUT')) {
-                errorMsg += '응답 시간 초과';
-            } else {
-                errorMsg += error.message;
-            }
+            const errorMsg = translateError(error.message);
             
             // 초기 로딩이 아니고, 최근 5초 이내에 에러 토스트를 표시하지 않았을 때만 표시
             const now = Date.now();
             if (!loading && (now - lastErrorToastRef.current) > 5000) {
-                safeShowToast(errorMsg, 'warning', 3000);
+                safeShowToast(t('servers.fetch_update_failed_toast', { error: errorMsg }), 'warning', 3000);
                 lastErrorToastRef.current = now;
             }
             // 에러 발생 시 서버 목록을 비우지 않고 기존 상태 유지
@@ -639,15 +764,11 @@ function App() {
         try {
             const result = await window.api.serverStart(name, { module });
             if (result.error) {
-                // 에러 메시지 파싱 개선
-                let errorMsg = result.error;
-                if (errorMsg.includes('ECONNREFUSED')) {
-                    errorMsg = '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요';
-                }
-                safeShowToast(`❌ 서버 시작 실패: ${errorMsg}`, 'error', 4000);
+                const errorMsg = translateError(result.error);
+                safeShowToast(t('servers.start_failed_toast', { error: errorMsg }), 'error', 4000);
             } else {
                 // 시작 명령 성공 - 상태 확인 시작
-                toastId = safeShowToast(`⏳ ${name} 서버를 시작하는 중...`, 'info', 0);
+                toastId = safeShowToast(t('servers.starting_toast', { name }), 'info', 0);
                 
                 // 서버 상태가 running이 될 때까지 대기 (최대 10초)
                 let attempts = 0;
@@ -661,13 +782,13 @@ function App() {
                         if (statusResult.status === 'running') {
                             clearInterval(checkStatus);
                             if (toastId && window.updateToast) {
-                                window.updateToast(toastId, `✅ ${name} 서버 시작 완료!`, 'success', 3000);
+                                window.updateToast(toastId, t('servers.start_completed_toast', { name }), 'success', 3000);
                             }
                             fetchServers();
                         } else if (attempts >= maxAttempts) {
                             clearInterval(checkStatus);
                             if (toastId && window.updateToast) {
-                                window.updateToast(toastId, `⚠️ ${name} 서버 시작 중... (시간이 걸릴 수 있습니다)`, 'warning', 3000);
+                                window.updateToast(toastId, t('servers.start_timeout_toast', { name }), 'warning', 3000);
                             }
                             fetchServers();
                         }
@@ -680,33 +801,27 @@ function App() {
                 }, checkInterval);
             }
         } catch (error) {
-            let errorMsg = error.message;
-            if (errorMsg.includes('ECONNREFUSED')) {
-                errorMsg = '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요';
-            }
-            safeShowToast(`❌ 서버 시작 실패: ${errorMsg}`, 'error', 4000);
+            const errorMsg = translateError(error.message);
+            safeShowToast(t('servers.start_failed_toast', { error: errorMsg }), 'error', 4000);
         }
     };
 
     const handleStop = async (name) => {
         setModal({
             type: 'question',
-            title: '서버 정지',
-            message: `${name} 서버를 정지하시겠습니까?`,
+            title: t('servers.stop_confirm_title'),
+            message: t('servers.stop_confirm_message', { name }),
             onConfirm: async () => {
                 setModal(null);
                 let toastId = null;
                 try {
                     const result = await window.api.serverStop(name, { force: false });
                     if (result.error) {
-                        let errorMsg = result.error;
-                        if (errorMsg.includes('ECONNREFUSED')) {
-                            errorMsg = '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요';
-                        }
-                        safeShowToast(`❌ 서버 정지 실패: ${errorMsg}`, 'error', 4000);
+                        const errorMsg = translateError(result.error);
+                        safeShowToast(t('servers.stop_failed_toast', { error: errorMsg }), 'error', 4000);
                     } else {
                         // 정지 명령 성공 - 상태 확인 시작
-                        toastId = safeShowToast(`⏳ ${name} 서버를 정지하는 중...`, 'info', 0);
+                        toastId = safeShowToast(t('servers.stopping_toast', { name }), 'info', 0);
                         
                         // 서버 상태가 stopped가 될 때까지 대기 (최대 10초)
                         let attempts = 0;
@@ -720,13 +835,13 @@ function App() {
                                 if (statusResult.status === 'stopped') {
                                     clearInterval(checkStatus);
                                     if (toastId && window.updateToast) {
-                                        window.updateToast(toastId, `✅ ${name} 서버 정지 완료!`, 'success', 3000);
+                                        window.updateToast(toastId, t('servers.stop_completed_toast', { name }), 'success', 3000);
                                     }
                                     fetchServers();
                                 } else if (attempts >= maxAttempts) {
                                     clearInterval(checkStatus);
                                     if (toastId && window.updateToast) {
-                                        window.updateToast(toastId, `⚠️ ${name} 서버 정지 중... (시간이 걸릴 수 있습니다)`, 'warning', 3000);
+                                        window.updateToast(toastId, t('servers.stop_timeout_toast', { name }), 'warning', 3000);
                                     }
                                     fetchServers();
                                 }
@@ -739,11 +854,8 @@ function App() {
                         }, checkInterval);
                     }
                 } catch (error) {
-                    let errorMsg = error.message;
-                    if (errorMsg.includes('ECONNREFUSED')) {
-                        errorMsg = '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요';
-                    }
-                    safeShowToast(`❌ 서버 정지 실패: ${errorMsg}`, 'error', 4000);
+                    const errorMsg = translateError(error.message);
+                    safeShowToast(t('servers.stop_failed_toast', { error: errorMsg }), 'error', 4000);
                 }
             },
             onCancel: () => setModal(null)
@@ -754,31 +866,25 @@ function App() {
         try {
             const result = await window.api.serverStatus(name);
             if (result.error) {
-                let errorMsg = result.error;
-                if (errorMsg.includes('ECONNREFUSED')) {
-                    errorMsg = '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요';
-                }
-                setModal({ type: 'failure', title: '상태 조회 실패', message: errorMsg });
+                const errorMsg = translateError(result.error);
+                setModal({ type: 'failure', title: t('servers.status_check_failed_title'), message: errorMsg });
             } else {
                 const statusInfo = `Status: ${result.status}\nPID: ${result.pid || 'N/A'}\nUptime: ${result.uptime_seconds ? Math.floor(result.uptime_seconds / 60) + 'm' : 'N/A'}`;
                 setModal({ type: 'notification', title: name, message: statusInfo });
             }
         } catch (error) {
-            let errorMsg = error.message;
-            if (errorMsg.includes('ECONNREFUSED')) {
-                errorMsg = '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요';
-            }
-            setModal({ type: 'failure', title: '상태 조회 실패', message: errorMsg });
+            const errorMsg = translateError(error.message);
+            setModal({ type: 'failure', title: t('servers.status_check_failed_title'), message: errorMsg });
         }
     };
 
     const handleAddServer = async (serverName, moduleName) => {
         if (!serverName || !serverName.trim()) {
-            setModal({ type: 'failure', title: '입력 오류', message: '서버 이름을 입력하세요' });
+            setModal({ type: 'failure', title: t('servers.add_server_name_empty_title'), message: t('servers.add_server_name_empty_message') });
             return;
         }
         if (!moduleName) {
-            setModal({ type: 'failure', title: '입력 오류', message: '모듈을 선택하세요' });
+            setModal({ type: 'failure', title: t('servers.add_module_empty_title'), message: t('servers.add_module_empty_message') });
             return;
         }
 
@@ -796,22 +902,16 @@ function App() {
             const result = await window.api.instanceCreate(instanceData);
             
             if (result.error) {
-                let errorMsg = result.error;
-                if (errorMsg.includes('ECONNREFUSED')) {
-                    errorMsg = '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요';
-                }
-                setModal({ type: 'failure', title: '인스턴스 추가 실패', message: errorMsg });
+                const errorMsg = translateError(result.error);
+                setModal({ type: 'failure', title: t('servers.add_failed_title'), message: errorMsg });
             } else {
-                setModal({ type: 'success', title: '성공', message: `인스턴스 "${serverName}" 추가되었습니다` });
+                setModal({ type: 'success', title: t('command_modal.success'), message: t('server_actions.server_added', { name: serverName }) });
                 setShowModuleManager(false);
                 fetchServers();
             }
         } catch (error) {
-            let errorMsg = error.message;
-            if (errorMsg.includes('ECONNREFUSED')) {
-                errorMsg = '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요';
-            }
-            setModal({ type: 'failure', title: '인스턴스 추가 예외', message: errorMsg });
+            const errorMsg = translateError(error.message);
+            setModal({ type: 'failure', title: t('servers.add_error_title'), message: errorMsg });
         }
     };
 
@@ -819,8 +919,8 @@ function App() {
         // Question 모달 표시
         setModal({
             type: 'question',
-            title: '서버 삭제 확인',
-            message: `정말로 "${server.name}" 서버를 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`,
+            title: t('server_actions.delete_confirm_title'),
+            message: t('server_actions.delete_confirm_message', { name: server.name }),
             onConfirm: () => performDeleteServer(server),
         });
     };
@@ -832,22 +932,16 @@ function App() {
             const result = await window.api.instanceDelete(server.id);
             
             if (result.error) {
-                let errorMsg = result.error;
-                if (errorMsg.includes('ECONNREFUSED')) {
-                    errorMsg = '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요';
-                }
-                setModal({ type: 'failure', title: '인스턴스 삭제 실패', message: errorMsg });
+                const errorMsg = translateError(result.error);
+                setModal({ type: 'failure', title: t('servers.delete_failed_title'), message: errorMsg });
             } else {
                 console.log(`Instance "${server.name}" (ID: ${server.id}) deleted`);
-                setModal({ type: 'success', title: '성공', message: `"${server.name}" 서버가 삭제되었습니다` });
+                setModal({ type: 'success', title: t('command_modal.success'), message: t('server_actions.server_deleted', { name: server.name }) });
                 fetchServers(); // 새로고침
             }
         } catch (error) {
-            let errorMsg = error.message;
-            if (errorMsg.includes('ECONNREFUSED')) {
-                errorMsg = '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요';
-            }
-            setModal({ type: 'failure', title: '인스턴스 삭제 예외', message: errorMsg });
+            const errorMsg = translateError(error.message);
+            setModal({ type: 'failure', title: t('servers.delete_error_title'), message: errorMsg });
         }
     };
 
@@ -1006,16 +1100,16 @@ function App() {
             console.log('API Response:', result);
             
             if (result.error) {
-                setModal({ type: 'failure', title: '설정 저장 실패', message: result.error });
+                setModal({ type: 'failure', title: t('settings.save_failed_title'), message: translateError(result.error) });
                 console.error('Error response:', result.error);
             } else {
-                setModal({ type: 'success', title: '성공', message: `"${settingsServer.name}" 설정이 저장되었습니다` });
+                setModal({ type: 'success', title: t('command_modal.success'), message: t('server_actions.settings_saved', { name: settingsServer.name }) });
                 setShowSettingsModal(false);
                 fetchServers(); // 새로고침
             }
         } catch (error) {
             console.error('Exception in handleSaveSettings:', error);
-            setModal({ type: 'failure', title: '설정 저장 예외', message: error.message });
+            setModal({ type: 'failure', title: t('settings.save_error_title'), message: translateError(error.message) });
         }
     };
 
@@ -1046,17 +1140,17 @@ function App() {
 
             const res = await window.api.botConfigSave(payload);
             if (res.error) {
-                setModal({ type: 'failure', title: '별명 저장 실패', message: res.error });
+                setModal({ type: 'failure', title: t('settings.aliases_save_failed_title'), message: translateError(res.error) });
             } else {
                 // API에서 저장된 설정을 다시 로드
                 const saved = await window.api.botConfigLoad();
                 setDiscordModuleAliases(saved.moduleAliases || {});
                 setDiscordCommandAliases(saved.commandAliases || {});
-                setModal({ type: 'success', title: '저장됨', message: '별명이 저장되었습니다.' });
+                setModal({ type: 'success', title: t('server_actions.aliases_saved'), message: t('server_actions.aliases_saved') });
             }
         } catch (error) {
             console.error('Failed to save aliases:', error);
-            setModal({ type: 'failure', title: '별명 저장 예외', message: error.message });
+            setModal({ type: 'failure', title: t('settings.aliases_save_error_title'), message: translateError(error.message) });
         }
     };
 
@@ -1090,17 +1184,17 @@ function App() {
 
             const res = await window.api.botConfigSave(payload);
             if (res.error) {
-                setModal({ type: 'failure', title: '초기화 실패', message: res.error });
+                setModal({ type: 'failure', title: t('settings.aliases_reset_failed_title'), message: translateError(res.error) });
             } else {
                 // API에서 저장된 설정을 다시 로드
                 const saved = await window.api.botConfigLoad();
                 setDiscordModuleAliases(saved.moduleAliases || {});
                 setDiscordCommandAliases(saved.commandAliases || {});
-                setModal({ type: 'success', title: '초기화 완료', message: '별명이 기본값으로 초기화되었습니다.' });
+                setModal({ type: 'success', title: t('settings.aliases_reset_completed_title'), message: t('settings.aliases_reset_message') });
             }
         } catch (error) {
             console.error('Failed to reset aliases:', error);
-            setModal({ type: 'failure', title: '초기화 예외', message: error.message });
+            setModal({ type: 'failure', title: t('settings.aliases_reset_failed_title'), message: translateError(error.message) });
         }
     };
 
@@ -1129,16 +1223,16 @@ function App() {
 
             const res = await window.api.botConfigSave(payload);
             if (res.error) {
-                setModal({ type: 'failure', title: '별명 저장 실패', message: res.error });
+                setModal({ type: 'failure', title: t('settings.aliases_save_failed_title'), message: translateError(res.error) });
             } else {
                 const saved = await window.api.botConfigLoad();
                 setDiscordModuleAliases(saved.moduleAliases || {});
                 setDiscordCommandAliases(saved.commandAliases || {});
-                setModal({ type: 'success', title: '저장됨', message: '별명이 저장되었습니다.' });
+                setModal({ type: 'success', title: t('server_actions.aliases_saved'), message: t('server_actions.aliases_saved') });
             }
         } catch (error) {
             console.error('Failed to save aliases:', error);
-            setModal({ type: 'failure', title: '별명 저장 예외', message: error.message });
+            setModal({ type: 'failure', title: t('settings.aliases_save_error_title'), message: translateError(error.message) });
         }
     };
 
@@ -1171,16 +1265,16 @@ function App() {
 
             const res = await window.api.botConfigSave(payload);
             if (res.error) {
-                setModal({ type: 'failure', title: '초기화 실패', message: res.error });
+                setModal({ type: 'failure', title: t('settings.aliases_reset_failed_title'), message: translateError(res.error) });
             } else {
                 const saved = await window.api.botConfigLoad();
                 setDiscordModuleAliases(saved.moduleAliases || {});
                 setDiscordCommandAliases(saved.commandAliases || {});
-                setModal({ type: 'success', title: '초기화 완료', message: '별명이 기본값으로 초기화되었습니다.' });
+                setModal({ type: 'success', title: t('settings.aliases_reset_completed_title'), message: t('settings.aliases_reset_message') });
             }
         } catch (error) {
             console.error('Failed to reset aliases:', error);
-            setModal({ type: 'failure', title: '초기화 예외', message: error.message });
+            setModal({ type: 'failure', title: t('settings.aliases_reset_failed_title'), message: translateError(error.message) });
         }
     };
 
@@ -1233,7 +1327,7 @@ function App() {
                 <TitleBar />
                 <div className="loading-content">
                     <div className="loading-logo" style={{ fontSize: '72px' }}>🐟</div>
-                    <div className="loading-title">Saba-chan</div>
+                    <div className="loading-title">{t('common:app_name')}</div>
                     <div className="loading-spinner"></div>
                     <div className="loading-status">
                         <Icon name="loader" size="sm" /> {initStatus}
@@ -1245,7 +1339,7 @@ function App() {
                         ></div>
                     </div>
                     <div className="loading-tips">
-                        <Icon name="info" size="sm" /> 팁: 여러 게임 서버를 동시에 관리할 수 있습니다
+                        <Icon name="info" size="sm" /> {t('buttons.loading_tips')}
                     </div>
                 </div>
             </div>
@@ -1256,7 +1350,7 @@ function App() {
         return (
             <div className="App">
                 <div className="loading">
-                    <h2>Loading servers...</h2>
+                    <h2>{t('buttons.loading')}</h2>
                 </div>
             </div>
         );
@@ -1285,12 +1379,12 @@ function App() {
                 <div className="header-row header-row-title">
                     <div className="app-title-section">
                         <div className="app-logo">🌌</div>
-                        <h1>Saba-chan</h1>
+                        <h1>{t('common:app_name')}</h1>
                     </div>
                     <button 
                         className="btn-settings-icon-solo"
                         onClick={() => setShowGuiSettingsModal(true)}
-                        title="GUI 설정"
+                        title={t('settings.gui_settings_tooltip')}
                     >
                         <Icon name="settings" size="lg" />
                     </button>
@@ -1331,10 +1425,14 @@ function App() {
                     </div>
                     <div className="background-button-wrapper">
                         <button 
-                            className="btn btn-background btn-background-active"
+                            className={`btn btn-background ${backgroundDaemonStatus === 'running' ? 'btn-background-active' : ''}`}
                             onClick={() => setShowBackgroundSection(!showBackgroundSection)}
                         >
-                            <span className="status-indicator status-online"></span>
+                            <span className={`status-indicator ${
+                                backgroundDaemonStatus === 'running' ? 'status-online' : 
+                                backgroundDaemonStatus === 'checking' ? 'status-checking' : 
+                                'status-offline'
+                            }`}></span>
                             Background
                         </button>
                         {/* Background Modal */}
@@ -1366,14 +1464,14 @@ function App() {
                     <div className="servers-initializing-overlay">
                         <div className="servers-initializing-content">
                             <div className="servers-initializing-spinner"></div>
-                            <span>서버 상태 확인 중...</span>
+                            <span>{t('gui:servers.initializing_overlay')}</span>
                         </div>
                     </div>
                 )}
                 
                 {servers.length === 0 ? (
                     <div className="no-servers">
-                        <p>No servers configured</p>
+                        <p>{t('servers.no_servers_configured', { defaultValue: 'No servers configured' })}</p>
                     </div>
                 ) : (
                     servers.map((server) => {
@@ -1430,14 +1528,14 @@ function App() {
                                         title={server.status === 'running' || server.status === 'starting' ? 'Click to stop' : 'Click to start'}
                                     >
                                         <span className="status-label status-label-default">
-                                            {server.status === 'running' ? '실행중' : 
-                                             server.status === 'starting' ? 'Starting...' :
-                                             server.status === 'stopping' ? 'Stopping...' : '정지중'}
+                                            {server.status === 'running' ? t('server_status.running') : 
+                                             server.status === 'starting' ? t('server_status.stopping') :
+                                             server.status === 'stopping' ? t('server_status.stopping') : t('server_status.stopped')}
                                         </span>
                                         <span className="status-label status-label-hover">
-                                            {server.status === 'running' ? '정지' : 
-                                             server.status === 'starting' ? 'Starting...' :
-                                             server.status === 'stopping' ? 'Stopping...' : '실행'}
+                                            {server.status === 'running' ? t('server_status.stop') : 
+                                             server.status === 'starting' ? t('server_status.stopping') :
+                                             server.status === 'stopping' ? t('server_status.stopping') : t('server_status.start')}
                                         </span>
                                         <span className="status-dot"></span>
                                     </button>

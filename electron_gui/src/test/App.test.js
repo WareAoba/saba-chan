@@ -338,7 +338,7 @@ describe('로딩 화면 테스트', () => {
 
         // 로딩 화면 요소가 존재해야 함 (daemonReady=false 상태)
         // Note: 실제로는 status:update 이벤트를 받아야 전환됨
-        expect(screen.getByText(/초기화/i)).toBeInTheDocument();
+        expect(screen.getByText(/Initialize/i)).toBeInTheDocument();
     });
 
     it('ready 상태 수신 시 로딩 화면이 사라져야 함', async () => {
@@ -464,7 +464,7 @@ describe('safeShowToast 안전 호출 테스트', () => {
         // 에러 토스트 호출 확인
         await waitFor(() => {
             expect(mockShowToast).toHaveBeenCalledWith(
-                expect.stringContaining('Discord 봇 시작 실패'),
+                expect.stringContaining('Discord bot start failed'),
                 'error',
                 4000
             );
@@ -663,7 +663,7 @@ describe('모듈 로드 실패 테스트', () => {
 
         await waitFor(() => {
             expect(mockShowToast).toHaveBeenCalledWith(
-                expect.stringContaining('모듈 로드 실패'),
+                expect.stringContaining('Module load failed'),
                 'error',
                 4000
             );

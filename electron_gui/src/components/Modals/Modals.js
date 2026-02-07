@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import './Modals.css';
 
 // Success Modal - 자동으로 2초 후 닫힘
@@ -21,6 +22,8 @@ export function SuccessModal({ title, message, onClose }) {
 
 // Failure Modal - 수동으로 닫기
 export function FailureModal({ title, message, onClose }) {
+    const { t } = useTranslation('gui');
+    
     return (
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal failure-modal" onClick={e => e.stopPropagation()}>
@@ -28,7 +31,7 @@ export function FailureModal({ title, message, onClose }) {
                 <h2 className="modal-title">{title}</h2>
                 <p className="modal-message">{message}</p>
                 <button className="modal-button failure-button" onClick={onClose}>
-                    닫기
+                    {t('modals.close')}
                 </button>
             </div>
         </div>
@@ -37,6 +40,8 @@ export function FailureModal({ title, message, onClose }) {
 
 // Notification Modal - 정보 표시
 export function NotificationModal({ title, message, onClose }) {
+    const { t } = useTranslation('gui');
+    
     return (
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal notification-modal" onClick={e => e.stopPropagation()}>
@@ -44,7 +49,7 @@ export function NotificationModal({ title, message, onClose }) {
                 <h2 className="modal-title">{title}</h2>
                 <p className="modal-message">{message}</p>
                 <button className="modal-button notification-button" onClick={onClose}>
-                    확인
+                    {t('modals.confirm')}
                 </button>
             </div>
         </div>
@@ -53,6 +58,8 @@ export function NotificationModal({ title, message, onClose }) {
 
 // Question Modal - 확인/취소 또는 커스텀 버튼
 export function QuestionModal({ title, message, detail, onConfirm, onCancel, buttons }) {
+    const { t } = useTranslation('gui');
+    
     return (
         <div className="modal-overlay" onClick={onCancel}>
             <div className="modal question-modal" onClick={e => e.stopPropagation()}>
@@ -76,10 +83,10 @@ export function QuestionModal({ title, message, detail, onConfirm, onCancel, but
                         // 기본 확인/취소 버튼
                         <>
                             <button className="modal-button question-confirm" onClick={onConfirm}>
-                                확인
+                                {t('modals.confirm')}
                             </button>
                             <button className="modal-button question-cancel" onClick={onCancel}>
-                                취소
+                                {t('modals.cancel')}
                             </button>
                         </>
                     )}

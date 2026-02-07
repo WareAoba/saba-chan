@@ -5,11 +5,46 @@
 import '@testing-library/jest-dom';
 import { expect, afterEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
+import i18n from 'i18next';
+import { initReactI18next } from 'react-i18next';
+import enCommon from '../../locales/en/common.json';
+import enGui from '../../locales/en/gui.json';
+import koCommon from '../../locales/ko/common.json';
+import koGui from '../../locales/ko/gui.json';
 
 // Cleanup after each test case (e.g. clearing jsdom)
 afterEach(() => {
   cleanup();
 });
+
+// i18n 초기화 (테스트 환경용 - 영어로 설정)
+const initializeTestI18n = async () => {
+  if (!i18n.isInitialized) {
+    await i18n
+      .use(initReactI18next)
+      .init({
+        resources: {
+          en: {
+            common: enCommon,
+            gui: enGui,
+          },
+          ko: {
+            common: koCommon,
+            gui: koGui,
+          },
+        },
+        lng: 'en', // 테스트 환경은 영어로 설정
+        fallbackLng: 'en',
+        defaultNS: 'gui',
+        interpolation: {
+          escapeValue: false,
+        },
+      });
+  }
+};
+
+// 동기 초기화 (테스트 시작 전)
+initializeTestI18n();
 
 // 테스트 환경에서 디버깅 로그 억제 (에러는 유지)
 const originalConsoleLog = console.log;

@@ -1,0 +1,51 @@
+{
+  "app_name": "사바짱",
+  "app_description": "모듈형 게임 서버 관리 플랫폼",
+  "success": "성공",
+  "error": "오류",
+  "warning": "경고",
+  "info": "정보",
+  "confirm": "확인",
+  "cancel": "취소",
+  "save": "저장",
+  "delete": "삭제",
+  "edit": "편집",
+  "close": "닫기",
+  "settings": "설정",
+  "language": "언어",
+  "yes": "예",
+  "no": "아니오",
+  "daemon": {
+    "checking": "데몬 확인 중...",
+    "existing_running": "기존 데몬이 실행 중입니다",
+    "starting": "데몬을 시작합니다...",
+    "started": "데몬 시작 완료",
+    "preparing": "데몬 준비 중... (타임아웃)",
+    "failed_to_start": "❌ 데몬 시작 실패 - 직접 실행해주세요",
+    "check_warning": "데몬 확인 중 경고: {{error}}"
+  },
+  "modules": {
+    "refreshing": "모듈을 새로고침하는 중...",
+    "refresh_complete": "모듈 새로고침 완료"
+  },
+  "server": {
+    "list_failed": "서버 목록 조회 실패 (HTTP {{status}}): {{error}}",
+    "start_failed": "시작 실패: {{error}}",
+    "stop_failed": "정지 실패: {{error}}",
+    "status_check_failed": "상태 조회 실패 (HTTP {{status}}): {{error}}",
+    "module_not_found": "모듈 '{{module}}'을(를) 찾을 수 없습니다",
+    "invalid_request": "잘못된 요청: {{error}}",
+    "not_found": "서버 '{{name}}'을(를) 찾을 수 없습니다",
+    "already_running": "서버 '{{name}}'은(는) 이미 실행중입니다",
+    "missing_required_field": "필수 필드 '{{field}}'이(가) 누락되었습니다",
+    "creation_failed": "인스턴스 생성 실패: {{error}}",
+    "delete_failed": "인스턴스 삭제 실패: {{error}}",
+    "update_failed": "인스턴스 업데이트 실패: {{error}}",
+    "settings_save_failed": "설정 저장 실패: {{error}}"
+  },
+  "network": {
+    "connection_refused": "데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요",
+    "timeout": "요청 시간 초과: 서버가 응답하지 않습니다",
+    "not_found": "서버를 찾을 수 없습니다. 네트워크 설정을 확인해주세요"
+  }
+}

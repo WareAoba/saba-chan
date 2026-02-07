@@ -1,5 +1,97 @@
 # Changelog
 
+## [Unreleased] - 2026-02-07
+
+#### 국제화(i18n) 시스템 도입 (첫 구현)
+- **i18next + react-i18next 의존성 추가**:
+  - `i18next` (25.8.4), `react-i18next` (16.5.4), `i18next-browser-languagedetector` (8.2.0) 설치
+  - 다국어 번역 파일 기반 동적 언어 전환 기능 구현
+- **GUI 로케일 시스템** ([src/i18n.js](electron_gui/src/i18n.js)):
+  - 영어(en), 한국어(ko) 지원으로 시작
+  - localStorage, Electron settings.json에서 저장된 언어 로드
+  - 시스템 언어 감지 및 자동 선택 기능
+  - `/locales/{en,ko}/{common.json, gui.json}` 구조
+- **메인 프로세스 번역 시스템** ([main.js#L19-L35](electron_gui/main.js#L19-L35)):
+  - `loadTranslations()` 함수로 common.json 로드
+  - `t(key, variables)` 함수로 간단한 메시지 번역 제공
+  - 데몬 시작/설정 로드 시 현재 언어 기반 메시지 표시
+- **IPC 언어 관리 핸들러**:
+  - `language:get` - 저장된 언어 반환
+  - `language:set` - 새로운 언어 저장 및 데몬 재시작 ([main.js#L1183-L1215](electron_gui/main.js#L1183-L1215))
+  - `language:getSystem` - 시스템 언어 반환
+  - 설정 저장/로드 API와 통합 ([main.js#L140-L155](electron_gui/main.js#L140-L155))
+- **Settings 모달 언어 선택 UI** ([SettingsModal.js](electron_gui/src/components/Modals/SettingsModal.js)):
+  - 언어 선택 드롭다운 (English, 한국어)
+  - 언어 변경 시 localStorage, Electron 설정, i18n 모두 동기화
+  - 즉시 UI 업데이트
+- **데몬 및 Python 모듈 언어 지원**:
+  - `SABA_LANG` 환경 변수로 현재 언어를 데몬/모듈에 전달 ([main.js#L237-L240](electron_gui/main.js#L237-L240))
+  - Python 모듈의 i18n 초기화에 사용
+  - Daemon의 메시지도 현재 언어로 표시됨
+- **모듈 로케일 시스템** ([modules/{palworld,minecraft}/i18n.py](modules/)):
+  - `I18n` 클래스 구현 (Python)
+  - 각 모듈별 `/locales/{en,ko}.json` 파일
+  - `SABA_LANG` 환경 변수 기반 언어 자동 선택
+  - Error/message 텍스트를 모두 번역 가능하게 구조화
+
+#### 언어 변경 시 동기화: Discord 봇 자동 재시작
+- **IPC 핸들러 확장** ([main.js#L1183-L1215](electron_gui/main.js#L1183-L1215)):
+  - `language:set` 핸들러에 Discord 봇 자동 재시작 로직 추가
+  - 데몬 + 봇 모두 새로운 언어 설정으로 재시작됨
+  - 앱의 언어 변경 → mainWindow에 `bot:relaunch` 이벤트 발송
+- **React 앱의 봇 재시작 처리** ([App.js#L581-L598](electron_gui/src/App.js#L581-L598)):
+  - `onBotRelaunch` 이벤트 리스너 등록
+  - 봇 설정(토큰, 프레픽스, 에이리어스)을 다시 로드하여 재시작
+  - 사용자 개입 없이 자동화됨
+- **IPC 브릿지 추가** ([preload.js#L30-31](electron_gui/preload.js#L30-31)):
+  - `window.api.onBotRelaunch(callback)` 메서드 노출
+  - 메인 프로세스와 React 앱 간의 언어 변경 신호 전달
+
+---
+
+## [Unreleased] - 2026-02-04
+### 🚀 크로스 플랫폼 지원 및 빌드 시스템 현대화
+- **z-index 계층 구조 재정렬** ([Modals.css](electron_gui/src/components/Modals/Modals.css))
+  - 에러/확인/질문 모달: 1000 → **9000** (최상위)
+  - 설정 모달: 9000 → **2000** (중간)
+  - 디스코드/백그라운드 모달: **2000** (중간)
+  - 토스트 알림: 9998 → **10000** (최상위)
+  - StatusBar: **9999** (유지)
+  - 계층 순서: Toast(10000) > StatusBar(9999) > 에러 모달(9000) > 설정 모달(2000)
+
+#### 백그라운드 데몬 모니터링 강화
+- **실시간 상태 인디케이터 구현** ([App.js](electron_gui/src/App.js))
+  - `backgroundDaemonStatus` 상태 추가 (`checking | running | stopped | error`)
+  - 5초마다 `window.api.daemonStatus()` 호출하여 자동 업데이트
+  - Background 버튼의 인디케이터가 데몬 상태를 실시간 반영
+- **BackgroundModal 개선** ([BackgroundModal.js](electron_gui/src/components/Modals/BackgroundModal.js))
+  - 모달 열릴 때 2초마다 상태 확인
+  - 상태별 동적 표시: Running(초록) / Stopped(빨강) / Checking(노랑, 펄스 애니메이션)
+  - `.status-checking` CSS 클래스 추가 ([App.css](electron_gui/src/App.css#L1077-L1081))
+- **데몬 재시작 기능 추가**
+  - `daemon:restart` IPC 핸들러 구현 ([main.js#L1057-L1076](electron_gui/main.js#L1057-L1076))
+  - `window.api.daemonRestart()` API 노출 ([preload.js#L36](electron_gui/preload.js#L36))
+  - 데몬 종료 → 1초 대기 → 재시작 → 2초 대기 로직
+  - BackgroundModal에 "🔄 Daemon 재시작" 버튼 추가 (stopped/error 상태일 때만 표시)
+  - 보라색 그라데이션 버튼 스타일 ([Modals.css#L958-L986](electron_gui/src/components/Modals/Modals.css#L958-L986))
+
+#### 에러 메시지 사용자 친화화
+- **전역 에러 번역 함수 구현** ([App.js#L30-L100](electron_gui/src/App.js#L30-L100))
+  - `translateError()` 함수로 50여가지 에러 패턴 변환
+  - 파일 경로 오류: "Executable not found" → "게임 서버 실행 파일을 찾을 수 없습니다. 설정에서 경로를 확인해주세요."
+  - 네트워크 오류: "ECONNREFUSED" → "데몬에 연결할 수 없습니다. 데몬이 실행 중인지 확인해주세요."
+  - 프로세스 오류: "Process not found" → "프로세스를 찾을 수 없습니다. 서버가 비정상 종료되었을 수 있습니다."
+  - Discord 오류: "Invalid token" → "Discord 봇 토큰이 올바르지 않습니다. 토큰을 확인해주세요."
+- **전역 적용**
+  - Discord 봇 시작/정지
+  - 모듈/서버 목록 조회
+  - 서버 시작/정지/상태 조회
+  - 인스턴스 추가/삭제/설정 저장
+  - 별명 저장/초기화
+  - 모든 토스트 알림 및 모달 메시지
+
+---
+
 ## [Unreleased] - 2026-02-04
 ### � 크로스 플랫폼 지원 및 빌드 시스템 현대화
 

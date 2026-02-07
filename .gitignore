@@ -7,9 +7,11 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+package-lock.json
 
 # Electron
 electron_gui/node_modules/
+electron_gui/bin/
 electron_gui/build/
 electron_gui/dist/
 discord_bot/node_modules/

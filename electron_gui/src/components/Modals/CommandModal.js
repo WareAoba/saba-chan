@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import './Modals.css';
 
 function CommandModal({ server, modules, onClose, onExecute }) {
+    const { t } = useTranslation('gui');
     const [commandInput, setCommandInput] = useState('');
     const [commandInputs, setCommandInputs] = useState({});
     const [loading, setLoading] = useState(false);
@@ -45,7 +47,7 @@ function CommandModal({ server, modules, onClose, onExecute }) {
     const handleExecuteCommand = async () => {
         const cmdName = commandInput.trim();
         if (!cmdName) {
-            onExecute({ type: 'failure', title: '입력 오류', message: '명령어를 입력하세요' });
+            onExecute({ type: 'failure', title: t('command_modal.input_error'), message: t('command_modal.enter_command') });
             return;
         }
 
@@ -53,8 +55,8 @@ function CommandModal({ server, modules, onClose, onExecute }) {
         if (server.status !== 'running') {
             onExecute({ 
                 type: 'failure', 
-                title: '서버가 실행중이지 않습니다', 
-                message: `'${server.name}' 서버가 실행 중이어야 명령어를 실행할 수 있습니다.\n\n현재 상태: ${server.status}` 
+                title: t('command_modal.server_not_running_title'), 
+                message: t('command_modal.server_not_running_message', { name: server.name, status: server.status })
             });
             return;
         }
@@ -74,8 +76,8 @@ function CommandModal({ server, modules, onClose, onExecute }) {
                 if (field.required && (!value || value === '')) {
                     onExecute({ 
                         type: 'failure', 
-                        title: '입력 오류', 
-                        message: `필수 필드 '${field.label}'을(를) 입력하세요` 
+                        title: t('command_modal.input_error'), 
+                        message: t('command_modal.missing_required_field', { field: field.label })
                     });
                     return;
                 }
@@ -93,13 +95,13 @@ function CommandModal({ server, modules, onClose, onExecute }) {
             });
 
             if (result.error) {
-                onExecute({ type: 'failure', title: '명령어 실행 실패', message: result.error });
+                onExecute({ type: 'failure', title: t('command_modal.execution_failed'), message: result.error });
             } else {
-                onExecute({ type: 'success', title: '성공', message: result.message || `명령어 '${cmdName}'가 실행되었습니다` });
+                onExecute({ type: 'success', title: t('command_modal.success'), message: result.message || t('command_modal.command_executed', { command: cmdName }) });
                 onClose();
             }
         } catch (error) {
-            onExecute({ type: 'failure', title: '명령어 실행 오류', message: error.message });
+            onExecute({ type: 'failure', title: t('command_modal.execution_error'), message: error.message });
         } finally {
             setLoading(false);
         }
@@ -110,11 +112,11 @@ function CommandModal({ server, modules, onClose, onExecute }) {
     return (
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal command-modal" onClick={e => e.stopPropagation()}>
-                <h2 className="modal-title">명령어 실행 - {server.name}</h2>
+                <h2 className="modal-title">{t('command_modal.title', { name: server.name })}</h2>
 
                 {/* CLI 입력 라인 */}
                 <div className="cli-section">
-                    <label className="cli-label">명령어</label>
+                    <label className="cli-label">{t('command_modal.command_label')}</label>
                     <div className="cli-input-wrapper">
                         <span className="cli-prompt">$</span>
                         <input
@@ -127,7 +129,7 @@ function CommandModal({ server, modules, onClose, onExecute }) {
                                     handleExecuteCommand();
                                 }
                             }}
-                            placeholder="명령어를 입력하세요 (예: say, broadcast, save...)"
+                            placeholder={t('command_modal.command_placeholder')}
                             autoFocus
                         />
                     </div>
@@ -223,10 +225,10 @@ function CommandModal({ server, modules, onClose, onExecute }) {
                         onClick={handleExecuteCommand}
                         disabled={!commandInput.trim() || loading}
                     >
-                        {loading ? '실행 중...' : '⏎ 실행'}
+                        {loading ? '...' : `⏎ ${t('command_modal.execute')}`}
                     </button>
                     <button className="modal-button command-cancel" onClick={onClose}>
-                        ✕ 닫기
+                        ✕ {t('modals.close')}
                     </button>
                 </div>
             </div>

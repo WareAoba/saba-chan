@@ -1,0 +1,51 @@
+{
+  "app_name": "Saba-chan",
+  "app_description": "Modular Game Server Management Platform",
+  "success": "Success",
+  "error": "Error",
+  "warning": "Warning",
+  "info": "Information",
+  "confirm": "Confirm",
+  "cancel": "Cancel",
+  "save": "Save",
+  "delete": "Delete",
+  "edit": "Edit",
+  "close": "Close",
+  "settings": "Settings",
+  "language": "Language",
+  "yes": "Yes",
+  "no": "No",
+  "daemon": {
+    "checking": "Checking daemon...",
+    "existing_running": "Existing daemon is running",
+    "starting": "Starting daemon...",
+    "started": "Daemon started",
+    "preparing": "Preparing daemon... (timeout)",
+    "failed_to_start": "Failed to start daemon - please run manually",
+    "check_warning": "Warning checking daemon: {{error}}"
+  },
+  "modules": {
+    "refreshing": "Refreshing modules...",
+    "refresh_complete": "Module refresh complete"
+  },
+  "server": {
+    "list_failed": "Failed to fetch server list (HTTP {{status}}): {{error}}",
+    "start_failed": "Failed to start: {{error}}",
+    "stop_failed": "Failed to stop: {{error}}",
+    "status_check_failed": "Status check failed (HTTP {{status}}): {{error}}",
+    "module_not_found": "Module '{{module}}' not found",
+    "invalid_request": "Invalid request: {{error}}",
+    "not_found": "Server '{{name}}' not found",
+    "already_running": "Server '{{name}}' is already running",
+    "missing_required_field": "Missing required field '{{field}}'",
+    "creation_failed": "Failed to create instance: {{error}}",
+    "delete_failed": "Failed to delete instance: {{error}}",
+    "update_failed": "Failed to update instance: {{error}}",
+    "settings_save_failed": "Failed to save settings: {{error}}"
+  },
+  "network": {
+    "connection_refused": "Cannot connect to daemon. Please check if daemon is running",
+    "timeout": "Request timeout: Server did not respond",
+    "not_found": "Server not found. Please check network settings"
+  }
+}

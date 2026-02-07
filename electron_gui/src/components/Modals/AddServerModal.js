@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import Icon from '../Icon';
 import './Modals.css';
 
@@ -13,6 +14,7 @@ export function AddServerModal({
     onRefreshModules,
     onAddServer
 }) {
+    const { t } = useTranslation('gui');
     const [newServerName, setNewServerName] = useState('');
     const [selectedModule, setSelectedModule] = useState('');
 
@@ -49,13 +51,13 @@ export function AddServerModal({
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content modal-content-large" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
-                    <h3><Icon name="plus" size="md" /> Add New Server</h3>
+                    <h3><Icon name="plus" size="md" /> {t('add_server_modal.title')}</h3>
                     <button className="modal-close" onClick={onClose}>✕</button>
                 </div>
 
                 <div className="modal-body">
                     <div className="path-config">
-                        <label>Modules Directory:</label>
+                        <label>{t('add_server_modal.modules_directory')}</label>
                         <input 
                             type="text"
                             className="path-input"
@@ -64,36 +66,36 @@ export function AddServerModal({
                             placeholder="c:\Git\Bot\modules"
                         />
                         <button className="btn btn-refresh-modules" onClick={onRefreshModules}>
-                            <Icon name="refresh" size="sm" /> Reload Modules
+                            <Icon name="refresh" size="sm" /> {t('add_server_modal.reload_modules')}
                         </button>
                         <small className="path-hint">
-                            <Icon name="folder" size="sm" /> Place .zip files or folders with module.toml here
+                            <Icon name="folder" size="sm" /> {t('add_server_modal.place_modules_hint')}
                         </small>
                         {settingsPath && (
                             <small className="settings-path">
-                                <Icon name="database" size="sm" /> Settings: {settingsPath}
+                                <Icon name="database" size="sm" /> {t('add_server_modal.settings_path')} {settingsPath}
                             </small>
                         )}
                     </div>
 
                     <div className="add-server-form">
                         <div className="form-row">
-                            <label>Server Name *</label>
+                            <label>{t('add_server_modal.server_name')}</label>
                             <input 
                                 type="text"
-                                placeholder="e.g., my-palworld-1"
+                                placeholder={t('add_server_modal.server_name_placeholder')}
                                 value={newServerName}
                                 onChange={(e) => setNewServerName(e.target.value)}
                             />
                         </div>
 
                         <div className="form-row">
-                            <label>Game Module *</label>
+                            <label>{t('add_server_modal.game_module')}</label>
                             <select 
                                 value={selectedModule}
                                 onChange={(e) => handleModuleSelect(e.target.value)}
                             >
-                                <option value="">Select Module</option>
+                                <option value="">{t('add_server_modal.select_module')}</option>
                                 {modules.map(m => (
                                     <option key={m.name} value={m.name}>
                                         {m.name} v{m.version}
@@ -104,14 +106,14 @@ export function AddServerModal({
                     </div>
 
                     <div className="module-list">
-                        <h4>Available Modules:</h4>
+                        <h4>{t('add_server_modal.available_modules')}</h4>
                         {modules.length === 0 ? (
-                            <p className="no-modules">No modules available. Please check the modules directory.</p>
+                            <p className="no-modules">{t('add_server_modal.no_modules')}</p>
                         ) : (
                             modules.map(module => (
                                 <div key={module.name} className="module-item">
                                     <strong>{module.name}</strong> v{module.version}
-                                    <p>{module.description || 'No description'}</p>
+                                    <p>{module.description || t('add_server_modal.no_description')}</p>
                                     <small>{module.path}</small>
                                 </div>
                             ))
@@ -121,10 +123,10 @@ export function AddServerModal({
 
                 <div className="modal-footer">
                     <button className="btn btn-confirm" onClick={handleSubmit}>
-                        <Icon name="checkCircle" size="sm" /> Add Server
+                        <Icon name="checkCircle" size="sm" /> {t('add_server_modal.add_server')}
                     </button>
                     <button className="btn btn-cancel" onClick={onClose}>
-                        <Icon name="xCircle" size="sm" /> Cancel
+                        <Icon name="xCircle" size="sm" /> {t('modals.cancel')}
                     </button>
                 </div>
             </div>

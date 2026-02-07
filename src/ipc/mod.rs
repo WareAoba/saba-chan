@@ -621,6 +621,7 @@ mod tests {
             description: Some("Palworld 서버 관리".to_string()),
             path: "/modules/palworld".to_string(),
             executable_path: Some("PalServer.exe".to_string()),
+            icon: None,
             settings: None,
             commands: Some(crate::supervisor::module_loader::ModuleCommands {
                 fields: vec![
@@ -663,6 +664,7 @@ mod tests {
             description: None,
             path: "/modules/test".to_string(),
             executable_path: None,
+            icon: None,
             settings: None,
             commands: None,
         };
@@ -685,6 +687,7 @@ mod tests {
                     description: Some("Palworld".to_string()),
                     path: "/modules/palworld".to_string(),
                     executable_path: None,
+                    icon: None,
                     settings: None,
                     commands: Some(crate::supervisor::module_loader::ModuleCommands {
                         fields: vec![

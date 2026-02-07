@@ -29,10 +29,13 @@ contextBridge.exposeInMainWorld('api', {
     // App Lifecycle
     onCloseRequest: (callback) => ipcRenderer.on('app:closeRequest', callback),
     closeResponse: (choice) => ipcRenderer.send('app:closeResponse', choice),
+    // Bot Relaunch (when language changes)
+    onBotRelaunch: (callback) => ipcRenderer.on('bot:relaunch', (event, config) => callback(config)),
     // Status Update Events
     onStatusUpdate: (callback) => ipcRenderer.on('status:update', (event, data) => callback(data)),
     // Daemon Status
     daemonStatus: () => ipcRenderer.invoke('daemon:status'),
+    daemonRestart: () => ipcRenderer.invoke('daemon:restart'),
     // Window Controls (Title Bar)
     minimizeWindow: () => ipcRenderer.send('window:minimize'),
     maximizeWindow: () => ipcRenderer.send('window:maximize'),
@@ -43,5 +46,9 @@ contextBridge.exposeInMainWorld('api', {
 contextBridge.exposeInMainWorld('electron', {
     minimizeWindow: () => ipcRenderer.send('window:minimize'),
     maximizeWindow: () => ipcRenderer.send('window:maximize'),
-    closeWindow: () => ipcRenderer.send('window:close')
+    closeWindow: () => ipcRenderer.send('window:close'),
+    // Language settings
+    getLanguage: () => ipcRenderer.invoke('language:get'),
+    setLanguage: (language) => ipcRenderer.invoke('language:set', language),
+    getSystemLanguage: () => ipcRenderer.invoke('language:getSystem')
 });

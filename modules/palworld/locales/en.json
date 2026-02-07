@@ -1,0 +1,51 @@
+{
+  "errors": {
+    "failed_to_start": "Failed to start: {{error}}",
+    "no_pid_provided": "No PID provided",
+    "failed_to_kill": "Failed to kill process: {{error}}",
+    "failed_to_stop": "Failed to stop: {{error}}",
+    "daemon_connection_error": "Daemon connection error: {{error}}",
+    "invalid_json_response": "Invalid JSON response from daemon: {{error}}",
+    "daemon_error": "Daemon error: {{error}}",
+    "player_list_failed": "Failed to get player list: {{error}}",
+    "server_info_failed": "Failed to get server info: {{error}}"
+  },
+  "messages": {
+    "starting_server": "Starting server: {{command}}",
+    "working_directory": "Working directory: {{path}}",
+    "server_starting": "Palworld server starting with PID {{pid}}",
+    "shutdown_signal_sent": "Sent shutdown signal to PID {{pid}}",
+    "force_killed": "Force killed PID {{pid}}",
+    "signal_sent": "Sent signal {{signal}} to PID {{pid}}",
+    "no_process_running": "No process running",
+    "executing_command": "Executing command via daemon: {{command}} with args: {{args}}",
+    "daemon_rcon_response": "Daemon RCON response: {{result}}",
+    "broadcast_message": "Broadcast message: {{message}}",
+    "save_triggered": "Server save triggered",
+    "shutdown_initiated": "Server shutdown initiated ({{seconds}}s countdown)"
+  },
+  "rcon": {
+    "connecting": "Connecting to {{host}}:{{port}}...",
+    "connected": "Connected!",
+    "authentication_failed": "Authentication failed",
+    "authenticated": "Authenticated!",
+    "connection_failed": "Connection failed: {{error}}",
+    "sending_command": "Sending command: {{command}}",
+    "response_received": "Response received: {{response}}",
+    "command_failed": "Command failed: {{error}}",
+    "invalid_password": "Invalid password",
+    "receiving_response": "Receiving response...",
+    "partial_response": "Partial response received ({{bytes}} bytes)",
+    "response_complete": "Response complete ({{bytes}} bytes total)",
+    "closed": "RCON connection closed"
+  },
+  "commands": {
+    "info": "Server Info",
+    "showplayers": "Show Players",
+    "kick": "Kick Player",
+    "ban": "Ban Player",
+    "broadcast": "Broadcast Message",
+    "save": "Save World",
+    "shutdown": "Shutdown Server"
+  }
+}

@@ -16,6 +16,11 @@ import base64
 import urllib.request
 import urllib.error
 import urllib.parse
+from i18n import I18n
+
+# Initialize i18n
+MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+i18n = I18n(MODULE_DIR)
 
 # Daemon API endpoint (localhost by default)
 DAEMON_API_URL = os.environ.get('DAEMON_API_URL', 'http://127.0.0.1:57474')
@@ -39,23 +44,23 @@ class PalworldRconClient:
     def connect(self):
         """Connect to RCON server"""
         try:
-            print(f"[RCON] Connecting to {self.host}:{self.port}...", file=sys.stderr)
+            print(f"[RCON] {i18n.t('rcon.connecting', host=self.host, port=self.port)}", file=sys.stderr)
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.socket.settimeout(5)
             self.socket.connect((self.host, self.port))
-            print("[RCON] ✅ Connected!", file=sys.stderr)
+            print(f"[RCON] {i18n.t('rcon.connected')}", file=sys.stderr)
             
             # Authenticate
             if self.password:
-                print(f"[RCON] Authenticating...", file=sys.stderr)
+                print(f"[RCON] {i18n.t('rcon.authenticating')}...", file=sys.stderr)
                 if not self._authenticate(self.password):
-                    print("[RCON] ❌ Authentication failed", file=sys.stderr)
+                    print(f"[RCON] {i18n.t('rcon.authentication_failed')}", file=sys.stderr)
                     return False
-                print("[RCON] ✅ Authenticated!", file=sys.stderr)
+                print(f"[RCON] {i18n.t('rcon.authenticated')}", file=sys.stderr)
             
             return True
         except Exception as e:
-            print(f"[RCON] ❌ Connection failed: {e}", file=sys.stderr)
+            print(f"[RCON] {i18n.t('rcon.connection_failed', error=str(e))}", file=sys.stderr)
             return False
     
     def disconnect(self):
@@ -73,12 +78,12 @@ class PalworldRconClient:
                 if not self.connect():
                     return None
             
-            print(f"[RCON] Sending command: {command}", file=sys.stderr)
+            print(f"[RCON] {i18n.t('rcon.sending_command', command=command)}", file=sys.stderr)
             response = self._send_rcon_command(command)
-            print(f"[RCON] Response received: {response[:100] if response else 'None'}", file=sys.stderr)
+            print(f"[RCON] {i18n.t('rcon.response_received', response=response[:100] if response else 'None')}", file=sys.stderr)
             return response
         except Exception as e:
-            print(f"[RCON] ❌ Command failed: {e}", file=sys.stderr)
+            print(f"[RCON] {i18n.t('rcon.command_failed', error=str(e))}", file=sys.stderr)
             return None
     
     def _authenticate(self, password):
@@ -94,7 +99,7 @@ class PalworldRconClient:
             
             packet_id, packet_type, payload = response_packet
             if packet_id == -1:
-                print("[RCON] ❌ Invalid password", file=sys.stderr)
+                print(f"[RCON] {i18n.t('rcon.invalid_password')}", file=sys.stderr)
                 return False
             
             self.authenticated = True
@@ -366,8 +371,8 @@ def start(config):
         ]
         
         # Log for debugging (to stderr)
-        print(f"Starting server: {' '.join(cmd)}", file=sys.stderr)
-        print(f"Working directory: {working_dir}", file=sys.stderr)
+        print(i18n.t('messages.starting_server', command=' '.join(cmd)), file=sys.stderr)
+        print(i18n.t('messages.working_directory', path=working_dir), file=sys.stderr)
         
         # Start process (detached, cross-platform)
         if sys.platform == 'win32':
@@ -392,7 +397,7 @@ def start(config):
         return {
             "success": True,
             "pid": proc.pid,
-            "message": f"Palworld server starting with PID {proc.pid}"
+            "message": i18n.t('messages.server_starting', pid=proc.pid)
         }
     except Exception as e:
         import traceback
@@ -400,7 +405,7 @@ def start(config):
         print(f"Error details: {error_details}", file=sys.stderr)
         return {
             "success": False,
-            "message": f"Failed to start: {str(e)}"
+            "message": i18n.t('errors.failed_to_start', error=str(e))
         }
 
 def stop(config):

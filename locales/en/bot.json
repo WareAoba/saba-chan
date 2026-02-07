@@ -1,0 +1,88 @@
+{
+  "commands": {
+    "start": "Start server",
+    "stop": "Stop server",
+    "status": "Server status",
+    "restart": "Restart server"
+  },
+  "help": {
+    "title": "� Usage Guide",
+    "list": "Check server list",
+    "start": "Start server",
+    "stop": "Stop server",
+    "status": "Check server status",
+    "rest_command": "Execute REST command",
+    "help": "Show this help message",
+    "available_modules": "**Available modules:** {{modules}}",
+    "no_modules": "None",
+    "module_commands": "**Module commands:**{{commands}}",
+    "module_title": "**{{module}} Commands**",
+    "command_format": "Unknown command: \"{{command}}\" ({{resolved}})",
+    "available_commands": "{{commands}}"
+  },
+  "modules": {
+    "help_start": "Start server",
+    "help_stop": "Stop server",
+    "help_status": "Check server status",
+    "help_rest_title": "**REST Commands:**"
+  },
+  "list": {
+    "title": "🎮 **Server List**",
+    "empty": "📭 No servers registered",
+    "item": "• **{{name}}** ({{module}}) - {{status}} {{status_icon}}"
+  },
+  "status": {
+    "running": "🟢 Running",
+    "stopped": "⚪ Stopped"
+  },
+  "server": {
+    "start_request": "⏳ Starting **{{name}}** server...",
+    "start_complete": "✅ **{{name}}** start request completed!",
+    "stop_request": "⏳ Stopping **{{name}}** server...",
+    "stop_complete": "✅ **{{name}}** stop request completed!",
+    "status_check": "📊 **{{name}}** status: {{status}} {{pid_info}}",
+    "not_found": "❌ No server found for module \"{{alias}}\" ({{resolved}})",
+    "not_running": "❌ **{{name}}**: {{error}}",
+    "not_running_default": "Server is not running. Please start the server first"
+  },
+  "command": {
+    "executing": "⏳ **{{name}}** - `{{command}}` executing...",
+    "missing_required": "❌ Missing required argument: `{{arg_name}}`\nUsage: `{{prefix}} {{alias}} {{command}} <{{arg_name}}>`\nDescription: {{description}}",
+    "execute_complete": "📡 **{{name}}** - `{{command}}`\n{{response}}",
+    "execute_failed": "❌ **{{name}}** execution failed\n{{error}}",
+    "unknown_command": "❓ Unknown command: \"{{command}}\" ({{resolved}})",
+    "no_available": "❓ Unknown command: \"{{command}}\" ({{resolved}})"
+  },
+  "responses": {
+    "info_title": "**Server Info**",
+    "info_version": "• Version: {{version}}",
+    "info_name": "• Server name: {{name}}",
+    "info_description": "• Description: {{description}}",
+    "players_title": "**Connected Players ({{count}})**",
+    "players_empty": "No players currently connected",
+    "players_item": "• **{{name}}** - Lv.{{level}} ({{id}})",
+    "metrics_title": "**Server Metrics**",
+    "metrics_players": "• Current players: {{current}}/{{max}}",
+    "metrics_fps": "• Server FPS: {{fps}}",
+    "metrics_uptime": "• Uptime: {{uptime}} minutes",
+    "announce_success": "✅ Announcement sent",
+    "save_success": "✅ World saved",
+    "command_executed": "✅ Command executed",
+    "command_complete": "✅ Command executed successfully!"
+  },
+  "errors": {
+    "error_title": "Error executing command",
+    "unknown": "Unknown error",
+    "auth_failed": "Authentication failed",
+    "player_not_found": "Player not found",
+    "internal_server_error": "Internal server error",
+    "rest_api_disabled": "REST API disabled",
+    "rcon_disabled": "RCON disabled"
+  },
+  "messages": {
+    "server_started": "Server started successfully",
+    "server_stopped": "Server stopped",
+    "server_not_running": "Server is not running",
+    "command_error": "Error executing command"
+  }
+}

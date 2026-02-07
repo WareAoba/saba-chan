@@ -1,0 +1,51 @@
+{
+  "errors": {
+    "failed_to_start": "起動に失敗しました: {{error}}",
+    "no_pid_provided": "PID が指定されていません",
+    "failed_to_kill": "プロセスの終了に失敗しました: {{error}}",
+    "failed_to_stop": "停止に失敗しました: {{error}}",
+    "daemon_connection_error": "デーモン接続エラー: {{error}}",
+    "invalid_json_response": "デーモンからの無効な JSON 応答: {{error}}",
+    "daemon_error": "デーモンエラー: {{error}}",
+    "player_list_failed": "プレイヤーリストの取得に失敗しました: {{error}}",
+    "server_info_failed": "サーバー情報の取得に失敗しました: {{error}}"
+  },
+  "messages": {
+    "starting_server": "サーバーを起動しています: {{command}}",
+    "working_directory": "作業ディレクトリ: {{path}}",
+    "server_starting": "Palworld サーバーが PID {{pid}} で起動しています",
+    "shutdown_signal_sent": "PID {{pid}} にシャットダウンシグナルを送信しました",
+    "force_killed": "PID {{pid}} を強制終了しました",
+    "signal_sent": "PID {{pid}} にシグナル {{signal}} を送信しました",
+    "no_process_running": "実行中のプロセスがありません",
+    "executing_command": "デーモン経由でコマンドを実行しています: {{command}} (引数: {{args}})",
+    "daemon_rcon_response": "デーモン RCON レスポンス: {{result}}",
+    "broadcast_message": "ブロードキャストメッセージ: {{message}}",
+    "save_triggered": "サーバーセーブがトリガーされました",
+    "shutdown_initiated": "サーバーシャットダウンが開始されました ({{seconds}}秒カウントダウン)"
+  },
+  "rcon": {
+    "connecting": "{{host}}:{{port}} に接続中...",
+    "connected": "接続されました!",
+    "authentication_failed": "認証に失敗しました",
+    "authenticated": "認証されました!",
+    "connection_failed": "接続に失敗しました: {{error}}",
+    "sending_command": "コマンドを送信しています: {{command}}",
+    "response_received": "レスポンスを受信しました: {{response}}",
+    "command_failed": "コマンド失敗: {{error}}",
+    "invalid_password": "無効なパスワード",
+    "receiving_response": "レスポンスを受信中...",
+    "partial_response": "部分的なレスポンスを受信しました ({{bytes}} バイト)",
+    "response_complete": "レスポンス完了 (合計 {{bytes}} バイト)",
+    "closed": "RCON 接続が閉じられました"
+  },
+  "commands": {
+    "info": "サーバー情報",
+    "showplayers": "プレイヤーを表示",
+    "kick": "プレイヤーをキック",
+    "ban": "プレイヤーをバン",
+    "broadcast": "ブロードキャストメッセージ",
+    "save": "ワールドを保存",
+    "shutdown": "サーバーをシャットダウン"
+  }
+}
