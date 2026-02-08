@@ -20,7 +20,9 @@ async fn main() -> anyhow::Result<()> {
     let _cfg = config::GlobalConfig::load().ok();
 
     // Initialize supervisor with module loader
-    let supervisor = Arc::new(RwLock::new(supervisor::Supervisor::new("./modules")));
+    let modules_path = std::env::var("SABA_MODULES_PATH")
+        .unwrap_or_else(|_| "./modules".to_string());
+    let supervisor = Arc::new(RwLock::new(supervisor::Supervisor::new(&modules_path)));
     {
         let mut sup = supervisor.write().await;
         if let Err(e) = sup.initialize().await {

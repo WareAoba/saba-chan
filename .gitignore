@@ -14,7 +14,9 @@ electron_gui/node_modules/
 electron_gui/bin/
 electron_gui/build/
 electron_gui/dist/
+electron_gui/electron-dist/
 discord_bot/node_modules/
+
 
 # Environment files
 .env
@@ -52,6 +54,7 @@ __pycache__/
 *.exe
 !run-daemon.bat
 !start-all.bat
+/release-build/
 
 # Test coverage
 coverage/

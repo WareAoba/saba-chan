@@ -8,7 +8,13 @@ export default defineConfig({
   base: './',
   build: {
     outDir: 'build',
-    sourcemap: true,
+    sourcemap: false, // 프로덕션: sourcemap 비활성화
+    minify: 'terser',
+    rollupOptions: {
+      output: {
+        manualChunks: undefined,
+      },
+    },
   },
   server: {
     port: 5173,

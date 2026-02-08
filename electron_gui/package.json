@@ -15,7 +15,6 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@fluentui/react-icons": "^2.0.316",
     "axios": "^1.4.0",
     "i18next": "^25.8.4",
     "i18next-browser-languagedetector": "^8.2.0",
@@ -34,6 +33,7 @@
     "electron": "^28.0.0",
     "electron-builder": "^24.0.0",
     "jsdom": "^25.0.1",
+    "terser": "^5.46.0",
     "vite": "^6.0.7",
     "vitest": "^2.1.8",
     "wait-on": "^7.2.0"
@@ -54,45 +54,74 @@
     "appId": "com.saba-chan.app",
     "productName": "Saba-chan",
     "directories": {
-      "output": "dist"
+      "output": "electron-dist"
     },
     "files": [
       "build/**/*",
       "main.js",
       "preload.js",
-      "package.json"
+      "package.json",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,*.map,test,tests,coverage,*.ts,*.d.ts,*.test.js,*.spec.js}",
+      "!**/node_modules/**/*.{md,map,test.js,spec.js}",
+      "!**/node_modules/.bin",
+      "!build/**/*.{map,test.js,spec.js}"
     ],
     "extraFiles": [
       {
-        "from": "bin",
-        "to": "bin"
-      }
-    ],
-    "extraResources": [
-      {
-        "from": "../modules",
-        "to": "modules"
+        "from": "../target/release/core_daemon.exe",
+        "to": "."
       },
       {
-        "from": "../instances.json",
-        "to": "instances.json"
+        "from": "../config",
+        "to": "config"
+      },
+      {
+        "from": "../locales",
+        "to": "locales"
       },
       {
         "from": "../discord_bot",
         "to": "discord_bot",
         "filter": [
           "**/*",
+          "!node_modules/**/{*.map,*.d.ts,*.ts,test,tests,coverage,CHANGELOG.md,README.md,LICENSE,AUTHORS}",
+          "!node_modules/**/{package.json.orig,npm-shrinkwrap.json,yarn.lock}",
+          "!node_modules/.bin/**",
+          "!node_modules/.package-lock.json",
+          "!.git",
+          "!.github",
+          "!.eslintrc*",
+          "!.prettierrc*",
           "!.env",
-          "!test/**/*"
+          "!.env.example",
+          "!*.test.js",
+          "!*.spec.js"
         ]
       }
     ],
-    "asarUnpack": [
-      "bin/**/*"
+    "extraResources": [
     ],
+    "asar": true,
+    "asarUnpack": [],
     "win": {
-      "target": "portable",
-      "icon": "public/icon.png"
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "public/icon.png",
+      "certificateFile": null,
+      "certificatePassword": null
+    },
+    "portable": {
+      "artifactName": "${productName}.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
     }
   }
 }

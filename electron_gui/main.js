@@ -13,13 +13,92 @@ axios.defaults.timeout = 1200;
 let mainWindow;
 let daemonProcess = null;
 let daemonStartedByApp = false;
+let settings = null;
 let tray = null;
 let translations = {}; // 번역 객체 캐시
+
+// ========== 로그 시스템 ==========
+let logStream = null;
+let logFilePath = null;
+let isShuttingDown = false;
+
+function initLogger() {
+    const logsDir = path.join(app.getPath('userData'), 'logs');
+    if (!fs.existsSync(logsDir)) {
+        fs.mkdirSync(logsDir, { recursive: true });
+    }
+    
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    logFilePath = path.join(logsDir, `saba-chan-${timestamp}.log`);
+    
+    logStream = fs.createWriteStream(logFilePath, { flags: 'a' });
+    
+    console.log('='.repeat(60));
+    console.log(`Log file: ${logFilePath}`);
+    console.log('='.repeat(60));
+    
+    // console.log, console.error 오버라이드
+    const originalLog = console.log;
+    const originalError = console.error;
+    
+    console.log = function(...args) {
+        const message = args.map(arg => 
+            typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+        ).join(' ');
+        const timestamp = new Date().toISOString();
+        const logMessage = `[${timestamp}] [LOG] ${message}\n`;
+        
+        if (logStream && !logStream.destroyed && !isShuttingDown) {
+            logStream.write(logMessage);
+        }
+        originalLog.apply(console, args);
+    };
+    
+    console.error = function(...args) {
+        const message = args.map(arg => 
+            typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+        ).join(' ');
+        const timestamp = new Date().toISOString();
+        const logMessage = `[${timestamp}] [ERROR] ${message}\n`;
+        
+        if (logStream && !logStream.destroyed && !isShuttingDown) {
+            logStream.write(logMessage);
+        }
+        originalError.apply(console, args);
+    };
+    
+    // 예외 처리
+    process.on('uncaughtException', (error) => {
+        console.error('Uncaught Exception:', error);
+    });
+    
+    process.on('unhandledRejection', (reason, promise) => {
+        console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    });
+}
+
+function closeLogger() {
+    isShuttingDown = true;
+    if (logStream && !logStream.destroyed) {
+        logStream.end();
+    }
+}
+// ========================================
+
+function getLocalesPath() {
+    if (!app.isPackaged) {
+        return path.join(__dirname, '..', 'locales');
+    } else {
+        // 배포판: Temp 폴더의 루트에 locales 폴더
+        return path.join(path.dirname(app.getPath('exe')), 'locales');
+    }
+}
 
 // 번역 파일 로드 (메인 프로세스용)
 function loadTranslations() {
     const lang = getLanguage();
-    const commonPath = path.join(__dirname, '..', 'locales', lang, 'common.json');
+    const localesPath = getLocalesPath();
+    const commonPath = path.join(localesPath, lang, 'common.json');
     try {
         if (fs.existsSync(commonPath)) {
             return JSON.parse(fs.readFileSync(commonPath, 'utf8'));
@@ -28,7 +107,7 @@ function loadTranslations() {
         console.error('Failed to load translations:', error);
     }
     // Fallback to English
-    const fallbackPath = path.join(__dirname, '..', 'locales', 'en', 'common.json');
+    const fallbackPath = path.join(localesPath, 'en', 'common.json');
     try {
         return JSON.parse(fs.readFileSync(fallbackPath, 'utf8'));
     } catch (error) {
@@ -189,51 +268,70 @@ function saveSettings(settings) {
 
 // Core Daemon 시작
 function startDaemon() {
-    // Electron 포터블 exe 내에서는 bin 폴더에 binary 포함
     const isDev = !app.isPackaged;
-    let daemonPath;
-    let projectRoot;
-    
-    // 플랫폼별 실행 파일 이름
     const daemonFileName = process.platform === 'win32' ? 'core_daemon.exe' : 'core_daemon';
     
+    console.log('\n========== CORE DAEMON STARTUP ==========');
+    console.log('[Daemon] isDev:', isDev);
+    console.log('[Daemon] app.isPackaged:', app.isPackaged);
+    
+    // 루트 디렉토리 + 데몬 경로 결정
+    let rootDir, daemonPath;
+    
     if (isDev) {
-        // 개발 환경: electron_gui/bin 폴더
-        daemonPath = path.join(__dirname, 'bin', daemonFileName);
-        projectRoot = path.join(__dirname, '..');
+        // 개발: target/release/core_daemon.exe
+        rootDir = path.join(__dirname, '..');
+        daemonPath = path.join(rootDir, 'target', 'release', daemonFileName);
+        console.log('[Daemon] [DEV] rootDir:', rootDir);
+        console.log('[Daemon] [DEV] daemonPath:', daemonPath);
     } else {
-        // 패키징된 앱: win-unpacked/bin 폴더
-        const appDir = path.dirname(app.getPath('exe'));
-        daemonPath = path.join(appDir, 'bin', daemonFileName);
-        projectRoot = path.join(appDir, 'resources');  // resources 폴더 (modules 폴더가 여기 있음)
+        // 프로덕션: exe 디렉토리의 core_daemon.exe
+        rootDir = path.dirname(app.getPath('exe'));
+        daemonPath = path.join(rootDir, daemonFileName);
+        console.log('[Daemon] [PROD] exe:', app.getPath('exe'));
+        console.log('[Daemon] [PROD] rootDir:', rootDir);
+        console.log('[Daemon] [PROD] daemonPath:', daemonPath);
     }
     
-    console.log('Starting Core Daemon:', daemonPath);
-    console.log('Is Packaged:', !isDev);
-    console.log('Project Root:', projectRoot);
+    console.log('[Daemon] exists?:', fs.existsSync(daemonPath));
+    
+    // 루트 디렉토리 내용 확인
+    try {
+        const files = fs.readdirSync(rootDir);
+        console.log('[Daemon] rootDir contents:', files.slice(0, 20).join(', '));
+    } catch (e) {
+        console.error('[Daemon] Cannot read rootDir:', e.message);
+    }
+    console.log('========================================\n');
     
     if (!fs.existsSync(daemonPath)) {
-        console.error('Core Daemon executable not found at:', daemonPath);
+        console.error('[Daemon] NOT FOUND:', daemonPath);
         return;
     }
     
-    // 언어 설정 가져오기
     const currentLanguage = getLanguage();
-    console.log(`Starting daemon with language: ${currentLanguage}`);
+    
+    const daemonEnv = {
+        ...process.env, 
+        RUST_LOG: 'info',
+        SABA_LANG: currentLanguage,
+        SABA_INSTANCES_PATH: path.join(rootDir, 'config', 'instances.json'),
+        SABA_MODULES_PATH: (settings && settings.modulesPath) || path.join(rootDir, 'modules')
+    };
+    
+    console.log('[Daemon] Environment variables:');
+    console.log('[Daemon] SABA_INSTANCES_PATH:', daemonEnv.SABA_INSTANCES_PATH);
+    console.log('[Daemon] SABA_MODULES_PATH:', daemonEnv.SABA_MODULES_PATH);
     
     daemonProcess = spawn(daemonPath, [], {
-        cwd: projectRoot,  // 프로젝트 루트에서 실행하여 "./modules" 경로가 올바르게 작동
-        env: { 
-            ...process.env, 
-            RUST_LOG: 'info',
-            SABA_LANG: currentLanguage  // Python 모듈에 언어 설정 전달
-        },
+        cwd: rootDir,
+        env: daemonEnv,
         stdio: ['ignore', 'pipe', 'pipe'],
-        detached: false  // Electron 프로세스에 연결되어 있으므로 자동으로 종료됨
+        detached: false
     });
     daemonStartedByApp = true;
     
-    console.log(`Daemon process spawned with PID: ${daemonProcess.pid}`);
+    console.log('[Daemon] spawned with PID:', daemonProcess.pid);
     
     // stdout/stderr 이벤트 핸들 (stdio가 'pipe'가 아니면 건너뜀)
     if (daemonProcess.stdout) {
@@ -369,6 +467,10 @@ async function cleanQuit() {
         }
         
         console.log('Clean quit sequence completed');
+        
+        // 로거 종료
+        closeLogger();
+        
         app.quit();
         
     } catch (error) {
@@ -499,6 +601,17 @@ function createWindow() {
         mainWindow.loadFile(path.join(__dirname, 'build', 'index.html'));
     }
     
+    // F12로 DevTools 열기 (프로덕션에서도 디버깅 가능)
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+        if (input.key === 'F12') {
+            mainWindow.webContents.toggleDevTools();
+        }
+        // Ctrl+Shift+I (Windows/Linux) 또는 Cmd+Option+I (Mac)
+        if ((input.control || input.meta) && input.shift && input.key === 'I') {
+            mainWindow.webContents.toggleDevTools();
+        }
+    });
+    
     // 메뉴바 제거
     mainWindow.removeMenu();
 }
@@ -623,6 +736,18 @@ function updateTrayMenu() {
 }
 
 app.on('ready', () => {
+    // 로거 초기화 (가장 먼저)
+    initLogger();
+    console.log('Saba-chan starting...');
+    console.log('App version:', app.getVersion());
+    console.log('Electron version:', process.versions.electron);
+    console.log('Node version:', process.versions.node);
+    console.log('Platform:', process.platform);
+    console.log('isPackaged:', app.isPackaged);
+    
+    // 설정 미리 로드 (데몬 시작 전에)
+    settings = loadSettings();
+    
     // 번역 초기화
     translations = loadTranslations();
     
@@ -1152,6 +1277,7 @@ ipcMain.handle('daemon:restart', async () => {
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
         console.log('Starting daemon...');
+        settings = loadSettings();
         startDaemon();
         // 데몬이 시작될 때까지 잠시 대기
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -1282,35 +1408,57 @@ ipcMain.handle('discord:start', async (event, config) => {
         return { error: 'Bot is already running' };
     }
 
-    const botPath = path.join(__dirname, '..', 'discord_bot');
-    const indexPath = path.join(botPath, 'index.js');
+    // 패키징 여부에 따라 경로 결정
+    const isDev = !app.isPackaged;
+    let botPath, indexPath;
+    
+    if (isDev) {
+        // 개발 환경: electron_gui/../discord_bot
+        botPath = path.join(__dirname, '..', 'discord_bot');
+        indexPath = path.join(botPath, 'index.js');
+    } else {
+        // 패키징된 앱: exe와 같은 디렉토리 레벨의 discord_bot
+        const appDir = path.dirname(app.getPath('exe'));
+        botPath = path.join(appDir, 'discord_bot');
+        indexPath = path.join(botPath, 'index.js');
+    }
+    
+    console.log('[Discord Bot] isDev:', isDev);
+    console.log('[Discord Bot] app.getPath(exe):', app.getPath('exe'));
+    console.log('[Discord Bot] botPath:', botPath);
+    console.log('[Discord Bot] indexPath:', indexPath);
+    console.log('[Discord Bot] exists?:', fs.existsSync(indexPath));
 
     if (!fs.existsSync(indexPath)) {
         return { error: `Bot script not found: ${indexPath}` };
     }
 
-    // 현재 설정을 저장 (AppData와 discord_bot 폴더 모두)
+    // 설정을 discord_bot 폴더에 저장
     const configToSave = {
         prefix: config.prefix || '!saba',
         moduleAliases: config.moduleAliases || {},
         commandAliases: config.commandAliases || {}
     };
     
-    // AppData에 저장
-    saveBotConfig(configToSave);
-    
-    // discord_bot 폴더에도 저장
+    // discord_bot/bot-config.json에 저장 (봇이 직접 읽음)
     const localConfigPath = path.join(botPath, 'bot-config.json');
     try {
         fs.writeFileSync(localConfigPath, JSON.stringify(configToSave, null, 2), 'utf8');
+        console.log('[Discord Bot] Config saved to:', localConfigPath);
     } catch (e) {
         return { error: `Failed to write bot config: ${e.message}` };
     }
+    
+    // GUI용으로도 AppData에 백업 저장
+    saveBotConfig(configToSave);
 
     try {
-        // AppData 설정 경로를 환경 변수로 전달
-        const appDataConfigPath = getBotConfigPath();
         const currentLanguage = getLanguage();
+        
+        console.log('[Discord Bot] Starting with:');
+        console.log('  - botPath:', botPath);
+        console.log('  - indexPath:', indexPath);
+        console.log('  - configPath:', localConfigPath);
         
         discordBotProcess = spawn('node', [indexPath], {
             cwd: botPath,
@@ -1318,8 +1466,7 @@ ipcMain.handle('discord:start', async (event, config) => {
                 ...process.env, 
                 DISCORD_TOKEN: config.token, 
                 IPC_BASE: IPC_BASE,
-                BOT_CONFIG_PATH: appDataConfigPath,
-                SABA_LANG: currentLanguage  // Discord bot에 언어 설정 전달
+                SABA_LANG: currentLanguage
             },
             stdio: ['ignore', 'pipe', 'pipe']
         });
@@ -1375,6 +1522,21 @@ ipcMain.handle('botConfig:load', async () => {
     return loadBotConfig();
 });
 
+// 로그 파일 경로 반환
+ipcMain.handle('logs:getPath', async () => {
+    return logFilePath || '로그 파일 없음';
+});
+
+// 로그 폴더 열기
+ipcMain.handle('logs:openFolder', async () => {
+    const logsDir = path.join(app.getPath('userData'), 'logs');
+    if (fs.existsSync(logsDir)) {
+        require('electron').shell.openPath(logsDir);
+        return { success: true };
+    }
+    return { error: '로그 폴더가 없습니다' };
+});
+
 ipcMain.handle('botConfig:save', async (event, config) => {
     try {
         const configToSave = {
@@ -1383,22 +1545,28 @@ ipcMain.handle('botConfig:save', async (event, config) => {
             commandAliases: config.commandAliases || {}
         };
         
-        // 1. AppData에 저장
-        const success = saveBotConfig(configToSave);
-        if (!success) {
-            return { error: 'Failed to save bot config to AppData' };
+        // 1. discord_bot 폴더에 저장 (메인 저장소)
+        const isDev = !app.isPackaged;
+        let botPath;
+        
+        if (isDev) {
+            botPath = path.join(__dirname, '..', 'discord_bot');
+        } else {
+            const appDir = path.dirname(app.getPath('exe'));
+            botPath = path.join(appDir, 'discord_bot');
         }
         
-        // 2. discord_bot 폴더에도 복사 (봇이 직접 읽을 수 있도록)
-        const botPath = path.join(__dirname, '..', 'discord_bot');
         const botConfigPath = path.join(botPath, 'bot-config.json');
         
         try {
             fs.writeFileSync(botConfigPath, JSON.stringify(configToSave, null, 2), 'utf8');
-            console.log('Bot config also saved to:', botConfigPath);
+            console.log('Bot config saved to:', botConfigPath);
         } catch (fileError) {
-            console.warn('Failed to save bot config to discord_bot folder:', fileError.message);
+            return { error: `Failed to save to discord_bot folder: ${fileError.message}` };
         }
+        
+        // 2. AppData에도 백업 (GUI 로드용)
+        saveBotConfig(configToSave);
         
         return { success: true, message: 'Bot config saved' };
     } catch (error) {

@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import './Modals.css';
-import {
-    Lightbulb24Regular
-} from '@fluentui/react-icons';
+import { Icon } from '../Icon';
 
 function BackgroundModal({ isOpen, onClose }) {
     const { t } = useTranslation('gui');
@@ -140,7 +138,7 @@ function BackgroundModal({ isOpen, onClose }) {
                 )}
 
                 <div className="background-info-box">
-                    <h4><Lightbulb24Regular /> {t('background_modal.about_title')}</h4>
+                    <h4><Icon name="lightbulb" size="sm" style={{ marginRight: '8px' }} /> {t('background_modal.about_title')}</h4>
                     <p>{t('background_modal.about_description')}</p>
                     <p className="info-note">
                         {t('background_modal.about_note')}

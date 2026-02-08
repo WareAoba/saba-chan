@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld('api', {
     // Bot Config API
     botConfigLoad: () => ipcRenderer.invoke('botConfig:load'),
     botConfigSave: (config) => ipcRenderer.invoke('botConfig:save', config),
+    // Logs API
+    logsGetPath: () => ipcRenderer.invoke('logs:getPath'),
+    logsOpenFolder: () => ipcRenderer.invoke('logs:openFolder'),
     // App Lifecycle
     onCloseRequest: (callback) => ipcRenderer.on('app:closeRequest', callback),
     closeResponse: (choice) => ipcRenderer.send('app:closeResponse', choice),

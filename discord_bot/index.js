@@ -1,4 +1,4 @@
-require('dotenv').config();
+// require('dotenv').config();  // GUI에서 환경 변수로 전달하므로 불필요
 const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const axios = require('axios');
 const fs = require('fs');

@@ -387,6 +387,15 @@ function App() {
         }
     }, [settingsReady, autoRefresh, refreshInterval]);
 
+    // modulesPath 변경 시 저장
+    useEffect(() => {
+        // 초기 로드 완료 전에는 저장하지 않음
+        if (!settingsReady || !settingsPath || !modulesPath) return;
+        
+        console.log('[Settings] Modules path changed, saving...', modulesPath);
+        saveCurrentSettings();
+    }, [modulesPath]);
+
     // discordPrefix 변경 시 bot config 저장
     useEffect(() => {
         // 초기 로드 완료 전에는 저장하지 않음
