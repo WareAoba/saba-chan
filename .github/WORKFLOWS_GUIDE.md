@@ -35,7 +35,7 @@
 ### 3. **quick-test.yml** - 빠른 테스트
 **트리거**:
 - `main` 외 브랜치에 push
-- `electron_gui/`, `discord_bot/` 경로 변경 시
+- `saba-chan-gui/`, `discord_bot/` 경로 변경 시
 
 **실행 내용**:
 - ⚡ JavaScript 테스트만 실행 (Rust 제외)
@@ -63,7 +63,7 @@
 
 ### 개발 중 (feature 브랜치)
 ```
-electron_gui/ 수정 → quick-test.yml (3분)
+saba-chan-gui/ 수정 → quick-test.yml (3분)
 discord_bot/ 수정 → quick-test.yml (3분)
 src/ 수정 → test.yml (15분)
 ```
@@ -117,14 +117,14 @@ CODECOV_TOKEN=your-token-here  (선택사항)
 ```powershell
 cargo build --release
 cargo test --test daemon_integration
-cd electron_gui && npm test
+cd saba-chan-gui && npm test
 cd discord_bot && npm test
 ```
 
 ### 커버리지 (coverage.yml)
 ```powershell
 cargo tarpaulin --test daemon_integration --out Xml
-cd electron_gui && npm test -- --coverage
+cd saba-chan-gui && npm test -- --coverage
 cd discord_bot && npm test -- --coverage
 ```
 

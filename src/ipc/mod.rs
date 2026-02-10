@@ -145,22 +145,26 @@ async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
     let instances = supervisor.instance_store.list();
     let mut servers = Vec::new();
     
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
     for instance in instances {
-        // ProcessTracker에서 PID 확인
+        // ProcessTracker에서 PID 및 시작 시간 확인
         let pid = supervisor.tracker.get_pid(&instance.id).ok();
-        let status = if pid.is_some() {
-            "running".to_string()
+        let (status, uptime_seconds) = if let Some(pid) = pid {
+            // 실행 중이면 시작 시간으로부터 경과 초 계산
+            let start_time = supervisor.tracker.get_start_time(&instance.id).ok();
+            let uptime = start_time.map(|t| now.saturating_sub(t));
+            ("running".to_string(), uptime)
         } else {
-            "stopped".to_string()
+            ("stopped".to_string(), None)
         };
-        
         servers.push(ServerInfo {
             id: instance.id.clone(),
             name: instance.name.clone(),
             module: instance.module_name.clone(),
             status,
             pid,
-            uptime_seconds: None,
+            uptime_seconds,
             executable_path: instance.executable_path.clone(),
             port: instance.port,
             rcon_port: instance.rcon_port,

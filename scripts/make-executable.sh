@@ -6,7 +6,7 @@
 chmod +x start-all.sh
 chmod +x run-daemon.sh
 chmod +x discord_bot/run-bot.sh
-chmod +x electron_gui/run-gui.sh
+chmod +x saba-chan-gui/run-gui.sh
 
 echo "✓ All scripts are now executable"
 echo ""

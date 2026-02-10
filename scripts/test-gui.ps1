@@ -31,7 +31,7 @@ if (-not (Test-Path $DaemonPath)) {
 Write-Host "[1/1] Running Electron GUI Tests..." -ForegroundColor Yellow
 Write-Host ""
 
-Push-Location electron_gui
+Push-Location saba-chan-gui
 
 # npm install 확인
 if (-not (Test-Path "node_modules")) {

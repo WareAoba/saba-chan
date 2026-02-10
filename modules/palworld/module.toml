@@ -131,24 +131,6 @@ rcon_template = "ShowPlayers"
 inputs = []
 
 [[commands.fields]]
-name = "metrics"
-label = "서버 통계"
-description = "서버 성능 통계 (REST 전용)"
-method = "rest"
-http_method = "GET"
-endpoint_template = "/v1/api/metrics"
-inputs = []
-
-[[commands.fields]]
-name = "settings"
-label = "서버 설정"
-description = "서버 설정 조회 (REST 전용)"
-method = "rest"
-http_method = "GET"
-endpoint_template = "/v1/api/settings"
-inputs = []
-
-[[commands.fields]]
 name = "save"
 label = "월드 저장"
 description = "게임 월드 저장"

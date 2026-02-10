@@ -13,7 +13,7 @@ $PassedTests = 0
 # ===== 1. Electron GUI 테스트 =====
 Write-Host "[1/2] Electron GUI Tests..." -ForegroundColor Yellow
 
-Push-Location electron_gui
+Push-Location saba-chan-gui
 $GuiOutput = npm test integration.test.js 2>&1
 $GuiExitCode = $LASTEXITCODE
 Pop-Location

@@ -65,7 +65,7 @@ Write-Host "━━━━━━━━━━━━━━━━━━━━━━�
 
 $GuiStart = Get-Date
 
-Push-Location electron_gui
+Push-Location saba-chan-gui
 
 if (-not (Test-Path "node_modules")) {
     Write-Host "Installing dependencies..." -ForegroundColor Yellow

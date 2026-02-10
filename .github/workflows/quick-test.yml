@@ -4,7 +4,7 @@ on:
   push:
     branches-ignore: [ main ]
     paths:
-      - 'electron_gui/**'
+      - 'saba-chan-gui/**'
       - 'discord_bot/**'
 
 jobs:
@@ -23,11 +23,11 @@ jobs:
           node-version: '18'
           cache: 'npm'
           cache-dependency-path: |
-            electron_gui/package-lock.json
+            saba-chan-gui/package-lock.json
             discord_bot/package-lock.json
 
       - name: Install Electron GUI dependencies
-        working-directory: electron_gui
+        working-directory: saba-chan-gui
         shell: bash
         run: |
           rm -rf node_modules
@@ -41,7 +41,7 @@ jobs:
           npm ci
 
       - name: Run Electron GUI Tests
-        working-directory: electron_gui
+        working-directory: saba-chan-gui
         run: npm test -- --watchAll=false
 
       - name: Run Discord Bot Tests

@@ -5,21 +5,19 @@
   },
   "commandAliases": {
     "palworld": {
-      "broadcast": "",
+      "announce": "공지",
+      "ban": "밴",
       "info": "정보",
+      "kick": "강퇴",
+      "players": "상태",
       "save": "저장",
-      "say": "말",
       "shutdown": "종료",
       "start": "시작,실행",
       "status": "",
       "stop": "정지",
-      "announce": "공지",
-      "players": "상태",
+      "unban": "밴해제",
       "metrics": "",
-      "settings": "",
-      "kick": "강퇴",
-      "ban": "밴",
-      "unban": "밴해제"
+      "settings": ""
     }
   }
 }

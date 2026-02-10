@@ -70,7 +70,7 @@ cargo build --release
 .\target\release\core_daemon.exe
 
 # 2. 별도 터미널에서 GUI 앱 실행
-cd electron_gui
+cd saba-chan-gui
 npm start
 
 # 3. GUI에서 수동 테스트:

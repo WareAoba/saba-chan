@@ -34,7 +34,7 @@ jobs:
       - name: Install dependencies
         shell: bash
         run: |
-          cd electron_gui && rm -rf node_modules && npm ci
+          cd saba-chan-gui && rm -rf node_modules && npm ci
           cd ../discord_bot && rm -rf node_modules && npm ci
 
       - name: Generate Rust coverage
@@ -42,7 +42,7 @@ jobs:
 
       - name: Generate JavaScript coverage
         run: |
-          cd electron_gui && npm test -- --coverage --coverageDirectory=../coverage/gui
+          cd saba-chan-gui && npm test -- --coverage --coverageDirectory=../coverage/gui
           cd ../discord_bot && npm test -- --coverage --coverageDirectory=../coverage/bot
 
       - name: Upload coverage to Codecov

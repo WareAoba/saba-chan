@@ -56,7 +56,7 @@ finally {
 # Build GUI
 Write-Host "[3/5] Building Electron GUI..." -ForegroundColor Yellow
 try {
-    Push-Location (Join-Path $ProjectRoot "electron_gui")
+    Push-Location (Join-Path $ProjectRoot "saba-chan-gui")
     
     # Clean all build directories
     @("dist", "build", "electron-dist") | ForEach-Object {

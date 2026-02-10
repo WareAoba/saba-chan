@@ -10,13 +10,18 @@ yarn-error.log*
 package-lock.json
 
 # Electron
-electron_gui/node_modules/
-electron_gui/bin/
-electron_gui/build/
-electron_gui/dist/
-electron_gui/electron-dist/
+saba-chan-gui/node_modules/
+saba-chan-gui/bin/
+saba-chan-gui/build/
+saba-chan-gui/dist/
+saba-chan-gui/electron-dist/
 discord_bot/node_modules/
 
+# CLI
+saba-chan-cli/target/
+saba-chan-cli/Cargo.lock
+saba-chan-cli/.rustc_info.json
+saba-chan-cli/cargo.lock
 
 # Environment files
 .env
@@ -60,7 +65,7 @@ __pycache__/
 coverage/
 *.profraw
 *.profdata
-electron_gui/coverage/
+saba-chan-gui/coverage/
 discord_bot/coverage/
 
 # GitHub Actions

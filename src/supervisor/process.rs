@@ -44,6 +44,20 @@ impl Default for ProcessTracker {
 }
 
 impl ProcessTracker {
+        /// Get start_time by server name
+        pub fn get_start_time(&self, server_name: &str) -> Result<u64, ProcessError> {
+            let processes = match self.processes.lock() {
+                Ok(p) => p,
+                Err(e) => {
+                    tracing::error!("Failed to acquire ProcessTracker lock: {}", e);
+                    return Err(ProcessError::NotFound { pid: 0 });
+                }
+            };
+            processes
+                .get(server_name)
+                .map(|p| p.start_time)
+                .ok_or(ProcessError::NotFound { pid: 0 })
+        }
     pub fn new() -> Self {
         Self::default()
     }

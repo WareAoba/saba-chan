@@ -1,0 +1,83 @@
+{
+  "welcome": "saba-chan CLI — 'help'でコマンド確認、Ctrl+Cで終了。",
+  "unknown_command": "不明なコマンド '{{cmd}}'。'help'を入力してください。",
+  "status": {
+    "daemon_running": "実行中",
+    "daemon_offline": "オフライン",
+    "bot_running": "実行中",
+    "bot_offline": "オフライン",
+    "bot_no_token": "トークンなし",
+    "servers": "サーバー"
+  },
+  "auto_start": {
+    "daemon": "デーモン自動起動中...",
+    "bot": "Discordボット自動起動中...",
+    "bot_skipped": "ボットスキップ — Discordトークンが設定されていません。",
+    "daemon_timeout": "デーモンが10秒以内に応答しません"
+  },
+  "help": {
+    "header": "コマンド:",
+    "server": "server  [list|start|stop|restart|status] <名前>",
+    "module": "module  [list|reload]",
+    "daemon": "daemon  [start|stop]",
+    "bot": "bot     [start|stop|token|prefix]",
+    "config": "config  [show|set|get|reset] <キー> <値>",
+    "exec": "exec    <id> [cmd|rcon|rest] <コマンド>",
+    "config_desc": "CLI設定管理",
+    "help_desc": "このヘルプ",
+    "exit_desc": "終了 (Ctrl+C)",
+    "module_shortcuts": "モジュールショートカット:"
+  },
+  "config_cmd": {
+    "title": "設定:",
+    "token_set": "設定済",
+    "token_not_set": "未設定",
+    "current_settings": "現在の設定:",
+    "set_ok": "'{{key}}' = '{{value}}' に設定",
+    "get_value": "{{key}} = {{value}}",
+    "key_not_found": "不明な設定キー '{{key}}'",
+    "reset_ok": "'{{key}}' をデフォルトにリセット",
+    "available_keys": "利用可能な設定キー:",
+    "saved": "設定を保存しました。"
+  },
+  "token_cmd": {
+    "current": "現在のトークン: {{token}}",
+    "set_ok": "Discordトークンが更新されました。",
+    "cleared": "Discordトークンが削除されました。",
+    "not_set": "Discordトークンが設定されていません。使い方: bot token set <TOKEN>"
+  },
+  "server_cmd": {
+    "no_servers": "サーバーが設定されていません。",
+    "servers_count": "{{count}}台のサーバー:",
+    "started": "起動",
+    "stopped": "停止",
+    "restarted": "サーバー再起動",
+    "not_found": "サーバー '{{name}}' が見つかりません",
+    "no_instance": "モジュール '{{module}}' にサーバーインスタンスがありません。GUIで作成してください。",
+    "multiple_instances": "{{module}}に{{count}}個のインスタンスがあります — 最初のものを使用:"
+  },
+  "module_cmd": {
+    "no_modules": "モジュールがロードされていません。",
+    "modules_count": "{{count}}個のモジュール:",
+    "reloaded": "モジュール再読み込み完了",
+    "commands_header": "{{display}} ({{name}}) コマンド:",
+    "cmd_start": "サーバー起動",
+    "cmd_stop": "サーバー停止",
+    "cmd_restart": "サーバー再起動",
+    "cmd_status": "サーバー状態",
+    "unknown_cmd": "モジュール '{{module}}' に '{{cmd}}' コマンドがありません。'{{module}}'を入力するとコマンド一覧を確認できます。"
+  },
+  "daemon_cmd": {
+    "already_running": "デーモンは既に実行中です",
+    "started": "デーモン起動",
+    "not_running": "デーモンは実行していません",
+    "stopped": "デーモン停止",
+    "modules_label": "モジュール",
+    "instances_label": "インスタンス"
+  },
+  "bot_cmd": {
+    "already_running": "Discordボットは既に実行中です",
+    "started": "Discordボット起動 (プレフィックス: {{prefix}})",
+    "stopped": "Discordボット停止"
+  }
+}

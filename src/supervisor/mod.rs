@@ -19,9 +19,9 @@ pub struct Supervisor {
 
 impl Supervisor {
     pub fn new(modules_dir: &str) -> Self {
-        // instances.json은 config 폴더 안에 위치 (상대 경로: ./config/instances.json)
+        // instances.json은 프로젝트 루트에 위치 (상대 경로: ./instances.json)
         let instances_path = std::env::var("SABA_INSTANCES_PATH")
-            .unwrap_or_else(|_| "./config/instances.json".to_string());
+            .unwrap_or_else(|_| "./instances.json".to_string());
         
         Self {
             tracker: ProcessTracker::new(),

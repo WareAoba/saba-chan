@@ -56,10 +56,10 @@ Write-Host "----------------------------------------" -ForegroundColor Gray
 
 # ===== 2. Electron GUI 통합 테스트 =====
 Write-Host "[2/3] Running Electron GUI Integration Tests..." -ForegroundColor Yellow
-Write-Host "      Location: electron_gui/src/test/integration.test.js" -ForegroundColor Gray
+Write-Host "      Location: saba-chan-gui/src/test/integration.test.js" -ForegroundColor Gray
 Write-Host ""
 
-Push-Location electron_gui
+Push-Location saba-chan-gui
 
 # npm install 확인
 if (-not (Test-Path "node_modules")) {

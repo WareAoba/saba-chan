@@ -315,7 +315,7 @@ function startDaemon() {
         ...process.env, 
         RUST_LOG: 'info',
         SABA_LANG: currentLanguage,
-        SABA_INSTANCES_PATH: path.join(rootDir, 'config', 'instances.json'),
+        SABA_INSTANCES_PATH: path.join(rootDir, 'instances.json'),
         SABA_MODULES_PATH: (settings && settings.modulesPath) || path.join(rootDir, 'modules')
     };
     
@@ -1417,7 +1417,7 @@ ipcMain.handle('discord:start', async (event, config) => {
     let botPath, indexPath;
     
     if (isDev) {
-        // 개발 환경: electron_gui/../discord_bot
+        // 개발 환경: saba-chan-gui/../discord_bot
         botPath = path.join(__dirname, '..', 'discord_bot');
         indexPath = path.join(botPath, 'index.js');
     } else {

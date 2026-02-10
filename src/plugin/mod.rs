@@ -2,6 +2,19 @@ use anyhow::Result;
 use std::process::Command;
 use serde_json::Value;
 
+/// Windows에서 콘솔 창 없이 프로세스 실행
+#[cfg(target_os = "windows")]
+fn hide_window(cmd: &mut Command) -> &mut Command {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    cmd.creation_flags(CREATE_NO_WINDOW)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn hide_window(cmd: &mut Command) -> &mut Command {
+    cmd
+}
+
 /// Plugin manager for executing Python modules
 #[allow(dead_code)]
 pub struct PluginManager {
@@ -45,11 +58,12 @@ pub async fn run_plugin(module_path: &str, function: &str, config: Value) -> Res
     
     tracing::info!("Using Python command: {}", python_cmd);
     
-    let output = Command::new(python_cmd)
-        .arg(module_path)
+    let mut cmd = Command::new(python_cmd);
+    cmd.arg(module_path)
         .arg(function)
-        .arg(&config_json)
-        .output()?;
+        .arg(&config_json);
+    hide_window(&mut cmd);
+    let output = cmd.output()?;
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -86,12 +100,15 @@ fn detect_python_command() -> Option<&'static str> {
     // Try commands in order of preference
     let candidates = vec!["python", "python3", "py"];
     
-    for cmd in candidates {
-        if let Ok(output) = Command::new(cmd).arg("--version").output() {
+    for cmd_name in candidates {
+        let mut cmd = Command::new(cmd_name);
+        cmd.arg("--version");
+        hide_window(&mut cmd);
+        if let Ok(output) = cmd.output() {
             if output.status.success() {
                 let version = String::from_utf8_lossy(&output.stdout);
-                tracing::debug!("Found Python: {} -> {}", cmd, version.trim());
-                return Some(cmd);
+                tracing::debug!("Found Python: {} -> {}", cmd_name, version.trim());
+                return Some(cmd_name);
             }
         }
     }

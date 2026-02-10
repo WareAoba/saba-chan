@@ -49,7 +49,7 @@ cd saba-chan
 cargo build --release
 
 # 3. GUI 설치 및 실행
-cd electron_gui
+cd saba-chan-gui
 npm install
 npm start
 ```
@@ -84,7 +84,7 @@ saba-chan/
 │   └── minecraft/          # Minecraft 모듈
 │       ├── module.toml
 │       └── lifecycle.py
-├── electron_gui/           # Electron + React GUI
+├── saba-chan-gui/           # Electron + React GUI
 │   ├── src/
 │   │   ├── App.js          # 메인 React 앱
 │   │   ├── Modals.js       # 통합 모달 컴포넌트
@@ -126,7 +126,7 @@ cargo build --release
 
 ### GUI 개발 모드
 ```bash
-cd electron_gui
+cd saba-chan-gui
 npm start
 ```
 
