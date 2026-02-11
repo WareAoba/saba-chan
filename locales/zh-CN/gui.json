@@ -38,7 +38,11 @@
     "refresh_3s": "3 秒",
     "refresh_5s": "5 秒",
     "refresh_10s": "10 秒",
-    "appearance_placeholder": "外观设置将添加在此。",
+    "theme_label": "主题",
+    "theme_description": "选择您喜欢的颜色主题",
+    "theme_auto": "自动",
+    "theme_light": "浅色",
+    "theme_dark": "深色",
     "advanced_placeholder": "高级设置将添加在此。"
   },
   "add_server_modal": {
@@ -86,6 +90,28 @@
     "server_deleted": "服务器'{{name}}'已删除",
     "settings_saved": "'{{name}}'的设置已保存",
     "aliases_saved": "别名已保存"
+  },
+  "server_settings": {
+    "title": "设置",
+    "general_tab": "常规设置",
+    "aliases_tab": "Discord 别名",
+    "protocol_title": "服务器控制方式",
+    "protocol_description": "选择执行服务器命令时使用的协议。",
+    "protocol_rest_hint": "REST API 基于 HTTP，稳定且易于认证。",
+    "protocol_rcon_hint": "RCON 直接发送实时控制台命令。",
+    "protocol_single_only": "此模块仅支持 <strong>{{protocol}}</strong> 协议。",
+    "no_settings": "此模块没有额外的设置项。",
+    "module_aliases_title": "模块别名（在 Discord 中称呼此服务器的名称）",
+    "module_aliases_hint": "用空格分隔多个条目。例如：{{module}} pw palworld",
+    "module_aliases_placeholder": "例如：{{module}}",
+    "module_aliases_empty_hint": "留空时默认为：",
+    "command_aliases_title": "命令别名（自定义命令）",
+    "command_aliases_hint": "用逗号分隔多个别名。例如：启动, start, 运行",
+    "command_aliases_placeholder": "例如：{{cmd}}",
+    "save_aliases": "保存别名",
+    "reset_aliases": "重置",
+    "save_settings": "保存设置",
+    "close": "关闭"
   },
   "discord_bot": {
     "token_missing_title": "缺少令牌",

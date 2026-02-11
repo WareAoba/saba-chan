@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import './TitleBar.css';
+import { Icon } from '../Icon';
 
 function TitleBar() {
     const { t } = useTranslation('gui');
@@ -29,21 +30,21 @@ function TitleBar() {
                     onClick={handleMinimize}
                     title={t('title_bar.minimize')}
                 >
-                    −
+                    <Icon name="minimize" size={12} />
                 </button>
                 <button 
                     className="title-bar-btn maximize-btn"
                     onClick={handleMaximize}
                     title={t('title_bar.maximize')}
                 >
-                    ▢
+                    <Icon name="maximize" size={12} />
                 </button>
                 <button 
                     className="title-bar-btn close-btn"
                     onClick={handleClose}
                     title={t('title_bar.close')}
                 >
-                    ✕
+                    <Icon name="close" size={12} />
                 </button>
             </div>
         </div>

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import './Modals.css';
+import { Icon } from '../Icon';
+import CustomDropdown from '../CustomDropdown/CustomDropdown';
 
 function CommandModal({ server, modules, onClose, onExecute }) {
     const { t } = useTranslation('gui');
@@ -155,7 +157,7 @@ function CommandModal({ server, modules, onClose, onExecute }) {
                 {/* 명령어 설명 */}
                 {selectedCmd && (
                     <div className="command-info">
-                        <p className="command-description">📌 {selectedCmd.description}</p>
+                        <p className="command-description"><Icon name="pin" size="sm" /> {selectedCmd.description}</p>
                     </div>
                 )}
 
@@ -199,19 +201,13 @@ function CommandModal({ server, modules, onClose, onExecute }) {
                                     />
                                 )}
                                 {input.type === 'select' && (
-                                    <select
+                                    <CustomDropdown
                                         className="command-input"
                                         value={commandInputs[input.name] || ''}
-                                        onChange={e => handleInputChange(input.name, e.target.value)}
-                                        required={input.required}
-                                    >
-                                        <option value="">-- 선택하세요 --</option>
-                                        {input.options && input.options.map(opt => (
-                                            <option key={opt} value={opt}>
-                                                {opt}
-                                            </option>
-                                        ))}
-                                    </select>
+                                        onChange={(val) => handleInputChange(input.name, val)}
+                                        placeholder="-- 선택하세요 --"
+                                        options={(input.options || []).map(opt => ({ value: opt, label: opt }))}
+                                    />
                                 )}
                             </div>
                         ))}
@@ -225,10 +221,10 @@ function CommandModal({ server, modules, onClose, onExecute }) {
                         onClick={handleExecuteCommand}
                         disabled={!commandInput.trim() || loading}
                     >
-                        {loading ? '...' : `⏎ ${t('command_modal.execute')}`}
+                        {loading ? '...' : <><Icon name="enter" size="sm" /> {t('command_modal.execute')}</>}
                     </button>
                     <button className="modal-button command-cancel" onClick={onClose}>
-                        ✕ {t('modals.close')}
+                        <Icon name="close" size="sm" /> {t('modals.close')}
                     </button>
                 </div>
             </div>

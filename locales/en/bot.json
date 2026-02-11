@@ -6,7 +6,7 @@
     "restart": "Restart server"
   },
   "help": {
-    "title": "� Usage Guide",
+    "title": "📖 Usage Guide",
     "list": "Check server list",
     "start": "Start server",
     "stop": "Stop server",

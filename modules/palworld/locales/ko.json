@@ -1,4 +1,61 @@
 {
+  "module": {
+    "display_name": "팰월드",
+    "description": "팰월드 서버 관리 모듈"
+  },
+  "settings": {
+    "executable_path": { "label": "서버 실행 파일 경로", "description": "서버 실행 파일의 경로" },
+    "port": { "label": "서버 포트", "description": "게임 서버 포트" },
+    "rcon_port": { "label": "RCON 포트", "description": "RCON 포트" },
+    "rcon_password": { "label": "RCON 비밀번호", "description": "원격 명령어 실행 비밀번호" },
+    "rest_host": { "label": "REST API 호스트", "description": "REST API 호스트 (기본 127.0.0.1)" },
+    "rest_port": { "label": "REST API 포트", "description": "REST API 포트 (기본 8212)" },
+    "rest_username": { "label": "REST 사용자명", "description": "REST Basic Auth 사용자명" },
+    "rest_password": { "label": "REST 비밀번호", "description": "REST Basic Auth 비밀번호" }
+  },
+  "commands": {
+    "announce": {
+      "label": "공지사항 전송",
+      "description": "서버 전체에 메시지 브로드캐스트",
+      "inputs": {
+        "message": { "label": "공지 메시지", "placeholder": "공지할 내용을 입력하세요" }
+      }
+    },
+    "info": { "label": "서버 정보", "description": "서버 정보 조회" },
+    "players": { "label": "플레이어 목록", "description": "현재 접속 중인 플레이어 목록" },
+    "save": { "label": "월드 저장", "description": "게임 월드 저장" },
+    "shutdown": {
+      "label": "서버 종료",
+      "description": "서버 종료 (대기 시간 설정 가능)",
+      "inputs": {
+        "waittime": { "label": "종료까지 대기 시간 (초)" },
+        "message": { "label": "종료 메시지", "placeholder": "서버 종료 공지 메시지" }
+      }
+    },
+    "kick": {
+      "label": "플레이어 강제 퇴장",
+      "description": "플레이어를 서버에서 강제 퇴장",
+      "inputs": {
+        "userid": { "label": "플레이어 (닉네임 또는 SteamID)", "placeholder": "플레이어 닉네임 또는 steam_xxxxxxxxx" },
+        "message": { "label": "퇴장 메시지", "placeholder": "선택사항: 퇴장 메시지" }
+      }
+    },
+    "ban": {
+      "label": "플레이어 차단",
+      "description": "플레이어를 영구 차단",
+      "inputs": {
+        "userid": { "label": "플레이어 (닉네임 또는 SteamID)", "placeholder": "플레이어 닉네임 또는 steam_xxxxxxxxx" },
+        "message": { "label": "차단 메시지", "placeholder": "선택사항: 차단 메시지" }
+      }
+    },
+    "unban": {
+      "label": "플레이어 차단 해제",
+      "description": "차단된 플레이어 해제",
+      "inputs": {
+        "userid": { "label": "플레이어 (닉네임 또는 SteamID)", "placeholder": "플레이어 닉네임 또는 steam_xxxxxxxxx" }
+      }
+    }
+  },
   "errors": {
     "failed_to_start": "시작 실패: {{error}}",
     "no_pid_provided": "PID가 제공되지 않았습니다",

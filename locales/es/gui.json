@@ -38,7 +38,11 @@
     "refresh_3s": "3 segundos",
     "refresh_5s": "5 segundos",
     "refresh_10s": "10 segundos",
-    "appearance_placeholder": "La configuración de apariencia se agregará aquí.",
+    "theme_label": "Tema",
+    "theme_description": "Elige tu tema de color preferido",
+    "theme_auto": "Automático",
+    "theme_light": "Claro",
+    "theme_dark": "Oscuro",
     "advanced_placeholder": "La configuración avanzada se agregará aquí."
   },
   "add_server_modal": {
@@ -86,6 +90,28 @@
     "server_deleted": "El servidor '{{name}}' ha sido eliminado",
     "settings_saved": "La configuración de '{{name}}' ha sido guardada",
     "aliases_saved": "Alias guardados"
+  },
+  "server_settings": {
+    "title": "Configuración",
+    "general_tab": "Configuración General",
+    "aliases_tab": "Alias de Discord",
+    "protocol_title": "Método de Control del Servidor",
+    "protocol_description": "Seleccione el protocolo a utilizar al ejecutar comandos del servidor.",
+    "protocol_rest_hint": "REST API está basada en HTTP, es estable y fácil de autenticar.",
+    "protocol_rcon_hint": "RCON envía comandos de consola en tiempo real directamente.",
+    "protocol_single_only": "Este módulo solo soporta el protocolo <strong>{{protocol}}</strong>.",
+    "no_settings": "Este módulo no tiene configuraciones adicionales.",
+    "module_aliases_title": "Alias del Módulo (Nombres para llamar a este servidor en Discord)",
+    "module_aliases_hint": "Separe múltiples entradas con espacios. Ej: {{module}} pw palworld",
+    "module_aliases_placeholder": "Ej: {{module}}",
+    "module_aliases_empty_hint": "Cuando está vacío, por defecto:",
+    "command_aliases_title": "Alias de Comandos (Comandos Personalizados)",
+    "command_aliases_hint": "Separe múltiples alias con comas. Ej: iniciar, start, ejecutar",
+    "command_aliases_placeholder": "Ej: {{cmd}}",
+    "save_aliases": "Guardar Alias",
+    "reset_aliases": "Restablecer",
+    "save_settings": "Guardar Configuración",
+    "close": "Cerrar"
   },
   "discord_bot": {
     "token_missing_title": "Token Faltante",

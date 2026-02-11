@@ -1,4 +1,61 @@
 {
+  "module": {
+    "display_name": "Palworld",
+    "description": "Palworld server management module"
+  },
+  "settings": {
+    "executable_path": { "label": "Server Executable Path", "description": "Path to the server executable" },
+    "port": { "label": "Server Port", "description": "Game server port" },
+    "rcon_port": { "label": "RCON Port", "description": "RCON port" },
+    "rcon_password": { "label": "RCON Password", "description": "Remote command execution password" },
+    "rest_host": { "label": "REST API Host", "description": "REST API host (default 127.0.0.1)" },
+    "rest_port": { "label": "REST API Port", "description": "REST API port (default 8212)" },
+    "rest_username": { "label": "REST Username", "description": "REST Basic Auth username" },
+    "rest_password": { "label": "REST Password", "description": "REST Basic Auth password" }
+  },
+  "commands": {
+    "announce": {
+      "label": "Send Announcement",
+      "description": "Broadcast a message to the server",
+      "inputs": {
+        "message": { "label": "Announcement Message", "placeholder": "Enter announcement message" }
+      }
+    },
+    "info": { "label": "Server Info", "description": "View server information" },
+    "players": { "label": "Player List", "description": "List currently connected players" },
+    "save": { "label": "Save World", "description": "Save the game world" },
+    "shutdown": {
+      "label": "Shutdown Server",
+      "description": "Shutdown the server (with optional delay)",
+      "inputs": {
+        "waittime": { "label": "Shutdown Delay (seconds)" },
+        "message": { "label": "Shutdown Message", "placeholder": "Server shutdown announcement" }
+      }
+    },
+    "kick": {
+      "label": "Kick Player",
+      "description": "Kick a player from the server",
+      "inputs": {
+        "userid": { "label": "Player (Nickname or SteamID)", "placeholder": "Player nickname or steam_xxxxxxxxx" },
+        "message": { "label": "Kick Message", "placeholder": "Optional: kick message" }
+      }
+    },
+    "ban": {
+      "label": "Ban Player",
+      "description": "Permanently ban a player",
+      "inputs": {
+        "userid": { "label": "Player (Nickname or SteamID)", "placeholder": "Player nickname or steam_xxxxxxxxx" },
+        "message": { "label": "Ban Message", "placeholder": "Optional: ban message" }
+      }
+    },
+    "unban": {
+      "label": "Unban Player",
+      "description": "Unban a banned player",
+      "inputs": {
+        "userid": { "label": "Player (Nickname or SteamID)", "placeholder": "Player nickname or steam_xxxxxxxxx" }
+      }
+    }
+  },
   "errors": {
     "failed_to_start": "Failed to start: {{error}}",
     "no_pid_provided": "No PID provided",

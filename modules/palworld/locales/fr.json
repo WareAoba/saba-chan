@@ -1,4 +1,61 @@
 {
+  "module": {
+    "display_name": "Palworld",
+    "description": "Module de gestion de serveur Palworld"
+  },
+  "settings": {
+    "executable_path": { "label": "Chemin de l'exécutable du serveur", "description": "Chemin vers l'exécutable du serveur" },
+    "port": { "label": "Port du serveur", "description": "Port du serveur de jeu" },
+    "rcon_port": { "label": "Port RCON", "description": "Port RCON" },
+    "rcon_password": { "label": "Mot de passe RCON", "description": "Mot de passe d'exécution de commandes à distance" },
+    "rest_host": { "label": "Hôte REST API", "description": "Hôte REST API (par défaut 127.0.0.1)" },
+    "rest_port": { "label": "Port REST API", "description": "Port REST API (par défaut 8212)" },
+    "rest_username": { "label": "Nom d'utilisateur REST", "description": "Nom d'utilisateur REST Basic Auth" },
+    "rest_password": { "label": "Mot de passe REST", "description": "Mot de passe REST Basic Auth" }
+  },
+  "commands": {
+    "announce": {
+      "label": "Envoyer une annonce",
+      "description": "Diffuser un message sur le serveur",
+      "inputs": {
+        "message": { "label": "Message d'annonce", "placeholder": "Saisissez le message d'annonce" }
+      }
+    },
+    "info": { "label": "Informations du serveur", "description": "Afficher les informations du serveur" },
+    "players": { "label": "Liste des joueurs", "description": "Lister les joueurs actuellement connectés" },
+    "save": { "label": "Sauvegarder le monde", "description": "Sauvegarder le monde du jeu" },
+    "shutdown": {
+      "label": "Arrêter le serveur",
+      "description": "Arrêter le serveur (avec délai optionnel)",
+      "inputs": {
+        "waittime": { "label": "Délai d'arrêt (secondes)" },
+        "message": { "label": "Message d'arrêt", "placeholder": "Annonce d'arrêt du serveur" }
+      }
+    },
+    "kick": {
+      "label": "Expulser un joueur",
+      "description": "Expulser un joueur du serveur",
+      "inputs": {
+        "userid": { "label": "Joueur (pseudo ou SteamID)", "placeholder": "Pseudo du joueur ou steam_xxxxxxxxx" },
+        "message": { "label": "Message d'expulsion", "placeholder": "Optionnel : message d'expulsion" }
+      }
+    },
+    "ban": {
+      "label": "Bannir un joueur",
+      "description": "Bannir définitivement un joueur",
+      "inputs": {
+        "userid": { "label": "Joueur (pseudo ou SteamID)", "placeholder": "Pseudo du joueur ou steam_xxxxxxxxx" },
+        "message": { "label": "Message de bannissement", "placeholder": "Optionnel : message de bannissement" }
+      }
+    },
+    "unban": {
+      "label": "Débannir un joueur",
+      "description": "Débannir un joueur banni",
+      "inputs": {
+        "userid": { "label": "Joueur (pseudo ou SteamID)", "placeholder": "Pseudo du joueur ou steam_xxxxxxxxx" }
+      }
+    }
+  },
   "errors": {
     "failed_to_start": "Échec du démarrage: {{error}}",
     "no_pid_provided": "Aucun PID fourni",

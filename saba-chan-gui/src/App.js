@@ -13,7 +13,8 @@ import {
     DiscordBotModal,
     BackgroundModal,
     AddServerModal,
-    Icon
+    Icon,
+    CustomDropdown
 } from './components';
 
 function App() {
@@ -186,6 +187,7 @@ function App() {
     const [botStatusReady, setBotStatusReady] = useState(false);
     const [settingsReady, setSettingsReady] = useState(false);
     const autoStartDoneRef = useRef(false);
+    const discordTokenRef = useRef('');
 
     // 모듈별 별명 (각 모듈의 module.toml에서 정의한 별명들)
     const [moduleAliasesPerModule, setModuleAliasesPerModule] = useState({});  // { moduleName: { moduleAliases: [...], commands: {...} } }
@@ -195,6 +197,19 @@ function App() {
 
     // 초기화 상태 모니터링
     useEffect(() => {
+        // HMR 재렌더링 시: 데몬이 이미 준비된 상태라면 로딩 화면을 건너뜀
+        if (window.api && window.api.daemonStatus) {
+            window.api.daemonStatus().then((status) => {
+                if (status && status.running) {
+                    console.log('[HMR] Daemon already running, skipping loading screen');
+                    setInitStatus('Ready!');
+                    setInitProgress(100);
+                    setDaemonReady(true);
+                    setServersInitializing(false);
+                }
+            }).catch(() => {});
+        }
+
         if (window.api && window.api.onStatusUpdate) {
             window.api.onStatusUpdate((data) => {
                 console.log('[Init Status]', data.step, ':', data.message);
@@ -244,6 +259,7 @@ function App() {
                     setRefreshInterval(settings.refreshInterval ?? 2000);
                     setModulesPath(settings.modulesPath || '');
                     setDiscordToken(settings.discordToken || '');
+                    discordTokenRef.current = settings.discordToken || '';
                     setDiscordAutoStart(settings.discordAutoStart ?? false);
                     if (!isTestEnv) console.log('[Settings] discordAutoStart:', settings.discordAutoStart, 'discordToken:', settings.discordToken ? 'YES' : 'NO');
                 }
@@ -780,8 +796,9 @@ function App() {
                 console.log('[Bot Relaunch] Received signal to relaunch bot with new language settings');
                 // Discord 봇 프로세스가 재시작될 때까지 대기
                 setTimeout(async () => {
-                    // 봇을 재시작
-                    const result = await window.api.discordBotStart(botConfig);
+                    // 봇을 재시작 (bot-config.json에는 token이 없으므로 현재 토큰을 주입)
+                    const configWithToken = { ...botConfig, token: discordTokenRef.current };
+                    const result = await window.api.discordBotStart(configWithToken);
                     if (result.error) {
                         console.error('[Bot Relaunch] Failed to relaunch bot:', result.error);
                     } else {
@@ -829,6 +846,23 @@ function App() {
             if (data && data.modules) {
                 console.log('Setting modules:', data.modules.length, 'modules');
                 setModules(data.modules);
+                
+                // 각 모듈의 locale 파일을 로드하여 i18next에 동적 등록
+                for (const module of data.modules) {
+                    try {
+                        if (window.api.moduleGetLocales) {
+                            const locales = await window.api.moduleGetLocales(module.name);
+                            if (locales && typeof locales === 'object') {
+                                for (const [lang, localeData] of Object.entries(locales)) {
+                                    i18n.addResourceBundle(lang, `mod_${module.name}`, localeData, true, true);
+                                }
+                                console.log(`Module locales registered for ${module.name}:`, Object.keys(locales));
+                            }
+                        }
+                    } catch (e) {
+                        console.warn(`Failed to load locales for module ${module.name}:`, e);
+                    }
+                }
                 
                 // 각 모듈의 메타데이터 로드 (별명 포함)
                 const aliasesMap = {};
@@ -1505,15 +1539,15 @@ function App() {
     const getStatusIcon = (status) => {
         switch (status) {
             case 'running':
-                return '▶';
+                return <Icon name="play" size="xs" />;
             case 'stopped':
-                return '■';
+                return <Icon name="stop" size="xs" />;
             case 'starting':
-                return '⟳';
+                return <Icon name="loader" size="xs" />;
             case 'stopping':
-                return '⏹';
+                return <Icon name="pause" size="xs" />;
             default:
-                return '?';
+                return <Icon name="alertCircle" size="xs" />;
         }
     };
 
@@ -1614,7 +1648,7 @@ function App() {
                             onClose={() => setShowDiscordSection(false)}
                             discordBotStatus={discordBotStatus}
                             discordToken={discordToken}
-                            setDiscordToken={setDiscordToken}
+                            setDiscordToken={(val) => { setDiscordToken(val); discordTokenRef.current = val; }}
                             discordPrefix={discordPrefix}
                             setDiscordPrefix={setDiscordPrefix}
                             discordAutoStart={discordAutoStart}
@@ -1678,7 +1712,7 @@ function App() {
                     servers.map((server, index) => {
                         // 모듈 메타데이터에서 게임 이름 가져오기
                         const moduleData = modules.find(m => m.name === server.module);
-                        const gameName = moduleData?.game_name || server.module;
+                        const gameName = t(`mod_${server.module}:module.display_name`, { defaultValue: moduleData?.game_name || server.module });
                         const gameIcon = moduleData?.icon || null; // 모듈에서 base64 인코딩된 아이콘 가져오기
                         
                         return (
@@ -1795,13 +1829,6 @@ function App() {
                                     >
                                         <Icon name="settings" size="md" />
                                     </button>
-                                    <button 
-                                        className="action-icon"
-                                        onClick={() => handleStatus(server.name)}
-                                        title="Info"
-                                    >
-                                        <Icon name="info" size="md" />
-                                    </button>
                                     {server.status === 'running' ? (
                                         <button 
                                             className="action-icon"
@@ -1836,8 +1863,7 @@ function App() {
                 <div className="modal-overlay">
                     <div className="modal-content modal-content-large">
                         <div className="modal-header">
-                            <h3><Icon name="settings" size="md" /> {settingsServer.name} - Settings</h3>
-                            <button className="modal-close" onClick={() => setShowSettingsModal(false)}>✕</button>
+                            <h3 style={{ fontSize: '1.3rem' }}>{settingsServer.name} - {t('server_settings.title')}</h3>
                         </div>
                         
                         {/* 탭 헤더 */}
@@ -1846,13 +1872,13 @@ function App() {
                                 className={`settings-tab ${settingsActiveTab === 'general' ? 'active' : ''}`}
                                 onClick={() => setSettingsActiveTab('general')}
                             >
-                                <Icon name="gamepad" size="sm" /> 일반 설정
+                                <Icon name="gamepad" size="sm" /> {t('server_settings.general_tab')}
                             </button>
                             <button 
                                 className={`settings-tab ${settingsActiveTab === 'aliases' ? 'active' : ''}`}
                                 onClick={() => setSettingsActiveTab('aliases')}
                             >
-                                <Icon name="messageSquare" size="sm" /> Discord 별명
+                                <Icon name="discord" size="sm" /> {t('server_settings.aliases_tab') }
                             </button>
                         </div>
                         
@@ -1873,10 +1899,10 @@ function App() {
                                         {showProtocolToggle && (
                                             <div className="protocol-mode-section">
                                                 <div className="protocol-mode-header">
-                                                    <span className="protocol-mode-title">🔌 서버 조작 방식</span>
+                                                    <span className="protocol-mode-title"><Icon name="plug" size="sm" /> {t('server_settings.protocol_title')}</span>
                                                 </div>
                                                 <p className="protocol-mode-description">
-                                                    서버 명령어를 실행할 때 사용할 프로토콜을 선택합니다.
+                                                    {t('server_settings.protocol_description')}
                                                 </p>
                                                 <div className="protocol-toggle-container">
                                                     <span className={`protocol-label ${settingsValues.protocol_mode === 'rest' ? 'active' : ''}`}>
@@ -1895,10 +1921,10 @@ function App() {
                                                     </span>
                                                 </div>
                                                 <p className="protocol-mode-hint">
-                                                    <span className="hint-icon">💡</span>
+                                                    <span className="hint-icon"><Icon name="lightbulb" size="sm" /></span>
                                                     {settingsValues.protocol_mode === 'rest' 
-                                                        ? 'REST API는 HTTP 기반으로 안정적이며 인증이 용이합니다.'
-                                                        : 'RCON은 실시간 콘솔 명령어를 직접 전송합니다.'}
+                                                        ? t('server_settings.protocol_rest_hint')
+                                                        : t('server_settings.protocol_rcon_hint')}
                                                 </p>
                                             </div>
                                         )}
@@ -1907,25 +1933,27 @@ function App() {
                                         {!showProtocolToggle && supportedProtocols.length > 0 && (
                                             <div className="protocol-mode-section protocol-mode-info">
                                                 <div className="protocol-mode-header">
-                                                    <span className="protocol-mode-title">🔌 서버 조작 방식</span>
+                                                    <span className="protocol-mode-title"><Icon name="plug" size="sm" /> {t('server_settings.protocol_title')}</span>
                                                 </div>
-                                                <p className="protocol-mode-description">
-                                                    이 모듈은 <strong>{supportedProtocols[0].toUpperCase()}</strong> 프로토콜만 지원합니다.
-                                                </p>
+                                                <p className="protocol-mode-description" dangerouslySetInnerHTML={{ __html: t('server_settings.protocol_single_only', { protocol: supportedProtocols[0].toUpperCase() }) }} />
                                             </div>
                                         )}
 
                                         {/* 모듈 설정 필드 */}
                                         {hasModuleSettings ? (
-                                            module.settings.fields.map((field) => (
+                                            module.settings.fields.map((field) => {
+                                                const modNs = `mod_${settingsServer.module}`;
+                                                const fieldLabel = t(`${modNs}:settings.${field.name}.label`, { defaultValue: field.label });
+                                                const fieldDesc = t(`${modNs}:settings.${field.name}.description`, { defaultValue: field.description || '' });
+                                                return (
                                                 <div key={field.name} className="settings-field">
-                                                    <label>{field.label} {field.required ? '*' : ''}</label>
+                                                    <label>{fieldLabel} {field.required ? '*' : ''}</label>
                                                     {field.field_type === 'text' && (
                                                         <input 
                                                             type="text"
                                                             value={String(settingsValues[field.name] || '')}
                                                             onChange={(e) => handleSettingChange(field.name, e.target.value)}
-                                                            placeholder={field.description || ''}
+                                                            placeholder={fieldDesc}
                                                         />
                                                     )}
                                                     {field.field_type === 'password' && (
@@ -1933,7 +1961,7 @@ function App() {
                                                             type="password"
                                                             value={String(settingsValues[field.name] || '')}
                                                             onChange={(e) => handleSettingChange(field.name, e.target.value)}
-                                                            placeholder={field.description || ''}
+                                                            placeholder={fieldDesc}
                                                         />
                                                     )}
                                                     {field.field_type === 'number' && (
@@ -1943,7 +1971,7 @@ function App() {
                                                             onChange={(e) => handleSettingChange(field.name, e.target.value)}
                                                             min={field.min}
                                                             max={field.max}
-                                                            placeholder={field.description || ''}
+                                                            placeholder={fieldDesc}
                                                         />
                                                     )}
                                                     {field.field_type === 'file' && (
@@ -1951,27 +1979,25 @@ function App() {
                                                             type="text"
                                                             value={String(settingsValues[field.name] || '')}
                                                             onChange={(e) => handleSettingChange(field.name, e.target.value)}
-                                                            placeholder={field.description || ''}
+                                                            placeholder={fieldDesc}
                                                         />
                                                     )}
                                                     {field.field_type === 'select' && (
-                                                        <select 
+                                                        <CustomDropdown
                                                             value={String(settingsValues[field.name] || '')}
-                                                            onChange={(e) => handleSettingChange(field.name, e.target.value)}
-                                                        >
-                                                            <option value="">Select {field.label}</option>
-                                                            {field.options && field.options.map(opt => (
-                                                                <option key={opt} value={opt}>{opt}</option>
-                                                            ))}
-                                                        </select>
+                                                            onChange={(val) => handleSettingChange(field.name, val)}
+                                                            placeholder={fieldLabel}
+                                                            options={(field.options || []).map(opt => ({ value: opt, label: opt }))}
+                                                        />
                                                     )}
-                                                    {field.description && (
-                                                        <small className="field-description">{field.description}</small>
+                                                    {fieldDesc && (
+                                                        <small className="field-description">{fieldDesc}</small>
                                                     )}
                                                 </div>
-                                            ))
+                                                );
+                                            })
                                         ) : (
-                                            <p className="no-settings" style={{marginTop: '16px'}}>이 모듈에는 추가 설정 항목이 없습니다.</p>
+                                            <p className="no-settings" style={{marginTop: '16px'}}>{t('server_settings.no_settings')}</p>
                                         )}
                                     </div>
                                 );
@@ -1981,12 +2007,12 @@ function App() {
                             {settingsActiveTab === 'aliases' && (
                                 <div className="aliases-tab-content">
                                     <div className="module-aliases-detail">
-                                        <h4>📝 모듈 별명 (Discord에서 이 서버를 부를 이름)</h4>
-                                        <small>공백으로 구분하여 여러 개 입력 가능. 예: {settingsServer.module} pw palworld</small>
+                                        <h4><Icon name="edit" size="sm" /> {t('server_settings.module_aliases_title')}</h4>
+                                        <small>{t('server_settings.module_aliases_hint', { module: settingsServer.module })}</small>
                                         <div className="module-aliases-input">
                                             <input
                                                 type="text"
-                                                placeholder={`예: ${settingsServer.module}`}
+                                                placeholder={t('server_settings.module_aliases_placeholder', { module: settingsServer.module })}
                                                 value={editingModuleAliases.join(' ')}
                                                 onChange={(e) => {
                                                     const aliases = e.target.value.split(/\s+/).filter(a => a.length > 0);
@@ -1995,7 +2021,7 @@ function App() {
                                             />
                                             {editingModuleAliases.length === 0 && (
                                                 <div className="placeholder-hint">
-                                                    <small>💡 공백 시 기본값: <code>{settingsServer.module}</code></small>
+                                                    <small><Icon name="lightbulb" size="xs" /> {t('server_settings.module_aliases_empty_hint')} <code>{settingsServer.module}</code></small>
                                                 </div>
                                             )}
                                         </div>
@@ -2005,13 +2031,14 @@ function App() {
                                             ))}
                                         </div>
 
-                                        <h4>⚡ 명령어 별명 (커스텀 명령어)</h4>
-                                        <small>콤마로 구분하여 여러 별명 입력. 예: 시작, start, 실행</small>
+                                        <h4><Icon name="zap" size="sm" /> {t('server_settings.command_aliases_title')}</h4>
+                                        <small>{t('server_settings.command_aliases_hint')}</small>
                                         <div className="command-aliases-input">
                                             {Object.entries(editingCommandAliases).map(([cmd, cmdData]) => {
                                                 const aliases = cmdData.aliases || [];
-                                                const description = cmdData.description || '';
-                                                const label = cmdData.label || cmd;
+                                                const modNs = `mod_${settingsServer.module}`;
+                                                const description = t(`${modNs}:commands.${cmd}.description`, { defaultValue: cmdData.description || '' });
+                                                const label = t(`${modNs}:commands.${cmd}.label`, { defaultValue: cmdData.label || cmd });
                                                 return (
                                                     <div key={cmd} className="command-alias-editor">
                                                         <div className="cmd-header">
@@ -2021,7 +2048,7 @@ function App() {
                                                         </div>
                                                         <input
                                                             type="text"
-                                                            placeholder={`예: ${cmd}`}
+                                                            placeholder={t('server_settings.command_aliases_placeholder', { cmd })}
                                                             value={aliases.join(', ')}
                                                             onChange={(e) => {
                                                                 const newAliases = e.target.value.split(',').map(a => a.trim()).filter(a => a.length > 0);
@@ -2051,13 +2078,13 @@ function App() {
                                                 const moduleName = settingsServer.module;
                                                 handleSaveAliasesForModule(moduleName);
                                             }}>
-                                                💾 별명 저장
+                                                <Icon name="save" size="sm" /> {t('server_settings.save_aliases')}
                                             </button>
                                             <button className="btn btn-reset" onClick={() => {
                                                 const moduleName = settingsServer.module;
                                                 handleResetAliasesForModule(moduleName);
                                             }}>
-                                                🔄 초기화
+                                                <Icon name="refresh" size="sm" /> {t('server_settings.reset_aliases')}
                                             </button>
                                         </div>
                                     </div>
@@ -2068,11 +2095,11 @@ function App() {
                         <div className="modal-footer">
                             {settingsActiveTab === 'general' && (
                                 <button className="btn btn-confirm" onClick={handleSaveSettings}>
-                                    💾 설정 저장
+                                    <Icon name="save" size="sm" /> {t('server_settings.save_settings')}
                                 </button>
                             )}
                             <button className="btn btn-cancel" onClick={() => setShowSettingsModal(false)}>
-                                ✕ 닫기
+                                <Icon name="close" size="sm" /> {t('server_settings.close')}
                             </button>
                         </div>
                     </div>

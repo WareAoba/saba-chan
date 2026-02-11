@@ -38,7 +38,11 @@
     "refresh_3s": "3 секунды",
     "refresh_5s": "5 секунд",
     "refresh_10s": "10 секунд",
-    "appearance_placeholder": "Параметры внешнего вида будут добавлены здесь.",
+    "theme_label": "Тема",
+    "theme_description": "Выберите предпочитаемую цветовую тему",
+    "theme_auto": "Авто",
+    "theme_light": "Светлая",
+    "theme_dark": "Тёмная",
     "advanced_placeholder": "Дополнительные параметры будут добавлены здесь."
   },
   "add_server_modal": {
@@ -86,6 +90,28 @@
     "server_deleted": "Сервер '{{name}}' удален",
     "settings_saved": "Параметры '{{name}}' сохранены",
     "aliases_saved": "Псевдонимы сохранены"
+  },
+  "server_settings": {
+    "title": "Параметры",
+    "general_tab": "Общие настройки",
+    "aliases_tab": "Псевдонимы Discord",
+    "protocol_title": "Метод управления сервером",
+    "protocol_description": "Выберите протокол для выполнения команд сервера.",
+    "protocol_rest_hint": "REST API основан на HTTP, стабилен и легко аутентифицируется.",
+    "protocol_rcon_hint": "RCON отправляет команды консоли в реальном времени напрямую.",
+    "protocol_single_only": "Этот модуль поддерживает только протокол <strong>{{protocol}}</strong>.",
+    "no_settings": "Этот модуль не имеет дополнительных настроек.",
+    "module_aliases_title": "Псевдонимы модуля (Имена для вызова этого сервера в Discord)",
+    "module_aliases_hint": "Разделяйте пробелами несколько записей. Напр.: {{module}} pw palworld",
+    "module_aliases_placeholder": "Напр.: {{module}}",
+    "module_aliases_empty_hint": "Когда пусто, по умолчанию:",
+    "command_aliases_title": "Псевдонимы команд (Пользовательские команды)",
+    "command_aliases_hint": "Разделяйте несколько псевдонимов запятыми. Напр.: запуск, start, выполнить",
+    "command_aliases_placeholder": "Напр.: {{cmd}}",
+    "save_aliases": "Сохранить псевдонимы",
+    "reset_aliases": "Сбросить",
+    "save_settings": "Сохранить настройки",
+    "close": "Закрыть"
   },
   "discord_bot": {
     "token_missing_title": "Отсутствует токен",

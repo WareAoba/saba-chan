@@ -1,4 +1,61 @@
 {
+  "module": {
+    "display_name": "パルワールド",
+    "description": "パルワールドサーバー管理モジュール"
+  },
+  "settings": {
+    "executable_path": { "label": "サーバー実行ファイルパス", "description": "サーバー実行ファイルのパス" },
+    "port": { "label": "サーバーポート", "description": "ゲームサーバーポート" },
+    "rcon_port": { "label": "RCONポート", "description": "RCONポート" },
+    "rcon_password": { "label": "RCONパスワード", "description": "リモートコマンド実行パスワード" },
+    "rest_host": { "label": "REST APIホスト", "description": "REST APIホスト（デフォルト127.0.0.1）" },
+    "rest_port": { "label": "REST APIポート", "description": "REST APIポート（デフォルト8212）" },
+    "rest_username": { "label": "RESTユーザー名", "description": "REST Basic Auth ユーザー名" },
+    "rest_password": { "label": "RESTパスワード", "description": "REST Basic Auth パスワード" }
+  },
+  "commands": {
+    "announce": {
+      "label": "お知らせ送信",
+      "description": "サーバーにメッセージをブロードキャスト",
+      "inputs": {
+        "message": { "label": "お知らせメッセージ", "placeholder": "お知らせ内容を入力" }
+      }
+    },
+    "info": { "label": "サーバー情報", "description": "サーバー情報を表示" },
+    "players": { "label": "プレイヤー一覧", "description": "接続中のプレイヤー一覧" },
+    "save": { "label": "ワールド保存", "description": "ゲームワールドを保存" },
+    "shutdown": {
+      "label": "サーバーシャットダウン",
+      "description": "サーバーをシャットダウン（遅延設定可能）",
+      "inputs": {
+        "waittime": { "label": "シャットダウン遅延（秒）" },
+        "message": { "label": "シャットダウンメッセージ", "placeholder": "サーバーシャットダウンのお知らせ" }
+      }
+    },
+    "kick": {
+      "label": "プレイヤーキック",
+      "description": "プレイヤーをサーバーから退出させる",
+      "inputs": {
+        "userid": { "label": "プレイヤー（ニックネームまたはSteamID）", "placeholder": "プレイヤーのニックネームまたはsteam_xxxxxxxxx" },
+        "message": { "label": "キックメッセージ", "placeholder": "任意：キックメッセージ" }
+      }
+    },
+    "ban": {
+      "label": "プレイヤーBAN",
+      "description": "プレイヤーを永久BAN",
+      "inputs": {
+        "userid": { "label": "プレイヤー（ニックネームまたはSteamID）", "placeholder": "プレイヤーのニックネームまたはsteam_xxxxxxxxx" },
+        "message": { "label": "BANメッセージ", "placeholder": "任意：BANメッセージ" }
+      }
+    },
+    "unban": {
+      "label": "プレイヤーBAN解除",
+      "description": "BANされたプレイヤーを解除",
+      "inputs": {
+        "userid": { "label": "プレイヤー（ニックネームまたはSteamID）", "placeholder": "プレイヤーのニックネームまたはsteam_xxxxxxxxx" }
+      }
+    }
+  },
   "errors": {
     "failed_to_start": "起動に失敗しました: {{error}}",
     "no_pid_provided": "PID が指定されていません",

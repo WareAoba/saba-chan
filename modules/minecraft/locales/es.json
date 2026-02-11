@@ -1,4 +1,22 @@
 {
+  "module": {
+    "display_name": "Minecraft",
+    "description": "Módulo de gestión de servidor Minecraft"
+  },
+  "settings": {
+    "executable_path": { "label": "Ruta del JAR del servidor", "description": "Ruta al archivo server.jar" },
+    "port": { "label": "Puerto del servidor", "description": "Puerto del servidor de juego" },
+    "difficulty": { "label": "Dificultad", "description": "Dificultad del juego" },
+    "max_players": { "label": "Máximo de jugadores", "description": "Número máximo de jugadores" }
+  },
+  "commands": {
+    "say": { "label": "Enviar mensaje de chat", "description": "Transmitir un mensaje al servidor", "inputs": { "message": { "label": "Mensaje", "placeholder": "Ingrese el mensaje a enviar" } } },
+    "give": { "label": "Dar objeto", "description": "Dar un objeto a un jugador", "inputs": { "player": { "label": "Nombre del jugador", "placeholder": "Apodo del jugador" }, "item": { "label": "ID del objeto", "placeholder": "Ej: diamond, iron_ore" }, "amount": { "label": "Cantidad" } } },
+    "save-all": { "label": "Guardar mundo", "description": "Guardar el mundo del juego" },
+    "list": { "label": "Lista de jugadores", "description": "Ver lista de jugadores conectados" },
+    "weather": { "label": "Cambiar clima", "description": "Cambiar el clima del servidor", "inputs": { "type": { "label": "Clima" }, "duration": { "label": "Duración (segundos)" } } },
+    "difficulty": { "label": "Cambiar dificultad", "description": "Cambiar la dificultad del juego", "inputs": { "level": { "label": "Dificultad" } } }
+  },
   "errors": {
     "server_jar_not_specified": "server_jar no especificado en la configuración de la instancia. Por favor agregue la ruta a server.jar",
     "server_jar_not_found": "Archivo jar del servidor no encontrado: {{path}}. Por favor verifique la ruta en la configuración de instancia.",

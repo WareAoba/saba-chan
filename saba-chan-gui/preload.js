@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('api', {
     moduleList: () => ipcRenderer.invoke('module:list'),
     moduleRefresh: () => ipcRenderer.invoke('module:refresh'),
     moduleGetMetadata: (name) => ipcRenderer.invoke('module:getMetadata', name),
+    moduleGetLocales: (name) => ipcRenderer.invoke('module:getLocales', name),
     instanceCreate: (data) => ipcRenderer.invoke('instance:create', data),
     instanceDelete: (id) => ipcRenderer.invoke('instance:delete', id),
     instanceReorder: (orderedIds) => ipcRenderer.invoke('instance:reorder', orderedIds),

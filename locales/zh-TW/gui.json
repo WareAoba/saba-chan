@@ -38,7 +38,11 @@
     "refresh_3s": "3 秒",
     "refresh_5s": "5 秒",
     "refresh_10s": "10 秒",
-    "appearance_placeholder": "外觀設定將在此新增。",
+    "theme_label": "主題",
+    "theme_description": "選擇您喜歡的顏色主題",
+    "theme_auto": "自動",
+    "theme_light": "淺色",
+    "theme_dark": "深色",
     "advanced_placeholder": "進階設定將在此新增。"
   },
   "add_server_modal": {
@@ -86,6 +90,28 @@
     "server_deleted": "伺服器'{{name}}'已刪除",
     "settings_saved": "'{{name}}'的設定已儲存",
     "aliases_saved": "別名已儲存"
+  },
+  "server_settings": {
+    "title": "設定",
+    "general_tab": "一般設定",
+    "aliases_tab": "Discord 別名",
+    "protocol_title": "伺服器控制方式",
+    "protocol_description": "選擇執行伺服器命令時使用的協定。",
+    "protocol_rest_hint": "REST API 基於 HTTP，穩定且易於認證。",
+    "protocol_rcon_hint": "RCON 直接發送即時控制台命令。",
+    "protocol_single_only": "此模組僅支援 <strong>{{protocol}}</strong> 協定。",
+    "no_settings": "此模組沒有額外的設定項目。",
+    "module_aliases_title": "模組別名（在 Discord 中稱呼此伺服器的名稱）",
+    "module_aliases_hint": "用空格分隔多個項目。例如：{{module}} pw palworld",
+    "module_aliases_placeholder": "例如：{{module}}",
+    "module_aliases_empty_hint": "留空時預設為：",
+    "command_aliases_title": "命令別名（自訂命令）",
+    "command_aliases_hint": "用逗號分隔多個別名。例如：啟動, start, 執行",
+    "command_aliases_placeholder": "例如：{{cmd}}",
+    "save_aliases": "儲存別名",
+    "reset_aliases": "重設",
+    "save_settings": "儲存設定",
+    "close": "關閉"
   },
   "discord_bot": {
     "token_missing_title": "缺少權杖",

@@ -38,7 +38,11 @@
     "refresh_3s": "3 seconds",
     "refresh_5s": "5 seconds",
     "refresh_10s": "10 seconds",
-    "appearance_placeholder": "Appearance settings will be added here.",
+    "theme_label": "Theme",
+    "theme_description": "Choose your preferred color theme",
+    "theme_auto": "Auto",
+    "theme_light": "Light",
+    "theme_dark": "Dark",
     "advanced_placeholder": "Advanced settings will be added here."
   },
   "add_server_modal": {
@@ -86,6 +90,28 @@
     "server_deleted": "Server '{{name}}' has been deleted",
     "settings_saved": "Settings for '{{name}}' have been saved",
     "aliases_saved": "Aliases saved"
+  },
+  "server_settings": {
+    "title": "Settings",
+    "general_tab": "General Settings",
+    "aliases_tab": "Discord Aliases",
+    "protocol_title": "Server Control Method",
+    "protocol_description": "Select the protocol to use when executing server commands.",
+    "protocol_rest_hint": "REST API is HTTP-based, stable, and easy to authenticate.",
+    "protocol_rcon_hint": "RCON sends real-time console commands directly.",
+    "protocol_single_only": "This module only supports the <strong>{{protocol}}</strong> protocol.",
+    "no_settings": "This module has no additional settings.",
+    "module_aliases_title": "Module Aliases (Names to call this server on Discord)",
+    "module_aliases_hint": "Separate multiple entries with spaces. e.g., {{module}} pw palworld",
+    "module_aliases_placeholder": "e.g., {{module}}",
+    "module_aliases_empty_hint": "When empty, defaults to:",
+    "command_aliases_title": "Command Aliases (Custom Commands)",
+    "command_aliases_hint": "Separate multiple aliases with commas. e.g., start, begin, run",
+    "command_aliases_placeholder": "e.g., {{cmd}}",
+    "save_aliases": "Save Aliases",
+    "reset_aliases": "Reset",
+    "save_settings": "Save Settings",
+    "close": "Close"
   },
   "discord_bot": {
     "token_missing_title": "Token Missing",

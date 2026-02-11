@@ -2,15 +2,14 @@
 name = "minecraft"
 version = "1.0.0"
 description = "Minecraft server management module"
-game_name = "Minecraft"  # 게임 영어명 (기본 별명)
-display_name = "마인크래프트"  # 게임 한국어명
+game_name = "Minecraft"
+display_name = "Minecraft"
 entry = "lifecycle.py"
-icon = "icon.png"  # 모듈 폴더 내 아이콘 파일
+icon = "icon.png"
 
 [protocols]
-# 이 모듈이 지원하는 프로토콜
-supported = ["rcon"]  # 지원하는 프로토콜 목록 (마인크래프트는 RCON만 지원)
-default = "rcon"  # 기본 프로토콜
+supported = ["rcon"]
+default = "rcon"
 
 [config]
 executable_path = "C:\\MinecraftServer\\server.jar"
@@ -22,7 +21,6 @@ default_port = 25565
 rcon_port = 25575
 
 [detection]
-# 프로세스 자동 감지 설정
 process_patterns = ["java.exe", "minecraft_server"]
 common_paths = [
     "C:\\Users\\*\\Desktop\\MinecraftServer",
@@ -32,20 +30,19 @@ common_paths = [
 ]
 
 [settings]
-# Minecraft 서버 설정 필드
 
 [[settings.fields]]
 name = "executable_path"
 type = "file"
 label = "Server JAR Path"
-description = "server.jar 파일의 경로"
+description = "Path to server.jar file"
 required = true
 
 [[settings.fields]]
 name = "port"
 type = "number"
 label = "Server Port"
-description = "게임 서버 포트"
+description = "Game server port"
 default = 25565
 min = 1024
 max = 65535
@@ -54,7 +51,7 @@ max = 65535
 name = "difficulty"
 type = "select"
 label = "Difficulty"
-description = "게임 난이도"
+description = "Game difficulty"
 options = ["peaceful", "easy", "normal", "hard"]
 default = "normal"
 
@@ -62,95 +59,90 @@ default = "normal"
 name = "max_players"
 type = "number"
 label = "Max Players"
-description = "최대 플레이어 수"
+description = "Maximum number of players"
 default = 20
 min = 1
 max = 100
 
 [commands]
-# 명령어 정의: STDIN을 통해 서버 콘솔에 전달
 
 [[commands.fields]]
 name = "say"
-label = "채팅 메시지 전송"
-description = "서버에 메시지를 브로드캐스트합니다"
+label = "Send Chat Message"
+description = "Broadcast a message to the server"
 method = "stdin"
 command_template = "/say {message}"
 inputs = [
-    { name = "message", type = "text", label = "메시지", required = true, placeholder = "전송할 메시지를 입력하세요" }
+    { name = "message", type = "text", label = "Message", required = true, placeholder = "Enter message to send" }
 ]
 
 [[commands.fields]]
 name = "give"
-label = "아이템 지급"
-description = "플레이어에게 아이템을 지급합니다"
+label = "Give Item"
+description = "Give an item to a player"
 method = "stdin"
 command_template = "/give {player} {item} {amount}"
 inputs = [
-    { name = "player", type = "text", label = "플레이어 이름", required = true, placeholder = "플레이어 닉네임" },
-    { name = "item", type = "text", label = "아이템 ID", required = true, placeholder = "예: diamond, iron_ore" },
-    { name = "amount", type = "number", label = "개수", required = true, default = 1, min = 1, max = 64 }
+    { name = "player", type = "text", label = "Player Name", required = true, placeholder = "Player nickname" },
+    { name = "item", type = "text", label = "Item ID", required = true, placeholder = "e.g. diamond, iron_ore" },
+    { name = "amount", type = "number", label = "Amount", required = true, default = 1, min = 1, max = 64 }
 ]
 
 [[commands.fields]]
 name = "save-all"
-label = "월드 저장"
-description = "게임 월드를 저장합니다"
+label = "Save World"
+description = "Save the game world"
 method = "stdin"
 command_template = "/save-all"
 inputs = []
 
 [[commands.fields]]
 name = "list"
-label = "플레이어 목록"
-description = "접속 중인 플레이어 목록을 조회합니다"
+label = "Player List"
+description = "View list of connected players"
 method = "stdin"
 command_template = "/list"
 inputs = []
 
 [[commands.fields]]
 name = "weather"
-label = "날씨 변경"
-description = "서버의 날씨를 변경합니다"
+label = "Change Weather"
+description = "Change the server weather"
 method = "stdin"
 command_template = "/weather {type} {duration}"
 inputs = [
-    { name = "type", type = "select", label = "날씨", required = true, options = ["clear", "rain", "thunder"] },
-    { name = "duration", type = "number", label = "지속 시간 (초)", required = true, default = 1000, min = 1, max = 1000000 }
+    { name = "type", type = "select", label = "Weather", required = true, options = ["clear", "rain", "thunder"] },
+    { name = "duration", type = "number", label = "Duration (seconds)", required = true, default = 1000, min = 1, max = 1000000 }
 ]
 
 [[commands.fields]]
 name = "difficulty"
-label = "난이도 변경"
-description = "게임 난이도를 변경합니다"
+label = "Change Difficulty"
+description = "Change the game difficulty"
 method = "stdin"
 command_template = "/difficulty {level}"
 inputs = [
-    { name = "level", type = "select", label = "난이도", required = true, options = ["peaceful", "easy", "normal", "hard"] }
+    { name = "level", type = "select", label = "Difficulty", required = true, options = ["peaceful", "easy", "normal", "hard"] }
 ]
 
 [errors]
-# 에러 메시지 정의 (한국어)
-server_not_running = "서버가 실행중이지 않습니다. 먼저 서버를 시작해주세요"
-auth_failed = "RCON 인증 실패: 비밀번호를 확인해주세요"
-connection_refused = "서버에 연결할 수 없습니다. RCON 포트와 설정을 확인해주세요"
-timeout = "서버 응답 시간 초과. 서버 상태를 확인해주세요"
-rcon_disabled = "RCON이 비활성화되어 있습니다. server.properties에서 enable-rcon=true로 설정해주세요"
-internal_server_error = "서버 내부 오류가 발생했습니다"
+server_not_running = "Server is not running. Please start the server first"
+auth_failed = "RCON authentication failed: please check the password"
+connection_refused = "Cannot connect to server. Please check RCON port and settings"
+timeout = "Server response timeout. Please check server status"
+rcon_disabled = "RCON is disabled. Set enable-rcon=true in server.properties"
+internal_server_error = "Internal server error occurred"
 
 [aliases]
-# Discord 봇 연동용 별명
-# 모듈 별명: 이 모듈을 부를 때 사용할 수 있는 이름들
 module_aliases = ["마인크래프트", "마크", "mc", "minecraft"]
 
-# 명령어 별명: 각 명령어의 한국어 별명 및 단축키
 [aliases.commands]
-start = { aliases = ["시작", "실행", "켜기"], description = "서버를 시작합니다" }
-stop = { aliases = ["정지", "끝내기", "끄기"], description = "서버를 종료합니다" }
-status = { aliases = ["상태", "상황", "확인"], description = "서버의 상태를 확인합니다" }
-say = { aliases = ["말", "채팅", "메시지"], description = "서버에 메시지를 브로드캐스트합니다" }
-give = { aliases = ["지급", "줘", "item"], description = "플레이어에게 아이템을 지급합니다" }
-save-all = { aliases = ["저장"], description = "월드를 저장합니다" }
-list = { aliases = ["목록", "플레이어", "유저"], description = "접속 플레이어 목록을 조회합니다" }
-weather = { aliases = ["날씨", "웨더"], description = "서버의 날씨를 변경합니다" }
-difficulty = { aliases = ["난이도", "어려움"], description = "게임 난이도를 변경합니다" }
+start = { aliases = ["시작", "실행", "켜기"], description = "Start the server" }
+stop = { aliases = ["정지", "끝내기", "끄기"], description = "Stop the server" }
+status = { aliases = ["상태", "상황", "확인"], description = "Check server status" }
+say = { aliases = ["말", "채팅", "메시지"], description = "Broadcast a message" }
+give = { aliases = ["지급", "줘", "item"], description = "Give an item to a player" }
+save-all = { aliases = ["저장"], description = "Save the world" }
+list = { aliases = ["목록", "플레이어", "유저"], description = "View connected players" }
+weather = { aliases = ["날씨", "웨더"], description = "Change the weather" }
+difficulty = { aliases = ["난이도", "어려움"], description = "Change game difficulty" }

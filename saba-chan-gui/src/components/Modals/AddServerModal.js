@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import Icon from '../Icon';
+import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import './Modals.css';
 
 export function AddServerModal({ 
@@ -51,8 +52,7 @@ export function AddServerModal({
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content modal-content-large" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
-                    <h3><Icon name="plus" size="md" /> {t('add_server_modal.title')}</h3>
-                    <button className="modal-close" onClick={onClose}>✕</button>
+                    <h3 style={{ fontSize: '1.3rem' }}>{t('add_server_modal.title')}</h3>
                 </div>
 
                 <div className="modal-body">
@@ -91,17 +91,12 @@ export function AddServerModal({
 
                         <div className="form-row">
                             <label>{t('add_server_modal.game_module')}</label>
-                            <select 
+                            <CustomDropdown
                                 value={selectedModule}
-                                onChange={(e) => handleModuleSelect(e.target.value)}
-                            >
-                                <option value="">{t('add_server_modal.select_module')}</option>
-                                {modules.map(m => (
-                                    <option key={m.name} value={m.name}>
-                                        {m.name} v{m.version}
-                                    </option>
-                                ))}
-                            </select>
+                                onChange={(val) => handleModuleSelect(val)}
+                                placeholder={t('add_server_modal.select_module')}
+                                options={modules.map(m => ({ value: m.name, label: `${t(`mod_${m.name}:module.display_name`, { defaultValue: m.name })} v${m.version}` }))}
+                            />
                         </div>
                     </div>
 
@@ -112,8 +107,8 @@ export function AddServerModal({
                         ) : (
                             modules.map(module => (
                                 <div key={module.name} className="module-item">
-                                    <strong>{module.name}</strong> v{module.version}
-                                    <p>{module.description || t('add_server_modal.no_description')}</p>
+                                    <strong>{t(`mod_${module.name}:module.display_name`, { defaultValue: module.name })}</strong> v{module.version}
+                                    <p>{t(`mod_${module.name}:module.description`, { defaultValue: module.description || t('add_server_modal.no_description') })}</p>
                                     <small>{module.path}</small>
                                 </div>
                             ))

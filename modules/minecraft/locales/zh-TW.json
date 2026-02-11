@@ -1,4 +1,22 @@
 {
+  "module": {
+    "display_name": "Minecraft",
+    "description": "Minecraft伺服器管理模組"
+  },
+  "settings": {
+    "executable_path": { "label": "伺服器JAR路徑", "description": "server.jar檔案路徑" },
+    "port": { "label": "伺服器連接埠", "description": "遊戲伺服器連接埠" },
+    "difficulty": { "label": "難度", "description": "遊戲難度" },
+    "max_players": { "label": "最大玩家數", "description": "最大玩家數量" }
+  },
+  "commands": {
+    "say": { "label": "傳送聊天訊息", "description": "向伺服器廣播訊息", "inputs": { "message": { "label": "訊息", "placeholder": "輸入要傳送的訊息" } } },
+    "give": { "label": "給予物品", "description": "給予玩家物品", "inputs": { "player": { "label": "玩家名稱", "placeholder": "玩家暱稱" }, "item": { "label": "物品ID", "placeholder": "例: diamond, iron_ore" }, "amount": { "label": "數量" } } },
+    "save-all": { "label": "儲存世界", "description": "儲存遊戲世界" },
+    "list": { "label": "玩家清單", "description": "檢視已連線的玩家清單" },
+    "weather": { "label": "變更天氣", "description": "變更伺服器天氣", "inputs": { "type": { "label": "天氣" }, "duration": { "label": "持續時間（秒）" } } },
+    "difficulty": { "label": "變更難度", "description": "變更遊戲難度", "inputs": { "level": { "label": "難度" } } }
+  },
   "errors": {
     "server_jar_not_specified": "module.toml中未指定server_jar。請新增server.jar的路徑",
     "server_jar_not_found": "找不到伺服器jar：{{path}}。請檢查實例設定中的路徑。",

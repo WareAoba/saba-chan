@@ -1,4 +1,61 @@
 {
+  "module": {
+    "display_name": "幻兽帕鲁",
+    "description": "幻兽帕鲁服务器管理模块"
+  },
+  "settings": {
+    "executable_path": { "label": "服务器可执行文件路径", "description": "服务器可执行文件的路径" },
+    "port": { "label": "服务器端口", "description": "游戏服务器端口" },
+    "rcon_port": { "label": "RCON端口", "description": "RCON端口" },
+    "rcon_password": { "label": "RCON密码", "description": "远程命令执行密码" },
+    "rest_host": { "label": "REST API主机", "description": "REST API主机（默认127.0.0.1）" },
+    "rest_port": { "label": "REST API端口", "description": "REST API端口（默认8212）" },
+    "rest_username": { "label": "REST用户名", "description": "REST Basic Auth用户名" },
+    "rest_password": { "label": "REST密码", "description": "REST Basic Auth密码" }
+  },
+  "commands": {
+    "announce": {
+      "label": "发送公告",
+      "description": "向服务器广播消息",
+      "inputs": {
+        "message": { "label": "公告消息", "placeholder": "输入公告内容" }
+      }
+    },
+    "info": { "label": "服务器信息", "description": "查看服务器信息" },
+    "players": { "label": "玩家列表", "description": "当前连接的玩家列表" },
+    "save": { "label": "保存世界", "description": "保存游戏世界" },
+    "shutdown": {
+      "label": "关闭服务器",
+      "description": "关闭服务器（可设置延迟）",
+      "inputs": {
+        "waittime": { "label": "关闭延迟（秒）" },
+        "message": { "label": "关闭消息", "placeholder": "服务器关闭公告" }
+      }
+    },
+    "kick": {
+      "label": "踢出玩家",
+      "description": "将玩家踢出服务器",
+      "inputs": {
+        "userid": { "label": "玩家（昵称或SteamID）", "placeholder": "玩家昵称或steam_xxxxxxxxx" },
+        "message": { "label": "踢出消息", "placeholder": "可选：踢出消息" }
+      }
+    },
+    "ban": {
+      "label": "封禁玩家",
+      "description": "永久封禁玩家",
+      "inputs": {
+        "userid": { "label": "玩家（昵称或SteamID）", "placeholder": "玩家昵称或steam_xxxxxxxxx" },
+        "message": { "label": "封禁消息", "placeholder": "可选：封禁消息" }
+      }
+    },
+    "unban": {
+      "label": "解除封禁",
+      "description": "解除被封禁的玩家",
+      "inputs": {
+        "userid": { "label": "玩家（昵称或SteamID）", "placeholder": "玩家昵称或steam_xxxxxxxxx" }
+      }
+    }
+  },
   "errors": {
     "failed_to_start": "启动失败：{{error}}",
     "no_pid_provided": "未提供PID",

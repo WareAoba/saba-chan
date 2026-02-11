@@ -2,15 +2,14 @@
 name = "palworld"
 version = "1.0.0"
 description = "Palworld server management module"
-game_name = "Palworld"  # 게임 영어명 (기본 별명)
-display_name = "팰월드"  # 게임 한국어명
+game_name = "Palworld"
+display_name = "Palworld"
 entry = "lifecycle.py"
-icon = "icon.png"  # 모듈 폴더 내 아이콘 파일
+icon = "icon.png"
 
 [protocols]
-# 이 모듈이 지원하는 프로토콜
-supported = ["rest", "rcon"]  # 지원하는 프로토콜 목록
-default = "rest"  # 기본 프로토콜
+supported = ["rest", "rcon"]
+default = "rest"
 
 [config]
 executable_path = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\PalServer\\PalServer.exe"
@@ -27,21 +26,19 @@ common_paths = [
 ]
 
 [settings]
-# 설정 화면에 표시될 필드들
-# GUI는 이 스키마를 읽어서 동적으로 폼을 생성
 
 [[settings.fields]]
 name = "executable_path"
 type = "file"
 label = "Server Executable Path"
-description = "서버 실행 파일의 경로"
+description = "Path to the server executable"
 required = true
 
 [[settings.fields]]
 name = "port"
 type = "number"
 label = "Server Port"
-description = "게임 서버 포트"
+description = "Game server port"
 default = 8211
 min = 1024
 max = 65535
@@ -50,7 +47,7 @@ max = 65535
 name = "rcon_port"
 type = "number"
 label = "RCON Port"
-description = "RCON 포트"
+description = "RCON port"
 default = 25575
 min = 1024
 max = 65535
@@ -59,21 +56,21 @@ max = 65535
 name = "rcon_password"
 type = "password"
 label = "RCON Password"
-description = "원격 명령어 실행 비밀번호"
+description = "Remote command execution password"
 required = false
 
 [[settings.fields]]
 name = "rest_host"
 type = "text"
 label = "REST API Host"
-description = "REST API 호스트 (기본 127.0.0.1)"
+description = "REST API host (default 127.0.0.1)"
 default = "127.0.0.1"
 
 [[settings.fields]]
 name = "rest_port"
 type = "number"
 label = "REST API Port"
-description = "REST API 포트 (기본 8212)"
+description = "REST API port (default 8212)"
 default = 8212
 min = 1
 max = 65535
@@ -82,38 +79,34 @@ max = 65535
 name = "rest_username"
 type = "text"
 label = "REST Username"
-description = "REST Basic Auth 사용자명"
+description = "REST Basic Auth username"
 required = false
 
 [[settings.fields]]
 name = "rest_password"
 type = "password"
 label = "REST Password"
-description = "REST Basic Auth 비밀번호"
+description = "REST Basic Auth password"
 required = false
 
 [commands]
-# 명령어 정의: REST API와 RCON 둘 다 지원
-# protocol_mode 설정에 따라 자동으로 적절한 프로토콜 사용
-# - endpoint_template: REST API 엔드포인트
-# - rcon_template: RCON 명령어 템플릿
 
 [[commands.fields]]
 name = "announce"
-label = "공지사항 전송"
-description = "서버 전체에 메시지 브로드캐스트"
+label = "Send Announcement"
+description = "Broadcast a message to the server"
 method = "dual"
 http_method = "POST"
 endpoint_template = "/v1/api/announce"
 rcon_template = "Broadcast {message}"
 inputs = [
-    { name = "message", type = "text", label = "공지 메시지", required = true, placeholder = "공지할 내용을 입력하세요" }
+    { name = "message", type = "text", label = "Announcement Message", required = true, placeholder = "Enter announcement message" }
 ]
 
 [[commands.fields]]
 name = "info"
-label = "서버 정보"
-description = "서버 정보 조회"
+label = "Server Info"
+description = "View server information"
 method = "dual"
 http_method = "GET"
 endpoint_template = "/v1/api/info"
@@ -122,8 +115,8 @@ inputs = []
 
 [[commands.fields]]
 name = "players"
-label = "플레이어 목록"
-description = "현재 접속 중인 플레이어 목록"
+label = "Player List"
+description = "List currently connected players"
 method = "dual"
 http_method = "GET"
 endpoint_template = "/v1/api/players"
@@ -132,8 +125,8 @@ inputs = []
 
 [[commands.fields]]
 name = "save"
-label = "월드 저장"
-description = "게임 월드 저장"
+label = "Save World"
+description = "Save the game world"
 method = "dual"
 http_method = "POST"
 endpoint_template = "/v1/api/save"
@@ -142,81 +135,77 @@ inputs = []
 
 [[commands.fields]]
 name = "shutdown"
-label = "서버 종료"
-description = "서버 종료 (대기 시간 설정 가능)"
+label = "Shutdown Server"
+description = "Shutdown the server (with optional delay)"
 method = "dual"
 http_method = "POST"
 endpoint_template = "/v1/api/shutdown"
 rcon_template = "Shutdown {waittime} {message}"
 inputs = [
-    { name = "waittime", type = "number", label = "종료까지 대기 시간 (초)", required = true, default = 30, min = 0, max = 600 },
-    { name = "message", type = "text", label = "종료 메시지", required = false, placeholder = "서버 종료 공지 메시지" }
+    { name = "waittime", type = "number", label = "Shutdown Delay (seconds)", required = true, default = 30, min = 0, max = 600 },
+    { name = "message", type = "text", label = "Shutdown Message", required = false, placeholder = "Server shutdown announcement" }
 ]
 
 [[commands.fields]]
 name = "kick"
-label = "플레이어 강제 퇴장"
-description = "플레이어를 서버에서 강제 퇴장"
+label = "Kick Player"
+description = "Kick a player from the server"
 method = "dual"
 http_method = "POST"
 endpoint_template = "/v1/api/kick"
 rcon_template = "KickPlayer {userid}"
 inputs = [
-    { name = "userid", type = "text", label = "플레이어 (닉네임 또는 SteamID)", required = true, placeholder = "플레이어 닉네임 또는 steam_xxxxxxxxx" },
-    { name = "message", type = "text", label = "퇴장 메시지", required = false, placeholder = "선택사항: 퇴장 메시지" }
+    { name = "userid", type = "text", label = "Player (Nickname or SteamID)", required = true, placeholder = "Player nickname or steam_xxxxxxxxx" },
+    { name = "message", type = "text", label = "Kick Message", required = false, placeholder = "Optional: kick message" }
 ]
 
 [[commands.fields]]
 name = "ban"
-label = "플레이어 차단"
-description = "플레이어를 영구 차단"
+label = "Ban Player"
+description = "Permanently ban a player"
 method = "dual"
 http_method = "POST"
 endpoint_template = "/v1/api/ban"
 rcon_template = "BanPlayer {userid}"
 inputs = [
-    { name = "userid", type = "text", label = "플레이어 (닉네임 또는 SteamID)", required = true, placeholder = "플레이어 닉네임 또는 steam_xxxxxxxxx" },
-    { name = "message", type = "text", label = "차단 메시지", required = false, placeholder = "선택사항: 차단 메시지" }
+    { name = "userid", type = "text", label = "Player (Nickname or SteamID)", required = true, placeholder = "Player nickname or steam_xxxxxxxxx" },
+    { name = "message", type = "text", label = "Ban Message", required = false, placeholder = "Optional: ban message" }
 ]
 
 [[commands.fields]]
 name = "unban"
-label = "플레이어 차단 해제"
-description = "차단된 플레이어 해제"
+label = "Unban Player"
+description = "Unban a banned player"
 method = "dual"
 http_method = "POST"
 endpoint_template = "/v1/api/unban"
 rcon_template = "UnBanPlayer {userid}"
 inputs = [
-    { name = "userid", type = "text", label = "플레이어 (닉네임 또는 SteamID)", required = true, placeholder = "플레이어 닉네임 또는 steam_xxxxxxxxx" }
+    { name = "userid", type = "text", label = "Player (Nickname or SteamID)", required = true, placeholder = "Player nickname or steam_xxxxxxxxx" }
 ]
 
 [errors]
-# 에러 메시지 정의 (한국어)
-# 각 HTTP 상태 코드별 사용자 친화적인 에러 메시지
-server_not_running = "서버가 실행중이지 않습니다. 먼저 서버를 시작해주세요"
-auth_failed = "인증 실패: REST API 사용자명/비밀번호 또는 RCON 비밀번호를 확인해주세요"
-player_not_found = "플레이어를 찾을 수 없습니다. 닉네임 또는 SteamID를 확인해주세요"
-connection_refused = "서버에 연결할 수 없습니다. 서버 포트와 REST API 설정을 확인해주세요"
-timeout = "서버 응답 시간 초과. 서버 상태를 확인해주세요"
-rest_api_disabled = "REST API가 비활성화되어 있습니다. 서버 설정에서 REST API를 활성화해주세요"
-rcon_disabled = "RCON이 비활성화되어 있습니다. 서버 설정에서 RCON을 활성화해주세요"
-internal_server_error = "서버 내부 오류가 발생했습니다"
+server_not_running = "Server is not running. Please start the server first"
+auth_failed = "Authentication failed: please check REST API username/password or RCON password"
+player_not_found = "Player not found. Please check the nickname or SteamID"
+connection_refused = "Cannot connect to server. Please check server port and REST API settings"
+timeout = "Server response timeout. Please check server status"
+rest_api_disabled = "REST API is disabled. Please enable REST API in server settings"
+rcon_disabled = "RCON is disabled. Please enable RCON in server settings"
+internal_server_error = "Internal server error occurred"
 
 [aliases]
-# Discord 봇 연동용 별명
 module_aliases = ["팰월드", "팔월드", "pw", "palworld"]
 
-# 명령어 별명: 실제 존재하는 명령어만 포함
 [aliases.commands]
-start = { aliases = ["시작", "실행", "켜기"], description = "서버를 시작합니다" }
-stop = { aliases = ["정지", "끝내기", "끄기"], description = "서버를 종료합니다" }
-status = { aliases = ["상태", "상황", "확인"], description = "서버의 상태를 확인합니다" }
-announce = { aliases = ["공지", "공지사항", "알림"], description = "전체 공지를 전송합니다" }
-save = { aliases = ["저장"], description = "게임 월드를 저장합니다" }
-info = { aliases = ["정보", "인포"], description = "서버 정보를 조회합니다" }
-players = { aliases = ["플레이어", "접속자", "유저"], description = "접속 중인 플레이어 목록" }
-shutdown = { aliases = ["종료", "셧다운"], description = "서버를 종료합니다" }
-kick = { aliases = ["킥", "강퇴", "추방"], description = "플레이어를 강제 퇴장시킵니다" }
-ban = { aliases = ["밴", "차단", "영구밴"], description = "플레이어를 차단합니다" }
-unban = { aliases = ["언밴", "차단해제"], description = "플레이어 차단을 해제합니다" }
+start = { aliases = ["시작", "실행", "켜기"], description = "Start the server" }
+stop = { aliases = ["정지", "끝내기", "끄기"], description = "Stop the server" }
+status = { aliases = ["상태", "상황", "확인"], description = "Check server status" }
+announce = { aliases = ["공지", "공지사항", "알림"], description = "Send a broadcast announcement" }
+save = { aliases = ["저장"], description = "Save the game world" }
+info = { aliases = ["정보", "인포"], description = "View server information" }
+players = { aliases = ["플레이어", "접속자", "유저"], description = "List connected players" }
+shutdown = { aliases = ["종료", "셧다운"], description = "Shutdown the server" }
+kick = { aliases = ["킥", "강퇴", "추방"], description = "Kick a player" }
+ban = { aliases = ["밴", "차단", "영구밴"], description = "Ban a player" }
+unban = { aliases = ["언밴", "차단해제"], description = "Unban a player" }

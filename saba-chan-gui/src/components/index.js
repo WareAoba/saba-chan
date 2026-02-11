@@ -9,3 +9,4 @@ export { default as DiscordBotModal } from './Modals/DiscordBotModal';
 export { default as BackgroundModal } from './Modals/BackgroundModal';
 export { AddServerModal } from './Modals/AddServerModal';
 export { Icon } from './Icon';
+export { default as CustomDropdown } from './CustomDropdown/CustomDropdown';

@@ -1,4 +1,22 @@
 {
+  "module": {
+    "display_name": "マインクラフト",
+    "description": "マインクラフトサーバー管理モジュール"
+  },
+  "settings": {
+    "executable_path": { "label": "サーバーJARパス", "description": "server.jarファイルのパス" },
+    "port": { "label": "サーバーポート", "description": "ゲームサーバーポート" },
+    "difficulty": { "label": "難易度", "description": "ゲームの難易度" },
+    "max_players": { "label": "最大プレイヤー数", "description": "最大プレイヤー数" }
+  },
+  "commands": {
+    "say": { "label": "チャットメッセージ送信", "description": "サーバーにメッセージをブロードキャストします", "inputs": { "message": { "label": "メッセージ", "placeholder": "送信するメッセージを入力" } } },
+    "give": { "label": "アイテム付与", "description": "プレイヤーにアイテムを付与します", "inputs": { "player": { "label": "プレイヤー名", "placeholder": "プレイヤーのニックネーム" }, "item": { "label": "アイテムID", "placeholder": "例: diamond, iron_ore" }, "amount": { "label": "個数" } } },
+    "save-all": { "label": "ワールド保存", "description": "ゲームワールドを保存します" },
+    "list": { "label": "プレイヤー一覧", "description": "接続中のプレイヤー一覧を表示します" },
+    "weather": { "label": "天気変更", "description": "サーバーの天気を変更します", "inputs": { "type": { "label": "天気" }, "duration": { "label": "持続時間（秒）" } } },
+    "difficulty": { "label": "難易度変更", "description": "ゲームの難易度を変更します", "inputs": { "level": { "label": "難易度" } } }
+  },
   "errors": {
     "server_jar_not_specified": "インスタンス設定で server_jar が指定されていません。server.jar のパスを追加してください",
     "server_jar_not_found": "サーバー jar が見つかりません: {{path}}。インスタンス設定でパスを確認してください。",

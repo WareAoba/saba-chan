@@ -95,7 +95,7 @@ function BackgroundModal({ isOpen, onClose }) {
                     <span className={`status-indicator ${getStatusClass()}`}></span>
                     <h2>{t('background_modal.title')}</h2>
                 </div>
-                <button className="background-modal-close" onClick={onClose}>✕</button>
+                <button className="background-modal-close" onClick={onClose}><Icon name="close" size="sm" /></button>
             </div>
 
             <div className="background-modal-content">
@@ -108,19 +108,19 @@ function BackgroundModal({ isOpen, onClose }) {
 
                 <div className="background-info-section">
                     <div className="info-row">
-                        <span className="info-label">🔌 {t('background_modal.ipc_host_label')}</span>
+                        <span className="info-label"><Icon name="plug" size="sm" /> {t('background_modal.ipc_host_label')}</span>
                         <span className="info-value">{t('background_modal.ipc_host_value')}</span>
                     </div>
                     <div className="info-row">
-                        <span className="info-label">🔢 {t('background_modal.ipc_port_label')}</span>
+                        <span className="info-label"><Icon name="hash" size="sm" /> {t('background_modal.ipc_port_label')}</span>
                         <span className="info-value">{t('background_modal.ipc_port_value')}</span>
                     </div>
                     <div className="info-row">
-                        <span className="info-label">📡 {t('background_modal.protocol_label')}</span>
+                        <span className="info-label"><Icon name="broadcast" size="sm" /> {t('background_modal.protocol_label')}</span>
                         <span className="info-value">{t('background_modal.protocol_value')}</span>
                     </div>
                     <div className="info-row">
-                        <span className="info-label">⏱️ {t('background_modal.uptime_label')}</span>
+                        <span className="info-label"><Icon name="clock" size="sm" /> {t('background_modal.uptime_label')}</span>
                         <span className="info-value">{uptime}</span>
                     </div>
                 </div>
@@ -132,7 +132,7 @@ function BackgroundModal({ isOpen, onClose }) {
                             onClick={handleRestartDaemon}
                             disabled={restarting}
                         >
-                            {restarting ? t('background_modal.restarting_button') : `🔄 ${t('background_modal.restart_button')}`}
+                            {restarting ? t('background_modal.restarting_button') : <><Icon name="refresh" size="sm" /> {t('background_modal.restart_button')}</>}
                         </button>
                     </div>
                 )}

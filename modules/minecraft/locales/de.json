@@ -1,4 +1,22 @@
 {
+  "module": {
+    "display_name": "Minecraft",
+    "description": "Minecraft-Server-Verwaltungsmodul"
+  },
+  "settings": {
+    "executable_path": { "label": "Server-JAR-Pfad", "description": "Pfad zur server.jar-Datei" },
+    "port": { "label": "Server-Port", "description": "Spielserver-Port" },
+    "difficulty": { "label": "Schwierigkeit", "description": "Spielschwierigkeit" },
+    "max_players": { "label": "Max. Spieler", "description": "Maximale Spieleranzahl" }
+  },
+  "commands": {
+    "say": { "label": "Chat-Nachricht senden", "description": "Nachricht an Server übertragen", "inputs": { "message": { "label": "Nachricht", "placeholder": "Nachricht zum Senden eingeben" } } },
+    "give": { "label": "Gegenstand geben", "description": "Einem Spieler einen Gegenstand geben", "inputs": { "player": { "label": "Spielername", "placeholder": "Spieler-Nickname" }, "item": { "label": "Gegenstands-ID", "placeholder": "z.B. diamond, iron_ore" }, "amount": { "label": "Anzahl" } } },
+    "save-all": { "label": "Welt speichern", "description": "Spielwelt speichern" },
+    "list": { "label": "Spielerliste", "description": "Liste der verbundenen Spieler anzeigen" },
+    "weather": { "label": "Wetter ändern", "description": "Serverwetter ändern", "inputs": { "type": { "label": "Wetter" }, "duration": { "label": "Dauer (Sekunden)" } } },
+    "difficulty": { "label": "Schwierigkeit ändern", "description": "Spielschwierigkeit ändern", "inputs": { "level": { "label": "Schwierigkeit" } } }
+  },
   "errors": {
     "server_jar_not_specified": "server_jar in der Instanzkonfiguration nicht angegeben. Bitte fügen Sie den Pfad zu server.jar hinzu",
     "server_jar_not_found": "Server-Jar nicht gefunden: {{path}}. Bitte überprüfen Sie den Pfad in den Instanzeinstellungen.",

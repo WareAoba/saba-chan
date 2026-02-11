@@ -38,7 +38,11 @@
     "refresh_3s": "3 Sekunden",
     "refresh_5s": "5 Sekunden",
     "refresh_10s": "10 Sekunden",
-    "appearance_placeholder": "Einstellungen für das Erscheinungsbild werden hier hinzugefügt.",
+    "theme_label": "Design",
+    "theme_description": "Wähle dein bevorzugtes Farbdesign",
+    "theme_auto": "Automatisch",
+    "theme_light": "Hell",
+    "theme_dark": "Dunkel",
     "advanced_placeholder": "Erweiterte Einstellungen werden hier hinzugefügt."
   },
   "add_server_modal": {
@@ -86,6 +90,28 @@
     "server_deleted": "Server '{{name}}' wurde gelöscht",
     "settings_saved": "Einstellungen für '{{name}}' wurden gespeichert",
     "aliases_saved": "Aliase gespeichert"
+  },
+  "server_settings": {
+    "title": "Einstellungen",
+    "general_tab": "Allgemeine Einstellungen",
+    "aliases_tab": "Discord-Aliase",
+    "protocol_title": "Server-Steuerungsmethode",
+    "protocol_description": "Wählen Sie das Protokoll für die Ausführung von Serverbefehlen.",
+    "protocol_rest_hint": "REST API ist HTTP-basiert, stabil und einfach zu authentifizieren.",
+    "protocol_rcon_hint": "RCON sendet Echtzeit-Konsolenbefehle direkt.",
+    "protocol_single_only": "Dieses Modul unterstützt nur das <strong>{{protocol}}</strong>-Protokoll.",
+    "no_settings": "Dieses Modul hat keine zusätzlichen Einstellungen.",
+    "module_aliases_title": "Modul-Aliase (Namen für diesen Server in Discord)",
+    "module_aliases_hint": "Mehrere Einträge mit Leerzeichen trennen. z.B.: {{module}} pw palworld",
+    "module_aliases_placeholder": "z.B.: {{module}}",
+    "module_aliases_empty_hint": "Wenn leer, Standard:",
+    "command_aliases_title": "Befehls-Aliase (Benutzerdefinierte Befehle)",
+    "command_aliases_hint": "Mehrere Aliase mit Kommas trennen. z.B.: starten, start, ausführen",
+    "command_aliases_placeholder": "z.B.: {{cmd}}",
+    "save_aliases": "Aliase speichern",
+    "reset_aliases": "Zurücksetzen",
+    "save_settings": "Einstellungen speichern",
+    "close": "Schließen"
   },
   "discord_bot": {
     "token_missing_title": "Token fehlt",

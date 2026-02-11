@@ -1,4 +1,22 @@
 {
+  "module": {
+    "display_name": "Майнкрафт",
+    "description": "Модуль управления сервером Minecraft"
+  },
+  "settings": {
+    "executable_path": { "label": "Путь к JAR серверу", "description": "Путь к файлу server.jar" },
+    "port": { "label": "Порт сервера", "description": "Порт игрового сервера" },
+    "difficulty": { "label": "Сложность", "description": "Сложность игры" },
+    "max_players": { "label": "Макс. игроков", "description": "Максимальное количество игроков" }
+  },
+  "commands": {
+    "say": { "label": "Отправить сообщение в чат", "description": "Транслировать сообщение на сервер", "inputs": { "message": { "label": "Сообщение", "placeholder": "Введите сообщение для отправки" } } },
+    "give": { "label": "Выдать предмет", "description": "Выдать предмет игроку", "inputs": { "player": { "label": "Имя игрока", "placeholder": "Никнейм игрока" }, "item": { "label": "ID предмета", "placeholder": "Напр: diamond, iron_ore" }, "amount": { "label": "Количество" } } },
+    "save-all": { "label": "Сохранить мир", "description": "Сохранить игровой мир" },
+    "list": { "label": "Список игроков", "description": "Посмотреть список подключенных игроков" },
+    "weather": { "label": "Изменить погоду", "description": "Изменить погоду на сервере", "inputs": { "type": { "label": "Погода" }, "duration": { "label": "Продолжительность (секунды)" } } },
+    "difficulty": { "label": "Изменить сложность", "description": "Изменить сложность игры", "inputs": { "level": { "label": "Сложность" } } }
+  },
   "errors": {
     "server_jar_not_specified": "server_jar не указан в конфигурации экземпляра. Пожалуйста добавьте путь к server.jar",
     "server_jar_not_found": "Файл jar сервера не найден: {{path}}. Пожалуйста проверьте путь в настройках экземпляра.",

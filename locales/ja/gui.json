@@ -38,7 +38,11 @@
     "refresh_3s": "3秒",
     "refresh_5s": "5秒",
     "refresh_10s": "10秒",
-    "appearance_placeholder": "外観設定はここに追加されます。",
+    "theme_label": "テーマ",
+    "theme_description": "お好みのカラーテーマを選択してください",
+    "theme_auto": "自動",
+    "theme_light": "ライト",
+    "theme_dark": "ダーク",
     "advanced_placeholder": "詳細設定はここに追加されます。"
   },
   "add_server_modal": {
@@ -86,6 +90,28 @@
     "server_deleted": "サーバー '{{name}}' が削除されました",
     "settings_saved": "'{{name}}' の設定が保存されました",
     "aliases_saved": "エイリアスが保存されました"
+  },
+  "server_settings": {
+    "title": "設定",
+    "general_tab": "一般設定",
+    "aliases_tab": "Discord 別名",
+    "protocol_title": "サーバー操作方式",
+    "protocol_description": "サーバーコマンドを実行する際に使用するプロトコルを選択します。",
+    "protocol_rest_hint": "REST API は HTTP ベースで安定しており、認証が容易です。",
+    "protocol_rcon_hint": "RCON はリアルタイムのコンソールコマンドを直接送信します。",
+    "protocol_single_only": "このモジュールは <strong>{{protocol}}</strong> プロトコルのみサポートしています。",
+    "no_settings": "このモジュールには追加の設定項目がありません。",
+    "module_aliases_title": "モジュール別名（Discord でこのサーバーを呼ぶ名前）",
+    "module_aliases_hint": "スペースで区切って複数入力可能。例: {{module}} pw palworld",
+    "module_aliases_placeholder": "例: {{module}}",
+    "module_aliases_empty_hint": "空の場合のデフォルト:",
+    "command_aliases_title": "コマンド別名（カスタムコマンド）",
+    "command_aliases_hint": "カンマで区切って複数の別名を入力。例: 開始, start, 実行",
+    "command_aliases_placeholder": "例: {{cmd}}",
+    "save_aliases": "別名を保存",
+    "reset_aliases": "リセット",
+    "save_settings": "設定を保存",
+    "close": "閉じる"
   },
   "discord_bot": {
     "token_missing_title": "トークンがありません",

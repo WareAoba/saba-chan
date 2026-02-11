@@ -1,4 +1,55 @@
 {
+  "module": {
+    "display_name": "마인크래프트",
+    "description": "마인크래프트 서버 관리 모듈"
+  },
+  "settings": {
+    "executable_path": { "label": "서버 JAR 경로", "description": "server.jar 파일의 경로" },
+    "port": { "label": "서버 포트", "description": "게임 서버 포트" },
+    "difficulty": { "label": "난이도", "description": "게임 난이도" },
+    "max_players": { "label": "최대 플레이어 수", "description": "최대 플레이어 수" }
+  },
+  "commands": {
+    "say": {
+      "label": "채팅 메시지 전송",
+      "description": "서버에 메시지를 브로드캐스트합니다",
+      "inputs": {
+        "message": { "label": "메시지", "placeholder": "전송할 메시지를 입력하세요" }
+      }
+    },
+    "give": {
+      "label": "아이템 지급",
+      "description": "플레이어에게 아이템을 지급합니다",
+      "inputs": {
+        "player": { "label": "플레이어 이름", "placeholder": "플레이어 닉네임" },
+        "item": { "label": "아이템 ID", "placeholder": "예: diamond, iron_ore" },
+        "amount": { "label": "개수" }
+      }
+    },
+    "save-all": {
+      "label": "월드 저장",
+      "description": "게임 월드를 저장합니다"
+    },
+    "list": {
+      "label": "플레이어 목록",
+      "description": "접속 중인 플레이어 목록을 조회합니다"
+    },
+    "weather": {
+      "label": "날씨 변경",
+      "description": "서버의 날씨를 변경합니다",
+      "inputs": {
+        "type": { "label": "날씨" },
+        "duration": { "label": "지속 시간 (초)" }
+      }
+    },
+    "difficulty": {
+      "label": "난이도 변경",
+      "description": "게임 난이도를 변경합니다",
+      "inputs": {
+        "level": { "label": "난이도" }
+      }
+    }
+  },
   "errors": {
     "server_jar_not_specified": "인스턴스 구성에 server_jar가 지정되지 않았습니다. server.jar 경로를 추가해주세요",
     "server_jar_not_found": "서버 jar를 찾을 수 없습니다: {{path}}. 인스턴스 설정의 경로를 확인해주세요.",

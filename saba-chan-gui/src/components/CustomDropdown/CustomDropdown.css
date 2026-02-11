@@ -1,0 +1,149 @@
+/* ===== Custom Dropdown ===== */
+.custom-dropdown {
+    position: relative;
+    min-width: 100px;
+}
+
+.custom-dropdown.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.custom-dropdown-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--input-border);
+    border-radius: 8px;
+    background: var(--input-bg);
+    color: var(--text-primary);
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    height: auto;
+    min-height: 38px;
+    text-align: left;
+}
+
+.custom-dropdown-trigger:hover {
+    border-color: var(--border-hover);
+    background: var(--bg-surface-hover);
+}
+
+.custom-dropdown.open .custom-dropdown-trigger {
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 3px var(--brand-shadow-subtle);
+}
+
+.custom-dropdown-value {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.custom-dropdown-placeholder {
+    color: var(--text-muted);
+}
+
+.custom-dropdown-arrow {
+    display: flex;
+    align-items: center;
+    color: var(--text-muted);
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+.custom-dropdown-arrow.rotated {
+    transform: rotate(180deg);
+}
+
+/* --- 드롭다운 메뉴 (Portal로 body에 렌더링됨) --- */
+.custom-dropdown-menu {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px var(--shadow-lg), 0 2px 8px var(--shadow-sm);
+    overflow: hidden;
+    animation: dropdownSlideIn 0.15s ease-out;
+}
+
+@keyframes dropdownSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.custom-dropdown-scroll {
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 4px;
+}
+
+.custom-dropdown-scroll::-webkit-scrollbar {
+    width: 6px;
+}
+
+.custom-dropdown-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.custom-dropdown-scroll::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 3px;
+}
+
+.custom-dropdown-scroll::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+}
+
+/* --- 드롭다운 아이템 --- */
+.custom-dropdown-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text-primary);
+    transition: all 0.12s ease;
+    gap: 8px;
+}
+
+.custom-dropdown-item:hover {
+    background: var(--bg-surface-hover);
+}
+
+.custom-dropdown-item.selected {
+    background: var(--brand-bg-light);
+    color: var(--brand-primary);
+    font-weight: 600;
+}
+
+.custom-dropdown-item-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    white-space: nowrap;
+}
+
+.custom-dropdown-check {
+    display: flex;
+    align-items: center;
+    color: var(--brand-primary);
+    flex-shrink: 0;
+}

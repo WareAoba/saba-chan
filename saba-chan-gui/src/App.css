@@ -2,6 +2,7 @@
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+    font-family: 'Noto Sans', 'Noto Sans KR', 'Noto Sans JP', sans-serif;
 }
 
 :root {
@@ -36,13 +37,13 @@ button:disabled {
 
 /* 기본 버튼 (Primary) */
 .btn-primary {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    background: var(--brand-gradient);
+    color: var(--text-on-primary);
 }
 
 .btn-primary:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    box-shadow: 0 4px 12px var(--brand-shadow);
 }
 
 .btn-primary:active:not(:disabled) {
@@ -51,20 +52,20 @@ button:disabled {
 
 /* 보조 버튼 (Secondary) */
 .btn-secondary {
-    background: #f5f5f5;
-    color: #333;
-    border: 1px solid #ddd;
+    background: var(--btn-secondary-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
 }
 
 .btn-secondary:hover:not(:disabled) {
-    background: #efefef;
-    border-color: #bbb;
+    background: var(--btn-secondary-hover-bg);
+    border-color: var(--border-hover);
 }
 
 /* 위험 버튼 (Danger) */
 .btn-danger {
     background: #ff6b6b;
-    color: white;
+    color: var(--text-on-primary);
 }
 
 .btn-danger:hover:not(:disabled) {
@@ -75,7 +76,7 @@ button:disabled {
 /* 성공 버튼 (Success) */
 .btn-success {
     background: #51cf66;
-    color: white;
+    color: var(--text-on-primary);
 }
 
 .btn-success:hover:not(:disabled) {
@@ -126,22 +127,22 @@ textarea,
 }
 
 ::-webkit-scrollbar-thumb {
-    background: #d0d0d0;
+    background: var(--scrollbar-thumb);
     border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: #b0b0b0;
+    background: var(--scrollbar-thumb-hover);
 }
 
 ::-webkit-scrollbar-thumb:active {
-    background: #909090;
+    background: var(--scrollbar-thumb-active);
 }
 
 /* Firefox 스크롤바 */
 * {
     scrollbar-width: thin;
-    scrollbar-color: #d0d0d0 transparent;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 body {
@@ -150,7 +151,7 @@ body {
         sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: var(--bg-app);
     min-height: 100vh;
 }
 
@@ -160,7 +161,7 @@ body {
     flex-direction: column;
     min-height: 100vh;
     padding-top: 40px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: var(--bg-app);
 }
 
 .loading-content {
@@ -169,7 +170,7 @@ body {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    color: white;
+    color: var(--text-on-primary);
     gap: 24px;
     padding: 20px;
 }
@@ -228,7 +229,7 @@ body {
 .glow-mask {
     position: absolute;
     inset: 5px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: var(--bg-app);
     border-radius: 50%;
     z-index: 1;
 }
@@ -320,7 +321,7 @@ span[style*="--icon-loader"] svg,
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(255, 255, 255, 0.85);
+    background: var(--bg-initializing-overlay);
     backdrop-filter: blur(2px);
     display: flex;
     align-items: center;
@@ -335,7 +336,7 @@ span[style*="--icon-loader"] svg,
     flex-direction: column;
     align-items: center;
     gap: 12px;
-    color: #667eea;
+    color: var(--brand-primary);
     font-size: 14px;
     font-weight: 500;
 }
@@ -343,8 +344,8 @@ span[style*="--icon-loader"] svg,
 .servers-initializing-spinner {
     width: 32px;
     height: 32px;
-    border: 3px solid rgba(102, 126, 234, 0.2);
-    border-top-color: #667eea;
+    border: 3px solid var(--brand-shadow-light);
+    border-top-color: var(--brand-primary);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
 }
@@ -386,9 +387,9 @@ span[style*="--icon-loader"] svg,
 }
 
 .app-header {
-    background: white;
+    background: var(--bg-surface);
     padding: 28px 28px 20px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 8px var(--shadow-md);
     margin-bottom: 20px;
     display: flex;
     flex-direction: column;
@@ -423,9 +424,9 @@ span[style*="--icon-loader"] svg,
     align-items: center;
     justify-content: center;
     font-size: 32px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: var(--brand-gradient);
     border-radius: 12px;
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 4px 12px var(--brand-shadow-medium);
 }
 
 .app-logo-icon {
@@ -442,10 +443,11 @@ span[style*="--icon-loader"] svg,
     object-fit: contain;
     pointer-events: none;
     user-select: none;
+    filter: var(--img-brightness, none);
 }
 
 .app-header h1 {
-    color: #333;
+    color: var(--text-primary);
     margin: 0;
     font-size: 28px;
     font-weight: 700;
@@ -458,7 +460,7 @@ span[style*="--icon-loader"] svg,
 /* 앱 설정 버튼 (헤더 상단의 톱니바퀴 아이콘) */
 .btn-settings-icon-solo {
     background: transparent;
-    color: #666;
+    color: var(--icon-secondary);
     padding: 0;
     min-width: var(--btn-height);
     height: var(--btn-height);
@@ -479,20 +481,20 @@ span[style*="--icon-loader"] svg,
 }
 
 .btn-settings-icon-solo:hover {
-    background: #f5f5f5;
-    color: #333;
+    background: var(--bg-surface-secondary);
+    color: var(--icon-hover);
     transform: rotate(30deg);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 8px var(--shadow-md);
 }
 
 /* 설정 아이콘 SVG 색상 덮어쓰기 */
 .btn-settings-icon-solo svg path {
-    fill: #666;
+    fill: var(--icon-secondary);
     transition: fill 0.3s ease;
 }
 
 .btn-settings-icon-solo:hover svg path {
-    fill: #333;
+    fill: var(--icon-hover);
 }
 
 .discord-button-wrapper,
@@ -501,8 +503,8 @@ span[style*="--icon-loader"] svg,
 }
 
 .btn-add {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    background: var(--brand-gradient);
+    color: var(--text-on-primary);
     border: none;
     padding: 0 20px;
     height: var(--btn-height);
@@ -510,7 +512,7 @@ span[style*="--icon-loader"] svg,
     cursor: pointer;
     font-weight: bold;
     transition: all 0.3s ease;
-    box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
+    box-shadow: 0 2px 4px var(--brand-shadow-light);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -518,7 +520,7 @@ span[style*="--icon-loader"] svg,
 
 .btn-add:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+    box-shadow: 0 6px 16px var(--brand-shadow);
 }
 
 .header-controls label {
@@ -536,22 +538,22 @@ span[style*="--icon-loader"] svg,
 
 .header-controls select {
     padding: 8px 12px;
-    border: 1px solid #ddd;
+    border: 1px solid var(--border-default);
     border-radius: 4px;
     font-size: 14px;
     cursor: pointer;
 }
 
 .header-controls select:disabled {
-    background-color: #f5f5f5;
-    color: #999;
+    background-color: var(--bg-surface-secondary);
+    color: var(--text-disabled);
     cursor: not-allowed;
 }
 
 .refresh-btn {
     padding: 8px 16px;
-    background-color: #667eea;
-    color: white;
+    background-color: var(--brand-primary);
+    color: var(--text-on-primary);
     border: none;
     border-radius: 4px;
     cursor: pointer;
@@ -560,7 +562,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .refresh-btn:hover {
-    background-color: #5568d3;
+    background-color: var(--brand-hover);
 }
 
 .loading {
@@ -571,15 +573,15 @@ span[style*="--icon-loader"] svg,
 }
 
 .loading h2 {
-    color: white;
+    color: var(--text-on-primary);
 }
 
 .no-servers {
     text-align: center;
     padding: 60px 20px;
-    background: white;
+    background: var(--bg-surface);
     border-radius: 8px;
-    color: #666;
+    color: var(--text-tertiary);
 }
 
 .no-servers p {
@@ -597,10 +599,10 @@ span[style*="--icon-loader"] svg,
 }
 
 .server-card {
-    background: white;
+    background: var(--card-bg);
     border-radius: var(--btn-radius);
     padding: 12px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--card-shadow);
     transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.2s ease, opacity 0.2s ease;
     position: relative;
     display: flex;
@@ -615,13 +617,13 @@ span[style*="--icon-loader"] svg,
 }
 
 .server-card:hover {
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--card-hover-shadow);
 }
 
 /* 드래그 중인 카드: 커서를 따라다니며 부유 */
 .server-card.dragging {
     opacity: 0.85;
-    box-shadow: 0 16px 40px rgba(102, 126, 234, 0.45);
+    box-shadow: 0 16px 40px var(--brand-shadow-strong);
     z-index: 999;
     /* transform은 JS가 직접 제어 — CSS transition 적용 안 함 */
 }
@@ -638,7 +640,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .server-card.expanded {
-    border-left: 3px solid #667eea;
+    border-left: 3px solid var(--brand-primary);
 }
 
 /* 서버 카드 헤더 */
@@ -670,9 +672,9 @@ span[style*="--icon-loader"] svg,
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: var(--brand-gradient);
     border-radius: 8px;
-    color: white;
+    color: var(--text-on-primary);
 }
 
 /* 서버 정보 */
@@ -683,7 +685,7 @@ span[style*="--icon-loader"] svg,
 
 .server-card-info h2 {
     margin: 0 0 2px 0;
-    color: #333;
+    color: var(--text-primary);
     font-size: 16px;
     font-weight: 600;
     white-space: nowrap;
@@ -693,7 +695,7 @@ span[style*="--icon-loader"] svg,
 
 .game-name {
     font-size: 12px;
-    color: #666;
+    color: var(--text-tertiary);
     margin: 0;
     font-weight: 500;
 }
@@ -852,7 +854,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .server-details {
-    background: #f5f5f5;
+    background: var(--bg-surface-secondary);
     padding: 8px;
     border-radius: 4px;
     margin-top: 8px;
@@ -868,11 +870,11 @@ span[style*="--icon-loader"] svg,
 
 .detail-row .label {
     font-weight: bold;
-    color: #666;
+    color: var(--text-tertiary);
 }
 
 .detail-row .value {
-    color: #333;
+    color: var(--text-primary);
     font-family: 'Courier New', monospace;
 }
 
@@ -887,7 +889,7 @@ span[style*="--icon-loader"] svg,
 .action-icon {
     background: transparent;
     border: none;
-    color: #999;
+    color: var(--icon-default);
     padding: 6px;
     border-radius: 6px;
     cursor: pointer;
@@ -899,8 +901,8 @@ span[style*="--icon-loader"] svg,
 
 /* 아이콘 SVG 색상 덮어쓰기 */
 .action-icon svg path {
-    fill: #999;
-    stroke: #999;
+    fill: var(--icon-default);
+    stroke: var(--icon-default);
     transition: fill 0.2s ease, stroke 0.2s ease;
 }
 
@@ -950,7 +952,7 @@ span[style*="--icon-loader"] svg,
 
 .btn-start {
     background-color: #4CAF50;
-    color: white;
+    color: var(--text-on-primary);
 }
 
 .btn-start:hover:not(:disabled) {
@@ -959,7 +961,7 @@ span[style*="--icon-loader"] svg,
 
 .btn-stop {
     background-color: #f44336;
-    color: white;
+    color: var(--text-on-primary);
 }
 
 .btn-stop:hover:not(:disabled) {
@@ -968,7 +970,7 @@ span[style*="--icon-loader"] svg,
 
 .btn-status {
     background-color: #2196F3;
-    color: white;
+    color: var(--text-on-primary);
 }
 
 .btn-status:hover:not(:disabled) {
@@ -977,7 +979,7 @@ span[style*="--icon-loader"] svg,
 
 .btn-settings {
     background-color: #FF9800;
-    color: white;
+    color: var(--text-on-primary);
 }
 
 .btn-settings:hover:not(:disabled) {
@@ -985,17 +987,17 @@ span[style*="--icon-loader"] svg,
 }
 
 .btn-command {
-    background-color: #667eea;
-    color: white;
+    background-color: var(--brand-primary);
+    color: var(--text-on-primary);
 }
 
 .btn-command:hover:not(:disabled) {
-    background-color: #5568d3;
+    background-color: var(--brand-hover);
 }
 
 .btn-delete {
     background-color: #9e9e9e;
-    color: white;
+    color: var(--text-on-primary);
 }
 
 .btn-delete:hover:not(:disabled) {
@@ -1003,25 +1005,25 @@ span[style*="--icon-loader"] svg,
 }
 
 .module-manager {
-    background: white;
+    background: var(--bg-surface);
     margin: 0 20px 20px 20px;
     padding: 20px;
     border-radius: var(--btn-radius);
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 6px var(--shadow-md);
 }
 
 .module-manager h3 {
     margin-bottom: 15px;
-    color: #333;
+    color: var(--text-primary);
 }
 
 /* Discord Bot Section */
 .discord-section {
-    background: white;
+    background: var(--bg-surface);
     margin: 0 20px 20px 20px;
     padding: 20px;
     border-radius: 12px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 6px var(--shadow-md);
     border-left: 4px solid #5865F2;
 }
 
@@ -1039,7 +1041,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .discord-status .status-label {
-    color: #666;
+    color: var(--text-tertiary);
     font-weight: bold;
 }
 
@@ -1052,7 +1054,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .discord-status .status-stopped {
-    color: #888;
+    color: var(--text-muted);
 }
 
 .discord-status .status-error {
@@ -1066,7 +1068,7 @@ span[style*="--icon-loader"] svg,
 .discord-token-form label {
     display: block;
     margin-bottom: 5px;
-    color: #555;
+    color: var(--text-secondary);
     font-weight: bold;
 }
 
@@ -1074,9 +1076,9 @@ span[style*="--icon-loader"] svg,
     width: 100%;
     padding: 10px;
     border-radius: 6px;
-    border: 1px solid #ddd;
-    background: #f9f9f9;
-    color: #333;
+    border: 1px solid var(--border-default);
+    background: var(--bg-surface-input);
+    color: var(--text-primary);
     font-family: monospace;
     box-sizing: border-box;
 }
@@ -1092,9 +1094,9 @@ span[style*="--icon-loader"] svg,
 }
 
 .btn-discord {
-    background: white;
-    color: #333;
-    border: 1px solid #e0e0e0;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border-separator);
     padding: 0 16px;
     height: var(--btn-height);
     border-radius: var(--btn-radius);
@@ -1105,18 +1107,18 @@ span[style*="--icon-loader"] svg,
     align-items: center;
     gap: 8px;
     transition: all 0.3s ease;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 2px 4px var(--shadow-xs);
 }
 
 .btn-discord:hover {
-    background: #f5f5f5;
-    border-color: #d0d0d0;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    background: var(--bg-surface-secondary);
+    border-color: var(--border-medium);
+    box-shadow: 0 4px 8px var(--shadow-md);
     transform: translateY(-1px);
 }
 
 .btn-discord-active {
-    background: white;
+    background: var(--bg-surface);
     border-color: #3ba55d;
 }
 
@@ -1126,9 +1128,9 @@ span[style*="--icon-loader"] svg,
 }
 
 .btn-background {
-    background: white;
-    color: #333;
-    border: 1px solid #e0e0e0;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border-separator);
     padding: 0 16px;
     height: var(--btn-height);
     border-radius: var(--btn-radius);
@@ -1139,18 +1141,18 @@ span[style*="--icon-loader"] svg,
     align-items: center;
     gap: 8px;
     transition: all 0.3s ease;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 2px 4px var(--shadow-xs);
 }
 
 .btn-background:hover {
-    background: #f5f5f5;
-    border-color: #d0d0d0;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    background: var(--bg-surface-secondary);
+    border-color: var(--border-medium);
+    box-shadow: 0 4px 8px var(--shadow-md);
     transform: translateY(-1px);
 }
 
 .btn-background-active {
-    background: white;
+    background: var(--bg-surface);
     border-color: #3ba55d;
 }
 
@@ -1202,7 +1204,7 @@ span[style*="--icon-loader"] svg,
 .discord-autostart label {
     display: block;
     margin-bottom: 5px;
-    color: #555;
+    color: var(--text-secondary);
     font-weight: bold;
 }
 
@@ -1210,15 +1212,15 @@ span[style*="--icon-loader"] svg,
     width: 150px;
     padding: 8px;
     border-radius: 6px;
-    border: 1px solid #ddd;
-    background: #f9f9f9;
+    border: 1px solid var(--border-default);
+    background: var(--bg-surface-input);
     font-family: monospace;
     font-size: 14px;
 }
 
 .discord-prefix-form small {
     display: block;
-    color: #888;
+    color: var(--text-muted);
     font-size: 11px;
     margin-top: 4px;
 }
@@ -1240,7 +1242,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .discord-aliases-section {
-    background: #f5f5f5;
+    background: var(--bg-surface-secondary);
     padding: 15px;
     border-radius: 8px;
     margin-bottom: 15px;
@@ -1248,13 +1250,13 @@ span[style*="--icon-loader"] svg,
 
 .discord-aliases-section h4 {
     margin: 0 0 5px 0;
-    color: #333;
+    color: var(--text-primary);
     font-size: 14px;
 }
 
 .discord-aliases-section > small {
     display: block;
-    color: #888;
+    color: var(--text-muted);
     margin-bottom: 10px;
     font-size: 11px;
 }
@@ -1269,10 +1271,10 @@ span[style*="--icon-loader"] svg,
 .alias-item {
     display: flex;
     align-items: center;
-    background: white;
+    background: var(--bg-surface);
     padding: 4px 8px;
     border-radius: 4px;
-    border: 1px solid #ddd;
+    border: 1px solid var(--border-default);
     font-size: 13px;
 }
 
@@ -1283,11 +1285,11 @@ span[style*="--icon-loader"] svg,
 
 .alias-arrow {
     margin: 0 6px;
-    color: #999;
+    color: var(--text-disabled);
 }
 
 .alias-value {
-    color: #333;
+    color: var(--text-primary);
     font-family: monospace;
 }
 
@@ -1313,7 +1315,7 @@ span[style*="--icon-loader"] svg,
 
 .alias-add-form input {
     padding: 6px 10px;
-    border: 1px solid #ddd;
+    border: 1px solid var(--border-default);
     border-radius: 4px;
     font-size: 13px;
     width: 120px;
@@ -1323,7 +1325,7 @@ span[style*="--icon-loader"] svg,
     padding: 6px 12px;
     font-size: 12px;
     background: #5865F2;
-    color: white;
+    color: var(--text-on-primary);
     border: none;
     border-radius: 4px;
     cursor: pointer;
@@ -1334,36 +1336,36 @@ span[style*="--icon-loader"] svg,
 }
 
 .discord-usage-hint {
-    background: #e8f4fd;
+    background: var(--info-bg);
     padding: 10px 15px;
     border-radius: 6px;
     margin-bottom: 15px;
-    border-left: 3px solid #2196F3;
+    border-left: 3px solid var(--info-border);
 }
 
 .discord-usage-hint h4 {
     margin: 0 0 5px 0;
-    color: #1976D2;
+    color: var(--info-title);
     font-size: 13px;
 }
 
 .discord-usage-hint code {
-    background: white;
+    background: var(--bg-surface);
     padding: 4px 8px;
     border-radius: 4px;
     font-family: monospace;
-    color: #333;
+    color: var(--text-primary);
 }
 
 .discord-usage-hint .hint-placeholder {
-    color: #999;
+    color: var(--text-disabled);
     font-style: italic;
 }
 
 .discord-usage-hint .hint-desc {
     display: block;
     margin-top: 8px;
-    color: #666;
+    color: var(--text-tertiary);
     font-size: 12px;
 }
 
@@ -1382,7 +1384,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .path-config {
-    background: #f0f0f0;
+    background: var(--bg-surface-tertiary);
     padding: 15px;
     border-radius: 8px;
     margin-bottom: 20px;
@@ -1392,13 +1394,13 @@ span[style*="--icon-loader"] svg,
     display: block;
     font-weight: bold;
     margin-bottom: 8px;
-    color: #555;
+    color: var(--text-secondary);
 }
 
 .path-input {
     width: 100%;
     padding: 10px;
-    border: 2px solid #ddd;
+    border: 2px solid var(--border-default);
     border-radius: 6px;
     font-size: 14px;
     font-family: 'Courier New', monospace;
@@ -1407,12 +1409,12 @@ span[style*="--icon-loader"] svg,
 
 .path-input:focus {
     outline: none;
-    border-color: #667eea;
+    border-color: var(--brand-primary);
 }
 
 .btn-refresh-modules {
     background: linear-gradient(135deg, #2196F3 0%, #0b7dda 100%);
-    color: white;
+    color: var(--text-on-primary);
     border: none;
     padding: 8px 16px;
     border-radius: 6px;
@@ -1423,21 +1425,21 @@ span[style*="--icon-loader"] svg,
 
 .path-hint {
     display: block;
-    color: #666;
+    color: var(--text-tertiary);
     font-size: 12px;
     font-style: italic;
 }
 
 .settings-path {
     display: block;
-    color: #888;
+    color: var(--text-muted);
     font-size: 11px;
     margin-top: 5px;
     word-break: break-all;
 }
 
 .add-server-form {
-    background: #f9f9f9;
+    background: var(--bg-surface-input);
     padding: 20px;
     border-radius: 8px;
     margin-bottom: 20px;
@@ -1451,7 +1453,7 @@ span[style*="--icon-loader"] svg,
     display: block;
     font-weight: bold;
     margin-bottom: 5px;
-    color: #333;
+    color: var(--text-primary);
     font-size: 13px;
 }
 
@@ -1459,7 +1461,7 @@ span[style*="--icon-loader"] svg,
 .form-row select {
     width: 100%;
     padding: 10px;
-    border: 2px solid #ddd;
+    border: 2px solid var(--border-default);
     border-radius: 6px;
     font-size: 14px;
     transition: border-color 0.2s;
@@ -1468,7 +1470,7 @@ span[style*="--icon-loader"] svg,
 .form-row input:focus,
 .form-row select:focus {
     outline: none;
-    border-color: #667eea;
+    border-color: var(--brand-primary);
 }
 
 .form-row input[type="number"] {
@@ -1502,7 +1504,7 @@ span[style*="--icon-loader"] svg,
 
 .field-hint {
     display: block;
-    color: #666;
+    color: var(--text-tertiary);
     font-size: 11px;
     margin-top: 4px;
     font-style: italic;
@@ -1513,7 +1515,7 @@ span[style*="--icon-loader"] svg,
     gap: 10px;
     margin-top: 20px;
     padding-top: 15px;
-    border-top: 1px solid #ddd;
+    border-top: 1px solid var(--border-default);
 }
 
 .form-actions .btn {
@@ -1525,12 +1527,12 @@ span[style*="--icon-loader"] svg,
 .add-server-form input:focus,
 .add-server-form select:focus {
     outline: none;
-    border-color: #667eea;
+    border-color: var(--brand-primary);
 }
 
 .btn-confirm {
     background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
-    color: white;
+    color: var(--text-on-primary);
     border: none;
     padding: 0 20px;
     height: var(--btn-height);
@@ -1544,7 +1546,7 @@ span[style*="--icon-loader"] svg,
 
 .btn-cancel {
     background: #f44336;
-    color: white;
+    color: var(--text-on-primary);
     border: none;
     padding: 0 20px;
     height: var(--btn-height);
@@ -1559,35 +1561,35 @@ span[style*="--icon-loader"] svg,
 .module-list {
     margin-top: 20px;
     padding-top: 20px;
-    border-top: 2px solid #eee;
+    border-top: 2px solid var(--border-light);
 }
 
 .module-list h4 {
     margin-bottom: 10px;
-    color: #555;
+    color: var(--text-secondary);
 }
 
 .module-item {
-    background: #f9f9f9;
+    background: var(--bg-surface-input);
     padding: 12px;
     margin-bottom: 10px;
     border-radius: var(--btn-radius);
-    border-left: 4px solid #667eea;
+    border-left: 4px solid var(--brand-primary);
 }
 
 .module-item strong {
-    color: #333;
+    color: var(--text-primary);
     font-size: 16px;
 }
 
 .module-item p {
     margin: 5px 0;
-    color: #666;
+    color: var(--text-tertiary);
     font-size: 14px;
 }
 
 .module-item small {
-    color: #999;
+    color: var(--text-disabled);
     font-size: 12px;
 }
 
@@ -1598,7 +1600,7 @@ span[style*="--icon-loader"] svg,
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--bg-overlay);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1606,9 +1608,9 @@ span[style*="--icon-loader"] svg,
 }
 
 .modal-content {
-    background: white;
+    background: var(--bg-surface);
     border-radius: 8px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 4px 16px var(--shadow-xl);
     width: 90%;
     max-width: 600px;
     max-height: 80vh;
@@ -1619,7 +1621,7 @@ span[style*="--icon-loader"] svg,
 
 .modal-header {
     padding: 20px;
-    border-bottom: 1px solid #eee;
+    border-bottom: 1px solid var(--border-light);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -1627,7 +1629,7 @@ span[style*="--icon-loader"] svg,
 
 .modal-header h3 {
     margin: 0;
-    color: #333;
+    color: var(--text-primary);
 }
 
 .modal-close {
@@ -1635,11 +1637,11 @@ span[style*="--icon-loader"] svg,
     border: none;
     font-size: 24px;
     cursor: pointer;
-    color: #999;
+    color: var(--icon-default);
 }
 
 .modal-close:hover {
-    color: #333;
+    color: var(--icon-hover);
 }
 
 .modal-body {
@@ -1650,7 +1652,7 @@ span[style*="--icon-loader"] svg,
 
 .modal-footer {
     padding: 20px;
-    border-top: 1px solid #eee;
+    border-top: 1px solid var(--border-light);
     display: flex;
     gap: 10px;
     justify-content: flex-end;
@@ -1670,13 +1672,13 @@ span[style*="--icon-loader"] svg,
 
 .settings-field label {
     font-weight: 600;
-    color: #333;
+    color: var(--text-primary);
 }
 
 .settings-field input,
 .settings-field select {
     padding: 10px;
-    border: 1px solid #ddd;
+    border: 1px solid var(--border-default);
     border-radius: 4px;
     font-size: 14px;
 }
@@ -1684,28 +1686,28 @@ span[style*="--icon-loader"] svg,
 .settings-field input:focus,
 .settings-field select:focus {
     outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 2px var(--brand-shadow-subtle);
 }
 
 .field-description {
-    color: #666;
+    color: var(--text-tertiary);
     font-size: 12px;
     font-style: italic;
 }
 
 .no-settings {
     text-align: center;
-    color: #999;
+    color: var(--text-disabled);
     padding: 40px 20px;
 }
 
 .app-footer {
-    background: white;
+    background: var(--bg-surface);
     padding: 15px;
     text-align: center;
-    border-top: 1px solid #eee;
-    color: #666;
+    border-top: 1px solid var(--border-light);
+    color: var(--text-tertiary);
     font-size: 12px;
     margin-top: auto;
 }
@@ -1715,22 +1717,22 @@ span[style*="--icon-loader"] svg,
 }
 /* 모듈별 별명 관리 섹션 */
 .modules-aliases-section {
-    background: white;
+    background: var(--bg-surface);
     margin: 20px;
     padding: 20px;
     border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 8px var(--shadow-md);
 }
 
 .modules-aliases-section h3 {
-    color: #333;
+    color: var(--text-primary);
     margin-bottom: 10px;
     font-size: 18px;
 }
 
 .modules-aliases-section > small {
     display: block;
-    color: #666;
+    color: var(--text-tertiary);
     margin-bottom: 15px;
     font-size: 13px;
 }
@@ -1740,48 +1742,48 @@ span[style*="--icon-loader"] svg,
     gap: 10px;
     margin-bottom: 20px;
     flex-wrap: wrap;
-    border-bottom: 2px solid #eee;
+    border-bottom: 2px solid var(--border-light);
     padding-bottom: 10px;
 }
 
 .module-tab {
-    background: #f5f5f5;
+    background: var(--tab-bg);
     border: none;
     padding: 10px 16px;
     border-radius: 4px;
     cursor: pointer;
     font-size: 14px;
-    color: #666;
+    color: var(--tab-text);
     transition: all 0.2s;
     border-bottom: 3px solid transparent;
 }
 
 .module-tab:hover {
-    background: #e8e8e8;
+    background: var(--tab-hover-bg);
 }
 
 .module-tab.active {
-    background: #667eea;
-    color: white;
+    background: var(--brand-primary);
+    color: var(--text-on-primary);
     border-bottom-color: #764ba2;
 }
 
 .module-aliases-detail {
-    background: #f9f9f9;
+    background: var(--bg-surface-input);
     padding: 15px;
     border-radius: 4px;
-    border-left: 4px solid #667eea;
+    border-left: 4px solid var(--brand-primary);
 }
 
 .module-aliases-detail.no-data {
     text-align: center;
-    color: #999;
+    color: var(--text-disabled);
     padding: 40px 20px;
-    border-left-color: #ddd;
+    border-left-color: var(--border-default);
 }
 
 .module-aliases-detail h4 {
-    color: #333;
+    color: var(--text-primary);
     margin-top: 15px;
     margin-bottom: 8px;
     font-size: 14px;
@@ -1793,7 +1795,7 @@ span[style*="--icon-loader"] svg,
 
 .module-aliases-detail > small {
     display: block;
-    color: #999;
+    color: var(--text-disabled);
     margin-bottom: 12px;
     font-size: 12px;
     font-style: italic;
@@ -1807,8 +1809,8 @@ span[style*="--icon-loader"] svg,
 }
 
 .alias-badge {
-    background: #667eea;
-    color: white;
+    background: var(--brand-primary);
+    color: var(--text-on-primary);
     padding: 6px 12px;
     border-radius: 16px;
     font-size: 12px;
@@ -1826,24 +1828,24 @@ span[style*="--icon-loader"] svg,
     align-items: center;
     gap: 12px;
     padding: 10px;
-    background: white;
+    background: var(--bg-surface);
     border-radius: 4px;
-    border: 1px solid #eee;
+    border: 1px solid var(--border-light);
 }
 
 .cmd-name {
-    background: #f0f0f0;
+    background: var(--bg-surface-tertiary);
     padding: 4px 8px;
     border-radius: 3px;
     font-weight: 600;
-    color: #333;
+    color: var(--text-primary);
     min-width: 80px;
     text-align: center;
 }
 
 .cmd-aliases {
     flex: 1;
-    color: #666;
+    color: var(--text-tertiary);
     font-size: 13px;
 }
 
@@ -1856,7 +1858,7 @@ span[style*="--icon-loader"] svg,
 .module-aliases-input input {
     width: 100%;
     padding: 12px;
-    border: 2px solid #e0e0e0;
+    border: 2px solid var(--border-separator);
     border-radius: 4px;
     font-size: 14px;
     font-family: 'Segoe UI', sans-serif;
@@ -1865,16 +1867,16 @@ span[style*="--icon-loader"] svg,
 
 .module-aliases-input input:focus {
     outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 3px var(--brand-shadow-subtle);
 }
 
 .placeholder-hint {
     margin-top: 8px;
     padding: 10px;
-    background: #f5f5f5;
+    background: var(--bg-surface-secondary);
     border-radius: 4px;
-    color: #999;
+    color: var(--text-disabled);
 }
 
 /* 명령어 별명 입력 섹션 */
@@ -1885,16 +1887,16 @@ span[style*="--icon-loader"] svg,
 }
 
 .command-alias-editor {
-    background: white;
-    border: 1px solid #e0e0e0;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-separator);
     border-radius: 4px;
     padding: 12px;
     transition: all 0.2s;
 }
 
 .command-alias-editor:hover {
-    border-color: #667eea;
-    box-shadow: 0 2px 4px rgba(102, 126, 234, 0.1);
+    border-color: var(--brand-primary);
+    box-shadow: 0 2px 4px var(--brand-shadow-subtle);
 }
 
 .cmd-header {
@@ -1906,8 +1908,8 @@ span[style*="--icon-loader"] svg,
 }
 
 .cmd-header .cmd-name {
-    background: #667eea;
-    color: white;
+    background: var(--brand-primary);
+    color: var(--text-on-primary);
     padding: 4px 10px;
     border-radius: 3px;
     font-weight: 600;
@@ -1917,7 +1919,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .cmd-label {
-    color: #888;
+    color: var(--text-muted);
     font-size: 11px;
     margin-left: 6px;
     font-weight: 400;
@@ -1929,19 +1931,19 @@ span[style*="--icon-loader"] svg,
     justify-content: center;
     width: 20px;
     height: 20px;
-    background: #f0f0f0;
-    border: 1px solid #ddd;
+    background: var(--bg-surface-tertiary);
+    border: 1px solid var(--border-default);
     border-radius: 50%;
     cursor: help;
     font-weight: bold;
-    color: #666;
+    color: var(--icon-secondary);
     font-size: 12px;
     position: relative;
     transition: all 0.2s;
 }
 
 .cmd-help:hover {
-    background: #e8e8e8;
+    background: var(--tab-hover-bg);
     border-color: #999;
 }
 
@@ -1949,8 +1951,8 @@ span[style*="--icon-loader"] svg,
     position: absolute;
     bottom: 125%;
     left: 0;
-    background: #333;
-    color: white;
+    background: var(--tooltip-bg);
+    color: var(--tooltip-text);
     padding: 8px 12px;
     border-radius: 4px;
     font-size: 12px;
@@ -1959,7 +1961,7 @@ span[style*="--icon-loader"] svg,
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 2px 8px var(--shadow-overlay);
 }
 
 .cmd-tooltip::after {
@@ -1968,7 +1970,7 @@ span[style*="--icon-loader"] svg,
     top: 100%;
     left: 8px;
     border: 5px solid transparent;
-    border-top-color: #333;
+    border-top-color: var(--tooltip-bg);
 }
 
 .cmd-help:hover ~ .cmd-tooltip,
@@ -1985,7 +1987,7 @@ span[style*="--icon-loader"] svg,
 .command-alias-editor input {
     width: 100%;
     padding: 10px;
-    border: 1px solid #ddd;
+    border: 1px solid var(--border-default);
     border-radius: 3px;
     font-size: 13px;
     margin-bottom: 8px;
@@ -1993,14 +1995,14 @@ span[style*="--icon-loader"] svg,
 
 .command-alias-editor input:focus {
     outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 2px var(--brand-shadow-subtle);
 }
 
 .alias-badge-sm {
     display: inline-block;
-    background: #e8e8ff;
-    color: #667eea;
+    background: var(--badge-subtle-bg);
+    color: var(--brand-primary);
     padding: 4px 10px;
     border-radius: 12px;
     font-size: 11px;
@@ -2011,8 +2013,8 @@ span[style*="--icon-loader"] svg,
 
 .alias-badge-default {
     display: inline-block;
-    background: #f0f0f0;
-    color: #888;
+    background: var(--badge-default-bg);
+    color: var(--badge-default-text);
     padding: 4px 10px;
     border-radius: 12px;
     font-size: 11px;
@@ -2044,9 +2046,9 @@ span[style*="--icon-loader"] svg,
 }
 
 .module-aliases-actions .btn-reset {
-    background: #f0f0f0;
-    color: #555;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
+    background: var(--bg-surface-tertiary);
+    color: var(--text-secondary);
+    box-shadow: 0 4px 10px var(--shadow-sm);
 }
 
 .module-aliases-actions .btn:hover {
@@ -2055,27 +2057,27 @@ span[style*="--icon-loader"] svg,
 
 /* Discord Info Box */
 .discord-info-box {
-    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
-    border-left: 4px solid #2196f3;
+    background: var(--info-bg-gradient);
+    border-left: 4px solid var(--info-border);
     padding: 20px;
     border-radius: 8px;
     margin: 20px 0;
 }
 
 .discord-info-box h4 {
-    color: #1976d2;
+    color: var(--info-title);
     margin-bottom: 12px;
     font-size: 16px;
 }
 
 .discord-info-box p {
-    color: #424242;
+    color: var(--text-dark);
     margin-bottom: 10px;
     line-height: 1.6;
 }
 
 .discord-info-box code {
-    background: #fff;
+    background: var(--bg-surface);
     color: #d32f2f;
     padding: 4px 10px;
     border-radius: 4px;
@@ -2088,14 +2090,14 @@ span[style*="--icon-loader"] svg,
 .discord-info-box .info-note {
     margin-top: 12px;
     font-size: 14px;
-    color: #555;
+    color: var(--text-secondary);
 }
 
 .discord-info-box .info-note strong {
-    color: #1976d2;
+    color: var(--info-title);
 }
 
-/* Settings Modal Tabs */
+/* Settings Modal Tabs - 서버 설정 모달용 (별칭 탭 등) */
 .modal-content-large {
     max-width: 700px;
     max-height: 85vh;
@@ -2104,32 +2106,9 @@ span[style*="--icon-loader"] svg,
 .settings-tabs {
     display: flex;
     gap: 0;
-    border-bottom: 2px solid #e0e0e0;
+    border-bottom: 2px solid var(--border-separator);
     margin: -15px -20px 0;
     padding: 0 20px;
-}
-
-.settings-tab {
-    padding: 12px 24px;
-    background: transparent;
-    border: none;
-    border-bottom: 3px solid transparent;
-    cursor: pointer;
-    font-weight: 500;
-    font-size: 14px;
-    color: #666;
-    transition: all 0.2s ease;
-}
-
-.settings-tab:hover {
-    background: #f5f5f5;
-    color: #333;
-}
-
-.settings-tab.active {
-    color: #667eea;
-    border-bottom-color: #667eea;
-    background: #f9f9ff;
 }
 
 .aliases-tab-content {
@@ -2143,13 +2122,13 @@ span[style*="--icon-loader"] svg,
 .aliases-tab-content .module-aliases-actions {
     margin-top: 20px;
     padding-top: 20px;
-    border-top: 1px solid #e0e0e0;
+    border-top: 1px solid var(--border-separator);
 }
 
 /* ========== Protocol Mode Toggle ========== */
 .protocol-mode-section {
-    background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%);
-    border: 1px solid #e0e8ff;
+    background: var(--protocol-section-bg);
+    border: 1px solid var(--protocol-section-border);
     border-radius: 12px;
     padding: 16px 20px;
     margin-bottom: 20px;
@@ -2165,7 +2144,7 @@ span[style*="--icon-loader"] svg,
 .protocol-mode-title {
     font-size: 15px;
     font-weight: 600;
-    color: #333;
+    color: var(--text-primary);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -2173,7 +2152,7 @@ span[style*="--icon-loader"] svg,
 
 .protocol-mode-description {
     font-size: 13px;
-    color: #666;
+    color: var(--text-tertiary);
     margin-bottom: 12px;
 }
 
@@ -2181,23 +2160,23 @@ span[style*="--icon-loader"] svg,
     display: flex;
     align-items: center;
     gap: 12px;
-    background: #fff;
+    background: var(--bg-surface);
     border-radius: 8px;
     padding: 8px 16px;
-    border: 1px solid #e0e0e0;
+    border: 1px solid var(--border-separator);
 }
 
 .protocol-label {
     font-size: 14px;
     font-weight: 500;
-    color: #888;
+    color: var(--text-muted);
     min-width: 50px;
     text-align: center;
     transition: color 0.3s ease;
 }
 
 .protocol-label.active {
-    color: #667eea;
+    color: var(--brand-primary);
     font-weight: 600;
 }
 
@@ -2241,7 +2220,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .toggle-switch input:checked + .toggle-slider {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: var(--brand-gradient);
 }
 
 .toggle-switch input:checked + .toggle-slider:before {
@@ -2249,12 +2228,12 @@ span[style*="--icon-loader"] svg,
 }
 
 .toggle-switch:hover .toggle-slider {
-    box-shadow: inset 0 2px 4px rgba(0,0,0,0.1), 0 0 8px rgba(102, 126, 234, 0.3);
+    box-shadow: inset 0 2px 4px var(--shadow-md), 0 0 8px var(--brand-shadow-medium);
 }
 
 .protocol-mode-hint {
     font-size: 12px;
-    color: #999;
+    color: var(--text-disabled);
     margin-top: 8px;
     display: flex;
     align-items: center;
@@ -2267,12 +2246,12 @@ span[style*="--icon-loader"] svg,
 
 /* 프로토콜 정보 표시 (토글이 없는 경우) */
 .protocol-mode-info {
-    background: linear-gradient(135deg, #f0f0f0 0%, #e8e8e8 100%);
-    border: 1px solid #d0d0d0;
+    background: var(--protocol-info-bg);
+    border: 1px solid var(--protocol-info-border);
 }
 
 .protocol-mode-info .protocol-mode-description strong {
-    color: #667eea;
+    color: var(--brand-primary);
     font-weight: 700;
 }
 
@@ -2287,11 +2266,11 @@ span[style*="--icon-loader"] svg,
 
 .protocol-badge.rest {
     background: linear-gradient(135deg, #4caf50 0%, #43a047 100%);
-    color: white;
+    color: var(--text-on-primary);
 }
 
 .protocol-badge.rcon {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    background: var(--brand-gradient);
+    color: var(--text-on-primary);
 }
 

@@ -38,7 +38,11 @@
     "refresh_3s": "3 segundos",
     "refresh_5s": "5 segundos",
     "refresh_10s": "10 segundos",
-    "appearance_placeholder": "As configurações de aparência serão adicionadas aqui.",
+    "theme_label": "Tema",
+    "theme_description": "Escolha seu tema de cores preferido",
+    "theme_auto": "Automático",
+    "theme_light": "Claro",
+    "theme_dark": "Escuro",
     "advanced_placeholder": "As configurações avançadas serão adicionadas aqui."
   },
   "add_server_modal": {
@@ -86,6 +90,28 @@
     "server_deleted": "O servidor '{{name}}' foi deletado",
     "settings_saved": "As configurações de '{{name}}' foram salvas",
     "aliases_saved": "Aliases salvos"
+  },
+  "server_settings": {
+    "title": "Configurações",
+    "general_tab": "Configurações Gerais",
+    "aliases_tab": "Aliases do Discord",
+    "protocol_title": "Método de Controle do Servidor",
+    "protocol_description": "Selecione o protocolo a ser usado ao executar comandos do servidor.",
+    "protocol_rest_hint": "REST API é baseada em HTTP, estável e fácil de autenticar.",
+    "protocol_rcon_hint": "RCON envia comandos de console em tempo real diretamente.",
+    "protocol_single_only": "Este módulo suporta apenas o protocolo <strong>{{protocol}}</strong>.",
+    "no_settings": "Este módulo não possui configurações adicionais.",
+    "module_aliases_title": "Aliases do Módulo (Nomes para chamar este servidor no Discord)",
+    "module_aliases_hint": "Separe múltiplas entradas com espaços. Ex: {{module}} pw palworld",
+    "module_aliases_placeholder": "Ex: {{module}}",
+    "module_aliases_empty_hint": "Quando vazio, padrão:",
+    "command_aliases_title": "Aliases de Comandos (Comandos Personalizados)",
+    "command_aliases_hint": "Separe múltiplos aliases com vírgulas. Ex: iniciar, start, executar",
+    "command_aliases_placeholder": "Ex: {{cmd}}",
+    "save_aliases": "Salvar Aliases",
+    "reset_aliases": "Resetar",
+    "save_settings": "Salvar Configurações",
+    "close": "Fechar"
   },
   "discord_bot": {
     "token_missing_title": "Token Ausente",

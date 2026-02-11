@@ -1,4 +1,22 @@
 {
+  "module": {
+    "display_name": "我的世界",
+    "description": "我的世界服务器管理模块"
+  },
+  "settings": {
+    "executable_path": { "label": "服务器JAR路径", "description": "server.jar文件路径" },
+    "port": { "label": "服务器端口", "description": "游戏服务器端口" },
+    "difficulty": { "label": "难度", "description": "游戏难度" },
+    "max_players": { "label": "最大玩家数", "description": "最大玩家数量" }
+  },
+  "commands": {
+    "say": { "label": "发送聊天消息", "description": "向服务器广播消息", "inputs": { "message": { "label": "消息", "placeholder": "输入要发送的消息" } } },
+    "give": { "label": "给予物品", "description": "给予玩家物品", "inputs": { "player": { "label": "玩家名称", "placeholder": "玩家昵称" }, "item": { "label": "物品ID", "placeholder": "例: diamond, iron_ore" }, "amount": { "label": "数量" } } },
+    "save-all": { "label": "保存世界", "description": "保存游戏世界" },
+    "list": { "label": "玩家列表", "description": "查看已连接的玩家列表" },
+    "weather": { "label": "更改天气", "description": "更改服务器天气", "inputs": { "type": { "label": "天气" }, "duration": { "label": "持续时间（秒）" } } },
+    "difficulty": { "label": "更改难度", "description": "更改游戏难度", "inputs": { "level": { "label": "难度" } } }
+  },
   "errors": {
     "server_jar_not_specified": "module.toml中未指定server_jar。请添加server.jar的路径",
     "server_jar_not_found": "找不到服务器jar：{{path}}。请检查实例设置中的路径。",

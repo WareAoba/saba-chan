@@ -983,6 +983,36 @@ ipcMain.handle('module:refresh', async () => {
     }
 });
 
+// 모듈의 locale 파일들을 모두 읽어서 반환
+ipcMain.handle('module:getLocales', async (event, moduleName) => {
+    try {
+        const settings = loadSettings();
+        const modulesDir = (settings && settings.modulesPath) || path.join(__dirname, '..', 'modules');
+        const localesDir = path.join(modulesDir, moduleName, 'locales');
+        const result = {};
+        
+        if (fs.existsSync(localesDir)) {
+            const files = fs.readdirSync(localesDir);
+            for (const file of files) {
+                if (file.endsWith('.json')) {
+                    const lang = file.replace('.json', '');
+                    try {
+                        const content = fs.readFileSync(path.join(localesDir, file), 'utf-8');
+                        result[lang] = JSON.parse(content);
+                    } catch (e) {
+                        console.warn(`Failed to parse locale file ${file} for module ${moduleName}:`, e.message);
+                    }
+                }
+            }
+        }
+        
+        return result;
+    } catch (error) {
+        console.error(`Failed to load locales for module ${moduleName}:`, error);
+        return {};
+    }
+});
+
 ipcMain.handle('module:getMetadata', async (event, moduleName) => {
     try {
         const response = await axios.get(`${IPC_BASE}/api/module/${moduleName}`);

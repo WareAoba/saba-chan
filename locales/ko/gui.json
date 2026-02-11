@@ -1,5 +1,5 @@
 {
-  "title": "사바짱 서버 관리자",
+  "title": "사바쨩 서버 관리자",
   "menu": {
     "file": "파일",
     "edit": "편집",
@@ -38,7 +38,11 @@
     "refresh_3s": "3초",
     "refresh_5s": "5초",
     "refresh_10s": "10초",
-    "appearance_placeholder": "여기에 외형 설정 항목을 추가할 예정입니다.",
+    "theme_label": "테마",
+    "theme_description": "원하는 색상 테마를 선택하세요",
+    "theme_auto": "자동",
+    "theme_light": "라이트",
+    "theme_dark": "다크",
     "advanced_placeholder": "여기에 고급 설정 항목을 추가할 예정입니다."
   },
   "add_server_modal": {
@@ -86,6 +90,28 @@
     "server_deleted": "서버 '{{name}}'이(가) 삭제되었습니다",
     "settings_saved": "'{{name}}' 설정이 저장되었습니다",
     "aliases_saved": "별명이 저장되었습니다"
+  },
+  "server_settings": {
+    "title": "설정",
+    "general_tab": "일반 설정",
+    "aliases_tab": "Discord 별명",
+    "protocol_title": "서버 조작 방식",
+    "protocol_description": "서버 명령어를 실행할 때 사용할 프로토콜을 선택합니다.",
+    "protocol_rest_hint": "REST API는 HTTP 기반으로 안정적이며 인증이 용이합니다.",
+    "protocol_rcon_hint": "RCON은 실시간 콘솔 명령어를 직접 전송합니다.",
+    "protocol_single_only": "이 모듈은 <strong>{{protocol}}</strong> 프로토콜만 지원합니다.",
+    "no_settings": "이 모듈에는 추가 설정 항목이 없습니다.",
+    "module_aliases_title": "모듈 별명 (Discord에서 이 서버를 부를 이름)",
+    "module_aliases_hint": "공백으로 구분하여 여러 개 입력 가능. 예: {{module}} pw palworld",
+    "module_aliases_placeholder": "예: {{module}}",
+    "module_aliases_empty_hint": "공백 시 기본값:",
+    "command_aliases_title": "명령어 별명 (커스텀 명령어)",
+    "command_aliases_hint": "콤마로 구분하여 여러 별명 입력. 예: 시작, start, 실행",
+    "command_aliases_placeholder": "예: {{cmd}}",
+    "save_aliases": "별명 저장",
+    "reset_aliases": "초기화",
+    "save_settings": "설정 저장",
+    "close": "닫기"
   },
   "discord_bot": {
     "token_missing_title": "토큰 없음",

@@ -38,7 +38,11 @@
     "refresh_3s": "3 secondes",
     "refresh_5s": "5 secondes",
     "refresh_10s": "10 secondes",
-    "appearance_placeholder": "Les paramètres d'apparence seront ajoutés ici.",
+    "theme_label": "Thème",
+    "theme_description": "Choisissez votre thème de couleur préféré",
+    "theme_auto": "Automatique",
+    "theme_light": "Clair",
+    "theme_dark": "Sombre",
     "advanced_placeholder": "Les paramètres avancés seront ajoutés ici."
   },
   "add_server_modal": {
@@ -86,6 +90,28 @@
     "server_deleted": "Le serveur '{{name}}' a été supprimé",
     "settings_saved": "Les paramètres de '{{name}}' ont été enregistrés",
     "aliases_saved": "Alias enregistrés"
+  },
+  "server_settings": {
+    "title": "Paramètres",
+    "general_tab": "Paramètres généraux",
+    "aliases_tab": "Alias Discord",
+    "protocol_title": "Méthode de contrôle du serveur",
+    "protocol_description": "Sélectionnez le protocole à utiliser pour exécuter les commandes du serveur.",
+    "protocol_rest_hint": "REST API est basé sur HTTP, stable et facile à authentifier.",
+    "protocol_rcon_hint": "RCON envoie directement les commandes de console en temps réel.",
+    "protocol_single_only": "Ce module ne supporte que le protocole <strong>{{protocol}}</strong>.",
+    "no_settings": "Ce module n'a pas de paramètres supplémentaires.",
+    "module_aliases_title": "Alias du module (Noms pour appeler ce serveur sur Discord)",
+    "module_aliases_hint": "Séparez plusieurs entrées par des espaces. Ex : {{module}} pw palworld",
+    "module_aliases_placeholder": "Ex : {{module}}",
+    "module_aliases_empty_hint": "Lorsque vide, par défaut :",
+    "command_aliases_title": "Alias de commandes (Commandes personnalisées)",
+    "command_aliases_hint": "Séparez plusieurs alias par des virgules. Ex : démarrer, start, lancer",
+    "command_aliases_placeholder": "Ex : {{cmd}}",
+    "save_aliases": "Enregistrer les alias",
+    "reset_aliases": "Réinitialiser",
+    "save_settings": "Enregistrer les paramètres",
+    "close": "Fermer"
   },
   "discord_bot": {
     "token_missing_title": "Jeton manquant",

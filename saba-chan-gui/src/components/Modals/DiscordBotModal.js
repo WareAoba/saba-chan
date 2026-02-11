@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import './Modals.css';
+import { Icon } from '../Icon';
 
 function DiscordBotModal({ 
     isOpen, 
@@ -28,7 +29,7 @@ function DiscordBotModal({
                         <span className={`status-indicator ${discordBotStatus === 'running' ? 'status-online' : 'status-offline'}`}></span>
                         <h2>{t('discord_modal.title')}</h2>
                     </div>
-                    <button className="discord-modal-close" onClick={onClose}>✕</button>
+                    <button className="discord-modal-close" onClick={onClose}><Icon name="close" size="sm" /></button>
                 </div>
 
                 <div className="discord-modal-content">
@@ -77,7 +78,7 @@ function DiscordBotModal({
                     </div>
 
                     <div className="discord-info-box">
-                        <h4>💡 {t('discord_modal.usage_title')}</h4>
+                        <h4><Icon name="lightbulb" size="sm" /> {t('discord_modal.usage_title')}</h4>
                         <p>{t('discord_modal.usage_instruction')}</p>
                         <code>{discordPrefix || '!saba'} [module] [command]</code>
                         <p className="info-note">
