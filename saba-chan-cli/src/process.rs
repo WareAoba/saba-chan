@@ -21,18 +21,40 @@ fn no_window(cmd: &mut Command) -> &mut Command {
 /// 프로젝트 루트 디렉토리 찾기 (Cargo.toml 또는 config/instances.json 기준)
 pub fn find_project_root() -> anyhow::Result<PathBuf> {
     let cwd = std::env::current_dir()?;
-    let mut dir = cwd.clone();
+
+    // Pass 1: 실제 saba-chan 루트를 식별하는 확실한 마커로 먼저 탐색
+    //   modules/ 디렉토리 또는 instances.json이 있는 곳이 진짜 루트
+    let mut candidate = cwd.clone();
     for _ in 0..5 {
-        if dir.join("Cargo.toml").exists()
-            || dir.join("config").join("instances.json").exists()
+        if candidate.join("modules").is_dir()
+            || candidate.join("instances.json").exists()
+            || candidate.join("config").join("instances.json").exists()
         {
-            return Ok(dir);
+            return Ok(candidate);
         }
-        match dir.parent() {
-            Some(p) => dir = p.to_path_buf(),
+        match candidate.parent() {
+            Some(p) => candidate = p.to_path_buf(),
             None => break,
         }
     }
+
+    // Pass 2: Cargo.toml 기반 폴백 (하위 크레이트가 아닌 최상위 우선)
+    let mut cargo_dirs = Vec::new();
+    let mut scan = cwd.clone();
+    for _ in 0..5 {
+        if scan.join("Cargo.toml").exists() {
+            cargo_dirs.push(scan.clone());
+        }
+        match scan.parent() {
+            Some(p) => scan = p.to_path_buf(),
+            None => break,
+        }
+    }
+    // 가장 상위 Cargo.toml 디렉토리 선택 (멤버 크레이트보다 workspace root 우선)
+    if let Some(root) = cargo_dirs.last() {
+        return Ok(root.clone());
+    }
+
     Ok(cwd)
 }
 
@@ -157,7 +179,7 @@ pub fn start_daemon() -> anyhow::Result<String> {
     Ok(format!("✓ Daemon started\n  modules: {}\n  instances: {}", modules, instances))
 }
 
-/// Daemon 종료
+/// Daemon 종료 — 먼저 core_daemon.exe만 타겟으로 종료
 pub fn stop_daemon() -> anyhow::Result<String> {
     if !check_daemon_running() {
         return Ok("ℹ Daemon is not running".into());
@@ -165,6 +187,7 @@ pub fn stop_daemon() -> anyhow::Result<String> {
 
     if cfg!(target_os = "windows") {
         let mut cmd = Command::new("taskkill");
+        // /T 없이 core_daemon.exe만 종료 (자식 게임서버 프로세스는 유지)
         cmd.args(["/IM", "core_daemon.exe", "/F"])
             .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
         no_window(&mut cmd);
@@ -213,14 +236,46 @@ pub fn start_bot() -> anyhow::Result<String> {
     Ok(format!("✓ Discord bot started (prefix: {})", prefix))
 }
 
-/// Discord Bot 종료
+/// Discord Bot 종료 — discord_bot 관련 node 프로세스만 종료
 pub fn stop_bot() -> anyhow::Result<String> {
     if cfg!(target_os = "windows") {
-        let mut cmd = Command::new("taskkill");
-        cmd.args(["/IM", "node.exe", "/F"])
-            .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
-        no_window(&mut cmd);
-        let _ = cmd.status();
+        // wmic으로 discord_bot을 포함하는 node.exe만 종료
+        let mut find_cmd = Command::new("wmic");
+        find_cmd.args([
+            "process", "where",
+            "name='node.exe' and commandline like '%discord_bot%'",
+            "get", "processid",
+            "/format:list",
+        ]);
+        find_cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+        no_window(&mut find_cmd);
+
+        let mut killed = false;
+        if let Ok(output) = find_cmd.output() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if let Some(pid_str) = line.strip_prefix("ProcessId=") {
+                    let pid = pid_str.trim();
+                    if !pid.is_empty() {
+                        let mut kill = Command::new("taskkill");
+                        kill.args(["/PID", pid, "/F"])
+                            .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+                        no_window(&mut kill);
+                        let _ = kill.status();
+                        killed = true;
+                    }
+                }
+            }
+        }
+
+        // wmic 실패 시 폴백: index.js를 포함하는 node만 종료
+        if !killed {
+            let mut cmd = Command::new("taskkill");
+            cmd.args(["/IM", "node.exe", "/F", "/FI", "WINDOWTITLE eq discord_bot*"])
+                .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+            no_window(&mut cmd);
+            let _ = cmd.status();
+        }
     } else {
         let _ = Command::new("pkill")
             .args(["-f", "discord_bot"])

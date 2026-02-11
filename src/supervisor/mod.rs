@@ -1,10 +1,12 @@
 pub mod process;
-pub mod state_machine;  // Keep for now - used in supervisor logic
+pub mod state_machine;
 pub mod module_loader;
+pub mod managed_process;
 
 use anyhow::Result;
 use process::{ProcessTracker, ProcessManager};
 use module_loader::{ModuleLoader, LoadedModule};
+use managed_process::{ManagedProcess, ManagedProcessStore};
 use serde_json::{json, Value};
 use crate::instance::InstanceStore;
 
@@ -15,6 +17,8 @@ pub struct Supervisor {
     pub instance_store: InstanceStore,
     #[allow(dead_code)]
     pub process_manager: ProcessManager,
+    /// Store for processes spawned and managed directly by the daemon (with stdio capture)
+    pub managed_store: ManagedProcessStore,
 }
 
 impl Supervisor {
@@ -28,6 +32,7 @@ impl Supervisor {
             module_loader: ModuleLoader::new(modules_dir),
             instance_store: InstanceStore::new(&instances_path),
             process_manager: ProcessManager::new(),
+            managed_store: ManagedProcessStore::new(),
         }
     }
 
@@ -61,12 +66,20 @@ impl Supervisor {
         let mut merged_config = config.as_object().cloned().unwrap_or_default();
         if let Some(exe_path) = &instance.executable_path {
             merged_config.insert("server_executable".to_string(), json!(exe_path));
+            // Also pass as server_jar for modules that expect that key (e.g. Minecraft)
+            merged_config.entry("server_jar".to_string()).or_insert_with(|| json!(exe_path));
         }
         if let Some(work_dir) = &instance.working_dir {
             merged_config.insert("working_dir".to_string(), json!(work_dir));
         }
         if let Some(port) = instance.port {
             merged_config.insert("port".to_string(), json!(port));
+        }
+        if let Some(rcon_port) = instance.rcon_port {
+            merged_config.entry("rcon_port".to_string()).or_insert_with(|| json!(rcon_port));
+        }
+        if let Some(rcon_pw) = &instance.rcon_password {
+            merged_config.entry("rcon_password".to_string()).or_insert_with(|| json!(rcon_pw));
         }
         let final_config = Value::Object(merged_config);
 
@@ -88,6 +101,11 @@ impl Supervisor {
                 "message": format!("Server '{}' started with PID {}", server_name, pid)
             }))
         } else {
+            // If the module requires user action (e.g. server jar not found), pass through
+            if result.get("action_required").is_some() {
+                tracing::warn!("Module requires user action: {:?}", result.get("action_required"));
+                return Ok(result);
+            }
             // Return the error from the module
             if result.get("success").and_then(|s| s.as_bool()) == Some(false) {
                 let error_msg = result.get("message")
@@ -116,23 +134,50 @@ impl Supervisor {
         let module = self.module_loader.get_module(module_name)?;
         let module_path = format!("{}/lifecycle.py", module.path);
 
-        // Build config with executable_path (or fallback to PID)
+        // Build config with all necessary info for stop
         let mut config_obj = serde_json::Map::new();
         if let Some(exe_path) = &instance.executable_path {
             config_obj.insert("server_executable".to_string(), json!(exe_path));
+            config_obj.insert("server_jar".to_string(), json!(exe_path));
+        }
+        if let Some(work_dir) = &instance.working_dir {
+            config_obj.insert("working_dir".to_string(), json!(work_dir));
+        }
+        // Pass PID from tracker so the module can kill the actual process
+        if let Ok(pid) = self.tracker.get_pid(server_name).or_else(|_| self.tracker.get_pid(&instance.id)) {
+            config_obj.insert("pid".to_string(), json!(pid));
+        }
+        // Pass RCON settings for graceful shutdown
+        if let Some(rcon_port) = instance.rcon_port {
+            config_obj.insert("rcon_port".to_string(), json!(rcon_port));
+        }
+        if let Some(rcon_pw) = &instance.rcon_password {
+            config_obj.insert("rcon_password".to_string(), json!(rcon_pw));
         }
         config_obj.insert("force".to_string(), json!(force));
         let config = Value::Object(config_obj);
 
         // Execute stop function
-        let _result = crate::plugin::run_plugin(&module_path, "stop", config).await?;
+        let result = crate::plugin::run_plugin(&module_path, "stop", config).await?;
 
-        tracing::info!("Server '{}' stopped", server_name);
-        Ok(json!({
-            "success": true,
-            "server": server_name,
-            "message": format!("Server '{}' stopped", server_name)
-        }))
+        // Check if the module actually succeeded
+        let plugin_success = result.get("success").and_then(|s| s.as_bool()).unwrap_or(false);
+        let plugin_message = result.get("message")
+            .and_then(|m| m.as_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        if plugin_success {
+            tracing::info!("Server '{}' stopped successfully: {}", server_name, plugin_message);
+            Ok(json!({
+                "success": true,
+                "server": server_name,
+                "message": format!("Server '{}' stopped", server_name)
+            }))
+        } else {
+            tracing::error!("Failed to stop server '{}': {}", server_name, plugin_message);
+            Err(anyhow::anyhow!("Failed to stop server '{}': {}", server_name, plugin_message))
+        }
     }
 
     /// Get server status by name
@@ -154,6 +199,10 @@ impl Supervisor {
         let mut config_obj = serde_json::Map::new();
         if let Some(exe_path) = &instance.executable_path {
             config_obj.insert("server_executable".to_string(), json!(exe_path));
+            config_obj.insert("server_jar".to_string(), json!(exe_path));
+        }
+        if let Some(work_dir) = &instance.working_dir {
+            config_obj.insert("working_dir".to_string(), json!(work_dir));
         }
         let config = Value::Object(config_obj);
 
@@ -260,9 +309,299 @@ impl Supervisor {
         }
     }
 
+    // ─── Managed Process Methods ─────────────────────────────
+
+    /// Start a server as a managed process with full stdio capture.
+    /// Uses the module's `get_launch_command` to build the command, then spawns it natively.
+    pub async fn start_managed_server(
+        &self,
+        instance_id: &str,
+        module_name: &str,
+        config: Value,
+    ) -> Result<Value> {
+        let instance = self.instance_store.get(instance_id)
+            .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
+
+        tracing::info!("Starting managed server for instance '{}' (module: {})", instance.name, module_name);
+
+        // Build config for the module
+        let mut cfg = config.as_object().cloned().unwrap_or_default();
+        if let Some(exe_path) = &instance.executable_path {
+            cfg.insert("server_executable".to_string(), json!(exe_path));
+            cfg.insert("server_jar".to_string(), json!(exe_path));
+        }
+        if let Some(work_dir) = &instance.working_dir {
+            cfg.insert("working_dir".to_string(), json!(work_dir));
+        }
+        if let Some(port) = instance.port {
+            cfg.insert("port".to_string(), json!(port));
+        }
+        if let Some(rcon_port) = instance.rcon_port {
+            cfg.entry("rcon_port".to_string()).or_insert_with(|| json!(rcon_port));
+        }
+        if let Some(rcon_pw) = &instance.rcon_password {
+            cfg.entry("rcon_password".to_string()).or_insert_with(|| json!(rcon_pw));
+        }
+        let final_config = Value::Object(cfg);
+
+        // Get module and call get_launch_command
+        let module = self.module_loader.get_module(module_name)?;
+        let module_path = format!("{}/lifecycle.py", module.path);
+
+        let launch_result = crate::plugin::run_plugin(&module_path, "get_launch_command", final_config).await?;
+
+        // If the module requires user action (e.g. server jar not found), pass through to GUI
+        if launch_result.get("action_required").is_some() {
+            tracing::warn!("Module requires user action: {:?}", launch_result.get("action_required"));
+            return Ok(launch_result);
+        }
+
+        if launch_result.get("success").and_then(|s| s.as_bool()) != Some(true) {
+            let msg = launch_result.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
+            return Err(anyhow::anyhow!("{}", msg));
+        }
+
+        let program = launch_result.get("program")
+            .and_then(|p| p.as_str())
+            .ok_or_else(|| anyhow::anyhow!("Module did not return program"))?;
+
+        let args: Vec<String> = launch_result.get("args")
+            .and_then(|a| a.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+
+        let working_dir = launch_result.get("working_dir")
+            .and_then(|w| w.as_str())
+            .unwrap_or(".");
+
+        let env_vars: Vec<(String, String)> = launch_result.get("env_vars")
+            .and_then(|e| e.as_object())
+            .map(|obj| obj.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect())
+            .unwrap_or_default();
+
+        // Spawn managed process
+        let managed = ManagedProcess::spawn(program, &args, working_dir, env_vars).await?;
+        let pid = managed.pid;
+
+        // Track the process
+        self.tracker.track(&instance.id, pid)?;
+        self.managed_store.insert(&instance.id, managed).await;
+
+        tracing::info!("Managed server '{}' started with PID {}", instance.name, pid);
+        Ok(json!({
+            "success": true,
+            "server": instance.name,
+            "pid": pid,
+            "managed": true,
+            "message": format!("Server '{}' started with PID {} (managed mode)", instance.name, pid)
+        }))
+    }
+
+    /// Send a command to a managed process's stdin
+    pub async fn send_stdin_command(&self, instance_id: &str, command: &str) -> Result<String> {
+        let proc = self.managed_store.get(instance_id).await
+            .ok_or_else(|| anyhow::anyhow!("No managed process for instance '{}'", instance_id))?;
+
+        if !proc.is_running() {
+            return Err(anyhow::anyhow!("Process is no longer running"));
+        }
+
+        proc.send_command(command).await?;
+        Ok(format!("Sent to stdin: {}", command))
+    }
+
+    /// Get console output from a managed process
+    pub async fn get_console_output(
+        &self,
+        instance_id: &str,
+        since_id: Option<u64>,
+        count: Option<usize>,
+    ) -> Result<Value> {
+        let proc = self.managed_store.get(instance_id).await
+            .ok_or_else(|| anyhow::anyhow!("No managed process for instance '{}'", instance_id))?;
+
+        let lines = if let Some(since) = since_id {
+            proc.get_console_since(since).await
+        } else {
+            proc.get_recent_console(count.unwrap_or(100)).await
+        };
+
+        Ok(json!({
+            "success": true,
+            "lines": lines,
+            "running": proc.is_running(),
+        }))
+    }
+
+    /// Run validation on an instance (via module's validate function)
+    pub async fn validate_instance(&self, instance_id: &str) -> Result<Value> {
+        let instance = self.instance_store.get(instance_id)
+            .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
+
+        let module = self.module_loader.get_module(&instance.module_name)?;
+        let module_path = format!("{}/lifecycle.py", module.path);
+
+        let mut cfg = serde_json::Map::new();
+        if let Some(exe_path) = &instance.executable_path {
+            cfg.insert("server_jar".to_string(), json!(exe_path));
+        }
+        if let Some(work_dir) = &instance.working_dir {
+            cfg.insert("working_dir".to_string(), json!(work_dir));
+        }
+        if let Some(port) = instance.port {
+            cfg.insert("port".to_string(), json!(port));
+        }
+
+        let result = crate::plugin::run_plugin(&module_path, "validate", Value::Object(cfg)).await?;
+        Ok(result)
+    }
+
+    /// Read or update server.properties (via module's configure/read_properties)
+    pub async fn manage_properties(
+        &self,
+        instance_id: &str,
+        action: &str,  // "read" or "write"
+        settings: Option<Value>,
+    ) -> Result<Value> {
+        let instance = self.instance_store.get(instance_id)
+            .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
+
+        let module = self.module_loader.get_module(&instance.module_name)?;
+        let module_path = format!("{}/lifecycle.py", module.path);
+
+        let mut cfg = serde_json::Map::new();
+        if let Some(work_dir) = &instance.working_dir {
+            cfg.insert("working_dir".to_string(), json!(work_dir));
+        }
+
+        let function = match action {
+            "write" | "configure" => {
+                if let Some(s) = settings {
+                    cfg.insert("settings".to_string(), s);
+                }
+                "configure"
+            }
+            _ => "read_properties",
+        };
+
+        let result = crate::plugin::run_plugin(&module_path, function, Value::Object(cfg)).await?;
+        Ok(result)
+    }
+
+    /// Accept EULA for an instance
+    pub async fn accept_eula(&self, instance_id: &str) -> Result<Value> {
+        let instance = self.instance_store.get(instance_id)
+            .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
+
+        let module = self.module_loader.get_module(&instance.module_name)?;
+        let module_path = format!("{}/lifecycle.py", module.path);
+
+        let mut cfg = serde_json::Map::new();
+        if let Some(work_dir) = &instance.working_dir {
+            cfg.insert("working_dir".to_string(), json!(work_dir));
+        }
+
+        let result = crate::plugin::run_plugin(&module_path, "accept_eula", Value::Object(cfg)).await?;
+        Ok(result)
+    }
+
+    /// Diagnose errors from instance logs
+    pub async fn diagnose_instance(&self, instance_id: &str) -> Result<Value> {
+        let instance = self.instance_store.get(instance_id)
+            .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
+
+        let module = self.module_loader.get_module(&instance.module_name)?;
+        let module_path = format!("{}/lifecycle.py", module.path);
+
+        let mut cfg = serde_json::Map::new();
+        if let Some(work_dir) = &instance.working_dir {
+            cfg.insert("working_dir".to_string(), json!(work_dir));
+        }
+
+        // If managed, provide recent console output for diagnosis
+        if let Some(proc) = self.managed_store.get(&instance.id).await {
+            let recent = proc.get_recent_console(500).await;
+            let log_lines: Vec<String> = recent.iter().map(|l| l.content.clone()).collect();
+            cfg.insert("log_lines".to_string(), json!(log_lines));
+        }
+
+        let result = crate::plugin::run_plugin(&module_path, "diagnose_log", Value::Object(cfg)).await?;
+        Ok(result)
+    }
+
+    // ─── Server Installation Methods ─────────────────────────
+
+    /// List available Minecraft server versions from Mojang
+    pub async fn list_versions(
+        &self,
+        module_name: &str,
+        include_snapshots: bool,
+        page: u32,
+        per_page: u32,
+    ) -> Result<Value> {
+        let module = self.module_loader.get_module(module_name)?;
+        let module_path = format!("{}/lifecycle.py", module.path);
+
+        let config = json!({
+            "include_snapshots": include_snapshots,
+            "page": page,
+            "per_page": per_page,
+        });
+
+        let result = crate::plugin::run_plugin(&module_path, "list_versions", config).await?;
+        Ok(result)
+    }
+
+    /// Get detailed info for a specific version
+    pub async fn get_version_details(
+        &self,
+        module_name: &str,
+        version: &str,
+    ) -> Result<Value> {
+        let module = self.module_loader.get_module(module_name)?;
+        let module_path = format!("{}/lifecycle.py", module.path);
+
+        let config = json!({ "version": version });
+        let result = crate::plugin::run_plugin(&module_path, "get_version_details", config).await?;
+        Ok(result)
+    }
+
+    /// Install a Minecraft server: download jar, setup directory, optional eula/settings
+    pub async fn install_server(
+        &self,
+        module_name: &str,
+        version: &str,
+        install_dir: &str,
+        jar_name: Option<&str>,
+        accept_eula: bool,
+        initial_settings: Option<Value>,
+    ) -> Result<Value> {
+        let module = self.module_loader.get_module(module_name)?;
+        let module_path = format!("{}/lifecycle.py", module.path);
+
+        let mut config = json!({
+            "version": version,
+            "install_dir": install_dir,
+            "accept_eula": accept_eula,
+        });
+
+        if let Some(name) = jar_name {
+            config["jar_name"] = json!(name);
+        }
+        if let Some(settings) = initial_settings {
+            config["initial_settings"] = settings;
+        }
+
+        let result = crate::plugin::run_plugin(&module_path, "install_server", config).await?;
+        Ok(result)
+    }
+
     /// 백그라운드 프로세스 모니터링 (주기적 실행)
     pub async fn monitor_processes(&mut self) -> Result<()> {
         use crate::process_monitor::ProcessMonitor;
+
+        // Clean up dead managed processes
+        self.managed_store.cleanup_dead().await;
         
         let instances = self.instance_store.list().to_vec();
         let mut tracked_count = 0;

@@ -160,7 +160,21 @@
     "add_error_title": "Instance add exception",
     "delete_failed_title": "Instance deletion failed",
     "delete_error_title": "Instance deletion exception",
-    "initializing_overlay": "Checking server status..."
+    "initializing_overlay": "Checking server status...",
+    "jar_not_found_title": "Server file not found",
+    "jar_not_found_message": "Server executable (server.jar) is not configured.\nYou can specify a path or install a new server.",
+    "jar_not_found_message_with_path": "Server file not found:\n{{path}}\n\nYou can update the path or install a new server.",
+    "jar_action_update_path": "Update Path",
+    "jar_action_install_new": "Install New",
+    "select_server_jar": "Select Server JAR File",
+    "jar_path_updated": "✅ Server path updated",
+    "installing_server": "⏳ Installing server...",
+    "version_fetch_failed": "❌ Failed to fetch version info",
+    "install_completed": "✅ Minecraft {{version}} server installed!",
+    "progress_fetching_versions": "Fetching version info...",
+    "progress_downloading": "Downloading Minecraft {{version}}...",
+    "progress_configuring": "Configuring server...",
+    "progress_complete": "Installation complete!"
   },
   "settings": {
     "save_failed_title": "Settings save failed",
@@ -221,6 +235,11 @@
     "about_title": "About Core Daemon",
     "about_description": "Core Daemon is a background service responsible for managing game server processes, IPC communication, and module loading.",
     "about_note": "The daemon continues to run even when the GUI is closed and can be managed from the system tray."
+  },
+  "console": {
+    "waiting": "Waiting for server output...",
+    "input_placeholder": "Enter command...",
+    "send": "Send"
   },
   "discord_modal": {
     "title": "Discord Bot",

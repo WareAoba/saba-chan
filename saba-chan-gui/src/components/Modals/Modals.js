@@ -2,18 +2,21 @@ import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import './Modals.css';
 import { Icon } from '../Icon';
+import { useModalClose } from '../../hooks/useModalClose';
 
 // Success Modal - 자동으로 2초 후 닫힘
 export function SuccessModal({ title, message, onClose }) {
+    const { isClosing, requestClose } = useModalClose(onClose);
+
     useEffect(() => {
-        const timer = setTimeout(onClose, 2000);
+        const timer = setTimeout(requestClose, 2000);
         return () => clearTimeout(timer);
-    }, [onClose]);
+    }, [requestClose]);
 
     return (
-        <div className="modal-overlay" onClick={onClose}>
+        <div className={`modal-overlay ${isClosing ? 'closing' : ''}`} onClick={requestClose}>
             <div className="modal success-modal" onClick={e => e.stopPropagation()}>
-                <div className="modal-icon success-icon"><Icon name="check" size="lg" /></div>
+                <img src="./success.png" alt="" className="modal-illustration" />
                 <h2 className="modal-title">{title}</h2>
                 <p className="modal-message">{message}</p>
             </div>
@@ -24,14 +27,15 @@ export function SuccessModal({ title, message, onClose }) {
 // Failure Modal - 수동으로 닫기
 export function FailureModal({ title, message, onClose }) {
     const { t } = useTranslation('gui');
+    const { isClosing, requestClose } = useModalClose(onClose);
     
     return (
-        <div className="modal-overlay" onClick={onClose}>
+        <div className={`modal-overlay ${isClosing ? 'closing' : ''}`} onClick={requestClose}>
             <div className="modal failure-modal" onClick={e => e.stopPropagation()}>
-                <img src="/panic.png" alt="" className="modal-illustration" />
+                <img src="./panic.png" alt="" className="modal-illustration" />
                 <h2 className="modal-title">{title}</h2>
                 <p className="modal-message">{message}</p>
-                <button className="modal-button failure-button" onClick={onClose}>
+                <button className="modal-button failure-button" onClick={requestClose}>
                     {t('modals.close')}
                 </button>
             </div>
@@ -42,14 +46,15 @@ export function FailureModal({ title, message, onClose }) {
 // Notification Modal - 정보 표시
 export function NotificationModal({ title, message, onClose }) {
     const { t } = useTranslation('gui');
+    const { isClosing, requestClose } = useModalClose(onClose);
     
     return (
-        <div className="modal-overlay" onClick={onClose}>
+        <div className={`modal-overlay ${isClosing ? 'closing' : ''}`} onClick={requestClose}>
             <div className="modal notification-modal" onClick={e => e.stopPropagation()}>
-                <div className="modal-icon notification-icon"><Icon name="info" size="lg" /></div>
+                <img src="./notice.png" alt="" className="modal-illustration" />
                 <h2 className="modal-title">{title}</h2>
                 <p className="modal-message">{message}</p>
-                <button className="modal-button notification-button" onClick={onClose}>
+                <button className="modal-button notification-button" onClick={requestClose}>
                     {t('modals.confirm')}
                 </button>
             </div>
@@ -60,11 +65,12 @@ export function NotificationModal({ title, message, onClose }) {
 // Question Modal - 확인/취소 또는 커스텀 버튼
 export function QuestionModal({ title, message, detail, onConfirm, onCancel, buttons }) {
     const { t } = useTranslation('gui');
+    const { isClosing, requestClose } = useModalClose(onCancel);
     
     return (
-        <div className="modal-overlay" onClick={onCancel}>
+        <div className={`modal-overlay ${isClosing ? 'closing' : ''}`} onClick={requestClose}>
             <div className="modal question-modal" onClick={e => e.stopPropagation()}>
-                <div className="modal-icon question-icon"><Icon name="alertCircle" size="lg" /></div>
+                <img src="./question.png" alt="" className="modal-illustration" />
                 <h2 className="modal-title">{title}</h2>
                 <p className="modal-message">{message}</p>
                 {detail && <p className="modal-detail">{detail}</p>}
@@ -86,7 +92,7 @@ export function QuestionModal({ title, message, detail, onConfirm, onCancel, but
                             <button className="modal-button question-confirm" onClick={onConfirm}>
                                 {t('modals.confirm')}
                             </button>
-                            <button className="modal-button question-cancel" onClick={onCancel}>
+                            <button className="modal-button question-cancel" onClick={requestClose}>
                                 {t('modals.cancel')}
                             </button>
                         </>

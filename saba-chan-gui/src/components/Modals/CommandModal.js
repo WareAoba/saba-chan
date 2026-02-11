@@ -3,9 +3,11 @@ import { useTranslation } from 'react-i18next';
 import './Modals.css';
 import { Icon } from '../Icon';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
+import { useModalClose } from '../../hooks/useModalClose';
 
 function CommandModal({ server, modules, onClose, onExecute }) {
     const { t } = useTranslation('gui');
+    const { isClosing, requestClose } = useModalClose(onClose);
     const [commandInput, setCommandInput] = useState('');
     const [commandInputs, setCommandInputs] = useState({});
     const [loading, setLoading] = useState(false);
@@ -112,7 +114,7 @@ function CommandModal({ server, modules, onClose, onExecute }) {
     const selectedCmd = commands.find(c => c.name === commandInput.trim());
 
     return (
-        <div className="modal-overlay" onClick={onClose}>
+        <div className={`modal-overlay ${isClosing ? 'closing' : ''}`} onClick={requestClose}>
             <div className="modal command-modal" onClick={e => e.stopPropagation()}>
                 <h2 className="modal-title">{t('command_modal.title', { name: server.name })}</h2>
 
@@ -223,7 +225,7 @@ function CommandModal({ server, modules, onClose, onExecute }) {
                     >
                         {loading ? '...' : <><Icon name="enter" size="sm" /> {t('command_modal.execute')}</>}
                     </button>
-                    <button className="modal-button command-cancel" onClick={onClose}>
+                    <button className="modal-button command-cancel" onClick={requestClose}>
                         <Icon name="close" size="sm" /> {t('modals.close')}
                     </button>
                 </div>

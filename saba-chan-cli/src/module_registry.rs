@@ -37,6 +37,7 @@ pub struct ModuleInfo {
     pub name: String,
     pub game_name: String,
     pub display_name: String,
+    pub interaction_mode: Option<String>,  // "console" or "commands"
     pub commands: Vec<ModuleCommand>,
 }
 
@@ -132,6 +133,13 @@ impl ModuleRegistry {
             alias_to_module.insert(name.to_lowercase(), name.clone());
             alias_to_module.insert(game_name.to_lowercase(), name.clone());
             alias_to_module.insert(display_name.to_lowercase(), name.clone());
+
+            // ── [protocols] 섹션 → interaction_mode ──
+            let interaction_mode = table
+                .get("protocols")
+                .and_then(|p| p.get("interaction_mode"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
             // [aliases].module_aliases 배열
             if let Some(aliases) = table
@@ -233,6 +241,7 @@ impl ModuleRegistry {
                 name,
                 game_name,
                 display_name,
+                interaction_mode,
                 commands,
             });
         }
@@ -293,6 +302,9 @@ mod tests {
 name = "test_game"
 game_name = "Test Game"
 display_name = "테스트 게임"
+
+[protocols]
+interaction_mode = "console"
 
 [aliases]
 module_aliases = ["tg", "테겜"]

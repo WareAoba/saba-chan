@@ -9,11 +9,17 @@ contextBridge.exposeInMainWorld('api', {
     moduleRefresh: () => ipcRenderer.invoke('module:refresh'),
     moduleGetMetadata: (name) => ipcRenderer.invoke('module:getMetadata', name),
     moduleGetLocales: (name) => ipcRenderer.invoke('module:getLocales', name),
+    moduleListVersions: (name, options) => ipcRenderer.invoke('module:listVersions', name, options),
+    moduleInstallServer: (name, config) => ipcRenderer.invoke('module:installServer', name, config),
     instanceCreate: (data) => ipcRenderer.invoke('instance:create', data),
     instanceDelete: (id) => ipcRenderer.invoke('instance:delete', id),
     instanceReorder: (orderedIds) => ipcRenderer.invoke('instance:reorder', orderedIds),
     instanceUpdateSettings: (id, settings) => ipcRenderer.invoke('instance:updateSettings', id, settings),
     executeCommand: (id, command) => ipcRenderer.invoke('instance:executeCommand', id, command),
+    // Managed Process API (console capture)
+    managedStart: (instanceId) => ipcRenderer.invoke('managed:start', instanceId),
+    managedConsole: (instanceId, since, count) => ipcRenderer.invoke('managed:console', instanceId, since, count),
+    managedStdin: (instanceId, command) => ipcRenderer.invoke('managed:stdin', instanceId, command),
     // Settings API
     settingsLoad: () => ipcRenderer.invoke('settings:load'),
     settingsSave: (settings) => ipcRenderer.invoke('settings:save', settings),

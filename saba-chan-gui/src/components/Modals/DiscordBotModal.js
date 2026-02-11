@@ -6,6 +6,7 @@ import { Icon } from '../Icon';
 function DiscordBotModal({ 
     isOpen, 
     onClose, 
+    isClosing,
     discordBotStatus,
     discordToken,
     setDiscordToken,
@@ -23,7 +24,7 @@ function DiscordBotModal({
     }
 
     return (
-        <div className="discord-modal-container" onClick={(e) => e.stopPropagation()}>
+        <div className={`discord-modal-container ${isClosing ? 'closing' : ''}`} onClick={(e) => e.stopPropagation()}>
             <div className="discord-modal-header">
                     <div className="discord-modal-title">
                         <span className={`status-indicator ${discordBotStatus === 'running' ? 'status-online' : 'status-offline'}`}></span>

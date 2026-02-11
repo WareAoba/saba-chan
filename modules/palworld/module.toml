@@ -10,6 +10,7 @@ icon = "icon.png"
 [protocols]
 supported = ["rest", "rcon"]
 default = "rest"
+interaction_mode = "commands"  # console: stdin 지원, 콘솔 UI 표시 | commands: 정해진 명령어만 실행
 
 [config]
 executable_path = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\PalServer\\PalServer.exe"

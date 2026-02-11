@@ -18,7 +18,8 @@
   "help": {
     "header": "コマンド:",
     "server": "server  [list|start|stop|restart|status] <名前>",
-    "module": "module  [list|reload]",
+    "server_ext": "server  [managed|console|stdin|diagnose|validate|eula|properties] <名前>",
+    "module": "module  [list|refresh|versions|install]",
     "daemon": "daemon  [start|stop]",
     "bot": "bot     [start|stop|token|prefix]",
     "config": "config  [show|set|get|reset] <キー> <値>",
@@ -54,18 +55,29 @@
     "restarted": "サーバー再起動",
     "not_found": "サーバー '{{name}}' が見つかりません",
     "no_instance": "モジュール '{{module}}' にサーバーインスタンスがありません。GUIで作成してください。",
-    "multiple_instances": "{{module}}に{{count}}個のインスタンスがあります — 最初のものを使用:"
+    "multiple_instances": "{{module}}に{{count}}個のインスタンスがあります — 最初のものを使用:",
+    "managed_started": "管理型サーバー起動",
+    "console_output": "コンソール出力",
+    "stdin_sent": "{{name}}に送信: {{text}}",
+    "diagnose_header": "'{{name}}'の診断結果:",
+    "validate_passed": "検証通過",
+    "eula_accepted": "'{{name}}'のEULAを承認しました",
+    "properties_header": "'{{name}}'のプロパティ:"
   },
   "module_cmd": {
     "no_modules": "モジュールがロードされていません。",
     "modules_count": "{{count}}個のモジュール:",
+    "refreshed": "モジュール再読み込み完了",
     "reloaded": "モジュール再読み込み完了",
     "commands_header": "{{display}} ({{name}}) コマンド:",
     "cmd_start": "サーバー起動",
     "cmd_stop": "サーバー停止",
     "cmd_restart": "サーバー再起動",
     "cmd_status": "サーバー状態",
-    "unknown_cmd": "モジュール '{{module}}' に '{{cmd}}' コマンドがありません。'{{module}}'を入力するとコマンド一覧を確認できます。"
+    "unknown_cmd": "モジュール '{{module}}' に '{{cmd}}' コマンドがありません。'{{module}}'を入力するとコマンド一覧を確認できます。",
+    "versions_count": "'{{module}}'の{{count}}個のバージョン:",
+    "no_versions": "'{{module}}'に利用可能なバージョンがありません。",
+    "install_started": "インストール開始"
   },
   "daemon_cmd": {
     "already_running": "デーモンは既に実行中です",

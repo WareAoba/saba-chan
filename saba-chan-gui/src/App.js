@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import './App.css';
 import { 
@@ -16,6 +16,7 @@ import {
     Icon,
     CustomDropdown
 } from './components';
+import { useModalClose } from './hooks/useModalClose';
 
 function App() {
     const { t, i18n } = useTranslation('gui');
@@ -23,9 +24,9 @@ function App() {
     // 언어별 로고 이미지 선택
     const logoSrc = useMemo(() => {
         const lang = (i18n.language || 'en').toLowerCase();
-        if (lang.startsWith('ko')) return '/logo-kr.png';
-        if (lang.startsWith('ja')) return '/logo-jp.png';
-        return '/logo-en.png';
+        if (lang.startsWith('ko')) return './logo-kr.png';
+        if (lang.startsWith('ja')) return './logo-jp.png';
+        return './logo-en.png';
     }, [i18n.language]);
     
     // 테스트 환경 감지 (Jest 실행 중인지 확인)
@@ -170,6 +171,17 @@ function App() {
     // 모달 상태 (Success/Failure/Notification)
     const [modal, setModal] = useState(null);
 
+    // 글로벌 프로그레스바 상태
+    const [progressBar, setProgressBar] = useState(null); // { message, percent?, indeterminate? }
+
+    // 콘솔 패널 상태
+    const [consoleServer, setConsoleServer] = useState(null); // { id, name } — 현재 콘솔이 열린 서버
+    const [consoleLines, setConsoleLines] = useState([]);
+    const [consoleSinceId, setConsoleSinceId] = useState(0);
+    const [consoleInput, setConsoleInput] = useState('');
+    const consoleEndRef = useRef(null);
+    const consolePollingRef = useRef(null);
+
     // Discord Bot 상태
     const [discordBotStatus, setDiscordBotStatus] = useState('stopped'); // stopped | running | error
     const [discordToken, setDiscordToken] = useState('');
@@ -194,6 +206,16 @@ function App() {
     const [selectedModuleForAliases, setSelectedModuleForAliases] = useState(null);
     const [editingModuleAliases, setEditingModuleAliases] = useState({});
     const [editingCommandAliases, setEditingCommandAliases] = useState({});
+
+    // 서버 설정 모달 닫기 트랜지션
+    const closeSettingsModal = useCallback(() => setShowSettingsModal(false), []);
+    const { isClosing: isSettingsClosing, requestClose: requestSettingsClose } = useModalClose(closeSettingsModal);
+
+    // Discord / Background 모달 닫기 트랜지션
+    const closeDiscordSection = useCallback(() => setShowDiscordSection(false), []);
+    const { isClosing: isDiscordClosing, requestClose: requestDiscordClose } = useModalClose(closeDiscordSection);
+    const closeBackgroundSection = useCallback(() => setShowBackgroundSection(false), []);
+    const { isClosing: isBackgroundClosing, requestClose: requestBackgroundClose } = useModalClose(closeBackgroundSection);
 
     // 초기화 상태 모니터링
     useEffect(() => {
@@ -992,17 +1014,134 @@ function App() {
     const handleStart = async (name, module) => {
         let toastId = null;
         try {
-            const result = await window.api.serverStart(name, { module });
+            // 인스턴스 ID 찾기
+            const srv = servers.find(s => s.name === name);
+            if (!srv) {
+                safeShowToast(t('servers.start_failed_toast', { error: 'Instance not found' }), 'error', 4000);
+                return;
+            }
+
+            // Managed 모드로 시작 (stdin/stdout capture)
+            const result = await window.api.managedStart(srv.id);
+
+            // ── action_required: 서버 jar 미발견 → 사용자에게 선택지 제시 ──
+            if (result.action_required === 'server_jar_not_found') {
+                setModal({
+                    type: 'question',
+                    title: t('servers.jar_not_found_title'),
+                    message: result.configured_path
+                        ? t('servers.jar_not_found_message_with_path', { path: result.configured_path })
+                        : t('servers.jar_not_found_message'),
+                    buttons: [
+                        {
+                            label: t('servers.jar_action_update_path'),
+                            action: async () => {
+                                setModal(null);
+                                try {
+                                    const filePath = await window.api.openFileDialog({
+                                        filters: [{ name: 'JAR', extensions: ['jar'] }],
+                                        title: t('servers.select_server_jar'),
+                                    });
+                                    if (filePath) {
+                                        // 서버 인스턴스에서 해당 이름 찾아 ID 가져오기
+                                        const srv = servers.find(s => s.name === name);
+                                        if (srv) {
+                                            await window.api.instanceUpdateSettings(srv.id, { executable_path: filePath });
+                                            safeShowToast(t('servers.jar_path_updated'), 'success', 3000);
+                                            await fetchServers();
+                                            // 경로 업데이트 후 자동 시작
+                                            handleStart(name, module);
+                                        }
+                                    }
+                                } catch (err) {
+                                    safeShowToast(translateError(err.message), 'error', 4000);
+                                }
+                            }
+                        },
+                        {
+                            label: t('servers.jar_action_install_new'),
+                            action: async () => {
+                                setModal(null);
+                                try {
+                                    // 설치 디렉토리 선택
+                                    const installDir = await window.api.openFolderDialog();
+                                    if (!installDir) return;
+
+                                    setProgressBar({ message: t('servers.progress_fetching_versions'), indeterminate: true });
+
+                                    // 최신 릴리즈 버전으로 설치
+                                    const versions = await window.api.moduleListVersions(module, { per_page: 1 });
+                                    const latestVersion = versions?.latest?.release;
+                                    if (!latestVersion) {
+                                        setProgressBar(null);
+                                        safeShowToast(t('servers.version_fetch_failed'), 'error', 4000);
+                                        return;
+                                    }
+
+                                    setProgressBar({ message: t('servers.progress_downloading', { version: latestVersion }), percent: 0 });
+
+                                    const installResult = await window.api.moduleInstallServer(module, {
+                                        version: latestVersion,
+                                        install_dir: installDir,
+                                        accept_eula: true,
+                                    });
+
+                                    if (installResult.error || installResult.success === false) {
+                                        setProgressBar(null);
+                                        safeShowToast(installResult.error || installResult.message, 'error', 4000);
+                                        return;
+                                    }
+
+                                    setProgressBar({ message: t('servers.progress_configuring'), percent: 90 });
+
+                                    // 인스턴스의 executable_path를 설치된 jar로 업데이트
+                                    const srv = servers.find(s => s.name === name);
+                                    if (srv && installResult.jar_path) {
+                                        await window.api.instanceUpdateSettings(srv.id, {
+                                            executable_path: installResult.jar_path,
+                                            working_dir: installResult.install_path,
+                                        });
+                                    }
+
+                                    setProgressBar({ message: t('servers.progress_complete'), percent: 100 });
+                                    setTimeout(() => setProgressBar(null), 2000);
+
+                                    const msg = installResult.java_warning
+                                        ? `${t('servers.install_completed', { version: latestVersion })}\n⚠️ ${installResult.java_warning}`
+                                        : t('servers.install_completed', { version: latestVersion });
+                                    safeShowToast(msg, 'success', 5000);
+                                    await fetchServers();
+
+                                    // Java 버전 경고가 없으면 자동 시작
+                                    if (!installResult.java_warning) {
+                                        handleStart(name, module);
+                                    }
+                                } catch (err) {
+                                    setProgressBar(null);
+                                    safeShowToast(translateError(err.message), 'error', 4000);
+                                }
+                            }
+                        },
+                        {
+                            label: t('modals.cancel'),
+                            action: () => setModal(null)
+                        }
+                    ]
+                });
+                return;
+            }
+
             if (result.error) {
                 const errorMsg = translateError(result.error);
                 safeShowToast(t('servers.start_failed_toast', { error: errorMsg }), 'error', 4000);
             } else {
-                // 시작 명령 성공 - 상태 확인 시작
+                // 시작 명령 성공 - 콘솔 자동 오픈
                 toastId = safeShowToast(t('servers.starting_toast', { name }), 'info', 0);
+                openConsole(srv.id, name);
                 
-                // 서버 상태가 running이 될 때까지 대기 (최대 10초)
+                // 서버 상태가 running이 될 때까지 대기 (최대 30초)
                 let attempts = 0;
-                const maxAttempts = 20; // 10초 (500ms * 20)
+                const maxAttempts = 60; // 30초 (500ms * 60)
                 const checkInterval = 500;
                 
                 const checkStatus = setInterval(async () => {
@@ -1035,6 +1174,69 @@ function App() {
             safeShowToast(t('servers.start_failed_toast', { error: errorMsg }), 'error', 4000);
         }
     };
+
+    // ── Console Panel Management ──────────────────────────────
+
+    const openConsole = (instanceId, serverName) => {
+        setConsoleServer({ id: instanceId, name: serverName });
+        setConsoleLines([]);
+        setConsoleSinceId(0);
+        setConsoleInput('');
+
+        // Start polling
+        if (consolePollingRef.current) clearInterval(consolePollingRef.current);
+        let sinceId = 0;
+        consolePollingRef.current = setInterval(async () => {
+            try {
+                const data = await window.api.managedConsole(instanceId, sinceId, 200);
+                if (data?.lines?.length > 0) {
+                    setConsoleLines(prev => {
+                        const newLines = [...prev, ...data.lines];
+                        // Keep last 2000 lines
+                        return newLines.length > 2000 ? newLines.slice(-2000) : newLines;
+                    });
+                    sinceId = data.lines[data.lines.length - 1].id + 1;
+                    setConsoleSinceId(sinceId);
+                }
+            } catch (err) {
+                // silent — server might not be ready yet
+            }
+        }, 500);
+    };
+
+    const closeConsole = () => {
+        if (consolePollingRef.current) {
+            clearInterval(consolePollingRef.current);
+            consolePollingRef.current = null;
+        }
+        setConsoleServer(null);
+        setConsoleLines([]);
+        setConsoleSinceId(0);
+    };
+
+    const sendConsoleCommand = async () => {
+        if (!consoleInput.trim() || !consoleServer) return;
+        try {
+            await window.api.managedStdin(consoleServer.id, consoleInput.trim());
+            setConsoleInput('');
+        } catch (err) {
+            safeShowToast(translateError(err.message), 'error', 3000);
+        }
+    };
+
+    // Auto-scroll console
+    useEffect(() => {
+        if (consoleEndRef.current) {
+            consoleEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [consoleLines]);
+
+    // Cleanup polling on unmount
+    useEffect(() => {
+        return () => {
+            if (consolePollingRef.current) clearInterval(consolePollingRef.current);
+        };
+    }, []);
 
     const handleStop = async (name) => {
         setModal({
@@ -1298,12 +1500,19 @@ function App() {
                 module.settings.fields.forEach(field => {
                     const value = settingsValues[field.name];
                     
+                    if (field.field_type === 'boolean') {
+                        convertedSettings[field.name] = value === true || value === 'true';
+                        return;
+                    }
+                    
                     if (value === '' || value === null || value === undefined) {
                         return; // 빈 값은 전송하지 않음
                     }
                     
                     if (field.field_type === 'number') {
                         convertedSettings[field.name] = Number(value);
+                    } else if (field.field_type === 'boolean') {
+                        convertedSettings[field.name] = value === true || value === 'true';
                     } else {
                         convertedSettings[field.name] = value;
                     }
@@ -1561,7 +1770,7 @@ function App() {
                         <i className="glow-blur"></i>
                         <i className="glow-ring"></i>
                         <i className="glow-mask"></i>
-                        <img src="/title.png" alt="" className="loading-logo-img" />
+                        <img src="./title.png" alt="" className="loading-logo-img" />
                     </div>
                     <img src={logoSrc} alt={t('common:app_name')} className="loading-logo-text" />
                     <div className="loading-status">
@@ -1597,14 +1806,14 @@ function App() {
             {showDiscordSection && (
                 <div 
                     className="discord-backdrop" 
-                    onClick={() => setShowDiscordSection(false)}
+                    onClick={requestDiscordClose}
                 />
             )}
             {/* Background overlay backdrop */}
             {showBackgroundSection && (
                 <div 
                     className="discord-backdrop" 
-                    onClick={() => setShowBackgroundSection(false)}
+                    onClick={requestBackgroundClose}
                 />
             )}
             <TitleBar />
@@ -1613,7 +1822,7 @@ function App() {
                 {/* 첫 번째 줄: 타이틀과 설정 */}
                 <div className="header-row header-row-title">
                     <div className="app-title-section">
-                        <img src="/icon.png" alt="" className="app-logo-icon" />
+                        <img src="./icon.png" alt="" className="app-logo-icon" />
                         <img src={logoSrc} alt={t('common:app_name')} className="app-logo-text" />
                     </div>
                     <button 
@@ -1637,7 +1846,7 @@ function App() {
                     <div className="discord-button-wrapper">
                         <button 
                             className={`btn btn-discord ${discordBotStatus === 'running' ? 'btn-discord-active' : ''}`}
-                            onClick={() => setShowDiscordSection(!showDiscordSection)}
+                            onClick={() => showDiscordSection ? requestDiscordClose() : setShowDiscordSection(true)}
                         >
                             <span className={`status-indicator ${discordBotStatus === 'running' ? 'status-online' : 'status-offline'}`}></span>
                             Discord Bot
@@ -1645,7 +1854,8 @@ function App() {
                         {/* Discord Bot Modal */}
                         <DiscordBotModal
                             isOpen={showDiscordSection}
-                            onClose={() => setShowDiscordSection(false)}
+                            onClose={requestDiscordClose}
+                            isClosing={isDiscordClosing}
                             discordBotStatus={discordBotStatus}
                             discordToken={discordToken}
                             setDiscordToken={(val) => { setDiscordToken(val); discordTokenRef.current = val; }}
@@ -1661,7 +1871,7 @@ function App() {
                     <div className="background-button-wrapper">
                         <button 
                             className={`btn btn-background ${backgroundDaemonStatus === 'running' ? 'btn-background-active' : ''}`}
-                            onClick={() => setShowBackgroundSection(!showBackgroundSection)}
+                            onClick={() => showBackgroundSection ? requestBackgroundClose() : setShowBackgroundSection(true)}
                         >
                             <span className={`status-indicator ${
                                 backgroundDaemonStatus === 'running' ? 'status-online' : 
@@ -1673,7 +1883,8 @@ function App() {
                         {/* Background Modal */}
                         <BackgroundModal
                             isOpen={showBackgroundSection}
-                            onClose={() => setShowBackgroundSection(false)}
+                            onClose={requestBackgroundClose}
+                            isClosing={isBackgroundClosing}
                         />
                     </div>
                 </div>
@@ -1830,16 +2041,43 @@ function App() {
                                         <Icon name="settings" size="md" />
                                     </button>
                                     {server.status === 'running' ? (
-                                        <button 
-                                            className="action-icon"
-                                            onClick={() => {
-                                                setCommandServer(server);
-                                                setShowCommandModal(true);
-                                            }}
-                                            title="Command"
-                                        >
-                                            <Icon name="terminal" size="md" />
-                                        </button>
+                                        <>
+                                            {/* interaction_mode에 따라 콘솔 또는 커맨드 버튼 표시 */}
+                                            {(() => {
+                                                const mod = modules.find(m => m.name === server.module);
+                                                const mode = mod?.interaction_mode || 'console';
+                                                if (mode === 'console') {
+                                                    return (
+                                                        <button 
+                                                            className={`action-icon ${consoleServer?.id === server.id ? 'action-active' : ''}`}
+                                                            onClick={() => {
+                                                                if (consoleServer?.id === server.id) {
+                                                                    closeConsole();
+                                                                } else {
+                                                                    openConsole(server.id, server.name);
+                                                                }
+                                                            }}
+                                                            title="Console"
+                                                        >
+                                                            <Icon name="terminal" size="md" />
+                                                        </button>
+                                                    );
+                                                } else {
+                                                    return (
+                                                        <button 
+                                                            className="action-icon"
+                                                            onClick={() => {
+                                                                setCommandServer(server);
+                                                                setShowCommandModal(true);
+                                                            }}
+                                                            title="Command"
+                                                        >
+                                                            <Icon name="command" size="md" />
+                                                        </button>
+                                                    );
+                                                }
+                                            })()}
+                                        </>
                                     ) : (
                                         <button 
                                             className="action-icon action-delete"
@@ -1857,17 +2095,55 @@ function App() {
                     })
                 )}
                 </div>
+
+                {/* 콘솔 패널 */}
+                {consoleServer && (
+                    <div className="console-panel">
+                        <div className="console-header">
+                            <span className="console-title">
+                                <span className="console-icon">{'>'}_</span>
+                                {consoleServer.name}
+                            </span>
+                            <button className="console-close" onClick={closeConsole} title="Close">&times;</button>
+                        </div>
+                        <div className="console-output">
+                            {consoleLines.length === 0 && (
+                                <div className="console-empty">{t('console.waiting')}</div>
+                            )}
+                            {consoleLines.map((line) => (
+                                <div key={line.id} className={`console-line console-${line.source?.toLowerCase() || 'stdout'} console-level-${line.level?.toLowerCase() || 'info'}`}>
+                                    <span className="console-content">{line.content}</span>
+                                </div>
+                            ))}
+                            <div ref={consoleEndRef} />
+                        </div>
+                        <div className="console-input-row">
+                            <span className="console-prompt">{'>'}</span>
+                            <input
+                                type="text"
+                                className="console-input"
+                                value={consoleInput}
+                                onChange={(e) => setConsoleInput(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') sendConsoleCommand(); }}
+                                placeholder={t('console.input_placeholder')}
+                                autoFocus
+                            />
+                            <button className="console-send" onClick={sendConsoleCommand}>{t('console.send')}</button>
+                        </div>
+                    </div>
+                )}
+
             </main>
 
             {showSettingsModal && settingsServer && (
-                <div className="modal-overlay">
-                    <div className="modal-content modal-content-large">
+                <div className={`modal-overlay ${isSettingsClosing ? 'closing' : ''}`} onClick={requestSettingsClose}>
+                    <div className="modal-content modal-content-large" onClick={e => e.stopPropagation()}>
                         <div className="modal-header">
                             <h3 style={{ fontSize: '1.3rem' }}>{settingsServer.name} - {t('server_settings.title')}</h3>
                         </div>
                         
                         {/* 탭 헤더 */}
-                        <div className="settings-tabs">
+                        <div className="settings-tabs" data-tab={settingsActiveTab}>
                             <button 
                                 className={`settings-tab ${settingsActiveTab === 'general' ? 'active' : ''}`}
                                 onClick={() => setSettingsActiveTab('general')}
@@ -1990,6 +2266,21 @@ function App() {
                                                             options={(field.options || []).map(opt => ({ value: opt, label: opt }))}
                                                         />
                                                     )}
+                                                    {field.field_type === 'boolean' && (
+                                                        <div className="toggle-row">
+                                                            <label className="toggle-switch">
+                                                                <input 
+                                                                    type="checkbox"
+                                                                    checked={settingsValues[field.name] === true || settingsValues[field.name] === 'true'}
+                                                                    onChange={(e) => handleSettingChange(field.name, e.target.checked)}
+                                                                />
+                                                                <span className="toggle-slider"></span>
+                                                            </label>
+                                                            <span className="toggle-label-text">
+                                                                {settingsValues[field.name] === true || settingsValues[field.name] === 'true' ? 'ON' : 'OFF'}
+                                                            </span>
+                                                        </div>
+                                                    )}
                                                     {fieldDesc && (
                                                         <small className="field-description">{fieldDesc}</small>
                                                     )}
@@ -2098,7 +2389,7 @@ function App() {
                                     <Icon name="save" size="sm" /> {t('server_settings.save_settings')}
                                 </button>
                             )}
-                            <button className="btn btn-cancel" onClick={() => setShowSettingsModal(false)}>
+                            <button className="btn btn-cancel" onClick={requestSettingsClose}>
                                 <Icon name="close" size="sm" /> {t('server_settings.close')}
                             </button>
                         </div>
@@ -2145,6 +2436,28 @@ function App() {
                 onClose={() => setShowGuiSettingsModal(false)}
                 refreshInterval={refreshInterval}
                 onRefreshIntervalChange={setRefreshInterval}
+                onTestModal={setModal}
+                onTestProgressBar={setProgressBar}
+                onTestLoadingScreen={() => {
+                    setShowGuiSettingsModal(false);
+                    setDaemonReady(false);
+                    setInitStatus('Loading test...');
+                    setInitProgress(0);
+                    let p = 0;
+                    const iv = setInterval(() => {
+                        p += Math.random() * 20 + 10;
+                        if (p >= 100) {
+                            p = 100;
+                            setInitStatus('Ready!');
+                            setInitProgress(100);
+                            clearInterval(iv);
+                            setTimeout(() => setDaemonReady(true), 600);
+                        } else {
+                            setInitStatus(`Loading test... ${Math.round(p)}%`);
+                            setInitProgress(p);
+                        }
+                    }, 500);
+                }}
             />
 
             {/* CommandModal 렌더링 */}
@@ -2155,6 +2468,24 @@ function App() {
                     onClose={() => setShowCommandModal(false)}
                     onExecute={setModal}
                 />
+            )}
+
+            {/* 글로벌 프로그레스바 */}
+            {progressBar && (
+                <div className="global-progress-bar">
+                    <div className="global-progress-content">
+                        <span className="global-progress-message">{progressBar.message}</span>
+                        {progressBar.percent != null && !progressBar.indeterminate && (
+                            <span className="global-progress-percent">{Math.round(progressBar.percent)}%</span>
+                        )}
+                    </div>
+                    <div className="global-progress-track">
+                        <div
+                            className={`global-progress-fill ${progressBar.indeterminate ? 'indeterminate' : ''} ${progressBar.percent === 100 ? 'complete' : ''}`}
+                            style={progressBar.indeterminate ? {} : { width: `${progressBar.percent || 0}%` }}
+                        />
+                    </div>
+                </div>
             )}
         </div>
     );

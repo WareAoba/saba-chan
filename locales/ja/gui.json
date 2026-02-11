@@ -160,7 +160,21 @@
     "add_error_title": "インスタンス追加例外",
     "delete_failed_title": "インスタンス削除失敗",
     "delete_error_title": "インスタンス削除例外",
-    "initializing_overlay": "サーバーステータスをチェック中..."
+    "initializing_overlay": "サーバーステータスをチェック中...",
+    "jar_not_found_title": "サーバーファイルが見つかりません",
+    "jar_not_found_message": "サーバー実行ファイル（server.jar）が設定されていません。\nパスを指定するか、新しくインストールできます。",
+    "jar_not_found_message_with_path": "サーバーファイルが見つかりません：\n{{path}}\n\nパスを変更するか、新しくインストールできます。",
+    "jar_action_update_path": "パスを変更",
+    "jar_action_install_new": "新規インストール",
+    "select_server_jar": "サーバーJARファイルを選択",
+    "jar_path_updated": "✅ サーバーパスが更新されました",
+    "installing_server": "⏳ サーバーをインストール中...",
+    "version_fetch_failed": "❌ バージョン情報の取得に失敗しました",
+    "install_completed": "✅ Minecraft {{version}} サーバーのインストール完了！",
+    "progress_fetching_versions": "バージョン情報を取得中...",
+    "progress_downloading": "Minecraft {{version}} をダウンロード中...",
+    "progress_configuring": "サーバーを設定中...",
+    "progress_complete": "インストール完了！"
   },
   "settings": {
     "save_failed_title": "設定保存失敗",
@@ -221,6 +235,11 @@
     "about_title": "コアデーモンについて",
     "about_description": "コアデーモンは、ゲームサーバープロセスの管理、IPC通信、およびモジュール読み込みを担当するバックグラウンドサービスです。",
     "about_note": "GUIが閉じられても、デーモンはバックグラウンドで実行を継続し、システムトレイから管理できます。"
+  },
+  "console": {
+    "waiting": "サーバー出力を待機中...",
+    "input_placeholder": "コマンドを入力...",
+    "send": "送信"
   },
   "discord_modal": {
     "title": "Discord ボット",

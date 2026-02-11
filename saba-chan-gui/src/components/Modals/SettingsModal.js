@@ -4,15 +4,18 @@ import './Modals.css';
 import { Icon } from '../Icon';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { getTheme, setTheme as saveTheme } from '../../utils/themeManager';
+import { useModalClose } from '../../hooks/useModalClose';
 
-function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChange }) {
+function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChange, onTestModal, onTestProgressBar, onTestLoadingScreen }) {
     const { t, i18n } = useTranslation(['gui', 'common']);
     const [activeTab, setActiveTab] = useState('general');
     const [localRefreshInterval, setLocalRefreshInterval] = useState(refreshInterval);
     const [selectedLanguage, setSelectedLanguage] = useState(i18n.language);
     const [selectedTheme, setSelectedTheme] = useState(getTheme());
     const [slideDirection, setSlideDirection] = useState('');
+    const [guiTestOpen, setGuiTestOpen] = useState(false);
     const tabOrder = ['general', 'appearance', 'advanced'];
+    const { isClosing, requestClose } = useModalClose(onClose);
 
     // 탭 전환 핸들러
     const handleTabChange = (newTab) => {
@@ -67,7 +70,7 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
     }
 
     return (
-        <div className="settings-modal-overlay" onClick={onClose}>
+        <div className={`settings-modal-overlay ${isClosing ? 'closing' : ''}`} onClick={requestClose}>
             <div className="settings-modal-container" onClick={(e) => e.stopPropagation()}>
                 <div className="settings-modal-header">
                     <h2 style={{ fontSize: '1.3rem' }}>{t('gui:settings_modal.title')}</h2>
@@ -171,12 +174,97 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
                         <div className={`settings-tab-content ${slideDirection}`} key="advanced" onAnimationEnd={() => setSlideDirection('')}>
                             <h3>{t('gui:settings_modal.advanced_tab')}</h3>
                             <p>{t('gui:settings_modal.advanced_placeholder')}</p>
+
+                            {/* GUI 컴포넌트 테스트 섹션 */}
+                            <div className={`gui-test-section ${guiTestOpen ? 'open' : ''}`}>
+                                <h4 className="gui-test-title" onClick={() => setGuiTestOpen(!guiTestOpen)}>
+                                    <Icon name="tool" size="sm" /> GUI Test
+                                    <Icon name={guiTestOpen ? 'chevronUp' : 'chevronDown'} size="sm" className="gui-test-chevron" />
+                                </h4>
+                                <div className="gui-test-grid">
+                                    <button className="gui-test-btn gui-test-success" onClick={() => {
+                                        onTestModal && onTestModal({ type: 'success', title: 'Success!', message: '작업이 성공적으로 완료되었습니다.' });
+                                    }}>
+                                        <Icon name="check" size="sm" /> Success
+                                    </button>
+                                    <button className="gui-test-btn gui-test-failure" onClick={() => {
+                                        onTestModal && onTestModal({ type: 'failure', title: 'Error!', message: '예기치 못한 오류가 발생했습니다.' });
+                                    }}>
+                                        <Icon name="x" size="sm" /> Failure
+                                    </button>
+                                    <button className="gui-test-btn gui-test-notification" onClick={() => {
+                                        onTestModal && onTestModal({ type: 'notification', title: 'Notice', message: '새로운 업데이트가 있습니다.' });
+                                    }}>
+                                        <Icon name="info" size="sm" /> Notification
+                                    </button>
+                                    <button className="gui-test-btn gui-test-question" onClick={() => {
+                                        onTestModal && onTestModal({
+                                            type: 'question', title: 'Confirm?',
+                                            message: '이 작업을 진행하시겠습니까?',
+                                            onConfirm: () => onTestModal(null),
+                                            onCancel: () => onTestModal(null)
+                                        });
+                                    }}>
+                                        <Icon name="alertCircle" size="sm" /> Question
+                                    </button>
+                                    <button className="gui-test-btn gui-test-toast-info" onClick={() => {
+                                        window.showToast && window.showToast('ℹ️ 정보 토스트 메시지입니다.', 'info', 3000);
+                                    }}>
+                                        <Icon name="info" size="sm" /> Toast (Info)
+                                    </button>
+                                    <button className="gui-test-btn gui-test-toast-success" onClick={() => {
+                                        window.showToast && window.showToast('✅ 성공 토스트 메시지입니다.', 'success', 3000);
+                                    }}>
+                                        <Icon name="check" size="sm" /> Toast (Success)
+                                    </button>
+                                    <button className="gui-test-btn gui-test-toast-warning" onClick={() => {
+                                        window.showToast && window.showToast('⚠️ 경고 토스트 메시지입니다.', 'warning', 3000);
+                                    }}>
+                                        <Icon name="alertCircle" size="sm" /> Toast (Warning)
+                                    </button>
+                                    <button className="gui-test-btn gui-test-toast-error" onClick={() => {
+                                        window.showToast && window.showToast('❌ 에러 토스트 메시지입니다.', 'error', 4000);
+                                    }}>
+                                        <Icon name="x" size="sm" /> Toast (Error)
+                                    </button>
+                                    <button className="gui-test-btn gui-test-progress" onClick={() => {
+                                        if (!onTestProgressBar) return;
+                                        onTestProgressBar({ message: '다운로드 중...', percent: 0 });
+                                        let p = 0;
+                                        const iv = setInterval(() => {
+                                            p += Math.random() * 15 + 5;
+                                            if (p >= 100) {
+                                                p = 100;
+                                                onTestProgressBar({ message: '완료!', percent: 100 });
+                                                clearInterval(iv);
+                                                setTimeout(() => onTestProgressBar(null), 1500);
+                                            } else {
+                                                onTestProgressBar({ message: `다운로드 중... ${Math.round(p)}%`, percent: p });
+                                            }
+                                        }, 400);
+                                    }}>
+                                        <Icon name="loader" size="sm" /> Progress Bar
+                                    </button>
+                                    <button className="gui-test-btn gui-test-progress-ind" onClick={() => {
+                                        if (!onTestProgressBar) return;
+                                        onTestProgressBar({ message: '처리 중...', indeterminate: true });
+                                        setTimeout(() => onTestProgressBar(null), 4000);
+                                    }}>
+                                        <Icon name="loader" size="sm" /> Indeterminate
+                                    </button>
+                                    <button className="gui-test-btn gui-test-loading" onClick={() => {
+                                        onTestLoadingScreen && onTestLoadingScreen();
+                                    }}>
+                                        <Icon name="monitor" size="sm" /> Loading Screen
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>
 
                 <div className="settings-modal-footer">
-                    <button className="settings-btn-cancel" onClick={onClose}>
+                    <button className="settings-btn-cancel" onClick={requestClose}>
                         {t('gui:modals.cancel')}
                     </button>
                 </div>

@@ -112,7 +112,7 @@
           ]
         }
       ],
-      "icon": "public/icon.png",
+      "icon": "build/icon.png",
       "certificateFile": null,
       "certificatePassword": null
     },

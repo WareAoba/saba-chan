@@ -16,14 +16,14 @@
 }
 
 .toast {
-    background: white;
-    color: #333;
+    background: var(--bg-surface);
+    color: var(--text-primary);
     padding: 0 16px;
     min-height: 44px;
     height: auto;
     border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-    border: 1px solid #d0d0d0;
+    box-shadow: 0 2px 8px var(--toast-shadow);
+    border: 1px solid var(--border-medium);
     display: flex;
     align-items: center;
     justify-content: flex-start;
@@ -51,27 +51,27 @@
 }
 
 .toast:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 12px var(--toast-shadow);
 }
 
 .toast.toast-success {
-    background: white;
+    background: var(--bg-surface);
 }
 
 .toast.toast-error {
-    background: white;
+    background: var(--bg-surface);
 }
 
 .toast.toast-warning {
-    background: white;
+    background: var(--bg-surface);
 }
 
 .toast.toast-info {
-    background: white;
+    background: var(--bg-surface);
 }
 
 .toast.toast-discord {
-    background: white;
+    background: var(--bg-surface);
 }
 
 /* 상태 토스트 (StatusBar 대체) */
@@ -88,16 +88,16 @@
 }
 
 .toast.toast-status-init {
-    background: white;
+    background: var(--bg-surface);
 }
 
 .toast.toast-status-ready {
-    background: white;
+    background: var(--bg-surface);
     font-weight: 600;
 }
 
 .toast.toast-status-ui {
-    background: white;
+    background: var(--bg-surface);
 }
 
 .toast-message {
@@ -111,7 +111,7 @@
 .toast-close {
     background: none;
     border: none;
-    color: #999;
+    color: var(--text-muted);
     font-size: 16px;
     cursor: pointer;
     padding: 4px 8px;
@@ -120,7 +120,7 @@
 }
 
 .toast-close:hover {
-    color: #666;
+    color: var(--text-secondary);
 }
 
 @keyframes toastSlideIn {

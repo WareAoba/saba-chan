@@ -18,7 +18,8 @@
   "help": {
     "header": "명령어:",
     "server": "server  [list|start|stop|restart|status] <이름>",
-    "module": "module  [list|reload]",
+    "server_ext": "server  [managed|console|stdin|diagnose|validate|eula|properties] <이름>",
+    "module": "module  [list|refresh|versions|install]",
     "daemon": "daemon  [start|stop]",
     "bot": "bot     [start|stop|token|prefix]",
     "config": "config  [show|set|get|reset] <키> <값>",
@@ -54,18 +55,29 @@
     "restarted": "서버 재시작됨",
     "not_found": "서버 '{{name}}'을(를) 찾을 수 없습니다",
     "no_instance": "'{{module}}' 모듈에 대한 서버 인스턴스가 없습니다. GUI에서 먼저 생성하세요.",
-    "multiple_instances": "{{module}}에 {{count}}개의 인스턴스가 있습니다 — 첫 번째를 사용합니다:"
+    "multiple_instances": "{{module}}에 {{count}}개의 인스턴스가 있습니다 — 첫 번째를 사용합니다:",
+    "managed_started": "관리형 서버 시작됨",
+    "console_output": "콘솔 출력",
+    "stdin_sent": "{{name}}에 전송됨: {{text}}",
+    "diagnose_header": "'{{name}}' 진단 결과:",
+    "validate_passed": "검증 통과",
+    "eula_accepted": "'{{name}}'의 EULA가 수락되었습니다",
+    "properties_header": "'{{name}}' 속성:"
   },
   "module_cmd": {
     "no_modules": "로드된 모듈이 없습니다.",
     "modules_count": "{{count}}개 모듈:",
+    "refreshed": "모듈 새로고침 완료",
     "reloaded": "모듈 새로고침 완료",
     "commands_header": "{{display}} ({{name}}) 명령어:",
     "cmd_start": "서버 시작",
     "cmd_stop": "서버 종료",
     "cmd_restart": "서버 재시작",
     "cmd_status": "서버 상태",
-    "unknown_cmd": "'{{module}}' 모듈에 '{{cmd}}' 명령어가 없습니다. '{{module}}'을 입력하면 명령어를 확인할 수 있습니다."
+    "unknown_cmd": "'{{module}}' 모듈에 '{{cmd}}' 명령어가 없습니다. '{{module}}'을 입력하면 명령어를 확인할 수 있습니다.",
+    "versions_count": "'{{module}}'의 {{count}}개 버전:",
+    "no_versions": "'{{module}}'에 사용 가능한 버전이 없습니다.",
+    "install_started": "설치 시작됨"
   },
   "daemon_cmd": {
     "already_running": "데몬이 이미 실행 중입니다",

@@ -18,7 +18,8 @@
   "help": {
     "header": "Commands:",
     "server": "server  [list|start|stop|restart|status] <name>",
-    "module": "module  [list|reload]",
+    "server_ext": "server  [managed|console|stdin|diagnose|validate|eula|properties] <name>",
+    "module": "module  [list|refresh|versions|install]",
     "daemon": "daemon  [start|stop]",
     "bot": "bot     [start|stop|token|prefix]",
     "config": "config  [show|set|get|reset] <key> <value>",
@@ -54,18 +55,29 @@
     "restarted": "Server restarted",
     "not_found": "Server '{{name}}' not found",
     "no_instance": "No server instance found for module '{{module}}'. Create one in the GUI first.",
-    "multiple_instances": "{{module}} has {{count}} instances — using first one:"
+    "multiple_instances": "{{module}} has {{count}} instances — using first one:",
+    "managed_started": "Managed server started",
+    "console_output": "Console output",
+    "stdin_sent": "Sent to {{name}}: {{text}}",
+    "diagnose_header": "Diagnosis for '{{name}}':",
+    "validate_passed": "Validation passed",
+    "eula_accepted": "EULA accepted for '{{name}}'",
+    "properties_header": "Properties for '{{name}}':"
   },
   "module_cmd": {
     "no_modules": "No modules loaded.",
     "modules_count": "{{count}} module(s):",
+    "refreshed": "Modules refreshed",
     "reloaded": "Modules reloaded",
     "commands_header": "{{display}} ({{name}}) commands:",
     "cmd_start": "Start server",
     "cmd_stop": "Stop server",
     "cmd_restart": "Restart server",
     "cmd_status": "Server status",
-    "unknown_cmd": "Unknown command '{{cmd}}' for module '{{module}}'. Type '{{module}}' for commands."
+    "unknown_cmd": "Unknown command '{{cmd}}' for module '{{module}}'. Type '{{module}}' for commands.",
+    "versions_count": "{{count}} version(s) for '{{module}}':",
+    "no_versions": "No versions found for '{{module}}'.",
+    "install_started": "Install started"
   },
   "daemon_cmd": {
     "already_running": "Daemon is already running",

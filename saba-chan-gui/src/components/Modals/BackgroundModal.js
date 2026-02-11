@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import './Modals.css';
 import { Icon } from '../Icon';
 
-function BackgroundModal({ isOpen, onClose }) {
+function BackgroundModal({ isOpen, onClose, isClosing }) {
     const { t } = useTranslation('gui');
     const [daemonStatus, setDaemonStatus] = useState('checking');
     const [uptime, setUptime] = useState(t('background_modal.uptime_checking'));
@@ -89,7 +89,7 @@ function BackgroundModal({ isOpen, onClose }) {
     };
 
     return (
-        <div className="background-modal-container" onClick={(e) => e.stopPropagation()}>
+        <div className={`background-modal-container ${isClosing ? 'closing' : ''}`} onClick={(e) => e.stopPropagation()}>
             <div className="background-modal-header">
                 <div className="background-modal-title">
                     <span className={`status-indicator ${getStatusClass()}`}></span>

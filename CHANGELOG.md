@@ -21,6 +21,32 @@
 - **헤더 여백 조정**: padding 28px 28px 20px
 - **에러 모달 일러스트**: ✕ 텍스트 → `panic.png` 이미지로 교체
 
+### 🌐 모듈 i18n 시스템
+
+- **module.toml 영어 기본값 전환**: minecraft, palworld 모듈의 모든 label/description을 영어로 변경
+  - 설정 필드, 커맨드, 별칭 설명 등 하드코딩된 한국어 → 영어 기본값으로 통일
+- **모듈 로케일 파일 확장** (20파일: 2모듈 × 10언어):
+  - `module` 섹션: `display_name`, `description` 번역 추가
+  - `settings` 섹션: 설정 필드별 `label`, `description` 번역 추가
+  - `commands` 섹션: 커맨드별 `label`, `description`, `inputs` 번역 추가
+  - 기존 `errors`, `messages`, `rcon` 섹션 유지
+- **Electron IPC `module:getLocales` 핸들러** (`main.js`):
+  - 모듈의 `locales/` 디렉토리에서 모든 JSON 파일을 읽어 `{ lang: data }` 객체 반환
+- **preload.js**: `moduleGetLocales(name)` API 노출
+- **GUI 동적 모듈 로케일 등록** (`App.js`):
+  - `fetchModules()` 시 각 모듈의 로케일을 가져와 `i18n.addResourceBundle(lang, 'mod_{name}', data)` 로 동적 등록
+  - 설정 필드 라벨: `t('mod_{module}:settings.{field}.label', { defaultValue })` 패턴
+  - 커맨드/게임 이름 등 모든 모듈 표시명에 `t()` 적용
+  - `AddServerModal.js`에서도 모듈 이름/설명 번역 표시
+
+### 🖥 GUI 개선 (세그먼트 컨트롤)
+
+- **설정 모달 탭 인디케이터 리디자인**: Paraglide 프로젝트의 segment-control 패턴 적용
+  - JS 기반 인디케이터 제거 (`useRef`, `useCallback`, `indicatorStyle`, `updateIndicator()`)
+  - CSS `::before` 의사 요소 + `data-tab` 속성으로 전환 — JS 없이 순수 CSS 인디케이터
+  - `var(--brand-primary)` 배경의 슬라이딩 필 + `cubic-bezier` 트랜지션
+  - 비활성 탭 `opacity: 0.6`, 활성 탭 `#ffffff` + `font-weight: 600`
+
 ### ⚙ 데몬 API
 
 - **서버 시작 시간 API**: `start_time` 필드 추가 — CLI/GUI 모두에서 업타임 표시
@@ -36,6 +62,9 @@
 
 - **instances.json 경로**: 하드코딩된 경로 → `%APPDATA%/saba-chan/instances.json`으로 수정
 - **BrowserWindow 아이콘**: `favicon.png`(16px) → `icon.png`(고해상도)로 변경
+- **CSS 변수명 오류**: `--bg-tertiary` → `--bg-surface-tertiary` — 탭 컨테이너 배경이 안 보이던 문제
+- **App.css 중복 스타일 제거**: `.settings-tab` / `.settings-tab.active` 중복 규칙이 세그먼트 컨트롤 스타일을 덮어쓰던 문제
+- **탭 텍스트 수직 정렬**: `box-sizing: border-box`, `height: 100%`, `padding: 0`, `line-height: 1` 추가
 
 ---
 

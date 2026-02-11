@@ -4,14 +4,26 @@
 Saba-chan Windows Release Build
 단일 배포 패키지 생성 (모든 언어, 모든 기능 포함)
 
+배포물 구성:
+  core_daemon.exe   — Rust IPC 데몬
+  saba-cli.exe      — Rust TUI 클라이언트 (아이콘 임베드)
+  saba-chan-gui.exe  — Electron GUI
+  discord_bot/      — Node.js Discord 봇
+  config/           — global.toml
+  locales/          — 다국어 리소스
+
+모듈(modules/)은 사용자가 별도로 설치하므로 포함하지 않습니다.
+
 .EXAMPLE
 .\build-windows.ps1
+.\build-windows.ps1 -OutputDir "my-build"
 #>
 
 param(
     [string]$OutputDir = "release-build"
 )
 
+$ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Split-Path -Parent $ScriptDir
 $ReleaseDir = Join-Path $ProjectRoot $OutputDir
@@ -22,16 +34,16 @@ Write-Host "Saba-chan Windows Release Build" -ForegroundColor Cyan
 Write-Host "================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Clean
-Write-Host "[1/5] Cleaning..." -ForegroundColor Yellow
+# ─── 1. Clean ───
+Write-Host "[1/6] Cleaning..." -ForegroundColor Yellow
 if (Test-Path $ReleaseDir) {
     Remove-Item $ReleaseDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
 Write-Host "  [OK]" -ForegroundColor Green
 
-# Build core daemon
-Write-Host "[2/5] Building core daemon (Rust)..." -ForegroundColor Yellow
+# ─── 2. Core Daemon (Rust) ───
+Write-Host "[2/6] Building core daemon (Rust)..." -ForegroundColor Yellow
 try {
     Push-Location $ProjectRoot
     cargo build --release --quiet
@@ -53,12 +65,35 @@ finally {
     Pop-Location
 }
 
-# Build GUI
-Write-Host "[3/5] Building Electron GUI..." -ForegroundColor Yellow
+# ─── 3. CLI (Rust, saba-cli.exe) ───
+Write-Host "[3/6] Building CLI (Rust)..." -ForegroundColor Yellow
+try {
+    Push-Location (Join-Path $ProjectRoot "saba-chan-cli")
+    cargo build --release --quiet
+    
+    $CliExe = "target\release\saba-cli.exe"
+    if (-not (Test-Path $CliExe)) {
+        throw "saba-cli.exe not found"
+    }
+    
+    Copy-Item -Path $CliExe -Destination $DistDir -Force
+    $Size = [Math]::Round((Get-Item $CliExe).Length / 1MB, 2)
+    Write-Host "  [OK] saba-cli.exe ($Size MB)" -ForegroundColor Green
+}
+catch {
+    Write-Host "  [ERROR] $_" -ForegroundColor Red
+    exit 1
+}
+finally {
+    Pop-Location
+}
+
+# ─── 4. Electron GUI ───
+Write-Host "[4/6] Building Electron GUI..." -ForegroundColor Yellow
 try {
     Push-Location (Join-Path $ProjectRoot "saba-chan-gui")
     
-    # Clean all build directories
+    # Clean build directories
     @("dist", "build", "electron-dist") | ForEach-Object {
         if (Test-Path $_) {
             Remove-Item $_ -Recurse -Force -ErrorAction SilentlyContinue
@@ -72,18 +107,19 @@ try {
     }
     npm install --save-dev terser --quiet --no-save 2>$null
     
-    # Build
+    # Vite build → Electron package
     npm run build --silent
     npm run package --silent
     
-    $GuiExe = Get-ChildItem -Path "electron-dist" -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    $GuiExe = Get-ChildItem -Path "electron-dist" -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue |
+              Select-Object -First 1
     if ($GuiExe) {
         Copy-Item -Path $GuiExe.FullName -Destination (Join-Path $DistDir "saba-chan-gui.exe") -Force
         $Size = [Math]::Round($GuiExe.Length / 1MB, 2)
         Write-Host "  [OK] saba-chan-gui.exe ($Size MB)" -ForegroundColor Green
     }
     else {
-        throw "GUI exe not found"
+        throw "GUI exe not found in electron-dist/"
     }
 }
 catch {
@@ -94,48 +130,51 @@ finally {
     Pop-Location
 }
 
-# Build Discord bot
-Write-Host "[4/5] Building Discord bot..." -ForegroundColor Yellow
+# ─── 5. Discord Bot ───
+Write-Host "[5/6] Bundling Discord bot..." -ForegroundColor Yellow
 try {
     Push-Location (Join-Path $ProjectRoot "discord_bot")
     
-    # Install dependencies for deployment
+    # Production dependencies only
     if (Test-Path "node_modules") {
         Remove-Item "node_modules" -Recurse -Force -ErrorAction SilentlyContinue
     }
     npm install --production --quiet --no-save
     
-    # Copy entire discord_bot folder to distribution
-    $BotSrc = (Get-Location).Path
     $BotDest = Join-Path $DistDir "discord_bot"
-    Copy-Item -Path $BotSrc -Destination $BotDest -Recurse -Force -ErrorAction SilentlyContinue
+    Copy-Item -Path (Get-Location).Path -Destination $BotDest -Recurse -Force -ErrorAction SilentlyContinue
+    
+    # Remove test files from dist
+    $TestDir = Join-Path $BotDest "test"
+    if (Test-Path $TestDir) {
+        Remove-Item $TestDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
     
     $BotSize = 0
     Get-ChildItem -Path $BotDest -Recurse -File | ForEach-Object { $BotSize += $_.Length }
     $BotMB = [Math]::Round($BotSize / 1MB, 2)
     
-    Write-Host "  [OK] Discord bot folder ($BotMB MB)" -ForegroundColor Green
+    Write-Host "  [OK] discord_bot/ ($BotMB MB)" -ForegroundColor Green
 }
 catch {
-    Write-Host "  [WARN] $_" -ForegroundColor Yellow
+    Write-Host "  [WARN] Discord bot skipped: $_" -ForegroundColor Yellow
 }
 finally {
     Pop-Location
 }
 
-# Prepare resources
-Write-Host "[5/5] Preparing resources and configs..." -ForegroundColor Yellow
+# ─── 6. Resources & Configs ───
+Write-Host "[6/6] Preparing resources..." -ForegroundColor Yellow
 try {
-    # config 폴더 (최상위)
+    # config/
     $ConfigDir = Join-Path $DistDir "config"
     New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null
-    Copy-Item -Path (Join-Path $ProjectRoot "config\global.toml") -Destination (Join-Path $ConfigDir "global.toml") -Force -ErrorAction SilentlyContinue
-    Copy-Item -Path (Join-Path $ProjectRoot "instances.json") -Destination (Join-Path $ConfigDir "instances.json") -Force -ErrorAction SilentlyContinue
+    Copy-Item -Path (Join-Path $ProjectRoot "config\global.toml") -Destination $ConfigDir -Force -ErrorAction SilentlyContinue
     
-    # locales 폴더 (최상위)
+    # locales/ (전체 다국어 리소스)
     $LocaleSrc = Join-Path $ProjectRoot "locales"
     if (Test-Path $LocaleSrc) {
-        Copy-Item -Path $LocaleSrc -Destination (Join-Path $DistDir "locales") -Recurse -Force -ErrorAction SilentlyContinue
+        Copy-Item -Path $LocaleSrc -Destination (Join-Path $DistDir "locales") -Recurse -Force
     }
     
     Write-Host "  [OK]" -ForegroundColor Green
@@ -144,15 +183,14 @@ catch {
     Write-Host "  [ERROR] $_" -ForegroundColor Red
 }
 
-# Create ZIP
+# ─── ZIP ───
 Write-Host ""
-Write-Host "[Bonus] Creating ZIP..." -ForegroundColor Yellow
+Write-Host "[ZIP] Creating archive..." -ForegroundColor Yellow
 
 $ZipPath = Join-Path $ReleaseDir "saba-chan-v0.1.0-windows.zip"
 if (Test-Path $ZipPath) {
     Remove-Item $ZipPath -Force
 }
-
 Compress-Archive -Path $DistDir -DestinationPath $ZipPath -Force
 
 $TotalSize = 0
@@ -162,10 +200,27 @@ $ZipSize = [Math]::Round((Get-Item $ZipPath).Length / 1MB, 2)
 
 Write-Host "  [OK]" -ForegroundColor Green
 Write-Host ""
+
+# ─── Summary ───
 Write-Host "================================" -ForegroundColor Green
 Write-Host "BUILD COMPLETE" -ForegroundColor Green
 Write-Host "================================" -ForegroundColor Green
-Write-Host "Output: $ReleaseDir" -ForegroundColor Cyan
-Write-Host "  Uncompressed: $TotalMB MB" -ForegroundColor Gray
-Write-Host "  Compressed:   $ZipSize MB" -ForegroundColor Gray
+Write-Host "Output: $DistDir" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "  Contents:" -ForegroundColor Gray
+Get-ChildItem -Path $DistDir | ForEach-Object {
+    if ($_.PSIsContainer) {
+        $DirSize = 0
+        Get-ChildItem -Path $_.FullName -Recurse -File | ForEach-Object { $DirSize += $_.Length }
+        $DirMB = [Math]::Round($DirSize / 1MB, 2)
+        Write-Host "    $($_.Name)/  ($DirMB MB)" -ForegroundColor Gray
+    }
+    else {
+        $FileMB = [Math]::Round($_.Length / 1MB, 2)
+        Write-Host "    $($_.Name)  ($FileMB MB)" -ForegroundColor Gray
+    }
+}
+Write-Host ""
+Write-Host "  Total:      $TotalMB MB" -ForegroundColor White
+Write-Host "  ZIP:        $ZipSize MB  ($ZipPath)" -ForegroundColor White
 Write-Host ""

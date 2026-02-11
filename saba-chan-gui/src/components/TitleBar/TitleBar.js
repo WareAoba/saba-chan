@@ -1,10 +1,32 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import './TitleBar.css';
 import { Icon } from '../Icon';
+import { getEffectiveTheme } from '../../utils/themeManager';
 
 function TitleBar() {
     const { t } = useTranslation('gui');
+    const [effectiveTheme, setEffectiveTheme] = useState(getEffectiveTheme());
+
+    useEffect(() => {
+        // Listen for theme changes (data-theme attribute)
+        const observer = new MutationObserver(() => {
+            setEffectiveTheme(getEffectiveTheme());
+        });
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+        // Listen for system preference changes
+        const mql = window.matchMedia('(prefers-color-scheme: dark)');
+        const handleChange = () => setEffectiveTheme(getEffectiveTheme());
+        mql.addEventListener('change', handleChange);
+
+        return () => {
+            observer.disconnect();
+            mql.removeEventListener('change', handleChange);
+        };
+    }, []);
+
+    const faviconSrc = effectiveTheme === 'dark' ? './favicon-dark.png' : './favicon-light.png';
     
     const handleMinimize = () => {
         window.electron.minimizeWindow();
@@ -21,7 +43,7 @@ function TitleBar() {
     return (
         <div className="title-bar">
             <div className="title-bar-text">
-                <img src="/favicon.png" alt="" className="title-bar-icon" />
+                <img src={faviconSrc} alt="" className="title-bar-icon" />
                 <span>{t('common:app_name')}</span>
             </div>
             <div className="title-bar-controls">

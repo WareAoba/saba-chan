@@ -18,6 +18,8 @@ pub struct ModuleMetadata {
     #[serde(default)]
     pub icon: Option<String>,  // 아이콘 파일명 (icon.png 등)
     #[serde(default)]
+    pub interaction_mode: Option<String>,  // "console" or "commands" (from [protocols])
+    #[serde(default)]
     pub settings: Option<ModuleSettings>,  // 설정 스키마
     #[serde(default)]
     pub commands: Option<ModuleCommands>,  // 명령어 스키마
@@ -247,6 +249,11 @@ impl ModuleLoader {
                 .get("icon")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
+            interaction_mode: data
+                .get("protocols")
+                .and_then(|p| p.get("interaction_mode"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
             settings: parse_settings(&data),
             commands: parse_commands(&data),
         };
@@ -321,6 +328,11 @@ impl ModuleLoader {
                 .map(|s| s.to_string()),
             icon: module_section
                 .get("icon")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            interaction_mode: data
+                .get("protocols")
+                .and_then(|p| p.get("interaction_mode"))
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
             settings: parse_settings(&data),

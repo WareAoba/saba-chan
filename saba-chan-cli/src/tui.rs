@@ -369,7 +369,9 @@ impl App {
                 // 내장 서브커맨드 (기존 로직)
                 let full_cmds = [
                     "server list", "server start", "server stop", "server restart", "server status",
-                    "module list", "module reload",
+                    "server managed", "server console", "server stdin", "server diagnose",
+                    "server validate", "server eula", "server properties",
+                    "module list", "module refresh", "module versions", "module install",
                     "daemon start", "daemon stop",
                     "bot start", "bot stop", "bot token", "bot prefix",
                     "config show", "config set", "config get", "config reset",
@@ -487,10 +489,19 @@ impl App {
                 Out::Text("  server start <name>      start a server".into()),
                 Out::Text("  server stop <name>       stop a server".into()),
                 Out::Text("  server restart <name>    restart a server".into()),
+                Out::Text("  server managed <name>    managed start (auto-launch)".into()),
+                Out::Text("  server console <name>    view console output".into()),
+                Out::Text("  server stdin <name> <text>  send input to server".into()),
+                Out::Text("  server diagnose <name>   diagnose server issues".into()),
+                Out::Text("  server validate <name>   validate server config".into()),
+                Out::Text("  server eula <name>       accept EULA".into()),
+                Out::Text("  server properties <name> view server properties".into()),
             ]),
             Some("module") if lower.len() == 1 => Some(vec![
                 Out::Text("  module list              list loaded modules".into()),
-                Out::Text("  module reload            reload all modules".into()),
+                Out::Text("  module refresh           refresh all modules".into()),
+                Out::Text("  module versions <name>   list available versions".into()),
+                Out::Text("  module install <name> [dir] [ver]  install server".into()),
             ]),
             Some("daemon") if lower.len() == 1 => Some(vec![
                 Out::Text("  daemon start             start core daemon".into()),
@@ -514,6 +525,10 @@ impl App {
                 Out::Text("  exec <id> rest <cmd>     execute REST".into()),
             ]),
             _ => {
+                // Easter egg
+                if lower.len() == 1 && lower[0] == "sabachan" {
+                    return Some(cmd_sabachan());
+                }
                 // 모듈 이름만 입력 → 사용 가능한 명령어 표시
                 if lower.len() == 1 {
                     if let Some(module_name) = self.registry.resolve_module_name(lower[0]) {
@@ -670,7 +685,8 @@ impl App {
     fn cmd_help(&self) -> Vec<Out> {
         let mut lines = vec![
             Out::Text("  server  [list|start|stop|restart|status] <name>".into()),
-            Out::Text("  module  [list|reload]".into()),
+            Out::Text("  server  [managed|console|stdin|diagnose|validate|eula|properties] <name>".into()),
+            Out::Text("  module  [list|refresh|versions|install]".into()),
             Out::Text("  daemon  [start|stop]".into()),
             Out::Text("  bot     [start|stop]".into()),
             Out::Text("  bot     token [show|set|clear]".into()),
@@ -686,9 +702,10 @@ impl App {
             lines.push(Out::Blank);
             lines.push(Out::Info("Module shortcuts:".into()));
             for mi in &self.registry.modules {
+                let mode = mi.interaction_mode.as_deref().unwrap_or("-");
                 lines.push(Out::Text(format!(
-                    "  {:<10} {} — type '{}' for commands",
-                    mi.name, mi.display_name, mi.name,
+                    "  {:<10} {} [{}] — type '{}' for commands",
+                    mi.name, mi.display_name, mode, mi.name,
                 )));
             }
         }
@@ -726,12 +743,22 @@ async fn exec_server(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
                 for s in &list {
                     let st = s["status"].as_str().unwrap_or("?");
                     let sym = if st == "running" { "▶" } else { "■" };
+                    let pid_str = match s["pid"].as_u64() {
+                        Some(p) => format!(" PID:{}", p),
+                        None => String::new(),
+                    };
+                    let uptime = match s["start_time"].as_u64() {
+                        Some(_) => format!(" ⏱{}", format_uptime(s["start_time"].as_u64())),
+                        None => String::new(),
+                    };
                     o.push(Out::Text(format!(
-                        "  {} {} [{}] — {}",
+                        "  {} {} [{}] — {}{}{}",
                         sym,
                         s["name"].as_str().unwrap_or("?"),
                         s["module"].as_str().unwrap_or("?"),
                         st,
+                        pid_str,
+                        uptime,
                     )));
                 }
                 o
@@ -745,11 +772,24 @@ async fn exec_server(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
                 Some(m) => m,
                 None => return vec![Out::Err(format!("✗ Server '{}' not found", name))],
             };
+            let instance_id = find_instance_id_by_name(client, name).await.unwrap_or_default();
             match client.start_server(name, &module).await {
-                Ok(r) => vec![Out::Ok(format!(
-                    "✓ {}",
-                    r.get("message").and_then(|v| v.as_str()).unwrap_or("Started")
-                ))],
+                Ok(r) => {
+                    // action_required: 서버 JAR 미발견 → 자동 설치 흐름
+                    if r.get("action_required").and_then(|v| v.as_str()) == Some("server_jar_not_found") {
+                        return handle_jar_not_found(client, name, &instance_id, &module, false).await;
+                    }
+                    if r.get("success").and_then(|v| v.as_bool()) == Some(false) {
+                        return vec![Out::Err(format!(
+                            "✗ {}",
+                            r.get("message").and_then(|v| v.as_str()).unwrap_or("Start failed"),
+                        ))];
+                    }
+                    vec![Out::Ok(format!(
+                        "✓ {}",
+                        r.get("message").and_then(|v| v.as_str()).unwrap_or("Started")
+                    ))]
+                }
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
             }
         }
@@ -789,8 +829,314 @@ async fn exec_server(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
             }
             Err(e) => vec![Out::Err(format!("✗ {}", e))],
         },
-        _ => vec![Out::Err("Usage: server [list|start|stop|restart|status] <name>".into())],
+        Some("managed") if args.len() > 1 => {
+            // 인스턴스 ID를 이름으로 찾아서 managed start 호출
+            let name = args[1];
+            let instance_id = match find_instance_id_by_name(client, name).await {
+                Some(id) => id,
+                None => return vec![Out::Err(format!("✗ Instance '{}' not found", name))],
+            };
+            let module = find_module_for_server(client, name).await.unwrap_or_default();
+            match client.start_managed(&instance_id).await {
+                Ok(r) => {
+                    // action_required: 서버 JAR 미발견 → 자동 설치 흐름
+                    if r.get("action_required").and_then(|v| v.as_str()) == Some("server_jar_not_found") {
+                        return handle_jar_not_found(client, name, &instance_id, &module, true).await;
+                    }
+                    if r.get("success").and_then(|v| v.as_bool()) == Some(false) {
+                        return vec![Out::Err(format!(
+                            "✗ {}",
+                            r.get("message").and_then(|v| v.as_str()).unwrap_or("Start failed"),
+                        ))];
+                    }
+                    vec![Out::Ok(format!(
+                        "✓ {}",
+                        r.get("message").and_then(|v| v.as_str()).unwrap_or("Managed server started"),
+                    ))]
+                }
+                Err(e) => vec![Out::Err(format!("✗ {}", e))],
+            }
+        }
+        Some("console") if args.len() > 1 => {
+            let name = args[1];
+            let instance_id = match find_instance_id_by_name(client, name).await {
+                Some(id) => id,
+                None => return vec![Out::Err(format!("✗ Instance '{}' not found", name))],
+            };
+            match client.get_console(&instance_id).await {
+                Ok(data) => {
+                    if let Some(lines) = data.get("lines").and_then(|v| v.as_array()) {
+                        let mut o = vec![Out::Ok(format!("Console output ({} lines):", lines.len()))];
+                        // 마지막 50줄만 표시
+                        let start = lines.len().saturating_sub(50);
+                        for line in &lines[start..] {
+                            o.push(Out::Text(line.as_str().unwrap_or("").into()));
+                        }
+                        o
+                    } else if let Some(output) = data.get("output").and_then(|v| v.as_str()) {
+                        // 단일 output 문자열 형태
+                        let mut o = vec![Out::Ok("Console output:".into())];
+                        for line in output.lines().rev().take(50).collect::<Vec<_>>().into_iter().rev() {
+                            o.push(Out::Text(line.into()));
+                        }
+                        o
+                    } else {
+                        vec![Out::Ok(format!("{}", serde_json::to_string_pretty(&data).unwrap_or_default()))]
+                    }
+                }
+                Err(e) => vec![Out::Err(format!("✗ {}", e))],
+            }
+        }
+        Some("stdin") if args.len() > 2 => {
+            let name = args[1];
+            let text = args[2..].join(" ");
+            let instance_id = match find_instance_id_by_name(client, name).await {
+                Some(id) => id,
+                None => return vec![Out::Err(format!("✗ Instance '{}' not found", name))],
+            };
+            match client.send_stdin(&instance_id, &text).await {
+                Ok(_) => vec![Out::Ok(format!("✓ Sent to {}: {}", name, text))],
+                Err(e) => vec![Out::Err(format!("✗ {}", e))],
+            }
+        }
+        Some("diagnose") if args.len() > 1 => {
+            let name = args[1];
+            let instance_id = match find_instance_id_by_name(client, name).await {
+                Some(id) => id,
+                None => return vec![Out::Err(format!("✗ Instance '{}' not found", name))],
+            };
+            match client.diagnose(&instance_id).await {
+                Ok(data) => {
+                    let mut o = vec![Out::Ok(format!("Diagnosis for '{}':", name))];
+                    if let Some(obj) = data.as_object() {
+                        for (k, v) in obj {
+                            let val = match v {
+                                serde_json::Value::String(s) => s.clone(),
+                                _ => v.to_string(),
+                            };
+                            o.push(Out::Text(format!("  {}: {}", k, val)));
+                        }
+                    } else {
+                        o.push(Out::Text(format!("  {}", serde_json::to_string_pretty(&data).unwrap_or_default())));
+                    }
+                    o
+                }
+                Err(e) => vec![Out::Err(format!("✗ {}", e))],
+            }
+        }
+        Some("validate") if args.len() > 1 => {
+            let name = args[1];
+            let instance_id = match find_instance_id_by_name(client, name).await {
+                Some(id) => id,
+                None => return vec![Out::Err(format!("✗ Instance '{}' not found", name))],
+            };
+            match client.validate_instance(&instance_id).await {
+                Ok(r) => vec![Out::Ok(format!(
+                    "✓ {}",
+                    r.get("message").and_then(|v| v.as_str()).unwrap_or("Validation passed"),
+                ))],
+                Err(e) => vec![Out::Err(format!("✗ {}", e))],
+            }
+        }
+        Some("eula") if args.len() > 1 => {
+            let name = args[1];
+            let instance_id = match find_instance_id_by_name(client, name).await {
+                Some(id) => id,
+                None => return vec![Out::Err(format!("✗ Instance '{}' not found", name))],
+            };
+            match client.accept_eula(&instance_id).await {
+                Ok(_) => vec![Out::Ok(format!("✓ EULA accepted for '{}'", name))],
+                Err(e) => vec![Out::Err(format!("✗ {}", e))],
+            }
+        }
+        Some("properties") if args.len() > 1 => {
+            let name = args[1];
+            let instance_id = match find_instance_id_by_name(client, name).await {
+                Some(id) => id,
+                None => return vec![Out::Err(format!("✗ Instance '{}' not found", name))],
+            };
+            match client.read_properties(&instance_id).await {
+                Ok(data) => {
+                    let mut o = vec![Out::Ok(format!("Properties for '{}':", name))];
+                    if let Some(obj) = data.get("properties").and_then(|v| v.as_object()) {
+                        for (k, v) in obj {
+                            o.push(Out::Text(format!("  {} = {}", k, v)));
+                        }
+                    } else if let Some(obj) = data.as_object() {
+                        for (k, v) in obj {
+                            let val = match v {
+                                serde_json::Value::String(s) => s.clone(),
+                                _ => v.to_string(),
+                            };
+                            o.push(Out::Text(format!("  {} = {}", k, val)));
+                        }
+                    }
+                    o
+                }
+                Err(e) => vec![Out::Err(format!("✗ {}", e))],
+            }
+        }
+        _ => vec![Out::Err("Usage: server [list|start|stop|restart|status|managed|console|stdin|diagnose|validate|eula|properties] <name>".into())],
     }
+}
+
+/// server start/managed에서 JAR 미발견 시 자동 설치 → 인스턴스 업데이트 → 재시작
+async fn handle_jar_not_found(
+    client: &DaemonClient,
+    instance_name: &str,
+    instance_id: &str,
+    module_name: &str,
+    managed: bool,
+) -> Vec<Out> {
+    let mut output = vec![
+        Out::Err("✗ Server JAR not found".into()),
+        Out::Text("  Auto-installing latest version...".into()),
+    ];
+
+    // 1. 최신 버전 조회
+    let versions = match client.list_versions(module_name).await {
+        Ok(v) => v,
+        Err(e) => {
+            output.push(Out::Err(format!("  ✗ Failed to fetch versions: {}", e)));
+            output.push(Out::Text(format!(
+                "  → Run manually: module install {} <dir> [version]",
+                module_name
+            )));
+            return output;
+        }
+    };
+
+    let latest = versions
+        .get("latest")
+        .and_then(|v| v.get("release"))
+        .and_then(|v| v.as_str())
+        .or_else(|| {
+            // fallback: versions 배열의 첫 번째
+            versions.get("versions")
+                .and_then(|v| v.as_array())
+                .and_then(|arr| arr.first())
+                .and_then(|v| v.as_str().or_else(|| v.get("id").and_then(|i| i.as_str())))
+        });
+
+    let latest = match latest {
+        Some(v) => v.to_string(),
+        None => {
+            output.push(Out::Err("  ✗ No versions available".into()));
+            return output;
+        }
+    };
+
+    output.push(Out::Text(format!("  Version: {}", latest)));
+
+    // 2. 설치 디렉토리 결정 (인스턴스의 working_dir 또는 기본 경로)
+    let install_dir = {
+        let mut dir = None;
+        if let Ok(inst) = client.get_instance(instance_id).await {
+            if let Some(wd) = inst.get("working_dir").and_then(|v| v.as_str()) {
+                if !wd.is_empty() {
+                    dir = Some(wd.to_string());
+                }
+            }
+        }
+        dir.unwrap_or_else(|| {
+            let base = std::env::var("APPDATA")
+                .unwrap_or_else(|_| ".".to_string());
+            format!("{}\\saba-chan\\servers\\{}", base, instance_name)
+        })
+    };
+
+    output.push(Out::Text(format!("  Install dir: {}", install_dir)));
+
+    // 3. 설치 실행
+    let install_body = serde_json::json!({
+        "version": latest,
+        "install_dir": install_dir,
+        "accept_eula": true,
+    });
+
+    match client.install_server(module_name, install_body).await {
+        Ok(result) => {
+            if result.get("success").and_then(|v| v.as_bool()) != Some(true) {
+                let msg = result.get("message").and_then(|v| v.as_str()).unwrap_or("Install failed");
+                output.push(Out::Err(format!("  ✗ {}", msg)));
+                return output;
+            }
+
+            let jar_path = result.get("jar_path").and_then(|v| v.as_str());
+            let install_path = result.get("install_path").and_then(|v| v.as_str());
+
+            output.push(Out::Ok(format!(
+                "  ✓ Installed v{} → {}",
+                latest,
+                jar_path.unwrap_or("?"),
+            )));
+
+            // Java 경고가 있으면 표시
+            if let Some(warn) = result.get("java_warning").and_then(|v| v.as_str()) {
+                output.push(Out::Text(format!("  ⚠ {}", warn)));
+            }
+
+            // 4. 인스턴스 설정 업데이트
+            if let Some(jp) = jar_path {
+                let mut update = serde_json::json!({ "executable_path": jp });
+                if let Some(ip) = install_path {
+                    update["working_dir"] = serde_json::json!(ip);
+                }
+                if let Err(e) = client.update_instance(instance_id, update).await {
+                    output.push(Out::Err(format!("  ✗ Failed to update instance: {}", e)));
+                    return output;
+                }
+                output.push(Out::Text("  Instance updated.".into()));
+            }
+
+            // 5. 서버 재시작
+            output.push(Out::Text("  Starting server...".into()));
+            if managed {
+                match client.start_managed(instance_id).await {
+                    Ok(r2) => {
+                        if r2.get("success").and_then(|v| v.as_bool()) == Some(true) {
+                            output.push(Out::Ok(format!(
+                                "  ✓ {}",
+                                r2.get("message").and_then(|v| v.as_str()).unwrap_or("Server started"),
+                            )));
+                        } else {
+                            output.push(Out::Err(format!(
+                                "  ✗ {}",
+                                r2.get("message").and_then(|v| v.as_str()).unwrap_or("Start failed"),
+                            )));
+                        }
+                    }
+                    Err(e) => output.push(Out::Err(format!("  ✗ {}", e))),
+                }
+            } else {
+                match client.start_server(instance_name, module_name).await {
+                    Ok(r2) => {
+                        if r2.get("success").and_then(|v| v.as_bool()) == Some(true) {
+                            output.push(Out::Ok(format!(
+                                "  ✓ {}",
+                                r2.get("message").and_then(|v| v.as_str()).unwrap_or("Server started"),
+                            )));
+                        } else {
+                            output.push(Out::Err(format!(
+                                "  ✗ {}",
+                                r2.get("message").and_then(|v| v.as_str()).unwrap_or("Start failed"),
+                            )));
+                        }
+                    }
+                    Err(e) => output.push(Out::Err(format!("  ✗ {}", e))),
+                }
+            }
+        }
+        Err(e) => {
+            output.push(Out::Err(format!("  ✗ Install failed: {}", e)));
+            output.push(Out::Text(format!(
+                "  → Run manually: module install {} <dir> [version]",
+                module_name
+            )));
+        }
+    }
+
+    output
 }
 
 /// 인스턴스 목록에서 해당 이름의 module_name을 찾는 유틸리티
@@ -805,6 +1151,18 @@ async fn find_module_for_server(client: &DaemonClient, name: &str) -> Option<Str
     None
 }
 
+/// 인스턴스 이름으로 ID를 찾는 유틸리티
+async fn find_instance_id_by_name(client: &DaemonClient, name: &str) -> Option<String> {
+    if let Ok(instances) = client.list_instances().await {
+        for inst in &instances {
+            if inst["name"].as_str() == Some(name) {
+                return inst["id"].as_str().map(|s| s.to_string());
+            }
+        }
+    }
+    None
+}
+
 async fn exec_module(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
     match args.first().copied() {
         Some("list") => match client.list_modules().await {
@@ -812,21 +1170,84 @@ async fn exec_module(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
             Ok(list) => {
                 let mut o = vec![Out::Ok(format!("{} module(s):", list.len()))];
                 for m in &list {
+                    let mode = m["interaction_mode"].as_str().unwrap_or("-");
                     o.push(Out::Text(format!(
-                        "  • {} v{}",
+                        "  • {} v{} [{}]",
                         m["name"].as_str().unwrap_or("?"),
                         m["version"].as_str().unwrap_or("?"),
+                        mode,
                     )));
                 }
                 o
             }
             Err(e) => vec![Out::Err(format!("✗ {}", e))],
         },
-        Some("reload") => match client.reload_modules().await {
-            Ok(_) => vec![Out::Ok("✓ Modules reloaded".into())],
+        Some("refresh") | Some("reload") => match client.refresh_modules().await {
+            Ok(_) => vec![Out::Ok("✓ Modules refreshed".into())],
             Err(e) => vec![Out::Err(format!("✗ {}", e))],
         },
-        _ => vec![Out::Err("Usage: module [list|reload]".into())],
+        Some("versions") if args.len() > 1 => {
+            let module = args[1];
+            match client.list_versions(module).await {
+                Ok(data) => {
+                    if let Some(versions) = data.get("versions").and_then(|v| v.as_array()) {
+                        if versions.is_empty() {
+                            return vec![Out::Text(format!("No versions found for '{}'.", module))];
+                        }
+                        let mut o = vec![Out::Ok(format!("{} version(s) for '{}':", versions.len(), module))];
+                        for v in versions {
+                            let id = v.as_str().or_else(|| v["id"].as_str()).unwrap_or("?");
+                            o.push(Out::Text(format!("  • {}", id)));
+                        }
+                        o
+                    } else {
+                        vec![Out::Ok(format!("{}", serde_json::to_string_pretty(&data).unwrap_or_default()))]
+                    }
+                }
+                Err(e) => vec![Out::Err(format!("✗ {}", e))],
+            }
+        }
+        Some("install") if args.len() > 1 => {
+            let module = args[1];
+            let install_dir = args.get(2).copied();
+            let version = args.get(3).copied().unwrap_or("latest");
+
+            // install_dir가 없으면 기본 경로 사용
+            let dir = match install_dir {
+                Some(d) => d.to_string(),
+                None => {
+                    let base = std::env::var("APPDATA")
+                        .unwrap_or_else(|_| ".".to_string());
+                    format!("{}\\saba-chan\\servers\\{}", base, module)
+                }
+            };
+
+            let body = serde_json::json!({
+                "version": version,
+                "install_dir": dir,
+                "accept_eula": true,
+            });
+            match client.install_server(module, body).await {
+                Ok(r) => {
+                    let mut o = vec![Out::Ok(format!(
+                        "✓ {}",
+                        r.get("message").and_then(|v| v.as_str()).unwrap_or("Install completed"),
+                    ))];
+                    if let Some(jp) = r.get("jar_path").and_then(|v| v.as_str()) {
+                        o.push(Out::Text(format!("  JAR: {}", jp)));
+                    }
+                    if let Some(ip) = r.get("install_path").and_then(|v| v.as_str()) {
+                        o.push(Out::Text(format!("  Dir: {}", ip)));
+                    }
+                    if let Some(warn) = r.get("java_warning").and_then(|v| v.as_str()) {
+                        o.push(Out::Text(format!("  ⚠ {}", warn)));
+                    }
+                    o
+                }
+                Err(e) => vec![Out::Err(format!("✗ {}", e))],
+            }
+        }
+        _ => vec![Out::Err("Usage: module [list|refresh|versions <name>|install <name> [dir] [version]]".into())],
     }
 }
 
@@ -1117,9 +1538,10 @@ fn show_module_commands(registry: &ModuleRegistry, module_name: &str) -> Vec<Out
         None => return vec![Out::Err(format!("Module '{}' not found", module_name))],
     };
 
+    let mode_tag = module.interaction_mode.as_deref().unwrap_or("auto");
     let mut lines = vec![Out::Ok(format!(
-        "{} ({}) commands:",
-        module.display_name, module.name,
+        "{} ({}) commands: [mode: {}]",
+        module.display_name, module.name, mode_tag,
     ))];
 
     // 라이프사이클 명령어 (공통)
@@ -1534,6 +1956,101 @@ pub async fn run(client: DaemonClient) -> anyhow::Result<()> {
     terminal.show_cursor()?;
 
     result
+}
+
+fn cmd_sabachan() -> Vec<Out> {
+    let art = r#"
+                                             -~,,~~
+                                          ,-,      ,~:,  ~~-
+                                       .:!-          .*-!  .~,
+                                       =,            .--;     :
+                                   ;!; $.            ,--       ,,
+                                 -~   --,     .,,    ---         ~
+                           :-,,,-:~.  --~    .,,.-   ~--          -
+                        --,    .--~::,.,~,   -,. ~, .---  ....    .~
+                      .-   ,--*$   .:;:--~   -, .-~.--,~  ,  ,    .@-
+                    .-  .,!. .==      !=~-~ ,-~-,..  .~~ .. .,    -. ;
+                   ~ ..~~   ~. ..   .,,,*,        -!;-   -..,,  ,,-   ~
+                  ~  ~,     ,   -,,,,,, ,:-,..   ,.  ..:-  ,, ,,,-     ~
+                .-.,,      ~    --,,:,,-.       .---.   ,~, .~,,,-      :
+               .-.~-      -.    ,-,:,~,.,,.    .,,,-~-    -~  ---,      .,
+               ~,:        *     .-:~:.,--. .        .-~     ;, ,~.       ;
+              !,-        .-      -*-..~,              ,~     -- -. ,,.    .
+             :,.         ~~,,,,,.=,..~.  .             .~     .~ ,,,,     =
+            ,~,         ~ -;,,,-*, .~   ..              .,     .: ,,.     !
+            ;-         -.  -;--!-  -.   ...        .     ,.     ,: ~,,,.  :.
+           ~:          :   --:;-  .,   ...         -,     ,      ,: -,,-:--:
+           !          --   ,-:-,  ,    .. .         !      ,      -,.,,-   .-
+          ;-          !,----~:-  ..    .. .         *~ .   .       * ,-.    -
+          !           :,----:-,  -    . . ,         :!      ,       ; -,    -
+         ~,           ~-----~-        ~ . ,         ,~: .           -,..    :
+         !            -----~-,        ~ . ,          :~. .   .       ; --,  ;
+                      ,@*::~~.  .     : . .        . :,; .           --,---.;:
+                      :-~:;--  ;.     ; . .        , ~.,- .   ,       ~ ;---::
+        ;             ~---~-.  #;    ,;   .        , - .:. . .,       -.---,-,
+        *             ------...#@..:@@*   .        , ,  .: . . .       ;,~,.~ :
+       .:             ~--:--. ~@@#@=@=!  ..        ,.,.  ,- . .-       - !,,: :
+       ,!             ~--:-., $!$=;-~--.  ..   .   .,-:~-,-.. ,-       -,!**~ -
+       ,!             :-~~~.. ;-.!  ~, .   -   ,   .~,, .,-;-,,-.       !~~.  ,,
+       ,~             !,~-~ . .  $..:  , . ~   ,   .~.,     :.,-, .     ;,~   .*
+       .-.            ;,*-- . .  !:-, ,;,. ..  ,   .:.,      !.-, .     -.~  ..*
+        *!             #=-,.. ..  ;~~: ~..- -  ,.  ,:,-       ;-~       .-: . -;
+        .::           ~!!-,.. ..  ;;.   , ; :. .-..,:--       .::       .:;....:.
+         .-~..        :-:-... .  ,*~    ~ :.:,..!..,-~-,,..    ~;       .!; ...:.
+                      ! ;-... ..,.!~    ,,-:-~..*.,~,~:,-:!**=. !-      .!:. -,!.
+                     .~ ;- .. .,,.~~     --=~;--~~,, ,,:@#$$#@@;~-      .;:- ,,#.
+                     !, :- .. .--~::  .,--:!:,.       -$:--,,:#@=~      .-:--,!#
+                     !  :- .. .:-!;-.-*=!-..          :,=**$;.,$#!      ..!--~$@#$====;
+                     ; .:-  ,  ;-!,~$#@@@$;.          .  -!!$. ,$=.       ##$#$=*==*!;;;!;
+                     . -:-  ,  :-~~$@!~:=#$-           .  **==  :$;.      :-,~!$#$=!:;:::;!~
+                   ~$!*$:-  -  -:!$@;, ,,!$=           =:!**=#  ,*        *~,...-;***;:::::*,
+                 ~=!$~$@~-  -  .;~@=, -  !!#.          #~!=::#  ,:        *,--,,,,,-:$*;::;@.
+               -$!;!*#@@~-  ~  .*;@:  #~:*==~          *~,.,~$  .,.       !,.,-...,----$*;#.
+              $*!!=$:@@@--. ~.  #*#,  #!;$=:*          .;. .=    ,.    .. !- ..,   .-#@@#*=
+            .$!*$$$$~@@#--. -~  ;=#,  #:~!:-!           ,~;*-.   -,    .. !.,  .. ,*-$@@@$
+             !*$$$$#:@#$--..-:. :!!-  ~;-  -~                    ~-   .., *.,   .;!:* :##,
+             .##$$$#:#*$--  ,:: .*,-   ;:,-!                    ,-~   . , *.., ,*;::!:
+               ##$$#:!*=-- . ::~ =-     ~,                      ~,~   ..,,*..,:@*:::~*$-
+                #$#*#*$!-~ , ~~:. *                .,.          ::.  ....:*,:!@@$;::~~!=$
+                =***@*;!-~ - -~~@,-,          .:----~;         :-*   .., ==. #@@#;~~:-:!!#!
+               ****$!;;!-~ -.,~~#;:~.         !:-,,,,~,       -::* ..,.,.#: .@@@@;: :, !;;$*
+             ~!$$=*;;;;!-~ .,.:~#:**!-        :-,....,,      -:~~= ...,..$- ~@!$@;;..-  !;;==.
+          -!=***=@#$!;;!-~ .,.~~$~-;.,.       .-.....,.        ,=*..,.,.-!. ;=;;@!:- -. ,!;;$*
+          ***=!~=!!!;!##-: .,.,~$~~=,          ,.....,        .*!;....,.!:. ;;;;#*:~  -  -*$,
+          :*=~-$-=;!;#@@-: .,..~$#, ;           ~.....       .=.;-.,.,..==  *;;;!=::  ,..,.:
+           ;~~=.!;;;!@#=-*...,.,!   .:           ..         := ,;,...-.,;$ ,!;;;;$::.  , ; ..
+          -:~:  *~;;#@!=~$-..,..:    ,;                   ~:,.. ;,,.-,.~.; ;;;;;;$::-  ,.,# -.
+          ;:~  :::;!@=!$~#*..,-.~      ~~,              ,*,    -:-..:..:.  ;*;;;;$::~   , $* -.
+         !:-   !~;;=#**$:$$,..~,-.       ,:--,.      ..,,~  .~;:-,.-!.- ;   :=!;;*:::   , ,=: -
+        ::-   .~~;;@***=!*~~..---.            !#*;~---,,,-     -~.,;~,, !     *=;;;~:,  .. @.:
+       ,~~    =~~;*=****$: =,.,~,.            ,;~-----,,,;     ~-.~;,~ -     -::#;!~~~   , ;, ,
+      .;!    .:~:;=*****#. $:,.~,*-  ,~      ;!*-----:;!:~~:   :,-!,!  :     -:::=*:-~   ,  *
+      .!     --~;;$$****#  :*~,--*-~;--~    :~--;:;;~~-----:,  ~-; =.-:~-~,  -::::;:~~.  .. !
+             =~~;;;;*==*$   =::,;~~--~--:  ~---~#;;$~-------! !;~ ~!:,. ;:*  ,:::::::,,   , .
+            ,:~~;!::::!=$.  :!=;:-:---:-!,~---~$:-~#=-------~=*  :!~,-.-::;. .:~;:::: -   ,
+            ~-~::;:::::;$!  :@--!=!---:;*$!---$@;-:#@!,   .~*#...!~~-. ::::- .;~;::~:.-.
+            ;~~;;;::~::;! ;:$@~--,**--!--*~-!@@#=!@@@@,   .~=@@*=~-.   @;::~  ;~!::~~~ ,
+           .:~~;!:::~::;;  ##~:----:;;--:@#@@@$:!;::*@#.  -#@@:-~--   :@@!:!  !~!::~~~ .
+           ~-~~;;::~~::;~  @*   .,--:~--$@@@$;--;=~~~~=#~;@@@$--~--   $@@@:!-:$~!:::-~. .
+           .~-:;:::~:::!. =@=     -~;--!@@=;~~~;@@:----!@@@@@,,~----~!@@@$*---$~!:::~~,
+             .;;::~~:::*  @@@    --:~--#@!~~~;=#@@;:,...:@@@!-.:-~-- ;@@$;$~-:!~!~~~: ~
+             .;:::~~:::* .@@@.   .-:  *@@!--!*;@@@:-!.  $$** ..~~.   !@#!!*;-;:~;~~~;
+               :;~~~:::: -@@@:   .,, .@@@@,!~.*@@@*.~#.=$!!:.  ,.,   =@=!!!$-;;~::~~:
+                :~~~:::: $@*. ,-~~;  !=!!=$. .*!~~:..#@@!!* ,  ,~.   $#!!!!=::~~::~~
+                .~~:::;- @@    .,,-  ~   ,~. :.   ,,.:$:~~~.,  -    .@*!!!!!*;.:~:~.
+                 .-:::* -@#     ,-, --,, ~..:,....~~ .=    .  ~.    *=!!!!!!=! !~:.
+                   ~::!.#@@.    -!  :   ;- -.      ;..;.   .  ~-.  .@*!!!!!!!= =-
+                    .:;@#@@,   .-; ,    ,--~       ~:  :-,..  ~--, #@@@*!!!!!!$-
+                      #**@@=  ,--, ,   .            , ..      ,--,,@@@@=!!!!!!
+                       :*#@@-,,--,,                          ., . -@@#=!!!!!~
+                        .;@@=,,--,,                          :-.  :@$*!!!!:.
+                          ,=@-  ,.,                .         *-, -@@!!!!:.
+                            ,;  -..               .          !,,;@@=!!:.
+                                ~..                          ~-#@@@!;
+                                                            .#@@@$
+                                                            -@--
+"#;
+    art.lines().map(|line| Out::Text(line.to_string())).collect()
 }
 
 #[cfg(test)]

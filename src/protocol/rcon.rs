@@ -56,7 +56,7 @@ impl RconClient {
     fn authenticate(&mut self) -> Result<(), ProtocolError> {
         self.request_id = 1;
         let password = self.password.clone();
-        let response_id = self.send_command_internal(self.request_id, 3, &password)?;
+        let (response_id, _payload) = self.send_command_internal(self.request_id, 3, &password)?;
 
         if response_id == -1 {
             return Err(ProtocolError::AuthError("Authentication failed: invalid password".to_string()));
@@ -65,16 +65,17 @@ impl RconClient {
         Ok(())
     }
 
-    /// 명령어 실행
+    /// 명령어 실행 — 실제 응답 페이로드를 파싱하여 반환
     pub fn execute_command(&mut self, command: &str) -> Result<String, ProtocolError> {
         self.request_id += 1;
-        self.send_command_internal(self.request_id, 2, command)?;
-        Ok(format!("Command executed: {}", command))
+        let (_id, payload) = self.send_command_internal(self.request_id, 2, command)?;
+        Ok(payload)
     }
 
     /// 내부 명령어 전송 함수
     /// command_type: 2 = command, 3 = auth
-    fn send_command_internal(&mut self, request_id: u32, command_type: i32, payload: &str) -> Result<i32, ProtocolError> {
+    /// Returns (response_id, payload_string)
+    fn send_command_internal(&mut self, request_id: u32, command_type: i32, payload: &str) -> Result<(i32, String), ProtocolError> {
         {
             let stream = self.stream.as_mut()
                 .ok_or_else(|| ProtocolError::ConnectionError("Not connected".to_string()))?;
@@ -102,8 +103,8 @@ impl RconClient {
         self.read_response()
     }
 
-    /// 응답 읽기
-    fn read_response(&mut self) -> Result<i32, ProtocolError> {
+    /// 응답 읽기 — (request_id, payload_string) 반환
+    fn read_response(&mut self) -> Result<(i32, String), ProtocolError> {
         let stream = self.stream.as_mut()
             .ok_or_else(|| ProtocolError::ConnectionError("Not connected".to_string()))?;
 
@@ -120,12 +121,27 @@ impl RconClient {
         stream.read_exact(&mut packet)
             .map_err(|e| ProtocolError::Protocol(format!("Failed to read packet data: {}", e)))?;
 
-        // Request ID 읽기
+        // 패킷 구조: [4 bytes request_id][4 bytes type][payload...][2 bytes padding]
+        if packet.len() < 10 {
+            // 최소 4(id) + 4(type) + 2(padding) = 10 bytes
+            return Err(ProtocolError::Protocol("Response packet too small".to_string()));
+        }
+
         let mut cursor = &packet[..];
         let request_id = cursor.read_i32::<LittleEndian>()
             .map_err(|e| ProtocolError::Protocol(format!("Failed to parse request ID: {}", e)))?;
 
-        Ok(request_id)
+        // Skip response type (4 bytes)
+        let _response_type = cursor.read_i32::<LittleEndian>()
+            .map_err(|e| ProtocolError::Protocol(format!("Failed to parse response type: {}", e)))?;
+
+        // Remaining bytes minus 2-byte null padding = payload
+        let payload_bytes = &packet[8..packet.len().saturating_sub(2)];
+        let payload = String::from_utf8_lossy(payload_bytes)
+            .trim_end_matches('\0')
+            .to_string();
+
+        Ok((request_id, payload))
     }
 
     /// 연결 해제

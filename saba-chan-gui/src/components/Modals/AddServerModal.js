@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import Icon from '../Icon';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import './Modals.css';
+import { useModalClose } from '../../hooks/useModalClose';
 
 export function AddServerModal({ 
     isOpen, 
@@ -18,6 +19,7 @@ export function AddServerModal({
     const { t } = useTranslation('gui');
     const [newServerName, setNewServerName] = useState('');
     const [selectedModule, setSelectedModule] = useState('');
+    const { isClosing, requestClose } = useModalClose(onClose);
 
     // 모듈 선택 시 자동으로 서버 이름 생성
     const handleModuleSelect = (moduleName) => {
@@ -49,7 +51,7 @@ export function AddServerModal({
     if (!isOpen) return null;
 
     return (
-        <div className="modal-overlay" onClick={onClose}>
+        <div className={`modal-overlay ${isClosing ? 'closing' : ''}`} onClick={requestClose}>
             <div className="modal-content modal-content-large" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
                     <h3 style={{ fontSize: '1.3rem' }}>{t('add_server_modal.title')}</h3>
@@ -120,7 +122,7 @@ export function AddServerModal({
                     <button className="btn btn-confirm" onClick={handleSubmit}>
                         <Icon name="checkCircle" size="sm" /> {t('add_server_modal.add_server')}
                     </button>
-                    <button className="btn btn-cancel" onClick={onClose}>
+                    <button className="btn btn-cancel" onClick={requestClose}>
                         <Icon name="xCircle" size="sm" /> {t('modals.cancel')}
                     </button>
                 </div>

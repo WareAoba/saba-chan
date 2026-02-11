@@ -408,6 +408,40 @@ def start(config):
             "message": i18n.t('errors.failed_to_start', error=str(e))
         }
 
+def get_launch_command(config):
+    """
+    Build the command for the Rust daemon to spawn as a ManagedProcess.
+    Returns { success, program, args, working_dir, env_vars }.
+    """
+    executable = config.get("server_executable")
+    if not executable:
+        return {
+            "success": False,
+            "message": "server_executable not specified in instance configuration. Please add the path to PalServer.exe"
+        }
+
+    if not os.path.exists(executable):
+        return {
+            "success": False,
+            "message": f"Executable not found: {executable}. Please check the path in instance settings."
+        }
+
+    port = config.get("port", 8211)
+    working_dir = config.get("working_dir")
+    if not working_dir:
+        working_dir = os.path.dirname(os.path.abspath(executable))
+
+    args = [f"--port={port}"]
+
+    return {
+        "success": True,
+        "program": os.path.abspath(executable),
+        "args": args,
+        "working_dir": os.path.abspath(working_dir),
+        "env_vars": {},
+    }
+
+
 def stop(config):
     """Stop Palworld server"""
     try:
@@ -914,6 +948,8 @@ if __name__ == "__main__":
     # Call function
     if function_name == "start":
         result = start(config)
+    elif function_name == "get_launch_command":
+        result = get_launch_command(config)
     elif function_name == "stop":
         result = stop(config)
     elif function_name == "status":

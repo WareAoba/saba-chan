@@ -8,8 +8,8 @@
     align-items: center;
     justify-content: space-between;
     height: 40px;
-    background: white;
-    border-bottom: 1px solid #ddd;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-default);
     padding: 0 16px;
     -webkit-app-region: drag;
     user-select: none;
@@ -21,7 +21,7 @@
     gap: 8px;
     font-size: 14px;
     font-weight: 600;
-    color: #333;
+    color: var(--text-primary);
     flex: 1;
     -webkit-app-region: drag;
 }
@@ -53,7 +53,7 @@
     background: transparent;
     cursor: pointer;
     font-size: 16px;
-    color: #666;
+    color: var(--text-tertiary);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -63,8 +63,8 @@
 }
 
 .title-bar-btn:hover {
-    background: #f0f0f0;
-    color: #333;
+    background: var(--bg-surface-tertiary);
+    color: var(--text-primary);
 }
 
 .title-bar-btn.close-btn:hover {
@@ -73,7 +73,7 @@
 }
 
 .title-bar-btn:active {
-    background: #e0e0e0;
+    background: var(--border-separator);
 }
 
 .title-bar-btn.close-btn:active {

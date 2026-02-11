@@ -117,7 +117,13 @@ client.on('messageCreate', async (message) => {
 
     // Parse: "!prefix 모듈별명 명령어별명 [추가인자...]"
     const args = content.slice(prefix.length).trim().split(/\s+/);
-    
+
+    // 이스터에그: "할건해야제" / "ㅎㄱㅎㅇㅈ"
+    if (args.length === 1 && (args[0] === '할건해야제' || args[0] === 'ㅎㄱㅎㅇㅈ')) {
+        const reply = Math.random() < 0.9 ? '반드시 가야제 ㅋㅋ' : '이건 에바제...';
+        return message.reply(reply);
+    }
+
     // Build help message with module commands
     function buildHelpMessage() {
         const moduleList = Object.keys(moduleMetadata).length > 0 

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, Tray, nativeImage } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, Tray, nativeImage, nativeTheme } = require('electron');
 const { dialog } = require('electron');
 const path = require('path');
 const axios = require('axios');
@@ -568,7 +568,7 @@ function createWindow() {
         minHeight: 840,
         show: false,  // 준비될 때까지 보이지 않음
         frame: false,  // Windows 기본 프레임 제거
-        icon: path.join(__dirname, 'public', 'icon.png'),
+        icon: path.join(__dirname, 'build', 'icon.png'),
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
@@ -631,21 +631,31 @@ ipcMain.on('app:closeResponse', (event, choice) => {
 });
 
 // 시스템 트레이 아이콘 생성
-function createTray() {
-    // favicon.png 사용 (public 폴더 또는 resources)
-    let icon;
+function getTrayIconPath() {
+    const isDark = nativeTheme.shouldUseDarkColors;
+    const filename = isDark ? 'favicon-dark.png' : 'favicon-light.png';
     const candidates = [
+        path.join(__dirname, 'build', filename),
+        path.join(__dirname, 'public', filename),
+        path.join(__dirname, '..', 'resources', filename),
+        path.join(__dirname, 'build', 'favicon.png'),
         path.join(__dirname, 'public', 'favicon.png'),
         path.join(__dirname, '..', 'resources', 'favicon.png'),
         path.join(__dirname, '..', 'resources', 'icon.png'),
     ];
     for (const p of candidates) {
         try {
-            if (require('fs').existsSync(p)) {
-                icon = nativeImage.createFromPath(p).resize({ width: 16, height: 16 });
-                break;
-            }
+            if (require('fs').existsSync(p)) return p;
         } catch (_) {}
+    }
+    return null;
+}
+
+function createTray() {
+    let icon;
+    const iconPath = getTrayIconPath();
+    if (iconPath) {
+        icon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
     }
     if (!icon) {
         // 폴백: 내장 base64 아이콘
@@ -695,6 +705,15 @@ function createTray() {
     tray.setToolTip('사바쨩 - 게임 서버 관리');
     tray.setContextMenu(contextMenu);
     
+    // 시스템 테마 변경 시 트레이 아이콘 업데이트
+    nativeTheme.on('updated', () => {
+        if (!tray) return;
+        const newIconPath = getTrayIconPath();
+        if (newIconPath) {
+            tray.setImage(nativeImage.createFromPath(newIconPath).resize({ width: 16, height: 16 }));
+        }
+    });
+
     // 트레이 아이콘 더블클릭 시 창 열기
     tray.on('double-click', () => {
         if (mainWindow) {
@@ -937,6 +956,61 @@ ipcMain.handle('server:status', async (event, name) => {
         }
         
         return { error: `${t('error')}: ${error.message}` };
+    }
+});
+
+// ── Module: Server Installation API ──────────────────────────
+
+ipcMain.handle('module:listVersions', async (event, moduleName, options = {}) => {
+    try {
+        const params = new URLSearchParams();
+        if (options.include_snapshots) params.set('include_snapshots', 'true');
+        if (options.page) params.set('page', options.page);
+        if (options.per_page) params.set('per_page', options.per_page);
+        const response = await axios.get(`${IPC_BASE}/api/module/${moduleName}/versions?${params}`);
+        return response.data;
+    } catch (error) {
+        return { error: error.response?.data?.error || error.message };
+    }
+});
+
+ipcMain.handle('module:installServer', async (event, moduleName, installConfig) => {
+    try {
+        const response = await axios.post(`${IPC_BASE}/api/module/${moduleName}/install`, installConfig);
+        return response.data;
+    } catch (error) {
+        return { error: error.response?.data?.error || error.message };
+    }
+});
+
+// ── Managed Process API (stdin/stdout capture) ───────────────
+
+ipcMain.handle('managed:start', async (event, instanceId) => {
+    try {
+        const response = await axios.post(`${IPC_BASE}/api/instance/${instanceId}/managed/start`, {});
+        return response.data;
+    } catch (error) {
+        return { error: error.response?.data?.error || error.message };
+    }
+});
+
+ipcMain.handle('managed:console', async (event, instanceId, since = 0, count = 200) => {
+    try {
+        const response = await axios.get(`${IPC_BASE}/api/instance/${instanceId}/console`, {
+            params: { since, count }
+        });
+        return response.data;
+    } catch (error) {
+        return { error: error.response?.data?.error || error.message };
+    }
+});
+
+ipcMain.handle('managed:stdin', async (event, instanceId, command) => {
+    try {
+        const response = await axios.post(`${IPC_BASE}/api/instance/${instanceId}/stdin`, { command });
+        return response.data;
+    } catch (error) {
+        return { error: error.response?.data?.error || error.message };
     }
 });
 
@@ -1374,12 +1448,8 @@ ipcMain.handle('language:set', (event, language) => {
     // 번역 다시 로드
     translations = loadTranslations();
     
-    // 데몬이 실행 중이면 재시작하여 새 언어 설정 적용
-    if (daemonStartedByApp && daemonProcess) {
-        console.log('Restarting daemon to apply new language setting...');
-        stopDaemon();
-        setTimeout(() => startDaemon(), 1000);
-    }
+    // 데몬은 재시작하지 않음 — Python 모듈은 호출 시 환경변수로 언어를 결정하므로
+    // 데몬을 재시작하면 실행 중인 서버가 모두 종료됨
     
     // Discord 봇이 실행 중이면 재시작하여 새 언어 설정 적용
     const botRunning = discordBotProcess && !discordBotProcess.killed;

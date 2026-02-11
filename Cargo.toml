@@ -33,6 +33,7 @@ byteorder = "1.5"
 ureq = { version = "2.9", default-features = true, features = ["json", "tls"] }
 base64 = "0.21"
 sysinfo = "0.30"
+socket2 = "0.5"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["processthreadsapi", "winnt", "handleapi"] }

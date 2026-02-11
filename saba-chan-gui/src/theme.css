@@ -189,7 +189,7 @@
     --bg-surface-tertiary: #303034;
     --bg-surface-input: #2a2a2e;
     --bg-surface-input-focus: #1e1e22;
-    --bg-overlay: rgba(0, 0, 0, 0.7);
+    --bg-overlay: rgba(10, 10, 14, 0.72);
     --bg-initializing-overlay: rgba(26, 26, 30, 0.92);
     --bg-loading-bar: rgba(255, 255, 255, 0.15);
 
@@ -213,23 +213,23 @@
     --border-separator: #363639;
 
     /* === Shadows === */
-    --shadow-xs: rgba(0, 0, 0, 0.2);
-    --shadow-sm: rgba(0, 0, 0, 0.25);
-    --shadow-md: rgba(0, 0, 0, 0.3);
-    --shadow-lg: rgba(0, 0, 0, 0.4);
-    --shadow-xl: rgba(0, 0, 0, 0.5);
-    --shadow-overlay: rgba(0, 0, 0, 0.6);
+    --shadow-xs: rgba(10, 10, 14, 0.22);
+    --shadow-sm: rgba(10, 10, 14, 0.28);
+    --shadow-md: rgba(10, 10, 14, 0.32);
+    --shadow-lg: rgba(10, 10, 14, 0.42);
+    --shadow-xl: rgba(10, 10, 14, 0.52);
+    --shadow-overlay: rgba(10, 10, 14, 0.62);
 
     /* === Brand === */
-    --brand-primary: #8b9cf7;
-    --brand-secondary: #a078d0;
-    --brand-gradient: linear-gradient(135deg, #8b9cf7 0%, #a078d0 100%);
-    --brand-hover: #7a8be6;
-    --brand-shadow: rgba(139, 156, 247, 0.3);
-    --brand-shadow-light: rgba(139, 156, 247, 0.18);
-    --brand-shadow-subtle: rgba(139, 156, 247, 0.08);
-    --brand-shadow-medium: rgba(139, 156, 247, 0.22);
-    --brand-shadow-strong: rgba(139, 156, 247, 0.35);
+    --brand-primary: #7d8ee8;
+    --brand-secondary: #906abf;
+    --brand-gradient: linear-gradient(135deg, #7d8ee8 0%, #906abf 100%);
+    --brand-hover: #6c7dd8;
+    --brand-shadow: rgba(125, 142, 232, 0.3);
+    --brand-shadow-light: rgba(125, 142, 232, 0.18);
+    --brand-shadow-subtle: rgba(125, 142, 232, 0.08);
+    --brand-shadow-medium: rgba(125, 142, 232, 0.22);
+    --brand-shadow-strong: rgba(125, 142, 232, 0.35);
     --brand-bg-light: #26262c;
     --brand-bg-subtle: #222228;
     --brand-bg-muted: #2c2c34;
@@ -245,8 +245,8 @@
 
     /* === Cards === */
     --card-bg: #262629;
-    --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-    --card-hover-shadow: 0 8px 25px rgba(0, 0, 0, 0.5);
+    --card-shadow: 0 2px 8px rgba(10, 10, 14, 0.42);
+    --card-hover-shadow: 0 8px 25px rgba(10, 10, 14, 0.52);
     --card-expanded-bg: #2a2a2e;
 
     /* === Scrollbar === */
@@ -302,13 +302,13 @@
     --input-bg: #2a2a2e;
     --input-border: #404044;
     --input-focus-border: var(--brand-primary);
-    --input-focus-shadow: rgba(139, 156, 247, 0.12);
+    --input-focus-shadow: rgba(125, 142, 232, 0.12);
 
     /* === No servers panel === */
     --empty-bg: #262629;
 
     /* === Toast === */
-    --toast-shadow: rgba(0, 0, 0, 0.4);
+    --toast-shadow: rgba(10, 10, 14, 0.42);
 
     /* === CLI/Terminal (stays dark/gets darker) === */
     --cli-bg: #131316;
@@ -368,7 +368,7 @@
         --bg-surface-tertiary: #303034;
         --bg-surface-input: #2a2a2e;
         --bg-surface-input-focus: #1e1e22;
-        --bg-overlay: rgba(0, 0, 0, 0.7);
+        --bg-overlay: rgba(10, 10, 14, 0.72);
         --bg-initializing-overlay: rgba(26, 26, 30, 0.92);
         --bg-loading-bar: rgba(255, 255, 255, 0.15);
 
@@ -392,23 +392,23 @@
         --border-separator: #363639;
 
         /* === Shadows === */
-        --shadow-xs: rgba(0, 0, 0, 0.2);
-        --shadow-sm: rgba(0, 0, 0, 0.25);
-        --shadow-md: rgba(0, 0, 0, 0.3);
-        --shadow-lg: rgba(0, 0, 0, 0.4);
-        --shadow-xl: rgba(0, 0, 0, 0.5);
-        --shadow-overlay: rgba(0, 0, 0, 0.6);
+        --shadow-xs: rgba(10, 10, 14, 0.22);
+        --shadow-sm: rgba(10, 10, 14, 0.28);
+        --shadow-md: rgba(10, 10, 14, 0.32);
+        --shadow-lg: rgba(10, 10, 14, 0.42);
+        --shadow-xl: rgba(10, 10, 14, 0.52);
+        --shadow-overlay: rgba(10, 10, 14, 0.62);
 
         /* === Brand === */
-        --brand-primary: #8b9cf7;
-        --brand-secondary: #a078d0;
-        --brand-gradient: linear-gradient(135deg, #8b9cf7 0%, #a078d0 100%);
-        --brand-hover: #7a8be6;
-        --brand-shadow: rgba(139, 156, 247, 0.3);
-        --brand-shadow-light: rgba(139, 156, 247, 0.18);
-        --brand-shadow-subtle: rgba(139, 156, 247, 0.08);
-        --brand-shadow-medium: rgba(139, 156, 247, 0.22);
-        --brand-shadow-strong: rgba(139, 156, 247, 0.35);
+        --brand-primary: #7d8ee8;
+        --brand-secondary: #906abf;
+        --brand-gradient: linear-gradient(135deg, #7d8ee8 0%, #906abf 100%);
+        --brand-hover: #6c7dd8;
+        --brand-shadow: rgba(125, 142, 232, 0.3);
+        --brand-shadow-light: rgba(125, 142, 232, 0.18);
+        --brand-shadow-subtle: rgba(125, 142, 232, 0.08);
+        --brand-shadow-medium: rgba(125, 142, 232, 0.22);
+        --brand-shadow-strong: rgba(125, 142, 232, 0.35);
         --brand-bg-light: #26262c;
         --brand-bg-subtle: #222228;
         --brand-bg-muted: #2c2c34;
@@ -424,8 +424,8 @@
 
         /* === Cards === */
         --card-bg: #262629;
-        --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-        --card-hover-shadow: 0 8px 25px rgba(0, 0, 0, 0.5);
+        --card-shadow: 0 2px 8px rgba(10, 10, 14, 0.42);
+        --card-hover-shadow: 0 8px 25px rgba(10, 10, 14, 0.52);
         --card-expanded-bg: #2a2a2e;
 
         /* === Scrollbar === */
@@ -481,13 +481,13 @@
         --input-bg: #2a2a2e;
         --input-border: #404044;
         --input-focus-border: var(--brand-primary);
-        --input-focus-shadow: rgba(139, 156, 247, 0.12);
+        --input-focus-shadow: rgba(125, 142, 232, 0.12);
 
         /* === No servers panel === */
         --empty-bg: #262629;
 
         /* === Toast === */
-        --toast-shadow: rgba(0, 0, 0, 0.4);
+        --toast-shadow: rgba(10, 10, 14, 0.42);
 
         /* === CLI/Terminal === */
         --cli-bg: #131316;
