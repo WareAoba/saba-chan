@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import './App.css';
 import { 
@@ -17,7 +17,15 @@ import {
 } from './components';
 
 function App() {
-    const { t } = useTranslation('gui');
+    const { t, i18n } = useTranslation('gui');
+
+    // 언어별 로고 이미지 선택
+    const logoSrc = useMemo(() => {
+        const lang = (i18n.language || 'en').toLowerCase();
+        if (lang.startsWith('ko')) return '/logo-kr.png';
+        if (lang.startsWith('ja')) return '/logo-jp.png';
+        return '/logo-en.png';
+    }, [i18n.language]);
     
     // 테스트 환경 감지 (Jest 실행 중인지 확인)
     const isTestEnv = process.env.NODE_ENV === 'test' || typeof jest !== 'undefined';
@@ -120,6 +128,22 @@ function App() {
     const [servers, setServers] = useState([]);
     const [modules, setModules] = useState([]);
     const [loading, setLoading] = useState(true);
+
+    // 업타임 실시간 계산용 (1초마다 갱신)
+    const [nowEpoch, setNowEpoch] = useState(() => Math.floor(Date.now() / 1000));
+    useEffect(() => {
+        const timer = setInterval(() => setNowEpoch(Math.floor(Date.now() / 1000)), 1000);
+        return () => clearInterval(timer);
+    }, []);
+
+    const formatUptime = (startTime) => {
+        if (!startTime) return null;
+        const elapsed = Math.max(0, nowEpoch - startTime);
+        const h = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+        const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+        const s = String(elapsed % 60).padStart(2, '0');
+        return `${h}:${m}:${s}`;
+    };
     const [autoRefresh, setAutoRefresh] = useState(true);
     const [refreshInterval, setRefreshInterval] = useState(2000); // 2초마다 업데이트
     const [showModuleManager, setShowModuleManager] = useState(false);
@@ -359,6 +383,169 @@ function App() {
             await new Promise((resolve) => setTimeout(resolve, 500));
         }
         throw new Error('Daemon startup timeout');
+    };
+
+    // ======== 드래그 앤 드롭 순서 변경 (Pointer Events 기반) ========
+    const cardRefs = useRef({});
+    const dragRef = useRef({ active: false, draggedName: null });
+    const [draggedName, setDraggedName] = useState(null);
+    const skipNextClick = useRef(false);
+
+    const handleCardPointerDown = (e, index) => {
+        if (e.button !== 0) return;
+        if (e.target.closest('button') || e.target.closest('.action-icon')) return;
+
+        const name = servers[index].name;
+        const card = cardRefs.current[name];
+        if (!card) return;
+
+        const rect = card.getBoundingClientRect();
+
+        // 모든 카드의 슬롯 위치 스냅샷 (드래그 시작 시점의 레이아웃)
+        const slotPositions = servers.map(s => {
+            const el = cardRefs.current[s.name];
+            if (!el) return null;
+            const r = el.getBoundingClientRect();
+            return { x: r.left, y: r.top, w: r.width, h: r.height };
+        });
+
+        dragRef.current = {
+            active: false,
+            draggedName: name,
+            fromSlot: index,
+            targetSlot: index,
+            startX: e.clientX,
+            startY: e.clientY,
+            offsetX: e.clientX - rect.left,
+            offsetY: e.clientY - rect.top,
+            slotPositions,
+            originalOrder: servers.map(s => s.name),
+            nameToId: Object.fromEntries(servers.map(s => [s.name, s.id])),
+        };
+
+        const onMove = (me) => {
+            const d = dragRef.current;
+            if (!d.draggedName) return;
+
+            const dx = me.clientX - d.startX;
+            const dy = me.clientY - d.startY;
+
+            // 활성화 임계값 (6px 이상 이동 시 드래그 시작)
+            if (!d.active) {
+                if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+                d.active = true;
+                setDraggedName(d.draggedName);
+                const dragCard = cardRefs.current[d.draggedName];
+                if (dragCard) {
+                    dragCard.style.transition = 'box-shadow 0.2s ease, opacity 0.2s ease';
+                }
+            }
+
+            // 드래그 중인 카드를 커서 따라 이동
+            const dragCard = cardRefs.current[d.draggedName];
+            if (dragCard) {
+                dragCard.style.transform = `translate(${dx}px, ${dy}px)`;
+            }
+
+            // 가장 가까운 슬롯 찾기
+            let targetSlot = d.targetSlot;
+            let minDist = Infinity;
+            for (let i = 0; i < d.slotPositions.length; i++) {
+                const slot = d.slotPositions[i];
+                if (!slot) continue;
+                const cx = slot.x + slot.w / 2;
+                const cy = slot.y + slot.h / 2;
+                const dist = Math.hypot(me.clientX - cx, me.clientY - cy);
+                if (dist < minDist) {
+                    minDist = dist;
+                    targetSlot = i;
+                }
+            }
+
+            if (targetSlot !== d.targetSlot) {
+                d.targetSlot = targetSlot;
+
+                // 새로운 시각적 순서 계산
+                const order = [...d.originalOrder];
+                const draggedIdx = order.indexOf(d.draggedName);
+                const [item] = order.splice(draggedIdx, 1);
+                order.splice(targetSlot, 0, item);
+
+                // 다른 카드들을 목표 슬롯 위치로 CSS transform 이동
+                order.forEach((cardName, newSlotIdx) => {
+                    if (cardName === d.draggedName) return;
+                    const el = cardRefs.current[cardName];
+                    if (!el) return;
+
+                    const origSlotIdx = d.originalOrder.indexOf(cardName);
+                    const origPos = d.slotPositions[origSlotIdx];
+                    const targetPos = d.slotPositions[newSlotIdx];
+                    if (!origPos || !targetPos) return;
+
+                    const tx = targetPos.x - origPos.x;
+                    const ty = targetPos.y - origPos.y;
+
+                    if (Math.abs(tx) < 1 && Math.abs(ty) < 1) {
+                        el.style.transform = '';
+                    } else {
+                        el.style.transform = `translate(${tx}px, ${ty}px)`;
+                    }
+                });
+            }
+        };
+
+        const onUp = async () => {
+            document.removeEventListener('pointermove', onMove);
+            document.removeEventListener('pointerup', onUp);
+
+            const d = dragRef.current;
+
+            // 모든 카드 인라인 스타일 정리
+            Object.values(cardRefs.current).forEach(el => {
+                if (el) {
+                    el.style.transform = '';
+                    el.style.transition = '';
+                }
+            });
+
+            const wasActive = d.active;
+            const { targetSlot, fromSlot, originalOrder, nameToId } = d;
+
+            dragRef.current = { active: false, draggedName: null };
+            setDraggedName(null);
+
+            // 드래그 후 클릭 방지
+            if (wasActive) {
+                skipNextClick.current = true;
+                requestAnimationFrame(() => { skipNextClick.current = false; });
+            }
+
+            if (!wasActive || targetSlot === fromSlot) return;
+
+            // 최종 순서 계산 및 적용
+            const order = [...originalOrder];
+            const draggedIdx = order.indexOf(d.draggedName);
+            const [item] = order.splice(draggedIdx, 1);
+            order.splice(targetSlot, 0, item);
+
+            setServers(prev => {
+                const byName = {};
+                prev.forEach(s => { byName[s.name] = s; });
+                return order.map(n => byName[n]);
+            });
+
+            // 백엔드에 순서 저장
+            try {
+                const orderedIds = order.map(n => nameToId[n]);
+                await window.api.instanceReorder(orderedIds);
+                debugLog('Server order saved:', orderedIds);
+            } catch (err) {
+                debugWarn('Failed to save server order:', err);
+            }
+        };
+
+        document.addEventListener('pointermove', onMove);
+        document.addEventListener('pointerup', onUp);
     };
 
     // 이전 설정값 추적 (초기 로드와 사용자 변경 구분)
@@ -878,7 +1065,8 @@ function App() {
                 const errorMsg = translateError(result.error);
                 setModal({ type: 'failure', title: t('servers.status_check_failed_title'), message: errorMsg });
             } else {
-                const statusInfo = `Status: ${result.status}\nPID: ${result.pid || 'N/A'}\nUptime: ${result.uptime_seconds ? Math.floor(result.uptime_seconds / 60) + 'm' : 'N/A'}`;
+                const uptime = result.start_time ? formatUptime(result.start_time) : 'N/A';
+                const statusInfo = `Status: ${result.status}\nPID: ${result.pid || 'N/A'}\nUptime: ${uptime}`;
                 setModal({ type: 'notification', title: name, message: statusInfo });
             }
         } catch (error) {
@@ -1335,9 +1523,13 @@ function App() {
             <div className="loading-screen">
                 <TitleBar />
                 <div className="loading-content">
-                    <div className="loading-logo" style={{ fontSize: '72px' }}>🐟</div>
-                    <div className="loading-title">{t('common:app_name')}</div>
-                    <div className="loading-spinner"></div>
+                    <div className="loading-logo-container">
+                        <i className="glow-blur"></i>
+                        <i className="glow-ring"></i>
+                        <i className="glow-mask"></i>
+                        <img src="/title.png" alt="" className="loading-logo-img" />
+                    </div>
+                    <img src={logoSrc} alt={t('common:app_name')} className="loading-logo-text" />
                     <div className="loading-status">
                         <Icon name="loader" size="sm" /> {initStatus}
                     </div>
@@ -1387,8 +1579,8 @@ function App() {
                 {/* 첫 번째 줄: 타이틀과 설정 */}
                 <div className="header-row header-row-title">
                     <div className="app-title-section">
-                        <div className="app-logo">🌌</div>
-                        <h1>{t('common:app_name')}</h1>
+                        <img src="/icon.png" alt="" className="app-logo-icon" />
+                        <img src={logoSrc} alt={t('common:app_name')} className="app-logo-text" />
                     </div>
                     <button 
                         className="btn-settings-icon-solo"
@@ -1483,17 +1675,23 @@ function App() {
                         <p>{t('servers.no_servers_configured', { defaultValue: 'No servers configured' })}</p>
                     </div>
                 ) : (
-                    servers.map((server) => {
+                    servers.map((server, index) => {
                         // 모듈 메타데이터에서 게임 이름 가져오기
                         const moduleData = modules.find(m => m.name === server.module);
                         const gameName = moduleData?.game_name || server.module;
                         const gameIcon = moduleData?.icon || null; // 모듈에서 base64 인코딩된 아이콘 가져오기
                         
                         return (
-                            <div key={server.name} className={`server-card ${server.expanded ? 'expanded' : ''}`}>
+                            <div 
+                                key={server.name}
+                                ref={el => { cardRefs.current[server.name] = el; }}
+                                className={`server-card ${server.expanded ? 'expanded' : ''} ${draggedName === server.name ? 'dragging' : ''}`}
+                                onPointerDown={(e) => handleCardPointerDown(e, index)}
+                            >
                                 <div 
                                     className="server-card-header"
                                     onClick={(e) => {
+                                        if (skipNextClick.current) return;
                                         // 버튼 클릭은 무시
                                         if (e.target.closest('button')) return;
                                         // expanded 상태 토글
@@ -1552,24 +1750,40 @@ function App() {
 
                                 <div className="server-card-collapsible">
                                     <div className="server-details">
-                                    {server.pid && (
+                                    {server.status === 'running' && server.pid && (
                                         <div className="detail-row">
                                             <span className="label">PID:</span>
                                             <span className="value">{server.pid}</span>
                                         </div>
                                     )}
-                                    {server.resource && (
-                                        <>
-                                            <div className="detail-row">
-                                                <span className="label">RAM:</span>
-                                                <span className="value">{server.resource.ram || 'N/A'}</span>
-                                            </div>
-                                            <div className="detail-row">
-                                                <span className="label">CPU:</span>
-                                                <span className="value">{server.resource.cpu || 'N/A'}</span>
-                                            </div>
-                                        </>
+                                    {server.status === 'running' && server.start_time && (
+                                        <div className="detail-row">
+                                            <span className="label">{t('servers.uptime', 'Uptime')}:</span>
+                                            <span className="value">{formatUptime(server.start_time)}</span>
+                                        </div>
                                     )}
+                                    {server.port && (
+                                        <div className="detail-row">
+                                            <span className="label">{t('servers.port', 'Port')}:</span>
+                                            <span className="value">{server.port}</span>
+                                        </div>
+                                    )}
+                                    {server.rcon_port && (
+                                        <div className="detail-row">
+                                            <span className="label">RCON:</span>
+                                            <span className="value">{server.rcon_port}</span>
+                                        </div>
+                                    )}
+                                    {server.rest_port && (
+                                        <div className="detail-row">
+                                            <span className="label">REST:</span>
+                                            <span className="value">{server.rest_host || '127.0.0.1'}:{server.rest_port}</span>
+                                        </div>
+                                    )}
+                                    <div className="detail-row">
+                                        <span className="label">{t('servers.protocol', 'Protocol')}:</span>
+                                        <span className="value">{server.protocol_mode?.toUpperCase() || 'AUTO'}</span>
+                                    </div>
                                 </div>
 
                                 {/* 아이콘 버튼들 (좌하단) */}

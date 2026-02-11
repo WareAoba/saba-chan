@@ -162,10 +162,12 @@ impl Supervisor {
             Ok(result) => {
                 let status = result.get("status").and_then(|s| s.as_str()).unwrap_or("unknown");
                 let pid = result.get("pid").and_then(|p| p.as_u64());
+                let start_time = pid.and_then(|_| self.tracker.get_start_time(&instance.id).ok());
                 Ok(json!({
                     "server": server_name,
                     "status": status,
                     "pid": pid,
+                    "start_time": start_time,
                 }))
             },
             Err(e) => {

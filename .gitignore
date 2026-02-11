@@ -35,6 +35,7 @@ discord_bot/.env
 *.swp
 *.swo
 *~
+resources/
 
 # OS
 .DS_Store

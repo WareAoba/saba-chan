@@ -20,7 +20,8 @@ function TitleBar() {
     return (
         <div className="title-bar">
             <div className="title-bar-text">
-                <span>🎮 {t('common:app_name')}</span>
+                <img src="/favicon.png" alt="" className="title-bar-icon" />
+                <span>{t('common:app_name')}</span>
             </div>
             <div className="title-bar-controls">
                 <button 

@@ -564,11 +564,11 @@ function createWindow() {
     mainWindow = new BrowserWindow({
         width,
         height,
-        minWidth: 400,
-        minHeight: 500,
+        minWidth: 780,
+        minHeight: 840,
         show: false,  // 준비될 때까지 보이지 않음
         frame: false,  // Windows 기본 프레임 제거
-        icon: path.join(__dirname, '..', 'assets', 'icon.png'),  // 아이콘 (있으면)
+        icon: path.join(__dirname, 'public', 'icon.png'),
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
@@ -632,10 +632,26 @@ ipcMain.on('app:closeResponse', (event, choice) => {
 
 // 시스템 트레이 아이콘 생성
 function createTray() {
-    // 16x16 간단한 아이콘 (Base64 PNG - 보라색 원)
-    const iconBase64 = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAbwAAAG8B8aLcQwAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAADfSURBVDiNpZMxDoJAEEV/kNCQWFhYGBIbO2s7j+ARPISdnYfwCHR2djYewMZKEgsLC0NCwiIFMbCwy7rJJJPM7sz/M7MLLEOSJMBERIZABziIyNlaq2+FkiQxwAH4AEPgDZRKqWdTb0VpXQdWQBd4A3MRecRxfGzuGGPKQB+YAgtgKCIDoK61fob+EeBpre/AB1gDU2AlIoM4jk91j8YYA/SAGbAE+iIyAspa62uLwD+11legDWyBhYhMgI7W+tIikOc5EzCZpum9kOD/gZzNs+xQJPC3oSAILl+nEbD5AYoJdEnfF3TzAAAAAElFTkSuQmCC';
-    
-    const icon = nativeImage.createFromDataURL(`data:image/png;base64,${iconBase64}`);
+    // favicon.png 사용 (public 폴더 또는 resources)
+    let icon;
+    const candidates = [
+        path.join(__dirname, 'public', 'favicon.png'),
+        path.join(__dirname, '..', 'resources', 'favicon.png'),
+        path.join(__dirname, '..', 'resources', 'icon.png'),
+    ];
+    for (const p of candidates) {
+        try {
+            if (require('fs').existsSync(p)) {
+                icon = nativeImage.createFromPath(p).resize({ width: 16, height: 16 });
+                break;
+            }
+        } catch (_) {}
+    }
+    if (!icon) {
+        // 폴백: 내장 base64 아이콘
+        const iconBase64 = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAbwAAAG8B8aLcQwAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAADfSURBVDiNpZMxDoJAEEV/kNCQWFhYGBIbO2s7j+ARPISdnYfwCHR2djYewMZKEgsLC0NCwiIFMbCwy7rJJJPM7sz/M7MLLEOSJMBERIZABziIyNlaq2+FkiQxwAH4AEPgDZRKqWdTb0VpXQdWQBd4A3MRecRxfGzuGGPKQB+YAgtgKCIDoK61fob+EeBpre/AB1gDU2AlIoM4jk91j8YYA/SAGbAE+iIyAspa62uLwD+11legDWyBhYhMgI7W+tIikOc5EzCZpum9kOD/gZzNs+xQJPC3oSAILl+nEbD5AYoJdEnfF3TzAAAAAElFTkSuQmCC';
+        icon = nativeImage.createFromDataURL(`data:image/png;base64,${iconBase64}`);
+    }
     tray = new Tray(icon);
     
     const contextMenu = Menu.buildFromTemplate([
@@ -1047,6 +1063,18 @@ ipcMain.handle('instance:delete', async (event, id) => {
         }
         
         return { error: `인스턴스 삭제 실패: ${error.message}` };
+    }
+});
+
+ipcMain.handle('instance:reorder', async (event, orderedIds) => {
+    try {
+        const response = await axios.put(`${IPC_BASE}/api/instances/reorder`, { order: orderedIds });
+        return response.data;
+    } catch (error) {
+        if (error.response) {
+            return { error: error.response.data?.error || '순서 변경 실패' };
+        }
+        return { error: `순서 변경 실패: ${error.message}` };
     }
 });
 

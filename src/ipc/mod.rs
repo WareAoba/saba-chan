@@ -3,7 +3,7 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::{get, post},
+    routing::{get, post, put},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -63,7 +63,7 @@ pub struct ServerInfo {
     pub module: String,
     pub status: String,
     pub pid: Option<u32>,
-    pub uptime_seconds: Option<u64>,
+    pub start_time: Option<u64>,
     // 설정값들
     pub executable_path: Option<String>,
     pub port: Option<u16>,
@@ -122,6 +122,7 @@ impl IPCServer {
             .route("/api/modules/refresh", post(refresh_modules))
             .route("/api/module/:name", get(get_module_metadata))
             .route("/api/instances", get(list_instances).post(create_instance))
+            .route("/api/instances/reorder", put(reorder_instances))
             .route("/api/instance/:id", get(get_instance).delete(delete_instance).patch(update_instance_settings))
             .route("/api/instance/:id/command", post(execute_command))
             .route("/api/instance/:id/rcon", post(execute_rcon_command))
@@ -145,16 +146,12 @@ async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
     let instances = supervisor.instance_store.list();
     let mut servers = Vec::new();
     
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
     for instance in instances {
         // ProcessTracker에서 PID 및 시작 시간 확인
         let pid = supervisor.tracker.get_pid(&instance.id).ok();
-        let (status, uptime_seconds) = if let Some(pid) = pid {
-            // 실행 중이면 시작 시간으로부터 경과 초 계산
-            let start_time = supervisor.tracker.get_start_time(&instance.id).ok();
-            let uptime = start_time.map(|t| now.saturating_sub(t));
-            ("running".to_string(), uptime)
+        let (status, start_time) = if pid.is_some() {
+            let st = supervisor.tracker.get_start_time(&instance.id).ok();
+            ("running".to_string(), st)
         } else {
             ("stopped".to_string(), None)
         };
@@ -164,7 +161,7 @@ async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
             module: instance.module_name.clone(),
             status,
             pid,
-            uptime_seconds,
+            start_time,
             executable_path: instance.executable_path.clone(),
             port: instance.port,
             rcon_port: instance.rcon_port,
@@ -401,6 +398,33 @@ async fn list_instances(State(state): State<IPCServer>) -> impl IntoResponse {
     let supervisor = state.supervisor.read().await;
     let instances = supervisor.instance_store.list();
     (StatusCode::OK, Json(instances)).into_response()
+}
+
+/// PUT /api/instances/reorder - 인스턴스 순서 변경
+async fn reorder_instances(
+    State(state): State<IPCServer>,
+    Json(payload): Json<Value>,
+) -> impl IntoResponse {
+    let mut supervisor = state.supervisor.write().await;
+    
+    let ordered_ids: Vec<String> = match payload.get("order").and_then(|v| v.as_array()) {
+        Some(arr) => arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect(),
+        None => {
+            let error = json!({ "error": "Missing 'order' array" });
+            return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+        }
+    };
+
+    match supervisor.instance_store.reorder(&ordered_ids) {
+        Ok(_) => {
+            let response = json!({ "success": true });
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Err(e) => {
+            let error = json!({ "error": format!("Failed to reorder: {}", e) });
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+        }
+    }
 }
 
 /// GET /api/instance/:id - 특정 인스턴스 조회

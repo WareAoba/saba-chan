@@ -124,4 +124,23 @@ impl InstanceStore {
             Err(anyhow::anyhow!("Instance not found: {}", id))
         }
     }
+
+    /// 인스턴스 순서 변경 (ID 배열 순서대로 정렬)
+    pub fn reorder(&mut self, ordered_ids: &[String]) -> Result<()> {
+        let mut reordered = Vec::with_capacity(self.instances.len());
+        for id in ordered_ids {
+            if let Some(pos) = self.instances.iter().position(|i| i.id == *id) {
+                reordered.push(self.instances[pos].clone());
+            }
+        }
+        // ordered_ids에 없는 인스턴스는 뒤에 추가
+        for inst in &self.instances {
+            if !ordered_ids.contains(&inst.id) {
+                reordered.push(inst.clone());
+            }
+        }
+        self.instances = reordered;
+        self.save()?;
+        Ok(())
+    }
 }

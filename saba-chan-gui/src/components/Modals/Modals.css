@@ -66,6 +66,15 @@
     color: #dc3545;
 }
 
+.modal-illustration {
+    width: 120px;
+    height: auto;
+    margin-bottom: 8px;
+    object-fit: contain;
+    pointer-events: none;
+    user-select: none;
+}
+
 .notification-icon {
     background-color: #d1ecf1;
     color: #17a2b8;

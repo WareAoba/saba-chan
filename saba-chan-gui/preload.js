@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('api', {
     moduleGetMetadata: (name) => ipcRenderer.invoke('module:getMetadata', name),
     instanceCreate: (data) => ipcRenderer.invoke('instance:create', data),
     instanceDelete: (id) => ipcRenderer.invoke('instance:delete', id),
+    instanceReorder: (orderedIds) => ipcRenderer.invoke('instance:reorder', orderedIds),
     instanceUpdateSettings: (id, settings) => ipcRenderer.invoke('instance:updateSettings', id, settings),
     executeCommand: (id, command) => ipcRenderer.invoke('instance:executeCommand', id, command),
     // Settings API

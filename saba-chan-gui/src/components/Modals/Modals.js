@@ -27,7 +27,7 @@ export function FailureModal({ title, message, onClose }) {
     return (
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal failure-modal" onClick={e => e.stopPropagation()}>
-                <div className="modal-icon failure-icon">✕</div>
+                <img src="/panic.png" alt="" className="modal-illustration" />
                 <h2 className="modal-title">{title}</h2>
                 <p className="modal-message">{message}</p>
                 <button className="modal-button failure-button" onClick={onClose}>

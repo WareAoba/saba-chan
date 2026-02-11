@@ -701,6 +701,22 @@ impl App {
 // 비동기 명령 실행 (tokio::spawn에서 호출되는 자유 함수)
 // ═══════════════════════════════════════════════════════
 
+/// start_time (UNIX timestamp) 기반 경과시간을 hh:mm:ss 포맷으로 변환
+fn format_uptime(start_time: Option<u64>) -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    match start_time {
+        Some(t) => {
+            let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+            let elapsed = now.saturating_sub(t);
+            let h = elapsed / 3600;
+            let m = (elapsed % 3600) / 60;
+            let s = elapsed % 60;
+            format!("{:02}:{:02}:{:02}", h, m, s)
+        }
+        None => "-".into(),
+    }
+}
+
 async fn exec_server(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
     match args.first().copied() {
         Some("list") => match client.list_servers().await {
@@ -768,7 +784,8 @@ async fn exec_server(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
                     Some(p) => p.to_string(),
                     None => "-".into(),
                 };
-                vec![Out::Text(format!("{} — {} | PID {}", args[1], status, pid_str))]
+                let uptime = format_uptime(s["start_time"].as_u64());
+                vec![Out::Text(format!("{} — {} | PID {} | Uptime {}", args[1], status, pid_str, uptime))]
             }
             Err(e) => vec![Out::Err(format!("✗ {}", e))],
         },
@@ -1012,9 +1029,10 @@ async fn exec_lifecycle(
                     Some(p) => p.to_string(),
                     None => "-".into(),
                 };
+                let uptime = format_uptime(s["start_time"].as_u64());
                 vec![Out::Text(format!(
-                    "{} — {} | PID {}",
-                    instance_name, status, pid_str,
+                    "{} — {} | PID {} | Uptime {}",
+                    instance_name, status, pid_str, uptime,
                 ))]
             }
             Err(e) => vec![Out::Err(format!("✗ {}", e))],

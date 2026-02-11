@@ -170,38 +170,103 @@ body {
     align-items: center;
     justify-content: center;
     color: white;
-    gap: 16px;
+    gap: 24px;
     padding: 20px;
 }
 
-.loading-logo {
-    font-size: 72px;
-    animation: float 2s ease-in-out infinite;
+/* 로딩 로고 + 회전 그라데이션 링 */
+.loading-logo-container {
+    position: relative;
+    width: 260px;
+    height: 260px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-@keyframes float {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-10px); }
+/* 회전하는 그라데이션 링 */
+.glow-blur {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: conic-gradient(
+        from 0deg,
+        #7ec8e3,
+        #667eea,
+        #8b5cf6,
+        #a855f7,
+        #7c3aed,
+        #667eea,
+        #7ec8e3
+    );
+    animation: spin-glow 3s linear infinite;
+    z-index: 0;
+}
+
+/* blur 글로우 (회전 링 뒤 바깥으로 퍼짐) */
+.glow-ring {
+    position: absolute;
+    inset: -14px;
+    border-radius: 50%;
+    background: conic-gradient(
+        from 0deg,
+        #7ec8e3,
+        #667eea,
+        #8b5cf6,
+        #a855f7,
+        #7c3aed,
+        #667eea,
+        #7ec8e3
+    );
+    animation: spin-glow 3s linear infinite;
+    filter: blur(28px);
+    opacity: 0.7;
+    z-index: 0;
+}
+
+/* 마스크 — 링 안쪽을 배경색으로 채워 링 두께만 남김 */
+.glow-mask {
+    position: absolute;
+    inset: 5px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 50%;
+    z-index: 1;
+}
+
+.loading-logo-img {
+    width: 250px;
+    height: 250px;
+    object-fit: contain;
+    border-radius: 50%;
+    position: relative;
+    z-index: 2;
+    pointer-events: none;
+    user-select: none;
+}
+
+/* 로딩화면 언어별 로고 (흰색 마스크) */
+.loading-logo-text {
+    height: 48px;
+    object-fit: contain;
+    pointer-events: none;
+    user-select: none;
+    filter: brightness(0) invert(1);
+    opacity: 0.95;
+}
+
+@keyframes spin-glow {
+    to { transform: rotate(360deg); }
 }
 
 .loading-title {
     font-size: 36px;
     font-weight: bold;
-    margin-bottom: 20px;
+    margin-bottom: 0;
     text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
 }
 
 .loading-spinner {
-    width: 40px;
-    height: 40px;
-    border: 3px solid rgba(255, 255, 255, 0.3);
-    border-top-color: white;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-    to { transform: rotate(360deg); }
+    display: none;
 }
 
 /* Icon 로더 애니메이션 */
@@ -322,7 +387,7 @@ span[style*="--icon-loader"] svg,
 
 .app-header {
     background: white;
-    padding: 20px;
+    padding: 28px 28px 20px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     margin-bottom: 20px;
     display: flex;
@@ -347,7 +412,7 @@ span[style*="--icon-loader"] svg,
 .app-title-section {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
     margin-bottom: 15px;
 }
 
@@ -361,6 +426,22 @@ span[style*="--icon-loader"] svg,
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     border-radius: 12px;
     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.app-logo-icon {
+    width: 56px;
+    height: 56px;
+    object-fit: contain;
+    border-radius: 12px;
+    pointer-events: none;
+    user-select: none;
+}
+
+.app-logo-text {
+    height: 44px;
+    object-fit: contain;
+    pointer-events: none;
+    user-select: none;
 }
 
 .app-header h1 {
@@ -520,15 +601,29 @@ span[style*="--icon-loader"] svg,
     border-radius: var(--btn-radius);
     padding: 12px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    transition: transform 0.2s, box-shadow 0.2s;
+    transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.2s ease, opacity 0.2s ease;
     position: relative;
     display: flex;
     flex-direction: column;
+    cursor: grab;
+    will-change: transform;
+    touch-action: none;
+}
+
+.server-card:active {
+    cursor: grabbing;
 }
 
 .server-card:hover {
-    transform: translateY(-4px);
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+/* 드래그 중인 카드: 커서를 따라다니며 부유 */
+.server-card.dragging {
+    opacity: 0.85;
+    box-shadow: 0 16px 40px rgba(102, 126, 234, 0.45);
+    z-index: 999;
+    /* transform은 JS가 직접 제어 — CSS transition 적용 안 함 */
 }
 
 /* 접힘 가능한 콘텐츠 */
@@ -540,6 +635,10 @@ span[style*="--icon-loader"] svg,
 
 .server-card.expanded .server-card-collapsible {
     max-height: 500px;
+}
+
+.server-card.expanded {
+    border-left: 3px solid #667eea;
 }
 
 /* 서버 카드 헤더 */
