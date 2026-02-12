@@ -87,6 +87,65 @@ function getModuleCommands(moduleName) {
     return moduleCommands[moduleName] || {};
 }
 
+// ── 범용 응답 포맷터 ──────────────────────────────────────────
+// 모듈이나 명령어 이름을 참조하지 않고, 데이터 구조만 보고 포맷합니다.
+// 어떤 게임 모듈이든 동일한 로직으로 Discord 응답을 생성합니다.
+function formatGenericResponse(data) {
+    // 1) null / undefined → 성공 메시지
+    if (data === null || data === undefined) {
+        return i18n.t('bot:responses.command_complete');
+    }
+    // 2) 문자열 → 그대로 표시 (RCON 응답은 대부분 문자열)
+    if (typeof data === 'string') {
+        return data || i18n.t('bot:responses.command_complete');
+    }
+    // 3) 배열 → 리스트 포맷
+    if (Array.isArray(data)) {
+        if (data.length === 0) return i18n.t('bot:responses.empty_list');
+        return formatArrayResponse(data);
+    }
+    // 4) 빈 객체 → 성공 메시지
+    if (typeof data === 'object' && Object.keys(data).length === 0) {
+        return i18n.t('bot:responses.command_complete');
+    }
+    // 5) 객체에 배열 필드가 있으면 그 배열을 리스트로 표시
+    if (typeof data === 'object') {
+        for (const [key, value] of Object.entries(data)) {
+            if (Array.isArray(value)) {
+                if (value.length === 0) {
+                    return `📋 **${key}**: (empty)`;
+                }
+                return `📋 **${key}** (${value.length}):\n${formatArrayResponse(value)}`;
+            }
+        }
+        // 6) 단순 key-value 객체 → 속성 나열
+        const entries = Object.entries(data)
+            .filter(([_, v]) => v !== null && v !== undefined)
+            .map(([k, v]) => `• **${k}**: ${v}`)
+            .join('\n');
+        return entries || i18n.t('bot:responses.command_complete');
+    }
+    // 7) 기타 → 문자열 변환
+    return String(data);
+}
+
+// 배열 요소를 Discord-friendly 형식으로 포맷
+function formatArrayResponse(arr) {
+    return arr.map((item, idx) => {
+        if (typeof item === 'string') return `${idx + 1}. ${item}`;
+        if (typeof item === 'object' && item !== null) {
+            // name 또는 id 필드를 이름으로, 나머지는 부가 정보로 표시
+            const name = item.name || item.id || item.userid || `#${idx + 1}`;
+            const extras = Object.entries(item)
+                .filter(([k]) => !['name', 'id'].includes(k))
+                .map(([k, v]) => `${k}: ${v}`)
+                .join(', ');
+            return extras ? `• **${name}** (${extras})` : `• **${name}**`;
+        }
+        return `• ${item}`;
+    }).join('\n');
+}
+
 client.commands = new Collection();
 
 // 중복 메시지 처리 방지를 위한 캐시
@@ -124,47 +183,97 @@ client.on('messageCreate', async (message) => {
         return message.reply(reply);
     }
 
-    // Build help message with module commands
-    function buildHelpMessage() {
-        const moduleList = Object.keys(moduleMetadata).length > 0 
-            ? Object.keys(moduleMetadata).join(', ') 
-            : i18n.t('bot:help.no_modules');
-        
-        // Collect all commands from all modules
-        let moduleCommandsHelp = '';
-        for (const [modName, cmds] of Object.entries(moduleCommands)) {
-            const cmdNames = Object.keys(cmds);
-            if (cmdNames.length > 0) {
-                moduleCommandsHelp += `\n• **${modName}**: ${cmdNames.map(c => `\`${c}\``).join(', ')}`;
-            }
+    // 이스터에그: "갈래말래" / "ㄱㄹㅁㄹ"
+    if (args.length === 1 && (args[0] === '갈래말래' || args[0] === 'ㄱㄹㅁㄹ')) {
+        const reply = Math.random() < 0.9 ? '반드시 가야제 ㅋㅋ' : '안감 ㅈㅈㅇㅇ';
+        return message.reply(reply);
+    }
+
+    // 이스터에그: 단답 반응
+    const simpleEasterEggs = {
+        '물': '🫗',
+        '섹스': '🔞',
+        '사랑해': '❤️',
+    };
+    if (args.length === 1 && simpleEasterEggs[args[0]]) {
+        return message.reply(simpleEasterEggs[args[0]]);
+    }
+
+    // 이스터에그: 가위바위보
+    if (args.length === 1 && args[0] === '가위바위보') {
+        const playRound = async (channel, userId) => {
+            await channel.send('✊✌️✋ 가위/바위/보 중에 하나 고르세요!');
+            const filter = m => m.author.id === userId && ['가위', '바위', '보'].includes(m.content.trim());
+            const collector = channel.createMessageCollector({ filter, max: 1, time: 15000 });
+            collector.on('collect', async (m) => {
+                const choices = ['가위', '바위', '보'];
+                const botChoice = choices[Math.floor(Math.random() * 3)];
+                const userChoice = m.content.trim();
+                if (userChoice === botChoice) {
+                    await m.reply(`${botChoice}! 다시!`);
+                    playRound(channel, userId);
+                } else {
+                    const botWin = (botChoice === '가위' && userChoice === '보') ||
+                                   (botChoice === '바위' && userChoice === '가위') ||
+                                   (botChoice === '보' && userChoice === '바위');
+                    const reply = await m.reply(`${botChoice}!`);
+                    await reply.react(botWin ? '😋' : '😵');
+                }
+            });
+            collector.on('end', (collected) => {
+                if (collected.size === 0) {
+                    channel.send('⏰ 시간 초과! 다음에 다시 도전하세요~');
+                }
+            });
+        };
+        await playRound(message.channel, message.author.id);
+        return;
+    }
+
+    // Build help message with mounted modules and their aliases
+    async function buildHelpMessage() {
+        const prefix = botConfig.prefix;
+
+        // Fetch actually mounted servers
+        let mountedModules = [];
+        try {
+            const response = await axios.get(`${IPC_BASE}/api/servers`);
+            const servers = response.data.servers || [];
+            mountedModules = [...new Set(servers.map(s => s.module))];
+        } catch (e) {
+            console.warn('[Discord] Could not fetch servers for help:', e.message);
         }
 
-        const prefix = botConfig.prefix;
-        const helpTitle = `📖 **${prefix} ${i18n.t('bot:help.title')}**`;
-        const helpList = `\`${prefix} list\` - ${i18n.t('bot:help.list')}`;
-        const helpStart = `\`${prefix} <module> start\` - ${i18n.t('bot:help.start')}`;
-        const helpStop = `\`${prefix} <module> stop\` - ${i18n.t('bot:help.stop')}`;
-        const helpStatus = `\`${prefix} <module> status\` - ${i18n.t('bot:help.status')}`;
-        const helpRest = `\`${prefix} <module> <command>\` - ${i18n.t('bot:help.rest_command')}`;
-        const helpHelp = `\`${prefix} help\` - ${i18n.t('bot:help.help')}`;
-        const availableModules = i18n.t('bot:help.available_modules', { modules: moduleList });
-        const moduleCommandsTitle = i18n.t('bot:help.module_commands', { commands: moduleCommandsHelp || ' (none)' });
+        // Build reverse alias map: moduleName -> [aliases]
+        const moduleAliasMap = buildModuleAliasMap(botConfig, moduleMetadata);
+        const reverseAliasMap = {};
+        for (const [alias, moduleName] of Object.entries(moduleAliasMap)) {
+            if (alias === moduleName) continue;
+            if (!reverseAliasMap[moduleName]) reverseAliasMap[moduleName] = [];
+            reverseAliasMap[moduleName].push(alias);
+        }
 
-        return (
-            `${helpTitle}\n` +
-            `• ${helpList}\n` +
-            `• ${helpStart}\n` +
-            `• ${helpStop}\n` +
-            `• ${helpStatus}\n` +
-            `• ${helpRest}\n` +
-            `• ${helpHelp}\n\n` +
-            `${availableModules}\n` +
-            `${moduleCommandsTitle}`
-        );
+        const helpTitle = `📖 **${prefix}**`;
+
+        const usage = `\n\`${prefix} <모듈> <명령어>\`\n`;
+
+        let moduleInfo = '';
+        if (mountedModules.length > 0) {
+            moduleInfo = '\n**📦 모듈:**\n';
+            for (const mod of mountedModules) {
+                const aliases = reverseAliasMap[mod] || [];
+                const aliasStr = aliases.length > 0 ? ` (${aliases.join(', ')})` : '';
+                moduleInfo += `• **${mod}**${aliasStr}\n`;
+            }
+        } else {
+            moduleInfo = '\n' + i18n.t('bot:help.no_modules');
+        }
+
+        return `${helpTitle}${usage}${moduleInfo}`;
     }
     
     if (args.length === 0 || args[0] === '') {
-        await message.reply(buildHelpMessage());
+        await message.reply(await buildHelpMessage());
         return;
     }
 
@@ -173,7 +282,7 @@ client.on('messageCreate', async (message) => {
 
     // Special commands
     if (firstArg === '도움' || firstArg === 'help') {
-        await message.reply(buildHelpMessage());
+        await message.reply(await buildHelpMessage());
         return;
     }
 
@@ -314,8 +423,8 @@ client.on('messageCreate', async (message) => {
             return;
         }
 
-        // Execute REST command from module.toml (method = 'rest' or 'dual')
-        if (cmdMeta.method === 'rest' || cmdMeta.method === 'dual') {
+        // Execute command from module.toml (method = 'rest', 'dual', or 'rcon')
+        if (cmdMeta.method === 'rest' || cmdMeta.method === 'dual' || cmdMeta.method === 'rcon') {
             // 서버 실행 상태 확인
             if (server.status !== 'running') {
                 const moduleErrors = moduleMetadata[moduleName]?.errors || {};
@@ -352,23 +461,39 @@ client.on('messageCreate', async (message) => {
 
             let result;
             
-            // 'dual' 메서드는 Python 모듈을 통해 실행 (플레이어 ID 변환 포함)
-            // 'rest' 메서드는 REST API 직접 호출
-            if (cmdMeta.method === 'dual') {
-                // 모듈 커맨드 엔드포인트 사용 (플레이어 ID 자동 변환)
-                const payload = {
+            // ── 프로토콜 라우팅 (module.toml의 method 기반, 모듈 이름 참조 없음) ──
+            //   rcon → RCON 템플릿 치환 후 /rcon 엔드포인트
+            //   rest → REST endpoint_template + http_method 로 /rest 엔드포인트
+            //   dual → Python lifecycle 모듈이 프로토콜 선택 (/command 엔드포인트)
+            if (cmdMeta.method === 'rcon') {
+                // RCON 명령어 구성: rcon_template에서 입력값 치환
+                let rconCmd = cmdMeta.rcon_template || commandName;
+                for (const [key, value] of Object.entries(body)) {
+                    rconCmd = rconCmd.replace(`{${key}}`, value);
+                }
+                // 치환되지 않은 선택적 파라미터 제거
+                rconCmd = rconCmd.replace(/\s*\{\w+\}/g, '').trim();
+                
+                console.log(`[Discord] RCON call: ${rconCmd}`);
+                result = await axios.post(`${IPC_BASE}/api/instance/${server.id}/rcon`, {
+                    command: rconCmd,
+                    instance_id: server.id
+                });
+            } else if (cmdMeta.method === 'dual') {
+                // 모듈 커맨드 엔드포인트 사용 (플레이어 ID 자동 변환 등 모듈별 처리)
+                console.log(`[Discord] Module call: ${commandName}`, body);
+                result = await axios.post(`${IPC_BASE}/api/instance/${server.id}/command`, {
                     command: commandName,
                     args: body,
                     instance_id: server.id
-                };
-                console.log(`[Discord] Module call: ${commandName}`, payload);
-                result = await axios.post(`${IPC_BASE}/api/instance/${server.id}/command`, payload);
+                });
             } else {
                 // REST 직접 호출
                 const endpoint = cmdMeta.endpoint_template || `/v1/api/${commandName}`;
                 const httpMethod = (cmdMeta.http_method || 'GET').toUpperCase();
                 
-                const payload = {
+                console.log(`[Discord] REST ${httpMethod} ${endpoint}`, body);
+                result = await axios.post(`${IPC_BASE}/api/instance/${server.id}/rest`, {
                     endpoint,
                     method: httpMethod,
                     body,
@@ -377,85 +502,25 @@ client.on('messageCreate', async (message) => {
                     rest_port: server.rest_port || 8212,
                     username: server.rest_username || 'admin',
                     password: server.rest_password || ''
-                };
-                console.log(`[Discord] REST call: ${httpMethod} ${endpoint}`, payload);
-                result = await axios.post(`${IPC_BASE}/api/instance/${server.id}/rest`, payload);
+                });
             }
 
             if (result.data.success) {
-                // Format response based on command type
-                let responseText = '';
-                const data = result.data.data;
-
-                console.log(`[Discord] Response data structure:`, JSON.stringify(data, null, 2));
-
-                // Palworld REST API 응답은 data 안에 바로 들어있음
-                const apiResponse = data;
-
-                if (commandName === 'players') {
-                    // players 응답: data.players 배열
-                    const players = apiResponse?.players || [];
-                    if (players.length === 0) {
-                        responseText = i18n.t('bot:responses.players_empty');
-                    } else {
-                        const playersTitle = i18n.t('bot:responses.players_title', { count: players.length });
-                        const playersList = players.map(p => 
-                            i18n.t('bot:responses.players_item', { name: p.name, level: p.level || '?', id: p.userid || 'Unknown ID' })
-                        ).join('\n');
-                        responseText = `${playersTitle}\n${playersList}`;
-                    }
-                } else if (commandName === 'info') {
-                    // info 응답: data에 바로 서버 정보
-                    const infoTitle = i18n.t('bot:responses.info_title');
-                    const infoVersion = i18n.t('bot:responses.info_version', { version: apiResponse?.version || 'N/A' });
-                    const infoName = i18n.t('bot:responses.info_name', { name: apiResponse?.servername || 'N/A' });
-                    const infoDesc = i18n.t('bot:responses.info_description', { description: apiResponse?.description || 'N/A' });
-                    responseText = `${infoTitle}\n${infoVersion}\n${infoName}\n${infoDesc}`;
-                } else if (commandName === 'metrics') {
-                    // metrics 응답
-                    const metricsTitle = i18n.t('bot:responses.metrics_title');
-                    const metricsPlayers = i18n.t('bot:responses.metrics_players', { current: apiResponse?.currentplayernum || 0, max: apiResponse?.maxplayernum || 0 });
-                    const metricsFps = i18n.t('bot:responses.metrics_fps', { fps: apiResponse?.serverfps || 'N/A' });
-                    const uptime = apiResponse?.uptime ? Math.floor(apiResponse.uptime / 60) : 'N/A';
-                    const metricsUptime = i18n.t('bot:responses.metrics_uptime', { uptime });
-                    responseText = `${metricsTitle}\n${metricsPlayers}\n${metricsFps}\n${metricsUptime}`;
-                } else if (commandName === 'announce') {
-                    responseText = i18n.t('bot:responses.announce_success');
-                } else if (commandName === 'save') {
-                    responseText = i18n.t('bot:responses.save_success');
-                } else if (commandName === 'kick' || commandName === 'ban') {
-                    responseText = i18n.t('bot:responses.command_executed');
-                } else {
-                    // 기타 명령어는 data를 그대로 표시하거나 성공 메시지
-                    if (typeof apiResponse === 'string') {
-                        responseText = apiResponse;
-                    } else if (apiResponse && Object.keys(apiResponse).length > 0) {
-                        responseText = `\`\`\`json\n${JSON.stringify(apiResponse, null, 2)}\n\`\`\``;
-                    } else {
-                        responseText = i18n.t('bot:responses.command_complete');
-                    }
-                }
-
+                // ── 범용 응답 포맷터 (모듈/명령어 이름 분기 없음) ──
+                const responseText = formatGenericResponse(result.data.data);
                 const completeMsg = i18n.t('bot:command.execute_complete', { name: server.name, command: commandName, response: responseText });
                 await statusMsg.edit(completeMsg);
             } else {
-                // 에러 메시지를 모듈별 정의에서 가져오기
+                // ── 구조적 에러 분류 (문자열 매칭 대신 error_code 또는 HTTP 상태 기반) ──
                 const errorText = result.data.error || i18n.t('bot:errors.unknown');
+                const errorCode = result.data.error_code || '';
                 const moduleErrors = moduleMetadata[moduleName]?.errors || {};
                 
-                let friendlyError = errorText;
-                // 모듈에 정의된 에러 메시지 매칭
-                if (errorText.includes('인증') || errorText.includes('auth')) {
-                    friendlyError = moduleErrors.auth_failed || i18n.t('bot:errors.auth_failed');
-                } else if (errorText.includes('플레이어') || errorText.includes('player')) {
-                    friendlyError = moduleErrors.player_not_found || i18n.t('bot:errors.player_not_found');
-                } else if (errorText.includes('내부 오류') || errorText.includes('500')) {
-                    friendlyError = moduleErrors.internal_server_error || i18n.t('bot:errors.internal_server_error');
-                } else if (errorText.includes('REST API')) {
-                    friendlyError = moduleErrors.rest_api_disabled || i18n.t('bot:errors.rest_api_disabled');
-                } else if (errorText.includes('RCON')) {
-                    friendlyError = moduleErrors.rcon_disabled || i18n.t('bot:errors.rcon_disabled');
-                }
+                // 1순위: 데몬이 반환한 error_code로 모듈 에러 메시지 매칭
+                // 2순위: error_code 없으면 원본 errorText를 그대로 표시
+                const friendlyError = (errorCode && moduleErrors[errorCode])
+                    ? moduleErrors[errorCode]
+                    : errorText;
                 
                 const failedMsg = i18n.t('bot:command.execute_failed', { name: server.name, error: friendlyError });
                 await statusMsg.edit(failedMsg);
@@ -469,31 +534,32 @@ client.on('messageCreate', async (message) => {
         console.error('[Discord] Command error:', error.message);
         const moduleErrors = moduleMetadata[moduleName]?.errors || {};
         
-        let errorMsg = error.message;
+        // ── HTTP 상태 코드 기반 에러 분류 (문자열 매칭 제거) ──
+        let errorMsg;
         
-        // 네트워크 에러 구분
-        if (error.code === 'ECONNREFUSED') {
-            errorMsg = moduleErrors.connection_refused || i18n.t('bot:errors.auth_failed');
-        } else if (error.code === 'ETIMEDOUT') {
-            errorMsg = moduleErrors.timeout || i18n.t('bot:errors.unknown');
-        } else if (error.code === 'ENOTFOUND') {
-            errorMsg = i18n.t('bot:errors.unknown');
-        } else if (error.response) {
-            // HTTP 에러 응답이 있는 경우
+        if (error.response) {
             const status = error.response.status;
             const data = error.response.data;
             
-            if (status === 401 || status === 403) {
-                errorMsg = moduleErrors.auth_failed || i18n.t('bot:errors.auth_failed');
-            } else if (status === 404) {
-                errorMsg = i18n.t('bot:errors.unknown');
-            } else if (status === 500) {
-                errorMsg = moduleErrors.internal_server_error || i18n.t('bot:errors.internal_server_error');
-            } else if (status === 503) {
-                errorMsg = moduleErrors.server_not_running || i18n.t('bot:errors.unknown');
-            } else {
-                errorMsg = data?.error || error.message;
-            }
+            const statusErrors = {
+                401: moduleErrors.auth_failed || i18n.t('bot:errors.auth_failed'),
+                403: moduleErrors.auth_failed || i18n.t('bot:errors.auth_failed'),
+                404: data?.error || i18n.t('bot:errors.not_found'),
+                500: moduleErrors.internal_server_error || i18n.t('bot:errors.internal_server_error'),
+                503: moduleErrors.server_not_running || i18n.t('bot:errors.service_unavailable'),
+            };
+            
+            errorMsg = statusErrors[status] || (data?.error || error.message);
+        } else if (error.code) {
+            // 네트워크 에러 → 에러 코드 기반 분류
+            const networkErrors = {
+                'ECONNREFUSED': moduleErrors.connection_refused || i18n.t('bot:errors.connection_refused'),
+                'ETIMEDOUT': moduleErrors.timeout || i18n.t('bot:errors.timeout'),
+                'ENOTFOUND': i18n.t('bot:errors.host_not_found'),
+            };
+            errorMsg = networkErrors[error.code] || error.message;
+        } else {
+            errorMsg = error.message;
         }
         
         await message.reply(`❌ ${i18n.t('bot:errors.error_title')}: ${errorMsg}`);

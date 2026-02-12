@@ -35,12 +35,15 @@ common_paths = [
 
 [settings]
 
+# ========== saba-chan 전용 설정 (server.properties 아님) ==========
+
 [[settings.fields]]
 name = "executable_path"
 type = "file"
 label = "Server JAR Path"
 description = "Path to server.jar file"
 required = true
+group = "saba-chan"
 
 [[settings.fields]]
 name = "java_path"
@@ -49,6 +52,7 @@ label = "Java Path"
 description = "Path to Java executable (auto-detected if left blank)"
 required = false
 default = "java"
+group = "saba-chan"
 
 [[settings.fields]]
 name = "ram"
@@ -56,88 +60,41 @@ type = "text"
 label = "Memory (RAM)"
 description = "Maximum memory allocation (e.g. 2G, 4G, 8G)"
 default = "2G"
+group = "saba-chan"
 
 [[settings.fields]]
-name = "port"
-type = "number"
-label = "Server Port"
-description = "Game server port"
-default = 25565
-min = 1024
-max = 65535
-
-[[settings.fields]]
-name = "difficulty"
-type = "select"
-label = "Difficulty"
-description = "Game difficulty"
-options = ["peaceful", "easy", "normal", "hard"]
-default = "normal"
-
-[[settings.fields]]
-name = "gamemode"
-type = "select"
-label = "Game Mode"
-description = "Default game mode"
-options = ["survival", "creative", "adventure", "spectator"]
-default = "survival"
-
-[[settings.fields]]
-name = "max_players"
-type = "number"
-label = "Max Players"
-description = "Maximum number of players"
-default = 20
-min = 1
-max = 1000
-
-[[settings.fields]]
-name = "motd"
-type = "text"
-label = "MOTD"
-description = "Message displayed in the server list"
-default = "A Minecraft Server"
-
-[[settings.fields]]
-name = "online_mode"
+name = "use_aikar_flags"
 type = "boolean"
-label = "Online Mode"
-description = "Require Mojang authentication (disable for cracked clients)"
-default = true
+label = "Aikar's Flags"
+description = "Use recommended JVM flags for better GC performance"
+default = false
+group = "saba-chan"
 
 [[settings.fields]]
-name = "pvp"
+name = "managed_start"
 type = "boolean"
-label = "PVP"
-description = "Allow player vs player combat"
+label = "Managed Start (Console)"
+description = "Start server in managed mode with stdin/stdout console. Disable to use simple process launch."
 default = true
+group = "saba-chan"
 
 [[settings.fields]]
-name = "view_distance"
-type = "number"
-label = "View Distance"
-description = "Maximum view distance in chunks"
-default = 10
-min = 2
-max = 32
+name = "graceful_stop"
+type = "boolean"
+label = "Graceful Stop"
+description = "Send 'stop' command and wait for server to shut down gracefully. Disable for immediate force-kill."
+default = true
+group = "saba-chan"
+
+# ========== server.properties - 기본 설정 ==========
 
 [[settings.fields]]
-name = "simulation_distance"
-type = "number"
-label = "Simulation Distance"
-description = "Maximum simulation distance in chunks"
-default = 10
-min = 2
-max = 32
-
-[[settings.fields]]
-name = "spawn_protection"
-type = "number"
-label = "Spawn Protection"
-description = "Radius of spawn protection (0 to disable)"
-default = 16
-min = 0
-max = 256
+name = "accepts_transfers"
+type = "boolean"
+label = "Accepts Transfers"
+description = "Allow connection transfer from other servers"
+default = false
+group = "advanced"
 
 [[settings.fields]]
 name = "allow_flight"
@@ -154,11 +111,148 @@ description = "Allow players to travel to the Nether"
 default = true
 
 [[settings.fields]]
+name = "broadcast_console_to_ops"
+type = "boolean"
+label = "Broadcast Console to Ops"
+description = "Send console output to all online ops"
+default = true
+group = "advanced"
+
+[[settings.fields]]
+name = "broadcast_rcon_to_ops"
+type = "boolean"
+label = "Broadcast RCON to Ops"
+description = "Send RCON command output to all online ops"
+default = true
+group = "advanced"
+
+[[settings.fields]]
+name = "bug_report_link"
+type = "text"
+label = "Bug Report Link"
+description = "Custom bug report link"
+default = ""
+group = "advanced"
+
+[[settings.fields]]
+name = "difficulty"
+type = "select"
+label = "Difficulty"
+description = "Game difficulty"
+options = ["peaceful", "easy", "normal", "hard"]
+default = "normal"
+
+[[settings.fields]]
 name = "enable_command_block"
 type = "boolean"
 label = "Command Blocks"
 description = "Enable command blocks"
 default = false
+
+[[settings.fields]]
+name = "enable_code_of_conduct"
+type = "boolean"
+label = "Code of Conduct"
+description = "Enable code of conduct screen"
+default = false
+group = "advanced"
+
+[[settings.fields]]
+name = "enable_jmx_monitoring"
+type = "boolean"
+label = "JMX Monitoring"
+description = "Enable JMX monitoring (exposes MBean)"
+default = false
+group = "advanced"
+
+[[settings.fields]]
+name = "enable_query"
+type = "boolean"
+label = "Enable Query"
+description = "Enable the GameSpy4 query protocol"
+default = false
+group = "advanced"
+
+[[settings.fields]]
+name = "enable_rcon"
+type = "boolean"
+label = "Enable RCON"
+description = "Enable remote console access"
+default = true
+
+[[settings.fields]]
+name = "enable_status"
+type = "boolean"
+label = "Enable Status"
+description = "Show server in multiplayer server list"
+default = true
+group = "advanced"
+
+[[settings.fields]]
+name = "enforce_secure_profile"
+type = "boolean"
+label = "Enforce Secure Profile"
+description = "Require Mojang-signed public key for players"
+default = true
+group = "advanced"
+
+[[settings.fields]]
+name = "enforce_whitelist"
+type = "boolean"
+label = "Enforce Whitelist"
+description = "Kick players not on whitelist when whitelist is reloaded"
+default = false
+
+[[settings.fields]]
+name = "entity_broadcast_range_percentage"
+type = "number"
+label = "Entity Broadcast Range %"
+description = "Entity broadcast range as percentage of default (10-1000)"
+default = 100
+min = 10
+max = 1000
+group = "advanced"
+
+[[settings.fields]]
+name = "force_gamemode"
+type = "boolean"
+label = "Force Game Mode"
+description = "Force default gamemode on player join"
+default = false
+group = "advanced"
+
+[[settings.fields]]
+name = "function_permission_level"
+type = "number"
+label = "Function Permission Level"
+description = "Default permission level for function commands (1-4)"
+default = 2
+min = 1
+max = 4
+group = "advanced"
+
+[[settings.fields]]
+name = "gamemode"
+type = "select"
+label = "Game Mode"
+description = "Default game mode"
+options = ["survival", "creative", "adventure", "spectator"]
+default = "survival"
+
+[[settings.fields]]
+name = "generate_structures"
+type = "boolean"
+label = "Generate Structures"
+description = "Generate structures like villages, mineshafts, etc."
+default = true
+
+[[settings.fields]]
+name = "generator_settings"
+type = "text"
+label = "Generator Settings"
+description = "JSON settings for flat world generation"
+default = "{}"
+group = "advanced"
 
 [[settings.fields]]
 name = "hardcore"
@@ -168,11 +262,28 @@ description = "Enable hardcore mode"
 default = false
 
 [[settings.fields]]
-name = "white_list"
+name = "hide_online_players"
 type = "boolean"
-label = "Whitelist"
-description = "Only allow whitelisted players"
+label = "Hide Online Players"
+description = "Hide player list from status response"
 default = false
+group = "advanced"
+
+[[settings.fields]]
+name = "initial_disabled_packs"
+type = "text"
+label = "Initial Disabled Packs"
+description = "Comma-separated list of disabled datapacks"
+default = ""
+group = "advanced"
+
+[[settings.fields]]
+name = "initial_enabled_packs"
+type = "text"
+label = "Initial Enabled Packs"
+description = "Comma-separated list of enabled datapacks"
+default = "vanilla"
+group = "advanced"
 
 [[settings.fields]]
 name = "level_name"
@@ -197,6 +308,43 @@ options = ["minecraft:normal", "minecraft:flat", "minecraft:large_biomes", "mine
 default = "minecraft:normal"
 
 [[settings.fields]]
+name = "log_ips"
+type = "boolean"
+label = "Log IPs"
+description = "Log player IP addresses"
+default = true
+group = "advanced"
+
+[[settings.fields]]
+name = "max_chained_neighbor_updates"
+type = "number"
+label = "Max Chained Neighbor Updates"
+description = "Max consecutive neighbor updates before skipping (-1 for no limit)"
+default = 1000000
+min = -1
+max = 2147483647
+group = "advanced"
+
+[[settings.fields]]
+name = "max_players"
+type = "number"
+label = "Max Players"
+description = "Maximum number of players"
+default = 20
+min = 1
+max = 1000
+
+[[settings.fields]]
+name = "max_tick_time"
+type = "number"
+label = "Max Tick Time"
+description = "Max milliseconds a tick can take before watchdog kills server (-1 to disable)"
+default = 60000
+min = -1
+max = 2147483647
+group = "advanced"
+
+[[settings.fields]]
 name = "max_world_size"
 type = "number"
 label = "Max World Size"
@@ -206,10 +354,276 @@ min = 1
 max = 29999984
 
 [[settings.fields]]
-name = "use_aikar_flags"
+name = "motd"
+type = "text"
+label = "MOTD"
+description = "Message displayed in the server list"
+default = "A Minecraft Server"
+
+[[settings.fields]]
+name = "network_compression_threshold"
+type = "number"
+label = "Network Compression Threshold"
+description = "Minimum packet size to compress (-1 to disable, 0 to compress all)"
+default = 256
+min = -1
+max = 65535
+group = "advanced"
+
+[[settings.fields]]
+name = "online_mode"
 type = "boolean"
-label = "Aikar's Flags"
-description = "Use recommended JVM flags for better GC performance"
+label = "Online Mode"
+description = "Require Mojang authentication (disable for cracked clients)"
+default = true
+
+[[settings.fields]]
+name = "op_permission_level"
+type = "number"
+label = "Op Permission Level"
+description = "Default permission level for ops (1-4)"
+default = 4
+min = 1
+max = 4
+group = "advanced"
+
+[[settings.fields]]
+name = "player_idle_timeout"
+type = "number"
+label = "Player Idle Timeout"
+description = "Minutes before idle players are kicked (0 to disable)"
+default = 0
+min = 0
+max = 1440
+group = "advanced"
+
+[[settings.fields]]
+name = "port"
+type = "number"
+label = "Server Port"
+description = "Game server port"
+default = 25565
+min = 1024
+max = 65535
+
+[[settings.fields]]
+name = "pause_when_empty_seconds"
+type = "number"
+label = "Pause When Empty"
+description = "Pause server ticking after no players for this many seconds (0 to disable)"
+default = 60
+min = 0
+max = 3600
+group = "advanced"
+
+[[settings.fields]]
+name = "prevent_proxy_connections"
+type = "boolean"
+label = "Prevent Proxy Connections"
+description = "Block connections using VPN/proxy"
+default = false
+group = "advanced"
+
+[[settings.fields]]
+name = "pvp"
+type = "boolean"
+label = "PVP"
+description = "Allow player vs player combat"
+default = true
+
+[[settings.fields]]
+name = "query_port"
+type = "number"
+label = "Query Port"
+description = "Port for GameSpy4 query protocol"
+default = 25565
+min = 1024
+max = 65535
+group = "advanced"
+
+[[settings.fields]]
+name = "rate_limit"
+type = "number"
+label = "Rate Limit"
+description = "Max packets per second before disconnect (0 to disable)"
+default = 0
+min = 0
+max = 100000
+group = "advanced"
+
+[[settings.fields]]
+name = "rcon_password"
+type = "password"
+label = "RCON Password"
+description = "RCON access password"
+default = ""
+
+[[settings.fields]]
+name = "rcon_port"
+type = "number"
+label = "RCON Port"
+description = "RCON server port"
+default = 25575
+min = 1024
+max = 65535
+
+[[settings.fields]]
+name = "region_file_compression"
+type = "select"
+label = "Region File Compression"
+description = "Compression algorithm for region files"
+options = ["deflate", "lz4", "none"]
+default = "deflate"
+group = "advanced"
+
+[[settings.fields]]
+name = "require_resource_pack"
+type = "boolean"
+label = "Require Resource Pack"
+description = "Require players to accept the resource pack"
+default = false
+group = "advanced"
+
+[[settings.fields]]
+name = "resource_pack"
+type = "text"
+label = "Resource Pack URL"
+description = "URL to a server resource pack"
+default = ""
+group = "advanced"
+
+[[settings.fields]]
+name = "resource_pack_id"
+type = "text"
+label = "Resource Pack ID"
+description = "UUID for the resource pack"
+default = ""
+group = "advanced"
+
+[[settings.fields]]
+name = "resource_pack_prompt"
+type = "text"
+label = "Resource Pack Prompt"
+description = "Custom message shown when resource pack is offered"
+default = ""
+group = "advanced"
+
+[[settings.fields]]
+name = "resource_pack_sha1"
+type = "text"
+label = "Resource Pack SHA-1"
+description = "SHA-1 hash of the resource pack"
+default = ""
+group = "advanced"
+
+[[settings.fields]]
+name = "server_ip"
+type = "text"
+label = "Server IP"
+description = "Bind to specific IP address (leave blank for all)"
+default = ""
+group = "advanced"
+
+[[settings.fields]]
+name = "simulation_distance"
+type = "number"
+label = "Simulation Distance"
+description = "Maximum simulation distance in chunks"
+default = 10
+min = 2
+max = 32
+
+[[settings.fields]]
+name = "spawn_animals"
+type = "boolean"
+label = "Spawn Animals"
+description = "Allow animals to spawn"
+default = true
+group = "advanced"
+
+[[settings.fields]]
+name = "spawn_monsters"
+type = "boolean"
+label = "Spawn Monsters"
+description = "Allow hostile mobs to spawn"
+default = true
+group = "advanced"
+
+[[settings.fields]]
+name = "spawn_npcs"
+type = "boolean"
+label = "Spawn NPCs"
+description = "Allow villagers to spawn"
+default = true
+group = "advanced"
+
+[[settings.fields]]
+name = "spawn_protection"
+type = "number"
+label = "Spawn Protection"
+description = "Radius of spawn protection (0 to disable)"
+default = 16
+min = 0
+max = 256
+
+[[settings.fields]]
+name = "status_heartbeat_interval"
+type = "number"
+label = "Status Heartbeat Interval"
+description = "Heartbeat interval for server status (0 to disable)"
+default = 0
+min = 0
+max = 60
+group = "advanced"
+
+[[settings.fields]]
+name = "sync_chunk_writes"
+type = "boolean"
+label = "Sync Chunk Writes"
+description = "Enable synchronous chunk I/O"
+default = true
+group = "advanced"
+
+[[settings.fields]]
+name = "text_filtering_config"
+type = "text"
+label = "Text Filtering Config"
+description = "Text filtering configuration"
+default = ""
+group = "advanced"
+
+[[settings.fields]]
+name = "text_filtering_version"
+type = "number"
+label = "Text Filtering Version"
+description = "Text filtering version"
+default = 0
+min = 0
+max = 100
+group = "advanced"
+
+[[settings.fields]]
+name = "use_native_transport"
+type = "boolean"
+label = "Use Native Transport"
+description = "Use Linux optimized network transport"
+default = true
+group = "advanced"
+
+[[settings.fields]]
+name = "view_distance"
+type = "number"
+label = "View Distance"
+description = "Maximum view distance in chunks"
+default = 10
+min = 2
+max = 32
+
+[[settings.fields]]
+name = "white_list"
+type = "boolean"
+label = "Whitelist"
+description = "Only allow whitelisted players"
 default = false
 
 # ─── Commands (displayed in GUI command palette) ──────────────
@@ -221,7 +635,7 @@ name = "say"
 label = "Send Chat Message"
 description = "Broadcast a message to the server"
 method = "rcon"
-command_template = "say {message}"
+rcon_template = "say {message}"
 inputs = [
     { name = "message", type = "text", label = "Message", required = true, placeholder = "Enter message to send" }
 ]
@@ -231,7 +645,7 @@ name = "give"
 label = "Give Item"
 description = "Give an item to a player"
 method = "rcon"
-command_template = "give {player} {item} {amount}"
+rcon_template = "give {player} {item} {amount}"
 inputs = [
     { name = "player", type = "text", label = "Player Name", required = true, placeholder = "Player nickname" },
     { name = "item", type = "text", label = "Item ID", required = true, placeholder = "e.g. diamond, iron_ore" },
@@ -243,7 +657,7 @@ name = "save-all"
 label = "Save World"
 description = "Save the game world"
 method = "rcon"
-command_template = "save-all"
+rcon_template = "save-all"
 inputs = []
 
 [[commands.fields]]
@@ -251,7 +665,7 @@ name = "list"
 label = "Player List"
 description = "View list of connected players"
 method = "rcon"
-command_template = "list"
+rcon_template = "list"
 inputs = []
 
 [[commands.fields]]
@@ -259,7 +673,7 @@ name = "weather"
 label = "Change Weather"
 description = "Change the server weather"
 method = "rcon"
-command_template = "weather {type} {duration}"
+rcon_template = "weather {type} {duration}"
 inputs = [
     { name = "type", type = "select", label = "Weather", required = true, options = ["clear", "rain", "thunder"] },
     { name = "duration", type = "number", label = "Duration (seconds)", required = true, default = 1000, min = 1, max = 1000000 }
@@ -270,7 +684,7 @@ name = "difficulty"
 label = "Change Difficulty"
 description = "Change the game difficulty"
 method = "rcon"
-command_template = "difficulty {level}"
+rcon_template = "difficulty {level}"
 inputs = [
     { name = "level", type = "select", label = "Difficulty", required = true, options = ["peaceful", "easy", "normal", "hard"] }
 ]
@@ -280,7 +694,7 @@ name = "gamemode"
 label = "Change Game Mode"
 description = "Change a player's game mode"
 method = "rcon"
-command_template = "gamemode {mode} {player}"
+rcon_template = "gamemode {mode} {player}"
 inputs = [
     { name = "mode", type = "select", label = "Game Mode", required = true, options = ["survival", "creative", "adventure", "spectator"] },
     { name = "player", type = "text", label = "Player Name", required = false, placeholder = "Leave empty for all" }
@@ -291,7 +705,7 @@ name = "time"
 label = "Set Time"
 description = "Change the time of day"
 method = "rcon"
-command_template = "time set {value}"
+rcon_template = "time set {value}"
 inputs = [
     { name = "value", type = "select", label = "Time", required = true, options = ["day", "noon", "night", "midnight", "0", "6000", "12000", "18000"] }
 ]
@@ -301,7 +715,7 @@ name = "tp"
 label = "Teleport"
 description = "Teleport a player"
 method = "rcon"
-command_template = "tp {player} {target}"
+rcon_template = "tp {player} {target}"
 inputs = [
     { name = "player", type = "text", label = "Player", required = true, placeholder = "Player to teleport" },
     { name = "target", type = "text", label = "Destination", required = true, placeholder = "Target player or coordinates (x y z)" }
@@ -312,7 +726,7 @@ name = "kick"
 label = "Kick Player"
 description = "Kick a player from the server"
 method = "rcon"
-command_template = "kick {player} {reason}"
+rcon_template = "kick {player} {reason}"
 inputs = [
     { name = "player", type = "text", label = "Player Name", required = true },
     { name = "reason", type = "text", label = "Reason", required = false, placeholder = "Reason for kick" }
@@ -323,7 +737,7 @@ name = "ban"
 label = "Ban Player"
 description = "Ban a player from the server"
 method = "rcon"
-command_template = "ban {player} {reason}"
+rcon_template = "ban {player} {reason}"
 inputs = [
     { name = "player", type = "text", label = "Player Name", required = true },
     { name = "reason", type = "text", label = "Reason", required = false, placeholder = "Reason for ban" }
@@ -334,7 +748,7 @@ name = "pardon"
 label = "Unban Player"
 description = "Remove a player's ban"
 method = "rcon"
-command_template = "pardon {player}"
+rcon_template = "pardon {player}"
 inputs = [
     { name = "player", type = "text", label = "Player Name", required = true }
 ]
@@ -344,7 +758,7 @@ name = "op"
 label = "Op Player"
 description = "Give operator permissions"
 method = "rcon"
-command_template = "op {player}"
+rcon_template = "op {player}"
 inputs = [
     { name = "player", type = "text", label = "Player Name", required = true }
 ]
@@ -354,7 +768,7 @@ name = "deop"
 label = "Deop Player"
 description = "Remove operator permissions"
 method = "rcon"
-command_template = "deop {player}"
+rcon_template = "deop {player}"
 inputs = [
     { name = "player", type = "text", label = "Player Name", required = true }
 ]
@@ -364,7 +778,7 @@ name = "whitelist"
 label = "Whitelist"
 description = "Manage the server whitelist"
 method = "rcon"
-command_template = "whitelist {action} {player}"
+rcon_template = "whitelist {action} {player}"
 inputs = [
     { name = "action", type = "select", label = "Action", required = true, options = ["add", "remove", "list", "on", "off", "reload"] },
     { name = "player", type = "text", label = "Player Name", required = false, placeholder = "Player name (for add/remove)" }
@@ -375,7 +789,7 @@ name = "seed"
 label = "Show Seed"
 description = "Display the world seed"
 method = "rcon"
-command_template = "seed"
+rcon_template = "seed"
 inputs = []
 
 [[commands.fields]]
@@ -383,7 +797,7 @@ name = "stop"
 label = "Stop Server"
 description = "Gracefully stop the server"
 method = "rcon"
-command_template = "stop"
+rcon_template = "stop"
 inputs = []
 
 # ─── Error definitions ────────────────────────────────────────

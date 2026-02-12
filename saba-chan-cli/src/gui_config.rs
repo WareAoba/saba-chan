@@ -155,24 +155,32 @@ pub fn get_module_aliases() -> anyhow::Result<Vec<(String, String)>> {
     Ok(aliases)
 }
 
-/// instances.json 경로 (프로젝트 루트/config/instances.json)
+/// instances.json 경로 (%APPDATA%/saba-chan/instances.json)
 pub fn get_instances_path() -> anyhow::Result<PathBuf> {
-    let root = crate::process::find_project_root()?;
+    let config_dir = get_config_dir()?;
+    let appdata_path = config_dir.join("instances.json");
 
-    // 1. config/instances.json (GUI가 사용하는 경로 - SABA_INSTANCES_PATH)
-    let config_path = root.join("config").join("instances.json");
-    if config_path.exists() {
-        return Ok(config_path);
+    // AppData에 있으면 그대로 사용
+    if appdata_path.exists() {
+        return Ok(appdata_path);
     }
 
-    // 2. 루트의 instances.json
-    let root_path = root.join("instances.json");
-    if root_path.exists() {
-        return Ok(root_path);
+    // 레거시 경로 마이그레이션: 프로젝트 루트에 있던 instances.json을 AppData로 이동
+    if let Ok(root) = crate::process::find_project_root() {
+        for legacy in &[
+            root.join("config").join("instances.json"),
+            root.join("instances.json"),
+        ] {
+            if legacy.exists() {
+                std::fs::create_dir_all(&config_dir)?;
+                std::fs::rename(legacy, &appdata_path)?;
+                return Ok(appdata_path);
+            }
+        }
     }
 
-    // 기본: config/instances.json
-    Ok(config_path)
+    // 기본: AppData 경로 (없으면 새로 생성됨)
+    Ok(appdata_path)
 }
 
 // ============ Write functions ============
@@ -221,6 +229,7 @@ pub fn set_bot_prefix(prefix: &str) -> anyhow::Result<()> {
 }
 
 /// 모듈 경로 변경
+#[allow(dead_code)]
 pub fn set_modules_path(path: &str) -> anyhow::Result<()> {
     let mut settings = load_settings()?;
     settings["modulesPath"] = serde_json::Value::String(path.to_string());
@@ -228,6 +237,7 @@ pub fn set_modules_path(path: &str) -> anyhow::Result<()> {
 }
 
 /// 언어 설정 변경
+#[allow(dead_code)]
 pub fn set_language(lang: &str) -> anyhow::Result<()> {
     let mut settings = load_settings()?;
     settings["language"] = serde_json::Value::String(lang.to_string());

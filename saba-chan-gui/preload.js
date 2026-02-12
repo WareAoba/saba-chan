@@ -39,11 +39,14 @@ contextBridge.exposeInMainWorld('api', {
     logsOpenFolder: () => ipcRenderer.invoke('logs:openFolder'),
     // App Lifecycle
     onCloseRequest: (callback) => ipcRenderer.on('app:closeRequest', callback),
+    offCloseRequest: () => ipcRenderer.removeAllListeners('app:closeRequest'),
     closeResponse: (choice) => ipcRenderer.send('app:closeResponse', choice),
     // Bot Relaunch (when language changes)
     onBotRelaunch: (callback) => ipcRenderer.on('bot:relaunch', (event, config) => callback(config)),
+    offBotRelaunch: () => ipcRenderer.removeAllListeners('bot:relaunch'),
     // Status Update Events
     onStatusUpdate: (callback) => ipcRenderer.on('status:update', (event, data) => callback(data)),
+    offStatusUpdate: () => ipcRenderer.removeAllListeners('status:update'),
     // Daemon Status
     daemonStatus: () => ipcRenderer.invoke('daemon:status'),
     daemonRestart: () => ipcRenderer.invoke('daemon:restart'),

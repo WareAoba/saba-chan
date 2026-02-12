@@ -91,6 +91,7 @@ struct App {
     registry: Arc<ModuleRegistry>,
     // 설정 & i18n
     settings: CliSettings,
+    #[allow(dead_code)]
     i18n: Arc<I18n>,
     // UI
     input: String,
@@ -501,7 +502,7 @@ impl App {
                 Out::Text("  module list              list loaded modules".into()),
                 Out::Text("  module refresh           refresh all modules".into()),
                 Out::Text("  module versions <name>   list available versions".into()),
-                Out::Text("  module install <name> [dir] [ver]  install server".into()),
+                Out::Text("  module install <name> [ver]  install server".into()),
             ]),
             Some("daemon") if lower.len() == 1 => Some(vec![
                 Out::Text("  daemon start             start core daemon".into()),
@@ -772,24 +773,11 @@ async fn exec_server(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
                 Some(m) => m,
                 None => return vec![Out::Err(format!("✗ Server '{}' not found", name))],
             };
-            let instance_id = find_instance_id_by_name(client, name).await.unwrap_or_default();
             match client.start_server(name, &module).await {
-                Ok(r) => {
-                    // action_required: 서버 JAR 미발견 → 자동 설치 흐름
-                    if r.get("action_required").and_then(|v| v.as_str()) == Some("server_jar_not_found") {
-                        return handle_jar_not_found(client, name, &instance_id, &module, false).await;
-                    }
-                    if r.get("success").and_then(|v| v.as_bool()) == Some(false) {
-                        return vec![Out::Err(format!(
-                            "✗ {}",
-                            r.get("message").and_then(|v| v.as_str()).unwrap_or("Start failed"),
-                        ))];
-                    }
-                    vec![Out::Ok(format!(
-                        "✓ {}",
-                        r.get("message").and_then(|v| v.as_str()).unwrap_or("Started")
-                    ))]
-                }
+                Ok(r) => vec![Out::Ok(format!(
+                    "✓ {}",
+                    r.get("message").and_then(|v| v.as_str()).unwrap_or("Started")
+                ))],
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
             }
         }
@@ -836,24 +824,11 @@ async fn exec_server(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
                 Some(id) => id,
                 None => return vec![Out::Err(format!("✗ Instance '{}' not found", name))],
             };
-            let module = find_module_for_server(client, name).await.unwrap_or_default();
             match client.start_managed(&instance_id).await {
-                Ok(r) => {
-                    // action_required: 서버 JAR 미발견 → 자동 설치 흐름
-                    if r.get("action_required").and_then(|v| v.as_str()) == Some("server_jar_not_found") {
-                        return handle_jar_not_found(client, name, &instance_id, &module, true).await;
-                    }
-                    if r.get("success").and_then(|v| v.as_bool()) == Some(false) {
-                        return vec![Out::Err(format!(
-                            "✗ {}",
-                            r.get("message").and_then(|v| v.as_str()).unwrap_or("Start failed"),
-                        ))];
-                    }
-                    vec![Out::Ok(format!(
-                        "✓ {}",
-                        r.get("message").and_then(|v| v.as_str()).unwrap_or("Managed server started"),
-                    ))]
-                }
+                Ok(r) => vec![Out::Ok(format!(
+                    "✓ {}",
+                    r.get("message").and_then(|v| v.as_str()).unwrap_or("Managed server started"),
+                ))],
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
             }
         }
@@ -980,165 +955,6 @@ async fn exec_server(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
     }
 }
 
-/// server start/managed에서 JAR 미발견 시 자동 설치 → 인스턴스 업데이트 → 재시작
-async fn handle_jar_not_found(
-    client: &DaemonClient,
-    instance_name: &str,
-    instance_id: &str,
-    module_name: &str,
-    managed: bool,
-) -> Vec<Out> {
-    let mut output = vec![
-        Out::Err("✗ Server JAR not found".into()),
-        Out::Text("  Auto-installing latest version...".into()),
-    ];
-
-    // 1. 최신 버전 조회
-    let versions = match client.list_versions(module_name).await {
-        Ok(v) => v,
-        Err(e) => {
-            output.push(Out::Err(format!("  ✗ Failed to fetch versions: {}", e)));
-            output.push(Out::Text(format!(
-                "  → Run manually: module install {} <dir> [version]",
-                module_name
-            )));
-            return output;
-        }
-    };
-
-    let latest = versions
-        .get("latest")
-        .and_then(|v| v.get("release"))
-        .and_then(|v| v.as_str())
-        .or_else(|| {
-            // fallback: versions 배열의 첫 번째
-            versions.get("versions")
-                .and_then(|v| v.as_array())
-                .and_then(|arr| arr.first())
-                .and_then(|v| v.as_str().or_else(|| v.get("id").and_then(|i| i.as_str())))
-        });
-
-    let latest = match latest {
-        Some(v) => v.to_string(),
-        None => {
-            output.push(Out::Err("  ✗ No versions available".into()));
-            return output;
-        }
-    };
-
-    output.push(Out::Text(format!("  Version: {}", latest)));
-
-    // 2. 설치 디렉토리 결정 (인스턴스의 working_dir 또는 기본 경로)
-    let install_dir = {
-        let mut dir = None;
-        if let Ok(inst) = client.get_instance(instance_id).await {
-            if let Some(wd) = inst.get("working_dir").and_then(|v| v.as_str()) {
-                if !wd.is_empty() {
-                    dir = Some(wd.to_string());
-                }
-            }
-        }
-        dir.unwrap_or_else(|| {
-            let base = std::env::var("APPDATA")
-                .unwrap_or_else(|_| ".".to_string());
-            format!("{}\\saba-chan\\servers\\{}", base, instance_name)
-        })
-    };
-
-    output.push(Out::Text(format!("  Install dir: {}", install_dir)));
-
-    // 3. 설치 실행
-    let install_body = serde_json::json!({
-        "version": latest,
-        "install_dir": install_dir,
-        "accept_eula": true,
-    });
-
-    match client.install_server(module_name, install_body).await {
-        Ok(result) => {
-            if result.get("success").and_then(|v| v.as_bool()) != Some(true) {
-                let msg = result.get("message").and_then(|v| v.as_str()).unwrap_or("Install failed");
-                output.push(Out::Err(format!("  ✗ {}", msg)));
-                return output;
-            }
-
-            let jar_path = result.get("jar_path").and_then(|v| v.as_str());
-            let install_path = result.get("install_path").and_then(|v| v.as_str());
-
-            output.push(Out::Ok(format!(
-                "  ✓ Installed v{} → {}",
-                latest,
-                jar_path.unwrap_or("?"),
-            )));
-
-            // Java 경고가 있으면 표시
-            if let Some(warn) = result.get("java_warning").and_then(|v| v.as_str()) {
-                output.push(Out::Text(format!("  ⚠ {}", warn)));
-            }
-
-            // 4. 인스턴스 설정 업데이트
-            if let Some(jp) = jar_path {
-                let mut update = serde_json::json!({ "executable_path": jp });
-                if let Some(ip) = install_path {
-                    update["working_dir"] = serde_json::json!(ip);
-                }
-                if let Err(e) = client.update_instance(instance_id, update).await {
-                    output.push(Out::Err(format!("  ✗ Failed to update instance: {}", e)));
-                    return output;
-                }
-                output.push(Out::Text("  Instance updated.".into()));
-            }
-
-            // 5. 서버 재시작
-            output.push(Out::Text("  Starting server...".into()));
-            if managed {
-                match client.start_managed(instance_id).await {
-                    Ok(r2) => {
-                        if r2.get("success").and_then(|v| v.as_bool()) == Some(true) {
-                            output.push(Out::Ok(format!(
-                                "  ✓ {}",
-                                r2.get("message").and_then(|v| v.as_str()).unwrap_or("Server started"),
-                            )));
-                        } else {
-                            output.push(Out::Err(format!(
-                                "  ✗ {}",
-                                r2.get("message").and_then(|v| v.as_str()).unwrap_or("Start failed"),
-                            )));
-                        }
-                    }
-                    Err(e) => output.push(Out::Err(format!("  ✗ {}", e))),
-                }
-            } else {
-                match client.start_server(instance_name, module_name).await {
-                    Ok(r2) => {
-                        if r2.get("success").and_then(|v| v.as_bool()) == Some(true) {
-                            output.push(Out::Ok(format!(
-                                "  ✓ {}",
-                                r2.get("message").and_then(|v| v.as_str()).unwrap_or("Server started"),
-                            )));
-                        } else {
-                            output.push(Out::Err(format!(
-                                "  ✗ {}",
-                                r2.get("message").and_then(|v| v.as_str()).unwrap_or("Start failed"),
-                            )));
-                        }
-                    }
-                    Err(e) => output.push(Out::Err(format!("  ✗ {}", e))),
-                }
-            }
-        }
-        Err(e) => {
-            output.push(Out::Err(format!("  ✗ Install failed: {}", e)));
-            output.push(Out::Text(format!(
-                "  → Run manually: module install {} <dir> [version]",
-                module_name
-            )));
-        }
-    }
-
-    output
-}
-
 /// 인스턴스 목록에서 해당 이름의 module_name을 찾는 유틸리티
 async fn find_module_for_server(client: &DaemonClient, name: &str) -> Option<String> {
     if let Ok(instances) = client.list_instances().await {
@@ -1209,45 +1025,17 @@ async fn exec_module(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
         }
         Some("install") if args.len() > 1 => {
             let module = args[1];
-            let install_dir = args.get(2).copied();
-            let version = args.get(3).copied().unwrap_or("latest");
-
-            // install_dir가 없으면 기본 경로 사용
-            let dir = match install_dir {
-                Some(d) => d.to_string(),
-                None => {
-                    let base = std::env::var("APPDATA")
-                        .unwrap_or_else(|_| ".".to_string());
-                    format!("{}\\saba-chan\\servers\\{}", base, module)
-                }
-            };
-
-            let body = serde_json::json!({
-                "version": version,
-                "install_dir": dir,
-                "accept_eula": true,
-            });
+            let version = args.get(2).copied().unwrap_or("latest");
+            let body = serde_json::json!({ "version": version });
             match client.install_server(module, body).await {
-                Ok(r) => {
-                    let mut o = vec![Out::Ok(format!(
-                        "✓ {}",
-                        r.get("message").and_then(|v| v.as_str()).unwrap_or("Install completed"),
-                    ))];
-                    if let Some(jp) = r.get("jar_path").and_then(|v| v.as_str()) {
-                        o.push(Out::Text(format!("  JAR: {}", jp)));
-                    }
-                    if let Some(ip) = r.get("install_path").and_then(|v| v.as_str()) {
-                        o.push(Out::Text(format!("  Dir: {}", ip)));
-                    }
-                    if let Some(warn) = r.get("java_warning").and_then(|v| v.as_str()) {
-                        o.push(Out::Text(format!("  ⚠ {}", warn)));
-                    }
-                    o
-                }
+                Ok(r) => vec![Out::Ok(format!(
+                    "✓ {}",
+                    r.get("message").and_then(|v| v.as_str()).unwrap_or("Install started"),
+                ))],
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
             }
         }
-        _ => vec![Out::Err("Usage: module [list|refresh|versions <name>|install <name> [dir] [version]]".into())],
+        _ => vec![Out::Err("Usage: module [list|refresh|versions <name>|install <name> [version]]".into())],
     }
 }
 

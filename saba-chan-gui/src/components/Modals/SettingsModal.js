@@ -6,7 +6,7 @@ import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { getTheme, setTheme as saveTheme } from '../../utils/themeManager';
 import { useModalClose } from '../../hooks/useModalClose';
 
-function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChange, onTestModal, onTestProgressBar, onTestLoadingScreen }) {
+function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChange, onTestModal, onTestProgressBar, onTestWaitingImage, onTestLoadingScreen }) {
     const { t, i18n } = useTranslation(['gui', 'common']);
     const [activeTab, setActiveTab] = useState('general');
     const [localRefreshInterval, setLocalRefreshInterval] = useState(refreshInterval);
@@ -251,6 +251,11 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
                                         setTimeout(() => onTestProgressBar(null), 4000);
                                     }}>
                                         <Icon name="loader" size="sm" /> Indeterminate
+                                    </button>
+                                    <button className="gui-test-btn gui-test-waiting" onClick={() => {
+                                        onTestWaitingImage && onTestWaitingImage();
+                                    }}>
+                                        <Icon name="clock" size="sm" /> Waiting Image
                                     </button>
                                     <button className="gui-test-btn gui-test-loading" onClick={() => {
                                         onTestLoadingScreen && onTestLoadingScreen();

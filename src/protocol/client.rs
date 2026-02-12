@@ -116,10 +116,10 @@ impl ProtocolClient {
     fn execute_rcon(&mut self, cmd: ServerCommand) -> Result<ServerResponse, ProtocolError> {
         if let Some(rcon) = &mut self.rcon {
             if let Some(command) = cmd.command {
-                rcon.execute_command(&command)?;
+                let response_text = rcon.execute_command(&command)?;
                 return Ok(ServerResponse {
                     success: true,
-                    data: Some(json!({ "executed": command })),
+                    data: Some(json!({ "response": response_text, "executed": command })),
                     error: None,
                 });
             }

@@ -32,6 +32,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Start IPC HTTP server
     let ipc_server = ipc::IPCServer::new(supervisor.clone(), "127.0.0.1:57474");
+    let client_registry = ipc_server.client_registry.clone();
     tracing::info!("Starting IPC server on 127.0.0.1:57474");
     
     // 백그라운드 모니터링 태스크 시작
@@ -65,6 +66,35 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
+    });
+
+    // Heartbeat reaper 태스크 — 30초마다 만료 클라이언트 확인, 봇 프로세스 정리
+    let registry_reaper = client_registry.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+            ipc::reap_expired_clients(&registry_reaper).await;
+        }
+    });
+
+    // Graceful shutdown: Ctrl+C / SIGTERM 시 정리
+    let registry_shutdown = client_registry.clone();
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c().await.ok();
+        tracing::info!("Shutdown signal received, cleaning up...");
+
+        // 등록된 모든 클라이언트의 봇 프로세스를 종료
+        let timeout = std::time::Duration::from_secs(0); // 즉시 모든 클라이언트 만료 처리
+        let all = registry_shutdown.reap_expired(timeout).await;
+        for (id, client) in &all {
+            tracing::info!("[Shutdown] Cleaning client {} ({:?})", id, client.kind);
+            if let Some(pid) = client.bot_pid {
+                ipc::kill_bot_pid(pid);
+            }
+        }
+
+        tracing::info!("Cleanup complete, exiting");
+        std::process::exit(0);
     });
     
     if let Err(e) = ipc_server.start().await {

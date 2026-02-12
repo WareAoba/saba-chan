@@ -16,7 +16,8 @@ interaction_mode = "commands"  # console: stdin 지원, 콘솔 UI 표시 | comma
 executable_path = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\PalServer\\PalServer.exe"
 server_executable = "PalServer.exe"
 process_name = "PalServer-Win64-Shipping-Cmd"
-port = 8211
+default_port = 8211
+stop_command = "Shutdown"  # stdin으로 전송하는 graceful 종료 명령어
 
 [detection]
 process_patterns = ["PalServer-Win64-Shipping-Cmd", "PalServer", "PalServer-Win64"]

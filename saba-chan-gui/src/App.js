@@ -160,6 +160,9 @@ function App() {
     const [settingsServer, setSettingsServer] = useState(null);
     const [settingsValues, setSettingsValues] = useState({});
     const [settingsActiveTab, setSettingsActiveTab] = useState('general'); // 'general' | 'aliases'
+    const [advancedExpanded, setAdvancedExpanded] = useState(false); // 고급 설정 접힘/펼침
+    const [availableVersions, setAvailableVersions] = useState([]); // 서버 버전 목록
+    const [versionsLoading, setVersionsLoading] = useState(false); // 버전 로딩 중
     
     // Command 모달 상태
     const [showCommandModal, setShowCommandModal] = useState(false);
@@ -173,6 +176,79 @@ function App() {
 
     // 글로벌 프로그레스바 상태
     const [progressBar, setProgressBar] = useState(null); // { message, percent?, indeterminate? }
+
+    // waiting.png 표시 상태 (느린 진행/타임아웃 감지)
+    const [showWaitingImage, setShowWaitingImage] = useState(false);
+    const waitingTimerRef = useRef(null);
+    const progressSnapshotRef = useRef(null);
+
+    // waiting.png: 프로그레스바가 5초 이상 느리면 표시
+    useEffect(() => {
+        if (!progressBar) {
+            // 프로그레스바 사라지면 초기화
+            setShowWaitingImage(false);
+            if (waitingTimerRef.current) clearInterval(waitingTimerRef.current);
+            progressSnapshotRef.current = null;
+            return;
+        }
+
+        // 완료 상태면 무시
+        if (progressBar.percent === 100) {
+            setShowWaitingImage(false);
+            if (waitingTimerRef.current) clearInterval(waitingTimerRef.current);
+            progressSnapshotRef.current = null;
+            return;
+        }
+
+        // 스냅샷 초기화
+        if (!progressSnapshotRef.current) {
+            progressSnapshotRef.current = { percent: progressBar.percent || 0, timestamp: Date.now() };
+        }
+
+        // 1초마다 진행 속도 체크
+        if (!waitingTimerRef.current) {
+            waitingTimerRef.current = setInterval(() => {
+                const snap = progressSnapshotRef.current;
+                if (!snap) return;
+                const elapsed = (Date.now() - snap.timestamp) / 1000;
+                if (elapsed >= 5) {
+                    // 5초 이상 경과 시 waiting.png 표시
+                    setShowWaitingImage(true);
+                }
+            }, 1000);
+        }
+
+        // percent 변화 감지 → 빠르게 진행되면 스냅샷 리셋
+        const currentPercent = progressBar.percent || 0;
+        const snap = progressSnapshotRef.current;
+        if (snap && currentPercent - snap.percent > 5) {
+            // 5% 이상 진행됨 → 리셋
+            progressSnapshotRef.current = { percent: currentPercent, timestamp: Date.now() };
+            setShowWaitingImage(false);
+        }
+
+        return () => {
+            if (waitingTimerRef.current) {
+                clearInterval(waitingTimerRef.current);
+                waitingTimerRef.current = null;
+            }
+        };
+    }, [progressBar]);
+
+    // waiting.png: 타임아웃 토스트 감지
+    useEffect(() => {
+        const origUpdateToast = window.updateToast;
+        const wrappedUpdateToast = (id, message, type, duration) => {
+            // "시간이 걸릴 수 있습니다" 메시지 감지
+            if (message && message.includes('시간이 걸릴')) {
+                setShowWaitingImage(true);
+                setTimeout(() => setShowWaitingImage(false), duration || 5000);
+            }
+            if (origUpdateToast) origUpdateToast(id, message, type, duration);
+        };
+        window.updateToast = wrappedUpdateToast;
+        return () => { window.updateToast = origUpdateToast; };
+    }, []);
 
     // 콘솔 패널 상태
     const [consoleServer, setConsoleServer] = useState(null); // { id, name } — 현재 콘솔이 열린 서버
@@ -838,7 +914,12 @@ function App() {
             }
         }, refreshInterval);
         
-        return () => clearInterval(interval);
+        return () => {
+            clearInterval(interval);
+            // IPC 리스너 정리 (중복 등록 방지)
+            if (window.api.offCloseRequest) window.api.offCloseRequest();
+            if (window.api.offBotRelaunch) window.api.offBotRelaunch();
+        };
     }, [autoRefresh, refreshInterval]);
 
     useEffect(() => {
@@ -1012,7 +1093,6 @@ function App() {
     };
 
     const handleStart = async (name, module) => {
-        let toastId = null;
         try {
             // 인스턴스 ID 찾기
             const srv = servers.find(s => s.name === name);
@@ -1021,8 +1101,25 @@ function App() {
                 return;
             }
 
-            // Managed 모드로 시작 (stdin/stdout capture)
-            const result = await window.api.managedStart(srv.id);
+            // 시작 방식 결정: 인스턴스별 managed_start 설정 우선, 없으면 모듈 interaction_mode
+            const mod = modules.find(m => m.name === module);
+            const instanceManagedStart = srv.module_settings?.managed_start;
+            let interactionMode;
+            if (instanceManagedStart === true) {
+                interactionMode = 'console';
+            } else if (instanceManagedStart === false) {
+                interactionMode = 'commands';
+            } else {
+                interactionMode = mod?.interaction_mode || 'console';
+            }
+            let result;
+            if (interactionMode === 'console') {
+                // Managed 모드로 시작 (stdin/stdout capture) — console 모드 전용
+                result = await window.api.managedStart(srv.id);
+            } else {
+                // 일반 모드로 시작 — commands 모드 (프로세스만 실행, 콘솔 미사용)
+                result = await window.api.serverStart(name, { module });
+            }
 
             // ── action_required: 서버 jar 미발견 → 사용자에게 선택지 제시 ──
             if (result.action_required === 'server_jar_not_found') {
@@ -1135,41 +1232,46 @@ function App() {
                 const errorMsg = translateError(result.error);
                 safeShowToast(t('servers.start_failed_toast', { error: errorMsg }), 'error', 4000);
             } else {
-                // 시작 명령 성공 - 콘솔 자동 오픈
-                toastId = safeShowToast(t('servers.starting_toast', { name }), 'info', 0);
-                openConsole(srv.id, name);
+                // 시작 명령 성공 — indeterminate 프로그레스바 표시
+                setProgressBar({ message: t('servers.starting_toast', { name }), indeterminate: true });
+                // console 모드일 때만 콘솔 자동 오픈
+                if (interactionMode === 'console') {
+                    openConsole(srv.id, name);
+                }
                 
                 // 서버 상태가 running이 될 때까지 대기 (최대 30초)
+                // setTimeout 순차 실행으로 async 경쟁 조건 방지
                 let attempts = 0;
-                const maxAttempts = 60; // 30초 (500ms * 60)
-                const checkInterval = 500;
+                const maxAttempts = 60;
+                const delay = 500;
+                let resolved = false;
                 
-                const checkStatus = setInterval(async () => {
+                const checkStatus = async () => {
+                    if (resolved) return;
                     attempts++;
                     try {
                         const statusResult = await window.api.serverStatus(name);
                         if (statusResult.status === 'running') {
-                            clearInterval(checkStatus);
-                            if (toastId && window.updateToast) {
-                                window.updateToast(toastId, t('servers.start_completed_toast', { name }), 'success', 3000);
-                            }
+                            resolved = true;
+                            setProgressBar(null);
+                            safeShowToast(t('servers.start_completed_toast', { name }), 'success', 3000);
                             fetchServers();
-                        } else if (attempts >= maxAttempts) {
-                            clearInterval(checkStatus);
-                            if (toastId && window.updateToast) {
-                                window.updateToast(toastId, t('servers.start_timeout_toast', { name }), 'warning', 3000);
-                            }
-                            fetchServers();
+                            return;
                         }
-                    } catch (error) {
-                        if (attempts >= maxAttempts) {
-                            clearInterval(checkStatus);
-                            fetchServers();
-                        }
+                    } catch (error) { /* ignore */ }
+                    if (attempts >= maxAttempts) {
+                        resolved = true;
+                        setProgressBar(null);
+                        safeShowToast(t('servers.start_timeout_toast', { name }), 'warning', 3000);
+                        fetchServers();
+                        return;
                     }
-                }, checkInterval);
+                    if (!resolved) setTimeout(checkStatus, delay);
+                };
+                setTimeout(checkStatus, delay);
             }
         } catch (error) {
+            setProgressBar(null);
             const errorMsg = translateError(error.message);
             safeShowToast(t('servers.start_failed_toast', { error: errorMsg }), 'error', 4000);
         }
@@ -1216,8 +1318,32 @@ function App() {
 
     const sendConsoleCommand = async () => {
         if (!consoleInput.trim() || !consoleServer) return;
+        const cmd = consoleInput.trim();
         try {
-            await window.api.managedStdin(consoleServer.id, consoleInput.trim());
+            // managed 프로세스 stdin으로 먼저 시도
+            const result = await window.api.managedStdin(consoleServer.id, cmd);
+            if (result?.error) {
+                // stdin 실패 시 → RCON 직접 호출 (Python lifecycle 우회, 빠른 경로)
+                console.log('[Console] stdin failed, trying RCON direct:', result.error);
+                const rconResult = await window.api.executeCommand(consoleServer.id, {
+                    command: cmd,
+                    args: {},
+                    commandMetadata: { method: 'rcon' },
+                });
+                if (rconResult?.error) {
+                    safeShowToast(translateError(rconResult.error), 'error', 3000);
+                } else {
+                    // RCON 응답을 콘솔에 표시 (콘솔 렌더링은 content/source/level 필드 사용)
+                    const responseText = rconResult?.data?.response || rconResult?.message || '';
+                    const lines = [
+                        { id: Date.now(), content: `> ${cmd}`, source: 'STDIN', level: 'INFO' },
+                    ];
+                    if (responseText) {
+                        lines.push({ id: Date.now() + 1, content: responseText, source: 'STDOUT', level: 'INFO' });
+                    }
+                    setConsoleLines(prev => [...prev, ...lines]);
+                }
+            }
             setConsoleInput('');
         } catch (err) {
             safeShowToast(translateError(err.message), 'error', 3000);
@@ -1245,47 +1371,57 @@ function App() {
             message: t('servers.stop_confirm_message', { name }),
             onConfirm: async () => {
                 setModal(null);
-                let toastId = null;
                 try {
-                    const result = await window.api.serverStop(name, { force: false });
+                    // graceful_stop 설정 확인 (인스턴스 module_settings에서)
+                    const srv = servers.find(s => s.name === name);
+                    const useGraceful = srv?.module_settings?.graceful_stop;
+                    const forceStop = useGraceful === false; // graceful_stop이 명시적으로 false면 force
+                    
+                    const result = await window.api.serverStop(name, { force: forceStop });
                     if (result.error) {
                         const errorMsg = translateError(result.error);
                         safeShowToast(t('servers.stop_failed_toast', { error: errorMsg }), 'error', 4000);
                     } else {
-                        // 정지 명령 성공 - 상태 확인 시작
-                        toastId = safeShowToast(t('servers.stopping_toast', { name }), 'info', 0);
+                        // 정지 명령 성공 - 콘솔 열려있으면 닫기
+                        if (srv && consoleServer?.id === srv.id) {
+                            closeConsole();
+                        }
+                        // indeterminate 프로그레스바 표시
+                        setProgressBar({ message: t('servers.stopping_toast', { name }), indeterminate: true });
                         
                         // 서버 상태가 stopped가 될 때까지 대기 (최대 10초)
+                        // setTimeout 순차 실행으로 async 경쟁 조건 방지
                         let attempts = 0;
-                        const maxAttempts = 20; // 10초 (500ms * 20)
-                        const checkInterval = 500;
+                        const maxAttempts = 20;
+                        const delay = 500;
+                        let resolved = false;
                         
-                        const checkStatus = setInterval(async () => {
+                        const checkStatus = async () => {
+                            if (resolved) return;
                             attempts++;
                             try {
                                 const statusResult = await window.api.serverStatus(name);
                                 if (statusResult.status === 'stopped') {
-                                    clearInterval(checkStatus);
-                                    if (toastId && window.updateToast) {
-                                        window.updateToast(toastId, t('servers.stop_completed_toast', { name }), 'success', 3000);
-                                    }
+                                    resolved = true;
+                                    setProgressBar(null);
+                                    safeShowToast(t('servers.stop_completed_toast', { name }), 'success', 3000);
                                     fetchServers();
-                                } else if (attempts >= maxAttempts) {
-                                    clearInterval(checkStatus);
-                                    if (toastId && window.updateToast) {
-                                        window.updateToast(toastId, t('servers.stop_timeout_toast', { name }), 'warning', 3000);
-                                    }
-                                    fetchServers();
+                                    return;
                                 }
-                            } catch (error) {
-                                if (attempts >= maxAttempts) {
-                                    clearInterval(checkStatus);
-                                    fetchServers();
-                                }
+                            } catch (error) { /* ignore */ }
+                            if (attempts >= maxAttempts) {
+                                resolved = true;
+                                setProgressBar(null);
+                                safeShowToast(t('servers.stop_timeout_toast', { name }), 'warning', 3000);
+                                fetchServers();
+                                return;
                             }
-                        }, checkInterval);
+                            if (!resolved) setTimeout(checkStatus, delay);
+                        };
+                        setTimeout(checkStatus, delay);
                     }
                 } catch (error) {
+                    setProgressBar(null);
                     const errorMsg = translateError(error.message);
                     safeShowToast(t('servers.stop_failed_toast', { error: errorMsg }), 'error', 4000);
                 }
@@ -1403,12 +1539,17 @@ function App() {
             module.settings.fields.forEach(field => {
                 let value = '';
                 
-                // 1. instances.json에서 이미 저장된 값이 있는지 확인
+                // 1. instances.json에서 이미 저장된 값이 있는지 확인 (기본 필드)
                 if (latestServer[field.name] !== undefined && latestServer[field.name] !== null) {
                     value = String(latestServer[field.name]);
                     console.log(`Loaded ${field.name} from instance:`, value);
                 }
-                // 2. 없으면 module.toml의 default 값 사용
+                // 2. module_settings에서 동적 설정 값 확인
+                else if (latestServer.module_settings && latestServer.module_settings[field.name] !== undefined && latestServer.module_settings[field.name] !== null) {
+                    value = String(latestServer.module_settings[field.name]);
+                    console.log(`Loaded ${field.name} from module_settings:`, value);
+                }
+                // 3. 없으면 module.toml의 default 값 사용
                 else if (field.default !== undefined && field.default !== null) {
                     value = String(field.default);
                     console.log(`Using default for ${field.name}:`, value);
@@ -1418,15 +1559,28 @@ function App() {
             });
             
             // protocol_mode 초기화 (별도 처리)
-            initial.protocol_mode = latestServer.protocol_mode || 'rest';
+            // 모듈의 지원 프로토콜 확인하여 올바른 기본값 사용
+            const protocols = module?.protocols || {};
+            const supportedProtocols = protocols.supported || [];
+            if (latestServer.protocol_mode && latestServer.protocol_mode !== 'auto' && latestServer.protocol_mode !== 'rest' || (latestServer.protocol_mode === 'rest' && supportedProtocols.includes('rest'))) {
+                initial.protocol_mode = latestServer.protocol_mode;
+            } else if (protocols.default) {
+                initial.protocol_mode = protocols.default;
+            } else if (supportedProtocols.length > 0) {
+                initial.protocol_mode = supportedProtocols[0];
+            } else {
+                initial.protocol_mode = latestServer.protocol_mode || 'auto';
+            }
             console.log('Loaded protocol_mode:', initial.protocol_mode);
             
             console.log('Initialized settings values:', initial);
             setSettingsValues(initial);
         } else {
             // 모듈 설정이 없어도 protocol_mode는 설정
+            const protocols = module?.protocols || {};
+            const defaultProto = protocols.default || (protocols.supported?.length > 0 ? protocols.supported[0] : null);
             setSettingsValues({
-                protocol_mode: latestServer.protocol_mode || 'rest'
+                protocol_mode: (latestServer.protocol_mode && latestServer.protocol_mode !== 'auto' && latestServer.protocol_mode !== 'rest') ? latestServer.protocol_mode : (defaultProto || latestServer.protocol_mode || 'auto')
             });
         }
         
@@ -1471,7 +1625,22 @@ function App() {
         }
         
         setSettingsActiveTab('general'); // 탭 초기화
+        setAdvancedExpanded(false); // 고급 설정 접힘
         setShowSettingsModal(true);
+        
+        // 비동기로 서버 버전 목록 로드
+        setAvailableVersions([]);
+        setVersionsLoading(true);
+        try {
+            const versions = await window.api.moduleListVersions(latestServer.module, { per_page: 30 });
+            if (versions && versions.versions) {
+                setAvailableVersions(versions.versions);
+            }
+        } catch (err) {
+            console.warn('Failed to load versions:', err);
+        } finally {
+            setVersionsLoading(false);
+        }
     };
 
     const handleSettingChange = (fieldName, value) => {
@@ -1519,18 +1688,26 @@ function App() {
                 });
             }
             
+            // server_version 수동 추가 (module.toml fields에 없는 하드코딩 필드)
+            if (settingsValues.server_version) {
+                convertedSettings.server_version = settingsValues.server_version;
+            }
+            
             // 프로토콜 지원 여부 확인
             const protocols = module?.protocols || {};
             const supportedProtocols = protocols.supported || [];
             
-            // 프로토콜이 지원되는 경우에만 protocol_mode 전송
+            // 프로토콜이 지원되는 경우 protocol_mode 전송
             if (supportedProtocols.length > 0) {
                 // 모듈이 둘 다 지원하면 사용자 선택값, 하나만 지원하면 기본값 사용
                 if (supportedProtocols.includes('rest') && supportedProtocols.includes('rcon')) {
-                    convertedSettings.protocol_mode = settingsValues.protocol_mode || protocols.default || 'rest';
+                    convertedSettings.protocol_mode = settingsValues.protocol_mode || protocols.default || supportedProtocols[0];
                 } else {
-                    convertedSettings.protocol_mode = supportedProtocols[0];
+                    convertedSettings.protocol_mode = protocols.default || supportedProtocols[0];
                 }
+            } else {
+                // 프로토콜 정보가 없으면 auto
+                convertedSettings.protocol_mode = settingsValues.protocol_mode || 'auto';
             }
             
             console.log('Converted settings:', convertedSettings);
@@ -1960,7 +2137,12 @@ function App() {
                                     {/* 서버 정보 */}
                                     <div className="server-card-info">
                                         <h2>{server.name}</h2>
-                                        <p className="game-name">{gameName}</p>
+                                        <p className="game-name">
+                                            {gameName}
+                                            {server.server_version && (
+                                                <span className="server-version-badge">{server.server_version}</span>
+                                            )}
+                                        </p>
                                     </div>
                                     
                                     {/* 상태 버튼 (인디케이터 + 텍스트) */}
@@ -2027,7 +2209,21 @@ function App() {
                                     )}
                                     <div className="detail-row">
                                         <span className="label">{t('servers.protocol', 'Protocol')}:</span>
-                                        <span className="value">{server.protocol_mode?.toUpperCase() || 'AUTO'}</span>
+                                        <span className="value">{(() => {
+                                            const mod = modules.find(m => m.name === server.module);
+                                            const proto = server.protocol_mode;
+                                            // auto 또는 모듈이 지원하지 않는 프로토콜이면 모듈 기본값 표시
+                                            if (proto === 'auto' || proto === 'rest') {
+                                                const moduleDefault = mod?.protocols?.default;
+                                                const supported = mod?.protocols?.supported || [];
+                                                if (proto === 'rest' && supported.includes('rest')) {
+                                                    return 'REST';
+                                                }
+                                                if (moduleDefault) return moduleDefault.toUpperCase();
+                                                if (supported.length > 0) return supported[0].toUpperCase();
+                                            }
+                                            return proto?.toUpperCase() || 'AUTO';
+                                        })()}</span>
                                     </div>
                                 </div>
 
@@ -2215,10 +2411,16 @@ function App() {
                                             </div>
                                         )}
 
-                                        {/* 모듈 설정 필드 */}
-                                        {hasModuleSettings ? (
-                                            module.settings.fields.map((field) => {
-                                                const modNs = `mod_${settingsServer.module}`;
+                                        {/* 모듈 설정 필드 - 그룹별 렌더링 */}
+                                        {hasModuleSettings ? (() => {
+                                            const modNs = `mod_${settingsServer.module}`;
+                                            
+                                            // 필드를 그룹별로 분류
+                                            const sabaFields = module.settings.fields.filter(f => f.group === 'saba-chan');
+                                            const basicFields = module.settings.fields.filter(f => !f.group || f.group === 'basic');
+                                            const advancedFields = module.settings.fields.filter(f => f.group === 'advanced');
+                                            
+                                            const renderField = (field) => {
                                                 const fieldLabel = t(`${modNs}:settings.${field.name}.label`, { defaultValue: field.label });
                                                 const fieldDesc = t(`${modNs}:settings.${field.name}.description`, { defaultValue: field.description || '' });
                                                 return (
@@ -2286,8 +2488,71 @@ function App() {
                                                     )}
                                                 </div>
                                                 );
-                                            })
-                                        ) : (
+                                            };
+                                            
+                                            return (
+                                                <>
+                                                    {/* saba-chan 전용 설정 */}
+                                                    {sabaFields.length > 0 && (
+                                                        <div className="settings-group">
+                                                            <h4 className="settings-group-title">
+                                                                <Icon name="settings" size="sm" /> {t('server_settings.saba_chan_group', { defaultValue: 'saba-chan Settings' })}
+                                                            </h4>
+                                                            
+                                                            {/* 서버 버전 선택 */}
+                                                            <div className="settings-field">
+                                                                <label>{t('server_settings.server_version', { defaultValue: 'Server Version' })}</label>
+                                                                {versionsLoading ? (
+                                                                    <div className="version-loading">
+                                                                        <Icon name="loader" size="sm" /> {t('server_settings.loading_versions', { defaultValue: 'Loading versions...' })}
+                                                                    </div>
+                                                                ) : (
+                                                                    <CustomDropdown
+                                                                        value={settingsValues.server_version || ''}
+                                                                        onChange={(val) => handleSettingChange('server_version', val)}
+                                                                        placeholder={t('server_settings.select_version', { defaultValue: 'Select version' })}
+                                                                        options={availableVersions.map(v => ({
+                                                                            value: v.id || v.version || v,
+                                                                            label: `${v.id || v.version || v}${v.type ? ` (${v.type})` : ''}`
+                                                                        }))}
+                                                                    />
+                                                                )}
+                                                                <small className="field-description">
+                                                                    {t('server_settings.version_description', { defaultValue: 'Server version to track (for display purposes)' })}
+                                                                </small>
+                                                            </div>
+                                                            
+                                                            {sabaFields.map(renderField)}
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* 기본 서버 설정 */}
+                                                    {basicFields.length > 0 && (
+                                                        <div className="settings-group">
+                                                            <h4 className="settings-group-title">
+                                                                <Icon name="gamepad" size="sm" /> {t('server_settings.basic_group', { defaultValue: 'Server Settings' })}
+                                                            </h4>
+                                                            {basicFields.map(renderField)}
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* 고급 설정 (접이식) */}
+                                                    {advancedFields.length > 0 && (
+                                                        <div className="settings-group settings-group-advanced">
+                                                            <h4 
+                                                                className="settings-group-title settings-group-collapsible"
+                                                                onClick={() => setAdvancedExpanded(!advancedExpanded)}
+                                                            >
+                                                                <Icon name={advancedExpanded ? 'chevron-down' : 'chevron-right'} size="sm" />
+                                                                {' '}{t('server_settings.advanced_group', { defaultValue: 'Advanced Settings' })}
+                                                                <span className="settings-group-count">({advancedFields.length})</span>
+                                                            </h4>
+                                                            {advancedExpanded && advancedFields.map(renderField)}
+                                                        </div>
+                                                    )}
+                                                </>
+                                            );
+                                        })() : (
                                             <p className="no-settings" style={{marginTop: '16px'}}>{t('server_settings.no_settings')}</p>
                                         )}
                                     </div>
@@ -2438,6 +2703,10 @@ function App() {
                 onRefreshIntervalChange={setRefreshInterval}
                 onTestModal={setModal}
                 onTestProgressBar={setProgressBar}
+                onTestWaitingImage={() => {
+                    setShowWaitingImage(true);
+                    setTimeout(() => setShowWaitingImage(false), 4000);
+                }}
                 onTestLoadingScreen={() => {
                     setShowGuiSettingsModal(false);
                     setDaemonReady(false);
@@ -2468,6 +2737,13 @@ function App() {
                     onClose={() => setShowCommandModal(false)}
                     onExecute={setModal}
                 />
+            )}
+
+            {/* waiting.png (느린 진행 감지) */}
+            {showWaitingImage && (
+                <div className="waiting-image-overlay" onClick={() => setShowWaitingImage(false)}>
+                    <img src="./waiting.png" alt="waiting" className="waiting-image" />
+                </div>
             )}
 
             {/* 글로벌 프로그레스바 */}

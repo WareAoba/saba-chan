@@ -9,7 +9,13 @@ use serde_json::Value;
 
 /// 테스트 종료 시 instances.json에서 테스트 데이터 자동 제거
 fn cleanup_test_instances() {
-    let instances_path = "./instances.json";
+    let instances_path = std::env::var("SABA_INSTANCES_PATH")
+        .unwrap_or_else(|_| {
+            std::env::var("APPDATA")
+                .map(|appdata| format!("{}\\saba-chan\\instances.json", appdata))
+                .unwrap_or_else(|_| "./instances.json".to_string())
+        });
+    let instances_path = instances_path.as_str();
     
     if let Ok(content) = fs::read_to_string(instances_path) {
         if let Ok(mut instances) = serde_json::from_str::<Vec<Value>>(&content) {

@@ -590,6 +590,430 @@ def status(config):
             "message": f"Failed to get status: {str(e)}"
         }
 
+# ╔═══════════════════════════════════════════════════════════╗
+# ║            PalWorldSettings.ini Manager                   ║
+# ╚═══════════════════════════════════════════════════════════╝
+
+def _get_settings_ini_path(config):
+    """Resolve path to PalWorldSettings.ini from config."""
+    working_dir = config.get("working_dir")
+    if not working_dir:
+        exe = config.get("server_executable")
+        if exe:
+            working_dir = os.path.dirname(os.path.abspath(exe))
+    if not working_dir:
+        return None
+
+    if sys.platform == "win32":
+        platform_dir = "WindowsServer"
+    else:
+        platform_dir = "LinuxServer"
+
+    ini_path = os.path.join(working_dir, "Pal", "Saved", "Config", platform_dir, "PalWorldSettings.ini")
+    return ini_path
+
+
+def _parse_option_settings(ini_path):
+    """Parse PalWorldSettings.ini → dict.
+
+    The file uses UE4 INI format:
+      [/Script/Pal.PalGameWorldSettings]
+      OptionSettings=(Key1=Val1,Key2=Val2,...)
+    """
+    if not os.path.isfile(ini_path):
+        return {}
+    try:
+        with open(ini_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        import re
+        m = re.search(r'OptionSettings=\((.+)\)', content)
+        if not m:
+            return {}
+        raw = m.group(1)
+
+        props = {}
+        # Handle quoted string values that may contain commas
+        # Pattern: Key=Value or Key="Value with, commas"
+        i = 0
+        while i < len(raw):
+            eq = raw.find("=", i)
+            if eq == -1:
+                break
+            key = raw[i:eq].strip()
+            i = eq + 1
+            if i < len(raw) and raw[i] == '"':
+                # Quoted value
+                end_quote = raw.find('"', i + 1)
+                if end_quote == -1:
+                    value = raw[i + 1:]
+                    i = len(raw)
+                else:
+                    value = raw[i + 1:end_quote]
+                    i = end_quote + 1
+                    if i < len(raw) and raw[i] == ',':
+                        i += 1
+            elif i < len(raw) and raw[i] == '(':
+                # Parenthesized value like CrossplayPlatforms=(Steam,Xbox)
+                depth = 1
+                start = i
+                i += 1
+                while i < len(raw) and depth > 0:
+                    if raw[i] == '(':
+                        depth += 1
+                    elif raw[i] == ')':
+                        depth -= 1
+                    i += 1
+                value = raw[start:i]
+                if i < len(raw) and raw[i] == ',':
+                    i += 1
+            else:
+                comma = raw.find(",", i)
+                if comma == -1:
+                    value = raw[i:].strip()
+                    i = len(raw)
+                else:
+                    value = raw[i:comma].strip()
+                    i = comma + 1
+            props[key] = value
+        return props
+    except OSError:
+        return {}
+
+
+def _write_option_settings(ini_path, props):
+    """Write dict back to PalWorldSettings.ini."""
+    os.makedirs(os.path.dirname(ini_path), exist_ok=True)
+
+    parts = []
+    for key, value in props.items():
+        # Re-quote string values that contain special chars
+        if isinstance(value, str) and (" " in value or "," in value) and not value.startswith("("):
+            parts.append(f'{key}="{value}"')
+        else:
+            parts.append(f"{key}={value}")
+
+    content = (
+        "[/Script/Pal.PalGameWorldSettings]\n"
+        f"OptionSettings=({','.join(parts)})\n"
+    )
+    try:
+        with open(ini_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return True
+    except OSError:
+        return False
+
+
+# ╔═══════════════════════════════════════════════════════════╗
+# ║            Error Detection (Palworld)                     ║
+# ╚═══════════════════════════════════════════════════════════╝
+
+PALWORLD_ERROR_PATTERNS = [
+    {
+        "code": "PORT_IN_USE",
+        "patterns": [
+            r"Address already in use",
+            r"Failed.*bind.*port",
+            r"Only one usage of each socket address",
+        ],
+        "severity": "critical",
+    },
+    {
+        "code": "OUT_OF_MEMORY",
+        "patterns": [
+            r"OutOfMemory",
+            r"Ran out of memory",
+            r"Could not allocate memory",
+        ],
+        "severity": "critical",
+    },
+    {
+        "code": "EXECUTABLE_CRASH",
+        "patterns": [
+            r"Unhandled Exception",
+            r"Fatal error",
+            r"Assertion failed",
+            r"appError called",
+        ],
+        "severity": "critical",
+    },
+    {
+        "code": "SAVE_CORRUPT",
+        "patterns": [
+            r"Failed to load.*SaveData",
+            r"Corrupted save",
+            r"Failed to read save file",
+        ],
+        "severity": "error",
+    },
+    {
+        "code": "STEAM_AUTH_FAILED",
+        "patterns": [
+            r"LogOnline.*Warning.*Steam",
+            r"SteamAPI.*failed",
+            r"Steam must be running",
+        ],
+        "severity": "error",
+    },
+]
+
+
+# ╔═══════════════════════════════════════════════════════════╗
+# ║          Additional Lifecycle Functions                    ║
+# ╚═══════════════════════════════════════════════════════════╝
+
+def validate(config):
+    """Validate prerequisites before starting Palworld server."""
+    issues = []
+    executable = config.get("server_executable")
+
+    # Executable check
+    if not executable:
+        issues.append({
+            "code": "NO_EXECUTABLE",
+            "severity": "critical",
+            "message": "Server executable path not specified.",
+            "solution": "Set the path to PalServer.exe in instance settings.",
+        })
+    elif not os.path.isfile(executable):
+        issues.append({
+            "code": "EXECUTABLE_NOT_FOUND",
+            "severity": "critical",
+            "message": f"Executable not found: {executable}",
+            "solution": "Check the executable path or reinstall the server.",
+        })
+
+    # Working directory
+    working_dir = config.get("working_dir")
+    if not working_dir and executable:
+        working_dir = os.path.dirname(os.path.abspath(executable))
+    if working_dir and not os.path.isdir(working_dir):
+        try:
+            os.makedirs(working_dir, exist_ok=True)
+        except OSError:
+            issues.append({
+                "code": "WORKING_DIR_ERROR",
+                "severity": "critical",
+                "message": f"Cannot create working directory: {working_dir}",
+                "solution": "Check folder permissions or choose a different path.",
+            })
+
+    # Port availability
+    port = config.get("port", 8211)
+    if port:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(1)
+                if s.connect_ex(("127.0.0.1", int(port))) == 0:
+                    issues.append({
+                        "code": "PORT_IN_USE",
+                        "severity": "warning",
+                        "message": f"Port {port} is already in use.",
+                        "solution": f"Stop the other process using port {port} or change the port.",
+                    })
+        except (OSError, ValueError):
+            pass
+
+    # Settings file check
+    ini_path = _get_settings_ini_path(config)
+    settings_exist = ini_path and os.path.isfile(ini_path)
+
+    return {
+        "success": len([i for i in issues if i["severity"] == "critical"]) == 0,
+        "issues": issues,
+        "settings_file_exists": settings_exist,
+    }
+
+
+def configure(config):
+    """Apply settings to PalWorldSettings.ini."""
+    settings = config.get("settings", {})
+    if not settings:
+        return {"success": False, "message": "No settings provided."}
+
+    ini_path = _get_settings_ini_path(config)
+    if not ini_path:
+        return {"success": False, "message": "Cannot determine server directory. Set working_dir or server_executable."}
+
+    # Read existing properties (or start fresh)
+    props = _parse_option_settings(ini_path)
+
+    # saba-chan setting name → PalWorldSettings.ini key mapping
+    key_map = {
+        "port": "PublicPort",
+        "max_players": "ServerPlayerMaxNum",
+        "server_name": "ServerName",
+        "server_description": "ServerDescription",
+        "server_password": "ServerPassword",
+        "admin_password": "AdminPassword",
+        "rcon_enabled": "RCONEnabled",
+        "rcon_port": "RCONPort",
+        "rest_api_enabled": "RESTAPIEnabled",
+        "rest_api_port": "RESTAPIPort",
+        "difficulty": "Difficulty",
+        "day_time_speed_rate": "DayTimeSpeedRate",
+        "night_time_speed_rate": "NightTimeSpeedRate",
+        "exp_rate": "ExpRate",
+        "death_penalty": "DeathPenalty",
+        "pal_capture_rate": "PalCaptureRate",
+        "pal_spawn_num_rate": "PalSpawnNumRate",
+        "hardcore": "bHardcore",
+        "enable_fast_travel": "bEnableFastTravel",
+        "show_player_list": "bShowPlayerList",
+    }
+
+    updated_keys = []
+    for key, value in settings.items():
+        ini_key = key_map.get(key, key)
+        if isinstance(value, bool):
+            value = "True" if value else "False"
+        props[ini_key] = str(value)
+        updated_keys.append(ini_key)
+
+    ok = _write_option_settings(ini_path, props)
+    return {
+        "success": ok,
+        "message": "Settings updated successfully." if ok else "Failed to write settings file.",
+        "updated_keys": updated_keys,
+    }
+
+
+def read_properties(config):
+    """Read current PalWorldSettings.ini."""
+    ini_path = _get_settings_ini_path(config)
+    if not ini_path:
+        return {"success": False, "message": "Cannot determine server directory. Set working_dir or server_executable."}
+
+    if not os.path.isfile(ini_path):
+        # Try DefaultPalWorldSettings.ini as reference
+        default_path = None
+        working_dir = config.get("working_dir")
+        if not working_dir:
+            exe = config.get("server_executable")
+            if exe:
+                working_dir = os.path.dirname(os.path.abspath(exe))
+        if working_dir:
+            default_path = os.path.join(working_dir, "DefaultPalWorldSettings.ini")
+
+        if default_path and os.path.isfile(default_path):
+            props = _parse_option_settings(default_path)
+            return {
+                "success": True,
+                "exists": False,
+                "properties": props,
+                "message": "Using defaults from DefaultPalWorldSettings.ini (server not yet configured).",
+            }
+        return {
+            "success": True,
+            "exists": False,
+            "properties": {},
+            "message": "Settings file not found. Start the server once to generate it.",
+        }
+
+    props = _parse_option_settings(ini_path)
+    return {"success": True, "exists": True, "properties": props}
+
+
+def accept_eula(config):
+    """Palworld does not require EULA acceptance."""
+    return {
+        "success": True,
+        "message": "Palworld does not require separate EULA acceptance.",
+    }
+
+
+def diagnose_log(config):
+    """Diagnose errors from provided log lines or server log files."""
+    import re as _re
+
+    log_lines = config.get("log_lines", [])
+    working_dir = config.get("working_dir", "")
+
+    if isinstance(log_lines, str):
+        log_lines = log_lines.splitlines()
+
+    # If no lines provided, try to read from Palworld log file
+    if not log_lines and working_dir:
+        log_path = os.path.join(working_dir, "Pal", "Saved", "Logs", "Pal.log")
+        if os.path.isfile(log_path):
+            try:
+                with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                    log_lines = f.readlines()[-500:]
+            except OSError:
+                pass
+
+    issues = []
+    seen_codes = set()
+    for line in log_lines:
+        for pdef in PALWORLD_ERROR_PATTERNS:
+            if pdef["code"] in seen_codes:
+                continue
+            for regex in pdef["patterns"]:
+                if _re.search(regex, line, _re.IGNORECASE):
+                    code = pdef["code"]
+                    seen_codes.add(code)
+                    solutions = {
+                        "PORT_IN_USE": "Stop any other process using the port or change the server port.",
+                        "OUT_OF_MEMORY": "Increase system RAM or reduce server settings (max players, world size).",
+                        "EXECUTABLE_CRASH": "Verify game files via Steam, check for mod conflicts, or update the server.",
+                        "SAVE_CORRUPT": "Restore from a backup save. Check Pal/Saved/SaveGames/ for backups.",
+                        "STEAM_AUTH_FAILED": "Ensure Steam is running and steamclient libraries are accessible.",
+                    }
+                    issues.append({
+                        "code": code,
+                        "severity": pdef["severity"],
+                        "matched_line": line.strip()[:200],
+                        "message": f"Detected issue: {code.replace('_', ' ').title()}",
+                        "solution": solutions.get(code, "Check server logs for details."),
+                    })
+                    break
+
+    return {
+        "success": True,
+        "issues": issues,
+        "lines_analyzed": len(log_lines),
+    }
+
+
+def list_versions(config):
+    """Palworld server versions are managed via Steam/SteamCMD, not a download API."""
+    return {
+        "success": True,
+        "versions": [],
+        "message": "Palworld server is distributed via Steam/SteamCMD (App ID 2394010). Use SteamCMD to install or update.",
+        "install_method": "steamcmd",
+        "steam_app_id": "2394010",
+    }
+
+
+def get_version_details(config):
+    """Palworld does not expose a public version API."""
+    return {
+        "success": True,
+        "message": "Palworld server versions are managed through Steam. Use SteamCMD with app_update 2394010 to update.",
+        "install_method": "steamcmd",
+        "steam_app_id": "2394010",
+    }
+
+
+def install_server(config):
+    """Provide SteamCMD instructions for Palworld server installation."""
+    install_dir = config.get("install_dir", "")
+    return {
+        "success": False,
+        "message": "Palworld dedicated server must be installed via SteamCMD.",
+        "install_method": "steamcmd",
+        "steam_app_id": "2394010",
+        "instructions": [
+            "1. Download SteamCMD from https://developer.valvesoftware.com/wiki/SteamCMD",
+            "2. Run: steamcmd +login anonymous +force_install_dir \"{}\" +app_update 2394010 validate +quit".format(
+                install_dir or "<install_directory>"
+            ),
+            "3. Set the executable path in saba-chan to PalServer.exe in the installed directory.",
+        ],
+    }
+
+
 def command(config):
     """Execute server command via daemon REST/RCON API based on protocol_mode"""
     try:
@@ -945,17 +1369,26 @@ if __name__ == "__main__":
         print(f"[Palworld] JSON parse error: {e}", file=sys.stderr)
         sys.exit(1)
     
-    # Call function
-    if function_name == "start":
-        result = start(config)
-    elif function_name == "get_launch_command":
-        result = get_launch_command(config)
-    elif function_name == "stop":
-        result = stop(config)
-    elif function_name == "status":
-        result = status(config)
-    elif function_name == "command":
-        result = command(config)
+    # Function dispatch table (matches daemon's expected interface)
+    FUNCTIONS = {
+        "start": start,
+        "stop": stop,
+        "status": status,
+        "command": command,
+        "get_launch_command": get_launch_command,
+        "validate": validate,
+        "configure": configure,
+        "read_properties": read_properties,
+        "accept_eula": accept_eula,
+        "diagnose_log": diagnose_log,
+        "list_versions": list_versions,
+        "get_version_details": get_version_details,
+        "install_server": install_server,
+    }
+    
+    fn = FUNCTIONS.get(function_name)
+    if fn:
+        result = fn(config)
     else:
         result = {"success": False, "message": f"Unknown function: {function_name}"}
     

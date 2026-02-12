@@ -275,4 +275,32 @@ impl DaemonClient {
     pub async fn save_bot_config(&self, config: Value) -> anyhow::Result<Value> {
         self.put_json("/api/config/bot", &config).await
     }
+
+    // ============ Client Heartbeat ============
+
+    /// POST /api/client/register — 데몬에 클라이언트 등록
+    pub async fn register_client(&self, kind: &str) -> anyhow::Result<String> {
+        let body = serde_json::json!({ "kind": kind });
+        let data = self.post_json("/api/client/register", &body).await?;
+        data.get("client_id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .ok_or_else(|| anyhow::anyhow!("No client_id in response"))
+    }
+
+    /// POST /api/client/{id}/heartbeat — 생존 신호 전송
+    pub async fn send_heartbeat(&self, client_id: &str, bot_pid: Option<u32>) -> anyhow::Result<()> {
+        let body = match bot_pid {
+            Some(pid) => serde_json::json!({ "bot_pid": pid }),
+            None => serde_json::json!({}),
+        };
+        self.post_json(&format!("/api/client/{}/heartbeat", client_id), &body).await?;
+        Ok(())
+    }
+
+    /// DELETE /api/client/{id}/unregister — 클라이언트 해제
+    pub async fn unregister_client(&self, client_id: &str) -> anyhow::Result<()> {
+        self.delete_json(&format!("/api/client/{}/unregister", client_id)).await?;
+        Ok(())
+    }
 }

@@ -68,7 +68,8 @@
     "announce_success": "✅ アナウンスを送信しました",
     "save_success": "✅ ワールドを保存しました",
     "command_executed": "✅ コマンドを実行しました",
-    "command_complete": "✅ コマンドを正常に実行しました!"
+    "command_complete": "✅ コマンドを正常に実行しました!",
+    "empty_list": "(空)"
   },
   "errors": {
     "error_title": "コマンド実行エラー",
@@ -77,7 +78,12 @@
     "player_not_found": "プレイヤーが見つかりません",
     "internal_server_error": "内部サーバーエラー",
     "rest_api_disabled": "REST API が無効です",
-    "rcon_disabled": "RCON が無効です"
+    "rcon_disabled": "RCON が無効です",
+    "not_found": "リクエストされたリソースが見つかりません",
+    "connection_refused": "サーバーに接続できません",
+    "timeout": "リクエストがタイムアウトしました",
+    "host_not_found": "サーバーホストが見つかりません",
+    "service_unavailable": "サービスが利用できません"
   },
   "messages": {
     "server_started": "サーバーが正常に起動しました",

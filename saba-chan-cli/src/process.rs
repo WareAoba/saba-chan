@@ -18,17 +18,16 @@ fn no_window(cmd: &mut Command) -> &mut Command {
     cmd
 }
 
-/// 프로젝트 루트 디렉토리 찾기 (Cargo.toml 또는 config/instances.json 기준)
+/// 프로젝트 루트 디렉토리 찾기 (Cargo.toml 또는 modules/ 기준)
 pub fn find_project_root() -> anyhow::Result<PathBuf> {
     let cwd = std::env::current_dir()?;
 
     // Pass 1: 실제 saba-chan 루트를 식별하는 확실한 마커로 먼저 탐색
-    //   modules/ 디렉토리 또는 instances.json이 있는 곳이 진짜 루트
+    //   modules/ 디렉토리 또는 config/ 디렉토리가 있는 곳이 진짜 루트
     let mut candidate = cwd.clone();
     for _ in 0..5 {
         if candidate.join("modules").is_dir()
-            || candidate.join("instances.json").exists()
-            || candidate.join("config").join("instances.json").exists()
+            || candidate.join("config").join("global.toml").exists()
         {
             return Ok(candidate);
         }
@@ -163,7 +162,20 @@ pub fn start_daemon() -> anyhow::Result<String> {
         .unwrap_or_else(|_| root.join("modules").to_string_lossy().into());
     let instances = gui_config::get_instances_path()
         .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| root.join("config/instances.json").to_string_lossy().into());
+        .unwrap_or_else(|_| {
+            #[cfg(target_os = "windows")]
+            {
+                std::env::var("APPDATA")
+                    .map(|appdata| format!("{}\\saba-chan\\instances.json", appdata))
+                    .unwrap_or_else(|_| root.join("instances.json").to_string_lossy().into())
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                std::env::var("HOME")
+                    .map(|home| format!("{}/.config/saba-chan/instances.json", home))
+                    .unwrap_or_else(|_| root.join("instances.json").to_string_lossy().into())
+            }
+        });
     let lang = gui_config::get_language().unwrap_or_else(|_| "en".into());
 
     let mut cmd = Command::new(&binary);
@@ -239,37 +251,33 @@ pub fn start_bot() -> anyhow::Result<String> {
 /// Discord Bot 종료 — discord_bot 관련 node 프로세스만 종료
 pub fn stop_bot() -> anyhow::Result<String> {
     if cfg!(target_os = "windows") {
-        // wmic으로 discord_bot을 포함하는 node.exe만 종료
-        let mut find_cmd = Command::new("wmic");
-        find_cmd.args([
-            "process", "where",
-            "name='node.exe' and commandline like '%discord_bot%'",
-            "get", "processid",
-            "/format:list",
+        // PowerShell로 discord_bot을 포함하는 node.exe PID 조회 후 종료
+        let mut ps = Command::new("powershell");
+        ps.args([
+            "-NoProfile", "-Command",
+            "Get-CimInstance Win32_Process -Filter \"name='node.exe'\" | Where-Object { $_.CommandLine -like '*discord_bot*' } | Select-Object -ExpandProperty ProcessId",
         ]);
-        find_cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
-        no_window(&mut find_cmd);
+        ps.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+        no_window(&mut ps);
 
         let mut killed = false;
-        if let Ok(output) = find_cmd.output() {
+        if let Ok(output) = ps.output() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             for line in stdout.lines() {
-                if let Some(pid_str) = line.strip_prefix("ProcessId=") {
-                    let pid = pid_str.trim();
-                    if !pid.is_empty() {
-                        let mut kill = Command::new("taskkill");
-                        kill.args(["/PID", pid, "/F"])
-                            .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
-                        no_window(&mut kill);
-                        let _ = kill.status();
-                        killed = true;
-                    }
+                let pid = line.trim();
+                if !pid.is_empty() && pid.chars().all(|c| c.is_ascii_digit()) {
+                    let mut kill = Command::new("taskkill");
+                    kill.args(["/PID", pid, "/F"])
+                        .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+                    no_window(&mut kill);
+                    let _ = kill.status();
+                    killed = true;
                 }
             }
         }
 
-        // wmic 실패 시 폴백: index.js를 포함하는 node만 종료
         if !killed {
+            // 폴백: taskkill /IM
             let mut cmd = Command::new("taskkill");
             cmd.args(["/IM", "node.exe", "/F", "/FI", "WINDOWTITLE eq discord_bot*"])
                 .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());

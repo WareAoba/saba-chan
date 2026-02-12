@@ -23,9 +23,22 @@ pub struct Supervisor {
 
 impl Supervisor {
     pub fn new(modules_dir: &str) -> Self {
-        // instances.json은 프로젝트 루트에 위치 (상대 경로: ./instances.json)
+        // instances.json은 %APPDATA%/saba-chan/instances.json에 저장
         let instances_path = std::env::var("SABA_INSTANCES_PATH")
-            .unwrap_or_else(|_| "./instances.json".to_string());
+            .unwrap_or_else(|_| {
+                #[cfg(target_os = "windows")]
+                {
+                    std::env::var("APPDATA")
+                        .map(|appdata| format!("{}\\saba-chan\\instances.json", appdata))
+                        .unwrap_or_else(|_| "./instances.json".to_string())
+                }
+                #[cfg(not(target_os = "windows"))]
+                {
+                    std::env::var("HOME")
+                        .map(|home| format!("{}/.config/saba-chan/instances.json", home))
+                        .unwrap_or_else(|_| "./instances.json".to_string())
+                }
+            });
         
         Self {
             tracker: ProcessTracker::new(),
@@ -51,7 +64,7 @@ impl Supervisor {
         Ok(())
     }
 
-    /// Start a server by name (e.g., "minecraft-main")
+    /// Start a server by name (e.g., "my-server-1")
     /// Called by IPC API: POST /api/server/:name/start
     pub async fn start_server(&self, server_name: &str, module_name: &str, config: Value) -> Result<Value> {
         tracing::info!("Starting server '{}' with module '{}'", server_name, module_name);
@@ -66,7 +79,7 @@ impl Supervisor {
         let mut merged_config = config.as_object().cloned().unwrap_or_default();
         if let Some(exe_path) = &instance.executable_path {
             merged_config.insert("server_executable".to_string(), json!(exe_path));
-            // Also pass as server_jar for modules that expect that key (e.g. Minecraft)
+            // Also pass as server_jar for modules that expect that key
             merged_config.entry("server_jar".to_string()).or_insert_with(|| json!(exe_path));
         }
         if let Some(work_dir) = &instance.working_dir {
@@ -124,13 +137,86 @@ impl Supervisor {
     pub async fn stop_server(&self, server_name: &str, module_name: &str, force: bool) -> Result<Value> {
         tracing::info!("Stopping server '{}' (force: {})", server_name, force);
 
+        // 모듈에서 stop_command를 가져옴 (없으면 "stop" 기본값)
+        let stop_cmd = self.module_loader.get_module(module_name)
+            .ok()
+            .and_then(|m| m.metadata.stop_command.clone())
+            .unwrap_or_else(|| "stop".to_string());
+
         // Find instance to get executable_path
         let instance = self.instance_store.list()
             .iter()
             .find(|i| i.name == server_name)
             .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
 
-        // Find module
+        // ── Managed mode: stdin에 stop_command 전송으로 graceful shutdown ──
+        if let Some(managed) = self.managed_store.get(&instance.id).await {
+            if managed.is_running() {
+                if force {
+                    // Force kill: taskkill로 즉시 종료
+                    tracing::info!("Force-killing managed server '{}'", server_name);
+                    if let Ok(pid) = self.tracker.get_pid(&instance.id) {
+                        #[cfg(target_os = "windows")]
+                        {
+                            use std::os::windows::process::CommandExt;
+                            let _ = std::process::Command::new("taskkill")
+                                .args(["/F", "/PID", &pid.to_string()])
+                                .creation_flags(0x08000000)
+                                .output();
+                        }
+                        #[cfg(not(target_os = "windows"))]
+                        {
+                            unsafe {
+                                libc::kill(pid as i32, libc::SIGKILL);
+                            }
+                        }
+                    }
+                } else {
+                    // Graceful: stdin에 stop_command 전송
+                    tracing::info!("Sending '{}' to managed server '{}' via stdin", stop_cmd, server_name);
+                    if let Err(e) = managed.send_command(&stop_cmd).await {
+                        tracing::warn!("Failed to send stop command via stdin: {}", e);
+                    }
+                }
+
+                // 프로세스 종료 대기 (최대 30초)
+                let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(30);
+                loop {
+                    if !managed.is_running() {
+                        break;
+                    }
+                    if tokio::time::Instant::now() >= deadline {
+                        tracing::warn!("Managed server '{}' did not exit in 30s, force killing", server_name);
+                        if let Ok(pid) = self.tracker.get_pid(&instance.id) {
+                            #[cfg(target_os = "windows")]
+                            {
+                                use std::os::windows::process::CommandExt;
+                                let _ = std::process::Command::new("taskkill")
+                                    .args(["/F", "/PID", &pid.to_string()])
+                                    .creation_flags(0x08000000)
+                                    .output();
+                            }
+                        }
+                        // 추가 대기
+                        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                        break;
+                    }
+                    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                }
+
+                // managed store에서 제거
+                self.managed_store.remove(&instance.id).await;
+
+                tracing::info!("Managed server '{}' stopped", server_name);
+                return Ok(json!({
+                    "success": true,
+                    "server": server_name,
+                    "message": format!("Server '{}' stopped", server_name)
+                }));
+            }
+        }
+
+        // ── Non-managed mode: Python lifecycle.py를 통한 정지 ──
         let module = self.module_loader.get_module(module_name)?;
         let module_path = format!("{}/lifecycle.py", module.path);
 
@@ -183,13 +269,29 @@ impl Supervisor {
     /// Get server status by name
     /// Called by IPC API: GET /api/server/:name/status
     pub async fn get_server_status(&self, server_name: &str, module_name: &str) -> Result<Value> {
-        tracing::info!("Getting status for server '{}'", server_name);
+        tracing::debug!("Getting status for server '{}'", server_name);
 
         // Find instance to get executable_path
         let instance = self.instance_store.list()
             .iter()
             .find(|i| i.name == server_name)
             .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
+
+        // Managed 프로세스가 있으면 plugin 호출 없이 직접 판단
+        if let Some(managed) = self.managed_store.get(&instance.id).await {
+            let running = managed.is_running();
+            let pid = self.tracker.get_pid(&instance.id).ok();
+            let start_time = if running { self.tracker.get_start_time(&instance.id).ok() } else { None };
+            return Ok(json!({
+                "server": server_name,
+                "status": if running { "running" } else { "stopped" },
+                "online": running,
+                "pid": pid,
+                "start_time": start_time,
+            }));
+        }
+
+        // Non-managed: module plugin으로 상태 확인
 
         // Find module
         let module = self.module_loader.get_module(module_name)?;
@@ -470,7 +572,14 @@ impl Supervisor {
         let module_path = format!("{}/lifecycle.py", module.path);
 
         let mut cfg = serde_json::Map::new();
-        if let Some(work_dir) = &instance.working_dir {
+        // working_dir 결정: 명시적 설정 > executable_path의 부모 디렉토리
+        let effective_working_dir = instance.working_dir.clone()
+            .or_else(|| {
+                instance.executable_path.as_ref()
+                    .and_then(|p| std::path::Path::new(p).parent())
+                    .map(|p| p.to_string_lossy().to_string())
+            });
+        if let Some(work_dir) = &effective_working_dir {
             cfg.insert("working_dir".to_string(), json!(work_dir));
         }
 
@@ -531,7 +640,7 @@ impl Supervisor {
 
     // ─── Server Installation Methods ─────────────────────────
 
-    /// List available Minecraft server versions from Mojang
+    /// List available server versions (delegates to module lifecycle)
     pub async fn list_versions(
         &self,
         module_name: &str,
@@ -566,7 +675,7 @@ impl Supervisor {
         Ok(result)
     }
 
-    /// Install a Minecraft server: download jar, setup directory, optional eula/settings
+    /// Install a server: download binary, setup directory, optional initial settings
     pub async fn install_server(
         &self,
         module_name: &str,

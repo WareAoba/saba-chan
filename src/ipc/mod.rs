@@ -3,7 +3,7 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::{get, post, put},
+    routing::{delete, get, post, put},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -11,6 +11,110 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+
+// ── Client Heartbeat Registry ──────────────────────────────
+
+/// 클라이언트 유형 (GUI, CLI)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ClientKind {
+    Gui,
+    Cli,
+}
+
+/// 등록된 클라이언트 정보
+#[derive(Debug, Clone)]
+pub struct RegisteredClient {
+    pub kind: ClientKind,
+    pub last_heartbeat: std::time::Instant,
+    /// 이 클라이언트가 시작한 Discord 봇 프로세스의 PID (있을 경우)
+    pub bot_pid: Option<u32>,
+}
+
+/// 클라이언트 레지스트리 — 여러 GUI/CLI 인스턴스의 생존 여부를 추적
+#[derive(Debug, Clone)]
+pub struct ClientRegistry {
+    inner: Arc<RwLock<HashMap<String, RegisteredClient>>>,
+}
+
+impl ClientRegistry {
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// 새 클라이언트 등록, client_id 반환
+    pub async fn register(&self, kind: ClientKind) -> String {
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut map = self.inner.write().await;
+        tracing::info!("[Heartbeat] Client registered: {} ({:?})", id, kind);
+        map.insert(id.clone(), RegisteredClient {
+            kind,
+            last_heartbeat: std::time::Instant::now(),
+            bot_pid: None,
+        });
+        id
+    }
+
+    /// Heartbeat 수신 — TTL 갱신, 선택적으로 bot_pid 업데이트
+    pub async fn heartbeat(&self, client_id: &str, bot_pid: Option<u32>) -> bool {
+        let mut map = self.inner.write().await;
+        if let Some(client) = map.get_mut(client_id) {
+            client.last_heartbeat = std::time::Instant::now();
+            if let Some(pid) = bot_pid {
+                client.bot_pid = Some(pid);
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    /// 클라이언트 해제
+    pub async fn unregister(&self, client_id: &str) -> Option<RegisteredClient> {
+        let mut map = self.inner.write().await;
+        let removed = map.remove(client_id);
+        if removed.is_some() {
+            tracing::info!("[Heartbeat] Client unregistered: {}", client_id);
+        }
+        removed
+    }
+
+    /// 타임아웃된 클라이언트 목록 반환 및 제거
+    pub async fn reap_expired(&self, timeout: std::time::Duration) -> Vec<(String, RegisteredClient)> {
+        let mut map = self.inner.write().await;
+        let now = std::time::Instant::now();
+        let mut expired = Vec::new();
+
+        map.retain(|id, client| {
+            if now.duration_since(client.last_heartbeat) > timeout {
+                tracing::warn!(
+                    "[Heartbeat] Client timed out: {} ({:?}), last heartbeat {:.0}s ago",
+                    id, client.kind,
+                    now.duration_since(client.last_heartbeat).as_secs_f64()
+                );
+                expired.push((id.clone(), client.clone()));
+                false
+            } else {
+                true
+            }
+        });
+
+        expired
+    }
+
+    /// 현재 등록된 클라이언트 수
+    pub async fn count(&self) -> usize {
+        self.inner.read().await.len()
+    }
+
+    /// 등록된 모든 클라이언트가 있는지 (데몬 자동 종료 판단용)
+    #[allow(dead_code)]
+    pub async fn has_clients(&self) -> bool {
+        !self.inner.read().await.is_empty()
+    }
+}
 
 /// IPC 요청/응답 타입
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,6 +178,15 @@ pub struct ServerInfo {
     pub rest_username: Option<String>,
     pub rest_password: Option<String>,
     pub protocol_mode: String,  // "rest", "rcon", "auto"
+    #[serde(default)]
+    pub module_settings: std::collections::HashMap<String, serde_json::Value>,  // 동적 모듈 설정
+    pub server_version: Option<String>,  // 서버 버전
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProtocolsInfo {
+    pub supported: Vec<String>,
+    pub default: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,6 +198,7 @@ pub struct ModuleInfo {
     pub executable_path: Option<String>,
     pub icon: Option<String>,  // base64 인코딩된 아이콘 이미지
     pub interaction_mode: Option<String>,  // "console" or "commands"
+    pub protocols: Option<ProtocolsInfo>,  // 지원 프로토콜 정보
     pub settings: Option<crate::supervisor::module_loader::ModuleSettings>,
     pub commands: Option<crate::supervisor::module_loader::ModuleCommands>,
 }
@@ -100,6 +214,8 @@ pub struct IPCServer {
     /// Shared supervisor instance used by all handlers
     pub supervisor: Arc<RwLock<crate::supervisor::Supervisor>>,
     pub listen_addr: String,
+    /// 클라이언트(GUI/CLI) 생존 추적 레지스트리
+    pub client_registry: ClientRegistry,
 }
 
 impl IPCServer {
@@ -107,6 +223,7 @@ impl IPCServer {
         Self {
             supervisor,
             listen_addr: listen_addr.to_string(),
+            client_registry: ClientRegistry::new(),
         }
     }
 
@@ -141,6 +258,10 @@ impl IPCServer {
             .route("/api/module/:name/version/:version", get(get_version_details_handler))
             .route("/api/module/:name/install", post(install_server_handler))
             .route("/api/config/bot", get(get_bot_config).put(save_bot_config))
+            // ── Client heartbeat endpoints ──
+            .route("/api/client/register", post(client_register))
+            .route("/api/client/:id/heartbeat", post(client_heartbeat))
+            .route("/api/client/:id/unregister", delete(client_unregister))
             .with_state(self.clone());
 
         // TCP 리스너 (SO_REUSEADDR + 바인딩 재시도)
@@ -220,6 +341,8 @@ async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
             rest_username: instance.rest_username.clone(),
             rest_password: instance.rest_password.clone(),
             protocol_mode: instance.protocol_mode.clone(),
+            module_settings: instance.module_settings.clone(),
+            server_version: instance.server_version.clone(),
         });
     }
 
@@ -252,6 +375,10 @@ async fn list_modules(State(state): State<IPCServer>) -> impl IntoResponse {
                         executable_path: m.metadata.executable_path,
                         icon: icon_base64,
                         interaction_mode: m.metadata.interaction_mode,
+                        protocols: m.metadata.protocols_supported.map(|supported| ProtocolsInfo {
+                            supported,
+                            default: m.metadata.protocols_default,
+                        }),
                         settings: m.metadata.settings,
                         commands: m.metadata.commands,
                     }
@@ -292,6 +419,10 @@ async fn refresh_modules(State(state): State<IPCServer>) -> impl IntoResponse {
                         executable_path: m.metadata.executable_path,
                         icon: icon_base64,
                         interaction_mode: m.metadata.interaction_mode,
+                        protocols: m.metadata.protocols_supported.map(|supported| ProtocolsInfo {
+                            supported,
+                            default: m.metadata.protocols_default,
+                        }),
                         settings: m.metadata.settings,
                         commands: m.metadata.commands,
                     }
@@ -595,6 +726,23 @@ async fn update_instance_settings(
     // 설정값 업데이트
     let mut updated = instance.clone();
     
+    // working_dir이 null인데 executable_path가 있으면 자동 보정
+    if updated.working_dir.is_none() {
+        if let Some(ref exe_path) = updated.executable_path {
+            if let Some(parent) = std::path::Path::new(exe_path).parent() {
+                updated.working_dir = Some(parent.to_string_lossy().to_string());
+                tracing::info!("Auto-inferred working_dir to {} from existing executable_path", parent.display());
+            }
+        }
+    }
+    
+    // 하드코딩된 공통 필드 목록
+    let known_fields: std::collections::HashSet<&str> = [
+        "port", "rcon_port", "rcon_password",
+        "rest_host", "rest_port", "rest_username", "rest_password",
+        "executable_path", "protocol_mode", "server_version",
+    ].iter().cloned().collect();
+    
     // common settings
     // port: 숫자 또는 문자열 수용
     if let Some(port_value) = settings.get("port") {
@@ -633,6 +781,28 @@ async fn update_instance_settings(
     if let Some(rcon_password) = settings.get("rcon_password").and_then(|v| v.as_str()) {
         updated.rcon_password = Some(rcon_password.to_string());
     }
+    
+    // RCON 자동 활성화: enable_rcon=true인데 rcon_password가 비어있으면 랜덤 비밀번호 생성
+    let enable_rcon = settings.get("enable_rcon")
+        .and_then(|v| match v {
+            serde_json::Value::Bool(b) => Some(*b),
+            serde_json::Value::String(s) => Some(s == "true"),
+            _ => None,
+        });
+    if enable_rcon == Some(true) {
+        let current_password = updated.rcon_password.as_deref().unwrap_or("");
+        if current_password.is_empty() {
+            // UUID 기반 16자 비밀번호 생성 (영숫자만)
+            let password: String = uuid::Uuid::new_v4()
+                .to_string()
+                .replace('-', "")
+                .chars()
+                .take(16)
+                .collect();
+            tracing::info!("Auto-generated RCON password for instance {} (enable_rcon=true but no password set)", id);
+            updated.rcon_password = Some(password.clone());
+        }
+    }
 
     if let Some(rest_host) = settings.get("rest_host").and_then(|v| v.as_str()) {
         updated.rest_host = Some(rest_host.to_string());
@@ -661,6 +831,13 @@ async fn update_instance_settings(
 
     if let Some(executable_path) = settings.get("executable_path").and_then(|v| v.as_str()) {
         updated.executable_path = Some(executable_path.to_string());
+        // working_dir이 미설정이면 executable_path의 부모 디렉토리로 자동 설정
+        if updated.working_dir.is_none() {
+            if let Some(parent) = std::path::Path::new(executable_path).parent() {
+                updated.working_dir = Some(parent.to_string_lossy().to_string());
+                tracing::info!("Auto-set working_dir to {} from executable_path", parent.display());
+            }
+        }
     }
     
     // protocol_mode 설정 (rest 또는 rcon)
@@ -668,13 +845,58 @@ async fn update_instance_settings(
         updated.protocol_mode = protocol_mode.to_string();
     }
     
-    tracing::info!("Updating instance {} with settings: port={:?}, rcon_port={:?}, rcon_password={:?}, executable_path={:?}, rest_host={:?}, rest_port={:?}, protocol_mode={}", 
-        id, updated.port, updated.rcon_port, updated.rcon_password, updated.executable_path, updated.rest_host, updated.rest_port, updated.protocol_mode);
+    // server_version 설정
+    if let Some(version) = settings.get("server_version").and_then(|v| v.as_str()) {
+        updated.server_version = Some(version.to_string());
+    }
     
+    // 동적 모듈 설정 저장 (하드코딩 필드 이외의 모든 설정을 module_settings에 저장)
+    if let Some(obj) = settings.as_object() {
+        for (key, value) in obj {
+            if !known_fields.contains(key.as_str()) {
+                updated.module_settings.insert(key.clone(), value.clone());
+            }
+        }
+    }
+    
+    tracing::info!("Updating instance {} with settings: port={:?}, rcon_port={:?}, executable_path={:?}, protocol_mode={}, module_settings_count={}", 
+        id, updated.port, updated.rcon_port, updated.executable_path, updated.protocol_mode, updated.module_settings.len());
+    
+    // 모든 설정을 server.properties에 동기화 (configure lifecycle 호출)
+    let mut props_sync = serde_json::Map::new();
+    if let Some(obj) = settings.as_object() {
+        for (key, value) in obj {
+            // protocol_mode, executable_path 등은 server.properties에 관련 없으므로 제외
+            if key == "protocol_mode" || key == "executable_path" || key == "server_version"
+                || key == "rest_host" || key == "rest_port" || key == "rest_username" || key == "rest_password"
+                || key == "java_path" || key == "ram" || key == "use_aikar_flags" {
+                continue;
+            }
+            props_sync.insert(key.clone(), value.clone());
+        }
+    }
+    
+    // 자동 생성된 RCON 비밀번호가 있으면 props_sync에도 추가
+    if let Some(auto_password) = &updated.rcon_password {
+        if !props_sync.contains_key("rcon_password") && enable_rcon == Some(true) {
+            props_sync.insert("rcon_password".to_string(), json!(auto_password));
+        }
+    }
+
     // 저장
     if let Err(e) = supervisor.instance_store.update(&id, updated) {
         let error = json!({ "error": format!("Failed to update instance: {}", e) });
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response();
+    }
+
+    // server.properties 동기화 (변경된 항목이 있을 때만)
+    if !props_sync.is_empty() {
+        tracing::info!("Syncing settings to server.properties for instance {}: {:?}", id, props_sync);
+        let props_value = Value::Object(props_sync);
+        match supervisor.manage_properties(&id, "write", Some(props_value)).await {
+            Ok(_) => tracing::info!("server.properties synced successfully for instance {}", id),
+            Err(e) => tracing::warn!("Failed to sync server.properties for instance {}: {}", id, e),
+        }
     }
     
     (StatusCode::OK, Json(json!({ "success": true }))).into_response()
@@ -1071,55 +1293,67 @@ async fn execute_rcon_command(
         },
     };
 
-    // RCON 클라이언트 생성 및 실행
-    let mut client = crate::protocol::client::ProtocolClient::new_rcon(
-        rcon_host.clone(),
-        rcon_port,
-        rcon_password.clone(),
-    );
+    // RCON 클라이언트 생성 및 실행 (연결 실패 시 최대 2회 재시도)
+    let rcon_timeout = std::time::Duration::from_secs(5);
+    let mut last_error = String::new();
 
-    match client.connect_rcon(std::time::Duration::from_secs(5)) {
-        Ok(_) => {
-            let cmd = crate::protocol::ServerCommand {
-                command_type: crate::protocol::CommandType::Rcon,
-                command: Some(command.to_string()),
-                endpoint: None,
-                method: None,
-                body: None,
-                timeout_secs: payload.get("timeout").and_then(|v| v.as_u64()),
-            };
+    for attempt in 0..3 {
+        if attempt > 0 {
+            tracing::info!("RCON retry attempt {} for command '{}'", attempt + 1, command);
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
 
-            match client.execute(cmd) {
-                Ok(response) => (
-                    StatusCode::OK,
-                    Json(json!({
-                        "success": response.success,
-                        "data": response.data,
-                        "error": response.error,
-                        "command": command,
-                        "host": rcon_host,
-                        "port": rcon_port,
-                        "protocol": "rcon"
-                    })),
-                )
-                    .into_response(),
-                Err(e) => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({
-                        "error": format!("RCON execution failed: {}", e)
-                    })),
-                )
-                    .into_response(),
+        let mut client = crate::protocol::client::ProtocolClient::new_rcon(
+            rcon_host.clone(),
+            rcon_port,
+            rcon_password.clone(),
+        );
+
+        match client.connect_rcon(rcon_timeout) {
+            Ok(_) => {
+                let cmd = crate::protocol::ServerCommand {
+                    command_type: crate::protocol::CommandType::Rcon,
+                    command: Some(command.to_string()),
+                    endpoint: None,
+                    method: None,
+                    body: None,
+                    timeout_secs: payload.get("timeout").and_then(|v| v.as_u64()),
+                };
+
+                match client.execute(cmd) {
+                    Ok(response) => {
+                        return (
+                            StatusCode::OK,
+                            Json(json!({
+                                "success": response.success,
+                                "data": response.data,
+                                "error": response.error,
+                                "command": command,
+                                "host": rcon_host,
+                                "port": rcon_port,
+                                "protocol": "rcon"
+                            })),
+                        )
+                            .into_response();
+                    }
+                    Err(e) => {
+                        last_error = format!("RCON execution failed: {}", e);
+                        tracing::warn!("{} (attempt {})", last_error, attempt + 1);
+                    }
+                }
+            }
+            Err(e) => {
+                last_error = format!("RCON connection failed: {}", e);
+                tracing::warn!("{} (attempt {})", last_error, attempt + 1);
             }
         }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "error": format!("RCON connection failed: {}", e)
-            })),
-        )
-            .into_response(),
     }
+
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({ "error": last_error })),
+    )
+        .into_response()
 }
 
 /// POST /api/instance/:id/rest - REST API 명령어 실행
@@ -1474,5 +1708,106 @@ async fn install_server_handler(
             (status, Json(result)).into_response()
         }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// ── Client Heartbeat Handlers ────────────────────────────────
+
+/// POST /api/client/register — 클라이언트(GUI/CLI) 등록
+async fn client_register(
+    State(state): State<IPCServer>,
+    Json(payload): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let kind_str = payload.get("kind").and_then(|v| v.as_str()).unwrap_or("gui");
+    let kind = match kind_str {
+        "cli" => ClientKind::Cli,
+        _ => ClientKind::Gui,
+    };
+
+    let client_id = state.client_registry.register(kind.clone()).await;
+    let count = state.client_registry.count().await;
+    tracing::info!("[Heartbeat] Active clients: {}", count);
+
+    (StatusCode::OK, Json(json!({
+        "client_id": client_id,
+        "kind": kind_str,
+        "heartbeat_interval_ms": 30000,
+        "timeout_ms": 90000
+    }))).into_response()
+}
+
+/// POST /api/client/:id/heartbeat — TTL 갱신
+async fn client_heartbeat(
+    Path(client_id): Path<String>,
+    State(state): State<IPCServer>,
+    Json(payload): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let bot_pid = payload.get("bot_pid").and_then(|v| v.as_u64()).map(|p| p as u32);
+
+    if state.client_registry.heartbeat(&client_id, bot_pid).await {
+        (StatusCode::OK, Json(json!({"ok": true}))).into_response()
+    } else {
+        (StatusCode::NOT_FOUND, Json(json!({"error": "Client not registered"}))).into_response()
+    }
+}
+
+/// DELETE /api/client/:id/unregister — 클라이언트 명시적 해제 + 봇 정리
+async fn client_unregister(
+    Path(client_id): Path<String>,
+    State(state): State<IPCServer>,
+) -> impl IntoResponse {
+    if let Some(client) = state.client_registry.unregister(&client_id).await {
+        // 해당 클라이언트가 관리하던 봇 프로세스 정리
+        if let Some(pid) = client.bot_pid {
+            kill_bot_pid(pid);
+        }
+        let count = state.client_registry.count().await;
+        tracing::info!("[Heartbeat] Active clients after unregister: {}", count);
+        (StatusCode::OK, Json(json!({"ok": true}))).into_response()
+    } else {
+        (StatusCode::NOT_FOUND, Json(json!({"error": "Client not registered"}))).into_response()
+    }
+}
+
+/// 특정 PID의 봇 프로세스를 종료
+pub fn kill_bot_pid(pid: u32) {
+    tracing::info!("[Heartbeat] Killing bot process PID: {}", pid);
+
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/F"])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = std::process::Command::new("kill")
+            .args(["-9", &pid.to_string()])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    }
+}
+
+/// 백그라운드 태스크에서 호출 — 만료 클라이언트 정리 및 고아 봇 프로세스 종료
+pub async fn reap_expired_clients(registry: &ClientRegistry) {
+    let timeout = std::time::Duration::from_secs(90);
+    let expired = registry.reap_expired(timeout).await;
+
+    for (id, client) in &expired {
+        tracing::warn!("[Heartbeat] Cleaning up expired client: {} ({:?})", id, client.kind);
+        if let Some(pid) = client.bot_pid {
+            kill_bot_pid(pid);
+        }
+    }
+
+    if !expired.is_empty() {
+        let remaining = registry.count().await;
+        tracing::info!("[Heartbeat] Reap complete. Cleaned: {}, remaining clients: {}", expired.len(), remaining);
     }
 }

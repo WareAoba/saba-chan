@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use anyhow::Result;
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -26,10 +27,14 @@ pub struct ServerInstance {
     pub rest_password: Option<String>, // REST API 비밀번호 (Basic Auth)
     #[serde(default = "default_protocol_mode")]
     pub protocol_mode: String,         // 명령어 실행 방식: "rest", "rcon", "auto"
+    #[serde(default)]
+    pub module_settings: HashMap<String, serde_json::Value>,  // 모듈별 동적 설정 (difficulty, gamemode 등)
+    #[serde(default)]
+    pub server_version: Option<String>,  // 설치된 서버 버전
 }
 
 fn default_protocol_mode() -> String {
-    "rest".to_string()
+    "auto".to_string()
 }
 
 impl ServerInstance {
@@ -49,7 +54,9 @@ impl ServerInstance {
             rest_port: None,
             rest_username: None,
             rest_password: None,
-            protocol_mode: "rest".to_string(),
+            protocol_mode: "auto".to_string(),
+            module_settings: HashMap::new(),
+            server_version: None,
         }
     }
 }
@@ -79,6 +86,32 @@ impl InstanceStore {
         let content = fs::read_to_string(&self.file_path)?;
         self.instances = serde_json::from_str(&content)?;
         tracing::info!("Loaded {} instances", self.instances.len());
+        
+        // 마이그레이션: 구 형식 인스턴스 자동 보정
+        let mut migrated = false;
+        for inst in &mut self.instances {
+            // working_dir이 없으면 executable_path에서 추론
+            if inst.working_dir.is_none() {
+                if let Some(ref exe) = inst.executable_path {
+                    if let Some(parent) = std::path::Path::new(exe).parent() {
+                        inst.working_dir = Some(parent.to_string_lossy().to_string());
+                        tracing::info!("Migration: set working_dir for '{}' → {}", inst.name, parent.display());
+                        migrated = true;
+                    }
+                }
+            }
+            // protocol_mode가 "rest"인데 모듈이 rest를 지원하지 않을 수 있으므로 "auto"로 변경
+            if inst.protocol_mode == "rest" {
+                inst.protocol_mode = "auto".to_string();
+                tracing::info!("Migration: reset protocol_mode for '{}' → auto", inst.name);
+                migrated = true;
+            }
+        }
+        if migrated {
+            self.save()?;
+            tracing::info!("Instance store migrated and saved");
+        }
+        
         Ok(())
     }
 

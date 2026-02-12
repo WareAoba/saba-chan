@@ -67,7 +67,8 @@
     "announce_success": "✅ 공지사항이 전송되었습니다",
     "save_success": "✅ 월드가 저장되었습니다",
     "command_executed": "✅ 명령어가 실행되었습니다",
-    "command_complete": "✅ 명령어 실행 완료!"
+    "command_complete": "✅ 명령어 실행 완료!",
+    "empty_list": "(비어 있음)"
   },
   "errors": {
     "error_title": "명령어 실행 오류",
@@ -76,7 +77,12 @@
     "player_not_found": "플레이어를 찾을 수 없습니다",
     "internal_server_error": "내부 서버 오류",
     "rest_api_disabled": "REST API 비활성화됨",
-    "rcon_disabled": "RCON 비활성화됨"
+    "rcon_disabled": "RCON 비활성화됨",
+    "not_found": "요청한 리소스를 찾을 수 없습니다",
+    "connection_refused": "서버에 연결할 수 없습니다",
+    "timeout": "요청 시간이 초과되었습니다",
+    "host_not_found": "서버 호스트를 찾을 수 없습니다",
+    "service_unavailable": "서비스를 사용할 수 없습니다"
   },  "messages": {
     "server_started": "서버가 성공적으로 시작되었습니다",
     "server_stopped": "서버가 중지되었습니다",

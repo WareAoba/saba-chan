@@ -18,7 +18,13 @@ pub struct ModuleMetadata {
     #[serde(default)]
     pub icon: Option<String>,  // 아이콘 파일명 (icon.png 등)
     #[serde(default)]
+    pub stop_command: Option<String>,  // config.stop_command (e.g. "stop" for Minecraft)
+    #[serde(default)]
     pub interaction_mode: Option<String>,  // "console" or "commands" (from [protocols])
+    #[serde(default)]
+    pub protocols_supported: Option<Vec<String>>,  // ["rcon", "stdin", "rest"] etc.
+    #[serde(default)]
+    pub protocols_default: Option<String>,  // default protocol mode
     #[serde(default)]
     pub settings: Option<ModuleSettings>,  // 설정 스키마
     #[serde(default)]
@@ -105,6 +111,7 @@ pub struct SettingField {
     pub min: Option<i64>,
     pub max: Option<i64>,
     pub options: Option<Vec<String>>,
+    pub group: Option<String>,  // "basic" (default), "advanced", "saba-chan" etc.
 }
 
 #[derive(Debug, Clone)]
@@ -249,9 +256,24 @@ impl ModuleLoader {
                 .get("icon")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
+            stop_command: data
+                .get("config")
+                .and_then(|c| c.get("stop_command"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
             interaction_mode: data
                 .get("protocols")
                 .and_then(|p| p.get("interaction_mode"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            protocols_supported: data
+                .get("protocols")
+                .and_then(|p| p.get("supported"))
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect()),
+            protocols_default: data
+                .get("protocols")
+                .and_then(|p| p.get("default"))
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
             settings: parse_settings(&data),
@@ -330,9 +352,24 @@ impl ModuleLoader {
                 .get("icon")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
+            stop_command: data
+                .get("config")
+                .and_then(|c| c.get("stop_command"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
             interaction_mode: data
                 .get("protocols")
                 .and_then(|p| p.get("interaction_mode"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            protocols_supported: data
+                .get("protocols")
+                .and_then(|p| p.get("supported"))
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect()),
+            protocols_default: data
+                .get("protocols")
+                .and_then(|p| p.get("default"))
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
             settings: parse_settings(&data),
@@ -472,6 +509,11 @@ fn parse_settings(data: &toml::Value) -> Option<ModuleSettings> {
                             .collect()
                     });
                 
+                let group = field_table
+                    .get("group")
+                    .and_then(|v: &toml::Value| v.as_str())
+                    .map(|s: &str| s.to_string());
+                
                 fields.push(SettingField {
                     name,
                     field_type,
@@ -482,6 +524,7 @@ fn parse_settings(data: &toml::Value) -> Option<ModuleSettings> {
                     min,
                     max,
                     options,
+                    group,
                 });
             }
         }
@@ -540,6 +583,7 @@ fn parse_commands(data: &toml::Value) -> Option<ModuleCommands> {
                 
                 let rcon_template = field_table
                     .get("rcon_template")
+                    .or_else(|| field_table.get("command_template"))
                     .and_then(|v: &toml::Value| v.as_str())
                     .map(|s: &str| s.to_string());
                 

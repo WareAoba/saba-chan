@@ -48,18 +48,46 @@ impl RconClient {
         // 인증
         self.authenticate()?;
 
+        // 인증 과정에서 짧은 타임아웃으로 변경되었으므로, 명령어 실행용으로 원래 타임아웃 복원
+        if let Some(stream) = &self.stream {
+            let _ = stream.set_read_timeout(Some(timeout));
+        }
+
         tracing::info!("RCON client connected to {}:{}", self.host, self.port);
         Ok(())
     }
 
     /// 인증 패킷 전송
+    /// RCON 서버에 따라 인증 응답이 1개 또는 2개:
+    ///   - 일부 서버: AUTH_RESPONSE(type 2) 1개만 전송
+    ///   - 일부 서버: RESPONSE_VALUE(type 0) + AUTH_RESPONSE(type 2) 2개 전송
     fn authenticate(&mut self) -> Result<(), ProtocolError> {
         self.request_id = 1;
         let password = self.password.clone();
-        let (response_id, _payload) = self.send_command_internal(self.request_id, 3, &password)?;
+        let (first_id, _payload) = self.send_command_internal(self.request_id, 3, &password)?;
 
-        if response_id == -1 {
+        // 첫 번째 응답이 바로 -1이면 인증 실패 (싱글 응답 서버)
+        if first_id == -1 {
             return Err(ProtocolError::AuthError("Authentication failed: invalid password".to_string()));
+        }
+
+        // 일부 서버(Minecraft 등)는 두 번째 응답을 추가로 보냄
+        // 짧은 타임아웃(200ms)으로 두 번째 응답을 시도 — 없으면 싱글 응답 서버로 판단
+        if let Some(stream) = &self.stream {
+            let _ = stream.set_read_timeout(Some(Duration::from_millis(200)));
+        }
+
+        match self.read_response() {
+            Ok((second_id, _)) => {
+                if second_id == -1 {
+                    return Err(ProtocolError::AuthError("Authentication failed: invalid password".to_string()));
+                }
+                tracing::debug!("Dual auth response server — both responses OK");
+            }
+            Err(_) => {
+                // 두 번째 응답이 없으면 싱글 응답 서버 — 첫 번째 응답으로 판단
+                tracing::debug!("No second auth response (single-response server)");
+            }
         }
 
         Ok(())

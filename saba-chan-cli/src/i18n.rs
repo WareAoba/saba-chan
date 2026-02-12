@@ -34,6 +34,7 @@ impl I18n {
     }
 
     /// 템플릿 변수 치환 ({{key}} → value)
+    #[allow(dead_code)]
     pub fn t_with(&self, key: &str, vars: &[(&str, &str)]) -> String {
         let mut s = self.t(key);
         for (k, v) in vars {

@@ -101,6 +101,8 @@
     ],
     "extraResources": [
     ],
+    "electronLanguages": ["en-US"],
+    "compression": "normal",
     "asar": true,
     "asarUnpack": [],
     "win": {

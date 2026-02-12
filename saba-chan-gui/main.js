@@ -7,8 +7,9 @@ const fs = require('fs');
 
 const IPC_BASE = process.env.IPC_BASE || 'http://127.0.0.1:57474'; // Core Daemon endpoint
 
-// 네트워크 호출 기본 타임아웃을 짧게 설정해 초기 체감 지연을 줄입니다.
-axios.defaults.timeout = 1200;
+// 네트워크 호출 기본 타임아웃 (ms). 대부분의 API는 빠르게 응답하지만,
+// 서버 JAR 다운로드 등 오래 걸리는 호출은 개별 timeout을 지정합니다.
+axios.defaults.timeout = 5000;
 
 let mainWindow;
 let daemonProcess = null;
@@ -315,7 +316,7 @@ function startDaemon() {
         ...process.env, 
         RUST_LOG: 'info',
         SABA_LANG: currentLanguage,
-        SABA_INSTANCES_PATH: path.join(rootDir, 'instances.json'),
+        SABA_INSTANCES_PATH: path.join(app.getPath('userData'), 'instances.json'),
         SABA_MODULES_PATH: (settings && settings.modulesPath) || path.join(rootDir, 'modules')
     };
     
@@ -427,7 +428,19 @@ async function cleanQuit() {
     console.log('Starting clean quit sequence...');
     
     try {
-        // 1. 데몬 종료
+        // 0. 데몬에서 클라이언트 해제 (봇 프로세스 정보도 전달됨)
+        await unregisterFromDaemon();
+        
+        // 1. Discord 봇 종료
+        if (discordBotProcess && !discordBotProcess.killed) {
+            console.log('Stopping Discord bot process...');
+            discordBotProcess.kill('SIGTERM');
+            discordBotProcess = null;
+        }
+        // 고아 봇 프로세스도 정리
+        killOrphanBotProcesses();
+        
+        // 2. 데몬 종료
         stopDaemon();
         
         // 2. 데몬이 종료될 때까지 대기 (최대 3초)
@@ -546,11 +559,67 @@ async function preloadLightData() {
     await Promise.allSettled(tasks);
 }
 
+// ── Client Heartbeat (데몬이 GUI 생존 여부를 추적) ────────────
+let heartbeatClientId = null;
+let heartbeatTimer = null;
+
+async function registerWithDaemon() {
+    try {
+        const res = await axios.post(`${IPC_BASE}/api/client/register`, { kind: 'gui' }, { timeout: 3000 });
+        heartbeatClientId = res.data.client_id;
+        console.log(`[Heartbeat] Registered with daemon as client: ${heartbeatClientId}`);
+        return true;
+    } catch (e) {
+        console.warn('[Heartbeat] Failed to register with daemon:', e.message);
+        return false;
+    }
+}
+
+function startHeartbeat() {
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
+    
+    heartbeatTimer = setInterval(async () => {
+        if (!heartbeatClientId) return;
+        try {
+            const botPid = discordBotProcess && !discordBotProcess.killed ? discordBotProcess.pid : null;
+            await axios.post(`${IPC_BASE}/api/client/${heartbeatClientId}/heartbeat`, {
+                bot_pid: botPid
+            }, { timeout: 3000 });
+        } catch (e) {
+            // 데몬이 재시작되었을 수 있으므로 재등록 시도
+            if (e.response?.status === 404 || e.code === 'ECONNREFUSED') {
+                console.warn('[Heartbeat] Lost registration, re-registering...');
+                await registerWithDaemon();
+            }
+        }
+    }, 30000); // 30초마다
+}
+
+async function unregisterFromDaemon() {
+    if (!heartbeatClientId) return;
+    try {
+        await axios.delete(`${IPC_BASE}/api/client/${heartbeatClientId}/unregister`, { timeout: 2000 });
+        console.log('[Heartbeat] Unregistered from daemon');
+    } catch (e) {
+        console.warn('[Heartbeat] Failed to unregister:', e.message);
+    }
+    heartbeatClientId = null;
+    if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+    }
+}
+
 async function runBackgroundInit() {
     sendStatus('init', '초기화 시작');
     await ensureDaemon();
     updateTrayMenu();
     await preloadLightData();
+    
+    // 데몬에 클라이언트 등록 및 heartbeat 시작
+    await registerWithDaemon();
+    startHeartbeat();
+    
     sendStatus('ready', '백그라운드 초기화 완료');
     // Discord Bot 자동 시작은 React App.js에서 처리
 }
@@ -815,6 +884,33 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
     console.log('App is quitting, cleaning up...');
     
+    // Heartbeat 정지 (동기적으로)
+    if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+    }
+    // 데몬에 동기적 unregister 시도 (타임아웃 짧게)
+    if (heartbeatClientId) {
+        try {
+            const http = require('http');
+            const req = http.request({
+                hostname: '127.0.0.1', port: 57474,
+                path: `/api/client/${heartbeatClientId}/unregister`,
+                method: 'DELETE', timeout: 1000
+            });
+            req.end();
+        } catch (e) { /* 무시 */ }
+        heartbeatClientId = null;
+    }
+    
+    // Discord 봇 프로세스 종료
+    if (discordBotProcess && !discordBotProcess.killed) {
+        console.log('Stopping Discord bot on quit...');
+        discordBotProcess.kill('SIGTERM');
+        discordBotProcess = null;
+    }
+    killOrphanBotProcesses();
+    
     // 데몬 프로세스 종료
     stopDaemon();
     
@@ -836,6 +932,15 @@ app.on('before-quit', () => {
 // 앱이 완전히 종료되기 전 최후의 보루
 process.on('exit', () => {
     console.log('Process exiting');
+    // 혹시 남아있을 Discord 봇 프로세스 강제 종료
+    if (discordBotProcess && !discordBotProcess.killed) {
+        try {
+            console.log('Force killing Discord bot process at exit');
+            discordBotProcess.kill('SIGKILL');
+        } catch (e) {
+            // 무시
+        }
+    }
     // 혹시 남아있을 데몬 프로세스 강제 종료
     if (daemonProcess && !daemonProcess.killed) {
         try {
@@ -869,11 +974,14 @@ ipcMain.handle('server:list', async () => {
 
 ipcMain.handle('server:start', async (event, name, options = {}) => {
     try {
+        if (!options.module) {
+            return { error: '모듈이 지정되지 않았습니다. 인스턴스 설정을 확인해주세요.' };
+        }
         const body = {
-            module: options.module || 'minecraft',
+            module: options.module,
             config: options.config || {}
         };
-        const response = await axios.post(`${IPC_BASE}/api/server/${name}/start`, body);
+        const response = await axios.post(`${IPC_BASE}/api/server/${name}/start`, body, { timeout: 30000 });
         return response.data;
     } catch (error) {
         if (error.response) {
@@ -905,7 +1013,7 @@ ipcMain.handle('server:start', async (event, name, options = {}) => {
 ipcMain.handle('server:stop', async (event, name, options = {}) => {
     try {
         const body = options || {};
-        const response = await axios.post(`${IPC_BASE}/api/server/${name}/stop`, body);
+        const response = await axios.post(`${IPC_BASE}/api/server/${name}/stop`, body, { timeout: 30000 });
         return response.data;
     } catch (error) {
         if (error.response) {
@@ -967,7 +1075,7 @@ ipcMain.handle('module:listVersions', async (event, moduleName, options = {}) =>
         if (options.include_snapshots) params.set('include_snapshots', 'true');
         if (options.page) params.set('page', options.page);
         if (options.per_page) params.set('per_page', options.per_page);
-        const response = await axios.get(`${IPC_BASE}/api/module/${moduleName}/versions?${params}`);
+        const response = await axios.get(`${IPC_BASE}/api/module/${moduleName}/versions?${params}`, { timeout: 15000 });
         return response.data;
     } catch (error) {
         return { error: error.response?.data?.error || error.message };
@@ -976,7 +1084,8 @@ ipcMain.handle('module:listVersions', async (event, moduleName, options = {}) =>
 
 ipcMain.handle('module:installServer', async (event, moduleName, installConfig) => {
     try {
-        const response = await axios.post(`${IPC_BASE}/api/module/${moduleName}/install`, installConfig);
+        // JAR 다운로드는 수십 MB — 최대 5분 허용
+        const response = await axios.post(`${IPC_BASE}/api/module/${moduleName}/install`, installConfig, { timeout: 300000 });
         return response.data;
     } catch (error) {
         return { error: error.response?.data?.error || error.message };
@@ -987,7 +1096,7 @@ ipcMain.handle('module:installServer', async (event, moduleName, installConfig) 
 
 ipcMain.handle('managed:start', async (event, instanceId) => {
     try {
-        const response = await axios.post(`${IPC_BASE}/api/instance/${instanceId}/managed/start`, {});
+        const response = await axios.post(`${IPC_BASE}/api/instance/${instanceId}/managed/start`, {}, { timeout: 30000 });
         return response.data;
     } catch (error) {
         return { error: error.response?.data?.error || error.message };
@@ -1217,6 +1326,43 @@ ipcMain.handle('instance:updateSettings', async (event, id, settings) => {
     }
 });
 
+// ── 모듈-독립적 입력값 검증 헬퍼 ──────────────────────────────
+// module.toml의 inputs 스키마에 따라 args를 검증하고 정규화합니다.
+// 모듈 이름을 전혀 참조하지 않으므로 어떤 게임 모듈에도 동일하게 동작합니다.
+function buildValidatedBody(inputs, args, inlineMessage) {
+    const body = {};
+    if (inputs && inputs.length > 0) {
+        for (const field of inputs) {
+            const value = args?.[field.name];
+            
+            // 필수 필드 확인
+            if (field.required && (value === undefined || value === null || value === '')) {
+                throw new Error(`필수 필드 '${field.label || field.name}'이(가) 누락되었습니다`);
+            }
+            
+            // 값이 있으면 타입 검증 및 추가
+            if (value !== undefined && value !== null && value !== '') {
+                if (field.type === 'number') {
+                    const numValue = Number(value);
+                    if (isNaN(numValue)) {
+                        throw new Error(`'${field.label || field.name}'은(는) 숫자여야 합니다`);
+                    }
+                    body[field.name] = numValue;
+                } else {
+                    body[field.name] = String(value);
+                }
+            } else if (field.default !== undefined) {
+                body[field.name] = field.default;
+            }
+        }
+    }
+    // 입력 스키마가 비어 있지만 사용자가 인라인으로 메시지를 입력한 경우
+    if (inlineMessage && Object.keys(body).length === 0) {
+        body.message = inlineMessage;
+    }
+    return body;
+}
+
 ipcMain.handle('instance:executeCommand', async (event, id, command) => {
     try {
         console.log(`[Main] Executing command for instance ${id}:`, command);
@@ -1232,165 +1378,117 @@ ipcMain.handle('instance:executeCommand', async (event, id, command) => {
         const instance = instanceResponse.data;
         
         console.log(`[Main] Instance module: ${instance.module_name}`);
-        console.log(`[Main] Instance data:`, {
-            module: instance.module_name,
-            rcon_port: instance.rcon_port,
-            rcon_password: instance.rcon_password,
-            rest_host: instance.rest_host,
-            rest_port: instance.rest_port
-        });
         
-        // Step 2: 모듈에 따라 적절한 프로토콜 선택
+        // Step 2: 명령어 메타데이터 확인 (프론트엔드에서 전달받거나 없으면 null)
+        // commandMetadata는 module.toml의 commands.fields 중 하나 — method, rcon_template, endpoint_template 등 포함
+        const cmdMeta = command.commandMetadata || null;
+        const method = cmdMeta?.method || null;
+        const args = command.args || {};
+        
+        console.log(`[Main] Command: ${cmdName}, method: ${method || '(none → stdin/command fallback)'}`);
+        
+        // Step 3: method에 따라 프로토콜 라우팅 (모듈 이름 참조 없음!)
+        //   rcon  → RCON 템플릿 치환 후 /rcon 엔드포인트
+        //   rest  → REST endpoint_template + http_method 로 /rest 엔드포인트
+        //   dual  → Python lifecycle 모듈이 프로토콜 선택 (/command 엔드포인트)
+        //   없음  → 기본 command 엔드포인트 (stdin 기반)
         let protocolUrl;
         let commandPayload;
         
-        if (instance.module_name === 'minecraft') {
-            // Minecraft는 RCON 사용 (권장)
-            console.log(`[Main] Using RCON protocol for Minecraft`);
-            protocolUrl = `${IPC_BASE}/api/instance/${id}/rcon`;
-            commandPayload = {
-                command: cmdName,
-                args: command.args || {},
-                instance_id: id,
-                rcon_port: instance.rcon_port,
-                rcon_password: instance.rcon_password
-            };
-        } else if (instance.module_name === 'palworld') {
-            // Palworld 명령어 처리
-            console.log(`[Main] Processing Palworld command: ${cmdName}`);
-            
-            // kick, ban, unban은 플레이어 ID 변환이 필요하므로 Python 모듈을 통해 실행
-            const playerCommands = ['kick', 'ban', 'unban'];
-            if (playerCommands.includes(cmdName.toLowerCase())) {
-                console.log(`[Main] Using command endpoint for player command: ${cmdName}`);
-                protocolUrl = `${IPC_BASE}/api/instance/${id}/command`;
-                commandPayload = {
-                    command: cmdName,
-                    args: command.args || {},
-                    instance_id: id
-                };
-            } else {
-                // 그 외 명령어는 REST API 직접 호출
-                console.log(`[Main] Using REST API protocol for Palworld`);
-                protocolUrl = `${IPC_BASE}/api/instance/${id}/rest`;
-                
-                // 명령 메타데이터에서 http_method와 입력 스키마 읽기
-                const httpMethod = command.commandMetadata?.http_method || 'POST';
-                const inputSchema = command.commandMetadata?.inputs || [];
-                
-                console.log(`[Main] HTTP Method from metadata: ${httpMethod}`);
-                console.log(`[Main] Input schema:`, inputSchema);
-                
-                // 입력값 검증 및 정규화
-                const validatedBody = {};
-                for (const field of inputSchema) {
-                    const value = command.args?.[field.name];
-                    
-                    // 필수 필드 확인
-                    if (field.required && (value === undefined || value === null || value === '')) {
-                        throw new Error(`필수 필드 '${field.label}'이(가) 누락되었습니다`);
-                    }
-                    
-                    // 값이 있으면 타입 검증 및 추가
-                    if (value !== undefined && value !== null && value !== '') {
-                        if (field.type === 'number') {
-                            const numValue = Number(value);
-                            if (isNaN(numValue)) {
-                                throw new Error(`'${field.label}'은(는) 숫자여야 합니다`);
-                            }
-                            validatedBody[field.name] = numValue;
-                        } else {
-                            validatedBody[field.name] = String(value);
-                        }
-                    } else if (field.default !== undefined) {
-                        // 기본값 적용
-                        validatedBody[field.name] = field.default;
-                    }
-                }
-                
-                console.log(`[Main] Validated body:`, validatedBody);
-                
-                // REST 요청 구성 - Palworld API 형식: /v1/api/{endpoint}
-                commandPayload = {
-                    endpoint: `/v1/api/${cmdName}`,
-                    method: httpMethod,
-                    body: validatedBody,
-                    instance_id: id,
-                    rest_host: instance.rest_host,
-                    rest_port: instance.rest_port,
-                    username: instance.rest_username,
-                    password: instance.rest_password
-                };
-
-                // 사용자가 메시지를 인라인으로 입력한 경우 announce 본문으로 설정
-                if (inlineMessage && Object.keys(validatedBody).length === 0) {
-                    commandPayload.body = { message: inlineMessage };
+        if (method === 'rcon') {
+            // RCON: rcon_template에서 입력값을 치환하여 명령어 생성
+            let rconCmd = cmdMeta?.rcon_template || cmdName;
+            for (const [key, value] of Object.entries(args)) {
+                if (value !== undefined && value !== null && value !== '') {
+                    rconCmd = rconCmd.replace(`{${key}}`, value);
                 }
             }
-        } else {
-            // 기타 모듈은 기본 command 엔드포인트 사용
-            console.log(`[Main] Using default command protocol for ${instance.module_name}`);
+            // 치환되지 않은 선택적 파라미터 제거
+            rconCmd = rconCmd.replace(/\s*\{\w+\}/g, '').trim();
+            
+            console.log(`[Main] RCON command: ${rconCmd}`);
+            protocolUrl = `${IPC_BASE}/api/instance/${id}/rcon`;
+            commandPayload = { command: rconCmd };
+            
+        } else if (method === 'rest') {
+            // REST: endpoint_template과 http_method로 직접 API 호출
+            const endpoint = cmdMeta?.endpoint_template || `/v1/api/${cmdName}`;
+            const httpMethod = (cmdMeta?.http_method || 'GET').toUpperCase();
+            const validatedBody = buildValidatedBody(cmdMeta?.inputs, args, inlineMessage);
+            
+            console.log(`[Main] REST ${httpMethod} ${endpoint}`, validatedBody);
+            protocolUrl = `${IPC_BASE}/api/instance/${id}/rest`;
+            commandPayload = {
+                endpoint,
+                method: httpMethod,
+                body: validatedBody,
+                instance_id: id,
+                rest_host: instance.rest_host,
+                rest_port: instance.rest_port,
+                username: instance.rest_username,
+                password: instance.rest_password
+            };
+            
+        } else if (method === 'dual') {
+            // Dual: Python lifecycle 모듈이 REST/RCON을 내부적으로 선택
+            // (예: Palworld lifecycle.py가 플레이어 ID 변환 + 프로토콜 라우팅 수행)
+            const validatedBody = buildValidatedBody(cmdMeta?.inputs, args, inlineMessage);
+            
+            console.log(`[Main] Dual-mode via module lifecycle: ${cmdName}`, validatedBody);
             protocolUrl = `${IPC_BASE}/api/instance/${id}/command`;
             commandPayload = {
                 command: cmdName,
-                args: command.args || {},
+                args: validatedBody,
+                instance_id: id
+            };
+            
+        } else {
+            // 메서드 미지정: 기본 command 엔드포인트 (stdin 기반 또는 모듈 lifecycle 처리)
+            console.log(`[Main] Generic command endpoint: ${cmdName}`);
+            protocolUrl = `${IPC_BASE}/api/instance/${id}/command`;
+            commandPayload = {
+                command: cmdName,
+                args: args,
                 instance_id: id
             };
         }
         
-        console.log(`[Main] POST request to: ${protocolUrl}`);
-        console.log(`[Main] Payload:`, commandPayload);
-        const response = await axios.post(protocolUrl, commandPayload);
+        // RCON/REST는 빠르지만, /command (Python lifecycle)는 subprocess 스폰 시간이 필요
+        const requestTimeout = (method === 'dual' || !method) ? 30000 : 10000;
+        console.log(`[Main] POST ${protocolUrl} (timeout: ${requestTimeout}ms)`);
+        const response = await axios.post(protocolUrl, commandPayload, { timeout: requestTimeout });
         console.log(`[Main] Response:`, response.data);
         
         return response.data;
     } catch (error) {
-        console.error(`[Main] Error executing command:`, error.message);
+        console.error(`[Main] Error executing command:`, error.message, error.response?.data || '');
         
-        // HTTP 응답 에러 처리
+        // HTTP 응답 에러 → 상태 코드 기반 분류 (모듈명 참조 없음)
         if (error.response) {
             const status = error.response.status;
             const data = error.response.data;
+            const detail = data?.error || data?.message || '';
             
-            let errorMsg = '';
-            switch (status) {
-                case 400:
-                    errorMsg = `잘못된 요청: ${data.error || data.message || '입력값을 확인해주세요'}`;
-                    break;
-                case 401:
-                    errorMsg = `인증 실패: 서버 설정에서 REST 사용자명/비밀번호를 확인해주세요`;
-                    break;
-                case 403:
-                    errorMsg = `접근 거부: 권한이 없습니다`;
-                    break;
-                case 404:
-                    errorMsg = `명령어를 찾을 수 없음: '${cmdName}' 명령어가 존재하지 않거나 서버가 실행중이지 않습니다`;
-                    break;
-                case 500:
-                    errorMsg = `서버 내부 오류: ${data.error || data.message || '서버에서 오류가 발생했습니다'}`;
-                    break;
-                case 503:
-                    errorMsg = `서비스 사용 불가: 서버가 응답하지 않습니다. 서버 상태를 확인해주세요`;
-                    break;
-                default:
-                    errorMsg = `오류 (HTTP ${status}): ${data.error || data.message || error.message}`;
-            }
+            const errorMap = {
+                400: `잘못된 요청: ${detail || '입력값을 확인해주세요'}`,
+                401: `인증 실패: 서버 설정에서 사용자명/비밀번호를 확인해주세요`,
+                403: `접근 거부: 권한이 없습니다`,
+                404: `명령어를 찾을 수 없음: 서버가 실행중이지 않거나 명령어가 존재하지 않습니다`,
+                500: `서버 내부 오류: ${detail || '서버에서 오류가 발생했습니다'}`,
+                503: `서비스 사용 불가: 서버가 응답하지 않습니다. 서버 상태를 확인해주세요`,
+            };
             
-            return { error: errorMsg };
+            return { error: errorMap[status] || `오류 (HTTP ${status}): ${detail || error.message}` };
         }
         
-        // 네트워크 에러 처리
-        if (error.code === 'ECONNREFUSED') {
-            return { error: '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요' };
-        }
-        if (error.code === 'ETIMEDOUT') {
-            return { error: '요청 시간 초과: 서버가 응답하지 않습니다' };
-        }
-        if (error.code === 'ENOTFOUND') {
-            return { error: '서버를 찾을 수 없습니다. 네트워크 설정을 확인해주세요' };
-        }
+        // 네트워크 에러 → 에러 코드 기반 분류
+        const networkErrors = {
+            'ECONNREFUSED': '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요',
+            'ETIMEDOUT': '요청 시간 초과: 서버가 응답하지 않습니다',
+            'ENOTFOUND': '서버를 찾을 수 없습니다. 네트워크 설정을 확인해주세요',
+        };
         
-        return { error: `명령어 실행 실패: ${error.message}` };
+        return { error: networkErrors[error.code] || `명령어 실행 실패: ${error.message}` };
     }
 });
 
@@ -1528,6 +1626,48 @@ ipcMain.handle('dialog:openFolder', async () => {
 // Discord Bot process management
 let discordBotProcess = null;
 
+// 고아 봇 프로세스 정리 (이전 앱 실행에서 남은 프로세스)
+function killOrphanBotProcesses() {
+    const { execSync } = require('child_process');
+    
+    if (process.platform === 'win32') {
+        try {
+            // PowerShell로 discord_bot을 포함하는 node.exe PID 조회
+            const output = execSync(
+                'powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"name=\'node.exe\'\\" | Where-Object { $_.CommandLine -like \'*discord_bot*\' } | Select-Object -ExpandProperty ProcessId"',
+                { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 8000 }
+            ).toString().trim();
+            
+            if (!output) return;
+            
+            for (const line of output.split(/\r?\n/)) {
+                const pid = line.trim();
+                if (!pid || isNaN(pid)) continue;
+                
+                // 현재 관리 중인 프로세스는 제외
+                if (discordBotProcess && discordBotProcess.pid && String(discordBotProcess.pid) === pid) {
+                    continue;
+                }
+                console.log(`[Discord Bot] Killing orphan bot process PID: ${pid}`);
+                try {
+                    execSync(`taskkill /PID ${pid} /F`, { stdio: 'ignore', windowsHide: true });
+                } catch (e) {
+                    // 이미 종료된 프로세스일 수 있음
+                }
+            }
+        } catch (e) {
+            // 프로세스가 없으면 정상
+            console.log('[Discord Bot] No orphan processes found');
+        }
+    } else {
+        try {
+            execSync('pkill -f "discord_bot" || true', { stdio: 'ignore' });
+        } catch (e) {
+            // 무시
+        }
+    }
+}
+
 ipcMain.handle('discord:status', () => {
     if (discordBotProcess && !discordBotProcess.killed) {
         return 'running';
@@ -1539,6 +1679,9 @@ ipcMain.handle('discord:start', async (event, config) => {
     if (discordBotProcess && !discordBotProcess.killed) {
         return { error: 'Bot is already running' };
     }
+
+    // 이전 앱 실행에서 남은 고아 봇 프로세스 정리
+    killOrphanBotProcesses();
 
     // 패키징 여부에 따라 경로 결정
     const isDev = !app.isPackaged;

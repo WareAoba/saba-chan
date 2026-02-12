@@ -68,7 +68,8 @@
     "announce_success": "✅ Announcement sent",
     "save_success": "✅ World saved",
     "command_executed": "✅ Command executed",
-    "command_complete": "✅ Command executed successfully!"
+    "command_complete": "✅ Command executed successfully!",
+    "empty_list": "(empty)"
   },
   "errors": {
     "error_title": "Error executing command",
@@ -77,7 +78,12 @@
     "player_not_found": "Player not found",
     "internal_server_error": "Internal server error",
     "rest_api_disabled": "REST API disabled",
-    "rcon_disabled": "RCON disabled"
+    "rcon_disabled": "RCON disabled",
+    "not_found": "Requested resource not found",
+    "connection_refused": "Cannot connect to server",
+    "timeout": "Request timed out",
+    "host_not_found": "Server host not found",
+    "service_unavailable": "Service unavailable"
   },
   "messages": {
     "server_started": "Server started successfully",

@@ -698,6 +698,21 @@ span[style*="--icon-loader"] svg,
     color: var(--text-tertiary);
     margin: 0;
     font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.server-version-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--brand-shadow-subtle);
+    color: var(--brand-primary);
+    border: 1px solid var(--brand-primary);
+    line-height: 1.4;
 }
 
 /* 상태 버튼 (인디케이터 + 텍스트) */
@@ -1658,6 +1673,61 @@ span[style*="--icon-loader"] svg,
     gap: 20px;
 }
 
+/* 설정 그룹 */
+.settings-group {
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 16px;
+    background: var(--bg-secondary);
+}
+
+.settings-group + .settings-group {
+    margin-top: 4px;
+}
+
+.settings-group-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    margin: 0 0 12px 0;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-default);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    user-select: none;
+}
+
+.settings-group-collapsible {
+    cursor: pointer;
+    transition: color 0.15s;
+}
+
+.settings-group-collapsible:hover {
+    color: var(--brand-primary);
+}
+
+.settings-group-count {
+    font-weight: 400;
+    color: var(--text-tertiary);
+    font-size: 12px;
+    margin-left: 4px;
+}
+
+.settings-group-advanced {
+    border-style: dashed;
+}
+
+.version-loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px;
+    color: var(--text-tertiary);
+    font-size: 13px;
+    font-style: italic;
+}
+
 .settings-field {
     display: flex;
     flex-direction: column;
@@ -2333,6 +2403,36 @@ span[style*="--icon-loader"] svg,
 .protocol-badge.rcon {
     background: var(--brand-gradient);
     color: var(--text-on-primary);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Waiting Image Overlay (slow progress indicator)
+   ═══════════════════════════════════════════════════════════ */
+
+.waiting-image-overlay {
+    position: fixed;
+    bottom: 60px;
+    right: 24px;
+    z-index: 9998;
+    cursor: pointer;
+    animation: waiting-bounce-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.waiting-image {
+    width: 120px;
+    height: auto;
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.2));
+    animation: waiting-float 2s ease-in-out infinite;
+}
+
+@keyframes waiting-bounce-in {
+    from { opacity: 0; transform: scale(0.5) translateY(20px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes waiting-float {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-8px); }
 }
 
 /* ═══════════════════════════════════════════════════════════

@@ -111,8 +111,14 @@ try {
     npm run build --silent
     npm run package --silent
     
-    $GuiExe = Get-ChildItem -Path "electron-dist" -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue |
+    # portable target: Saba-chan.exe in electron-dist root (self-extracting, LZMA compressed)
+    $GuiExe = Get-ChildItem -Path "electron-dist" -Filter "Saba-chan.exe" -ErrorAction SilentlyContinue |
               Select-Object -First 1
+    if (-not $GuiExe) {
+        # Fallback: any exe in electron-dist root
+        $GuiExe = Get-ChildItem -Path "electron-dist" -Filter "*.exe" -ErrorAction SilentlyContinue |
+                  Select-Object -First 1
+    }
     if ($GuiExe) {
         Copy-Item -Path $GuiExe.FullName -Destination (Join-Path $DistDir "saba-chan-gui.exe") -Force
         $Size = [Math]::Round($GuiExe.Length / 1MB, 2)
