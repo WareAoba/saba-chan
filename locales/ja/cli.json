@@ -27,7 +27,10 @@
     "config_desc": "CLI設定管理",
     "help_desc": "このヘルプ",
     "exit_desc": "終了 (Ctrl+C)",
-    "module_shortcuts": "モジュールショートカット:"
+    "module_shortcuts": "モジュールショートカット:",
+    "instance": "instance [list|show|create|delete|settings|set] <name>",
+    "config_gui": "config  gui [language|modules_path|token] <value>",
+    "update": "update  [check|status|download|apply|config|install]"
   },
   "config_cmd": {
     "title": "設定:",
@@ -91,5 +94,41 @@
     "already_running": "Discordボットは既に実行中です",
     "started": "Discordボット起動 (プレフィックス: {{prefix}})",
     "stopped": "Discordボット停止"
+  },
+  "update_cmd": {
+    "updates_available": "利用可能な更新:",
+    "all_up_to_date": "すべてのコンポーネントは最新です。",
+    "status_header": "更新状況:",
+    "last_checked": "最終確認: {{time}}",
+    "download_initiated": "ダウンロードを開始しました",
+    "updates_applied": "更新が適用されました",
+    "config_header": "アップデータ設定:",
+    "install_initiated": "インストールを開始しました",
+    "full_install_initiated": "完全インストールを開始しました",
+    "install_status_header": "インストール状況:",
+    "install_progress": "インストール進捗: {{done}}/{{total}}",
+    "currently_installing": "現在: {{component}}",
+    "check_failed": "更新チェックに失敗しました",
+    "download_failed": "ダウンロードに失敗しました",
+    "apply_failed": "適用に失敗しました"
+  },
+  "instance_cmd": {
+    "no_instances": "インスタンスが設定されていません。",
+    "instances_count": "{{count}} 件のインスタンス:",
+    "created": "インスタンス '{{name}}' を作成しました (モジュール: {{module}}, id: {{id}})",
+    "deleted": "インスタンス '{{name}}' を削除しました",
+    "not_found": "インスタンス '{{name}}' が見つかりません",
+    "setting_updated": "{{name}}.{{key}} = {{value}}",
+    "settings_header": "'{{name}}' の設定スキーマ (モジュール: {{module}}):",
+    "no_settings_schema": "利用可能な設定スキーマはありません。"
+  },
+  "bot_alias_cmd": {
+    "header": "Discord ボットのエイリアス:",
+    "module_aliases": "モジュールエイリアス:",
+    "command_aliases": "コマンドエイリアス:",
+    "none": "(なし)",
+    "module_alias_set": "モジュールエイリアスを設定しました: {{module}} → {{aliases}}",
+    "command_alias_set": "コマンドエイリアスを設定しました: {{module}}.{{command}} → {{aliases}}",
+    "all_reset": "すべてのエイリアスをデフォルトにリセットしました。"
   }
 }

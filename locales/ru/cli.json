@@ -1,0 +1,134 @@
+{
+  "welcome": "saba-chan CLI — Введите 'help' для команд, Ctrl+C для выхода.",
+  "unknown_command": "Неизвестная команда '{{cmd}}'. Введите 'help'.",
+  "status": {
+    "daemon_running": "В РАБОТЕ",
+    "daemon_offline": "ОФФЛАЙН",
+    "bot_running": "В РАБОТЕ",
+    "bot_offline": "ОФФЛАЙН",
+    "bot_no_token": "БЕЗ ТОКЕНА",
+    "servers": "Серверы"
+  },
+  "auto_start": {
+    "daemon": "Автоматический запуск демона...",
+    "bot": "Автоматический запуск Discord-бота...",
+    "bot_skipped": "Бот пропущен — не настроен токен Discord.",
+    "daemon_timeout": "Демон не ответил за 10с"
+  },
+  "help": {
+    "header": "Команды:",
+    "server": "server  [list|start|stop|restart|status] <имя>",
+    "server_ext": "server  [managed|console|stdin|diagnose|validate|eula|properties|set-property] <имя>",
+    "instance": "instance [list|show|create|delete|settings|set] <имя>",
+    "module": "module  [list|info|refresh|versions|install]",
+    "daemon": "daemon  [start|stop|status|restart]",
+    "bot": "bot     [start|stop|status|token|prefix|alias]",
+    "config": "config  [show|set|get|reset] <ключ> <значение>",
+    "config_gui": "config  gui [language|modules_path|token] <значение>",
+    "exec": "exec    <id> [cmd|rcon|rest] <команда>",
+    "update": "update  [check|status|download|apply|config|install]",
+    "config_desc": "Управление настройками CLI",
+    "help_desc": "Эта помощь",
+    "exit_desc": "Выход (Ctrl+C)",
+    "module_shortcuts": "Сокращения модулей:"
+  },
+  "config_cmd": {
+    "title": "Конфигурация:",
+    "token_set": "установлен",
+    "token_not_set": "не установлен",
+    "current_settings": "Текущие настройки:",
+    "set_ok": "Установлено '{{key}}' = '{{value}}'",
+    "get_value": "{{key}} = {{value}}",
+    "key_not_found": "Неизвестный ключ конфигурации '{{key}}'",
+    "reset_ok": "Сбросить '{{key}}' к значению по умолчанию",
+    "available_keys": "Доступные ключи конфигурации:",
+    "saved": "Настройки сохранены."
+  },
+  "token_cmd": {
+    "current": "Текущий токен: {{token}}",
+    "set_ok": "Discord токен обновлён.",
+    "cleared": "Discord токен очищен.",
+    "not_set": "Discord токен не установлен. Используйте: bot token set <TOKEN>"
+  },
+  "server_cmd": {
+    "no_servers": "Серверы не настроены.",
+    "servers_count": "{{count}} сервер(ов):",
+    "started": "Запущен",
+    "stopped": "Остановлен",
+    "restarted": "Сервер перезапущен",
+    "not_found": "Сервер '{{name}}' не найден",
+    "no_instance": "Нет экземпляра сервера для модуля '{{module}}'. Создайте его: instance create <name> <module>",
+    "multiple_instances": "У модуля {{module}} {{count}} экземпляров — используется первый:",
+    "managed_started": "Управляемый сервер запущен",
+    "console_output": "Вывод консоли",
+    "stdin_sent": "Отправлено в {{name}}: {{text}}",
+    "diagnose_header": "Диагностика для '{{name}}':",
+    "validate_passed": "Проверка пройдена",
+    "eula_accepted": "EULA принята для '{{name}}'",
+    "properties_header": "Свойства для '{{name}}':"
+  },
+  "module_cmd": {
+    "no_modules": "Модули не загружены.",
+    "modules_count": "{{count}} модул(ь/ей):",
+    "refreshed": "Модули обновлены",
+    "reloaded": "Модули перезагружены",
+    "commands_header": "{{display}} ({{name}}) команды:",
+    "cmd_start": "Запустить сервер",
+    "cmd_stop": "Остановить сервер",
+    "cmd_restart": "Перезапустить сервер",
+    "cmd_status": "Статус сервера",
+    "unknown_cmd": "Неизвестная команда '{{cmd}}' для модуля '{{module}}'. Введите '{{module}}' для списка команд.",
+    "versions_count": "{{count}} версия(и) для '{{module}}':",
+    "no_versions": "Версии для '{{module}}' не найдены.",
+    "install_started": "Установка начата"
+  },
+  "daemon_cmd": {
+    "already_running": "Демон уже запущен",
+    "started": "Демон запущен",
+    "not_running": "Демон не запущен",
+    "stopped": "Демон остановлен",
+    "modules_label": "модули",
+    "instances_label": "экземпляры"
+  },
+  "bot_cmd": {
+    "already_running": "Discord-бот уже запущен",
+    "started": "Discord-бот запущен (префикс: {{prefix}})",
+    "stopped": "Discord-бот остановлен"
+  },
+  "update_cmd": {
+    "updates_available": "Доступны обновления:",
+    "all_up_to_date": "Все компоненты актуальны.",
+    "status_header": "Статус обновления:",
+    "last_checked": "Последняя проверка: {{time}}",
+    "download_initiated": "Загрузка начата",
+    "updates_applied": "Обновления применены",
+    "config_header": "Настройки обновления:",
+    "install_initiated": "Установка начата",
+    "full_install_initiated": "Полная установка начата",
+    "install_status_header": "Статус установки:",
+    "install_progress": "Прогресс установки: {{done}}/{{total}}",
+    "currently_installing": "В процессе: {{component}}",
+    "check_failed": "Ошибка проверки обновлений",
+    "download_failed": "Ошибка загрузки",
+    "apply_failed": "Ошибка применения"
+  },
+  "instance_cmd": {
+    "no_instances": "Нет настроенных экземпляров.",
+    "instances_count": "{{count}} экземпляр(ов):",
+    "created": "Экземпляр '{{name}}' создан (модуль: {{module}}, id: {{id}})",
+    "deleted": "Экземпляр '{{name}}' удалён",
+    "not_found": "Экземпляр '{{name}}' не найден",
+    "setting_updated": "{{name}}.{{key}} = {{value}}",
+    "settings_header": "Схема настроек для '{{name}}' (модуль: {{module}}):",
+    "no_settings_schema": "Схема настроек недоступна."
+  },
+  "bot_alias_cmd": {
+    "header": "Псевдонимы Discord-бота:",
+    "module_aliases": "Псевдонимы модулей:",
+    "command_aliases": "Псевдонимы команд:",
+    "none": "(нет)",
+    "module_alias_set": "Псевдоним модуля установлен: {{module}} → {{aliases}}",
+    "command_alias_set": "Псевдоним команды установлен: {{module}}.{{command}} → {{aliases}}",
+    "all_reset": "Все псевдонимы сброшены до значений по умолчанию."
+  }
+}

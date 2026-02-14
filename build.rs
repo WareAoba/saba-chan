@@ -5,12 +5,13 @@ fn main() {
         use std::path::PathBuf;
 
         let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-        let png_path = PathBuf::from(&manifest_dir)
-            .join("resources")
-            .join("core-icon.png");
-        let ico_path = PathBuf::from(&manifest_dir)
-            .join("resources")
-            .join("core-icon.ico");
+        let res_dir = PathBuf::from(&manifest_dir).join("resources");
+        let png_path = res_dir.join("core-icon.png");
+        let ico_path = res_dir.join("core-icon.ico");
+
+        // build.rs가 아이콘 변경 시 재실행되도록
+        println!("cargo:rerun-if-changed=resources/core-icon.ico");
+        println!("cargo:rerun-if-changed=resources/core-icon.png");
 
         // ICO 파일이 있으면 사용, 없으면 경고
         if ico_path.exists() {

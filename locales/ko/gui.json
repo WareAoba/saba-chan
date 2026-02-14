@@ -49,13 +49,7 @@
     "ipc_port_invalid": "포트 번호는 1024~65535 범위여야 합니다",
     "ipc_port_restart_notice": "포트 변경은 데몬 재시작 후 적용됩니다",
     "console_buffer_label": "콘솔 버퍼 크기",
-    "console_buffer_description": "서버 콘솔에 보관할 최대 라인 수",
-    "ipc_port_label": "IPC 포트",
-    "ipc_port_description": "GUI와 코어 데몬 간 통신에 사용되는 포트",
-    "ipc_port_restart_notice": "포트 변경은 데몬 재시작 후 적용됩니다",
-    "ipc_port_invalid": "유효한 포트 번호를 입력하세요 (1024~65535)",
-    "console_buffer_label": "콘솔 버퍼 크기",
-    "console_buffer_description": "서버 콘솔에 보관할 최대 줄 수"
+    "console_buffer_description": "서버 콘솔에 보관할 최대 라인 수"
   },
   "add_server_modal": {
     "title": "새 서버 추가",

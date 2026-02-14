@@ -4,6 +4,7 @@
  */
 
 const axios = require('axios');
+const http = require('http');
 const { buildModuleAliasMap, buildCommandAliasMap, resolveAlias } = require('../utils/aliasResolver');
 const fs = require('fs');
 const path = require('path');
@@ -518,6 +519,165 @@ describe('별명 해석기 실사용 검증', () => {
             
             expect(resolveAlias('unknown', moduleAliases)).toBe('unknown');
             expect(resolveAlias('알수없음', commandAliases)).toBe('알수없음');
+        });
+    });
+});
+
+describe('Mock IPC 기반 결정적 E2E', () => {
+    let server;
+    let baseUrl;
+    let instances;
+    let sequence;
+
+    beforeAll(async () => {
+        instances = new Map();
+        sequence = 0;
+
+        server = http.createServer((req, res) => {
+            const url = new URL(req.url, 'http://127.0.0.1');
+            const chunks = [];
+            req.on('data', (chunk) => chunks.push(chunk));
+            req.on('end', () => {
+                const raw = Buffer.concat(chunks).toString('utf8');
+                let body = {};
+                if (raw) {
+                    try {
+                        body = JSON.parse(raw);
+                    } catch (_) {
+                        body = {};
+                    }
+                }
+
+                const send = (status, payload) => {
+                    res.writeHead(status, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify(payload));
+                };
+
+                if (req.method === 'GET' && url.pathname === '/api/modules') {
+                    return send(200, { modules: [{ name: 'palworld' }] });
+                }
+
+                if (req.method === 'POST' && url.pathname === '/api/instances') {
+                    sequence += 1;
+                    const id = `mock-${sequence}`;
+                    const instance = {
+                        id,
+                        name: body.name,
+                        module_name: body.module_name,
+                        executable_path: body.executable_path || null,
+                        status: 'stopped',
+                    };
+                    instances.set(id, instance);
+                    return send(201, { success: true, id });
+                }
+
+                if (req.method === 'PATCH' && /^\/api\/instance\/.+/.test(url.pathname)) {
+                    const id = url.pathname.split('/')[3];
+                    const existing = instances.get(id);
+                    if (!existing) {
+                        return send(404, { error: 'instance not found' });
+                    }
+                    const updated = { ...existing, ...body };
+                    instances.set(id, updated);
+                    return send(200, { success: true });
+                }
+
+                if (req.method === 'GET' && /^\/api\/instance\/.+/.test(url.pathname)) {
+                    const id = url.pathname.split('/')[3];
+                    const instance = instances.get(id);
+                    if (!instance) {
+                        return send(404, { error: `Instance not found: ${id}` });
+                    }
+                    return send(200, instance);
+                }
+
+                if (req.method === 'DELETE' && /^\/api\/instance\/.+/.test(url.pathname)) {
+                    const id = url.pathname.split('/')[3];
+                    if (!instances.has(id)) {
+                        return send(404, { error: `Instance not found: ${id}` });
+                    }
+                    instances.delete(id);
+                    return send(200, { success: true });
+                }
+
+                if (req.method === 'POST' && /^\/api\/instance\/.+\/command$/.test(url.pathname)) {
+                    const id = url.pathname.split('/')[3];
+                    if (!instances.has(id)) {
+                        return send(404, { error: `Instance not found: ${id}` });
+                    }
+                    return send(200, { success: true, message: 'ok' });
+                }
+
+                if (req.method === 'GET' && url.pathname === '/api/servers') {
+                    return send(200, {
+                        servers: Array.from(instances.values()).map((v) => ({
+                            id: v.id,
+                            name: v.name,
+                            module: v.module_name,
+                            status: v.status || 'stopped',
+                        })),
+                    });
+                }
+
+                return send(404, { error: 'not found' });
+            });
+        });
+
+        await new Promise((resolve) => {
+            server.listen(0, '127.0.0.1', resolve);
+        });
+
+        const { port } = server.address();
+        baseUrl = `http://127.0.0.1:${port}`;
+    });
+
+    afterAll(async () => {
+        if (server) {
+            await new Promise((resolve) => server.close(resolve));
+        }
+    });
+
+    test('인스턴스 생성→수정→조회→삭제 전체 플로우', async () => {
+        const modules = await axios.get(`${baseUrl}/api/modules`);
+        expect(modules.status).toBe(200);
+        expect(modules.data.modules[0].name).toBe('palworld');
+
+        const created = await axios.post(`${baseUrl}/api/instances`, {
+            name: 'test-mock-e2e',
+            module_name: 'palworld',
+            executable_path: 'C:\\test\\server.exe',
+        });
+        expect(created.status).toBe(201);
+        const id = created.data.id;
+
+        const patched = await axios.patch(`${baseUrl}/api/instance/${id}`, {
+            status: 'running',
+            port: 8211,
+        });
+        expect(patched.status).toBe(200);
+
+        const listed = await axios.get(`${baseUrl}/api/servers`);
+        expect(listed.status).toBe(200);
+        const found = listed.data.servers.find((s) => s.id === id);
+        expect(found).toBeDefined();
+        expect(found.status).toBe('running');
+
+        const removed = await axios.delete(`${baseUrl}/api/instance/${id}`);
+        expect(removed.status).toBe(200);
+
+        await expect(axios.get(`${baseUrl}/api/instance/${id}`)).rejects.toMatchObject({
+            response: { status: 404 },
+        });
+    });
+
+    test('존재하지 않는 인스턴스 command 호출은 404여야 함', async () => {
+        await expect(
+            axios.post(`${baseUrl}/api/instance/nonexistent/command`, {
+                command: 'status',
+                args: {},
+            })
+        ).rejects.toMatchObject({
+            response: { status: 404 },
         });
     });
 });

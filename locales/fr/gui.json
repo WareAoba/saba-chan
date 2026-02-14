@@ -45,15 +45,9 @@
     "theme_dark": "Sombre",
     "advanced_placeholder": "Les paramètres avancés seront ajoutés ici.",
     "ipc_port_label": "Port IPC",
-    "ipc_port_description": "Numéro de port d'écoute du daemon principal (1024–65535)",
-    "ipc_port_invalid": "Le port doit être compris entre 1024 et 65535",
-    "ipc_port_restart_notice": "Le changement de port prendra effet après le redémarrage du daemon",
-    "console_buffer_label": "Taille du tampon de la console",
-    "console_buffer_description": "Nombre maximum de lignes conservées dans la console du serveur",
-    "ipc_port_label": "Port IPC",
     "ipc_port_description": "Port utilisé pour la communication entre l'interface et le Core Daemon",
-    "ipc_port_restart_notice": "Les modifications du port prendront effet après le redémarrage du daemon",
     "ipc_port_invalid": "Entrez un numéro de port valide (1024–65535)",
+    "ipc_port_restart_notice": "Les modifications du port prendront effet après le redémarrage du daemon",
     "console_buffer_label": "Taille du tampon de la console",
     "console_buffer_description": "Nombre maximum de lignes à conserver dans la console du serveur"
   },
@@ -175,7 +169,21 @@
     "add_error_title": "Exception d'ajout d'instance",
     "delete_failed_title": "Échec de la suppression de l'instance",
     "delete_error_title": "Exception de suppression d'instance",
-    "initializing_overlay": "Vérification du statut du serveur..."
+    "initializing_overlay": "Vérification du statut du serveur...",
+    "jar_not_found_title": "Fichier du serveur introuvable",
+    "jar_not_found_message": "L'exécutable du serveur (server.jar) n'est pas configuré.\nVous pouvez spécifier un chemin ou installer un nouveau serveur.",
+    "jar_not_found_message_with_path": "Fichier du serveur introuvable:\n{{path}}\n\nVous pouvez mettre à jour le chemin ou installer un nouveau serveur.",
+    "jar_action_update_path": "Mettre à jour le chemin",
+    "jar_action_install_new": "Installer nouveau",
+    "select_server_jar": "Sélectionner le fichier JAR du serveur",
+    "jar_path_updated": "✅ Chemin du serveur mis à jour",
+    "installing_server": "⏳ Installation du serveur...",
+    "version_fetch_failed": "❌ Impossible de récupérer les informations de version",
+    "install_completed": "✅ Serveur Minecraft {{version}} installé !",
+    "progress_fetching_versions": "Récupération des informations de version...",
+    "progress_downloading": "Téléchargement de Minecraft {{version}}...",
+    "progress_configuring": "Configuration du serveur...",
+    "progress_complete": "Installation terminée !"
   },
   "settings": {
     "save_failed_title": "Échec de l'enregistrement des paramètres",
@@ -264,5 +272,22 @@
     "dismiss": "Supprimer",
     "source_main": "Saba-chan",
     "tooltip": "Notifications"
+  },
+  "console": {
+    "waiting": "En attente de la sortie du serveur...",
+    "input_placeholder": "Entrez la commande...",
+    "send": "Envoyer"
+  },
+  "updates": {
+    "available_title": "Mises à jour disponibles",
+    "available_message": "{{count}} mise(s) à jour : {{names}}",
+    "available_count": "{{count}} mise(s) à jour disponible(s)",
+    "open_updater": "Ouvrir le programme de mise à jour",
+    "completed_title": "Mise à jour terminée",
+    "completed_success": "Toutes les mises à jour ont été appliquées avec succès.",
+    "completed_partial": "Certaines mises à jour ont été appliquées.",
+    "checking_title": "Recherche de mises à jour",
+    "checking_message": "Recherche de nouvelles mises à jour...",
+    "no_updates": "Tous les composants sont à jour."
   }
 }

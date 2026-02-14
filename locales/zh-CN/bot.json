@@ -68,7 +68,8 @@
     "announce_success": "✅ 公告已发送",
     "save_success": "✅ 世界已保存",
     "command_executed": "✅ 命令已执行",
-    "command_complete": "✅ 命令执行成功！"
+    "command_complete": "✅ 命令执行成功！",
+    "empty_list": "(空)"
   },
   "errors": {
     "error_title": "执行命令出错",
@@ -77,7 +78,12 @@
     "player_not_found": "找不到玩家",
     "internal_server_error": "内部服务器错误",
     "rest_api_disabled": "REST API 已禁用",
-    "rcon_disabled": "RCON 已禁用"
+    "rcon_disabled": "RCON 已禁用",
+    "not_found": "未找到请求的资源",
+    "connection_refused": "无法连接到服务器",
+    "timeout": "请求超时",
+    "host_not_found": "找不到服务器主机",
+    "service_unavailable": "服务不可用"
   },
   "messages": {
     "server_started": "服务器成功启动",

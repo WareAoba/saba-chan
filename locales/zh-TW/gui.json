@@ -45,15 +45,9 @@
     "theme_dark": "深色",
     "advanced_placeholder": "進階設定將在此新增。",
     "ipc_port_label": "IPC 連接埠",
-    "ipc_port_description": "核心守護程式監聽的連接埠號碼（1024–65535）",
-    "ipc_port_invalid": "連接埠號碼必須在 1024 到 65535 之間",
-    "ipc_port_restart_notice": "連接埠變更將在守護程式重新啟動後生效",
-    "console_buffer_label": "主控台緩衝區大小",
-    "console_buffer_description": "伺服器主控台中保留的最大行數",
-    "ipc_port_label": "IPC 連接埠",
     "ipc_port_description": "GUI 與核心守護程序之間通訊使用的連接埠",
-    "ipc_port_restart_notice": "連接埠變更將在守護程序重新啟動後生效",
     "ipc_port_invalid": "請輸入有效的連接埠號碼（1024–65535）",
+    "ipc_port_restart_notice": "連接埠變更將在守護程序重新啟動後生效",
     "console_buffer_label": "主控台緩衝區大小",
     "console_buffer_description": "伺服器主控台保留的最大行數"
   },
@@ -175,7 +169,21 @@
     "add_error_title": "實例新增例外",
     "delete_failed_title": "實例刪除失敗",
     "delete_error_title": "實例刪除例外",
-    "initializing_overlay": "正在檢查伺服器狀態..."
+    "initializing_overlay": "正在檢查伺服器狀態...",
+    "jar_not_found_title": "找不到伺服器檔案",
+    "jar_not_found_message": "伺服器可執行檔（server.jar）未配置。\n您可以指定路徑或安裝新的伺服器。",
+    "jar_not_found_message_with_path": "找不到伺服器檔案:\n{{path}}\n\n您可以更新路徑或安裝新的伺服器。",
+    "jar_action_update_path": "更新路徑",
+    "jar_action_install_new": "安裝新的",
+    "select_server_jar": "選擇伺服器 JAR 檔案",
+    "jar_path_updated": "✅ 伺服器路徑已更新",
+    "installing_server": "⏳ 正在安裝伺服器...",
+    "version_fetch_failed": "❌ 無法取得版本資訊",
+    "install_completed": "✅ 已安裝 Minecraft {{version}} 伺服器！",
+    "progress_fetching_versions": "正在取得版本資訊...",
+    "progress_downloading": "正在下載 Minecraft {{version}}...",
+    "progress_configuring": "正在配置伺服器...",
+    "progress_complete": "安裝完成！"
   },
   "settings": {
     "save_failed_title": "設定儲存失敗",
@@ -264,5 +272,22 @@
     "dismiss": "刪除",
     "source_main": "Saba-chan",
     "tooltip": "通知"
+  },
+  "console": {
+    "waiting": "等待伺服器輸出...",
+    "input_placeholder": "輸入命令...",
+    "send": "發送"
+  },
+  "updates": {
+    "available_title": "有可用更新",
+    "available_message": "{{count}} 個更新：{{names}}",
+    "available_count": "有 {{count}} 個更新可用",
+    "open_updater": "開啟更新程式",
+    "completed_title": "更新完成",
+    "completed_success": "所有更新已成功套用。",
+    "completed_partial": "部分更新已套用。",
+    "checking_title": "檢查更新",
+    "checking_message": "正在檢查新更新...",
+    "no_updates": "所有元件均為最新。"
   }
 }

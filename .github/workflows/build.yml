@@ -8,23 +8,30 @@ on:
 
 jobs:
   build:
-    name: Build Daemon
+    name: Build All
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          profile: minimal
-          override: true
+          components: clippy
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: |
+            saba-chan-gui/package-lock.json
+            discord_bot/package-lock.json
 
       - name: Cache Rust dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin/
@@ -34,23 +41,35 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build release
-        run: cargo build --release --verbose
-
       - name: Run Clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --workspace -- -D warnings
 
-      - name: Upload daemon binary
+      - name: Build Rust workspace (release)
+        run: cargo build --release --workspace
+
+      - name: Build Electron GUI
+        working-directory: saba-chan-gui
+        run: |
+          npm ci
+          npm run build
+
+      - name: Upload Rust binaries
         uses: actions/upload-artifact@v4
         with:
-          name: core-daemon-${{ github.sha }}
-          path: target/release/core_daemon.exe
+          name: rust-binaries-${{ github.sha }}
+          path: |
+            target/release/core_daemon.exe
+            target/release/saba-chan-cli.exe
+            target/release/saba-chan-updater.exe
           retention-days: 30
 
       - name: Create release (on tag)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: target/release/core_daemon.exe
+          files: |
+            target/release/core_daemon.exe
+            target/release/saba-chan-cli.exe
+            target/release/saba-chan-updater.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -68,7 +68,8 @@
     "announce_success": "✅ Ankündigung gesendet",
     "save_success": "✅ Welt gespeichert",
     "command_executed": "✅ Befehl ausgeführt",
-    "command_complete": "✅ Befehl erfolgreich ausgeführt!"
+    "command_complete": "✅ Befehl erfolgreich ausgeführt!",
+    "empty_list": "(leer)"
   },
   "errors": {
     "error_title": "Fehler beim Ausführen des Befehls",
@@ -77,7 +78,12 @@
     "player_not_found": "Spieler nicht gefunden",
     "internal_server_error": "Interner Serverfehler",
     "rest_api_disabled": "REST-API deaktiviert",
-    "rcon_disabled": "RCON deaktiviert"
+    "rcon_disabled": "RCON deaktiviert",
+    "not_found": "Angeforderte Ressource nicht gefunden",
+    "connection_refused": "Verbindung zum Server fehlgeschlagen",
+    "timeout": "Anfragezeitüberschreitung",
+    "host_not_found": "Server-Host nicht gefunden",
+    "service_unavailable": "Dienst nicht verfügbar"
   },
   "messages": {
     "server_started": "Server erfolgreich gestartet",

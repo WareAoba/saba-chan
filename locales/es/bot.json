@@ -68,7 +68,8 @@
     "announce_success": "✅ Anuncio enviado",
     "save_success": "✅ Mundo guardado",
     "command_executed": "✅ Comando ejecutado",
-    "command_complete": "✅ ¡Comando ejecutado exitosamente!"
+    "command_complete": "✅ ¡Comando ejecutado exitosamente!",
+    "empty_list": "(vacío)"
   },
   "errors": {
     "error_title": "Error al ejecutar comando",
@@ -77,7 +78,13 @@
     "player_not_found": "Jugador no encontrado",
     "internal_server_error": "Error interno del servidor",
     "rest_api_disabled": "API REST deshabilitada",
-    "rcon_disabled": "RCON deshabilitado"
+    "rcon_disabled": "RCON deshabilitado",
+    "empty_list": "(vacío)",
+    "not_found": "Recurso solicitado no encontrado",
+    "connection_refused": "No se puede conectar al servidor",
+    "timeout": "Tiempo de solicitud agotado",
+    "host_not_found": "Host del servidor no encontrado",
+    "service_unavailable": "Servicio no disponible"
   },
   "messages": {
     "server_started": "Servidor iniciado exitosamente",

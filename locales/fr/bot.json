@@ -68,7 +68,8 @@
     "announce_success": "✅ Annonce envoyée",
     "save_success": "✅ Monde sauvegardé",
     "command_executed": "✅ Commande exécutée",
-    "command_complete": "✅ Commande exécutée avec succès!"
+    "command_complete": "✅ Commande exécutée avec succès!",
+    "empty_list": "(vide)"
   },
   "errors": {
     "error_title": "Erreur lors de l'exécution de la commande",
@@ -77,7 +78,12 @@
     "player_not_found": "Joueur introuvable",
     "internal_server_error": "Erreur interne du serveur",
     "rest_api_disabled": "API REST désactivée",
-    "rcon_disabled": "RCON désactivé"
+    "rcon_disabled": "RCON désactivé",
+    "not_found": "Ressource demandée introuvable",
+    "connection_refused": "Impossible de se connecter au serveur",
+    "timeout": "Délai de la requête dépassé",
+    "host_not_found": "Hôte du serveur introuvable",
+    "service_unavailable": "Service indisponible"
   },
   "messages": {
     "server_started": "Serveur démarré avec succès",

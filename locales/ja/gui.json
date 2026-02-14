@@ -49,12 +49,6 @@
     "ipc_port_invalid": "ポート番号は1024〜65535の範囲である必要があります",
     "ipc_port_restart_notice": "ポート変更はデーモン再起動後に適用されます",
     "console_buffer_label": "コンソールバッファサイズ",
-    "console_buffer_description": "サーバーコンソールに保持する最大行数",
-    "ipc_port_label": "IPC ポート",
-    "ipc_port_description": "GUIとコアデーモン間の通信に使用されるポート",
-    "ipc_port_restart_notice": "ポートの変更はデーモン再起動後に適用されます",
-    "ipc_port_invalid": "有効なポート番号を入力してください（1024〜65535）",
-    "console_buffer_label": "コンソールバッファサイズ",
     "console_buffer_description": "サーバーコンソールに保持する最大行数"
   },
   "add_server_modal": {

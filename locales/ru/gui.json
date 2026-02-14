@@ -45,15 +45,9 @@
     "theme_dark": "Тёмная",
     "advanced_placeholder": "Дополнительные параметры будут добавлены здесь.",
     "ipc_port_label": "Порт IPC",
-    "ipc_port_description": "Номер порта, на котором слушает основной демон (1024–65535)",
-    "ipc_port_invalid": "Порт должен быть от 1024 до 65535",
-    "ipc_port_restart_notice": "Изменение порта вступит в силу после перезапуска демона",
-    "console_buffer_label": "Размер буфера консоли",
-    "console_buffer_description": "Максимальное количество строк, хранящихся в консоли сервера",
-    "ipc_port_label": "Порт IPC",
     "ipc_port_description": "Порт для связи между GUI и Core Daemon",
-    "ipc_port_restart_notice": "Изменение порта вступит в силу после перезапуска демона",
     "ipc_port_invalid": "Введите действительный номер порта (1024–65535)",
+    "ipc_port_restart_notice": "Изменение порта вступит в силу после перезапуска демона",
     "console_buffer_label": "Размер буфера консоли",
     "console_buffer_description": "Максимальное количество строк в консоли сервера"
   },
@@ -175,7 +169,21 @@
     "add_error_title": "Исключение добавления экземпляра",
     "delete_failed_title": "Ошибка удаления экземпляра",
     "delete_error_title": "Исключение удаления экземпляра",
-    "initializing_overlay": "Проверка статуса сервера..."
+    "initializing_overlay": "Проверка статуса сервера...",
+    "jar_not_found_title": "Файл сервера не найден",
+    "jar_not_found_message": "Исполняемый файл сервера (server.jar) не настроен.\nВы можете указать путь или установить новый сервер.",
+    "jar_not_found_message_with_path": "Файл сервера не найден:\n{{path}}\n\nВы можете обновить путь или установить новый сервер.",
+    "jar_action_update_path": "Обновить путь",
+    "jar_action_install_new": "Установить новый",
+    "select_server_jar": "Выбрать JAR-файл сервера",
+    "jar_path_updated": "✅ Путь к серверу обновлён",
+    "installing_server": "⏳ Установка сервера...",
+    "version_fetch_failed": "❌ Не удалось получить информацию о версии",
+    "install_completed": "✅ Сервер Minecraft {{version}} установлен!",
+    "progress_fetching_versions": "Получение информации о версиях...",
+    "progress_downloading": "Загрузка Minecraft {{version}}...",
+    "progress_configuring": "Настройка сервера...",
+    "progress_complete": "Установка завершена!"
   },
   "settings": {
     "save_failed_title": "Ошибка сохранения параметров",
@@ -264,5 +272,22 @@
     "dismiss": "Удалить",
     "source_main": "Saba-chan",
     "tooltip": "Уведомления"
+  },
+  "console": {
+    "waiting": "Ожидание вывода сервера...",
+    "input_placeholder": "Введите команду...",
+    "send": "Отправить"
+  },
+  "updates": {
+    "available_title": "Доступны обновления",
+    "available_message": "{{count}} обновление(ий): {{names}}",
+    "available_count": "Доступно {{count}} обновление(ий)",
+    "open_updater": "Открыть обновления",
+    "completed_title": "Обновление завершено",
+    "completed_success": "Все обновления были успешно применены.",
+    "completed_partial": "Некоторые обновления были применены.",
+    "checking_title": "Проверка обновлений",
+    "checking_message": "Проверка новых обновлений...",
+    "no_updates": "Все компоненты актуальны."
   }
 }

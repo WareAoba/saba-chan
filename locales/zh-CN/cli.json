@@ -1,0 +1,134 @@
+{
+  "welcome": "saba-chan CLI — 输入 'help' 查看命令，按 Ctrl+C 退出。",
+  "unknown_command": "未知命令 '{{cmd}}'。请输入 'help'。",
+  "status": {
+    "daemon_running": "运行中",
+    "daemon_offline": "离线",
+    "bot_running": "运行中",
+    "bot_offline": "离线",
+    "bot_no_token": "无 Token",
+    "servers": "服务器"
+  },
+  "auto_start": {
+    "daemon": "正在自动启动守护进程...",
+    "bot": "正在自动启动 Discord 机器人...",
+    "bot_skipped": "跳过机器人 — 未配置 Discord Token。",
+    "daemon_timeout": "守护进程在 10 秒内未响应"
+  },
+  "help": {
+    "header": "命令：",
+    "server": "server  [list|start|stop|restart|status] <名称>",
+    "server_ext": "server  [managed|console|stdin|diagnose|validate|eula|properties|set-property] <名称>",
+    "instance": "instance [list|show|create|delete|settings|set] <名称>",
+    "module": "module  [list|info|refresh|versions|install]",
+    "daemon": "daemon  [start|stop|status|restart]",
+    "bot": "bot     [start|stop|status|token|prefix|alias]",
+    "config": "config  [show|set|get|reset] <键> <值>",
+    "config_gui": "config  gui [language|modules_path|token] <值>",
+    "exec": "exec    <id> [cmd|rcon|rest] <命令>",
+    "update": "update  [check|status|download|apply|config|install]",
+    "config_desc": "管理 CLI 设置",
+    "help_desc": "帮助信息",
+    "exit_desc": "退出 (Ctrl+C)",
+    "module_shortcuts": "模块快捷键："
+  },
+  "config_cmd": {
+    "title": "配置：",
+    "token_set": "已设置",
+    "token_not_set": "未设置",
+    "current_settings": "当前设置：",
+    "set_ok": "已设置 '{{key}}' = '{{value}}'",
+    "get_value": "{{key}} = {{value}}",
+    "key_not_found": "未知配置键 '{{key}}'",
+    "reset_ok": "已将 '{{key}}' 重置为默认值",
+    "available_keys": "可用的配置键：",
+    "saved": "设置已保存。"
+  },
+  "token_cmd": {
+    "current": "当前 Token：{{token}}",
+    "set_ok": "Discord Token 已更新。",
+    "cleared": "Discord Token 已清除。",
+    "not_set": "未设置 Discord Token。使用：bot token set <TOKEN>"
+  },
+  "server_cmd": {
+    "no_servers": "未配置任何服务器。",
+    "servers_count": "{{count}} 个服务器：",
+    "started": "已启动",
+    "stopped": "已停止",
+    "restarted": "服务器已重启",
+    "not_found": "找不到服务器 '{{name}}'",
+    "no_instance": "模组 '{{module}}' 没有服务器实例。请先创建：instance create <name> <module>",
+    "multiple_instances": "{{module}} 有 {{count}} 个实例 — 使用第一个：",
+    "managed_started": "托管服务器已启动",
+    "console_output": "控制台输出",
+    "stdin_sent": "已发送至 {{name}}：{{text}}",
+    "diagnose_header": "'{{name}}' 的診断：",
+    "validate_passed": "验证通过",
+    "eula_accepted": "已接受 '{{name}}' 的 EULA",
+    "properties_header": "'{{name}}' 的屬性："
+  },
+  "module_cmd": {
+    "no_modules": "未載入任何模組。",
+    "modules_count": "{{count}} 個模組：",
+    "refreshed": "模組已刷新",
+    "reloaded": "模組已重新載入",
+    "commands_header": "{{display}} ({{name}}) 命令：",
+    "cmd_start": "啟動伺服器",
+    "cmd_stop": "停止伺服器",
+    "cmd_restart": "重啟伺服器",
+    "cmd_status": "伺服器狀態",
+    "unknown_cmd": "模組 '{{module}}' 不支援 '{{cmd}}' 指令。輸入 '{{module}}' 查詢指令。",
+    "versions_count": "{{module}} 的 {{count}} 個版本：",
+    "no_versions": "未找到 '{{module}}' 的版本。",
+    "install_started": "開始安裝"
+  },
+  "daemon_cmd": {
+    "already_running": "守護進程已在運行",
+    "started": "守護進程已啟動",
+    "not_running": "守護進程未在運行",
+    "stopped": "守護進程已停止",
+    "modules_label": "模組",
+    "instances_label": "實例"
+  },
+  "bot_cmd": {
+    "already_running": "Discord 機器人已在運行",
+    "started": "Discord 機器人已啟動 (前綴：{{prefix}})",
+    "stopped": "Discord 機器人已停止"
+  },
+  "update_cmd": {
+    "updates_available": "有可用更新：",
+    "all_up_to_date": "所有組件皆為最新。",
+    "status_header": "更新狀態：",
+    "last_checked": "最後檢查：{{time}}",
+    "download_initiated": "已開始下載",
+    "updates_applied": "已套用更新",
+    "config_header": "更新程式設定：",
+    "install_initiated": "已開始安裝",
+    "full_install_initiated": "已開始完整安裝",
+    "install_status_header": "安裝狀態：",
+    "install_progress": "安裝進度：{{done}}/{{total}}",
+    "currently_installing": "目前：{{component}}",
+    "check_failed": "更新檢查失敗",
+    "download_failed": "下載失敗",
+    "apply_failed": "套用失敗"
+  },
+  "instance_cmd": {
+    "no_instances": "未配置任何實例。",
+    "instances_count": "{{count}} 個實例：",
+    "created": "已建立實例 '{{name}}' (模組：{{module}}，id：{{id}})",
+    "deleted": "已刪除實例 '{{name}}'",
+    "not_found": "找不到實例 '{{name}}'",
+    "setting_updated": "{{name}}.{{key}} = {{value}}",
+    "settings_header": "'{{name}}' 的設定結構 (模組：{{module}})：",
+    "no_settings_schema": "無可用的設定結構。"
+  },
+  "bot_alias_cmd": {
+    "header": "Discord 機器人別名：",
+    "module_aliases": "模組別名：",
+    "command_aliases": "命令別名：",
+    "none": "(無)",
+    "module_alias_set": "已設定模組別名：{{module}} → {{aliases}}",
+    "command_alias_set": "已設定命令別名：{{module}}.{{command}} → {{aliases}}",
+    "all_reset": "所有別名已重設為預設值。"
+  }
+}

@@ -243,6 +243,14 @@ pub fn set_modules_path(path: &str) -> anyhow::Result<()> {
     save_settings(&settings)
 }
 
+/// Discord 봇 자동 시작 설정 변경
+#[allow(dead_code)]
+pub fn set_discord_auto_start(enabled: bool) -> anyhow::Result<()> {
+    let mut settings = load_settings()?;
+    settings["discordAutoStart"] = serde_json::Value::Bool(enabled);
+    save_settings(&settings)
+}
+
 /// 언어 설정 변경
 #[allow(dead_code)]
 pub fn set_language(lang: &str) -> anyhow::Result<()> {

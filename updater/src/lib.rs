@@ -452,7 +452,7 @@ impl UpdateManager {
                 module_repo,
                 self.config.api_base_url.as_deref(),
             );
-            match self.check_module_repo(&module_client, &module_name, &local_versions).await {
+            match self.check_module_repo(&module_client, module_name, &local_versions).await {
                 Ok(Some(cv)) => components.push(cv),
                 Ok(None) => {}
                 Err(e) => {
@@ -498,8 +498,7 @@ impl UpdateManager {
         // 캐시 갱신
         let latest_release = releases.iter()
             .filter(|r| !r.draft)
-            .filter(|r| self.config.include_prerelease || !r.prerelease)
-            .next()
+            .find(|r| self.config.include_prerelease || !r.prerelease)
             .cloned();
         self.cached_release = latest_release;
         self.cached_manifest = Some(manifest.clone());
@@ -558,8 +557,7 @@ impl UpdateManager {
 
         let release = match releases.iter()
             .filter(|r| !r.draft)
-            .filter(|r| self.config.include_prerelease || !r.prerelease)
-            .next()
+            .find(|r| self.config.include_prerelease || !r.prerelease)
         {
             Some(r) => r,
             None => return Ok(None),
@@ -640,6 +638,7 @@ impl UpdateManager {
     }
 
     /// staging �E�렉터�E��E��E �E��E��E�드 �E�E�E ���인
+    #[allow(dead_code)]
     fn check_staged_status(&self, asset_name: Option<&str>) -> (bool, Option<String>) {
         match asset_name {
             Some(name) => {
@@ -693,9 +692,7 @@ impl UpdateManager {
                     let module_toml = path.join("module.toml");
                     if let Some((name, version)) = self.read_module_version(&module_toml) {
                         let key = format!("module-{}", name);
-                        if !versions.contains_key(&key) {
-                            versions.insert(key, version);
-                        }
+                        versions.entry(key).or_insert(version);
                     }
                 }
             }
@@ -1132,7 +1129,7 @@ impl UpdateManager {
                 if let Some(ref requires) = info.requires {
                     for (dep_key, min_version_str) in requires {
                         let dep_version = installed.get(dep_key);
-                        let satisfied = dep_version.map_or(false, |v| {
+                        let satisfied = dep_version.is_some_and(|v| {
                             // ">=" 접두사 제거 후 SemVer 비교
                             let min_clean = min_version_str.trim_start_matches(">=").trim();
                             match (SemVer::parse(v), SemVer::parse(min_clean)) {
@@ -1513,6 +1510,7 @@ impl UpdateManager {
     }
 
     /// 繝ｻ閧�E�迚�E繝ｻ・�E�繝ｻ・�E� 繝ｻ蟾晢�E��E�・�E� 繝ｻ繝ｻ鬲めE�E・�E�蟁E���E��E� 繝ｻ�E�繝ｻ繝ｻ(繝ｻ・�E�繝ｻ諛肴�E��E� 蠑｡繝ｻ繝ｻ繝ｻ蝨�E�)
+    #[allow(dead_code)]
     async fn prepare_daemon_update(&self, staged_path: &str) -> Result<Option<String>> {
         let staged = Path::new(staged_path);
         let daemon_exe_name = if cfg!(target_os = "windows") { "core_daemon.exe" } else { "core_daemon" };
@@ -1886,8 +1884,7 @@ rm -f "$0"
 
         let latest_release = releases.iter()
             .filter(|r| !r.draft)
-            .filter(|r| self.config.include_prerelease || !r.prerelease)
-            .next()
+            .find(|r| self.config.include_prerelease || !r.prerelease)
             .cloned();
         self.cached_release = latest_release;
         self.cached_manifest = Some(manifest.clone());
@@ -2042,8 +2039,7 @@ rm -f "$0"
             ).await?;
             let latest_release = releases.iter()
                 .filter(|r| !r.draft)
-                .filter(|r| self.config.include_prerelease || !r.prerelease)
-                .next()
+                .find(|r| self.config.include_prerelease || !r.prerelease)
                 .cloned();
             self.cached_release = latest_release;
             self.cached_manifest = Some(manifest);

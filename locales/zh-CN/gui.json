@@ -45,15 +45,9 @@
     "theme_dark": "深色",
     "advanced_placeholder": "高级设置将添加在此。",
     "ipc_port_label": "IPC 端口",
-    "ipc_port_description": "核心守护进程监听的端口号（1024–65535）",
-    "ipc_port_invalid": "端口号必须在 1024 到 65535 之间",
-    "ipc_port_restart_notice": "端口更改将在守护进程重启后生效",
-    "console_buffer_label": "控制台缓冲区大小",
-    "console_buffer_description": "服务器控制台中保留的最大行数",
-    "ipc_port_label": "IPC 端口",
     "ipc_port_description": "GUI 与核心守护进程之间通信使用的端口",
-    "ipc_port_restart_notice": "端口更改将在守护进程重启后生效",
     "ipc_port_invalid": "请输入有效的端口号（1024–65535）",
+    "ipc_port_restart_notice": "端口更改将在守护进程重启后生效",
     "console_buffer_label": "控制台缓冲区大小",
     "console_buffer_description": "服务器控制台保留的最大行数"
   },
@@ -175,7 +169,21 @@
     "add_error_title": "实例添加异常",
     "delete_failed_title": "实例删除失败",
     "delete_error_title": "实例删除异常",
-    "initializing_overlay": "正在检查服务器状态..."
+    "initializing_overlay": "正在检查服务器状态...",
+    "jar_not_found_title": "未找到服务器文件",
+    "jar_not_found_message": "服务器可执行文件 (server.jar) 未配置。\n您可以指定路径或安装新的服务器。",
+    "jar_not_found_message_with_path": "未找到服务器文件:\n{{path}}\n\n您可以更新路径或安装新的服务器。",
+    "jar_action_update_path": "更新路径",
+    "jar_action_install_new": "安装新的",
+    "select_server_jar": "选择服务器 JAR 文件",
+    "jar_path_updated": "✅ 服务器路径已更新",
+    "installing_server": "⏳ 正在安装服务器...",
+    "version_fetch_failed": "❌ 无法获取版本信息",
+    "install_completed": "✅ 已安装 Minecraft {{version}} 服务器!",
+    "progress_fetching_versions": "正在获取版本信息...",
+    "progress_downloading": "正在下载 Minecraft {{version}}...",
+    "progress_configuring": "正在配置服务器...",
+    "progress_complete": "安装完成！"
   },
   "settings": {
     "save_failed_title": "设置保存失败",
@@ -264,5 +272,22 @@
     "dismiss": "删除",
     "source_main": "Saba-chan",
     "tooltip": "通知"
+  },
+  "console": {
+    "waiting": "等待服务器输出...",
+    "input_placeholder": "输入命令...",
+    "send": "发送"
+  },
+  "updates": {
+    "available_title": "有可用更新",
+    "available_message": "{{count}} 个更新：{{names}}",
+    "available_count": "有 {{count}} 个更新可用",
+    "open_updater": "打开更新程序",
+    "completed_title": "更新完成",
+    "completed_success": "所有更新已成功应用。",
+    "completed_partial": "部分更新已应用。",
+    "checking_title": "检查更新",
+    "checking_message": "正在检查新更新...",
+    "no_updates": "所有组件均为最新。"
   }
 }

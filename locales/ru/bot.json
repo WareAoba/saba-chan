@@ -68,7 +68,8 @@
     "announce_success": "✅ Объявление отправлено",
     "save_success": "✅ Мир сохранен",
     "command_executed": "✅ Команда выполнена",
-    "command_complete": "✅ Команда успешно выполнена!"
+    "command_complete": "✅ Команда успешно выполнена!",
+    "empty_list": "(пусто)"
   },
   "errors": {
     "error_title": "Ошибка выполнения команды",
@@ -77,7 +78,12 @@
     "player_not_found": "Игрок не найден",
     "internal_server_error": "Внутренняя ошибка сервера",
     "rest_api_disabled": "REST API отключен",
-    "rcon_disabled": "RCON отключен"
+    "rcon_disabled": "RCON отключен",
+    "not_found": "Запрашиваемый ресурс не найден",
+    "connection_refused": "Не удалось подключиться к серверу",
+    "timeout": "Время ожидания запроса истекло",
+    "host_not_found": "Хост сервера не найден",
+    "service_unavailable": "Сервис недоступен"
   },
   "messages": {
     "server_started": "Сервер успешно запущен",

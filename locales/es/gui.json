@@ -45,15 +45,9 @@
     "theme_dark": "Oscuro",
     "advanced_placeholder": "La configuración avanzada se agregará aquí.",
     "ipc_port_label": "Puerto IPC",
-    "ipc_port_description": "Número de puerto en el que escucha el daemon principal (1024–65535)",
-    "ipc_port_invalid": "El puerto debe estar entre 1024 y 65535",
-    "ipc_port_restart_notice": "El cambio de puerto se aplicará tras reiniciar el daemon",
-    "console_buffer_label": "Tamaño del búfer de consola",
-    "console_buffer_description": "Número máximo de líneas a conservar en la consola del servidor",
-    "ipc_port_label": "Puerto IPC",
     "ipc_port_description": "Puerto utilizado para la comunicación entre la GUI y el Core Daemon",
-    "ipc_port_restart_notice": "Los cambios de puerto se aplicarán después de reiniciar el daemon",
     "ipc_port_invalid": "Ingrese un número de puerto válido (1024–65535)",
+    "ipc_port_restart_notice": "Los cambios de puerto se aplicarán después de reiniciar el daemon",
     "console_buffer_label": "Tamaño del búfer de consola",
     "console_buffer_description": "Número máximo de líneas a mantener en la consola del servidor"
   },
@@ -175,7 +169,21 @@
     "add_error_title": "Excepción al agregar instancia",
     "delete_failed_title": "Falló eliminar instancia",
     "delete_error_title": "Excepción al eliminar instancia",
-    "initializing_overlay": "Verificando estado del servidor..."
+    "initializing_overlay": "Verificando estado del servidor...",
+    "jar_not_found_title": "Archivo del servidor no encontrado",
+    "jar_not_found_message": "El ejecutable del servidor (server.jar) no está configurado.\nPuede especificar una ruta o instalar un nuevo servidor.",
+    "jar_not_found_message_with_path": "Archivo del servidor no encontrado:\n{{path}}\n\nPuede actualizar la ruta o instalar un nuevo servidor.",
+    "jar_action_update_path": "Actualizar ruta",
+    "jar_action_install_new": "Instalar nuevo",
+    "select_server_jar": "Seleccionar archivo JAR del servidor",
+    "jar_path_updated": "✅ Ruta del servidor actualizada",
+    "installing_server": "⏳ Instalando servidor...",
+    "version_fetch_failed": "❌ No se pudo obtener información de la versión",
+    "install_completed": "✅ Servidor de Minecraft {{version}} instalado!",
+    "progress_fetching_versions": "Obteniendo información de versiones...",
+    "progress_downloading": "Descargando Minecraft {{version}}...",
+    "progress_configuring": "Configurando servidor...",
+    "progress_complete": "¡Instalación completada!"
   },
   "settings": {
     "save_failed_title": "Falló guardar configuración",
@@ -264,5 +272,22 @@
     "dismiss": "Eliminar",
     "source_main": "Saba-chan",
     "tooltip": "Notificaciones"
+  },
+  "console": {
+    "waiting": "Esperando salida del servidor...",
+    "input_placeholder": "Ingrese comando...",
+    "send": "Enviar"
+  },
+  "updates": {
+    "available_title": "Actualizaciones disponibles",
+    "available_message": "{{count}} actualización(es): {{names}}",
+    "available_count": "{{count}} actualización(es) disponibles",
+    "open_updater": "Abrir actualizador",
+    "completed_title": "Actualización completada",
+    "completed_success": "Todas las actualizaciones se han aplicado correctamente.",
+    "completed_partial": "Algunas actualizaciones se han aplicado.",
+    "checking_title": "Buscando actualizaciones",
+    "checking_message": "Buscando nuevas actualizaciones...",
+    "no_updates": "Todos los componentes están actualizados."
   }
 }

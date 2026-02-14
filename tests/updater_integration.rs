@@ -27,15 +27,15 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tempfile::TempDir;
 
-use saba_chan::updater::{
+use saba_chan_updater_lib::{
     Component,
     UpdateConfig, UpdateManager,
 };
-use saba_chan::updater::github::{
+use saba_chan_updater_lib::github::{
     GitHubClient, ReleaseManifest,
 };
-use saba_chan::updater::scheduler::SchedulerConfig;
-use saba_chan::updater::version::SemVer;
+use saba_chan_updater_lib::scheduler::SchedulerConfig;
+use saba_chan_updater_lib::version::SemVer;
 
 // ═══════════════════════════════════════════════════════
 // 테스트 유틸리티
@@ -223,6 +223,7 @@ fn create_test_manager(
         github_repo: github_repo.to_string(),
         include_prerelease: false,
         install_root: Some(tmpdir.path().to_string_lossy().to_string()),
+        api_base_url: None,
     };
 
     UpdateManager::new(config, &modules_dir.to_string_lossy())
@@ -366,6 +367,7 @@ fn test_update_config_serialization() {
         github_repo: "testrepo".to_string(),
         include_prerelease: true,
         install_root: Some("/opt/saba".into()),
+        api_base_url: None,
     };
 
     let json = serde_json::to_string(&cfg).unwrap();
@@ -418,7 +420,7 @@ fn test_manifest_parse() {
     assert_eq!(manifest.release_version, "0.2.0");
     assert_eq!(manifest.components.len(), 3);
     assert_eq!(manifest.components["core_daemon"].version, "0.2.0");
-    assert_eq!(manifest.components["core_daemon"].asset, "core-win-x64.zip");
+    assert_eq!(manifest.components["core_daemon"].asset, Some("core-win-x64.zip".to_string()));
     assert_eq!(manifest.components["core_daemon"].install_dir, Some(".".into()));
     assert!(manifest.components["cli"].install_dir.is_none());
     assert_eq!(manifest.components["module-minecraft"].install_dir, Some("modules/minecraft".into()));
@@ -427,11 +429,12 @@ fn test_manifest_parse() {
 #[test]
 fn test_manifest_serialization_roundtrip() {
     let mut components = HashMap::new();
-    components.insert("gui".to_string(), saba_chan::updater::github::ComponentInfo {
+    components.insert("gui".to_string(), saba_chan_updater_lib::github::ComponentInfo {
         version: "1.0.0".into(),
-        asset: "gui.zip".into(),
+        asset: Some("gui.zip".into()),
         sha256: Some("abcdef1234".into()),
         install_dir: Some("saba-chan-gui".into()),
+        requires: None,
     });
 
     let manifest = ReleaseManifest {
@@ -758,9 +761,13 @@ async fn test_fresh_install_simulation() {
 
     // 각 컴포넌트 설치
     for (key, info) in &manifest_body.components {
+        let Some(asset_name) = info.asset.as_deref() else {
+            continue;
+        };
+
         let asset_url = releases[0]["assets"].as_array().unwrap()
             .iter()
-            .find(|a| a["name"].as_str() == Some(&info.asset))
+            .find(|a| a["name"].as_str() == Some(asset_name))
             .map(|a| a["browser_download_url"].as_str().unwrap().to_string());
 
         if let Some(url) = asset_url {

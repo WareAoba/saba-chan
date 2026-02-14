@@ -76,6 +76,22 @@ console.warn = (...args) => {
 
 // Mock window.api globally (jsdom 환경에서만)
 if (typeof window !== 'undefined') {
+  if (!window.matchMedia) {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
+  }
+
     global.window.api = {
         settingsLoad: vi.fn(),
         settingsSave: vi.fn(),

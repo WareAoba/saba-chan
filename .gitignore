@@ -1,14 +1,12 @@
 # Rust
 /target/
 target2/
-Cargo.lock
 
 # Node.js
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-package-lock.json
 
 # Electron
 saba-chan-gui/node_modules/
@@ -20,9 +18,7 @@ discord_bot/node_modules/
 
 # CLI
 saba-chan-cli/target/
-saba-chan-cli/Cargo.lock
 saba-chan-cli/.rustc_info.json
-saba-chan-cli/cargo.lock
 
 # Environment files
 .env
@@ -71,6 +67,8 @@ coverage/
 *.profdata
 saba-chan-gui/coverage/
 discord_bot/coverage/
+
+*.bak
 
 # GitHub Actions
 .github/cache/

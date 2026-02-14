@@ -1,0 +1,134 @@
+{
+  "welcome": "saba-chan CLI — Tippe 'help' für Befehle, Strg+C zum Beenden.",
+  "unknown_command": "Unbekannter Befehl '{{cmd}}'. Tippe 'help'.",
+  "status": {
+    "daemon_running": "LÄUFT",
+    "daemon_offline": "OFFLINE",
+    "bot_running": "LÄUFT",
+    "bot_offline": "OFFLINE",
+    "bot_no_token": "KEIN TOKEN",
+    "servers": "Server"
+  },
+  "auto_start": {
+    "daemon": "Starte Daemon automatisch...",
+    "bot": "Starte Discord-Bot automatisch...",
+    "bot_skipped": "Bot übersprungen — kein Discord-Token konfiguriert.",
+    "daemon_timeout": "Daemon hat in 10s nicht geantwortet"
+  },
+  "help": {
+    "header": "Befehle:",
+    "server": "server  [list|start|stop|restart|status] <name>",
+    "server_ext": "server  [managed|console|stdin|diagnose|validate|eula|properties|set-property] <name>",
+    "instance": "instance [list|show|create|delete|settings|set] <name>",
+    "module": "module  [list|info|refresh|versions|install]",
+    "daemon": "daemon  [start|stop|status|restart]",
+    "bot": "bot     [start|stop|status|token|prefix|alias]",
+    "config": "config  [show|set|get|reset] <key> <value>",
+    "config_gui": "config  gui [language|modules_path|token] <value>",
+    "exec": "exec    <id> [cmd|rcon|rest] <command>",
+    "update": "update  [check|status|download|apply|config|install]",
+    "config_desc": "CLI-Einstellungen verwalten",
+    "help_desc": "Diese Hilfe",
+    "exit_desc": "Beenden (Strg+C)",
+    "module_shortcuts": "Modul-Kurzbefehle:"
+  },
+  "config_cmd": {
+    "title": "Konfiguration:",
+    "token_set": "gesetzt",
+    "token_not_set": "nicht gesetzt",
+    "current_settings": "Aktuelle Einstellungen:",
+    "set_ok": "Setze '{{key}}' = '{{value}}'",
+    "get_value": "{{key}} = {{value}}",
+    "key_not_found": "Unbekannter Konfigurationsschlüssel '{{key}}'",
+    "reset_ok": "Setze '{{key}}' auf Standard zurück",
+    "available_keys": "Verfügbare Konfigurationsschlüssel:",
+    "saved": "Einstellungen gespeichert."
+  },
+  "token_cmd": {
+    "current": "Aktuelles Token: {{token}}",
+    "set_ok": "Discord-Token aktualisiert.",
+    "cleared": "Discord-Token entfernt.",
+    "not_set": "Kein Discord-Token gesetzt. Verwende: bot token set <TOKEN>"
+  },
+  "server_cmd": {
+    "no_servers": "Keine Server konfiguriert.",
+    "servers_count": "{{count}} Server:",
+    "started": "Gestartet",
+    "stopped": "Gestoppt",
+    "restarted": "Server neu gestartet",
+    "not_found": "Server '{{name}}' nicht gefunden",
+    "no_instance": "Keine Serverinstanz für Modul '{{module}}' gefunden. Erstelle zuerst eine: instance create <name> <module>",
+    "multiple_instances": "{{module}} hat {{count}} Instanzen — verwende die erste:",
+    "managed_started": "Verwalteter Server gestartet",
+    "console_output": "Konsolenausgabe",
+    "stdin_sent": "An {{name}} gesendet: {{text}}",
+    "diagnose_header": "Diagnose für '{{name}}':",
+    "validate_passed": "Validierung bestanden",
+    "eula_accepted": "EULA für '{{name}}' akzeptiert",
+    "properties_header": "Eigenschaften für '{{name}}':"
+  },
+  "module_cmd": {
+    "no_modules": "Keine Module geladen.",
+    "modules_count": "{{count}} Modul(e):",
+    "refreshed": "Module aktualisiert",
+    "reloaded": "Module neu geladen",
+    "commands_header": "{{display}} ({{name}}) Befehle:",
+    "cmd_start": "Server starten",
+    "cmd_stop": "Server stoppen",
+    "cmd_restart": "Server neu starten",
+    "cmd_status": "Serverstatus",
+    "unknown_cmd": "Unbekannter Befehl '{{cmd}}' für Modul '{{module}}'. Tippe '{{module}}' für Befehle.",
+    "versions_count": "{{count}} Version(en) für '{{module}}':",
+    "no_versions": "Keine Versionen für '{{module}}' gefunden.",
+    "install_started": "Installation gestartet"
+  },
+  "daemon_cmd": {
+    "already_running": "Daemon läuft bereits",
+    "started": "Daemon gestartet",
+    "not_running": "Daemon läuft nicht",
+    "stopped": "Daemon gestoppt",
+    "modules_label": "Module",
+    "instances_label": "Instanzen"
+  },
+  "bot_cmd": {
+    "already_running": "Discord-Bot läuft bereits",
+    "started": "Discord-Bot gestartet (Präfix: {{prefix}})",
+    "stopped": "Discord-Bot gestoppt"
+  },
+  "update_cmd": {
+    "updates_available": "Updates verfügbar:",
+    "all_up_to_date": "Alle Komponenten sind aktuell.",
+    "status_header": "Update-Status:",
+    "last_checked": "Zuletzt geprüft: {{time}}",
+    "download_initiated": "Download gestartet",
+    "updates_applied": "Updates angewendet",
+    "config_header": "Updater-Konfiguration:",
+    "install_initiated": "Installation gestartet",
+    "full_install_initiated": "Vollinstallation gestartet",
+    "install_status_header": "Installationsstatus:",
+    "install_progress": "Installationsfortschritt: {{done}}/{{total}}",
+    "currently_installing": "Derzeit: {{component}}",
+    "check_failed": "Update-Prüfung fehlgeschlagen",
+    "download_failed": "Download fehlgeschlagen",
+    "apply_failed": "Anwendung fehlgeschlagen"
+  },
+  "instance_cmd": {
+    "no_instances": "Keine Instanzen konfiguriert.",
+    "instances_count": "{{count}} Instanz(en):",
+    "created": "Instanz '{{name}}' erstellt (Modul: {{module}}, id: {{id}})",
+    "deleted": "Instanz '{{name}}' gelöscht",
+    "not_found": "Instanz '{{name}}' nicht gefunden",
+    "setting_updated": "{{name}}.{{key}} = {{value}}",
+    "settings_header": "Einstellungsschema für '{{name}}' (Modul: {{module}}):",
+    "no_settings_schema": "Kein Einstellungsschema verfügbar."
+  },
+  "bot_alias_cmd": {
+    "header": "Discord-Bot Aliase:",
+    "module_aliases": "Modul-Aliase:",
+    "command_aliases": "Befehls-Aliase:",
+    "none": "(keine)",
+    "module_alias_set": "Modul-Alias gesetzt: {{module}} → {{aliases}}",
+    "command_alias_set": "Befehls-Alias gesetzt: {{module}}.{{command}} → {{aliases}}",
+    "all_reset": "Alle Aliase auf Standard zurückgesetzt."
+  }
+}

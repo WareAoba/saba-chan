@@ -1600,6 +1600,7 @@
     color: var(--text-primary);
     text-align: right;
     transition: border-color 0.2s;
+    appearance: textfield;
     -moz-appearance: textfield;
 }
 

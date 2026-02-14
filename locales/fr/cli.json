@@ -1,0 +1,134 @@
+{
+  "welcome": "saba-chan CLI — Tapez 'help' pour les commandes, Ctrl+C pour quitter.",
+  "unknown_command": "Commande inconnue '{{cmd}}'. Tapez 'help'.",
+  "status": {
+    "daemon_running": "EN COURS",
+    "daemon_offline": "HORS LIGNE",
+    "bot_running": "EN COURS",
+    "bot_offline": "HORS LIGNE",
+    "bot_no_token": "PAS DE TOKEN",
+    "servers": "Serveurs"
+  },
+  "auto_start": {
+    "daemon": "Démarrage automatique du daemon...",
+    "bot": "Démarrage automatique du bot Discord...",
+    "bot_skipped": "Bot ignoré — aucun token Discord configuré.",
+    "daemon_timeout": "Le daemon n'a pas répondu en 10s"
+  },
+  "help": {
+    "header": "Commandes:",
+    "server": "server  [list|start|stop|restart|status] <name>",
+    "server_ext": "server  [managed|console|stdin|diagnose|validate|eula|properties|set-property] <name>",
+    "instance": "instance [list|show|create|delete|settings|set] <name>",
+    "module": "module  [list|info|refresh|versions|install]",
+    "daemon": "daemon  [start|stop|status|restart]",
+    "bot": "bot     [start|stop|status|token|prefix|alias]",
+    "config": "config  [show|set|get|reset] <key> <value>",
+    "config_gui": "config  gui [language|modules_path|token] <value>",
+    "exec": "exec    <id> [cmd|rcon|rest] <command>",
+    "update": "update  [check|status|download|apply|config|install]",
+    "config_desc": "Gérer les paramètres du CLI",
+    "help_desc": "Cette aide",
+    "exit_desc": "Quitter (Ctrl+C)",
+    "module_shortcuts": "Raccourcis module:"
+  },
+  "config_cmd": {
+    "title": "Configuration:",
+    "token_set": "défini",
+    "token_not_set": "non défini",
+    "current_settings": "Paramètres actuels:",
+    "set_ok": "Défini '{{key}}' = '{{value}}'",
+    "get_value": "{{key}} = {{value}}",
+    "key_not_found": "Clé de configuration inconnue '{{key}}'",
+    "reset_ok": "Réinitialiser '{{key}}' à la valeur par défaut",
+    "available_keys": "Clés de configuration disponibles:",
+    "saved": "Paramètres sauvegardés."
+  },
+  "token_cmd": {
+    "current": "Jeton actuel: {{token}}",
+    "set_ok": "Jeton Discord mis à jour.",
+    "cleared": "Jeton Discord effacé.",
+    "not_set": "Aucun jeton Discord défini. Utilisez: bot token set <TOKEN>"
+  },
+  "server_cmd": {
+    "no_servers": "Aucun serveur configuré.",
+    "servers_count": "{{count}} serveur(s):",
+    "started": "Démarré",
+    "stopped": "Arrêté",
+    "restarted": "Serveur redémarré",
+    "not_found": "Serveur '{{name}}' introuvable",
+    "no_instance": "Aucune instance de serveur trouvée pour le module '{{module}}'. Créez-en une d'abord: instance create <name> <module>",
+    "multiple_instances": "{{module}} a {{count}} instances — utilisation de la première:",
+    "managed_started": "Serveur géré démarré",
+    "console_output": "Sortie de la console",
+    "stdin_sent": "Envoyé à {{name}}: {{text}}",
+    "diagnose_header": "Diagnostic pour '{{name}}':",
+    "validate_passed": "Validation réussie",
+    "eula_accepted": "EULA acceptée pour '{{name}}'",
+    "properties_header": "Propriétés pour '{{name}}':"
+  },
+  "module_cmd": {
+    "no_modules": "Aucun module chargé.",
+    "modules_count": "{{count}} module(s):",
+    "refreshed": "Modules actualisés",
+    "reloaded": "Modules rechargés",
+    "commands_header": "{{display}} ({{name}}) commandes:",
+    "cmd_start": "Démarrer le serveur",
+    "cmd_stop": "Arrêter le serveur",
+    "cmd_restart": "Redémarrer le serveur",
+    "cmd_status": "État du serveur",
+    "unknown_cmd": "Commande inconnue '{{cmd}}' pour le module '{{module}}'. Tapez '{{module}}' pour les commandes.",
+    "versions_count": "{{count}} version(s) pour '{{module}}':",
+    "no_versions": "Aucune version trouvée pour '{{module}}'.",
+    "install_started": "Installation démarrée"
+  },
+  "daemon_cmd": {
+    "already_running": "Le daemon est déjà en cours d'exécution",
+    "started": "Daemon démarré",
+    "not_running": "Le daemon n'est pas en cours d'exécution",
+    "stopped": "Daemon arrêté",
+    "modules_label": "modules",
+    "instances_label": "instances"
+  },
+  "bot_cmd": {
+    "already_running": "Le bot Discord est déjà en cours d'exécution",
+    "started": "Bot Discord démarré (préfixe: {{prefix}})",
+    "stopped": "Bot Discord arrêté"
+  },
+  "update_cmd": {
+    "updates_available": "Mises à jour disponibles:",
+    "all_up_to_date": "Tous les composants sont à jour.",
+    "status_header": "Statut de la mise à jour:",
+    "last_checked": "Dernière vérification: {{time}}",
+    "download_initiated": "Téléchargement initié",
+    "updates_applied": "Mises à jour appliquées",
+    "config_header": "Configuration du mise à jour:",
+    "install_initiated": "Installation initiée",
+    "full_install_initiated": "Installation complète initiée",
+    "install_status_header": "Statut d'installation:",
+    "install_progress": "Progression de l'installation: {{done}}/{{total}}",
+    "currently_installing": "Actuellement: {{component}}",
+    "check_failed": "Échec de la vérification des mises à jour",
+    "download_failed": "Échec du téléchargement",
+    "apply_failed": "Échec de l'application"
+  },
+  "instance_cmd": {
+    "no_instances": "Aucune instance configurée.",
+    "instances_count": "{{count}} instance(s):",
+    "created": "Instance '{{name}}' créée (module: {{module}}, id: {{id}})",
+    "deleted": "Instance '{{name}}' supprimée",
+    "not_found": "Instance '{{name}}' introuvable",
+    "setting_updated": "{{name}}.{{key}} = {{value}}",
+    "settings_header": "Schéma de paramètres pour '{{name}}' (module: {{module}}):",
+    "no_settings_schema": "Aucun schéma de paramètres disponible."
+  },
+  "bot_alias_cmd": {
+    "header": "Alias du bot Discord:",
+    "module_aliases": "Alias de module:",
+    "command_aliases": "Alias de commande:",
+    "none": "(aucun)",
+    "module_alias_set": "Alias de module défini: {{module}} → {{aliases}}",
+    "command_alias_set": "Alias de commande défini: {{module}}.{{command}} → {{aliases}}",
+    "all_reset": "Tous les alias ont été réinitialisés aux valeurs par défaut."
+  }
+}

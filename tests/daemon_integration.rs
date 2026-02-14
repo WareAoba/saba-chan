@@ -2,8 +2,11 @@
 /// 복잡한 시나리오는 제외하고 핵심 기능만 검증
 
 use saba_chan::supervisor::Supervisor;
+use saba_chan::ipc::IPCServer;
 use std::sync::Arc;
+use std::net::TcpListener;
 use tokio::sync::RwLock;
+use tokio::time::{sleep, Duration};
 use std::fs;
 use serde_json::Value;
 
@@ -40,6 +43,28 @@ fn cleanup_test_instances() {
             }
         }
     }
+}
+
+fn pick_free_port() -> u16 {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("failed to bind ephemeral port");
+    let port = listener
+        .local_addr()
+        .expect("failed to read ephemeral port")
+        .port();
+    drop(listener);
+    port
+}
+
+async fn wait_for_ipc_ready(base_url: &str, client: &reqwest::Client) {
+    for _ in 0..30 {
+        if let Ok(resp) = client.get(format!("{}/api/modules", base_url)).send().await {
+            if resp.status().is_success() {
+                return;
+            }
+        }
+        sleep(Duration::from_millis(150)).await;
+    }
+    panic!("IPC server did not become ready: {}", base_url);
 }
 
 #[tokio::test]
@@ -193,5 +218,132 @@ async fn test_invalid_module_path() {
     assert_eq!(modules.len(), 0, "Invalid path should result in no modules");
     
     println!("✓ Invalid path handling test passed");
+}
+
+#[tokio::test]
+async fn test_ipc_instance_crud_e2e() {
+    let supervisor = Arc::new(RwLock::new(Supervisor::new("./modules")));
+    {
+        let mut sup = supervisor.write().await;
+        sup.initialize().await.expect("supervisor init failed");
+    }
+
+    let port = pick_free_port();
+    let listen_addr = format!("127.0.0.1:{}", port);
+    let base_url = format!("http://{}", listen_addr);
+
+    let server = IPCServer::new(supervisor.clone(), &listen_addr);
+    let server_task = tokio::spawn(async move {
+        let _ = server.start().await;
+    });
+
+    let client = reqwest::Client::new();
+    wait_for_ipc_ready(&base_url, &client).await;
+
+    let modules_resp = client
+        .get(format!("{}/api/modules", base_url))
+        .send()
+        .await
+        .expect("failed to call /api/modules");
+    assert!(modules_resp.status().is_success());
+    let modules_json: Value = modules_resp.json().await.expect("invalid modules json");
+
+    let first_module = modules_json
+        .get("modules")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|m| m.get("name"))
+        .and_then(|v| v.as_str())
+        .expect("at least one module should exist");
+
+    let test_name = format!("test-e2e-{}", port);
+    let create_resp = client
+        .post(format!("{}/api/instances", base_url))
+        .json(&serde_json::json!({
+            "name": test_name,
+            "module_name": first_module,
+            "executable_path": "C:/tmp/test-server.exe"
+        }))
+        .send()
+        .await
+        .expect("failed to create instance");
+    assert_eq!(create_resp.status(), reqwest::StatusCode::CREATED);
+    let create_json: Value = create_resp.json().await.expect("invalid create response");
+    let instance_id = create_json
+        .get("id")
+        .and_then(|v| v.as_str())
+        .expect("create response should contain id")
+        .to_string();
+
+    let get_resp = client
+        .get(format!("{}/api/instance/{}", base_url, instance_id))
+        .send()
+        .await
+        .expect("failed to get instance");
+    assert_eq!(get_resp.status(), reqwest::StatusCode::OK);
+    let get_json: Value = get_resp.json().await.expect("invalid get response");
+    assert_eq!(
+        get_json.get("name").and_then(|v| v.as_str()),
+        Some(test_name.as_str())
+    );
+
+    let delete_resp = client
+        .delete(format!("{}/api/instance/{}", base_url, instance_id))
+        .send()
+        .await
+        .expect("failed to delete instance");
+    assert_eq!(delete_resp.status(), reqwest::StatusCode::OK);
+
+    let get_deleted_resp = client
+        .get(format!("{}/api/instance/{}", base_url, instance_id))
+        .send()
+        .await
+        .expect("failed to query deleted instance");
+    assert_eq!(get_deleted_resp.status(), reqwest::StatusCode::NOT_FOUND);
+
+    server_task.abort();
+    cleanup_test_instances();
+}
+
+#[tokio::test]
+async fn test_ipc_command_endpoint_returns_404_for_unknown_instance() {
+    let supervisor = Arc::new(RwLock::new(Supervisor::new("./modules")));
+    {
+        let mut sup = supervisor.write().await;
+        sup.initialize().await.expect("supervisor init failed");
+    }
+
+    let port = pick_free_port();
+    let listen_addr = format!("127.0.0.1:{}", port);
+    let base_url = format!("http://{}", listen_addr);
+
+    let server = IPCServer::new(supervisor, &listen_addr);
+    let server_task = tokio::spawn(async move {
+        let _ = server.start().await;
+    });
+
+    let client = reqwest::Client::new();
+    wait_for_ipc_ready(&base_url, &client).await;
+
+    let response = client
+        .post(format!("{}/api/instance/nonexistent/command", base_url))
+        .json(&serde_json::json!({
+            "command": "status",
+            "args": {}
+        }))
+        .send()
+        .await
+        .expect("failed to call command endpoint");
+
+    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
+    let body: Value = response.json().await.expect("invalid error body");
+    let message = body
+        .get("error")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_lowercase();
+    assert!(message.contains("instance not found"));
+
+    server_task.abort();
 }
 
