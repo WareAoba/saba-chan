@@ -20,6 +20,23 @@ contextBridge.exposeInMainWorld('api', {
     managedStart: (instanceId) => ipcRenderer.invoke('managed:start', instanceId),
     managedConsole: (instanceId, since, count) => ipcRenderer.invoke('managed:console', instanceId, since, count),
     managedStdin: (instanceId, command) => ipcRenderer.invoke('managed:stdin', instanceId, command),
+    // Updater — 데몬 HTTP API를 통한 업데이트 관리
+    updaterCheck: () => ipcRenderer.invoke('updater:check'),
+    updaterStatus: () => ipcRenderer.invoke('updater:status'),
+    updaterDownload: (components) => ipcRenderer.invoke('updater:download', components),
+    updaterApply: (components) => ipcRenderer.invoke('updater:apply', components),
+    updaterLaunchApply: (targets) => ipcRenderer.invoke('updater:launchApply', targets),
+    updaterGetConfig: () => ipcRenderer.invoke('updater:getConfig'),
+    updaterSetConfig: (config) => ipcRenderer.invoke('updater:setConfig', config),
+    // Mock Server (테스트용)
+    mockServerStart: (options) => ipcRenderer.invoke('mockServer:start', options),
+    mockServerStop: () => ipcRenderer.invoke('mockServer:stop'),
+    mockServerStatus: () => ipcRenderer.invoke('mockServer:status'),
+    // Updater events (from main process background checker)
+    onUpdatesAvailable: (callback) => ipcRenderer.on('updates:available', (event, data) => callback(data)),
+    offUpdatesAvailable: () => ipcRenderer.removeAllListeners('updates:available'),
+    onUpdateCompleted: (callback) => ipcRenderer.on('updates:completed', (event, data) => callback(data)),
+    offUpdateCompleted: () => ipcRenderer.removeAllListeners('updates:completed'),
     // Settings API
     settingsLoad: () => ipcRenderer.invoke('settings:load'),
     settingsSave: (settings) => ipcRenderer.invoke('settings:save', settings),

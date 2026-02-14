@@ -1,18 +1,16 @@
-#Requires -Version 5.0
+﻿#Requires -Version 5.0
 <#
 .SYNOPSIS
-Saba-chan Windows Release Build
-단일 배포 패키지 생성 (모든 언어, 모든 기능 포함)
+Saba-chan Windows Release Build (Parallel)
 
-배포물 구성:
-  core_daemon.exe   — Rust IPC 데몬
-  saba-cli.exe      — Rust TUI 클라이언트 (아이콘 임베드)
-  saba-chan-gui.exe  — Electron GUI
-  discord_bot/      — Node.js Discord 봇
-  config/           — global.toml
-  locales/          — 다국어 리소스
-
-모듈(modules/)은 사용자가 별도로 설치하므로 포함하지 않습니다.
+배포물:
+  core_daemon.exe            - Rust IPC 데몬
+  saba-chan-cli.exe           - Rust TUI 클라이언트
+  saba-chan-gui.exe           - Electron GUI
+  saba-chan-updater.exe       - 업데이터 (GUI + CLI 모드)
+  discord_bot/               - Node.js Discord 봇
+  config/                    - global.toml, updater.toml
+  locales/                   - 다국어 리소스
 
 .EXAMPLE
 .\build-windows.ps1
@@ -29,204 +27,222 @@ $ProjectRoot = Split-Path -Parent $ScriptDir
 $ReleaseDir = Join-Path $ProjectRoot $OutputDir
 $DistDir = Join-Path $ReleaseDir "saba-chan-v0.1.0"
 
+$stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+
 Write-Host "================================" -ForegroundColor Cyan
 Write-Host "Saba-chan Windows Release Build" -ForegroundColor Cyan
+Write-Host "  (Parallel Mode)" -ForegroundColor DarkCyan
 Write-Host "================================" -ForegroundColor Cyan
 Write-Host ""
 
-# ─── 1. Clean ───
-Write-Host "[1/6] Cleaning..." -ForegroundColor Yellow
+# --- 1. Clean ---
+Write-Host "[1/5] Cleaning..." -ForegroundColor Yellow
 if (Test-Path $ReleaseDir) {
+    Get-ChildItem $ReleaseDir -Recurse -Filter "*.exe" -ErrorAction SilentlyContinue | ForEach-Object {
+        $p = $_.FullName
+        try { Remove-Item $p -Force -ErrorAction Stop } catch {
+            Rename-Item $p "$p.old" -Force -ErrorAction SilentlyContinue
+        }
+    }
     Remove-Item $ReleaseDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
 Write-Host "  [OK]" -ForegroundColor Green
 
-# ─── 2. Core Daemon (Rust) ───
-Write-Host "[2/6] Building core daemon (Rust)..." -ForegroundColor Yellow
-try {
-    Push-Location $ProjectRoot
-    cargo build --release --quiet
-    
-    $DaemonExe = "target\release\core_daemon.exe"
-    if (-not (Test-Path $DaemonExe)) {
-        throw "core_daemon.exe not found"
-    }
-    
-    Copy-Item -Path $DaemonExe -Destination $DistDir -Force
-    $Size = [Math]::Round((Get-Item $DaemonExe).Length / 1MB, 2)
-    Write-Host "  [OK] core_daemon.exe ($Size MB)" -ForegroundColor Green
-}
-catch {
-    Write-Host "  [ERROR] $_" -ForegroundColor Red
-    exit 1
-}
-finally {
-    Pop-Location
-}
+# --- 2. Parallel Builds ---
+Write-Host "[2/5] Starting parallel builds..." -ForegroundColor Yellow
+Write-Host "  Rust (daemon+cli+updater) | GUI (vite+electron) | Discord Bot" -ForegroundColor DarkGray
+Write-Host ""
 
-# ─── 3. CLI (Rust, saba-cli.exe) ───
-Write-Host "[3/6] Building CLI (Rust)..." -ForegroundColor Yellow
-try {
-    Push-Location (Join-Path $ProjectRoot "saba-chan-cli")
-    cargo build --release --quiet
-    
-    $CliExe = "target\release\saba-cli.exe"
-    if (-not (Test-Path $CliExe)) {
-        throw "saba-cli.exe not found"
-    }
-    
-    Copy-Item -Path $CliExe -Destination $DistDir -Force
-    $Size = [Math]::Round((Get-Item $CliExe).Length / 1MB, 2)
-    Write-Host "  [OK] saba-cli.exe ($Size MB)" -ForegroundColor Green
-}
-catch {
-    Write-Host "  [ERROR] $_" -ForegroundColor Red
-    exit 1
-}
-finally {
-    Pop-Location
-}
+# 2a. Rust workspace build (all 3 binaries at once)
+$jobRust = Start-Job -Name "Rust" -ScriptBlock {
+    param($root)
+    Set-Location $root
+    $env:CARGO_TERM_COLOR = "never"
 
-# ─── 4. Electron GUI ───
-Write-Host "[4/6] Building Electron GUI..." -ForegroundColor Yellow
-try {
-    Push-Location (Join-Path $ProjectRoot "saba-chan-gui")
-    
-    # Clean build directories
+    # ErrorActionPreference=Continue so stderr warnings don't become terminating errors
+    $ErrorActionPreference = "Continue"
+    $output = & cargo build --release --workspace 2>&1
+    $ec = $LASTEXITCODE
+    $ErrorActionPreference = "Stop"
+    if ($ec -ne 0) { throw "Cargo build failed (exit $ec):`n$($output | Out-String)" }
+
+    $targets = @(
+        @{ Name = "core_daemon.exe";       Path = (Join-Path $root "target\release\core_daemon.exe") },
+        @{ Name = "saba-chan-cli.exe";      Path = (Join-Path $root "target\release\saba-chan-cli.exe") },
+        @{ Name = "saba-chan-updater.exe";  Path = (Join-Path $root "target\release\saba-chan-updater.exe") }
+    )
+    $info = @()
+    foreach ($t in $targets) {
+        if (-not (Test-Path $t.Path)) { throw "$($t.Name) not found at $($t.Path)" }
+        $mb = [Math]::Round((Get-Item $t.Path).Length / 1MB, 2)
+        $info += "$($t.Name) ($mb MB)"
+    }
+    return @{ Targets = $targets; Info = $info }
+} -ArgumentList $ProjectRoot
+
+# 2b. Electron GUI (npm install + vite build + electron-builder)
+$jobGUI = Start-Job -Name "GUI" -ScriptBlock {
+    param($root)
+    $guiDir = Join-Path $root "saba-chan-gui"
+    Set-Location $guiDir
+
     @("dist", "build", "electron-dist") | ForEach-Object {
-        if (Test-Path $_) {
-            Remove-Item $_ -Recurse -Force -ErrorAction SilentlyContinue
-        }
+        if (Test-Path $_) { Remove-Item $_ -Recurse -Force -ErrorAction SilentlyContinue }
     }
-    Start-Sleep -Milliseconds 500
-    
-    # Install dependencies
-    if (-not (Test-Path "node_modules")) {
-        npm install --quiet --no-save
-    }
-    npm install --save-dev terser --quiet --no-save 2>$null
-    
-    # Vite build → Electron package
-    npm run build --silent
-    npm run package --silent
-    
-    # portable target: Saba-chan.exe in electron-dist root (self-extracting, LZMA compressed)
-    $GuiExe = Get-ChildItem -Path "electron-dist" -Filter "Saba-chan.exe" -ErrorAction SilentlyContinue |
-              Select-Object -First 1
-    if (-not $GuiExe) {
-        # Fallback: any exe in electron-dist root
-        $GuiExe = Get-ChildItem -Path "electron-dist" -Filter "*.exe" -ErrorAction SilentlyContinue |
-                  Select-Object -First 1
-    }
-    if ($GuiExe) {
-        Copy-Item -Path $GuiExe.FullName -Destination (Join-Path $DistDir "saba-chan-gui.exe") -Force
-        $Size = [Math]::Round($GuiExe.Length / 1MB, 2)
-        Write-Host "  [OK] saba-chan-gui.exe ($Size MB)" -ForegroundColor Green
-    }
-    else {
-        throw "GUI exe not found in electron-dist/"
-    }
-}
-catch {
-    Write-Host "  [ERROR] $_" -ForegroundColor Red
-    exit 1
-}
-finally {
-    Pop-Location
-}
+    Start-Sleep -Milliseconds 300
 
-# ─── 5. Discord Bot ───
-Write-Host "[5/6] Bundling Discord bot..." -ForegroundColor Yellow
-try {
-    Push-Location (Join-Path $ProjectRoot "discord_bot")
-    
-    # Production dependencies only
+    $ErrorActionPreference = "Continue"
+    if (-not (Test-Path "node_modules")) {
+        & npm install --quiet --no-save 2>&1 | Out-Null
+    }
+    & npm install --save-dev terser --quiet --no-save 2>&1 | Out-Null
+
+    & npm run build --silent 2>&1 | Out-Null
+    $ec = $LASTEXITCODE
+    if ($ec -ne 0) { throw "npm run build failed (exit $ec)" }
+
+    & npm run package --silent 2>&1 | Out-Null
+    $ec = $LASTEXITCODE
+    if ($ec -ne 0) { throw "npm run package failed (exit $ec)" }
+    $ErrorActionPreference = "Stop"
+
+    $exe = Get-ChildItem -Path "electron-dist" -Filter "Saba-chan.exe" -ErrorAction SilentlyContinue |
+           Select-Object -First 1
+    if (-not $exe) {
+        $exe = Get-ChildItem -Path "electron-dist" -Filter "*.exe" -ErrorAction SilentlyContinue |
+               Select-Object -First 1
+    }
+    if (-not $exe) { throw "GUI exe not found in electron-dist/" }
+    $mb = [Math]::Round($exe.Length / 1MB, 2)
+    return @{ Path = $exe.FullName; Info = "saba-chan-gui.exe ($mb MB)" }
+} -ArgumentList $ProjectRoot
+
+# 2c. Discord Bot (npm install --production)
+$jobBot = Start-Job -Name "Bot" -ScriptBlock {
+    param($root)
+    $botDir = Join-Path $root "discord_bot"
+    Set-Location $botDir
+
     if (Test-Path "node_modules") {
         Remove-Item "node_modules" -Recurse -Force -ErrorAction SilentlyContinue
     }
-    npm install --production --quiet --no-save
-    
-    $BotDest = Join-Path $DistDir "discord_bot"
-    Copy-Item -Path (Get-Location).Path -Destination $BotDest -Recurse -Force -ErrorAction SilentlyContinue
-    
-    # Remove test files from dist
-    $TestDir = Join-Path $BotDest "test"
-    if (Test-Path $TestDir) {
-        Remove-Item $TestDir -Recurse -Force -ErrorAction SilentlyContinue
+    $ErrorActionPreference = "Continue"
+    & npm install --omit=dev --quiet --no-save 2>&1 | Out-Null
+    $ec = $LASTEXITCODE
+    $ErrorActionPreference = "Stop"
+    if ($ec -ne 0) { throw "npm install failed (exit $ec)" }
+    return @{ Path = $botDir }
+} -ArgumentList $ProjectRoot
+
+# Wait for all jobs
+$allJobs = @($jobRust, $jobGUI, $jobBot)
+$failedJobs = @()
+$rustResult = $null
+$guiResult = $null
+$botResult = $null
+
+foreach ($job in $allJobs) {
+    $result = $null
+    try {
+        $result = $job | Wait-Job | Receive-Job -ErrorAction Stop
     }
-    
-    $BotSize = 0
-    Get-ChildItem -Path $BotDest -Recurse -File | ForEach-Object { $BotSize += $_.Length }
-    $BotMB = [Math]::Round($BotSize / 1MB, 2)
-    
-    Write-Host "  [OK] discord_bot/ ($BotMB MB)" -ForegroundColor Green
-}
-catch {
-    Write-Host "  [WARN] Discord bot skipped: $_" -ForegroundColor Yellow
-}
-finally {
-    Pop-Location
+    catch {
+        $failedJobs += $job.Name
+        Write-Host "  [$($job.Name)] FAILED: $_" -ForegroundColor Red
+        Remove-Job $job -Force
+        continue
+    }
+
+    switch ($job.Name) {
+        "Rust" {
+            $rustResult = $result
+            foreach ($i in $result.Info) { Write-Host "  [Rust] $i" -ForegroundColor Green }
+        }
+        "GUI" {
+            $guiResult = $result
+            Write-Host "  [GUI] $($result.Info)" -ForegroundColor Green
+        }
+        "Bot" {
+            $botResult = $result
+            Write-Host "  [Bot] OK" -ForegroundColor Green
+        }
+    }
+    Remove-Job $job -Force
 }
 
-# ─── 6. Resources & Configs ───
-Write-Host "[6/6] Preparing resources..." -ForegroundColor Yellow
-try {
-    # config/
-    $ConfigDir = Join-Path $DistDir "config"
-    New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null
-    Copy-Item -Path (Join-Path $ProjectRoot "config\global.toml") -Destination $ConfigDir -Force -ErrorAction SilentlyContinue
-    
-    # locales/ (전체 다국어 리소스)
-    $LocaleSrc = Join-Path $ProjectRoot "locales"
-    if (Test-Path $LocaleSrc) {
-        Copy-Item -Path $LocaleSrc -Destination (Join-Path $DistDir "locales") -Recurse -Force
-    }
-    
-    Write-Host "  [OK]" -ForegroundColor Green
-}
-catch {
-    Write-Host "  [ERROR] $_" -ForegroundColor Red
+if ($failedJobs.Count -gt 0) {
+    Write-Host ""
+    Write-Host "BUILD FAILED: $($failedJobs -join ', ')" -ForegroundColor Red
+    exit 1
 }
 
-# ─── ZIP ───
+# --- 3. Collect Artifacts ---
 Write-Host ""
-Write-Host "[ZIP] Creating archive..." -ForegroundColor Yellow
+Write-Host "[3/5] Collecting artifacts..." -ForegroundColor Yellow
 
-$ZipPath = Join-Path $ReleaseDir "saba-chan-v0.1.0-windows.zip"
-if (Test-Path $ZipPath) {
-    Remove-Item $ZipPath -Force
+foreach ($t in $rustResult.Targets) {
+    $dest = Join-Path $DistDir $t.Name
+    if (Test-Path $dest) {
+        try { Remove-Item $dest -Force -ErrorAction Stop } catch {
+            Rename-Item $dest "$dest.old" -Force -ErrorAction SilentlyContinue
+        }
+    }
+    Copy-Item -Path $t.Path -Destination $dest -Force
 }
-Compress-Archive -Path $DistDir -DestinationPath $ZipPath -Force
 
-$TotalSize = 0
-Get-ChildItem -Path $DistDir -Recurse -File | ForEach-Object { $TotalSize += $_.Length }
-$TotalMB = [Math]::Round($TotalSize / 1MB, 2)
-$ZipSize = [Math]::Round((Get-Item $ZipPath).Length / 1MB, 2)
+Copy-Item -Path $guiResult.Path -Destination (Join-Path $DistDir "saba-chan-gui.exe") -Force
+
+$botDest = Join-Path $DistDir "discord_bot"
+Copy-Item -Path $botResult.Path -Destination $botDest -Recurse -Force -ErrorAction SilentlyContinue
+$testDir = Join-Path $botDest "test"
+if (Test-Path $testDir) { Remove-Item $testDir -Recurse -Force -ErrorAction SilentlyContinue }
 
 Write-Host "  [OK]" -ForegroundColor Green
-Write-Host ""
 
-# ─── Summary ───
+# --- 4. Resources & Configs ---
+Write-Host "[4/5] Preparing resources..." -ForegroundColor Yellow
+
+$configDir = Join-Path $DistDir "config"
+New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+Copy-Item -Path (Join-Path $ProjectRoot "config\global.toml") -Destination $configDir -Force -ErrorAction SilentlyContinue
+Copy-Item -Path (Join-Path $ProjectRoot "config\updater.toml") -Destination $configDir -Force -ErrorAction SilentlyContinue
+
+$localeSrc = Join-Path $ProjectRoot "locales"
+if (Test-Path $localeSrc) {
+    Copy-Item -Path $localeSrc -Destination (Join-Path $DistDir "locales") -Recurse -Force
+}
+
+Write-Host "  [OK]" -ForegroundColor Green
+
+# --- 5. Summary ---
+$stopwatch.Stop()
+$elapsed = $stopwatch.Elapsed
+
+$totalSize = 0
+Get-ChildItem -Path $DistDir -Recurse -File | ForEach-Object { $totalSize += $_.Length }
+$totalMB = [Math]::Round($totalSize / 1MB, 2)
+
+Write-Host ""
 Write-Host "================================" -ForegroundColor Green
 Write-Host "BUILD COMPLETE" -ForegroundColor Green
 Write-Host "================================" -ForegroundColor Green
 Write-Host "Output: $DistDir" -ForegroundColor Cyan
+Write-Host "Time:   $($elapsed.Minutes)m $($elapsed.Seconds)s" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  Contents:" -ForegroundColor Gray
 Get-ChildItem -Path $DistDir | ForEach-Object {
     if ($_.PSIsContainer) {
-        $DirSize = 0
-        Get-ChildItem -Path $_.FullName -Recurse -File | ForEach-Object { $DirSize += $_.Length }
-        $DirMB = [Math]::Round($DirSize / 1MB, 2)
-        Write-Host "    $($_.Name)/  ($DirMB MB)" -ForegroundColor Gray
+        $dirSize = 0
+        Get-ChildItem -Path $_.FullName -Recurse -File | ForEach-Object { $dirSize += $_.Length }
+        $dirMB = [Math]::Round($dirSize / 1MB, 2)
+        Write-Host "    $($_.Name)/  ($dirMB MB)" -ForegroundColor Gray
     }
     else {
-        $FileMB = [Math]::Round($_.Length / 1MB, 2)
-        Write-Host "    $($_.Name)  ($FileMB MB)" -ForegroundColor Gray
+        $fileMB = [Math]::Round($_.Length / 1MB, 2)
+        Write-Host "    $($_.Name)  ($fileMB MB)" -ForegroundColor Gray
     }
 }
 Write-Host ""
-Write-Host "  Total:      $TotalMB MB" -ForegroundColor White
-Write-Host "  ZIP:        $ZipSize MB  ($ZipPath)" -ForegroundColor White
+Write-Host "  Total: $totalMB MB" -ForegroundColor White
 Write-Host ""

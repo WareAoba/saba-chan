@@ -303,4 +303,60 @@ impl DaemonClient {
         self.delete_json(&format!("/api/client/{}/unregister", client_id)).await?;
         Ok(())
     }
+
+    // ============ Updates ============
+
+    /// POST /api/updates/check — 업데이트 수동 확인
+    pub async fn check_updates(&self) -> anyhow::Result<Value> {
+        self.post_empty("/api/updates/check").await
+    }
+
+    /// GET /api/updates/status — 업데이트 상태 조회
+    pub async fn get_update_status(&self) -> anyhow::Result<Value> {
+        self.get_json("/api/updates/status").await
+    }
+
+    /// POST /api/updates/download — 업데이트 전체 다운로드
+    pub async fn download_updates(&self) -> anyhow::Result<Value> {
+        self.post_empty("/api/updates/download").await
+    }
+
+    /// POST /api/updates/apply — 업데이트 적용
+    pub async fn apply_updates(&self) -> anyhow::Result<Value> {
+        self.post_empty("/api/updates/apply").await
+    }
+
+    /// GET /api/updates/config — 업데이트 설정 조회
+    pub async fn get_update_config(&self) -> anyhow::Result<Value> {
+        self.get_json("/api/updates/config").await
+    }
+
+    // ============ Installer ============
+
+    /// GET /api/install/status — 설치 상태 확인
+    pub async fn get_install_status(&self) -> anyhow::Result<Value> {
+        self.get_json("/api/install/status").await
+    }
+
+    /// POST /api/install/run — 최초 설치 실행
+    pub async fn run_install(&self, components: Option<Vec<String>>) -> anyhow::Result<Value> {
+        let body = match components {
+            Some(comps) => serde_json::json!({ "components": comps }),
+            None => serde_json::json!({}),
+        };
+        self.post_json_long("/api/install/run", &body).await
+    }
+
+    /// POST /api/install/component/{key} — 특정 컴포넌트 설치
+    pub async fn install_component(&self, key: &str) -> anyhow::Result<Value> {
+        self.post_json_long(
+            &format!("/api/install/component/{}", key),
+            &serde_json::json!({}),
+        ).await
+    }
+
+    /// GET /api/install/progress — 설치 진행 상태 조회
+    pub async fn get_install_progress(&self) -> anyhow::Result<Value> {
+        self.get_json("/api/install/progress").await
+    }
 }

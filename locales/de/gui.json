@@ -43,7 +43,19 @@
     "theme_auto": "Automatisch",
     "theme_light": "Hell",
     "theme_dark": "Dunkel",
-    "advanced_placeholder": "Erweiterte Einstellungen werden hier hinzugefügt."
+    "advanced_placeholder": "Erweiterte Einstellungen werden hier hinzugefügt.",
+    "ipc_port_label": "IPC-Port",
+    "ipc_port_description": "Portnummer, auf der der Core-Daemon lauscht (1024–65535)",
+    "ipc_port_invalid": "Der Port muss zwischen 1024 und 65535 liegen",
+    "ipc_port_restart_notice": "Die Portänderung wird nach dem Neustart des Daemons wirksam",
+    "console_buffer_label": "Konsolenpuffergröße",
+    "console_buffer_description": "Maximale Anzahl der in der Serverkonsole gespeicherten Zeilen",
+    "ipc_port_label": "IPC-Port",
+    "ipc_port_description": "Port für die Kommunikation zwischen GUI und Core Daemon",
+    "ipc_port_restart_notice": "Port-Änderungen werden nach dem Neustart des Daemons wirksam",
+    "ipc_port_invalid": "Geben Sie eine gültige Portnummer ein (1024–65535)",
+    "console_buffer_label": "Konsolenpuffergröße",
+    "console_buffer_description": "Maximale Anzahl der Zeilen in der Serverkonsole"
   },
   "add_server_modal": {
     "title": "Neuen Server hinzufügen",
@@ -123,7 +135,8 @@
     "start_error_toast": "Discord-Bot-Start-Ausnahme: {{error}}",
     "stop_failed_toast": "Discord-Bot-Stopp fehlgeschlagen: {{error}}",
     "stopped_toast": "Discord-Bot wurde gestoppt",
-    "stop_error_toast": "Discord-Bot-Stopp-Ausnahme: {{error}}"
+    "stop_error_toast": "Discord-Bot-Stopp-Ausnahme: {{error}}",
+    "relaunched_toast": "Discord-Bot wurde neu gestartet"
   },
   "app_exit": {
     "confirm_title": "Beenden bestätigen",
@@ -151,6 +164,8 @@
     "stopping_toast": "⏳ Stoppen von Server {{name}}...",
     "stop_completed_toast": "✅ Server {{name}} gestoppt!",
     "stop_timeout_toast": "⚠️ Stoppen von Server {{name}}... (kann eine Weile dauern)",
+    "unexpected_stop_toast": "⚠️ Server {{name}} wurde unerwartet gestoppt!",
+    "external_start_toast": "ℹ️ Server {{name}} wurde extern gestartet",
     "status_check_failed_title": "Statusprüfung fehlgeschlagen",
     "add_server_name_empty_title": "Eingabefehler",
     "add_server_name_empty_message": "Bitte geben Sie den Servernamen ein",
@@ -241,5 +256,13 @@
     "start_button": "▶ Bot starten",
     "stop_button": "⏹ Bot stoppen",
     "save_button": "💾 Speichern"
+  },
+  "notice_modal": {
+    "title": "Benachrichtigungen",
+    "empty": "Keine Benachrichtigungen",
+    "clear_all": "Alle löschen",
+    "dismiss": "Entfernen",
+    "source_main": "Saba-chan",
+    "tooltip": "Benachrichtigungen"
   }
 }

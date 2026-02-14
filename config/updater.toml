@@ -1,0 +1,8 @@
+enabled = false
+check_interval_hours = 3
+auto_download = false
+auto_apply = false
+github_owner = 'WareAoba'
+github_repo = 'saba-chan'
+include_prerelease = false
+api_base_url = ''

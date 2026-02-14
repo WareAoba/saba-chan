@@ -43,7 +43,19 @@
     "theme_auto": "Automatique",
     "theme_light": "Clair",
     "theme_dark": "Sombre",
-    "advanced_placeholder": "Les paramètres avancés seront ajoutés ici."
+    "advanced_placeholder": "Les paramètres avancés seront ajoutés ici.",
+    "ipc_port_label": "Port IPC",
+    "ipc_port_description": "Numéro de port d'écoute du daemon principal (1024–65535)",
+    "ipc_port_invalid": "Le port doit être compris entre 1024 et 65535",
+    "ipc_port_restart_notice": "Le changement de port prendra effet après le redémarrage du daemon",
+    "console_buffer_label": "Taille du tampon de la console",
+    "console_buffer_description": "Nombre maximum de lignes conservées dans la console du serveur",
+    "ipc_port_label": "Port IPC",
+    "ipc_port_description": "Port utilisé pour la communication entre l'interface et le Core Daemon",
+    "ipc_port_restart_notice": "Les modifications du port prendront effet après le redémarrage du daemon",
+    "ipc_port_invalid": "Entrez un numéro de port valide (1024–65535)",
+    "console_buffer_label": "Taille du tampon de la console",
+    "console_buffer_description": "Nombre maximum de lignes à conserver dans la console du serveur"
   },
   "add_server_modal": {
     "title": "Ajouter un nouveau serveur",
@@ -123,7 +135,8 @@
     "start_error_toast": "Exception au démarrage du bot Discord: {{error}}",
     "stop_failed_toast": "Échec de l'arrêt du bot Discord: {{error}}",
     "stopped_toast": "Le bot Discord a été arrêté",
-    "stop_error_toast": "Exception à l'arrêt du bot Discord: {{error}}"
+    "stop_error_toast": "Exception à l'arrêt du bot Discord: {{error}}",
+    "relaunched_toast": "Le bot Discord a été redémarré"
   },
   "app_exit": {
     "confirm_title": "Confirmer la fermeture",
@@ -151,6 +164,8 @@
     "stopping_toast": "⏳ Arrêt du serveur {{name}}...",
     "stop_completed_toast": "✅ Serveur {{name}} arrêté!",
     "stop_timeout_toast": "⚠️ Arrêt du serveur {{name}}... (peut prendre un certain temps)",
+    "unexpected_stop_toast": "⚠️ Le serveur {{name}} s'est arrêté de manière inattendue !",
+    "external_start_toast": "ℹ️ Le serveur {{name}} a été démarré de l'extérieur",
     "status_check_failed_title": "Échec de la vérification du statut",
     "add_server_name_empty_title": "Erreur d'entrée",
     "add_server_name_empty_message": "Veuillez entrer le nom du serveur",
@@ -241,5 +256,13 @@
     "start_button": "▶ Démarrer le bot",
     "stop_button": "⏹ Arrêter le bot",
     "save_button": "💾 Enregistrer"
+  },
+  "notice_modal": {
+    "title": "Notifications",
+    "empty": "Aucune notification",
+    "clear_all": "Tout supprimer",
+    "dismiss": "Supprimer",
+    "source_main": "Saba-chan",
+    "tooltip": "Notifications"
   }
 }

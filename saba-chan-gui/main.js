@@ -1,11 +1,21 @@
-const { app, BrowserWindow, Menu, ipcMain, Tray, nativeImage, nativeTheme } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, Tray, nativeImage, nativeTheme, Notification } = require('electron');
 const { dialog } = require('electron');
 const path = require('path');
 const axios = require('axios');
 const { spawn } = require('child_process');
 const fs = require('fs');
 
-const IPC_BASE = process.env.IPC_BASE || 'http://127.0.0.1:57474'; // Core Daemon endpoint
+const IPC_PORT_DEFAULT = 57474;
+let IPC_BASE = process.env.IPC_BASE || `http://127.0.0.1:${IPC_PORT_DEFAULT}`; // Core Daemon endpoint — updated from settings after app ready
+
+function refreshIpcBase() {
+    if (process.env.IPC_BASE) return; // 환경변수가 설정되면 그것을 우선
+    try {
+        const s = loadSettings();
+        const port = s.ipcPort || IPC_PORT_DEFAULT;
+        IPC_BASE = `http://127.0.0.1:${port}`;
+    } catch (_) { /* app not ready yet */ }
+}
 
 // 네트워크 호출 기본 타임아웃 (ms). 대부분의 API는 빠르게 응답하지만,
 // 서버 JAR 다운로드 등 오래 걸리는 호출은 개별 timeout을 지정합니다.
@@ -17,6 +27,21 @@ let daemonStartedByApp = false;
 let settings = null;
 let tray = null;
 let translations = {}; // 번역 객체 캐시
+
+// ========== 설치 루트 경로 ==========
+// Portable exe: PORTABLE_EXECUTABLE_DIR (원본 exe 디렉토리)
+// 일반 패키징: exe 디렉토리
+// 개발: 프로젝트 루트
+function getInstallRoot() {
+    if (!app.isPackaged) {
+        return path.join(__dirname, '..');
+    }
+    // Portable 모드: 원본 exe가 있는 디렉토리 (자체 압축 해제 임시 폴더가 아닌 실제 배포 위치)
+    if (process.env.PORTABLE_EXECUTABLE_DIR) {
+        return process.env.PORTABLE_EXECUTABLE_DIR;
+    }
+    return path.dirname(app.getPath('exe'));
+}
 
 // ========== 로그 시스템 ==========
 let logStream = null;
@@ -87,12 +112,7 @@ function closeLogger() {
 // ========================================
 
 function getLocalesPath() {
-    if (!app.isPackaged) {
-        return path.join(__dirname, '..', 'locales');
-    } else {
-        // 배포판: Temp 폴더의 루트에 locales 폴더
-        return path.join(path.dirname(app.getPath('exe')), 'locales');
-    }
+    return path.join(getInstallRoot(), 'locales');
 }
 
 // 번역 파일 로드 (메인 프로세스용)
@@ -247,7 +267,9 @@ function loadSettings() {
         autoRefresh: true,
         refreshInterval: 2000,
         windowBounds: { width: 1200, height: 800 },
-        language: systemLanguage
+        language: systemLanguage,
+        ipcPort: IPC_PORT_DEFAULT,
+        consoleBufferSize: 2000
     };
 }
 
@@ -286,10 +308,11 @@ function startDaemon() {
         console.log('[Daemon] [DEV] rootDir:', rootDir);
         console.log('[Daemon] [DEV] daemonPath:', daemonPath);
     } else {
-        // 프로덕션: exe 디렉토리의 core_daemon.exe
-        rootDir = path.dirname(app.getPath('exe'));
+        // 프로덕션: 설치 루트 디렉토리의 core_daemon.exe
+        rootDir = getInstallRoot();
         daemonPath = path.join(rootDir, daemonFileName);
         console.log('[Daemon] [PROD] exe:', app.getPath('exe'));
+        console.log('[Daemon] [PROD] PORTABLE_EXECUTABLE_DIR:', process.env.PORTABLE_EXECUTABLE_DIR || '(not set)');
         console.log('[Daemon] [PROD] rootDir:', rootDir);
         console.log('[Daemon] [PROD] daemonPath:', daemonPath);
     }
@@ -312,10 +335,12 @@ function startDaemon() {
     
     const currentLanguage = getLanguage();
     
+    const ipcPort = (settings && settings.ipcPort) || IPC_PORT_DEFAULT;
     const daemonEnv = {
         ...process.env, 
         RUST_LOG: 'info',
         SABA_LANG: currentLanguage,
+        SABA_IPC_PORT: String(ipcPort),
         SABA_INSTANCES_PATH: path.join(app.getPath('userData'), 'instances.json'),
         SABA_MODULES_PATH: (settings && settings.modulesPath) || path.join(rootDir, 'modules')
     };
@@ -423,6 +448,119 @@ function stopDaemon() {
     }
 }
 
+// ── Mock Release Server 프로세스 관리 ──────────────────────
+let mockServerProcess = null;
+
+ipcMain.handle('mockServer:start', async (event, options = {}) => {
+    if (mockServerProcess && !mockServerProcess.killed) {
+        return { ok: true, message: 'Mock server already running', port: 9876 };
+    }
+    const port = options.port || 9876;
+    const version = options.version || '0.2.0';
+    const isDev = !app.isPackaged;
+    const rootDir = getInstallRoot();
+    const scriptPath = path.join(rootDir, 'scripts', 'mock-release-server.js');
+
+    if (!fs.existsSync(scriptPath)) {
+        return { ok: false, error: `Mock server script not found: ${scriptPath}` };
+    }
+
+    return new Promise((resolve) => {
+        mockServerProcess = spawn('node', [scriptPath, '--port', String(port), '--version', version], {
+            cwd: rootDir,
+            stdio: ['ignore', 'pipe', 'pipe'],
+            detached: false,
+        });
+
+        let started = false;
+        const timeout = setTimeout(() => {
+            if (!started) {
+                started = true;
+                resolve({ ok: true, message: 'Mock server started (timeout, assumed ready)', port });
+            }
+        }, 3000);
+
+        mockServerProcess.stdout.on('data', (data) => {
+            const line = data.toString();
+            console.log('[MockServer]', line.trim());
+            // 서버가 listening 시작하면 즉시 resolve
+            if (!started && (line.includes('Listening') || line.includes('listen') || line.includes(String(port)))) {
+                started = true;
+                clearTimeout(timeout);
+                resolve({ ok: true, message: `Mock server started on port ${port}`, port });
+            }
+        });
+
+        mockServerProcess.stderr.on('data', (data) => {
+            console.error('[MockServer]', data.toString().trim());
+        });
+
+        mockServerProcess.on('error', (err) => {
+            console.error('[MockServer] spawn error:', err.message);
+            mockServerProcess = null;
+            if (!started) {
+                started = true;
+                clearTimeout(timeout);
+                resolve({ ok: false, error: err.message });
+            }
+        });
+
+        mockServerProcess.on('exit', (code) => {
+            console.log('[MockServer] exited with code', code);
+            mockServerProcess = null;
+        });
+    });
+});
+
+ipcMain.handle('mockServer:stop', async () => {
+    if (!mockServerProcess || mockServerProcess.killed) {
+        mockServerProcess = null;
+        return { ok: true, message: 'Mock server not running' };
+    }
+    mockServerProcess.kill('SIGTERM');
+    // Windows에서는 SIGTERM이 작동하지 않을 수 있으므로 fallback
+    setTimeout(() => {
+        if (mockServerProcess && !mockServerProcess.killed) {
+            mockServerProcess.kill('SIGKILL');
+        }
+    }, 1000);
+    mockServerProcess = null;
+    return { ok: true, message: 'Mock server stopped' };
+});
+
+ipcMain.handle('mockServer:status', async () => {
+    const running = mockServerProcess != null && !mockServerProcess.killed;
+    return { running };
+});
+
+// ── 프로세스 완전 분리 스폰 (Chromium Job Object 회피) ──────
+// Chromium(Electron)은 프로덕션에서 Job Object로 자식 프로세스를 관리하며,
+// app.quit() 시 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE로 자식을 모두 종료합니다.
+// detached: true만으로는 Job Object에서 벗어나지 못하므로,
+// Windows에서는 cmd.exe /c start로 스폰하여 완전히 분리합니다.
+function spawnDetached(exe, args) {
+    const { spawn } = require('child_process');
+
+    if (process.platform === 'win32') {
+        // cmd /c start "" /B "exe" args...
+        // /B: 새 창 열지 않음, "": 타이틀 빈 문자열
+        // shell: true + cmd start 조합으로 Chromium Job Object에서 벗어남
+        const proc = spawn('cmd.exe', ['/c', 'start', '""', '/B', `"${exe}"`, ...args], {
+            detached: true,
+            stdio: 'ignore',
+            shell: true,
+            windowsHide: true,
+        });
+        proc.unref();
+    } else {
+        const proc = spawn(exe, args, {
+            detached: true,
+            stdio: 'ignore',
+        });
+        proc.unref();
+    }
+}
+
 // 안전한 종료 함수
 async function cleanQuit() {
     console.log('Starting clean quit sequence...');
@@ -439,6 +577,13 @@ async function cleanQuit() {
         }
         // 고아 봇 프로세스도 정리
         killOrphanBotProcesses();
+
+        // 1.5. Mock 서버 종료
+        if (mockServerProcess && !mockServerProcess.killed) {
+            console.log('Stopping mock server process...');
+            mockServerProcess.kill();
+            mockServerProcess = null;
+        }
         
         // 2. 데몬 종료
         stopDaemon();
@@ -502,6 +647,7 @@ async function ensureDaemon() {
             console.log('Existing daemon detected on IPC port. Skipping launch.');
             daemonStartedByApp = false;
             sendStatus('daemon', t('daemon.existing_running'));
+            await syncInstallRoot();
             return;
         }
     } catch (err) {
@@ -521,6 +667,7 @@ async function ensureDaemon() {
                         if (checkResponse.status === 200) {
                             console.log('✓ Daemon is now running');
                             sendStatus('daemon', t('daemon.started'));
+                            await syncInstallRoot();
                             return;
                         }
                     } catch (checkErr) {
@@ -541,6 +688,19 @@ async function ensureDaemon() {
             console.warn('Unexpected error checking daemon:', err.message);
             sendStatus('daemon', t('daemon.check_warning', { error: err.message }));
         }
+    }
+}
+
+// 데몬에 install_root 동기화 (portable 모드에서 임시 폴더가 아닌 실제 배포 경로 전달)
+async function syncInstallRoot() {
+    const installRoot = getInstallRoot();
+    try {
+        await axios.put(`${IPC_BASE}/api/updates/config`, {
+            install_root: installRoot,
+        }, { timeout: 3000 });
+        console.log(`[InstallRoot] Synced to daemon: ${installRoot}`);
+    } catch (e) {
+        console.warn(`[InstallRoot] Failed to sync: ${e.message}`);
     }
 }
 
@@ -619,12 +779,149 @@ async function runBackgroundInit() {
     // 데몬에 클라이언트 등록 및 heartbeat 시작
     await registerWithDaemon();
     startHeartbeat();
+
+    // 업데이트 주기적 체크 시작 (기본 3시간 간격)
+    startUpdateChecker();
     
     sendStatus('ready', '백그라운드 초기화 완료');
     // Discord Bot 자동 시작은 React App.js에서 처리
 }
 
 // runDeferredTasks 제거됨 - Discord Bot 자동 시작은 React에서 처리
+
+// ── 업데이터 exe 경로 해석 ────────────────────────────────────
+
+/**
+ * 업데이터 exe 경로를 찾습니다.
+ * 개발: updater/gui/src-tauri/target/{release,debug}/saba-chan-updater.exe
+ * 프로덕션: exe와 같은 디렉토리의 saba-chan-updater.exe
+ */
+function findUpdaterExe() {
+    const isDev = !app.isPackaged;
+    if (isDev) {
+        const rootDir = path.join(__dirname, '..');
+        // workspace root target (cargo workspace가 여기에 빌드)
+        const wsRelease = path.join(rootDir, 'target', 'release', 'saba-chan-updater.exe');
+        const wsDebug = path.join(rootDir, 'target', 'debug', 'saba-chan-updater.exe');
+        // crate-local target (fallback)
+        const crateRelease = path.join(rootDir, 'updater', 'gui', 'src-tauri', 'target', 'release', 'saba-chan-updater.exe');
+        const crateDebug = path.join(rootDir, 'updater', 'gui', 'src-tauri', 'target', 'debug', 'saba-chan-updater.exe');
+        // workspace root 우선, 최신 빌드가 여기 있음
+        if (fs.existsSync(wsRelease)) return wsRelease;
+        if (fs.existsSync(crateRelease)) return crateRelease;
+        if (fs.existsSync(wsDebug)) return wsDebug;
+        if (fs.existsSync(crateDebug)) return crateDebug;
+        return null;
+    } else {
+        // 설치 루트에서 찾기 (portable: 원본 exe 디렉토리)
+        const rootDir = getInstallRoot();
+        const p = path.join(rootDir, 'saba-chan-updater.exe');
+        if (fs.existsSync(p)) return p;
+        // fallback: 추출 temp 디렉토리
+        const tempDir = path.dirname(app.getPath('exe'));
+        const tp = path.join(tempDir, 'saba-chan-updater.exe');
+        return fs.existsSync(tp) ? tp : null;
+    }
+}
+
+// ── 업데이트 주기적 체크 (데몬 HTTP API) ────────────────────
+const UPDATE_CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3시간
+const UPDATE_INITIAL_DELAY_MS = 0; // 데몬 준비 후 즉시 체크
+let updateCheckTimer = null;
+
+async function checkForUpdates() {
+    try {
+        // 데몬 API를 통해 업데이트 확인
+        const response = await axios.post(`${IPC_BASE}/api/updates/check`, {}, { timeout: 30000 });
+        const data = response.data;
+
+        if (!data.ok) {
+            console.warn('[UpdateChecker] Check failed:', data.error);
+            return;
+        }
+
+        if (data.updates_available > 0) {
+            const names = data.update_names || [];
+            console.log(`[UpdateChecker] ${data.updates_available} update(s) available: ${names.join(', ')}`);
+
+            // OS 네이티브 알림
+            if (Notification.isSupported()) {
+                // 아이콘 경로: build(프로덕션) → public(개발) 순서로 탐색
+                const iconCandidates = [
+                    path.join(__dirname, 'build', 'icon.png'),
+                    path.join(__dirname, 'public', 'icon.png'),
+                    path.join(__dirname, '..', 'resources', 'icon.png'),
+                ];
+                const notifIcon = iconCandidates.find(p => fs.existsSync(p)) || undefined;
+                const notif = new Notification({
+                    title: 'saba-chan — 업데이트 알림',
+                    body: `${data.updates_available}개 업데이트: ${names.join(', ')}`,
+                    icon: notifIcon,
+                });
+                notif.on('click', () => {
+                    if (mainWindow) {
+                        mainWindow.show();
+                        mainWindow.focus();
+                    }
+                });
+                notif.show();
+            }
+
+            // 렌더러 프로세스에 알림 전송 (업데이트 센터 모달에서 수동 처리)
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('updates:available', {
+                    count: data.updates_available,
+                    names: data.update_names,
+                    components: data.components,
+                });
+            }
+
+            // 자동 다운로드/적용은 하지 않음 — 사용자가 업데이트 센터에서 수동 처리
+            // auto_download/auto_apply 설정은 향후 구현 예정
+        } else {
+            console.log('[UpdateChecker] No updates available');
+        }
+    } catch (e) {
+        console.warn('[UpdateChecker] Check failed:', e.message);
+    }
+}
+
+function startUpdateChecker() {
+    // config의 enabled 플래그를 확인하여 비활성화 상태이면 체크하지 않음
+    (async () => {
+        try {
+            const response = await axios.get(`${IPC_BASE}/api/updates/config`, { timeout: 5000 });
+            const cfg = response.data?.config || response.data;
+            if (cfg?.enabled === false) {
+                console.log('[UpdateChecker] Auto-check disabled by config');
+                return;
+            }
+        } catch (_) {
+            // config 조회 실패 시 기본 동작(체크 실행)
+        }
+        _doStartUpdateChecker();
+    })();
+}
+
+function _doStartUpdateChecker() {
+    stopUpdateChecker();
+    if (UPDATE_INITIAL_DELAY_MS > 0) {
+        setTimeout(() => {
+            checkForUpdates();
+            updateCheckTimer = setInterval(checkForUpdates, UPDATE_CHECK_INTERVAL_MS);
+        }, UPDATE_INITIAL_DELAY_MS);
+    } else {
+        checkForUpdates();
+        updateCheckTimer = setInterval(checkForUpdates, UPDATE_CHECK_INTERVAL_MS);
+    }
+}
+
+function stopUpdateChecker() {
+    if (updateCheckTimer) {
+        clearInterval(updateCheckTimer);
+        updateCheckTimer = null;
+    }
+}
 
 function createWindow() {
     const settings = loadSettings();
@@ -659,14 +956,16 @@ function createWindow() {
     });
 
     // 개발 모드: http://localhost:5173 (Vite), 프로덕션: build/index.html
+    // --after-update로 재기동된 경우 Vite 서버가 없으므로 빌드 파일 사용
     const isDev = !app.isPackaged;
-    if (isDev) {
+    const isAfterUpdate = process.argv.includes('--after-update');
+    if (isDev && !isAfterUpdate) {
         const startURL = process.env.ELECTRON_START_URL || 'http://localhost:5173';
         mainWindow.loadURL(startURL);
         // 개발 모드에서 DevTools 자동 열기
         mainWindow.webContents.openDevTools();
     } else {
-        // 프로덕션: 빌드된 파일 로드
+        // 프로덕션 또는 업데이트 후 재기동: 빌드된 파일 로드
         mainWindow.loadFile(path.join(__dirname, 'build', 'index.html'));
     }
     
@@ -840,6 +1139,9 @@ function updateTrayMenu() {
 }
 
 app.on('ready', () => {
+    // Windows에서 OS 알림을 표시하려면 AppUserModelId가 반드시 필요
+    app.setAppUserModelId('com.saba-chan.app');
+
     // userData를 saba-chan으로 통일 (GUI/CLI 공유)
     const customUserData = path.join(app.getPath('appData'), 'saba-chan');
     app.setPath('userData', customUserData);
@@ -855,6 +1157,7 @@ app.on('ready', () => {
     
     // 설정 미리 로드 (데몬 시작 전에)
     settings = loadSettings();
+    refreshIpcBase(); // IPC 포트 설정 반영
     
     // 번역 초기화
     translations = loadTranslations();
@@ -868,6 +1171,15 @@ app.on('ready', () => {
         mainWindow.webContents.once('did-finish-load', () => {
             sendStatus('ui', 'UI 로드 완료');
             runBackgroundInit();
+
+            // --after-update 플래그 감지 → 업데이트 완료 알림
+            if (process.argv.includes('--after-update')) {
+                console.log('[Updater] Detected --after-update flag, notifying renderer');
+                mainWindow.webContents.send('updates:completed', {
+                    message: '업데이트가 완료되었습니다!',
+                    timestamp: new Date().toISOString(),
+                });
+            }
         });
     }
 });
@@ -884,6 +1196,9 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
     console.log('App is quitting, cleaning up...');
     
+    // 업데이트 체커 정지
+    stopUpdateChecker();
+
     // Heartbeat 정지 (동기적으로)
     if (heartbeatTimer) {
         clearInterval(heartbeatTimer);
@@ -893,8 +1208,9 @@ app.on('before-quit', () => {
     if (heartbeatClientId) {
         try {
             const http = require('http');
+            const currentPort = (settings && settings.ipcPort) || IPC_PORT_DEFAULT;
             const req = http.request({
-                hostname: '127.0.0.1', port: 57474,
+                hostname: '127.0.0.1', port: currentPort,
                 path: `/api/client/${heartbeatClientId}/unregister`,
                 method: 'DELETE', timeout: 1000
             });
@@ -1492,6 +1808,151 @@ ipcMain.handle('instance:executeCommand', async (event, id, command) => {
     }
 });
 
+// ── Updater IPC 핸들러 (데몬 HTTP API 방식) ──────────
+
+// 업데이트 상태 확인 — 데몬 API `/api/updates/check`
+ipcMain.handle('updater:check', async () => {
+    try {
+        const response = await axios.post(`${IPC_BASE}/api/updates/check`, {}, { timeout: 30000 });
+        const data = response.data;
+
+        // 업데이트 발견 시 렌더러에 알림 이벤트 전송 → UpdateBanner + 알림 모달
+        if (data.ok && data.updates_available > 0 && mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('updates:available', {
+                count: data.updates_available,
+                updates_available: data.updates_available,
+                names: data.update_names || [],
+                update_names: data.update_names || [],
+                components: data.components || [],
+            });
+        }
+
+        return data;
+    } catch (err) {
+        return { ok: false, error: err.message };
+    }
+});
+
+// 업데이트 상태 조회 (캐시) — 데몬 API `/api/updates/status`
+ipcMain.handle('updater:status', async () => {
+    try {
+        const response = await axios.get(`${IPC_BASE}/api/updates/status`, { timeout: 5000 });
+        return response.data;
+    } catch (err) {
+        return { ok: false, error: err.message };
+    }
+});
+
+// 선택 컴포넌트 다운로드 — 데몬 API `/api/updates/download`
+// body: { components: ["module-minecraft", "core_daemon"] } (비어있으면 전체)
+ipcMain.handle('updater:download', async (event, components) => {
+    try {
+        const body = { components: Array.isArray(components) ? components : [] };
+        const response = await axios.post(`${IPC_BASE}/api/updates/download`, body, { timeout: 600000 });
+        return response.data;
+    } catch (err) {
+        return { ok: false, error: err.message };
+    }
+});
+
+// 업데이트 적용 — 데몬 API `/api/updates/apply`
+// 모듈은 데몬이 직접 적용, 데몬/GUI/CLI는 needs_updater에 포함
+ipcMain.handle('updater:apply', async (event, components) => {
+    try {
+        const body = { components: Array.isArray(components) ? components : [] };
+        const response = await axios.post(`${IPC_BASE}/api/updates/apply`, body, { timeout: 120000 });
+        const data = response.data;
+
+        // 적용 완료 내역이 있으면 렌더러에 알림
+        if (data.applied && data.applied.length > 0 && mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('updates:completed', {
+                count: data.applied.length,
+                names: data.applied,
+                requiresUpdater: !!data.requires_updater,
+                needsUpdater: data.needs_updater || [],
+            });
+        }
+        return data;
+    } catch (err) {
+        return { ok: false, error: err.message };
+    }
+});
+
+// 업데이터 exe 스폰 — GUI/CLI/데몬 바이너리 교체 전용
+// 데몬이 직접 적용할 수 없는 셀프업데이트를 업데이터 프로세스에 위임
+ipcMain.handle('updater:launchApply', async (event, targets) => {
+    try {
+        const updaterExe = findUpdaterExe();
+        if (!updaterExe) {
+            return { ok: false, error: 'Updater exe not found' };
+        }
+        const args = ['--apply'];
+        // 설치 루트 경로 전달 (portable 모드에서 임시 폴더가 아닌 실제 배포 위치)
+        const installRoot = getInstallRoot();
+        args.push('--install-root', installRoot);
+        if (Array.isArray(targets)) {
+            args.push(...targets);
+        }
+        // GUI 업데이트가 포함된 경우에만 --relaunch 인자 전달
+        const hasGuiUpdate = (targets || []).includes('gui');
+        if (hasGuiUpdate) {
+            let guiExe;
+            if (!app.isPackaged) {
+                guiExe = process.execPath;  // 개발 모드: electron exe
+            } else if (process.env.PORTABLE_EXECUTABLE_FILE) {
+                // Portable 모드: 임시 폴더가 아닌 원본 exe 경로
+                guiExe = process.env.PORTABLE_EXECUTABLE_FILE;
+            } else {
+                guiExe = app.getPath('exe');
+            }
+            args.push('--relaunch', guiExe);
+            // 개발 모드에서는 프로젝트 디렉토리를 절대 경로로 전달
+            if (!app.isPackaged) {
+                args.push(path.resolve(__dirname));
+            }
+        }
+        console.log(`[Updater] Launching apply: ${updaterExe} ${args.join(' ')}`);
+        spawnDetached(updaterExe, args);
+        if (hasGuiUpdate) {
+            setTimeout(() => app.quit(), 500);
+        }
+        // 데몬/CLI만이면 GUI는 계속 실행 — 업데이터가 백그라운드에서 교체
+        return { ok: true, message: 'Updater launched for apply.' };
+    } catch (err) {
+        return { ok: false, error: err.message };
+    }
+});
+
+// 업데이트 설정 조회 — 데몬 API
+ipcMain.handle('updater:getConfig', async () => {
+    try {
+        const response = await axios.get(`${IPC_BASE}/api/updates/config`, { timeout: 5000 });
+        return response.data;
+    } catch (err) {
+        return { ok: false, error: err.message };
+    }
+});
+
+// 업데이트 설정 변경 — 데몬 API + 백그라운드 체커 연동
+ipcMain.handle('updater:setConfig', async (event, config) => {
+    try {
+        const response = await axios.post(`${IPC_BASE}/api/updates/config`, config, { timeout: 5000 });
+        // enabled 플래그가 변경된 경우 백그라운드 체커 시작/중지
+        if (config && typeof config.enabled === 'boolean') {
+            if (config.enabled) {
+                console.log('[UpdateChecker] Auto-check enabled — starting background checker');
+                _doStartUpdateChecker();
+            } else {
+                console.log('[UpdateChecker] Auto-check disabled — stopping background checker');
+                stopUpdateChecker();
+            }
+        }
+        return response.data;
+    } catch (err) {
+        return { ok: false, error: err.message };
+    }
+});
+
 // Daemon 상태 확인 IPC 핸들러
 ipcMain.handle('daemon:status', async () => {
     try {
@@ -1512,6 +1973,7 @@ ipcMain.handle('daemon:restart', async () => {
         }
         console.log('Starting daemon...');
         settings = loadSettings();
+        refreshIpcBase(); // 포트 변경 시 반영
         startDaemon();
         // 데몬이 시작될 때까지 잠시 대기
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -1528,7 +1990,9 @@ ipcMain.handle('settings:load', () => {
 });
 
 ipcMain.handle('settings:save', (event, settings) => {
-    return saveSettings(settings);
+    const result = saveSettings(settings);
+    refreshIpcBase(); // IPC 포트 변경 반영
+    return result;
 });
 
 ipcMain.handle('settings:getPath', () => {
@@ -1683,22 +2147,22 @@ ipcMain.handle('discord:start', async (event, config) => {
     // 이전 앱 실행에서 남은 고아 봇 프로세스 정리
     killOrphanBotProcesses();
 
-    // 패키징 여부에 따라 경로 결정
-    const isDev = !app.isPackaged;
-    let botPath, indexPath;
+    // 설치 루트 기준으로 경로 결정 (portable: 원본 exe 디렉토리)
+    const installRoot = getInstallRoot();
+    let botPath = path.join(installRoot, 'discord_bot');
+    let indexPath = path.join(botPath, 'index.js');
     
-    if (isDev) {
-        // 개발 환경: saba-chan-gui/../discord_bot
-        botPath = path.join(__dirname, '..', 'discord_bot');
-        indexPath = path.join(botPath, 'index.js');
-    } else {
-        // 패키징된 앱: exe와 같은 디렉토리 레벨의 discord_bot
-        const appDir = path.dirname(app.getPath('exe'));
-        botPath = path.join(appDir, 'discord_bot');
-        indexPath = path.join(botPath, 'index.js');
+    // 설치 루트에 없으면 temp 추출 디렉토리 fallback (최초 실행 시)
+    if (!fs.existsSync(indexPath) && app.isPackaged) {
+        const tempDir = path.dirname(app.getPath('exe'));
+        const tempBotPath = path.join(tempDir, 'discord_bot');
+        if (fs.existsSync(path.join(tempBotPath, 'index.js'))) {
+            botPath = tempBotPath;
+            indexPath = path.join(botPath, 'index.js');
+        }
     }
     
-    console.log('[Discord Bot] isDev:', isDev);
+    console.log('[Discord Bot] isPackaged:', app.isPackaged);
     console.log('[Discord Bot] app.getPath(exe):', app.getPath('exe'));
     console.log('[Discord Bot] botPath:', botPath);
     console.log('[Discord Bot] indexPath:', indexPath);
@@ -1821,14 +2285,16 @@ ipcMain.handle('botConfig:save', async (event, config) => {
         };
         
         // 1. discord_bot 폴더에 저장 (메인 저장소)
-        const isDev = !app.isPackaged;
-        let botPath;
+        const installRoot = getInstallRoot();
+        let botPath = path.join(installRoot, 'discord_bot');
         
-        if (isDev) {
-            botPath = path.join(__dirname, '..', 'discord_bot');
-        } else {
-            const appDir = path.dirname(app.getPath('exe'));
-            botPath = path.join(appDir, 'discord_bot');
+        // fallback: temp 추출 디렉토리
+        if (!fs.existsSync(botPath) && app.isPackaged) {
+            const tempDir = path.dirname(app.getPath('exe'));
+            const tempBotPath = path.join(tempDir, 'discord_bot');
+            if (fs.existsSync(tempBotPath)) {
+                botPath = tempBotPath;
+            }
         }
         
         const botConfigPath = path.join(botPath, 'bot-config.json');

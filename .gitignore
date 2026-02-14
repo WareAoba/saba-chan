@@ -1,5 +1,6 @@
 # Rust
 /target/
+target2/
 Cargo.lock
 
 # Node.js
@@ -36,6 +37,8 @@ discord_bot/.env
 *.swo
 *~
 resources/
+
+target/
 
 # OS
 .DS_Store

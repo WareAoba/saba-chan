@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Saba-chan Updater</title>
+    <link rel="stylesheet" href="theme.css" />
+    <link rel="stylesheet" href="updater.css" />
+</head>
+<body data-theme="auto">
+    <!-- 타이틀 바 -->
+    <div class="title-bar" data-tauri-drag-region>
+        <div class="title-bar-text">
+            <img src="logo-en.png" class="title-bar-logo" alt="Saba-chan" />
+        </div>
+        <div class="title-bar-controls">
+            <button class="title-bar-btn" id="btn-minimize" title="Minimize">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 512 512">
+                    <path fill="currentColor" d="M0 416c0-17.7 14.3-32 32-32l448 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L32 448c-17.7 0-32-14.3-32-32z"/>
+                </svg>
+            </button>
+            <button class="title-bar-btn close-btn" id="btn-close" title="Close" style="display:none">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 640 640">
+                    <path fill="currentColor" d="M183.1 137.4C170.6 124.9 150.3 124.9 137.8 137.4C125.3 149.9 125.3 170.2 137.8 182.7L275.2 320L137.9 457.4C125.4 469.9 125.4 490.2 137.9 502.7C150.4 515.2 170.7 515.2 183.2 502.7L320.5 365.3L457.9 502.6C470.4 515.1 490.7 515.1 503.2 502.6C515.7 490.1 515.7 469.8 503.2 457.3L365.8 320L503.1 182.6C515.6 170.1 515.6 149.8 503.1 137.3C490.6 124.8 470.3 124.8 457.8 137.3L320.5 274.7L183.1 137.4z"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- 메인 컨텐츠 -->
+    <div class="updater-container" id="updater-main">
+        <!-- 배경 배너 이미지 -->
+        <img src="fishing-banner.png" class="bg-banner" alt="" />
+
+        <!-- 이미지 너비만큼 빈 공간 -->
+        <div class="banner-spacer"></div>
+
+        <!-- 로딩 화면 (메인 GUI 스타일) -->
+        <div class="loading-screen" id="loading-screen">
+            <div class="loading-logo-container" id="progress-ring">
+                <i class="glow-blur"></i>
+                <i class="glow-ring"></i>
+                <i class="glow-mask"></i>
+                <img src="./title.png" alt="" class="loading-logo-img" />
+            </div>
+            <p class="loading-title" id="ring-title">업데이트중!</p>
+            <p class="loading-sub" id="ring-sub">잠시만 기다려 주세요...!</p>
+        </div>
+
+        <!-- 컴포넌트 목록 (apply 완료 시 표시) -->
+        <div class="component-list" id="component-list" style="display:none"></div>
+    </div>
+
+    <!-- 프로그레스 바 (기존 GUI global-progress-bar 재사용) -->
+    <div class="global-progress-bar" id="progress-bar" style="display:none">
+        <div class="global-progress-content">
+            <span class="global-progress-message" id="progress-message">Checking...</span>
+            <span class="global-progress-percent" id="progress-percent"></span>
+        </div>
+        <div class="global-progress-track">
+            <div class="global-progress-fill" id="progress-fill" style="width:0%"></div>
+        </div>
+    </div>
+
+    <!-- Toast 컨테이너 (기존 GUI Toast 재사용) -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="updater.js"></script>
+</body>
+</html>

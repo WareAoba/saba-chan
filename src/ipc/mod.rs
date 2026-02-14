@@ -12,6 +12,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+pub mod updates;
+use updates::UpdateState;
+
 // ── Client Heartbeat Registry ──────────────────────────────
 
 /// 클라이언트 유형 (GUI, CLI)
@@ -37,11 +40,17 @@ pub struct ClientRegistry {
     inner: Arc<RwLock<HashMap<String, RegisteredClient>>>,
 }
 
-impl ClientRegistry {
-    pub fn new() -> Self {
+impl Default for ClientRegistry {
+    fn default() -> Self {
         Self {
             inner: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+}
+
+impl ClientRegistry {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// 새 클라이언트 등록, client_id 반환
@@ -216,14 +225,20 @@ pub struct IPCServer {
     pub listen_addr: String,
     /// 클라이언트(GUI/CLI) 생존 추적 레지스트리
     pub client_registry: ClientRegistry,
+    /// 업데이트 매니저 (check + download 담당)
+    pub update_state: UpdateState,
 }
 
 impl IPCServer {
-    pub fn new(supervisor: Arc<RwLock<crate::supervisor::Supervisor>>, listen_addr: &str) -> Self {
+    pub fn new(
+        supervisor: Arc<RwLock<crate::supervisor::Supervisor>>,
+        listen_addr: &str,
+    ) -> Self {
         Self {
             supervisor,
             listen_addr: listen_addr.to_string(),
             client_registry: ClientRegistry::new(),
+            update_state: UpdateState::new(),
         }
     }
 
@@ -262,7 +277,8 @@ impl IPCServer {
             .route("/api/client/register", post(client_register))
             .route("/api/client/:id/heartbeat", post(client_heartbeat))
             .route("/api/client/:id/unregister", delete(client_unregister))
-            .with_state(self.clone());
+            .with_state(self.clone())
+            .merge(updates::updates_router(self.update_state.clone()));
 
         // TCP 리스너 (SO_REUSEADDR + 바인딩 재시도)
         let addr: std::net::SocketAddr = self.listen_addr.parse()
@@ -1811,3 +1827,5 @@ pub async fn reap_expired_clients(registry: &ClientRegistry) {
         tracing::info!("[Heartbeat] Reap complete. Cleaned: {}, remaining clients: {}", expired.len(), remaining);
     }
 }
+
+// Update API는 이제 데몬 내장 업데이트 매니저가 처리합니다 (src/ipc/updates.rs)

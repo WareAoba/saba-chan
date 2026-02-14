@@ -1,0 +1,55 @@
+name: Release with Manifest
+
+# ─────────────────────────────────────────────────────────
+# 릴리즈에 파일을 첨부하면 자동으로 manifest.json을 생성해
+# 릴리즈에 추가하는 워크플로우.
+#
+# 사용법:
+#   1. GitHub에서 Draft Release 생성
+#   2. 빌드된 에셋(zip 등)을 릴리즈에 첨부
+#   3. Release 발행 → 이 액션이 manifest.json을 자동 생성 & 첨부
+#
+# manifest.json 구조:
+#   - 각 컴포넌트의 소스코드 버전 (Cargo.toml / package.json)
+#   - 이번 릴리즈에 포함된 에셋 매핑
+#   - release_version = 컴포넌트 중 가장 높은 버전
+# ─────────────────────────────────────────────────────────
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  generate-manifest:
+    name: Generate & Upload manifest.json
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Generate manifest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_ID: ${{ github.event.release.id }}
+          REPO_FULL_NAME: ${{ github.repository }}
+        run: python .github/scripts/generate-manifest.py
+
+      - name: Upload manifest.json to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            manifest.json \
+            --repo "${{ github.repository }}" \
+            --clobber

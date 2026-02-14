@@ -43,7 +43,19 @@
     "theme_auto": "자동",
     "theme_light": "라이트",
     "theme_dark": "다크",
-    "advanced_placeholder": "여기에 고급 설정 항목을 추가할 예정입니다."
+    "advanced_placeholder": "여기에 고급 설정 항목을 추가할 예정입니다.",
+    "ipc_port_label": "IPC 포트",
+    "ipc_port_description": "코어 데몬이 수신할 포트 번호 (1024~65535)",
+    "ipc_port_invalid": "포트 번호는 1024~65535 범위여야 합니다",
+    "ipc_port_restart_notice": "포트 변경은 데몬 재시작 후 적용됩니다",
+    "console_buffer_label": "콘솔 버퍼 크기",
+    "console_buffer_description": "서버 콘솔에 보관할 최대 라인 수",
+    "ipc_port_label": "IPC 포트",
+    "ipc_port_description": "GUI와 코어 데몬 간 통신에 사용되는 포트",
+    "ipc_port_restart_notice": "포트 변경은 데몬 재시작 후 적용됩니다",
+    "ipc_port_invalid": "유효한 포트 번호를 입력하세요 (1024~65535)",
+    "console_buffer_label": "콘솔 버퍼 크기",
+    "console_buffer_description": "서버 콘솔에 보관할 최대 줄 수"
   },
   "add_server_modal": {
     "title": "새 서버 추가",
@@ -123,7 +135,8 @@
     "start_error_toast": "Discord 봇 시작 예외: {{error}}",
     "stop_failed_toast": "Discord 봇 정지 실패: {{error}}",
     "stopped_toast": "Discord 봇이 정지되었습니다",
-    "stop_error_toast": "Discord 봇 정지 예외: {{error}}"
+    "stop_error_toast": "Discord 봇 정지 예외: {{error}}",
+    "relaunched_toast": "Discord 봇이 재시작되었습니다"
   },
   "app_exit": {
     "confirm_title": "종료 확인",
@@ -151,6 +164,8 @@
     "stopping_toast": "⏳ {{name}} 서버를 정지하는 중...",
     "stop_completed_toast": "✅ {{name}} 서버 정지 완료!",
     "stop_timeout_toast": "⚠️ {{name}} 서버 정지 중... (시간이 걸릴 수 있습니다)",
+    "unexpected_stop_toast": "⚠️ {{name}} 서버가 예기치 않게 종료되었습니다!",
+    "external_start_toast": "ℹ️ {{name}} 서버가 외부에서 시작되었습니다",
     "status_check_failed_title": "상태 조회 실패",
     "add_server_name_empty_title": "입력 오류",
     "add_server_name_empty_message": "서버 이름을 입력하세요",
@@ -260,5 +275,25 @@
     "start_button": "▶ 봇 시작",
     "stop_button": "⏹ 봇 정지",
     "save_button": "💾 저장"
+  },
+  "notice_modal": {
+    "title": "알림",
+    "empty": "알림이 없습니다",
+    "clear_all": "전체 삭제",
+    "dismiss": "삭제",
+    "source_main": "사바쨩",
+    "tooltip": "알림"
+  },
+  "updates": {
+    "available_title": "업데이트 사용 가능",
+    "available_message": "{{count}}개 업데이트: {{names}}",
+    "available_count": "{{count}}개 업데이트 사용 가능",
+    "open_updater": "업데이터 열기",
+    "completed_title": "업데이트 완료",
+    "completed_success": "모든 업데이트가 성공적으로 적용되었습니다.",
+    "completed_partial": "일부 업데이트가 적용되었습니다.",
+    "checking_title": "업데이트 확인 중",
+    "checking_message": "새로운 업데이트가 있는지 확인하고 있습니다...",
+    "no_updates": "모든 컴포넌트가 최신 버전입니다."
   }
 }

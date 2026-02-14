@@ -457,6 +457,13 @@ span[style*="--icon-loader"] svg,
     flex: 1;
 }
 
+/* 헤더 오른쪽 아이콘 그룹 (알림 + 설정) */
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
 /* 앱 설정 버튼 (헤더 상단의 톱니바퀴 아이콘) */
 .btn-settings-icon-solo {
     background: transparent;
@@ -1164,6 +1171,34 @@ span[style*="--icon-loader"] svg,
 .btn-background-active:hover {
     background: #f0fdf4;
     border-color: #3ba55d;
+}
+
+/* Updater Test button */
+.btn-updater-test {
+    padding: 8px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 8px;
+    border: 1px solid var(--border-medium);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+.btn-updater-test:hover {
+    border-color: #8b5cf6;
+    color: #8b5cf6;
+    box-shadow: 0 4px 8px var(--shadow-md);
+    transform: translateY(-1px);
+}
+.btn-updater-test-active {
+    background: #f5f3ff;
+    border-color: #8b5cf6;
+    color: #8b5cf6;
 }
 
 .status-indicator {

@@ -34,6 +34,13 @@ fn get_bot_config_path() -> anyhow::Result<PathBuf> {
     Ok(get_config_dir()?.join("bot-config.json"))
 }
 
+/// bot-config.json 경로 (public — TUI에서 직접 접근 시)
+pub fn get_bot_config_path_pub() -> PathBuf {
+    get_config_dir()
+        .map(|d| d.join("bot-config.json"))
+        .unwrap_or_else(|_| PathBuf::from("bot-config.json"))
+}
+
 // ============ Settings (settings.json) ============
 
 /// GUI의 settings.json 전체 로드

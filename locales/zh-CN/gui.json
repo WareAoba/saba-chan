@@ -43,7 +43,19 @@
     "theme_auto": "自动",
     "theme_light": "浅色",
     "theme_dark": "深色",
-    "advanced_placeholder": "高级设置将添加在此。"
+    "advanced_placeholder": "高级设置将添加在此。",
+    "ipc_port_label": "IPC 端口",
+    "ipc_port_description": "核心守护进程监听的端口号（1024–65535）",
+    "ipc_port_invalid": "端口号必须在 1024 到 65535 之间",
+    "ipc_port_restart_notice": "端口更改将在守护进程重启后生效",
+    "console_buffer_label": "控制台缓冲区大小",
+    "console_buffer_description": "服务器控制台中保留的最大行数",
+    "ipc_port_label": "IPC 端口",
+    "ipc_port_description": "GUI 与核心守护进程之间通信使用的端口",
+    "ipc_port_restart_notice": "端口更改将在守护进程重启后生效",
+    "ipc_port_invalid": "请输入有效的端口号（1024–65535）",
+    "console_buffer_label": "控制台缓冲区大小",
+    "console_buffer_description": "服务器控制台保留的最大行数"
   },
   "add_server_modal": {
     "title": "添加新服务器",
@@ -123,7 +135,8 @@
     "start_error_toast": "Discord 机器人启动异常：{{error}}",
     "stop_failed_toast": "Discord 机器人停止失败：{{error}}",
     "stopped_toast": "Discord 机器人已停止",
-    "stop_error_toast": "Discord 机器人停止异常：{{error}}"
+    "stop_error_toast": "Discord 机器人停止异常：{{error}}",
+    "relaunched_toast": "Discord 机器人已重新启动"
   },
   "app_exit": {
     "confirm_title": "确认退出",
@@ -151,6 +164,8 @@
     "stopping_toast": "⏳ 正在停止 {{name}} 服务器...",
     "stop_completed_toast": "✅ {{name}} 服务器已停止！",
     "stop_timeout_toast": "⚠️ 正在停止 {{name}} 服务器...（可能需要一些时间）",
+    "unexpected_stop_toast": "⚠️ {{name}} 服务器意外停止！",
+    "external_start_toast": "ℹ️ {{name}} 服务器已从外部启动",
     "status_check_failed_title": "状态检查失败",
     "add_server_name_empty_title": "输入错误",
     "add_server_name_empty_message": "请输入服务器名称",
@@ -241,5 +256,13 @@
     "start_button": "▶ 启动机器人",
     "stop_button": "⏹ 停止机器人",
     "save_button": "💾 保存"
+  },
+  "notice_modal": {
+    "title": "通知",
+    "empty": "没有通知",
+    "clear_all": "全部删除",
+    "dismiss": "删除",
+    "source_main": "Saba-chan",
+    "tooltip": "通知"
   }
 }

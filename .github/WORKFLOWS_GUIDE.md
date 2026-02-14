@@ -1,6 +1,6 @@
 # GitHub Actions Configuration
 
-이 프로젝트는 4개의 GitHub Actions 워크플로우를 사용합니다.
+이 프로젝트는 5개의 GitHub Actions 워크플로우를 사용합니다.
 
 ## 📋 워크플로우
 
@@ -77,7 +77,27 @@ develop으로 PR → test.yml 실행
 ### 릴리스
 ```
 v1.0.0 태그 → build.yml → GitHub Release 자동 생성
+Release 발행 → release.yml → manifest.json 자동 생성 & 첨부
 ```
+
+---
+
+### 5. **release.yml** - 릴리즈 매니페스트 자동 생성
+**트리거**:
+- GitHub Release가 published 될 때
+
+**실행 내용**:
+- 📄 각 컴포넌트의 Cargo.toml / package.json에서 버전 읽기
+- 📄 릴리즈 에셋 목록과 컴포넌트 매핑
+- 📄 `manifest.json` 생성 후 릴리즈에 첨부
+- 🏷️ `release_version` = 컴포넌트 중 가장 높은 버전
+
+**동작 방식**:
+- 릴리즈에 모든 컴포넌트가 포함될 필요 없음
+- 에셋이 없는 컴포넌트는 버전 정보만 기록 (asset: null)
+- 로컬 데몬은 릴리즈를 거슬러 올라가며 필요한 에셋 탐색
+
+**실행 시간**: ~1-2분
 
 ---
 

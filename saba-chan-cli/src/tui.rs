@@ -67,6 +67,9 @@ fn push_out(buf: &OutputBuf, lines: Vec<Out>) {
     b.push(Out::Blank);
 }
 
+/// 하트비트 관리용 공유 클라이언트 ID
+type SharedClientId = Arc<Mutex<Option<String>>>;
+
 /// char 인덱스 → 바이트 오프셋 변환 (다국어 안전)
 fn char_to_byte(s: &str, char_idx: usize) -> usize {
     s.char_indices()
@@ -93,6 +96,8 @@ struct App {
     settings: CliSettings,
     #[allow(dead_code)]
     i18n: Arc<I18n>,
+    // 하트비트
+    client_id: SharedClientId,
     // UI
     input: String,
     cursor: usize,
@@ -142,6 +147,7 @@ impl App {
             registry,
             settings,
             i18n,
+            client_id: Arc::new(Mutex::new(None)),
             input: String::new(),
             cursor: 0,
             output: vec![
@@ -325,7 +331,7 @@ impl App {
         if parts.len() == 1 && !self.input.ends_with(' ') {
             // 첫 단어 완성 — 내장 명령어 + 모듈 이름
             let mut candidates: Vec<String> = vec![
-                "server".into(), "module".into(), "daemon".into(), "bot".into(),
+                "server".into(), "instance".into(), "module".into(), "daemon".into(), "bot".into(),
                 "exec".into(), "config".into(), "help".into(), "exit".into(),
             ];
             for name in self.registry.module_names() {
@@ -371,11 +377,14 @@ impl App {
                 let full_cmds = [
                     "server list", "server start", "server stop", "server restart", "server status",
                     "server managed", "server console", "server stdin", "server diagnose",
-                    "server validate", "server eula", "server properties",
-                    "module list", "module refresh", "module versions", "module install",
-                    "daemon start", "daemon stop",
-                    "bot start", "bot stop", "bot token", "bot prefix",
+                    "server validate", "server eula", "server properties", "server set-property",
+                    "instance list", "instance create", "instance delete", "instance show",
+                    "instance set", "instance settings",
+                    "module list", "module refresh", "module versions", "module install", "module info",
+                    "daemon start", "daemon stop", "daemon status", "daemon restart",
+                    "bot start", "bot stop", "bot status", "bot token", "bot prefix", "bot alias",
                     "config show", "config set", "config get", "config reset",
+                    "update check", "update status", "update download", "update apply",
                 ];
                 let prefix = self.input.trim();
                 let matches: Vec<&&str> = full_cmds.iter().filter(|c| c.starts_with(prefix)).collect();
@@ -404,8 +413,15 @@ impl App {
 
             // 데몬·봇 종료를 백그라운드로 발사
             let buf = self.async_out.clone();
+            let exit_client = self.client.clone();
+            let exit_client_id = self.client_id.clone();
             tokio::spawn(async move {
                 let mut lines = Vec::new();
+                // 하트비트 해제
+                let maybe_id = exit_client_id.lock().unwrap().take();
+                if let Some(id) = maybe_id {
+                    let _ = exit_client.unregister_client(&id).await;
+                }
                 if process::check_bot_running() {
                     match tokio::task::spawn_blocking(process::stop_bot).await {
                         Ok(Ok(msg)) => lines.push(Out::Ok(msg)),
@@ -457,11 +473,13 @@ impl App {
             let lower_parts: Vec<&str> = lower_owned.split_whitespace().collect();
             let orig_parts: Vec<&str> = orig_owned.split_whitespace().collect();
             let lines = match lower_parts.first().copied() {
-                Some("server") => exec_server(&client, &lower_parts[1..]).await,
+                Some("server") => exec_server(&client, &lower_parts[1..], &orig_parts[1..]).await,
+                Some("instance") => exec_instance(&client, &lower_parts[1..], &orig_parts[1..], &registry).await,
                 Some("module") => exec_module(&client, &lower_parts[1..]).await,
                 Some("daemon") => exec_daemon(&lower_parts[1..]).await,
                 Some("bot") => exec_bot(&lower_parts[1..]).await,
                 Some("exec") => exec_exec(&client, &orig_parts[1..]).await,
+                Some("update") => exec_update(&client, &lower_parts[1..]).await,
                 Some(word) => {
                     // 모듈 별명 매칭 시도 (레지스트리가 이미 대소문자 무시)
                     if let Some(module_name) = registry.resolve_module_name(word) {
@@ -485,40 +503,70 @@ impl App {
             Some("config") => Some(self.cmd_config(&orig[1..])),
             Some("help") => Some(self.cmd_help()),
             Some("server") if lower.len() == 1 => Some(vec![
-                Out::Text("  server list              list all servers".into()),
-                Out::Text("  server status <name>     show server status".into()),
-                Out::Text("  server start <name>      start a server".into()),
-                Out::Text("  server stop <name>       stop a server".into()),
-                Out::Text("  server restart <name>    restart a server".into()),
-                Out::Text("  server managed <name>    managed start (auto-launch)".into()),
-                Out::Text("  server console <name>    view console output".into()),
-                Out::Text("  server stdin <name> <text>  send input to server".into()),
-                Out::Text("  server diagnose <name>   diagnose server issues".into()),
-                Out::Text("  server validate <name>   validate server config".into()),
-                Out::Text("  server eula <name>       accept EULA".into()),
-                Out::Text("  server properties <name> view server properties".into()),
+                Out::Text("  server list                   list all servers".into()),
+                Out::Text("  server status <name>          show server status".into()),
+                Out::Text("  server start <name>           start a server".into()),
+                Out::Text("  server stop <name> [force]    stop a server".into()),
+                Out::Text("  server restart <name>         restart a server".into()),
+                Out::Text("  server managed <name>         managed start (auto-launch)".into()),
+                Out::Text("  server console <name>         view console output".into()),
+                Out::Text("  server stdin <name> <text>    send input to server".into()),
+                Out::Text("  server diagnose <name>        diagnose server issues".into()),
+                Out::Text("  server validate <name>        validate server config".into()),
+                Out::Text("  server eula <name>            accept EULA".into()),
+                Out::Text("  server properties <name>      view server properties".into()),
+                Out::Text("  server set-property <name> <key> <value>  set property".into()),
+            ]),
+            Some("instance") if lower.len() == 1 => Some(vec![
+                Out::Text("  instance list                list all instances".into()),
+                Out::Text("  instance show <name>         show instance details".into()),
+                Out::Text("  instance create <name> <module>  create new instance".into()),
+                Out::Text("  instance delete <name>       delete an instance".into()),
+                Out::Text("  instance settings <name>     show instance settings schema".into()),
+                Out::Text("  instance set <name> <key> <value>  update instance setting".into()),
             ]),
             Some("module") if lower.len() == 1 => Some(vec![
                 Out::Text("  module list              list loaded modules".into()),
+                Out::Text("  module info <name>       show module details".into()),
                 Out::Text("  module refresh           refresh all modules".into()),
                 Out::Text("  module versions <name>   list available versions".into()),
                 Out::Text("  module install <name> [ver]  install server".into()),
             ]),
+            Some("update") if lower.len() == 1 => Some(vec![
+                Out::Text("  update check             check for updates".into()),
+                Out::Text("  update status            show update status".into()),
+                Out::Text("  update download          download available updates".into()),
+                Out::Text("  update apply             apply downloaded updates".into()),
+                Out::Text("  update config            show updater configuration".into()),
+                Out::Text("  update install [key]     install component (or all)".into()),
+                Out::Text("  update install-status    show installation status".into()),
+                Out::Text("  update install-progress  show install progress".into()),
+            ]),
             Some("daemon") if lower.len() == 1 => Some(vec![
                 Out::Text("  daemon start             start core daemon".into()),
                 Out::Text("  daemon stop              stop core daemon".into()),
+                Out::Text("  daemon status            show daemon status".into()),
+                Out::Text("  daemon restart           restart core daemon".into()),
             ]),
             Some("bot") if lower.len() == 1 => Some(vec![
                 Out::Text("  bot start                start Discord bot".into()),
                 Out::Text("  bot stop                 stop Discord bot".into()),
+                Out::Text("  bot status               show bot status".into()),
                 Out::Text("  bot token [show|set|clear]  manage Discord token".into()),
                 Out::Text("  bot prefix [show|set]    manage bot prefix".into()),
+                Out::Text("  bot alias [show|set|reset]  manage Discord aliases".into()),
             ]),
             Some("bot") if lower.len() >= 2 && lower[1] == "token" => {
                 Some(self.cmd_bot_token(&orig[2..]))
             }
             Some("bot") if lower.len() >= 2 && lower[1] == "prefix" => {
                 Some(self.cmd_bot_prefix(&orig[2..]))
+            }
+            Some("bot") if lower.len() >= 2 && lower[1] == "status" => {
+                Some(self.cmd_bot_status())
+            }
+            Some("bot") if lower.len() >= 2 && lower[1] == "alias" => {
+                Some(self.cmd_bot_alias(&lower[2..], &orig[2..]))
             }
             Some("exec") if lower.len() < 4 => Some(vec![
                 Out::Text("  exec <id> cmd <command>  execute command".into()),
@@ -549,6 +597,7 @@ impl App {
                 let modules = gui_config::get_modules_path().unwrap_or_default();
                 let prefix = gui_config::get_bot_prefix().unwrap_or_else(|_| "!saba".into());
                 let gui_lang = gui_config::get_language().unwrap_or_else(|_| "en".into());
+                let auto_start_gui = gui_config::get_discord_auto_start().unwrap_or(false);
                 let mut lines = vec![
                     Out::Info("CLI Settings:".into()),
                     Out::Text(format!("  language         {}", self.settings.get_value("language").unwrap_or_else(|| "(auto)".into()))),
@@ -564,14 +613,23 @@ impl App {
                     Out::Text(format!("  prefix           {}", prefix)),
                     Out::Text(format!("  modules_path     {}", modules)),
                     Out::Text(format!("  language         {}", gui_lang)),
+                    Out::Text(format!("  discord_auto     {}", auto_start_gui)),
                 ];
                 lines.push(Out::Blank);
+                lines.push(Out::Info("CLI config:".into()));
                 lines.push(Out::Text("  config set <key> <value>   change a CLI setting".into()));
                 lines.push(Out::Text("  config get <key>           show one setting".into()));
                 lines.push(Out::Text("  config reset <key>         reset to default".into()));
                 lines.push(Out::Text(format!("  keys: {}", CliSettings::available_keys().iter().map(|(k,_)| *k).collect::<Vec<_>>().join(", "))));
+                lines.push(Out::Blank);
+                lines.push(Out::Info("GUI config (shared with GUI):".into()));
+                lines.push(Out::Text("  config gui language <lang>         set GUI language".into()));
+                lines.push(Out::Text("  config gui modules_path <path>     set modules directory".into()));
+                lines.push(Out::Text("  config gui token <token>           set Discord token".into()));
+                lines.push(Out::Text("  config gui token clear             clear Discord token".into()));
                 lines
             }
+            Some("gui") => self.cmd_config_gui(&args[1..]),
             Some("get") => {
                 if args.len() < 2 {
                     return vec![Out::Err("Usage: config get <key>".into())];
@@ -617,8 +675,72 @@ impl App {
                 }
             }
             Some(sub) => {
-                vec![Out::Err(format!("Unknown config subcommand: {}. Try: show, get, set, reset", sub))]
+                vec![Out::Err(format!("Unknown config subcommand: {}. Try: show, get, set, reset, gui", sub))]
             }
+        }
+    }
+
+    /// GUI 공유 설정 변경 (settings.json / bot-config.json)
+    fn cmd_config_gui(&self, args: &[&str]) -> Vec<Out> {
+        match args.first().copied() {
+            Some("language") | Some("lang") => {
+                if args.len() < 2 {
+                    let cur = gui_config::get_language().unwrap_or_else(|_| "en".into());
+                    return vec![
+                        Out::Ok(format!("GUI language: {}", cur)),
+                        Out::Text("  Available: en, ko, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr".into()),
+                        Out::Text("  Usage: config gui language <lang>".into()),
+                    ];
+                }
+                let lang = args[1];
+                match gui_config::set_language(lang) {
+                    Ok(()) => vec![Out::Ok(format!("✓ GUI language set to: {}", lang))],
+                    Err(e) => vec![Out::Err(format!("✗ {}", e))],
+                }
+            }
+            Some("modules_path") | Some("modules") => {
+                if args.len() < 2 {
+                    let cur = gui_config::get_modules_path().unwrap_or_default();
+                    return vec![
+                        Out::Ok(format!("Modules path: {}", cur)),
+                        Out::Text("  Usage: config gui modules_path <path>".into()),
+                    ];
+                }
+                let path = args[1..].join(" ");
+                match gui_config::set_modules_path(&path) {
+                    Ok(()) => vec![Out::Ok(format!("✓ Modules path set to: {}", path))],
+                    Err(e) => vec![Out::Err(format!("✗ {}", e))],
+                }
+            }
+            Some("token") => {
+                if args.len() < 2 {
+                    match gui_config::get_discord_token() {
+                        Ok(Some(t)) => {
+                            let masked = if t.len() > 8 {
+                                format!("{}...{}", &t[..4], &t[t.len()-4..])
+                            } else {
+                                "****".into()
+                            };
+                            vec![Out::Ok(format!("Token: {}", masked))]
+                        }
+                        _ => vec![Out::Text("Token: not set".into())],
+                    }
+                } else if args[1] == "clear" {
+                    match gui_config::clear_discord_token() {
+                        Ok(()) => vec![Out::Ok("✓ Discord token cleared.".into())],
+                        Err(e) => vec![Out::Err(format!("✗ {}", e))],
+                    }
+                } else {
+                    let token = args[1];
+                    match gui_config::set_discord_token(token) {
+                        Ok(()) => vec![Out::Ok("✓ Discord token saved.".into())],
+                        Err(e) => vec![Out::Err(format!("✗ {}", e))],
+                    }
+                }
+            }
+            _ => vec![
+                Out::Err("Usage: config gui [language|modules_path|token] <value>".into()),
+            ],
         }
     }
 
@@ -683,19 +805,158 @@ impl App {
         }
     }
 
+    fn cmd_bot_status(&self) -> Vec<Out> {
+        let running = process::check_bot_running();
+        let token = gui_config::get_discord_token().ok().flatten();
+        let prefix = gui_config::get_bot_prefix().unwrap_or_else(|_| "!saba".into());
+        let auto = gui_config::get_discord_auto_start().unwrap_or(false);
+
+        let status_str = if running {
+            "● RUNNING"
+        } else if token.is_none() {
+            "○ NO TOKEN"
+        } else {
+            "○ OFFLINE"
+        };
+
+        vec![
+            Out::Ok(format!("Discord Bot: {}", status_str)),
+            Out::Text(format!("  Token:      {}", if token.is_some() { "✓ set" } else { "✗ not set" })),
+            Out::Text(format!("  Prefix:     {}", prefix)),
+            Out::Text(format!("  Auto-start: {}", auto)),
+        ]
+    }
+
+    fn cmd_bot_alias(&self, lower: &[&str], orig: &[&str]) -> Vec<Out> {
+        match lower.first().copied() {
+            None | Some("show") => {
+                let config = gui_config::load_bot_config().unwrap_or_default();
+                let mut lines = vec![Out::Ok("Discord Bot Aliases:".into())];
+
+                // Module aliases
+                lines.push(Out::Blank);
+                lines.push(Out::Info("Module Aliases:".into()));
+                if let Some(aliases) = config.get("moduleAliases").and_then(|v| v.as_object()) {
+                    if aliases.is_empty() {
+                        lines.push(Out::Text("  (none)".into()));
+                    } else {
+                        for (module, alias) in aliases {
+                            lines.push(Out::Text(format!("  {} → {}", module, alias.as_str().unwrap_or("?"))));
+                        }
+                    }
+                } else {
+                    lines.push(Out::Text("  (none)".into()));
+                }
+
+                // Command aliases
+                lines.push(Out::Blank);
+                lines.push(Out::Info("Command Aliases:".into()));
+                if let Some(cmd_aliases) = config.get("commandAliases").and_then(|v| v.as_object()) {
+                    if cmd_aliases.is_empty() {
+                        lines.push(Out::Text("  (none)".into()));
+                    } else {
+                        for (module, cmds) in cmd_aliases {
+                            if let Some(cmd_map) = cmds.as_object() {
+                                for (cmd, alias) in cmd_map {
+                                    lines.push(Out::Text(format!("  {}.{} → {}", module, cmd, alias.as_str().unwrap_or("?"))));
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    lines.push(Out::Text("  (none)".into()));
+                }
+
+                lines.push(Out::Blank);
+                lines.push(Out::Text("  bot alias set module <module> <aliases>    set module alias (comma-separated)".into()));
+                lines.push(Out::Text("  bot alias set command <module> <cmd> <aliases>  set command alias".into()));
+                lines.push(Out::Text("  bot alias reset                            reset all aliases".into()));
+                lines
+            }
+            Some("set") => {
+                if lower.len() < 2 {
+                    return vec![Out::Err("Usage: bot alias set [module|command] ...".into())];
+                }
+                match lower[1] {
+                    "module" => {
+                        if orig.len() < 4 {
+                            return vec![Out::Err("Usage: bot alias set module <module_name> <alias1,alias2>".into())];
+                        }
+                        let module_name = orig[2];
+                        let aliases = orig[3];
+                        let mut config = gui_config::load_bot_config().unwrap_or_default();
+                        if config.get("moduleAliases").is_none() {
+                            config["moduleAliases"] = serde_json::json!({});
+                        }
+                        config["moduleAliases"][module_name] = serde_json::Value::String(aliases.to_string());
+                        match gui_config::set_bot_prefix("") {
+                            _ => {} // side effect of saving
+                        }
+                        // Save the full config
+                        let path = gui_config::get_bot_config_path_pub();
+                        match save_json_file(&path, &config) {
+                            Ok(()) => vec![Out::Ok(format!("✓ Module alias set: {} → {}", module_name, aliases))],
+                            Err(e) => vec![Out::Err(format!("✗ {}", e))],
+                        }
+                    }
+                    "command" | "cmd" => {
+                        if orig.len() < 5 {
+                            return vec![Out::Err("Usage: bot alias set command <module> <command> <alias1,alias2>".into())];
+                        }
+                        let module_name = orig[2];
+                        let cmd_name = orig[3];
+                        let aliases = orig[4];
+                        let mut config = gui_config::load_bot_config().unwrap_or_default();
+                        if config.get("commandAliases").is_none() {
+                            config["commandAliases"] = serde_json::json!({});
+                        }
+                        if config["commandAliases"].get(module_name).is_none() {
+                            config["commandAliases"][module_name] = serde_json::json!({});
+                        }
+                        config["commandAliases"][module_name][cmd_name] = serde_json::Value::String(aliases.to_string());
+                        let path = gui_config::get_bot_config_path_pub();
+                        match save_json_file(&path, &config) {
+                            Ok(()) => vec![Out::Ok(format!("✓ Command alias set: {}.{} → {}", module_name, cmd_name, aliases))],
+                            Err(e) => vec![Out::Err(format!("✗ {}", e))],
+                        }
+                    }
+                    _ => vec![Out::Err("Usage: bot alias set [module|command] ...".into())],
+                }
+            }
+            Some("reset") => {
+                let mut config = gui_config::load_bot_config().unwrap_or_default();
+                config["moduleAliases"] = serde_json::json!({});
+                config["commandAliases"] = serde_json::json!({});
+                let path = gui_config::get_bot_config_path_pub();
+                match save_json_file(&path, &config) {
+                    Ok(()) => vec![Out::Ok("✓ All aliases reset to defaults.".into())],
+                    Err(e) => vec![Out::Err(format!("✗ {}", e))],
+                }
+            }
+            Some(sub) => {
+                vec![Out::Err(format!("Unknown: bot alias {}. Try: show, set, reset", sub))]
+            }
+        }
+    }
+
     fn cmd_help(&self) -> Vec<Out> {
         let mut lines = vec![
-            Out::Text("  server  [list|start|stop|restart|status] <name>".into()),
-            Out::Text("  server  [managed|console|stdin|diagnose|validate|eula|properties] <name>".into()),
-            Out::Text("  module  [list|refresh|versions|install]".into()),
-            Out::Text("  daemon  [start|stop]".into()),
-            Out::Text("  bot     [start|stop]".into()),
-            Out::Text("  bot     token [show|set|clear]".into()),
-            Out::Text("  bot     prefix [show|set]".into()),
-            Out::Text("  exec    <id> [cmd|rcon|rest] <command>".into()),
-            Out::Text("  config  [show|set|get|reset] — CLI/GUI settings".into()),
-            Out::Text("  help    — This help".into()),
-            Out::Text("  exit    — Quit (Ctrl+C)".into()),
+            Out::Text("  server   [list|start|stop|restart|status] <name>".into()),
+            Out::Text("  server   [managed|console|stdin|diagnose|validate|eula|properties] <name>".into()),
+            Out::Text("  server   set-property <name> <key> <value>".into()),
+            Out::Text("  instance [list|show|create|delete|settings|set] <name>".into()),
+            Out::Text("  module   [list|info|refresh|versions|install]".into()),
+            Out::Text("  daemon   [start|stop|status|restart]".into()),
+            Out::Text("  bot      [start|stop|status]".into()),
+            Out::Text("  bot      token [show|set|clear]".into()),
+            Out::Text("  bot      prefix [show|set]".into()),
+            Out::Text("  bot      alias [show|set|reset]".into()),
+            Out::Text("  exec     <id> [cmd|rcon|rest] <command>".into()),
+            Out::Text("  update   [check|status|download|apply|config|install]".into()),
+            Out::Text("  config   [show|set|get|reset] — CLI/GUI settings".into()),
+            Out::Text("  config   gui [language|modules_path|token] — GUI shared settings".into()),
+            Out::Text("  help     — This help".into()),
+            Out::Text("  exit     — Quit (Ctrl+C)".into()),
         ];
 
         // 등록된 모듈 단축키 표시
@@ -719,6 +980,16 @@ impl App {
 // 비동기 명령 실행 (tokio::spawn에서 호출되는 자유 함수)
 // ═══════════════════════════════════════════════════════
 
+/// JSON 파일 저장 헬퍼
+fn save_json_file(path: &std::path::PathBuf, data: &serde_json::Value) -> anyhow::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let content = serde_json::to_string_pretty(data)?;
+    std::fs::write(path, content)?;
+    Ok(())
+}
+
 /// start_time (UNIX timestamp) 기반 경과시간을 hh:mm:ss 포맷으로 변환
 fn format_uptime(start_time: Option<u64>) -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -735,7 +1006,7 @@ fn format_uptime(start_time: Option<u64>) -> String {
     }
 }
 
-async fn exec_server(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
+async fn exec_server(client: &DaemonClient, args: &[&str], orig_args: &[&str]) -> Vec<Out> {
     match args.first().copied() {
         Some("list") => match client.list_servers().await {
             Ok(list) if list.is_empty() => vec![Out::Text("No servers configured.".into())],
@@ -782,7 +1053,8 @@ async fn exec_server(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
             }
         }
         Some("stop") if args.len() > 1 => {
-            match client.stop_server(args[1], false).await {
+            let force = args.get(2).map(|&s| s == "force" || s == "true").unwrap_or(false);
+            match client.stop_server(args[1], force).await {
                 Ok(r) => vec![Out::Ok(format!(
                     "✓ {}",
                     r.get("message").and_then(|v| v.as_str()).unwrap_or("Stopped")
@@ -951,7 +1223,33 @@ async fn exec_server(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
             }
         }
-        _ => vec![Out::Err("Usage: server [list|start|stop|restart|status|managed|console|stdin|diagnose|validate|eula|properties] <name>".into())],
+        Some("set-property") if orig_args.len() > 3 => {
+            let name = orig_args[1];
+            let key = orig_args[2];
+            let value = orig_args[3..].join(" ");
+            let instance_id = match find_instance_id_by_name(client, name).await {
+                Some(id) => id,
+                None => return vec![Out::Err(format!("✗ Instance '{}' not found", name))],
+            };
+            // Read current properties, modify, write back
+            match client.read_properties(&instance_id).await {
+                Ok(data) => {
+                    let mut props = if let Some(obj) = data.get("properties") {
+                        obj.clone()
+                    } else {
+                        data.clone()
+                    };
+                    props[key] = serde_json::Value::String(value.clone());
+                    let write_data = serde_json::json!({ "properties": props });
+                    match client.write_properties(&instance_id, write_data).await {
+                        Ok(_) => vec![Out::Ok(format!("✓ {} = {}", key, value))],
+                        Err(e) => vec![Out::Err(format!("✗ Write failed: {}", e))],
+                    }
+                }
+                Err(e) => vec![Out::Err(format!("✗ Read properties failed: {}", e))],
+            }
+        }
+        _ => vec![Out::Err("Usage: server [list|start|stop|restart|status|managed|console|stdin|diagnose|validate|eula|properties|set-property] <name>".into())],
     }
 }
 
@@ -979,6 +1277,186 @@ async fn find_instance_id_by_name(client: &DaemonClient, name: &str) -> Option<S
     None
 }
 
+/// 인스턴스 CRUD 명령어 (GUI의 서버 추가/삭제/설정 대체)
+async fn exec_instance(client: &DaemonClient, lower: &[&str], orig: &[&str], registry: &ModuleRegistry) -> Vec<Out> {
+    match lower.first().copied() {
+        Some("list") => match client.list_instances().await {
+            Ok(list) if list.is_empty() => vec![Out::Text("No instances configured.".into())],
+            Ok(list) => {
+                let mut o = vec![Out::Ok(format!("{} instance(s):", list.len()))];
+                for inst in &list {
+                    let name = inst["name"].as_str().unwrap_or("?");
+                    let module = inst["module_name"].as_str().unwrap_or("?");
+                    let id = inst["id"].as_str().unwrap_or("?");
+                    o.push(Out::Text(format!("  {} [{}] id:{}", name, module, id)));
+                }
+                o
+            }
+            Err(e) => vec![Out::Err(format!("✗ {}", e))],
+        },
+        Some("show") if orig.len() > 1 => {
+            let name = orig[1];
+            let instance_id = match find_instance_id_by_name(client, name).await {
+                Some(id) => id,
+                None => return vec![Out::Err(format!("✗ Instance '{}' not found", name))],
+            };
+            match client.get_instance(&instance_id).await {
+                Ok(data) => {
+                    let mut o = vec![Out::Ok(format!("Instance: {}", name))];
+                    o.push(Out::Text(format!("  id:          {}", data["id"].as_str().unwrap_or("?"))));
+                    o.push(Out::Text(format!("  module:      {}", data["module_name"].as_str().unwrap_or("?"))));
+
+                    // Show all settings
+                    if let Some(settings) = data.as_object() {
+                        o.push(Out::Blank);
+                        o.push(Out::Info("Settings:".into()));
+                        for (key, val) in settings {
+                            if key == "id" || key == "name" || key == "module_name" {
+                                continue;
+                            }
+                            let val_str = match val {
+                                serde_json::Value::String(s) => {
+                                    if key.contains("token") || key.contains("password") {
+                                        if s.is_empty() { "(empty)".into() } else { "****".into() }
+                                    } else {
+                                        s.clone()
+                                    }
+                                }
+                                serde_json::Value::Null => "(not set)".into(),
+                                _ => val.to_string(),
+                            };
+                            o.push(Out::Text(format!("  {:<24} {}", key, val_str)));
+                        }
+                    }
+                    o
+                }
+                Err(e) => vec![Out::Err(format!("✗ {}", e))],
+            }
+        }
+        Some("create") if orig.len() > 2 => {
+            let name = orig[1];
+            let module = orig[2];
+
+            // Validate module name
+            let module_name = registry.resolve_module_name(module)
+                .unwrap_or_else(|| module.to_string());
+
+            let data = serde_json::json!({
+                "name": name,
+                "module_name": module_name,
+            });
+            match client.create_instance(data).await {
+                Ok(r) => {
+                    let id = r.get("id").and_then(|v| v.as_str()).unwrap_or("?");
+                    vec![Out::Ok(format!("✓ Instance '{}' created (module: {}, id: {})", name, module_name, id))]
+                }
+                Err(e) => vec![Out::Err(format!("✗ {}", e))],
+            }
+        }
+        Some("delete") if orig.len() > 1 => {
+            let name = orig[1];
+            let instance_id = match find_instance_id_by_name(client, name).await {
+                Some(id) => id,
+                None => return vec![Out::Err(format!("✗ Instance '{}' not found", name))],
+            };
+            match client.delete_instance(&instance_id).await {
+                Ok(_) => vec![Out::Ok(format!("✓ Instance '{}' deleted", name))],
+                Err(e) => vec![Out::Err(format!("✗ {}", e))],
+            }
+        }
+        Some("settings") if orig.len() > 1 => {
+            // Show the module's settings schema for this instance
+            let name = orig[1];
+            let instance_id = match find_instance_id_by_name(client, name).await {
+                Some(id) => id,
+                None => return vec![Out::Err(format!("✗ Instance '{}' not found", name))],
+            };
+            // Get instance to find module name
+            let inst = match client.get_instance(&instance_id).await {
+                Ok(d) => d,
+                Err(e) => return vec![Out::Err(format!("✗ {}", e))],
+            };
+            let module_name = inst["module_name"].as_str().unwrap_or("?");
+
+            // Get module metadata for settings schema
+            match client.get_module(module_name).await {
+                Ok(data) => {
+                    let mut o = vec![Out::Ok(format!("Settings schema for '{}' (module: {}):", name, module_name))];
+                    if let Some(fields) = data.get("settings").and_then(|v| v.get("fields")).and_then(|v| v.as_array()) {
+                        for field in fields {
+                            let fname = field["name"].as_str().unwrap_or("?");
+                            let ftype = field["type"].as_str().unwrap_or("?");
+                            let flabel = field["label"].as_str().unwrap_or("");
+                            let group = field["group"].as_str().unwrap_or("basic");
+                            let required = field["required"].as_bool().unwrap_or(false);
+                            let default = field.get("default").map(|v| match v {
+                                serde_json::Value::String(s) => s.clone(),
+                                _ => v.to_string(),
+                            }).unwrap_or_default();
+                            let req_mark = if required { "*" } else { " " };
+
+                            // Current value from instance
+                            let current = inst.get(fname).map(|v| match v {
+                                serde_json::Value::String(s) => s.clone(),
+                                serde_json::Value::Null => "(not set)".into(),
+                                _ => v.to_string(),
+                            }).unwrap_or_else(|| "(not set)".into());
+
+                            o.push(Out::Text(format!(
+                                "  {}{:<24} {:>8} [{}] current={} default={} — {}",
+                                req_mark, fname, ftype, group, current, default, flabel
+                            )));
+
+                            // Show options for select type
+                            if ftype == "select" {
+                                if let Some(opts) = field.get("options").and_then(|v| v.as_array()) {
+                                    let opt_strs: Vec<&str> = opts.iter().filter_map(|v| v.as_str()).collect();
+                                    o.push(Out::Text(format!("    options: {}", opt_strs.join(", "))));
+                                }
+                            }
+                        }
+                        o.push(Out::Blank);
+                        o.push(Out::Text(format!("  Use: instance set {} <key> <value>", name)));
+                    } else {
+                        o.push(Out::Text("  No settings schema available.".into()));
+                    }
+                    o
+                }
+                Err(e) => vec![Out::Err(format!("✗ {}", e))],
+            }
+        }
+        Some("set") if orig.len() > 3 => {
+            let name = orig[1];
+            let key = orig[2];
+            let value = orig[3..].join(" ");
+            let instance_id = match find_instance_id_by_name(client, name).await {
+                Some(id) => id,
+                None => return vec![Out::Err(format!("✗ Instance '{}' not found", name))],
+            };
+
+            // Try to parse value as appropriate type
+            let json_value = if value == "true" {
+                serde_json::Value::Bool(true)
+            } else if value == "false" {
+                serde_json::Value::Bool(false)
+            } else if let Ok(n) = value.parse::<i64>() {
+                serde_json::json!(n)
+            } else if let Ok(f) = value.parse::<f64>() {
+                serde_json::json!(f)
+            } else {
+                serde_json::Value::String(value.clone())
+            };
+
+            let settings = serde_json::json!({ key: json_value });
+            match client.update_instance(&instance_id, settings).await {
+                Ok(_) => vec![Out::Ok(format!("✓ {}.{} = {}", name, key, value))],
+                Err(e) => vec![Out::Err(format!("✗ {}", e))],
+            }
+        }
+        _ => vec![Out::Err("Usage: instance [list|show <name>|create <name> <module>|delete <name>|settings <name>|set <name> <key> <value>]".into())],
+    }
+}
+
 async fn exec_module(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
     match args.first().copied() {
         Some("list") => match client.list_modules().await {
@@ -998,6 +1476,67 @@ async fn exec_module(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
             }
             Err(e) => vec![Out::Err(format!("✗ {}", e))],
         },
+        Some("info") if args.len() > 1 => {
+            let name = args[1];
+            match client.get_module(name).await {
+                Ok(data) => {
+                    let mut o = vec![Out::Ok(format!("Module: {}", name))];
+                    // Basic info
+                    for key in &["name", "version", "description", "game_name", "display_name", "interaction_mode"] {
+                        if let Some(val) = data.get(*key).and_then(|v| v.as_str()) {
+                            o.push(Out::Text(format!("  {:<20} {}", key, val)));
+                        }
+                    }
+                    // Protocols
+                    if let Some(protos) = data.get("protocols") {
+                        o.push(Out::Blank);
+                        o.push(Out::Info("Protocols:".into()));
+                        if let Some(supported) = protos.get("supported").and_then(|v| v.as_array()) {
+                            let list: Vec<&str> = supported.iter().filter_map(|v| v.as_str()).collect();
+                            o.push(Out::Text(format!("  supported: {}", list.join(", "))));
+                        }
+                        if let Some(default) = protos.get("default").and_then(|v| v.as_str()) {
+                            o.push(Out::Text(format!("  default:   {}", default)));
+                        }
+                    }
+                    // Settings fields summary
+                    if let Some(settings) = data.get("settings").and_then(|v| v.get("fields")).and_then(|v| v.as_array()) {
+                        o.push(Out::Blank);
+                        o.push(Out::Info(format!("Settings ({} fields):", settings.len())));
+                        for field in settings {
+                            let fname = field["name"].as_str().unwrap_or("?");
+                            let ftype = field["type"].as_str().unwrap_or("?");
+                            let flabel = field["label"].as_str().unwrap_or("");
+                            let group = field["group"].as_str().unwrap_or("basic");
+                            let required = field["required"].as_bool().unwrap_or(false);
+                            let req_mark = if required { "*" } else { " " };
+                            o.push(Out::Text(format!("  {}{:<24} {:>8} [{}] {}", req_mark, fname, ftype, group, flabel)));
+                        }
+                    }
+                    // Commands
+                    if let Some(cmds) = data.get("commands").and_then(|v| v.get("fields")).and_then(|v| v.as_array()) {
+                        o.push(Out::Blank);
+                        o.push(Out::Info(format!("Commands ({}):", cmds.len())));
+                        for cmd in cmds {
+                            let cname = cmd["name"].as_str().unwrap_or("?");
+                            let cdesc = cmd["description"].as_str().unwrap_or("");
+                            let method = cmd["method"].as_str().unwrap_or("-");
+                            o.push(Out::Text(format!("  {:<16} [{}] {}", cname, method, cdesc)));
+                        }
+                    }
+                    // Aliases
+                    if let Some(aliases) = data.get("aliases").and_then(|v| v.get("module_aliases")).and_then(|v| v.as_array()) {
+                        if !aliases.is_empty() {
+                            o.push(Out::Blank);
+                            let list: Vec<&str> = aliases.iter().filter_map(|v| v.as_str()).collect();
+                            o.push(Out::Info(format!("Aliases: {}", list.join(", "))));
+                        }
+                    }
+                    o
+                }
+                Err(e) => vec![Out::Err(format!("✗ {}", e))],
+            }
+        }
         Some("refresh") | Some("reload") => match client.refresh_modules().await {
             Ok(_) => vec![Out::Ok("✓ Modules refreshed".into())],
             Err(e) => vec![Out::Err(format!("✗ {}", e))],
@@ -1035,7 +1574,7 @@ async fn exec_module(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
             }
         }
-        _ => vec![Out::Err("Usage: module [list|refresh|versions <name>|install <name> [version]]".into())],
+        _ => vec![Out::Err("Usage: module [list|info <name>|refresh|versions <name>|install <name> [version]]".into())],
     }
 }
 
@@ -1051,7 +1590,64 @@ async fn exec_daemon(args: &[&str]) -> Vec<Out> {
             Ok(Err(e)) => vec![Out::Err(format!("✗ {}", e))],
             Err(e) => vec![Out::Err(format!("✗ {}", e))],
         },
-        _ => vec![Out::Err("Usage: daemon [start|stop]".into())],
+        Some("status") => {
+            let running = tokio::task::spawn_blocking(process::check_daemon_running)
+                .await
+                .unwrap_or(false);
+            if running {
+                // Try to get additional info from daemon API
+                let http = reqwest::Client::builder()
+                    .timeout(Duration::from_secs(2))
+                    .build()
+                    .unwrap();
+                let mut lines = vec![Out::Ok("Daemon: ● RUNNING".into())];
+                lines.push(Out::Text("  Host:     127.0.0.1".into()));
+                lines.push(Out::Text("  Port:     57474".into()));
+                lines.push(Out::Text("  Protocol: HTTP REST".into()));
+                // Get module/instance counts
+                if let Ok(resp) = http.get("http://127.0.0.1:57474/api/modules").send().await {
+                    if let Ok(data) = resp.json::<serde_json::Value>().await {
+                        let mods = data.get("modules").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+                        lines.push(Out::Text(format!("  Modules:  {}", mods)));
+                    }
+                }
+                if let Ok(resp) = http.get("http://127.0.0.1:57474/api/servers").send().await {
+                    if let Ok(data) = resp.json::<serde_json::Value>().await {
+                        let srvs = data.get("servers").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+                        let running_count = data.get("servers").and_then(|v| v.as_array())
+                            .map(|a| a.iter().filter(|s| s["status"].as_str() == Some("running")).count())
+                            .unwrap_or(0);
+                        lines.push(Out::Text(format!("  Servers:  {}/{} running", running_count, srvs)));
+                    }
+                }
+                lines
+            } else {
+                vec![Out::Text("Daemon: ○ OFFLINE".into())]
+            }
+        }
+        Some("restart") => {
+            // Stop then start
+            let stop_result = tokio::task::spawn_blocking(process::stop_daemon).await;
+            match stop_result {
+                Ok(Ok(msg)) => {
+                    let mut lines = vec![Out::Ok(msg)];
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    match tokio::task::spawn_blocking(process::start_daemon).await {
+                        Ok(Ok(msg2)) => {
+                            for l in msg2.lines() {
+                                lines.push(Out::Ok(l.into()));
+                            }
+                        }
+                        Ok(Err(e)) => lines.push(Out::Err(format!("✗ Start: {}", e))),
+                        Err(e) => lines.push(Out::Err(format!("✗ Start: {}", e))),
+                    }
+                    lines
+                }
+                Ok(Err(e)) => vec![Out::Err(format!("✗ Stop: {}", e))],
+                Err(e) => vec![Out::Err(format!("✗ Stop: {}", e))],
+            }
+        }
+        _ => vec![Out::Err("Usage: daemon [start|stop|status|restart]".into())],
     }
 }
 
@@ -1067,7 +1663,8 @@ async fn exec_bot(args: &[&str]) -> Vec<Out> {
             Ok(Err(e)) => vec![Out::Err(format!("✗ {}", e))],
             Err(e) => vec![Out::Err(format!("✗ {}", e))],
         },
-        _ => vec![Out::Err("Usage: bot [start|stop]".into())],
+        // token, prefix, status, alias are handled synchronously in dispatch_sync
+        _ => vec![Out::Err("Usage: bot [start|stop|status|token|prefix|alias]".into())],
     }
 }
 
@@ -1317,6 +1914,155 @@ fn build_args_map(
     }
 
     serde_json::Value::Object(map)
+}
+
+// ═══════════════════════════════════════════════════════
+// 업데이트 / 인스톨 명령
+// ═══════════════════════════════════════════════════════
+
+async fn exec_update(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
+    match args.first().copied() {
+        Some("check") => match client.check_updates().await {
+            Ok(v) => {
+                let components = v["components"].as_array();
+                let mut lines = vec![];
+                if let Some(comps) = components {
+                    let any = comps.iter().any(|c| c["update_available"].as_bool().unwrap_or(false));
+                    if any {
+                        lines.push(Out::Ok("Updates available:".into()));
+                        for c in comps {
+                            let name = c["component"].as_str().unwrap_or("?");
+                            let cur = c["current_version"].as_str().unwrap_or("?");
+                            let lat = c["latest_version"].as_str().unwrap_or("?");
+                            let avail = c["update_available"].as_bool().unwrap_or(false);
+                            let marker = if avail { "⬆" } else { "✓" };
+                            lines.push(Out::Text(format!("  {} {:<20} {} → {}", marker, name, cur, lat)));
+                        }
+                    } else {
+                        lines.push(Out::Ok("All components are up to date.".into()));
+                    }
+                } else {
+                    lines.push(Out::Ok(format!("{}", v)));
+                }
+                lines
+            }
+            Err(e) => vec![Out::Err(format!("✗ {}", e))],
+        },
+        Some("status") => match client.get_update_status().await {
+            Ok(v) => {
+                let mut lines = vec![Out::Ok("Update Status:".into())];
+                let checked = v["last_checked"].as_str().unwrap_or("never");
+                lines.push(Out::Text(format!("  Last checked: {}", checked)));
+                if let Some(comps) = v["components"].as_array() {
+                    for c in comps {
+                        let name = c["component"].as_str().unwrap_or("?");
+                        let cur = c["current_version"].as_str().unwrap_or("?");
+                        let dl = if c["downloaded"].as_bool().unwrap_or(false) { " [downloaded]" } else { "" };
+                        lines.push(Out::Text(format!("  {:<20} v{}{}", name, cur, dl)));
+                    }
+                }
+                lines
+            }
+            Err(e) => vec![Out::Err(format!("✗ {}", e))],
+        },
+        Some("download") => match client.download_updates().await {
+            Ok(v) => {
+                let msg = v.get("message").and_then(|m| m.as_str()).unwrap_or("Download initiated");
+                vec![Out::Ok(format!("✓ {}", msg))]
+            }
+            Err(e) => vec![Out::Err(format!("✗ {}", e))],
+        },
+        Some("apply") => match client.apply_updates().await {
+            Ok(v) => {
+                let msg = v.get("message").and_then(|m| m.as_str()).unwrap_or("Updates applied");
+                vec![Out::Ok(format!("✓ {}", msg))]
+            }
+            Err(e) => vec![Out::Err(format!("✗ {}", e))],
+        },
+        Some("config") => match client.get_update_config().await {
+            Ok(v) => {
+                let mut lines = vec![Out::Ok("Updater Config:".into())];
+                if let Some(map) = v.as_object() {
+                    for (k, val) in map {
+                        lines.push(Out::Text(format!("  {}: {}", k, val)));
+                    }
+                }
+                lines
+            }
+            Err(e) => vec![Out::Err(format!("✗ {}", e))],
+        },
+        Some("install") => {
+            // update install [component_key]
+            if args.len() >= 2 {
+                let key = args[1];
+                match client.install_component(key).await {
+                    Ok(v) => {
+                        let msg = v.get("message").and_then(|m| m.as_str()).unwrap_or("Install initiated");
+                        vec![Out::Ok(format!("✓ {}", msg))]
+                    }
+                    Err(e) => vec![Out::Err(format!("✗ {}", e))],
+                }
+            } else {
+                // 전체 설치
+                match client.run_install(None).await {
+                    Ok(v) => {
+                        let msg = v.get("message").and_then(|m| m.as_str()).unwrap_or("Full install initiated");
+                        vec![Out::Ok(format!("✓ {}", msg))]
+                    }
+                    Err(e) => vec![Out::Err(format!("✗ {}", e))],
+                }
+            }
+        }
+        Some("install-status") => match client.get_install_status().await {
+            Ok(v) => {
+                let mut lines = vec![Out::Ok("Install Status:".into())];
+                if let Some(comps) = v["components"].as_array() {
+                    for c in comps {
+                        let name = c["key"].as_str().unwrap_or("?");
+                        let installed = c["installed"].as_bool().unwrap_or(false);
+                        let sym = if installed { "✓" } else { "✗" };
+                        lines.push(Out::Text(format!("  {} {}", sym, name)));
+                    }
+                } else {
+                    lines.push(Out::Text(format!("{}", v)));
+                }
+                lines
+            }
+            Err(e) => vec![Out::Err(format!("✗ {}", e))],
+        },
+        Some("install-progress") => match client.get_install_progress().await {
+            Ok(v) => {
+                let complete = v["complete"].as_bool().unwrap_or(false);
+                let done = v["done"].as_u64().unwrap_or(0);
+                let total = v["total"].as_u64().unwrap_or(0);
+                let current = v["current_component"].as_str().unwrap_or("-");
+                let mut lines = vec![Out::Ok(format!(
+                    "Install progress: {}/{} {}",
+                    done, total, if complete { "(complete)" } else { "" }
+                ))];
+                if !complete {
+                    lines.push(Out::Text(format!("  Currently: {}", current)));
+                }
+                if let Some(errs) = v["errors"].as_array() {
+                    for e in errs {
+                        lines.push(Out::Err(format!("  {}", e.as_str().unwrap_or("?"))));
+                    }
+                }
+                lines
+            }
+            Err(e) => vec![Out::Err(format!("✗ {}", e))],
+        },
+        _ => vec![
+            Out::Text("  update check             check for updates".into()),
+            Out::Text("  update status            show update status".into()),
+            Out::Text("  update download          download available updates".into()),
+            Out::Text("  update apply             apply downloaded updates".into()),
+            Out::Text("  update config            show updater configuration".into()),
+            Out::Text("  update install [key]     install component (or all)".into()),
+            Out::Text("  update install-status    show installation status".into()),
+            Out::Text("  update install-progress  show install progress".into()),
+        ],
+    }
 }
 
 /// 모듈의 사용 가능한 명령어 목록 표시
@@ -1627,9 +2373,77 @@ pub async fn run(client: DaemonClient) -> anyhow::Result<()> {
     let auto_buf = app.async_out.clone();
     tokio::spawn(auto_start(auto_buf));
 
-    // 백그라운드 상태 모니터 (2초 주기)
+    // ── 하트비트 등록 (백그라운드) ──
+    let hb_client = app.client.clone();
+    let hb_client_id = app.client_id.clone();
+    tokio::spawn(async move {
+        // 데몬이 준비될 때까지 최대 15초 대기
+        let start = std::time::Instant::now();
+        loop {
+            if start.elapsed() > Duration::from_secs(15) { break; }
+            let running = tokio::task::spawn_blocking(process::check_daemon_running)
+                .await.unwrap_or(false);
+            if running { break; }
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+        // 클라이언트 등록
+        if let Ok(id) = hb_client.register_client("cli").await {
+            *hb_client_id.lock().unwrap() = Some(id.clone());
+            // 30초마다 하트비트 전송
+            loop {
+                tokio::time::sleep(Duration::from_secs(30)).await;
+                if hb_client.send_heartbeat(&id, None).await.is_err() {
+                    break;
+                }
+            }
+        }
+    });
+
+    // ── 업데이트 체크 (시작 10초 후 1회) ──
+    let upd_buf = app.async_out.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(10)).await;
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(15))
+            .build()
+            .unwrap();
+        let resp = http
+            .post("http://127.0.0.1:57474/api/updates/check")
+            .send()
+            .await;
+        match resp {
+            Ok(r) => {
+                if let Ok(data) = r.json::<serde_json::Value>().await {
+                    let components = data.get("components")
+                        .and_then(|v| v.as_array())
+                        .cloned()
+                        .unwrap_or_default();
+                    let updatable: Vec<_> = components.iter()
+                        .filter(|c| c.get("update_available").and_then(|v| v.as_bool()).unwrap_or(false))
+                        .collect();
+                    if !updatable.is_empty() {
+                        let names: Vec<&str> = updatable.iter()
+                            .filter_map(|c| c.get("name").and_then(|v| v.as_str()))
+                            .collect();
+                        push_out(&upd_buf, vec![
+                            Out::Info(format!(
+                                "📦 {} update(s) available: {}",
+                                updatable.len(),
+                                names.join(", ")
+                            )),
+                            Out::Info("   Run 'update check' for details.".into()),
+                        ]);
+                    }
+                }
+            }
+            Err(_) => { /* 데몬 미응답 — 무시 */ }
+        }
+    });
+
+    // 백그라운드 상태 모니터 (refresh_interval 적용)
     let (tx, mut rx) = mpsc::channel::<Snapshot>(1);
     let base = "http://127.0.0.1:57474".to_string();
+    let refresh_secs = app.settings.refresh_interval;
 
     tokio::spawn(async move {
         let http = reqwest::Client::builder()
@@ -1680,7 +2494,7 @@ pub async fn run(client: DaemonClient) -> anyhow::Result<()> {
                 })
                 .await;
 
-            tokio::time::sleep(Duration::from_secs(2)).await;
+            tokio::time::sleep(Duration::from_secs(refresh_secs)).await;
         }
     });
 
@@ -1904,6 +2718,7 @@ mod tests {
             registry: std::sync::Arc::new(crate::module_registry::ModuleRegistry::load("")),
             settings: crate::cli_config::CliSettings::default(),
             i18n: std::sync::Arc::new(crate::i18n::I18n::load("en")),
+            client_id: std::sync::Arc::new(std::sync::Mutex::new(None)),
             input: String::new(),
             cursor: 0,
             output: Vec::new(),

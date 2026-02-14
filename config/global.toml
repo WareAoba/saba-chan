@@ -1,5 +1,18 @@
 ipc_socket = "./ipc.sock"
 
+# ── 자동 업데이트 / 인스톨러 설정 ──
+# 업데이터는 인스톨러 역할도 겸합니다.
+# 최초 실행 시 미설치 컴포넌트를 자동 감지하고, GUI/CLI에서 설치를 진행할 수 있습니다.
+[updater]
+enabled = true
+check_interval_hours = 3     # 3시간 간격 → 하루 8회 체크
+auto_download = false        # true: 새 버전 발견 시 자동 다운로드
+auto_apply = false           # true: 다운로드 완료 시 모듈 자동 교체 (코어/CLI/GUI는 재시작 필요)
+github_owner = ""            # GitHub 저장소 소유자 (예: "your-username")
+github_repo = "saba-chan"    # GitHub 저장소 이름
+include_prerelease = false   # true: 프리릴리스 포함
+# install_root = "."         # 설치 루트 디렉터리 (기본: 실행 파일 옆)
+
 # 서버 인스턴스 설정 (모듈 기반)
 # 모듈은 modules/ 디렉터리에서 동적으로 발견됨
 # 이 설정만으로 Core Daemon 재시작 없이 서버 추가 가능

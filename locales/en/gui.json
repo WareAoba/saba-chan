@@ -43,7 +43,19 @@
     "theme_auto": "Auto",
     "theme_light": "Light",
     "theme_dark": "Dark",
-    "advanced_placeholder": "Advanced settings will be added here."
+    "advanced_placeholder": "Advanced settings will be added here.",
+    "ipc_port_label": "IPC Port",
+    "ipc_port_description": "Port number for core daemon to listen on (1024–65535)",
+    "ipc_port_invalid": "Port must be between 1024 and 65535",
+    "ipc_port_restart_notice": "Port change will take effect after daemon restart",
+    "console_buffer_label": "Console Buffer Size",
+    "console_buffer_description": "Maximum number of lines to keep in server console",
+    "ipc_port_label": "IPC Port",
+    "ipc_port_description": "Port used for communication between GUI and Core Daemon",
+    "ipc_port_restart_notice": "Port changes will take effect after daemon restart",
+    "ipc_port_invalid": "Enter a valid port number (1024–65535)",
+    "console_buffer_label": "Console Buffer Size",
+    "console_buffer_description": "Maximum number of lines to keep in the server console"
   },
   "add_server_modal": {
     "title": "Add New Server",
@@ -123,7 +135,8 @@
     "start_error_toast": "Discord bot start exception: {{error}}",
     "stop_failed_toast": "Discord bot stop failed: {{error}}",
     "stopped_toast": "Discord bot has been stopped",
-    "stop_error_toast": "Discord bot stop exception: {{error}}"
+    "stop_error_toast": "Discord bot stop exception: {{error}}",
+    "relaunched_toast": "Discord bot has been restarted"
   },
   "app_exit": {
     "confirm_title": "Confirm Exit",
@@ -151,6 +164,8 @@
     "stopping_toast": "⏳ Stopping {{name}} server...",
     "stop_completed_toast": "✅ {{name}} server stopped!",
     "stop_timeout_toast": "⚠️ Stopping {{name}} server... (may take some time)",
+    "unexpected_stop_toast": "⚠️ {{name}} server stopped unexpectedly!",
+    "external_start_toast": "ℹ️ {{name}} server was started externally",
     "status_check_failed_title": "Status check failed",
     "add_server_name_empty_title": "Input Error",
     "add_server_name_empty_message": "Please enter server name",
@@ -260,5 +275,25 @@
     "start_button": "▶ Start Bot",
     "stop_button": "⏹ Stop Bot",
     "save_button": "💾 Save"
+  },
+  "notice_modal": {
+    "title": "Notifications",
+    "empty": "No notifications",
+    "clear_all": "Clear All",
+    "dismiss": "Dismiss",
+    "source_main": "Saba-chan",
+    "tooltip": "Notifications"
+  },
+  "updates": {
+    "available_title": "Updates Available",
+    "available_message": "{{count}} update(s): {{names}}",
+    "available_count": "{{count}} update(s) available",
+    "open_updater": "Open Updater",
+    "completed_title": "Update Complete",
+    "completed_success": "All updates have been applied successfully.",
+    "completed_partial": "Some updates have been applied.",
+    "checking_title": "Checking for Updates",
+    "checking_message": "Checking for new updates...",
+    "no_updates": "All components are up to date."
   }
 }

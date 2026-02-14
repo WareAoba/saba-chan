@@ -1,35 +1,82 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import './Modals.css';
 import { Icon } from '../Icon';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { getTheme, setTheme as saveTheme } from '../../utils/themeManager';
 import { useModalClose } from '../../hooks/useModalClose';
+import { useDevMode } from '../../hooks/useDevMode';
+import UpdatePanel from './UpdatePanel';
 
-function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChange, onTestModal, onTestProgressBar, onTestWaitingImage, onTestLoadingScreen }) {
+function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChange, ipcPort, onIpcPortChange, consoleBufferSize, onConsoleBufferSizeChange, onTestModal, onTestProgressBar, onTestWaitingImage, onTestLoadingScreen, initialView }) {
     const { t, i18n } = useTranslation(['gui', 'common']);
     const [activeTab, setActiveTab] = useState('general');
+    const [showUpdatePanel, setShowUpdatePanel] = useState(false);
+    const [updatePanelExiting, setUpdatePanelExiting] = useState(false);
     const [localRefreshInterval, setLocalRefreshInterval] = useState(refreshInterval);
     const [selectedLanguage, setSelectedLanguage] = useState(i18n.language);
     const [selectedTheme, setSelectedTheme] = useState(getTheme());
     const [slideDirection, setSlideDirection] = useState('');
     const [guiTestOpen, setGuiTestOpen] = useState(false);
+    const [localIpcPort, setLocalIpcPort] = useState(ipcPort || 57474);
+    const [ipcPortChanged, setIpcPortChanged] = useState(false);
+    const [ipcPortError, setIpcPortError] = useState('');
+    const [localConsoleBuffer, setLocalConsoleBuffer] = useState(consoleBufferSize || 2000);
     const tabOrder = ['general', 'appearance', 'advanced'];
     const { isClosing, requestClose } = useModalClose(onClose);
+    const devMode = useDevMode();
+
+    // 외부에서 initialView='update'로 열렸을 때 업데이트 패널 자동 진입
+    useEffect(() => {
+        if (isOpen && initialView === 'update') {
+            setActiveTab('general');
+            setShowUpdatePanel(true);
+        }
+    }, [isOpen, initialView]);
+
+    // 모달이 닫힐 때 업데이트 패널 초기화
+    useEffect(() => {
+        if (!isOpen) {
+            setShowUpdatePanel(false);
+        }
+    }, [isOpen]);
 
     // 탭 전환 핸들러
     const handleTabChange = (newTab) => {
         const oldIndex = tabOrder.indexOf(activeTab);
         const newIndex = tabOrder.indexOf(newTab);
         if (newTab === activeTab) return;
+        setShowUpdatePanel(false);  // 탭 전환 시 업데이트 패널 해제
         setSlideDirection(newIndex > oldIndex ? 'slide-left' : 'slide-right');
         setActiveTab(newTab);
     };
+
+    // 업데이트 패널 뒤로가기 (나가기 애니메이션 후 전환)
+    const handleUpdatePanelBack = useCallback(() => {
+        setUpdatePanelExiting(true);
+        setTimeout(() => {
+            setUpdatePanelExiting(false);
+            setShowUpdatePanel(false);
+            setSlideDirection('slide-right');
+        }, 150);
+    }, []);
 
     // refreshInterval prop이 변경되면 로컬 상태 업데이트
     useEffect(() => {
         setLocalRefreshInterval(refreshInterval);
     }, [refreshInterval]);
+
+    // ipcPort prop 동기화
+    useEffect(() => {
+        setLocalIpcPort(ipcPort || 57474);
+        setIpcPortChanged(false);
+        setIpcPortError('');
+    }, [ipcPort]);
+
+    // consoleBufferSize prop 동기화
+    useEffect(() => {
+        setLocalConsoleBuffer(consoleBufferSize || 2000);
+    }, [consoleBufferSize]);
 
     // 현재 언어 동기화
     useEffect(() => {
@@ -65,6 +112,29 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
         saveTheme(theme);
     };
 
+    // IPC 포트 변경 핸들러
+    const handleIpcPortChange = (value) => {
+        const port = parseInt(value, 10);
+        setLocalIpcPort(value);
+        if (isNaN(port) || port < 1024 || port > 65535) {
+            setIpcPortError(t('gui:settings_modal.ipc_port_invalid'));
+            return;
+        }
+        setIpcPortError('');
+        setIpcPortChanged(port !== (ipcPort || 57474));
+        if (onIpcPortChange) {
+            onIpcPortChange(port);
+        }
+    };
+
+    // 콘솔 버퍼 크기 변경 핸들러
+    const handleConsoleBufferChange = (value) => {
+        setLocalConsoleBuffer(value);
+        if (onConsoleBufferSizeChange) {
+            onConsoleBufferSizeChange(value);
+        }
+    };
+
     if (!isOpen) {
         return null;
     }
@@ -72,33 +142,37 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
     return (
         <div className={`settings-modal-overlay ${isClosing ? 'closing' : ''}`} onClick={requestClose}>
             <div className="settings-modal-container" onClick={(e) => e.stopPropagation()}>
-                <div className="settings-modal-header">
-                    <h2 style={{ fontSize: '1.3rem' }}>{t('gui:settings_modal.title')}</h2>
-                </div>
+                {!showUpdatePanel && (
+                    <>
+                        <div className="settings-modal-header">
+                            <h2 style={{ fontSize: '1.3rem' }}>{t('gui:settings_modal.title')}</h2>
+                        </div>
 
-                <div className="settings-modal-tabs" data-tab={activeTab}>
-                    <button
-                        className={`settings-tab ${activeTab === 'general' ? 'active' : ''}`}
-                        onClick={() => handleTabChange('general')}
-                    >
-                        {t('gui:settings_modal.general')}
-                    </button>
-                    <button
-                        className={`settings-tab ${activeTab === 'appearance' ? 'active' : ''}`}
-                        onClick={() => handleTabChange('appearance')}
-                    >
-                        {t('gui:settings_modal.appearance')}
-                    </button>
-                    <button
-                        className={`settings-tab ${activeTab === 'advanced' ? 'active' : ''}`}
-                        onClick={() => handleTabChange('advanced')}
-                    >
-                        {t('gui:settings_modal.advanced_tab')}
-                    </button>
-                </div>
+                        <div className="settings-modal-tabs" data-tab={activeTab}>
+                            <button
+                                className={`settings-tab ${activeTab === 'general' ? 'active' : ''}`}
+                                onClick={() => handleTabChange('general')}
+                            >
+                                {t('gui:settings_modal.general')}
+                            </button>
+                            <button
+                                className={`settings-tab ${activeTab === 'appearance' ? 'active' : ''}`}
+                                onClick={() => handleTabChange('appearance')}
+                            >
+                                {t('gui:settings_modal.appearance')}
+                            </button>
+                            <button
+                                className={`settings-tab ${activeTab === 'advanced' ? 'active' : ''}`}
+                                onClick={() => handleTabChange('advanced')}
+                            >
+                                {t('gui:settings_modal.advanced_tab')}
+                            </button>
+                        </div>
+                    </>
+                )}
 
-                <div className="settings-modal-content">
-                    {activeTab === 'general' && (
+                <div className={`settings-modal-content ${showUpdatePanel ? 'update-panel-mode' : ''}`}>
+                    {activeTab === 'general' && !showUpdatePanel && (
                         <div className={`settings-tab-content ${slideDirection}`} key="general" onAnimationEnd={() => setSlideDirection('')}>
                             <h3>{t('gui:settings_modal.general')}</h3>
                             
@@ -144,6 +218,21 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
                                     ]}
                                 />
                             </div>
+
+                            {/* 업데이트 항목 — 클릭하면 UpdatePanel로 전환 */}
+                            <div className="setting-item setting-item-clickable" onClick={() => setShowUpdatePanel(true)}>
+                                <label className="setting-label">
+                                    <span className="setting-title"><Icon name="package" size="sm" /> {t('updates.modal_title', 'Update Center')}</span>
+                                    <span className="setting-description">{t('updates.setting_description', '업데이트 확인 및 적용')}</span>
+                                </label>
+                                <Icon name="chevronRight" size="sm" color="var(--brand-primary)" />
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'general' && showUpdatePanel && (
+                        <div className="settings-tab-content" key="update-panel">
+                            <UpdatePanel onBack={handleUpdatePanelBack} isExiting={updatePanelExiting} devMode={devMode} />
                         </div>
                     )}
 
@@ -173,9 +262,56 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
                     {activeTab === 'advanced' && (
                         <div className={`settings-tab-content ${slideDirection}`} key="advanced" onAnimationEnd={() => setSlideDirection('')}>
                             <h3>{t('gui:settings_modal.advanced_tab')}</h3>
-                            <p>{t('gui:settings_modal.advanced_placeholder')}</p>
 
-                            {/* GUI 컴포넌트 테스트 섹션 */}
+                            {/* IPC 포트 설정 */}
+                            <div className="setting-item">
+                                <label className="setting-label">
+                                    <span className="setting-title"><Icon name="hash" size="sm" /> {t('gui:settings_modal.ipc_port_label')}</span>
+                                    <span className="setting-description">{t('gui:settings_modal.ipc_port_description')}</span>
+                                </label>
+                                <input
+                                    type="number"
+                                    className={`setting-input-number ${ipcPortError ? 'setting-input-error' : ''}`}
+                                    value={localIpcPort}
+                                    onChange={(e) => handleIpcPortChange(e.target.value)}
+                                    min={1024}
+                                    max={65535}
+                                    placeholder="57474"
+                                />
+                            </div>
+                            {ipcPortError && (
+                                <div className="setting-validation-error">
+                                    <Icon name="alertCircle" size="sm" /> {ipcPortError}
+                                </div>
+                            )}
+                            {ipcPortChanged && !ipcPortError && (
+                                <div className="setting-restart-notice">
+                                    <Icon name="info" size="sm" /> {t('gui:settings_modal.ipc_port_restart_notice')}
+                                </div>
+                            )}
+
+                            {/* 콘솔 버퍼 크기 설정 */}
+                            <div className="setting-item">
+                                <label className="setting-label">
+                                    <span className="setting-title"><Icon name="terminal" size="sm" /> {t('gui:settings_modal.console_buffer_label')}</span>
+                                    <span className="setting-description">{t('gui:settings_modal.console_buffer_description')}</span>
+                                </label>
+                                <CustomDropdown
+                                    className="setting-select"
+                                    value={localConsoleBuffer}
+                                    onChange={(val) => handleConsoleBufferChange(Number(val))}
+                                    options={[
+                                        { value: 500, label: '500' },
+                                        { value: 1000, label: '1,000' },
+                                        { value: 2000, label: '2,000' },
+                                        { value: 5000, label: '5,000' },
+                                        { value: 10000, label: '10,000' },
+                                    ]}
+                                />
+                            </div>
+
+                            {/* GUI 컴포넌트 테스트 섹션 (개발자 모드 전용) */}
+                            {devMode && (
                             <div className={`gui-test-section ${guiTestOpen ? 'open' : ''}`}>
                                 <h4 className="gui-test-title" onClick={() => setGuiTestOpen(!guiTestOpen)}>
                                     <Icon name="tool" size="sm" /> GUI Test
@@ -262,17 +398,35 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
                                     }}>
                                         <Icon name="monitor" size="sm" /> Loading Screen
                                     </button>
+                                    <button className="gui-test-btn gui-test-notice-info" onClick={() => {
+                                        window.showToast && window.showToast('ℹ️ 정보 알림 테스트', 'info', 3000, { isNotice: true, source: 'GUI Test' });
+                                    }}>
+                                        <Icon name="bell" size="sm" /> Notice (Info)
+                                    </button>
+                                    <button className="gui-test-btn gui-test-notice-success" onClick={() => {
+                                        window.showToast && window.showToast('✅ 성공 알림 테스트', 'success', 3000, { isNotice: true, source: 'GUI Test' });
+                                    }}>
+                                        <Icon name="bell" size="sm" /> Notice (Success)
+                                    </button>
+                                    <button className="gui-test-btn gui-test-notice-error" onClick={() => {
+                                        window.showToast && window.showToast('❌ 에러 알림 테스트', 'error', 4000, { isNotice: true, source: 'GUI Test' });
+                                    }}>
+                                        <Icon name="bell" size="sm" /> Notice (Error)
+                                    </button>
                                 </div>
                             </div>
+                            )}
                         </div>
                     )}
                 </div>
 
-                <div className="settings-modal-footer">
-                    <button className="settings-btn-cancel" onClick={requestClose}>
-                        {t('gui:modals.cancel')}
-                    </button>
-                </div>
+                {!showUpdatePanel && (
+                    <div className="settings-modal-footer">
+                        <button className="settings-btn-cancel" onClick={requestClose}>
+                            {t('gui:modals.cancel')}
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     );

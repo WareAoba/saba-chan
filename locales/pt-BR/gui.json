@@ -43,7 +43,19 @@
     "theme_auto": "Automático",
     "theme_light": "Claro",
     "theme_dark": "Escuro",
-    "advanced_placeholder": "As configurações avançadas serão adicionadas aqui."
+    "advanced_placeholder": "As configurações avançadas serão adicionadas aqui.",
+    "ipc_port_label": "Porta IPC",
+    "ipc_port_description": "Número da porta em que o daemon principal escuta (1024–65535)",
+    "ipc_port_invalid": "A porta deve estar entre 1024 e 65535",
+    "ipc_port_restart_notice": "A alteração da porta terá efeito após reiniciar o daemon",
+    "console_buffer_label": "Tamanho do buffer do console",
+    "console_buffer_description": "Número máximo de linhas a manter no console do servidor",
+    "ipc_port_label": "Porta IPC",
+    "ipc_port_description": "Porta usada para comunicação entre a GUI e o Core Daemon",
+    "ipc_port_restart_notice": "As alterações de porta terão efeito após reiniciar o daemon",
+    "ipc_port_invalid": "Digite um número de porta válido (1024–65535)",
+    "console_buffer_label": "Tamanho do buffer do console",
+    "console_buffer_description": "Número máximo de linhas a manter no console do servidor"
   },
   "add_server_modal": {
     "title": "Adicionar Novo Servidor",
@@ -123,7 +135,8 @@
     "start_error_toast": "Exceção ao iniciar o bot Discord: {{error}}",
     "stop_failed_toast": "Falha ao parar o bot Discord: {{error}}",
     "stopped_toast": "O bot Discord foi parado",
-    "stop_error_toast": "Exceção ao parar o bot Discord: {{error}}"
+    "stop_error_toast": "Exceção ao parar o bot Discord: {{error}}",
+    "relaunched_toast": "O bot Discord foi reiniciado"
   },
   "app_exit": {
     "confirm_title": "Confirmar Saída",
@@ -151,6 +164,8 @@
     "stopping_toast": "⏳ Parando servidor {{name}}...",
     "stop_completed_toast": "✅ Servidor {{name}} parado!",
     "stop_timeout_toast": "⚠️ Parando servidor {{name}}... (pode levar algum tempo)",
+    "unexpected_stop_toast": "⚠️ O servidor {{name}} parou inesperadamente!",
+    "external_start_toast": "ℹ️ O servidor {{name}} foi iniciado externamente",
     "status_check_failed_title": "Falha na verificação de status",
     "add_server_name_empty_title": "Erro de Entrada",
     "add_server_name_empty_message": "Por favor, digite o nome do servidor",
@@ -241,5 +256,13 @@
     "start_button": "▶ Iniciar Bot",
     "stop_button": "⏹ Parar Bot",
     "save_button": "💾 Salvar"
+  },
+  "notice_modal": {
+    "title": "Notificações",
+    "empty": "Nenhuma notificação",
+    "clear_all": "Limpar tudo",
+    "dismiss": "Remover",
+    "source_main": "Saba-chan",
+    "tooltip": "Notificações"
   }
 }

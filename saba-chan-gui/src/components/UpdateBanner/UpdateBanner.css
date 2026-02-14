@@ -1,0 +1,226 @@
+/* 업데이트 알림 배너 */
+.update-banner {
+    position: fixed;
+    top: 36px; /* TitleBar 아래 */
+    left: 0;
+    right: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 100%);
+    color: white;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    animation: bannerSlideDown 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.update-banner.closing {
+    animation: bannerSlideUp 0.3s ease-out forwards;
+}
+
+@keyframes bannerSlideDown {
+    from {
+        transform: translateY(-100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@keyframes bannerSlideUp {
+    from {
+        transform: translateY(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateY(-100%);
+        opacity: 0;
+    }
+}
+
+/* 배너 타입별 스타일 */
+.update-banner.available {
+    background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+    cursor: pointer;
+}
+
+.update-banner.completed {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+
+.update-banner.downloading {
+    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+}
+
+/* 배너 내용 */
+.update-banner-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+}
+
+.update-banner-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    flex-shrink: 0;
+}
+
+.update-banner-icon svg {
+    color: white;
+}
+
+/* 다운로드 중 아이콘 애니메이션 */
+.update-banner.downloading .update-banner-icon svg {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.update-banner-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.update-banner-title {
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.update-banner-message {
+    font-size: 12px;
+    opacity: 0.9;
+}
+
+/* 액션 버튼 */
+.update-banner-action {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    white-space: nowrap;
+}
+
+.update-banner-action:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.update-banner-action:active {
+    transform: scale(0.98);
+}
+
+/* 닫기 버튼 */
+.update-banner-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    border-radius: 4px;
+    color: white;
+    cursor: pointer;
+    transition: background 0.2s;
+    margin-left: 8px;
+}
+
+.update-banner-close:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* 반응형 */
+@media (max-width: 600px) {
+    .update-banner {
+        padding: 8px 12px;
+    }
+
+    .update-banner-message {
+        display: none;
+    }
+
+    .update-banner-action {
+        padding: 4px 8px;
+        font-size: 11px;
+    }
+}
+
+/* 확장 버튼 */
+.update-banner-expand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.15);
+    border: none;
+    border-radius: 4px;
+    color: white;
+    cursor: pointer;
+    transition: background 0.2s;
+    margin-left: 4px;
+}
+
+.update-banner-expand:hover {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+/* 업데이트 내역 확장 영역 */
+.update-banner-details {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 16px 4px 56px;
+    animation: detailSlideDown 0.2s ease-out;
+}
+
+@keyframes detailSlideDown {
+    from { opacity: 0; max-height: 0; }
+    to { opacity: 1; max-height: 200px; }
+}
+
+.update-banner-detail-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 12px;
+    padding: 3px 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+.update-banner-detail-name {
+    font-weight: 500;
+}
+
+.update-banner-detail-ver {
+    opacity: 0.9;
+    white-space: nowrap;
+}
+
+.update-banner-detail-arrow {
+    opacity: 0.6;
+    margin: 0 2px;
+}
+
+.update-banner.expanded {
+    flex-wrap: wrap;
+}

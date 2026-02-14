@@ -7,6 +7,10 @@ display_name = "Palworld"
 entry = "lifecycle.py"
 icon = "icon.png"
 
+# 모듈 업데이트 설정 — 모듈은 별도 GitHub 레포지토리에서 관리됩니다
+[update]
+github_repo = "saba-chan-module-palworld"  # github_owner는 본체 설정에서 상속
+
 [protocols]
 supported = ["rest", "rcon"]
 default = "rest"

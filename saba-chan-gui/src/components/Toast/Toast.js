@@ -9,10 +9,22 @@ function Toast() {
     // 전역 토스트 이벤트 리스너 등록
     useEffect(() => {
         // 일반 토스트 표시 (자동 사라짐)
-        window.showToast = (message, type = 'info', duration = 3000) => {
+        // options.isNotice = true 이면 알림 모달에도 저장
+        // options.source = 'saba-chan' | 서버 모듈 이름
+        window.showToast = (message, type = 'info', duration = 3000, options = {}) => {
             const id = Date.now() + Math.random();
             const newToast = { id, message, type, isStatus: false };
             setToasts((prev) => [...prev, newToast]);
+
+            // isNotice가 true이면 알림 저장소에도 추가
+            if (options.isNotice && window.__sabaNotice) {
+                const noticeType = type === 'warning' ? 'info' : (type === 'error' ? 'error' : type === 'success' ? 'success' : 'info');
+                window.__sabaNotice.addNotice({
+                    message,
+                    type: noticeType,
+                    source: options.source || 'saba-chan',
+                });
+            }
 
             // 모든 토스트는 자동으로 사라짐
             if (duration > 0) {

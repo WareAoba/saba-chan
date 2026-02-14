@@ -8,7 +8,7 @@ license = "MIT"
 keywords = ["cli", "server-management", "game-server"]
 
 [[bin]]
-name = "saba-cli"
+name = "saba-chan-cli"
 path = "src/main.rs"
 
 [dependencies]

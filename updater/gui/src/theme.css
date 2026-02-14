@@ -1,0 +1,556 @@
+/* ========== Theme System ========== */
+/* Light/Dark/Auto mode support via CSS custom properties */
+
+:root,
+[data-theme="light"] {
+    /* === Backgrounds === */
+    --bg-app: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --bg-surface: #ffffff;
+    --bg-surface-hover: #f9f9f9;
+    --bg-surface-alt: #f8f9fa;
+    --bg-surface-secondary: #f5f5f5;
+    --bg-surface-tertiary: #f0f0f0;
+    --bg-surface-input: #f9f9f9;
+    --bg-surface-input-focus: #ffffff;
+    --bg-overlay: rgba(0, 0, 0, 0.5);
+    --bg-initializing-overlay: rgba(255, 255, 255, 0.85);
+    --bg-loading-bar: rgba(255, 255, 255, 0.2);
+
+    /* === Text === */
+    --text-primary: #333333;
+    --text-secondary: #555555;
+    --text-tertiary: #666666;
+    --text-muted: #888888;
+    --text-disabled: #999999;
+    --text-on-primary: #ffffff;
+    --text-on-dark: #ffffff;
+    --text-dark: #424242;
+
+    /* === Borders === */
+    --border-light: #eeeeee;
+    --border-default: #dddddd;
+    --border-medium: #d0d0d0;
+    --border-strong: #cccccc;
+    --border-hover: #bbbbbb;
+    --border-input: #dddddd;
+    --border-separator: #e0e0e0;
+
+    /* === Shadows === */
+    --shadow-xs: rgba(0, 0, 0, 0.05);
+    --shadow-sm: rgba(0, 0, 0, 0.06);
+    --shadow-md: rgba(0, 0, 0, 0.1);
+    --shadow-lg: rgba(0, 0, 0, 0.15);
+    --shadow-xl: rgba(0, 0, 0, 0.2);
+    --shadow-overlay: rgba(0, 0, 0, 0.3);
+
+    /* === Brand === */
+    --brand-primary: #667eea;
+    --brand-secondary: #764ba2;
+    --brand-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --brand-hover: #5568d3;
+    --brand-shadow: rgba(102, 126, 234, 0.4);
+    --brand-shadow-light: rgba(102, 126, 234, 0.2);
+    --brand-shadow-subtle: rgba(102, 126, 234, 0.1);
+    --brand-shadow-medium: rgba(102, 126, 234, 0.3);
+    --brand-shadow-strong: rgba(102, 126, 234, 0.45);
+    --brand-bg-light: #f9f9ff;
+    --brand-bg-subtle: #f0f4ff;
+    --brand-bg-muted: #e0e8ff;
+    --brand-bg-info: #e8e8ff;
+    --brand-border-light: #e0e8ff;
+
+    /* === Buttons === */
+    --btn-secondary-bg: #f5f5f5;
+    --btn-secondary-text: #333333;
+    --btn-secondary-border: #dddddd;
+    --btn-secondary-hover-bg: #efefef;
+    --btn-secondary-hover-border: #bbbbbb;
+
+    /* === Cards === */
+    --card-bg: #ffffff;
+    --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    --card-hover-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+    --card-expanded-bg: #f5f5f5;
+
+    /* === Scrollbar === */
+    --scrollbar-thumb: #d0d0d0;
+    --scrollbar-thumb-hover: #b0b0b0;
+    --scrollbar-thumb-active: #909090;
+    --scrollbar-track: transparent;
+
+    /* === Info boxes === */
+    --info-bg: #e8f4fd;
+    --info-border: #2196F3;
+    --info-title: #1976D2;
+    --info-bg-alt: #e7f3ff;
+    --info-bg-gradient: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+
+    /* === Tabs === */
+    --tab-bg: #f5f5f5;
+    --tab-text: #666666;
+    --tab-hover-bg: #e8e8e8;
+    --tab-active-bg: var(--brand-bg-light);
+    --tab-active-text: var(--brand-primary);
+    --tab-active-border: var(--brand-primary);
+
+    /* === Badges === */
+    --badge-primary-bg: var(--brand-primary);
+    --badge-primary-text: #ffffff;
+    --badge-subtle-bg: #e8e8ff;
+    --badge-subtle-text: var(--brand-primary);
+    --badge-default-bg: #f0f0f0;
+    --badge-default-text: #888888;
+
+    /* === Tooltip === */
+    --tooltip-bg: #333333;
+    --tooltip-text: #ffffff;
+
+    /* === Action icons === */
+    --icon-default: #999999;
+    --icon-secondary: #666666;
+    --icon-hover: #333333;
+
+    /* === Protocol section === */
+    --protocol-section-bg: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%);
+    --protocol-section-border: #e0e8ff;
+    --protocol-info-bg: linear-gradient(135deg, #f0f0f0 0%, #e8e8e8 100%);
+    --protocol-info-border: #d0d0d0;
+
+    /* === Settings modal specific === */
+    --settings-tab-bg: #f8f9fa;
+    --settings-tab-active-bg: #ffffff;
+    --settings-item-bg: #f8f9fa;
+
+    /* === Form inputs (modal) === */
+    --input-bg: #ffffff;
+    --input-border: #dddddd;
+    --input-focus-border: var(--brand-primary);
+    --input-focus-shadow: rgba(102, 126, 234, 0.1);
+
+    /* === No servers panel === */
+    --empty-bg: #ffffff;
+
+    /* === Toast === */
+    --toast-shadow: rgba(0, 0, 0, 0.15);
+
+    /* === CLI/Terminal (always dark) === */
+    --cli-bg: #1e1e1e;
+    --cli-border: #444444;
+    --cli-suggestion-bg: #2d2d2d;
+    --cli-suggestion-border: #3a3a3a;
+    --cli-suggestion-hover: #3a3a3a;
+    --cli-text: #0f0;
+
+    /* === Modal icon badges (semantic - same in both themes) === */
+    --success-badge-bg: #d4edda;
+    --success-badge-icon: #28a745;
+    --failure-badge-bg: #f8d7da;
+    --failure-badge-icon: #dc3545;
+    --notification-badge-bg: #d1ecf1;
+    --notification-badge-icon: #17a2b8;
+    --question-badge-bg: #fff3cd;
+    --question-badge-icon: #ff9800;
+
+    /* === Status badge (Discord modal) === */
+    --status-running-badge-bg: #d4edda;
+    --status-running-badge-text: #155724;
+    --status-stopped-badge-bg: #f8d7da;
+    --status-stopped-badge-text: #721c24;
+    --status-error-badge-bg: #fff3cd;
+    --status-error-badge-text: #856404;
+
+    /* === Command modal === */
+    --command-inputs-bg: #fafafa;
+    --command-info-bg: #f0f4ff;
+    --command-info-border: var(--brand-primary);
+    --command-disabled-bg: #cccccc;
+
+    /* === Discord modal footer === */
+    --modal-footer-bg: #fafafa;
+    --modal-detail-bg: #f5f5f5;
+
+    /* === Background modal === */
+    --bg-modal-info-bg: #e7f3ff;
+    --bg-modal-info-border: var(--brand-primary);
+    --bg-modal-info-row-bg: #fafafa;
+
+    /* === Image/Icon brightness for light mode === */
+    --img-brightness: none;
+    --img-logo-brightness: none;
+}
+
+[data-theme="dark"] {
+    /* === Backgrounds (neutral gray) === */
+    --bg-app: linear-gradient(135deg, #1a1a1f 0%, #141418 100%);
+    --bg-surface: #1e1e22;
+    --bg-surface-hover: #262629;
+    --bg-surface-alt: #232326;
+    --bg-surface-secondary: #2a2a2e;
+    --bg-surface-tertiary: #303034;
+    --bg-surface-input: #2a2a2e;
+    --bg-surface-input-focus: #1e1e22;
+    --bg-overlay: rgba(10, 10, 14, 0.72);
+    --bg-initializing-overlay: rgba(26, 26, 30, 0.92);
+    --bg-loading-bar: rgba(255, 255, 255, 0.15);
+
+    /* === Text === */
+    --text-primary: #e8e8ea;
+    --text-secondary: #b8b8bc;
+    --text-tertiary: #a0a0a4;
+    --text-muted: #787880;
+    --text-disabled: #585860;
+    --text-on-primary: #ffffff;
+    --text-on-dark: #ffffff;
+    --text-dark: #d4d4d8;
+
+    /* === Borders (neutral) === */
+    --border-light: #363639;
+    --border-default: #404044;
+    --border-medium: #4a4a4f;
+    --border-strong: #555559;
+    --border-hover: #636368;
+    --border-input: #404044;
+    --border-separator: #363639;
+
+    /* === Shadows === */
+    --shadow-xs: rgba(10, 10, 14, 0.22);
+    --shadow-sm: rgba(10, 10, 14, 0.28);
+    --shadow-md: rgba(10, 10, 14, 0.32);
+    --shadow-lg: rgba(10, 10, 14, 0.42);
+    --shadow-xl: rgba(10, 10, 14, 0.52);
+    --shadow-overlay: rgba(10, 10, 14, 0.62);
+
+    /* === Brand === */
+    --brand-primary: #7d8ee8;
+    --brand-secondary: #906abf;
+    --brand-gradient: linear-gradient(135deg, #7d8ee8 0%, #906abf 100%);
+    --brand-hover: #6c7dd8;
+    --brand-shadow: rgba(125, 142, 232, 0.3);
+    --brand-shadow-light: rgba(125, 142, 232, 0.18);
+    --brand-shadow-subtle: rgba(125, 142, 232, 0.08);
+    --brand-shadow-medium: rgba(125, 142, 232, 0.22);
+    --brand-shadow-strong: rgba(125, 142, 232, 0.35);
+    --brand-bg-light: #26262c;
+    --brand-bg-subtle: #222228;
+    --brand-bg-muted: #2c2c34;
+    --brand-bg-info: #2c2c34;
+    --brand-border-light: #3a3a42;
+
+    /* === Buttons === */
+    --btn-secondary-bg: #2a2a2e;
+    --btn-secondary-text: #e8e8ea;
+    --btn-secondary-border: #404044;
+    --btn-secondary-hover-bg: #343438;
+    --btn-secondary-hover-border: #555559;
+
+    /* === Cards === */
+    --card-bg: #262629;
+    --card-shadow: 0 2px 8px rgba(10, 10, 14, 0.42);
+    --card-hover-shadow: 0 8px 25px rgba(10, 10, 14, 0.52);
+    --card-expanded-bg: #2a2a2e;
+
+    /* === Scrollbar === */
+    --scrollbar-thumb: #48484e;
+    --scrollbar-thumb-hover: #58585e;
+    --scrollbar-thumb-active: #686870;
+    --scrollbar-track: transparent;
+
+    /* === Info boxes === */
+    --info-bg: #1e2428;
+    --info-border: #2196F3;
+    --info-title: #64b5f6;
+    --info-bg-alt: #1e2428;
+    --info-bg-gradient: linear-gradient(135deg, #1e2428 0%, #222830 100%);
+
+    /* === Tabs === */
+    --tab-bg: #2a2a2e;
+    --tab-text: #a0a0a4;
+    --tab-hover-bg: #343438;
+    --tab-active-bg: #26262c;
+    --tab-active-text: var(--brand-primary);
+    --tab-active-border: var(--brand-primary);
+
+    /* === Badges === */
+    --badge-primary-bg: var(--brand-primary);
+    --badge-primary-text: #ffffff;
+    --badge-subtle-bg: #2c2c34;
+    --badge-subtle-text: var(--brand-primary);
+    --badge-default-bg: #343438;
+    --badge-default-text: #787880;
+
+    /* === Tooltip === */
+    --tooltip-bg: #1a1a1e;
+    --tooltip-text: #e8e8ea;
+
+    /* === Action icons === */
+    --icon-default: #787880;
+    --icon-secondary: #a0a0a4;
+    --icon-hover: #e8e8ea;
+
+    /* === Protocol section === */
+    --protocol-section-bg: linear-gradient(135deg, #222228 0%, #26262c 100%);
+    --protocol-section-border: #3a3a42;
+    --protocol-info-bg: linear-gradient(135deg, #2a2a2e 0%, #303034 100%);
+    --protocol-info-border: #404044;
+
+    /* === Settings modal specific === */
+    --settings-tab-bg: #2a2a2e;
+    --settings-tab-active-bg: #1e1e22;
+    --settings-item-bg: #2a2a2e;
+
+    /* === Form inputs (modal) === */
+    --input-bg: #2a2a2e;
+    --input-border: #404044;
+    --input-focus-border: var(--brand-primary);
+    --input-focus-shadow: rgba(125, 142, 232, 0.12);
+
+    /* === No servers panel === */
+    --empty-bg: #262629;
+
+    /* === Toast === */
+    --toast-shadow: rgba(10, 10, 14, 0.42);
+
+    /* === CLI/Terminal (stays dark/gets darker) === */
+    --cli-bg: #131316;
+    --cli-border: #363639;
+    --cli-suggestion-bg: #1c1c20;
+    --cli-suggestion-border: #2a2a2e;
+    --cli-suggestion-hover: #2a2a2e;
+    --cli-text: #0f0;
+
+    /* === Modal icon badges === */
+    --success-badge-bg: #1a2e22;
+    --success-badge-icon: #4caf50;
+    --failure-badge-bg: #2e1a1c;
+    --failure-badge-icon: #ef5350;
+    --notification-badge-bg: #1a2630;
+    --notification-badge-icon: #29b6f6;
+    --question-badge-bg: #2e2818;
+    --question-badge-icon: #ffb74d;
+
+    /* === Status badge (Discord modal) === */
+    --status-running-badge-bg: #1a2e22;
+    --status-running-badge-text: #4caf50;
+    --status-stopped-badge-bg: #2e1a1c;
+    --status-stopped-badge-text: #ef5350;
+    --status-error-badge-bg: #2e2818;
+    --status-error-badge-text: #ffb74d;
+
+    /* === Command modal === */
+    --command-inputs-bg: #2a2a2e;
+    --command-info-bg: #222228;
+    --command-info-border: var(--brand-primary);
+    --command-disabled-bg: #404044;
+
+    /* === Discord modal footer === */
+    --modal-footer-bg: #2a2a2e;
+    --modal-detail-bg: #2a2a2e;
+
+    /* === Background modal === */
+    --bg-modal-info-bg: #1e2428;
+    --bg-modal-info-border: var(--brand-primary);
+    --bg-modal-info-row-bg: #2a2a2e;
+
+    /* === Image/Icon brightness for dark mode === */
+    --img-brightness: brightness(0) invert(1);
+    --img-logo-brightness: brightness(1.8) contrast(0.9);
+}
+
+/* Auto theme - follows system preference */
+@media (prefers-color-scheme: dark) {
+    [data-theme="auto"] {
+        /* === Backgrounds (neutral gray) === */
+        --bg-app: linear-gradient(135deg, #1a1a1f 0%, #141418 100%);
+        --bg-surface: #1e1e22;
+        --bg-surface-hover: #262629;
+        --bg-surface-alt: #232326;
+        --bg-surface-secondary: #2a2a2e;
+        --bg-surface-tertiary: #303034;
+        --bg-surface-input: #2a2a2e;
+        --bg-surface-input-focus: #1e1e22;
+        --bg-overlay: rgba(10, 10, 14, 0.72);
+        --bg-initializing-overlay: rgba(26, 26, 30, 0.92);
+        --bg-loading-bar: rgba(255, 255, 255, 0.15);
+
+        /* === Text === */
+        --text-primary: #e8e8ea;
+        --text-secondary: #b8b8bc;
+        --text-tertiary: #a0a0a4;
+        --text-muted: #787880;
+        --text-disabled: #585860;
+        --text-on-primary: #ffffff;
+        --text-on-dark: #ffffff;
+        --text-dark: #d4d4d8;
+
+        /* === Borders (neutral) === */
+        --border-light: #363639;
+        --border-default: #404044;
+        --border-medium: #4a4a4f;
+        --border-strong: #555559;
+        --border-hover: #636368;
+        --border-input: #404044;
+        --border-separator: #363639;
+
+        /* === Shadows === */
+        --shadow-xs: rgba(10, 10, 14, 0.22);
+        --shadow-sm: rgba(10, 10, 14, 0.28);
+        --shadow-md: rgba(10, 10, 14, 0.32);
+        --shadow-lg: rgba(10, 10, 14, 0.42);
+        --shadow-xl: rgba(10, 10, 14, 0.52);
+        --shadow-overlay: rgba(10, 10, 14, 0.62);
+
+        /* === Brand === */
+        --brand-primary: #7d8ee8;
+        --brand-secondary: #906abf;
+        --brand-gradient: linear-gradient(135deg, #7d8ee8 0%, #906abf 100%);
+        --brand-hover: #6c7dd8;
+        --brand-shadow: rgba(125, 142, 232, 0.3);
+        --brand-shadow-light: rgba(125, 142, 232, 0.18);
+        --brand-shadow-subtle: rgba(125, 142, 232, 0.08);
+        --brand-shadow-medium: rgba(125, 142, 232, 0.22);
+        --brand-shadow-strong: rgba(125, 142, 232, 0.35);
+        --brand-bg-light: #26262c;
+        --brand-bg-subtle: #222228;
+        --brand-bg-muted: #2c2c34;
+        --brand-bg-info: #2c2c34;
+        --brand-border-light: #3a3a42;
+
+        /* === Buttons === */
+        --btn-secondary-bg: #2a2a2e;
+        --btn-secondary-text: #e8e8ea;
+        --btn-secondary-border: #404044;
+        --btn-secondary-hover-bg: #343438;
+        --btn-secondary-hover-border: #555559;
+
+        /* === Cards === */
+        --card-bg: #262629;
+        --card-shadow: 0 2px 8px rgba(10, 10, 14, 0.42);
+        --card-hover-shadow: 0 8px 25px rgba(10, 10, 14, 0.52);
+        --card-expanded-bg: #2a2a2e;
+
+        /* === Scrollbar === */
+        --scrollbar-thumb: #48484e;
+        --scrollbar-thumb-hover: #58585e;
+        --scrollbar-thumb-active: #686870;
+        --scrollbar-track: transparent;
+
+        /* === Info boxes === */
+        --info-bg: #1e2428;
+        --info-border: #2196F3;
+        --info-title: #64b5f6;
+        --info-bg-alt: #1e2428;
+        --info-bg-gradient: linear-gradient(135deg, #1e2428 0%, #222830 100%);
+
+        /* === Tabs === */
+        --tab-bg: #2a2a2e;
+        --tab-text: #a0a0a4;
+        --tab-hover-bg: #343438;
+        --tab-active-bg: #26262c;
+        --tab-active-text: var(--brand-primary);
+        --tab-active-border: var(--brand-primary);
+
+        /* === Badges === */
+        --badge-primary-bg: var(--brand-primary);
+        --badge-primary-text: #ffffff;
+        --badge-subtle-bg: #2c2c34;
+        --badge-subtle-text: var(--brand-primary);
+        --badge-default-bg: #343438;
+        --badge-default-text: #787880;
+
+        /* === Tooltip === */
+        --tooltip-bg: #1a1a1e;
+        --tooltip-text: #e8e8ea;
+
+        /* === Action icons === */
+        --icon-default: #787880;
+        --icon-secondary: #a0a0a4;
+        --icon-hover: #e8e8ea;
+
+        /* === Protocol section === */
+        --protocol-section-bg: linear-gradient(135deg, #222228 0%, #26262c 100%);
+        --protocol-section-border: #3a3a42;
+        --protocol-info-bg: linear-gradient(135deg, #2a2a2e 0%, #303034 100%);
+        --protocol-info-border: #404044;
+
+        /* === Settings modal specific === */
+        --settings-tab-bg: #2a2a2e;
+        --settings-tab-active-bg: #1e1e22;
+        --settings-item-bg: #2a2a2e;
+
+        /* === Form inputs (modal) === */
+        --input-bg: #2a2a2e;
+        --input-border: #404044;
+        --input-focus-border: var(--brand-primary);
+        --input-focus-shadow: rgba(125, 142, 232, 0.12);
+
+        /* === No servers panel === */
+        --empty-bg: #262629;
+
+        /* === Toast === */
+        --toast-shadow: rgba(10, 10, 14, 0.42);
+
+        /* === CLI/Terminal === */
+        --cli-bg: #131316;
+        --cli-border: #363639;
+        --cli-suggestion-bg: #1c1c20;
+        --cli-suggestion-border: #2a2a2e;
+        --cli-suggestion-hover: #2a2a2e;
+        --cli-text: #0f0;
+
+        /* === Modal icon badges === */
+        --success-badge-bg: #1a2e22;
+        --success-badge-icon: #4caf50;
+        --failure-badge-bg: #2e1a1c;
+        --failure-badge-icon: #ef5350;
+        --notification-badge-bg: #1a2630;
+        --notification-badge-icon: #29b6f6;
+        --question-badge-bg: #2e2818;
+        --question-badge-icon: #ffb74d;
+
+        /* === Status badge === */
+        --status-running-badge-bg: #1a2e22;
+        --status-running-badge-text: #4caf50;
+        --status-stopped-badge-bg: #2e1a1c;
+        --status-stopped-badge-text: #ef5350;
+        --status-error-badge-bg: #2e2818;
+        --status-error-badge-text: #ffb74d;
+
+        /* === Command modal === */
+        --command-inputs-bg: #2a2a2e;
+        --command-info-bg: #222228;
+        --command-info-border: var(--brand-primary);
+        --command-disabled-bg: #404044;
+
+        /* === Discord modal footer === */
+        --modal-footer-bg: #2a2a2e;
+        --modal-detail-bg: #2a2a2e;
+
+        /* === Background modal === */
+        --bg-modal-info-bg: #1e2428;
+        --bg-modal-info-border: var(--brand-primary);
+        --bg-modal-info-row-bg: #2a2a2e;
+
+        /* === Image/Icon brightness for dark mode === */
+        --img-brightness: brightness(0) invert(1);
+        --img-logo-brightness: brightness(1.8) contrast(0.9);
+    }
+}
+
+/* Smooth theme transitions */
+body,
+.app-header,
+.server-card,
+.modal,
+.settings-modal-container,
+.discord-modal-container,
+.background-modal-container,
+.module-manager,
+.discord-section,
+.no-servers,
+.server-details,
+input,
+select,
+textarea,
+button {
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}

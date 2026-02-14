@@ -31,9 +31,14 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Start IPC HTTP server
-    let ipc_server = ipc::IPCServer::new(supervisor.clone(), "127.0.0.1:57474");
+    let ipc_port = std::env::var("SABA_IPC_PORT")
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok())
+        .unwrap_or(57474);
+    let ipc_addr = format!("127.0.0.1:{}", ipc_port);
+    let ipc_server = ipc::IPCServer::new(supervisor.clone(), &ipc_addr);
     let client_registry = ipc_server.client_registry.clone();
-    tracing::info!("Starting IPC server on 127.0.0.1:57474");
+    tracing::info!("Starting IPC server on {}", ipc_addr);
     
     // 백그라운드 모니터링 태스크 시작
     let supervisor_monitor = supervisor.clone();

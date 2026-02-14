@@ -1,0 +1,15 @@
+{
+  "identifier": "default",
+  "description": "Default capability for the updater window",
+  "windows": ["*"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-minimize",
+    "core:window:allow-close",
+    "core:window:allow-set-closable",
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:event:default",
+    "shell:allow-open"
+  ]
+}

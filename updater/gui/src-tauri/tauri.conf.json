@@ -1,0 +1,31 @@
+{
+  "productName": "Saba-chan Updater",
+  "version": "0.1.0",
+  "identifier": "com.saba-chan.updater",
+  "build": {
+    "frontendDist": "../src"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Saba-chan Updater",
+        "width": 750,
+        "height": 500,
+        "resizable": false,
+        "decorations": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "icon": [
+      "icons/icon.ico",
+      "icons/icon.png"
+    ]
+  },
+  "plugins": {}
+}

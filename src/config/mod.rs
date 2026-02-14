@@ -5,6 +5,22 @@ use serde::Deserialize;
 pub struct GlobalConfig {
     pub ipc_socket: Option<String>,
     pub servers: Option<Vec<ServerInstance>>,
+    pub updater: Option<UpdaterConfig>,
+}
+
+/// [updater] 섹션 — 자동 업데이트 설정
+#[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)]
+pub struct UpdaterConfig {
+    pub enabled: Option<bool>,
+    pub check_interval_hours: Option<u32>,
+    pub auto_download: Option<bool>,
+    pub auto_apply: Option<bool>,
+    pub github_owner: Option<String>,
+    pub github_repo: Option<String>,
+    pub include_prerelease: Option<bool>,
+    pub install_root: Option<String>,
+    pub api_base_url: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -28,6 +44,7 @@ impl GlobalConfig {
         let cfg: Self = toml::from_str(&s).unwrap_or(Self {
             ipc_socket: None,
             servers: None,
+            updater: None,
         });
         Ok(cfg)
     }
@@ -49,6 +66,7 @@ mod tests {
         let cfg = GlobalConfig {
             ipc_socket: None,
             servers: None,
+            updater: None,
         };
         assert!(cfg.servers.is_none());
     }

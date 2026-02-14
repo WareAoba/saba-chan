@@ -13,6 +13,7 @@ import {
     DiscordBotModal,
     BackgroundModal,
     AddServerModal,
+    NoticeModal,
     Icon,
     CustomDropdown
 } from './components';
@@ -148,7 +149,11 @@ function App() {
     };
     const [autoRefresh, setAutoRefresh] = useState(true);
     const [refreshInterval, setRefreshInterval] = useState(2000); // 2초마다 업데이트
+    const [ipcPort, setIpcPort] = useState(57474);
+    const [consoleBufferSize, setConsoleBufferSize] = useState(2000);
+    const consoleBufferRef = useRef(2000);
     const [showModuleManager, setShowModuleManager] = useState(false);
+    const [settingsInitialView, setSettingsInitialView] = useState(null);
     const [newServerName, setNewServerName] = useState('');
     const [selectedModule, setSelectedModule] = useState('');
     const [executablePath, setExecutablePath] = useState('');
@@ -263,6 +268,8 @@ function App() {
     const [discordToken, setDiscordToken] = useState('');
     const [showDiscordSection, setShowDiscordSection] = useState(false);
     const [showBackgroundSection, setShowBackgroundSection] = useState(false);
+    const [showNoticeSection, setShowNoticeSection] = useState(false);
+    const [unreadNoticeCount, setUnreadNoticeCount] = useState(0);
     const [discordPrefix, setDiscordPrefix] = useState('!saba');  // 기본값: !saba
     const [discordAutoStart, setDiscordAutoStart] = useState(false);
     const [discordModuleAliases, setDiscordModuleAliases] = useState({});  // 저장된 사용자 커스텀 모듈 별명
@@ -292,6 +299,20 @@ function App() {
     const { isClosing: isDiscordClosing, requestClose: requestDiscordClose } = useModalClose(closeDiscordSection);
     const closeBackgroundSection = useCallback(() => setShowBackgroundSection(false), []);
     const { isClosing: isBackgroundClosing, requestClose: requestBackgroundClose } = useModalClose(closeBackgroundSection);
+    const closeNoticeSection = useCallback(() => setShowNoticeSection(false), []);
+    const { isClosing: isNoticeClosing, requestClose: requestNoticeClose } = useModalClose(closeNoticeSection);
+
+    // 읽지 않은 알림 수 추적
+    useEffect(() => {
+        const updateCount = () => {
+            if (window.__sabaNotice) {
+                setUnreadNoticeCount(window.__sabaNotice.getUnreadCount());
+            }
+        };
+        updateCount();
+        window.addEventListener('saba-notice-update', updateCount);
+        return () => window.removeEventListener('saba-notice-update', updateCount);
+    }, []);
 
     // 초기화 상태 모니터링
     useEffect(() => {
@@ -341,6 +362,44 @@ function App() {
                 }
             });
         }
+
+        // 업데이트 발견 알림 → 알림 모달에 추가
+        if (window.api && window.api.onUpdatesAvailable) {
+            window.api.onUpdatesAvailable((data) => {
+                console.log('[Updater] Updates available notification:', data);
+                const count = data.count || data.updates_available || 0;
+                const names = data.names || data.update_names || [];
+                if (count > 0 && window.__sabaNotice) {
+                    window.__sabaNotice.addNotice({
+                        message: `📦 ${count}개 업데이트 발견: ${names.join(', ') || '확인 필요'}`,
+                        type: 'info',
+                        source: 'Updater',
+                        action: 'openUpdateModal',
+                        dedup: true,
+                    });
+                }
+            });
+        }
+
+        // --after-update로 재기동된 경우 완료 알림 표시
+        if (window.api && window.api.onUpdateCompleted) {
+            window.api.onUpdateCompleted((data) => {
+                console.log('[Updater] Update completed notification:', data);
+                setTimeout(() => {
+                    if (typeof window.showToast === 'function') {
+                        window.showToast(data.message || '업데이트가 완료되었습니다!', 'success', 5000, { isNotice: true, source: 'saba-chan' });
+                    }
+                    // 알림 모달에도 추가
+                    if (window.__sabaNotice) {
+                        window.__sabaNotice.addNotice({
+                            message: data.message || '업데이트가 완료되었습니다!',
+                            type: 'success',
+                            source: 'Updater',
+                        });
+                    }
+                }, 1500); // UI가 완전히 렌더링될 때까지 약간 대기
+            });
+        }
     }, []);
 
     // 설정 로드
@@ -355,6 +414,9 @@ function App() {
                 if (settings) {
                     setAutoRefresh(settings.autoRefresh ?? true);
                     setRefreshInterval(settings.refreshInterval ?? 2000);
+                    setIpcPort(settings.ipcPort ?? 57474);
+                    setConsoleBufferSize(settings.consoleBufferSize ?? 2000);
+                    consoleBufferRef.current = settings.consoleBufferSize ?? 2000;
                     setModulesPath(settings.modulesPath || '');
                     setDiscordToken(settings.discordToken || '');
                     discordTokenRef.current = settings.discordToken || '';
@@ -436,6 +498,8 @@ function App() {
             await window.api.settingsSave({
                 autoRefresh,
                 refreshInterval,
+                ipcPort,
+                consoleBufferSize,
                 modulesPath,
                 discordToken,
                 discordAutoStart
@@ -666,12 +730,12 @@ function App() {
     const prevSettingsRef = useRef(null);
     const prevPrefixRef = useRef(null);
 
-    // refreshInterval 변경 시 저장 (autoRefresh는 항상 true로 고정)
+    // refreshInterval / ipcPort / consoleBufferSize 변경 시 저장
     useEffect(() => {
         // 초기 로드 완료 전에는 저장하지 않음
         if (!settingsReady || !settingsPath) return;
         
-        const currentSettings = { autoRefresh, refreshInterval };
+        const currentSettings = { autoRefresh, refreshInterval, ipcPort, consoleBufferSize };
         
         // 첫 번째 호출 시 초기값 저장만 하고 저장하지 않음
         if (prevSettingsRef.current === null) {
@@ -681,12 +745,14 @@ function App() {
         
         // 실제로 값이 변경되었을 때만 저장
         if (prevSettingsRef.current.autoRefresh !== autoRefresh ||
-            prevSettingsRef.current.refreshInterval !== refreshInterval) {
+            prevSettingsRef.current.refreshInterval !== refreshInterval ||
+            prevSettingsRef.current.ipcPort !== ipcPort ||
+            prevSettingsRef.current.consoleBufferSize !== consoleBufferSize) {
             console.log('[Settings] Settings changed, saving...');
             saveCurrentSettings();
             prevSettingsRef.current = currentSettings;
         }
-    }, [settingsReady, autoRefresh, refreshInterval]);
+    }, [settingsReady, autoRefresh, refreshInterval, ipcPort, consoleBufferSize]);
 
     // modulesPath 변경 시 저장
     useEffect(() => {
@@ -764,9 +830,9 @@ function App() {
     }, []);
 
     // 안전한 토스트 호출 헬퍼
-    const safeShowToast = (message, type, duration) => {
+    const safeShowToast = (message, type, duration, options) => {
         if (typeof window.showToast === 'function') {
-            return window.showToast(message, type, duration);
+            return window.showToast(message, type, duration, options);
         } else {
             console.warn('[Toast] window.showToast not ready, message:', message);
             return null;
@@ -797,7 +863,7 @@ function App() {
                 safeShowToast(t('discord_bot.start_failed_toast', { error: translateError(result.error) }), 'error', 4000);
             } else {
                 setDiscordBotStatus('running');
-                safeShowToast(t('discord_bot.started_toast'), 'discord', 3000);
+                safeShowToast(t('discord_bot.started_toast'), 'discord', 3000, { isNotice: true, source: 'Discord Bot' });
             }
         } catch (e) {
             safeShowToast(t('discord_bot.start_error_toast', { error: translateError(e.message) }), 'error', 4000);
@@ -839,7 +905,7 @@ function App() {
                 safeShowToast(t('discord_bot.stop_failed_toast', { error: translateError(result.error) }), 'error', 4000);
             } else {
                 setDiscordBotStatus('stopped');
-                safeShowToast(t('discord_bot.stopped_toast'), 'discord', 3000);
+                safeShowToast(t('discord_bot.stopped_toast'), 'discord', 3000, { isNotice: true, source: 'Discord Bot' });
             }
         } catch (e) {
             safeShowToast(t('discord_bot.stop_error_toast', { error: translateError(e.message) }), 'error', 4000);
@@ -902,6 +968,7 @@ function App() {
                     } else {
                         console.log('[Bot Relaunch] Bot relaunched successfully');
                         setDiscordBotStatus('running');
+                        safeShowToast(t('discord_bot.relaunched_toast'), 'discord', 3000, { isNotice: true, source: 'Discord Bot' });
                     }
                 }, 1000);
             });
@@ -1040,6 +1107,10 @@ function App() {
 
     // 마지막 에러 토스트 표시 시간 추적 (중복 방지)
     const lastErrorToastRef = useRef(0);
+    // GUI에서 시작/종료를 요청한 서버 이름 (외부 변경 vs GUI 조작 구분용)
+    const guiInitiatedOpsRef = useRef(new Set());
+    // 최초 fetchServers 완료 여부 (초기화 중 외부 변경 오감지 방지)
+    const firstFetchDoneRef = useRef(false);
     
     const fetchServers = async () => {
         try {
@@ -1052,6 +1123,48 @@ function App() {
             if (data && data.servers) {
                 // 기존 expanded 상태 보존하면서 서버 목록 업데이트
                 setServers(prev => {
+                    // 최초 fetch일 때는 상태 변경 감지 스킵 (기존 서버가 이미 running일 수 있음)
+                    if (!firstFetchDoneRef.current) {
+                        firstFetchDoneRef.current = true;
+                        return data.servers.map(newServer => {
+                            const existing = prev.find(s => s.name === newServer.name);
+                            return { ...newServer, expanded: existing?.expanded || false };
+                        });
+                    }
+
+                    // 상태 변경 감지 (크래시 / 외부 시작·종료)
+                    for (const newServer of data.servers) {
+                        const existing = prev.find(s => s.name === newServer.name);
+                        if (!existing) continue;
+
+                        const wasRunning = existing.status === 'running';
+                        const nowStopped = newServer.status === 'stopped';
+                        const nowRunning = newServer.status === 'running';
+                        const wasStopped = existing.status === 'stopped';
+                        const isGuiOp = guiInitiatedOpsRef.current.has(newServer.name);
+
+                        if (wasRunning && nowStopped && !isGuiOp) {
+                            // 서버가 예상치 못하게 종료됨 (크래시 또는 디스코드 봇 명령)
+                            safeShowToast(
+                                t('servers.unexpected_stop_toast', { name: newServer.name }),
+                                'error', 5000,
+                                { isNotice: true, source: newServer.name }
+                            );
+                        } else if (wasStopped && nowRunning && !isGuiOp) {
+                            // 외부에서 서버가 시작됨 (디스코드 봇 명령 등)
+                            safeShowToast(
+                                t('servers.external_start_toast', { name: newServer.name }),
+                                'info', 3000,
+                                { isNotice: true, source: newServer.name }
+                            );
+                        }
+
+                        // GUI 조작 플래그 해제 (상태 전환 완료)
+                        if (isGuiOp && (nowStopped || nowRunning) && existing.status !== newServer.status) {
+                            guiInitiatedOpsRef.current.delete(newServer.name);
+                        }
+                    }
+
                     return data.servers.map(newServer => {
                         const existing = prev.find(s => s.name === newServer.name);
                         return {
@@ -1232,6 +1345,8 @@ function App() {
                 const errorMsg = translateError(result.error);
                 safeShowToast(t('servers.start_failed_toast', { error: errorMsg }), 'error', 4000);
             } else {
+                // GUI에서 시작한 것으로 표시 (외부 시작 감지 방지)
+                guiInitiatedOpsRef.current.add(name);
                 // 시작 명령 성공 — indeterminate 프로그레스바 표시
                 setProgressBar({ message: t('servers.starting_toast', { name }), indeterminate: true });
                 // console 모드일 때만 콘솔 자동 오픈
@@ -1254,7 +1369,7 @@ function App() {
                         if (statusResult.status === 'running') {
                             resolved = true;
                             setProgressBar(null);
-                            safeShowToast(t('servers.start_completed_toast', { name }), 'success', 3000);
+                            safeShowToast(t('servers.start_completed_toast', { name }), 'success', 3000, { isNotice: true, source: name });
                             fetchServers();
                             return;
                         }
@@ -1294,8 +1409,9 @@ function App() {
                 if (data?.lines?.length > 0) {
                     setConsoleLines(prev => {
                         const newLines = [...prev, ...data.lines];
-                        // Keep last 2000 lines
-                        return newLines.length > 2000 ? newLines.slice(-2000) : newLines;
+                        // Keep last N lines (from settings)
+                        const maxLines = consoleBufferRef.current || 2000;
+                        return newLines.length > maxLines ? newLines.slice(-maxLines) : newLines;
                     });
                     sinceId = data.lines[data.lines.length - 1].id + 1;
                     setConsoleSinceId(sinceId);
@@ -1382,6 +1498,8 @@ function App() {
                         const errorMsg = translateError(result.error);
                         safeShowToast(t('servers.stop_failed_toast', { error: errorMsg }), 'error', 4000);
                     } else {
+                        // GUI에서 정지한 것으로 표시 (외부 정지 감지 방지)
+                        guiInitiatedOpsRef.current.add(name);
                         // 정지 명령 성공 - 콘솔 열려있으면 닫기
                         if (srv && consoleServer?.id === srv.id) {
                             closeConsole();
@@ -1404,7 +1522,7 @@ function App() {
                                 if (statusResult.status === 'stopped') {
                                     resolved = true;
                                     setProgressBar(null);
-                                    safeShowToast(t('servers.stop_completed_toast', { name }), 'success', 3000);
+                                    safeShowToast(t('servers.stop_completed_toast', { name }), 'success', 3000, { isNotice: true, source: name });
                                     fetchServers();
                                     return;
                                 }
@@ -1993,6 +2111,13 @@ function App() {
                     onClick={requestBackgroundClose}
                 />
             )}
+            {/* Notice overlay backdrop */}
+            {showNoticeSection && (
+                <div 
+                    className="discord-backdrop" 
+                    onClick={requestNoticeClose}
+                />
+            )}
             <TitleBar />
             <Toast />
             <header className="app-header">
@@ -2002,13 +2127,36 @@ function App() {
                         <img src="./icon.png" alt="" className="app-logo-icon" />
                         <img src={logoSrc} alt={t('common:app_name')} className="app-logo-text" />
                     </div>
-                    <button 
-                        className="btn-settings-icon-solo"
-                        onClick={() => setShowGuiSettingsModal(true)}
-                        title={t('settings.gui_settings_tooltip')}
-                    >
-                        <Icon name="settings" size="lg" />
-                    </button>
+                    <div className="header-actions">
+                        <div className="notice-button-wrapper">
+                            <button 
+                                className="btn-settings-icon-solo"
+                                onClick={() => showNoticeSection ? requestNoticeClose() : setShowNoticeSection(true)}
+                                title={t('notice_modal.tooltip')}
+                            >
+                                <Icon name="bell" size="lg" />
+                            </button>
+                            {unreadNoticeCount > 0 && (
+                                <span className="notice-badge-dot">{unreadNoticeCount > 9 ? '9+' : unreadNoticeCount}</span>
+                            )}
+                            <NoticeModal
+                                isOpen={showNoticeSection}
+                                onClose={requestNoticeClose}
+                                isClosing={isNoticeClosing}
+                                onOpenUpdateModal={() => {
+                                    setSettingsInitialView('update');
+                                    setShowGuiSettingsModal(true);
+                                }}
+                            />
+                        </div>
+                        <button 
+                            className="btn-settings-icon-solo"
+                            onClick={() => setShowGuiSettingsModal(true)}
+                            title={t('settings.gui_settings_tooltip')}
+                        >
+                            <Icon name="settings" size="lg" />
+                        </button>
+                    </div>
                 </div>
                 
                 {/* 두 번째 줄: 기능 버튼들 */}
@@ -2062,6 +2210,7 @@ function App() {
                             isOpen={showBackgroundSection}
                             onClose={requestBackgroundClose}
                             isClosing={isBackgroundClosing}
+                            ipcPort={ipcPort}
                         />
                     </div>
                 </div>
@@ -2698,11 +2847,16 @@ function App() {
             {/* SettingsModal 렌더링 */}
             <SettingsModal 
                 isOpen={showGuiSettingsModal} 
-                onClose={() => setShowGuiSettingsModal(false)}
+                onClose={() => { setShowGuiSettingsModal(false); setSettingsInitialView(null); }}
                 refreshInterval={refreshInterval}
                 onRefreshIntervalChange={setRefreshInterval}
+                ipcPort={ipcPort}
+                onIpcPortChange={setIpcPort}
+                consoleBufferSize={consoleBufferSize}
+                onConsoleBufferSizeChange={(val) => { setConsoleBufferSize(val); consoleBufferRef.current = val; }}
                 onTestModal={setModal}
                 onTestProgressBar={setProgressBar}
+                initialView={settingsInitialView}
                 onTestWaitingImage={() => {
                     setShowWaitingImage(true);
                     setTimeout(() => setShowWaitingImage(false), 4000);
@@ -2738,6 +2892,8 @@ function App() {
                     onExecute={setModal}
                 />
             )}
+
+
 
             {/* waiting.png (느린 진행 감지) */}
             {showWaitingImage && (

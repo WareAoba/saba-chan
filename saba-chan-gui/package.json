@@ -72,6 +72,10 @@
         "to": "."
       },
       {
+        "from": "../target/release/saba-chan-updater.exe",
+        "to": "."
+      },
+      {
         "from": "../config",
         "to": "config"
       },

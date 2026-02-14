@@ -43,7 +43,19 @@
     "theme_auto": "Automático",
     "theme_light": "Claro",
     "theme_dark": "Oscuro",
-    "advanced_placeholder": "La configuración avanzada se agregará aquí."
+    "advanced_placeholder": "La configuración avanzada se agregará aquí.",
+    "ipc_port_label": "Puerto IPC",
+    "ipc_port_description": "Número de puerto en el que escucha el daemon principal (1024–65535)",
+    "ipc_port_invalid": "El puerto debe estar entre 1024 y 65535",
+    "ipc_port_restart_notice": "El cambio de puerto se aplicará tras reiniciar el daemon",
+    "console_buffer_label": "Tamaño del búfer de consola",
+    "console_buffer_description": "Número máximo de líneas a conservar en la consola del servidor",
+    "ipc_port_label": "Puerto IPC",
+    "ipc_port_description": "Puerto utilizado para la comunicación entre la GUI y el Core Daemon",
+    "ipc_port_restart_notice": "Los cambios de puerto se aplicarán después de reiniciar el daemon",
+    "ipc_port_invalid": "Ingrese un número de puerto válido (1024–65535)",
+    "console_buffer_label": "Tamaño del búfer de consola",
+    "console_buffer_description": "Número máximo de líneas a mantener en la consola del servidor"
   },
   "add_server_modal": {
     "title": "Agregar Nuevo Servidor",
@@ -123,7 +135,8 @@
     "start_error_toast": "Excepción al iniciar el bot de Discord: {{error}}",
     "stop_failed_toast": "Falló la detención del bot de Discord: {{error}}",
     "stopped_toast": "El bot de Discord ha sido detenido",
-    "stop_error_toast": "Excepción al detener el bot de Discord: {{error}}"
+    "stop_error_toast": "Excepción al detener el bot de Discord: {{error}}",
+    "relaunched_toast": "El bot de Discord ha sido reiniciado"
   },
   "app_exit": {
     "confirm_title": "Confirmar Salida",
@@ -151,6 +164,8 @@
     "stopping_toast": "⏳ Deteniendo servidor {{name}}...",
     "stop_completed_toast": "✅ ¡Servidor {{name}} detenido!",
     "stop_timeout_toast": "⚠️ Deteniendo servidor {{name}}... (puede tomar un tiempo)",
+    "unexpected_stop_toast": "⚠️ ¡El servidor {{name}} se detuvo inesperadamente!",
+    "external_start_toast": "ℹ️ El servidor {{name}} fue iniciado externamente",
     "status_check_failed_title": "Falló la verificación de estado",
     "add_server_name_empty_title": "Error de Entrada",
     "add_server_name_empty_message": "Por favor ingrese el nombre del servidor",
@@ -241,5 +256,13 @@
     "start_button": "▶ Iniciar Bot",
     "stop_button": "⏹ Detener Bot",
     "save_button": "💾 Guardar"
+  },
+  "notice_modal": {
+    "title": "Notificaciones",
+    "empty": "No hay notificaciones",
+    "clear_all": "Borrar todo",
+    "dismiss": "Eliminar",
+    "source_main": "Saba-chan",
+    "tooltip": "Notificaciones"
   }
 }

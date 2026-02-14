@@ -7,6 +7,10 @@ display_name = "Minecraft"
 entry = "lifecycle.py"
 icon = "icon.png"
 
+# 모듈 업데이트 설정 — 모듈은 별도 GitHub 레포지토리에서 관리됩니다
+[update]
+github_repo = "saba-chan-module-minecraft"  # github_owner는 본체 설정에서 상속
+
 [protocols]
 supported = ["rcon", "stdin"]
 default = "rcon"
