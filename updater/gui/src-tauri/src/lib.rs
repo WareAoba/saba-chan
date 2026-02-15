@@ -28,6 +28,10 @@ use std::sync::Arc;
 use tauri::{State, AppHandle, Emitter, Manager};
 use tokio::sync::RwLock;
 
+const SUPPORTED_LANGUAGES: [&str; 10] = [
+    "en", "ko", "ja", "zh-CN", "zh-TW", "es", "pt-BR", "ru", "de", "fr",
+];
+
 pub mod cli;
 pub mod config;
 
@@ -249,6 +253,23 @@ async fn get_test_mode(test_config: State<'_, TestModeConfig>) -> Result<serde_j
     }))
 }
 
+#[tauri::command]
+async fn get_preferred_language() -> Result<String, String> {
+    if let Some(main_lang) = load_main_app_language() {
+        if let Some(normalized) = normalize_language_tag(&main_lang) {
+            return Ok(normalized);
+        }
+    }
+
+    if let Some(system_locale) = sys_locale::get_locale() {
+        if let Some(normalized) = normalize_language_tag(&system_locale) {
+            return Ok(normalized);
+        }
+    }
+
+    Ok("en".to_string())
+}
+
 // run_scenario 제거됨 — 시나리오 테스트는 프론트엔드(updater.js)에서
 // 개별 커맨드(check_updates → download_all → apply_updates)를 단계별로 호출합니다.
 
@@ -401,6 +422,73 @@ fn resolve_modules_dir() -> String {
     "modules".to_string()
 }
 
+fn load_main_app_language() -> Option<String> {
+    let settings_path = get_main_app_settings_path()?;
+    let content = std::fs::read_to_string(settings_path).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&content).ok()?;
+    value
+        .get("language")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
+fn get_main_app_settings_path() -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        let appdata = std::env::var("APPDATA").ok()?;
+        return Some(PathBuf::from(appdata).join("saba-chan").join("settings.json"));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let home = std::env::var("HOME").ok()?;
+        return Some(
+            PathBuf::from(home)
+                .join(".config")
+                .join("saba-chan")
+                .join("settings.json"),
+        );
+    }
+}
+
+fn normalize_language_tag(input: &str) -> Option<String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let canonical = trimmed.replace('_', "-");
+    for supported in SUPPORTED_LANGUAGES {
+        if supported.eq_ignore_ascii_case(&canonical) {
+            return Some(supported.to_string());
+        }
+    }
+
+    let lower = canonical.to_lowercase();
+    if lower.starts_with("pt") {
+        return Some("pt-BR".to_string());
+    }
+    if lower.starts_with("zh-cn") || lower.starts_with("zh-hans") {
+        return Some("zh-CN".to_string());
+    }
+    if lower.starts_with("zh-tw") || lower.starts_with("zh-hant") {
+        return Some("zh-TW".to_string());
+    }
+
+    let base = lower.split('-').next().unwrap_or("en");
+    match base {
+        "en" => Some("en".to_string()),
+        "ko" => Some("ko".to_string()),
+        "ja" => Some("ja".to_string()),
+        "zh" => Some("zh-CN".to_string()),
+        "es" => Some("es".to_string()),
+        "ru" => Some("ru".to_string()),
+        "de" => Some("de".to_string()),
+        "fr" => Some("fr".to_string()),
+        _ => None,
+    }
+}
+
 // ═══════════════════════════════════════════════════════
 // --apply 모드 (Tauri 윈도우로 진행 표시 + 파일 교체 + 재실행)
 // ═══════════════════════════════════════════════════════
@@ -425,7 +513,7 @@ async fn start_apply(
     // 1. 매니페스트 로드
     app.emit("apply:progress", ApplyProgressEvent {
         step: "manifest".into(),
-        message: "매니페스트 로딩 중...".into(),
+        message: "Loading manifest...".into(),
         percent: 10,
         applied: vec![],
     }).ok();
@@ -435,7 +523,7 @@ async fn start_apply(
         match mgr.load_pending_manifest() {
             Ok(c) => c,
             Err(e) => {
-                let msg = format!("매니페스트 로드 실패: {}", e);
+                let msg = format!("Failed to load manifest: {}", e);
                 app.emit("apply:progress", ApplyProgressEvent {
                     step: "error".into(), message: msg.clone(), percent: 0, applied: vec![],
                 }).ok();
@@ -446,7 +534,7 @@ async fn start_apply(
 
     app.emit("apply:progress", ApplyProgressEvent {
         step: "manifest".into(),
-        message: format!("{}개 컴포넌트 준비 완료", count),
+        message: format!("{} components ready", count),
         percent: 25,
         applied: vec![],
     }).ok();
@@ -456,7 +544,7 @@ async fn start_apply(
     // 2. 파일 적용
     app.emit("apply:progress", ApplyProgressEvent {
         step: "applying".into(),
-        message: "업데이트 파일 적용 중...".into(),
+        message: "Applying update files...".into(),
         percent: 50,
         applied: vec![],
     }).ok();
@@ -475,7 +563,7 @@ async fn start_apply(
             if !applied.is_empty() {
                 let marker = UpdateCompletionMarker::success(applied.clone());
                 let marker = UpdateCompletionMarker {
-                    message: Some(format!("{}개 업데이트 적용 완료: {}", applied.len(), applied.join(", "))),
+                    message: Some(format!("{} updates applied: {}", applied.len(), applied.join(", "))),
                     ..marker
                 };
                 marker.save().ok();
@@ -485,9 +573,9 @@ async fn start_apply(
             app.emit("apply:progress", ApplyProgressEvent {
                 step: "complete".into(),
                 message: if applied.is_empty() {
-                    "적용할 업데이트가 없습니다.".into()
+                    "No updates to apply.".into()
                 } else {
-                    format!("{}개 업데이트 적용 완료!", applied.len())
+                    format!("{} updates applied!", applied.len())
                 },
                 percent: 100,
                 applied: applied.clone(),
@@ -515,7 +603,7 @@ async fn start_apply(
             Ok(applied)
         }
         Err(e) => {
-            let msg = format!("적용 실패: {}", e);
+            let msg = format!("Apply failed: {}", e);
             app.emit("apply:progress", ApplyProgressEvent {
                 step: "error".into(), message: msg.clone(), percent: 0, applied: vec![],
             }).ok();
@@ -627,6 +715,7 @@ fn run_apply_mode(args: Vec<String>) {
             get_status,
             get_config,
             get_test_mode,
+            get_preferred_language,
             check_after_update,
         ])
         .run(tauri::generate_context!())
@@ -767,6 +856,7 @@ pub fn run() {
             get_config,
             set_api_base_url,
             get_test_mode,
+            get_preferred_language,
             get_apply_preparation,
             check_after_update,
             relaunch,

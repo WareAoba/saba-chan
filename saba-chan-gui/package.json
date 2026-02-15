@@ -68,7 +68,7 @@
     ],
     "extraFiles": [
       {
-        "from": "../target/release/core_daemon.exe",
+        "from": "../target/release/saba-core.exe",
         "to": "."
       },
       {

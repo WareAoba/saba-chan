@@ -3450,7 +3450,57 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a50f4cf475b65d88e057964e0e9bb1f0aa9bbb2036dc65c64596b42932536984"
 
 [[package]]
-name = "saba-chan"
+name = "saba-chan-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crossterm",
+ "ratatui",
+ "reqwest 0.11.27",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "toml 0.8.2",
+ "winres",
+]
+
+[[package]]
+name = "saba-chan-updater"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "saba-chan-updater-lib",
+ "serde",
+ "serde_json",
+ "sys-locale",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-shell",
+ "tokio",
+ "toml 0.5.11",
+ "tracing",
+ "tracing-subscriber",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "saba-chan-updater-lib"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "reqwest 0.11.27",
+ "serde",
+ "serde_json",
+ "tokio",
+ "toml 0.5.11",
+ "tracing",
+ "zip",
+]
+
+[[package]]
+name = "saba-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -3479,55 +3529,6 @@ dependencies = [
  "uuid",
  "winapi",
  "winres",
- "zip",
-]
-
-[[package]]
-name = "saba-chan-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "crossterm",
- "ratatui",
- "reqwest 0.11.27",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "toml 0.8.2",
- "winres",
-]
-
-[[package]]
-name = "saba-chan-updater"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "saba-chan-updater-lib",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-shell",
- "tokio",
- "toml 0.5.11",
- "tracing",
- "tracing-subscriber",
- "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "saba-chan-updater-lib"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "reqwest 0.11.27",
- "serde",
- "serde_json",
- "tokio",
- "toml 0.5.11",
- "tracing",
  "zip",
 ]
 
@@ -4154,6 +4155,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.114",
+]
+
+[[package]]
+name = "sys-locale"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8eab9a99a024a169fe8a903cf9d4a3b3601109bcc13bd9e3c6fff259138626c4"
+dependencies = [
+ "libc",
 ]
 
 [[package]]

@@ -1,9 +1,9 @@
 {
   "release_version": "0.2.0",
   "components": {
-    "core_daemon": {
+    "saba-core": {
       "version": "0.2.0",
-      "asset": "core_daemon-windows-x64.zip",
+      "asset": "saba-core-windows-x64.zip",
       "sha256": null,
       "install_dir": "."
     },

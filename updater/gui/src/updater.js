@@ -6,6 +6,187 @@
 const { invoke } = window.__TAURI__.core;
 const { getCurrentWindow } = window.__TAURI__.window;
 
+const SUPPORTED_LANGUAGES = ['en', 'ko', 'ja', 'zh-CN', 'zh-TW', 'es', 'pt-BR', 'ru', 'de', 'fr'];
+
+const TRANSLATIONS = {
+    en: {
+        appTitle: 'Saba-chan Updater',
+        minimize: 'Minimize',
+        close: 'Close',
+        loadingTitle: 'Updating...',
+        loadingSub: 'Please wait...',
+        statusNotInstalled: 'Not installed',
+        statusReadyToApply: 'Ready to apply',
+        statusUpdateAvailable: 'Update available',
+        statusUpToDate: 'Up to date',
+        downloadTooltip: 'Download {{name}}',
+        downloaded: 'Downloaded: {{name}}',
+        failed: 'Failed: {{error}}',
+        install: 'Install',
+        installing: 'Installing {{name}}...',
+        installed: 'Installed: {{name}}',
+        installFailed: 'Install failed: {{error}}',
+        ringUpdating: 'Updating...',
+        ringPleaseWait: 'Please wait...',
+        ringFailed: 'Update failed',
+        ringComplete: 'Update complete!',
+        ringAllLatest: 'All components are up to date',
+        unknownScenario: 'Unknown scenario: {{name}}',
+        scenarioErrorTitle: '❌ Scenario error',
+        scenarioFailed: 'Scenario failed: {{error}}',
+        testModeTitle: 'Self-update test',
+        testModeSub: 'Simulating update process...',
+        relaunchFailed: 'Relaunch failed: {{error}}',
+        bannerUpdated: 'Update complete!',
+        bannerComponentsUpdated: '{{count}} components updated',
+        applyPreparing: 'Preparing to apply update...',
+        applyPleaseWait: 'Please wait',
+        applyLoadingManifest: 'Loading manifest...',
+        applyManifestLoading: 'Loading manifest',
+        applyApplyingFiles: 'Applying update files...',
+        applyApplied: 'Applied',
+        applyUpdated: 'Updated',
+        applyUpdatedCount: '{{count}} components updated',
+        applyRestartingGui: 'Restarting GUI...',
+        applyFailed: 'Update failed',
+        applyStartFailed: 'Apply failed: {{error}}',
+    },
+    ko: {
+        appTitle: '사바쨩 업데이터',
+        minimize: '최소화',
+        close: '닫기',
+        loadingTitle: '업데이트중!',
+        loadingSub: '잠시만 기다려 주세요...!',
+        statusNotInstalled: '설치되지 않음',
+        statusReadyToApply: '적용 준비 완료',
+        statusUpdateAvailable: '업데이트 가능',
+        statusUpToDate: '최신 상태',
+        downloadTooltip: '{{name}} 다운로드',
+        downloaded: '다운로드 완료: {{name}}',
+        failed: '실패: {{error}}',
+        install: '설치',
+        installing: '{{name}} 설치 중...',
+        installed: '설치 완료: {{name}}',
+        installFailed: '설치 실패: {{error}}',
+        ringUpdating: '업데이트중!',
+        ringPleaseWait: '잠시만 기다려 주세요...!',
+        ringFailed: '업데이트 실패',
+        ringComplete: '업데이트 완료!',
+        ringAllLatest: '모든 컴포넌트가 최신 상태입니다',
+        unknownScenario: '알 수 없는 시나리오: {{name}}',
+        scenarioErrorTitle: '❌ 시나리오 오류',
+        scenarioFailed: '시나리오 실패: {{error}}',
+        testModeTitle: 'Self-Update 테스트',
+        testModeSub: '업데이트 프로세스를 시뮬레이션합니다...',
+        relaunchFailed: '재기동 실패: {{error}}',
+        bannerUpdated: '업데이트 완료!',
+        bannerComponentsUpdated: '{{count}}개 컴포넌트 업데이트 완료',
+        applyPreparing: '업데이트 적용 준비 중…',
+        applyPleaseWait: '잠시만 기다려 주세요',
+        applyLoadingManifest: '매니페스트 로딩 중...',
+        applyManifestLoading: '매니페스트 로딩',
+        applyApplyingFiles: '업데이트 파일 적용 중…',
+        applyApplied: '적용 완료',
+        applyUpdated: '업데이트됨',
+        applyUpdatedCount: '{{count}}개 컴포넌트 업데이트 완료',
+        applyRestartingGui: 'GUI를 재시작합니다…',
+        applyFailed: '업데이트 실패',
+        applyStartFailed: '적용 실패: {{error}}',
+    },
+    ja: {
+        appTitle: 'Saba-chan アップデーター',
+        minimize: '最小化',
+        close: '閉じる',
+        loadingTitle: '更新中...',
+        loadingSub: 'しばらくお待ちください...',
+        statusNotInstalled: '未インストール',
+        statusReadyToApply: '適用準備完了',
+        statusUpdateAvailable: '更新あり',
+        statusUpToDate: '最新',
+        downloadTooltip: '{{name}} をダウンロード',
+        downloaded: 'ダウンロード完了: {{name}}',
+        failed: '失敗: {{error}}',
+        install: 'インストール',
+        installing: '{{name}} をインストール中...',
+        installed: 'インストール完了: {{name}}',
+        installFailed: 'インストール失敗: {{error}}',
+        ringUpdating: '更新中...',
+        ringPleaseWait: 'しばらくお待ちください...',
+        ringFailed: '更新失敗',
+        ringComplete: '更新完了!',
+        ringAllLatest: 'すべてのコンポーネントは最新です',
+        unknownScenario: '不明なシナリオ: {{name}}',
+        scenarioErrorTitle: '❌ シナリオエラー',
+        scenarioFailed: 'シナリオ失敗: {{error}}',
+        testModeTitle: 'セルフアップデートテスト',
+        testModeSub: '更新プロセスをシミュレーションします...',
+        relaunchFailed: '再起動失敗: {{error}}',
+        bannerUpdated: '更新完了!',
+        bannerComponentsUpdated: '{{count}} コンポーネント更新完了',
+        applyPreparing: '更新適用を準備中...',
+        applyPleaseWait: 'しばらくお待ちください',
+        applyLoadingManifest: 'マニフェスト読み込み中...',
+        applyManifestLoading: 'マニフェスト読み込み',
+        applyApplyingFiles: '更新ファイルを適用中...',
+        applyApplied: '適用完了',
+        applyUpdated: '更新済み',
+        applyUpdatedCount: '{{count}} コンポーネント更新完了',
+        applyRestartingGui: 'GUIを再起動しています...',
+        applyFailed: '更新失敗',
+        applyStartFailed: '適用失敗: {{error}}',
+    },
+};
+
+let currentLanguage = 'en';
+
+function normalizeLanguageTag(input) {
+    if (!input || typeof input !== 'string') return 'en';
+    const canonical = input.trim().replace('_', '-');
+    const exact = SUPPORTED_LANGUAGES.find((lang) => lang.toLowerCase() === canonical.toLowerCase());
+    if (exact) return exact;
+
+    const lower = canonical.toLowerCase();
+    if (lower.startsWith('pt')) return 'pt-BR';
+    if (lower.startsWith('zh-cn') || lower.startsWith('zh-hans')) return 'zh-CN';
+    if (lower.startsWith('zh-tw') || lower.startsWith('zh-hant')) return 'zh-TW';
+
+    const base = lower.split('-')[0];
+    if (base === 'ko') return 'ko';
+    if (base === 'ja') return 'ja';
+    if (base === 'es') return 'es';
+    if (base === 'ru') return 'ru';
+    if (base === 'de') return 'de';
+    if (base === 'fr') return 'fr';
+    return 'en';
+}
+
+function tr(key, vars = {}) {
+    const langBundle = TRANSLATIONS[currentLanguage] || TRANSLATIONS.en;
+    const template = langBundle[key] || TRANSLATIONS.en[key] || key;
+    return template.replace(/\{\{(\w+)\}\}/g, (_, name) => String(vars[name] ?? ''));
+}
+
+function applyStaticTranslations() {
+    document.documentElement.lang = currentLanguage;
+    document.title = tr('appTitle');
+    const minBtn = document.getElementById('btn-minimize');
+    if (minBtn) minBtn.title = tr('minimize');
+    if ($btnClose) $btnClose.title = tr('close');
+    if ($ringTitle) $ringTitle.textContent = tr('loadingTitle');
+    if ($ringSub) $ringSub.textContent = tr('loadingSub');
+    if ($progressMsg) $progressMsg.textContent = tr('applyLoadingManifest');
+}
+
+async function initLocalization() {
+    try {
+        const preferredLanguage = await invoke('get_preferred_language');
+        currentLanguage = normalizeLanguageTag(preferredLanguage);
+    } catch (_) {
+        currentLanguage = normalizeLanguageTag(navigator.language || 'en');
+    }
+    applyStaticTranslations();
+}
+
 // ─── DOM ────────────────────────────────────────────────
 
 const $componentList = document.getElementById('component-list');
@@ -74,8 +255,8 @@ function showRing(ringState, title, sub) {
     $loadingScreen.style.display = '';
     // glow ring 상태 클래스
     $ring.className = `loading-logo-container ${ringState === 'spinning' ? '' : ringState}`;
-    $ringTitle.textContent = title || '업데이트중!';
-    $ringSub.textContent = sub || '잠시만 기다려 주세요…!';    // 에러/완료 시 닫기 버튼 표시
+    $ringTitle.textContent = title || tr('ringUpdating');
+    $ringSub.textContent = sub || tr('ringPleaseWait');    // 에러/완료 시 닫기 버튼 표시
     setCloseButtonVisible(ringState === 'error' || ringState === 'complete');}
 
 function hideRing() {
@@ -90,9 +271,9 @@ function setRingProgress(percent) {
 /** state에서 링 상태 자동 결정 */
 function updateRingFromState() {
     if (state.error) {
-        showRing('error', '업데이트 실패', state.error);
+        showRing('error', tr('ringFailed'), state.error);
     } else if (state.components.length > 0 && state.components.every(c => !c.update_available)) {
-        showRing('complete', '업데이트 완료!', '모든 컴포넌트가 최신 상태입니다');
+        showRing('complete', tr('ringComplete'), tr('ringAllLatest'));
     }
     // 그 외에는 스피닝 상태 유지
 }
@@ -142,16 +323,16 @@ function createComponentCard(comp) {
     let statusClass, statusText;
     if (!comp.installed) {
         statusClass = 'missing';
-        statusText = 'Not installed';
+        statusText = tr('statusNotInstalled');
     } else if (comp.downloaded) {
         statusClass = 'ready';
-        statusText = 'Ready to apply';
+        statusText = tr('statusReadyToApply');
     } else if (comp.update_available) {
         statusClass = 'update';
-        statusText = 'Update available';
+        statusText = tr('statusUpdateAvailable');
     } else {
         statusClass = 'current';
-        statusText = 'Up to date';
+        statusText = tr('statusUpToDate');
     }
 
     card.innerHTML = `
@@ -168,17 +349,17 @@ function createComponentCard(comp) {
         const btn = document.createElement('button');
         btn.className = 'component-action btn-primary';
         btn.textContent = '↓';
-        btn.title = `Download ${comp.display_name}`;
+        btn.title = tr('downloadTooltip', { name: comp.display_name });
         btn.addEventListener('click', async (e) => {
             e.stopPropagation();
             btn.disabled = true;
             try {
                 await invoke('download_component', { key: comp.key });
-                showToast(`Downloaded: ${comp.display_name}`, 'success');
+                showToast(tr('downloaded', { name: comp.display_name }), 'success');
                 const result = await invoke('get_status');
                 updateState(result);
             } catch (err) {
-                showToast(`Failed: ${err}`, 'error');
+                showToast(tr('failed', { error: err }), 'error');
                 btn.disabled = false;
             }
         });
@@ -189,19 +370,19 @@ function createComponentCard(comp) {
     if (!comp.installed) {
         const btn = document.createElement('button');
         btn.className = 'component-action btn-danger';
-        btn.textContent = 'Install';
+        btn.textContent = tr('install');
         btn.addEventListener('click', async (e) => {
             e.stopPropagation();
             btn.disabled = true;
-            showProgress(`Installing ${comp.display_name}...`, -1);
+            showProgress(tr('installing', { name: comp.display_name }), -1);
             try {
                 await invoke('install_component', { key: comp.key });
-                showToast(`Installed: ${comp.display_name}`, 'success');
+                showToast(tr('installed', { name: comp.display_name }), 'success');
                 hideProgress();
                 const result = await invoke('get_status');
                 updateState(result);
             } catch (err) {
-                showToast(`Install failed: ${err}`, 'error');
+                showToast(tr('installFailed', { error: err }), 'error');
                 hideProgress();
                 btn.disabled = false;
             }
@@ -299,12 +480,12 @@ async function runScenario(scenarioName) {
                 await scenarioError();
                 break;
             default:
-                showToast(`Unknown scenario: ${scenarioName}`, 'error');
+                showToast(tr('unknownScenario', { name: scenarioName }), 'error');
         }
     } catch (e) {
         hideProgress();
-        showRing('error', '❌ 시나리오 오류', String(e));
-        showToast(`시나리오 실패: ${e}`, 'error');
+        showRing('error', tr('scenarioErrorTitle'), String(e));
+        showToast(tr('scenarioFailed', { error: e }), 'error');
     }
 
 
@@ -531,7 +712,7 @@ async function scenarioError() {
 // 기존 --test 모드 (self-update 시뮬레이션) 유지
 async function runTestMode() {
     // 상태 표시
-    showRing('spinning', 'Self-Update 테스트', '업데이트 프로세스를 시뮬레이션합니다...');
+    showRing('spinning', tr('testModeTitle'), tr('testModeSub'));
 
     // 가짜 컴포넌트 카드 표시
     $componentList.querySelectorAll('.component-card').forEach(el => el.remove());
@@ -596,7 +777,7 @@ async function runTestMode() {
     try {
         await invoke('relaunch');
     } catch (e) {
-        showToast(`재기동 실패: ${e}`, 'error');
+        showToast(tr('relaunchFailed', { error: e }), 'error');
     }
 }
 
@@ -616,7 +797,7 @@ async function checkAfterUpdate() {
             banner.innerHTML = `
                 <div class="update-complete-icon">✓</div>
                 <div class="update-complete-content">
-                    <div class="update-complete-title">업데이트 완료!</div>
+                    <div class="update-complete-title">${escapeHtml(tr('bannerUpdated'))}</div>
                     <div class="update-complete-list">${info.components.join(', ')}</div>
                 </div>
                 <button class="update-complete-close" onclick="this.parentElement.remove()">✕</button>
@@ -624,7 +805,7 @@ async function checkAfterUpdate() {
             document.body.prepend(banner);
             
             // 토스트도 표시
-            showToast(`${info.components.length}개 컴포넌트 업데이트 완료`, 'success', 5000);
+            showToast(tr('bannerComponentsUpdated', { count: info.components.length }), 'success', 5000);
             
             // 5초 후 배너 자동 제거
             setTimeout(() => banner.remove(), 8000);
@@ -640,6 +821,8 @@ async function checkAfterUpdate() {
 // ─── 초기 로드 ──────────────────────────────────────────
 
 (async function init() {
+    await initLocalization();
+
     // 1. Apply 모드 확인 (--apply로 실행된 경우)
     try {
         const applyMode = await invoke('get_apply_mode');
@@ -690,27 +873,38 @@ function enterApplyMode(mode) {
     const { listen } = window.__TAURI__.event;
 
     // 프로그레스 링: 초기 "준비 중"
-    showRing('spinning', '업데이트 적용 준비 중…', '잠시만 기다려 주세요');
+    showRing('spinning', tr('applyPreparing'), tr('applyPleaseWait'));
 
     // 프로그레스 바 표시
-    showProgress('매니페스트 로딩 중...', 0);
+    showProgress(tr('applyLoadingManifest'), 0);
 
     // 진행 이벤트 리스닝 — 프로그레스 링 + 프로그레스 바 + 토스트 활용
     listen('apply:progress', (event) => {
         const { step, message, percent, applied } = event.payload;
 
+        let localizedMessage = message;
+        if (step === 'manifest') {
+            localizedMessage = tr('applyLoadingManifest');
+        } else if (step === 'applying') {
+            localizedMessage = tr('applyApplyingFiles');
+        } else if (step === 'complete') {
+            localizedMessage = applied && applied.length > 0
+                ? tr('applyUpdatedCount', { count: applied.length })
+                : tr('statusUpToDate');
+        }
+
         // 프로그레스 바
         if (percent >= 0) {
-            showProgress(message, percent);
+            showProgress(localizedMessage, percent);
         }
 
         // 프로그레스 링 업데이트
         if (step === 'manifest') {
-            showRing('spinning', '매니페스트 로딩', message);
+            showRing('spinning', tr('applyManifestLoading'), localizedMessage);
         } else if (step === 'applying') {
-            showRing('spinning', '업데이트 파일 적용 중…', message);
+            showRing('spinning', tr('applyApplyingFiles'), localizedMessage);
         } else if (step === 'complete') {
-            showRing('complete', '업데이트 완료!', message);
+            showRing('complete', tr('ringComplete'), localizedMessage);
 
             // 적용된 컴포넌트를 카드로 표시
             $componentList.querySelectorAll('.component-card').forEach(el => el.remove());
@@ -722,24 +916,24 @@ function enterApplyMode(mode) {
                         <div class="component-badge up-to-date">✓</div>
                         <div class="component-info">
                             <div class="component-name">${escapeHtml(name)}</div>
-                            <div class="component-version">적용 완료</div>
+                            <div class="component-version">${escapeHtml(tr('applyApplied'))}</div>
                         </div>
-                        <span class="component-status-badge current">Updated</span>
+                        <span class="component-status-badge current">${escapeHtml(tr('applyUpdated'))}</span>
                     `;
                     $componentList.appendChild(card);
                 }
-                showToast(`${applied.length}개 컴포넌트 업데이트 완료`, 'success', 5000);
+                showToast(tr('applyUpdatedCount', { count: applied.length }), 'success', 5000);
             }
 
             // 재기동 안내
             if (mode.relaunch) {
                 setTimeout(() => {
-                    showRing('spinning', '업데이트 완료!', 'GUI를 재시작합니다…');
-                    showProgress('GUI 재시작 중...', 100);
+                    showRing('spinning', tr('ringComplete'), tr('applyRestartingGui'));
+                    showProgress(tr('applyRestartingGui'), 100);
                 }, 1500);
             }
         } else if (step === 'error') {
-            showRing('error', '업데이트 실패', message);
+            showRing('error', tr('applyFailed'), message);
             hideProgress();
             showToast(message, 'error', 8000);
         }
@@ -747,8 +941,8 @@ function enterApplyMode(mode) {
 
     // apply 실행
     invoke('start_apply').catch(err => {
-        showRing('error', '업데이트 실패', String(err));
+        showRing('error', tr('applyFailed'), String(err));
         hideProgress();
-        showToast(`적용 실패: ${err}`, 'error', 8000);
+        showToast(tr('applyStartFailed', { error: err }), 'error', 8000);
     });
 }

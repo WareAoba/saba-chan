@@ -91,7 +91,7 @@ pub fn check_bot_running() -> bool {
 pub fn find_daemon_binary() -> anyhow::Result<PathBuf> {
     let root = find_project_root()?;
     let cwd = std::env::current_dir()?;
-    let exe = if cfg!(target_os = "windows") { "core_daemon.exe" } else { "core_daemon" };
+    let exe = if cfg!(target_os = "windows") { "saba-core.exe" } else { "saba-core" };
 
     let candidates = [
         root.join("target/release").join(exe),
@@ -191,7 +191,7 @@ pub fn start_daemon() -> anyhow::Result<String> {
     Ok(format!("✓ Daemon started\n  modules: {}\n  instances: {}", modules, instances))
 }
 
-/// Daemon 종료 — 먼저 core_daemon.exe만 타겟으로 종료
+/// Daemon 종료 — 먼저 saba-core.exe만 타겟으로 종료
 pub fn stop_daemon() -> anyhow::Result<String> {
     if !check_daemon_running() {
         return Ok("ℹ Daemon is not running".into());
@@ -199,14 +199,14 @@ pub fn stop_daemon() -> anyhow::Result<String> {
 
     if cfg!(target_os = "windows") {
         let mut cmd = Command::new("taskkill");
-        // /T 없이 core_daemon.exe만 종료 (자식 게임서버 프로세스는 유지)
-        cmd.args(["/IM", "core_daemon.exe", "/F"])
+        // /T 없이 saba-core.exe만 종료 (자식 게임서버 프로세스는 유지)
+        cmd.args(["/IM", "saba-core.exe", "/F"])
             .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
         no_window(&mut cmd);
         cmd.status()?;
     } else {
         Command::new("pkill")
-            .args(["-f", "core_daemon"])
+            .args(["-f", "saba-core"])
             .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null())
             .status()?;
     }

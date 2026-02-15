@@ -67,7 +67,7 @@ Integration 테스트가 Jest와 호환되지 않아, 수동으로 E2E 테스트
 ```powershell
 # 1. Daemon 빌드 및 실행
 cargo build --release
-.\target\release\core_daemon.exe
+.\target\release\saba-core.exe
 
 # 2. 별도 터미널에서 GUI 앱 실행
 cd saba-chan-gui

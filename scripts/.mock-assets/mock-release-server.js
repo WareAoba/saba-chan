@@ -13,7 +13,7 @@
  * ## 생성되는 파일
  *   scripts/.mock-assets/
  *     manifest.json
- *     core_daemon-windows-x64.zip
+ *     saba-core-windows-x64.zip
  *     saba-chan-cli-windows-x64.zip
  *     saba-chan-gui-windows-x64.zip
  *     module-minecraft.zip
@@ -123,9 +123,9 @@ function generateAssets() {
     fs.mkdirSync(ASSETS_DIR, { recursive: true });
 
     const components = {
-        'core_daemon-windows-x64.zip': {
-            innerFile: 'core_daemon.exe',
-            content: `MOCK_CORE_DAEMON_v${MOCK_VERSION}_${Date.now()}`,
+        'saba-core-windows-x64.zip': {
+            innerFile: 'saba-core.exe',
+            content: `MOCK_SABA_CORE_v${MOCK_VERSION}_${Date.now()}`,
         },
         'saba-chan-cli-windows-x64.zip': {
             innerFile: 'saba-chan-cli.exe',
@@ -149,9 +149,9 @@ function generateAssets() {
     const manifest = {
         release_version: MOCK_VERSION,
         components: {
-            core_daemon: {
+            'saba-core': {
                 version: MOCK_VERSION,
-                asset: 'core_daemon-windows-x64.zip',
+                asset: 'saba-core-windows-x64.zip',
                 sha256: null,
                 install_dir: '.',
             },

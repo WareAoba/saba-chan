@@ -46,7 +46,7 @@ function UpdateModal({ isOpen, onClose }) {
             update_available: !!c.update_available,
             downloaded: !!c.downloaded,
             installed: !!c.installed,
-            needsUpdater: key === 'gui' || key === 'core_daemon',  // GUI/CoreDaemon은 업데이터 exe 필요
+            needsUpdater: key === 'gui' || key === 'saba-core',  // GUI/CoreDaemon은 업데이터 exe 필요
         };
     });
 
@@ -126,7 +126,7 @@ function UpdateModal({ isOpen, onClose }) {
 
     // ── 개별 컴포넌트 적용 ──
     // - 모듈: 데몬이 직접 적용
-    // - core_daemon / cli: 데몬 API → needs_updater 응답 시 updater exe 스폰 (GUI 종료 안 함)
+    // - saba-core / cli: 데몬 API → needs_updater 응답 시 updater exe 스폰 (GUI 종료 안 함)
     // - gui: 유저 확인 후 updater exe 스폰 + GUI 종료/재시작
     const handleApplyOne = useCallback(async (key) => {
         // GUI 자체 업데이트 → 재시작 확인 모달 표시
@@ -215,7 +215,7 @@ function UpdateModal({ isOpen, onClose }) {
             return;
         }
 
-        // 모듈 / core_daemon / cli → 데몬 API로 적용 시도
+        // 모듈 / saba-core / cli → 데몬 API로 적용 시도
         markBusy(key);
         setError(null);
         setMessage(null);
@@ -261,7 +261,7 @@ function UpdateModal({ isOpen, onClose }) {
 
         const allKeys = updatable.map(c => c.key);
         // GUI/CoreDaemon은 업데이터 exe로, 나머지(모듈/CLI/DiscordBot)는 데몬 API로 직접 적용
-        const updaterTargets = ['gui', 'core_daemon'];
+        const updaterTargets = ['gui', 'saba-core'];
         const daemonKeys = allKeys.filter(k => !updaterTargets.includes(k));
         const updaterKeys = allKeys.filter(k => updaterTargets.includes(k));
         const hasDiscordBot = allKeys.includes('discord_bot');
@@ -363,7 +363,7 @@ function UpdateModal({ isOpen, onClose }) {
         const updatable = components.filter(c => c.update_available);
         if (updatable.length === 0) return;
 
-        const hasNeedsUpdater = updatable.some(c => c.key === 'gui' || c.key === 'core_daemon');
+        const hasNeedsUpdater = updatable.some(c => c.key === 'gui' || c.key === 'saba-core');
         if (hasNeedsUpdater) {
             setPendingRestartAction(() => () => executeUpdateAll());
             setConfirmRestart(true);

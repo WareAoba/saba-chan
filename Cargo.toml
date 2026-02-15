@@ -1,5 +1,5 @@
 [package]
-name = "saba-chan"
+name = "saba-core"
 version = "0.1.0"
 edition = "2021"
 description = "Modular game server management platform"
@@ -11,7 +11,7 @@ keywords = ["game-server", "palworld", "minecraft", "management"]
 members = [".", "updater", "updater/gui/src-tauri", "saba-chan-cli"]
 
 [[bin]]
-name = "core_daemon"
+name = "saba-core"
 path = "src/main.rs"
 
 [lib]

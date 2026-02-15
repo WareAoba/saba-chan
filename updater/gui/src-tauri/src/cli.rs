@@ -599,14 +599,14 @@ fn print_help() {
     println!("  help                        This help message");
     println!();
     println!("COMPONENT KEYS:");
-    println!("  core_daemon                 Core daemon process");
+    println!("  saba-core                    Core daemon process");
     println!("  cli                         CLI tool");
     println!("  gui                         GUI application");
     println!("  module-<name>               Server module (e.g., module-minecraft)");
     println!();
     println!("EXAMPLES:");
     println!("  saba-chan-updater --cli check");
-    println!("  saba-chan-updater --cli download core_daemon");
+    println!("  saba-chan-updater --cli download saba-core");
     println!("  saba-chan-updater --cli install");
     println!("  saba-chan-updater --cli config set github_owner myuser");
 }

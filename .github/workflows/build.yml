@@ -58,7 +58,7 @@ jobs:
         with:
           name: rust-binaries-${{ github.sha }}
           path: |
-            target/release/core_daemon.exe
+            target/release/saba-core.exe
             target/release/saba-chan-cli.exe
             target/release/saba-chan-updater.exe
           retention-days: 30
@@ -68,7 +68,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            target/release/core_daemon.exe
+            target/release/saba-core.exe
             target/release/saba-chan-cli.exe
             target/release/saba-chan-updater.exe
         env:

@@ -1,8 +1,8 @@
 /// 간소화된 통합 테스트
 /// 복잡한 시나리오는 제외하고 핵심 기능만 검증
 
-use saba_chan::supervisor::Supervisor;
-use saba_chan::ipc::IPCServer;
+use saba_core::supervisor::Supervisor;
+use saba_core::ipc::IPCServer;
 use std::sync::Arc;
 use std::net::TcpListener;
 use tokio::sync::RwLock;
@@ -130,7 +130,7 @@ async fn test_module_refresh() {
 
 #[tokio::test]
 async fn test_python_detection() {
-    use saba_chan::plugin::PluginManager;
+    use saba_core::plugin::PluginManager;
     
     let plugin_manager = PluginManager::new();
     let python_path = plugin_manager.detect_python();

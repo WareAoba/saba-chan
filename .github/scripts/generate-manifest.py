@@ -26,10 +26,10 @@ from urllib.error import HTTPError
 # (key, 버전 소스 경로, 에셋 파일명 패턴, install_dir)
 COMPONENTS = [
     {
-        "key": "core_daemon",
+        "key": "saba-core",
         "version_file": "Cargo.toml",           # 워크스페이스 루트
         "version_type": "cargo",
-        "asset_pattern": r"core_daemon.*\.zip$",
+        "asset_pattern": r"saba-core.*\.zip$",
         "install_dir": ".",
     },
     {

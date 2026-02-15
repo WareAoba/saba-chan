@@ -46,6 +46,12 @@ impl UpdateState {
     }
 }
 
+impl Default for UpdateState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // ═══════════════════════════════════════════════════════
 // 라우터
 // ═══════════════════════════════════════════════════════
@@ -234,7 +240,7 @@ async fn download_components(
 /// - 모듈: 데몬이 직접 적용 (파일 교체)
 /// - 데몬/GUI/CLI: 업데이터 exe를 스폰하여 적용 (응답에 requires_updater: true)
 ///
-/// Body: `{ "components": ["module-minecraft", "core_daemon"] }` (선택 적용, 비어있으면 전체)
+/// Body: `{ "components": ["module-minecraft", "saba-core"] }` (선택 적용, 비어있으면 전체)
 #[derive(Deserialize)]
 struct ApplyRequest {
     #[serde(default)]
@@ -430,16 +436,14 @@ fn parse_update_config(val: &toml::Value) -> UpdateConfig {
 
 fn resolve_modules_dir() -> String {
     use std::path::PathBuf;
-    for candidate in &[
+    for p in [
         std::env::current_exe()
             .ok()
             .and_then(|p| p.parent().map(|d| d.join("modules"))),
         Some(PathBuf::from("modules")),
-    ] {
-        if let Some(p) = candidate {
-            if p.exists() {
-                return p.to_string_lossy().to_string();
-            }
+    ].iter().flatten() {
+        if p.exists() {
+            return p.to_string_lossy().to_string();
         }
     }
     "modules".to_string()

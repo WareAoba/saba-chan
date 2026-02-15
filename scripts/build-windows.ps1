@@ -4,7 +4,7 @@
 Saba-chan Windows Release Build (Parallel)
 
 배포물:
-  core_daemon.exe            - Rust IPC 데몬
+  saba-core.exe              - Rust IPC 데몬
   saba-chan-cli.exe           - Rust TUI 클라이언트
   saba-chan-gui.exe           - Electron GUI
   saba-chan-updater.exe       - 업데이터 (GUI + CLI 모드)
@@ -60,15 +60,47 @@ $jobRust = Start-Job -Name "Rust" -ScriptBlock {
     Set-Location $root
     $env:CARGO_TERM_COLOR = "never"
 
+    function Stop-BuildLockProcesses {
+        $names = @("saba-core", "saba-chan", "saba-chan-cli", "saba-chan-updater")
+        foreach ($n in $names) {
+            Get-Process -Name $n -ErrorAction SilentlyContinue | ForEach-Object {
+                try { Stop-Process -Id $_.Id -Force -ErrorAction Stop } catch {}
+            }
+        }
+        Start-Sleep -Milliseconds 400
+    }
+
     # ErrorActionPreference=Continue so stderr warnings don't become terminating errors
     $ErrorActionPreference = "Continue"
-    $output = & cargo build --release --workspace 2>&1
-    $ec = $LASTEXITCODE
+    $maxAttempts = 3
+    $output = $null
+    $ec = 1
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        $output = & cargo build --release --workspace 2>&1
+        $ec = $LASTEXITCODE
+        if ($ec -eq 0) { break }
+
+        $outText = ($output | Out-String)
+        $isAccessDeniedLock = $outText -match "failed to remove file" -and $outText -match "saba-core\.exe" -and ($outText -match "os error 5" -or $outText -match "拠蜷ｦ" -or $outText -match "access")
+        if (-not $isAccessDeniedLock -or $attempt -eq $maxAttempts) {
+            break
+        }
+
+        Write-Host "[Rust] Detected locked saba-core.exe. Stopping related processes and retrying... ($attempt/$maxAttempts)"
+        Stop-BuildLockProcesses
+        try {
+            $lockedExe = Join-Path $root "target\release\saba-core.exe"
+            if (Test-Path $lockedExe) {
+                Remove-Item $lockedExe -Force -ErrorAction SilentlyContinue
+            }
+        } catch {}
+        Start-Sleep -Milliseconds 600
+    }
     $ErrorActionPreference = "Stop"
     if ($ec -ne 0) { throw "Cargo build failed (exit $ec):`n$($output | Out-String)" }
 
     $targets = @(
-        @{ Name = "core_daemon.exe";       Path = (Join-Path $root "target\release\core_daemon.exe") },
+        @{ Name = "saba-core.exe";       Path = (Join-Path $root "target\release\saba-core.exe") },
         @{ Name = "saba-chan-cli.exe";      Path = (Join-Path $root "target\release\saba-chan-cli.exe") },
         @{ Name = "saba-chan-updater.exe";  Path = (Join-Path $root "target\release\saba-chan-updater.exe") }
     )

@@ -26,7 +26,7 @@
 //! {
 //!   "release_version": "0.2.0",
 //!   "components": {
-//!     "core_daemon": { "version": "0.2.0", "asset": "core_daemon-windows-x64.zip", "install_dir": "." },
+//!     "saba-core": { "version": "0.2.0", "asset": "saba-core-windows-x64.zip", "install_dir": "." },
 //!     "cli":         { "version": "0.2.0", "asset": "saba-cli-windows-x64.zip", "install_dir": "." },
 //!     "gui":         { "version": "0.2.0", "asset": "saba-chan-gui-windows-x64.zip", "install_dir": "saba-chan-gui" },
 //!     "module-minecraft": { "version": "2.1.0", "asset": "module-minecraft.zip", "install_dir": "modules/minecraft" },
@@ -86,7 +86,7 @@ impl Component {
     /// manifest.json繝ｻ繝ｻ蠁E��・�E�繝ｻ繝ｻ繝ｻ�E�蠍ｹ繝ｻ
     pub fn manifest_key(&self) -> String {
         match self {
-            Component::CoreDaemon => "core_daemon".to_string(),
+            Component::CoreDaemon => "saba-core".to_string(),
             Component::Cli => "cli".to_string(),
             Component::Gui => "gui".to_string(),
             Component::Module(name) => format!("module-{}", name),
@@ -97,7 +97,7 @@ impl Component {
     /// manifest 蠁E��・�E�繝ｻ蟾昴・ Component 繝ｻ・�E�繝ｻ繝ｻ
     pub fn from_manifest_key(key: &str) -> Self {
         match key {
-            "core_daemon" => Component::CoreDaemon,
+            "saba-core" => Component::CoreDaemon,
             "cli" => Component::Cli,
             "gui" => Component::Gui,
             "discord_bot" => Component::DiscordBot,
@@ -180,7 +180,7 @@ pub struct DependencyCheck {
 /// 충족되지 않은 개별 의존성 정보
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DependencyIssue {
-    /// 필요한 컴포넌트 키 (예: "core_daemon")
+    /// 필요한 컴포넌트 키 (예: "saba-core")
     pub required_component: String,
     /// 필요한 최소 버전 (예: ">=0.3.0")
     pub required_version: String,
@@ -221,7 +221,7 @@ pub struct ComponentInstallInfo {
 /// 繝ｻ鄂ｹ・�E�繝ｻ繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E繝ｻ繝ｻ蝨�E� 繝ｻ・�E�繝ｻ・�E�
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApplyComponentResult {
-    /// 繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E繝ｻ譎､・�E�繝ｻ譴�E� (繝ｻ繝ｻ "module-minecraft", "core_daemon")
+    /// 컴포넌트 manifest 키 (예: "module-minecraft", "saba-core")
     pub component: String,
     /// 繝ｻ繝ｻ蝨�E� 繝ｻ・�E�繝ｻ・�E� 繝ｻ・�E�繝ｻ�E�
     pub success: bool,
@@ -319,7 +319,7 @@ pub struct UpdateManager {
     /// fetch한 전체 릴리즈 목록 (walk-back 탐색용)
     cached_releases: Vec<GitHubRelease>,
     /// 릴리즈 횡단 탐색 결과: 각 컴포넌트별 최적 다운로드 소스
-    /// key = manifest key ("core_daemon", "cli", "gui", ...)
+    /// key = manifest key ("saba-core", "cli", "gui", ...)
     resolved_components: HashMap<String, ResolvedComponent>,
     /// 설치 진행 상태
     install_progress: Option<InstallProgress>,
@@ -430,7 +430,7 @@ impl UpdateManager {
         let local_versions = self.collect_local_versions();
         let mut components = Vec::new();
 
-        // ══ 1. 코어 리포 체크 (core_daemon, cli, gui, updater, discord_bot) ══
+        // ══ 1. 코어 리포 체크 (saba-core, cli, gui, updater, discord_bot) ══
         let core_client = self.create_client();
         match self.check_core_repo(&core_client, &local_versions).await {
             Ok(core_components) => {
@@ -659,9 +659,9 @@ impl UpdateManager {
         let mut versions = Self::load_installed_manifest();
 
         // 2. 매니페스트에 없는 컴포넌트는 기존 방법으로 감지 (폴백)
-        if !versions.contains_key("core_daemon") {
+        if !versions.contains_key("saba-core") {
             versions.insert(
-                "core_daemon".to_string(),
+                "saba-core".to_string(),
                 env!("CARGO_PKG_VERSION").to_string(),
             );
         }
@@ -937,7 +937,7 @@ impl UpdateManager {
                 }
                 Component::CoreDaemon => {
                     // Updater exe can directly replace daemon binary
-                    self.apply_binary_update("core_daemon", staged_path).await?;
+                    self.apply_binary_update("saba-core", staged_path).await?;
                     applied.push(comp.component.display_name());
                 }
                 Component::DiscordBot => {
@@ -1117,8 +1117,8 @@ impl UpdateManager {
     /// 컴포넌트의 버전 의존성을 확인합니다.
     /// 서버 매니페스트의 `requires` 필드를 기반으로 설치된 버전과 비교합니다.
     ///
-    /// 예: GUI 0.3.0 → requires: { "core_daemon": ">=0.3.0" }
-    ///     → core_daemon이 0.3.0 미만이면 DependencyIssue 반환
+    /// 예: GUI 0.3.0 → requires: { "saba-core": ">=0.3.0" }
+    ///     → saba-core이 0.3.0 미만이면 DependencyIssue 반환
     pub fn check_dependencies(&self, component_key: &str) -> DependencyCheck {
         let installed = Self::load_installed_manifest();
         let mut issues = Vec::new();
@@ -1197,7 +1197,7 @@ impl UpdateManager {
             }
             Component::CoreDaemon => {
                 // Windows: 실행 중인 exe를 .exe.old로 rename 후 새 바이너리 추출
-                self.apply_binary_update("core_daemon", staged_path).await?;
+                self.apply_binary_update("saba-core", staged_path).await?;
                 ApplyComponentResult {
                     component: component.manifest_key(),
                     success: true,
@@ -1384,15 +1384,62 @@ impl UpdateManager {
         Ok(())
     }
 
-    /// CLI/GUI 繝ｻ閧�E�謫�E�繝ｻ螢�E�・�E�・�E� 繝ｻ繝ｻ鬲めE�E・�E�蟁E���E��E� 遯�E�繝ｻzip ・托ｽ�E�繝ｻ繝ｻ蠑｡繝ｻ繝ｻ・�E�蠏ゅ・逕ｯ隴�E�謾�E� 繝ｻ蟾晢�E��E�・�E�
+    /// Windows에서 실행 중인 .exe를 rename하기 위한 재시도 로직
+    /// 프로세스가 파일을 해제할 때까지 지수 백오프로 최대 max_retries번 재시도
+    fn rename_with_retry(from: &Path, to: &Path, max_retries: u32) -> Result<()> {
+        // 기존 백업 파일이 있으면 먼저 삭제 시도
+        if to.exists() {
+            std::fs::remove_file(to).ok();
+        }
+
+        let mut last_err = None;
+        for attempt in 0..=max_retries {
+            match std::fs::rename(from, to) {
+                Ok(()) => return Ok(()),
+                Err(e) => {
+                    last_err = Some(e);
+                    if attempt < max_retries {
+                        let delay = std::time::Duration::from_millis(200 * 2u64.pow(attempt));
+                        tracing::warn!(
+                            "[Updater] rename {} -> {} failed (attempt {}/{}), retrying in {:?}...",
+                            from.display(), to.display(), attempt + 1, max_retries + 1, delay
+                        );
+                        std::thread::sleep(delay);
+                    }
+                }
+            }
+        }
+        Err(anyhow::anyhow!(
+            "Failed to rename {} -> {} after {} attempts: {}",
+            from.display(), to.display(), max_retries + 1,
+            last_err.unwrap()
+        ))
+    }
+
     async fn apply_binary_update(&self, binary_name: &str, staged_path: &str) -> Result<()> {
         let staged = Path::new(staged_path);
 
-        // 繝ｻ・�E�蠏ゅ・逕ｯ隴�E�謾�E� 繝ｻ繝ｻ・�E�繝ｻ繝ｻ・�E�繝ｻ繝ｻ
         let exe_dir = self.install_root.clone();
 
-
-
+        // Windows: 대상 프로세스가 실행 중이라면 종료를 대기
+        #[cfg(target_os = "windows")]
+        {
+            let process_names: Vec<&str> = match binary_name {
+                n if n.contains("daemon") || n.contains("core") => vec!["saba-chan.exe"],
+                n if n.contains("cli") => vec!["saba-chan-cli.exe"],
+                n if n.contains("gui") => vec!["saba-chan-gui.exe"],
+                _ => vec![],
+            };
+            for proc in &process_names {
+                if ProcessChecker::is_running(proc) {
+                    tracing::info!("[Updater] Waiting for {} to exit before applying update...", proc);
+                    let exited = ProcessChecker::wait_for_exit(proc, 15).await;
+                    if !exited {
+                        tracing::warn!("[Updater] {} did not exit within timeout, attempting update anyway", proc);
+                    }
+                }
+            }
+        }
 
         tracing::info!("[Updater] Applying binary update: {} in {}", binary_name, exe_dir.display());
 
@@ -1412,9 +1459,13 @@ impl UpdateManager {
                         std::fs::create_dir_all(parent)?;
                     }
                     // Windows繝ｻ蟾昴・ 繝ｻ・�E�繝ｻ・�E� 繝ｻ蜊捺筁E.exe繝ｻ繝ｻ繝ｻ・�E�繝ｻ繝ｻ繝ｻ�E�繝ｻ・�E� 蠑｡繝ｻ繝ｻ蟾晢�E��E�・�E�
+                    // Windows: 실행 중인 .exe를 .old로 rename (재시도 포함)
                     if out_path.exists() && out_path.extension().map(|e| e == "exe").unwrap_or(false) {
                         let backup = out_path.with_extension("exe.old");
-                        std::fs::rename(&out_path, &backup).ok();
+                        if let Err(e) = Self::rename_with_retry(&out_path, &backup, 5) {
+                            tracing::error!("[Updater] Cannot replace {}: {}", out_path.display(), e);
+                            anyhow::bail!("Cannot replace {}: {}. Is the process still running?", out_path.display(), e);
+                        }
                     }
                     let mut outfile = std::fs::File::create(&out_path)?;
                     std::io::copy(&mut entry, &mut outfile)?;
@@ -1451,7 +1502,10 @@ impl UpdateManager {
                         }
                         if out_path.exists() && out_path.extension().map(|e| e == "exe").unwrap_or(false) {
                             let backup = out_path.with_extension("exe.old");
-                            std::fs::rename(&out_path, &backup).ok();
+                            if let Err(e) = Self::rename_with_retry(&out_path, &backup, 5) {
+                                tracing::error!("[Updater] Cannot replace GUI exe {}: {}", out_path.display(), e);
+                                anyhow::bail!("Cannot replace {}: {}. Is the GUI still running?", out_path.display(), e);
+                            }
                         }
                         let mut outfile = std::fs::File::create(&out_path)?;
                         std::io::copy(&mut entry, &mut outfile)?;
@@ -1513,7 +1567,7 @@ impl UpdateManager {
     #[allow(dead_code)]
     async fn prepare_daemon_update(&self, staged_path: &str) -> Result<Option<String>> {
         let staged = Path::new(staged_path);
-        let daemon_exe_name = if cfg!(target_os = "windows") { "core_daemon.exe" } else { "core_daemon" };
+        let daemon_exe_name = if cfg!(target_os = "windows") { "saba-core.exe" } else { "saba-core" };
         let exe_path = self.install_root.join(daemon_exe_name);
         let exe_dir = self.install_root.clone();
 

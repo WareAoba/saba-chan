@@ -292,7 +292,7 @@ function saveSettings(settings) {
 // Core Daemon 시작
 function startDaemon() {
     const isDev = !app.isPackaged;
-    const daemonFileName = process.platform === 'win32' ? 'core_daemon.exe' : 'core_daemon';
+    const daemonFileName = process.platform === 'win32' ? 'saba-core.exe' : 'saba-core';
     
     console.log('\n========== CORE DAEMON STARTUP ==========');
     console.log('[Daemon] isDev:', isDev);
@@ -302,13 +302,13 @@ function startDaemon() {
     let rootDir, daemonPath;
     
     if (isDev) {
-        // 개발: target/release/core_daemon.exe
+        // 개발: target/release/saba-core.exe
         rootDir = path.join(__dirname, '..');
         daemonPath = path.join(rootDir, 'target', 'release', daemonFileName);
         console.log('[Daemon] [DEV] rootDir:', rootDir);
         console.log('[Daemon] [DEV] daemonPath:', daemonPath);
     } else {
-        // 프로덕션: 설치 루트 디렉토리의 core_daemon.exe
+        // 프로덕션: 설치 루트 디렉토리의 saba-core.exe
         rootDir = getInstallRoot();
         daemonPath = path.join(rootDir, daemonFileName);
         console.log('[Daemon] [PROD] exe:', app.getPath('exe'));
@@ -1844,7 +1844,7 @@ ipcMain.handle('updater:status', async () => {
 });
 
 // 선택 컴포넌트 다운로드 — 데몬 API `/api/updates/download`
-// body: { components: ["module-minecraft", "core_daemon"] } (비어있으면 전체)
+// body: { components: ["module-minecraft", "saba-core"] } (비어있으면 전체)
 ipcMain.handle('updater:download', async (event, components) => {
     try {
         const body = { components: Array.isArray(components) ? components : [] };

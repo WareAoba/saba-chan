@@ -68,8 +68,6 @@ coverage/
 saba-chan-gui/coverage/
 discord_bot/coverage/
 
-*.bak
-
 # GitHub Actions
 .github/cache/
 

@@ -50,7 +50,7 @@ pub struct ComponentInfo {
     /// 선택: 설치 디렉터리 (install_root 기준 상대경로)
     pub install_dir: Option<String>,
     /// 버전 의존성: 이 컴포넌트가 요구하는 다른 컴포넌트의 최소 버전
-    /// 예: { "core_daemon": ">=0.3.0" } — GUI 0.3.0은 CoreDaemon 0.3.0 이상 필요
+    /// 예: { "saba-core": ">=0.3.0" } — GUI 0.3.0은 CoreDaemon 0.3.0 이상 필요
     #[serde(default)]
     pub requires: Option<HashMap<String, String>>,
 }
@@ -377,9 +377,9 @@ mod tests {
         let json = r#"{
             "release_version": "0.2.0",
             "components": {
-                "core_daemon": {
+                "saba-core": {
                     "version": "0.2.0",
-                    "asset": "core_daemon-windows-x64.zip",
+                    "asset": "saba-core-windows-x64.zip",
                     "sha256": "abc123",
                     "install_dir": "."
                 },
@@ -405,11 +405,11 @@ mod tests {
         assert_eq!(manifest.release_version, "0.2.0");
         assert_eq!(manifest.components.len(), 4);
         assert_eq!(
-            manifest.components["core_daemon"].asset.as_deref(),
-            Some("core_daemon-windows-x64.zip")
+            manifest.components["saba-core"].asset.as_deref(),
+            Some("saba-core-windows-x64.zip")
         );
         assert_eq!(
-            manifest.components["core_daemon"].install_dir.as_deref(),
+            manifest.components["saba-core"].install_dir.as_deref(),
             Some(".")
         );
         // gui: asset 없음 — 이번 릴리스에 바이너리 미포함
@@ -427,7 +427,7 @@ mod tests {
         let json = r#"{
             "release_version": "0.5.0",
             "components": {
-                "core_daemon": {
+                "saba-core": {
                     "version": "0.4.0",
                     "asset": null,
                     "sha256": null,
@@ -445,9 +445,9 @@ mod tests {
         let manifest: ReleaseManifest = serde_json::from_str(json).unwrap();
         assert_eq!(manifest.release_version, "0.5.0");
 
-        // core_daemon: 버전 정보는 있지만 에셋은 없음
-        assert_eq!(manifest.components["core_daemon"].version, "0.4.0");
-        assert_eq!(manifest.components["core_daemon"].asset, None);
+        // saba-core: 버전 정보는 있지만 에셋은 없음
+        assert_eq!(manifest.components["saba-core"].version, "0.4.0");
+        assert_eq!(manifest.components["saba-core"].asset, None);
 
         // gui: 에셋 포함
         assert_eq!(manifest.components["gui"].version, "0.5.0");
@@ -463,7 +463,7 @@ mod tests {
             latest_version: "0.4.0".to_string(),
             source_release_tag: "v0.4.0".to_string(),
             download_url: "https://example.com/daemon.zip".to_string(),
-            asset_name: "core_daemon-windows-x64.zip".to_string(),
+            asset_name: "saba-core-windows-x64.zip".to_string(),
             install_dir: Some(".".to_string()),
             sha256: None,
             requires: None,
@@ -473,6 +473,6 @@ mod tests {
         let deserialized: ResolvedComponent = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.latest_version, "0.4.0");
         assert_eq!(deserialized.source_release_tag, "v0.4.0");
-        assert_eq!(deserialized.asset_name, "core_daemon-windows-x64.zip");
+        assert_eq!(deserialized.asset_name, "saba-core-windows-x64.zip");
     }
 }

@@ -47,7 +47,7 @@ function UpdatePanel({ onBack, isExiting, devMode }) {
             update_available: !!c.update_available,
             downloaded: !!c.downloaded,
             installed: !!c.installed,
-            needsUpdater: key === 'gui' || key === 'core_daemon',
+            needsUpdater: key === 'gui' || key === 'saba-core',
         };
     });
 
@@ -242,7 +242,7 @@ function UpdatePanel({ onBack, isExiting, devMode }) {
         setMessage(null);
 
         const allKeys = updatable.map(c => c.key);
-        const updaterTargets = ['gui', 'core_daemon'];
+        const updaterTargets = ['gui', 'saba-core'];
         const daemonKeys = allKeys.filter(k => !updaterTargets.includes(k));
         const updaterKeys = allKeys.filter(k => updaterTargets.includes(k));
         const hasDiscordBot = allKeys.includes('discord_bot');
@@ -338,7 +338,7 @@ function UpdatePanel({ onBack, isExiting, devMode }) {
         const updatable = components.filter(c => c.update_available);
         if (updatable.length === 0) return;
 
-        const hasNeedsUpdater = updatable.some(c => c.key === 'gui' || c.key === 'core_daemon');
+        const hasNeedsUpdater = updatable.some(c => c.key === 'gui' || c.key === 'saba-core');
         if (hasNeedsUpdater) {
             setPendingRestartAction(() => () => executeUpdateAll());
             setConfirmRestart(true);

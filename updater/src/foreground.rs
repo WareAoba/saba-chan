@@ -203,6 +203,31 @@ impl ForegroundApplier {
 
         let mut mgr = self.manager.write().await;
 
+        // 프로세스 종료 대기
+        self.update_progress(ApplyProgress {
+            phase: ApplyPhase::WaitingForProcesses,
+            current_component: None,
+            total: 0,
+            done: 0,
+            message: "실행 중인 프로세스 종료 대기 중...".to_string(),
+        }).await;
+
+        // GUI/CLI가 아직 실행 중이면 최대 15초 대기
+        if ProcessChecker::is_gui_running() {
+            tracing::info!("[Apply] Waiting for GUI to exit...");
+            ProcessChecker::wait_for_exit(
+                if cfg!(target_os = "windows") { "saba-chan-gui.exe" } else { "saba-chan-gui" },
+                15
+            ).await;
+        }
+        if ProcessChecker::is_cli_running() {
+            tracing::info!("[Apply] Waiting for CLI to exit...");
+            ProcessChecker::wait_for_exit(
+                if cfg!(target_os = "windows") { "saba-chan-cli.exe" } else { "saba-chan-cli" },
+                15
+            ).await;
+        }
+
         // 적용 실행
         self.update_progress(ApplyProgress {
             phase: ApplyPhase::Applying,

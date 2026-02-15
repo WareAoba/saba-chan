@@ -411,7 +411,7 @@ fn test_scheduler_checks_per_day() {
 #[test]
 fn test_manifest_parse() {
     let json = create_test_manifest("0.2.0", vec![
-        ("core_daemon", "0.2.0", "core-win-x64.zip", Some(".")),
+        ("saba-core", "0.2.0", "core-win-x64.zip", Some(".")),
         ("cli", "0.2.0", "cli-win-x64.zip", None),
         ("module-minecraft", "2.1.0", "mod-minecraft.zip", Some("modules/minecraft")),
     ]);
@@ -419,9 +419,9 @@ fn test_manifest_parse() {
     let manifest: ReleaseManifest = serde_json::from_str(&json).unwrap();
     assert_eq!(manifest.release_version, "0.2.0");
     assert_eq!(manifest.components.len(), 3);
-    assert_eq!(manifest.components["core_daemon"].version, "0.2.0");
-    assert_eq!(manifest.components["core_daemon"].asset, Some("core-win-x64.zip".to_string()));
-    assert_eq!(manifest.components["core_daemon"].install_dir, Some(".".into()));
+    assert_eq!(manifest.components["saba-core"].version, "0.2.0");
+    assert_eq!(manifest.components["saba-core"].asset, Some("core-win-x64.zip".to_string()));
+    assert_eq!(manifest.components["saba-core"].install_dir, Some(".".into()));
     assert!(manifest.components["cli"].install_dir.is_none());
     assert_eq!(manifest.components["module-minecraft"].install_dir, Some("modules/minecraft".into()));
 }
@@ -623,7 +623,7 @@ version = "1.0.0"
 
     // 3. manifest.json
     let manifest = create_test_manifest("0.2.0", vec![
-        ("core_daemon", "0.2.0", "core-daemon.zip", Some(".")),
+        ("saba-core", "0.2.0", "core-daemon.zip", Some(".")),
         ("module-minecraft", "2.1.0", "module-minecraft.zip", Some("modules/minecraft")),
     ]);
 
@@ -1250,7 +1250,7 @@ fn test_release_filtering_includes_prerelease_when_enabled() {
 #[test]
 fn test_daemon_update_script_content() {
     // 재시작 스크립트의 내용 패턴 검증 (실제 파일 생성 없이)
-    let exe_path = "C:\\saba-chan\\core_daemon.exe";
+    let exe_path = "C:\\saba-chan\\saba-core.exe";
     let staged_path = "C:\\saba-chan\\updates\\core.zip";
 
     let script = format!(

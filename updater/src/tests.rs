@@ -282,7 +282,7 @@ async fn test_background_worker() {
 
 #[test]
 fn test_component_manifest_key() {
-    assert_eq!(Component::CoreDaemon.manifest_key(), "core_daemon");
+    assert_eq!(Component::CoreDaemon.manifest_key(), "saba-core");
     assert_eq!(Component::Cli.manifest_key(), "cli");
     assert_eq!(Component::Gui.manifest_key(), "gui");
     assert_eq!(
@@ -292,7 +292,7 @@ fn test_component_manifest_key() {
     
     // 역방향 파싱
     assert_eq!(
-        Component::from_manifest_key("core_daemon"),
+        Component::from_manifest_key("saba-core"),
         Component::CoreDaemon
     );
     assert_eq!(
