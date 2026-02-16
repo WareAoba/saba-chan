@@ -117,7 +117,19 @@
     "save_aliases": "別名を保存",
     "reset_aliases": "リセット",
     "save_settings": "設定を保存",
-    "close": "閉じる"
+    "close": "閉じる",
+    "danger_zone": "危険ゾーン",
+    "reset_server_label": "サーバーリセット",
+    "reset_server_desc": "すべてのワールド、設定、ログ、その他のデータを削除します。サーバーJARとeula.txtのみ保持されます。この操作は元に戻せません。",
+    "reset_settings_label": "設定リセット",
+    "reset_settings_desc": "すべてのサーバー設定を初期値にリセットします。ワールド・セーブデータは保持されます。この操作は元に戻せません。",
+    "reset_button": "リセット",
+    "resetting": "リセット中...",
+    "reset_confirm_title": "サーバーリセット",
+    "reset_confirm": "サーバー '{{name}}' を完全にリセットしますか？\n\nすべてのワールド、設定、ログ、その他のデータが削除されます。\nサーバーJARとeula.txtのみ保持されます。\n\nこの操作は元に戻せません。",
+    "reset_success": "サーバー '{{name}}' がリセットされました（{{count}}個のアイテムを削除）",
+    "reset_failed": "リセット失敗: {{error}}",
+    "reset_error": "リセットエラー: {{error}}"
   },
   "discord_bot": {
     "token_missing_title": "トークンがありません",

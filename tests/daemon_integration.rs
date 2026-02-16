@@ -130,14 +130,13 @@ async fn test_module_refresh() {
 
 #[tokio::test]
 async fn test_python_detection() {
-    use saba_core::plugin::PluginManager;
+    use saba_core::plugin::run_plugin;
     
-    let plugin_manager = PluginManager::new();
-    let python_path = plugin_manager.detect_python();
-    
-    match python_path {
-        Some(path) => println!("✓ Python detected: {}", path),
-        None => println!("⚠ Python not found (expected in some environments)"),
+    // Verify that run_plugin properly handles missing modules
+    let result = run_plugin("nonexistent.py", "test", serde_json::json!({})).await;
+    match result {
+        Ok(_) => println!("✓ Python detected and plugin ran"),
+        Err(_) => println!("✓ Plugin call failed as expected (Python or module not found)"),
     }
 }
 

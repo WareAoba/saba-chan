@@ -1,7 +1,7 @@
 use thiserror::Error;
 
+// TODO: integrate with Supervisor — 각 서버 인스턴스의 상태를 이 StateMachine으로 관리
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum State {
     Stopped,
     Starting,
@@ -11,7 +11,6 @@ pub enum State {
 }
 
 #[derive(Error, Debug)]
-#[allow(dead_code)]
 pub enum TransitionError {
     #[error("invalid transition: {0:?} -> {1:?}")]
     InvalidTransition(State, State),
@@ -28,12 +27,10 @@ impl Default for StateMachine {
 }
 
 impl StateMachine {
-    #[allow(dead_code)]
     pub fn new() -> Self {
         Self::default()
     }
 
-    #[allow(dead_code)]
     pub fn can_transition(&self, to: &State) -> bool {
         matches!(
             (&self.state, to),
@@ -48,7 +45,6 @@ impl StateMachine {
         )
     }
 
-    #[allow(dead_code)]
     pub fn transition(&mut self, to: State) -> Result<(), TransitionError> {
         if self.can_transition(&to) {
             tracing::info!("State transition: {:?} -> {:?}", self.state, to);

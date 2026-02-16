@@ -3,7 +3,7 @@
 //! The core daemon can directly manage server processes with:
 //! - Real-time stdout/stderr capture and log buffering
 //! - stdin command injection
-//! - Log line parsing (Minecraft log level detection)
+//! - Configurable log level parsing via module log_pattern
 //! - Process lifecycle tracking with running state watch
 
 use std::collections::{HashMap, VecDeque};
@@ -14,9 +14,11 @@ use tokio::process::Command as TokioCommand;
 use tokio::sync::{broadcast, mpsc, Mutex, watch};
 use serde::{Serialize, Deserialize};
 use anyhow::Result;
+use regex::Regex;
 
-/// Maximum number of log lines to keep in the ring buffer
-const MAX_LOG_BUFFER: usize = 10_000;
+/// Default maximum number of log lines to keep in the ring buffer.
+/// Can be overridden via `log_buffer_size` in config/global.toml.
+const DEFAULT_LOG_BUFFER: usize = 10_000;
 
 // ─── Log Types ───────────────────────────────────────────────
 
@@ -59,13 +61,19 @@ pub enum LogLevel {
 struct LogBuffer {
     lines: VecDeque<LogLine>,
     next_id: u64,
+    max_size: usize,
 }
 
 impl LogBuffer {
     fn new() -> Self {
+        Self::with_capacity(DEFAULT_LOG_BUFFER)
+    }
+
+    fn with_capacity(max_size: usize) -> Self {
         Self {
-            lines: VecDeque::with_capacity(MAX_LOG_BUFFER),
+            lines: VecDeque::with_capacity(max_size),
             next_id: 0,
+            max_size,
         }
     }
 
@@ -80,7 +88,7 @@ impl LogBuffer {
         };
         self.next_id += 1;
 
-        if self.lines.len() >= MAX_LOG_BUFFER {
+        if self.lines.len() >= self.max_size {
             self.lines.pop_front();
         }
         self.lines.push_back(line.clone());
@@ -134,11 +142,15 @@ impl ManagedProcess {
     /// * `args` - Command-line arguments
     /// * `working_dir` - Working directory
     /// * `env_vars` - Extra environment variables
+    /// * `log_pattern` - Optional regex pattern for extracting log level from output lines.
+    ///                    The pattern should have a named capture group `level` matching
+    ///                    INFO, WARN, ERROR, DEBUG etc. If None, all lines default to Info.
     pub async fn spawn(
         program: &str,
         args: &[String],
         working_dir: &str,
         env_vars: Vec<(String, String)>,
+        log_pattern: Option<&str>,
     ) -> Result<Self> {
         let mut cmd = TokioCommand::new(program);
         cmd.args(args)
@@ -153,13 +165,7 @@ impl ManagedProcess {
         }
 
         // Windows: hide console window
-        #[cfg(target_os = "windows")]
-        {
-            #[allow(unused_imports)]
-            use std::os::windows::process::CommandExt;
-            const CREATE_NO_WINDOW: u32 = 0x08000000;
-            cmd.creation_flags(CREATE_NO_WINDOW);
-        }
+        crate::utils::apply_creation_flags(&mut cmd);
 
         let mut child = cmd.spawn()
             .map_err(|e| anyhow::anyhow!("Failed to spawn process '{}': {}", program, e))?;
@@ -175,6 +181,17 @@ impl ManagedProcess {
         let log_buffer = Arc::new(Mutex::new(LogBuffer::new()));
         let running_tx = Arc::new(running_tx);
 
+        // Compile log pattern regex (shared across stdout/stderr readers)
+        let log_regex = log_pattern.and_then(|pat| {
+            match Regex::new(pat) {
+                Ok(re) => Some(Arc::new(re)),
+                Err(e) => {
+                    tracing::warn!("Invalid log_pattern '{}': {}, falling back to default", pat, e);
+                    None
+                }
+            }
+        });
+
         // Take ownership of stdio handles
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
@@ -184,11 +201,12 @@ impl ManagedProcess {
         if let Some(stdout) = stdout {
             let buf = log_buffer.clone();
             let bc = log_tx.clone();
+            let re = log_regex.clone();
             tokio::spawn(async move {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    let level = parse_minecraft_log_level(&line);
+                    let level = parse_log_level(&line, re.as_deref());
                     let log_line = buf.lock().await.push(LogSource::Stdout, line, level);
                     let _ = bc.send(log_line);
                 }
@@ -199,11 +217,12 @@ impl ManagedProcess {
         if let Some(stderr) = stderr {
             let buf = log_buffer.clone();
             let bc = log_tx.clone();
+            let re = log_regex.clone();
             tokio::spawn(async move {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    let level = parse_minecraft_log_level(&line);
+                    let level = parse_log_level(&line, re.as_deref());
                     // stderr lines default to at least Warn
                     let effective = if level == LogLevel::Info { LogLevel::Warn } else { level };
                     let log_line = buf.lock().await.push(LogSource::Stderr, line, effective);
@@ -355,19 +374,29 @@ impl Default for ManagedProcessStore {
 
 // ─── Helpers ─────────────────────────────────────────────────
 
-/// Parse the log level from a Minecraft server log line.
+/// Parse the log level from a server log line using an optional regex pattern.
 ///
-/// Minecraft format: `[HH:MM:SS] [Thread/LEVEL]: message`
-fn parse_minecraft_log_level(line: &str) -> LogLevel {
-    if line.contains("/ERROR]") || line.contains("/FATAL]") {
-        LogLevel::Error
-    } else if line.contains("/WARN]") {
-        LogLevel::Warn
-    } else if line.contains("/DEBUG]") || line.contains("/TRACE]") {
-        LogLevel::Debug
-    } else {
-        LogLevel::Info
+/// If a pattern is provided, it should contain a named capture group `level`
+/// that matches level keywords (INFO, WARN, ERROR, DEBUG, etc.).
+/// If no pattern is provided, defaults to Info.
+///
+/// Example patterns:
+///   Minecraft: `/(?P<level>INFO|WARN|ERROR|DEBUG|FATAL)\]`
+///   Generic:   `(?P<level>INFO|WARN|ERROR|DEBUG|TRACE|FATAL)`
+fn parse_log_level(line: &str, pattern: Option<&Regex>) -> LogLevel {
+    if let Some(re) = pattern {
+        if let Some(caps) = re.captures(line) {
+            if let Some(level_match) = caps.name("level") {
+                return match level_match.as_str().to_uppercase().as_str() {
+                    "ERROR" | "FATAL" => LogLevel::Error,
+                    "WARN" | "WARNING" => LogLevel::Warn,
+                    "DEBUG" | "TRACE" => LogLevel::Debug,
+                    _ => LogLevel::Info,
+                };
+            }
+        }
     }
+    LogLevel::Info
 }
 
 fn current_timestamp() -> u64 {
@@ -401,37 +430,47 @@ mod tests {
     fn test_log_buffer_ring() {
         let mut buffer = LogBuffer::new();
         // Fill beyond capacity
-        for i in 0..(MAX_LOG_BUFFER + 100) {
+        for i in 0..(DEFAULT_LOG_BUFFER + 100) {
             buffer.push(LogSource::Stdout, format!("line {}", i), LogLevel::Info);
         }
-        assert_eq!(buffer.lines.len(), MAX_LOG_BUFFER);
+        assert_eq!(buffer.lines.len(), DEFAULT_LOG_BUFFER);
         // First line should have been evicted
         assert!(buffer.lines.front().unwrap().id > 0);
     }
 
     #[test]
-    fn test_parse_log_level() {
+    fn test_parse_log_level_with_pattern() {
+        // Minecraft-style log pattern
+        let mc_pattern = Regex::new(r"/(?P<level>INFO|WARN|ERROR|DEBUG|FATAL)\]").unwrap();
+        
         assert_eq!(
-            parse_minecraft_log_level("[12:00:00] [Server thread/INFO]: Done (5.123s)!"),
+            parse_log_level("[12:00:00] [Server thread/INFO]: Done (5.123s)!", Some(&mc_pattern)),
             LogLevel::Info
         );
         assert_eq!(
-            parse_minecraft_log_level("[12:00:00] [Server thread/WARN]: Can't keep up!"),
+            parse_log_level("[12:00:00] [Server thread/WARN]: Can't keep up!", Some(&mc_pattern)),
             LogLevel::Warn
         );
         assert_eq!(
-            parse_minecraft_log_level("[12:00:00] [Server thread/ERROR]: Encountered an unexpected exception"),
+            parse_log_level("[12:00:00] [Server thread/ERROR]: Encountered an unexpected exception", Some(&mc_pattern)),
             LogLevel::Error
         );
         assert_eq!(
-            parse_minecraft_log_level("[12:00:00] [Server thread/DEBUG]: Reloading ResourceManager"),
+            parse_log_level("[12:00:00] [Server thread/DEBUG]: Reloading ResourceManager", Some(&mc_pattern)),
             LogLevel::Debug
         );
-        // No pattern → default Info
+        // No match → default Info
         assert_eq!(
-            parse_minecraft_log_level("Some random output"),
+            parse_log_level("Some random output", Some(&mc_pattern)),
             LogLevel::Info
         );
+    }
+
+    #[test]
+    fn test_parse_log_level_without_pattern() {
+        // Without pattern, everything defaults to Info
+        assert_eq!(parse_log_level("[12:00:00] [Server thread/ERROR]: err", None), LogLevel::Info);
+        assert_eq!(parse_log_level("Some random output", None), LogLevel::Info);
     }
 
     #[tokio::test]

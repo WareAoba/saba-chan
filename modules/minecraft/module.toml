@@ -6,6 +6,7 @@ game_name = "Minecraft"
 display_name = "Minecraft"
 entry = "lifecycle.py"
 icon = "icon.png"
+log_pattern = '/(?P<level>INFO|WARN|ERROR|DEBUG|FATAL)\]'
 
 # 모듈 업데이트 설정 — 모듈은 별도 GitHub 레포지토리에서 관리됩니다
 [update]
@@ -60,10 +61,10 @@ group = "saba-chan"
 
 [[settings.fields]]
 name = "ram"
-type = "text"
+type = "number"
 label = "Memory (RAM)"
-description = "Maximum memory allocation (e.g. 2G, 4G, 8G)"
-default = "2G"
+description = "Maximum memory in GB (e.g. 4 = 4GB, 0.5 = 512MB)"
+default = 2
 group = "saba-chan"
 
 [[settings.fields]]
@@ -78,7 +79,7 @@ group = "saba-chan"
 name = "managed_start"
 type = "boolean"
 label = "Managed Start (Console)"
-description = "Start server in managed mode with stdin/stdout console. Disable to use simple process launch."
+description = "Start in managed mode with stdin/stdout console (RCON disabled). Disable for native mode (RCON auto-enabled)."
 default = true
 group = "saba-chan"
 
@@ -177,12 +178,6 @@ description = "Enable the GameSpy4 query protocol"
 default = false
 group = "advanced"
 
-[[settings.fields]]
-name = "enable_rcon"
-type = "boolean"
-label = "Enable RCON"
-description = "Enable remote console access"
-default = true
 
 [[settings.fields]]
 name = "enable_status"
@@ -838,3 +833,218 @@ pardon = { aliases = ["언밴", "해제"], description = "Unban a player" }
 op = { aliases = ["오피"], description = "Give operator permissions" }
 deop = { aliases = ["디옵"], description = "Remove operator permissions" }
 whitelist = { aliases = ["화이트리스트", "화리"], description = "Manage whitelist" }
+
+# ─── Console Syntax Highlighting ─────────────────────────
+# 콘솔 출력에 적용할 하이라이팅 규칙 (GUI에서 렌더링)
+# pattern: 정규식. (?P<hl>...) 캡처 그룹이 있으면 해당 부분만 색상 적용
+# color: CSS 색상값 또는 시맨틱 토큰
+# bold/italic: 스타일 옵션
+#
+# 규칙 적용 순서 = 선언 순서 (먼저 매치된 범위가 우선)
+
+[syntax_highlight]
+
+# ── 구조: 타임스탬프 + 스레드/레벨 ──────────────────────
+
+# 1. 타임스탬프 [HH:MM:SS]
+[[syntax_highlight.rules]]
+name = "timestamp"
+pattern = '^\[\d{2}:\d{2}:\d{2}\]'
+color = "timestamp"
+
+# 2. 스레드/레벨 — INFO (기본, 어둡게)
+[[syntax_highlight.rules]]
+name = "level_info"
+pattern = '\[(?P<hl>[^\]]+/INFO)\]'
+color = "dim"
+
+# 3. 스레드/레벨 — WARN
+[[syntax_highlight.rules]]
+name = "level_warn"
+pattern = '\[(?P<hl>[^\]]+/WARN)\]'
+color = "warn"
+bold = true
+
+# 4. 스레드/레벨 — ERROR / FATAL
+[[syntax_highlight.rules]]
+name = "level_error"
+pattern = '\[(?P<hl>[^\]]+/(ERROR|FATAL))\]'
+color = "error"
+bold = true
+
+# 5. 스레드/레벨 — DEBUG
+[[syntax_highlight.rules]]
+name = "level_debug"
+pattern = '\[(?P<hl>[^\]]+/DEBUG)\]'
+color = "debug"
+italic = true
+
+# ── 서버 이벤트: 시작/완료/종료 ──────────────────────────
+
+# 6. Done 메시지 (서버 준비 완료)
+[[syntax_highlight.rules]]
+name = "done_message"
+pattern = '(?P<hl>Done \([^)]+\)!.*)'
+color = "success"
+bold = true
+
+# 7. Starting minecraft server version X.Y.Z
+[[syntax_highlight.rules]]
+name = "server_version"
+pattern = '(?P<hl>Starting minecraft server version .+)'
+color = "info"
+bold = true
+
+# 8. Stopping the server / Stopping server
+[[syntax_highlight.rules]]
+name = "server_stopping"
+pattern = '(?P<hl>Stopping the server|Stopping server)'
+color = "warn"
+bold = true
+
+# ── 플레이어 ─────────────────────────────────────────────
+
+# 9. 채팅 <Player>
+[[syntax_highlight.rules]]
+name = "chat_name"
+pattern = '<(?P<hl>\w{3,16})>'
+color = "player"
+bold = true
+
+# 10. 접속 — "Player joined the game"
+[[syntax_highlight.rules]]
+name = "player_join"
+pattern = '(?P<hl>\w{3,16}) joined the game'
+color = "#a6e3a1"
+bold = true
+
+# 11. 퇴장 — "Player left the game"
+[[syntax_highlight.rules]]
+name = "player_leave"
+pattern = '(?P<hl>\w{3,16}) left the game'
+color = "#f9e2af"
+
+# 12. 접속 로그 — "Player[/IP:port] logged in"
+[[syntax_highlight.rules]]
+name = "player_login"
+pattern = '(?P<hl>\w{3,16})\[/'
+color = "player"
+bold = true
+
+# 13. 사망 메시지 — "Player was slain by ...", "Player drowned", etc.
+[[syntax_highlight.rules]]
+name = "death_message"
+pattern = ': (?P<hl>\w{3,16} (was (slain|shot|blown|pummeled|squished|killed|stung|fireballed|obliterated|skewered|impaled)|drowned|burned|suffocated|fell|hit the ground|went off|walked into|tried to swim|experienced kinetic|starved|withered|died|was pricked|was roasted).*)'
+color = "#f38ba8"
+
+# ── 네트워크·식별자 ──────────────────────────────────────
+
+# 14. UUID
+[[syntax_highlight.rules]]
+name = "uuid"
+pattern = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+color = "uuid"
+
+# 15. IP 주소(:포트)
+[[syntax_highlight.rules]]
+name = "ip_address"
+pattern = '/(?P<hl>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?)'
+color = "ip"
+
+# 16. 좌표 (x, y, z) — 소수점 포함
+[[syntax_highlight.rules]]
+name = "coordinates"
+pattern = '(?P<hl>-?\d+\.?\d*, -?\d+\.?\d*, -?\d+\.?\d*)'
+color = "number"
+
+# ── 리소스·네임스페이스 ──────────────────────────────────
+
+# 17. minecraft:xxx 리소스 식별자
+[[syntax_highlight.rules]]
+name = "resource_id"
+pattern = '(?P<hl>minecraft:\w+(/\w+)*)'
+color = "keyword"
+
+# 18. 어드밴스먼트 — "has made the advancement [Name]"
+[[syntax_highlight.rules]]
+name = "advancement"
+pattern = 'the advancement \[(?P<hl>[A-Z][A-Za-z !]+)\]'
+color = "success"
+
+# ── 퍼센트·숫자 ──────────────────────────────────────────
+
+# 19. 퍼센트 표시 (Preparing spawn area: 52%)
+[[syntax_highlight.rules]]
+name = "percentage"
+pattern = '(?P<hl>\d+%)'
+color = "number"
+bold = true
+
+# ── Java 스택트레이스 ────────────────────────────────────
+
+# 20. 스택트레이스 "at" 라인
+[[syntax_highlight.rules]]
+name = "stacktrace_at"
+pattern = '^\s+at .*'
+color = "#585b70"
+
+# 21. "Caused by:" 라인
+[[syntax_highlight.rules]]
+name = "stacktrace_caused"
+pattern = '^Caused by:.*'
+color = "error"
+
+# 22. Exception 클래스명
+[[syntax_highlight.rules]]
+name = "exception_class"
+pattern = '(?P<hl>[a-z]+(\.[a-z]+)*\.[A-Z]\w*Exception)'
+color = "error"
+bold = true
+
+# ── 경고·에러 특수 메시지 ────────────────────────────────
+
+# 23. Can't keep up!
+[[syntax_highlight.rules]]
+name = "cant_keep_up"
+pattern = "(?P<hl>Can't keep up!.*)"
+color = "warn"
+bold = true
+
+# 24. EULA 동의 필요
+[[syntax_highlight.rules]]
+name = "eula_warning"
+pattern = '(?P<hl>You need to agree to the EULA.*)'
+color = "error"
+bold = true
+
+# 25. [Server] 시스템 메시지
+[[syntax_highlight.rules]]
+name = "server_broadcast"
+pattern = '\[(?P<hl>Server)\]'
+color = "command"
+
+# ── 명령어·셀렉터 (인게임 /command 구문 색상 참고) ────────
+
+# 26. 슬래시 명령어 — /tp, /execute, /say, /give 등
+#     Minecraft 인게임에서 연한 회색/흰색으로 표시되는 명령어 본체
+#     콘솔에서는 command 토큰(핑크)으로 강조
+[[syntax_highlight.rules]]
+name = "slash_command"
+pattern = '(?P<hl>/[a-z]{2,}\w*)'
+color = "command"
+bold = true
+
+# 27. 엔티티 셀렉터 — @p, @a, @e, @r, @s (+ 선택적 [조건])
+#     인게임에서 노란색으로 표시되는 엔티티 셀렉터
+[[syntax_highlight.rules]]
+name = "entity_selector"
+pattern = '(?P<hl>@[paers](\[[^\]]*\])?)'
+color = "selector"
+bold = true
+
+# 28. 문자열 리터럴 — "quoted text"
+#     인게임에서 연두색 계열로 표시되는 문자열
+[[syntax_highlight.rules]]
+name = "string_literal"
+pattern = '(?P<hl>"[^"]*")'
+color = "string"

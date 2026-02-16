@@ -117,7 +117,19 @@
     "save_aliases": "Guardar Alias",
     "reset_aliases": "Restablecer",
     "save_settings": "Guardar Configuración",
-    "close": "Cerrar"
+    "close": "Cerrar",
+    "danger_zone": "Zona de Peligro",
+    "reset_server_label": "Restablecer Servidor",
+    "reset_server_desc": "Eliminar todos los mundos, configuraciones, registros y otros datos. Solo se conservarán el JAR del servidor y eula.txt. Esto no se puede deshacer.",
+    "reset_settings_label": "Restablecer Configuración",
+    "reset_settings_desc": "Restablecer todas las configuraciones del servidor a los valores de fábrica. Los datos del mundo y guardados se preservarán. Esto no se puede deshacer.",
+    "reset_button": "Restablecer",
+    "resetting": "Restableciendo...",
+    "reset_confirm_title": "Restablecer Servidor",
+    "reset_confirm": "¿Restablecer completamente el servidor '{{name}}'?\n\nSe eliminarán todos los mundos, configuraciones, registros y otros datos.\nSolo se conservarán el JAR del servidor y eula.txt.\n\nEsta acción no se puede deshacer.",
+    "reset_success": "El servidor '{{name}}' ha sido restablecido ({{count}} elementos eliminados)",
+    "reset_failed": "Error al restablecer: {{error}}",
+    "reset_error": "Error de restablecimiento: {{error}}"
   },
   "discord_bot": {
     "token_missing_title": "Token Faltante",

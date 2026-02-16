@@ -118,6 +118,7 @@
     "properties_write_failed": "写入server.properties失败",
     "eula_write_failed": "写入eula.txt失败",
     "working_dir_error": "无法创建工作目录：{{path}}",
+    "server_reset_partial": "部分项目无法删除：{{errors}}",
     "detect": {
       "java_not_found": "Java未安装或在PATH中未找到",
       "java_version_too_old": "Java {{current}} 版本过旧。Minecraft需要Java {{required}}或更新版本。",
@@ -161,8 +162,14 @@
     "graceful_stop": "服务器已正常停止（PID {{pid}}）",
     "graceful_stop_timeout": "正常关闭超时，正在执行强制停止",
     "properties_updated": "server.properties更新成功",
+    "properties_reset": "server.properties已重置为默认值",
     "properties_using_defaults": "server.properties不存在 ─ 显示默认值",
-    "eula_accepted": "Minecraft EULA已成功接受"
+    "eula_accepted": "Minecraft EULA已成功接受",
+    "server_reset_complete": "服务器重置完成",
+    "server_reset_deleted": "已删除 {{count}} 个项目",
+    "rcon_disabled_managed": "RCON 已禁用 — 管理模式使用 stdin 控制服务器",
+    "rcon_enabled_native": "RCON 已启用 — 非管理模式下 RCON 是唯一的控制方式",
+    "rcon_password_generated": "RCON 密码已自动生成（未设置密码）"
   },
   "rcon": {
     "connecting": "正在连接 {{host}}:{{port}}...",

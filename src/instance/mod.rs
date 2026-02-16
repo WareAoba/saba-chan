@@ -118,7 +118,16 @@ impl InstanceStore {
     /// 파일에 인스턴스 저장
     pub fn save(&self) -> Result<()> {
         let content = serde_json::to_string_pretty(&self.instances)?;
-        fs::write(&self.file_path, content)?;
+        fs::write(&self.file_path, &content)?;
+
+        // Restrict file permissions on Unix (contains sensitive data like RCON passwords)
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::Permissions::from_mode(0o600);
+            std::fs::set_permissions(&self.file_path, perms)?;
+        }
+
         tracing::info!("Saved {} instances", self.instances.len());
         Ok(())
     }

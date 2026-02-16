@@ -79,6 +79,15 @@
     "daemon_rcon_response": "Resposta RCON do daemon: {{result}}",
     "broadcast_message": "Mensagem de transmissão: {{message}}",
     "save_triggered": "Salvamento do servidor acionado",
-    "shutdown_initiated": "Desligamento do servidor iniciado (contagem regressiva de {{seconds}}s)"
+    "shutdown_initiated": "Desligamento do servidor iniciado (contagem regressiva de {{seconds}}s)",
+    "rest_api_forced_on": "[Pol\u00edtica] REST API for\u00e7ada a ativar",
+    "rcon_forced_off": "[Pol\u00edtica] RCON for\u00e7ado a desativar (obsoleto)",
+    "admin_password_generated": "[Pol\u00edtica] AdminPassword gerada automaticamente para autentica\u00e7\u00e3o REST API"
+  },
+  "reset": {
+    "no_path": "Não foi possível determinar o diretório do servidor. Defina working_dir ou server_executable.",
+    "not_found": "Arquivo de configuração não encontrado. Inicie o servidor uma vez para gerá-lo.",
+    "settings_success": "Todas as configurações do servidor foram redefinidas para os padrões de fábrica. Os dados do mundo foram preservados.",
+    "settings_failed": "Falha ao gravar as configurações padrão no arquivo de configuração."
   }
 }

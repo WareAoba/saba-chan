@@ -49,6 +49,20 @@ const mockApi = {
     moduleList: vi.fn(),
     getServers: vi.fn(),
     getModules: vi.fn(),
+    onConsolePopoutOpened: vi.fn(),
+    onConsolePopoutClosed: vi.fn(),
+    offConsolePopoutOpened: vi.fn(),
+    offConsolePopoutClosed: vi.fn(),
+    onStatusUpdate: vi.fn(),
+    daemonStatus: vi.fn().mockResolvedValue({ running: true }),
+    onCloseRequest: vi.fn(),
+    offCloseRequest: vi.fn(),
+    moduleGetLocales: vi.fn().mockResolvedValue({}),
+    moduleGetMetadata: vi.fn().mockResolvedValue({}),
+    onUpdatesAvailable: vi.fn(),
+    onUpdateCompleted: vi.fn(),
+    onDiscordBotRelaunch: vi.fn(),
+    offDiscordBotRelaunch: vi.fn(),
 };
 
 const mockShowToast = vi.fn();
@@ -81,6 +95,9 @@ beforeEach(() => {
     
     mockApi.botConfigSave.mockResolvedValue({ success: true });
     mockApi.discordBotStatus.mockResolvedValue('stopped');
+    mockApi.daemonStatus.mockResolvedValue({ running: true });
+    mockApi.moduleGetLocales.mockResolvedValue({});
+    mockApi.moduleGetMetadata.mockResolvedValue({});
     mockApi.serverList.mockResolvedValue({ servers: [] });
     mockApi.moduleList.mockResolvedValue({ modules: [] });
     mockApi.getServers.mockResolvedValue([]);
@@ -327,6 +344,8 @@ describe('설정 저장 테스트', () => {
 
 describe('로딩 화면 테스트', () => {
     it('초기 로딩 화면이 표시되어야 함', async () => {
+        // HMR 감지를 비활성화하여 로딩 화면이 보이도록 함
+        mockApi.daemonStatus = vi.fn().mockRejectedValue(new Error('not running'));
         // onStatusUpdate 이벤트 모킹
         mockApi.onStatusUpdate = vi.fn((callback) => {
             // 이벤트 리스너 등록만 확인
@@ -415,8 +434,6 @@ describe('safeShowToast 안전 호출 테스트', () => {
     });
 
     it('window.showToast가 정의되어 있으면 정상 호출되어야 함', async () => {
-        global.window.showToast = mockShowToast;
-
         mockApi.discordBotStart.mockResolvedValue({ success: true });
         mockApi.discordBotStatus.mockResolvedValue('stopped');
         mockApi.settingsLoad.mockResolvedValue({
@@ -435,15 +452,16 @@ describe('safeShowToast 안전 호출 테스트', () => {
             expect(mockApi.discordBotStart).toHaveBeenCalled();
         }, { timeout: 3000 });
 
-        // showToast가 호출되었는지 확인
+        // Toast 컴포넌트가 window.showToast를 덮어쓰므로, 실제 렌더된 토스트 확인
         await waitFor(() => {
-            expect(mockShowToast).toHaveBeenCalled();
+            const toastContainer = document.querySelector('.toast-container');
+            expect(toastContainer).toBeTruthy();
+            const toasts = toastContainer.querySelectorAll('.toast');
+            expect(toasts.length).toBeGreaterThan(0);
         }, { timeout: 3000 });
     });
 
     it('Discord 봇 시작 실패 시 에러 토스트가 표시되어야 함', async () => {
-        global.window.showToast = mockShowToast;
-
         mockApi.discordBotStart.mockResolvedValue({ error: '토큰이 유효하지 않습니다' });
         mockApi.discordBotStatus.mockResolvedValue('stopped');
         mockApi.settingsLoad.mockResolvedValue({
@@ -461,15 +479,11 @@ describe('safeShowToast 안전 호출 테스트', () => {
             expect(mockApi.discordBotStart).toHaveBeenCalled();
         }, { timeout: 3000 });
 
-        // 에러 토스트 호출 확인
+        // 에러 토스트가 DOM에 렌더되었는지 확인
         await waitFor(() => {
-            expect(mockShowToast).toHaveBeenCalled();
-
-            const lastCall = mockShowToast.mock.calls[mockShowToast.mock.calls.length - 1];
-            expect(typeof lastCall[0]).toBe('string');
-            expect(lastCall[0].length).toBeGreaterThan(0);
-            expect(lastCall[1]).toBe('error');
-            expect(lastCall[2]).toBe(4000);
+            const errorToast = document.querySelector('.toast.toast-error');
+            expect(errorToast).toBeTruthy();
+            expect(errorToast.textContent.length).toBeGreaterThan(0);
         }, { timeout: 3000 });
     });
 });

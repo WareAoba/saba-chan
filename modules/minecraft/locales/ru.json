@@ -118,6 +118,7 @@
     "properties_write_failed": "Не удалось записать server.properties",
     "eula_write_failed": "Не удалось записать eula.txt",
     "working_dir_error": "Невозможно создать рабочий каталог: {{path}}",
+    "server_reset_partial": "Некоторые элементы не удалось удалить: {{errors}}",
     "detect": {
       "java_not_found": "Java не установлена или не найдена в PATH",
       "java_version_too_old": "Java {{current}} устарела. Minecraft требует Java {{required}} или новее.",
@@ -161,8 +162,14 @@
     "graceful_stop": "Сервер корректно остановлен (PID {{pid}})",
     "graceful_stop_timeout": "Время ожидания корректной остановки истекло, переход к принудительной остановке",
     "properties_updated": "server.properties успешно обновлен",
+    "properties_reset": "server.properties сброшен к значениям по умолчанию",
     "properties_using_defaults": "server.properties не существует — отображаются значения по умолчанию",
-    "eula_accepted": "EULA Minecraft успешно принято"
+    "eula_accepted": "EULA Minecraft успешно принято",
+    "server_reset_complete": "Сброс сервера завершён",
+    "server_reset_deleted": "{{count}} элементов удалено",
+    "rcon_disabled_managed": "RCON отключён — управляемый режим использует stdin для контроля сервера",
+    "rcon_enabled_native": "RCON включён — необходим для управления сервером в неуправляемом режиме",
+    "rcon_password_generated": "Пароль RCON сгенерирован автоматически (пароль не был задан)"
   },
   "rcon": {
     "connecting": "Подключение к {{host}}:{{port}}...",

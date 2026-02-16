@@ -123,7 +123,28 @@
     "save_aliases": "Save Aliases",
     "reset_aliases": "Reset",
     "save_settings": "Save Settings",
-    "close": "Close"
+    "close": "Close",
+    "server_version": "Server Version",
+    "loading_versions": "Loading versions...",
+    "select_version": "Select version",
+    "version_description_install": "Select a version and click Install to download the server JAR.",
+    "install_version_button": "Install",
+    "install_version_tooltip": "Download and install this version",
+    "install_version_confirm_title": "Install Server Version",
+    "install_version_confirm": "Install Minecraft {{version}} for server '{{name}}'?\n\nThis will download and replace the server JAR file.",
+    "installing": "Installing...",
+    "danger_zone": "Danger Zone",
+    "reset_server_label": "Reset Server",
+    "reset_server_desc": "Delete all worlds, settings, logs, and other data. Only the server JAR and eula.txt will be kept. This cannot be undone.",
+    "reset_settings_label": "Reset Settings",
+    "reset_settings_desc": "Reset all server settings to factory defaults. World and save data will be preserved. This cannot be undone.",
+    "reset_button": "Reset",
+    "resetting": "Resetting...",
+    "reset_confirm_title": "Reset Server",
+    "reset_confirm": "Completely reset server '{{name}}'?\n\nThis will delete all worlds, settings, logs, and other data.\nOnly the server JAR and eula.txt will be kept.\n\nThis action cannot be undone.",
+    "reset_success": "Server '{{name}}' has been reset ({{count}} items deleted)",
+    "reset_failed": "Reset failed: {{error}}",
+    "reset_error": "Reset error: {{error}}"
   },
   "discord_bot": {
     "token_missing_title": "Token Missing",
@@ -254,7 +275,8 @@
   "console": {
     "waiting": "Waiting for server output...",
     "input_placeholder": "Enter command...",
-    "send": "Send"
+    "send": "Send",
+    "popout": "Pop out to separate window"
   },
   "discord_modal": {
     "title": "Discord Bot",

@@ -117,7 +117,19 @@
     "save_aliases": "Aliase speichern",
     "reset_aliases": "Zurücksetzen",
     "save_settings": "Einstellungen speichern",
-    "close": "Schließen"
+    "close": "Schließen",
+    "danger_zone": "Gefahrenzone",
+    "reset_server_label": "Server zurücksetzen",
+    "reset_server_desc": "Alle Welten, Einstellungen, Logs und andere Daten löschen. Nur die Server-JAR und eula.txt werden beibehalten. Dies kann nicht rückgängig gemacht werden.",
+    "reset_settings_label": "Einstellungen zurücksetzen",
+    "reset_settings_desc": "Alle Servereinstellungen auf Werkseinstellungen zurücksetzen. Welt- und Speicherdaten bleiben erhalten. Dies kann nicht rückgängig gemacht werden.",
+    "reset_button": "Zurücksetzen",
+    "resetting": "Zurücksetzen...",
+    "reset_confirm_title": "Server zurücksetzen",
+    "reset_confirm": "Server '{{name}}' vollständig zurücksetzen?\n\nAlle Welten, Einstellungen, Logs und andere Daten werden gelöscht.\nNur die Server-JAR und eula.txt werden beibehalten.\n\nDiese Aktion kann nicht rückgängig gemacht werden.",
+    "reset_success": "Server '{{name}}' wurde zurückgesetzt ({{count}} Elemente gelöscht)",
+    "reset_failed": "Zurücksetzen fehlgeschlagen: {{error}}",
+    "reset_error": "Zurücksetzen-Fehler: {{error}}"
   },
   "discord_bot": {
     "token_missing_title": "Token fehlt",

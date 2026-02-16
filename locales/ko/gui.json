@@ -117,7 +117,28 @@
     "save_aliases": "별명 저장",
     "reset_aliases": "초기화",
     "save_settings": "설정 저장",
-    "close": "닫기"
+    "close": "닫기",
+    "server_version": "서버 버전",
+    "loading_versions": "버전 목록 로딩 중...",
+    "select_version": "버전 선택",
+    "version_description_install": "버전을 선택하고 설치 버튼을 눌러 서버 JAR을 다운로드하세요.",
+    "install_version_button": "설치",
+    "install_version_tooltip": "이 버전을 다운로드하여 설치",
+    "install_version_confirm_title": "서버 버전 설치",
+    "install_version_confirm": "'{{name}}' 서버에 Minecraft {{version}}을(를) 설치하시겠습니까?\n\n서버 JAR 파일이 다운로드됩니다.",
+    "installing": "설치 중...",
+    "danger_zone": "위험 영역",
+    "reset_server_label": "서버 초기화",
+    "reset_server_desc": "모든 월드, 설정, 로그 및 기타 데이터를 삭제합니다. 서버 JAR과 eula.txt만 유지됩니다. 이 작업은 되돌릴 수 없습니다.",
+    "reset_settings_label": "설정 초기화",
+    "reset_settings_desc": "모든 서버 설정을 초기값으로 복원합니다. 월드 및 세이브 데이터는 보존됩니다. 이 작업은 되돌릴 수 없습니다.",
+    "reset_button": "초기화",
+    "resetting": "초기화 중...",
+    "reset_confirm_title": "서버 초기화",
+    "reset_confirm": "'{{name}}' 서버를 완전히 초기화하시겠습니까?\n\n모든 월드, 설정, 로그 및 기타 데이터가 삭제됩니다.\n서버 JAR과 eula.txt만 유지됩니다.\n\n이 작업은 되돌릴 수 없습니다.",
+    "reset_success": "'{{name}}' 서버가 초기화되었습니다 ({{count}}개 항목 삭제됨)",
+    "reset_failed": "초기화 실패: {{error}}",
+    "reset_error": "초기화 오류: {{error}}"
   },
   "discord_bot": {
     "token_missing_title": "토큰 없음",
@@ -248,7 +269,8 @@
   "console": {
     "waiting": "서버 출력을 기다리는 중...",
     "input_placeholder": "명령어를 입력하세요...",
-    "send": "전송"
+    "send": "전송",
+    "popout": "별도 창으로 분리"
   },
   "discord_modal": {
     "title": "Discord 봇",

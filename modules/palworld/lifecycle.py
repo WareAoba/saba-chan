@@ -18,6 +18,11 @@ import urllib.error
 import urllib.parse
 from i18n import I18n
 
+# Shared RCON client
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from _shared.rcon import RconClient
+from _shared.ue4_ini import parse_option_settings, write_option_settings
+
 # Initialize i18n
 MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 i18n = I18n(MODULE_DIR)
@@ -26,160 +31,37 @@ i18n = I18n(MODULE_DIR)
 DAEMON_API_URL = os.environ.get('DAEMON_API_URL', 'http://127.0.0.1:57474')
 
 class PalworldRconClient:
-    """Palworld RCON client implementing the correct protocol"""
-    
-    # Packet type constants
-    AUTH = 3
-    EXEC_COMMAND = 2
-    COMMAND_RESPONSE = 0
+    """Palworld RCON client — delegates to shared RconClient."""
     
     def __init__(self, host='127.0.0.1', port=25575, password=''):
-        self.host = host
-        self.port = int(port)
-        self.password = password
-        self.socket = None
-        self.request_id = 0
-        self.authenticated = False
+        self._client = RconClient(host, int(port), password)
     
     def connect(self):
         """Connect to RCON server"""
-        try:
-            print(f"[RCON] {i18n.t('rcon.connecting', host=self.host, port=self.port)}", file=sys.stderr)
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.socket.settimeout(5)
-            self.socket.connect((self.host, self.port))
-            print(f"[RCON] {i18n.t('rcon.connected')}", file=sys.stderr)
-            
-            # Authenticate
-            if self.password:
-                print(f"[RCON] {i18n.t('rcon.authenticating')}...", file=sys.stderr)
-                if not self._authenticate(self.password):
-                    print(f"[RCON] {i18n.t('rcon.authentication_failed')}", file=sys.stderr)
-                    return False
-                print(f"[RCON] {i18n.t('rcon.authenticated')}", file=sys.stderr)
-            
-            return True
-        except Exception as e:
-            print(f"[RCON] {i18n.t('rcon.connection_failed', error=str(e))}", file=sys.stderr)
-            return False
+        print(f"[RCON] {i18n.t('rcon.connecting', host=self._client.host, port=self._client.port)}", file=sys.stderr)
+        result = self._client.connect()
+        if result:
+            print(f"[RCON] {i18n.t('rcon.authenticated')}", file=sys.stderr)
+        else:
+            print(f"[RCON] {i18n.t('rcon.connection_failed', error='see above')}", file=sys.stderr)
+        return result
     
     def disconnect(self):
         """Disconnect from RCON server"""
-        if self.socket:
-            try:
-                self.socket.close()
-            except:
-                pass
+        self._client.disconnect()
     
     def send_command(self, command):
         """Send a command to the server"""
         try:
-            if not self.socket:
+            if not self._client.socket:
                 if not self.connect():
                     return None
-            
             print(f"[RCON] {i18n.t('rcon.sending_command', command=command)}", file=sys.stderr)
-            response = self._send_rcon_command(command)
+            response = self._client.command(command)
             print(f"[RCON] {i18n.t('rcon.response_received', response=response[:100] if response else 'None')}", file=sys.stderr)
             return response
         except Exception as e:
             print(f"[RCON] {i18n.t('rcon.command_failed', error=str(e))}", file=sys.stderr)
-            return None
-    
-    def _authenticate(self, password):
-        """Authenticate with RCON server"""
-        try:
-            packet = self._make_packet(self.AUTH, password.encode('utf-8'))
-            self.socket.sendall(packet)
-            
-            # Read response
-            response_packet = self._read_packet()
-            if response_packet is None:
-                return False
-            
-            packet_id, packet_type, payload = response_packet
-            if packet_id == -1:
-                print(f"[RCON] {i18n.t('rcon.invalid_password')}", file=sys.stderr)
-                return False
-            
-            self.authenticated = True
-            return True
-        except Exception as e:
-            print(f"[RCON] ❌ Auth error: {e}", file=sys.stderr)
-            return False
-    
-    def _send_rcon_command(self, command):
-        """Send RCON command and receive response"""
-        try:
-            if not self.authenticated:
-                return None
-            
-            packet = self._make_packet(self.EXEC_COMMAND, command.encode('utf-8'))
-            self.socket.sendall(packet)
-            
-            # Read response
-            response_packet = self._read_packet()
-            if response_packet is None:
-                return None
-            
-            packet_id, packet_type, payload = response_packet
-            if packet_type != self.COMMAND_RESPONSE:
-                print(f"[RCON] ❌ Unexpected response type: {packet_type}", file=sys.stderr)
-                return None
-            
-            return payload.decode('utf-8', errors='ignore')
-        except Exception as e:
-            print(f"[RCON] ❌ Command error: {e}", file=sys.stderr)
-            return None
-    
-    def _make_packet(self, packet_type, payload):
-        """Create RCON packet"""
-        self.request_id = random.randint(0, 2147483647)
-        
-        # Build packet: [id (4B)] [type (4B)] [payload] [terminator (2B)]
-        packet_data = struct.pack('<i', self.request_id)
-        packet_data += struct.pack('<i', packet_type)
-        packet_data += payload
-        packet_data += b'\x00\x00'
-        
-        # Add size prefix
-        size = len(packet_data)
-        full_packet = struct.pack('<i', size) + packet_data
-        
-        return full_packet
-    
-    def _read_packet(self):
-        """Read RCON packet response"""
-        try:
-            # Read size (4 bytes)
-            size_data = self.socket.recv(4)
-            if not size_data:
-                return None
-            
-            size = struct.unpack('<i', size_data)[0]
-            
-            # Read packet data
-            packet_data = b''
-            while len(packet_data) < size:
-                chunk = self.socket.recv(size - len(packet_data))
-                if not chunk:
-                    break
-                packet_data += chunk
-            
-            if len(packet_data) < 8:
-                return None
-            
-            # Parse packet
-            packet_id = struct.unpack('<i', packet_data[:4])[0]
-            packet_type = struct.unpack('<i', packet_data[4:8])[0]
-            payload = packet_data[8:-2]  # Remove terminator
-            
-            return (packet_id, packet_type, payload)
-        except socket.timeout:
-            print("[RCON] ⚠️ Response timeout", file=sys.stderr)
-            return None
-        except Exception as e:
-            print(f"[RCON] ❌ Read error: {e}", file=sys.stderr)
             return None
 
 
@@ -347,14 +229,14 @@ def start(config):
         if not executable:
             return {
                 "success": False,
-                "message": "server_executable not specified in instance configuration. Please add the path to PalServer.exe"
+                "message": i18n.t("errors.no_executable", defaultValue="server_executable not specified in instance configuration. Please add the path to PalServer.exe")
             }
         
         # Check if executable exists
         if not os.path.exists(executable):
             return {
                 "success": False,
-                "message": f"Executable not found: {executable}. Please check the path in instance settings."
+                "message": i18n.t("errors.executable_not_found", path=executable, defaultValue=f"Executable not found: {executable}. Please check the path in instance settings.")
             }
         
         port = config.get("port", 8211)
@@ -373,6 +255,9 @@ def start(config):
         # Log for debugging (to stderr)
         print(i18n.t('messages.starting_server', command=' '.join(cmd)), file=sys.stderr)
         print(i18n.t('messages.working_directory', path=working_dir), file=sys.stderr)
+        
+        # Enforce REST-only policy before launch
+        _enforce_rest_policy(working_dir)
         
         # Start process (detached, cross-platform)
         if sys.platform == 'win32':
@@ -408,6 +293,59 @@ def start(config):
             "message": i18n.t('errors.failed_to_start', error=str(e))
         }
 
+
+def _enforce_rest_policy(working_dir):
+    """
+    Enforce REST-only policy in PalWorldSettings.ini before server launch.
+
+    Palworld RCON is deprecated by the developer — saba-chan uses REST API exclusively.
+    - RESTAPIEnabled = True  (always on)
+    - RCONEnabled = False    (always off)
+    - AdminPassword auto-generated if empty (required for REST API auth)
+    - ServerPassword is NOT touched (user-facing join password)
+
+    Returns dict with details of what was changed, or None if INI doesn't exist yet.
+    """
+    import secrets
+    import string
+
+    # Build a fake config to reuse _get_settings_ini_path
+    fake_config = {"working_dir": working_dir}
+    ini_path = _get_settings_ini_path(fake_config)
+    if not ini_path or not os.path.isfile(ini_path):
+        return None  # INI will be generated on first run
+
+    props = _parse_option_settings(ini_path)
+    changes = {}
+
+    # Force REST API enabled
+    if props.get("RESTAPIEnabled", "False") != "True":
+        props["RESTAPIEnabled"] = "True"
+        changes["RESTAPIEnabled"] = "True"
+        print(i18n.t("messages.rest_api_forced_on", defaultValue="[Policy] REST API force-enabled"), file=sys.stderr)
+
+    # Force RCON disabled
+    if props.get("RCONEnabled", "False") != "False":
+        props["RCONEnabled"] = "False"
+        changes["RCONEnabled"] = "False"
+        print(i18n.t("messages.rcon_forced_off", defaultValue="[Policy] RCON force-disabled (deprecated)"), file=sys.stderr)
+
+    # Auto-generate AdminPassword if empty (needed for REST API authentication)
+    current_admin_pw = props.get("AdminPassword", "").strip('"').strip("'")
+    if not current_admin_pw:
+        alphabet = string.ascii_letters + string.digits
+        password = "".join(secrets.choice(alphabet) for _ in range(16))
+        props["AdminPassword"] = password
+        # Store password in INI but don't expose in return value
+        changes["AdminPassword"] = "***auto-generated***"
+        print(i18n.t("messages.admin_password_generated", defaultValue="[Policy] AdminPassword auto-generated for REST API auth"), file=sys.stderr)
+
+    if changes:
+        _write_option_settings(ini_path, props)
+        return {"changed": True, "changes": changes}
+    return {"changed": False}
+
+
 def get_launch_command(config):
     """
     Build the command for the Rust daemon to spawn as a ManagedProcess.
@@ -417,13 +355,13 @@ def get_launch_command(config):
     if not executable:
         return {
             "success": False,
-            "message": "server_executable not specified in instance configuration. Please add the path to PalServer.exe"
+            "message": i18n.t("errors.no_executable", defaultValue="server_executable not specified in instance configuration. Please add the path to PalServer.exe")
         }
 
     if not os.path.exists(executable):
         return {
             "success": False,
-            "message": f"Executable not found: {executable}. Please check the path in instance settings."
+            "message": i18n.t("errors.executable_not_found", path=executable, defaultValue=f"Executable not found: {executable}. Please check the path in instance settings.")
         }
 
     port = config.get("port", 8211)
@@ -431,13 +369,18 @@ def get_launch_command(config):
     if not working_dir:
         working_dir = os.path.dirname(os.path.abspath(executable))
 
+    abs_working_dir = os.path.abspath(working_dir)
+
+    # Enforce REST-only policy before launch
+    _enforce_rest_policy(abs_working_dir)
+
     args = [f"--port={port}"]
 
     return {
         "success": True,
         "program": os.path.abspath(executable),
         "args": args,
-        "working_dir": os.path.abspath(working_dir),
+        "working_dir": abs_working_dir,
         "env_vars": {},
     }
 
@@ -475,10 +418,10 @@ def stop(config):
                 # Return success in either case since the goal is to stop the server
                 return {
                     "success": True,
-                    "message": f"Terminated {exe_name}"
+                    "message": i18n.t("messages.terminated", name=exe_name, defaultValue=f"Terminated {exe_name}")
                 }
             except Exception as e:
-                error_msg = f"Failed to stop process: {str(e)}"
+                error_msg = i18n.t("errors.failed_to_stop_process", error=str(e), defaultValue=f"Failed to stop process: {str(e)}")
                 print(error_msg, file=sys.stderr)
                 return {
                     "success": False,
@@ -503,10 +446,10 @@ def stop(config):
                 
                 return {
                     "success": True,
-                    "message": f"Terminated {exe_name}"
+                    "message": i18n.t("messages.terminated", name=exe_name, defaultValue=f"Terminated {exe_name}")
                 }
             except Exception as e:
-                error_msg = f"Failed to stop process: {str(e)}"
+                error_msg = i18n.t("errors.failed_to_stop_process", error=str(e), defaultValue=f"Failed to stop process: {str(e)}")
                 print(error_msg, file=sys.stderr)
                 return {
                     "success": False,
@@ -515,7 +458,7 @@ def stop(config):
     except Exception as e:
         return {
             "success": False,
-            "message": f"Failed to stop: {str(e)}"
+            "message": i18n.t("errors.failed_to_stop", error=str(e), defaultValue=f"Failed to stop: {str(e)}")
         }
 
 def status(config):
@@ -523,7 +466,7 @@ def status(config):
     try:
         executable = config.get("server_executable")
         if not executable:
-            return {"success": True, "status": "stopped", "message": "No executable specified"}
+            return {"success": True, "status": "stopped", "message": i18n.t("errors.no_executable_specified", defaultValue="No executable specified")}
         
         # Extract executable name from path (e.g., "D:\\path\\PalServer.exe" -> "PalServer.exe")
         exe_name = os.path.basename(executable)
@@ -542,19 +485,19 @@ def status(config):
                     return {
                         "success": True,
                         "status": "running",
-                        "message": f"{exe_name} is running"
+                        "message": i18n.t("messages.process_running", name=exe_name, defaultValue=f"{exe_name} is running")
                     }
                 else:
                     return {
                         "success": True,
                         "status": "stopped",
-                        "message": f"{exe_name} is not running"
+                        "message": i18n.t("messages.process_not_running", name=exe_name, defaultValue=f"{exe_name} is not running")
                     }
             except Exception as e:
                 return {
                     "success": True,
                     "status": "stopped",
-                    "message": f"Could not determine status: {str(e)}"
+                    "message": i18n.t("errors.status_unknown", error=str(e), defaultValue=f"Could not determine status: {str(e)}")
                 }
         else:
             # Unix-like: Use pgrep
@@ -570,29 +513,273 @@ def status(config):
                         "success": True,
                         "status": "running",
                         "pid": int(pid) if pid else None,
-                        "message": f"{exe_name} is running"
+                        "message": i18n.t("messages.process_running", name=exe_name, defaultValue=f"{exe_name} is running")
                     }
                 else:
                     return {
                         "success": True,
                         "status": "stopped",
-                        "message": f"{exe_name} is not running"
+                        "message": i18n.t("messages.process_not_running", name=exe_name, defaultValue=f"{exe_name} is not running")
                     }
             except Exception as e:
                 return {
                     "success": True,
                     "status": "stopped",
-                    "message": f"Could not determine status: {str(e)}"
+                    "message": i18n.t("errors.status_unknown", error=str(e), defaultValue=f"Could not determine status: {str(e)}")
                 }
     except Exception as e:
         return {
             "success": False,
-            "message": f"Failed to get status: {str(e)}"
+            "message": i18n.t("errors.failed_to_get_status", error=str(e), defaultValue=f"Failed to get status: {str(e)}")
         }
 
 # ╔═══════════════════════════════════════════════════════════╗
 # ║            PalWorldSettings.ini Manager                   ║
 # ╚═══════════════════════════════════════════════════════════╝
+
+# Default values from DefaultPalWorldSettings.ini
+DEFAULT_PALWORLD_SETTINGS = {
+    "Difficulty": "None",
+    "RandomizerType": "None",
+    "RandomizerSeed": "",
+    "bIsRandomizerPalLevelRandom": "False",
+    "DayTimeSpeedRate": "1.000000",
+    "NightTimeSpeedRate": "1.000000",
+    "ExpRate": "1.000000",
+    "PalCaptureRate": "1.000000",
+    "PalSpawnNumRate": "1.000000",
+    "PalDamageRateAttack": "1.000000",
+    "PalDamageRateDefense": "1.000000",
+    "PlayerDamageRateAttack": "1.000000",
+    "PlayerDamageRateDefense": "1.000000",
+    "PlayerStomachDecreaceRate": "1.000000",
+    "PlayerStaminaDecreaceRate": "1.000000",
+    "PlayerAutoHPRegeneRate": "1.000000",
+    "PlayerAutoHpRegeneRateInSleep": "1.000000",
+    "PalStomachDecreaceRate": "1.000000",
+    "PalStaminaDecreaceRate": "1.000000",
+    "PalAutoHPRegeneRate": "1.000000",
+    "PalAutoHpRegeneRateInSleep": "1.000000",
+    "BuildObjectHpRate": "1.000000",
+    "BuildObjectDamageRate": "1.000000",
+    "BuildObjectDeteriorationDamageRate": "1.000000",
+    "CollectionDropRate": "1.000000",
+    "CollectionObjectHpRate": "1.000000",
+    "CollectionObjectRespawnSpeedRate": "1.000000",
+    "EnemyDropItemRate": "1.000000",
+    "DeathPenalty": "All",
+    "bEnablePlayerToPlayerDamage": "False",
+    "bEnableFriendlyFire": "False",
+    "bEnableInvaderEnemy": "True",
+    "bActiveUNKO": "False",
+    "bEnableAimAssistPad": "True",
+    "bEnableAimAssistKeyboard": "False",
+    "DropItemMaxNum": "3000",
+    "DropItemMaxNum_UNKO": "100",
+    "BaseCampMaxNum": "128",
+    "BaseCampWorkerMaxNum": "15",
+    "DropItemAliveMaxHours": "1.000000",
+    "bAutoResetGuildNoOnlinePlayers": "False",
+    "AutoResetGuildTimeNoOnlinePlayers": "72.000000",
+    "GuildPlayerMaxNum": "20",
+    "BaseCampMaxNumInGuild": "4",
+    "PalEggDefaultHatchingTime": "72.000000",
+    "WorkSpeedRate": "1.000000",
+    "AutoSaveSpan": "30.000000",
+    "bIsMultiplay": "False",
+    "bIsPvP": "False",
+    "bHardcore": "False",
+    "bPalLost": "False",
+    "bCharacterRecreateInHardcore": "False",
+    "bCanPickupOtherGuildDeathPenaltyDrop": "False",
+    "bEnableNonLoginPenalty": "True",
+    "bEnableFastTravel": "True",
+    "bEnableFastTravelOnlyBaseCamp": "False",
+    "bIsStartLocationSelectByMap": "True",
+    "bExistPlayerAfterLogout": "False",
+    "bEnableDefenseOtherGuildPlayer": "False",
+    "bInvisibleOtherGuildBaseCampAreaFX": "False",
+    "bBuildAreaLimit": "False",
+    "ItemWeightRate": "1.000000",
+    "CoopPlayerMaxNum": "4",
+    "ServerPlayerMaxNum": "32",
+    "ServerName": "Default Palworld Server",
+    "ServerDescription": "",
+    "AdminPassword": "",
+    "ServerPassword": "",
+    "bAllowClientMod": "True",
+    "PublicPort": "8211",
+    "PublicIP": "",
+    "RCONEnabled": "False",
+    "RCONPort": "25575",
+    "Region": "",
+    "bUseAuth": "True",
+    "BanListURL": "https://api.palworldgame.com/api/banlist.txt",
+    "RESTAPIEnabled": "False",
+    "RESTAPIPort": "8212",
+    "bShowPlayerList": "False",
+    "ChatPostLimitPerMinute": "30",
+    "CrossplayPlatforms": "(Steam,Xbox,PS5,Mac)",
+    "bIsUseBackupSaveData": "True",
+    "LogFormatType": "Text",
+    "bIsShowJoinLeftMessage": "True",
+    "SupplyDropSpan": "180",
+    "EnablePredatorBossPal": "True",
+    "MaxBuildingLimitNum": "0",
+    "ServerReplicatePawnCullDistance": "15000.000000",
+    "bAllowGlobalPalboxExport": "True",
+    "bAllowGlobalPalboxImport": "False",
+    "EquipmentDurabilityDamageRate": "1.000000",
+    "ItemContainerForceMarkDirtyInterval": "1.000000",
+    "ItemCorruptionMultiplier": "1.000000",
+    "DenyTechnologyList": "",
+    "GuildRejoinCooldownMinutes": "0",
+    "BlockRespawnTime": "5.000000",
+    "RespawnPenaltyDurationThreshold": "0.000000",
+    "RespawnPenaltyTimeScale": "2.000000",
+    "bDisplayPvPItemNumOnWorldMap_BaseCamp": "False",
+    "bDisplayPvPItemNumOnWorldMap_Player": "False",
+    "AdditionalDropItemWhenPlayerKillingInPvPMode": "PlayerDropItem",
+    "AdditionalDropItemNumWhenPlayerKillingInPvPMode": "1",
+    "bAdditionalDropItemWhenPlayerKillingInPvPMode": "False",
+    "bAllowEnhanceStat_Health": "True",
+    "bAllowEnhanceStat_Attack": "True",
+    "bAllowEnhanceStat_Stamina": "True",
+    "bAllowEnhanceStat_Weight": "True",
+    "bAllowEnhanceStat_WorkSpeed": "True",
+}
+
+# saba-chan key → PalWorldSettings.ini key (full mapping)
+_PALWORLD_KEY_MAP = {
+    # Server identity
+    "port": "PublicPort",
+    "public_ip": "PublicIP",
+    "max_players": "ServerPlayerMaxNum",
+    "coop_max_players": "CoopPlayerMaxNum",
+    "server_name": "ServerName",
+    "server_description": "ServerDescription",
+    "server_password": "ServerPassword",
+    "admin_password": "AdminPassword",
+    "region": "Region",
+    # Connectivity / Auth
+    "rcon_enabled": "RCONEnabled",
+    "rcon_port": "RCONPort",
+    "rest_api_enabled": "RESTAPIEnabled",
+    "rest_api_port": "RESTAPIPort",
+    "use_auth": "bUseAuth",
+    "allow_client_mod": "bAllowClientMod",
+    "ban_list_url": "BanListURL",
+    "show_player_list": "bShowPlayerList",
+    "crossplay_platforms": "CrossplayPlatforms",
+    # Difficulty / Game mode
+    "difficulty": "Difficulty",
+    "randomizer_type": "RandomizerType",
+    "randomizer_seed": "RandomizerSeed",
+    "randomizer_pal_level_random": "bIsRandomizerPalLevelRandom",
+    "hardcore": "bHardcore",
+    "pal_lost": "bPalLost",
+    "character_recreate_in_hardcore": "bCharacterRecreateInHardcore",
+    "is_pvp": "bIsPvP",
+    "is_multiplay": "bIsMultiplay",
+    "death_penalty": "DeathPenalty",
+    "enable_player_to_player_damage": "bEnablePlayerToPlayerDamage",
+    "enable_friendly_fire": "bEnableFriendlyFire",
+    "enable_invader_enemy": "bEnableInvaderEnemy",
+    "enable_predator_boss_pal": "EnablePredatorBossPal",
+    # Rates
+    "day_time_speed_rate": "DayTimeSpeedRate",
+    "night_time_speed_rate": "NightTimeSpeedRate",
+    "exp_rate": "ExpRate",
+    "pal_capture_rate": "PalCaptureRate",
+    "pal_spawn_num_rate": "PalSpawnNumRate",
+    "pal_damage_rate_attack": "PalDamageRateAttack",
+    "pal_damage_rate_defense": "PalDamageRateDefense",
+    "player_damage_rate_attack": "PlayerDamageRateAttack",
+    "player_damage_rate_defense": "PlayerDamageRateDefense",
+    "player_stomach_decrease_rate": "PlayerStomachDecreaceRate",
+    "player_stamina_decrease_rate": "PlayerStaminaDecreaceRate",
+    "player_auto_hp_regen_rate": "PlayerAutoHPRegeneRate",
+    "player_auto_hp_regen_rate_in_sleep": "PlayerAutoHpRegeneRateInSleep",
+    "pal_stomach_decrease_rate": "PalStomachDecreaceRate",
+    "pal_stamina_decrease_rate": "PalStaminaDecreaceRate",
+    "pal_auto_hp_regen_rate": "PalAutoHPRegeneRate",
+    "pal_auto_hp_regen_rate_in_sleep": "PalAutoHpRegeneRateInSleep",
+    "work_speed_rate": "WorkSpeedRate",
+    "collection_drop_rate": "CollectionDropRate",
+    "collection_object_hp_rate": "CollectionObjectHpRate",
+    "collection_object_respawn_speed_rate": "CollectionObjectRespawnSpeedRate",
+    "enemy_drop_item_rate": "EnemyDropItemRate",
+    "item_weight_rate": "ItemWeightRate",
+    "equipment_durability_damage_rate": "EquipmentDurabilityDamageRate",
+    "item_corruption_multiplier": "ItemCorruptionMultiplier",
+    # Building
+    "build_object_hp_rate": "BuildObjectHpRate",
+    "build_object_damage_rate": "BuildObjectDamageRate",
+    "build_object_deterioration_damage_rate": "BuildObjectDeteriorationDamageRate",
+    "build_area_limit": "bBuildAreaLimit",
+    "max_building_limit_num": "MaxBuildingLimitNum",
+    # Base camp
+    "base_camp_max_num": "BaseCampMaxNum",
+    "base_camp_worker_max_num": "BaseCampWorkerMaxNum",
+    "base_camp_max_num_in_guild": "BaseCampMaxNumInGuild",
+    # Items / Drops
+    "drop_item_max_num": "DropItemMaxNum",
+    "drop_item_max_num_unko": "DropItemMaxNum_UNKO",
+    "drop_item_alive_max_hours": "DropItemAliveMaxHours",
+    "active_unko": "bActiveUNKO",
+    # Guild
+    "guild_player_max_num": "GuildPlayerMaxNum",
+    "auto_reset_guild_no_online_players": "bAutoResetGuildNoOnlinePlayers",
+    "auto_reset_guild_time_no_online_players": "AutoResetGuildTimeNoOnlinePlayers",
+    "guild_rejoin_cooldown_minutes": "GuildRejoinCooldownMinutes",
+    "can_pickup_other_guild_death_penalty_drop": "bCanPickupOtherGuildDeathPenaltyDrop",
+    "enable_defense_other_guild_player": "bEnableDefenseOtherGuildPlayer",
+    "invisible_other_guild_base_camp_area_fx": "bInvisibleOtherGuildBaseCampAreaFX",
+    # Travel / Spawn
+    "enable_fast_travel": "bEnableFastTravel",
+    "enable_fast_travel_only_base_camp": "bEnableFastTravelOnlyBaseCamp",
+    "is_start_location_select_by_map": "bIsStartLocationSelectByMap",
+    "exist_player_after_logout": "bExistPlayerAfterLogout",
+    "enable_non_login_penalty": "bEnableNonLoginPenalty",
+    # Pal / Egg
+    "pal_egg_default_hatching_time": "PalEggDefaultHatchingTime",
+    # Aim assist
+    "enable_aim_assist_pad": "bEnableAimAssistPad",
+    "enable_aim_assist_keyboard": "bEnableAimAssistKeyboard",
+    # Auto-save / Backup
+    "auto_save_span": "AutoSaveSpan",
+    "is_use_backup_save_data": "bIsUseBackupSaveData",
+    # Supply drop
+    "supply_drop_span": "SupplyDropSpan",
+    # Logging / Chat
+    "log_format_type": "LogFormatType",
+    "is_show_join_left_message": "bIsShowJoinLeftMessage",
+    "chat_post_limit_per_minute": "ChatPostLimitPerMinute",
+    # Network / Performance
+    "server_replicate_pawn_cull_distance": "ServerReplicatePawnCullDistance",
+    # Palbox
+    "allow_global_palbox_export": "bAllowGlobalPalboxExport",
+    "allow_global_palbox_import": "bAllowGlobalPalboxImport",
+    # Technology
+    "deny_technology_list": "DenyTechnologyList",
+    # Respawn
+    "block_respawn_time": "BlockRespawnTime",
+    "respawn_penalty_duration_threshold": "RespawnPenaltyDurationThreshold",
+    "respawn_penalty_time_scale": "RespawnPenaltyTimeScale",
+    # PvP specifics
+    "display_pvp_item_num_on_world_map_base_camp": "bDisplayPvPItemNumOnWorldMap_BaseCamp",
+    "display_pvp_item_num_on_world_map_player": "bDisplayPvPItemNumOnWorldMap_Player",
+    "additional_drop_item_when_player_killing_in_pvp_mode": "AdditionalDropItemWhenPlayerKillingInPvPMode",
+    "additional_drop_item_num_when_player_killing_in_pvp_mode": "AdditionalDropItemNumWhenPlayerKillingInPvPMode",
+    "additional_drop_item_when_player_killing_in_pvp_mode_enabled": "bAdditionalDropItemWhenPlayerKillingInPvPMode",
+    # Enhance stat
+    "allow_enhance_stat_health": "bAllowEnhanceStat_Health",
+    "allow_enhance_stat_attack": "bAllowEnhanceStat_Attack",
+    "allow_enhance_stat_stamina": "bAllowEnhanceStat_Stamina",
+    "allow_enhance_stat_weight": "bAllowEnhanceStat_Weight",
+    "allow_enhance_stat_work_speed": "bAllowEnhanceStat_WorkSpeed",
+    "item_container_force_mark_dirty_interval": "ItemContainerForceMarkDirtyInterval",
+}
 
 def _get_settings_ini_path(config):
     """Resolve path to PalWorldSettings.ini from config."""
@@ -613,95 +800,9 @@ def _get_settings_ini_path(config):
     return ini_path
 
 
-def _parse_option_settings(ini_path):
-    """Parse PalWorldSettings.ini → dict.
-
-    The file uses UE4 INI format:
-      [/Script/Pal.PalGameWorldSettings]
-      OptionSettings=(Key1=Val1,Key2=Val2,...)
-    """
-    if not os.path.isfile(ini_path):
-        return {}
-    try:
-        with open(ini_path, "r", encoding="utf-8") as f:
-            content = f.read()
-        import re
-        m = re.search(r'OptionSettings=\((.+)\)', content)
-        if not m:
-            return {}
-        raw = m.group(1)
-
-        props = {}
-        # Handle quoted string values that may contain commas
-        # Pattern: Key=Value or Key="Value with, commas"
-        i = 0
-        while i < len(raw):
-            eq = raw.find("=", i)
-            if eq == -1:
-                break
-            key = raw[i:eq].strip()
-            i = eq + 1
-            if i < len(raw) and raw[i] == '"':
-                # Quoted value
-                end_quote = raw.find('"', i + 1)
-                if end_quote == -1:
-                    value = raw[i + 1:]
-                    i = len(raw)
-                else:
-                    value = raw[i + 1:end_quote]
-                    i = end_quote + 1
-                    if i < len(raw) and raw[i] == ',':
-                        i += 1
-            elif i < len(raw) and raw[i] == '(':
-                # Parenthesized value like CrossplayPlatforms=(Steam,Xbox)
-                depth = 1
-                start = i
-                i += 1
-                while i < len(raw) and depth > 0:
-                    if raw[i] == '(':
-                        depth += 1
-                    elif raw[i] == ')':
-                        depth -= 1
-                    i += 1
-                value = raw[start:i]
-                if i < len(raw) and raw[i] == ',':
-                    i += 1
-            else:
-                comma = raw.find(",", i)
-                if comma == -1:
-                    value = raw[i:].strip()
-                    i = len(raw)
-                else:
-                    value = raw[i:comma].strip()
-                    i = comma + 1
-            props[key] = value
-        return props
-    except OSError:
-        return {}
-
-
-def _write_option_settings(ini_path, props):
-    """Write dict back to PalWorldSettings.ini."""
-    os.makedirs(os.path.dirname(ini_path), exist_ok=True)
-
-    parts = []
-    for key, value in props.items():
-        # Re-quote string values that contain special chars
-        if isinstance(value, str) and (" " in value or "," in value) and not value.startswith("("):
-            parts.append(f'{key}="{value}"')
-        else:
-            parts.append(f"{key}={value}")
-
-    content = (
-        "[/Script/Pal.PalGameWorldSettings]\n"
-        f"OptionSettings=({','.join(parts)})\n"
-    )
-    try:
-        with open(ini_path, "w", encoding="utf-8") as f:
-            f.write(content)
-        return True
-    except OSError:
-        return False
+# UE4 INI parse/write delegated to _shared.ue4_ini
+_parse_option_settings = parse_option_settings
+_write_option_settings = write_option_settings
 
 
 # ╔═══════════════════════════════════════════════════════════╗
@@ -772,15 +873,15 @@ def validate(config):
         issues.append({
             "code": "NO_EXECUTABLE",
             "severity": "critical",
-            "message": "Server executable path not specified.",
-            "solution": "Set the path to PalServer.exe in instance settings.",
+            "message": i18n.t("validate.no_executable", defaultValue="Server executable path not specified."),
+            "solution": i18n.t("validate.no_executable_hint", defaultValue="Set the path to PalServer.exe in instance settings."),
         })
     elif not os.path.isfile(executable):
         issues.append({
             "code": "EXECUTABLE_NOT_FOUND",
             "severity": "critical",
-            "message": f"Executable not found: {executable}",
-            "solution": "Check the executable path or reinstall the server.",
+            "message": i18n.t("validate.executable_not_found", path=executable, defaultValue=f"Executable not found: {executable}"),
+            "solution": i18n.t("validate.executable_not_found_hint", defaultValue="Check the executable path or reinstall the server."),
         })
 
     # Working directory
@@ -794,8 +895,8 @@ def validate(config):
             issues.append({
                 "code": "WORKING_DIR_ERROR",
                 "severity": "critical",
-                "message": f"Cannot create working directory: {working_dir}",
-                "solution": "Check folder permissions or choose a different path.",
+                "message": i18n.t("validate.cannot_create_dir", path=working_dir, defaultValue=f"Cannot create working directory: {working_dir}"),
+                "solution": i18n.t("validate.cannot_create_dir_hint", defaultValue="Check folder permissions or choose a different path."),
             })
 
     # Port availability
@@ -808,8 +909,8 @@ def validate(config):
                     issues.append({
                         "code": "PORT_IN_USE",
                         "severity": "warning",
-                        "message": f"Port {port} is already in use.",
-                        "solution": f"Stop the other process using port {port} or change the port.",
+                        "message": i18n.t("validate.port_in_use", port=port, defaultValue=f"Port {port} is already in use."),
+                        "solution": i18n.t("validate.port_in_use_hint", port=port, defaultValue=f"Stop the other process using port {port} or change the port."),
                     })
         except (OSError, ValueError):
             pass
@@ -829,42 +930,21 @@ def configure(config):
     """Apply settings to PalWorldSettings.ini."""
     settings = config.get("settings", {})
     if not settings:
-        return {"success": False, "message": "No settings provided."}
+        return {"success": False, "message": i18n.t("errors.no_settings", defaultValue="No settings provided.")}
 
     ini_path = _get_settings_ini_path(config)
     if not ini_path:
-        return {"success": False, "message": "Cannot determine server directory. Set working_dir or server_executable."}
+        return {"success": False, "message": i18n.t("errors.no_server_dir", defaultValue="Cannot determine server directory. Set working_dir or server_executable.")}
 
     # Read existing properties (or start fresh)
     props = _parse_option_settings(ini_path)
 
-    # saba-chan setting name → PalWorldSettings.ini key mapping
-    key_map = {
-        "port": "PublicPort",
-        "max_players": "ServerPlayerMaxNum",
-        "server_name": "ServerName",
-        "server_description": "ServerDescription",
-        "server_password": "ServerPassword",
-        "admin_password": "AdminPassword",
-        "rcon_enabled": "RCONEnabled",
-        "rcon_port": "RCONPort",
-        "rest_api_enabled": "RESTAPIEnabled",
-        "rest_api_port": "RESTAPIPort",
-        "difficulty": "Difficulty",
-        "day_time_speed_rate": "DayTimeSpeedRate",
-        "night_time_speed_rate": "NightTimeSpeedRate",
-        "exp_rate": "ExpRate",
-        "death_penalty": "DeathPenalty",
-        "pal_capture_rate": "PalCaptureRate",
-        "pal_spawn_num_rate": "PalSpawnNumRate",
-        "hardcore": "bHardcore",
-        "enable_fast_travel": "bEnableFastTravel",
-        "show_player_list": "bShowPlayerList",
-    }
-
     updated_keys = []
     for key, value in settings.items():
-        ini_key = key_map.get(key, key)
+        ini_key = _PALWORLD_KEY_MAP.get(key)
+        if ini_key is None:
+            # Not a recognized INI setting — skip (saba-chan internal fields)
+            continue
         if isinstance(value, bool):
             value = "True" if value else "False"
         props[ini_key] = str(value)
@@ -873,7 +953,7 @@ def configure(config):
     ok = _write_option_settings(ini_path, props)
     return {
         "success": ok,
-        "message": "Settings updated successfully." if ok else "Failed to write settings file.",
+        "message": i18n.t("messages.settings_updated", defaultValue="Settings updated successfully.") if ok else i18n.t("errors.settings_write_failed", defaultValue="Failed to write settings file."),
         "updated_keys": updated_keys,
     }
 
@@ -882,7 +962,7 @@ def read_properties(config):
     """Read current PalWorldSettings.ini."""
     ini_path = _get_settings_ini_path(config)
     if not ini_path:
-        return {"success": False, "message": "Cannot determine server directory. Set working_dir or server_executable."}
+        return {"success": False, "message": i18n.t("errors.no_server_dir", defaultValue="Cannot determine server directory. Set working_dir or server_executable.")}
 
     if not os.path.isfile(ini_path):
         # Try DefaultPalWorldSettings.ini as reference
@@ -901,24 +981,49 @@ def read_properties(config):
                 "success": True,
                 "exists": False,
                 "properties": props,
-                "message": "Using defaults from DefaultPalWorldSettings.ini (server not yet configured).",
+                "message": i18n.t("messages.using_defaults", defaultValue="Using defaults from DefaultPalWorldSettings.ini (server not yet configured)."),
             }
         return {
             "success": True,
             "exists": False,
             "properties": {},
-            "message": "Settings file not found. Start the server once to generate it.",
+            "message": i18n.t("errors.settings_not_found", defaultValue="Settings file not found. Start the server once to generate it."),
         }
 
     props = _parse_option_settings(ini_path)
     return {"success": True, "exists": True, "properties": props}
 
 
+def reset_properties(config):
+    """Reset PalWorldSettings.ini to factory defaults (preserves world data)."""
+    ini_path = _get_settings_ini_path(config)
+    if not ini_path:
+        return {"success": False, "message": i18n.t("reset.no_path")}
+
+    if not os.path.isfile(ini_path):
+        return {"success": False, "message": i18n.t("reset.not_found")}
+
+    ok = _write_option_settings(ini_path, dict(DEFAULT_PALWORLD_SETTINGS))
+    return {
+        "success": ok,
+        "message": i18n.t("reset.settings_success") if ok else i18n.t("reset.settings_failed"),
+    }
+
+
+def reset_server(config):
+    """Reset Palworld server settings to defaults.
+
+    Unlike Minecraft, Palworld reset only restores settings to defaults.
+    World / save data is NOT deleted.
+    """
+    return reset_properties(config)
+
+
 def accept_eula(config):
     """Palworld does not require EULA acceptance."""
     return {
         "success": True,
-        "message": "Palworld does not require separate EULA acceptance.",
+        "message": i18n.t("messages.no_eula_needed", defaultValue="Palworld does not require separate EULA acceptance."),
     }
 
 
@@ -980,7 +1085,7 @@ def list_versions(config):
     return {
         "success": True,
         "versions": [],
-        "message": "Palworld server is distributed via Steam/SteamCMD (App ID 2394010). Use SteamCMD to install or update.",
+        "message": i18n.t("messages.versions_via_steam", defaultValue="Palworld server is distributed via Steam/SteamCMD (App ID 2394010). Use SteamCMD to install or update."),
         "install_method": "steamcmd",
         "steam_app_id": "2394010",
     }
@@ -990,7 +1095,7 @@ def get_version_details(config):
     """Palworld does not expose a public version API."""
     return {
         "success": True,
-        "message": "Palworld server versions are managed through Steam. Use SteamCMD with app_update 2394010 to update.",
+        "message": i18n.t("messages.versions_managed_via_steam", defaultValue="Palworld server versions are managed through Steam. Use SteamCMD with app_update 2394010 to update."),
         "install_method": "steamcmd",
         "steam_app_id": "2394010",
     }
@@ -1001,7 +1106,7 @@ def install_server(config):
     install_dir = config.get("install_dir", "")
     return {
         "success": False,
-        "message": "Palworld dedicated server must be installed via SteamCMD.",
+        "message": i18n.t("messages.install_via_steamcmd", defaultValue="Palworld dedicated server must be installed via SteamCMD."),
         "install_method": "steamcmd",
         "steam_app_id": "2394010",
         "instructions": [
@@ -1347,25 +1452,21 @@ def execute_rcon_via_daemon(instance_id, rcon_cmd):
 
 
 if __name__ == "__main__":
-    # DEBUG: 모든 입력 인자 출력
-    print(f"[Palworld] sys.argv count: {len(sys.argv)}", file=sys.stderr)
-    for i, arg in enumerate(sys.argv):
-        print(f"[Palworld] sys.argv[{i}]: {arg[:200] if len(arg) > 200 else arg}", file=sys.stderr)
-    
-    if len(sys.argv) < 3:
-        print(json.dumps({"success": False, "message": "Usage: lifecycle.py <function> <config_json>"}))
+    if len(sys.argv) < 2:
+        print(json.dumps({"success": False, "message": "Usage: lifecycle.py <function>"}))
         sys.exit(1)
     
     function_name = sys.argv[1]
-    config_json = sys.argv[2]
+    print(f"[Palworld] function: {function_name}", file=sys.stderr)
     
-    print(f"[Palworld] Parsing config_json: {config_json[:200]}", file=sys.stderr)
-    
+    # Read config JSON from stdin (avoids command-line length limits
+    # and prevents sensitive data from appearing in process listings)
     try:
-        config = json.loads(config_json)
+        config_str = sys.stdin.read()
+        config = json.loads(config_str) if config_str.strip() else {}
         print(f"[Palworld] Parsed config keys: {list(config.keys())}", file=sys.stderr)
-    except Exception as e:
-        print(json.dumps({"success": False, "message": f"Invalid JSON config: {str(e)}, input: {config_json[:100]}"}))
+    except json.JSONDecodeError as e:
+        print(json.dumps({"success": False, "message": f"Invalid JSON config on stdin: {str(e)}"}))
         print(f"[Palworld] JSON parse error: {e}", file=sys.stderr)
         sys.exit(1)
     
@@ -1379,6 +1480,8 @@ if __name__ == "__main__":
         "validate": validate,
         "configure": configure,
         "read_properties": read_properties,
+        "reset_properties": reset_properties,
+        "reset_server": reset_server,
         "accept_eula": accept_eula,
         "diagnose_log": diagnose_log,
         "list_versions": list_versions,

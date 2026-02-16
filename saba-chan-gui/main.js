@@ -21,6 +21,33 @@ function refreshIpcBase() {
 // 서버 JAR 다운로드 등 오래 걸리는 호출은 개별 timeout을 지정합니다.
 axios.defaults.timeout = 5000;
 
+// ── IPC 토큰 인증 ──────────────────────
+// 데몬이 시작 시 생성하는 .ipc_token 파일을 읽어서 모든 요청에 X-Saba-Token 헤더로 포함
+function getIpcTokenPath() {
+    if (process.env.SABA_TOKEN_PATH) return process.env.SABA_TOKEN_PATH;
+    if (process.platform === 'win32') {
+        const appdata = process.env.APPDATA;
+        if (appdata) return path.join(appdata, 'saba-chan', '.ipc_token');
+    } else {
+        const home = process.env.HOME;
+        if (home) return path.join(home, '.config', 'saba-chan', '.ipc_token');
+    }
+    return path.join('config', '.ipc_token');
+}
+
+function loadIpcToken() {
+    try {
+        const tokenPath = getIpcTokenPath();
+        const token = fs.readFileSync(tokenPath, 'utf-8').trim();
+        if (token) {
+            axios.defaults.headers.common['X-Saba-Token'] = token;
+            console.log(`[Auth] IPC token loaded from ${tokenPath}`);
+        }
+    } catch (err) {
+        console.warn('[Auth] IPC token not found, auth may fail:', err.message);
+    }
+}
+
 let mainWindow;
 let daemonProcess = null;
 let daemonStartedByApp = false;
@@ -640,6 +667,8 @@ async function cleanQuit() {
 // 이미 떠 있는 데몬이 있으면 재실행하지 않고 재사용
 async function ensureDaemon() {
     try {
+        // IPC 토큰을 먼저 로드 (이미 데몬이 떠있을 수 있으므로)
+        loadIpcToken();
         // 여러 엔드포인트로 체크 (일부 엔드포인트가 500을 반환해도 데몬은 실행 중)
         sendStatus('daemon', t('daemon.checking'));
         const response = await axios.get(`${IPC_BASE}/api/modules`, { timeout: 1000 });
@@ -651,6 +680,14 @@ async function ensureDaemon() {
             return;
         }
     } catch (err) {
+        // 401 = 데몬은 떠있지만 토큰이 맞지 않음 (이전 세션 토큰)
+        if (err.response && err.response.status === 401) {
+            console.log('Existing daemon detected (auth failed — stale token). Skipping launch.');
+            daemonStartedByApp = false;
+            sendStatus('daemon', t('daemon.existing_running'));
+            await syncInstallRoot();
+            return;
+        }
         // ECONNREFUSED = 데몬이 안 떠있음, 그 외 에러 = 데몬은 떠있지만 문제 발생
         if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.message.includes('timeout')) {
             console.log('No daemon detected, attempting to launch new one...');
@@ -662,6 +699,8 @@ async function ensureDaemon() {
                 const maxAttempts = 8; // 최대 4초 대기
                 while (attempts < maxAttempts) {
                     await wait(500);
+                    // 데몬이 시작되면서 새 토큰을 생성하므로 매 시도마다 재로드
+                    loadIpcToken();
                     try {
                         const checkResponse = await axios.get(`${IPC_BASE}/api/modules`, { timeout: 800 });
                         if (checkResponse.status === 200) {
@@ -1212,7 +1251,8 @@ app.on('before-quit', () => {
             const req = http.request({
                 hostname: '127.0.0.1', port: currentPort,
                 path: `/api/client/${heartbeatClientId}/unregister`,
-                method: 'DELETE', timeout: 1000
+                method: 'DELETE', timeout: 1000,
+                headers: { 'X-Saba-Token': axios.defaults.headers.common['X-Saba-Token'] || '' }
             });
             req.end();
         } catch (e) { /* 무시 */ }
@@ -1408,6 +1448,24 @@ ipcMain.handle('module:installServer', async (event, moduleName, installConfig) 
     }
 });
 
+ipcMain.handle('instance:resetProperties', async (event, instanceId) => {
+    try {
+        const response = await axios.post(`${IPC_BASE}/api/instance/${instanceId}/properties/reset`, {}, { timeout: 10000 });
+        return response.data;
+    } catch (error) {
+        return { error: error.response?.data?.error || error.message };
+    }
+});
+
+ipcMain.handle('instance:resetServer', async (event, instanceId) => {
+    try {
+        const response = await axios.post(`${IPC_BASE}/api/instance/${instanceId}/server/reset`, {}, { timeout: 30000 });
+        return response.data;
+    } catch (error) {
+        return { error: error.response?.data?.error || error.message };
+    }
+});
+
 // ── Managed Process API (stdin/stdout capture) ───────────────
 
 ipcMain.handle('managed:start', async (event, instanceId) => {
@@ -1437,6 +1495,86 @@ ipcMain.handle('managed:stdin', async (event, instanceId, command) => {
     } catch (error) {
         return { error: error.response?.data?.error || error.message };
     }
+});
+
+// ── Console Popout (PiP) Window ──────────────────────────────
+const consolePopoutWindows = new Map(); // instanceId → BrowserWindow
+
+ipcMain.handle('console:popout', async (event, instanceId, serverName) => {
+    // 이미 열려 있으면 포커스
+    if (consolePopoutWindows.has(instanceId)) {
+        const existing = consolePopoutWindows.get(instanceId);
+        if (!existing.isDestroyed()) {
+            existing.focus();
+            return { ok: true, message: 'Focused existing window' };
+        }
+        consolePopoutWindows.delete(instanceId);
+    }
+
+    const popout = new BrowserWindow({
+        width: 700,
+        height: 450,
+        minWidth: 400,
+        minHeight: 250,
+        frame: false,
+        alwaysOnTop: true,
+        title: `Console — ${serverName}`,
+        icon: path.join(__dirname, 'build', 'icon.png'),
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            nodeIntegration: false,
+            contextIsolation: true
+        }
+    });
+
+    popout.removeMenu();
+
+    const isDev = !app.isPackaged;
+    const isAfterUpdate = process.argv.includes('--after-update');
+    const queryParams = `?console-popout=${encodeURIComponent(instanceId)}&name=${encodeURIComponent(serverName)}`;
+
+    if (isDev && !isAfterUpdate) {
+        const startURL = process.env.ELECTRON_START_URL || 'http://localhost:5173';
+        popout.loadURL(`${startURL}${queryParams}`);
+    } else {
+        popout.loadFile(path.join(__dirname, 'build', 'index.html'), {
+            search: queryParams.slice(1) // loadFile uses 'search' without '?'
+        });
+    }
+
+    consolePopoutWindows.set(instanceId, popout);
+
+    // 메인 윈도우에 팝아웃 열림/닫힘 알림 → 임베디드 콘솔 숨김 제어
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('console:popoutOpened', instanceId);
+    }
+
+    popout.on('closed', () => {
+        consolePopoutWindows.delete(instanceId);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('console:popoutClosed', instanceId);
+        }
+    });
+
+    return { ok: true };
+});
+
+// 팝아웃 창 포커스/하이라이트
+ipcMain.handle('console:focusPopout', async (event, instanceId) => {
+    if (consolePopoutWindows.has(instanceId)) {
+        const win = consolePopoutWindows.get(instanceId);
+        if (!win.isDestroyed()) {
+            if (win.isMinimized()) win.restore();
+            win.focus();
+            // 깜빡임 효과로 주의 환기
+            win.flashFrame(true);
+            setTimeout(() => {
+                if (!win.isDestroyed()) win.flashFrame(false);
+            }, 2000);
+            return { ok: true };
+        }
+    }
+    return { ok: false };
 });
 
 ipcMain.handle('module:list', async () => {
@@ -2317,24 +2455,29 @@ ipcMain.handle('botConfig:save', async (event, config) => {
 });
 
 // Window Controls (Title Bar)
-ipcMain.on('window:minimize', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.minimize();
+// event.sender를 통해 요청을 보낸 BrowserWindow를 찾아서 조작
+// (메인 윈도우, 콘솔 팝아웃 등 어떤 창에서 보내더라도 올바른 창이 동작)
+ipcMain.on('window:minimize', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win && !win.isDestroyed()) {
+        win.minimize();
     }
 });
 
-ipcMain.on('window:maximize', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        if (mainWindow.isMaximized()) {
-            mainWindow.restore();
+ipcMain.on('window:maximize', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win && !win.isDestroyed()) {
+        if (win.isMaximized()) {
+            win.restore();
         } else {
-            mainWindow.maximize();
+            win.maximize();
         }
     }
 });
 
-ipcMain.on('window:close', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.close();
+ipcMain.on('window:close', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win && !win.isDestroyed()) {
+        win.close();
     }
 });

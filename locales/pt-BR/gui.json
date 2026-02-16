@@ -117,7 +117,19 @@
     "save_aliases": "Salvar Aliases",
     "reset_aliases": "Resetar",
     "save_settings": "Salvar Configurações",
-    "close": "Fechar"
+    "close": "Fechar",
+    "danger_zone": "Zona de Perigo",
+    "reset_server_label": "Resetar Servidor",
+    "reset_server_desc": "Excluir todos os mundos, configurações, logs e outros dados. Apenas o JAR do servidor e eula.txt serão mantidos. Isso não pode ser desfeito.",
+    "reset_settings_label": "Redefinir Configurações",
+    "reset_settings_desc": "Redefinir todas as configurações do servidor para os padrões de fábrica. Os dados do mundo e salvamentos serão preservados. Isso não pode ser desfeito.",
+    "reset_button": "Resetar",
+    "resetting": "Resetando...",
+    "reset_confirm_title": "Resetar Servidor",
+    "reset_confirm": "Resetar completamente o servidor '{{name}}'?\n\nTodos os mundos, configurações, logs e outros dados serão excluídos.\nApenas o JAR do servidor e eula.txt serão mantidos.\n\nEsta ação não pode ser desfeita.",
+    "reset_success": "O servidor '{{name}}' foi resetado ({{count}} itens excluídos)",
+    "reset_failed": "Falha ao resetar: {{error}}",
+    "reset_error": "Erro ao resetar: {{error}}"
   },
   "discord_bot": {
     "token_missing_title": "Token Ausente",

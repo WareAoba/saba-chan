@@ -20,6 +20,8 @@ pub struct ModuleMetadata {
     #[serde(default)]
     pub stop_command: Option<String>,  // config.stop_command (e.g. "stop" for Minecraft)
     #[serde(default)]
+    pub log_pattern: Option<String>,  // regex pattern for log level extraction (e.g. "/(?P<level>INFO|WARN|ERROR|DEBUG)/")
+    #[serde(default)]
     pub interaction_mode: Option<String>,  // "console" or "commands" (from [protocols])
     #[serde(default)]
     pub protocols_supported: Option<Vec<String>>,  // ["rcon", "stdin", "rest"] etc.
@@ -29,6 +31,8 @@ pub struct ModuleMetadata {
     pub settings: Option<ModuleSettings>,  // 설정 스키마
     #[serde(default)]
     pub commands: Option<ModuleCommands>,  // 명령어 스키마
+    #[serde(default)]
+    pub syntax_highlight: Option<SyntaxHighlight>,  // 콘솔 구문 하이라이팅 규칙
 }
 
 impl ModuleMetadata {
@@ -75,6 +79,28 @@ pub struct ModuleCommands {
     pub fields: Vec<CommandField>,
 }
 
+/// 콘솔 구문 하이라이팅 — 모듈별로 정의되는 로그 하이라이팅 규칙
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyntaxHighlight {
+    pub rules: Vec<HighlightRule>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HighlightRule {
+    /// 이름/식별자 (디버그·GUI 표시용)
+    pub name: String,
+    /// 매칭할 정규식 패턴 — 명명 캡처 `(?P<hl>...)` 이 있으면 해당 부분만, 없으면 전체 매치
+    pub pattern: String,
+    /// CSS 색상값 (예: "#f38ba8", "#a6e3a1") 또는 시맨틱 토큰 ("error", "warn", "info", …)
+    pub color: String,
+    /// 굵게 표시 여부
+    #[serde(default)]
+    pub bold: bool,
+    /// 기울임 표시 여부
+    #[serde(default)]
+    pub italic: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommandField {
     pub name: String,
@@ -108,8 +134,9 @@ pub struct SettingField {
     pub description: Option<String>,
     pub required: Option<bool>,
     pub default: Option<toml::Value>,
-    pub min: Option<i64>,
-    pub max: Option<i64>,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    pub step: Option<f64>,
     pub options: Option<Vec<String>>,
     pub group: Option<String>,  // "basic" (default), "advanced", "saba-chan" etc.
 }
@@ -120,6 +147,263 @@ pub struct LoadedModule {
     pub path: String,  // 압축 해제된 디렉토리 또는 원본 디렉토리 절대 경로
     #[allow(dead_code)]
     pub is_zip: bool,  // ZIP에서 로드되었는지 여부
+}
+
+// ── module.toml 강타입 스키마 (serde 직접 역직렬화) ──
+
+/// module.toml 최상위 구조
+#[derive(Debug, Deserialize)]
+struct ModuleToml {
+    module: ModuleSection,
+    #[serde(default, rename = "update")]
+    _update: Option<UpdateSection>,
+    #[serde(default)]
+    protocols: Option<ProtocolsSection>,
+    #[serde(default)]
+    config: Option<ConfigSection>,
+    #[serde(default, rename = "detection")]
+    _detection: Option<DetectionSection>,
+    #[serde(default)]
+    settings: Option<SettingsSection>,
+    #[serde(default)]
+    commands: Option<CommandsSection>,
+    #[serde(default)]
+    syntax_highlight: Option<SyntaxHighlightSection>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModuleSection {
+    name: String,
+    version: String,
+    #[serde(default)]
+    description: Option<String>,
+    entry: String,
+    #[serde(default, rename = "game_name")]
+    _game_name: Option<String>,
+    #[serde(default, rename = "display_name")]
+    _display_name: Option<String>,
+    #[serde(default)]
+    icon: Option<String>,
+    #[serde(default)]
+    log_pattern: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateSection {
+    #[serde(default)]
+    github_repo: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProtocolsSection {
+    #[serde(default)]
+    supported: Option<Vec<String>>,
+    #[serde(default)]
+    default: Option<String>,
+    #[serde(default)]
+    interaction_mode: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ConfigSection {
+    #[serde(default)]
+    executable_path: Option<String>,
+    #[serde(default)]
+    process_name: Option<String>,
+    #[serde(default)]
+    default_port: Option<u16>,
+    #[serde(default)]
+    stop_command: Option<String>,
+    // Allow additional unknown fields to pass through
+    #[serde(flatten)]
+    _extra: std::collections::HashMap<String, toml::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DetectionSection {
+    #[serde(default)]
+    process_patterns: Option<Vec<String>>,
+    #[serde(default)]
+    common_paths: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SettingsSection {
+    #[serde(default)]
+    fields: Vec<SettingFieldToml>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SettingFieldToml {
+    name: String,
+    #[serde(rename = "type", default = "default_field_type")]
+    field_type: String,
+    #[serde(default)]
+    label: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    required: Option<bool>,
+    #[serde(default)]
+    default: Option<toml::Value>,
+    #[serde(default)]
+    min: Option<f64>,
+    #[serde(default)]
+    max: Option<f64>,
+    #[serde(default)]
+    step: Option<f64>,
+    #[serde(default)]
+    options: Option<Vec<String>>,
+    #[serde(default)]
+    group: Option<String>,
+}
+
+fn default_field_type() -> String { "text".to_string() }
+
+#[derive(Debug, Deserialize)]
+struct CommandsSection {
+    #[serde(default)]
+    fields: Vec<CommandFieldToml>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CommandFieldToml {
+    name: String,
+    #[serde(default)]
+    label: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    method: Option<String>,
+    #[serde(default)]
+    http_method: Option<String>,
+    #[serde(default)]
+    endpoint_template: Option<String>,
+    #[serde(default)]
+    rcon_template: Option<String>,
+    #[serde(default)]
+    command_template: Option<String>,
+    #[serde(default)]
+    inputs: Vec<CommandInputToml>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CommandInputToml {
+    name: String,
+    #[serde(default)]
+    label: Option<String>,
+    #[serde(rename = "type", default)]
+    input_type: Option<String>,
+    #[serde(default)]
+    required: Option<bool>,
+    #[serde(default)]
+    placeholder: Option<String>,
+    #[serde(default)]
+    default: Option<toml::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SyntaxHighlightSection {
+    #[serde(default)]
+    rules: Vec<HighlightRuleToml>,
+}
+
+#[derive(Debug, Deserialize)]
+struct HighlightRuleToml {
+    name: String,
+    pattern: String,
+    color: String,
+    #[serde(default)]
+    bold: bool,
+    #[serde(default)]
+    italic: bool,
+}
+
+impl ModuleToml {
+    /// ModuleToml → ModuleMetadata 변환
+    fn into_metadata(self) -> ModuleMetadata {
+        let settings = if let Some(s) = self.settings {
+            let fields: Vec<SettingField> = s.fields.into_iter().map(|f| SettingField {
+                name: f.name.clone(),
+                field_type: f.field_type,
+                label: f.label.unwrap_or_else(|| f.name),
+                description: f.description,
+                required: f.required,
+                default: f.default,
+                min: f.min,
+                max: f.max,
+                step: f.step,
+                options: f.options,
+                group: f.group,
+            }).collect();
+            if fields.is_empty() { None } else { Some(ModuleSettings { fields }) }
+        } else {
+            None
+        };
+
+        let commands = if let Some(c) = self.commands {
+            let fields: Vec<CommandField> = c.fields.into_iter().map(|f| CommandField {
+                name: f.name.clone(),
+                label: f.label.unwrap_or_else(|| f.name),
+                description: f.description,
+                method: f.method,
+                http_method: f.http_method,
+                endpoint_template: f.endpoint_template,
+                rcon_template: f.rcon_template.or(f.command_template),
+                inputs: f.inputs.into_iter().map(|i| CommandInput {
+                    name: i.name,
+                    label: i.label,
+                    input_type: i.input_type,
+                    required: i.required,
+                    placeholder: i.placeholder,
+                    default: i.default,
+                }).collect(),
+            }).collect();
+            if fields.is_empty() { None } else { Some(ModuleCommands { fields }) }
+        } else {
+            None
+        };
+
+        let syntax_highlight = if let Some(sh) = self.syntax_highlight {
+            let rules: Vec<HighlightRule> = sh.rules.into_iter().map(|r| HighlightRule {
+                name: r.name,
+                pattern: r.pattern,
+                color: r.color,
+                bold: r.bold,
+                italic: r.italic,
+            }).collect();
+            if rules.is_empty() { None } else { Some(SyntaxHighlight { rules }) }
+        } else {
+            None
+        };
+
+        ModuleMetadata {
+            name: self.module.name,
+            version: self.module.version,
+            description: self.module.description,
+            entry: self.module.entry,
+            icon: self.module.icon,
+            log_pattern: self.module.log_pattern,
+            process_name: self.config.as_ref().and_then(|c| c.process_name.clone()),
+            default_port: self.config.as_ref().and_then(|c| c.default_port),
+            executable_path: self.config.as_ref().and_then(|c| c.executable_path.clone()),
+            stop_command: self.config.as_ref().and_then(|c| c.stop_command.clone()),
+            interaction_mode: self.protocols.as_ref().and_then(|p| p.interaction_mode.clone()),
+            protocols_supported: self.protocols.as_ref().and_then(|p| p.supported.clone()),
+            protocols_default: self.protocols.as_ref().and_then(|p| p.default.clone()),
+            settings,
+            commands,
+            syntax_highlight,
+        }
+    }
+}
+
+/// TOML 문자열에서 ModuleMetadata를 파싱합니다.
+/// 필수 필드 누락 시 명확한 에러 메시지를 반환합니다.
+fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
+    let toml_data: ModuleToml = toml::from_str(content)
+        .map_err(|e| anyhow::anyhow!("Failed to parse module.toml: {}", e))?;
+    Ok(toml_data.into_metadata())
 }
 
 pub struct ModuleLoader {
@@ -210,75 +494,9 @@ impl ModuleLoader {
     /// 폴더에서 개별 모듈 로드 (module.toml 파싱)
     fn load_module_from_dir(&self, module_path: &Path) -> Result<LoadedModule> {
         let toml_path = module_path.join("module.toml");
-        let content = fs::read_to_string(&toml_path)?;
-        let data: toml::Value = toml::from_str(&content)?;
-
-        let module_section = data
-            .get("module")
-            .ok_or_else(|| anyhow::anyhow!("Missing [module] section"))?;
-
-        let metadata = ModuleMetadata {
-            name: module_section
-                .get("name")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow::anyhow!("Missing module name"))?
-                .to_string(),
-            version: module_section
-                .get("version")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow::anyhow!("Missing module version"))?
-                .to_string(),
-            description: module_section
-                .get("description")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            entry: module_section
-                .get("entry")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow::anyhow!("Missing module entry"))?
-                .to_string(),
-            process_name: data
-                .get("config")
-                .and_then(|c| c.get("process_name"))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            default_port: data
-                .get("config")
-                .and_then(|c| c.get("default_port"))
-                .and_then(|v| v.as_integer())
-                .map(|i| i as u16),
-            executable_path: data
-                .get("config")
-                .and_then(|c| c.get("executable_path"))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            icon: module_section
-                .get("icon")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            stop_command: data
-                .get("config")
-                .and_then(|c| c.get("stop_command"))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            interaction_mode: data
-                .get("protocols")
-                .and_then(|p| p.get("interaction_mode"))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            protocols_supported: data
-                .get("protocols")
-                .and_then(|p| p.get("supported"))
-                .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect()),
-            protocols_default: data
-                .get("protocols")
-                .and_then(|p| p.get("default"))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            settings: parse_settings(&data),
-            commands: parse_commands(&data),
-        };
+        let content = fs::read_to_string(&toml_path)
+            .map_err(|e| anyhow::anyhow!("Failed to read {}: {}", toml_path.display(), e))?;
+        let metadata = parse_module_toml(&content)?;
 
         Ok(LoadedModule {
             metadata,
@@ -307,74 +525,8 @@ impl ModuleLoader {
             return Err(anyhow::anyhow!("No module.toml found in ZIP"));
         }
 
-        // TOML 파싱
-        let data: toml::Value = toml::from_str(&toml_content)?;
-        let module_section = data
-            .get("module")
-            .ok_or_else(|| anyhow::anyhow!("Missing [module] section"))?;
-
-        let metadata = ModuleMetadata {
-            name: module_section
-                .get("name")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow::anyhow!("Missing module name"))?
-                .to_string(),
-            version: module_section
-                .get("version")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow::anyhow!("Missing module version"))?
-                .to_string(),
-            description: module_section
-                .get("description")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            entry: module_section
-                .get("entry")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow::anyhow!("Missing module entry"))?
-                .to_string(),
-            process_name: data
-                .get("config")
-                .and_then(|c| c.get("process_name"))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            default_port: data
-                .get("config")
-                .and_then(|c| c.get("default_port"))
-                .and_then(|v| v.as_integer())
-                .map(|i| i as u16),
-            executable_path: data
-                .get("config")
-                .and_then(|c| c.get("executable_path"))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            icon: module_section
-                .get("icon")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            stop_command: data
-                .get("config")
-                .and_then(|c| c.get("stop_command"))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            interaction_mode: data
-                .get("protocols")
-                .and_then(|p| p.get("interaction_mode"))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            protocols_supported: data
-                .get("protocols")
-                .and_then(|p| p.get("supported"))
-                .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect()),
-            protocols_default: data
-                .get("protocols")
-                .and_then(|p| p.get("default"))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            settings: parse_settings(&data),
-            commands: parse_commands(&data),
-        };
+        // 강타입 TOML 파싱
+        let metadata = parse_module_toml(&toml_content)?;
 
         // 임시 디렉토리에 압축 해제
         let temp_dir = tempfile::tempdir()?;
@@ -433,6 +585,201 @@ mod tests {
         let modules = loader.discover_modules().unwrap();
         assert!(modules.is_empty());
     }
+
+    #[test]
+    fn test_parse_module_toml_minimal() {
+        let toml = r#"
+[module]
+name = "test-game"
+version = "1.0.0"
+entry = "lifecycle.py"
+"#;
+        let meta = parse_module_toml(toml).unwrap();
+        assert_eq!(meta.name, "test-game");
+        assert_eq!(meta.version, "1.0.0");
+        assert_eq!(meta.entry, "lifecycle.py");
+        assert!(meta.description.is_none());
+        assert!(meta.settings.is_none());
+        assert!(meta.commands.is_none());
+    }
+
+    #[test]
+    fn test_parse_module_toml_missing_name() {
+        let toml = r#"
+[module]
+version = "1.0.0"
+entry = "lifecycle.py"
+"#;
+        let result = parse_module_toml(toml);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("name"), "Error should mention missing field 'name': {}", err_msg);
+    }
+
+    #[test]
+    fn test_parse_module_toml_with_settings_and_commands() {
+        let toml = r#"
+[module]
+name = "minecraft"
+version = "2.0.0"
+entry = "lifecycle.py"
+log_pattern = '/(?P<level>INFO|WARN|ERROR)\]'
+
+[protocols]
+supported = ["rcon", "stdin"]
+default = "rcon"
+interaction_mode = "console"
+
+[config]
+process_name = "java.exe"
+default_port = 25565
+stop_command = "stop"
+
+[[settings.fields]]
+name = "ram"
+type = "text"
+label = "Memory"
+default = "2G"
+group = "saba-chan"
+
+[[commands.fields]]
+name = "players"
+label = "Player List"
+method = "rcon"
+rcon_template = "list"
+"#;
+        let meta = parse_module_toml(toml).unwrap();
+        assert_eq!(meta.name, "minecraft");
+        assert_eq!(meta.log_pattern.as_deref(), Some("/(?P<level>INFO|WARN|ERROR)\\]"));
+        assert_eq!(meta.interaction_mode.as_deref(), Some("console"));
+        assert_eq!(meta.default_port, Some(25565));
+        assert_eq!(meta.stop_command.as_deref(), Some("stop"));
+        
+        let settings = meta.settings.unwrap();
+        assert_eq!(settings.fields.len(), 1);
+        assert_eq!(settings.fields[0].name, "ram");
+        
+        let commands = meta.commands.unwrap();
+        assert_eq!(commands.fields.len(), 1);
+        assert_eq!(commands.fields[0].name, "players");
+        assert_eq!(commands.fields[0].rcon_template.as_deref(), Some("list"));
+    }
+
+    #[test]
+    fn test_parse_module_toml_extra_config_fields_ignored() {
+        let toml = r#"
+[module]
+name = "palworld"
+version = "1.0.0"
+entry = "lifecycle.py"
+
+[config]
+executable_path = "PalServer.exe"
+server_executable = "PalServer.exe"
+process_name = "PalServer"
+default_port = 8211
+ram = "4G"
+custom_unknown_field = "should not cause error"
+"#;
+        let meta = parse_module_toml(toml).unwrap();
+        assert_eq!(meta.name, "palworld");
+        assert_eq!(meta.executable_path.as_deref(), Some("PalServer.exe"));
+        assert_eq!(meta.default_port, Some(8211));
+    }
+
+    #[test]
+    fn test_parse_module_toml_missing_version() {
+        let toml = r#"
+[module]
+name = "test-game"
+entry = "lifecycle.py"
+"#;
+        let result = parse_module_toml(toml);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("version"), "Error should mention missing 'version': {}", err_msg);
+    }
+
+    #[test]
+    fn test_parse_module_toml_missing_entry() {
+        let toml = r#"
+[module]
+name = "test-game"
+version = "1.0.0"
+"#;
+        let result = parse_module_toml(toml);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("entry"), "Error should mention missing 'entry': {}", err_msg);
+    }
+
+    #[test]
+    fn test_parse_module_toml_empty_string() {
+        let result = parse_module_toml("");
+        assert!(result.is_err(), "Empty TOML should fail");
+    }
+
+    #[test]
+    fn test_parse_module_toml_invalid_toml_syntax() {
+        let result = parse_module_toml("this is not [valid toml =!");
+        assert!(result.is_err(), "Invalid TOML syntax should fail");
+    }
+
+    #[test]
+    fn test_parse_module_toml_no_module_section() {
+        let toml = r#"
+[config]
+process_name = "java"
+"#;
+        let result = parse_module_toml(toml);
+        assert!(result.is_err(), "TOML without [module] section should fail");
+    }
+
+    #[test]
+    fn test_parse_module_toml_protocols_section() {
+        let toml = r#"
+[module]
+name = "test-game"
+version = "1.0.0"
+entry = "lifecycle.py"
+
+[protocols]
+supported = ["rcon", "rest"]
+default = "rest"
+interaction_mode = "commands"
+"#;
+        let meta = parse_module_toml(toml).unwrap();
+        assert_eq!(meta.interaction_mode.as_deref(), Some("commands"));
+    }
+
+    #[test]
+    fn test_parse_module_toml_multiple_settings_groups() {
+        let toml = r#"
+[module]
+name = "test-game"
+version = "1.0.0"
+entry = "lifecycle.py"
+
+[[settings.fields]]
+name = "ram"
+type = "text"
+label = "Memory"
+default = "2G"
+group = "performance"
+
+[[settings.fields]]
+name = "port"
+type = "number"
+label = "Port"
+default = "25565"
+group = "network"
+"#;
+        let meta = parse_module_toml(toml).unwrap();
+        let settings = meta.settings.unwrap();
+        assert_eq!(settings.fields.len(), 2);
+        assert_eq!(settings.fields[0].group.as_deref(), Some("performance"));
+        assert_eq!(settings.fields[1].group.as_deref(), Some("network"));
+    }
 }
 
 /// \ub514\ub809\ud1a0\ub9ac \uc804\uccb4 \ubcf5\uc0ac \ud5ec\ud37c \ud568\uc218
@@ -453,198 +800,3 @@ fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// TOML 데이터에서 settings 스키마 파싱
-fn parse_settings(data: &toml::Value) -> Option<ModuleSettings> {
-    let settings_table = data.get("settings")?;
-    let fields_array = settings_table.get("fields")?;
-    
-    let mut fields = Vec::new();
-    
-    if let Some(array) = fields_array.as_array() {
-        for field_value in array {
-            if let Some(field_table) = field_value.as_table() {
-                let name = field_table
-                    .get("name")
-                    .and_then(|v: &toml::Value| v.as_str())
-                    .unwrap_or("unknown")
-                    .to_string();
-                
-                let field_type = field_table
-                    .get("type")
-                    .and_then(|v: &toml::Value| v.as_str())
-                    .unwrap_or("text")
-                    .to_string();
-                
-                let label = field_table
-                    .get("label")
-                    .and_then(|v: &toml::Value| v.as_str())
-                    .unwrap_or(&name)
-                    .to_string();
-                
-                let description = field_table
-                    .get("description")
-                    .and_then(|v: &toml::Value| v.as_str())
-                    .map(|s: &str| s.to_string());
-                
-                let required = field_table
-                    .get("required")
-                    .and_then(|v: &toml::Value| v.as_bool());
-                
-                let default = field_table.get("default").cloned();
-                
-                let min = field_table
-                    .get("min")
-                    .and_then(|v: &toml::Value| v.as_integer());
-                
-                let max = field_table
-                    .get("max")
-                    .and_then(|v: &toml::Value| v.as_integer());
-                
-                let options = field_table
-                    .get("options")
-                    .and_then(|v: &toml::Value| v.as_array())
-                    .map(|arr: &Vec<toml::Value>| {
-                        arr.iter()
-                            .filter_map(|v: &toml::Value| v.as_str().map(|s: &str| s.to_string()))
-                            .collect()
-                    });
-                
-                let group = field_table
-                    .get("group")
-                    .and_then(|v: &toml::Value| v.as_str())
-                    .map(|s: &str| s.to_string());
-                
-                fields.push(SettingField {
-                    name,
-                    field_type,
-                    label,
-                    description,
-                    required,
-                    default,
-                    min,
-                    max,
-                    options,
-                    group,
-                });
-            }
-        }
-    }
-    
-    if fields.is_empty() {
-        None
-    } else {
-        Some(ModuleSettings { fields })
-    }
-}
-
-fn parse_commands(data: &toml::Value) -> Option<ModuleCommands> {
-    let commands_table = data.get("commands")?;
-    tracing::debug!("Found commands table: {:?}", commands_table);
-    
-    let fields_array = commands_table.get("fields")?;
-    tracing::debug!("Found commands.fields array with {} items", fields_array.as_array()?.len());
-    
-    let mut fields = Vec::new();
-    
-    if let Some(array) = fields_array.as_array() {
-        for field_value in array {
-            if let Some(field_table) = field_value.as_table() {
-                let name = field_table
-                    .get("name")
-                    .and_then(|v: &toml::Value| v.as_str())
-                    .unwrap_or("unknown")
-                    .to_string();
-                
-                let label = field_table
-                    .get("label")
-                    .and_then(|v: &toml::Value| v.as_str())
-                    .unwrap_or(&name)
-                    .to_string();
-                
-                let description = field_table
-                    .get("description")
-                    .and_then(|v: &toml::Value| v.as_str())
-                    .map(|s: &str| s.to_string());
-                
-                let method = field_table
-                    .get("method")
-                    .and_then(|v: &toml::Value| v.as_str())
-                    .map(|s: &str| s.to_string());
-                
-                let http_method = field_table
-                    .get("http_method")
-                    .and_then(|v: &toml::Value| v.as_str())
-                    .map(|s: &str| s.to_string());
-                
-                let endpoint_template = field_table
-                    .get("endpoint_template")
-                    .and_then(|v: &toml::Value| v.as_str())
-                    .map(|s: &str| s.to_string());
-                
-                let rcon_template = field_table
-                    .get("rcon_template")
-                    .or_else(|| field_table.get("command_template"))
-                    .and_then(|v: &toml::Value| v.as_str())
-                    .map(|s: &str| s.to_string());
-                
-                // inputs 파싱
-                let inputs = if let Some(inputs_value) = field_table.get("inputs") {
-                    if let Some(inputs_array) = inputs_value.as_array() {
-                        inputs_array
-                            .iter()
-                            .filter_map(|input_value| {
-                                // 인라인 테이블도 as_table()로 파싱 가능
-                                input_value.as_table().map(|input_table| {
-                                    CommandInput {
-                                        name: input_table
-                                            .get("name")
-                                            .and_then(|v| v.as_str())
-                                            .unwrap_or("unknown")
-                                            .to_string(),
-                                        label: input_table
-                                            .get("label")
-                                            .and_then(|v| v.as_str())
-                                            .map(|s| s.to_string()),
-                                        input_type: input_table
-                                            .get("type")
-                                            .and_then(|v| v.as_str())
-                                            .map(|s| s.to_string()),
-                                        required: input_table
-                                            .get("required")
-                                            .and_then(|v| v.as_bool()),
-                                        placeholder: input_table
-                                            .get("placeholder")
-                                            .and_then(|v| v.as_str())
-                                            .map(|s| s.to_string()),
-                                        default: input_table.get("default").cloned(),
-                                    }
-                                })
-                            })
-                            .collect()
-                    } else {
-                        Vec::new()
-                    }
-                } else {
-                    Vec::new()
-                };
-                
-                fields.push(CommandField {
-                    name,
-                    label,
-                    description,
-                    method,
-                    http_method,
-                    endpoint_template,
-                    rcon_template,
-                    inputs,
-                });
-            }
-        }
-    }
-    
-    if fields.is_empty() {
-        None
-    } else {
-        Some(ModuleCommands { fields })
-    }
-}

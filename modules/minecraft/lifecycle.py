@@ -26,11 +26,85 @@ import hashlib
 from pathlib import Path
 from i18n import I18n
 
+# Shared RCON client
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from _shared.rcon import rcon_command as _rcon_command
+
 # ─── Init ─────────────────────────────────────────────────────
 
 MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 i18n = I18n(MODULE_DIR)
 DAEMON_API_URL = os.environ.get('DAEMON_API_URL', 'http://127.0.0.1:57474')
+
+# ─── Friendly name → server.properties key mapping ───────────
+# Used by configure() and install_server() to translate settings.
+_PROPERTY_KEY_MAP = {
+    "accepts_transfers": "accepts-transfers",
+    "allow_flight": "allow-flight",
+    "allow_nether": "allow-nether",
+    "broadcast_console_to_ops": "broadcast-console-to-ops",
+    "broadcast_rcon_to_ops": "broadcast-rcon-to-ops",
+    "bug_report_link": "bug-report-link",
+    "difficulty": "difficulty",
+    "enable_command_block": "enable-command-block",
+    "enable_code_of_conduct": "enable-code-of-conduct",
+    "enable_jmx_monitoring": "enable-jmx-monitoring",
+    "enable_query": "enable-query",
+    "enable_rcon": "enable-rcon",
+    "enable_status": "enable-status",
+    "enforce_secure_profile": "enforce-secure-profile",
+    "enforce_whitelist": "enforce-whitelist",
+    "entity_broadcast_range_percentage": "entity-broadcast-range-percentage",
+    "force_gamemode": "force-gamemode",
+    "function_permission_level": "function-permission-level",
+    "gamemode": "gamemode",
+    "generate_structures": "generate-structures",
+    "generator_settings": "generator-settings",
+    "hardcore": "hardcore",
+    "hide_online_players": "hide-online-players",
+    "initial_disabled_packs": "initial-disabled-packs",
+    "initial_enabled_packs": "initial-enabled-packs",
+    "level_name": "level-name",
+    "level_seed": "level-seed",
+    "level_type": "level-type",
+    "log_ips": "log-ips",
+    "max_chained_neighbor_updates": "max-chained-neighbor-updates",
+    "max_players": "max-players",
+    "max_tick_time": "max-tick-time",
+    "max_world_size": "max-world-size",
+    "motd": "motd",
+    "network_compression_threshold": "network-compression-threshold",
+    "online_mode": "online-mode",
+    "op_permission_level": "op-permission-level",
+    "player_idle_timeout": "player-idle-timeout",
+    "pause_when_empty_seconds": "pause-when-empty-seconds",
+    "port": "server-port",
+    "prevent_proxy_connections": "prevent-proxy-connections",
+    "pvp": "pvp",
+    "query_port": "query.port",
+    "rate_limit": "rate-limit",
+    "rcon_password": "rcon.password",
+    "rcon_port": "rcon.port",
+    "region_file_compression": "region-file-compression",
+    "require_resource_pack": "require-resource-pack",
+    "resource_pack": "resource-pack",
+    "resource_pack_id": "resource-pack-id",
+    "resource_pack_prompt": "resource-pack-prompt",
+    "resource_pack_sha1": "resource-pack-sha1",
+    "server_ip": "server-ip",
+    "simulation_distance": "simulation-distance",
+    "spawn_animals": "spawn-animals",
+    "spawn_monsters": "spawn-monsters",
+    "spawn_npcs": "spawn-npcs",
+    "spawn_protection": "spawn-protection",
+    "status_heartbeat_interval": "status-heartbeat-interval",
+    "sync_chunk_writes": "sync-chunk-writes",
+    "text_filtering_config": "text-filtering-config",
+    "text_filtering_version": "text-filtering-version",
+    "use_native_transport": "use-native-transport",
+    "view_distance": "view-distance",
+    "white_list": "white-list",
+}
 
 
 # ╔═══════════════════════════════════════════════════════════╗
@@ -228,73 +302,31 @@ class EulaManager:
 # ║             server.properties Manager                     ║
 # ╚═══════════════════════════════════════════════════════════╝
 
-DEFAULT_PROPERTIES = {
-    "accepts-transfers": "false",
-    "allow-flight": "false",
-    "allow-nether": "true",
-    "broadcast-console-to-ops": "true",
-    "broadcast-rcon-to-ops": "true",
-    "bug-report-link": "",
-    "difficulty": "easy",
-    "enable-command-block": "false",
-    "enable-code-of-conduct": "false",
-    "enable-jmx-monitoring": "false",
-    "enable-query": "false",
-    "enable-rcon": "true",
-    "enable-status": "true",
-    "enforce-secure-profile": "true",
-    "enforce-whitelist": "false",
-    "entity-broadcast-range-percentage": "100",
-    "force-gamemode": "false",
-    "function-permission-level": "2",
-    "gamemode": "survival",
-    "generate-structures": "true",
-    "generator-settings": "{}",
-    "hardcore": "false",
-    "hide-online-players": "false",
-    "initial-disabled-packs": "",
-    "initial-enabled-packs": "vanilla",
-    "level-name": "world",
-    "level-seed": "",
-    "level-type": "minecraft\\:normal",
-    "log-ips": "true",
-    "max-chained-neighbor-updates": "1000000",
-    "max-players": "20",
-    "max-tick-time": "60000",
-    "max-world-size": "29999984",
-    "motd": "A Minecraft Server",
-    "network-compression-threshold": "256",
-    "online-mode": "true",
-    "op-permission-level": "4",
-    "player-idle-timeout": "0",
-    "pause-when-empty-seconds": "60",
-    "prevent-proxy-connections": "false",
-    "pvp": "true",
-    "query.port": "25565",
-    "rate-limit": "0",
-    "rcon.password": "",
-    "rcon.port": "25575",
-    "region-file-compression": "deflate",
-    "require-resource-pack": "false",
-    "resource-pack": "",
-    "resource-pack-id": "",
-    "resource-pack-prompt": "",
-    "resource-pack-sha1": "",
-    "server-ip": "",
-    "server-port": "25565",
-    "simulation-distance": "10",
-    "spawn-animals": "true",
-    "spawn-monsters": "true",
-    "spawn-npcs": "true",
-    "spawn-protection": "16",
-    "status-heartbeat-interval": "0",
-    "sync-chunk-writes": "true",
-    "text-filtering-config": "",
-    "text-filtering-version": "0",
-    "use-native-transport": "true",
-    "view-distance": "10",
-    "white-list": "false",
-}
+def _load_default_properties():
+    """Load vanilla defaults from server.properties reference file,
+    then apply saba-chan-specific overrides (e.g. enable RCON)."""
+    defaults = {}
+    ref_path = os.path.join(MODULE_DIR, "server.properties")
+    if os.path.isfile(ref_path):
+        try:
+            with open(ref_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    if "=" in line:
+                        key, _, value = line.partition("=")
+                        defaults[key.strip()] = value.strip()
+        except OSError:
+            pass
+
+    # saba-chan overrides: enable RCON for managed server control
+    defaults["enable-rcon"] = "true"
+    defaults.setdefault("pause-when-empty-seconds", "60")
+    return defaults
+
+
+DEFAULT_PROPERTIES = _load_default_properties()
 
 
 class ServerPropertiesManager:
@@ -740,6 +772,48 @@ def validate(config):
     }
 
 
+def _enforce_rcon_policy(working_dir, managed=True):
+    """
+    Enforce RCON policy in server.properties before server launch.
+
+    - Managed mode (stdin control):  RCON is a security risk → force disable
+    - Non-managed mode (RCON only):  RCON is the only control method → force enable + ensure password
+
+    Returns dict with details of what was changed, or None if no changes needed.
+    """
+    mgr = ServerPropertiesManager(working_dir)
+    if not mgr.exists():
+        return None  # server.properties will be generated on first run
+
+    props = mgr.read()
+    changes = {}
+
+    if managed:
+        # Managed mode: RCON disabled (stdin is used for control)
+        if props.get("enable-rcon", "false").lower() == "true":
+            changes["enable-rcon"] = "false"
+            print(i18n.t("messages.rcon_disabled_managed"), file=sys.stderr)
+    else:
+        # Non-managed mode: RCON must be enabled
+        if props.get("enable-rcon", "false").lower() != "true":
+            changes["enable-rcon"] = "true"
+            print(i18n.t("messages.rcon_enabled_native"), file=sys.stderr)
+        # Ensure RCON password exists
+        current_pw = props.get("rcon.password", "")
+        if not current_pw:
+            import secrets
+            import string
+            alphabet = string.ascii_letters + string.digits
+            password = "".join(secrets.choice(alphabet) for _ in range(16))
+            changes["rcon.password"] = password
+            print(i18n.t("messages.rcon_password_generated"), file=sys.stderr)
+
+    if changes:
+        mgr.update(changes)
+        return {"changed": True, "changes": changes}
+    return {"changed": False}
+
+
 def get_launch_command(config):
     """
     Build the command for the Rust daemon to spawn as a ManagedProcess.
@@ -747,7 +821,16 @@ def get_launch_command(config):
     """
     java_path = config.get("java_path", "java")
     server_jar = _resolve_server_jar(config)
-    ram = config.get("ram", "2G")
+    ram_raw = config.get("ram", 2)
+    # Accept plain number (GB). Fractional values converted to MB (e.g. 0.5 → 512M, 1.5 → 1536M)
+    try:
+        ram_gb = float(str(ram_raw).rstrip("GgMm"))
+        if ram_gb == int(ram_gb):
+            ram = f"{int(ram_gb)}G"
+        else:
+            ram = f"{int(ram_gb * 1024)}M"
+    except (ValueError, TypeError):
+        ram = "2G"
     working_dir = config.get("working_dir")
     extra_jvm_args = config.get("jvm_args", [])
 
@@ -800,11 +883,17 @@ def get_launch_command(config):
 
     args.extend(["-jar", os.path.abspath(server_jar), "nogui"])
 
+    abs_working_dir = os.path.abspath(working_dir)
+
+    # Managed mode → RCON must be OFF (stdin is used for control)
+    is_managed = config.get("managed", True)  # get_launch_command default = managed
+    _enforce_rcon_policy(abs_working_dir, managed=is_managed)
+
     return {
         "success": True,
         "program": java_path,
         "args": args,
-        "working_dir": os.path.abspath(working_dir),
+        "working_dir": abs_working_dir,
         "env_vars": {},
     }
 
@@ -821,78 +910,9 @@ def configure(config):
 
     mgr = ServerPropertiesManager(working_dir)
 
-    # Friendly name → server.properties key mapping
-    key_map = {
-        "accepts_transfers": "accepts-transfers",
-        "allow_flight": "allow-flight",
-        "allow_nether": "allow-nether",
-        "broadcast_console_to_ops": "broadcast-console-to-ops",
-        "broadcast_rcon_to_ops": "broadcast-rcon-to-ops",
-        "bug_report_link": "bug-report-link",
-        "difficulty": "difficulty",
-        "enable_command_block": "enable-command-block",
-        "enable_code_of_conduct": "enable-code-of-conduct",
-        "enable_jmx_monitoring": "enable-jmx-monitoring",
-        "enable_query": "enable-query",
-        "enable_rcon": "enable-rcon",
-        "enable_status": "enable-status",
-        "enforce_secure_profile": "enforce-secure-profile",
-        "enforce_whitelist": "enforce-whitelist",
-        "entity_broadcast_range_percentage": "entity-broadcast-range-percentage",
-        "force_gamemode": "force-gamemode",
-        "function_permission_level": "function-permission-level",
-        "gamemode": "gamemode",
-        "generate_structures": "generate-structures",
-        "generator_settings": "generator-settings",
-        "hardcore": "hardcore",
-        "hide_online_players": "hide-online-players",
-        "initial_disabled_packs": "initial-disabled-packs",
-        "initial_enabled_packs": "initial-enabled-packs",
-        "level_name": "level-name",
-        "level_seed": "level-seed",
-        "level_type": "level-type",
-        "log_ips": "log-ips",
-        "max_chained_neighbor_updates": "max-chained-neighbor-updates",
-        "max_players": "max-players",
-        "max_tick_time": "max-tick-time",
-        "max_world_size": "max-world-size",
-        "motd": "motd",
-        "network_compression_threshold": "network-compression-threshold",
-        "online_mode": "online-mode",
-        "op_permission_level": "op-permission-level",
-        "player_idle_timeout": "player-idle-timeout",
-        "pause_when_empty_seconds": "pause-when-empty-seconds",
-        "port": "server-port",
-        "prevent_proxy_connections": "prevent-proxy-connections",
-        "pvp": "pvp",
-        "query_port": "query.port",
-        "rate_limit": "rate-limit",
-        "rcon_password": "rcon.password",
-        "rcon_port": "rcon.port",
-        "region_file_compression": "region-file-compression",
-        "require_resource_pack": "require-resource-pack",
-        "resource_pack": "resource-pack",
-        "resource_pack_id": "resource-pack-id",
-        "resource_pack_prompt": "resource-pack-prompt",
-        "resource_pack_sha1": "resource-pack-sha1",
-        "server_ip": "server-ip",
-        "simulation_distance": "simulation-distance",
-        "spawn_animals": "spawn-animals",
-        "spawn_monsters": "spawn-monsters",
-        "spawn_npcs": "spawn-npcs",
-        "spawn_protection": "spawn-protection",
-        "status_heartbeat_interval": "status-heartbeat-interval",
-        "sync_chunk_writes": "sync-chunk-writes",
-        "text_filtering_config": "text-filtering-config",
-        "text_filtering_version": "text-filtering-version",
-        "use_native_transport": "use-native-transport",
-        "view_distance": "view-distance",
-        "white_list": "white-list",
-    }
-
     props_changes = {}
     for key, value in settings.items():
-        prop_key = key_map.get(key, key)
+        prop_key = _PROPERTY_KEY_MAP.get(key, key)
         if isinstance(value, bool):
             value = "true" if value else "false"
         props_changes[prop_key] = str(value)
@@ -920,6 +940,79 @@ def read_properties(config):
             "message": i18n.t("messages.properties_using_defaults"),
         }
     return {"success": True, "exists": True, "properties": mgr.read()}
+
+
+def reset_properties(config):
+    """Reset server.properties to default values."""
+    working_dir = config.get("working_dir")
+    if not working_dir:
+        return {"success": False, "message": i18n.t("errors.no_working_dir")}
+
+    mgr = ServerPropertiesManager(working_dir)
+    defaults = mgr.get_defaults()
+    success = mgr.write(defaults)
+    return {
+        "success": success,
+        "message": i18n.t("messages.properties_reset") if success
+                   else i18n.t("errors.properties_write_failed"),
+    }
+
+
+def reset_server(config):
+    """Full server reset: delete everything except server.jar and eula.txt.
+
+    server.properties will be recreated from module defaults on next configure().
+    """
+    import shutil
+
+    working_dir = config.get("working_dir")
+    if not working_dir:
+        return {"success": False, "message": i18n.t("errors.no_working_dir")}
+
+    working_path = Path(working_dir)
+    if not working_path.is_dir():
+        return {"success": False, "message": i18n.t("errors.no_working_dir")}
+
+    # 보존할 파일 패턴 (대소문자 무시)
+    KEEP_FILES = {"eula.txt"}
+    KEEP_EXTENSIONS = {".jar"}
+
+    deleted = []
+    errors = []
+
+    for item in list(working_path.iterdir()):
+        name_lower = item.name.lower()
+
+        # JAR 파일 보존 (server.jar 등)
+        if item.is_file() and any(name_lower.endswith(ext) for ext in KEEP_EXTENSIONS):
+            continue
+        # eula.txt 보존
+        if item.is_file() and name_lower in KEEP_FILES:
+            continue
+
+        try:
+            if item.is_dir():
+                shutil.rmtree(item)
+            else:
+                item.unlink()
+            deleted.append(item.name)
+        except OSError as e:
+            errors.append(f"{item.name}: {e}")
+
+    success = len(errors) == 0
+    msg_parts = []
+    if deleted:
+        msg_parts.append(i18n.t("messages.server_reset_deleted", count=len(deleted)))
+    if errors:
+        msg_parts.append(i18n.t("errors.server_reset_partial", errors="; ".join(errors)))
+
+    return {
+        "success": success,
+        "deleted": deleted,
+        "errors": errors,
+        "message": " ".join(msg_parts) if msg_parts
+                   else i18n.t("messages.server_reset_complete"),
+    }
 
 
 def accept_eula(config):
@@ -965,6 +1058,11 @@ def start(config):
     try:
         java_path = config.get("java_path", "java")
         server_jar = _resolve_server_jar(config)
+
+        # Non-managed (legacy) mode → RCON must be ON (only control method)
+        wd = config.get("working_dir")
+        if wd:
+            _enforce_rcon_policy(os.path.abspath(wd), managed=False)
 
         if not server_jar:
             return {
@@ -1025,7 +1123,7 @@ def stop(config):
             rcon_password = config.get("rcon_password", "")
             if rcon_password:
                 try:
-                    _send_rcon_command("127.0.0.1", rcon_port, rcon_password, "stop")
+                    _rcon_command("127.0.0.1", rcon_port, rcon_password, "stop")
                     for _ in range(30):
                         time.sleep(1)
                         try:
@@ -1148,35 +1246,8 @@ def _format_command(cmd, args):
 
 
 def _send_rcon_command(host, port, password, command):
-    """Minimal RCON client for graceful shutdown."""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(5)
-    sock.connect((host, int(port)))
-
-    def _pack(req_id, pkt_type, payload):
-        data = struct.pack("<ii", req_id, pkt_type) + payload.encode("utf-8") + b"\x00\x00"
-        return struct.pack("<i", len(data)) + data
-
-    def _read():
-        raw_size = sock.recv(4)
-        if len(raw_size) < 4:
-            return -1, ""
-        size = struct.unpack("<i", raw_size)[0]
-        raw = sock.recv(size)
-        req_id = struct.unpack("<i", raw[:4])[0]
-        payload = raw[8:-2].decode("utf-8", errors="replace") if len(raw) > 10 else ""
-        return req_id, payload
-
-    sock.sendall(_pack(1, 3, password))
-    auth_id, _ = _read()
-    if auth_id == -1:
-        sock.close()
-        raise ConnectionError("RCON auth failed")
-
-    sock.sendall(_pack(2, 2, command))
-    _, resp = _read()
-    sock.close()
-    return resp
+    """Legacy wrapper — delegates to shared RCON client."""
+    return _rcon_command(host, port, password, command)
 
 
 # ╔═══════════════════════════════════════════════════════════╗
@@ -1411,77 +1482,9 @@ class ServerInstaller:
         # Apply initial server settings
         if initial_settings and isinstance(initial_settings, dict):
             mgr = ServerPropertiesManager(install_path)
-            # Map user-friendly keys to server.properties keys (same as configure())
-            key_map = {
-                "accepts_transfers": "accepts-transfers",
-                "allow_flight": "allow-flight",
-                "allow_nether": "allow-nether",
-                "broadcast_console_to_ops": "broadcast-console-to-ops",
-                "broadcast_rcon_to_ops": "broadcast-rcon-to-ops",
-                "bug_report_link": "bug-report-link",
-                "difficulty": "difficulty",
-                "enable_command_block": "enable-command-block",
-                "enable_code_of_conduct": "enable-code-of-conduct",
-                "enable_jmx_monitoring": "enable-jmx-monitoring",
-                "enable_query": "enable-query",
-                "enable_rcon": "enable-rcon",
-                "enable_status": "enable-status",
-                "enforce_secure_profile": "enforce-secure-profile",
-                "enforce_whitelist": "enforce-whitelist",
-                "entity_broadcast_range_percentage": "entity-broadcast-range-percentage",
-                "force_gamemode": "force-gamemode",
-                "function_permission_level": "function-permission-level",
-                "gamemode": "gamemode",
-                "generate_structures": "generate-structures",
-                "generator_settings": "generator-settings",
-                "hardcore": "hardcore",
-                "hide_online_players": "hide-online-players",
-                "initial_disabled_packs": "initial-disabled-packs",
-                "initial_enabled_packs": "initial-enabled-packs",
-                "level_name": "level-name",
-                "level_seed": "level-seed",
-                "level_type": "level-type",
-                "log_ips": "log-ips",
-                "max_chained_neighbor_updates": "max-chained-neighbor-updates",
-                "max_players": "max-players",
-                "max_tick_time": "max-tick-time",
-                "max_world_size": "max-world-size",
-                "motd": "motd",
-                "network_compression_threshold": "network-compression-threshold",
-                "online_mode": "online-mode",
-                "op_permission_level": "op-permission-level",
-                "player_idle_timeout": "player-idle-timeout",
-                "pause_when_empty_seconds": "pause-when-empty-seconds",
-                "port": "server-port",
-                "prevent_proxy_connections": "prevent-proxy-connections",
-                "pvp": "pvp",
-                "query_port": "query.port",
-                "rate_limit": "rate-limit",
-                "rcon_password": "rcon.password",
-                "rcon_port": "rcon.port",
-                "region_file_compression": "region-file-compression",
-                "require_resource_pack": "require-resource-pack",
-                "resource_pack": "resource-pack",
-                "resource_pack_id": "resource-pack-id",
-                "resource_pack_prompt": "resource-pack-prompt",
-                "resource_pack_sha1": "resource-pack-sha1",
-                "server_ip": "server-ip",
-                "simulation_distance": "simulation-distance",
-                "spawn_animals": "spawn-animals",
-                "spawn_monsters": "spawn-monsters",
-                "spawn_npcs": "spawn-npcs",
-                "spawn_protection": "spawn-protection",
-                "status_heartbeat_interval": "status-heartbeat-interval",
-                "sync_chunk_writes": "sync-chunk-writes",
-                "text_filtering_config": "text-filtering-config",
-                "text_filtering_version": "text-filtering-version",
-                "use_native_transport": "use-native-transport",
-                "view_distance": "view-distance",
-                "white_list": "white-list",
-            }
             props = {}
             for k, v in initial_settings.items():
-                prop_key = key_map.get(k, k)
+                prop_key = _PROPERTY_KEY_MAP.get(k, k)
                 if isinstance(v, bool):
                     v = "true" if v else "false"
                 props[prop_key] = str(v)
@@ -1618,16 +1621,20 @@ FUNCTIONS = {
 }
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
+    if len(sys.argv) < 2:
         print(json.dumps({"success": False,
-                           "message": "Usage: lifecycle.py <function> <config_json>"}))
+                           "message": "Usage: lifecycle.py <function>"}))
         sys.exit(1)
 
     function_name = sys.argv[1]
+
+    # Read config JSON from stdin (avoids command-line length limits
+    # and prevents sensitive data from appearing in process listings)
     try:
-        config = json.loads(sys.argv[2])
+        config_str = sys.stdin.read()
+        config = json.loads(config_str) if config_str.strip() else {}
     except json.JSONDecodeError:
-        print(json.dumps({"success": False, "message": "Invalid JSON config"}))
+        print(json.dumps({"success": False, "message": "Invalid JSON config on stdin"}))
         sys.exit(1)
 
     fn = FUNCTIONS.get(function_name)

@@ -15,11 +15,20 @@ contextBridge.exposeInMainWorld('api', {
     instanceDelete: (id) => ipcRenderer.invoke('instance:delete', id),
     instanceReorder: (orderedIds) => ipcRenderer.invoke('instance:reorder', orderedIds),
     instanceUpdateSettings: (id, settings) => ipcRenderer.invoke('instance:updateSettings', id, settings),
+    instanceResetProperties: (id) => ipcRenderer.invoke('instance:resetProperties', id),
+    instanceResetServer: (id) => ipcRenderer.invoke('instance:resetServer', id),
     executeCommand: (id, command) => ipcRenderer.invoke('instance:executeCommand', id, command),
     // Managed Process API (console capture)
     managedStart: (instanceId) => ipcRenderer.invoke('managed:start', instanceId),
     managedConsole: (instanceId, since, count) => ipcRenderer.invoke('managed:console', instanceId, since, count),
     managedStdin: (instanceId, command) => ipcRenderer.invoke('managed:stdin', instanceId, command),
+    // Console Popout (PiP)
+    consolePopout: (instanceId, serverName) => ipcRenderer.invoke('console:popout', instanceId, serverName),
+    consoleFocusPopout: (instanceId) => ipcRenderer.invoke('console:focusPopout', instanceId),
+    onConsolePopoutOpened: (callback) => ipcRenderer.on('console:popoutOpened', (event, instanceId) => callback(instanceId)),
+    offConsolePopoutOpened: () => ipcRenderer.removeAllListeners('console:popoutOpened'),
+    onConsolePopoutClosed: (callback) => ipcRenderer.on('console:popoutClosed', (event, instanceId) => callback(instanceId)),
+    offConsolePopoutClosed: () => ipcRenderer.removeAllListeners('console:popoutClosed'),
     // Updater — 데몬 HTTP API를 통한 업데이트 관리
     updaterCheck: () => ipcRenderer.invoke('updater:check'),
     updaterStatus: () => ipcRenderer.invoke('updater:status'),

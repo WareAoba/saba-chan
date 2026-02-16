@@ -118,6 +118,7 @@
     "properties_write_failed": "Schreiben von server.properties fehlgeschlagen",
     "eula_write_failed": "Schreiben von eula.txt fehlgeschlagen",
     "working_dir_error": "Arbeitsverzeichnis kann nicht erstellt werden: {{path}}",
+    "server_reset_partial": "Einige Elemente konnten nicht gelöscht werden: {{errors}}",
     "detect": {
       "java_not_found": "Java ist nicht installiert oder nicht im PATH gefunden",
       "java_version_too_old": "Java {{current}} ist zu alt. Minecraft erfordert Java {{required}} oder neuer.",
@@ -161,8 +162,14 @@
     "graceful_stop": "Server ordnungsgemäß gestoppt (PID {{pid}})",
     "graceful_stop_timeout": "Zeitlimit für ordnungsgemäßes Herunterfahren überschritten, erzwingt Stopp",
     "properties_updated": "server.properties erfolgreich aktualisiert",
+    "properties_reset": "server.properties wurde auf Standardwerte zurückgesetzt",
     "properties_using_defaults": "server.properties existiert nicht — Standardwerte werden angezeigt",
-    "eula_accepted": "Minecraft EULA erfolgreich akzeptiert"
+    "eula_accepted": "Minecraft EULA erfolgreich akzeptiert",
+    "server_reset_complete": "Server-Reset abgeschlossen",
+    "server_reset_deleted": "{{count}} Elemente gelöscht",
+    "rcon_disabled_managed": "RCON deaktiviert — Managed-Modus nutzt stdin zur Serversteuerung",
+    "rcon_enabled_native": "RCON aktiviert — erforderlich für Serversteuerung im nicht-verwalteten Modus",
+    "rcon_password_generated": "RCON-Passwort automatisch generiert (kein Passwort war gesetzt)"
   },
   "rcon": {
     "connecting": "Verbindung zu {{host}}:{{port}}...",

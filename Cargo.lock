@@ -3510,6 +3510,7 @@ dependencies = [
  "glob",
  "hyper 1.8.1",
  "nix",
+ "regex",
  "regex-lite",
  "reqwest 0.11.27",
  "saba-chan-updater-lib",

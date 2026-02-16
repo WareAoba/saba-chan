@@ -2,11 +2,10 @@ mod supervisor;
 mod plugin;
 mod protocol;
 mod ipc;
-mod resource;
 mod config;
 mod instance;
 mod process_monitor;
-mod path_detector;
+mod utils;
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -28,6 +27,12 @@ async fn main() -> anyhow::Result<()> {
         if let Err(e) = sup.initialize().await {
             tracing::warn!("Failed to initialize supervisor: {}", e);
         }
+    }
+
+    // Generate IPC auth token
+    match ipc::auth::generate_and_save_token() {
+        Ok(token) => tracing::info!("IPC auth token generated ({} chars)", token.len()),
+        Err(e) => tracing::warn!("Failed to generate IPC auth token (auth disabled): {}", e),
     }
 
     // Start IPC HTTP server

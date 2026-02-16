@@ -117,7 +117,19 @@
     "save_aliases": "保存别名",
     "reset_aliases": "重置",
     "save_settings": "保存设置",
-    "close": "关闭"
+    "close": "关闭",
+    "danger_zone": "危险区域",
+    "reset_server_label": "重置服务器",
+    "reset_server_desc": "删除所有世界、设置、日志和其他数据。仅保留服务器 JAR 和 eula.txt。此操作无法撤销。",
+    "reset_settings_label": "重置设置",
+    "reset_settings_desc": "将所有服务器设置重置为出厂默认值。世界和存档数据将被保留。此操作无法撤销。",
+    "reset_button": "重置",
+    "resetting": "重置中...",
+    "reset_confirm_title": "重置服务器",
+    "reset_confirm": "完全重置服务器 '{{name}}'？\n\n所有世界、设置、日志和其他数据将被删除。\n仅保留服务器 JAR 和 eula.txt。\n\n此操作无法撤销。",
+    "reset_success": "服务器 '{{name}}' 已重置（已删除 {{count}} 个项目）",
+    "reset_failed": "重置失败：{{error}}",
+    "reset_error": "重置错误：{{error}}"
   },
   "discord_bot": {
     "token_missing_title": "缺少令牌",

@@ -118,6 +118,7 @@
     "properties_write_failed": "server.properties の書き込みに失敗しました",
     "eula_write_failed": "eula.txt の書き込みに失敗しました",
     "working_dir_error": "作業ディレクトリを作成できません: {{path}}",
+    "server_reset_partial": "一部のアイテムを削除できませんでした: {{errors}}",
     "detect": {
       "java_not_found": "Javaがインストールされていないか、PATHに見つかりません",
       "java_version_too_old": "Java {{current}} は古すぎます。Minecraftには Java {{required}} 以降が必要です。",
@@ -161,8 +162,14 @@
     "graceful_stop": "サーバーが正常に停止しました (PID {{pid}})",
     "graceful_stop_timeout": "正常なシャットダウンがタイムアウトしました。強制停止に移行します",
     "properties_updated": "server.properties が正常に更新されました",
+    "properties_reset": "server.properties がデフォルトにリセットされました",
     "properties_using_defaults": "server.properties が存在しません — デフォルト値を表示しています",
-    "eula_accepted": "Minecraft EULA が正常に同意されました"
+    "eula_accepted": "Minecraft EULA が正常に同意されました",
+    "server_reset_complete": "サーバーリセット完了",
+    "server_reset_deleted": "{{count}}個のアイテムを削除",
+    "rcon_disabled_managed": "RCON無効化 — マネージドモードではstdinでサーバーを制御します",
+    "rcon_enabled_native": "RCON有効化 — 非マネージドモードではRCONが唯一の制御手段です",
+    "rcon_password_generated": "RCONパスワードを自動生成しました（パスワードが設定されていませんでした）"
   },
   "rcon": {
     "connecting": "{{host}}:{{port}} に接続中...",

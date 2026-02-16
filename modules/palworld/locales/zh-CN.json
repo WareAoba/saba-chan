@@ -79,6 +79,15 @@
     "daemon_rcon_response": "守护程序RCON响应：{{result}}",
     "broadcast_message": "广播消息：{{message}}",
     "save_triggered": "服务器保存已触发",
-    "shutdown_initiated": "服务器关闭已启动（{{seconds}}秒倒计时）"
+    "shutdown_initiated": "服务器关闭已启动（{{seconds}}秒倒计时）",
+    "rest_api_forced_on": "[策略] REST API 已强制启用",
+    "rcon_forced_off": "[策略] RCON 已强制禁用（已弃用）",
+    "admin_password_generated": "[策略] 已自动生成 AdminPassword 用于 REST API 认证"
+  },
+  "reset": {
+    "no_path": "无法确定服务器目录。请设置 working_dir 或 server_executable。",
+    "not_found": "未找到设置文件。请先启动一次服务器以生成该文件。",
+    "settings_success": "所有服务器设置已重置为出厂默认值。世界数据已保留。",
+    "settings_failed": "将默认设置写入配置文件失败。"
   }
 }

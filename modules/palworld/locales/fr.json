@@ -79,6 +79,15 @@
     "daemon_rcon_response": "Réponse RCON du daemon: {{result}}",
     "broadcast_message": "Message de diffusion: {{message}}",
     "save_triggered": "Sauvegarde du serveur déclenchée",
-    "shutdown_initiated": "Arrêt du serveur initié (compte à rebours {{seconds}}s)"
+    "shutdown_initiated": "Arrêt du serveur initié (compte à rebours {{seconds}}s)",
+    "rest_api_forced_on": "[Politique] REST API forcée à activée",
+    "rcon_forced_off": "[Politique] RCON forcé à désactivé (obsolète)",
+    "admin_password_generated": "[Politique] AdminPassword généré automatiquement pour l'authentification REST API"
+  },
+  "reset": {
+    "no_path": "Impossible de déterminer le répertoire du serveur. Définissez working_dir ou server_executable.",
+    "not_found": "Fichier de paramètres introuvable. Démarrez le serveur une fois pour le générer.",
+    "settings_success": "Tous les paramètres du serveur ont été réinitialisés aux valeurs d'usine. Les données du monde ont été préservées.",
+    "settings_failed": "Échec de l'écriture des paramètres par défaut dans le fichier de configuration."
   }
 }

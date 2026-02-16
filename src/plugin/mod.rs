@@ -1,48 +1,8 @@
 use anyhow::Result;
-use std::process::Command;
 use serde_json::Value;
-
-/// Windows에서 콘솔 창 없이 프로세스 실행
-#[cfg(target_os = "windows")]
-fn hide_window(cmd: &mut Command) -> &mut Command {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x08000000;
-    cmd.creation_flags(CREATE_NO_WINDOW)
-}
-
-#[cfg(not(target_os = "windows"))]
-fn hide_window(cmd: &mut Command) -> &mut Command {
-    cmd
-}
-
-/// Plugin manager for executing Python modules
-#[allow(dead_code)]
-pub struct PluginManager {
-    python_cmd: Option<String>,
-}
-
-impl Default for PluginManager {
-    fn default() -> Self {
-        Self {
-            python_cmd: detect_python_command().map(|s| s.to_string()),
-        }
-    }
-}
-
-#[allow(dead_code)]
-impl PluginManager {
-    pub fn new() -> Self {
-        Self::default()
-    }
-    
-    pub fn detect_python(&self) -> Option<String> {
-        self.python_cmd.clone()
-    }
-    
-    pub async fn run_plugin(&self, module_path: &str, function: &str, config: Value) -> Result<Value> {
-        run_plugin(module_path, function, config).await
-    }
-}
+use tokio::process::Command;
+use tokio::io::AsyncWriteExt;
+use crate::utils::apply_creation_flags;
 
 /// Plugin runner executes Python modules (short-lived)
 /// Returns JSON output from stdout only
@@ -50,20 +10,33 @@ impl PluginManager {
 pub async fn run_plugin(module_path: &str, function: &str, config: Value) -> Result<Value> {
     tracing::info!("Executing plugin: {} -> {}", module_path, function);
 
-    // Construct command: python module_path function config_json
+    // Construct command: python module_path function
+    // Config JSON is passed via stdin to avoid command-line length limits
+    // and prevent sensitive data from appearing in process listings
     let config_json = serde_json::to_string(&config)?;
     
     // Try to find working Python command
-    let python_cmd = detect_python_command().unwrap_or("python");
+    let python_cmd = detect_python_command().await.unwrap_or("python");
     
     tracing::info!("Using Python command: {}", python_cmd);
     
     let mut cmd = Command::new(python_cmd);
     cmd.arg(module_path)
         .arg(function)
-        .arg(&config_json);
-    hide_window(&mut cmd);
-    let output = cmd.output()?;
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    apply_creation_flags(&mut cmd);
+    
+    let mut child = cmd.spawn()?;
+    
+    // Write config JSON to stdin, then explicitly drop to signal EOF
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(config_json.as_bytes()).await?;
+        stdin.shutdown().await?;
+    }
+    
+    let output = child.wait_with_output().await?;
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -96,15 +69,15 @@ pub async fn run_plugin(module_path: &str, function: &str, config: Value) -> Res
 }
 
 /// Detect available Python command
-fn detect_python_command() -> Option<&'static str> {
+async fn detect_python_command() -> Option<&'static str> {
     // Try commands in order of preference
     let candidates = vec!["python", "python3", "py"];
     
     for cmd_name in candidates {
         let mut cmd = Command::new(cmd_name);
         cmd.arg("--version");
-        hide_window(&mut cmd);
-        if let Ok(output) = cmd.output() {
+        apply_creation_flags(&mut cmd);
+        if let Ok(output) = cmd.output().await {
             if output.status.success() {
                 let version = String::from_utf8_lossy(&output.stdout);
                 tracing::debug!("Found Python: {} -> {}", cmd_name, version.trim());
@@ -122,10 +95,10 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    #[test]
-    fn test_detect_python_command() {
+    #[tokio::test]
+    async fn test_detect_python_command() {
         // Python 명령어 탐지
-        let result = detect_python_command();
+        let result = detect_python_command().await;
         
         // 결과가 Some이거나 None일 수 있음 (환경에 따라)
         match result {
@@ -144,13 +117,5 @@ mod tests {
 
         // 존재하지 않는 파일이므로 에러가 발생해야 함
         assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_plugin_runner_stub() {
-        // Stub test: actual execution depends on Python environment
-        let config = json!({"ram": "8G"});
-        let _result = run_plugin("stub.py", "start", config);
-        // Would fail without actual Python module, which is expected
     }
 }

@@ -118,6 +118,7 @@
     "properties_write_failed": "Falha ao gravar server.properties",
     "eula_write_failed": "Falha ao gravar eula.txt",
     "working_dir_error": "Não é possível criar o diretório de trabalho: {{path}}",
+    "server_reset_partial": "Alguns itens não puderam ser excluídos: {{errors}}",
     "detect": {
       "java_not_found": "Java não está instalado ou não foi encontrado no PATH",
       "java_version_too_old": "Java {{current}} é muito antigo. Minecraft requer Java {{required}} ou mais recente.",
@@ -161,8 +162,14 @@
     "graceful_stop": "O servidor parou corretamente (PID {{pid}})",
     "graceful_stop_timeout": "O tempo limite do desligamento correto expirou, procedendo ao encerramento forçado",
     "properties_updated": "server.properties atualizado com sucesso",
+    "properties_reset": "server.properties foi redefinido para os padrões",
     "properties_using_defaults": "server.properties não existe — mostrando valores padrão",
-    "eula_accepted": "EULA do Minecraft aceito com sucesso"
+    "eula_accepted": "EULA do Minecraft aceito com sucesso",
+    "server_reset_complete": "Redefinição do servidor concluída",
+    "server_reset_deleted": "{{count}} itens excluídos",
+    "rcon_disabled_managed": "RCON desativado — o modo gerenciado usa stdin para controlar o servidor",
+    "rcon_enabled_native": "RCON ativado — necessário para controlar o servidor no modo não gerenciado",
+    "rcon_password_generated": "Senha RCON gerada automaticamente (nenhuma senha estava definida)"
   },
   "rcon": {
     "connecting": "Conectando a {{host}}:{{port}}...",

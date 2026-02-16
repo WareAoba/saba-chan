@@ -13,6 +13,27 @@ pub enum ProcessError {
     TerminationFailed { reason: String },
 }
 
+/// Force-kill a process by PID. Cross-platform helper.
+pub fn force_kill_pid(pid: u32) -> Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        std::process::Command::new("taskkill")
+            .args(["/F", "/PID", &pid.to_string()])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .map_err(|e| anyhow::anyhow!("Failed to kill PID {}: {}", pid, e))?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        unsafe {
+            libc::kill(pid as i32, libc::SIGKILL);
+        }
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
 pub enum ProcessStatus {

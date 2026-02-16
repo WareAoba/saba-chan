@@ -79,6 +79,15 @@
     "daemon_rcon_response": "守護程序RCON回應：{{result}}",
     "broadcast_message": "廣播訊息：{{message}}",
     "save_triggered": "伺服器保存已觸發",
-    "shutdown_initiated": "伺服器關閉已啟動（{{seconds}}秒倒計時）"
+    "shutdown_initiated": "伺服器關閉已啟動（{{seconds}}秒倒計時）",
+    "rest_api_forced_on": "[策略] REST API 已強制啟用",
+    "rcon_forced_off": "[策略] RCON 已強制停用（已棄用）",
+    "admin_password_generated": "[策略] 已自動產生 AdminPassword 用於 REST API 驗證"
+  },
+  "reset": {
+    "no_path": "無法確定伺服器目錄。請設定 working_dir 或 server_executable。",
+    "not_found": "找不到設定檔。請先啟動一次伺服器以產生該檔案。",
+    "settings_success": "所有伺服器設定已重置為出廠預設值。世界資料已保留。",
+    "settings_failed": "將預設設定寫入設定檔失敗。"
   }
 }

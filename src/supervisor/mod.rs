@@ -2,6 +2,7 @@ pub mod process;
 pub mod state_machine;
 pub mod module_loader;
 pub mod managed_process;
+pub mod error;
 
 use anyhow::Result;
 use process::{ProcessTracker, ProcessManager};
@@ -79,7 +80,6 @@ impl Supervisor {
         let mut merged_config = config.as_object().cloned().unwrap_or_default();
         if let Some(exe_path) = &instance.executable_path {
             merged_config.insert("server_executable".to_string(), json!(exe_path));
-            // Also pass as server_jar for modules that expect that key
             merged_config.entry("server_jar".to_string()).or_insert_with(|| json!(exe_path));
         }
         if let Some(work_dir) = &instance.working_dir {
@@ -93,6 +93,27 @@ impl Supervisor {
         }
         if let Some(rcon_pw) = &instance.rcon_password {
             merged_config.entry("rcon_password".to_string()).or_insert_with(|| json!(rcon_pw));
+        }
+        // Merge module_settings (ram, cpu_threads, use_aikar_flags, etc.)
+        for (key, value) in &instance.module_settings {
+            merged_config.entry(key.clone()).or_insert_with(|| value.clone());
+        }
+        // REST API fields for modules that use REST protocol
+        if let Some(rest_host) = &instance.rest_host {
+            merged_config.entry("rest_host".to_string()).or_insert_with(|| json!(rest_host));
+        }
+        if let Some(rest_port) = instance.rest_port {
+            merged_config.entry("rest_port".to_string()).or_insert_with(|| json!(rest_port));
+        }
+        if let Some(rest_user) = &instance.rest_username {
+            merged_config.entry("rest_username".to_string()).or_insert_with(|| json!(rest_user));
+        }
+        if let Some(rest_pw) = &instance.rest_password {
+            merged_config.entry("rest_password".to_string()).or_insert_with(|| json!(rest_pw));
+        }
+        merged_config.entry("protocol_mode".to_string()).or_insert_with(|| json!(&instance.protocol_mode));
+        if let Some(ver) = &instance.server_version {
+            merged_config.entry("server_version".to_string()).or_insert_with(|| json!(ver));
         }
         let final_config = Value::Object(merged_config);
 
@@ -153,23 +174,10 @@ impl Supervisor {
         if let Some(managed) = self.managed_store.get(&instance.id).await {
             if managed.is_running() {
                 if force {
-                    // Force kill: taskkill로 즉시 종료
+                    // Force kill: 즉시 종료
                     tracing::info!("Force-killing managed server '{}'", server_name);
                     if let Ok(pid) = self.tracker.get_pid(&instance.id) {
-                        #[cfg(target_os = "windows")]
-                        {
-                            use std::os::windows::process::CommandExt;
-                            let _ = std::process::Command::new("taskkill")
-                                .args(["/F", "/PID", &pid.to_string()])
-                                .creation_flags(0x08000000)
-                                .output();
-                        }
-                        #[cfg(not(target_os = "windows"))]
-                        {
-                            unsafe {
-                                libc::kill(pid as i32, libc::SIGKILL);
-                            }
-                        }
+                        let _ = process::force_kill_pid(pid);
                     }
                 } else {
                     // Graceful: stdin에 stop_command 전송
@@ -188,14 +196,7 @@ impl Supervisor {
                     if tokio::time::Instant::now() >= deadline {
                         tracing::warn!("Managed server '{}' did not exit in 30s, force killing", server_name);
                         if let Ok(pid) = self.tracker.get_pid(&instance.id) {
-                            #[cfg(target_os = "windows")]
-                            {
-                                use std::os::windows::process::CommandExt;
-                                let _ = std::process::Command::new("taskkill")
-                                    .args(["/F", "/PID", &pid.to_string()])
-                                    .creation_flags(0x08000000)
-                                    .output();
-                            }
+                            let _ = process::force_kill_pid(pid);
                         }
                         // 추가 대기
                         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
@@ -444,6 +445,29 @@ impl Supervisor {
         if let Some(rcon_pw) = &instance.rcon_password {
             cfg.entry("rcon_password".to_string()).or_insert_with(|| json!(rcon_pw));
         }
+        // Merge module_settings (ram, cpu_threads, use_aikar_flags, etc.)
+        for (key, value) in &instance.module_settings {
+            cfg.entry(key.clone()).or_insert_with(|| value.clone());
+        }
+        // REST API fields for modules that use REST protocol
+        if let Some(rest_host) = &instance.rest_host {
+            cfg.entry("rest_host".to_string()).or_insert_with(|| json!(rest_host));
+        }
+        if let Some(rest_port) = instance.rest_port {
+            cfg.entry("rest_port".to_string()).or_insert_with(|| json!(rest_port));
+        }
+        if let Some(rest_user) = &instance.rest_username {
+            cfg.entry("rest_username".to_string()).or_insert_with(|| json!(rest_user));
+        }
+        if let Some(rest_pw) = &instance.rest_password {
+            cfg.entry("rest_password".to_string()).or_insert_with(|| json!(rest_pw));
+        }
+        cfg.entry("protocol_mode".to_string()).or_insert_with(|| json!(&instance.protocol_mode));
+        if let Some(ver) = &instance.server_version {
+            cfg.entry("server_version".to_string()).or_insert_with(|| json!(ver));
+        }
+        // Managed mode indicator → Python module uses this to enforce RCON policy
+        cfg.insert("managed".to_string(), json!(true));
         let final_config = Value::Object(cfg);
 
         // Get module and call get_launch_command
@@ -482,7 +506,8 @@ impl Supervisor {
             .unwrap_or_default();
 
         // Spawn managed process
-        let managed = ManagedProcess::spawn(program, &args, working_dir, env_vars).await?;
+        let log_pattern = module.metadata.log_pattern.as_deref();
+        let managed = ManagedProcess::spawn(program, &args, working_dir, env_vars, log_pattern).await?;
         let pid = managed.pid;
 
         // Track the process
@@ -590,6 +615,8 @@ impl Supervisor {
                 }
                 "configure"
             }
+            "reset" => "reset_properties",
+            "reset_server" => "reset_server",
             _ => "read_properties",
         };
 

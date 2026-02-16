@@ -15,6 +15,34 @@ const client = new Client({
 });
 const IPC_BASE = process.env.IPC_BASE || 'http://127.0.0.1:57474';
 
+// ── Global axios defaults (timeout + auth token) ──
+axios.defaults.timeout = 15000; // 15초 타임아웃
+axios.defaults.headers.common['X-Saba-Token'] = process.env.SABA_TOKEN || '';
+
+// IPC 토큰 파일에서 읽기 시도 (%APPDATA%/saba-chan/.ipc_token)
+try {
+    const tokenPath = process.env.SABA_TOKEN_PATH
+        || path.join(process.env.APPDATA || process.env.HOME || '.', 'saba-chan', '.ipc_token');
+    if (fs.existsSync(tokenPath)) {
+        const token = fs.readFileSync(tokenPath, 'utf8').trim();
+        if (token) {
+            axios.defaults.headers.common['X-Saba-Token'] = token;
+            console.log('[Bot] IPC auth token loaded from', tokenPath);
+        }
+    }
+} catch (e) {
+    console.warn('[Bot] Could not read IPC token file:', e.message);
+}
+
+// ── Global error handlers ──
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[Bot] Unhandled rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('[Bot] Uncaught exception:', error);
+});
+
 // Load bot config (written by Electron main process)
 let botConfig = {
     prefix: '!saba',  // 기본값: !saba (사바쨩)
@@ -379,10 +407,34 @@ client.on('messageCreate', async (message) => {
         if (commandName === 'start') {
             const startMsg = i18n.t('bot:server.start_request', { name: server.name });
             const statusMsg = await message.reply(startMsg);
-            const result = await axios.post(`${IPC_BASE}/api/server/${server.name}/start`, {
-                module: server.module,
-                config: {}
-            });
+
+            // 시작 방식 결정: 인스턴스별 managed_start 설정 우선, 없으면 모듈 interaction_mode
+            const modMeta = moduleMetadata[moduleName] || {};
+            const interactionMode = modMeta?.protocols?.interaction_mode
+                || modMeta?.module?.interaction_mode;
+            const instanceManagedStart = server.module_settings?.managed_start;
+            let useManaged;
+            if (instanceManagedStart === true || instanceManagedStart === 'true') {
+                useManaged = true;
+            } else if (instanceManagedStart === false || instanceManagedStart === 'false') {
+                useManaged = false;
+            } else {
+                // 모듈의 interaction_mode가 'console'이면 managed, 아니면 native
+                useManaged = (interactionMode === 'console');
+            }
+
+            let result;
+            if (useManaged) {
+                // Managed 모드: stdin/stdout 캡처 (GUI의 managedStart와 동일)
+                result = await axios.post(`${IPC_BASE}/api/instance/${server.id}/managed/start`, {});
+            } else {
+                // Native 모드: 프로세스만 실행
+                result = await axios.post(`${IPC_BASE}/api/server/${server.name}/start`, {
+                    module: server.module,
+                    config: {}
+                });
+            }
+
             const completeMsg = i18n.t('bot:server.start_complete', { name: server.name });
             await statusMsg.edit(completeMsg);
             return;
@@ -410,15 +462,50 @@ client.on('messageCreate', async (message) => {
         const cmdMeta = cmds[commandName];
 
         if (!cmdMeta) {
-            // List available commands
-            const availableCmds = Object.keys(cmds);
-            if (availableCmds.length > 0) {
-                const unknownMsg = i18n.t('bot:command.unknown_command', { command: secondArg, resolved: commandName });
-                const availableMsg = i18n.t('bot:help.available_commands', { commands: availableCmds.map(c => `\`${c}\``).join(', ') });
-                await message.reply(`${unknownMsg}\n${availableMsg}`);
-            } else {
-                const unknownMsg = i18n.t('bot:command.no_available', { command: secondArg, resolved: commandName });
-                await message.reply(unknownMsg);
+            // module.toml에 정의되지 않은 명령어 → raw string으로 서버에 직접 전달
+            // 예: "!mc say hello world" → stdin/rcon으로 "say hello world" 전송
+            if (server.status !== 'running') {
+                const defaultMsg = i18n.t('bot:server.not_running_default');
+                await message.reply(`❌ ${defaultMsg}`);
+                return;
+            }
+
+            // 원본 명령어 문자열 복원 (별칭 해석 전 secondArg + 나머지 인자)
+            const rawCommand = [secondArg, ...extraArgs].join(' ');
+            console.log(`[Discord] Raw command forward: "${rawCommand}" → ${server.name}`);
+
+            try {
+                // managed 모드면 stdin, 아니면 rcon으로 전달
+                const modMeta = moduleMetadata[moduleName] || {};
+                const interactionMode = modMeta?.protocols?.interaction_mode
+                    || modMeta?.module?.interaction_mode;
+                const instanceManagedStart = server.module_settings?.managed_start;
+                let useStdin;
+                if (instanceManagedStart === true || instanceManagedStart === 'true') {
+                    useStdin = true;
+                } else if (instanceManagedStart === false || instanceManagedStart === 'false') {
+                    useStdin = false;
+                } else {
+                    useStdin = (interactionMode === 'console');
+                }
+
+                let result;
+                if (useStdin) {
+                    result = await axios.post(`${IPC_BASE}/api/instance/${server.id}/stdin`, { command: rawCommand });
+                } else {
+                    result = await axios.post(`${IPC_BASE}/api/instance/${server.id}/rcon`, { command: rawCommand, instance_id: server.id });
+                }
+
+                const response = result.data;
+                if (response.error) {
+                    await message.reply(`❌ ${response.error}`);
+                } else {
+                    const output = formatGenericResponse(response.data || response.response || response);
+                    await message.reply(`✅ ${output}`);
+                }
+            } catch (error) {
+                console.error('[Discord] Raw command error:', error.message);
+                await message.reply(`❌ ${error.response?.data?.error || error.message}`);
             }
             return;
         }
@@ -577,7 +664,12 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.reply({ content: JSON.stringify(response.data, null, 2), ephemeral: true });
         }
     } catch (error) {
-        await interaction.reply({ content: `Error: ${error.message}`, ephemeral: true });
+        // interaction이 이미 응답된 상태인지 확인
+        if (interaction.replied || interaction.deferred) {
+            await interaction.followUp({ content: `Error: ${error.message}`, ephemeral: true }).catch(() => {});
+        } else {
+            await interaction.reply({ content: `Error: ${error.message}`, ephemeral: true }).catch(() => {});
+        }
     }
 });
 

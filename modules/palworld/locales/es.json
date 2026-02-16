@@ -79,6 +79,15 @@
     "daemon_rcon_response": "Respuesta RCON del daemon: {{result}}",
     "broadcast_message": "Mensaje de difusión: {{message}}",
     "save_triggered": "Guardado del servidor activado",
-    "shutdown_initiated": "Apagado del servidor iniciado (cuenta regresiva de {{seconds}}s)"
+    "shutdown_initiated": "Apagado del servidor iniciado (cuenta regresiva de {{seconds}}s)",
+    "rest_api_forced_on": "[Pol\u00edtica] REST API forzada a activar",
+    "rcon_forced_off": "[Pol\u00edtica] RCON forzado a desactivar (obsoleto)",
+    "admin_password_generated": "[Pol\u00edtica] AdminPassword generada autom\u00e1ticamente para autenticaci\u00f3n REST API"
+  },
+  "reset": {
+    "no_path": "No se puede determinar el directorio del servidor. Configure working_dir o server_executable.",
+    "not_found": "Archivo de configuración no encontrado. Inicie el servidor una vez para generarlo.",
+    "settings_success": "Todas las configuraciones del servidor han sido restablecidas a los valores de fábrica. Los datos del mundo se han preservado.",
+    "settings_failed": "Error al escribir la configuración predeterminada en el archivo de configuración."
   }
 }

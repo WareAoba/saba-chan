@@ -79,6 +79,15 @@
     "daemon_rcon_response": "Daemon RCON-Antwort: {{result}}",
     "broadcast_message": "Rundfunk-Nachricht: {{message}}",
     "save_triggered": "Serverspeicherung ausgelöst",
-    "shutdown_initiated": "Server-Herunterfahren eingeleitet ({{seconds}}s Countdown)"
+    "shutdown_initiated": "Server-Herunterfahren eingeleitet ({{seconds}}s Countdown)",
+    "rest_api_forced_on": "[Richtlinie] REST API erzwungen aktiviert",
+    "rcon_forced_off": "[Richtlinie] RCON erzwungen deaktiviert (veraltet)",
+    "admin_password_generated": "[Richtlinie] AdminPassword automatisch f\u00fcr REST API-Authentifizierung generiert"
+  },
+  "reset": {
+    "no_path": "Server-Verzeichnis kann nicht ermittelt werden. Setzen Sie working_dir oder server_executable.",
+    "not_found": "Einstellungsdatei nicht gefunden. Starten Sie den Server einmal, um sie zu generieren.",
+    "settings_success": "Alle Servereinstellungen wurden auf die Werkseinstellungen zurückgesetzt. Weltdaten bleiben erhalten.",
+    "settings_failed": "Schreiben der Standardeinstellungen in die Konfigurationsdatei fehlgeschlagen."
   }
 }

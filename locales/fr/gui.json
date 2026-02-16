@@ -117,7 +117,19 @@
     "save_aliases": "Enregistrer les alias",
     "reset_aliases": "Réinitialiser",
     "save_settings": "Enregistrer les paramètres",
-    "close": "Fermer"
+    "close": "Fermer",
+    "danger_zone": "Zone Dangereuse",
+    "reset_server_label": "Réinitialiser le Serveur",
+    "reset_server_desc": "Supprimer tous les mondes, paramètres, journaux et autres données. Seul le JAR du serveur et eula.txt seront conservés. Cette action est irréversible.",
+    "reset_settings_label": "Réinitialiser les paramètres",
+    "reset_settings_desc": "Réinitialiser tous les paramètres du serveur aux valeurs d'usine. Les données du monde et des sauvegardes seront préservées. Cette action est irréversible.",
+    "reset_button": "Réinitialiser",
+    "resetting": "Réinitialisation...",
+    "reset_confirm_title": "Réinitialiser le Serveur",
+    "reset_confirm": "Réinitialiser complètement le serveur '{{name}}' ?\n\nTous les mondes, paramètres, journaux et autres données seront supprimés.\nSeul le JAR du serveur et eula.txt seront conservés.\n\nCette action est irréversible.",
+    "reset_success": "Le serveur '{{name}}' a été réinitialisé ({{count}} éléments supprimés)",
+    "reset_failed": "Échec de la réinitialisation : {{error}}",
+    "reset_error": "Erreur de réinitialisation : {{error}}"
   },
   "discord_bot": {
     "token_missing_title": "Jeton manquant",

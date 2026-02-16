@@ -118,6 +118,7 @@
     "properties_write_failed": "Failed to write server.properties",
     "eula_write_failed": "Failed to write eula.txt",
     "working_dir_error": "Cannot create working directory: {{path}}",
+    "server_reset_partial": "Some items could not be deleted: {{errors}}",
     "detect": {
       "java_not_found": "Java is not installed or not found in PATH",
       "java_version_too_old": "Java {{current}} is too old. Minecraft requires Java {{required}} or newer.",
@@ -161,8 +162,14 @@
     "graceful_stop": "Server stopped gracefully (PID {{pid}})",
     "graceful_stop_timeout": "Graceful shutdown timed out, proceeding to force stop",
     "properties_updated": "server.properties updated successfully",
+    "properties_reset": "server.properties has been reset to defaults",
     "properties_using_defaults": "server.properties does not exist — showing defaults",
-    "eula_accepted": "Minecraft EULA accepted successfully"
+    "eula_accepted": "Minecraft EULA accepted successfully",
+    "server_reset_complete": "Server reset complete",
+    "server_reset_deleted": "{{count}} items deleted",
+    "rcon_disabled_managed": "RCON disabled — managed mode uses stdin for server control",
+    "rcon_enabled_native": "RCON enabled — required for server control in non-managed mode",
+    "rcon_password_generated": "Auto-generated RCON password (no password was set)"
   },
   "rcon": {
     "connecting": "Connecting to {{host}}:{{port}}...",

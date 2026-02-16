@@ -79,7 +79,10 @@
     "daemon_rcon_response": "デーモン RCON レスポンス: {{result}}",
     "broadcast_message": "ブロードキャストメッセージ: {{message}}",
     "save_triggered": "サーバーセーブがトリガーされました",
-    "shutdown_initiated": "サーバーシャットダウンが開始されました ({{seconds}}秒カウントダウン)"
+    "shutdown_initiated": "サーバーシャットダウンが開始されました ({{seconds}}秒カウントダウン)",
+    "rest_api_forced_on": "[ポリシー] REST APIが強制有効化されました",
+    "rcon_forced_off": "[ポリシー] RCONが強制無効化されました（非推奨）",
+    "admin_password_generated": "[ポリシー] REST API認証用のAdminPasswordが自動生成されました"
   },
   "rcon": {
     "connecting": "{{host}}:{{port}} に接続中...",
@@ -104,5 +107,11 @@
     "broadcast": "ブロードキャストメッセージ",
     "save": "ワールドを保存",
     "shutdown": "サーバーをシャットダウン"
+  },
+  "reset": {
+    "no_path": "サーバーディレクトリを特定できません。working_dirまたはserver_executableを設定してください。",
+    "not_found": "設定ファイルが見つかりません。一度サーバーを起動して生成してください。",
+    "settings_success": "すべてのサーバー設定が初期値にリセットされました。ワールドデータは保持されます。",
+    "settings_failed": "デフォルト設定の書き込みに失敗しました。"
   }
 }
