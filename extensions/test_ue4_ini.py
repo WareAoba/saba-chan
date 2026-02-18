@@ -1,11 +1,11 @@
-"""Tests for _shared.ue4_ini module."""
+"""Tests for extensions.ue4_ini module."""
 import os
 import sys
 import tempfile
 
-# Add parent directory to path for imports
+# Add project root to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from _shared.ue4_ini import parse_option_settings, write_option_settings
+from extensions.ue4_ini import parse_option_settings, write_option_settings
 
 
 def test_parse_simple_key_values():

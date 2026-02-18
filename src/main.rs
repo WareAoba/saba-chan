@@ -5,7 +5,9 @@ mod ipc;
 mod config;
 mod instance;
 mod process_monitor;
+mod python_env;
 mod utils;
+mod docker;
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -186,11 +188,31 @@ async fn main() -> anyhow::Result<()> {
 
     // Graceful shutdown: Ctrl+C / SIGTERM 시 정리
     let registry_shutdown = client_registry.clone();
+    let supervisor_shutdown = supervisor.clone();
     tokio::spawn(async move {
         tokio::signal::ctrl_c().await.ok();
         tracing::info!("Shutdown signal received, cleaning up...");
 
-        // 등록된 모든 클라이언트의 봇 프로세스를 종료
+        // 1. Docker 컨테이너 정리 (docker compose down)
+        {
+            let sup = supervisor_shutdown.read().await;
+            let docker_instances: Vec<_> = sup.instance_store.list()
+                .into_iter()
+                .filter(|i| i.use_docker)
+                .collect();
+            for instance in &docker_instances {
+                let instance_dir = sup.instance_store.instance_dir(&instance.id);
+                let docker_mgr = crate::docker::DockerComposeManager::new(&instance_dir, None);
+                if docker_mgr.has_compose_file() {
+                    tracing::info!("[Shutdown] Docker down for '{}'", instance.name);
+                    if let Err(e) = docker_mgr.down().await {
+                        tracing::warn!("[Shutdown] Docker down failed for '{}': {}", instance.name, e);
+                    }
+                }
+            }
+        }
+
+        // 2. 등록된 모든 클라이언트의 봇 프로세스를 종료
         let timeout = std::time::Duration::from_secs(0); // 즉시 모든 클라이언트 만료 처리
         let all = registry_shutdown.reap_expired(timeout).await;
         for (id, client) in &all {

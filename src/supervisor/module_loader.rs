@@ -33,6 +33,12 @@ pub struct ModuleMetadata {
     pub commands: Option<ModuleCommands>,  // 명령어 스키마
     #[serde(default)]
     pub syntax_highlight: Option<SyntaxHighlight>,  // 콘솔 구문 하이라이팅 규칙
+    #[serde(default)]
+    pub install: Option<ModuleInstallConfig>,  // [install] 설치 방식 (steamcmd 등)
+    #[serde(default)]
+    pub docker: Option<DockerExtensionConfig>,  // [docker] 컨테이너 설정
+    #[serde(default)]
+    pub docker_process_patterns: Vec<String>,  // [detection].process_patterns — Docker 컨테이너 내 서버 프로세스 탐지용
 }
 
 impl ModuleMetadata {
@@ -66,6 +72,18 @@ impl ModuleMetadata {
     /// REST API 기본 호스트를 가져옵니다 (모듈에 정의되지 않으면 127.0.0.1)
     pub fn default_rest_host(&self) -> String {
         self.get_setting_default("rest_host").unwrap_or_else(|| "127.0.0.1".to_string())
+    }
+
+    /// SteamCMD app ID를 가져옵니다 (install.method == "steamcmd"일 때)
+    pub fn steam_app_id(&self) -> Option<u32> {
+        self.install.as_ref()
+            .filter(|i| i.method == "steamcmd")
+            .and_then(|i| i.app_id)
+    }
+
+    /// Docker 설정이 있는지 확인합니다
+    pub fn has_docker_config(&self) -> bool {
+        self.docker.is_some()
     }
 }
 
@@ -169,6 +187,10 @@ struct ModuleToml {
     commands: Option<CommandsSection>,
     #[serde(default)]
     syntax_highlight: Option<SyntaxHighlightSection>,
+    #[serde(default)]
+    install: Option<InstallSectionToml>,
+    #[serde(default)]
+    docker: Option<DockerSectionToml>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -259,6 +281,121 @@ struct SettingFieldToml {
 }
 
 fn default_field_type() -> String { "text".to_string() }
+
+/// module.toml [install] 섹션
+#[derive(Debug, Deserialize)]
+struct InstallSectionToml {
+    #[serde(default)]
+    method: Option<String>,
+    #[serde(default)]
+    app_id: Option<u32>,
+    #[serde(default)]
+    anonymous: Option<bool>,
+    #[serde(default)]
+    install_subdir: Option<String>,
+    #[serde(default)]
+    platform: Option<String>,
+    #[serde(default)]
+    download_url: Option<String>,
+    #[serde(default)]
+    beta: Option<String>,
+}
+
+/// module.toml [docker] 섹션
+#[derive(Debug, Deserialize)]
+struct DockerSectionToml {
+    #[serde(default)]
+    image: Option<String>,
+    #[serde(default)]
+    working_dir: Option<String>,
+    #[serde(default)]
+    restart: Option<String>,
+    #[serde(default)]
+    command: Option<String>,
+    #[serde(default)]
+    entrypoint: Option<String>,
+    #[serde(default)]
+    user: Option<String>,
+    #[serde(default)]
+    ports: Vec<String>,
+    #[serde(default)]
+    volumes: Vec<String>,
+    #[serde(default)]
+    environment: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    dockerfile: Option<String>,
+    /// CPU 제한 (코어 수, 예: 2.0)
+    #[serde(default)]
+    cpu_limit: Option<f64>,
+    /// 메모리 제한 (예: "4g", "512m")
+    #[serde(default)]
+    memory_limit: Option<String>,
+}
+
+/// ModuleMetadata에서 사용하는 공개 설치 설정
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModuleInstallConfig {
+    pub method: String,
+    #[serde(default)]
+    pub app_id: Option<u32>,
+    #[serde(default = "default_true_mod")]
+    pub anonymous: bool,
+    #[serde(default)]
+    pub install_subdir: Option<String>,
+    #[serde(default)]
+    pub platform: Option<String>,
+    #[serde(default)]
+    pub download_url: Option<String>,
+    #[serde(default)]
+    pub beta: Option<String>,
+}
+
+fn default_true_mod() -> bool { true }
+
+/// Docker container configuration for modules
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DockerExtensionConfig {
+    /// Docker image to use (e.g. "cm2network/steamcmd:latest")
+    pub image: String,
+    /// Working directory inside the container
+    #[serde(default)]
+    pub working_dir: Option<String>,
+    /// Restart policy (default: "unless-stopped")
+    #[serde(default = "default_restart_policy")]
+    pub restart: String,
+    /// Container command (supports template variables like {port})
+    #[serde(default)]
+    pub command: Option<String>,
+    /// Container entrypoint override
+    #[serde(default)]
+    pub entrypoint: Option<String>,
+    /// User to run the container as (e.g. "1000:1000")
+    #[serde(default)]
+    pub user: Option<String>,
+    /// Port mappings: "{host_port}:{container_port}/protocol" with template variables
+    #[serde(default)]
+    pub ports: Vec<String>,
+    /// Volume mounts: "host_path:container_path"
+    #[serde(default)]
+    pub volumes: Vec<String>,
+    /// Environment variables (supports template variables)
+    #[serde(default)]
+    pub environment: std::collections::HashMap<String, String>,
+    /// Optional Dockerfile path (relative to module directory) for custom builds
+    #[serde(default)]
+    pub dockerfile: Option<String>,
+    /// Optional: additional docker compose service options as raw YAML
+    #[serde(default)]
+    pub extra_options: std::collections::HashMap<String, String>,
+    /// CPU limit (number of cores, e.g. 2.0)
+    #[serde(default)]
+    pub cpu_limit: Option<f64>,
+    /// Memory limit (e.g. "4g", "512m")
+    #[serde(default)]
+    pub memory_limit: Option<String>,
+}
+
+fn default_restart_policy() -> String { "unless-stopped".to_string() }
 
 #[derive(Debug, Deserialize)]
 struct CommandsSection {
@@ -394,6 +531,35 @@ impl ModuleToml {
             settings,
             commands,
             syntax_highlight,
+            install: self.install.map(|i| ModuleInstallConfig {
+                method: i.method.unwrap_or_else(|| "manual".to_string()),
+                app_id: i.app_id,
+                anonymous: i.anonymous.unwrap_or(true),
+                install_subdir: i.install_subdir,
+                platform: i.platform,
+                download_url: i.download_url,
+                beta: i.beta,
+            }),
+            docker: self.docker.and_then(|d| {
+                d.image.map(|img| DockerExtensionConfig {
+                    image: img,
+                    working_dir: d.working_dir,
+                    restart: d.restart.unwrap_or_else(|| "unless-stopped".to_string()),
+                    command: d.command,
+                    entrypoint: d.entrypoint,
+                    user: d.user,
+                    ports: d.ports,
+                    volumes: d.volumes,
+                    environment: d.environment,
+                    dockerfile: d.dockerfile,
+                    extra_options: std::collections::HashMap::new(),
+                    cpu_limit: d.cpu_limit,
+                    memory_limit: d.memory_limit,
+                })
+            }),
+            docker_process_patterns: self._detection
+                .and_then(|d| d.process_patterns)
+                .unwrap_or_default(),
         }
     }
 }

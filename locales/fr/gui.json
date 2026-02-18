@@ -53,6 +53,8 @@
   },
   "add_server_modal": {
     "title": "Ajouter un nouveau serveur",
+    "subtitle": "Sélectionnez un module de jeu et configurez votre nouvelle instance de serveur.",
+    "advanced_settings": "Paramètres avancés",
     "modules_directory": "Répertoire des modules:",
     "reload_modules": "Recharger les modules",
     "place_modules_hint": "Placez les fichiers .zip ou les dossiers contenant module.toml ici",
@@ -61,9 +63,12 @@
     "server_name_placeholder": "ex: mon-palworld-1",
     "game_module": "Module de jeu *",
     "select_module": "Sélectionner le module",
-    "available_modules": "Modules disponibles:",
-    "no_modules": "Aucun module disponible. Veuillez vérifier le répertoire des modules.",
-    "no_description": "Pas de description",
+    "module_source": "Mode du module",
+    "module_source_shared": "Partagé (référence)",
+    "module_source_embedded": "Intégré (copie)",
+    "module_source_shared_hint": "Toutes les instances utilisant ce module partagent les mêmes fichiers.",
+    "module_source_embedded_hint": "Le module est copié dans cette instance pour une personnalisation indépendante.",
+    "no_modules": "Aucun module trouvé. Vérifiez le répertoire des modules dans les paramètres avancés.",
     "add_server": "Ajouter un serveur"
   },
   "command_modal": {
@@ -205,7 +210,9 @@
     "aliases_reset_failed_title": "Échec de la réinitialisation",
     "aliases_reset_completed_title": "Réinitialisation terminée",
     "aliases_reset_message": "Les alias ont été réinitialisés aux valeurs par défaut",
-    "gui_settings_tooltip": "Paramètres de l'interface"
+    "gui_settings_tooltip": "Paramètres de l'interface",
+    "alias_conflict_title": "Conflit d'alias",
+    "alias_conflict_detail": "L'alias '{{alias}}' est déjà enregistré pour le module '{{module}}'"
   },
   "buttons": {
     "add_server": "Ajouter un serveur",
@@ -231,7 +238,9 @@
     "module_not_found": "Module non trouvé. Veuillez vérifier que le module est correctement installé.",
     "failed_to_load_module": "Échec du chargement du module. Veuillez vérifier les fichiers du module.",
     "invalid_token": "Jeton Discord invalide. Veuillez vérifier votre jeton.",
-    "unknown_error": "Une erreur inconnue s'est produite"
+    "unknown_error": "Une erreur inconnue s'est produite",
+    "port_conflict": "Conflit de port",
+    "port_conflict_detail": "Le port {{port}} est déjà utilisé par l'instance '{{name}}'"
   },
   "background_modal": {
     "title": "Services en arrière-plan",

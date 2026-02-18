@@ -18,10 +18,11 @@ import urllib.error
 import urllib.parse
 from i18n import I18n
 
-# Shared RCON client
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-from _shared.rcon import RconClient
-from _shared.ue4_ini import parse_option_settings, write_option_settings
+# Shared extensions (RCON client, UE4 INI parser)
+# PYTHONPATH is injected by the Rust plugin runner; fallback for direct execution:
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+from extensions.rcon import RconClient
+from extensions.ue4_ini import parse_option_settings, write_option_settings
 
 # Initialize i18n
 MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -31,7 +32,7 @@ i18n = I18n(MODULE_DIR)
 DAEMON_API_URL = os.environ.get('DAEMON_API_URL', 'http://127.0.0.1:57474')
 
 class PalworldRconClient:
-    """Palworld RCON client — delegates to shared RconClient."""
+    """Palworld RCON client — delegates to extensions.rcon RconClient."""
     
     def __init__(self, host='127.0.0.1', port=25575, password=''):
         self._client = RconClient(host, int(port), password)
@@ -791,7 +792,11 @@ def _get_settings_ini_path(config):
     if not working_dir:
         return None
 
-    if sys.platform == "win32":
+    # Docker 모드: 서버가 Linux 컨테이너에서 실행되므로 항상 LinuxServer 경로 사용
+    use_docker = config.get("use_docker", False)
+    if use_docker:
+        platform_dir = "LinuxServer"
+    elif sys.platform == "win32":
         platform_dir = "WindowsServer"
     else:
         platform_dir = "LinuxServer"
@@ -800,7 +805,7 @@ def _get_settings_ini_path(config):
     return ini_path
 
 
-# UE4 INI parse/write delegated to _shared.ue4_ini
+# UE4 INI parse/write delegated to extensions.ue4_ini
 _parse_option_settings = parse_option_settings
 _write_option_settings = write_option_settings
 
@@ -867,22 +872,24 @@ def validate(config):
     """Validate prerequisites before starting Palworld server."""
     issues = []
     executable = config.get("server_executable")
+    use_docker = config.get("use_docker", False)
 
-    # Executable check
-    if not executable:
-        issues.append({
-            "code": "NO_EXECUTABLE",
-            "severity": "critical",
-            "message": i18n.t("validate.no_executable", defaultValue="Server executable path not specified."),
-            "solution": i18n.t("validate.no_executable_hint", defaultValue="Set the path to PalServer.exe in instance settings."),
-        })
-    elif not os.path.isfile(executable):
-        issues.append({
-            "code": "EXECUTABLE_NOT_FOUND",
-            "severity": "critical",
-            "message": i18n.t("validate.executable_not_found", path=executable, defaultValue=f"Executable not found: {executable}"),
-            "solution": i18n.t("validate.executable_not_found_hint", defaultValue="Check the executable path or reinstall the server."),
-        })
+    # Executable check (Docker 모드에서는 컨테이너 내부에서 실행하므로 검사 불필요)
+    if not use_docker:
+        if not executable:
+            issues.append({
+                "code": "NO_EXECUTABLE",
+                "severity": "critical",
+                "message": i18n.t("validate.no_executable", defaultValue="Server executable path not specified."),
+                "solution": i18n.t("validate.no_executable_hint", defaultValue="Set the path to PalServer.exe in instance settings."),
+            })
+        elif not os.path.isfile(executable):
+            issues.append({
+                "code": "EXECUTABLE_NOT_FOUND",
+                "severity": "critical",
+                "message": i18n.t("validate.executable_not_found", path=executable, defaultValue=f"Executable not found: {executable}"),
+                "solution": i18n.t("validate.executable_not_found_hint", defaultValue="Check the executable path or reinstall the server."),
+            })
 
     # Working directory
     working_dir = config.get("working_dir")

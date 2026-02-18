@@ -53,6 +53,8 @@
   },
   "add_server_modal": {
     "title": "Добавить новый сервер",
+    "subtitle": "Выберите игровой модуль и настройте новый экземпляр сервера.",
+    "advanced_settings": "Дополнительные настройки",
     "modules_directory": "Директория модулей:",
     "reload_modules": "Перезагрузить модули",
     "place_modules_hint": "Поместите .zip файлы или папки с module.toml сюда",
@@ -61,9 +63,12 @@
     "server_name_placeholder": "например: мой-palworld-1",
     "game_module": "Игровой модуль *",
     "select_module": "Выбрать модуль",
-    "available_modules": "Доступные модули:",
-    "no_modules": "Нет доступных модулей. Пожалуйста, проверьте директорию модулей.",
-    "no_description": "Нет описания",
+    "module_source": "Режим модуля",
+    "module_source_shared": "Общий (ссылка)",
+    "module_source_embedded": "Встроенный (копия)",
+    "module_source_shared_hint": "Все экземпляры, использующие этот модуль, работают с одними файлами.",
+    "module_source_embedded_hint": "Модуль копируется в этот экземпляр для независимой настройки.",
+    "no_modules": "Модули не найдены. Проверьте каталог модулей в дополнительных настройках.",
     "add_server": "Добавить сервер"
   },
   "command_modal": {
@@ -205,7 +210,9 @@
     "aliases_reset_failed_title": "Ошибка сброса",
     "aliases_reset_completed_title": "Сброс завершен",
     "aliases_reset_message": "Псевдонимы были сброшены на значения по умолчанию",
-    "gui_settings_tooltip": "Параметры GUI"
+    "gui_settings_tooltip": "Параметры GUI",
+    "alias_conflict_title": "Конфликт псевдонимов",
+    "alias_conflict_detail": "Псевдоним '{{alias}}' уже зарегистрирован для модуля '{{module}}'"
   },
   "buttons": {
     "add_server": "Добавить сервер",
@@ -231,7 +238,9 @@
     "module_not_found": "Модуль не найден. Пожалуйста, проверьте, установлен ли модуль корректно.",
     "failed_to_load_module": "Ошибка загрузки модуля. Пожалуйста, проверьте файлы модуля.",
     "invalid_token": "Недействительный токен Discord. Пожалуйста, проверьте ваш токен.",
-    "unknown_error": "Произошла неизвестная ошибка"
+    "unknown_error": "Произошла неизвестная ошибка",
+    "port_conflict": "Конфликт портов",
+    "port_conflict_detail": "Порт {{port}} уже используется экземпляром '{{name}}'"
   },
   "background_modal": {
     "title": "Фоновые сервисы",

@@ -53,6 +53,8 @@
   },
   "add_server_modal": {
     "title": "Agregar Nuevo Servidor",
+    "subtitle": "Selecciona un módulo de juego y configura tu nueva instancia de servidor.",
+    "advanced_settings": "Configuración Avanzada",
     "modules_directory": "Directorio de Módulos:",
     "reload_modules": "Recargar Módulos",
     "place_modules_hint": "Coloque archivos .zip o carpetas con module.toml aquí",
@@ -61,9 +63,12 @@
     "server_name_placeholder": "ej: mi-palworld-1",
     "game_module": "Módulo de Juego *",
     "select_module": "Seleccionar Módulo",
-    "available_modules": "Módulos Disponibles:",
-    "no_modules": "No hay módulos disponibles. Por favor verifique el directorio de módulos.",
-    "no_description": "Sin descripción",
+    "module_source": "Modo de Módulo",
+    "module_source_shared": "Compartido (referencia)",
+    "module_source_embedded": "Integrado (copia)",
+    "module_source_shared_hint": "Todas las instancias que usan este módulo comparten los mismos archivos.",
+    "module_source_embedded_hint": "El módulo se copia en esta instancia para personalización independiente.",
+    "no_modules": "No se encontraron módulos. Verifique el directorio de módulos en la configuración avanzada.",
     "add_server": "Agregar Servidor"
   },
   "command_modal": {
@@ -205,7 +210,9 @@
     "aliases_reset_failed_title": "Falló reiniciar",
     "aliases_reset_completed_title": "Reinicio completado",
     "aliases_reset_message": "Los alias han sido reiniciados a los valores por defecto",
-    "gui_settings_tooltip": "Configuración de GUI"
+    "gui_settings_tooltip": "Configuración de GUI",
+    "alias_conflict_title": "Conflicto de alias",
+    "alias_conflict_detail": "El alias '{{alias}}' ya está registrado en el módulo '{{module}}'"
   },
   "buttons": {
     "add_server": "Agregar Servidor",
@@ -231,7 +238,9 @@
     "module_not_found": "Módulo no encontrado. Por favor verifique si el módulo está instalado correctamente.",
     "failed_to_load_module": "Falló cargar módulo. Por favor verifique los archivos del módulo.",
     "invalid_token": "Token de Discord inválido. Por favor verifique su token.",
-    "unknown_error": "Ocurrió un error desconocido"
+    "unknown_error": "Ocurrió un error desconocido",
+    "port_conflict": "Conflicto de puerto",
+    "port_conflict_detail": "El puerto {{port}} ya está en uso por la instancia '{{name}}'"
   },
   "background_modal": {
     "title": "Servicios de Fondo",

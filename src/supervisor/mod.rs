@@ -9,7 +9,12 @@ use process::{ProcessTracker, ProcessManager};
 use module_loader::{ModuleLoader, LoadedModule};
 use managed_process::{ManagedProcess, ManagedProcessStore};
 use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::time::Instant;
 use crate::instance::InstanceStore;
+
+/// Stop 후 auto-detect를 억제하는 쿨다운 시간 (초)
+const STOP_COOLDOWN_SECS: u64 = 30;
 
 pub struct Supervisor {
     pub tracker: ProcessTracker,
@@ -20,6 +25,8 @@ pub struct Supervisor {
     pub process_manager: ProcessManager,
     /// Store for processes spawned and managed directly by the daemon (with stdio capture)
     pub managed_store: ManagedProcessStore,
+    /// Stop 이후 auto-detect 억제 쿨다운 (instance_id → 정지 시각)
+    stop_cooldowns: HashMap<String, Instant>,
 }
 
 impl Supervisor {
@@ -47,6 +54,7 @@ impl Supervisor {
             instance_store: InstanceStore::new(&instances_path),
             process_manager: ProcessManager::new(),
             managed_store: ManagedProcessStore::new(),
+            stop_cooldowns: HashMap::new(),
         }
     }
 
@@ -75,6 +83,37 @@ impl Supervisor {
             .iter()
             .find(|i| i.name == server_name)
             .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
+
+        // ── Docker 모드: DockerComposeManager로 위임 ──
+        if instance.use_docker {
+            // Ensure Docker daemon is running and WSL2 mode is correctly set.
+            // This is needed after daemon restart (AtomicBool resets to false).
+            let ensure = crate::docker::ensure_docker_engine().await;
+            if !ensure.daemon_ready {
+                return Err(anyhow::anyhow!(
+                    "Docker를 사용할 수 없습니다: {}", ensure.message
+                ));
+            }
+
+            let instance_dir = self.instance_store.instance_dir(&instance.id);
+            let docker_mgr = crate::docker::DockerComposeManager::new(&instance_dir, None);
+            if !docker_mgr.has_compose_file() {
+                return Err(anyhow::anyhow!(
+                    "Docker 모드가 활성화되어 있지만 docker-compose.yml이 없습니다. 인스턴스를 다시 프로비저닝해주세요."
+                ));
+            }
+            tracing::info!("Starting Docker containers for '{}'", server_name);
+            let result: serde_json::Value = docker_mgr.start().await?;
+            return Ok(json!({
+                "success": true,
+                "server": server_name,
+                "docker": true,
+                "message": format!("Docker containers started for '{}'", server_name),
+                "detail": result,
+            }));
+        }
+
+        // ── Native 모드: 기존 Python lifecycle 실행 ──
 
         // Merge instance info into config
         let mut merged_config = config.as_object().cloned().unwrap_or_default();
@@ -155,20 +194,43 @@ impl Supervisor {
 
     /// Stop a server by name
     /// Called by IPC API: POST /api/server/:name/stop
-    pub async fn stop_server(&self, server_name: &str, module_name: &str, force: bool) -> Result<Value> {
+    pub async fn stop_server(&mut self, server_name: &str, module_name: &str, force: bool) -> Result<Value> {
         tracing::info!("Stopping server '{}' (force: {})", server_name, force);
+
+        // Find instance
+        let instance = self.instance_store.list()
+            .iter()
+            .find(|i| i.name == server_name)
+            .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
+
+        // ── Docker 모드: docker compose stop (컨테이너 유지, 빠른 재시작) ──
+        if instance.use_docker {
+            // Ensure WSL2 mode is set (may have been lost after daemon restart)
+            let _ = crate::docker::ensure_docker_engine().await;
+
+            let instance_id = instance.id.clone();
+            let instance_dir = self.instance_store.instance_dir(&instance_id);
+            let docker_mgr = crate::docker::DockerComposeManager::new(&instance_dir, None);
+            tracing::info!("Stopping Docker containers for '{}'", server_name);
+            let result: serde_json::Value = docker_mgr.stop().await?;
+            // auto-detect 쿨다운 등록
+            self.stop_cooldowns.insert(instance_id, Instant::now());
+            return Ok(json!({
+                "success": true,
+                "server": server_name,
+                "docker": true,
+                "message": format!("Docker containers stopped for '{}'", server_name),
+                "detail": result,
+            }));
+        }
+
+        // ── Native 모드: 기존 정지 로직 ──
 
         // 모듈에서 stop_command를 가져옴 (없으면 "stop" 기본값)
         let stop_cmd = self.module_loader.get_module(module_name)
             .ok()
             .and_then(|m| m.metadata.stop_command.clone())
             .unwrap_or_else(|| "stop".to_string());
-
-        // Find instance to get executable_path
-        let instance = self.instance_store.list()
-            .iter()
-            .find(|i| i.name == server_name)
-            .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
 
         // ── Managed mode: stdin에 stop_command 전송으로 graceful shutdown ──
         if let Some(managed) = self.managed_store.get(&instance.id).await {
@@ -209,6 +271,8 @@ impl Supervisor {
                 self.managed_store.remove(&instance.id).await;
 
                 tracing::info!("Managed server '{}' stopped", server_name);
+                // auto-detect 쿨다운 등록
+                self.stop_cooldowns.insert(instance.id.clone(), Instant::now());
                 return Ok(json!({
                     "success": true,
                     "server": server_name,
@@ -256,6 +320,8 @@ impl Supervisor {
 
         if plugin_success {
             tracing::info!("Server '{}' stopped successfully: {}", server_name, plugin_message);
+            // auto-detect 쿨다운 등록
+            self.stop_cooldowns.insert(instance.id.clone(), Instant::now());
             Ok(json!({
                 "success": true,
                 "server": server_name,
@@ -277,6 +343,66 @@ impl Supervisor {
             .iter()
             .find(|i| i.name == server_name)
             .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
+
+        // ── Docker 모드: 컨테이너 + 내부 프로세스 상태 확인 ──
+        if instance.use_docker {
+            let instance_dir = self.instance_store.instance_dir(&instance.id);
+            let docker_mgr = crate::docker::DockerComposeManager::new(&instance_dir, None);
+
+            // 모듈의 process_patterns 가져오기 (docker top 매칭용)
+            let process_patterns = self.module_loader.get_module(module_name)
+                .map(|m| m.metadata.docker_process_patterns.clone())
+                .unwrap_or_default();
+
+            return match docker_mgr.status().await {
+                Ok(status) => {
+                    let container_running = status.get("running")
+                        .and_then(|r: &serde_json::Value| r.as_bool())
+                        .unwrap_or(false);
+
+                    // 컨테이너가 실행 중이면 내부 게임 서버 프로세스도 확인
+                    let (server_running, matched_process) = if container_running {
+                        if let Some(name) = status.get("container_name").and_then(|n| n.as_str()) {
+                            docker_mgr.server_process_running(name, &process_patterns).await
+                        } else {
+                            (container_running, None)
+                        }
+                    } else {
+                        (false, None)
+                    };
+
+                    // 상태 결정:
+                    // - 컨테이너 실행 + 서버 프로세스 있음 = "running"
+                    // - 컨테이너 실행 + 서버 프로세스 없음 = "starting" (아직 초기화 중이거나 crash)
+                    // - 컨테이너 정지 = "stopped"
+                    let status_str = if container_running && server_running {
+                        "running"
+                    } else if container_running {
+                        "starting"
+                    } else {
+                        "stopped"
+                    };
+
+                    Ok(json!({
+                        "server": server_name,
+                        "status": status_str,
+                        "online": server_running,
+                        "docker": true,
+                        "container_running": container_running,
+                        "server_process": matched_process,
+                        "containers": status.get("containers"),
+                    }))
+                }
+                Err(e) => {
+                    tracing::warn!("Docker status check failed for '{}': {}", server_name, e);
+                    Ok(json!({
+                        "server": server_name,
+                        "status": "unknown",
+                        "docker": true,
+                    }))
+                }
+            };
+        }
 
         // Managed 프로세스가 있으면 plugin 호출 없이 직접 판단
         if let Some(managed) = self.managed_store.get(&instance.id).await {
@@ -416,6 +542,7 @@ impl Supervisor {
 
     /// Start a server as a managed process with full stdio capture.
     /// Uses the module's `get_launch_command` to build the command, then spawns it natively.
+    /// Docker 모드에서는 docker compose up -d로 위임합니다.
     pub async fn start_managed_server(
         &self,
         instance_id: &str,
@@ -424,6 +551,27 @@ impl Supervisor {
     ) -> Result<Value> {
         let instance = self.instance_store.get(instance_id)
             .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
+
+        // ── Docker 모드일 때: docker compose up -d ──
+        if instance.use_docker {
+            let instance_dir = self.instance_store.instance_dir(instance_id);
+            let docker_mgr = crate::docker::DockerComposeManager::new(&instance_dir, None);
+            if !docker_mgr.has_compose_file() {
+                return Err(anyhow::anyhow!(
+                    "Docker 모드가 활성화되어 있지만 docker-compose.yml이 없습니다. 인스턴스를 다시 프로비저닝해주세요."
+                ));
+            }
+            tracing::info!("Starting Docker containers for managed instance '{}'", instance.name);
+            let result: serde_json::Value = docker_mgr.start().await?;
+            return Ok(json!({
+                "success": true,
+                "server": instance.name,
+                "managed": true,
+                "docker": true,
+                "message": format!("Docker containers started for '{}'", instance.name),
+                "detail": result,
+            }));
+        }
 
         tracing::info!("Starting managed server for instance '{}' (module: {})", instance.name, module_name);
 
@@ -578,6 +726,8 @@ impl Supervisor {
         if let Some(port) = instance.port {
             cfg.insert("port".to_string(), json!(port));
         }
+        // Docker 모드 플래그 전달
+        cfg.insert("use_docker".to_string(), json!(instance.use_docker));
 
         let result = crate::plugin::run_plugin(&module_path, "validate", Value::Object(cfg)).await?;
         Ok(result)
@@ -607,6 +757,8 @@ impl Supervisor {
         if let Some(work_dir) = &effective_working_dir {
             cfg.insert("working_dir".to_string(), json!(work_dir));
         }
+        // Docker 모드 플래그 전달 — Python lifecycle 스크립트가 플랫폼 경로를 올바르게 판단하도록
+        cfg.insert("use_docker".to_string(), json!(instance.use_docker));
 
         let function = match action {
             "write" | "configure" => {
@@ -760,6 +912,20 @@ impl Supervisor {
             
             // auto_detect가 활성화되어 있고 process_name이 설정되어 있으면 감지 시도
             if instance.auto_detect {
+                // stop 쿨다운 중이면 건너뛰기
+                if let Some(stopped_at) = self.stop_cooldowns.get(&instance.id) {
+                    if stopped_at.elapsed().as_secs() < STOP_COOLDOWN_SECS {
+                        tracing::debug!(
+                            "Skipping auto-detect for '{}' (stop cooldown: {}s remaining)",
+                            instance.name,
+                            STOP_COOLDOWN_SECS - stopped_at.elapsed().as_secs()
+                        );
+                        continue;
+                    } else {
+                        // 쿨다운 만료 → 제거
+                        self.stop_cooldowns.remove(&instance.id);
+                    }
+                }
                 if let Some(process_name) = &instance.process_name {
                     match ProcessMonitor::find_by_name(process_name) {
                         Ok(processes) => {

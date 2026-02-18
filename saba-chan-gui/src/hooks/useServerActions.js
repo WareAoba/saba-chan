@@ -284,6 +284,7 @@ export function useServerActions({
                 const maxAttempts = 60;
                 const delay = 500;
                 let resolved = false;
+                let consecutiveStopped = 0;
 
                 const checkStatus = async () => {
                     if (resolved) return;
@@ -296,6 +297,19 @@ export function useServerActions({
                             safeShowToast(t('servers.start_completed_toast', { name }), 'success', 3000, { isNotice: true, source: name });
                             fetchServers();
                             return;
+                        }
+                        // 프로세스가 즉시 죽은 경우 조기 감지 (5회 연속 stopped → 크래시 판정)
+                        if (statusResult.status === 'stopped') {
+                            consecutiveStopped++;
+                            if (consecutiveStopped >= 5) {
+                                resolved = true;
+                                setProgressBar(null);
+                                safeShowToast(t('servers.start_failed_toast', { error: 'Process exited immediately' }), 'error', 4000);
+                                fetchServers();
+                                return;
+                            }
+                        } else {
+                            consecutiveStopped = 0;
                         }
                     } catch (error) { /* ignore */ }
                     if (attempts >= maxAttempts) {
@@ -399,7 +413,11 @@ export function useServerActions({
     };
 
     // ── handleAddServer ─────────────────────────────────────
-    const handleAddServer = async (serverName, moduleName) => {
+    const handleAddServer = async (payload) => {
+        // payload = { name, module_name, accept_eula?, use_docker? }
+        const serverName = typeof payload === 'string' ? payload : payload?.name;
+        const moduleName = typeof payload === 'string' ? arguments[1] : payload?.module_name;
+
         if (!serverName || !serverName.trim()) {
             setModal({ type: 'failure', title: t('servers.add_server_name_empty_title'), message: t('servers.add_server_name_empty_message') });
             return;
@@ -415,7 +433,8 @@ export function useServerActions({
             const instanceData = {
                 name: serverName.trim(),
                 module_name: moduleName,
-                executable_path: selectedModuleData?.executable_path || null
+                executable_path: selectedModuleData?.executable_path || null,
+                use_docker: payload?.use_docker || false,
             };
 
             console.log('Adding instance:', instanceData);
@@ -425,9 +444,15 @@ export function useServerActions({
                 const errorMsg = translateError(result.error);
                 setModal({ type: 'failure', title: t('servers.add_failed_title'), message: errorMsg });
             } else {
-                setModal({ type: 'success', title: t('command_modal.success'), message: t('server_actions.server_added', { name: serverName }) });
-                setShowModuleManager(false);
-                fetchServers();
+                if (result.provisioning) {
+                    // Docker 모드: 백그라운드 프로비저닝 시작 — 모달 닫고 서버 리스트에서 진행률 표시
+                    setShowModuleManager(false);
+                    fetchServers();
+                } else {
+                    setModal({ type: 'success', title: t('command_modal.success'), message: t('server_actions.server_added', { name: serverName }) });
+                    setShowModuleManager(false);
+                    fetchServers();
+                }
             }
         } catch (error) {
             const errorMsg = translateError(error.message);

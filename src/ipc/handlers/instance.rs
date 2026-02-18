@@ -83,13 +83,33 @@ pub async fn create_instance(
     if let (Ok(name), Ok(module)) = (name, module_name) {
         let mut instance = crate::instance::ServerInstance::new(name, module);
 
-        // 모듈 정보에서 process_name과 default_port 가져오기
-        if let Ok(loaded_module) = supervisor.module_loader.get_module(module) {
+        // Docker 모드 플래그
+        let use_docker = payload
+            .get("use_docker")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        instance.use_docker = use_docker;
+
+        // 모듈 정보에서 process_name, default_port, install/docker config 가져오기
+        let module_install = if let Ok(loaded_module) = supervisor.module_loader.get_module(module) {
             instance.process_name = loaded_module.metadata.process_name.clone();
             if instance.port.is_none() {
                 instance.port = loaded_module.metadata.default_port;
             }
-        }
+            // rcon_port / rest_port の기본값을 모듈 설정에서 가져오기
+            if instance.rcon_port.is_none() {
+                instance.rcon_port = Some(loaded_module.metadata.default_rcon_port());
+            }
+            if instance.rest_port.is_none() {
+                instance.rest_port = Some(loaded_module.metadata.default_rest_port());
+            }
+            Some((
+                loaded_module.metadata.install.clone(),
+                loaded_module.metadata.docker.clone(),
+            ))
+        } else {
+            None
+        };
 
         // 선택적 필드 설정
         if let Some(path) = payload.get("executable_path").and_then(|v| v.as_str()) {
@@ -103,11 +123,61 @@ pub async fn create_instance(
         }
 
         let id = instance.id.clone();
+        let instance_name = instance.name.clone();
+        let module_name_owned = module.to_string();
 
-        match supervisor.instance_store.add(instance) {
+        // Docker 모드일 때: working_dir을 인스턴스 디렉토리의 server/ 하위 경로로 설정
+        let instance_dir = supervisor.instance_store.instance_dir(&id);
+        if use_docker {
+            let server_dir = instance_dir.join("server");
+            instance.working_dir = Some(server_dir.to_string_lossy().to_string());
+        }
+
+        // 인스턴스 저장 (Docker 프로비저닝은 비동기로 수행)
+        match supervisor.instance_store.add(instance.clone()) {
             Ok(_) => {
-                let response = json!({ "success": true, "id": id });
-                (StatusCode::CREATED, Json(response)).into_response()
+                // ── Docker 프로비저닝: 백그라운드로 실행 (fire-and-forget) ──
+                if use_docker {
+                    let tracker = state.provision_tracker.clone();
+                    // 즉시 tracker 초기화 — list_servers가 provisioning 상태를 인식하도록
+                    tracker.update(&instance_name, super::super::ProvisionProgress {
+                        step: 0, total: 3,
+                        label: "docker_engine".to_string(),
+                        message: "Preparing...".to_string(),
+                        done: false, error: None,
+                        percent: None,
+                    });
+
+                    let inst_clone = instance.clone();
+                    let dir_clone = instance_dir.clone();
+                    tokio::spawn(async move {
+                        match docker_provision(
+                            &inst_clone,
+                            &dir_clone,
+                            module_install,
+                            &tracker,
+                        ).await {
+                            Ok(msg) => tracing::info!(
+                                "Docker provisioning complete for '{}': {}",
+                                inst_clone.name, msg
+                            ),
+                            Err(e) => tracing::error!(
+                                "Docker provisioning failed for '{}': {}",
+                                inst_clone.name, e
+                            ),
+                        }
+                    });
+
+                    let response = json!({
+                        "success": true,
+                        "id": id,
+                        "provisioning": true,
+                    });
+                    (StatusCode::CREATED, Json(response)).into_response()
+                } else {
+                    let response = json!({ "success": true, "id": id });
+                    (StatusCode::CREATED, Json(response)).into_response()
+                }
             }
             Err(e) => {
                 let error = json!({ "error": format!("Failed to create instance: {}", e) });
@@ -120,12 +190,244 @@ pub async fn create_instance(
     }
 }
 
+/// Docker 프로비저닝 파이프라인:
+/// 1) Docker 사용 가능 확인 (없으면 자동 설치 시도)
+/// 2) SteamCMD로 서버 파일 다운로드 (install.method == "steamcmd"일 때)
+/// 3) docker-compose.yml 생성
+async fn docker_provision(
+    instance: &crate::instance::ServerInstance,
+    instance_dir: &std::path::Path,
+    module_config: Option<(
+        Option<crate::supervisor::module_loader::ModuleInstallConfig>,
+        Option<crate::supervisor::module_loader::DockerExtensionConfig>,
+    )>,
+    tracker: &super::super::ProvisionTracker,
+) -> Result<String, String> {
+    let key = &instance.name;
+    let total: u8 = 3;
+
+    // Helper to update progress
+    let progress = |step: u8, label: &str, message: &str| {
+        tracker.update(key, super::super::ProvisionProgress {
+            step, total,
+            label: label.to_string(),
+            message: message.to_string(),
+            done: false, error: None,
+            percent: None,
+        });
+    };
+    let progress_pct = |step: u8, label: &str, message: &str, pct: u8| {
+        tracker.update(key, super::super::ProvisionProgress {
+            step, total,
+            label: label.to_string(),
+            message: message.to_string(),
+            done: false, error: None,
+            percent: Some(pct),
+        });
+    };
+    let finish_ok = |message: &str| {
+        tracker.update(key, super::super::ProvisionProgress {
+            step: total, total,
+            label: "done".to_string(),
+            message: message.to_string(),
+            done: true, error: None,
+            percent: None,
+        });
+    };
+    let finish_err = |step: u8, label: &str, err: &str| {
+        tracker.update(key, super::super::ProvisionProgress {
+            step, total,
+            label: label.to_string(),
+            message: err.to_string(),
+            done: true, error: Some(err.to_string()),
+            percent: None,
+        });
+    };
+
+    let (install_config, docker_config): (
+        Option<crate::supervisor::module_loader::ModuleInstallConfig>,
+        Option<crate::supervisor::module_loader::DockerExtensionConfig>,
+    ) = module_config
+        .ok_or_else(|| "모듈 정보를 찾을 수 없습니다".to_string())?;
+    let docker_config: crate::supervisor::module_loader::DockerExtensionConfig = docker_config
+        .ok_or_else(|| "이 모듈에는 [docker] 설정이 정의되어 있지 않습니다".to_string())?;
+
+    // ── Step 1: Docker 사용 가능 확인 ──
+    progress(0, "docker_engine", "Checking Docker Engine...");
+    if !crate::docker::is_docker_available() || !crate::docker::is_docker_daemon_running() {
+        tracing::info!("Docker not ready — ensuring portable Docker Engine...");
+        progress(0, "docker_engine", "Downloading and starting Docker Engine...");
+
+        let tracker_d = tracker.clone();
+        let key_d = key.clone();
+        let result = crate::docker::ensure_docker_engine_with_progress(move |p| {
+            if let (Some(pct), Some(msg)) = (p.percent, &p.message) {
+                tracker_d.update(&key_d, super::super::ProvisionProgress {
+                    step: 0, total,
+                    label: "docker_engine".to_string(),
+                    message: msg.clone(),
+                    done: false, error: None,
+                    percent: Some(pct),
+                });
+            }
+        }).await;
+
+        if !result.daemon_ready {
+            let err = format!("Docker를 사용할 수 없습니다: {}", result.message);
+            finish_err(0, "docker_engine", &err);
+            return Err(err);
+        }
+    }
+
+    // ── Step 2: SteamCMD로 서버 파일 다운로드 ──
+    progress(1, "steamcmd", "Preparing server files...");
+    let server_dir = instance_dir.join("server");
+    std::fs::create_dir_all(&server_dir)
+        .map_err(|e| {
+            let err = format!("서버 디렉토리 생성 실패: {}", e);
+            finish_err(1, "steamcmd", &err);
+            err
+        })?;
+
+    if let Some(ref install) = install_config {
+        if install.method == "steamcmd" {
+            if let Some(app_id) = install.app_id {
+                tracing::info!(
+                    "SteamCMD: 서버 파일 다운로드 시작 (app_id: {}, dir: {})",
+                    app_id,
+                    server_dir.display()
+                );
+                progress(1, "steamcmd", &format!("Downloading server files (app {})...", app_id));
+                let install_dir_str = server_dir.to_string_lossy().to_string();
+                // Docker mode uses Linux containers -- force Linux platform
+                // even if module.toml specifies "windows" for native mode.
+                let platform = if crate::docker::is_wsl2_mode() {
+                    Some("linux".to_string())
+                } else {
+                    install.platform.clone()
+                };
+                let steamcmd_config = serde_json::json!({
+                    "app_id": app_id,
+                    "install_dir": install_dir_str,
+                    "anonymous": install.anonymous,
+                    "platform": platform,
+                    "beta": install.beta,
+                });
+                // SteamCMD Python 확장을 통해 설치 실행
+                let tracker_s = tracker.clone();
+                let key_s = key.clone();
+                match crate::plugin::run_extension_with_progress(
+                    "steamcmd", "install", steamcmd_config,
+                    move |p| {
+                        if let (Some(pct), Some(msg)) = (p.percent, &p.message) {
+                            tracker_s.update(&key_s, super::super::ProvisionProgress {
+                                step: 1, total,
+                                label: "steamcmd".to_string(),
+                                message: msg.clone(),
+                                done: false, error: None,
+                                percent: Some(pct),
+                            });
+                        }
+                    },
+                ).await {
+                    Ok(result) => {
+                        let success = result.get("success").and_then(|s| s.as_bool()).unwrap_or(false);
+                        if !success {
+                            let msg = result.get("error")
+                                .or_else(|| result.get("message"))
+                                .and_then(|m| m.as_str())
+                                .unwrap_or("SteamCMD 설치 실패");
+                            let err = format!("SteamCMD 설치 실패: {}", msg);
+                            finish_err(1, "steamcmd", &err);
+                            return Err(err);
+                        }
+                        tracing::info!("SteamCMD: 서버 파일 다운로드 완료");
+                    }
+                    Err(e) => {
+                        let err = format!("SteamCMD 실행 실패: {}", e);
+                        finish_err(1, "steamcmd", &err);
+                        return Err(err);
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Step 3: docker-compose.yml 생성 ──
+    progress(2, "compose", "Generating docker-compose.yml...");
+    let extra_vars: std::collections::HashMap<String, String> = instance
+        .module_settings
+        .iter()
+        .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+        .collect();
+
+    let ctx = crate::docker::ComposeTemplateContext {
+        instance_id: instance.id.clone(),
+        instance_name: instance.name.clone(),
+        module_name: instance.module_name.clone(),
+        port: instance.port,
+        rcon_port: instance.rcon_port,
+        rest_port: instance.rest_port,
+        rest_password: instance.rest_password.clone(),
+        extra_vars,
+    };
+
+    crate::docker::provision_compose_file(instance_dir, &docker_config, &ctx)
+        .map_err(|e| {
+            let err = format!("docker-compose.yml 생성 실패: {}", e);
+            finish_err(2, "compose", &err);
+            err
+        })?;
+
+    let msg = "Docker 프로비저닝 완료: docker-compose.yml 생성됨".to_string();
+    finish_ok(&msg);
+    Ok(msg)
+}
+
+/// GET /api/provision-progress/:name - 프로비저닝 진행 상태 (서버 이름 기준)
+pub async fn get_provision_progress(
+    Path(name): Path<String>,
+    State(state): State<IPCServer>,
+) -> impl IntoResponse {
+    if let Some(progress) = state.provision_tracker.get(&name) {
+        let mut resp = json!({
+            "active": true,
+            "step": progress.step,
+            "total": progress.total,
+            "label": progress.label,
+            "message": progress.message,
+            "done": progress.done,
+            "error": progress.error,
+        });
+        if let Some(pct) = progress.percent {
+            resp["percent"] = json!(pct);
+        }
+        (StatusCode::OK, Json(resp)).into_response()
+    } else {
+        (StatusCode::OK, Json(json!({
+            "active": false,
+        }))).into_response()
+    }
+}
+
 /// DELETE /api/instance/:id - 인스턴스 삭제
 pub async fn delete_instance(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
     let mut supervisor = state.supervisor.write().await;
+
+    // Docker 인스턴스라면 먼저 컨테이너를 정리 (docker compose down)
+    if let Some(instance) = supervisor.instance_store.get(&id) {
+        if instance.use_docker {
+            let instance_dir = supervisor.instance_store.instance_dir(&id);
+            let docker_mgr = crate::docker::DockerComposeManager::new(&instance_dir, None);
+            if docker_mgr.has_compose_file() {
+                tracing::info!("Cleaning up Docker containers for instance {}", id);
+                let _ = docker_mgr.down().await;
+            }
+        }
+    }
 
     match supervisor.instance_store.remove(&id) {
         Ok(_) => {
@@ -184,6 +486,8 @@ pub async fn update_instance_settings(
         "executable_path",
         "protocol_mode",
         "server_version",
+        "docker_cpu_limit",
+        "docker_memory_limit",
     ]
     .iter()
     .cloned()
@@ -315,6 +619,41 @@ pub async fn update_instance_settings(
         updated.server_version = Some(version.to_string());
     }
 
+    // Docker 리소스 제한 설정
+    if let Some(cpu_value) = settings.get("docker_cpu_limit") {
+        match cpu_value {
+            serde_json::Value::Number(n) => {
+                updated.docker_cpu_limit = n.as_f64();
+            }
+            serde_json::Value::String(s) if s.is_empty() => {
+                updated.docker_cpu_limit = None;
+            }
+            serde_json::Value::String(s) => {
+                if let Ok(cpu) = s.parse::<f64>() {
+                    updated.docker_cpu_limit = Some(cpu);
+                }
+            }
+            serde_json::Value::Null => {
+                updated.docker_cpu_limit = None;
+            }
+            _ => {}
+        }
+    }
+    if let Some(mem_value) = settings.get("docker_memory_limit") {
+        match mem_value {
+            serde_json::Value::String(s) if s.is_empty() => {
+                updated.docker_memory_limit = None;
+            }
+            serde_json::Value::String(s) => {
+                updated.docker_memory_limit = Some(s.clone());
+            }
+            serde_json::Value::Null => {
+                updated.docker_memory_limit = None;
+            }
+            _ => {}
+        }
+    }
+
     // 동적 모듈 설정 저장 (하드코딩 필드 이외의 모든 설정을 module_settings에 저장)
     if let Some(obj) = settings.as_object() {
         for (key, value) in obj {
@@ -351,6 +690,8 @@ pub async fn update_instance_settings(
                 || key == "use_aikar_flags"
                 || key == "managed_start"
                 || key == "graceful_stop"
+                || key == "docker_cpu_limit"
+                || key == "docker_memory_limit"
             {
                 continue;
             }
@@ -370,6 +711,7 @@ pub async fn update_instance_settings(
     }
 
     // 저장
+    let updated_clone = updated.clone();
     if let Err(e) = supervisor.instance_store.update(&id, updated) {
         let error = json!({ "error": format!("Failed to update instance: {}", e) });
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response();
@@ -393,6 +735,46 @@ pub async fn update_instance_settings(
                 id,
                 e
             ),
+        }
+    }
+
+    // Docker 인스턴스: docker-compose.yml 재생성 (리소스 제한 반영)
+    if updated_clone.use_docker {
+        if let Some(module) = supervisor.list_modules().ok().and_then(|mods| {
+            mods.into_iter().find(|m| m.metadata.name == updated_clone.module_name)
+        }) {
+            if let Some(ref mut docker_config) = module.metadata.docker.clone() {
+                // 인스턴스별 오버라이드 적용
+                if updated_clone.docker_cpu_limit.is_some() {
+                    docker_config.cpu_limit = updated_clone.docker_cpu_limit;
+                }
+                if updated_clone.docker_memory_limit.is_some() {
+                    docker_config.memory_limit = updated_clone.docker_memory_limit.clone();
+                }
+
+                let extra_vars: std::collections::HashMap<String, String> = updated_clone
+                    .module_settings
+                    .iter()
+                    .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                    .collect();
+
+                let ctx = crate::docker::ComposeTemplateContext {
+                    instance_id: updated_clone.id.clone(),
+                    instance_name: updated_clone.name.clone(),
+                    module_name: updated_clone.module_name.clone(),
+                    port: updated_clone.port,
+                    rcon_port: updated_clone.rcon_port,
+                    rest_port: updated_clone.rest_port,
+                    rest_password: updated_clone.rest_password.clone(),
+                    extra_vars,
+                };
+
+                let instance_dir = supervisor.instance_store.instance_dir(&id);
+                match crate::docker::provision_compose_file(&instance_dir, docker_config, &ctx) {
+                    Ok(path) => tracing::info!("Regenerated docker-compose.yml at {}", path.display()),
+                    Err(e) => tracing::warn!("Failed to regenerate docker-compose.yml: {}", e),
+                }
+            }
         }
     }
 

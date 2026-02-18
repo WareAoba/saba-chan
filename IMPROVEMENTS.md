@@ -516,9 +516,9 @@ process.on('unhandledRejection', (reason) => {
 
 ### 5.3 ✅ Python RCON 클라이언트 중복 → 통합 완료
 
-- `modules/_shared/rcon.py` — 공용 `RconClient` 클래스 생성
-- `modules/minecraft/lifecycle.py` — 인라인 `_send_rcon_command()` 제거, `_shared.rcon.rcon_command`로 위임
-- `modules/palworld/lifecycle.py` — 160줄 `PalworldRconClient` 제거, `_shared.rcon.RconClient` 위임 래퍼로 교체
+- `extensions/rcon.py` — 공용 `RconClient` 클래스 생성
+- `modules/minecraft/lifecycle.py` — 인라인 `_send_rcon_command()` 제거, `extensions.rcon.rcon_command`로 위임
+- `modules/palworld/lifecycle.py` — 160줄 `PalworldRconClient` 제거, `extensions.rcon.RconClient` 위임 래퍼로 교체
 - `src/protocol/rcon.rs` — Rust RCON 클라이언트 (Core Daemon용, 별도 유지)
 
 ### 5.4 ✅ 로그 버퍼 고정 크기 → 설정 가능하게 변경 완료
@@ -563,11 +563,11 @@ process.on('unhandledRejection', (reason) => {
 | 중복 코드 | 위치 1 | 위치 2 | 해소 방법 |
 |---|---|---|---|
 | `key_map` (70줄) | `minecraft/lifecycle.py::configure()` | `minecraft/lifecycle.py::install_server()` | 모듈 상수로 추출 |
-| RCON 클라이언트 | `minecraft/lifecycle.py::_send_rcon_command()` | `palworld/lifecycle.py::PalworldRconClient` | ✅ `modules/_shared/rcon.py` 통합 완료 |
+| RCON 클라이언트 | `minecraft/lifecycle.py::_send_rcon_command()` | `palworld/lifecycle.py::PalworldRconClient` | ✅ `extensions/rcon.py` 통합 완료 |
 | `taskkill /F /PID` | `supervisor/mod.rs::stop_server()` (managed) | `supervisor/mod.rs::stop_server()` (non-managed) | ✅ `process::force_kill_pid()` 추출 완료 |
 | `hide_window()` | `src/plugin/mod.rs` | `src/supervisor/managed_process.rs` (유사 패턴) | ✅ `src/utils.rs::apply_creation_flags()` 공용화 완료 |
 | `DEFAULT_PROPERTIES` | `minecraft/lifecycle.py` (하드코딩) | `modules/minecraft/server.properties` (참조용 파일) | ✅ `server.properties` 파일에서 로드 + saba-chan 오버라이드 방식으로 전환 |
-| UE4 INI 파서 | `palworld/lifecycle.py::_parse_option_settings()` | (현재 1곳이지만 다른 UE 게임 모듈 추가 시 중복될 구조) | ✅ `modules/_shared/ue4_ini.py` 추출 완료 |
+| UE4 INI 파서 | `palworld/lifecycle.py::_parse_option_settings()` | (현재 1곳이지만 다른 UE 게임 모듈 추가 시 중복될 구조) | ✅ `extensions/ue4_ini.py` 추출 완료 |
 
 ---
 

@@ -13,6 +13,7 @@ export { default as UpdateModal } from './Modals/UpdateModal';
 export { default as UpdatePanel } from './Modals/UpdatePanel';
 export { AddServerModal } from './Modals/AddServerModal';
 export { Icon } from './Icon';
+export { MemoryGauge } from './MemoryGauge';
 export { default as CustomDropdown } from './CustomDropdown/CustomDropdown';
 export { ServerCard } from './ServerCard';
 export { ServerSettingsModal } from './ServerSettingsModal';

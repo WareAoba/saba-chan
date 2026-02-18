@@ -53,6 +53,8 @@
   },
   "add_server_modal": {
     "title": "Neuen Server hinzufügen",
+    "subtitle": "Wähle ein Spielmodul aus und konfiguriere deine neue Serverinstanz.",
+    "advanced_settings": "Erweiterte Einstellungen",
     "modules_directory": "Modulverzeichnis:",
     "reload_modules": "Module neu laden",
     "place_modules_hint": "Platzieren Sie .zip-Dateien oder Ordner mit module.toml hier",
@@ -61,9 +63,12 @@
     "server_name_placeholder": "z.B.: mein-palworld-1",
     "game_module": "Spielmodul *",
     "select_module": "Modul auswählen",
-    "available_modules": "Verfügbare Module:",
-    "no_modules": "Keine Module verfügbar. Bitte überprüfen Sie das Modulverzeichnis.",
-    "no_description": "Keine Beschreibung",
+    "module_source": "Modul-Modus",
+    "module_source_shared": "Gemeinsam (Referenz)",
+    "module_source_embedded": "Eingebettet (Kopie)",
+    "module_source_shared_hint": "Alle Instanzen mit diesem Modul teilen dieselben Dateien.",
+    "module_source_embedded_hint": "Das Modul wird in diese Instanz kopiert und kann unabhängig angepasst werden.",
+    "no_modules": "Keine Module gefunden. Überprüfen Sie das Modulverzeichnis in den erweiterten Einstellungen.",
     "add_server": "Server hinzufügen"
   },
   "command_modal": {
@@ -205,7 +210,9 @@
     "aliases_reset_failed_title": "Zurücksetzen fehlgeschlagen",
     "aliases_reset_completed_title": "Zurücksetzen abgeschlossen",
     "aliases_reset_message": "Aliase wurden auf Standardwerte zurückgesetzt",
-    "gui_settings_tooltip": "GUI-Einstellungen"
+    "gui_settings_tooltip": "GUI-Einstellungen",
+    "alias_conflict_title": "Alias-Konflikt",
+    "alias_conflict_detail": "Alias '{{alias}}' ist bereits für Modul '{{module}}' registriert"
   },
   "buttons": {
     "add_server": "Server hinzufügen",
@@ -231,7 +238,9 @@
     "module_not_found": "Modul nicht gefunden. Bitte überprüfen Sie, ob das Modul korrekt installiert ist.",
     "failed_to_load_module": "Modulladung fehlgeschlagen. Bitte überprüfen Sie die Moduldateien.",
     "invalid_token": "Ungültiges Discord-Token. Bitte überprüfen Sie Ihr Token.",
-    "unknown_error": "Ein unbekannter Fehler ist aufgetreten"
+    "unknown_error": "Ein unbekannter Fehler ist aufgetreten",
+    "port_conflict": "Port-Konflikt",
+    "port_conflict_detail": "Port {{port}} wird bereits von Instanz '{{name}}' verwendet"
   },
   "background_modal": {
     "title": "Hintergrunddienste",

@@ -1,16 +1,16 @@
 """
-saba-chan Shared RCON Client
-============================
+saba-chan RCON Extension
+==========================
 Unified Source RCON protocol implementation used by all game modules.
 
 Protocol Reference: https://developer.valvesoftware.com/wiki/Source_RCON_Protocol
 
 Usage (simple one-shot):
-    from _shared.rcon import rcon_command
+    from extensions.rcon import rcon_command
     response = rcon_command("127.0.0.1", 25575, "password", "list")
 
 Usage (session-based):
-    from _shared.rcon import RconClient
+    from extensions.rcon import RconClient
     client = RconClient("127.0.0.1", 25575, "password")
     if client.connect():
         response = client.command("list")

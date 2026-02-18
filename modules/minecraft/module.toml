@@ -27,6 +27,23 @@ default_port = 25565
 rcon_port = 25575
 ram = "2G"
 
+[install]
+method = "download"
+# Minecraft은 공식 사이트에서 server.jar를 직접 다운로드
+download_url = "https://piston-data.mojang.com/v1/objects/{version_hash}/server.jar"
+install_subdir = "server"
+
+[docker]
+image = "openjdk:21-slim"
+working_dir = "/server"
+restart = "unless-stopped"
+command = "java -Xmx{ram}G -Xms{ram}G -jar server.jar nogui"
+ports = ["{port}:25565/tcp", "{rcon_port}:25575/tcp"]
+volumes = ["./server:/server"]
+
+[docker.environment]
+EULA = "TRUE"
+
 [detection]
 process_patterns = ["java.exe", "minecraft_server"]
 common_paths = [

@@ -281,7 +281,11 @@ function loadSettings() {
     try {
         const settingsPath = getSettingsPath();
         if (fs.existsSync(settingsPath)) {
-            const data = fs.readFileSync(settingsPath, 'utf8');
+            let data = fs.readFileSync(settingsPath, 'utf8');
+            // UTF-8 BOM 제거
+            if (data.charCodeAt(0) === 0xFEFF) {
+                data = data.slice(1);
+            }
             return JSON.parse(data);
         }
     } catch (error) {
@@ -1677,7 +1681,8 @@ ipcMain.handle('module:getMetadata', async (event, moduleName) => {
 
 ipcMain.handle('instance:create', async (event, data) => {
     try {
-        const response = await axios.post(`${IPC_BASE}/api/instances`, data);
+        // 백엔드가 도커 프로비저닝을 백그라운드로 처리하므로 짧은 타임아웃으로 충분
+        const response = await axios.post(`${IPC_BASE}/api/instances`, data, { timeout: 30000 });
         return response.data;
     } catch (error) {
         if (error.response) {
@@ -1701,6 +1706,16 @@ ipcMain.handle('instance:create', async (event, data) => {
         }
         
         return { error: `인스턴스 생성 실패: ${error.message}` };
+    }
+});
+
+// ── Provision progress polling ──
+ipcMain.handle('instance:provisionProgress', async (event, name) => {
+    try {
+        const response = await axios.get(`${IPC_BASE}/api/provision-progress/${encodeURIComponent(name)}`, { timeout: 3000 });
+        return response.data;
+    } catch (error) {
+        return { active: false };
     }
 });
 
@@ -2113,8 +2128,24 @@ ipcMain.handle('daemon:restart', async () => {
         settings = loadSettings();
         refreshIpcBase(); // 포트 변경 시 반영
         startDaemon();
-        // 데몬이 시작될 때까지 잠시 대기
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // 데몬이 시작될 때까지 대기하면서 새 토큰 로드 재시도
+        let ready = false;
+        for (let i = 0; i < 8; i++) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            // 새 데몬이 새 토큰을 생성하므로 매 시도마다 재로드
+            loadIpcToken();
+            try {
+                const check = await axios.get(`${IPC_BASE}/api/modules`, { timeout: 800 });
+                if (check.status === 200) {
+                    ready = true;
+                    break;
+                }
+            } catch (_) { /* 아직 기동 중 */ }
+        }
+        if (!ready) {
+            // 마지막 한 번 더 토큰 로드 시도
+            loadIpcToken();
+        }
         return { success: true, message: 'Daemon restarted successfully' };
     } catch (err) {
         console.error('Failed to restart daemon:', err);

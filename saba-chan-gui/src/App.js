@@ -221,10 +221,10 @@ function App() {
 
                 const statusMessages = {
                     init: 'Initialize...', ui: 'UI loaded', daemon: 'Daemon preparing...',
-                    modules: 'Loading modules...', instances: 'Loading instances...', ready: 'Ready!'
+                    modules: 'Loading modules...', instances: 'Loading instances...', ready: 'Checking servers...'
                 };
                 const progressValues = {
-                    init: 10, ui: 20, daemon: 50, modules: 70, instances: 90, ready: 100
+                    init: 10, ui: 20, daemon: 50, modules: 70, instances: 85, ready: 90
                 };
 
                 setInitStatus(statusMessages[data.step] || data.message);
@@ -313,6 +313,14 @@ function App() {
         };
         loadSettings();
     }, []);
+
+    // Finalize loading screen when server initialization completes
+    useEffect(() => {
+        if (!serversInitializing && daemonReady) {
+            setInitProgress(100);
+            setInitStatus('Ready!');
+        }
+    }, [serversInitializing, daemonReady]);
 
     // Background Daemon status polling
     useEffect(() => {
@@ -576,20 +584,10 @@ function App() {
     // ── Render ───────────────────────────────────────────────
     // ══════════════════════════════════════════════════════════
 
-    // Loading screen (daemon not ready)
-    if (!daemonReady) {
+    // Loading screen (daemon not ready or servers still initializing)
+    if (!daemonReady || serversInitializing) {
         return (
             <LoadingScreen logoSrc={logoSrc} initStatus={initStatus} initProgress={initProgress} />
-        );
-    }
-
-    if (loading) {
-        return (
-            <div className="App">
-                <div className="loading">
-                    <h2>{t('buttons.loading')}</h2>
-                </div>
-            </div>
         );
     }
 
@@ -726,27 +724,17 @@ function App() {
             <AddServerModal
                 isOpen={showModuleManager}
                 onClose={() => setShowModuleManager(false)}
-                modules={modules}
+                extensions={modules}
                 servers={servers}
-                modulesPath={modulesPath}
+                extensionsPath={modulesPath}
                 settingsPath={settingsPath}
-                onModulesPathChange={setModulesPath}
-                onRefreshModules={fetchModules}
+                onextensionsPathChange={setModulesPath}
+                onRefreshextensions={fetchModules}
                 onAddServer={handleAddServer}
             />
 
             <main className="app-main">
                 <div className="server-list">
-                {/* 서버 상태 초기화 중 오버레이 */}
-                {serversInitializing && servers.length > 0 && (
-                    <div className="servers-initializing-overlay">
-                        <div className="servers-initializing-content">
-                            <div className="servers-initializing-spinner"></div>
-                            <span>{t('gui:servers.initializing_overlay')}</span>
-                        </div>
-                    </div>
-                )}
-                
                 {servers.length === 0 ? (
                     <div className="no-servers">
                         <p>{t('servers.no_servers_configured', { defaultValue: 'No servers configured' })}</p>
@@ -870,6 +858,7 @@ function App() {
                 onTestLoadingScreen={() => {
                     setShowGuiSettingsModal(false);
                     setDaemonReady(false);
+                    setServersInitializing(true);
                     setInitStatus('Loading test...');
                     setInitProgress(0);
                     let p = 0;
@@ -880,7 +869,10 @@ function App() {
                             setInitStatus('Ready!');
                             setInitProgress(100);
                             clearInterval(iv);
-                            setTimeout(() => setDaemonReady(true), 600);
+                            setTimeout(() => {
+                                setDaemonReady(true);
+                                setServersInitializing(false);
+                            }, 600);
                         } else {
                             setInitStatus(`Loading test... ${Math.round(p)}%`);
                             setInitProgress(p);

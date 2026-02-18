@@ -53,6 +53,8 @@
   },
   "add_server_modal": {
     "title": "新增伺服器",
+    "subtitle": "選擇遊戲模組並配置您的新伺服器實例。",
+    "advanced_settings": "進階設定",
     "modules_directory": "模組目錄：",
     "reload_modules": "重新載入模組",
     "place_modules_hint": "將 .zip 檔案或包含 module.toml 的資料夾放在此處",
@@ -61,9 +63,12 @@
     "server_name_placeholder": "例如：my-palworld-1",
     "game_module": "遊戲模組 *",
     "select_module": "選擇模組",
-    "available_modules": "可用模組：",
-    "no_modules": "沒有可用的模組。請檢查模組目錄。",
-    "no_description": "無描述",
+    "module_source": "模組模式",
+    "module_source_shared": "共用（參考）",
+    "module_source_embedded": "內嵌（複製）",
+    "module_source_shared_hint": "使用此模組的所有實例共用相同的檔案。",
+    "module_source_embedded_hint": "模組被複製到此實例中，可獨立自訂。",
+    "no_modules": "未找到模組。請在進階設定中檢查模組目錄。",
     "add_server": "新增伺服器"
   },
   "command_modal": {
@@ -205,7 +210,9 @@
     "aliases_reset_failed_title": "重設失敗",
     "aliases_reset_completed_title": "重設完成",
     "aliases_reset_message": "別名已重設為預設值",
-    "gui_settings_tooltip": "GUI 設定"
+    "gui_settings_tooltip": "GUI 設定",
+    "alias_conflict_title": "別名衝突",
+    "alias_conflict_detail": "別名 '{{alias}}' 已經註冊到模組 '{{module}}'"
   },
   "buttons": {
     "add_server": "新增伺服器",
@@ -231,7 +238,9 @@
     "module_not_found": "找不到模組。請檢查模組是否正確安裝。",
     "failed_to_load_module": "模組載入失敗。請檢查模組檔案。",
     "invalid_token": "無效的 Discord 權杖。請檢查您的權杖。",
-    "unknown_error": "發生未知錯誤"
+    "unknown_error": "發生未知錯誤",
+    "port_conflict": "連接埠衝突",
+    "port_conflict_detail": "連接埠 {{port}} 已被實例 '{{name}}' 使用"
   },
   "background_modal": {
     "title": "背景服務",

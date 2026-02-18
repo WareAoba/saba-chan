@@ -360,7 +360,9 @@ describe('로딩 화면 테스트', () => {
         expect(screen.getByText(/Initialize/i)).toBeInTheDocument();
     });
 
-    it('ready 상태 수신 시 로딩 화면이 사라져야 함', async () => {
+    it('ready 상태 수신 시 서버 초기화 완료 후 로딩 화면이 사라져야 함', async () => {
+        // HMR 감지를 비활성화하여 로딩 화면이 보이도록 함
+        mockApi.daemonStatus = vi.fn().mockRejectedValue(new Error('not running'));
         let statusCallback = null;
         mockApi.onStatusUpdate = vi.fn((callback) => {
             statusCallback = callback;
@@ -377,17 +379,17 @@ describe('로딩 화면 테스트', () => {
             });
         }
 
-        // 600ms 후 daemonReady=true 로 전환
+        // 3.5초 후 serversInitializing=false 로 전환되어야 로딩 화면이 사라짐
         await waitFor(() => {
             // 로딩 화면이 사라지고 메인 UI가 표시되어야 함
             expect(screen.queryByText('Saba-chan')).toBeInTheDocument();
-        }, { timeout: 2000 });
+        }, { timeout: 5000 });
     });
 
-    it('서버 카드 초기화 로딩이 3.5초 후 사라져야 함', async () => {
-        // 이 테스트는 타이머 기반이므로 매우 긴 타임아웃 필요
-        // 실제 CI에서는 스킵하거나 모킹으로 대체 권장
+    it('서버 초기화 완료 전까지 로딩 화면이 유지되어야 함', async () => {
         vi.useFakeTimers();
+        // HMR 감지를 비활성화하여 로딩 화면이 보이도록 함
+        mockApi.daemonStatus = vi.fn().mockRejectedValue(new Error('not running'));
         
         let statusCallback = null;
         mockApi.onStatusUpdate = vi.fn((callback) => {
@@ -405,13 +407,20 @@ describe('로딩 화면 테스트', () => {
             });
         }
 
-        // 3.5초 경과
+        // 600ms 후 daemonReady=true 이지만 serversInitializing=true 이므로 로딩 화면 유지
         await act(async () => {
-            vi.advanceTimersByTime(3500);
+            vi.advanceTimersByTime(700);
         });
 
-        // serversInitializing=false 로 전환되어 오버레이가 사라져야 함
-        expect(screen.queryByText('서버 상태 확인 중...')).not.toBeInTheDocument();
+        // 로딩 화면이 아직 표시되어야 함 (serversInitializing=true)
+        expect(screen.getByText(/Checking servers/i)).toBeInTheDocument();
+
+        // 3.5초 경과 → serversInitializing=false → 로딩 화면 사라짐
+        await act(async () => {
+            vi.advanceTimersByTime(3000);
+        });
+
+        expect(screen.queryByText(/Checking servers/i)).not.toBeInTheDocument();
         
         vi.useRealTimers();
     });

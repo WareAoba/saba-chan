@@ -221,6 +221,27 @@ pub struct ServerInfo {
     /// API(CLI/Discord)를 통해 마지막으로 시작/정지가 요청된 시점 (epoch ms)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_api_action: Option<u64>,
+    /// Docker 프로비저닝이 진행 중인지 여부
+    #[serde(default)]
+    pub provisioning: bool,
+    /// Docker 모드 활성화 여부
+    #[serde(default)]
+    pub use_docker: bool,
+    /// Docker 컨테이너 메모리 사용량 문자열 (예: "256MiB / 4GiB")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub docker_memory_usage: Option<String>,
+    /// Docker 컨테이너 메모리 사용 퍼센트 (0.0~100.0)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub docker_memory_percent: Option<f64>,
+    /// Docker 컨테이너 CPU 사용 퍼센트
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub docker_cpu_percent: Option<f64>,
+    /// Docker CPU 제한 (코어 수)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub docker_cpu_limit: Option<f64>,
+    /// Docker 메모리 제한 (예: "4g")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub docker_memory_limit: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -230,7 +251,7 @@ pub struct ProtocolsInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ModuleInfo {
+pub struct ExtensionInfo {
     pub name: String,
     pub version: String,
     pub description: Option<String>,
@@ -245,8 +266,8 @@ pub struct ModuleInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ModuleListResponse {
-    pub modules: Vec<ModuleInfo>,
+pub struct ExtensionListResponse {
+    pub modules: Vec<ExtensionInfo>,
 }
 
 // ── API Action Tracker ──────────────────────────────────────
@@ -282,6 +303,103 @@ impl ApiActionTracker {
 
 // ── IPC Server ─────────────────────────────────────────────
 
+/// Provision progress entry for a single instance
+#[derive(Debug, Clone, Serialize)]
+pub struct ProvisionProgress {
+    pub step: u8,        // 0-based step index
+    pub total: u8,       // total steps (e.g. 3)
+    pub label: String,   // short machine-readable label
+    pub message: String, // human-readable description
+    pub done: bool,      // true when provisioning finished (success or error)
+    pub error: Option<String>,
+    /// Download/operation percentage (0-100), None if indeterminate
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub percent: Option<u8>,
+}
+
+/// Tracks provisioning progress per instance_id
+#[derive(Debug, Clone)]
+pub struct ProvisionTracker {
+    inner: Arc<std::sync::Mutex<HashMap<String, ProvisionProgress>>>,
+}
+
+impl ProvisionTracker {
+    pub fn new() -> Self {
+        Self { inner: Arc::new(std::sync::Mutex::new(HashMap::new())) }
+    }
+
+    pub fn update(&self, instance_id: &str, progress: ProvisionProgress) {
+        if let Ok(mut map) = self.inner.lock() {
+            map.insert(instance_id.to_string(), progress);
+        }
+    }
+
+    pub fn get(&self, instance_id: &str) -> Option<ProvisionProgress> {
+        self.inner.lock().ok().and_then(|map| map.get(instance_id).cloned())
+    }
+
+    pub fn remove(&self, instance_id: &str) {
+        if let Ok(mut map) = self.inner.lock() {
+            map.remove(instance_id);
+        }
+    }
+}
+
+/// Docker 컨테이너 리소스 사용량 캐시 (5초 TTL)
+#[derive(Clone, Default)]
+pub struct DockerStatsCache {
+    inner: Arc<std::sync::Mutex<DockerStatsCacheInner>>,
+}
+
+#[derive(Default)]
+struct DockerStatsCacheInner {
+    /// container_name → (memory_usage, memory_percent, cpu_percent)
+    stats: HashMap<String, (Option<String>, Option<f64>, Option<f64>)>,
+    /// 마지막 갱신 시각 (epoch millis)
+    last_updated: u64,
+}
+
+impl DockerStatsCache {
+    pub fn new() -> Self { Self::default() }
+
+    /// 캐시된 통계 가져오기 (5초 이내면 캐시 사용)
+    pub fn get(&self, container_name: &str) -> Option<(Option<String>, Option<f64>, Option<f64>)> {
+        let guard = self.inner.lock().ok()?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        if now - guard.last_updated > 5000 {
+            return None; // 만료됨
+        }
+        guard.stats.get(container_name).cloned()
+    }
+
+    /// 통계 갱신
+    pub fn update(&self, container_name: &str, mem_usage: Option<String>, mem_pct: Option<f64>, cpu_pct: Option<f64>) {
+        if let Ok(mut guard) = self.inner.lock() {
+            guard.stats.insert(container_name.to_string(), (mem_usage, mem_pct, cpu_pct));
+            guard.last_updated = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+        }
+    }
+
+    /// 만료 여부 확인
+    pub fn is_expired(&self) -> bool {
+        if let Ok(guard) = self.inner.lock() {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            now - guard.last_updated > 5000
+        } else {
+            true
+        }
+    }
+}
+
 /// IPC Server State
 #[derive(Clone)]
 pub struct IPCServer {
@@ -294,6 +412,10 @@ pub struct IPCServer {
     pub update_state: UpdateState,
     /// API(CLI/Discord 봇) 경유 시작/정지 타임스탬프 추적
     pub api_actions: ApiActionTracker,
+    /// Docker 프로비저닝 진행 상태 추적
+    pub provision_tracker: ProvisionTracker,
+    /// Docker 컨테이너 리소스 사용량 캐시
+    pub docker_stats_cache: DockerStatsCache,
 }
 
 impl IPCServer {
@@ -307,6 +429,8 @@ impl IPCServer {
             client_registry: ClientRegistry::new(),
             update_state: UpdateState::new(),
             api_actions: ApiActionTracker::new(),
+            provision_tracker: ProvisionTracker::new(),
+            docker_stats_cache: DockerStatsCache::new(),
         }
     }
 
@@ -326,6 +450,8 @@ impl IPCServer {
             .route("/api/instances", get(handlers::instance::list_instances).post(handlers::instance::create_instance))
             .route("/api/instances/reorder", put(handlers::instance::reorder_instances))
             .route("/api/instance/:id", get(handlers::instance::get_instance).delete(handlers::instance::delete_instance).patch(handlers::instance::update_instance_settings))
+            // ── Provision progress ──
+            .route("/api/provision-progress/:name", get(handlers::instance::get_provision_progress))
             // ── Command execution ──
             .route("/api/instance/:id/command", post(handlers::command::execute_command))
             .route("/api/instance/:id/rcon", post(handlers::command::execute_rcon_command))
@@ -418,7 +544,7 @@ mod tests {
 
     #[test]
     fn test_module_info_serialization_with_commands() {
-        let module_info = ModuleInfo {
+        let module_info = ExtensionInfo {
             name: "palworld".to_string(),
             version: "1.0.0".to_string(),
             description: Some("Palworld 서버 관리".to_string()),
@@ -457,7 +583,7 @@ mod tests {
 
     #[test]
     fn test_module_info_without_commands() {
-        let module_info = ModuleInfo {
+        let module_info = ExtensionInfo {
             name: "test".to_string(),
             version: "1.0.0".to_string(),
             description: None,
@@ -478,9 +604,9 @@ mod tests {
 
     #[test]
     fn test_module_list_response_includes_commands() {
-        let response = ModuleListResponse {
+        let response = ExtensionListResponse {
             modules: vec![
-                ModuleInfo {
+                ExtensionInfo {
                     name: "palworld".to_string(),
                     version: "1.0.0".to_string(),
                     description: Some("Palworld".to_string()),

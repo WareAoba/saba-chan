@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import Icon from '../Icon';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
@@ -8,122 +8,224 @@ import { useModalClose } from '../../hooks/useModalClose';
 export function AddServerModal({ 
     isOpen, 
     onClose, 
-    modules, 
+    extensions, 
     servers,
-    modulesPath,
+    extensionsPath,
     settingsPath,
-    onModulesPathChange,
-    onRefreshModules,
-    onAddServer
+    onextensionsPathChange,
+    onRefreshextensions,
+    onAddServer,
+    onOpenMigration,
 }) {
     const { t } = useTranslation('gui');
     const [newServerName, setNewServerName] = useState('');
-    const [selectedModule, setSelectedModule] = useState('');
+    const [selectedExtension, setselectedExtension] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+    const [useDocker, setUseDocker] = useState(false);
+    const [showAdvanced, setShowAdvanced] = useState(false);
     const { isClosing, requestClose } = useModalClose(onClose);
 
     // 모듈 선택 시 자동으로 서버 이름 생성
-    const handleModuleSelect = (moduleName) => {
-        setSelectedModule(moduleName);
+    const handleExtensionSelect = (extName) => {
+        setselectedExtension(extName);
         
         // 이름이 비어있거나 자동 생성된 이름인 경우에만 자동완성
         if (!newServerName || newServerName.startsWith('my-')) {
-            const existingCount = servers.filter(s => s.module === moduleName).length;
-            const suggestedName = `my-${moduleName}-${existingCount + 1}`;
+            const existingCount = servers.filter(s => s.module === extName).length;
+            const suggestedName = `my-${extName}-${existingCount + 1}`;
             setNewServerName(suggestedName);
         }
     };
 
-    const handleSubmit = () => {
-        if (!newServerName.trim()) {
-            return;
-        }
-        if (!selectedModule) {
-            return;
+    const handleSubmit = async () => {
+        if (!newServerName.trim()) return;
+        if (!selectedExtension) return;
+
+        setSubmitting(true);
+        try {
+            await onAddServer({
+                name: newServerName.trim(),
+                module_name: selectedExtension,
+                accept_eula: true,
+                use_docker: useDocker,
+            });
+        } finally {
+            setSubmitting(false);
         }
 
-        onAddServer(newServerName.trim(), selectedModule);
-        
         // 폼 초기화
         setNewServerName('');
-        setSelectedModule('');
+        setselectedExtension('');
+        setUseDocker(false);
     };
+
+    const handleOpenMigration = () => {
+        requestClose();
+        setTimeout(() => onOpenMigration?.(), 350);
+    };
+
+    const canSubmit = newServerName.trim() && selectedExtension && !submitting;
 
     if (!isOpen) return null;
 
     return (
         <div className={`modal-overlay ${isClosing ? 'closing' : ''}`} onClick={requestClose}>
-            <div className="modal-content modal-content-large" onClick={e => e.stopPropagation()}>
-                <div className="modal-header">
-                    <h3 style={{ fontSize: '1.3rem' }}>{t('add_server_modal.title')}</h3>
+            <div className="modal-content add-server-modal" onClick={e => e.stopPropagation()}>
+
+                {/* ── Header ── */}
+                <div className="modal-header add-server-header">
+                    <div>
+                        <h3>{t('add_server_modal.title')}</h3>
+                        <p className="add-server-subtitle">{t('add_server_modal.subtitle')}</p>
+                    </div>
                 </div>
 
-                <div className="modal-body">
-                    <div className="path-config">
-                        <label>{t('add_server_modal.modules_directory')}</label>
-                        <input 
-                            type="text"
-                            className="path-input"
-                            value={modulesPath}
-                            onChange={(e) => onModulesPathChange(e.target.value)}
-                            placeholder="c:\Git\Bot\modules"
+                {/* ── Body ── */}
+                <div className="modal-body add-server-body">
+
+                    {/* 1. 게임 모듈 선택 */}
+                    <div className="as-section">
+                        <label className="as-label">
+                            <Icon name="gamepad" size="sm" />
+                            {t('add_server_modal.game_extension')}
+                        </label>
+                        <CustomDropdown
+                            value={selectedExtension}
+                            onChange={(val) => handleExtensionSelect(val)}
+                            placeholder={t('add_server_modal.select_extension')}
+                            options={extensions.map(m => ({
+                                value: m.name,
+                                label: `${t(`mod_${m.name}:module.display_name`, { defaultValue: m.name })} v${m.version}`,
+                            }))}
+                            disabled={submitting}
                         />
-                        <button className="btn btn-refresh-modules" onClick={onRefreshModules}>
-                            <Icon name="refresh" size="sm" /> {t('add_server_modal.reload_modules')}
-                        </button>
-                        <small className="path-hint">
-                            <Icon name="folder" size="sm" /> {t('add_server_modal.place_modules_hint')}
-                        </small>
-                        {settingsPath && (
-                            <small className="settings-path">
-                                <Icon name="database" size="sm" /> {t('add_server_modal.settings_path')} {settingsPath}
+                        {extensions.length === 0 && (
+                            <p className="as-empty-hint">
+                                <Icon name="alertCircle" size="sm" />
+                                {t('add_server_modal.no_extensions')}
+                            </p>
+                        )}
+                    </div>
+
+                    {/* 2. 서버 이름 */}
+                    <div className="as-section">
+                        <label className="as-label">
+                            <Icon name="server" size="sm" />
+                            {t('add_server_modal.server_name')}
+                        </label>
+                        <input
+                            className="as-input"
+                            type="text"
+                            placeholder={t('add_server_modal.server_name_placeholder')}
+                            value={newServerName}
+                            onChange={(e) => setNewServerName(e.target.value)}
+                            disabled={submitting}
+                            onKeyDown={(e) => { if (e.key === 'Enter' && canSubmit) handleSubmit(); }}
+                        />
+                    </div>
+
+                    {/* 3. Docker 토글 */}
+                    <div className="as-section as-docker-row">
+                        <div className="as-toggle-row">
+                            <label className="as-toggle-switch">
+                                <input
+                                    type="checkbox"
+                                    checked={useDocker}
+                                    onChange={(e) => setUseDocker(e.target.checked)}
+                                    disabled={submitting}
+                                />
+                                <span className="as-toggle-track" />
+                            </label>
+                            <div className="as-toggle-info">
+                                <span className="as-toggle-title">
+                                    <Icon name="package" size="sm" />
+                                    {t('add_server_modal.docker_isolation')}
+                                </span>
+                                <span className="as-toggle-desc">
+                                    {useDocker
+                                        ? t('add_server_modal.docker_isolation_hint_on')
+                                        : t('add_server_modal.docker_isolation_hint_off')}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 4. 프로비저닝 안내 */}
+                    <p className="as-provision-hint">
+                        <Icon name="info" size="sm" />
+                        {t('add_server_modal.provision_hint')}
+                    </p>
+
+                    {/* ── 구분선 ── */}
+                    <div className="as-divider" />
+
+                    {/* 5. 고급 설정 (접이식) */}
+                    <button
+                        className="as-advanced-toggle"
+                        type="button"
+                        onClick={() => setShowAdvanced(prev => !prev)}
+                    >
+                        <Icon name={showAdvanced ? 'chevronDown' : 'chevronRight'} size="sm" />
+                        {t('add_server_modal.advanced_settings')}
+                    </button>
+
+                    {showAdvanced && (
+                        <div className="as-advanced-panel">
+                            <label className="as-label">
+                                <Icon name="folder" size="sm" />
+                                {t('add_server_modal.modules_directory')}
+                            </label>
+                            <div className="as-path-row">
+                                <input
+                                    className="as-input as-input-mono"
+                                    type="text"
+                                    value={extensionsPath}
+                                    onChange={(e) => onextensionsPathChange(e.target.value)}
+                                    placeholder="extensions/"
+                                />
+                                <button
+                                    className="as-btn-icon"
+                                    onClick={onRefreshextensions}
+                                    disabled={submitting}
+                                    title={t('add_server_modal.reload_extensions')}
+                                >
+                                    <Icon name="refresh" size="sm" />
+                                </button>
+                            </div>
+                            <small className="as-hint">
+                                {t('add_server_modal.place_modules_hint')}
                             </small>
-                        )}
-                    </div>
-
-                    <div className="add-server-form">
-                        <div className="form-row">
-                            <label>{t('add_server_modal.server_name')}</label>
-                            <input 
-                                type="text"
-                                placeholder={t('add_server_modal.server_name_placeholder')}
-                                value={newServerName}
-                                onChange={(e) => setNewServerName(e.target.value)}
-                            />
+                            {settingsPath && (
+                                <small className="as-hint as-settings-path">
+                                    <Icon name="database" size="xs" /> {t('add_server_modal.settings_path')} {settingsPath}
+                                </small>
+                            )}
                         </div>
+                    )}
 
-                        <div className="form-row">
-                            <label>{t('add_server_modal.game_module')}</label>
-                            <CustomDropdown
-                                value={selectedModule}
-                                onChange={(val) => handleModuleSelect(val)}
-                                placeholder={t('add_server_modal.select_module')}
-                                options={modules.map(m => ({ value: m.name, label: `${t(`mod_${m.name}:module.display_name`, { defaultValue: m.name })} v${m.version}` }))}
-                            />
-                        </div>
-                    </div>
-
-                    <div className="module-list">
-                        <h4>{t('add_server_modal.available_modules')}</h4>
-                        {modules.length === 0 ? (
-                            <p className="no-modules">{t('add_server_modal.no_modules')}</p>
-                        ) : (
-                            modules.map(module => (
-                                <div key={module.name} className="module-item">
-                                    <strong>{t(`mod_${module.name}:module.display_name`, { defaultValue: module.name })}</strong> v{module.version}
-                                    <p>{t(`mod_${module.name}:module.description`, { defaultValue: module.description || t('add_server_modal.no_description') })}</p>
-                                    <small>{module.path}</small>
-                                </div>
-                            ))
-                        )}
-                    </div>
+                    {/* 6. 마이그레이션 링크 */}
+                    <button
+                        className="as-migrate-link"
+                        type="button"
+                        onClick={handleOpenMigration}
+                        disabled={submitting}
+                    >
+                        <Icon name="download" size="sm" />
+                        {t('add_server_modal.migrate_existing')}
+                    </button>
                 </div>
 
-                <div className="modal-footer">
-                    <button className="btn btn-confirm" onClick={handleSubmit}>
-                        <Icon name="checkCircle" size="sm" /> {t('add_server_modal.add_server')}
+                {/* ── Footer ── */}
+                <div className="modal-footer add-server-footer">
+                    <button className="btn btn-cancel" onClick={requestClose} disabled={submitting}>
+                        {t('modals.cancel')}
                     </button>
-                    <button className="btn btn-cancel" onClick={requestClose}>
-                        <Icon name="xCircle" size="sm" /> {t('modals.cancel')}
+                    <button className="btn btn-confirm" onClick={handleSubmit} disabled={!canSubmit}>
+                        {submitting ? (
+                            <><Icon name="refresh" size="sm" className="spin" /> {t('add_server_modal.provisioning')}</>
+                        ) : (
+                            <><Icon name="plus" size="sm" /> {t('add_server_modal.add_server')}</>
+                        )}
                     </button>
                 </div>
             </div>

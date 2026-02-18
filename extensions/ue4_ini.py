@@ -1,12 +1,12 @@
 """
-saba-chan Shared UE4 INI Parser
-================================
+saba-chan UE4 INI Extension
+============================
 Parse and write Unreal Engine 4 INI files with OptionSettings format.
 
 Used by game modules that run on UE4 (Palworld, ARK, etc.).
 
 Usage:
-    from _shared.ue4_ini import parse_option_settings, write_option_settings
+    from extensions.ue4_ini import parse_option_settings, write_option_settings
 
     props = parse_option_settings("/path/to/PalWorldSettings.ini")
     props["Difficulty"] = "2"

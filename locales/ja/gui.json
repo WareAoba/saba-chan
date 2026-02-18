@@ -53,6 +53,8 @@
   },
   "add_server_modal": {
     "title": "新規サーバーを追加",
+    "subtitle": "ゲームモジュールを選択して、新しいサーバーインスタンスを構成します。",
+    "advanced_settings": "詳細設定",
     "modules_directory": "モジュールディレクトリ:",
     "reload_modules": "モジュールを再読み込み",
     "place_modules_hint": ".zipファイルまたはmodule.tomlを含むフォルダをここに配置してください",
@@ -61,10 +63,17 @@
     "server_name_placeholder": "例: my-palworld-1",
     "game_module": "ゲームモジュール *",
     "select_module": "モジュールを選択",
-    "available_modules": "利用可能なモジュール:",
-    "no_modules": "利用可能なモジュールがありません。モジュールディレクトリを確認してください。",
-    "no_description": "説明なし",
-    "add_server": "サーバーを追加"
+    "module_source": "モジュールモード",
+    "module_source_shared": "共有 (参照)",
+    "module_source_embedded": "埋め込み (コピー)",
+    "module_source_shared_hint": "このモジュールを使用するすべてのインスタンスが同じファイルを共有します。",
+    "module_source_embedded_hint": "モジュールがこのインスタンスにコピーされ、独立してカスタマイズできます。",
+    "no_modules": "モジュールが見つかりません。詳細設定でモジュールディレクトリを確認してください。",
+    "add_server": "サーバーを追加",
+    "provisioning": "プロビジョニング中…",
+    "step_docker_engine": "Docker エンジン",
+    "step_steamcmd": "サーバーファイル",
+    "step_compose": "設定生成"
   },
   "command_modal": {
     "title": "コマンド実行 - {{name}}",
@@ -95,7 +104,32 @@
     "server_added": "インスタンス '{{name}}' が追加されました",
     "server_deleted": "サーバー '{{name}}' が削除されました",
     "settings_saved": "'{{name}}' の設定が保存されました",
-    "aliases_saved": "エイリアスが保存されました"
+    "aliases_saved": "エイリアスが保存されました",
+    "clone_title": "インスタンスを複製",
+    "clone_confirm": "インスタンス '{{name}}' を複製しますか？ポートの競合を避けるため +{{offset}} ずらされます。",
+    "clone_success": "インスタンス '{{name}}' が '{{newName}}' として複製されました",
+    "clone_failed": "インスタンスの複製に失敗しました",
+    "export_title": "インスタンスをエクスポート",
+    "export_success": "インスタンスが {{path}} にエクスポートされました",
+    "export_failed": "インスタンスのエクスポートに失敗しました",
+    "import_title": "インスタンスをインポート",
+    "import_success": "インスタンス '{{name}}' が正常にインポートされました",
+    "import_failed": "インスタンスのインポートに失敗しました",
+    "steamcmd_install_title": "SteamCMDでインストール",
+    "steamcmd_install_confirm": "'{{name}}' のサーバーを SteamCMD でインストールしますか？（App ID: {{appId}}）",
+    "steamcmd_install_success": "SteamCMD でサーバーのインストールが完了しました",
+    "steamcmd_not_available": "SteamCMD が利用できません。インストールするかパスを設定してください。",
+    "docker_start_title": "Docker コンテナを起動",
+    "docker_stop_title": "Docker コンテナを停止",
+    "docker_provision_title": "Docker プロビジョニング",
+    "docker_provision_success": "docker-compose.ymlが正常に生成されました",
+    "docker_required": "このサーバーにはDockerが必要です。Docker Desktopをインストールしてください。",
+    "migrate_title": "既存サーバーの移行",
+    "migrate_confirm": "'{{path}}'のサーバーをsaba-chanに移行しますか？ファイルを{{action}}します。",
+    "migrate_success": "サーバーが'{{name}}'として正常に移行されました",
+    "migrate_failed": "サーバーの移行に失敗しました",
+    "migrate_detect_title": "既存サーバーの検出",
+    "migrate_no_servers_found": "既存のサーバーインストールが検出されませんでした"
   },
   "server_settings": {
     "title": "設定",
@@ -129,7 +163,17 @@
     "reset_confirm": "サーバー '{{name}}' を完全にリセットしますか？\n\nすべてのワールド、設定、ログ、その他のデータが削除されます。\nサーバーJARとeula.txtのみ保持されます。\n\nこの操作は元に戻せません。",
     "reset_success": "サーバー '{{name}}' がリセットされました（{{count}}個のアイテムを削除）",
     "reset_failed": "リセット失敗: {{error}}",
-    "reset_error": "リセットエラー: {{error}}"
+    "reset_error": "リセットエラー: {{error}}",
+    "docker_tab": "Docker",
+    "docker_resources_title": "リソース制限",
+    "docker_resources_desc": "Dockerコンテナに割り当てるCPUとメモリの制限を設定します。変更はdocker-compose.ymlに反映されます。",
+    "docker_cpu_limit_label": "CPU制限（コア数）",
+    "docker_cpu_limit_placeholder": "例: 2.0（空欄で無制限）",
+    "docker_cpu_limit_desc": "割り当てるCPUコア数です。空欄の場合は制限なし。",
+    "docker_memory_limit_label": "メモリ制限",
+    "docker_memory_limit_placeholder": "例: 4g, 512m（空欄で無制限）",
+    "docker_memory_limit_desc": "単位付きメモリ制限（例: 512m, 2g, 4g）。空欄の場合は制限なし。",
+    "docker_restart_hint": "リソース制限の変更はサーバーを再起動した後に適用されます。"
   },
   "discord_bot": {
     "token_missing_title": "トークンがありません",
@@ -205,7 +249,9 @@
     "aliases_reset_failed_title": "リセット失敗",
     "aliases_reset_completed_title": "リセット完了",
     "aliases_reset_message": "エイリアスがデフォルトにリセットされました",
-    "gui_settings_tooltip": "GUI設定"
+    "gui_settings_tooltip": "GUI設定",
+    "alias_conflict_title": "エイリアス競合",
+    "alias_conflict_detail": "エイリアス '{{alias}}' はモジュール '{{module}}' に既に登録されています"
   },
   "buttons": {
     "add_server": "サーバーを追加",
@@ -231,7 +277,9 @@
     "module_not_found": "モジュールが見つかりません。モジュールが正しくインストールされているか確認してください。",
     "failed_to_load_module": "モジュールの読み込みに失敗しました。モジュールファイルを確認してください。",
     "invalid_token": "無効なDiscordトークン。トークンを確認してください。",
-    "unknown_error": "不明なエラーが発生しました"
+    "unknown_error": "不明なエラーが発生しました",
+    "port_conflict": "ポート競合",
+    "port_conflict_detail": "ポート {{port}} はインスタンス '{{name}}' で既に使用されています"
   },
   "background_modal": {
     "title": "バックグラウンドサービス",

@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Icon } from './index';
+import { Icon, MemoryGauge } from './index';
 
 /**
  * ServerCard — Individual server instance card with status, actions, and details.
@@ -28,6 +28,33 @@ export function ServerCard({
     nowEpoch,
 }) {
     const { t } = useTranslation('gui');
+    const [provisionProgress, setProvisionProgress] = useState(null);
+
+    // 프로비저닝 중일 때 진행 상태 폴링
+    useEffect(() => {
+        if (!server.provisioning) {
+            setProvisionProgress(null);
+            return;
+        }
+        let cancelled = false;
+        const poll = async () => {
+            while (!cancelled) {
+                try {
+                    const result = await window.api.instanceProvisionProgress(server.name);
+                    if (cancelled) break;
+                    if (result && result.active) {
+                        setProvisionProgress(result);
+                        if (result.done) break;
+                    }
+                } catch {
+                    // ignore
+                }
+                await new Promise(r => setTimeout(r, 1200));
+            }
+        };
+        poll();
+        return () => { cancelled = true; };
+    }, [server.provisioning, server.name]);
 
     const moduleData = modules.find(m => m.name === server.module);
     const gameName = t(`mod_${server.module}:module.display_name`, { defaultValue: moduleData?.game_name || server.module });
@@ -56,6 +83,11 @@ export function ServerCard({
                     ) : (
                         <div className="game-icon-placeholder"><Icon name="gamepad" size="lg" /></div>
                     )}
+                    {server.use_docker && (
+                        <span className="docker-badge" title="Docker">
+                            <Icon name="dockerL" size={14} color="var(--docker-badge-color, #2496ed)" />
+                        </span>
+                    )}
                 </div>
 
                 <div className="server-card-info">
@@ -66,6 +98,21 @@ export function ServerCard({
                     </p>
                 </div>
 
+                {/* 미니 메모리 게이지 (헤더 — 항상 표시) */}
+                {!server.provisioning && server.use_docker && server.status === 'running' && server.docker_memory_percent != null && (
+                    <MemoryGauge percent={server.docker_memory_percent} size={44} compact
+                        title={server.docker_memory_usage || `${Math.round(server.docker_memory_percent)}%`} />
+                )}
+
+                {server.provisioning ? (
+                    <span className="status-button status-provisioning" title="Provisioning...">
+                        <span className="status-label">
+                            <Icon name="refresh" size="sm" className="spin" />
+                            {' '}{t('server_status.provisioning', { defaultValue: 'Provisioning' })}
+                        </span>
+                        <span className="status-dot"></span>
+                    </span>
+                ) : (
                 <button
                     className={`status-button status-${server.status}`}
                     onClick={() => {
@@ -78,20 +125,84 @@ export function ServerCard({
                 >
                     <span className="status-label status-label-default">
                         {server.status === 'running' ? t('server_status.running') :
-                         server.status === 'starting' ? t('server_status.stopping') :
+                         server.status === 'starting' ? t('server_status.starting', { defaultValue: 'Starting' }) :
                          server.status === 'stopping' ? t('server_status.stopping') : t('server_status.stopped')}
                     </span>
                     <span className="status-label status-label-hover">
                         {server.status === 'running' ? t('server_status.stop') :
-                         server.status === 'starting' ? t('server_status.stopping') :
+                         server.status === 'starting' ? t('server_status.starting', { defaultValue: 'Starting' }) :
                          server.status === 'stopping' ? t('server_status.stopping') : t('server_status.start')}
                     </span>
                     <span className="status-dot"></span>
                 </button>
+                )}
             </div>
 
+            {/* -- 프로비저닝 진행 상태 (카드에 inline 표시) -- */}
+            {server.provisioning && (
+                <div className="sc-provision-wrap">
+                    <div className="as-provision-steps">
+                        {[
+                            { key: 'docker_engine', label: t('add_server_modal.step_docker_engine', { defaultValue: 'Docker Engine' }) },
+                            { key: 'steamcmd', label: t('add_server_modal.step_steamcmd', { defaultValue: 'Server Files' }) },
+                            { key: 'compose', label: t('add_server_modal.step_compose', { defaultValue: 'Configuration' }) },
+                        ].map((s, idx) => {
+                            const currentStep = provisionProgress?.step ?? -1;
+                            const isDone = provisionProgress?.done && !provisionProgress?.error;
+                            let stepClass = 'pending';
+                            if (isDone || idx < currentStep) stepClass = 'completed';
+                            else if (idx === currentStep) stepClass = provisionProgress?.error ? 'error' : 'active';
+                            return (
+                                <div key={s.key} className={`as-step ${stepClass}`}>
+                                    <div className="as-step-icon">
+                                        {stepClass === 'completed' ? <Icon name="check" size="xs" /> :
+                                         stepClass === 'active' ? <Icon name="refresh" size="xs" className="spin" /> :
+                                         stepClass === 'error' ? <Icon name="alertCircle" size="xs" /> :
+                                         <span className="as-step-num">{idx + 1}</span>}
+                                    </div>
+                                    <span className="as-step-label">{s.label}</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <div className="as-provision-bar">
+                        {provisionProgress?.percent != null && !provisionProgress?.done && !provisionProgress?.error ? (
+                            <div className="as-provision-bar-fill determinate" style={{ width: `${provisionProgress.percent}%` }} />
+                        ) : (
+                            <div className={`as-provision-bar-fill ${provisionProgress?.error ? 'error' : provisionProgress?.done ? 'done' : 'indeterminate'}`} />
+                        )}
+                    </div>
+                    {provisionProgress?.message && (
+                        <p className="as-provision-message">
+                            {provisionProgress.message}
+                            {provisionProgress?.percent != null && !provisionProgress?.done && !provisionProgress?.error && (
+                                <span className="as-provision-pct"> ({provisionProgress.percent}%)</span>
+                            )}
+                        </p>
+                    )}
+                </div>
+            )}
+
             <div className="server-card-collapsible">
+                {!server.provisioning && (
+                <>
                 <div className="server-details">
+                    {/* Docker 리소스 게이지 (확장 시 전체 표시) */}
+                    {server.use_docker && server.status === 'running' && server.docker_memory_percent != null && (
+                        <div className="docker-stats-row">
+                            <MemoryGauge
+                                percent={server.docker_memory_percent}
+                                usage={server.docker_memory_usage}
+                                size={130}
+                            />
+                            {server.docker_cpu_percent != null && (
+                                <div className="docker-cpu-label">
+                                    <span className="label">CPU</span>
+                                    <span className="value">{server.docker_cpu_percent.toFixed(1)}%</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
                     {server.status === 'running' && server.pid && (
                         <div className="detail-row"><span className="label">PID:</span><span className="value">{server.pid}</span></div>
                     )}
@@ -175,6 +286,8 @@ export function ServerCard({
                         </button>
                     )}
                 </div>
+                </>
+                )}
             </div>
         </div>
     );

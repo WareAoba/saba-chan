@@ -24,6 +24,27 @@ process_name = "PalServer-Win64-Shipping-Cmd"
 default_port = 8211
 stop_command = "Shutdown"  # stdin으로 전송하는 graceful 종료 명령어
 
+[install]
+method = "steamcmd"
+app_id = 2394010
+anonymous = true
+install_subdir = "server"
+platform = "windows"
+
+[docker]
+image = "steamcmd/steamcmd:latest"
+working_dir = "/server"
+restart = "unless-stopped"
+entrypoint = "/bin/bash -c"
+command = "exec /server/PalServer.sh -port={port} -RCONPort={rcon_port}"
+user = "1000:1000"
+ports = ["{port}:8211/udp", "{rest_port}:8212/tcp"]
+volumes = ["./server:/server"]
+
+[docker.environment]
+PORT = "{port}"
+REST_API_PORT = "{rest_port}"
+
 [detection]
 process_patterns = ["PalServer-Win64-Shipping-Cmd", "PalServer", "PalServer-Win64"]
 common_paths = [

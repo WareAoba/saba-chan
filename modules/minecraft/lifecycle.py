@@ -26,9 +26,10 @@ import hashlib
 from pathlib import Path
 from i18n import I18n
 
-# Shared RCON client
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from _shared.rcon import rcon_command as _rcon_command
+# Shared extensions (RCON client)
+# PYTHONPATH is injected by the Rust plugin runner; fallback for direct execution:
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+from extensions.rcon import rcon_command as _rcon_command
 
 # ─── Init ─────────────────────────────────────────────────────
 
@@ -1084,7 +1085,16 @@ def start(config):
         if java_info:
             java_path = java_info["path"]
 
-        ram = config.get("ram", "2G")
+        ram_raw = config.get("ram", 2)
+        # Accept plain number (GB). Fractional → MB (e.g. 0.5 → 512M)
+        try:
+            ram_gb = float(str(ram_raw).rstrip("GgMm"))
+            if ram_gb == int(ram_gb):
+                ram = f"{int(ram_gb)}G"
+            else:
+                ram = f"{int(ram_gb * 1024)}M"
+        except (ValueError, TypeError):
+            ram = "2G"
         working_dir = config.get("working_dir") or os.path.dirname(server_jar)
 
         if config.get("auto_eula", False):
@@ -1246,7 +1256,7 @@ def _format_command(cmd, args):
 
 
 def _send_rcon_command(host, port, password, command):
-    """Legacy wrapper — delegates to shared RCON client."""
+    """Legacy wrapper — delegates to extensions.rcon RCON client."""
     return _rcon_command(host, port, password, command)
 
 

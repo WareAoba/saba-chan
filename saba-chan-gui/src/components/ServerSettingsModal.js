@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon, CustomDropdown } from './index';
 
@@ -228,6 +228,66 @@ function GeneralTab({
 }
 
 /**
+ * DockerTab — The "Docker" settings tab content (resource limits).
+ * Only shown for instances with use_docker === true.
+ */
+function DockerTab({ settingsValues, handleSettingChange }) {
+    const { t } = useTranslation('gui');
+
+    return (
+        <div className="settings-form">
+            <div className="settings-group">
+                <h4 className="settings-group-title">
+                    <Icon name="dockerL" size="sm" /> {t('server_settings.docker_resources_title', { defaultValue: 'Resource Limits' })}
+                </h4>
+                <p className="protocol-mode-description">
+                    {t('server_settings.docker_resources_desc', { defaultValue: 'Configure CPU and memory limits for this Docker container. Changes will regenerate docker-compose.yml.' })}
+                </p>
+
+                {/* CPU Limit */}
+                <div className="settings-field">
+                    <label>{t('server_settings.docker_cpu_limit_label', { defaultValue: 'CPU Limit (cores)' })}</label>
+                    <input
+                        type="number"
+                        min="0.25"
+                        max="128"
+                        step="0.25"
+                        value={settingsValues.docker_cpu_limit || ''}
+                        onChange={(e) => handleSettingChange('docker_cpu_limit', e.target.value)}
+                        placeholder={t('server_settings.docker_cpu_limit_placeholder', { defaultValue: 'e.g., 2.0 (no limit if empty)' })}
+                    />
+                    <small className="field-description">
+                        {t('server_settings.docker_cpu_limit_desc', { defaultValue: 'Number of CPU cores to allocate. Leave empty for no limit.' })}
+                    </small>
+                </div>
+
+                {/* Memory Limit */}
+                <div className="settings-field">
+                    <label>{t('server_settings.docker_memory_limit_label', { defaultValue: 'Memory Limit' })}</label>
+                    <input
+                        type="text"
+                        value={settingsValues.docker_memory_limit || ''}
+                        onChange={(e) => handleSettingChange('docker_memory_limit', e.target.value)}
+                        placeholder={t('server_settings.docker_memory_limit_placeholder', { defaultValue: 'e.g., 4g, 512m (no limit if empty)' })}
+                    />
+                    <small className="field-description">
+                        {t('server_settings.docker_memory_limit_desc', { defaultValue: 'Memory limit with unit (e.g., 512m, 2g, 4g). Leave empty for no limit.' })}
+                    </small>
+                </div>
+            </div>
+
+            {/* Info box */}
+            <div className="protocol-mode-section protocol-mode-info" style={{ marginTop: '16px' }}>
+                <p className="protocol-mode-hint">
+                    <span className="hint-icon"><Icon name="lightbulb" size="sm" /></span>
+                    {t('server_settings.docker_restart_hint', { defaultValue: 'Resource limit changes take effect after restarting the server.' })}
+                </p>
+            </div>
+        </div>
+    );
+}
+
+/**
  * AliasesTab — The "Discord Aliases" tab content.
  */
 function AliasesTab({
@@ -349,6 +409,32 @@ export function ServerSettingsModal({
 }) {
     const { t } = useTranslation('gui');
 
+    // ── Dynamic tab indicator ──
+    const tabsRef = useRef(null);
+    const indicatorRef = useRef(null);
+
+    const syncIndicator = useCallback(() => {
+        const container = tabsRef.current;
+        const indicator = indicatorRef.current;
+        if (!container || !indicator) return;
+        const activeBtn = container.querySelector('.settings-tab.active');
+        if (!activeBtn) return;
+        const containerRect = container.getBoundingClientRect();
+        const btnRect = activeBtn.getBoundingClientRect();
+        indicator.style.left = `${btnRect.left - containerRect.left}px`;
+        indicator.style.width = `${btnRect.width}px`;
+    }, []);
+
+    useEffect(() => {
+        syncIndicator();
+    }, [settingsActiveTab, syncIndicator]);
+
+    // Recalc on resize
+    useEffect(() => {
+        window.addEventListener('resize', syncIndicator);
+        return () => window.removeEventListener('resize', syncIndicator);
+    }, [syncIndicator]);
+
     return (
         <div className={`modal-overlay ${isClosing ? 'closing' : ''}`} onClick={onClose}>
             <div className="modal-content modal-content-large" onClick={e => e.stopPropagation()}>
@@ -357,7 +443,8 @@ export function ServerSettingsModal({
                 </div>
 
                 {/* Tab header */}
-                <div className="settings-tabs" data-tab={settingsActiveTab}>
+                <div className="settings-tabs" ref={tabsRef}>
+                    <div className="settings-tab-indicator" ref={indicatorRef} />
                     <button
                         className={`settings-tab ${settingsActiveTab === 'general' ? 'active' : ''}`}
                         onClick={() => setSettingsActiveTab('general')}
@@ -370,6 +457,14 @@ export function ServerSettingsModal({
                     >
                         <Icon name="discord" size="sm" /> {t('server_settings.aliases_tab')}
                     </button>
+                    {settingsServer.use_docker && (
+                        <button
+                            className={`settings-tab ${settingsActiveTab === 'docker' ? 'active' : ''}`}
+                            onClick={() => setSettingsActiveTab('docker')}
+                        >
+                            <Icon name="dockerL" size="sm" /> {t('server_settings.docker_tab', { defaultValue: 'Docker' })}
+                        </button>
+                    )}
                 </div>
 
                 <div className="modal-body">
@@ -400,10 +495,16 @@ export function ServerSettingsModal({
                             handleResetAliasesForModule={handleResetAliasesForModule}
                         />
                     )}
+                    {settingsActiveTab === 'docker' && settingsServer.use_docker && (
+                        <DockerTab
+                            settingsValues={settingsValues}
+                            handleSettingChange={handleSettingChange}
+                        />
+                    )}
                 </div>
 
                 <div className="modal-footer">
-                    {settingsActiveTab === 'general' && (
+                    {(settingsActiveTab === 'general' || settingsActiveTab === 'docker') && (
                         <button className="btn btn-confirm" onClick={handleSaveSettings}>
                             <Icon name="save" size="sm" /> {t('server_settings.save_settings')}
                         </button>

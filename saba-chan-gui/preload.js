@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('api', {
     moduleListVersions: (name, options) => ipcRenderer.invoke('module:listVersions', name, options),
     moduleInstallServer: (name, config) => ipcRenderer.invoke('module:installServer', name, config),
     instanceCreate: (data) => ipcRenderer.invoke('instance:create', data),
+    instanceProvisionProgress: (name) => ipcRenderer.invoke('instance:provisionProgress', name),
     instanceDelete: (id) => ipcRenderer.invoke('instance:delete', id),
     instanceReorder: (orderedIds) => ipcRenderer.invoke('instance:reorder', orderedIds),
     instanceUpdateSettings: (id, settings) => ipcRenderer.invoke('instance:updateSettings', id, settings),
