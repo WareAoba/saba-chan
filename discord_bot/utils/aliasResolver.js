@@ -5,23 +5,44 @@
 
 /**
  * 모듈 별명 맵 생성 (GUI + TOML + default)
+ * 별명이 겹칠 경우 첫 번째 등록된 모듈이 우선하며, conflicts 배열에 충돌 정보를 기록합니다.
  * @param {object} botConfig - bot-config.json
  * @param {object} moduleMetadata - 모듈 메타데이터
- * @returns {object} { alias: moduleName } 형태의 맵
+ * @returns {{ map: object, conflicts: Array<{alias: string, modules: string[]}> }}
  */
 function buildModuleAliasMap(botConfig, moduleMetadata) {
     const combined = {};
+    const conflicts = [];
+    // alias(lower) → { owner: moduleName } — 충돌 추적용
+    const ownerMap = {};
     
+    function registerAlias(alias, moduleName) {
+        const lower = alias.toLowerCase();
+        if (ownerMap[lower] && ownerMap[lower] !== moduleName) {
+            // 충돌 발생: 기존 등록을 유지하고 충돌만 기록
+            const existing = conflicts.find(c => c.alias.toLowerCase() === lower);
+            if (existing) {
+                if (!existing.modules.includes(moduleName)) existing.modules.push(moduleName);
+            } else {
+                conflicts.push({ alias, modules: [ownerMap[lower], moduleName] });
+            }
+            console.warn(`[AliasResolver] Module alias conflict: '${alias}' is claimed by both '${ownerMap[lower]}' and '${moduleName}'. Using '${ownerMap[lower]}'.`);
+            return; // 첫 번째 등록 유지
+        }
+        combined[alias] = moduleName;
+        ownerMap[lower] = moduleName;
+    }
+
     // 1. 기본값: 모듈 이름 자체
     for (const moduleName of Object.keys(moduleMetadata)) {
-        combined[moduleName] = moduleName;
+        registerAlias(moduleName, moduleName);
     }
     
     // 2. module.toml의 [aliases].module_aliases
     for (const [moduleName, metadata] of Object.entries(moduleMetadata)) {
         if (metadata.aliases && metadata.aliases.module_aliases) {
             for (const alias of metadata.aliases.module_aliases) {
-                combined[alias] = moduleName;
+                registerAlias(alias, moduleName);
             }
         }
     }
@@ -33,12 +54,15 @@ function buildModuleAliasMap(botConfig, moduleMetadata) {
             // 콤마로 구분된 여러 별명 지원
             const aliases = aliasStr.split(',').map(a => a.trim()).filter(a => a.length > 0);
             for (const alias of aliases) {
-                combined[alias] = moduleName;
+                registerAlias(alias, moduleName);
             }
         }
     }
     
-    return combined;
+    // 하위 호환: map 프로퍼티 + 기존 코드에서 직접 접근 가능하도록 스프레드
+    const result = { ...combined };
+    result.__conflicts = conflicts;
+    return result;
 }
 
 /**
@@ -104,6 +128,7 @@ function resolveAlias(input, aliasMap) {
     
     // 별명으로 검색 (대소문자 무시)
     for (const [alias, actualName] of Object.entries(aliasMap)) {
+        if (alias.startsWith('__')) continue; // 내부 메타데이터 스킵
         if (alias.toLowerCase() === lowerInput) {
             return typeof actualName === 'string' ? actualName : String(actualName);
         }
@@ -121,8 +146,27 @@ function resolveAlias(input, aliasMap) {
     return input;
 }
 
+/**
+ * 별명 충돌 여부를 확인하고, 충돌하는 별명이면 에러 메시지를 반환합니다.
+ * @param {string} input - 입력된 별명
+ * @param {object} aliasMap - buildModuleAliasMap의 반환값
+ * @returns {{ isConflict: boolean, conflictModules?: string[] }}
+ */
+function checkAliasConflict(input, aliasMap) {
+    const conflicts = aliasMap.__conflicts || [];
+    if (conflicts.length === 0) return { isConflict: false };
+
+    const lowerInput = input.toLowerCase();
+    const found = conflicts.find(c => c.alias.toLowerCase() === lowerInput);
+    if (found) {
+        return { isConflict: true, conflictModules: found.modules };
+    }
+    return { isConflict: false };
+}
+
 module.exports = {
     buildModuleAliasMap,
     buildCommandAliasMap,
-    resolveAlias
+    resolveAlias,
+    checkAliasConflict,
 };

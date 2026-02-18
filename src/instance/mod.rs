@@ -58,6 +58,9 @@ pub struct ServerInstance {
     /// Docker 메모리 제한 (예: "4g", "512m")
     #[serde(default)]
     pub docker_memory_limit: Option<String>,
+    /// 범용 익스텐션 확장 데이터
+    #[serde(default)]
+    pub extension_data: std::collections::HashMap<String, serde_json::Value>,
 }
 
 fn default_protocol_mode() -> String {
@@ -87,6 +90,7 @@ impl ServerInstance {
             use_docker: false,
             docker_cpu_limit: None,
             docker_memory_limit: None,
+            extension_data: HashMap::new(),
         }
     }
 }
@@ -314,6 +318,36 @@ impl InstanceStore {
         }
         // instance.json 자체에 module_settings가 있을 수도 있음 (마이그레이션 직후)
         // settings.json이 우선
+
+        // ── 마이그레이션: use_docker → extension_data.docker_enabled ──
+        // 기존 use_docker=true 인스턴스가 extension_data에 docker_enabled를 갖도록 보장
+        if instance.use_docker
+            && !instance.extension_data.contains_key("docker_enabled")
+        {
+            tracing::info!(
+                "Migrating instance '{}': use_docker=true → extension_data.docker_enabled=true",
+                instance.name
+            );
+            instance
+                .extension_data
+                .insert("docker_enabled".to_string(), serde_json::json!(true));
+            // docker_cpu_limit, docker_memory_limit도 extension_data로 복사
+            if let Some(cpu) = instance.docker_cpu_limit {
+                instance
+                    .extension_data
+                    .entry("docker_cpu_limit".to_string())
+                    .or_insert(serde_json::json!(cpu));
+            }
+            if let Some(ref mem) = instance.docker_memory_limit {
+                instance
+                    .extension_data
+                    .entry("docker_memory_limit".to_string())
+                    .or_insert(serde_json::json!(mem));
+            }
+            // 마이그레이션된 instance.json 저장
+            let migrated = serde_json::to_string_pretty(&instance)?;
+            fs::write(&instance_path, &migrated)?;
+        }
 
         Ok(instance)
     }

@@ -701,6 +701,65 @@ span[style*="--icon-loader"] svg,
     z-index: 2;
 }
 
+/* 포트 충돌 배지 (게임 아이콘 왼쪽 상단) */
+.port-conflict-badge {
+    position: absolute;
+    top: -4px;
+    left: -4px;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-card, #1e1e2e);
+    border-radius: 50%;
+    border: 1.5px solid rgba(245, 158, 11, 0.5);
+    z-index: 3;
+    color: #f59e0b;
+    animation: port-conflict-pulse 2s ease-in-out infinite;
+    cursor: help;
+}
+.port-conflict-badge svg {
+    width: 14px;
+    height: 14px;
+}
+@keyframes port-conflict-pulse {
+    0%, 100% { opacity: 0.85; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.1); }
+}
+
+/* 포트 충돌 경고 배너 (카드 확장 시) */
+.port-conflict-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    border-radius: 6px;
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+    color: #f59e0b;
+    font-size: 12px;
+    line-height: 1.4;
+}
+.port-conflict-banner svg {
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+.port-conflict-banner-content {
+    flex: 1;
+    min-width: 0;
+}
+.port-conflict-banner-content strong {
+    display: block;
+    margin-bottom: 2px;
+    font-size: 12px;
+}
+.port-conflict-banner-detail {
+    color: rgba(245, 158, 11, 0.8);
+    font-size: 11px;
+}
+
 /* Docker 리소스 통계 행 */
 .docker-stats-row {
     display: flex;

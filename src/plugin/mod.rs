@@ -49,6 +49,11 @@ fn resolve_extensions_dir() -> std::path::PathBuf {
     std::path::PathBuf::from("./extensions")
 }
 
+/// extensions/ 디렉토리 경로 (public wrapper)
+pub fn resolve_extensions_dir_pub() -> std::path::PathBuf {
+    resolve_extensions_dir()
+}
+
 /// Plugin runner executes Python modules (short-lived)
 /// Returns JSON output from stdout only
 /// Called by Supervisor for module lifecycle management
@@ -78,11 +83,11 @@ async fn run_plugin_inner(
     config: Value,
     on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>,
 ) -> Result<Value> {
-    tracing::info!("Executing plugin: {} -> {}", module_path, function);
+    tracing::debug!("Executing plugin: {} -> {}", module_path, function);
 
     let config_json = serde_json::to_string(&config)?;
     let python_exe = crate::python_env::get_python_path().await?;
-    tracing::info!("Using Python: {}", python_exe.display());
+    tracing::debug!("Using Python: {}", python_exe.display());
 
     let mut cmd = Command::new(&python_exe);
     cmd.arg(module_path)
@@ -127,7 +132,7 @@ async fn run_plugin_inner(
                         }
                     }
                 } else {
-                    tracing::info!("Plugin stderr: {}", line);
+                    tracing::debug!("Plugin stderr: {}", line);
                 }
                 log_lines.push(line);
             }
@@ -157,7 +162,7 @@ async fn run_plugin_inner(
 
     match serde_json::from_str::<Value>(&stdout_str) {
         Ok(result) => {
-            tracing::info!("Plugin result (raw): {}", stdout_str.trim());
+            tracing::debug!("Plugin result (raw): {}", stdout_str.trim());
             Ok(result)
         }
         Err(e) => {

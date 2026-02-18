@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import Icon from '../Icon';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
+import ExtensionSlot from '../ExtensionSlot';
 import './Modals.css';
 import { useModalClose } from '../../hooks/useModalClose';
 
@@ -149,6 +150,12 @@ export function AddServerModal({
                             </div>
                         </div>
                     </div>
+                    <ExtensionSlot
+                        slotId="AddServer.options"
+                        options={{ use_docker: useDocker }}
+                        onOptionsChange={(opts) => { if (opts.use_docker !== undefined) setUseDocker(opts.use_docker); }}
+                        t={t}
+                    />
 
                     {/* 4. 프로비저닝 안내 */}
                     <p className="as-provision-hint">

@@ -19,3 +19,4 @@ export { ServerCard } from './ServerCard';
 export { ServerSettingsModal } from './ServerSettingsModal';
 export { LoadingScreen } from './LoadingScreen';
 export { ConsolePanel, PopoutConsole } from './ConsoleView';
+export { default as ExtensionSlot } from './ExtensionSlot';

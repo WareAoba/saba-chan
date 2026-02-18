@@ -55,7 +55,9 @@
     "ipc_port_restart_notice": "Port changes will take effect after daemon restart",
     "ipc_port_invalid": "Enter a valid port number (1024–65535)",
     "console_buffer_label": "Console Buffer Size",
-    "console_buffer_description": "Maximum number of lines to keep in the server console"
+    "console_buffer_description": "Maximum number of lines to keep in the server console",
+    "extensions_tab": "Extensions",
+    "no_extensions": "No extensions found. Place extension folders in the extensions/ directory."
   },
   "add_server_modal": {
     "title": "Add New Server",
@@ -306,7 +308,10 @@
     "progress_fetching_versions": "Fetching version info...",
     "progress_downloading": "Downloading Minecraft {{version}}...",
     "progress_configuring": "Configuring server...",
-    "progress_complete": "Installation complete!"
+    "progress_complete": "Installation complete!",
+    "extension_required_title": "Extension Required",
+    "extension_required_message": "Server '{{name}}' requires an extension that is not currently enabled.",
+    "extension_open_settings": "Open Extension Settings"
   },
   "settings": {
     "save_failed_title": "Settings save failed",
@@ -346,7 +351,8 @@
     "invalid_token": "Invalid Discord token. Please check your token.",
     "unknown_error": "An unknown error occurred",
     "port_conflict": "Port Conflict",
-    "port_conflict_detail": "Port {{port}} is already used by instance '{{name}}'"
+    "port_conflict_detail": "Port {{port}} is already used by instance '{{name}}'",
+    "port_conflict_force_stop_toast": "🚫 {{stopped}} was force-stopped — port {{port}} conflicts with {{existing}}"
   },
   "background_modal": {
     "title": "Background Services",
@@ -417,5 +423,20 @@
     "checking_title": "Checking for Updates",
     "checking_message": "Checking for new updates...",
     "no_updates": "All components are up to date."
+  },
+  "extensions": {
+    "error_not_found": "Extension '{{id}}' not found. It may have been removed.",
+    "error_dep_missing": "Cannot enable '{{id}}': required extension '{{dep}}' is not installed. Install it first.",
+    "error_dep_disabled": "Cannot enable '{{id}}': required extension '{{dep}}' is not enabled. Enable it first.",
+    "error_has_dependents": "Cannot disable '{{id}}': other extensions depend on it ({{deps}}). Disable them first.",
+    "error_in_use": "Cannot disable '{{id}}': in use by server instance(s): {{instances}}. Remove usage first.",
+    "error_unknown": "An unknown error occurred.",
+    "error_network": "Failed to {{action}} extension '{{id}}'. Check daemon connection."
+  },
+  "validation": {
+    "required": "{{field}} is required",
+    "type_mismatch": "{{field}} has an invalid type",
+    "out_of_range": "{{field}} is out of range ({{min}} ~ {{max}})",
+    "invalid_option": "{{field}}: '{{value}}' is not a valid option"
   }
 }

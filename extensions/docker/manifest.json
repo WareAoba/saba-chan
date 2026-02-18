@@ -1,0 +1,100 @@
+{
+  "id": "docker",
+  "name": "Docker Isolation",
+  "version": "1.0.0",
+  "description": "Docker 컨테이너를 사용한 게임 서버 격리 실행",
+  "author": "saba-chan",
+  "min_app_version": "0.2.0",
+  "dependencies": [],
+
+  "python_modules": {
+    "docker_engine": "docker_engine.py",
+    "compose_manager": "compose_manager.py"
+  },
+
+  "hooks": {
+    "daemon.startup": {
+      "module": "docker_engine",
+      "function": "ensure",
+      "condition": null
+    },
+    "daemon.shutdown": {
+      "module": "compose_manager",
+      "function": "shutdown_all",
+      "condition": null
+    },
+    "server.pre_create": {
+      "module": "compose_manager",
+      "function": "pre_create",
+      "condition": "instance.ext_data.docker_enabled"
+    },
+    "server.post_create": {
+      "module": "compose_manager",
+      "function": "provision",
+      "condition": "instance.ext_data.docker_enabled",
+      "async": true
+    },
+    "server.pre_start": {
+      "module": "compose_manager",
+      "function": "start",
+      "condition": "instance.ext_data.docker_enabled"
+    },
+    "server.post_stop": {
+      "module": "compose_manager",
+      "function": "stop",
+      "condition": "instance.ext_data.docker_enabled"
+    },
+    "server.status": {
+      "module": "compose_manager",
+      "function": "status",
+      "condition": "instance.ext_data.docker_enabled"
+    },
+    "server.stats": {
+      "module": "compose_manager",
+      "function": "container_stats",
+      "condition": "instance.ext_data.docker_enabled"
+    },
+    "server.pre_delete": {
+      "module": "compose_manager",
+      "function": "cleanup",
+      "condition": "instance.ext_data.docker_enabled"
+    },
+    "server.settings_changed": {
+      "module": "compose_manager",
+      "function": "regenerate_compose",
+      "condition": "instance.ext_data.docker_enabled"
+    },
+    "server.list_enrich": {
+      "module": "compose_manager",
+      "function": "enrich_server_info",
+      "condition": "instance.ext_data.docker_enabled"
+    },
+    "server.logs": {
+      "module": "compose_manager",
+      "function": "get_logs",
+      "condition": "instance.ext_data.docker_enabled"
+    }
+  },
+
+  "gui": {
+    "bundle": "gui/dist/docker-gui.umd.js",
+    "styles": "gui/dist/style.css",
+    "slots": {
+      "ServerCard.badge": "DockerBadge",
+      "ServerCard.headerGauge": "DockerMiniGauge",
+      "ServerCard.expandedStats": "DockerStatsRow",
+      "ServerSettings.tab": "DockerTab",
+      "AddServer.options": "DockerToggle"
+    }
+  },
+
+  "module_config_section": "docker",
+
+  "instance_fields": {
+    "docker_enabled": { "type": "boolean", "default": false },
+    "docker_cpu_limit": { "type": "number", "optional": true },
+    "docker_memory_limit": { "type": "string", "optional": true }
+  },
+
+  "i18n_dir": "i18n/"
+}

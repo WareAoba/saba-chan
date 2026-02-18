@@ -9,6 +9,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::path::Path;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command as TokioCommand;
 use tokio::sync::{broadcast, mpsc, Mutex, watch};
@@ -285,6 +286,158 @@ impl ManagedProcess {
     pub async fn send_command(&self, command: &str) -> Result<()> {
         self.stdin_tx.send(command.to_string()).await
             .map_err(|e| anyhow::anyhow!("stdin channel closed: {}", e))
+    }
+
+    /// Spawn a Docker log follower that streams `docker compose logs --follow`
+    /// into the standard LogBuffer/broadcast infrastructure.
+    ///
+    /// This allows Docker containers to share the same console API
+    /// (`GET /api/instance/:id/console?since=N`) as native managed processes.
+    ///
+    /// # Arguments
+    /// * `instance_dir` - Instance directory containing docker-compose.yml
+    /// * `container_name` - Docker container name (for log messages)
+    /// * `log_pattern` - Optional regex for log level parsing
+    pub async fn spawn_docker_log_follower(
+        instance_dir: &Path,
+        container_name: &str,
+        log_pattern: Option<&str>,
+    ) -> Result<Self> {
+        // Build `docker compose logs --follow --no-color` command
+        // WSL2 mode: route through wsl
+        let is_windows = cfg!(target_os = "windows");
+
+        let mut cmd = if is_windows {
+            let mut c = TokioCommand::new("wsl");
+            c.args(["-u", "root", "--",
+                    "/opt/saba-chan/docker/docker", "compose",
+                    "-f", "docker-compose.yml",
+                    "logs", "--follow", "--no-color", "--tail", "100"]);
+            c
+        } else {
+            let mut c = TokioCommand::new("docker");
+            c.args(["compose",
+                    "-f", &instance_dir.join("docker-compose.yml").to_string_lossy(),
+                    "logs", "--follow", "--no-color", "--tail", "100"]);
+            c
+        };
+
+        cmd.current_dir(instance_dir)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true);
+
+        crate::utils::apply_creation_flags(&mut cmd);
+
+        let mut child = cmd.spawn()
+            .map_err(|e| anyhow::anyhow!(
+                "Failed to spawn docker compose logs for '{}': {}",
+                container_name, e
+            ))?;
+
+        let pid = child.id().unwrap_or(0);
+
+        // Channels — stdin is not used for Docker log followers, but we keep the
+        // interface compatible with ManagedProcess.
+        let (stdin_tx, _stdin_rx) = mpsc::channel::<String>(1);
+        let (log_tx, _) = broadcast::channel::<LogLine>(2048);
+        let (running_tx, running_rx) = watch::channel(true);
+
+        let log_buffer = Arc::new(Mutex::new(LogBuffer::new()));
+        let running_tx = Arc::new(running_tx);
+
+        let log_regex = log_pattern.and_then(|pat| {
+            match regex::Regex::new(pat) {
+                Ok(re) => Some(Arc::new(re)),
+                Err(e) => {
+                    tracing::warn!("Invalid log_pattern '{}': {}", pat, e);
+                    None
+                }
+            }
+        });
+
+        let stdout = child.stdout.take();
+        let stderr = child.stderr.take();
+
+        // ── stdout reader (docker compose logs outputs everything to stdout) ──
+        if let Some(stdout) = stdout {
+            let buf = log_buffer.clone();
+            let bc = log_tx.clone();
+            let re = log_regex.clone();
+            tokio::spawn(async move {
+                let reader = BufReader::new(stdout);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    // docker compose logs prefix: "service-name  | actual log line"
+                    // Strip the prefix if present
+                    let content = if let Some(pos) = line.find(" | ") {
+                        line[pos + 3..].to_string()
+                    } else {
+                        line
+                    };
+                    let level = parse_log_level(&content, re.as_deref());
+                    let log_line = buf.lock().await.push(LogSource::Stdout, content, level);
+                    let _ = bc.send(log_line);
+                }
+            });
+        }
+
+        // ── stderr reader ──
+        if let Some(stderr) = stderr {
+            let buf = log_buffer.clone();
+            let bc = log_tx.clone();
+            let re = log_regex;
+            tokio::spawn(async move {
+                let reader = BufReader::new(stderr);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let content = if let Some(pos) = line.find(" | ") {
+                        line[pos + 3..].to_string()
+                    } else {
+                        line
+                    };
+                    let level = parse_log_level(&content, re.as_deref());
+                    let effective = if level == LogLevel::Info { LogLevel::Warn } else { level };
+                    let log_line = buf.lock().await.push(LogSource::Stderr, content, effective);
+                    let _ = bc.send(log_line);
+                }
+            });
+        }
+
+        // ── process waiter ──
+        {
+            let running = running_tx.clone();
+            let buf = log_buffer.clone();
+            let bc = log_tx.clone();
+            tokio::spawn(async move {
+                let exit_msg = match child.wait().await {
+                    Ok(status) => format!("Docker log follower exited with {}", status),
+                    Err(e) => format!("Docker log follower error: {}", e),
+                };
+                tracing::info!("{}", exit_msg);
+                let log_line = buf.lock().await.push(LogSource::System, exit_msg, LogLevel::Info);
+                let _ = bc.send(log_line);
+                let _ = running.send(false);
+            });
+        }
+
+        // System log
+        {
+            let msg = format!("Docker log streaming started for container '{}'", container_name);
+            tracing::info!("{}", msg);
+            let log_line = log_buffer.lock().await.push(LogSource::System, msg, LogLevel::Info);
+            let _ = log_tx.send(log_line);
+        }
+
+        Ok(Self {
+            stdin_tx,
+            log_buffer,
+            log_broadcast: log_tx,
+            pid,
+            running_tx,
+            running_rx,
+        })
     }
 
     /// Get all log lines with `id > since_id`.

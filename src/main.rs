@@ -7,7 +7,8 @@ mod instance;
 mod process_monitor;
 mod python_env;
 mod utils;
-mod docker;
+mod extension;
+mod validator;
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -44,6 +45,13 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or(57474);
     let ipc_addr = format!("127.0.0.1:{}", ipc_port);
     let ipc_server = ipc::IPCServer::new(supervisor.clone(), &ipc_addr);
+
+    // Supervisor에 ExtensionManager 연결
+    {
+        let mut sup = supervisor.write().await;
+        sup.extension_manager = Some(ipc_server.extension_manager.clone());
+    }
+
     let client_registry = ipc_server.client_registry.clone();
     tracing::info!("Starting IPC server on {}", ipc_addr);
     
@@ -193,21 +201,35 @@ async fn main() -> anyhow::Result<()> {
         tokio::signal::ctrl_c().await.ok();
         tracing::info!("Shutdown signal received, cleaning up...");
 
-        // 1. Docker 컨테이너 정리 (docker compose down)
+        // 1. 익스텐션 정리 (docker compose down 등은 extension hook으로 위임)
         {
             let sup = supervisor_shutdown.read().await;
-            let docker_instances: Vec<_> = sup.instance_store.list()
+            let all_instances: Vec<_> = sup.instance_store.list()
                 .into_iter()
-                .filter(|i| i.use_docker)
                 .collect();
-            for instance in &docker_instances {
-                let instance_dir = sup.instance_store.instance_dir(&instance.id);
-                let docker_mgr = crate::docker::DockerComposeManager::new(&instance_dir, None);
-                if docker_mgr.has_compose_file() {
-                    tracing::info!("[Shutdown] Docker down for '{}'", instance.name);
-                    if let Err(e) = docker_mgr.down().await {
-                        tracing::warn!("[Shutdown] Docker down failed for '{}': {}", instance.name, e);
-                    }
+
+            // Extension hook: daemon.shutdown — 익스텐션이 자체 정리 수행
+            if let Some(ref ext_mgr) = sup.extension_manager {
+                let ctx = serde_json::json!({
+                    "instances": all_instances.iter().map(|i| {
+                        serde_json::json!({
+                            "id": &i.id,
+                            "name": &i.name,
+                            "module": &i.module_name,
+                            "extension_data": &i.extension_data,
+                            "instance_dir": sup.instance_store.instance_dir(&i.id).to_string_lossy().to_string(),
+                        })
+                    }).collect::<Vec<_>>(),
+                });
+                let mgr = ext_mgr.read().await;
+                let results = mgr.dispatch_hook("daemon.shutdown", ctx).await;
+                let handled = results.iter().any(|(_id, r)| {
+                    r.as_ref()
+                        .map(|v| v.get("handled").and_then(|h| h.as_bool()) == Some(true))
+                        .unwrap_or(false)
+                });
+                if handled {
+                    tracing::info!("[Shutdown] Extensions handled cleanup");
                 }
             }
         }

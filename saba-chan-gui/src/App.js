@@ -30,6 +30,7 @@ import { useDiscordBot } from './hooks/useDiscordBot';
 import { useServerActions } from './hooks/useServerActions';
 import { useServerSettings } from './hooks/useServerSettings';
 import { safeShowToast, createTranslateError, retryWithBackoff, waitForDaemon, debugLog, debugWarn } from './utils/helpers';
+import { ExtensionProvider } from './contexts/ExtensionContext';
 
 function App() {
     const { t, i18n } = useTranslation('gui');
@@ -152,6 +153,10 @@ function App() {
         consoleServer, openConsole, closeConsole,
         setShowModuleManager,
         formatUptime,
+        openSettingsToExtensions: () => {
+            setSettingsInitialView('extensions');
+            setShowGuiSettingsModal(true);
+        },
     });
 
     const {
@@ -566,9 +571,9 @@ function App() {
             });
         }
 
-        // Auto-refresh
+        // Auto-refresh (데몬 준비 전에는 스킵)
         const interval = setInterval(() => {
-            if (autoRefresh) {
+            if (autoRefresh && daemonReady) {
                 fetchServers();
             }
         }, refreshInterval);
@@ -578,7 +583,7 @@ function App() {
             if (window.api.offCloseRequest) window.api.offCloseRequest();
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [autoRefresh, refreshInterval]);
+    }, [autoRefresh, refreshInterval, daemonReady]);
 
     // ══════════════════════════════════════════════════════════
     // ── Render ───────────────────────────────────────────────
@@ -611,6 +616,7 @@ function App() {
     }
 
     return (
+        <ExtensionProvider>
         <div className="App">
             {/* Discord overlay backdrop */}
             {showDiscordSection && (
@@ -814,6 +820,9 @@ function App() {
                     handleResetAliasesForModule={handleResetAliasesForModule}
                     isClosing={isSettingsClosing}
                     onClose={requestSettingsClose}
+                    servers={servers}
+                    moduleAliasesPerModule={moduleAliasesPerModule}
+                    discordModuleAliases={discordModuleAliases}
                 />
             )}
 
@@ -916,6 +925,7 @@ function App() {
                 </div>
             )}
         </div>
+        </ExtensionProvider>
     );
 }
 

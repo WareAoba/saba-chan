@@ -1,33 +1,37 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Icon, CustomDropdown } from './index';
+import { Icon, CustomDropdown, ExtensionSlot } from './index';
+import { validateAllSettings, checkPortConflicts, checkAliasConflicts } from '../utils/validation';
 
 /**
  * SettingsField — Renders a single settings field based on field_type.
+ * validationError가 있으면 필드 아래에 빨간 경고를 표시합니다.
  */
-function SettingsField({ field, value, modNs, onChange }) {
+function SettingsField({ field, value, modNs, onChange, validationError }) {
     const { t } = useTranslation('gui');
     const fieldLabel = t(`${modNs}:settings.${field.name}.label`, { defaultValue: field.label });
     const fieldDesc = t(`${modNs}:settings.${field.name}.description`, { defaultValue: field.description || '' });
+    const hasError = !!validationError;
+    const errorClass = hasError ? ' setting-input-error' : '';
 
     return (
         <div className="settings-field">
             <label>{fieldLabel} {field.required ? '*' : ''}</label>
             {field.field_type === 'text' && (
-                <input type="text" value={String(value || '')} onChange={(e) => onChange(field.name, e.target.value)} placeholder={fieldDesc} />
+                <input type="text" className={errorClass} value={String(value || '')} onChange={(e) => onChange(field.name, e.target.value)} placeholder={fieldDesc} />
             )}
             {field.field_type === 'password' && (
-                <input type="password" value={String(value || '')} onChange={(e) => onChange(field.name, e.target.value)} placeholder={fieldDesc} />
+                <input type="password" className={errorClass} value={String(value || '')} onChange={(e) => onChange(field.name, e.target.value)} placeholder={fieldDesc} />
             )}
             {field.field_type === 'number' && (
-                <input type="number" value={String(value || '')} onChange={(e) => onChange(field.name, e.target.value)}
+                <input type="number" className={`setting-input-number${errorClass}`} value={String(value || '')} onChange={(e) => onChange(field.name, e.target.value)}
                     min={field.min} max={field.max}
                     step={field.step || (field.min != null && !Number.isInteger(field.min) ? 'any' : undefined)}
                     placeholder={fieldDesc}
                 />
             )}
             {field.field_type === 'file' && (
-                <input type="text" value={String(value || '')} onChange={(e) => onChange(field.name, e.target.value)} placeholder={fieldDesc} />
+                <input type="text" className={errorClass} value={String(value || '')} onChange={(e) => onChange(field.name, e.target.value)} placeholder={fieldDesc} />
             )}
             {field.field_type === 'select' && (
                 <CustomDropdown
@@ -46,6 +50,25 @@ function SettingsField({ field, value, modNs, onChange }) {
                     <span className="toggle-label-text">{value === true || value === 'true' ? 'ON' : 'OFF'}</span>
                 </div>
             )}
+            {hasError && (
+                <div className="setting-validation-error">
+                    <Icon name="alert-triangle" size="xs" />
+                    {validationError.errorType === 'required' && t('validation.required', { field: fieldLabel, defaultValue: `${fieldLabel} is required` })}
+                    {validationError.errorType === 'type_mismatch' && t('validation.type_mismatch', { field: fieldLabel, defaultValue: `${fieldLabel} has an invalid type` })}
+                    {validationError.errorType === 'out_of_range' && t('validation.out_of_range', {
+                        field: fieldLabel,
+                        min: validationError.min,
+                        max: validationError.max,
+                        value: validationError.value,
+                        defaultValue: `${fieldLabel} is out of range (${validationError.min ?? '−∞'} ~ ${validationError.max ?? '∞'})`,
+                    })}
+                    {validationError.errorType === 'invalid_option' && t('validation.invalid_option', {
+                        field: fieldLabel,
+                        value: validationError.value,
+                        defaultValue: `${fieldLabel}: '${validationError.value}' is not a valid option`,
+                    })}
+                </div>
+            )}
             {fieldDesc && <small className="field-description">{fieldDesc}</small>}
         </div>
     );
@@ -59,6 +82,7 @@ function GeneralTab({
     advancedExpanded, setAdvancedExpanded,
     versionsLoading, availableVersions, versionInstalling,
     handleSettingChange, handleInstallVersion, handleResetServer, resettingServer,
+    validationErrors, portConflicts,
 }) {
     const { t } = useTranslation('gui');
     const module = modules.find(m => m.name === settingsServer.module);
@@ -114,6 +138,20 @@ function GeneralTab({
 
                 return (
                     <>
+                        {/* Port conflict warnings */}
+                        {portConflicts && portConflicts.length > 0 && (
+                            <div className="validation-warning-banner">
+                                <Icon name="alert-triangle" size="sm" />
+                                <div>
+                                    <strong>{t('errors.port_conflict')}</strong>
+                                    {portConflicts.map((c, i) => (
+                                        <div key={i} className="validation-warning-detail">
+                                            {t('errors.port_conflict_detail', { port: c.port, name: c.conflictName })}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                         {/* saba-chan settings */}
                         {sabaFields.length > 0 && (
                             <div className="settings-group">
@@ -156,7 +194,7 @@ function GeneralTab({
                                     </small>
                                 </div>
                                 {sabaFields.map(f => (
-                                    <SettingsField key={f.name} field={f} value={settingsValues[f.name]} modNs={modNs} onChange={handleSettingChange} />
+                                    <SettingsField key={f.name} field={f} value={settingsValues[f.name]} modNs={modNs} onChange={handleSettingChange} validationError={validationErrors?.[f.name]} />
                                 ))}
                             </div>
                         )}
@@ -168,7 +206,7 @@ function GeneralTab({
                                     <Icon name="gamepad" size="sm" /> {t('server_settings.basic_group', { defaultValue: 'Server Settings' })}
                                 </h4>
                                 {basicFields.map(f => (
-                                    <SettingsField key={f.name} field={f} value={settingsValues[f.name]} modNs={modNs} onChange={handleSettingChange} />
+                                    <SettingsField key={f.name} field={f} value={settingsValues[f.name]} modNs={modNs} onChange={handleSettingChange} validationError={validationErrors?.[f.name]} />
                                 ))}
                             </div>
                         )}
@@ -185,7 +223,7 @@ function GeneralTab({
                                     <span className="settings-group-count">({advancedFields.length})</span>
                                 </h4>
                                 {advancedExpanded && advancedFields.map(f => (
-                                    <SettingsField key={f.name} field={f} value={settingsValues[f.name]} modNs={modNs} onChange={handleSettingChange} />
+                                    <SettingsField key={f.name} field={f} value={settingsValues[f.name]} modNs={modNs} onChange={handleSettingChange} validationError={validationErrors?.[f.name]} />
                                 ))}
                             </div>
                         )}
@@ -295,12 +333,27 @@ function AliasesTab({
     editingModuleAliases, setEditingModuleAliases,
     editingCommandAliases, setEditingCommandAliases,
     handleSaveAliasesForModule, handleResetAliasesForModule,
+    aliasConflicts,
 }) {
     const { t } = useTranslation('gui');
     const modNs = `mod_${settingsServer.module}`;
 
     return (
         <div className="aliases-tab-content">
+            {/* Alias conflict warnings */}
+            {aliasConflicts && aliasConflicts.length > 0 && (
+                <div className="validation-warning-banner">
+                    <Icon name="alert-triangle" size="sm" />
+                    <div>
+                        <strong>{t('settings.alias_conflict_title')}</strong>
+                        {aliasConflicts.map((c, i) => (
+                            <div key={i} className="validation-warning-detail">
+                                {t('settings.alias_conflict_detail', { alias: c.alias, module: c.conflictModule })}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
             <div className="module-aliases-detail">
                 <h4><Icon name="edit" size="sm" /> {t('server_settings.module_aliases_title')}</h4>
                 <small>{t('server_settings.module_aliases_hint', { module: settingsServer.module })}</small>
@@ -406,8 +459,41 @@ export function ServerSettingsModal({
     handleResetAliasesForModule,
     isClosing,
     onClose,
+    // validation props
+    servers,
+    moduleAliasesPerModule,
+    discordModuleAliases,
 }) {
     const { t } = useTranslation('gui');
+
+    // ── Validation: 설정값 타입 검증 ──
+    const module = modules.find(m => m.name === settingsServer.module);
+    const { valid: settingsValid, errors: validationErrors } = React.useMemo(() => {
+        if (!module?.settings?.fields) return { valid: true, errors: {} };
+        return validateAllSettings(module.settings.fields, settingsValues);
+    }, [module, settingsValues]);
+
+    // ── Validation: 포트 충돌 검사 ──
+    const portConflicts = React.useMemo(() => {
+        if (!settingsServer || !servers) return [];
+        const targetPorts = {
+            port: settingsValues.port ?? settingsServer.port,
+            rcon_port: settingsValues.rcon_port ?? settingsServer.rcon_port,
+            rest_port: settingsValues.rest_port ?? settingsServer.rest_port,
+        };
+        return checkPortConflicts(settingsServer.id, targetPorts, servers);
+    }, [settingsServer, settingsValues, servers]);
+
+    // ── Validation: 별명 충돌 검사 ──
+    const aliasConflicts = React.useMemo(() => {
+        if (!settingsServer || !editingModuleAliases) return [];
+        return checkAliasConflicts(
+            settingsServer.module,
+            editingModuleAliases,
+            moduleAliasesPerModule || {},
+            discordModuleAliases || {},
+        );
+    }, [settingsServer, editingModuleAliases, moduleAliasesPerModule, discordModuleAliases]);
 
     // ── Dynamic tab indicator ──
     const tabsRef = useRef(null);
@@ -482,6 +568,8 @@ export function ServerSettingsModal({
                             handleInstallVersion={handleInstallVersion}
                             handleResetServer={handleResetServer}
                             resettingServer={resettingServer}
+                            validationErrors={validationErrors}
+                            portConflicts={portConflicts}
                         />
                     )}
                     {settingsActiveTab === 'aliases' && (
@@ -493,6 +581,7 @@ export function ServerSettingsModal({
                             setEditingCommandAliases={setEditingCommandAliases}
                             handleSaveAliasesForModule={handleSaveAliasesForModule}
                             handleResetAliasesForModule={handleResetAliasesForModule}
+                            aliasConflicts={aliasConflicts}
                         />
                     )}
                     {settingsActiveTab === 'docker' && settingsServer.use_docker && (
@@ -501,6 +590,15 @@ export function ServerSettingsModal({
                             handleSettingChange={handleSettingChange}
                         />
                     )}
+                    <ExtensionSlot
+                        slotId="ServerSettings.tab"
+                        server={settingsServer}
+                        activeTab={settingsActiveTab}
+                        setActiveTab={setSettingsActiveTab}
+                        settings={settingsValues}
+                        onSettingsChange={handleSettingChange}
+                        t={t}
+                    />
                 </div>
 
                 <div className="modal-footer">

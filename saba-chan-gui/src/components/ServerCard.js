@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Icon, MemoryGauge } from './index';
+import { Icon, MemoryGauge, ExtensionSlot } from './index';
 
 /**
  * ServerCard — Individual server instance card with status, actions, and details.
@@ -88,6 +88,17 @@ export function ServerCard({
                             <Icon name="dockerL" size={14} color="var(--docker-badge-color, #2496ed)" />
                         </span>
                     )}
+                    <ExtensionSlot slotId="ServerCard.badge" server={server} />
+                    {server.port_conflicts && server.port_conflicts.length > 0 && (
+                        <span
+                            className="port-conflict-badge"
+                            title={t('errors.port_conflict') + ': ' + server.port_conflicts.map(c =>
+                                t('errors.port_conflict_detail', { port: c.port, name: c.conflict_name })
+                            ).join(', ')}
+                        >
+                            <Icon name="alertCircle" size={16} />
+                        </span>
+                    )}
                 </div>
 
                 <div className="server-card-info">
@@ -103,6 +114,7 @@ export function ServerCard({
                     <MemoryGauge percent={server.docker_memory_percent} size={44} compact
                         title={server.docker_memory_usage || `${Math.round(server.docker_memory_percent)}%`} />
                 )}
+                <ExtensionSlot slotId="ServerCard.headerGauge" server={server} />
 
                 {server.provisioning ? (
                     <span className="status-button status-provisioning" title="Provisioning...">
@@ -201,6 +213,21 @@ export function ServerCard({
                                     <span className="value">{server.docker_cpu_percent.toFixed(1)}%</span>
                                 </div>
                             )}
+                        </div>
+                    )}
+                    <ExtensionSlot slotId="ServerCard.expandedStats" server={server} t={t} />
+                    {/* 포트 충돌 경고 배너 */}
+                    {server.port_conflicts && server.port_conflicts.length > 0 && (
+                        <div className="port-conflict-banner">
+                            <Icon name="alertCircle" size="sm" />
+                            <div className="port-conflict-banner-content">
+                                <strong>{t('errors.port_conflict')}</strong>
+                                {server.port_conflicts.map((c, i) => (
+                                    <div key={i} className="port-conflict-banner-detail">
+                                        {t('errors.port_conflict_detail', { port: c.port, name: c.conflict_name })}
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     )}
                     {server.status === 'running' && server.pid && (

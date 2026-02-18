@@ -103,6 +103,27 @@ impl RestClient {
         let resp = match resp {
             Ok(r) => r,
             Err(e) => {
+                let err_msg = format!("{}", e);
+                // 일부 게임 서버(Palworld 등)는 성공 시 빈 응답을 보내고 연결을 닫음
+                // ureq는 이를 "Unexpected EOF" / "connection closed" 에러로 처리
+                if err_msg.contains("EOF")
+                    || err_msg.contains("connection closed")
+                    || err_msg.contains("Connection reset")
+                {
+                    return Ok(ServerResponse {
+                        success: true,
+                        data: Some(json!({
+                            "status": 200,
+                            "url": url,
+                            "method": method,
+                            "body": body,
+                            "response": {"raw": ""},
+                            "response_text": "",
+                            "note": "Server returned empty response (connection closed)",
+                        })),
+                        error: None,
+                    });
+                }
                 return Err(ProtocolError::Protocol(format!(
                     "HTTP {} {} failed: {}",
                     method,

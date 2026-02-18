@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::RwLock;
 
 pub mod handlers;
@@ -196,6 +197,9 @@ pub struct BotConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerListResponse {
     pub servers: Vec<ServerInfo>,
+    /// 포트 충돌로 인한 강제 정지 이벤트 (drain — 한 번 읽으면 비워짐)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub port_conflict_stops: Vec<crate::supervisor::PortConflictStopEvent>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -242,6 +246,22 @@ pub struct ServerInfo {
     /// Docker 메모리 제한 (예: "4g")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub docker_memory_limit: Option<String>,
+    /// 익스텐션 확장 데이터 (범용)
+    #[serde(default)]
+    pub extension_data: std::collections::HashMap<String, serde_json::Value>,
+    /// 포트 충돌 정보 — 이 인스턴스의 포트가 다른 인스턴스와 겹치는 목록
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub port_conflicts: Vec<PortConflictInfo>,
+}
+
+/// 포트 충돌 요약 (서버 목록 API에서 반환)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortConflictInfo {
+    pub port: u16,
+    pub port_type: String,
+    pub conflict_name: String,
+    pub conflict_id: String,
+    pub conflict_port_type: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -345,57 +365,47 @@ impl ProvisionTracker {
     }
 }
 
-/// Docker 컨테이너 리소스 사용량 캐시 (5초 TTL)
-#[derive(Clone, Default)]
-pub struct DockerStatsCache {
-    inner: Arc<std::sync::Mutex<DockerStatsCacheInner>>,
+// ── Docker Status Cache ────────────────────────────────────
+
+/// Docker 상태 정보를 TTL 기반으로 캐싱 (server.list_enrich hook 스팸 방지)
+#[derive(Debug, Clone)]
+pub struct DockerStatusCache {
+    inner: Arc<std::sync::Mutex<HashMap<String, (Instant, Value)>>>,
+    ttl_secs: u64,
 }
 
-#[derive(Default)]
-struct DockerStatsCacheInner {
-    /// container_name → (memory_usage, memory_percent, cpu_percent)
-    stats: HashMap<String, (Option<String>, Option<f64>, Option<f64>)>,
-    /// 마지막 갱신 시각 (epoch millis)
-    last_updated: u64,
-}
-
-impl DockerStatsCache {
-    pub fn new() -> Self { Self::default() }
-
-    /// 캐시된 통계 가져오기 (5초 이내면 캐시 사용)
-    pub fn get(&self, container_name: &str) -> Option<(Option<String>, Option<f64>, Option<f64>)> {
-        let guard = self.inner.lock().ok()?;
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
-        if now - guard.last_updated > 5000 {
-            return None; // 만료됨
-        }
-        guard.stats.get(container_name).cloned()
-    }
-
-    /// 통계 갱신
-    pub fn update(&self, container_name: &str, mem_usage: Option<String>, mem_pct: Option<f64>, cpu_pct: Option<f64>) {
-        if let Ok(mut guard) = self.inner.lock() {
-            guard.stats.insert(container_name.to_string(), (mem_usage, mem_pct, cpu_pct));
-            guard.last_updated = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis() as u64;
+impl DockerStatusCache {
+    pub fn new(ttl_secs: u64) -> Self {
+        Self {
+            inner: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            ttl_secs,
         }
     }
 
-    /// 만료 여부 확인
-    pub fn is_expired(&self) -> bool {
-        if let Ok(guard) = self.inner.lock() {
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis() as u64;
-            now - guard.last_updated > 5000
-        } else {
-            true
+    /// 캐시에서 인스턴스의 Docker 상태 조회. TTL 만료 시 None 반환.
+    pub fn get(&self, instance_id: &str) -> Option<Value> {
+        self.inner.lock().ok().and_then(|map| {
+            map.get(instance_id).and_then(|(ts, val)| {
+                if ts.elapsed().as_secs() < self.ttl_secs {
+                    Some(val.clone())
+                } else {
+                    None
+                }
+            })
+        })
+    }
+
+    /// 캐시에 인스턴스의 Docker 상태 저장
+    pub fn set(&self, instance_id: &str, value: Value) {
+        if let Ok(mut map) = self.inner.lock() {
+            map.insert(instance_id.to_string(), (Instant::now(), value));
+        }
+    }
+
+    /// 인스턴스 캐시 무효화 (시작/정지 시)
+    pub fn invalidate(&self, instance_id: &str) {
+        if let Ok(mut map) = self.inner.lock() {
+            map.remove(instance_id);
         }
     }
 }
@@ -414,8 +424,10 @@ pub struct IPCServer {
     pub api_actions: ApiActionTracker,
     /// Docker 프로비저닝 진행 상태 추적
     pub provision_tracker: ProvisionTracker,
-    /// Docker 컨테이너 리소스 사용량 캐시
-    pub docker_stats_cache: DockerStatsCache,
+    /// 범용 익스텐션 매니저
+    pub extension_manager: Arc<RwLock<crate::extension::ExtensionManager>>,
+    /// Docker 상태 캐시 (list_enrich 스팸 방지)
+    pub docker_status_cache: DockerStatusCache,
 }
 
 impl IPCServer {
@@ -423,6 +435,15 @@ impl IPCServer {
         supervisor: Arc<RwLock<crate::supervisor::Supervisor>>,
         listen_addr: &str,
     ) -> Self {
+        // ExtensionManager 초기화
+        let extensions_dir = crate::plugin::resolve_extensions_dir_pub();
+        let mut ext_mgr = crate::extension::ExtensionManager::new(
+            extensions_dir.to_str().unwrap_or("./extensions"),
+        );
+        if let Err(e) = ext_mgr.discover() {
+            tracing::warn!("Failed to discover extensions: {}", e);
+        }
+
         Self {
             supervisor,
             listen_addr: listen_addr.to_string(),
@@ -430,7 +451,8 @@ impl IPCServer {
             update_state: UpdateState::new(),
             api_actions: ApiActionTracker::new(),
             provision_tracker: ProvisionTracker::new(),
-            docker_stats_cache: DockerStatsCache::new(),
+            extension_manager: Arc::new(RwLock::new(ext_mgr)),
+            docker_status_cache: DockerStatusCache::new(5), // 5초 TTL
         }
     }
 
@@ -476,6 +498,16 @@ impl IPCServer {
             .route("/api/client/register", post(handlers::client::client_register))
             .route("/api/client/:id/heartbeat", post(handlers::client::client_heartbeat))
             .route("/api/client/:id/unregister", delete(handlers::client::client_unregister))
+            // ── Extension management ──
+            .route("/api/extensions", get(handlers::extension::list_extensions))
+            .route("/api/extensions/rescan", post(handlers::extension::rescan_extensions))
+            .route("/api/extensions/:id/enable", post(handlers::extension::enable_extension))
+            .route("/api/extensions/:id/disable", post(handlers::extension::disable_extension))
+            .route("/api/extensions/:id/mount", post(handlers::extension::mount_extension))
+            .route("/api/extensions/:id/unmount", post(handlers::extension::unmount_extension))
+            .route("/api/extensions/:id/gui", get(handlers::extension::serve_gui_bundle))
+            .route("/api/extensions/:id/gui/styles", get(handlers::extension::serve_gui_styles))
+            .route("/api/extensions/:id/i18n/:locale", get(handlers::extension::serve_i18n))
             // ── Auth middleware (token-based) ──
             .layer(axum::middleware::from_fn(auth::auth_middleware))
             .with_state(self.clone())

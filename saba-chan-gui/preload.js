@@ -19,6 +19,13 @@ contextBridge.exposeInMainWorld('api', {
     instanceResetProperties: (id) => ipcRenderer.invoke('instance:resetProperties', id),
     instanceResetServer: (id) => ipcRenderer.invoke('instance:resetServer', id),
     executeCommand: (id, command) => ipcRenderer.invoke('instance:executeCommand', id, command),
+    // Extension API
+    extensionList: () => ipcRenderer.invoke('extension:list'),
+    extensionEnable: (extId) => ipcRenderer.invoke('extension:enable', extId),
+    extensionDisable: (extId) => ipcRenderer.invoke('extension:disable', extId),
+    extensionI18n: (extId, locale) => ipcRenderer.invoke('extension:i18n', extId, locale),
+    extensionGuiBundle: (extId) => ipcRenderer.invoke('extension:guiBundle', extId),
+    extensionGuiStyles: (extId) => ipcRenderer.invoke('extension:guiStyles', extId),
     // Managed Process API (console capture)
     managedStart: (instanceId) => ipcRenderer.invoke('managed:start', instanceId),
     managedConsole: (instanceId, since, count) => ipcRenderer.invoke('managed:console', instanceId, since, count),

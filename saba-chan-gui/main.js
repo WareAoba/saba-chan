@@ -4,6 +4,7 @@ const path = require('path');
 const axios = require('axios');
 const { spawn } = require('child_process');
 const fs = require('fs');
+const http = require('http');
 
 const IPC_PORT_DEFAULT = 57474;
 let IPC_BASE = process.env.IPC_BASE || `http://127.0.0.1:${IPC_PORT_DEFAULT}`; // Core Daemon endpoint — updated from settings after app ready
@@ -35,18 +36,127 @@ function getIpcTokenPath() {
     return path.join('config', '.ipc_token');
 }
 
+// ── 토큰을 전용 변수로 관리 (axios.defaults.headers.common에 의존하지 않음) ──
+let _cachedIpcToken = '';
+
 function loadIpcToken() {
     try {
         const tokenPath = getIpcTokenPath();
         const token = fs.readFileSync(tokenPath, 'utf-8').trim();
         if (token) {
-            axios.defaults.headers.common['X-Saba-Token'] = token;
-            console.log(`[Auth] IPC token loaded from ${tokenPath}`);
+            const prev = _cachedIpcToken;
+            _cachedIpcToken = token;
+            if (prev !== token) {
+                console.log(`[Auth] IPC token loaded: ${token.substring(0, 8)}… from ${tokenPath}` +
+                    (prev ? ` (was: ${prev.substring(0, 8)}…)` : ' (first load)'));
+            }
+            return true;
         }
     } catch (err) {
         console.warn('[Auth] IPC token not found, auth may fail:', err.message);
     }
+    return false;
 }
+
+function getIpcToken() {
+    if (!_cachedIpcToken) loadIpcToken();
+    return _cachedIpcToken;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ── http.request 레벨 토큰 주입 (axios AxiosHeaders 우회) ──
+// axios 인터셉터/defaults.headers.common 경유로는 Electron 환경에서
+// 토큰이 실제 HTTP 요청에 도달하지 않는 문제가 확인됨.
+// Node.js http.request() 자체를 패치하여 127.0.0.1:IPC_PORT로 가는
+// 모든 요청에 X-Saba-Token 헤더를 강제 주입합니다.
+// ═══════════════════════════════════════════════════════════════
+const _origHttpRequest = http.request;
+http.request = function _patchedRequest(urlOrOptions, optionsOrCallback, maybeCallback) {
+    // http.request(options[, callback]) — 가장 흔한 패턴 (axios 사용)
+    // http.request(url[, options][, callback])
+    let options;
+    if (typeof urlOrOptions === 'object' && !(urlOrOptions instanceof URL)) {
+        options = urlOrOptions;
+    } else if (typeof optionsOrCallback === 'object' && typeof optionsOrCallback !== 'function') {
+        options = optionsOrCallback;
+    }
+
+    if (options) {
+        const host = options.hostname || options.host || '';
+        const port = parseInt(options.port, 10) || 80;
+        const ipcPort = parseInt((typeof settings !== 'undefined' && settings && settings.ipcPort) || IPC_PORT_DEFAULT, 10);
+
+        if ((host === '127.0.0.1' || host === 'localhost') && port === ipcPort) {
+            const token = getIpcToken();
+            if (token) {
+                if (!options.headers) options.headers = {};
+                options.headers['X-Saba-Token'] = token;
+            }
+        }
+    }
+
+    return _origHttpRequest.apply(this, arguments);
+};
+
+// ── axios 인터셉터 (보조: http.request 패치가 주 메커니즘) ──
+axios.interceptors.request.use((config) => {
+    // http.request 패치가 토큰을 주입하므로 여기서는 보조적으로만 설정
+    const token = getIpcToken();
+    if (token && config.headers) {
+        if (typeof config.headers.set === 'function') {
+            config.headers.set('X-Saba-Token', token);
+        } else {
+            config.headers['X-Saba-Token'] = token;
+        }
+    }
+    return config;
+});
+
+// ── 401 응답 시 토큰 자동 재로드 + 재시도 인터셉터 ──
+// 데몬 재시작으로 토큰이 갱신된 경우 자동 복구
+// Promise 큐로 직렬화하여 동시 401에 대해 한 번만 갱신
+let _tokenRefreshPromise = null;
+axios.interceptors.response.use(
+    (response) => response,
+    async (error) => {
+        const originalRequest = error.config;
+        if (error.response && error.response.status === 401 && !originalRequest._retried) {
+            originalRequest._retried = true;
+
+            // 이미 갱신 중이면 같은 Promise를 대기
+            if (!_tokenRefreshPromise) {
+                _tokenRefreshPromise = (async () => {
+                    try {
+                        const tokenPath = getIpcTokenPath();
+                        const newToken = fs.readFileSync(tokenPath, 'utf-8').trim();
+                        if (newToken) {
+                            _cachedIpcToken = newToken;
+                            console.log(`[Auth] Token refreshed after 401: ${newToken.substring(0, 8)}…`);
+                            return newToken;
+                        }
+                    } catch (_) { /* 토큰 파일 읽기 실패 */ }
+                    return null;
+                })();
+
+                // 300ms 후 Promise 리셋 (다음 배치의 401에 대해 다시 갱신 가능)
+                _tokenRefreshPromise.finally(() => {
+                    setTimeout(() => { _tokenRefreshPromise = null; }, 300);
+                });
+            }
+
+            const refreshedToken = await _tokenRefreshPromise;
+            if (refreshedToken) {
+                if (typeof originalRequest.headers?.set === 'function') {
+                    originalRequest.headers.set('X-Saba-Token', refreshedToken);
+                } else {
+                    originalRequest.headers['X-Saba-Token'] = refreshedToken;
+                }
+                return axios(originalRequest);
+            }
+        }
+        return Promise.reject(error);
+    }
+);
 
 let mainWindow;
 let daemonProcess = null;
@@ -686,7 +796,26 @@ async function ensureDaemon() {
     } catch (err) {
         // 401 = 데몬은 떠있지만 토큰이 맞지 않음 (이전 세션 토큰)
         if (err.response && err.response.status === 401) {
-            console.log('Existing daemon detected (auth failed — stale token). Skipping launch.');
+            console.log('Existing daemon detected (auth failed — stale token). Reloading token...');
+            // 토큰 재로드 후 검증 재시도 (최대 3회, 500ms 간격)
+            for (let retry = 0; retry < 3; retry++) {
+                loadIpcToken();
+                try {
+                    const verifyResp = await axios.get(`${IPC_BASE}/api/modules`, { timeout: 1000 });
+                    if (verifyResp.status === 200) {
+                        console.log('✓ Token refreshed and verified');
+                        daemonStartedByApp = false;
+                        sendStatus('daemon', t('daemon.existing_running'));
+                        await syncInstallRoot();
+                        return;
+                    }
+                } catch (verifyErr) {
+                    console.warn(`[Auth] Token verify attempt ${retry + 1} failed:`, verifyErr.message);
+                }
+                await wait(500);
+            }
+            // 3회 실패해도 일단 진행 (GUI는 표시하고 이후 자동 복구에 맡김)
+            console.warn('[Auth] Token verification failed after 3 retries, proceeding anyway');
             daemonStartedByApp = false;
             sendStatus('daemon', t('daemon.existing_running'));
             await syncInstallRoot();
@@ -1250,13 +1379,12 @@ app.on('before-quit', () => {
     // 데몬에 동기적 unregister 시도 (타임아웃 짧게)
     if (heartbeatClientId) {
         try {
-            const http = require('http');
             const currentPort = (settings && settings.ipcPort) || IPC_PORT_DEFAULT;
+            // http는 top-level에서 require하고 패치된 버전 사용 — 토큰 자동 주입됨
             const req = http.request({
                 hostname: '127.0.0.1', port: currentPort,
                 path: `/api/client/${heartbeatClientId}/unregister`,
                 method: 'DELETE', timeout: 1000,
-                headers: { 'X-Saba-Token': axios.defaults.headers.common['X-Saba-Token'] || '' }
             });
             req.end();
         } catch (e) { /* 무시 */ }
@@ -1316,11 +1444,52 @@ process.on('exit', () => {
 ipcMain.handle('server:list', async () => {
     try {
         const response = await axios.get(`${IPC_BASE}/api/servers`);
-        return response.data;
+        const data = response.data;
+
+        // 포트 충돌로 강제 정지된 서버가 있으면 OS 네이티브 알림
+        if (data.port_conflict_stops && data.port_conflict_stops.length > 0 && Notification.isSupported()) {
+            const iconCandidates = [
+                path.join(__dirname, 'build', 'icon.png'),
+                path.join(__dirname, 'public', 'icon.png'),
+                path.join(__dirname, '..', 'resources', 'icon.png'),
+            ];
+            const notifIcon = iconCandidates.find(p => fs.existsSync(p)) || undefined;
+
+            for (const evt of data.port_conflict_stops) {
+                const notif = new Notification({
+                    title: t('port_conflict.force_stop_title', { name: evt.stopped_name }),
+                    body: t('port_conflict.force_stop_body', {
+                        stopped: evt.stopped_name,
+                        existing: evt.existing_name,
+                        port: evt.port,
+                    }),
+                    icon: notifIcon,
+                });
+                notif.on('click', () => {
+                    if (mainWindow) {
+                        mainWindow.show();
+                        mainWindow.focus();
+                    }
+                });
+                notif.show();
+            }
+        }
+
+        return data;
     } catch (error) {
         if (error.response) {
             const status = error.response.status;
             const data = error.response.data;
+            if (status === 401) {
+                // 인증 실패 — 토큰 재로드 후 1회 재시도
+                if (loadIpcToken()) {
+                    try {
+                        const retry = await axios.get(`${IPC_BASE}/api/servers`);
+                        return retry.data;
+                    } catch (_) { /* 재시도도 실패 */ }
+                }
+                return { error: 'Authentication failed. Daemon token may have changed.' };
+            }
             return { error: t('server.list_failed', { status, error: data.error || error.message }) };
         }
         
@@ -1958,6 +2127,93 @@ ipcMain.handle('instance:executeCommand', async (event, id, command) => {
         };
         
         return { error: networkErrors[error.code] || `명령어 실행 실패: ${error.message}` };
+    }
+});
+
+// ── Extension IPC 핸들러 ──────────
+
+// 익스텐션 목록 조회
+ipcMain.handle('extension:list', async () => {
+    try {
+        const response = await axios.get(`${IPC_BASE}/api/extensions`);
+        return response.data;
+    } catch (error) {
+        console.warn('[Extension] Failed to list extensions:', error.message);
+        return { extensions: [] };
+    }
+});
+
+// 익스텐션 활성화
+ipcMain.handle('extension:enable', async (event, extId) => {
+    try {
+        const response = await axios.post(`${IPC_BASE}/api/extensions/${extId}/enable`);
+        return response.data;
+    } catch (error) {
+        const data = error.response?.data;
+        console.warn(`[Extension] Failed to enable '${extId}':`, data || error.message);
+        return {
+            success: false,
+            error: data?.error || error.message,
+            error_code: data?.error_code || 'network',
+            related: data?.related || [],
+        };
+    }
+});
+
+// 익스텐션 비활성화
+ipcMain.handle('extension:disable', async (event, extId) => {
+    try {
+        const response = await axios.post(`${IPC_BASE}/api/extensions/${extId}/disable`);
+        return response.data;
+    } catch (error) {
+        const data = error.response?.data;
+        console.warn(`[Extension] Failed to disable '${extId}':`, data || error.message);
+        return {
+            success: false,
+            error: data?.error || error.message,
+            error_code: data?.error_code || 'network',
+            related: data?.related || [],
+        };
+    }
+});
+
+// 익스텐션 i18n 번역 로드
+ipcMain.handle('extension:i18n', async (event, extId, locale) => {
+    try {
+        const response = await axios.get(`${IPC_BASE}/api/extensions/${extId}/i18n/${locale}`);
+        return response.data;
+    } catch (error) {
+        // 404는 해당 로케일이 없는 것이므로 경고 없이 null 반환
+        if (error.response?.status === 404) return null;
+        console.warn(`[Extension] Failed to load i18n for '${extId}' (${locale}):`, error.message);
+        return null;
+    }
+});
+
+// 익스텐션 GUI 번들 로드 (바이너리 → base64)
+ipcMain.handle('extension:guiBundle', async (event, extId) => {
+    try {
+        const response = await axios.get(`${IPC_BASE}/api/extensions/${extId}/gui`, {
+            responseType: 'arraybuffer'
+        });
+        // JS 소스를 UTF-8 텍스트로 반환
+        return Buffer.from(response.data).toString('utf-8');
+    } catch (error) {
+        if (error.response?.status === 404) return null;
+        console.warn(`[Extension] Failed to load GUI bundle for '${extId}':`, error.message);
+        return null;
+    }
+});
+
+// 익스텐션 GUI 스타일 로드
+ipcMain.handle('extension:guiStyles', async (event, extId) => {
+    try {
+        const response = await axios.get(`${IPC_BASE}/api/extensions/${extId}/gui/styles`);
+        return typeof response.data === 'string' ? response.data : null;
+    } catch (error) {
+        if (error.response?.status === 404) return null;
+        console.warn(`[Extension] Failed to load GUI styles for '${extId}':`, error.message);
+        return null;
     }
 });
 

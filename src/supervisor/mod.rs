@@ -16,6 +16,21 @@ use crate::instance::InstanceStore;
 /// Stop 후 auto-detect를 억제하는 쿨다운 시간 (초)
 const STOP_COOLDOWN_SECS: u64 = 30;
 
+/// 포트 충돌로 인한 강제 정지 이벤트
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PortConflictStopEvent {
+    /// 강제 정지된 인스턴스 이름
+    pub stopped_name: String,
+    /// 강제 정지된 인스턴스 ID
+    pub stopped_id: String,
+    /// 충돌 상대 인스턴스 이름
+    pub existing_name: String,
+    /// 충돌 포트 번호
+    pub port: u16,
+    /// 타임스탬프 (epoch ms)
+    pub timestamp_ms: u64,
+}
+
 pub struct Supervisor {
     pub tracker: ProcessTracker,
     #[allow(dead_code)]
@@ -27,6 +42,10 @@ pub struct Supervisor {
     pub managed_store: ManagedProcessStore,
     /// Stop 이후 auto-detect 억제 쿨다운 (instance_id → 정지 시각)
     stop_cooldowns: HashMap<String, Instant>,
+    /// 익스텐션 매니저 (Phase 3에서 optional로 추가)
+    pub extension_manager: Option<std::sync::Arc<tokio::sync::RwLock<crate::extension::ExtensionManager>>>,
+    /// 포트 충돌로 인한 강제 정지 이벤트 큐 (GUI에서 폴링 후 drain)
+    pub port_conflict_stops: std::sync::Mutex<Vec<PortConflictStopEvent>>,
 }
 
 impl Supervisor {
@@ -55,7 +74,21 @@ impl Supervisor {
             process_manager: ProcessManager::new(),
             managed_store: ManagedProcessStore::new(),
             stop_cooldowns: HashMap::new(),
+            extension_manager: None,
+            port_conflict_stops: std::sync::Mutex::new(Vec::new()),
         }
+    }
+
+    /// 인스턴스의 extension_data에 레거시 use_docker 플래그를 자동 매핑.
+    /// use_docker=true이면 extension_data에 docker_enabled=true를 주입하여
+    /// Docker 확장의 hook 조건("instance.ext_data.docker_enabled")이 올바르게 평가되도록 한다.
+    fn enriched_extension_data(instance: &crate::instance::ServerInstance) -> HashMap<String, Value> {
+        let mut ext_data = instance.extension_data.clone();
+        if instance.use_docker {
+            ext_data.entry("docker_enabled".to_string())
+                .or_insert(json!(true));
+        }
+        ext_data
     }
 
     pub async fn initialize(&mut self) -> Result<()> {
@@ -84,32 +117,95 @@ impl Supervisor {
             .find(|i| i.name == server_name)
             .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
 
-        // ── Docker 모드: DockerComposeManager로 위임 ──
-        if instance.use_docker {
-            // Ensure Docker daemon is running and WSL2 mode is correctly set.
-            // This is needed after daemon restart (AtomicBool resets to false).
-            let ensure = crate::docker::ensure_docker_engine().await;
-            if !ensure.daemon_ready {
-                return Err(anyhow::anyhow!(
-                    "Docker를 사용할 수 없습니다: {}", ensure.message
-                ));
-            }
-
-            let instance_dir = self.instance_store.instance_dir(&instance.id);
-            let docker_mgr = crate::docker::DockerComposeManager::new(&instance_dir, None);
-            if !docker_mgr.has_compose_file() {
-                return Err(anyhow::anyhow!(
-                    "Docker 모드가 활성화되어 있지만 docker-compose.yml이 없습니다. 인스턴스를 다시 프로비저닝해주세요."
-                ));
-            }
-            tracing::info!("Starting Docker containers for '{}'", server_name);
-            let result: serde_json::Value = docker_mgr.start().await?;
+        // ── 포트 충돌 검사 ──
+        let all_instances = self.instance_store.list();
+        let running_ids: std::collections::HashSet<String> = all_instances
+            .iter()
+            .filter(|i| self.tracker.get_pid(&i.id).is_ok())
+            .map(|i| i.id.clone())
+            .collect();
+        let conflicts = crate::validator::check_port_conflicts(instance, &all_instances, &running_ids);
+        if !conflicts.is_empty() {
+            let details: Vec<String> = conflicts.iter().map(|c| c.to_string()).collect();
+            tracing::warn!("Port conflict detected for '{}': {:?}", server_name, details);
             return Ok(json!({
-                "success": true,
-                "server": server_name,
-                "docker": true,
-                "message": format!("Docker containers started for '{}'", server_name),
-                "detail": result,
+                "success": false,
+                "error": "port_conflict",
+                "error_code": "port_conflict",
+                "message": format!("Cannot start '{}': port conflict detected", server_name),
+                "conflicts": details,
+            }));
+        }
+
+        // ── Extension hook: server.pre_start ──
+        if let Some(ref ext_mgr) = self.extension_manager {
+            let instance_dir = self.instance_store.instance_dir(&instance.id);
+            let results = ext_mgr.read().await
+                .dispatch_hook("server.pre_start", json!({
+                    "instance_id": instance.id.clone(),
+                    "instance_dir": instance_dir.to_string_lossy(),
+                    "extension_data": Self::enriched_extension_data(&instance),
+                })).await;
+
+            for (_ext_id, result) in &results {
+                if let Ok(val) = result {
+                    if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
+                        // Docker 컨테이너 시작 성공 → 로그 스트리머 등록
+                        if instance.use_docker
+                            && val.get("success").and_then(|s| s.as_bool()) == Some(true)
+                        {
+                            let instance_dir = self.instance_store.instance_dir(&instance.id);
+                            let container_name = format!(
+                                "saba-{}-{}",
+                                module_name,
+                                &instance.id[..8.min(instance.id.len())]
+                            );
+                            let log_pattern = self.module_loader.get_module(module_name)
+                                .ok()
+                                .and_then(|m| m.metadata.log_pattern.clone());
+                            match managed_process::ManagedProcess::spawn_docker_log_follower(
+                                &instance_dir,
+                                &container_name,
+                                log_pattern.as_deref(),
+                            ).await {
+                                Ok(follower) => {
+                                    self.managed_store.insert(&instance.id, follower).await;
+                                    tracing::info!(
+                                        "Docker log follower registered for '{}'",
+                                        server_name
+                                    );
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        "Failed to start Docker log follower for '{}': {}",
+                                        server_name, e
+                                    );
+                                }
+                            }
+                        }
+                        return Ok(val.clone());
+                    }
+                }
+            }
+        }
+
+        // ── Docker 인스턴스인데 익스텐션이 처리하지 않은 경우 → 에러 ──
+        if instance.use_docker {
+            tracing::error!(
+                "Instance '{}' is configured for Docker but no extension handled it. \
+                 Is the Docker extension enabled?",
+                server_name
+            );
+            return Ok(json!({
+                "success": false,
+                "action_required": "extension_required",
+                "extension_id": "docker",
+                "instance_name": server_name,
+                "message": format!(
+                    "Instance '{}' is configured for Docker mode, but the Docker extension is not enabled. \
+                     Please enable the Docker extension in Settings → Extensions, or disable Docker mode for this instance.",
+                    server_name
+                )
             }));
         }
 
@@ -203,24 +299,41 @@ impl Supervisor {
             .find(|i| i.name == server_name)
             .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
 
-        // ── Docker 모드: docker compose stop (컨테이너 유지, 빠른 재시작) ──
-        if instance.use_docker {
-            // Ensure WSL2 mode is set (may have been lost after daemon restart)
-            let _ = crate::docker::ensure_docker_engine().await;
+        // ── Extension hook: server.post_stop ──
+        if let Some(ref ext_mgr) = self.extension_manager {
+            let instance_dir = self.instance_store.instance_dir(&instance.id);
+            let results = ext_mgr.read().await
+                .dispatch_hook("server.post_stop", json!({
+                    "instance_id": instance.id.clone(),
+                    "instance_dir": instance_dir.to_string_lossy(),
+                    "extension_data": Self::enriched_extension_data(&instance),
+                })).await;
 
-            let instance_id = instance.id.clone();
-            let instance_dir = self.instance_store.instance_dir(&instance_id);
-            let docker_mgr = crate::docker::DockerComposeManager::new(&instance_dir, None);
-            tracing::info!("Stopping Docker containers for '{}'", server_name);
-            let result: serde_json::Value = docker_mgr.stop().await?;
-            // auto-detect 쿨다운 등록
-            self.stop_cooldowns.insert(instance_id, Instant::now());
+            for (_ext_id, result) in &results {
+                if let Ok(val) = result {
+                    if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
+                        self.stop_cooldowns.insert(instance.id.clone(), Instant::now());
+                        return Ok(val.clone());
+                    }
+                }
+            }
+        }
+
+        // ── Docker 인스턴스인데 익스텐션이 처리하지 않은 경우 → 에러 ──
+        if instance.use_docker {
+            tracing::error!(
+                "Instance '{}' is configured for Docker but no extension handled stop.",
+                server_name
+            );
             return Ok(json!({
-                "success": true,
-                "server": server_name,
-                "docker": true,
-                "message": format!("Docker containers stopped for '{}'", server_name),
-                "detail": result,
+                "success": false,
+                "action_required": "extension_required",
+                "extension_id": "docker",
+                "instance_name": server_name,
+                "message": format!(
+                    "Instance '{}' is configured for Docker mode, but the Docker extension is not enabled.",
+                    server_name
+                )
             }));
         }
 
@@ -344,64 +457,38 @@ impl Supervisor {
             .find(|i| i.name == server_name)
             .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
 
-        // ── Docker 모드: 컨테이너 + 내부 프로세스 상태 확인 ──
-        if instance.use_docker {
+        // ── Extension hook: server.status ──
+        // ── Extension hook: server.status ──
+        if let Some(ref ext_mgr) = self.extension_manager {
             let instance_dir = self.instance_store.instance_dir(&instance.id);
-            let docker_mgr = crate::docker::DockerComposeManager::new(&instance_dir, None);
-
-            // 모듈의 process_patterns 가져오기 (docker top 매칭용)
             let process_patterns = self.module_loader.get_module(module_name)
                 .map(|m| m.metadata.docker_process_patterns.clone())
                 .unwrap_or_default();
+            let results = ext_mgr.read().await
+                .dispatch_hook("server.status", json!({
+                    "instance_id": instance.id.clone(),
+                    "instance_dir": instance_dir.to_string_lossy(),
+                    "extension_data": Self::enriched_extension_data(&instance),
+                    "process_patterns": process_patterns,
+                })).await;
 
-            return match docker_mgr.status().await {
-                Ok(status) => {
-                    let container_running = status.get("running")
-                        .and_then(|r: &serde_json::Value| r.as_bool())
-                        .unwrap_or(false);
-
-                    // 컨테이너가 실행 중이면 내부 게임 서버 프로세스도 확인
-                    let (server_running, matched_process) = if container_running {
-                        if let Some(name) = status.get("container_name").and_then(|n| n.as_str()) {
-                            docker_mgr.server_process_running(name, &process_patterns).await
-                        } else {
-                            (container_running, None)
-                        }
-                    } else {
-                        (false, None)
-                    };
-
-                    // 상태 결정:
-                    // - 컨테이너 실행 + 서버 프로세스 있음 = "running"
-                    // - 컨테이너 실행 + 서버 프로세스 없음 = "starting" (아직 초기화 중이거나 crash)
-                    // - 컨테이너 정지 = "stopped"
-                    let status_str = if container_running && server_running {
-                        "running"
-                    } else if container_running {
-                        "starting"
-                    } else {
-                        "stopped"
-                    };
-
-                    Ok(json!({
-                        "server": server_name,
-                        "status": status_str,
-                        "online": server_running,
-                        "docker": true,
-                        "container_running": container_running,
-                        "server_process": matched_process,
-                        "containers": status.get("containers"),
-                    }))
+            for (_ext_id, result) in &results {
+                if let Ok(val) = result {
+                    if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
+                        return Ok(val.clone());
+                    }
                 }
-                Err(e) => {
-                    tracing::warn!("Docker status check failed for '{}': {}", server_name, e);
-                    Ok(json!({
-                        "server": server_name,
-                        "status": "unknown",
-                        "docker": true,
-                    }))
-                }
-            };
+            }
+        }
+
+        // ── Docker 인스턴스인데 익스텐션이 처리하지 않은 경우 → 최소 응답 ──
+        if instance.use_docker {
+            return Ok(json!({
+                "server": server_name,
+                "status": "stopped",
+                "online": false,
+                "message": "Docker extension is not enabled"
+            }));
         }
 
         // Managed 프로세스가 있으면 plugin 호출 없이 직접 판단
@@ -489,6 +576,14 @@ impl Supervisor {
         let instance = self.instance_store.get(instance_id)
             .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
 
+        // ── Docker 인스턴스인데 익스텐션 미활성 → 에러 ──
+        if instance.use_docker {
+            return Err(anyhow::anyhow!(
+                "Instance '{}' is configured for Docker mode, but the Docker extension is not enabled.",
+                instance.name
+            ));
+        }
+
         // 모듈 찾기
         let module = self.module_loader.get_module(module_name)?;
         let module_path = format!("{}/lifecycle.py", module.path);
@@ -552,24 +647,101 @@ impl Supervisor {
         let instance = self.instance_store.get(instance_id)
             .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
 
-        // ── Docker 모드일 때: docker compose up -d ──
-        if instance.use_docker {
-            let instance_dir = self.instance_store.instance_dir(instance_id);
-            let docker_mgr = crate::docker::DockerComposeManager::new(&instance_dir, None);
-            if !docker_mgr.has_compose_file() {
-                return Err(anyhow::anyhow!(
-                    "Docker 모드가 활성화되어 있지만 docker-compose.yml이 없습니다. 인스턴스를 다시 프로비저닝해주세요."
-                ));
-            }
-            tracing::info!("Starting Docker containers for managed instance '{}'", instance.name);
-            let result: serde_json::Value = docker_mgr.start().await?;
+        // ── 포트 충돌 검사 ──
+        let all_instances = self.instance_store.list();
+        let running_ids: std::collections::HashSet<String> = all_instances
+            .iter()
+            .filter(|i| self.tracker.get_pid(&i.id).is_ok())
+            .map(|i| i.id.clone())
+            .collect();
+        let conflicts = crate::validator::check_port_conflicts(&instance, &all_instances, &running_ids);
+        if !conflicts.is_empty() {
+            let details: Vec<String> = conflicts.iter().map(|c| c.to_string()).collect();
+            tracing::warn!("Port conflict detected for managed instance '{}': {:?}", instance.name, details);
             return Ok(json!({
-                "success": true,
-                "server": instance.name,
+                "success": false,
+                "error": "port_conflict",
+                "error_code": "port_conflict",
+                "message": format!("Cannot start '{}': port conflict detected", instance.name),
+                "conflicts": details,
+            }));
+        }
+
+        // ── Extension hook: server.pre_start (managed) ──
+        if let Some(ext_mgr) = &self.extension_manager {
+            let enriched = Self::enriched_extension_data(&instance);
+            let ctx = json!({
+                "instance_id": instance_id,
+                "module": module_name,
+                "instance": {
+                    "name": &instance.name,
+                    "use_docker": instance.use_docker,
+                    "extension_data": &enriched,
+                },
+                "config": &config,
                 "managed": true,
-                "docker": true,
-                "message": format!("Docker containers started for '{}'", instance.name),
-                "detail": result,
+                "extension_data": &enriched,
+            });
+            let mgr = ext_mgr.read().await;
+            let results = mgr.dispatch_hook("server.pre_start", ctx).await;
+            for (_ext_id, result) in &results {
+                if let Ok(val) = result {
+                    if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
+                        // Docker 컨테이너 시작 성공 → 로그 스트리머 등록
+                        if instance.use_docker
+                            && val.get("success").and_then(|s| s.as_bool()) == Some(true)
+                        {
+                            let instance_dir = self.instance_store.instance_dir(&instance.id);
+                            let container_name = format!(
+                                "saba-{}-{}",
+                                module_name,
+                                &instance.id[..8.min(instance.id.len())]
+                            );
+                            let log_pattern = self.module_loader.get_module(module_name)
+                                .ok()
+                                .and_then(|m| m.metadata.log_pattern.clone());
+                            match managed_process::ManagedProcess::spawn_docker_log_follower(
+                                &instance_dir,
+                                &container_name,
+                                log_pattern.as_deref(),
+                            ).await {
+                                Ok(follower) => {
+                                    self.managed_store.insert(instance_id, follower).await;
+                                    tracing::info!(
+                                        "Docker log follower registered for '{}'",
+                                        instance.name
+                                    );
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        "Failed to start Docker log follower for '{}': {}",
+                                        instance.name, e
+                                    );
+                                }
+                            }
+                        }
+                        return Ok(val.clone());
+                    }
+                }
+            }
+        }
+
+        // ── Docker 인스턴스인데 익스텐션이 처리하지 않은 경우 → 에러 ──
+        if instance.use_docker {
+            tracing::error!(
+                "Managed instance '{}' is configured for Docker but no extension handled it.",
+                instance.name
+            );
+            return Ok(json!({
+                "success": false,
+                "action_required": "extension_required",
+                "extension_id": "docker",
+                "instance_name": instance.name,
+                "message": format!(
+                    "Instance '{}' is configured for Docker mode, but the Docker extension is not enabled. \
+                     Please enable the Docker extension in Settings → Extensions, or disable Docker mode for this instance.",
+                    instance.name
+                )
             }));
         }
 
@@ -938,6 +1110,51 @@ impl Supervisor {
                                 if let Err(e) = self.tracker.track(&instance.id, process.pid) {
                                     tracing::error!("Failed to track process: {}", e);
                                 }
+
+                                // ── 포트 충돌 검사: 새로 감지된 프로세스의 포트가 이미 실행 중인 인스턴스와 겹치면 강제 종료 ──
+                                let all_instances = self.instance_store.list();
+                                let running_ids: std::collections::HashSet<String> = all_instances
+                                    .iter()
+                                    .filter(|i| i.id != instance.id && self.tracker.get_pid(&i.id).is_ok())
+                                    .map(|i| i.id.clone())
+                                    .collect();
+                                let conflicts = crate::validator::check_port_conflicts(&instance, &all_instances, &running_ids);
+                                if !conflicts.is_empty() {
+                                    let details: Vec<String> = conflicts.iter().map(|c| c.to_string()).collect();
+                                    tracing::warn!(
+                                        "Port conflict detected for auto-detected '{}' — force stopping (PID {}). Conflicts: {:?}",
+                                        instance.name, process.pid, details
+                                    );
+
+                                    // 프로세스 강제 종료
+                                    let mut sys = sysinfo::System::new();
+                                    sys.refresh_processes();
+                                    if let Some(proc) = sys.process(sysinfo::Pid::from_u32(process.pid)) {
+                                        proc.kill();
+                                        tracing::info!("Force-killed PID {} for instance '{}'", process.pid, instance.name);
+                                    }
+
+                                    // tracker에서 제거 + 쿨다운 설정
+                                    let _ = self.tracker.untrack(&instance.id);
+                                    self.stop_cooldowns.insert(instance.id.clone(), Instant::now());
+
+                                    // 이벤트 기록 (GUI 폴링에서 읽어감) — 충돌마다 개별 이벤트 생성
+                                    let ts = std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .map(|d| d.as_millis() as u64)
+                                        .unwrap_or(0);
+                                    if let Ok(mut events) = self.port_conflict_stops.lock() {
+                                        for conflict in &conflicts {
+                                            events.push(PortConflictStopEvent {
+                                                stopped_name: instance.name.clone(),
+                                                stopped_id: instance.id.clone(),
+                                                existing_name: conflict.conflicting_instance_name.clone(),
+                                                port: conflict.port,
+                                                timestamp_ms: ts,
+                                            });
+                                        }
+                                    }
+                                }
                             }
                         }
                         Err(e) => {
@@ -957,6 +1174,14 @@ impl Supervisor {
         // Periodically check process health
         tracing::info!("Supervisor monitoring started");
         Ok(())
+    }
+
+    /// 포트 충돌 강제 정지 이벤트를 drain (GUI 폴링에서 한 번 읽으면 비움)
+    pub fn drain_port_conflict_stops(&self) -> Vec<PortConflictStopEvent> {
+        self.port_conflict_stops
+            .lock()
+            .map(|mut events| std::mem::take(&mut *events))
+            .unwrap_or_default()
     }
 }
 

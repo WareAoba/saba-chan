@@ -74,6 +74,7 @@
   "errors": {
     "error_title": "Error executing command",
     "unknown": "Unknown error",
+    "alias_conflict": "\u274c Alias '{{alias}}' is ambiguous \u2014 it matches multiple modules: {{modules}}. Please use a more specific alias.",
     "auth_failed": "Authentication failed",
     "player_not_found": "Player not found",
     "internal_server_error": "Internal server error",

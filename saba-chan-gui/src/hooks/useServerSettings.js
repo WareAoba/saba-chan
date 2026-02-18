@@ -403,7 +403,13 @@ export function useServerSettings({
             console.log('API Response:', result);
 
             if (result.error) {
-                setModal({ type: 'failure', title: t('settings.save_failed_title'), message: translateError(result.error) });
+                // validation_failed: 상세 에러 목록 포함
+                if (result.error_code === 'validation_failed' && result.details) {
+                    const detailStr = result.details.join('\n');
+                    setModal({ type: 'failure', title: t('settings.save_failed_title'), message: detailStr });
+                } else {
+                    setModal({ type: 'failure', title: t('settings.save_failed_title'), message: translateError(result.error) });
+                }
                 console.error('Error response:', result.error);
             } else {
                 setModal({ type: 'success', title: t('command_modal.success'), message: t('server_actions.settings_saved', { name: settingsServer.name }) });

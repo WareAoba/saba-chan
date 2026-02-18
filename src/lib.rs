@@ -7,4 +7,5 @@ pub mod config;
 pub mod instance;
 pub mod process_monitor;
 pub mod utils;
-pub mod docker;  // Docker Compose 통합
+pub mod extension;  // 범용 익스텐션 시스템
+pub mod validator;  // 설정값 타입 검증 및 포트 충돌 검사

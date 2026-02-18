@@ -47,5 +47,9 @@
     "connection_refused": "Cannot connect to daemon. Please check if daemon is running",
     "timeout": "Request timeout: Server did not respond",
     "not_found": "Server not found. Please check network settings"
+  },
+  "port_conflict": {
+    "force_stop_title": "Port Conflict — {{name}} stopped",
+    "force_stop_body": "{{stopped}} was force-stopped because port {{port}} conflicts with {{existing}}"
   }
 }

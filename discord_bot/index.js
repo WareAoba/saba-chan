@@ -3,7 +3,7 @@ const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
-const { buildModuleAliasMap, buildCommandAliasMap, resolveAlias } = require('./utils/aliasResolver');
+const { buildModuleAliasMap, buildCommandAliasMap, resolveAlias, checkAliasConflict } = require('./utils/aliasResolver');
 const i18n = require('./i18n'); // Initialize i18n
 
 const client = new Client({ 
@@ -15,24 +15,100 @@ const client = new Client({
 });
 const IPC_BASE = process.env.IPC_BASE || 'http://127.0.0.1:57474';
 
-// ── Global axios defaults (timeout + auth token) ──
+// ── Global axios defaults (timeout) ──
 axios.defaults.timeout = 15000; // 15초 타임아웃
-axios.defaults.headers.common['X-Saba-Token'] = process.env.SABA_TOKEN || '';
 
-// IPC 토큰 파일에서 읽기 시도 (%APPDATA%/saba-chan/.ipc_token)
-try {
-    const tokenPath = process.env.SABA_TOKEN_PATH
-        || path.join(process.env.APPDATA || process.env.HOME || '.', 'saba-chan', '.ipc_token');
-    if (fs.existsSync(tokenPath)) {
-        const token = fs.readFileSync(tokenPath, 'utf8').trim();
-        if (token) {
-            axios.defaults.headers.common['X-Saba-Token'] = token;
-            console.log('[Bot] IPC auth token loaded from', tokenPath);
+// ── IPC 토큰을 전용 변수로 관리 (axios.defaults.headers.common에 의존하지 않음) ──
+let _botCachedIpcToken = '';
+
+const _botTokenPath = process.env.SABA_TOKEN_PATH
+    || path.join(process.env.APPDATA || process.env.HOME || '.', 'saba-chan', '.ipc_token');
+
+function loadBotIpcToken() {
+    // 환경 변수로 전달된 토큰이 있으면 우선 사용
+    if (!_botCachedIpcToken && process.env.SABA_TOKEN) {
+        _botCachedIpcToken = process.env.SABA_TOKEN;
+    }
+    try {
+        if (fs.existsSync(_botTokenPath)) {
+            const token = fs.readFileSync(_botTokenPath, 'utf8').trim();
+            if (token) {
+                const prev = _botCachedIpcToken;
+                _botCachedIpcToken = token;
+                if (prev !== token) {
+                    console.log(`[Bot] IPC auth token loaded: ${token.substring(0, 8)}… from ${_botTokenPath}` +
+                        (prev ? ` (was: ${prev.substring(0, 8)}…)` : ' (first load)'));
+                }
+                return true;
+            }
+        }
+    } catch (e) {
+        console.warn('[Bot] Could not read IPC token file:', e.message);
+    }
+    return false;
+}
+
+// 최초 토큰 로드
+loadBotIpcToken();
+
+// ── 요청 전 토큰 주입 인터셉터 ──
+// 매 요청마다 _botCachedIpcToken 에서 헤더를 직접 설정
+axios.interceptors.request.use((config) => {
+    let token = _botCachedIpcToken;
+    if (!token) {
+        loadBotIpcToken();
+        token = _botCachedIpcToken;
+    }
+    if (token) {
+        if (typeof config.headers?.set === 'function') {
+            config.headers.set('X-Saba-Token', token);
+        } else if (config.headers) {
+            config.headers['X-Saba-Token'] = token;
         }
     }
-} catch (e) {
-    console.warn('[Bot] Could not read IPC token file:', e.message);
-}
+    return config;
+});
+
+// ── 401 응답 시 토큰 자동 재로드 + 재시도 인터셉터 ──
+let _botTokenRefreshPromise = null;
+
+axios.interceptors.response.use(
+    (response) => response,
+    async (error) => {
+        const originalRequest = error.config;
+        if (error.response && error.response.status === 401 && !originalRequest._retried) {
+            originalRequest._retried = true;
+
+            if (!_botTokenRefreshPromise) {
+                _botTokenRefreshPromise = (async () => {
+                    try {
+                        const newToken = fs.readFileSync(_botTokenPath, 'utf8').trim();
+                        if (newToken) {
+                            _botCachedIpcToken = newToken;
+                            console.log(`[Bot] Token refreshed after 401: ${newToken.substring(0, 8)}…`);
+                            return newToken;
+                        }
+                    } catch (_) { /* 토큰 파일 읽기 실패 */ }
+                    return null;
+                })();
+                _botTokenRefreshPromise.finally(() => {
+                    setTimeout(() => { _botTokenRefreshPromise = null; }, 300);
+                });
+            }
+
+            const refreshedToken = await _botTokenRefreshPromise;
+            if (refreshedToken) {
+                if (typeof originalRequest.headers?.set === 'function') {
+                    originalRequest.headers.set('X-Saba-Token', refreshedToken);
+                } else {
+                    originalRequest.headers['X-Saba-Token'] = refreshedToken;
+                }
+                return axios(originalRequest);
+            }
+        }
+        return Promise.reject(error);
+    }
+);
 
 // ── Global error handlers ──
 process.on('unhandledRejection', (reason, promise) => {
@@ -316,6 +392,17 @@ client.on('messageCreate', async (message) => {
 
     // Module-specific help: "!prefix palworld" or "!prefix pw"
     if (!secondArg) {
+        // 별명 충돌 검사
+        const aliasCheck = checkAliasConflict(firstArg, moduleAliases);
+        if (aliasCheck.isConflict) {
+            const modules = aliasCheck.conflictModules.join(', ');
+            await message.reply(i18n.t('bot:errors.alias_conflict', {
+                alias: firstArg,
+                modules,
+                defaultValue: `❌ Alias '${firstArg}' is ambiguous — it matches multiple modules: ${modules}. Please use a more specific alias.`,
+            }));
+            return;
+        }
         const moduleName = resolveAlias(firstArg, moduleAliases);
         const cmds = getModuleCommands(moduleName);
         const cmdList = Object.keys(cmds);
@@ -385,6 +472,17 @@ client.on('messageCreate', async (message) => {
     }
 
     // Module + Command pattern: "!prefix 모듈 명령어"
+    // 별명 충돌 검사
+    const aliasConflict = checkAliasConflict(firstArg, moduleAliases);
+    if (aliasConflict.isConflict) {
+        const modules = aliasConflict.conflictModules.join(', ');
+        await message.reply(i18n.t('bot:errors.alias_conflict', {
+            alias: firstArg,
+            modules,
+            defaultValue: `❌ Alias '${firstArg}' is ambiguous — it matches multiple modules: ${modules}. Please use a more specific alias.`,
+        }));
+        return;
+    }
     const moduleName = resolveAlias(firstArg, moduleAliases);
     const commandName = resolveAlias(secondArg, commandAliases);
     const extraArgs = args.slice(2);  // 추가 인자들

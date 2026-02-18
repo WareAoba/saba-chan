@@ -7,7 +7,7 @@
 use serde_json::json;
 
 use super::super::{
-    IPCServer, ExtensionInfo, ExtensionListResponse, ProtocolsInfo, ServerInfo, ServerListResponse,
+    IPCServer, ExtensionInfo, ExtensionListResponse, PortConflictInfo, ProtocolsInfo, ServerInfo, ServerListResponse,
     ServerStartRequest, ServerStopRequest,
 };
 
@@ -18,59 +18,104 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
     let instances = supervisor.instance_store.list();
     let mut servers = Vec::new();
 
-    // Docker 인스턴스가 있으면 WSL2 모드가 올바르게 설정되어 있는지 확인
-    let has_docker_instances = instances.iter().any(|i| i.use_docker);
-    if has_docker_instances && !crate::docker::is_wsl2_mode() {
-        // 가볍게 확인: ensure_docker_engine은 이미 실행 중이면 즉시 반환
-        let _ = crate::docker::ensure_docker_engine().await;
-    }
-
     for instance in instances {
-        let (status, start_time, pid) = if instance.use_docker {
-            // Docker 모드: 컨테이너 상태 + 내부 게임 서버 프로세스 확인
-            let instance_dir = supervisor.instance_store.instance_dir(&instance.id);
-            let docker_mgr = crate::docker::DockerComposeManager::new(&instance_dir, None);
-            if docker_mgr.has_compose_file() {
-                match docker_mgr.status().await {
-                    Ok(st) => {
-                        let container_running = st.get("running")
-                            .and_then(|r| r.as_bool())
-                            .unwrap_or(false);
-
-                        // 컨테이너가 실행 중이면 내부 프로세스도 확인
-                        let status = if container_running {
-                            let patterns = supervisor.module_loader.get_module(&instance.module_name)
-                                .map(|m| m.metadata.docker_process_patterns.clone())
-                                .unwrap_or_default();
-                            let container_name = st.get("container_name")
-                                .and_then(|n| n.as_str());
-                            if let Some(name) = container_name {
-                                let (server_ok, _) = docker_mgr.server_process_running(name, &patterns).await;
-                                if server_ok { "running" } else { "starting" }
-                            } else {
-                                "running" // 컨테이너 이름 못 가져오면 fallback
-                            }
-                        } else {
-                            "stopped"
-                        };
-                        (status.to_string(), None, None)
-                    }
-                    Err(_) => ("stopped".to_string(), None, None),
-                }
+        // ── Extension hook: server.list_enrich ──
+        // Extension이 Docker 상태/통계를 제공할 수 있음 (TTL 캐시 적용)
+        let mut ext_handled = false;
+        if instance.use_docker {
+            // 캐시 확인 — TTL 내 결과가 있으면 Python 프로세스 스폰 생략
+            let enrich_result = if let Some(cached_val) = state.docker_status_cache.get(&instance.id) {
+                cached_val
             } else {
-                ("stopped".to_string(), None, None)
-            }
-        } else {
-            // Native 모드: ProcessTracker에서 PID 및 시작 시간 확인
-            let pid = supervisor.tracker.get_pid(&instance.id).ok();
-            let (status, start_time) = if pid.is_some() {
-                let st = supervisor.tracker.get_start_time(&instance.id).ok();
-                ("running".to_string(), st)
-            } else {
-                ("stopped".to_string(), None)
+                let ext_mgr = state.extension_manager.clone();
+                // 모듈 메타데이터에서 Docker 프로세스 패턴 조회
+                let process_patterns = supervisor.module_loader.get_module(&instance.module_name)
+                    .map(|m| m.metadata.docker_process_patterns.clone())
+                    .unwrap_or_default();
+                let ctx = serde_json::json!({
+                    "instance_id": &instance.id,
+                    "instance_name": &instance.name,
+                    "module": &instance.module_name,
+                    "use_docker": instance.use_docker,
+                    "extension_data": &instance.extension_data,
+                    "instance_dir": supervisor.instance_store.instance_dir(&instance.id).to_string_lossy(),
+                    "process_patterns": process_patterns,
+                });
+                let mgr = ext_mgr.read().await;
+                let results = mgr.dispatch_hook("server.list_enrich", ctx).await;
+                // 첫 번째 성공 응답을 캐시 (handled 여부 무관)
+                let result = results.into_iter()
+                    .find_map(|(_id, r)| r.ok())
+                    .unwrap_or_else(|| json!({"handled": false}));
+                state.docker_status_cache.set(&instance.id, result.clone());
+                result
             };
-            (status, start_time, pid)
+
+            // handled: true인 경우만 Extension이 서버 정보를 제공
+            let is_handled = enrich_result.get("handled")
+                .and_then(|h| h.as_bool()) == Some(true);
+
+            if is_handled {
+                let res = &enrich_result;
+                // Extension이 서버 정보를 완전히 제공
+                let ext_status = res.get("status").and_then(|s| s.as_str())
+                    .unwrap_or("stopped").to_string();
+                let provisioning = state.provision_tracker.get(&instance.name)
+                    .map(|p| !p.done)
+                    .unwrap_or(false);
+                let status = if provisioning { "provisioning".to_string() } else { ext_status };
+                let last_api = state.api_actions.get(&instance.name)
+                    .or_else(|| state.api_actions.get(&instance.id));
+
+                let docker_memory_usage = res.get("memory_usage").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let docker_memory_percent = res.get("memory_percent").and_then(|v| v.as_f64());
+                let docker_cpu_percent = res.get("cpu_percent").and_then(|v| v.as_f64());
+
+                servers.push(ServerInfo {
+                    id: instance.id.clone(),
+                    name: instance.name.clone(),
+                    module: instance.module_name.clone(),
+                    status,
+                    pid: None,
+                    start_time: None,
+                    executable_path: instance.executable_path.clone(),
+                    port: instance.port,
+                    rcon_port: instance.rcon_port,
+                    rcon_password: instance.rcon_password.clone(),
+                    rest_host: instance.rest_host.clone(),
+                    rest_port: instance.rest_port,
+                    rest_username: instance.rest_username.clone(),
+                    rest_password: instance.rest_password.clone(),
+                    protocol_mode: instance.protocol_mode.clone(),
+                    module_settings: instance.module_settings.clone(),
+                    server_version: instance.server_version.clone(),
+                    last_api_action: last_api,
+                    provisioning,
+                    use_docker: instance.use_docker,
+                    docker_memory_usage,
+                    docker_memory_percent,
+                    docker_cpu_percent,
+                    docker_cpu_limit: instance.docker_cpu_limit,
+                    docker_memory_limit: instance.docker_memory_limit.clone(),
+                    extension_data: instance.extension_data.clone(),
+                    port_conflicts: vec![],
+                });
+                ext_handled = true;
+            }
+        }
+        if ext_handled {
+            continue;
+        }
+
+        // Native 모드: ProcessTracker에서 PID 및 시작 시간 확인
+        let pid = supervisor.tracker.get_pid(&instance.id).ok();
+        let (status, start_time) = if pid.is_some() {
+            let st = supervisor.tracker.get_start_time(&instance.id).ok();
+            ("running".to_string(), st)
+        } else {
+            ("stopped".to_string(), None)
         };
+
         // API(CLI/Discord)를 통한 마지막 시작/정지 타임스탬프 조회
         let last_api = state.api_actions.get(&instance.name)
             .or_else(|| state.api_actions.get(&instance.id));
@@ -82,45 +127,6 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
 
         // 프로비저닝 중이면 상태를 "provisioning"으로 오버라이드
         let status = if provisioning { "provisioning".to_string() } else { status };
-
-        // Docker 리소스 사용량 수집 (running 상태인 Docker 인스턴스만, 5초 캐시)
-        let (docker_memory_usage, docker_memory_percent, docker_cpu_percent) =
-            if instance.use_docker && status == "running" {
-                // 컨테이너 이름 규칙: saba-{module}-{instance_id_short}
-                let short_id = &instance.id[..8.min(instance.id.len())];
-                let container_name = format!("saba-{}-{}", instance.module_name, short_id);
-
-                // 캐시에서 먼저 확인
-                if let Some(cached) = state.docker_stats_cache.get(&container_name) {
-                    cached
-                } else if state.docker_stats_cache.is_expired() {
-                    // 캐시 만료 → 비동기로 새 통계 수집
-                    match crate::docker::docker_container_stats(&container_name).await {
-                        Ok(stats) => {
-                            let mem_usage = stats.get("MemUsage")
-                                .and_then(|v| v.as_str())
-                                .map(|s| s.to_string());
-                            let mem_pct = stats.get("MemPerc")
-                                .and_then(|v| v.as_str())
-                                .and_then(|s| s.trim_end_matches('%').parse::<f64>().ok());
-                            let cpu_pct = stats.get("CPUPerc")
-                                .and_then(|v| v.as_str())
-                                .and_then(|s| s.trim_end_matches('%').parse::<f64>().ok());
-                            state.docker_stats_cache.update(&container_name, mem_usage.clone(), mem_pct, cpu_pct);
-                            (mem_usage, mem_pct, cpu_pct)
-                        }
-                        Err(e) => {
-                            tracing::debug!("docker stats failed for {}: {}", container_name, e);
-                            (None, None, None)
-                        }
-                    }
-                } else {
-                    // 캐시가 아직 유효하지만 이 컨테이너만 없는 경우
-                    (None, None, None)
-                }
-            } else {
-                (None, None, None)
-            };
 
         servers.push(ServerInfo {
             id: instance.id.clone(),
@@ -143,15 +149,55 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
             last_api_action: last_api,
             provisioning,
             use_docker: instance.use_docker,
-            docker_memory_usage,
-            docker_memory_percent,
-            docker_cpu_percent,
+            docker_memory_usage: None,
+            docker_memory_percent: None,
+            docker_cpu_percent: None,
             docker_cpu_limit: instance.docker_cpu_limit,
             docker_memory_limit: instance.docker_memory_limit.clone(),
+            extension_data: instance.extension_data.clone(),
+            port_conflicts: vec![],
         });
     }
 
-    Json(ServerListResponse { servers })
+    // ── 포트 충돌 계산: 모든 서버 간 포트 겹침을 검사하여 per-server 정보 채움 ──
+    {
+        // 포트 → (server_index, port_type) 매핑
+        let mut port_map: std::collections::HashMap<u16, Vec<(usize, &str)>> = std::collections::HashMap::new();
+        for (idx, srv) in servers.iter().enumerate() {
+            for (p, pt) in [
+                (srv.port, "port"),
+                (srv.rcon_port, "rcon_port"),
+                (srv.rest_port, "rest_port"),
+            ] {
+                if let Some(port) = p {
+                    port_map.entry(port).or_default().push((idx, pt));
+                }
+            }
+        }
+        // 2개 이상 겹치는 포트에 대해 충돌 정보 추가
+        for (&port, entries) in &port_map {
+            if entries.len() < 2 { continue; }
+            for &(idx, pt) in entries {
+                let mut conflicts_for_this: Vec<PortConflictInfo> = Vec::new();
+                for &(other_idx, other_pt) in entries {
+                    if other_idx == idx { continue; }
+                    conflicts_for_this.push(PortConflictInfo {
+                        port,
+                        port_type: pt.to_string(),
+                        conflict_name: servers[other_idx].name.clone(),
+                        conflict_id: servers[other_idx].id.clone(),
+                        conflict_port_type: other_pt.to_string(),
+                    });
+                }
+                servers[idx].port_conflicts.extend(conflicts_for_this);
+            }
+        }
+    }
+
+    // 포트 충돌 강제 정지 이벤트 drain
+    let port_conflict_stops = supervisor.drain_port_conflict_stops();
+
+    Json(ServerListResponse { servers, port_conflict_stops })
 }
 
 /// GET /api/modules - 모든 모듈 목록
@@ -346,7 +392,10 @@ pub async fn get_server_status(
             }
         }
     } else {
-        let error = json!({ "error": format!("Server '{}' not found", name) });
+        let error = json!({
+            "error": format!("Server '{}' not found", name),
+            "error_code": "instance_not_found",
+        });
         (StatusCode::NOT_FOUND, Json(error)).into_response()
     }
 }
@@ -359,6 +408,13 @@ pub async fn start_server_handler(
 ) -> impl IntoResponse {
     // API 경유 시작 기록 (GUI 외부 시작 감지용)
     state.api_actions.record(&name);
+    // Docker 상태 캐시 무효화 — 시작 직후 fresh 상태 반영
+    {
+        let sup = state.supervisor.read().await;
+        if let Some(inst) = sup.instance_store.list().iter().find(|i| i.name == name) {
+            state.docker_status_cache.invalidate(&inst.id);
+        }
+    }
     let supervisor = state.supervisor.read().await;
 
     match supervisor
@@ -367,8 +423,19 @@ pub async fn start_server_handler(
     {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => {
-            let error = json!({ "error": format!("Failed to start server: {}", e) });
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+            let msg = e.to_string();
+            let (code, error_code) = if msg.contains("not found") {
+                (StatusCode::NOT_FOUND, "instance_not_found")
+            } else if msg.contains("jar") || msg.contains("executable") {
+                (StatusCode::UNPROCESSABLE_ENTITY, "executable_missing")
+            } else {
+                (StatusCode::INTERNAL_SERVER_ERROR, "start_failed")
+            };
+            let error = json!({
+                "error": format!("Failed to start server: {}", msg),
+                "error_code": error_code,
+            });
+            (code, Json(error)).into_response()
         }
     }
 }
@@ -381,6 +448,13 @@ pub async fn stop_server_handler(
 ) -> impl IntoResponse {
     // API 경유 정지 기록 (GUI 외부 정지 감지용)
     state.api_actions.record(&name);
+    // Docker 상태 캐시 무효화 — 정지 직후 fresh 상태 반영
+    {
+        let sup = state.supervisor.read().await;
+        if let Some(inst) = sup.instance_store.list().iter().find(|i| i.name == name) {
+            state.docker_status_cache.invalidate(&inst.id);
+        }
+    }
 
     // instance에서 모듈명과 ID 조회 (read lock으로 조회 후 즉시 해제)
     let instance = {
@@ -422,12 +496,24 @@ pub async fn stop_server_handler(
                 (StatusCode::OK, Json(result)).into_response()
             }
             Err(e) => {
-                let error = json!({ "error": format!("Failed to stop server: {}", e) });
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+                let msg = e.to_string();
+                let (code, error_code) = if msg.contains("not found") {
+                    (StatusCode::NOT_FOUND, "instance_not_found")
+                } else {
+                    (StatusCode::INTERNAL_SERVER_ERROR, "stop_failed")
+                };
+                let error = json!({
+                    "error": format!("Failed to stop server: {}", msg),
+                    "error_code": error_code,
+                });
+                (code, Json(error)).into_response()
             }
         }
     } else {
-        let error = json!({ "error": format!("Server '{}' not found", name) });
+        let error = json!({
+            "error": format!("Server '{}' not found", name),
+            "error_code": "instance_not_found",
+        });
         (StatusCode::NOT_FOUND, Json(error)).into_response()
     }
 }

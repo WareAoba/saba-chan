@@ -33,6 +33,7 @@ export function useServerActions({
     closeConsole,
     setShowModuleManager,
     formatUptime,
+    openSettingsToExtensions,
 }) {
     const { t } = useTranslation('gui');
     const translateError = createTranslateError(t);
@@ -71,8 +72,11 @@ export function useServerActions({
                         const wasStopped = existing.status === 'stopped';
                         const isGuiOp = guiInitiatedOpsRef.current.has(newServer.name);
 
-                        const apiAction = newServer.last_api_action;
-                        const isApiOp = apiAction && (Date.now() - apiAction < 60000);
+                        const apiAction = Number(newServer.last_api_action || 0);
+                        const prevApiAction = Number(existing.last_api_action || 0);
+                        const apiActionUpdated = apiAction > prevApiAction;
+                        const isRecentApiOp = apiAction > 0 && (Date.now() - apiAction < 10 * 60 * 1000);
+                        const isApiOp = apiActionUpdated || isRecentApiOp;
 
                         if (wasRunning && nowStopped && !isGuiOp) {
                             if (isApiOp) {
@@ -115,6 +119,21 @@ export function useServerActions({
                         };
                     });
                 });
+
+                // 포트 충돌로 강제 정지된 서버가 있으면 앱 내 토스트 표시
+                if (data.port_conflict_stops && data.port_conflict_stops.length > 0) {
+                    for (const evt of data.port_conflict_stops) {
+                        safeShowToast(
+                            t('errors.port_conflict_force_stop_toast', {
+                                stopped: evt.stopped_name,
+                                port: evt.port,
+                                existing: evt.existing_name,
+                            }),
+                            'error', 8000,
+                            { isNotice: true, source: evt.stopped_name }
+                        );
+                    }
+                }
             } else if (data && data.error) {
                 console.error('Server list error:', data.error);
                 const now = Date.now();
@@ -269,6 +288,51 @@ export function useServerActions({
                 return;
             }
 
+            // ── action_required: extension_required ──
+            if (result.action_required === 'extension_required') {
+                setModal({
+                    type: 'question',
+                    title: t('servers.extension_required_title', { defaultValue: 'Extension Required' }),
+                    message: result.message || t('servers.extension_required_message', {
+                        name,
+                        defaultValue: `Server '${name}' requires an extension that is not enabled.`,
+                    }),
+                    buttons: [
+                        {
+                            label: t('servers.extension_open_settings', { defaultValue: 'Open Extension Settings' }),
+                            action: () => {
+                                setModal(null);
+                                if (openSettingsToExtensions) {
+                                    openSettingsToExtensions();
+                                }
+                            }
+                        },
+                        {
+                            label: t('modals.cancel'),
+                            action: () => setModal(null)
+                        }
+                    ]
+                });
+                return;
+            }
+
+            // ── error_code: port_conflict — 데몬이 포트 충돌 감지 ──
+            if (result.error_code === 'port_conflict' || result.error === 'port_conflict') {
+                const conflictDetails = (result.conflicts || []).join('\n');
+                setModal({
+                    type: 'failure',
+                    title: t('errors.port_conflict', { defaultValue: 'Port Conflict' }),
+                    message: (result.message || '') + (conflictDetails ? '\n\n' + conflictDetails : ''),
+                });
+                return;
+            }
+
+            // ── success=false without specific action_required ──
+            if (result.success === false && result.message) {
+                safeShowToast(result.message, 'error', 5000);
+                return;
+            }
+
             if (result.error) {
                 const errorMsg = translateError(result.error);
                 safeShowToast(t('servers.start_failed_toast', { error: errorMsg }), 'error', 4000);
@@ -294,7 +358,7 @@ export function useServerActions({
                         if (statusResult.status === 'running') {
                             resolved = true;
                             setProgressBar(null);
-                            safeShowToast(t('servers.start_completed_toast', { name }), 'success', 3000, { isNotice: true, source: name });
+                            safeShowToast(t('servers.start_completed_toast', { name }), 'success', 3000);
                             fetchServers();
                             return;
                         }
@@ -344,6 +408,40 @@ export function useServerActions({
                     const forceStop = useGraceful === false;
 
                     const result = await window.api.serverStop(name, { force: forceStop });
+
+                    // ── extension_required 처리 ──
+                    if (result.action_required === 'extension_required') {
+                        setModal({
+                            type: 'question',
+                            title: t('servers.extension_required_title', { defaultValue: 'Extension Required' }),
+                            message: result.message || t('servers.extension_required_message', {
+                                name,
+                                defaultValue: `Server '${name}' requires an extension that is not enabled.`,
+                            }),
+                            buttons: [
+                                {
+                                    label: t('servers.extension_open_settings', { defaultValue: 'Open Extension Settings' }),
+                                    action: () => {
+                                        setModal(null);
+                                        if (openSettingsToExtensions) {
+                                            openSettingsToExtensions();
+                                        }
+                                    }
+                                },
+                                {
+                                    label: t('modals.cancel'),
+                                    action: () => setModal(null)
+                                }
+                            ]
+                        });
+                        return;
+                    }
+
+                    if (result.success === false && result.message) {
+                        safeShowToast(result.message, 'error', 5000);
+                        return;
+                    }
+
                     if (result.error) {
                         const errorMsg = translateError(result.error);
                         safeShowToast(t('servers.stop_failed_toast', { error: errorMsg }), 'error', 4000);
@@ -368,7 +466,7 @@ export function useServerActions({
                                 if (statusResult.status === 'stopped') {
                                     resolved = true;
                                     setProgressBar(null);
-                                    safeShowToast(t('servers.stop_completed_toast', { name }), 'success', 3000, { isNotice: true, source: name });
+                                    safeShowToast(t('servers.stop_completed_toast', { name }), 'success', 3000);
                                     fetchServers();
                                     return;
                                 }

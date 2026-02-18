@@ -6,6 +6,7 @@ import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { getTheme, setTheme as saveTheme } from '../../utils/themeManager';
 import { useModalClose } from '../../hooks/useModalClose';
 import { useDevMode } from '../../hooks/useDevMode';
+import { useExtensions } from '../../contexts/ExtensionContext';
 import UpdatePanel from './UpdatePanel';
 
 function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChange, ipcPort, onIpcPortChange, consoleBufferSize, onConsoleBufferSizeChange, onTestModal, onTestProgressBar, onTestWaitingImage, onTestLoadingScreen, initialView }) {
@@ -22,15 +23,18 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
     const [ipcPortChanged, setIpcPortChanged] = useState(false);
     const [ipcPortError, setIpcPortError] = useState('');
     const [localConsoleBuffer, setLocalConsoleBuffer] = useState(consoleBufferSize || 2000);
-    const tabOrder = ['general', 'appearance', 'advanced'];
+    const tabOrder = ['general', 'appearance', 'extensions', 'advanced'];
     const { isClosing, requestClose } = useModalClose(onClose);
     const devMode = useDevMode();
+    const { extensions, toggleExtension } = useExtensions();
 
-    // 외부에서 initialView='update'로 열렸을 때 업데이트 패널 자동 진입
+    // 외부에서 initialView 지정으로 열렸을 때 해당 탭 자동 진입
     useEffect(() => {
         if (isOpen && initialView === 'update') {
             setActiveTab('general');
             setShowUpdatePanel(true);
+        } else if (isOpen && initialView === 'extensions') {
+            setActiveTab('extensions');
         }
     }, [isOpen, initialView]);
 
@@ -162,6 +166,12 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
                                 {t('gui:settings_modal.appearance')}
                             </button>
                             <button
+                                className={`settings-tab ${activeTab === 'extensions' ? 'active' : ''}`}
+                                onClick={() => handleTabChange('extensions')}
+                            >
+                                {t('gui:settings_modal.extensions_tab', 'Extensions')}
+                            </button>
+                            <button
                                 className={`settings-tab ${activeTab === 'advanced' ? 'active' : ''}`}
                                 onClick={() => handleTabChange('advanced')}
                             >
@@ -256,6 +266,36 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
                                     ]}
                                 />
                             </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'extensions' && (
+                        <div className={`settings-tab-content ${slideDirection}`} key="extensions" onAnimationEnd={() => setSlideDirection('')}>
+                            <h3>{t('gui:settings_modal.extensions_tab', 'Extensions')}</h3>
+                            {extensions.length === 0 ? (
+                                <div className="setting-item" style={{ opacity: 0.6 }}>
+                                    <span className="setting-description">{t('gui:settings_modal.no_extensions', 'No extensions found. Place extension folders in the extensions/ directory.')}</span>
+                                </div>
+                            ) : (
+                                extensions.map(ext => (
+                                    <div className="setting-item extension-item" key={ext.id}>
+                                        <label className="setting-label">
+                                            <span className="setting-title">
+                                                <Icon name="package" size="sm" /> {ext.name} <span className="extension-version">v{ext.version}</span>
+                                            </span>
+                                            <span className="setting-description">{ext.description || ext.id}</span>
+                                        </label>
+                                        <label className="extension-toggle">
+                                            <input
+                                                type="checkbox"
+                                                checked={ext.enabled || false}
+                                                onChange={(e) => toggleExtension(ext.id, e.target.checked)}
+                                            />
+                                            <span className="extension-toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                ))
+                            )}
                         </div>
                     )}
 
