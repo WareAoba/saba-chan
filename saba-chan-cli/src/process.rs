@@ -59,8 +59,10 @@ pub fn find_project_root() -> anyhow::Result<PathBuf> {
 
 /// Daemon 실행 여부 확인 (TCP 연결만으로 판단 — 외부 프로세스 없음)
 pub fn check_daemon_running() -> bool {
+    let port = crate::gui_config::get_ipc_port();
+    let addr = format!("127.0.0.1:{}", port);
     std::net::TcpStream::connect_timeout(
-        &"127.0.0.1:57474".parse().unwrap(),
+        &addr.parse().unwrap_or_else(|_| "127.0.0.1:57474".parse().unwrap()),
         Duration::from_millis(500),
     )
     .is_ok()
@@ -235,11 +237,12 @@ pub fn start_bot() -> anyhow::Result<String> {
         serde_json::to_string_pretty(&config)?,
     )?;
 
+    let ipc_base = crate::gui_config::get_ipc_base_url();
     let mut cmd = Command::new("node");
     cmd.arg(bot_dir.join("index.js"))
        .current_dir(&bot_dir)
        .env("DISCORD_TOKEN", &token)
-       .env("IPC_BASE", "http://127.0.0.1:57474")
+       .env("IPC_BASE", &ipc_base)
        .env("SABA_LANG", &lang);
 
     spawn_detached(&mut cmd)?;

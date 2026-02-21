@@ -11,6 +11,15 @@ use super::super::{
     ServerStartRequest, ServerStopRequest,
 };
 
+/// GET /health - 데몬 활성 확인용 경량 ping
+///
+/// supervisor lock이나 디스크 I/O 없이 즉시 응답합니다.
+/// `daemon:status` 폴링 및 데몬 ready 체크에 사용됩니다.
+pub async fn health_check() -> impl IntoResponse {
+    let version = env!("CARGO_PKG_VERSION");
+    (StatusCode::OK, Json(json!({ "ok": true, "version": version })))
+}
+
 /// GET /api/servers - 모든 서버 목록 (인스턴스 기반)
 pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
     let supervisor = state.supervisor.read().await;
@@ -20,23 +29,23 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
 
     for instance in instances {
         // ── Extension hook: server.list_enrich ──
-        // Extension이 Docker 상태/통계를 제공할 수 있음 (TTL 캐시 적용)
+        // Extension이 런타임 상태/통계를 제공할 수 있음 (TTL 캐시 적용)
         let mut ext_handled = false;
-        if instance.use_docker {
+        let has_ext_hooks = !instance.extension_data.is_empty();
+        if has_ext_hooks {
             // 캐시 확인 — TTL 내 결과가 있으면 Python 프로세스 스폰 생략
-            let enrich_result = if let Some(cached_val) = state.docker_status_cache.get(&instance.id) {
+            let enrich_result = if let Some(cached_val) = state.extension_status_cache.get(&instance.id) {
                 cached_val
             } else {
                 let ext_mgr = state.extension_manager.clone();
-                // 모듈 메타데이터에서 Docker 프로세스 패턴 조회
+                // 모듈 메타데이터에서 프로세스 패턴 조회
                 let process_patterns = supervisor.module_loader.get_module(&instance.module_name)
-                    .map(|m| m.metadata.docker_process_patterns.clone())
+                    .map(|m| m.metadata.process_patterns.clone())
                     .unwrap_or_default();
                 let ctx = serde_json::json!({
                     "instance_id": &instance.id,
                     "instance_name": &instance.name,
                     "module": &instance.module_name,
-                    "use_docker": instance.use_docker,
                     "extension_data": &instance.extension_data,
                     "instance_dir": supervisor.instance_store.instance_dir(&instance.id).to_string_lossy(),
                     "process_patterns": process_patterns,
@@ -47,7 +56,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
                 let result = results.into_iter()
                     .find_map(|(_id, r)| r.ok())
                     .unwrap_or_else(|| json!({"handled": false}));
-                state.docker_status_cache.set(&instance.id, result.clone());
+                state.extension_status_cache.set(&instance.id, result.clone());
                 result
             };
 
@@ -57,19 +66,23 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
 
             if is_handled {
                 let res = &enrich_result;
-                // Extension이 서버 정보를 완전히 제공
                 let ext_status = res.get("status").and_then(|s| s.as_str())
                     .unwrap_or("stopped").to_string();
-                let provisioning = state.provision_tracker.get(&instance.name)
-                    .map(|p| !p.done)
-                    .unwrap_or(false);
-                let status = if provisioning { "provisioning".to_string() } else { ext_status };
+                let provision_entry = state.provision_tracker.get(&instance.name);
+                let provisioning = provision_entry.is_some();
+                let actively_provisioning = provision_entry.as_ref().map(|p| !p.done).unwrap_or(false);
+                let status = if actively_provisioning { "provisioning".to_string() } else { ext_status };
                 let last_api = state.api_actions.get(&instance.name)
                     .or_else(|| state.api_actions.get(&instance.id));
 
-                let docker_memory_usage = res.get("memory_usage").and_then(|v| v.as_str()).map(|s| s.to_string());
-                let docker_memory_percent = res.get("memory_percent").and_then(|v| v.as_f64());
-                let docker_cpu_percent = res.get("cpu_percent").and_then(|v| v.as_f64());
+                // Extension 런타임 상태를 extension_status에 저장
+                let mut extension_status = std::collections::HashMap::new();
+                // hook 응답에서 extension_id 필드가 있으면 해당 키로, 아니면 "default"
+                let ext_key = res.get("extension_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("default")
+                    .to_string();
+                extension_status.insert(ext_key, enrich_result.clone());
 
                 servers.push(ServerInfo {
                     id: instance.id.clone(),
@@ -91,12 +104,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
                     server_version: instance.server_version.clone(),
                     last_api_action: last_api,
                     provisioning,
-                    use_docker: instance.use_docker,
-                    docker_memory_usage,
-                    docker_memory_percent,
-                    docker_cpu_percent,
-                    docker_cpu_limit: instance.docker_cpu_limit,
-                    docker_memory_limit: instance.docker_memory_limit.clone(),
+                    extension_status,
                     extension_data: instance.extension_data.clone(),
                     port_conflicts: vec![],
                 });
@@ -120,13 +128,13 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
         let last_api = state.api_actions.get(&instance.name)
             .or_else(|| state.api_actions.get(&instance.id));
 
-        // Docker 프로비저닝 진행 여부 확인
-        let provisioning = state.provision_tracker.get(&instance.name)
-            .map(|p| !p.done)
-            .unwrap_or(false);
+        // 프로비저닝 진행 여부 확인 (tracker entry 존재 = provisioning UI 표시)
+        let provision_entry = state.provision_tracker.get(&instance.name);
+        let provisioning = provision_entry.is_some();
+        let actively_provisioning = provision_entry.as_ref().map(|p| !p.done).unwrap_or(false);
 
         // 프로비저닝 중이면 상태를 "provisioning"으로 오버라이드
-        let status = if provisioning { "provisioning".to_string() } else { status };
+        let status = if actively_provisioning { "provisioning".to_string() } else { status };
 
         servers.push(ServerInfo {
             id: instance.id.clone(),
@@ -148,12 +156,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
             server_version: instance.server_version.clone(),
             last_api_action: last_api,
             provisioning,
-            use_docker: instance.use_docker,
-            docker_memory_usage: None,
-            docker_memory_percent: None,
-            docker_cpu_percent: None,
-            docker_cpu_limit: instance.docker_cpu_limit,
-            docker_memory_limit: instance.docker_memory_limit.clone(),
+            extension_status: std::collections::HashMap::new(),
             extension_data: instance.extension_data.clone(),
             port_conflicts: vec![],
         });
@@ -366,6 +369,111 @@ pub async fn get_module_metadata(
     }
 }
 
+/// GET /api/modules/registry - saba-chan-modules 최신 릴리스 manifest 가져오기
+pub async fn fetch_module_registry() -> impl IntoResponse {
+    let url = "https://github.com/WareAoba/saba-chan-modules/releases/latest/download/manifest.json";
+    match reqwest::get(url).await {
+        Ok(resp) if resp.status().is_success() => {
+            match resp.json::<serde_json::Value>().await {
+                Ok(data) => (StatusCode::OK, Json(json!({ "ok": true, "registry": data }))).into_response(),
+                Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": e.to_string() }))).into_response(),
+            }
+        }
+        Ok(resp) => {
+            (StatusCode::OK, Json(json!({ "ok": false, "error": format!("HTTP {}", resp.status()) }))).into_response()
+        }
+        Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": e.to_string() }))).into_response(),
+    }
+}
+
+/// POST /api/modules/registry/:id/install - 모듈 레지스트리에서 모듈 설치
+pub async fn install_module_from_registry(
+    Path(module_id): Path<String>,
+    State(state): State<IPCServer>,
+) -> impl IntoResponse {
+    // 레지스트리에서 다운로드 URL 구성
+    let asset_name = format!("module-{}.zip", module_id);
+    let download_url = format!(
+        "https://github.com/WareAoba/saba-chan-modules/releases/latest/download/{}",
+        asset_name
+    );
+
+    // 설치 디렉토리 결정
+    let modules_dir = {
+        let supervisor = state.supervisor.read().await;
+        std::path::PathBuf::from(supervisor.module_loader.modules_dir())
+    };
+
+    let target_dir = modules_dir.join(&module_id);
+
+    // 임시 zip 다운로드
+    let zip_path = modules_dir.join(format!("_tmp_module_{}.zip", module_id));
+
+    match reqwest::get(&download_url).await {
+        Ok(resp) if resp.status().is_success() => {
+            match resp.bytes().await {
+                Ok(bytes) => {
+                    if let Err(e) = std::fs::write(&zip_path, &bytes) {
+                        return (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Failed to write zip: {}", e) }))).into_response();
+                    }
+                    // zip 압축 해제
+                    match std::fs::File::open(&zip_path) {
+                        Ok(file) => {
+                            match zip::ZipArchive::new(std::io::BufReader::new(file)) {
+                                Ok(mut archive) => {
+                                    if let Err(e) = archive.extract(&target_dir) {
+                                        let _ = std::fs::remove_file(&zip_path);
+                                        return (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Failed to extract: {}", e) }))).into_response();
+                                    }
+                                    let _ = std::fs::remove_file(&zip_path);
+                                    // 모듈 캐시 새로고침
+                                    let supervisor = state.supervisor.read().await;
+                                    let _ = supervisor.refresh_modules();
+                                    (StatusCode::OK, Json(json!({ "ok": true, "module_id": module_id }))).into_response()
+                                }
+                                Err(e) => {
+                                    let _ = std::fs::remove_file(&zip_path);
+                                    (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Invalid zip: {}", e) }))).into_response()
+                                }
+                            }
+                        }
+                        Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Failed to open zip: {}", e) }))).into_response(),
+                    }
+                }
+                Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Failed to read response: {}", e) }))).into_response(),
+            }
+        }
+        Ok(resp) => (StatusCode::OK, Json(json!({ "ok": false, "error": format!("HTTP {}", resp.status()) }))).into_response(),
+        Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": e.to_string() }))).into_response(),
+    }
+}
+
+/// DELETE /api/modules/:id — 모듈 제거 (디렉토리 삭제 + 캐시 갱신)
+pub async fn remove_module(
+    Path(module_id): Path<String>,
+    State(state): State<IPCServer>,
+) -> impl IntoResponse {
+    // 경로 탐색 방지
+    if module_id.contains("..") || module_id.contains('/') || module_id.contains('\\') {
+        return (StatusCode::OK, Json(json!({ "ok": false, "error": "Invalid module ID" }))).into_response();
+    }
+    let modules_dir = {
+        let supervisor = state.supervisor.read().await;
+        std::path::PathBuf::from(supervisor.module_loader.modules_dir())
+    };
+    let module_path = modules_dir.join(&module_id);
+    if !module_path.exists() {
+        return (StatusCode::OK, Json(json!({ "ok": false, "error": "Module not found" }))).into_response();
+    }
+    if let Err(e) = std::fs::remove_dir_all(&module_path) {
+        return (StatusCode::OK, Json(json!({ "ok": false, "error": e.to_string() }))).into_response();
+    }
+    // 캐시 갱신 (write lock)
+    let mut supervisor = state.supervisor.write().await;
+    let _ = supervisor.refresh_modules();
+    (StatusCode::OK, Json(json!({ "ok": true, "id": module_id }))).into_response()
+}
+
 /// GET /api/server/:name/status - 서버 상태 조회
 pub async fn get_server_status(
     Path(name): Path<String>,
@@ -408,11 +516,11 @@ pub async fn start_server_handler(
 ) -> impl IntoResponse {
     // API 경유 시작 기록 (GUI 외부 시작 감지용)
     state.api_actions.record(&name);
-    // Docker 상태 캐시 무효화 — 시작 직후 fresh 상태 반영
+    // 익스텐션 상태 캐시 무효화 — 시작 직후 fresh 상태 반영
     {
         let sup = state.supervisor.read().await;
         if let Some(inst) = sup.instance_store.list().iter().find(|i| i.name == name) {
-            state.docker_status_cache.invalidate(&inst.id);
+            state.extension_status_cache.invalidate(&inst.id);
         }
     }
     let supervisor = state.supervisor.read().await;
@@ -448,11 +556,11 @@ pub async fn stop_server_handler(
 ) -> impl IntoResponse {
     // API 경유 정지 기록 (GUI 외부 정지 감지용)
     state.api_actions.record(&name);
-    // Docker 상태 캐시 무효화 — 정지 직후 fresh 상태 반영
+    // 익스텐션 상태 캐시 무효화 — 정지 직후 fresh 상태 반영
     {
         let sup = state.supervisor.read().await;
         if let Some(inst) = sup.instance_store.list().iter().find(|i| i.name == name) {
-            state.docker_status_cache.invalidate(&inst.id);
+            state.extension_status_cache.invalidate(&inst.id);
         }
     }
 
@@ -482,8 +590,8 @@ pub async fn stop_server_handler(
                     .and_then(|s| s.as_bool())
                     .unwrap_or(false);
                 if success {
-                    // Docker 모드에서는 ProcessTracker를 사용하지 않으므로 skip
-                    if !inst.use_docker {
+                    // 익스텐션이 외부 프로세스 관리(예: 컨테이너)를 사용하면 ProcessTracker skip
+                    if inst.extension_data.is_empty() || !inst.ext_enabled("docker_enabled") {
                         // name과 id 둘 다로 untrack 시도
                         let _ = supervisor.tracker.untrack(&name);
                         if let Err(e) = supervisor.tracker.untrack(&inst.id) {

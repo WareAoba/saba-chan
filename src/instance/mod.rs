@@ -49,16 +49,8 @@ pub struct ServerInstance {
     pub module_settings: HashMap<String, serde_json::Value>,
     #[serde(default)]
     pub server_version: Option<String>,
-    /// Docker 모드 활성화 여부
-    #[serde(default)]
-    pub use_docker: bool,
-    /// Docker CPU 제한 (코어 수, 예: 2.0)
-    #[serde(default)]
-    pub docker_cpu_limit: Option<f64>,
-    /// Docker 메모리 제한 (예: "4g", "512m")
-    #[serde(default)]
-    pub docker_memory_limit: Option<String>,
-    /// 범용 익스텐션 확장 데이터
+    /// 범용 익스텐션 확장 데이터 — 각 익스텐션이 필요한 플래그/설정을 저장합니다.
+    /// 예: { "<ext>_enabled": true, "<ext>_cpu_limit": 2.0, "<ext>_memory_limit": "4g" }
     #[serde(default)]
     pub extension_data: std::collections::HashMap<String, serde_json::Value>,
 }
@@ -87,11 +79,26 @@ impl ServerInstance {
             protocol_mode: "auto".to_string(),
             module_settings: HashMap::new(),
             server_version: None,
-            use_docker: false,
-            docker_cpu_limit: None,
-            docker_memory_limit: None,
             extension_data: HashMap::new(),
         }
+    }
+
+    /// extension_data에 특정 boolean 플래그가 true인지 확인합니다.
+    /// 예: `instance.ext_enabled("<ext>_enabled")` → 해당 확장 활성 여부
+    pub fn ext_enabled(&self, key: &str) -> bool {
+        self.extension_data.get(key)
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+    }
+
+    /// extension_data에서 f64 값을 읽습니다.
+    pub fn ext_f64(&self, key: &str) -> Option<f64> {
+        self.extension_data.get(key).and_then(|v| v.as_f64())
+    }
+
+    /// extension_data에서 문자열 값을 읽습니다.
+    pub fn ext_str(&self, key: &str) -> Option<&str> {
+        self.extension_data.get(key).and_then(|v| v.as_str())
     }
 }
 
@@ -306,7 +313,50 @@ impl InstanceStore {
         let instance_path = dir.join("instance.json");
         let content = fs::read_to_string(&instance_path)
             .with_context(|| format!("instance.json 읽기 실패: {}", instance_path.display()))?;
-        let mut instance: ServerInstance = serde_json::from_str(&content)?;
+
+        // ── 레거시 필드 마이그레이션: use_docker/docker_* → extension_data ──
+        // (구 버전 instance.json에 존재하던 필드를 extension_data로 통합)
+        let mut raw: serde_json::Value = serde_json::from_str(&content)?;
+        let mut needs_write = false;
+
+        // 레거시 필드 값을 먼저 읽어둠 (borrow 충돌 회피)
+        let legacy_use_docker = raw.get("use_docker").and_then(|v| v.as_bool()).unwrap_or(false);
+        let legacy_cpu = raw.get("docker_cpu_limit").and_then(|v| v.as_f64());
+        let legacy_mem = raw.get("docker_memory_limit").and_then(|v| v.as_str()).map(String::from);
+        let has_legacy = raw.get("use_docker").is_some()
+            || raw.get("docker_cpu_limit").is_some()
+            || raw.get("docker_memory_limit").is_some();
+
+        if has_legacy {
+            if let Some(obj) = raw.as_object_mut() {
+                if legacy_use_docker {
+                    let ext = obj.entry("extension_data")
+                        .or_insert_with(|| serde_json::json!({}));
+                    if let Some(ext_obj) = ext.as_object_mut() {
+                        ext_obj.entry("docker_enabled".to_string())
+                            .or_insert(serde_json::json!(true));
+                        if let Some(cpu) = legacy_cpu {
+                            ext_obj.entry("docker_cpu_limit".to_string())
+                                .or_insert(serde_json::json!(cpu));
+                        }
+                        if let Some(mem) = legacy_mem {
+                            ext_obj.entry("docker_memory_limit".to_string())
+                                .or_insert(serde_json::json!(mem));
+                        }
+                    }
+                    tracing::info!(
+                        "Migrated legacy docker fields → extension_data for instance in {}",
+                        dir.display()
+                    );
+                }
+                obj.remove("use_docker");
+                obj.remove("docker_cpu_limit");
+                obj.remove("docker_memory_limit");
+                needs_write = true;
+            }
+        }
+
+        let mut instance: ServerInstance = serde_json::from_value(raw)?;
 
         // settings.json이 있으면 module_settings 머지
         let settings_path = dir.join("settings.json");
@@ -316,36 +366,13 @@ impl InstanceStore {
                 serde_json::from_str(&settings_content).unwrap_or_default();
             instance.module_settings = settings;
         }
-        // instance.json 자체에 module_settings가 있을 수도 있음 (마이그레이션 직후)
-        // settings.json이 우선
 
-        // ── 마이그레이션: use_docker → extension_data.docker_enabled ──
-        // 기존 use_docker=true 인스턴스가 extension_data에 docker_enabled를 갖도록 보장
-        if instance.use_docker
-            && !instance.extension_data.contains_key("docker_enabled")
-        {
-            tracing::info!(
-                "Migrating instance '{}': use_docker=true → extension_data.docker_enabled=true",
-                instance.name
-            );
-            instance
-                .extension_data
-                .insert("docker_enabled".to_string(), serde_json::json!(true));
-            // docker_cpu_limit, docker_memory_limit도 extension_data로 복사
-            if let Some(cpu) = instance.docker_cpu_limit {
-                instance
-                    .extension_data
-                    .entry("docker_cpu_limit".to_string())
-                    .or_insert(serde_json::json!(cpu));
-            }
-            if let Some(ref mem) = instance.docker_memory_limit {
-                instance
-                    .extension_data
-                    .entry("docker_memory_limit".to_string())
-                    .or_insert(serde_json::json!(mem));
-            }
-            // 마이그레이션된 instance.json 저장
-            let migrated = serde_json::to_string_pretty(&instance)?;
+        // 마이그레이션된 instance.json 저장 (레거시 필드 제거)
+        if needs_write {
+            // module_settings 제외하고 저장
+            let mut meta = instance.clone();
+            std::mem::take(&mut meta.module_settings);
+            let migrated = serde_json::to_string_pretty(&meta)?;
             fs::write(&instance_path, &migrated)?;
         }
 

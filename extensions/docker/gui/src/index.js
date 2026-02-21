@@ -7,6 +7,7 @@
 import DockerBadge from './DockerBadge';
 import DockerMiniGauge from './DockerMiniGauge';
 import DockerStatsRow from './DockerStatsRow';
+import DockerProvision from './DockerProvision';
 import DockerTab from './DockerTab';
 import DockerToggle from './DockerToggle';
 import { MemoryGauge } from './MemoryGauge';
@@ -20,6 +21,7 @@ export function registerSlots() {
     'ServerCard.badge': [DockerBadge],
     'ServerCard.headerGauge': [DockerMiniGauge],
     'ServerCard.expandedStats': [DockerStatsRow],
+    'ServerCard.provision': [DockerProvision],
     'ServerSettings.tab': [DockerTab],
     'AddServer.options': [DockerToggle],
   };
@@ -30,6 +32,7 @@ export {
   DockerBadge,
   DockerMiniGauge,
   DockerStatsRow,
+  DockerProvision,
   DockerTab,
   DockerToggle,
   MemoryGauge,

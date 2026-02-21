@@ -57,9 +57,11 @@
     "console_buffer_label": "Console Buffer Size",
     "console_buffer_description": "Maximum number of lines to keep in the server console",
     "extensions_tab": "Extensions",
-    "no_extensions": "No extensions found. Place extension folders in the extensions/ directory."
-  },
-  "add_server_modal": {
+    "no_extensions": "No extensions found. Place extension folders in the extensions/ directory.",
+    "extensions_moved_hint": "Extension management has moved to Saba Storage.",
+    "extensions_toggle_hint": "Enable or disable installed extensions. Install, remove, and update via Saba Storage.",
+    "extensions_none": "No extensions installed.",
+    "extensions_store_hint": "Install · Remove · Update",
     "title": "Add New Server",
     "subtitle": "Select a game module and configure your new server instance.",
     "advanced_settings": "Advanced Settings",
@@ -323,7 +325,9 @@
     "aliases_reset_message": "Aliases have been reset to default",
     "gui_settings_tooltip": "GUI Settings",
     "alias_conflict_title": "Alias Conflict",
-    "alias_conflict_detail": "Alias '{{alias}}' is already registered to module '{{module}}'"
+    "alias_conflict_detail": "Alias '{{alias}}' is already registered to module '{{module}}'",
+    "multiple_instances_warning": "Multiple instances use the same module '{{module}}' ({{names}}). Discord bot commands using module aliases will be ambiguous — use instance names instead.",
+    "alias_ambiguity_card": "Module '{{module}}' has {{count}} instances — Discord alias is ambiguous"
   },
   "buttons": {
     "add_server": "Add Server",
@@ -425,6 +429,20 @@
     "no_updates": "All components are up to date."
   },
   "extensions": {
+    "installed_section": "Installed",
+    "store_section": "Store",
+    "refresh_registry": "Refresh registry",
+    "registry_loading": "Loading registry...",
+    "store_empty": "Click refresh to load available extensions.",
+    "all_installed": "All extensions are already installed.",
+    "install_btn": "Install",
+    "installing": "Installing...",
+    "installed": "Extension '{{id}}' installed.",
+    "install_failed": "Failed to install '{{id}}': {{error}}",
+    "install_error": "An error occurred while installing '{{id}}'.",
+    "update_available": "Update available: v{{version}}",
+    "update_badge": "UPDATE",
+    "update_to": "Update to v{{version}}",
     "error_not_found": "Extension '{{id}}' not found. It may have been removed.",
     "error_dep_missing": "Cannot enable '{{id}}': required extension '{{dep}}' is not installed. Install it first.",
     "error_dep_disabled": "Cannot enable '{{id}}': required extension '{{dep}}' is not enabled. Enable it first.",
@@ -433,10 +451,41 @@
     "error_unknown": "An unknown error occurred.",
     "error_network": "Failed to {{action}} extension '{{id}}'. Check daemon connection."
   },
+  "saba_storage": {
+    "title": "Saba Storage",
+    "setting_description": "Manage updates, modules, and extensions",
+    "tab_components": "Components",
+    "tab_modules": "Modules",
+    "tab_extensions": "Extensions",
+    "update_all": "Update All",
+    "refresh": "Refresh",
+    "installed_modules": "Installed Modules",
+    "no_installed_modules": "No modules installed.",
+    "available_modules": "Available Modules",
+    "show_more_modules": "Show More Modules",
+    "show_more_extensions": "Show More Extensions",
+    "refresh_registry": "Refresh registry",
+    "loading_registry": "Loading registry...",
+    "registry_fetch_failed": "Failed to fetch registry.",
+    "all_modules_installed": "All available modules are installed.",
+    "installed": "Installed",
+    "installing": "Installing...",
+    "install_btn": "Install",
+    "install_failed_short": "Failed",
+    "remove": "Remove",
+    "remove_module_confirm_title": "Remove Module",
+    "remove_confirm_msg": "Remove module '{{id}}'? This cannot be undone and any server instances using this module will no longer be able to run.",
+    "remove_ext_confirm_title": "Remove Extension",
+    "remove_confirm_msg_ext": "Remove extension '{{id}}'? The files will be permanently deleted."
+  },
   "validation": {
     "required": "{{field}} is required",
     "type_mismatch": "{{field}} has an invalid type",
     "out_of_range": "{{field}} is out of range ({{min}} ~ {{max}})",
     "invalid_option": "{{field}}: '{{value}}' is not a valid option"
+  },
+  "context_menu": {
+    "settings": "Settings",
+    "delete": "Delete"
   }
 }

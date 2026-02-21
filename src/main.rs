@@ -201,7 +201,7 @@ async fn main() -> anyhow::Result<()> {
         tokio::signal::ctrl_c().await.ok();
         tracing::info!("Shutdown signal received, cleaning up...");
 
-        // 1. 익스텐션 정리 (docker compose down 등은 extension hook으로 위임)
+        // 1. 익스텐션 정리 (컨테이너 종료 등은 extension hook으로 위임)
         {
             let sup = supervisor_shutdown.read().await;
             let all_instances: Vec<_> = sup.instance_store.list()

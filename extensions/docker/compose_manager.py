@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import platform
+from pathlib import Path
 
 # ── WSL2 모드 전역 상태 ──────────────────────────
 # Windows에서는 Docker Desktop 대신 WSL2 내부의 standalone dockerd를 사용.
@@ -26,6 +27,57 @@ def _set_wsl2_mode(enabled: bool):
 
 def _is_wsl2_mode() -> bool:
     return _wsl2_mode
+
+
+# ── Docker 데몬 상태 확인 & 자동 시작 ────────────
+
+def _docker_daemon_running() -> bool:
+    """Docker 데몬이 응답하는지 확인"""
+    docker = _docker_cli()
+    ok, _, _ = _run_cmd(docker + ["info"], timeout=10)
+    return ok
+
+
+def _ensure_docker_daemon() -> dict | None:
+    """Docker 데몬이 꺼져 있으면 docker_engine.ensure()로 시작.
+    
+    성공 시 None, 실패 시 에러 dict 반환.
+    """
+    if _docker_daemon_running():
+        return None
+
+    # 같은 패키지의 docker_engine 모듈 임포트
+    try:
+        ext_dir = Path(__file__).resolve().parent
+        sys.path.insert(0, str(ext_dir.parent))
+        from docker.docker_engine import DockerEngine
+    except ImportError as e:
+        return {"handled": True, "success": False,
+                "error": f"Docker daemon is not running and auto-start failed (import error: {e})"}
+
+    engine = DockerEngine()
+
+    # 바이너리 준비
+    if not engine.binaries_ready:
+        try:
+            engine.ensure_available()
+        except Exception as e:
+            return {"handled": True, "success": False,
+                    "error": f"Failed to download Docker Engine: {e}"}
+
+    # 데몬 시작
+    try:
+        engine.start_daemon()
+    except Exception as e:
+        return {"handled": True, "success": False,
+                "error": f"Failed to start Docker daemon: {e}"}
+
+    # 준비 대기
+    if not engine.wait_for_ready(timeout_secs=60):
+        return {"handled": True, "success": False,
+                "error": "Docker daemon started but did not become ready in time"}
+
+    return None
 
 
 # ── Docker CLI 경로 유틸리티 ──────────────────────
@@ -80,8 +132,52 @@ def _run_cmd(cmd: list, cwd: str = None, timeout: int = 120) -> tuple:
         return False, "", str(e)
 
 
+def _parse_compose_ps(stdout: str) -> list:
+    """docker compose ps --format json 출력을 파싱.
+
+    Docker Compose 버전에 따라 출력 형식이 다름:
+      - v2.17+: JSON-lines (한 줄에 JSON 오브젝트 하나)
+      - v2.0~v2.16: JSON 배열 (한 줄짜리 or 여러 줄)
+    둘 다 처리하며 항상 list[dict]를 반환.
+    """
+    text = stdout.strip()
+    if not text:
+        return []
+
+    # 먼저 전체를 JSON 파싱 시도 (배열 형식 대응)
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, list):
+            return [c for c in parsed if isinstance(c, dict)]
+        if isinstance(parsed, dict):
+            return [parsed]
+    except json.JSONDecodeError:
+        pass
+
+    # JSON-lines 형식: 줄별 파싱
+    containers = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+            if isinstance(obj, dict):
+                containers.append(obj)
+            elif isinstance(obj, list):
+                containers.extend(c for c in obj if isinstance(c, dict))
+        except json.JSONDecodeError:
+            pass
+    return containers
+
+
 def _compose_cmd(instance_dir: str, compose_file: str = "docker-compose.yml") -> list:
-    """compose 명령의 기본 부분 구성"""
+    """compose 명령의 기본 부분 구성
+    
+    인스턴스별 격리는 cwd(=instance_dir)로 자연스럽게 보장됨.
+    각 instance_dir이 고유 UUID 디렉토리이므로 Docker Compose 기본
+    프로젝트명(=디렉토리명)이 인스턴스별로 다름.
+    """
     base = _compose_cli()
     if _is_wsl2_mode():
         base += ["-f", compose_file]
@@ -90,18 +186,47 @@ def _compose_cmd(instance_dir: str, compose_file: str = "docker-compose.yml") ->
     return base
 
 
+def _instance_container_name(config: dict) -> str:
+    """config에서 인스턴스별 고유 container_name 도출.
+    
+    config에 module + instance_id가 있으면 _container_name() 사용,
+    없으면 instance_dir의 디렉토리명 폴백.
+    """
+    module_name = config.get("module", config.get("module_name", ""))
+    instance_id = config.get("instance_id", "")
+    if module_name and instance_id:
+        return _container_name(module_name, instance_id)
+    # 폴백: instance_dir의 마지막 디렉토리명
+    instance_dir = config.get("instance_dir", "")
+    return os.path.basename(instance_dir.rstrip("/\\")) if instance_dir else ""
+
+
 def _container_name(module_name: str, instance_id: str) -> str:
     """saba-{module}-{instance_id[:8]} 규칙"""
     return f"saba-{module_name}-{instance_id[:8]}"
 
 
-def _progress(percent: int = None, message: str = None):
-    """PROGRESS 프로토콜로 진행률 보고"""
+def _progress(percent: int = None, message: str = None,
+              step: int = None, total: int = None, label: str = None,
+              steps: list = None):
+    """PROGRESS 프로토콜로 진행률 보고
+    
+    step/total/label/steps는 Rust ExtensionProgress 구조체의 확장 필드로,
+    GUI의 프로비저닝 단계 표시에 사용됩니다.
+    """
     info = {}
     if percent is not None:
         info["percent"] = percent
     if message is not None:
         info["message"] = message
+    if step is not None:
+        info["step"] = step
+    if total is not None:
+        info["total"] = total
+    if label is not None:
+        info["label"] = label
+    if steps is not None:
+        info["steps"] = steps
     sys.stderr.write(f"PROGRESS:{json.dumps(info)}\n")
     sys.stderr.flush()
 
@@ -115,6 +240,11 @@ def start(config: dict) -> dict:
     
     Rust: DockerComposeManager::start() (D4)
     """
+    # Docker 데몬이 꺼져 있으면 자동 시작
+    daemon_err = _ensure_docker_daemon()
+    if daemon_err is not None:
+        return daemon_err
+
     instance_dir = config["instance_dir"]
     compose_file = "docker-compose.yml"
     compose_path = os.path.join(instance_dir, compose_file)
@@ -122,13 +252,60 @@ def start(config: dict) -> dict:
     if not os.path.exists(compose_path):
         return {"handled": True, "success": False, "error": f"No {compose_file} found in {instance_dir}"}
 
-    cmd = _compose_cmd(instance_dir, compose_file) + ["up", "-d"]
+    # --force-recreate: compose.yml 변경이 반영되도록 컨테이너를 항상 재생성
+    # stop()은 compose stop(컨테이너 유지)이므로, 설정 변경 후에도 이전 컨테이너를 재사용하는 문제 방지
+    cmd = _compose_cmd(instance_dir, compose_file) + ["up", "-d", "--force-recreate"]
     success, stdout, stderr = _run_cmd(cmd, cwd=instance_dir, timeout=300)
 
-    if success:
-        return {"handled": True, "success": True, "message": "Docker Compose containers started", "stdout": stdout}
-    else:
+    if not success:
         return {"handled": True, "success": False, "error": f"Docker Compose up failed: {stderr or stdout}"}
+
+    # 컨테이너가 실제로 살아있는지 확인 (up -d는 즉시 종료해도 성공 반환)
+    import time
+    time.sleep(3)  # 컨테이너 초기화 대기
+    check_cmd = _compose_cmd(instance_dir, compose_file) + ["ps", "--format", "json", "-a"]
+    check_ok, check_out, _ = _run_cmd(check_cmd, cwd=instance_dir, timeout=15)
+
+    container_healthy = False
+    container_state = "unknown"
+    if check_ok:
+        for c in _parse_compose_ps(check_out):
+            container_state = c.get("State", "unknown")
+            if container_state == "running":
+                container_healthy = True
+            break
+
+    # 초기 로그 수집 (문제 진단용)
+    log_cmd = _compose_cmd(instance_dir, compose_file) + ["logs", "--tail", "30"]
+    _, initial_logs, _ = _run_cmd(log_cmd, cwd=instance_dir, timeout=10)
+
+    if not container_healthy:
+        return {
+            "handled": True,
+            "success": False,
+            "error": f"Container started but is not running (state: {container_state}). Check logs for details.",
+            "container_state": container_state,
+            "initial_logs": initial_logs.strip() if initial_logs else "",
+        }
+
+    # log_follower 정보 구성 — 코어가 제네릭 로그 스트리머를 생성하도록
+    log_follower_cmd = _compose_cmd(instance_dir, compose_file) + ["logs", "--follow", "--no-color", "--tail", "100"]
+    log_follower = {
+        "program": log_follower_cmd[0],
+        "args": log_follower_cmd[1:],
+        "working_dir": instance_dir,
+        "description": "Docker compose log stream",
+        "strip_prefix": " | ",
+    }
+
+    return {
+        "handled": True,
+        "success": True,
+        "message": "Docker Compose containers started",
+        "stdout": stdout,
+        "initial_logs": initial_logs.strip() if initial_logs else "",
+        "log_follower": log_follower,
+    }
 
 
 def stop(config: dict) -> dict:
@@ -153,7 +330,9 @@ def cleanup(config: dict) -> dict:
     
     Rust: DockerComposeManager::down() (D6)
     """
-    instance_dir = config["instance_dir"]
+    instance_dir = config.get("instance_dir", "")
+    if not instance_dir:
+        return {"handled": True, "success": False, "error": "instance_dir not provided"}
     compose_file = "docker-compose.yml"
 
     cmd = _compose_cmd(instance_dir, compose_file) + ["down"]
@@ -164,13 +343,14 @@ def cleanup(config: dict) -> dict:
 
 
 def status(config: dict) -> dict:
-    """server.status — docker compose ps + docker top
+    """server.status — 컨테이너 기반 상태 확인 (인스턴스별 격리)
 
-    Rust: DockerComposeManager::status() (D7) + server_process_running() (D8)
+    docker compose ps (-p 프로젝트명) → 해당 인스턴스의 컨테이너만 조회
+    docker top <container> → 해당 컨테이너 내부 프로세스만 확인
     
     반환:
       handled=True
-      running: bool
+      running: bool - 서버 프로세스가 살아있는지
       server_process_running: bool
       container_name: str or None
       status: "running" | "starting" | "stopped"
@@ -179,36 +359,20 @@ def status(config: dict) -> dict:
     compose_file = "docker-compose.yml"
     process_patterns = config.get("process_patterns", [])
 
-    # docker compose ps --format json
+    # docker compose ps --format json (cwd로 인스턴스 격리)
     cmd = _compose_cmd(instance_dir, compose_file) + ["ps", "--format", "json", "-a"]
     success, stdout, stderr = _run_cmd(cmd, cwd=instance_dir, timeout=30)
 
-    if not success:
-        return {
-            "handled": True,
-            "running": False,
-            "server_process_running": False,
-            "container_name": None,
-            "status": "stopped",
-        }
+    # stdout 파싱 — JSON-lines 또는 JSON 배열 모두 지원
+    containers = _parse_compose_ps(stdout)
 
-    # stdout 파싱 — JSON-lines 또는 단일 JSON
-    containers = []
-    for line in stdout.strip().splitlines():
-        line = line.strip()
-        if line:
-            try:
-                containers.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
+    running_containers = [c for c in containers if c.get("State") == "running"]
+    container_running = len(running_containers) > 0
+    # 실행 중인 컨테이너 우선, 없으면 첫 번째
+    target = running_containers[0] if running_containers else (containers[0] if containers else None)
+    container_name = (target.get("Name") or target.get("Names")) if target else None
 
-    container_running = any(
-        c.get("State") == "running" for c in containers
-    )
-    container_name = None
-    if containers:
-        container_name = containers[0].get("Name") or containers[0].get("Names")
-
+    # ── 컨테이너가 실행 중이 아니면 stopped ──
     if not container_running:
         return {
             "handled": True,
@@ -218,12 +382,12 @@ def status(config: dict) -> dict:
             "status": "stopped",
         }
 
-    # 컨테이너 running → 프로세스 패턴 매칭 (D8)
+    # ── docker top으로 해당 컨테이너 내부 프로세스만 확인 (인스턴스 격리) ──
     server_proc_running = True  # default if no patterns
     matched_process = None
 
     if process_patterns and container_name:
-        server_proc_running, matched_process = _check_server_process(container_name, process_patterns)
+        server_proc_running, matched_process = _check_docker_top_process(container_name, process_patterns)
 
     final_status = "running" if server_proc_running else "starting"
 
@@ -238,11 +402,18 @@ def status(config: dict) -> dict:
 
 
 def _check_server_process(container_name: str, process_patterns: list) -> tuple:
-    """docker top으로 서버 프로세스 존재 확인 (D8)
+    """docker top으로 해당 컨테이너 내부 프로세스만 확인 (인스턴스 격리)
+
+    WSL2/비-WSL2 모두 `docker top <container>` 사용.
+    _docker_cli()가 WSL2에서는 자동으로 `wsl -u root -- /opt/.../docker` prefix를 붙임.
     
-    Note: `-eo args` 옵션은 일부 컨테이너 이미지(steamcmd 등)에서
-    지원하지 않으므로 기본 `docker top`을 사용한다 (원래 Rust 구현과 동일).
+    Returns: (running: bool, matched_pattern: str | None)
     """
+    return _check_docker_top_process(container_name, process_patterns)
+
+
+def _check_docker_top_process(container_name: str, process_patterns: list) -> tuple:
+    """docker top으로 서버 프로세스 존재 확인 (컨테이너 내부만 검사)"""
     docker = _docker_cli()
     cmd = docker + ["top", container_name]
     success, stdout, stderr = _run_cmd(cmd, timeout=15)
@@ -250,8 +421,7 @@ def _check_server_process(container_name: str, process_patterns: list) -> tuple:
     if not success:
         return False, None
 
-    # 헤더 스킵 후 각 라인에서 패턴 매칭
-    lines = stdout.splitlines()[1:]  # 첫 줄은 헤더
+    lines = stdout.splitlines()[1:]
     for line in lines:
         line_lower = line.lower()
         for pattern in process_patterns:
@@ -259,6 +429,75 @@ def _check_server_process(container_name: str, process_patterns: list) -> tuple:
                 return True, pattern
 
     return False, None
+
+
+def _check_wsl_process(process_patterns: list) -> tuple:
+    """(레거시 폴백) WSL2 전역 프로세스 검색 — 인스턴스 격리 없음.
+    
+    container_name이 없는 경우에만 사용. 가능하면 _check_docker_top_process를 사용.
+    Returns: (running: bool, matched_pattern: str | None)
+    """
+    cmd = ["wsl", "-u", "root", "--", "ps", "-eo", "args", "--no-headers"]
+    success, stdout, stderr = _run_cmd(cmd, timeout=10)
+    if not success:
+        return False, None
+
+    for line in stdout.splitlines():
+        line_lower = line.strip().lower()
+        for pattern in process_patterns:
+            if pattern.lower() in line_lower:
+                return True, pattern
+    return False, None
+
+
+def _get_container_stats(container_name: str) -> dict | None:
+    """docker stats로 해당 컨테이너의 리소스 사용량 조회 (인스턴스 격리)
+    
+    `docker stats <container_name> --no-stream --format` 사용.
+    Returns: {"memory_usage": str, "memory_percent": float, "cpu_percent": float} or None
+    """
+    docker = _docker_cli()
+    cmd = docker + ["stats", container_name, "--no-stream",
+                     "--format", "{{.MemUsage}}@@{{.MemPerc}}@@{{.CPUPerc}}"]
+    success, stdout, stderr = _run_cmd(cmd, timeout=15)
+    if not success:
+        return None
+
+    line = stdout.strip()
+    if not line:
+        return None
+
+    parts = line.split("@@")
+    if len(parts) < 3:
+        return None
+
+    try:
+        mem_usage = parts[0].strip()  # e.g. "803MiB / 16GiB"
+        mem_perc_str = parts[1].strip().rstrip("%")
+        cpu_perc_str = parts[2].strip().rstrip("%")
+        return {
+            "memory_usage": mem_usage.split("/")[0].strip() if "/" in mem_usage else mem_usage,
+            "memory_percent": float(mem_perc_str),
+            "cpu_percent": float(cpu_perc_str),
+        }
+    except (ValueError, IndexError):
+        return None
+
+
+def _get_wsl_total_memory_mb() -> float | None:
+    """WSL2 전체 메모리(MB) 조회 — /proc/meminfo에서 MemTotal 읽기"""
+    cmd = ["wsl", "-u", "root", "--", "grep", "MemTotal", "/proc/meminfo"]
+    success, stdout, _ = _run_cmd(cmd, timeout=5)
+    if not success:
+        return None
+    # "MemTotal:       16384000 kB"
+    parts = stdout.strip().split()
+    if len(parts) >= 2:
+        try:
+            return int(parts[1]) / 1024.0  # kB → MB
+        except ValueError:
+            pass
+    return None
 
 
 def container_stats(config: dict) -> dict:
@@ -278,13 +517,11 @@ def container_stats(config: dict) -> dict:
 
     container_name = None
     if success:
-        for line in stdout.strip().splitlines():
-            try:
-                c = json.loads(line.strip())
-                container_name = c.get("Name") or c.get("Names")
-                break
-            except json.JSONDecodeError:
-                pass
+        containers = _parse_compose_ps(stdout)
+        running = [c for c in containers if c.get("State") == "running"]
+        target = running[0] if running else (containers[0] if containers else None)
+        if target:
+            container_name = target.get("Name") or target.get("Names")
 
     if not container_name:
         return {"handled": True, "success": False, "error": "Container name not found"}
@@ -362,9 +599,8 @@ def shutdown_all(config: dict) -> dict:
 def enrich_server_info(config: dict) -> dict:
     """server.list_enrich — ServerInfo에 Docker 상태 + 리소스 통계 병합
     
-    Rust: list_servers의 Docker 관련 필드 (M11)
-    docker compose ps로 컨테이너 상태를 확인하고,
-    running이면 docker stats로 CPU/메모리 사용량도 조회.
+    인스턴스별 격리: docker compose ps (cwd=instance_dir) → 해당 컨테이너만 조회
+    리소스: docker stats <container_name> → 해당 컨테이너만 통계
     """
     ext_data = config.get("extension_data", {})
     instance_dir = config.get("instance_dir", "")
@@ -372,90 +608,77 @@ def enrich_server_info(config: dict) -> dict:
     compose_file = "docker-compose.yml"
     compose_path = os.path.join(instance_dir, compose_file) if instance_dir else ""
 
+    base_fields = {
+        "extension_id": "docker",
+        "docker_enabled": ext_data.get("docker_enabled", False),
+        "docker_cpu_limit": ext_data.get("docker_cpu_limit"),
+        "docker_memory_limit": ext_data.get("docker_memory_limit"),
+    }
+
     # compose 파일이 없으면 Docker 모드가 아님
     if not instance_dir or not os.path.exists(compose_path):
-        return {
-            "handled": False,
-            "docker_enabled": ext_data.get("docker_enabled", False),
-            "docker_cpu_limit": ext_data.get("docker_cpu_limit"),
-            "docker_memory_limit": ext_data.get("docker_memory_limit"),
-        }
+        return {"handled": False, **base_fields}
 
-    # docker compose ps — 컨테이너 상태 확인
+    # ── docker compose ps (cwd로 인스턴스 격리) ──
     cmd = _compose_cmd(instance_dir, compose_file) + ["ps", "--format", "json", "-a"]
     success, stdout, stderr = _run_cmd(cmd, cwd=instance_dir, timeout=15)
 
     if not success:
-        return {
-            "handled": True,
-            "status": "stopped",
-            "docker_enabled": ext_data.get("docker_enabled", False),
-            "docker_cpu_limit": ext_data.get("docker_cpu_limit"),
-            "docker_memory_limit": ext_data.get("docker_memory_limit"),
-        }
+        return {"handled": True, "status": "stopped", **base_fields}
 
-    containers = []
-    for line in stdout.strip().splitlines():
-        line = line.strip()
-        if line:
-            try:
-                containers.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
+    containers = _parse_compose_ps(stdout)
 
-    container_running = any(c.get("State") == "running" for c in containers)
-    container_name = containers[0].get("Name") or containers[0].get("Names") if containers else None
+    running_containers = [c for c in containers if c.get("State") == "running"]
+    container_running = len(running_containers) > 0
+    # 실행 중인 컨테이너 이름 우선 추출
+    target = running_containers[0] if running_containers else (containers[0] if containers else None)
+    container_name = (target.get("Name") or target.get("Names")) if target else None
 
     if not container_running:
-        return {
-            "handled": True,
-            "status": "stopped",
-            "docker_enabled": ext_data.get("docker_enabled", False),
-            "docker_cpu_limit": ext_data.get("docker_cpu_limit"),
-            "docker_memory_limit": ext_data.get("docker_memory_limit"),
-        }
+        return {"handled": True, "status": "stopped", **base_fields}
 
-    # 프로세스 패턴 매칭 (starting vs running)
+    # ── docker top으로 서버 프로세스 확인 (인스턴스 격리) ──
     final_status = "running"
     if process_patterns and container_name:
-        proc_running, _ = _check_server_process(container_name, process_patterns)
+        proc_running, _ = _check_docker_top_process(container_name, process_patterns)
         if not proc_running:
             final_status = "starting"
 
-    # docker stats — CPU/메모리 사용량
+    # ── docker stats로 해당 컨테이너만 리소스 통계 조회 ──
     mem_usage = None
     mem_perc = None
     cpu_perc = None
     if container_name:
-        docker = _docker_cli()
-        fmt = "{{json .}}"
-        stat_cmd = docker + ["stats", "--no-stream", "--format", fmt, container_name]
-        stat_ok, stat_out, _ = _run_cmd(stat_cmd, timeout=10)
-        if stat_ok and stat_out.strip():
-            try:
-                stats = json.loads(stat_out.strip())
-                mem_usage = stats.get("MemUsage", "")
-                try:
-                    mem_perc = float(stats.get("MemPerc", "0%").replace("%", ""))
-                except ValueError:
-                    pass
-                try:
-                    cpu_perc = float(stats.get("CPUPerc", "0%").replace("%", ""))
-                except ValueError:
-                    pass
-            except json.JSONDecodeError:
-                pass
+        stats = _get_container_stats(container_name)
+        if stats:
+            mem_usage = stats["memory_usage"]
+            mem_perc = stats["memory_percent"]
+            cpu_perc = stats["cpu_percent"]
 
     return {
         "handled": True,
         "status": final_status,
-        "docker_enabled": ext_data.get("docker_enabled", False),
-        "docker_cpu_limit": ext_data.get("docker_cpu_limit"),
-        "docker_memory_limit": ext_data.get("docker_memory_limit"),
         "memory_usage": mem_usage,
         "memory_percent": mem_perc,
         "cpu_percent": cpu_perc,
+        **base_fields,
     }
+
+
+def _parse_memory_to_mb(value: str) -> float | None:
+    """메모리 문자열을 MB로 변환 (예: '2G' → 2048, '512M' → 512, '1024' → 1024)"""
+    value = value.strip().upper()
+    try:
+        if value.endswith("G"):
+            return float(value[:-1]) * 1024.0
+        elif value.endswith("M"):
+            return float(value[:-1])
+        elif value.endswith("K"):
+            return float(value[:-1]) / 1024.0
+        else:
+            return float(value)
+    except (ValueError, IndexError):
+        return None
 
 
 def get_logs(config: dict) -> dict:
@@ -497,14 +720,21 @@ def provision(config: dict) -> dict:
     """
     instance_id = config.get("instance_id", "")
     instance_dir = config.get("instance_dir", "")
-    ext_data = config.get("extension_data", {})
-    module_config = config.get("module_config", {})
+    ext_data = config.get("extension_data") or {}
+    module_config = config.get("module_install") or {}
 
     # ── Step 0: Docker Engine 확인 ──
-    _progress(0, "Checking Docker Engine...")
+    _progress(0, "Checking Docker Engine...",
+              step=0, total=3, label="docker_engine",
+              steps=["docker_engine", "steamcmd", "compose"])
 
-    from . import docker_engine
-    engine_result = docker_engine._ensure_inner(config.get("docker_engine_config", {
+    import importlib.util as _ilu
+    _de_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docker_engine.py")
+    _de_spec = _ilu.spec_from_file_location("docker_engine", _de_path)
+    docker_engine = _ilu.module_from_spec(_de_spec)
+    _de_spec.loader.exec_module(docker_engine)
+
+    engine_result = docker_engine._plugin_ensure(config.get("docker_engine_config", {
         "base_dir": _local_docker_dir(),
         "timeout": 300,
         "wait_timeout": 120,
@@ -521,7 +751,7 @@ def provision(config: dict) -> dict:
     if engine_result.get("wsl_mode", False):
         _set_wsl2_mode(True)
 
-    _progress(33, "Docker Engine ready")
+    _progress(33, "Docker Engine ready", step=0, total=3, label="docker_engine")
 
     # ── Step 1: SteamCMD 서버 파일 다운로드 ──
     install_config = module_config.get("install", {})
@@ -531,7 +761,7 @@ def provision(config: dict) -> dict:
     if install_config.get("method") == "steamcmd":
         app_id = install_config.get("app_id")
         if app_id:
-            _progress(40, f"Downloading server files (app {app_id})...")
+            _progress(40, f"Downloading server files (app {app_id})...", step=1, total=3, label="steamcmd")
             steamcmd_config = {
                 "app_id": app_id,
                 "install_dir": server_dir,
@@ -540,16 +770,15 @@ def provision(config: dict) -> dict:
                 "beta": install_config.get("beta"),
             }
             try:
-                # steamcmd.py의 install 함수 호출
+                # steamcmd.py의 _plugin_install 함수 호출
                 ext_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
                 steamcmd_path = os.path.join(ext_dir, "steamcmd.py")
-                # 직접 import하여 호출 (같은 Python 프로세스 내에서)
                 import importlib.util
                 spec = importlib.util.spec_from_file_location("steamcmd", steamcmd_path)
                 if spec and spec.loader:
                     steamcmd = importlib.util.module_from_spec(spec)
                     spec.loader.exec_module(steamcmd)
-                    result = steamcmd.install(steamcmd_config)
+                    result = steamcmd._plugin_install(steamcmd_config)
                     if not result.get("success", False):
                         return {
                             "handled": True,
@@ -563,17 +792,17 @@ def provision(config: dict) -> dict:
                     "error": f"SteamCMD 실행 실패: {e}",
                 }
 
-    _progress(66, "Server files ready")
+    _progress(66, "Server files ready", step=1, total=3, label="steamcmd")
 
     # ── Step 2: docker-compose.yml 생성 ──
-    _progress(80, "Generating docker-compose.yml...")
+    _progress(80, "Generating docker-compose.yml...", step=2, total=3, label="compose")
 
-    docker_section = module_config.get("docker", {})
+    docker_section = module_config.get("container", {}) or module_config.get("docker", {})
     if not docker_section.get("image"):
         return {
             "handled": True,
             "success": False,
-            "error": "모듈에 [docker] image 설정이 없습니다",
+            "error": f"모듈에 컨테이너 이미지 설정이 없습니다 (module_install keys: {list(module_config.keys())})",
         }
 
     instance_data = config.get("instance", config)
@@ -582,7 +811,7 @@ def provision(config: dict) -> dict:
     with open(compose_path, "w", encoding="utf-8") as f:
         f.write(yaml)
 
-    _progress(100, "docker-compose.yml generated")
+    _progress(100, "docker-compose.yml generated", step=2, total=3, label="compose")
 
     return {
         "handled": True,
@@ -594,14 +823,24 @@ def provision(config: dict) -> dict:
 def regenerate_compose(config: dict) -> dict:
     """server.settings_changed — 설정 변경 시 compose 재생성
     
-    Rust: provision_compose_file() on settings_changed (D19, D20)
+    Rust 코어는 범용 module_extensions를 전달하고,
+    이 함수가 자체적으로 docker 섹션을 추출하여 compose를 재생성합니다.
     """
     instance_dir = config.get("instance_dir", "")
-    module_config = config.get("module_config", {})
-    docker_section = module_config.get("docker", {})
+    if not instance_dir:
+        return {"handled": True, "success": False, "error": "No instance_dir"}
+
+    # 범용 module_extensions에서 자신의 설정(docker)을 추출
+    module_extensions = config.get("module_extensions", {})
+    docker_section = module_extensions.get("docker", {})
+
+    # 레거시 호환: 이전 방식의 module_config도 지원
+    if not docker_section:
+        module_config = config.get("module_config", {})
+        docker_section = module_config.get("container", {}) or module_config.get("docker", {})
 
     if not docker_section.get("image"):
-        return {"handled": True, "success": False, "error": "No docker config"}
+        return {"handled": True, "success": False, "error": "No docker config in module_extensions"}
 
     instance_data = config.get("instance", config)
     yaml = _generate_compose_yaml(docker_section, instance_data)
@@ -660,7 +899,7 @@ def _generate_compose_yaml(docker_config: dict, instance: dict) -> str:
     ctx = {
         "instance_id": instance.get("instance_id", instance.get("id", "")),
         "instance_name": instance.get("instance_name", instance.get("name", "")),
-        "module_name": instance.get("module_name", ""),
+        "module_name": instance.get("module_name") or instance.get("module", ""),
         "port": instance.get("port"),
         "rcon_port": instance.get("rcon_port"),
         "rest_port": instance.get("rest_port"),
@@ -683,12 +922,20 @@ def _generate_compose_yaml(docker_config: dict, instance: dict) -> str:
     restart = docker_config.get("restart", "unless-stopped")
     lines.append(f"    restart: {restart}")
 
-    # Ports
-    ports = docker_config.get("ports", [])
-    if ports:
-        lines.append("    ports:")
-        for p in ports:
-            lines.append(f'      - "{_resolve_template(p, ctx)}"')
+    # Network mode — WSL2 mirrored에서는 host 네트워크 사용
+    # (bridge 네트워크 + mirrored = UDP 포워딩 불가)
+    use_host_network = _is_wsl2_mode() or docker_config.get("network_mode") == "host"
+
+    if use_host_network:
+        lines.append("    network_mode: host")
+
+    # Ports (host 네트워크에서는 ports 매핑 불필요 — Docker가 무시함)
+    if not use_host_network:
+        ports = docker_config.get("ports", [])
+        if ports:
+            lines.append("    ports:")
+            for p in ports:
+                lines.append(f'      - "{_resolve_template(p, ctx)}"')
 
     # Volumes
     volumes = docker_config.get("volumes", [])
@@ -724,8 +971,15 @@ def _generate_compose_yaml(docker_config: dict, instance: dict) -> str:
     command = docker_config.get("command")
     if command:
         resolved = _resolve_template(command, ctx)
-        escaped = resolved.replace('"', '\\"')
-        lines.append(f'    command: ["{escaped}"]')
+        if entrypoint:
+            # entrypoint가 있으면 single-string exec form 유지
+            # (e.g., entrypoint: ["/bin/bash", "-c"], command: ["exec server.sh ..."])
+            escaped = resolved.replace('"', '\\"')
+            lines.append(f'    command: ["{escaped}"]')
+        else:
+            # entrypoint가 없으면 shell form 사용
+            # Docker가 자동으로 /bin/sh -c 를 앞에 붙여줌
+            lines.append(f'    command: {resolved}')
 
     # User
     user = docker_config.get("user")

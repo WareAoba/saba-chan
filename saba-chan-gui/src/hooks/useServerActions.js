@@ -40,8 +40,15 @@ export function useServerActions({
 
     // -- Internal refs for change detection --
     const guiInitiatedOpsRef = useRef(new Set());
+    const optimisticStatusRef = useRef(new Map()); // name → { status, timestamp }
     const lastErrorToastRef = useRef(0);
     const firstFetchDoneRef = useRef(false);
+
+    /** Optimistic 상태 해제 후 fetchServers로 실제 상태 복원 */
+    const revertOptimistic = (name) => {
+        optimisticStatusRef.current.delete(name);
+        fetchServers();
+    };
 
     // ── fetchServers ────────────────────────────────────────
     const fetchServers = async () => {
@@ -113,8 +120,27 @@ export function useServerActions({
 
                     return data.servers.map(newServer => {
                         const existing = prev.find(s => s.name === newServer.name);
+
+                        // Optimistic status 보호: starting/stopping 상태를
+                        // 서버가 아직 전환 완료 전이면 유지 (최대 60초)
+                        let mergedStatus = newServer.status;
+                        const opt = optimisticStatusRef.current.get(newServer.name);
+                        if (opt) {
+                            const elapsed = Date.now() - opt.timestamp;
+                            const GUARD_MS = 60_000;
+                            const transitioned =
+                                (opt.status === 'starting' && newServer.status === 'running') ||
+                                (opt.status === 'stopping' && newServer.status === 'stopped');
+                            if (transitioned || elapsed > GUARD_MS) {
+                                optimisticStatusRef.current.delete(newServer.name);
+                            } else {
+                                mergedStatus = opt.status;
+                            }
+                        }
+
                         return {
                             ...newServer,
+                            status: mergedStatus,
                             expanded: existing?.expanded || false
                         };
                     });
@@ -180,6 +206,10 @@ export function useServerActions({
                 interactionMode = mod?.interaction_mode || 'console';
             }
 
+            // Optimistic update: 즉시 'starting' 상태 표시
+            optimisticStatusRef.current.set(name, { status: 'starting', timestamp: Date.now() });
+            setServers(prev => prev.map(s => s.name === name ? { ...s, status: 'starting' } : s));
+
             let result;
             if (interactionMode === 'console') {
                 result = await window.api.managedStart(srv.id);
@@ -189,6 +219,7 @@ export function useServerActions({
 
             // ── action_required: server jar not found ──
             if (result.action_required === 'server_jar_not_found') {
+                fetchServers(); // revert optimistic 'starting'
                 setModal({
                     type: 'question',
                     title: t('servers.jar_not_found_title'),
@@ -290,6 +321,7 @@ export function useServerActions({
 
             // ── action_required: extension_required ──
             if (result.action_required === 'extension_required') {
+                fetchServers(); // revert optimistic 'starting'
                 setModal({
                     type: 'question',
                     title: t('servers.extension_required_title', { defaultValue: 'Extension Required' }),
@@ -318,6 +350,7 @@ export function useServerActions({
 
             // ── error_code: port_conflict — 데몬이 포트 충돌 감지 ──
             if (result.error_code === 'port_conflict' || result.error === 'port_conflict') {
+                fetchServers(); // revert optimistic 'starting'
                 const conflictDetails = (result.conflicts || []).join('\n');
                 setModal({
                     type: 'failure',
@@ -329,11 +362,13 @@ export function useServerActions({
 
             // ── success=false without specific action_required ──
             if (result.success === false && result.message) {
+                fetchServers(); // revert optimistic 'starting'
                 safeShowToast(result.message, 'error', 5000);
                 return;
             }
 
             if (result.error) {
+                fetchServers(); // revert optimistic 'starting'
                 const errorMsg = translateError(result.error);
                 safeShowToast(t('servers.start_failed_toast', { error: errorMsg }), 'error', 4000);
             } else {
@@ -389,6 +424,7 @@ export function useServerActions({
             }
         } catch (error) {
             setProgressBar(null);
+            fetchServers(); // revert optimistic 'starting'
             const errorMsg = translateError(error.message);
             safeShowToast(t('servers.start_failed_toast', { error: errorMsg }), 'error', 4000);
         }
@@ -403,6 +439,10 @@ export function useServerActions({
             onConfirm: async () => {
                 setModal(null);
                 try {
+                    // Optimistic update: 즉시 'stopping' 상태 표시
+                    optimisticStatusRef.current.set(name, { status: 'stopping', timestamp: Date.now() });
+                    setServers(prev => prev.map(s => s.name === name ? { ...s, status: 'stopping' } : s));
+
                     const srv = servers.find(s => s.name === name);
                     const useGraceful = srv?.module_settings?.graceful_stop;
                     const forceStop = useGraceful === false;
@@ -411,6 +451,7 @@ export function useServerActions({
 
                     // ── extension_required 처리 ──
                     if (result.action_required === 'extension_required') {
+                        fetchServers(); // revert optimistic 'stopping'
                         setModal({
                             type: 'question',
                             title: t('servers.extension_required_title', { defaultValue: 'Extension Required' }),
@@ -438,11 +479,13 @@ export function useServerActions({
                     }
 
                     if (result.success === false && result.message) {
+                        fetchServers(); // revert optimistic 'stopping'
                         safeShowToast(result.message, 'error', 5000);
                         return;
                     }
 
                     if (result.error) {
+                        fetchServers(); // revert optimistic 'stopping'
                         const errorMsg = translateError(result.error);
                         safeShowToast(t('servers.stop_failed_toast', { error: errorMsg }), 'error', 4000);
                     } else {
@@ -484,6 +527,7 @@ export function useServerActions({
                     }
                 } catch (error) {
                     setProgressBar(null);
+                    fetchServers(); // revert optimistic 'stopping'
                     const errorMsg = translateError(error.message);
                     safeShowToast(t('servers.stop_failed_toast', { error: errorMsg }), 'error', 4000);
                 }
@@ -512,7 +556,7 @@ export function useServerActions({
 
     // ── handleAddServer ─────────────────────────────────────
     const handleAddServer = async (payload) => {
-        // payload = { name, module_name, accept_eula?, use_docker? }
+        // payload = { name, module_name, accept_eula?, use_container? }
         const serverName = typeof payload === 'string' ? payload : payload?.name;
         const moduleName = typeof payload === 'string' ? arguments[1] : payload?.module_name;
 
@@ -532,7 +576,7 @@ export function useServerActions({
                 name: serverName.trim(),
                 module_name: moduleName,
                 executable_path: selectedModuleData?.executable_path || null,
-                use_docker: payload?.use_docker || false,
+                use_container: payload?.use_container || false,  // 백엔드가 extension_data로 변환
             };
 
             console.log('Adding instance:', instanceData);
@@ -543,7 +587,7 @@ export function useServerActions({
                 setModal({ type: 'failure', title: t('servers.add_failed_title'), message: errorMsg });
             } else {
                 if (result.provisioning) {
-                    // Docker 모드: 백그라운드 프로비저닝 시작 — 모달 닫고 서버 리스트에서 진행률 표시
+                    // 컨테이너 모드: 백그라운드 프로비저닝 시작 — 모달 닫고 서버 리스트에서 진행률 표시
                     setShowModuleManager(false);
                     fetchServers();
                 } else {

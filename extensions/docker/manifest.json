@@ -77,12 +77,12 @@
   },
 
   "gui": {
-    "bundle": "gui/dist/docker-gui.umd.js",
-    "styles": "gui/dist/style.css",
+    "builtin": true,
     "slots": {
       "ServerCard.badge": "DockerBadge",
       "ServerCard.headerGauge": "DockerMiniGauge",
       "ServerCard.expandedStats": "DockerStatsRow",
+      "ServerCard.provision": "DockerProvision",
       "ServerSettings.tab": "DockerTab",
       "AddServer.options": "DockerToggle"
     }

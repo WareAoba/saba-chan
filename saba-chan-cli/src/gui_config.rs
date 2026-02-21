@@ -110,6 +110,20 @@ pub fn get_language() -> anyhow::Result<String> {
         .to_string())
 }
 
+/// IPC 포트 가져오기 (settings.json → ipcPort, 기본값 57474)
+pub fn get_ipc_port() -> u16 {
+    load_settings()
+        .ok()
+        .and_then(|s| s.get("ipcPort").and_then(|v| v.as_u64()))
+        .map(|p| p as u16)
+        .unwrap_or(57474)
+}
+
+/// IPC base URL 가져오기 (http://127.0.0.1:{port})
+pub fn get_ipc_base_url() -> String {
+    format!("http://127.0.0.1:{}", get_ipc_port())
+}
+
 /// Discord 자동 시작 설정 가져오기
 #[allow(dead_code)]
 pub fn get_discord_auto_start() -> anyhow::Result<bool> {

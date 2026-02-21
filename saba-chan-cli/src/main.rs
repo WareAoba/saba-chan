@@ -8,6 +8,8 @@ mod tui;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let client = client::DaemonClient::new(Some("http://127.0.0.1:57474"));
+    // settings.json에서 IPC 포트를 읽어 사용 (GUI와 포트 설정 일치)
+    let base_url = gui_config::get_ipc_base_url();
+    let client = client::DaemonClient::new(Some(&base_url));
     tui::run(client).await
 }

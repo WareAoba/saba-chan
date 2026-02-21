@@ -86,18 +86,20 @@ pub async fn create_instance(
     if let (Ok(name), Ok(module)) = (name, module_name) {
         let mut instance = crate::instance::ServerInstance::new(name, module);
 
-        // Docker 모드 플래그
-        let use_docker = payload
-            .get("use_docker")
+        // 익스텐션 모드 플래그 (예: 컨테이너 격리)
+        // "use_container" 우선, "use_docker" 레거시 호환
+        let use_container_ext = payload
+            .get("use_container")
+            .or_else(|| payload.get("use_docker"))
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
-        // Docker 모드 요청 시 Docker 익스텐션이 활성화되어 있는지 검증
-        if use_docker {
+        // 컨테이너 격리 요청 시 해당 익스텐션이 활성화되어 있는지 검증
+        if use_container_ext {
             let ext_mgr = state.extension_manager.read().await;
             if !ext_mgr.is_enabled("docker") {
                 let error = json!({
-                    "error": "Cannot create Docker instance: the 'docker' extension is not enabled. Enable it in Settings → Extensions first.",
+                    "error": "Cannot create instance: the required extension is not enabled. Enable it in Settings → Extensions first.",
                     "error_code": "extension_required",
                     "extension_id": "docker",
                 });
@@ -106,17 +108,15 @@ pub async fn create_instance(
             drop(ext_mgr);
         }
 
-        // Extension 시스템: extension_data 초기 설정
-        if use_docker {
+        // extension_data 설정 (컨테이너 격리 플래그 → extension_data에 저장)
+        if use_container_ext {
             instance.extension_data.insert(
-                "docker".to_string(),
-                serde_json::json!({ "enabled": true }),
+                "docker_enabled".to_string(),
+                serde_json::json!(true),
             );
         }
 
-        instance.use_docker = use_docker;
-
-        // 모듈 정보에서 process_name, default_port, install/docker config 가져오기
+        // 모듈 정보에서 process_name, default_port, install/container config 가져오기
         let module_install = if let Ok(loaded_module) = supervisor.module_loader.get_module(module) {
             instance.process_name = loaded_module.metadata.process_name.clone();
             if instance.port.is_none() {
@@ -131,7 +131,7 @@ pub async fn create_instance(
             }
             Some((
                 loaded_module.metadata.install.clone(),
-                loaded_module.metadata.docker.clone(),
+                loaded_module.metadata.extensions.get("docker").cloned(),  // 컨테이너 익스텐션 설정
             ))
         } else {
             None
@@ -152,39 +152,124 @@ pub async fn create_instance(
         let instance_name = instance.name.clone();
         let module_name_owned = module.to_string();
 
-        // Docker 모드일 때: working_dir을 인스턴스 디렉토리의 server/ 하위 경로로 설정
+        // 컨테이너 모드일 때: working_dir를 인스턴스 디렉토리의 server/ 하위 경로로 설정
         let instance_dir = supervisor.instance_store.instance_dir(&id);
-        if use_docker {
+        if use_container_ext {
             let server_dir = instance_dir.join("server");
             instance.working_dir = Some(server_dir.to_string_lossy().to_string());
         }
 
-        // 인스턴스 저장 (Docker 프로비저닝은 비동기로 수행)
+        // 인스턴스 저장 (프로비저닝은 비동기로 수행)
         match supervisor.instance_store.add(instance.clone()) {
             Ok(_) => {
                 // ── Extension hook: server.post_create ──
-                if use_docker {
+                if use_container_ext {
                     let ext_mgr = state.extension_manager.clone();
+                    let tracker = state.provision_tracker.clone();
                     let ctx = serde_json::json!({
                         "instance_id": &id,
                         "instance_name": &instance_name,
                         "module": &module_name_owned,
-                        "use_docker": use_docker,
+                        "use_container": use_container_ext,
                         "instance_dir": instance_dir.to_string_lossy(),
                         "extension_data": &instance.extension_data,
-                        "module_install": module_install.as_ref().map(|(install, docker)| {
+                        "instance": serde_json::to_value(&instance).unwrap_or_default(),
+                        "module_install": module_install.as_ref().map(|(install, ext_container)| {
                             serde_json::json!({
                                 "install": install,
-                                "docker": docker,
+                                "container": ext_container,
                             })
                         }),
                     });
-                    let tracker = state.provision_tracker.clone();
                     let inst_clone = instance.clone();
+
+                    // 초기 프로비저닝 상태 등록 (범용 — 스텝 정보는 extension이 제공)
+                    tracker.update(&inst_clone.name, crate::ipc::ProvisionProgress {
+                        step: 0,
+                        total: 1,
+                        label: "initializing".to_string(),
+                        message: "Initializing...".to_string(),
+                        done: false,
+                        error: None,
+                        percent: Some(0),
+                        steps: None,
+                    });
+
+                    let tracker_cb = tracker.clone();
+                    let name_cb = inst_clone.name.clone();
+                    let steps_store = std::sync::Arc::new(std::sync::Mutex::new(None::<Vec<String>>));
+                    let steps_write = steps_store.clone();
+                    let steps_final = steps_store.clone();
+                    let on_progress = move |prog: crate::plugin::ExtensionProgress| {
+                        let pct = prog.percent.unwrap_or(0);
+                        let msg = prog.message.clone().unwrap_or_default();
+                        // extension이 steps 목록을 보내면 저장
+                        if let Some(ref new_steps) = prog.steps {
+                            if let Ok(mut s) = steps_write.lock() {
+                                *s = Some(new_steps.clone());
+                            }
+                        }
+                        let stored_steps = steps_store.lock().ok().and_then(|s| s.clone());
+                        tracker_cb.update(&name_cb, crate::ipc::ProvisionProgress {
+                            step: prog.step.unwrap_or(0),
+                            total: prog.total.unwrap_or(1),
+                            label: prog.label.unwrap_or_default(),
+                            message: msg,
+                            done: false,  // progress 콜백에서는 절대 done 설정하지 않음
+                            error: None,
+                            percent: Some(pct),
+                            steps: stored_steps,
+                        });
+                    };
+
+                    let tracker_done = tracker.clone();
+                    let name_done = inst_clone.name.clone();
                     tokio::spawn(async move {
                         let mgr = ext_mgr.read().await;
-                        let _results = mgr.dispatch_hook("server.post_create", ctx).await;
-                        tracing::info!("Extension post_create dispatched for '{}'", inst_clone.name);
+                        let results = mgr.dispatch_hook_with_progress(
+                            "server.post_create", ctx, on_progress,
+                        ).await;
+                        // 완료 또는 에러 상태 기록 (Err variant + Python success:false 모두 체크)
+                        let err = results.iter().find_map(|(_, r)| match r {
+                            Err(e) => Some(e.to_string()),
+                            Ok(val) => {
+                                if val.get("success").and_then(|s| s.as_bool()) == Some(false) {
+                                    val.get("error")
+                                        .and_then(|e| e.as_str())
+                                        .map(|s| s.to_string())
+                                        .or_else(|| Some("Extension reported failure".to_string()))
+                                } else {
+                                    None
+                                }
+                            }
+                        });
+                        let final_steps = steps_final.lock().ok().and_then(|s| s.clone());
+                        if let Some(ref e) = err {
+                            tracing::warn!("Provisioning failed for '{}': {}", inst_clone.name, e);
+                        }
+                        let has_error = err.is_some();
+                        tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
+                            step: 0,
+                            total: 1,
+                            label: "done".to_string(),
+                            message: if has_error { "Provisioning failed".to_string() } else { "Provisioning complete".to_string() },
+                            done: true,
+                            error: err,
+                            percent: Some(100),
+                            steps: final_steps,
+                        });
+                        tracing::info!("Extension post_create dispatched for '{}' (error={})", inst_clone.name, has_error);
+
+                        // 성공 시 5초 후 tracker 자동 정리 → provisioning UI 자연스럽게 사라짐
+                        // 에러 시에는 유지 → 사용자가 dismiss할 때까지 UI 표시
+                        if !has_error {
+                            let tracker_cleanup = tracker_done.clone();
+                            let name_cleanup = name_done.clone();
+                            tokio::spawn(async move {
+                                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                                tracker_cleanup.remove(&name_cleanup);
+                            });
+                        }
                     });
 
                     let response = json!({
@@ -209,6 +294,46 @@ pub async fn create_instance(
     }
 }
 
+/// DELETE /api/provision-progress/:name - 프로비저닝 상태 클리어 (에러 dismiss용)
+/// 프로비저닝 실패 상태였으면 인스턴스도 자동 롤백(삭제)
+pub async fn dismiss_provision_progress(
+    Path(name): Path<String>,
+    State(state): State<IPCServer>,
+) -> impl IntoResponse {
+    // 프로비저닝 에러가 있었는지 확인
+    let had_error = state
+        .provision_tracker
+        .get(&name)
+        .map(|p| p.error.is_some())
+        .unwrap_or(false);
+
+    state.provision_tracker.remove(&name);
+
+    // 프로비저닝 실패 시: 자동 롤백 — 인스턴스 삭제
+    if had_error {
+        let mut supervisor = state.supervisor.write().await;
+        if let Some(id) = supervisor
+            .instance_store
+            .list()
+            .iter()
+            .find(|i| i.name == name)
+            .map(|i| i.id.clone())
+        {
+            if let Err(e) = supervisor.instance_store.remove(&id) {
+                tracing::warn!("Failed to rollback instance '{}': {}", name, e);
+            } else {
+                tracing::info!(
+                    "Provisioning rollback: removed instance '{}' (id={})",
+                    name,
+                    id
+                );
+            }
+        }
+    }
+
+    (StatusCode::OK, Json(json!({ "success": true, "rolled_back": had_error }))).into_response()
+}
+
 /// GET /api/provision-progress/:name - 프로비저닝 진행 상태 (서버 이름 기준)
 pub async fn get_provision_progress(
     Path(name): Path<String>,
@@ -226,6 +351,9 @@ pub async fn get_provision_progress(
         });
         if let Some(pct) = progress.percent {
             resp["percent"] = json!(pct);
+        }
+        if let Some(ref steps) = progress.steps {
+            resp["steps"] = json!(steps);
         }
         (StatusCode::OK, Json(resp)).into_response()
     } else {
@@ -249,7 +377,6 @@ pub async fn delete_instance(
             "instance_id": &id,
             "instance_name": &instance.name,
             "module": &instance.module_name,
-            "use_docker": instance.use_docker,
             "extension_data": &instance.extension_data,
         });
         let mgr = ext_mgr.read().await;
@@ -347,8 +474,7 @@ pub async fn update_instance_settings(
         "executable_path",
         "protocol_mode",
         "server_version",
-        "docker_cpu_limit",
-        "docker_memory_limit",
+        "extension_data",
     ]
     .iter()
     .cloned()
@@ -480,38 +606,32 @@ pub async fn update_instance_settings(
         updated.server_version = Some(version.to_string());
     }
 
-    // Docker 리소스 제한 설정
-    if let Some(cpu_value) = settings.get("docker_cpu_limit") {
-        match cpu_value {
-            serde_json::Value::Number(n) => {
-                updated.docker_cpu_limit = n.as_f64();
-            }
-            serde_json::Value::String(s) if s.is_empty() => {
-                updated.docker_cpu_limit = None;
-            }
-            serde_json::Value::String(s) => {
-                if let Ok(cpu) = s.parse::<f64>() {
-                    updated.docker_cpu_limit = Some(cpu);
+    // ── 범용 extension_data 갱신 ──
+    // 프론트엔드에서 { "extension_data": { "key": value, ... } } 형태로 전달
+    // null 값은 해당 키 삭제, 빈 문자열도 삭제 처리
+    if let Some(ext_updates) = settings.get("extension_data") {
+        if let Some(obj) = ext_updates.as_object() {
+            for (key, value) in obj {
+                match value {
+                    serde_json::Value::Null => {
+                        updated.extension_data.remove(key);
+                    }
+                    serde_json::Value::String(s) if s.is_empty() => {
+                        updated.extension_data.remove(key);
+                    }
+                    serde_json::Value::String(s) => {
+                        // 숫자로 변환 가능하면 Number로 저장 (CPU 제한 등)
+                        if let Ok(n) = s.parse::<f64>() {
+                            updated.extension_data.insert(key.clone(), json!(n));
+                        } else {
+                            updated.extension_data.insert(key.clone(), value.clone());
+                        }
+                    }
+                    _ => {
+                        updated.extension_data.insert(key.clone(), value.clone());
+                    }
                 }
             }
-            serde_json::Value::Null => {
-                updated.docker_cpu_limit = None;
-            }
-            _ => {}
-        }
-    }
-    if let Some(mem_value) = settings.get("docker_memory_limit") {
-        match mem_value {
-            serde_json::Value::String(s) if s.is_empty() => {
-                updated.docker_memory_limit = None;
-            }
-            serde_json::Value::String(s) => {
-                updated.docker_memory_limit = Some(s.clone());
-            }
-            serde_json::Value::Null => {
-                updated.docker_memory_limit = None;
-            }
-            _ => {}
         }
     }
 
@@ -551,8 +671,7 @@ pub async fn update_instance_settings(
                 || key == "use_aikar_flags"
                 || key == "managed_start"
                 || key == "graceful_stop"
-                || key == "docker_cpu_limit"
-                || key == "docker_memory_limit"
+                || key == "extension_data"
             {
                 continue;
             }
@@ -599,25 +718,24 @@ pub async fn update_instance_settings(
         }
     }
 
-    // 인스턴스 설정 변경 시 Extension hook 디스패치
-    if updated_clone.use_docker {
-        // ── Extension hook: server.settings_changed ──
+    // 인스턴스 설정 변경 시 Extension hook 디스패치 (extension_data가 있는 경우)
+    // instance_dir + 모듈 익스텐션 설정을 범용으로 전달 → 각 extension이 자체 판단
+    if !updated_clone.extension_data.is_empty() {
         let ext_mgr = state.extension_manager.clone();
+        let instance_dir = supervisor.instance_store.instance_dir(&id);
+
+        // 모듈의 모든 익스텐션 설정을 범용으로 전달 (특정 익스텐션 이름 참조 없음)
+        let module_extensions = supervisor.module_loader.get_module(&updated_clone.module_name)
+            .ok()
+            .map(|m| serde_json::to_value(&m.metadata.extensions).unwrap_or_default())
+            .unwrap_or_else(|| serde_json::json!({}));
+
         let ctx = serde_json::json!({
             "instance_id": &id,
-            "instance": {
-                "name": &updated_clone.name,
-                "module_name": &updated_clone.module_name,
-                "use_docker": updated_clone.use_docker,
-                "port": updated_clone.port,
-                "rcon_port": updated_clone.rcon_port,
-                "rest_port": updated_clone.rest_port,
-                "rest_password": &updated_clone.rest_password,
-                "docker_cpu_limit": updated_clone.docker_cpu_limit,
-                "docker_memory_limit": &updated_clone.docker_memory_limit,
-                "module_settings": &updated_clone.module_settings,
-                "extension_data": &updated_clone.extension_data,
-            },
+            "instance_dir": instance_dir.to_string_lossy(),
+            "instance": serde_json::to_value(&updated_clone).unwrap_or_default(),
+            "module_extensions": module_extensions,
+            "extension_data": &updated_clone.extension_data,
             "settings": &settings,
         });
         let mgr = ext_mgr.read().await;

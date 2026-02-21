@@ -26,10 +26,17 @@ const LIGHTBULB_ICON = (
  *   t: i18n 번역 함수
  */
 export default function DockerTab({ server, activeTab, setActiveTab, settings, onSettingsChange, t }) {
-  const isDocker = server?.extension_data?.docker?.enabled || server?.use_docker;
+  const isDocker = server?.extension_data?.docker_enabled;
   if (!isDocker) return null;
 
   const translate = t || ((key, opts) => opts?.defaultValue || key);
+  const extData = settings?._extension_data || {};
+  const cpuLimit = extData.docker_cpu_limit != null ? String(extData.docker_cpu_limit) : '';
+  const memLimit = extData.docker_memory_limit || '';
+
+  const updateExtData = (key, value) => {
+    onSettingsChange('_extension_data', { ...extData, [key]: value });
+  };
 
   return (
     <>
@@ -60,8 +67,8 @@ export default function DockerTab({ server, activeTab, setActiveTab, settings, o
                 min="0.25"
                 max="128"
                 step="0.25"
-                value={settings?.docker_cpu_limit || ''}
-                onChange={(e) => onSettingsChange('docker_cpu_limit', e.target.value)}
+                value={cpuLimit}
+                onChange={(e) => updateExtData('docker_cpu_limit', e.target.value ? Number(e.target.value) : null)}
                 placeholder={translate('server_settings.docker_cpu_limit_placeholder', { defaultValue: 'e.g., 2.0 (no limit if empty)' })}
               />
               <small className="field-description">
@@ -74,8 +81,8 @@ export default function DockerTab({ server, activeTab, setActiveTab, settings, o
               <label>{translate('server_settings.docker_memory_limit_label', { defaultValue: 'Memory Limit' })}</label>
               <input
                 type="text"
-                value={settings?.docker_memory_limit || ''}
-                onChange={(e) => onSettingsChange('docker_memory_limit', e.target.value)}
+                value={memLimit}
+                onChange={(e) => updateExtData('docker_memory_limit', e.target.value || null)}
                 placeholder={translate('server_settings.docker_memory_limit_placeholder', { defaultValue: 'e.g., 4g, 512m (no limit if empty)' })}
               />
               <small className="field-description">

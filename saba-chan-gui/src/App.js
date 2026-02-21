@@ -99,6 +99,9 @@ function App() {
     const [commandServer, setCommandServer] = useState(null);
     const [showGuiSettingsModal, setShowGuiSettingsModal] = useState(false);
 
+    // ── Context Menu State ─────────────────────────────────
+    const [contextMenu, setContextMenu] = useState(null);
+
     // ── Discord Config State ───────────────────────────────
     const [discordToken, setDiscordToken] = useState('');
     const [showDiscordSection, setShowDiscordSection] = useState(false);
@@ -752,6 +755,7 @@ function App() {
                             server={server}
                             index={index}
                             modules={modules}
+                            servers={servers}
                             cardRefs={cardRefs}
                             draggedName={draggedName}
                             skipNextClick={skipNextClick}
@@ -769,6 +773,10 @@ function App() {
                             setServers={setServers}
                             formatUptime={formatUptime}
                             nowEpoch={nowEpoch}
+                            onContextMenu={(e) => {
+                                e.preventDefault();
+                                setContextMenu({ x: e.clientX, y: e.clientY, server });
+                            }}
                         />
                     ))
                 )}
@@ -824,6 +832,24 @@ function App() {
                     moduleAliasesPerModule={moduleAliasesPerModule}
                     discordModuleAliases={discordModuleAliases}
                 />
+            )}
+
+            {/* Context Menu */}
+            {contextMenu && (
+                <>
+                    <div className="context-menu-overlay" onClick={() => setContextMenu(null)} onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }} />
+                    <div className="context-menu" style={{ top: contextMenu.y, left: contextMenu.x }}>
+                        <div className="context-menu-item" onClick={() => { handleOpenSettings(contextMenu.server); setContextMenu(null); }}>
+                            <Icon name="settings" size="sm" />
+                            {t('context_menu.settings', { defaultValue: 'Settings' })}
+                        </div>
+                        <div className="context-menu-separator" />
+                        <div className="context-menu-item danger" onClick={() => { handleDeleteServer(contextMenu.server); setContextMenu(null); }}>
+                            <Icon name="trash" size="sm" />
+                            {t('context_menu.delete', { defaultValue: 'Delete' })}
+                        </div>
+                    </div>
+                </>
             )}
 
             {/* 모달 렌더링 */}

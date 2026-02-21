@@ -22,7 +22,7 @@ export function AddServerModal({
     const [newServerName, setNewServerName] = useState('');
     const [selectedExtension, setselectedExtension] = useState('');
     const [submitting, setSubmitting] = useState(false);
-    const [useDocker, setUseDocker] = useState(false);
+    const [useContainerIsolation, setUseContainerIsolation] = useState(false);
     const [showAdvanced, setShowAdvanced] = useState(false);
     const { isClosing, requestClose } = useModalClose(onClose);
 
@@ -48,7 +48,7 @@ export function AddServerModal({
                 name: newServerName.trim(),
                 module_name: selectedExtension,
                 accept_eula: true,
-                use_docker: useDocker,
+                use_container: useContainerIsolation,
             });
         } finally {
             setSubmitting(false);
@@ -57,7 +57,7 @@ export function AddServerModal({
         // 폼 초기화
         setNewServerName('');
         setselectedExtension('');
-        setUseDocker(false);
+        setUseContainerIsolation(false);
     };
 
     const handleOpenMigration = () => {
@@ -125,35 +125,11 @@ export function AddServerModal({
                         />
                     </div>
 
-                    {/* 3. Docker 토글 */}
-                    <div className="as-section as-docker-row">
-                        <div className="as-toggle-row">
-                            <label className="as-toggle-switch">
-                                <input
-                                    type="checkbox"
-                                    checked={useDocker}
-                                    onChange={(e) => setUseDocker(e.target.checked)}
-                                    disabled={submitting}
-                                />
-                                <span className="as-toggle-track" />
-                            </label>
-                            <div className="as-toggle-info">
-                                <span className="as-toggle-title">
-                                    <Icon name="package" size="sm" />
-                                    {t('add_server_modal.docker_isolation')}
-                                </span>
-                                <span className="as-toggle-desc">
-                                    {useDocker
-                                        ? t('add_server_modal.docker_isolation_hint_on')
-                                        : t('add_server_modal.docker_isolation_hint_off')}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
+                    {/* 3. 익스텐션 슬롯 — 컨테이너 격리 토글 등 */}
                     <ExtensionSlot
                         slotId="AddServer.options"
-                        options={{ use_docker: useDocker }}
-                        onOptionsChange={(opts) => { if (opts.use_docker !== undefined) setUseDocker(opts.use_docker); }}
+                        options={{ use_container: useContainerIsolation }}
+                        onOptionsChange={(opts) => { if (opts.use_container !== undefined) setUseContainerIsolation(opts.use_container); }}
                         t={t}
                     />
 

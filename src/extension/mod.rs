@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use saba_chan_updater_lib::version::SemVer;
 
 // ═══════════════════════════════════════════════════════════════
 //  구조화된 에러 타입
@@ -129,7 +130,7 @@ pub struct ExtensionManifest {
     pub hooks: HashMap<String, HookBinding>, // hook_name → binding
     #[serde(default)]
     pub gui: Option<GuiManifest>,
-    /// 이 익스텐션이 관할하는 module.toml 섹션명 (예: "docker")
+    /// 이 익스텐션이 관할하는 module.toml 섹션명 (예: 컨테이너 격리 익스텐션)
     #[serde(default)]
     pub module_config_section: Option<String>,
     #[serde(default)]
@@ -150,9 +151,12 @@ pub struct HookBinding {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GuiManifest {
-    pub bundle: String,
+    #[serde(default)]
+    pub bundle: Option<String>,
     #[serde(default)]
     pub styles: Option<String>,
+    #[serde(default)]
+    pub builtin: Option<bool>,
     #[serde(default)]
     pub slots: HashMap<String, String>, // slot_id → component_name
 }
@@ -197,14 +201,79 @@ pub struct ExtensionListItem {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  원격 레지스트리 타입 정의
+// ═══════════════════════════════════════════════════════════════
+
+/// GitHub 원격 레지스트리에서 가져온 익스텐션 항목
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteExtensionInfo {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub author: String,
+    /// 배포 패키지 다운로드 URL (.zip)
+    pub download_url: String,
+    /// 패키지 SHA-256 체크섬 (검증용, null 허용)
+    #[serde(default)]
+    pub sha256: Option<String>,
+    /// 최소 앱 버전 요구사항
+    #[serde(default)]
+    pub min_app_version: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub homepage: Option<String>,
+}
+
+/// 원격 레지스트리 응답 전체 형식
+///
+/// registry.json 예시:
+/// ```json
+/// {
+///   "registry_version": "1",
+///   "extensions": [...]
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtensionRegistryResponse {
+    #[serde(default)]
+    pub registry_version: String,
+    pub extensions: Vec<RemoteExtensionInfo>,
+}
+
+/// 업데이트 가용 정보 (로컬 버전 vs 원격 버전 비교 결과)
+///
+/// 업데이터의 `ComponentVersion`과 구조를 맞추어 향후 통합을 용이하게 함.
+#[derive(Debug, Clone, Serialize)]
+pub struct ExtensionUpdateInfo {
+    pub id: String,
+    pub installed_version: String,
+    pub latest_version: String,
+    pub download_url: String,
+    /// 다운로드 완료 여부 (현재는 항상 false — 다운로드 큐 구현 시 활용)
+    pub downloaded: bool,
+    /// 적용(설치) 완료 여부
+    pub installed: bool,
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  ExtensionManager
 // ═══════════════════════════════════════════════════════════════
+
+/// 원격 레지스트리 기본 URL (레포지토리 미완성 — 토대만)
+const DEFAULT_REGISTRY_URL: &str =
+    "https://raw.githubusercontent.com/WareAoba/saba-chan-extensions/main/registry.json";
 
 pub struct ExtensionManager {
     extensions_dir: PathBuf,
     discovered: HashMap<String, DiscoveredExtension>,
     enabled: HashSet<String>,
     state_path: PathBuf,
+    /// 원격 레지스트리 URL (커스텀 오버라이드 가능)
+    pub registry_url: String,
 }
 
 #[allow(dead_code)]
@@ -212,6 +281,13 @@ impl ExtensionManager {
     /// 새 ExtensionManager 생성. `extensions_dir`은 `extensions/` 디렉토리 경로.
     pub fn new(extensions_dir: &str) -> Self {
         let extensions_dir = PathBuf::from(extensions_dir);
+
+        // extensions/ 디렉토리가 없으면 생성 (최초 실행 대응)
+        if !extensions_dir.exists() {
+            if let Err(e) = std::fs::create_dir_all(&extensions_dir) {
+                tracing::warn!("Failed to create extensions directory: {}", e);
+            }
+        }
 
         // state_path: %APPDATA%/saba-chan/extensions_state.json
         let state_path = Self::resolve_state_path();
@@ -221,6 +297,7 @@ impl ExtensionManager {
             discovered: HashMap::new(),
             enabled: HashSet::new(),
             state_path,
+            registry_url: DEFAULT_REGISTRY_URL.to_string(),
         };
         mgr.load_state();
         mgr
@@ -237,7 +314,11 @@ impl ExtensionManager {
         }
     }
 
-    /// extensions/ 서브디렉토리를 스캔하여 manifest.json이 있는 익스텐션 발견
+    /// extensions/ 디렉토리를 스캔하여 익스텐션 발견.
+    ///
+    /// 지원 형식:
+    /// - **폴더형**: `<id>/manifest.json` (현재 방식)
+    /// - **단일 파일형**: `<id>.zip` → 자동 압축 해제 후 폴더형으로 등록
     pub fn discover(&mut self) -> Result<Vec<String>> {
         let mut found = Vec::new();
 
@@ -267,10 +348,32 @@ impl ExtensionManager {
             };
 
             let path = entry.path();
+
+            // ── 단일 파일형: .zip 자동 압축 해제 ──────────────────────
+            if path.is_file() {
+                if path.extension().and_then(|e| e.to_str()) == Some("zip") {
+                    match self.extract_zip_extension(&path) {
+                        Ok(Some(ext_id)) => {
+                            tracing::info!("Auto-extracted zip extension: {}", ext_id);
+                        }
+                        Ok(None) => {} // 이미 폴더가 존재하는 경우 스킵
+                        Err(e) => {
+                            tracing::warn!(
+                                "Failed to extract zip extension {}: {}",
+                                path.display(), e
+                            );
+                        }
+                    }
+                }
+                // .zip 이외의 단일 파일은 무시
+                continue;
+            }
+
             if !path.is_dir() {
                 continue;
             }
 
+            // ── 폴더형: manifest.json 탐색 ──────────────────────────
             let manifest_path = path.join("manifest.json");
             if !manifest_path.exists() {
                 continue;
@@ -304,8 +407,95 @@ impl ExtensionManager {
             }
         }
 
+        // zip에서 새로 추출된 익스텐션을 재스캔하여 등록
+        let newly_extracted = self.rescan_extracted()?;
+        found.extend(newly_extracted);
+
         tracing::info!("Extension discovery complete: {} found", found.len());
         Ok(found)
+    }
+
+    /// `.zip` 파일을 같은 이름의 폴더로 압축 해제.
+    /// 이미 폴더가 있으면 None 반환 (스킵).
+    fn extract_zip_extension(&self, zip_path: &std::path::Path) -> Result<Option<String>> {
+        let stem = zip_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| anyhow::anyhow!("Invalid zip filename: {}", zip_path.display()))?;
+
+        let dest = self.extensions_dir.join(stem);
+        if dest.is_dir() {
+            // 이미 추출된 폴더 존재 → zip 파일 삭제 후 스킵
+            if let Err(e) = std::fs::remove_file(zip_path) {
+                tracing::warn!("Failed to remove zip after extraction: {}", e);
+            }
+            return Ok(None);
+        }
+
+        let file = std::fs::File::open(zip_path)
+            .with_context(|| format!("Failed to open zip: {}", zip_path.display()))?;
+        let mut archive = zip::ZipArchive::new(file)
+            .with_context(|| format!("Failed to read zip archive: {}", zip_path.display()))?;
+
+        for i in 0..archive.len() {
+            let mut zip_file = archive.by_index(i)?;
+            let outpath = match zip_file.enclosed_name() {
+                Some(p) => dest.join(p),
+                None => continue,
+            };
+            if zip_file.is_dir() {
+                std::fs::create_dir_all(&outpath)?;
+            } else {
+                if let Some(parent) = outpath.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                let mut outfile = std::fs::File::create(&outpath)
+                    .with_context(|| format!("Failed to create {}", outpath.display()))?;
+                std::io::copy(&mut zip_file, &mut outfile)
+                    .with_context(|| format!("Failed to write {}", outpath.display()))?;
+            }
+        }
+
+        // 성공 후 zip 파일 제거
+        if let Err(e) = std::fs::remove_file(zip_path) {
+            tracing::warn!("Failed to remove zip after extraction: {}", e);
+        }
+
+        tracing::info!("Extracted zip extension '{}' to {}", stem, dest.display());
+        Ok(Some(stem.to_string()))
+    }
+
+    /// 방금 추출된 폴더들의 manifest를 로드하여 discovered에 추가 (내부용)
+    fn rescan_extracted(&mut self) -> Result<Vec<String>> {
+        let mut newly_found = Vec::new();
+        if !self.extensions_dir.is_dir() {
+            return Ok(newly_found);
+        }
+        let entries = std::fs::read_dir(&self.extensions_dir)
+            .with_context(|| format!("Failed to read extensions directory: {}", self.extensions_dir.display()))?;
+        for entry in entries {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            let path = entry.path();
+            if !path.is_dir() { continue; }
+            let manifest_path = path.join("manifest.json");
+            if !manifest_path.exists() { continue; }
+            match self.load_manifest(&manifest_path) {
+                Ok(manifest) => {
+                    let id = manifest.id.clone();
+                    if !self.discovered.contains_key(&id) {
+                        self.discovered.insert(id.clone(), DiscoveredExtension { manifest, dir: path });
+                        newly_found.push(id);
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load manifest {}: {}", manifest_path.display(), e);
+                }
+            }
+        }
+        Ok(newly_found)
     }
 
     fn load_manifest(&self, path: &std::path::Path) -> Result<ExtensionManifest> {
@@ -545,6 +735,33 @@ impl ExtensionManager {
         tracing::warn!("Extension force-disabled: {}", ext_id);
     }
 
+    /// 익스텐션 제거 — 비활성화 후 디렉토리 삭제
+    pub fn remove(
+        &mut self,
+        ext_id: &str,
+        active_ext_data: &[(&str, &HashMap<String, Value>)],
+    ) -> Result<()> {
+        // 발견된 익스텐션인지 확인
+        if !self.discovered.contains_key(ext_id) {
+            return Err(ExtensionError::not_found(ext_id).into());
+        }
+        // 활성화 상태면 먼저 비활성화 (의존성·인스턴스 사용 검사 포함)
+        if self.enabled.contains(ext_id) {
+            self.disable(ext_id, active_ext_data)?;
+        }
+        // 발견 목록에서 제거
+        self.discovered.remove(ext_id);
+        // 디렉토리 삭제
+        let ext_path = self.extensions_dir.join(ext_id);
+        if ext_path.exists() {
+            std::fs::remove_dir_all(&ext_path)
+                .with_context(|| format!("Failed to remove extension directory: {}", ext_path.display()))?;
+        }
+        self.save_state();
+        tracing::info!("Extension removed: {}", ext_id);
+        Ok(())
+    }
+
     /// 활성 여부 확인
     pub fn is_enabled(&self, ext_id: &str) -> bool {
         self.enabled.contains(ext_id)
@@ -726,6 +943,7 @@ impl ExtensionManager {
     {
         let hooks = self.hooks_for(hook_name);
         if hooks.is_empty() {
+            tracing::warn!("dispatch_hook_with_progress('{}') — no hooks registered (enabled: {:?})", hook_name, self.enabled);
             return Vec::new();
         }
 
@@ -734,11 +952,14 @@ impl ExtensionManager {
             .and_then(|v| serde_json::from_value(v.clone()).ok())
             .unwrap_or_default();
 
+        tracing::info!("dispatch_hook_with_progress('{}') — {} hook(s), ext_data keys: {:?}", hook_name, hooks.len(), ext_data.keys().collect::<Vec<_>>());
+
         let mut results = Vec::new();
 
         for (ext, binding) in hooks {
             if let Some(ref cond) = binding.condition {
                 if !Self::evaluate_condition(cond, &ext_data) {
+                    tracing::warn!("Hook '{}' from '{}' skipped: condition '{}' evaluated to false (ext_data: {:?})", hook_name, ext.manifest.id, cond, ext_data);
                     continue;
                 }
             }
@@ -827,6 +1048,146 @@ impl ExtensionManager {
     /// 익스텐션 파일 절대 경로
     pub fn extension_file_path(&self, ext_id: &str, relative: &str) -> Option<PathBuf> {
         self.discovered.get(ext_id).map(|ext| ext.dir.join(relative))
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  원격 레지스트리 & 버전 관리
+    // ═══════════════════════════════════════════════════════════════
+
+    /// 원격 레지스트리 URL을 커스텀 주소로 오버라이드
+    pub fn set_registry_url(&mut self, url: &str) {
+        self.registry_url = url.to_string();
+    }
+
+    /// 원격 레지스트리에서 가용 익스텐션 목록을 페치합니다.
+    ///
+    /// ⚠️  레포지토리 미완성 — 현재는 빈 목록을 반환하는 스텁.
+    ///     레포지토리 완성 후 실제 HTTP 요청으로 교체할 것.
+    pub async fn fetch_registry(&self) -> Result<Vec<RemoteExtensionInfo>> {
+        tracing::debug!("Fetching extension registry from: {}", self.registry_url);
+
+        // TODO: 레포지토리 완성 후 실제 HTTP 요청으로 교체
+        // 현재는 서버 연결 없이 빈 목록 반환
+        // let response = reqwest::get(&self.registry_url).await
+        //     .with_context(|| format!("Failed to fetch registry from {}", self.registry_url))?;
+        // let registry: ExtensionRegistryResponse = response.json().await
+        //     .context("Failed to parse registry response")?;
+        // return Ok(registry.extensions);
+
+        Ok(Vec::new())
+    }
+
+    /// 설치된 익스텐션 중 원격 버전보다 낮은 것의 업데이트 정보를 반환합니다.
+    pub fn check_updates_against(
+        &self,
+        remote: &[RemoteExtensionInfo],
+    ) -> Vec<ExtensionUpdateInfo> {
+        let mut updates = Vec::new();
+        for local in self.discovered.values() {
+            if let Some(remote_ext) = remote.iter().find(|r| r.id == local.manifest.id) {
+                // updater 크레이트의 SemVer를 사용하여 버전 비교
+                let is_newer = match (
+                    SemVer::parse(&remote_ext.version),
+                    SemVer::parse(&local.manifest.version),
+                ) {
+                    (Some(remote_v), Some(local_v)) => remote_v.is_newer_than(&local_v),
+                    // 파싱 실패 시 문자열 사전순 비교로 폴백
+                    _ => remote_ext.version > local.manifest.version,
+                };
+
+                if is_newer {
+                    updates.push(ExtensionUpdateInfo {
+                        id: local.manifest.id.clone(),
+                        installed_version: local.manifest.version.clone(),
+                        latest_version: remote_ext.version.clone(),
+                        download_url: remote_ext.download_url.clone(),
+                        downloaded: false,
+                        installed: false,
+                    });
+                }
+            }
+        }
+        updates
+    }
+
+    /// 버전 문자열 비교 (updater 크레이트의 SemVer를 사용, 폴백 포함)
+    ///
+    /// 기존 업데이터와 동일한 `SemVer` 타입을 사용하여 동작을 보장합니다.
+    pub fn is_newer_version(candidate: &str, current: &str) -> bool {
+        match (SemVer::parse(candidate), SemVer::parse(current)) {
+            (Some(c), Some(cur)) => c.is_newer_than(&cur),
+            _ => candidate > current,
+        }
+    }
+
+    /// 원격에서 zip을 다운로드하여 extensions/ 폴더에 설치합니다.
+    ///
+    /// ⚠️  레포지토리 미완성 — 현재는 스텁 구현.
+    ///     `download_url`에 실제 파일이 있을 때 동작합니다.
+    pub async fn install_from_url(
+        &self,
+        ext_id: &str,
+        download_url: &str,
+        _expected_sha256: Option<&str>,
+    ) -> Result<()> {
+        tracing::info!("Installing extension '{}' from {}", ext_id, download_url);
+
+        // TODO: sha256 검증 로직 구현
+        // 다운로드
+        let response = reqwest::get(download_url)
+            .await
+            .with_context(|| format!("Failed to download extension from {}", download_url))?;
+
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!(
+                "Download failed: HTTP {}",
+                response.status()
+            ));
+        }
+
+        let bytes = response
+            .bytes()
+            .await
+            .context("Failed to read download response body")?;
+
+        // 임시 zip 파일로 저장
+        let zip_path = self.extensions_dir.join(format!("{}.zip", ext_id));
+        std::fs::write(&zip_path, &bytes)
+            .with_context(|| format!("Failed to write download to {}", zip_path.display()))?;
+
+        // 압축 해제 (기존 폴더가 있으면 먼저 제거)
+        let dest = self.extensions_dir.join(ext_id);
+        if dest.is_dir() {
+            std::fs::remove_dir_all(&dest)
+                .with_context(|| format!("Failed to remove existing extension dir: {}", dest.display()))?;
+        }
+
+        let file = std::fs::File::open(&zip_path)?;
+        let mut archive = zip::ZipArchive::new(file)
+            .context("Failed to read downloaded zip archive")?;
+
+        for i in 0..archive.len() {
+            let mut zip_file = archive.by_index(i)?;
+            let outpath = match zip_file.enclosed_name() {
+                Some(p) => dest.join(p),
+                None => continue,
+            };
+            if zip_file.is_dir() {
+                std::fs::create_dir_all(&outpath)?;
+            } else {
+                if let Some(parent) = outpath.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                let mut outfile = std::fs::File::create(&outpath)?;
+                std::io::copy(&mut zip_file, &mut outfile)?;
+            }
+        }
+
+        // 임시 zip 삭제
+        let _ = std::fs::remove_file(&zip_path);
+
+        tracing::info!("Extension '{}' installed successfully", ext_id);
+        Ok(())
     }
 
     /// i18n JSON 로드

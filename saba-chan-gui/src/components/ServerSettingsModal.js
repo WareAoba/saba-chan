@@ -218,7 +218,7 @@ function GeneralTab({
                                     className="settings-group-title settings-group-collapsible"
                                     onClick={() => setAdvancedExpanded(!advancedExpanded)}
                                 >
-                                    <Icon name={advancedExpanded ? 'chevron-down' : 'chevron-right'} size="sm" />
+                                    <Icon name={advancedExpanded ? 'chevronDown' : 'chevronRight'} size="sm" />
                                     {' '}{t('server_settings.advanced_group', { defaultValue: 'Advanced Settings' })}
                                     <span className="settings-group-count">({advancedFields.length})</span>
                                 </h4>
@@ -266,66 +266,6 @@ function GeneralTab({
 }
 
 /**
- * DockerTab — The "Docker" settings tab content (resource limits).
- * Only shown for instances with use_docker === true.
- */
-function DockerTab({ settingsValues, handleSettingChange }) {
-    const { t } = useTranslation('gui');
-
-    return (
-        <div className="settings-form">
-            <div className="settings-group">
-                <h4 className="settings-group-title">
-                    <Icon name="dockerL" size="sm" /> {t('server_settings.docker_resources_title', { defaultValue: 'Resource Limits' })}
-                </h4>
-                <p className="protocol-mode-description">
-                    {t('server_settings.docker_resources_desc', { defaultValue: 'Configure CPU and memory limits for this Docker container. Changes will regenerate docker-compose.yml.' })}
-                </p>
-
-                {/* CPU Limit */}
-                <div className="settings-field">
-                    <label>{t('server_settings.docker_cpu_limit_label', { defaultValue: 'CPU Limit (cores)' })}</label>
-                    <input
-                        type="number"
-                        min="0.25"
-                        max="128"
-                        step="0.25"
-                        value={settingsValues.docker_cpu_limit || ''}
-                        onChange={(e) => handleSettingChange('docker_cpu_limit', e.target.value)}
-                        placeholder={t('server_settings.docker_cpu_limit_placeholder', { defaultValue: 'e.g., 2.0 (no limit if empty)' })}
-                    />
-                    <small className="field-description">
-                        {t('server_settings.docker_cpu_limit_desc', { defaultValue: 'Number of CPU cores to allocate. Leave empty for no limit.' })}
-                    </small>
-                </div>
-
-                {/* Memory Limit */}
-                <div className="settings-field">
-                    <label>{t('server_settings.docker_memory_limit_label', { defaultValue: 'Memory Limit' })}</label>
-                    <input
-                        type="text"
-                        value={settingsValues.docker_memory_limit || ''}
-                        onChange={(e) => handleSettingChange('docker_memory_limit', e.target.value)}
-                        placeholder={t('server_settings.docker_memory_limit_placeholder', { defaultValue: 'e.g., 4g, 512m (no limit if empty)' })}
-                    />
-                    <small className="field-description">
-                        {t('server_settings.docker_memory_limit_desc', { defaultValue: 'Memory limit with unit (e.g., 512m, 2g, 4g). Leave empty for no limit.' })}
-                    </small>
-                </div>
-            </div>
-
-            {/* Info box */}
-            <div className="protocol-mode-section protocol-mode-info" style={{ marginTop: '16px' }}>
-                <p className="protocol-mode-hint">
-                    <span className="hint-icon"><Icon name="lightbulb" size="sm" /></span>
-                    {t('server_settings.docker_restart_hint', { defaultValue: 'Resource limit changes take effect after restarting the server.' })}
-                </p>
-            </div>
-        </div>
-    );
-}
-
-/**
  * AliasesTab — The "Discord Aliases" tab content.
  */
 function AliasesTab({
@@ -334,16 +274,38 @@ function AliasesTab({
     editingCommandAliases, setEditingCommandAliases,
     handleSaveAliasesForModule, handleResetAliasesForModule,
     aliasConflicts,
+    servers,
 }) {
     const { t } = useTranslation('gui');
     const modNs = `mod_${settingsServer.module}`;
 
+    // 동일 모듈을 사용하는 다른 인스턴스 검색
+    const sameModuleInstances = React.useMemo(() => {
+        if (!servers || !settingsServer) return [];
+        return servers.filter(s => s.module === settingsServer.module && s.id !== settingsServer.id);
+    }, [servers, settingsServer]);
+
     return (
         <div className="aliases-tab-content">
+            {/* 동일 모듈 다중 인스턴스 경고 */}
+            {sameModuleInstances.length > 0 && (
+                <div className="validation-warning-banner">
+                    <Icon name="alertCircle" size="sm" />
+                    <div>
+                        <strong>{t('settings.alias_conflict_title')}</strong>
+                        <div className="validation-warning-detail">
+                            {t('settings.multiple_instances_warning', {
+                                module: settingsServer.module,
+                                names: sameModuleInstances.map(s => s.name).join(', '),
+                            })}
+                        </div>
+                    </div>
+                </div>
+            )}
             {/* Alias conflict warnings */}
             {aliasConflicts && aliasConflicts.length > 0 && (
                 <div className="validation-warning-banner">
-                    <Icon name="alert-triangle" size="sm" />
+                    <Icon name="alertCircle" size="sm" />
                     <div>
                         <strong>{t('settings.alias_conflict_title')}</strong>
                         {aliasConflicts.map((c, i) => (
@@ -543,14 +505,6 @@ export function ServerSettingsModal({
                     >
                         <Icon name="discord" size="sm" /> {t('server_settings.aliases_tab')}
                     </button>
-                    {settingsServer.use_docker && (
-                        <button
-                            className={`settings-tab ${settingsActiveTab === 'docker' ? 'active' : ''}`}
-                            onClick={() => setSettingsActiveTab('docker')}
-                        >
-                            <Icon name="dockerL" size="sm" /> {t('server_settings.docker_tab', { defaultValue: 'Docker' })}
-                        </button>
-                    )}
                 </div>
 
                 <div className="modal-body">
@@ -582,12 +536,7 @@ export function ServerSettingsModal({
                             handleSaveAliasesForModule={handleSaveAliasesForModule}
                             handleResetAliasesForModule={handleResetAliasesForModule}
                             aliasConflicts={aliasConflicts}
-                        />
-                    )}
-                    {settingsActiveTab === 'docker' && settingsServer.use_docker && (
-                        <DockerTab
-                            settingsValues={settingsValues}
-                            handleSettingChange={handleSettingChange}
+                            servers={servers}
                         />
                     )}
                     <ExtensionSlot
@@ -602,7 +551,7 @@ export function ServerSettingsModal({
                 </div>
 
                 <div className="modal-footer">
-                    {(settingsActiveTab === 'general' || settingsActiveTab === 'docker') && (
+                    {settingsActiveTab !== 'aliases' && (
                         <button className="btn btn-confirm" onClick={handleSaveSettings}>
                             <Icon name="save" size="sm" /> {t('server_settings.save_settings')}
                         </button>

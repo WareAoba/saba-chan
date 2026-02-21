@@ -685,22 +685,6 @@ span[style*="--icon-loader"] svg,
     color: var(--text-on-primary);
 }
 
-/* Docker 배지 (게임 아이콘 오른쪽 하단) */
-.docker-badge {
-    position: absolute;
-    bottom: -3px;
-    right: -3px;
-    width: 18px;
-    height: 18px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--bg-card, #1e1e2e);
-    border-radius: 50%;
-    border: 1.5px solid var(--border-subtle, rgba(255,255,255,0.08));
-    z-index: 2;
-}
-
 /* 포트 충돌 배지 (게임 아이콘 왼쪽 상단) */
 .port-conflict-badge {
     position: absolute;
@@ -726,6 +710,28 @@ span[style*="--icon-loader"] svg,
 @keyframes port-conflict-pulse {
     0%, 100% { opacity: 0.85; transform: scale(1); }
     50% { opacity: 1; transform: scale(1.1); }
+}
+
+/* 별명 충돌(동일 모듈 다중 인스턴스) 배지 (게임 아이콘 오른쪽 상단) */
+.alias-conflict-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-card, #1e1e2e);
+    border-radius: 50%;
+    border: 1.5px solid rgba(139, 92, 246, 0.5);
+    z-index: 3;
+    color: #8b5cf6;
+    cursor: help;
+}
+.alias-conflict-badge svg {
+    width: 12px;
+    height: 12px;
 }
 
 /* 포트 충돌 경고 배너 (카드 확장 시) */
@@ -760,43 +766,12 @@ span[style*="--icon-loader"] svg,
     font-size: 11px;
 }
 
-/* Docker 리소스 통계 행 */
-.docker-stats-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 8px 0;
-    border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
-    margin-bottom: 6px;
-}
-
 /* 미니 게이지 (헤더 인라인) */
 .memory-gauge-compact {
     flex-shrink: 0;
     margin-left: 6px;
     margin-right: 2px;
     opacity: 0.9;
-}
-
-.docker-cpu-label {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-}
-
-.docker-cpu-label .label {
-    font-size: 10px;
-    color: var(--text-tertiary, #888);
-    text-transform: uppercase;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-}
-
-.docker-cpu-label .value {
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--text-primary, #fff);
 }
 
 /* 서버 정보 */
@@ -835,6 +810,21 @@ span[style*="--icon-loader"] svg,
     color: var(--brand-primary);
     border: 1px solid var(--brand-primary);
     line-height: 1.4;
+}
+
+.instance-id-badge {
+    display: inline-block;
+    font-size: 9px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-weight: 500;
+    padding: 1px 5px;
+    margin-left: 4px;
+    border-radius: 3px;
+    background: var(--bg-tertiary, rgba(128,128,128,0.15));
+    color: var(--text-muted, #888);
+    line-height: 1.4;
+    cursor: default;
+    user-select: all;
 }
 
 /* 상태 버튼 (인디케이터 + 텍스트) */
@@ -1668,8 +1658,8 @@ span[style*="--icon-loader"] svg,
     font-size: 12px;
 }
 
-/* -- Docker toggle row -- */
-.as-docker-row {
+/* -- Container toggle row -- */
+.as-container-row {
     margin-bottom: 12px;
 }
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import './Modals.css';
 import { Icon } from '../Icon';
@@ -7,7 +7,7 @@ import { getTheme, setTheme as saveTheme } from '../../utils/themeManager';
 import { useModalClose } from '../../hooks/useModalClose';
 import { useDevMode } from '../../hooks/useDevMode';
 import { useExtensions } from '../../contexts/ExtensionContext';
-import UpdatePanel from './UpdatePanel';
+import SabaStorage from './SabaStorage';
 
 function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChange, ipcPort, onIpcPortChange, consoleBufferSize, onConsoleBufferSizeChange, onTestModal, onTestProgressBar, onTestWaitingImage, onTestLoadingScreen, initialView }) {
     const { t, i18n } = useTranslation(['gui', 'common']);
@@ -25,8 +25,40 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
     const [localConsoleBuffer, setLocalConsoleBuffer] = useState(consoleBufferSize || 2000);
     const tabOrder = ['general', 'appearance', 'extensions', 'advanced'];
     const { isClosing, requestClose } = useModalClose(onClose);
+
+    // ── Dynamic tab indicator ──
+    const tabsRef = useRef(null);
+    const indicatorRef = useRef(null);
+
+    const syncIndicator = useCallback(() => {
+        const container = tabsRef.current;
+        const indicator = indicatorRef.current;
+        if (!container || !indicator) return;
+        const activeBtn = container.querySelector('.settings-tab.active');
+        if (!activeBtn) return;
+        const containerRect = container.getBoundingClientRect();
+        const btnRect = activeBtn.getBoundingClientRect();
+        indicator.style.left = `${btnRect.left - containerRect.left}px`;
+        indicator.style.width = `${btnRect.width}px`;
+    }, []);
+
+    useEffect(() => {
+        requestAnimationFrame(syncIndicator);
+    }, [activeTab, showUpdatePanel, isOpen, syncIndicator]);
+
+    useEffect(() => {
+        window.addEventListener('resize', syncIndicator);
+        return () => window.removeEventListener('resize', syncIndicator);
+    }, [syncIndicator]);
     const devMode = useDevMode();
     const { extensions, toggleExtension } = useExtensions();
+    const [togglingIds, setTogglingIds] = useState(new Set());
+
+    const handleExtensionToggle = useCallback(async (extId, enable) => {
+        setTogglingIds(prev => new Set(prev).add(extId));
+        await toggleExtension(extId, enable);
+        setTogglingIds(prev => { const s = new Set(prev); s.delete(extId); return s; });
+    }, [toggleExtension]);
 
     // 외부에서 initialView 지정으로 열렸을 때 해당 탭 자동 진입
     useEffect(() => {
@@ -152,7 +184,8 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
                             <h2 style={{ fontSize: '1.3rem' }}>{t('gui:settings_modal.title')}</h2>
                         </div>
 
-                        <div className="settings-modal-tabs" data-tab={activeTab}>
+                        <div className="settings-modal-tabs" ref={tabsRef}>
+                            <div className="settings-tab-indicator" ref={indicatorRef} />
                             <button
                                 className={`settings-tab ${activeTab === 'general' ? 'active' : ''}`}
                                 onClick={() => handleTabChange('general')}
@@ -229,11 +262,11 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
                                 />
                             </div>
 
-                            {/* 업데이트 항목 — 클릭하면 UpdatePanel로 전환 */}
+                            {/* 사바 스토리지 — 클릭하면 SabaStorage로 전환 */}
                             <div className="setting-item setting-item-clickable" onClick={() => setShowUpdatePanel(true)}>
                                 <label className="setting-label">
-                                    <span className="setting-title"><Icon name="package" size="sm" /> {t('updates.modal_title', 'Update Center')}</span>
-                                    <span className="setting-description">{t('updates.setting_description', '업데이트 확인 및 적용')}</span>
+                                    <span className="setting-title"><Icon name="package" size="sm" /> {t('saba_storage.title', '사바 스토리지')}</span>
+                                    <span className="setting-description">{t('saba_storage.setting_description', '업데이트, 모듈, 익스텐션 관리')}</span>
                                 </label>
                                 <Icon name="chevronRight" size="sm" color="var(--brand-primary)" />
                             </div>
@@ -242,7 +275,7 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
 
                     {activeTab === 'general' && showUpdatePanel && (
                         <div className="settings-tab-content" key="update-panel">
-                            <UpdatePanel onBack={handleUpdatePanelBack} isExiting={updatePanelExiting} devMode={devMode} />
+                            <SabaStorage onBack={handleUpdatePanelBack} isExiting={updatePanelExiting} devMode={devMode} />
                         </div>
                     )}
 
@@ -272,30 +305,49 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
                     {activeTab === 'extensions' && (
                         <div className={`settings-tab-content ${slideDirection}`} key="extensions" onAnimationEnd={() => setSlideDirection('')}>
                             <h3>{t('gui:settings_modal.extensions_tab', 'Extensions')}</h3>
+                            <p className="setting-description" style={{ margin: '0 0 12px', opacity: 0.75 }}>
+                                {t('gui:settings_modal.extensions_toggle_hint', '설치된 익스텐션을 활성화하거나 비활성화합니다. 설치·삭제는 사바 스토리지에서 가능합니다.')}
+                            </p>
+
                             {extensions.length === 0 ? (
                                 <div className="setting-item" style={{ opacity: 0.6 }}>
-                                    <span className="setting-description">{t('gui:settings_modal.no_extensions', 'No extensions found. Place extension folders in the extensions/ directory.')}</span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.extensions_none', '설치된 익스텐션이 없습니다.')}
+                                    </span>
                                 </div>
                             ) : (
                                 extensions.map(ext => (
-                                    <div className="setting-item extension-item" key={ext.id}>
-                                        <label className="setting-label">
+                                    <div key={ext.id} className="setting-item extension-item">
+                                        <label className="setting-label" htmlFor={`ext-toggle-${ext.id}`} style={{ cursor: 'pointer' }}>
                                             <span className="setting-title">
-                                                <Icon name="package" size="sm" /> {ext.name} <span className="extension-version">v{ext.version}</span>
+                                                {ext.name || ext.id}
+                                                {ext.version && <span className="extension-version">v{ext.version}</span>}
                                             </span>
-                                            <span className="setting-description">{ext.description || ext.id}</span>
+                                            {ext.description && (
+                                                <span className="setting-description">{ext.description}</span>
+                                            )}
                                         </label>
                                         <label className="extension-toggle">
                                             <input
+                                                id={`ext-toggle-${ext.id}`}
                                                 type="checkbox"
-                                                checked={ext.enabled || false}
-                                                onChange={(e) => toggleExtension(ext.id, e.target.checked)}
+                                                checked={!!ext.enabled}
+                                                disabled={togglingIds.has(ext.id)}
+                                                onChange={e => handleExtensionToggle(ext.id, e.target.checked)}
                                             />
-                                            <span className="extension-toggle-slider"></span>
+                                            <span className="extension-toggle-slider" />
                                         </label>
                                     </div>
                                 ))
                             )}
+
+                            <div className="setting-item setting-item-clickable" style={{ marginTop: 8 }} onClick={() => { handleTabChange('general'); setTimeout(() => setShowUpdatePanel(true), 50); }}>
+                                <label className="setting-label" style={{ cursor: 'pointer' }}>
+                                    <span className="setting-title"><Icon name="package" size="sm" /> {t('saba_storage.title', '사바 스토리지')}</span>
+                                    <span className="setting-description">{t('gui:settings_modal.extensions_store_hint', '설치·삭제·업데이트')}</span>
+                                </label>
+                                <Icon name="chevronRight" size="sm" color="var(--brand-primary)" />
+                            </div>
                         </div>
                     )}
 

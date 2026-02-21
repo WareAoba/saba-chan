@@ -10,7 +10,7 @@ log_pattern = '/(?P<level>INFO|WARN|ERROR|DEBUG|FATAL)\]'
 
 # 모듈 업데이트 설정 — 모듈은 별도 GitHub 레포지토리에서 관리됩니다
 [update]
-github_repo = "saba-chan-module-minecraft"  # github_owner는 본체 설정에서 상속
+github_repo = "saba-chan-modules"  # github_owner는 본체 설정에서 상속
 
 [protocols]
 supported = ["rcon", "stdin"]
@@ -38,7 +38,7 @@ image = "openjdk:21-slim"
 working_dir = "/server"
 restart = "unless-stopped"
 command = "java -Xmx{ram}G -Xms{ram}G -jar server.jar nogui"
-ports = ["{port}:25565/tcp", "{rcon_port}:25575/tcp"]
+ports = ["{port}:{port}/tcp", "{rcon_port}:{rcon_port}/tcp"]
 volumes = ["./server:/server"]
 
 [docker.environment]

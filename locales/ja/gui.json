@@ -51,7 +51,11 @@
     "console_buffer_label": "コンソールバッファサイズ",
     "console_buffer_description": "サーバーコンソールに保持する最大行数",
     "extensions_tab": "拡張機能",
-    "no_extensions": "拡張機能が見つかりません。extensions/ ディレクトリに拡張機能フォルダを配置してください。"
+    "no_extensions": "拡張機能が見つかりません。extensions/ ディレクトリに拡張機能フォルダを配置してください。",
+    "extensions_moved_hint": "拡張機能の管理は サバ ストレージ に移動しました。",
+    "extensions_toggle_hint": "インストール済みの拡張機能を有効または無効にします。インストール・削除はサバ ストレージから行えます。",
+    "extensions_none": "インストールされた拡張機能はありません。",
+    "extensions_store_hint": "インストール・削除・アップデート"
   },
   "add_server_modal": {
     "title": "新規サーバーを追加",
@@ -356,6 +360,20 @@
     "no_updates": "すべてのコンポーネントは最新です。"
   },
   "extensions": {
+    "installed_section": "インストール済み",
+    "store_section": "ストア",
+    "refresh_registry": "レジストリを更新",
+    "registry_loading": "レジストリを読み込み中...",
+    "store_empty": "更新ボタンを押して利用可能な拡張機能を取得してください。",
+    "all_installed": "すべての拡張機能がインストール済みです。",
+    "install_btn": "インストール",
+    "installing": "インストール中...",
+    "installed": "拡張機能 '{{id}}' をインストールしました。",
+    "install_failed": "'{{id}}' のインストールに失敗しました: {{error}}",
+    "install_error": "'{{id}}' のインストール中にエラーが発生しました。",
+    "update_available": "アップデート利用可能: v{{version}}",
+    "update_badge": "UPDATE",
+    "update_to": "v{{version}} にアップデート",
     "error_not_found": "拡張機能 '{{id}}' が見つかりません。削除された可能性があります。",
     "error_dep_missing": "'{{id}}' を有効化できません: 必要な拡張機能 '{{dep}}' がインストールされていません。先にインストールしてください。",
     "error_dep_disabled": "'{{id}}' を有効化できません: 必要な拡張機能 '{{dep}}' が無効です。先に有効化してください。",
@@ -363,5 +381,32 @@
     "error_in_use": "'{{id}}' を無効化できません: サーバーインスタンスで使用中です: {{instances}}。先に使用を解除してください。",
     "error_unknown": "不明なエラーが発生しました。",
     "error_network": "拡張機能 '{{id}}' の{{action}}に失敗しました。デーモンの接続を確認してください。"
+  },
+  "saba_storage": {
+    "title": "サバ ストレージ",
+    "setting_description": "コンポーネントのアップデートとモジュール・拡張機能の管理",
+    "tab_components": "コンポーネント",
+    "tab_modules": "モジュール",
+    "tab_extensions": "拡張機能",
+    "update_all": "すべてアップデート",
+    "refresh": "更新",
+    "installed_modules": "インストール済みモジュール",
+    "no_installed_modules": "インストール済みモジュールはありません。",
+    "available_modules": "利用可能なモジュール",
+    "show_more_modules": "さらにモジュールを表示",
+    "show_more_extensions": "さらに拡張機能を表示",
+    "refresh_registry": "レジストリを更新",
+    "loading_registry": "レジストリを読み込み中...",
+    "registry_fetch_failed": "レジストリの読み込みに失敗しました。",
+    "all_modules_installed": "すべてのモジュールがインストール済みです。",
+    "installed": "インストール済み",
+    "installing": "インストール中...",
+    "install_btn": "インストール",
+    "install_failed_short": "インストール失敗",
+    "remove": "削除",
+    "remove_module_confirm_title": "モジュールを削除",
+    "remove_confirm_msg": "モジュール '{{id}}' を削除しますか？この操作は元に戻せません。このモジュールを使用するサーバーインスタンスは起動できなくなります。",
+    "remove_ext_confirm_title": "拡張機能を削除",
+    "remove_confirm_msg_ext": "拡張機能 '{{id}}' を削除しますか？ファイルは完全に削除されます。"
   }
 }

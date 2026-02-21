@@ -12,8 +12,8 @@ const DOCKER_SVG = (
 );
 
 export default function DockerBadge({ server }) {
-  // extension_data에서 docker 활성 여부 확인 (레거시 use_docker도 지원)
-  const isDocker = server?.extension_data?.docker?.enabled || server?.use_docker;
+  // extension_data에서 docker 활성 여부 확인
+  const isDocker = server?.extension_data?.docker_enabled;
   if (!isDocker) return null;
 
   return (

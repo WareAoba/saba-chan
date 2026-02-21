@@ -288,41 +288,32 @@ impl ManagedProcess {
             .map_err(|e| anyhow::anyhow!("stdin channel closed: {}", e))
     }
 
-    /// Spawn a Docker log follower that streams `docker compose logs --follow`
+    /// Spawn a log follower that streams an extension-provided command's output
     /// into the standard LogBuffer/broadcast infrastructure.
     ///
-    /// This allows Docker containers to share the same console API
-    /// (`GET /api/instance/:id/console?since=N`) as native managed processes.
+    /// This allows extension-managed processes (e.g. containers) to share
+    /// the same console API (`GET /api/instance/:id/console?since=N`) as native
+    /// managed processes.
     ///
     /// # Arguments
-    /// * `instance_dir` - Instance directory containing docker-compose.yml
-    /// * `container_name` - Docker container name (for log messages)
-    /// * `log_pattern` - Optional regex for log level parsing
-    pub async fn spawn_docker_log_follower(
-        instance_dir: &Path,
-        container_name: &str,
+    /// * `program`       - The executable to run (e.g. container runtime, "wsl")
+    /// * `args`          - Arguments for the command
+    /// * `working_dir`   - Working directory for the command
+    /// * `description`   - Human-readable label for log messages
+    /// * `log_pattern`   - Optional regex for log level parsing
+    /// * `strip_prefix`  - Optional separator to strip from each line (e.g. " | " for compose logs)
+    pub async fn spawn_log_follower(
+        program: &str,
+        args: &[String],
+        working_dir: &Path,
+        description: &str,
         log_pattern: Option<&str>,
+        strip_prefix: Option<&str>,
     ) -> Result<Self> {
-        // Build `docker compose logs --follow --no-color` command
-        // WSL2 mode: route through wsl
-        let is_windows = cfg!(target_os = "windows");
+        let mut cmd = TokioCommand::new(program);
+        cmd.args(args);
 
-        let mut cmd = if is_windows {
-            let mut c = TokioCommand::new("wsl");
-            c.args(["-u", "root", "--",
-                    "/opt/saba-chan/docker/docker", "compose",
-                    "-f", "docker-compose.yml",
-                    "logs", "--follow", "--no-color", "--tail", "100"]);
-            c
-        } else {
-            let mut c = TokioCommand::new("docker");
-            c.args(["compose",
-                    "-f", &instance_dir.join("docker-compose.yml").to_string_lossy(),
-                    "logs", "--follow", "--no-color", "--tail", "100"]);
-            c
-        };
-
-        cmd.current_dir(instance_dir)
+        cmd.current_dir(working_dir)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -330,15 +321,16 @@ impl ManagedProcess {
 
         crate::utils::apply_creation_flags(&mut cmd);
 
+        let description_owned = description.to_string();
         let mut child = cmd.spawn()
             .map_err(|e| anyhow::anyhow!(
-                "Failed to spawn docker compose logs for '{}': {}",
-                container_name, e
+                "Failed to spawn log follower '{}': {}",
+                description_owned, e
             ))?;
 
         let pid = child.id().unwrap_or(0);
 
-        // Channels — stdin is not used for Docker log followers, but we keep the
+        // Channels — stdin is not used for container log followers, but we keep the
         // interface compatible with ManagedProcess.
         let (stdin_tx, _stdin_rx) = mpsc::channel::<String>(1);
         let (log_tx, _) = broadcast::channel::<LogLine>(2048);
@@ -360,19 +352,22 @@ impl ManagedProcess {
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
 
-        // ── stdout reader (docker compose logs outputs everything to stdout) ──
+        // ── stdout reader ──
         if let Some(stdout) = stdout {
             let buf = log_buffer.clone();
             let bc = log_tx.clone();
             let re = log_regex.clone();
+            let prefix = strip_prefix.map(String::from);
             tokio::spawn(async move {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    // docker compose logs prefix: "service-name  | actual log line"
-                    // Strip the prefix if present
-                    let content = if let Some(pos) = line.find(" | ") {
-                        line[pos + 3..].to_string()
+                    let content = if let Some(ref sep) = prefix {
+                        if let Some(pos) = line.find(sep.as_str()) {
+                            line[pos + sep.len()..].to_string()
+                        } else {
+                            line
+                        }
                     } else {
                         line
                     };
@@ -388,12 +383,17 @@ impl ManagedProcess {
             let buf = log_buffer.clone();
             let bc = log_tx.clone();
             let re = log_regex;
+            let prefix = strip_prefix.map(String::from);
             tokio::spawn(async move {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    let content = if let Some(pos) = line.find(" | ") {
-                        line[pos + 3..].to_string()
+                    let content = if let Some(ref sep) = prefix {
+                        if let Some(pos) = line.find(sep.as_str()) {
+                            line[pos + sep.len()..].to_string()
+                        } else {
+                            line
+                        }
                     } else {
                         line
                     };
@@ -410,10 +410,11 @@ impl ManagedProcess {
             let running = running_tx.clone();
             let buf = log_buffer.clone();
             let bc = log_tx.clone();
+            let desc = description_owned.clone();
             tokio::spawn(async move {
                 let exit_msg = match child.wait().await {
-                    Ok(status) => format!("Docker log follower exited with {}", status),
-                    Err(e) => format!("Docker log follower error: {}", e),
+                    Ok(status) => format!("Log follower '{}' exited with {}", desc, status),
+                    Err(e) => format!("Log follower '{}' error: {}", desc, e),
                 };
                 tracing::info!("{}", exit_msg);
                 let log_line = buf.lock().await.push(LogSource::System, exit_msg, LogLevel::Info);
@@ -424,7 +425,7 @@ impl ManagedProcess {
 
         // System log
         {
-            let msg = format!("Docker log streaming started for container '{}'", container_name);
+            let msg = format!("Log streaming started: '{}'", description_owned);
             tracing::info!("{}", msg);
             let log_line = log_buffer.lock().await.push(LogSource::System, msg, LogLevel::Info);
             let _ = log_tx.send(log_line);
@@ -503,6 +504,15 @@ impl ManagedProcessStore {
     pub async fn remove(&self, instance_id: &str) -> Option<Arc<ManagedProcess>> {
         let mut map = self.processes.lock().await;
         map.remove(instance_id)
+    }
+
+    /// 현재 실행 중인 인스턴스 ID 목록 반환
+    pub async fn running_instance_ids(&self) -> Vec<String> {
+        let map = self.processes.lock().await;
+        map.iter()
+            .filter(|(_, proc)| proc.is_running())
+            .map(|(id, _)| id.clone())
+            .collect()
     }
 
     /// Clean up processes that are no longer running.

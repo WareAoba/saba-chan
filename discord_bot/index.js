@@ -404,6 +404,22 @@ client.on('messageCreate', async (message) => {
             return;
         }
         const moduleName = resolveAlias(firstArg, moduleAliases);
+
+        // 다중 인스턴스 경고 확인
+        let multiInstanceWarning = '';
+        try {
+            const serversRes = await axios.get(`${IPC_BASE}/api/servers`);
+            const allServers = serversRes.data.servers || [];
+            const matched = allServers.filter(s => s.module === moduleName);
+            if (matched.length > 1) {
+                const names = matched.map(s => s.name).join(', ');
+                multiInstanceWarning = '\n\n' + i18n.t('bot:errors.multiple_instances', {
+                    module: moduleName,
+                    defaultValue: `⚠️ Multiple '${moduleName}' instances exist. Use an instance name instead of the module alias.`,
+                });
+            }
+        } catch (_) { /* 서버 목록 조회 실패 시 경고 생략 */ }
+
         const cmds = getModuleCommands(moduleName);
         const cmdList = Object.keys(cmds);
         
@@ -428,7 +444,7 @@ client.on('messageCreate', async (message) => {
                 cmdHelp += `• \`${prefix} ${firstArg} ${cmdName}${inputsStr ? ' ' + inputsStr : ''}\` - ${cmdMeta.label || cmdName}\n`;
             }
             
-            await message.reply(cmdHelp);
+            await message.reply(cmdHelp + multiInstanceWarning);
         } else {
             const prefix = botConfig.prefix;
             const moduleTitle = i18n.t('bot:help.module_title', { module: moduleName });
@@ -440,7 +456,8 @@ client.on('messageCreate', async (message) => {
                 `${moduleTitle}\n` +
                 `• \`${prefix} ${firstArg} start\` - ${helpStart}\n` +
                 `• \`${prefix} ${firstArg} stop\` - ${helpStop}\n` +
-                `• \`${prefix} ${firstArg} status\` - ${helpStatus}`
+                `• \`${prefix} ${firstArg} status\` - ${helpStatus}` +
+                multiInstanceWarning
             );
         }
         return;
@@ -490,10 +507,26 @@ client.on('messageCreate', async (message) => {
     console.log(`[Discord] ${message.author.tag}: ${prefix} ${firstArg} ${secondArg} → module=${moduleName}, command=${commandName}, args=${extraArgs.join(' ')}`);
 
     try {
-        // Find server by module name
+        // Find server by module name (or instance name)
         const serversRes = await axios.get(`${IPC_BASE}/api/servers`);
         const servers = serversRes.data.servers || [];
-        const server = servers.find(s => s.module === moduleName || s.name.includes(moduleName));
+
+        // 1) 인스턴스 이름으로 정확히 매칭 시도 (다중 인스턴스 구분용)
+        let server = servers.find(s => s.name.toLowerCase() === firstArg.toLowerCase());
+
+        if (!server) {
+            // 2) 모듈명/별명으로 매칭
+            const matched = servers.filter(s => s.module === moduleName || s.name.includes(moduleName));
+            if (matched.length > 1) {
+                // 동일 모듈의 인스턴스가 여러 개 → 이름으로 지정 필요
+                await message.reply(i18n.t('bot:errors.multiple_instances', {
+                    module: moduleName,
+                    defaultValue: `⚠️ Multiple '${moduleName}' instances exist. Use an instance name instead of the module alias.`,
+                }));
+                return;
+            }
+            server = matched[0];
+        }
 
         if (!server) {
             const notFoundMsg = i18n.t('bot:server.not_found', { alias: firstArg, resolved: moduleName });

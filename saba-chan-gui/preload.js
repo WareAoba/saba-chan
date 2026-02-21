@@ -11,8 +11,13 @@ contextBridge.exposeInMainWorld('api', {
     moduleGetLocales: (name) => ipcRenderer.invoke('module:getLocales', name),
     moduleListVersions: (name, options) => ipcRenderer.invoke('module:listVersions', name, options),
     moduleInstallServer: (name, config) => ipcRenderer.invoke('module:installServer', name, config),
+    // Module Registry (사바 스토리지 — 모듈 탭)
+    moduleRegistry: () => ipcRenderer.invoke('module:registry'),
+    moduleInstallFromRegistry: (moduleId) => ipcRenderer.invoke('module:installFromRegistry', moduleId),
+    moduleRemove: (moduleId) => ipcRenderer.invoke('module:remove', moduleId),
     instanceCreate: (data) => ipcRenderer.invoke('instance:create', data),
     instanceProvisionProgress: (name) => ipcRenderer.invoke('instance:provisionProgress', name),
+    instanceDismissProvision: (name) => ipcRenderer.invoke('instance:dismissProvision', name),
     instanceDelete: (id) => ipcRenderer.invoke('instance:delete', id),
     instanceReorder: (orderedIds) => ipcRenderer.invoke('instance:reorder', orderedIds),
     instanceUpdateSettings: (id, settings) => ipcRenderer.invoke('instance:updateSettings', id, settings),
@@ -26,6 +31,12 @@ contextBridge.exposeInMainWorld('api', {
     extensionI18n: (extId, locale) => ipcRenderer.invoke('extension:i18n', extId, locale),
     extensionGuiBundle: (extId) => ipcRenderer.invoke('extension:guiBundle', extId),
     extensionGuiStyles: (extId) => ipcRenderer.invoke('extension:guiStyles', extId),
+    // Extension Registry & Version Management API
+    extensionFetchRegistry: () => ipcRenderer.invoke('extension:fetchRegistry'),
+    extensionInstall: (extId, opts) => ipcRenderer.invoke('extension:install', extId, opts),
+    extensionRemove: (extId) => ipcRenderer.invoke('extension:remove', extId),
+    extensionCheckUpdates: () => ipcRenderer.invoke('extension:checkUpdates'),
+    extensionRescan: () => ipcRenderer.invoke('extension:rescan'),
     // Managed Process API (console capture)
     managedStart: (instanceId) => ipcRenderer.invoke('managed:start', instanceId),
     managedConsole: (instanceId, since, count) => ipcRenderer.invoke('managed:console', instanceId, since, count),

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Icon, MemoryGauge, ExtensionSlot } from './index';
+import { Icon, ExtensionSlot } from './index';
 
 /**
  * ServerCard — Individual server instance card with status, actions, and details.
@@ -9,6 +9,7 @@ export function ServerCard({
     server,
     index,
     modules,
+    servers,
     cardRefs,
     draggedName,
     skipNextClick,
@@ -26,13 +27,15 @@ export function ServerCard({
     setServers,
     formatUptime,
     nowEpoch,
+    onContextMenu,
 }) {
     const { t } = useTranslation('gui');
     const [provisionProgress, setProvisionProgress] = useState(null);
 
-    // 프로비저닝 중일 때 진행 상태 폴링
+    // 프로비저닝 상태 폴링 — server.provisioning이 true인 동안 폴링
     useEffect(() => {
         if (!server.provisioning) {
+            // tracker가 제거되면 (성공 후 auto-cleanup 또는 dismiss) UI 정리
             setProvisionProgress(null);
             return;
         }
@@ -44,7 +47,7 @@ export function ServerCard({
                     if (cancelled) break;
                     if (result && result.active) {
                         setProvisionProgress(result);
-                        if (result.done) break;
+                        if (result.done) break; // done이면 폴링 중단 (UI는 유지)
                     }
                 } catch {
                     // ignore
@@ -56,6 +59,17 @@ export function ServerCard({
         return () => { cancelled = true; };
     }, [server.provisioning, server.name]);
 
+    const handleDismissProvision = async () => {
+        try {
+            const result = await window.api.instanceDismissProvision(server.name);
+            setProvisionProgress(null);
+            // 프로비저닝 실패로 인스턴스가 롤백(삭제)됐으면 목록에서 즉시 제거
+            if (result?.rolled_back) {
+                setServers(prev => prev.filter(s => s.name !== server.name));
+            }
+        } catch { /* ignore */ }
+    };
+
     const moduleData = modules.find(m => m.name === server.module);
     const gameName = t(`mod_${server.module}:module.display_name`, { defaultValue: moduleData?.game_name || server.module });
     const gameIcon = moduleData?.icon || null;
@@ -65,6 +79,7 @@ export function ServerCard({
             ref={el => { cardRefs.current[server.name] = el; }}
             className={`server-card ${server.expanded ? 'expanded' : ''} ${draggedName === server.name ? 'dragging' : ''}`}
             onPointerDown={(e) => handleCardPointerDown(e, index)}
+            onContextMenu={onContextMenu}
         >
             <div
                 className="server-card-header"
@@ -83,11 +98,6 @@ export function ServerCard({
                     ) : (
                         <div className="game-icon-placeholder"><Icon name="gamepad" size="lg" /></div>
                     )}
-                    {server.use_docker && (
-                        <span className="docker-badge" title="Docker">
-                            <Icon name="dockerL" size={14} color="var(--docker-badge-color, #2496ed)" />
-                        </span>
-                    )}
                     <ExtensionSlot slotId="ServerCard.badge" server={server} />
                     {server.port_conflicts && server.port_conflicts.length > 0 && (
                         <span
@@ -99,6 +109,22 @@ export function ServerCard({
                             <Icon name="alertCircle" size={16} />
                         </span>
                     )}
+                    {(() => {
+                        const sameModuleOthers = servers ? servers.filter(s => s.module === server.module && s.id !== server.id) : [];
+                        if (sameModuleOthers.length === 0) return null;
+                        return (
+                            <span
+                                className="alias-conflict-badge"
+                                title={t('errors.alias_ambiguity_card', {
+                                    module: server.module,
+                                    count: sameModuleOthers.length + 1,
+                                    defaultValue: `Module '${server.module}' has ${sameModuleOthers.length + 1} instances — Discord alias is ambiguous`,
+                                })}
+                            >
+                                <Icon name="copy" size={14} />
+                            </span>
+                        );
+                    })()}
                 </div>
 
                 <div className="server-card-info">
@@ -106,14 +132,11 @@ export function ServerCard({
                     <p className="game-name">
                         {gameName}
                         {server.server_version && <span className="server-version-badge">{server.server_version}</span>}
+                        {server.id && <span className="instance-id-badge" title={server.id}>{server.id.slice(0, 8)}</span>}
                     </p>
                 </div>
 
-                {/* 미니 메모리 게이지 (헤더 — 항상 표시) */}
-                {!server.provisioning && server.use_docker && server.status === 'running' && server.docker_memory_percent != null && (
-                    <MemoryGauge percent={server.docker_memory_percent} size={44} compact
-                        title={server.docker_memory_usage || `${Math.round(server.docker_memory_percent)}%`} />
-                )}
+                {/* 익스텐션 제공 헤더 게이지 (예: Docker 메모리) */}
                 <ExtensionSlot slotId="ServerCard.headerGauge" server={server} />
 
                 {server.provisioning ? (
@@ -150,71 +173,22 @@ export function ServerCard({
                 )}
             </div>
 
-            {/* -- 프로비저닝 진행 상태 (카드에 inline 표시) -- */}
+            {/* -- 프로비저닝 진행 상태 (익스텐션이 슬롯으로 제공) -- */}
             {server.provisioning && (
-                <div className="sc-provision-wrap">
-                    <div className="as-provision-steps">
-                        {[
-                            { key: 'docker_engine', label: t('add_server_modal.step_docker_engine', { defaultValue: 'Docker Engine' }) },
-                            { key: 'steamcmd', label: t('add_server_modal.step_steamcmd', { defaultValue: 'Server Files' }) },
-                            { key: 'compose', label: t('add_server_modal.step_compose', { defaultValue: 'Configuration' }) },
-                        ].map((s, idx) => {
-                            const currentStep = provisionProgress?.step ?? -1;
-                            const isDone = provisionProgress?.done && !provisionProgress?.error;
-                            let stepClass = 'pending';
-                            if (isDone || idx < currentStep) stepClass = 'completed';
-                            else if (idx === currentStep) stepClass = provisionProgress?.error ? 'error' : 'active';
-                            return (
-                                <div key={s.key} className={`as-step ${stepClass}`}>
-                                    <div className="as-step-icon">
-                                        {stepClass === 'completed' ? <Icon name="check" size="xs" /> :
-                                         stepClass === 'active' ? <Icon name="refresh" size="xs" className="spin" /> :
-                                         stepClass === 'error' ? <Icon name="alertCircle" size="xs" /> :
-                                         <span className="as-step-num">{idx + 1}</span>}
-                                    </div>
-                                    <span className="as-step-label">{s.label}</span>
-                                </div>
-                            );
-                        })}
-                    </div>
-                    <div className="as-provision-bar">
-                        {provisionProgress?.percent != null && !provisionProgress?.done && !provisionProgress?.error ? (
-                            <div className="as-provision-bar-fill determinate" style={{ width: `${provisionProgress.percent}%` }} />
-                        ) : (
-                            <div className={`as-provision-bar-fill ${provisionProgress?.error ? 'error' : provisionProgress?.done ? 'done' : 'indeterminate'}`} />
-                        )}
-                    </div>
-                    {provisionProgress?.message && (
-                        <p className="as-provision-message">
-                            {provisionProgress.message}
-                            {provisionProgress?.percent != null && !provisionProgress?.done && !provisionProgress?.error && (
-                                <span className="as-provision-pct"> ({provisionProgress.percent}%)</span>
-                            )}
-                        </p>
-                    )}
-                </div>
+                <ExtensionSlot
+                    slotId="ServerCard.provision"
+                    server={server}
+                    provisionProgress={provisionProgress}
+                    onDismiss={handleDismissProvision}
+                    t={t}
+                />
             )}
 
             <div className="server-card-collapsible">
                 {!server.provisioning && (
                 <>
                 <div className="server-details">
-                    {/* Docker 리소스 게이지 (확장 시 전체 표시) */}
-                    {server.use_docker && server.status === 'running' && server.docker_memory_percent != null && (
-                        <div className="docker-stats-row">
-                            <MemoryGauge
-                                percent={server.docker_memory_percent}
-                                usage={server.docker_memory_usage}
-                                size={130}
-                            />
-                            {server.docker_cpu_percent != null && (
-                                <div className="docker-cpu-label">
-                                    <span className="label">CPU</span>
-                                    <span className="value">{server.docker_cpu_percent.toFixed(1)}%</span>
-                                </div>
-                            )}
-                        </div>
-                    )}
+                    {/* 익스텐션 제공 확장 통계 (예: Docker CPU/메모리 게이지) */}
                     <ExtensionSlot slotId="ServerCard.expandedStats" server={server} t={t} />
                     {/* 포트 충돌 경고 배너 */}
                     {server.port_conflicts && server.port_conflicts.length > 0 && (

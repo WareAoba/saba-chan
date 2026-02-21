@@ -250,6 +250,15 @@ class SteamCMD:
 
         args: list[str] = [str(self._path)]
 
+        # ── Login 전에 설정해야 하는 옵션들 ──
+
+        # Platform override (반드시 login 전)
+        if platform_override:
+            args += ["+@sSteamCmdForcePlatformType", platform_override]
+
+        # Install directory (반드시 login 전)
+        args += ["+force_install_dir", str(install_dir)]
+
         # Login
         if anonymous:
             args += ["+login", "anonymous"]
@@ -257,13 +266,6 @@ class SteamCMD:
             raise NotImplementedError(
                 "Non-anonymous SteamCMD login is not yet supported."
             )
-
-        # Platform override
-        if platform_override:
-            args += ["+@sSteamCmdForcePlatformType", platform_override]
-
-        # Install directory
-        args += ["+force_install_dir", str(install_dir)]
 
         # App update
         args += ["+app_update", str(app_id)]

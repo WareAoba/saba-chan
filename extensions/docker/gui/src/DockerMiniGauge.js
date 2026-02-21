@@ -6,18 +6,20 @@ import React from 'react';
 import { MemoryGauge } from './MemoryGauge';
 
 export default function DockerMiniGauge({ server }) {
-  const isDocker = server?.extension_data?.docker?.enabled || server?.use_docker;
+  const isDocker = server?.extension_data?.docker_enabled;
   if (!isDocker) return null;
   if (server.provisioning) return null;
   if (server.status !== 'running') return null;
-  if (server.docker_memory_percent == null) return null;
+
+  const memPct = server.extension_status?.docker?.memory_percent;
+  if (memPct == null) return null;
 
   return (
     <MemoryGauge
-      percent={server.docker_memory_percent}
+      percent={memPct}
       size={44}
       compact
-      title={server.docker_memory_usage || `${Math.round(server.docker_memory_percent)}%`}
+      title={server.extension_status?.docker?.memory_usage || `${Math.round(memPct)}%`}
     />
   );
 }

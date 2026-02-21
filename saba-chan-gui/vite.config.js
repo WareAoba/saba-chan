@@ -27,11 +27,12 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@ext': path.resolve(__dirname, '../extensions'),
     },
   },
   esbuild: {
     loader: 'jsx',
-    include: /src\/.*\.jsx?$/,
+    include: [/src\/.*\.jsx?$/, /extensions\/.*\/gui\/src\/.*\.jsx?$/],
     exclude: [],
   },
   optimizeDeps: {

@@ -73,18 +73,21 @@ pub(super) fn handle_daemon_select(app: &mut App, sel: usize) {
                 let running = tokio::task::spawn_blocking(process::check_daemon_running)
                     .await.unwrap_or(false);
                 if running {
+                    // settings.json에서 포트를 동적으로 읽어서 표시
+                    let base = crate::gui_config::get_ipc_base_url();
+                    let port = crate::gui_config::get_ipc_port();
                     let http = reqwest::Client::builder().timeout(Duration::from_secs(2)).build().unwrap();
                     let mut lines = vec![Out::Ok("Daemon: ● RUNNING".into())];
                     lines.push(Out::Text("  Host:     127.0.0.1".into()));
-                    lines.push(Out::Text("  Port:     57474".into()));
+                    lines.push(Out::Text(format!("  Port:     {}", port)));
                     lines.push(Out::Text("  Protocol: HTTP REST".into()));
-                    if let Ok(resp) = http.get("http://127.0.0.1:57474/api/modules").send().await {
+                    if let Ok(resp) = http.get(format!("{}/api/modules", base)).send().await {
                         if let Ok(data) = resp.json::<serde_json::Value>().await {
                             let mods = data.get("modules").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
                             lines.push(Out::Text(format!("  Modules:  {}", mods)));
                         }
                     }
-                    if let Ok(resp) = http.get("http://127.0.0.1:57474/api/servers").send().await {
+                    if let Ok(resp) = http.get(format!("{}/api/servers", base)).send().await {
                         if let Ok(data) = resp.json::<serde_json::Value>().await {
                             let srvs = data.get("servers").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
                             let running_count = data.get("servers").and_then(|v| v.as_array())

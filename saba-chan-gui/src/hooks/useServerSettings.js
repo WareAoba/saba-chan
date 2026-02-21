@@ -104,10 +104,9 @@ export function useServerSettings({
                 initial.protocol_mode = latestServer.protocol_mode || 'auto';
             }
 
-            // Docker 리소스 제한 설정 초기화
-            if (latestServer.use_docker) {
-                initial.docker_cpu_limit = latestServer.docker_cpu_limit != null ? String(latestServer.docker_cpu_limit) : '';
-                initial.docker_memory_limit = latestServer.docker_memory_limit || '';
+            // 익스텐션 데이터 패스스루 — 익스텐션 탭 컴포넌트가 자체 관리
+            if (latestServer.extension_data) {
+                initial._extension_data = { ...latestServer.extension_data };
             }
 
             setSettingsValues(initial);
@@ -116,9 +115,8 @@ export function useServerSettings({
             const defaultProto = protocols.default || (protocols.supported?.length > 0 ? protocols.supported[0] : null);
             setSettingsValues({
                 protocol_mode: (latestServer.protocol_mode && latestServer.protocol_mode !== 'auto' && latestServer.protocol_mode !== 'rest') ? latestServer.protocol_mode : (defaultProto || latestServer.protocol_mode || 'auto'),
-                ...(latestServer.use_docker ? {
-                    docker_cpu_limit: latestServer.docker_cpu_limit != null ? String(latestServer.docker_cpu_limit) : '',
-                    docker_memory_limit: latestServer.docker_memory_limit || '',
+                ...(latestServer.extension_data ? {
+                    _extension_data: { ...latestServer.extension_data },
                 } : {}),
             });
         }
@@ -384,18 +382,9 @@ export function useServerSettings({
                 convertedSettings.protocol_mode = settingsValues.protocol_mode || 'auto';
             }
 
-            // Docker 리소스 제한 설정 포함
-            if (settingsServer.use_docker) {
-                if (settingsValues.docker_cpu_limit !== undefined && settingsValues.docker_cpu_limit !== '') {
-                    convertedSettings.docker_cpu_limit = Number(settingsValues.docker_cpu_limit);
-                } else {
-                    convertedSettings.docker_cpu_limit = null;
-                }
-                if (settingsValues.docker_memory_limit !== undefined && settingsValues.docker_memory_limit !== '') {
-                    convertedSettings.docker_memory_limit = settingsValues.docker_memory_limit;
-                } else {
-                    convertedSettings.docker_memory_limit = null;
-                }
+            // 익스텐션 데이터 패스스루 — 익스텐션 탭 컴포넌트가 변경한 값을 그대로 전달
+            if (settingsValues._extension_data) {
+                convertedSettings.extension_data = { ...settingsValues._extension_data };
             }
 
             console.log('Converted settings:', convertedSettings);

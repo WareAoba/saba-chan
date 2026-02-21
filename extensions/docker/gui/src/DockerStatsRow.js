@@ -6,10 +6,12 @@ import React from 'react';
 import { MemoryGauge } from './MemoryGauge';
 
 export default function DockerStatsRow({ server }) {
-  const isDocker = server?.extension_data?.docker?.enabled || server?.use_docker;
+  const isDocker = server?.extension_data?.docker_enabled;
   if (!isDocker) return null;
   if (server.status !== 'running') return null;
-  if (server.docker_memory_percent == null) return null;
+
+  const dockerStats = server.extension_status?.docker;
+  if (dockerStats?.memory_percent == null) return null;
 
   return (
     <div className="docker-stats-row" style={{
@@ -21,11 +23,11 @@ export default function DockerStatsRow({ server }) {
       marginBottom: '6px',
     }}>
       <MemoryGauge
-        percent={server.docker_memory_percent}
-        usage={server.docker_memory_usage}
+        percent={dockerStats.memory_percent}
+        usage={dockerStats.memory_usage}
         size={130}
       />
-      {server.docker_cpu_percent != null && (
+      {dockerStats.cpu_percent != null && (
         <div style={{
           display: 'flex',
           flexDirection: 'column',
@@ -43,7 +45,7 @@ export default function DockerStatsRow({ server }) {
             fontSize: '16px',
             fontWeight: 700,
             color: 'var(--text-primary, #fff)',
-          }}>{server.docker_cpu_percent.toFixed(1)}%</span>
+          }}>{dockerStats.cpu_percent.toFixed(1)}%</span>
         </div>
       )}
     </div>

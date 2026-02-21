@@ -14,7 +14,7 @@ const PACKAGE_ICON = (
 
 export default function DockerToggle({ options, onOptionsChange, t }) {
   const translate = t || ((key, opts) => opts?.defaultValue || key);
-  const useDocker = options?.use_docker || false;
+  const useContainer = options?.use_container || false;
 
   return (
     <div className="as-section as-docker-row" style={{ marginBottom: '12px' }}>
@@ -35,8 +35,8 @@ export default function DockerToggle({ options, onOptionsChange, t }) {
         }}>
           <input
             type="checkbox"
-            checked={useDocker}
-            onChange={(e) => onOptionsChange({ ...options, use_docker: e.target.checked })}
+            checked={useContainer}
+            onChange={(e) => onOptionsChange({ ...options, use_container: e.target.checked })}
             style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }}
           />
           <span className="as-toggle-track" />
@@ -47,7 +47,7 @@ export default function DockerToggle({ options, onOptionsChange, t }) {
             {translate('add_server_modal.docker_isolation', { defaultValue: 'Docker Isolation' })}
           </span>
           <span className="as-toggle-desc">
-            {useDocker
+            {useContainer
               ? translate('add_server_modal.docker_isolation_hint_on', { defaultValue: 'Server will run inside a Docker container for isolation.' })
               : translate('add_server_modal.docker_isolation_hint_off', { defaultValue: 'Server will run natively on the host system.' })}
           </span>

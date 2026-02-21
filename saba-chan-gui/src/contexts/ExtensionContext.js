@@ -12,6 +12,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../utils/helpers';
 import i18n from '../i18n';
+import builtinExtensions from '../builtinExtensions';
 
 const ExtensionContext = createContext(null);
 
@@ -98,6 +99,16 @@ export function ExtensionProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const loadedRef = useRef(new Set());
 
+  // ── 레지스트리 / 버전관리 상태 ──────────────────────────────
+  /** 원격 레지스트리에서 받아온 가용 익스텐션 목록 */
+  const [registryExtensions, setRegistryExtensions] = useState([]);
+  /** 업데이트 가능한 익스텐션 목록 */
+  const [availableUpdates, setAvailableUpdates] = useState([]);
+  /** 레지스트리 페치 중 여부 */
+  const [registryLoading, setRegistryLoading] = useState(false);
+  /** 현재 설치 진행 중인 익스텐션 ID 집합 */
+  const [installingIds, setInstallingIds] = useState(new Set());
+
   // 익스텐션 목록 가져오기
   const fetchExtensions = useCallback(async () => {
     try {
@@ -121,39 +132,56 @@ export function ExtensionProvider({ children }) {
     const loadBundles = async () => {
       const newSlots = {};
 
+      /** 슬롯 맵을 newSlots에 병합하는 헬퍼 */
+      const mergeSlots = (extSlots) => {
+        for (const [slotId, components] of Object.entries(extSlots)) {
+          if (!newSlots[slotId]) newSlots[slotId] = [];
+          newSlots[slotId].push(...(Array.isArray(components) ? components : [components]));
+        }
+      };
+
       for (const ext of enabled) {
-        // 이미 로드된 경우 스킵
-        if (loadedRef.current.has(ext.id)) {
-          // 기존 슬롯 유지를 위해 전역 객체에서 다시 가져옴
-          const globalName = `SabaExt${pascalCase(ext.id)}`;
-          const mod = window[globalName];
-          if (mod?.registerSlots) {
-            const extSlots = mod.registerSlots();
-            for (const [slotId, components] of Object.entries(extSlots)) {
-              if (!newSlots[slotId]) newSlots[slotId] = [];
-              newSlots[slotId].push(...(Array.isArray(components) ? components : [components]));
+        // ① 내장 익스텐션: 정적 import에서 바로 슬롯 등록 (UMD 불필요)
+        const builtin = builtinExtensions[ext.id];
+        if (builtin) {
+          if (builtin.registerSlots) {
+            mergeSlots(builtin.registerSlots());
+          }
+          // 내장이라도 i18n은 데몬이 제공할 수 있으므로 로드 시도
+          if (!loadedRef.current.has(ext.id)) {
+            loadedRef.current.add(ext.id);
+            const currentLang = i18n.language || 'en';
+            await loadExtensionI18n(ext, currentLang);
+            if (currentLang !== 'en') {
+              await loadExtensionI18n(ext, 'en');
             }
           }
           continue;
         }
 
-        // GUI 번들 로드
+        // ② 이미 로드된 외부 익스텐션
+        if (loadedRef.current.has(ext.id)) {
+          const globalName = `SabaExt${pascalCase(ext.id)}`;
+          const mod = window[globalName];
+          if (mod?.registerSlots) {
+            mergeSlots(mod.registerSlots());
+          }
+          continue;
+        }
+
+        // ③ 외부 익스텐션: UMD 번들 동적 로드
         const mod = await loadExtensionBundle(ext);
         loadedRef.current.add(ext.id);
 
         if (mod?.registerSlots) {
-          const extSlots = mod.registerSlots();
-          for (const [slotId, components] of Object.entries(extSlots)) {
-            if (!newSlots[slotId]) newSlots[slotId] = [];
-            newSlots[slotId].push(...(Array.isArray(components) ? components : [components]));
-          }
+          mergeSlots(mod.registerSlots());
         }
 
         // i18n 로드
         const currentLang = i18n.language || 'en';
         await loadExtensionI18n(ext, currentLang);
         if (currentLang !== 'en') {
-          await loadExtensionI18n(ext, 'en'); // fallback
+          await loadExtensionI18n(ext, 'en');
         }
       }
 
@@ -216,6 +244,115 @@ export function ExtensionProvider({ children }) {
     }
   }, [fetchExtensions, t]);
 
+  // ── 레지스트리 페치 ──────────────────────────────────────────
+  /** 원격 레지스트리에서 가용 익스텐션 목록을 가져옵니다. */
+  const fetchRegistry = useCallback(async () => {
+    setRegistryLoading(true);
+    try {
+      const data = await window.api.extensionFetchRegistry?.();
+      if (data) {
+        setRegistryExtensions(data.extensions || []);
+        setAvailableUpdates(data.updates || []);
+      }
+      return data;
+    } catch (e) {
+      console.warn('[Extension] Failed to fetch registry:', e);
+      return null;
+    } finally {
+      setRegistryLoading(false);
+    }
+  }, []);
+
+  // ── 원클릭 설치 ──────────────────────────────────────────────
+  /** 레지스트리에서 익스텐션을 다운로드·설치합니다. */
+  const installExtension = useCallback(async (extId, opts = {}) => {
+    if (!extId) return false;
+    setInstallingIds(prev => new Set(prev).add(extId));
+    try {
+      const result = await window.api.extensionInstall?.(extId, opts);
+      if (result?.success === false) {
+        const msg = t('extensions.install_failed', {
+          id: extId,
+          error: result.error,
+          defaultValue: `Failed to install '${extId}': ${result.error}`,
+        });
+        safeShowToast(msg, 'error', 5000);
+        return false;
+      }
+      // 설치 후 목록 새로고침
+      await fetchExtensions();
+      await fetchRegistry();
+      safeShowToast(
+        t('extensions.installed', { id: extId, defaultValue: `Extension '${extId}' installed.` }),
+        'success',
+        3000
+      );
+      return true;
+    } catch (e) {
+      safeShowToast(
+        t('extensions.install_error', { id: extId, defaultValue: `Failed to install '${extId}'.` }),
+        'error',
+        4000
+      );
+      console.warn(`[Extension] Failed to install '${extId}':`, e);
+      return false;
+    } finally {
+      setInstallingIds(prev => {
+        const n = new Set(prev);
+        n.delete(extId);
+        return n;
+      });
+    }
+  }, [fetchExtensions, fetchRegistry, t]);
+
+  // ── 업데이트 체크 ────────────────────────────────────────────
+  /** 설치된 익스텐션의 업데이트 가용 여부를 확인합니다. */
+  const checkUpdates = useCallback(async () => {
+    try {
+      const data = await window.api.extensionCheckUpdates?.();
+      if (data?.updates) {
+        setAvailableUpdates(data.updates);
+      }
+      return data;
+    } catch (e) {
+      console.warn('[Extension] Failed to check updates:', e);
+      return null;
+    }
+  }, []);
+
+  // 익스텐션 제거
+  const removeExtension = useCallback(async (extId) => {
+    if (!extId) return false;
+    try {
+      const result = await window.api?.extensionRemove?.(extId);
+      if (result?.success === false) {
+        const code = result.error_code || 'unknown';
+        const related = (result.related || []).join(', ');
+        let msg;
+        switch (code) {
+          case 'has_dependents':
+            msg = t('extensions.error_has_dependents', { id: extId, deps: related, defaultValue: `Cannot remove '${extId}': other extensions depend on it (${related}).` });
+            break;
+          case 'in_use':
+            msg = t('extensions.error_in_use', { id: extId, instances: related, defaultValue: `Cannot remove '${extId}': in use by server instance(s): ${related}.` });
+            break;
+          default:
+            msg = result.error || t('extensions.error_unknown', { defaultValue: 'An unknown error occurred.' });
+        }
+        safeShowToast(msg, 'error', 5000);
+        return false;
+      }
+      await fetchExtensions();
+      return true;
+    } catch (e) {
+      safeShowToast(
+        t('extensions.error_network', { action: 'remove', id: extId, defaultValue: `Failed to remove extension '${extId}'. Check daemon connection.` }),
+        'error', 4000
+      );
+      return false;
+    }
+  }, [fetchExtensions, t]);
+
   const value = {
     extensions,
     enabledExtensions,
@@ -223,6 +360,15 @@ export function ExtensionProvider({ children }) {
     loading,
     toggleExtension,
     refreshExtensions: fetchExtensions,
+    removeExtension,
+    // 레지스트리 & 버전관리
+    registryExtensions,
+    availableUpdates,
+    registryLoading,
+    installingIds,
+    fetchRegistry,
+    installExtension,
+    checkUpdates,
   };
 
   return (
@@ -236,7 +382,22 @@ export function useExtensions() {
   const ctx = useContext(ExtensionContext);
   if (!ctx) {
     // Context 없이 사용되는 경우 (단독 테스트 등) 기본값 반환
-    return { extensions: [], enabledExtensions: [], slots: {}, loading: false, toggleExtension: () => {}, refreshExtensions: () => {} };
+    return {
+      extensions: [],
+      enabledExtensions: [],
+      slots: {},
+      loading: false,
+      toggleExtension: () => {},
+      refreshExtensions: () => {},
+      removeExtension: async () => false,
+      registryExtensions: [],
+      availableUpdates: [],
+      registryLoading: false,
+      installingIds: new Set(),
+      fetchRegistry: async () => {},
+      installExtension: async () => false,
+      checkUpdates: async () => {},
+    };
   }
   return ctx;
 }

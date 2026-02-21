@@ -783,9 +783,9 @@ async function ensureDaemon() {
     try {
         // IPC 토큰을 먼저 로드 (이미 데몬이 떠있을 수 있으므로)
         loadIpcToken();
-        // 여러 엔드포인트로 체크 (일부 엔드포인트가 500을 반환해도 데몬은 실행 중)
+        // /health 엔드포인트로 체크 (lock / 디스크 I/O 없이 즉시 응답)
         sendStatus('daemon', t('daemon.checking'));
-        const response = await axios.get(`${IPC_BASE}/api/modules`, { timeout: 1000 });
+        const response = await axios.get(`${IPC_BASE}/health`, { timeout: 1000 });
         if (response.status === 200) {
             console.log('Existing daemon detected on IPC port. Skipping launch.');
             daemonStartedByApp = false;
@@ -801,7 +801,7 @@ async function ensureDaemon() {
             for (let retry = 0; retry < 3; retry++) {
                 loadIpcToken();
                 try {
-                    const verifyResp = await axios.get(`${IPC_BASE}/api/modules`, { timeout: 1000 });
+                    const verifyResp = await axios.get(`${IPC_BASE}/health`, { timeout: 1000 });
                     if (verifyResp.status === 200) {
                         console.log('✓ Token refreshed and verified');
                         daemonStartedByApp = false;
@@ -835,7 +835,7 @@ async function ensureDaemon() {
                     // 데몬이 시작되면서 새 토큰을 생성하므로 매 시도마다 재로드
                     loadIpcToken();
                     try {
-                        const checkResponse = await axios.get(`${IPC_BASE}/api/modules`, { timeout: 800 });
+                        const checkResponse = await axios.get(`${IPC_BASE}/health`, { timeout: 800 });
                         if (checkResponse.status === 200) {
                             console.log('✓ Daemon is now running');
                             sendStatus('daemon', t('daemon.started'));
@@ -877,18 +877,11 @@ async function syncInstallRoot() {
 }
 
 async function preloadLightData() {
-    const tasks = [
-        axios
-            .get(`${IPC_BASE}/api/modules`, { timeout: 1200 })
-            .then(() => sendStatus('modules', '모듈 목록 준비 완료'))
-            .catch((err) => sendStatus('modules', `모듈 로드 실패: ${err.message}`)),
-        axios
-            .get(`${IPC_BASE}/api/instances`, { timeout: 1200 })
-            .then(() => sendStatus('instances', '인스턴스 목록 준비 완료'))
-            .catch((err) => sendStatus('instances', `인스턴스 로드 실패: ${err.message}`)),
-    ];
-
-    await Promise.allSettled(tasks);
+    // 레거시: 응답을 버리는 워밍업 요청이었으나 Rust 데모닌에 HTTP 캐시가 없으므로
+    // supervisor lock만 유발하는 순 오버헤드였음. 렌더러가 이미 로드 시 실제 데이터를 페치하므로 여기서는
+    // 로딩 상태 변경만 수행한다.
+    sendStatus('modules', '새 모듈 목록 준비 중...');
+    sendStatus('instances', '인스턴스 목록 준비 중...');
 }
 
 // ── Client Heartbeat (데몬이 GUI 생존 여부를 추적) ────────────
@@ -1793,6 +1786,34 @@ ipcMain.handle('module:refresh', async () => {
     }
 });
 
+// ── Module Registry (사바 스토리지 — 모듈 탭) ──────────────────
+ipcMain.handle('module:registry', async () => {
+    try {
+        const response = await axios.get(`${IPC_BASE}/api/modules/registry`, { timeout: 15000 });
+        return response.data;
+    } catch (error) {
+        return { ok: false, error: error.response?.data?.error || error.message };
+    }
+});
+
+ipcMain.handle('module:installFromRegistry', async (event, moduleId) => {
+    try {
+        const response = await axios.post(`${IPC_BASE}/api/modules/registry/${moduleId}/install`, {}, { timeout: 120000 });
+        return response.data;
+    } catch (error) {
+        return { ok: false, error: error.response?.data?.error || error.message };
+    }
+});
+
+ipcMain.handle('module:remove', async (event, moduleId) => {
+    try {
+        const response = await axios.delete(`${IPC_BASE}/api/modules/${moduleId}`, { timeout: 15000 });
+        return response.data;
+    } catch (error) {
+        return { ok: false, error: error.response?.data?.error || error.message };
+    }
+});
+
 // 모듈의 locale 파일들을 모두 읽어서 반환
 ipcMain.handle('module:getLocales', async (event, moduleName) => {
     try {
@@ -1885,6 +1906,15 @@ ipcMain.handle('instance:provisionProgress', async (event, name) => {
         return response.data;
     } catch (error) {
         return { active: false };
+    }
+});
+
+ipcMain.handle('instance:dismissProvision', async (event, name) => {
+    try {
+        const response = await axios.delete(`${IPC_BASE}/api/provision-progress/${encodeURIComponent(name)}`, { timeout: 3000 });
+        return response.data;
+    } catch (error) {
+        return { success: false };
     }
 });
 
@@ -2217,6 +2247,76 @@ ipcMain.handle('extension:guiStyles', async (event, extId) => {
     }
 });
 
+// ── Extension Registry & Version Management IPC 핸들러 ──────────
+
+// 원격 레지스트리에서 가용 익스텐션 목록 페치
+ipcMain.handle('extension:fetchRegistry', async () => {
+    try {
+        const response = await axios.get(`${IPC_BASE}/api/extensions/registry`, { timeout: 15000 });
+        return response.data;
+    } catch (error) {
+        console.warn('[Extension] Failed to fetch registry:', error.message);
+        return { success: false, error: error.message, extensions: [], updates: [] };
+    }
+});
+
+// 익스텐션 설치 (원격 레지스트리에서 다운로드)
+ipcMain.handle('extension:install', async (event, extId, opts = {}) => {
+    try {
+        const response = await axios.post(
+            `${IPC_BASE}/api/extensions/${extId}/install`,
+            opts || {},
+            { timeout: 60000 }
+        );
+        return response.data;
+    } catch (error) {
+        const data = error.response?.data;
+        console.warn(`[Extension] Failed to install '${extId}':`, data || error.message);
+        return {
+            success: false,
+            error: data?.error || error.message,
+            error_code: data?.error_code || 'network',
+        };
+    }
+});
+
+ipcMain.handle('extension:remove', async (event, extId) => {
+    try {
+        const response = await axios.delete(`${IPC_BASE}/api/extensions/${extId}`, { timeout: 15000 });
+        return response.data;
+    } catch (error) {
+        const data = error.response?.data;
+        console.warn(`[Extension] Failed to remove '${extId}':`, data || error.message);
+        return {
+            success: false,
+            error: data?.error || error.message,
+            error_code: data?.error_code || 'network',
+        };
+    }
+});
+
+// 설치된 익스텐션 업데이트 체크
+ipcMain.handle('extension:checkUpdates', async () => {
+    try {
+        const response = await axios.get(`${IPC_BASE}/api/extensions/updates`, { timeout: 15000 });
+        return response.data;
+    } catch (error) {
+        console.warn('[Extension] Failed to check updates:', error.message);
+        return { success: false, error: error.message, updates: [], count: 0 };
+    }
+});
+
+// 익스텐션 디렉토리 재스캔
+ipcMain.handle('extension:rescan', async () => {
+    try {
+        const response = await axios.post(`${IPC_BASE}/api/extensions/rescan`);
+        return response.data;
+    } catch (error) {
+        console.warn('[Extension] Failed to rescan extensions:', error.message);
+        return { success: false, error: error.message, newly_found: [] };
+    }
+});
+
 // ── Updater IPC 핸들러 (데몬 HTTP API 방식) ──────────
 
 // 업데이트 상태 확인 — 데몬 API `/api/updates/check`
@@ -2365,7 +2465,7 @@ ipcMain.handle('updater:setConfig', async (event, config) => {
 // Daemon 상태 확인 IPC 핸들러
 ipcMain.handle('daemon:status', async () => {
     try {
-        const response = await axios.get(`${IPC_BASE}/api/modules`, { timeout: 1000 });
+        const response = await axios.get(`${IPC_BASE}/health`, { timeout: 1000 });
         return { running: true, message: 'Daemon is running' };
     } catch (err) {
         return { running: false, message: `Daemon not responding: ${err.message}` };
@@ -2391,7 +2491,7 @@ ipcMain.handle('daemon:restart', async () => {
             // 새 데몬이 새 토큰을 생성하므로 매 시도마다 재로드
             loadIpcToken();
             try {
-                const check = await axios.get(`${IPC_BASE}/api/modules`, { timeout: 800 });
+                const check = await axios.get(`${IPC_BASE}/health`, { timeout: 800 });
                 if (check.status === 200) {
                     ready = true;
                     break;

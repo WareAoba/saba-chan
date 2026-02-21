@@ -35,10 +35,11 @@ pub struct ModuleMetadata {
     pub syntax_highlight: Option<SyntaxHighlight>,  // 콘솔 구문 하이라이팅 규칙
     #[serde(default)]
     pub install: Option<ModuleInstallConfig>,  // [install] 설치 방식 (steamcmd 등)
+    /// [extension.*] 섹션들을 범용으로 저장 (예: extensions["<ext_id>"] = {...})
     #[serde(default)]
-    pub docker: Option<DockerExtensionConfig>,  // [docker] 컨테이너 설정
+    pub extensions: std::collections::HashMap<String, serde_json::Value>,
     #[serde(default)]
-    pub docker_process_patterns: Vec<String>,  // [detection].process_patterns — Docker 컨테이너 내 서버 프로세스 탐지용
+    pub process_patterns: Vec<String>,  // [detection].process_patterns — 컨테이너 내 서버 프로세스 탐지용
 }
 
 impl ModuleMetadata {
@@ -81,9 +82,9 @@ impl ModuleMetadata {
             .and_then(|i| i.app_id)
     }
 
-    /// Docker 설정이 있는지 확인합니다
-    pub fn has_docker_config(&self) -> bool {
-        self.docker.is_some()
+    /// 특정 익스텐션의 모듈 설정이 있는지 확인합니다
+    pub fn has_extension_config(&self, ext_name: &str) -> bool {
+        self.extensions.contains_key(ext_name)
     }
 }
 
@@ -189,8 +190,9 @@ struct ModuleToml {
     syntax_highlight: Option<SyntaxHighlightSection>,
     #[serde(default)]
     install: Option<InstallSectionToml>,
-    #[serde(default)]
-    docker: Option<DockerSectionToml>,
+    /// [docker] 익스텐션 설정 섹션 (컨테이너 격리용)
+    #[serde(default, rename = "docker")]
+    container: Option<ContainerSectionToml>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -301,9 +303,9 @@ struct InstallSectionToml {
     beta: Option<String>,
 }
 
-/// module.toml [docker] 섹션
+/// module.toml [docker] 섹션 — 컨테이너 격리 익스텐션 설정
 #[derive(Debug, Deserialize)]
-struct DockerSectionToml {
+struct ContainerSectionToml {
     #[serde(default)]
     image: Option<String>,
     #[serde(default)]
@@ -352,10 +354,11 @@ pub struct ModuleInstallConfig {
 
 fn default_true_mod() -> bool { true }
 
-/// Docker container configuration for modules
+/// Container isolation extension configuration for modules.
+/// Parsed from module.toml [docker] section and stored in ModuleMetadata.extensions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DockerExtensionConfig {
-    /// Docker image to use (e.g. "cm2network/steamcmd:latest")
+pub struct ContainerExtensionConfig {
+    /// Container image (e.g. "cm2network/steamcmd:latest")
     pub image: String,
     /// Working directory inside the container
     #[serde(default)]
@@ -384,7 +387,7 @@ pub struct DockerExtensionConfig {
     /// Optional Dockerfile path (relative to module directory) for custom builds
     #[serde(default)]
     pub dockerfile: Option<String>,
-    /// Optional: additional docker compose service options as raw YAML
+    /// Optional: additional compose service options as raw YAML
     #[serde(default)]
     pub extra_options: std::collections::HashMap<String, String>,
     /// CPU limit (number of cores, e.g. 2.0)
@@ -540,24 +543,33 @@ impl ModuleToml {
                 download_url: i.download_url,
                 beta: i.beta,
             }),
-            docker: self.docker.and_then(|d| {
-                d.image.map(|img| DockerExtensionConfig {
-                    image: img,
-                    working_dir: d.working_dir,
-                    restart: d.restart.unwrap_or_else(|| "unless-stopped".to_string()),
-                    command: d.command,
-                    entrypoint: d.entrypoint,
-                    user: d.user,
-                    ports: d.ports,
-                    volumes: d.volumes,
-                    environment: d.environment,
-                    dockerfile: d.dockerfile,
-                    extra_options: std::collections::HashMap::new(),
-                    cpu_limit: d.cpu_limit,
-                    memory_limit: d.memory_limit,
-                })
-            }),
-            docker_process_patterns: self._detection
+            extensions: {
+                let mut ext_map = std::collections::HashMap::new();
+                if let Some(d) = self.container {
+                    if let Some(img) = d.image {
+                        let cfg = ContainerExtensionConfig {
+                            image: img,
+                            working_dir: d.working_dir,
+                            restart: d.restart.unwrap_or_else(|| "unless-stopped".to_string()),
+                            command: d.command,
+                            entrypoint: d.entrypoint,
+                            user: d.user,
+                            ports: d.ports,
+                            volumes: d.volumes,
+                            environment: d.environment,
+                            dockerfile: d.dockerfile,
+                            extra_options: std::collections::HashMap::new(),
+                            cpu_limit: d.cpu_limit,
+                            memory_limit: d.memory_limit,
+                        };
+                        if let Ok(val) = serde_json::to_value(cfg) {
+                            ext_map.insert("docker".to_string(), val);
+                        }
+                    }
+                }
+                ext_map
+            },
+            process_patterns: self._detection
                 .and_then(|d| d.process_patterns)
                 .unwrap_or_default(),
         }
@@ -583,6 +595,11 @@ impl ModuleLoader {
             modules_dir: modules_dir.to_string(),
             cached_modules: RwLock::new(None),
         }
+    }
+
+    /// 모듈 디렉토리 경로 반환
+    pub fn modules_dir(&self) -> &str {
+        &self.modules_dir
     }
 
     /// 캐시를 무효화합니다 (새로운 모듈이 추가되었을 때 호출)

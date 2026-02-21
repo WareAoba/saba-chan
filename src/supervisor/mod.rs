@@ -79,18 +79,6 @@ impl Supervisor {
         }
     }
 
-    /// 인스턴스의 extension_data에 레거시 use_docker 플래그를 자동 매핑.
-    /// use_docker=true이면 extension_data에 docker_enabled=true를 주입하여
-    /// Docker 확장의 hook 조건("instance.ext_data.docker_enabled")이 올바르게 평가되도록 한다.
-    fn enriched_extension_data(instance: &crate::instance::ServerInstance) -> HashMap<String, Value> {
-        let mut ext_data = instance.extension_data.clone();
-        if instance.use_docker {
-            ext_data.entry("docker_enabled".to_string())
-                .or_insert(json!(true));
-        }
-        ext_data
-    }
-
     pub async fn initialize(&mut self) -> Result<()> {
         // 모듈 발견
         let modules = self.module_loader.discover_modules()?;
@@ -144,42 +132,55 @@ impl Supervisor {
                 .dispatch_hook("server.pre_start", json!({
                     "instance_id": instance.id.clone(),
                     "instance_dir": instance_dir.to_string_lossy(),
-                    "extension_data": Self::enriched_extension_data(&instance),
+                    "module": module_name,
+                    "extension_data": &instance.extension_data,
                 })).await;
 
             for (_ext_id, result) in &results {
                 if let Ok(val) = result {
                     if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
-                        // Docker 컨테이너 시작 성공 → 로그 스트리머 등록
-                        if instance.use_docker
-                            && val.get("success").and_then(|s| s.as_bool()) == Some(true)
-                        {
-                            let instance_dir = self.instance_store.instance_dir(&instance.id);
-                            let container_name = format!(
-                                "saba-{}-{}",
-                                module_name,
-                                &instance.id[..8.min(instance.id.len())]
-                            );
-                            let log_pattern = self.module_loader.get_module(module_name)
-                                .ok()
-                                .and_then(|m| m.metadata.log_pattern.clone());
-                            match managed_process::ManagedProcess::spawn_docker_log_follower(
-                                &instance_dir,
-                                &container_name,
-                                log_pattern.as_deref(),
-                            ).await {
-                                Ok(follower) => {
-                                    self.managed_store.insert(&instance.id, follower).await;
-                                    tracing::info!(
-                                        "Docker log follower registered for '{}'",
-                                        server_name
-                                    );
-                                }
-                                Err(e) => {
-                                    tracing::warn!(
-                                        "Failed to start Docker log follower for '{}': {}",
-                                        server_name, e
-                                    );
+                        // Extension이 시작 성공 → log_follower가 있으면 로그 스트리머 등록
+                        if val.get("success").and_then(|s| s.as_bool()) == Some(true) {
+                            if let Some(log_cfg) = val.get("log_follower") {
+                                let instance_dir = self.instance_store.instance_dir(&instance.id);
+                                let program = log_cfg.get("program").and_then(|p| p.as_str()).unwrap_or_default();
+                                let args: Vec<String> = log_cfg.get("args")
+                                    .and_then(|a| a.as_array())
+                                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                                    .unwrap_or_default();
+                                let work_dir = log_cfg.get("working_dir")
+                                    .and_then(|w| w.as_str())
+                                    .map(std::path::PathBuf::from)
+                                    .unwrap_or_else(|| instance_dir.clone());
+                                let desc = log_cfg.get("description")
+                                    .and_then(|d| d.as_str())
+                                    .unwrap_or("Extension log follower");
+                                let strip_prefix = log_cfg.get("strip_prefix").and_then(|s| s.as_str());
+                                let log_pattern = self.module_loader.get_module(module_name)
+                                    .ok()
+                                    .and_then(|m| m.metadata.log_pattern.clone());
+
+                                match managed_process::ManagedProcess::spawn_log_follower(
+                                    program,
+                                    &args,
+                                    &work_dir,
+                                    desc,
+                                    log_pattern.as_deref(),
+                                    strip_prefix,
+                                ).await {
+                                    Ok(follower) => {
+                                        self.managed_store.insert(&instance.id, follower).await;
+                                        tracing::info!(
+                                            "Log follower registered for '{}'",
+                                            server_name
+                                        );
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            "Failed to start log follower for '{}': {}",
+                                            server_name, e
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -189,21 +190,20 @@ impl Supervisor {
             }
         }
 
-        // ── Docker 인스턴스인데 익스텐션이 처리하지 않은 경우 → 에러 ──
-        if instance.use_docker {
+        // ── Extension이 처리하지 않았으나 extension_data에 외부 프로세스 관리 플래그가 있는 경우 → 에러 ──
+        if instance.ext_enabled("docker_enabled") {
             tracing::error!(
-                "Instance '{}' is configured for Docker but no extension handled it. \
-                 Is the Docker extension enabled?",
+                "Instance '{}' has extension flags but no extension handled it. \
+                 Is the required extension enabled?",
                 server_name
             );
             return Ok(json!({
                 "success": false,
                 "action_required": "extension_required",
-                "extension_id": "docker",
                 "instance_name": server_name,
                 "message": format!(
-                    "Instance '{}' is configured for Docker mode, but the Docker extension is not enabled. \
-                     Please enable the Docker extension in Settings → Extensions, or disable Docker mode for this instance.",
+                    "Instance '{}' requires an extension to start, but no extension handled the request. \
+                     Please check that the required extension is enabled.",
                     server_name
                 )
             }));
@@ -306,7 +306,8 @@ impl Supervisor {
                 .dispatch_hook("server.post_stop", json!({
                     "instance_id": instance.id.clone(),
                     "instance_dir": instance_dir.to_string_lossy(),
-                    "extension_data": Self::enriched_extension_data(&instance),
+                    "module": module_name,
+                    "extension_data": &instance.extension_data,
                 })).await;
 
             for (_ext_id, result) in &results {
@@ -319,19 +320,18 @@ impl Supervisor {
             }
         }
 
-        // ── Docker 인스턴스인데 익스텐션이 처리하지 않은 경우 → 에러 ──
-        if instance.use_docker {
+        // ── Extension이 처리하지 않았으나 extension 플래그가 있는 경우 → 에러 ──
+        if instance.ext_enabled("docker_enabled") {
             tracing::error!(
-                "Instance '{}' is configured for Docker but no extension handled stop.",
+                "Instance '{}' has extension flags but no extension handled stop.",
                 server_name
             );
             return Ok(json!({
                 "success": false,
                 "action_required": "extension_required",
-                "extension_id": "docker",
                 "instance_name": server_name,
                 "message": format!(
-                    "Instance '{}' is configured for Docker mode, but the Docker extension is not enabled.",
+                    "Instance '{}' requires an extension to stop, but no extension handled the request.",
                     server_name
                 )
             }));
@@ -462,13 +462,14 @@ impl Supervisor {
         if let Some(ref ext_mgr) = self.extension_manager {
             let instance_dir = self.instance_store.instance_dir(&instance.id);
             let process_patterns = self.module_loader.get_module(module_name)
-                .map(|m| m.metadata.docker_process_patterns.clone())
+                .map(|m| m.metadata.process_patterns.clone())
                 .unwrap_or_default();
             let results = ext_mgr.read().await
                 .dispatch_hook("server.status", json!({
                     "instance_id": instance.id.clone(),
                     "instance_dir": instance_dir.to_string_lossy(),
-                    "extension_data": Self::enriched_extension_data(&instance),
+                    "module": module_name,
+                    "extension_data": &instance.extension_data,
                     "process_patterns": process_patterns,
                 })).await;
 
@@ -481,13 +482,13 @@ impl Supervisor {
             }
         }
 
-        // ── Docker 인스턴스인데 익스텐션이 처리하지 않은 경우 → 최소 응답 ──
-        if instance.use_docker {
+        // ── Extension 플래그가 있으나 처리되지 않은 경우 → 최소 응답 ──
+        if instance.ext_enabled("docker_enabled") {
             return Ok(json!({
                 "server": server_name,
                 "status": "stopped",
                 "online": false,
-                "message": "Docker extension is not enabled"
+                "message": "Required extension is not enabled"
             }));
         }
 
@@ -576,10 +577,10 @@ impl Supervisor {
         let instance = self.instance_store.get(instance_id)
             .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
 
-        // ── Docker 인스턴스인데 익스텐션 미활성 → 에러 ──
-        if instance.use_docker {
+        // ── Extension 관리 인스턴스에서 명령어 직접 실행은 미지원 → 에러 ──
+        if instance.ext_enabled("docker_enabled") {
             return Err(anyhow::anyhow!(
-                "Instance '{}' is configured for Docker mode, but the Docker extension is not enabled.",
+                "Instance '{}' is managed by an extension. Direct command execution is not supported.",
                 instance.name
             ));
         }
@@ -637,7 +638,7 @@ impl Supervisor {
 
     /// Start a server as a managed process with full stdio capture.
     /// Uses the module's `get_launch_command` to build the command, then spawns it natively.
-    /// Docker 모드에서는 docker compose up -d로 위임합니다.
+    /// Extension 관리 모드에서는 extension hook을 통해 위임합니다.
     pub async fn start_managed_server(
         &self,
         instance_id: &str,
@@ -669,54 +670,63 @@ impl Supervisor {
 
         // ── Extension hook: server.pre_start (managed) ──
         if let Some(ext_mgr) = &self.extension_manager {
-            let enriched = Self::enriched_extension_data(&instance);
+            let instance_dir = self.instance_store.instance_dir(&instance.id);
             let ctx = json!({
                 "instance_id": instance_id,
+                "instance_dir": instance_dir.to_string_lossy(),
                 "module": module_name,
-                "instance": {
-                    "name": &instance.name,
-                    "use_docker": instance.use_docker,
-                    "extension_data": &enriched,
-                },
+                "instance": serde_json::to_value(&instance).unwrap_or_default(),
                 "config": &config,
                 "managed": true,
-                "extension_data": &enriched,
+                "extension_data": &instance.extension_data,
             });
             let mgr = ext_mgr.read().await;
             let results = mgr.dispatch_hook("server.pre_start", ctx).await;
             for (_ext_id, result) in &results {
                 if let Ok(val) = result {
                     if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
-                        // Docker 컨테이너 시작 성공 → 로그 스트리머 등록
-                        if instance.use_docker
-                            && val.get("success").and_then(|s| s.as_bool()) == Some(true)
-                        {
-                            let instance_dir = self.instance_store.instance_dir(&instance.id);
-                            let container_name = format!(
-                                "saba-{}-{}",
-                                module_name,
-                                &instance.id[..8.min(instance.id.len())]
-                            );
-                            let log_pattern = self.module_loader.get_module(module_name)
-                                .ok()
-                                .and_then(|m| m.metadata.log_pattern.clone());
-                            match managed_process::ManagedProcess::spawn_docker_log_follower(
-                                &instance_dir,
-                                &container_name,
-                                log_pattern.as_deref(),
-                            ).await {
-                                Ok(follower) => {
-                                    self.managed_store.insert(instance_id, follower).await;
-                                    tracing::info!(
-                                        "Docker log follower registered for '{}'",
-                                        instance.name
-                                    );
-                                }
-                                Err(e) => {
-                                    tracing::warn!(
-                                        "Failed to start Docker log follower for '{}': {}",
-                                        instance.name, e
-                                    );
+                        // Extension이 시작 성공 → log_follower가 있으면 로그 스트리머 등록
+                        if val.get("success").and_then(|s| s.as_bool()) == Some(true) {
+                            if let Some(log_cfg) = val.get("log_follower") {
+                                let inst_dir = self.instance_store.instance_dir(&instance.id);
+                                let program = log_cfg.get("program").and_then(|p| p.as_str()).unwrap_or_default();
+                                let args: Vec<String> = log_cfg.get("args")
+                                    .and_then(|a| a.as_array())
+                                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                                    .unwrap_or_default();
+                                let work_dir = log_cfg.get("working_dir")
+                                    .and_then(|w| w.as_str())
+                                    .map(std::path::PathBuf::from)
+                                    .unwrap_or_else(|| inst_dir.clone());
+                                let desc = log_cfg.get("description")
+                                    .and_then(|d| d.as_str())
+                                    .unwrap_or("Extension log follower");
+                                let strip_prefix = log_cfg.get("strip_prefix").and_then(|s| s.as_str());
+                                let log_pattern = self.module_loader.get_module(module_name)
+                                    .ok()
+                                    .and_then(|m| m.metadata.log_pattern.clone());
+
+                                match managed_process::ManagedProcess::spawn_log_follower(
+                                    program,
+                                    &args,
+                                    &work_dir,
+                                    desc,
+                                    log_pattern.as_deref(),
+                                    strip_prefix,
+                                ).await {
+                                    Ok(follower) => {
+                                        self.managed_store.insert(instance_id, follower).await;
+                                        tracing::info!(
+                                            "Log follower registered for '{}'",
+                                            instance.name
+                                        );
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            "Failed to start log follower for '{}': {}",
+                                            instance.name, e
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -726,20 +736,19 @@ impl Supervisor {
             }
         }
 
-        // ── Docker 인스턴스인데 익스텐션이 처리하지 않은 경우 → 에러 ──
-        if instance.use_docker {
+        // ── Extension이 처리하지 않았으나 extension 플래그가 있는 경우 → 에러 ──
+        if instance.ext_enabled("docker_enabled") {
             tracing::error!(
-                "Managed instance '{}' is configured for Docker but no extension handled it.",
+                "Managed instance '{}' has extension flags but no extension handled it.",
                 instance.name
             );
             return Ok(json!({
                 "success": false,
                 "action_required": "extension_required",
-                "extension_id": "docker",
                 "instance_name": instance.name,
                 "message": format!(
-                    "Instance '{}' is configured for Docker mode, but the Docker extension is not enabled. \
-                     Please enable the Docker extension in Settings → Extensions, or disable Docker mode for this instance.",
+                    "Instance '{}' requires an extension to start, but no extension handled the request. \
+                     Please check that the required extension is enabled.",
                     instance.name
                 )
             }));
@@ -898,8 +907,8 @@ impl Supervisor {
         if let Some(port) = instance.port {
             cfg.insert("port".to_string(), json!(port));
         }
-        // Docker 모드 플래그 전달
-        cfg.insert("use_docker".to_string(), json!(instance.use_docker));
+        // Extension 데이터 전달 (Python lifecycle 스크립트에서 참조)
+        cfg.insert("extension_data".to_string(), json!(&instance.extension_data));
 
         let result = crate::plugin::run_plugin(&module_path, "validate", Value::Object(cfg)).await?;
         Ok(result)
@@ -929,8 +938,8 @@ impl Supervisor {
         if let Some(work_dir) = &effective_working_dir {
             cfg.insert("working_dir".to_string(), json!(work_dir));
         }
-        // Docker 모드 플래그 전달 — Python lifecycle 스크립트가 플랫폼 경로를 올바르게 판단하도록
-        cfg.insert("use_docker".to_string(), json!(instance.use_docker));
+        // Extension 데이터 전달 — Python lifecycle 스크립트가 플랫폼 경로를 올바르게 판단하도록
+        cfg.insert("extension_data".to_string(), json!(&instance.extension_data));
 
         let function = match action {
             "write" | "configure" => {

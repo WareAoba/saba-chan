@@ -225,27 +225,12 @@ pub struct ServerInfo {
     /// API(CLI/Discord)를 통해 마지막으로 시작/정지가 요청된 시점 (epoch ms)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_api_action: Option<u64>,
-    /// Docker 프로비저닝이 진행 중인지 여부
+    /// 익스텐션이 프로비저닝 중인지 여부
     #[serde(default)]
     pub provisioning: bool,
-    /// Docker 모드 활성화 여부
-    #[serde(default)]
-    pub use_docker: bool,
-    /// Docker 컨테이너 메모리 사용량 문자열 (예: "256MiB / 4GiB")
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub docker_memory_usage: Option<String>,
-    /// Docker 컨테이너 메모리 사용 퍼센트 (0.0~100.0)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub docker_memory_percent: Option<f64>,
-    /// Docker 컨테이너 CPU 사용 퍼센트
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub docker_cpu_percent: Option<f64>,
-    /// Docker CPU 제한 (코어 수)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub docker_cpu_limit: Option<f64>,
-    /// Docker 메모리 제한 (예: "4g")
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub docker_memory_limit: Option<String>,
+    /// 익스텐션 런타임 상태 (확장별 데이터, 예: {"<ext_id>": {"memory_percent": 25.5, ...}})
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub extension_status: std::collections::HashMap<String, serde_json::Value>,
     /// 익스텐션 확장 데이터 (범용)
     #[serde(default)]
     pub extension_data: std::collections::HashMap<String, serde_json::Value>,
@@ -335,6 +320,9 @@ pub struct ProvisionProgress {
     /// Download/operation percentage (0-100), None if indeterminate
     #[serde(skip_serializing_if = "Option::is_none")]
     pub percent: Option<u8>,
+    /// Step labels provided by the extension (set once on first progress update)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub steps: Option<Vec<String>>,
 }
 
 /// Tracks provisioning progress per instance_id
@@ -365,16 +353,16 @@ impl ProvisionTracker {
     }
 }
 
-// ── Docker Status Cache ────────────────────────────────────
+// ── Extension Status Cache ──────────────────────────────────
 
-/// Docker 상태 정보를 TTL 기반으로 캐싱 (server.list_enrich hook 스팸 방지)
+/// 익스텐션 상태 정보를 TTL 기반으로 캐싱 (server.list_enrich hook 스팸 방지)
 #[derive(Debug, Clone)]
-pub struct DockerStatusCache {
+pub struct ExtensionStatusCache {
     inner: Arc<std::sync::Mutex<HashMap<String, (Instant, Value)>>>,
     ttl_secs: u64,
 }
 
-impl DockerStatusCache {
+impl ExtensionStatusCache {
     pub fn new(ttl_secs: u64) -> Self {
         Self {
             inner: Arc::new(std::sync::Mutex::new(HashMap::new())),
@@ -382,7 +370,7 @@ impl DockerStatusCache {
         }
     }
 
-    /// 캐시에서 인스턴스의 Docker 상태 조회. TTL 만료 시 None 반환.
+    /// 캐시에서 인스턴스의 익스텐션 상태 조회. TTL 만료 시 None 반환.
     pub fn get(&self, instance_id: &str) -> Option<Value> {
         self.inner.lock().ok().and_then(|map| {
             map.get(instance_id).and_then(|(ts, val)| {
@@ -395,7 +383,7 @@ impl DockerStatusCache {
         })
     }
 
-    /// 캐시에 인스턴스의 Docker 상태 저장
+    /// 캐시에 인스턴스의 익스텐션 상태 저장
     pub fn set(&self, instance_id: &str, value: Value) {
         if let Ok(mut map) = self.inner.lock() {
             map.insert(instance_id.to_string(), (Instant::now(), value));
@@ -422,12 +410,12 @@ pub struct IPCServer {
     pub update_state: UpdateState,
     /// API(CLI/Discord 봇) 경유 시작/정지 타임스탬프 추적
     pub api_actions: ApiActionTracker,
-    /// Docker 프로비저닝 진행 상태 추적
+    /// 프로비저닝 진행 상태 추적
     pub provision_tracker: ProvisionTracker,
     /// 범용 익스텐션 매니저
     pub extension_manager: Arc<RwLock<crate::extension::ExtensionManager>>,
-    /// Docker 상태 캐시 (list_enrich 스팸 방지)
-    pub docker_status_cache: DockerStatusCache,
+    /// 익스텐션 상태 캐시 (list_enrich 스팸 방지)
+    pub extension_status_cache: ExtensionStatusCache,
 }
 
 impl IPCServer {
@@ -452,7 +440,7 @@ impl IPCServer {
             api_actions: ApiActionTracker::new(),
             provision_tracker: ProvisionTracker::new(),
             extension_manager: Arc::new(RwLock::new(ext_mgr)),
-            docker_status_cache: DockerStatusCache::new(5), // 5초 TTL
+            extension_status_cache: ExtensionStatusCache::new(5), // 5초 TTL
         }
     }
 
@@ -460,6 +448,8 @@ impl IPCServer {
         tracing::info!("IPC HTTP server starting on {}", self.listen_addr);
 
         let router = Router::new()
+            // ── 경량 ping (lock / 디스크 I/O 없음) ──
+            .route("/health", get(handlers::server::health_check))
             // ── Server query/control ──
             .route("/api/servers", get(handlers::server::list_servers))
             .route("/api/server/:name/status", get(handlers::server::get_server_status))
@@ -467,13 +457,16 @@ impl IPCServer {
             .route("/api/server/:name/stop", post(handlers::server::stop_server_handler))
             .route("/api/modules", get(handlers::server::list_modules))
             .route("/api/modules/refresh", post(handlers::server::refresh_modules))
+            .route("/api/modules/registry", get(handlers::server::fetch_module_registry))
+            .route("/api/modules/registry/:id/install", post(handlers::server::install_module_from_registry))
+            .route("/api/modules/:id", delete(handlers::server::remove_module))
             .route("/api/module/:name", get(handlers::server::get_module_metadata))
             // ── Instance CRUD ──
             .route("/api/instances", get(handlers::instance::list_instances).post(handlers::instance::create_instance))
             .route("/api/instances/reorder", put(handlers::instance::reorder_instances))
             .route("/api/instance/:id", get(handlers::instance::get_instance).delete(handlers::instance::delete_instance).patch(handlers::instance::update_instance_settings))
             // ── Provision progress ──
-            .route("/api/provision-progress/:name", get(handlers::instance::get_provision_progress))
+            .route("/api/provision-progress/:name", get(handlers::instance::get_provision_progress).delete(handlers::instance::dismiss_provision_progress))
             // ── Command execution ──
             .route("/api/instance/:id/command", post(handlers::command::execute_command))
             .route("/api/instance/:id/rcon", post(handlers::command::execute_rcon_command))
@@ -501,10 +494,14 @@ impl IPCServer {
             // ── Extension management ──
             .route("/api/extensions", get(handlers::extension::list_extensions))
             .route("/api/extensions/rescan", post(handlers::extension::rescan_extensions))
+            .route("/api/extensions/registry", get(handlers::extension::fetch_registry))
+            .route("/api/extensions/updates", get(handlers::extension::check_extension_updates))
             .route("/api/extensions/:id/enable", post(handlers::extension::enable_extension))
             .route("/api/extensions/:id/disable", post(handlers::extension::disable_extension))
             .route("/api/extensions/:id/mount", post(handlers::extension::mount_extension))
             .route("/api/extensions/:id/unmount", post(handlers::extension::unmount_extension))
+            .route("/api/extensions/:id/install", post(handlers::extension::install_extension))
+            .route("/api/extensions/:id", delete(handlers::extension::remove_extension))
             .route("/api/extensions/:id/gui", get(handlers::extension::serve_gui_bundle))
             .route("/api/extensions/:id/gui/styles", get(handlers::extension::serve_gui_styles))
             .route("/api/extensions/:id/i18n/:locale", get(handlers::extension::serve_i18n))

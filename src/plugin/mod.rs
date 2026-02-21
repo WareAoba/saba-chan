@@ -9,20 +9,50 @@ use crate::utils::apply_creation_flags;
 pub struct ExtensionProgress {
     pub percent: Option<u8>,
     pub message: Option<String>,
+    /// 현재 단계 인덱스 (0-based)
+    pub step: Option<u8>,
+    /// 전체 단계 수
+    pub total: Option<u8>,
+    /// 현재 단계 식별자 (예: "checking_engine")
+    pub label: Option<String>,
+    /// 전체 단계 목록 (첫 progress에서만 전송)
+    pub steps: Option<Vec<String>>,
 }
 
 /// extensions/ 디렉토리 경로를 해석합니다.
+///
 /// 우선순위:
 ///   1. `SABA_EXTENSIONS_DIR` 환경 변수 (절대 경로 오버라이드)
-///   2. exe 상위 디렉토리의 `extensions/` (bin/../extensions/)
-///   3. exe 옆 `extensions/`
-///   4. `./extensions/` (CWD 폴백)
+///   2. `%APPDATA%\saba-chan\extensions\` (Windows 프로덕션 설치 경로)
+///   3. exe 상위 디렉토리의 `extensions/` (bin/../extensions/ — 포터블 앱 루트)
+///   4. exe 옆 `extensions/`
+///   5. `./extensions/` (CWD 폴백 — 개발 환경)
+///
+/// 디렉토리가 존재하지 않으면 생성을 시도합니다 (프로덕션 최초 실행 대응).
 fn resolve_extensions_dir() -> std::path::PathBuf {
     // 1) 환경 변수 오버라이드
     if let Ok(dir) = std::env::var("SABA_EXTENSIONS_DIR") {
         let p = std::path::PathBuf::from(&dir);
-        if p.is_dir() {
-            return p;
+        // 존재하지 않으면 생성 시도
+        if !p.exists() {
+            let _ = std::fs::create_dir_all(&p);
+        }
+        return p;
+    }
+
+    // 2) %APPDATA%\saba-chan\extensions (Windows 프로덕션)
+    #[cfg(target_os = "windows")]
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let candidate = std::path::PathBuf::from(&appdata)
+            .join("saba-chan")
+            .join("extensions");
+        // 개발 환경(CWD에 extensions/가 있음)이 아닐 때만 사용
+        let cwd_ext = std::path::PathBuf::from("./extensions");
+        if !cwd_ext.is_dir() {
+            if !candidate.exists() {
+                let _ = std::fs::create_dir_all(&candidate);
+            }
+            return candidate;
         }
     }
 
@@ -31,21 +61,21 @@ fn resolve_extensions_dir() -> std::path::PathBuf {
         .and_then(|p| p.parent().map(|d| d.to_path_buf()));
 
     if let Some(ref dir) = exe_dir {
-        // 2) exe의 상위 디렉토리 (bin/../extensions/ — 앱 루트)
+        // 3) exe의 상위 디렉토리 (bin/../extensions/ — 포터블 앱 루트)
         if let Some(parent) = dir.parent() {
             let candidate = parent.join("extensions");
             if candidate.is_dir() {
                 return candidate;
             }
         }
-        // 3) exe 옆 (exe_dir/extensions/)
+        // 4) exe 옆 (exe_dir/extensions/)
         let beside = dir.join("extensions");
         if beside.is_dir() {
             return beside;
         }
     }
 
-    // 4) CWD 폴백
+    // 5) CWD 폴백 (개발 환경: 프로젝트 루트의 extensions/)
     std::path::PathBuf::from("./extensions")
 }
 
