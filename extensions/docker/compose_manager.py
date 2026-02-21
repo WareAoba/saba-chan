@@ -109,6 +109,21 @@ def _compose_cli() -> list:
     return ["docker", "compose"]
 
 
+def _find_io_bridge() -> str | None:
+    """saba-docker-io 바이너리 경로를 찾음 (Linux native 모드용)"""
+    # 1. Go build output (extensions/docker/saba-docker-io/saba-docker-io)
+    ext_dir = os.path.dirname(os.path.abspath(__file__))
+    candidate = os.path.join(ext_dir, "saba-docker-io", "saba-docker-io")
+    if os.path.isfile(candidate):
+        return candidate
+    # 2. PATH에서 검색
+    import shutil
+    found = shutil.which("saba-docker-io")
+    if found:
+        return found
+    return None
+
+
 def _run_cmd(cmd: list, cwd: str = None, timeout: int = 120) -> tuple:
     """명령 실행 → (success, stdout, stderr)"""
     try:
@@ -288,15 +303,45 @@ def start(config: dict) -> dict:
             "initial_logs": initial_logs.strip() if initial_logs else "",
         }
 
-    # log_follower 정보 구성 — 코어가 제네릭 로그 스트리머를 생성하도록
-    log_follower_cmd = _compose_cmd(instance_dir, compose_file) + ["logs", "--follow", "--no-color", "--tail", "100"]
-    log_follower = {
-        "program": log_follower_cmd[0],
-        "args": log_follower_cmd[1:],
-        "working_dir": instance_dir,
-        "description": "Docker compose log stream",
-        "strip_prefix": " | ",
-    }
+    # log_follower 정보 구성 — 코어가 로그 스트리머 또는 interactive bridge를 생성하도록
+    # saba-docker-io 바이너리가 있으면 양방향(stdin+stdout) IO bridge 사용 → 콘솔 입력 지원
+    # 없으면 기존 docker compose logs 기반 단방향(read-only) 스트리머 폴백
+    container_name = _instance_container_name(config)
+    io_bridge_path = f"{WSL2_DOCKER_DIR}/saba-docker-io" if _is_wsl2_mode() else _find_io_bridge()
+
+    # WSL2 모드에서는 바이너리 존재 여부를 확인 (없으면 fallback)
+    if io_bridge_path and _is_wsl2_mode():
+        check_ok, _, _ = _run_cmd(["wsl", "-u", "root", "--", "test", "-x", io_bridge_path], timeout=5)
+        if not check_ok:
+            io_bridge_path = None
+
+    if io_bridge_path and container_name:
+        if _is_wsl2_mode():
+            log_follower = {
+                "program": "wsl",
+                "args": ["-u", "root", "--", io_bridge_path, container_name, f"{WSL2_DOCKER_DIR}/docker"],
+                "working_dir": instance_dir,
+                "description": "Docker interactive IO bridge",
+                "interactive": True,
+            }
+        else:
+            log_follower = {
+                "program": io_bridge_path,
+                "args": [container_name, "docker"],
+                "working_dir": instance_dir,
+                "description": "Docker interactive IO bridge",
+                "interactive": True,
+            }
+    else:
+        # Fallback: read-only log stream (no stdin support)
+        log_follower_cmd = _compose_cmd(instance_dir, compose_file) + ["logs", "--follow", "--no-color", "--tail", "100"]
+        log_follower = {
+            "program": log_follower_cmd[0],
+            "args": log_follower_cmd[1:],
+            "working_dir": instance_dir,
+            "description": "Docker compose log stream",
+            "strip_prefix": " | ",
+        }
 
     return {
         "handled": True,
@@ -753,12 +798,14 @@ def provision(config: dict) -> dict:
 
     _progress(33, "Docker Engine ready", step=0, total=3, label="docker_engine")
 
-    # ── Step 1: SteamCMD 서버 파일 다운로드 ──
+    # ── Step 1: 서버 파일 다운로드 ──
     install_config = module_config.get("install", {})
     server_dir = os.path.join(instance_dir, "server")
     os.makedirs(server_dir, exist_ok=True)
+    install_method = install_config.get("method", "")
+    _install_java_version = None  # download 방식에서 감지된 Java 버전
 
-    if install_config.get("method") == "steamcmd":
+    if install_method == "steamcmd":
         app_id = install_config.get("app_id")
         if app_id:
             _progress(40, f"Downloading server files (app {app_id})...", step=1, total=3, label="steamcmd")
@@ -792,7 +839,84 @@ def provision(config: dict) -> dict:
                     "error": f"SteamCMD 실행 실패: {e}",
                 }
 
-    _progress(66, "Server files ready", step=1, total=3, label="steamcmd")
+    elif install_method == "download":
+        # 모듈 자체 install_server 호출 (Minecraft 등)
+        module_name = config.get("module", "")
+        _progress(35, f"Downloading server files ({module_name})...",
+                  step=1, total=3, label="download")
+        try:
+            _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            lifecycle_path = os.path.join(_root, "modules", module_name, "lifecycle.py")
+
+            if not os.path.isfile(lifecycle_path):
+                return {
+                    "handled": True,
+                    "success": False,
+                    "error": f"모듈 lifecycle을 찾을 수 없습니다: {module_name}",
+                }
+
+            import importlib.util as _ilu2
+            _lc_spec = _ilu2.spec_from_file_location(f"{module_name}_lifecycle", lifecycle_path)
+            lifecycle_mod = _ilu2.module_from_spec(_lc_spec)
+
+            # lifecycle.py가 같은 디렉토리의 i18n.py 등을 임포트하므로
+            # 모듈 디렉토리를 sys.path에 임시 추가
+            _module_dir = os.path.dirname(lifecycle_path)
+            _path_added = _module_dir not in sys.path
+            if _path_added:
+                sys.path.insert(0, _module_dir)
+            try:
+                _lc_spec.loader.exec_module(lifecycle_mod)
+            finally:
+                if _path_added and _module_dir in sys.path:
+                    sys.path.remove(_module_dir)
+
+            # 최신 안정 버전 자동 조회
+            version = None
+            if hasattr(lifecycle_mod, "list_versions"):
+                _progress(38, "Fetching latest version...", step=1, total=3, label="download")
+                versions_result = lifecycle_mod.list_versions({})
+                if versions_result.get("success", True):
+                    version = (versions_result.get("latest", {}).get("release")
+                               or versions_result.get("latest_release"))
+
+            if not version:
+                return {
+                    "handled": True,
+                    "success": False,
+                    "error": f"서버 최신 버전을 조회할 수 없습니다 ({module_name})",
+                }
+
+            _progress(42, f"Downloading v{version}...", step=1, total=3, label="download")
+
+            install_result = lifecycle_mod.install_server({
+                "version": version,
+                "install_dir": server_dir,
+                "accept_eula": True,
+            })
+
+            if not install_result.get("success", False):
+                return {
+                    "handled": True,
+                    "success": False,
+                    "error": f"서버 설치 실패: {install_result.get('message', 'unknown')}",
+                }
+
+            # install_result의 java_major_version을 compose 컨텍스트용으로 보존
+            _install_java_version = install_result.get("java_major_version")
+
+            _progress(60, f"Server v{version} installed", step=1, total=3, label="download")
+
+        except Exception as e:
+            import traceback
+            print(traceback.format_exc(), file=sys.stderr)
+            return {
+                "handled": True,
+                "success": False,
+                "error": f"서버 다운로드 실패: {e}",
+            }
+
+    _progress(66, "Server files ready", step=1, total=3, label="server_files")
 
     # ── Step 2: docker-compose.yml 생성 ──
     _progress(80, "Generating docker-compose.yml...", step=2, total=3, label="compose")
@@ -806,7 +930,16 @@ def provision(config: dict) -> dict:
         }
 
     instance_data = config.get("instance", config)
-    yaml = _generate_compose_yaml(docker_section, instance_data)
+
+    # install_server에서 받은 java_major_version으로 Docker 이미지의 {java_version} 치환
+    extra_ctx = {}
+    if _install_java_version:
+        extra_ctx["java_version"] = str(_install_java_version)
+    # fallback: 템플릿에 {java_version}이 있는데 값이 없으면 기본값 21
+    if "java_version" not in extra_ctx and "{java_version}" in docker_section.get("image", ""):
+        extra_ctx["java_version"] = "21"
+
+    yaml = _generate_compose_yaml(docker_section, instance_data, extra_ctx=extra_ctx)
     compose_path = os.path.join(instance_dir, "docker-compose.yml")
     with open(compose_path, "w", encoding="utf-8") as f:
         f.write(yaml)
@@ -843,7 +976,14 @@ def regenerate_compose(config: dict) -> dict:
         return {"handled": True, "success": False, "error": "No docker config in module_extensions"}
 
     instance_data = config.get("instance", config)
-    yaml = _generate_compose_yaml(docker_section, instance_data)
+
+    # {java_version} 템플릿용 — 기존 compose에서 추출하거나 기본값 사용
+    extra_ctx = {}
+    if "{java_version}" in docker_section.get("image", ""):
+        # 모듈 설정에서 java_version 찾기를 시도 → 기본값 21
+        extra_ctx["java_version"] = str(config.get("java_version", "21"))
+
+    yaml = _generate_compose_yaml(docker_section, instance_data, extra_ctx=extra_ctx)
     compose_path = os.path.join(instance_dir, "docker-compose.yml")
     with open(compose_path, "w", encoding="utf-8") as f:
         f.write(yaml)
@@ -879,22 +1019,27 @@ def _resolve_template(template: str, ctx: dict) -> str:
     rest_password = ctx.get("rest_password")
     if rest_password is not None:
         result = result.replace("{rest_password}", str(rest_password))
+
+    # java_version 치환
+    java_version = ctx.get("java_version")
+    if java_version is not None:
+        result = result.replace("{java_version}", str(java_version))
     
     # 모듈 설정에서 추가 변수
     module_settings = ctx.get("module_settings", {})
     for key, value in module_settings.items():
-        if isinstance(value, str):
-            result = result.replace(f"{{{key}}}", value)
+        result = result.replace(f"{{{key}}}", str(value))
     
     return result
 
 
-def _generate_compose_yaml(docker_config: dict, instance: dict) -> str:
+def _generate_compose_yaml(docker_config: dict, instance: dict, extra_ctx: dict = None) -> str:
     """
     docker-compose.yml YAML 생성 — Rust generate_compose_yaml() 정밀 포팅
     
     docker_config: module.toml [docker] 섹션
     instance: ServerInstance 데이터 (id, name, module_name, port, ext_data 등)
+    extra_ctx: 추가 템플릿 변수 (java_version 등)
     """
     ctx = {
         "instance_id": instance.get("instance_id", instance.get("id", "")),
@@ -906,6 +1051,10 @@ def _generate_compose_yaml(docker_config: dict, instance: dict) -> str:
         "rest_password": instance.get("rest_password"),
         "module_settings": instance.get("module_settings", {}),
     }
+
+    # 추가 컨텍스트 변수 병합 (java_version 등)
+    if extra_ctx:
+        ctx.update(extra_ctx)
 
     ext_data = instance.get("extension_data", {})
     
@@ -1000,9 +1149,8 @@ def _generate_compose_yaml(docker_config: dict, instance: dict) -> str:
             mem_val = _resolve_template(str(memory_limit), ctx) if isinstance(memory_limit, str) else str(memory_limit)
             lines.append(f"          memory: {mem_val}")
 
-    # stdin + tty
+    # stdin 지원 (tty 사용 안 함 — ManagedProcess의 piped stdin과 호환성을 위해)
     lines.append("    stdin_open: true")
-    lines.append("    tty: true")
 
     return "\n".join(lines) + "\n"
 

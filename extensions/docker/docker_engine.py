@@ -345,6 +345,58 @@ class DockerEngine:
             self._download_engine(timeout=timeout)
         if not self.compose_ready:
             self._download_compose(timeout=timeout)
+        # saba-docker-io: bidirectional stdin/stdout bridge for containers
+        self._deploy_io_bridge()
+
+    # -- IO Bridge --
+
+    def _deploy_io_bridge(self) -> None:
+        """Deploy saba-docker-io binary to Docker runtime directory.
+        
+        On WSL2 mode, copies from the extension build directory to /opt/saba-chan/docker/.
+        On native Linux, the binary is found next to this extension file.
+        """
+        dest_name = "saba-docker-io"
+        # Check if already deployed
+        if self.wsl_mode:
+            r = _wsl_run(["test", "-x", f"{_WSL2_DIR}/{dest_name}"], root=True, timeout=5)
+            if r.returncode == 0:
+                return  # Already installed
+        else:
+            native_dest = self._dir / dest_name
+            if native_dest.exists():
+                return
+
+        # Find the built binary
+        ext_dir = Path(__file__).resolve().parent
+        # Look for pre-built binary in known locations
+        # Go build outputs directly to the project dir (no target/ subdirectory)
+        candidates = [
+            ext_dir / dest_name / dest_name,       # Go build output (same dir as go.mod)
+            ext_dir / "bin" / dest_name,            # manual placement
+        ]
+        source = None
+        for c in candidates:
+            if c.exists():
+                source = c
+                break
+
+        if source is None:
+            _log(f"saba-docker-io binary not found (checked {len(candidates)} locations), "
+                 "stdin bridging to Docker containers will not be available")
+            return
+
+        if self.wsl_mode:
+            wsl_tmp = _win_to_wsl_path(source)
+            _wsl_run(["cp", wsl_tmp, f"{_WSL2_DIR}/{dest_name}"], root=True)
+            _wsl_run(["chmod", "+x", f"{_WSL2_DIR}/{dest_name}"], root=True)
+            _log(f"saba-docker-io deployed to WSL2 ({_WSL2_DIR}/{dest_name})")
+        else:
+            import shutil
+            shutil.copy2(source, self._dir / dest_name)
+            dest = self._dir / dest_name
+            dest.chmod(dest.stat().st_mode | 0o755)
+            _log(f"saba-docker-io deployed to {dest}")
 
     # -- Engine --
 

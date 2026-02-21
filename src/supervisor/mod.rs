@@ -155,29 +155,52 @@ impl Supervisor {
                                 let desc = log_cfg.get("description")
                                     .and_then(|d| d.as_str())
                                     .unwrap_or("Extension log follower");
+                                let interactive = log_cfg.get("interactive")
+                                    .and_then(|i| i.as_bool())
+                                    .unwrap_or(false);
                                 let strip_prefix = log_cfg.get("strip_prefix").and_then(|s| s.as_str());
                                 let log_pattern = self.module_loader.get_module(module_name)
                                     .ok()
                                     .and_then(|m| m.metadata.log_pattern.clone());
 
-                                match managed_process::ManagedProcess::spawn_log_follower(
-                                    program,
-                                    &args,
-                                    &work_dir,
-                                    desc,
-                                    log_pattern.as_deref(),
-                                    strip_prefix,
-                                ).await {
+                                // interactive=true → spawn() (bidirectional stdin/stdout)
+                                // interactive=false → spawn_log_follower() (read-only stdout)
+                                let spawn_result = if interactive {
+                                    let env_vars: Vec<(String, String)> = log_cfg.get("env_vars")
+                                        .and_then(|e| e.as_object())
+                                        .map(|obj| obj.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect())
+                                        .unwrap_or_default();
+                                    tracing::info!("Spawning interactive IO bridge for '{}'", server_name);
+                                    managed_process::ManagedProcess::spawn(
+                                        program,
+                                        &args,
+                                        work_dir.to_str().unwrap_or("."),
+                                        env_vars,
+                                        log_pattern.as_deref(),
+                                    ).await
+                                } else {
+                                    managed_process::ManagedProcess::spawn_log_follower(
+                                        program,
+                                        &args,
+                                        &work_dir,
+                                        desc,
+                                        log_pattern.as_deref(),
+                                        strip_prefix,
+                                    ).await
+                                };
+                                match spawn_result {
                                     Ok(follower) => {
                                         self.managed_store.insert(&instance.id, follower).await;
                                         tracing::info!(
-                                            "Log follower registered for '{}'",
+                                            "{} registered for '{}'",
+                                            if interactive { "Interactive IO bridge" } else { "Log follower" },
                                             server_name
                                         );
                                     }
                                     Err(e) => {
                                         tracing::warn!(
-                                            "Failed to start log follower for '{}': {}",
+                                            "Failed to start {} for '{}': {}",
+                                            if interactive { "IO bridge" } else { "log follower" },
                                             server_name, e
                                         );
                                     }
@@ -701,29 +724,52 @@ impl Supervisor {
                                 let desc = log_cfg.get("description")
                                     .and_then(|d| d.as_str())
                                     .unwrap_or("Extension log follower");
+                                let interactive = log_cfg.get("interactive")
+                                    .and_then(|i| i.as_bool())
+                                    .unwrap_or(false);
                                 let strip_prefix = log_cfg.get("strip_prefix").and_then(|s| s.as_str());
                                 let log_pattern = self.module_loader.get_module(module_name)
                                     .ok()
                                     .and_then(|m| m.metadata.log_pattern.clone());
 
-                                match managed_process::ManagedProcess::spawn_log_follower(
-                                    program,
-                                    &args,
-                                    &work_dir,
-                                    desc,
-                                    log_pattern.as_deref(),
-                                    strip_prefix,
-                                ).await {
+                                // interactive=true → spawn() (bidirectional stdin/stdout)
+                                // interactive=false → spawn_log_follower() (read-only stdout)
+                                let spawn_result = if interactive {
+                                    let env_vars: Vec<(String, String)> = log_cfg.get("env_vars")
+                                        .and_then(|e| e.as_object())
+                                        .map(|obj| obj.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect())
+                                        .unwrap_or_default();
+                                    tracing::info!("Spawning interactive IO bridge for '{}'", instance.name);
+                                    managed_process::ManagedProcess::spawn(
+                                        program,
+                                        &args,
+                                        work_dir.to_str().unwrap_or("."),
+                                        env_vars,
+                                        log_pattern.as_deref(),
+                                    ).await
+                                } else {
+                                    managed_process::ManagedProcess::spawn_log_follower(
+                                        program,
+                                        &args,
+                                        &work_dir,
+                                        desc,
+                                        log_pattern.as_deref(),
+                                        strip_prefix,
+                                    ).await
+                                };
+                                match spawn_result {
                                     Ok(follower) => {
                                         self.managed_store.insert(instance_id, follower).await;
                                         tracing::info!(
-                                            "Log follower registered for '{}'",
+                                            "{} registered for '{}'",
+                                            if interactive { "Interactive IO bridge" } else { "Log follower" },
                                             instance.name
                                         );
                                     }
                                     Err(e) => {
                                         tracing::warn!(
-                                            "Failed to start log follower for '{}': {}",
+                                            "Failed to start {} for '{}': {}",
+                                            if interactive { "IO bridge" } else { "log follower" },
                                             instance.name, e
                                         );
                                     }

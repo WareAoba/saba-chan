@@ -129,6 +129,26 @@ pub async fn create_instance(
             if instance.rest_port.is_none() {
                 instance.rest_port = Some(loaded_module.metadata.default_rest_port());
             }
+
+            // settings.fields의 default 값을 module_settings에 자동 채우기
+            // (docker command 템플릿의 {ram} 등이 해결되려면 이 값이 필요)
+            if let Some(ref settings) = loaded_module.metadata.settings {
+                for field in &settings.fields {
+                    if !instance.module_settings.contains_key(&field.name) {
+                        if let Some(ref default_val) = field.default {
+                            let json_val = match default_val {
+                                toml::Value::String(s) => serde_json::json!(s),
+                                toml::Value::Integer(n) => serde_json::json!(n),
+                                toml::Value::Float(f) => serde_json::json!(f),
+                                toml::Value::Boolean(b) => serde_json::json!(b),
+                                _ => continue,
+                            };
+                            instance.module_settings.insert(field.name.clone(), json_val);
+                        }
+                    }
+                }
+            }
+
             Some((
                 loaded_module.metadata.install.clone(),
                 loaded_module.metadata.extensions.get("docker").cloned(),  // 컨테이너 익스텐션 설정

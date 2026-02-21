@@ -34,7 +34,7 @@ download_url = "https://piston-data.mojang.com/v1/objects/{version_hash}/server.
 install_subdir = "server"
 
 [docker]
-image = "openjdk:21-slim"
+image = "eclipse-temurin:{java_version}-jre-jammy"
 working_dir = "/server"
 restart = "unless-stopped"
 command = "java -Xmx{ram}G -Xms{ram}G -jar server.jar nogui"
@@ -45,7 +45,7 @@ volumes = ["./server:/server"]
 EULA = "TRUE"
 
 [detection]
-process_patterns = ["java.exe", "minecraft_server"]
+process_patterns = ["java.exe", "java", "minecraft_server", "server.jar"]
 common_paths = [
     "C:\\Users\\*\\Desktop\\MinecraftServer",
     "C:\\MinecraftServer",
