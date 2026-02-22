@@ -2,12 +2,14 @@ use axum::response::IntoResponse;
 use serde_json::json;
 
 /// GET /api/python-env/status — Python 가상환경 상태
+#[allow(dead_code)]
 pub async fn python_env_status() -> impl IntoResponse {
     let info = crate::python_env::status().await;
     axum::Json(info)
 }
 
 /// POST /api/python-env/setup — Python 가상환경 생성/초기화
+#[allow(dead_code)]
 pub async fn python_env_setup() -> impl IntoResponse {
     match crate::python_env::ensure_venv().await {
         Ok(python_path) => axum::Json(json!({
@@ -23,6 +25,7 @@ pub async fn python_env_setup() -> impl IntoResponse {
 }
 
 /// POST /api/python-env/pip-install — pip 패키지 설치
+#[allow(dead_code)]
 pub async fn python_env_pip_install(
     axum::Json(body): axum::Json<serde_json::Value>,
 ) -> impl IntoResponse {

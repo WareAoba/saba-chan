@@ -5,4 +5,5 @@ pub mod managed;
 pub mod client;
 pub mod bot;
 pub mod python_env;
+pub mod node_env;
 pub mod extension;

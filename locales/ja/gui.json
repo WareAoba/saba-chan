@@ -337,7 +337,9 @@
     "usage_note": "モジュール固有のエイリアスおよびコマンドエイリアスは、各サーバーの設定 → Discord エイリアスタブで設定できます。",
     "start_button": "▶ ボットを起動",
     "stop_button": "⏹ ボットを停止",
-    "save_button": "💾 保存"
+    "save_button": "💾 保存",
+    "music_toggle_label": "ミュージックボット",
+    "music_toggle_description": "Discordボイスチャンネルで YouTube 音楽再生を有効にします"
   },
   "notice_modal": {
     "title": "通知",

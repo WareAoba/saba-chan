@@ -288,7 +288,9 @@
     "usage_note": "模块特定别名和命令别名可在每个服务器的设置 → Discord 别名选项卡中配置。",
     "start_button": "▶ 启动机器人",
     "stop_button": "⏹ 停止机器人",
-    "save_button": "💾 保存"
+    "save_button": "💾 保存",
+    "music_toggle_label": "音乐机器人",
+    "music_toggle_description": "启用通过 Discord 语音频道播放 YouTube 音乐"
   },
   "notice_modal": {
     "title": "通知",

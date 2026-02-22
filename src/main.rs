@@ -6,6 +6,7 @@ mod config;
 mod instance;
 mod process_monitor;
 mod python_env;
+mod node_env;
 mod utils;
 mod extension;
 mod validator;

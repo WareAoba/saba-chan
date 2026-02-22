@@ -288,7 +288,9 @@
     "usage_note": "Modulspezifische Aliase und Befehlsaliase können in den Einstellungen jedes Servers → Registerkarte \"Discord-Aliase\" konfiguriert werden.",
     "start_button": "▶ Bot starten",
     "stop_button": "⏹ Bot stoppen",
-    "save_button": "💾 Speichern"
+    "save_button": "💾 Speichern",
+    "music_toggle_label": "Musik-Bot",
+    "music_toggle_description": "YouTube-Musikwiedergabe über Discord-Sprachkanäle aktivieren"
   },
   "notice_modal": {
     "title": "Benachrichtigungen",

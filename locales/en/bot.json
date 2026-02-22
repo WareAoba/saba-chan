@@ -24,7 +24,8 @@
     "help_start": "Start server",
     "help_stop": "Stop server",
     "help_status": "Check server status",
-    "help_rest_title": "**REST Commands:**"
+    "help_rest_title": "**REST Commands:**",
+    "enter_command": "Please enter a command."
   },
   "list": {
     "title": "🎮 **Server List**",
@@ -85,12 +86,54 @@
     "connection_refused": "Cannot connect to server",
     "timeout": "Request timed out",
     "host_not_found": "Server host not found",
-    "service_unavailable": "Service unavailable"
+    "service_unavailable": "Service unavailable",
+    "unknown_input": "❌ Unknown command.",
+    "command_not_found": "❌ Command does not exist."
   },
   "messages": {
     "server_started": "Server started successfully",
     "server_stopped": "Server stopped",
     "server_not_running": "Server is not running",
     "command_error": "Error executing command"
+  },
+  "music": {
+    "not_available": "🎵 Music feature requires additional packages!\n`npm install @discordjs/voice @discordjs/opus play-dl`",
+    "join_voice_first": "🎤 Please join a voice channel first!",
+    "no_permission": "🚫 I don't have permission to connect or speak in your voice channel!",
+    "searching": "🔍 Searching... `{{query}}`",
+    "now_playing": "🎶 {{requester}} ▸ Now playing: **{{title}}** [{{duration}}]",
+    "added_to_queue": "✅ {{requester}} ▸ Added to queue: **{{title}}** [{{duration}}] — #{{position}}",
+    "playlist_added": "📋 {{requester}} ▸ {{count}} tracks added to queue!",
+    "nothing_playing": "🔇 Nothing is playing right now",
+    "already_paused": "⏸️ Already paused",
+    "paused": "⏸️ Paused: **{{title}}**",
+    "not_paused": "▶️ Already playing",
+    "resumed": "▶️ Resumed: **{{title}}**",
+    "skipped_next": "⏭️ Skipped! Next: **{{title}}** [{{duration}}]",
+    "skipped_no_next": "⏭️ No next track in queue. Continuing current song!",
+    "stopped": "⏹️ Stopped playback, bye~ 👋",
+    "empty_queue": "📭 Queue is empty",
+    "queue_now_playing": "🎶 **Now playing:** {{title}} [{{duration}}]",
+    "queue_title": "📋 **Queue** ({{count}} tracks)",
+    "queue_more": "...and {{count}} more",
+    "now_playing_detail": "🎶 **{{title}}** [{{duration}}]\n🔗 {{url}}\n👤 {{requester}} | 🔊 {{volume}}%",
+    "current_volume": "🔊 Current volume: **{{volume}}%**",
+    "volume_range": "🔊 Volume must be between 0 and 200",
+    "volume_set": "{{emoji}} Volume: **{{volume}}%**",
+    "shuffle_need_more": "🔀 Need at least 2 tracks in queue to shuffle",
+    "shuffled": "🔀 Shuffled {{count}} tracks!",
+    "invalid_url": "Could not retrieve video info",
+    "no_results": "No results found",
+    "search_failed": "Search failed",
+    "search_results": "🔍 **Search: {{query}}**",
+    "search_choose": "🎵 Enter a number (1~5) | `c` Cancel",
+    "play_usage": "🎵 Usage: `{{prefix}} music play <YouTube URL or search query>`"
+  },
+  "rps": {
+    "prompt": "✊✌️✋ Pick one!",
+    "draw": "{{bot}}! It's a tie! Again~ 🔄",
+    "user_win": "{{bot}}! I lost... 😵",
+    "bot_win": "{{bot}}! I win~ 😋",
+    "timeout": "⏰ Time's up! Try again next time~"
   }
 }

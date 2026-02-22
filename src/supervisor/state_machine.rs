@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use thiserror::Error;
 
 // TODO: integrate with Supervisor — 각 서버 인스턴스의 상태를 이 StateMachine으로 관리

@@ -4,7 +4,7 @@ use axum::{
     Router,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -505,6 +505,9 @@ impl IPCServer {
             .route("/api/extensions/:id/gui", get(handlers::extension::serve_gui_bundle))
             .route("/api/extensions/:id/gui/styles", get(handlers::extension::serve_gui_styles))
             .route("/api/extensions/:id/i18n/:locale", get(handlers::extension::serve_i18n))
+            // ── Node.js portable environment ──
+            .route("/api/node-env/status", get(handlers::node_env::node_env_status))
+            .route("/api/node-env/setup", post(handlers::node_env::node_env_setup))
             // ── Auth middleware (token-based) ──
             .layer(axum::middleware::from_fn(auth::auth_middleware))
             .with_state(self.clone())
@@ -560,6 +563,7 @@ impl IPCServer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[tokio::test]
     async fn test_ipc_handle_request() {

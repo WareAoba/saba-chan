@@ -14,6 +14,8 @@ function DiscordBotModal({
     setDiscordPrefix,
     discordAutoStart,
     setDiscordAutoStart,
+    discordMusicEnabled,
+    setDiscordMusicEnabled,
     handleStartDiscordBot,
     handleStopDiscordBot,
     saveCurrentSettings
@@ -85,6 +87,24 @@ function DiscordBotModal({
                         <p className="info-note">
                             {t('discord_modal.usage_note')}
                         </p>
+                    </div>
+
+                    <div className="discord-music-toggle-card">
+                        <div className="discord-music-toggle-info">
+                            <span className="discord-music-toggle-icon">🎵</span>
+                            <div className="discord-music-toggle-text">
+                                <span className="discord-music-toggle-label">{t('discord_modal.music_toggle_label')}</span>
+                                <span className="discord-music-toggle-desc">{t('discord_modal.music_toggle_description')}</span>
+                            </div>
+                        </div>
+                        <label className="toggle-switch">
+                            <input
+                                type="checkbox"
+                                checked={discordMusicEnabled}
+                                onChange={(e) => setDiscordMusicEnabled(e.target.checked)}
+                            />
+                            <span className="toggle-slider"></span>
+                        </label>
                     </div>
                 </div>
 

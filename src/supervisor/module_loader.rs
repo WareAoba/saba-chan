@@ -76,6 +76,7 @@ impl ModuleMetadata {
     }
 
     /// SteamCMD app ID를 가져옵니다 (install.method == "steamcmd"일 때)
+    #[allow(dead_code)]
     pub fn steam_app_id(&self) -> Option<u32> {
         self.install.as_ref()
             .filter(|i| i.method == "steamcmd")
@@ -83,6 +84,7 @@ impl ModuleMetadata {
     }
 
     /// 특정 익스텐션의 모듈 설정이 있는지 확인합니다
+    #[allow(dead_code)]
     pub fn has_extension_config(&self, ext_name: &str) -> bool {
         self.extensions.contains_key(ext_name)
     }
@@ -215,6 +217,7 @@ struct ModuleSection {
 #[derive(Debug, Deserialize)]
 struct UpdateSection {
     #[serde(default)]
+    #[allow(dead_code)]
     github_repo: Option<String>,
 }
 
@@ -248,6 +251,7 @@ struct DetectionSection {
     #[serde(default)]
     process_patterns: Option<Vec<String>>,
     #[serde(default)]
+    #[allow(dead_code)]
     common_paths: Option<Vec<String>>,
 }
 

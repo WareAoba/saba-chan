@@ -92,11 +92,13 @@ impl ServerInstance {
     }
 
     /// extension_data에서 f64 값을 읽습니다.
+    #[allow(dead_code)]
     pub fn ext_f64(&self, key: &str) -> Option<f64> {
         self.extension_data.get(key).and_then(|v| v.as_f64())
     }
 
     /// extension_data에서 문자열 값을 읽습니다.
+    #[allow(dead_code)]
     pub fn ext_str(&self, key: &str) -> Option<&str> {
         self.extension_data.get(key).and_then(|v| v.as_str())
     }
@@ -267,6 +269,7 @@ impl InstanceStore {
 
     // ── 하위 호환: 전체 저장 ──
     // 기존 코드에서 save()를 호출하는 곳이 있을 수 있으므로 유지
+    #[allow(dead_code)]
     pub fn save(&self) -> Result<()> {
         for inst in &self.instances {
             self.save_instance(inst)?;

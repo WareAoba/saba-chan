@@ -24,7 +24,8 @@
     "help_start": "启动服务器",
     "help_stop": "停止服务器",
     "help_status": "检查服务器状态",
-    "help_rest_title": "**REST 命令：**"
+    "help_rest_title": "**REST 命令：**",
+    "enter_command": "请输入命令。"
   },
   "list": {
     "title": "🎮 **服务器列表**",
@@ -83,12 +84,54 @@
     "connection_refused": "无法连接到服务器",
     "timeout": "请求超时",
     "host_not_found": "找不到服务器主机",
-    "service_unavailable": "服务不可用"
+    "service_unavailable": "服务不可用",
+    "unknown_input": "❌ 未知命令。",
+    "command_not_found": "❌ 命令不存在。"
   },
   "messages": {
     "server_started": "服务器成功启动",
     "server_stopped": "服务器已停止",
     "server_not_running": "服务器未运行",
     "command_error": "执行命令出错"
+  },
+  "music": {
+    "not_available": "🎵 音乐功能需要安装额外的软件包！\n`npm install @discordjs/voice @discordjs/opus play-dl`",
+    "join_voice_first": "🎤 请先加入语音频道！",
+    "no_permission": "🚫 我没有连接或在语音频道说话的权限！",
+    "searching": "🔍 搜索中... `{{query}}`",
+    "now_playing": "🎶 {{requester}} ▸ 正在播放: **{{title}}** [{{duration}}]",
+    "added_to_queue": "✅ {{requester}} ▸ 已添加到队列: **{{title}}** [{{duration}}] — #{{position}}",
+    "playlist_added": "📋 {{requester}} ▸ 已将{{count}}首歌添加到队列！",
+    "nothing_playing": "🔇 当前没有正在播放的歌曲",
+    "already_paused": "⏸️ 已经暂停了",
+    "paused": "⏸️ 暂停: **{{title}}**",
+    "not_paused": "▶️ 已经在播放了",
+    "resumed": "▶️ 继续: **{{title}}**",
+    "skipped_next": "⏭️ 跳过！下一首: **{{title}}** [{{duration}}]",
+    "skipped_no_next": "⏭️ 队列中没有下一首了。继续播放当前歌曲！",
+    "stopped": "⏹️ 停止播放，再见~ 👋",
+    "empty_queue": "📭 队列为空",
+    "queue_now_playing": "🎶 **正在播放:** {{title}} [{{duration}}]",
+    "queue_title": "📋 **队列** ({{count}}首)",
+    "queue_more": "...还有{{count}}首",
+    "now_playing_detail": "🎶 **{{title}}** [{{duration}}]\n🔗 {{url}}\n👤 {{requester}} | 🔊 {{volume}}%",
+    "current_volume": "🔊 当前音量: **{{volume}}%**",
+    "volume_range": "🔊 音量必须在0到200之间",
+    "volume_set": "{{emoji}} 音量: **{{volume}}%**",
+    "shuffle_need_more": "🔀 需要队列中至少有2首歌才能随机",
+    "shuffled": "🔀 已随机排列{{count}}首歌！",
+    "invalid_url": "无法获取视频信息",
+    "no_results": "没有搜索结果",
+    "search_failed": "搜索失败",
+    "search_results": "🔍 **搜索: {{query}}**",
+    "search_choose": "🎵 请输入编号 (1~5) | `c` 取消",
+    "play_usage": "🎵 用法: `{{prefix}} music play <YouTube链接或搜索关键词>`"
+  },
+  "rps": {
+    "prompt": "✊✌️✋ 请选一个！",
+    "draw": "{{bot}}！平局！再来~ 🔄",
+    "user_win": "{{bot}}！我输了... 😵",
+    "bot_win": "{{bot}}！我赢了~ 😋",
+    "timeout": "⏰ 时间到！下次再挑战吧~"
   }
 }

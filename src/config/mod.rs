@@ -1,5 +1,6 @@
 use serde::Deserialize;
 
+#[allow(dead_code)]
 #[derive(Deserialize, Debug, Clone)]
 pub struct GlobalConfig {
     pub ipc_socket: Option<String>,
@@ -10,6 +11,7 @@ pub struct GlobalConfig {
 }
 
 /// [updater] 섹션 — 자동 업데이트 설정
+#[allow(dead_code)]
 #[derive(Deserialize, Debug, Clone)]
 pub struct UpdaterConfig {
     pub enabled: Option<bool>,
@@ -23,6 +25,7 @@ pub struct UpdaterConfig {
     pub api_base_url: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize, Debug, Clone)]
 pub struct ServerInstance {
     pub name: String,
@@ -30,6 +33,7 @@ pub struct ServerInstance {
     pub resource: Option<ResourceConfig>,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize, Debug, Clone)]
 pub struct ResourceConfig {
     pub ram: Option<String>,

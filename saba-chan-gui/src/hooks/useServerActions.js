@@ -219,7 +219,7 @@ export function useServerActions({
 
             // ── action_required: server jar not found ──
             if (result.action_required === 'server_jar_not_found') {
-                fetchServers(); // revert optimistic 'starting'
+                revertOptimistic(name);
                 setModal({
                     type: 'question',
                     title: t('servers.jar_not_found_title'),
@@ -321,7 +321,7 @@ export function useServerActions({
 
             // ── action_required: extension_required ──
             if (result.action_required === 'extension_required') {
-                fetchServers(); // revert optimistic 'starting'
+                revertOptimistic(name);
                 setModal({
                     type: 'question',
                     title: t('servers.extension_required_title', { defaultValue: 'Extension Required' }),
@@ -350,7 +350,7 @@ export function useServerActions({
 
             // ── error_code: port_conflict — 데몬이 포트 충돌 감지 ──
             if (result.error_code === 'port_conflict' || result.error === 'port_conflict') {
-                fetchServers(); // revert optimistic 'starting'
+                revertOptimistic(name);
                 const conflictDetails = (result.conflicts || []).join('\n');
                 setModal({
                     type: 'failure',
@@ -361,14 +361,15 @@ export function useServerActions({
             }
 
             // ── success=false without specific action_required ──
-            if (result.success === false && result.message) {
-                fetchServers(); // revert optimistic 'starting'
-                safeShowToast(result.message, 'error', 5000);
+            if (result.success === false) {
+                revertOptimistic(name);
+                const msg = result.message || result.error || 'Unknown error';
+                safeShowToast(translateError(msg), 'error', 5000);
                 return;
             }
 
             if (result.error) {
-                fetchServers(); // revert optimistic 'starting'
+                revertOptimistic(name);
                 const errorMsg = translateError(result.error);
                 safeShowToast(t('servers.start_failed_toast', { error: errorMsg }), 'error', 4000);
             } else {
@@ -424,7 +425,7 @@ export function useServerActions({
             }
         } catch (error) {
             setProgressBar(null);
-            fetchServers(); // revert optimistic 'starting'
+            revertOptimistic(name);
             const errorMsg = translateError(error.message);
             safeShowToast(t('servers.start_failed_toast', { error: errorMsg }), 'error', 4000);
         }
@@ -451,7 +452,7 @@ export function useServerActions({
 
                     // ── extension_required 처리 ──
                     if (result.action_required === 'extension_required') {
-                        fetchServers(); // revert optimistic 'stopping'
+                        revertOptimistic(name);
                         setModal({
                             type: 'question',
                             title: t('servers.extension_required_title', { defaultValue: 'Extension Required' }),
@@ -479,13 +480,13 @@ export function useServerActions({
                     }
 
                     if (result.success === false && result.message) {
-                        fetchServers(); // revert optimistic 'stopping'
+                        revertOptimistic(name);
                         safeShowToast(result.message, 'error', 5000);
                         return;
                     }
 
                     if (result.error) {
-                        fetchServers(); // revert optimistic 'stopping'
+                        revertOptimistic(name);
                         const errorMsg = translateError(result.error);
                         safeShowToast(t('servers.stop_failed_toast', { error: errorMsg }), 'error', 4000);
                     } else {
@@ -527,7 +528,7 @@ export function useServerActions({
                     }
                 } catch (error) {
                     setProgressBar(null);
-                    fetchServers(); // revert optimistic 'stopping'
+                    revertOptimistic(name);
                     const errorMsg = translateError(error.message);
                     safeShowToast(t('servers.stop_failed_toast', { error: errorMsg }), 'error', 4000);
                 }

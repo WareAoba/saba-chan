@@ -237,6 +237,7 @@ pub struct RemoteExtensionInfo {
 ///   "extensions": [...]
 /// }
 /// ```
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtensionRegistryResponse {
     #[serde(default)]

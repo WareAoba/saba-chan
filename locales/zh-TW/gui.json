@@ -288,7 +288,9 @@
     "usage_note": "模組特定別名和命令別名可在每個伺服器的設定 → Discord 別名標籤中設定。",
     "start_button": "▶ 啟動機器人",
     "stop_button": "⏹ 停止機器人",
-    "save_button": "💾 儲存"
+    "save_button": "💾 儲存",
+    "music_toggle_label": "音樂機器人",
+    "music_toggle_description": "啟用透過 Discord 語音頻道播放 YouTube 音樂"
   },
   "notice_modal": {
     "title": "通知",

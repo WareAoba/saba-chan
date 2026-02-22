@@ -469,7 +469,7 @@ pub async fn remove_module(
         return (StatusCode::OK, Json(json!({ "ok": false, "error": e.to_string() }))).into_response();
     }
     // 캐시 갱신 (write lock)
-    let mut supervisor = state.supervisor.write().await;
+    let supervisor = state.supervisor.write().await;
     let _ = supervisor.refresh_modules();
     (StatusCode::OK, Json(json!({ "ok": true, "id": module_id }))).into_response()
 }

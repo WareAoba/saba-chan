@@ -9,7 +9,7 @@ use super::app::*;
 use crate::cli_config::CliSettings;
 use crate::client::DaemonClient;
 use crate::gui_config;
-use crate::module_registry::{ModuleRegistry, LIFECYCLE_COMMANDS};
+use crate::extension_registry::{ExtensionRegistry, LIFECYCLE_COMMANDS};
 use crate::process;
 
 // ═══════════════════════════════════════════════════════
@@ -232,7 +232,7 @@ fn dispatch_sync(app: &mut App, lower: &[&str], orig: &[&str]) -> Option<Vec<Out
             }
             if lower.len() == 1 {
                 if let Some(module_name) = app.registry.resolve_module_name(lower[0]) {
-                    return Some(show_module_commands(&app.registry, &module_name));
+                    return Some(show_extension_commands(&app.registry, &module_name));
                 }
             }
             None
@@ -248,7 +248,7 @@ fn cmd_config(app: &mut App, args: &[&str]) -> Vec<Out> {
     match args.first().copied() {
         None | Some("show") => {
             let token = gui_config::get_discord_token().ok().flatten();
-            let modules = gui_config::get_modules_path().unwrap_or_default();
+            let modules = gui_config::get_extensions_path().unwrap_or_default();
             let prefix = gui_config::get_bot_prefix().unwrap_or_else(|_| "!saba".into());
             let gui_lang = gui_config::get_language().unwrap_or_else(|_| "en".into());
             let auto_start_gui = gui_config::get_discord_auto_start().unwrap_or(false);
@@ -262,7 +262,7 @@ fn cmd_config(app: &mut App, args: &[&str]) -> Vec<Out> {
                 Out::Info("GUI Settings:".into()),
                 Out::Text(format!("  token            {}", if token.is_some() { "✓ set" } else { "✗ not set" })),
                 Out::Text(format!("  prefix           {}", prefix)),
-                Out::Text(format!("  modules_path     {}", modules)),
+                Out::Text(format!("  extensions_path     {}", modules)),
                 Out::Text(format!("  language         {}", gui_lang)),
                 Out::Text(format!("  discord_auto     {}", auto_start_gui)),
             ];
@@ -327,14 +327,14 @@ fn cmd_config_gui(args: &[&str]) -> Vec<Out> {
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
             }
         }
-        Some("modules_path") | Some("modules") => {
+        Some("extensions_path") | Some("modules") => {
             if args.len() < 2 {
-                let cur = gui_config::get_modules_path().unwrap_or_default();
-                return vec![Out::Ok(format!("Modules path: {}", cur))];
+                let cur = gui_config::get_extensions_path().unwrap_or_default();
+                return vec![Out::Ok(format!("Extensions path: {}", cur))];
             }
             let path = args[1..].join(" ");
-            match gui_config::set_modules_path(&path) {
-                Ok(()) => vec![Out::Ok(format!("✓ Modules path set to: {}", path))],
+            match gui_config::set_extensions_path(&path) {
+                Ok(()) => vec![Out::Ok(format!("✓ Extensions path set to: {}", path))],
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
             }
         }
@@ -523,10 +523,10 @@ fn cmd_help(app: &App) -> Vec<Out> {
         Out::Text("  exit     — Quit (Ctrl+C)".into()),
     ];
 
-    if !app.registry.modules.is_empty() {
+    if !app.registry.extensions.is_empty() {
         lines.push(Out::Blank);
         lines.push(Out::Info("Module shortcuts:".into()));
-        for mi in &app.registry.modules {
+        for mi in &app.registry.extensions {
             let mode = mi.interaction_mode.as_deref().unwrap_or("-");
             lines.push(Out::Text(format!(
                 "  {:<10} {} [{}] — type '{}' for commands",
@@ -545,7 +545,7 @@ fn cmd_help(app: &App) -> Vec<Out> {
     lines
 }
 
-fn show_module_commands(registry: &ModuleRegistry, module_name: &str) -> Vec<Out> {
+fn show_extension_commands(registry: &ExtensionRegistry, module_name: &str) -> Vec<Out> {
     let module = match registry.get_module(module_name) {
         Some(m) => m,
         None => return vec![Out::Err(format!("Module '{}' not found", module_name))],
@@ -725,7 +725,7 @@ async fn exec_server(client: &DaemonClient, args: &[&str], orig_args: &[&str]) -
     }
 }
 
-async fn exec_instance(client: &DaemonClient, lower: &[&str], orig: &[&str], registry: &ModuleRegistry) -> Vec<Out> {
+async fn exec_instance(client: &DaemonClient, lower: &[&str], orig: &[&str], registry: &ExtensionRegistry) -> Vec<Out> {
     match lower.first().copied() {
         Some("list") => match client.list_instances().await {
             Ok(list) if list.is_empty() => vec![Out::Text("No instances configured.".into())],
@@ -795,8 +795,8 @@ async fn exec_instance(client: &DaemonClient, lower: &[&str], orig: &[&str], reg
 
 async fn exec_module(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
     match args.first().copied() {
-        Some("list") => match client.list_modules().await {
-            Ok(list) if list.is_empty() => vec![Out::Text("No modules loaded.".into())],
+        Some("list") => match client.list_extensions().await {
+            Ok(list) if list.is_empty() => vec![Out::Text("No extensions loaded.".into())],
             Ok(list) => {
                 let mut o = vec![Out::Ok(format!("{} module(s):", list.len()))];
                 for m in &list { o.push(Out::Text(format!("  • {} v{} [{}]", m["name"].as_str().unwrap_or("?"), m["version"].as_str().unwrap_or("?"), m["interaction_mode"].as_str().unwrap_or("-")))); }
@@ -805,7 +805,7 @@ async fn exec_module(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
             Err(e) => vec![Out::Err(format!("✗ {}", e))],
         },
         Some("info") if args.len() > 1 => {
-            match client.get_module(args[1]).await {
+            match client.get_extension(args[1]).await {
                 Ok(data) => {
                     let mut o = vec![Out::Ok(format!("Module: {}", args[1]))];
                     for key in &["name", "version", "description", "game_name", "display_name", "interaction_mode"] {
@@ -816,7 +816,7 @@ async fn exec_module(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
             }
         }
-        Some("refresh") | Some("reload") => match client.refresh_modules().await {
+        Some("refresh") | Some("reload") => match client.refresh_extensions().await {
             Ok(_) => vec![Out::Ok("✓ Modules refreshed".into())],
             Err(e) => vec![Out::Err(format!("✗ {}", e))],
         },
@@ -965,8 +965,8 @@ async fn exec_update(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
 
 // ═══ 모듈 단축 명령어 (palworld start, 팰월드 시작 등) ═══
 
-async fn exec_module_cmd(client: &DaemonClient, registry: &ModuleRegistry, module_name: &str, args: &[&str]) -> Vec<Out> {
-    if args.is_empty() { return show_module_commands(registry, module_name); }
+async fn exec_module_cmd(client: &DaemonClient, registry: &ExtensionRegistry, module_name: &str, args: &[&str]) -> Vec<Out> {
+    if args.is_empty() { return show_extension_commands(registry, module_name); }
     let cmd_name = match registry.resolve_command(module_name, args[0]) {
         Some(n) => n,
         None => return vec![Out::Err(format!("✗ Unknown command '{}' for '{}'", args[0], module_name))],
@@ -1019,7 +1019,7 @@ async fn exec_module_cmd(client: &DaemonClient, registry: &ModuleRegistry, modul
     }
 }
 
-fn build_args_map(inputs: &[crate::module_registry::CommandInput], args: &[&str]) -> serde_json::Value {
+fn build_args_map(inputs: &[crate::extension_registry::CommandInput], args: &[&str]) -> serde_json::Value {
     let mut map = serde_json::Map::new();
     let mut arg_idx = 0;
     for (i, input) in inputs.iter().enumerate() {

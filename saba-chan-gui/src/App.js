@@ -112,6 +112,7 @@ function App() {
     const [discordAutoStart, setDiscordAutoStart] = useState(false);
     const [discordModuleAliases, setDiscordModuleAliases] = useState({});
     const [discordCommandAliases, setDiscordCommandAliases] = useState({});
+    const [discordMusicEnabled, setDiscordMusicEnabled] = useState(true);
     const discordTokenRef = useRef('');
 
     // ── Background Daemon State ────────────────────────────
@@ -309,6 +310,7 @@ function App() {
                     setDiscordPrefix(botCfg.prefix || '!saba');
                     setDiscordModuleAliases(botCfg.moduleAliases || {});
                     setDiscordCommandAliases(botCfg.commandAliases || {});
+                    setDiscordMusicEnabled(botCfg.musicEnabled !== false);
                     if (!isTest) console.log('[Settings] Bot config loaded, prefix:', botCfg.prefix);
                 }
 
@@ -360,6 +362,7 @@ function App() {
                 setDiscordPrefix(botCfg.prefix || '!saba');
                 setDiscordModuleAliases(botCfg.moduleAliases || {});
                 setDiscordCommandAliases(botCfg.commandAliases || {});
+                setDiscordMusicEnabled(botCfg.musicEnabled !== false);
             }
         } catch (err) {
             console.error('Failed to load bot config:', err);
@@ -387,7 +390,8 @@ function App() {
             const payload = {
                 prefix: newPrefix || '!saba',
                 moduleAliases: discordModuleAliases,
-                commandAliases: discordCommandAliases
+                commandAliases: discordCommandAliases,
+                musicEnabled: discordMusicEnabled
             };
             const res = await window.api.botConfigSave(payload);
             if (res.error) {
@@ -702,6 +706,8 @@ function App() {
                             setDiscordPrefix={setDiscordPrefix}
                             discordAutoStart={discordAutoStart}
                             setDiscordAutoStart={setDiscordAutoStart}
+                            discordMusicEnabled={discordMusicEnabled}
+                            setDiscordMusicEnabled={setDiscordMusicEnabled}
                             handleStartDiscordBot={handleStartDiscordBot}
                             handleStopDiscordBot={handleStopDiscordBot}
                             saveCurrentSettings={saveCurrentSettings}

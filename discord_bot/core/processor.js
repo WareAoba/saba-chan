@@ -1,0 +1,479 @@
+/**
+ * ⚙️ 프로세서 — 명령어 해석 및 디스패치
+ * 
+ * messageCreate 이벤트를 처리합니다:
+ *   1. prefix 확인 → 토큰 파싱
+ *   2. 핸들러(익스텐션) 우선 시도
+ *   3. 내장 명령(help, list) 처리
+ *   4. 모듈 + 명령어 패턴 → IPC 라우팅
+ */
+
+const i18n = require('../i18n');
+const resolver = require('./resolver');
+const handler = require('./handler');
+const ipc = require('./ipc');
+const { buildModuleAliasMap } = require('../utils/aliasResolver');
+
+// ── 중복 메시지 방지 ──
+const processedMessages = new Set();
+const MESSAGE_CACHE_TTL = 5000;
+
+/**
+ * 메시지 프로세서 진입점
+ * @param {import('discord.js').Message} message
+ */
+async function process(message) {
+    if (message.author.bot) return;
+
+    // 중복 메시지 처리 방지
+    if (processedMessages.has(message.id)) {
+        console.log(`[Processor] Duplicate message: ${message.id}`);
+        return;
+    }
+    processedMessages.add(message.id);
+    setTimeout(() => processedMessages.delete(message.id), MESSAGE_CACHE_TTL);
+
+    const content = message.content.trim();
+    const botConfig = resolver.getConfig();
+    const prefix = botConfig.prefix;
+
+    if (!content.startsWith(prefix)) return;
+
+    const args = content.slice(prefix.length).trim().split(/\s+/);
+
+    // ① 핸들러(익스텐션) 우선 시도
+    if (await handler.handle(message, args, botConfig)) return;
+
+    // ② 빈 명령 또는 help → 도움말
+    if (args.length === 0 || args[0] === '') {
+        await message.reply(await buildHelpMessage());
+        return;
+    }
+
+    const firstArg = args[0];
+    const secondArg = args[1];
+
+    if (firstArg === '도움' || firstArg === 'help') {
+        await message.reply(await buildHelpMessage());
+        return;
+    }
+
+    // ③ 목록 명령
+    if (firstArg === '목록' || firstArg === 'list') {
+        await handleListCommand(message);
+        return;
+    }
+
+    // ④ 모듈만 (명령어 없음)
+    if (!secondArg) {
+        // 알려진 모듈 별명인지 확인
+        if (!resolver.isKnownModuleAlias(firstArg)) {
+            // 케이스 1: 알 수 없는 입력
+            await message.reply(i18n.t('bot:errors.unknown_input'));
+            return;
+        }
+        // 케이스 2: 모듈 별명은 맞지만 명령어 없음 → 명령어 목록 안내
+        await handleModuleHelp(message, firstArg);
+        return;
+    }
+
+    // ⑤ 모듈 + 명령어 → IPC 라우팅
+    await handleModuleCommand(message, firstArg, secondArg, args.slice(2));
+}
+
+// ──────────────────────────────────────────
+//  도움말
+// ──────────────────────────────────────────
+
+async function buildHelpMessage() {
+    const botConfig = resolver.getConfig();
+    const prefix = botConfig.prefix;
+
+    let mountedModules = [];
+    try {
+        const servers = await ipc.getServers();
+        mountedModules = [...new Set(servers.map(s => s.module))];
+    } catch (e) {
+        console.warn('[Processor] Could not fetch servers for help:', e.message);
+    }
+
+    const moduleAliasMap = resolver.getModuleAliases();
+    const reverseAliasMap = {};
+    for (const [alias, moduleName] of Object.entries(moduleAliasMap)) {
+        if (alias === moduleName || alias.startsWith('__')) continue;
+        if (!reverseAliasMap[moduleName]) reverseAliasMap[moduleName] = [];
+        reverseAliasMap[moduleName].push(alias);
+    }
+
+    const helpTitle = `📖 **${prefix}**`;
+    const usage = `\n\`${prefix} <모듈> <명령어>\`\n`;
+
+    let moduleInfo = '';
+    if (mountedModules.length > 0) {
+        moduleInfo = '\n**📦 모듈:**\n';
+        for (const mod of mountedModules) {
+            const aliases = reverseAliasMap[mod] || [];
+            const aliasStr = aliases.length > 0 ? ` (${aliases.join(', ')})` : '';
+            moduleInfo += `• **${mod}**${aliasStr}\n`;
+        }
+    } else {
+        moduleInfo = '\n' + i18n.t('bot:help.no_modules');
+    }
+
+    return `${helpTitle}${usage}${moduleInfo}`;
+}
+
+// ──────────────────────────────────────────
+//  목록 (list)
+// ──────────────────────────────────────────
+
+async function handleListCommand(message) {
+    try {
+        const servers = await ipc.getServers();
+        if (servers.length === 0) {
+            await message.reply(i18n.t('bot:list.empty'));
+        } else {
+            const listTitle = i18n.t('bot:list.title');
+            const list = servers.map(s => {
+                const statusIcon = s.status === 'running' ? '🟢' : '⚪';
+                const statusText = s.status === 'running'
+                    ? i18n.t('bot:status.running')
+                    : i18n.t('bot:status.stopped');
+                return i18n.t('bot:list.item', {
+                    name: s.name,
+                    module: s.module,
+                    status: statusText,
+                    status_icon: statusIcon,
+                });
+            }).join('\n');
+            await message.reply(`${listTitle}\n${list}`);
+        }
+    } catch (error) {
+        await message.reply(`❌ ${i18n.t('bot:messages.command_error')}: ${error.message}`);
+    }
+}
+
+// ──────────────────────────────────────────
+//  모듈 도움말 (prefix + 모듈만)
+// ──────────────────────────────────────────
+
+async function handleModuleHelp(message, moduleAlias) {
+    const moduleAliases = resolver.getModuleAliases();
+
+    // 별명 충돌 검사
+    const conflict = resolver.checkModuleConflict(moduleAlias);
+    if (conflict.isConflict) {
+        const modules = conflict.conflictModules.join(', ');
+        await message.reply(i18n.t('bot:errors.alias_conflict', {
+            alias: moduleAlias,
+            modules,
+            defaultValue: `❌ Alias '${moduleAlias}' is ambiguous — it matches multiple modules: ${modules}. Please use a more specific alias.`,
+        }));
+        return;
+    }
+
+    const moduleName = resolver.resolveModule(moduleAlias);
+    const botConfig = resolver.getConfig();
+    const prefix = botConfig.prefix;
+
+    // 다중 인스턴스 경고
+    let multiInstanceWarning = '';
+    try {
+        const servers = await ipc.getServers();
+        const matched = servers.filter(s => s.module === moduleName);
+        if (matched.length > 1) {
+            multiInstanceWarning = '\n\n' + i18n.t('bot:errors.multiple_instances', {
+                module: moduleName,
+                defaultValue: `⚠️ Multiple '${moduleName}' instances exist. Use an instance name instead of the module alias.`,
+            });
+        }
+    } catch (_) {}
+
+    const cmds = resolver.getModuleCommands(moduleName);
+    const cmdList = Object.keys(cmds);
+
+    const moduleTitle = i18n.t('bot:help.module_title', { module: moduleName });
+    const helpStart = i18n.t('bot:modules.help_start');
+    const helpStop = i18n.t('bot:modules.help_stop');
+    const helpStatus = i18n.t('bot:modules.help_status');
+    const enterCommand = i18n.t('bot:modules.enter_command');
+
+    // 케이스 2: 명령어를 입력해주세요 + 사용 가능한 명령어 목록
+    let cmdHelp = `${enterCommand}\n\n${moduleTitle}\n`;
+    cmdHelp += `• \`${prefix} ${moduleAlias} start\` - ${helpStart}\n`;
+    cmdHelp += `• \`${prefix} ${moduleAlias} stop\` - ${helpStop}\n`;
+    cmdHelp += `• \`${prefix} ${moduleAlias} status\` - ${helpStatus}\n`;
+
+    if (cmdList.length > 0) {
+        const restTitle = i18n.t('bot:modules.help_rest_title');
+        cmdHelp += `\n${restTitle}\n`;
+        for (const [cmdName, cmdMeta] of Object.entries(cmds)) {
+            const inputsStr = cmdMeta.inputs && cmdMeta.inputs.length > 0
+                ? cmdMeta.inputs.map(i => i.required ? `<${i.name}>` : `[${i.name}]`).join(' ')
+                : '';
+            cmdHelp += `• \`${prefix} ${moduleAlias} ${cmdName}${inputsStr ? ' ' + inputsStr : ''}\` - ${cmdMeta.label || cmdName}\n`;
+        }
+    }
+
+    await message.reply(cmdHelp + multiInstanceWarning);
+}
+
+// ──────────────────────────────────────────
+//  모듈 + 명령어 실행
+// ──────────────────────────────────────────
+
+async function handleModuleCommand(message, moduleAlias, commandAlias, extraArgs) {
+    const botConfig = resolver.getConfig();
+    const prefix = botConfig.prefix;
+
+    // 별명 충돌 검사
+    const conflict = resolver.checkModuleConflict(moduleAlias);
+    if (conflict.isConflict) {
+        const modules = conflict.conflictModules.join(', ');
+        await message.reply(i18n.t('bot:errors.alias_conflict', {
+            alias: moduleAlias,
+            modules,
+            defaultValue: `❌ Alias '${moduleAlias}' is ambiguous — it matches multiple modules: ${modules}. Please use a more specific alias.`,
+        }));
+        return;
+    }
+
+    const moduleName = resolver.resolveModule(moduleAlias);
+    const commandName = resolver.resolveCommand(commandAlias);
+
+    console.log(`[Processor] ${message.author.tag}: ${prefix} ${moduleAlias} ${commandAlias} → module=${moduleName}, command=${commandName}, args=${extraArgs.join(' ')}`);
+
+    try {
+        // 서버 찾기
+        const servers = await ipc.getServers();
+
+        // 1) 인스턴스 이름으로 정확히 매칭
+        let server = servers.find(s => s.name.toLowerCase() === moduleAlias.toLowerCase());
+
+        if (!server) {
+            // 2) 모듈명/별명으로 매칭
+            const matched = servers.filter(s => s.module === moduleName || s.name.includes(moduleName));
+            if (matched.length > 1) {
+                await message.reply(i18n.t('bot:errors.multiple_instances', {
+                    module: moduleName,
+                    defaultValue: `⚠️ Multiple '${moduleName}' instances exist. Use an instance name instead of the module alias.`,
+                }));
+                return;
+            }
+            server = matched[0];
+        }
+
+        if (!server) {
+            await message.reply(i18n.t('bot:server.not_found', { alias: moduleAlias, resolved: moduleName }));
+            return;
+        }
+
+        // ── 내장 명령어 (start, stop, status) ──
+        if (commandName === 'start') {
+            await executeStart(message, server, moduleName);
+            return;
+        }
+        if (commandName === 'stop') {
+            await executeStop(message, server);
+            return;
+        }
+        if (commandName === 'status') {
+            await executeStatus(message, server);
+            return;
+        }
+
+        // ── module.toml 정의 명령어 ──
+        const cmds = resolver.getModuleCommands(moduleName);
+        const cmdMeta = cmds[commandName];
+
+        if (!cmdMeta) {
+            // 케이스 3: 존재하지 않는 명령어
+            await message.reply(i18n.t('bot:errors.command_not_found'));
+            return;
+        }
+
+        // rest / dual / rcon 명령어 실행
+        await executeDefinedCommand(message, server, moduleName, commandName, cmdMeta, moduleAlias, commandAlias, extraArgs);
+
+    } catch (error) {
+        console.error('[Processor] Command error:', error.message);
+        const moduleErrors = resolver.getModuleMeta(moduleName)?.errors || {};
+
+        let errorMsg;
+        if (error.response) {
+            const status = error.response.status;
+            const data = error.response.data;
+            const statusErrors = {
+                401: moduleErrors.auth_failed || i18n.t('bot:errors.auth_failed'),
+                403: moduleErrors.auth_failed || i18n.t('bot:errors.auth_failed'),
+                404: data?.error || i18n.t('bot:errors.not_found'),
+                500: moduleErrors.internal_server_error || i18n.t('bot:errors.internal_server_error'),
+                503: moduleErrors.server_not_running || i18n.t('bot:errors.service_unavailable'),
+            };
+            errorMsg = statusErrors[status] || (data?.error || error.message);
+        } else if (error.code) {
+            const networkErrors = {
+                'ECONNREFUSED': moduleErrors.connection_refused || i18n.t('bot:errors.connection_refused'),
+                'ETIMEDOUT': moduleErrors.timeout || i18n.t('bot:errors.timeout'),
+                'ENOTFOUND': i18n.t('bot:errors.host_not_found'),
+            };
+            errorMsg = networkErrors[error.code] || error.message;
+        } else {
+            errorMsg = error.message;
+        }
+
+        await message.reply(`❌ ${i18n.t('bot:errors.error_title')}: ${errorMsg}`);
+    }
+}
+
+// ── 내장 명령어 구현 ──
+
+function determineUseManaged(server, moduleName) {
+    const modMeta = resolver.getModuleMeta(moduleName);
+    const interactionMode = modMeta?.protocols?.interaction_mode
+        || modMeta?.module?.interaction_mode;
+    const instanceManagedStart = server.module_settings?.managed_start;
+    if (instanceManagedStart === true || instanceManagedStart === 'true') return true;
+    if (instanceManagedStart === false || instanceManagedStart === 'false') return false;
+    return (interactionMode === 'console');
+}
+
+async function executeStart(message, server, moduleName) {
+    const startMsg = i18n.t('bot:server.start_request', { name: server.name });
+    const statusMsg = await message.reply(startMsg);
+    const useManaged = determineUseManaged(server, moduleName);
+    await ipc.startServer(server.id, server.name, server.module, useManaged);
+    const completeMsg = i18n.t('bot:server.start_complete', { name: server.name });
+    await statusMsg.edit(completeMsg);
+}
+
+async function executeStop(message, server) {
+    const stopMsg = i18n.t('bot:server.stop_request', { name: server.name });
+    const statusMsg = await message.reply(stopMsg);
+    await ipc.stopServer(server.name);
+    const completeMsg = i18n.t('bot:server.stop_complete', { name: server.name });
+    await statusMsg.edit(completeMsg);
+}
+
+async function executeStatus(message, server) {
+    const statusText = server.status === 'running'
+        ? i18n.t('bot:status.running')
+        : i18n.t('bot:status.stopped');
+    const pidText = server.pid ? `PID: ${server.pid}` : '';
+    const checkMsg = i18n.t('bot:server.status_check', { name: server.name, status: statusText, pid_info: pidText });
+    await message.reply(checkMsg);
+}
+
+// ── Raw command (module.toml에 미정의) ──
+
+async function executeRawCommand(message, server, moduleName, secondArg, extraArgs) {
+    if (server.status !== 'running') {
+        await message.reply(`❌ ${i18n.t('bot:server.not_running_default')}`);
+        return;
+    }
+
+    const rawCommand = [secondArg, ...extraArgs].join(' ');
+    console.log(`[Processor] Raw command forward: "${rawCommand}" → ${server.name}`);
+
+    try {
+        const useStdin = determineUseManaged(server, moduleName);
+        let result;
+        if (useStdin) {
+            result = await ipc.sendStdin(server.id, rawCommand);
+        } else {
+            result = await ipc.sendRcon(server.id, rawCommand);
+        }
+
+        const response = result.data;
+        if (response.error) {
+            await message.reply(`❌ ${response.error}`);
+        } else {
+            const output = ipc.formatResponse(response.data || response.response || response);
+            await message.reply(`✅ ${output}`);
+        }
+    } catch (error) {
+        console.error('[Processor] Raw command error:', error.message);
+        await message.reply(`❌ ${error.response?.data?.error || error.message}`);
+    }
+}
+
+// ── 정의된 명령어 실행 (rest/rcon/dual) ──
+
+async function executeDefinedCommand(message, server, moduleName, commandName, cmdMeta, moduleAlias, commandAlias, extraArgs) {
+    const botConfig = resolver.getConfig();
+    const prefix = botConfig.prefix;
+
+    if (cmdMeta.method === 'rest' || cmdMeta.method === 'dual' || cmdMeta.method === 'rcon') {
+        // 서버 실행 상태 확인
+        if (server.status !== 'running') {
+            const moduleErrors = resolver.getModuleMeta(moduleName)?.errors || {};
+            const defaultMsg = i18n.t('bot:server.not_running_default');
+            const errorMsg = moduleErrors.server_not_running || defaultMsg;
+            await message.reply(i18n.t('bot:server.not_running', { name: server.name, error: errorMsg }));
+            return;
+        }
+
+        // 입력값 빌드
+        const body = {};
+        if (cmdMeta.inputs && cmdMeta.inputs.length > 0) {
+            for (let i = 0; i < cmdMeta.inputs.length; i++) {
+                const input = cmdMeta.inputs[i];
+                if (extraArgs[i]) {
+                    body[input.name] = extraArgs[i];
+                } else if (input.required) {
+                    await message.reply(i18n.t('bot:command.missing_required', {
+                        arg_name: input.name,
+                        prefix,
+                        alias: moduleAlias,
+                        command: commandAlias,
+                        description: input.label || input.name,
+                    }));
+                    return;
+                }
+            }
+        }
+
+        const executingMsg = i18n.t('bot:command.executing', { name: server.name, command: commandName });
+        const statusMsg = await message.reply(executingMsg);
+
+        let result;
+
+        if (cmdMeta.method === 'rcon') {
+            let rconCmd = cmdMeta.rcon_template || commandName;
+            for (const [key, value] of Object.entries(body)) {
+                rconCmd = rconCmd.replace(`{${key}}`, value);
+            }
+            rconCmd = rconCmd.replace(/\s*\{\w+\}/g, '').trim();
+            console.log(`[Processor] RCON: ${rconCmd}`);
+            result = await ipc.sendRcon(server.id, rconCmd);
+        } else if (cmdMeta.method === 'dual') {
+            console.log(`[Processor] Module command: ${commandName}`, body);
+            result = await ipc.sendModuleCommand(server.id, commandName, body);
+        } else {
+            const endpoint = cmdMeta.endpoint_template || `/v1/api/${commandName}`;
+            const httpMethod = (cmdMeta.http_method || 'GET').toUpperCase();
+            console.log(`[Processor] REST ${httpMethod} ${endpoint}`, body);
+            result = await ipc.sendRestCommand(server.id, endpoint, httpMethod, body, server);
+        }
+
+        if (result.data.success) {
+            const responseText = ipc.formatResponse(result.data.data);
+            const completeMsg = i18n.t('bot:command.execute_complete', { name: server.name, command: commandName, response: responseText });
+            await statusMsg.edit(completeMsg);
+        } else {
+            const errorText = result.data.error || i18n.t('bot:errors.unknown');
+            const errorCode = result.data.error_code || '';
+            const moduleErrors = resolver.getModuleMeta(moduleName)?.errors || {};
+            const friendlyError = (errorCode && moduleErrors[errorCode])
+                ? moduleErrors[errorCode]
+                : errorText;
+            const failedMsg = i18n.t('bot:command.execute_failed', { name: server.name, error: friendlyError });
+            await statusMsg.edit(failedMsg);
+        }
+    } else {
+        const unsupportedMsg = i18n.t('bot:messages.command_error');
+        await message.reply(`❓ ${unsupportedMsg}: ${cmdMeta.method || 'unknown'}`);
+    }
+}
+
+module.exports = { process };

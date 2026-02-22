@@ -406,7 +406,9 @@
     "usage_note": "Module-specific aliases and command aliases can be configured in each server's Settings → Discord Aliases tab.",
     "start_button": "▶ Start Bot",
     "stop_button": "⏹ Stop Bot",
-    "save_button": "💾 Save"
+    "save_button": "💾 Save",
+    "music_toggle_label": "Music Bot",
+    "music_toggle_description": "Enable YouTube music playback via Discord voice channels"
   },
   "notice_modal": {
     "title": "Notifications",

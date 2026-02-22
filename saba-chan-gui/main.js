@@ -2701,7 +2701,8 @@ ipcMain.handle('discord:start', async (event, config) => {
     const configToSave = {
         prefix: config.prefix || '!saba',
         moduleAliases: config.moduleAliases || {},
-        commandAliases: config.commandAliases || {}
+        commandAliases: config.commandAliases || {},
+        musicEnabled: config.musicEnabled !== false
     };
     
     // discord_bot/bot-config.json에 저장 (봇이 직접 읽음)
@@ -2719,12 +2720,38 @@ ipcMain.handle('discord:start', async (event, config) => {
     try {
         const currentLanguage = getLanguage();
         
+        // ── Node.js 실행 경로 결정 ──
+        // 1) 데몬의 node-env API로 포터블 Node.js 경로 조회
+        // 2) 실패 시 시스템 'node' 폴백
+        let nodeCmd = 'node';
+        try {
+            const token = getIpcToken();
+            const res = await axios.get(`${IPC_BASE}/api/node-env/status`, {
+                timeout: 3000,
+                headers: { 'X-Saba-Token': token }
+            });
+            const data = res.data;
+            if (data?.available && data?.portable_installed && data?.portable_path) {
+                const portable = data.portable_path;
+                if (fs.existsSync(portable)) {
+                    nodeCmd = portable;
+                    console.log('[Discord Bot] Using portable Node.js:', nodeCmd);
+                }
+            } else if (data?.system_node) {
+                nodeCmd = data.system_node;
+                console.log('[Discord Bot] Using system Node.js:', nodeCmd);
+            }
+        } catch (nodeEnvErr) {
+            console.warn('[Discord Bot] node-env API unavailable, using system node:', nodeEnvErr.message);
+        }
+
         console.log('[Discord Bot] Starting with:');
+        console.log('  - nodeCmd:', nodeCmd);
         console.log('  - botPath:', botPath);
         console.log('  - indexPath:', indexPath);
         console.log('  - configPath:', localConfigPath);
         
-        discordBotProcess = spawn('node', [indexPath], {
+        discordBotProcess = spawn(nodeCmd, [indexPath], {
             cwd: botPath,
             env: { 
                 ...process.env, 
@@ -2806,7 +2833,8 @@ ipcMain.handle('botConfig:save', async (event, config) => {
         const configToSave = {
             prefix: config.prefix || '!saba',
             moduleAliases: config.moduleAliases || {},
-            commandAliases: config.commandAliases || {}
+            commandAliases: config.commandAliases || {},
+            musicEnabled: config.musicEnabled !== false
         };
         
         // 1. discord_bot 폴더에 저장 (메인 저장소)

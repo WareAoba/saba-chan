@@ -207,6 +207,7 @@ async fn run_plugin_inner(
 
 /// Extension runner – extensions/<name>.py 를 plugin 프로토콜로 실행합니다.
 /// run_plugin과 동일한 프로토콜이지만, 경로를 extensions/ 디렉토리에서 자동으로 해석합니다.
+#[allow(dead_code)]
 pub async fn run_extension(extension_name: &str, function: &str, config: Value) -> Result<Value> {
     let extensions_dir = resolve_extensions_dir();
 
@@ -223,6 +224,7 @@ pub async fn run_extension(extension_name: &str, function: &str, config: Value) 
 }
 
 /// Like `run_extension` but with real-time progress callback.
+#[allow(dead_code)]
 pub async fn run_extension_with_progress<F>(
     extension_name: &str,
     function: &str,

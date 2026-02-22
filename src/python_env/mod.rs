@@ -122,6 +122,7 @@ pub async fn ensure_venv() -> Result<PathBuf> {
 }
 
 /// pip 패키지를 관리 venv에 설치합니다.
+#[allow(dead_code)]
 pub async fn pip_install(packages: &[&str]) -> Result<()> {
     let python_exe = get_python_path().await?;
     tracing::info!("pip install: {:?}", packages);
@@ -131,6 +132,7 @@ pub async fn pip_install(packages: &[&str]) -> Result<()> {
 }
 
 /// requirements.txt로부터 의존성을 설치합니다.
+#[allow(dead_code)]
 pub async fn pip_install_requirements(requirements_path: &Path) -> Result<()> {
     let python_exe = get_python_path().await?;
     tracing::info!("requirements 설치: {}", requirements_path.display());
@@ -178,6 +180,7 @@ pub async fn detect_system_python() -> Result<String> {
 }
 
 /// 진단 정보를 JSON으로 반환합니다. (IPC 엔드포인트용)
+#[allow(dead_code)]
 pub async fn status() -> serde_json::Value {
     let data_dir = match resolve_data_dir() {
         Ok(d) => d,
@@ -528,6 +531,7 @@ async fn verify_python(exe: &Path) -> bool {
 }
 
 /// Python --version 문자열 반환
+#[allow(dead_code)]
 async fn get_version(exe: &Path) -> Result<String> {
     let mut cmd = Command::new(exe);
     cmd.arg("--version");

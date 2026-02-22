@@ -14,6 +14,7 @@ use serde_json::Value;
 pub struct ValidationError {
     pub field: String,
     pub message: String,
+    #[allow(dead_code)]
     pub error_type: ValidationErrorType,
 }
 
@@ -38,8 +39,10 @@ pub struct PortConflict {
     pub port: u16,
     /// 포트 종류 ("port", "rcon_port", "rest_port")
     pub port_type: String,
+    #[allow(dead_code)]
     /// 충돌하는 상대 인스턴스 이름
     pub conflicting_instance_name: String,
+    #[allow(dead_code)]
     /// 충돌하는 상대 인스턴스 ID
     pub conflicting_instance_id: String,
     /// 상대 인스턴스의 포트 종류

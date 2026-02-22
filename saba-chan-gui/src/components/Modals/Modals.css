@@ -1181,6 +1181,51 @@
     margin-top: 12px;
 }
 
+/* Music Bot Toggle Card */
+.discord-music-toggle-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    margin-top: 20px;
+    background: var(--bg-surface-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: 12px;
+    transition: border-color 0.2s;
+}
+
+.discord-music-toggle-card:hover {
+    border-color: var(--brand-primary);
+}
+
+.discord-music-toggle-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.discord-music-toggle-icon {
+    font-size: 24px;
+    line-height: 1;
+}
+
+.discord-music-toggle-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.discord-music-toggle-label {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.discord-music-toggle-desc {
+    font-size: 12px;
+    color: var(--text-tertiary);
+}
+
 .discord-modal-footer {
     display: flex;
     gap: 12px;

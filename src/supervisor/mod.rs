@@ -139,6 +139,21 @@ impl Supervisor {
             for (_ext_id, result) in &results {
                 if let Ok(val) = result {
                     if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
+                        // Extension handled but failed → ensure error/message fields exist
+                        if val.get("success").and_then(|s| s.as_bool()) != Some(true) {
+                            let mut fail_val = val.clone();
+                            if let Some(obj) = fail_val.as_object_mut() {
+                                obj.entry("error".to_string())
+                                    .or_insert_with(|| json!("Extension failed to start server"));
+                                obj.entry("message".to_string())
+                                    .or_insert_with(|| json!("Extension handled the start request but reported failure"));
+                            }
+                            tracing::warn!(
+                                "Extension hook 'server.pre_start' handled but failed for '{}'",
+                                server_name
+                            );
+                            return Ok(fail_val);
+                        }
                         // Extension이 시작 성공 → log_follower가 있으면 로그 스트리머 등록
                         if val.get("success").and_then(|s| s.as_bool()) == Some(true) {
                             if let Some(log_cfg) = val.get("log_follower") {
@@ -708,6 +723,21 @@ impl Supervisor {
             for (_ext_id, result) in &results {
                 if let Ok(val) = result {
                     if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
+                        // Extension handled but failed → ensure error/message fields exist
+                        if val.get("success").and_then(|s| s.as_bool()) != Some(true) {
+                            let mut fail_val = val.clone();
+                            if let Some(obj) = fail_val.as_object_mut() {
+                                obj.entry("error".to_string())
+                                    .or_insert_with(|| json!("Extension failed to start server"));
+                                obj.entry("message".to_string())
+                                    .or_insert_with(|| json!("Extension handled the start request but reported failure"));
+                            }
+                            tracing::warn!(
+                                "Extension hook 'server.pre_start' (managed) handled but failed for '{}'",
+                                instance.name
+                            );
+                            return Ok(fail_val);
+                        }
                         // Extension이 시작 성공 → log_follower가 있으면 로그 스트리머 등록
                         if val.get("success").and_then(|s| s.as_bool()) == Some(true) {
                             if let Some(log_cfg) = val.get("log_follower") {

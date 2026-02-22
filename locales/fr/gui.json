@@ -288,7 +288,9 @@
     "usage_note": "Les alias spécifiques au module et les alias de commande peuvent être configurés dans Paramètres de chaque serveur → onglet Alias Discord.",
     "start_button": "▶ Démarrer le bot",
     "stop_button": "⏹ Arrêter le bot",
-    "save_button": "💾 Enregistrer"
+    "save_button": "💾 Enregistrer",
+    "music_toggle_label": "Bot Musical",
+    "music_toggle_description": "Activer la lecture de musique YouTube via les salons vocaux Discord"
   },
   "notice_modal": {
     "title": "Notifications",

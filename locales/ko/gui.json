@@ -402,7 +402,9 @@
     "usage_note": "모듈별 별명과 명령어 별명은 각 서버의 Settings → Discord 별명 탭에서 설정할 수 있습니다.",
     "start_button": "▶ 봇 시작",
     "stop_button": "⏹ 봇 정지",
-    "save_button": "💾 저장"
+    "save_button": "💾 저장",
+    "music_toggle_label": "뮤직봇",
+    "music_toggle_description": "Discord 음성 채널에서 YouTube 음악 재생 기능을 활성화합니다"
   },
   "notice_modal": {
     "title": "알림",
