@@ -27,11 +27,13 @@ const crypto = require('crypto');
 const RELAY_URL = process.env.RELAY_URL || '';
 const NODE_TOKEN = process.env.RELAY_NODE_TOKEN || '';
 const HEARTBEAT_INTERVAL = 60_000;   // 60초
-const POLL_RETRY_DELAY = 3_000;      // 폴링 실패 시 재시도 대기
+const POLL_RETRY_BASE = 3_000;       // 폴링 실패 시 초기 대기
+const POLL_RETRY_MAX = 60_000;       // 최대 대기 (60초)
 
 let _running = false;
 let _heartbeatTimer = null;
 let _pollAbort = null;
+let _consecutiveErrors = 0;          // 연속 에러 카운터 (지수 백오프용)
 
 // ── 토큰 파싱 ──
 function parseToken(token) {
@@ -64,8 +66,65 @@ function signedHeaders(method, urlPath, body) {
     };
 }
 
+const AGENT_VERSION = require('../package.json').version;
+
 function delay(ms) {
     return new Promise(r => setTimeout(r, ms));
+}
+
+// ── semver 비교 유틸 ──
+/**
+ * 간단한 semver 비교: a < b → -1, a === b → 0, a > b → 1
+ */
+function compareSemver(a, b) {
+    const pa = a.split('.').map(Number);
+    const pb = b.split('.').map(Number);
+    for (let i = 0; i < 3; i++) {
+        const va = pa[i] || 0;
+        const vb = pb[i] || 0;
+        if (va < vb) return -1;
+        if (va > vb) return 1;
+    }
+    return 0;
+}
+
+// ── 서버 버전 확인 ──
+/**
+ * 릴레이 서버의 /info 엔드포인트에서 버전 정보를 가져와
+ * 에이전트 버전이 최소 요구 버전 이상인지 확인합니다.
+ * @returns {{ compatible: boolean, serverVersion: string|null }} 또는 null (페치 실패 시)
+ */
+async function checkServerVersion() {
+    try {
+        const res = await fetch(`${RELAY_URL}/info`, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (!res.ok) {
+            console.warn(`[RelayAgent] /info 요청 실패 (${res.status}) — 버전 확인 건너뜀`);
+            return null;
+        }
+
+        const info = await res.json();
+        const serverVersion = info.version || 'unknown';
+        const minAgentVersion = info.minAgentVersion;
+
+        console.log(`[RelayAgent] 서버 버전: ${serverVersion}, 에이전트 버전: ${AGENT_VERSION}`);
+
+        if (minAgentVersion && compareSemver(AGENT_VERSION, minAgentVersion) < 0) {
+            console.error(
+                `[RelayAgent] ⚠️ 에이전트 버전(${AGENT_VERSION})이 ` +
+                `서버 최소 요구 버전(${minAgentVersion})보다 낮습니다. 업데이트가 필요합니다.`
+            );
+            return { compatible: false, serverVersion };
+        }
+
+        return { compatible: true, serverVersion };
+    } catch (e) {
+        console.warn('[RelayAgent] 서버 버전 확인 실패:', e.message);
+        return null;
+    }
 }
 
 // ── 하트비트 ──
@@ -80,7 +139,7 @@ async function sendHeartbeat() {
         } catch { metadata = undefined; }
 
         const hbBody = {
-            agentVersion: '0.1.0',
+            agentVersion: AGENT_VERSION,
             os: `${os.platform()} ${os.release()}`,
             metadata,
         };
@@ -94,6 +153,14 @@ async function sendHeartbeat() {
         if (!res.ok) {
             const data = await res.json().catch(() => ({}));
             console.error(`[RelayAgent] Heartbeat failed (${res.status}):`, data.error || res.statusText);
+            if (res.status === 401 || res.status === 403) {
+                console.error('[RelayAgent] ⚠️ 인증 실패 — 토큰이 유효하지 않을 수 있습니다.');
+            }
+        } else {
+            const data = await res.json().catch(() => ({}));
+            if (data.warning === 'UPDATE_REQUIRED') {
+                console.warn(`[RelayAgent] ⚠️ 에이전트 업데이트 필요 — 최소 버전: ${data.minVersion}`);
+            }
         }
     } catch (e) {
         console.error('[RelayAgent] Heartbeat error:', e.message);
@@ -188,17 +255,24 @@ async function pollLoop() {
 
             if (!res.ok) {
                 if (res.status === 204) {
+                    _consecutiveErrors = 0;
                     continue; // 대기 명령 없음 — 즉시 재폴링
                 }
                 const data = await res.json().catch(() => ({}));
                 console.error(`[RelayAgent] Poll failed (${res.status}):`, data.error || res.statusText);
-                await delay(POLL_RETRY_DELAY);
+                _consecutiveErrors++;
+                const backoff = Math.min(POLL_RETRY_BASE * Math.pow(2, _consecutiveErrors - 1), POLL_RETRY_MAX);
+                console.log(`[RelayAgent] Retry in ${backoff}ms (attempt ${_consecutiveErrors})`);
+                await delay(backoff);
                 continue;
             }
 
             if (res.status === 204) {
+                _consecutiveErrors = 0;
                 continue; // 대기 명령 없음
             }
+
+            _consecutiveErrors = 0;
 
             const body = await res.json();
             const commands = body.commands || [];
@@ -229,7 +303,10 @@ async function pollLoop() {
                 break;
             }
             console.error('[RelayAgent] Poll error:', e.message);
-            await delay(POLL_RETRY_DELAY);
+            _consecutiveErrors++;
+            const backoff = Math.min(POLL_RETRY_BASE * Math.pow(2, _consecutiveErrors - 1), POLL_RETRY_MAX);
+            console.log(`[RelayAgent] Retry in ${backoff}ms (attempt ${_consecutiveErrors})`);
+            await delay(backoff);
         }
     }
 
@@ -259,6 +336,14 @@ async function start() {
     }
 
     _running = true;
+
+    // 서버 버전 호환성 확인
+    const versionCheck = await checkServerVersion();
+    if (versionCheck && !versionCheck.compatible) {
+        console.error('[RelayAgent] 서버 호환성 실패 — 에이전트를 업데이트하세요.');
+        _running = false;
+        return false;
+    }
 
     // 초기 하트비트 (온라인 전환)
     await sendHeartbeat();
@@ -298,6 +383,7 @@ function getStatus() {
         running: _running,
         relayUrl: RELAY_URL || null,
         hasToken: !!NODE_TOKEN,
+        agentVersion: AGENT_VERSION,
     };
 }
 

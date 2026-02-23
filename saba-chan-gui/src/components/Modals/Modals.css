@@ -1059,9 +1059,23 @@
     margin-bottom: 24px;
 }
 
+.discord-status-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+}
+
+.discord-status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .discord-status-section .status-label {
     font-weight: 600;
     color: var(--text-tertiary);
+    min-width: 68px;
 }
 
 .discord-status-section .status-value {
@@ -1084,6 +1098,16 @@
 .discord-status-section .status-error {
     background: var(--status-error-badge-bg);
     color: var(--status-error-badge-text);
+}
+
+.discord-status-section .status-connecting {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.discord-status-section .status-needs-setup {
+    background: #e2e3e5;
+    color: #6c757d;
 }
 
 .discord-config-section {
@@ -1544,11 +1568,12 @@
     display: block;
     margin: 6px 0 12px 0;
     padding: 8px 12px;
-    background: var(--bg-input);
+    background: var(--bg-surface-alt, #f8f9fa);
+    border: 1px solid var(--border-light, #eeeeee);
     border-radius: 6px;
     font-family: 'Consolas', 'Monaco', monospace;
     font-size: 13px;
-    color: var(--accent-color);
+    color: var(--text-primary, #333333);
     user-select: all;
 }
 
@@ -1846,6 +1871,417 @@
 
 .discord-node-instance-status.disabled {
     color: var(--text-tertiary);
+}
+
+/* ── 인스턴스 선택 (클라이언트 측) ── */
+.discord-instance-select-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.discord-instance-select-header h4 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.discord-instance-select-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.discord-instance-select-btn {
+    font-size: 11px;
+    padding: 2px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.discord-instance-select-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.discord-instance-select-desc {
+    display: block;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-bottom: 8px;
+}
+
+.discord-instance-select-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.discord-instance-select-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.discord-instance-select-item:hover {
+    background: var(--bg-hover);
+}
+
+.discord-instance-select-item.selected {
+    border-color: var(--accent-color, #5865f2);
+    background: color-mix(in srgb, var(--accent-color, #5865f2) 8%, var(--bg-surface));
+}
+
+.discord-instance-select-item input[type="checkbox"] {
+    accent-color: var(--accent-color, #5865f2);
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.discord-instance-select-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+
+.discord-instance-select-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.discord-instance-select-module {
+    font-size: 11px;
+    color: var(--text-tertiary);
+}
+
+.discord-instance-select-status {
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.discord-instance-select-status.online {
+    color: var(--success-color, #22c55e);
+}
+
+.discord-instance-select-status.offline {
+    color: var(--text-tertiary);
+}
+
+/* ── 노드 설정 탭 ── */
+.discord-node-settings-body {
+    margin-top: 8px;
+}
+
+.discord-node-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--border-light);
+    padding-bottom: 0;
+}
+
+.discord-node-tab {
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    border: none;
+    background: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all 0.15s;
+}
+
+.discord-node-tab:hover {
+    color: var(--text-primary);
+}
+
+.discord-node-tab.active {
+    color: var(--accent-color, #5865f2);
+    border-bottom-color: var(--accent-color, #5865f2);
+    font-weight: 600;
+}
+
+.discord-node-tab-content {
+    animation: fadeIn 0.15s ease-out;
+}
+
+/* ── 멤버 추가 행 ── */
+.discord-member-add-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+.discord-member-add-input {
+    flex: 1;
+    padding: 6px 10px;
+    font-size: 12px;
+    border: 1px solid var(--border-light);
+    border-radius: 6px;
+    background: var(--bg-input);
+    color: var(--text-primary);
+    font-family: 'Consolas', 'Monaco', monospace;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.discord-member-add-input:focus {
+    border-color: var(--accent-color);
+}
+
+.discord-member-add-input::placeholder {
+    color: var(--text-tertiary);
+    font-family: inherit;
+}
+
+.discord-member-add-btn {
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid var(--accent-color, #5865f2);
+    border-radius: 6px;
+    background: var(--accent-color, #5865f2);
+    color: #fff;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    white-space: nowrap;
+}
+
+.discord-member-add-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.discord-member-add-btn:hover:not(:disabled) {
+    opacity: 0.85;
+}
+
+/* ── 멤버 권한 카드 목록 ── */
+.discord-member-perm-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.discord-member-perm-card {
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--settings-item-bg);
+    transition: border-color 0.15s;
+}
+
+.discord-member-perm-card.expanded {
+    border-color: var(--accent-color);
+}
+
+.discord-member-perm-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    transition: background 0.15s;
+}
+
+.discord-member-perm-header:hover {
+    background: var(--bg-hover);
+}
+
+/* ── 멤버 활성화 체크 + 이름/ID 그룹 ── */
+.discord-member-enable-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    cursor: pointer;
+}
+
+.discord-member-enable-label input[type="checkbox"] {
+    accent-color: var(--accent-color, #5865f2);
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.discord-member-perm-id-group {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+.discord-member-perm-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.discord-member-perm-id {
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 11px;
+    color: var(--text-tertiary);
+}
+
+.discord-member-expand-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    border-radius: 4px;
+    flex-shrink: 0;
+    transition: all 0.15s;
+}
+
+.discord-member-expand-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.discord-member-perm-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.discord-member-remove-btn {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 12px;
+    transition: all 0.15s;
+}
+
+.discord-member-remove-btn:hover {
+    background: var(--danger-bg, rgba(239, 68, 68, 0.1));
+    color: var(--danger-color, #ef4444);
+}
+
+.discord-member-perm-body {
+    padding: 8px 12px 12px;
+    border-top: 1px solid var(--border-light);
+    animation: fadeIn 0.15s ease-out;
+}
+
+/* ── 멤버별 인스턴스 블록 ── */
+.discord-member-instance-block {
+    margin-bottom: 10px;
+    padding: 8px;
+    background: var(--bg-surface);
+    border-radius: 6px;
+}
+
+.discord-member-instance-block:last-child {
+    margin-bottom: 0;
+}
+
+.discord-member-instance-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+
+.discord-member-instance-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.discord-member-instance-module {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    padding: 1px 6px;
+    background: var(--bg-input);
+    border-radius: 4px;
+}
+
+/* ── 명령어 체크박스 그리드 ── */
+.discord-cmd-check-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 4px;
+}
+
+.discord-cmd-check-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.1s;
+    font-size: 12px;
+}
+
+.discord-cmd-check-item:hover {
+    background: var(--bg-hover);
+}
+
+.discord-cmd-check-item input[type="checkbox"] {
+    accent-color: var(--accent-color, #5865f2);
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+
+.discord-cmd-check-label {
+    color: var(--text-primary);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.discord-cmd-empty {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-style: italic;
+    margin: 4px 0;
+}
+
+.discord-cmd-hint {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border-light);
 }
 
 /* ── 노드 없음 ── */

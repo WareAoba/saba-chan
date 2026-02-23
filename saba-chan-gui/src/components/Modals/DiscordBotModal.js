@@ -27,7 +27,12 @@ function DiscordBotModal({
     setDiscordCloudHostId,
     handleStartDiscordBot,
     handleStopDiscordBot,
-    saveCurrentSettings
+    saveCurrentSettings,
+    servers,
+    modules,
+    moduleAliasesPerModule,
+    nodeSettings,
+    setNodeSettings,
 }) {
     const { t } = useTranslation('gui');
     const isCloud = discordBotMode === 'cloud';
@@ -43,16 +48,24 @@ function DiscordBotModal({
     // ── 노드 목록 (연결 후 표시) ──
     const [nodes, setNodes] = useState([]);
     const [expandedNode, setExpandedNode] = useState(null);
-    const [nodeMembers, setNodeMembers] = useState({}); // { guildId: [member...] }
-    const [nodeInstances, setNodeInstances] = useState({}); // { guildId: [instance...] }
 
-    // ── 방법 3: 수동 입력용 로컬 스테이트 (타이핑 중 사라지는 버그 방지) ──
+    // ── 길드 멤버 (로컬: IPC, 클라우드: relay API) ──
+    const [guildMembers, setGuildMembers] = useState({}); // { guildId|"local": [{ id, username, displayName }] }
+    const [membersLoading, setMembersLoading] = useState(false);
+
+    // ── 노드별 탭 상태 (instances | members) ──
+    const [nodeTab, setNodeTab] = useState({});
+    // ── 멤버 확장 상태 ──
+    const [expandedMember, setExpandedMember] = useState({});
+
+    // ── 수동 입력용 로컬 스테이트 ──
+    const [showManualHostId, setShowManualHostId] = useState(false);
     const [manualHostIdInput, setManualHostIdInput] = useState('');
 
     // ── 페어링 상태 ──
     const [showPairing, setShowPairing] = useState(false);
     const [pairCode, setPairCode] = useState('');
-    const [pairStatus, setPairStatus] = useState('idle'); // idle | waiting | success | expired | error
+    const [pairStatus, setPairStatus] = useState('idle');
     const [pairExpiresAt, setPairExpiresAt] = useState(null);
     const [pairRemaining, setPairRemaining] = useState(0);
     const [pairCopied, setPairCopied] = useState(false);
@@ -84,7 +97,176 @@ function DiscordBotModal({
         return () => { if (pairTimerRef.current) clearInterval(pairTimerRef.current); };
     }, [pairStatus, pairExpiresAt]);
 
+    // ── 모달 열릴 때 일시적 UI 상태 초기화 ──
+    useEffect(() => {
+        if (isOpen) {
+            if (pairPollRef.current) { clearInterval(pairPollRef.current); pairPollRef.current = null; }
+            if (pairTimerRef.current) { clearInterval(pairTimerRef.current); pairTimerRef.current = null; }
+            setPairStatus('idle');
+            setPairCode('');
+            setPairExpiresAt(null);
+            setPairRemaining(0);
+            setShowPairing(false);
+            setPairCopied(false);
+        }
+    }, [isOpen]);
+
+    // ══════════════════════════════════════════════
+    // ── 길드 멤버 가져오기 ──
+    // ══════════════════════════════════════════════
+
+    /** 로컬모드: 봇 프로세스에서 길드 멤버 가져오기 */
+    const fetchLocalGuildMembers = useCallback(async () => {
+        if (!window.api?.discordGuildMembers) return;
+        setMembersLoading(true);
+        try {
+            const resp = await window.api.discordGuildMembers();
+            if (resp?.data) {
+                // 로컬 모드: 모든 길드의 멤버를 'local' 키로 합침 (중복 제거)
+                const seen = new Set();
+                const allMembers = [];
+                for (const guildData of Object.values(resp.data)) {
+                    for (const m of (guildData.members || [])) {
+                        if (!seen.has(m.id)) {
+                            seen.add(m.id);
+                            allMembers.push(m);
+                        }
+                    }
+                }
+                setGuildMembers(prev => ({ ...prev, local: allMembers }));
+            }
+        } catch (e) {
+            console.warn('[DiscordBotModal] Failed to fetch local guild members:', e);
+        } finally {
+            setMembersLoading(false);
+        }
+    }, []);
+
+    /** 클라우드모드: 릴레이 서버에서 노드별 멤버 가져오기 */
+    const fetchCloudNodeMembers = useCallback(async (guildId) => {
+        setMembersLoading(true);
+        try {
+            const resp = await fetch(`${effectiveRelayUrl}/api/nodes/${guildId}/members`);
+            if (resp.ok) {
+                const data = await resp.json();
+                setGuildMembers(prev => ({
+                    ...prev,
+                    [guildId]: Array.isArray(data) ? data : (data.members || []),
+                }));
+            }
+        } catch (e) {
+            console.warn('[DiscordBotModal] Failed to fetch cloud members:', e);
+        } finally {
+            setMembersLoading(false);
+        }
+    }, [effectiveRelayUrl]);
+
+    // 로컬 모드 + 봇 실행 중일 때 멤버 자동 로드
+    useEffect(() => {
+        if (isOpen && !isCloud && discordBotStatus === 'running') {
+            fetchLocalGuildMembers();
+        }
+    }, [isOpen, isCloud, discordBotStatus, fetchLocalGuildMembers]);
+
+    // ══════════════════════════════════════════════
+    // ── nodeSettings 헬퍼 함수들 ──
+    // ══════════════════════════════════════════════
+
+    /** 특정 노드의 설정 가져오기 (없으면 기본값) */
+    const getNodeConfig = useCallback((nodeKey) => {
+        const cfg = nodeSettings[nodeKey];
+        return cfg || { allowedInstances: [], memberPermissions: {} };
+    }, [nodeSettings]);
+
+    /** 인스턴스 토글 */
+    const toggleNodeInstance = useCallback((nodeKey, serverId) => {
+        setNodeSettings(prev => {
+            const next = { ...prev };
+            const cfg = { ...(next[nodeKey] || { allowedInstances: [], memberPermissions: {} }) };
+            const arr = Array.isArray(cfg.allowedInstances) ? [...cfg.allowedInstances] : [];
+            const idx = arr.indexOf(serverId);
+            if (idx >= 0) arr.splice(idx, 1); else arr.push(serverId);
+            cfg.allowedInstances = arr;
+            next[nodeKey] = cfg;
+            return next;
+        });
+    }, [setNodeSettings]);
+
+    /** 전체 선택 / 해제 */
+    const setNodeAllInstances = useCallback((nodeKey, selectAll) => {
+        setNodeSettings(prev => {
+            const next = { ...prev };
+            const cfg = { ...(next[nodeKey] || { allowedInstances: [], memberPermissions: {} }) };
+            cfg.allowedInstances = selectAll && servers ? servers.map(s => s.id) : [];
+            next[nodeKey] = cfg;
+            return next;
+        });
+    }, [setNodeSettings, servers]);
+
+    /** 멤버 권한 토글 (멤버를 nodeSettings에 추가/제거) */
+    const toggleMemberEnabled = useCallback((nodeKey, userId) => {
+        setNodeSettings(prev => {
+            const next = { ...prev };
+            const cfg = { ...(next[nodeKey] || { allowedInstances: [], memberPermissions: {} }) };
+            const perms = { ...cfg.memberPermissions };
+            if (perms[userId]) {
+                delete perms[userId]; // 제거
+            } else {
+                perms[userId] = {}; // 추가 (빈 권한)
+            }
+            cfg.memberPermissions = perms;
+            next[nodeKey] = cfg;
+            return next;
+        });
+    }, [setNodeSettings]);
+
+    /** 멤버의 특정 인스턴스에 대한 명령어 토글 */
+    const toggleMemberCommand = useCallback((nodeKey, userId, serverId, command) => {
+        setNodeSettings(prev => {
+            const next = { ...prev };
+            const cfg = { ...(next[nodeKey] || { allowedInstances: [], memberPermissions: {} }) };
+            const perms = { ...cfg.memberPermissions };
+            const userPerms = { ...perms[userId] };
+            const cmds = Array.isArray(userPerms[serverId]) ? [...userPerms[serverId]] : [];
+            const idx = cmds.indexOf(command);
+            if (idx >= 0) cmds.splice(idx, 1); else cmds.push(command);
+            userPerms[serverId] = cmds;
+            perms[userId] = userPerms;
+            cfg.memberPermissions = perms;
+            next[nodeKey] = cfg;
+            return next;
+        });
+    }, [setNodeSettings]);
+
+    /** 멤버의 특정 인스턴스 명령어 전체 선택/해제 */
+    const setMemberAllCommands = useCallback((nodeKey, userId, serverId, allCommands, allow) => {
+        setNodeSettings(prev => {
+            const next = { ...prev };
+            const cfg = { ...(next[nodeKey] || { allowedInstances: [], memberPermissions: {} }) };
+            const perms = { ...cfg.memberPermissions };
+            const userPerms = { ...perms[userId] };
+            userPerms[serverId] = allow ? [...allCommands] : [];
+            perms[userId] = userPerms;
+            cfg.memberPermissions = perms;
+            next[nodeKey] = cfg;
+            return next;
+        });
+    }, [setNodeSettings]);
+
+    /** 모듈의 명령어 목록 가져오기 */
+    const getCommandsForModule = useCallback((moduleName) => {
+        const modInfo = moduleAliasesPerModule?.[moduleName];
+        if (!modInfo?.commands) return [];
+        return Object.entries(modInfo.commands).map(([cmdName, cmdInfo]) => ({
+            name: cmdName,
+            label: cmdInfo.label || cmdName,
+            description: cmdInfo.description || '',
+        }));
+    }, [moduleAliasesPerModule]);
+
+    // ══════════════════════════════════════════════
     // ── 클라우드 연결 확인 (hostId 존재 시) ──
+    // ══════════════════════════════════════════════
     const checkCloudConnection = useCallback(async () => {
         if (!discordCloudHostId) {
             setCloudConnected(false);
@@ -118,36 +300,18 @@ function DiscordBotModal({
         }
     }, [isOpen, isCloud, discordCloudHostId, checkCloudConnection]);
 
-    // ── 노드 상세 로드 (멤버/인스턴스) ──
-    const loadNodeDetails = useCallback(async (guildId) => {
-        try {
-            const [membersResp, instancesResp] = await Promise.all([
-                fetch(`${effectiveRelayUrl}/api/nodes/${guildId}/members`),
-                fetch(`${effectiveRelayUrl}/api/nodes/${guildId}/instances`),
-            ]);
-            if (membersResp.ok) {
-                const m = await membersResp.json();
-                setNodeMembers(prev => ({ ...prev, [guildId]: Array.isArray(m) ? m : [] }));
-            }
-            if (instancesResp.ok) {
-                const i = await instancesResp.json();
-                setNodeInstances(prev => ({ ...prev, [guildId]: Array.isArray(i) ? i : [] }));
-            }
-        } catch (e) {
-            console.warn('[Cloud] Failed to load node details:', e.message);
-        }
-    }, [effectiveRelayUrl]);
-
+    // ── 노드 확장 (클릭 시 멤버도 로드) ──
     const toggleNodeExpand = useCallback((guildId) => {
         if (expandedNode === guildId) {
             setExpandedNode(null);
         } else {
             setExpandedNode(guildId);
-            if (!nodeMembers[guildId]) {
-                loadNodeDetails(guildId);
+            // 클라우드: 노드 멤버 로드
+            if (!guildMembers[guildId]) {
+                fetchCloudNodeMembers(guildId);
             }
         }
-    }, [expandedNode, nodeMembers, loadNodeDetails]);
+    }, [expandedNode, guildMembers, fetchCloudNodeMembers]);
 
     // ── 페어링 ──
     const startPairing = useCallback(async () => {
@@ -184,13 +348,17 @@ function DiscordBotModal({
                             } catch (e) {
                                 console.error('[Pairing] Failed to save node token:', e);
                             }
-                        } else if (!s.nodeToken) {
-                            console.warn('[Pairing] Claimed but no nodeToken in response — token may have been collected already');
                         }
+                        // 성공 메시지 잠시 표시 후 자동 전환
+                        // ★ checkCloudConnection()을 직접 호출하면 stale closure 문제 발생
+                        //   → useEffect가 discordCloudHostId 변경 감지 후 자동 실행
                         setTimeout(() => {
                             saveCurrentSettings();
-                            checkCloudConnection();
-                        }, 500);
+                            setPairStatus('idle');
+                            setPairCode('');
+                            setShowPairing(false);
+                            if (pairTimerRef.current) { clearInterval(pairTimerRef.current); pairTimerRef.current = null; }
+                        }, 2000);
                     } else if (s.status === 'expired') {
                         clearInterval(pairPollRef.current);
                         pairPollRef.current = null;
@@ -202,7 +370,7 @@ function DiscordBotModal({
             console.error('[Pairing] initiate failed:', e);
             setPairStatus('error');
         }
-    }, [effectiveRelayUrl, setDiscordCloudHostId, saveCurrentSettings, checkCloudConnection]);
+    }, [effectiveRelayUrl, setDiscordCloudHostId, saveCurrentSettings]);
 
     const copyPairCode = useCallback(() => {
         if (!pairCode) return;
@@ -222,7 +390,7 @@ function DiscordBotModal({
         setShowPairing(false);
     }, []);
 
-    // ── 연결 초기화 (hostId + 상태 전체 리셋) ──
+    // ── 연결 초기화 ──
     const disconnectCloud = useCallback(() => {
         resetPairing();
         setDiscordCloudHostId('');
@@ -230,16 +398,239 @@ function DiscordBotModal({
         setCloudError('');
         setNodes([]);
         setExpandedNode(null);
-        setNodeMembers({});
-        setNodeInstances({});
+        setGuildMembers({});
         setManualHostIdInput('');
     }, [resetPairing, setDiscordCloudHostId]);
 
+    // ══════════════════════════════════════════════
+    // ── 노드 설정 Body 렌더링 (인스턴스 + 멤버 탭) ──
+    // ══════════════════════════════════════════════
+    const renderNodeSettingsBody = (nodeKey, nodeLabel) => {
+        const currentTab = nodeTab[nodeKey] || 'instances';
+        const cfg = getNodeConfig(nodeKey);
+        const allowedInsts = cfg.allowedInstances || [];
+        const memberPerms = cfg.memberPermissions || {};
+        const enabledMemberIds = Object.keys(memberPerms);
+        const availableMembers = guildMembers[nodeKey] || [];
+
+        return (
+            <div className="discord-node-settings-body">
+                {/* 탭 헤더 */}
+                <div className="discord-node-tabs">
+                    <button
+                        className={`discord-node-tab ${currentTab === 'instances' ? 'active' : ''}`}
+                        onClick={() => setNodeTab(prev => ({ ...prev, [nodeKey]: 'instances' }))}
+                    >
+                        🖥️ {t('discord_modal.tab_instances')}
+                    </button>
+                    <button
+                        className={`discord-node-tab ${currentTab === 'members' ? 'active' : ''}`}
+                        onClick={() => setNodeTab(prev => ({ ...prev, [nodeKey]: 'members' }))}
+                    >
+                        👥 {t('discord_modal.tab_members')} ({enabledMemberIds.length})
+                    </button>
+                </div>
+
+                {/* ── 인스턴스 탭 ── */}
+                {currentTab === 'instances' && (
+                    <div className="discord-node-tab-content">
+                        <div className="discord-instance-select-header">
+                            <small className="discord-instance-select-desc">{t('discord_modal.allowed_instances_desc')}</small>
+                            <div className="discord-instance-select-actions">
+                                <button className="discord-instance-select-btn" onClick={() => setNodeAllInstances(nodeKey, true)}>
+                                    {t('discord_modal.select_all')}
+                                </button>
+                                <button className="discord-instance-select-btn" onClick={() => setNodeAllInstances(nodeKey, false)}>
+                                    {t('discord_modal.deselect_all')}
+                                </button>
+                            </div>
+                        </div>
+                        {(!servers || servers.length === 0) ? (
+                            <p className="discord-node-empty">{t('discord_modal.no_instances_available')}</p>
+                        ) : (
+                            <div className="discord-instance-select-list">
+                                {servers.map(server => {
+                                    const isAllowed = allowedInsts.includes(server.id);
+                                    return (
+                                        <label key={server.id} className={`discord-instance-select-item ${isAllowed ? 'selected' : ''}`}>
+                                            <input
+                                                type="checkbox"
+                                                checked={isAllowed}
+                                                onChange={() => toggleNodeInstance(nodeKey, server.id)}
+                                            />
+                                            <div className="discord-instance-select-info">
+                                                <span className="discord-instance-select-name">{server.name}</span>
+                                                <span className="discord-instance-select-module">{server.module}</span>
+                                            </div>
+                                            <span className={`discord-instance-select-status ${server.status === 'running' ? 'online' : 'offline'}`}>
+                                                {server.status === 'running' ? '●' : '○'}
+                                            </span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* ── 멤버 탭 ── */}
+                {currentTab === 'members' && (
+                    <div className="discord-node-tab-content">
+                        <small className="discord-instance-select-desc">{t('discord_modal.members_desc')}</small>
+
+                        {/* 멤버 로딩 / 봇 미실행 안내 */}
+                        {membersLoading && (
+                            <div className="discord-cloud-connecting" style={{ padding: '12px 0' }}>
+                                <div className="discord-pair-spinner"></div>
+                                <span>{t('discord_modal.members_loading')}</span>
+                            </div>
+                        )}
+
+                        {!membersLoading && !isCloud && discordBotStatus !== 'running' && (
+                            <p className="discord-node-empty">{t('discord_modal.members_bot_not_running')}</p>
+                        )}
+
+                        {!membersLoading && !isCloud && discordBotStatus === 'running' && availableMembers.length === 0 && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                                <p className="discord-node-empty" style={{ margin: 0 }}>{t('discord_modal.members_empty')}</p>
+                                <button className="discord-instance-select-btn" onClick={fetchLocalGuildMembers}>
+                                    🔄 {t('discord_modal.members_refresh')}
+                                </button>
+                            </div>
+                        )}
+
+                        {/* 새로고침 버튼 (로컬 모드, 멤버 있을 때) */}
+                        {!membersLoading && !isCloud && discordBotStatus === 'running' && availableMembers.length > 0 && (
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+                                <button className="discord-instance-select-btn" onClick={fetchLocalGuildMembers}>
+                                    🔄 {t('discord_modal.members_refresh')}
+                                </button>
+                            </div>
+                        )}
+
+                        {/* 멤버 목록 (체크박스로 활성화/비활성화) */}
+                        {availableMembers.length > 0 && (
+                            <div className="discord-member-perm-list">
+                                {availableMembers.map(member => {
+                                    const isEnabled = !!memberPerms[member.id];
+                                    const isExpanded = expandedMember[`${nodeKey}:${member.id}`];
+
+                                    return (
+                                        <div key={member.id} className={`discord-member-perm-card ${isExpanded ? 'expanded' : ''}`}>
+                                            <div className="discord-member-perm-header">
+                                                <label className="discord-member-enable-label" onClick={(e) => e.stopPropagation()}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isEnabled}
+                                                        onChange={() => toggleMemberEnabled(nodeKey, member.id)}
+                                                    />
+                                                    <div className="discord-member-perm-id-group">
+                                                        <span className="discord-member-perm-name">{member.displayName || member.username}</span>
+                                                        <span className="discord-member-perm-id">{member.id}</span>
+                                                    </div>
+                                                </label>
+                                                {isEnabled && (
+                                                    <button
+                                                        className="discord-member-expand-btn"
+                                                        onClick={() => setExpandedMember(prev => ({
+                                                            ...prev,
+                                                            [`${nodeKey}:${member.id}`]: !prev[`${nodeKey}:${member.id}`]
+                                                        }))}
+                                                    >
+                                                        <Icon name={isExpanded ? 'chevronDown' : 'chevronRight'} size="sm" />
+                                                    </button>
+                                                )}
+                                            </div>
+
+                                            {isEnabled && isExpanded && (
+                                                <div className="discord-member-perm-body">
+                                                    {allowedInsts.length === 0 ? (
+                                                        <p className="discord-node-empty">{t('discord_modal.no_instances_for_perms')}</p>
+                                                    ) : (
+                                                        allowedInsts.map(serverId => {
+                                                            const srv = servers?.find(s => s.id === serverId);
+                                                            if (!srv) return null;
+                                                            const cmds = getCommandsForModule(srv.module);
+                                                            const userPerms = memberPerms[member.id] || {};
+                                                            const userCmds = Array.isArray(userPerms[serverId]) ? userPerms[serverId] : [];
+
+                                                            return (
+                                                                <div key={serverId} className="discord-member-instance-block">
+                                                                    <div className="discord-member-instance-header">
+                                                                        <span className="discord-member-instance-name">{srv.name}</span>
+                                                                        <span className="discord-member-instance-module">{srv.module}</span>
+                                                                        {cmds.length > 0 && (
+                                                                            <div className="discord-instance-select-actions">
+                                                                                <button className="discord-instance-select-btn"
+                                                                                    onClick={() => setMemberAllCommands(nodeKey, member.id, serverId, cmds.map(c => c.name), true)}>
+                                                                                    {t('discord_modal.select_all')}
+                                                                                </button>
+                                                                                <button className="discord-instance-select-btn"
+                                                                                    onClick={() => setMemberAllCommands(nodeKey, member.id, serverId, cmds.map(c => c.name), false)}>
+                                                                                    {t('discord_modal.deselect_all')}
+                                                                                </button>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                    {cmds.length === 0 ? (
+                                                                        <p className="discord-cmd-empty">{t('discord_modal.no_commands_available')}</p>
+                                                                    ) : (
+                                                                        <div className="discord-cmd-check-grid">
+                                                                            {cmds.map(cmd => (
+                                                                                <label key={cmd.name} className="discord-cmd-check-item" title={cmd.description}>
+                                                                                    <input
+                                                                                        type="checkbox"
+                                                                                        checked={userCmds.includes(cmd.name)}
+                                                                                        onChange={() => toggleMemberCommand(nodeKey, member.id, serverId, cmd.name)}
+                                                                                    />
+                                                                                    <span className="discord-cmd-check-label">{cmd.label}</span>
+                                                                                </label>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })
+                                                    )}
+                                                    {allowedInsts.length > 0 && (
+                                                        <p className="discord-cmd-hint">{t('discord_modal.no_commands_hint')}</p>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     if (!isOpen) return null;
 
-    // ── 클라우드 모드: 셋업 완료 여부 판단 ──
-    const cloudSetupDone = isCloud && discordCloudHostId && cloudConnected;
-    const needsSetup = isCloud && (!discordCloudHostId || !cloudConnected);
+    // ── 클라우드 모드 상태 머신 ──
+    // no_host → pairing → pair_success → connecting → connected
+    //                                               → error
+    let cloudState = null;
+    if (isCloud) {
+        if (pairStatus === 'success') {
+            cloudState = 'pair_success';
+        } else if (showPairing && !cloudConnected) {
+            cloudState = 'pairing';
+        } else if (!discordCloudHostId) {
+            cloudState = 'no_host';
+        } else if (cloudConnected) {
+            cloudState = 'connected';
+        } else if (cloudConnecting) {
+            cloudState = 'connecting';
+        } else if (cloudError) {
+            cloudState = 'error';
+        } else {
+            cloudState = 'connecting'; // hostId 설정 직후, useEffect 실행 전
+        }
+    }
 
     // ── 인라인 페어링 블록 ──
     const renderPairingBlock = () => (
@@ -269,7 +660,13 @@ function DiscordBotModal({
                 </div>
             )}
             {pairStatus === 'success' && (
-                <div className="discord-pair-result success">✅ {t('discord_modal.pair_success')}</div>
+                <div className="discord-pair-result success">
+                    ✅ {t('discord_modal.pair_success')}
+                    <div className="discord-cloud-connecting" style={{ marginTop: 8, justifyContent: 'center' }}>
+                        <div className="discord-pair-spinner"></div>
+                        <span>{t('discord_modal.cloud_connecting')}</span>
+                    </div>
+                </div>
             )}
             {pairStatus === 'expired' && (
                 <div className="discord-pair-result error">
@@ -305,18 +702,44 @@ function DiscordBotModal({
             <div className="discord-modal-content">
                 {/* ── 상태 표시 ── */}
                 <div className="discord-status-section">
-                    <span className="status-label">{t('discord_modal.status_label')}</span>
-                    <span className={`status-value status-${discordBotStatus}`}>
-                        {discordBotStatus === 'running' ? t('discord_modal.status_online') : discordBotStatus === 'error' ? t('discord_modal.status_error') : t('discord_modal.status_offline')}
-                    </span>
-                    {isCloud && <span className="discord-mode-badge cloud">☁️ {t('discord_modal.mode_cloud')}</span>}
-                    {!isCloud && <span className="discord-mode-badge local">🏠 {t('discord_modal.mode_local')}</span>}
+                    <div className="discord-status-rows">
+                        <div className="discord-status-row">
+                            <span className="status-label">
+                                {isCloud ? t('discord_modal.status_agent_label') : t('discord_modal.status_bot_label')}
+                            </span>
+                            <span className={`status-value status-${discordBotStatus}`}>
+                                {discordBotStatus === 'running'
+                                    ? t('discord_modal.status_running')
+                                    : discordBotStatus === 'error'
+                                        ? t('discord_modal.status_error')
+                                        : t('discord_modal.status_stopped')}
+                            </span>
+                        </div>
+                        {isCloud && (
+                            <div className="discord-status-row">
+                                <span className="status-label">{t('discord_modal.status_relay_label')}</span>
+                                <span className={`status-value ${cloudConnected ? 'status-running' : cloudConnecting ? 'status-connecting' : !discordCloudHostId ? 'status-needs-setup' : 'status-stopped'}`}>
+                                    {cloudConnected
+                                        ? t('discord_modal.status_relay_connected')
+                                        : cloudConnecting
+                                            ? t('discord_modal.status_relay_connecting')
+                                            : !discordCloudHostId
+                                                ? t('discord_modal.status_relay_needs_setup')
+                                                : t('discord_modal.status_relay_disconnected')}
+                                </span>
+                            </div>
+                        )}
+                    </div>
+                    {isCloud
+                        ? <span className="discord-mode-badge cloud"><Icon name="cloud" size="sm" /> {t('discord_modal.mode_cloud')}</span>
+                        : <span className="discord-mode-badge local"><Icon name="desktop" size="sm" /> {t('discord_modal.mode_local')}</span>
+                    }
                 </div>
 
                 {/* ── 모드 전환 카드 ── */}
                 <div className="discord-mode-toggle-card">
                     <div className="discord-mode-toggle-info">
-                        <span className="discord-mode-toggle-icon">{isCloud ? '☁️' : '🏠'}</span>
+                        <span className="discord-mode-toggle-icon">{isCloud ? <Icon name="cloud" size="md" /> : <Icon name="desktop" size="md" />}</span>
                         <div className="discord-mode-toggle-text">
                             <span className="discord-mode-toggle-label">{t('discord_modal.mode_label')}</span>
                             <span className="discord-mode-toggle-desc">
@@ -341,133 +764,122 @@ function DiscordBotModal({
                 </div>
 
                 {/* ══════════════════════════════════════════════ */}
-                {/* ── 클라우드 모드: 셋업 필요 (페어링/연결) ── */}
+                {/* ── 로컬 모드: 노드 설정 (항상 펼쳐진 상태) ─ */}
                 {/* ══════════════════════════════════════════════ */}
-                {needsSetup && (
-                    <div className="discord-cloud-section">
-                        {/* ── 페어링 진행 중이면 페어링 블록만 표시 ── */}
-                        {showPairing ? (
-                            <>
-                                {renderPairingBlock()}
-                                <button className="discord-pair-start-btn discord-btn-secondary" style={{ marginTop: 8, width: '100%', fontSize: 12 }}
-                                    onClick={resetPairing}>
-                                    ← {t('discord_modal.back_to_setup')}
-                                </button>
-                            </>
-                        ) : (
-                            <>
-                                {/* ── 연결 중 스피너 ── */}
-                                {cloudConnecting && (
-                                    <div className="discord-cloud-connecting">
-                                        <div className="discord-pair-spinner"></div>
-                                        <span>{t('discord_modal.cloud_connecting')}</span>
-                                    </div>
-                                )}
-
-                                {/* ── 연결 오류 (hostId가 있는데 연결 실패) ── */}
-                                {!cloudConnecting && cloudError && discordCloudHostId && (
-                                    <div className="discord-cloud-error-card">
-                                        <div className="discord-cloud-error-icon">⚠️</div>
-                                        <div className="discord-cloud-error-body">
-                                            <strong>{t('discord_modal.cloud_connection_failed_title')}</strong>
-                                            <p>{t('discord_modal.cloud_connection_error', { error: cloudError })}</p>
-                                            <small className="discord-cloud-error-hint">
-                                                Host ID: {discordCloudHostId} → {effectiveRelayUrl}
-                                            </small>
-                                        </div>
-                                        <div className="discord-cloud-error-actions">
-                                            <button className="discord-pair-start-btn" onClick={checkCloudConnection}>
-                                                🔄 {t('discord_modal.cloud_retry')}
-                                            </button>
-                                            <button className="discord-pair-start-btn" onClick={() => { setShowPairing(true); startPairing(); }}>
-                                                🔗 {t('discord_modal.cloud_re_pair')}
-                                            </button>
-                                            <button className="discord-pair-start-btn discord-btn-danger" onClick={disconnectCloud}>
-                                                🗑️ {t('discord_modal.cloud_disconnect')}
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* ── 연결 오류 (hostId 없음 — 첫 설정) ── */}
-                                {!cloudConnecting && cloudError && !discordCloudHostId && (
-                                    <div className="discord-cloud-warning">
-                                        <Icon name="warning" size="sm" />
-                                        <span>{t('discord_modal.cloud_connection_error', { error: cloudError })}</span>
-                                    </div>
-                                )}
-
-
-
-                                {/* ── 셋업 카드 (hostId 미등록 또는 연결 실패) ── */}
-                                {!cloudConnecting && !cloudError && (
-                                    <div className="discord-cloud-setup-card">
-                                        <div className="discord-cloud-setup-icon">🔗</div>
-                                        <h4>{t('discord_modal.cloud_setup_title')}</h4>
-                                        <p>{t('discord_modal.cloud_setup_desc')}</p>
-
-                                        <div className="discord-cloud-setup-method">
-                                            <span className="discord-cloud-setup-badge">1</span>
-                                            <div>
-                                                <strong>{t('discord_modal.cloud_method_discord')}</strong>
-                                                <p>{t('discord_modal.cloud_method_discord_desc')}</p>
-                                                <code>/사바쨩 등록</code>
-                                            </div>
-                                        </div>
-
-                                        <div className="discord-cloud-setup-method">
-                                            <span className="discord-cloud-setup-badge">2</span>
-                                            <div>
-                                                <strong>{t('discord_modal.cloud_method_pair')}</strong>
-                                                <p>{t('discord_modal.cloud_method_pair_desc')}</p>
-                                            </div>
-                                        </div>
-
-                                        <div className="discord-cloud-setup-method">
-                                            <span className="discord-cloud-setup-badge">3</span>
-                                            <div>
-                                                <strong>{t('discord_modal.cloud_method_manual')}</strong>
-                                                <div className="discord-form-group" style={{ marginTop: 8 }}>
-                                                    <input
-                                                        type="text"
-                                                        placeholder={t('discord_modal.host_id_placeholder')}
-                                                        value={manualHostIdInput}
-                                                        onChange={(e) => setManualHostIdInput(e.target.value)}
-                                                        onKeyDown={(e) => {
-                                                            if (e.key === 'Enter' && manualHostIdInput.trim()) {
-                                                                setDiscordCloudHostId(manualHostIdInput.trim());
-                                                            }
-                                                        }}
-                                                        onBlur={() => {
-                                                            if (manualHostIdInput.trim()) {
-                                                                setDiscordCloudHostId(manualHostIdInput.trim());
-                                                            }
-                                                        }}
-                                                        className="discord-input"
-                                                        style={{ width: '100%' }}
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* ── 페어링 시작 버튼 (셋업 카드 아래, 에러+hostId 시 에러카드에 이미 있음) ── */}
-                                {!cloudConnecting && !(cloudError && discordCloudHostId) && (
-                                    <button className="discord-pair-start-btn" style={{ marginTop: 12, width: '100%' }}
-                                        onClick={() => { setShowPairing(true); startPairing(); }}>
-                                        🔗 {t('discord_modal.pair_start_button')}
-                                    </button>
-                                )}
-                            </>
-                        )}
+                {!isCloud && (
+                    <div className="discord-config-section">
+                        <h4><Icon name="desktop" size="sm" /> {t('discord_modal.local_node_title')}</h4>
+                        {renderNodeSettingsBody('local', t('discord_modal.local_node_title'))}
                     </div>
                 )}
 
                 {/* ══════════════════════════════════════════════ */}
-                {/* ── 클라우드 모드: 연결 완료 → 노드 카드 ──── */}
+                {/* ── 클라우드: 페어링 성공 (자동 전환 대기) ── */}
                 {/* ══════════════════════════════════════════════ */}
-                {cloudSetupDone && (
+                {cloudState === 'pair_success' && (
+                    <div className="discord-cloud-section">
+                        {renderPairingBlock()}
+                    </div>
+                )}
+
+                {/* ══════════════════════════════════════════════ */}
+                {/* ── 클라우드: 호스트 미설정 → 셋업 카드 ───── */}
+                {/* ══════════════════════════════════════════════ */}
+                {cloudState === 'no_host' && (
+                    <div className="discord-cloud-section">
+                        <div className="discord-cloud-setup-card">
+                            <div className="discord-cloud-setup-icon">🔗</div>
+                            <h4>{t('discord_modal.cloud_setup_title')}</h4>
+                            <p>{t('discord_modal.cloud_setup_desc_simple')}</p>
+
+                            <button className="discord-pair-start-btn" style={{ width: '100%', marginTop: 8 }}
+                                onClick={() => { setShowPairing(true); startPairing(); }}>
+                                🔗 {t('discord_modal.pair_start_button')}
+                            </button>
+
+                            {/* 고급: 수동 호스트 ID 입력 */}
+                            <div style={{ marginTop: 12, textAlign: 'center' }}>
+                                <button className="discord-instance-select-btn" style={{ fontSize: 11 }}
+                                    onClick={() => setShowManualHostId(prev => !prev)}>
+                                    {showManualHostId ? '▲' : '▼'} {t('discord_modal.cloud_manual_toggle')}
+                                </button>
+                            </div>
+                            {showManualHostId && (
+                                <div className="discord-form-group" style={{ marginTop: 8 }}>
+                                    <input type="text" placeholder={t('discord_modal.host_id_placeholder')}
+                                        value={manualHostIdInput}
+                                        onChange={(e) => setManualHostIdInput(e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter' && manualHostIdInput.trim()) setDiscordCloudHostId(manualHostIdInput.trim()); }}
+                                        className="discord-input" style={{ width: '100%' }} />
+                                    <button className="discord-pair-start-btn" style={{ marginTop: 6, width: '100%', fontSize: 12 }}
+                                        onClick={() => { if (manualHostIdInput.trim()) setDiscordCloudHostId(manualHostIdInput.trim()); }}
+                                        disabled={!manualHostIdInput.trim()}>
+                                        {t('discord_modal.cloud_manual_connect')}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* ══════════════════════════════════════════════ */}
+                {/* ── 클라우드: 페어링 진행 중 ────────────────── */}
+                {/* ══════════════════════════════════════════════ */}
+                {cloudState === 'pairing' && (
+                    <div className="discord-cloud-section">
+                        {renderPairingBlock()}
+                        <button className="discord-pair-start-btn discord-btn-secondary" style={{ marginTop: 8, width: '100%', fontSize: 12 }}
+                            onClick={resetPairing}>
+                            ← {t('discord_modal.back_to_setup')}
+                        </button>
+                    </div>
+                )}
+
+                {/* ══════════════════════════════════════════════ */}
+                {/* ── 클라우드: 연결 중 ──────────────────────── */}
+                {/* ══════════════════════════════════════════════ */}
+                {cloudState === 'connecting' && (
+                    <div className="discord-cloud-section">
+                        <div className="discord-cloud-connecting">
+                            <div className="discord-pair-spinner"></div>
+                            <span>{t('discord_modal.cloud_connecting')}</span>
+                        </div>
+                    </div>
+                )}
+
+                {/* ══════════════════════════════════════════════ */}
+                {/* ── 클라우드: 연결 오류 ────────────────────── */}
+                {/* ══════════════════════════════════════════════ */}
+                {cloudState === 'error' && (
+                    <div className="discord-cloud-section">
+                        <div className="discord-cloud-error-card">
+                            <div className="discord-cloud-error-icon">⚠️</div>
+                            <div className="discord-cloud-error-body">
+                                <strong>{t('discord_modal.cloud_connection_failed_title')}</strong>
+                                <p>{t('discord_modal.cloud_connection_error', { error: cloudError })}</p>
+                                <small className="discord-cloud-error-hint">
+                                    Host ID: {discordCloudHostId} → {effectiveRelayUrl}
+                                </small>
+                            </div>
+                            <div className="discord-cloud-error-actions">
+                                <button className="discord-pair-start-btn" onClick={checkCloudConnection}>
+                                    🔄 {t('discord_modal.cloud_retry')}
+                                </button>
+                                <button className="discord-pair-start-btn" onClick={() => { setShowPairing(true); startPairing(); }}>
+                                    🔗 {t('discord_modal.cloud_re_pair')}
+                                </button>
+                                <button className="discord-pair-start-btn discord-btn-danger" onClick={disconnectCloud}>
+                                    🗑️ {t('discord_modal.cloud_disconnect')}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ══════════════════════════════════════════════ */}
+                {/* ── 클라우드: 연결 완료 → 노드 카드 ──── */}
+                {/* ══════════════════════════════════════════════ */}
+                {cloudState === 'connected' && (
                     <div className="discord-cloud-section">
                         <div className="discord-cloud-connected-banner">
                             <span className="discord-cloud-connected-icon">✅</span>
@@ -479,21 +891,12 @@ function DiscordBotModal({
                                 <button className="discord-pair-start-btn" style={{ fontSize: 11, padding: '3px 10px' }}
                                     onClick={checkCloudConnection}>🔄</button>
                                 <button className="discord-pair-start-btn discord-btn-danger" style={{ fontSize: 11, padding: '3px 10px' }}
-                                    onClick={disconnectCloud} title={t('discord_modal.cloud_disconnect')}>🔌</button>
+                                    onClick={disconnectCloud} title={t('discord_modal.cloud_disconnect')}><Icon name="cloudOff" size="sm" /></button>
                             </div>
                         </div>
 
-                        {nodes.length === 0 ? (
-                            <div className="discord-cloud-empty-nodes">
-                                <p>{t('discord_modal.cloud_no_nodes')}</p>
-                                <small>{t('discord_modal.cloud_no_nodes_hint')}</small>
-                                <button className="discord-pair-start-btn" style={{ marginTop: 8 }}
-                                    onClick={() => { setShowPairing(true); startPairing(); }}>
-                                    🔗 {t('discord_modal.pair_start_button')}
-                                </button>
-                                {showPairing && renderPairingBlock()}
-                            </div>
-                        ) : (
+                        {/* 노드 카드 목록 */}
+                        {nodes.length > 0 && (
                             <div className="discord-node-list">
                                 <h4>📡 {t('discord_modal.cloud_nodes_title')} ({nodes.length})</h4>
                                 {nodes.map(node => (
@@ -508,55 +911,27 @@ function DiscordBotModal({
 
                                         {expandedNode === node.guildId && (
                                             <div className="discord-node-card-body">
-                                                <div className="discord-node-section">
-                                                    <h5>👥 {t('discord_modal.cloud_node_members')}</h5>
-                                                    {(!nodeMembers[node.guildId] || nodeMembers[node.guildId].length === 0) ? (
-                                                        <p className="discord-node-empty">{t('discord_modal.cloud_node_no_members')}</p>
-                                                    ) : (
-                                                        <div className="discord-node-member-list">
-                                                            {nodeMembers[node.guildId].map((member, idx) => (
-                                                                <div key={idx} className="discord-node-member-row">
-                                                                    <span className="discord-node-member-id">{member.userDiscordId}</span>
-                                                                    <span className="discord-node-member-cmds">
-                                                                        {Array.isArray(member.allowedCommands) && member.allowedCommands.length > 0
-                                                                            ? member.allowedCommands.join(', ')
-                                                                            : t('discord_modal.cloud_node_all_commands')}
-                                                                    </span>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                <div className="discord-node-section">
-                                                    <h5>🖥️ {t('discord_modal.cloud_node_instances')}</h5>
-                                                    {(!nodeInstances[node.guildId] || nodeInstances[node.guildId].length === 0) ? (
-                                                        <p className="discord-node-empty">{t('discord_modal.cloud_node_no_instances')}</p>
-                                                    ) : (
-                                                        <div className="discord-node-instance-list">
-                                                            {nodeInstances[node.guildId].map((inst, idx) => (
-                                                                <div key={idx} className="discord-node-instance-row">
-                                                                    <span className="discord-node-instance-type">{inst.instanceType}</span>
-                                                                    <span className={`discord-node-instance-status ${inst.enabled ? 'enabled' : 'disabled'}`}>
-                                                                        {inst.enabled ? '✅' : '⛔'}
-                                                                    </span>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
+                                                {renderNodeSettingsBody(node.guildId, node.guildName || node.guildId)}
                                             </div>
                                         )}
                                     </div>
                                 ))}
-
-                                <button className="discord-pair-start-btn" style={{ marginTop: 8, width: '100%' }}
-                                    onClick={() => { if (showPairing) { resetPairing(); } else { setShowPairing(true); startPairing(); } }}>
-                                    {showPairing ? '✕ ' + t('discord_modal.pair_section_title') : '➕ ' + t('discord_modal.cloud_add_node')}
-                                </button>
-                                {showPairing && renderPairingBlock()}
                             </div>
                         )}
+
+                        {nodes.length === 0 && !showPairing && (
+                            <div className="discord-cloud-empty-nodes">
+                                <p>{t('discord_modal.cloud_no_nodes')}</p>
+                                <small>{t('discord_modal.cloud_no_nodes_hint')}</small>
+                            </div>
+                        )}
+
+                        {/* 노드 추가 버튼 (항상 표시) */}
+                        <button className="discord-pair-start-btn" style={{ marginTop: 8, width: '100%' }}
+                            onClick={() => { if (showPairing) { resetPairing(); } else { setShowPairing(true); startPairing(); } }}>
+                            {showPairing ? '✕ ' + t('discord_modal.pair_section_title') : '➕ ' + t('discord_modal.cloud_add_node')}
+                        </button>
+                        {showPairing && renderPairingBlock()}
                     </div>
                 )}
 
@@ -566,7 +941,7 @@ function DiscordBotModal({
                 <div className="discord-config-section">
                     {!isCloud && (
                         <div className="discord-form-group">
-                            <label>{t('discord_modal.token_label')}</label>
+                            <label><Icon name="key" size="sm" /> {t('discord_modal.token_label')}</label>
                             <input
                                 type="password"
                                 placeholder={t('discord_modal.token_placeholder')}
@@ -644,7 +1019,7 @@ function DiscordBotModal({
                         {discordBotStatus === 'running' ? t('discord_modal.stop_button') : t('discord_modal.start_button')}
                     </button>
                 )}
-                {isCloud && cloudSetupDone && (
+                {isCloud && cloudState === 'connected' && (
                     <button
                         className={`discord-btn ${discordBotStatus === 'running' ? 'discord-btn-stop' : 'discord-btn-start'}`}
                         onClick={() => discordBotStatus === 'running' ? handleStopDiscordBot() : handleStartDiscordBot()}

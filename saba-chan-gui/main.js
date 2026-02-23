@@ -1158,12 +1158,19 @@ function createWindow() {
     const isAfterUpdate = process.argv.includes('--after-update');
     if (isDev && !isAfterUpdate) {
         const startURL = process.env.ELECTRON_START_URL || 'http://localhost:5173';
-        mainWindow.loadURL(startURL);
+        mainWindow.loadURL(startURL).catch(e => {
+            console.error(`[Window] loadURL failed: ${e.message} — falling back to build file`);
+            mainWindow.loadFile(path.join(__dirname, 'build', 'index.html')).catch(e2 => {
+                console.error(`[Window] loadFile also failed: ${e2.message}`);
+            });
+        });
         // 개발 모드에서 DevTools 자동 열기
         mainWindow.webContents.openDevTools();
     } else {
         // 프로덕션 또는 업데이트 후 재기동: 빌드된 파일 로드
-        mainWindow.loadFile(path.join(__dirname, 'build', 'index.html'));
+        mainWindow.loadFile(path.join(__dirname, 'build', 'index.html')).catch(e => {
+            console.error(`[Window] loadFile failed: ${e.message}`);
+        });
     }
     
     // F12로 DevTools 열기 (프로덕션에서도 디버깅 가능)
@@ -2647,6 +2654,35 @@ ipcMain.handle('dialog:openFolder', async () => {
 // Discord Bot process management
 let discordBotProcess = null;
 
+// ── 봇 프로세스 IPC 응답 관리 ──
+const pendingBotIpcRequests = new Map(); // id → { resolve, timer }
+let botIpcIdCounter = 0;
+
+function sendBotIpcRequest(msg, timeoutMs = 15000) {
+    return new Promise((resolve, reject) => {
+        if (!discordBotProcess || discordBotProcess.killed || !discordBotProcess.stdin) {
+            return reject(new Error('Bot process not running'));
+        }
+        const id = String(++botIpcIdCounter);
+        const timer = setTimeout(() => {
+            pendingBotIpcRequests.delete(id);
+            reject(new Error('Bot IPC timeout'));
+        }, timeoutMs);
+        pendingBotIpcRequests.set(id, { resolve, timer });
+        discordBotProcess.stdin.write(JSON.stringify({ ...msg, id }) + '\n');
+    });
+}
+
+function handleBotIpcResponse(msg) {
+    if (!msg.id) return;
+    const pending = pendingBotIpcRequests.get(msg.id);
+    if (pending) {
+        clearTimeout(pending.timer);
+        pendingBotIpcRequests.delete(msg.id);
+        pending.resolve(msg);
+    }
+}
+
 // 고아 봇 프로세스 정리 (이전 앱 실행에서 남은 프로세스)
 function killOrphanBotProcesses() {
     const { execSync } = require('child_process');
@@ -2694,6 +2730,19 @@ ipcMain.handle('discord:status', () => {
         return 'running';
     }
     return 'stopped';
+});
+
+// ── 봇에 연결된 Discord 길드 멤버 목록 조회 (로컬 모드 전용) ──
+ipcMain.handle('discord:guildMembers', async () => {
+    try {
+        const resp = await sendBotIpcRequest({ type: 'getGuildMembers' }, 15000);
+        if (resp.error) {
+            return { error: resp.error };
+        }
+        return { data: resp.data || {} };
+    } catch (e) {
+        return { error: e.message };
+    }
 });
 
 ipcMain.handle('discord:start', async (event, config) => {
@@ -2843,24 +2892,66 @@ ipcMain.handle('discord:start', async (event, config) => {
         discordBotProcess = spawn(nodeCmd, [indexPath], {
             cwd: botPath,
             env: spawnEnv,
-            stdio: ['ignore', 'pipe', 'pipe']
+            stdio: ['pipe', 'pipe', 'pipe']
         });
 
+        // ── stdout: 일반 로그 + __IPC__ JSON 응답 구분 ──
+        let stdoutBuf = '';
         discordBotProcess.stdout.on('data', (data) => {
-            console.log('[Discord Bot]', data.toString().trim());
+            stdoutBuf += data.toString();
+            let nlIdx;
+            while ((nlIdx = stdoutBuf.indexOf('\n')) !== -1) {
+                const line = stdoutBuf.slice(0, nlIdx).trim();
+                stdoutBuf = stdoutBuf.slice(nlIdx + 1);
+                if (!line) continue;
+                if (line.startsWith('__IPC__:')) {
+                    try {
+                        const msg = JSON.parse(line.slice(7));
+                        handleBotIpcResponse(msg);
+                    } catch (e) {
+                        console.warn('[Discord Bot IPC] Parse error:', e.message);
+                    }
+                } else {
+                    console.log('[Discord Bot]', line);
+                }
+            }
         });
 
+        // ── stderr: 에러 로그 + 렌더러에 전달 ──
+        let stderrBuf = '';
         discordBotProcess.stderr.on('data', (data) => {
-            console.error('[Discord Bot Error]', data.toString().trim());
+            stderrBuf += data.toString();
+            let nlIdx;
+            while ((nlIdx = stderrBuf.indexOf('\n')) !== -1) {
+                const line = stderrBuf.slice(0, nlIdx).trim();
+                stderrBuf = stderrBuf.slice(nlIdx + 1);
+                if (!line) continue;
+                console.error('[Discord Bot Error]', line);
+                // 핵심 에러 패턴을 렌더러에 전달
+                if (line.includes('⚠️') || line.includes('호환성 실패') || line.includes('인증 실패') || line.includes('failed to start')) {
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send('bot:error', { message: line, type: 'stderr' });
+                    }
+                }
+            }
         });
 
         discordBotProcess.on('error', (err) => {
             console.error('Failed to start Discord Bot:', err);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('bot:error', { message: err.message, type: 'spawn_error' });
+            }
             discordBotProcess = null;
         });
 
         discordBotProcess.on('exit', (code) => {
             console.log(`Discord Bot exited with code ${code}`);
+            // 비정상 종료 시 렌더러에 알림
+            if (code && code !== 0) {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('bot:error', { message: `Bot process exited with code ${code}`, type: 'exit', code });
+                }
+            }
             discordBotProcess = null;
         });
 

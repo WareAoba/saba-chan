@@ -23,6 +23,52 @@ const relayAgent = require('./core/relayAgent');
 // ── 릴레이 에이전트 모드 판별 ──
 const RELAY_AGENT_MODE = !!(process.env.RELAY_URL && process.env.RELAY_NODE_TOKEN);
 
+// ── GUI ↔ 봇 IPC 메시지 핸들러 (로컬 모드 전용) ──
+function sendIpcResponse(data) {
+    // stdout에 __IPC__ 접두사로 JSON 전송 (일반 로그와 구분)
+    process.stdout.write('__IPC__:' + JSON.stringify(data) + '\n');
+}
+
+async function handleIpcMessage(msg, client) {
+    const id = msg.id || null;
+    try {
+        switch (msg.type) {
+            case 'getGuildMembers': {
+                if (!client || !client.isReady()) {
+                    sendIpcResponse({ id, type: 'guildMembers', error: 'BOT_NOT_READY', data: {} });
+                    return;
+                }
+                const result = {};
+                for (const [guildId, guild] of client.guilds.cache) {
+                    try {
+                        // fetch() 로 전체 멤버 목록 확보 (캐시만으로는 부족)
+                        const fetched = await guild.members.fetch();
+                        result[guildId] = {
+                            guildName: guild.name,
+                            members: fetched
+                                .filter(m => !m.user.bot)
+                                .map(m => ({
+                                    id: m.user.id,
+                                    username: m.user.username,
+                                    displayName: m.displayName || m.user.username,
+                                })),
+                        };
+                    } catch (e) {
+                        console.warn(`[Bot:IPC] Failed to fetch members for guild ${guildId}:`, e.message);
+                        result[guildId] = { guildName: guild.name, members: [] };
+                    }
+                }
+                sendIpcResponse({ id, type: 'guildMembers', data: result });
+                break;
+            }
+            default:
+                sendIpcResponse({ id, type: 'error', error: 'UNKNOWN_TYPE', message: `Unknown IPC type: ${msg.type}` });
+        }
+    } catch (e) {
+        sendIpcResponse({ id, type: 'error', error: 'HANDLER_ERROR', message: e.message });
+    }
+}
+
 // ── 프로세스 에러 핸들링 ──
 process.on('unhandledRejection', (reason, promise) => {
     console.error('[Bot] Unhandled rejection at:', promise, 'reason:', reason);
@@ -72,21 +118,54 @@ if (RELAY_AGENT_MODE) {
     const client = new Client({
         intents: [
             GatewayIntentBits.Guilds,
+            GatewayIntentBits.GuildMembers,
             GatewayIntentBits.GuildMessages,
             GatewayIntentBits.MessageContent,
             GatewayIntentBits.GuildVoiceStates,
         ],
     });
 
+    // ── stdin JSON IPC (GUI ↔ 봇 프로세스 양방향 통신) ──
+    let stdinBuf = '';
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk) => {
+        stdinBuf += chunk;
+        let nlIdx;
+        while ((nlIdx = stdinBuf.indexOf('\n')) !== -1) {
+            const line = stdinBuf.slice(0, nlIdx).trim();
+            stdinBuf = stdinBuf.slice(nlIdx + 1);
+            if (!line) continue;
+            try {
+                const msg = JSON.parse(line);
+                handleIpcMessage(msg, client);
+            } catch (e) {
+                console.error('[Bot:IPC] Invalid JSON on stdin:', e.message);
+            }
+        }
+    });
+    process.stdin.on('error', () => {}); // stdin 닫힘 무시
+
     // 메시지 → processor
     client.on('messageCreate', (message) => processor.process(message));
+
+    // Discord 클라이언트 에러 핸들링
+    client.on('error', (err) => {
+        console.error('[Bot] Discord client error:', err.message);
+    });
+    client.on('warn', (info) => {
+        console.warn('[Bot] Discord client warning:', info);
+    });
 
     // 부팅 시퀀스
     client.once('ready', async () => {
         console.log(`[Bot] Logged in as ${client.user.tag}`);
 
         ipc.init();
-        await resolver.init();
+        try {
+            await resolver.init();
+        } catch (e) {
+            console.error('[Bot] Resolver init failed — commands may not work:', e.message);
+        }
 
         const cfg = resolver.getConfig();
         console.log(`[Bot] Prefix: ${cfg.prefix}`);
@@ -96,5 +175,8 @@ if (RELAY_AGENT_MODE) {
     process.on('SIGINT', () => { client.destroy(); process.exit(0); });
     process.on('SIGTERM', () => { client.destroy(); process.exit(0); });
 
-    client.login(process.env.DISCORD_TOKEN);
+    client.login(process.env.DISCORD_TOKEN).catch(e => {
+        console.error('[Bot] Login failed:', e.message);
+        process.exit(1);
+    });
 }

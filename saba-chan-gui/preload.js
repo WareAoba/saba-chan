@@ -76,6 +76,10 @@ contextBridge.exposeInMainWorld('api', {
     discordBotStatus: () => ipcRenderer.invoke('discord:status'),
     discordBotStart: (config) => ipcRenderer.invoke('discord:start', config),
     discordBotStop: () => ipcRenderer.invoke('discord:stop'),
+    discordGuildMembers: () => ipcRenderer.invoke('discord:guildMembers'),
+    // Bot error events (from main process)
+    onBotError: (callback) => ipcRenderer.on('bot:error', (event, data) => callback(data)),
+    offBotError: () => ipcRenderer.removeAllListeners('bot:error'),
     // Bot Config API
     botConfigLoad: () => ipcRenderer.invoke('botConfig:load'),
     botConfigSave: (config) => ipcRenderer.invoke('botConfig:save', config),

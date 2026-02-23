@@ -327,7 +327,9 @@ async function handleModuleCommand(message, moduleAlias, commandAlias, extraArgs
             errorMsg = error.message;
         }
 
-        await message.reply(`❌ ${i18n.t('bot:errors.error_title')}: ${errorMsg}`);
+        await message.reply(`❌ ${i18n.t('bot:errors.error_title')}: ${errorMsg}`).catch(replyErr => {
+            console.error('[Processor] Failed to send error reply:', replyErr.message);
+        });
     }
 }
 
@@ -346,27 +348,41 @@ function determineUseManaged(server, moduleName, guildId) {
 async function executeStart(message, server, moduleName) {
     const startMsg = i18n.t('bot:server.start_request', { name: server.name });
     const statusMsg = await message.reply(startMsg);
-    const useManaged = determineUseManaged(server, moduleName);
-    await ipc.startServer(server.id, server.name, server.module, useManaged);
-    const completeMsg = i18n.t('bot:server.start_complete', { name: server.name });
-    await statusMsg.edit(completeMsg);
+    try {
+        const useManaged = determineUseManaged(server, moduleName);
+        await ipc.startServer(server.id, server.name, server.module, useManaged);
+        const completeMsg = i18n.t('bot:server.start_complete', { name: server.name });
+        await statusMsg.edit(completeMsg);
+    } catch (e) {
+        console.error('[Processor] executeStart error:', e.message);
+        await statusMsg.edit(`❌ ${i18n.t('bot:errors.error_title')}: ${e.message}`).catch(() => {});
+    }
 }
 
 async function executeStop(message, server) {
     const stopMsg = i18n.t('bot:server.stop_request', { name: server.name });
     const statusMsg = await message.reply(stopMsg);
-    await ipc.stopServer(server.name);
-    const completeMsg = i18n.t('bot:server.stop_complete', { name: server.name });
-    await statusMsg.edit(completeMsg);
+    try {
+        await ipc.stopServer(server.name);
+        const completeMsg = i18n.t('bot:server.stop_complete', { name: server.name });
+        await statusMsg.edit(completeMsg);
+    } catch (e) {
+        console.error('[Processor] executeStop error:', e.message);
+        await statusMsg.edit(`❌ ${i18n.t('bot:errors.error_title')}: ${e.message}`).catch(() => {});
+    }
 }
 
 async function executeStatus(message, server) {
-    const statusText = server.status === 'running'
-        ? i18n.t('bot:status.running')
-        : i18n.t('bot:status.stopped');
-    const pidText = server.pid ? `PID: ${server.pid}` : '';
-    const checkMsg = i18n.t('bot:server.status_check', { name: server.name, status: statusText, pid_info: pidText });
-    await message.reply(checkMsg);
+    try {
+        const statusText = server.status === 'running'
+            ? i18n.t('bot:status.running')
+            : i18n.t('bot:status.stopped');
+        const pidText = server.pid ? `PID: ${server.pid}` : '';
+        const checkMsg = i18n.t('bot:server.status_check', { name: server.name, status: statusText, pid_info: pidText });
+        await message.reply(checkMsg);
+    } catch (e) {
+        console.error('[Processor] executeStatus error:', e.message);
+    }
 }
 
 // ── Raw command (module.toml에 미정의) ──

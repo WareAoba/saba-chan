@@ -716,8 +716,10 @@ async function _playNextInner(guildId) {
         }
         
         // 프리버퍼링: 재생 전 최소 데이터 축적 대기 (끊김 방지)
-        const PRE_BUFFER_BYTES = 1024 * 1024; // 1MB — 저속 회선 대비
-        const PRE_BUFFER_TIMEOUT = 15000;      // 최대 15초 대기
+        // 128KB ≈ Opus 64kbps 기준 약 16초 분량 — 8MB PassThrough 버퍼가
+        // 재생 중 계속 채우므로 초기에 많이 기다릴 필요 없음
+        const PRE_BUFFER_BYTES = 128 * 1024; // 128KB
+        const PRE_BUFFER_TIMEOUT = 5000;      // 최대 5초 대기
         await new Promise((resolve) => {
             let resolved = false;
             let timer = null;
@@ -1255,6 +1257,10 @@ async function handleShuffle(message) {
         const j = Math.floor(Math.random() * (i + 1));
         [queue.tracks[i], queue.tracks[j]] = [queue.tracks[j], queue.tracks[i]];
     }
+    
+    // 셔플로 tracks[0]이 바뀌므로 기존 프리페치 무효화 후 재시작
+    cleanupPrefetch(queue);
+    startPrefetch(message.guild.id);
     
     await message.channel.send(i18n.t('bot:music.shuffled', {
         count: queue.tracks.length,

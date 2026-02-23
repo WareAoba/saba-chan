@@ -39,13 +39,14 @@ server-chan/
 resources/
 
 target/
+scripts/
 
 # OS
 .DS_Store
 Thumbs.db
 
 # Runtime generated
-modules/.extracted/
+modules/
 *.log
 
 # User data (개인 설정)

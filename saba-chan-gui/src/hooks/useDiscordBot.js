@@ -174,6 +174,28 @@ export function useDiscordBot({
         }
     };
 
+    // ── Bot error listener (relay agent / process errors) ────
+    useEffect(() => {
+        if (!window.api?.onBotError) return;
+
+        const handler = (data) => {
+            console.error('[Bot Error Event]', data);
+            // 프로세스 종료 시 상태 반영
+            if (data.type === 'exit' || data.type === 'spawn_error') {
+                setDiscordBotStatus('stopped');
+            }
+            // 에러 메시지를 토스트로 표시
+            const msg = data.message || t('discord_bot.unknown_error', '봇 오류가 발생했습니다');
+            safeShowToast(msg, 'error', 6000);
+        };
+
+        window.api.onBotError(handler);
+        return () => {
+            if (window.api.offBotError) window.api.offBotError();
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     // ── Bot relaunch listener (language change) ─────────────
     useEffect(() => {
         if (!window.api?.onBotRelaunch) return;

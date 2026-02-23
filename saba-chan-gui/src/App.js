@@ -116,9 +116,13 @@ function App() {
     const discordTokenRef = useRef('');
 
     // ── Discord Cloud Mode State ───────────────────────────
-    const [discordBotMode, setDiscordBotMode] = useState('cloud');       // 'local' | 'cloud'
+    const [discordBotMode, setDiscordBotMode] = useState('local');       // 'local' | 'cloud'
     const [discordCloudRelayUrl, setDiscordCloudRelayUrl] = useState('');
     const [discordCloudHostId, setDiscordCloudHostId] = useState('');
+
+    // ── Per-node settings (client-side) ──────────────────────
+    // { [guildId|"local"]: { allowedInstances: string[], memberPermissions: { [userId]: { [serverId]: string[] } } } }
+    const [nodeSettings, setNodeSettings] = useState({});
 
     // ── Background Daemon State ────────────────────────────
     const [backgroundDaemonStatus, setBackgroundDaemonStatus] = useState('checking');
@@ -318,10 +322,16 @@ function App() {
                     setDiscordCommandAliases(botCfg.commandAliases || {});
                     setDiscordMusicEnabled(botCfg.musicEnabled !== false);
                     // ★ 클라우드 모드 설정 로드
-                    setDiscordBotMode(botCfg.mode || 'cloud');
+                    setDiscordBotMode(botCfg.mode || 'local');
                     setDiscordCloudRelayUrl(botCfg.cloud?.relayUrl || '');
                     setDiscordCloudHostId(botCfg.cloud?.hostId || '');
-                    if (!isTest) console.log('[Settings] Bot config loaded, prefix:', botCfg.prefix, 'mode:', botCfg.mode || 'cloud');
+                    // ★ nodeSettings 로드 (기존 allowedInstances → local 노드로 마이그레이션)
+                    if (botCfg.nodeSettings && typeof botCfg.nodeSettings === 'object') {
+                        setNodeSettings(botCfg.nodeSettings);
+                    } else if (Array.isArray(botCfg.allowedInstances)) {
+                        setNodeSettings({ local: { allowedInstances: botCfg.allowedInstances, memberPermissions: {} } });
+                    }
+                    if (!isTest) console.log('[Settings] Bot config loaded, prefix:', botCfg.prefix, 'mode:', botCfg.mode || 'local');
                 }
 
                 setSettingsReady(true);
@@ -373,9 +383,14 @@ function App() {
                 setDiscordModuleAliases(botCfg.moduleAliases || {});
                 setDiscordCommandAliases(botCfg.commandAliases || {});
                 setDiscordMusicEnabled(botCfg.musicEnabled !== false);
-                setDiscordBotMode(botCfg.mode || 'cloud');
+                setDiscordBotMode(botCfg.mode || 'local');
                 setDiscordCloudRelayUrl(botCfg.cloud?.relayUrl || '');
                 setDiscordCloudHostId(botCfg.cloud?.hostId || '');
+                if (botCfg.nodeSettings && typeof botCfg.nodeSettings === 'object') {
+                    setNodeSettings(botCfg.nodeSettings);
+                } else if (Array.isArray(botCfg.allowedInstances)) {
+                    setNodeSettings({ local: { allowedInstances: botCfg.allowedInstances, memberPermissions: {} } });
+                }
             }
         } catch (err) {
             console.error('Failed to load bot config:', err);
@@ -409,16 +424,19 @@ function App() {
                 },
                 moduleAliases: discordModuleAliases,
                 commandAliases: discordCommandAliases,
-                musicEnabled: discordMusicEnabled
+                musicEnabled: discordMusicEnabled,
+                nodeSettings,
             };
             const res = await window.api.botConfigSave(payload);
             if (res.error) {
                 console.error('[Settings] Failed to save bot config:', res.error);
+                safeShowToast(t('settings.save_error', '설정 저장 실패'), 'error');
             } else {
                 console.log('[Settings] Bot config saved, prefix:', newPrefix);
             }
         } catch (error) {
             console.error('[Settings] Failed to save bot config:', error);
+            safeShowToast(t('settings.save_error', '설정 저장 실패'), 'error');
         }
     };
 
@@ -467,23 +485,24 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [settingsReady, discordPrefix]);
 
-    // ★ 클라우드 설정 변경 시 자동 저장 (mode, relayUrl, hostId)
+    // ★ 클라우드/노드 설정 변경 시 자동 저장 (mode, relayUrl, hostId, nodeSettings)
     useEffect(() => {
         if (!settingsReady || !settingsPath) return;
-        const current = { discordBotMode, discordCloudRelayUrl, discordCloudHostId };
+        const current = { discordBotMode, discordCloudRelayUrl, discordCloudHostId, nodeSettings };
         if (prevCloudSettingsRef.current === null) {
             prevCloudSettingsRef.current = current;
             return;
         }
         if (prevCloudSettingsRef.current.discordBotMode !== discordBotMode ||
             prevCloudSettingsRef.current.discordCloudRelayUrl !== discordCloudRelayUrl ||
-            prevCloudSettingsRef.current.discordCloudHostId !== discordCloudHostId) {
-            console.log('[Settings] Cloud settings changed, saving bot config:', { mode: discordBotMode, hostId: discordCloudHostId });
+            prevCloudSettingsRef.current.discordCloudHostId !== discordCloudHostId ||
+            JSON.stringify(prevCloudSettingsRef.current.nodeSettings) !== JSON.stringify(nodeSettings)) {
+            console.log('[Settings] Cloud/node settings changed, saving bot config:', { mode: discordBotMode, hostId: discordCloudHostId });
             saveBotConfig();
             prevCloudSettingsRef.current = current;
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [settingsReady, discordBotMode, discordCloudRelayUrl, discordCloudHostId]);
+    }, [settingsReady, discordBotMode, discordCloudRelayUrl, discordCloudHostId, nodeSettings]);
 
     // ── fetchModules ────────────────────────────────────────
     const fetchModules = async () => {
@@ -710,7 +729,7 @@ function App() {
                             onClick={() => setShowGuiSettingsModal(true)}
                             title={t('settings.gui_settings_tooltip')}
                         >
-                            <Icon name="settings" size="lg" />
+                            <Icon name="cog" size="lg" />
                         </button>
                     </div>
                 </div>
@@ -754,6 +773,11 @@ function App() {
                             handleStartDiscordBot={handleStartDiscordBot}
                             handleStopDiscordBot={handleStopDiscordBot}
                             saveCurrentSettings={saveCurrentSettings}
+                            servers={servers}
+                            modules={modules}
+                            moduleAliasesPerModule={moduleAliasesPerModule}
+                            nodeSettings={nodeSettings}
+                            setNodeSettings={setNodeSettings}
                         />
                     </div>
                     <div className="background-button-wrapper">
