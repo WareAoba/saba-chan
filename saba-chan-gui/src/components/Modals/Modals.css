@@ -1226,6 +1226,669 @@
     color: var(--text-tertiary);
 }
 
+/* ── 모드 배지 ── */
+.discord-mode-badge {
+    margin-left: auto;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.discord-mode-badge.local {
+    background: var(--status-running-badge-bg);
+    color: var(--status-running-badge-text);
+}
+.discord-mode-badge.cloud {
+    background: #e8f0fe;
+    color: #4285f4;
+}
+
+/* ── 모드 전환 카드 ── */
+.discord-mode-toggle-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    margin-bottom: 20px;
+    background: var(--bg-surface-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: 12px;
+    transition: border-color 0.2s;
+}
+.discord-mode-toggle-card:hover {
+    border-color: var(--brand-primary);
+}
+.discord-mode-toggle-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.discord-mode-toggle-icon {
+    font-size: 24px;
+    line-height: 1;
+}
+.discord-mode-toggle-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.discord-mode-toggle-label {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-primary);
+}
+.discord-mode-toggle-desc {
+    font-size: 12px;
+    color: var(--text-tertiary);
+}
+
+/* ── 클라우드 설정 섹션 ── */
+.discord-cloud-section {
+    margin-bottom: 20px;
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    overflow: hidden;
+    padding: 16px;
+}
+.discord-cloud-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 12px 16px;
+    background: var(--settings-item-bg);
+    border: none;
+    color: var(--text-primary);
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.discord-cloud-toggle-btn:hover {
+    background: var(--bg-surface-secondary);
+}
+.discord-cloud-fields {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    border-top: 1px solid var(--border-light);
+    animation: fadeIn 0.2s ease-out;
+}
+.discord-cloud-warning {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: #fff3cd;
+    color: #856404;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+/* ── 클라우드 모드 음악 비활성화 안내 ── */
+.discord-cloud-music-notice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    margin-top: 20px;
+    background: var(--settings-item-bg);
+    border-radius: 10px;
+    font-size: 13px;
+    color: var(--text-tertiary);
+}
+
+/* ── 디바이스 페어링 ── */
+.discord-pair-section {
+    margin-top: 20px;
+    padding: 16px;
+    background: var(--settings-item-bg);
+    border-radius: 12px;
+    border: 1px solid var(--border-light);
+}
+
+.discord-pair-section h4 {
+    margin: 0 0 6px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.discord-pair-section > p {
+    margin: 0 0 14px 0;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    line-height: 1.5;
+}
+
+.discord-pair-start-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent-color);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+
+.discord-pair-start-btn:hover {
+    opacity: 0.85;
+}
+
+.discord-pair-start-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* 버튼 변형 */
+.discord-pair-start-btn.discord-btn-danger {
+    background: #d9534f;
+}
+.discord-pair-start-btn.discord-btn-danger:hover {
+    background: #c9302c;
+    opacity: 1;
+}
+.discord-pair-start-btn.discord-btn-secondary {
+    background: var(--bg-tertiary, #4a4a5a);
+    color: var(--text-secondary, #b1b1b7);
+}
+.discord-pair-start-btn.discord-btn-secondary:hover {
+    background: var(--bg-secondary, #555566);
+    opacity: 1;
+}
+
+/* 연결 실패 에러 카드 */
+.discord-cloud-error-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+    background: rgba(217, 83, 79, 0.08);
+    border: 1px solid rgba(217, 83, 79, 0.3);
+    border-radius: 10px;
+    margin-bottom: 8px;
+}
+.discord-cloud-error-icon {
+    font-size: 20px;
+}
+.discord-cloud-error-body strong {
+    display: block;
+    color: #e74c3c;
+    font-size: 13px;
+    margin-bottom: 4px;
+}
+.discord-cloud-error-body p {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin: 0;
+}
+.discord-cloud-error-hint {
+    display: block;
+    font-size: 11px;
+    color: var(--text-tertiary, #888);
+    font-family: monospace;
+    margin-top: 4px;
+}
+.discord-cloud-error-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.discord-cloud-error-actions .discord-pair-start-btn {
+    font-size: 12px;
+    padding: 6px 12px;
+}
+
+/* 릴레이 URL 인라인 입력 */
+.discord-relay-url-inline {
+    margin-bottom: 10px;
+    padding: 10px;
+    background: var(--bg-surface);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+.discord-relay-url-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.discord-relay-url-hint {
+    display: block;
+    font-size: 11px;
+    color: var(--text-tertiary, #888);
+    margin-top: 4px;
+}
+
+/* 페어링 코드 표시 영역 */
+.discord-pair-code-area {
+    margin-top: 14px;
+    padding: 14px;
+    background: var(--bg-surface);
+    border-radius: 10px;
+    border: 1px dashed var(--border-active);
+}
+
+.discord-pair-code-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.discord-pair-code-label {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+.discord-pair-code-value {
+    flex: 1;
+    padding: 8px 12px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-light);
+    border-radius: 6px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+    color: var(--text-primary);
+    word-break: break-all;
+    user-select: all;
+}
+
+.discord-pair-copy-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 14px;
+    border: 1px solid var(--border-light);
+    border-radius: 6px;
+    background: var(--settings-item-bg);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+
+.discord-pair-copy-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-active);
+}
+
+.discord-pair-copy-btn.copied {
+    color: var(--success-color, #22c55e);
+    border-color: var(--success-color, #22c55e);
+}
+
+.discord-pair-instruction {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    margin: 8px 0 4px 0;
+}
+
+.discord-pair-command {
+    display: block;
+    margin: 6px 0 12px 0;
+    padding: 8px 12px;
+    background: var(--bg-input);
+    border-radius: 6px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+    color: var(--accent-color);
+    user-select: all;
+}
+
+/* 대기 상태 */
+.discord-pair-waiting {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0 0 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.discord-pair-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--border-light);
+    border-top-color: var(--accent-color);
+    border-radius: 50%;
+    animation: pairSpin 0.8s linear infinite;
+}
+
+@keyframes pairSpin {
+    to { transform: rotate(360deg); }
+}
+
+.discord-pair-timer {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    font-variant-numeric: tabular-nums;
+}
+
+/* 결과 메시지 */
+.discord-pair-result {
+    margin-top: 12px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.discord-pair-result.success {
+    background: var(--success-badge-bg, rgba(34, 197, 94, 0.1));
+    color: var(--success-color, #22c55e);
+}
+
+.discord-pair-result.error {
+    background: var(--failure-badge-bg, rgba(239, 68, 68, 0.1));
+    color: var(--failure-color, #ef4444);
+}
+
+/* ── 클라우드 연결 상태 배너 ── */
+.discord-cloud-connecting {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: var(--settings-item-bg);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+}
+
+.discord-cloud-connected-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: var(--success-badge-bg, rgba(34, 197, 94, 0.08));
+    border: 1px solid var(--success-color, #22c55e);
+    border-radius: 10px;
+    margin-bottom: 16px;
+}
+
+.discord-cloud-connected-banner strong {
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.discord-cloud-connected-icon {
+    font-size: 18px;
+}
+
+.discord-cloud-host-id {
+    display: block;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-family: 'Consolas', 'Monaco', monospace;
+}
+
+/* ── 클라우드 셋업 카드 ── */
+.discord-cloud-setup-card {
+    padding: 20px;
+    background: var(--settings-item-bg);
+    border-radius: 12px;
+    border: 1px solid var(--border-light);
+    margin-bottom: 12px;
+}
+
+.discord-cloud-setup-card h4 {
+    margin: 8px 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.discord-cloud-setup-card > p {
+    margin: 0 0 16px 0;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    line-height: 1.5;
+}
+
+.discord-cloud-setup-icon {
+    font-size: 28px;
+    text-align: center;
+}
+
+.discord-cloud-setup-method {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 12px;
+    margin-top: 12px;
+    background: var(--bg-surface);
+    border-radius: 10px;
+    border: 1px solid var(--border-light);
+}
+
+.discord-cloud-setup-method strong {
+    display: block;
+    font-size: 13px;
+    margin-bottom: 4px;
+    color: var(--text-primary);
+}
+
+.discord-cloud-setup-method p {
+    margin: 0 0 8px 0;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    line-height: 1.4;
+}
+
+.discord-cloud-setup-method code {
+    display: inline-block;
+    padding: 4px 10px;
+    background: var(--bg-input);
+    border-radius: 6px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 12px;
+    color: var(--accent-color);
+}
+
+.discord-cloud-setup-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    color: #fff;
+    font-weight: 700;
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+/* ── 노드 카드 목록 ── */
+.discord-node-list {
+    margin-top: 12px;
+}
+
+.discord-node-list > h4 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.discord-node-card {
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    overflow: hidden;
+    background: var(--settings-item-bg);
+    transition: border-color 0.15s;
+}
+
+.discord-node-card.expanded {
+    border-color: var(--accent-color);
+}
+
+.discord-node-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.discord-node-card-header:hover {
+    background: var(--bg-hover);
+}
+
+.discord-node-card-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.discord-node-guild-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.discord-node-guild-id {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.discord-node-card-body {
+    padding: 0 16px 16px;
+    border-top: 1px solid var(--border-light);
+    animation: fadeIn 0.2s ease-out;
+}
+
+.discord-node-section {
+    margin-top: 12px;
+}
+
+.discord-node-section h5 {
+    margin: 0 0 8px 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.discord-node-empty {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    font-style: italic;
+    margin: 4px 0;
+}
+
+.discord-node-member-list,
+.discord-node-instance-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.discord-node-member-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: var(--bg-surface);
+    border-radius: 6px;
+    font-size: 12px;
+}
+
+.discord-node-member-id {
+    font-family: 'Consolas', 'Monaco', monospace;
+    color: var(--text-primary);
+}
+
+.discord-node-member-cmds {
+    color: var(--text-tertiary);
+    font-size: 11px;
+}
+
+.discord-node-instance-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: var(--bg-surface);
+    border-radius: 6px;
+    font-size: 12px;
+}
+
+.discord-node-instance-type {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.discord-node-instance-status.enabled {
+    color: var(--success-color, #22c55e);
+}
+
+.discord-node-instance-status.disabled {
+    color: var(--text-tertiary);
+}
+
+/* ── 노드 없음 ── */
+.discord-cloud-empty-nodes {
+    text-align: center;
+    padding: 20px;
+    color: var(--text-tertiary);
+}
+
+.discord-cloud-empty-nodes p {
+    margin: 0 0 4px 0;
+    font-size: 13px;
+}
+
+.discord-cloud-empty-nodes small {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 12px;
+}
+
+/* ── 고급 설정 릴레이 URL 입력 ── */
+.setting-input-text {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    background: var(--bg-input);
+    color: var(--text-primary);
+    font-size: 13px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.setting-input-text:focus {
+    border-color: var(--accent-color);
+}
+
+.setting-input-text::placeholder {
+    color: var(--text-tertiary);
+    font-family: inherit;
+}
+
 .discord-modal-footer {
     display: flex;
     gap: 12px;

@@ -36,17 +36,22 @@ async function process(message) {
     const content = message.content.trim();
     const botConfig = resolver.getConfig();
     const prefix = botConfig.prefix;
+    const guildId = message.guildId;   // ★ 길드별 메타데이터 해석용
 
     if (!content.startsWith(prefix)) return;
+
+    await resolver.ensureGuildMetadata(guildId);
 
     const args = content.slice(prefix.length).trim().split(/\s+/);
 
     // ① 핸들러(익스텐션) 우선 시도
     if (await handler.handle(message, args, botConfig)) return;
 
+    // ── 로컬 명령어 처리 ──
+
     // ② 빈 명령 또는 help → 도움말
     if (args.length === 0 || args[0] === '') {
-        await message.reply(await buildHelpMessage());
+        await message.reply(await buildHelpMessage(guildId));
         return;
     }
 
@@ -54,50 +59,50 @@ async function process(message) {
     const secondArg = args[1];
 
     if (firstArg === '도움' || firstArg === 'help') {
-        await message.reply(await buildHelpMessage());
+        await message.reply(await buildHelpMessage(guildId));
         return;
     }
 
     // ③ 목록 명령
     if (firstArg === '목록' || firstArg === 'list') {
-        await handleListCommand(message);
+        await handleListCommand(message, guildId);
         return;
     }
 
     // ④ 모듈만 (명령어 없음)
     if (!secondArg) {
         // 알려진 모듈 별명인지 확인
-        if (!resolver.isKnownModuleAlias(firstArg)) {
+        if (!resolver.isKnownModuleAlias(firstArg, guildId)) {
             // 케이스 1: 알 수 없는 입력
             await message.reply(i18n.t('bot:errors.unknown_input'));
             return;
         }
         // 케이스 2: 모듈 별명은 맞지만 명령어 없음 → 명령어 목록 안내
-        await handleModuleHelp(message, firstArg);
+        await handleModuleHelp(message, firstArg, guildId);
         return;
     }
 
     // ⑤ 모듈 + 명령어 → IPC 라우팅
-    await handleModuleCommand(message, firstArg, secondArg, args.slice(2));
+    await handleModuleCommand(message, firstArg, secondArg, args.slice(2), guildId);
 }
 
 // ──────────────────────────────────────────
 //  도움말
 // ──────────────────────────────────────────
 
-async function buildHelpMessage() {
+async function buildHelpMessage(guildId) {
     const botConfig = resolver.getConfig();
     const prefix = botConfig.prefix;
 
     let mountedModules = [];
     try {
-        const servers = await ipc.getServers();
+        const servers = await ipc.getServers(guildId);
         mountedModules = [...new Set(servers.map(s => s.module))];
     } catch (e) {
         console.warn('[Processor] Could not fetch servers for help:', e.message);
     }
 
-    const moduleAliasMap = resolver.getModuleAliases();
+    const moduleAliasMap = resolver.getModuleAliases(guildId);
     const reverseAliasMap = {};
     for (const [alias, moduleName] of Object.entries(moduleAliasMap)) {
         if (alias === moduleName || alias.startsWith('__')) continue;
@@ -127,9 +132,9 @@ async function buildHelpMessage() {
 //  목록 (list)
 // ──────────────────────────────────────────
 
-async function handleListCommand(message) {
+async function handleListCommand(message, guildId) {
     try {
-        const servers = await ipc.getServers();
+        const servers = await ipc.getServers(guildId);
         if (servers.length === 0) {
             await message.reply(i18n.t('bot:list.empty'));
         } else {
@@ -157,11 +162,11 @@ async function handleListCommand(message) {
 //  모듈 도움말 (prefix + 모듈만)
 // ──────────────────────────────────────────
 
-async function handleModuleHelp(message, moduleAlias) {
-    const moduleAliases = resolver.getModuleAliases();
+async function handleModuleHelp(message, moduleAlias, guildId) {
+    const moduleAliases = resolver.getModuleAliases(guildId);
 
     // 별명 충돌 검사
-    const conflict = resolver.checkModuleConflict(moduleAlias);
+    const conflict = resolver.checkModuleConflict(moduleAlias, guildId);
     if (conflict.isConflict) {
         const modules = conflict.conflictModules.join(', ');
         await message.reply(i18n.t('bot:errors.alias_conflict', {
@@ -172,14 +177,14 @@ async function handleModuleHelp(message, moduleAlias) {
         return;
     }
 
-    const moduleName = resolver.resolveModule(moduleAlias);
+    const moduleName = resolver.resolveModule(moduleAlias, guildId);
     const botConfig = resolver.getConfig();
     const prefix = botConfig.prefix;
 
     // 다중 인스턴스 경고
     let multiInstanceWarning = '';
     try {
-        const servers = await ipc.getServers();
+        const servers = await ipc.getServers(guildId);
         const matched = servers.filter(s => s.module === moduleName);
         if (matched.length > 1) {
             multiInstanceWarning = '\n\n' + i18n.t('bot:errors.multiple_instances', {
@@ -189,7 +194,7 @@ async function handleModuleHelp(message, moduleAlias) {
         }
     } catch (_) {}
 
-    const cmds = resolver.getModuleCommands(moduleName);
+    const cmds = resolver.getModuleCommands(moduleName, guildId);
     const cmdList = Object.keys(cmds);
 
     const moduleTitle = i18n.t('bot:help.module_title', { module: moduleName });
@@ -222,12 +227,12 @@ async function handleModuleHelp(message, moduleAlias) {
 //  모듈 + 명령어 실행
 // ──────────────────────────────────────────
 
-async function handleModuleCommand(message, moduleAlias, commandAlias, extraArgs) {
+async function handleModuleCommand(message, moduleAlias, commandAlias, extraArgs, guildId) {
     const botConfig = resolver.getConfig();
     const prefix = botConfig.prefix;
 
     // 별명 충돌 검사
-    const conflict = resolver.checkModuleConflict(moduleAlias);
+    const conflict = resolver.checkModuleConflict(moduleAlias, guildId);
     if (conflict.isConflict) {
         const modules = conflict.conflictModules.join(', ');
         await message.reply(i18n.t('bot:errors.alias_conflict', {
@@ -238,14 +243,14 @@ async function handleModuleCommand(message, moduleAlias, commandAlias, extraArgs
         return;
     }
 
-    const moduleName = resolver.resolveModule(moduleAlias);
-    const commandName = resolver.resolveCommand(commandAlias);
+    const moduleName = resolver.resolveModule(moduleAlias, guildId);
+    const commandName = resolver.resolveCommand(commandAlias, guildId);
 
     console.log(`[Processor] ${message.author.tag}: ${prefix} ${moduleAlias} ${commandAlias} → module=${moduleName}, command=${commandName}, args=${extraArgs.join(' ')}`);
 
     try {
         // 서버 찾기
-        const servers = await ipc.getServers();
+        const servers = await ipc.getServers(guildId);
 
         // 1) 인스턴스 이름으로 정확히 매칭
         let server = servers.find(s => s.name.toLowerCase() === moduleAlias.toLowerCase());
@@ -283,7 +288,7 @@ async function handleModuleCommand(message, moduleAlias, commandAlias, extraArgs
         }
 
         // ── module.toml 정의 명령어 ──
-        const cmds = resolver.getModuleCommands(moduleName);
+        const cmds = resolver.getModuleCommands(moduleName, guildId);
         const cmdMeta = cmds[commandName];
 
         if (!cmdMeta) {
@@ -293,11 +298,11 @@ async function handleModuleCommand(message, moduleAlias, commandAlias, extraArgs
         }
 
         // rest / dual / rcon 명령어 실행
-        await executeDefinedCommand(message, server, moduleName, commandName, cmdMeta, moduleAlias, commandAlias, extraArgs);
+        await executeDefinedCommand(message, server, moduleName, commandName, cmdMeta, moduleAlias, commandAlias, extraArgs, guildId);
 
     } catch (error) {
         console.error('[Processor] Command error:', error.message);
-        const moduleErrors = resolver.getModuleMeta(moduleName)?.errors || {};
+        const moduleErrors = resolver.getModuleMeta(moduleName, guildId)?.errors || {};
 
         let errorMsg;
         if (error.response) {
@@ -328,8 +333,8 @@ async function handleModuleCommand(message, moduleAlias, commandAlias, extraArgs
 
 // ── 내장 명령어 구현 ──
 
-function determineUseManaged(server, moduleName) {
-    const modMeta = resolver.getModuleMeta(moduleName);
+function determineUseManaged(server, moduleName, guildId) {
+    const modMeta = resolver.getModuleMeta(moduleName, guildId);
     const interactionMode = modMeta?.protocols?.interaction_mode
         || modMeta?.module?.interaction_mode;
     const instanceManagedStart = server.module_settings?.managed_start;
@@ -366,7 +371,7 @@ async function executeStatus(message, server) {
 
 // ── Raw command (module.toml에 미정의) ──
 
-async function executeRawCommand(message, server, moduleName, secondArg, extraArgs) {
+async function executeRawCommand(message, server, moduleName, secondArg, extraArgs, guildId) {
     if (server.status !== 'running') {
         await message.reply(`❌ ${i18n.t('bot:server.not_running_default')}`);
         return;
@@ -376,7 +381,7 @@ async function executeRawCommand(message, server, moduleName, secondArg, extraAr
     console.log(`[Processor] Raw command forward: "${rawCommand}" → ${server.name}`);
 
     try {
-        const useStdin = determineUseManaged(server, moduleName);
+        const useStdin = determineUseManaged(server, moduleName, guildId);
         let result;
         if (useStdin) {
             result = await ipc.sendStdin(server.id, rawCommand);
@@ -399,14 +404,14 @@ async function executeRawCommand(message, server, moduleName, secondArg, extraAr
 
 // ── 정의된 명령어 실행 (rest/rcon/dual) ──
 
-async function executeDefinedCommand(message, server, moduleName, commandName, cmdMeta, moduleAlias, commandAlias, extraArgs) {
+async function executeDefinedCommand(message, server, moduleName, commandName, cmdMeta, moduleAlias, commandAlias, extraArgs, guildId) {
     const botConfig = resolver.getConfig();
     const prefix = botConfig.prefix;
 
     if (cmdMeta.method === 'rest' || cmdMeta.method === 'dual' || cmdMeta.method === 'rcon') {
         // 서버 실행 상태 확인
         if (server.status !== 'running') {
-            const moduleErrors = resolver.getModuleMeta(moduleName)?.errors || {};
+            const moduleErrors = resolver.getModuleMeta(moduleName, guildId)?.errors || {};
             const defaultMsg = i18n.t('bot:server.not_running_default');
             const errorMsg = moduleErrors.server_not_running || defaultMsg;
             await message.reply(i18n.t('bot:server.not_running', { name: server.name, error: errorMsg }));
@@ -463,7 +468,7 @@ async function executeDefinedCommand(message, server, moduleName, commandName, c
         } else {
             const errorText = result.data.error || i18n.t('bot:errors.unknown');
             const errorCode = result.data.error_code || '';
-            const moduleErrors = resolver.getModuleMeta(moduleName)?.errors || {};
+            const moduleErrors = resolver.getModuleMeta(moduleName, guildId)?.errors || {};
             const friendlyError = (errorCode && moduleErrors[errorCode])
                 ? moduleErrors[errorCode]
                 : errorText;

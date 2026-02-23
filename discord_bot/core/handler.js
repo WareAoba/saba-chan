@@ -12,10 +12,6 @@ const rpsExtension = require('../extensions/rps');
 /**
  * 등록된 익스텐션 파이프라인.
  * 순서대로 시도하며, 하나라도 true를 반환하면 중단.
- *
- * 각 항목:
- *   name     — 로그용 이름
- *   handler  — async (message, args, botConfig) => boolean
  */
 const extensions = [
     {

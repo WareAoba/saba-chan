@@ -19,5 +19,11 @@
       "metrics": "",
       "settings": ""
     }
+  },
+  "musicEnabled": true,
+  "mode": "cloud",
+  "cloud": {
+    "relayUrl": "",
+    "hostId": "Gherbn56dw3S"
   }
 }

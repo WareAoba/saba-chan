@@ -27,6 +27,9 @@ saba-chan-cli/.rustc_info.json
 .env.*.local
 discord_bot/.env
 
+# Relay-Server
+server-chan/
+
 # IDE
 .idea/
 .vscode/

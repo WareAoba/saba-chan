@@ -1,19 +1,40 @@
 #!/usr/bin/env bash
-# Unified test runner for saba-chan (Unix-like)
+# ═══════════════════════════════════════════════════════════
+# Saba-chan Unified Test Runner (Unix / macOS / WSL)
+# ═══════════════════════════════════════════════════════════
+# 전체 코드베이스 테스트를 한 번에 실행:
+#   1. Rust 데몬 통합 테스트
+#   2. Rust 업데이터 통합 테스트
+#   3. 릴레이 서버 E2E (Vitest + PostgreSQL)
+#   4. GUI E2E (Vitest + jsdom)
+#   5. Discord 봇 통합 (Jest)
+#
+# 사용법:
+#   ./run-test.sh                    # 전체
+#   ./run-test.sh --suite gui        # 특정 스위트만
+#   ./run-test.sh --no-install       # npm install 건너뛰기
+#   ./run-test.sh --verbose          # 상세 출력
 
 set -u
 
 NO_INSTALL=0
 VERBOSE=0
+SUITE="all"
 
 for arg in "$@"; do
   case "$arg" in
     --no-install) NO_INSTALL=1 ;;
-    --verbose) VERBOSE=1 ;;
-    *) ;;
+    --verbose)    VERBOSE=1 ;;
+    --suite)      shift_next=1 ;;
+    *)
+      if [[ "${shift_next:-0}" == "1" ]]; then
+        SUITE="$arg"; shift_next=0
+      fi
+      ;;
   esac
 done
 
+# ── 경로 해석 ──────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ "$(basename "$SCRIPT_DIR")" == "scripts" ]]; then
   REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -22,55 +43,46 @@ else
 fi
 cd "$REPO_ROOT" || exit 1
 
+# server-chan (형제 또는 하위)
+RELAY_DIR=""
+for candidate in \
+    "$(cd "$REPO_ROOT/.." && pwd)/server-chan/relay-server" \
+    "$REPO_ROOT/server-chan/relay-server"; do
+  if [[ -d "$candidate" ]]; then RELAY_DIR="$candidate"; break; fi
+done
+
+# ── 결과 배열 ──────────────────────────────────────────────
 RESULT_NAMES=()
 RESULT_STATUS=()
 RESULT_CODES=()
 RESULT_DURATIONS=()
 
+# ── 색상 ────────────────────────────────────────────────────
+GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; GRAY='\033[0;37m'; NC='\033[0m'
+
 print_section() {
   echo
-  echo "=================================================="
-  echo " $1"
-  echo "=================================================="
+  echo -e "${CYAN}==========================================================${NC}"
+  echo -e "${CYAN} $1${NC}"
+  echo -e "${CYAN}==========================================================${NC}"
 }
 
-ensure_npm_dependencies() {
-  local dir="$1"
-  local label="$2"
-
-  if [[ "$NO_INSTALL" -eq 1 ]]; then
-    return 0
-  fi
-
+ensure_npm() {
+  local dir="$1" label="$2"
+  [[ "$NO_INSTALL" -eq 1 ]] && return 0
   if [[ ! -d "$dir/node_modules" ]]; then
-    echo "[$label] node_modules not found. Installing dependencies..."
-    (cd "$dir" && npm install --silent)
-    local code=$?
-    if [[ $code -ne 0 ]]; then
-      echo "[$label] npm install failed (exit $code)"
-      return $code
-    fi
+    echo -e "[${label}] Installing dependencies..."
+    (cd "$dir" && npm install --silent) || { echo "[$label] npm install failed"; return 1; }
   fi
-
-  return 0
 }
 
 run_step() {
-  local name="$1"
-  local workdir="$2"
-  local cmd="$3"
-
-  echo "[$name] $cmd"
+  local name="$1" workdir="$2" cmd="$3"
+  echo -e "\n${YELLOW}[${name}]${NC} $cmd"
 
   local start end duration code
   start=$(date +%s)
-
-  if [[ "$VERBOSE" -eq 1 ]]; then
-    (cd "$workdir" && bash -lc "$cmd")
-  else
-    (cd "$workdir" && bash -lc "$cmd")
-  fi
-
+  (cd "$workdir" && bash -lc "$cmd")
   code=$?
   end=$(date +%s)
   duration=$((end - start))
@@ -81,55 +93,92 @@ run_step() {
 
   if [[ $code -eq 0 ]]; then
     RESULT_STATUS+=("PASS")
-    echo "[$name] PASS (${duration}s)"
+    echo -e "  -> ${GREEN}PASS${NC} (${duration}s)"
   else
     RESULT_STATUS+=("FAIL")
-    echo "[$name] FAIL (exit $code, ${duration}s)"
+    echo -e "  -> ${RED}FAIL${NC} (exit $code, ${duration}s)"
   fi
 }
 
+skip_step() {
+  local name="$1" reason="$2"
+  echo -e "\n${YELLOW}[${name}]${NC} SKIP: $reason"
+  RESULT_NAMES+=("$name"); RESULT_STATUS+=("SKIP"); RESULT_CODES+=(0); RESULT_DURATIONS+=(0)
+}
+
+# ── 헤더 ────────────────────────────────────────────────────
 print_section "Saba-chan Unified Test Runner"
-echo "Repository: $REPO_ROOT"
-echo "NoInstall : $NO_INSTALL"
-echo "Verbose   : $VERBOSE"
+echo -e "${GRAY}Repository  : $REPO_ROOT${NC}"
+echo -e "${GRAY}RelayServer : ${RELAY_DIR:-(not found)}${NC}"
+echo -e "${GRAY}Suite       : $SUITE${NC}"
+echo -e "${GRAY}NoInstall   : $NO_INSTALL${NC}"
 
-ensure_npm_dependencies "$REPO_ROOT/saba-chan-gui" "GUI" || exit 1
-ensure_npm_dependencies "$REPO_ROOT/discord_bot" "Discord" || exit 1
+# ── 의존성 ─────────────────────────────────────────────────
+if [[ "$SUITE" == "all" || "$SUITE" == "gui" ]]; then
+  ensure_npm "$REPO_ROOT/saba-chan-gui" "GUI" || exit 1
+fi
+if [[ "$SUITE" == "all" || "$SUITE" == "discord" ]]; then
+  ensure_npm "$REPO_ROOT/discord_bot" "Discord" || exit 1
+fi
+if [[ "$SUITE" == "all" || "$SUITE" == "relay" ]]; then
+  if [[ -n "$RELAY_DIR" ]]; then ensure_npm "$RELAY_DIR" "Relay" || exit 1; fi
+fi
 
+# ── 테스트 실행 ─────────────────────────────────────────────
 print_section "Running Test Suites"
-run_step "Rust-Daemon-Integration" "$REPO_ROOT" "cargo test --test daemon_integration"
-run_step "Rust-Updater-Integration" "$REPO_ROOT" "cargo test --test updater_integration"
-run_step "GUI-Vitest" "$REPO_ROOT/saba-chan-gui" "npm test -- --run"
-run_step "Discord-Jest" "$REPO_ROOT/discord_bot" "npm test"
 
+# 1) Rust
+if [[ "$SUITE" == "all" || "$SUITE" == "rust" ]]; then
+  run_step "Rust-Daemon"  "$REPO_ROOT" "cargo test --test daemon_integration"
+  run_step "Rust-Updater" "$REPO_ROOT" "cargo test --test updater_integration"
+fi
+
+# 2) Relay Server E2E
+if [[ "$SUITE" == "all" || "$SUITE" == "relay" ]]; then
+  if [[ -n "$RELAY_DIR" ]]; then
+    run_step "Relay-E2E" "$RELAY_DIR" "npx vitest run"
+  else
+    skip_step "Relay-E2E" "relay-server directory not found"
+  fi
+fi
+
+# 3) GUI E2E
+if [[ "$SUITE" == "all" || "$SUITE" == "gui" ]]; then
+  run_step "GUI-E2E" "$REPO_ROOT/saba-chan-gui" "npx vitest run"
+fi
+
+# 4) Discord Bot Integration
+if [[ "$SUITE" == "all" || "$SUITE" == "discord" ]]; then
+  run_step "Discord-Integration" "$REPO_ROOT/discord_bot" "npm test"
+fi
+
+# ── 요약 ────────────────────────────────────────────────────
 print_section "Summary"
 printf "%-28s %-6s %-7s %s\n" "Suite" "Status" "Exit" "Sec"
 printf "%-28s %-6s %-7s %s\n" "-----" "------" "----" "---"
 
 failed_count=0
 for i in "${!RESULT_NAMES[@]}"; do
-  printf "%-28s %-6s %-7s %s\n" \
-    "${RESULT_NAMES[$i]}" \
-    "${RESULT_STATUS[$i]}" \
-    "${RESULT_CODES[$i]}" \
-    "${RESULT_DURATIONS[$i]}"
+  status="${RESULT_STATUS[$i]}"
+  color="$NC"
+  [[ "$status" == "PASS" ]] && color="$GREEN"
+  [[ "$status" == "FAIL" ]] && color="$RED"
+  [[ "$status" == "SKIP" ]] && color="$YELLOW"
 
-  if [[ "${RESULT_STATUS[$i]}" == "FAIL" ]]; then
-    failed_count=$((failed_count + 1))
-  fi
+  printf "${color}%-28s %-6s %-7s %s${NC}\n" \
+    "${RESULT_NAMES[$i]}" "$status" "${RESULT_CODES[$i]}" "${RESULT_DURATIONS[$i]}"
+
+  [[ "$status" == "FAIL" ]] && failed_count=$((failed_count + 1))
 done
 
+echo
 if [[ $failed_count -gt 0 ]]; then
-  echo
-  echo "Failed suites:"
+  echo -e "${RED}Failed suites:${NC}"
   for i in "${!RESULT_NAMES[@]}"; do
-    if [[ "${RESULT_STATUS[$i]}" == "FAIL" ]]; then
-      echo " - ${RESULT_NAMES[$i]} (exit ${RESULT_CODES[$i]})"
-    fi
+    [[ "${RESULT_STATUS[$i]}" == "FAIL" ]] && echo -e "  ${RED}- ${RESULT_NAMES[$i]} (exit ${RESULT_CODES[$i]})${NC}"
   done
   exit 1
 fi
 
-echo
-echo "All test suites passed."
+echo -e "${GREEN}All test suites passed.${NC}"
 exit 0

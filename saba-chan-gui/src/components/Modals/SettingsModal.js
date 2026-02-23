@@ -9,7 +9,7 @@ import { useDevMode } from '../../hooks/useDevMode';
 import { useExtensions } from '../../contexts/ExtensionContext';
 import SabaStorage from './SabaStorage';
 
-function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChange, ipcPort, onIpcPortChange, consoleBufferSize, onConsoleBufferSizeChange, onTestModal, onTestProgressBar, onTestWaitingImage, onTestLoadingScreen, initialView }) {
+function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChange, ipcPort, onIpcPortChange, consoleBufferSize, onConsoleBufferSizeChange, onTestModal, onTestProgressBar, onTestWaitingImage, onTestLoadingScreen, initialView, discordCloudRelayUrl, onDiscordCloudRelayUrlChange }) {
     const { t, i18n } = useTranslation(['gui', 'common']);
     const [activeTab, setActiveTab] = useState('general');
     const [showUpdatePanel, setShowUpdatePanel] = useState(false);
@@ -381,6 +381,21 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
                                     <Icon name="info" size="sm" /> {t('gui:settings_modal.ipc_port_restart_notice')}
                                 </div>
                             )}
+
+                            {/* 커스텀 릴레이 서버 URL */}
+                            <div className="setting-item">
+                                <label className="setting-label">
+                                    <span className="setting-title"><Icon name="globe" size="sm" /> {t('gui:settings_modal.relay_url_label', '릴레이 서버 URL')}</span>
+                                    <span className="setting-description">{t('gui:settings_modal.relay_url_description', '클라우드 모드에서 사용할 릴레이 서버의 URL입니다. 비어있으면 기본 서버를 사용합니다.')}</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    className="setting-input-text"
+                                    value={discordCloudRelayUrl || ''}
+                                    onChange={(e) => onDiscordCloudRelayUrlChange && onDiscordCloudRelayUrlChange(e.target.value)}
+                                    placeholder="https://relay.saba-chan.app"
+                                />
+                            </div>
 
                             {/* 콘솔 버퍼 크기 설정 */}
                             <div className="setting-item">

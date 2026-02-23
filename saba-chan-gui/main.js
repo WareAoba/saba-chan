@@ -349,6 +349,38 @@ function saveBotConfig(config) {
     }
 }
 
+// ── 노드 토큰 관리 (클라우드 모드 릴레이 인증용) ──
+function getNodeTokenPath() {
+    const userDataPath = app.getPath('userData');
+    return path.join(userDataPath, '.node_token');
+}
+
+function loadNodeToken() {
+    try {
+        const tokenPath = getNodeTokenPath();
+        if (fs.existsSync(tokenPath)) {
+            return fs.readFileSync(tokenPath, 'utf-8').trim();
+        }
+    } catch (e) {
+        console.warn('[NodeToken] Failed to load:', e.message);
+    }
+    return '';
+}
+
+function saveNodeToken(token) {
+    try {
+        const tokenPath = getNodeTokenPath();
+        const dir = path.dirname(tokenPath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(tokenPath, token, 'utf8');
+        console.log('[NodeToken] Saved to:', tokenPath);
+        return true;
+    } catch (e) {
+        console.error('[NodeToken] Failed to save:', e.message);
+        return false;
+    }
+}
+
 // 시스템 언어 가져오기
 function getSystemLanguage() {
     try {
@@ -2665,6 +2697,39 @@ ipcMain.handle('discord:status', () => {
 });
 
 ipcMain.handle('discord:start', async (event, config) => {
+    // ★ 클라우드 모드: AppData 설정 저장 + 릴레이 서버 동기화 후 에이전트 프로세스 생성으로 진행
+    if (config.mode === 'cloud') {
+        console.log('[Discord Bot] Cloud mode — starting relay agent process');
+
+        // 설정은 AppData에 저장 (prefix, aliases, cloud 메타데이터 포함)
+        const cloudConfigToSave = {
+            prefix: config.prefix || '!saba',
+            moduleAliases: config.moduleAliases || {},
+            commandAliases: config.commandAliases || {},
+            musicEnabled: config.musicEnabled !== false,
+            mode: 'cloud',
+            cloud: config.cloud || {},
+        };
+        saveBotConfig(cloudConfigToSave);
+
+        // ★ 릴레이 서버에 botConfig 동기화 (prefix, 별명) — 비차단
+        const relayUrl = config.cloud?.relayUrl;
+        const hostId = config.cloud?.hostId;
+        if (relayUrl && hostId) {
+            try {
+                const resp = await axios.patch(`${relayUrl}/api/hosts/${hostId}/bot-config`, {
+                    prefix: config.prefix || '!saba',
+                    moduleAliases: config.moduleAliases || {},
+                    commandAliases: config.commandAliases || {},
+                });
+                console.log('[Discord Bot] botConfig synced to relay:', resp.data);
+            } catch (e) {
+                console.warn('[Discord Bot] Failed to sync botConfig to relay:', e.message);
+            }
+        }
+        // ★ early return 제거 — 아래 에이전트 프로세스 생성으로 진행
+    }
+
     if (discordBotProcess && !discordBotProcess.killed) {
         return { error: 'Bot is already running' };
     }
@@ -2714,8 +2779,10 @@ ipcMain.handle('discord:start', async (event, config) => {
         return { error: `Failed to write bot config: ${e.message}` };
     }
     
-    // GUI용으로도 AppData에 백업 저장
-    saveBotConfig(configToSave);
+    // GUI용으로도 AppData에 백업 저장 (클라우드 모드는 위에서 cloud 메타데이터 포함하여 이미 저장됨)
+    if (config.mode !== 'cloud') {
+        saveBotConfig(configToSave);
+    }
 
     try {
         const currentLanguage = getLanguage();
@@ -2751,14 +2818,31 @@ ipcMain.handle('discord:start', async (event, config) => {
         console.log('  - indexPath:', indexPath);
         console.log('  - configPath:', localConfigPath);
         
+        // ── 환경변수 구성 ──
+        const spawnEnv = { 
+            ...process.env, 
+            IPC_BASE: IPC_BASE,
+            SABA_LANG: currentLanguage
+        };
+
+        if (config.mode === 'cloud') {
+            // 클라우드 모드: 릴레이 에이전트 모드로 시작 (Discord 로그인 없음)
+            const nodeToken = loadNodeToken();
+            const relayUrl = (config.cloud?.relayUrl || 'http://localhost:3000').replace(/\/+$/, '');
+            if (!nodeToken) {
+                return { error: 'cloud_token_not_found' };
+            }
+            spawnEnv.RELAY_URL = relayUrl;
+            spawnEnv.RELAY_NODE_TOKEN = nodeToken;
+            console.log('[Discord Bot] Cloud mode — relay agent (relay=' + relayUrl + ')');
+        } else {
+            // 로컬 모드: Discord 로그인
+            spawnEnv.DISCORD_TOKEN = config.token;
+        }
+
         discordBotProcess = spawn(nodeCmd, [indexPath], {
             cwd: botPath,
-            env: { 
-                ...process.env, 
-                DISCORD_TOKEN: config.token, 
-                IPC_BASE: IPC_BASE,
-                SABA_LANG: currentLanguage
-            },
+            env: spawnEnv,
             stdio: ['ignore', 'pipe', 'pipe']
         });
 
@@ -2813,6 +2897,15 @@ ipcMain.handle('botConfig:load', async () => {
     return loadBotConfig();
 });
 
+// Node Token API (클라우드 페어링용)
+ipcMain.handle('nodeToken:save', async (event, token) => {
+    return saveNodeToken(token);
+});
+
+ipcMain.handle('nodeToken:load', async () => {
+    return loadNodeToken();
+});
+
 // 로그 파일 경로 반환
 ipcMain.handle('logs:getPath', async () => {
     return logFilePath || '로그 파일 없음';
@@ -2834,7 +2927,9 @@ ipcMain.handle('botConfig:save', async (event, config) => {
             prefix: config.prefix || '!saba',
             moduleAliases: config.moduleAliases || {},
             commandAliases: config.commandAliases || {},
-            musicEnabled: config.musicEnabled !== false
+            musicEnabled: config.musicEnabled !== false,
+            mode: config.mode || 'local',
+            cloud: config.cloud || {},
         };
         
         // 1. discord_bot 폴더에 저장 (메인 저장소)
@@ -2861,6 +2956,24 @@ ipcMain.handle('botConfig:save', async (event, config) => {
         
         // 2. AppData에도 백업 (GUI 로드용)
         saveBotConfig(configToSave);
+
+        // 3. ★ 클라우드 모드: 릴레이 서버에 botConfig 동기화
+        if (config.mode === 'cloud') {
+            const relayUrl = config.cloud?.relayUrl;
+            const hostId = config.cloud?.hostId;
+            if (relayUrl && hostId) {
+                try {
+                    await axios.patch(`${relayUrl}/api/hosts/${hostId}/bot-config`, {
+                        prefix: configToSave.prefix,
+                        moduleAliases: configToSave.moduleAliases,
+                        commandAliases: configToSave.commandAliases,
+                    });
+                    console.log('[BotConfig] Synced to relay server');
+                } catch (relayErr) {
+                    console.warn('[BotConfig] Failed to sync to relay:', relayErr.message);
+                }
+            }
+        }
         
         return { success: true, message: 'Bot config saved' };
     } catch (error) {

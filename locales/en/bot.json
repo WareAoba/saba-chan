@@ -96,6 +96,18 @@
     "server_not_running": "Server is not running",
     "command_error": "Error executing command"
   },
+  "cloud": {
+    "not_configured": "❌ Cloud mode is not configured.",
+    "register_complete": "✅ Registration complete! Token sent via DM.",
+    "register_failed": "❌ Registration failed: {{error}}",
+    "already_registered": "ℹ️ Already registered. Host ID: {{hostId}}",
+    "status_online": "🟢 Online",
+    "status_offline": "⚪ Offline",
+    "status_check_failed": "❌ Status check failed: {{error}}",
+    "acl_granted": "✅ Granted permission level {{level}} to {{user}}.",
+    "acl_revoked": "✅ Revoked permissions for {{user}}.",
+    "music_local_only": "🎵 Music feature is only available in local mode."
+  },
   "music": {
     "not_available": "🎵 Music feature requires additional packages!\n`npm install @discordjs/voice @discordjs/opus play-dl`",
     "join_voice_first": "🎤 Please join a voice channel first!",

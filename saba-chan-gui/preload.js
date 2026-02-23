@@ -79,6 +79,9 @@ contextBridge.exposeInMainWorld('api', {
     // Bot Config API
     botConfigLoad: () => ipcRenderer.invoke('botConfig:load'),
     botConfigSave: (config) => ipcRenderer.invoke('botConfig:save', config),
+    // Node Token API (cloud pairing)
+    saveNodeToken: (token) => ipcRenderer.invoke('nodeToken:save', token),
+    loadNodeToken: () => ipcRenderer.invoke('nodeToken:load'),
     // Logs API
     logsGetPath: () => ipcRenderer.invoke('logs:getPath'),
     logsOpenFolder: () => ipcRenderer.invoke('logs:openFolder'),

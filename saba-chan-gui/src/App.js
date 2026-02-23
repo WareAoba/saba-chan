@@ -115,6 +115,11 @@ function App() {
     const [discordMusicEnabled, setDiscordMusicEnabled] = useState(true);
     const discordTokenRef = useRef('');
 
+    // ── Discord Cloud Mode State ───────────────────────────
+    const [discordBotMode, setDiscordBotMode] = useState('cloud');       // 'local' | 'cloud'
+    const [discordCloudRelayUrl, setDiscordCloudRelayUrl] = useState('');
+    const [discordCloudHostId, setDiscordCloudHostId] = useState('');
+
     // ── Background Daemon State ────────────────────────────
     const [backgroundDaemonStatus, setBackgroundDaemonStatus] = useState('checking');
 
@@ -144,6 +149,7 @@ function App() {
     } = useDiscordBot({
         discordToken, discordPrefix, discordAutoStart,
         discordModuleAliases, discordCommandAliases,
+        discordBotMode, discordCloudRelayUrl, discordCloudHostId,
         settingsReady, discordTokenRef,
         setModal,
     });
@@ -311,7 +317,11 @@ function App() {
                     setDiscordModuleAliases(botCfg.moduleAliases || {});
                     setDiscordCommandAliases(botCfg.commandAliases || {});
                     setDiscordMusicEnabled(botCfg.musicEnabled !== false);
-                    if (!isTest) console.log('[Settings] Bot config loaded, prefix:', botCfg.prefix);
+                    // ★ 클라우드 모드 설정 로드
+                    setDiscordBotMode(botCfg.mode || 'cloud');
+                    setDiscordCloudRelayUrl(botCfg.cloud?.relayUrl || '');
+                    setDiscordCloudHostId(botCfg.cloud?.hostId || '');
+                    if (!isTest) console.log('[Settings] Bot config loaded, prefix:', botCfg.prefix, 'mode:', botCfg.mode || 'cloud');
                 }
 
                 setSettingsReady(true);
@@ -363,6 +373,9 @@ function App() {
                 setDiscordModuleAliases(botCfg.moduleAliases || {});
                 setDiscordCommandAliases(botCfg.commandAliases || {});
                 setDiscordMusicEnabled(botCfg.musicEnabled !== false);
+                setDiscordBotMode(botCfg.mode || 'cloud');
+                setDiscordCloudRelayUrl(botCfg.cloud?.relayUrl || '');
+                setDiscordCloudHostId(botCfg.cloud?.hostId || '');
             }
         } catch (err) {
             console.error('Failed to load bot config:', err);
@@ -389,6 +402,11 @@ function App() {
         try {
             const payload = {
                 prefix: newPrefix || '!saba',
+                mode: discordBotMode,
+                cloud: {
+                    relayUrl: discordCloudRelayUrl,
+                    hostId: discordCloudHostId,
+                },
                 moduleAliases: discordModuleAliases,
                 commandAliases: discordCommandAliases,
                 musicEnabled: discordMusicEnabled
@@ -407,6 +425,7 @@ function App() {
     // ── Auto-save effects ───────────────────────────────────
     const prevSettingsRef = useRef(null);
     const prevPrefixRef = useRef(null);
+    const prevCloudSettingsRef = useRef(null);
 
     useEffect(() => {
         if (!settingsReady || !settingsPath) return;
@@ -447,6 +466,24 @@ function App() {
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [settingsReady, discordPrefix]);
+
+    // ★ 클라우드 설정 변경 시 자동 저장 (mode, relayUrl, hostId)
+    useEffect(() => {
+        if (!settingsReady || !settingsPath) return;
+        const current = { discordBotMode, discordCloudRelayUrl, discordCloudHostId };
+        if (prevCloudSettingsRef.current === null) {
+            prevCloudSettingsRef.current = current;
+            return;
+        }
+        if (prevCloudSettingsRef.current.discordBotMode !== discordBotMode ||
+            prevCloudSettingsRef.current.discordCloudRelayUrl !== discordCloudRelayUrl ||
+            prevCloudSettingsRef.current.discordCloudHostId !== discordCloudHostId) {
+            console.log('[Settings] Cloud settings changed, saving bot config:', { mode: discordBotMode, hostId: discordCloudHostId });
+            saveBotConfig();
+            prevCloudSettingsRef.current = current;
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [settingsReady, discordBotMode, discordCloudRelayUrl, discordCloudHostId]);
 
     // ── fetchModules ────────────────────────────────────────
     const fetchModules = async () => {
@@ -708,6 +745,12 @@ function App() {
                             setDiscordAutoStart={setDiscordAutoStart}
                             discordMusicEnabled={discordMusicEnabled}
                             setDiscordMusicEnabled={setDiscordMusicEnabled}
+                            discordBotMode={discordBotMode}
+                            setDiscordBotMode={setDiscordBotMode}
+                            discordCloudRelayUrl={discordCloudRelayUrl}
+                            setDiscordCloudRelayUrl={setDiscordCloudRelayUrl}
+                            discordCloudHostId={discordCloudHostId}
+                            setDiscordCloudHostId={setDiscordCloudHostId}
                             handleStartDiscordBot={handleStartDiscordBot}
                             handleStopDiscordBot={handleStopDiscordBot}
                             saveCurrentSettings={saveCurrentSettings}
@@ -889,6 +932,8 @@ function App() {
                 onIpcPortChange={setIpcPort}
                 consoleBufferSize={consoleBufferSize}
                 onConsoleBufferSizeChange={(val) => { setConsoleBufferSize(val); consoleBufferRef.current = val; }}
+                discordCloudRelayUrl={discordCloudRelayUrl}
+                onDiscordCloudRelayUrlChange={setDiscordCloudRelayUrl}
                 onTestModal={setModal}
                 onTestProgressBar={setProgressBar}
                 initialView={settingsInitialView}

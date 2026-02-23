@@ -94,6 +94,18 @@
     "server_not_running": "서버가 실행 중이 아닙니다",
     "command_error": "명령 실행 오류"
   },
+  "cloud": {
+    "not_configured": "❌ 클라우드 모드가 설정되지 않았습니다.",
+    "register_complete": "✅ 등록 완료! 토큰이 DM으로 전송되었습니다.",
+    "register_failed": "❌ 등록 실패: {{error}}",
+    "already_registered": "ℹ️ 이미 등록되어 있습니다. Host ID: {{hostId}}",
+    "status_online": "🟢 온라인",
+    "status_offline": "⚪ 오프라인",
+    "status_check_failed": "❌ 상태 조회 실패: {{error}}",
+    "acl_granted": "✅ {{user}}에게 권한 레벨 {{level}}을 부여했습니다.",
+    "acl_revoked": "✅ {{user}}의 권한을 해제했습니다.",
+    "music_local_only": "🎵 음악 기능은 로컬 모드에서만 사용 가능합니다."
+  },
   "music": {
     "not_available": "🎵 음악 기능을 사용하려면 패키지 설치가 필요해요!\n`npm install @discordjs/voice @discordjs/opus play-dl`",
     "join_voice_first": "🎤 먼저 음성 채널에 들어가 주세요!",

@@ -146,6 +146,9 @@ export function createTranslateError(t) {
         if (msg.includes('Bot connection failed')) {
             return t('errors.network_error');
         }
+        if (msg.includes('cloud_token_not_found')) {
+            return t('errors.cloud_token_not_found');
+        }
 
         // Fallback: return original message
         return msg;

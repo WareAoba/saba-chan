@@ -76,23 +76,25 @@ console.warn = (...args) => {
 
 // Mock window.api globally (jsdom 환경에서만)
 if (typeof window !== 'undefined') {
-  if (!window.matchMedia) {
-    Object.defineProperty(window, 'matchMedia', {
-      writable: true,
-      value: vi.fn().mockImplementation((query) => ({
-        matches: false,
-        media: query,
-        onchange: null,
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-      })),
-    });
-  }
+  // matchMedia mock — themeManager.js에서 사용
+  // plain function (not vi.fn) so vi.clearAllMocks() won't wipe the implementation
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    configurable: true,
+    value: (query) => ({
+      matches: query === '(prefers-color-scheme: dark)',
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
 
-    global.window.api = {
+    // Proxy-based mock: any unregistered property returns vi.fn().mockResolvedValue({})
+    const baseMocks = {
         settingsLoad: vi.fn(),
         settingsSave: vi.fn(),
         settingsGetPath: vi.fn(),
@@ -101,11 +103,36 @@ if (typeof window !== 'undefined') {
         discordBotStatus: vi.fn(),
         discordBotStart: vi.fn(),
         discordBotStop: vi.fn(),
-        serverList: vi.fn(),          // 추가
-        moduleList: vi.fn(),          // 추가
+        serverList: vi.fn(),
+        moduleList: vi.fn(),
         getServers: vi.fn(),
         getModules: vi.fn(),
+        daemonStatus: vi.fn(),
+        onStatusUpdate: vi.fn(),
+        onUpdatesAvailable: vi.fn(),
+        onUpdateCompleted: vi.fn(),
+        onCloseRequest: vi.fn(),
+        offCloseRequest: vi.fn(),
+        onBotRelaunch: vi.fn(),
+        offBotRelaunch: vi.fn(),
+        onConsolePopoutOpened: vi.fn(),
+        onConsolePopoutClosed: vi.fn(),
+        offConsolePopoutOpened: vi.fn(),
+        offConsolePopoutClosed: vi.fn(),
+        moduleGetLocales: vi.fn(),
+        moduleGetMetadata: vi.fn(),
+        loadNodeToken: vi.fn(),
+        saveNodeToken: vi.fn(),
     };
+    global.window.api = new Proxy(baseMocks, {
+        get(target, prop) {
+            if (typeof prop === 'symbol') return target[prop];
+            if (!(prop in target)) {
+                target[prop] = vi.fn().mockResolvedValue({});
+            }
+            return target[prop];
+        },
+    });
     
     global.window.showToast = vi.fn();
     global.window.showStatus = vi.fn();

@@ -11,6 +11,9 @@ import { safeShowToast, createTranslateError } from '../utils/helpers';
  * @param {boolean} params.discordAutoStart
  * @param {Object} params.discordModuleAliases
  * @param {Object} params.discordCommandAliases
+ * @param {string} params.discordBotMode - 'local' | 'cloud'
+ * @param {string} params.discordCloudRelayUrl
+ * @param {string} params.discordCloudHostId
  * @param {boolean} params.settingsReady
  * @param {React.MutableRefObject<string>} params.discordTokenRef
  * @param {Function} params.setModal
@@ -22,6 +25,9 @@ export function useDiscordBot({
     discordAutoStart,
     discordModuleAliases,
     discordCommandAliases,
+    discordBotMode,
+    discordCloudRelayUrl,
+    discordCloudHostId,
     settingsReady,
     discordTokenRef,
     setModal,
@@ -34,50 +40,61 @@ export function useDiscordBot({
     const autoStartDoneRef = useRef(false);
 
     // ── Status polling ──────────────────────────────────────
+    // 클라우드 모드: 릴레이 서버 /api/hosts/{hostId} 확인
+    // 로컬 모드: window.api.discordBotStatus() 확인
+    const DEFAULT_RELAY_URL = 'http://localhost:3000';
+
     useEffect(() => {
         let mounted = true;
 
-        const checkBotStatusInitially = async () => {
-            try {
-                await new Promise(resolve => setTimeout(resolve, 200));
-                const status = await window.api.discordBotStatus();
-                if (mounted) {
-                    const botRunning = status === 'running';
-                    setDiscordBotStatus(botRunning ? 'running' : 'stopped');
-                    setBotStatusReady(true);
-                    console.log('[Init] Discord bot initial status:', botRunning ? 'running' : 'stopped');
-                    console.log('[Init] BotStatusReady flag set to true');
+        const checkStatus = async () => {
+            if (discordBotMode === 'cloud') {
+                // ── 클라우드 모드: 로컬 릴레이 에이전트 프로세스 상태 확인 ──
+                try {
+                    const status = await window.api.discordBotStatus();
+                    if (mounted) setDiscordBotStatus(status === 'running' ? 'running' : 'stopped');
+                } catch {
+                    if (mounted) setDiscordBotStatus('stopped');
                 }
-            } catch (e) {
-                if (mounted) {
-                    setDiscordBotStatus('stopped');
-                    setBotStatusReady(true);
-                    console.log('[Init] Discord bot status check failed, assuming stopped');
+            } else {
+                // ── 로컬 모드: 로컬 봇 프로세스 상태 ──
+                try {
+                    const status = await window.api.discordBotStatus();
+                    if (mounted) {
+                        const botRunning = status === 'running';
+                        setDiscordBotStatus(botRunning ? 'running' : 'stopped');
+                    }
+                } catch {
+                    if (mounted) setDiscordBotStatus('stopped');
                 }
             }
         };
 
-        checkBotStatusInitially();
-
-        const interval = setInterval(async () => {
-            if (!mounted) return;
-            try {
-                const status = await window.api.discordBotStatus();
-                setDiscordBotStatus(status || 'stopped');
-            } catch (e) {
-                setDiscordBotStatus('stopped');
+        const init = async () => {
+            await new Promise(resolve => setTimeout(resolve, 200));
+            await checkStatus();
+            if (mounted) {
+                setBotStatusReady(true);
+                console.log('[Init] BotStatusReady flag set to true, mode:', discordBotMode);
             }
-        }, 5000);
+        };
+
+        init();
+
+        const interval = setInterval(checkStatus, 5000);
 
         return () => {
             mounted = false;
             clearInterval(interval);
         };
-    }, []);
+    }, [discordBotMode, discordCloudRelayUrl, discordCloudHostId]);
 
     // ── Start bot ───────────────────────────────────────────
     const handleStartDiscordBot = async () => {
-        if (!discordToken) {
+        const isCloud = discordBotMode === 'cloud';
+
+        // 로컬 모드에서만 Discord 토큰 필수
+        if (!isCloud && !discordToken) {
             setModal({ type: 'failure', title: t('discord_bot.token_missing_title'), message: t('discord_bot.token_missing_message') });
             return;
         }
@@ -90,7 +107,12 @@ export function useDiscordBot({
                 token: discordToken,
                 prefix: discordPrefix,
                 moduleAliases: discordModuleAliases,
-                commandAliases: discordCommandAliases
+                commandAliases: discordCommandAliases,
+                mode: discordBotMode || 'local',
+                cloud: {
+                    relayUrl: discordCloudRelayUrl || '',
+                    hostId: discordCloudHostId || '',
+                },
             };
             const result = await window.api.discordBotStart(botConfig);
             if (result.error) {
@@ -121,7 +143,15 @@ export function useDiscordBot({
 
         if (botStatusReady && settingsReady && !autoStartDoneRef.current) {
             autoStartDoneRef.current = true;
-            if (discordAutoStart && discordToken && discordPrefix && discordBotStatus === 'stopped') {
+            // ★ 클라우드 모드: hostId가 있으면 릴레이 에이전트 자동시작
+            if (discordBotMode === 'cloud') {
+                if (discordCloudHostId && discordPrefix && discordBotStatus === 'stopped') {
+                    if (!isTest) console.log('[Auto-start] Cloud mode — starting relay agent');
+                    handleStartDiscordBot();
+                } else {
+                    if (!isTest) console.log('[Auto-start] Cloud mode — setup incomplete, skipping');
+                }
+            } else if (discordAutoStart && discordToken && discordPrefix && discordBotStatus === 'stopped') {
                 if (!isTest) console.log('[Auto-start] Starting Discord bot automatically!');
                 handleStartDiscordBot();
             }

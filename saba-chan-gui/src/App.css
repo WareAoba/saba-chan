@@ -2630,7 +2630,7 @@ span[style*="--icon-loader"] svg,
     border-radius: 50%;
     cursor: help;
     font-weight: bold;
-    color: var(--icon-secondary);
+    color: var(--text-secondary);
     font-size: 12px;
     position: relative;
     transition: all 0.2s;

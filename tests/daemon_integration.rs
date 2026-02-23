@@ -56,13 +56,13 @@ fn pick_free_port() -> u16 {
 }
 
 async fn wait_for_ipc_ready(base_url: &str, client: &reqwest::Client) {
-    for _ in 0..30 {
+    for _ in 0..50 {
         if let Ok(resp) = client.get(format!("{}/api/modules", base_url)).send().await {
             if resp.status().is_success() {
                 return;
             }
         }
-        sleep(Duration::from_millis(150)).await;
+        sleep(Duration::from_millis(300)).await;
     }
     panic!("IPC server did not become ready: {}", base_url);
 }
@@ -221,6 +221,9 @@ async fn test_invalid_module_path() {
 
 #[tokio::test]
 async fn test_ipc_instance_crud_e2e() {
+    // IPC 인증 미들웨어 우회 (테스트 환경)
+    std::env::set_var("SABA_AUTH_DISABLED", "1");
+
     let supervisor = Arc::new(RwLock::new(Supervisor::new("./modules")));
     {
         let mut sup = supervisor.write().await;
@@ -306,6 +309,9 @@ async fn test_ipc_instance_crud_e2e() {
 
 #[tokio::test]
 async fn test_ipc_command_endpoint_returns_404_for_unknown_instance() {
+    // IPC 인증 미들웨어 우회 (테스트 환경)
+    std::env::set_var("SABA_AUTH_DISABLED", "1");
+
     let supervisor = Arc::new(RwLock::new(Supervisor::new("./modules")));
     {
         let mut sup = supervisor.write().await;

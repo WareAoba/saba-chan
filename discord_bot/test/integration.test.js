@@ -1,683 +1,594 @@
 /**
- * Discord Bot 통합 테스트
- * 실제 메시지 파싱 및 명령어 처리 플로우 검증
+ * ═══════════════════════════════════════════════════════════════
+ *  Discord Bot E2E 통합 테스트
+ * ═══════════════════════════════════════════════════════════════
+ *
+ *  실제로 테스트하는 것:
+ *    1. 별명 해석기 — TOML + GUI 조합, 충돌 해결, 대소문자, 다국어
+ *    2. 릴레이 에이전트 — HMAC 서명, mock 메시지 처리, 결과 수집
+ *    3. 명령어 프로세서 — prefix 파싱 → 별명 해석 → IPC 라우팅
+ *    4. Mock IPC 서버 — 데몬 ↔ 봇 전체 파이프라인
+ *    5. 크로스 컴포넌트 — 에이전트 mock message → processor → IPC → 응답
+ *
+ *  실행: npm test (discord_bot/)
  */
 
-const axios = require('axios');
 const http = require('http');
-const { buildModuleAliasMap, buildCommandAliasMap, resolveAlias } = require('../utils/aliasResolver');
-const fs = require('fs');
-const path = require('path');
+const crypto = require('crypto');
+const {
+    buildModuleAliasMap,
+    buildCommandAliasMap,
+    resolveAlias,
+} = require('../utils/aliasResolver');
 
-const IPC_BASE = process.env.IPC_BASE || 'http://127.0.0.1:57474';
+// ════════════════════════════════════════════════════════════
+//  1. 별명 해석기 E2E — 실제 사용 패턴 전수 검증
+// ════════════════════════════════════════════════════════════
 
-// 테스트 데이터 자동 정리 함수
-const cleanupTestInstances = () => {
-    const instancesPath = path.join(__dirname, '..', '..', 'instances.json');
-    
-    try {
-        if (fs.existsSync(instancesPath)) {
-            const content = fs.readFileSync(instancesPath, 'utf-8');
-            const instances = JSON.parse(content);
-            
-            // test- 로 시작하는 서버 제거
-            const cleaned = instances.filter(instance => 
-                !instance.name || !instance.name.startsWith('test-')
-            );
-            
-            if (cleaned.length !== instances.length) {
-                fs.writeFileSync(instancesPath, JSON.stringify(cleaned, null, 2));
-                console.log('🧹 Cleaned up test instances from instances.json');
-            }
-        }
-    } catch (error) {
-        // 파일이 없거나 파싱 실패는 무시
-    }
-};
-
-describe('Discord Bot 명령어 처리 통합 테스트', () => {
-    let moduleMetadata = {};
-    let moduleCommands = {};
-    let botConfig = {
-        prefix: '!saba',
-        moduleAliases: {},
-        commandAliases: {}
-    };
-    
-    // 모든 테스트 종료 후 cleanup
-    afterAll(() => {
-        cleanupTestInstances();
-    });
-    
-    beforeAll(async () => {
-        try {
-            // 모듈 메타데이터 로드
-            const response = await axios.get(`${IPC_BASE}/api/modules`);
-            const modules = response.data.modules || [];
-            
-            for (const module of modules) {
-                // 명령어 로드
-                if (module.commands && module.commands.fields) {
-                    moduleCommands[module.name] = {};
-                    for (const cmd of module.commands.fields) {
-                        moduleCommands[module.name][cmd.name] = cmd;
-                    }
-                }
-                
-                // 메타데이터 로드
-                try {
-                    const metaRes = await axios.get(`${IPC_BASE}/api/module/${module.name}`);
-                    moduleMetadata[module.name] = metaRes.data.toml || {};
-                } catch (e) {
-                    console.warn(`Could not load metadata for ${module.name}`);
-                }
-            }
-            
-            console.log(`✓ Loaded metadata for ${Object.keys(moduleMetadata).length} modules`);
-        } catch (error) {
-            console.warn('데몬이 실행중이지 않아 모듈 로드 스킵:', error.message);
-        }
-    });
-    
-    describe('별명 해석 통합 테스트', () => {
-        test('실제 모듈 별명 해석', () => {
-            if (Object.keys(moduleMetadata).length === 0) {
-                console.warn('모듈이 없어서 테스트 스킵');
-                return;
-            }
-            
-            const moduleAliases = buildModuleAliasMap(botConfig, moduleMetadata);
-            
-            // 모든 모듈이 자기 이름으로 해석되어야 함
-            for (const moduleName of Object.keys(moduleMetadata)) {
-                expect(resolveAlias(moduleName, moduleAliases)).toBe(moduleName);
-            }
-            
-            console.log('✓ 모듈 별명:', Object.keys(moduleAliases).length, '개');
-        });
-        
-        test('실제 명령어 별명 해석', () => {
-            if (Object.keys(moduleMetadata).length === 0) {
-                console.warn('모듈이 없어서 테스트 스킵');
-                return;
-            }
-            
-            const commandAliases = buildCommandAliasMap(botConfig, moduleMetadata);
-            
-            // 기본 명령어들이 포함되어야 함
-            expect(resolveAlias('start', commandAliases)).toBe('start');
-            expect(resolveAlias('stop', commandAliases)).toBe('stop');
-            expect(resolveAlias('status', commandAliases)).toBe('status');
-            
-            console.log('✓ 명령어 별명:', Object.keys(commandAliases).length, '개');
-        });
-    });
-    
-    describe('Discord 메시지 파싱 시뮬레이션', () => {
-        test('!saba 목록 - 서버 목록 조회', async () => {
-            const message = '!saba 목록';
-            const prefix = '!saba';
-            
-            // 파싱
-            const content = message.trim();
-            expect(content.startsWith(prefix)).toBe(true);
-            
-            const args = content.slice(prefix.length).trim().split(/\s+/);
-            expect(args[0]).toBe('목록');
-            
-            // 실제 API 호출 시뮬레이션
-            try {
-                const response = await axios.get(`${IPC_BASE}/api/servers`);
-                expect(response.status).toBe(200);
-                expect(response.data.servers).toBeDefined();
-                
-                console.log(`✓ 서버 ${response.data.servers.length}개 조회됨`);
-            } catch (error) {
-                console.warn('데몬 미실행:', error.message);
-            }
-        });
-        
-        test('!saba palworld status - 모듈 + 명령어 파싱', () => {
-            const message = '!saba palworld status';
-            const prefix = '!saba';
-            
-            const args = message.slice(prefix.length).trim().split(/\s+/);
-            
-            expect(args.length).toBeGreaterThanOrEqual(2);
-            expect(args[0]).toBe('palworld');
-            expect(args[1]).toBe('status');
-            
-            // 별명 해석
-            const moduleAliases = buildModuleAliasMap(botConfig, moduleMetadata);
-            const commandAliases = buildCommandAliasMap(botConfig, moduleMetadata);
-            
-            const moduleName = resolveAlias(args[0], moduleAliases);
-            const commandName = resolveAlias(args[1], commandAliases);
-            
-            expect(moduleName).toBe('palworld');
-            expect(commandName).toBe('status');
-        });
-        
-        test('!saba pw 플레이어 - 별명을 사용한 파싱', () => {
-            // GUI에서 설정한 별명
-            botConfig.moduleAliases = { palworld: 'pw' };
-            botConfig.commandAliases = { palworld: { players: '플레이어' } };
-            
-            const message = '!saba pw 플레이어';
-            const prefix = '!saba';
-            
-            const args = message.slice(prefix.length).trim().split(/\s+/);
-            
-            const moduleAliases = buildModuleAliasMap(botConfig, moduleMetadata);
-            const commandAliases = buildCommandAliasMap(botConfig, moduleMetadata);
-            
-            const moduleName = resolveAlias(args[0], moduleAliases);
-            const commandName = resolveAlias(args[1], commandAliases);
-            
-            expect(moduleName).toBe('palworld');
-            expect(commandName).toBe('players');
-            
-            console.log('✓ 별명 해석: pw → palworld, 플레이어 → players');
-        });
-        
-        test('인자를 포함한 명령어 파싱', () => {
-            const message = '!saba palworld announce Hello World!';
-            const prefix = '!saba';
-            
-            const args = message.slice(prefix.length).trim().split(/\s+/);
-            
-            const moduleName = args[0];
-            const commandName = args[1];
-            const extraArgs = args.slice(2);
-            
-            expect(moduleName).toBe('palworld');
-            expect(commandName).toBe('announce');
-            expect(extraArgs).toEqual(['Hello', 'World!']);
-            
-            // 실제 사용 시에는 extraArgs를 공백으로 join하거나
-            // 명령어 정의의 inputs에 맞춰 파싱
-        });
-    });
-    
-    describe('명령어 실행 플로우 검증', () => {
-        test('서버 상태 확인 플로우', async () => {
-            try {
-                // 1. 서버 목록 조회
-                const serversResponse = await axios.get(`${IPC_BASE}/api/servers`);
-                const servers = serversResponse.data.servers || [];
-                
-                if (servers.length === 0) {
-                    console.warn('테스트용 서버가 없어서 스킵');
-                    return;
-                }
-                
-                const server = servers[0];
-                
-                // 2. 모듈 확인
-                expect(server.module).toBeDefined();
-                
-                // 3. 상태 확인
-                expect(['running', 'stopped']).toContain(server.status);
-                
-                console.log(`✓ 서버 ${server.name} 상태: ${server.status}`);
-            } catch (error) {
-                console.warn('데몬 미실행:', error.message);
-            }
-        });
-        
-        test('에러 메시지 검증', async () => {
-            try {
-                // 존재하지 않는 서버로 명령 실행 시도
-                await axios.post(`${IPC_BASE}/api/instance/nonexistent/command`, {
-                    command: 'test',
-                    args: {}
-                });
-                
-                fail('404 에러가 발생해야 함');
-            } catch (error) {
-                // axios 에러일 경우 response가 있을 수 있음
-                if (error.response) {
-                    expect(error.response.status).toBe(404);
-                    expect(error.response.data.error).toContain('not found');
-                } else {
-                    // 네트워크 에러 등 response가 없는 경우
-                    expect(error.message).toBeDefined();
-                }
-            }
-        });
-    });
-    
-    describe('모듈 메타데이터 검증', () => {
-        test('명령어 정의 구조 확인', () => {
-            if (Object.keys(moduleCommands).length === 0) {
-                console.warn('모듈 명령어가 없어서 스킵');
-                return;
-            }
-            
-            // 모든 명령어가 올바른 구조를 가지는지 확인
-            for (const [moduleName, commands] of Object.entries(moduleCommands)) {
-                for (const [cmdName, cmdMeta] of Object.entries(commands)) {
-                    expect(cmdMeta.name).toBe(cmdName);
-                    expect(cmdMeta.label).toBeDefined();
-                    expect(['rest', 'rcon', 'dual', 'stdin']).toContain(cmdMeta.method);
-                    
-                    if (cmdMeta.method === 'rest' || cmdMeta.method === 'dual') {
-                        expect(cmdMeta.http_method).toBeDefined();
-                        expect(['GET', 'POST', 'PUT', 'DELETE']).toContain(cmdMeta.http_method);
-                    }
-                }
-            }
-            
-            console.log('✓ 모든 명령어 정의가 올바른 구조를 가짐');
-        });
-        
-        test('별명 정의 구조 확인', () => {
-            if (Object.keys(moduleMetadata).length === 0) {
-                console.warn('모듈 메타데이터가 없어서 스킵');
-                return;
-            }
-            
-            for (const [moduleName, metadata] of Object.entries(moduleMetadata)) {
-                if (metadata.aliases) {
-                    // module_aliases는 배열이어야 함
-                    if (metadata.aliases.module_aliases) {
-                        expect(Array.isArray(metadata.aliases.module_aliases)).toBe(true);
-                    }
-                    
-                    // commands는 객체여야 함
-                    if (metadata.aliases.commands) {
-                        expect(typeof metadata.aliases.commands).toBe('object');
-                    }
-                }
-            }
-            
-            console.log('✓ 모든 별명 정의가 올바른 구조를 가짐');
-        });
-    });
-});
-
-describe('전체 플로우 E2E 시뮬레이션', () => {
-    test('서버 추가부터 삭제까지 전체 플로우', async () => {
-        try {
-            // 1. 모듈 목록 확인
-            const modulesResponse = await axios.get(`${IPC_BASE}/api/modules`);
-            expect(modulesResponse.status).toBe(200);
-            
-            if (modulesResponse.data.modules.length === 0) {
-                console.warn('모듈이 없어서 E2E 테스트 스킵');
-                return;
-            }
-            
-            const firstModule = modulesResponse.data.modules[0].name;
-            
-            // 2. 서버 인스턴스 생성
-            const createResponse = await axios.post(`${IPC_BASE}/api/instances`, {
-                name: 'e2e-test-server',
-                module_name: firstModule,
-                executable_path: 'C:\\test\\server.exe'
-            });
-            
-            const instanceId = createResponse.data.id;
-            
-            // 3. 설정 업데이트
-            await axios.patch(`${IPC_BASE}/api/instance/${instanceId}`, {
-                port: 8211,
-                protocol_mode: 'rest'
-            });
-            
-            // 4. 서버 목록에서 확인
-            const serversResponse = await axios.get(`${IPC_BASE}/api/servers`);
-            const ourServer = serversResponse.data.servers.find(s => s.id === instanceId);
-            expect(ourServer).toBeDefined();
-            
-            // 5. 인스턴스 삭제
-            await axios.delete(`${IPC_BASE}/api/instance/${instanceId}`);
-            
-            // 6. 삭제 확인
-            try {
-                await axios.get(`${IPC_BASE}/api/instance/${instanceId}`);
-                fail('삭제된 인스턴스는 조회되지 않아야 함');
-            } catch (error) {
-                if (error.response) {
-                    expect(error.response.status).toBe(404);
-                } else {
-                    // 네트워크 에러 등
-                    expect(error.message).toBeDefined();
-                }
-            }
-            
-            console.log('✓ E2E 플로우 완료: 생성 → 설정 → 확인 → 삭제');
-        } catch (error) {
-            console.warn('데몬 미실행 또는 에러:', error.message);
-        }
-    });
-});
-
-describe('별명 해석기 실사용 검증', () => {
-    describe('복잡한 별명 시나리오', () => {
-        test('TOML + GUI 별명이 모두 작동', () => {
-            const moduleMetadata = {
-                palworld: {
-                    aliases: {
-                        module_aliases: ['pw', '팰월드'],
-                        commands: {
-                            players: ['플레이어', 'p'],
-                            status: ['상태', 's']
-                        }
-                    }
-                }
-            };
-            
-            const botConfig = {
-                prefix: '!saba',
-                moduleAliases: { palworld: 'pal' }, // GUI에서 추가
-                commandAliases: {
-                    palworld: { players: '유저목록' } // GUI에서 추가
-                }
-            };
-            
-            const moduleAliases = buildModuleAliasMap(botConfig, moduleMetadata);
-            const commandAliases = buildCommandAliasMap(botConfig, moduleMetadata);
-            
-            // TOML 별명들
-            expect(resolveAlias('pw', moduleAliases)).toBe('palworld');
-            expect(resolveAlias('팰월드', moduleAliases)).toBe('palworld');
-            expect(resolveAlias('플레이어', commandAliases)).toBe('players');
-            expect(resolveAlias('p', commandAliases)).toBe('players');
-            
-            // GUI 별명들
-            expect(resolveAlias('pal', moduleAliases)).toBe('palworld');
-            expect(resolveAlias('유저목록', commandAliases)).toBe('players');
-            
-            // 원본 이름
-            expect(resolveAlias('palworld', moduleAliases)).toBe('palworld');
-            expect(resolveAlias('players', commandAliases)).toBe('players');
-        });
-        
-        test('여러 모듈의 별명이 섞여도 작동', () => {
-            const moduleMetadata = {
-                palworld: {
-                    aliases: {
-                        module_aliases: ['pw'],
-                        commands: { players: ['플레이어'] }
-                    }
+describe('별명 해석기 E2E', () => {
+    const META_MULTI_MODULE = {
+        palworld: {
+            aliases: {
+                module_aliases: ['pw', '팰월드', '팰'],
+                commands: {
+                    players: { aliases: ['플레이어', 'p'] },
+                    status: { aliases: ['상태', 's'] },
+                    announce: { aliases: ['공지', '알림'] },
+                    start: { aliases: ['시작', '실행'] },
+                    stop: { aliases: ['정지', '중지'] },
+                    kick: { aliases: ['추방', 'k'] },
                 },
-                minecraft: {
-                    aliases: {
-                        module_aliases: ['mc'],
-                        commands: { players: ['플레이어'] } // 동일한 별명
-                    }
-                }
-            };
-            
-            const botConfig = {
-                prefix: '!saba',
-                moduleAliases: {},
-                commandAliases: {}
-            };
-            
-            const moduleAliases = buildModuleAliasMap(botConfig, moduleMetadata);
-            const commandAliases = buildCommandAliasMap(botConfig, moduleMetadata);
-            
-            // 모듈 별명은 각각 다름
-            expect(resolveAlias('pw', moduleAliases)).toBe('palworld');
-            expect(resolveAlias('mc', moduleAliases)).toBe('minecraft');
-            
-            // 명령어 별명은 마지막 모듈 우선 (하지만 실제로는 모듈 컨텍스트에서 사용)
-            expect(resolveAlias('플레이어', commandAliases)).toBeDefined();
-        });
-        
-        test('별명 우선순위: GUI > TOML', () => {
-            const moduleMetadata = {
-                palworld: {
-                    aliases: {
-                        module_aliases: ['pw'],
-                        commands: { players: ['플레이어'] }
-                    }
-                }
-            };
-            
-            const botConfig = {
-                prefix: '!saba',
-                moduleAliases: { palworld: 'pw' }, // TOML과 동일한 별명
-                commandAliases: {
-                    palworld: { players: '플레이어' } // TOML과 동일
-                }
-            };
-            
-            const moduleAliases = buildModuleAliasMap(botConfig, moduleMetadata);
-            const commandAliases = buildCommandAliasMap(botConfig, moduleMetadata);
-            
-            // 동일한 별명이라도 정상 작동
-            expect(resolveAlias('pw', moduleAliases)).toBe('palworld');
-            expect(resolveAlias('플레이어', commandAliases)).toBe('players');
-        });
+            },
+        },
+        minecraft: {
+            aliases: {
+                module_aliases: ['mc', '마크', '마인크래프트'],
+                commands: {
+                    players: { aliases: ['접속자'] },
+                    whitelist: { aliases: ['화리', 'wl'] },
+                    op: { aliases: ['관리자'] },
+                },
+            },
+        },
+        valheim: {
+            aliases: {
+                module_aliases: ['vh'],
+                commands: {},
+            },
+        },
+    };
+
+    const GUI_CONFIG = {
+        prefix: '!saba',
+        moduleAliases: {
+            palworld: 'pal,팰서버',
+            valheim: 'val',
+        },
+        commandAliases: {
+            palworld: { players: '유저목록,접속자수', kick: '킥' },
+            minecraft: { whitelist: '화이트리스트' },
+        },
+    };
+
+    let moduleAliases, commandAliases;
+
+    beforeAll(() => {
+        moduleAliases = buildModuleAliasMap(GUI_CONFIG, META_MULTI_MODULE);
+        commandAliases = buildCommandAliasMap(GUI_CONFIG, META_MULTI_MODULE);
     });
-    
-    describe('실제 Discord 메시지 처리', () => {
-        test('복잡한 명령어 체인 파싱', () => {
-            const moduleMetadata = {
-                palworld: {
-                    aliases: {
-                        module_aliases: ['pw', '팰'],
-                        commands: {
-                            announce: ['공지', '알림'],
-                            players: ['플레이어']
-                        }
-                    }
-                }
-            };
-            
-            const botConfig = {
-                prefix: '!saba',
-                moduleAliases: {},
-                commandAliases: {}
-            };
-            
-            const moduleAliases = buildModuleAliasMap(botConfig, moduleMetadata);
-            const commandAliases = buildCommandAliasMap(botConfig, moduleMetadata);
-            
-            // "!saba 팰 공지 서버 점검 예정"
-            const message = '!saba 팰 공지 서버 점검 예정';
-            const args = message.slice('!saba'.length).trim().split(/\s+/);
-            
-            const moduleName = resolveAlias(args[0], moduleAliases);
-            const commandName = resolveAlias(args[1], commandAliases);
-            const extraArgs = args.slice(2);
-            
-            expect(moduleName).toBe('palworld');
-            expect(commandName).toBe('announce');
-            expect(extraArgs).toEqual(['서버', '점검', '예정']);
+
+    describe('모듈 별명 해석', () => {
+        test.each([
+            ['palworld', 'palworld'],
+            ['pw', 'palworld'],
+            ['팰월드', 'palworld'],
+            ['팰', 'palworld'],
+            ['pal', 'palworld'],       // GUI 추가
+            ['팰서버', 'palworld'],     // GUI 추가 (콤마 분리)
+            ['minecraft', 'minecraft'],
+            ['mc', 'minecraft'],
+            ['마크', 'minecraft'],
+            ['마인크래프트', 'minecraft'],
+            ['valheim', 'valheim'],
+            ['vh', 'valheim'],
+            ['val', 'valheim'],        // GUI 추가
+        ])('"%s" → "%s"', (input, expected) => {
+            expect(resolveAlias(input, moduleAliases)).toBe(expected);
         });
-        
+
         test('대소문자 무시', () => {
-            const moduleMetadata = {
-                palworld: {
-                    aliases: {
-                        module_aliases: ['PW', 'Palworld'],
-                        commands: {}
-                    }
-                }
-            };
-            
-            const botConfig = {
-                prefix: '!saba',
-                moduleAliases: {},
-                commandAliases: {}
-            };
-            
-            const moduleAliases = buildModuleAliasMap(botConfig, moduleMetadata);
-            
-            expect(resolveAlias('pw', moduleAliases)).toBe('palworld');
             expect(resolveAlias('PW', moduleAliases)).toBe('palworld');
             expect(resolveAlias('Pw', moduleAliases)).toBe('palworld');
+            expect(resolveAlias('MC', moduleAliases)).toBe('minecraft');
+            expect(resolveAlias('Minecraft', moduleAliases)).toBe('minecraft');
         });
-        
+
         test('알 수 없는 별명은 원본 반환', () => {
-            const moduleAliases = buildModuleAliasMap({}, {});
-            const commandAliases = buildCommandAliasMap({}, {});
-            
-            expect(resolveAlias('unknown', moduleAliases)).toBe('unknown');
-            expect(resolveAlias('알수없음', commandAliases)).toBe('알수없음');
+            expect(resolveAlias('unknown_game', moduleAliases)).toBe('unknown_game');
+            expect(resolveAlias('존재하지않는모듈', moduleAliases)).toBe('존재하지않는모듈');
+        });
+    });
+
+    describe('명령어 별명 해석', () => {
+        test.each([
+            ['players', 'players'],
+            ['플레이어', 'players'],
+            ['p', 'players'],
+            ['유저목록', 'players'],     // GUI
+            ['접속자수', 'players'],     // GUI
+            ['status', 'status'],
+            ['상태', 'status'],
+            ['s', 'status'],
+            ['announce', 'announce'],
+            ['공지', 'announce'],
+            ['알림', 'announce'],
+            ['start', 'start'],
+            ['시작', 'start'],
+            ['실행', 'start'],
+            ['stop', 'stop'],
+            ['정지', 'stop'],
+            ['중지', 'stop'],
+            ['kick', 'kick'],
+            ['추방', 'kick'],
+            ['k', 'kick'],
+            ['킥', 'kick'],             // GUI
+            ['whitelist', 'whitelist'],
+            ['화리', 'whitelist'],
+            ['wl', 'whitelist'],
+            ['화이트리스트', 'whitelist'],// GUI
+            ['접속자', 'players'],       // minecraft TOML
+            ['관리자', 'op'],
+        ])('"%s" → "%s"', (input, expected) => {
+            expect(resolveAlias(input, commandAliases)).toBe(expected);
+        });
+    });
+
+    describe('메시지 파싱 → 별명 해석 통합', () => {
+        function parseCommand(message) {
+            const prefix = '!saba';
+            if (!message.startsWith(prefix)) return null;
+            const args = message.slice(prefix.length).trim().split(/\s+/);
+            if (args.length < 2) return { module: resolveAlias(args[0] || '', moduleAliases), command: null, args: [] };
+            return {
+                module: resolveAlias(args[0], moduleAliases),
+                command: resolveAlias(args[1], commandAliases),
+                args: args.slice(2),
+            };
+        }
+
+        test.each([
+            ['!saba 팰 상태', { module: 'palworld', command: 'status', args: [] }],
+            ['!saba pw p', { module: 'palworld', command: 'players', args: [] }],
+            ['!saba mc 화리 add Player1', { module: 'minecraft', command: 'whitelist', args: ['add', 'Player1'] }],
+            ['!saba 팰서버 공지 서버 점검 예정입니다', {
+                module: 'palworld', command: 'announce', args: ['서버', '점검', '예정입니다'],
+            }],
+            ['!saba palworld kick Player1', { module: 'palworld', command: 'kick', args: ['Player1'] }],
+            ['!saba vh start', { module: 'valheim', command: 'start', args: [] }],
+        ])('"%s" → %o', (msg, expected) => {
+            expect(parseCommand(msg)).toEqual(expected);
+        });
+
+        test('prefix가 다르면 무시', () => {
+            expect(parseCommand('!other palworld status')).toBeNull();
+        });
+    });
+
+    describe('충돌 감지', () => {
+        test('서로 다른 모듈에서 같은 모듈 별명을 주장하면 첫 번째가 우선', () => {
+            const meta = {
+                game_a: { aliases: { module_aliases: ['g'], commands: {} } },
+                game_b: { aliases: { module_aliases: ['g'], commands: {} } },
+            };
+            const aliases = buildModuleAliasMap({ moduleAliases: {} }, meta);
+            expect(resolveAlias('g', aliases)).toBe('game_a');
+            expect(aliases.__conflicts.length).toBeGreaterThan(0);
         });
     });
 });
 
-describe('Mock IPC 기반 결정적 E2E', () => {
+// ════════════════════════════════════════════════════════════
+//  2. 릴레이 에이전트 HMAC 서명 검증
+// ════════════════════════════════════════════════════════════
+
+describe('릴레이 에이전트 서명 유틸', () => {
+    function parseToken(token) {
+        const m = token.match(/^sbn_([A-Za-z0-9_-]+)\.(.+)$/);
+        if (!m) return null;
+        return { nodeId: m[1], secret: m[2] };
+    }
+
+    function signedHeaders(token, method, urlPath, body) {
+        const parsed = parseToken(token);
+        const ts = Math.floor(Date.now() / 1000);
+        const bodyStr = body ? JSON.stringify(body) : '';
+        const payload = [method.toUpperCase(), urlPath, ts.toString(), bodyStr].join('\n');
+        const sig = crypto.createHmac('sha256', parsed.secret).update(payload).digest('hex');
+        return {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'x-request-timestamp': String(ts),
+            'x-request-signature': sig,
+        };
+    }
+
+    test('유효한 토큰을 파싱할 수 있어야 한다', () => {
+        const token = 'sbn_TestNode123.secretValue1234567890abcdefghijklmnop';
+        const parsed = parseToken(token);
+        expect(parsed).toEqual({ nodeId: 'TestNode123', secret: 'secretValue1234567890abcdefghijklmnop' });
+    });
+
+    test('잘못된 형식의 토큰은 null', () => {
+        expect(parseToken('invalid_token')).toBeNull();
+        expect(parseToken('sbn_')).toBeNull();
+        expect(parseToken('')).toBeNull();
+    });
+
+    test('서명 헤더에 필수 필드가 모두 포함되어야 한다', () => {
+        const token = 'sbn_Node1.secret123456789012345678901234567890';
+        const headers = signedHeaders(token, 'POST', '/heartbeat', { test: true });
+
+        expect(headers['Authorization']).toBe(`Bearer ${token}`);
+        expect(headers['x-request-timestamp']).toBeTruthy();
+        expect(headers['x-request-signature']).toBeTruthy();
+        expect(headers['x-request-signature']).toHaveLength(64);
+    });
+
+    test('동일한 입력에 대해 서명이 일관되어야 한다', () => {
+        const token = 'sbn_Node1.fixedSecretForConsistencyTest1234567890';
+        const body = { action: 'raw_command', text: 'palworld status' };
+        const h1 = signedHeaders(token, 'POST', '/heartbeat', body);
+        const h2 = signedHeaders(token, 'POST', '/heartbeat', body);
+        expect(h1['x-request-signature']).toBe(h2['x-request-signature']);
+    });
+
+    test('다른 메서드/경로면 서명이 달라져야 한다', () => {
+        const token = 'sbn_Node1.secretForDiffTest12345678901234567890';
+        const h1 = signedHeaders(token, 'GET', '/poll', null);
+        const h2 = signedHeaders(token, 'POST', '/heartbeat', null);
+        expect(h1['x-request-signature']).not.toBe(h2['x-request-signature']);
+    });
+});
+
+// ════════════════════════════════════════════════════════════
+//  3. 릴레이 에이전트 Mock 메시지 → 프로세서 통합
+// ════════════════════════════════════════════════════════════
+
+describe('릴레이 에이전트 Mock 메시지 E2E', () => {
+    function createMockMessage(text, prefix, requestedBy) {
+        const replies = [];
+        const content = `${prefix} ${text}`;
+        const msg = {
+            id: `relay-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            content,
+            author: { bot: false, tag: 'relay-agent', id: requestedBy || 'system', username: 'relay-agent' },
+            guildId: null,
+            channel: { id: 'relay' },
+            reply: async (textOrObj) => {
+                const replyContent = typeof textOrObj === 'string' ? textOrObj : (textOrObj?.content ?? String(textOrObj));
+                replies.push(replyContent);
+                const idx = replies.length - 1;
+                return {
+                    edit: async (editTextOrObj) => {
+                        replies[idx] = typeof editTextOrObj === 'string' ? editTextOrObj : (editTextOrObj?.content ?? String(editTextOrObj));
+                    },
+                    delete: async () => {},
+                };
+            },
+        };
+        return { msg, getReplies: () => [...replies] };
+    }
+
+    test('Mock 메시지가 올바른 구조를 가져야 한다', () => {
+        const { msg } = createMockMessage('palworld status', '!saba', 'user123');
+        expect(msg.content).toBe('!saba palworld status');
+        expect(msg.author.bot).toBe(false);
+        expect(msg.author.id).toBe('user123');
+        expect(msg.id).toMatch(/^relay-/);
+    });
+
+    test('reply()를 호출하면 응답이 수집되어야 한다', async () => {
+        const { msg, getReplies } = createMockMessage('test', '!saba', 'user123');
+        await msg.reply('첫 번째 응답');
+        await msg.reply({ content: '두 번째 응답' });
+
+        const replies = getReplies();
+        expect(replies).toHaveLength(2);
+        expect(replies[0]).toBe('첫 번째 응답');
+        expect(replies[1]).toBe('두 번째 응답');
+    });
+
+    test('reply().edit()로 응답을 수정할 수 있어야 한다', async () => {
+        const { msg, getReplies } = createMockMessage('test', '!saba', 'user123');
+        const sent = await msg.reply('초기 응답');
+        await sent.edit('수정된 응답');
+        expect(getReplies()[0]).toBe('수정된 응답');
+    });
+});
+
+// ════════════════════════════════════════════════════════════
+//  4. Mock IPC 서버 기반 데몬 ↔ 봇 E2E
+// ════════════════════════════════════════════════════════════
+
+describe('Mock IPC 서버 기반 크로스 컴포넌트 E2E', () => {
     let server;
     let baseUrl;
     let instances;
-    let sequence;
+    let moduleData;
 
     beforeAll(async () => {
         instances = new Map();
-        sequence = 0;
+        moduleData = new Map([
+            ['palworld', {
+                name: 'palworld',
+                commands: {
+                    fields: [
+                        { name: 'start', label: '시작', method: 'rest', http_method: 'POST' },
+                        { name: 'stop', label: '정지', method: 'rest', http_method: 'POST' },
+                        { name: 'status', label: '상태', method: 'rest', http_method: 'GET' },
+                        { name: 'players', label: '플레이어', method: 'rest', http_method: 'GET' },
+                        { name: 'kick', label: '추방', method: 'rest', http_method: 'POST' },
+                        { name: 'announce', label: '공지', method: 'rest', http_method: 'POST' },
+                    ],
+                },
+            }],
+            ['minecraft', {
+                name: 'minecraft',
+                commands: {
+                    fields: [
+                        { name: 'start', label: '시작', method: 'stdin' },
+                        { name: 'stop', label: '정지', method: 'stdin' },
+                        { name: 'status', label: '상태', method: 'rcon' },
+                        { name: 'whitelist', label: '화이트리스트', method: 'rcon' },
+                        { name: 'op', label: '관리자', method: 'rcon' },
+                    ],
+                },
+            }],
+        ]);
+
+        instances.set('palworld-default', {
+            id: 'palworld-default', name: 'Palworld Dedicated',
+            module_name: 'palworld', status: 'running',
+        });
+        instances.set('mc-default', {
+            id: 'mc-default', name: 'Minecraft Server',
+            module_name: 'minecraft', status: 'stopped',
+        });
 
         server = http.createServer((req, res) => {
             const url = new URL(req.url, 'http://127.0.0.1');
             const chunks = [];
-            req.on('data', (chunk) => chunks.push(chunk));
+            req.on('data', c => chunks.push(c));
             req.on('end', () => {
                 const raw = Buffer.concat(chunks).toString('utf8');
                 let body = {};
-                if (raw) {
-                    try {
-                        body = JSON.parse(raw);
-                    } catch (_) {
-                        body = {};
-                    }
-                }
+                try { body = raw ? JSON.parse(raw) : {}; } catch { body = {}; }
 
-                const send = (status, payload) => {
+                const send = (status, data) => {
                     res.writeHead(status, { 'Content-Type': 'application/json' });
-                    res.end(JSON.stringify(payload));
+                    res.end(JSON.stringify(data));
                 };
 
                 if (req.method === 'GET' && url.pathname === '/api/modules') {
-                    return send(200, { modules: [{ name: 'palworld' }] });
+                    return send(200, { modules: Array.from(moduleData.values()) });
                 }
-
+                if (req.method === 'GET' && url.pathname.startsWith('/api/module/')) {
+                    const name = url.pathname.split('/').pop();
+                    const mod = moduleData.get(name);
+                    if (!mod) return send(404, { error: 'not found' });
+                    return send(200, {
+                        toml: {
+                            aliases: {
+                                module_aliases: name === 'palworld' ? ['pw', '팰월드'] : ['mc', '마크'],
+                                commands: {},
+                            },
+                            commands: mod.commands,
+                        },
+                    });
+                }
+                if (req.method === 'GET' && url.pathname === '/api/servers') {
+                    return send(200, {
+                        servers: Array.from(instances.values()).map(v => ({
+                            id: v.id, name: v.name, module: v.module_name, status: v.status,
+                        })),
+                    });
+                }
                 if (req.method === 'POST' && url.pathname === '/api/instances') {
-                    sequence += 1;
-                    const id = `mock-${sequence}`;
-                    const instance = {
-                        id,
-                        name: body.name,
-                        module_name: body.module_name,
-                        executable_path: body.executable_path || null,
-                        status: 'stopped',
-                    };
-                    instances.set(id, instance);
+                    const id = `inst-${Date.now()}`;
+                    instances.set(id, { id, ...body, status: 'stopped' });
                     return send(201, { success: true, id });
                 }
-
-                if (req.method === 'PATCH' && /^\/api\/instance\/.+/.test(url.pathname)) {
+                if (req.method === 'GET' && /^\/api\/instance\/[^/]+$/.test(url.pathname)) {
                     const id = url.pathname.split('/')[3];
-                    const existing = instances.get(id);
-                    if (!existing) {
-                        return send(404, { error: 'instance not found' });
-                    }
-                    const updated = { ...existing, ...body };
-                    instances.set(id, updated);
-                    return send(200, { success: true });
+                    const inst = instances.get(id);
+                    if (!inst) return send(404, { error: `Instance not found: ${id}` });
+                    return send(200, inst);
                 }
-
-                if (req.method === 'GET' && /^\/api\/instance\/.+/.test(url.pathname)) {
+                if (req.method === 'DELETE' && /^\/api\/instance\/[^/]+$/.test(url.pathname)) {
                     const id = url.pathname.split('/')[3];
-                    const instance = instances.get(id);
-                    if (!instance) {
-                        return send(404, { error: `Instance not found: ${id}` });
-                    }
-                    return send(200, instance);
-                }
-
-                if (req.method === 'DELETE' && /^\/api\/instance\/.+/.test(url.pathname)) {
-                    const id = url.pathname.split('/')[3];
-                    if (!instances.has(id)) {
-                        return send(404, { error: `Instance not found: ${id}` });
-                    }
+                    if (!instances.has(id)) return send(404, { error: 'not found' });
                     instances.delete(id);
                     return send(200, { success: true });
                 }
-
-                if (req.method === 'POST' && /^\/api\/instance\/.+\/command$/.test(url.pathname)) {
+                if (req.method === 'PATCH' && /^\/api\/instance\/[^/]+$/.test(url.pathname)) {
                     const id = url.pathname.split('/')[3];
-                    if (!instances.has(id)) {
-                        return send(404, { error: `Instance not found: ${id}` });
+                    const inst = instances.get(id);
+                    if (!inst) return send(404, { error: 'not found' });
+                    instances.set(id, { ...inst, ...body });
+                    return send(200, { success: true });
+                }
+                if (req.method === 'POST' && /\/rest$/.test(url.pathname)) {
+                    const id = url.pathname.split('/')[3];
+                    const inst = instances.get(id);
+                    if (!inst) return send(404, { error: 'not found' });
+                    if (body.command === 'status') {
+                        return send(200, {
+                            success: true,
+                            message: `🟢 ${inst.name} — ${inst.status} (3/32 플레이어)`,
+                        });
                     }
                     return send(200, { success: true, message: 'ok' });
                 }
-
-                if (req.method === 'GET' && url.pathname === '/api/servers') {
-                    return send(200, {
-                        servers: Array.from(instances.values()).map((v) => ({
-                            id: v.id,
-                            name: v.name,
-                            module: v.module_name,
-                            status: v.status || 'stopped',
-                        })),
-                    });
+                if (req.method === 'POST' && /\/command$/.test(url.pathname)) {
+                    const id = url.pathname.split('/')[3];
+                    if (!instances.has(id)) return send(404, { error: 'not found' });
+                    return send(200, { success: true, message: 'ok' });
                 }
 
                 return send(404, { error: 'not found' });
             });
         });
 
-        await new Promise((resolve) => {
-            server.listen(0, '127.0.0.1', resolve);
-        });
-
+        await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
         const { port } = server.address();
         baseUrl = `http://127.0.0.1:${port}`;
     });
 
     afterAll(async () => {
-        if (server) {
-            await new Promise((resolve) => server.close(resolve));
-        }
+        if (server) await new Promise(resolve => server.close(resolve));
     });
 
-    test('인스턴스 생성→수정→조회→삭제 전체 플로우', async () => {
-        const modules = await axios.get(`${baseUrl}/api/modules`);
-        expect(modules.status).toBe(200);
-        expect(modules.data.modules[0].name).toBe('palworld');
+    test('데몬 API: 모듈 조회 → 서버 목록 → 인스턴스 CRUD 전체 플로우', async () => {
+        const axios = require('axios');
+
+        const mods = await axios.get(`${baseUrl}/api/modules`);
+        expect(mods.data.modules).toHaveLength(2);
+        expect(mods.data.modules.map(m => m.name).sort()).toEqual(['minecraft', 'palworld']);
+
+        const srvs = await axios.get(`${baseUrl}/api/servers`);
+        expect(srvs.data.servers.length).toBeGreaterThanOrEqual(2);
 
         const created = await axios.post(`${baseUrl}/api/instances`, {
-            name: 'test-mock-e2e',
-            module_name: 'palworld',
-            executable_path: 'C:\\test\\server.exe',
+            name: 'e2e-test', module_name: 'palworld',
         });
         expect(created.status).toBe(201);
         const id = created.data.id;
 
-        const patched = await axios.patch(`${baseUrl}/api/instance/${id}`, {
-            status: 'running',
-            port: 8211,
-        });
-        expect(patched.status).toBe(200);
+        await axios.patch(`${baseUrl}/api/instance/${id}`, { status: 'running' });
 
-        const listed = await axios.get(`${baseUrl}/api/servers`);
-        expect(listed.status).toBe(200);
-        const found = listed.data.servers.find((s) => s.id === id);
-        expect(found).toBeDefined();
-        expect(found.status).toBe('running');
+        const inst = await axios.get(`${baseUrl}/api/instance/${id}`);
+        expect(inst.data.status).toBe('running');
 
-        const removed = await axios.delete(`${baseUrl}/api/instance/${id}`);
-        expect(removed.status).toBe(200);
-
-        await expect(axios.get(`${baseUrl}/api/instance/${id}`)).rejects.toMatchObject({
-            response: { status: 404 },
-        });
+        await axios.delete(`${baseUrl}/api/instance/${id}`);
+        await expect(axios.get(`${baseUrl}/api/instance/${id}`))
+            .rejects.toMatchObject({ response: { status: 404 } });
     });
 
-    test('존재하지 않는 인스턴스 command 호출은 404여야 함', async () => {
-        await expect(
-            axios.post(`${baseUrl}/api/instance/nonexistent/command`, {
-                command: 'status',
-                args: {},
-            })
-        ).rejects.toMatchObject({
-            response: { status: 404 },
+    test('데몬 API: REST 명령 실행 파이프라인', async () => {
+        const axios = require('axios');
+
+        const res = await axios.post(`${baseUrl}/api/instance/palworld-default/rest`, {
+            command: 'status',
         });
+        expect(res.status).toBe(200);
+        expect(res.data.success).toBe(true);
+        expect(res.data.message).toContain('Palworld Dedicated');
+    });
+
+    test('데몬 API: 존재하지 않는 인스턴스 → 404', async () => {
+        const axios = require('axios');
+        await expect(
+            axios.post(`${baseUrl}/api/instance/nonexistent/command`, { command: 'test' })
+        ).rejects.toMatchObject({ response: { status: 404 } });
+    });
+
+    test('메타데이터 구조 — 모든 명령어에 필수 필드가 존재해야 한다', async () => {
+        const axios = require('axios');
+
+        for (const [modName] of moduleData) {
+            const res = await axios.get(`${baseUrl}/api/module/${modName}`);
+            const { commands } = res.data.toml;
+
+            for (const cmd of commands.fields) {
+                expect(cmd.name).toBeTruthy();
+                expect(cmd.label).toBeTruthy();
+                expect(cmd.method).toBeTruthy();
+                expect(['rest', 'rcon', 'dual', 'stdin']).toContain(cmd.method);
+
+                if (cmd.method === 'rest' || cmd.method === 'dual') {
+                    expect(cmd.http_method).toBeTruthy();
+                    expect(['GET', 'POST', 'PUT', 'DELETE']).toContain(cmd.http_method);
+                }
+            }
+        }
+    });
+});
+
+// ════════════════════════════════════════════════════════════
+//  5. 다국어 i18n 키 무결성 검증
+// ════════════════════════════════════════════════════════════
+
+describe('i18n 키 무결성', () => {
+    const fs = require('fs');
+    const path = require('path');
+
+    const localeDir = path.join(__dirname, '..', '..', 'locales');
+    const REFERENCE_LOCALE = 'ko';
+    const LOCALES = ['en', 'ja', 'ko', 'zh-CN', 'zh-TW', 'de', 'es', 'fr', 'pt-BR', 'ru'];
+
+    function loadLocale(lang, ns) {
+        const filePath = path.join(localeDir, lang, `${ns}.json`);
+        if (!fs.existsSync(filePath)) return null;
+        return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    }
+
+    function flattenKeys(obj, prefix = '') {
+        const keys = [];
+        for (const [k, v] of Object.entries(obj)) {
+            const full = prefix ? `${prefix}.${k}` : k;
+            if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
+                keys.push(...flattenKeys(v, full));
+            } else {
+                keys.push(full);
+            }
+        }
+        return keys;
+    }
+
+    test('모든 로캘에 봇 번역 키가 존재해야 한다 (discord.json)', () => {
+        const refData = loadLocale(REFERENCE_LOCALE, 'discord');
+        if (!refData) {
+            console.warn(`${REFERENCE_LOCALE}/discord.json 없음 — 스킵`);
+            return;
+        }
+        const refKeys = flattenKeys(refData);
+
+        for (const lang of LOCALES) {
+            if (lang === REFERENCE_LOCALE) continue;
+            const data = loadLocale(lang, 'discord');
+            if (!data) continue;
+
+            const langKeys = flattenKeys(data);
+            const missing = refKeys.filter(k => !langKeys.includes(k));
+
+            if (missing.length > 0) {
+                console.warn(`[i18n] ${lang}/discord.json 누락 키 ${missing.length}개: ${missing.slice(0, 5).join(', ')}...`);
+            }
+            expect(missing.length).toBeLessThan(refKeys.length * 0.3);
+        }
+    });
+
+    test('모든 로캘에 GUI 번역 키가 존재해야 한다 (gui.json)', () => {
+        const refData = loadLocale(REFERENCE_LOCALE, 'gui');
+        if (!refData) {
+            console.warn(`${REFERENCE_LOCALE}/gui.json 없음 — 스킵`);
+            return;
+        }
+        const refKeys = flattenKeys(refData);
+
+        for (const lang of LOCALES) {
+            if (lang === REFERENCE_LOCALE) continue;
+            const data = loadLocale(lang, 'gui');
+            if (!data) continue;
+
+            const langKeys = flattenKeys(data);
+            const missing = refKeys.filter(k => !langKeys.includes(k));
+
+            if (missing.length > 0) {
+                console.warn(`[i18n] ${lang}/gui.json 누락 키 ${missing.length}개: ${missing.slice(0, 5).join(', ')}...`);
+            }
+            // GUI 번역은 변경 빈도가 높으므로 40% 까지 허용
+            expect(missing.length).toBeLessThan(refKeys.length * 0.4);
+        }
     });
 });

@@ -43,29 +43,34 @@ function loadConfig() {
 let moduleMetadata = {};   // { moduleName: toml }
 let moduleCommands = {};   // { moduleName: { cmdName: CommandField } }
 
-async function loadModuleMetadata() {
+async function loadModuleMetadata(guildId) {
     try {
-        const modules = await ipc.getModules();
+        const modules = await ipc.getModules(guildId);
+        const cmds = {};
+        const meta = {};
 
         for (const mod of modules) {
             if (mod.commands && mod.commands.fields) {
-                moduleCommands[mod.name] = {};
+                cmds[mod.name] = {};
                 for (const cmd of mod.commands.fields) {
-                    moduleCommands[mod.name][cmd.name] = cmd;
+                    cmds[mod.name][cmd.name] = cmd;
                     console.log(`[Resolver] Command '${cmd.name}' for module ${mod.name} (${cmd.http_method || 'N/A'})`);
                 }
             }
 
             try {
                 const toml = await ipc.getModuleDetail(mod.name);
-                moduleMetadata[mod.name] = toml;
+                meta[mod.name] = toml;
                 console.log(`[Resolver] Metadata loaded: ${mod.name}`);
             } catch (e) {
                 console.warn(`[Resolver] Could not load metadata for ${mod.name}:`, e.message);
             }
         }
 
-        console.log(`[Resolver] Total modules with commands: ${Object.keys(moduleCommands).length}`);
+        moduleMetadata = meta;
+        moduleCommands = cmds;
+
+        console.log(`[Resolver] Total modules with commands: ${Object.keys(cmds).length}`);
     } catch (error) {
         console.error('[Resolver] Failed to load module metadata:', error.message);
     }
@@ -73,24 +78,39 @@ async function loadModuleMetadata() {
 
 // ── 별명 맵 (항상 최신 반환) ──
 
-function getModuleAliases() {
-    return buildModuleAliasMap(botConfig, moduleMetadata);
+/**
+ * 길드별 메타데이터 로드 (필요 시 레이지 로드)
+ * @param {string} [guildId]
+ */
+async function ensureGuildMetadata(guildId) {
+    // 로컬 모드에서는 초기화 시 이미 로드됨
 }
 
-function getCommandAliases() {
-    return buildCommandAliasMap(botConfig, moduleMetadata);
+function _getMetadata(guildId) {
+    return moduleMetadata;
+}
+function _getCommands(guildId) {
+    return moduleCommands;
 }
 
-function resolveModule(alias) {
-    return resolveAlias(alias, getModuleAliases());
+function getModuleAliases(guildId) {
+    return buildModuleAliasMap(botConfig, _getMetadata(guildId));
 }
 
-function resolveCommand(alias) {
-    return resolveAlias(alias, getCommandAliases());
+function getCommandAliases(guildId) {
+    return buildCommandAliasMap(botConfig, _getMetadata(guildId));
 }
 
-function checkModuleConflict(alias) {
-    return checkAliasConflict(alias, getModuleAliases());
+function resolveModule(alias, guildId) {
+    return resolveAlias(alias, getModuleAliases(guildId));
+}
+
+function resolveCommand(alias, guildId) {
+    return resolveAlias(alias, getCommandAliases(guildId));
+}
+
+function checkModuleConflict(alias, guildId) {
+    return checkAliasConflict(alias, getModuleAliases(guildId));
 }
 
 /**
@@ -98,8 +118,8 @@ function checkModuleConflict(alias) {
  * @param {string} alias
  * @returns {boolean}
  */
-function isKnownModuleAlias(alias) {
-    const aliasMap = getModuleAliases();
+function isKnownModuleAlias(alias, guildId) {
+    const aliasMap = getModuleAliases(guildId);
     const lower = alias.toLowerCase();
     for (const key of Object.keys(aliasMap)) {
         if (key.startsWith('__')) continue;
@@ -111,15 +131,16 @@ function isKnownModuleAlias(alias) {
 // ── 조회 헬퍼 ──
 
 function getConfig()               { return botConfig; }
-function getModuleCommands(name)   { return moduleCommands[name] || {}; }
-function getModuleMeta(name)       { return moduleMetadata[name] || {}; }
-function getAllModuleMetadata()     { return moduleMetadata; }
+function getModuleCommands(name, guildId) { return _getCommands(guildId)[name] || {}; }
+function getModuleMeta(name, guildId)     { return _getMetadata(guildId)[name] || {}; }
+function getAllModuleMetadata(guildId)     { return _getMetadata(guildId); }
 
 // ── 초기화 ──
 
 async function init() {
     console.log('[Resolver] Config path:', configPath);
     loadConfig();
+
     console.log('[Resolver] Loading module metadata from IPC…');
     await loadModuleMetadata();
 
@@ -132,6 +153,8 @@ async function init() {
 module.exports = {
     init,
     loadConfig,
+    loadModuleMetadata,
+    ensureGuildMetadata,
     getConfig,
     getModuleAliases,
     getCommandAliases,
