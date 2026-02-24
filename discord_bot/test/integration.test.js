@@ -15,6 +15,7 @@
 
 const http = require('http');
 const crypto = require('crypto');
+const axios = require('axios');
 const {
     buildModuleAliasMap,
     buildCommandAliasMap,
@@ -201,13 +202,15 @@ describe('릴레이 에이전트 서명 유틸', () => {
     function signedHeaders(token, method, urlPath, body) {
         const parsed = parseToken(token);
         const ts = Math.floor(Date.now() / 1000);
+        const nonce = crypto.randomUUID();
         const bodyStr = body ? JSON.stringify(body) : '';
-        const payload = [method.toUpperCase(), urlPath, ts.toString(), bodyStr].join('\n');
+        const payload = [method.toUpperCase(), urlPath, ts.toString(), nonce, bodyStr].join('\n');
         const sig = crypto.createHmac('sha256', parsed.secret).update(payload).digest('hex');
         return {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
             'x-request-timestamp': String(ts),
+            'x-request-nonce': nonce,
             'x-request-signature': sig,
         };
     }
@@ -230,16 +233,19 @@ describe('릴레이 에이전트 서명 유틸', () => {
 
         expect(headers['Authorization']).toBe(`Bearer ${token}`);
         expect(headers['x-request-timestamp']).toBeTruthy();
+        expect(headers['x-request-nonce']).toBeTruthy();
         expect(headers['x-request-signature']).toBeTruthy();
         expect(headers['x-request-signature']).toHaveLength(64);
     });
 
-    test('동일한 입력에 대해 서명이 일관되어야 한다', () => {
+    test('매 호출마다 고유한 nonce가 생성되어야 한다', () => {
         const token = 'sbn_Node1.fixedSecretForConsistencyTest1234567890';
         const body = { action: 'raw_command', text: 'palworld status' };
         const h1 = signedHeaders(token, 'POST', '/heartbeat', body);
         const h2 = signedHeaders(token, 'POST', '/heartbeat', body);
-        expect(h1['x-request-signature']).toBe(h2['x-request-signature']);
+        expect(h1['x-request-nonce']).not.toBe(h2['x-request-nonce']);
+        // nonce가 다르므로 서명도 달라야 한다 (리플레이 방지)
+        expect(h1['x-request-signature']).not.toBe(h2['x-request-signature']);
     });
 
     test('다른 메서드/경로면 서명이 달라져야 한다', () => {
@@ -449,8 +455,6 @@ describe('Mock IPC 서버 기반 크로스 컴포넌트 E2E', () => {
     });
 
     test('데몬 API: 모듈 조회 → 서버 목록 → 인스턴스 CRUD 전체 플로우', async () => {
-        const axios = require('axios');
-
         const mods = await axios.get(`${baseUrl}/api/modules`);
         expect(mods.data.modules).toHaveLength(2);
         expect(mods.data.modules.map(m => m.name).sort()).toEqual(['minecraft', 'palworld']);
@@ -475,8 +479,6 @@ describe('Mock IPC 서버 기반 크로스 컴포넌트 E2E', () => {
     });
 
     test('데몬 API: REST 명령 실행 파이프라인', async () => {
-        const axios = require('axios');
-
         const res = await axios.post(`${baseUrl}/api/instance/palworld-default/rest`, {
             command: 'status',
         });
@@ -486,15 +488,12 @@ describe('Mock IPC 서버 기반 크로스 컴포넌트 E2E', () => {
     });
 
     test('데몬 API: 존재하지 않는 인스턴스 → 404', async () => {
-        const axios = require('axios');
         await expect(
             axios.post(`${baseUrl}/api/instance/nonexistent/command`, { command: 'test' })
         ).rejects.toMatchObject({ response: { status: 404 } });
     });
 
     test('메타데이터 구조 — 모든 명령어에 필수 필드가 존재해야 한다', async () => {
-        const axios = require('axios');
-
         for (const [modName] of moduleData) {
             const res = await axios.get(`${baseUrl}/api/module/${modName}`);
             const { commands } = res.data.toml;

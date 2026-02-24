@@ -440,7 +440,7 @@ impl IPCServer {
             api_actions: ApiActionTracker::new(),
             provision_tracker: ProvisionTracker::new(),
             extension_manager: Arc::new(RwLock::new(ext_mgr)),
-            extension_status_cache: ExtensionStatusCache::new(5), // 5초 TTL
+            extension_status_cache: ExtensionStatusCache::new(30), // 30초 TTL (Docker/WSL 지연 대비)
         }
     }
 

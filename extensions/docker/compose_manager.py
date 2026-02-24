@@ -664,9 +664,16 @@ def enrich_server_info(config: dict) -> dict:
     if not instance_dir or not os.path.exists(compose_path):
         return {"handled": False, **base_fields}
 
+    # ── Docker 데몬 빠른 연결 확인 (타임아웃 3초) ──
+    # WSL/Docker 데몬이 꺼져있을 때 15초 대기 방지
+    docker = _docker_cli()
+    daemon_ok, _, _ = _run_cmd(docker + ["info", "--format", "{{.ServerVersion}}"], timeout=3)
+    if not daemon_ok:
+        return {"handled": True, "status": "stopped", "docker_daemon_offline": True, **base_fields}
+
     # ── docker compose ps (cwd로 인스턴스 격리) ──
     cmd = _compose_cmd(instance_dir, compose_file) + ["ps", "--format", "json", "-a"]
-    success, stdout, stderr = _run_cmd(cmd, cwd=instance_dir, timeout=15)
+    success, stdout, stderr = _run_cmd(cmd, cwd=instance_dir, timeout=10)
 
     if not success:
         return {"handled": True, "status": "stopped", **base_fields}

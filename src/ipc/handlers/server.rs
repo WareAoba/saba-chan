@@ -22,12 +22,73 @@ pub async fn health_check() -> impl IntoResponse {
 
 /// GET /api/servers - 모든 서버 목록 (인스턴스 기반)
 pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
+    // ── Phase 1: supervisor lock을 최소 시간만 잡고 필요한 데이터 복사 ──
+    struct InstanceSnapshot {
+        id: String,
+        name: String,
+        module_name: String,
+        executable_path: Option<String>,
+        port: Option<u16>,
+        rcon_port: Option<u16>,
+        rcon_password: Option<String>,
+        rest_host: Option<String>,
+        rest_port: Option<u16>,
+        rest_username: Option<String>,
+        rest_password: Option<String>,
+        protocol_mode: String,
+        module_settings: std::collections::HashMap<String, serde_json::Value>,
+        server_version: Option<String>,
+        extension_data: std::collections::HashMap<String, serde_json::Value>,
+        instance_dir: String,
+        process_patterns: Vec<String>,
+        // Native 모드 데이터
+        pid: Option<u32>,
+        start_time: Option<u64>,
+    }
 
-    let instances = supervisor.instance_store.list();
+    let snapshots: Vec<InstanceSnapshot> = {
+        let supervisor = state.supervisor.read().await;
+        let instances = supervisor.instance_store.list();
+        instances.iter().map(|instance| {
+            let pid = supervisor.tracker.get_pid(&instance.id).ok();
+            let start_time = if pid.is_some() {
+                supervisor.tracker.get_start_time(&instance.id).ok()
+            } else {
+                None
+            };
+            let process_patterns = supervisor.module_loader.get_module(&instance.module_name)
+                .map(|m| m.metadata.process_patterns.clone())
+                .unwrap_or_default();
+            InstanceSnapshot {
+                id: instance.id.clone(),
+                name: instance.name.clone(),
+                module_name: instance.module_name.clone(),
+                executable_path: instance.executable_path.clone(),
+                port: instance.port,
+                rcon_port: instance.rcon_port,
+                rcon_password: instance.rcon_password.clone(),
+                rest_host: instance.rest_host.clone(),
+                rest_port: instance.rest_port,
+                rest_username: instance.rest_username.clone(),
+                rest_password: instance.rest_password.clone(),
+                protocol_mode: instance.protocol_mode.clone(),
+                module_settings: instance.module_settings.clone(),
+                server_version: instance.server_version.clone(),
+                extension_data: instance.extension_data.clone(),
+                instance_dir: supervisor.instance_store.instance_dir(&instance.id).to_string_lossy().to_string(),
+                process_patterns,
+                pid,
+                start_time,
+            }
+        }).collect()
+    };
+    // supervisor read lock 해제됨 — 이후 extension dispatch에 의해 블로킹되어도
+    // 다른 API 핸들러가 supervisor write lock을 획득할 수 있음
+
+    // ── Phase 2: Extension hooks (lock 없이 실행) ──
     let mut servers = Vec::new();
 
-    for instance in instances {
+    for instance in &snapshots {
         // ── Extension hook: server.list_enrich ──
         // Extension이 런타임 상태/통계를 제공할 수 있음 (TTL 캐시 적용)
         let mut ext_handled = false;
@@ -38,20 +99,16 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
                 cached_val
             } else {
                 let ext_mgr = state.extension_manager.clone();
-                // 모듈 메타데이터에서 프로세스 패턴 조회
-                let process_patterns = supervisor.module_loader.get_module(&instance.module_name)
-                    .map(|m| m.metadata.process_patterns.clone())
-                    .unwrap_or_default();
                 let ctx = serde_json::json!({
                     "instance_id": &instance.id,
                     "instance_name": &instance.name,
                     "module": &instance.module_name,
                     "extension_data": &instance.extension_data,
-                    "instance_dir": supervisor.instance_store.instance_dir(&instance.id).to_string_lossy(),
-                    "process_patterns": process_patterns,
+                    "instance_dir": &instance.instance_dir,
+                    "process_patterns": &instance.process_patterns,
                 });
                 let mgr = ext_mgr.read().await;
-                let results = mgr.dispatch_hook("server.list_enrich", ctx).await;
+                let results = mgr.dispatch_hook_timed("server.list_enrich", ctx, 10).await;
                 // 첫 번째 성공 응답을 캐시 (handled 여부 무관)
                 let result = results.into_iter()
                     .find_map(|(_id, r)| r.ok())
@@ -115,11 +172,9 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
             continue;
         }
 
-        // Native 모드: ProcessTracker에서 PID 및 시작 시간 확인
-        let pid = supervisor.tracker.get_pid(&instance.id).ok();
-        let (status, start_time) = if pid.is_some() {
-            let st = supervisor.tracker.get_start_time(&instance.id).ok();
-            ("running".to_string(), st)
+        // Native 모드: 스냅샷에서 PID 및 시작 시간 사용
+        let (status, start_time) = if instance.pid.is_some() {
+            ("running".to_string(), instance.start_time.clone())
         } else {
             ("stopped".to_string(), None)
         };
@@ -141,7 +196,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
             name: instance.name.clone(),
             module: instance.module_name.clone(),
             status,
-            pid,
+            pid: instance.pid,
             start_time,
             executable_path: instance.executable_path.clone(),
             port: instance.port,
@@ -197,8 +252,11 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
         }
     }
 
-    // 포트 충돌 강제 정지 이벤트 drain
-    let port_conflict_stops = supervisor.drain_port_conflict_stops();
+    // 포트 충돌 강제 정지 이벤트 drain (짧은 read lock)
+    let port_conflict_stops = {
+        let supervisor = state.supervisor.read().await;
+        supervisor.drain_port_conflict_stops()
+    };
 
     Json(ServerListResponse { servers, port_conflict_stops })
 }

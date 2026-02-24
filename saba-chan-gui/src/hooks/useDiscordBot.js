@@ -14,6 +14,7 @@ import { safeShowToast, createTranslateError } from '../utils/helpers';
  * @param {string} params.discordBotMode - 'local' | 'cloud'
  * @param {string} params.discordCloudRelayUrl
  * @param {string} params.discordCloudHostId
+ * @param {Object} params.nodeSettings
  * @param {boolean} params.settingsReady
  * @param {React.MutableRefObject<string>} params.discordTokenRef
  * @param {Function} params.setModal
@@ -28,6 +29,7 @@ export function useDiscordBot({
     discordBotMode,
     discordCloudRelayUrl,
     discordCloudHostId,
+    nodeSettings,
     settingsReady,
     discordTokenRef,
     setModal,
@@ -37,24 +39,48 @@ export function useDiscordBot({
 
     const [discordBotStatus, setDiscordBotStatus] = useState('stopped');
     const [botStatusReady, setBotStatusReady] = useState(false);
+    // 클라우드 릴레이 연결 상태 (훅 레벨에서 관리)
+    const [relayConnected, setRelayConnected] = useState(false);
+    const [relayConnecting, setRelayConnecting] = useState(false);
     const autoStartDoneRef = useRef(false);
 
     // ── Status polling ──────────────────────────────────────
-    // 클라우드 모드: 릴레이 서버 /api/hosts/{hostId} 확인
+    // 클라우드 모드: 에이전트 프로세스 + 릴레이 서버 연결 모두 확인
     // 로컬 모드: window.api.discordBotStatus() 확인
-    const DEFAULT_RELAY_URL = 'http://localhost:3000';
+    const RELAY_URL_FALLBACK = 'http://localhost:3000';
 
     useEffect(() => {
         let mounted = true;
 
         const checkStatus = async () => {
             if (discordBotMode === 'cloud') {
-                // ── 클라우드 모드: 로컬 릴레이 에이전트 프로세스 상태 확인 ──
+                // ── 클라우드 모드 ──
+                // 1) 에이전트 프로세스 상태
+                let agentRunning = false;
                 try {
                     const status = await window.api.discordBotStatus();
-                    if (mounted) setDiscordBotStatus(status === 'running' ? 'running' : 'stopped');
-                } catch {
-                    if (mounted) setDiscordBotStatus('stopped');
+                    agentRunning = status === 'running';
+                } catch { /* stopped */ }
+
+                // 2) 릴레이 서버 연결 확인 (hostId가 있으면 에이전트 상태와 무관하게 확인)
+                //    → relayConnected는 "릴레이 도달 가능 여부"를 나타냄
+                //    → 에이전트 미실행 시에도 UI가 'connected' 상태로 진입해야
+                //      시작 버튼을 표시할 수 있음
+                let relayOk = false;
+                if (discordCloudHostId) {
+                    const relayUrl = discordCloudRelayUrl || RELAY_URL_FALLBACK;
+                    try {
+                        if (mounted) setRelayConnecting(true);
+                        const resp = await fetch(`${relayUrl}/api/hosts/${encodeURIComponent(discordCloudHostId)}`, { signal: AbortSignal.timeout(5000) });
+                        relayOk = resp.ok;
+                    } catch { /* disconnected */ }
+                    if (mounted) setRelayConnecting(false);
+                }
+
+                if (mounted) {
+                    setRelayConnected(relayOk);
+                    // 인디케이터: 에이전트 실행 + 릴레이 연결 둘 다 OK여야 'running'
+                    setDiscordBotStatus(agentRunning && relayOk ? 'running' : agentRunning ? 'connecting' : 'stopped');
                 }
             } else {
                 // ── 로컬 모드: 로컬 봇 프로세스 상태 ──
@@ -113,6 +139,7 @@ export function useDiscordBot({
                     relayUrl: discordCloudRelayUrl || '',
                     hostId: discordCloudHostId || '',
                 },
+                nodeSettings: nodeSettings || {},
             };
             const result = await window.api.discordBotStart(botConfig);
             if (result.error) {
@@ -191,7 +218,7 @@ export function useDiscordBot({
 
         window.api.onBotError(handler);
         return () => {
-            if (window.api.offBotError) window.api.offBotError();
+            if (window.api.offBotError) window.api.offBotError(handler);
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -217,7 +244,7 @@ export function useDiscordBot({
 
         window.api.onBotRelaunch(handler);
         return () => {
-            if (window.api.offBotRelaunch) window.api.offBotRelaunch();
+            if (window.api.offBotRelaunch) window.api.offBotRelaunch(handler);
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -226,6 +253,8 @@ export function useDiscordBot({
         discordBotStatus,
         setDiscordBotStatus,
         botStatusReady,
+        relayConnected,
+        relayConnecting,
         handleStartDiscordBot,
         handleStopDiscordBot,
     };

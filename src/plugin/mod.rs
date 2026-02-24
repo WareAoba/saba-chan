@@ -84,13 +84,21 @@ pub fn resolve_extensions_dir_pub() -> std::path::PathBuf {
     resolve_extensions_dir()
 }
 
+/// 기본 플러그인 타임아웃 (초)
+pub const DEFAULT_PLUGIN_TIMEOUT_SECS: u64 = 120;
+
 /// Plugin runner executes Python modules (short-lived)
 /// Returns JSON output from stdout only
 /// Called by Supervisor for module lifecycle management
 /// Plugin runner executes Python modules (short-lived)
 /// Returns JSON output from stdout only
 pub async fn run_plugin(module_path: &str, function: &str, config: Value) -> Result<Value> {
-    run_plugin_inner(module_path, function, config, None).await
+    run_plugin_inner(module_path, function, config, None, DEFAULT_PLUGIN_TIMEOUT_SECS).await
+}
+
+/// Like `run_plugin` but with a custom timeout (seconds).
+pub async fn run_plugin_with_timeout(module_path: &str, function: &str, config: Value, timeout_secs: u64) -> Result<Value> {
+    run_plugin_inner(module_path, function, config, None, timeout_secs).await
 }
 
 /// Like `run_plugin` but invokes a callback for each `PROGRESS:{json}` line
@@ -104,7 +112,7 @@ pub async fn run_plugin_with_progress<F>(
 where
     F: Fn(ExtensionProgress) + Send + 'static,
 {
-    run_plugin_inner(module_path, function, config, Some(Box::new(on_progress))).await
+    run_plugin_inner(module_path, function, config, Some(Box::new(on_progress)), DEFAULT_PLUGIN_TIMEOUT_SECS).await
 }
 
 async fn run_plugin_inner(
@@ -112,6 +120,7 @@ async fn run_plugin_inner(
     function: &str,
     config: Value,
     on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>,
+    timeout_secs: u64,
 ) -> Result<Value> {
     tracing::debug!("Executing plugin: {} -> {}", module_path, function);
 
@@ -181,23 +190,44 @@ async fn run_plugin_inner(
         String::from_utf8_lossy(&buf).to_string()
     });
 
-    let status = child.wait().await?;
-    let stderr_str = stderr_handle.await.unwrap_or_default();
-    let stdout_str = stdout_handle.await.unwrap_or_default();
+    let status = tokio::time::timeout(
+        std::time::Duration::from_secs(timeout_secs),
+        child.wait(),
+    ).await;
 
-    if !status.success() {
-        tracing::error!("Plugin failed (exit {:?}): {}", status.code(), stderr_str);
-        return Err(anyhow::anyhow!("Plugin execution failed: {}", stderr_str));
-    }
+    match status {
+        Ok(Ok(exit_status)) => {
+            let stderr_str = stderr_handle.await.unwrap_or_default();
+            let stdout_str = stdout_handle.await.unwrap_or_default();
 
-    match serde_json::from_str::<Value>(&stdout_str) {
-        Ok(result) => {
-            tracing::debug!("Plugin result (raw): {}", stdout_str.trim());
-            Ok(result)
+            if !exit_status.success() {
+                tracing::error!("Plugin failed (exit {:?}): {}", exit_status.code(), stderr_str);
+                return Err(anyhow::anyhow!("Plugin execution failed: {}", stderr_str));
+            }
+
+            match serde_json::from_str::<Value>(&stdout_str) {
+                Ok(result) => {
+                    tracing::debug!("Plugin result (raw): {}", stdout_str.trim());
+                    Ok(result)
+                }
+                Err(e) => {
+                    tracing::error!("Failed to parse plugin JSON: {} | stdout: {}", e, stdout_str);
+                    Err(anyhow::anyhow!("Invalid JSON from plugin: {}\nOutput: {}", e, stdout_str))
+                }
+            }
         }
-        Err(e) => {
-            tracing::error!("Failed to parse plugin JSON: {} | stdout: {}", e, stdout_str);
-            Err(anyhow::anyhow!("Invalid JSON from plugin: {}\nOutput: {}", e, stdout_str))
+        Ok(Err(e)) => {
+            tracing::error!("Plugin process error: {}", e);
+            Err(anyhow::anyhow!("Plugin process error: {}", e))
+        }
+        Err(_) => {
+            // 타임아웃 — 프로세스 강제 종료
+            tracing::warn!(
+                "Plugin timed out after {}s: {} -> {} — killing process",
+                timeout_secs, module_path, function
+            );
+            let _ = child.kill().await;
+            Err(anyhow::anyhow!("Plugin timed out after {}s", timeout_secs))
         }
     }
 }

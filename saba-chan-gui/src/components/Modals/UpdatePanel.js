@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../Icon';
+import { SabaToggle, SabaSpinner } from '../ui/SabaUI';
 import { QuestionModal } from './Modals';
 
 /**
@@ -414,13 +415,12 @@ function UpdatePanel({ onBack, isExiting, devMode }) {
                         <span className={`update-mock-label ${mockMode ? 'mock' : 'real'}`}>
                             {mockMode ? 'MOCK' : 'REAL'}
                         </span>
-                        <input
-                            type="checkbox"
+                        <SabaToggle
+                            size="sm"
                             checked={!!mockMode}
-                            onChange={(e) => handleToggleMock(e.target.checked)}
+                            onChange={(checked) => handleToggleMock(checked)}
                             disabled={mockMode === null || anyBusy}
                         />
-                        <span className="update-mock-slider" />
                     </label>
                 )}
             </div>
@@ -463,7 +463,7 @@ function UpdatePanel({ onBack, isExiting, devMode }) {
                                             title="다운로드"
                                         >
                                             {isBusy
-                                                ? <span className="update-spinner" />
+                                                ? <SabaSpinner size="xs" />
                                                 : <Icon name="download" size="xs" />}
                                         </button>
                                     )}
@@ -475,7 +475,7 @@ function UpdatePanel({ onBack, isExiting, devMode }) {
                                             title={c.needsUpdater ? '적용 (재시작 필요)' : '적용'}
                                         >
                                             {isBusy
-                                                ? <span className="update-spinner" />
+                                                ? <SabaSpinner size="xs" />
                                                 : <Icon name={c.needsUpdater ? 'externalLink' : 'checkCircle'} size="xs" />}
                                         </button>
                                     )}
@@ -503,10 +503,10 @@ function UpdatePanel({ onBack, isExiting, devMode }) {
                         <Icon name="refresh" size="sm" />
                         {t('updates.auto_check', '자동으로 업데이트 확인')}
                     </span>
-                    <span className={`update-auto-toggle ${autoCheckEnabled ? 'on' : ''}`}
-                          onClick={() => handleAutoCheckToggle(!autoCheckEnabled)}>
-                        <span className="update-auto-toggle-knob" />
-                    </span>
+                    <SabaToggle
+                        checked={autoCheckEnabled}
+                        onChange={(checked) => handleAutoCheckToggle(checked)}
+                    />
                 </label>
             </div>
 

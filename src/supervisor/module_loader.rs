@@ -40,6 +40,10 @@ pub struct ModuleMetadata {
     pub extensions: std::collections::HashMap<String, serde_json::Value>,
     #[serde(default)]
     pub process_patterns: Vec<String>,  // [detection].process_patterns — 컨테이너 내 서버 프로세스 탐지용
+    /// 커맨드라인 인수 패턴 — java.exe 같은 범용 프로세스를 구분하기 위한 추가 매칭 패턴
+    /// 예: ["server.jar"] (Minecraft), ["zombie.network.GameServer"] (Zomboid)
+    #[serde(default)]
+    pub cmd_patterns: Vec<String>,  // [detection].cmd_patterns
 }
 
 impl ModuleMetadata {
@@ -250,6 +254,8 @@ struct ConfigSection {
 struct DetectionSection {
     #[serde(default)]
     process_patterns: Option<Vec<String>>,
+    #[serde(default)]
+    cmd_patterns: Option<Vec<String>>,
     #[serde(default)]
     #[allow(dead_code)]
     common_paths: Option<Vec<String>>,
@@ -573,8 +579,11 @@ impl ModuleToml {
                 }
                 ext_map
             },
-            process_patterns: self._detection
-                .and_then(|d| d.process_patterns)
+            process_patterns: self._detection.as_ref()
+                .and_then(|d| d.process_patterns.clone())
+                .unwrap_or_default(),
+            cmd_patterns: self._detection.as_ref()
+                .and_then(|d| d.cmd_patterns.clone())
                 .unwrap_or_default(),
         }
     }
@@ -966,6 +975,43 @@ group = "network"
         assert_eq!(settings.fields.len(), 2);
         assert_eq!(settings.fields[0].group.as_deref(), Some("performance"));
         assert_eq!(settings.fields[1].group.as_deref(), Some("network"));
+    }
+
+    #[test]
+    fn test_parse_module_toml_cmd_patterns() {
+        let toml = r#"
+[module]
+name = "zomboid"
+version = "1.0.0"
+entry = "lifecycle.py"
+
+[config]
+process_name = "java.exe"
+default_port = 16261
+
+[detection]
+process_patterns = ["ProjectZomboid64", "zombie.network.GameServer"]
+cmd_patterns = ["zombie.network.GameServer", "ProjectZomboid", "pzserver"]
+common_paths = ["C:\\PZServer"]
+"#;
+        let meta = parse_module_toml(toml).unwrap();
+        assert_eq!(meta.process_name.as_deref(), Some("java.exe"));
+        assert_eq!(meta.process_patterns.len(), 2);
+        assert_eq!(meta.cmd_patterns.len(), 3);
+        assert!(meta.cmd_patterns.contains(&"zombie.network.GameServer".to_string()));
+        assert!(meta.cmd_patterns.contains(&"ProjectZomboid".to_string()));
+    }
+
+    #[test]
+    fn test_parse_module_toml_cmd_patterns_empty_by_default() {
+        let toml = r#"
+[module]
+name = "test-game"
+version = "1.0.0"
+entry = "lifecycle.py"
+"#;
+        let meta = parse_module_toml(toml).unwrap();
+        assert!(meta.cmd_patterns.is_empty());
     }
 }
 

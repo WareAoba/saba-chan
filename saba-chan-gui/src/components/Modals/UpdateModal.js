@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../Icon';
+import { SabaToggle, SabaSpinner } from '../ui/SabaUI';
 import { useModalClose } from '../../hooks/useModalClose';
 import { QuestionModal } from './Modals';
 
@@ -436,13 +437,12 @@ function UpdateModal({ isOpen, onClose }) {
                             <span className={`update-mock-label ${mockMode ? 'mock' : 'real'}`}>
                                 {mockMode ? 'MOCK' : 'REAL'}
                             </span>
-                            <input
-                                type="checkbox"
+                            <SabaToggle
+                                size="sm"
                                 checked={!!mockMode}
-                                onChange={(e) => handleToggleMock(e.target.checked)}
+                                onChange={(checked) => handleToggleMock(checked)}
                                 disabled={mockMode === null || anyBusy}
                             />
-                            <span className="update-mock-slider" />
                         </label>
                         <button className="update-modal-close" onClick={requestClose}>
                             <Icon name="close" size="sm" />
@@ -489,7 +489,7 @@ function UpdateModal({ isOpen, onClose }) {
                                                 title="다운로드"
                                             >
                                                 {isBusy
-                                                    ? <span className="update-spinner" />
+                                                    ? <SabaSpinner size="xs" />
                                                     : <Icon name="download" size="xs" />}
                                             </button>
                                         )}
@@ -501,7 +501,7 @@ function UpdateModal({ isOpen, onClose }) {
                                                 title={c.needsUpdater ? '적용 (재시작 필요)' : '적용'}
                                             >
                                                 {isBusy
-                                                    ? <span className="update-spinner" />
+                                                    ? <SabaSpinner size="xs" />
                                                     : <Icon name={c.needsUpdater ? 'externalLink' : 'checkCircle'} size="xs" />}
                                             </button>
                                         )}

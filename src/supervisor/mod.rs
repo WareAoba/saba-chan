@@ -94,6 +94,19 @@ impl Supervisor {
         Ok(())
     }
 
+    /// 로드된 모듈로부터 module_name → protocols_supported 맵을 빌드합니다.
+    /// `check_port_conflicts`에 전달하여 미지원 프로토콜 포트를 충돌 검사에서 제외합니다.
+    fn build_module_protocols_map(&self) -> HashMap<String, Vec<String>> {
+        let mut map = HashMap::new();
+        if let Ok(modules) = self.module_loader.discover_modules() {
+            for m in modules {
+                if let Some(protocols) = m.metadata.protocols_supported {
+                    map.insert(m.metadata.name, protocols);
+                }
+            }
+        }
+        map
+    }
     /// Start a server by name (e.g., "my-server-1")
     /// Called by IPC API: POST /api/server/:name/start
     pub async fn start_server(&self, server_name: &str, module_name: &str, config: Value) -> Result<Value> {
@@ -105,14 +118,15 @@ impl Supervisor {
             .find(|i| i.name == server_name)
             .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
 
-        // ── 포트 충돌 검사 ──
+        // ── 포트 충돌 검사 (모듈별 프로토콜 인지) ──
         let all_instances = self.instance_store.list();
         let running_ids: std::collections::HashSet<String> = all_instances
             .iter()
             .filter(|i| self.tracker.get_pid(&i.id).is_ok())
             .map(|i| i.id.clone())
             .collect();
-        let conflicts = crate::validator::check_port_conflicts(instance, &all_instances, &running_ids);
+        let module_protocols = self.build_module_protocols_map();
+        let conflicts = crate::validator::check_port_conflicts(instance, &all_instances, &running_ids, Some(&module_protocols));
         if !conflicts.is_empty() {
             let details: Vec<String> = conflicts.iter().map(|c| c.to_string()).collect();
             tracing::warn!("Port conflict detected for '{}': {:?}", server_name, details);
@@ -686,14 +700,15 @@ impl Supervisor {
         let instance = self.instance_store.get(instance_id)
             .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
 
-        // ── 포트 충돌 검사 ──
+        // ── 포트 충돌 검사 (모듈별 프로토콜 인지) ──
         let all_instances = self.instance_store.list();
         let running_ids: std::collections::HashSet<String> = all_instances
             .iter()
             .filter(|i| self.tracker.get_pid(&i.id).is_ok())
             .map(|i| i.id.clone())
             .collect();
-        let conflicts = crate::validator::check_port_conflicts(&instance, &all_instances, &running_ids);
+        let module_protocols = self.build_module_protocols_map();
+        let conflicts = crate::validator::check_port_conflicts(&instance, &all_instances, &running_ids, Some(&module_protocols));
         if !conflicts.is_empty() {
             let details: Vec<String> = conflicts.iter().map(|c| c.to_string()).collect();
             tracing::warn!("Port conflict detected for managed instance '{}': {:?}", instance.name, details);
@@ -1184,7 +1199,18 @@ impl Supervisor {
                     }
                 }
                 if let Some(process_name) = &instance.process_name {
-                    match ProcessMonitor::find_by_name(process_name) {
+                    // 모듈에서 cmd_patterns 가져오기 — java.exe 같은 범용 프로세스를 구분하기 위한 커맨드라인 패턴
+                    let cmd_patterns = self.module_loader.get_module(&instance.module_name)
+                        .map(|m| m.metadata.cmd_patterns.clone())
+                        .unwrap_or_default();
+
+                    let find_result = if cmd_patterns.is_empty() {
+                        ProcessMonitor::find_by_name(process_name)
+                    } else {
+                        ProcessMonitor::find_by_name_and_cmd(process_name, &cmd_patterns)
+                    };
+
+                    match find_result {
                         Ok(processes) => {
                             if let Some(process) = processes.first() {
                                 auto_detected_count += 1;
@@ -1203,7 +1229,8 @@ impl Supervisor {
                                     .filter(|i| i.id != instance.id && self.tracker.get_pid(&i.id).is_ok())
                                     .map(|i| i.id.clone())
                                     .collect();
-                                let conflicts = crate::validator::check_port_conflicts(&instance, &all_instances, &running_ids);
+                                let module_protocols = self.build_module_protocols_map();
+                                let conflicts = crate::validator::check_port_conflicts(&instance, &all_instances, &running_ids, Some(&module_protocols));
                                 if !conflicts.is_empty() {
                                     let details: Vec<String> = conflicts.iter().map(|c| c.to_string()).collect();
                                     tracing::warn!(

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import './Modals.css';
 import { Icon } from '../Icon';
+import { SabaToggle } from '../ui/SabaUI';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { getTheme, setTheme as saveTheme } from '../../utils/themeManager';
 import { useModalClose } from '../../hooks/useModalClose';
@@ -327,16 +328,11 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
                                                 <span className="setting-description">{ext.description}</span>
                                             )}
                                         </label>
-                                        <label className="extension-toggle">
-                                            <input
-                                                id={`ext-toggle-${ext.id}`}
-                                                type="checkbox"
-                                                checked={!!ext.enabled}
-                                                disabled={togglingIds.has(ext.id)}
-                                                onChange={e => handleExtensionToggle(ext.id, e.target.checked)}
-                                            />
-                                            <span className="extension-toggle-slider" />
-                                        </label>
+                                        <SabaToggle
+                                            checked={!!ext.enabled}
+                                            disabled={togglingIds.has(ext.id)}
+                                            onChange={(checked) => handleExtensionToggle(ext.id, checked)}
+                                        />
                                     </div>
                                 ))
                             )}

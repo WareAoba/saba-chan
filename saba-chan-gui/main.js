@@ -2758,6 +2758,7 @@ ipcMain.handle('discord:start', async (event, config) => {
             musicEnabled: config.musicEnabled !== false,
             mode: 'cloud',
             cloud: config.cloud || {},
+            nodeSettings: config.nodeSettings || {},
         };
         saveBotConfig(cloudConfigToSave);
 
@@ -2811,16 +2812,29 @@ ipcMain.handle('discord:start', async (event, config) => {
         return { error: `Bot script not found: ${indexPath}` };
     }
 
-    // 설정을 discord_bot 폴더에 저장
+    // 설정을 discord_bot 폴더에 저장 (봇 프로세스가 직접 읽음)
+    // ★ nodeSettings가 전달되지 않으면 기존 파일에서 보존 (업데이트/복원 후 재시작 시 덮어쓰기 방지)
+    let existingNodeSettings = {};
+    const localConfigPath = path.join(botPath, 'bot-config.json');
+    if (!config.nodeSettings || Object.keys(config.nodeSettings).length === 0) {
+        try {
+            if (fs.existsSync(localConfigPath)) {
+                const existing = JSON.parse(fs.readFileSync(localConfigPath, 'utf8'));
+                existingNodeSettings = existing.nodeSettings || {};
+            }
+        } catch (_) {}
+    }
     const configToSave = {
         prefix: config.prefix || '!saba',
         moduleAliases: config.moduleAliases || {},
         commandAliases: config.commandAliases || {},
-        musicEnabled: config.musicEnabled !== false
+        musicEnabled: config.musicEnabled !== false,
+        nodeSettings: config.nodeSettings && Object.keys(config.nodeSettings).length > 0
+            ? config.nodeSettings
+            : existingNodeSettings,
     };
     
     // discord_bot/bot-config.json에 저장 (봇이 직접 읽음)
-    const localConfigPath = path.join(botPath, 'bot-config.json');
     try {
         fs.writeFileSync(localConfigPath, JSON.stringify(configToSave, null, 2), 'utf8');
         console.log('[Discord Bot] Config saved to:', localConfigPath);
@@ -3021,6 +3035,7 @@ ipcMain.handle('botConfig:save', async (event, config) => {
             musicEnabled: config.musicEnabled !== false,
             mode: config.mode || 'local',
             cloud: config.cloud || {},
+            nodeSettings: config.nodeSettings || {},
         };
         
         // 1. discord_bot 폴더에 저장 (메인 저장소)
@@ -3045,8 +3060,13 @@ ipcMain.handle('botConfig:save', async (event, config) => {
             return { error: `Failed to save to discord_bot folder: ${fileError.message}` };
         }
         
-        // 2. AppData에도 백업 (GUI 로드용)
-        saveBotConfig(configToSave);
+        // 2. AppData에도 백업 (GUI 로드용 — cloudNodes/cloudMembers 캐시 포함)
+        const appDataConfig = {
+            ...configToSave,
+            cloudNodes: config.cloudNodes || [],
+            cloudMembers: config.cloudMembers || {},
+        };
+        saveBotConfig(appDataConfig);
 
         // 3. ★ 클라우드 모드: 릴레이 서버에 botConfig 동기화
         if (config.mode === 'cloud') {

@@ -124,6 +124,12 @@ function App() {
     // { [guildId|"local"]: { allowedInstances: string[], memberPermissions: { [userId]: { [serverId]: string[] } } } }
     const [nodeSettings, setNodeSettings] = useState({});
 
+    // ── Cloud cache (로컬 저장 — 서버 페치 없이 즉시 표시) ──
+    // cloudNodes: [{ guildId, guildName, hostId, ... }]
+    const [cloudNodes, setCloudNodes] = useState([]);
+    // cloudMembers: { [guildId]: [{ id, username, displayName }] }
+    const [cloudMembers, setCloudMembers] = useState({});
+
     // ── Background Daemon State ────────────────────────────
     const [backgroundDaemonStatus, setBackgroundDaemonStatus] = useState('checking');
 
@@ -149,11 +155,13 @@ function App() {
 
     const {
         discordBotStatus, setDiscordBotStatus, botStatusReady,
+        relayConnected, relayConnecting,
         handleStartDiscordBot, handleStopDiscordBot,
     } = useDiscordBot({
         discordToken, discordPrefix, discordAutoStart,
         discordModuleAliases, discordCommandAliases,
         discordBotMode, discordCloudRelayUrl, discordCloudHostId,
+        nodeSettings,
         settingsReady, discordTokenRef,
         setModal,
     });
@@ -331,6 +339,9 @@ function App() {
                     } else if (Array.isArray(botCfg.allowedInstances)) {
                         setNodeSettings({ local: { allowedInstances: botCfg.allowedInstances, memberPermissions: {} } });
                     }
+                    // ★ 클라우드 캐시 로드
+                    if (Array.isArray(botCfg.cloudNodes)) setCloudNodes(botCfg.cloudNodes);
+                    if (botCfg.cloudMembers && typeof botCfg.cloudMembers === 'object') setCloudMembers(botCfg.cloudMembers);
                     if (!isTest) console.log('[Settings] Bot config loaded, prefix:', botCfg.prefix, 'mode:', botCfg.mode || 'local');
                 }
 
@@ -391,6 +402,8 @@ function App() {
                 } else if (Array.isArray(botCfg.allowedInstances)) {
                     setNodeSettings({ local: { allowedInstances: botCfg.allowedInstances, memberPermissions: {} } });
                 }
+                if (Array.isArray(botCfg.cloudNodes)) setCloudNodes(botCfg.cloudNodes);
+                if (botCfg.cloudMembers && typeof botCfg.cloudMembers === 'object') setCloudMembers(botCfg.cloudMembers);
             }
         } catch (err) {
             console.error('Failed to load bot config:', err);
@@ -426,6 +439,8 @@ function App() {
                 commandAliases: discordCommandAliases,
                 musicEnabled: discordMusicEnabled,
                 nodeSettings,
+                cloudNodes,
+                cloudMembers,
             };
             const res = await window.api.botConfigSave(payload);
             if (res.error) {
@@ -485,10 +500,10 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [settingsReady, discordPrefix]);
 
-    // ★ 클라우드/노드 설정 변경 시 자동 저장 (mode, relayUrl, hostId, nodeSettings)
+    // ★ 클라우드/노드 설정 변경 시 자동 저장 (mode, relayUrl, hostId, nodeSettings, cloudNodes, cloudMembers)
     useEffect(() => {
         if (!settingsReady || !settingsPath) return;
-        const current = { discordBotMode, discordCloudRelayUrl, discordCloudHostId, nodeSettings };
+        const current = { discordBotMode, discordCloudRelayUrl, discordCloudHostId, nodeSettings, cloudNodes, cloudMembers };
         if (prevCloudSettingsRef.current === null) {
             prevCloudSettingsRef.current = current;
             return;
@@ -496,13 +511,15 @@ function App() {
         if (prevCloudSettingsRef.current.discordBotMode !== discordBotMode ||
             prevCloudSettingsRef.current.discordCloudRelayUrl !== discordCloudRelayUrl ||
             prevCloudSettingsRef.current.discordCloudHostId !== discordCloudHostId ||
-            JSON.stringify(prevCloudSettingsRef.current.nodeSettings) !== JSON.stringify(nodeSettings)) {
+            JSON.stringify(prevCloudSettingsRef.current.nodeSettings) !== JSON.stringify(nodeSettings) ||
+            JSON.stringify(prevCloudSettingsRef.current.cloudNodes) !== JSON.stringify(cloudNodes) ||
+            JSON.stringify(prevCloudSettingsRef.current.cloudMembers) !== JSON.stringify(cloudMembers)) {
             console.log('[Settings] Cloud/node settings changed, saving bot config:', { mode: discordBotMode, hostId: discordCloudHostId });
             saveBotConfig();
             prevCloudSettingsRef.current = current;
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [settingsReady, discordBotMode, discordCloudRelayUrl, discordCloudHostId, nodeSettings]);
+    }, [settingsReady, discordBotMode, discordCloudRelayUrl, discordCloudHostId, nodeSettings, cloudNodes, cloudMembers]);
 
     // ── fetchModules ────────────────────────────────────────
     const fetchModules = async () => {
@@ -748,7 +765,7 @@ function App() {
                             className={`btn btn-discord ${discordBotStatus === 'running' ? 'btn-discord-active' : ''}`}
                             onClick={() => showDiscordSection ? requestDiscordClose() : setShowDiscordSection(true)}
                         >
-                            <span className={`status-indicator ${discordBotStatus === 'running' ? 'status-online' : 'status-offline'}`}></span>
+                            <span className={`status-indicator ${discordBotStatus === 'running' ? 'status-online' : discordBotStatus === 'connecting' ? 'status-connecting' : 'status-offline'}`}></span>
                             Discord Bot
                         </button>
                         <DiscordBotModal
@@ -770,6 +787,8 @@ function App() {
                             setDiscordCloudRelayUrl={setDiscordCloudRelayUrl}
                             discordCloudHostId={discordCloudHostId}
                             setDiscordCloudHostId={setDiscordCloudHostId}
+                            relayConnected={relayConnected}
+                            relayConnecting={relayConnecting}
                             handleStartDiscordBot={handleStartDiscordBot}
                             handleStopDiscordBot={handleStopDiscordBot}
                             saveCurrentSettings={saveCurrentSettings}
@@ -778,6 +797,10 @@ function App() {
                             moduleAliasesPerModule={moduleAliasesPerModule}
                             nodeSettings={nodeSettings}
                             setNodeSettings={setNodeSettings}
+                            cloudNodes={cloudNodes}
+                            setCloudNodes={setCloudNodes}
+                            cloudMembers={cloudMembers}
+                            setCloudMembers={setCloudMembers}
                         />
                     </div>
                     <div className="background-button-wrapper">

@@ -18,6 +18,41 @@ const { buildModuleAliasMap } = require('../utils/aliasResolver');
 const processedMessages = new Set();
 const MESSAGE_CACHE_TTL = 5000;
 
+// ── 노드별 인스턴스 필터링 헬퍼 ──
+
+/**
+ * 노드(guildId)에서 허용된 인스턴스만 필터링하여 반환
+ * nodeSettings에 해당 노드 설정이 없으면 전체 인스턴스 반환 (제한 없음)
+ */
+async function getFilteredServers(guildId) {
+    const servers = await ipc.getServers(guildId);
+    const allowed = resolver.getAllowedInstances(guildId);
+    if (!allowed) {
+        console.log(`[Processor] getFilteredServers(${guildId}): no restriction — ${servers.length} server(s)`);
+        return servers; // 제한 없음
+    }
+    const filtered = servers.filter(s => allowed.includes(s.id));
+    console.log(`[Processor] getFilteredServers(${guildId}): allowed=${JSON.stringify(allowed)}, total=${servers.length}, filtered=${filtered.length}`);
+    return filtered;
+}
+
+/**
+ * 모듈 별명(또는 인스턴스 이름)이 필터링된 서버 목록에 존재하는지 확인.
+ * 비활성화된 인스턴스의 모듈은 "마운트되지 않은 것"으로 처리.
+ */
+async function isModuleMounted(moduleAlias, guildId) {
+    try {
+        const moduleName = resolver.resolveModule(moduleAlias, guildId);
+        const servers = await getFilteredServers(guildId);
+        return servers.some(s =>
+            s.module === moduleName ||
+            s.name.toLowerCase() === moduleAlias.toLowerCase()
+        );
+    } catch {
+        return false;
+    }
+}
+
 /**
  * 메시지 프로세서 진입점
  * @param {import('discord.js').Message} message
@@ -39,6 +74,9 @@ async function process(message) {
     const guildId = message.guildId;   // ★ 길드별 메타데이터 해석용
 
     if (!content.startsWith(prefix)) return;
+
+    // ★ 설정 파일 변경 감지 → 핫 리로드 (GUI에서 저장한 nodeSettings 즉시 반영)
+    resolver.reloadConfigIfChanged();
 
     await resolver.ensureGuildMetadata(guildId);
 
@@ -71,9 +109,9 @@ async function process(message) {
 
     // ④ 모듈만 (명령어 없음)
     if (!secondArg) {
-        // 알려진 모듈 별명인지 확인
-        if (!resolver.isKnownModuleAlias(firstArg, guildId)) {
-            // 케이스 1: 알 수 없는 입력
+        // 알려진 모듈 별명인지 + 필터링된 서버에 해당 모듈이 있는지 확인
+        if (!resolver.isKnownModuleAlias(firstArg, guildId) || !(await isModuleMounted(firstArg, guildId))) {
+            // 케이스 1: 알 수 없는 입력 또는 비활성 모듈
             await message.reply(i18n.t('bot:errors.unknown_input'));
             return;
         }
@@ -82,7 +120,11 @@ async function process(message) {
         return;
     }
 
-    // ⑤ 모듈 + 명령어 → IPC 라우팅
+    // ⑤ 모듈 + 명령어 → IPC 라우팅 (비활성 모듈이면 알 수 없는 명령어 처리)
+    if (resolver.isKnownModuleAlias(firstArg, guildId) && !(await isModuleMounted(firstArg, guildId))) {
+        await message.reply(i18n.t('bot:errors.unknown_input'));
+        return;
+    }
     await handleModuleCommand(message, firstArg, secondArg, args.slice(2), guildId);
 }
 
@@ -96,7 +138,7 @@ async function buildHelpMessage(guildId) {
 
     let mountedModules = [];
     try {
-        const servers = await ipc.getServers(guildId);
+        const servers = await getFilteredServers(guildId);
         mountedModules = [...new Set(servers.map(s => s.module))];
     } catch (e) {
         console.warn('[Processor] Could not fetch servers for help:', e.message);
@@ -134,7 +176,7 @@ async function buildHelpMessage(guildId) {
 
 async function handleListCommand(message, guildId) {
     try {
-        const servers = await ipc.getServers(guildId);
+        const servers = await getFilteredServers(guildId);
         if (servers.length === 0) {
             await message.reply(i18n.t('bot:list.empty'));
         } else {
@@ -184,7 +226,7 @@ async function handleModuleHelp(message, moduleAlias, guildId) {
     // 다중 인스턴스 경고
     let multiInstanceWarning = '';
     try {
-        const servers = await ipc.getServers(guildId);
+        const servers = await getFilteredServers(guildId);
         const matched = servers.filter(s => s.module === moduleName);
         if (matched.length > 1) {
             multiInstanceWarning = '\n\n' + i18n.t('bot:errors.multiple_instances', {
@@ -249,8 +291,8 @@ async function handleModuleCommand(message, moduleAlias, commandAlias, extraArgs
     console.log(`[Processor] ${message.author.tag}: ${prefix} ${moduleAlias} ${commandAlias} → module=${moduleName}, command=${commandName}, args=${extraArgs.join(' ')}`);
 
     try {
-        // 서버 찾기
-        const servers = await ipc.getServers(guildId);
+        // 서버 찾기 (노드별 필터링 적용)
+        const servers = await getFilteredServers(guildId);
 
         // 1) 인스턴스 이름으로 정확히 매칭
         let server = servers.find(s => s.name.toLowerCase() === moduleAlias.toLowerCase());
@@ -271,6 +313,19 @@ async function handleModuleCommand(message, moduleAlias, commandAlias, extraArgs
         if (!server) {
             await message.reply(i18n.t('bot:server.not_found', { alias: moduleAlias, resolved: moduleName }));
             return;
+        }
+
+        // ── 멤버 권한 체크 ──
+        const userId = message.author.id;
+        if (resolver.isMemberManaged(guildId, userId)) {
+            const allowedCmds = resolver.getMemberCommands(guildId, userId, server.id);
+            if (allowedCmds !== null && !allowedCmds.includes(commandName)) {
+                console.log(`[Processor] Permission denied: user=${userId} server=${server.id} command=${commandName}`);
+                await message.reply(i18n.t('bot:errors.permission_denied', {
+                    defaultValue: '❌ 해당 명령어를 사용할 권한이 없습니다.',
+                }));
+                return;
+            }
         }
 
         // ── 내장 명령어 (start, stop, status) ──

@@ -396,6 +396,7 @@
     "status_bot_label": "봇:",
     "status_agent_label": "에이전트:",
     "status_relay_label": "릴레이:",
+    "status_cloud_label": "클라우드:",
     "status_running": "실행 중",
     "status_stopped": "정지",
     "status_relay_connected": "연결됨",

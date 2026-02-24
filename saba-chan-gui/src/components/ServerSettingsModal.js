@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Icon, CustomDropdown, ExtensionSlot } from './index';
+import { Icon, CustomDropdown, ExtensionSlot, SabaToggle } from './index';
 import { validateAllSettings, checkPortConflicts, checkAliasConflicts } from '../utils/validation';
 
 /**
@@ -43,10 +43,7 @@ function SettingsField({ field, value, modNs, onChange, validationError }) {
             )}
             {field.field_type === 'boolean' && (
                 <div className="toggle-row">
-                    <label className="toggle-switch">
-                        <input type="checkbox" checked={value === true || value === 'true'} onChange={(e) => onChange(field.name, e.target.checked)} />
-                        <span className="toggle-slider"></span>
-                    </label>
+                    <SabaToggle checked={value === true || value === 'true'} onChange={(checked) => onChange(field.name, checked)} />
                     <span className="toggle-label-text">{value === true || value === 'true' ? 'ON' : 'OFF'}</span>
                 </div>
             )}
@@ -103,11 +100,8 @@ function GeneralTab({
                     <p className="protocol-mode-description">{t('server_settings.protocol_description')}</p>
                     <div className="protocol-toggle-container">
                         <span className={`protocol-label ${settingsValues.protocol_mode === 'rest' ? 'active' : ''}`}>REST</span>
-                        <label className="toggle-switch">
-                            <input type="checkbox" checked={settingsValues.protocol_mode === 'rcon'}
-                                onChange={(e) => handleSettingChange('protocol_mode', e.target.checked ? 'rcon' : 'rest')} />
-                            <span className="toggle-slider"></span>
-                        </label>
+                        <SabaToggle size="lg" checked={settingsValues.protocol_mode === 'rcon'}
+                            onChange={(checked) => handleSettingChange('protocol_mode', checked ? 'rcon' : 'rest')} />
                         <span className={`protocol-label ${settingsValues.protocol_mode === 'rcon' ? 'active' : ''}`}>RCON</span>
                     </div>
                     <p className="protocol-mode-hint">
@@ -435,7 +429,15 @@ export function ServerSettingsModal({
         return validateAllSettings(module.settings.fields, settingsValues);
     }, [module, settingsValues]);
 
-    // ── Validation: 포트 충돌 검사 ──
+    // ── Validation: 포트 충돌 검사 (모듈 프로토콜 인지) ──
+    const moduleProtocols = React.useMemo(() => {
+        const map = {};
+        for (const m of modules) {
+            if (m.protocols?.supported) map[m.name] = m.protocols.supported;
+        }
+        return map;
+    }, [modules]);
+
     const portConflicts = React.useMemo(() => {
         if (!settingsServer || !servers) return [];
         const targetPorts = {
@@ -443,8 +445,8 @@ export function ServerSettingsModal({
             rcon_port: settingsValues.rcon_port ?? settingsServer.rcon_port,
             rest_port: settingsValues.rest_port ?? settingsServer.rest_port,
         };
-        return checkPortConflicts(settingsServer.id, targetPorts, servers);
-    }, [settingsServer, settingsValues, servers]);
+        return checkPortConflicts(settingsServer.id, targetPorts, servers, moduleProtocols, settingsServer.module);
+    }, [settingsServer, settingsValues, servers, moduleProtocols]);
 
     // ── Validation: 별명 충돌 검사 ──
     const aliasConflicts = React.useMemo(() => {

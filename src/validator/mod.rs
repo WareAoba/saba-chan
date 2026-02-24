@@ -246,10 +246,16 @@ pub fn validate_all_settings(
 
 /// 인스턴스의 포트가 다른 실행 중인 인스턴스와 충돌하는지 검사합니다.
 ///
+/// 모듈의 지원 프로토콜 정보(`module_protocols`)가 제공되면,
+/// 해당 모듈이 실제로 사용하는 프로토콜의 포트만 비교합니다.
+/// 예: REST를 지원하지 않는 모듈의 `rest_port`는 충돌 검사에서 제외됩니다.
+///
 /// # Arguments
 /// * `target` - 검사할 인스턴스
 /// * `all_instances` - 모든 인스턴스 목록
 /// * `running_ids` - 현재 실행 중인 인스턴스 ID 집합
+/// * `module_protocols` - 모듈별 지원 프로토콜 맵 (module_name → ["rcon", "rest", ...]).
+///   `None`이면 모든 포트를 비교합니다 (하위 호환).
 ///
 /// # Returns
 /// 충돌 목록 (비어있으면 충돌 없음)
@@ -257,18 +263,12 @@ pub fn check_port_conflicts(
     target: &ServerInstance,
     all_instances: &[ServerInstance],
     running_ids: &std::collections::HashSet<String>,
+    module_protocols: Option<&std::collections::HashMap<String, Vec<String>>>,
 ) -> Vec<PortConflict> {
     let mut conflicts = Vec::new();
 
-    // 대상 인스턴스의 모든 포트 수집
-    let target_ports: Vec<(u16, &str)> = [
-        (target.port, "port"),
-        (target.rcon_port, "rcon_port"),
-        (target.rest_port, "rest_port"),
-    ]
-    .iter()
-    .filter_map(|(p, name)| p.map(|port| (port, *name)))
-    .collect();
+    // 대상 인스턴스에서 실제 사용하는 포트만 수집
+    let target_ports = collect_active_ports(target, module_protocols);
 
     if target_ports.is_empty() {
         return conflicts;
@@ -285,15 +285,8 @@ pub fn check_port_conflicts(
             continue;
         }
 
-        // 상대 인스턴스의 모든 포트
-        let other_ports: Vec<(u16, &str)> = [
-            (other.port, "port"),
-            (other.rcon_port, "rcon_port"),
-            (other.rest_port, "rest_port"),
-        ]
-        .iter()
-        .filter_map(|(p, name)| p.map(|port| (port, *name)))
-        .collect();
+        // 상대 인스턴스에서 실제 사용하는 포트만 수집
+        let other_ports = collect_active_ports(other, module_protocols);
 
         for &(target_port, target_type) in &target_ports {
             for &(other_port, other_type) in &other_ports {
@@ -311,6 +304,38 @@ pub fn check_port_conflicts(
     }
 
     conflicts
+}
+
+/// 인스턴스에서 모듈이 실제 사용하는 포트만 수집합니다.
+///
+/// `module_protocols`가 제공되면 해당 모듈의 `protocols_supported`를 참조하여
+/// - game port: 항상 포함
+/// - rcon_port: 모듈이 "rcon"을 지원할 때만 포함
+/// - rest_port: 모듈이 "rest"를 지원할 때만 포함
+fn collect_active_ports<'a>(
+    instance: &'a ServerInstance,
+    module_protocols: Option<&std::collections::HashMap<String, Vec<String>>>,
+) -> Vec<(u16, &'a str)> {
+    let protocols = module_protocols.and_then(|mp| mp.get(&instance.module_name));
+    // 프로토콜 정보가 없으면 (하위 호환) 모든 포트를 포함
+    let supports_rcon = protocols.map_or(true, |p| p.iter().any(|s| s == "rcon"));
+    let supports_rest = protocols.map_or(true, |p| p.iter().any(|s| s == "rest"));
+
+    let mut ports = Vec::new();
+    if let Some(port) = instance.port {
+        ports.push((port, "port"));
+    }
+    if supports_rcon {
+        if let Some(rcon_port) = instance.rcon_port {
+            ports.push((rcon_port, "rcon_port"));
+        }
+    }
+    if supports_rest {
+        if let Some(rest_port) = instance.rest_port {
+            ports.push((rest_port, "rest_port"));
+        }
+    }
+    ports
 }
 
 #[cfg(test)]
@@ -403,7 +428,7 @@ mod tests {
         let running: std::collections::HashSet<String> = ["bbb".to_string()].into();
         let all = vec![instance_a.clone(), instance_b];
 
-        let conflicts = check_port_conflicts(&instance_a, &all, &running);
+        let conflicts = check_port_conflicts(&instance_a, &all, &running, None);
         assert_eq!(conflicts.len(), 1);
         assert_eq!(conflicts[0].port, 25565);
     }
@@ -421,7 +446,86 @@ mod tests {
         let running: std::collections::HashSet<String> = std::collections::HashSet::new();
         let all = vec![instance_a.clone(), instance_b];
 
-        let conflicts = check_port_conflicts(&instance_a, &all, &running);
+        let conflicts = check_port_conflicts(&instance_a, &all, &running, None);
         assert!(conflicts.is_empty());
+    }
+
+    /// REST를 지원하지 않는 모듈의 rest_port는 충돌 검사에서 무시되어야 합니다.
+    #[test]
+    fn test_rest_port_ignored_for_non_rest_module() {
+        // 좀보이드 2개: 둘 다 rest_port=8212 이지만, 모듈이 REST를 지원하지 않음
+        let mut instance_a = ServerInstance::new("zomboid-1", "zomboid");
+        instance_a.id = "aaa".to_string();
+        instance_a.port = Some(16261);
+        instance_a.rcon_port = Some(27015);
+        instance_a.rest_port = Some(8212);  // 잘못 설정된 기본값
+
+        let mut instance_b = ServerInstance::new("zomboid-2", "zomboid");
+        instance_b.id = "bbb".to_string();
+        instance_b.port = Some(16262);
+        instance_b.rcon_port = Some(27016);
+        instance_b.rest_port = Some(8212);  // 같은 rest_port (그러나 미사용)
+
+        let running: std::collections::HashSet<String> = ["bbb".to_string()].into();
+        let all = vec![instance_a.clone(), instance_b];
+
+        // 프로토콜 맵: zomboid는 rcon+stdin만 지원 (rest 없음)
+        let mut module_protocols = std::collections::HashMap::new();
+        module_protocols.insert("zomboid".to_string(), vec!["rcon".to_string(), "stdin".to_string()]);
+
+        // rest_port 충돌이 무시되어야 함
+        let conflicts = check_port_conflicts(&instance_a, &all, &running, Some(&module_protocols));
+        assert!(conflicts.is_empty(), "REST를 지원하지 않는 모듈의 rest_port 충돌은 무시되어야 합니다: {:?}", conflicts);
+    }
+
+    /// REST를 지원하는 모듈의 rest_port 충돌은 정상 검출되어야 합니다.
+    #[test]
+    fn test_rest_port_conflict_detected_for_rest_module() {
+        let mut instance_a = ServerInstance::new("palworld-1", "palworld");
+        instance_a.id = "aaa".to_string();
+        instance_a.port = Some(8211);
+        instance_a.rest_port = Some(8212);
+
+        let mut instance_b = ServerInstance::new("palworld-2", "palworld");
+        instance_b.id = "bbb".to_string();
+        instance_b.port = Some(8213);
+        instance_b.rest_port = Some(8212);  // 같은 rest_port — 실제 충돌
+
+        let running: std::collections::HashSet<String> = ["bbb".to_string()].into();
+        let all = vec![instance_a.clone(), instance_b];
+
+        let mut module_protocols = std::collections::HashMap::new();
+        module_protocols.insert("palworld".to_string(), vec!["rest".to_string()]);
+
+        let conflicts = check_port_conflicts(&instance_a, &all, &running, Some(&module_protocols));
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].port, 8212);
+        assert_eq!(conflicts[0].port_type, "rest_port");
+    }
+
+    /// 서로 다른 모듈 간 — REST 미지원 모듈의 rest_port가 REST 지원 모듈과 겹쳐도 무시
+    #[test]
+    fn test_cross_module_rest_port_no_false_conflict() {
+        let mut zomboid = ServerInstance::new("zomboid-1", "zomboid");
+        zomboid.id = "aaa".to_string();
+        zomboid.port = Some(16261);
+        zomboid.rcon_port = Some(27015);
+        zomboid.rest_port = Some(8212);  // 잘못 설정된 기본값
+
+        let mut palworld = ServerInstance::new("palworld-1", "palworld");
+        palworld.id = "bbb".to_string();
+        palworld.port = Some(8211);
+        palworld.rest_port = Some(8212);  // REST 실제 사용
+
+        let running: std::collections::HashSet<String> = ["bbb".to_string()].into();
+        let all = vec![zomboid.clone(), palworld];
+
+        let mut module_protocols = std::collections::HashMap::new();
+        module_protocols.insert("zomboid".to_string(), vec!["rcon".to_string(), "stdin".to_string()]);
+        module_protocols.insert("palworld".to_string(), vec!["rest".to_string()]);
+
+        // zomboid가 대상: rest_port를 사용하지 않으므로 충돌 없어야 함
+        let conflicts = check_port_conflicts(&zomboid, &all, &running, Some(&module_protocols));
+        assert!(conflicts.is_empty(), "대상 모듈이 REST 미지원이면 rest_port 충돌 없어야 합니다: {:?}", conflicts);
     }
 }

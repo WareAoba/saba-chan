@@ -122,11 +122,12 @@ pub async fn create_instance(
             if instance.port.is_none() {
                 instance.port = loaded_module.metadata.default_port;
             }
-            // rcon_port / rest_port の기본값을 모듈 설정에서 가져오기
-            if instance.rcon_port.is_none() {
+            // rcon_port / rest_port 기본값을 모듈이 해당 프로토콜을 지원할 때만 설정
+            let supported = loaded_module.metadata.protocols_supported.as_deref().unwrap_or(&[]);
+            if instance.rcon_port.is_none() && supported.iter().any(|s| s == "rcon") {
                 instance.rcon_port = Some(loaded_module.metadata.default_rcon_port());
             }
-            if instance.rest_port.is_none() {
+            if instance.rest_port.is_none() && supported.iter().any(|s| s == "rest") {
                 instance.rest_port = Some(loaded_module.metadata.default_rest_port());
             }
 

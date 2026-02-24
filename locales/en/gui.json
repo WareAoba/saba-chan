@@ -396,6 +396,7 @@
     "status_bot_label": "Bot:",
     "status_agent_label": "Agent:",
     "status_relay_label": "Relay:",
+    "status_cloud_label": "Cloud:",
     "status_running": "Running",
     "status_stopped": "Stopped",
     "status_relay_connected": "Connected",

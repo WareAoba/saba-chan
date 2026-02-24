@@ -832,6 +832,16 @@ impl ExtensionManager {
         hook_name: &str,
         context: Value,
     ) -> Vec<(String, Result<Value>)> {
+        self.dispatch_hook_timed(hook_name, context, crate::plugin::DEFAULT_PLUGIN_TIMEOUT_SECS).await
+    }
+
+    /// 타임아웃 지정 가능한 hook 디스패치 (server.list_enrich 등 빠른 반환이 필요한 hook용)
+    pub async fn dispatch_hook_timed(
+        &self,
+        hook_name: &str,
+        context: Value,
+        timeout_secs: u64,
+    ) -> Vec<(String, Result<Value>)> {
         let hooks = self.hooks_for(hook_name);
         if hooks.is_empty() {
             return Vec::new();
@@ -882,10 +892,11 @@ impl ExtensionManager {
                 binding.function
             );
 
-            let result = crate::plugin::run_plugin(
+            let result = crate::plugin::run_plugin_with_timeout(
                 &module_path,
                 &binding.function,
                 context.clone(),
+                timeout_secs,
             )
             .await;
 

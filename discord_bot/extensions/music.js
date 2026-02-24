@@ -227,6 +227,14 @@ function isMusicModule(modulePart, botConfig) {
 }
 
 /**
+ * 릴레이 에이전트의 mock 메시지인지 판별
+ * — member/guild 프로퍼티가 없으면 relay mock으로 간주
+ */
+function isRelayMessage(message) {
+    return !message.member || !message.guild;
+}
+
+/**
  * 음성 채널 체크 유틸 — 사용자가 보이스룸에 있는지 확인하고 에러 메시지까지 처리
  * @returns {VoiceChannel|null} 사용자가 있는 음성 채널, 없으면 null (에러 메시지 이미 전송됨)
  */
@@ -252,6 +260,9 @@ async function handleMusicShortcut(message, args, botConfig) {
     
     // GUI에서 뮤직봇 비활성화 시 무시
     if (botConfig.musicEnabled === false) return false;
+
+    // 릴레이 모드(mock message)에서는 음악 바로가기 스킵 → IPC 라우팅으로 넘김
+    if (isRelayMessage(message)) return false;
     
     const firstArg = args[0];
     
@@ -329,6 +340,14 @@ async function handleMusicMessage(message, args, botConfig) {
     
     const modulePart = args[0];
     if (!isMusicModule(modulePart, botConfig)) return false;
+
+    // 릴레이 모드(mock message)에서는 음악 불가 — Discord 보이스 인프라 없음
+    if (isRelayMessage(message)) {
+        await message.reply(i18n.t('bot:music.not_available_relay', {
+            defaultValue: '🎵 클라우드(릴레이) 모드에서는 음악 기능을 사용할 수 없어요. 로컬 모드로 전환해 주세요!'
+        }));
+        return true;
+    }
     
     // 패키지 미설치 시 안내
     if (!musicAvailable) {

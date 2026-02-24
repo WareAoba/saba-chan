@@ -142,30 +142,33 @@ export function validateAllSettings(fields, values) {
  * 모든 인스턴스 간의 포트 충돌을 검사합니다.
  * 특정 인스턴스의 포트가 다른 인스턴스와 겹치는지 확인합니다.
  *
+ * 모듈별 프로토콜 정보(moduleProtocols)가 제공되면,
+ * 해당 모듈이 실제 사용하는 프로토콜의 포트만 비교합니다.
+ * 예: REST를 지원하지 않는 모듈의 rest_port는 충돌 검사에서 제외됩니다.
+ *
  * @param {string} targetId - 검사 대상 인스턴스 ID
  * @param {Object} targetPorts - 대상 포트 { port, rcon_port, rest_port }
  * @param {Array} allServers - 전체 서버(인스턴스) 목록
+ * @param {Object} [moduleProtocols] - 모듈별 지원 프로토콜 맵 { moduleName: ["rcon","rest",...] }
+ * @param {string} [targetModule] - 대상 인스턴스의 모듈 이름
  * @returns {Array} 충돌 목록 [{ port, portType, conflictName, conflictId, conflictPortType }]
  */
-export function checkPortConflicts(targetId, targetPorts, allServers) {
+export function checkPortConflicts(targetId, targetPorts, allServers, moduleProtocols, targetModule) {
     const conflicts = [];
 
-    const portEntries = [
-        { value: targetPorts.port, type: 'port' },
-        { value: targetPorts.rcon_port, type: 'rcon_port' },
-        { value: targetPorts.rest_port, type: 'rest_port' },
-    ].filter(e => e.value != null && e.value !== '' && !isNaN(Number(e.value)));
+    const targetSupported = moduleProtocols && targetModule ? moduleProtocols[targetModule] : null;
+    const portEntries = buildActivePortEntries(targetPorts, targetSupported);
 
     if (portEntries.length === 0) return conflicts;
 
     for (const server of allServers) {
         if (server.id === targetId) continue;
 
-        const otherPorts = [
-            { value: server.port, type: 'port' },
-            { value: server.rcon_port, type: 'rcon_port' },
-            { value: server.rest_port, type: 'rest_port' },
-        ].filter(e => e.value != null && e.value !== '' && !isNaN(Number(e.value)));
+        const otherSupported = moduleProtocols && server.module ? moduleProtocols[server.module] : null;
+        const otherPorts = buildActivePortEntries(
+            { port: server.port, rcon_port: server.rcon_port, rest_port: server.rest_port },
+            otherSupported,
+        );
 
         for (const tp of portEntries) {
             for (const op of otherPorts) {
@@ -183,6 +186,27 @@ export function checkPortConflicts(targetId, targetPorts, allServers) {
     }
 
     return conflicts;
+}
+
+/**
+ * 모듈의 지원 프로토콜에 따라 실제 사용하는 포트만 반환합니다.
+ * @param {Object} ports - { port, rcon_port, rest_port }
+ * @param {Array|null} supported - 모듈 지원 프로토콜 배열 (null이면 모두 포함)
+ * @returns {Array} [{ value, type }]
+ */
+function buildActivePortEntries(ports, supported) {
+    const entries = [
+        { value: ports.port, type: 'port' }, // game port는 항상 포함
+    ];
+    // rcon_port: 프로토콜 정보가 없거나 rcon을 지원할 때만 포함
+    if (!supported || supported.includes('rcon')) {
+        entries.push({ value: ports.rcon_port, type: 'rcon_port' });
+    }
+    // rest_port: 프로토콜 정보가 없거나 rest를 지원할 때만 포함
+    if (!supported || supported.includes('rest')) {
+        entries.push({ value: ports.rest_port, type: 'rest_port' });
+    }
+    return entries.filter(e => e.value != null && e.value !== '' && !isNaN(Number(e.value)));
 }
 
 /**

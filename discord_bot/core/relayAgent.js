@@ -34,6 +34,7 @@ let _running = false;
 let _heartbeatTimer = null;
 let _pollAbort = null;
 let _consecutiveErrors = 0;          // 연속 에러 카운터 (지수 백오프용)
+let _parsed = null;                   // 토큰 파싱 결과 (start() 시 초기화)
 
 // ── 토큰 파싱 ──
 function parseToken(token) {
@@ -42,35 +43,34 @@ function parseToken(token) {
     return { nodeId: m[1], secret: m[2] };
 }
 
-const _parsed = NODE_TOKEN ? parseToken(NODE_TOKEN) : null;
-
 // ── 서명 유틸 ──
 
 /**
  * authenticateNode 미들웨어가 요구하는 헤더를 생성합니다:
  *   Authorization: Bearer <token>
  *   x-request-timestamp: <unix seconds>
- *   x-request-signature: HMAC-SHA256(method + url + ts + body, secret)
+ *   x-request-nonce: <unique request id>
+ *   x-request-signature: HMAC-SHA256(method + url + ts + nonce + body, secret)
  */
 function signedHeaders(method, urlPath, body) {
     const ts = Math.floor(Date.now() / 1000);
+    const nonce = crypto.randomUUID();
     const bodyStr = body ? JSON.stringify(body) : '';
-    const payload = [method.toUpperCase(), urlPath, ts.toString(), bodyStr].join('\n');
+    const payload = [method.toUpperCase(), urlPath, ts.toString(), nonce, bodyStr].join('\n');
     const sig = crypto.createHmac('sha256', _parsed.secret).update(payload).digest('hex');
 
     return {
         'Authorization': `Bearer ${NODE_TOKEN}`,
         'Content-Type': 'application/json',
         'x-request-timestamp': String(ts),
+        'x-request-nonce': nonce,
         'x-request-signature': sig,
     };
 }
 
 const AGENT_VERSION = require('../package.json').version;
 
-function delay(ms) {
-    return new Promise(r => setTimeout(r, ms));
-}
+const { setTimeout: sleep } = require('timers/promises');
 
 // ── semver 비교 유틸 ──
 /**
@@ -254,16 +254,12 @@ async function pollLoop() {
             });
 
             if (!res.ok) {
-                if (res.status === 204) {
-                    _consecutiveErrors = 0;
-                    continue; // 대기 명령 없음 — 즉시 재폴링
-                }
                 const data = await res.json().catch(() => ({}));
                 console.error(`[RelayAgent] Poll failed (${res.status}):`, data.error || res.statusText);
                 _consecutiveErrors++;
                 const backoff = Math.min(POLL_RETRY_BASE * Math.pow(2, _consecutiveErrors - 1), POLL_RETRY_MAX);
                 console.log(`[RelayAgent] Retry in ${backoff}ms (attempt ${_consecutiveErrors})`);
-                await delay(backoff);
+                await sleep(backoff);
                 continue;
             }
 
@@ -306,7 +302,7 @@ async function pollLoop() {
             _consecutiveErrors++;
             const backoff = Math.min(POLL_RETRY_BASE * Math.pow(2, _consecutiveErrors - 1), POLL_RETRY_MAX);
             console.log(`[RelayAgent] Retry in ${backoff}ms (attempt ${_consecutiveErrors})`);
-            await delay(backoff);
+            await sleep(backoff);
         }
     }
 
@@ -323,6 +319,10 @@ async function start() {
     if (!RELAY_URL || !NODE_TOKEN) {
         console.log('[RelayAgent] RELAY_URL 또는 RELAY_NODE_TOKEN 미설정 — 에이전트 비활성');
         return false;
+    }
+
+    if (!_parsed) {
+        _parsed = NODE_TOKEN ? parseToken(NODE_TOKEN) : null;
     }
 
     if (!_parsed) {

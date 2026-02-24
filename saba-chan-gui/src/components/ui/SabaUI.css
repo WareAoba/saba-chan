@@ -1,0 +1,266 @@
+/* ═══════════════════════════════════════════════════════════
+   🐟 사바쨩 — Unified UI Primitives
+   Toggle Switch · Checkbox · Spinner
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Toggle Switch ────────────────────────────────────────── */
+
+.saba-toggle {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+.saba-toggle input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}
+
+/* track — default (md) */
+.saba-toggle-track {
+    position: relative;
+    width: 40px;
+    height: 22px;
+    border-radius: 11px;
+    background: var(--border-strong, #bbb);
+    transition: background 0.25s ease, box-shadow 0.25s ease;
+}
+
+/* knob */
+.saba-toggle-track::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+    transition: transform 0.25s cubic-bezier(.4, .0, .2, 1);
+}
+
+/* checked → brand */
+.saba-toggle input:checked + .saba-toggle-track {
+    background: var(--brand-primary, #667eea);
+}
+
+.saba-toggle input:checked + .saba-toggle-track::after {
+    transform: translateX(18px);
+}
+
+/* focus ring */
+.saba-toggle input:focus-visible + .saba-toggle-track {
+    box-shadow: 0 0 0 3px var(--brand-shadow-light, rgba(102, 126, 234, 0.25));
+}
+
+/* hover glow */
+.saba-toggle:hover .saba-toggle-track {
+    box-shadow: 0 0 0 3px var(--brand-shadow-subtle, rgba(102, 126, 234, 0.1));
+}
+
+.saba-toggle input:checked + .saba-toggle-track:hover,
+.saba-toggle:hover input:checked + .saba-toggle-track {
+    box-shadow: 0 0 0 4px var(--brand-shadow-light, rgba(102, 126, 234, 0.25));
+}
+
+/* disabled */
+.saba-toggle input:disabled + .saba-toggle-track {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.saba-toggle.disabled {
+    cursor: not-allowed;
+}
+
+/* ── Size variants ─── */
+
+/* sm — compact (32 × 18) */
+.saba-toggle.sm .saba-toggle-track {
+    width: 32px;
+    height: 18px;
+    border-radius: 9px;
+}
+
+.saba-toggle.sm .saba-toggle-track::after {
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+}
+
+.saba-toggle.sm input:checked + .saba-toggle-track::after {
+    transform: translateX(14px);
+}
+
+/* lg — protocol-style (52 × 28) */
+.saba-toggle.lg .saba-toggle-track {
+    width: 52px;
+    height: 28px;
+    border-radius: 14px;
+}
+
+.saba-toggle.lg .saba-toggle-track::after {
+    top: 3px;
+    left: 3px;
+    width: 22px;
+    height: 22px;
+}
+
+.saba-toggle.lg input:checked + .saba-toggle-track::after {
+    transform: translateX(24px);
+}
+
+/* ── Checkbox ─────────────────────────────────────────────── */
+
+.saba-checkbox {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+.saba-checkbox input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}
+
+.saba-checkbox-box {
+    position: relative;
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    border: 2px solid var(--border-medium, #ccc);
+    background: var(--bg-surface, #fff);
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+/* checkmark */
+.saba-checkbox-box::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 5px;
+    width: 5px;
+    height: 9px;
+    border: solid transparent;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg) scale(0);
+    transform-origin: bottom right;
+    transition: transform 0.15s cubic-bezier(.4, .0, .2, 1), border-color 0.15s;
+}
+
+/* checked */
+.saba-checkbox input:checked + .saba-checkbox-box {
+    background: var(--brand-primary, #667eea);
+    border-color: var(--brand-primary, #667eea);
+}
+
+.saba-checkbox input:checked + .saba-checkbox-box::after {
+    border-color: #fff;
+    transform: rotate(45deg) scale(1);
+}
+
+/* focus ring */
+.saba-checkbox input:focus-visible + .saba-checkbox-box {
+    box-shadow: 0 0 0 3px var(--brand-shadow-light, rgba(102, 126, 234, 0.25));
+}
+
+/* hover */
+.saba-checkbox:hover .saba-checkbox-box {
+    border-color: var(--brand-primary, #667eea);
+}
+
+/* disabled */
+.saba-checkbox input:disabled + .saba-checkbox-box {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.saba-checkbox.disabled {
+    cursor: not-allowed;
+}
+
+/* sm checkbox (14px) — inline compact */
+.saba-checkbox.sm .saba-checkbox-box {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    border-width: 1.5px;
+}
+
+.saba-checkbox.sm .saba-checkbox-box::after {
+    top: 1px;
+    left: 4px;
+    width: 4px;
+    height: 7px;
+    border-width: 0 1.5px 1.5px 0;
+}
+
+/* ── Spinner ──────────────────────────────────────────────── */
+
+.saba-spinner {
+    display: inline-block;
+    border-style: solid;
+    border-color: var(--brand-shadow-light, rgba(102, 126, 234, 0.25));
+    border-top-color: var(--brand-primary, #667eea);
+    border-radius: 50%;
+    animation: saba-spin 0.75s linear infinite;
+    flex-shrink: 0;
+}
+
+/* default size (md) — 20×20 */
+.saba-spinner {
+    width: 20px;
+    height: 20px;
+    border-width: 2.5px;
+}
+
+/* xs — inline text spinner (12×12) */
+.saba-spinner.xs {
+    width: 12px;
+    height: 12px;
+    border-width: 1.5px;
+}
+
+/* sm — small (16×16) */
+.saba-spinner.sm {
+    width: 16px;
+    height: 16px;
+    border-width: 2px;
+}
+
+/* lg — prominent (32×32) */
+.saba-spinner.lg {
+    width: 32px;
+    height: 32px;
+    border-width: 3px;
+}
+
+/* xl — full-page hero (48×48) */
+.saba-spinner.xl {
+    width: 48px;
+    height: 48px;
+    border-width: 4px;
+}
+
+/* light variant — white track on dark bg */
+.saba-spinner.light {
+    border-color: rgba(255, 255, 255, 0.25);
+    border-top-color: #fff;
+}
+
+@keyframes saba-spin {
+    to { transform: rotate(360deg); }
+}

@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../Icon';
+import { SabaToggle, SabaSpinner } from '../ui/SabaUI';
 import { QuestionModal } from './Modals';
 import { useExtensions } from '../../contexts/ExtensionContext';
 
@@ -340,8 +341,7 @@ function ComponentsTab({ devMode }) {
                     <div className="update-panel-header" style={{ paddingTop: 0, paddingBottom: '8px' }}>
                         <label className="update-mock-toggle" title={mockMode ? 'Mock 서버 (테스트)' : '실제 GitHub API'}>
                             <span className={`update-mock-label ${mockMode ? 'mock' : 'real'}`}>{mockMode ? 'MOCK' : 'REAL'}</span>
-                            <input type="checkbox" checked={!!mockMode} onChange={(e) => handleToggleMock(e.target.checked)} disabled={mockMode === null || anyBusy} />
-                            <span className="update-mock-slider" />
+                            <SabaToggle size="sm" checked={!!mockMode} onChange={(checked) => handleToggleMock(checked)} disabled={mockMode === null || anyBusy} />
                         </label>
                     </div>
                 )}
@@ -396,12 +396,12 @@ function ComponentsTab({ devMode }) {
                             <div className="ss-card-actions">
                                 {c.update_available && !c.downloaded && (
                                     <button className="ss-icon-btn accent" disabled={isBusy} onClick={() => handleDownloadOne(c.key)} title="다운로드">
-                                        {isBusy ? <span className="update-spinner" /> : <Icon name="download" size="sm" />}
+                                        {isBusy ? <SabaSpinner size="xs" /> : <Icon name="download" size="sm" />}
                                     </button>
                                 )}
                                 {c.update_available && c.downloaded && (
                                     <button className={`ss-icon-btn ${c.needsUpdater ? 'warning' : 'accent'}`} disabled={isBusy} onClick={() => handleApplyOne(c.key)} title={c.needsUpdater ? '적용 (재시작 필요)' : '적용'}>
-                                        {isBusy ? <span className="update-spinner" /> : <Icon name={c.needsUpdater ? 'externalLink' : 'checkCircle'} size="sm" />}
+                                        {isBusy ? <SabaSpinner size="xs" /> : <Icon name={c.needsUpdater ? 'externalLink' : 'checkCircle'} size="sm" />}
                                     </button>
                                 )}
                                 {!c.update_available && (
@@ -426,9 +426,7 @@ function ComponentsTab({ devMode }) {
                         <Icon name="refresh" size="sm" />
                         {t('updates.auto_check', '자동으로 업데이트 확인')}
                     </span>
-                    <span className={`update-auto-toggle ${autoCheckEnabled ? 'on' : ''}`} onClick={() => handleAutoCheckToggle(!autoCheckEnabled)}>
-                        <span className="update-auto-toggle-knob" />
-                    </span>
+                    <SabaToggle checked={autoCheckEnabled} onChange={(checked) => handleAutoCheckToggle(checked)} />
                 </label>
             </div>
 
@@ -615,7 +613,7 @@ function ModulesTab() {
                                     onClick={() => setConfirmRemoveId(moduleId)}
                                     title={t('saba_storage.remove', '제거')}
                                 >
-                                    {isRemoving ? <span className="update-spinner" /> : <Icon name="trash" size="sm" />}
+                                    {isRemoving ? <SabaSpinner size="xs" /> : <Icon name="trash" size="sm" />}
                                 </button>
                             </div>
                         </div>
@@ -685,7 +683,7 @@ function ModulesTab() {
                                             onClick={() => handleInstallModule(m.id)}
                                             title={t('saba_storage.install_btn', '설치')}
                                         >
-                                            {isInstalling ? <span className="update-spinner" /> : <Icon name="download" size="sm" />}
+                                            {isInstalling ? <SabaSpinner size="xs" /> : <Icon name="download" size="sm" />}
                                         </button>
                                     )}
                                 </div>
@@ -778,7 +776,7 @@ function ExtensionsTab() {
                                         onClick={() => installExtension(ext.id, { download_url: updateInfo.download_url })}
                                         title={t('extensions.update_to', { version: updateInfo.latest_version, defaultValue: `v${updateInfo.latest_version}으로 업데이트` })}
                                     >
-                                        {installingIds.has(ext.id) ? <span className="update-spinner" /> : <Icon name="download" size="sm" />}
+                                        {installingIds.has(ext.id) ? <SabaSpinner size="xs" /> : <Icon name="download" size="sm" />}
                                     </button>
                                 )}
                                 <button
@@ -787,7 +785,7 @@ function ExtensionsTab() {
                                     onClick={() => setConfirmRemoveId(ext.id)}
                                     title={t('saba_storage.remove', '제거')}
                                 >
-                                    {isRemoving ? <span className="update-spinner" /> : <Icon name="trash" size="sm" />}
+                                    {isRemoving ? <SabaSpinner size="xs" /> : <Icon name="trash" size="sm" />}
                                 </button>
                             </div>
                         </div>
@@ -842,7 +840,7 @@ function ExtensionsTab() {
                                 onClick={() => installExtension(ext.id, { download_url: ext.download_url })}
                                 title={t('extensions.install_btn', '설치')}
                             >
-                                {installingIds.has(ext.id) ? <span className="update-spinner" /> : <Icon name="download" size="sm" />}
+                                {installingIds.has(ext.id) ? <SabaSpinner size="xs" /> : <Icon name="download" size="sm" />}
                             </button>
                         </div>
                     </div>

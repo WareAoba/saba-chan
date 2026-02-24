@@ -20,5 +20,14 @@
       "settings": ""
     }
   },
-  "musicEnabled": true
+  "musicEnabled": true,
+  "nodeSettings": {
+    "1420751700142063778": {
+      "allowedInstances": [
+        "08ecbf99-4e85-43fd-9450-164ccfa33c21",
+        "68b29cef-e584-4bd0-91dc-771865e31e25"
+      ],
+      "memberPermissions": {}
+    }
+  }
 }
