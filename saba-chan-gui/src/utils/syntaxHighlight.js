@@ -15,25 +15,25 @@
 
 // ── Semantic tokens → CSS 색상 매핑 (Catppuccin Mocha 기반) ──
 const TOKEN_COLORS = {
-    error:     '#f38ba8',
-    warn:      '#f9e2af',
-    warning:   '#f9e2af',
-    info:      '#89b4fa',
-    debug:     '#6c7086',
-    trace:     '#6c7086',
-    success:   '#a6e3a1',
-    string:    '#a6e3a1',
-    number:    '#fab387',
-    keyword:   '#cba6f7',
-    comment:   '#6c7086',
+    error: '#f38ba8',
+    warn: '#f9e2af',
+    warning: '#f9e2af',
+    info: '#89b4fa',
+    debug: '#6c7086',
+    trace: '#6c7086',
+    success: '#a6e3a1',
+    string: '#a6e3a1',
+    number: '#fab387',
+    keyword: '#cba6f7',
+    comment: '#6c7086',
     timestamp: '#7f849c',
-    player:    '#89dceb',
-    command:   '#f5c2e7',
-    selector:  '#f9e2af',
-    ip:        '#74c7ec',
-    uuid:      '#74c7ec',
-    path:      '#94e2d5',
-    dim:       '#6c7086',
+    player: '#89dceb',
+    command: '#f5c2e7',
+    selector: '#f9e2af',
+    ip: '#74c7ec',
+    uuid: '#74c7ec',
+    path: '#94e2d5',
+    dim: '#6c7086',
 };
 
 /**
@@ -52,27 +52,29 @@ function resolveColor(color) {
  * @param {Array} rules - [{ name, pattern, color, bold, italic }]
  * @returns {Array} compiled - [{ regex, color, bold, italic, hasHlGroup }]
  */
-export function compileRules(rules) {
+function compileRules(rules) {
     if (!rules || rules.length === 0) return [];
-    return rules.map(rule => {
-        try {
-            // Named group (?P<hl>...) → JS 형식 (?<hl>...) 변환
-            let src = rule.pattern.replace(/\(\?P</g, '(?<');
-            const regex = new RegExp(src, 'g');
-            const hasHlGroup = /\(\?<hl>/.test(src);
-            return {
-                name: rule.name,
-                regex,
-                color: resolveColor(rule.color) || rule.color,
-                bold: !!rule.bold,
-                italic: !!rule.italic,
-                hasHlGroup,
-            };
-        } catch (e) {
-            console.warn(`[SyntaxHighlight] Invalid pattern "${rule.pattern}" in rule "${rule.name}":`, e);
-            return null;
-        }
-    }).filter(Boolean);
+    return rules
+        .map((rule) => {
+            try {
+                // Named group (?P<hl>...) → JS 형식 (?<hl>...) 변환
+                const src = rule.pattern.replace(/\(\?P</g, '(?<');
+                const regex = new RegExp(src, 'g');
+                const hasHlGroup = /\(\?<hl>/.test(src);
+                return {
+                    name: rule.name,
+                    regex,
+                    color: resolveColor(rule.color) || rule.color,
+                    bold: !!rule.bold,
+                    italic: !!rule.italic,
+                    hasHlGroup,
+                };
+            } catch (e) {
+                console.warn(`[SyntaxHighlight] Invalid pattern "${rule.pattern}" in rule "${rule.name}":`, e);
+                return null;
+            }
+        })
+        .filter(Boolean);
 }
 
 /**
@@ -154,12 +156,4 @@ export function getCachedRules(moduleName, rawRules) {
     const compiled = compileRules(rawRules);
     ruleCache.set(key, compiled);
     return compiled;
-}
-
-export function invalidateRuleCache(moduleName) {
-    if (moduleName) {
-        ruleCache.delete(moduleName);
-    } else {
-        ruleCache.clear();
-    }
 }

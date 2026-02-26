@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import clsx from 'clsx';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { Icon } from '../Icon';
 import './CustomDropdown.css';
@@ -42,8 +43,10 @@ function CustomDropdown({ value, onChange, options = [], placeholder, className,
     useEffect(() => {
         const handleClickOutside = (e) => {
             if (
-                triggerRef.current && !triggerRef.current.contains(e.target) &&
-                menuRef.current && !menuRef.current.contains(e.target)
+                triggerRef.current &&
+                !triggerRef.current.contains(e.target) &&
+                menuRef.current &&
+                !menuRef.current.contains(e.target)
             ) {
                 setIsOpen(false);
             }
@@ -65,7 +68,7 @@ function CustomDropdown({ value, onChange, options = [], placeholder, className,
         }
     }, [isOpen]);
 
-    const selectedOption = options.find(o => String(o.value) === String(value));
+    const selectedOption = options.find((o) => String(o.value) === String(value));
 
     const handleSelect = (optionValue) => {
         onChange(optionValue);
@@ -74,42 +77,42 @@ function CustomDropdown({ value, onChange, options = [], placeholder, className,
 
     const handleToggle = () => {
         if (disabled) return;
-        setIsOpen(prev => !prev);
+        setIsOpen((prev) => !prev);
     };
 
     // Portal로 body에 렌더링되는 메뉴
     const menu = isOpen
         ? ReactDOM.createPortal(
-            <div className="custom-dropdown-menu" ref={menuRef} style={menuStyle}>
-                <div className="custom-dropdown-scroll">
-                    {options.map((option) => {
-                        const isSelected = String(option.value) === String(value);
-                        return (
-                            <div
-                                key={option.value}
-                                className={`custom-dropdown-item ${isSelected ? 'selected' : ''}`}
-                                onClick={() => handleSelect(option.value)}
-                            >
-                                <span className="custom-dropdown-item-content">
-                                    {option.icon && <Icon name={option.icon} size="sm" />}
-                                    <span>{option.label}</span>
-                                </span>
-                                {isSelected && (
-                                    <span className="custom-dropdown-check">
-                                        <Icon name="check" size="sm" />
-                                    </span>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>,
-            document.body
-        )
+              <div className="custom-dropdown-menu" ref={menuRef} style={menuStyle}>
+                  <div className="custom-dropdown-scroll">
+                      {options.map((option) => {
+                          const isSelected = String(option.value) === String(value);
+                          return (
+                              <div
+                                  key={option.value}
+                                  className={clsx('custom-dropdown-item', { selected: isSelected })}
+                                  onClick={() => handleSelect(option.value)}
+                              >
+                                  <span className="custom-dropdown-item-content">
+                                      {option.icon && <Icon name={option.icon} size="sm" />}
+                                      <span>{option.label}</span>
+                                  </span>
+                                  {isSelected && (
+                                      <span className="custom-dropdown-check">
+                                          <Icon name="check" size="sm" />
+                                      </span>
+                                  )}
+                              </div>
+                          );
+                      })}
+                  </div>
+              </div>,
+              document.body,
+          )
         : null;
 
     return (
-        <div className={`custom-dropdown ${className || ''} ${isOpen ? 'open' : ''} ${disabled ? 'disabled' : ''}`}>
+        <div className={clsx('custom-dropdown', className, { open: isOpen, disabled })}>
             <button
                 className="custom-dropdown-trigger"
                 onClick={handleToggle}
@@ -127,7 +130,7 @@ function CustomDropdown({ value, onChange, options = [], placeholder, className,
                         <span className="custom-dropdown-placeholder">{placeholder || 'Select...'}</span>
                     )}
                 </span>
-                <span className={`custom-dropdown-arrow ${isOpen ? 'rotated' : ''}`}>
+                <span className={clsx('custom-dropdown-arrow', { rotated: isOpen })}>
                     <Icon name="chevronDown" size="sm" />
                 </span>
             </button>

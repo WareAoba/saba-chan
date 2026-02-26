@@ -144,8 +144,8 @@ impl ManagedProcess {
     /// * `working_dir` - Working directory
     /// * `env_vars` - Extra environment variables
     /// * `log_pattern` - Optional regex pattern for extracting log level from output lines.
-    ///                    The pattern should have a named capture group `level` matching
-    ///                    INFO, WARN, ERROR, DEBUG etc. If None, all lines default to Info.
+    ///   The pattern should have a named capture group `level` matching
+    ///   INFO, WARN, ERROR, DEBUG etc. If None, all lines default to Info.
     pub async fn spawn(
         program: &str,
         args: &[String],

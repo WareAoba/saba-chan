@@ -18,7 +18,9 @@
     "module_commands": "**模組命令：**{{commands}}",
     "module_title": "**{{module}} 命令**",
     "command_format": "未知命令：\"{{command}}\"（{{resolved}}）",
-    "available_commands": "{{commands}}"
+    "available_commands": "{{commands}}",
+    "usage_format": "`{{prefix}} <模組> <命令>`",
+    "modules_header": "📦 **模組:**"
   },
   "modules": {
     "help_start": "啟動伺服器",
@@ -86,7 +88,10 @@
     "host_not_found": "找不到伺服器主機",
     "service_unavailable": "服務不可用",
     "unknown_input": "❌ 未知命令。",
-    "command_not_found": "❌ 命令不存在。"
+    "command_not_found": "❌ 命令不存在。",
+    "permission_denied": "❌ 您沒有使用此命令的權限。",
+    "alias_conflict": "❌ 別名 '{{alias}}' 不明確 — 匹配多個模組：{{modules}}。請使用更具體的別名。",
+    "multiple_instances": "⚠️ 存在多個 '{{module}}' 實例。請使用實例名稱代替模組別名。"
   },
   "messages": {
     "server_started": "伺服器成功啟動",
@@ -94,7 +99,23 @@
     "server_not_running": "伺服器未執行",
     "command_error": "執行命令出錯"
   },
+  "cloud": {
+    "not_configured": "❌ 雲端模式未設定。",
+    "register_complete": "✅ 註冊完成！權杖已透過私訊傳送。",
+    "register_failed": "❌ 註冊失敗：{{error}}",
+    "already_registered": "ℹ️ 已註冊。Host ID：{{hostId}}",
+    "status_online": "🟢 線上",
+    "status_offline": "⚪ 離線",
+    "status_check_failed": "❌ 狀態檢查失敗：{{error}}",
+    "acl_granted": "✅ 已授予 {{user}} 權限等級 {{level}}。",
+    "acl_revoked": "✅ 已撤銷 {{user}} 的權限。",
+    "music_local_only": "🎵 音樂功能僅在本地模式下可用。"
+  },
+  "relay": {
+    "command_complete": "✅ 完成"
+  },
   "music": {
+    "mod_name": "music",
     "not_available": "🎵 音樂功能需要安裝額外的套件！\n`npm install @discordjs/voice @discordjs/opus play-dl`",
     "join_voice_first": "🎤 請先加入語音頻道！",
     "no_permission": "🚫 我沒有連接或在語音頻道說話的權限！",
@@ -125,13 +146,26 @@
     "search_failed": "搜尋失敗",
     "search_results": "🔍 **搜尋: {{query}}**",
     "search_choose": "🎵 請輸入編號 (1~5) | `c` 取消",
-    "play_usage": "🎵 用法: `{{prefix}} music play <YouTube連結或搜尋關鍵字>`"
+    "play_usage": "🎵 用法: `{{prefix}} music play <YouTube連結或搜尋關鍵字>`",
+    "not_available_relay": "🎵 雲端（中繼）模式下無法使用音樂功能。請切換到本地模式！",
+    "age_restricted": "🔞 **{{title}}** — 此影片有年齡限制，無法播放。需要設定 cookies.txt。",
+    "login_required": "🔒 **{{title}}** — 此影片需要登入。需要設定 cookies.txt。",
+    "search_usage": "🔍 用法: `{{prefix}} music search <搜尋關鍵字>`",
+    "auto_disconnect": "👋 所有人都離開了！停止播放並斷開連線。",
+    "loop_enabled": "🔂 循環播放: **{{title}}**",
+    "loop_disabled": "➡️ 循環關閉: **{{title}}**\n佇列將從下一首繼續。",
+    "loop_already_on": "🔂 已經在循環播放: **{{title}}**",
+    "loop_already_off": "🔁 循環已經關閉了",
+    "help": "🎵 **{{prefix}} {{mod}}** — 音樂播放器\n\n• `{{prefix}} <YouTube連結>` — **立即播放** ⚡\n• `{{prefix}} {{mod}} play <搜尋詞>` — 播放第一個結果\n• `{{prefix}} {{mod}} search <搜尋詞>` — 從5個結果中選擇播放 🔘\n• `{{prefix}} stop` — 停止+離開\n\n• `{{prefix}} {{mod}} pause` — 暫停\n• `{{prefix}} {{mod}} resume` — 繼續\n• `{{prefix}} {{mod}} skip` — 下一首\n• `{{prefix}} loop` — 循環當前歌曲 🔂\n• `{{prefix}} loop off` — 關閉循環 → 繼續佇列\n• `{{prefix}} {{mod}} queue` — 佇列\n• `{{prefix}} {{mod}} np` — 正在播放\n• `{{prefix}} {{mod}} volume <0-200>` — 音量\n• `{{prefix}} {{mod}} shuffle` — 隨機佇列\n\n💡 播放時，`{{prefix}} skip`、`{{prefix}} pause` 等可直接使用！\n💡 別名: music, dj"
   },
   "rps": {
     "prompt": "✊✌️✋ 請選一個！",
     "draw": "{{bot}}！平手！再來~ 🔄",
     "user_win": "{{bot}}！我輸了... 😵",
     "bot_win": "{{bot}}！我贏了~ 😋",
-    "timeout": "⏰ 時間到！下次再挑戰吧~"
+    "timeout": "⏰ 時間到！下次再挑戰吧~",
+    "scissors": "剪刀",
+    "rock": "石頭",
+    "paper": "布"
   }
 }

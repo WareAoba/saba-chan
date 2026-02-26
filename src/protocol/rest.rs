@@ -26,8 +26,8 @@ impl RestClient {
         }
     }
 
-    /// Basic Auth 설정
-    #[allow(dead_code)]
+    /// Basic Auth 설정 (빌더 패턴)
+    #[allow(dead_code)] // 공개 API — 빌더 패턴 일부
     pub fn with_basic_auth(mut self, username: String, password: String) -> Self {
         self.username = Some(username);
         self.password = Some(password);
@@ -94,8 +94,8 @@ impl RestClient {
             req = req.set("Authorization", &format!("Basic {}", token));
         }
 
-        let resp = if let Some(body_val) = body.clone() {
-            req.send_json(body_val)
+        let resp = if let Some(ref body_val) = body {
+            req.send_json(body_val.clone())
         } else {
             req.call()
         };
@@ -134,9 +134,9 @@ impl RestClient {
         };
 
         let status = resp.status();
-        let text = resp.into_string().unwrap_or_else(|_| "".to_string());
+        let text = resp.into_string().unwrap_or_default();
         let data_json: Option<Value> = serde_json::from_str(&text).ok();
-        let response_json = data_json.clone().unwrap_or_else(|| json!({"raw": text.clone()}));
+        let response_json = data_json.unwrap_or_else(|| json!({"raw": &text}));
 
         if (200..300).contains(&status) {
             Ok(ServerResponse {

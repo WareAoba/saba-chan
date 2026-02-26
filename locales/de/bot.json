@@ -18,7 +18,9 @@
     "module_commands": "**Modulbefehle:**{{commands}}",
     "module_title": "**{{module}}-Befehle**",
     "command_format": "Unbekannter Befehl: \"{{command}}\" ({{resolved}})",
-    "available_commands": "{{commands}}"
+    "available_commands": "{{commands}}",
+    "usage_format": "`{{prefix}} <Modul> <Befehl>`",
+    "modules_header": "📦 **Module:**"
   },
   "modules": {
     "help_start": "Server starten",
@@ -86,7 +88,10 @@
     "host_not_found": "Server-Host nicht gefunden",
     "service_unavailable": "Dienst nicht verfügbar",
     "unknown_input": "❌ Unbekannter Befehl.",
-    "command_not_found": "❌ Befehl existiert nicht."
+    "command_not_found": "❌ Befehl existiert nicht.",
+    "permission_denied": "❌ Du hast keine Berechtigung, diesen Befehl zu verwenden.",
+    "alias_conflict": "❌ Alias '{{alias}}' ist mehrdeutig — er passt auf mehrere Module: {{modules}}. Bitte verwende einen spezifischeren Alias.",
+    "multiple_instances": "⚠️ Mehrere '{{module}}'-Instanzen vorhanden. Verwende den Instanznamen statt des Modul-Alias."
   },
   "messages": {
     "server_started": "Server erfolgreich gestartet",
@@ -94,7 +99,23 @@
     "server_not_running": "Server läuft nicht",
     "command_error": "Fehler beim Ausführen des Befehls"
   },
+  "cloud": {
+    "not_configured": "❌ Cloud-Modus ist nicht konfiguriert.",
+    "register_complete": "✅ Registrierung abgeschlossen! Token wurde per DM gesendet.",
+    "register_failed": "❌ Registrierung fehlgeschlagen: {{error}}",
+    "already_registered": "ℹ️ Bereits registriert. Host-ID: {{hostId}}",
+    "status_online": "🟢 Online",
+    "status_offline": "⚪ Offline",
+    "status_check_failed": "❌ Statusprüfung fehlgeschlagen: {{error}}",
+    "acl_granted": "✅ Berechtigungsstufe {{level}} an {{user}} vergeben.",
+    "acl_revoked": "✅ Berechtigungen für {{user}} widerrufen.",
+    "music_local_only": "🎵 Die Musikfunktion ist nur im lokalen Modus verfügbar."
+  },
+  "relay": {
+    "command_complete": "✅ Fertig"
+  },
   "music": {
+    "mod_name": "music",
     "not_available": "🎵 Für die Musikfunktion werden zusätzliche Pakete benötigt!\n`npm install @discordjs/voice @discordjs/opus play-dl`",
     "join_voice_first": "🎤 Bitte zuerst einem Sprachkanal beitreten!",
     "no_permission": "🚫 Ich habe keine Berechtigung, dem Sprachkanal beizutreten oder zu sprechen!",
@@ -125,13 +146,26 @@
     "search_failed": "Suche fehlgeschlagen",
     "search_results": "🔍 **Suche: {{query}}**",
     "search_choose": "🎵 Nummer eingeben (1~5) | `c` Abbrechen",
-    "play_usage": "🎵 Verwendung: `{{prefix}} music play <YouTube-URL oder Suchbegriff>`"
+    "play_usage": "🎵 Verwendung: `{{prefix}} music play <YouTube-URL oder Suchbegriff>`",
+    "not_available_relay": "🎵 Musik ist im Cloud-(Relay-)Modus nicht verfügbar. Bitte zum lokalen Modus wechseln!",
+    "age_restricted": "🔞 **{{title}}** — Dieses Video ist altersbeschränkt und kann nicht abgespielt werden. cookies.txt-Einrichtung erforderlich.",
+    "login_required": "🔒 **{{title}}** — Dieses Video erfordert eine Anmeldung. cookies.txt-Einrichtung erforderlich.",
+    "search_usage": "🔍 Verwendung: `{{prefix}} music search <Suchbegriff>`",
+    "auto_disconnect": "👋 Alle haben den Kanal verlassen! Wiedergabe wird gestoppt.",
+    "loop_enabled": "🔂 Wiederholung: **{{title}}**",
+    "loop_disabled": "➡️ Wiederholung aus: **{{title}}**\nWarteschlange wird ab dem nächsten Titel fortgesetzt.",
+    "loop_already_on": "🔂 Bereits in Wiederholung: **{{title}}**",
+    "loop_already_off": "🔁 Wiederholung ist bereits deaktiviert",
+    "help": "🎵 **{{prefix}} {{mod}}** — Musikplayer\n\n• `{{prefix}} <YouTube-URL>` — **Sofort abspielen** ⚡\n• `{{prefix}} {{mod}} play <Suche>` — Erstes Ergebnis abspielen\n• `{{prefix}} {{mod}} search <Suche>` — Aus 5 Ergebnissen wählen 🔘\n• `{{prefix}} stop` — Stopp + Verlassen\n\n• `{{prefix}} {{mod}} pause` — Pause\n• `{{prefix}} {{mod}} resume` — Fortsetzen\n• `{{prefix}} {{mod}} skip` — Nächster Titel\n• `{{prefix}} loop` — Aktuellen Titel wiederholen 🔂\n• `{{prefix}} loop off` — Wiederholung aus → Warteschlange fortsetzen\n• `{{prefix}} {{mod}} queue` — Warteschlange\n• `{{prefix}} {{mod}} np` — Aktueller Titel\n• `{{prefix}} {{mod}} volume <0-200>` — Lautstärke\n• `{{prefix}} {{mod}} shuffle` — Warteschlange mischen\n\n💡 Während der Wiedergabe funktionieren `{{prefix}} skip`, `{{prefix}} pause` etc. direkt!\n💡 Aliase: music, dj"
   },
   "rps": {
     "prompt": "✊✌️✋ Wähle eins!",
     "draw": "{{bot}}! Unentschieden! Nochmal~ 🔄",
     "user_win": "{{bot}}! Ich hab verloren... 😵",
     "bot_win": "{{bot}}! Ich hab gewonnen~ 😋",
-    "timeout": "⏰ Zeit abgelaufen! Versuch es nächstes Mal~"
+    "timeout": "⏰ Zeit abgelaufen! Versuch es nächstes Mal~",
+    "scissors": "Schere",
+    "rock": "Stein",
+    "paper": "Papier"
   }
 }

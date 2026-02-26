@@ -6,7 +6,6 @@
  * <SabaSpinner>  — consistent loading ring (xs | sm | md | lg | xl)
  */
 
-import React from 'react';
 import './SabaUI.css';
 
 /* ── Toggle Switch ────────────────────────────────────────── */
@@ -22,10 +21,17 @@ import './SabaUI.css';
  */
 export function SabaToggle({ checked, onChange, disabled, size, className, title, ...rest }) {
     const cls = ['saba-toggle', size && size !== 'md' ? size : '', disabled ? 'disabled' : '', className || '']
-        .filter(Boolean).join(' ');
+        .filter(Boolean)
+        .join(' ');
     return (
         <label className={cls} title={title}>
-            <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} disabled={disabled} {...rest} />
+            <input
+                type="checkbox"
+                checked={checked}
+                onChange={(e) => onChange(e.target.checked)}
+                disabled={disabled}
+                {...rest}
+            />
             <span className="saba-toggle-track" />
         </label>
     );
@@ -44,10 +50,17 @@ export function SabaToggle({ checked, onChange, disabled, size, className, title
  */
 export function SabaCheckbox({ checked, onChange, disabled, size, className, title, ...rest }) {
     const cls = ['saba-checkbox', size === 'sm' ? 'sm' : '', disabled ? 'disabled' : '', className || '']
-        .filter(Boolean).join(' ');
+        .filter(Boolean)
+        .join(' ');
     return (
         <label className={cls} title={title}>
-            <input type="checkbox" checked={checked} onChange={onChange} disabled={disabled} {...rest} />
+            <input
+                type="checkbox"
+                checked={checked}
+                onChange={(e) => onChange(e.target.checked)}
+                disabled={disabled}
+                {...rest}
+            />
             <span className="saba-checkbox-box" />
         </label>
     );
@@ -63,6 +76,7 @@ export function SabaCheckbox({ checked, onChange, disabled, size, className, tit
  */
 export function SabaSpinner({ size, light, className, ...rest }) {
     const cls = ['saba-spinner', size && size !== 'md' ? size : '', light ? 'light' : '', className || '']
-        .filter(Boolean).join(' ');
+        .filter(Boolean)
+        .join(' ');
     return <span className={cls} role="status" aria-label="Loading" {...rest} />;
 }

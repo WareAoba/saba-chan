@@ -26,7 +26,7 @@ export function setTheme(theme) {
  * Apply theme to the document
  * @param {'auto' | 'light' | 'dark'} theme
  */
-export function applyTheme(theme) {
+function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
 }
 

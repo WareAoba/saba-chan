@@ -1,28 +1,32 @@
-import React, { useMemo } from 'react';
+import clsx from 'clsx';
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Icon } from './index';
 import { getCachedRules, highlightLine } from '../utils/syntaxHighlight';
+import { Icon } from './index';
 
 /**
  * 단일 콘솔 라인의 content를 하이라이팅하여 렌더링
  */
 function HighlightedContent({ text, compiledRules }) {
-    const segments = useMemo(
-        () => highlightLine(text, compiledRules),
-        [text, compiledRules]
-    );
+    const segments = useMemo(() => highlightLine(text, compiledRules), [text, compiledRules]);
 
     if (!compiledRules || compiledRules.length === 0 || segments.length <= 1) {
         return <>{text}</>;
     }
 
-    return <>
-        {segments.map((seg, i) =>
-            seg.style
-                ? <span key={i} style={seg.style}>{seg.text}</span>
-                : seg.text
-        )}
-    </>;
+    return (
+        <>
+            {segments.map((seg, i) =>
+                seg.style ? (
+                    <span key={i} style={seg.style}>
+                        {seg.text}
+                    </span>
+                ) : (
+                    seg.text
+                ),
+            )}
+        </>
+    );
 }
 
 /**
@@ -44,8 +48,8 @@ export function ConsolePanel({
 
     // 하이라이팅 규칙 컴파일 (모듈 이름 기준 캐싱)
     const compiledRules = useMemo(
-        () => highlightRules ? getCachedRules(consoleServer?.name || '_', highlightRules) : [],
-        [highlightRules, consoleServer?.name]
+        () => (highlightRules ? getCachedRules(consoleServer?.name || '_', highlightRules) : []),
+        [highlightRules, consoleServer?.name],
     );
 
     if (!consoleServer || consolePopoutInstanceId) return null;
@@ -75,15 +79,22 @@ export function ConsolePanel({
                     >
                         <Icon name="external-link" size="sm" />
                     </button>
-                    <button className="console-close" onClick={closeConsole} title="Close">&times;</button>
+                    <button className="console-close" onClick={closeConsole} title="Close">
+                        &times;
+                    </button>
                 </div>
             </div>
             <div className="console-output">
-                {consoleLines.length === 0 && (
-                    <div className="console-empty">{t('console.waiting')}</div>
-                )}
+                {consoleLines.length === 0 && <div className="console-empty">{t('console.waiting')}</div>}
                 {consoleLines.map((line) => (
-                    <div key={line.id} className={`console-line console-${line.source?.toLowerCase() || 'stdout'} console-level-${line.level?.toLowerCase() || 'info'}`}>
+                    <div
+                        key={line.id}
+                        className={clsx(
+                            'console-line',
+                            `console-${line.source?.toLowerCase() || 'stdout'}`,
+                            `console-level-${line.level?.toLowerCase() || 'info'}`,
+                        )}
+                    >
                         <span className="console-content">
                             <HighlightedContent text={line.content} compiledRules={compiledRules} />
                         </span>
@@ -98,11 +109,15 @@ export function ConsolePanel({
                     className="console-input"
                     value={consoleInput}
                     onChange={(e) => setConsoleInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') sendConsoleCommand(); }}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') sendConsoleCommand();
+                    }}
                     placeholder={t('console.input_placeholder')}
                     autoFocus
                 />
-                <button className="console-send" onClick={sendConsoleCommand}>{t('console.send')}</button>
+                <button className="console-send" onClick={sendConsoleCommand}>
+                    {t('console.send')}
+                </button>
             </div>
         </div>
     );
@@ -123,8 +138,8 @@ export function PopoutConsole({
     const { t } = useTranslation('gui');
 
     const compiledRules = useMemo(
-        () => highlightRules ? getCachedRules(popoutParams?.name || '_', highlightRules) : [],
-        [highlightRules, popoutParams?.name]
+        () => (highlightRules ? getCachedRules(popoutParams?.name || '_', highlightRules) : []),
+        [highlightRules, popoutParams?.name],
     );
 
     return (
@@ -139,21 +154,30 @@ export function PopoutConsole({
                         className="console-popout-titlebar-btn"
                         onClick={() => window.electron?.minimizeWindow()}
                         title={t('title_bar.minimize')}
-                    >─</button>
+                    >
+                        ─
+                    </button>
                     <button
                         className="console-popout-titlebar-btn console-popout-titlebar-close"
                         onClick={() => window.electron?.closeWindow()}
                         title={t('title_bar.close')}
-                    >&times;</button>
+                    >
+                        &times;
+                    </button>
                 </div>
             </div>
             <div className="console-popout-body">
                 <div className="console-output">
-                    {consoleLines.length === 0 && (
-                        <div className="console-empty">{t('console.waiting')}</div>
-                    )}
+                    {consoleLines.length === 0 && <div className="console-empty">{t('console.waiting')}</div>}
                     {consoleLines.map((line) => (
-                        <div key={line.id} className={`console-line console-${line.source?.toLowerCase() || 'stdout'} console-level-${line.level?.toLowerCase() || 'info'}`}>
+                        <div
+                            key={line.id}
+                            className={clsx(
+                                'console-line',
+                                `console-${line.source?.toLowerCase() || 'stdout'}`,
+                                `console-level-${line.level?.toLowerCase() || 'info'}`,
+                            )}
+                        >
                             <span className="console-content">
                                 <HighlightedContent text={line.content} compiledRules={compiledRules} />
                             </span>
@@ -168,11 +192,15 @@ export function PopoutConsole({
                         className="console-input"
                         value={consoleInput}
                         onChange={(e) => setConsoleInput(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') sendConsoleCommand(); }}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') sendConsoleCommand();
+                        }}
                         placeholder={t('console.input_placeholder')}
                         autoFocus
                     />
-                    <button className="console-send" onClick={sendConsoleCommand}>{t('console.send')}</button>
+                    <button className="console-send" onClick={sendConsoleCommand}>
+                        {t('console.send')}
+                    </button>
                 </div>
             </div>
         </div>

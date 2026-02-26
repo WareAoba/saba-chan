@@ -5,7 +5,7 @@ use axum::http::StatusCode;
 
 /// Supervisor 작업 중 발생할 수 있는 에러 유형
 #[derive(thiserror::Error, Debug)]
-#[allow(dead_code)]
+#[allow(dead_code)] // 공개 API — IPC 핸들러에서 상태 코드 매핑에 사용
 pub enum SupervisorError {
     #[error("Module '{0}' not found")]
     ModuleNotFound(String),
@@ -32,7 +32,7 @@ pub enum SupervisorError {
     Internal(#[from] anyhow::Error),
 }
 
-#[allow(dead_code)]
+#[allow(dead_code)] // SupervisorError 메서드
 impl SupervisorError {
     /// HTTP 상태 코드 매핑
     pub fn status_code(&self) -> StatusCode {

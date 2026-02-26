@@ -153,11 +153,11 @@ async function buildHelpMessage(guildId) {
     }
 
     const helpTitle = `📖 **${prefix}**`;
-    const usage = `\n\`${prefix} <모듈> <명령어>\`\n`;
+    const usage = '\n' + i18n.t('bot:help.usage_format', { prefix }) + '\n';
 
     let moduleInfo = '';
     if (mountedModules.length > 0) {
-        moduleInfo = '\n**📦 모듈:**\n';
+        moduleInfo = '\n' + i18n.t('bot:help.modules_header') + '\n';
         for (const mod of mountedModules) {
             const aliases = reverseAliasMap[mod] || [];
             const aliasStr = aliases.length > 0 ? ` (${aliases.join(', ')})` : '';

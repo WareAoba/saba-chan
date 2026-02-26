@@ -3,8 +3,7 @@
  * Pure functions with no React hooks dependency.
  */
 
-export const isTestEnv = () =>
-    process.env.NODE_ENV === 'test' || typeof jest !== 'undefined';
+const isTestEnv = () => process.env.NODE_ENV === 'test' || typeof jest !== 'undefined';
 
 export const debugLog = (...args) => {
     if (!isTestEnv()) console.log(...args);
@@ -37,7 +36,7 @@ export const retryWithBackoff = async (fn, maxRetries = 3, initialDelay = 500) =
             if (i === maxRetries - 1) {
                 throw error;
             }
-            const delay = initialDelay * Math.pow(2, i);
+            const delay = initialDelay * 2 ** i;
             debugWarn(`Attempt ${i + 1} failed, retrying in ${delay}ms...`, error.message);
             await new Promise((resolve) => setTimeout(resolve, delay));
         }
@@ -56,7 +55,7 @@ export const waitForDaemon = async (timeout = 10000) => {
                 console.log('✓ Daemon is ready');
                 return true;
             }
-        } catch (err) {
+        } catch (_err) {
             // ignore
         }
         await new Promise((resolve) => setTimeout(resolve, 500));

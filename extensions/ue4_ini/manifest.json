@@ -1,0 +1,31 @@
+{
+  "id": "ue4-ini",
+  "name": "UE4 INI Parser",
+  "version": "1.0.0",
+  "description": "Unreal Engine 4 INI 파일의 OptionSettings 파싱 및 기록",
+  "author": "saba-chan",
+  "min_app_version": "0.2.0",
+  "dependencies": [],
+
+  "python_modules": {
+    "ue4_ini": "ue4_ini.py"
+  },
+
+  "hooks": {
+    "module.parse_settings": {
+      "module": "ue4_ini",
+      "function": "parse_option_settings",
+      "condition": "instance.ext_data.ue4_ini_enabled"
+    },
+    "module.write_settings": {
+      "module": "ue4_ini",
+      "function": "write_option_settings",
+      "condition": "instance.ext_data.ue4_ini_enabled"
+    }
+  },
+
+  "instance_fields": {
+    "ue4_ini_enabled": { "type": "boolean", "default": false },
+    "ue4_ini_section": { "type": "string", "optional": true }
+  }
+}

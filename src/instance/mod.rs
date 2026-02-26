@@ -52,7 +52,7 @@ pub struct ServerInstance {
     /// 범용 익스텐션 확장 데이터 — 각 익스텐션이 필요한 플래그/설정을 저장합니다.
     /// 예: { "<ext>_enabled": true, "<ext>_cpu_limit": 2.0, "<ext>_memory_limit": "4g" }
     #[serde(default)]
-    pub extension_data: std::collections::HashMap<String, serde_json::Value>,
+    pub extension_data: HashMap<String, serde_json::Value>,
 }
 
 fn default_protocol_mode() -> String {
@@ -102,6 +102,39 @@ impl ServerInstance {
     pub fn ext_str(&self, key: &str) -> Option<&str> {
         self.extension_data.get(key).and_then(|v| v.as_str())
     }
+
+    /// RCON/REST 비밀번호가 비어있으면 랜덤 비밀번호로 채웁니다.
+    /// 변경이 발생하면 true를 반환합니다.
+    pub fn ensure_passwords(&mut self) -> bool {
+        let mut changed = false;
+        if self.rcon_password.as_deref().unwrap_or("").is_empty() {
+            let pw = generate_random_password();
+            tracing::info!("Auto-generated RCON password for instance {}", self.id);
+            self.rcon_password = Some(pw);
+            changed = true;
+        }
+        if self.rest_password.as_deref().unwrap_or("").is_empty() {
+            let pw = generate_random_password();
+            tracing::info!("Auto-generated REST password for instance {}", self.id);
+            self.rest_password = Some(pw);
+            changed = true;
+        }
+        changed
+    }
+}
+
+/// 영어 대/소문자, 숫자로 이뤄진 8자 랜덤 비밀번호를 생성합니다.
+/// UUID v4의 랜덤 바이트를 시드로 활용하여 외부 크레이트 없이 생성합니다.
+pub fn generate_random_password() -> String {
+    const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    let uuid_bytes = *uuid::Uuid::new_v4().as_bytes(); // 16 random bytes
+    let mut password = String::with_capacity(8);
+    for i in 0..8 {
+        // 2바이트씩 조합하여 62로 나눈 나머지를 인덱스로 사용
+        let idx = ((uuid_bytes[i * 2] as u16) << 8 | uuid_bytes[i * 2 + 1] as u16) as usize % CHARSET.len();
+        password.push(CHARSET[idx] as char);
+    }
+    password
 }
 
 // ═══════════════════════════════════════════════════════════════

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
  * 히든 키보드 시퀀스로 개발자 모드를 토글하는 훅.
@@ -15,10 +15,7 @@ export function useDevMode() {
     const bufferRef = useRef([]);
     const timerRef = useRef(null);
 
-    const SEQUENCE = [
-        'a', 'b', 'b', 'a', 'a', 'b',
-        'ArrowRight', 'ArrowRight', 'ArrowLeft',
-    ];
+    const SEQUENCE = ['a', 'b', 'b', 'a', 'a', 'b', 'ArrowRight', 'ArrowRight', 'ArrowLeft'];
 
     const resetBuffer = useCallback(() => {
         bufferRef.current = [];
@@ -28,6 +25,7 @@ export function useDevMode() {
         }
     }, []);
 
+    // biome-ignore lint/correctness/useExhaustiveDependencies: SEQUENCE is a constant defined in function scope — stable across renders
     useEffect(() => {
         const handleKeyDown = (e) => {
             // 입력 필드에 포커스가 있으면 무시
@@ -51,7 +49,7 @@ export function useDevMode() {
                 const match = bufferRef.current.every((k, i) => k === SEQUENCE[i]);
                 if (match) {
                     resetBuffer();
-                    setDevMode(prev => {
+                    setDevMode((prev) => {
                         const next = !prev;
                         if (next) {
                             window.showToast?.('🔧 Developer Mode ON', 'info', 2000);

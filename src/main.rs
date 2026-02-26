@@ -14,13 +14,23 @@ mod validator;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+/// 기본 IPC 서버 포트
+const DEFAULT_IPC_PORT: u16 = 57474;
+/// 프로세스 모니터링 폴링 간격 (초)
+const MONITOR_INTERVAL_SECS: u64 = 2;
+/// 하트비트 reaper 간격 (초)
+const HEARTBEAT_REAPER_INTERVAL_SECS: u64 = 30;
+/// 모니터 연속 실패 허용 횟수
+const MONITOR_MAX_CONSECUTIVE_ERRORS: u32 = 10;
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
     tracing::info!("Core Daemon starting");
 
-    // Load config (stub)
-    let _cfg = config::GlobalConfig::load().ok();
+    // Load config
+    let cfg = config::GlobalConfig::load().ok();
+    let _ = &cfg; // 향후 설정 참조를 위해 유지
 
     // Initialize supervisor with module loader
     let modules_path = std::env::var("SABA_MODULES_PATH")
@@ -43,7 +53,7 @@ async fn main() -> anyhow::Result<()> {
     let ipc_port = std::env::var("SABA_IPC_PORT")
         .ok()
         .and_then(|p| p.parse::<u16>().ok())
-        .unwrap_or(57474);
+        .unwrap_or(DEFAULT_IPC_PORT);
     let ipc_addr = format!("127.0.0.1:{}", ipc_port);
     let ipc_server = ipc::IPCServer::new(supervisor.clone(), &ipc_addr);
 
@@ -55,15 +65,63 @@ async fn main() -> anyhow::Result<()> {
 
     let client_registry = ipc_server.client_registry.clone();
     tracing::info!("Starting IPC server on {}", ipc_addr);
-    
+
+    // ── Extension hook: daemon.startup (비동기) ──────────────────
+    // 익스텐션 초기화를 백그라운드에서 실행하여 서버 시작을 차단하지 않음.
+    // GUI는 /api/extensions/init-status 로 진행 상태를 폴링.
+    {
+        let ext_mgr = ipc_server.extension_manager.clone();
+        let init_tracker = ipc_server.extension_init_tracker.clone();
+        tokio::spawn(async move {
+            // 활성 익스텐션 중 daemon.startup hook이 있는 것을 찾아 개별 디스패치
+            let mgr = ext_mgr.read().await;
+            let hooks = mgr.hooks_for("daemon.startup");
+            if hooks.is_empty() {
+                tracing::debug!("No extensions have daemon.startup hook");
+                return;
+            }
+            let ext_ids: Vec<String> = hooks.iter().map(|(ext, _)| ext.manifest.id.clone()).collect();
+            drop(mgr); // 릴리즈 후 개별 디스패치
+
+            tracing::info!("Dispatching daemon.startup hooks for {} extension(s)", ext_ids.len());
+
+            for ext_id in &ext_ids {
+                init_tracker.mark_started(ext_id, "Initializing...").await;
+            }
+
+            let ctx = serde_json::json!({});
+            let mgr = ext_mgr.read().await;
+            let results = mgr.dispatch_hook("daemon.startup", ctx).await;
+
+            for (ext_id, result) in results {
+                match result {
+                    Ok(val) => {
+                        let success = val.get("success").and_then(|s| s.as_bool()).unwrap_or(true);
+                        let msg = val.get("message").and_then(|m| m.as_str()).unwrap_or("OK");
+                        if success {
+                            tracing::info!("Extension '{}' startup complete: {}", ext_id, msg);
+                        } else {
+                            let err = val.get("error").and_then(|e| e.as_str()).unwrap_or("unknown");
+                            tracing::warn!("Extension '{}' startup failed: {}", ext_id, err);
+                        }
+                        init_tracker.mark_finished(&ext_id, success, msg).await;
+                    }
+                    Err(e) => {
+                        tracing::error!("Extension '{}' startup error: {}", ext_id, e);
+                        init_tracker.mark_finished(&ext_id, false, &e.to_string()).await;
+                    }
+                }
+            }
+        });
+    }
+
     // 백그라운드 모니터링 태스크 시작
     let supervisor_monitor = supervisor.clone();
     tokio::spawn(async move {
         let mut error_count = 0;
-        let max_consecutive_errors = 10;
         
         loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+            tokio::time::sleep(tokio::time::Duration::from_secs(MONITOR_INTERVAL_SECS)).await;
             
             let mut sup = supervisor_monitor.write().await;
             match sup.monitor_processes().await {
@@ -76,13 +134,12 @@ async fn main() -> anyhow::Result<()> {
                 Err(e) => {
                     error_count += 1;
                     if error_count <= 3 || error_count % 10 == 0 {
-                        // 처음 3번과 이후 10번마다 로깅하여 반복 로그 방지
                         tracing::error!("Monitor error (count: {}): {}", error_count, e);
                     }
                     
-                    if error_count >= max_consecutive_errors {
+                    if error_count >= MONITOR_MAX_CONSECUTIVE_ERRORS {
                         tracing::error!("Monitor has failed {} consecutive times, restarting monitoring", error_count);
-                        error_count = 0; // 리셋하여 무한 루프 방지
+                        error_count = 0;
                     }
                 }
             }
@@ -93,7 +150,7 @@ async fn main() -> anyhow::Result<()> {
     let registry_reaper = client_registry.clone();
     tokio::spawn(async move {
         loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+            tokio::time::sleep(tokio::time::Duration::from_secs(HEARTBEAT_REAPER_INTERVAL_SECS)).await;
             ipc::reap_expired_clients(&registry_reaper).await;
 
             // 모든 클라이언트가 사라졌으면 watchdog 타이머 시작
@@ -206,7 +263,7 @@ async fn main() -> anyhow::Result<()> {
         {
             let sup = supervisor_shutdown.read().await;
             let all_instances: Vec<_> = sup.instance_store.list()
-                .into_iter()
+                .iter()
                 .collect();
 
             // Extension hook: daemon.shutdown — 익스텐션이 자체 정리 수행

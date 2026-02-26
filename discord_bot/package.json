@@ -13,19 +13,12 @@
     "build": "pkg . --targets node20-win-x64 --output discord-bot.exe --compress Brotli"
   },
   "dependencies": {
-    "@discordjs/voice": "^0.18.0",
     "axios": "^1.4.0",
     "discord.js": "^14.0.0",
     "dotenv": "^16.0.0",
-    "ffmpeg-static": "5.2.0",
-    "i18next": "^25.8.4",
-    "opusscript": "^0.0.8",
-    "play-dl": "^1.9.7",
-    "sodium-native": "^4.3.1"
+    "i18next": "^25.8.4"
   },
-  "optionalDependencies": {
-    "@discordjs/opus": "^0.9.0"
-  },
+  "optionalDependencies": {},
   "devDependencies": {
     "jest": "^29.0.0",
     "nodemon": "^3.0.0",

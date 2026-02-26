@@ -147,7 +147,7 @@ group = "advanced"
 name = "broadcast_rcon_to_ops"
 type = "boolean"
 label = "Broadcast RCON to Ops"
-description = "Send RCON command output to all online ops"
+description = "Send RCON command output to all online ops (only applies when Managed Start is disabled)"
 default = true
 group = "advanced"
 
@@ -474,17 +474,19 @@ group = "advanced"
 name = "rcon_password"
 type = "password"
 label = "RCON Password"
-description = "RCON access password"
+description = "RCON access password (auto-managed when Managed Start is enabled)"
 default = ""
+group = "advanced"
 
 [[settings.fields]]
 name = "rcon_port"
 type = "number"
 label = "RCON Port"
-description = "RCON server port"
+description = "RCON server port (only used when Managed Start is disabled)"
 default = 25575
 min = 1024
 max = 65535
+group = "advanced"
 
 [[settings.fields]]
 name = "region_file_compression"

@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { safeShowToast, createTranslateError, retryWithBackoff } from '../utils/helpers';
+import { createTranslateError, retryWithBackoff, safeShowToast } from '../utils/helpers';
 
 /**
  * Manages server CRUD operations: fetch, start, stop, status, add, delete.
@@ -43,6 +43,8 @@ export function useServerActions({
     const optimisticStatusRef = useRef(new Map()); // name → { status, timestamp }
     const lastErrorToastRef = useRef(0);
     const firstFetchDoneRef = useRef(false);
+    const bootGraceRef = useRef(true); // suppress notifications during app boot
+    const bootGraceTimerRef = useRef(null);
 
     /** Optimistic 상태 해제 후 fetchServers로 실제 상태 복원 */
     const revertOptimistic = (name) => {
@@ -53,24 +55,28 @@ export function useServerActions({
     // ── fetchServers ────────────────────────────────────────
     const fetchServers = async () => {
         try {
-            const data = await retryWithBackoff(
-                () => window.api.serverList(),
-                3,
-                800
-            );
+            const data = await retryWithBackoff(() => window.api.serverList(), 3, 800);
             if (data && data.servers) {
-                setServers(prev => {
+                setServers((prev) => {
                     if (!firstFetchDoneRef.current) {
                         firstFetchDoneRef.current = true;
-                        return data.servers.map(newServer => {
-                            const existing = prev.find(s => s.name === newServer.name);
+                        // Start boot grace period — suppress state-change
+                        // notifications for 30s to avoid false alarms from
+                        // daemon auto-start, initial status catch-up, etc.
+                        if (!bootGraceTimerRef.current) {
+                            bootGraceTimerRef.current = setTimeout(() => {
+                                bootGraceRef.current = false;
+                            }, 30_000);
+                        }
+                        return data.servers.map((newServer) => {
+                            const existing = prev.find((s) => s.name === newServer.name);
                             return { ...newServer, expanded: existing?.expanded || false };
                         });
                     }
 
                     // Detect state changes (crash / external start·stop)
                     for (const newServer of data.servers) {
-                        const existing = prev.find(s => s.name === newServer.name);
+                        const existing = prev.find((s) => s.name === newServer.name);
                         if (!existing) continue;
 
                         const wasRunning = existing.status === 'running';
@@ -82,35 +88,54 @@ export function useServerActions({
                         const apiAction = Number(newServer.last_api_action || 0);
                         const prevApiAction = Number(existing.last_api_action || 0);
                         const apiActionUpdated = apiAction > prevApiAction;
-                        const isRecentApiOp = apiAction > 0 && (Date.now() - apiAction < 10 * 60 * 1000);
+                        const isRecentApiOp = apiAction > 0 && Date.now() - apiAction < 10 * 60 * 1000;
                         const isApiOp = apiActionUpdated || isRecentApiOp;
 
-                        if (wasRunning && nowStopped && !isGuiOp) {
-                            if (isApiOp) {
-                                safeShowToast(
-                                    t('servers.unexpected_stop_toast', { name: newServer.name }),
-                                    'info', 3000
-                                );
-                            } else {
-                                safeShowToast(
-                                    t('servers.unexpected_stop_toast', { name: newServer.name }),
-                                    'error', 5000,
-                                    { isNotice: true, source: newServer.name }
-                                );
-                            }
-                        } else if (wasStopped && nowRunning && !isGuiOp) {
-                            if (isApiOp) {
-                                safeShowToast(
-                                    t('servers.external_start_toast', { name: newServer.name }),
-                                    'info', 3000
-                                );
-                            } else {
-                                safeShowToast(
-                                    t('servers.external_start_toast', { name: newServer.name }),
-                                    'info', 3000,
-                                    { isNotice: true, source: newServer.name }
-                                );
-                            }
+                        // During boot grace period, skip all state-change
+                        // notifications to avoid false alarms from daemon
+                        // auto-start and initial status catch-up.
+                        const inBootGrace = bootGraceRef.current;
+
+                        // Also treat servers with pending optimistic status as
+                        // "known ops" — we initiated something but the guard
+                        // hasn't cleared yet.
+                        const hasPendingOptimistic = optimisticStatusRef.current.has(newServer.name);
+
+                        const isKnownOp = isGuiOp || isApiOp || inBootGrace || hasPendingOptimistic;
+
+                        if (wasRunning && nowStopped && !isKnownOp) {
+                            // Crash / unexpected stop — genuinely important.
+                            // This is the ONLY state transition that warrants
+                            // a persistent notice.
+                            safeShowToast(
+                                t('servers.unexpected_stop_toast', { name: newServer.name }),
+                                'error',
+                                5000,
+                                { isNotice: true, source: newServer.name },
+                            );
+                        } else if (wasRunning && nowStopped && !isGuiOp && isApiOp && !inBootGrace) {
+                            // API-initiated stop (Discord bot command, etc.)
+                            // Informational toast only — not notice-worthy.
+                            safeShowToast(
+                                t('servers.unexpected_stop_toast', { name: newServer.name }),
+                                'info',
+                                3000,
+                            );
+                        } else if (wasStopped && nowRunning && !isKnownOp) {
+                            // External start — informational only, not alarming.
+                            // Toast is enough; no persistent notice.
+                            safeShowToast(
+                                t('servers.external_start_toast', { name: newServer.name }),
+                                'info',
+                                3000,
+                            );
+                        } else if (wasStopped && nowRunning && !isGuiOp && isApiOp && !inBootGrace) {
+                            // API-initiated start (Discord bot command, etc.)
+                            safeShowToast(
+                                t('servers.external_start_toast', { name: newServer.name }),
+                                'info',
+                                3000,
+                            );
                         }
 
                         if (isGuiOp && (nowStopped || nowRunning) && existing.status !== newServer.status) {
@@ -118,8 +143,8 @@ export function useServerActions({
                         }
                     }
 
-                    return data.servers.map(newServer => {
-                        const existing = prev.find(s => s.name === newServer.name);
+                    return data.servers.map((newServer) => {
+                        const existing = prev.find((s) => s.name === newServer.name);
 
                         // Optimistic status 보호: starting/stopping 상태를
                         // 서버가 아직 전환 완료 전이면 유지 (최대 60초)
@@ -141,7 +166,7 @@ export function useServerActions({
                         return {
                             ...newServer,
                             status: mergedStatus,
-                            expanded: existing?.expanded || false
+                            expanded: existing?.expanded || false,
                         };
                     });
                 });
@@ -155,16 +180,21 @@ export function useServerActions({
                                 port: evt.port,
                                 existing: evt.existing_name,
                             }),
-                            'error', 8000,
-                            { isNotice: true, source: evt.stopped_name }
+                            'error',
+                            8000,
+                            { isNotice: true, source: evt.stopped_name },
                         );
                     }
                 }
             } else if (data && data.error) {
                 console.error('Server list error:', data.error);
                 const now = Date.now();
-                if (!loading && (now - lastErrorToastRef.current) > 5000) {
-                    safeShowToast(t('servers.fetch_failed_toast', { error: translateError(data.error) }), 'warning', 3000);
+                if (!loading && now - lastErrorToastRef.current > 5000) {
+                    safeShowToast(
+                        t('servers.fetch_failed_toast', { error: translateError(data.error) }),
+                        'warning',
+                        3000,
+                    );
                     lastErrorToastRef.current = now;
                 }
             } else {
@@ -176,7 +206,7 @@ export function useServerActions({
             console.error('Failed to fetch servers:', error);
             const errorMsg = translateError(error.message);
             const now = Date.now();
-            if (!loading && (now - lastErrorToastRef.current) > 5000) {
+            if (!loading && now - lastErrorToastRef.current > 5000) {
                 safeShowToast(t('servers.fetch_update_failed_toast', { error: errorMsg }), 'warning', 3000);
                 lastErrorToastRef.current = now;
             }
@@ -188,14 +218,14 @@ export function useServerActions({
     // ── handleStart ─────────────────────────────────────────
     const handleStart = async (name, module) => {
         try {
-            const srv = servers.find(s => s.name === name);
+            const srv = servers.find((s) => s.name === name);
             if (!srv) {
                 safeShowToast(t('servers.start_failed_toast', { error: 'Instance not found' }), 'error', 4000);
                 return;
             }
 
             // Determine start mode
-            const mod = modules.find(m => m.name === module);
+            const mod = modules.find((m) => m.name === module);
             const instanceManagedStart = srv.module_settings?.managed_start;
             let interactionMode;
             if (instanceManagedStart === true) {
@@ -208,7 +238,7 @@ export function useServerActions({
 
             // Optimistic update: 즉시 'starting' 상태 표시
             optimisticStatusRef.current.set(name, { status: 'starting', timestamp: Date.now() });
-            setServers(prev => prev.map(s => s.name === name ? { ...s, status: 'starting' } : s));
+            setServers((prev) => prev.map((s) => (s.name === name ? { ...s, status: 'starting' } : s)));
 
             let result;
             if (interactionMode === 'console') {
@@ -237,9 +267,11 @@ export function useServerActions({
                                         title: t('servers.select_server_jar'),
                                     });
                                     if (filePath) {
-                                        const s = servers.find(s => s.name === name);
+                                        const s = servers.find((s) => s.name === name);
                                         if (s) {
-                                            await window.api.instanceUpdateSettings(s.id, { executable_path: filePath });
+                                            await window.api.instanceUpdateSettings(s.id, {
+                                                executable_path: filePath,
+                                            });
                                             safeShowToast(t('servers.jar_path_updated'), 'success', 3000);
                                             await fetchServers();
                                             handleStart(name, module);
@@ -248,7 +280,7 @@ export function useServerActions({
                                 } catch (err) {
                                     safeShowToast(translateError(err.message), 'error', 4000);
                                 }
-                            }
+                            },
                         },
                         {
                             label: t('servers.jar_action_install_new'),
@@ -258,7 +290,10 @@ export function useServerActions({
                                     const installDir = await window.api.openFolderDialog();
                                     if (!installDir) return;
 
-                                    setProgressBar({ message: t('servers.progress_fetching_versions'), indeterminate: true });
+                                    setProgressBar({
+                                        message: t('servers.progress_fetching_versions'),
+                                        indeterminate: true,
+                                    });
 
                                     const versions = await window.api.moduleListVersions(module, { per_page: 1 });
                                     const latestVersion = versions?.latest?.release;
@@ -268,7 +303,10 @@ export function useServerActions({
                                         return;
                                     }
 
-                                    setProgressBar({ message: t('servers.progress_downloading', { version: latestVersion }), percent: 0 });
+                                    setProgressBar({
+                                        message: t('servers.progress_downloading', { version: latestVersion }),
+                                        percent: 0,
+                                    });
 
                                     const installResult = await window.api.moduleInstallServer(module, {
                                         version: latestVersion,
@@ -284,7 +322,7 @@ export function useServerActions({
 
                                     setProgressBar({ message: t('servers.progress_configuring'), percent: 90 });
 
-                                    const s = servers.find(s => s.name === name);
+                                    const s = servers.find((s) => s.name === name);
                                     if (s && installResult.jar_path) {
                                         await window.api.instanceUpdateSettings(s.id, {
                                             executable_path: installResult.jar_path,
@@ -308,13 +346,13 @@ export function useServerActions({
                                     setProgressBar(null);
                                     safeShowToast(translateError(err.message), 'error', 4000);
                                 }
-                            }
+                            },
                         },
                         {
                             label: t('modals.cancel'),
-                            action: () => setModal(null)
-                        }
-                    ]
+                            action: () => setModal(null),
+                        },
+                    ],
                 });
                 return;
             }
@@ -325,10 +363,12 @@ export function useServerActions({
                 setModal({
                     type: 'question',
                     title: t('servers.extension_required_title', { defaultValue: 'Extension Required' }),
-                    message: result.message || t('servers.extension_required_message', {
-                        name,
-                        defaultValue: `Server '${name}' requires an extension that is not enabled.`,
-                    }),
+                    message:
+                        result.message ||
+                        t('servers.extension_required_message', {
+                            name,
+                            defaultValue: `Server '${name}' requires an extension that is not enabled.`,
+                        }),
                     buttons: [
                         {
                             label: t('servers.extension_open_settings', { defaultValue: 'Open Extension Settings' }),
@@ -337,13 +377,13 @@ export function useServerActions({
                                 if (openSettingsToExtensions) {
                                     openSettingsToExtensions();
                                 }
-                            }
+                            },
                         },
                         {
                             label: t('modals.cancel'),
-                            action: () => setModal(null)
-                        }
-                    ]
+                            action: () => setModal(null),
+                        },
+                    ],
                 });
                 return;
             }
@@ -404,14 +444,20 @@ export function useServerActions({
                             if (consecutiveStopped >= 5) {
                                 resolved = true;
                                 setProgressBar(null);
-                                safeShowToast(t('servers.start_failed_toast', { error: 'Process exited immediately' }), 'error', 4000);
+                                safeShowToast(
+                                    t('servers.start_failed_toast', { error: 'Process exited immediately' }),
+                                    'error',
+                                    4000,
+                                );
                                 fetchServers();
                                 return;
                             }
                         } else {
                             consecutiveStopped = 0;
                         }
-                    } catch (error) { /* ignore */ }
+                    } catch (_error) {
+                        /* ignore */
+                    }
                     if (attempts >= maxAttempts) {
                         resolved = true;
                         setProgressBar(null);
@@ -442,9 +488,9 @@ export function useServerActions({
                 try {
                     // Optimistic update: 즉시 'stopping' 상태 표시
                     optimisticStatusRef.current.set(name, { status: 'stopping', timestamp: Date.now() });
-                    setServers(prev => prev.map(s => s.name === name ? { ...s, status: 'stopping' } : s));
+                    setServers((prev) => prev.map((s) => (s.name === name ? { ...s, status: 'stopping' } : s)));
 
-                    const srv = servers.find(s => s.name === name);
+                    const srv = servers.find((s) => s.name === name);
                     const useGraceful = srv?.module_settings?.graceful_stop;
                     const forceStop = useGraceful === false;
 
@@ -456,25 +502,29 @@ export function useServerActions({
                         setModal({
                             type: 'question',
                             title: t('servers.extension_required_title', { defaultValue: 'Extension Required' }),
-                            message: result.message || t('servers.extension_required_message', {
-                                name,
-                                defaultValue: `Server '${name}' requires an extension that is not enabled.`,
-                            }),
+                            message:
+                                result.message ||
+                                t('servers.extension_required_message', {
+                                    name,
+                                    defaultValue: `Server '${name}' requires an extension that is not enabled.`,
+                                }),
                             buttons: [
                                 {
-                                    label: t('servers.extension_open_settings', { defaultValue: 'Open Extension Settings' }),
+                                    label: t('servers.extension_open_settings', {
+                                        defaultValue: 'Open Extension Settings',
+                                    }),
                                     action: () => {
                                         setModal(null);
                                         if (openSettingsToExtensions) {
                                             openSettingsToExtensions();
                                         }
-                                    }
+                                    },
                                 },
                                 {
                                     label: t('modals.cancel'),
-                                    action: () => setModal(null)
-                                }
-                            ]
+                                    action: () => setModal(null),
+                                },
+                            ],
                         });
                         return;
                     }
@@ -514,7 +564,9 @@ export function useServerActions({
                                     fetchServers();
                                     return;
                                 }
-                            } catch (error) { /* ignore */ }
+                            } catch (_error) {
+                                /* ignore */
+                            }
                             if (attempts >= maxAttempts) {
                                 resolved = true;
                                 setProgressBar(null);
@@ -533,7 +585,7 @@ export function useServerActions({
                     safeShowToast(t('servers.stop_failed_toast', { error: errorMsg }), 'error', 4000);
                 }
             },
-            onCancel: () => setModal(null)
+            onCancel: () => setModal(null),
         });
     };
 
@@ -562,22 +614,30 @@ export function useServerActions({
         const moduleName = typeof payload === 'string' ? arguments[1] : payload?.module_name;
 
         if (!serverName || !serverName.trim()) {
-            setModal({ type: 'failure', title: t('servers.add_server_name_empty_title'), message: t('servers.add_server_name_empty_message') });
+            setModal({
+                type: 'failure',
+                title: t('servers.add_server_name_empty_title'),
+                message: t('servers.add_server_name_empty_message'),
+            });
             return;
         }
         if (!moduleName) {
-            setModal({ type: 'failure', title: t('servers.add_module_empty_title'), message: t('servers.add_module_empty_message') });
+            setModal({
+                type: 'failure',
+                title: t('servers.add_module_empty_title'),
+                message: t('servers.add_module_empty_message'),
+            });
             return;
         }
 
         try {
-            const selectedModuleData = modules.find(m => m.name === moduleName);
+            const selectedModuleData = modules.find((m) => m.name === moduleName);
 
             const instanceData = {
                 name: serverName.trim(),
                 module_name: moduleName,
                 executable_path: selectedModuleData?.executable_path || null,
-                use_container: payload?.use_container || false,  // 백엔드가 extension_data로 변환
+                use_container: payload?.use_container || false, // 백엔드가 extension_data로 변환
             };
 
             console.log('Adding instance:', instanceData);
@@ -592,7 +652,11 @@ export function useServerActions({
                     setShowModuleManager(false);
                     fetchServers();
                 } else {
-                    setModal({ type: 'success', title: t('command_modal.success'), message: t('server_actions.server_added', { name: serverName }) });
+                    setModal({
+                        type: 'success',
+                        title: t('command_modal.success'),
+                        message: t('server_actions.server_added', { name: serverName }),
+                    });
                     setShowModuleManager(false);
                     fetchServers();
                 }
@@ -622,7 +686,11 @@ export function useServerActions({
                 setModal({ type: 'failure', title: t('servers.delete_failed_title'), message: errorMsg });
             } else {
                 console.log(`Instance "${server.name}" (ID: ${server.id}) deleted`);
-                setModal({ type: 'success', title: t('command_modal.success'), message: t('server_actions.server_deleted', { name: server.name }) });
+                setModal({
+                    type: 'success',
+                    title: t('command_modal.success'),
+                    message: t('server_actions.server_deleted', { name: server.name }),
+                });
                 fetchServers();
             }
         } catch (error) {

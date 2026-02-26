@@ -1,40 +1,42 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useRef, } from 'react';
 import { useTranslation } from 'react-i18next';
 import './App.css';
-import { 
-    SuccessModal, 
-    FailureModal, 
-    NotificationModal, 
-    QuestionModal,
-    CommandModal,
-    Toast,
-    TitleBar,
-    SettingsModal,
-    DiscordBotModal,
-    BackgroundModal,
+import {
     AddServerModal,
-    NoticeModal,
+    BackgroundModal,
+    CommandModal,
+    ConsolePanel,
+    DiscordBotModal,
+    FailureModal,
     Icon,
-    CustomDropdown,
+    LoadingScreen,
+    NoticeModal,
+    NotificationModal,
+    PopoutConsole,
+    QuestionModal,
     ServerCard,
     ServerSettingsModal,
-    LoadingScreen,
-    ConsolePanel,
-    PopoutConsole
+    SettingsModal,
+    SuccessModal,
+    TitleBar,
+    Toast,
 } from './components';
-import { useModalClose } from './hooks/useModalClose';
-import { useWaitingImage } from './hooks/useWaitingImage';
+import { ExtensionProvider } from './contexts/ExtensionContext';
 import { useConsole } from './hooks/useConsole';
 import { useDragReorder } from './hooks/useDragReorder';
-import { useDiscordBot } from './hooks/useDiscordBot';
+import useExtensionInitStatus from './hooks/useExtensionInitStatus';
+import { useModalClose } from './hooks/useModalClose';
 import { useServerActions } from './hooks/useServerActions';
 import { useServerSettings } from './hooks/useServerSettings';
-import { safeShowToast, createTranslateError, retryWithBackoff, waitForDaemon, debugLog, debugWarn } from './utils/helpers';
-import { ExtensionProvider } from './contexts/ExtensionContext';
+import { setDiscordI18n, useDiscordStore } from './stores/useDiscordStore';
+import { setServerI18n, useServerStore } from './stores/useServerStore';
+import { useSettingsStore } from './stores/useSettingsStore';
+import { useUIStore } from './stores/useUIStore';
+import { createTranslateError, } from './utils/helpers';
 
 function App() {
     const { t, i18n } = useTranslation('gui');
-    const translateError = createTranslateError(t);
+    const _translateError = createTranslateError(t);
 
     // ── Console Popout Mode Detection ──────────────────────
     const popoutParams = useMemo(() => {
@@ -54,160 +56,174 @@ function App() {
         return './logo-en.png';
     }, [i18n.language]);
 
-    // ── Core Shared State ──────────────────────────────────
-    const [servers, setServers] = useState([]);
-    const [modules, setModules] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [modal, setModal] = useState(null);
-    const [progressBar, setProgressBar] = useState(null);
+    // ── Server Store (Zustand) ─────────────────────────────
+    const servers = useServerStore((s) => s.servers);
+    const setServers = useServerStore((s) => s.setServers);
+    const modules = useServerStore((s) => s.modules);
+    const loading = useServerStore((s) => s.loading);
+    const moduleAliasesPerModule = useServerStore((s) => s.moduleAliasesPerModule);
+    const daemonReady = useServerStore((s) => s.daemonReady);
+    const setDaemonReady = useServerStore((s) => s.setDaemonReady);
+    const initStatus = useServerStore((s) => s.initStatus);
+    const setInitStatus = useServerStore((s) => s.setInitStatus);
+    const initProgress = useServerStore((s) => s.initProgress);
+    const setInitProgress = useServerStore((s) => s.setInitProgress);
+    const serversInitializing = useServerStore((s) => s.serversInitializing);
+    const setServersInitializing = useServerStore((s) => s.setServersInitializing);
+    const nowEpoch = useServerStore((s) => s.nowEpoch);
+    const formatUptime = useServerStore((s) => s.formatUptime);
 
-    // ── Init State ─────────────────────────────────────────
-    const [daemonReady, setDaemonReady] = useState(false);
-    const [initStatus, setInitStatus] = useState('Initialize...');
-    const [initProgress, setInitProgress] = useState(0);
-    const [serversInitializing, setServersInitializing] = useState(true);
+    // ── UI Store (Zustand) ─────────────────────────────────
+    const modal = useUIStore((s) => s.modal);
+    const setModal = useUIStore((s) => s.openModal);
+    const progressBar = useUIStore((s) => s.progressBar);
+    const setProgressBar = useUIStore((s) => s.setProgressBar);
+    const showModuleManager = useUIStore((s) => s.showModuleManager);
+    const setShowModuleManager = useUIStore((s) => s.setShowModuleManager);
+    const showGuiSettingsModal = useUIStore((s) => s.showGuiSettingsModal);
+    const settingsInitialView = useUIStore((s) => s.settingsInitialView);
+    const showCommandModal = useUIStore((s) => s.showCommandModal);
+    const setShowCommandModal = useUIStore((s) => s.setShowCommandModal);
+    const commandServer = useUIStore((s) => s.commandServer);
+    const setCommandServer = useUIStore((s) => s.setCommandServer);
+    const contextMenu = useUIStore((s) => s.contextMenu);
+    const setContextMenu = useUIStore((s) => s.setContextMenu);
+    const showDiscordSection = useUIStore((s) => s.showDiscordSection);
+    const setShowDiscordSection = useUIStore((s) => s.setShowDiscordSection);
+    const showBackgroundSection = useUIStore((s) => s.showBackgroundSection);
+    const setShowBackgroundSection = useUIStore((s) => s.setShowBackgroundSection);
+    const showNoticeSection = useUIStore((s) => s.showNoticeSection);
+    const setShowNoticeSection = useUIStore((s) => s.setShowNoticeSection);
+    const unreadNoticeCount = useUIStore((s) => s.unreadNoticeCount);
+    const setUnreadNoticeCount = useUIStore((s) => s.setUnreadNoticeCount);
+    const backgroundDaemonStatus = useUIStore((s) => s.backgroundDaemonStatus);
+    const setBackgroundDaemonStatus = useUIStore((s) => s.setBackgroundDaemonStatus);
+    const showWaitingImage = useUIStore((s) => s.showWaitingImage);
+    const setShowWaitingImage = useUIStore((s) => s.setShowWaitingImage);
 
-    // ── Uptime Clock ───────────────────────────────────────
-    const [nowEpoch, setNowEpoch] = useState(() => Math.floor(Date.now() / 1000));
-    useEffect(() => {
-        const timer = setInterval(() => setNowEpoch(Math.floor(Date.now() / 1000)), 1000);
-        return () => clearInterval(timer);
-    }, []);
-
-    const formatUptime = (startTime) => {
-        if (!startTime) return null;
-        const elapsed = Math.max(0, nowEpoch - startTime);
-        const h = String(Math.floor(elapsed / 3600)).padStart(2, '0');
-        const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
-        const s = String(elapsed % 60).padStart(2, '0');
-        return `${h}:${m}:${s}`;
-    };
-
-    // ── App Settings State ─────────────────────────────────
-    const [autoRefresh, setAutoRefresh] = useState(true);
-    const [refreshInterval, setRefreshInterval] = useState(2000);
-    const [ipcPort, setIpcPort] = useState(57474);
-    const [consoleBufferSize, setConsoleBufferSize] = useState(2000);
+    // ── Settings Store (Zustand) ──────────────────────────
+    const autoRefresh = useSettingsStore((s) => s.autoRefresh);
+    const refreshInterval = useSettingsStore((s) => s.refreshInterval);
+    const ipcPort = useSettingsStore((s) => s.ipcPort);
+    const consoleBufferSize = useSettingsStore((s) => s.consoleBufferSize);
     const consoleBufferRef = useRef(2000);
-    const [modulesPath, setModulesPath] = useState('');
-    const [settingsPath, setSettingsPath] = useState('');
+    const modulesPath = useSettingsStore((s) => s.modulesPath);
+    const settingsPath = useSettingsStore((s) => s.settingsPath);
+    const _settingsReady = useSettingsStore((s) => s.settingsReady);
 
-    // ── Module Manager State ───────────────────────────────
-    const [showModuleManager, setShowModuleManager] = useState(false);
-    const [settingsInitialView, setSettingsInitialView] = useState(null);
-    const [showCommandModal, setShowCommandModal] = useState(false);
-    const [commandServer, setCommandServer] = useState(null);
-    const [showGuiSettingsModal, setShowGuiSettingsModal] = useState(false);
-
-    // ── Context Menu State ─────────────────────────────────
-    const [contextMenu, setContextMenu] = useState(null);
-
-    // ── Discord Config State ───────────────────────────────
-    const [discordToken, setDiscordToken] = useState('');
-    const [showDiscordSection, setShowDiscordSection] = useState(false);
-    const [showBackgroundSection, setShowBackgroundSection] = useState(false);
-    const [showNoticeSection, setShowNoticeSection] = useState(false);
-    const [unreadNoticeCount, setUnreadNoticeCount] = useState(0);
-    const [discordPrefix, setDiscordPrefix] = useState('!saba');
-    const [discordAutoStart, setDiscordAutoStart] = useState(false);
-    const [discordModuleAliases, setDiscordModuleAliases] = useState({});
-    const [discordCommandAliases, setDiscordCommandAliases] = useState({});
-    const [discordMusicEnabled, setDiscordMusicEnabled] = useState(true);
-    const discordTokenRef = useRef('');
-
-    // ── Discord Cloud Mode State ───────────────────────────
-    const [discordBotMode, setDiscordBotMode] = useState('local');       // 'local' | 'cloud'
-    const [discordCloudRelayUrl, setDiscordCloudRelayUrl] = useState('');
-    const [discordCloudHostId, setDiscordCloudHostId] = useState('');
-
-    // ── Per-node settings (client-side) ──────────────────────
-    // { [guildId|"local"]: { allowedInstances: string[], memberPermissions: { [userId]: { [serverId]: string[] } } } }
-    const [nodeSettings, setNodeSettings] = useState({});
-
-    // ── Cloud cache (로컬 저장 — 서버 페치 없이 즉시 표시) ──
-    // cloudNodes: [{ guildId, guildName, hostId, ... }]
-    const [cloudNodes, setCloudNodes] = useState([]);
-    // cloudMembers: { [guildId]: [{ id, username, displayName }] }
-    const [cloudMembers, setCloudMembers] = useState({});
-
-    // ── Background Daemon State ────────────────────────────
-    const [backgroundDaemonStatus, setBackgroundDaemonStatus] = useState('checking');
-
-    // ── Init Flags ─────────────────────────────────────────
-    const [settingsReady, setSettingsReady] = useState(false);
-
-    // ── Module Aliases from module.toml ────────────────────
-    const [moduleAliasesPerModule, setModuleAliasesPerModule] = useState({});
+    // ── Discord Store (Zustand) ──────────────────────────────
+    const discordToken = useDiscordStore((s) => s.discordToken);
+    const discordPrefix = useDiscordStore((s) => s.discordPrefix);
+    const discordAutoStart = useDiscordStore((s) => s.discordAutoStart);
+    const discordModuleAliases = useDiscordStore((s) => s.discordModuleAliases);
+    const discordCommandAliases = useDiscordStore((s) => s.discordCommandAliases);
+    const discordMusicEnabled = useDiscordStore((s) => s.discordMusicEnabled);
+    const discordBotMode = useDiscordStore((s) => s.discordBotMode);
+    const discordCloudRelayUrl = useDiscordStore((s) => s.discordCloudRelayUrl);
+    const discordCloudHostId = useDiscordStore((s) => s.discordCloudHostId);
+    const nodeSettings = useDiscordStore((s) => s.nodeSettings);
+    const cloudNodes = useDiscordStore((s) => s.cloudNodes);
+    const cloudMembers = useDiscordStore((s) => s.cloudMembers);
+    const discordBotStatus = useDiscordStore((s) => s.discordBotStatus);
+    const relayConnected = useDiscordStore((s) => s.relayConnected);
+    const relayConnecting = useDiscordStore((s) => s.relayConnecting);
 
     // ══════════════════════════════════════════════════════════
     // ── Custom Hooks ─────────────────────────────────────────
     // ══════════════════════════════════════════════════════════
 
-    const { showWaitingImage, setShowWaitingImage } = useWaitingImage(progressBar);
-
     const {
-        consoleServer, consoleLines, consoleInput, setConsoleInput,
-        consoleEndRef, consolePopoutInstanceId, setConsolePopoutInstanceId,
-        openConsole, closeConsole, sendConsoleCommand,
+        consoleServer,
+        consoleLines,
+        consoleInput,
+        setConsoleInput,
+        consoleEndRef,
+        consolePopoutInstanceId,
+        setConsolePopoutInstanceId,
+        openConsole,
+        closeConsole,
+        sendConsoleCommand,
     } = useConsole({ isPopoutMode, popoutParams, consoleBufferRef });
 
     const { draggedName, cardRefs, skipNextClick, handleCardPointerDown } = useDragReorder(servers, setServers);
 
-    const {
-        discordBotStatus, setDiscordBotStatus, botStatusReady,
-        relayConnected, relayConnecting,
-        handleStartDiscordBot, handleStopDiscordBot,
-    } = useDiscordBot({
-        discordToken, discordPrefix, discordAutoStart,
-        discordModuleAliases, discordCommandAliases,
-        discordBotMode, discordCloudRelayUrl, discordCloudHostId,
-        nodeSettings,
-        settingsReady, discordTokenRef,
-        setModal,
-    });
+    // 익스텐션 초기화 상태 (daemon.startup hook 진행 중이면 스피너 표시)
+    const { initializing: extInitializing, inProgress: extInitInProgress } = useExtensionInitStatus();
+
+    // Discord store action aliases
+    const handleStartDiscordBot = useDiscordStore((s) => s.startBot);
+    const handleStopDiscordBot = useDiscordStore((s) => s.stopBot);
+
+    const { fetchServers, handleStart, handleStop, handleAddServer, handleDeleteServer } =
+        useServerActions({
+            servers,
+            setServers,
+            modules,
+            loading,
+            setLoading: (val) => useServerStore.setState({ loading: val }),
+            setModal,
+            setProgressBar,
+            consoleServer,
+            openConsole,
+            closeConsole,
+            setShowModuleManager,
+            formatUptime,
+            openSettingsToExtensions: () => {
+                useUIStore.getState().openSettings('extensions');
+            },
+        });
+
+    // Store-based fetchModules
+    const fetchModules = useServerStore((s) => s.fetchModules);
 
     const {
-        fetchServers, handleStart, handleStop, handleStatus,
-        handleAddServer, handleDeleteServer,
-    } = useServerActions({
-        servers, setServers, modules, loading, setLoading,
-        setModal, setProgressBar,
-        consoleServer, openConsole, closeConsole,
-        setShowModuleManager,
-        formatUptime,
-        openSettingsToExtensions: () => {
-            setSettingsInitialView('extensions');
-            setShowGuiSettingsModal(true);
-        },
-    });
-
-    const {
-        showSettingsModal, settingsServer, settingsValues,
-        settingsActiveTab, setSettingsActiveTab,
-        advancedExpanded, setAdvancedExpanded,
-        availableVersions, versionsLoading, versionInstalling,
+        showSettingsModal,
+        settingsServer,
+        settingsValues,
+        settingsActiveTab,
+        setSettingsActiveTab,
+        advancedExpanded,
+        setAdvancedExpanded,
+        availableVersions,
+        versionsLoading,
+        versionInstalling,
         resettingServer,
-        editingModuleAliases, setEditingModuleAliases,
-        editingCommandAliases, setEditingCommandAliases,
-        isSettingsClosing, requestSettingsClose,
-        handleOpenSettings, handleSettingChange, handleInstallVersion,
-        handleResetServer, handleSaveSettings,
-        handleSaveAliasesForModule, handleResetAliasesForModule,
+        editingModuleAliases,
+        setEditingModuleAliases,
+        editingCommandAliases,
+        setEditingCommandAliases,
+        isSettingsClosing,
+        requestSettingsClose,
+        handleOpenSettings,
+        handleSettingChange,
+        handleInstallVersion,
+        handleResetServer,
+        handleSaveSettings,
+        handleSaveAliasesForModule,
+        handleResetAliasesForModule,
     } = useServerSettings({
-        servers, modules,
-        setModal, setProgressBar,
+        servers,
+        modules,
+        setModal,
+        setProgressBar,
         moduleAliasesPerModule,
-        discordModuleAliases, discordCommandAliases,
-        setDiscordModuleAliases, setDiscordCommandAliases,
+        discordModuleAliases,
+        discordCommandAliases,
+        setDiscordModuleAliases: (val) => useDiscordStore.getState().update({ discordModuleAliases: val }),
+        setDiscordCommandAliases: (val) => useDiscordStore.getState().update({ discordCommandAliases: val }),
         discordPrefix,
         fetchServers,
     });
 
     // ── Modal Close Animations ─────────────────────────────
+    // biome-ignore lint/correctness/useExhaustiveDependencies: useState setters are stable
     const closeDiscordSection = useCallback(() => setShowDiscordSection(false), []);
     const { isClosing: isDiscordClosing, requestClose: requestDiscordClose } = useModalClose(closeDiscordSection);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: useState setters are stable
     const closeBackgroundSection = useCallback(() => setShowBackgroundSection(false), []);
-    const { isClosing: isBackgroundClosing, requestClose: requestBackgroundClose } = useModalClose(closeBackgroundSection);
+    const { isClosing: isBackgroundClosing, requestClose: requestBackgroundClose } =
+        useModalClose(closeBackgroundSection);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: useState setters are stable
     const closeNoticeSection = useCallback(() => setShowNoticeSection(false), []);
     const { isClosing: isNoticeClosing, requestClose: requestNoticeClose } = useModalClose(closeNoticeSection);
 
@@ -215,7 +231,49 @@ function App() {
     // ── Effects ──────────────────────────────────────────────
     // ══════════════════════════════════════════════════════════
 
+    // Waiting image monitoring (progress stall detection)
+    const waitingTimerRef = useRef(null);
+    const progressSnapshotRef = useRef(null);
+    useEffect(() => {
+        if (!progressBar) {
+            setShowWaitingImage(false);
+            if (waitingTimerRef.current) clearInterval(waitingTimerRef.current);
+            progressSnapshotRef.current = null;
+            return;
+        }
+        if (progressBar.percent === 100) {
+            setShowWaitingImage(false);
+            if (waitingTimerRef.current) clearInterval(waitingTimerRef.current);
+            progressSnapshotRef.current = null;
+            return;
+        }
+        if (!progressSnapshotRef.current) {
+            progressSnapshotRef.current = { percent: progressBar.percent || 0, timestamp: Date.now() };
+        }
+        if (!waitingTimerRef.current) {
+            waitingTimerRef.current = setInterval(() => {
+                const snap = progressSnapshotRef.current;
+                if (!snap) return;
+                const elapsed = (Date.now() - snap.timestamp) / 1000;
+                if (elapsed >= 5) setShowWaitingImage(true);
+            }, 1000);
+        }
+        const currentPercent = progressBar.percent || 0;
+        const snap = progressSnapshotRef.current;
+        if (snap && currentPercent - snap.percent > 5) {
+            progressSnapshotRef.current = { percent: currentPercent, timestamp: Date.now() };
+            setShowWaitingImage(false);
+        }
+        return () => {
+            if (waitingTimerRef.current) {
+                clearInterval(waitingTimerRef.current);
+                waitingTimerRef.current = null;
+            }
+        };
+    }, [progressBar, setShowWaitingImage]);
+
     // Unread notice count tracking
+    // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only event listener — setter is stable
     useEffect(() => {
         const updateCount = () => {
             if (window.__sabaNotice) {
@@ -228,18 +286,22 @@ function App() {
     }, []);
 
     // Initialization status monitoring
+    // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only IPC registration — setters are stable, initProgress stale fixed via functional updater
     useEffect(() => {
         // HMR: if daemon is already running, skip loading screen
         if (window.api && window.api.daemonStatus) {
-            window.api.daemonStatus().then((status) => {
-                if (status && status.running) {
-                    console.log('[HMR] Daemon already running, skipping loading screen');
-                    setInitStatus('Ready!');
-                    setInitProgress(100);
-                    setDaemonReady(true);
-                    setServersInitializing(false);
-                }
-            }).catch(() => {});
+            window.api
+                .daemonStatus()
+                .then((status) => {
+                    if (status && status.running) {
+                        console.log('[HMR] Daemon already running, skipping loading screen');
+                        setInitStatus('Ready!');
+                        setInitProgress(100);
+                        setDaemonReady(true);
+                        setServersInitializing(false);
+                    }
+                })
+                .catch(() => {});
         }
 
         if (window.api && window.api.onStatusUpdate) {
@@ -247,15 +309,24 @@ function App() {
                 console.log('[Init Status]', data.step, ':', data.message);
 
                 const statusMessages = {
-                    init: 'Initialize...', ui: 'UI loaded', daemon: 'Daemon preparing...',
-                    modules: 'Loading modules...', instances: 'Loading instances...', ready: 'Checking servers...'
+                    init: 'Initialize...',
+                    ui: 'UI loaded',
+                    daemon: 'Daemon preparing...',
+                    modules: 'Loading modules...',
+                    instances: 'Loading instances...',
+                    ready: 'Checking servers...',
                 };
                 const progressValues = {
-                    init: 10, ui: 20, daemon: 50, modules: 70, instances: 85, ready: 90
+                    init: 10,
+                    ui: 20,
+                    daemon: 50,
+                    modules: 70,
+                    instances: 85,
+                    ready: 90,
                 };
 
                 setInitStatus(statusMessages[data.step] || data.message);
-                setInitProgress(progressValues[data.step] || initProgress);
+                setInitProgress((prev) => progressValues[data.step] || prev);
 
                 if (data.step === 'ready') {
                     setTimeout(() => setDaemonReady(true), 600);
@@ -273,7 +344,10 @@ function App() {
                 if (count > 0 && window.__sabaNotice) {
                     window.__sabaNotice.addNotice({
                         message: `📦 ${count}개 업데이트 발견: ${names.join(', ') || '확인 필요'}`,
-                        type: 'info', source: 'Updater', action: 'openUpdateModal', dedup: true,
+                        type: 'info',
+                        source: 'Updater',
+                        action: 'openUpdateModal',
+                        dedup: true,
                     });
                 }
             });
@@ -285,77 +359,84 @@ function App() {
                 console.log('[Updater] Update completed notification:', data);
                 setTimeout(() => {
                     if (typeof window.showToast === 'function') {
-                        window.showToast(data.message || '업데이트가 완료되었습니다!', 'success', 5000, { isNotice: true, source: 'saba-chan' });
+                        window.showToast(data.message || '업데이트가 완료되었습니다!', 'success', 5000, {
+                            isNotice: true,
+                            source: 'saba-chan',
+                        });
                     }
                     if (window.__sabaNotice) {
                         window.__sabaNotice.addNotice({
                             message: data.message || '업데이트가 완료되었습니다!',
-                            type: 'success', source: 'Updater',
+                            type: 'success',
+                            source: 'Updater',
                         });
                     }
                 }, 1500);
             });
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Settings load
+    // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only initialization — store.getState() is stable
     useEffect(() => {
+        // Start uptime clock
+        useServerStore.getState().startUptimeClock();
+
         const loadSettings = async () => {
-            try {
-                const isTest = process.env.NODE_ENV === 'test' || typeof jest !== 'undefined';
-
-                const settings = await window.api.settingsLoad();
-                if (!isTest) console.log('[Settings] Loaded:', settings);
-                if (settings) {
-                    setAutoRefresh(settings.autoRefresh ?? true);
-                    setRefreshInterval(settings.refreshInterval ?? 2000);
-                    setIpcPort(settings.ipcPort ?? 57474);
-                    setConsoleBufferSize(settings.consoleBufferSize ?? 2000);
-                    consoleBufferRef.current = settings.consoleBufferSize ?? 2000;
-                    setModulesPath(settings.modulesPath || '');
-                    setDiscordToken(settings.discordToken || '');
-                    discordTokenRef.current = settings.discordToken || '';
-                    setDiscordAutoStart(settings.discordAutoStart ?? false);
-                    if (!isTest) console.log('[Settings] discordAutoStart:', settings.discordAutoStart, 'discordToken:', settings.discordToken ? 'YES' : 'NO');
-                }
-                const path = await window.api.settingsGetPath();
-                setSettingsPath(path);
-                if (!isTest) console.log('[Settings] GUI settings loaded from:', path);
-
-                const botCfg = await window.api.botConfigLoad();
-                if (botCfg) {
-                    setDiscordPrefix(botCfg.prefix || '!saba');
-                    setDiscordModuleAliases(botCfg.moduleAliases || {});
-                    setDiscordCommandAliases(botCfg.commandAliases || {});
-                    setDiscordMusicEnabled(botCfg.musicEnabled !== false);
-                    // ★ 클라우드 모드 설정 로드
-                    setDiscordBotMode(botCfg.mode || 'local');
-                    setDiscordCloudRelayUrl(botCfg.cloud?.relayUrl || '');
-                    setDiscordCloudHostId(botCfg.cloud?.hostId || '');
-                    // ★ nodeSettings 로드 (기존 allowedInstances → local 노드로 마이그레이션)
-                    if (botCfg.nodeSettings && typeof botCfg.nodeSettings === 'object') {
-                        setNodeSettings(botCfg.nodeSettings);
-                    } else if (Array.isArray(botCfg.allowedInstances)) {
-                        setNodeSettings({ local: { allowedInstances: botCfg.allowedInstances, memberPermissions: {} } });
-                    }
-                    // ★ 클라우드 캐시 로드
-                    if (Array.isArray(botCfg.cloudNodes)) setCloudNodes(botCfg.cloudNodes);
-                    if (botCfg.cloudMembers && typeof botCfg.cloudMembers === 'object') setCloudMembers(botCfg.cloudMembers);
-                    if (!isTest) console.log('[Settings] Bot config loaded, prefix:', botCfg.prefix, 'mode:', botCfg.mode || 'local');
-                }
-
-                setSettingsReady(true);
-                if (!isTest) console.log('[Settings] Ready flag set to true');
-            } catch (error) {
-                console.error('[Settings] Failed to load settings:', error);
-                setSettingsReady(true);
+            const settings = await useSettingsStore.getState().load();
+            if (settings) {
+                consoleBufferRef.current = settings.consoleBufferSize ?? 2000;
+                // Set discord token/autoStart in discord store
+                useDiscordStore.getState().update({
+                    discordToken: settings.discordToken || '',
+                    _discordTokenRef: settings.discordToken || '',
+                    discordAutoStart: settings.discordAutoStart ?? false,
+                });
+                // Sync discord fields for settings save
+                useSettingsStore
+                    .getState()
+                    ._setDiscordFields(settings.discordToken || '', settings.discordAutoStart ?? false);
             }
+
+            // Load bot config into discord store
+            await useDiscordStore.getState().loadConfig();
+            useDiscordStore.getState().update({ _settingsReady: true });
+
+            // Start status polling and listeners
+            useDiscordStore.getState().startStatusPolling();
+            useDiscordStore.getState().initListeners();
         };
         loadSettings();
+
+        return () => {
+            useDiscordStore.getState().stopStatusPolling();
+            useServerStore.getState().stopUptimeClock();
+        };
+    }, []);
+
+    // Sync i18n for Zustand stores when language changes
+    useEffect(() => {
+        setDiscordI18n(t);
+        setServerI18n(t, i18n);
+    }, [t, i18n]);
+
+    // Discord auto-start: monitor botStatusReady (Zustand v5 single-listener)
+    // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only Zustand subscribe
+    useEffect(() => {
+        const unsub = useDiscordStore.subscribe((state, prevState) => {
+            if (
+                state.botStatusReady !== prevState.botStatusReady ||
+                state._settingsReady !== prevState._settingsReady
+            ) {
+                useDiscordStore.getState().tryAutoStart();
+            }
+        });
+        return unsub;
     }, []);
 
     // Finalize loading screen when server initialization completes
+    // biome-ignore lint/correctness/useExhaustiveDependencies: setters are stable
     useEffect(() => {
         if (!serversInitializing && daemonReady) {
             setInitProgress(100);
@@ -364,6 +445,7 @@ function App() {
     }, [serversInitializing, daemonReady]);
 
     // Background Daemon status polling
+    // biome-ignore lint/correctness/useExhaustiveDependencies: setter is stable
     useEffect(() => {
         if (!daemonReady) return;
         const checkDaemonStatus = async () => {
@@ -386,244 +468,23 @@ function App() {
 
     // ── Settings Save Functions ─────────────────────────────
 
-    const loadBotConfig = async () => {
-        try {
-            const botCfg = await window.api.botConfigLoad();
-            if (botCfg) {
-                setDiscordPrefix(botCfg.prefix || '!saba');
-                setDiscordModuleAliases(botCfg.moduleAliases || {});
-                setDiscordCommandAliases(botCfg.commandAliases || {});
-                setDiscordMusicEnabled(botCfg.musicEnabled !== false);
-                setDiscordBotMode(botCfg.mode || 'local');
-                setDiscordCloudRelayUrl(botCfg.cloud?.relayUrl || '');
-                setDiscordCloudHostId(botCfg.cloud?.hostId || '');
-                if (botCfg.nodeSettings && typeof botCfg.nodeSettings === 'object') {
-                    setNodeSettings(botCfg.nodeSettings);
-                } else if (Array.isArray(botCfg.allowedInstances)) {
-                    setNodeSettings({ local: { allowedInstances: botCfg.allowedInstances, memberPermissions: {} } });
-                }
-                if (Array.isArray(botCfg.cloudNodes)) setCloudNodes(botCfg.cloudNodes);
-                if (botCfg.cloudMembers && typeof botCfg.cloudMembers === 'object') setCloudMembers(botCfg.cloudMembers);
-            }
-        } catch (err) {
-            console.error('Failed to load bot config:', err);
-        }
-    };
-
     const saveCurrentSettings = async () => {
-        if (!settingsPath) {
-            console.warn('[Settings] Settings path not initialized, skipping save');
-            return;
-        }
-        try {
-            await window.api.settingsSave({
-                autoRefresh, refreshInterval, ipcPort, consoleBufferSize,
-                modulesPath, discordToken, discordAutoStart
-            });
-            console.log('[Settings] GUI settings saved');
-        } catch (error) {
-            console.error('[Settings] Failed to save GUI settings:', error);
-        }
+        useSettingsStore.getState()._setDiscordFields(discordToken, discordAutoStart);
+        await Promise.all([useSettingsStore.getState().save(), useDiscordStore.getState().saveConfig()]);
     };
 
-    const saveBotConfig = async (newPrefix = discordPrefix) => {
-        try {
-            const payload = {
-                prefix: newPrefix || '!saba',
-                mode: discordBotMode,
-                cloud: {
-                    relayUrl: discordCloudRelayUrl,
-                    hostId: discordCloudHostId,
-                },
-                moduleAliases: discordModuleAliases,
-                commandAliases: discordCommandAliases,
-                musicEnabled: discordMusicEnabled,
-                nodeSettings,
-                cloudNodes,
-                cloudMembers,
-            };
-            const res = await window.api.botConfigSave(payload);
-            if (res.error) {
-                console.error('[Settings] Failed to save bot config:', res.error);
-                safeShowToast(t('settings.save_error', '설정 저장 실패'), 'error');
-            } else {
-                console.log('[Settings] Bot config saved, prefix:', newPrefix);
-            }
-        } catch (error) {
-            console.error('[Settings] Failed to save bot config:', error);
-            safeShowToast(t('settings.save_error', '설정 저장 실패'), 'error');
-        }
-    };
-
-    // ── Auto-save effects ───────────────────────────────────
-    const prevSettingsRef = useRef(null);
-    const prevPrefixRef = useRef(null);
-    const prevCloudSettingsRef = useRef(null);
-
+    // ── One-time module fetch (mount only) ──────────────────
+    // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only — store.getState() is stable
     useEffect(() => {
-        if (!settingsReady || !settingsPath) return;
-        const currentSettings = { autoRefresh, refreshInterval, ipcPort, consoleBufferSize };
-        if (prevSettingsRef.current === null) {
-            prevSettingsRef.current = currentSettings;
-            return;
-        }
-        if (prevSettingsRef.current.autoRefresh !== autoRefresh ||
-            prevSettingsRef.current.refreshInterval !== refreshInterval ||
-            prevSettingsRef.current.ipcPort !== ipcPort ||
-            prevSettingsRef.current.consoleBufferSize !== consoleBufferSize) {
-            console.log('[Settings] Settings changed, saving...');
-            saveCurrentSettings();
-            prevSettingsRef.current = currentSettings;
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [settingsReady, autoRefresh, refreshInterval, ipcPort, consoleBufferSize]);
+        useServerStore.getState().fetchModules();
+    }, []);
 
-    useEffect(() => {
-        if (!settingsReady || !settingsPath || !modulesPath) return;
-        console.log('[Settings] Modules path changed, saving...', modulesPath);
-        saveCurrentSettings();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [modulesPath]);
-
-    useEffect(() => {
-        if (!settingsReady || !settingsPath) return;
-        if (!discordPrefix || !discordPrefix.trim()) return;
-        if (prevPrefixRef.current === null) {
-            prevPrefixRef.current = discordPrefix;
-            return;
-        }
-        if (prevPrefixRef.current !== discordPrefix) {
-            console.log('[Settings] Prefix changed, saving bot config:', discordPrefix);
-            saveBotConfig(discordPrefix);
-            prevPrefixRef.current = discordPrefix;
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [settingsReady, discordPrefix]);
-
-    // ★ 클라우드/노드 설정 변경 시 자동 저장 (mode, relayUrl, hostId, nodeSettings, cloudNodes, cloudMembers)
-    useEffect(() => {
-        if (!settingsReady || !settingsPath) return;
-        const current = { discordBotMode, discordCloudRelayUrl, discordCloudHostId, nodeSettings, cloudNodes, cloudMembers };
-        if (prevCloudSettingsRef.current === null) {
-            prevCloudSettingsRef.current = current;
-            return;
-        }
-        if (prevCloudSettingsRef.current.discordBotMode !== discordBotMode ||
-            prevCloudSettingsRef.current.discordCloudRelayUrl !== discordCloudRelayUrl ||
-            prevCloudSettingsRef.current.discordCloudHostId !== discordCloudHostId ||
-            JSON.stringify(prevCloudSettingsRef.current.nodeSettings) !== JSON.stringify(nodeSettings) ||
-            JSON.stringify(prevCloudSettingsRef.current.cloudNodes) !== JSON.stringify(cloudNodes) ||
-            JSON.stringify(prevCloudSettingsRef.current.cloudMembers) !== JSON.stringify(cloudMembers)) {
-            console.log('[Settings] Cloud/node settings changed, saving bot config:', { mode: discordBotMode, hostId: discordCloudHostId });
-            saveBotConfig();
-            prevCloudSettingsRef.current = current;
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [settingsReady, discordBotMode, discordCloudRelayUrl, discordCloudHostId, nodeSettings, cloudNodes, cloudMembers]);
-
-    // ── fetchModules ────────────────────────────────────────
-    const fetchModules = async () => {
-        try {
-            console.log('Fetching modules...');
-            try {
-                await waitForDaemon(5000);
-            } catch (err) {
-                debugWarn('Daemon not ready, but continuing:', err.message);
-            }
-
-            const data = await retryWithBackoff(
-                () => window.api.moduleList(),
-                3, 800
-            );
-
-            console.log('Module data received:', data);
-            if (data && data.modules) {
-                console.log('Setting modules:', data.modules.length, 'modules');
-                setModules(data.modules);
-
-                // Register module locales
-                for (const module of data.modules) {
-                    try {
-                        if (window.api.moduleGetLocales) {
-                            const locales = await window.api.moduleGetLocales(module.name);
-                            if (locales && typeof locales === 'object') {
-                                for (const [lang, localeData] of Object.entries(locales)) {
-                                    i18n.addResourceBundle(lang, `mod_${module.name}`, localeData, true, true);
-                                }
-                                console.log(`Module locales registered for ${module.name}:`, Object.keys(locales));
-                            }
-                        }
-                    } catch (e) {
-                        console.warn(`Failed to load locales for module ${module.name}:`, e);
-                    }
-                }
-
-                // Load module metadata (aliases)
-                const aliasesMap = {};
-                for (const module of data.modules) {
-                    try {
-                        const metadata = await window.api.moduleGetMetadata(module.name);
-                        if (metadata && metadata.toml) {
-                            const aliases = metadata.toml.aliases || {};
-                            const aliasCommands = aliases.commands || {};
-                            const commandFields = metadata.toml.commands?.fields || [];
-                            const mergedCommands = {};
-
-                            for (const [cmdName, cmdData] of Object.entries(aliasCommands)) {
-                                mergedCommands[cmdName] = {
-                                    aliases: cmdData.aliases || [],
-                                    description: cmdData.description || '',
-                                    label: cmdName
-                                };
-                            }
-
-                            for (const cmdField of commandFields) {
-                                const cmdName = cmdField.name;
-                                if (!mergedCommands[cmdName]) {
-                                    mergedCommands[cmdName] = {
-                                        aliases: [],
-                                        description: cmdField.description || '',
-                                        label: cmdField.label || cmdName
-                                    };
-                                } else {
-                                    if (!mergedCommands[cmdName].description && cmdField.description) {
-                                        mergedCommands[cmdName].description = cmdField.description;
-                                    }
-                                    if (cmdField.label) {
-                                        mergedCommands[cmdName].label = cmdField.label;
-                                    }
-                                }
-                            }
-
-                            aliasesMap[module.name] = { ...aliases, commands: mergedCommands };
-                        }
-                    } catch (e) {
-                        console.warn(`Failed to load metadata for module ${module.name}:`, e);
-                    }
-                }
-                setModuleAliasesPerModule(aliasesMap);
-                console.log('Module aliases loaded:', aliasesMap);
-            } else if (data && data.error) {
-                console.error('Module fetch error:', data.error);
-                safeShowToast(t('modules.load_failed_toast', { error: translateError(data.error) }), 'error', 4000);
-            } else {
-                debugWarn('No modules data:', data);
-                safeShowToast(t('modules.list_empty'), 'warning', 3000);
-            }
-        } catch (error) {
-            console.error('Failed to fetch modules:', error);
-            safeShowToast(t('modules.fetch_failed_toast', { error: translateError(error.message) }), 'error', 5000);
-            setModal({ type: 'failure', title: t('modules.load_error_title'), message: translateError(error.message) });
-        }
-    };
-
-    // ── Main initialization effect ──────────────────────────
+    // ── Main initialization + auto-refresh ──────────────────
+    // biome-ignore lint/correctness/useExhaustiveDependencies: fetchServers/t/setModal are intentionally omitted — adding them would cause interval re-registration on every action
     useEffect(() => {
         const isTest = process.env.NODE_ENV === 'test' || typeof jest !== 'undefined';
         if (!isTest) console.log('App mounted, fetching initial data...');
         fetchServers();
-        fetchModules();
-        loadBotConfig();
 
         // App close request handler
         if (window.api.onCloseRequest) {
@@ -636,17 +497,26 @@ function App() {
                     buttons: [
                         {
                             label: t('app_exit.hide_only_label'),
-                            action: () => { window.api.closeResponse('hide'); setModal(null); }
+                            action: () => {
+                                window.api.closeResponse('hide');
+                                setModal(null);
+                            },
                         },
                         {
                             label: t('app_exit.quit_all_label'),
-                            action: () => { window.api.closeResponse('quit'); setModal(null); }
+                            action: () => {
+                                window.api.closeResponse('quit');
+                                setModal(null);
+                            },
                         },
                         {
                             label: t('modals.cancel'),
-                            action: () => { window.api.closeResponse('cancel'); setModal(null); }
-                        }
-                    ]
+                            action: () => {
+                                window.api.closeResponse('cancel');
+                                setModal(null);
+                            },
+                        },
+                    ],
                 });
             });
         }
@@ -662,7 +532,6 @@ function App() {
             clearInterval(interval);
             if (window.api.offCloseRequest) window.api.offCloseRequest();
         };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [autoRefresh, refreshInterval, daemonReady]);
 
     // ══════════════════════════════════════════════════════════
@@ -671,9 +540,7 @@ function App() {
 
     // Loading screen (daemon not ready or servers still initializing)
     if (!daemonReady || serversInitializing) {
-        return (
-            <LoadingScreen logoSrc={logoSrc} initStatus={initStatus} initProgress={initProgress} />
-        );
+        return <LoadingScreen logoSrc={logoSrc} initStatus={initStatus} initProgress={initProgress} />;
     }
 
     // Popout Console Mode (full-window console)
@@ -687,8 +554,8 @@ function App() {
                 sendConsoleCommand={sendConsoleCommand}
                 consoleEndRef={consoleEndRef}
                 highlightRules={(() => {
-                    const srv = servers.find(s => s.id === popoutParams.instanceId);
-                    const mod = srv && modules.find(m => m.name === srv.module);
+                    const srv = servers.find((s) => s.id === popoutParams.instanceId);
+                    const mod = srv && modules.find((m) => m.name === srv.module);
                     return mod?.syntax_highlight?.rules || null;
                 })()}
             />
@@ -697,358 +564,412 @@ function App() {
 
     return (
         <ExtensionProvider>
-        <div className="App">
-            {/* Discord overlay backdrop */}
-            {showDiscordSection && (
-                <div className="discord-backdrop" onClick={requestDiscordClose} />
-            )}
-            {/* Background overlay backdrop */}
-            {showBackgroundSection && (
-                <div className="discord-backdrop" onClick={requestBackgroundClose} />
-            )}
-            {/* Notice overlay backdrop */}
-            {showNoticeSection && (
-                <div className="discord-backdrop" onClick={requestNoticeClose} />
-            )}
-            <TitleBar />
-            <Toast />
-            <header className="app-header">
-                {/* 첫 번째 줄: 타이틀과 설정 */}
-                <div className="header-row header-row-title">
-                    <div className="app-title-section">
-                        <img src="./icon.png" alt="" className="app-logo-icon" />
-                        <img src={logoSrc} alt={t('common:app_name')} className="app-logo-text" />
-                    </div>
-                    <div className="header-actions">
-                        <div className="notice-button-wrapper">
-                            <button 
-                                className="btn-settings-icon-solo"
-                                onClick={() => showNoticeSection ? requestNoticeClose() : setShowNoticeSection(true)}
-                                title={t('notice_modal.tooltip')}
-                            >
-                                <Icon name="bell" size="lg" />
-                            </button>
-                            {unreadNoticeCount > 0 && (
-                                <span className="notice-badge-dot">{unreadNoticeCount > 9 ? '9+' : unreadNoticeCount}</span>
+            <div className="App">
+                {/* Discord overlay backdrop */}
+                {showDiscordSection && <div className="discord-backdrop" onClick={requestDiscordClose} />}
+                {/* Background overlay backdrop */}
+                {showBackgroundSection && <div className="discord-backdrop" onClick={requestBackgroundClose} />}
+                {/* Notice overlay backdrop */}
+                {showNoticeSection && <div className="discord-backdrop" onClick={requestNoticeClose} />}
+                <TitleBar />
+                <Toast />
+                <header className="app-header">
+                    {/* 첫 번째 줄: 타이틀과 설정 */}
+                    <div className="header-row header-row-title">
+                        <div className="app-title-section">
+                            <img src="./icon.png" alt="" className="app-logo-icon" />
+                            <img src={logoSrc} alt={t('common:app_name')} className="app-logo-text" />
+                        </div>
+                        <div className="header-actions">
+                            {/* 익스텐션 초기화 스피너 */}
+                            {extInitializing && (
+                                <div
+                                    className="ext-init-spinner-wrapper"
+                                    title={Object.values(extInitInProgress).join(', ') || t('common:initializing', { defaultValue: 'Initializing extensions…' })}
+                                >
+                                    <span className="ext-init-spinner" />
+                                </div>
                             )}
-                            <NoticeModal
-                                isOpen={showNoticeSection}
-                                onClose={requestNoticeClose}
-                                isClosing={isNoticeClosing}
-                                onOpenUpdateModal={() => {
-                                    setSettingsInitialView('update');
-                                    setShowGuiSettingsModal(true);
+                            <div className="notice-button-wrapper">
+                                <button
+                                    className="btn-settings-icon-solo"
+                                    onClick={() =>
+                                        showNoticeSection ? requestNoticeClose() : setShowNoticeSection(true)
+                                    }
+                                    title={t('notice_modal.tooltip')}
+                                >
+                                    <Icon name="bell" size="lg" />
+                                </button>
+                                {unreadNoticeCount > 0 && (
+                                    <span className="notice-badge-dot">
+                                        {unreadNoticeCount > 9 ? '9+' : unreadNoticeCount}
+                                    </span>
+                                )}
+                                <NoticeModal
+                                    isOpen={showNoticeSection}
+                                    onClose={requestNoticeClose}
+                                    isClosing={isNoticeClosing}
+                                    onOpenUpdateModal={() => {
+                                        useUIStore.getState().openSettings('update');
+                                    }}
+                                />
+                            </div>
+                            <button
+                                className="btn-settings-icon-solo"
+                                onClick={() => useUIStore.getState().openSettings()}
+                                title={t('settings.gui_settings_tooltip')}
+                            >
+                                <Icon name="cog" size="lg" />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* 두 번째 줄: 기능 버튼들 */}
+                    <div className="header-row header-row-controls">
+                        <button className="btn btn-add" onClick={() => setShowModuleManager(!showModuleManager)}>
+                            <Icon name="plus" size="sm" /> Add Server
+                        </button>
+                        <div className="header-spacer"></div>
+                        <div className="discord-button-wrapper">
+                            <button
+                                className={`btn btn-discord ${discordBotStatus === 'running' ? 'btn-discord-active' : ''}`}
+                                onClick={() =>
+                                    showDiscordSection ? requestDiscordClose() : setShowDiscordSection(true)
+                                }
+                            >
+                                <span
+                                    className={`status-indicator ${discordBotStatus === 'running' ? 'status-online' : discordBotStatus === 'connecting' ? 'status-connecting' : 'status-offline'}`}
+                                ></span>
+                                Discord Bot
+                            </button>
+                            <DiscordBotModal
+                                isOpen={showDiscordSection}
+                                onClose={requestDiscordClose}
+                                isClosing={isDiscordClosing}
+                                discordBotStatus={discordBotStatus}
+                                discordToken={discordToken}
+                                setDiscordToken={(val) => useDiscordStore.getState().setDiscordToken(val)}
+                                discordPrefix={discordPrefix}
+                                setDiscordPrefix={(val) => useDiscordStore.getState().update({ discordPrefix: val })}
+                                discordAutoStart={discordAutoStart}
+                                setDiscordAutoStart={(val) =>
+                                    useDiscordStore.getState().update({ discordAutoStart: val })
+                                }
+                                discordMusicEnabled={discordMusicEnabled}
+                                setDiscordMusicEnabled={(val) =>
+                                    useDiscordStore.getState().update({ discordMusicEnabled: val })
+                                }
+                                discordBotMode={discordBotMode}
+                                setDiscordBotMode={(val) => useDiscordStore.getState().update({ discordBotMode: val })}
+                                discordCloudRelayUrl={discordCloudRelayUrl}
+                                setDiscordCloudRelayUrl={(val) =>
+                                    useDiscordStore.getState().update({ discordCloudRelayUrl: val })
+                                }
+                                discordCloudHostId={discordCloudHostId}
+                                setDiscordCloudHostId={(val) =>
+                                    useDiscordStore.getState().update({ discordCloudHostId: val })
+                                }
+                                relayConnected={relayConnected}
+                                relayConnecting={relayConnecting}
+                                handleStartDiscordBot={handleStartDiscordBot}
+                                handleStopDiscordBot={handleStopDiscordBot}
+                                saveCurrentSettings={saveCurrentSettings}
+                                servers={servers}
+                                modules={modules}
+                                moduleAliasesPerModule={moduleAliasesPerModule}
+                                nodeSettings={nodeSettings}
+                                setNodeSettings={(valOrFn) => {
+                                    const prev = useDiscordStore.getState().nodeSettings;
+                                    const next = typeof valOrFn === 'function' ? valOrFn(prev) : valOrFn;
+                                    useDiscordStore.getState().update({ nodeSettings: next });
+                                }}
+                                cloudNodes={cloudNodes}
+                                setCloudNodes={(val) => useDiscordStore.getState().update({ cloudNodes: val })}
+                                cloudMembers={cloudMembers}
+                                setCloudMembers={(valOrFn) => {
+                                    const prev = useDiscordStore.getState().cloudMembers;
+                                    const next = typeof valOrFn === 'function' ? valOrFn(prev) : valOrFn;
+                                    useDiscordStore.getState().update({ cloudMembers: next });
                                 }}
                             />
                         </div>
-                        <button 
-                            className="btn-settings-icon-solo"
-                            onClick={() => setShowGuiSettingsModal(true)}
-                            title={t('settings.gui_settings_tooltip')}
-                        >
-                            <Icon name="cog" size="lg" />
-                        </button>
+                        <div className="background-button-wrapper">
+                            <button
+                                className={`btn btn-background ${backgroundDaemonStatus === 'running' ? 'btn-background-active' : ''}`}
+                                onClick={() =>
+                                    showBackgroundSection ? requestBackgroundClose() : setShowBackgroundSection(true)
+                                }
+                            >
+                                <span
+                                    className={`status-indicator ${
+                                        backgroundDaemonStatus === 'running'
+                                            ? 'status-online'
+                                            : backgroundDaemonStatus === 'checking'
+                                              ? 'status-checking'
+                                              : 'status-offline'
+                                    }`}
+                                ></span>
+                                Background
+                            </button>
+                            <BackgroundModal
+                                isOpen={showBackgroundSection}
+                                onClose={requestBackgroundClose}
+                                isClosing={isBackgroundClosing}
+                                ipcPort={ipcPort}
+                            />
+                        </div>
                     </div>
-                </div>
-                
-                {/* 두 번째 줄: 기능 버튼들 */}
-                <div className="header-row header-row-controls">
-                    <button 
-                        className="btn btn-add"
-                        onClick={() => setShowModuleManager(!showModuleManager)}
-                    >
-                        <Icon name="plus" size="sm" /> Add Server
-                    </button>
-                    <div className="header-spacer"></div>
-                    <div className="discord-button-wrapper">
-                        <button 
-                            className={`btn btn-discord ${discordBotStatus === 'running' ? 'btn-discord-active' : ''}`}
-                            onClick={() => showDiscordSection ? requestDiscordClose() : setShowDiscordSection(true)}
-                        >
-                            <span className={`status-indicator ${discordBotStatus === 'running' ? 'status-online' : discordBotStatus === 'connecting' ? 'status-connecting' : 'status-offline'}`}></span>
-                            Discord Bot
-                        </button>
-                        <DiscordBotModal
-                            isOpen={showDiscordSection}
-                            onClose={requestDiscordClose}
-                            isClosing={isDiscordClosing}
-                            discordBotStatus={discordBotStatus}
-                            discordToken={discordToken}
-                            setDiscordToken={(val) => { setDiscordToken(val); discordTokenRef.current = val; }}
-                            discordPrefix={discordPrefix}
-                            setDiscordPrefix={setDiscordPrefix}
-                            discordAutoStart={discordAutoStart}
-                            setDiscordAutoStart={setDiscordAutoStart}
-                            discordMusicEnabled={discordMusicEnabled}
-                            setDiscordMusicEnabled={setDiscordMusicEnabled}
-                            discordBotMode={discordBotMode}
-                            setDiscordBotMode={setDiscordBotMode}
-                            discordCloudRelayUrl={discordCloudRelayUrl}
-                            setDiscordCloudRelayUrl={setDiscordCloudRelayUrl}
-                            discordCloudHostId={discordCloudHostId}
-                            setDiscordCloudHostId={setDiscordCloudHostId}
-                            relayConnected={relayConnected}
-                            relayConnecting={relayConnecting}
-                            handleStartDiscordBot={handleStartDiscordBot}
-                            handleStopDiscordBot={handleStopDiscordBot}
-                            saveCurrentSettings={saveCurrentSettings}
-                            servers={servers}
-                            modules={modules}
-                            moduleAliasesPerModule={moduleAliasesPerModule}
-                            nodeSettings={nodeSettings}
-                            setNodeSettings={setNodeSettings}
-                            cloudNodes={cloudNodes}
-                            setCloudNodes={setCloudNodes}
-                            cloudMembers={cloudMembers}
-                            setCloudMembers={setCloudMembers}
-                        />
-                    </div>
-                    <div className="background-button-wrapper">
-                        <button 
-                            className={`btn btn-background ${backgroundDaemonStatus === 'running' ? 'btn-background-active' : ''}`}
-                            onClick={() => showBackgroundSection ? requestBackgroundClose() : setShowBackgroundSection(true)}
-                        >
-                            <span className={`status-indicator ${
-                                backgroundDaemonStatus === 'running' ? 'status-online' : 
-                                backgroundDaemonStatus === 'checking' ? 'status-checking' : 
-                                'status-offline'
-                            }`}></span>
-                            Background
-                        </button>
-                        <BackgroundModal
-                            isOpen={showBackgroundSection}
-                            onClose={requestBackgroundClose}
-                            isClosing={isBackgroundClosing}
-                            ipcPort={ipcPort}
-                        />
-                    </div>
-                </div>
-            </header>
+                </header>
 
-            {/* AddServerModal */}
-            <AddServerModal
-                isOpen={showModuleManager}
-                onClose={() => setShowModuleManager(false)}
-                extensions={modules}
-                servers={servers}
-                extensionsPath={modulesPath}
-                settingsPath={settingsPath}
-                onextensionsPathChange={setModulesPath}
-                onRefreshextensions={fetchModules}
-                onAddServer={handleAddServer}
-            />
+                {/* AddServerModal */}
+                <AddServerModal
+                    isOpen={showModuleManager}
+                    onClose={() => setShowModuleManager(false)}
+                    extensions={modules}
+                    servers={servers}
+                    extensionsPath={modulesPath}
+                    settingsPath={settingsPath}
+                    onextensionsPathChange={(val) => useSettingsStore.getState().update({ modulesPath: val })}
+                    onRefreshextensions={fetchModules}
+                    onAddServer={handleAddServer}
+                />
 
-            <main className="app-main">
-                <div className="server-list">
-                {servers.length === 0 ? (
-                    <div className="no-servers">
-                        <p>{t('servers.no_servers_configured', { defaultValue: 'No servers configured' })}</p>
+                <main className="app-main">
+                    <div className="server-list">
+                        {servers.length === 0 ? (
+                            <div className="no-servers">
+                                <p>{t('servers.no_servers_configured', { defaultValue: 'No servers configured' })}</p>
+                            </div>
+                        ) : (
+                            servers.map((server, index) => (
+                                <ServerCard
+                                    key={server.name}
+                                    server={server}
+                                    index={index}
+                                    modules={modules}
+                                    servers={servers}
+                                    cardRefs={cardRefs}
+                                    draggedName={draggedName}
+                                    skipNextClick={skipNextClick}
+                                    consoleServer={consoleServer}
+                                    consolePopoutInstanceId={consolePopoutInstanceId}
+                                    handleCardPointerDown={handleCardPointerDown}
+                                    handleStart={handleStart}
+                                    handleStop={handleStop}
+                                    handleOpenSettings={handleOpenSettings}
+                                    handleDeleteServer={handleDeleteServer}
+                                    openConsole={openConsole}
+                                    closeConsole={closeConsole}
+                                    setCommandServer={setCommandServer}
+                                    setShowCommandModal={setShowCommandModal}
+                                    setServers={setServers}
+                                    formatUptime={formatUptime}
+                                    nowEpoch={nowEpoch}
+                                    onContextMenu={(e) => {
+                                        e.preventDefault();
+                                        setContextMenu({ x: e.clientX, y: e.clientY, server });
+                                    }}
+                                />
+                            ))
+                        )}
                     </div>
-                ) : (
-                    servers.map((server, index) => (
-                        <ServerCard
-                            key={server.name}
-                            server={server}
-                            index={index}
-                            modules={modules}
-                            servers={servers}
-                            cardRefs={cardRefs}
-                            draggedName={draggedName}
-                            skipNextClick={skipNextClick}
+
+                    {/* 콘솔 패널 — 팝아웃 중이면 숨김 */}
+                    {consoleServer && !consolePopoutInstanceId && (
+                        <ConsolePanel
                             consoleServer={consoleServer}
-                            consolePopoutInstanceId={consolePopoutInstanceId}
-                            handleCardPointerDown={handleCardPointerDown}
-                            handleStart={handleStart}
-                            handleStop={handleStop}
-                            handleOpenSettings={handleOpenSettings}
-                            handleDeleteServer={handleDeleteServer}
-                            openConsole={openConsole}
+                            consoleLines={consoleLines}
+                            consoleInput={consoleInput}
+                            setConsoleInput={setConsoleInput}
+                            sendConsoleCommand={sendConsoleCommand}
+                            consoleEndRef={consoleEndRef}
                             closeConsole={closeConsole}
-                            setCommandServer={setCommandServer}
-                            setShowCommandModal={setShowCommandModal}
-                            setServers={setServers}
-                            formatUptime={formatUptime}
-                            nowEpoch={nowEpoch}
-                            onContextMenu={(e) => {
-                                e.preventDefault();
-                                setContextMenu({ x: e.clientX, y: e.clientY, server });
-                            }}
+                            setConsolePopoutInstanceId={setConsolePopoutInstanceId}
+                            highlightRules={(() => {
+                                const srv = servers.find((s) => s.id === consoleServer.id);
+                                const mod = srv && modules.find((m) => m.name === srv.module);
+                                return mod?.syntax_highlight?.rules || null;
+                            })()}
                         />
-                    ))
-                )}
-                </div>
+                    )}
+                </main>
 
-                {/* 콘솔 패널 — 팝아웃 중이면 숨김 */}
-                {consoleServer && !consolePopoutInstanceId && (
-                    <ConsolePanel
-                        consoleServer={consoleServer}
-                        consoleLines={consoleLines}
-                        consoleInput={consoleInput}
-                        setConsoleInput={setConsoleInput}
-                        sendConsoleCommand={sendConsoleCommand}
-                        consoleEndRef={consoleEndRef}
-                        closeConsole={closeConsole}
-                        setConsolePopoutInstanceId={setConsolePopoutInstanceId}
-                        highlightRules={(() => {
-                            const srv = servers.find(s => s.id === consoleServer.id);
-                            const mod = srv && modules.find(m => m.name === srv.module);
-                            return mod?.syntax_highlight?.rules || null;
-                        })()}
+                {showSettingsModal && settingsServer && (
+                    <ServerSettingsModal
+                        settingsServer={settingsServer}
+                        settingsValues={settingsValues}
+                        settingsActiveTab={settingsActiveTab}
+                        setSettingsActiveTab={setSettingsActiveTab}
+                        modules={modules}
+                        advancedExpanded={advancedExpanded}
+                        setAdvancedExpanded={setAdvancedExpanded}
+                        availableVersions={availableVersions}
+                        versionsLoading={versionsLoading}
+                        versionInstalling={versionInstalling}
+                        handleSettingChange={handleSettingChange}
+                        handleInstallVersion={handleInstallVersion}
+                        handleSaveSettings={handleSaveSettings}
+                        handleResetServer={handleResetServer}
+                        resettingServer={resettingServer}
+                        editingModuleAliases={editingModuleAliases}
+                        setEditingModuleAliases={setEditingModuleAliases}
+                        editingCommandAliases={editingCommandAliases}
+                        setEditingCommandAliases={setEditingCommandAliases}
+                        handleSaveAliasesForModule={handleSaveAliasesForModule}
+                        handleResetAliasesForModule={handleResetAliasesForModule}
+                        isClosing={isSettingsClosing}
+                        onClose={requestSettingsClose}
+                        servers={servers}
+                        moduleAliasesPerModule={moduleAliasesPerModule}
+                        discordModuleAliases={discordModuleAliases}
                     />
                 )}
 
-            </main>
-
-            {showSettingsModal && settingsServer && (
-                <ServerSettingsModal
-                    settingsServer={settingsServer}
-                    settingsValues={settingsValues}
-                    settingsActiveTab={settingsActiveTab}
-                    setSettingsActiveTab={setSettingsActiveTab}
-                    modules={modules}
-                    advancedExpanded={advancedExpanded}
-                    setAdvancedExpanded={setAdvancedExpanded}
-                    availableVersions={availableVersions}
-                    versionsLoading={versionsLoading}
-                    versionInstalling={versionInstalling}
-                    handleSettingChange={handleSettingChange}
-                    handleInstallVersion={handleInstallVersion}
-                    handleSaveSettings={handleSaveSettings}
-                    handleResetServer={handleResetServer}
-                    resettingServer={resettingServer}
-                    editingModuleAliases={editingModuleAliases}
-                    setEditingModuleAliases={setEditingModuleAliases}
-                    editingCommandAliases={editingCommandAliases}
-                    setEditingCommandAliases={setEditingCommandAliases}
-                    handleSaveAliasesForModule={handleSaveAliasesForModule}
-                    handleResetAliasesForModule={handleResetAliasesForModule}
-                    isClosing={isSettingsClosing}
-                    onClose={requestSettingsClose}
-                    servers={servers}
-                    moduleAliasesPerModule={moduleAliasesPerModule}
-                    discordModuleAliases={discordModuleAliases}
-                />
-            )}
-
-            {/* Context Menu */}
-            {contextMenu && (
-                <>
-                    <div className="context-menu-overlay" onClick={() => setContextMenu(null)} onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }} />
-                    <div className="context-menu" style={{ top: contextMenu.y, left: contextMenu.x }}>
-                        <div className="context-menu-item" onClick={() => { handleOpenSettings(contextMenu.server); setContextMenu(null); }}>
-                            <Icon name="settings" size="sm" />
-                            {t('context_menu.settings', { defaultValue: 'Settings' })}
-                        </div>
-                        <div className="context-menu-separator" />
-                        <div className="context-menu-item danger" onClick={() => { handleDeleteServer(contextMenu.server); setContextMenu(null); }}>
-                            <Icon name="trash" size="sm" />
-                            {t('context_menu.delete', { defaultValue: 'Delete' })}
-                        </div>
-                    </div>
-                </>
-            )}
-
-            {/* 모달 렌더링 */}
-            {modal && modal.type === 'success' && (
-                <SuccessModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
-            )}
-            {modal && modal.type === 'failure' && (
-                <FailureModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
-            )}
-            {modal && modal.type === 'notification' && (
-                <NotificationModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
-            )}
-            {modal && modal.type === 'question' && (
-                <QuestionModal
-                    title={modal.title}
-                    message={modal.message}
-                    detail={modal.detail}
-                    buttons={modal.buttons}
-                    onConfirm={modal.onConfirm}
-                    onCancel={() => setModal(null)}
-                />
-            )}
-
-            {/* SettingsModal 렌더링 */}
-            <SettingsModal 
-                isOpen={showGuiSettingsModal} 
-                onClose={() => { setShowGuiSettingsModal(false); setSettingsInitialView(null); }}
-                refreshInterval={refreshInterval}
-                onRefreshIntervalChange={setRefreshInterval}
-                ipcPort={ipcPort}
-                onIpcPortChange={setIpcPort}
-                consoleBufferSize={consoleBufferSize}
-                onConsoleBufferSizeChange={(val) => { setConsoleBufferSize(val); consoleBufferRef.current = val; }}
-                discordCloudRelayUrl={discordCloudRelayUrl}
-                onDiscordCloudRelayUrlChange={setDiscordCloudRelayUrl}
-                onTestModal={setModal}
-                onTestProgressBar={setProgressBar}
-                initialView={settingsInitialView}
-                onTestWaitingImage={() => {
-                    setShowWaitingImage(true);
-                    setTimeout(() => setShowWaitingImage(false), 4000);
-                }}
-                onTestLoadingScreen={() => {
-                    setShowGuiSettingsModal(false);
-                    setDaemonReady(false);
-                    setServersInitializing(true);
-                    setInitStatus('Loading test...');
-                    setInitProgress(0);
-                    let p = 0;
-                    const iv = setInterval(() => {
-                        p += Math.random() * 20 + 10;
-                        if (p >= 100) {
-                            p = 100;
-                            setInitStatus('Ready!');
-                            setInitProgress(100);
-                            clearInterval(iv);
-                            setTimeout(() => {
-                                setDaemonReady(true);
-                                setServersInitializing(false);
-                            }, 600);
-                        } else {
-                            setInitStatus(`Loading test... ${Math.round(p)}%`);
-                            setInitProgress(p);
-                        }
-                    }, 500);
-                }}
-            />
-
-            {/* CommandModal 렌더링 */}
-            {showCommandModal && commandServer && (
-                <CommandModal
-                    server={commandServer}
-                    modules={modules}
-                    onClose={() => setShowCommandModal(false)}
-                    onExecute={setModal}
-                />
-            )}
-
-            {/* waiting.png (느린 진행 감지) */}
-            {showWaitingImage && (
-                <div className="waiting-image-overlay" onClick={() => setShowWaitingImage(false)}>
-                    <img src="./waiting.png" alt="waiting" className="waiting-image" />
-                </div>
-            )}
-
-            {/* 글로벌 프로그레스바 */}
-            {progressBar && (
-                <div className="global-progress-bar">
-                    <div className="global-progress-content">
-                        <span className="global-progress-message">{progressBar.message}</span>
-                        {progressBar.percent != null && !progressBar.indeterminate && (
-                            <span className="global-progress-percent">{Math.round(progressBar.percent)}%</span>
-                        )}
-                    </div>
-                    <div className="global-progress-track">
+                {/* Context Menu */}
+                {contextMenu && (
+                    <>
                         <div
-                            className={`global-progress-fill ${progressBar.indeterminate ? 'indeterminate' : ''} ${progressBar.percent === 100 ? 'complete' : ''}`}
-                            style={progressBar.indeterminate ? {} : { width: `${progressBar.percent || 0}%` }}
+                            className="context-menu-overlay"
+                            onClick={() => setContextMenu(null)}
+                            onContextMenu={(e) => {
+                                e.preventDefault();
+                                setContextMenu(null);
+                            }}
                         />
+                        <div className="context-menu" style={{ top: contextMenu.y, left: contextMenu.x }}>
+                            <div
+                                className="context-menu-item"
+                                onClick={() => {
+                                    handleOpenSettings(contextMenu.server);
+                                    setContextMenu(null);
+                                }}
+                            >
+                                <Icon name="settings" size="sm" />
+                                {t('context_menu.settings', { defaultValue: 'Settings' })}
+                            </div>
+                            <div className="context-menu-separator" />
+                            <div
+                                className="context-menu-item danger"
+                                onClick={() => {
+                                    handleDeleteServer(contextMenu.server);
+                                    setContextMenu(null);
+                                }}
+                            >
+                                <Icon name="trash" size="sm" />
+                                {t('context_menu.delete', { defaultValue: 'Delete' })}
+                            </div>
+                        </div>
+                    </>
+                )}
+
+                {/* 모달 렌더링 */}
+                {modal && modal.type === 'success' && (
+                    <SuccessModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
+                )}
+                {modal && modal.type === 'failure' && (
+                    <FailureModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
+                )}
+                {modal && modal.type === 'notification' && (
+                    <NotificationModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
+                )}
+                {modal && modal.type === 'question' && (
+                    <QuestionModal
+                        title={modal.title}
+                        message={modal.message}
+                        detail={modal.detail}
+                        buttons={modal.buttons}
+                        onConfirm={modal.onConfirm}
+                        onCancel={() => setModal(null)}
+                    />
+                )}
+
+                {/* SettingsModal 렌더링 */}
+                <SettingsModal
+                    isOpen={showGuiSettingsModal}
+                    onClose={() => {
+                        useUIStore.getState().closeSettings();
+                    }}
+                    refreshInterval={refreshInterval}
+                    onRefreshIntervalChange={(val) => useSettingsStore.getState().update({ refreshInterval: val })}
+                    ipcPort={ipcPort}
+                    onIpcPortChange={(val) => useSettingsStore.getState().update({ ipcPort: val })}
+                    consoleBufferSize={consoleBufferSize}
+                    onConsoleBufferSizeChange={(val) => {
+                        useSettingsStore.getState().update({ consoleBufferSize: val });
+                        consoleBufferRef.current = val;
+                    }}
+                    discordCloudRelayUrl={discordCloudRelayUrl}
+                    onDiscordCloudRelayUrlChange={(val) =>
+                        useDiscordStore.getState().update({ discordCloudRelayUrl: val })
+                    }
+                    onTestModal={setModal}
+                    onTestProgressBar={setProgressBar}
+                    initialView={settingsInitialView}
+                    onTestWaitingImage={() => {
+                        setShowWaitingImage(true);
+                        setTimeout(() => setShowWaitingImage(false), 4000);
+                    }}
+                    onTestLoadingScreen={() => {
+                        useUIStore.getState().closeSettings();
+                        setDaemonReady(false);
+                        setServersInitializing(true);
+                        setInitStatus('Loading test...');
+                        setInitProgress(0);
+                        let p = 0;
+                        const iv = setInterval(() => {
+                            p += Math.random() * 20 + 10;
+                            if (p >= 100) {
+                                p = 100;
+                                setInitStatus('Ready!');
+                                setInitProgress(100);
+                                clearInterval(iv);
+                                setTimeout(() => {
+                                    setDaemonReady(true);
+                                    setServersInitializing(false);
+                                }, 600);
+                            } else {
+                                setInitStatus(`Loading test... ${Math.round(p)}%`);
+                                setInitProgress(p);
+                            }
+                        }, 500);
+                    }}
+                />
+
+                {/* CommandModal 렌더링 */}
+                {showCommandModal && commandServer && (
+                    <CommandModal
+                        server={commandServer}
+                        modules={modules}
+                        onClose={() => setShowCommandModal(false)}
+                        onExecute={setModal}
+                    />
+                )}
+
+                {/* waiting.png (느린 진행 감지) */}
+                {showWaitingImage && (
+                    <div className="waiting-image-overlay" onClick={() => setShowWaitingImage(false)}>
+                        <img src="./waiting.png" alt="waiting" className="waiting-image" />
                     </div>
-                </div>
-            )}
-        </div>
+                )}
+
+                {/* 글로벌 프로그레스바 */}
+                {progressBar && (
+                    <div className="global-progress-bar">
+                        <div className="global-progress-content">
+                            <span className="global-progress-message">{progressBar.message}</span>
+                            {progressBar.percent != null && !progressBar.indeterminate && (
+                                <span className="global-progress-percent">{Math.round(progressBar.percent)}%</span>
+                            )}
+                        </div>
+                        <div className="global-progress-track">
+                            <div
+                                className={`global-progress-fill ${progressBar.indeterminate ? 'indeterminate' : ''} ${progressBar.percent === 100 ? 'complete' : ''}`}
+                                style={progressBar.indeterminate ? {} : { width: `${progressBar.percent || 0}%` }}
+                            />
+                        </div>
+                    </div>
+                )}
+            </div>
         </ExtensionProvider>
     );
 }

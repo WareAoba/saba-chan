@@ -18,7 +18,9 @@
     "module_commands": "**Comandos del módulo:**{{commands}}",
     "module_title": "**Comandos {{module}}**",
     "command_format": "Comando desconocido: \"{{command}}\" ({{resolved}})",
-    "available_commands": "{{commands}}"
+    "available_commands": "{{commands}}",
+    "usage_format": "`{{prefix}} <módulo> <comando>`",
+    "modules_header": "📦 **Módulos:**"
   },
   "modules": {
     "help_start": "Iniciar servidor",
@@ -87,7 +89,10 @@
     "host_not_found": "Host del servidor no encontrado",
     "service_unavailable": "Servicio no disponible",
     "unknown_input": "❌ Comando desconocido.",
-    "command_not_found": "❌ El comando no existe."
+    "command_not_found": "❌ El comando no existe.",
+    "permission_denied": "❌ No tienes permiso para usar este comando.",
+    "alias_conflict": "❌ El alias '{{alias}}' es ambiguo — coincide con varios módulos: {{modules}}. Usa un alias más específico.",
+    "multiple_instances": "⚠️ Existen múltiples instancias de '{{module}}'. Usa el nombre de la instancia en lugar del alias del módulo."
   },
   "messages": {
     "server_started": "Servidor iniciado exitosamente",
@@ -95,7 +100,23 @@
     "server_not_running": "El servidor no se está ejecutando",
     "command_error": "Error al ejecutar comando"
   },
+  "cloud": {
+    "not_configured": "❌ El modo cloud no está configurado.",
+    "register_complete": "✅ ¡Registro completo! Token enviado por DM.",
+    "register_failed": "❌ Registro fallido: {{error}}",
+    "already_registered": "ℹ️ Ya registrado. Host ID: {{hostId}}",
+    "status_online": "🟢 En línea",
+    "status_offline": "⚪ Fuera de línea",
+    "status_check_failed": "❌ Falló la verificación de estado: {{error}}",
+    "acl_granted": "✅ Nivel de permiso {{level}} otorgado a {{user}}.",
+    "acl_revoked": "✅ Permisos revocados para {{user}}.",
+    "music_local_only": "🎵 La función de música solo está disponible en modo local."
+  },
+  "relay": {
+    "command_complete": "✅ Listo"
+  },
   "music": {
+    "mod_name": "music",
     "not_available": "🎵 ¡La función de música requiere paquetes adicionales!\n`npm install @discordjs/voice @discordjs/opus play-dl`",
     "join_voice_first": "🎤 ¡Únete a un canal de voz primero!",
     "no_permission": "🚫 ¡No tengo permiso para conectarme o hablar en tu canal de voz!",
@@ -126,13 +147,26 @@
     "search_failed": "Error en la búsqueda",
     "search_results": "🔍 **Búsqueda: {{query}}**",
     "search_choose": "🎵 Ingresa un número (1~5) | `c` Cancelar",
-    "play_usage": "🎵 Uso: `{{prefix}} music play <URL de YouTube o búsqueda>`"
+    "play_usage": "🎵 Uso: `{{prefix}} music play <URL de YouTube o búsqueda>`",
+    "not_available_relay": "🎵 La música no está disponible en modo cloud (relay). ¡Cambia al modo local!",
+    "age_restricted": "🔞 **{{title}}** — Este video tiene restricción de edad y no se puede reproducir. Se necesita configurar cookies.txt.",
+    "login_required": "🔒 **{{title}}** — Este video requiere iniciar sesión. Se necesita configurar cookies.txt.",
+    "search_usage": "🔍 Uso: `{{prefix}} music search <búsqueda>`",
+    "auto_disconnect": "👋 ¡Todos se fueron! Deteniendo la reproducción y desconectando.",
+    "loop_enabled": "🔂 Repitiendo: **{{title}}**",
+    "loop_disabled": "➡️ Repetición desactivada: **{{title}}**\nLa cola continuará desde la siguiente pista.",
+    "loop_already_on": "🔂 Ya está en repetición: **{{title}}**",
+    "loop_already_off": "🔁 La repetición ya está desactivada",
+    "help": "🎵 **{{prefix}} {{mod}}** — Reproductor de música\n\n• `{{prefix}} <URL de YouTube>` — **Reproducir al instante** ⚡\n• `{{prefix}} {{mod}} play <búsqueda>` — Reproducir primer resultado\n• `{{prefix}} {{mod}} search <búsqueda>` — Elegir de 5 resultados 🔘\n• `{{prefix}} stop` — Detener + salir\n\n• `{{prefix}} {{mod}} pause` — Pausar\n• `{{prefix}} {{mod}} resume` — Reanudar\n• `{{prefix}} {{mod}} skip` — Siguiente pista\n• `{{prefix}} loop` — Repetir pista actual 🔂\n• `{{prefix}} loop off` — Desactivar repetición → continuar cola\n• `{{prefix}} {{mod}} queue` — Cola\n• `{{prefix}} {{mod}} np` — Reproduciendo ahora\n• `{{prefix}} {{mod}} volume <0-200>` — Volumen\n• `{{prefix}} {{mod}} shuffle` — Mezclar cola\n\n💡 Durante la reproducción, `{{prefix}} skip`, `{{prefix}} pause` funcionan directamente!\n💡 Aliases: music, dj"
   },
   "rps": {
     "prompt": "✊✌️✋ ¡Elige uno!",
     "draw": "{{bot}}! ¡Empate! ¡Otra vez~ 🔄",
     "user_win": "{{bot}}! Perdí... 😵",
     "bot_win": "{{bot}}! ¡Gané~ 😋",
-    "timeout": "⏰ ¡Se acabó el tiempo! Inténtalo de nuevo~"
+    "timeout": "⏰ ¡Se acabó el tiempo! Inténtalo de nuevo~",
+    "scissors": "Tijera",
+    "rock": "Piedra",
+    "paper": "Papel"
   }
 }

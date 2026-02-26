@@ -1,7 +1,7 @@
-import React, { useEffect } from 'react';
+import clsx from 'clsx';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import './Modals.css';
-import { Icon } from '../Icon';
 import { useModalClose } from '../../hooks/useModalClose';
 
 // Success Modal - 자동으로 2초 후 닫힘
@@ -14,8 +14,8 @@ export function SuccessModal({ title, message, onClose }) {
     }, [requestClose]);
 
     return (
-        <div className={`modal-overlay ${isClosing ? 'closing' : ''}`} onClick={requestClose}>
-            <div className="modal success-modal" onClick={e => e.stopPropagation()}>
+        <div className={clsx('modal-overlay', { closing: isClosing })} onClick={requestClose}>
+            <div className="modal success-modal" onClick={(e) => e.stopPropagation()}>
                 <img src="./success.png" alt="" className="modal-illustration" />
                 <h2 className="modal-title">{title}</h2>
                 <p className="modal-message">{message}</p>
@@ -28,10 +28,10 @@ export function SuccessModal({ title, message, onClose }) {
 export function FailureModal({ title, message, onClose }) {
     const { t } = useTranslation('gui');
     const { isClosing, requestClose } = useModalClose(onClose);
-    
+
     return (
-        <div className={`modal-overlay ${isClosing ? 'closing' : ''}`} onClick={requestClose}>
-            <div className="modal failure-modal" onClick={e => e.stopPropagation()}>
+        <div className={clsx('modal-overlay', { closing: isClosing })} onClick={requestClose}>
+            <div className="modal failure-modal" onClick={(e) => e.stopPropagation()}>
                 <img src="./panic.png" alt="" className="modal-illustration" />
                 <h2 className="modal-title">{title}</h2>
                 <p className="modal-message">{message}</p>
@@ -47,10 +47,10 @@ export function FailureModal({ title, message, onClose }) {
 export function NotificationModal({ title, message, onClose }) {
     const { t } = useTranslation('gui');
     const { isClosing, requestClose } = useModalClose(onClose);
-    
+
     return (
-        <div className={`modal-overlay ${isClosing ? 'closing' : ''}`} onClick={requestClose}>
-            <div className="modal notification-modal" onClick={e => e.stopPropagation()}>
+        <div className={clsx('modal-overlay', { closing: isClosing })} onClick={requestClose}>
+            <div className="modal notification-modal" onClick={(e) => e.stopPropagation()}>
                 <img src="./notice.png" alt="" className="modal-illustration" />
                 <h2 className="modal-title">{title}</h2>
                 <p className="modal-message">{message}</p>
@@ -66,10 +66,10 @@ export function NotificationModal({ title, message, onClose }) {
 export function QuestionModal({ title, message, detail, onConfirm, onCancel, buttons }) {
     const { t } = useTranslation('gui');
     const { isClosing, requestClose } = useModalClose(onCancel);
-    
+
     return (
-        <div className={`modal-overlay ${isClosing ? 'closing' : ''}`} onClick={requestClose}>
-            <div className="modal question-modal" onClick={e => e.stopPropagation()}>
+        <div className={clsx('modal-overlay', { closing: isClosing })} onClick={requestClose}>
+            <div className="modal question-modal" onClick={(e) => e.stopPropagation()}>
                 <img src="./question.png" alt="" className="modal-illustration" />
                 <h2 className="modal-title">{title}</h2>
                 <p className="modal-message">{message}</p>
@@ -78,9 +78,9 @@ export function QuestionModal({ title, message, detail, onConfirm, onCancel, but
                     {buttons ? (
                         // 커스텀 버튼 배열
                         buttons.map((btn, idx) => (
-                            <button 
-                                key={idx} 
-                                className={`modal-button ${idx === 0 ? 'question-confirm' : 'question-cancel'}`}
+                            <button
+                                key={idx}
+                                className={clsx('modal-button', idx === 0 ? 'question-confirm' : 'question-cancel')}
                                 onClick={btn.action}
                             >
                                 {btn.label}

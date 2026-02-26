@@ -74,8 +74,19 @@ def _ensure_docker_daemon() -> dict | None:
 
     # 준비 대기
     if not engine.wait_for_ready(timeout_secs=60):
-        return {"handled": True, "success": False,
-                "error": "Docker daemon started but did not become ready in time"}
+        # dockerd 로그에서 fatal 에러 추출
+        fatal_detail = ""
+        try:
+            if engine.log_file.exists():
+                from docker.docker_engine import _check_log_for_fatal
+                log_text = engine.log_file.read_text(errors="replace")
+                fatal_detail = _check_log_for_fatal(log_text) or ""
+        except Exception:
+            pass
+        msg = "Docker daemon started but did not become ready in time"
+        if fatal_detail:
+            msg = f"{msg}: {fatal_detail}"
+        return {"handled": True, "success": False, "error": msg}
 
     return None
 

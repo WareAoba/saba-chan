@@ -2,7 +2,7 @@
     margin: 0;
     padding: 0;
     box-sizing: border-box;
-    font-family: 'Noto Sans', 'Noto Sans KR', 'Noto Sans JP', sans-serif;
+    font-family: "Noto Sans", "Noto Sans KR", "Noto Sans JP", sans-serif;
 }
 
 :root {
@@ -146,9 +146,9 @@ textarea,
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-        'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-        sans-serif;
+    font-family:
+        -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans",
+        "Droid Sans", "Helvetica Neue", sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     background: var(--bg-app);
@@ -190,16 +190,7 @@ body {
     position: absolute;
     inset: 0;
     border-radius: 50%;
-    background: conic-gradient(
-        from 0deg,
-        #7ec8e3,
-        #667eea,
-        #8b5cf6,
-        #a855f7,
-        #7c3aed,
-        #667eea,
-        #7ec8e3
-    );
+    background: conic-gradient(from 0deg, #7ec8e3, #667eea, #8b5cf6, #a855f7, #7c3aed, #667eea, #7ec8e3);
     animation: spin-glow 3s linear infinite;
     z-index: 0;
 }
@@ -209,16 +200,7 @@ body {
     position: absolute;
     inset: -14px;
     border-radius: 50%;
-    background: conic-gradient(
-        from 0deg,
-        #7ec8e3,
-        #667eea,
-        #8b5cf6,
-        #a855f7,
-        #7c3aed,
-        #667eea,
-        #7ec8e3
-    );
+    background: conic-gradient(from 0deg, #7ec8e3, #667eea, #8b5cf6, #a855f7, #7c3aed, #667eea, #7ec8e3);
     animation: spin-glow 3s linear infinite;
     filter: blur(28px);
     opacity: 0.7;
@@ -256,7 +238,9 @@ body {
 }
 
 @keyframes spin-glow {
-    to { transform: rotate(360deg); }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .loading-title {
@@ -377,7 +361,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .discord-backdrop::before {
-    content: '';
+    content: "";
     position: absolute;
     top: 0;
     left: 0;
@@ -462,6 +446,31 @@ span[style*="--icon-loader"] svg,
     display: flex;
     align-items: center;
     gap: 4px;
+}
+
+/* ── 익스텐션 초기화 스피너 ── */
+.ext-init-spinner-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    cursor: default;
+}
+
+.ext-init-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--border-secondary, rgba(255, 255, 255, 0.15));
+    border-top-color: var(--accent-primary, #6366f1);
+    border-radius: 50%;
+    animation: extInitSpin 0.8s linear infinite;
+}
+
+@keyframes extInitSpin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 /* 앱 설정 버튼 (헤더 상단의 톱니바퀴 아이콘) */
@@ -610,7 +619,10 @@ span[style*="--icon-loader"] svg,
     border-radius: var(--btn-radius);
     padding: 12px;
     box-shadow: var(--card-shadow);
-    transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.2s ease, opacity 0.2s ease;
+    transition:
+        transform 0.25s cubic-bezier(0.2, 0, 0, 1),
+        box-shadow 0.2s ease,
+        opacity 0.2s ease;
     position: relative;
     display: flex;
     flex-direction: column;
@@ -708,8 +720,15 @@ span[style*="--icon-loader"] svg,
     height: 14px;
 }
 @keyframes port-conflict-pulse {
-    0%, 100% { opacity: 0.85; transform: scale(1); }
-    50% { opacity: 1; transform: scale(1.1); }
+    0%,
+    100% {
+        opacity: 0.85;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.1);
+    }
 }
 
 /* 별명 충돌(동일 모듈 다중 인스턴스) 배지 (게임 아이콘 오른쪽 상단) */
@@ -815,12 +834,12 @@ span[style*="--icon-loader"] svg,
 .instance-id-badge {
     display: inline-block;
     font-size: 9px;
-    font-family: 'Consolas', 'Monaco', monospace;
+    font-family: "Consolas", "Monaco", monospace;
     font-weight: 500;
     padding: 1px 5px;
     margin-left: 4px;
     border-radius: 3px;
-    background: var(--bg-tertiary, rgba(128,128,128,0.15));
+    background: var(--bg-tertiary, rgba(128, 128, 128, 0.15));
     color: var(--text-muted, #888);
     line-height: 1.4;
     cursor: default;
@@ -845,7 +864,11 @@ span[style*="--icon-loader"] svg,
     min-height: unset;
     line-height: 1;
     margin-left: auto;
-    transition: width 0.3s ease, border-color 0.3s ease, color 0.3s ease, background 0.3s ease;
+    transition:
+        width 0.3s ease,
+        border-color 0.3s ease,
+        color 0.3s ease,
+        background 0.3s ease;
 }
 
 .status-button .status-dot {
@@ -881,19 +904,19 @@ span[style*="--icon-loader"] svg,
 /* Running 상태 */
 .status-button.status-running {
     border-color: rgba(76, 175, 80, 0.4);
-    color: #4CAF50;
+    color: #4caf50;
 }
 
 .status-button.status-running .status-dot {
-    background-color: #4CAF50;
+    background-color: #4caf50;
     box-shadow: 0 0 6px rgba(76, 175, 80, 0.6);
     animation: pulse-dot-green 2s infinite;
 }
 
 .status-button.status-running:hover {
-    border-color: #4CAF50;
+    border-color: #4caf50;
     background: transparent;
-    color: #4CAF50;
+    color: #4caf50;
 }
 
 .status-button.status-running:hover .status-dot {
@@ -912,23 +935,23 @@ span[style*="--icon-loader"] svg,
 
 .status-button.status-stopped:hover {
     background: transparent;
-    border-color: #4CAF50;
-    color: #4CAF50;
+    border-color: #4caf50;
+    color: #4caf50;
 }
 
 .status-button.status-stopped:hover .status-dot {
-    background-color: #4CAF50;
+    background-color: #4caf50;
 }
 
 /* Starting 상태 */
 .status-button.status-starting {
     border-color: rgba(33, 150, 243, 0.4);
-    color: #2196F3;
+    color: #2196f3;
     cursor: not-allowed;
 }
 
 .status-button.status-starting .status-dot {
-    background-color: #2196F3;
+    background-color: #2196f3;
     animation: pulse-dot-blue 1s infinite;
 }
 
@@ -957,12 +980,12 @@ span[style*="--icon-loader"] svg,
 /* Stopping 상태 */
 .status-button.status-stopping {
     border-color: rgba(255, 152, 0, 0.4);
-    color: #FF9800;
+    color: #ff9800;
     cursor: not-allowed;
 }
 
 .status-button.status-stopping .status-dot {
-    background-color: #FF9800;
+    background-color: #ff9800;
     animation: pulse-dot-orange 1s infinite;
 }
 
@@ -971,7 +994,8 @@ span[style*="--icon-loader"] svg,
 }
 
 @keyframes pulse-dot-green {
-    0%, 100% {
+    0%,
+    100% {
         box-shadow: 0 0 6px rgba(76, 175, 80, 0.6);
     }
     50% {
@@ -980,7 +1004,8 @@ span[style*="--icon-loader"] svg,
 }
 
 @keyframes pulse-dot-blue {
-    0%, 100% {
+    0%,
+    100% {
         opacity: 1;
     }
     50% {
@@ -989,7 +1014,8 @@ span[style*="--icon-loader"] svg,
 }
 
 @keyframes pulse-dot-orange {
-    0%, 100% {
+    0%,
+    100% {
         opacity: 1;
     }
     50% {
@@ -1024,7 +1050,7 @@ span[style*="--icon-loader"] svg,
 
 .detail-row .value {
     color: var(--text-primary);
-    font-family: 'Courier New', monospace;
+    font-family: "Courier New", monospace;
 }
 
 /* 서버 액션 아이콘 버튼 (좌하단) */
@@ -1045,24 +1071,28 @@ span[style*="--icon-loader"] svg,
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: color 0.2s ease, transform 0.2s ease;
+    transition:
+        color 0.2s ease,
+        transform 0.2s ease;
 }
 
 /* 아이콘 SVG 색상 덮어쓰기 */
 .action-icon svg path {
     fill: var(--icon-default);
     stroke: var(--icon-default);
-    transition: fill 0.2s ease, stroke 0.2s ease;
+    transition:
+        fill 0.2s ease,
+        stroke 0.2s ease;
 }
 
 .action-icon:hover {
-    color: #FF9800;
+    color: #ff9800;
     transform: scale(1.1);
 }
 
 .action-icon:hover svg path {
-    fill: #FF9800;
-    stroke: #FF9800;
+    fill: #ff9800;
+    stroke: #ff9800;
 }
 
 .action-icon:active {
@@ -1090,7 +1120,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .btn-start {
-    background-color: #4CAF50;
+    background-color: #4caf50;
     color: var(--text-on-primary);
 }
 
@@ -1108,7 +1138,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .btn-status {
-    background-color: #2196F3;
+    background-color: #2196f3;
     color: var(--text-on-primary);
 }
 
@@ -1117,12 +1147,12 @@ span[style*="--icon-loader"] svg,
 }
 
 .btn-settings {
-    background-color: #FF9800;
+    background-color: #ff9800;
     color: var(--text-on-primary);
 }
 
 .btn-settings:hover:not(:disabled) {
-    background-color: #F57C00;
+    background-color: #f57c00;
 }
 
 .btn-command {
@@ -1163,13 +1193,13 @@ span[style*="--icon-loader"] svg,
     padding: 20px;
     border-radius: 12px;
     box-shadow: 0 4px 6px var(--shadow-md);
-    border-left: 4px solid #5865F2;
+    border-left: 4px solid #5865f2;
 }
 
 .discord-section h3 {
     margin-top: 0;
     margin-bottom: 15px;
-    color: #5865F2;
+    color: #5865f2;
 }
 
 .discord-status {
@@ -1189,7 +1219,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .discord-status .status-running {
-    color: #4CAF50;
+    color: #4caf50;
 }
 
 .discord-status .status-stopped {
@@ -1224,7 +1254,7 @@ span[style*="--icon-loader"] svg,
 
 .discord-token-form input:focus {
     outline: none;
-    border-color: #5865F2;
+    border-color: #5865f2;
 }
 
 .discord-actions {
@@ -1359,7 +1389,8 @@ span[style*="--icon-loader"] svg,
 }
 
 @keyframes pulse {
-    0%, 100% {
+    0%,
+    100% {
         opacity: 1;
     }
     50% {
@@ -1452,7 +1483,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .alias-key {
-    color: #5865F2;
+    color: #5865f2;
     font-weight: bold;
 }
 
@@ -1497,7 +1528,7 @@ span[style*="--icon-loader"] svg,
 .btn-small {
     padding: 6px 12px;
     font-size: 12px;
-    background: #5865F2;
+    background: #5865f2;
     color: var(--text-on-primary);
     border: none;
     border-radius: 4px;
@@ -1548,7 +1579,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .btn-save {
-    background: #4CAF50;
+    background: #4caf50;
     color: white;
 }
 
@@ -1564,7 +1595,7 @@ span[style*="--icon-loader"] svg,
     border: 2px solid var(--border-default);
     border-radius: 6px;
     font-size: 14px;
-    font-family: 'Courier New', monospace;
+    font-family: "Courier New", monospace;
     margin-bottom: 10px;
     background-color: var(--input-bg);
     color: var(--text-primary);
@@ -1637,7 +1668,9 @@ span[style*="--icon-loader"] svg,
     font-size: 14px;
     background: var(--input-bg);
     color: var(--text-primary);
-    transition: border-color 0.15s, box-shadow 0.15s;
+    transition:
+        border-color 0.15s,
+        box-shadow 0.15s;
     font-family: inherit;
 }
 
@@ -1648,7 +1681,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .as-input-mono {
-    font-family: 'Courier New', monospace;
+    font-family: "Courier New", monospace;
     font-size: 13px;
 }
 
@@ -1705,7 +1738,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .as-toggle-track::after {
-    content: '';
+    content: "";
     position: absolute;
     top: 3px;
     left: 3px;
@@ -1714,7 +1747,7 @@ span[style*="--icon-loader"] svg,
     border-radius: 50%;
     background: white;
     transition: transform 0.2s;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 
 .as-toggle-switch input:checked + .as-toggle-track {
@@ -1896,8 +1929,12 @@ span[style*="--icon-loader"] svg,
 }
 
 @keyframes provision-slide {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(350%); }
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(350%);
+    }
 }
 
 .as-provision-message {
@@ -1945,8 +1982,14 @@ span[style*="--icon-loader"] svg,
 }
 
 @keyframes as-slide-in {
-    from { opacity: 0; transform: translateY(-4px); }
-    to   { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .as-path-row {
@@ -2076,7 +2119,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .btn-browse {
-    background-color: #607D8B;
+    background-color: #607d8b;
     color: white;
     border: none;
     padding: 10px 16px;
@@ -2088,7 +2131,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .btn-browse:hover {
-    background-color: #546E7A;
+    background-color: #546e7a;
 }
 
 .field-hint {
@@ -2122,7 +2165,7 @@ span[style*="--icon-loader"] svg,
 /* legacy add-server-form duplicated focus styles kept for MigrationModal compatibility */
 
 .btn-confirm {
-    background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+    background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
     color: var(--text-on-primary);
     border: none;
     padding: 0 20px;
@@ -2369,7 +2412,9 @@ span[style*="--icon-loader"] svg,
     color: var(--text-secondary);
     cursor: pointer;
     padding: 0;
-    transition: background 0.12s, color 0.12s;
+    transition:
+        background 0.12s,
+        color 0.12s;
     line-height: 1;
 }
 .number-spinner-btn:hover:not(:disabled) {
@@ -2559,7 +2604,7 @@ span[style*="--icon-loader"] svg,
     border: 2px solid var(--border-separator);
     border-radius: 4px;
     font-size: 14px;
-    font-family: 'Segoe UI', sans-serif;
+    font-family: "Segoe UI", sans-serif;
     transition: border-color 0.2s;
     background-color: var(--input-bg);
     color: var(--text-primary);
@@ -2665,7 +2710,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .cmd-tooltip::after {
-    content: '';
+    content: "";
     position: absolute;
     top: 100%;
     left: 8px;
@@ -2738,7 +2783,9 @@ span[style*="--icon-loader"] svg,
     border-radius: 8px;
     cursor: pointer;
     font-weight: 600;
-    transition: transform 0.1s ease, box-shadow 0.2s ease;
+    transition:
+        transform 0.1s ease,
+        box-shadow 0.2s ease;
 }
 
 .module-aliases-actions .btn-save {
@@ -2783,7 +2830,7 @@ span[style*="--icon-loader"] svg,
     color: #d32f2f;
     padding: 4px 10px;
     border-radius: 4px;
-    font-family: 'Courier New', monospace;
+    font-family: "Courier New", monospace;
     font-size: 14px;
     display: inline-block;
     margin: 8px 0;
@@ -2826,8 +2873,9 @@ span[style*="--icon-loader"] svg,
     height: calc(100% - 6px);
     background-color: var(--brand-primary);
     border-radius: 6px;
-    transition: left 0.35s cubic-bezier(0.4, 0, 0.2, 1),
-                width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    transition:
+        left 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+        width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     z-index: 0;
     pointer-events: none;
@@ -3004,13 +3052,24 @@ span[style*="--icon-loader"] svg,
 }
 
 @keyframes waiting-bounce-in {
-    from { opacity: 0; transform: scale(0.5) translateY(20px); }
-    to   { opacity: 1; transform: scale(1) translateY(0); }
+    from {
+        opacity: 0;
+        transform: scale(0.5) translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
 }
 
 @keyframes waiting-float {
-    0%, 100% { transform: translateY(0); }
-    50%      { transform: translateY(-8px); }
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-8px);
+    }
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -3024,15 +3083,21 @@ span[style*="--icon-loader"] svg,
     right: 0;
     z-index: 9999;
     background: var(--bg-surface);
-    border-top: 1px solid var(--border-light, rgba(0,0,0,0.08));
-    box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
+    border-top: 1px solid var(--border-light, rgba(0, 0, 0, 0.08));
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.08);
     padding: 8px 16px 6px;
     animation: progress-slide-up 0.25s ease-out;
 }
 
 @keyframes progress-slide-up {
-    from { transform: translateY(100%); opacity: 0; }
-    to   { transform: translateY(0);    opacity: 1; }
+    from {
+        transform: translateY(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
 }
 
 .global-progress-content {
@@ -3084,9 +3149,15 @@ span[style*="--icon-loader"] svg,
 }
 
 @keyframes progress-indeterminate {
-    0%   { transform: translateX(-100%); }
-    50%  { transform: translateX(230%); }
-    100% { transform: translateX(-100%); }
+    0% {
+        transform: translateX(-100%);
+    }
+    50% {
+        transform: translateX(230%);
+    }
+    100% {
+        transform: translateX(-100%);
+    }
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -3138,7 +3209,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .console-icon {
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
     color: #a6e3a1;
     font-size: 14px;
     font-weight: 700;
@@ -3165,12 +3236,12 @@ span[style*="--icon-loader"] svg,
     flex: 1;
     overflow-y: auto;
     padding: 10px 14px;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
     font-size: 12.5px;
     line-height: 1.6;
     color: #cdd6f4;
     scrollbar-width: thin;
-    scrollbar-color: rgba(255,255,255,0.1) transparent;
+    scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
     -webkit-user-select: text;
     user-select: text;
     cursor: text;
@@ -3235,7 +3306,7 @@ span[style*="--icon-loader"] svg,
 
 .console-prompt {
     color: #a6e3a1;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
     font-weight: 700;
     font-size: 14px;
     flex-shrink: 0;
@@ -3248,7 +3319,7 @@ span[style*="--icon-loader"] svg,
     border-radius: 6px;
     padding: 6px 10px;
     color: #cdd6f4;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
     font-size: 12.5px;
     outline: none;
     transition: border-color 0.2s ease;
@@ -3483,12 +3554,12 @@ span[style*="--icon-loader"] svg,
     flex: 1;
     overflow-y: auto;
     padding: 10px 14px;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
     font-size: 12.5px;
     line-height: 1.6;
     color: #cdd6f4;
     scrollbar-width: thin;
-    scrollbar-color: rgba(255,255,255,0.1) transparent;
+    scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
     -webkit-user-select: text;
     user-select: text;
     cursor: text;
@@ -3549,8 +3620,12 @@ span[style*="--icon-loader"] svg,
 }
 
 @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 /* ===== Migration Modal ===== */
@@ -3627,7 +3702,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .migration-form .btn-browse {
-    background-color: #607D8B;
+    background-color: #607d8b;
     color: white;
     border: none;
     padding: 10px 16px;
@@ -3639,7 +3714,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .migration-form .btn-browse:hover {
-    background-color: #546E7A;
+    background-color: #546e7a;
 }
 
 /* Step 2: Review */
@@ -3740,7 +3815,7 @@ span[style*="--icon-loader"] svg,
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-family: 'Courier New', monospace;
+    font-family: "Courier New", monospace;
     font-size: 11px;
 }
 
@@ -3753,7 +3828,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .migration-badge-important {
-    background: #FF9800;
+    background: #ff9800;
     color: #000;
     font-size: 9px;
     padding: 1px 6px;
@@ -3816,7 +3891,7 @@ span[style*="--icon-loader"] svg,
     border-radius: 6px;
     font-size: 12px;
     margin-top: 12px;
-    font-family: 'Courier New', monospace;
+    font-family: "Courier New", monospace;
     word-break: break-all;
 }
 
@@ -3826,7 +3901,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .migration-warnings h4 {
-    color: #FF9800;
+    color: #ff9800;
     font-size: 12px;
     margin-bottom: 6px;
 }
@@ -3844,8 +3919,8 @@ span[style*="--icon-loader"] svg,
 }
 
 .migration-warnings li::before {
-    content: '⚠ ';
-    color: #FF9800;
+    content: "⚠ ";
+    color: #ff9800;
 }
 
 /* Migration footer buttons */
@@ -3875,4 +3950,44 @@ span[style*="--icon-loader"] svg,
 .btn-secondary:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+/* ========== Error Boundary Fallback ========== */
+.error-fallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background: var(--bg-app);
+    padding: 2rem;
+}
+
+.error-fallback-content {
+    background: var(--bg-surface);
+    border-radius: 16px;
+    padding: 2.5rem;
+    max-width: 480px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+}
+
+.error-fallback-content h2 {
+    color: var(--text-primary);
+    margin-bottom: 1rem;
+    font-size: 1.25rem;
+}
+
+.error-fallback-details {
+    background: var(--bg-surface-alt);
+    color: var(--status-error);
+    padding: 1rem;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    text-align: left;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+    margin-bottom: 1.5rem;
 }

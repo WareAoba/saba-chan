@@ -542,7 +542,7 @@ pub async fn update_instance_settings(
 
     // managed_start ↔ RCON 연동:
     //   managed=true  → enable_rcon=false (stdin으로 제어, RCON 불필요)
-    //   managed=false → enable_rcon=true  + 비밀번호 자동생성 (RCON이 유일한 제어 수단)
+    //   managed=false → enable_rcon=true  (RCON이 유일한 제어 수단)
     let managed_start = settings.get("managed_start").and_then(|v| match v {
         serde_json::Value::Bool(b) => Some(*b),
         serde_json::Value::String(s) => Some(s == "true"),
@@ -560,23 +560,8 @@ pub async fn update_instance_settings(
             })
         }
     };
-    if enable_rcon == Some(true) {
-        let current_password = updated.rcon_password.as_deref().unwrap_or("");
-        if current_password.is_empty() {
-            // UUID 기반 16자 비밀번호 생성 (영숫자만)
-            let password: String = uuid::Uuid::new_v4()
-                .to_string()
-                .replace('-', "")
-                .chars()
-                .take(16)
-                .collect();
-            tracing::info!(
-                "Auto-generated RCON password for instance {} (native mode, no password set)",
-                id
-            );
-            updated.rcon_password = Some(password.clone());
-        }
-    }
+
+    // NOTE: RCON/REST 비밀번호 자동 생성은 인스턴스 실행 시점에 supervisor에서 처리합니다.
 
     if let Some(rest_host) = settings.get("rest_host").and_then(|v| v.as_str()) {
         updated.rest_host = Some(rest_host.to_string());
@@ -704,10 +689,10 @@ pub async fn update_instance_settings(
     if let Some(rcon_on) = enable_rcon {
         props_sync.insert("enable_rcon".to_string(), json!(rcon_on));
     }
-    // 자동 생성된 RCON 비밀번호가 있으면 props_sync에도 추가
-    if let Some(auto_password) = &updated.rcon_password {
-        if !props_sync.contains_key("rcon_password") && enable_rcon == Some(true) {
-            props_sync.insert("rcon_password".to_string(), json!(auto_password));
+    // 인스턴스에 저장된 RCON 비밀번호가 있으면 props_sync에도 반영
+    if let Some(pwd) = &updated.rcon_password {
+        if !props_sync.contains_key("rcon_password") {
+            props_sync.insert("rcon_password".to_string(), json!(pwd));
         }
     }
 

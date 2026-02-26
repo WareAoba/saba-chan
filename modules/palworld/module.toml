@@ -36,7 +36,7 @@ image = "steamcmd/steamcmd:latest"
 working_dir = "/server"
 restart = "unless-stopped"
 entrypoint = "/bin/bash -c"
-command = "exec /server/PalServer.sh -port={port} -RCONPort={rcon_port}"
+command = "exec /server/PalServer.sh -port={port} -RESTAPIEnabled=True -RCONEnabled=False"
 user = "1000:1000"
 ports = ["{port}:{port}/udp", "{rest_port}:{rest_port}/tcp"]
 volumes = ["./server:/server"]

@@ -14,7 +14,7 @@ use serde_json::Value;
 pub struct ValidationError {
     pub field: String,
     pub message: String,
-    #[allow(dead_code)]
+    #[allow(dead_code)] // 공개 API — 에러 종류 구분용
     pub error_type: ValidationErrorType,
 }
 
@@ -39,11 +39,10 @@ pub struct PortConflict {
     pub port: u16,
     /// 포트 종류 ("port", "rcon_port", "rest_port")
     pub port_type: String,
-    #[allow(dead_code)]
     /// 충돌하는 상대 인스턴스 이름
     pub conflicting_instance_name: String,
-    #[allow(dead_code)]
     /// 충돌하는 상대 인스턴스 ID
+    #[allow(dead_code)] // 공개 API — 충돌 진단 정보
     pub conflicting_instance_id: String,
     /// 상대 인스턴스의 포트 종류
     pub conflicting_port_type: String,
@@ -318,8 +317,8 @@ fn collect_active_ports<'a>(
 ) -> Vec<(u16, &'a str)> {
     let protocols = module_protocols.and_then(|mp| mp.get(&instance.module_name));
     // 프로토콜 정보가 없으면 (하위 호환) 모든 포트를 포함
-    let supports_rcon = protocols.map_or(true, |p| p.iter().any(|s| s == "rcon"));
-    let supports_rest = protocols.map_or(true, |p| p.iter().any(|s| s == "rest"));
+    let supports_rcon = protocols.is_none_or(|p| p.iter().any(|s| s == "rcon"));
+    let supports_rest = protocols.is_none_or(|p| p.iter().any(|s| s == "rest"));
 
     let mut ports = Vec::new();
     if let Some(port) = instance.port {

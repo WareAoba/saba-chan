@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('api', {
     extensionRemove: (extId) => ipcRenderer.invoke('extension:remove', extId),
     extensionCheckUpdates: () => ipcRenderer.invoke('extension:checkUpdates'),
     extensionRescan: () => ipcRenderer.invoke('extension:rescan'),
+    extensionInitStatus: () => ipcRenderer.invoke('extension:initStatus'),
     // Managed Process API (console capture)
     managedStart: (instanceId) => ipcRenderer.invoke('managed:start', instanceId),
     managedConsole: (instanceId, since, count) => ipcRenderer.invoke('managed:console', instanceId, since, count),

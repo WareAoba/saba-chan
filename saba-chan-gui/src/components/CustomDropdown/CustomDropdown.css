@@ -70,7 +70,9 @@
     background: var(--bg-surface);
     border: 1px solid var(--border-default);
     border-radius: 10px;
-    box-shadow: 0 8px 24px var(--shadow-lg), 0 2px 8px var(--shadow-sm);
+    box-shadow:
+        0 8px 24px var(--shadow-lg),
+        0 2px 8px var(--shadow-sm);
     overflow: hidden;
     animation: dropdownSlideIn 0.15s ease-out;
 }

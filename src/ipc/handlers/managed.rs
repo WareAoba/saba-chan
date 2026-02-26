@@ -15,6 +15,18 @@ pub async fn start_managed_handler(
     State(state): State<IPCServer>,
     payload: Option<Json<serde_json::Value>>,
 ) -> impl IntoResponse {
+    // ── 실행 전 비밀번호 자동 생성 (비어있으면 채움) ──
+    {
+        let mut supervisor = state.supervisor.write().await;
+        if let Some(mut inst) = supervisor.instance_store.get(&id).cloned() {
+            if inst.ensure_passwords() {
+                if let Err(e) = supervisor.instance_store.update(&id, inst) {
+                    tracing::warn!("Failed to save auto-generated passwords for {}: {}", id, e);
+                }
+            }
+        }
+    }
+
     let supervisor = state.supervisor.read().await;
 
     let instance = match supervisor.instance_store.get(&id) {

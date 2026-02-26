@@ -174,7 +174,7 @@ const DEFAULT_COMMAND_ALIASES = {
 /**
  * 기본 모듈 별명 (music 모듈 접근용)
  */
-const DEFAULT_MODULE_ALIASES = ['music', '노래', '음악', 'ㄴㄹ', 'ㅇㅇ', 'dj'];
+const DEFAULT_MODULE_ALIASES = ['music', '음악', 'ㄴㄹ', 'ㅇㅇ', 'dj'];
 
 /**
  * 명령어 별명 해석
@@ -241,9 +241,7 @@ function isRelayMessage(message) {
 async function requireVoiceChannel(message) {
     const voiceChannel = message.member?.voice?.channel;
     if (!voiceChannel) {
-        await message.reply(i18n.t('bot:music.join_voice_first', {
-            defaultValue: '🎤 먼저 음성 채널에 들어가 주세요!'
-        }));
+        await message.reply(i18n.t('bot:music.join_voice_first'));
         return null;
     }
     return voiceChannel;
@@ -343,17 +341,13 @@ async function handleMusicMessage(message, args, botConfig) {
 
     // 릴레이 모드(mock message)에서는 음악 불가 — Discord 보이스 인프라 없음
     if (isRelayMessage(message)) {
-        await message.reply(i18n.t('bot:music.not_available_relay', {
-            defaultValue: '🎵 클라우드(릴레이) 모드에서는 음악 기능을 사용할 수 없어요. 로컬 모드로 전환해 주세요!'
-        }));
+        await message.reply(i18n.t('bot:music.not_available_relay'));
         return true;
     }
     
     // 패키지 미설치 시 안내
     if (!musicAvailable) {
-        await message.reply(i18n.t('bot:music.not_available', {
-            defaultValue: '🎵 음악 기능을 사용하려면 패키지 설치가 필요해요!\n`npm install @discordjs/voice @discordjs/opus play-dl`'
-        }));
+        await message.reply(i18n.t('bot:music.not_available'));
         return true;
     }
     
@@ -445,7 +439,7 @@ async function extractTrackInfo(query, requester) {
         const info = await getTrackInfoViaYtDlp(query);
         if (info) return [{ ...info, requester }];
 
-        throw new Error(i18n.t('bot:music.invalid_url', { defaultValue: '영상 정보를 가져올 수 없어요' }));
+        throw new Error(i18n.t('bot:music.invalid_url'));
     }
     
     // 검색: play-dl 시도 → yt-dlp fallback
@@ -473,7 +467,7 @@ async function extractTrackInfo(query, requester) {
         return [{ ...info, requester }];
     }
 
-    throw new Error(i18n.t('bot:music.no_results', { defaultValue: '검색 결과가 없어요' }));
+    throw new Error(i18n.t('bot:music.no_results'));
 }
 
 /**
@@ -850,8 +844,7 @@ function safeDelete(msg) {
 async function handlePlay(message, args, botConfig) {
     if (args.length === 0) {
         await message.reply(i18n.t('bot:music.play_usage', {
-            prefix: botConfig.prefix,
-            defaultValue: `🎵 사용법: \`${botConfig.prefix} 노래 재생 <유튜브 링크 또는 검색어>\``
+            prefix: botConfig.prefix
         }));
         return;
     }
@@ -863,9 +856,7 @@ async function handlePlay(message, args, botConfig) {
     // 봇 권한 체크
     const permissions = voiceChannel.permissionsFor(message.client.user);
     if (!permissions?.has('Connect') || !permissions?.has('Speak')) {
-        await message.reply(i18n.t('bot:music.no_permission', {
-            defaultValue: '🚫 음성 채널에 연결하거나 말할 권한이 없어요!'
-        }));
+        await message.reply(i18n.t('bot:music.no_permission'));
         return;
     }
     
@@ -876,8 +867,7 @@ async function handlePlay(message, args, botConfig) {
     safeDelete(message);
     
     const statusMsg = await message.channel.send(i18n.t('bot:music.searching', {
-        query: query.length > 60 ? query.substring(0, 57) + '...' : query,
-        defaultValue: `🔍 검색 중... \`${query.length > 60 ? query.substring(0, 57) + '...' : query}\``
+        query: query.length > 60 ? query.substring(0, 57) + '...' : query
     }));
     
     try {
@@ -895,7 +885,7 @@ async function handlePlay(message, args, botConfig) {
             return;
         }
         
-        await statusMsg.edit(`❌ ${i18n.t('bot:music.no_results', { defaultValue: '검색 결과가 없어요' })}`).catch(() => {});
+        await statusMsg.edit(`❌ ${i18n.t('bot:music.no_results')}`).catch(() => {});
     } catch (e) {
         console.error('[Music] Play error:', e.message);
         await statusMsg.edit(`❌ ${e.message}`).catch(() => {});
@@ -908,8 +898,7 @@ async function handlePlay(message, args, botConfig) {
 async function handleSearch(message, args, botConfig) {
     if (args.length === 0) {
         await message.channel.send(i18n.t('bot:music.search_usage', {
-            prefix: botConfig.prefix,
-            defaultValue: `🔍 사용법: \`${botConfig.prefix} 노래 검색 <검색어>\``
+            prefix: botConfig.prefix
         }));
         return;
     }
@@ -922,8 +911,7 @@ async function handleSearch(message, args, botConfig) {
     safeDelete(message);
     
     const statusMsg = await message.channel.send(i18n.t('bot:music.searching', {
-        query: query.length > 60 ? query.substring(0, 57) + '...' : query,
-        defaultValue: `🔍 검색 중... \`${query.length > 60 ? query.substring(0, 57) + '...' : query}\``
+        query: query.length > 60 ? query.substring(0, 57) + '...' : query
     }));
     
     try {
@@ -936,7 +924,7 @@ async function handleSearch(message, args, botConfig) {
         
         const candidates = await extractTrackInfo(query, message.author.tag);
         if (candidates.length === 0) {
-            await statusMsg.edit(`❌ ${i18n.t('bot:music.no_results', { defaultValue: '검색 결과가 없어요' })}`);
+            await statusMsg.edit(`❌ ${i18n.t('bot:music.no_results')}`);
             return;
         }
         
@@ -944,8 +932,7 @@ async function handleSearch(message, args, botConfig) {
         
         // 검색 결과 텍스트
         let text = i18n.t('bot:music.search_results', {
-            query,
-            defaultValue: `🔍 **검색: ${query}**`
+            query
         }) + '\n';
         display.forEach((t, idx) => {
             text += `\n\`${idx + 1}.\` **${t.title}** [${t.duration}]`;
@@ -1046,8 +1033,7 @@ async function enqueueAndPlay(message, statusMsg, tracks, voiceChannel) {
             await statusMsg.edit(i18n.t('bot:music.now_playing', {
                 title: track.title,
                 duration: track.duration,
-                requester,
-                defaultValue: `🎶 ${requester} ▸ 재생: **${track.title}** [${track.duration}]`
+                requester
             }));
             playNext(message.guild.id).finally(() => { queue._playNextPending = false; });
         } else {
@@ -1055,15 +1041,13 @@ async function enqueueAndPlay(message, statusMsg, tracks, voiceChannel) {
                 title: track.title,
                 duration: track.duration,
                 position: position,
-                requester,
-                defaultValue: `✅ ${requester} ▸ 대기열에 추가: **${track.title}** [${track.duration}] — #${position}`
+                requester
             }));
         }
     } else {
         await statusMsg.edit(i18n.t('bot:music.playlist_added', {
             count: tracks.length,
-            requester,
-            defaultValue: `📋 ${requester} ▸ ${tracks.length}곡이 대기열에 추가되었어요!`
+            requester
         }));
         if (!queue.current && !queue._playNextPending) {
             queue._playNextPending = true;
@@ -1075,55 +1059,43 @@ async function enqueueAndPlay(message, statusMsg, tracks, voiceChannel) {
 async function handlePause(message) {
     const queue = getQueue(message.guild.id);
     if (!queue?.player || !queue.current) {
-        await message.channel.send(i18n.t('bot:music.nothing_playing', {
-            defaultValue: '🔇 재생 중인 곡이 없어요'
-        }));
+        await message.channel.send(i18n.t('bot:music.nothing_playing'));
         return;
     }
     
     if (queue.player.state.status === voice.AudioPlayerStatus.Paused) {
-        await message.channel.send(i18n.t('bot:music.already_paused', {
-            defaultValue: '⏸️ 이미 일시정지 상태예요'
-        }));
+        await message.channel.send(i18n.t('bot:music.already_paused'));
         return;
     }
     
     queue.player.pause();
     await message.channel.send(i18n.t('bot:music.paused', {
-        title: queue.current.title,
-        defaultValue: `⏸️ 일시정지: **${queue.current.title}**`
+        title: queue.current.title
     }));
 }
 
 async function handleResume(message) {
     const queue = getQueue(message.guild.id);
     if (!queue?.player || !queue.current) {
-        await message.channel.send(i18n.t('bot:music.nothing_playing', {
-            defaultValue: '🔇 재생 중인 곡이 없어요'
-        }));
+        await message.channel.send(i18n.t('bot:music.nothing_playing'));
         return;
     }
     
     if (queue.player.state.status !== voice.AudioPlayerStatus.Paused) {
-        await message.channel.send(i18n.t('bot:music.not_paused', {
-            defaultValue: '▶️ 이미 재생 중이에요'
-        }));
+        await message.channel.send(i18n.t('bot:music.not_paused'));
         return;
     }
     
     queue.player.unpause();
     await message.channel.send(i18n.t('bot:music.resumed', {
-        title: queue.current.title,
-        defaultValue: `▶️ 재개: **${queue.current.title}**`
+        title: queue.current.title
     }));
 }
 
 async function handleSkip(message) {
     const queue = getQueue(message.guild.id);
     if (!queue?.player || !queue.current) {
-        await message.channel.send(i18n.t('bot:music.nothing_playing', {
-            defaultValue: '🔇 재생 중인 곡이 없어요'
-        }));
+        await message.channel.send(i18n.t('bot:music.nothing_playing'));
         return;
     }
     
@@ -1131,9 +1103,7 @@ async function handleSkip(message) {
     
     if (!nextTrack) {
         // 다음 곡이 없으면 현재 곡 계속 재생, 안내만
-        await message.channel.send(i18n.t('bot:music.skipped_no_next', {
-            defaultValue: '⏭️ 대기열에 다음 곡이 없어요. 현재 곡을 계속 재생할게요!'
-        }));
+        await message.channel.send(i18n.t('bot:music.skipped_no_next'));
         return;
     }
     
@@ -1141,32 +1111,25 @@ async function handleSkip(message) {
     
     await message.channel.send(i18n.t('bot:music.skipped_next', {
         title: nextTrack.title,
-        duration: nextTrack.duration,
-        defaultValue: `⏭️ 스킵! 다음 곡: **${nextTrack.title}** [${nextTrack.duration}]`
+        duration: nextTrack.duration
     }));
 }
 
 async function handleStop(message) {
     const queue = getQueue(message.guild.id);
     if (!queue) {
-        await message.channel.send(i18n.t('bot:music.nothing_playing', {
-            defaultValue: '🔇 재생 중인 곡이 없어요'
-        }));
+        await message.channel.send(i18n.t('bot:music.nothing_playing'));
         return;
     }
     
     destroyQueue(message.guild.id);
-    await message.channel.send(i18n.t('bot:music.stopped', {
-        defaultValue: '⏹️ 재생 중지, 안녕~ 👋'
-    }));
+    await message.channel.send(i18n.t('bot:music.stopped'));
 }
 
 async function handleQueue(message) {
     const queue = getQueue(message.guild.id);
     if (!queue?.current && (!queue?.tracks || queue.tracks.length === 0)) {
-        await message.channel.send(i18n.t('bot:music.empty_queue', {
-            defaultValue: '📭 대기열이 비어있어요'
-        }));
+        await message.channel.send(i18n.t('bot:music.empty_queue'));
         return;
     }
     
@@ -1175,16 +1138,14 @@ async function handleQueue(message) {
     if (queue.current) {
         text += i18n.t('bot:music.queue_now_playing', {
             title: queue.current.title,
-            duration: queue.current.duration,
-            defaultValue: `🎶 **지금 재생 중:** ${queue.current.title} [${queue.current.duration}]`
+            duration: queue.current.duration
         }) + '\n\n';
     }
     
     if (queue.tracks.length > 0) {
         const display = queue.tracks.slice(0, 10);
         text += i18n.t('bot:music.queue_title', {
-            count: queue.tracks.length,
-            defaultValue: `📋 **대기열** (${queue.tracks.length}곡)`
+            count: queue.tracks.length
         }) + '\n';
         
         display.forEach((track, idx) => {
@@ -1193,8 +1154,7 @@ async function handleQueue(message) {
         
         if (queue.tracks.length > 10) {
             text += i18n.t('bot:music.queue_more', {
-                count: queue.tracks.length - 10,
-                defaultValue: `...그 외 ${queue.tracks.length - 10}곡`
+                count: queue.tracks.length - 10
             });
         }
     }
@@ -1205,9 +1165,7 @@ async function handleQueue(message) {
 async function handleNowPlaying(message) {
     const queue = getQueue(message.guild.id);
     if (!queue?.current) {
-        await message.channel.send(i18n.t('bot:music.nothing_playing', {
-            defaultValue: '🔇 재생 중인 곡이 없어요'
-        }));
+        await message.channel.send(i18n.t('bot:music.nothing_playing'));
         return;
     }
     
@@ -1218,34 +1176,28 @@ async function handleNowPlaying(message) {
         duration: track.duration,
         requester: track.requester,
         volume: vol,
-        url: track.url,
-        defaultValue: `🎶 **${track.title}** [${track.duration}]\n🔗 ${track.url}\n👤 ${track.requester} | 🔊 ${vol}%`
+        url: track.url
     }));
 }
 
 async function handleVolume(message, args) {
     const queue = getQueue(message.guild.id);
     if (!queue) {
-        await message.channel.send(i18n.t('bot:music.nothing_playing', {
-            defaultValue: '🔇 재생 중인 곡이 없어요'
-        }));
+        await message.channel.send(i18n.t('bot:music.nothing_playing'));
         return;
     }
     
     if (args.length === 0) {
         const vol = Math.round(queue.volume * 100);
         await message.channel.send(i18n.t('bot:music.current_volume', {
-            volume: vol,
-            defaultValue: `🔊 현재 볼륨: **${vol}%**`
+            volume: vol
         }));
         return;
     }
     
     const vol = parseInt(args[0], 10);
     if (isNaN(vol) || vol < 0 || vol > 200) {
-        await message.channel.send(i18n.t('bot:music.volume_range', {
-            defaultValue: '🔊 볼륨은 0~200 사이로 입력해주세요'
-        }));
+        await message.channel.send(i18n.t('bot:music.volume_range'));
         return;
     }
     
@@ -1257,17 +1209,14 @@ async function handleVolume(message, args) {
     const emoji = vol === 0 ? '🔇' : vol < 50 ? '🔉' : '🔊';
     await message.channel.send(i18n.t('bot:music.volume_set', {
         volume: vol,
-        emoji,
-        defaultValue: `${emoji} 볼륨: **${vol}%**`
+        emoji
     }));
 }
 
 async function handleShuffle(message) {
     const queue = getQueue(message.guild.id);
     if (!queue || queue.tracks.length < 2) {
-        await message.channel.send(i18n.t('bot:music.shuffle_need_more', {
-            defaultValue: '🔀 섞으려면 대기열에 2곡 이상 있어야 해요'
-        }));
+        await message.channel.send(i18n.t('bot:music.shuffle_need_more'));
         return;
     }
     
@@ -1282,37 +1231,17 @@ async function handleShuffle(message) {
     startPrefetch(message.guild.id);
     
     await message.channel.send(i18n.t('bot:music.shuffled', {
-        count: queue.tracks.length,
-        defaultValue: `🔀 대기열 ${queue.tracks.length}곡을 섞었어요!`
+        count: queue.tracks.length
     }));
 }
 
 async function handleHelp(message, args, botConfig) {
     const prefix = botConfig.prefix;
-    const mod = '노래';
+    const mod = i18n.t('bot:music.mod_name');
     
     const help = i18n.t('bot:music.help', {
         prefix,
-        mod,
-        defaultValue: [
-            `🎵 **${prefix} ${mod}** — 음악 재생`,
-            '',
-            `• \`${prefix} <유튜브 링크>\` — **바로 재생** ⚡`,
-            `• \`${prefix} ${mod} 재생 <검색어>\` — 첫 번째 결과로 바로 재생`,
-            `• \`${prefix} ${mod} 검색 <검색어>\` — 5개 결과에서 골라서 재생 🔘`,
-            `• \`${prefix} 정지\` — 정지 + 퇴장`,
-            '',
-            `• \`${prefix} ${mod} pause\` — 일시정지`,
-            `• \`${prefix} ${mod} resume\` — 재개`,
-            `• \`${prefix} ${mod} skip\` — 다음 곡`,
-            `• \`${prefix} ${mod} queue\` — 대기열`,
-            `• \`${prefix} ${mod} np\` — 지금 재생 중`,
-            `• \`${prefix} ${mod} volume <0-200>\` — 볼륨`,
-            `• \`${prefix} ${mod} shuffle\` — 대기열 섞기`,
-            '',
-            `💡 재생 중이면 \`${prefix} 다음\`, \`${prefix} 일시정지\` 등도 바로 동작!`,
-            `💡 별명: music, 노래, 음악, dj`,
-        ].join('\n')
+        mod
     });
     
     await message.channel.send(help);

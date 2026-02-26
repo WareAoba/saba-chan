@@ -331,6 +331,12 @@ pub struct ProvisionTracker {
     inner: Arc<std::sync::Mutex<HashMap<String, ProvisionProgress>>>,
 }
 
+impl Default for ProvisionTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ProvisionTracker {
     pub fn new() -> Self {
         Self { inner: Arc::new(std::sync::Mutex::new(HashMap::new())) }
@@ -398,6 +404,73 @@ impl ExtensionStatusCache {
     }
 }
 
+/// 익스텐션 초기화 상태 추적
+#[derive(Clone)]
+pub struct ExtensionInitTracker {
+    inner: Arc<RwLock<ExtensionInitState>>,
+}
+
+struct ExtensionInitState {
+    /// 초기화 중인 익스텐션 ID → 상태 메시지
+    in_progress: std::collections::HashMap<String, String>,
+    /// 초기화 완료된 익스텐션 (성공/실패)
+    completed: Vec<ExtensionInitResult>,
+}
+
+#[derive(Clone, serde::Serialize)]
+pub struct ExtensionInitResult {
+    pub ext_id: String,
+    pub success: bool,
+    pub message: String,
+    pub timestamp: u64,
+}
+
+impl ExtensionInitTracker {
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(ExtensionInitState {
+                in_progress: std::collections::HashMap::new(),
+                completed: Vec::new(),
+            })),
+        }
+    }
+
+    pub async fn mark_started(&self, ext_id: &str, message: &str) {
+        let mut state = self.inner.write().await;
+        state.in_progress.insert(ext_id.to_string(), message.to_string());
+    }
+
+    pub async fn mark_finished(&self, ext_id: &str, success: bool, message: &str) {
+        let mut state = self.inner.write().await;
+        state.in_progress.remove(ext_id);
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        state.completed.push(ExtensionInitResult {
+            ext_id: ext_id.to_string(),
+            success,
+            message: message.to_string(),
+            timestamp: ts,
+        });
+    }
+
+    #[allow(dead_code)]
+    pub async fn is_initializing(&self) -> bool {
+        let state = self.inner.read().await;
+        !state.in_progress.is_empty()
+    }
+
+    pub async fn snapshot(&self) -> serde_json::Value {
+        let state = self.inner.read().await;
+        serde_json::json!({
+            "initializing": !state.in_progress.is_empty(),
+            "in_progress": state.in_progress,
+            "completed": state.completed,
+        })
+    }
+}
+
 /// IPC Server State
 #[derive(Clone)]
 pub struct IPCServer {
@@ -416,6 +489,8 @@ pub struct IPCServer {
     pub extension_manager: Arc<RwLock<crate::extension::ExtensionManager>>,
     /// 익스텐션 상태 캐시 (list_enrich 스팸 방지)
     pub extension_status_cache: ExtensionStatusCache,
+    /// 익스텐션 초기화(daemon.startup) 진행 상태
+    pub extension_init_tracker: ExtensionInitTracker,
 }
 
 impl IPCServer {
@@ -424,7 +499,7 @@ impl IPCServer {
         listen_addr: &str,
     ) -> Self {
         // ExtensionManager 초기화
-        let extensions_dir = crate::plugin::resolve_extensions_dir_pub();
+        let extensions_dir = crate::plugin::resolve_extensions_dir();
         let mut ext_mgr = crate::extension::ExtensionManager::new(
             extensions_dir.to_str().unwrap_or("./extensions"),
         );
@@ -441,6 +516,7 @@ impl IPCServer {
             provision_tracker: ProvisionTracker::new(),
             extension_manager: Arc::new(RwLock::new(ext_mgr)),
             extension_status_cache: ExtensionStatusCache::new(30), // 30초 TTL (Docker/WSL 지연 대비)
+            extension_init_tracker: ExtensionInitTracker::new(),
         }
     }
 
@@ -493,6 +569,7 @@ impl IPCServer {
             .route("/api/client/:id/unregister", delete(handlers::client::client_unregister))
             // ── Extension management ──
             .route("/api/extensions", get(handlers::extension::list_extensions))
+            .route("/api/extensions/init-status", get(handlers::extension::extension_init_status))
             .route("/api/extensions/rescan", post(handlers::extension::rescan_extensions))
             .route("/api/extensions/registry", get(handlers::extension::fetch_registry))
             .route("/api/extensions/updates", get(handlers::extension::check_extension_updates))

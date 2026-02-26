@@ -393,6 +393,13 @@ pub async fn remove_extension(
     }
 }
 
+/// GET /api/extensions/init-status — 익스텐션 초기화 진행 상태
+pub async fn extension_init_status(
+    State(state): State<IPCServer>,
+) -> Json<serde_json::Value> {
+    Json(state.extension_init_tracker.snapshot().await)
+}
+
 /// 파일을 읽어서 HTTP 응답으로 반환
 async fn serve_static_file(
     path: &std::path::Path,

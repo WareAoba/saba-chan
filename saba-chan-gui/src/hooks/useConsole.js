@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { safeShowToast, createTranslateError } from '../utils/helpers';
+import { createTranslateError, safeShowToast } from '../utils/helpers';
 
 /**
  * Manages console panel state and operations (open/close/send, polling, popout).
@@ -17,7 +17,7 @@ export function useConsole({ isPopoutMode, popoutParams, consoleBufferRef }) {
 
     const [consoleServer, setConsoleServer] = useState(null);
     const [consoleLines, setConsoleLines] = useState([]);
-    const [consoleSinceId, setConsoleSinceId] = useState(0);
+    const [_consoleSinceId, setConsoleSinceId] = useState(0);
     const [consoleInput, setConsoleInput] = useState('');
     const consoleEndRef = useRef(null);
     const consolePollingRef = useRef(null);
@@ -36,7 +36,7 @@ export function useConsole({ isPopoutMode, popoutParams, consoleBufferRef }) {
             try {
                 const data = await window.api.managedConsole(instanceId, sinceId, 200);
                 if (data?.lines?.length > 0) {
-                    setConsoleLines(prev => {
+                    setConsoleLines((prev) => {
                         const newLines = [...prev, ...data.lines];
                         const maxLines = consoleBufferRef.current || 2000;
                         return newLines.length > maxLines ? newLines.slice(-maxLines) : newLines;
@@ -44,7 +44,7 @@ export function useConsole({ isPopoutMode, popoutParams, consoleBufferRef }) {
                     sinceId = data.lines[data.lines.length - 1].id + 1;
                     setConsoleSinceId(sinceId);
                 }
-            } catch (err) {
+            } catch (_err) {
                 // silent — server might not be ready yet
             }
         }, 500);
@@ -78,13 +78,11 @@ export function useConsole({ isPopoutMode, popoutParams, consoleBufferRef }) {
                     safeShowToast(translateError(rconResult.error), 'error', 3000);
                 } else {
                     const responseText = rconResult?.data?.response || rconResult?.message || '';
-                    const lines = [
-                        { id: Date.now(), content: `> ${cmd}`, source: 'STDIN', level: 'INFO' },
-                    ];
+                    const lines = [{ id: Date.now(), content: `> ${cmd}`, source: 'STDIN', level: 'INFO' }];
                     if (responseText) {
                         lines.push({ id: Date.now() + 1, content: responseText, source: 'STDOUT', level: 'INFO' });
                     }
-                    setConsoleLines(prev => [...prev, ...lines]);
+                    setConsoleLines((prev) => [...prev, ...lines]);
                 }
             }
             setConsoleInput('');
@@ -94,6 +92,7 @@ export function useConsole({ isPopoutMode, popoutParams, consoleBufferRef }) {
     };
 
     // Auto-scroll console to bottom on new lines
+    // biome-ignore lint/correctness/useExhaustiveDependencies: consoleLines triggers scroll even though not directly referenced in body
     useEffect(() => {
         if (consoleEndRef.current) {
             consoleEndRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -108,11 +107,11 @@ export function useConsole({ isPopoutMode, popoutParams, consoleBufferRef }) {
     }, []);
 
     // Popout mode: auto-start console on mount
+    // biome-ignore lint/correctness/useExhaustiveDependencies: openConsole intentionally omitted — should only run when popoutParams changes
     useEffect(() => {
         if (popoutParams) {
             openConsole(popoutParams.instanceId, popoutParams.name);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [popoutParams]);
 
     // Popout open/close events from main process
@@ -122,7 +121,7 @@ export function useConsole({ isPopoutMode, popoutParams, consoleBufferRef }) {
             setConsolePopoutInstanceId(instanceId);
         };
         const handlePopoutClosed = (instanceId) => {
-            setConsolePopoutInstanceId(prev => prev === instanceId ? null : prev);
+            setConsolePopoutInstanceId((prev) => (prev === instanceId ? null : prev));
         };
         if (window.api.onConsolePopoutOpened) window.api.onConsolePopoutOpened(handlePopoutOpened);
         if (window.api.onConsolePopoutClosed) window.api.onConsolePopoutClosed(handlePopoutClosed);

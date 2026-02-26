@@ -1,16 +1,18 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 use thiserror::Error;
 use anyhow::Result;
 
 #[derive(Error, Debug)]
-#[allow(dead_code)]
 pub enum ProcessError {
     #[error("process {pid} not found")]
     NotFound { pid: u32 },
+    #[allow(dead_code)] // terminate() 내부에서 사용 예정
     #[error("failed to terminate process: {reason}")]
     TerminationFailed { reason: String },
+    #[error("lock poisoned")]
+    LockPoisoned,
 }
 
 /// Force-kill a process by PID. Cross-platform helper.
@@ -35,7 +37,7 @@ pub fn force_kill_pid(pid: u32) -> Result<()> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
+#[allow(dead_code)] // 공개 API — 서버 상태 전이에 필요
 pub enum ProcessStatus {
     Running,
     Stopped,
@@ -43,7 +45,7 @@ pub enum ProcessStatus {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[allow(dead_code)] // 공개 API — 프로세스 메타데이터 전체 필드 노출 필요
 pub struct ProcessInfo {
     pub pid: u32,
     pub status: ProcessStatus,
@@ -52,7 +54,6 @@ pub struct ProcessInfo {
 }
 
 pub struct ProcessTracker {
-    // Map server name to ProcessInfo
     processes: Mutex<HashMap<String, ProcessInfo>>,
 }
 
@@ -65,26 +66,28 @@ impl Default for ProcessTracker {
 }
 
 impl ProcessTracker {
-        /// Get start_time by server name
-        pub fn get_start_time(&self, server_name: &str) -> Result<u64, ProcessError> {
-            let processes = match self.processes.lock() {
-                Ok(p) => p,
-                Err(e) => {
-                    tracing::error!("Failed to acquire ProcessTracker lock: {}", e);
-                    return Err(ProcessError::NotFound { pid: 0 });
-                }
-            };
-            processes
-                .get(server_name)
-                .map(|p| p.start_time)
-                .ok_or(ProcessError::NotFound { pid: 0 })
-        }
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Mutex 락 획득 헬퍼 — 보일러플레이트 제거
+    fn lock(&self) -> Result<MutexGuard<'_, HashMap<String, ProcessInfo>>, ProcessError> {
+        self.processes.lock().map_err(|e| {
+            tracing::error!("ProcessTracker lock poisoned: {}", e);
+            ProcessError::LockPoisoned
+        })
+    }
+
+    /// Get start_time by server name
+    pub fn get_start_time(&self, server_name: &str) -> Result<u64, ProcessError> {
+        let processes = self.lock()?;
+        processes
+            .get(server_name)
+            .map(|p| p.start_time)
+            .ok_or(ProcessError::NotFound { pid: 0 })
+    }
+
     /// Track a server process by name
-    #[allow(dead_code)]
     pub fn track(&self, server_name: &str, pid: u32) -> Result<()> {
         let now = current_timestamp();
         let info = ProcessInfo {
@@ -93,28 +96,16 @@ impl ProcessTracker {
             start_time: now,
             last_check: now,
         };
-        let mut processes = match self.processes.lock() {
-            Ok(p) => p,
-            Err(e) => {
-                tracing::error!("Failed to acquire ProcessTracker lock: {}", e);
-                return Err(anyhow::anyhow!("Mutex lock failed"));
-            }
-        };
+        let mut processes = self.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
         processes.insert(server_name.to_string(), info);
         tracing::info!("Now tracking server '{}' with pid: {}", server_name, pid);
         Ok(())
     }
 
     /// Get server status by name
-    #[allow(dead_code)]
+    #[allow(dead_code)] // 공개 API — 외부 호출자용
     pub fn get_status(&self, server_name: &str) -> Result<ProcessStatus, ProcessError> {
-        let processes = match self.processes.lock() {
-            Ok(p) => p,
-            Err(e) => {
-                tracing::error!("Failed to acquire ProcessTracker lock: {}", e);
-                return Err(ProcessError::NotFound { pid: 0 });
-            }
-        };
+        let processes = self.lock()?;
         processes
             .get(server_name)
             .map(|p| p.status)
@@ -122,15 +113,8 @@ impl ProcessTracker {
     }
 
     /// Get PID by server name
-    #[allow(dead_code)]
     pub fn get_pid(&self, server_name: &str) -> Result<u32, ProcessError> {
-        let processes = match self.processes.lock() {
-            Ok(p) => p,
-            Err(e) => {
-                tracing::error!("Failed to acquire ProcessTracker lock: {}", e);
-                return Err(ProcessError::NotFound { pid: 0 });
-            }
-        };
+        let processes = self.lock()?;
         processes
             .get(server_name)
             .map(|p| p.pid)
@@ -138,9 +122,9 @@ impl ProcessTracker {
     }
 
     /// Mark server as crashed by name
-    #[allow(dead_code)]
-    pub fn mark_crashed(&mut self, server_name: &str) -> Result<()> {
-        let mut processes = self.processes.lock().unwrap();
+    #[allow(dead_code)] // 공개 API — 크래시 감지 시 사용 예정
+    pub fn mark_crashed(&self, server_name: &str) -> Result<(), ProcessError> {
+        let mut processes = self.lock()?;
         if let Some(info) = processes.get_mut(server_name) {
             info.status = ProcessStatus::Crashed;
             tracing::warn!("Server '{}' marked as crashed", server_name);
@@ -149,9 +133,9 @@ impl ProcessTracker {
     }
 
     /// Terminate server process by name (크로스 플랫폼)
-    #[allow(dead_code)]
-    pub fn terminate(&mut self, server_name: &str, force: bool) -> Result<(), ProcessError> {
-        let mut processes = self.processes.lock().unwrap();
+    #[allow(dead_code)] // 공개 API — 프로세스 종료 기능
+    pub fn terminate(&self, server_name: &str, force: bool) -> Result<(), ProcessError> {
+        let mut processes = self.lock()?;
         let pid = processes
             .get(server_name)
             .map(|p| p.pid)
@@ -207,15 +191,8 @@ impl ProcessTracker {
     }
 
     /// Stop tracking a server by name
-    #[allow(dead_code)]
     pub fn untrack(&self, server_name: &str) -> Result<(), ProcessError> {
-        let mut processes = match self.processes.lock() {
-            Ok(p) => p,
-            Err(e) => {
-                tracing::error!("Failed to acquire ProcessTracker lock: {}", e);
-                return Err(ProcessError::NotFound { pid: 0 });
-            }
-        };
+        let mut processes = self.lock()?;
         processes
             .remove(server_name)
             .ok_or(ProcessError::NotFound { pid: 0 })?;
@@ -224,9 +201,7 @@ impl ProcessTracker {
     }
 }
 
-#[allow(dead_code)]
 fn current_timestamp() -> u64 {
-    #[allow(dead_code)]
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -253,7 +228,7 @@ mod tests {
 
     #[test]
     fn test_mark_crashed() {
-        let mut tracker = ProcessTracker::new();
+        let tracker = ProcessTracker::new();
         tracker.track("minecraft", 5678).unwrap();
         tracker.mark_crashed("minecraft").unwrap();
         assert_eq!(tracker.get_status("minecraft").unwrap(), ProcessStatus::Crashed);
@@ -261,7 +236,7 @@ mod tests {
 
     #[test]
     fn test_terminate() {
-        let mut tracker = ProcessTracker::new();
+        let tracker = ProcessTracker::new();
         // 존재하지 않는 PID로 종료 시도는 실패해야 함
         tracker.track("palworld", 99999).unwrap();
         let result = tracker.terminate("palworld", false);
@@ -283,53 +258,5 @@ mod tests {
         tracker.track("minecraft", 1234).unwrap();
         tracker.untrack("minecraft").unwrap();
         assert!(tracker.get_status("minecraft").is_err());
-    }
-}
-
-/// 명령어 실행 관리자
-pub struct ProcessManager;
-
-impl Default for ProcessManager {
-    fn default() -> Self {
-        Self
-    }
-}
-
-impl ProcessManager {
-    pub fn new() -> Self {
-        Self
-    }
-
-    /// 인스턴스에 명령어 실행
-    /// 참고: 이 메서드는 실제로 Supervisor에서 호출되어야 하며,
-    /// Supervisor가 module_loader를 제공해야 함
-    #[allow(dead_code)]
-    pub async fn execute_command(
-        &self,
-        instance_id: &str,
-        module_name: &str,
-        command: &str,
-        args: serde_json::Value,
-    ) -> Result<String> {
-        tracing::info!(
-            "Executing command '{}' for instance '{}' (module: {})",
-            command,
-            instance_id,
-            module_name
-        );
-
-        // 모듈의 lifecycle.py에 command 함수 호출
-        let _config = serde_json::json!({
-            "instance_id": instance_id,
-            "command": command,
-            "args": args,
-        });
-
-        // 플러그인 실행을 통해 모듈에 명령어 전달
-        // 상세한 구현은 모듈 로더와 통합되어야 함
-        // NOTE: 실제 구현은 supervisor.rs의 execute_command 메서드에서 수행
-        tracing::info!("Command '{}' queued for execution", command);
-
-        Ok(format!("Command '{}' executed", command))
     }
 }

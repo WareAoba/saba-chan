@@ -56,7 +56,7 @@ static VENV_PYTHON: OnceCell<PathBuf> = OnceCell::const_new();
 /// 최초 호출 시 전체 부트스트랩(다운로드 포함)을 자동 수행합니다.
 pub async fn get_python_path() -> Result<PathBuf> {
     VENV_PYTHON
-        .get_or_try_init(|| ensure_venv())
+        .get_or_try_init(ensure_venv)
         .await
         .cloned()
 }

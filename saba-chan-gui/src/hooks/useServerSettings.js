@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { safeShowToast, createTranslateError } from '../utils/helpers';
+import { createTranslateError, safeShowToast } from '../utils/helpers';
 import { useModalClose } from './useModalClose';
 
 /**
@@ -63,7 +63,7 @@ export function useServerSettings({
         try {
             const data = await window.api.serverList();
             if (data && data.servers) {
-                const found = data.servers.find(s => s.id === server.id);
+                const found = data.servers.find((s) => s.id === server.id);
                 if (found) {
                     latestServer = found;
                     console.log('Loaded latest server data:', latestServer);
@@ -76,14 +76,18 @@ export function useServerSettings({
         setSettingsServer(latestServer);
 
         // Initialize settings values from module schema
-        const module = modules.find(m => m.name === latestServer.module);
+        const module = modules.find((m) => m.name === latestServer.module);
         if (module && module.settings && module.settings.fields) {
             const initial = {};
-            module.settings.fields.forEach(field => {
+            module.settings.fields.forEach((field) => {
                 let value = '';
                 if (latestServer[field.name] !== undefined && latestServer[field.name] !== null) {
                     value = String(latestServer[field.name]);
-                } else if (latestServer.module_settings && latestServer.module_settings[field.name] !== undefined && latestServer.module_settings[field.name] !== null) {
+                } else if (
+                    latestServer.module_settings &&
+                    latestServer.module_settings[field.name] !== undefined &&
+                    latestServer.module_settings[field.name] !== null
+                ) {
                     value = String(latestServer.module_settings[field.name]);
                 } else if (field.default !== undefined && field.default !== null) {
                     value = String(field.default);
@@ -94,7 +98,12 @@ export function useServerSettings({
             // protocol_mode initialization
             const protocols = module?.protocols || {};
             const supportedProtocols = protocols.supported || [];
-            if (latestServer.protocol_mode && latestServer.protocol_mode !== 'auto' && latestServer.protocol_mode !== 'rest' || (latestServer.protocol_mode === 'rest' && supportedProtocols.includes('rest'))) {
+            if (
+                (latestServer.protocol_mode &&
+                    latestServer.protocol_mode !== 'auto' &&
+                    latestServer.protocol_mode !== 'rest') ||
+                (latestServer.protocol_mode === 'rest' && supportedProtocols.includes('rest'))
+            ) {
                 initial.protocol_mode = latestServer.protocol_mode;
             } else if (protocols.default) {
                 initial.protocol_mode = protocols.default;
@@ -114,10 +123,17 @@ export function useServerSettings({
             const protocols = module?.protocols || {};
             const defaultProto = protocols.default || (protocols.supported?.length > 0 ? protocols.supported[0] : null);
             setSettingsValues({
-                protocol_mode: (latestServer.protocol_mode && latestServer.protocol_mode !== 'auto' && latestServer.protocol_mode !== 'rest') ? latestServer.protocol_mode : (defaultProto || latestServer.protocol_mode || 'auto'),
-                ...(latestServer.extension_data ? {
-                    _extension_data: { ...latestServer.extension_data },
-                } : {}),
+                protocol_mode:
+                    latestServer.protocol_mode &&
+                    latestServer.protocol_mode !== 'auto' &&
+                    latestServer.protocol_mode !== 'rest'
+                        ? latestServer.protocol_mode
+                        : defaultProto || latestServer.protocol_mode || 'auto',
+                ...(latestServer.extension_data
+                    ? {
+                          _extension_data: { ...latestServer.extension_data },
+                      }
+                    : {}),
             });
         }
 
@@ -128,7 +144,10 @@ export function useServerSettings({
 
             if (moduleName in discordModuleAliases) {
                 const saved = discordModuleAliases[moduleName] || '';
-                const parsed = saved.split(',').map(a => a.trim()).filter(a => a.length > 0);
+                const parsed = saved
+                    .split(',')
+                    .map((a) => a.trim())
+                    .filter((a) => a.length > 0);
                 setEditingModuleAliases(parsed);
             } else {
                 setEditingModuleAliases(aliases.module_aliases || []);
@@ -144,16 +163,18 @@ export function useServerSettings({
                     baseAliases = data.aliases;
                 }
 
-                const hasSavedCmd = discordCommandAliases[moduleName] &&
-                    (cmd in discordCommandAliases[moduleName]);
+                const hasSavedCmd = discordCommandAliases[moduleName] && cmd in discordCommandAliases[moduleName];
                 const merged = hasSavedCmd
-                    ? (discordCommandAliases[moduleName][cmd] || '').split(',').map(a => a.trim()).filter(a => a.length > 0)
+                    ? (discordCommandAliases[moduleName][cmd] || '')
+                          .split(',')
+                          .map((a) => a.trim())
+                          .filter((a) => a.length > 0)
                     : baseAliases;
 
                 normalized[cmd] = {
                     aliases: merged,
                     description: (data && data.description) || '',
-                    label: (data && data.label) || cmd
+                    label: (data && data.label) || cmd,
                 };
             }
             setEditingCommandAliases(normalized);
@@ -163,25 +184,29 @@ export function useServerSettings({
         setAdvancedExpanded(false);
         setShowSettingsModal(true);
 
-        // Async load versions
+        // Async load versions — only for download-based modules (skip SteamCMD modules)
+        const mod = modules.find((m) => m.name === latestServer.module);
+        const installMethod = mod?.install?.method;
         setAvailableVersions([]);
-        setVersionsLoading(true);
-        try {
-            const versions = await window.api.moduleListVersions(latestServer.module, { per_page: 30 });
-            if (versions && versions.versions) {
-                setAvailableVersions(versions.versions);
+        if (installMethod === 'download') {
+            setVersionsLoading(true);
+            try {
+                const versions = await window.api.moduleListVersions(latestServer.module, { per_page: 30 });
+                if (versions && versions.versions) {
+                    setAvailableVersions(versions.versions);
+                }
+            } catch (err) {
+                console.warn('Failed to load versions:', err);
+            } finally {
+                setVersionsLoading(false);
             }
-        } catch (err) {
-            console.warn('Failed to load versions:', err);
-        } finally {
-            setVersionsLoading(false);
         }
     };
 
     // ── handleSettingChange ─────────────────────────────────
     const handleSettingChange = (fieldName, value) => {
         console.log(`Setting ${fieldName} changed to:`, value);
-        setSettingsValues(prev => {
+        setSettingsValues((prev) => {
             const updated = { ...prev, [fieldName]: String(value) };
             console.log('Updated settings values:', updated);
             return updated;
@@ -198,7 +223,11 @@ export function useServerSettings({
         setModal({
             type: 'question',
             title: t('server_settings.install_version_confirm_title', { defaultValue: 'Install Server Version' }),
-            message: t('server_settings.install_version_confirm', { version, name: serverName, defaultValue: `Install Minecraft ${version} for server '${serverName}'?\n\nThis will download and replace the server JAR file.` }),
+            message: t('server_settings.install_version_confirm', {
+                version,
+                name: serverName,
+                defaultValue: `Install Minecraft ${version} for server '${serverName}'?\n\nThis will download and replace the server JAR file.`,
+            }),
             buttons: [
                 {
                     label: t('server_settings.install_version_button', { defaultValue: 'Install' }),
@@ -207,11 +236,12 @@ export function useServerSettings({
                         setVersionInstalling(true);
                         setProgressBar({ message: t('servers.progress_downloading', { version }), percent: 0 });
                         try {
-                            const srv = servers.find(s => s.id === settingsServer.id);
-                            const workDir = srv?.module_settings?.working_dir
-                                || (srv?.executable_path ? srv.executable_path.replace(/[/\\][^/\\]+$/, '') : null);
+                            const srv = servers.find((s) => s.id === settingsServer.id);
+                            const workDir =
+                                srv?.module_settings?.working_dir ||
+                                (srv?.executable_path ? srv.executable_path.replace(/[/\\][^/\\]+$/, '') : null);
 
-                            var targetDir;
+                            let targetDir;
                             if (!workDir) {
                                 const installDir = await window.api.openFolderDialog();
                                 if (!installDir) {
@@ -259,13 +289,13 @@ export function useServerSettings({
                         } finally {
                             setVersionInstalling(false);
                         }
-                    }
+                    },
                 },
                 {
                     label: t('modals.cancel'),
                     action: () => setModal(null),
-                }
-            ]
+                },
+            ],
         });
     };
 
@@ -278,7 +308,7 @@ export function useServerSettings({
             title: t('server_settings.reset_confirm_title', { defaultValue: 'Reset Server' }),
             message: t('server_settings.reset_confirm', {
                 name: settingsServer.name,
-                defaultValue: `Completely reset server '${settingsServer.name}'?\n\nThis will delete all worlds, settings, logs, and other data.\nOnly the server JAR and eula.txt will be kept.\n\nThis action cannot be undone.`
+                defaultValue: `Completely reset server '${settingsServer.name}'?\n\nThis will delete all worlds, settings, logs, and other data.\nOnly the server JAR and eula.txt will be kept.\n\nThis action cannot be undone.`,
             }),
             buttons: [
                 {
@@ -293,42 +323,53 @@ export function useServerSettings({
                         try {
                             const result = await window.api.instanceResetServer(settingsServer.id);
                             if (result?.error) {
-                                safeShowToast(t('server_settings.reset_failed', {
-                                    error: result.error,
-                                    defaultValue: `Reset failed: ${result.error}`
-                                }), 'error');
+                                safeShowToast(
+                                    t('server_settings.reset_failed', {
+                                        error: result.error,
+                                        defaultValue: `Reset failed: ${result.error}`,
+                                    }),
+                                    'error',
+                                );
                             } else {
                                 const deletedCount = result?.deleted?.length || 0;
-                                safeShowToast(t('server_settings.reset_success', {
-                                    name: settingsServer.name,
-                                    count: deletedCount,
-                                    defaultValue: `Server '${settingsServer.name}' has been reset (${deletedCount} items deleted)`
-                                }), 'success');
+                                safeShowToast(
+                                    t('server_settings.reset_success', {
+                                        name: settingsServer.name,
+                                        count: deletedCount,
+                                        defaultValue: `Server '${settingsServer.name}' has been reset (${deletedCount} items deleted)`,
+                                    }),
+                                    'success',
+                                );
                                 // Refresh settings display
                                 if (settingsServer?.id) {
                                     try {
                                         const serverList = await window.api.serverList();
                                         if (serverList && serverList.servers && !serverList.error) {
-                                            const updated = serverList.servers.find(s => s.id === settingsServer.id);
+                                            const updated = serverList.servers.find((s) => s.id === settingsServer.id);
                                             if (updated) {
                                                 setSettingsServer(updated);
                                                 setSettingsValues(updated.module_settings || {});
                                             }
                                         }
-                                    } catch (e) { /* silent */ }
+                                    } catch (_e) {
+                                        /* silent */
+                                    }
                                 }
                             }
                         } catch (err) {
-                            safeShowToast(t('server_settings.reset_error', {
-                                error: err.message,
-                                defaultValue: `Reset error: ${err.message}`
-                            }), 'error');
+                            safeShowToast(
+                                t('server_settings.reset_error', {
+                                    error: err.message,
+                                    defaultValue: `Reset error: ${err.message}`,
+                                }),
+                                'error',
+                            );
                         } finally {
                             setResettingServer(false);
                         }
-                    }
-                }
-            ]
+                    },
+                },
+            ],
         });
     };
 
@@ -339,11 +380,11 @@ export function useServerSettings({
         try {
             console.log('Saving settings for', settingsServer.name, settingsValues);
 
-            const module = modules.find(m => m.name === settingsServer.module);
+            const module = modules.find((m) => m.name === settingsServer.module);
             const convertedSettings = {};
 
             if (module && module.settings && module.settings.fields) {
-                module.settings.fields.forEach(field => {
+                module.settings.fields.forEach((field) => {
                     const value = settingsValues[field.name];
 
                     if (field.field_type === 'boolean') {
@@ -357,8 +398,6 @@ export function useServerSettings({
 
                     if (field.field_type === 'number') {
                         convertedSettings[field.name] = Number(value);
-                    } else if (field.field_type === 'boolean') {
-                        convertedSettings[field.name] = value === true || value === 'true';
                     } else {
                         convertedSettings[field.name] = value;
                     }
@@ -374,7 +413,8 @@ export function useServerSettings({
 
             if (supportedProtocols.length > 0) {
                 if (supportedProtocols.includes('rest') && supportedProtocols.includes('rcon')) {
-                    convertedSettings.protocol_mode = settingsValues.protocol_mode || protocols.default || supportedProtocols[0];
+                    convertedSettings.protocol_mode =
+                        settingsValues.protocol_mode || protocols.default || supportedProtocols[0];
                 } else {
                     convertedSettings.protocol_mode = protocols.default || supportedProtocols[0];
                 }
@@ -397,17 +437,29 @@ export function useServerSettings({
                     const detailStr = result.details.join('\n');
                     setModal({ type: 'failure', title: t('settings.save_failed_title'), message: detailStr });
                 } else {
-                    setModal({ type: 'failure', title: t('settings.save_failed_title'), message: translateError(result.error) });
+                    setModal({
+                        type: 'failure',
+                        title: t('settings.save_failed_title'),
+                        message: translateError(result.error),
+                    });
                 }
                 console.error('Error response:', result.error);
             } else {
-                setModal({ type: 'success', title: t('command_modal.success'), message: t('server_actions.settings_saved', { name: settingsServer.name }) });
+                setModal({
+                    type: 'success',
+                    title: t('command_modal.success'),
+                    message: t('server_actions.settings_saved', { name: settingsServer.name }),
+                });
                 setShowSettingsModal(false);
                 fetchServers();
             }
         } catch (error) {
             console.error('Exception in handleSaveSettings:', error);
-            setModal({ type: 'failure', title: t('settings.save_error_title'), message: translateError(error.message) });
+            setModal({
+                type: 'failure',
+                title: t('settings.save_error_title'),
+                message: translateError(error.message),
+            });
         }
     };
 
@@ -434,16 +486,28 @@ export function useServerSettings({
 
             const res = await window.api.botConfigSave(payload);
             if (res.error) {
-                setModal({ type: 'failure', title: t('settings.aliases_save_failed_title'), message: translateError(res.error) });
+                setModal({
+                    type: 'failure',
+                    title: t('settings.aliases_save_failed_title'),
+                    message: translateError(res.error),
+                });
             } else {
                 const saved = await window.api.botConfigLoad();
                 setDiscordModuleAliases(saved.moduleAliases || {});
                 setDiscordCommandAliases(saved.commandAliases || {});
-                setModal({ type: 'success', title: t('server_actions.aliases_saved'), message: t('server_actions.aliases_saved') });
+                setModal({
+                    type: 'success',
+                    title: t('server_actions.aliases_saved'),
+                    message: t('server_actions.aliases_saved'),
+                });
             }
         } catch (error) {
             console.error('Failed to save aliases:', error);
-            setModal({ type: 'failure', title: t('settings.aliases_save_error_title'), message: translateError(error.message) });
+            setModal({
+                type: 'failure',
+                title: t('settings.aliases_save_error_title'),
+                message: translateError(error.message),
+            });
         }
     };
 
@@ -473,16 +537,28 @@ export function useServerSettings({
 
             const res = await window.api.botConfigSave(payload);
             if (res.error) {
-                setModal({ type: 'failure', title: t('settings.aliases_reset_failed_title'), message: translateError(res.error) });
+                setModal({
+                    type: 'failure',
+                    title: t('settings.aliases_reset_failed_title'),
+                    message: translateError(res.error),
+                });
             } else {
                 const saved = await window.api.botConfigLoad();
                 setDiscordModuleAliases(saved.moduleAliases || {});
                 setDiscordCommandAliases(saved.commandAliases || {});
-                setModal({ type: 'success', title: t('settings.aliases_reset_completed_title'), message: t('settings.aliases_reset_message') });
+                setModal({
+                    type: 'success',
+                    title: t('settings.aliases_reset_completed_title'),
+                    message: t('settings.aliases_reset_message'),
+                });
             }
         } catch (error) {
             console.error('Failed to reset aliases:', error);
-            setModal({ type: 'failure', title: t('settings.aliases_reset_failed_title'), message: translateError(error.message) });
+            setModal({
+                type: 'failure',
+                title: t('settings.aliases_reset_failed_title'),
+                message: translateError(error.message),
+            });
         }
     };
 

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useRef, useState } from 'react';
 import { debugLog, debugWarn } from '../utils/helpers';
 
 /**
@@ -25,7 +25,7 @@ export function useDragReorder(servers, setServers) {
         const rect = card.getBoundingClientRect();
 
         // Snapshot all card slot positions at drag start
-        const slotPositions = servers.map(s => {
+        const slotPositions = servers.map((s) => {
             const el = cardRefs.current[s.name];
             if (!el) return null;
             const r = el.getBoundingClientRect();
@@ -42,8 +42,8 @@ export function useDragReorder(servers, setServers) {
             offsetX: e.clientX - rect.left,
             offsetY: e.clientY - rect.top,
             slotPositions,
-            originalOrder: servers.map(s => s.name),
-            nameToId: Object.fromEntries(servers.map(s => [s.name, s.id])),
+            originalOrder: servers.map((s) => s.name),
+            nameToId: Object.fromEntries(servers.map((s) => [s.name, s.id])),
         };
 
         const onMove = (me) => {
@@ -124,7 +124,7 @@ export function useDragReorder(servers, setServers) {
             const d = dragRef.current;
 
             // Clean up all inline styles
-            Object.values(cardRefs.current).forEach(el => {
+            Object.values(cardRefs.current).forEach((el) => {
                 if (el) {
                     el.style.transform = '';
                     el.style.transition = '';
@@ -140,7 +140,9 @@ export function useDragReorder(servers, setServers) {
             // Prevent click after drag
             if (wasActive) {
                 skipNextClick.current = true;
-                requestAnimationFrame(() => { skipNextClick.current = false; });
+                requestAnimationFrame(() => {
+                    skipNextClick.current = false;
+                });
             }
 
             if (!wasActive || targetSlot === fromSlot) return;
@@ -151,15 +153,17 @@ export function useDragReorder(servers, setServers) {
             const [item] = order.splice(draggedIdx, 1);
             order.splice(targetSlot, 0, item);
 
-            setServers(prev => {
+            setServers((prev) => {
                 const byName = {};
-                prev.forEach(s => { byName[s.name] = s; });
-                return order.map(n => byName[n]);
+                prev.forEach((s) => {
+                    byName[s.name] = s;
+                });
+                return order.map((n) => byName[n]);
             });
 
             // Persist order to backend
             try {
-                const orderedIds = order.map(n => nameToId[n]);
+                const orderedIds = order.map((n) => nameToId[n]);
                 await window.api.instanceReorder(orderedIds);
                 debugLog('Server order saved:', orderedIds);
             } catch (err) {

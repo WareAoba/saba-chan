@@ -281,6 +281,17 @@ pub struct ExtensionManager {
 impl ExtensionManager {
     /// 새 ExtensionManager 생성. `extensions_dir`은 `extensions/` 디렉토리 경로.
     pub fn new(extensions_dir: &str) -> Self {
+        Self::with_state_path(extensions_dir, Self::resolve_state_path())
+    }
+
+    /// 커스텀 state 경로를 지정한 생성자 (테스트 격리용)
+    #[cfg(test)]
+    pub fn new_isolated(extensions_dir: &str) -> Self {
+        let state_path = PathBuf::from(extensions_dir).join(".extensions_state.json");
+        Self::with_state_path(extensions_dir, state_path)
+    }
+
+    fn with_state_path(extensions_dir: &str, state_path: PathBuf) -> Self {
         let extensions_dir = PathBuf::from(extensions_dir);
 
         // extensions/ 디렉토리가 없으면 생성 (최초 실행 대응)
@@ -289,9 +300,6 @@ impl ExtensionManager {
                 tracing::warn!("Failed to create extensions directory: {}", e);
             }
         }
-
-        // state_path: %APPDATA%/saba-chan/extensions_state.json
-        let state_path = Self::resolve_state_path();
 
         let mut mgr = Self {
             extensions_dir,
@@ -1360,7 +1368,7 @@ mod tests {
     #[test]
     fn test_extension_manager_empty_dir() {
         let tmp = tempfile::tempdir().unwrap();
-        let mut mgr = ExtensionManager::new(tmp.path().to_str().unwrap());
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
         let found = mgr.discover().unwrap();
         assert!(found.is_empty());
     }
@@ -1376,7 +1384,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut mgr = ExtensionManager::new(tmp.path().to_str().unwrap());
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
         let found = mgr.discover().unwrap();
         assert_eq!(found, vec!["test_ext"]);
         assert!(mgr.discovered.contains_key("test_ext"));
@@ -1393,7 +1401,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut mgr = ExtensionManager::new(tmp.path().to_str().unwrap());
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
         mgr.discover().unwrap();
 
         let no_instances: Vec<(&str, &HashMap<String, Value>)> = vec![];
@@ -1408,7 +1416,7 @@ mod tests {
     #[test]
     fn test_enable_unknown_extension() {
         let tmp = tempfile::tempdir().unwrap();
-        let mut mgr = ExtensionManager::new(tmp.path().to_str().unwrap());
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
         assert!(mgr.enable("nonexistent").is_err());
     }
 
@@ -1425,7 +1433,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut mgr = ExtensionManager::new(tmp.path().to_str().unwrap());
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
         // 아직 discover 안 했으므로 비어 있음
         assert!(mgr.list().is_empty());
 
@@ -1451,7 +1459,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut mgr = ExtensionManager::new(tmp.path().to_str().unwrap());
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
         let result = mgr.mount("wrong_dir");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("does not match"));
@@ -1460,7 +1468,7 @@ mod tests {
     #[test]
     fn test_rescan_finds_new_extensions() {
         let tmp = tempfile::tempdir().unwrap();
-        let mut mgr = ExtensionManager::new(tmp.path().to_str().unwrap());
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
         mgr.discover().unwrap();
         assert!(mgr.list().is_empty());
 
@@ -1491,7 +1499,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut mgr = ExtensionManager::new(tmp.path().to_str().unwrap());
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
         mgr.discover().unwrap();
 
         let result = mgr.enable("child_ext");
@@ -1521,7 +1529,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut mgr = ExtensionManager::new(tmp.path().to_str().unwrap());
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
         mgr.discover().unwrap();
 
         // parent 먼저 활성화
@@ -1551,7 +1559,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut mgr = ExtensionManager::new(tmp.path().to_str().unwrap());
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
         mgr.discover().unwrap();
         mgr.enable("parent_ext").unwrap();
         mgr.enable("child_ext").unwrap();
@@ -1576,7 +1584,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut mgr = ExtensionManager::new(tmp.path().to_str().unwrap());
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
         mgr.discover().unwrap();
         mgr.enable("docker").unwrap();
 
@@ -1611,7 +1619,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut mgr = ExtensionManager::new(tmp.path().to_str().unwrap());
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
         mgr.discover().unwrap();
         mgr.enable("parent_ext").unwrap();
         mgr.enable("child_ext").unwrap();
@@ -1633,7 +1641,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut mgr = ExtensionManager::new(tmp.path().to_str().unwrap());
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
         mgr.discover().unwrap();
         mgr.enable("test_ext").unwrap();
         assert!(mgr.is_enabled("test_ext"));

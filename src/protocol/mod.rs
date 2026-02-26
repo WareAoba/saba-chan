@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 /// 프로토콜 통신 오류 타입
 #[derive(Error, Debug)]
-#[allow(dead_code)]
+#[allow(dead_code)] // 공개 API — 프로토콜 에러 변형 전체 노출 필요
 pub enum ProtocolError {
     #[error("Connection failed: {0}")]
     ConnectionError(String),

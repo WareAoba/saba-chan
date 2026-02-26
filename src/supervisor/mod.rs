@@ -5,7 +5,7 @@ pub mod managed_process;
 pub mod error;
 
 use anyhow::Result;
-use process::{ProcessTracker, ProcessManager};
+use process::ProcessTracker;
 use module_loader::{ModuleLoader, LoadedModule};
 use managed_process::{ManagedProcess, ManagedProcessStore};
 use serde_json::{json, Value};
@@ -33,11 +33,8 @@ pub struct PortConflictStopEvent {
 
 pub struct Supervisor {
     pub tracker: ProcessTracker,
-    #[allow(dead_code)]
     pub module_loader: ModuleLoader,
     pub instance_store: InstanceStore,
-    #[allow(dead_code)]
-    pub process_manager: ProcessManager,
     /// Store for processes spawned and managed directly by the daemon (with stdio capture)
     pub managed_store: ManagedProcessStore,
     /// Stop 이후 auto-detect 억제 쿨다운 (instance_id → 정지 시각)
@@ -71,7 +68,6 @@ impl Supervisor {
             tracker: ProcessTracker::new(),
             module_loader: ModuleLoader::new(modules_dir),
             instance_store: InstanceStore::new(&instances_path),
-            process_manager: ProcessManager::new(),
             managed_store: ManagedProcessStore::new(),
             stop_cooldowns: HashMap::new(),
             extension_manager: None,
@@ -126,7 +122,7 @@ impl Supervisor {
             .map(|i| i.id.clone())
             .collect();
         let module_protocols = self.build_module_protocols_map();
-        let conflicts = crate::validator::check_port_conflicts(instance, &all_instances, &running_ids, Some(&module_protocols));
+        let conflicts = crate::validator::check_port_conflicts(instance, all_instances, &running_ids, Some(&module_protocols));
         if !conflicts.is_empty() {
             let details: Vec<String> = conflicts.iter().map(|c| c.to_string()).collect();
             tracing::warn!("Port conflict detected for '{}': {:?}", server_name, details);
@@ -150,7 +146,7 @@ impl Supervisor {
                     "extension_data": &instance.extension_data,
                 })).await;
 
-            for (_ext_id, result) in &results {
+            for (ext_id, result) in &results {
                 if let Ok(val) = result {
                     if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
                         // Extension handled but failed → ensure error/message fields exist
@@ -162,7 +158,10 @@ impl Supervisor {
                                 obj.entry("message".to_string())
                                     .or_insert_with(|| json!("Extension handled the start request but reported failure"));
                             }
+                            let err_detail = fail_val.get("error").and_then(|e| e.as_str()).unwrap_or("unknown");
                             tracing::warn!(
+                                ext = ext_id,
+                                error = err_detail,
                                 "Extension hook 'server.pre_start' handled but failed for '{}'",
                                 server_name
                             );
@@ -708,7 +707,7 @@ impl Supervisor {
             .map(|i| i.id.clone())
             .collect();
         let module_protocols = self.build_module_protocols_map();
-        let conflicts = crate::validator::check_port_conflicts(&instance, &all_instances, &running_ids, Some(&module_protocols));
+        let conflicts = crate::validator::check_port_conflicts(instance, all_instances, &running_ids, Some(&module_protocols));
         if !conflicts.is_empty() {
             let details: Vec<String> = conflicts.iter().map(|c| c.to_string()).collect();
             tracing::warn!("Port conflict detected for managed instance '{}': {:?}", instance.name, details);
@@ -728,14 +727,14 @@ impl Supervisor {
                 "instance_id": instance_id,
                 "instance_dir": instance_dir.to_string_lossy(),
                 "module": module_name,
-                "instance": serde_json::to_value(&instance).unwrap_or_default(),
+                "instance": serde_json::to_value(instance).unwrap_or_default(),
                 "config": &config,
                 "managed": true,
                 "extension_data": &instance.extension_data,
             });
             let mgr = ext_mgr.read().await;
             let results = mgr.dispatch_hook("server.pre_start", ctx).await;
-            for (_ext_id, result) in &results {
+            for (ext_id, result) in &results {
                 if let Ok(val) = result {
                     if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
                         // Extension handled but failed → ensure error/message fields exist
@@ -747,7 +746,10 @@ impl Supervisor {
                                 obj.entry("message".to_string())
                                     .or_insert_with(|| json!("Extension handled the start request but reported failure"));
                             }
+                            let err_detail = fail_val.get("error").and_then(|e| e.as_str()).unwrap_or("unknown");
                             tracing::warn!(
+                                ext = ext_id,
+                                error = err_detail,
                                 "Extension hook 'server.pre_start' (managed) handled but failed for '{}'",
                                 instance.name
                             );
@@ -1158,7 +1160,7 @@ impl Supervisor {
 
     /// 백그라운드 프로세스 모니터링 (주기적 실행)
     pub async fn monitor_processes(&mut self) -> Result<()> {
-        use crate::process_monitor::ProcessMonitor;
+        use crate::process_monitor;
 
         // Clean up dead managed processes
         self.managed_store.cleanup_dead().await;
@@ -1172,7 +1174,7 @@ impl Supervisor {
             if let Ok(pid) = self.tracker.get_pid(&instance.id) {
                 tracked_count += 1;
                 
-                if !ProcessMonitor::is_running(pid) {
+                if !process_monitor::is_running_async(pid).await {
                     tracing::warn!("Process {} for instance '{}' is no longer running, removing from tracker", pid, instance.name);
                     // tracker에서 제거하여 다음 사이클에서 다시 감지할 수 있도록 함
                     if let Err(e) = self.tracker.untrack(&instance.id) {
@@ -1204,15 +1206,13 @@ impl Supervisor {
                         .map(|m| m.metadata.cmd_patterns.clone())
                         .unwrap_or_default();
 
-                    let find_result = if cmd_patterns.is_empty() {
-                        ProcessMonitor::find_by_name(process_name)
+                    let processes = if cmd_patterns.is_empty() {
+                        process_monitor::find_by_name_async(process_name).await
                     } else {
-                        ProcessMonitor::find_by_name_and_cmd(process_name, &cmd_patterns)
+                        process_monitor::find_by_name_and_cmd_async(process_name, &cmd_patterns).await
                     };
 
-                    match find_result {
-                        Ok(processes) => {
-                            if let Some(process) = processes.first() {
+                    if let Some(process) = processes.first() {
                                 auto_detected_count += 1;
                                 tracing::info!(
                                     "Auto-detected process '{}' (PID: {}) for instance '{}'",
@@ -1230,7 +1230,7 @@ impl Supervisor {
                                     .map(|i| i.id.clone())
                                     .collect();
                                 let module_protocols = self.build_module_protocols_map();
-                                let conflicts = crate::validator::check_port_conflicts(&instance, &all_instances, &running_ids, Some(&module_protocols));
+                                let conflicts = crate::validator::check_port_conflicts(&instance, all_instances, &running_ids, Some(&module_protocols));
                                 if !conflicts.is_empty() {
                                     let details: Vec<String> = conflicts.iter().map(|c| c.to_string()).collect();
                                     tracing::warn!(
@@ -1238,13 +1238,17 @@ impl Supervisor {
                                         instance.name, process.pid, details
                                     );
 
-                                    // 프로세스 강제 종료
-                                    let mut sys = sysinfo::System::new();
-                                    sys.refresh_processes();
-                                    if let Some(proc) = sys.process(sysinfo::Pid::from_u32(process.pid)) {
-                                        proc.kill();
-                                        tracing::info!("Force-killed PID {} for instance '{}'", process.pid, instance.name);
-                                    }
+                                    // 프로세스 강제 종료 (spawn_blocking — sysinfo는 동기 시스템 콜)
+                                    let kill_pid = process.pid;
+                                    let kill_name = instance.name.clone();
+                                    tokio::task::spawn_blocking(move || {
+                                        let mut sys = sysinfo::System::new();
+                                        sys.refresh_processes();
+                                        if let Some(proc) = sys.process(sysinfo::Pid::from_u32(kill_pid)) {
+                                            proc.kill();
+                                            tracing::info!("Force-killed PID {} for instance '{}'", kill_pid, kill_name);
+                                        }
+                                    }).await.ok();
 
                                     // tracker에서 제거 + 쿨다운 설정
                                     let _ = self.tracker.untrack(&instance.id);
@@ -1268,12 +1272,6 @@ impl Supervisor {
                                     }
                                 }
                             }
-                        }
-                        Err(e) => {
-                            tracing::debug!("Failed to search for process '{}': {}", process_name, e);
-                            // ProcessMonitor 오류는 로깅만 하고 계속
-                        }
-                    }
                 }
             }
         }

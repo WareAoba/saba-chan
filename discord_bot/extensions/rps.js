@@ -9,17 +9,22 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const i18n = require('../i18n');
 
-const CHOICES = ['가위', '바위', '보'];
-const CHOICE_EMOJI = { '가위': '✌️', '바위': '✊', '보': '✋' };
+const CHOICES = ['scissors', 'rock', 'paper'];
+const CHOICE_EMOJI = { scissors: '✌️', rock: '✊', paper: '✋' };
 const TRIGGERS = ['가위바위보', 'rps', 'ㄱㅂㅂ'];
+
+// i18n된 표시 이름 반환
+function choiceLabel(id) {
+    return i18n.t(`bot:rps.${id}`);
+}
 
 // 승패 판정: user가 이기면 'win', 지면 'lose', 비기면 'draw'
 function judge(user, bot) {
     if (user === bot) return 'draw';
     if (
-        (user === '가위' && bot === '보') ||
-        (user === '바위' && bot === '가위') ||
-        (user === '보'   && bot === '바위')
+        (user === 'scissors' && bot === 'paper') ||
+        (user === 'rock' && bot === 'scissors') ||
+        (user === 'paper'   && bot === 'rock')
     ) return 'win';
     return 'lose';
 }
@@ -30,18 +35,18 @@ function judge(user, bot) {
 function createButtons(round = 1) {
     return new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-            .setCustomId(`rps_가위_${round}`)
-            .setLabel('가위')
+            .setCustomId(`rps_scissors_${round}`)
+            .setLabel(choiceLabel('scissors'))
             .setEmoji('✌️')
             .setStyle(ButtonStyle.Primary),
         new ButtonBuilder()
-            .setCustomId(`rps_바위_${round}`)
-            .setLabel('바위')
+            .setCustomId(`rps_rock_${round}`)
+            .setLabel(choiceLabel('rock'))
             .setEmoji('✊')
             .setStyle(ButtonStyle.Primary),
         new ButtonBuilder()
-            .setCustomId(`rps_보_${round}`)
-            .setLabel('보')
+            .setCustomId(`rps_paper_${round}`)
+            .setLabel(choiceLabel('paper'))
             .setEmoji('✋')
             .setStyle(ButtonStyle.Primary),
     );
@@ -55,7 +60,7 @@ function createDisabledButtons(userChoice, round) {
         ...CHOICES.map(c => {
             const btn = new ButtonBuilder()
                 .setCustomId(`rps_${c}_${round}`)
-                .setLabel(c)
+                .setLabel(choiceLabel(c))
                 .setEmoji(CHOICE_EMOJI[c])
                 .setDisabled(true);
             if (c === userChoice) {
@@ -82,7 +87,7 @@ async function handleRPS(message, args) {
     let round = 1;
 
     const sent = await message.reply({
-        content: i18n.t('bot:rps.prompt', { defaultValue: '✊✌️✋ 하나를 골라주세요!' }),
+        content: i18n.t('bot:rps.prompt'),
         components: [createButtons(round)],
     });
 
@@ -108,23 +113,19 @@ async function handleRPS(message, args) {
                 round++;
                 await interaction.update({
                     content: i18n.t('bot:rps.draw', {
-                        bot: `${CHOICE_EMOJI[botChoice]} ${botChoice}`,
-                        defaultValue: `{{bot}}! 비겼다! 다시~ 🔄`,
+                        bot: `${CHOICE_EMOJI[botChoice]} ${choiceLabel(botChoice)}`,
                     }),
                     components: [createButtons(round)],
                 });
                 // 재귀적으로 다음 라운드
                 await playRound();
             } else {
-                const emoji = result === 'win' ? '😵' : '😋';
                 const resultText = result === 'win'
                     ? i18n.t('bot:rps.user_win', {
-                        bot: `${CHOICE_EMOJI[botChoice]} ${botChoice}`,
-                        defaultValue: `{{bot}}! 졌다... ${emoji}`,
+                        bot: `${CHOICE_EMOJI[botChoice]} ${choiceLabel(botChoice)}`,
                     })
                     : i18n.t('bot:rps.bot_win', {
-                        bot: `${CHOICE_EMOJI[botChoice]} ${botChoice}`,
-                        defaultValue: `{{bot}}! 이겼다~ ${emoji}`,
+                        bot: `${CHOICE_EMOJI[botChoice]} ${choiceLabel(botChoice)}`,
                     });
 
                 await interaction.update({
@@ -135,7 +136,7 @@ async function handleRPS(message, args) {
         } catch (err) {
             // 시간 초과
             await sent.edit({
-                content: i18n.t('bot:rps.timeout', { defaultValue: '⏰ 시간 초과! 다음에 다시 도전하세요~' }),
+                content: i18n.t('bot:rps.timeout'),
                 components: [],
             }).catch(() => {});
         }

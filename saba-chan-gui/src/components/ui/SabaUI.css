@@ -28,12 +28,14 @@
     height: 22px;
     border-radius: 11px;
     background: var(--border-strong, #bbb);
-    transition: background 0.25s ease, box-shadow 0.25s ease;
+    transition:
+        background 0.25s ease,
+        box-shadow 0.25s ease;
 }
 
 /* knob */
 .saba-toggle-track::after {
-    content: '';
+    content: "";
     position: absolute;
     top: 3px;
     left: 3px;
@@ -42,7 +44,7 @@
     border-radius: 50%;
     background: #fff;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
-    transition: transform 0.25s cubic-bezier(.4, .0, .2, 1);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* checked → brand */
@@ -148,7 +150,7 @@
 
 /* checkmark */
 .saba-checkbox-box::after {
-    content: '';
+    content: "";
     position: absolute;
     top: 2px;
     left: 5px;
@@ -158,7 +160,9 @@
     border-width: 0 2px 2px 0;
     transform: rotate(45deg) scale(0);
     transform-origin: bottom right;
-    transition: transform 0.15s cubic-bezier(.4, .0, .2, 1), border-color 0.15s;
+    transition:
+        transform 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+        border-color 0.15s;
 }
 
 /* checked */
@@ -262,5 +266,7 @@
 }
 
 @keyframes saba-spin {
-    to { transform: rotate(360deg); }
+    to {
+        transform: rotate(360deg);
+    }
 }

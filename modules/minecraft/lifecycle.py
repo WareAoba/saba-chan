@@ -26,10 +26,12 @@ import hashlib
 from pathlib import Path
 from i18n import I18n
 
-# Shared extensions (RCON client)
-# PYTHONPATH is injected by the Rust plugin runner; fallback for direct execution:
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-from extensions.rcon import rcon_command as _rcon_command
+# RCON communication delegates to the Rust daemon's HTTP API
+from daemon_rcon import rcon_command as _rcon_command_bridge
+
+def _rcon_command(host, port, password, command, timeout=5):
+    """RCON via daemon API if instance_id available, else direct fallback."""
+    return _rcon_command_bridge(host, port, password, command, timeout)
 
 # ─── Init ─────────────────────────────────────────────────────
 
@@ -1454,7 +1456,7 @@ def _format_command(cmd, args):
 
 
 def _send_rcon_command(host, port, password, command):
-    """Legacy wrapper — delegates to extensions.rcon RCON client."""
+    """Legacy wrapper — delegates to daemon RCON bridge."""
     return _rcon_command(host, port, password, command)
 
 

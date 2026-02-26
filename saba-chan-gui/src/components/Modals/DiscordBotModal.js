@@ -1,15 +1,33 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import clsx from 'clsx';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import './Modals.css';
 import { Icon } from '../Icon';
-import { SabaToggle, SabaCheckbox, SabaSpinner } from '../ui/SabaUI';
+import { SabaCheckbox, SabaSpinner, SabaToggle } from '../ui/SabaUI';
+import { useExtensions } from '../../contexts/ExtensionContext';
 
 // ── 릴레이 서버 기본 URL (고급 설정에서 오버라이드 가능) ──
 const DEFAULT_RELAY_URL = 'http://localhost:3000';
 
-function DiscordBotModal({ 
-    isOpen, 
-    onClose, 
+// ── 음악 명령어 정의 (music.js의 DEFAULT_COMMAND_ALIASES와 동기화) ──
+const MUSIC_COMMAND_DEFS = {
+    play:    { defaultAliases: ['재생', 'p', 'ㅈㅅ'] },
+    search:  { defaultAliases: ['검색', 'find', 'ㄱㅅ'] },
+    pause:   { defaultAliases: ['일시정지', 'ㅇㅅㅈㅈ'] },
+    resume:  { defaultAliases: ['계속', 'ㄱㅅㄱ'] },
+    skip:    { defaultAliases: ['다음', 'ㄷㅇ', 's', 'next'] },
+    stop:    { defaultAliases: ['정지', 'ㅈㅈ', 'leave', 'disconnect', 'dc'] },
+    queue:   { defaultAliases: ['대기열', 'ㄷㄱㅇ', 'q', 'list'] },
+    np:      { defaultAliases: ['지금', 'ㅈㄱ', 'nowplaying', 'now'] },
+    volume:  { defaultAliases: ['볼륨', 'ㅂㄹ', 'vol', 'v'] },
+    shuffle: { defaultAliases: ['섞기', 'ㅅㄱ', 'random'] },
+    help:    { defaultAliases: ['도움', 'ㄷㅇ말'] },
+};
+const DEFAULT_MUSIC_MODULE_ALIASES = ['music', '음악', 'dj'];
+
+function DiscordBotModal({
+    isOpen,
+    onClose,
     isClosing,
     discordBotStatus,
     discordToken,
@@ -23,7 +41,6 @@ function DiscordBotModal({
     discordBotMode,
     setDiscordBotMode,
     discordCloudRelayUrl,
-    setDiscordCloudRelayUrl,
     discordCloudHostId,
     setDiscordCloudHostId,
     relayConnected,
@@ -32,7 +49,6 @@ function DiscordBotModal({
     handleStopDiscordBot,
     saveCurrentSettings,
     servers,
-    modules,
     moduleAliasesPerModule,
     nodeSettings,
     setNodeSettings,
@@ -43,6 +59,10 @@ function DiscordBotModal({
 }) {
     const { t } = useTranslation('gui');
     const isCloud = discordBotMode === 'cloud';
+
+    // 익스텐션 시스템에서 music 익스텐션 활성 여부 확인
+    const { extensions: extList } = useExtensions();
+    const musicExtEnabled = extList.some((e) => e.id === 'music' && e.enabled);
 
     // ── 릴레이 URL 결정 (커스텀 > 기본값) ──
     const effectiveRelayUrl = discordCloudRelayUrl || DEFAULT_RELAY_URL;
@@ -77,6 +97,12 @@ function DiscordBotModal({
     const pairPollRef = useRef(null);
     const pairTimerRef = useRef(null);
 
+    // ── 음악 설정 패널 상태 ──
+    const [showMusicSettings, setShowMusicSettings] = useState(false);
+    const [musicModuleAliases, setMusicModuleAliases] = useState('');
+    const [musicCommandAliases, setMusicCommandAliases] = useState({});
+    const musicSettingsRef = useRef(null);
+
     // ── 페어링 타이머 & 폴링 클린업 ──
     useEffect(() => {
         return () => {
@@ -99,22 +125,137 @@ function DiscordBotModal({
         };
         tick();
         pairTimerRef.current = setInterval(tick, 1000);
-        return () => { if (pairTimerRef.current) clearInterval(pairTimerRef.current); };
+        return () => {
+            if (pairTimerRef.current) clearInterval(pairTimerRef.current);
+        };
     }, [pairStatus, pairExpiresAt]);
 
     // ── 모달 열릴 때 일시적 UI 상태 초기화 ──
     useEffect(() => {
         if (isOpen) {
-            if (pairPollRef.current) { clearInterval(pairPollRef.current); pairPollRef.current = null; }
-            if (pairTimerRef.current) { clearInterval(pairTimerRef.current); pairTimerRef.current = null; }
+            if (pairPollRef.current) {
+                clearInterval(pairPollRef.current);
+                pairPollRef.current = null;
+            }
+            if (pairTimerRef.current) {
+                clearInterval(pairTimerRef.current);
+                pairTimerRef.current = null;
+            }
             setPairStatus('idle');
             setPairCode('');
             setPairExpiresAt(null);
             setPairRemaining(0);
             setShowPairing(false);
             setPairCopied(false);
+            setShowMusicSettings(false);
         }
     }, [isOpen]);
+
+    // ══════════════════════════════════════════════
+    // ── 음악 명령어 별명 로드 / 저장 / 초기화 ──
+    // ══════════════════════════════════════════════
+
+    /** 음악 설정 패널 열기 — bot-config에서 현재 별명 로드 */
+    const openMusicSettings = useCallback(async () => {
+        try {
+            const cfg = await window.api.botConfigLoad();
+            // 모듈 별명 로드
+            const savedModAlias = cfg?.moduleAliases?.music || '';
+            setMusicModuleAliases(savedModAlias);
+
+            // 명령어 별명 로드
+            const savedCmdAliases = cfg?.commandAliases?.music || {};
+            const initial = {};
+            for (const cmd of Object.keys(MUSIC_COMMAND_DEFS)) {
+                initial[cmd] = savedCmdAliases[cmd] || '';
+            }
+            setMusicCommandAliases(initial);
+        } catch (e) {
+            console.warn('[MusicSettings] Failed to load config:', e);
+            // 기본값으로 초기화
+            setMusicModuleAliases('');
+            const initial = {};
+            for (const cmd of Object.keys(MUSIC_COMMAND_DEFS)) {
+                initial[cmd] = '';
+            }
+            setMusicCommandAliases(initial);
+        }
+        setShowMusicSettings(true);
+        // 다음 렌더 후 패널로 스크롤
+        requestAnimationFrame(() => {
+            musicSettingsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    }, []);
+
+    /** 음악 별명 저장 */
+    const handleSaveMusicAliases = useCallback(async () => {
+        try {
+            const current = await window.api.botConfigLoad();
+            const moduleAliases = { ...(current.moduleAliases || {}) };
+            const commandAliases = { ...(current.commandAliases || {}) };
+
+            // 모듈 별명
+            if (musicModuleAliases.trim()) {
+                moduleAliases.music = musicModuleAliases.trim();
+            } else {
+                delete moduleAliases.music;
+            }
+
+            // 명령어 별명
+            const cmdMap = {};
+            let hasAny = false;
+            for (const [cmd, val] of Object.entries(musicCommandAliases)) {
+                const trimmed = (val || '').trim();
+                if (trimmed) {
+                    cmdMap[cmd] = trimmed;
+                    hasAny = true;
+                }
+            }
+            if (hasAny) {
+                commandAliases.music = cmdMap;
+            } else {
+                delete commandAliases.music;
+            }
+
+            const payload = {
+                ...current,
+                moduleAliases,
+                commandAliases,
+            };
+            const res = await window.api.botConfigSave(payload);
+            if (res.error) {
+                console.error('[MusicSettings] Save failed:', res.error);
+            } else {
+                console.log('[MusicSettings] Aliases saved');
+            }
+        } catch (e) {
+            console.error('[MusicSettings] Save error:', e);
+        }
+    }, [musicModuleAliases, musicCommandAliases]);
+
+    /** 음악 별명 초기화 */
+    const handleResetMusicAliases = useCallback(async () => {
+        setMusicModuleAliases('');
+        const cleared = {};
+        for (const cmd of Object.keys(MUSIC_COMMAND_DEFS)) {
+            cleared[cmd] = '';
+        }
+        setMusicCommandAliases(cleared);
+
+        try {
+            const current = await window.api.botConfigLoad();
+            const moduleAliases = { ...(current.moduleAliases || {}) };
+            const commandAliases = { ...(current.commandAliases || {}) };
+            delete moduleAliases.music;
+            delete commandAliases.music;
+
+            const payload = { ...current, moduleAliases, commandAliases };
+            await window.api.botConfigSave(payload);
+            console.log('[MusicSettings] Aliases reset');
+        } catch (e) {
+            console.error('[MusicSettings] Reset error:', e);
+        }
+    }, []);
 
     // ══════════════════════════════════════════════
     // ── 길드 멤버 가져오기 ──
@@ -131,14 +272,14 @@ function DiscordBotModal({
                 const seen = new Set();
                 const allMembers = [];
                 for (const guildData of Object.values(resp.data)) {
-                    for (const m of (guildData.members || [])) {
+                    for (const m of guildData.members || []) {
                         if (!seen.has(m.id)) {
                             seen.add(m.id);
                             allMembers.push(m);
                         }
                     }
                 }
-                setCloudMembers(prev => ({ ...prev, local: allMembers }));
+                setCloudMembers((prev) => ({ ...prev, local: allMembers }));
             }
         } catch (e) {
             console.warn('[DiscordBotModal] Failed to fetch local guild members:', e);
@@ -148,35 +289,38 @@ function DiscordBotModal({
     }, [setCloudMembers]);
 
     /** 클라우드모드: 릴레이 서버 봇을 통해 디스코드 길드 멤버 가져오기 */
-    const fetchCloudNodeMembers = useCallback(async (guildId) => {
-        setMembersLoading(true);
-        try {
-            // 먼저 디스코드 길드 멤버를 실시간으로 가져옴
-            const discordResp = await fetch(`${effectiveRelayUrl}/api/nodes/${guildId}/discord-members`);
-            if (discordResp.ok) {
-                const data = await discordResp.json();
-                setCloudMembers(prev => ({
-                    ...prev,
-                    [guildId]: Array.isArray(data) ? data : (data.members || []),
-                }));
-            } else if (discordResp.status === 503) {
-                // 봇 미접속 — nodePermissions 기반 폴백
-                console.warn('[DiscordBotModal] Bot unavailable, falling back to permission-based members');
-                const fallbackResp = await fetch(`${effectiveRelayUrl}/api/nodes/${guildId}/members`);
-                if (fallbackResp.ok) {
-                    const data = await fallbackResp.json();
-                    setCloudMembers(prev => ({
+    const fetchCloudNodeMembers = useCallback(
+        async (guildId) => {
+            setMembersLoading(true);
+            try {
+                // 먼저 디스코드 길드 멤버를 실시간으로 가져옴
+                const discordResp = await fetch(`${effectiveRelayUrl}/api/nodes/${guildId}/discord-members`);
+                if (discordResp.ok) {
+                    const data = await discordResp.json();
+                    setCloudMembers((prev) => ({
                         ...prev,
-                        [guildId]: Array.isArray(data) ? data : (data.members || []),
+                        [guildId]: Array.isArray(data) ? data : data.members || [],
                     }));
+                } else if (discordResp.status === 503) {
+                    // 봇 미접속 — nodePermissions 기반 폴백
+                    console.warn('[DiscordBotModal] Bot unavailable, falling back to permission-based members');
+                    const fallbackResp = await fetch(`${effectiveRelayUrl}/api/nodes/${guildId}/members`);
+                    if (fallbackResp.ok) {
+                        const data = await fallbackResp.json();
+                        setCloudMembers((prev) => ({
+                            ...prev,
+                            [guildId]: Array.isArray(data) ? data : data.members || [],
+                        }));
+                    }
                 }
+            } catch (e) {
+                console.warn('[DiscordBotModal] Failed to fetch cloud members:', e);
+            } finally {
+                setMembersLoading(false);
             }
-        } catch (e) {
-            console.warn('[DiscordBotModal] Failed to fetch cloud members:', e);
-        } finally {
-            setMembersLoading(false);
-        }
-    }, [effectiveRelayUrl, setCloudMembers]);
+        },
+        [effectiveRelayUrl, setCloudMembers],
+    );
 
     // 로컬 모드 + 봇 실행 중일 때 멤버 자동 로드 (캐시 없을 때만)
     useEffect(() => {
@@ -190,143 +334,171 @@ function DiscordBotModal({
     // ══════════════════════════════════════════════
 
     /** 특정 노드의 설정 가져오기 (없으면 기본값) */
-    const getNodeConfig = useCallback((nodeKey) => {
-        const cfg = nodeSettings[nodeKey];
-        return cfg || { allowedInstances: [], memberPermissions: {} };
-    }, [nodeSettings]);
+    const getNodeConfig = useCallback(
+        (nodeKey) => {
+            const cfg = nodeSettings[nodeKey];
+            return cfg || { allowedInstances: [], memberPermissions: {} };
+        },
+        [nodeSettings],
+    );
 
     /**
      * 인스턴스가 이미 다른 노드에 할당되어 있는지 확인.
      * @returns {string|null} 소유 노드 키, 없으면 null
      */
-    const getInstanceOwnerNode = useCallback((serverId, excludeNodeKey) => {
-        for (const [nodeKey, cfg] of Object.entries(nodeSettings)) {
-            if (nodeKey === excludeNodeKey) continue;
-            if (Array.isArray(cfg?.allowedInstances) && cfg.allowedInstances.includes(serverId)) {
-                return nodeKey;
+    const getInstanceOwnerNode = useCallback(
+        (serverId, excludeNodeKey) => {
+            for (const [nodeKey, cfg] of Object.entries(nodeSettings)) {
+                if (nodeKey === excludeNodeKey) continue;
+                if (Array.isArray(cfg?.allowedInstances) && cfg.allowedInstances.includes(serverId)) {
+                    return nodeKey;
+                }
             }
-        }
-        return null;
-    }, [nodeSettings]);
+            return null;
+        },
+        [nodeSettings],
+    );
 
     /** 인스턴스 토글 (단일 노드 제약: 다른 노드에 할당된 인스턴스는 추가 불가) */
-    const toggleNodeInstance = useCallback((nodeKey, serverId) => {
-        setNodeSettings(prev => {
-            const next = { ...prev };
-            const cfg = { ...(next[nodeKey] || { allowedInstances: [], memberPermissions: {} }) };
-            const arr = Array.isArray(cfg.allowedInstances) ? [...cfg.allowedInstances] : [];
-            const idx = arr.indexOf(serverId);
-            if (idx >= 0) {
-                arr.splice(idx, 1); // 제거는 항상 허용
-            } else {
-                // 다른 노드에 이미 할당되어 있으면 추가 불가
-                for (const [otherKey, otherCfg] of Object.entries(prev)) {
-                    if (otherKey === nodeKey) continue;
-                    if (Array.isArray(otherCfg?.allowedInstances) && otherCfg.allowedInstances.includes(serverId)) {
-                        return prev; // 변경 없음
+    const toggleNodeInstance = useCallback(
+        (nodeKey, serverId) => {
+            setNodeSettings((prev) => {
+                const next = { ...prev };
+                const cfg = { ...(next[nodeKey] || { allowedInstances: [], memberPermissions: {} }) };
+                const arr = Array.isArray(cfg.allowedInstances) ? [...cfg.allowedInstances] : [];
+                const idx = arr.indexOf(serverId);
+                if (idx >= 0) {
+                    arr.splice(idx, 1); // 제거는 항상 허용
+                } else {
+                    // 다른 노드에 이미 할당되어 있으면 추가 불가
+                    for (const [otherKey, otherCfg] of Object.entries(prev)) {
+                        if (otherKey === nodeKey) continue;
+                        if (Array.isArray(otherCfg?.allowedInstances) && otherCfg.allowedInstances.includes(serverId)) {
+                            return prev; // 변경 없음
+                        }
                     }
+                    arr.push(serverId);
                 }
-                arr.push(serverId);
-            }
-            cfg.allowedInstances = arr;
-            next[nodeKey] = cfg;
-            return next;
-        });
-    }, [setNodeSettings]);
+                cfg.allowedInstances = arr;
+                next[nodeKey] = cfg;
+                return next;
+            });
+        },
+        [setNodeSettings],
+    );
 
     /** 전체 선택 / 해제 (다른 노드에 할당된 인스턴스 제외) */
-    const setNodeAllInstances = useCallback((nodeKey, selectAll) => {
-        setNodeSettings(prev => {
-            const next = { ...prev };
-            const cfg = { ...(next[nodeKey] || { allowedInstances: [], memberPermissions: {} }) };
-            if (selectAll && servers) {
-                // 다른 노드에 할당되지 않은 인스턴스만 선택
-                const otherAssigned = new Set();
-                for (const [otherKey, otherCfg] of Object.entries(prev)) {
-                    if (otherKey === nodeKey) continue;
-                    for (const id of (otherCfg?.allowedInstances || [])) {
-                        otherAssigned.add(id);
+    const setNodeAllInstances = useCallback(
+        (nodeKey, selectAll) => {
+            setNodeSettings((prev) => {
+                const next = { ...prev };
+                const cfg = { ...(next[nodeKey] || { allowedInstances: [], memberPermissions: {} }) };
+                if (selectAll && servers) {
+                    // 다른 노드에 할당되지 않은 인스턴스만 선택
+                    const otherAssigned = new Set();
+                    for (const [otherKey, otherCfg] of Object.entries(prev)) {
+                        if (otherKey === nodeKey) continue;
+                        for (const id of otherCfg?.allowedInstances || []) {
+                            otherAssigned.add(id);
+                        }
                     }
+                    cfg.allowedInstances = servers.filter((s) => !otherAssigned.has(s.id)).map((s) => s.id);
+                } else {
+                    cfg.allowedInstances = [];
                 }
-                cfg.allowedInstances = servers.filter(s => !otherAssigned.has(s.id)).map(s => s.id);
-            } else {
-                cfg.allowedInstances = [];
-            }
-            next[nodeKey] = cfg;
-            return next;
-        });
-    }, [setNodeSettings, servers]);
+                next[nodeKey] = cfg;
+                return next;
+            });
+        },
+        [setNodeSettings, servers],
+    );
 
     /** 멤버 권한 토글 (멤버를 nodeSettings에 추가/제거) */
-    const toggleMemberEnabled = useCallback((nodeKey, userId) => {
-        setNodeSettings(prev => {
-            const next = { ...prev };
-            const cfg = { ...(next[nodeKey] || { allowedInstances: [], memberPermissions: {} }) };
-            const perms = { ...cfg.memberPermissions };
-            if (perms[userId]) {
-                delete perms[userId]; // 제거
-            } else {
-                perms[userId] = {}; // 추가 (빈 권한)
-            }
-            cfg.memberPermissions = perms;
-            next[nodeKey] = cfg;
-            return next;
-        });
-    }, [setNodeSettings]);
+    const toggleMemberEnabled = useCallback(
+        (nodeKey, userId) => {
+            setNodeSettings((prev) => {
+                const next = { ...prev };
+                const cfg = { ...(next[nodeKey] || { allowedInstances: [], memberPermissions: {} }) };
+                const perms = { ...cfg.memberPermissions };
+                if (perms[userId]) {
+                    delete perms[userId]; // 제거
+                } else {
+                    perms[userId] = {}; // 추가 (빈 권한)
+                }
+                cfg.memberPermissions = perms;
+                next[nodeKey] = cfg;
+                return next;
+            });
+        },
+        [setNodeSettings],
+    );
 
     /** 멤버의 특정 인스턴스에 대한 명령어 토글 */
-    const toggleMemberCommand = useCallback((nodeKey, userId, serverId, command) => {
-        setNodeSettings(prev => {
-            const next = { ...prev };
-            const cfg = { ...(next[nodeKey] || { allowedInstances: [], memberPermissions: {} }) };
-            const perms = { ...cfg.memberPermissions };
-            const userPerms = { ...perms[userId] };
-            const cmds = Array.isArray(userPerms[serverId]) ? [...userPerms[serverId]] : [];
-            const idx = cmds.indexOf(command);
-            if (idx >= 0) cmds.splice(idx, 1); else cmds.push(command);
-            userPerms[serverId] = cmds;
-            perms[userId] = userPerms;
-            cfg.memberPermissions = perms;
-            next[nodeKey] = cfg;
-            return next;
-        });
-    }, [setNodeSettings]);
+    const toggleMemberCommand = useCallback(
+        (nodeKey, userId, serverId, command) => {
+            setNodeSettings((prev) => {
+                const next = { ...prev };
+                const cfg = { ...(next[nodeKey] || { allowedInstances: [], memberPermissions: {} }) };
+                const perms = { ...cfg.memberPermissions };
+                const userPerms = { ...perms[userId] };
+                const cmds = Array.isArray(userPerms[serverId]) ? [...userPerms[serverId]] : [];
+                const idx = cmds.indexOf(command);
+                if (idx >= 0) cmds.splice(idx, 1);
+                else cmds.push(command);
+                userPerms[serverId] = cmds;
+                perms[userId] = userPerms;
+                cfg.memberPermissions = perms;
+                next[nodeKey] = cfg;
+                return next;
+            });
+        },
+        [setNodeSettings],
+    );
 
     /** 멤버의 특정 인스턴스 명령어 전체 선택/해제 */
-    const setMemberAllCommands = useCallback((nodeKey, userId, serverId, allCommands, allow) => {
-        setNodeSettings(prev => {
-            const next = { ...prev };
-            const cfg = { ...(next[nodeKey] || { allowedInstances: [], memberPermissions: {} }) };
-            const perms = { ...cfg.memberPermissions };
-            const userPerms = { ...perms[userId] };
-            userPerms[serverId] = allow ? [...allCommands] : [];
-            perms[userId] = userPerms;
-            cfg.memberPermissions = perms;
-            next[nodeKey] = cfg;
-            return next;
-        });
-    }, [setNodeSettings]);
+    const setMemberAllCommands = useCallback(
+        (nodeKey, userId, serverId, allCommands, allow) => {
+            setNodeSettings((prev) => {
+                const next = { ...prev };
+                const cfg = { ...(next[nodeKey] || { allowedInstances: [], memberPermissions: {} }) };
+                const perms = { ...cfg.memberPermissions };
+                const userPerms = { ...perms[userId] };
+                userPerms[serverId] = allow ? [...allCommands] : [];
+                perms[userId] = userPerms;
+                cfg.memberPermissions = perms;
+                next[nodeKey] = cfg;
+                return next;
+            });
+        },
+        [setNodeSettings],
+    );
 
     /** 모듈의 명령어 목록 가져오기 */
-    const getCommandsForModule = useCallback((moduleName) => {
-        const modInfo = moduleAliasesPerModule?.[moduleName];
-        if (!modInfo?.commands) return [];
-        return Object.entries(modInfo.commands).map(([cmdName, cmdInfo]) => ({
-            name: cmdName,
-            label: cmdInfo.label || cmdName,
-            description: cmdInfo.description || '',
-        }));
-    }, [moduleAliasesPerModule]);
+    const getCommandsForModule = useCallback(
+        (moduleName) => {
+            const modInfo = moduleAliasesPerModule?.[moduleName];
+            if (!modInfo?.commands) return [];
+            return Object.entries(modInfo.commands).map(([cmdName, cmdInfo]) => ({
+                name: cmdName,
+                label: cmdInfo.label || cmdName,
+                description: cmdInfo.description || '',
+            }));
+        },
+        [moduleAliasesPerModule],
+    );
 
     // ══════════════════════════════════════════════
     // ── 클라우드 노드 목록 로드 (연결 상태는 훅에서 관리) ──
     // ══════════════════════════════════════════════
+    // biome-ignore lint/correctness/useExhaustiveDependencies: setCloudNodes/setCloudError are prop setters (stable) — biome can't track stability through props
     const loadCloudNodes = useCallback(async () => {
         if (!discordCloudHostId) return;
         setCloudError('');
         try {
             // 노드 목록 로드
-            const nodesResp = await fetch(`${effectiveRelayUrl}/api/hosts/${encodeURIComponent(discordCloudHostId)}/nodes`);
+            const nodesResp = await fetch(
+                `${effectiveRelayUrl}/api/hosts/${encodeURIComponent(discordCloudHostId)}/nodes`,
+            );
             if (nodesResp.ok) {
                 const nodesData = await nodesResp.json();
                 setCloudNodes(Array.isArray(nodesData) ? nodesData : []);
@@ -344,17 +516,20 @@ function DiscordBotModal({
     }, [isOpen, isCloud, discordCloudHostId, cloudConnected, loadCloudNodes]);
 
     // ── 노드 확장 (클릭 시 멤버도 로드 — 캐시 없을 때만) ──
-    const toggleNodeExpand = useCallback((guildId) => {
-        if (expandedNode === guildId) {
-            setExpandedNode(null);
-        } else {
-            setExpandedNode(guildId);
-            // 클라우드: 캐시 없으면 서버에서 멤버 로드
-            if (!(cloudMembers[guildId]?.length > 0)) {
-                fetchCloudNodeMembers(guildId);
+    const toggleNodeExpand = useCallback(
+        (guildId) => {
+            if (expandedNode === guildId) {
+                setExpandedNode(null);
+            } else {
+                setExpandedNode(guildId);
+                // 클라우드: 캐시 없으면 서버에서 멤버 로드
+                if (!(cloudMembers[guildId]?.length > 0)) {
+                    fetchCloudNodeMembers(guildId);
+                }
             }
-        }
-    }, [expandedNode, cloudMembers, fetchCloudNodeMembers]);
+        },
+        [expandedNode, cloudMembers, fetchCloudNodeMembers],
+    );
 
     // ── 페어링 ──
     const startPairing = useCallback(async () => {
@@ -400,14 +575,19 @@ function DiscordBotModal({
                             setPairStatus('idle');
                             setPairCode('');
                             setShowPairing(false);
-                            if (pairTimerRef.current) { clearInterval(pairTimerRef.current); pairTimerRef.current = null; }
+                            if (pairTimerRef.current) {
+                                clearInterval(pairTimerRef.current);
+                                pairTimerRef.current = null;
+                            }
                         }, 2000);
                     } else if (s.status === 'expired') {
                         clearInterval(pairPollRef.current);
                         pairPollRef.current = null;
                         setPairStatus('expired');
                     }
-                } catch { /* 네트워크 에러 — 폴링 계속 */ }
+                } catch {
+                    /* 네트워크 에러 — 폴링 계속 */
+                }
             }, 3000);
         } catch (e) {
             console.error('[Pairing] initiate failed:', e);
@@ -447,7 +627,7 @@ function DiscordBotModal({
     // ══════════════════════════════════════════════
     // ── 노드 설정 Body 렌더링 (인스턴스 + 멤버 탭) ──
     // ══════════════════════════════════════════════
-    const renderNodeSettingsBody = (nodeKey, nodeLabel) => {
+    const renderNodeSettingsBody = (nodeKey, _nodeLabel) => {
         const currentTab = nodeTab[nodeKey] || 'instances';
         const cfg = getNodeConfig(nodeKey);
         const allowedInsts = cfg.allowedInstances || [];
@@ -460,14 +640,14 @@ function DiscordBotModal({
                 {/* 탭 헤더 */}
                 <div className="discord-node-tabs">
                     <button
-                        className={`discord-node-tab ${currentTab === 'instances' ? 'active' : ''}`}
-                        onClick={() => setNodeTab(prev => ({ ...prev, [nodeKey]: 'instances' }))}
+                        className={clsx('discord-node-tab', { active: currentTab === 'instances' })}
+                        onClick={() => setNodeTab((prev) => ({ ...prev, [nodeKey]: 'instances' }))}
                     >
                         🖥️ {t('discord_modal.tab_instances')}
                     </button>
                     <button
-                        className={`discord-node-tab ${currentTab === 'members' ? 'active' : ''}`}
-                        onClick={() => setNodeTab(prev => ({ ...prev, [nodeKey]: 'members' }))}
+                        className={clsx('discord-node-tab', { active: currentTab === 'members' })}
+                        onClick={() => setNodeTab((prev) => ({ ...prev, [nodeKey]: 'members' }))}
                     >
                         👥 {t('discord_modal.tab_members')} ({enabledMemberIds.length})
                     </button>
@@ -477,33 +657,51 @@ function DiscordBotModal({
                 {currentTab === 'instances' && (
                     <div className="discord-node-tab-content">
                         <div className="discord-instance-select-header">
-                            <small className="discord-instance-select-desc">{t('discord_modal.allowed_instances_desc')}</small>
+                            <small className="discord-instance-select-desc">
+                                {t('discord_modal.allowed_instances_desc')}
+                            </small>
                             <div className="discord-instance-select-actions">
-                                <button className="discord-instance-select-btn" onClick={() => setNodeAllInstances(nodeKey, true)}>
+                                <button
+                                    className="discord-instance-select-btn"
+                                    onClick={() => setNodeAllInstances(nodeKey, true)}
+                                >
                                     {t('discord_modal.select_all')}
                                 </button>
-                                <button className="discord-instance-select-btn" onClick={() => setNodeAllInstances(nodeKey, false)}>
+                                <button
+                                    className="discord-instance-select-btn"
+                                    onClick={() => setNodeAllInstances(nodeKey, false)}
+                                >
                                     {t('discord_modal.deselect_all')}
                                 </button>
                             </div>
                         </div>
-                        {(!servers || servers.length === 0) ? (
+                        {!servers || servers.length === 0 ? (
                             <p className="discord-node-empty">{t('discord_modal.no_instances_available')}</p>
                         ) : (
                             <div className="discord-instance-select-list">
-                                {servers.map(server => {
+                                {servers.map((server) => {
                                     const isAllowed = allowedInsts.includes(server.id);
                                     const ownerNode = getInstanceOwnerNode(server.id, nodeKey);
                                     const isOtherNode = !!ownerNode;
                                     // 다른 노드에 할당된 노드 이름 찾기
                                     const ownerNodeName = isOtherNode
-                                        ? (cloudNodes.find(n => n.guildId === ownerNode)?.guildName || ownerNode)
+                                        ? cloudNodes.find((n) => n.guildId === ownerNode)?.guildName || ownerNode
                                         : '';
                                     return (
                                         <label
                                             key={server.id}
-                                            className={`discord-instance-select-item ${isAllowed ? 'selected' : ''} ${isOtherNode ? 'disabled' : ''}`}
-                                            title={isOtherNode ? t('discord_modal.instance_used_by_other', { node: ownerNodeName, defaultValue: `이미 다른 노드(${ownerNodeName})에서 사용 중` }) : ''}
+                                            className={clsx('discord-instance-select-item', {
+                                                selected: isAllowed,
+                                                disabled: isOtherNode,
+                                            })}
+                                            title={
+                                                isOtherNode
+                                                    ? t('discord_modal.instance_used_by_other', {
+                                                          node: ownerNodeName,
+                                                          defaultValue: `이미 다른 노드(${ownerNodeName})에서 사용 중`,
+                                                      })
+                                                    : ''
+                                            }
                                         >
                                             <SabaCheckbox
                                                 checked={isAllowed}
@@ -514,10 +712,15 @@ function DiscordBotModal({
                                                 <span className="discord-instance-select-name">{server.name}</span>
                                                 <span className="discord-instance-select-module">
                                                     {server.module}
-                                                    {isOtherNode && <span className="discord-instance-other-node"> — {ownerNodeName}</span>}
+                                                    {isOtherNode && (
+                                                        <span className="discord-instance-other-node">
+                                                            {' '}
+                                                            — {ownerNodeName}
+                                                        </span>
+                                                    )}
                                                 </span>
                                             </div>
-                                            <span className={`discord-instance-badge ${isAllowed ? 'on' : 'off'}`}>
+                                            <span className={clsx('discord-instance-badge', isAllowed ? 'on' : 'off')}>
                                                 {isAllowed ? 'ON' : 'OFF'}
                                             </span>
                                         </label>
@@ -547,29 +750,42 @@ function DiscordBotModal({
                         )}
 
                         {/* 로컬 모드: 멤버 없음 */}
-                        {!membersLoading && !isCloud && discordBotStatus === 'running' && availableMembers.length === 0 && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                                <p className="discord-node-empty" style={{ margin: 0 }}>{t('discord_modal.members_empty')}</p>
-                                <button className="discord-instance-select-btn" onClick={fetchLocalGuildMembers}>
-                                    🔄 {t('discord_modal.members_refresh')}
-                                </button>
-                            </div>
-                        )}
+                        {!membersLoading &&
+                            !isCloud &&
+                            discordBotStatus === 'running' &&
+                            availableMembers.length === 0 && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                                    <p className="discord-node-empty" style={{ margin: 0 }}>
+                                        {t('discord_modal.members_empty')}
+                                    </p>
+                                    <button className="discord-instance-select-btn" onClick={fetchLocalGuildMembers}>
+                                        🔄 {t('discord_modal.members_refresh')}
+                                    </button>
+                                </div>
+                            )}
 
                         {/* 로컬 모드: 새로고침 버튼 (멤버 있을 때) */}
-                        {!membersLoading && !isCloud && discordBotStatus === 'running' && availableMembers.length > 0 && (
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
-                                <button className="discord-instance-select-btn" onClick={fetchLocalGuildMembers}>
-                                    🔄 {t('discord_modal.members_refresh')}
-                                </button>
-                            </div>
-                        )}
+                        {!membersLoading &&
+                            !isCloud &&
+                            discordBotStatus === 'running' &&
+                            availableMembers.length > 0 && (
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+                                    <button className="discord-instance-select-btn" onClick={fetchLocalGuildMembers}>
+                                        🔄 {t('discord_modal.members_refresh')}
+                                    </button>
+                                </div>
+                            )}
 
                         {/* 클라우드 모드: 멤버 없음 + 새로고침 */}
                         {!membersLoading && isCloud && availableMembers.length === 0 && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                                <p className="discord-node-empty" style={{ margin: 0 }}>{t('discord_modal.members_empty')}</p>
-                                <button className="discord-instance-select-btn" onClick={() => fetchCloudNodeMembers(nodeKey)}>
+                                <p className="discord-node-empty" style={{ margin: 0 }}>
+                                    {t('discord_modal.members_empty')}
+                                </p>
+                                <button
+                                    className="discord-instance-select-btn"
+                                    onClick={() => fetchCloudNodeMembers(nodeKey)}
+                                >
                                     🔄 {t('discord_modal.members_refresh')}
                                 </button>
                             </div>
@@ -578,7 +794,10 @@ function DiscordBotModal({
                         {/* 클라우드 모드: 새로고침 버튼 (멤버 있을 때) */}
                         {!membersLoading && isCloud && availableMembers.length > 0 && (
                             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
-                                <button className="discord-instance-select-btn" onClick={() => fetchCloudNodeMembers(nodeKey)}>
+                                <button
+                                    className="discord-instance-select-btn"
+                                    onClick={() => fetchCloudNodeMembers(nodeKey)}
+                                >
                                     🔄 {t('discord_modal.members_refresh')}
                                 </button>
                             </div>
@@ -587,32 +806,46 @@ function DiscordBotModal({
                         {/* 멤버 목록 (체크박스로 활성화/비활성화) */}
                         {availableMembers.length > 0 && (
                             <div className="discord-member-perm-list">
-                                {availableMembers.map(member => {
+                                {availableMembers.map((member) => {
                                     const isEnabled = !!memberPerms[member.id];
                                     const isExpanded = expandedMember[`${nodeKey}:${member.id}`];
 
                                     return (
-                                        <div key={member.id} className={`discord-member-perm-card ${isExpanded ? 'expanded' : ''}`}>
+                                        <div
+                                            key={member.id}
+                                            className={clsx('discord-member-perm-card', { expanded: isExpanded })}
+                                        >
                                             <div className="discord-member-perm-header">
-                                                <label className="discord-member-enable-label" onClick={(e) => e.stopPropagation()}>
+                                                <label
+                                                    className="discord-member-enable-label"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
                                                     <SabaCheckbox
                                                         checked={isEnabled}
                                                         onChange={() => toggleMemberEnabled(nodeKey, member.id)}
                                                     />
                                                     <div className="discord-member-perm-id-group">
-                                                        <span className="discord-member-perm-name">{member.displayName || member.username}</span>
+                                                        <span className="discord-member-perm-name">
+                                                            {member.displayName || member.username}
+                                                        </span>
                                                         <span className="discord-member-perm-id">{member.id}</span>
                                                     </div>
                                                 </label>
                                                 {isEnabled && (
                                                     <button
                                                         className="discord-member-expand-btn"
-                                                        onClick={() => setExpandedMember(prev => ({
-                                                            ...prev,
-                                                            [`${nodeKey}:${member.id}`]: !prev[`${nodeKey}:${member.id}`]
-                                                        }))}
+                                                        onClick={() =>
+                                                            setExpandedMember((prev) => ({
+                                                                ...prev,
+                                                                [`${nodeKey}:${member.id}`]:
+                                                                    !prev[`${nodeKey}:${member.id}`],
+                                                            }))
+                                                        }
                                                     >
-                                                        <Icon name={isExpanded ? 'chevronDown' : 'chevronRight'} size="sm" />
+                                                        <Icon
+                                                            name={isExpanded ? 'chevronDown' : 'chevronRight'}
+                                                            size="sm"
+                                                        />
                                                     </button>
                                                 )}
                                             </div>
@@ -620,45 +853,93 @@ function DiscordBotModal({
                                             {isEnabled && isExpanded && (
                                                 <div className="discord-member-perm-body">
                                                     {allowedInsts.length === 0 ? (
-                                                        <p className="discord-node-empty">{t('discord_modal.no_instances_for_perms')}</p>
+                                                        <p className="discord-node-empty">
+                                                            {t('discord_modal.no_instances_for_perms')}
+                                                        </p>
                                                     ) : (
-                                                        allowedInsts.map(serverId => {
-                                                            const srv = servers?.find(s => s.id === serverId);
+                                                        allowedInsts.map((serverId) => {
+                                                            const srv = servers?.find((s) => s.id === serverId);
                                                             if (!srv) return null;
                                                             const cmds = getCommandsForModule(srv.module);
                                                             const userPerms = memberPerms[member.id] || {};
-                                                            const userCmds = Array.isArray(userPerms[serverId]) ? userPerms[serverId] : [];
+                                                            const userCmds = Array.isArray(userPerms[serverId])
+                                                                ? userPerms[serverId]
+                                                                : [];
 
                                                             return (
-                                                                <div key={serverId} className="discord-member-instance-block">
+                                                                <div
+                                                                    key={serverId}
+                                                                    className="discord-member-instance-block"
+                                                                >
                                                                     <div className="discord-member-instance-header">
-                                                                        <span className="discord-member-instance-name">{srv.name}</span>
-                                                                        <span className="discord-member-instance-module">{srv.module}</span>
+                                                                        <span className="discord-member-instance-name">
+                                                                            {srv.name}
+                                                                        </span>
+                                                                        <span className="discord-member-instance-module">
+                                                                            {srv.module}
+                                                                        </span>
                                                                         {cmds.length > 0 && (
                                                                             <div className="discord-instance-select-actions">
-                                                                                <button className="discord-instance-select-btn"
-                                                                                    onClick={() => setMemberAllCommands(nodeKey, member.id, serverId, cmds.map(c => c.name), true)}>
+                                                                                <button
+                                                                                    className="discord-instance-select-btn"
+                                                                                    onClick={() =>
+                                                                                        setMemberAllCommands(
+                                                                                            nodeKey,
+                                                                                            member.id,
+                                                                                            serverId,
+                                                                                            cmds.map((c) => c.name),
+                                                                                            true,
+                                                                                        )
+                                                                                    }
+                                                                                >
                                                                                     {t('discord_modal.select_all')}
                                                                                 </button>
-                                                                                <button className="discord-instance-select-btn"
-                                                                                    onClick={() => setMemberAllCommands(nodeKey, member.id, serverId, cmds.map(c => c.name), false)}>
+                                                                                <button
+                                                                                    className="discord-instance-select-btn"
+                                                                                    onClick={() =>
+                                                                                        setMemberAllCommands(
+                                                                                            nodeKey,
+                                                                                            member.id,
+                                                                                            serverId,
+                                                                                            cmds.map((c) => c.name),
+                                                                                            false,
+                                                                                        )
+                                                                                    }
+                                                                                >
                                                                                     {t('discord_modal.deselect_all')}
                                                                                 </button>
                                                                             </div>
                                                                         )}
                                                                     </div>
                                                                     {cmds.length === 0 ? (
-                                                                        <p className="discord-cmd-empty">{t('discord_modal.no_commands_available')}</p>
+                                                                        <p className="discord-cmd-empty">
+                                                                            {t('discord_modal.no_commands_available')}
+                                                                        </p>
                                                                     ) : (
                                                                         <div className="discord-cmd-check-grid">
-                                                                            {cmds.map(cmd => (
-                                                                                <label key={cmd.name} className="discord-cmd-check-item" title={cmd.description}>
+                                                                            {cmds.map((cmd) => (
+                                                                                <label
+                                                                                    key={cmd.name}
+                                                                                    className="discord-cmd-check-item"
+                                                                                    title={cmd.description}
+                                                                                >
                                                                                     <SabaCheckbox
                                                                                         size="sm"
-                                                                                        checked={userCmds.includes(cmd.name)}
-                                                                                        onChange={() => toggleMemberCommand(nodeKey, member.id, serverId, cmd.name)}
+                                                                                        checked={userCmds.includes(
+                                                                                            cmd.name,
+                                                                                        )}
+                                                                                        onChange={() =>
+                                                                                            toggleMemberCommand(
+                                                                                                nodeKey,
+                                                                                                member.id,
+                                                                                                serverId,
+                                                                                                cmd.name,
+                                                                                            )
+                                                                                        }
                                                                                     />
-                                                                                    <span className="discord-cmd-check-label">{cmd.label}</span>
+                                                                                    <span className="discord-cmd-check-label">
+                                                                                        {cmd.label}
+                                                                                    </span>
                                                                                 </label>
                                                                             ))}
                                                                         </div>
@@ -668,7 +949,9 @@ function DiscordBotModal({
                                                         })
                                                     )}
                                                     {allowedInsts.length > 0 && (
-                                                        <p className="discord-cmd-hint">{t('discord_modal.no_commands_hint')}</p>
+                                                        <p className="discord-cmd-hint">
+                                                            {t('discord_modal.no_commands_hint')}
+                                                        </p>
                                                     )}
                                                 </div>
                                             )}
@@ -721,8 +1004,13 @@ function DiscordBotModal({
                     <span className="discord-pair-code-label">{t('discord_modal.pair_code_label')}</span>
                     <div className="discord-pair-code-row">
                         <span className="discord-pair-code-value">{pairCode}</span>
-                        <button className={`discord-pair-copy-btn ${pairCopied ? 'copied' : ''}`} onClick={copyPairCode}>
-                            {pairCopied ? `✓ ${t('discord_modal.pair_code_copied')}` : `📋 ${t('discord_modal.pair_copy_button')}`}
+                        <button
+                            className={clsx('discord-pair-copy-btn', { copied: pairCopied })}
+                            onClick={copyPairCode}
+                        >
+                            {pairCopied
+                                ? `✓ ${t('discord_modal.pair_code_copied')}`
+                                : `📋 ${t('discord_modal.pair_copy_button')}`}
                         </button>
                     </div>
                     <p className="discord-pair-instruction">{t('discord_modal.pair_instruction')}</p>
@@ -730,7 +1018,9 @@ function DiscordBotModal({
                     <div className="discord-pair-waiting">
                         <SabaSpinner size="sm" />
                         <span>{t('discord_modal.pair_waiting')}</span>
-                        <span className="discord-pair-timer">{t('discord_modal.pair_expires_in', { seconds: pairRemaining })}</span>
+                        <span className="discord-pair-timer">
+                            {t('discord_modal.pair_expires_in', { seconds: pairRemaining })}
+                        </span>
                     </div>
                 </div>
             )}
@@ -746,8 +1036,15 @@ function DiscordBotModal({
             {pairStatus === 'expired' && (
                 <div className="discord-pair-result error">
                     ⏰ {t('discord_modal.pair_expired')}
-                    <button className="discord-pair-start-btn" style={{ marginLeft: 12, fontSize: 12, padding: '4px 12px' }}
-                        onClick={() => { resetPairing(); setShowPairing(true); setTimeout(startPairing, 100); }}>
+                    <button
+                        className="discord-pair-start-btn"
+                        style={{ marginLeft: 12, fontSize: 12, padding: '4px 12px' }}
+                        onClick={() => {
+                            resetPairing();
+                            setShowPairing(true);
+                            setTimeout(startPairing, 100);
+                        }}
+                    >
                         🔄 {t('discord_modal.cloud_retry')}
                     </button>
                 </div>
@@ -755,8 +1052,15 @@ function DiscordBotModal({
             {pairStatus === 'error' && (
                 <div className="discord-pair-result error">
                     ❌ {t('discord_modal.pair_error')}
-                    <button className="discord-pair-start-btn" style={{ marginLeft: 12, fontSize: 12, padding: '4px 12px' }}
-                        onClick={() => { resetPairing(); setShowPairing(true); setTimeout(startPairing, 100); }}>
+                    <button
+                        className="discord-pair-start-btn"
+                        style={{ marginLeft: 12, fontSize: 12, padding: '4px 12px' }}
+                        onClick={() => {
+                            resetPairing();
+                            setShowPairing(true);
+                            setTimeout(startPairing, 100);
+                        }}
+                    >
                         🔄 {t('discord_modal.cloud_retry')}
                     </button>
                 </div>
@@ -765,13 +1069,21 @@ function DiscordBotModal({
     );
 
     return (
-        <div className={`discord-modal-container ${isClosing ? 'closing' : ''}`} onClick={(e) => e.stopPropagation()}>
+        <div className={clsx('discord-modal-container', { closing: isClosing })} onClick={(e) => e.stopPropagation()}>
             <div className="discord-modal-header">
                 <div className="discord-modal-title">
-                    <span className={`status-indicator ${discordBotStatus === 'running' ? 'status-online' : discordBotStatus === 'connecting' ? 'status-connecting' : 'status-offline'}`}></span>
+                    <span
+                        className={clsx('status-indicator', {
+                            'status-online': discordBotStatus === 'running',
+                            'status-connecting': discordBotStatus === 'connecting',
+                            'status-offline': discordBotStatus !== 'running' && discordBotStatus !== 'connecting',
+                        })}
+                    ></span>
                     <h2>{t('discord_modal.title')}</h2>
                 </div>
-                <button className="discord-modal-close" onClick={onClose}><Icon name="close" size="sm" /></button>
+                <button className="discord-modal-close" onClick={onClose}>
+                    <Icon name="close" size="sm" />
+                </button>
             </div>
 
             <div className="discord-modal-content">
@@ -782,40 +1094,55 @@ function DiscordBotModal({
                             /* 클라우드 모드: 릴레이 서버(클라우드) 연결 상태만 표시 */
                             <div className="discord-status-row">
                                 <span className="status-label">{t('discord_modal.status_cloud_label')}</span>
-                                <span className={`status-value ${cloudConnected ? 'status-running' : cloudConnecting ? 'status-connecting' : !discordCloudHostId ? 'status-needs-setup' : 'status-stopped'}`}>
+                                <span
+                                    className={clsx('status-value', {
+                                        'status-running': cloudConnected,
+                                        'status-connecting': !cloudConnected && cloudConnecting,
+                                        'status-needs-setup':
+                                            !cloudConnected && !cloudConnecting && !discordCloudHostId,
+                                        'status-stopped': !cloudConnected && !cloudConnecting && discordCloudHostId,
+                                    })}
+                                >
                                     {cloudConnected
                                         ? t('discord_modal.status_relay_connected')
                                         : cloudConnecting
-                                            ? t('discord_modal.status_relay_connecting')
-                                            : !discordCloudHostId
-                                                ? t('discord_modal.status_relay_needs_setup')
-                                                : t('discord_modal.status_relay_disconnected')}
+                                          ? t('discord_modal.status_relay_connecting')
+                                          : !discordCloudHostId
+                                            ? t('discord_modal.status_relay_needs_setup')
+                                            : t('discord_modal.status_relay_disconnected')}
                                 </span>
                             </div>
                         ) : (
                             /* 로컬 모드: 봇 프로세스 상태 */
                             <div className="discord-status-row">
                                 <span className="status-label">{t('discord_modal.status_bot_label')}</span>
-                                <span className={`status-value status-${discordBotStatus}`}>
+                                <span className={clsx('status-value', `status-${discordBotStatus}`)}>
                                     {discordBotStatus === 'running'
                                         ? t('discord_modal.status_running')
                                         : discordBotStatus === 'error'
-                                            ? t('discord_modal.status_error')
-                                            : t('discord_modal.status_stopped')}
+                                          ? t('discord_modal.status_error')
+                                          : t('discord_modal.status_stopped')}
                                 </span>
                             </div>
                         )}
                     </div>
-                    {isCloud
-                        ? <span className="discord-mode-badge cloud"><Icon name="cloud" size="sm" /> {t('discord_modal.mode_cloud')}</span>
-                        : <span className="discord-mode-badge local"><Icon name="desktop" size="sm" /> {t('discord_modal.mode_local')}</span>
-                    }
+                    {isCloud ? (
+                        <span className="discord-mode-badge cloud">
+                            <Icon name="cloud" size="sm" /> {t('discord_modal.mode_cloud')}
+                        </span>
+                    ) : (
+                        <span className="discord-mode-badge local">
+                            <Icon name="desktop" size="sm" /> {t('discord_modal.mode_local')}
+                        </span>
+                    )}
                 </div>
 
                 {/* ── 모드 전환 카드 ── */}
                 <div className="discord-mode-toggle-card">
                     <div className="discord-mode-toggle-info">
-                        <span className="discord-mode-toggle-icon">{isCloud ? <Icon name="cloud" size="md" /> : <Icon name="desktop" size="md" />}</span>
+                        <span className="discord-mode-toggle-icon">
+                            {isCloud ? <Icon name="cloud" size="md" /> : <Icon name="desktop" size="md" />}
+                        </span>
                         <div className="discord-mode-toggle-text">
                             <span className="discord-mode-toggle-label">{t('discord_modal.mode_label')}</span>
                             <span className="discord-mode-toggle-desc">
@@ -841,7 +1168,9 @@ function DiscordBotModal({
                 {/* ══════════════════════════════════════════════ */}
                 {!isCloud && (
                     <div className="discord-config-section">
-                        <h4><Icon name="desktop" size="sm" /> {t('discord_modal.local_node_title')}</h4>
+                        <h4>
+                            <Icon name="desktop" size="sm" /> {t('discord_modal.local_node_title')}
+                        </h4>
                         {renderNodeSettingsBody('local', t('discord_modal.local_node_title'))}
                     </div>
                 )}
@@ -849,11 +1178,7 @@ function DiscordBotModal({
                 {/* ══════════════════════════════════════════════ */}
                 {/* ── 클라우드: 페어링 성공 (자동 전환 대기) ── */}
                 {/* ══════════════════════════════════════════════ */}
-                {cloudState === 'pair_success' && (
-                    <div className="discord-cloud-section">
-                        {renderPairingBlock()}
-                    </div>
-                )}
+                {cloudState === 'pair_success' && <div className="discord-cloud-section">{renderPairingBlock()}</div>}
 
                 {/* ══════════════════════════════════════════════ */}
                 {/* ── 클라우드: 호스트 미설정 → 셋업 카드 ───── */}
@@ -865,28 +1190,50 @@ function DiscordBotModal({
                             <h4>{t('discord_modal.cloud_setup_title')}</h4>
                             <p>{t('discord_modal.cloud_setup_desc_simple')}</p>
 
-                            <button className="discord-pair-start-btn" style={{ width: '100%', marginTop: 8 }}
-                                onClick={() => { setShowPairing(true); startPairing(); }}>
+                            <button
+                                className="discord-pair-start-btn"
+                                style={{ width: '100%', marginTop: 8 }}
+                                onClick={() => {
+                                    setShowPairing(true);
+                                    startPairing();
+                                }}
+                            >
                                 🔗 {t('discord_modal.pair_start_button')}
                             </button>
 
                             {/* 고급: 수동 호스트 ID 입력 */}
                             <div style={{ marginTop: 12, textAlign: 'center' }}>
-                                <button className="discord-instance-select-btn" style={{ fontSize: 11 }}
-                                    onClick={() => setShowManualHostId(prev => !prev)}>
+                                <button
+                                    className="discord-instance-select-btn"
+                                    style={{ fontSize: 11 }}
+                                    onClick={() => setShowManualHostId((prev) => !prev)}
+                                >
                                     {showManualHostId ? '▲' : '▼'} {t('discord_modal.cloud_manual_toggle')}
                                 </button>
                             </div>
                             {showManualHostId && (
                                 <div className="discord-form-group" style={{ marginTop: 8 }}>
-                                    <input type="text" placeholder={t('discord_modal.host_id_placeholder')}
+                                    <input
+                                        type="text"
+                                        placeholder={t('discord_modal.host_id_placeholder')}
                                         value={manualHostIdInput}
                                         onChange={(e) => setManualHostIdInput(e.target.value)}
-                                        onKeyDown={(e) => { if (e.key === 'Enter' && manualHostIdInput.trim()) setDiscordCloudHostId(manualHostIdInput.trim()); }}
-                                        className="discord-input" style={{ width: '100%' }} />
-                                    <button className="discord-pair-start-btn" style={{ marginTop: 6, width: '100%', fontSize: 12 }}
-                                        onClick={() => { if (manualHostIdInput.trim()) setDiscordCloudHostId(manualHostIdInput.trim()); }}
-                                        disabled={!manualHostIdInput.trim()}>
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && manualHostIdInput.trim())
+                                                setDiscordCloudHostId(manualHostIdInput.trim());
+                                        }}
+                                        className="discord-input"
+                                        style={{ width: '100%' }}
+                                    />
+                                    <button
+                                        className="discord-pair-start-btn"
+                                        style={{ marginTop: 6, width: '100%', fontSize: 12 }}
+                                        onClick={() => {
+                                            if (manualHostIdInput.trim())
+                                                setDiscordCloudHostId(manualHostIdInput.trim());
+                                        }}
+                                        disabled={!manualHostIdInput.trim()}
+                                    >
                                         {t('discord_modal.cloud_manual_connect')}
                                     </button>
                                 </div>
@@ -901,8 +1248,11 @@ function DiscordBotModal({
                 {cloudState === 'pairing' && (
                     <div className="discord-cloud-section">
                         {renderPairingBlock()}
-                        <button className="discord-pair-start-btn discord-btn-secondary" style={{ marginTop: 8, width: '100%', fontSize: 12 }}
-                            onClick={resetPairing}>
+                        <button
+                            className="discord-pair-start-btn discord-btn-secondary"
+                            style={{ marginTop: 8, width: '100%', fontSize: 12 }}
+                            onClick={resetPairing}
+                        >
                             ← {t('discord_modal.back_to_setup')}
                         </button>
                     </div>
@@ -938,7 +1288,13 @@ function DiscordBotModal({
                                 <button className="discord-pair-start-btn" onClick={loadCloudNodes}>
                                     🔄 {t('discord_modal.cloud_retry')}
                                 </button>
-                                <button className="discord-pair-start-btn" onClick={() => { setShowPairing(true); startPairing(); }}>
+                                <button
+                                    className="discord-pair-start-btn"
+                                    onClick={() => {
+                                        setShowPairing(true);
+                                        startPairing();
+                                    }}
+                                >
                                     🔗 {t('discord_modal.cloud_re_pair')}
                                 </button>
                                 <button className="discord-pair-start-btn discord-btn-danger" onClick={disconnectCloud}>
@@ -961,25 +1317,51 @@ function DiscordBotModal({
                                 <span className="discord-cloud-host-id">Host: {discordCloudHostId}</span>
                             </div>
                             <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
-                                <button className="discord-pair-start-btn" style={{ fontSize: 11, padding: '3px 10px' }}
-                                    onClick={loadCloudNodes}>🔄</button>
-                                <button className="discord-pair-start-btn discord-btn-danger" style={{ fontSize: 11, padding: '3px 10px' }}
-                                    onClick={disconnectCloud} title={t('discord_modal.cloud_disconnect')}><Icon name="cloudOff" size="sm" /></button>
+                                <button
+                                    className="discord-pair-start-btn"
+                                    style={{ fontSize: 11, padding: '3px 10px' }}
+                                    onClick={loadCloudNodes}
+                                >
+                                    🔄
+                                </button>
+                                <button
+                                    className="discord-pair-start-btn discord-btn-danger"
+                                    style={{ fontSize: 11, padding: '3px 10px' }}
+                                    onClick={disconnectCloud}
+                                    title={t('discord_modal.cloud_disconnect')}
+                                >
+                                    <Icon name="cloudOff" size="sm" />
+                                </button>
                             </div>
                         </div>
 
                         {/* 노드 카드 목록 */}
                         {cloudNodes.length > 0 && (
                             <div className="discord-node-list">
-                                <h4>📡 {t('discord_modal.cloud_nodes_title')} ({cloudNodes.length})</h4>
-                                {cloudNodes.map(node => (
-                                    <div key={node.guildId} className={`discord-node-card ${expandedNode === node.guildId ? 'expanded' : ''}`}>
-                                        <div className="discord-node-card-header" onClick={() => toggleNodeExpand(node.guildId)}>
+                                <h4>
+                                    📡 {t('discord_modal.cloud_nodes_title')} ({cloudNodes.length})
+                                </h4>
+                                {cloudNodes.map((node) => (
+                                    <div
+                                        key={node.guildId}
+                                        className={clsx('discord-node-card', {
+                                            expanded: expandedNode === node.guildId,
+                                        })}
+                                    >
+                                        <div
+                                            className="discord-node-card-header"
+                                            onClick={() => toggleNodeExpand(node.guildId)}
+                                        >
                                             <div className="discord-node-card-info">
-                                                <span className="discord-node-guild-name">{node.guildName || node.guildId}</span>
+                                                <span className="discord-node-guild-name">
+                                                    {node.guildName || node.guildId}
+                                                </span>
                                                 <span className="discord-node-guild-id">{node.guildId}</span>
                                             </div>
-                                            <Icon name={expandedNode === node.guildId ? 'chevronDown' : 'chevronRight'} size="sm" />
+                                            <Icon
+                                                name={expandedNode === node.guildId ? 'chevronDown' : 'chevronRight'}
+                                                size="sm"
+                                            />
                                         </div>
 
                                         {expandedNode === node.guildId && (
@@ -1000,9 +1382,21 @@ function DiscordBotModal({
                         )}
 
                         {/* 노드 추가 버튼 (항상 표시) */}
-                        <button className="discord-pair-start-btn" style={{ marginTop: 8, width: '100%' }}
-                            onClick={() => { if (showPairing) { resetPairing(); } else { setShowPairing(true); startPairing(); } }}>
-                            {showPairing ? '✕ ' + t('discord_modal.pair_section_title') : '➕ ' + t('discord_modal.cloud_add_node')}
+                        <button
+                            className="discord-pair-start-btn"
+                            style={{ marginTop: 8, width: '100%' }}
+                            onClick={() => {
+                                if (showPairing) {
+                                    resetPairing();
+                                } else {
+                                    setShowPairing(true);
+                                    startPairing();
+                                }
+                            }}
+                        >
+                            {showPairing
+                                ? '✕ ' + t('discord_modal.pair_section_title')
+                                : '➕ ' + t('discord_modal.cloud_add_node')}
                         </button>
                         {showPairing && renderPairingBlock()}
                     </div>
@@ -1014,7 +1408,9 @@ function DiscordBotModal({
                 <div className="discord-config-section">
                     {!isCloud && (
                         <div className="discord-form-group">
-                            <label><Icon name="key" size="sm" /> {t('discord_modal.token_label')}</label>
+                            <label>
+                                <Icon name="key" size="sm" /> {t('discord_modal.token_label')}
+                            </label>
                             <input
                                 type="password"
                                 placeholder={t('discord_modal.token_placeholder')}
@@ -1052,26 +1448,177 @@ function DiscordBotModal({
                 </div>
 
                 <div className="discord-info-box">
-                    <h4><Icon name="lightbulb" size="sm" /> {t('discord_modal.usage_title')}</h4>
+                    <h4>
+                        <Icon name="lightbulb" size="sm" /> {t('discord_modal.usage_title')}
+                    </h4>
                     <p>{t('discord_modal.usage_instruction')}</p>
                     <code>{discordPrefix || '!saba'} [module] [command]</code>
                     <p className="info-note">{t('discord_modal.usage_note')}</p>
                 </div>
 
                 {!isCloud && (
-                    <div className="discord-music-toggle-card">
-                        <div className="discord-music-toggle-info">
-                            <span className="discord-music-toggle-icon">🎵</span>
-                            <div className="discord-music-toggle-text">
-                                <span className="discord-music-toggle-label">{t('discord_modal.music_toggle_label')}</span>
-                                <span className="discord-music-toggle-desc">{t('discord_modal.music_toggle_description')}</span>
+                    <>
+                        <div
+                            className={clsx(
+                                'discord-music-toggle-card',
+                                !musicExtEnabled && 'disabled',
+                                musicExtEnabled && 'clickable',
+                            )}
+                            onClick={() => {
+                                if (musicExtEnabled && !showMusicSettings) openMusicSettings();
+                                else if (showMusicSettings) setShowMusicSettings(false);
+                            }}
+                        >
+                            <div className="discord-music-toggle-info">
+                                <span className="discord-music-toggle-icon">🎵</span>
+                                <div className="discord-music-toggle-text">
+                                    <span className="discord-music-toggle-label">
+                                        {t('discord_modal.music_toggle_label')}
+                                    </span>
+                                    <span className="discord-music-toggle-desc">
+                                        {musicExtEnabled
+                                            ? t('discord_modal.music_toggle_description')
+                                            : t('discord_modal.music_ext_disabled', {
+                                                defaultValue: '익스텐션 설정에서 Music Bot 익스텐션을 활성화해주세요.',
+                                            })}
+                                    </span>
+                                </div>
+                            </div>
+                            <div onClick={(e) => e.stopPropagation()}>
+                                <SabaToggle
+                                    checked={musicExtEnabled && discordMusicEnabled}
+                                    onChange={(checked) => setDiscordMusicEnabled(checked)}
+                                    disabled={!musicExtEnabled}
+                                />
                             </div>
                         </div>
-                        <SabaToggle
-                            checked={discordMusicEnabled}
-                            onChange={(checked) => setDiscordMusicEnabled(checked)}
-                        />
-                    </div>
+
+                        {showMusicSettings && musicExtEnabled && (
+                            <div className="discord-music-settings-panel" ref={musicSettingsRef}>
+                                <div className="discord-music-settings-header">
+                                    <span className="discord-music-settings-title">
+                                        {t('discord_modal.music_settings_title')}
+                                    </span>
+                                </div>
+                                <div className="discord-music-settings-body">
+                                    {/* 모듈 별명 */}
+                                    <div className="discord-music-alias-section">
+                                        <h4>
+                                            <Icon name="hash" size="sm" />
+                                            {t('discord_modal.music_module_aliases_title')}
+                                        </h4>
+                                        <small>{t('discord_modal.music_module_aliases_desc')}</small>
+                                        <input
+                                            className="discord-music-module-alias-input"
+                                            type="text"
+                                            placeholder={t('discord_modal.music_module_aliases_placeholder')}
+                                            value={musicModuleAliases}
+                                            onChange={(e) => setMusicModuleAliases(e.target.value)}
+                                        />
+                                        <div className="discord-music-alias-badges">
+                                            {DEFAULT_MUSIC_MODULE_ALIASES.map((a) => (
+                                                <span key={a} className="discord-music-alias-badge default">
+                                                    {a}
+                                                </span>
+                                            ))}
+                                            {musicModuleAliases
+                                                .split(',')
+                                                .map((a) => a.trim())
+                                                .filter((a) => a.length > 0)
+                                                .map((a) => (
+                                                    <span key={a} className="discord-music-alias-badge">
+                                                        {a}
+                                                    </span>
+                                                ))}
+                                        </div>
+                                        <div className="default-hint">
+                                            {t('discord_modal.music_module_aliases_default')}
+                                        </div>
+                                    </div>
+
+                                    {/* 명령어 별명 */}
+                                    <div className="discord-music-alias-section">
+                                        <h4>
+                                            <Icon name="zap" size="sm" />
+                                            {t('discord_modal.music_command_aliases_title')}
+                                        </h4>
+                                        <small>{t('discord_modal.music_command_aliases_desc')}</small>
+                                        <div className="discord-music-cmd-grid">
+                                            {Object.entries(MUSIC_COMMAND_DEFS).map(([cmd, def]) => {
+                                                const currentVal = musicCommandAliases[cmd] || '';
+                                                const currentArr = currentVal
+                                                    .split(',')
+                                                    .map((a) => a.trim())
+                                                    .filter((a) => a.length > 0);
+                                                return (
+                                                    <div key={cmd} className="discord-music-cmd-row">
+                                                        <div className="discord-music-cmd-info">
+                                                            <span className="discord-music-cmd-name">
+                                                                {t(`discord_modal.music_cmd_${cmd}`,
+                                                                    { defaultValue: cmd })}
+                                                            </span>
+                                                            <span className="discord-music-cmd-desc">
+                                                                {t(`discord_modal.music_cmd_${cmd}_desc`,
+                                                                    { defaultValue: '' })}
+                                                            </span>
+                                                        </div>
+                                                        <div>
+                                                            <input
+                                                                className="discord-music-cmd-input"
+                                                                type="text"
+                                                                placeholder={
+                                                                    def.defaultAliases.join(', ') +
+                                                                    ' (' + t('discord_modal.music_command_aliases_placeholder') + ')'
+                                                                }
+                                                                value={currentVal}
+                                                                onChange={(e) =>
+                                                                    setMusicCommandAliases((prev) => ({
+                                                                        ...prev,
+                                                                        [cmd]: e.target.value,
+                                                                    }))
+                                                                }
+                                                            />
+                                                            <div className="discord-music-alias-badges">
+                                                                {currentArr.length === 0
+                                                                    ? def.defaultAliases.map((a) => (
+                                                                        <span
+                                                                            key={a}
+                                                                            className="discord-music-alias-badge default"
+                                                                        >
+                                                                            {a}
+                                                                        </span>
+                                                                    ))
+                                                                    : currentArr.map((a) => (
+                                                                        <span
+                                                                            key={a}
+                                                                            className="discord-music-alias-badge"
+                                                                        >
+                                                                            {a}
+                                                                        </span>
+                                                                    ))}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    {/* 저장 / 초기화 버튼 */}
+                                    <div className="discord-music-settings-actions">
+                                        <button className="btn btn-save" onClick={handleSaveMusicAliases}>
+                                            <Icon name="save" size="sm" />
+                                            {t('discord_modal.music_aliases_save')}
+                                        </button>
+                                        <button className="btn btn-reset" onClick={handleResetMusicAliases}>
+                                            <Icon name="refresh" size="sm" />
+                                            {t('discord_modal.music_aliases_reset')}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </>
                 )}
 
                 {isCloud && (
@@ -1085,18 +1632,32 @@ function DiscordBotModal({
             <div className="discord-modal-footer">
                 {!isCloud && (
                     <button
-                        className={`discord-btn ${discordBotStatus === 'running' ? 'discord-btn-stop' : 'discord-btn-start'}`}
-                        onClick={() => discordBotStatus === 'running' ? handleStopDiscordBot() : handleStartDiscordBot()}
+                        className={clsx(
+                            'discord-btn',
+                            discordBotStatus === 'running' ? 'discord-btn-stop' : 'discord-btn-start',
+                        )}
+                        onClick={() =>
+                            discordBotStatus === 'running' ? handleStopDiscordBot() : handleStartDiscordBot()
+                        }
                     >
-                        {discordBotStatus === 'running' ? t('discord_modal.stop_button') : t('discord_modal.start_button')}
+                        {discordBotStatus === 'running'
+                            ? t('discord_modal.stop_button')
+                            : t('discord_modal.start_button')}
                     </button>
                 )}
                 {isCloud && cloudState === 'connected' && (
                     <button
-                        className={`discord-btn ${discordBotStatus === 'running' ? 'discord-btn-stop' : 'discord-btn-start'}`}
-                        onClick={() => discordBotStatus === 'running' ? handleStopDiscordBot() : handleStartDiscordBot()}
+                        className={clsx(
+                            'discord-btn',
+                            discordBotStatus === 'running' ? 'discord-btn-stop' : 'discord-btn-start',
+                        )}
+                        onClick={() =>
+                            discordBotStatus === 'running' ? handleStopDiscordBot() : handleStartDiscordBot()
+                        }
                     >
-                        {discordBotStatus === 'running' ? t('discord_modal.agent_stop_button') : t('discord_modal.agent_start_button')}
+                        {discordBotStatus === 'running'
+                            ? t('discord_modal.agent_stop_button')
+                            : t('discord_modal.agent_start_button')}
                     </button>
                 )}
                 <button className="discord-btn discord-btn-save" onClick={saveCurrentSettings}>

@@ -488,6 +488,32 @@ class DockerEngine:
         if not self.dockerd_exe.exists():
             raise FileNotFoundError(f"dockerd not found at {self.dockerd_exe}")
         self.data_root.mkdir(parents=True, exist_ok=True)
+
+        # 1차: 일반 권한으로 시도
+        result = self._try_spawn_dockerd()
+        if result["started"]:
+            # 빠른 활성 체크 — 3초 내 fatal 로그 감지
+            time.sleep(3)
+            if self._daemon_running():
+                return result
+            # fatal 로그 확인
+            fatal = None
+            if self.log_file.exists():
+                fatal = _check_log_for_fatal(self.log_file.read_text(errors="replace"))
+            if fatal and ("access is denied" in fatal.lower() or "required service" in fatal.lower()):
+                _log(f"dockerd failed with privilege error: {fatal}")
+                _log("Retrying with elevated (admin) privileges...")
+                elevated = self._try_spawn_dockerd_elevated()
+                if elevated["started"]:
+                    return elevated
+                return {"started": False, "reason": "elevation_failed",
+                        "error": f"dockerd requires admin privileges: {fatal}"}
+            if fatal:
+                return {"started": False, "reason": "daemon_fatal", "error": fatal}
+        return result
+
+    def _try_spawn_dockerd(self) -> dict[str, Any]:
+        """일반 권한으로 dockerd를 직접 Popen 스폰."""
         args = [str(self.dockerd_exe), "--data-root", str(self.data_root)]
         _log(f"Spawning: {' '.join(args)}")
         log_fh = open(self.log_file, "a")
@@ -499,6 +525,57 @@ class DockerEngine:
         self._pid_file.write_text(str(proc.pid))
         _log(f"dockerd spawned (PID {proc.pid})")
         return {"started": True, "pid": proc.pid}
+
+    def _try_spawn_dockerd_elevated(self) -> dict[str, Any]:
+        """Windows UAC 프롬프트를 통해 관리자 권한으로 dockerd를 실행.
+
+        ShellExecuteW('runas') 로 helper 스크립트를 실행하여
+        UAC 대화 상자를 사용자에게 표시합니다.
+        사용자가 승인하면 dockerd가 관리자 권한으로 시작됩니다.
+        """
+        if _SYSTEM != "Windows":
+            return {"started": False, "reason": "elevation_not_supported"}
+
+        # helper 스크립트 생성 — dockerd를 시작하고 PID를 기록
+        helper_script = self._dir / "_elevated_start.bat"
+        pid_out = self._pid_file
+        log_path = self.log_file
+        script_content = (
+            f'@echo off\r\n'
+            f'"{self.dockerd_exe}" --data-root "{self.data_root}" '
+            f'>> "{log_path}" 2>&1 &\r\n'
+            f'for /f "tokens=2" %%a in (\'tasklist /fi "imagename eq dockerd.exe" '
+            f'/fo list ^| findstr "PID:"\') do (\r\n'
+            f'  echo %%a > "{pid_out}"\r\n'
+            f')\r\n'
+        )
+        helper_script.write_text(script_content, encoding="utf-8")
+
+        try:
+            import ctypes
+            _log("Requesting UAC elevation for dockerd...")
+            ret = ctypes.windll.shell32.ShellExecuteW(
+                None, "runas", str(helper_script), None, str(self._dir), 0  # SW_HIDE
+            )
+            # ShellExecuteW returns > 32 on success
+            if ret > 32:
+                _log(f"UAC elevation accepted (ShellExecute returned {ret})")
+                # 스크립트 실행 후 PID 파일이 작성될 때까지 대기
+                for _ in range(10):
+                    time.sleep(1)
+                    pid = self._read_pid()
+                    if pid and self._daemon_running():
+                        _log(f"Elevated dockerd running (PID {pid})")
+                        return {"started": True, "pid": pid, "elevated": True}
+                _log("Elevated dockerd did not start in time")
+                return {"started": False, "reason": "elevation_timeout"}
+            else:
+                reason = "denied" if ret == 5 else f"error_code_{ret}"
+                _log(f"UAC elevation failed (returned {ret})")
+                return {"started": False, "reason": reason}
+        except Exception as e:
+            _log(f"UAC elevation error: {e}")
+            return {"started": False, "reason": "elevation_error", "error": str(e)}
 
     def _wsl_start_daemon(self) -> dict[str, Any]:
         if _wsl_daemon_running():

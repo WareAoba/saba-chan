@@ -1,16 +1,34 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import clsx from 'clsx';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import './Modals.css';
+import { useExtensions } from '../../contexts/ExtensionContext';
+import { useDevMode } from '../../hooks/useDevMode';
+import { useModalClose } from '../../hooks/useModalClose';
+import { useSettingsStore } from '../../stores/useSettingsStore';
+import { getTheme, setTheme as saveTheme } from '../../utils/themeManager';
+import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { SabaToggle } from '../ui/SabaUI';
-import CustomDropdown from '../CustomDropdown/CustomDropdown';
-import { getTheme, setTheme as saveTheme } from '../../utils/themeManager';
-import { useModalClose } from '../../hooks/useModalClose';
-import { useDevMode } from '../../hooks/useDevMode';
-import { useExtensions } from '../../contexts/ExtensionContext';
 import SabaStorage from './SabaStorage';
 
-function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChange, ipcPort, onIpcPortChange, consoleBufferSize, onConsoleBufferSizeChange, onTestModal, onTestProgressBar, onTestWaitingImage, onTestLoadingScreen, initialView, discordCloudRelayUrl, onDiscordCloudRelayUrlChange }) {
+function SettingsModal({
+    isOpen,
+    onClose,
+    refreshInterval,
+    onRefreshIntervalChange,
+    ipcPort,
+    onIpcPortChange,
+    consoleBufferSize,
+    onConsoleBufferSizeChange,
+    onTestModal,
+    onTestProgressBar,
+    onTestWaitingImage,
+    onTestLoadingScreen,
+    initialView,
+    discordCloudRelayUrl,
+    onDiscordCloudRelayUrlChange,
+}) {
     const { t, i18n } = useTranslation(['gui', 'common']);
     const [activeTab, setActiveTab] = useState('general');
     const [showUpdatePanel, setShowUpdatePanel] = useState(false);
@@ -43,6 +61,7 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
         indicator.style.width = `${btnRect.width}px`;
     }, []);
 
+    // biome-ignore lint/correctness/useExhaustiveDependencies: activeTab/showUpdatePanel/isOpen trigger DOM changes that syncIndicator reads via querySelector
     useEffect(() => {
         requestAnimationFrame(syncIndicator);
     }, [activeTab, showUpdatePanel, isOpen, syncIndicator]);
@@ -54,12 +73,21 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
     const devMode = useDevMode();
     const { extensions, toggleExtension } = useExtensions();
     const [togglingIds, setTogglingIds] = useState(new Set());
+    const autoGeneratePasswords = useSettingsStore((s) => s.autoGeneratePasswords);
+    const portConflictCheck = useSettingsStore((s) => s.portConflictCheck);
 
-    const handleExtensionToggle = useCallback(async (extId, enable) => {
-        setTogglingIds(prev => new Set(prev).add(extId));
-        await toggleExtension(extId, enable);
-        setTogglingIds(prev => { const s = new Set(prev); s.delete(extId); return s; });
-    }, [toggleExtension]);
+    const handleExtensionToggle = useCallback(
+        async (extId, enable) => {
+            setTogglingIds((prev) => new Set(prev).add(extId));
+            await toggleExtension(extId, enable);
+            setTogglingIds((prev) => {
+                const s = new Set(prev);
+                s.delete(extId);
+                return s;
+            });
+        },
+        [toggleExtension],
+    );
 
     // 외부에서 initialView 지정으로 열렸을 때 해당 탭 자동 진입
     useEffect(() => {
@@ -83,7 +111,7 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
         const oldIndex = tabOrder.indexOf(activeTab);
         const newIndex = tabOrder.indexOf(newTab);
         if (newTab === activeTab) return;
-        setShowUpdatePanel(false);  // 탭 전환 시 업데이트 패널 해제
+        setShowUpdatePanel(false); // 탭 전환 시 업데이트 패널 해제
         setSlideDirection(newIndex > oldIndex ? 'slide-left' : 'slide-right');
         setActiveTab(newTab);
     };
@@ -129,18 +157,20 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
     };
 
     // 언어 변경 핸들러
-    const handleLanguageChange = (lng) => {
+    const handleLanguageChange = async (lng) => {
         setSelectedLanguage(lng);
-        // 1. localStorage에 저장
-        localStorage.setItem('i18nextLng', lng);
-        // 2. i18n 언어 변경
-        i18n.changeLanguage(lng);
-        // 3. Electron 설정에 저장 (settings.json)
+        // 1. Electron settings.json에 먼저 확실히 저장 (봇·데몬 공유 원천)
         if (window.electron) {
-            window.electron.setLanguage(lng).catch((err) => {
+            try {
+                await window.electron.setLanguage(lng);
+            } catch (err) {
                 console.error('Failed to save language to Electron settings:', err);
-            });
+            }
         }
+        // 2. localStorage 동기화 (캐시)
+        localStorage.setItem('i18nextLng', lng);
+        // 3. i18n 언어 변경 (UI 즉시 반영)
+        i18n.changeLanguage(lng);
     };
 
     // 테마 변경 핸들러
@@ -177,7 +207,7 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
     }
 
     return (
-        <div className={`settings-modal-overlay ${isClosing ? 'closing' : ''}`} onClick={requestClose}>
+        <div className={clsx('settings-modal-overlay', { closing: isClosing })} onClick={requestClose}>
             <div className="settings-modal-container" onClick={(e) => e.stopPropagation()}>
                 {!showUpdatePanel && (
                     <>
@@ -188,25 +218,25 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
                         <div className="settings-modal-tabs" ref={tabsRef}>
                             <div className="settings-tab-indicator" ref={indicatorRef} />
                             <button
-                                className={`settings-tab ${activeTab === 'general' ? 'active' : ''}`}
+                                className={clsx('settings-tab', { active: activeTab === 'general' })}
                                 onClick={() => handleTabChange('general')}
                             >
                                 {t('gui:settings_modal.general')}
                             </button>
                             <button
-                                className={`settings-tab ${activeTab === 'appearance' ? 'active' : ''}`}
+                                className={clsx('settings-tab', { active: activeTab === 'appearance' })}
                                 onClick={() => handleTabChange('appearance')}
                             >
                                 {t('gui:settings_modal.appearance')}
                             </button>
                             <button
-                                className={`settings-tab ${activeTab === 'extensions' ? 'active' : ''}`}
+                                className={clsx('settings-tab', { active: activeTab === 'extensions' })}
                                 onClick={() => handleTabChange('extensions')}
                             >
                                 {t('gui:settings_modal.extensions_tab', 'Extensions')}
                             </button>
                             <button
-                                className={`settings-tab ${activeTab === 'advanced' ? 'active' : ''}`}
+                                className={clsx('settings-tab', { active: activeTab === 'advanced' })}
                                 onClick={() => handleTabChange('advanced')}
                             >
                                 {t('gui:settings_modal.advanced_tab')}
@@ -215,15 +245,23 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
                     </>
                 )}
 
-                <div className={`settings-modal-content ${showUpdatePanel ? 'update-panel-mode' : ''}`}>
+                <div className={clsx('settings-modal-content', { 'update-panel-mode': showUpdatePanel })}>
                     {activeTab === 'general' && !showUpdatePanel && (
-                        <div className={`settings-tab-content ${slideDirection}`} key="general" onAnimationEnd={() => setSlideDirection('')}>
+                        <div
+                            className={clsx('settings-tab-content', slideDirection)}
+                            key="general"
+                            onAnimationEnd={() => setSlideDirection('')}
+                        >
                             <h3>{t('gui:settings_modal.general')}</h3>
-                            
+
                             <div className="setting-item">
                                 <label className="setting-label">
-                                    <span className="setting-title"><Icon name="globe" size="sm" /> {t('gui:settings_modal.language_label')}</span>
-                                    <span className="setting-description">{t('gui:settings_modal.language_description')}</span>
+                                    <span className="setting-title">
+                                        <Icon name="globe" size="sm" /> {t('gui:settings_modal.language_label')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.language_description')}
+                                    </span>
                                 </label>
                                 <CustomDropdown
                                     className="setting-select"
@@ -246,8 +284,13 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
 
                             <div className="setting-item">
                                 <label className="setting-label">
-                                    <span className="setting-title"><Icon name="refresh" size="sm" /> {t('gui:settings_modal.refresh_interval_label')}</span>
-                                    <span className="setting-description">{t('gui:settings_modal.refresh_interval_description')}</span>
+                                    <span className="setting-title">
+                                        <Icon name="refresh" size="sm" />{' '}
+                                        {t('gui:settings_modal.refresh_interval_label')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.refresh_interval_description')}
+                                    </span>
                                 </label>
                                 <CustomDropdown
                                     className="setting-select"
@@ -264,10 +307,17 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
                             </div>
 
                             {/* 사바 스토리지 — 클릭하면 SabaStorage로 전환 */}
-                            <div className="setting-item setting-item-clickable" onClick={() => setShowUpdatePanel(true)}>
+                            <div
+                                className="setting-item setting-item-clickable"
+                                onClick={() => setShowUpdatePanel(true)}
+                            >
                                 <label className="setting-label">
-                                    <span className="setting-title"><Icon name="package" size="sm" /> {t('saba_storage.title', '사바 스토리지')}</span>
-                                    <span className="setting-description">{t('saba_storage.setting_description', '업데이트, 모듈, 익스텐션 관리')}</span>
+                                    <span className="setting-title">
+                                        <Icon name="package" size="sm" /> {t('saba_storage.title', '사바 스토리지')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('saba_storage.setting_description', '업데이트, 모듈, 익스텐션 관리')}
+                                    </span>
                                 </label>
                                 <Icon name="chevronRight" size="sm" color="var(--brand-primary)" />
                             </div>
@@ -276,18 +326,30 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
 
                     {activeTab === 'general' && showUpdatePanel && (
                         <div className="settings-tab-content" key="update-panel">
-                            <SabaStorage onBack={handleUpdatePanelBack} isExiting={updatePanelExiting} devMode={devMode} />
+                            <SabaStorage
+                                onBack={handleUpdatePanelBack}
+                                isExiting={updatePanelExiting}
+                                devMode={devMode}
+                            />
                         </div>
                     )}
 
                     {activeTab === 'appearance' && (
-                        <div className={`settings-tab-content ${slideDirection}`} key="appearance" onAnimationEnd={() => setSlideDirection('')}>
+                        <div
+                            className={clsx('settings-tab-content', slideDirection)}
+                            key="appearance"
+                            onAnimationEnd={() => setSlideDirection('')}
+                        >
                             <h3>{t('gui:settings_modal.appearance')}</h3>
-                            
+
                             <div className="setting-item">
                                 <label className="setting-label">
-                                    <span className="setting-title"><Icon name="palette" size="sm" /> {t('gui:settings_modal.theme_label')}</span>
-                                    <span className="setting-description">{t('gui:settings_modal.theme_description')}</span>
+                                    <span className="setting-title">
+                                        <Icon name="palette" size="sm" /> {t('gui:settings_modal.theme_label')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.theme_description')}
+                                    </span>
                                 </label>
                                 <CustomDropdown
                                     className="setting-select"
@@ -304,10 +366,17 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
                     )}
 
                     {activeTab === 'extensions' && (
-                        <div className={`settings-tab-content ${slideDirection}`} key="extensions" onAnimationEnd={() => setSlideDirection('')}>
+                        <div
+                            className={clsx('settings-tab-content', slideDirection)}
+                            key="extensions"
+                            onAnimationEnd={() => setSlideDirection('')}
+                        >
                             <h3>{t('gui:settings_modal.extensions_tab', 'Extensions')}</h3>
                             <p className="setting-description" style={{ margin: '0 0 12px', opacity: 0.75 }}>
-                                {t('gui:settings_modal.extensions_toggle_hint', '설치된 익스텐션을 활성화하거나 비활성화합니다. 설치·삭제는 사바 스토리지에서 가능합니다.')}
+                                {t(
+                                    'gui:settings_modal.extensions_toggle_hint',
+                                    '설치된 익스텐션을 활성화하거나 비활성화합니다. 설치·삭제는 사바 스토리지에서 가능합니다.',
+                                )}
                             </p>
 
                             {extensions.length === 0 ? (
@@ -317,12 +386,18 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
                                     </span>
                                 </div>
                             ) : (
-                                extensions.map(ext => (
+                                extensions.map((ext) => (
                                     <div key={ext.id} className="setting-item extension-item">
-                                        <label className="setting-label" htmlFor={`ext-toggle-${ext.id}`} style={{ cursor: 'pointer' }}>
+                                        <label
+                                            className="setting-label"
+                                            htmlFor={`ext-toggle-${ext.id}`}
+                                            style={{ cursor: 'pointer' }}
+                                        >
                                             <span className="setting-title">
                                                 {ext.name || ext.id}
-                                                {ext.version && <span className="extension-version">v{ext.version}</span>}
+                                                {ext.version && (
+                                                    <span className="extension-version">v{ext.version}</span>
+                                                )}
                                             </span>
                                             {ext.description && (
                                                 <span className="setting-description">{ext.description}</span>
@@ -337,10 +412,21 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
                                 ))
                             )}
 
-                            <div className="setting-item setting-item-clickable" style={{ marginTop: 8 }} onClick={() => { handleTabChange('general'); setTimeout(() => setShowUpdatePanel(true), 50); }}>
+                            <div
+                                className="setting-item setting-item-clickable"
+                                style={{ marginTop: 8 }}
+                                onClick={() => {
+                                    handleTabChange('general');
+                                    setTimeout(() => setShowUpdatePanel(true), 50);
+                                }}
+                            >
                                 <label className="setting-label" style={{ cursor: 'pointer' }}>
-                                    <span className="setting-title"><Icon name="package" size="sm" /> {t('saba_storage.title', '사바 스토리지')}</span>
-                                    <span className="setting-description">{t('gui:settings_modal.extensions_store_hint', '설치·삭제·업데이트')}</span>
+                                    <span className="setting-title">
+                                        <Icon name="package" size="sm" /> {t('saba_storage.title', '사바 스토리지')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.extensions_store_hint', '설치·삭제·업데이트')}
+                                    </span>
                                 </label>
                                 <Icon name="chevronRight" size="sm" color="var(--brand-primary)" />
                             </div>
@@ -348,18 +434,60 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
                     )}
 
                     {activeTab === 'advanced' && (
-                        <div className={`settings-tab-content ${slideDirection}`} key="advanced" onAnimationEnd={() => setSlideDirection('')}>
+                        <div
+                            className={clsx('settings-tab-content', slideDirection)}
+                            key="advanced"
+                            onAnimationEnd={() => setSlideDirection('')}
+                        >
                             <h3>{t('gui:settings_modal.advanced_tab')}</h3>
+
+                            {/* 비밀번호 자동 생성 설정 */}
+                            <div className="setting-item">
+                                <label className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="key" size="sm" />{' '}
+                                        {t('gui:settings_modal.auto_generate_passwords_label', 'Auto-generate Passwords')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.auto_generate_passwords_description', 'Automatically fill empty RCON/REST password fields with random passwords when opening server settings.')}
+                                    </span>
+                                </label>
+                                <SabaToggle
+                                    checked={autoGeneratePasswords}
+                                    onChange={(checked) => useSettingsStore.getState().update({ autoGeneratePasswords: checked })}
+                                />
+                            </div>
+
+                            {/* 포트 충돌 검사 설정 */}
+                            <div className="setting-item">
+                                <label className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="alertCircle" size="sm" />{' '}
+                                        {t('gui:settings_modal.port_conflict_check_label', 'Port Conflict Detection')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.port_conflict_check_description', 'Show warnings when multiple server instances use the same port.')}
+                                    </span>
+                                </label>
+                                <SabaToggle
+                                    checked={portConflictCheck}
+                                    onChange={(checked) => useSettingsStore.getState().update({ portConflictCheck: checked })}
+                                />
+                            </div>
 
                             {/* IPC 포트 설정 */}
                             <div className="setting-item">
                                 <label className="setting-label">
-                                    <span className="setting-title"><Icon name="hash" size="sm" /> {t('gui:settings_modal.ipc_port_label')}</span>
-                                    <span className="setting-description">{t('gui:settings_modal.ipc_port_description')}</span>
+                                    <span className="setting-title">
+                                        <Icon name="hash" size="sm" /> {t('gui:settings_modal.ipc_port_label')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.ipc_port_description')}
+                                    </span>
                                 </label>
                                 <input
                                     type="number"
-                                    className={`setting-input-number ${ipcPortError ? 'setting-input-error' : ''}`}
+                                    className={clsx('setting-input-number', { 'setting-input-error': ipcPortError })}
                                     value={localIpcPort}
                                     onChange={(e) => handleIpcPortChange(e.target.value)}
                                     min={1024}
@@ -381,14 +509,24 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
                             {/* 커스텀 릴레이 서버 URL */}
                             <div className="setting-item">
                                 <label className="setting-label">
-                                    <span className="setting-title"><Icon name="globe" size="sm" /> {t('gui:settings_modal.relay_url_label', '릴레이 서버 URL')}</span>
-                                    <span className="setting-description">{t('gui:settings_modal.relay_url_description', '클라우드 모드에서 사용할 릴레이 서버의 URL입니다. 비어있으면 기본 서버를 사용합니다.')}</span>
+                                    <span className="setting-title">
+                                        <Icon name="globe" size="sm" />{' '}
+                                        {t('gui:settings_modal.relay_url_label', '릴레이 서버 URL')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t(
+                                            'gui:settings_modal.relay_url_description',
+                                            '클라우드 모드에서 사용할 릴레이 서버의 URL입니다. 비어있으면 기본 서버를 사용합니다.',
+                                        )}
+                                    </span>
                                 </label>
                                 <input
                                     type="text"
                                     className="setting-input-text"
                                     value={discordCloudRelayUrl || ''}
-                                    onChange={(e) => onDiscordCloudRelayUrlChange && onDiscordCloudRelayUrlChange(e.target.value)}
+                                    onChange={(e) =>
+                                        onDiscordCloudRelayUrlChange && onDiscordCloudRelayUrlChange(e.target.value)
+                                    }
                                     placeholder="https://relay.saba-chan.app"
                                 />
                             </div>
@@ -396,8 +534,13 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
                             {/* 콘솔 버퍼 크기 설정 */}
                             <div className="setting-item">
                                 <label className="setting-label">
-                                    <span className="setting-title"><Icon name="terminal" size="sm" /> {t('gui:settings_modal.console_buffer_label')}</span>
-                                    <span className="setting-description">{t('gui:settings_modal.console_buffer_description')}</span>
+                                    <span className="setting-title">
+                                        <Icon name="terminal" size="sm" />{' '}
+                                        {t('gui:settings_modal.console_buffer_label')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.console_buffer_description')}
+                                    </span>
                                 </label>
                                 <CustomDropdown
                                     className="setting-select"
@@ -415,109 +558,194 @@ function SettingsModal({ isOpen, onClose, refreshInterval, onRefreshIntervalChan
 
                             {/* GUI 컴포넌트 테스트 섹션 (개발자 모드 전용) */}
                             {devMode && (
-                            <div className={`gui-test-section ${guiTestOpen ? 'open' : ''}`}>
-                                <h4 className="gui-test-title" onClick={() => setGuiTestOpen(!guiTestOpen)}>
-                                    <Icon name="tool" size="sm" /> GUI Test
-                                    <Icon name={guiTestOpen ? 'chevronUp' : 'chevronDown'} size="sm" className="gui-test-chevron" />
-                                </h4>
-                                <div className="gui-test-grid">
-                                    <button className="gui-test-btn gui-test-success" onClick={() => {
-                                        onTestModal && onTestModal({ type: 'success', title: 'Success!', message: '작업이 성공적으로 완료되었습니다.' });
-                                    }}>
-                                        <Icon name="check" size="sm" /> Success
-                                    </button>
-                                    <button className="gui-test-btn gui-test-failure" onClick={() => {
-                                        onTestModal && onTestModal({ type: 'failure', title: 'Error!', message: '예기치 못한 오류가 발생했습니다.' });
-                                    }}>
-                                        <Icon name="x" size="sm" /> Failure
-                                    </button>
-                                    <button className="gui-test-btn gui-test-notification" onClick={() => {
-                                        onTestModal && onTestModal({ type: 'notification', title: 'Notice', message: '새로운 업데이트가 있습니다.' });
-                                    }}>
-                                        <Icon name="info" size="sm" /> Notification
-                                    </button>
-                                    <button className="gui-test-btn gui-test-question" onClick={() => {
-                                        onTestModal && onTestModal({
-                                            type: 'question', title: 'Confirm?',
-                                            message: '이 작업을 진행하시겠습니까?',
-                                            onConfirm: () => onTestModal(null),
-                                            onCancel: () => onTestModal(null)
-                                        });
-                                    }}>
-                                        <Icon name="alertCircle" size="sm" /> Question
-                                    </button>
-                                    <button className="gui-test-btn gui-test-toast-info" onClick={() => {
-                                        window.showToast && window.showToast('ℹ️ 정보 토스트 메시지입니다.', 'info', 3000);
-                                    }}>
-                                        <Icon name="info" size="sm" /> Toast (Info)
-                                    </button>
-                                    <button className="gui-test-btn gui-test-toast-success" onClick={() => {
-                                        window.showToast && window.showToast('✅ 성공 토스트 메시지입니다.', 'success', 3000);
-                                    }}>
-                                        <Icon name="check" size="sm" /> Toast (Success)
-                                    </button>
-                                    <button className="gui-test-btn gui-test-toast-warning" onClick={() => {
-                                        window.showToast && window.showToast('⚠️ 경고 토스트 메시지입니다.', 'warning', 3000);
-                                    }}>
-                                        <Icon name="alertCircle" size="sm" /> Toast (Warning)
-                                    </button>
-                                    <button className="gui-test-btn gui-test-toast-error" onClick={() => {
-                                        window.showToast && window.showToast('❌ 에러 토스트 메시지입니다.', 'error', 4000);
-                                    }}>
-                                        <Icon name="x" size="sm" /> Toast (Error)
-                                    </button>
-                                    <button className="gui-test-btn gui-test-progress" onClick={() => {
-                                        if (!onTestProgressBar) return;
-                                        onTestProgressBar({ message: '다운로드 중...', percent: 0 });
-                                        let p = 0;
-                                        const iv = setInterval(() => {
-                                            p += Math.random() * 15 + 5;
-                                            if (p >= 100) {
-                                                p = 100;
-                                                onTestProgressBar({ message: '완료!', percent: 100 });
-                                                clearInterval(iv);
-                                                setTimeout(() => onTestProgressBar(null), 1500);
-                                            } else {
-                                                onTestProgressBar({ message: `다운로드 중... ${Math.round(p)}%`, percent: p });
-                                            }
-                                        }, 400);
-                                    }}>
-                                        <Icon name="loader" size="sm" /> Progress Bar
-                                    </button>
-                                    <button className="gui-test-btn gui-test-progress-ind" onClick={() => {
-                                        if (!onTestProgressBar) return;
-                                        onTestProgressBar({ message: '처리 중...', indeterminate: true });
-                                        setTimeout(() => onTestProgressBar(null), 4000);
-                                    }}>
-                                        <Icon name="loader" size="sm" /> Indeterminate
-                                    </button>
-                                    <button className="gui-test-btn gui-test-waiting" onClick={() => {
-                                        onTestWaitingImage && onTestWaitingImage();
-                                    }}>
-                                        <Icon name="clock" size="sm" /> Waiting Image
-                                    </button>
-                                    <button className="gui-test-btn gui-test-loading" onClick={() => {
-                                        onTestLoadingScreen && onTestLoadingScreen();
-                                    }}>
-                                        <Icon name="monitor" size="sm" /> Loading Screen
-                                    </button>
-                                    <button className="gui-test-btn gui-test-notice-info" onClick={() => {
-                                        window.showToast && window.showToast('ℹ️ 정보 알림 테스트', 'info', 3000, { isNotice: true, source: 'GUI Test' });
-                                    }}>
-                                        <Icon name="bell" size="sm" /> Notice (Info)
-                                    </button>
-                                    <button className="gui-test-btn gui-test-notice-success" onClick={() => {
-                                        window.showToast && window.showToast('✅ 성공 알림 테스트', 'success', 3000, { isNotice: true, source: 'GUI Test' });
-                                    }}>
-                                        <Icon name="bell" size="sm" /> Notice (Success)
-                                    </button>
-                                    <button className="gui-test-btn gui-test-notice-error" onClick={() => {
-                                        window.showToast && window.showToast('❌ 에러 알림 테스트', 'error', 4000, { isNotice: true, source: 'GUI Test' });
-                                    }}>
-                                        <Icon name="bell" size="sm" /> Notice (Error)
-                                    </button>
+                                <div className={clsx('gui-test-section', { open: guiTestOpen })}>
+                                    <h4 className="gui-test-title" onClick={() => setGuiTestOpen(!guiTestOpen)}>
+                                        <Icon name="tool" size="sm" /> GUI Test
+                                        <Icon
+                                            name={guiTestOpen ? 'chevronUp' : 'chevronDown'}
+                                            size="sm"
+                                            className="gui-test-chevron"
+                                        />
+                                    </h4>
+                                    <div className="gui-test-grid">
+                                        <button
+                                            className="gui-test-btn gui-test-success"
+                                            onClick={() => {
+                                                onTestModal &&
+                                                    onTestModal({
+                                                        type: 'success',
+                                                        title: 'Success!',
+                                                        message: '작업이 성공적으로 완료되었습니다.',
+                                                    });
+                                            }}
+                                        >
+                                            <Icon name="check" size="sm" /> Success
+                                        </button>
+                                        <button
+                                            className="gui-test-btn gui-test-failure"
+                                            onClick={() => {
+                                                onTestModal &&
+                                                    onTestModal({
+                                                        type: 'failure',
+                                                        title: 'Error!',
+                                                        message: '예기치 못한 오류가 발생했습니다.',
+                                                    });
+                                            }}
+                                        >
+                                            <Icon name="x" size="sm" /> Failure
+                                        </button>
+                                        <button
+                                            className="gui-test-btn gui-test-notification"
+                                            onClick={() => {
+                                                onTestModal &&
+                                                    onTestModal({
+                                                        type: 'notification',
+                                                        title: 'Notice',
+                                                        message: '새로운 업데이트가 있습니다.',
+                                                    });
+                                            }}
+                                        >
+                                            <Icon name="info" size="sm" /> Notification
+                                        </button>
+                                        <button
+                                            className="gui-test-btn gui-test-question"
+                                            onClick={() => {
+                                                onTestModal &&
+                                                    onTestModal({
+                                                        type: 'question',
+                                                        title: 'Confirm?',
+                                                        message: '이 작업을 진행하시겠습니까?',
+                                                        onConfirm: () => onTestModal(null),
+                                                        onCancel: () => onTestModal(null),
+                                                    });
+                                            }}
+                                        >
+                                            <Icon name="alertCircle" size="sm" /> Question
+                                        </button>
+                                        <button
+                                            className="gui-test-btn gui-test-toast-info"
+                                            onClick={() => {
+                                                window.showToast &&
+                                                    window.showToast('ℹ️ 정보 토스트 메시지입니다.', 'info', 3000);
+                                            }}
+                                        >
+                                            <Icon name="info" size="sm" /> Toast (Info)
+                                        </button>
+                                        <button
+                                            className="gui-test-btn gui-test-toast-success"
+                                            onClick={() => {
+                                                window.showToast &&
+                                                    window.showToast('✅ 성공 토스트 메시지입니다.', 'success', 3000);
+                                            }}
+                                        >
+                                            <Icon name="check" size="sm" /> Toast (Success)
+                                        </button>
+                                        <button
+                                            className="gui-test-btn gui-test-toast-warning"
+                                            onClick={() => {
+                                                window.showToast &&
+                                                    window.showToast('⚠️ 경고 토스트 메시지입니다.', 'warning', 3000);
+                                            }}
+                                        >
+                                            <Icon name="alertCircle" size="sm" /> Toast (Warning)
+                                        </button>
+                                        <button
+                                            className="gui-test-btn gui-test-toast-error"
+                                            onClick={() => {
+                                                window.showToast &&
+                                                    window.showToast('❌ 에러 토스트 메시지입니다.', 'error', 4000);
+                                            }}
+                                        >
+                                            <Icon name="x" size="sm" /> Toast (Error)
+                                        </button>
+                                        <button
+                                            className="gui-test-btn gui-test-progress"
+                                            onClick={() => {
+                                                if (!onTestProgressBar) return;
+                                                onTestProgressBar({ message: '다운로드 중...', percent: 0 });
+                                                let p = 0;
+                                                const iv = setInterval(() => {
+                                                    p += Math.random() * 15 + 5;
+                                                    if (p >= 100) {
+                                                        p = 100;
+                                                        onTestProgressBar({ message: '완료!', percent: 100 });
+                                                        clearInterval(iv);
+                                                        setTimeout(() => onTestProgressBar(null), 1500);
+                                                    } else {
+                                                        onTestProgressBar({
+                                                            message: `다운로드 중... ${Math.round(p)}%`,
+                                                            percent: p,
+                                                        });
+                                                    }
+                                                }, 400);
+                                            }}
+                                        >
+                                            <Icon name="loader" size="sm" /> Progress Bar
+                                        </button>
+                                        <button
+                                            className="gui-test-btn gui-test-progress-ind"
+                                            onClick={() => {
+                                                if (!onTestProgressBar) return;
+                                                onTestProgressBar({ message: '처리 중...', indeterminate: true });
+                                                setTimeout(() => onTestProgressBar(null), 4000);
+                                            }}
+                                        >
+                                            <Icon name="loader" size="sm" /> Indeterminate
+                                        </button>
+                                        <button
+                                            className="gui-test-btn gui-test-waiting"
+                                            onClick={() => {
+                                                onTestWaitingImage && onTestWaitingImage();
+                                            }}
+                                        >
+                                            <Icon name="clock" size="sm" /> Waiting Image
+                                        </button>
+                                        <button
+                                            className="gui-test-btn gui-test-loading"
+                                            onClick={() => {
+                                                onTestLoadingScreen && onTestLoadingScreen();
+                                            }}
+                                        >
+                                            <Icon name="monitor" size="sm" /> Loading Screen
+                                        </button>
+                                        <button
+                                            className="gui-test-btn gui-test-notice-info"
+                                            onClick={() => {
+                                                window.showToast &&
+                                                    window.showToast('ℹ️ 정보 알림 테스트', 'info', 3000, {
+                                                        isNotice: true,
+                                                        source: 'GUI Test',
+                                                    });
+                                            }}
+                                        >
+                                            <Icon name="bell" size="sm" /> Notice (Info)
+                                        </button>
+                                        <button
+                                            className="gui-test-btn gui-test-notice-success"
+                                            onClick={() => {
+                                                window.showToast &&
+                                                    window.showToast('✅ 성공 알림 테스트', 'success', 3000, {
+                                                        isNotice: true,
+                                                        source: 'GUI Test',
+                                                    });
+                                            }}
+                                        >
+                                            <Icon name="bell" size="sm" /> Notice (Success)
+                                        </button>
+                                        <button
+                                            className="gui-test-btn gui-test-notice-error"
+                                            onClick={() => {
+                                                window.showToast &&
+                                                    window.showToast('❌ 에러 알림 테스트', 'error', 4000, {
+                                                        isNotice: true,
+                                                        source: 'GUI Test',
+                                                    });
+                                            }}
+                                        >
+                                            <Icon name="bell" size="sm" /> Notice (Error)
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
                             )}
                         </div>
                     )}

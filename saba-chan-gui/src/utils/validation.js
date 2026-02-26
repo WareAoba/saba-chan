@@ -14,7 +14,7 @@
  * @param {*} value - 사용자 입력값
  * @returns {{ valid: boolean, error?: string, errorType?: string }}
  */
-export function validateSettingValue(field, value) {
+function validateSettingValue(field, value) {
     const name = field.name || field.label || 'unknown';
 
     // 1. 필수 필드 검사
@@ -206,7 +206,7 @@ function buildActivePortEntries(ports, supported) {
     if (!supported || supported.includes('rest')) {
         entries.push({ value: ports.rest_port, type: 'rest_port' });
     }
-    return entries.filter(e => e.value != null && e.value !== '' && !isNaN(Number(e.value)));
+    return entries.filter((e) => e.value != null && e.value !== '' && !isNaN(Number(e.value)));
 }
 
 /**
@@ -243,7 +243,10 @@ export function checkAliasConflicts(targetModule, targetAliases, moduleAliasesPe
     // GUI 커스텀 별명
     for (const [moduleName, customStr] of Object.entries(discordModuleAliases || {})) {
         if (moduleName === targetModule) continue;
-        const customs = (customStr || '').split(',').map(a => a.trim()).filter(a => a.length > 0);
+        const customs = (customStr || '')
+            .split(',')
+            .map((a) => a.trim())
+            .filter((a) => a.length > 0);
         for (const alias of customs) {
             otherAliasMap[alias.toLowerCase()] = moduleName;
         }

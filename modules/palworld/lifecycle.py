@@ -18,10 +18,12 @@ import urllib.error
 import urllib.parse
 from i18n import I18n
 
-# Shared extensions (RCON client, UE4 INI parser)
 # PYTHONPATH is injected by the Rust plugin runner; fallback for direct execution:
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
-from extensions.rcon import RconClient
+
+# RCON communication delegates to the Rust daemon's HTTP API
+from daemon_rcon import DaemonRconClient as RconClient
+# UE4 INI parser (shared extension)
 from extensions.ue4_ini import parse_option_settings, write_option_settings
 
 # Initialize i18n
@@ -32,10 +34,11 @@ i18n = I18n(MODULE_DIR)
 DAEMON_API_URL = os.environ.get('DAEMON_API_URL', 'http://127.0.0.1:57474')
 
 class PalworldRconClient:
-    """Palworld RCON client — delegates to extensions.rcon RconClient."""
+    """Palworld RCON client — delegates to Rust daemon's RCON API."""
     
-    def __init__(self, host='127.0.0.1', port=25575, password=''):
-        self._client = RconClient(host, int(port), password)
+    def __init__(self, host='127.0.0.1', port=25575, password='', instance_id=None):
+        self._instance_id = instance_id
+        self._client = RconClient(instance_id or '', host, int(port), password)
     
     def connect(self):
         """Connect to RCON server"""

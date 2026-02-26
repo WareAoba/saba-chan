@@ -80,8 +80,8 @@
 
     /* === Info boxes === */
     --info-bg: #e8f4fd;
-    --info-border: #2196F3;
-    --info-title: #1976D2;
+    --info-border: #2196f3;
+    --info-title: #1976d2;
     --info-bg-alt: #e7f3ff;
     --info-bg-gradient: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
 
@@ -257,7 +257,7 @@
 
     /* === Info boxes === */
     --info-bg: #1e2428;
-    --info-border: #2196F3;
+    --info-border: #2196f3;
     --info-title: #64b5f6;
     --info-bg-alt: #1e2428;
     --info-bg-gradient: linear-gradient(135deg, #1e2428 0%, #222830 100%);
@@ -436,7 +436,7 @@
 
         /* === Info boxes === */
         --info-bg: #1e2428;
-        --info-border: #2196F3;
+        --info-border: #2196f3;
         --info-title: #64b5f6;
         --info-bg-alt: #1e2428;
         --info-bg-gradient: linear-gradient(135deg, #1e2428 0%, #222830 100%);
@@ -553,5 +553,9 @@ input,
 select,
 textarea,
 button {
-    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+    transition:
+        background-color 0.3s ease,
+        color 0.3s ease,
+        border-color 0.3s ease,
+        box-shadow 0.3s ease;
 }

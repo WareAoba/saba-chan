@@ -1,15 +1,16 @@
-import { useState, useRef } from 'react';
+import clsx from 'clsx';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import Icon from '../Icon';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import ExtensionSlot from '../ExtensionSlot';
+import Icon from '../Icon';
 import './Modals.css';
 import { useModalClose } from '../../hooks/useModalClose';
 
-export function AddServerModal({ 
-    isOpen, 
-    onClose, 
-    extensions, 
+export function AddServerModal({
+    isOpen,
+    onClose,
+    extensions,
     servers,
     extensionsPath,
     settingsPath,
@@ -29,10 +30,10 @@ export function AddServerModal({
     // 모듈 선택 시 자동으로 서버 이름 생성
     const handleExtensionSelect = (extName) => {
         setselectedExtension(extName);
-        
+
         // 이름이 비어있거나 자동 생성된 이름인 경우에만 자동완성
         if (!newServerName || newServerName.startsWith('my-')) {
-            const existingCount = servers.filter(s => s.module === extName).length;
+            const existingCount = servers.filter((s) => s.module === extName).length;
             const suggestedName = `my-${extName}-${existingCount + 1}`;
             setNewServerName(suggestedName);
         }
@@ -70,9 +71,8 @@ export function AddServerModal({
     if (!isOpen) return null;
 
     return (
-        <div className={`modal-overlay ${isClosing ? 'closing' : ''}`} onClick={requestClose}>
-            <div className="modal-content add-server-modal" onClick={e => e.stopPropagation()}>
-
+        <div className={clsx('modal-overlay', { closing: isClosing })} onClick={requestClose}>
+            <div className="modal-content add-server-modal" onClick={(e) => e.stopPropagation()}>
                 {/* ── Header ── */}
                 <div className="modal-header add-server-header">
                     <div>
@@ -83,7 +83,6 @@ export function AddServerModal({
 
                 {/* ── Body ── */}
                 <div className="modal-body add-server-body">
-
                     {/* 1. 게임 모듈 선택 */}
                     <div className="as-section">
                         <label className="as-label">
@@ -94,7 +93,7 @@ export function AddServerModal({
                             value={selectedExtension}
                             onChange={(val) => handleExtensionSelect(val)}
                             placeholder={t('add_server_modal.select_extension')}
-                            options={extensions.map(m => ({
+                            options={extensions.map((m) => ({
                                 value: m.name,
                                 label: `${t(`mod_${m.name}:module.display_name`, { defaultValue: m.name })} v${m.version}`,
                             }))}
@@ -121,7 +120,9 @@ export function AddServerModal({
                             value={newServerName}
                             onChange={(e) => setNewServerName(e.target.value)}
                             disabled={submitting}
-                            onKeyDown={(e) => { if (e.key === 'Enter' && canSubmit) handleSubmit(); }}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && canSubmit) handleSubmit();
+                            }}
                         />
                     </div>
 
@@ -129,7 +130,9 @@ export function AddServerModal({
                     <ExtensionSlot
                         slotId="AddServer.options"
                         options={{ use_container: useContainerIsolation }}
-                        onOptionsChange={(opts) => { if (opts.use_container !== undefined) setUseContainerIsolation(opts.use_container); }}
+                        onOptionsChange={(opts) => {
+                            if (opts.use_container !== undefined) setUseContainerIsolation(opts.use_container);
+                        }}
                         t={t}
                     />
 
@@ -146,7 +149,7 @@ export function AddServerModal({
                     <button
                         className="as-advanced-toggle"
                         type="button"
-                        onClick={() => setShowAdvanced(prev => !prev)}
+                        onClick={() => setShowAdvanced((prev) => !prev)}
                     >
                         <Icon name={showAdvanced ? 'chevronDown' : 'chevronRight'} size="sm" />
                         {t('add_server_modal.advanced_settings')}
@@ -175,12 +178,11 @@ export function AddServerModal({
                                     <Icon name="refresh" size="sm" />
                                 </button>
                             </div>
-                            <small className="as-hint">
-                                {t('add_server_modal.place_modules_hint')}
-                            </small>
+                            <small className="as-hint">{t('add_server_modal.place_modules_hint')}</small>
                             {settingsPath && (
                                 <small className="as-hint as-settings-path">
-                                    <Icon name="database" size="xs" /> {t('add_server_modal.settings_path')} {settingsPath}
+                                    <Icon name="database" size="xs" /> {t('add_server_modal.settings_path')}{' '}
+                                    {settingsPath}
                                 </small>
                             )}
                         </div>
@@ -205,9 +207,13 @@ export function AddServerModal({
                     </button>
                     <button className="btn btn-confirm" onClick={handleSubmit} disabled={!canSubmit}>
                         {submitting ? (
-                            <><Icon name="refresh" size="sm" className="spin" /> {t('add_server_modal.provisioning')}</>
+                            <>
+                                <Icon name="refresh" size="sm" className="spin" /> {t('add_server_modal.provisioning')}
+                            </>
                         ) : (
-                            <><Icon name="plus" size="sm" /> {t('add_server_modal.add_server')}</>
+                            <>
+                                <Icon name="plus" size="sm" /> {t('add_server_modal.add_server')}
+                            </>
                         )}
                     </button>
                 </div>

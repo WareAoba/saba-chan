@@ -174,7 +174,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
 
         // Native 모드: 스냅샷에서 PID 및 시작 시간 사용
         let (status, start_time) = if instance.pid.is_some() {
-            ("running".to_string(), instance.start_time.clone())
+            ("running".to_string(), instance.start_time)
         } else {
             ("stopped".to_string(), None)
         };
@@ -581,6 +581,23 @@ pub async fn start_server_handler(
             state.extension_status_cache.invalidate(&inst.id);
         }
     }
+
+    // ── 실행 전 비밀번호 자동 생성 (비어있으면 채움) ──
+    {
+        let mut supervisor = state.supervisor.write().await;
+        let inst_opt = supervisor.instance_store.list().iter()
+            .find(|i| i.name == name)
+            .cloned();
+        if let Some(mut inst) = inst_opt {
+            if inst.ensure_passwords() {
+                let inst_id = inst.id.clone();
+                if let Err(e) = supervisor.instance_store.update(&inst_id, inst) {
+                    tracing::warn!("Failed to save auto-generated passwords for {}: {}", name, e);
+                }
+            }
+        }
+    }
+
     let supervisor = state.supervisor.read().await;
 
     match supervisor

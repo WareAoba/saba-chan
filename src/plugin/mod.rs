@@ -29,7 +29,7 @@ pub struct ExtensionProgress {
 ///   5. `./extensions/` (CWD 폴백 — 개발 환경)
 ///
 /// 디렉토리가 존재하지 않으면 생성을 시도합니다 (프로덕션 최초 실행 대응).
-fn resolve_extensions_dir() -> std::path::PathBuf {
+pub fn resolve_extensions_dir() -> std::path::PathBuf {
     // 1) 환경 변수 오버라이드
     if let Ok(dir) = std::env::var("SABA_EXTENSIONS_DIR") {
         let p = std::path::PathBuf::from(&dir);
@@ -79,13 +79,23 @@ fn resolve_extensions_dir() -> std::path::PathBuf {
     std::path::PathBuf::from("./extensions")
 }
 
-/// extensions/ 디렉토리 경로 (public wrapper)
-pub fn resolve_extensions_dir_pub() -> std::path::PathBuf {
-    resolve_extensions_dir()
-}
-
 /// 기본 플러그인 타임아웃 (초)
 pub const DEFAULT_PLUGIN_TIMEOUT_SECS: u64 = 120;
+
+/// extensions/<name>.py 의 절대경로를 해석합니다.
+/// 익스텐션 디렉토리에서 파일 존재 여부를 검사합니다.
+fn resolve_extension_path(extension_name: &str) -> anyhow::Result<std::path::PathBuf> {
+    let extensions_dir = resolve_extensions_dir();
+    let ext_path = extensions_dir.join(format!("{}.py", extension_name));
+    if !ext_path.exists() {
+        return Err(anyhow::anyhow!(
+            "Extension not found: {} (searched {})",
+            extension_name,
+            ext_path.display()
+        ));
+    }
+    Ok(ext_path)
+}
 
 /// Plugin runner executes Python modules (short-lived)
 /// Returns JSON output from stdout only
@@ -239,17 +249,7 @@ async fn run_plugin_inner(
 /// run_plugin과 동일한 프로토콜이지만, 경로를 extensions/ 디렉토리에서 자동으로 해석합니다.
 #[allow(dead_code)]
 pub async fn run_extension(extension_name: &str, function: &str, config: Value) -> Result<Value> {
-    let extensions_dir = resolve_extensions_dir();
-
-    let ext_path = extensions_dir.join(format!("{}.py", extension_name));
-    if !ext_path.exists() {
-        return Err(anyhow::anyhow!(
-            "Extension not found: {} (searched {})",
-            extension_name,
-            ext_path.display()
-        ));
-    }
-
+    let ext_path = resolve_extension_path(extension_name)?;
     run_plugin(ext_path.to_string_lossy().as_ref(), function, config).await
 }
 
@@ -264,15 +264,7 @@ pub async fn run_extension_with_progress<F>(
 where
     F: Fn(ExtensionProgress) + Send + 'static,
 {
-    let extensions_dir = resolve_extensions_dir();
-    let ext_path = extensions_dir.join(format!("{}.py", extension_name));
-    if !ext_path.exists() {
-        return Err(anyhow::anyhow!(
-            "Extension not found: {} (searched {})",
-            extension_name,
-            ext_path.display()
-        ));
-    }
+    let ext_path = resolve_extension_path(extension_name)?;
     run_plugin_with_progress(ext_path.to_string_lossy().as_ref(), function, config, on_progress).await
 }
 

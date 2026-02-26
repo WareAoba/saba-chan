@@ -51,7 +51,7 @@ static NODE_EXE: OnceCell<PathBuf> = OnceCell::const_new();
 #[allow(dead_code)]
 pub async fn get_node_path() -> Result<PathBuf> {
     NODE_EXE
-        .get_or_try_init(|| find_or_bootstrap())
+        .get_or_try_init(find_or_bootstrap)
         .await
         .cloned()
 }

@@ -9,7 +9,7 @@
 import { registerSlots as dockerRegisterSlots } from '@ext/docker/gui/src/index';
 
 const builtinExtensions = {
-  docker: { registerSlots: dockerRegisterSlots },
+    docker: { registerSlots: dockerRegisterSlots },
 };
 
 export default builtinExtensions;

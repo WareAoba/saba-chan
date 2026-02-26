@@ -18,7 +18,9 @@
     "module_commands": "**Module commands:**{{commands}}",
     "module_title": "**{{module}} Commands**",
     "command_format": "Unknown command: \"{{command}}\" ({{resolved}})",
-    "available_commands": "{{commands}}"
+    "available_commands": "{{commands}}",
+    "usage_format": "`{{prefix}} <module> <command>`",
+    "modules_header": "📦 **Modules:**"
   },
   "modules": {
     "help_start": "Start server",
@@ -88,7 +90,8 @@
     "host_not_found": "Server host not found",
     "service_unavailable": "Service unavailable",
     "unknown_input": "❌ Unknown command.",
-    "command_not_found": "❌ Command does not exist."
+    "command_not_found": "❌ Command does not exist.",
+    "permission_denied": "❌ You don't have permission to use this command."
   },
   "messages": {
     "server_started": "Server started successfully",
@@ -108,7 +111,11 @@
     "acl_revoked": "✅ Revoked permissions for {{user}}.",
     "music_local_only": "🎵 Music feature is only available in local mode."
   },
+  "relay": {
+    "command_complete": "✅ Done"
+  },
   "music": {
+    "mod_name": "music",
     "not_available": "🎵 Music feature requires additional packages!\n`npm install @discordjs/voice @discordjs/opus play-dl`",
     "join_voice_first": "🎤 Please join a voice channel first!",
     "no_permission": "🚫 I don't have permission to connect or speak in your voice channel!",
@@ -139,13 +146,26 @@
     "search_failed": "Search failed",
     "search_results": "🔍 **Search: {{query}}**",
     "search_choose": "🎵 Enter a number (1~5) | `c` Cancel",
-    "play_usage": "🎵 Usage: `{{prefix}} music play <YouTube URL or search query>`"
+    "play_usage": "🎵 Usage: `{{prefix}} music play <YouTube URL or search query>`",
+    "not_available_relay": "🎵 Music is not available in cloud (relay) mode. Please switch to local mode!",
+    "age_restricted": "🔞 **{{title}}** — This video is age-restricted and cannot be played. cookies.txt setup is needed.",
+    "login_required": "🔒 **{{title}}** — This video requires login. cookies.txt setup is needed.",
+    "search_usage": "🔍 Usage: `{{prefix}} music search <search query>`",
+    "auto_disconnect": "👋 Everyone left! Stopping playback and disconnecting.",
+    "loop_enabled": "🔂 Looping: **{{title}}**",
+    "loop_disabled": "➡️ Loop off: **{{title}}**\nQueue will resume from next track.",
+    "loop_already_on": "🔂 Already looping: **{{title}}**",
+    "loop_already_off": "🔁 Loop is already off",
+    "help": "🎵 **{{prefix}} {{mod}}** — Music Player\n\n• `{{prefix}} <YouTube URL>` — **Play instantly** ⚡\n• `{{prefix}} {{mod}} play <query>` — Play first result\n• `{{prefix}} {{mod}} search <query>` — Pick from 5 results 🔘\n• `{{prefix}} stop` — Stop + leave\n\n• `{{prefix}} {{mod}} pause` — Pause\n• `{{prefix}} {{mod}} resume` — Resume\n• `{{prefix}} {{mod}} skip` — Next track\n• `{{prefix}} loop` — Loop current track 🔂\n• `{{prefix}} loop off` — Disable loop → continue queue\n• `{{prefix}} {{mod}} queue` — Queue\n• `{{prefix}} {{mod}} np` — Now playing\n• `{{prefix}} {{mod}} volume <0-200>` — Volume\n• `{{prefix}} {{mod}} shuffle` — Shuffle queue\n\n💡 While playing, shortcuts like `{{prefix}} skip`, `{{prefix}} pause` work directly!\n💡 Aliases: music, dj"
   },
   "rps": {
     "prompt": "✊✌️✋ Pick one!",
     "draw": "{{bot}}! It's a tie! Again~ 🔄",
     "user_win": "{{bot}}! I lost... 😵",
     "bot_win": "{{bot}}! I win~ 😋",
-    "timeout": "⏰ Time's up! Try again next time~"
+    "timeout": "⏰ Time's up! Try again next time~",
+    "scissors": "Scissors",
+    "rock": "Rock",
+    "paper": "Paper"
   }
 }

@@ -1,3 +1,8 @@
+//! Server instance state machine.
+//!
+//! NOTE: 이 모듈은 아직 Supervisor에 통합되지 않았습니다.
+//! 각 서버 인스턴스의 상태를 이 StateMachine으로 관리할 예정이며,
+//! 통합 전까지는 테스트 전용으로 유지됩니다.
 #![allow(dead_code)]
 
 use thiserror::Error;

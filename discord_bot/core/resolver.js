@@ -33,7 +33,9 @@ function loadConfig() {
             const loaded = JSON.parse(fs.readFileSync(configPath, 'utf8'));
             botConfig = { ...botConfig, ...loaded };
             _configMtime = fs.statSync(configPath).mtimeMs;
-            console.log('[Resolver] Bot config loaded:', JSON.stringify(botConfig));
+            const moduleAliasCount = Object.keys(botConfig.moduleAliases || {}).length;
+            const commandAliasCount = Object.keys(botConfig.commandAliases || {}).length;
+            console.log(`[Resolver] Bot config loaded (prefix=${botConfig.prefix}, moduleAliases=${moduleAliasCount}, commandAliases=${commandAliasCount})`);
         } catch (e) {
             console.error('[Resolver] Failed to load bot-config.json:', e.message);
         }
@@ -66,21 +68,31 @@ async function loadModuleMetadata(guildId) {
         const modules = await ipc.getModules(guildId);
         const cmds = {};
         const meta = {};
+        const moduleCommandSummary = [];
+        let totalCommands = 0;
+        let metadataLoaded = 0;
+        let metadataFailed = 0;
 
         for (const mod of modules) {
             if (mod.commands && mod.commands.fields) {
                 cmds[mod.name] = {};
                 for (const cmd of mod.commands.fields) {
                     cmds[mod.name][cmd.name] = cmd;
-                    console.log(`[Resolver] Command '${cmd.name}' for module ${mod.name} (${cmd.http_method || 'N/A'})`);
+                }
+
+                const commandCount = Object.keys(cmds[mod.name]).length;
+                if (commandCount > 0) {
+                    moduleCommandSummary.push(`${mod.name}(${commandCount})`);
+                    totalCommands += commandCount;
                 }
             }
 
             try {
                 const toml = await ipc.getModuleDetail(mod.name);
                 meta[mod.name] = toml;
-                console.log(`[Resolver] Metadata loaded: ${mod.name}`);
+                metadataLoaded += 1;
             } catch (e) {
+                metadataFailed += 1;
                 console.warn(`[Resolver] Could not load metadata for ${mod.name}:`, e.message);
             }
         }
@@ -88,7 +100,18 @@ async function loadModuleMetadata(guildId) {
         moduleMetadata = meta;
         moduleCommands = cmds;
 
-        console.log(`[Resolver] Total modules with commands: ${Object.keys(cmds).length}`);
+        const previewLimit = 8;
+        const modulePreview = moduleCommandSummary.slice(0, previewLimit).join(', ');
+        const moduleSuffix = moduleCommandSummary.length > previewLimit
+            ? ` ... +${moduleCommandSummary.length - previewLimit}`
+            : '';
+
+        console.log(
+            `[Resolver] Module metadata loaded: modules=${modules.length}, metadataOk=${metadataLoaded}, metadataFailed=${metadataFailed}, commands=${totalCommands}`
+        );
+        if (moduleCommandSummary.length > 0) {
+            console.log(`[Resolver] Command map: ${modulePreview}${moduleSuffix}`);
+        }
     } catch (error) {
         console.error('[Resolver] Failed to load module metadata:', error.message);
     }
@@ -222,8 +245,9 @@ async function init() {
 
     const ma = getModuleAliases();
     const ca = getCommandAliases();
-    console.log(`[Resolver] Module aliases: ${JSON.stringify(ma)}`);
-    console.log(`[Resolver] Command aliases: ${JSON.stringify(ca)}`);
+    const moduleAliasCount = Object.keys(ma).filter(k => !k.startsWith('__')).length;
+    const commandAliasCount = Object.keys(ca).filter(k => !k.startsWith('__')).length;
+    console.log(`[Resolver] Alias map ready: moduleAliases=${moduleAliasCount}, commandAliases=${commandAliasCount}`);
 }
 
 module.exports = {

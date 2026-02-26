@@ -130,7 +130,7 @@ fn find_rc_exe() -> Option<std::path::PathBuf> {
                     .unwrap_or(false)
             })
             .collect();
-        versions.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+        versions.sort_by_key(|b| std::cmp::Reverse(b.file_name()));
 
         for ver_dir in versions {
             let rc_path = ver_dir.path().join("x64").join("rc.exe");

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import clsx from 'clsx';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import './Modals.css';
 import { Icon } from '../Icon';
@@ -22,7 +23,9 @@ function loadNotices() {
 function saveNotices(notices) {
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(notices));
-    } catch { /* quota exceeded 등 무시 */ }
+    } catch {
+        /* quota exceeded 등 무시 */
+    }
 }
 
 /** 새 알림 추가 (전역 함수로 노출) */
@@ -31,7 +34,7 @@ function addNotice({ message, type = 'info', source = 'saba-chan', action = null
 
     // 중복 방지: 같은 source + action이 이미 있으면 기존 알림을 업데이트
     if (dedup && action) {
-        const existIdx = notices.findIndex(n => n.source === source && n.action === action);
+        const existIdx = notices.findIndex((n) => n.source === source && n.action === action);
         if (existIdx >= 0) {
             // 메시지만 업데이트하고 상단으로 이동
             const existing = notices.splice(existIdx, 1)[0];
@@ -49,9 +52,9 @@ function addNotice({ message, type = 'info', source = 'saba-chan', action = null
     const notice = {
         id: Date.now() + Math.random(),
         message,
-        type,       // 'info' | 'success' | 'error'
-        source,     // 'saba-chan' 또는 서버 모듈 이름
-        action,     // 'openUpdateModal' 등 클릭 시 실행할 액션
+        type, // 'info' | 'success' | 'error'
+        source, // 'saba-chan' 또는 서버 모듈 이름
+        action, // 'openUpdateModal' 등 클릭 시 실행할 액션
         timestamp: new Date().toISOString(),
         read: false,
     };
@@ -64,7 +67,7 @@ function addNotice({ message, type = 'info', source = 'saba-chan', action = null
 
 /** 단일 알림 삭제 */
 function removeNotice(id) {
-    const notices = loadNotices().filter(n => n.id !== id);
+    const notices = loadNotices().filter((n) => n.id !== id);
     saveNotices(notices);
     window.dispatchEvent(new CustomEvent('saba-notice-update'));
 }
@@ -77,12 +80,12 @@ function clearAllNotices() {
 
 /** 읽지 않은 알림 개수 */
 function getUnreadCount() {
-    return loadNotices().filter(n => !n.read).length;
+    return loadNotices().filter((n) => !n.read).length;
 }
 
 /** 모든 알림을 읽음 처리 */
 function markAllRead() {
-    const notices = loadNotices().map(n => ({ ...n, read: true }));
+    const notices = loadNotices().map((n) => ({ ...n, read: true }));
     saveNotices(notices);
     window.dispatchEvent(new CustomEvent('saba-notice-update'));
 }
@@ -90,14 +93,13 @@ function markAllRead() {
 // 전역으로 내보내기 (Toast 등에서 사용)
 window.__sabaNotice = { addNotice, removeNotice, clearAllNotices, getUnreadCount, loadNotices, markAllRead };
 
-
 // ─── 알림 카드 ─────────────────────────────────────────
 
 function NoticeCard({ notice, onDismiss, onAction, t }) {
     const typeConfig = {
-        info:    { icon: 'info',        colorClass: 'notice-type-info' },
+        info: { icon: 'info', colorClass: 'notice-type-info' },
         success: { icon: 'checkCircle', colorClass: 'notice-type-success' },
-        error:   { icon: 'xCircle',     colorClass: 'notice-type-error' },
+        error: { icon: 'xCircle', colorClass: 'notice-type-error' },
     };
     const { icon, colorClass } = typeConfig[notice.type] || typeConfig.info;
     const clickable = !!notice.action;
@@ -111,7 +113,11 @@ function NoticeCard({ notice, onDismiss, onAction, t }) {
 
     return (
         <div
-            className={`notice-card ${colorClass} ${notice.read ? '' : 'notice-unread'} ${clickable ? 'notice-clickable' : ''} ${isUpdateCard ? 'notice-update-card' : ''}`}
+            className={clsx('notice-card', colorClass, {
+                'notice-unread': !notice.read,
+                'notice-clickable': clickable,
+                'notice-update-card': isUpdateCard,
+            })}
             onClick={handleClick}
             style={clickable ? { cursor: 'pointer' } : undefined}
         >
@@ -127,7 +133,10 @@ function NoticeCard({ notice, onDismiss, onAction, t }) {
             </div>
             <button
                 className="notice-card-dismiss"
-                onClick={(e) => { e.stopPropagation(); onDismiss(notice.id); }}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onDismiss(notice.id);
+                }}
                 title={t('notice_modal.dismiss')}
             >
                 <Icon name="close" size="xs" />
@@ -156,10 +165,12 @@ function formatTime(isoString) {
         return `어제 ${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
     }
     // 그 외
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
-        ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    return (
+        d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
+        ' ' +
+        d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+    );
 }
-
 
 // ─── 알림 모달 본체 ─────────────────────────────────────
 
@@ -210,17 +221,19 @@ function NoticeModal({ isOpen, onClose, isClosing, onOpenUpdateModal }) {
     };
 
     return (
-        <div className={`notice-modal-container ${isClosing ? 'closing' : ''}`} onClick={(e) => e.stopPropagation()}>
+        <div className={clsx('notice-modal-container', { closing: isClosing })} onClick={(e) => e.stopPropagation()}>
             <div className="notice-modal-header">
                 <div className="notice-modal-title">
                     <h2>{t('notice_modal.title')}</h2>
-                    {notices.length > 0 && (
-                        <span className="notice-count-badge">{notices.length}</span>
-                    )}
+                    {notices.length > 0 && <span className="notice-count-badge">{notices.length}</span>}
                 </div>
                 <div className="notice-modal-actions">
                     {notices.length > 0 && (
-                        <button className="notice-clear-all-btn" onClick={handleClearAll} title={t('notice_modal.clear_all')}>
+                        <button
+                            className="notice-clear-all-btn"
+                            onClick={handleClearAll}
+                            title={t('notice_modal.clear_all')}
+                        >
                             <Icon name="trash" size="xs" />
                             <span>{t('notice_modal.clear_all')}</span>
                         </button>
@@ -238,13 +251,13 @@ function NoticeModal({ isOpen, onClose, isClosing, onOpenUpdateModal }) {
                         <p>{t('notice_modal.empty')}</p>
                     </div>
                 ) : (
-                    sortedKeys.map(key => (
+                    sortedKeys.map((key) => (
                         <div key={key} className="notice-group">
                             <div className="notice-group-header">
                                 <span className="notice-group-label">{sourceLabel(key)}</span>
                                 <span className="notice-group-count">{groups[key].length}</span>
                             </div>
-                            {groups[key].map(notice => (
+                            {groups[key].map((notice) => (
                                 <NoticeCard
                                     key={notice.id}
                                     notice={notice}

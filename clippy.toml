@@ -1,0 +1,3 @@
+# Clippy 린트 설정
+# https://doc.rust-lang.org/stable/clippy/
+too-many-arguments-threshold = 10

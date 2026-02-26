@@ -476,7 +476,7 @@ impl ModuleToml {
             let fields: Vec<SettingField> = s.fields.into_iter().map(|f| SettingField {
                 name: f.name.clone(),
                 field_type: f.field_type,
-                label: f.label.unwrap_or_else(|| f.name),
+                label: f.label.unwrap_or(f.name),
                 description: f.description,
                 required: f.required,
                 default: f.default,
@@ -494,7 +494,7 @@ impl ModuleToml {
         let commands = if let Some(c) = self.commands {
             let fields: Vec<CommandField> = c.fields.into_iter().map(|f| CommandField {
                 name: f.name.clone(),
-                label: f.label.unwrap_or_else(|| f.name),
+                label: f.label.unwrap_or(f.name),
                 description: f.description,
                 method: f.method,
                 http_method: f.http_method,

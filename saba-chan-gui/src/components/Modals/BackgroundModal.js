@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import clsx from 'clsx';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import './Modals.css';
 import { Icon } from '../Icon';
@@ -41,7 +42,7 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
         const interval = setInterval(checkDaemonStatus, 2000);
 
         return () => clearInterval(interval);
-    }, [isOpen]);
+    }, [isOpen, t]);
 
     if (!isOpen) {
         return null;
@@ -89,60 +90,81 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
     };
 
     return (
-        <div className={`background-modal-container ${isClosing ? 'closing' : ''}`} onClick={(e) => e.stopPropagation()}>
+        <div
+            className={clsx('background-modal-container', { closing: isClosing })}
+            onClick={(e) => e.stopPropagation()}
+        >
             <div className="background-modal-header">
                 <div className="background-modal-title">
-                    <span className={`status-indicator ${getStatusClass()}`}></span>
+                    <span className={clsx('status-indicator', getStatusClass())}></span>
                     <h2>{t('background_modal.title')}</h2>
                 </div>
-                <button className="background-modal-close" onClick={onClose}><Icon name="close" size="sm" /></button>
+                <button className="background-modal-close" onClick={onClose}>
+                    <Icon name="close" size="sm" />
+                </button>
             </div>
 
             <div className="background-modal-content">
                 <div className="background-status-section">
                     <span className="status-label">{t('background_modal.daemon_label')}</span>
-                    <span className={`status-value ${daemonStatus === 'running' ? 'status-running' : 'status-stopped'}`}>
+                    <span
+                        className={clsx(
+                            'status-value',
+                            daemonStatus === 'running' ? 'status-running' : 'status-stopped',
+                        )}
+                    >
                         {getStatusText()}
                     </span>
                 </div>
 
                 <div className="background-info-section">
                     <div className="info-row">
-                        <span className="info-label"><Icon name="plug" size="sm" /> {t('background_modal.ipc_host_label')}</span>
+                        <span className="info-label">
+                            <Icon name="plug" size="sm" /> {t('background_modal.ipc_host_label')}
+                        </span>
                         <span className="info-value">{t('background_modal.ipc_host_value')}</span>
                     </div>
                     <div className="info-row">
-                        <span className="info-label"><Icon name="hash" size="sm" /> {t('background_modal.ipc_port_label')}</span>
+                        <span className="info-label">
+                            <Icon name="hash" size="sm" /> {t('background_modal.ipc_port_label')}
+                        </span>
                         <span className="info-value">{ipcPort || 57474}</span>
                     </div>
                     <div className="info-row">
-                        <span className="info-label"><Icon name="broadcast" size="sm" /> {t('background_modal.protocol_label')}</span>
+                        <span className="info-label">
+                            <Icon name="broadcast" size="sm" /> {t('background_modal.protocol_label')}
+                        </span>
                         <span className="info-value">{t('background_modal.protocol_value')}</span>
                     </div>
                     <div className="info-row">
-                        <span className="info-label"><Icon name="clock" size="sm" /> {t('background_modal.uptime_label')}</span>
+                        <span className="info-label">
+                            <Icon name="clock" size="sm" /> {t('background_modal.uptime_label')}
+                        </span>
                         <span className="info-value">{uptime}</span>
                     </div>
                 </div>
 
                 {(daemonStatus === 'stopped' || daemonStatus === 'error') && (
                     <div className="background-restart-section">
-                        <button 
-                            className="background-restart-btn"
-                            onClick={handleRestartDaemon}
-                            disabled={restarting}
-                        >
-                            {restarting ? t('background_modal.restarting_button') : <><Icon name="refresh" size="sm" /> {t('background_modal.restart_button')}</>}
+                        <button className="background-restart-btn" onClick={handleRestartDaemon} disabled={restarting}>
+                            {restarting ? (
+                                t('background_modal.restarting_button')
+                            ) : (
+                                <>
+                                    <Icon name="refresh" size="sm" /> {t('background_modal.restart_button')}
+                                </>
+                            )}
                         </button>
                     </div>
                 )}
 
                 <div className="background-info-box">
-                    <h4><Icon name="lightbulb" size="sm" style={{ marginRight: '8px' }} /> {t('background_modal.about_title')}</h4>
+                    <h4>
+                        <Icon name="lightbulb" size="sm" style={{ marginRight: '8px' }} />{' '}
+                        {t('background_modal.about_title')}
+                    </h4>
                     <p>{t('background_modal.about_description')}</p>
-                    <p className="info-note">
-                        {t('background_modal.about_note')}
-                    </p>
+                    <p className="info-note">{t('background_modal.about_note')}</p>
                 </div>
             </div>
         </div>

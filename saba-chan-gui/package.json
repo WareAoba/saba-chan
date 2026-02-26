@@ -12,17 +12,25 @@
     "package": "npm run build && electron-builder",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "lint": "biome lint ./src ./main.js",
+    "lint:fix": "biome lint --write ./src ./main.js",
+    "format": "biome format --write ./src ./main.js",
+    "check": "biome check ./src ./main.js"
   },
   "dependencies": {
     "axios": "^1.4.0",
+    "clsx": "^2.1.1",
     "i18next": "^25.8.4",
     "i18next-browser-languagedetector": "^8.2.0",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
-    "react-i18next": "^16.5.4"
+    "react-error-boundary": "^6.1.1",
+    "react-i18next": "^16.5.4",
+    "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^14.3.1",
     "@testing-library/user-event": "^14.6.1",
@@ -98,14 +106,16 @@
           "!.prettierrc*",
           "!.env",
           "!.env.example",
+          "!test/**",
           "!*.test.js",
           "!*.spec.js"
         ]
       }
     ],
-    "extraResources": [
+    "extraResources": [],
+    "electronLanguages": [
+      "en-US"
     ],
-    "electronLanguages": ["en-US"],
     "compression": "normal",
     "asar": true,
     "asarUnpack": [],

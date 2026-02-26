@@ -18,7 +18,9 @@
     "module_commands": "**Commandes du module:**{{commands}}",
     "module_title": "**Commandes {{module}}**",
     "command_format": "Commande inconnue: \"{{command}}\" ({{resolved}})",
-    "available_commands": "{{commands}}"
+    "available_commands": "{{commands}}",
+    "usage_format": "`{{prefix}} <module> <commande>`",
+    "modules_header": "📦 **Modules :**"
   },
   "modules": {
     "help_start": "Démarrer le serveur",
@@ -86,7 +88,10 @@
     "host_not_found": "Hôte du serveur introuvable",
     "service_unavailable": "Service indisponible",
     "unknown_input": "❌ Commande inconnue.",
-    "command_not_found": "❌ La commande n'existe pas."
+    "command_not_found": "❌ La commande n'existe pas.",
+    "permission_denied": "❌ Vous n'avez pas la permission d'utiliser cette commande.",
+    "alias_conflict": "❌ L'alias '{{alias}}' est ambigu — il correspond à plusieurs modules : {{modules}}. Utilisez un alias plus spécifique.",
+    "multiple_instances": "⚠️ Plusieurs instances de '{{module}}' existent. Utilisez le nom de l'instance au lieu de l'alias du module."
   },
   "messages": {
     "server_started": "Serveur démarré avec succès",
@@ -94,7 +99,23 @@
     "server_not_running": "Le serveur n'est pas en cours d'exécution",
     "command_error": "Erreur lors de l'exécution de la commande"
   },
+  "cloud": {
+    "not_configured": "❌ Le mode cloud n'est pas configuré.",
+    "register_complete": "✅ Inscription terminée ! Token envoyé par DM.",
+    "register_failed": "❌ Échec de l'inscription : {{error}}",
+    "already_registered": "ℹ️ Déjà inscrit. Host ID : {{hostId}}",
+    "status_online": "🟢 En ligne",
+    "status_offline": "⚪ Hors ligne",
+    "status_check_failed": "❌ Échec de la vérification du statut : {{error}}",
+    "acl_granted": "✅ Niveau de permission {{level}} accordé à {{user}}.",
+    "acl_revoked": "✅ Permissions révoquées pour {{user}}.",
+    "music_local_only": "🎵 La fonction musique est uniquement disponible en mode local."
+  },
+  "relay": {
+    "command_complete": "✅ Terminé"
+  },
   "music": {
+    "mod_name": "music",
     "not_available": "🎵 La fonction musique nécessite des packages supplémentaires !\n`npm install @discordjs/voice @discordjs/opus play-dl`",
     "join_voice_first": "🎤 Rejoignez d'abord un salon vocal !",
     "no_permission": "🚫 Je n'ai pas la permission de me connecter ou de parler dans votre salon vocal !",
@@ -125,13 +146,26 @@
     "search_failed": "Échec de la recherche",
     "search_results": "🔍 **Recherche : {{query}}**",
     "search_choose": "🎵 Entrez un numéro (1~5) | `c` Annuler",
-    "play_usage": "🎵 Utilisation : `{{prefix}} music play <URL YouTube ou recherche>`"
+    "play_usage": "🎵 Utilisation : `{{prefix}} music play <URL YouTube ou recherche>`",
+    "not_available_relay": "🎵 La musique n'est pas disponible en mode cloud (relay). Veuillez passer en mode local !",
+    "age_restricted": "🔞 **{{title}}** — Cette vidéo est soumise à une restriction d'âge et ne peut pas être lue. Configuration de cookies.txt nécessaire.",
+    "login_required": "🔒 **{{title}}** — Cette vidéo nécessite une connexion. Configuration de cookies.txt nécessaire.",
+    "search_usage": "🔍 Utilisation : `{{prefix}} music search <recherche>`",
+    "auto_disconnect": "👋 Tout le monde est parti ! Arrêt de la lecture et déconnexion.",
+    "loop_enabled": "🔂 En boucle : **{{title}}**",
+    "loop_disabled": "➡️ Boucle désactivée : **{{title}}**\nLa file reprendra à partir de la piste suivante.",
+    "loop_already_on": "🔂 Déjà en boucle : **{{title}}**",
+    "loop_already_off": "🔁 La boucle est déjà désactivée",
+    "help": "🎵 **{{prefix}} {{mod}}** — Lecteur de musique\n\n• `{{prefix}} <URL YouTube>` — **Lecture instantanée** ⚡\n• `{{prefix}} {{mod}} play <recherche>` — Lire le premier résultat\n• `{{prefix}} {{mod}} search <recherche>` — Choisir parmi 5 résultats 🔘\n• `{{prefix}} stop` — Arrêter + quitter\n\n• `{{prefix}} {{mod}} pause` — Pause\n• `{{prefix}} {{mod}} resume` — Reprendre\n• `{{prefix}} {{mod}} skip` — Piste suivante\n• `{{prefix}} loop` — Boucler la piste actuelle 🔂\n• `{{prefix}} loop off` — Désactiver la boucle → continuer la file\n• `{{prefix}} {{mod}} queue` — File d'attente\n• `{{prefix}} {{mod}} np` — En cours de lecture\n• `{{prefix}} {{mod}} volume <0-200>` — Volume\n• `{{prefix}} {{mod}} shuffle` — Mélanger la file\n\n💡 Pendant la lecture, `{{prefix}} skip`, `{{prefix}} pause` fonctionnent directement !\n💡 Alias : music, dj"
   },
   "rps": {
     "prompt": "✊✌️✋ Choisissez-en un !",
     "draw": "{{bot}} ! Égalité ! Encore~ 🔄",
     "user_win": "{{bot}} ! J'ai perdu... 😵",
     "bot_win": "{{bot}} ! J'ai gagné~ 😋",
-    "timeout": "⏰ Temps écoulé ! Réessayez la prochaine fois~"
+    "timeout": "⏰ Temps écoulé ! Réessayez la prochaine fois~",
+    "scissors": "Ciseaux",
+    "rock": "Pierre",
+    "paper": "Papier"
   }
 }

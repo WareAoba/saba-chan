@@ -17,6 +17,7 @@
  *   relayAgent.stop();    // 중지
  */
 
+const i18n = require('../i18n');
 const ipc = require('./ipc');
 const resolver = require('./resolver');
 const processor = require('./processor');
@@ -212,7 +213,7 @@ async function processRelayCommand(commandPayload, requestedBy, guildId, channel
         }
 
         const replies = getReplies();
-        const resultText = replies.length > 0 ? replies[replies.length - 1] : '✅ 완료';
+        const resultText = replies.length > 0 ? replies[replies.length - 1] : i18n.t('bot:relay.command_complete');
         return { success: true, data: { text: resultText } };
     }
 
