@@ -79,6 +79,8 @@
     "no_modules": "モジュールが見つかりません。詳細設定でモジュールディレクトリを確認してください。",
     "add_server": "サーバーを追加",
     "provisioning": "プロビジョニング中…",
+    "native_exists": "使用中",
+    "native_limit_warning": "このモジュールにはネイティブインスタンス「{{existing}}」が既に存在します。追加インスタンスを作成するにはコンテナ分離を有効にしてください。",
     "step_docker_engine": "Docker エンジン",
     "step_steamcmd": "サーバーファイル",
     "step_compose": "設定生成"

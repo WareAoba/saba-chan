@@ -490,6 +490,25 @@ function saveSettings(settings) {
     }
 }
 
+/**
+ * GUI 설정 중 데몬 동작에 영향을 주는 값을 코어 데몬에 동기화합니다.
+ * (portConflictCheck 등)
+ */
+async function syncGuiConfigToDaemon(settings) {
+    if (!settings) return;
+    const payload = {};
+    if ('portConflictCheck' in settings) {
+        payload.portConflictCheck = settings.portConflictCheck;
+    }
+    if (Object.keys(payload).length === 0) return;
+    try {
+        await axios.put(`${IPC_BASE}/api/config/gui`, payload, { timeout: 5000 });
+    } catch (err) {
+        // 데몬이 아직 시작되지 않았거나 연결 불가 — 무시 (다음 기회에 동기화)
+        console.warn('[syncGuiConfig] Failed:', err.message);
+    }
+}
+
 // Core Daemon 시작
 function startDaemon() {
     const isDev = !app.isPackaged;
@@ -1010,6 +1029,13 @@ async function runBackgroundInit() {
     startUpdateChecker();
 
     sendStatus('ready', '백그라운드 초기화 완료');
+
+    // 데몬에 GUI 설정 초기 동기화 (portConflictCheck 등)
+    const currentSettings = loadSettings();
+    syncGuiConfigToDaemon(currentSettings).catch(err => {
+        console.warn('[Init] Failed to sync initial GUI config to daemon:', err.message);
+    });
+
     // Discord Bot 자동 시작은 React App.js에서 처리
 }
 
@@ -1709,11 +1735,11 @@ ipcMain.handle('instance:resetServer', async (_event, instanceId) => {
 
 // ── Managed Process API (stdin/stdout capture) ───────────────
 
-ipcMain.handle('managed:start', async (_event, instanceId) => {
+ipcMain.handle('managed:start', async (_event, instanceId, options = {}) => {
     try {
         const response = await axios.post(
             `${IPC_BASE}/api/instance/${instanceId}/managed/start`,
-            {},
+            { config: options.config || {} },
             { timeout: 30000 },
         );
         return response.data;
@@ -2611,9 +2637,17 @@ ipcMain.handle('settings:load', () => {
     return loadSettings();
 });
 
+ipcMain.handle('guiConfig:sync', async (_event, config) => {
+    return syncGuiConfigToDaemon(config);
+});
+
 ipcMain.handle('settings:save', (_event, settings) => {
     const result = saveSettings(settings);
     refreshIpcBase(); // IPC 포트 변경 반영
+    // 데몬에 GUI 설정 동기화 (portConflictCheck 등)
+    syncGuiConfigToDaemon(settings).catch(err => {
+        console.warn('[Settings] Failed to sync GUI config to daemon:', err.message);
+    });
     return result;
 });
 
@@ -2705,6 +2739,31 @@ ipcMain.handle('dialog:openFolder', async () => {
         return null;
     }
     return result.filePaths[0];
+});
+
+// ── Migration: 디렉토리 스캔 (파일 목록 반환) ──
+ipcMain.handle('migration:scanDir', async (_event, dirPath) => {
+    try {
+        if (!dirPath || typeof dirPath !== 'string') {
+            return { error: 'Invalid directory path' };
+        }
+        const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+        const files = entries
+            .filter((e) => e.isFile())
+            .map((e) => e.name);
+        const dirs = entries
+            .filter((e) => e.isDirectory())
+            .map((e) => e.name);
+        return { ok: true, files, dirs };
+    } catch (error) {
+        if (error.code === 'ENOENT') {
+            return { error: 'Directory not found' };
+        }
+        if (error.code === 'EACCES' || error.code === 'EPERM') {
+            return { error: 'Permission denied' };
+        }
+        return { error: error.message };
+    }
 });
 
 // Discord Bot process management
@@ -3080,6 +3139,22 @@ ipcMain.handle('nodeToken:load', async () => {
 // 로그 파일 경로 반환
 ipcMain.handle('logs:getPath', async () => {
     return logFilePath || '로그 파일 없음';
+});
+
+// 파일 탐색기로 폴더 열기
+ipcMain.handle('shell:openPath', async (_event, folderPath) => {
+    if (!folderPath || typeof folderPath !== 'string') {
+        return { error: '경로가 지정되지 않았습니다' };
+    }
+    try {
+        const result = await shell.openPath(folderPath);
+        if (result) {
+            return { error: result };
+        }
+        return { success: true };
+    } catch (err) {
+        return { error: err.message };
+    }
 });
 
 // 로그 폴더 열기

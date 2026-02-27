@@ -28,6 +28,7 @@ default_port = 25565                      # 기본 게임 포트
 [detection]
 process_patterns = []                     # 프로세스 이름 패턴 (예: ["java.exe"])
 common_paths = []                         # 서버가 설치될 수 있는 일반적인 경로
+dir_signatures = []                       # 디렉토리 내 파일 존재 여부로 식별 (AND 조건, 예: ["server.exe", "config.ini"])
 
 # ─── GUI 설정 필드 정의 (선택) ───────────────────────────
 # 인스턴스 설정 화면에서 표시할 필드들을 정의합니다.

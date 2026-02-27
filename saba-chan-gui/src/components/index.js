@@ -6,7 +6,7 @@ export { ErrorFallback } from './ErrorFallback';
 export { default as ExtensionSlot } from './ExtensionSlot';
 export { Icon } from './Icon';
 export { LoadingScreen } from './LoadingScreen';
-export { AddServerModal } from './Modals/AddServerModal';
+export { AddInstanceModal } from './Modals/AddInstanceModal';
 export { default as BackgroundModal } from './Modals/BackgroundModal';
 export { default as CommandModal } from './Modals/CommandModal';
 export { default as DiscordBotModal } from './Modals/DiscordBotModal';

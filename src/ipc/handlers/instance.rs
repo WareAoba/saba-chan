@@ -116,6 +116,24 @@ pub async fn create_instance(
             );
         }
 
+        // ── 네이티브(비-컨테이너) 인스턴스는 모듈당 1개 제한 ──
+        if !use_container_ext {
+            let existing = supervisor.instance_store.list()
+                .iter()
+                .find(|i| i.module_name == module && !i.ext_enabled("docker_enabled"));
+            if let Some(existing_inst) = existing {
+                let error = json!({
+                    "error": format!(
+                        "A native instance for module '{}' already exists: '{}'. Only one native instance per module is allowed. Use container isolation to run multiple instances.",
+                        module, existing_inst.name
+                    ),
+                    "error_code": "duplicate_native_instance",
+                    "existing_instance": existing_inst.name,
+                });
+                return (StatusCode::CONFLICT, Json(error)).into_response();
+            }
+        }
+
         // 모듈 정보에서 process_name, default_port, install/container config 가져오기
         let module_install = if let Ok(loaded_module) = supervisor.module_loader.get_module(module) {
             instance.process_name = loaded_module.metadata.process_name.clone();
@@ -153,6 +171,8 @@ pub async fn create_instance(
             Some((
                 loaded_module.metadata.install.clone(),
                 loaded_module.metadata.extensions.get("docker").cloned(),  // 컨테이너 익스텐션 설정
+                loaded_module.path.clone(),  // 모듈 디렉토리 경로 (마이그레이션 설정 import 시 사용)
+                loaded_module.metadata.server_executable.clone(),  // 바이너리 파일명 (마이그레이션 시 executable_path 자동 계산)
             ))
         } else {
             None
@@ -165,6 +185,15 @@ pub async fn create_instance(
         if let Some(dir) = payload.get("working_dir").and_then(|v| v.as_str()) {
             instance.working_dir = Some(dir.to_string());
         }
+        // migration_source → working_dir (마이그레이션: 기존 서버 디렉토리 직접 연결)
+        let migration_mode = if let Some(src) = payload.get("migration_source").and_then(|v| v.as_str()) {
+            if instance.working_dir.is_none() {
+                instance.working_dir = Some(src.to_string());
+            }
+            true
+        } else {
+            false
+        };
         if let Some(port) = payload.get("port").and_then(|v| v.as_u64()) {
             instance.port = Some(port as u16);
         }
@@ -195,7 +224,7 @@ pub async fn create_instance(
                         "instance_dir": instance_dir.to_string_lossy(),
                         "extension_data": &instance.extension_data,
                         "instance": serde_json::to_value(&instance).unwrap_or_default(),
-                        "module_install": module_install.as_ref().map(|(install, ext_container)| {
+                        "module_install": module_install.as_ref().map(|(install, ext_container, _, _)| {
                             serde_json::json!({
                                 "install": install,
                                 "container": ext_container,
@@ -299,7 +328,283 @@ pub async fn create_instance(
                         "provisioning": true,
                     });
                     (StatusCode::CREATED, Json(response)).into_response()
+                } else if !migration_mode {
+                    // ── Native provisioning: 서버 바이너리 설치 ──
+                    // install 설정이 있는 모듈만 프로비저닝 (steamcmd / download)
+                    let has_install = module_install.as_ref()
+                        .and_then(|(install, _, _, _)| install.as_ref())
+                        .is_some();
+
+                    if has_install {
+                        let install_config = module_install.as_ref()
+                            .and_then(|(install, _, _, _)| install.clone())
+                            .unwrap();
+                        let tracker = state.provision_tracker.clone();
+                        let supervisor_arc = state.supervisor.clone();
+
+                        // install_dir 결정: instance_dir / install_subdir (기본 "server")
+                        let install_subdir = install_config.install_subdir.clone()
+                            .unwrap_or_else(|| "server".to_string());
+                        let install_dir = instance_dir.join(&install_subdir);
+                        let install_dir_str = install_dir.to_string_lossy().to_string();
+
+                        // working_dir가 아직 설정되지 않았으면 install_dir로 설정
+                        if instance.working_dir.is_none() {
+                            instance.working_dir = Some(install_dir_str.clone());
+                            // 인스턴스 재저장 (working_dir 업데이트)
+                            let _ = supervisor.instance_store.update(&id, instance.clone());
+                        }
+
+                        // 초기 프로비저닝 상태 등록
+                        let provision_label = match install_config.method.as_str() {
+                            "steamcmd" => "steamcmd",
+                            _ => "download",
+                        };
+                        tracker.update(&instance_name, crate::ipc::ProvisionProgress {
+                            step: 0,
+                            total: 1,
+                            label: provision_label.to_string(),
+                            message: "Installing server...".to_string(),
+                            done: false,
+                            error: None,
+                            percent: Some(0),
+                            steps: None,
+                        });
+
+                        let tracker_done = tracker.clone();
+                        let name_done = instance_name.clone();
+                        let id_done = id.clone();
+
+                        // Drop supervisor lock before spawning background task
+                        drop(supervisor);
+
+                        tokio::spawn(async move {
+                            // lifecycle.py install_server 호출 (SteamCMD / download 모두 처리)
+                            let result = {
+                                let sup = supervisor_arc.read().await;
+                                let module = match sup.module_loader.get_module(&module_name_owned) {
+                                    Ok(m) => m,
+                                    Err(e) => {
+                                        tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
+                                            step: 0, total: 1,
+                                            label: "done".to_string(),
+                                            message: "Provisioning failed".to_string(),
+                                            done: true,
+                                            error: Some(format!("Module not found: {}", e)),
+                                            percent: Some(100),
+                                            steps: None,
+                                        });
+                                        return;
+                                    }
+                                };
+                                let module_path = format!("{}/lifecycle.py", module.path);
+
+                                // download 방식 모듈은 먼저 list_versions로 최신 버전 조회
+                                let version = if install_config.method == "download" {
+                                    match crate::plugin::run_plugin(
+                                        &module_path, "list_versions", serde_json::json!({}),
+                                    ).await {
+                                        Ok(ver_result) => {
+                                            ver_result.get("latest")
+                                                .and_then(|l| l.get("release"))
+                                                .and_then(|r| r.as_str())
+                                                .map(|s| s.to_string())
+                                                .or_else(|| {
+                                                    ver_result.get("latest_release")
+                                                        .and_then(|r| r.as_str())
+                                                        .map(|s| s.to_string())
+                                                })
+                                        }
+                                        Err(e) => {
+                                            tracing::warn!("Failed to fetch versions for '{}': {}", module_name_owned, e);
+                                            None
+                                        }
+                                    }
+                                } else {
+                                    None // steamcmd 방식은 version 불필요
+                                };
+
+                                // download 방식인데 버전을 파악하지 못한 경우 에러
+                                if install_config.method == "download" && version.is_none() {
+                                    tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
+                                        step: 0, total: 1,
+                                        label: "done".to_string(),
+                                        message: "Provisioning failed".to_string(),
+                                        done: true,
+                                        error: Some("Failed to determine latest server version".to_string()),
+                                        percent: Some(100),
+                                        steps: None,
+                                    });
+                                    return;
+                                }
+
+                                let mut config = serde_json::json!({
+                                    "install_dir": &install_dir_str,
+                                    "accept_eula": true,
+                                });
+                                if let Some(ref ver) = version {
+                                    config["version"] = serde_json::json!(ver);
+                                }
+
+                                let tracker_progress = tracker_done.clone();
+                                let name_progress = name_done.clone();
+                                let on_progress = move |prog: crate::plugin::ExtensionProgress| {
+                                    let pct = prog.percent.unwrap_or(0);
+                                    let msg = prog.message.clone().unwrap_or_default();
+                                    tracker_progress.update(&name_progress, crate::ipc::ProvisionProgress {
+                                        step: prog.step.unwrap_or(0),
+                                        total: prog.total.unwrap_or(1),
+                                        label: prog.label.unwrap_or_else(|| provision_label.to_string()),
+                                        message: msg,
+                                        done: false,
+                                        error: None,
+                                        percent: Some(pct),
+                                        steps: None,
+                                    });
+                                };
+
+                                crate::plugin::run_plugin_with_progress(
+                                    &module_path, "install_server", config, on_progress,
+                                ).await
+                            };
+
+                            match result {
+                                Ok(val) => {
+                                    let success = val.get("success").and_then(|s| s.as_bool()).unwrap_or(false);
+                                    if success {
+                                        // 설치 성공: executable_path, working_dir 업데이트
+                                        let exe_path = val.get("executable_path")
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| s.to_string());
+                                        let install_path = val.get("install_path")
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| s.to_string());
+
+                                        {
+                                            let mut sup = supervisor_arc.write().await;
+                                            if let Some(inst) = sup.instance_store.get(&id_done).cloned() {
+                                                let mut updated = inst;
+                                                if let Some(ref exe) = exe_path {
+                                                    if !exe.is_empty() {
+                                                        updated.executable_path = Some(exe.clone());
+                                                    }
+                                                }
+                                                if let Some(ref ip) = install_path {
+                                                    updated.working_dir = Some(ip.clone());
+                                                }
+                                                let _ = sup.instance_store.update(&id_done, updated);
+                                            }
+                                        }
+
+                                        tracing::info!("Native provisioning completed for '{}'", name_done);
+                                        tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
+                                            step: 0, total: 1,
+                                            label: "done".to_string(),
+                                            message: "Server installed successfully".to_string(),
+                                            done: true,
+                                            error: None,
+                                            percent: Some(100),
+                                            steps: None,
+                                        });
+
+                                        // 5초 후 tracker 자동 정리
+                                        let tracker_cleanup = tracker_done.clone();
+                                        let name_cleanup = name_done.clone();
+                                        tokio::spawn(async move {
+                                            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                                            tracker_cleanup.remove(&name_cleanup);
+                                        });
+                                    } else {
+                                        let err_msg = val.get("message")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("Installation failed")
+                                            .to_string();
+                                        tracing::warn!("Native provisioning failed for '{}': {}", name_done, err_msg);
+                                        tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
+                                            step: 0, total: 1,
+                                            label: "done".to_string(),
+                                            message: "Provisioning failed".to_string(),
+                                            done: true,
+                                            error: Some(err_msg),
+                                            percent: Some(100),
+                                            steps: None,
+                                        });
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::warn!("Native provisioning error for '{}': {}", name_done, e);
+                                    tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
+                                        step: 0, total: 1,
+                                        label: "done".to_string(),
+                                        message: "Provisioning failed".to_string(),
+                                        done: true,
+                                        error: Some(e.to_string()),
+                                        percent: Some(100),
+                                        steps: None,
+                                    });
+                                }
+                            }
+                        });
+
+                        let response = json!({
+                            "success": true,
+                            "id": id,
+                            "provisioning": true,
+                        });
+                        (StatusCode::CREATED, Json(response)).into_response()
+                    } else {
+                        let response = json!({ "success": true, "id": id });
+                        (StatusCode::CREATED, Json(response)).into_response()
+                    }
                 } else {
+                    // 마이그레이션: 기존 디렉토리에 직접 연결, 추가 설치 없음
+
+                    // ── executable_path 자동 계산 ──
+                    // migration_source(=working_dir)와 server_executable(바이너리 파일명)을 결합
+                    // 프론트엔드가 모듈 기본값을 보낼 수 있으므로, migration에서는 항상 재계산
+                    if let (Some(ref work_dir), Some((_, _, _, ref server_exe))) = (&instance.working_dir, &module_install) {
+                        if let Some(ref exe_name) = server_exe {
+                            let resolved = std::path::Path::new(work_dir).join(exe_name);
+                            if resolved.exists() {
+                                instance.executable_path = Some(resolved.to_string_lossy().to_string());
+                                tracing::info!("Migration: executable_path auto-resolved to '{}'", resolved.display());
+                            } else {
+                                tracing::warn!("Migration: expected executable '{}' not found in '{}'", exe_name, work_dir);
+                            }
+                        }
+                    }
+
+                    // ── 기존 INI 설정 import ──
+                    if let Some((_, _, ref module_path, ref _server_exe)) = module_install {
+                        let lifecycle_path = format!("{}/lifecycle.py", module_path);
+                        let import_config = json!({
+                            "working_dir": instance.working_dir,
+                        });
+                        match crate::plugin::run_plugin(&lifecycle_path, "import_settings", import_config).await {
+                            Ok(result) => {
+                                if result.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+                                    if let Some(settings) = result.get("settings").and_then(|v| v.as_object()) {
+                                        for (key, value) in settings {
+                                            instance.module_settings.insert(key.clone(), value.clone());
+                                        }
+                                        // port, admin_password 등 core 필드도 동기화
+                                        if let Some(port) = settings.get("port").and_then(|v| v.as_u64()) {
+                                            instance.port = Some(port as u16);
+                                        }
+                                        if let Some(pwd) = settings.get("admin_password").and_then(|v| v.as_str()) {
+                                            instance.rest_password = Some(pwd.to_string());
+                                        }
+                                        tracing::info!("Migration import_settings: {} settings imported for '{}'", settings.len(), instance_name);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!("Migration import_settings failed for '{}': {} (non-fatal)", instance_name, e);
+                            }
+                        }
+                    }
+                    // 마이그레이션 변경사항 저장 (executable_path, import된 설정 등)
+                    let _ = supervisor.instance_store.update(&id, instance.clone());
                     let response = json!({ "success": true, "id": id });
                     (StatusCode::CREATED, Json(response)).into_response()
                 }

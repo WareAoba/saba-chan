@@ -970,6 +970,45 @@ def configure(config):
     }
 
 
+def import_settings(config):
+    """Read PalWorldSettings.ini and return settings in saba-chan key format.
+
+    Used during migration to import existing server settings into saba-chan.
+    Returns {"success": True, "settings": { saba_key: value, ... }}
+    """
+    result = read_properties(config)
+    if not result.get("success"):
+        return result
+
+    ini_props = result.get("properties", {})
+    if not ini_props:
+        return {"success": True, "settings": {}, "message": "No properties found."}
+
+    # Build reverse map: INI key → saba-chan key
+    reverse_map = {v: k for k, v in _PALWORLD_KEY_MAP.items()}
+
+    settings = {}
+    for ini_key, raw_value in ini_props.items():
+        saba_key = reverse_map.get(ini_key)
+        if saba_key is None:
+            continue
+
+        # Type coercion: booleans, numbers, strings
+        val = str(raw_value).strip().strip('"')
+        if val.lower() == "true":
+            settings[saba_key] = True
+        elif val.lower() == "false":
+            settings[saba_key] = False
+        else:
+            try:
+                f = float(val)
+                settings[saba_key] = int(f) if f == int(f) else f
+            except (ValueError, OverflowError):
+                settings[saba_key] = val
+
+    return {"success": True, "settings": settings}
+
+
 def read_properties(config):
     """Read current PalWorldSettings.ini."""
     ini_path = _get_settings_ini_path(config)
@@ -1114,8 +1153,50 @@ def get_version_details(config):
 
 
 def install_server(config):
-    """Provide SteamCMD instructions for Palworld server installation."""
+    """Install Palworld dedicated server via SteamCMD extension.
+
+    Uses the saba-chan SteamCMD extension for portable, automatic
+    download.  Falls back to manual instructions when the extension
+    is unavailable.
+    """
     install_dir = config.get("install_dir", "")
+    if not install_dir:
+        working_dir = config.get("working_dir", "")
+        if working_dir:
+            install_dir = os.path.join(working_dir, "server")
+        else:
+            return {"success": False, "message": "No install_dir specified"}
+
+    os.makedirs(install_dir, exist_ok=True)
+
+    # ── SteamCMD extension 사용 시도 ──
+    try:
+        from extensions.steamcmd import SteamCMD
+
+        steam = SteamCMD()
+        steam.ensure_available()
+
+        result = steam.install(
+            app_id=2394010,
+            install_dir=install_dir,
+            anonymous=True,
+        )
+
+        if result.get("success"):
+            exe_name = "PalServer.exe" if sys.platform == "win32" else "PalServer.sh"
+            exe_path = os.path.join(install_dir, exe_name)
+            result["install_path"] = install_dir
+            result["executable_path"] = exe_path if os.path.exists(exe_path) else ""
+
+        return result
+
+    except ImportError:
+        print("[Palworld] SteamCMD extension not available, returning instructions", file=sys.stderr)
+    except Exception as e:
+        print(f"[Palworld] SteamCMD install failed: {e}", file=sys.stderr)
+        return {"success": False, "message": f"SteamCMD install failed: {e}"}
+
+    # ── Fallback: 수동 설치 안내 ──
     return {
         "success": False,
         "message": i18n.t("messages.install_via_steamcmd", defaultValue="Palworld dedicated server must be installed via SteamCMD."),

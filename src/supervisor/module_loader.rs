@@ -16,6 +16,8 @@ pub struct ModuleMetadata {
     pub default_port: Option<u16>,  // config.default_port
     pub executable_path: Option<String>,  // config.executable_path
     #[serde(default)]
+    pub server_executable: Option<String>,  // config.server_executable (바이너리 파일명, e.g. "PalServer.exe")
+    #[serde(default)]
     pub icon: Option<String>,  // 아이콘 파일명 (icon.png 등)
     #[serde(default)]
     pub stop_command: Option<String>,  // config.stop_command (e.g. "stop" for Minecraft)
@@ -44,6 +46,10 @@ pub struct ModuleMetadata {
     /// 예: ["server.jar"] (Minecraft), ["zombie.network.GameServer"] (Zomboid)
     #[serde(default)]
     pub cmd_patterns: Vec<String>,  // [detection].cmd_patterns
+    /// 디렉토리 시그니처 — 기존 서버 폴더 내 파일/폴더명으로 모듈을 자동 감지
+    /// 예: ["PalServer.exe"] (Palworld), ["server.jar", "server.properties"] (Minecraft)
+    #[serde(default)]
+    pub dir_signatures: Vec<String>,  // [detection].dir_signatures
 }
 
 impl ModuleMetadata {
@@ -240,6 +246,8 @@ struct ConfigSection {
     #[serde(default)]
     executable_path: Option<String>,
     #[serde(default)]
+    server_executable: Option<String>,
+    #[serde(default)]
     process_name: Option<String>,
     #[serde(default)]
     default_port: Option<u16>,
@@ -259,6 +267,9 @@ struct DetectionSection {
     #[serde(default)]
     #[allow(dead_code)]
     common_paths: Option<Vec<String>>,
+    /// 디렉토리 내 파일/폴더 시그니처 — 기존 서버 마이그레이션 시 자동 감지에 사용
+    #[serde(default)]
+    dir_signatures: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -537,6 +548,7 @@ impl ModuleToml {
             process_name: self.config.as_ref().and_then(|c| c.process_name.clone()),
             default_port: self.config.as_ref().and_then(|c| c.default_port),
             executable_path: self.config.as_ref().and_then(|c| c.executable_path.clone()),
+            server_executable: self.config.as_ref().and_then(|c| c.server_executable.clone()),
             stop_command: self.config.as_ref().and_then(|c| c.stop_command.clone()),
             interaction_mode: self.protocols.as_ref().and_then(|p| p.interaction_mode.clone()),
             protocols_supported: self.protocols.as_ref().and_then(|p| p.supported.clone()),
@@ -584,6 +596,9 @@ impl ModuleToml {
                 .unwrap_or_default(),
             cmd_patterns: self._detection.as_ref()
                 .and_then(|d| d.cmd_patterns.clone())
+                .unwrap_or_default(),
+            dir_signatures: self._detection.as_ref()
+                .and_then(|d| d.dir_signatures.clone())
                 .unwrap_or_default(),
         }
     }
@@ -880,6 +895,7 @@ custom_unknown_field = "should not cause error"
         let meta = parse_module_toml(toml).unwrap();
         assert_eq!(meta.name, "palworld");
         assert_eq!(meta.executable_path.as_deref(), Some("PalServer.exe"));
+        assert_eq!(meta.server_executable.as_deref(), Some("PalServer.exe"));
         assert_eq!(meta.default_port, Some(8211));
     }
 

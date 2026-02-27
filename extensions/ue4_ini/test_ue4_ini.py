@@ -158,6 +158,37 @@ def test_write_custom_section():
         assert "[/Custom/Section]" in content
 
 
+def test_write_password_quoted():
+    """String values like passwords are always quoted, even without spaces/commas."""
+    from extensions.ue4_ini import parse_option_settings, write_option_settings
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = os.path.join(tmpdir, "settings.ini")
+        props = {
+            "RESTAPIEnabled": "True",
+            "AdminPassword": "PDfsZyRKFzS3R6qj",
+            "ServerPassword": "",
+            "Port": "8211",
+        }
+
+        write_option_settings(path, props)
+
+        with open(path, 'r') as f:
+            content = f.read()
+        # String values must be quoted
+        assert 'AdminPassword="PDfsZyRKFzS3R6qj"' in content
+        assert 'ServerPassword=""' in content
+        # Booleans and numbers must NOT be quoted
+        assert 'RESTAPIEnabled=True' in content
+        assert 'Port=8211' in content
+
+        # Roundtrip: parsed values should match originals
+        result = parse_option_settings(path)
+        assert result["AdminPassword"] == "PDfsZyRKFzS3R6qj"
+        assert result["ServerPassword"] == ""
+        assert result["RESTAPIEnabled"] == "True"
+        assert result["Port"] == "8211"
+
+
 def test_parse_boolean_values():
     """Boolean-like values preserved as strings."""
     from extensions.ue4_ini import parse_option_settings
@@ -187,6 +218,7 @@ if __name__ == "__main__":
         test_write_and_read_roundtrip,
         test_write_quoted_values,
         test_write_custom_section,
+        test_write_password_quoted,
         test_parse_boolean_values,
     ]
     passed = 0

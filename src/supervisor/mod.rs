@@ -10,6 +10,7 @@ use module_loader::{ModuleLoader, LoadedModule};
 use managed_process::{ManagedProcess, ManagedProcessStore};
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 use crate::instance::InstanceStore;
 
@@ -43,6 +44,8 @@ pub struct Supervisor {
     pub extension_manager: Option<std::sync::Arc<tokio::sync::RwLock<crate::extension::ExtensionManager>>>,
     /// 포트 충돌로 인한 강제 정지 이벤트 큐 (GUI에서 폴링 후 drain)
     pub port_conflict_stops: std::sync::Mutex<Vec<PortConflictStopEvent>>,
+    /// GUI 설정: 포트 충돌 검사 건너뛰기 (portConflictCheck 비활성화 시 true)
+    pub skip_port_check: std::sync::Arc<AtomicBool>,
 }
 
 impl Supervisor {
@@ -72,6 +75,7 @@ impl Supervisor {
             stop_cooldowns: HashMap::new(),
             extension_manager: None,
             port_conflict_stops: std::sync::Mutex::new(Vec::new()),
+            skip_port_check: std::sync::Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -115,24 +119,28 @@ impl Supervisor {
             .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
 
         // ── 포트 충돌 검사 (모듈별 프로토콜 인지) ──
-        let all_instances = self.instance_store.list();
-        let running_ids: std::collections::HashSet<String> = all_instances
-            .iter()
-            .filter(|i| self.tracker.get_pid(&i.id).is_ok())
-            .map(|i| i.id.clone())
-            .collect();
-        let module_protocols = self.build_module_protocols_map();
-        let conflicts = crate::validator::check_port_conflicts(instance, all_instances, &running_ids, Some(&module_protocols));
-        if !conflicts.is_empty() {
-            let details: Vec<String> = conflicts.iter().map(|c| c.to_string()).collect();
-            tracing::warn!("Port conflict detected for '{}': {:?}", server_name, details);
-            return Ok(json!({
-                "success": false,
-                "error": "port_conflict",
-                "error_code": "port_conflict",
-                "message": format!("Cannot start '{}': port conflict detected", server_name),
-                "conflicts": details,
-            }));
+        // GUI 설정에서 portConflictCheck를 비활성화하면 skip_port_check: true가 전달됨
+        let skip_port_check = config.get("skip_port_check").and_then(|v| v.as_bool()).unwrap_or(false);
+        if !skip_port_check {
+            let all_instances = self.instance_store.list();
+            let running_ids: std::collections::HashSet<String> = all_instances
+                .iter()
+                .filter(|i| self.tracker.get_pid(&i.id).is_ok())
+                .map(|i| i.id.clone())
+                .collect();
+            let module_protocols = self.build_module_protocols_map();
+            let conflicts = crate::validator::check_port_conflicts(instance, all_instances, &running_ids, Some(&module_protocols));
+            if !conflicts.is_empty() {
+                let details: Vec<String> = conflicts.iter().map(|c| c.to_string()).collect();
+                tracing::warn!("Port conflict detected for '{}': {:?}", server_name, details);
+                return Ok(json!({
+                    "success": false,
+                    "error": "port_conflict",
+                    "error_code": "port_conflict",
+                    "message": format!("Cannot start '{}': port conflict detected", server_name),
+                    "conflicts": details,
+                }));
+            }
         }
 
         // ── Extension hook: server.pre_start ──
@@ -700,24 +708,28 @@ impl Supervisor {
             .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
 
         // ── 포트 충돌 검사 (모듈별 프로토콜 인지) ──
-        let all_instances = self.instance_store.list();
-        let running_ids: std::collections::HashSet<String> = all_instances
-            .iter()
-            .filter(|i| self.tracker.get_pid(&i.id).is_ok())
-            .map(|i| i.id.clone())
-            .collect();
-        let module_protocols = self.build_module_protocols_map();
-        let conflicts = crate::validator::check_port_conflicts(instance, all_instances, &running_ids, Some(&module_protocols));
-        if !conflicts.is_empty() {
-            let details: Vec<String> = conflicts.iter().map(|c| c.to_string()).collect();
-            tracing::warn!("Port conflict detected for managed instance '{}': {:?}", instance.name, details);
-            return Ok(json!({
-                "success": false,
-                "error": "port_conflict",
-                "error_code": "port_conflict",
-                "message": format!("Cannot start '{}': port conflict detected", instance.name),
-                "conflicts": details,
-            }));
+        // GUI 설정에서 portConflictCheck를 비활성화하면 skip_port_check: true가 전달됨
+        let skip_port_check = config.get("skip_port_check").and_then(|v| v.as_bool()).unwrap_or(false);
+        if !skip_port_check {
+            let all_instances = self.instance_store.list();
+            let running_ids: std::collections::HashSet<String> = all_instances
+                .iter()
+                .filter(|i| self.tracker.get_pid(&i.id).is_ok())
+                .map(|i| i.id.clone())
+                .collect();
+            let module_protocols = self.build_module_protocols_map();
+            let conflicts = crate::validator::check_port_conflicts(instance, all_instances, &running_ids, Some(&module_protocols));
+            if !conflicts.is_empty() {
+                let details: Vec<String> = conflicts.iter().map(|c| c.to_string()).collect();
+                tracing::warn!("Port conflict detected for managed instance '{}': {:?}", instance.name, details);
+                return Ok(json!({
+                    "success": false,
+                    "error": "port_conflict",
+                    "error_code": "port_conflict",
+                    "message": format!("Cannot start '{}': port conflict detected", instance.name),
+                    "conflicts": details,
+                }));
+            }
         }
 
         // ── Extension hook: server.pre_start (managed) ──
@@ -1223,6 +1235,10 @@ impl Supervisor {
                                 }
 
                                 // ── 포트 충돌 검사: 새로 감지된 프로세스의 포트가 이미 실행 중인 인스턴스와 겹치면 강제 종료 ──
+                                // GUI에서 portConflictCheck를 비활성화하면 auto-detect 시에도 강제 종료를 건너뜀
+                                if self.skip_port_check.load(Ordering::Relaxed) {
+                                    tracing::debug!("Port conflict check skipped for auto-detected '{}' (disabled by GUI setting)", instance.name);
+                                } else {
                                 let all_instances = self.instance_store.list();
                                 let running_ids: std::collections::HashSet<String> = all_instances
                                     .iter()
@@ -1270,6 +1286,7 @@ impl Supervisor {
                                             });
                                         }
                                     }
+                                } // if !skip_port_check
                                 }
                             }
                 }

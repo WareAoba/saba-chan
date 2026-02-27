@@ -1587,8 +1587,6 @@ span[style*="--icon-loader"] svg,
     background: #43a047;
 }
 
-/* path-config removed – extensions path config moved into AddServerModal advanced panel */
-
 .path-input {
     width: 100%;
     padding: 10px;
@@ -1604,15 +1602,6 @@ span[style*="--icon-loader"] svg,
 .path-input:focus {
     outline: none;
     border-color: var(--brand-primary);
-}
-
-/* btn-refresh-extensions, path-hint, settings-path removed – moved into AddServerModal */
-
-.add-server-form {
-    background: var(--bg-surface-input);
-    padding: 20px;
-    border-radius: 8px;
-    margin-bottom: 20px;
 }
 
 /* ===== Add Server Modal (redesigned) ===== */
@@ -1643,6 +1632,187 @@ span[style*="--icon-loader"] svg,
     display: flex;
     flex-direction: column;
     gap: 0;
+}
+
+/* -- game selection grid (step 1) -- */
+.as-game-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.as-game-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 10px 12px;
+    border-radius: 10px;
+    border: 1.5px solid var(--border-default);
+    background: var(--bg-surface-tertiary);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+    color: inherit;
+    text-align: center;
+}
+
+.as-game-card:hover {
+    border-color: var(--brand-primary);
+    background: var(--bg-surface-hover);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+    transform: translateY(-1px);
+}
+
+.as-game-card:active {
+    transform: translateY(0);
+    box-shadow: none;
+}
+
+.as-game-card-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.as-game-card-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border-radius: 10px;
+}
+
+.as-game-card-icon-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--brand-gradient);
+    border-radius: 10px;
+    color: var(--text-on-primary);
+}
+
+.as-game-card-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.3;
+    word-break: break-word;
+}
+
+.as-game-card-version {
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+/* badge: already has native instance */
+.as-game-card-badge {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 9px;
+    color: var(--text-success, #4ade80);
+    background: var(--bg-success-subtle, rgba(74, 222, 128, 0.1));
+    padding: 2px 6px;
+    border-radius: 6px;
+    font-weight: 600;
+}
+
+.as-game-card--has-native {
+    border-color: var(--border-success, rgba(74, 222, 128, 0.3));
+}
+
+/* native limit warning */
+.as-native-limit-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    font-size: 12px;
+    color: var(--text-warning, #fbbf24);
+    background: var(--bg-warning-subtle, rgba(251, 191, 36, 0.08));
+    border: 1px solid var(--border-warning, rgba(251, 191, 36, 0.25));
+    border-radius: 8px;
+    line-height: 1.4;
+}
+
+.as-native-limit-warning svg {
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+/* -- selected game summary (step 2 header) -- */
+.as-selected-game {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: var(--bg-surface-tertiary);
+    margin-bottom: 16px;
+}
+
+.as-selected-game-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.as-selected-game-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border-radius: 8px;
+}
+
+.as-selected-game-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+
+.as-selected-game-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.as-selected-game-version {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.as-change-game-btn {
+    background: none;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-family: inherit;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.as-change-game-btn:hover {
+    border-color: var(--brand-primary);
+    color: var(--brand-primary);
+}
+
+.as-change-game-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
 }
 
 /* -- section blocks -- */
@@ -2073,6 +2243,316 @@ span[style*="--icon-loader"] svg,
 /* -- footer -- */
 .add-server-footer {
     gap: 10px;
+}
+
+/* ===== Add Instance Modal (chooser entry point) ===== */
+.add-instance-modal {
+    max-width: 520px;
+    max-height: 85vh;
+}
+
+.add-instance-modal--chooser {
+    max-width: 480px;
+}
+
+.add-instance-header {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 2px;
+}
+
+.add-instance-header h3 {
+    font-size: 1.2rem;
+    margin: 0;
+}
+
+.add-instance-subtitle {
+    margin: 0;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    font-weight: 400;
+}
+
+.add-instance-chooser-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* -- choice card -- */
+.ai-choice-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 18px;
+    border-radius: 10px;
+    border: 1.5px solid var(--border-default);
+    background: var(--bg-surface-tertiary);
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: left;
+    font-family: inherit;
+    color: inherit;
+    width: 100%;
+}
+
+.ai-choice-card:hover {
+    border-color: var(--brand-primary);
+    background: var(--bg-surface-hover);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.ai-choice-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    flex-shrink: 0;
+}
+
+.ai-choice-icon--new {
+    background: color-mix(in srgb, var(--brand-primary) 15%, transparent);
+    color: var(--brand-primary);
+}
+
+.ai-choice-icon--migrate {
+    background: color-mix(in srgb, var(--warning, #f0a030) 15%, transparent);
+    color: var(--warning, #f0a030);
+}
+
+.ai-choice-text {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    flex: 1;
+}
+
+.ai-choice-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.ai-choice-desc {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    line-height: 1.4;
+}
+
+.ai-choice-arrow {
+    flex-shrink: 0;
+    color: var(--text-muted);
+    transition: transform 0.15s;
+}
+
+.ai-choice-card:hover .ai-choice-arrow {
+    transform: translateX(2px);
+    color: var(--brand-primary);
+}
+
+.add-instance-footer {
+    gap: 10px;
+}
+
+/* -- back button (sub-flow headers) -- */
+.ai-back-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    padding: 2px;
+    margin-right: 6px;
+    border-radius: 4px;
+    transition: color 0.15s, background 0.15s;
+}
+
+.ai-back-btn:hover {
+    color: var(--brand-primary);
+    background: var(--bg-surface-hover);
+}
+
+.ai-back-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* -- migration flow styles -- */
+.mg-scan-btn {
+    margin-bottom: 12px;
+    align-self: flex-start;
+}
+
+.mg-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 12px;
+}
+
+.mg-status--scanning {
+    background: var(--bg-surface-tertiary);
+    color: var(--text-secondary);
+}
+
+.mg-status--error {
+    background: color-mix(in srgb, var(--failure-badge-bg) 40%, transparent);
+    color: var(--failure-badge-icon);
+}
+
+/* 감지 성공 카드 */
+.mg-detected {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    border: 1.5px solid var(--brand-primary);
+    background: color-mix(in srgb, var(--brand-primary) 8%, var(--bg-surface-tertiary));
+    margin-bottom: 12px;
+}
+
+.mg-detected-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.mg-detected-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border-radius: 10px;
+}
+
+.mg-detected-info {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    flex: 1;
+    min-width: 0;
+}
+
+.mg-detected-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.mg-detected-hint {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--brand-primary);
+    font-weight: 500;
+}
+
+/* 감지 실패 — 수동 선택 */
+.mg-no-match {
+    margin-bottom: 12px;
+}
+
+.mg-no-match-hint {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    margin-bottom: 10px;
+}
+
+.mg-module-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.mg-module-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1.5px solid var(--border-default);
+    background: var(--bg-surface-tertiary);
+    cursor: pointer;
+    font-family: inherit;
+    color: inherit;
+    text-align: left;
+    width: 100%;
+    transition: all 0.12s;
+}
+
+.mg-module-item:hover {
+    border-color: var(--brand-primary);
+    background: var(--bg-surface-hover);
+}
+
+.mg-module-item--selected {
+    border-color: var(--brand-primary);
+    background: color-mix(in srgb, var(--brand-primary) 10%, var(--bg-surface-tertiary));
+}
+
+.mg-module-item-icon {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    background: var(--brand-gradient);
+    color: var(--text-on-primary);
+    flex-shrink: 0;
+}
+
+.mg-module-item-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+
+.mg-module-item-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.mg-module-item-desc {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mg-module-item-check {
+    flex-shrink: 0;
+    color: var(--brand-primary);
+}
+
+/* configure 단계 소스 경로 표시 */
+.mg-source-path {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    word-break: break-all;
 }
 
 .form-row {

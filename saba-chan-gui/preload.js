@@ -39,7 +39,7 @@ contextBridge.exposeInMainWorld('api', {
     extensionRescan: () => ipcRenderer.invoke('extension:rescan'),
     extensionInitStatus: () => ipcRenderer.invoke('extension:initStatus'),
     // Managed Process API (console capture)
-    managedStart: (instanceId) => ipcRenderer.invoke('managed:start', instanceId),
+    managedStart: (instanceId, options = {}) => ipcRenderer.invoke('managed:start', instanceId, options),
     managedConsole: (instanceId, since, count) => ipcRenderer.invoke('managed:console', instanceId, since, count),
     managedStdin: (instanceId, command) => ipcRenderer.invoke('managed:stdin', instanceId, command),
     // Console Popout (PiP)
@@ -73,6 +73,8 @@ contextBridge.exposeInMainWorld('api', {
     // Dialog API
     openFileDialog: (options) => ipcRenderer.invoke('dialog:openFile', options),
     openFolderDialog: () => ipcRenderer.invoke('dialog:openFolder'),
+    // Migration API
+    migrationScanDir: (dirPath) => ipcRenderer.invoke('migration:scanDir', dirPath),
     // Discord Bot API
     discordBotStatus: () => ipcRenderer.invoke('discord:status'),
     discordBotStart: (config) => ipcRenderer.invoke('discord:start', config),
@@ -84,9 +86,13 @@ contextBridge.exposeInMainWorld('api', {
     // Bot Config API
     botConfigLoad: () => ipcRenderer.invoke('botConfig:load'),
     botConfigSave: (config) => ipcRenderer.invoke('botConfig:save', config),
+    // GUI Config sync to daemon
+    syncGuiConfig: (config) => ipcRenderer.invoke('guiConfig:sync', config),
     // Node Token API (cloud pairing)
     saveNodeToken: (token) => ipcRenderer.invoke('nodeToken:save', token),
     loadNodeToken: () => ipcRenderer.invoke('nodeToken:load'),
+    // Shell API
+    shellOpenPath: (folderPath) => ipcRenderer.invoke('shell:openPath', folderPath),
     // Logs API
     logsGetPath: () => ipcRenderer.invoke('logs:getPath'),
     logsOpenFolder: () => ipcRenderer.invoke('logs:openFolder'),

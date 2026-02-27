@@ -150,6 +150,8 @@ const MUSIC_COMMANDS = {
     np:      { handler: handleNowPlaying, needsVoice: false },
     volume:  { handler: handleVolume,  needsVoice: true  },
     shuffle: { handler: handleShuffle, needsVoice: true  },
+    loop:    { handler: handleLoop,    needsVoice: true  },
+    loopoff: { handler: handleLoopOff, needsVoice: true  },
     help:    { handler: handleHelp,    needsVoice: false },
 };
 
@@ -168,6 +170,8 @@ const DEFAULT_COMMAND_ALIASES = {
     np:      ['지금', 'ㅈㄱ', 'nowplaying', 'now'],
     volume:  ['볼륨', 'ㅂㄹ', 'vol', 'v'],
     shuffle: ['섞기', 'ㅅㄱ', 'random'],
+    loop:    ['반복', 'ㅂㅂ', 'repeat'],
+    loopoff: ['반복해제', 'ㅂㅂㅎㅈ', 'unloop'],
     help:    ['도움', 'ㄷㅇ말'],
 };
 
@@ -1213,6 +1217,50 @@ async function handleVolume(message, args) {
     }));
 }
 
+async function handleLoop(message, args) {
+    const queue = getQueue(message.guild.id);
+    if (!queue || !queue.current) {
+        await message.channel.send(i18n.t('bot:music.no_track'));
+        return;
+    }
+
+    // "사바쨩 반복 해제" → args = ['해제']
+    const offKeywords = ['해제', 'off', 'disable', '끄기'];
+    if (args.length > 0 && offKeywords.includes(args[0].toLowerCase())) {
+        return handleLoopOff(message);
+    }
+
+    if (queue.loop) {
+        await message.channel.send(i18n.t('bot:music.loop_already_on', {
+            title: queue.current.title,
+        }));
+        return;
+    }
+
+    queue.loop = true;
+    await message.channel.send(i18n.t('bot:music.loop_enabled', {
+        title: queue.current.title,
+    }));
+}
+
+async function handleLoopOff(message) {
+    const queue = getQueue(message.guild.id);
+    if (!queue || !queue.current) {
+        await message.channel.send(i18n.t('bot:music.no_track'));
+        return;
+    }
+
+    if (!queue.loop) {
+        await message.channel.send(i18n.t('bot:music.loop_already_off'));
+        return;
+    }
+
+    queue.loop = false;
+    await message.channel.send(i18n.t('bot:music.loop_disabled', {
+        title: queue.current.title,
+    }));
+}
+
 async function handleShuffle(message) {
     const queue = getQueue(message.guild.id);
     if (!queue || queue.tracks.length < 2) {
@@ -1250,9 +1298,37 @@ async function handleHelp(message, args, botConfig) {
 // ── 음악 명령어 목록 (GUI 설정용 export) ──
 const MUSIC_COMMAND_LIST = Object.keys(MUSIC_COMMANDS);
 
+/**
+ * 음성 채널 상태 변경 핸들러 — 채널에 봇만 남으면 자동 퇴장
+ */
+function handleVoiceStateUpdate(oldState, newState) {
+    if (!musicAvailable) return;
+
+    // 누군가 음성 채널을 떠났을 때만 처리 (oldState.channel이 있어야 함)
+    const channel = oldState.channel;
+    if (!channel) return;
+
+    const guildId = oldState.guild.id;
+    const queue = getQueue(guildId);
+    if (!queue || !queue.connection) return;
+
+    // 봇이 있는 채널인지 확인
+    const botMember = oldState.guild.members.me;
+    if (!botMember || !botMember.voice.channel) return;
+    if (channel.id !== botMember.voice.channel.id) return;
+
+    // 봇 외에 사람이 남아 있는지 확인
+    const humans = channel.members.filter(m => !m.user.bot);
+    if (humans.size === 0) {
+        console.log(`[Music] Voice channel empty in guild ${guildId}, auto-leaving`);
+        destroyQueue(guildId);
+    }
+}
+
 module.exports = {
     handleMusicMessage,
     handleMusicShortcut,
+    handleVoiceStateUpdate,
     isMusicModule,
     hasActiveQueue,
     musicAvailable: () => musicAvailable,

@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createTranslateError, retryWithBackoff, safeShowToast } from '../utils/helpers';
+import { useSettingsStore } from '../stores/useSettingsStore';
 
 /**
  * Manages server CRUD operations: fetch, start, stop, status, add, delete.
@@ -240,11 +241,15 @@ export function useServerActions({
             optimisticStatusRef.current.set(name, { status: 'starting', timestamp: Date.now() });
             setServers((prev) => prev.map((s) => (s.name === name ? { ...s, status: 'starting' } : s)));
 
+            // portConflictCheck가 비활성화되어 있으면 데몬에 skip_port_check 전달
+            const skipPortCheck = !useSettingsStore.getState().portConflictCheck;
+            const startConfig = skipPortCheck ? { skip_port_check: true } : {};
+
             let result;
             if (interactionMode === 'console') {
-                result = await window.api.managedStart(srv.id);
+                result = await window.api.managedStart(srv.id, { config: startConfig });
             } else {
-                result = await window.api.serverStart(name, { module });
+                result = await window.api.serverStart(name, { module, config: startConfig });
             }
 
             // ── action_required: server jar not found ──
@@ -609,7 +614,7 @@ export function useServerActions({
 
     // ── handleAddServer ─────────────────────────────────────
     const handleAddServer = async (payload) => {
-        // payload = { name, module_name, accept_eula?, use_container? }
+        // payload = { name, module_name, accept_eula?, use_container?, migration_source? }
         const serverName = typeof payload === 'string' ? payload : payload?.name;
         const moduleName = typeof payload === 'string' ? arguments[1] : payload?.module_name;
 
@@ -636,9 +641,14 @@ export function useServerActions({
             const instanceData = {
                 name: serverName.trim(),
                 module_name: moduleName,
-                executable_path: selectedModuleData?.executable_path || null,
+                executable_path: payload?.migration_source ? null : (selectedModuleData?.executable_path || null),
                 use_container: payload?.use_container || false, // 백엔드가 extension_data로 변환
             };
+
+            // 마이그레이션: 기존 서버 디렉토리 직접 연결
+            if (payload?.migration_source) {
+                instanceData.migration_source = payload.migration_source;
+            }
 
             console.log('Adding instance:', instanceData);
             const result = await window.api.instanceCreate(instanceData);
@@ -648,7 +658,7 @@ export function useServerActions({
                 setModal({ type: 'failure', title: t('servers.add_failed_title'), message: errorMsg });
             } else {
                 if (result.provisioning) {
-                    // 컨테이너 모드: 백그라운드 프로비저닝 시작 — 모달 닫고 서버 리스트에서 진행률 표시
+                    // 프로비저닝 시작 (컨테이너 또는 네이티브 설치) — 모달 닫고 서버 리스트에서 진행률 표시
                     setShowModuleManager(false);
                     fetchServers();
                 } else {

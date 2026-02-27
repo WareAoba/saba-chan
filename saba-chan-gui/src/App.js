@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, } from 'react';
 import { useTranslation } from 'react-i18next';
 import './App.css';
 import {
-    AddServerModal,
+    AddInstanceModal,
     BackgroundModal,
     CommandModal,
     ConsolePanel,
@@ -721,8 +721,8 @@ function App() {
                     </div>
                 </header>
 
-                {/* AddServerModal */}
-                <AddServerModal
+                {/* AddInstanceModal — 새 서버 / 마이그레이션 선택 */}
+                <AddInstanceModal
                     isOpen={showModuleManager}
                     onClose={() => setShowModuleManager(false)}
                     extensions={modules}
@@ -846,6 +846,21 @@ function App() {
                             >
                                 <Icon name="settings" size="sm" />
                                 {t('context_menu.settings', { defaultValue: 'Settings' })}
+                            </div>
+                            <div
+                                className="context-menu-item"
+                                onClick={() => {
+                                    const srv = contextMenu.server;
+                                    const dir = srv?.module_settings?.working_dir ||
+                                        (srv?.executable_path ? srv.executable_path.replace(/[\/\\][^\/\\]+$/, '') : null);
+                                    if (dir) {
+                                        window.api.shellOpenPath(dir);
+                                    }
+                                    setContextMenu(null);
+                                }}
+                            >
+                                <Icon name="folder" size="sm" />
+                                {t('context_menu.open_folder', { defaultValue: 'Open in File Explorer' })}
                             </div>
                             <div className="context-menu-separator" />
                             <div

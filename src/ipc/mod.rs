@@ -268,6 +268,9 @@ pub struct ExtensionInfo {
     pub settings: Option<crate::supervisor::module_loader::ModuleSettings>,
     pub commands: Option<crate::supervisor::module_loader::ModuleCommands>,
     pub syntax_highlight: Option<crate::supervisor::module_loader::SyntaxHighlight>,
+    /// 디렉토리 시그니처 — 마이그레이션 시 기존 서버 폴더 자동 감지용
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dir_signatures: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -563,6 +566,8 @@ impl IPCServer {
             .route("/api/module/:name/install", post(handlers::managed::install_server_handler))
             // ── Bot config ──
             .route("/api/config/bot", get(handlers::bot::get_bot_config).put(handlers::bot::save_bot_config))
+            // ── GUI config sync ──
+            .route("/api/config/gui", put(handlers::server::sync_gui_config))
             // ── Client heartbeat ──
             .route("/api/client/register", post(handlers::client::client_register))
             .route("/api/client/:id/heartbeat", post(handlers::client::client_heartbeat))
@@ -665,6 +670,7 @@ mod tests {
             protocols: None,
             settings: None,
             syntax_highlight: None,
+            dir_signatures: vec!["PalServer.exe".to_string()],
             commands: Some(crate::supervisor::module_loader::ModuleCommands {
                 fields: vec![
                     crate::supervisor::module_loader::CommandField {
@@ -704,6 +710,7 @@ mod tests {
             protocols: None,
             settings: None,
             syntax_highlight: None,
+            dir_signatures: vec![],
             commands: None,
         };
 
@@ -727,6 +734,7 @@ mod tests {
                     protocols: None,
                     settings: None,
                     syntax_highlight: None,
+                    dir_signatures: vec![],
                     commands: Some(crate::supervisor::module_loader::ModuleCommands {
                         fields: vec![
                             crate::supervisor::module_loader::CommandField {

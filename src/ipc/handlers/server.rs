@@ -299,6 +299,7 @@ pub async fn list_modules(State(state): State<IPCServer>) -> impl IntoResponse {
                         settings: m.metadata.settings,
                         commands: m.metadata.commands,
                         syntax_highlight: m.metadata.syntax_highlight,
+                        dir_signatures: m.metadata.dir_signatures,
                     }
                 })
                 .collect();
@@ -349,6 +350,7 @@ pub async fn refresh_modules(State(state): State<IPCServer>) -> impl IntoRespons
                         settings: m.metadata.settings,
                         commands: m.metadata.commands,
                         syntax_highlight: m.metadata.syntax_highlight,
+                        dir_signatures: m.metadata.dir_signatures,
                     }
                 })
                 .collect();
@@ -699,4 +701,23 @@ pub async fn stop_server_handler(
         });
         (StatusCode::NOT_FOUND, Json(error)).into_response()
     }
+}
+
+/// PUT /api/config/gui — GUI 설정 동기화
+///
+/// GUI의 portConflictCheck 등 데몬 동작에 영향을 주는 설정을 데몬에 전달합니다.
+/// 데몬은 이 값을 AtomicBool에 저장하여 auto-detect 루프 등에서 참조합니다.
+pub async fn sync_gui_config(
+    State(state): State<IPCServer>,
+    Json(payload): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    // portConflictCheck: false → skip_port_check: true
+    if let Some(port_conflict_check) = payload.get("portConflictCheck").and_then(|v| v.as_bool()) {
+        let skip = !port_conflict_check;
+        let supervisor = state.supervisor.read().await;
+        supervisor.skip_port_check.store(skip, std::sync::atomic::Ordering::Relaxed);
+        tracing::info!("[Config] portConflictCheck={} (skip_port_check={})", port_conflict_check, skip);
+    }
+
+    (StatusCode::OK, Json(json!({ "ok": true })))
 }

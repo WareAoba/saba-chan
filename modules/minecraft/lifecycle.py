@@ -1127,6 +1127,40 @@ def configure(config):
     }
 
 
+def import_settings(config):
+    """Read server.properties and return settings in saba-chan key format.
+
+    Used during migration to import existing server settings into saba-chan.
+    """
+    result = read_properties(config)
+    if not result.get("success"):
+        return result
+
+    raw_props = result.get("properties", {})
+    if not raw_props:
+        return {"success": True, "settings": {}, "message": "No properties found."}
+
+    # Build reverse map: server.properties key → saba-chan key
+    reverse_map = {v: k for k, v in _PROPERTY_KEY_MAP.items()}
+
+    settings = {}
+    for prop_key, raw_value in raw_props.items():
+        saba_key = reverse_map.get(prop_key, prop_key)
+        val = str(raw_value).strip()
+        if val.lower() == "true":
+            settings[saba_key] = True
+        elif val.lower() == "false":
+            settings[saba_key] = False
+        else:
+            try:
+                f = float(val)
+                settings[saba_key] = int(f) if f == int(f) else f
+            except (ValueError, OverflowError):
+                settings[saba_key] = val
+
+    return {"success": True, "settings": settings}
+
+
 def read_properties(config):
     """Read current server.properties."""
     working_dir = config.get("working_dir")

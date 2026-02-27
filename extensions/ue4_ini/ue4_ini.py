@@ -92,6 +92,26 @@ def parse_option_settings(ini_path):
         return {}
 
 
+def _should_quote(value):
+    """Determine if a value needs quoting in UE4 INI OptionSettings.
+
+    Unquoted: True/False, numeric literals, parenthesized groups.
+    Quoted:   everything else (strings, passwords, URLs, etc.).
+    """
+    if not isinstance(value, str):
+        return False
+    if value.startswith("("):
+        return False
+    if value in ("True", "False"):
+        return False
+    try:
+        float(value)
+        return False
+    except ValueError:
+        pass
+    return True
+
+
 def write_option_settings(ini_path, props, section="[/Script/Pal.PalGameWorldSettings]"):
     """Write dict back to UE4 INI OptionSettings format.
 
@@ -107,8 +127,10 @@ def write_option_settings(ini_path, props, section="[/Script/Pal.PalGameWorldSet
 
     parts = []
     for key, value in props.items():
-        # Re-quote string values that contain special chars
-        if isinstance(value, str) and (" " in value or "," in value) and not value.startswith("("):
+        # UE4 INI: string values must be quoted; booleans, numbers,
+        # and parenthesized groups (e.g. CrossplayPlatforms=(Steam,Xbox))
+        # stay unquoted.
+        if isinstance(value, str) and _should_quote(value):
             parts.append(f'{key}="{value}"')
         else:
             parts.append(f"{key}={value}")
