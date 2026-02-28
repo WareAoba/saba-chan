@@ -22,7 +22,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
           cache-dependency-path: |
             saba-chan-gui/package-lock.json
@@ -59,15 +59,15 @@ jobs:
         run: cargo build --release
 
       - name: Run Rust Daemon Tests
-        run: cargo test --test daemon_integration
+        run: cargo test --workspace
 
       - name: Run Electron GUI Tests
         working-directory: saba-chan-gui
-        run: npm test -- --watchAll=false
+        run: npx vitest run
 
       - name: Run Discord Bot Tests
         working-directory: discord_bot
-        run: npm test -- --watchAll=false
+        run: npm test
 
       - name: Upload test results
         if: always()
@@ -75,7 +75,6 @@ jobs:
         with:
           name: test-results
           path: |
-            target/debug/
             saba-chan-gui/coverage/
             discord_bot/coverage/
           retention-days: 7

@@ -40,7 +40,7 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace -- -D warnings
 
-  node:
+  discord-bot:
     name: Discord Bot (Node.js)
     runs-on: ubuntu-latest
     steps:
@@ -60,30 +60,22 @@ jobs:
         working-directory: discord_bot
         run: npm test
 
-  python:
-    name: Python modules (syntax check)
+  gui:
+    name: Electron GUI (Vitest)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-node@v4
         with:
-          python-version: '3.11'
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: saba-chan-gui/package-lock.json
 
-      - name: Syntax check — Minecraft module
-        run: python -m py_compile modules/minecraft/lifecycle.py
+      - name: Install dependencies
+        working-directory: saba-chan-gui
+        run: npm ci
 
-      - name: Syntax check — Palworld module
-        run: python -m py_compile modules/palworld/lifecycle.py
-
-      - name: Syntax check — Shared modules
-        run: |
-          python -m py_compile modules/_shared/rcon.py
-          python -m py_compile modules/_shared/ue4_ini.py
-
-      - name: Test — UE4 INI parser
-        run: python modules/_shared/test_ue4_ini.py
-
-      - name: Test — Minecraft lifecycle
-        working-directory: modules/minecraft
-        run: python test_lifecycle.py
+      - name: Test
+        working-directory: saba-chan-gui
+        run: npx vitest run
