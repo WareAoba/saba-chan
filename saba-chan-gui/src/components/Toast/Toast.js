@@ -61,38 +61,16 @@ function Toast() {
             }
         };
 
-        // 상태 업데이트 토스트 표시 (백그라운드 초기화 메시지만 표시)
-        window.showStatus = (step, message, duration = 3000) => {
-            // daemon, modules, instances는 무시 (display: none으로 처리)
-            // init, ready, ui만 표시
-            if (['daemon', 'modules', 'instances'].includes(step)) {
-                return;
-            }
-
-            const id = Date.now() + Math.random();
-            const typeMap = {
-                init: 'status-init',
-                ready: 'status-ready',
-                ui: 'status-ui',
-            };
-            const type = typeMap[step] || 'info';
-            const fullMessage = message;
-            const newToast = { id, message: fullMessage, type, isStatus: true, step, icon: step };
-            setToasts((prev) => [...prev, newToast]);
-
-            // 모든 상태 토스트도 자동으로 사라짐
-            if (duration > 0) {
-                setTimeout(() => {
-                    removeToast(id);
-                }, duration);
-            }
+        // 상태 업데이트는 콘솔 로그로만 기록 (토스트 표시 안 함)
+        window.showStatus = (step, message, _duration = 3000) => {
+            // 초기화 상태 메시지는 로딩 화면에서 이미 표시되므로 토스트 불필요
+            console.log('[Status]', step, ':', message);
         };
 
-        // StatusBar의 상태 업데이트 신호를 받아 showStatus 호출
+        // StatusBar의 상태 업데이트 신호를 받아 로그만 출력
         if (window.api && window.api.onStatusUpdate) {
             window.api.onStatusUpdate((data) => {
                 console.log('[Status Update]', data.step, ':', data.message);
-                window.showStatus(data.step, data.message, 3000); // 모든 상태 메시지는 3초 후 자동 사라짐
             });
         }
 

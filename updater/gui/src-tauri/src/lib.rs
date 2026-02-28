@@ -407,18 +407,35 @@ fn build_state(mgr: &UpdateManager) -> UpdaterState {
 }
 
 fn resolve_modules_dir() -> String {
-    for candidate in &[
-        std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.join("modules"))),
-        Some(PathBuf::from("modules")),
-    ] {
-        if let Some(p) = candidate {
-            if p.exists() {
-                return p.to_string_lossy().to_string();
-            }
+    // 환경 변수 오버라이드 (테스트/개발용)
+    if let Ok(p) = std::env::var("SABA_MODULES_PATH") {
+        if !p.is_empty() {
+            return p;
         }
     }
+
+    // 고정 경로: %APPDATA%/saba-chan/modules
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            let p = PathBuf::from(appdata).join("saba-chan").join("modules");
+            if !p.exists() {
+                let _ = std::fs::create_dir_all(&p);
+            }
+            return p.to_string_lossy().to_string();
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Ok(home) = std::env::var("HOME") {
+            let p = PathBuf::from(home).join(".config").join("saba-chan").join("modules");
+            if !p.exists() {
+                let _ = std::fs::create_dir_all(&p);
+            }
+            return p.to_string_lossy().to_string();
+        }
+    }
+
     "modules".to_string()
 }
 

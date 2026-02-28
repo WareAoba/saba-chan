@@ -32,11 +32,8 @@ import { setDiscordI18n, useDiscordStore } from './stores/useDiscordStore';
 import { setServerI18n, useServerStore } from './stores/useServerStore';
 import { useSettingsStore } from './stores/useSettingsStore';
 import { useUIStore } from './stores/useUIStore';
-import { createTranslateError, } from './utils/helpers';
-
 function App() {
     const { t, i18n } = useTranslation('gui');
-    const _translateError = createTranslateError(t);
 
     // ── Console Popout Mode Detection ──────────────────────
     const popoutParams = useMemo(() => {
@@ -107,8 +104,6 @@ function App() {
     const ipcPort = useSettingsStore((s) => s.ipcPort);
     const consoleBufferSize = useSettingsStore((s) => s.consoleBufferSize);
     const consoleBufferRef = useRef(2000);
-    const modulesPath = useSettingsStore((s) => s.modulesPath);
-    const settingsPath = useSettingsStore((s) => s.settingsPath);
     const _settingsReady = useSettingsStore((s) => s.settingsReady);
 
     // ── Discord Store (Zustand) ──────────────────────────────
@@ -288,13 +283,18 @@ function App() {
     // Initialization status monitoring
     // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only IPC registration — setters are stable, initProgress stale fixed via functional updater
     useEffect(() => {
-        // HMR: if daemon is already running, skip loading screen
+        // HMR / page-reload recovery: always check daemon health on mount.
+        // On cold boot the daemon hasn't started yet so daemonStatus() returns
+        // { running: false } and we fall through to the onStatusUpdate listener.
+        // On HMR or Vite full-reload the daemon is already alive, so we skip
+        // the loading screen immediately.
         if (window.api && window.api.daemonStatus) {
             window.api
                 .daemonStatus()
                 .then((status) => {
                     if (status && status.running) {
                         console.log('[HMR] Daemon already running, skipping loading screen');
+                        window.__sabaReadyReceived = true;
                         setInitStatus('Ready!');
                         setInitProgress(100);
                         setDaemonReady(true);
@@ -302,6 +302,11 @@ function App() {
                     }
                 })
                 .catch(() => {});
+        }
+
+        // Remove any previously stacked listeners (prevents duplicates on Fast Refresh)
+        if (window.api && window.api.offStatusUpdate) {
+            window.api.offStatusUpdate();
         }
 
         if (window.api && window.api.onStatusUpdate) {
@@ -329,6 +334,7 @@ function App() {
                 setInitProgress((prev) => progressValues[data.step] || prev);
 
                 if (data.step === 'ready') {
+                    window.__sabaReadyReceived = true;
                     setTimeout(() => setDaemonReady(true), 600);
                     setTimeout(() => setServersInitializing(false), 3500);
                 }
@@ -374,6 +380,13 @@ function App() {
                 }, 1500);
             });
         }
+
+        return () => {
+            // Cleanup IPC listeners on unmount / Fast Refresh re-run
+            if (window.api && window.api.offStatusUpdate) {
+                window.api.offStatusUpdate();
+            }
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -727,9 +740,6 @@ function App() {
                     onClose={() => setShowModuleManager(false)}
                     extensions={modules}
                     servers={servers}
-                    extensionsPath={modulesPath}
-                    settingsPath={settingsPath}
-                    onextensionsPathChange={(val) => useSettingsStore.getState().update({ modulesPath: val })}
                     onRefreshextensions={fetchModules}
                     onAddServer={handleAddServer}
                 />
@@ -764,7 +774,6 @@ function App() {
                                     setShowCommandModal={setShowCommandModal}
                                     setServers={setServers}
                                     formatUptime={formatUptime}
-                                    nowEpoch={nowEpoch}
                                     onContextMenu={(e) => {
                                         e.preventDefault();
                                         setContextMenu({ x: e.clientX, y: e.clientY, server });

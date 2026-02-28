@@ -19,6 +19,20 @@ const http = require('http');
 const IPC_PORT_DEFAULT = 57474;
 let IPC_BASE = process.env.IPC_BASE || `http://127.0.0.1:${IPC_PORT_DEFAULT}`; // Core Daemon endpoint — updated from settings after app ready
 
+// ── 고정 경로: %APPDATA%/saba-chan ──
+function getSabaDataDir() {
+    if (process.platform === 'win32') {
+        return path.join(process.env.APPDATA || '', 'saba-chan');
+    }
+    return path.join(process.env.HOME || '', '.config', 'saba-chan');
+}
+function getFixedModulesPath() {
+    return process.env.SABA_MODULES_PATH || path.join(getSabaDataDir(), 'modules');
+}
+function getFixedExtensionsPath() {
+    return process.env.SABA_EXTENSIONS_DIR || path.join(getSabaDataDir(), 'extensions');
+}
+
 function refreshIpcBase() {
     if (process.env.IPC_BASE) return; // 환경변수가 설정되면 그것을 우선
     try {
@@ -462,7 +476,6 @@ function loadSettings() {
     // 기본 설정 (시스템 언어로 초기화)
     const systemLanguage = getSystemLanguage();
     return {
-        modulesPath: path.join(__dirname, '..', 'modules'),
         autoRefresh: true,
         refreshInterval: 2000,
         windowBounds: { width: 1200, height: 840 },
@@ -562,7 +575,7 @@ function startDaemon() {
         SABA_LANG: currentLanguage,
         SABA_IPC_PORT: String(ipcPort),
         SABA_INSTANCES_PATH: path.join(app.getPath('userData'), 'instances.json'),
-        SABA_MODULES_PATH: (settings && settings.modulesPath) || path.join(rootDir, 'modules'),
+        SABA_MODULES_PATH: getFixedModulesPath(),
     };
 
     console.log('[Daemon] Environment variables:');
@@ -1096,6 +1109,8 @@ function findUpdaterExe() {
 const UPDATE_CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3시간
 const UPDATE_INITIAL_DELAY_MS = 0; // 데몬 준비 후 즉시 체크
 let updateCheckTimer = null;
+// 마지막으로 OS 알림을 보낸 업데이트 목록의 fingerprint (중복 알림 방지)
+let lastNotifiedUpdateKey = null;
 
 async function checkForUpdates() {
     try {
@@ -1112,8 +1127,12 @@ async function checkForUpdates() {
             const names = data.update_names || [];
             console.log(`[UpdateChecker] ${data.updates_available} update(s) available: ${names.join(', ')}`);
 
-            // OS 네이티브 알림
-            if (Notification.isSupported()) {
+            // 중복 알림 방지: 이전과 동일한 업데이트 목록이면 OS 알림 건너뛰기
+            const updateKey = [...names].sort().join('\0');
+            const isNewUpdate = updateKey !== lastNotifiedUpdateKey;
+
+            // OS 네이티브 알림 (새 업데이트일 때만)
+            if (isNewUpdate && Notification.isSupported()) {
                 // 아이콘 경로: build(프로덕션) → public(개발) 순서로 탐색
                 const iconCandidates = [
                     path.join(__dirname, 'build', 'icon.png'),
@@ -1133,6 +1152,9 @@ async function checkForUpdates() {
                     }
                 });
                 notif.show();
+                lastNotifiedUpdateKey = updateKey;
+            } else if (!isNewUpdate) {
+                console.log('[UpdateChecker] Skipping OS notification — same updates already notified');
             }
 
             // 렌더러 프로세스에 알림 전송 (업데이트 센터 모달에서 수동 처리)
@@ -1927,7 +1949,7 @@ ipcMain.handle('module:remove', async (_event, moduleId) => {
 ipcMain.handle('module:getLocales', async (_event, moduleName) => {
     try {
         const settings = loadSettings();
-        const modulesDir = (settings && settings.modulesPath) || path.join(__dirname, '..', 'modules');
+        const modulesDir = getFixedModulesPath();
         const localesDir = path.join(modulesDir, moduleName, 'locales');
         const result = {};
 
@@ -2357,6 +2379,21 @@ ipcMain.handle('extension:guiStyles', async (_event, extId) => {
     }
 });
 
+// 익스텐션 아이콘 로드 (PNG → data:image/png;base64)
+ipcMain.handle('extension:icon', async (_event, extId) => {
+    try {
+        const response = await axios.get(`${IPC_BASE}/api/extensions/${extId}/icon`, {
+            responseType: 'arraybuffer',
+        });
+        const base64 = Buffer.from(response.data).toString('base64');
+        return `data:image/png;base64,${base64}`;
+    } catch (error) {
+        if (error.response?.status === 404) return null;
+        console.warn(`[Extension] Failed to load icon for '${extId}':`, error.message);
+        return null;
+    }
+});
+
 // ── Extension Registry & Version Management IPC 핸들러 ──────────
 
 // 원격 레지스트리에서 가용 익스텐션 목록 페치
@@ -2653,6 +2690,13 @@ ipcMain.handle('settings:save', (_event, settings) => {
 
 ipcMain.handle('settings:getPath', () => {
     return getSettingsPath();
+});
+
+ipcMain.handle('paths:getFixed', () => {
+    return {
+        modulesPath: getFixedModulesPath(),
+        extensionsPath: getFixedExtensionsPath(),
+    };
 });
 
 // Language IPC handlers

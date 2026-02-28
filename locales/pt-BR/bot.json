@@ -77,6 +77,8 @@
   "errors": {
     "error_title": "Erro ao executar comando",
     "unknown": "Erro desconhecido",
+    "alias_conflict": "❌ O alias '{{alias}}' é ambíguo — corresponde a vários módulos: {{modules}}. Use um alias mais específico.",
+    "multiple_instances": "⚠️ Existem múltiplas instâncias de '{{module}}'. Use o nome da instância em vez do alias do módulo.",
     "auth_failed": "Falha na autenticação",
     "player_not_found": "Jogador não encontrado",
     "internal_server_error": "Erro interno do servidor",
@@ -89,9 +91,7 @@
     "service_unavailable": "Serviço indisponível",
     "unknown_input": "❌ Comando desconhecido.",
     "command_not_found": "❌ O comando não existe.",
-    "permission_denied": "❌ Você não tem permissão para usar este comando.",
-    "alias_conflict": "❌ O alias '{{alias}}' é ambíguo — corresponde a vários módulos: {{modules}}. Use um alias mais específico.",
-    "multiple_instances": "⚠️ Existem múltiplas instâncias de '{{module}}'. Use o nome da instância em vez do alias do módulo."
+    "permission_denied": "❌ Você não tem permissão para usar este comando."
   },
   "messages": {
     "server_started": "Servidor iniciado com sucesso",
@@ -160,9 +160,9 @@
   },
   "rps": {
     "prompt": "✊✌️✋ Escolha um!",
-    "draw": "{{bot}}! Empate! De novo~ 🔄",
-    "user_win": "{{bot}}! Perdi... 😵",
-    "bot_win": "{{bot}}! Ganhei~ 😋",
+    "draw": "{{bot}}! It's a tie! Again~ 🔄",
+    "user_win": "{{bot}}! I lost... 😵",
+    "bot_win": "{{bot}}! I win~ 😋",
     "timeout": "⏰ Tempo esgotado! Tente novamente da próxima vez~",
     "scissors": "Tesoura",
     "rock": "Pedra",

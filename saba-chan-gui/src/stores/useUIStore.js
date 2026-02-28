@@ -82,3 +82,22 @@ export const useUIStore = create((set, _get) => ({
             backgroundDaemonStatus: 'checking',
         }),
 }));
+
+// ── Vite HMR: preserve store state across hot module replacement ──
+if (import.meta.hot) {
+    import.meta.hot.dispose((data) => {
+        const s = useUIStore.getState();
+        data.prevState = {
+            progressBar: s.progressBar,
+            showModuleManager: s.showModuleManager,
+            showDiscordSection: s.showDiscordSection,
+            showBackgroundSection: s.showBackgroundSection,
+            showNoticeSection: s.showNoticeSection,
+            unreadNoticeCount: s.unreadNoticeCount,
+            backgroundDaemonStatus: s.backgroundDaemonStatus,
+        };
+    });
+    if (import.meta.hot.data?.prevState) {
+        useUIStore.setState(import.meta.hot.data.prevState);
+    }
+}

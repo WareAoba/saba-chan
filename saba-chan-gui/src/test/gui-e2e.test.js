@@ -17,7 +17,6 @@ function createApiMock(overrides = {}) {
             refreshInterval: 2000,
             ipcPort: 57474,
             consoleBufferSize: 2000,
-            modulesPath: 'C:\\modules',
             discordToken: 'test-token-abc',
             discordAutoStart: false,
         }),

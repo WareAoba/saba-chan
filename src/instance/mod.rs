@@ -53,6 +53,10 @@ pub struct ServerInstance {
     /// 예: { "<ext>_enabled": true, "<ext>_cpu_limit": 2.0, "<ext>_memory_limit": "4g" }
     #[serde(default)]
     pub extension_data: HashMap<String, serde_json::Value>,
+    /// 이 인스턴스가 실행을 위해 요구하는 익스텐션 ID 목록.
+    /// 여기에 선언된 익스텐션이 활성화되어 있지 않으면 시작이 차단됩니다.
+    #[serde(default)]
+    pub required_extensions: Vec<String>,
 }
 
 fn default_protocol_mode() -> String {
@@ -80,6 +84,7 @@ impl ServerInstance {
             module_settings: HashMap::new(),
             server_version: None,
             extension_data: HashMap::new(),
+            required_extensions: Vec::new(),
         }
     }
 
@@ -101,6 +106,15 @@ impl ServerInstance {
     #[allow(dead_code)]
     pub fn ext_str(&self, key: &str) -> Option<&str> {
         self.extension_data.get(key).and_then(|v| v.as_str())
+    }
+
+    /// 이 인스턴스가 요구하는 익스텐션 중 `enabled_extensions`에 포함되지 않은 것을 반환합니다.
+    /// 빈 Vec이면 모든 의존성이 충족된 것입니다.
+    pub fn missing_required_extensions(&self, enabled_extensions: &std::collections::HashSet<String>) -> Vec<String> {
+        self.required_extensions.iter()
+            .filter(|ext_id| !enabled_extensions.contains(ext_id.as_str()))
+            .cloned()
+            .collect()
     }
 
     /// RCON/REST 비밀번호가 비어있으면 랜덤 비밀번호로 채웁니다.
@@ -669,5 +683,80 @@ mod tests {
             serde_json::from_str(&settings_content).unwrap();
         assert_eq!(settings.get("difficulty"), Some(&serde_json::json!("hard")));
         assert_eq!(settings.get("ram"), Some(&serde_json::json!(4)));
+    }
+
+    // ── 인스턴스→익스텐션 명시적 의존성(required_extensions) 테스트 ──
+
+    #[test]
+    fn test_required_extensions_all_satisfied() {
+        let mut inst = ServerInstance::new("test", "minecraft");
+        inst.required_extensions = vec!["docker".to_string(), "steamcmd".to_string()];
+
+        let mut enabled = std::collections::HashSet::new();
+        enabled.insert("docker".to_string());
+        enabled.insert("steamcmd".to_string());
+        enabled.insert("extra".to_string());
+
+        let missing = inst.missing_required_extensions(&enabled);
+        assert!(missing.is_empty(), "All required extensions are enabled");
+    }
+
+    #[test]
+    fn test_required_extensions_some_missing() {
+        let mut inst = ServerInstance::new("test", "minecraft");
+        inst.required_extensions = vec!["docker".to_string(), "steamcmd".to_string()];
+
+        let mut enabled = std::collections::HashSet::new();
+        enabled.insert("docker".to_string());
+        // steamcmd not enabled
+
+        let missing = inst.missing_required_extensions(&enabled);
+        assert_eq!(missing, vec!["steamcmd"]);
+    }
+
+    #[test]
+    fn test_required_extensions_none_enabled() {
+        let mut inst = ServerInstance::new("test", "minecraft");
+        inst.required_extensions = vec!["docker".to_string(), "steamcmd".to_string()];
+
+        let enabled = std::collections::HashSet::new();
+        let missing = inst.missing_required_extensions(&enabled);
+        assert_eq!(missing.len(), 2);
+        assert!(missing.contains(&"docker".to_string()));
+        assert!(missing.contains(&"steamcmd".to_string()));
+    }
+
+    #[test]
+    fn test_required_extensions_empty() {
+        let inst = ServerInstance::new("test", "minecraft");
+        // No required_extensions → always satisfied
+
+        let enabled = std::collections::HashSet::new();
+        let missing = inst.missing_required_extensions(&enabled);
+        assert!(missing.is_empty());
+    }
+
+    #[test]
+    fn test_required_extensions_serialization() {
+        let mut inst = ServerInstance::new("test", "minecraft");
+        inst.required_extensions = vec!["docker".to_string()];
+
+        let json = serde_json::to_string(&inst).unwrap();
+        assert!(json.contains("required_extensions"));
+        assert!(json.contains("docker"));
+
+        let deserialized: ServerInstance = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.required_extensions, vec!["docker"]);
+    }
+
+    #[test]
+    fn test_required_extensions_default_empty_on_deserialize() {
+        // JSON without required_extensions field
+        let json = r#"{
+            "id": "test-id", "name": "test", "module_name": "minecraft",
+            "auto_detect": true, "protocol_mode": "auto"
+        }"#;
+        let inst: ServerInstance = serde_json::from_str(json).unwrap();
+        assert!(inst.required_extensions.is_empty(), "Should default to empty");
     }
 }

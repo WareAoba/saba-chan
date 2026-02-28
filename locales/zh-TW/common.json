@@ -47,5 +47,9 @@
     "connection_refused": "無法連線到守護程序。請檢查守護程序是否在執行",
     "timeout": "請求逾時：伺服器無回應",
     "not_found": "找不到伺服器。請檢查網路設定"
+  },
+  "port_conflict": {
+    "force_stop_title": "포트 충돌 — {{name}} 已停止됨",
+    "force_stop_body": "포트 {{port}}이(가) {{existing}}와(과) 충돌하여 {{stopped}}이(가) 강제 已停止되었습니다"
   }
 }

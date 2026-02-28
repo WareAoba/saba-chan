@@ -47,5 +47,9 @@
     "connection_refused": "Não é possível conectar ao daemon. Verifique se o daemon está em execução",
     "timeout": "Tempo de solicitação excedido: O servidor não respondeu",
     "not_found": "Servidor não encontrado. Verifique as configurações de rede"
+  },
+  "port_conflict": {
+    "force_stop_title": "포트 충돌 — {{name}} Parado됨",
+    "force_stop_body": "포트 {{port}}이(가) {{existing}}와(과) 충돌하여 {{stopped}}이(가) 강제 Parado되었습니다"
   }
 }

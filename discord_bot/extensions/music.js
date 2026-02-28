@@ -38,13 +38,13 @@ try {
 
     // yt-dlp 경로 탐색
     try {
-        execSync('yt-dlp --version', { stdio: 'ignore' });
+        execSync('yt-dlp --version', { stdio: 'ignore', windowsHide: true });
     } catch (_) {
         // PATH에 없으면 일반적인 pip 설치 경로 시도
         const pipScripts = path.join(process.env.APPDATA || '', 'Python', 'Python310', 'Scripts');
         const candidate = path.join(pipScripts, 'yt-dlp.exe');
         try {
-            execSync(`"${candidate}" --version`, { stdio: 'ignore' });
+            execSync(`"${candidate}" --version`, { stdio: 'ignore', windowsHide: true });
             ytDlpPath = candidate;
             console.log(`[Music] yt-dlp found at pip path: ${candidate}`);
         } catch (_) {
@@ -53,7 +53,7 @@ try {
             if (pyUserBase) {
                 const candidate2 = path.join(pyUserBase, 'Scripts', 'yt-dlp.exe');
                 try {
-                    execSync(`"${candidate2}" --version`, { stdio: 'ignore' });
+                    execSync(`"${candidate2}" --version`, { stdio: 'ignore', windowsHide: true });
                     ytDlpPath = candidate2;
                 } catch (_) {}
             }
@@ -484,7 +484,7 @@ function getTrackInfoViaYtDlp(query) {
     return new Promise((resolve) => {
         const proc = spawn(ytDlpPath, [
             '--no-playlist', '--no-warnings', '-j', query,
-        ], { stdio: ['ignore', 'pipe', 'pipe'] });
+        ], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
 
         let stdout = '';
         proc.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
@@ -562,7 +562,7 @@ function createYtDlpStream(url) {
         '--buffer-size', '64K',     // HTTP 다운로드 버퍼 (기본 1K)
         '--concurrent-fragments', '4', // 병렬 다운로드
         url,
-    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+    ], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
 
     ytdlp.stderr.on('data', (data) => {
         const msg = data.toString().trim();
@@ -581,7 +581,7 @@ function createYtDlpStream(url) {
         '-ar', '48000',           // 48kHz (Discord 표준)
         '-ac', '2',               // 스테레오
         'pipe:1',                 // stdout으로 출력
-    ], { stdio: ['pipe', 'pipe', 'pipe'] });
+    ], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
 
     ffmpeg.stderr.on('data', (data) => {
         const msg = data.toString().trim();
@@ -942,22 +942,21 @@ async function handleSearch(message, args, botConfig) {
             text += `\n\`${idx + 1}.\` **${t.title}** [${t.duration}]`;
         });
         
-        // 버튼 생성 (1~5 + 취소)
-        const buttons = display.map((t, idx) =>
+        // 버튼 생성 (1~5 + 취소) — ActionRow는 최대 5개 버튼이므로 2행으로 분리
+        const numberButtons = display.map((t, idx) =>
             new ButtonBuilder()
                 .setCustomId(`music_search_${idx}`)
                 .setLabel(`${idx + 1}`)
                 .setStyle(ButtonStyle.Primary)
         );
-        buttons.push(
-            new ButtonBuilder()
-                .setCustomId('music_search_cancel')
-                .setLabel('✖')
-                .setStyle(ButtonStyle.Secondary)
-        );
-        const row = new ActionRowBuilder().addComponents(buttons);
+        const cancelButton = new ButtonBuilder()
+            .setCustomId('music_search_cancel')
+            .setLabel('✖')
+            .setStyle(ButtonStyle.Secondary);
+        const row1 = new ActionRowBuilder().addComponents(numberButtons);
+        const row2 = new ActionRowBuilder().addComponents(cancelButton);
         
-        await statusMsg.edit({ content: text, components: [row] });
+        await statusMsg.edit({ content: text, components: [row1, row2] });
         
         // 요청자만 클릭 가능한 콜렉터 (30초)
         const collector = statusMsg.createMessageComponentCollector({
@@ -968,6 +967,7 @@ async function handleSearch(message, args, botConfig) {
         
         collector.on('collect', async (interaction) => {
             if (interaction.customId === 'music_search_cancel') {
+                await interaction.deferUpdate();
                 safeDelete(statusMsg);
                 return;
             }
@@ -1034,25 +1034,25 @@ async function enqueueAndPlay(message, statusMsg, tracks, voiceChannel) {
         
         if (!queue.current && !queue._playNextPending) {
             queue._playNextPending = true;
-            await statusMsg.edit(i18n.t('bot:music.now_playing', {
+            await statusMsg.edit({ content: i18n.t('bot:music.now_playing', {
                 title: track.title,
                 duration: track.duration,
                 requester
-            }));
+            }), components: [] });
             playNext(message.guild.id).finally(() => { queue._playNextPending = false; });
         } else {
-            await statusMsg.edit(i18n.t('bot:music.added_to_queue', {
+            await statusMsg.edit({ content: i18n.t('bot:music.added_to_queue', {
                 title: track.title,
                 duration: track.duration,
                 position: position,
                 requester
-            }));
+            }), components: [] });
         }
     } else {
-        await statusMsg.edit(i18n.t('bot:music.playlist_added', {
+        await statusMsg.edit({ content: i18n.t('bot:music.playlist_added', {
             count: tracks.length,
             requester
-        }));
+        }), components: [] });
         if (!queue.current && !queue._playNextPending) {
             queue._playNextPending = true;
             playNext(message.guild.id).finally(() => { queue._playNextPending = false; });

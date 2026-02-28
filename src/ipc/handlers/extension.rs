@@ -5,6 +5,7 @@
 //! POST /api/extensions/:id/disable  → 비활성화
 //! GET  /api/extensions/:id/gui      → GUI 번들 서빙
 //! GET  /api/extensions/:id/gui/styles → CSS 서빙
+//! GET  /api/extensions/:id/icon     → 아이콘 (icon.png) 서빙
 //! GET  /api/extensions/:id/i18n/:locale → i18n JSON
 //! DELETE /api/extensions/:id         → 제거 (비활성화 + 디렉토리 삭제)
 
@@ -27,7 +28,7 @@ fn extension_err_response(
     if let Some(ext_err) = err.downcast_ref::<ExtensionError>() {
         let status = match ext_err.error_code.as_str() {
             "not_found" | "not_mounted" | "manifest_not_found" => StatusCode::NOT_FOUND,
-            "dependency_missing" | "dependency_not_enabled" => {
+            "dependency_missing" | "dependency_not_enabled" | "component_version_unsatisfied" => {
                 StatusCode::UNPROCESSABLE_ENTITY
             }
             "has_dependents" | "in_use" => StatusCode::CONFLICT,
@@ -398,6 +399,21 @@ pub async fn extension_init_status(
     State(state): State<IPCServer>,
 ) -> Json<serde_json::Value> {
     Json(state.extension_init_tracker.snapshot().await)
+}
+
+/// GET /api/extensions/:id/icon — 익스텐션 아이콘 (icon.png) 서빙
+pub async fn serve_icon(
+    State(state): State<IPCServer>,
+    Path(ext_id): Path<String>,
+) -> Result<Response, StatusCode> {
+    let mgr = state.extension_manager.read().await;
+
+    let icon_path = match mgr.extension_file_path(&ext_id, "icon.png") {
+        Some(p) if p.is_file() => p,
+        _ => return Err(StatusCode::NOT_FOUND),
+    };
+
+    serve_static_file(&icon_path, "image/png").await
 }
 
 /// 파일을 읽어서 HTTP 응답으로 반환

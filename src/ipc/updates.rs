@@ -290,6 +290,20 @@ async fn apply_updates(
             Component::Gui => {
                 needs_updater.push(comp.manifest_key());
             }
+            // Extension: 모듈과 동일 — 데몬이 직접 적용
+            Component::Extension(_) => {
+                match mgr.apply_single_component(comp).await {
+                    Ok(result) if result.success => {
+                        applied.push(comp.display_name());
+                    }
+                    Ok(result) => {
+                        errors.push(format!("{}: {}", comp.display_name(), result.message));
+                    }
+                    Err(e) => {
+                        errors.push(format!("{}: {}", comp.display_name(), e));
+                    }
+                }
+            }
         }
     }
 

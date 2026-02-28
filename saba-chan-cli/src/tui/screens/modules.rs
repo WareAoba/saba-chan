@@ -17,6 +17,7 @@ pub(super) fn build_modules_menu(app: &App) -> Vec<MenuItem> {
     }
 
     items.push(MenuItem::new("↻ Refresh Modules", Some('r'), "모듈 새로고침"));
+    items.push(MenuItem::new("🌐 Module Registry", Some('R'), "원격 레지스트리에서 모듈 검색/설치"));
     items
 }
 
@@ -25,6 +26,7 @@ pub(super) fn build_module_detail_menu(name: &str) -> Vec<MenuItem> {
         MenuItem::new("Info", Some('i'), "모듈 상세 정보"),
         MenuItem::new("Versions", Some('v'), "사용 가능한 버전 목록"),
         MenuItem::new("Install", Some('I'), &format!("{} 서버 설치", name)),
+        MenuItem::new("🗑 Remove Module", Some('D'), &format!("{} 모듈 삭제", name)),
     ]
 }
 
@@ -66,6 +68,9 @@ pub(super) fn handle_modules_select(app: &mut App, sel: usize) {
             }
         });
         app.flash("새로고침 중...");
+    } else if sel == module_count + 1 {
+        // Module Registry
+        app.push_screen(Screen::ModuleRegistry);
     }
 }
 
@@ -129,11 +134,19 @@ pub(super) fn handle_module_detail_select(app: &mut App, sel: usize, name: &str)
                 }
             });
         }
-        2 => { // Install → 커맨드 모드
-            app.push_screen(Screen::CommandMode);
-            app.input_mode = InputMode::Command;
-            app.input = format!("module install {} ", name);
-            app.cursor = app.input.chars().count();
+        2 => { // Install → 인라인 Input (버전 입력)
+            app.input_mode = InputMode::InlineInput {
+                prompt: format!("{} 설치 버전 (빈칸=latest)", name),
+                value: String::new(),
+                cursor: 0,
+                on_submit: InlineAction::InstallModule { module_name: name.to_string() },
+            };
+        }
+        3 => { // Remove Module
+            app.input_mode = InputMode::Confirm {
+                prompt: format!("모듈 '{}' 을(를) 삭제하시겠습니까? (y/n)", name),
+                action: ConfirmAction::RemoveModule(name.to_string()),
+            };
         }
         _ => {}
     }

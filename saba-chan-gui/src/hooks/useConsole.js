@@ -17,7 +17,6 @@ export function useConsole({ isPopoutMode, popoutParams, consoleBufferRef }) {
 
     const [consoleServer, setConsoleServer] = useState(null);
     const [consoleLines, setConsoleLines] = useState([]);
-    const [_consoleSinceId, setConsoleSinceId] = useState(0);
     const [consoleInput, setConsoleInput] = useState('');
     const consoleEndRef = useRef(null);
     const consolePollingRef = useRef(null);
@@ -26,7 +25,6 @@ export function useConsole({ isPopoutMode, popoutParams, consoleBufferRef }) {
     const openConsole = (instanceId, serverName) => {
         setConsoleServer({ id: instanceId, name: serverName });
         setConsoleLines([]);
-        setConsoleSinceId(0);
         setConsoleInput('');
 
         // Start polling
@@ -42,7 +40,6 @@ export function useConsole({ isPopoutMode, popoutParams, consoleBufferRef }) {
                         return newLines.length > maxLines ? newLines.slice(-maxLines) : newLines;
                     });
                     sinceId = data.lines[data.lines.length - 1].id + 1;
-                    setConsoleSinceId(sinceId);
                 }
             } catch (_err) {
                 // silent — server might not be ready yet
@@ -57,7 +54,6 @@ export function useConsole({ isPopoutMode, popoutParams, consoleBufferRef }) {
         }
         setConsoleServer(null);
         setConsoleLines([]);
-        setConsoleSinceId(0);
     };
 
     const sendConsoleCommand = async () => {

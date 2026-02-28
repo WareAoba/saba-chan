@@ -1,27 +1,27 @@
-﻿//! �E�E���E���� �E��E� + �E��E�����E�/�E��E��E�E EGitHub �E��E��E�E�E��E�E
+//! # saba-chan 업데이터 라이브러리
 //!
-//! �E�어 �E��E�, CLI, GUI, �E��E�E�E� �E��E� �E�����E�트�E� �E��E�����E�다.
-//! �E��E�����E��E��E�E�E�E�작���여 �E�촁E�E��E�를 �E�리����E�다.
+//! 코어 데몬, CLI, GUI, 모듈, 익스텐션, 디스코드 봇 등 모든 컴포넌트를 업데이트합니다.
+//! 릴리즈 매니페스트를 활용하여 컴포넌트를 관리합니다.
 //!
-//! ## �E�작 �E��E�E
-//! - **�E��E��E��E��E�E*: �E��E�된 �E�E��(�E��E� 3�E�각E�E��E�E�E�동 �E����, �E�그 �E�력
-//! - **GUI �E��E�E*: IPC �E�드����E�����E� ������ GUI�E��E �E�E���E����/�E��E���� ���인/�E����E
-//! - **CLI �E�력**: `update` �E�브커�E��E�에�E�E�E�E��E�E�력
+//! ## 동작 원리
+//! - **백그라운드 워커**: 설정된 주기(기본 3시간)마다 자동 확인, 로그 출력
+//! - **GUI 연동**: IPC 커맨드를 통해 업데이트 확인, GUI에서 다운로드/적용 확인/적용
+//! - **CLI 출력**: `update` 서브커맨드에서 직접 출력
 //!
-//! ## �E�E�����첁E(v2)
-//! �E��E��E��E��E�와 ����E��E��E��E�E�E�업�E�E�E�E�����E�E�E��:
-//! - **�E��E��E��E��E�E(worker.rs)**: �E�E��E�E����, �E��E��E�드  EGUI/CLI �E���� �E�E�� �E�E��
-//! - **����E��E��E��E�E(foreground.rs)**: �E�E��  EGUI/CLI �E�E��E���E�E�E���E�����E� ���일 �E�적E
-//! - **���E(queue.rs)**: �E��E�E�E��E��E�드 �E�청�E�E�E�차 �E�리, �E��E�도 �E��E�E
-//! - **�E�러 (error.rs)**: �E�����E�크 �E�김, ����E�E���E�E�E� �E��E�E�E��E�
-//! - **IPC (ipc.rs)**: GUI/CLI ↁE�E�E���E���� ����E�
+//! ## 아키텍처(v2)
+//! 백그라운드와 포그라운드를 분리한 업데이트 파이프라인:
+//! - **백그라운드(worker.rs)**: 주기적 확인, 다운로드, GUI/CLI 결과 대기 합류
+//! - **포그라운드(foreground.rs)**: 직접 GUI/CLI 적용을 동기적으로 단일 적용
+//! - **큐(queue.rs)**: 백그라운드 다운로드 요청 순차 처리, 우선도 조절
+//! - **에러(error.rs)**: 네트워크 끊김, 타임아웃 등 장애 처리
+//! - **IPC(ipc.rs)**: GUI/CLI ↔ 데몬 메시지 통신
 //!
-//! ## �E��E�����E� �E��E�E
-//! �E�����E�트�E� �E�컬�E�E�E�E���E� �E��E��E�롁E���정하�E�,
-//! �E��E��E�드/�E��E�를 �E��E�����E�다. �E�렉터�E��E�E`install_root` �E��E��E�E���E�.
+//! ## 디렉터리 구조
+//! 컴포넌트를 로컬에서 검색하고 버전을 판정하며,
+//! 다운로드/적용을 수행합니다. 디렉터리는 `install_root` 기준입니다.
 //!
-//! ## GitHub �E��E��E�E�E��E�
-//! �E�E�E��E��E�에 `manifest.json` ���일�E� �������E�어�E� ����E�다:
+//! ## GitHub 릴리즈 연동
+//! 릴리즈에 `manifest.json` 파일이 포함되어야 합니다:
 //! ```json
 //! {
 //!   "release_version": "0.2.0",
@@ -36,7 +36,7 @@
 //! ```
 
 // ══════════════════════════════════════════════════════╁E
-// �E��E�E
+// 모듈
 // ══════════════════════════════════════════════════════╁E
 
 pub mod error;
@@ -67,11 +67,11 @@ use std::path::{Path, PathBuf};
 use github::{GitHubClient};
 use version::SemVer;
 
-// 隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨翫・
-// 繝ｻ・�E�繝ｻ繝ｻ螟仰繝ｻ繝ｻ
-// 隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨翫・
+// ══════════════════════════════════════════════════════
+// 컴포넌트 정의
+// ══════════════════════════════════════════════════════
 
-/// 繝ｻ繝ｻ鬲めE�E・�E�蟁E���E��E� 繝ｻ�E�繝ｻ・�E�・代・繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E繝ｻ繝ｻ・�E�繝ｻ
+/// 업데이트 대상. 각 컴포넌트를 나타내는 열거형
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum Component {
@@ -79,22 +79,24 @@ pub enum Component {
     Cli,
     Gui,
     Module(String),
+    Extension(String),
     DiscordBot,
 }
 
 impl Component {
-    /// manifest.json繝ｻ繝ｻ蠁E��・�E�繝ｻ繝ｻ繝ｻ�E�蠍ｹ繝ｻ
+    /// manifest.json에서 사용하는 키 반환
     pub fn manifest_key(&self) -> String {
         match self {
             Component::CoreDaemon => "saba-core".to_string(),
             Component::Cli => "cli".to_string(),
             Component::Gui => "gui".to_string(),
             Component::Module(name) => format!("module-{}", name),
+            Component::Extension(name) => format!("ext-{}", name),
             Component::DiscordBot => "discord_bot".to_string(),
         }
     }
 
-    /// manifest 蠁E��・�E�繝ｻ蟾昴・ Component 繝ｻ・�E�繝ｻ繝ｻ
+    /// manifest 키로부터 Component 생성
     pub fn from_manifest_key(key: &str) -> Self {
         match key {
             "saba-core" => Component::CoreDaemon,
@@ -104,23 +106,27 @@ impl Component {
             k if k.starts_with("module-") => {
                 Component::Module(k.strip_prefix("module-").unwrap().to_string())
             }
+            k if k.starts_with("ext-") => {
+                Component::Extension(k.strip_prefix("ext-").unwrap().to_string())
+            }
             other => Component::Module(other.to_string()),
         }
     }
 
-    /// 繝ｻ・�E�繝ｻ隴�E�謫�E� 繝ｻ・�E�繝ｻ繝ｻ繝ｻ繝ｻ繝ｻ螢�E�譬�E� 繝ｻ・�E�繝ｻ繝ｻ
+    /// 사용자 표시용 이름을 반환하는 메서드
     pub fn display_name(&self) -> String {
         match self {
-            Component::CoreDaemon => "Core Daemon".to_string(),
+            Component::CoreDaemon => "Saba-Core".to_string(),
             Component::Cli => "CLI".to_string(),
             Component::Gui => "GUI".to_string(),
             Component::Module(name) => format!("Module: {}", name),
+            Component::Extension(name) => format!("Extension: {}", name),
             Component::DiscordBot => "Discord Bot".to_string(),
         }
     }
 }
 
-/// 繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E��ｻ繝ｻ繝ｻ繝ｻ・�E�繝ｻ繝ｻ繝ｻ繝ｻ
+/// 컴포넌트별 버전 추적 정보
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComponentVersion {
     pub component: Component,
@@ -131,15 +137,15 @@ pub struct ComponentVersion {
     pub asset_name: Option<String>,
     pub release_notes: Option<String>,
     pub published_at: Option<String>,
-    /// 繝ｻ・�E�繝ｻ・�E�繝ｻ鄂ｹ邉�E繝ｻ繝ｻ・�E�繝ｻ繝ｻ・�E�繝ｻ�E�
+    /// 다운로드 완료 여부
     pub downloaded: bool,
-    /// 繝ｻ・�E�繝ｻ・�E�繝ｻ鄂ｹ邉悶・繝ｻ逕ｯ隴�E�謾�E� 繝ｻ・�E�繝ｻ繝ｻ(繝ｻ繝ｻ蝨�E� 繝ｻ�E�繝ｻ・�E� 繝ｻ繝ｻ
+    /// 다운로드 완료된 파일의 경로 (적용 대기 중인 경우)
     pub downloaded_path: Option<String>,
-    /// 繝ｻ諛搾�E��E�・�E�繝ｻ繝ｻ繝ｻ・�E�繝ｻ菫�E�謐ｮ繝ｻ・�E� 繝ｻ螢�E�譬�E�繝ｻ�E� 繝ｻ・�E�繝ｻ�E� (false 遶翫・繝ｻ諛搾�E��E�繝ｻ繝ｻ・�E�繝ｻ繝ｻ・代・蝗�E
+    /// 해당 컴포넌트가 설치되어 있는지 여부 (false면 미설치 상태)
     pub installed: bool,
 }
 
-/// 繝ｻ繝ｻ・�E�・�E� 繝ｻ繝ｻ鬲めE�E・�E�蟁E���E��E�/繝ｻ・�E�繝ｻ繝ｻ繝ｻ繝ｻ繝ｻ
+/// 전체 업데이트/설치 상태 정보
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateStatus {
     pub last_check: Option<String>,
@@ -149,20 +155,20 @@ pub struct UpdateStatus {
     pub error: Option<String>,
 }
 
-/// 繝ｻ・�E�繝ｻ繝ｻ繝ｻ繝ｻ蜩�E� 繝ｻ繝ｻ繝ｻ
+/// 설치 진행 상태 추적
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstallProgress {
-    /// 繝ｻ繝ｻ・�E�・�E� 繝ｻ・�E�繝ｻ繝ｻ繝ｻ繝ｻ・�E�繝ｻ繝ｻ・�E�繝ｻ�E�
+    /// 전체 설치가 완료되었는지 여부
     pub complete: bool,
-    /// 蠍ｸ繝ｻ讀�E� 繝ｻ蜊鍋�E�・繝ｻ蜊捺筁E繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E
+    /// 현재 처리 중인 컴포넌트
     pub current_component: Option<String>,
-    /// 繝ｻ繝ｻ繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E繝ｻ繝ｻ
+    /// 총 컴포넌트 수
     pub total: usize,
-    /// 繝ｻ繝ｻ・�E�隱�E�鬁E�E繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E繝ｻ繝ｻ
+    /// 설치 완료된 컴포넌트 수
     pub done: usize,
-    /// 繝ｻ・�E�繝ｻ菫�E�鬁E�E繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E繝ｻ・�E�繝ｻ繝ｻ
+    /// 설치 완료된 컴포넌트 목록
     pub installed_components: Vec<String>,
-    /// 繝ｻ蟁E���E��E� 繝ｻ諛阪・ 繝ｻ繝ｻ
+    /// 에러 발생 내용
     pub errors: Vec<String>,
 }
 
@@ -191,22 +197,22 @@ pub struct DependencyIssue {
 }
 
 
-/// 繝ｻ繝ｻ・�E�・�E� 繝ｻ・�E�繝ｻ繝ｻ繝ｻ繝ｻ繝ｻ (繝ｻ・�E�繝ｻ・�E�螂晢�E��E�繝ｻ・�E� 繝ｻ・�E�繝ｻ繝ｻ
+/// 전체 의존성 확인 결과 (초기 설치 시 활용)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstallStatus {
-    /// 繝ｻ諛搾�E��E�繝ｻ繝ｻ・�E�繝ｻ蛟第筈繝ｻ�E� 繝ｻ・�E�繝ｻ�E� (繝ｻ閧�E�迚�E繝ｻ・�E�繝ｻ・�E�繝ｻ繝ｻ繝ｻ・�E�繝ｻ・�E�)
+    /// 해당 컴포넌트의 설치 여부 (코어 데몬은 항상 설치됨)
     pub is_fresh_install: bool,
-    /// 繝ｻ繝ｻ・�E�・�E� 繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E繝ｻ繝ｻ
+    /// 전체 필수 컴포넌트 목록
     pub total_components: usize,
-    /// 繝ｻ・�E�繝ｻ菫�E�鬁E�E繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E繝ｻ繝ｻ
+    /// 설치 완료된 컴포넌트 목록
     pub installed_components: usize,
-    /// 繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E��ｻ繝ｻ繝ｻ・�E�繝ｻ繝ｻ繝ｻ邁E��・�E�・�E�
+    /// 컴포넌트별 누락 이슈
     pub components: Vec<ComponentInstallInfo>,
-    /// 蠍ｸ繝ｻ讀�E� 繝ｻ繝ｻ蜩�E� 繝ｻ蜊捺筁E繝ｻ・�E�繝ｻ繝ｻ(繝ｻ貁E��諢阪・・�E�)
+    /// 현재 확인 대상 컴포넌트 설치 여부(기본값)
     pub progress: Option<InstallProgress>,
 }
 
-/// 繝ｻ鄂ｹ・�E�繝ｻ繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E繝ｻ・�E�繝ｻ繝ｻ繝ｻ邁E��・�E�・�E�
+/// 개별 컴포넌트의 의존성 이슈
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComponentInstallInfo {
     pub component: Component,
@@ -214,69 +220,69 @@ pub struct ComponentInstallInfo {
     pub installed: bool,
 }
 
-// 隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨翫・
-// 繝ｻ繝ｻ鬲めE�E・�E�蟁E���E��E� 繝ｻ繝ｻ蝨�E� 繝ｻ・�E�繝ｻ・�E� 螟仰繝ｻ繝ｻ(2-flow 繝ｻ繝ｻ縺・�E�帑ｽ懶�E��E�繝ｻ
-// 隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨翫・
+// ══════════════════════════════════════════════════════
+// 업데이트 적용 관련 구조체 정의 (2-flow 아키텍처)
+// ══════════════════════════════════════════════════════
 
-/// 繝ｻ鄂ｹ・�E�繝ｻ繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E繝ｻ繝ｻ蝨�E� 繝ｻ・�E�繝ｻ・�E�
+/// 개별 컴포넌트 적용 결과
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApplyComponentResult {
     /// 컴포넌트 manifest 키 (예: "module-minecraft", "saba-core")
     pub component: String,
-    /// 繝ｻ繝ｻ蝨�E� 繝ｻ・�E�繝ｻ・�E� 繝ｻ・�E�繝ｻ�E�
+    /// 적용 성공 여부
     pub success: bool,
-    /// 繝ｻ・�E�繝ｻ・�E� 繝ｻ閧�E�莠�E�繝ｻ�E�
+    /// 결과 메시지
     pub message: String,
-    /// 繝ｻ繝ｻ鬲めE�E・�E�蟁E���E��E�繝ｻ・�E� 繝ｻ繝ｻ邏�E繝ｻ蜊難�E��E��E�繝ｻ繝ｻ蠏薙・・�E�諛坂塙繝ｻ・�E� (繝ｻ鄂ｹ・�E�繝ｻ繝ｻ・�E�繝ｻ・�E�螂難�E��E�繝ｻ・�E� 繝ｻ・�E�繝ｻ繝ｻ
+    /// 업데이트 적용을 위해 중단한 프로세스 목록 (데몬 IPC 경유 적용 시)
     pub stopped_processes: Vec<String>,
-    /// 繝ｻ・�E�繝ｻ諛肴�E��E� ・代・蝗�E繝ｻ・�E�繝ｻ�E�
+    /// 재시작 필요 여부
     pub restart_needed: bool,
 }
 
-/// 繝ｻ繝ｻ・�E�・�E� 繝ｻ繝ｻ鬲めE�E・�E�蟁E���E��E� 繝ｻ繝ｻ蝨�E� 繝ｻ・�E�繝ｻ・�E�
+/// 전체 업데이트 적용 결과
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApplyResult {
-    /// 繝ｻ鄂ｹ・�E�繝ｻ繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E繝ｻ繝ｻ蝨�E� 繝ｻ・�E�繝ｻ・�E�
+    /// 개별 컴포넌트 적용 결과
     pub results: Vec<ApplyComponentResult>,
-    /// 繝ｻ・�E�繝ｻ・�E� 繝ｻ・�E�繝ｻ諛肴�E��E�繝ｻ・�E� 繝ｻ・�E�蠁E���E��E�繝ｻ・�E�蟁E���E��E� 繝ｻ・�E�繝ｻ繝ｻ(CoreDaemon 繝ｻ繝ｻ鬲めE�E・�E�蟁E���E��E� 繝ｻ繝ｻ
+    /// 적용 후 재시작이 필요한 컴포넌트 목록 (CoreDaemon 업데이트 시 필수)
     pub daemon_restart_script: Option<String>,
-    /// GUI/CLI 繝ｻ蟾晢�E��E�・�E� 繝ｻ繝ｻ鬲めE�E・�E�蟁E���E��E�繝ｻ�E� ・代・蝗茨�E�代・繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E繝ｻ・�E�繝ｻ繝ｻ(self-update flow)
+    /// GUI/CLI 자신의 업데이트가 포함 — 별도 self-update flow가 필요 (self-update flow)
     pub self_update_components: Vec<String>,
 }
 
-/// GUI/CLI 繝ｻ蟾晢�E��E�・�E� 繝ｻ繝ｻ鬲めE�E・�E�蟁E���E��E� 繝ｻ邁E��・�E�・�E� (繝ｻ・�E�螂難�E��E�蟁E��蛟第匿繝ｻ・�E� 遶翫・繝ｻ繝ｻ鬲めE�E・�E�螂難�E��E� ・托ｽ�E�繝ｻ諛堺�E��E�蠏薙・蝨�E�)
+/// GUI/CLI 자신의 업데이트 정보 (업데이터 실행파일이 컴포넌트를 교체한 후 재시작하는 프로세스)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SelfUpdateInfo {
-    /// 繝ｻ繝ｻ鬲めE�E・�E�螂難�E��E� 繝ｻ・�E�蠏ゅ・逕ｯ隴�E�謾�E� 繝ｻ・�E�繝ｻ繝ｻ
+    /// 업데이터 실행파일 경로
     pub updater_executable: String,
-    /// 繝ｻ繝ｻ鬲めE�E・�E�螂難�E��E�繝ｻ繝ｻ繝ｻ繝ｻ蟲�E�・托｣�E� 繝ｻ・�E�繝ｻ・�E�繝ｻ鄂ｹ謾�E�繝ｻ・�E� 繝ｻ・�E�繝ｻ繝ｻ
+    /// 업데이터 실행파일에 전달할 커맨드라인 인자
     pub args: Vec<String>,
-    /// 繝ｻ�E�繝ｻ繝ｻ繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E
+    /// 대상 컴포넌트
     pub component: String,
-    /// 繝ｻ・�E�螂幁E���E�謫�E�繝ｻ邁E��鬁E�E逕ｯ隴�E�謾�E� 繝ｻ・�E�繝ｻ繝ｻ
+    /// 스테이징 파일 경로
     pub staged_path: Option<String>,
 }
 
-/// 繝ｻ繝ｻ鬲めE�E・�E�蟁E���E��E� 繝ｻ・�E�繝ｻ繝ｻ
+/// 업데이트 설정
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateConfig {
     pub enabled: bool,
-    /// 繝ｻ・�E�蠁E���E��E� 繝ｻ繝ｻ・�E�・�E� (繝ｻ諛�E�E��E�繝ｻ 繝ｻ・�E�繝ｻ・�E� 3 遶翫・・台�E��E�・�E�・�E� 8蟾舌�E
+    /// 확인 주기 (시간 단위, 기본값 3, 최소 1시간에서 최대 8시간)
     pub check_interval_hours: u32,
-    /// 繝ｻ・�E�蠁E���E��E� 蠑｡繝ｻ繝ｻ蟁E���E�舌�E・�E�繝ｻ繝ｻ繝ｻ・�E�繝ｻ・�E�繝ｻ鄂ｹ邉�E
+    /// 다운로드 후 자동 적용 여부
     pub auto_download: bool,
-    /// 繝ｻ・�E�繝ｻ・�E�繝ｻ鄂ｹ邉�E蠑｡繝ｻ繝ｻ蟁E���E�舌�E・�E�繝ｻ繝ｻ繝ｻ繝ｻ蝨�E� (繝ｻ・�E�繝ｻ螢�E�・�E�繝ｻ遯�E�繝ｻ繝ｻ閧�E�迚�ECLI/GUI繝ｻ繝ｻ繝ｻ・�E�繝ｻ諛肴�E��E� ・代・蝗�E
+    /// 다운로드 완료 후 자동 적용 (모듈만 자동 적용, CoreDaemon/CLI/GUI는 재시작 필요로 별도 처리)
     pub auto_apply: bool,
-    /// GitHub 繝ｻ�E�繝ｻ・�E�繝ｻ繝ｻ繝ｻ隴�E�謔帙�E繝ｻ
+    /// GitHub 레포지토리 소유자
     pub github_owner: String,
-    /// GitHub 繝ｻ�E�繝ｻ・�E�繝ｻ繝ｻ繝ｻ・�E�繝ｻ繝ｻ
+    /// GitHub 레포지토리 이름
     pub github_repo: String,
-    /// 蠏薙・・�E�・�E�繝ｻ・�E�繝ｻ・�E�繝ｻ・�E� 蟁E���E��E�・托ｽ�E� 繝ｻ・�E�繝ｻ�E�
+    /// 프리릴리즈 버전을 포함할지 여부
     pub include_prerelease: bool,
-    /// 繝ｻ・�E�繝ｻ繝ｻ繝ｻ・�E�蟁E���E��E� 繝ｻ鄂ｷ・�E�鬧補肇繝ｻ・�E� (繝ｻ諛搾�E��E�繝ｻ繝ｻ・�E�繝ｻ・�E�螂晢�E��E� 繝ｻ繝ｻ繝ｻ・�E�繝ｻ・�E�, 繝ｻ・�E�繝ｻ・�E�: 繝ｻ・�E�蠏ゅ・逕ｯ隴�E�謾�E� 繝ｻ繝ｻ
+    /// 스테이징 디렉터리 (다운로드와 임시 파일 저장, 기본값: 실행파일 경로 기준)
     pub install_root: Option<String>,
-    /// API 繝ｻ・�E�繝ｻ・�E�繝ｻ・�E� URL 繝ｻ・�E�繝ｻ繝ｻ謾�E�繝ｻ・�E�繝ｻ繝ｻ(螂幁E���E�萓�E�E�厁E���E�繝ｻ・�E� 繝ｻ諛搾�E��E�・�E� 繝ｻ・�E�繝ｻ繝ｻ繝ｻ鄂ｹ・�E�繝ｻ
-    /// 繝ｻ繝ｻ "http://127.0.0.1:9876" 遶翫・GitHub API 繝ｻ�E�繝ｻ・�E� 繝ｻ・�E� URL 繝ｻ・�E�繝ｻ・�E�
+    /// API 리다이렉트 URL 오버라이드 (테스트용 로컬 서버 지원,
+    /// 예: "http://127.0.0.1:9876" 처럼 GitHub API 대신 사용할 URL 설정)
     #[serde(default)]
     pub api_base_url: Option<String>,
 }
@@ -297,20 +303,22 @@ impl Default for UpdateConfig {
     }
 }
 
-// 隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨翫・
+// ══════════════════════════════════════════════════════
 // UpdateManager
-// 隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨翫・
+// ══════════════════════════════════════════════════════
 
-/// 繝ｻ繝ｻ鬲めE�E・�E�蟁E���E��E� 繝ｻ・�E�繝ｻ貁E��・�E��E� 遯�E�繝ｻ繝ｻ・�E�繝ｻ・�E� 繝ｻ繝ｻ鬲めE�E・�E�蟁E���E��E�/繝ｻ・�E�繝ｻ・�E�螂晢�E��E� 繝ｻ諛搾�E��E�繝ｻ謾�E� 繝ｻ蜊灘�E��E�
+/// 업데이트 확인/다운로드 및 적용을 관리하는 업데이트/초기 설치 매니저
 pub struct UpdateManager {
     pub config: UpdateConfig,
-    /// 繝ｻ貁E��・�E��E�繝ｻ繝ｻ繝ｻ・�E�蠁E���E��E� 繝ｻ・�E�繝ｻ・�E�
+    /// 설정 저장용 레퍼런스
     status: UpdateStatus,
-    /// 繝ｻ・�E�繝ｻ繝ｻ繝ｻ鄂ｷ・�E�鬧補肇繝ｻ・�E� 繝ｻ・�E�繝ｻ繝ｻ
+    /// 모듈 디렉터리 경로 (%APPDATA%/saba-chan/modules)
     modules_dir: PathBuf,
-    /// 繝ｻ繝ｻ鬲めE�E・�E�蟁E���E��E� 繝ｻ・�E�繝ｻ・�E�繝ｻ鄂ｹ邉�E繝ｻ繝ｻ莠�E� 繝ｻ鄂ｷ・�E�鬧補肇繝ｻ・�E�
+    /// 익스텐션 디렉터리 경로 (%APPDATA%/saba-chan/extensions)
+    extensions_dir: PathBuf,
+    /// 업데이트 다운로드 파일 저장 디렉터리
     staging_dir: PathBuf,
-    /// 繝ｻ・�E�繝ｻ繝ｻ繝ｻ・�E�蟁E���E��E� 繝ｻ鄂ｷ・�E�鬧補肇繝ｻ・�E� (繝ｻ諛搾�E��E�繝ｻ繝ｻ・�E�繝ｻ・�E�螂晢�E��E� 繝ｻ繝ｻ繝ｻ・�E�繝ｻ�E�)
+    /// 설치 루트 디렉터리 (다운로드/적용 기준)
     install_root: PathBuf,
     /// 캐시된 최신 릴리즈 정보
     cached_release: Option<GitHubRelease>,
@@ -327,10 +335,10 @@ pub struct UpdateManager {
 
 impl UpdateManager {
     pub fn new(config: UpdateConfig, modules_dir: &str) -> Self {
-        // staging 繝ｻ鄂ｷ・�E�鬧補肇繝ｻ・�E�: %APPDATA%/saba-chan/updates/ 繝ｻ蟁E���E��E� ./updates/
+        // staging 디렉터리: %APPDATA%/saba-chan/updates/ 또는 ./updates/
         let staging_dir = Self::resolve_staging_dir();
 
-        // install_root: config 繝ｻ�E�繝ｻ繝ｻ繝ｻ蟁E���E��E� 繝ｻ・�E�蠏ゅ・逕ｯ隴�E�謾�E� 繝ｻ繝ｻ
+        // install_root: config 경로 또는 실행 파일 기준
         let install_root = config.install_root.as_ref()
             .map(PathBuf::from)
             .unwrap_or_else(|| {
@@ -339,6 +347,17 @@ impl UpdateManager {
                     .and_then(|p| p.parent().map(|d| d.to_path_buf()))
                     .unwrap_or_else(|| PathBuf::from("."))
             });
+
+        // extensions_dir: %APPDATA%/saba-chan/extensions 고정 경로
+        let extensions_dir = Self::resolve_extensions_dir();
+
+        let modules_dir_path = PathBuf::from(modules_dir);
+        if !modules_dir_path.exists() {
+            let _ = std::fs::create_dir_all(&modules_dir_path);
+        }
+        if !extensions_dir.exists() {
+            let _ = std::fs::create_dir_all(&extensions_dir);
+        }
 
         Self {
             config,
@@ -350,6 +369,7 @@ impl UpdateManager {
                 error: None,
             },
             modules_dir: PathBuf::from(modules_dir),
+            extensions_dir,
             staging_dir,
             install_root,
             cached_release: None,
@@ -375,12 +395,33 @@ impl UpdateManager {
         }
     }
 
-    /// 蠍ｸ繝ｻ讀�E� 繝ｻ繝ｻ鬲めE�E・�E�蟁E���E��E� 繝ｻ繝ｻ繝ｻ 繝ｻ・�E�蟾舌�E
+    /// 익스텐션 디렉터리: %APPDATA%/saba-chan/extensions 고정 경로
+    fn resolve_extensions_dir() -> PathBuf {
+        if let Ok(p) = std::env::var("SABA_EXTENSIONS_DIR") {
+            if !p.is_empty() {
+                return PathBuf::from(p);
+            }
+        }
+        #[cfg(target_os = "windows")]
+        {
+            std::env::var("APPDATA")
+                .map(|appdata| PathBuf::from(appdata).join("saba-chan").join("extensions"))
+                .unwrap_or_else(|_| PathBuf::from("./extensions"))
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            std::env::var("HOME")
+                .map(|home| PathBuf::from(home).join(".config").join("saba-chan").join("extensions"))
+                .unwrap_or_else(|_| PathBuf::from("./extensions"))
+        }
+    }
+
+    /// 현재 업데이트 상태를 반환
     pub fn get_status(&self) -> UpdateStatus {
         self.status.clone()
     }
 
-    /// GitHub API 蠁E���E��E�繝ｻ・�E�繝ｻ・�E�繝ｻ・�E�蟁E���E��E� 繝ｻ譎ｧ笏ｳ (api_base_url 繝ｻ・�E�繝ｻ繝ｻ謾�E�繝ｻ・�E�繝ｻ繝ｻ繝ｻ�E�繝ｻ繝ｻ
+    /// GitHub API 클라이언트를 생성 (api_base_url 오버라이드 지원)
     fn create_client(&self) -> GitHubClient {
         GitHubClient::with_base_url(
             &self.config.github_owner,
@@ -389,12 +430,12 @@ impl UpdateManager {
         )
     }
 
-    /// 蠍ｸ繝ｻ讀�E� 繝ｻ・�E�繝ｻ繝ｻ繝ｻ・�E�蟾舌�E
+    /// 현재 설정 반환
     pub fn get_config(&self) -> UpdateConfig {
         self.config.clone()
     }
 
-    /// 繝ｻ・�E�繝ｻ繝ｻ繝ｻ繝ｻ鬲めE�E・�E�蟁E���E��E�
+    /// 설정 업데이트
     pub fn update_config(&mut self, new_config: UpdateConfig) {
         // install_root override: config에 install_root가 설정되면 실제 경로 갱신
         if let Some(ref root) = new_config.install_root {
@@ -461,6 +502,23 @@ impl UpdateManager {
             }
         }
 
+        // ══ 3. 익스텐션 리포 개별 체크 ══
+        let ext_repos = self.discover_extension_repos();
+        for (ext_name, ext_repo) in &ext_repos {
+            let ext_client = GitHubClient::with_base_url(
+                &self.config.github_owner,
+                ext_repo,
+                self.config.api_base_url.as_deref(),
+            );
+            match self.check_extension_repo(&ext_client, ext_name, &local_versions).await {
+                Ok(Some(cv)) => components.push(cv),
+                Ok(None) => {}
+                Err(e) => {
+                    tracing::warn!("[Updater] Extension '{}' check failed: {}", ext_name, e);
+                }
+            }
+        }
+
         // 타임스탬프 갱신
         let now = chrono_now_iso();
         let next = chrono_add_hours_iso(&now, self.config.check_interval_hours);
@@ -508,7 +566,7 @@ impl UpdateManager {
         // ComponentVersion 빌드
         let mut components = Vec::new();
         for (key, info) in &manifest.components {
-            // 모듈은 별도 리포에서 처리
+            // 모듈은 별도 리포에서 처리, 익스텐션은 코어 매니페스트에 미포함
             if key.starts_with("module-") {
                 continue;
             }
@@ -567,13 +625,13 @@ impl UpdateManager {
         let component = Component::Module(module_name.to_string());
         let current = local_versions.get(&module_key).cloned().unwrap_or_default();
 
-        // ���그�E��E �E�E��E�E�춁E "v1.2.0" ↁE"1.2.0"
+        // 태그에서 버전 추출: "v1.2.0" → "1.2.0"
         let latest_version = release.tag_name.trim_start_matches('v').to_string();
 
         let update_available = self.compare_versions(&latest_version, &current);
         let installed = self.is_component_installed(&component);
 
-        // �E��E ���일 �E��E� (module-{name}.zip �E�는 {name}.zip)
+        // 에셋 파일 탐색 (module-{name}.zip 또는 {name}.zip)
         let asset = release.assets.iter()
             .find(|a| a.name == format!("module-{}.zip", module_name)
                     || a.name == format!("{}.zip", module_name));
@@ -597,7 +655,7 @@ impl UpdateManager {
         }))
     }
 
-    /// module.toml�E�E[update] �E��E�에�E�E�E��E�볁E�E�포 �E�보 �E�직E
+    /// module.toml의 [update] 섹션에서 리포 정보 추출
     fn discover_module_repos(&self) -> Vec<(String, String)> {
         let mut repos = Vec::new();
         if let Ok(entries) = std::fs::read_dir(&self.modules_dir) {
@@ -626,18 +684,94 @@ impl UpdateManager {
         repos
     }
 
-    /// SemVer �E�E��E������
+    /// extensions/*/extension.toml의 [update] 섹션에서 리포 정보 수집
+    fn discover_extension_repos(&self) -> Vec<(String, String)> {
+        let mut repos = Vec::new();
+        let extensions_dir = &self.extensions_dir;
+        if let Ok(entries) = std::fs::read_dir(&extensions_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    let ext_toml = path.join("extension.toml");
+                    if ext_toml.exists() {
+                        if let Ok(content) = std::fs::read_to_string(&ext_toml) {
+                            if let Ok(parsed) = content.parse::<toml::Value>() {
+                                let name = parsed.get("extension")
+                                    .and_then(|e| e.get("name"))
+                                    .and_then(|v| v.as_str());
+                                let repo = parsed.get("update")
+                                    .and_then(|u| u.get("github_repo"))
+                                    .and_then(|v| v.as_str());
+                                if let (Some(name), Some(repo)) = (name, repo) {
+                                    repos.push((name.to_string(), repo.to_string()));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        repos
+    }
+
+    /// 익스텐션 리포에서 업데이트 확인
+    async fn check_extension_repo(
+        &self,
+        client: &GitHubClient,
+        ext_name: &str,
+        local_versions: &HashMap<String, String>,
+    ) -> Result<Option<ComponentVersion>> {
+        let releases = client.fetch_releases(5).await?;
+
+        let release = match releases.iter()
+            .filter(|r| !r.draft)
+            .find(|r| self.config.include_prerelease || !r.prerelease)
+        {
+            Some(r) => r,
+            None => return Ok(None),
+        };
+
+        let ext_key = format!("ext-{}", ext_name);
+        let component = Component::Extension(ext_name.to_string());
+        let current = local_versions.get(&ext_key).cloned().unwrap_or_default();
+
+        let latest_version = release.tag_name.trim_start_matches('v').to_string();
+        let update_available = self.compare_versions(&latest_version, &current);
+        let installed = self.is_component_installed(&component);
+
+        let asset = release.assets.iter()
+            .find(|a| a.name == format!("ext-{}.zip", ext_name)
+                    || a.name == format!("{}.zip", ext_name));
+
+        let download_url = asset.map(|a| a.browser_download_url.clone());
+        let asset_name = asset.map(|a| a.name.clone());
+
+        Ok(Some(ComponentVersion {
+            component,
+            current_version: current,
+            latest_version: Some(latest_version),
+            update_available,
+            download_url,
+            asset_name,
+            release_notes: release.body.clone(),
+            published_at: release.published_at.clone(),
+            downloaded: false,
+            downloaded_path: None,
+            installed,
+        }))
+    }
+
     fn compare_versions(&self, latest: &str, current: &str) -> bool {
         let latest_ver = SemVer::parse(latest);
         let current_ver = SemVer::parse(current);
         match (&latest_ver, &current_ver) {
             (Some(l), Some(c)) => l.is_newer_than(c),
-            (Some(_), None) => true, // �E�컬 �E�E��E�E�보 �E�E���E� �E�E���E���� ���E��
+            (Some(_), None) => true, // 로컬 버전 정보가 없으면 업데이트 필요
             _ => false,
         }
     }
 
-    /// staging �E�렉터�E��E��E �E��E��E�드 �E�E�E ���인
+    /// staging 디렉터리에서 다운로드 상태 확인
     #[allow(dead_code)]
     fn check_staged_status(&self, asset_name: Option<&str>) -> (bool, Option<String>) {
         match asset_name {
@@ -651,9 +785,9 @@ impl UpdateManager {
     }
 
 
-    // 隨渉隨渉隨渉 繝ｻ諛搾�E��E�・�E� 繝ｻ繝ｻ・�E�繝ｻ繝ｻ蛟托�E��E�繝ｻ隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉
+    // ─────── 로컬 버전 수집 ────────────────────────────────────────────────────────────────────────
 
-    /// 繝ｻ繝ｻ繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E��ｻ繝ｻ蠍ｸ繝ｻ讀�E� 繝ｻ繝ｻ・�E�繝ｻ謠・繝ｻ蛟托�E��E�繝ｻ
+    /// 모든 컴포넌트의 현재 설치된 버전을 수집
     fn collect_local_versions(&self) -> HashMap<String, String> {
         // 1. 설치 매니페스트 우선 로드 (가장 신뢰할 수 있는 소스)
         let mut versions = Self::load_installed_manifest();
@@ -698,12 +832,27 @@ impl UpdateManager {
             }
         }
 
+        // 익스텐션: extensions/*/extension.toml에서 감지
+        let extensions_dir = &self.extensions_dir;
+        if let Ok(entries) = std::fs::read_dir(&extensions_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    let ext_toml = path.join("extension.toml");
+                    if let Some((name, version)) = self.read_extension_version(&ext_toml) {
+                        let key = format!("ext-{}", name);
+                        versions.entry(key).or_insert(version);
+                    }
+                }
+            }
+        }
+
         tracing::debug!("[UpdateManager] Local versions: {:?}", versions);
         versions
     }
 
     fn read_cargo_version(&self, crate_dir: &str) -> Option<String> {
-        // 繝ｻ・�E�蠏ゅ・逕ｯ隴�E�謾�E� 繝ｻ・�E�繝ｻ�E�繝ｻ・�E�繝ｻ繝ｻ蠏薙・・�E�諛搾�E��E�譎ｨ謨�E� 繝ｻ・�E�蟁E���E��E� 螟句�E�昴΁E
+        // 실행 파일 경로와 여러 후보 디렉터리를 탐색
         let candidates = vec![
             PathBuf::from(crate_dir).join("Cargo.toml"),
             PathBuf::from("..").join(crate_dir).join("Cargo.toml"),
@@ -783,9 +932,36 @@ impl UpdateManager {
         }
     }
 
-    // 隨渉隨渉隨渉 繝ｻ・�E�繝ｻ・�E�繝ｻ鄂ｹ邉�E隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉
+    /// extension.toml에서 이름과 버전 읽기
+    fn read_extension_version(&self, ext_toml: &Path) -> Option<(String, String)> {
+        let content = std::fs::read_to_string(ext_toml).ok()?;
+        let mut name = None;
+        let mut version = None;
 
-    /// 繝ｻ繝ｻ鬲めE�E・�E�蟁E���E��E�繝ｻ�E� 繝ｻ�E�繝ｻ・�E�・代・繝ｻ・�E�繝ｻ・�E� 繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E��ｻ・�E� 繝ｻ・�E�螂幁E���E�謫�E�繝ｻ繝ｻ繝ｻ鄂ｷ・�E�鬧補肇繝ｻ・�E�繝ｻ繝ｻ繝ｻ・�E�繝ｻ・�E�繝ｻ鄂ｹ邉�E
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("name") && trimmed.contains('=') {
+                let val = trimmed.split('=').nth(1)?.trim().trim_matches('"');
+                name = Some(val.to_string());
+            }
+            if trimmed.starts_with("version") && trimmed.contains('=') {
+                let val = trimmed.split('=').nth(1)?.trim().trim_matches('"');
+                version = Some(val.to_string());
+            }
+            if name.is_some() && version.is_some() {
+                break;
+            }
+        }
+
+        match (name, version) {
+            (Some(n), Some(v)) => Some((n, v)),
+            _ => None,
+        }
+    }
+
+    // ─────── 다운로드 ────────────────────────────────────────────────────────────────────────
+
+    /// 업데이트 가능한 모든 컴포넌트를 스테이징 디렉터리에 다운로드
     /// 업데이트 가능한 모든 컴포넌트를 staging 디렉터리로 다운로드
     ///
     /// resolved_components를 활용하여 각 컴포넌트의 에셋이 실제로 존재하는
@@ -892,14 +1068,14 @@ impl UpdateManager {
 
         Ok(asset_name)
     }
-    // 隨渉隨渉隨渉 繝ｻ繝ｻ蝨�E� 隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉
+    // ─────── 적용 ────────────────────────────────────────────────────────────────────────
 
-    /// 繝ｻ・�E�繝ｻ・�E�繝ｻ鄂ｹ邉悶・繝ｻ繝ｻ繝ｻ鬲めE�E・�E�蟁E���E��E�繝ｻ・�E� 繝ｻ繝ｻ蝨�E�
+    /// 다운로드 완료된 업데이트를 적용
     ///
-    /// ## 繝ｻ・�E�繝ｻ蛟代℁E�E托ｽ�E�
-    /// - **繝ｻ・�E�繝ｻ繝ｻ*: 繝ｻ鬢謎ｺ�E� 逕ｯ隴�E�謾�E� 繝ｻ蟾晢�E��E�・�E� 蠑｡繝ｻ繝ｻ・�E�繝ｻ鄂ｹ邉�E繝ｻ�E�繝ｻ・�E�
-    /// - **GUI/CLI**: 逕ｯ隴�E�謾�E� 繝ｻ蟾晢�E��E�・�E� (繝ｻ・�E�繝ｻ繝ｻ繝ｻ・�E�蠏ゅ・繝ｻ繝ｻ繝ｻ蛟代・)
-    /// - **繝ｻ閧�E�迚�E繝ｻ・�E�繝ｻ・�E�**: 繝ｻ蟁E���E��E�・�E� 繝ｻ蟾昜ｾ�E�繝ｻ�E� 繝ｻ蟾晢�E��E�・�E� 繝ｻ荳・�E��E� 遶翫・繝ｻ・�E�繝ｻ諛肴�E��E� 繝ｻ・�E�蠁E���E��E�繝ｻ・�E�蟁E���E��E� 繝ｻ譎ｧ笏ｳ
+    /// ## 주요 동작
+    /// - **모듈**: 기존 파일을 백업하고 다운로드된 zip 압축 해제
+    /// - **GUI/CLI**: 직접 교체 (별도 프로세스 실행으로 처리)
+    /// - **코어 데몬**: 실행 중이면 교체가 불가하므로 재시작 후 업데이트를 예약
     pub async fn apply_updates(&mut self) -> Result<Vec<String>> {
         let all_keys: Vec<String> = self.status.components.iter()
             .filter(|c| c.downloaded && c.update_available)
@@ -944,10 +1120,14 @@ impl UpdateManager {
                     self.apply_discord_bot_update(staged_path).await?;
                     applied.push(comp.component.display_name());
                 }
+                Component::Extension(name) => {
+                    self.apply_extension_update(name, staged_path).await?;
+                    applied.push(comp.component.display_name());
+                }
             }
         }
 
-        // 繝ｻ繝ｻ蝨�E� 繝ｻ繝ｻ・�E�隱�E�鬁E�E繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E��ｻ繝ｻ繝ｻ繝ｻ繝ｻ 繝ｻ繝ｻ鬲めE�E・�E�蟁E���E��E�
+        // 적용 완료된 컴포넌트의 상태 업데이트
         for comp in &mut self.status.components {
             if applied.iter().any(|a| a.starts_with(&comp.component.display_name())) {
                 comp.update_available = false;
@@ -969,9 +1149,9 @@ impl UpdateManager {
         Ok(applied)
     }
 
-    // 隨渉隨渉隨渉 2-flow 繝ｻ繝ｻ縺・�E�帑ｽ懶�E��E�繝ｻ 繝ｻ鄂ｹ・�E�繝ｻ繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E繝ｻ繝ｻ蝨�E� 隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉
+    // ─────── 2-flow 아키텍처: 개별 컴포넌트 적용 ────────────────────────────────────────────────────────────────────────
 
-    /// 繝ｻ繝ｻ蝨�E� 繝ｻ�E�繝ｻ・�E� 繝ｻ蜊捺筁E繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E繝ｻ・�E�繝ｻ繝ｻ繝ｻ蛟�E轁E
+    /// 적용 대기 중인 개별 컴포넌트를 반환
     pub fn get_pending_components(&self) -> Vec<&ComponentVersion> {
         self.status.components.iter()
             .filter(|c| c.downloaded && c.update_available)
@@ -1171,10 +1351,10 @@ impl UpdateManager {
     }
 
 
-    /// 繝ｻ・�E�繝ｻ・�E� 繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E��ｻ繝ｻ繝ｻ�E�・托ｽ�E� 逕ｯ隴�E�謾�E� 繝ｻ繝ｻ蝨�E�繝ｻ繝ｻ繝ｻ蛟�E陶 (蠏薙・・�E�諛坂塙繝ｻ・�E� 繝ｻ�E�繝ｻ・�E�繝ｻ繝ｻ蠍ｸ・�E�繝ｻ諛肴�E��E� 繝ｻ繝ｻ譯�E�)
+    /// 단일 컴포넌트만 개별적으로 적용하는 메서드 (데몬 IPC 경유 시 개별 컴포넌트를 순차적으로 처리)
     ///
-    /// Flow 1 (繝ｻ・�E�繝ｻ繝ｻ繝ｻ・�E�繝ｻ・�E�): IPC ・托ｽ�E�繝ｻ・�E�繝ｻ・�E�繝ｻ�E� 蠏薙・・�E�諛坂塙繝ｻ・�E� 繝ｻ蜊難�E��E��E� 蠑｡繝ｻ繝ｻ・�E� 繝ｻ閧�E�繝ｻ繝ｻ繝ｻ蠍ｸ・�E�繝ｻ繝ｻ
-    /// Flow 2 (GUI/CLI): 繝ｻ・�E�蠁E��・�E�, self-update flow繝ｻ繝ｻ繝ｻ繝ｻ蜉�E
+    /// Flow 1 (백그라운드 워커): IPC 커맨드를 통해 데몬이 직접 적용한 후 재시작
+    /// Flow 2 (GUI/CLI): 직접 적용, self-update flow로 전환
     pub async fn apply_single_component(&mut self, component: &Component) -> Result<ApplyComponentResult> {
         let comp = self.status.components.iter()
             .find(|c| &c.component == component && c.downloaded && c.update_available)
@@ -1191,7 +1371,7 @@ impl UpdateManager {
                     component: component.manifest_key(),
                     success: true,
                     message: format!("Module '{}' updated", name),
-                    stopped_processes: Vec::new(), // IPC ・托ｽ�E�繝ｻ・�E�繝ｻ・�E�繝ｻ�E� 繝ｻ繝ｻ螳・
+                    stopped_processes: Vec::new(), // IPC 커맨드 경유 시 해당 없음
                     restart_needed: true,
                 }
             }
@@ -1201,7 +1381,7 @@ impl UpdateManager {
                 ApplyComponentResult {
                     component: component.manifest_key(),
                     success: true,
-                    message: "Core Daemon updated (restart required)".to_string(),
+                    message: "Saba-Core updated (restart required)".to_string(),
                     stopped_processes: Vec::new(),
                     restart_needed: true,
                 }
@@ -1236,15 +1416,25 @@ impl UpdateManager {
                     restart_needed: false,
                 }
             }
+            Component::Extension(name) => {
+                self.apply_extension_update(name, staged_path).await?;
+                ApplyComponentResult {
+                    component: component.manifest_key(),
+                    success: true,
+                    message: format!("Extension '{}' updated", name),
+                    stopped_processes: Vec::new(),
+                    restart_needed: true,
+                }
+            }
         };
 
-        // 繝ｻ繝ｻ蝨�E� 繝ｻ繝ｻ・�E�繝ｻ遶翫・繝ｻ繝ｻ繝ｻ 繝ｻ繝ｻ鬲めE�E・�E�蟁E���E��E�
+        // 적용 성공 시 상태 업데이트
         self.mark_component_applied(component);
 
         Ok(result)
     }
 
-    /// 繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E繝ｻ繝ｻ蝨�E� 繝ｻ繝ｻ・�E�繝ｻ蠑｡繝ｻ繝ｻ繝ｻ繝ｻ 繝ｻ・�E�繝ｻ・�E�
+    /// 컴포넌트의 적용 완료 상태를 표시
     pub fn mark_component_applied(&mut self, component: &Component) {
         for comp in &mut self.status.components {
             if &comp.component == component {
@@ -1258,13 +1448,13 @@ impl UpdateManager {
         }
     }
 
-    /// GUI/CLI 繝ｻ蟾晢�E��E�・�E� 繝ｻ繝ｻ鬲めE�E・�E�蟁E���E��E� 繝ｻ邁E��・�E�・�E� 繝ｻ蛟�E轁E(繝ｻ・�E�螂難�E��E�蟁E��蛟第匿繝ｻ・�E�繝ｻ�E� 繝ｻ繝ｻ鬲めE�E・�E�螂難�E��E�繝ｻ・�E� 繝ｻ・�E�蟁E���E��E�・台�E��E�・�E�・�E� 繝ｻ繝ｻ・�E�驢占村繝ｻ・�E� 繝ｻ繝ｻ蠕ｩ 繝ｻ邁E��・�E�・�E�)
+    /// GUI/CLI 자신의 업데이트 정보를 반환 (업데이터 실행파일을 통해 컴포넌트를 교체한 후 재시작하는 self-update 지원)
     pub fn get_self_update_info(&self, component: &Component) -> Result<SelfUpdateInfo> {
         let comp = self.status.components.iter()
             .find(|c| &c.component == component && c.downloaded)
             .ok_or_else(|| anyhow::anyhow!("Component {:?} not downloaded", component))?;
 
-        // 繝ｻ繝ｻ鬲めE�E・�E�螂難�E��E� CLI 繝ｻ・�E�繝ｻ繝ｻ繝ｻ閧�E�・�E�繝ｻ install_root/updater/cli/ 繝ｻ蟁E���E��E� 繝ｻ蜻�E�謐ｩ 繝ｻ鄂ｷ・�E�鬧補肇繝ｻ・�E�
+        // 업데이터 CLI 실행파일을 install_root/updater/cli/ 또는 근처 디렉터리에서 탐색
         let updater_exe = self.find_updater_executable()?;
 
         let staged_path = comp.downloaded_path.clone();
@@ -1284,9 +1474,9 @@ impl UpdateManager {
         })
     }
 
-    /// 繝ｻ繝ｻ鬲めE�E・�E�螂難�E��E� CLI 繝ｻ・�E�蠏ゅ・逕ｯ隴�E�謾�E� 繝ｻ・�E�繝ｻ繝ｻ螟句�E�昴΁E
+    /// 업데이터 CLI 실행파일의 경로를 탐색
     fn find_updater_executable(&self) -> Result<String> {
-        // 繝ｻ・�E�繝ｻ・�E�繝ｻ諛肴�E�: install_root/saba-chan-updater(.exe)
+        // 배포 환경: install_root/saba-chan-updater(.exe)
         let candidates = if cfg!(target_os = "windows") {
             vec![
                 self.install_root.join("saba-chan-updater.exe"),
@@ -1303,7 +1493,7 @@ impl UpdateManager {
             }
         }
 
-        // 繝ｻ鄂ｹ・�E�繝ｻ蠍ｹ菫�E�・�E�・�E�: target/release 繝ｻ蟁E���E��E� target/debug
+        // 개발 환경: target/release 또는 target/debug
         let dev_candidates = if cfg!(target_os = "windows") {
             vec![
                 PathBuf::from("updater/gui/src-tauri/target/release/saba-chan-updater.exe"),
@@ -1326,18 +1516,18 @@ impl UpdateManager {
             }
         }
 
-        // 繝ｻ・�E� 繝ｻ・�E�繝ｻ・�E�繝ｻ・�E� 繝ｻ・�E�繝ｻ・�E� 繝ｻ・�E�繝ｻ繝ｻ繝ｻ蛟�E轁E(蠍ｸ・�E�繝ｻ諛肴�E��E�繝ｻ�E� 繝ｻ・�E�繝ｻ・�E� 繝ｻ・�E�繝ｻ�E� 蠍ｹ闖ｩ謾�E�)
+        // 찾지 못하면 기본값을 반환 (배포 환경에서는 첫 후보 사용)
         Ok(candidates[0].display().to_string())
     }
 
-    /// 繝ｻ・�E�繝ｻ繝ｻ繝ｻ繝ｻ鬲めE�E・�E�蟁E���E��E� 繝ｻ繝ｻ蝨�E� 遯�E�繝ｻzip ・托ｽ�E�繝ｻ繝ｻ蠑｡繝ｻ繝ｻ・�E�繝ｻ繝ｻ繝ｻ鄂ｷ・�E�鬧補肇繝ｻ・�E� 繝ｻ蟾晢�E��E�・�E�
+    /// 모듈 업데이트 적용 — 기존 zip 파일을 압축 해제하여 디렉터리에 배치
     async fn apply_module_update(&self, module_name: &str, staged_path: &str) -> Result<()> {
         let target_dir = self.modules_dir.join(module_name);
         let staged = Path::new(staged_path);
 
-        tracing::info!("[Updater] Applying module update: {} 遶翫・{}", module_name, target_dir.display());
+        tracing::info!("[Updater] Applying module update: {} → {}", module_name, target_dir.display());
 
-        // 繝ｻ・�E�繝ｻ・�E� 繝ｻ・�E�繝ｻ繝ｻ繝ｻ・�E�繝ｻ繝ｻ
+        // 기존 백업 생성
         let backup_dir = self.staging_dir.join(format!("{}_backup", module_name));
         if target_dir.exists() {
             if backup_dir.exists() {
@@ -1346,14 +1536,14 @@ impl UpdateManager {
             self.copy_dir_recursive(&target_dir, &backup_dir)?;
         }
 
-        // zip ・托ｽ�E�繝ｻ繝ｻ
+        // zip 압축 해제
         if staged.extension().map(|e| e == "zip").unwrap_or(false) {
             let file = std::fs::File::open(staged)?;
             let mut archive = zip::ZipArchive::new(file)?;
 
-            // 繝ｻ・�E�繝ｻ・�E� 逕ｯ隴�E�謾�E� 繝ｻ・�E�繝ｻ繝ｻ蠑｡繝ｻ繝ｻ螢�E�・�E�繝ｻ繝ｻ闖ｩ・�E�繝ｻ・托ｽ�E�繝ｻ繝ｻ
+            // 기존 파일을 삭제하고 새 파일로 교체
             if target_dir.exists() {
-                // __pycache__繝ｻ�E� 繝ｻ蜻�E�謐ｩ 繝ｻ蟾昜ｺ�E�繝ｻ繝ｻ繝ｻ諛榊献・台�E��E�・�E�・�E� 繝ｻ・�E�繝ｻ繝ｻ
+                // __pycache__와 같은 캐시 파일은 제외하고 삭제
                 self.clean_module_dir(&target_dir)?;
             }
 
@@ -1373,14 +1563,64 @@ impl UpdateManager {
                 }
             }
         } else {
-            // zip繝ｻ・�E� 繝ｻ繝ｻ譌ｧ 繝ｻ・�E�繝ｻ・�E� 逕ｯ隴�E�謾�E� 遶翫・繝ｻ・�E�繝ｻ�E�繝ｻ繝ｻ繝ｻ・�E�繝ｻ・�E�
+            // zip이 아닌 단일 파일인 경우 직접 복사
             std::fs::copy(staged, &target_dir)?;
         }
 
-        // 繝ｻ・�E�螂幁E���E�謫�E�繝ｻ繝ｻ逕ｯ隴�E�謾�E� 繝ｻ邁E��・�E�・�E�
+        // 스테이징 파일 삭제
         std::fs::remove_file(staged).ok();
 
         tracing::info!("[Updater] Module '{}' updated successfully", module_name);
+        Ok(())
+    }
+
+    /// 익스텐션 업데이트 적용 — zip 압축 해제하여 extensions/ 디렉터리에 배치
+    async fn apply_extension_update(&self, ext_name: &str, staged_path: &str) -> Result<()> {
+        let target_dir = self.extensions_dir.join(ext_name);
+        let staged = Path::new(staged_path);
+
+        tracing::info!("[Updater] Applying extension update: {} → {}", ext_name, target_dir.display());
+
+        // 기존 백업
+        let backup_dir = self.staging_dir.join(format!("{}_ext_backup", ext_name));
+        if target_dir.exists() {
+            if backup_dir.exists() {
+                std::fs::remove_dir_all(&backup_dir)?;
+            }
+            self.copy_dir_recursive(&target_dir, &backup_dir)?;
+        }
+
+        // zip 압축 해제
+        if staged.extension().map(|e| e == "zip").unwrap_or(false) {
+            let file = std::fs::File::open(staged)?;
+            let mut archive = zip::ZipArchive::new(file)?;
+
+            if target_dir.exists() {
+                self.clean_module_dir(&target_dir)?;
+            }
+
+            for i in 0..archive.len() {
+                let mut entry = archive.by_index(i)?;
+                let name = entry.name().to_string();
+                let out_path = target_dir.join(&name);
+
+                if entry.is_dir() {
+                    std::fs::create_dir_all(&out_path)?;
+                } else {
+                    if let Some(parent) = out_path.parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
+                    let mut outfile = std::fs::File::create(&out_path)?;
+                    std::io::copy(&mut entry, &mut outfile)?;
+                }
+            }
+        } else {
+            std::fs::copy(staged, &target_dir)?;
+        }
+
+        std::fs::remove_file(staged).ok();
+
+        tracing::info!("[Updater] Extension '{}' updated successfully", ext_name);
         Ok(())
     }
 
@@ -1425,7 +1665,7 @@ impl UpdateManager {
         #[cfg(target_os = "windows")]
         {
             let process_names: Vec<&str> = match binary_name {
-                n if n.contains("daemon") || n.contains("core") => vec!["saba-chan.exe"],
+                n if n.contains("daemon") || n.contains("core") => vec!["saba-core.exe"],
                 n if n.contains("cli") => vec!["saba-chan-cli.exe"],
                 n if n.contains("gui") => vec!["saba-chan-gui.exe"],
                 _ => vec![],
@@ -1458,7 +1698,7 @@ impl UpdateManager {
                     if let Some(parent) = out_path.parent() {
                         std::fs::create_dir_all(parent)?;
                     }
-                    // Windows繝ｻ蟾昴・ 繝ｻ・�E�繝ｻ・�E� 繝ｻ蜊捺筁E.exe繝ｻ繝ｻ繝ｻ・�E�繝ｻ繝ｻ繝ｻ�E�繝ｻ・�E� 蠑｡繝ｻ繝ｻ蟾晢�E��E�・�E�
+                    // Windows에서 실행 중인 .exe를 .old로 rename (재시도 포함)
                     // Windows: 실행 중인 .exe를 .old로 rename (재시도 포함)
                     if out_path.exists() && out_path.extension().map(|e| e == "exe").unwrap_or(false) {
                         let backup = out_path.with_extension("exe.old");
@@ -1478,7 +1718,7 @@ impl UpdateManager {
         Ok(())
     }
 
-    /// GUI 繝ｻ繝ｻ鬲めE�E・�E�蟁E���E��E� 繝ｻ繝ｻ蝨�E�
+    /// GUI 업데이트 적용
     async fn apply_gui_update(&self, staged_path: &str) -> Result<()> {
         let staged = Path::new(staged_path);
 
@@ -1563,7 +1803,7 @@ impl UpdateManager {
         Ok(())
     }
 
-    /// 繝ｻ閧�E�迚�E繝ｻ・�E�繝ｻ・�E� 繝ｻ蟾晢�E��E�・�E� 繝ｻ繝ｻ鬲めE�E・�E�蟁E���E��E� 繝ｻ�E�繝ｻ繝ｻ(繝ｻ・�E�繝ｻ諛肴�E��E� 蠑｡繝ｻ繝ｻ繝ｻ蝨�E�)
+    /// 코어 데몬의 업데이트를 준비 (재시작 후 적용)
     #[allow(dead_code)]
     async fn prepare_daemon_update(&self, staged_path: &str) -> Result<Option<String>> {
         let staged = Path::new(staged_path);
@@ -1573,7 +1813,7 @@ impl UpdateManager {
 
         let result_script_path: String;
 
-        // Windows: 繝ｻ・�E�繝ｻ諛肴�E��E� 繝ｻ繝ｻ繝ｻ・�E�蠏る�E�戊�E PowerShell 繝ｻ・�E�蠁E���E��E�繝ｻ・�E�蟁E���E��E� 繝ｻ譎ｧ笏ｳ
+        // Windows: 재시작 후 자동 업데이트를 위한 PowerShell 스크립트를 생성
         #[cfg(target_os = "windows")]
         {
             let script_path = exe_dir.join("_update_daemon.ps1");
@@ -1610,7 +1850,7 @@ Remove-Item -Force $MyInvocation.MyCommand.Source -ErrorAction SilentlyContinue
 
             std::fs::write(&script_path, script)?;
             tracing::info!(
-                "[Updater] Daemon update prepared 遯�E�繝ｻrun {} after stopping daemon",
+                "[Updater] Daemon update prepared — run {} after stopping daemon",
                 script_path.display()
             );
             result_script_path = script_path.display().to_string();
@@ -1649,7 +1889,7 @@ rm -f "$0"
             );
 
             std::fs::write(&script_path, &script)?;
-            // 繝ｻ・�E�蠏ゅ・繝ｻ驢仙ｾ�E� 繝ｻ�E�繝ｻ・�E�
+            // 실행 권한 부여
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
@@ -1659,7 +1899,7 @@ rm -f "$0"
             }
 
             tracing::info!(
-                "[Updater] Daemon update prepared 遯�E�繝ｻrun {} after stopping daemon",
+                "[Updater] Daemon update prepared — run {} after stopping daemon",
                 script_path.display()
             );
             result_script_path = script_path.display().to_string();
@@ -1668,7 +1908,7 @@ rm -f "$0"
         Ok(Some(result_script_path))
     }
 
-    // 隨渉隨渉隨渉 繝ｻ・�E�蟁E�・�E�繝ｻ・�E�蟁E�・�E� 隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉
+    // ─────── 유틸리티 ────────────────────────────────────────────────────────────────────────
 
     fn find_gui_directory(&self) -> Result<PathBuf> {
         // 1) install_root 기준 (컴파일된 배포 환경에서 가장 정확)
@@ -1799,7 +2039,7 @@ rm -f "$0"
             let name = entry.file_name();
             let name_str = name.to_string_lossy();
 
-            // __pycache__, .git 繝ｻ・�E�繝ｻ�E� 繝ｻ・�E�繝ｻ螢�E�諤・
+            // __pycache__, .git 등은 건드리지 않음
             if name_str == "__pycache__" || name_str.starts_with('.') {
                 continue;
             }
@@ -1827,15 +2067,15 @@ rm -f "$0"
         Ok(())
     }
 
-    // 隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨翫・
-    // 繝ｻ・�E�繝ｻ・�E�螂晢�E��E�繝ｻ・�E� 繝ｻ・�E�繝ｻ・�E�
-    // 隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨顔ｵ�E�豁E��隨翫・
+    // ══════════════════════════════════════════════════════
+    // 초기 설치 관련 메서드
+    // ══════════════════════════════════════════════════════
 
-    /// 繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E��ｻ�E� 繝ｻ諛搾�E��E�・�E�繝ｻ繝ｻ繝ｻ・�E�繝ｻ菫�E�謐ｮ繝ｻ・�E� 繝ｻ螢�E�譬�E�繝ｻ�E� 蠍ｹ闖ｩ謾�E�
+    /// 컴포넌트가 설치되어 있는지 확인
     pub fn is_component_installed(&self, component: &Component) -> bool {
         match component {
             Component::CoreDaemon => {
-                // 繝ｻ閧�E�迚�E繝ｻ・�E�繝ｻ・�E�繝ｻ�E� 繝ｻ蟁E���E��E�・�E� 繝ｻ蟾昜ｾ�E�繝ｻ・�E�繝ｻ�E�繝ｻ繝ｻ・托ｽ�E�繝ｻ繝ｻ繝ｻ・�E�繝ｻ菫�E�蜍｢
+                // 코어 데몬은 무조건 설치된 것으로 판단
                 true
             }
             Component::Cli => {
@@ -1855,6 +2095,11 @@ rm -f "$0"
                 let module_dir = self.modules_dir.join(name);
                 module_dir.join("module.toml").exists()
             }
+            Component::Extension(name) => {
+                let ext_dir = self.extensions_dir.join(name);
+                // extension.toml 또는 __init__.py가 있으면 설치된 것으로 판단
+                ext_dir.join("extension.toml").exists() || ext_dir.join("__init__.py").exists()
+            }
             Component::DiscordBot => {
                 // discord_bot 디렉토리에 index.js + package.json 존재 확인
                 self.find_discord_bot_directory().ok().map(|d| d.join("index.js").exists()).unwrap_or(false)
@@ -1862,7 +2107,7 @@ rm -f "$0"
         }
     }
 
-    /// 繝ｻ繝ｻ・�E�・�E� 繝ｻ・�E�繝ｻ繝ｻ繝ｻ繝ｻ繝ｻ 繝ｻ閧�E�蟷�E� 繝ｻ・�E�蟾舌�E
+    /// 전체 컴포넌트의 설치 현황 반환
     pub fn get_install_status(&self) -> InstallStatus {
         let components: Vec<(Component, bool)> = vec![
             (Component::CoreDaemon, self.is_component_installed(&Component::CoreDaemon)),
@@ -1871,8 +2116,9 @@ rm -f "$0"
             (Component::DiscordBot, self.is_component_installed(&Component::DiscordBot)),
         ];
 
-        // 繝ｻ・�E�繝ｻ螢�E�雎�E・繝ｻ蠍ｹ闖ｩ謾�E� 遯�E�繝ｻmanifest繝ｻ蟾昴・ 繝ｻ隱�E�・�E�・�E�繝ｻ繝ｻ繝ｻ・�E�繝ｻ繝ｻ繝ｻ・�E�繝ｻ繝ｻ繝ｻ・�E�繝ｻ・�E�
+        // 동적 컴포넌트: 모듈은 manifest 또는 로컬 탐색, 익스텐션은 항상 로컬 탐색
         let mut module_components = Vec::new();
+        let mut ext_components = Vec::new();
         if let Some(ref manifest) = self.cached_manifest {
             for key in manifest.components.keys() {
                 if key.starts_with("module-") {
@@ -1882,7 +2128,7 @@ rm -f "$0"
                 }
             }
         } else {
-            // manifest 繝ｻ繝ｻ諢阪・・�E� 繝ｻ諛搾�E��E�・�E� modules/ 繝ｻ・�E�繝ｻ繝ｻ
+            // manifest 없으면 로컬 modules/ 스캔
             if let Ok(entries) = std::fs::read_dir(&self.modules_dir) {
                 for entry in entries.flatten() {
                     if entry.path().is_dir() {
@@ -1895,13 +2141,32 @@ rm -f "$0"
             }
         }
 
+        // 익스텐션: 개별 리포 관리이므로 항상 로컬 extensions/ 스캔
+        {
+            let extensions_dir = &self.extensions_dir;
+            if let Ok(entries) = std::fs::read_dir(&extensions_dir) {
+                for entry in entries.flatten() {
+                    if entry.path().is_dir() {
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        if name.starts_with('_') || name == "__pycache__" {
+                            continue;
+                        }
+                        let comp = Component::Extension(name.clone());
+                        let installed = self.is_component_installed(&comp);
+                        ext_components.push((comp, installed));
+                    }
+                }
+            }
+        }
+
         let all: Vec<(Component, bool)> = components.into_iter()
             .chain(module_components)
+            .chain(ext_components)
             .collect();
 
         let total = all.len();
         let installed_count = all.iter().filter(|(_, i)| *i).count();
-        let is_fresh = installed_count <= 1; // 繝ｻ閧�E�迚�E繝ｻ・�E�繝ｻ・�E�繝ｻ繝ｻ繝ｻ・�E�繝ｻ菫�E�蜍｢
+        let is_fresh = installed_count <= 1; // 코어 데몬만 설치된 상태
 
         InstallStatus {
             is_fresh_install: is_fresh,
@@ -1916,9 +2181,9 @@ rm -f "$0"
         }
     }
 
-    /// 繝ｻ繝ｻ・�E�繝ｻ繝ｻ・�E�繝ｻ菫�E�謐ｮ繝ｻ�E� 繝ｻ蝟懈昁E繝ｻ・�E�繝ｻ・�E� 繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E��ｻ・�E� 繝ｻ・�E�繝ｻ・�E�螂晢�E��E� (繝ｻ諛搾�E��E�繝ｻ繝ｻ・�E�繝ｻ繝ｻ
+    /// 미설치된 컴포넌트를 일괄 설치하는 초기 설치 (릴리즈 횡단 탐색)
     ///
-    /// 蠖ｧ蟁E���E��E�繝ｻ manifest 蟁E��蛟托�E��E�繝ｻ遶翫・繝ｻ・�E�繝ｻ・�E�繝ｻ繝ｻ繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E繝ｻ譎､・�E�繝ｻ遶翫・繝ｻ・�E�繝ｻ・�E�繝ｻ鄂ｹ邉�E遶翫・繝ｻ闖ｩ・�E�繝ｻ・托ｽ�E�繝ｻ繝ｻ繝ｻ・�E�繝ｻ繝ｻ
+    /// 각 릴리즈의 manifest 에셋 정보를 기반으로 컴포넌트별 최신 에셋을 찾아 개별 다운로드합니다.
     /// 미설치된 필수 컴포넌트를 설치하는 초기 설치 (릴리즈 횡단 탐색 지원)
     ///
     /// resolved_components를 활용하여 에셋이 포함된 릴리즈에서 개별 다운로드.
@@ -2134,31 +2399,32 @@ rm -f "$0"
         tracing::info!("[Installer] {} installed to {}", component.display_name(), install_dir.display());
         Ok(install_dir.to_string_lossy().to_string())
     }
-    /// 繝ｻ・�E�繝ｻ繝ｻ繝ｻ繝ｻ蜩�E� 繝ｻ繝ｻ繝ｻ 繝ｻ・�E�蟾舌�E
+    /// 설치 진행 상태 반환
     pub fn get_install_progress(&self) -> Option<InstallProgress> {
         self.install_progress.clone()
     }
 
-    // 隨渉隨渉隨渉 繝ｻ・�E�繝ｻ・�E�螂晢�E��E�繝ｻ・�E� 繝ｻ・�E�蟁E�・�E�繝ｻ・�E�蟁E�・�E� 隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉
+    // ─────── 초기 설치 유틸리티 ────────────────────────────────────────────────────────────────────────
 
-    /// 繝ｻ・�E�蟁E���E��E�繝ｻ驢先要E��ｻ繝ｻ繝ｻ・�E�繝ｻ繝ｻ繝ｻ鄂ｷ・�E�鬧補肇繝ｻ・�E� 繝ｻ・�E�繝ｻ繝ｻ
+    /// 컴포넌트의 설치 디렉터리를 결정
     fn resolve_install_dir(&self, component: &Component, manifest_dir: Option<&str>) -> PathBuf {
-        // manifest繝ｻ繝ｻinstall_dir繝ｻ・�E� 繝ｻ貁E��諢阪・・�E� install_root 繝ｻ・�E�繝ｻ�E� 繝ｻ繝ｻ蜉�E・・�E�繝ｻ繝ｻ
+        // manifest의 install_dir가 지정되면 install_root 하위로 결합
         if let Some(dir) = manifest_dir {
             return self.install_root.join(dir);
         }
 
-        // 繝ｻ・�E�繝ｻ・�E� 繝ｻ諛搾�E��E�繝ｻ
+        // 기본 매핑
         match component {
             Component::CoreDaemon => self.install_root.clone(),
             Component::Cli => self.install_root.clone(),
             Component::Gui => self.install_root.join("saba-chan-gui"),
-            Component::Module(name) => self.install_root.join("modules").join(name),
+            Component::Module(name) => self.modules_dir.join(name),
+            Component::Extension(name) => self.extensions_dir.join(name),
             Component::DiscordBot => self.install_root.join("discord_bot"),
         }
     }
 
-    /// zip(繝ｻ蟁E���E��E� 繝ｻ・�E�繝ｻ・�E� 逕ｯ隴�E�謾�E�)繝ｻ繝ｻ繝ｻ�E�繝ｻ繝ｻ繝ｻ鄂ｷ・�E�鬧補肇繝ｻ・�E�繝ｻ繝ｻ繝ｻ閧�E�・�E�繝ｻ
+    /// zip(또는 단일 파일)을 대상 디렉터리에 압축 해제
     async fn extract_to_directory(&self, staged: &Path, target_dir: &Path) -> Result<()> {
         std::fs::create_dir_all(target_dir)?;
 
@@ -2182,7 +2448,7 @@ rm -f "$0"
                 }
             }
         } else {
-            // 繝ｻ・�E�繝ｻ・�E� 逕ｯ隴�E�謾�E� 遶翫・target_dir 繝ｻ貁E��荵�E� 繝ｻ・�E�繝ｻ・�E�
+            // 단일 파일인 경우 target_dir 내부에 복사
             let file_name = staged.file_name().unwrap_or_default();
             std::fs::copy(staged, target_dir.join(file_name))?;
         }
@@ -2190,7 +2456,7 @@ rm -f "$0"
         Ok(())
     }
 
-    /// 繝ｻ諛搾�E��E�繝ｻ繝ｻ・�E�繝ｻ繝ｻ繝ｻ繝ｻ繝ｻ・�E�繝ｻ・�E� 繝ｻ・�E�繝ｻ繝ｻ逕ｯ隴�E�謾�E�繝ｻ・�E� 繝ｻ繝ｻ諢阪・・�E� 繝ｻ譎ｧ笏ｳ
+    /// 기본 설정 파일과 필수 디렉터리가 없으면 생성
     fn ensure_default_config(&self) -> Result<()> {
         let config_dir = self.install_root.join("config");
         let global_toml = config_dir.join("global.toml");
@@ -2216,35 +2482,37 @@ include_prerelease = false
             tracing::info!("[Installer] Created default config at {}", global_toml.display());
         }
 
-        // modules 繝ｻ鄂ｷ・�E�鬧補肇繝ｻ・�E� 繝ｻ譎ｧ笏ｳ
-        let modules_dir = self.install_root.join("modules");
-        std::fs::create_dir_all(&modules_dir)?;
+        // modules 디렉터리 생성 (%APPDATA%/saba-chan/modules)
+        std::fs::create_dir_all(&self.modules_dir)?;
 
-        // locales 繝ｻ鄂ｷ・�E�鬧補肇繝ｻ・�E� 繝ｻ譎ｧ笏ｳ
+        // extensions 디렉터리 생성 (%APPDATA%/saba-chan/extensions)
+        std::fs::create_dir_all(&self.extensions_dir)?;
+
+        // locales 디렉터리 생성
         let locales_dir = self.install_root.join("locales");
         std::fs::create_dir_all(&locales_dir)?;
 
         Ok(())
     }
 
-    // 隨渉隨渉隨渉 螂幁E���E�萓�E�E�厁E���E� 蠏ｭ・�E�蟁E���E��E� (pub) 隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉
+    // ─────── 테스트 헬퍼 (pub) ────────────────────────────────────────────────────────────────────────
 
-    /// 螂幁E���E�萓�E�E�厁E���E� 繝ｻ繝ｻ蝨�E�: extract_to_directory繝ｻ・�E� 繝ｻ・�E�繝ｻ�E�繝ｻ蟾昴・ 蠍ｸ・�E�繝ｻ繝ｻ
+    /// 테스트 전용: extract_to_directory를 외부에서 호출
     #[doc(hidden)]
     pub async fn extract_to_directory_for_test(&self, staged: &Path, target: &Path) {
         self.extract_to_directory(staged, target).await.unwrap();
     }
 
-    /// 螂幁E���E�萓�E�E�厁E���E� 繝ｻ繝ｻ蝨�E�: resolve_install_dir繝ｻ・�E� 繝ｻ・�E�繝ｻ�E�繝ｻ蟾昴・ 蠍ｸ・�E�繝ｻ繝ｻ
+    /// 테스트 전용: resolve_install_dir를 외부에서 호출
     #[doc(hidden)]
     pub fn resolve_install_dir_for_test(&self, component: &Component, manifest_dir: Option<&str>) -> PathBuf {
         self.resolve_install_dir(component, manifest_dir)
     }
 }
 
-// 隨渉隨渉隨渉 繝ｻ諛�E�E��E�繝ｻ繝ｻ・�E�蟁E�・�E� (chrono 繝ｻ繝ｻ謫�E�) 隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉隨渉
+// ─────── 시간 유틸리티 (chrono 미사용) ────────────────────────────────────────────────────────────────────────
 
-/// 蠍ｸ繝ｻ讀�E� 繝ｻ諛�E�E��E�繝ｻ謠・ISO 8601 蠍ｸ闖ｩ莠�E�繝ｻ・�E�繝ｻ繝ｻ繝ｻ蛟�E轁E
+/// 현재 시간을 ISO 8601 문자열로 반환
 fn chrono_now_iso() -> String {
     use std::time::SystemTime;
     let now = SystemTime::now()
@@ -2253,9 +2521,9 @@ fn chrono_now_iso() -> String {
     format_unix_timestamp(now.as_secs())
 }
 
-/// hours 繝ｻ諛�E�E��E�繝ｻ蠑｡繝ｻ謾�E� ISO 8601 繝ｻ・�E�繝ｻ蟾晞ｾ・
+/// hours 시간 후의 ISO 8601 문자열 반환
 fn chrono_add_hours_iso(_iso: &str, hours: u32) -> String {
-    // 繝ｻ繝ｻ蜊ｿ・代・繝ｻ・�E�蠍ｸ繝ｻ 蠍ｸ繝ｻ讀�E� UNIX timestamp + hours * 3600
+    // 단순하게 현재 UNIX timestamp + hours * 3600
     use std::time::SystemTime;
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -2265,14 +2533,14 @@ fn chrono_add_hours_iso(_iso: &str, hours: u32) -> String {
 }
 
 fn format_unix_timestamp(secs: u64) -> String {
-    // 繝ｻ繝ｻ蜊ｿ・代・UTC 繝ｻ・�E�繝ｻ繝ｻ繝ｻ諛�E�E��E�繝ｻ蟁E���E��E�繝ｻ・�E�逕ｯ繝ｻ
+    // 단순 UTC 문자열 포맷팅
     let days = secs / 86400;
     let time_of_day = secs % 86400;
     let hours = time_of_day / 3600;
     let minutes = (time_of_day % 3600) / 60;
     let seconds = time_of_day % 60;
 
-    // Unix epoch (1970-01-01) 繝ｻ・�E�繝ｻ�E� 繝ｻ・�E�繝ｻ繝ｻ繝ｻ繝ｻ縺・
+    // Unix epoch (1970-01-01) 기준 날짜 변환
     let (year, month, day) = days_to_date(days);
 
     format!(
@@ -2282,7 +2550,7 @@ fn format_unix_timestamp(secs: u64) -> String {
 }
 
 fn days_to_date(days: u64) -> (u64, u64, u64) {
-    // 繝ｻ繝ｻ蜊ｿ・代・繝ｻ・�E�繝ｻ荳・�E�・�E�繝ｻ・�E�繝ｻ・�E� 繝ｻ�E�蠍ｹ繝ｻ
+    // 단순하게 윤년 판정과 월별 일수 계산
     let mut y = 1970;
     let mut remaining = days as i64;
 

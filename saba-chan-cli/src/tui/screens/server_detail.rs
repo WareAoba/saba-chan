@@ -1,52 +1,94 @@
-//! 서버 상세 화면 — 시작/정지, 콘솔, 설정, 진단 등
+//! 인스턴스 상세 화면 — 시작/정지, 콘솔, 설정, 진단 등
 
 use std::time::Duration;
 
 use crate::tui::app::*;
 
-use super::{find_instance_id, load_instance_settings, load_server_properties};
+use super::find_instance_id;
 
 pub(super) fn build_server_detail_menu(app: &App, name: &str) -> Vec<MenuItem> {
     let is_running = app.servers.iter().any(|s| s.name == name && s.status == "running");
 
-    // 모듈 이름 찾기
-    let module_name = app.servers.iter()
-        .find(|s| s.name == name)
-        .map(|s| s.module.as_str())
-        .unwrap_or("");
-
-    // 모듈 interaction_mode 확인 (file 모드 = server.properties 지원)
-    let module_info = app.registry.get_module(module_name);
-    let interaction_mode = module_info
-        .and_then(|m| m.interaction_mode.as_deref())
-        .unwrap_or("auto");
-    let has_properties = interaction_mode == "file" || module_name.contains("minecraft");
-    let has_eula = module_name.contains("minecraft");
-
     let mut items = vec![
         if is_running {
-            MenuItem::new("■ Stop Server", Some('s'), "서버 정지")
+            MenuItem::new("■ Stop", Some('s'), "인스턴스 정지")
         } else {
-            MenuItem::new("▶ Start Server", Some('s'), "서버 시작")
+            MenuItem::new("▶ Start", Some('s'), "인스턴스 시작")
         },
-        MenuItem::new("↻ Restart", Some('r'), "서버 재시작"),
-        MenuItem::new("⚡ Managed Start", Some('m'), "자동 감지 시작"),
+    ];
+    if is_running {
+        items.push(MenuItem::new("↻ Restart", Some('r'), "인스턴스 재시작"));
+    }
+    items.extend([
         MenuItem::new("📟 Console", Some('c'), "서버 콘솔 (실시간)"),
         MenuItem::new("⚙ Settings", Some('e'), "인스턴스 설정 편집"),
-    ];
-
-    if has_properties {
-        items.push(MenuItem::new("📋 Properties", Some('p'), "server.properties 편집"));
-    }
+    ]);
 
     items.push(MenuItem::new("💻 Execute Command", Some('x'), "서버 명령어 실행"));
-    items.push(MenuItem::new("🔍 Diagnose", Some('d'), "서버 진단"));
-    items.push(MenuItem::new("✓ Validate", Some('v'), "설정 검증"));
 
-    if has_eula {
-        items.push(MenuItem::new("📜 Accept EULA", Some('u'), "EULA 수락"));
+    // ── InstanceDetail.menu 슬롯 주입 ──
+    // GUI의 <ExtensionSlot slotId="ServerCard.expandedStats"> 등에 대응
+    let server_ext_data = app.servers.iter()
+        .find(|s| s.name == name)
+        .map(|s| &s.extension_data);
+
+    let detail_menu_slots = app.ext_slots.get_slot("InstanceDetail.menu");
+    for slot in detail_menu_slots {
+        if let Some(menu_items) = slot.data.as_array() {
+            for menu_item in menu_items {
+                // 조건 평가: condition이 있으면 인스턴스의 ext_data를 확인
+                if let Some(condition) = menu_item.get("condition").and_then(|v| v.as_str()) {
+                    if let Some(key) = condition.strip_prefix("instance.ext_data.") {
+                        let enabled = server_ext_data
+                            .and_then(|ed| ed.get(key))
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false);
+                        if !enabled { continue; }
+                    }
+                }
+
+                let label = menu_item.get("label").and_then(|v| v.as_str()).unwrap_or("?");
+                let desc = menu_item.get("description").and_then(|v| v.as_str()).unwrap_or("");
+                let action = menu_item.get("action").and_then(|v| v.as_str()).unwrap_or("");
+
+                let mut item = MenuItem::new(label, None, desc);
+                // action을 badge로 표시 (내부 식별자)
+                item.badge = Some(format!("ext:{}/{}", slot.extension_id, action));
+                items.push(item);
+            }
+        }
     }
 
+    // ── InstanceDetail.status 슬롯 주입 (상태 정보 라인) ──
+    let status_slots = app.ext_slots.get_slot("InstanceDetail.status");
+    for slot in status_slots {
+        if let Some(status_items) = slot.data.as_array() {
+            for status_item in status_items {
+                let label = status_item.get("label").and_then(|v| v.as_str()).unwrap_or("?");
+                let value_key = status_item.get("value_from").and_then(|v| v.as_str()).unwrap_or("");
+
+                // ext_data에서 값 조회
+                let value = server_ext_data
+                    .and_then(|ed| ed.get(value_key))
+                    .map(|v| match v {
+                        serde_json::Value::String(s) => s.clone(),
+                        _ => v.to_string(),
+                    })
+                    .unwrap_or_else(|| "-".to_string());
+
+                let mut item = MenuItem::new(
+                    &format!("📊 {}: {}", label, value),
+                    None, "",
+                ).with_enabled(false);
+                item.badge = Some(format!("[{}]", slot.extension_name));
+                items.push(item);
+            }
+        }
+    }
+
+    items.push(MenuItem::new("🔍 Diagnose", Some('d'), "서버 진단"));
+
+    items.push(MenuItem::new("⚠ Reset Instance", Some('W'), "인스턴스 리셋 (월드/설정 삭제)"));
     items.push(MenuItem::new("🗑 Delete Instance", Some('D'), "인스턴스 삭제"));
     items
 }
@@ -87,7 +129,7 @@ pub(super) fn handle_server_detail_select(
             }
             app.flash("명령 실행 중...");
         }
-        Some('r') => { // Restart
+        Some('r') => { // Restart (only shown when running)
             tokio::spawn(async move {
                 if let Err(e) = client.stop_server(&name, false).await {
                     push_out(&buf, vec![Out::Err(format!("✗ Stop: {}", e))]);
@@ -100,22 +142,6 @@ pub(super) fn handle_server_detail_select(
                 }
             });
             app.flash("재시작 중...");
-        }
-        Some('m') => { // Managed Start
-            tokio::spawn(async move {
-                let instance_id = find_instance_id(&client, &name).await;
-                if let Some(iid) = instance_id {
-                    match client.start_managed(&iid).await {
-                        Ok(r) => push_out(&buf, vec![Out::Ok(format!(
-                            "✓ {}", r.get("message").and_then(|v| v.as_str()).unwrap_or("Managed started")
-                        ))]),
-                        Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
-                    }
-                } else {
-                    push_out(&buf, vec![Out::Err(format!("✗ Instance '{}' not found", name))]);
-                }
-            });
-            app.flash("Managed start...");
         }
         Some('c') => { // Console
             let console_name = name.clone();
@@ -170,31 +196,17 @@ pub(super) fn handle_server_detail_select(
             let inst_name = name.clone();
             let mod_name = module_name.clone();
             tokio::spawn(async move {
-                load_instance_settings(&client2, &inst_name, &mod_name, &buf2).await;
+                super::load_instance_settings(&client2, &inst_name, &mod_name, &buf2).await;
             });
         }
-        Some('p') => { // Properties
-            app.editor_fields.clear();
-            app.editor_selected = 0;
-            app.editor_changes.clear();
-            app.push_screen(Screen::ServerProperties {
-                name: name.clone(),
-                id: id.clone(),
-            });
-
-            let buf2 = app.async_out.clone();
-            let client2 = app.client.clone();
-            let inst_name = name.clone();
-            tokio::spawn(async move {
-                load_server_properties(&client2, &inst_name, &buf2).await;
-            });
-        }
-        Some('x') => { // Execute Command
-            app.push_screen(Screen::CommandMode);
-            app.input_mode = InputMode::Command;
+        Some('x') => { // Execute Command → 인라인 Input
             let iid = if id.is_empty() { name.to_string() } else { id.to_string() };
-            app.input = format!("exec {} cmd ", iid);
-            app.cursor = app.input.chars().count();
+            app.input_mode = InputMode::InlineInput {
+                prompt: format!("서버 명령어 ({})", name),
+                value: String::new(),
+                cursor: 0,
+                on_submit: InlineAction::ExecuteCommand { instance_id: iid },
+            };
         }
         Some('d') => { // Diagnose
             tokio::spawn(async move {
@@ -220,24 +232,10 @@ pub(super) fn handle_server_detail_select(
             });
             app.flash("진단 중...");
         }
-        Some('v') => { // Validate
-            tokio::spawn(async move {
-                let iid = find_instance_id(&client, &name).await;
-                if let Some(iid) = iid {
-                    match client.validate_instance(&iid).await {
-                        Ok(r) => push_out(&buf, vec![Out::Ok(format!(
-                            "✓ {}", r.get("message").and_then(|v| v.as_str()).unwrap_or("Validation passed")
-                        ))]),
-                        Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
-                    }
-                }
-            });
-            app.flash("검증 중...");
-        }
-        Some('u') => { // EULA
+        Some('W') => { // Reset Instance
             app.input_mode = InputMode::Confirm {
-                prompt: format!("Accept EULA for '{}'?", name),
-                action: ConfirmAction::AcceptEula(id.to_string()),
+                prompt: format!("Reset instance '{}'? This will DELETE world data, configs, and logs!", name),
+                action: ConfirmAction::ResetServer(id.to_string()),
             };
         }
         Some('D') => { // Delete
@@ -246,6 +244,39 @@ pub(super) fn handle_server_detail_select(
                 action: ConfirmAction::DeleteInstance(id.to_string()),
             };
         }
-        _ => {}
+        _ => {
+            // ── 익스텐션 주입 메뉴 아이템 처리 ──
+            // badge에 "ext:{ext_id}/{action}" 형태로 인코딩된 액션을 디스패치
+            if let Some(badge) = app.menu_items.get(sel).and_then(|item| item.badge.as_ref()) {
+                if let Some(ext_action) = badge.strip_prefix("ext:") {
+                    if let Some((_ext_id, action)) = ext_action.split_once('/') {
+                        match action {
+                            "open_ext_settings" => {
+                                // 인스턴스 설정 화면으로 이동 (익스텐션 필드 포함)
+                                app.editor_fields.clear();
+                                app.editor_selected = 0;
+                                app.editor_changes.clear();
+                                app.push_screen(Screen::ServerSettings {
+                                    name: name.clone(),
+                                    id: id.clone(),
+                                    module_name: module_name.clone(),
+                                });
+
+                                let buf2 = app.async_out.clone();
+                                let client2 = app.client.clone();
+                                let inst_name = name.clone();
+                                let mod_name = module_name.clone();
+                                tokio::spawn(async move {
+                                    super::load_instance_settings(&client2, &inst_name, &mod_name, &buf2).await;
+                                });
+                            }
+                            _ => {
+                                app.flash(&format!("Unknown ext action: {}", action));
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

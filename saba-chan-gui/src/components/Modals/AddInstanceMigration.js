@@ -18,6 +18,7 @@ export function AddInstanceMigration({
     extensions,
     servers,
     onAddServer,
+    onStepChange,
     onBack,
     onClose,
 }) {
@@ -146,6 +147,10 @@ export function AddInstanceMigration({
         }
     }, [step]);
 
+    useEffect(() => {
+        onStepChange?.(step);
+    }, [step, onStepChange]);
+
     // ─── 제출 ───
     const handleSubmit = useCallback(async () => {
         const mod = detectedModule || manualModule;
@@ -187,167 +192,171 @@ export function AddInstanceMigration({
     // ══════════════════════════════════════════
     if (step === 'pick-dir') {
         return (
-            <>
+            <div className="add-instance-stage" key="migration-pick-dir">
                 <div className="modal-header add-server-header">
-                    <div>
+                    <div className="as-header-row">
                         <button className="ai-back-btn" type="button" onClick={onBack}>
                             <Icon name="chevronLeft" size="sm" />
                         </button>
-                        <h3>{t('migration_modal.title')}</h3>
-                        <p className="add-server-subtitle">{t('migration_modal.description')}</p>
+                        <div className="as-header-copy">
+                            <h3>{t('migration_modal.title')}</h3>
+                            <p className="add-server-subtitle">{t('migration_modal.description')}</p>
+                        </div>
                     </div>
                 </div>
 
                 <div className="modal-body add-server-body">
-                    {/* 디렉토리 선택 */}
-                    <div className="as-section">
-                        <label className="as-label">
-                            <Icon name="folder" size="sm" />
-                            {t('migration_modal.source_directory')}
-                        </label>
-                        <div className="as-path-row">
-                            <input
-                                className="as-input as-input-mono"
-                                type="text"
-                                value={dirPath}
-                                onChange={(e) => setDirPath(e.target.value)}
-                                placeholder={t('migration_modal.source_placeholder')}
-                                disabled={scanning}
-                            />
-                            <button
-                                className="as-btn-icon"
-                                onClick={handleBrowse}
-                                disabled={scanning}
-                                title={t('migration_modal.browse')}
-                            >
+                    <div className="as-body-stack">
+                        {/* 디렉토리 선택 */}
+                        <div className="as-section as-section-card">
+                            <label className="as-label">
                                 <Icon name="folder" size="sm" />
+                                {t('migration_modal.source_directory')}
+                            </label>
+                            <div className="as-path-row">
+                                <input
+                                    className="as-input as-input-mono"
+                                    type="text"
+                                    value={dirPath}
+                                    onChange={(e) => setDirPath(e.target.value)}
+                                    placeholder={t('migration_modal.source_placeholder')}
+                                    disabled={scanning}
+                                />
+                                <button
+                                    className="as-btn-icon"
+                                    onClick={handleBrowse}
+                                    disabled={scanning}
+                                    title={t('migration_modal.browse')}
+                                >
+                                    <Icon name="folder" size="sm" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* 수동 스캔 버튼 (경로를 직접 입력한 경우) */}
+                        {dirPath && !scanning && !detectedModule && !noMatch && (
+                            <button
+                                className="btn btn-confirm mg-scan-btn"
+                                type="button"
+                                onClick={() => performScan(dirPath)}
+                            >
+                                <Icon name="search" size="sm" />
+                                {t('migration_modal.scan_button')}
                             </button>
-                        </div>
-                    </div>
+                        )}
 
-                    {/* 수동 스캔 버튼 (경로를 직접 입력한 경우) */}
-                    {dirPath && !scanning && !detectedModule && !noMatch && (
-                        <button
-                            className="btn btn-confirm mg-scan-btn"
-                            type="button"
-                            onClick={() => performScan(dirPath)}
-                        >
-                            <Icon name="search" size="sm" />
-                            {t('migration_modal.scan_button')}
-                        </button>
-                    )}
+                        {/* 스캔 중 */}
+                        {scanning && (
+                            <div className="mg-status mg-status--scanning">
+                                <SabaSpinner size={20} />
+                                <span>{t('migration_modal.scanning')}</span>
+                            </div>
+                        )}
 
-                    {/* 스캔 중 */}
-                    {scanning && (
-                        <div className="mg-status mg-status--scanning">
-                            <SabaSpinner size={20} />
-                            <span>{t('migration_modal.scanning')}</span>
-                        </div>
-                    )}
+                        {/* 스캔 에러 */}
+                        {scanError && (
+                            <div className="mg-status mg-status--error">
+                                <Icon name="alertCircle" size="sm" />
+                                <span>{scanError}</span>
+                            </div>
+                        )}
 
-                    {/* 스캔 에러 */}
-                    {scanError && (
-                        <div className="mg-status mg-status--error">
-                            <Icon name="alertCircle" size="sm" />
-                            <span>{scanError}</span>
-                        </div>
-                    )}
+                        {/* ── 감지 성공 ── */}
+                        {detectedModule && (
+                            <div className="mg-detected">
+                                <div className="mg-detected-icon">
+                                    {detectedModule.icon ? (
+                                        <img src={detectedModule.icon} alt={detectedModule.displayName} />
+                                    ) : (
+                                        <div className="as-game-card-icon-placeholder">
+                                            <Icon name="gamepad" size="md" />
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="mg-detected-info">
+                                    <span className="mg-detected-name">{detectedModule.displayName}</span>
+                                    <span className="mg-detected-hint">
+                                        <Icon name="check" size="xs" />
+                                        {t('migration_modal.auto_detected')}
+                                    </span>
+                                </div>
+                                <button
+                                    className="btn btn-confirm"
+                                    type="button"
+                                    onClick={() => proceedWithModule(detectedModule)}
+                                >
+                                    {t('migration_modal.next')}
+                                    <Icon name="chevronRight" size="sm" />
+                                </button>
+                            </div>
+                        )}
 
-                    {/* ── 감지 성공 ── */}
-                    {detectedModule && (
-                        <div className="mg-detected">
-                            <div className="mg-detected-icon">
-                                {detectedModule.icon ? (
-                                    <img src={detectedModule.icon} alt={detectedModule.displayName} />
-                                ) : (
-                                    <div className="as-game-card-icon-placeholder">
-                                        <Icon name="gamepad" size="md" />
+                        {/* ── 감지 실패: 레지스트리 모듈 목록 ── */}
+                        {noMatch && (
+                            <div className="mg-no-match as-section-card">
+                                <p className="mg-no-match-hint">
+                                    <Icon name="alertCircle" size="sm" />
+                                    {t('migration_modal.no_auto_detect')}
+                                </p>
+
+                                <label className="as-label">
+                                    <Icon name="download" size="sm" />
+                                    {t('migration_modal.select_module_manually')}
+                                </label>
+
+                                {registryLoading && (
+                                    <div className="mg-status mg-status--scanning">
+                                        <SabaSpinner size={20} />
+                                        <span>{t('migration_modal.loading_registry')}</span>
                                     </div>
                                 )}
-                            </div>
-                            <div className="mg-detected-info">
-                                <span className="mg-detected-name">{detectedModule.displayName}</span>
-                                <span className="mg-detected-hint">
-                                    <Icon name="check" size="xs" />
-                                    {t('migration_modal.auto_detected')}
-                                </span>
-                            </div>
-                            <button
-                                className="btn btn-confirm"
-                                type="button"
-                                onClick={() => proceedWithModule(detectedModule)}
-                            >
-                                {t('migration_modal.next')}
-                                <Icon name="chevronRight" size="sm" />
-                            </button>
-                        </div>
-                    )}
 
-                    {/* ── 감지 실패: 레지스트리 모듈 목록 ── */}
-                    {noMatch && (
-                        <div className="mg-no-match">
-                            <p className="mg-no-match-hint">
-                                <Icon name="alertCircle" size="sm" />
-                                {t('migration_modal.no_auto_detect')}
-                            </p>
+                                {registryError && (
+                                    <div className="mg-status mg-status--error">
+                                        <Icon name="alertCircle" size="sm" />
+                                        <span>{registryError}</span>
+                                    </div>
+                                )}
 
-                            <label className="as-label">
-                                <Icon name="download" size="sm" />
-                                {t('migration_modal.select_module_manually')}
-                            </label>
-
-                            {registryLoading && (
-                                <div className="mg-status mg-status--scanning">
-                                    <SabaSpinner size={20} />
-                                    <span>{t('migration_modal.loading_registry')}</span>
-                                </div>
-                            )}
-
-                            {registryError && (
-                                <div className="mg-status mg-status--error">
-                                    <Icon name="alertCircle" size="sm" />
-                                    <span>{registryError}</span>
-                                </div>
-                            )}
-
-                            {registryModules && registryModules.length > 0 && (
-                                <div className="mg-module-list">
-                                    {registryModules.map((m) => {
-                                        const isSelected = manualModule?.id === m.id;
-                                        return (
-                                            <button
-                                                key={m.id}
-                                                className={`mg-module-item ${isSelected ? 'mg-module-item--selected' : ''}`}
-                                                type="button"
-                                                onClick={() => setManualModule(isSelected ? null : m)}
-                                            >
-                                                <div className="mg-module-item-icon">
-                                                    <Icon name="gamepad" size="sm" />
-                                                </div>
-                                                <div className="mg-module-item-text">
-                                                    <span className="mg-module-item-name">
-                                                        {m.display_name || m.id}
-                                                    </span>
-                                                    {m.description && (
-                                                        <span className="mg-module-item-desc">
-                                                            {m.description}
+                                {registryModules && registryModules.length > 0 && (
+                                    <div className="mg-module-list">
+                                        {registryModules.map((m) => {
+                                            const isSelected = manualModule?.id === m.id;
+                                            return (
+                                                <button
+                                                    key={m.id}
+                                                    className={`mg-module-item ${isSelected ? 'mg-module-item--selected' : ''}`}
+                                                    type="button"
+                                                    onClick={() => setManualModule(isSelected ? null : m)}
+                                                >
+                                                    <div className="mg-module-item-icon">
+                                                        <Icon name="gamepad" size="sm" />
+                                                    </div>
+                                                    <div className="mg-module-item-text">
+                                                        <span className="mg-module-item-name">
+                                                            {m.display_name || m.id}
                                                         </span>
+                                                        {m.description && (
+                                                            <span className="mg-module-item-desc">
+                                                                {m.description}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {isSelected && (
+                                                        <Icon name="check" size="sm" className="mg-module-item-check" />
                                                     )}
-                                                </div>
-                                                {isSelected && (
-                                                    <Icon name="check" size="sm" className="mg-module-item-check" />
-                                                )}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            )}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
 
-                            {registryModules && registryModules.length === 0 && !registryLoading && (
-                                <p className="mg-no-match-hint">{t('migration_modal.no_modules_available')}</p>
-                            )}
-                        </div>
-                    )}
+                                {registryModules && registryModules.length === 0 && !registryLoading && (
+                                    <p className="mg-no-match-hint">{t('migration_modal.no_modules_available')}</p>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Footer */}
@@ -366,7 +375,7 @@ export function AddInstanceMigration({
                         </button>
                     )}
                 </div>
-            </>
+            </div>
         );
     }
 
@@ -374,81 +383,85 @@ export function AddInstanceMigration({
     //  Step 2: 인스턴스 이름 설정 → 생성
     // ══════════════════════════════════════════
     return (
-        <>
+        <div className="add-instance-stage" key="migration-configure">
             <div className="modal-header add-server-header">
-                <div>
+                <div className="as-header-row">
                     <button className="ai-back-btn" type="button" onClick={handleBackToPickDir} disabled={submitting}>
                         <Icon name="chevronLeft" size="sm" />
                     </button>
-                    <h3>{t('migration_modal.configure_title')}</h3>
-                    <p className="add-server-subtitle">{t('migration_modal.configure_subtitle')}</p>
+                    <div className="as-header-copy">
+                        <h3>{t('migration_modal.configure_title')}</h3>
+                        <p className="add-server-subtitle">{t('migration_modal.configure_subtitle')}</p>
+                    </div>
                 </div>
             </div>
 
             <div className="modal-body add-server-body">
-                {/* 선택된 소스 + 모듈 요약 */}
-                <div className="as-selected-game">
-                    <div className="as-selected-game-icon">
-                        {activeModule?.icon ? (
-                            <img src={activeModule.icon} alt={activeModuleName} />
-                        ) : (
-                            <div className="as-game-card-icon-placeholder">
-                                <Icon name="gamepad" size="md" />
-                            </div>
-                        )}
+                <div className="as-body-stack">
+                    {/* 선택된 소스 + 모듈 요약 */}
+                    <div className="as-selected-game">
+                        <div className="as-selected-game-icon">
+                            {activeModule?.icon ? (
+                                <img src={activeModule.icon} alt={activeModuleName} />
+                            ) : (
+                                <div className="as-game-card-icon-placeholder">
+                                    <Icon name="gamepad" size="md" />
+                                </div>
+                            )}
+                        </div>
+                        <div className="as-selected-game-info">
+                            <span className="as-selected-game-name">{activeModuleName}</span>
+                            <span className="as-selected-game-version mg-source-path">
+                                <Icon name="folder" size="xs" /> {dirPath}
+                            </span>
+                        </div>
+                        <button
+                            className="as-change-game-btn"
+                            type="button"
+                            onClick={handleBackToPickDir}
+                            disabled={submitting}
+                        >
+                            {t('add_server_modal.change_game')}
+                        </button>
                     </div>
-                    <div className="as-selected-game-info">
-                        <span className="as-selected-game-name">{activeModuleName}</span>
-                        <span className="as-selected-game-version mg-source-path">
-                            <Icon name="folder" size="xs" /> {dirPath}
-                        </span>
+
+                    {/* 인스턴스 이름 */}
+                    <div className="as-section as-section-card">
+                        <label className="as-label">
+                            <Icon name="server" size="sm" />
+                            {t('migration_modal.instance_name')}
+                        </label>
+                        <input
+                            ref={nameInputRef}
+                            className="as-input"
+                            type="text"
+                            placeholder={t('migration_modal.instance_name_placeholder')}
+                            value={instanceName}
+                            onChange={(e) => setInstanceName(e.target.value)}
+                            disabled={submitting}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && canSubmit) handleSubmit();
+                            }}
+                        />
                     </div>
-                    <button
-                        className="as-change-game-btn"
-                        type="button"
-                        onClick={handleBackToPickDir}
-                        disabled={submitting}
-                    >
-                        {t('add_server_modal.change_game')}
-                    </button>
-                </div>
 
-                {/* 인스턴스 이름 */}
-                <div className="as-section">
-                    <label className="as-label">
-                        <Icon name="server" size="sm" />
-                        {t('migration_modal.instance_name')}
-                    </label>
-                    <input
-                        ref={nameInputRef}
-                        className="as-input"
-                        type="text"
-                        placeholder={t('migration_modal.instance_name_placeholder')}
-                        value={instanceName}
-                        onChange={(e) => setInstanceName(e.target.value)}
-                        disabled={submitting}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter' && canSubmit) handleSubmit();
-                        }}
-                    />
-                </div>
+                    {/* 네이티브 인스턴스 중복 경고 */}
+                    {existingNative && (
+                        <p className="as-native-limit-warning">
+                            <Icon name="alertTriangle" size="sm" />
+                            {t('add_server_modal.native_limit_warning', {
+                                existing: existingNative.name,
+                                defaultValue: `A native instance '{{existing}}' already exists for this module. Enable container isolation to create another instance.`,
+                            })}
+                        </p>
+                    )}
 
-                {/* 네이티브 인스턴스 중복 경고 */}
-                {existingNative && (
-                    <p className="as-native-limit-warning">
-                        <Icon name="alertTriangle" size="sm" />
-                        {t('add_server_modal.native_limit_warning', {
-                            existing: existingNative.name,
-                            defaultValue: `A native instance '{{existing}}' already exists for this module. Enable container isolation to create another instance.`,
-                        })}
+                    {/* 마이그레이션 안내 */}
+                    <p className="as-provision-hint">
+                        <Icon name="info" size="sm" />
+                        {t('migration_modal.migrate_hint')}
                     </p>
-                )}
-
-                {/* 마이그레이션 안내 */}
-                <p className="as-provision-hint">
-                    <Icon name="info" size="sm" />
-                    {t('migration_modal.migrate_hint')}
-                </p>
+                </div>
             </div>
 
             <div className="modal-footer add-server-footer">
@@ -467,6 +480,6 @@ export function AddInstanceMigration({
                     )}
                 </button>
             </div>
-        </>
+        </div>
     );
 }

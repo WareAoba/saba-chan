@@ -348,6 +348,7 @@ function DiscordBotModal({
      */
     const getInstanceOwnerNode = useCallback(
         (serverId, excludeNodeKey) => {
+            if (!isCloud) return null; // 로컬 모드에서는 중복 선택 허용
             for (const [nodeKey, cfg] of Object.entries(nodeSettings)) {
                 if (nodeKey === excludeNodeKey) continue;
                 if (Array.isArray(cfg?.allowedInstances) && cfg.allowedInstances.includes(serverId)) {
@@ -356,10 +357,10 @@ function DiscordBotModal({
             }
             return null;
         },
-        [nodeSettings],
+        [nodeSettings, isCloud],
     );
 
-    /** 인스턴스 토글 (단일 노드 제약: 다른 노드에 할당된 인스턴스는 추가 불가) */
+    /** 인스턴스 토글 (클라우드 모드에서만 단일 노드 제약 적용) */
     const toggleNodeInstance = useCallback(
         (nodeKey, serverId) => {
             setNodeSettings((prev) => {
@@ -370,11 +371,13 @@ function DiscordBotModal({
                 if (idx >= 0) {
                     arr.splice(idx, 1); // 제거는 항상 허용
                 } else {
-                    // 다른 노드에 이미 할당되어 있으면 추가 불가
-                    for (const [otherKey, otherCfg] of Object.entries(prev)) {
-                        if (otherKey === nodeKey) continue;
-                        if (Array.isArray(otherCfg?.allowedInstances) && otherCfg.allowedInstances.includes(serverId)) {
-                            return prev; // 변경 없음
+                    // 클라우드 모드에서만: 다른 노드에 이미 할당되어 있으면 추가 불가
+                    if (isCloud) {
+                        for (const [otherKey, otherCfg] of Object.entries(prev)) {
+                            if (otherKey === nodeKey) continue;
+                            if (Array.isArray(otherCfg?.allowedInstances) && otherCfg.allowedInstances.includes(serverId)) {
+                                return prev; // 변경 없음
+                            }
                         }
                     }
                     arr.push(serverId);
@@ -384,25 +387,30 @@ function DiscordBotModal({
                 return next;
             });
         },
-        [setNodeSettings],
+        [setNodeSettings, isCloud],
     );
 
-    /** 전체 선택 / 해제 (다른 노드에 할당된 인스턴스 제외) */
+    /** 전체 선택 / 해제 (클라우드 모드에서만 다른 노드에 할당된 인스턴스 제외) */
     const setNodeAllInstances = useCallback(
         (nodeKey, selectAll) => {
             setNodeSettings((prev) => {
                 const next = { ...prev };
                 const cfg = { ...(next[nodeKey] || { allowedInstances: [], memberPermissions: {} }) };
                 if (selectAll && servers) {
-                    // 다른 노드에 할당되지 않은 인스턴스만 선택
-                    const otherAssigned = new Set();
-                    for (const [otherKey, otherCfg] of Object.entries(prev)) {
-                        if (otherKey === nodeKey) continue;
-                        for (const id of otherCfg?.allowedInstances || []) {
-                            otherAssigned.add(id);
+                    if (isCloud) {
+                        // 클라우드 모드: 다른 노드에 할당되지 않은 인스턴스만 선택
+                        const otherAssigned = new Set();
+                        for (const [otherKey, otherCfg] of Object.entries(prev)) {
+                            if (otherKey === nodeKey) continue;
+                            for (const id of otherCfg?.allowedInstances || []) {
+                                otherAssigned.add(id);
+                            }
                         }
+                        cfg.allowedInstances = servers.filter((s) => !otherAssigned.has(s.id)).map((s) => s.id);
+                    } else {
+                        // 로컬 모드: 모든 인스턴스 선택 허용
+                        cfg.allowedInstances = servers.map((s) => s.id);
                     }
-                    cfg.allowedInstances = servers.filter((s) => !otherAssigned.has(s.id)).map((s) => s.id);
                 } else {
                     cfg.allowedInstances = [];
                 }
@@ -410,7 +418,7 @@ function DiscordBotModal({
                 return next;
             });
         },
-        [setNodeSettings, servers],
+        [setNodeSettings, servers, isCloud],
     );
 
     /** 멤버 권한 토글 (멤버를 nodeSettings에 추가/제거) */

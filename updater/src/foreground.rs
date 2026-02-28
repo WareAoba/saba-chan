@@ -5,8 +5,8 @@
 //! 2. 포그라운드: GUI/CLI 종료 → 업데이터가 파일 적용 → 재시작
 //!
 //! ## 적용 모드
-//! - **모듈 적용**: 바로 진행 (프로세스 중단 불필요)
-//! - **데몬 적용**: 데몬 중지 → 적용 → 재시작
+//! - **모듈/익스텐션 적용**: 바로 진행 (프로세스 중단 불필요)
+//! - **Saba-Core 적용**: 데몬 중지 → 적용 → 재시작
 //! - **GUI/CLI 적용**: 업데이터가 셀프 업데이트 수행
 
 use std::path::PathBuf;
@@ -134,45 +134,45 @@ impl ForegroundApplier {
         *self.progress.write().await = Some(progress);
     }
 
-    /// 모듈만 적용 (프로세스 중단 불필요)
+    /// 모듈/익스텐션만 적용 (프로세스 중단 불필요)
     pub async fn apply_modules_only(&self) -> Result<Vec<String>, String> {
         self.update_progress(ApplyProgress {
             phase: ApplyPhase::Applying,
             current_component: None,
             total: 0,
             done: 0,
-            message: "모듈 업데이트 적용 중...".to_string(),
+            message: "모듈/익스텐션 업데이트 적용 중...".to_string(),
         }).await;
 
         let mut applied = Vec::new();
         let mut mgr = self.manager.write().await;
 
-        let modules: Vec<Component> = mgr
+        let targets: Vec<Component> = mgr
             .get_pending_components()
             .iter()
-            .filter(|c| matches!(c.component, Component::Module(_)))
+            .filter(|c| matches!(c.component, Component::Module(_) | Component::Extension(_)))
             .map(|c| c.component.clone())
             .collect();
 
-        let total = modules.len();
-        for (idx, module) in modules.iter().enumerate() {
+        let total = targets.len();
+        for (idx, target) in targets.iter().enumerate() {
             self.update_progress(ApplyProgress {
                 phase: ApplyPhase::Applying,
-                current_component: Some(module.display_name()),
+                current_component: Some(target.display_name()),
                 total,
                 done: idx,
-                message: format!("{} 적용 중...", module.display_name()),
+                message: format!("{} 적용 중...", target.display_name()),
             }).await;
 
-            match mgr.apply_single_component(module).await {
+            match mgr.apply_single_component(target).await {
                 Ok(result) if result.success => {
-                    applied.push(module.display_name());
+                    applied.push(target.display_name());
                 }
                 Ok(result) => {
-                    tracing::warn!("[Apply] Module {} failed: {}", module.display_name(), result.message);
+                    tracing::warn!("[Apply] {} failed: {}", target.display_name(), result.message);
                 }
                 Err(e) => {
-                    tracing::error!("[Apply] Module {} error: {}", module.display_name(), e);
+                    tracing::error!("[Apply] {} error: {}", target.display_name(), e);
                 }
             }
         }
@@ -182,7 +182,7 @@ impl ForegroundApplier {
             current_component: None,
             total,
             done: applied.len(),
-            message: format!("{} 모듈 업데이트 완료", applied.len()),
+            message: format!("{} 모듈/익스텐션 업데이트 완료", applied.len()),
         }).await;
 
         Ok(applied)
@@ -470,11 +470,11 @@ impl ProcessChecker {
     pub fn is_daemon_running() -> bool {
         #[cfg(target_os = "windows")]
         {
-            Self::is_running("saba-chan.exe")
+            Self::is_running("saba-core.exe")
         }
         #[cfg(not(target_os = "windows"))]
         {
-            Self::is_running("saba-chan")
+            Self::is_running("saba-core")
         }
     }
 }

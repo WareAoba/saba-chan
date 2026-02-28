@@ -1,22 +1,55 @@
-//! 서버 목록 화면
+//! 인스턴스 목록 화면
 
 use crate::tui::app::*;
 
+/// 익스텐션 슬롯 조건을 평가한다 (GUI의 DockerBadge 조건 평가에 대응)
+/// condition 형식: "instance.ext_data.<key>"
+fn evaluate_badge_condition(condition: &str, server: &ServerInfo) -> bool {
+    if let Some(key) = condition.strip_prefix("instance.ext_data.") {
+        server.extension_data.get(key)
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+    } else {
+        true // 조건이 없거나 인식 불가 → 표시
+    }
+}
+
 pub(super) fn build_servers_menu(app: &App) -> Vec<MenuItem> {
+    // ── InstanceList.badge 슬롯 조회 ──
+    let badge_slots = app.ext_slots.get_slot("InstanceList.badge");
+
     let mut items: Vec<MenuItem> = app.servers.iter().map(|s| {
         let sym = if s.status == "running" { "▶" } else { "■" };
-        MenuItem::new(
+        let mut item = MenuItem::new(
             &format!("{} {}", sym, s.name),
             None,
             &format!("[{}] {}", s.module, s.status),
-        )
+        );
+
+        // ── 익스텐션 뱃지 주입 (GUI의 <ExtensionSlot slotId="ServerCard.badge"> 대응) ──
+        let mut badges = Vec::new();
+        for slot in badge_slots {
+            if let Some(condition) = slot.data.get("condition").and_then(|v| v.as_str()) {
+                if !evaluate_badge_condition(condition, s) {
+                    continue;
+                }
+            }
+            if let Some(text) = slot.data.get("text").and_then(|v| v.as_str()) {
+                badges.push(text.to_string());
+            }
+        }
+        if !badges.is_empty() {
+            item.badge = Some(badges.join(" "));
+        }
+
+        item
     }).collect();
 
     if items.is_empty() {
-        items.push(MenuItem::new("(No servers configured)", None, "").with_enabled(false));
+        items.push(MenuItem::new("(No instances configured)", None, "").with_enabled(false));
     }
 
-    items.push(MenuItem::new("+ New Server (instance create)", Some('n'), "새 서버 인스턴스 생성"));
+    items.push(MenuItem::new("+ New Instance", Some('n'), "새 인스턴스 생성"));
     items
 }
 
@@ -46,7 +79,6 @@ pub(super) fn handle_servers_select(app: &mut App, sel: usize) {
             if let Ok(instances) = client.list_instances().await {
                 for inst in &instances {
                     if inst["name"].as_str() == Some(&name_for_lookup) {
-                        // ID를 찾았으면 push_out으로 상태 메시지를 보냄 (화면 갱신 시 반영)
                         let id = inst["id"].as_str().unwrap_or("").to_string();
                         push_out(&buf, vec![Out::Info(format!("Instance ID: {}", id))]);
                         return;
@@ -55,10 +87,7 @@ pub(super) fn handle_servers_select(app: &mut App, sel: usize) {
             }
         });
     } else if sel == server_count {
-        // New Server → 커맨드 모드로 전환 (instance create)
-        app.push_screen(Screen::CommandMode);
-        app.input_mode = InputMode::Command;
-        app.input = "instance create ".to_string();
-        app.cursor = app.input.chars().count();
+        // New Server → 인스턴스 생성 위자드 Step 1
+        app.push_screen(Screen::CreateInstanceStep1);
     }
 }

@@ -6,8 +6,10 @@
 //! 3. `handle_*_select()` — Enter 키 처리 (화면 전환/액션)
 
 mod bot;
+mod create_instance;
 mod daemon;
 mod dashboard;
+mod extensions;
 mod modules;
 mod server_detail;
 mod servers;
@@ -36,11 +38,18 @@ pub fn build_menu(app: &App) -> Vec<MenuItem> {
         Screen::ServerConsole { .. } => vec![], // 콘솔 사용
         Screen::Modules        => modules::build_modules_menu(app),
         Screen::ModuleDetail { name } => modules::build_module_detail_menu(name),
+        Screen::ModuleRegistry => extensions::build_module_registry_menu(app),
         Screen::Bot            => bot::build_bot_menu(app),
         Screen::BotAliases     => vec![], // 별도 처리
         Screen::Settings       => settings::build_settings_menu(app),
-        Screen::Updates        => updates::build_updates_menu(),
+        Screen::Updates        => updates::build_updates_menu(app),
         Screen::Daemon         => daemon::build_daemon_menu(app),
+        Screen::Extensions     => extensions::build_extensions_menu(app),
+        Screen::ExtensionList  => extensions::build_extension_list_menu(app),
+        Screen::ExtensionDetail { ext_id, .. } => extensions::build_extension_detail_menu(app, ext_id),
+        Screen::ExtensionRegistry => extensions::build_extension_registry_menu(app),
+        Screen::CreateInstanceStep1 => create_instance::build_create_step1_menu(app),
+        Screen::CreateInstanceStep2 { .. } => vec![],
         Screen::CommandMode    => vec![], // 커맨드 모드는 메뉴 없음
     }
 }
@@ -53,29 +62,43 @@ pub fn build_menu(app: &App) -> Vec<MenuItem> {
 pub fn render_screen(app: &App, frame: &mut Frame, area: Rect) {
     match &app.screen {
         Screen::Dashboard => dashboard::render_dashboard(app, frame, area),
-        Screen::Servers => render_list_screen("Servers", &app.menu_items, app.menu_selected, frame, area),
+        Screen::Servers => render_list_screen("Instances", &app.menu_items, app.menu_selected, frame, area),
         Screen::ServerDetail { name, .. } => render_detail_screen(
-            &format!("Server: {}", name),
+            &format!("Instance: {}", name),
             &app.menu_items, app.menu_selected, frame, area,
         ),
         Screen::ServerConsole { .. } => render::render_console(app, frame, area),
         Screen::ServerSettings { name, .. } => render_editor_screen(
             &format!("Settings: {}", name), app, frame, area,
         ),
-        Screen::ServerProperties { name, .. } => render_editor_screen(
-            &format!("Properties: {}", name), app, frame, area,
-        ),
         Screen::Modules => render_list_screen("Modules", &app.menu_items, app.menu_selected, frame, area),
         Screen::ModuleDetail { name } => render_detail_screen(
             &format!("Module: {}", name),
             &app.menu_items, app.menu_selected, frame, area,
         ),
+        Screen::ModuleRegistry => render_list_screen("Module Registry", &app.menu_items, app.menu_selected, frame, area),
         Screen::Bot => render_detail_screen("Discord Bot", &app.menu_items, app.menu_selected, frame, area),
         Screen::BotAliases => bot::render_bot_aliases(app, frame, area),
         Screen::Settings => render_detail_screen("Settings", &app.menu_items, app.menu_selected, frame, area),
         Screen::Updates => updates::render_updates_screen(app, frame, area),
-        Screen::Daemon => render_detail_screen("Daemon", &app.menu_items, app.menu_selected, frame, area),
+        Screen::Daemon => render_detail_screen("Saba-Core", &app.menu_items, app.menu_selected, frame, area),
+        Screen::Extensions => render_detail_screen("Extensions", &app.menu_items, app.menu_selected, frame, area),
+        Screen::ExtensionList => render_list_screen("Installed Extensions", &app.menu_items, app.menu_selected, frame, area),
+        Screen::ExtensionDetail { ext_name, .. } => render_detail_screen(
+            &format!("Extension: {}", ext_name),
+            &app.menu_items, app.menu_selected, frame, area,
+        ),
+        Screen::ExtensionRegistry => render_list_screen("Extension Registry", &app.menu_items, app.menu_selected, frame, area),
+        Screen::CreateInstanceStep1 => render_list_screen(
+            "New Instance — Step 1/2: Select Game", &app.menu_items, app.menu_selected, frame, area,
+        ),
+        Screen::CreateInstanceStep2 { ref module_name } => {
+            let mn = module_name.clone();
+            create_instance::render_create_step2(app, &mn, frame, area);
+        }
         Screen::CommandMode => render_command_mode(app, frame, area),
+        // ServerProperties는 더 이상 사용하지 않지만 enum 호환성을 위해 남겨둠
+        Screen::ServerProperties { .. } => {}
     }
 }
 
@@ -132,11 +155,26 @@ fn render_editor_screen(title: &str, app: &App, frame: &mut Frame, area: Rect) {
         inner.x + 1, inner.y + 1,
         inner.width.saturating_sub(2), inner.height.saturating_sub(2),
     );
-    render::render_editor(app, frame, editor_area);
 
-    // 편집 중이면 커서 표시
-    if app.input_mode == InputMode::Editing {
-        render::render_edit_cursor(app, frame, editor_area);
+    if app.editor_fields.is_empty() {
+        // 에디터 필드가 아직 로드되지 않음 → 로딩 표시
+        let loading_text = vec![
+            Line::from(""),
+            Line::from(Span::styled("  ⏳ Loading...", Style::default().fg(Color::Yellow))),
+            Line::from(""),
+            Line::from(Span::styled(
+                "  데이터를 불러오는 중입니다. 데몬이 오프라인이면 Esc로 돌아가세요.",
+                Theme::dimmed(),
+            )),
+        ];
+        frame.render_widget(Paragraph::new(loading_text), editor_area);
+    } else {
+        render::render_editor(app, frame, editor_area);
+
+        // 편집 중이면 커서 표시
+        if app.input_mode == InputMode::Editing {
+            render::render_edit_cursor(app, frame, editor_area);
+        }
     }
 
     // 변경 사항 개수 표시
@@ -158,6 +196,9 @@ fn render_command_mode(app: &App, frame: &mut Frame, area: Rect) {
 
     render::render_output(app, frame, chunks[0]);
     render::render_command_input(app, frame, chunks[1]);
+
+    // ★ 자동완성 팝업 오버레이 (입력바 위에 떠오르게)
+    render::render_autocomplete_popup(app, frame, chunks[1]);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -171,8 +212,9 @@ pub fn handle_screen_key(app: &mut App, key: &crossterm::event::KeyEvent) -> boo
 
     match &app.screen {
         // 에디터 화면: ↑↓ 로 필드 내비게이션
-        Screen::ServerSettings { .. } | Screen::ServerProperties { .. } => {
-            if app.input_mode == InputMode::Normal {
+        // ★ editor_fields가 비어있으면(로딩 중/실패) 키를 소비하지 않음
+        Screen::ServerSettings { .. } => {
+            if app.input_mode == InputMode::Normal && !app.editor_fields.is_empty() {
                 match key.code {
                     KeyCode::Up | KeyCode::Char('k') => {
                         app.editor_up();
@@ -183,10 +225,8 @@ pub fn handle_screen_key(app: &mut App, key: &crossterm::event::KeyEvent) -> boo
                         return true;
                     }
                     KeyCode::Char('i') | KeyCode::Enter => {
-                        if !app.editor_fields.is_empty() {
-                            app.enter_edit_mode();
-                            return true;
-                        }
+                        app.enter_edit_mode();
+                        return true;
                     }
                     _ => {}
                 }
@@ -220,10 +260,20 @@ pub fn handle_menu_select(app: &mut App) {
             let name = name.clone();
             modules::handle_module_detail_select(app, sel, &name);
         }
+        Screen::ModuleRegistry => extensions::handle_module_registry_select(app, sel),
         Screen::Bot => bot::handle_bot_select(app, sel),
         Screen::Settings => settings::handle_settings_select(app, sel),
         Screen::Updates => updates::handle_updates_select(app, sel),
         Screen::Daemon => daemon::handle_daemon_select(app, sel),
+        Screen::Extensions => extensions::handle_extensions_select(app, sel),
+        Screen::ExtensionList => extensions::handle_extension_list_select(app, sel),
+        Screen::ExtensionDetail { ref ext_id, .. } => {
+            let ext_id = ext_id.clone();
+            extensions::handle_extension_detail_select(app, sel, &ext_id);
+        }
+        Screen::ExtensionRegistry => extensions::handle_extension_registry_select(app, sel),
+        Screen::CreateInstanceStep1 => create_instance::handle_create_step1_select(app, sel),
+        Screen::CreateInstanceStep2 { .. } => {} // 인라인 모드에서 처리
         _ => {}
     }
 }
@@ -244,7 +294,7 @@ pub fn execute_confirm(app: &mut App, action: ConfirmAction) {
                     Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
                 }
             });
-            app.pop_screen(); // 서버 목록으로 복귀
+            app.pop_screen(); // 인스턴스 목록으로 복귀
             app.flash("삭제 완료");
         }
         ConfirmAction::StopServer(name) => {
@@ -257,14 +307,53 @@ pub fn execute_confirm(app: &mut App, action: ConfirmAction) {
                 }
             });
         }
-        ConfirmAction::AcceptEula(id) => {
+        ConfirmAction::ResetServer(id) => {
             tokio::spawn(async move {
-                match client.accept_eula(&id).await {
-                    Ok(_) => push_out(&buf, vec![Out::Ok("✓ EULA accepted".into())]),
+                match client.reset_server(&id).await {
+                    Ok(_) => push_out(&buf, vec![Out::Ok("✓ Instance reset complete".into())]),
                     Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
                 }
             });
-            app.flash("EULA 수락됨");
+            app.flash("인스턴스 리셋 중...");
+        }
+        ConfirmAction::RemoveExtension(ext_id) => {
+            let ext_id2 = ext_id.clone();
+            tokio::spawn(async move {
+                match client.remove_extension(&ext_id2).await {
+                    Ok(_) => push_out(&buf, vec![Out::Ok(format!("✓ Extension '{}' removed", ext_id2))]),
+                    Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
+                }
+            });
+            app.cached_extensions.retain(|e| e.id != ext_id);
+            app.pop_screen();
+            app.flash("익스텐션 삭제됨");
+        }
+        ConfirmAction::InstallExtension(ext_id) => {
+            tokio::spawn(async move {
+                match client.install_extension(&ext_id, None).await {
+                    Ok(_) => push_out(&buf, vec![Out::Ok(format!("✓ Extension '{}' installed", ext_id))]),
+                    Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
+                }
+            });
+            app.flash("익스텐션 설치 중...");
+        }
+        ConfirmAction::RemoveModule(module_id) => {
+            tokio::spawn(async move {
+                match client.remove_module(&module_id).await {
+                    Ok(_) => push_out(&buf, vec![Out::Ok(format!("✓ Module '{}' removed", module_id))]),
+                    Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
+                }
+            });
+            app.flash("모듈 삭제됨");
+        }
+        ConfirmAction::InstallModuleFromRegistry(module_id) => {
+            tokio::spawn(async move {
+                match client.install_module_from_registry(&module_id).await {
+                    Ok(_) => push_out(&buf, vec![Out::Ok(format!("✓ Module '{}' installed from registry", module_id))]),
+                    Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
+                }
+            });
+            app.flash("모듈 설치 중...");
         }
     }
     app.input_mode = InputMode::Normal;
@@ -291,8 +380,10 @@ pub fn save_editor_changes(app: &mut App) {
             tokio::spawn(async move {
                 let iid = find_instance_id(&client, &inst_name).await;
                 if let Some(iid) = iid {
-                    // 변경사항을 적절한 JSON 값으로 변환
+                    // 변경사항을 일반 설정과 extension_data로 분류
                     let mut settings = serde_json::Map::new();
+                    let mut ext_data = serde_json::Map::new();
+
                     for (key, val) in &changes {
                         let json_val = if val == "true" {
                             serde_json::Value::Bool(true)
@@ -305,42 +396,28 @@ pub fn save_editor_changes(app: &mut App) {
                         } else {
                             serde_json::Value::String(val.clone())
                         };
-                        settings.insert(key.clone(), json_val);
+
+                        // _extension_data.* 키는 extension_data 맵에 분리
+                        if let Some(ext_key) = key.strip_prefix("_extension_data.") {
+                            ext_data.insert(ext_key.to_string(), json_val);
+                        } else {
+                            settings.insert(key.clone(), json_val);
+                        }
                     }
+
+                    // extension_data가 있으면 별도 필드로 포함
+                    if !ext_data.is_empty() {
+                        settings.insert(
+                            "extension_data".to_string(),
+                            serde_json::Value::Object(ext_data),
+                        );
+                    }
+
                     match client.update_instance(&iid, serde_json::Value::Object(settings)).await {
                         Ok(_) => push_out(&buf, vec![Out::Ok(format!(
                             "✓ {} setting(s) saved for '{}'", changes.len(), inst_name
                         ))]),
                         Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
-                    }
-                }
-            });
-        }
-        Screen::ServerProperties { name, .. } => {
-            let inst_name = name.clone();
-            tokio::spawn(async move {
-                let iid = find_instance_id(&client, &inst_name).await;
-                if let Some(iid) = iid {
-                    // 현재 properties 전체 로드 → 변경분 머지 → 쓰기
-                    match client.read_properties(&iid).await {
-                        Ok(data) => {
-                            let mut props = if let Some(obj) = data.get("properties") {
-                                obj.clone()
-                            } else {
-                                data.clone()
-                            };
-                            for (key, val) in &changes {
-                                props[key.as_str()] = serde_json::Value::String(val.clone());
-                            }
-                            let write_data = serde_json::json!({ "properties": props });
-                            match client.write_properties(&iid, write_data).await {
-                                Ok(_) => push_out(&buf, vec![Out::Ok(format!(
-                                    "✓ {} property(ies) saved for '{}'", changes.len(), inst_name
-                                ))]),
-                                Err(e) => push_out(&buf, vec![Out::Err(format!("✗ Write: {}", e))]),
-                            }
-                        }
-                        Err(e) => push_out(&buf, vec![Out::Err(format!("✗ Read: {}", e))]),
                     }
                 }
             });
@@ -377,7 +454,7 @@ pub(crate) async fn load_instance_settings(
     let instance_id = match find_instance_id(client, name).await {
         Some(id) => id,
         None => {
-            push_out(buf, vec![Out::Err(format!("✗ Instance '{}' not found", name))]);
+            push_out(buf, vec![Out::Text(format!("EDITOR_LOAD_FAIL:Instance '{}' not found", name))]);
             return;
         }
     };
@@ -386,7 +463,7 @@ pub(crate) async fn load_instance_settings(
     let inst_data = match client.get_instance(&instance_id).await {
         Ok(d) => d,
         Err(e) => {
-            push_out(buf, vec![Out::Err(format!("✗ {}", e))]);
+            push_out(buf, vec![Out::Text(format!("EDITOR_LOAD_FAIL:{}", e))]);
             return;
         }
     };
@@ -398,7 +475,7 @@ pub(crate) async fn load_instance_settings(
     // 형식: "EDITOR_FIELD:{key}|{value}|{group}|{type}|{label}|{required}|{options}"
     let mut lines = vec![];
 
-    if let Some(mdata) = module_data {
+    if let Some(mdata) = &module_data {
         if let Some(fields) = mdata.get("settings").and_then(|v| v.get("fields")).and_then(|v| v.as_array()) {
             for field in fields {
                 let fname = field["name"].as_str().unwrap_or("?");
@@ -424,11 +501,14 @@ pub(crate) async fn load_instance_settings(
                 )));
             }
         }
-    } else {
-        // 모듈 메타데이터 없음 — 인스턴스의 모든 필드를 표시
+    }
+    // 모듈 메타 없거나 settings.fields가 비어있으면 인스턴스 raw 필드 표시
+    if lines.is_empty() {
         if let Some(obj) = inst_data.as_object() {
             for (key, val) in obj {
                 if key == "id" || key == "name" || key == "module_name" { continue; }
+                // extension_data는 별도 섹션으로 표시하므로 여기서 스킵
+                if key == "extension_data" { continue; }
                 let val_str = match val {
                     serde_json::Value::String(s) => s.clone(),
                     serde_json::Value::Null => String::new(),
@@ -442,44 +522,61 @@ pub(crate) async fn load_instance_settings(
         }
     }
 
-    push_out(buf, lines);
-}
+    // ── InstanceSettings.fields 슬롯: 익스텐션 instance_fields 주입 ──
+    // GUI의 <ExtensionSlot slotId="ServerSettings.tab"> 에 대응
+    // 익스텐션이 선언한 instance_fields를 에디터 필드로 변환하여 추가
+    if let Ok(exts) = client.list_extensions().await {
+        let ext_data = inst_data.get("extension_data")
+            .and_then(|v| v.as_object());
 
-pub(crate) async fn load_server_properties(
-    client: &DaemonClient, name: &str, buf: &OutputBuf,
-) {
-    let instance_id = match find_instance_id(client, name).await {
-        Some(id) => id,
-        None => {
-            push_out(buf, vec![Out::Err(format!("✗ Instance '{}' not found", name))]);
-            return;
-        }
-    };
+        for ext in &exts {
+            let ext_enabled = ext["enabled"].as_bool().unwrap_or(false);
+            if !ext_enabled { continue; }
 
-    match client.read_properties(&instance_id).await {
-        Ok(data) => {
-            let props = if let Some(obj) = data.get("properties").and_then(|v| v.as_object()) {
-                obj.clone()
-            } else if let Some(obj) = data.as_object() {
-                obj.clone()
-            } else {
-                push_out(buf, vec![Out::Err("✗ Unexpected response format".into())]);
-                return;
-            };
+            let ext_name = ext["name"].as_str().unwrap_or("Extension");
+            if let Some(fields) = ext.get("instance_fields").and_then(|v| v.as_object()) {
+                for (field_name, field_def) in fields {
+                    let ftype = field_def.get("type").and_then(|v| v.as_str()).unwrap_or("text");
 
-            let mut lines = vec![];
-            for (key, val) in &props {
-                let val_str = match val {
-                    serde_json::Value::String(s) => s.clone(),
-                    _ => val.to_string(),
-                };
-                lines.push(Out::Text(format!(
-                    "EDITOR_FIELD:{}|{}|properties|text|||",
-                    key, val_str,
-                )));
+                    // 현재 값은 extension_data에서 가져옴
+                    let current_val = ext_data
+                        .and_then(|ed| ed.get(field_name))
+                        .map(|v| match v {
+                            serde_json::Value::String(s) => s.clone(),
+                            serde_json::Value::Bool(b) => b.to_string(),
+                            serde_json::Value::Null => String::new(),
+                            _ => v.to_string(),
+                        })
+                        .unwrap_or_else(|| {
+                            // 기본값 사용
+                            field_def.get("default").map(|v| match v {
+                                serde_json::Value::Bool(b) => b.to_string(),
+                                serde_json::Value::Number(n) => n.to_string(),
+                                serde_json::Value::String(s) => s.clone(),
+                                _ => String::new(),
+                            }).unwrap_or_default()
+                        });
+
+                    // extension_data 필드는 특수 접두사로 키를 인코딩
+                    // 저장 시 _extension_data.key 형태로 서버에 전달
+                    let editor_key = format!("_extension_data.{}", field_name);
+                    let group = format!("⚡ {}", ext_name);
+
+                    lines.push(Out::Text(format!(
+                        "EDITOR_FIELD:{}|{}|{}|{}|{}|false|",
+                        editor_key, current_val, group, ftype, field_name,
+                    )));
+                }
             }
-            push_out(buf, lines);
         }
-        Err(e) => push_out(buf, vec![Out::Err(format!("✗ {}", e))]),
     }
+
+    if lines.is_empty() {
+        push_out(buf, vec![Out::Text(format!(
+            "EDITOR_LOAD_FAIL:No configurable settings found for '{}'", name
+        ))]);
+        return;
+    }
+
+    push_out(buf, lines);
 }

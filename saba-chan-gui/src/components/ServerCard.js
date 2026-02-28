@@ -176,7 +176,7 @@ export function ServerCard({
                         className={clsx('status-button', `status-${server.status}`)}
                         onClick={() => {
                             if (server.status === 'starting' || server.status === 'stopping') return;
-                            if (server.status === 'running' || server.status === 'starting') handleStop(server.name);
+                            if (server.status === 'running') handleStop(server.name);
                             else handleStart(server.name, server.module);
                         }}
                         disabled={server.status === 'starting' || server.status === 'stopping'}

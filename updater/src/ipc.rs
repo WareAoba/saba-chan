@@ -1,7 +1,7 @@
 //! GUI/CLI ↔ 업데이터 통신
 //!
 //! ## 통신 방식
-//! 1. **데몬 IPC**: saba-chan 데몬의 `/api/updates/*` 엔드포인트
+//! 1. **데몬 IPC**: Saba-Core 데몬의 `/api/updates/*` 엔드포인트
 //! 2. **직접 프로세스 통신**: 업데이터 CLI stdout/stdin
 //! 3. **파일 기반**: 상태 파일을 통한 통신
 

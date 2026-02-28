@@ -8,7 +8,6 @@ export const useSettingsStore = create((set, get) => ({
     consoleBufferSize: 2000,
     autoGeneratePasswords: true,
     portConflictCheck: true,
-    modulesPath: '',
     settingsPath: '',
     settingsReady: false,
 
@@ -27,7 +26,6 @@ export const useSettingsStore = create((set, get) => ({
                 patch.consoleBufferSize = settings.consoleBufferSize ?? 2000;
                 patch.autoGeneratePasswords = settings.autoGeneratePasswords ?? true;
                 patch.portConflictCheck = settings.portConflictCheck ?? true;
-                patch.modulesPath = settings.modulesPath || '';
             }
             const path = await window.api.settingsGetPath();
             patch.settingsPath = path;
@@ -58,7 +56,6 @@ export const useSettingsStore = create((set, get) => ({
                 consoleBufferSize: state.consoleBufferSize,
                 autoGeneratePasswords: state.autoGeneratePasswords,
                 portConflictCheck: state.portConflictCheck,
-                modulesPath: state.modulesPath,
                 discordToken: state._discordToken || '',
                 discordAutoStart: state._discordAutoStart ?? false,
             });
@@ -88,7 +85,6 @@ export const useSettingsStore = create((set, get) => ({
             consoleBufferSize: 2000,
             autoGeneratePasswords: true,
             portConflictCheck: true,
-            modulesPath: '',
             settingsPath: '',
             settingsReady: false,
             _discordToken: '',
@@ -105,7 +101,6 @@ const _settingsKeys = [
     'consoleBufferSize',
     'autoGeneratePasswords',
     'portConflictCheck',
-    'modulesPath',
     '_discordAutoStart',
 ];
 useSettingsStore.subscribe((state, prevState) => {
@@ -118,3 +113,25 @@ useSettingsStore.subscribe((state, prevState) => {
         useSettingsStore.getState().save();
     }, 500);
 });
+
+// ── Vite HMR: preserve store state across hot module replacement ──
+if (import.meta.hot) {
+    import.meta.hot.dispose((data) => {
+        const s = useSettingsStore.getState();
+        data.prevState = {
+            autoRefresh: s.autoRefresh,
+            refreshInterval: s.refreshInterval,
+            ipcPort: s.ipcPort,
+            consoleBufferSize: s.consoleBufferSize,
+            autoGeneratePasswords: s.autoGeneratePasswords,
+            portConflictCheck: s.portConflictCheck,
+            settingsPath: s.settingsPath,
+            settingsReady: s.settingsReady,
+            _discordToken: s._discordToken,
+            _discordAutoStart: s._discordAutoStart,
+        };
+    });
+    if (import.meta.hot.data?.prevState) {
+        useSettingsStore.setState(import.meta.hot.data.prevState);
+    }
+}

@@ -52,8 +52,6 @@ export function ConsolePanel({
         [highlightRules, consoleServer?.name],
     );
 
-    if (!consoleServer || consolePopoutInstanceId) return null;
-
     return (
         <div className="console-panel">
             <div className="console-header">

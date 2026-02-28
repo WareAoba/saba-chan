@@ -178,6 +178,37 @@ pub async fn create_instance(
             None
         };
 
+        // ── 모듈의 install.requires_extensions → 인스턴스 required_extensions 자동 채우기 ──
+        if let Some((ref install_cfg, _, _, _)) = module_install {
+            if let Some(ref install) = install_cfg {
+                for ext_id in &install.requires_extensions {
+                    if !instance.required_extensions.contains(ext_id) {
+                        instance.required_extensions.push(ext_id.clone());
+                    }
+                }
+            }
+        }
+
+        // ── 네이티브 인스턴스: 필수 익스텐션 활성화 검증 ──
+        // (컨테이너 모드는 컨테이너 내부에서 처리하므로 스킵)
+        if !use_container_ext && !instance.required_extensions.is_empty() {
+            let ext_mgr = state.extension_manager.read().await;
+            let enabled = ext_mgr.enabled_set();
+            let missing = instance.missing_required_extensions(&enabled);
+            drop(ext_mgr);
+            if !missing.is_empty() {
+                let error = json!({
+                    "error": format!(
+                        "Cannot create instance: required extension(s) not enabled: {}. Enable them in Settings → Extensions first.",
+                        missing.join(", ")
+                    ),
+                    "error_code": "extension_required",
+                    "missing_extensions": missing,
+                });
+                return (StatusCode::UNPROCESSABLE_ENTITY, Json(error)).into_response();
+            }
+        }
+
         // 선택적 필드 설정
         if let Some(path) = payload.get("executable_path").and_then(|v| v.as_str()) {
             instance.executable_path = Some(path.to_string());

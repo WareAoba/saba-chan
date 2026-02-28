@@ -10,7 +10,6 @@
  */
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import builtinExtensions from '../builtinExtensions';
 import i18n from '../i18n';
 import { safeShowToast } from '../utils/helpers';
 
@@ -141,25 +140,7 @@ export function ExtensionProvider({ children }) {
             };
 
             for (const ext of enabled) {
-                // ① 내장 익스텐션: 정적 import에서 바로 슬롯 등록 (UMD 불필요)
-                const builtin = builtinExtensions[ext.id];
-                if (builtin) {
-                    if (builtin.registerSlots) {
-                        mergeSlots(builtin.registerSlots());
-                    }
-                    // 내장이라도 i18n은 데몬이 제공할 수 있으므로 로드 시도
-                    if (!loadedRef.current.has(ext.id)) {
-                        loadedRef.current.add(ext.id);
-                        const currentLang = i18n.language || 'en';
-                        await loadExtensionI18n(ext, currentLang);
-                        if (currentLang !== 'en') {
-                            await loadExtensionI18n(ext, 'en');
-                        }
-                    }
-                    continue;
-                }
-
-                // ② 이미 로드된 외부 익스텐션
+                // ① 이미 로드된 익스텐션
                 if (loadedRef.current.has(ext.id)) {
                     const globalName = `SabaExt${pascalCase(ext.id)}`;
                     const mod = window[globalName];
@@ -169,7 +150,7 @@ export function ExtensionProvider({ children }) {
                     continue;
                 }
 
-                // ③ 외부 익스텐션: UMD 번들 동적 로드
+                // ② UMD 번들 동적 로드
                 const mod = await loadExtensionBundle(ext);
                 loadedRef.current.add(ext.id);
 

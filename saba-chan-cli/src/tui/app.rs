@@ -38,6 +38,9 @@ pub struct ServerInfo {
     pub name: String,
     pub module: String,
     pub status: String,
+    /// 인스턴스별 익스텐션 데이터 (e.g. docker_enabled, docker_cpu_limit)
+    /// GUI의 server.extension_data에 대응
+    pub extension_data: HashMap<String, Value>,
 }
 
 /// 백그라운드 상태 스냅샷 (모니터 태스크 → App)
@@ -77,12 +80,20 @@ pub enum Screen {
     ServerProperties { name: String, id: String },
     Modules,
     ModuleDetail  { name: String },
+    ModuleRegistry,
     Bot,
     BotAliases,
     Settings,
     Updates,
     Daemon,
+    Extensions,
+    ExtensionList,
+    ExtensionDetail { ext_id: String, ext_name: String },
+    ExtensionRegistry,
     CommandMode,
+    // ★ 인스턴스 생성 위자드 (신규)
+    CreateInstanceStep1,
+    CreateInstanceStep2 { module_name: String },
 }
 
 impl Screen {
@@ -90,19 +101,26 @@ impl Screen {
     pub fn breadcrumb(&self) -> Vec<&str> {
         match self {
             Self::Dashboard      => vec!["saba-chan"],
-            Self::Servers        => vec!["saba-chan", "Servers"],
-            Self::ServerDetail  { .. } => vec!["saba-chan", "Servers", "Detail"],
-            Self::ServerConsole { .. } => vec!["saba-chan", "Servers", "Console"],
-            Self::ServerSettings { .. } => vec!["saba-chan", "Servers", "Settings"],
-            Self::ServerProperties { .. } => vec!["saba-chan", "Servers", "Properties"],
+            Self::Servers        => vec!["saba-chan", "Instances"],
+            Self::ServerDetail  { .. } => vec!["saba-chan", "Instances", "Detail"],
+            Self::ServerConsole { .. } => vec!["saba-chan", "Instances", "Console"],
+            Self::ServerSettings { .. } => vec!["saba-chan", "Instances", "Settings"],
+            Self::ServerProperties { .. } => vec!["saba-chan", "Instances", "Properties"],
             Self::Modules        => vec!["saba-chan", "Modules"],
             Self::ModuleDetail { .. } => vec!["saba-chan", "Modules", "Detail"],
+            Self::ModuleRegistry => vec!["saba-chan", "Modules", "Registry"],
             Self::Bot            => vec!["saba-chan", "Discord Bot"],
             Self::BotAliases     => vec!["saba-chan", "Discord Bot", "Aliases"],
             Self::Settings       => vec!["saba-chan", "Settings"],
             Self::Updates        => vec!["saba-chan", "Updates"],
-            Self::Daemon         => vec!["saba-chan", "Daemon"],
+            Self::Daemon         => vec!["saba-chan", "Saba-Core"],
+            Self::Extensions     => vec!["saba-chan", "Extensions"],
+            Self::ExtensionList  => vec!["saba-chan", "Extensions", "Installed"],
+            Self::ExtensionDetail { .. } => vec!["saba-chan", "Extensions", "Detail"],
+            Self::ExtensionRegistry => vec!["saba-chan", "Extensions", "Registry"],
             Self::CommandMode    => vec!["saba-chan", "Command"],
+            Self::CreateInstanceStep1 => vec!["saba-chan", "Instances", "New", "Select Game"],
+            Self::CreateInstanceStep2 { .. } => vec!["saba-chan", "Instances", "New", "Configure"],
         }
     }
 }
@@ -123,6 +141,39 @@ pub enum InputMode {
     Console,
     /// 확인 대화상자 (y/n)
     Confirm { prompt: String, action: ConfirmAction },
+    /// 인라인 텍스트 입력 (TUI 내에서 직접 값 입력)
+    InlineInput {
+        prompt: String,
+        value: String,
+        cursor: usize,
+        on_submit: InlineAction,
+    },
+    /// 인라인 선택 (TUI 내에서 옵션 목록 선택)
+    InlineSelect {
+        prompt: String,
+        options: Vec<String>,
+        selected: usize,
+        on_submit: InlineAction,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+#[allow(dead_code)]
+pub enum InlineAction {
+    SetCliSetting { key: String },
+    SetGuiSetting { key: String },
+    SetBotToken,
+    SetBotPrefix,
+    SetBotMode,
+    SetBotMusic,
+    SetBotRelayUrl,
+    SetBotRelayHostId,
+    SetBotNodeToken,
+    CreateInstance { module_name: String },
+    ExecuteCommand { instance_id: String },
+    InstallModule { module_name: String },
+    UpdateSet,
+    Custom(String),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -130,7 +181,11 @@ pub enum InputMode {
 pub enum ConfirmAction {
     DeleteInstance(String), // id
     StopServer(String),     // name
-    AcceptEula(String),     // id
+    ResetServer(String),    // id
+    RemoveExtension(String), // ext_id
+    InstallExtension(String), // ext_id
+    RemoveModule(String),   // module_id
+    InstallModuleFromRegistry(String), // module_id
 }
 
 // ═══════════════════════════════════════════════════════
@@ -177,6 +232,158 @@ pub struct EditorField {
     pub label: String,
     pub required: bool,
     pub options: Vec<String>,     // select 타입 옵션 목록
+}
+
+// ═══════════════════════════════════════════════════════
+// 익스텐션 / 레지스트리 캐시 타입
+// ═══════════════════════════════════════════════════════
+
+/// 설치된 익스텐션 정보 (캐시)
+#[derive(Clone, Debug)]
+pub struct ExtensionInfo {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub enabled: bool,
+}
+
+// ═══════════════════════════════════════════════════════
+// CLI 익스텐션 슬롯 시스템 — GUI ExtensionContext 대응
+// ═══════════════════════════════════════════════════════
+
+/// 익스텐션이 CLI 슬롯에 주입한 데이터 단위
+#[derive(Clone, Debug)]
+pub struct ExtSlotData {
+    pub extension_id: String,
+    pub extension_name: String,
+    pub data: Value,
+}
+
+/// 익스텐션 인스턴스 필드 정의 (manifest.instance_fields 대응)
+#[derive(Clone, Debug)]
+pub struct FieldDefCli {
+    pub field_type: String,      // boolean, number, string
+    pub default_value: String,   // 기본값 문자열
+    pub optional: bool,
+}
+
+/// CLI 슬롯 레지스트리 — GUI의 `ExtensionContext.slots`에 대응
+///
+/// 각 화면의 `build_*_menu()` 함수가 이 레지스트리를 조회하여
+/// 익스텐션이 주입한 메뉴 아이템, 뱃지, 에디터 필드를 동적으로 병합합니다.
+///
+/// ## 슬롯 ID 규약 (GUI ↔ CLI 매핑)
+///
+/// | CLI Slot ID              | GUI Slot Equivalent        | 용도                        |
+/// |--------------------------|----------------------------|-----------------------------|
+/// | `InstanceList.badge`     | `ServerCard.badge`         | 인스턴스 목록 뱃지            |
+/// | `InstanceDetail.menu`    | —                          | 상세 화면 메뉴 아이템          |
+/// | `InstanceDetail.status`  | `ServerCard.expandedStats` | 상세 화면 상태 표시            |
+/// | `InstanceSettings.fields`| `ServerSettings.tab`       | 설정 에디터 필드               |
+/// | `CreateInstance.options`  | `AddServer.options`        | 인스턴스 생성 옵션             |
+#[derive(Clone, Debug, Default)]
+pub struct ExtensionSlotRegistry {
+    /// slot_id → Vec<(extension_id, extension_name, slot_data)>
+    slots: HashMap<String, Vec<ExtSlotData>>,
+    /// extension_id → instance_fields 정의
+    instance_fields: HashMap<String, HashMap<String, FieldDefCli>>,
+}
+
+impl ExtensionSlotRegistry {
+    /// 특정 슬롯 ID에 등록된 모든 익스텐션 데이터 조회
+    /// GUI의 `<ExtensionSlot slotId="...">` 에 대응
+    pub fn get_slot(&self, slot_id: &str) -> &[ExtSlotData] {
+        self.slots.get(slot_id).map(|v| v.as_slice()).unwrap_or(&[])
+    }
+
+    /// 모든 익스텐션의 instance_fields를 순회
+    /// (extension_id, field_name, field_def) 튜플 반환
+    pub fn all_instance_fields(&self) -> Vec<(&str, &str, &FieldDefCli)> {
+        self.instance_fields.iter()
+            .flat_map(|(ext_id, fields)| {
+                fields.iter().map(move |(name, def)| (ext_id.as_str(), name.as_str(), def))
+            })
+            .collect()
+    }
+
+    /// 전체 레지스트리 초기화 (익스텐션 데이터 재로드 시)
+    pub fn clear(&mut self) {
+        self.slots.clear();
+        self.instance_fields.clear();
+    }
+
+    /// 단일 익스텐션의 슬롯 + instance_fields 등록
+    pub fn register_extension(
+        &mut self,
+        ext_id: &str,
+        ext_name: &str,
+        cli_slots: Option<&Value>,
+        instance_fields: &HashMap<String, Value>,
+    ) {
+        // CLI 슬롯 등록 (manifest.cli.slots)
+        if let Some(slots_obj) = cli_slots.and_then(|v| v.get("slots")).and_then(|v| v.as_object()) {
+            for (slot_id, slot_data) in slots_obj {
+                self.slots.entry(slot_id.clone()).or_default().push(ExtSlotData {
+                    extension_id: ext_id.to_string(),
+                    extension_name: ext_name.to_string(),
+                    data: slot_data.clone(),
+                });
+            }
+        }
+
+        // instance_fields 등록
+        if !instance_fields.is_empty() {
+            let mut fields = HashMap::new();
+            for (field_name, field_def) in instance_fields {
+                let ftype = field_def.get("type").and_then(|v| v.as_str()).unwrap_or("string").to_string();
+                let default = match field_def.get("default") {
+                    Some(Value::Bool(b)) => b.to_string(),
+                    Some(Value::Number(n)) => n.to_string(),
+                    Some(Value::String(s)) => s.clone(),
+                    _ => String::new(),
+                };
+                let optional = field_def.get("optional").and_then(|v| v.as_bool()).unwrap_or(false);
+                fields.insert(field_name.clone(), FieldDefCli {
+                    field_type: ftype,
+                    default_value: default,
+                    optional,
+                });
+            }
+            self.instance_fields.insert(ext_id.to_string(), fields);
+
+            // instance_fields가 있지만 CLI 슬롯이 없는 경우 → 자동 파생
+            // InstanceSettings.fields 슬롯을 자동 생성
+            if !self.slots.contains_key("InstanceSettings.fields")
+                || !self.slots["InstanceSettings.fields"].iter().any(|s| s.extension_id == ext_id)
+            {
+                let auto_fields: Vec<Value> = instance_fields.iter().map(|(name, def)| {
+                    let ftype = def.get("type").and_then(|v| v.as_str()).unwrap_or("string");
+                    let default = def.get("default").cloned().unwrap_or(Value::Null);
+                    serde_json::json!({
+                        "field": name,
+                        "type": ftype,
+                        "label": name,
+                        "default": default,
+                    })
+                }).collect();
+
+                self.slots.entry("InstanceSettings.fields".to_string()).or_default().push(ExtSlotData {
+                    extension_id: ext_id.to_string(),
+                    extension_name: ext_name.to_string(),
+                    data: Value::Array(auto_fields),
+                });
+            }
+        }
+    }
+}
+
+/// 레지스트리 아이템 (모듈 또는 익스텐션 공용)
+#[derive(Clone, Debug)]
+pub struct RegistryItem {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub description: String,
 }
 
 // ═══════════════════════════════════════════════════════
@@ -232,12 +439,23 @@ pub struct App {
     pub console_input: String,
     pub console_scroll: usize,
 
+    // ── 자동완성 상태 ──
+    pub autocomplete_candidates: Vec<String>,
+    pub autocomplete_selected: usize,
+    pub autocomplete_visible: bool,
+
     // ── 캐시 데이터 ──
     pub cached_instances: Vec<Value>,
     pub cached_modules: Vec<Value>,
     pub cached_server_detail: Option<Value>,
     pub cached_module_detail: Option<Value>,
     pub cached_update_status: Option<Value>,
+    pub cached_extensions: Vec<ExtensionInfo>,
+    pub cached_registry_extensions: Vec<RegistryItem>,
+    pub cached_registry_modules: Vec<RegistryItem>,
+
+    // ── 익스텐션 슬롯 레지스트리 (GUI의 ExtensionContext에 대응) ──
+    pub ext_slots: ExtensionSlotRegistry,
 
     // ── 로딩 · 상태 메시지 ──
     pub loading: Option<String>,
@@ -293,6 +511,10 @@ impl App {
             input: String::new(),
             cursor: 0,
             output: vec![Out::Info(welcome), Out::Blank],
+
+            autocomplete_candidates: vec![],
+            autocomplete_selected: 0,
+            autocomplete_visible: false,
             history: vec![],
             hist_idx: None,
             scroll_up: 0,
@@ -307,6 +529,11 @@ impl App {
             cached_server_detail: None,
             cached_module_detail: None,
             cached_update_status: None,
+            cached_extensions: vec![],
+            cached_registry_extensions: vec![],
+            cached_registry_modules: vec![],
+
+            ext_slots: ExtensionSlotRegistry::default(),
 
             loading: None,
             status_message: None,
@@ -327,11 +554,17 @@ impl App {
     }
 
     /// 이전 화면으로 복귀 (스택에서 pop)
+    /// ★ 복원되는 화면에 맞는 InputMode를 자동으로 설정한다.
+    ///   CommandMode → Command, ServerConsole → Console, 그 외 → Normal
     pub fn pop_screen(&mut self) -> bool {
         if let Some(prev) = self.screen_stack.pop() {
             self.screen = prev;
             self.menu_selected = 0;
-            self.input_mode = InputMode::Normal;
+            self.input_mode = match &self.screen {
+                Screen::CommandMode => InputMode::Command,
+                Screen::ServerConsole { .. } => InputMode::Console,
+                _ => InputMode::Normal,
+            };
             self.editor_fields.clear();
             self.editor_changes.clear();
             true

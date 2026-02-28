@@ -77,6 +77,8 @@
   "errors": {
     "error_title": "Fehler beim Ausführen des Befehls",
     "unknown": "Unbekannter Fehler",
+    "alias_conflict": "❌ Alias '{{alias}}' ist mehrdeutig — er passt auf mehrere Module: {{modules}}. Bitte verwende einen spezifischeren Alias.",
+    "multiple_instances": "⚠️ Mehrere '{{module}}'-Instanzen vorhanden. Verwende den Instanznamen statt des Modul-Alias.",
     "auth_failed": "Authentifizierung fehlgeschlagen",
     "player_not_found": "Spieler nicht gefunden",
     "internal_server_error": "Interner Serverfehler",
@@ -89,9 +91,7 @@
     "service_unavailable": "Dienst nicht verfügbar",
     "unknown_input": "❌ Unbekannter Befehl.",
     "command_not_found": "❌ Befehl existiert nicht.",
-    "permission_denied": "❌ Du hast keine Berechtigung, diesen Befehl zu verwenden.",
-    "alias_conflict": "❌ Alias '{{alias}}' ist mehrdeutig — er passt auf mehrere Module: {{modules}}. Bitte verwende einen spezifischeren Alias.",
-    "multiple_instances": "⚠️ Mehrere '{{module}}'-Instanzen vorhanden. Verwende den Instanznamen statt des Modul-Alias."
+    "permission_denied": "❌ Du hast keine Berechtigung, diesen Befehl zu verwenden."
   },
   "messages": {
     "server_started": "Server erfolgreich gestartet",
@@ -138,7 +138,7 @@
     "now_playing_detail": "🎶 **{{title}}** [{{duration}}]\n🔗 {{url}}\n👤 {{requester}} | 🔊 {{volume}}%",
     "current_volume": "🔊 Aktuelle Lautstärke: **{{volume}}%**",
     "volume_range": "🔊 Lautstärke muss zwischen 0 und 200 liegen",
-    "volume_set": "{{emoji}} Lautstärke: **{{volume}}%**",
+    "volume_set": "{{emoji}} Volume: **{{volume}}%**",
     "shuffle_need_more": "🔀 Zum Mischen werden mindestens 2 Titel benötigt",
     "shuffled": "🔀 {{count}} Titel gemischt!",
     "invalid_url": "Videoinformationen konnten nicht abgerufen werden",
@@ -160,9 +160,9 @@
   },
   "rps": {
     "prompt": "✊✌️✋ Wähle eins!",
-    "draw": "{{bot}}! Unentschieden! Nochmal~ 🔄",
-    "user_win": "{{bot}}! Ich hab verloren... 😵",
-    "bot_win": "{{bot}}! Ich hab gewonnen~ 😋",
+    "draw": "{{bot}}! It's a tie! Again~ 🔄",
+    "user_win": "{{bot}}! I lost... 😵",
+    "bot_win": "{{bot}}! I win~ 😋",
     "timeout": "⏰ Zeit abgelaufen! Versuch es nächstes Mal~",
     "scissors": "Schere",
     "rock": "Stein",

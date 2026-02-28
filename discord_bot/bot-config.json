@@ -21,11 +21,25 @@
     }
   },
   "musicEnabled": true,
+  "mode": "local",
+  "cloud": {
+    "relayUrl": "",
+    "hostId": ""
+  },
   "nodeSettings": {
     "1420751700142063778": {
       "allowedInstances": [
         "08ecbf99-4e85-43fd-9450-164ccfa33c21",
         "68b29cef-e584-4bd0-91dc-771865e31e25"
+      ],
+      "memberPermissions": {}
+    },
+    "local": {
+      "allowedInstances": [
+        "08ecbf99-4e85-43fd-9450-164ccfa33c21",
+        "aaf2ea8e-660e-4b1a-8143-0c3200e586a4",
+        "feaac8f1-75dd-4f5c-b880-d6e861d429cb",
+        "822627c4-d41b-422b-8818-19d327b12277"
       ],
       "memberPermissions": {}
     }

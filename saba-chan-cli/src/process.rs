@@ -57,7 +57,7 @@ pub fn find_project_root() -> anyhow::Result<PathBuf> {
     Ok(cwd)
 }
 
-/// Daemon 실행 여부 확인 (TCP 연결만으로 판단 — 외부 프로세스 없음)
+/// Saba-Core 실행 여부 확인 (TCP 연결만으로 판단 — 외부 프로세스 없음)
 pub fn check_daemon_running() -> bool {
     let port = crate::gui_config::get_ipc_port();
     let addr = format!("127.0.0.1:{}", port);
@@ -89,20 +89,33 @@ pub fn check_bot_running() -> bool {
     }
 }
 
-/// Daemon 바이너리 탐색
+/// Saba-Core 바이너리 탐색
 pub fn find_daemon_binary() -> anyhow::Result<PathBuf> {
     let root = find_project_root()?;
     let cwd = std::env::current_dir()?;
     let exe = if cfg!(target_os = "windows") { "saba-core.exe" } else { "saba-core" };
 
-    let candidates = [
+    // 현재 실행 파일 옆 (릴리즈 배포 시 같은 폴더에 위치)
+    let self_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+
+    let mut candidates = vec![
         root.join("target/release").join(exe),
         root.join("target/debug").join(exe),
         root.join(exe),
         cwd.join(exe),
         cwd.join("../target/release").join(exe),
         cwd.join("../target/debug").join(exe),
+        // GUI bin/ 디렉토리 (GUI 빌드 산출물)
+        root.join("saba-chan-gui/bin").join(exe),
+        cwd.join("../saba-chan-gui/bin").join(exe),
     ];
+
+    // 실행 파일이 위치한 디렉토리에서도 탐색
+    if let Some(ref dir) = self_dir {
+        candidates.push(dir.join(exe));
+    }
 
     for path in &candidates {
         if path.exists() {
@@ -110,7 +123,9 @@ pub fn find_daemon_binary() -> anyhow::Result<PathBuf> {
         }
     }
 
-    anyhow::bail!("Daemon binary not found")
+    anyhow::bail!("Saba-Core binary not found. Searched: {}",
+        candidates.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")
+    )
 }
 
 /// Discord Bot 디렉토리 탐색
@@ -151,17 +166,30 @@ fn spawn_detached(cmd: &mut Command) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Daemon 시작 — GUI와 동일한 환경변수 세팅
+/// Saba-Core 시작 — GUI와 동일한 환경변수 세팅
 pub fn start_daemon() -> anyhow::Result<String> {
     let root = find_project_root()?;
     let binary = find_daemon_binary()?;
 
     if check_daemon_running() {
-        return Ok("✓ Daemon is already running".into());
+        return Ok("✓ Saba-Core is already running".into());
     }
 
     let modules = gui_config::get_modules_path()
-        .unwrap_or_else(|_| root.join("modules").to_string_lossy().into());
+        .unwrap_or_else(|_| {
+            #[cfg(target_os = "windows")]
+            {
+                std::env::var("APPDATA")
+                    .map(|appdata| format!("{}\\saba-chan\\modules", appdata))
+                    .unwrap_or_else(|_| root.join("modules").to_string_lossy().into())
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                std::env::var("HOME")
+                    .map(|home| format!("{}/.config/saba-chan/modules", home))
+                    .unwrap_or_else(|_| root.join("modules").to_string_lossy().into())
+            }
+        });
     let instances = gui_config::get_instances_path()
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|_| {
@@ -190,13 +218,13 @@ pub fn start_daemon() -> anyhow::Result<String> {
     spawn_detached(&mut cmd)?;
     std::thread::sleep(Duration::from_secs(1));
 
-    Ok(format!("✓ Daemon started\n  modules: {}\n  instances: {}", modules, instances))
+    Ok(format!("✓ Saba-Core started\n  modules: {}\n  instances: {}", modules, instances))
 }
 
-/// Daemon 종료 — 먼저 saba-core.exe만 타겟으로 종료
+/// Saba-Core 종료 — saba-core.exe만 타겟으로 종료
 pub fn stop_daemon() -> anyhow::Result<String> {
     if !check_daemon_running() {
-        return Ok("ℹ Daemon is not running".into());
+        return Ok("ℹ Saba-Core is not running".into());
     }
 
     if cfg!(target_os = "windows") {
@@ -214,7 +242,7 @@ pub fn stop_daemon() -> anyhow::Result<String> {
     }
 
     std::thread::sleep(Duration::from_secs(1));
-    Ok("✓ Daemon stopped".into())
+    Ok("✓ Saba-Core stopped".into())
 }
 
 /// Discord Bot 시작 — GUI settings.json에서 토큰 읽기

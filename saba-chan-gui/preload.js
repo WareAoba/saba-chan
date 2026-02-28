@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('api', {
     extensionI18n: (extId, locale) => ipcRenderer.invoke('extension:i18n', extId, locale),
     extensionGuiBundle: (extId) => ipcRenderer.invoke('extension:guiBundle', extId),
     extensionGuiStyles: (extId) => ipcRenderer.invoke('extension:guiStyles', extId),
+    extensionIcon: (extId) => ipcRenderer.invoke('extension:icon', extId),
     // Extension Registry & Version Management API
     extensionFetchRegistry: () => ipcRenderer.invoke('extension:fetchRegistry'),
     extensionInstall: (extId, opts) => ipcRenderer.invoke('extension:install', extId, opts),
@@ -70,6 +71,8 @@ contextBridge.exposeInMainWorld('api', {
     settingsLoad: () => ipcRenderer.invoke('settings:load'),
     settingsSave: (settings) => ipcRenderer.invoke('settings:save', settings),
     settingsGetPath: () => ipcRenderer.invoke('settings:getPath'),
+    // Fixed Paths API
+    getFixedPaths: () => ipcRenderer.invoke('paths:getFixed'),
     // Dialog API
     openFileDialog: (options) => ipcRenderer.invoke('dialog:openFile', options),
     openFolderDialog: () => ipcRenderer.invoke('dialog:openFolder'),

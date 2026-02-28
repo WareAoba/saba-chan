@@ -68,7 +68,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn valid_transitions() {
+    fn valid_transitions_normal_lifecycle() {
         let mut sm = StateMachine::new();
         assert_eq!(sm.state, State::Stopped);
         assert!(sm.transition(State::Starting).is_ok());
@@ -78,10 +78,136 @@ mod tests {
     }
 
     #[test]
-    fn invalid_transition() {
+    fn valid_transitions_crash_from_starting() {
         let mut sm = StateMachine::new();
-        // cannot go directly from Stopped -> Running
-        let res = sm.transition(State::Running);
-        assert!(res.is_err());
+        sm.transition(State::Starting).unwrap();
+        assert!(sm.transition(State::Crashed).is_ok());
+        assert_eq!(sm.state, State::Crashed);
+        // 크래시 후 정지로 전이 가능
+        assert!(sm.transition(State::Stopped).is_ok());
+    }
+
+    #[test]
+    fn valid_transitions_crash_from_running() {
+        let mut sm = StateMachine::new();
+        sm.transition(State::Starting).unwrap();
+        sm.transition(State::Running).unwrap();
+        assert!(sm.transition(State::Crashed).is_ok());
+        assert_eq!(sm.state, State::Crashed);
+    }
+
+    #[test]
+    fn valid_transitions_crash_from_stopping() {
+        let mut sm = StateMachine::new();
+        sm.transition(State::Starting).unwrap();
+        sm.transition(State::Running).unwrap();
+        sm.transition(State::Stopping).unwrap();
+        assert!(sm.transition(State::Crashed).is_ok());
+    }
+
+    /// 모든 불가능한 전이를 전수 검증
+    #[test]
+    fn exhaustive_invalid_transitions() {
+        let invalid_pairs: Vec<(State, State)> = vec![
+            (State::Stopped, State::Running),
+            (State::Stopped, State::Stopping),
+            (State::Stopped, State::Stopped),
+            (State::Stopped, State::Crashed),
+            (State::Starting, State::Stopped),
+            (State::Starting, State::Starting),
+            (State::Starting, State::Stopping),
+            (State::Running, State::Starting),
+            (State::Running, State::Running),
+            (State::Running, State::Stopped),
+            (State::Stopping, State::Starting),
+            (State::Stopping, State::Running),
+            (State::Stopping, State::Stopping),
+            (State::Crashed, State::Starting),
+            (State::Crashed, State::Running),
+            (State::Crashed, State::Stopping),
+            (State::Crashed, State::Crashed),
+        ];
+
+        for (from, to) in invalid_pairs {
+            let mut sm = StateMachine { state: from.clone() };
+            let result = sm.transition(to.clone());
+            assert!(
+                result.is_err(),
+                "Transition {:?} -> {:?} should be invalid",
+                from, to
+            );
+            // 상태가 변경되지 않아야 함
+            assert_eq!(
+                sm.state, from,
+                "Failed transition must not mutate state"
+            );
+        }
+    }
+
+    #[test]
+    fn can_transition_is_consistent_with_transition() {
+        let all_states = vec![
+            State::Stopped, State::Starting, State::Running,
+            State::Stopping, State::Crashed,
+        ];
+        for from in &all_states {
+            for to in &all_states {
+                let sm = StateMachine { state: from.clone() };
+                let can = sm.can_transition(to);
+                let mut sm2 = StateMachine { state: from.clone() };
+                let result = sm2.transition(to.clone());
+                assert_eq!(
+                    can, result.is_ok(),
+                    "can_transition({:?}->{:?})={} but transition()={:?}",
+                    from, to, can, result
+                );
+            }
+        }
+    }
+
+    /// 재시작 사이클: Stopped → Starting → Running → Stopping → Stopped × 3
+    #[test]
+    fn restart_cycle_three_times() {
+        let mut sm = StateMachine::new();
+        for cycle in 0..3 {
+            assert!(sm.transition(State::Starting).is_ok(), "Cycle {} start", cycle);
+            assert!(sm.transition(State::Running).is_ok(), "Cycle {} run", cycle);
+            assert!(sm.transition(State::Stopping).is_ok(), "Cycle {} stop", cycle);
+            assert!(sm.transition(State::Stopped).is_ok(), "Cycle {} stopped", cycle);
+        }
+    }
+
+    /// 크래시 복구 사이클
+    #[test]
+    fn crash_recovery_cycle() {
+        let mut sm = StateMachine::new();
+        // 정상 시작
+        sm.transition(State::Starting).unwrap();
+        sm.transition(State::Running).unwrap();
+        // 크래시
+        sm.transition(State::Crashed).unwrap();
+        // 복구
+        sm.transition(State::Stopped).unwrap();
+        // 재시작
+        sm.transition(State::Starting).unwrap();
+        sm.transition(State::Running).unwrap();
+        assert_eq!(sm.state, State::Running);
+    }
+
+    #[test]
+    fn default_state_is_stopped() {
+        let sm = StateMachine::default();
+        assert_eq!(sm.state, State::Stopped);
+        let sm2 = StateMachine::new();
+        assert_eq!(sm2.state, State::Stopped);
+    }
+
+    #[test]
+    fn transition_error_contains_states() {
+        let mut sm = StateMachine::new();
+        let err = sm.transition(State::Running).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("Stopped"), "Error should mention source state: {}", msg);
+        assert!(msg.contains("Running"), "Error should mention target state: {}", msg);
     }
 }

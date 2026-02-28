@@ -9,9 +9,9 @@ pub(super) fn build_daemon_menu(app: &App) -> Vec<MenuItem> {
     let is_running = app.daemon_on;
     vec![
         if is_running {
-            MenuItem::new("■ Stop Daemon", Some('s'), "데몬 정지")
+            MenuItem::new("■ Stop Saba-Core", Some('s'), "코어 데몬 정지")
         } else {
-            MenuItem::new("▶ Start Daemon", Some('s'), "데몬 시작")
+            MenuItem::new("▶ Start Saba-Core", Some('s'), "코어 데몬 시작")
         },
         MenuItem::new("↻ Restart", Some('r'), "데몬 재시작"),
         MenuItem::new("ℹ Status", Some('i'), "데몬 상태 상세 조회"),
@@ -44,7 +44,7 @@ pub(super) fn handle_daemon_select(app: &mut App, sel: usize) {
                     }
                 });
             }
-            app.flash(if app.daemon_on { "데몬 정지 중..." } else { "데몬 시작 중..." });
+            app.flash(if app.daemon_on { "Saba-Core 정지 중..." } else { "Saba-Core 시작 중..." });
         }
         1 => { // Restart
             tokio::spawn(async move {
@@ -66,7 +66,7 @@ pub(super) fn handle_daemon_select(app: &mut App, sel: usize) {
                     Err(e) => push_out(&buf, vec![Out::Err(format!("✗ Stop: {}", e))]),
                 }
             });
-            app.flash("데몬 재시작 중...");
+            app.flash("Saba-Core 재시작 중...");
         }
         2 => { // Status
             tokio::spawn(async move {
@@ -77,7 +77,7 @@ pub(super) fn handle_daemon_select(app: &mut App, sel: usize) {
                     let base = crate::gui_config::get_ipc_base_url();
                     let port = crate::gui_config::get_ipc_port();
                     let http = reqwest::Client::builder().timeout(Duration::from_secs(2)).build().unwrap();
-                    let mut lines = vec![Out::Ok("Daemon: ● RUNNING".into())];
+                    let mut lines = vec![Out::Ok("Saba-Core: ● RUNNING".into())];
                     lines.push(Out::Text("  Host:     127.0.0.1".into()));
                     lines.push(Out::Text(format!("  Port:     {}", port)));
                     lines.push(Out::Text("  Protocol: HTTP REST".into()));
@@ -98,7 +98,7 @@ pub(super) fn handle_daemon_select(app: &mut App, sel: usize) {
                     }
                     push_out(&buf, lines);
                 } else {
-                    push_out(&buf, vec![Out::Text("Daemon: ○ OFFLINE".into())]);
+                    push_out(&buf, vec![Out::Text("Saba-Core: ○ OFFLINE".into())]);
                 }
             });
         }

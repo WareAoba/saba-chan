@@ -143,6 +143,53 @@ impl Supervisor {
             }
         }
 
+        // ── 인스턴스 필수 익스텐션 검증 ──
+        // 기존 인스턴스의 required_extensions가 비어있으면 모듈의 install.requires_extensions에서 보충
+        let effective_required: Vec<String> = if instance.required_extensions.is_empty() {
+            if let Ok(loaded_module) = self.module_loader.get_module(module_name) {
+                let mut reqs = Vec::new();
+                if let Some(ref install) = loaded_module.metadata.install {
+                    for ext_id in &install.requires_extensions {
+                        reqs.push(ext_id.clone());
+                    }
+                }
+                reqs
+            } else {
+                Vec::new()
+            }
+        } else {
+            instance.required_extensions.clone()
+        };
+
+        if !effective_required.is_empty() {
+            if let Some(ref ext_mgr) = self.extension_manager {
+                let enabled = ext_mgr.read().await.enabled_set();
+                // missing_required_extensions를 인라인으로 계산 (effective_required 사용)
+                let missing: Vec<String> = effective_required.iter()
+                    .filter(|ext_id| !enabled.contains(ext_id.as_str()))
+                    .cloned()
+                    .collect();
+                if !missing.is_empty() {
+                    tracing::error!(
+                        "Instance '{}' requires extensions {:?} but they are not enabled",
+                        server_name, missing
+                    );
+                    return Ok(json!({
+                        "success": false,
+                        "error": "extension_required",
+                        "error_code": "extension_required",
+                        "instance_name": server_name,
+                        "missing_extensions": missing,
+                        "message": format!(
+                            "Instance '{}' requires extension(s) {} to start. Please enable them first.",
+                            server_name,
+                            missing.join(", ")
+                        )
+                    }));
+                }
+            }
+        }
+
         // ── Extension hook: server.pre_start ──
         if let Some(ref ext_mgr) = self.extension_manager {
             let instance_dir = self.instance_store.instance_dir(&instance.id);
@@ -516,7 +563,6 @@ impl Supervisor {
             .find(|i| i.name == server_name)
             .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
 
-        // ── Extension hook: server.status ──
         // ── Extension hook: server.status ──
         if let Some(ref ext_mgr) = self.extension_manager {
             let instance_dir = self.instance_store.instance_dir(&instance.id);

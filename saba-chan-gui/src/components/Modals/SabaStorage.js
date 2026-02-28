@@ -978,6 +978,29 @@ function ExtensionsTab() {
     const [confirmRemoveId, setConfirmRemoveId] = useState(null);
     const [removingIds, setRemovingIds] = useState(new Set());
     const [rescanning, setRescanning] = useState(false);
+    const [iconUrls, setIconUrls] = useState({}); // { extId: dataUrl }
+
+    // 아이콘 로드: has_icon이 true인 익스텐션의 icon.png를 data URL로 가져옴
+    useEffect(() => {
+        const toLoad = extensions.filter((e) => e.has_icon && !iconUrls[e.id]);
+        if (toLoad.length === 0) return;
+        let cancelled = false;
+        (async () => {
+            const results = {};
+            await Promise.all(
+                toLoad.map(async (ext) => {
+                    try {
+                        const url = await window.api?.extensionIcon?.(ext.id);
+                        if (url) results[ext.id] = url;
+                    } catch (_) {}
+                })
+            );
+            if (!cancelled && Object.keys(results).length > 0) {
+                setIconUrls((prev) => ({ ...prev, ...results }));
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [extensions]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // 익스텐션 디렉토리 재스캔 + 목록 갱신
     const handleRescan = useCallback(async () => {
@@ -1032,7 +1055,11 @@ function ExtensionsTab() {
                         return (
                             <div className="ss-card" key={ext.id}>
                                 <div className="ss-card-icon">
-                                    <Icon name="extension" size="md" />
+                                    {iconUrls[ext.id] ? (
+                                        <img src={iconUrls[ext.id]} alt="" />
+                                    ) : (
+                                        <Icon name="extension" size="md" />
+                                    )}
                                 </div>
                                 <div className="ss-card-body">
                                     <span className="ss-card-name">

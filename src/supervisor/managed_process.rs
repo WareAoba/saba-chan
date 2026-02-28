@@ -575,6 +575,10 @@ fn current_timestamp() -> u64 {
 mod tests {
     use super::*;
 
+    // ═══════════════════════════════════════════════════════
+    // LogBuffer 단위 테스트
+    // ═══════════════════════════════════════════════════════
+
     #[test]
     fn test_log_buffer_push_and_query() {
         let mut buffer = LogBuffer::new();
@@ -583,7 +587,6 @@ mod tests {
         buffer.push(LogSource::Stderr, "err 0".into(), LogLevel::Error);
 
         assert_eq!(buffer.lines.len(), 3);
-        // since_id = 0 → return lines with id > 0
         assert_eq!(buffer.get_since(0).len(), 2);
         assert_eq!(buffer.get_recent(2).len(), 2);
         assert_eq!(buffer.get_recent(100).len(), 3);
@@ -592,20 +595,100 @@ mod tests {
     #[test]
     fn test_log_buffer_ring() {
         let mut buffer = LogBuffer::new();
-        // Fill beyond capacity
         for i in 0..(DEFAULT_LOG_BUFFER + 100) {
             buffer.push(LogSource::Stdout, format!("line {}", i), LogLevel::Info);
         }
         assert_eq!(buffer.lines.len(), DEFAULT_LOG_BUFFER);
-        // First line should have been evicted
         assert!(buffer.lines.front().unwrap().id > 0);
     }
 
     #[test]
+    fn test_log_buffer_custom_capacity() {
+        let mut buffer = LogBuffer::with_capacity(5);
+        for i in 0..10 {
+            buffer.push(LogSource::Stdout, format!("line {}", i), LogLevel::Info);
+        }
+        assert_eq!(buffer.lines.len(), 5);
+        // 가장 오래된 것이 evict되었으므로 첫 라인은 "line 5"
+        assert_eq!(buffer.lines.front().unwrap().content, "line 5");
+        assert_eq!(buffer.lines.back().unwrap().content, "line 9");
+    }
+
+    #[test]
+    fn test_log_buffer_ids_are_monotonic() {
+        let mut buffer = LogBuffer::new();
+        let l1 = buffer.push(LogSource::Stdout, "a".into(), LogLevel::Info);
+        let l2 = buffer.push(LogSource::Stdout, "b".into(), LogLevel::Info);
+        let l3 = buffer.push(LogSource::Stdout, "c".into(), LogLevel::Info);
+        assert!(l1.id < l2.id, "IDs must be monotonically increasing");
+        assert!(l2.id < l3.id, "IDs must be monotonically increasing");
+    }
+
+    #[test]
+    fn test_log_buffer_get_since_returns_after_id() {
+        let mut buffer = LogBuffer::new();
+        let l1 = buffer.push(LogSource::Stdout, "first".into(), LogLevel::Info);
+        let _l2 = buffer.push(LogSource::Stdout, "second".into(), LogLevel::Info);
+        let _l3 = buffer.push(LogSource::Stdout, "third".into(), LogLevel::Info);
+
+        let since = buffer.get_since(l1.id);
+        assert_eq!(since.len(), 2, "Should return 2 lines after id {}", l1.id);
+        assert_eq!(since[0].content, "second");
+        assert_eq!(since[1].content, "third");
+    }
+
+    #[test]
+    fn test_log_buffer_get_since_future_id_returns_empty() {
+        let mut buffer = LogBuffer::new();
+        buffer.push(LogSource::Stdout, "a".into(), LogLevel::Info);
+        let since = buffer.get_since(999999);
+        assert!(since.is_empty(), "Future ID should return no results");
+    }
+
+    #[test]
+    fn test_log_buffer_get_recent_zero() {
+        let mut buffer = LogBuffer::new();
+        buffer.push(LogSource::Stdout, "a".into(), LogLevel::Info);
+        let recent = buffer.get_recent(0);
+        assert!(recent.is_empty());
+    }
+
+    #[test]
+    fn test_log_buffer_empty_queries() {
+        let buffer = LogBuffer::new();
+        assert!(buffer.get_since(0).is_empty());
+        assert!(buffer.get_recent(10).is_empty());
+    }
+
+    #[test]
+    fn test_log_buffer_source_and_level_preserved() {
+        let mut buffer = LogBuffer::new();
+        let l1 = buffer.push(LogSource::Stdout, "out".into(), LogLevel::Info);
+        let l2 = buffer.push(LogSource::Stderr, "err".into(), LogLevel::Error);
+        let l3 = buffer.push(LogSource::System, "sys".into(), LogLevel::Warn);
+
+        assert!(matches!(l1.source, LogSource::Stdout));
+        assert!(matches!(l2.source, LogSource::Stderr));
+        assert!(matches!(l3.source, LogSource::System));
+        assert_eq!(l1.level, LogLevel::Info);
+        assert_eq!(l2.level, LogLevel::Error);
+        assert_eq!(l3.level, LogLevel::Warn);
+    }
+
+    #[test]
+    fn test_log_buffer_timestamp_is_set() {
+        let mut buffer = LogBuffer::new();
+        let line = buffer.push(LogSource::Stdout, "hello".into(), LogLevel::Info);
+        assert!(line.timestamp > 0, "Timestamp should be valid Unix epoch");
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // LogLevel 파싱 테스트
+    // ═══════════════════════════════════════════════════════
+
+    #[test]
     fn test_parse_log_level_with_pattern() {
-        // Minecraft-style log pattern
         let mc_pattern = Regex::new(r"/(?P<level>INFO|WARN|ERROR|DEBUG|FATAL)\]").unwrap();
-        
         assert_eq!(
             parse_log_level("[12:00:00] [Server thread/INFO]: Done (5.123s)!", Some(&mc_pattern)),
             LogLevel::Info
@@ -622,7 +705,6 @@ mod tests {
             parse_log_level("[12:00:00] [Server thread/DEBUG]: Reloading ResourceManager", Some(&mc_pattern)),
             LogLevel::Debug
         );
-        // No match → default Info
         assert_eq!(
             parse_log_level("Some random output", Some(&mc_pattern)),
             LogLevel::Info
@@ -630,15 +712,70 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_log_level_fatal_maps_to_error() {
+        let pattern = Regex::new(r"(?P<level>INFO|WARN|ERROR|DEBUG|FATAL)").unwrap();
+        assert_eq!(
+            parse_log_level("FATAL: out of memory", Some(&pattern)),
+            LogLevel::Error
+        );
+    }
+
+    #[test]
+    fn test_parse_log_level_warning_variant() {
+        let pattern = Regex::new(r"(?P<level>INFO|WARNING|ERROR|DEBUG)").unwrap();
+        assert_eq!(
+            parse_log_level("WARNING: disk nearly full", Some(&pattern)),
+            LogLevel::Warn
+        );
+    }
+
+    #[test]
+    fn test_parse_log_level_trace_maps_to_debug() {
+        let pattern = Regex::new(r"(?P<level>INFO|WARN|ERROR|DEBUG|TRACE)").unwrap();
+        assert_eq!(
+            parse_log_level("TRACE: entering function", Some(&pattern)),
+            LogLevel::Debug
+        );
+    }
+
+    #[test]
     fn test_parse_log_level_without_pattern() {
-        // Without pattern, everything defaults to Info
         assert_eq!(parse_log_level("[12:00:00] [Server thread/ERROR]: err", None), LogLevel::Info);
         assert_eq!(parse_log_level("Some random output", None), LogLevel::Info);
     }
 
+    // ═══════════════════════════════════════════════════════
+    // ManagedProcessStore 테스트
+    // ═══════════════════════════════════════════════════════
+
     #[tokio::test]
-    async fn test_managed_process_store() {
+    async fn test_managed_process_store_empty() {
         let store = ManagedProcessStore::new();
         assert!(store.get("test").await.is_none());
+        assert!(store.running_instance_ids().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_managed_process_store_remove_returns_process() {
+        let store = ManagedProcessStore::new();
+        // 빈 상태에서 remove → None
+        assert!(store.remove("nonexistent").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_managed_process_store_cleanup_dead_on_empty() {
+        let store = ManagedProcessStore::new();
+        // 빈 상태에서 cleanup → 패닉 없이 정상
+        store.cleanup_dead().await;
+        assert!(store.running_instance_ids().await.is_empty());
+    }
+
+    #[test]
+    fn test_current_timestamp_is_reasonable() {
+        let ts = current_timestamp();
+        // 2024-01-01 이후 (Unix epoch 1704067200)
+        assert!(ts > 1_704_067_200, "Timestamp seems too old: {}", ts);
+        // 2050-01-01 이전 (Unix epoch 2524608000)
+        assert!(ts < 2_524_608_000, "Timestamp seems too new: {}", ts);
     }
 }

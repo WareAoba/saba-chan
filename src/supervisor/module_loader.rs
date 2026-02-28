@@ -37,6 +37,10 @@ pub struct ModuleMetadata {
     pub syntax_highlight: Option<SyntaxHighlight>,  // 콘솔 구문 하이라이팅 규칙
     #[serde(default)]
     pub install: Option<ModuleInstallConfig>,  // [install] 설치 방식 (steamcmd 등)
+    /// npm package.json 스타일 의존성: 이 모듈이 요구하는 다른 컴포넌트의 최소 버전
+    /// 예: { "saba-core": ">=0.3.0", "ext-steamcmd": ">=1.0.0" }
+    #[serde(default)]
+    pub dependencies: std::collections::HashMap<String, String>,
     /// [extension.*] 섹션들을 범용으로 저장 (예: extensions["<ext_id>"] = {...})
     #[serde(default)]
     pub extensions: std::collections::HashMap<String, serde_json::Value>,
@@ -97,6 +101,37 @@ impl ModuleMetadata {
     #[allow(dead_code)]
     pub fn has_extension_config(&self, ext_name: &str) -> bool {
         self.extensions.contains_key(ext_name)
+    }
+
+    /// 컴포넌트 버전 의존성을 확인합니다.
+    /// `installed_versions`: 컴포넌트 키 → 설치된 버전 (예: "saba-core" → "0.3.0")
+    /// 미충족 의존성 목록을 (컴포넌트키, 요구버전, 설치버전Option) 튜플로 반환합니다.
+    #[allow(dead_code)]
+    pub fn check_dependencies(
+        &self,
+        installed_versions: &std::collections::HashMap<String, String>,
+    ) -> Vec<(String, String, Option<String>)> {
+        use saba_chan_updater_lib::version::SemVer;
+
+        self.dependencies.iter().filter_map(|(component_key, min_version_str)| {
+            let min_clean = min_version_str.trim_start_matches(">=").trim();
+            let installed = installed_versions.get(component_key);
+            let satisfied = installed.is_some_and(|v| {
+                match (SemVer::parse(v), SemVer::parse(min_clean)) {
+                    (Some(installed_v), Some(required_v)) => installed_v >= required_v,
+                    _ => false,
+                }
+            });
+            if satisfied {
+                None
+            } else {
+                Some((
+                    component_key.clone(),
+                    min_version_str.clone(),
+                    installed.cloned(),
+                ))
+            }
+        }).collect()
     }
 }
 
@@ -222,6 +257,10 @@ struct ModuleSection {
     icon: Option<String>,
     #[serde(default)]
     log_pattern: Option<String>,
+    /// 컴포넌트 의존성 — 이 모듈이 요구하는 다른 컴포넌트의 최소 버전
+    /// 예: { "saba-core" = ">=0.3.0", "ext-steamcmd" = ">=1.0.0" }
+    #[serde(default)]
+    dependencies: std::collections::HashMap<String, String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -322,6 +361,10 @@ struct InstallSectionToml {
     download_url: Option<String>,
     #[serde(default)]
     beta: Option<String>,
+    /// 이 설치 방식이 요구하는 익스텐션 ID 목록
+    /// 예: requires_extensions = ["steamcmd"]
+    #[serde(default)]
+    requires_extensions: Vec<String>,
 }
 
 /// module.toml [docker] 섹션 — 컨테이너 격리 익스텐션 설정
@@ -371,6 +414,10 @@ pub struct ModuleInstallConfig {
     pub download_url: Option<String>,
     #[serde(default)]
     pub beta: Option<String>,
+    /// 이 설치 방식이 요구하는 익스텐션 ID 목록
+    /// 예: ["steamcmd"]
+    #[serde(default)]
+    pub requires_extensions: Vec<String>,
 }
 
 fn default_true_mod() -> bool { true }
@@ -545,6 +592,7 @@ impl ModuleToml {
             entry: self.module.entry,
             icon: self.module.icon,
             log_pattern: self.module.log_pattern,
+            dependencies: self.module.dependencies,
             process_name: self.config.as_ref().and_then(|c| c.process_name.clone()),
             default_port: self.config.as_ref().and_then(|c| c.default_port),
             executable_path: self.config.as_ref().and_then(|c| c.executable_path.clone()),
@@ -564,6 +612,7 @@ impl ModuleToml {
                 platform: i.platform,
                 download_url: i.download_url,
                 beta: i.beta,
+                requires_extensions: i.requires_extensions,
             }),
             extensions: {
                 let mut ext_map = std::collections::HashMap::new();
@@ -1028,6 +1077,155 @@ entry = "lifecycle.py"
 "#;
         let meta = parse_module_toml(toml).unwrap();
         assert!(meta.cmd_patterns.is_empty());
+    }
+
+    // ── 컴포넌트 의존성(dependencies) 테스트 ──
+
+    #[test]
+    fn test_parse_module_toml_dependencies_field() {
+        let toml = r#"
+[module]
+name = "test-game"
+version = "1.0.0"
+entry = "lifecycle.py"
+
+[module.dependencies]
+"saba-core" = ">=0.3.0"
+"ext-steamcmd" = ">=1.0.0"
+"#;
+        let meta = parse_module_toml(toml).unwrap();
+        assert_eq!(meta.dependencies.len(), 2);
+        assert_eq!(meta.dependencies.get("saba-core").unwrap(), ">=0.3.0");
+        assert_eq!(meta.dependencies.get("ext-steamcmd").unwrap(), ">=1.0.0");
+    }
+
+    #[test]
+    fn test_parse_module_toml_dependencies_empty_by_default() {
+        let toml = r#"
+[module]
+name = "test-game"
+version = "1.0.0"
+entry = "lifecycle.py"
+"#;
+        let meta = parse_module_toml(toml).unwrap();
+        assert!(meta.dependencies.is_empty());
+    }
+
+    #[test]
+    fn test_module_check_dependencies_all_satisfied() {
+        let toml = r#"
+[module]
+name = "test-game"
+version = "1.0.0"
+entry = "lifecycle.py"
+
+[module.dependencies]
+"saba-core" = ">=0.3.0"
+"ext-steamcmd" = ">=1.0.0"
+"#;
+        let meta = parse_module_toml(toml).unwrap();
+        let mut installed = std::collections::HashMap::new();
+        installed.insert("saba-core".to_string(), "0.5.0".to_string());
+        installed.insert("ext-steamcmd".to_string(), "1.2.0".to_string());
+
+        let issues = meta.check_dependencies(&installed);
+        assert!(issues.is_empty(), "All dependencies should be satisfied");
+    }
+
+    #[test]
+    fn test_module_check_dependencies_version_too_low() {
+        let toml = r#"
+[module]
+name = "test-game"
+version = "1.0.0"
+entry = "lifecycle.py"
+
+[module.dependencies]
+"saba-core" = ">=0.3.0"
+"#;
+        let meta = parse_module_toml(toml).unwrap();
+        let mut installed = std::collections::HashMap::new();
+        installed.insert("saba-core".to_string(), "0.2.0".to_string());
+
+        let issues = meta.check_dependencies(&installed);
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].0, "saba-core");
+        assert_eq!(issues[0].1, ">=0.3.0");
+        assert_eq!(issues[0].2.as_deref(), Some("0.2.0"));
+    }
+
+    #[test]
+    fn test_module_check_dependencies_component_missing() {
+        let toml = r#"
+[module]
+name = "test-game"
+version = "1.0.0"
+entry = "lifecycle.py"
+
+[module.dependencies]
+"ext-docker" = ">=1.0.0"
+"#;
+        let meta = parse_module_toml(toml).unwrap();
+        let installed = std::collections::HashMap::new(); // empty
+
+        let issues = meta.check_dependencies(&installed);
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].0, "ext-docker");
+        assert!(issues[0].2.is_none(), "Component not installed → None");
+    }
+
+    #[test]
+    fn test_module_check_dependencies_exact_version_boundary() {
+        let toml = r#"
+[module]
+name = "test-game"
+version = "1.0.0"
+entry = "lifecycle.py"
+
+[module.dependencies]
+"saba-core" = ">=0.3.0"
+"#;
+        let meta = parse_module_toml(toml).unwrap();
+        let mut installed = std::collections::HashMap::new();
+        installed.insert("saba-core".to_string(), "0.3.0".to_string()); // exactly matches
+
+        let issues = meta.check_dependencies(&installed);
+        assert!(issues.is_empty(), "Exact version match should satisfy >=");
+    }
+
+    #[test]
+    fn test_module_check_dependencies_cross_type() {
+        let toml = r#"
+[module]
+name = "palworld"
+version = "1.0.0"
+entry = "lifecycle.py"
+
+[module.dependencies]
+"saba-core" = ">=0.3.0"
+"gui" = ">=0.2.0"
+"ext-steamcmd" = ">=1.0.0"
+"discord_bot" = ">=0.1.0"
+"#;
+        let meta = parse_module_toml(toml).unwrap();
+        let mut installed = std::collections::HashMap::new();
+        installed.insert("saba-core".to_string(), "0.5.0".to_string());
+        installed.insert("gui".to_string(), "0.3.0".to_string());
+        installed.insert("ext-steamcmd".to_string(), "1.0.0".to_string());
+        installed.insert("discord_bot".to_string(), "0.1.0".to_string());
+
+        let issues = meta.check_dependencies(&installed);
+        assert!(issues.is_empty(), "All cross-type dependencies should be satisfied");
+
+        // Now test with one missing
+        let mut partial = std::collections::HashMap::new();
+        partial.insert("saba-core".to_string(), "0.5.0".to_string());
+        partial.insert("gui".to_string(), "0.1.0".to_string()); // too low
+        partial.insert("ext-steamcmd".to_string(), "1.0.0".to_string());
+        // discord_bot missing entirely
+
+        let issues = meta.check_dependencies(&partial);
+        assert_eq!(issues.len(), 2, "gui too low + discord_bot missing");
     }
 }
 

@@ -13,11 +13,9 @@ import Icon from '../Icon';
 export function AddInstanceNewServer({
     extensions,
     servers,
-    extensionsPath,
-    settingsPath,
-    onextensionsPathChange,
     onRefreshextensions,
     onAddServer,
+    onStepChange,
     onBack,
     onClose,
 }) {
@@ -27,8 +25,6 @@ export function AddInstanceNewServer({
     const [newServerName, setNewServerName] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [useContainerIsolation, setUseContainerIsolation] = useState(false);
-    const [showAdvanced, setShowAdvanced] = useState(false);
-
     const nameInputRef = useRef(null);
 
     // 모듈별 네이티브(비-도커) 인스턴스 존재 여부 맵
@@ -59,13 +55,16 @@ export function AddInstanceNewServer({
         }
     }, [step]);
 
+    useEffect(() => {
+        onStepChange?.(step);
+    }, [step, onStepChange]);
+
     // configure → select-game 으로 돌아가기
     const handleBackToSelect = () => {
         setStep('select-game');
         setSelectedExtension('');
         setNewServerName('');
         setUseContainerIsolation(false);
-        setShowAdvanced(false);
     };
 
     const handleSubmit = async () => {
@@ -99,101 +98,64 @@ export function AddInstanceNewServer({
     // ──────────────────────────────────────────
     if (step === 'select-game') {
         return (
-            <>
+            <div className="add-instance-stage" key="new-select-game">
                 <div className="modal-header add-server-header">
-                    <div>
+                    <div className="as-header-row">
                         <button className="ai-back-btn" type="button" onClick={onBack}>
                             <Icon name="chevronLeft" size="sm" />
                         </button>
-                        <h3>{t('add_server_modal.title')}</h3>
-                        <p className="add-server-subtitle">{t('add_server_modal.select_game_subtitle')}</p>
+                        <div className="as-header-copy">
+                            <h3>{t('add_server_modal.title')}</h3>
+                            <p className="add-server-subtitle">{t('add_server_modal.select_game_subtitle')}</p>
+                        </div>
                     </div>
                 </div>
 
                 <div className="modal-body add-server-body">
-                    {extensions.length === 0 ? (
-                        <p className="as-empty-hint">
-                            <Icon name="alertCircle" size="sm" />
-                            {t('add_server_modal.no_extensions')}
-                        </p>
-                    ) : (
-                        <div className="as-game-grid">
-                            {extensions.map((m) => {
-                                const displayName = t(`mod_${m.name}:module.display_name`, {
-                                    defaultValue: m.game_name || m.name,
-                                });
-                                const hasNative = !!nativeInstanceMap[m.name];
-                                return (
-                                    <button
-                                        key={m.name}
-                                        className={`as-game-card${hasNative ? ' as-game-card--has-native' : ''}`}
-                                        type="button"
-                                        onClick={() => handleGameSelect(m.name)}
-                                    >
-                                        <div className="as-game-card-icon">
-                                            {m.icon ? (
-                                                <img src={m.icon} alt={displayName} />
-                                            ) : (
-                                                <div className="as-game-card-icon-placeholder">
-                                                    <Icon name="gamepad" size="lg" />
+                    <div className="as-body-stack">
+                        {extensions.length === 0 ? (
+                            <p className="as-empty-hint">
+                                <Icon name="alertCircle" size="sm" />
+                                {t('add_server_modal.no_extensions')}
+                            </p>
+                        ) : (
+                            <div className="as-grid-wrap">
+                                <div className="as-game-grid">
+                                    {extensions.map((m) => {
+                                        const displayName = t(`mod_${m.name}:module.display_name`, {
+                                            defaultValue: m.game_name || m.name,
+                                        });
+                                        const hasNative = !!nativeInstanceMap[m.name];
+                                        return (
+                                            <button
+                                                key={m.name}
+                                                className={`as-game-card${hasNative ? ' as-game-card--has-native' : ''}`}
+                                                type="button"
+                                                onClick={() => handleGameSelect(m.name)}
+                                            >
+                                                <div className="as-game-card-icon">
+                                                    {m.icon ? (
+                                                        <img src={m.icon} alt={displayName} />
+                                                    ) : (
+                                                        <div className="as-game-card-icon-placeholder">
+                                                            <Icon name="gamepad" size="lg" />
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            )}
-                                        </div>
-                                        <span className="as-game-card-name">{displayName}</span>
-                                        <span className="as-game-card-version">v{m.version}</span>
-                                        {hasNative && (
-                                            <span className="as-game-card-badge">
-                                                <Icon name="check" size="xs" /> {t('add_server_modal.native_exists')}
-                                            </span>
-                                        )}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    )}
-
-                    {/* 고급 설정 (모듈 디렉토리 변경) */}
-                    <div className="as-divider" />
-                    <button
-                        className="as-advanced-toggle"
-                        type="button"
-                        onClick={() => setShowAdvanced((prev) => !prev)}
-                    >
-                        <Icon name={showAdvanced ? 'chevronDown' : 'chevronRight'} size="sm" />
-                        {t('add_server_modal.advanced_settings')}
-                    </button>
-
-                    {showAdvanced && (
-                        <div className="as-advanced-panel">
-                            <label className="as-label">
-                                <Icon name="folder" size="sm" />
-                                {t('add_server_modal.modules_directory')}
-                            </label>
-                            <div className="as-path-row">
-                                <input
-                                    className="as-input as-input-mono"
-                                    type="text"
-                                    value={extensionsPath}
-                                    onChange={(e) => onextensionsPathChange(e.target.value)}
-                                    placeholder="extensions/"
-                                />
-                                <button
-                                    className="as-btn-icon"
-                                    onClick={onRefreshextensions}
-                                    title={t('add_server_modal.reload_extensions')}
-                                >
-                                    <Icon name="refresh" size="sm" />
-                                </button>
+                                                <span className="as-game-card-name">{displayName}</span>
+                                                <span className="as-game-card-version">v{m.version}</span>
+                                                {hasNative && (
+                                                    <span className="as-game-card-badge">
+                                                        <Icon name="check" size="xs" /> {t('add_server_modal.native_exists')}
+                                                    </span>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
-                            <small className="as-hint">{t('add_server_modal.place_modules_hint')}</small>
-                            {settingsPath && (
-                                <small className="as-hint as-settings-path">
-                                    <Icon name="database" size="xs" /> {t('add_server_modal.settings_path')}{' '}
-                                    {settingsPath}
-                                </small>
-                            )}
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
 
                 <div className="modal-footer add-server-footer">
@@ -201,7 +163,7 @@ export function AddInstanceNewServer({
                         {t('modals.cancel')}
                     </button>
                 </div>
-            </>
+            </div>
         );
     }
 
@@ -216,93 +178,97 @@ export function AddInstanceNewServer({
         : selectedExtension;
 
     return (
-        <>
+        <div className="add-instance-stage" key="new-configure">
             {/* ── Header ── */}
             <div className="modal-header add-server-header">
-                <div>
+                <div className="as-header-row">
                     <button className="ai-back-btn" type="button" onClick={handleBackToSelect} disabled={submitting}>
                         <Icon name="chevronLeft" size="sm" />
                     </button>
-                    <h3>{t('add_server_modal.configure_title')}</h3>
-                    <p className="add-server-subtitle">
-                        {t('add_server_modal.configure_subtitle')}
-                    </p>
+                    <div className="as-header-copy">
+                        <h3>{t('add_server_modal.configure_title')}</h3>
+                        <p className="add-server-subtitle">
+                            {t('add_server_modal.configure_subtitle')}
+                        </p>
+                    </div>
                 </div>
             </div>
 
             {/* ── Body ── */}
             <div className="modal-body add-server-body">
-                {/* 선택된 게임 요약 */}
-                <div className="as-selected-game">
-                    <div className="as-selected-game-icon">
-                        {selectedModule?.icon ? (
-                            <img src={selectedModule.icon} alt={selectedDisplayName} />
-                        ) : (
-                            <div className="as-game-card-icon-placeholder">
-                                <Icon name="gamepad" size="md" />
-                            </div>
-                        )}
+                <div className="as-body-stack">
+                    {/* 선택된 게임 요약 */}
+                    <div className="as-selected-game">
+                        <div className="as-selected-game-icon">
+                            {selectedModule?.icon ? (
+                                <img src={selectedModule.icon} alt={selectedDisplayName} />
+                            ) : (
+                                <div className="as-game-card-icon-placeholder">
+                                    <Icon name="gamepad" size="md" />
+                                </div>
+                            )}
+                        </div>
+                        <div className="as-selected-game-info">
+                            <span className="as-selected-game-name">{selectedDisplayName}</span>
+                            <span className="as-selected-game-version">v{selectedModule?.version}</span>
+                        </div>
+                        <button
+                            className="as-change-game-btn"
+                            type="button"
+                            onClick={handleBackToSelect}
+                            disabled={submitting}
+                        >
+                            {t('add_server_modal.change_game')}
+                        </button>
                     </div>
-                    <div className="as-selected-game-info">
-                        <span className="as-selected-game-name">{selectedDisplayName}</span>
-                        <span className="as-selected-game-version">v{selectedModule?.version}</span>
-                    </div>
-                    <button
-                        className="as-change-game-btn"
-                        type="button"
-                        onClick={handleBackToSelect}
-                        disabled={submitting}
-                    >
-                        {t('add_server_modal.change_game')}
-                    </button>
-                </div>
 
-                {/* 인스턴스 이름 */}
-                <div className="as-section">
-                    <label className="as-label">
-                        <Icon name="server" size="sm" />
-                        {t('add_server_modal.server_name')}
-                    </label>
-                    <input
-                        ref={nameInputRef}
-                        className="as-input"
-                        type="text"
-                        placeholder={t('add_server_modal.server_name_placeholder')}
-                        value={newServerName}
-                        onChange={(e) => setNewServerName(e.target.value)}
-                        disabled={submitting}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter' && canSubmit) handleSubmit();
+                    {/* 인스턴스 이름 */}
+                    <div className="as-section as-section-card">
+                        <label className="as-label">
+                            <Icon name="server" size="sm" />
+                            {t('add_server_modal.server_name')}
+                        </label>
+                        <input
+                            ref={nameInputRef}
+                            className="as-input"
+                            type="text"
+                            placeholder={t('add_server_modal.server_name_placeholder')}
+                            value={newServerName}
+                            onChange={(e) => setNewServerName(e.target.value)}
+                            disabled={submitting}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && canSubmit) handleSubmit();
+                            }}
+                        />
+                    </div>
+
+                    {/* 익스텐션 슬롯 — 컨테이너 격리 토글 등 */}
+                    <ExtensionSlot
+                        slotId="AddServer.options"
+                        options={{ use_container: useContainerIsolation }}
+                        onOptionsChange={(opts) => {
+                            if (opts.use_container !== undefined) setUseContainerIsolation(opts.use_container);
                         }}
+                        t={t}
                     />
-                </div>
 
-                {/* 익스텐션 슬롯 — 컨테이너 격리 토글 등 */}
-                <ExtensionSlot
-                    slotId="AddServer.options"
-                    options={{ use_container: useContainerIsolation }}
-                    onOptionsChange={(opts) => {
-                        if (opts.use_container !== undefined) setUseContainerIsolation(opts.use_container);
-                    }}
-                    t={t}
-                />
+                    {/* 네이티브 인스턴스 중복 경고 */}
+                    {nativeInstanceMap[selectedExtension] && !useContainerIsolation && (
+                        <p className="as-native-limit-warning">
+                            <Icon name="alertTriangle" size="sm" />
+                            {t('add_server_modal.native_limit_warning', {
+                                existing: nativeInstanceMap[selectedExtension],
+                                defaultValue: `A native instance '{{existing}}' already exists for this module. Enable container isolation to create another instance.`,
+                            })}
+                        </p>
+                    )}
 
-                {/* 네이티브 인스턴스 중복 경고 */}
-                {nativeInstanceMap[selectedExtension] && !useContainerIsolation && (
-                    <p className="as-native-limit-warning">
-                        <Icon name="alertTriangle" size="sm" />
-                        {t('add_server_modal.native_limit_warning', {
-                            existing: nativeInstanceMap[selectedExtension],
-                            defaultValue: `A native instance '{{existing}}' already exists for this module. Enable container isolation to create another instance.`,
-                        })}
+                    {/* 프로비저닝 안내 */}
+                    <p className="as-provision-hint">
+                        <Icon name="info" size="sm" />
+                        {t('add_server_modal.provision_hint')}
                     </p>
-                )}
-
-                {/* 프로비저닝 안내 */}
-                <p className="as-provision-hint">
-                    <Icon name="info" size="sm" />
-                    {t('add_server_modal.provision_hint')}
-                </p>
+                </div>
             </div>
 
             {/* ── Footer ── */}
@@ -322,6 +288,6 @@ export function AddInstanceNewServer({
                     )}
                 </button>
             </div>
-        </>
+        </div>
     );
 }

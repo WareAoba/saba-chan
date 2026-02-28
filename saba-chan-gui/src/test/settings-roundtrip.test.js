@@ -53,7 +53,7 @@ beforeEach(() => {
 describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => {
     // ── 저장 시 모든 7 필드가 payload에 포함되는지 검증 ──
 
-    it('save() payload에 GUI 5필드 + discord 2필드 = 총 7필드 포함', async () => {
+    it('save() payload에 GUI 6필드 + discord 2필드 = 총 8필드 포함', async () => {
         mockApi();
         const _store = useSettingsStore.getState();
         // Prepare: settingsPath 필요
@@ -63,7 +63,6 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
             refreshInterval: 9999,
             ipcPort: 11111,
             consoleBufferSize: 500,
-            modulesPath: 'X:\\mods',
         });
         useSettingsStore.getState()._setDiscordFields('tok-abc', true);
 
@@ -77,7 +76,6 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
             consoleBufferSize: 500,
             autoGeneratePasswords: true,
             portConflictCheck: true,
-            modulesPath: 'X:\\mods',
             discordToken: 'tok-abc',
             discordAutoStart: true,
         });
@@ -90,7 +88,7 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
         { field: 'refreshInterval', saved: 7777, defaultVal: 2000 },
         { field: 'ipcPort', saved: 33333, defaultVal: 57474 },
         { field: 'consoleBufferSize', saved: 100, defaultVal: 2000 },
-        { field: 'modulesPath', saved: 'Z:\\custom\\mods', defaultVal: '' },
+        // modulesPath는 설정이 아닌 고정 경로이므로 save 대상에서 제외
     ];
 
     it.each(guiFields)('GUI 필드 "$field": 저장($saved) → 로드 → store에 복원', async ({ field, saved }) => {
@@ -193,9 +191,9 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
         expect(useSettingsStore.getState()._discordAutoStart).toBe(true);
     });
 
-    // ── 전체 7필드 동시 라운드트립 ──
+    // ── 전체 필드 동시 라운드트립 ──
 
-    it('전체 7필드 동시 라운드트립: 커스텀 값 → save → reset → load → 전부 복원', async () => {
+    it('전체 필드 동시 라운드트립: 커스텀 값 → save → reset → load → 전부 복원', async () => {
         const custom = {
             autoRefresh: false,
             refreshInterval: 5000,
@@ -203,7 +201,6 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
             consoleBufferSize: 4000,
             autoGeneratePasswords: true,
             portConflictCheck: true,
-            modulesPath: 'D:\\mods',
             discordToken: 'roundtrip-token',
             discordAutoStart: true,
         };
@@ -221,12 +218,11 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
             refreshInterval: custom.refreshInterval,
             ipcPort: custom.ipcPort,
             consoleBufferSize: custom.consoleBufferSize,
-            modulesPath: custom.modulesPath,
         });
         useSettingsStore.getState()._setDiscordFields(custom.discordToken, custom.discordAutoStart);
         await useSettingsStore.getState().save();
 
-        // Verify payload 1:1
+        // Verify payload (modulesPath는 고정 경로이므로 save에 포함되지 않음)
         expect(captured).toEqual(custom);
 
         // Reset
@@ -254,7 +250,6 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
         expect(s.refreshInterval).toBe(custom.refreshInterval);
         expect(s.ipcPort).toBe(custom.ipcPort);
         expect(s.consoleBufferSize).toBe(custom.consoleBufferSize);
-        expect(s.modulesPath).toBe(custom.modulesPath);
         expect(s._discordToken).toBe(custom.discordToken);
         expect(s._discordAutoStart).toBe(custom.discordAutoStart);
 
@@ -279,7 +274,6 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
         expect(s.refreshInterval).toBe(2000);
         expect(s.ipcPort).toBe(57474);
         expect(s.consoleBufferSize).toBe(2000);
-        expect(s.modulesPath).toBe('');
     });
 
     // ── settingsPath 미초기화 시 save 스킵 ──
@@ -645,7 +639,6 @@ describe('saveCurrentSettings 통합 (settings + botConfig 동시 저장)', () =
             refreshInterval: 3000,
             ipcPort: 9999,
             consoleBufferSize: 1000,
-            modulesPath: 'C:\\m',
         });
         useDiscordStore.setState({
             discordToken: 'full-tok',
@@ -673,7 +666,6 @@ describe('saveCurrentSettings 통합 (settings + botConfig 동시 저장)', () =
             consoleBufferSize: 1000,
             autoGeneratePasswords: true,
             portConflictCheck: true,
-            modulesPath: 'C:\\m',
             discordToken: 'full-tok',
             discordAutoStart: true,
         });
@@ -713,7 +705,6 @@ describe('saveCurrentSettings 통합 (settings + botConfig 동시 저장)', () =
             refreshInterval: 4444,
             ipcPort: 8888,
             consoleBufferSize: 6000,
-            modulesPath: 'E:\\ext',
         });
         useDiscordStore.setState({
             discordToken: 'rt-token',
@@ -763,7 +754,7 @@ describe('saveCurrentSettings 통합 (settings + botConfig 동시 저장)', () =
         expect(s.refreshInterval).toBe(4444);
         expect(s.ipcPort).toBe(8888);
         expect(s.consoleBufferSize).toBe(6000);
-        expect(s.modulesPath).toBe('E:\\ext');
+
         expect(s._discordToken).toBe('rt-token');
         expect(s._discordAutoStart).toBe(true);
 
@@ -799,7 +790,6 @@ describe('자동저장 감시키 완전성', () => {
             refreshInterval: 2000,
             ipcPort: 57474,
             consoleBufferSize: 2000,
-            modulesPath: '',
         });
 
         // Change refreshInterval

@@ -47,5 +47,9 @@
     "connection_refused": "Verbindung zum Daemon nicht möglich. Bitte überprüfen Sie, ob der Daemon läuft",
     "timeout": "Anfrage-Zeitüberschreitung: Server antwortete nicht",
     "not_found": "Server nicht gefunden. Bitte überprüfen Sie die Netzwerkeinstellungen"
+  },
+  "port_conflict": {
+    "force_stop_title": "Portkonflikt — {{name}} gestoppt",
+    "force_stop_body": "{{stopped}} wurde erzwungen gestoppt, da Port {{port}} mit {{existing}} kollidiert"
   }
 }

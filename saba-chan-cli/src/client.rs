@@ -1,5 +1,32 @@
 use serde_json::Value;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
+
+/// IPC 토큰 파일 경로 (데몬과 동일한 로직)
+fn ipc_token_path() -> String {
+    std::env::var("SABA_TOKEN_PATH").unwrap_or_else(|_| {
+        #[cfg(target_os = "windows")]
+        {
+            std::env::var("APPDATA")
+                .map(|appdata| format!("{}\\saba-chan\\.ipc_token", appdata))
+                .unwrap_or_else(|_| "config/.ipc_token".to_string())
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            std::env::var("HOME")
+                .map(|home| format!("{}/.config/saba-chan/.ipc_token", home))
+                .unwrap_or_else(|_| "config/.ipc_token".to_string())
+        }
+    })
+}
+
+/// IPC 토큰 파일에서 토큰 읽기
+fn read_ipc_token() -> Option<String> {
+    std::fs::read_to_string(ipc_token_path())
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
 
 #[derive(Debug, Clone)]
 pub struct DaemonClient {
@@ -7,6 +34,8 @@ pub struct DaemonClient {
     /// 장시간 작업용 (install, managed start 등)
     long_client: reqwest::Client,
     base_url: String,
+    /// IPC 인증 토큰 (데몬이 .ipc_token 파일에 저장, 401 시 자동 갱신)
+    token: Arc<RwLock<Option<String>>>,
 }
 
 #[allow(dead_code)]
@@ -26,72 +55,100 @@ impl DaemonClient {
             .build()
             .expect("Failed to create long-timeout HTTP client");
 
-        Self { client, long_client, base_url }
+        let token = read_ipc_token();
+
+        Self { client, long_client, base_url, token: Arc::new(RwLock::new(token)) }
+    }
+
+    // ─── 토큰 관리 ───
+
+    fn get_token(&self) -> Option<String> {
+        self.token.read().ok().and_then(|t| t.clone())
+    }
+
+    /// 토큰 파일을 다시 읽어 캐시 갱신 (데몬 재시작 시 토큰이 바뀜)
+    fn refresh_token(&self) -> Option<String> {
+        let new_token = read_ipc_token();
+        if let Ok(mut t) = self.token.write() {
+            *t = new_token.clone();
+        }
+        new_token
+    }
+
+    // ─── 중앙 HTTP 실행기 (토큰 주입 + 401 재시도) ───
+
+    async fn request(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&Value>,
+        use_long: bool,
+    ) -> anyhow::Result<Value> {
+        let url = format!("{}{}", self.base_url, path);
+        let client = if use_long { &self.long_client } else { &self.client };
+
+        // 1차 시도
+        let response = {
+            let mut builder = client.request(method.clone(), &url);
+            if let Some(token) = self.get_token() {
+                builder = builder.header("X-Saba-Token", &token);
+            }
+            if let Some(b) = body {
+                builder = builder.json(b);
+            }
+            builder.send().await?
+        };
+
+        // 401 → 토큰 갱신 후 1회 재시도
+        if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+            if let Some(new_token) = self.refresh_token() {
+                let mut builder = client.request(method, &url);
+                builder = builder.header("X-Saba-Token", &new_token);
+                if let Some(b) = body {
+                    builder = builder.json(b);
+                }
+                let response = builder.send().await?;
+                if !response.status().is_success() {
+                    anyhow::bail!("Server returned {}: {}", response.status(), response.text().await?);
+                }
+                return Ok(response.json().await?);
+            }
+        }
+
+        if !response.status().is_success() {
+            anyhow::bail!("Server returned {}: {}", response.status(), response.text().await?);
+        }
+        Ok(response.json().await?)
     }
 
     // ─── 내부 헬퍼 ───
 
     async fn get_json(&self, path: &str) -> anyhow::Result<Value> {
-        let url = format!("{}{}", self.base_url, path);
-        let response = self.client.get(&url).send().await?;
-        if !response.status().is_success() {
-            anyhow::bail!("Server returned {}: {}", response.status(), response.text().await?);
-        }
-        Ok(response.json().await?)
+        self.request(reqwest::Method::GET, path, None, false).await
     }
 
     async fn post_json(&self, path: &str, body: &Value) -> anyhow::Result<Value> {
-        let url = format!("{}{}", self.base_url, path);
-        let response = self.client.post(&url).json(body).send().await?;
-        if !response.status().is_success() {
-            anyhow::bail!("Server returned {}: {}", response.status(), response.text().await?);
-        }
-        Ok(response.json().await?)
+        self.request(reqwest::Method::POST, path, Some(body), false).await
     }
 
     async fn post_empty(&self, path: &str) -> anyhow::Result<Value> {
-        let url = format!("{}{}", self.base_url, path);
-        let response = self.client.post(&url).send().await?;
-        if !response.status().is_success() {
-            anyhow::bail!("Server returned {}: {}", response.status(), response.text().await?);
-        }
-        Ok(response.json().await?)
+        self.request(reqwest::Method::POST, path, None, false).await
     }
 
     async fn post_json_long(&self, path: &str, body: &Value) -> anyhow::Result<Value> {
-        let url = format!("{}{}", self.base_url, path);
-        let response = self.long_client.post(&url).json(body).send().await?;
-        if !response.status().is_success() {
-            anyhow::bail!("Server returned {}: {}", response.status(), response.text().await?);
-        }
-        Ok(response.json().await?)
+        self.request(reqwest::Method::POST, path, Some(body), true).await
     }
 
     async fn delete_json(&self, path: &str) -> anyhow::Result<Value> {
-        let url = format!("{}{}", self.base_url, path);
-        let response = self.client.delete(&url).send().await?;
-        if !response.status().is_success() {
-            anyhow::bail!("Server returned {}: {}", response.status(), response.text().await?);
-        }
-        Ok(response.json().await?)
+        self.request(reqwest::Method::DELETE, path, None, false).await
     }
 
     async fn patch_json(&self, path: &str, body: &Value) -> anyhow::Result<Value> {
-        let url = format!("{}{}", self.base_url, path);
-        let response = self.client.patch(&url).json(body).send().await?;
-        if !response.status().is_success() {
-            anyhow::bail!("Server returned {}: {}", response.status(), response.text().await?);
-        }
-        Ok(response.json().await?)
+        self.request(reqwest::Method::PATCH, path, Some(body), false).await
     }
 
     async fn put_json(&self, path: &str, body: &Value) -> anyhow::Result<Value> {
-        let url = format!("{}{}", self.base_url, path);
-        let response = self.client.put(&url).json(body).send().await?;
-        if !response.status().is_success() {
-            anyhow::bail!("Server returned {}: {}", response.status(), response.text().await?);
-        }
-        Ok(response.json().await?)
+        self.request(reqwest::Method::PUT, path, Some(body), false).await
     }
 
     // ============ Servers (런타임) ============
@@ -358,5 +415,145 @@ impl DaemonClient {
     /// GET /api/install/progress — 설치 진행 상태 조회
     pub async fn get_install_progress(&self) -> anyhow::Result<Value> {
         self.get_json("/api/install/progress").await
+    }
+
+    // ============ Extensions ============
+
+    /// GET /api/extensions — 설치된 익스텐션 목록
+    pub async fn list_extensions(&self) -> anyhow::Result<Vec<Value>> {
+        let data = self.get_json("/api/extensions").await?;
+        Ok(data
+            .get("extensions")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_else(|| {
+                data.as_array().cloned().unwrap_or_default()
+            }))
+    }
+
+    /// POST /api/extensions/{id}/enable — 익스텐션 활성화
+    pub async fn enable_extension(&self, ext_id: &str) -> anyhow::Result<Value> {
+        self.post_empty(&format!("/api/extensions/{}/enable", ext_id)).await
+    }
+
+    /// POST /api/extensions/{id}/disable — 익스텐션 비활성화
+    pub async fn disable_extension(&self, ext_id: &str) -> anyhow::Result<Value> {
+        self.post_empty(&format!("/api/extensions/{}/disable", ext_id)).await
+    }
+
+    /// GET /api/extensions/registry — 원격 익스텐션 레지스트리 조회
+    pub async fn fetch_extension_registry(&self) -> anyhow::Result<Value> {
+        self.get_json("/api/extensions/registry").await
+    }
+
+    /// POST /api/extensions/{id}/install — 익스텐션 설치
+    pub async fn install_extension(&self, ext_id: &str, opts: Option<Value>) -> anyhow::Result<Value> {
+        let body = opts.unwrap_or_else(|| serde_json::json!({}));
+        self.post_json_long(&format!("/api/extensions/{}/install", ext_id), &body).await
+    }
+
+    /// DELETE /api/extensions/{id} — 익스텐션 삭제
+    pub async fn remove_extension(&self, ext_id: &str) -> anyhow::Result<Value> {
+        self.delete_json(&format!("/api/extensions/{}", ext_id)).await
+    }
+
+    /// GET /api/extensions/updates — 익스텐션 업데이트 확인
+    pub async fn check_extension_updates(&self) -> anyhow::Result<Value> {
+        self.get_json("/api/extensions/updates").await
+    }
+
+    /// POST /api/extensions/rescan — 익스텐션 재스캔
+    pub async fn rescan_extensions(&self) -> anyhow::Result<Value> {
+        self.post_empty("/api/extensions/rescan").await
+    }
+
+    // ============ Module Registry (remote) ============
+
+    /// GET /api/modules/registry — 원격 모듈 레지스트리 조회
+    pub async fn fetch_module_registry(&self) -> anyhow::Result<Value> {
+        self.get_json("/api/modules/registry").await
+    }
+
+    /// POST /api/modules/registry/{id}/install — 레지스트리에서 모듈 설치
+    pub async fn install_module_from_registry(&self, module_id: &str) -> anyhow::Result<Value> {
+        self.post_json_long(
+            &format!("/api/modules/registry/{}/install", module_id),
+            &serde_json::json!({}),
+        ).await
+    }
+
+    /// DELETE /api/modules/{id} — 모듈 삭제
+    pub async fn remove_module(&self, module_id: &str) -> anyhow::Result<Value> {
+        self.delete_json(&format!("/api/modules/{}", module_id)).await
+    }
+
+    // ============ Instance Extended ============
+
+    /// POST /api/instance/{id}/server/reset — 서버 리셋
+    pub async fn reset_server(&self, id: &str) -> anyhow::Result<Value> {
+        self.post_empty(&format!("/api/instance/{}/server/reset", id)).await
+    }
+
+    /// POST /api/instance/{id}/properties/reset — 프로퍼티 리셋
+    pub async fn reset_properties(&self, id: &str) -> anyhow::Result<Value> {
+        self.post_empty(&format!("/api/instance/{}/properties/reset", id)).await
+    }
+
+    /// GET /api/provision-progress/{name} — 프로비저닝 진행 상태
+    pub async fn get_provision_progress(&self, name: &str) -> anyhow::Result<Value> {
+        self.get_json(&format!("/api/provision-progress/{}", name)).await
+    }
+
+    /// DELETE /api/provision-progress/{name} — 프로비저닝 상태 해제
+    pub async fn dismiss_provision(&self, name: &str) -> anyhow::Result<Value> {
+        self.delete_json(&format!("/api/provision-progress/{}", name)).await
+    }
+
+    // ============ Updater Extended ============
+
+    /// POST /api/updates/config — 업데이터 설정 변경
+    pub async fn set_update_config(&self, config: Value) -> anyhow::Result<Value> {
+        self.post_json("/api/updates/config", &config).await
+    }
+
+    // ============ Extension Init Status ============
+
+    /// GET /api/extensions/init-status — 익스텐션 초기화 상태
+    pub async fn get_extension_init_status(&self) -> anyhow::Result<Value> {
+        self.get_json("/api/extensions/init-status").await
+    }
+
+    // ============ Discord REST API ============
+
+    /// Discord REST API로 봇이 참여한 길드 목록 조회
+    pub async fn discord_guild_list(&self, token: &str) -> anyhow::Result<Vec<Value>> {
+        let url = "https://discord.com/api/v10/users/@me/guilds";
+        let response = self.client
+            .get(url)
+            .header("Authorization", format!("Bot {}", token))
+            .send()
+            .await?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("Discord API returned {}: {}", status, body);
+        }
+        Ok(response.json().await?)
+    }
+
+    /// Discord REST API로 특정 길드의 멤버 목록 조회 (최대 1000명)
+    pub async fn discord_guild_members(&self, token: &str, guild_id: &str) -> anyhow::Result<Vec<Value>> {
+        let url = format!("https://discord.com/api/v10/guilds/{}/members?limit=1000", guild_id);
+        let response = self.client
+            .get(&url)
+            .header("Authorization", format!("Bot {}", token))
+            .send()
+            .await?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("Discord API returned {}: {}", status, body);
+        }
+        Ok(response.json().await?)
     }
 }

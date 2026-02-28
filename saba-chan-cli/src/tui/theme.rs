@@ -25,11 +25,11 @@ impl Theme {
     pub fn label_servers() -> Style { Style::default().fg(Color::Blue) }
 
     // ─── 메뉴 ───
-    pub fn selected()      -> Style { Style::default().bg(Color::DarkGray).fg(Color::White).add_modifier(Modifier::BOLD) }
+    pub fn selected()       -> Style { Style::default().bg(Color::DarkGray).fg(Color::White).add_modifier(Modifier::BOLD) }
     pub fn selected_arrow() -> Style { Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD) }
-    pub fn shortcut()      -> Style { Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD) }
-    pub fn badge()         -> Style { Style::default().fg(Color::DarkGray) }
-    pub fn disabled()      -> Style { Style::default().fg(Color::DarkGray) }
+    pub fn shortcut()       -> Style { Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD) }
+    pub fn badge()          -> Style { Style::default().fg(Color::DarkGray) }
+    pub fn disabled()       -> Style { Style::default().fg(Color::DarkGray) }
 
     // ─── 브레드크럼 ───
     pub fn breadcrumb()         -> Style { Style::default().fg(Color::DarkGray) }
@@ -53,4 +53,12 @@ impl Theme {
     // ─── 콘솔 ───
     pub fn console_text()  -> Style { Style::default().fg(Color::White) }
     pub fn console_input() -> Style { Style::default().fg(Color::Yellow) }
+
+    // ─── 자동완성 팝업 ───
+    pub fn autocomplete_selected() -> Style { Style::default().bg(Color::DarkGray).fg(Color::Cyan).add_modifier(Modifier::BOLD) }
+    pub fn autocomplete_normal()   -> Style { Style::default().fg(Color::White) }
+
+    // ─── 인라인 입력/선택 ───
+    pub fn inline_border()  -> Style { Style::default().fg(Color::Cyan) }
+    pub fn inline_prompt()  -> Style { Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD) }
 }

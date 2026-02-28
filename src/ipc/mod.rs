@@ -586,6 +586,7 @@ impl IPCServer {
             .route("/api/extensions/:id", delete(handlers::extension::remove_extension))
             .route("/api/extensions/:id/gui", get(handlers::extension::serve_gui_bundle))
             .route("/api/extensions/:id/gui/styles", get(handlers::extension::serve_gui_styles))
+            .route("/api/extensions/:id/icon", get(handlers::extension::serve_icon))
             .route("/api/extensions/:id/i18n/:locale", get(handlers::extension::serve_i18n))
             // ── Node.js portable environment ──
             .route("/api/node-env/status", get(handlers::node_env::node_env_status))

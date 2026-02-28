@@ -4,7 +4,7 @@
 
 use ratatui::prelude::*;
 use ratatui::widgets::{
-    Block, BorderType, Borders, Padding, Paragraph,
+    Block, BorderType, Borders, Clear, Padding, Paragraph,
     Scrollbar, ScrollbarOrientation, ScrollbarState,
 };
 
@@ -40,6 +40,28 @@ pub fn render(app: &App, frame: &mut Frame) {
     // 확인 대화상자 (모달)
     if let InputMode::Confirm { ref prompt, .. } = app.input_mode {
         render_confirm_dialog(prompt, frame, area);
+    }
+
+    // 인라인 입력 오버레이 (모달)
+    if let InputMode::InlineInput { ref prompt, ref value, cursor, .. } = app.input_mode {
+        let popup_height = 5u16;
+        let popup_width = 60.min(area.width.saturating_sub(4));
+        let popup_x = area.x + (area.width.saturating_sub(popup_width)) / 2;
+        let popup_y = area.y + (area.height.saturating_sub(popup_height)) / 2;
+        let popup = Rect::new(popup_x, popup_y, popup_width, popup_height);
+        frame.render_widget(Clear, popup);
+        render_inline_input(prompt, value, cursor, frame, popup);
+    }
+
+    // 인라인 선택 오버레이 (모달)
+    if let InputMode::InlineSelect { ref prompt, ref options, selected, .. } = app.input_mode {
+        let popup_height = (options.len() as u16 + 3).min(area.height.saturating_sub(4));
+        let popup_width = 50.min(area.width.saturating_sub(4));
+        let popup_x = area.x + (area.width.saturating_sub(popup_width)) / 2;
+        let popup_y = area.y + (area.height.saturating_sub(popup_height)) / 2;
+        let popup = Rect::new(popup_x, popup_y, popup_width, popup_height);
+        frame.render_widget(Clear, popup);
+        render_inline_select(prompt, options, selected, frame, popup);
     }
 }
 
@@ -79,14 +101,14 @@ pub fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
     }
 
     let status_line = Line::from(vec![
-        Span::styled("Daemon ", Theme::label_daemon()),
+        Span::styled("Saba-Core ", Theme::label_daemon()),
         d,
         Span::raw("  "),
         Span::styled("Bot ", Theme::label_bot()),
         b,
         Span::raw("  "),
         Span::styled(
-            format!("Servers {}/{}", running, app.servers.len()),
+            format!("Instances {}/{}", running, app.servers.len()),
             Theme::label_servers(),
         ),
     ]);
@@ -141,7 +163,7 @@ pub fn render_hint_bar(app: &App, frame: &mut Frame, area: Rect) {
                         ("Enter", "실행"),
                         ("Tab", "자동완성"),
                         ("↑↓", "히스토리"),
-                        ("PgUp/Dn", "스크롤"),
+                        ("PgUp/Dn/Wheel", "스크롤"),
                         ("F2", "메뉴"),
                     ]
                 }
@@ -149,7 +171,7 @@ pub fn render_hint_bar(app: &App, frame: &mut Frame, area: Rect) {
                     vec![
                         ("Esc", "뒤로"),
                         ("Enter", "stdin 전송"),
-                        ("PgUp/Dn", "스크롤"),
+                        ("PgUp/Dn/Wheel", "스크롤"),
                     ]
                 }
                 _ => {
@@ -193,6 +215,20 @@ pub fn render_hint_bar(app: &App, frame: &mut Frame, area: Rect) {
             vec![
                 ("y", "확인"),
                 ("n/Esc", "취소"),
+            ]
+        }
+        InputMode::InlineInput { .. } => {
+            vec![
+                ("Enter", "확인"),
+                ("Esc", "취소"),
+                ("←→", "커서"),
+            ]
+        }
+        InputMode::InlineSelect { .. } => {
+            vec![
+                ("↑↓/jk", "이동"),
+                ("Enter", "선택"),
+                ("Esc", "취소"),
             ]
         }
     };
@@ -567,10 +603,7 @@ pub fn render_confirm_dialog(prompt: &str, frame: &mut Frame, area: Rect) {
     let popup = Rect::new(x, y, width, height);
 
     // 배경 클리어
-    frame.render_widget(
-        Block::default().style(Style::default().bg(Color::Black)),
-        popup,
-    );
+    frame.render_widget(Clear, popup);
 
     let block = Block::default()
         .title(" Confirm ")
@@ -616,4 +649,132 @@ pub fn render_loading(msg: &str, frame: &mut Frame, area: Rect) {
     ]);
 
     frame.render_widget(Paragraph::new(line), area);
+}
+
+// ═══════════════════════════════════════════════════════
+// 자동완성 팝업
+// ═══════════════════════════════════════════════════════
+
+pub fn render_autocomplete_popup(app: &App, frame: &mut Frame, input_area: Rect) {
+    if !app.autocomplete_visible || app.autocomplete_candidates.is_empty() {
+        return;
+    }
+
+    let max_show = 8.min(app.autocomplete_candidates.len());
+    let popup_height = max_show as u16 + 2; // +2 for border
+    let popup_y = input_area.y.saturating_sub(popup_height);
+    let popup_width = 40.min(input_area.width);
+
+    // saba> 프롬프트 길이만큼 오프셋
+    let popup_x = input_area.x + 6;
+
+    let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
+
+    // 배경 클리어
+    frame.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(Color::DarkGray));
+
+    let inner = block.inner(popup_area);
+    frame.render_widget(block, popup_area);
+
+    let lines: Vec<Line> = app.autocomplete_candidates.iter()
+        .take(max_show)
+        .enumerate()
+        .map(|(i, candidate)| {
+            let is_sel = i == app.autocomplete_selected;
+            if is_sel {
+                Line::from(Span::styled(
+                    format!("▸ {}", candidate),
+                    Style::default().bg(Color::DarkGray).fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                ))
+            } else {
+                Line::from(Span::styled(
+                    format!("  {}", candidate),
+                    Style::default().fg(Color::White),
+                ))
+            }
+        })
+        .collect();
+
+    frame.render_widget(Paragraph::new(lines), inner);
+}
+
+// ═══════════════════════════════════════════════════════
+// 인라인 입력 렌더링
+// ═══════════════════════════════════════════════════════
+
+pub fn render_inline_input(
+    prompt: &str, value: &str, cursor: usize,
+    frame: &mut Frame, area: Rect,
+) {
+    let block = Block::default()
+        .title(format!(" {} ", prompt))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(Color::Cyan));
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let line = Line::from(vec![
+        Span::styled("❯ ", Theme::prompt()),
+        Span::styled(value.to_string(), Theme::editor_editing()),
+    ]);
+    frame.render_widget(Paragraph::new(line), Rect::new(
+        inner.x + 1, inner.y, inner.width.saturating_sub(2), 1,
+    ));
+
+    let hint = Line::from(Span::styled(
+        "  Enter: 확인  |  Esc: 취소",
+        Theme::dimmed(),
+    ));
+    if inner.height > 1 {
+        frame.render_widget(Paragraph::new(hint), Rect::new(
+            inner.x + 1, inner.y + 1, inner.width.saturating_sub(2), 1,
+        ));
+    }
+
+    // 커서
+    let display_width: usize = value.chars().take(cursor)
+        .map(|c| if c.is_ascii() { 1 } else { 2 })
+        .sum();
+    let cx = inner.x + 3 + display_width as u16; // 1(padding) + 2(❯ )
+    frame.set_cursor_position(Position::new(cx, inner.y));
+}
+
+// ═══════════════════════════════════════════════════════
+// 인라인 선택 렌더링
+// ═══════════════════════════════════════════════════════
+
+pub fn render_inline_select(
+    prompt: &str, options: &[String], selected: usize,
+    frame: &mut Frame, area: Rect,
+) {
+    let block = Block::default()
+        .title(format!(" {} ", prompt))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(Color::Cyan));
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let lines: Vec<Line> = options.iter().enumerate().map(|(i, opt)| {
+        let is_sel = i == selected;
+        let arrow = if is_sel { "▸ " } else { "  " };
+        let style = if is_sel {
+            Style::default().bg(Color::DarkGray).fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White)
+        };
+        Line::from(Span::styled(format!("{}{}", arrow, opt), style))
+    }).collect();
+
+    frame.render_widget(Paragraph::new(lines), Rect::new(
+        inner.x + 1, inner.y, inner.width.saturating_sub(2), inner.height,
+    ));
 }

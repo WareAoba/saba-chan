@@ -10,6 +10,53 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use saba_chan_updater_lib::version::SemVer;
 
+/// npm package.json 스타일 dependencies 디시리얼라이저.
+/// 배열 형식과 맵 형식 모두 지원:
+/// - `["steamcmd", "ue4-ini"]` → `{"steamcmd": "*", "ue4-ini": "*"}`
+/// - `{"steamcmd": ">=0.1.0", "saba-core": ">=0.3.0"}` → 그대로
+fn deserialize_dependencies<'de, D>(deserializer: D) -> Result<HashMap<String, String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de;
+
+    struct DepsVisitor;
+
+    impl<'de> de::Visitor<'de> for DepsVisitor {
+        type Value = HashMap<String, String>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str(
+                "a map of dependency names to version requirements, or an array of dependency names",
+            )
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: de::SeqAccess<'de>,
+        {
+            let mut map = HashMap::new();
+            while let Some(name) = seq.next_element::<String>()? {
+                map.insert(name, "*".to_string());
+            }
+            Ok(map)
+        }
+
+        fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+        where
+            M: de::MapAccess<'de>,
+        {
+            let mut map = HashMap::new();
+            while let Some((key, value)) = access.next_entry::<String, String>()? {
+                map.insert(key, value);
+            }
+            Ok(map)
+        }
+    }
+
+    deserializer.deserialize_any(DepsVisitor)
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  구조화된 에러 타입
 // ═══════════════════════════════════════════════════════════════
@@ -56,6 +103,17 @@ impl ExtensionError {
             error_code: "dependency_not_enabled".to_string(),
             message: format!("Cannot enable '{}': dependency '{}' is not enabled", ext_id, dep),
             related: vec![dep.to_string()],
+        }
+    }
+    fn component_version_unsatisfied(ext_id: &str, component: &str, required: &str, installed: Option<&str>) -> Self {
+        Self {
+            error_code: "component_version_unsatisfied".to_string(),
+            message: format!(
+                "Cannot enable '{}': requires {} {} but {} is installed",
+                ext_id, component, required,
+                installed.unwrap_or("not installed")
+            ),
+            related: vec![component.to_string(), required.to_string()],
         }
     }
     fn has_dependents(ext_id: &str, dependents: &[String]) -> Self {
@@ -122,14 +180,21 @@ pub struct ExtensionManifest {
     pub author: String,
     #[serde(default)]
     pub min_app_version: Option<String>,
-    #[serde(default)]
-    pub dependencies: Vec<String>,
+    /// npm package.json 스타일 의존성 선언.
+    /// 익스텐션·컴포넌트 ID를 키로, 버전 요구사항을 값으로 사용.
+    /// 예: `{ "steamcmd": ">=0.1.0", "saba-core": ">=0.3.0" }`
+    /// 배열 형식(`["steamcmd"]`)도 하위 호환으로 지원 → `{ "steamcmd": "*" }`로 변환.
+    #[serde(default, deserialize_with = "deserialize_dependencies")]
+    pub dependencies: HashMap<String, String>,
     #[serde(default)]
     pub python_modules: HashMap<String, String>, // name → relative path
     #[serde(default)]
     pub hooks: HashMap<String, HookBinding>, // hook_name → binding
     #[serde(default)]
     pub gui: Option<GuiManifest>,
+    /// CLI TUI 슬롯 선언 (GUI의 gui.slots에 대응)
+    #[serde(default)]
+    pub cli: Option<CliManifest>,
     /// 이 익스텐션이 관할하는 module.toml 섹션명 (예: 컨테이너 격리 익스텐션)
     #[serde(default)]
     pub module_config_section: Option<String>,
@@ -159,6 +224,15 @@ pub struct GuiManifest {
     pub builtin: Option<bool>,
     #[serde(default)]
     pub slots: HashMap<String, String>, // slot_id → component_name
+}
+
+/// CLI 매니페스트 — GUI의 GuiManifest에 대응하는 TUI 슬롯 선언
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CliManifest {
+    /// slot_id → 슬롯별 JSON 설정 (데이터 기반 렌더링)
+    /// 예: "InstanceList.badge" → { "text": "🐳", "condition": "..." }
+    #[serde(default)]
+    pub slots: HashMap<String, Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -195,9 +269,14 @@ pub struct ExtensionListItem {
     pub author: String,
     pub enabled: bool,
     pub hooks: Vec<String>,
-    pub dependencies: Vec<String>,
+    /// npm package.json 스타일 의존성 (이름 → 버전 요구사항)
+    pub dependencies: HashMap<String, String>,
     pub gui: Option<GuiManifest>,
+    pub cli: Option<CliManifest>,
     pub instance_fields: HashMap<String, FieldDef>,
+    /// 익스텐션 디렉토리에 icon.png가 존재하는지 여부
+    #[serde(default)]
+    pub has_icon: bool,
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -640,7 +719,7 @@ impl ExtensionManager {
             .values()
             .filter(|ext| {
                 self.enabled.contains(&ext.manifest.id)
-                    && ext.manifest.dependencies.iter().any(|d| d == ext_id)
+                    && ext.manifest.dependencies.contains_key(ext_id)
             })
             .map(|ext| ext.manifest.id.clone())
             .collect()
@@ -681,24 +760,74 @@ impl ExtensionManager {
             .collect()
     }
 
-    /// 익스텐션 활성화 — 의존성 전부 discovered + enabled인지 검증
+    /// 익스텐션 활성화 — 통합 dependencies 맵에서 의존성 전부 검증.
     pub fn enable(&mut self, ext_id: &str) -> Result<()> {
+        self.enable_with_versions(ext_id, &HashMap::new())
+    }
+
+    /// 컴포넌트 버전 정보를 함께 받아 dependencies를 검증하면서 활성화.
+    /// `installed_versions`: 컴포넌트 키 → 설치된 버전 (예: "saba-core" → "0.3.0")
+    ///
+    /// dependencies 맵의 각 키를 먼저 discovered 익스텐션에서 찾고,
+    /// 있으면 익스텐션 의존성(마운트+활성화+버전)으로, 없으면 컴포넌트 의존성(설치 버전)으로 처리.
+    pub fn enable_with_versions(
+        &mut self,
+        ext_id: &str,
+        installed_versions: &HashMap<String, String>,
+    ) -> Result<()> {
         if !self.discovered.contains_key(ext_id) {
             return Err(ExtensionError::not_found(ext_id).into());
         }
 
-        // 의존성 검증
         let deps = self.discovered[ext_id].manifest.dependencies.clone();
-        for dep in &deps {
-            if !self.discovered.contains_key(dep) {
-                return Err(
-                    ExtensionError::dependency_missing(ext_id, dep).into()
-                );
-            }
-            if !self.enabled.contains(dep) {
-                return Err(
-                    ExtensionError::dependency_not_enabled(ext_id, dep).into()
-                );
+        for (dep_key, version_req) in &deps {
+            if let Some(dep_ext) = self.discovered.get(dep_key) {
+                // ── 익스텐션 의존성: discovered에 있으면 ext dep ──
+                if !self.enabled.contains(dep_key) {
+                    return Err(
+                        ExtensionError::dependency_not_enabled(ext_id, dep_key).into()
+                    );
+                }
+                // 버전 검증 ("*"면 스킵)
+                if version_req != "*" {
+                    let min_clean = version_req.trim_start_matches(">=").trim();
+                    let satisfied = match (SemVer::parse(&dep_ext.manifest.version), SemVer::parse(min_clean)) {
+                        (Some(iv), Some(rv)) => iv >= rv,
+                        _ => false,
+                    };
+                    if !satisfied {
+                        return Err(
+                            ExtensionError::component_version_unsatisfied(
+                                ext_id, dep_key, version_req,
+                                Some(&dep_ext.manifest.version),
+                            ).into()
+                        );
+                    }
+                }
+            } else {
+                // ── 비-익스텐션 컴포넌트 의존성 ──
+                if version_req == "*" {
+                    // 이름만 선언 → discovered에 없으면 마운트 안 된 익스텐션으로 간주
+                    return Err(
+                        ExtensionError::dependency_missing(ext_id, dep_key).into()
+                    );
+                }
+                let min_clean = version_req.trim_start_matches(">=").trim();
+                let installed = installed_versions.get(dep_key);
+                let satisfied = installed.is_some_and(|v| {
+                    match (SemVer::parse(v), SemVer::parse(min_clean)) {
+                        (Some(iv), Some(rv)) => iv >= rv,
+                        _ => false,
+                    }
+                });
+                if !satisfied {
+                    return Err(
+                        ExtensionError::component_version_unsatisfied(
+                            ext_id, dep_key, version_req,
+                            installed.map(|s| s.as_str()),
+                        ).into()
+                    );
+                }
             }
         }
 
@@ -776,12 +905,18 @@ impl ExtensionManager {
         self.enabled.contains(ext_id)
     }
 
+    /// 현재 활성화된 익스텐션 ID 집합의 복제본을 반환합니다.
+    pub fn enabled_set(&self) -> HashSet<String> {
+        self.enabled.clone()
+    }
+
     /// 발견된 전체 익스텐션 목록 (활성 상태 포함)
     pub fn list(&self) -> Vec<ExtensionListItem> {
         self.discovered
             .values()
             .map(|ext| {
                 let m = &ext.manifest;
+                let has_icon = ext.dir.join("icon.png").is_file();
                 ExtensionListItem {
                     id: m.id.clone(),
                     name: m.name.clone(),
@@ -792,7 +927,9 @@ impl ExtensionManager {
                     hooks: m.hooks.keys().cloned().collect(),
                     dependencies: m.dependencies.clone(),
                     gui: m.gui.clone(),
+                    cli: m.cli.clone(),
                     instance_fields: m.instance_fields.clone(),
+                    has_icon,
                 }
             })
             .collect()
@@ -1648,5 +1785,674 @@ mod tests {
 
         mgr.force_disable("test_ext");
         assert!(!mgr.is_enabled("test_ext"));
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  추가 심층 테스트
+    // ═══════════════════════════════════════════════════════════════
+
+    /// 조건 평가 — 숫자 0 → false, 비제로 → true
+    #[test]
+    fn test_evaluate_condition_number_values() {
+        let mut ext_data = HashMap::new();
+        ext_data.insert("cpu_limit".to_string(), Value::Number(serde_json::Number::from(0)));
+        assert!(!ExtensionManager::evaluate_condition(
+            "instance.ext_data.cpu_limit", &ext_data
+        ));
+
+        ext_data.insert("cpu_limit".to_string(), Value::Number(serde_json::Number::from(4)));
+        assert!(ExtensionManager::evaluate_condition(
+            "instance.ext_data.cpu_limit", &ext_data
+        ));
+    }
+
+    /// 조건 평가 — 빈 문자열 → false, 비빈 문자열 → true
+    #[test]
+    fn test_evaluate_condition_string_values() {
+        let mut ext_data = HashMap::new();
+        ext_data.insert("image".to_string(), Value::String("".to_string()));
+        assert!(!ExtensionManager::evaluate_condition(
+            "instance.ext_data.image", &ext_data
+        ));
+
+        ext_data.insert("image".to_string(), Value::String("cm2network/steamcmd".to_string()));
+        assert!(ExtensionManager::evaluate_condition(
+            "instance.ext_data.image", &ext_data
+        ));
+    }
+
+    /// 매니페스트 — 풀 필드 역직렬화 (GUI, CLI, hooks, dependencies, i18n)
+    #[test]
+    fn test_manifest_full_fields_deserialization() {
+        let json = json!({
+            "id": "docker",
+            "name": "Docker Isolation",
+            "version": "2.0.0",
+            "description": "Container isolation for game servers",
+            "author": "saba-chan",
+            "dependencies": ["steamcmd"],
+            "python_modules": {
+                "compose_manager": "compose_manager.py",
+                "health_check": "health.py"
+            },
+            "hooks": {
+                "server.pre_start": {
+                    "module": "compose_manager",
+                    "function": "pre_start",
+                    "condition": "instance.ext_data.docker_enabled"
+                },
+                "server.post_stop": {
+                    "module": "compose_manager",
+                    "function": "post_stop"
+                }
+            },
+            "instance_fields": {
+                "docker_enabled": { "type": "boolean", "default": false },
+                "docker_image": { "type": "string" }
+            },
+            "gui": {
+                "bundle": "docker-panel.js",
+                "styles": "docker-panel.css",
+                "slots": { "InstanceList.badge": "DockerBadge" }
+            },
+            "cli": {
+                "slots": { "InstanceList.badge": {"text": "🐳"} }
+            },
+            "i18n_dir": "locales",
+            "module_config_section": "docker"
+        });
+
+        let manifest: ExtensionManifest = serde_json::from_value(json).unwrap();
+        assert_eq!(manifest.id, "docker");
+        assert_eq!(manifest.version, "2.0.0");
+        assert_eq!(manifest.author, "saba-chan");
+        assert_eq!(manifest.dependencies.len(), 1);
+        assert_eq!(manifest.dependencies.get("steamcmd").unwrap(), "*");
+        assert_eq!(manifest.hooks.len(), 2);
+        assert!(manifest.hooks.contains_key("server.pre_start"));
+        assert!(manifest.hooks.contains_key("server.post_stop"));
+        assert_eq!(manifest.python_modules.len(), 2);
+        assert_eq!(manifest.instance_fields.len(), 2);
+        assert!(manifest.gui.is_some());
+        assert!(manifest.cli.is_some());
+        assert_eq!(manifest.i18n_dir.as_deref(), Some("locales"));
+        assert_eq!(manifest.module_config_section.as_deref(), Some("docker"));
+    }
+
+    /// 매니페스트 — 최소 필드만으로도 역직렬화 가능
+    #[test]
+    fn test_manifest_minimal_deserialization() {
+        let json = json!({"id": "x", "name": "X", "version": "0.0.1"});
+        let manifest: ExtensionManifest = serde_json::from_value(json).unwrap();
+        assert_eq!(manifest.id, "x");
+        assert!(manifest.hooks.is_empty());
+        assert!(manifest.dependencies.is_empty());
+        assert!(manifest.gui.is_none());
+    }
+
+    /// 잘못된 JSON으로 매니페스트 역직렬화 실패
+    #[test]
+    fn test_manifest_invalid_json() {
+        let json_no_id = json!({"name": "NoID", "version": "0.1.0"});
+        assert!(serde_json::from_value::<ExtensionManifest>(json_no_id).is_err());
+    }
+
+    /// 다이아몬드 의존성 — A→B, A→C, B→D, C→D
+    #[test]
+    fn test_diamond_dependency_enable_order() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let create_ext = |id: &str, deps: &[&str]| {
+            let dir = tmp.path().join(id);
+            std::fs::create_dir_all(&dir).unwrap();
+            let manifest = json!({
+                "id": id,
+                "name": id,
+                "version": "0.1.0",
+                "dependencies": deps
+            });
+            std::fs::write(dir.join("manifest.json"), manifest.to_string()).unwrap();
+        };
+
+        create_ext("ext_d", &[]);
+        create_ext("ext_b", &["ext_d"]);
+        create_ext("ext_c", &["ext_d"]);
+        create_ext("ext_a", &["ext_b", "ext_c"]);
+
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+
+        // 순서대로 활성화해야 함
+        assert!(mgr.enable("ext_a").is_err(), "A는 B, C 미활성 시 실패");
+        mgr.enable("ext_d").unwrap();
+        assert!(mgr.enable("ext_b").is_ok());
+        assert!(mgr.enable("ext_a").is_err(), "A는 C 미활성 시 여전히 실패");
+        assert!(mgr.enable("ext_c").is_ok());
+        assert!(mgr.enable("ext_a").is_ok(), "A의 모든 의존성 충족");
+    }
+
+    /// 삭제 — 비활성화 후 디렉토리 삭제
+    #[test]
+    fn test_remove_extension_cleans_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ext_dir = tmp.path().join("removable");
+        std::fs::create_dir_all(&ext_dir).unwrap();
+        std::fs::write(
+            ext_dir.join("manifest.json"),
+            r#"{"id":"removable","name":"Remove Me","version":"0.1.0"}"#,
+        ).unwrap();
+
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+        assert_eq!(mgr.list().len(), 1);
+
+        let no_instances: Vec<(&str, &HashMap<String, Value>)> = vec![];
+        mgr.remove("removable", &no_instances).unwrap();
+        assert!(mgr.list().is_empty());
+        assert!(!ext_dir.exists(), "Extension directory should be deleted");
+    }
+
+    /// 삭제 — 의존하는 익스텐션이 있으면 실패
+    #[test]
+    fn test_remove_blocked_by_active_dependent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let parent_dir = tmp.path().join("parent");
+        std::fs::create_dir_all(&parent_dir).unwrap();
+        std::fs::write(parent_dir.join("manifest.json"),
+            r#"{"id":"parent","name":"Parent","version":"0.1.0"}"#).unwrap();
+
+        let child_dir = tmp.path().join("child");
+        std::fs::create_dir_all(&child_dir).unwrap();
+        std::fs::write(child_dir.join("manifest.json"),
+            r#"{"id":"child","name":"Child","version":"0.1.0","dependencies":["parent"]}"#).unwrap();
+
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+        mgr.enable("parent").unwrap();
+        mgr.enable("child").unwrap();
+
+        let no_instances: Vec<(&str, &HashMap<String, Value>)> = vec![];
+        let result = mgr.remove("parent", &no_instances);
+        assert!(result.is_err(), "Cannot remove parent while child depends on it");
+    }
+
+    /// list() 결과 검증 — enabled 상태, hooks, instance_fields 정확히 반영
+    #[test]
+    fn test_list_reflects_extension_state() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ext_dir = tmp.path().join("ext_a");
+        std::fs::create_dir_all(&ext_dir).unwrap();
+        std::fs::write(ext_dir.join("manifest.json"), json!({
+            "id": "ext_a",
+            "name": "Extension A",
+            "version": "1.2.3",
+            "description": "Test extension",
+            "author": "Tester",
+            "hooks": { "server.pre_start": { "module": "m", "function": "f" } },
+            "instance_fields": { "my_flag": { "type": "boolean", "default": false } }
+        }).to_string()).unwrap();
+
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+
+        let list = mgr.list();
+        assert_eq!(list.len(), 1);
+        let item = &list[0];
+        assert_eq!(item.id, "ext_a");
+        assert_eq!(item.version, "1.2.3");
+        assert!(!item.enabled, "Initially disabled");
+        assert_eq!(item.hooks, vec!["server.pre_start"]);
+        assert!(item.instance_fields.contains_key("my_flag"));
+
+        mgr.enable("ext_a").unwrap();
+        let list = mgr.list();
+        assert!(list[0].enabled, "Should be enabled after enable()");
+    }
+
+    /// hooks_for — 비활성 익스텐션의 hook은 반환되지 않아야 함
+    #[test]
+    fn test_hooks_for_only_returns_enabled() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ext_dir = tmp.path().join("hook_ext");
+        std::fs::create_dir_all(&ext_dir).unwrap();
+        std::fs::write(ext_dir.join("manifest.json"), json!({
+            "id": "hook_ext", "name": "Hook Ext", "version": "0.1.0",
+            "hooks": { "server.pre_start": { "module": "m", "function": "f" } },
+            "python_modules": { "m": "m.py" }
+        }).to_string()).unwrap();
+
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+
+        // 비활성 → hooks_for 비어있음
+        assert!(mgr.hooks_for("server.pre_start").is_empty());
+
+        // 활성화 → hooks_for에 포함
+        mgr.enable("hook_ext").unwrap();
+        let hooks = mgr.hooks_for("server.pre_start");
+        assert_eq!(hooks.len(), 1);
+        assert_eq!(hooks[0].0.manifest.id, "hook_ext");
+        assert_eq!(hooks[0].1.function, "f");
+
+        // 존재하지 않는 hook 이름
+        assert!(mgr.hooks_for("nonexistent.hook").is_empty());
+    }
+
+    /// should_parse_config_section — module_config_section 매칭
+    #[test]
+    fn test_should_parse_config_section() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ext_dir = tmp.path().join("docker");
+        std::fs::create_dir_all(&ext_dir).unwrap();
+        std::fs::write(ext_dir.join("manifest.json"), json!({
+            "id": "docker", "name": "Docker", "version": "1.0.0",
+            "module_config_section": "docker"
+        }).to_string()).unwrap();
+
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+
+        // 비활성 → false
+        assert!(!mgr.should_parse_config_section("docker"));
+
+        mgr.enable("docker").unwrap();
+        assert!(mgr.should_parse_config_section("docker"));
+        assert!(!mgr.should_parse_config_section("other_section"));
+    }
+
+    /// all_instance_fields — 여러 익스텐션의 필드 합산
+    #[test]
+    fn test_all_instance_fields_merges_across_extensions() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let make_ext = |id: &str, field: &str| {
+            let dir = tmp.path().join(id);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("manifest.json"), json!({
+                "id": id, "name": id, "version": "0.1.0",
+                "instance_fields": { field: { "type": "boolean", "default": false } }
+            }).to_string()).unwrap();
+        };
+
+        make_ext("ext_a", "field_a");
+        make_ext("ext_b", "field_b");
+
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+        mgr.enable("ext_a").unwrap();
+        mgr.enable("ext_b").unwrap();
+
+        let fields = mgr.all_instance_fields();
+        assert!(fields.contains_key("field_a"));
+        assert!(fields.contains_key("field_b"));
+        assert_eq!(fields.len(), 2);
+    }
+
+    /// is_newer_version 유틸리티
+    #[test]
+    fn test_is_newer_version() {
+        assert!(ExtensionManager::is_newer_version("1.1.0", "1.0.0"));
+        assert!(ExtensionManager::is_newer_version("2.0.0", "1.9.9"));
+        assert!(!ExtensionManager::is_newer_version("1.0.0", "1.0.0"));
+        assert!(!ExtensionManager::is_newer_version("0.9.0", "1.0.0"));
+    }
+
+    /// check_updates_against — 로컬 < 원격이면 업데이트 정보 반환
+    #[test]
+    fn test_check_updates_against() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ext_dir = tmp.path().join("test_ext");
+        std::fs::create_dir_all(&ext_dir).unwrap();
+        std::fs::write(ext_dir.join("manifest.json"),
+            r#"{"id":"test_ext","name":"Test","version":"1.0.0"}"#).unwrap();
+
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+
+        let remote = vec![RemoteExtensionInfo {
+            id: "test_ext".to_string(),
+            name: "Test".to_string(),
+            version: "2.0.0".to_string(),
+            description: String::new(),
+            author: String::new(),
+            download_url: "https://example.com/test_ext.zip".to_string(),
+            sha256: None,
+            min_app_version: None,
+            tags: vec![],
+            homepage: None,
+        }];
+
+        let updates = mgr.check_updates_against(&remote);
+        assert_eq!(updates.len(), 1);
+        assert_eq!(updates[0].id, "test_ext");
+        assert_eq!(updates[0].installed_version, "1.0.0");
+        assert_eq!(updates[0].latest_version, "2.0.0");
+        assert!(!updates[0].downloaded);
+        assert!(!updates[0].installed);
+    }
+
+    /// check_updates_against — 이미 최신이면 빈 목록
+    #[test]
+    fn test_check_updates_already_latest() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ext_dir = tmp.path().join("test_ext");
+        std::fs::create_dir_all(&ext_dir).unwrap();
+        std::fs::write(ext_dir.join("manifest.json"),
+            r#"{"id":"test_ext","name":"Test","version":"2.0.0"}"#).unwrap();
+
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+
+        let remote = vec![RemoteExtensionInfo {
+            id: "test_ext".to_string(),
+            name: "Test".to_string(),
+            version: "2.0.0".to_string(),
+            description: String::new(),
+            author: String::new(),
+            download_url: "https://example.com/test_ext.zip".to_string(),
+            sha256: None,
+            min_app_version: None,
+            tags: vec![],
+            homepage: None,
+        }];
+
+        let updates = mgr.check_updates_against(&remote);
+        assert!(updates.is_empty(), "Same version should not be an update");
+    }
+
+    /// 영속화 — enable → new_isolated 재생성 → enabled 상태 유지
+    #[test]
+    fn test_state_persistence_across_reload() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ext_dir = tmp.path().join("persistent_ext");
+        std::fs::create_dir_all(&ext_dir).unwrap();
+        std::fs::write(ext_dir.join("manifest.json"),
+            r#"{"id":"persistent_ext","name":"Persistent","version":"0.1.0"}"#).unwrap();
+
+        // 1차: enable
+        {
+            let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+            mgr.discover().unwrap();
+            mgr.enable("persistent_ext").unwrap();
+            assert!(mgr.is_enabled("persistent_ext"));
+        }
+
+        // 2차: 재생성 → 상태 복원
+        {
+            let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+            mgr.discover().unwrap();
+            assert!(mgr.is_enabled("persistent_ext"), "Enabled state must persist across reload");
+        }
+    }
+
+    /// zip 자동 추출 테스트
+    #[test]
+    fn test_discover_extracts_zip_extension() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        // manifest.json이 들어있는 zip 파일 생성
+        let zip_path = tmp.path().join("zip_ext.zip");
+        let manifest_content = r#"{"id":"zip_ext","name":"Zip Extension","version":"0.1.0"}"#;
+
+        let file = std::fs::File::create(&zip_path).unwrap();
+        let mut zip_writer = zip::ZipWriter::new(file);
+        let options = zip::write::FileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
+        zip_writer.start_file("manifest.json", options).unwrap();
+        std::io::Write::write_all(&mut zip_writer, manifest_content.as_bytes()).unwrap();
+        zip_writer.finish().unwrap();
+
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        let found = mgr.discover().unwrap();
+        assert!(
+            found.contains(&"zip_ext".to_string()),
+            "Zip extension should be auto-extracted and discovered: {:?}", found
+        );
+
+        // zip 파일이 삭제되었어야 함
+        assert!(!zip_path.exists(), "Zip file should be removed after extraction");
+    }
+
+    // ── 컴포넌트 버전 의존성(dependencies) 테스트 ──
+
+    #[test]
+    fn test_enable_with_component_version_satisfied() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ext_dir = tmp.path().join("my_ext");
+        std::fs::create_dir_all(&ext_dir).unwrap();
+        std::fs::write(ext_dir.join("manifest.json"), json!({
+            "id": "my_ext",
+            "name": "My Extension",
+            "version": "1.0.0",
+            "dependencies": { "saba-core": ">=0.3.0" }
+        }).to_string()).unwrap();
+
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+
+        let mut versions = HashMap::new();
+        versions.insert("saba-core".to_string(), "0.5.0".to_string());
+
+        let result = mgr.enable_with_versions("my_ext", &versions);
+        assert!(result.is_ok(), "Should enable when component version is satisfied");
+    }
+
+    #[test]
+    fn test_enable_with_component_version_too_low() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ext_dir = tmp.path().join("my_ext");
+        std::fs::create_dir_all(&ext_dir).unwrap();
+        std::fs::write(ext_dir.join("manifest.json"), json!({
+            "id": "my_ext",
+            "name": "My Extension",
+            "version": "1.0.0",
+            "dependencies": { "saba-core": ">=0.3.0" }
+        }).to_string()).unwrap();
+
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+
+        let mut versions = HashMap::new();
+        versions.insert("saba-core".to_string(), "0.2.0".to_string());
+
+        let result = mgr.enable_with_versions("my_ext", &versions);
+        assert!(result.is_err(), "Should fail when component version is too low");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("saba-core"), "Error should mention the component");
+        assert!(err_msg.contains("0.2.0"), "Error should mention installed version");
+    }
+
+    #[test]
+    fn test_enable_with_component_not_installed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ext_dir = tmp.path().join("my_ext");
+        std::fs::create_dir_all(&ext_dir).unwrap();
+        std::fs::write(ext_dir.join("manifest.json"), json!({
+            "id": "my_ext",
+            "name": "My Extension",
+            "version": "1.0.0",
+            "dependencies": { "gui": ">=0.2.0" }
+        }).to_string()).unwrap();
+
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+
+        // No versions provided → gui not installed
+        let result = mgr.enable_with_versions("my_ext", &HashMap::new());
+        assert!(result.is_err(), "Should fail when required component is not installed");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("gui"));
+        assert!(err_msg.contains("not installed"));
+    }
+
+    #[test]
+    fn test_enable_without_versions_skips_requires_check() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ext_dir = tmp.path().join("my_ext");
+        std::fs::create_dir_all(&ext_dir).unwrap();
+        std::fs::write(ext_dir.join("manifest.json"), json!({
+            "id": "my_ext",
+            "name": "My Extension",
+            "version": "1.0.0",
+            "dependencies": { "saba-core": ">=99.0.0" }
+        }).to_string()).unwrap();
+
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+
+        // enable() without versions → no installed_versions → requires check fails
+        let result = mgr.enable("my_ext");
+        assert!(result.is_err(), "enable() without version info should fail if requires is set");
+    }
+
+    #[test]
+    fn test_enable_cross_type_requires() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ext_dir = tmp.path().join("advanced_ext");
+        std::fs::create_dir_all(&ext_dir).unwrap();
+        std::fs::write(ext_dir.join("manifest.json"), json!({
+            "id": "advanced_ext",
+            "name": "Advanced",
+            "version": "1.0.0",
+            "dependencies": {
+                "saba-core": ">=0.3.0",
+                "gui": ">=0.2.0",
+                "discord_bot": ">=0.1.0"
+            }
+        }).to_string()).unwrap();
+
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+
+        let mut versions = HashMap::new();
+        versions.insert("saba-core".to_string(), "0.5.0".to_string());
+        versions.insert("gui".to_string(), "0.3.0".to_string());
+        versions.insert("discord_bot".to_string(), "0.1.0".to_string());
+
+        let result = mgr.enable_with_versions("advanced_ext", &versions);
+        assert!(result.is_ok(), "All cross-type component deps satisfied");
+    }
+
+    #[test]
+    fn test_enable_requires_plus_extension_dependency() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        // parent extension (no requires)
+        let parent_dir = tmp.path().join("parent_ext");
+        std::fs::create_dir_all(&parent_dir).unwrap();
+        std::fs::write(parent_dir.join("manifest.json"), json!({
+            "id": "parent_ext", "name": "Parent", "version": "0.1.0"
+        }).to_string()).unwrap();
+
+        // child extension — depends on parent_ext + requires saba-core >=0.3.0
+        let child_dir = tmp.path().join("child_ext");
+        std::fs::create_dir_all(&child_dir).unwrap();
+        std::fs::write(child_dir.join("manifest.json"), json!({
+            "id": "child_ext",
+            "name": "Child",
+            "version": "1.0.0",
+            "dependencies": {
+                "parent_ext": "*",
+                "saba-core": ">=0.3.0"
+            }
+        }).to_string()).unwrap();
+
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+
+        let mut versions = HashMap::new();
+        versions.insert("saba-core".to_string(), "0.5.0".to_string());
+
+        // parent not enabled → child fails on ext dependency
+        let result = mgr.enable_with_versions("child_ext", &versions);
+        assert!(result.is_err(), "Should fail: parent not enabled");
+
+        // enable parent, then child should succeed
+        mgr.enable_with_versions("parent_ext", &versions).unwrap();
+        let result = mgr.enable_with_versions("child_ext", &versions);
+        assert!(result.is_ok(), "Both ext dep and component dep satisfied");
+    }
+
+    #[test]
+    fn test_manifest_dependencies_field_deserialization() {
+        // 맵 형식
+        let manifest: ExtensionManifest = serde_json::from_value(json!({
+            "id": "test_ext",
+            "name": "Test",
+            "version": "1.0.0",
+            "dependencies": {
+                "saba-core": ">=0.3.0",
+                "gui": ">=0.2.0",
+                "docker": ">=1.0.0"
+            }
+        })).unwrap();
+
+        assert_eq!(manifest.dependencies.len(), 3);
+        assert_eq!(manifest.dependencies.get("saba-core").unwrap(), ">=0.3.0");
+        assert_eq!(manifest.dependencies.get("gui").unwrap(), ">=0.2.0");
+        assert_eq!(manifest.dependencies.get("docker").unwrap(), ">=1.0.0");
+
+        // 배열 형식 (하위 호환)
+        let manifest2: ExtensionManifest = serde_json::from_value(json!({
+            "id": "test_ext",
+            "name": "Test",
+            "version": "1.0.0",
+            "dependencies": ["steamcmd", "ue4-ini"]
+        })).unwrap();
+
+        assert_eq!(manifest2.dependencies.len(), 2);
+        assert_eq!(manifest2.dependencies.get("steamcmd").unwrap(), "*");
+        assert_eq!(manifest2.dependencies.get("ue4-ini").unwrap(), "*");
+    }
+
+    #[test]
+    fn test_manifest_dependencies_empty_by_default() {
+        let manifest: ExtensionManifest = serde_json::from_value(json!({
+            "id": "test_ext",
+            "name": "Test",
+            "version": "1.0.0"
+        })).unwrap();
+
+        assert!(manifest.dependencies.is_empty(), "dependencies should default to empty");
+    }
+
+    #[test]
+    fn test_list_includes_dependencies() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ext_dir = tmp.path().join("ext_req");
+        std::fs::create_dir_all(&ext_dir).unwrap();
+        std::fs::write(ext_dir.join("manifest.json"), json!({
+            "id": "ext_req",
+            "name": "Ext with Dependencies",
+            "version": "1.0.0",
+            "dependencies": { "saba-core": ">=0.5.0" }
+        }).to_string()).unwrap();
+
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+
+        let list = mgr.list();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].dependencies.get("saba-core").unwrap(), ">=0.5.0");
+    }
+
+    #[test]
+    fn test_component_version_unsatisfied_error() {
+        let err = ExtensionError::component_version_unsatisfied(
+            "my_ext", "saba-core", ">=0.5.0", Some("0.3.0")
+        );
+        assert_eq!(err.error_code, "component_version_unsatisfied");
+        assert!(err.message.contains("saba-core"));
+        assert!(err.message.contains(">=0.5.0"));
+        assert!(err.message.contains("0.3.0"));
+        assert_eq!(err.related, vec!["saba-core", ">=0.5.0"]);
+    }
+
+    #[test]
+    fn test_component_version_unsatisfied_not_installed() {
+        let err = ExtensionError::component_version_unsatisfied(
+            "my_ext", "gui", ">=0.2.0", None
+        );
+        assert!(err.message.contains("not installed"));
     }
 }

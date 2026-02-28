@@ -77,6 +77,8 @@
   "errors": {
     "error_title": "执行命令出错",
     "unknown": "未知错误",
+    "alias_conflict": "❌ 别名 '{{alias}}' 不明确 — 匹配多个模块：{{modules}}。请使用更具体的别名。",
+    "multiple_instances": "⚠️ 存在多个 '{{module}}' 实例。请使用实例名称代替模块别名。",
     "auth_failed": "身份验证失败",
     "player_not_found": "找不到玩家",
     "internal_server_error": "内部服务器错误",
@@ -89,9 +91,7 @@
     "service_unavailable": "服务不可用",
     "unknown_input": "❌ 未知命令。",
     "command_not_found": "❌ 命令不存在。",
-    "permission_denied": "❌ 您没有使用此命令的权限。",
-    "alias_conflict": "❌ 别名 '{{alias}}' 不明确 — 匹配多个模块：{{modules}}。请使用更具体的别名。",
-    "multiple_instances": "⚠️ 存在多个 '{{module}}' 实例。请使用实例名称代替模块别名。"
+    "permission_denied": "❌ 您没有使用此命令的权限。"
   },
   "messages": {
     "server_started": "服务器成功启动",
@@ -138,7 +138,7 @@
     "now_playing_detail": "🎶 **{{title}}** [{{duration}}]\n🔗 {{url}}\n👤 {{requester}} | 🔊 {{volume}}%",
     "current_volume": "🔊 当前音量: **{{volume}}%**",
     "volume_range": "🔊 音量必须在0到200之间",
-    "volume_set": "{{emoji}} 音量: **{{volume}}%**",
+    "volume_set": "{{emoji}} Volume: **{{volume}}%**",
     "shuffle_need_more": "🔀 需要队列中至少有2首歌才能随机",
     "shuffled": "🔀 已随机排列{{count}}首歌！",
     "invalid_url": "无法获取视频信息",
@@ -160,9 +160,9 @@
   },
   "rps": {
     "prompt": "✊✌️✋ 请选一个！",
-    "draw": "{{bot}}！平局！再来~ 🔄",
-    "user_win": "{{bot}}！我输了... 😵",
-    "bot_win": "{{bot}}！我赢了~ 😋",
+    "draw": "{{bot}}! It's a tie! Again~ 🔄",
+    "user_win": "{{bot}}! I lost... 😵",
+    "bot_win": "{{bot}}! I win~ 😋",
     "timeout": "⏰ 时间到！下次再挑战吧~",
     "scissors": "剪刀",
     "rock": "石头",

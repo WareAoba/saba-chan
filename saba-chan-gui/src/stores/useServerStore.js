@@ -200,3 +200,24 @@ export const useServerStore = create((set, get) => ({
         }
     },
 }));
+// ── Vite HMR: preserve store state across hot module replacement ──
+if (import.meta.hot) {
+    import.meta.hot.dispose((data) => {
+        const s = useServerStore.getState();
+        data.prevState = {
+            servers: s.servers,
+            modules: s.modules,
+            loading: s.loading,
+            moduleAliasesPerModule: s.moduleAliasesPerModule,
+            daemonReady: s.daemonReady,
+            initStatus: s.initStatus,
+            initProgress: s.initProgress,
+            serversInitializing: s.serversInitializing,
+            nowEpoch: s.nowEpoch,
+            _firstFetchDone: s._firstFetchDone,
+        };
+    });
+    if (import.meta.hot.data?.prevState) {
+        useServerStore.setState(import.meta.hot.data.prevState);
+    }
+}

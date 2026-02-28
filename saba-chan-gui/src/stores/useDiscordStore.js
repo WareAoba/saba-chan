@@ -368,3 +368,31 @@ useDiscordStore.subscribe((state, prevState) => {
         useSettingsStore.getState()._setDiscordFields(state.discordToken, state.discordAutoStart);
     }
 });
+
+// ── Vite HMR: preserve store state across hot module replacement ──
+if (import.meta.hot) {
+    import.meta.hot.dispose((data) => {
+        const s = useDiscordStore.getState();
+        data.prevState = {
+            discordToken: s.discordToken,
+            discordPrefix: s.discordPrefix,
+            discordAutoStart: s.discordAutoStart,
+            discordModuleAliases: s.discordModuleAliases,
+            discordCommandAliases: s.discordCommandAliases,
+            discordMusicEnabled: s.discordMusicEnabled,
+            discordBotMode: s.discordBotMode,
+            discordCloudRelayUrl: s.discordCloudRelayUrl,
+            discordCloudHostId: s.discordCloudHostId,
+            nodeSettings: s.nodeSettings,
+            cloudNodes: s.cloudNodes,
+            cloudMembers: s.cloudMembers,
+            discordBotStatus: s.discordBotStatus,
+            relayConnected: s.relayConnected,
+            botStatusReady: s.botStatusReady,
+            _settingsReady: s._settingsReady,
+        };
+    });
+    if (import.meta.hot.data?.prevState) {
+        useDiscordStore.setState(import.meta.hot.data.prevState);
+    }
+}

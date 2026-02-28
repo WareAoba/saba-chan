@@ -33,9 +33,10 @@ async fn main() -> anyhow::Result<()> {
     let _ = &cfg; // 향후 설정 참조를 위해 유지
 
     // Initialize supervisor with module loader
-    let modules_path = std::env::var("SABA_MODULES_PATH")
-        .unwrap_or_else(|_| "./modules".to_string());
-    let supervisor = Arc::new(RwLock::new(supervisor::Supervisor::new(&modules_path)));
+    // 모듈 경로: %APPDATA%/saba-chan/modules (환경 변수 오버라이드 가능)
+    let modules_path = plugin::resolve_modules_dir();
+    let modules_path_str = modules_path.to_string_lossy().to_string();
+    let supervisor = Arc::new(RwLock::new(supervisor::Supervisor::new(&modules_path_str)));
     {
         let mut sup = supervisor.write().await;
         if let Err(e) = sup.initialize().await {

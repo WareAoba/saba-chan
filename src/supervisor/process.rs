@@ -237,19 +237,16 @@ mod tests {
     #[test]
     fn test_terminate() {
         let tracker = ProcessTracker::new();
-        // 존재하지 않는 PID로 종료 시도는 실패해야 함
         tracker.track("palworld", 99999).unwrap();
         let result = tracker.terminate("palworld", false);
-        // 실제 프로세스가 없으므로 에러가 발생할 수 있음
-        // 이 테스트는 terminate 메서드가 호출 가능한지만 확인
         assert!(result.is_err() || tracker.get_status("palworld").is_ok());
     }
 
     #[test]
     fn test_not_found() {
         let tracker = ProcessTracker::new();
-        let result = tracker.get_status("nonexistent");
-        assert!(result.is_err());
+        assert!(tracker.get_status("nonexistent").is_err());
+        assert!(tracker.get_pid("nonexistent").is_err());
     }
 
     #[test]
@@ -258,5 +255,107 @@ mod tests {
         tracker.track("minecraft", 1234).unwrap();
         tracker.untrack("minecraft").unwrap();
         assert!(tracker.get_status("minecraft").is_err());
+    }
+
+    // ── 추가 심층 테스트 ──
+
+    #[test]
+    fn test_start_time_is_nonzero() {
+        let tracker = ProcessTracker::new();
+        tracker.track("srv", 1234).unwrap();
+        let start_time = tracker.get_start_time("srv").unwrap();
+        assert!(start_time > 0, "Start time should be a valid Unix timestamp, got: {}", start_time);
+    }
+
+    #[test]
+    fn test_start_time_not_found() {
+        let tracker = ProcessTracker::new();
+        assert!(tracker.get_start_time("ghost").is_err());
+    }
+
+    #[test]
+    fn test_track_overwrites_existing() {
+        let tracker = ProcessTracker::new();
+        tracker.track("srv", 1000).unwrap();
+        assert_eq!(tracker.get_pid("srv").unwrap(), 1000);
+
+        // 같은 이름으로 재등록 → 새 PID로 업데이트
+        tracker.track("srv", 2000).unwrap();
+        assert_eq!(tracker.get_pid("srv").unwrap(), 2000);
+        assert_eq!(tracker.get_status("srv").unwrap(), ProcessStatus::Running);
+    }
+
+    #[test]
+    fn test_mark_crashed_nonexistent_is_silent() {
+        let tracker = ProcessTracker::new();
+        // 존재하지 않는 서버를 crash 처리해도 에러가 아닌 no-op
+        let result = tracker.mark_crashed("nonexistent");
+        assert!(result.is_ok(), "mark_crashed on unknown server should not error");
+    }
+
+    #[test]
+    fn test_untrack_nonexistent_returns_error() {
+        let tracker = ProcessTracker::new();
+        let result = tracker.untrack("never-existed");
+        assert!(result.is_err(), "untrack on unknown server should return NotFound");
+    }
+
+    #[test]
+    fn test_multiple_servers_independent() {
+        let tracker = ProcessTracker::new();
+        tracker.track("mc", 100).unwrap();
+        tracker.track("pw", 200).unwrap();
+        tracker.track("zomboid", 300).unwrap();
+
+        assert_eq!(tracker.get_pid("mc").unwrap(), 100);
+        assert_eq!(tracker.get_pid("pw").unwrap(), 200);
+        assert_eq!(tracker.get_pid("zomboid").unwrap(), 300);
+
+        // 하나만 크래시 → 나머지 영향 없음
+        tracker.mark_crashed("pw").unwrap();
+        assert_eq!(tracker.get_status("mc").unwrap(), ProcessStatus::Running);
+        assert_eq!(tracker.get_status("pw").unwrap(), ProcessStatus::Crashed);
+        assert_eq!(tracker.get_status("zomboid").unwrap(), ProcessStatus::Running);
+
+        // 하나만 삭제 → 나머지 존재
+        tracker.untrack("mc").unwrap();
+        assert!(tracker.get_pid("mc").is_err());
+        assert_eq!(tracker.get_pid("zomboid").unwrap(), 300);
+    }
+
+    #[test]
+    fn test_track_crash_retrack_lifecycle() {
+        let tracker = ProcessTracker::new();
+        // 시작
+        tracker.track("srv", 100).unwrap();
+        assert_eq!(tracker.get_status("srv").unwrap(), ProcessStatus::Running);
+        // 크래시
+        tracker.mark_crashed("srv").unwrap();
+        assert_eq!(tracker.get_status("srv").unwrap(), ProcessStatus::Crashed);
+        // 재시작 (새 PID)
+        tracker.track("srv", 200).unwrap();
+        assert_eq!(tracker.get_status("srv").unwrap(), ProcessStatus::Running);
+        assert_eq!(tracker.get_pid("srv").unwrap(), 200);
+    }
+
+    /// 동일 PID를 다른 서버 이름으로 등록 — 허용되어야 함 (추적 기반이 이름이므로)
+    #[test]
+    fn test_same_pid_different_servers() {
+        let tracker = ProcessTracker::new();
+        tracker.track("srv-a", 9999).unwrap();
+        tracker.track("srv-b", 9999).unwrap();
+
+        assert_eq!(tracker.get_pid("srv-a").unwrap(), 9999);
+        assert_eq!(tracker.get_pid("srv-b").unwrap(), 9999);
+    }
+
+    /// 빈 서버 이름 — 허용되지만 의미 없는 엣지 케이스
+    #[test]
+    fn test_empty_server_name() {
+        let tracker = ProcessTracker::new();
+        tracker.track("", 1234).unwrap();
+        assert_eq!(tracker.get_pid("").unwrap(), 1234);
+        tracker.untrack("").unwrap();
+        assert!(tracker.get_pid("").is_err());
     }
 }

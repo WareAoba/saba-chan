@@ -47,5 +47,9 @@
     "connection_refused": "无法连接到守护程序。请检查守护程序是否正在运行",
     "timeout": "请求超时：服务器未响应",
     "not_found": "找不到服务器。请检查网络设置"
+  },
+  "port_conflict": {
+    "force_stop_title": "포트 충돌 — {{name}} 已停止됨",
+    "force_stop_body": "포트 {{port}}이(가) {{existing}}와(과) 충돌하여 {{stopped}}이(가) 강제 已停止되었습니다"
   }
 }

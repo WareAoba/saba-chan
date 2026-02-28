@@ -527,4 +527,279 @@ mod tests {
         let conflicts = check_port_conflicts(&zomboid, &all, &running, Some(&module_protocols));
         assert!(conflicts.is_empty(), "대상 모듈이 REST 미지원이면 rest_port 충돌 없어야 합니다: {:?}", conflicts);
     }
+
+    // ═══════════════════════════════════════════════════════
+    // 추가 심층 테스트
+    // ═══════════════════════════════════════════════════════
+
+    /// 비필수 필드에 None 전달 → Ok
+    #[test]
+    fn test_optional_field_none_is_ok() {
+        let field = make_field("description", "text");
+        assert!(validate_setting_value(&field, None).is_ok());
+    }
+
+    /// 비필수 필드에 Null 전달 → Ok
+    #[test]
+    fn test_optional_field_null_is_ok() {
+        let field = make_field("description", "text");
+        assert!(validate_setting_value(&field, Some(&Value::Null)).is_ok());
+    }
+
+    /// 필수 필드에 빈 문자열 → Required 에러
+    #[test]
+    fn test_required_field_empty_string_is_error() {
+        let mut field = make_field("name", "text");
+        field.required = Some(true);
+        let result = validate_setting_value(&field, Some(&Value::String("".into())));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().error_type, ValidationErrorType::Required);
+    }
+
+    /// 비필수 필드에 빈 문자열 → Ok
+    #[test]
+    fn test_optional_field_empty_string_is_ok() {
+        let field = make_field("description", "text");
+        assert!(validate_setting_value(&field, Some(&Value::String("".into()))).is_ok());
+    }
+
+    /// 숫자 — 정확히 min에서 Ok, 정확히 max에서 Ok
+    #[test]
+    fn test_number_at_exact_boundaries() {
+        let mut field = make_field("port", "number");
+        field.min = Some(1024.0);
+        field.max = Some(65535.0);
+
+        // 정확히 min
+        let at_min = Value::Number(serde_json::Number::from(1024));
+        assert!(validate_setting_value(&field, Some(&at_min)).is_ok());
+
+        // 정확히 max
+        let at_max = Value::Number(serde_json::Number::from(65535));
+        assert!(validate_setting_value(&field, Some(&at_max)).is_ok());
+
+        // min - 1
+        let below_min = Value::Number(serde_json::Number::from(1023));
+        assert!(validate_setting_value(&field, Some(&below_min)).is_err());
+
+        // max + 1
+        let above_max = Value::Number(serde_json::Number::from(65536));
+        assert!(validate_setting_value(&field, Some(&above_max)).is_err());
+    }
+
+    /// 숫자 필드에 배열 전달 → TypeMismatch
+    #[test]
+    fn test_number_field_with_array_is_type_mismatch() {
+        let field = make_field("port", "number");
+        let val = Value::Array(vec![Value::Number(serde_json::Number::from(8080))]);
+        let result = validate_setting_value(&field, Some(&val));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().error_type, ValidationErrorType::TypeMismatch);
+    }
+
+    /// 숫자 필드에 파싱 불가능한 문자열 → TypeMismatch
+    #[test]
+    fn test_number_field_with_non_numeric_string() {
+        let field = make_field("port", "number");
+        let val = Value::String("not_a_number".into());
+        let result = validate_setting_value(&field, Some(&val));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().error_type, ValidationErrorType::TypeMismatch);
+    }
+
+    /// boolean 필드에 숫자 0/1 → TypeMismatch (strict)
+    #[test]
+    fn test_boolean_field_rejects_number() {
+        let field = make_field("is_pvp", "boolean");
+        let val = Value::Number(serde_json::Number::from(1));
+        let result = validate_setting_value(&field, Some(&val));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().error_type, ValidationErrorType::TypeMismatch);
+    }
+
+    /// select 필드에 빈 옵션 목록 → 어떤 값도 거부
+    #[test]
+    fn test_select_empty_options_rejects_all() {
+        let mut field = make_field("mode", "select");
+        field.options = Some(vec![]);
+        let val = Value::String("any".into());
+        let result = validate_setting_value(&field, Some(&val));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().error_type, ValidationErrorType::InvalidOption);
+    }
+
+    /// select 필드의 대소문자 구분 확인
+    #[test]
+    fn test_select_is_case_sensitive() {
+        let mut field = make_field("difficulty", "select");
+        field.options = Some(vec!["Easy".into(), "Normal".into(), "Hard".into()]);
+
+        let valid = Value::String("Normal".into());
+        assert!(validate_setting_value(&field, Some(&valid)).is_ok());
+
+        let wrong_case = Value::String("normal".into());
+        assert!(validate_setting_value(&field, Some(&wrong_case)).is_err());
+    }
+
+    /// text 필드에 숫자/불리언 → Ok (문자열 변환 가능)
+    #[test]
+    fn test_text_field_accepts_number_and_bool() {
+        let field = make_field("notes", "text");
+        assert!(validate_setting_value(&field, Some(&Value::Number(serde_json::Number::from(42)))).is_ok());
+        assert!(validate_setting_value(&field, Some(&Value::Bool(true))).is_ok());
+    }
+
+    /// text 필드에 배열 → TypeMismatch
+    #[test]
+    fn test_text_field_rejects_array() {
+        let field = make_field("notes", "text");
+        let val = Value::Array(vec![]);
+        let result = validate_setting_value(&field, Some(&val));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().error_type, ValidationErrorType::TypeMismatch);
+    }
+
+    /// 알 수 없는 field_type → 통과 (forward compatibility)
+    #[test]
+    fn test_unknown_field_type_passes() {
+        let field = make_field("custom", "slider"); // 미래의 새 타입
+        let val = Value::String("42".into());
+        assert!(validate_setting_value(&field, Some(&val)).is_ok());
+    }
+
+    /// validate_all_settings — 복합 스키마 일괄 검증
+    #[test]
+    fn test_validate_all_settings_batch() {
+        let mut port_field = make_field("port", "number");
+        port_field.required = Some(true);
+        port_field.min = Some(1024.0);
+        port_field.max = Some(65535.0);
+
+        let mut name_field = make_field("name", "text");
+        name_field.required = Some(true);
+
+        let mut mode_field = make_field("mode", "select");
+        mode_field.options = Some(vec!["survival".into(), "creative".into()]);
+
+        let optional_field = make_field("motd", "text");
+
+        let fields = vec![port_field, name_field, mode_field, optional_field];
+
+        // 올바른 설정
+        let mut settings = serde_json::Map::new();
+        settings.insert("port".into(), Value::Number(serde_json::Number::from(25565)));
+        settings.insert("name".into(), Value::String("My Server".into()));
+        settings.insert("mode".into(), Value::String("survival".into()));
+
+        let errors = validate_all_settings(&fields, &settings);
+        assert!(errors.is_empty(), "Valid settings should have no errors: {:?}", errors);
+
+        // port 누락 + mode 잘못됨
+        let mut bad_settings = serde_json::Map::new();
+        bad_settings.insert("name".into(), Value::String("Test".into()));
+        bad_settings.insert("mode".into(), Value::String("hardcore".into()));
+
+        let errors = validate_all_settings(&fields, &bad_settings);
+        assert_eq!(errors.len(), 2, "Should find 2 errors: {:?}", errors);
+        let error_fields: Vec<&str> = errors.iter().map(|e| e.field.as_str()).collect();
+        assert!(error_fields.contains(&"port"));
+        assert!(error_fields.contains(&"mode"));
+    }
+
+    /// 포트 충돌 — 같은 game port와 rcon_port 간 크로스 충돌
+    #[test]
+    fn test_port_conflict_cross_type() {
+        let mut instance_a = ServerInstance::new("server-a", "minecraft");
+        instance_a.id = "aaa".to_string();
+        instance_a.port = Some(25575); // game port가 다른 서버의 rcon port와 같음
+
+        let mut instance_b = ServerInstance::new("server-b", "minecraft");
+        instance_b.id = "bbb".to_string();
+        instance_b.port = Some(25565);
+        instance_b.rcon_port = Some(25575); // rcon_port가 A의 game port와 같음
+
+        let running: std::collections::HashSet<String> = ["bbb".to_string()].into();
+        let all = vec![instance_a.clone(), instance_b];
+
+        let conflicts = check_port_conflicts(&instance_a, &all, &running, None);
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].port, 25575);
+        assert_eq!(conflicts[0].port_type, "port");
+        assert_eq!(conflicts[0].conflicting_port_type, "rcon_port");
+    }
+
+    /// 포트 충돌 — 3개 인스턴스와 다중 충돌
+    #[test]
+    fn test_port_conflict_multiple_instances() {
+        let mut target = ServerInstance::new("target", "palworld");
+        target.id = "t".to_string();
+        target.port = Some(8211);
+        target.rest_port = Some(8212);
+
+        let mut other1 = ServerInstance::new("other-1", "palworld");
+        other1.id = "o1".to_string();
+        other1.port = Some(8211); // game port 충돌
+
+        let mut other2 = ServerInstance::new("other-2", "palworld");
+        other2.id = "o2".to_string();
+        other2.port = Some(9999);
+        other2.rest_port = Some(8212); // rest_port 충돌
+
+        let running: std::collections::HashSet<String> = ["o1".into(), "o2".into()].into();
+        let all = vec![target.clone(), other1, other2];
+
+        let conflicts = check_port_conflicts(&target, &all, &running, None);
+        assert_eq!(conflicts.len(), 2, "Should detect 2 conflicts: {:?}", conflicts);
+    }
+
+    /// ValidationError — Display trait 출력 포맷
+    #[test]
+    fn test_validation_error_display() {
+        let err = ValidationError {
+            field: "port".to_string(),
+            message: "Required field 'port' is missing".to_string(),
+            error_type: ValidationErrorType::Required,
+        };
+        let display = format!("{}", err);
+        assert_eq!(display, "port: Required field 'port' is missing");
+    }
+
+    /// PortConflict — Display trait 출력 포맷
+    #[test]
+    fn test_port_conflict_display() {
+        let conflict = PortConflict {
+            port: 25565,
+            port_type: "port".to_string(),
+            conflicting_instance_name: "other-server".to_string(),
+            conflicting_instance_id: "abc".to_string(),
+            conflicting_port_type: "port".to_string(),
+        };
+        let display = format!("{}", conflict);
+        assert!(display.contains("25565"));
+        assert!(display.contains("other-server"));
+    }
+
+    /// 포트 충돌 — module_protocols=None이면 모든 포트 비교 (하위 호환)
+    #[test]
+    fn test_port_conflict_without_protocols_includes_all_ports() {
+        let mut instance_a = ServerInstance::new("srv-a", "unknown_module");
+        instance_a.id = "aaa".to_string();
+        instance_a.port = Some(8000);
+        instance_a.rcon_port = Some(8001);
+        instance_a.rest_port = Some(8002);
+
+        let mut instance_b = ServerInstance::new("srv-b", "unknown_module");
+        instance_b.id = "bbb".to_string();
+        instance_b.port = Some(9000);
+        instance_b.rcon_port = Some(9001);
+        instance_b.rest_port = Some(8002); // rest_port 충돌
+
+        let running: std::collections::HashSet<String> = ["bbb".into()].into();
+        let all = vec![instance_a.clone(), instance_b];
+
+        // module_protocols=None → 모든 포트 비교
+        let conflicts = check_port_conflicts(&instance_a, &all, &running, None);
+        assert_eq!(conflicts.len(), 1, "Without protocols, all ports should be compared");
+        assert_eq!(conflicts[0].port, 8002);
+    }
 }

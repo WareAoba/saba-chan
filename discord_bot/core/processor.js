@@ -12,7 +12,6 @@ const i18n = require('../i18n');
 const resolver = require('./resolver');
 const handler = require('./handler');
 const ipc = require('./ipc');
-const { buildModuleAliasMap } = require('../utils/aliasResolver');
 
 // ── 중복 메시지 방지 ──
 const processedMessages = new Set();
@@ -330,7 +329,7 @@ async function handleModuleCommand(message, moduleAlias, commandAlias, extraArgs
 
         // ── 내장 명령어 (start, stop, status) ──
         if (commandName === 'start') {
-            await executeStart(message, server, moduleName);
+            await executeStart(message, server, moduleName, guildId);
             return;
         }
         if (commandName === 'stop') {
@@ -400,11 +399,11 @@ function determineUseManaged(server, moduleName, guildId) {
     return (interactionMode === 'console');
 }
 
-async function executeStart(message, server, moduleName) {
+async function executeStart(message, server, moduleName, guildId) {
     const startMsg = i18n.t('bot:server.start_request', { name: server.name });
     const statusMsg = await message.reply(startMsg);
     try {
-        const useManaged = determineUseManaged(server, moduleName);
+        const useManaged = determineUseManaged(server, moduleName, guildId);
         await ipc.startServer(server.id, server.name, server.module, useManaged);
         const completeMsg = i18n.t('bot:server.start_complete', { name: server.name });
         await statusMsg.edit(completeMsg);

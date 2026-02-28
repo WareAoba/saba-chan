@@ -77,12 +77,13 @@
   "errors": {
     "error_title": "Error al ejecutar comando",
     "unknown": "Error desconocido",
+    "alias_conflict": "❌ El alias '{{alias}}' es ambiguo — coincide con varios módulos: {{modules}}. Usa un alias más específico.",
+    "multiple_instances": "⚠️ Existen múltiples instancias de '{{module}}'. Usa el nombre de la instancia en lugar del alias del módulo.",
     "auth_failed": "Falló la autenticación",
     "player_not_found": "Jugador no encontrado",
     "internal_server_error": "Error interno del servidor",
     "rest_api_disabled": "API REST deshabilitada",
     "rcon_disabled": "RCON deshabilitado",
-    "empty_list": "(vacío)",
     "not_found": "Recurso solicitado no encontrado",
     "connection_refused": "No se puede conectar al servidor",
     "timeout": "Tiempo de solicitud agotado",
@@ -90,9 +91,7 @@
     "service_unavailable": "Servicio no disponible",
     "unknown_input": "❌ Comando desconocido.",
     "command_not_found": "❌ El comando no existe.",
-    "permission_denied": "❌ No tienes permiso para usar este comando.",
-    "alias_conflict": "❌ El alias '{{alias}}' es ambiguo — coincide con varios módulos: {{modules}}. Usa un alias más específico.",
-    "multiple_instances": "⚠️ Existen múltiples instancias de '{{module}}'. Usa el nombre de la instancia en lugar del alias del módulo."
+    "permission_denied": "❌ No tienes permiso para usar este comando."
   },
   "messages": {
     "server_started": "Servidor iniciado exitosamente",
@@ -139,7 +138,7 @@
     "now_playing_detail": "🎶 **{{title}}** [{{duration}}]\n🔗 {{url}}\n👤 {{requester}} | 🔊 {{volume}}%",
     "current_volume": "🔊 Volumen actual: **{{volume}}%**",
     "volume_range": "🔊 El volumen debe estar entre 0 y 200",
-    "volume_set": "{{emoji}} Volumen: **{{volume}}%**",
+    "volume_set": "{{emoji}} Volume: **{{volume}}%**",
     "shuffle_need_more": "🔀 Se necesitan al menos 2 pistas para mezclar",
     "shuffled": "🔀 ¡{{count}} pistas mezcladas!",
     "invalid_url": "No se pudo obtener información del video",
@@ -161,9 +160,9 @@
   },
   "rps": {
     "prompt": "✊✌️✋ ¡Elige uno!",
-    "draw": "{{bot}}! ¡Empate! ¡Otra vez~ 🔄",
-    "user_win": "{{bot}}! Perdí... 😵",
-    "bot_win": "{{bot}}! ¡Gané~ 😋",
+    "draw": "{{bot}}! It's a tie! Again~ 🔄",
+    "user_win": "{{bot}}! I lost... 😵",
+    "bot_win": "{{bot}}! I win~ 😋",
     "timeout": "⏰ ¡Se acabó el tiempo! Inténtalo de nuevo~",
     "scissors": "Tijera",
     "rock": "Piedra",
