@@ -331,7 +331,7 @@ function App() {
                 };
 
                 setInitStatus(statusMessages[data.step] || data.message);
-                setInitProgress((prev) => progressValues[data.step] || prev);
+                setInitProgress((prev) => Math.max(prev, progressValues[data.step] || prev));
 
                 if (data.step === 'ready') {
                     window.__sabaReadyReceived = true;
@@ -349,7 +349,7 @@ function App() {
                 const names = data.names || data.update_names || [];
                 if (count > 0 && window.__sabaNotice) {
                     window.__sabaNotice.addNotice({
-                        message: `📦 ${count}개 업데이트 발견: ${names.join(', ') || '확인 필요'}`,
+                        message: `📦 ${t('updates.found', { count, names: names.join(', ') || t('updates.check_required') })}`,
                         type: 'info',
                         source: 'Updater',
                         action: 'openUpdateModal',
@@ -365,14 +365,14 @@ function App() {
                 console.log('[Updater] Update completed notification:', data);
                 setTimeout(() => {
                     if (typeof window.showToast === 'function') {
-                        window.showToast(data.message || '업데이트가 완료되었습니다!', 'success', 5000, {
+                        window.showToast(data.message || t('updates.completed'), 'success', 5000, {
                             isNotice: true,
                             source: 'saba-chan',
                         });
                     }
                     if (window.__sabaNotice) {
                         window.__sabaNotice.addNotice({
-                            message: data.message || '업데이트가 완료되었습니다!',
+                            message: data.message || t('updates.completed'),
                             type: 'success',
                             source: 'Updater',
                         });

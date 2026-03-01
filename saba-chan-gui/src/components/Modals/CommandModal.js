@@ -218,7 +218,7 @@ function CommandModal({ server, modules, onClose, onExecute }) {
                                         className="command-input"
                                         value={commandInputs[input.name] || ''}
                                         onChange={(val) => handleInputChange(input.name, val)}
-                                        placeholder="-- 선택하세요 --"
+                                        placeholder={t('command_modal.select_placeholder')}
                                         options={(input.options || []).map((opt) => ({ value: opt, label: opt }))}
                                     />
                                 )}

@@ -17,6 +17,7 @@ export const debugWarn = (...args) => {
  * Safe wrapper around window.showToast that won't throw if Toast isn't mounted yet.
  */
 export const safeShowToast = (message, type, duration, options) => {
+    if (!message) return null;
     if (typeof window.showToast === 'function') {
         return window.showToast(message, type, duration, options);
     } else {
@@ -90,8 +91,8 @@ export function createTranslateError(t) {
         if (msg.includes('ECONNREFUSED')) {
             return t('errors.daemon_connection_refused');
         }
-        if (msg.includes('ETIMEDOUT')) {
-            return t('errors.request_timeout');
+        if (msg.includes('ETIMEDOUT') || msg.includes('timeout') && msg.includes('exceeded')) {
+            return null;  // suppress noisy timeout toasts (provisioning, Docker, etc.)
         }
         if (msg.includes('ENOTFOUND')) {
             return t('errors.server_not_found');

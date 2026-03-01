@@ -41,7 +41,7 @@ function SabaStorage({ onBack, isExiting, devMode }) {
         <div className={clsx('update-panel', { exiting: isExiting })}>
             {/* 헤더 */}
             <div className="update-panel-header">
-                <button className="update-panel-back" onClick={onBack} title="뒤로" disabled={isExiting}>
+                <button className="update-panel-back" onClick={onBack} title={t('saba_storage.back')} disabled={isExiting}>
                     <Icon name="chevronLeft" size="sm" />
                 </button>
                 <h2 className="update-panel-title">{t('saba_storage.title', '사바 스토리지')}</h2>
@@ -145,7 +145,7 @@ function ComponentsTab({ devMode }) {
                     github_repo: 'saba-chan',
                 });
                 setMockMode(true);
-                setMessage('Mock 주소로 전환 (localhost:9876)');
+                setMessage(t('saba_storage.switch_to_mock'));
             } else {
                 await window.api?.updaterSetConfig?.({
                     api_base_url: '',
@@ -153,11 +153,11 @@ function ComponentsTab({ devMode }) {
                     github_repo: 'saba-chan',
                 });
                 setMockMode(false);
-                setMessage('실제 GitHub API 주소로 전환');
+                setMessage(t('saba_storage.switch_to_real'));
             }
             setComponents([]);
         } catch (e) {
-            setError(`주소 전환 실패: ${e.message}`);
+            setError(t('saba_storage.switch_failed', { error: e.message }));
         }
     }, []);
 
@@ -214,10 +214,10 @@ function ComponentsTab({ devMode }) {
                         if (res?.requires_updater && res?.needs_updater?.length > 0) {
                             const launchRes = await window.api?.updaterLaunchApply?.(res.needs_updater);
                             if (launchRes?.ok === false)
-                                setError(`${key}: ${launchRes?.error || '업데이터 실행 실패'}`);
+                                setError(`${key}: ${launchRes?.error || t('saba_storage.updater_launch_failed')}`);
                         } else if (res?.ok === false) {
                             setError(
-                                `${key}: ${res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || '적용 실패'}`,
+                                `${key}: ${res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || t('saba_storage.apply_failed')}`,
                             );
                         }
                     } catch (e) {
@@ -236,20 +236,20 @@ function ComponentsTab({ devMode }) {
                     const botStatus = await window.api?.discordBotStatus?.();
                     const wasBotRunning = botStatus === 'running';
                     if (wasBotRunning) {
-                        setMessage('Discord Bot 중지 중...');
+                        setMessage(t('saba_storage.bot_stopping'));
                         await window.api?.discordBotStop?.();
                         await new Promise((r) => setTimeout(r, 2000));
                     }
-                    setMessage('Discord Bot 파일 교체 중...');
+                    setMessage(t('saba_storage.bot_replacing'));
                     const res = await window.api?.updaterApply?.([key]);
                     if (res?.ok === false) {
                         setError(
-                            `${key}: ${res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || '적용 실패'}`,
+                            `${key}: ${res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || t('saba_storage.apply_failed')}`,
                         );
                     } else if (res?.applied?.length > 0) {
-                        setMessage(`${res.applied.join(', ')} 적용 완료`);
+                        setMessage(t('saba_storage.apply_completed', { names: res.applied.join(', ') }));
                         if (wasBotRunning) {
-                            setMessage('Discord Bot 재시작 중...');
+                            setMessage(t('saba_storage.bot_restarting'));
                             const settings = await window.api?.settingsLoad?.();
                             const botConfig = await window.api?.botConfigLoad?.();
                             const token = settings?.discordToken;
@@ -260,10 +260,10 @@ function ComponentsTab({ devMode }) {
                                     moduleAliases: botConfig?.moduleAliases || {},
                                     commandAliases: botConfig?.commandAliases || {},
                                 });
-                                if (startRes?.error) setError(`Discord Bot 재시작 실패: ${startRes.error}`);
-                                else setMessage('Discord Bot 업데이트 후 재시작 완료');
+                                if (startRes?.error) setError(t('saba_storage.bot_restart_failed', { error: startRes.error }));
+                                else setMessage(t('saba_storage.bot_restarted'));
                             } else {
-                                setMessage('Discord Bot 업데이트 완료 (토큰 없음 — 수동 재시작 필요)');
+                                setMessage(t('saba_storage.bot_no_token'));
                             }
                         }
                     }
@@ -280,16 +280,16 @@ function ComponentsTab({ devMode }) {
             try {
                 const res = await window.api?.updaterApply?.([key]);
                 if (res?.ok === false) {
-                    setError(`${key}: ${res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || '적용 실패'}`);
+                    setError(`${key}: ${res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || t('saba_storage.apply_failed')}`);
                 } else {
                     if (res?.requires_updater && res?.needs_updater?.length > 0) {
                         const launchRes = await window.api?.updaterLaunchApply?.(res.needs_updater);
-                        if (launchRes?.ok === false) setError(`${key}: ${launchRes?.error || '업데이터 실행 실패'}`);
-                        else setMessage(`${key}: 업데이터가 백그라운드에서 파일을 교체합니다`);
+                        if (launchRes?.ok === false) setError(`${key}: ${launchRes?.error || t('saba_storage.updater_launch_failed')}`);
+                        else setMessage(t('saba_storage.updater_background', { key }));
                     } else if (res?.applied?.length > 0) {
-                        setMessage(`${res.applied.join(', ')} 적용 완료`);
+                        setMessage(t('saba_storage.apply_completed', { names: res.applied.join(', ') }));
                     } else {
-                        setMessage(`${key} 적용 요청 완료`);
+                        setMessage(t('saba_storage.apply_request_done', { key }));
                     }
                 }
                 await refreshStatus();
@@ -349,7 +349,7 @@ function ComponentsTab({ devMode }) {
                     setError(
                         (prev) =>
                             (prev ? prev + '\n' : '') +
-                            (res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || '적용 실패'),
+                            (res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || t('saba_storage.apply_failed')),
                     );
                 } else {
                     daemonApplied = res?.applied || [];
@@ -365,11 +365,11 @@ function ComponentsTab({ devMode }) {
                 const launchRes = await window.api?.updaterLaunchApply?.(updaterKeys);
                 if (launchRes?.ok === false) {
                     hadError = true;
-                    setError((prev) => (prev ? prev + '\n' : '') + (launchRes?.error || '업데이터 실행 실패'));
+                    setError((prev) => (prev ? prev + '\n' : '') + (launchRes?.error || t('saba_storage.updater_launch_failed')));
                 }
             } catch (e) {
                 hadError = true;
-                setError((prev) => (prev ? prev + '\n' : '') + `업데이터: ${e.message}`);
+                setError((prev) => (prev ? prev + '\n' : '') + `${t('saba_storage.updater_label')}: ${e.message}`);
             }
         }
         await refreshStatus();
@@ -387,19 +387,19 @@ function ComponentsTab({ devMode }) {
                     });
                     if (s?.error) {
                         hadError = true;
-                        setError((prev) => (prev ? prev + '\n' : '') + `Discord Bot 재시작 실패: ${s.error}`);
+                        setError((prev) => (prev ? prev + '\n' : '') + t('saba_storage.bot_restart_failed', { error: s.error }));
                     }
                 }
             } catch (e) {
                 hadError = true;
-                setError((prev) => (prev ? prev + '\n' : '') + `Discord Bot 재시작: ${e.message}`);
+                setError((prev) => (prev ? prev + '\n' : '') + t('saba_storage.bot_restart_failed', { error: e.message }));
             }
         }
         const summary = [];
-        if (daemonApplied.length > 0) summary.push(`${daemonApplied.join(', ')} 적용 완료`);
-        if (updaterKeys.length > 0) summary.push('업데이터로 적용 진행 중');
+        if (daemonApplied.length > 0) summary.push(t('saba_storage.apply_completed', { names: daemonApplied.join(', ') }));
+        if (updaterKeys.length > 0) summary.push(t('saba_storage.updater_in_progress'));
         if (summary.length > 0) setMessage(summary.join(' · '));
-        else if (!hadError) setMessage('업데이트 처리 완료');
+        else if (!hadError) setMessage(t('saba_storage.update_done'));
         setBusyAll(false);
     }, [components, refreshStatus, markBusy, clearBusy]);
 
@@ -495,7 +495,7 @@ function ComponentsTab({ devMode }) {
                     <div className="update-panel-header" style={{ paddingTop: 0, paddingBottom: '8px' }}>
                         <label
                             className="update-mock-toggle"
-                            title={mockMode ? 'Mock 서버 (테스트)' : '실제 GitHub API'}
+                            title={mockMode ? t('saba_storage.mock_server_label') : t('saba_storage.real_api_label')}
                         >
                             <span className={clsx('update-mock-label', mockMode ? 'mock' : 'real')}>
                                 {mockMode ? 'MOCK' : 'REAL'}
@@ -512,7 +512,7 @@ function ComponentsTab({ devMode }) {
 
                 {checking && (
                     <div className="update-modal-status-bar">
-                        <Icon name="loader" size="sm" /> 업데이트 확인 중...
+                        <Icon name="loader" size="sm" /> {t('saba_storage.checking')}
                     </div>
                 )}
                 {error && (
@@ -575,7 +575,7 @@ function ComponentsTab({ devMode }) {
                                             className="ss-icon-btn accent"
                                             disabled={isBusy}
                                             onClick={() => handleDownloadOne(c.key)}
-                                            title="다운로드"
+                                            title={t('saba_storage.download')}
                                         >
                                             {isBusy ? <SabaSpinner size="xs" /> : <Icon name="download" size="sm" />}
                                         </button>
@@ -585,7 +585,7 @@ function ComponentsTab({ devMode }) {
                                             className={clsx('ss-icon-btn', c.needsUpdater ? 'warning' : 'accent')}
                                             disabled={isBusy}
                                             onClick={() => handleApplyOne(c.key)}
-                                            title={c.needsUpdater ? '적용 (재시작 필요)' : '적용'}
+                                            title={t(c.needsUpdater ? 'saba_storage.apply_needs_restart' : 'saba_storage.apply')}
                                         >
                                             {isBusy ? (
                                                 <SabaSpinner size="xs" />
@@ -620,7 +620,7 @@ function ComponentsTab({ devMode }) {
                 <label className="update-panel-setting-row">
                     <span className="update-panel-setting-label">
                         <Icon name="refresh" size="sm" />
-                        {t('updates.auto_check', '자동으로 업데이트 확인')}
+                        {t('updates.auto_check')}
                     </span>
                     <SabaToggle checked={autoCheckEnabled} onChange={(checked) => handleAutoCheckToggle(checked)} />
                 </label>
@@ -630,8 +630,8 @@ function ComponentsTab({ devMode }) {
 
             {confirmRestart && (
                 <QuestionModal
-                    title="재시작 필요"
-                    message="업데이트를 적용하면 프로그램이 재시작됩니다. 계속하시겠습니까?"
+                    title={t('saba_storage.restart_required_title')}
+                    message={t('saba_storage.restart_required_message')}
                     onConfirm={handleConfirmRestart}
                     onCancel={() => {
                         setConfirmRestart(false);

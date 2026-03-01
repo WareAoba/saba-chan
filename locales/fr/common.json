@@ -49,7 +49,7 @@
     "not_found": "Serveur non trouvé. Veuillez vérifier vos paramètres réseau"
   },
   "port_conflict": {
-    "force_stop_title": "포트 충돌 — {{name}} Arrêté됨",
-    "force_stop_body": "포트 {{port}}이(가) {{existing}}와(과) 충돌하여 {{stopped}}이(가) 강제 Arrêté되었습니다"
+    "force_stop_title": "Conflit de port — {{name}} arrêté",
+    "force_stop_body": "{{stopped}} a été arrêté de force car le port {{port}} est en conflit avec {{existing}}"
   }
 }

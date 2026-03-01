@@ -2679,7 +2679,10 @@ ipcMain.handle('guiConfig:sync', async (_event, config) => {
 });
 
 ipcMain.handle('settings:save', (_event, settings) => {
-    const result = saveSettings(settings);
+    // 기존 설정과 병합하여 language, windowBounds 등 GUI가 관리하지 않는 필드를 보호
+    const existing = loadSettings();
+    const merged = { ...existing, ...settings };
+    const result = saveSettings(merged);
     refreshIpcBase(); // IPC 포트 변경 반영
     // 데몬에 GUI 설정 동기화 (portConflictCheck 등)
     syncGuiConfigToDaemon(settings).catch(err => {
@@ -3051,7 +3054,7 @@ ipcMain.handle('discord:start', async (_event, config) => {
         if (config.mode === 'cloud') {
             // 클라우드 모드: 릴레이 에이전트 모드로 시작 (Discord 로그인 없음)
             const nodeToken = loadNodeToken();
-            const relayUrl = (config.cloud?.relayUrl || 'http://localhost:3000').replace(/\/+$/, '');
+            const relayUrl = (config.cloud?.relayUrl || 'https://saba-chan.online').replace(/\/+$/, '');
             if (!nodeToken) {
                 return { error: 'cloud_token_not_found' };
             }

@@ -105,7 +105,7 @@ function NoticeCard({ notice, onDismiss, onAction, t }) {
     const clickable = !!notice.action;
     const isUpdateCard = notice.action === 'openUpdateModal';
 
-    const timeStr = formatTime(notice.timestamp);
+    const timeStr = formatTime(notice.timestamp, t);
 
     const handleClick = () => {
         if (clickable && onAction) onAction(notice.action);
@@ -128,7 +128,7 @@ function NoticeCard({ notice, onDismiss, onAction, t }) {
                 <p className="notice-card-message">{notice.message}</p>
                 <span className="notice-card-time">
                     {timeStr}
-                    {clickable && <span className="notice-action-hint"> — 클릭하여 열기</span>}
+                    {clickable && <span className="notice-action-hint"> {t('notice_modal.click_to_open')}</span>}
                 </span>
             </div>
             <button
@@ -145,26 +145,26 @@ function NoticeCard({ notice, onDismiss, onAction, t }) {
     );
 }
 
-function formatTime(isoString) {
+function formatTime(isoString, t) {
     const d = new Date(isoString);
     const now = new Date();
     const diff = now - d;
 
-    // 1분 이내
-    if (diff < 60_000) return '방금 전';
-    // 1시간 이내
-    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}분 전`;
-    // 오늘
+    // within 1 minute
+    if (diff < 60_000) return t('notice_modal.just_now');
+    // within 1 hour
+    if (diff < 3_600_000) return t('notice_modal.minutes_ago', { count: Math.floor(diff / 60_000) });
+    // today
     if (d.toDateString() === now.toDateString()) {
         return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
     }
-    // 어제
+    // yesterday
     const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
     if (d.toDateString() === yesterday.toDateString()) {
-        return `어제 ${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
+        return `${t('notice_modal.yesterday')} ${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
     }
-    // 그 외
+    // else
     return (
         d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
         ' ' +

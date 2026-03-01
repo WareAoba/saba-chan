@@ -978,6 +978,80 @@ span[style*="--icon-loader"] svg,
     border-top: 1px solid var(--border-light, #333);
 }
 
+/* Native Provision (비-Docker 프로비저닝) */
+.native-provision {
+    padding: 4px 0 2px;
+}
+
+.native-provision-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.native-provision-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.native-provision-icon.active {
+    color: var(--accent-primary, #4a9eff);
+}
+
+.native-provision-icon.done {
+    color: var(--success, #4caf50);
+}
+
+.native-provision-icon.error {
+    color: var(--danger, #f44336);
+}
+
+.native-provision-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary, #eee);
+}
+
+/* 프로비저닝 에러/해제 (공용 — Docker & Native 공통) */
+.as-provision-error-row {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.as-provision-error {
+    font-size: 11px;
+    color: var(--danger, #f44336);
+    margin: 0;
+    text-align: center;
+    word-break: break-word;
+}
+
+.as-provision-dismiss {
+    font-size: 11px;
+    font-family: inherit;
+    padding: 4px 12px;
+    border-radius: 4px;
+    border: 1px solid var(--border-light, #444);
+    background: var(--bg-tertiary, #2a2a3a);
+    color: var(--text-secondary, #aaa);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.as-provision-dismiss:hover {
+    background: var(--bg-hover, #333);
+    color: var(--text-primary, #eee);
+}
+
 /* Stopping 상태 */
 .status-button.status-stopping {
     border-color: rgba(255, 152, 0, 0.4);

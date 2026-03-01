@@ -12,7 +12,7 @@ export const setDiscordI18n = (t) => {
     _translateError = createTranslateError(t);
 };
 
-const RELAY_URL_FALLBACK = 'http://localhost:3000';
+const RELAY_URL_FALLBACK = 'https://saba-chan.online';
 
 export const useDiscordStore = create((set, get) => ({
     // ── Bot config ──
@@ -105,13 +105,13 @@ export const useDiscordStore = create((set, get) => ({
             const res = await window.api.botConfigSave(payload);
             if (res.error) {
                 console.error('[Settings] Failed to save bot config:', res.error);
-                safeShowToast(_t('settings.save_error', '설정 저장 실패'), 'error');
+                safeShowToast(_t('settings.save_error'), 'error');
             } else {
                 console.log('[Settings] Bot config saved, prefix:', payload.prefix);
             }
         } catch (error) {
             console.error('[Settings] Failed to save bot config:', error);
-            safeShowToast(_t('settings.save_error', '설정 저장 실패'), 'error');
+                safeShowToast(_t('settings.save_error'), 'error');
         }
     },
 
@@ -256,7 +256,7 @@ export const useDiscordStore = create((set, get) => ({
                 if (data.type === 'exit' || data.type === 'spawn_error') {
                     set({ discordBotStatus: 'stopped' });
                 }
-                const msg = data.message || _t('discord_bot.unknown_error', '봇 오류가 발생했습니다');
+                const msg = data.message || _t('discord_bot.unknown_error');
                 safeShowToast(msg, 'error', 6000);
             };
             window.api.onBotError(handler);

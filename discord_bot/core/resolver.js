@@ -179,14 +179,21 @@ function getAllModuleMetadata(guildId)     { return _getMetadata(guildId); }
 // ── nodeSettings 접근 헬퍼 ──
 
 /**
- * guildId로 nodeSettings를 조회하되, 없으면 'local' 키로 폴백.
- * (로컬 모드: GUI는 'local' 키에 저장, 봇은 실제 guildId로 접근)
+ * 모드별 nodeSettings 조회 (로컬 ↔ 클라우드 완전 분리)
+ *   - 로컬 모드: guildId 키 우선, 'local' 폴백 (레거시 호환)
+ *   - 클라우드 모드: guildId 키로만 조회 ('local' 폴백 없음)
  */
 function _resolveNodeSettings(guildId) {
     const ns = botConfig.nodeSettings;
     if (!ns) return null;
+
+    if (botConfig.mode === 'cloud') {
+        // 클라우드: guildId 전용, 'local' 폴백 없음
+        return (guildId && ns[guildId]) ? ns[guildId] : null;
+    }
+
+    // 로컬: guildId 우선 → 'local' 폴백 (레거시 단일 키 호환)
     if (guildId && ns[guildId]) return ns[guildId];
-    // 실제 guildId로 매칭 안 되면 'local' 폴백
     return ns['local'] || null;
 }
 
@@ -202,22 +209,22 @@ function getAllowedInstances(guildId) {
 }
 
 /**
- * 특정 노드에서 멤버가 특정 인스턴스에 대해 허용된 명령어 목록
+ * 특정 노드에서 멤버가 특정 인스턴스에 대해 차단된 명령어 목록
  * @param {string} guildId
  * @param {string} userId
  * @param {string} serverId — 인스턴스 ID
- * @returns {string[]|null} — null이면 제한 없음, 빈 배열이면 권한 없음
+ * @returns {string[]|null} — null이면 제한 없음(비관리 대상), 배열이면 해당 명령어만 차단
  */
-function getMemberCommands(guildId, userId, serverId) {
+function getMemberDeniedCommands(guildId, userId, serverId) {
     const cfg = _resolveNodeSettings(guildId);
     if (!cfg?.memberPermissions) return null; // 멤버 권한 설정 자체가 없음 → 제한 없음
 
     const memberPerms = cfg.memberPermissions[userId];
     if (memberPerms === undefined) return null; // 이 멤버에 대한 설정 없음 → 제한 없음
 
-    // memberPerms: { [serverId]: string[] }
+    // memberPerms: { [serverId]: string[] } — 차단된 명령어 목록
     const cmds = memberPerms[serverId];
-    if (!Array.isArray(cmds)) return []; // 인스턴스에 대한 명령어 설정 없음 → 빈 배열(권한 없음)
+    if (!Array.isArray(cmds)) return []; // 설정 없음 → 빈 배열(차단 없음 = 모두 허용)
     return cmds;
 }
 
@@ -267,6 +274,6 @@ module.exports = {
     getModuleMeta,
     getAllModuleMetadata,
     getAllowedInstances,
-    getMemberCommands,
+    getMemberDeniedCommands,
     isMemberManaged,
 };

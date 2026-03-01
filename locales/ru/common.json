@@ -49,7 +49,7 @@
     "not_found": "Сервер не найден. Проверьте параметры сети"
   },
   "port_conflict": {
-    "force_stop_title": "포트 충돌 — {{name}} Остановлена됨",
-    "force_stop_body": "포트 {{port}}이(가) {{existing}}와(과) 충돌하여 {{stopped}}이(가) 강제 Остановлена되었습니다"
+    "force_stop_title": "Конфликт порта — {{name}} остановлен",
+    "force_stop_body": "{{stopped}} был принудительно остановлен, так как порт {{port}} конфликтует с {{existing}}"
   }
 }

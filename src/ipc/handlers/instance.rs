@@ -494,8 +494,9 @@ pub async fn create_instance(
                                     });
                                 };
 
-                                crate::plugin::run_plugin_with_progress(
+                                crate::plugin::run_plugin_with_progress_and_timeout(
                                     &module_path, "install_server", config, on_progress,
+                                    1800, // 30분 — SteamCMD 대용량 다운로드 허용
                                 ).await
                             };
 

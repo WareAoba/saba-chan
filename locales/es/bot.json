@@ -97,7 +97,9 @@
     "server_started": "Servidor iniciado exitosamente",
     "server_stopped": "Servidor detenido",
     "server_not_running": "El servidor no se está ejecutando",
-    "command_error": "Error al ejecutar comando"
+    "command_error": "Error al ejecutar comando",
+    "raw_command_success": "✅ {{output}}",
+    "raw_command_error": "❌ {{error}}"
   },
   "cloud": {
     "not_configured": "❌ El modo cloud no está configurado.",
@@ -160,9 +162,9 @@
   },
   "rps": {
     "prompt": "✊✌️✋ ¡Elige uno!",
-    "draw": "{{bot}}! It's a tie! Again~ 🔄",
-    "user_win": "{{bot}}! I lost... 😵",
-    "bot_win": "{{bot}}! I win~ 😋",
+    "draw": "{{bot}}! ¡Empate! ¡Otra vez~ 🔄",
+    "user_win": "{{bot}}! Perdí... 😵",
+    "bot_win": "{{bot}}! ¡Gané~ 😋",
     "timeout": "⏰ ¡Se acabó el tiempo! Inténtalo de nuevo~",
     "scissors": "Tijera",
     "rock": "Piedra",

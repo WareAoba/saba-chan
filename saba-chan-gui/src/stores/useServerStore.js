@@ -74,7 +74,13 @@ export const useServerStore = create((set, get) => ({
 
     setDaemonReady: (val) => set({ daemonReady: val }),
     setInitStatus: (val) => set({ initStatus: val }),
-    setInitProgress: (val) => set({ initProgress: val }),
+    setInitProgress: (val) => {
+        if (typeof val === 'function') {
+            set((state) => ({ initProgress: val(state.initProgress) }));
+        } else {
+            set({ initProgress: val });
+        }
+    },
     setServersInitializing: (val) => set({ serversInitializing: val }),
 
     startUptimeClock: () => {

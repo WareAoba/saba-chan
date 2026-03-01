@@ -1137,11 +1137,12 @@ impl ExtensionManager {
 
             let module_path = module_file.to_string_lossy().to_string();
 
-            let result = crate::plugin::run_plugin_with_progress(
+            let result = crate::plugin::run_plugin_with_progress_and_timeout(
                 &module_path,
                 &binding.function,
                 context.clone(),
                 on_progress,
+                1800, // 30분 — SteamCMD/다운로드 등 장시간 프로비저닝 허용
             )
             .await;
 

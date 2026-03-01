@@ -314,11 +314,11 @@ async function handleModuleCommand(message, moduleAlias, commandAlias, extraArgs
             return;
         }
 
-        // ── 멤버 권한 체크 ──
+        // ── 멤버 권한 체크 (차단 목록 기반) ──
         const userId = message.author.id;
         if (resolver.isMemberManaged(guildId, userId)) {
-            const allowedCmds = resolver.getMemberCommands(guildId, userId, server.id);
-            if (allowedCmds !== null && !allowedCmds.includes(commandName)) {
+            const deniedCmds = resolver.getMemberDeniedCommands(guildId, userId, server.id);
+            if (deniedCmds !== null && deniedCmds.includes(commandName)) {
                 console.log(`[Processor] Permission denied: user=${userId} server=${server.id} command=${commandName}`);
                 await message.reply(i18n.t('bot:errors.permission_denied', {
                     defaultValue: '❌ 해당 명령어를 사용할 권한이 없습니다.',
@@ -461,14 +461,14 @@ async function executeRawCommand(message, server, moduleName, secondArg, extraAr
 
         const response = result.data;
         if (response.error) {
-            await message.reply(`❌ ${response.error}`);
+            await message.reply(i18n.t('bot:messages.raw_command_error', { error: response.error }));
         } else {
             const output = ipc.formatResponse(response.data || response.response || response);
-            await message.reply(`✅ ${output}`);
+            await message.reply(i18n.t('bot:messages.raw_command_success', { output }));
         }
     } catch (error) {
         console.error('[Processor] Raw command error:', error.message);
-        await message.reply(`❌ ${error.response?.data?.error || error.message}`);
+        await message.reply(i18n.t('bot:messages.raw_command_error', { error: error.response?.data?.error || error.message }));
     }
 }
 

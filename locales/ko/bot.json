@@ -95,7 +95,9 @@
     "server_started": "서버가 성공적으로 시작되었습니다",
     "server_stopped": "서버가 중지되었습니다",
     "server_not_running": "서버가 실행 중이 아닙니다",
-    "command_error": "명령 실행 오류"
+    "command_error": "명령 실행 오류",
+    "raw_command_success": "✅ {{output}}",
+    "raw_command_error": "❌ {{error}}"
   },
   "cloud": {
     "not_configured": "❌ 클라우드 모드가 설정되지 않았습니다.",

@@ -83,6 +83,41 @@ async function handleRPS(message, args) {
     if (args.length !== 1) return false;
     if (!TRIGGERS.includes(args[0])) return false;
 
+    // ── 릴레이 모드 감지: mock message에는 channel.send가 없음 ──
+    const isRelay = !message.channel?.send;
+
+    if (isRelay) {
+        // 릴레이 모드: 버튼 인터랙션 불가 → 즉시 자동 대전
+        const userChoice = CHOICES[Math.floor(Math.random() * 3)];
+        let botChoice, result;
+        // 무승부 시 재도전 (최대 10라운드)
+        for (let i = 0; i < 10; i++) {
+            botChoice = CHOICES[Math.floor(Math.random() * 3)];
+            result = judge(userChoice, botChoice);
+            if (result !== 'draw') break;
+        }
+
+        const userStr = `${CHOICE_EMOJI[userChoice]} ${choiceLabel(userChoice)}`;
+        const botStr = `${CHOICE_EMOJI[botChoice]} ${choiceLabel(botChoice)}`;
+
+        if (result === 'draw') {
+            await message.reply(i18n.t('bot:rps.relay_draw', {
+                user: userStr, bot: botStr,
+                defaultValue: `🤜 ${userStr} vs ${botStr} — 무승부!`,
+            }));
+        } else {
+            const resultKey = result === 'win' ? 'bot:rps.relay_user_win' : 'bot:rps.relay_bot_win';
+            const defaultMsg = result === 'win'
+                ? `🎉 ${userStr} vs ${botStr} — 승리!`
+                : `😭 ${userStr} vs ${botStr} — 패배...`;
+            await message.reply(i18n.t(resultKey, {
+                user: userStr, bot: botStr, defaultValue: defaultMsg,
+            }));
+        }
+        return true;
+    }
+
+    // ── 로컬 모드: 버튼 UI ──
     const userId = message.author.id;
     let round = 1;
 

@@ -77,7 +77,7 @@ export function ConsolePanel({
                     >
                         <Icon name="external-link" size="sm" />
                     </button>
-                    <button className="console-close" onClick={closeConsole} title="Close">
+                    <button className="console-close" onClick={closeConsole} title={t('modals.close')}>
                         &times;
                     </button>
                 </div>

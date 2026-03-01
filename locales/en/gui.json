@@ -162,12 +162,14 @@
     "execution_failed": "Command Execution Failed",
     "execution_error": "Command Execution Error",
     "success": "Success",
-    "command_executed": "Command '{{command}}' has been executed"
+    "command_executed": "Command '{{command}}' has been executed",
+    "select_placeholder": "-- Select --"
   },
   "server_status": {
     "running": "Running",
     "stopped": "Stopped",
     "stopping": "Stopping...",
+    "provisioning": "Provisioning",
     "start": "Start",
     "stop": "Stop"
   },
@@ -215,7 +217,11 @@
     "migrate_success": "Server migrated successfully as '{{name}}'",
     "migrate_failed": "Server migration failed",
     "migrate_detect_title": "Detect Existing Servers",
-    "migrate_no_servers_found": "No existing server installations detected"
+    "migrate_no_servers_found": "No existing server installations detected",
+    "console": "Console",
+    "command": "Command",
+    "click_to_stop": "Click to stop",
+    "click_to_start": "Click to start"
   },
   "server_settings": {
     "title": "Settings",
@@ -248,6 +254,9 @@
     "install_version_confirm_title": "Install Server Version",
     "install_version_confirm": "Install Minecraft {{version}} for server '{{name}}'?\n\nThis will download and replace the server JAR file.",
     "installing": "Installing...",
+    "saba_chan_group": "saba-chan Settings",
+    "basic_group": "Server Settings",
+    "advanced_group": "Advanced Settings",
     "danger_zone": "Danger Zone",
     "reset_server_label": "Reset Server",
     "reset_server_desc": "Delete all worlds, settings, logs, and other data. Only the server JAR and eula.txt will be kept. This cannot be undone.",
@@ -282,7 +291,8 @@
     "stop_failed_toast": "Discord bot stop failed: {{error}}",
     "stopped_toast": "Discord bot has been stopped",
     "stop_error_toast": "Discord bot stop exception: {{error}}",
-    "relaunched_toast": "Discord bot has been restarted"
+    "relaunched_toast": "Discord bot has been restarted",
+    "unknown_error": "An unexpected bot error occurred"
   },
   "app_exit": {
     "confirm_title": "Confirm Exit",
@@ -343,6 +353,7 @@
   "settings": {
     "save_failed_title": "Settings save failed",
     "save_error_title": "Settings save exception",
+    "save_error": "Settings save failed",
     "aliases_save_failed_title": "Aliases save failed",
     "aliases_save_error_title": "Aliases save exception",
     "aliases_reset_failed_title": "Reset failed",
@@ -556,7 +567,11 @@
     "no_commands_hint": "Unchecked commands will not be available to this member.",
     "cloud_setup_desc_simple": "Generate a pairing code and enter it in Discord to connect automatically.",
     "cloud_manual_toggle": "Enter Host ID manually",
-    "cloud_manual_connect": "Connect"
+    "cloud_manual_connect": "Connect",
+    "local_bot_not_running_for_guilds": "Start the bot to see the list of servers it has joined.",
+    "local_loading_guilds": "Loading guilds...",
+    "music_ext_disabled": "Enable the Music Bot extension in Extension settings.",
+    "instance_used_by_other": "Already in use by another node ({{node}})"
   },
   "notice_modal": {
     "title": "Notifications",
@@ -564,7 +579,11 @@
     "clear_all": "Clear All",
     "dismiss": "Dismiss",
     "source_main": "Saba-chan",
-    "tooltip": "Notifications"
+    "tooltip": "Notifications",
+    "just_now": "just now",
+    "minutes_ago": "{{count}} min ago",
+    "yesterday": "Yesterday",
+    "click_to_open": "\u2014 click to open"
   },
   "updates": {
     "available_title": "Updates Available",
@@ -576,7 +595,11 @@
     "completed_partial": "Some updates have been applied.",
     "checking_title": "Checking for Updates",
     "checking_message": "Checking for new updates...",
-    "no_updates": "All components are up to date."
+    "no_updates": "All components are up to date.",
+    "auto_check": "Auto-check for updates",
+    "found": "{{count}} update(s) found: {{names}}",
+    "check_required": "Check required",
+    "completed": "Update completed!"
   },
   "extensions": {
     "installed_section": "Installed",
@@ -590,6 +613,7 @@
     "installed": "Extension '{{id}}' installed.",
     "install_failed": "Failed to install '{{id}}': {{error}}",
     "install_error": "An error occurred while installing '{{id}}'.",
+    "rescan": "Rescan Extensions",
     "update_available": "Update available: v{{version}}",
     "update_badge": "UPDATE",
     "update_to": "Update to v{{version}}",
@@ -611,6 +635,7 @@
     "refresh": "Refresh",
     "installed_modules": "Installed Modules",
     "no_installed_modules": "No modules installed.",
+    "refresh_modules": "Refresh Modules",
     "available_modules": "Available Modules",
     "show_more_modules": "Show More Modules",
     "show_more_extensions": "Show More Extensions",
@@ -626,7 +651,33 @@
     "remove_module_confirm_title": "Remove Module",
     "remove_confirm_msg": "Remove module '{{id}}'? This cannot be undone and any server instances using this module will no longer be able to run.",
     "remove_ext_confirm_title": "Remove Extension",
-    "remove_confirm_msg_ext": "Remove extension '{{id}}'? The files will be permanently deleted."
+    "remove_confirm_msg_ext": "Remove extension '{{id}}'? The files will be permanently deleted.",
+    "back": "Back",
+    "download": "Download",
+    "apply": "Apply",
+    "apply_needs_restart": "Apply (restart required)",
+    "checking": "Checking for updates...",
+    "restart_required_title": "Restart Required",
+    "restart_required_message": "Applying updates will restart the program. Continue?",
+    "bot_stopping": "Stopping Discord Bot...",
+    "bot_replacing": "Replacing Discord Bot files...",
+    "bot_restarting": "Restarting Discord Bot...",
+    "bot_restarted": "Discord Bot updated and restarted",
+    "bot_no_token": "Discord Bot updated (no token \u2014 manual restart required)",
+    "bot_restart_failed": "Discord Bot restart failed: {{error}}",
+    "apply_failed": "Apply failed",
+    "apply_completed": "{{names}} applied",
+    "apply_request_done": "{{key}} apply requested",
+    "updater_launch_failed": "Updater launch failed",
+    "updater_background": "{{key}}: Updater is applying files in background",
+    "updater_label": "Updater",
+    "updater_in_progress": "Applying via updater...",
+    "update_done": "Update processing complete",
+    "switch_failed": "Switch failed: {{error}}",
+    "switch_to_mock": "Switched to Mock server (localhost:9876)",
+    "switch_to_real": "Switched to real GitHub API",
+    "mock_server_label": "Mock server (test)",
+    "real_api_label": "Real GitHub API"
   },
   "validation": {
     "required": "{{field}} is required",

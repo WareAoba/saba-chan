@@ -52,7 +52,7 @@
   },
   "server_cmd": {
     "no_servers": "Серверы не настроены.",
-    "servers_count": "{{count}} server(s):",
+    "servers_count": "{{count}} сервер(ов):",
     "started": "Запущен",
     "stopped": "Остановлен",
     "restarted": "Сервер перезапущен",
@@ -69,16 +69,16 @@
   },
   "module_cmd": {
     "no_modules": "Модули не загружены.",
-    "modules_count": "{{count}} module(s):",
+    "modules_count": "{{count}} модуль(ей):",
     "refreshed": "Модули обновлены",
     "reloaded": "Модули перезагружены",
-    "commands_header": "{{display}} ({{name}}) commands:",
+    "commands_header": "Команды {{display}} ({{name}}):",
     "cmd_start": "Запустить сервер",
     "cmd_stop": "Остановить сервер",
     "cmd_restart": "Перезапустить сервер",
     "cmd_status": "Статус сервера",
     "unknown_cmd": "Неизвестная команда '{{cmd}}' для модуля '{{module}}'. Введите '{{module}}' для списка команд.",
-    "versions_count": "{{count}} version(s) for '{{module}}':",
+    "versions_count": "{{count}} версия(й) для '{{module}}':",
     "no_versions": "Версии для '{{module}}' не найдены.",
     "install_started": "Установка начата"
   },
@@ -114,7 +114,7 @@
   },
   "instance_cmd": {
     "no_instances": "Нет настроенных экземпляров.",
-    "instances_count": "{{count}} instance(s):",
+    "instances_count": "{{count}} экземпляр(ов):",
     "created": "Экземпляр '{{name}}' создан (модуль: {{module}}, id: {{id}})",
     "deleted": "Экземпляр '{{name}}' удалён",
     "not_found": "Экземпляр '{{name}}' не найден",

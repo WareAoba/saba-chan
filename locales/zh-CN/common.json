@@ -49,7 +49,7 @@
     "not_found": "找不到服务器。请检查网络设置"
   },
   "port_conflict": {
-    "force_stop_title": "포트 충돌 — {{name}} 已停止됨",
-    "force_stop_body": "포트 {{port}}이(가) {{existing}}와(과) 충돌하여 {{stopped}}이(가) 강제 已停止되었습니다"
+    "force_stop_title": "端口冲突 — {{name}} 已停止",
+    "force_stop_body": "{{stopped}} 因端口 {{port}} 与 {{existing}} 冲突而被强制停止"
   }
 }

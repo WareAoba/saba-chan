@@ -97,7 +97,9 @@
     "server_started": "Server started successfully",
     "server_stopped": "Server stopped",
     "server_not_running": "Server is not running",
-    "command_error": "Error executing command"
+    "command_error": "Error executing command",
+    "raw_command_success": "✅ {{output}}",
+    "raw_command_error": "❌ {{error}}"
   },
   "cloud": {
     "not_configured": "❌ Cloud mode is not configured.",

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { ExtensionSlot, Icon } from './index';
+import { NativeProvision } from './NativeProvision';
 
 /**
  * ServerCard — Individual server instance card with status, actions, and details.
@@ -164,7 +165,7 @@ export function ServerCard({
                 <ExtensionSlot slotId="ServerCard.headerGauge" server={server} />
 
                 {server.provisioning ? (
-                    <span className="status-button status-provisioning" title="Provisioning...">
+                    <span className="status-button status-provisioning" title={t('server_status.provisioning', { defaultValue: 'Provisioning' })}>
                         <span className="status-label">
                             <Icon name="refresh" size="sm" className="spin" />{' '}
                             {t('server_status.provisioning', { defaultValue: 'Provisioning' })}
@@ -182,8 +183,8 @@ export function ServerCard({
                         disabled={server.status === 'starting' || server.status === 'stopping'}
                         title={
                             server.status === 'running' || server.status === 'starting'
-                                ? 'Click to stop'
-                                : 'Click to start'
+                                ? t('server_actions.click_to_stop')
+                                : t('server_actions.click_to_start')
                         }
                     >
                         <span className="status-label status-label-default">
@@ -209,15 +210,25 @@ export function ServerCard({
                 )}
             </div>
 
-            {/* -- 프로비저닝 진행 상태 (익스텐션이 슬롯으로 제공) -- */}
+            {/* -- 프로비저닝 진행 상태 -- */}
             {server.provisioning && (
-                <ExtensionSlot
-                    slotId="ServerCard.provision"
-                    server={server}
-                    provisionProgress={provisionProgress}
-                    onDismiss={handleDismissProvision}
-                    t={t}
-                />
+                <>
+                    {/* 익스텐션 제공 UI (Docker 등) */}
+                    <ExtensionSlot
+                        slotId="ServerCard.provision"
+                        server={server}
+                        provisionProgress={provisionProgress}
+                        onDismiss={handleDismissProvision}
+                        t={t}
+                    />
+                    {/* 네이티브 프로비저닝 UI (SteamCMD / download — 비-Docker) */}
+                    <NativeProvision
+                        server={server}
+                        provisionProgress={provisionProgress}
+                        onDismiss={handleDismissProvision}
+                        t={t}
+                    />
+                </>
             )}
 
             <div className="server-card-collapsible">
@@ -299,7 +310,7 @@ export function ServerCard({
                         </div>
 
                         <div className="server-actions">
-                            <button className="action-icon" onClick={() => handleOpenSettings(server)} title="Settings">
+                            <button className="action-icon" onClick={() => handleOpenSettings(server)} title={t('context_menu.settings')}>
                                 <Icon name="settings" size="md" />
                             </button>
                             {server.status === 'running' ? (
@@ -323,7 +334,7 @@ export function ServerCard({
                                                         if (consoleServer?.id === server.id) closeConsole();
                                                         else openConsole(server.id, server.name);
                                                     }}
-                                                    title="Console"
+                                                    title={t('server_actions.console')}
                                                 >
                                                     <Icon name="terminal" size="md" />
                                                 </button>
@@ -336,7 +347,7 @@ export function ServerCard({
                                                         setCommandServer(server);
                                                         setShowCommandModal(true);
                                                     }}
-                                                    title="Command"
+                                                    title={t('server_actions.command')}
                                                 >
                                                     <Icon name="command" size="md" />
                                                 </button>
@@ -349,7 +360,7 @@ export function ServerCard({
                                     className="action-icon action-delete"
                                     onClick={() => handleDeleteServer(server)}
                                     disabled={server.status === 'starting' || server.status === 'stopping'}
-                                    title="Delete"
+                                    title={t('context_menu.delete')}
                                 >
                                     <Icon name="trash" size="md" />
                                 </button>

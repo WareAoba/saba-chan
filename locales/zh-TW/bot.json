@@ -97,7 +97,9 @@
     "server_started": "伺服器成功啟動",
     "server_stopped": "伺服器已停止",
     "server_not_running": "伺服器未執行",
-    "command_error": "執行命令出錯"
+    "command_error": "執行命令出錯",
+    "raw_command_success": "✅ {{output}}",
+    "raw_command_error": "❌ {{error}}"
   },
   "cloud": {
     "not_configured": "❌ 雲端模式未設定。",
@@ -138,7 +140,7 @@
     "now_playing_detail": "🎶 **{{title}}** [{{duration}}]\n🔗 {{url}}\n👤 {{requester}} | 🔊 {{volume}}%",
     "current_volume": "🔊 目前音量: **{{volume}}%**",
     "volume_range": "🔊 音量必須在0到200之間",
-    "volume_set": "{{emoji}} Volume: **{{volume}}%**",
+    "volume_set": "{{emoji}} 音量: **{{volume}}%**",
     "shuffle_need_more": "🔀 需要佇列中至少有2首歌才能隨機",
     "shuffled": "🔀 已隨機排列{{count}}首歌！",
     "invalid_url": "無法取得影片資訊",
@@ -160,9 +162,9 @@
   },
   "rps": {
     "prompt": "✊✌️✋ 請選一個！",
-    "draw": "{{bot}}! It's a tie! Again~ 🔄",
-    "user_win": "{{bot}}! I lost... 😵",
-    "bot_win": "{{bot}}! I win~ 😋",
+    "draw": "{{bot}}！平局！再來一次~ 🔄",
+    "user_win": "{{bot}}！我輸了... 😵",
+    "bot_win": "{{bot}}！我贏了~ 😋",
     "timeout": "⏰ 時間到！下次再挑戰吧~",
     "scissors": "剪刀",
     "rock": "石頭",

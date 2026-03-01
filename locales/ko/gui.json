@@ -164,12 +164,14 @@
     "execution_failed": "명령어 실행 실패",
     "execution_error": "명령어 실행 오류",
     "success": "성공",
-    "command_executed": "명령어 '{{command}}'가 실행되었습니다"
+    "command_executed": "명령어 '{{command}}'가 실행되었습니다",
+    "select_placeholder": "-- 선택하세요 --"
   },
   "server_status": {
     "running": "실행중",
     "stopped": "정지중",
     "stopping": "정지 중...",
+    "provisioning": "프로비저닝",
     "start": "실행",
     "stop": "정지"
   },
@@ -217,7 +219,11 @@
     "migrate_success": "\uc11c\ubc84\uac00 '{{name}}'으로 성공적으로 마이그레이션되었습니다",
     "migrate_failed": "서버 마이그레이션에 실패했습니다",
     "migrate_detect_title": "기존 서버 감지",
-    "migrate_no_servers_found": "기존 서버 설치가 감지되지 않았습니다"
+    "migrate_no_servers_found": "기존 서버 설치가 감지되지 않았습니다",
+    "console": "콘솔",
+    "command": "명령어",
+    "click_to_stop": "정지하려면 클릭",
+    "click_to_start": "시작하려면 클릭"
   },
   "server_settings": {
     "title": "설정",
@@ -250,6 +256,9 @@
     "install_version_confirm_title": "서버 버전 설치",
     "install_version_confirm": "'{{name}}' 서버에 Minecraft {{version}}을(를) 설치하시겠습니까?\n\n서버 JAR 파일이 다운로드됩니다.",
     "installing": "설치 중...",
+    "saba_chan_group": "saba-chan 설정",
+    "basic_group": "서버 설정",
+    "advanced_group": "고급 설정",
     "danger_zone": "위험 영역",
     "reset_server_label": "서버 초기화",
     "reset_server_desc": "모든 월드, 설정, 로그 및 기타 데이터를 삭제합니다. 서버 JAR과 eula.txt만 유지됩니다. 이 작업은 되돌릴 수 없습니다.",
@@ -284,7 +293,8 @@
     "stop_failed_toast": "Discord 봇 정지 실패: {{error}}",
     "stopped_toast": "Discord 봇이 정지되었습니다",
     "stop_error_toast": "Discord 봇 정지 예외: {{error}}",
-    "relaunched_toast": "Discord 봇이 재시작되었습니다"
+    "relaunched_toast": "Discord 봇이 재시작되었습니다",
+    "unknown_error": "예기치 못한 봇 오류가 발생했습니다"
   },
   "app_exit": {
     "confirm_title": "종료 확인",
@@ -345,6 +355,7 @@
   "settings": {
     "save_failed_title": "설정 저장 실패",
     "save_error_title": "설정 저장 예외",
+    "save_error": "설정 저장 실패",
     "aliases_save_failed_title": "별명 저장 실패",
     "aliases_save_error_title": "별명 저장 예외",
     "aliases_reset_failed_title": "초기화 실패",
@@ -558,7 +569,11 @@
     "no_commands_hint": "체크하지 않은 명령어는 해당 멤버가 사용할 수 없습니다.",
     "cloud_setup_desc_simple": "페어링 코드를 발급받아 Discord에서 입력하면 자동으로 연결됩니다.",
     "cloud_manual_toggle": "호스트 ID 직접 입력",
-    "cloud_manual_connect": "연결"
+    "cloud_manual_connect": "연결",
+    "local_bot_not_running_for_guilds": "봇을 실행하면 참여 중인 서버 목록이 표시됩니다.",
+    "local_loading_guilds": "길드 목록 로드 중...",
+    "music_ext_disabled": "익스텐션 설정에서 Music Bot 익스텐션을 활성화해주세요.",
+    "instance_used_by_other": "이미 다른 노드({{node}})에서 사용 중"
   },
   "notice_modal": {
     "title": "알림",
@@ -566,7 +581,11 @@
     "clear_all": "전체 삭제",
     "dismiss": "삭제",
     "source_main": "사바쨩",
-    "tooltip": "알림"
+    "tooltip": "알림",
+    "just_now": "방금 전",
+    "minutes_ago": "{{count}}분 전",
+    "yesterday": "어제",
+    "click_to_open": "— 클릭하여 열기"
   },
   "updates": {
     "available_title": "업데이트 사용 가능",
@@ -578,7 +597,11 @@
     "completed_partial": "일부 업데이트가 적용되었습니다.",
     "checking_title": "업데이트 확인 중",
     "checking_message": "새로운 업데이트가 있는지 확인하고 있습니다...",
-    "no_updates": "모든 컴포넌트가 최신 버전입니다."
+    "no_updates": "모든 컴포넌트가 최신 버전입니다.",
+    "auto_check": "자동으로 업데이트 확인",
+    "found": "{{count}}개 업데이트 발견: {{names}}",
+    "check_required": "확인 필요",
+    "completed": "업데이트가 완료되었습니다!"
   },
   "extensions": {
     "error_not_found": "확장 '{{id}}'을(를) 찾을 수 없습니다. 제거되었을 수 있습니다.",
@@ -599,8 +622,9 @@
     "installed": "'{{id}}' 익스텐션이 설치되었습니다.",
     "install_failed": "'{{id}}' 설치 실패: {{error}}",
     "install_error": "'{{id}}' 설치 중 오류가 발생했습니다.",
+    "rescan": "익스텐션 재스캔",
     "update_available": "업데이트 가능: v{{version}}",
-    "update_badge": "UPDATE",
+    "update_badge": "업데이트",
     "update_to": "v{{version}}으로 업데이트"
   },
   "saba_storage": {
@@ -613,6 +637,7 @@
     "refresh": "새로고침",
     "installed_modules": "설치된 모듈",
     "no_installed_modules": "설치된 모듈이 없습니다.",
+    "refresh_modules": "모듈 새로고침",
     "available_modules": "사용 가능한 모듈",
     "show_more_modules": "더 많은 모듈 표시",
     "show_more_extensions": "더 많은 익스텐션 표시",
@@ -628,7 +653,33 @@
     "remove_module_confirm_title": "모듈 제거",
     "remove_confirm_msg": "'{{id}}' 모듈을 제거하시겠습니까? 이 작업은 실행취소할 수 없으며, 해당 모듈을 사용하는 서버 인스턴스를 실행할 수 없게 됩니다.",
     "remove_ext_confirm_title": "익스텐션 제거",
-    "remove_confirm_msg_ext": "'{{id}}' 익스텐션을 제거하시겠습니까? 파일이 영구 삭제됩니다."
+    "remove_confirm_msg_ext": "'{{id}}' 익스텐션을 제거하시겠습니까? 파일이 영구 삭제됩니다.",
+    "back": "뒤로",
+    "download": "다운로드",
+    "apply": "적용",
+    "apply_needs_restart": "적용 (재시작 필요)",
+    "checking": "업데이트 확인 중...",
+    "restart_required_title": "재시작 필요",
+    "restart_required_message": "업데이트를 적용하면 프로그램이 재시작됩니다. 계속하시겠습니까?",
+    "bot_stopping": "Discord Bot 종료 중...",
+    "bot_replacing": "Discord Bot 파일 교체 중...",
+    "bot_restarting": "Discord Bot 재시작 중...",
+    "bot_restarted": "Discord Bot 업데이트 및 재시작 완료",
+    "bot_no_token": "Discord Bot 업데이트됨 (토큰 없음 — 수동 재시작 필요)",
+    "bot_restart_failed": "Discord Bot 재시작 실패: {{error}}",
+    "apply_failed": "적용 실패",
+    "apply_completed": "{{names}} 적용 완료",
+    "apply_request_done": "{{key}} 적용 요청됨",
+    "updater_launch_failed": "업데이터 실행 실패",
+    "updater_background": "{{key}}: 업데이터가 파일을 백그라운드에서 적용하고 있습니다",
+    "updater_label": "업데이터",
+    "updater_in_progress": "업데이터로 적용 중...",
+    "update_done": "업데이트 처리 완료",
+    "switch_failed": "전환 실패: {{error}}",
+    "switch_to_mock": "Mock 서버(localhost:9876)로 전환됨",
+    "switch_to_real": "실제 GitHub API로 전환됨",
+    "mock_server_label": "Mock 서버 (테스트)",
+    "real_api_label": "실제 GitHub API"
   },
   "validation": {
     "required": "{{field}}은(는) 필수 항목입니다",

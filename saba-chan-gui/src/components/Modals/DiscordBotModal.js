@@ -7,7 +7,7 @@ import { SabaCheckbox, SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { useExtensions } from '../../contexts/ExtensionContext';
 
 // ── 릴레이 서버 기본 URL (고급 설정에서 오버라이드 가능) ──
-const DEFAULT_RELAY_URL = 'http://localhost:3000';
+const DEFAULT_RELAY_URL = 'https://saba-chan.online';
 
 // ── 음악 명령어 정의 (music.js의 DEFAULT_COMMAND_ALIASES와 동기화) ──
 const MUSIC_COMMAND_DEFS = {
@@ -74,6 +74,9 @@ function DiscordBotModal({
 
     // ── 노드 UI 상태 (App에 저장할 필요 없는 일시적 UI 상태) ──
     const [expandedNode, setExpandedNode] = useState(null);
+
+    // ── 로컬 모드: 봇이 접속한 길드 목록 ──
+    const [localGuilds, setLocalGuilds] = useState([]);
 
     // ── 길드 멤버 로딩 상태 ──
     const [membersLoading, setMembersLoading] = useState(false);
@@ -261,25 +264,28 @@ function DiscordBotModal({
     // ── 길드 멤버 가져오기 ──
     // ══════════════════════════════════════════════
 
-    /** 로컬모드: 봇 프로세스에서 길드 멤버 가져오기 */
+    /** 로컬모드: 봇 프로세스에서 길드별 멤버 가져오기 */
     const fetchLocalGuildMembers = useCallback(async () => {
         if (!window.api?.discordGuildMembers) return;
         setMembersLoading(true);
         try {
             const resp = await window.api.discordGuildMembers();
             if (resp?.data) {
-                // 로컬 모드: 모든 길드의 멤버를 'local' 키로 합침 (중복 제거)
-                const seen = new Set();
-                const allMembers = [];
-                for (const guildData of Object.values(resp.data)) {
-                    for (const m of guildData.members || []) {
-                        if (!seen.has(m.id)) {
-                            seen.add(m.id);
-                            allMembers.push(m);
-                        }
+                // 길드 목록 저장
+                const guilds = Object.entries(resp.data).map(([guildId, guildData]) => ({
+                    guildId,
+                    guildName: guildData.guildName || guildId,
+                }));
+                setLocalGuilds(guilds);
+
+                // 길드별 멤버 저장 (guildId 키)
+                setCloudMembers((prev) => {
+                    const next = { ...prev };
+                    for (const [guildId, guildData] of Object.entries(resp.data)) {
+                        next[guildId] = guildData.members || [];
                     }
-                }
-                setCloudMembers((prev) => ({ ...prev, local: allMembers }));
+                    return next;
+                });
             }
         } catch (e) {
             console.warn('[DiscordBotModal] Failed to fetch local guild members:', e);
@@ -322,12 +328,12 @@ function DiscordBotModal({
         [effectiveRelayUrl, setCloudMembers],
     );
 
-    // 로컬 모드 + 봇 실행 중일 때 멤버 자동 로드 (캐시 없을 때만)
+    // 로컬 모드 + 봇 실행 중일 때 길드 목록 자동 로드 (캐시 없을 때만)
     useEffect(() => {
-        if (isOpen && !isCloud && discordBotStatus === 'running' && !(cloudMembers.local?.length > 0)) {
+        if (isOpen && !isCloud && discordBotStatus === 'running' && localGuilds.length === 0) {
             fetchLocalGuildMembers();
         }
-    }, [isOpen, isCloud, discordBotStatus, fetchLocalGuildMembers, cloudMembers.local]);
+    }, [isOpen, isCloud, discordBotStatus, fetchLocalGuildMembers, localGuilds.length]);
 
     // ══════════════════════════════════════════════
     // ── nodeSettings 헬퍼 함수들 ──
@@ -348,19 +354,23 @@ function DiscordBotModal({
      */
     const getInstanceOwnerNode = useCallback(
         (serverId, excludeNodeKey) => {
-            if (!isCloud) return null; // 로컬 모드에서는 중복 선택 허용
-            for (const [nodeKey, cfg] of Object.entries(nodeSettings)) {
+            // 모드별 형제 노드만 체크 (로컬 ↔ 클라우드 독립)
+            const siblingKeys = isCloud
+                ? cloudNodes.map((n) => n.guildId)
+                : localGuilds.map((g) => g.guildId);
+            for (const nodeKey of siblingKeys) {
                 if (nodeKey === excludeNodeKey) continue;
+                const cfg = nodeSettings[nodeKey];
                 if (Array.isArray(cfg?.allowedInstances) && cfg.allowedInstances.includes(serverId)) {
                     return nodeKey;
                 }
             }
             return null;
         },
-        [nodeSettings, isCloud],
+        [nodeSettings, isCloud, cloudNodes, localGuilds],
     );
 
-    /** 인스턴스 토글 (클라우드 모드에서만 단일 노드 제약 적용) */
+    /** 인스턴스 토글 (형제 노드 간 단일 할당 제약) */
     const toggleNodeInstance = useCallback(
         (nodeKey, serverId) => {
             setNodeSettings((prev) => {
@@ -371,13 +381,15 @@ function DiscordBotModal({
                 if (idx >= 0) {
                     arr.splice(idx, 1); // 제거는 항상 허용
                 } else {
-                    // 클라우드 모드에서만: 다른 노드에 이미 할당되어 있으면 추가 불가
-                    if (isCloud) {
-                        for (const [otherKey, otherCfg] of Object.entries(prev)) {
-                            if (otherKey === nodeKey) continue;
-                            if (Array.isArray(otherCfg?.allowedInstances) && otherCfg.allowedInstances.includes(serverId)) {
-                                return prev; // 변경 없음
-                            }
+                    // 형제 노드에 이미 할당되어 있으면 추가 불가 (로컬/클라우드 독립)
+                    const siblingKeys = isCloud
+                        ? cloudNodes.map((n) => n.guildId)
+                        : localGuilds.map((g) => g.guildId);
+                    for (const otherKey of siblingKeys) {
+                        if (otherKey === nodeKey) continue;
+                        const otherCfg = prev[otherKey];
+                        if (Array.isArray(otherCfg?.allowedInstances) && otherCfg.allowedInstances.includes(serverId)) {
+                            return prev; // 변경 없음
                         }
                     }
                     arr.push(serverId);
@@ -387,28 +399,30 @@ function DiscordBotModal({
                 return next;
             });
         },
-        [setNodeSettings, isCloud],
+        [setNodeSettings, isCloud, cloudNodes, localGuilds],
     );
 
-    /** 전체 선택 / 해제 (클라우드 모드에서만 다른 노드에 할당된 인스턴스 제외) */
+    /** 전체 선택 / 해제 (형제 노드에 할당된 인스턴스 제외) */
     const setNodeAllInstances = useCallback(
         (nodeKey, selectAll) => {
             setNodeSettings((prev) => {
                 const next = { ...prev };
                 const cfg = { ...(next[nodeKey] || { allowedInstances: [], memberPermissions: {} }) };
                 if (selectAll && servers) {
-                    if (isCloud) {
-                        // 클라우드 모드: 다른 노드에 할당되지 않은 인스턴스만 선택
-                        const otherAssigned = new Set();
-                        for (const [otherKey, otherCfg] of Object.entries(prev)) {
-                            if (otherKey === nodeKey) continue;
-                            for (const id of otherCfg?.allowedInstances || []) {
-                                otherAssigned.add(id);
-                            }
+                    // 형제 노드에 할당된 인스턴스 제외 (로컬/클라우드 독립)
+                    const siblingKeys = isCloud
+                        ? cloudNodes.map((n) => n.guildId)
+                        : localGuilds.map((g) => g.guildId);
+                    const otherAssigned = new Set();
+                    for (const otherKey of siblingKeys) {
+                        if (otherKey === nodeKey) continue;
+                        for (const id of prev[otherKey]?.allowedInstances || []) {
+                            otherAssigned.add(id);
                         }
+                    }
+                    if (otherAssigned.size > 0) {
                         cfg.allowedInstances = servers.filter((s) => !otherAssigned.has(s.id)).map((s) => s.id);
                     } else {
-                        // 로컬 모드: 모든 인스턴스 선택 허용
                         cfg.allowedInstances = servers.map((s) => s.id);
                     }
                 } else {
@@ -418,7 +432,7 @@ function DiscordBotModal({
                 return next;
             });
         },
-        [setNodeSettings, servers, isCloud],
+        [setNodeSettings, servers, isCloud, cloudNodes, localGuilds],
     );
 
     /** 멤버 권한 토글 (멤버를 nodeSettings에 추가/제거) */
@@ -463,7 +477,7 @@ function DiscordBotModal({
         [setNodeSettings],
     );
 
-    /** 멤버의 특정 인스턴스 명령어 전체 선택/해제 */
+    /** 멤버의 특정 인스턴스 명령어 전체 허용/차단 */
     const setMemberAllCommands = useCallback(
         (nodeKey, userId, serverId, allCommands, allow) => {
             setNodeSettings((prev) => {
@@ -471,7 +485,7 @@ function DiscordBotModal({
                 const cfg = { ...(next[nodeKey] || { allowedInstances: [], memberPermissions: {} }) };
                 const perms = { ...cfg.memberPermissions };
                 const userPerms = { ...perms[userId] };
-                userPerms[serverId] = allow ? [...allCommands] : [];
+                userPerms[serverId] = allow ? [] : [...allCommands];
                 perms[userId] = userPerms;
                 cfg.memberPermissions = perms;
                 next[nodeKey] = cfg;
@@ -531,12 +545,13 @@ function DiscordBotModal({
             } else {
                 setExpandedNode(guildId);
                 // 클라우드: 캐시 없으면 서버에서 멤버 로드
-                if (!(cloudMembers[guildId]?.length > 0)) {
+                if (isCloud && !(cloudMembers[guildId]?.length > 0)) {
                     fetchCloudNodeMembers(guildId);
                 }
+                // 로컬: fetchLocalGuildMembers에서 이미 로드됨
             }
         },
-        [expandedNode, cloudMembers, fetchCloudNodeMembers],
+        [expandedNode, cloudMembers, fetchCloudNodeMembers, isCloud],
     );
 
     // ── 페어링 ──
@@ -693,7 +708,10 @@ function DiscordBotModal({
                                     const isOtherNode = !!ownerNode;
                                     // 다른 노드에 할당된 노드 이름 찾기
                                     const ownerNodeName = isOtherNode
-                                        ? cloudNodes.find((n) => n.guildId === ownerNode)?.guildName || ownerNode
+                                        ? (isCloud
+                                            ? cloudNodes.find((n) => n.guildId === ownerNode)?.guildName
+                                            : localGuilds.find((g) => g.guildId === ownerNode)?.guildName
+                                          ) || ownerNode
                                         : '';
                                     return (
                                         <label
@@ -706,7 +724,6 @@ function DiscordBotModal({
                                                 isOtherNode
                                                     ? t('discord_modal.instance_used_by_other', {
                                                           node: ownerNodeName,
-                                                          defaultValue: `이미 다른 노드(${ownerNodeName})에서 사용 중`,
                                                       })
                                                     : ''
                                             }
@@ -815,7 +832,7 @@ function DiscordBotModal({
                         {availableMembers.length > 0 && (
                             <div className="discord-member-perm-list">
                                 {availableMembers.map((member) => {
-                                    const isEnabled = !!memberPerms[member.id];
+                                    const isEnabled = !(member.id in memberPerms);
                                     const isExpanded = expandedMember[`${nodeKey}:${member.id}`];
 
                                     return (
@@ -839,7 +856,7 @@ function DiscordBotModal({
                                                         <span className="discord-member-perm-id">{member.id}</span>
                                                     </div>
                                                 </label>
-                                                {isEnabled && (
+                                                {!isEnabled && (
                                                     <button
                                                         className="discord-member-expand-btn"
                                                         onClick={() =>
@@ -858,7 +875,7 @@ function DiscordBotModal({
                                                 )}
                                             </div>
 
-                                            {isEnabled && isExpanded && (
+                                            {!isEnabled && isExpanded && (
                                                 <div className="discord-member-perm-body">
                                                     {allowedInsts.length === 0 ? (
                                                         <p className="discord-node-empty">
@@ -872,7 +889,7 @@ function DiscordBotModal({
                                                             const userPerms = memberPerms[member.id] || {};
                                                             const userCmds = Array.isArray(userPerms[serverId])
                                                                 ? userPerms[serverId]
-                                                                : [];
+                                                                : []; // 차단 목록 (빈 배열 = 모두 허용)
 
                                                             return (
                                                                 <div
@@ -933,7 +950,7 @@ function DiscordBotModal({
                                                                                 >
                                                                                     <SabaCheckbox
                                                                                         size="sm"
-                                                                                        checked={userCmds.includes(
+                                                                                        checked={!userCmds.includes(
                                                                                             cmd.name,
                                                                                         )}
                                                                                         onChange={() =>
@@ -1172,14 +1189,55 @@ function DiscordBotModal({
                 </div>
 
                 {/* ══════════════════════════════════════════════ */}
-                {/* ── 로컬 모드: 노드 설정 (항상 펼쳐진 상태) ─ */}
+                {/* ── 로컬 모드: 길드별 노드 설정 ──────────────── */}
                 {/* ══════════════════════════════════════════════ */}
                 {!isCloud && (
                     <div className="discord-config-section">
                         <h4>
                             <Icon name="desktop" size="sm" /> {t('discord_modal.local_node_title')}
                         </h4>
-                        {renderNodeSettingsBody('local', t('discord_modal.local_node_title'))}
+                        {discordBotStatus !== 'running' ? (
+                            <p className="discord-node-empty">
+                                {t('discord_modal.local_bot_not_running_for_guilds')}
+                            </p>
+                        ) : localGuilds.length === 0 ? (
+                            <div className="discord-cloud-connecting" style={{ padding: '12px 0' }}>
+                                <SabaSpinner size="sm" />
+                                <span>{t('discord_modal.local_loading_guilds')}</span>
+                            </div>
+                        ) : (
+                            <div className="discord-node-list">
+                                {localGuilds.map((guild) => (
+                                    <div
+                                        key={guild.guildId}
+                                        className={clsx('discord-node-card', {
+                                            expanded: expandedNode === guild.guildId,
+                                        })}
+                                    >
+                                        <div
+                                            className="discord-node-card-header"
+                                            onClick={() => toggleNodeExpand(guild.guildId)}
+                                        >
+                                            <div className="discord-node-card-info">
+                                                <span className="discord-node-guild-name">
+                                                    {guild.guildName}
+                                                </span>
+                                                <span className="discord-node-guild-id">{guild.guildId}</span>
+                                            </div>
+                                            <Icon
+                                                name={expandedNode === guild.guildId ? 'chevronDown' : 'chevronRight'}
+                                                size="sm"
+                                            />
+                                        </div>
+                                        {expandedNode === guild.guildId && (
+                                            <div className="discord-node-card-body">
+                                                {renderNodeSettingsBody(guild.guildId, guild.guildName)}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -1486,9 +1544,7 @@ function DiscordBotModal({
                                     <span className="discord-music-toggle-desc">
                                         {musicExtEnabled
                                             ? t('discord_modal.music_toggle_description')
-                                            : t('discord_modal.music_ext_disabled', {
-                                                defaultValue: '익스텐션 설정에서 Music Bot 익스텐션을 활성화해주세요.',
-                                            })}
+                                            : t('discord_modal.music_ext_disabled')}
                                     </span>
                                 </div>
                             </div>

@@ -49,7 +49,7 @@
     "not_found": "サーバーが見つかりません。ネットワーク設定を確認してください"
   },
   "port_conflict": {
-    "force_stop_title": "포트 충돌 — {{name}} 정지됨",
-    "force_stop_body": "포트 {{port}}이(가) {{existing}}와(과) 충돌하여 {{stopped}}이(가) 강제 정지되었습니다"
+    "force_stop_title": "ポート競合 — {{name}} 停止",
+    "force_stop_body": "ポート {{port}} が {{existing}} と競合したため、{{stopped}} が強制停止されました"
   }
 }

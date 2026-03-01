@@ -137,6 +137,21 @@ where
     run_plugin_inner(module_path, function, config, Some(Box::new(on_progress)), DEFAULT_PLUGIN_TIMEOUT_SECS).await
 }
 
+/// Like `run_plugin_with_progress` but with a custom timeout.
+/// SteamCMD 다운로드 등 장시간 작업에 사용합니다.
+pub async fn run_plugin_with_progress_and_timeout<F>(
+    module_path: &str,
+    function: &str,
+    config: Value,
+    on_progress: F,
+    timeout_secs: u64,
+) -> Result<Value>
+where
+    F: Fn(ExtensionProgress) + Send + 'static,
+{
+    run_plugin_inner(module_path, function, config, Some(Box::new(on_progress)), timeout_secs).await
+}
+
 async fn run_plugin_inner(
     module_path: &str,
     function: &str,
@@ -156,7 +171,8 @@ async fn run_plugin_inner(
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .env("PYTHONIOENCODING", "utf-8");
+        .env("PYTHONIOENCODING", "utf-8")
+        .env("PYTHONUNBUFFERED", "1");
 
     // 활성화된 익스텐션 목록을 Python에 전달 (비활성 익스텐션 import 방지용)
     let extensions_dir = resolve_extensions_dir();
