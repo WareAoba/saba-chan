@@ -8,8 +8,8 @@ Saba-chan Windows Release Build (Parallel)
   saba-chan-cli.exe           - Rust TUI 클라이언트
   saba-chan-gui.exe           - Electron GUI
   saba-chan-updater.exe       - 업데이터 (GUI + CLI 모드)
+  saba-chan-installer.exe     - 인스톨러/언인스톨러 (Tauri)
   discord_bot/               - Node.js Discord 봇
-  config/                    - global.toml, updater.toml
   locales/                   - 다국어 리소스
 
 .EXAMPLE
@@ -61,7 +61,7 @@ $jobRust = Start-Job -Name "Rust" -ScriptBlock {
     $env:CARGO_TERM_COLOR = "never"
 
     function Stop-BuildLockProcesses {
-        $names = @("saba-core", "saba-chan", "saba-chan-cli", "saba-chan-updater")
+        $names = @("saba-core", "saba-chan", "saba-chan-cli", "saba-chan-updater", "saba-chan-installer")
         foreach ($n in $names) {
             Get-Process -Name $n -ErrorAction SilentlyContinue | ForEach-Object {
                 try { Stop-Process -Id $_.Id -Force -ErrorAction Stop } catch {}
@@ -102,7 +102,8 @@ $jobRust = Start-Job -Name "Rust" -ScriptBlock {
     $targets = @(
         @{ Name = "saba-core.exe";       Path = (Join-Path $root "target\release\saba-core.exe") },
         @{ Name = "saba-chan-cli.exe";      Path = (Join-Path $root "target\release\saba-chan-cli.exe") },
-        @{ Name = "saba-chan-updater.exe";  Path = (Join-Path $root "target\release\saba-chan-updater.exe") }
+        @{ Name = "saba-chan-updater.exe";  Path = (Join-Path $root "target\release\saba-chan-updater.exe") },
+        @{ Name = "saba-chan-installer.exe"; Path = (Join-Path $root "target\release\saba-chan-installer.exe") }
     )
     $info = @()
     foreach ($t in $targets) {
@@ -243,13 +244,8 @@ if (Test-Path $testDir) { Remove-Item $testDir -Recurse -Force -ErrorAction Sile
 
 Write-Host "  [OK]" -ForegroundColor Green
 
-# --- 4. Resources & Configs ---
+# --- 4. Resources ---
 Write-Host "[4/5] Preparing resources..." -ForegroundColor Yellow
-
-$configDir = Join-Path $DistDir "config"
-New-Item -ItemType Directory -Path $configDir -Force | Out-Null
-Copy-Item -Path (Join-Path $ProjectRoot "config\global.toml") -Destination $configDir -Force -ErrorAction SilentlyContinue
-Copy-Item -Path (Join-Path $ProjectRoot "config\updater.toml") -Destination $configDir -Force -ErrorAction SilentlyContinue
 
 $localeSrc = Join-Path $ProjectRoot "locales"
 if (Test-Path $localeSrc) {

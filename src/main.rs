@@ -447,38 +447,9 @@ async fn run_integrity_check_on_startup() {
     tracing::info!("══════════════════════════════════════════════════");
 }
 
-/// 무결성 검증용 업데이터 설정 로드 (config/updater.toml 또는 config/global.toml)
+/// 무결성 검증용 업데이터 설정 로드 (하드코딩 기본값)
 fn load_updater_config_for_integrity() -> saba_chan_updater_lib::UpdateConfig {
-    use saba_chan_updater_lib::UpdateConfig;
-
-    let config_paths = [
-        std::path::PathBuf::from("config").join("updater.toml"),
-        std::path::PathBuf::from("config").join("global.toml"),
-    ];
-
-    for path in &config_paths {
-        if let Ok(content) = std::fs::read_to_string(path) {
-            if let Ok(parsed) = content.parse::<toml::Value>() {
-                let section = parsed.get("updater").unwrap_or(&parsed);
-                let mut cfg = UpdateConfig::default();
-                if let Some(v) = section.get("github_owner").and_then(|v| v.as_str()) {
-                    cfg.github_owner = v.to_string();
-                }
-                if let Some(v) = section.get("github_repo").and_then(|v| v.as_str()) {
-                    cfg.github_repo = v.to_string();
-                }
-                if let Some(v) = section.get("include_prerelease").and_then(|v| v.as_bool()) {
-                    cfg.include_prerelease = v;
-                }
-                if let Some(v) = section.get("api_base_url").and_then(|v| v.as_str()) {
-                    cfg.api_base_url = Some(v.to_string());
-                }
-                return cfg;
-            }
-        }
-    }
-
-    UpdateConfig::default()
+    saba_chan_updater_lib::UpdateConfig::default()
 }
 
 

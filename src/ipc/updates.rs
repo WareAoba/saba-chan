@@ -274,7 +274,7 @@ async fn apply_updates(
         match comp {
             // 모듈/CLI/DiscordBot: 데몬이 직접 적용 (파일 교체)
             // CoreDaemon: Windows에서 실행 중 exe를 .exe.old로 rename 후 새 바이너리 추출
-            Component::Module(_) | Component::Cli | Component::DiscordBot | Component::CoreDaemon => {
+            Component::Module(_) | Component::Cli | Component::DiscordBot | Component::CoreDaemon | Component::Locales => {
                 match mgr.apply_single_component(comp).await {
                     Ok(result) if result.success => {
                         applied.push(comp.display_name());
@@ -431,62 +431,9 @@ async fn set_config(
 // 설정 유틸리티
 // ═══════════════════════════════════════════════════════
 
+/// 업데이터 설정 로드 — 하드코딩 기본값 사용
 fn load_updater_config() -> UpdateConfig {
-    let config_path = find_config_file();
-    if let Some(path) = config_path {
-        if let Ok(content) = std::fs::read_to_string(&path) {
-            if let Ok(parsed) = content.parse::<toml::Value>() {
-                // updater.toml 전체가 설정이거나, [updater] 섹션
-                if let Some(updater) = parsed.get("updater") {
-                    return parse_update_config(updater);
-                }
-                return parse_update_config(&parsed);
-            }
-        }
-    }
     UpdateConfig::default()
-}
-
-fn find_config_file() -> Option<std::path::PathBuf> {
-    use std::path::PathBuf;
-
-    // 1. 실행 파일 옆 config/updater.toml
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let p = dir.join("config").join("updater.toml");
-            if p.exists() { return Some(p); }
-        }
-    }
-
-    // 2. CWD의 config/updater.toml
-    let p = PathBuf::from("config").join("updater.toml");
-    if p.exists() { return Some(p); }
-
-    // 3. global.toml [updater] 섹션
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let p = dir.join("config").join("global.toml");
-            if p.exists() { return Some(p); }
-        }
-    }
-    let p = PathBuf::from("config").join("global.toml");
-    if p.exists() { return Some(p); }
-
-    None
-}
-
-fn parse_update_config(val: &toml::Value) -> UpdateConfig {
-    let mut cfg = UpdateConfig::default();
-    if let Some(v) = val.get("enabled").and_then(|v| v.as_bool()) { cfg.enabled = v; }
-    if let Some(v) = val.get("github_owner").and_then(|v| v.as_str()) { cfg.github_owner = v.to_string(); }
-    if let Some(v) = val.get("github_repo").and_then(|v| v.as_str()) { cfg.github_repo = v.to_string(); }
-    if let Some(v) = val.get("check_interval_hours").and_then(|v| v.as_integer()) { cfg.check_interval_hours = v as u32; }
-    if let Some(v) = val.get("auto_download").and_then(|v| v.as_bool()) { cfg.auto_download = v; }
-    if let Some(v) = val.get("auto_apply").and_then(|v| v.as_bool()) { cfg.auto_apply = v; }
-    if let Some(v) = val.get("include_prerelease").and_then(|v| v.as_bool()) { cfg.include_prerelease = v; }
-    if let Some(v) = val.get("install_root").and_then(|v| v.as_str()) { cfg.install_root = Some(v.to_string()); }
-    if let Some(v) = val.get("api_base_url").and_then(|v| v.as_str()) { cfg.api_base_url = Some(v.to_string()); }
-    cfg
 }
 
 fn resolve_modules_dir() -> String {
@@ -505,38 +452,7 @@ fn resolve_modules_dir() -> String {
 }
 
 fn save_updater_config(cfg: &UpdateConfig) -> anyhow::Result<()> {
-    use std::path::PathBuf;
-
-    let path = find_config_file()
-        .unwrap_or_else(|| PathBuf::from("config").join("updater.toml"));
-
-    // global.toml이면 [updater] 섹션 업데이트
-    let is_global = path.file_name().map(|f| f == "global.toml").unwrap_or(false);
-
-    if is_global {
-        let content = std::fs::read_to_string(&path).unwrap_or_default();
-        let mut doc: toml::value::Table = content.parse::<toml::Value>()
-            .unwrap_or(toml::Value::Table(toml::value::Table::new()))
-            .try_into()
-            .unwrap_or_default();
-
-        let updater_val = toml::Value::try_from(cfg)
-            .map_err(|e| anyhow::anyhow!("Serialize error: {}", e))?;
-        doc.insert("updater".to_string(), updater_val);
-
-        let out = toml::to_string_pretty(&doc)?;
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(&path, out)?;
-    } else {
-        let out = toml::to_string_pretty(cfg)
-            .map_err(|e| anyhow::anyhow!("Serialize error: {}", e))?;
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(&path, out)?;
-    }
-
+    // 설정은 하드코딩 기본값이므로 파일 저장 불필요 — no-op
+    let _ = cfg;
     Ok(())
 }

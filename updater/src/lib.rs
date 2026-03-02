@@ -83,6 +83,7 @@ pub enum Component {
     Module(String),
     Extension(String),
     DiscordBot,
+    Locales,
 }
 
 impl Component {
@@ -95,6 +96,7 @@ impl Component {
             Component::Module(name) => format!("module-{}", name),
             Component::Extension(name) => format!("ext-{}", name),
             Component::DiscordBot => "discord_bot".to_string(),
+            Component::Locales => "locales".to_string(),
         }
     }
 
@@ -105,6 +107,7 @@ impl Component {
             "cli" => Component::Cli,
             "gui" => Component::Gui,
             "discord_bot" => Component::DiscordBot,
+            "locales" => Component::Locales,
             k if k.starts_with("module-") => {
                 Component::Module(k.strip_prefix("module-").unwrap().to_string())
             }
@@ -124,6 +127,7 @@ impl Component {
             Component::Module(name) => format!("Module: {}", name),
             Component::Extension(name) => format!("Extension: {}", name),
             Component::DiscordBot => "Discord Bot".to_string(),
+            Component::Locales => "Locales".to_string(),
         }
     }
 }
@@ -296,7 +300,7 @@ impl Default for UpdateConfig {
             check_interval_hours: 3,
             auto_download: false,
             auto_apply: false,
-            github_owner: String::new(),
+            github_owner: "WareAoba".to_string(),
             github_repo: "saba-chan".to_string(),
             include_prerelease: false,
             install_root: None,
@@ -1206,6 +1210,12 @@ impl UpdateManager {
                     self.apply_extension_update(name, staged_path).await?;
                     applied.push(comp.component.display_name());
                 }
+                Component::Locales => {
+                    // locales.zip → locales/ 디렉터리에 압축 해제
+                    let target = self.install_root.join("locales");
+                    self.extract_to_directory(Path::new(staged_path), &target).await?;
+                    applied.push(comp.component.display_name());
+                }
             }
         }
 
@@ -1506,6 +1516,17 @@ impl UpdateManager {
                     message: format!("Extension '{}' updated", name),
                     stopped_processes: Vec::new(),
                     restart_needed: true,
+                }
+            }
+            Component::Locales => {
+                let target = self.install_root.join("locales");
+                self.extract_to_directory(Path::new(staged_path), &target).await?;
+                ApplyComponentResult {
+                    component: component.manifest_key(),
+                    success: true,
+                    message: "Locales updated".to_string(),
+                    stopped_processes: Vec::new(),
+                    restart_needed: false,
                 }
             }
         };
@@ -2186,6 +2207,10 @@ rm -f "$0"
                 // discord_bot 디렉토리에 index.js + package.json 존재 확인
                 self.find_discord_bot_directory().ok().map(|d| d.join("index.js").exists()).unwrap_or(false)
             }
+            Component::Locales => {
+                // locales/ 디렉터리에 en/ 존재 확인
+                self.install_root.join("locales").join("en").exists()
+            }
         }
     }
 
@@ -2196,6 +2221,7 @@ rm -f "$0"
             (Component::Cli, self.is_component_installed(&Component::Cli)),
             (Component::Gui, self.is_component_installed(&Component::Gui)),
             (Component::DiscordBot, self.is_component_installed(&Component::DiscordBot)),
+            (Component::Locales, self.is_component_installed(&Component::Locales)),
         ];
 
         // 동적 컴포넌트: 모듈은 manifest 또는 로컬 탐색, 익스텐션은 항상 로컬 탐색
@@ -2503,6 +2529,7 @@ rm -f "$0"
             Component::Module(name) => self.modules_dir.join(name),
             Component::Extension(name) => self.extensions_dir.join(name),
             Component::DiscordBot => self.install_root.join("discord_bot"),
+            Component::Locales => self.install_root.join("locales"),
         }
     }
 
@@ -2538,32 +2565,8 @@ rm -f "$0"
         Ok(())
     }
 
-    /// 기본 설정 파일과 필수 디렉터리가 없으면 생성
+    /// 필수 디렉터리가 없으면 생성
     fn ensure_default_config(&self) -> Result<()> {
-        let config_dir = self.install_root.join("config");
-        let global_toml = config_dir.join("global.toml");
-
-        if !global_toml.exists() {
-            std::fs::create_dir_all(&config_dir)?;
-            let default_config = format!(
-                r#"ipc_socket = "./ipc.sock"
-
-[updater]
-enabled = true
-check_interval_hours = 3
-auto_download = false
-auto_apply = false
-github_owner = "{owner}"
-github_repo = "{repo}"
-include_prerelease = false
-"#,
-                owner = self.config.github_owner,
-                repo = self.config.github_repo,
-            );
-            std::fs::write(&global_toml, default_config)?;
-            tracing::info!("[Installer] Created default config at {}", global_toml.display());
-        }
-
         // modules 디렉터리 생성 (%APPDATA%/saba-chan/modules)
         std::fs::create_dir_all(&self.modules_dir)?;
 

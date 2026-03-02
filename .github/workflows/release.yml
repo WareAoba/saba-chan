@@ -1,18 +1,36 @@
-name: Release with Manifest
+name: Release — Package & Manifest
 
 # ─────────────────────────────────────────────────────────
-# 릴리즈에 파일을 첨부하면 자동으로 manifest.json을 생성해
-# 릴리즈에 추가하는 워크플로우.
+# 릴리즈 파일 패키징 & manifest.json 자동 생성 워크플로우
+#
+# 부분 릴리즈 지원:
+#   모든 컴포넌트를 매번 빌드할 필요 없음.
+#   변경된 컴포넌트만 올리면 나머지는 이전 릴리즈에서 자동 수집.
 #
 # 사용법:
-#   1. GitHub에서 Draft Release 생성
-#   2. 빌드된 에셋(zip 등)을 릴리즈에 첨부
-#   3. Release 발행 → 이 액션이 manifest.json을 자동 생성 & 첨부
+#   1. GitHub에서 Draft Release 생성 (태그: v0.x.x)
+#   2. 변경된 컴포넌트만 빌드하여 릴리즈에 첨부:
+#      - saba-core.exe / saba-core-*.zip
+#      - saba-chan-cli.exe / saba-chan-cli-*.zip
+#      - saba-chan-gui.exe / saba-chan-gui-*.zip
+#      - saba-chan-updater.exe / saba-chan-updater-*.zip
+#      - discord-bot.zip
+#      (전부 올릴 필요 없음 — 빠진 것은 이전 릴리즈에서 가져옴)
+#   3. Release 발행 → 이 액션이 자동 수행:
+#      a) raw exe → 표준 이름의 zip으로 리패키징
+#      b) 빠진 컴포넌트 → 이전 릴리즈에서 다운로드
+#      c) locales/ → locales.zip 생성 (항상 최신 소스 반영)
+#      d) SHA256 해시가 포함된 manifest.json 생성
+#      e) 모든 결과물을 릴리즈에 업로드
 #
-# manifest.json 구조:
-#   - 각 컴포넌트의 소스코드 버전 (Cargo.toml / package.json)
-#   - 이번 릴리즈에 포함된 에셋 매핑
-#   - release_version = 컴포넌트 중 가장 높은 버전
+# 최종 릴리즈 에셋 (매 릴리즈마다 완전체 보장):
+#   saba-core-windows-x64.zip
+#   saba-chan-cli-windows-x64.zip
+#   saba-chan-gui-windows-x64.zip
+#   saba-chan-updater-windows-x64.zip
+#   discord-bot.zip
+#   locales.zip
+#   manifest.json
 # ─────────────────────────────────────────────────────────
 
 on:
@@ -23,10 +41,10 @@ permissions:
   contents: write
 
 jobs:
-  generate-manifest:
-    name: Generate & Upload manifest.json
+  package-and-manifest:
+    name: Package assets & generate manifest
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout code
@@ -37,19 +55,36 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Generate manifest.json
+      - name: Download existing release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p staging
+          gh release download "${{ github.event.release.tag_name }}" \
+            --repo "${{ github.repository }}" \
+            --dir staging \
+            --skip-existing || true
+          echo "=== Downloaded assets ==="
+          ls -la staging/
+
+      - name: Package & generate manifest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           RELEASE_ID: ${{ github.event.release.id }}
           REPO_FULL_NAME: ${{ github.repository }}
-        run: python .github/scripts/generate-manifest.py
+        run: python .github/scripts/package-release.py
 
-      - name: Upload manifest.json to release
+      - name: Upload packaged assets to release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${{ github.event.release.tag_name }}" \
-            manifest.json \
-            --repo "${{ github.repository }}" \
-            --clobber
+          echo "=== Uploading to release ==="
+          for f in output/*; do
+            echo "  Uploading: $(basename $f)"
+            gh release upload "${{ github.event.release.tag_name }}" \
+              "$f" \
+              --repo "${{ github.repository }}" \
+              --clobber
+          done
+          echo "✓ All assets uploaded"

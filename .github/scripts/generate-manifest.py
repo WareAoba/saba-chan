@@ -60,6 +60,13 @@ COMPONENTS = [
         "asset_pattern": r"discord-bot.*\.zip$",
         "install_dir": "discord_bot",
     },
+    {
+        "key": "locales",
+        "version_file": "Cargo.toml",           # 루트 버전 사용
+        "version_type": "cargo",
+        "asset_pattern": r"locales\.zip$",
+        "install_dir": "locales",
+    },
 ]
 
 
