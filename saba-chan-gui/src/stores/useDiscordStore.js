@@ -53,6 +53,50 @@ export const useDiscordStore = create((set, get) => ({
 
     update: (partial) => set(partial),
 
+    // ── 모드 전환 (디바운스 + 자동 재시작) ──
+    _modeSwitchTimer: null,
+    switchMode: (newMode) => {
+        const state = get();
+        const prevMode = state.discordBotMode;
+        if (newMode === prevMode) return;
+
+        // 즉시 모드 반영 (UI 업데이트)
+        set({ discordBotMode: newMode });
+
+        // 기존 디바운스 타이머 취소
+        if (state._modeSwitchTimer) {
+            clearTimeout(state._modeSwitchTimer);
+        }
+
+        // 디바운스: 빠른 토글 시 마지막 전환만 실행
+        const timer = setTimeout(async () => {
+            const s = get();
+
+            // 1. 실행 중인 봇 정지
+            if (s.discordBotStatus === 'running' || s.discordBotStatus === 'connecting') {
+                try {
+                    await window.api.discordBotStop();
+                    set({ discordBotStatus: 'stopped' });
+                } catch (_) { /* ignore */ }
+                // 프로세스 정리 대기
+                await new Promise((r) => setTimeout(r, 500));
+            }
+
+            // 2. 새 모드로 봇 자동 시작 (조건 충족 시)
+            const cur = get();
+            const isCloud = cur.discordBotMode === 'cloud';
+            const canStart = isCloud
+                ? !!(cur.discordCloudHostId && cur.discordPrefix)
+                : !!(cur.discordToken && cur.discordPrefix);
+
+            if (canStart) {
+                await cur.startBot();
+            }
+        }, 800);
+
+        set({ _modeSwitchTimer: timer });
+    },
+
     loadConfig: async () => {
         try {
             const botCfg = await window.api.botConfigLoad();
@@ -256,8 +300,15 @@ export const useDiscordStore = create((set, get) => ({
                 if (data.type === 'exit' || data.type === 'spawn_error') {
                     set({ discordBotStatus: 'stopped' });
                 }
-                const msg = data.message || _t('discord_bot.unknown_error');
-                safeShowToast(msg, 'error', 6000);
+
+                // 정상 종료(code 0) 또는 사용자 중지 시에는 토스트 표시 안 함
+                if (data.type === 'exit' && (!data.code || data.code === 0)) return;
+
+                const msg = data.message || '';
+                // 빈 메시지 또는 의미 없는 exit 코드만 있는 메시지는 무시
+                if (!msg || !msg.trim()) return;
+
+                safeShowToast(_translateError(msg), 'error', 6000);
             };
             window.api.onBotError(handler);
         }
@@ -287,6 +338,7 @@ export const useDiscordStore = create((set, get) => ({
     _resetForTest: () => {
         const state = get();
         if (state._statusInterval) clearInterval(state._statusInterval);
+        if (state._modeSwitchTimer) clearTimeout(state._modeSwitchTimer);
         set({
             discordToken: '',
             discordPrefix: '!saba',
@@ -307,6 +359,7 @@ export const useDiscordStore = create((set, get) => ({
             _settingsReady: false,
             _autoStartDone: false,
             _statusInterval: null,
+            _modeSwitchTimer: null,
             _discordTokenRef: '',
         });
     },

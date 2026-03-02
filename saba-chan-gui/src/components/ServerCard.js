@@ -17,6 +17,7 @@ export function ServerCard({
     draggedName,
     skipNextClick,
     consoleServer,
+    isConsoleOpen,
     consolePopoutInstanceId,
     handleCardPointerDown,
     handleStart,
@@ -34,6 +35,56 @@ export function ServerCard({
     const { t } = useTranslation('gui');
     const portConflictCheck = useSettingsStore((s) => s.portConflictCheck);
     const [provisionProgress, setProvisionProgress] = useState(null);
+    const [updateInfo, setUpdateInfo] = useState(null);
+    const [updatingServer, setUpdatingServer] = useState(false);
+
+    // SteamCMD 인스턴스의 게임 서버 업데이트 확인 (3시간 주기, 무조건 체크)
+    useEffect(() => {
+        if (server.provisioning) return;
+        if (!server.extension_data?.install_method_steamcmd) return;
+        if (!window.api?.instanceCheckUpdate) return;
+
+        let cancelled = false;
+        const STEAM_UPDATE_CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3시간
+
+        const doCheck = async () => {
+            try {
+                const result = await window.api.instanceCheckUpdate(server.id);
+                if (!cancelled && result && result.update_available) {
+                    setUpdateInfo(result);
+                } else if (!cancelled && result && !result.update_available) {
+                    setUpdateInfo(null);
+                }
+            } catch {
+                // ignore — background check
+            }
+        };
+
+        doCheck(); // 즉시 1회 체크
+        const timer = setInterval(doCheck, STEAM_UPDATE_CHECK_INTERVAL_MS);
+        return () => { cancelled = true; clearInterval(timer); };
+    }, [server.id, server.provisioning, server.extension_data?.install_method_steamcmd]);
+
+    const handleApplyUpdate = async () => {
+        if (!window.api?.instanceApplyUpdate) return;
+        setUpdatingServer(true);
+        try {
+            const result = await window.api.instanceApplyUpdate(server.id);
+            if (result?.success) {
+                setUpdateInfo(null);
+                // provisioning 상태로 전환 → 서버 목록 새로고침 시 반영
+                setServers((prev) =>
+                    prev.map((s) =>
+                        s.id === server.id ? { ...s, provisioning: true } : s,
+                    ),
+                );
+            }
+        } catch {
+            // ignore
+        } finally {
+            setUpdatingServer(false);
+        }
+    };
 
     // 프로비저닝 상태 폴링 — server.provisioning이 true인 동안 폴링
     useEffect(() => {
@@ -112,6 +163,18 @@ export function ServerCard({
                         </div>
                     )}
                     <ExtensionSlot slotId="ServerCard.badge" server={server} />
+                    {updateInfo && (
+                        <span
+                            className="server-update-badge"
+                            title={t('server_status.update_available', {
+                                local: updateInfo.local_buildid,
+                                remote: updateInfo.remote_buildid,
+                                defaultValue: `Update available (${updateInfo.local_buildid} → ${updateInfo.remote_buildid})`,
+                            })}
+                        >
+                            <Icon name="arrowUp" size={14} />
+                        </span>
+                    )}
                     {portConflictCheck && server.port_conflicts && server.port_conflicts.length > 0 && (
                         <span
                             className="port-conflict-badge"
@@ -172,6 +235,23 @@ export function ServerCard({
                         </span>
                         <span className="status-dot"></span>
                     </span>
+                ) : updateInfo && server.status !== 'running' ? (
+                    <button
+                        className="status-button status-update-available"
+                        onClick={handleApplyUpdate}
+                        disabled={updatingServer}
+                        title={t('server_status.update_available', {
+                            local: updateInfo.local_buildid,
+                            remote: updateInfo.remote_buildid,
+                            defaultValue: `Update available (${updateInfo.local_buildid} → ${updateInfo.remote_buildid})`,
+                        })}
+                    >
+                        <span className="status-label">
+                            <Icon name="arrowUp" size="sm" />{' '}
+                            {t('server_actions.update', { defaultValue: 'Update' })}
+                        </span>
+                        <span className="status-dot"></span>
+                    </button>
                 ) : (
                     <button
                         className={clsx('status-button', `status-${server.status}`)}
@@ -320,18 +400,19 @@ export function ServerCard({
                                         const mode = mod?.interaction_mode || 'console';
                                         if (mode === 'console') {
                                             const isPopoutActive = consolePopoutInstanceId === server.id;
+                                            const isOpen = isConsoleOpen ? isConsoleOpen(server.id) : (consoleServer?.id === server.id);
                                             return (
                                                 <button
                                                     className={clsx('action-icon', {
                                                         'action-active':
-                                                            consoleServer?.id === server.id || isPopoutActive,
+                                                            isOpen || isPopoutActive,
                                                     })}
                                                     onClick={async () => {
                                                         if (isPopoutActive) {
                                                             await window.api.consoleFocusPopout(server.id);
                                                             return;
                                                         }
-                                                        if (consoleServer?.id === server.id) closeConsole();
+                                                        if (isOpen) closeConsole(server.id);
                                                         else openConsole(server.id, server.name);
                                                     }}
                                                     title={t('server_actions.console')}

@@ -187,6 +187,13 @@ if (RELAY_AGENT_MODE) {
             if (!line) continue;
             try {
                 const msg = JSON.parse(line);
+                // GUI에서 종료 요청 시 graceful shutdown
+                if (msg.type === 'shutdown') {
+                    console.log('[Bot] Shutdown requested via IPC');
+                    client.destroy();
+                    process.exit(0);
+                    return;
+                }
                 handleIpcMessage(msg, client);
             } catch (e) {
                 console.error('[Bot:IPC] Invalid JSON on stdin:', e.message);

@@ -158,10 +158,21 @@ $jobBot = Start-Job -Name "Bot" -ScriptBlock {
 
     if (Test-Path "node_modules") {
         Remove-Item "node_modules" -Recurse -Force -ErrorAction SilentlyContinue
+        # Wait for Windows file handles to fully release after deletion
+        Start-Sleep -Seconds 2
     }
     $ErrorActionPreference = "Continue"
-    & npm install --omit=dev --quiet --no-save 2>&1 | Out-Null
-    $ec = $LASTEXITCODE
+    $maxAttempts = 3
+    $ec = 1
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        & npm install --omit=dev --quiet --no-save 2>&1 | Out-Null
+        $ec = $LASTEXITCODE
+        if ($ec -eq 0) { break }
+        if ($attempt -lt $maxAttempts) {
+            Write-Host "[Bot] npm install failed (exit $ec), retrying... ($attempt/$maxAttempts)"
+            Start-Sleep -Seconds 3
+        }
+    }
     $ErrorActionPreference = "Stop"
     if ($ec -ne 0) { throw "npm install failed (exit $ec)" }
     return @{ Path = $botDir }

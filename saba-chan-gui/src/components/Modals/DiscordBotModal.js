@@ -1180,10 +1180,8 @@ function DiscordBotModal({
                         checked={isCloud}
                         onChange={(checked) => {
                             const newMode = checked ? 'cloud' : 'local';
+                            // 디바운스 + 자동 재시작 (switchMode가 stop → start 처리)
                             setDiscordBotMode(newMode);
-                            if (newMode === 'cloud' && discordBotStatus === 'running') {
-                                handleStopDiscordBot();
-                            }
                         }}
                     />
                 </div>

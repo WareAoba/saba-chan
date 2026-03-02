@@ -107,6 +107,55 @@ impl Supervisor {
         }
         map
     }
+    /// 인스턴스의 실행 파일 경로를 자동 해석합니다.
+    ///
+    /// 우선순위:
+    /// 1. `instance.executable_path` — 사용자가 명시한 경로 (override)
+    /// 2. `working_dir / module.server_executable` — 모듈이 정의한 바이너리 파일명으로 자동 계산
+    ///
+    /// 모듈에 `server_executable`이 정의되어 있으면 `working_dir`만으로 실행 파일을 찾을 수 있으므로
+    /// 사용자가 별도로 `executable_path`를 설정할 필요가 없습니다.
+    fn resolve_executable(&self, instance: &crate::instance::ServerInstance, module_name: &str) -> Option<String> {
+        // 1. 사용자 명시 경로 우선
+        if let Some(ref exe_path) = instance.executable_path {
+            if !exe_path.is_empty() {
+                return Some(exe_path.clone());
+            }
+        }
+
+        // 2. module_settings에 executable_path가 있으면 사용 (기존 인스턴스 호환)
+        if let Some(exe_val) = instance.module_settings.get("executable_path") {
+            if let Some(exe_str) = exe_val.as_str() {
+                if !exe_str.is_empty() {
+                    return Some(exe_str.to_string());
+                }
+            }
+        }
+
+        // 3. working_dir + module.server_executable 자동 계산
+        if let Some(ref work_dir) = instance.working_dir {
+            if let Ok(module) = self.module_loader.get_module(module_name) {
+                if let Some(ref server_exe) = module.metadata.server_executable {
+                    let resolved = std::path::Path::new(work_dir).join(server_exe);
+                    return Some(resolved.to_string_lossy().to_string());
+                }
+            }
+        }
+
+        None
+    }
+
+    /// 해석된 실행 파일 경로를 config map에 삽입합니다.
+    fn insert_resolved_exe(&self, config: &mut serde_json::Map<String, Value>, instance: &crate::instance::ServerInstance, module_name: &str) {
+        if let Some(exe_path) = self.resolve_executable(instance, module_name) {
+            config.insert("server_executable".to_string(), json!(&exe_path));
+            config.entry("server_jar".to_string()).or_insert_with(|| json!(&exe_path));
+        }
+        if let Some(work_dir) = &instance.working_dir {
+            config.insert("working_dir".to_string(), json!(work_dir));
+        }
+    }
+
     /// Start a server by name (e.g., "my-server-1")
     /// Called by IPC API: POST /api/server/:name/start
     pub async fn start_server(&self, server_name: &str, module_name: &str, config: Value) -> Result<Value> {
@@ -319,13 +368,7 @@ impl Supervisor {
 
         // Merge instance info into config
         let mut merged_config = config.as_object().cloned().unwrap_or_default();
-        if let Some(exe_path) = &instance.executable_path {
-            merged_config.insert("server_executable".to_string(), json!(exe_path));
-            merged_config.entry("server_jar".to_string()).or_insert_with(|| json!(exe_path));
-        }
-        if let Some(work_dir) = &instance.working_dir {
-            merged_config.insert("working_dir".to_string(), json!(work_dir));
-        }
+        self.insert_resolved_exe(&mut merged_config, instance, module_name);
         if let Some(port) = instance.port {
             merged_config.insert("port".to_string(), json!(port));
         }
@@ -506,13 +549,7 @@ impl Supervisor {
 
         // Build config with all necessary info for stop
         let mut config_obj = serde_json::Map::new();
-        if let Some(exe_path) = &instance.executable_path {
-            config_obj.insert("server_executable".to_string(), json!(exe_path));
-            config_obj.insert("server_jar".to_string(), json!(exe_path));
-        }
-        if let Some(work_dir) = &instance.working_dir {
-            config_obj.insert("working_dir".to_string(), json!(work_dir));
-        }
+        self.insert_resolved_exe(&mut config_obj, instance, module_name);
         // Pass PID from tracker so the module can kill the actual process
         if let Ok(pid) = self.tracker.get_pid(server_name).or_else(|_| self.tracker.get_pid(&instance.id)) {
             config_obj.insert("pid".to_string(), json!(pid));
@@ -617,15 +654,9 @@ impl Supervisor {
         let module = self.module_loader.get_module(module_name)?;
         let module_path = format!("{}/lifecycle.py", module.path);
 
-        // Build config with executable_path
+        // Build config — 실행 파일은 모듈 정의에서 자동 해석
         let mut config_obj = serde_json::Map::new();
-        if let Some(exe_path) = &instance.executable_path {
-            config_obj.insert("server_executable".to_string(), json!(exe_path));
-            config_obj.insert("server_jar".to_string(), json!(exe_path));
-        }
-        if let Some(work_dir) = &instance.working_dir {
-            config_obj.insert("working_dir".to_string(), json!(work_dir));
-        }
+        self.insert_resolved_exe(&mut config_obj, instance, module_name);
         let config = Value::Object(config_obj);
 
         // Ask module for status
@@ -745,12 +776,12 @@ impl Supervisor {
     /// Uses the module's `get_launch_command` to build the command, then spawns it natively.
     /// Extension 관리 모드에서는 extension hook을 통해 위임합니다.
     pub async fn start_managed_server(
-        &self,
+        &mut self,
         instance_id: &str,
         module_name: &str,
         config: Value,
     ) -> Result<Value> {
-        let instance = self.instance_store.get(instance_id)
+        let mut instance = self.instance_store.get(instance_id).cloned()
             .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
 
         // ── 포트 충돌 검사 (모듈별 프로토콜 인지) ──
@@ -764,7 +795,7 @@ impl Supervisor {
                 .map(|i| i.id.clone())
                 .collect();
             let module_protocols = self.build_module_protocols_map();
-            let conflicts = crate::validator::check_port_conflicts(instance, all_instances, &running_ids, Some(&module_protocols));
+            let conflicts = crate::validator::check_port_conflicts(&instance, all_instances, &running_ids, Some(&module_protocols));
             if !conflicts.is_empty() {
                 let details: Vec<String> = conflicts.iter().map(|c| c.to_string()).collect();
                 tracing::warn!("Port conflict detected for managed instance '{}': {:?}", instance.name, details);
@@ -785,7 +816,7 @@ impl Supervisor {
                 "instance_id": instance_id,
                 "instance_dir": instance_dir.to_string_lossy(),
                 "module": module_name,
-                "instance": serde_json::to_value(instance).unwrap_or_default(),
+                "instance": serde_json::to_value(&instance).unwrap_or_default(),
                 "config": &config,
                 "managed": true,
                 "extension_data": &instance.extension_data,
@@ -907,15 +938,9 @@ impl Supervisor {
 
         tracing::info!("Starting managed server for instance '{}' (module: {})", instance.name, module_name);
 
-        // Build config for the module
+        // Build config for the module — 실행 파일은 모듈 정의에서 자동 해석
         let mut cfg = config.as_object().cloned().unwrap_or_default();
-        if let Some(exe_path) = &instance.executable_path {
-            cfg.insert("server_executable".to_string(), json!(exe_path));
-            cfg.insert("server_jar".to_string(), json!(exe_path));
-        }
-        if let Some(work_dir) = &instance.working_dir {
-            cfg.insert("working_dir".to_string(), json!(work_dir));
-        }
+        self.insert_resolved_exe(&mut cfg, &instance, module_name);
         if let Some(port) = instance.port {
             cfg.insert("port".to_string(), json!(port));
         }
@@ -954,6 +979,8 @@ impl Supervisor {
         let module = self.module_loader.get_module(module_name)?;
         let module_path = format!("{}/lifecycle.py", module.path);
 
+        tracing::info!("get_launch_command config: {}", serde_json::to_string_pretty(&final_config).unwrap_or_default());
+
         let launch_result = crate::plugin::run_plugin(&module_path, "get_launch_command", final_config).await?;
 
         // If the module requires user action (e.g. server jar not found), pass through to GUI
@@ -984,6 +1011,75 @@ impl Supervisor {
             .and_then(|e| e.as_object())
             .map(|obj| obj.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect())
             .unwrap_or_default();
+
+        // Sync REST credentials from module via credential_map or rest_credentials
+        {
+            let mut creds_changed = false;
+
+            // 1) 명시적 rest_credentials (모듈이 직접 반환한 경우)
+            if let Some(rest_creds) = launch_result.get("rest_credentials").and_then(|v| v.as_object()) {
+                if let Some(ru) = rest_creds.get("rest_username").and_then(|v| v.as_str()) {
+                    if instance.rest_username.as_deref() != Some(ru) {
+                        instance.rest_username = Some(ru.to_string());
+                        creds_changed = true;
+                        tracing::info!("Synced rest_username='{}' from module for instance '{}'", ru, instance.id);
+                    }
+                }
+                if let Some(rp) = rest_creds.get("rest_password").and_then(|v| v.as_str()) {
+                    if instance.rest_password.as_deref() != Some(rp) {
+                        instance.rest_password = Some(rp.to_string());
+                        creds_changed = true;
+                        tracing::info!("Synced rest_password from module for instance '{}'", instance.id);
+                    }
+                }
+            }
+            // 2) credential_map 기반 자동 동기화 (module.toml에 선언된 매핑)
+            //    get_launch_command가 module_settings를 반환하면 그 값을 읽어서 매핑
+            else if !module.metadata.credential_map.is_empty() {
+                for (daemon_key, game_key) in &module.metadata.credential_map {
+                    // launch_result의 module_settings 또는 최상위에서 게임 키 값을 찾는다
+                    let game_value = launch_result.get("module_settings")
+                        .and_then(|ms| ms.get(game_key))
+                        .and_then(|v| v.as_str())
+                        .or_else(|| launch_result.get(game_key).and_then(|v| v.as_str()));
+
+                    if let Some(val) = game_value {
+                        match daemon_key.as_str() {
+                            "rest_password" => {
+                                if instance.rest_password.as_deref() != Some(val) {
+                                    instance.rest_password = Some(val.to_string());
+                                    creds_changed = true;
+                                    tracing::info!("credential_map: synced {} -> {} for '{}'", game_key, daemon_key, instance.id);
+                                }
+                            }
+                            "rest_username" => {
+                                if instance.rest_username.as_deref() != Some(val) {
+                                    instance.rest_username = Some(val.to_string());
+                                    creds_changed = true;
+                                    tracing::info!("credential_map: synced {} -> {} for '{}'", game_key, daemon_key, instance.id);
+                                }
+                            }
+                            "rcon_password" => {
+                                if instance.rcon_password.as_deref() != Some(val) {
+                                    instance.rcon_password = Some(val.to_string());
+                                    creds_changed = true;
+                                    tracing::info!("credential_map: synced {} -> {} for '{}'", game_key, daemon_key, instance.id);
+                                }
+                            }
+                            _ => {
+                                tracing::debug!("credential_map: unknown daemon key '{}', skipping", daemon_key);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if creds_changed {
+                if let Err(e) = self.instance_store.update(&instance.id, instance.clone()) {
+                    tracing::warn!("Failed to persist synced credentials: {}", e);
+                }
+            }
+        }
 
         // Spawn managed process
         let log_pattern = module.metadata.log_pattern.as_deref();

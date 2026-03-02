@@ -536,8 +536,8 @@ impl IPCServer {
             .route("/api/server/:name/stop", post(handlers::server::stop_server_handler))
             .route("/api/modules", get(handlers::server::list_modules))
             .route("/api/modules/refresh", post(handlers::server::refresh_modules))
-            .route("/api/modules/registry", get(handlers::server::fetch_module_registry))
-            .route("/api/modules/registry/:id/install", post(handlers::server::install_module_from_registry))
+            .route("/api/modules/manifest", get(handlers::server::fetch_module_manifest))
+            .route("/api/modules/manifest/:id/install", post(handlers::server::install_module_from_manifest))
             .route("/api/modules/:id", delete(handlers::server::remove_module))
             .route("/api/module/:name", get(handlers::server::get_module_metadata))
             // ── Instance CRUD ──
@@ -546,6 +546,9 @@ impl IPCServer {
             .route("/api/instance/:id", get(handlers::instance::get_instance).delete(handlers::instance::delete_instance).patch(handlers::instance::update_instance_settings))
             // ── Provision progress ──
             .route("/api/provision-progress/:name", get(handlers::instance::get_provision_progress).delete(handlers::instance::dismiss_provision_progress))
+            // ── Command execution ──
+            .route("/api/instance/:id/check-update", get(handlers::instance::check_server_update))
+            .route("/api/instance/:id/apply-update", post(handlers::instance::apply_server_update))
             // ── Command execution ──
             .route("/api/instance/:id/command", post(handlers::command::execute_command))
             .route("/api/instance/:id/rcon", post(handlers::command::execute_rcon_command))
@@ -576,7 +579,7 @@ impl IPCServer {
             .route("/api/extensions", get(handlers::extension::list_extensions))
             .route("/api/extensions/init-status", get(handlers::extension::extension_init_status))
             .route("/api/extensions/rescan", post(handlers::extension::rescan_extensions))
-            .route("/api/extensions/registry", get(handlers::extension::fetch_registry))
+            .route("/api/extensions/manifest", get(handlers::extension::fetch_manifest))
             .route("/api/extensions/updates", get(handlers::extension::check_extension_updates))
             .route("/api/extensions/:id/enable", post(handlers::extension::enable_extension))
             .route("/api/extensions/:id/disable", post(handlers::extension::disable_extension))

@@ -28,6 +28,10 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
     tracing::info!("Core Daemon starting");
 
+    // ── Integrity Check (무결성 검증) ──────────────────────────
+    // 서버(GitHub)에서 매니페스트를 가져와 설치된 컴포넌트의 SHA256을 검증
+    run_integrity_check_on_startup().await;
+
     // Load config
     let cfg = config::GlobalConfig::load().ok();
     let _ = &cfg; // 향후 설정 참조를 위해 유지
@@ -361,3 +365,120 @@ async fn try_restart_renderer() -> bool {
 
     false
 }
+
+/// 시작 시 서버에서 매니페스트를 가져와 무결성 검증을 수행하고 결과를 터미널에 출력합니다.
+async fn run_integrity_check_on_startup() {
+    use saba_chan_updater_lib::integrity::{
+        IntegrityStatus, OverallIntegrity,
+    };
+    use saba_chan_updater_lib::UpdateManager;
+
+    // 업데이트 설정 로드 (github_owner 등 필요)
+    let cfg = load_updater_config_for_integrity();
+    if cfg.github_owner.is_empty() {
+        tracing::info!("[Integrity] GitHub owner가 설정되지 않아 무결성 검증을 건너뜁니다");
+        return;
+    }
+
+    let modules_dir = plugin::resolve_modules_dir();
+    let modules_str = modules_dir.to_string_lossy().to_string();
+    let mut manager = UpdateManager::new(cfg, &modules_str);
+
+    let report = match manager.verify_integrity().await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("[Integrity] 서버 매니페스트 fetch 실패, 검증 건너뜀: {}", e);
+            return;
+        }
+    };
+
+    // ── 터미널 출력 ──
+    tracing::info!("══════════════════════════════════════════════════");
+    tracing::info!("  Component Integrity Check (server-verified)");
+    tracing::info!("══════════════════════════════════════════════════");
+
+    for c in &report.components {
+        let icon = match c.status {
+            IntegrityStatus::Verified    => "✅",
+            IntegrityStatus::Tampered    => "❌",
+            IntegrityStatus::NoHash      => "⚪",
+            IntegrityStatus::FileNotFound => "⬜",
+            IntegrityStatus::Error       => "⚠️",
+        };
+        let status_text = match c.status {
+            IntegrityStatus::Verified    => "Verified",
+            IntegrityStatus::Tampered    => "TAMPERED",
+            IntegrityStatus::NoHash      => "No Hash",
+            IntegrityStatus::FileNotFound => "Not Found",
+            IntegrityStatus::Error       => "Error",
+        };
+        tracing::info!(
+            "  {} {:<20} [{}] {}",
+            icon, c.display_name, status_text, c.message
+        );
+    }
+
+    tracing::info!("──────────────────────────────────────────────────");
+
+    match report.overall {
+        OverallIntegrity::AllVerified => {
+            tracing::info!(
+                "  ✅ All {} component(s) verified",
+                report.verified
+            );
+        }
+        OverallIntegrity::Partial => {
+            tracing::info!(
+                "  ⚪ {}/{} verified, {} skipped (no hash or not found)",
+                report.verified, report.total, report.skipped
+            );
+        }
+        OverallIntegrity::TamperDetected => {
+            tracing::warn!(
+                "  ❌ INTEGRITY FAILURE: {}/{} component(s) may be tampered!",
+                report.failed, report.total
+            );
+        }
+        OverallIntegrity::Empty => {
+            tracing::info!("  No components to verify");
+        }
+    }
+
+    tracing::info!("══════════════════════════════════════════════════");
+}
+
+/// 무결성 검증용 업데이터 설정 로드 (config/updater.toml 또는 config/global.toml)
+fn load_updater_config_for_integrity() -> saba_chan_updater_lib::UpdateConfig {
+    use saba_chan_updater_lib::UpdateConfig;
+
+    let config_paths = [
+        std::path::PathBuf::from("config").join("updater.toml"),
+        std::path::PathBuf::from("config").join("global.toml"),
+    ];
+
+    for path in &config_paths {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            if let Ok(parsed) = content.parse::<toml::Value>() {
+                let section = parsed.get("updater").unwrap_or(&parsed);
+                let mut cfg = UpdateConfig::default();
+                if let Some(v) = section.get("github_owner").and_then(|v| v.as_str()) {
+                    cfg.github_owner = v.to_string();
+                }
+                if let Some(v) = section.get("github_repo").and_then(|v| v.as_str()) {
+                    cfg.github_repo = v.to_string();
+                }
+                if let Some(v) = section.get("include_prerelease").and_then(|v| v.as_bool()) {
+                    cfg.include_prerelease = v;
+                }
+                if let Some(v) = section.get("api_base_url").and_then(|v| v.as_str()) {
+                    cfg.api_base_url = Some(v.to_string());
+                }
+                return cfg;
+            }
+        }
+    }
+
+    UpdateConfig::default()
+}
+
+

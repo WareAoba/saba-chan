@@ -5,7 +5,7 @@ import {
     AddInstanceModal,
     BackgroundModal,
     CommandModal,
-    ConsolePanel,
+    ConsoleDock,
     DiscordBotModal,
     FailureModal,
     Icon,
@@ -20,9 +20,10 @@ import {
     SuccessModal,
     TitleBar,
     Toast,
+    ConsoleWindow,
 } from './components';
 import { ExtensionProvider } from './contexts/ExtensionContext';
-import { useConsole } from './hooks/useConsole';
+import { useMultiConsole } from './hooks/useMultiConsole';
 import { useDragReorder } from './hooks/useDragReorder';
 import useExtensionInitStatus from './hooks/useExtensionInitStatus';
 import { useModalClose } from './hooks/useModalClose';
@@ -128,17 +129,23 @@ function App() {
     // ══════════════════════════════════════════════════════════
 
     const {
+        consoles,
         consoleServer,
-        consoleLines,
-        consoleInput,
-        setConsoleInput,
-        consoleEndRef,
         consolePopoutInstanceId,
         setConsolePopoutInstanceId,
         openConsole,
         closeConsole,
+        minimizeConsole,
+        restoreConsole,
+        focusConsole,
+        togglePin,
+        popinConsole,
+        updatePosition,
+        updateSize,
+        setConsoleInput,
         sendConsoleCommand,
-    } = useConsole({ isPopoutMode, popoutParams, consoleBufferRef });
+        isConsoleOpen,
+    } = useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef });
 
     const { draggedName, cardRefs, skipNextClick, handleCardPointerDown } = useDragReorder(servers, setServers);
 
@@ -158,7 +165,6 @@ function App() {
             setLoading: (val) => useServerStore.setState({ loading: val }),
             setModal,
             setProgressBar,
-            consoleServer,
             openConsole,
             closeConsole,
             setShowModuleManager,
@@ -558,14 +564,15 @@ function App() {
 
     // Popout Console Mode (full-window console)
     if (isPopoutMode) {
+        const popoutState = consoles[popoutParams.instanceId];
         return (
             <PopoutConsole
                 popoutParams={popoutParams}
-                consoleLines={consoleLines}
-                consoleInput={consoleInput}
-                setConsoleInput={setConsoleInput}
-                sendConsoleCommand={sendConsoleCommand}
-                consoleEndRef={consoleEndRef}
+                consoleLines={popoutState?.lines || []}
+                consoleInput={popoutState?.input || ''}
+                setConsoleInput={(val) => setConsoleInput(popoutParams.instanceId, val)}
+                sendConsoleCommand={() => sendConsoleCommand(popoutParams.instanceId)}
+                consoleEndRef={null}
                 highlightRules={(() => {
                     const srv = servers.find((s) => s.id === popoutParams.instanceId);
                     const mod = srv && modules.find((m) => m.name === srv.module);
@@ -673,7 +680,7 @@ function App() {
                                     useDiscordStore.getState().update({ discordMusicEnabled: val })
                                 }
                                 discordBotMode={discordBotMode}
-                                setDiscordBotMode={(val) => useDiscordStore.getState().update({ discordBotMode: val })}
+                                setDiscordBotMode={(val) => useDiscordStore.getState().switchMode(val)}
                                 discordCloudRelayUrl={discordCloudRelayUrl}
                                 setDiscordCloudRelayUrl={(val) =>
                                     useDiscordStore.getState().update({ discordCloudRelayUrl: val })
@@ -744,7 +751,7 @@ function App() {
                     onAddServer={handleAddServer}
                 />
 
-                <main className="app-main">
+                <main className={`app-main${Object.keys(consoles).length > 0 ? ' app-main-dock-active' : ''}`}>
                     <div className="server-list">
                         {servers.length === 0 ? (
                             <div className="no-servers">
@@ -762,6 +769,7 @@ function App() {
                                     draggedName={draggedName}
                                     skipNextClick={skipNextClick}
                                     consoleServer={consoleServer}
+                                    isConsoleOpen={isConsoleOpen}
                                     consolePopoutInstanceId={consolePopoutInstanceId}
                                     handleCardPointerDown={handleCardPointerDown}
                                     handleStart={handleStart}
@@ -783,24 +791,43 @@ function App() {
                         )}
                     </div>
 
-                    {/* 콘솔 패널 — 팝아웃 중이면 숨김 */}
-                    {consoleServer && !consolePopoutInstanceId && (
-                        <ConsolePanel
-                            consoleServer={consoleServer}
-                            consoleLines={consoleLines}
-                            consoleInput={consoleInput}
-                            setConsoleInput={setConsoleInput}
-                            sendConsoleCommand={sendConsoleCommand}
-                            consoleEndRef={consoleEndRef}
-                            closeConsole={closeConsole}
-                            setConsolePopoutInstanceId={setConsolePopoutInstanceId}
-                            highlightRules={(() => {
-                                const srv = servers.find((s) => s.id === consoleServer.id);
-                                const mod = srv && modules.find((m) => m.name === srv.module);
-                                return mod?.syntax_highlight?.rules || null;
-                            })()}
-                        />
-                    )}
+                    {/* 플로팅 콘솔 윈도우들 */}
+                    {Object.entries(consoles).map(([instanceId, state]) => {
+                        if (consolePopoutInstanceId === instanceId) return null;
+                        const srv = servers.find((s) => s.id === instanceId);
+                        const mod = srv && modules.find((m) => m.name === srv.module);
+                        const highlightRules = mod?.syntax_highlight?.rules || null;
+                        return (
+                            <ConsoleWindow
+                                key={instanceId}
+                                instanceId={instanceId}
+                                state={state}
+                                focusConsole={focusConsole}
+                                minimizeConsole={minimizeConsole}
+                                closeConsole={closeConsole}
+                                togglePin={togglePin}
+                                updatePosition={updatePosition}
+                                updateSize={updateSize}
+                                setConsoleInput={setConsoleInput}
+                                sendConsoleCommand={sendConsoleCommand}
+                                setConsolePopoutInstanceId={setConsolePopoutInstanceId}
+                                highlightRules={highlightRules}
+                                servers={servers}
+                            />
+                        );
+                    })}
+
+                    {/* 콘솔 독 (하단 작업 표시줄) */}
+                    <ConsoleDock
+                        consoles={consoles}
+                        restoreConsole={restoreConsole}
+                        focusConsole={focusConsole}
+                        closeConsole={closeConsole}
+                        popinConsole={popinConsole}
+                        consolePopoutInstanceId={consolePopoutInstanceId}
+                        servers={servers}
+                        hasProgressBar={!!progressBar}
+                    />
                 </main>
 
                 {showSettingsModal && settingsServer && (
@@ -861,7 +888,8 @@ function App() {
                                 onClick={() => {
                                     const srv = contextMenu.server;
                                     const dir = srv?.module_settings?.working_dir ||
-                                        (srv?.executable_path ? srv.executable_path.replace(/[\/\\][^\/\\]+$/, '') : null);
+                                        srv?.working_dir ||
+                                        null;
                                     if (dir) {
                                         window.api.shellOpenPath(dir);
                                     }

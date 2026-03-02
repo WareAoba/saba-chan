@@ -667,12 +667,12 @@ function ModuleCardIcon({ icon }) {
 function ModulesTab() {
     const { t } = useTranslation('gui');
     const [installedModules, setInstalledModules] = useState([]);
-    const [registryModules, setRegistryModules] = useState(null); // null = 미로드, [] = 로드됨
-    const [registryLoading, setRegistryLoading] = useState(false);
-    const [registryError, setRegistryError] = useState(null);
+    const [manifestModules, setManifestModules] = useState(null); // null = 미로드, [] = 로드됨
+    const [manifestLoading, setManifestLoading] = useState(false);
+    const [manifestError, setManifestError] = useState(null);
     const [installingIds, setInstallingIds] = useState(new Set());
     const [installResults, setInstallResults] = useState({}); // { id: 'ok'|'error' }
-    const [showRegistry, setShowRegistry] = useState(false);
+    const [showManifest, setShowManifest] = useState(false);
     const [removingIds, setRemovingIds] = useState(new Set());
     const [confirmRemoveId, setConfirmRemoveId] = useState(null);
     const [refreshingModules, setRefreshingModules] = useState(false);
@@ -699,63 +699,63 @@ function ModulesTab() {
         loadInstalledModules();
     }, [loadInstalledModules]);
 
-    const handleShowRegistry = useCallback(async () => {
-        if (registryModules !== null) {
-            setShowRegistry(true);
+    const handleShowManifest = useCallback(async () => {
+        if (manifestModules !== null) {
+            setShowManifest(true);
             return;
         }
-        setShowRegistry(true);
-        setRegistryLoading(true);
-        setRegistryError(null);
+        setShowManifest(true);
+        setManifestLoading(true);
+        setManifestError(null);
         try {
-            const res = await window.api?.moduleRegistry?.();
-            if (res?.ok && res.registry?.modules) {
-                // registry.modules: { id: { version, display_name, description, ... } }
-                const mods = Object.entries(res.registry.modules).map(([id, info]) => ({
+            const res = await window.api?.moduleManifest?.();
+            if (res?.ok && res.manifest?.modules) {
+                // manifest.modules: { id: { version, display_name, description, ... } }
+                const mods = Object.entries(res.manifest.modules).map(([id, info]) => ({
                     id,
                     ...info,
                 }));
-                setRegistryModules(mods);
+                setManifestModules(mods);
             } else {
-                setRegistryError(
-                    res?.error || t('saba_storage.registry_fetch_failed', '레지스트리를 가져오지 못했습니다.'),
+                setManifestError(
+                    res?.error || t('saba_storage.manifest_fetch_failed', '매니페스트를 가져오지 못했습니다.'),
                 );
-                setRegistryModules([]);
+                setManifestModules([]);
             }
         } catch (e) {
-            setRegistryError(e.message);
-            setRegistryModules([]);
+            setManifestError(e.message);
+            setManifestModules([]);
         }
-        setRegistryLoading(false);
-    }, [registryModules, t]);
+        setManifestLoading(false);
+    }, [manifestModules, t]);
 
-    const handleRefreshRegistry = useCallback(async () => {
-        setRegistryModules(null);
-        setRegistryLoading(true);
-        setRegistryError(null);
+    const handleRefreshManifest = useCallback(async () => {
+        setManifestModules(null);
+        setManifestLoading(true);
+        setManifestError(null);
         try {
-            const res = await window.api?.moduleRegistry?.();
-            if (res?.ok && res.registry?.modules) {
-                const mods = Object.entries(res.registry.modules).map(([id, info]) => ({ id, ...info }));
-                setRegistryModules(mods);
+            const res = await window.api?.moduleManifest?.();
+            if (res?.ok && res.manifest?.modules) {
+                const mods = Object.entries(res.manifest.modules).map(([id, info]) => ({ id, ...info }));
+                setManifestModules(mods);
             } else {
-                setRegistryError(
-                    res?.error || t('saba_storage.registry_fetch_failed', '레지스트리를 가져오지 못했습니다.'),
+                setManifestError(
+                    res?.error || t('saba_storage.manifest_fetch_failed', '매니페스트를 가져오지 못했습니다.'),
                 );
-                setRegistryModules([]);
+                setManifestModules([]);
             }
         } catch (e) {
-            setRegistryError(e.message);
-            setRegistryModules([]);
+            setManifestError(e.message);
+            setManifestModules([]);
         }
-        setRegistryLoading(false);
+        setManifestLoading(false);
     }, [t]);
 
     const handleInstallModule = useCallback(async (moduleId) => {
         setInstallingIds((prev) => new Set(prev).add(moduleId));
         setInstallResults((prev) => ({ ...prev, [moduleId]: null }));
         try {
-            const res = await window.api?.moduleInstallFromRegistry?.(moduleId);
+            const res = await window.api?.moduleInstallFromManifest?.(moduleId);
             if (res?.ok) {
                 setInstallResults((prev) => ({ ...prev, [moduleId]: 'ok' }));
                 // 설치 후 로컬 모듈 목록 갱신
@@ -804,8 +804,8 @@ function ModulesTab() {
         return parts[parts.length - 1] || m.name?.toLowerCase();
     };
 
-    // 레지스트리에서 미설치 모듈
-    const uninstalledModules = registryModules ? registryModules.filter((m) => !installedIds.has(m.id)) : [];
+    // 매니페스트에서 미설치 모듈
+    const uninstalledModules = manifestModules ? manifestModules.filter((m) => !installedIds.has(m.id)) : [];
 
     return (
         <div className="saba-storage-tab-content">
@@ -861,19 +861,19 @@ function ModulesTab() {
                 <div className="ss-section-label" style={{ margin: 0 }}>
                     {t('saba_storage.available_modules', '사용 가능한 모듈')}
                 </div>
-                {showRegistry ? (
+                {showManifest ? (
                     <button
                         className="ss-icon-btn"
-                        disabled={registryLoading}
-                        onClick={handleRefreshRegistry}
-                        title={t('saba_storage.refresh_registry', '레지스트리 새로고침')}
+                        disabled={manifestLoading}
+                        onClick={handleRefreshManifest}
+                        title={t('saba_storage.refresh_manifest', '매니페스트 새로고침')}
                     >
-                        <Icon name={registryLoading ? 'loader' : 'refresh'} size="sm" />
+                        <Icon name={manifestLoading ? 'loader' : 'refresh'} size="sm" />
                     </button>
                 ) : (
                     <button
                         className="ss-icon-btn"
-                        onClick={handleShowRegistry}
+                        onClick={handleShowManifest}
                         title={t('saba_storage.show_more_modules', '더 많은 모듈 표시')}
                     >
                         <Icon name="chevronDown" size="sm" />
@@ -881,20 +881,20 @@ function ModulesTab() {
                 )}
             </div>
 
-            {showRegistry && (
+            {showManifest && (
                 <>
-                    {registryLoading && (
-                        <p className="ss-empty">{t('saba_storage.loading_registry', '레지스트리 로드 중...')}</p>
+                    {manifestLoading && (
+                        <p className="ss-empty">{t('saba_storage.loading_manifest', '매니페스트 로드 중...')}</p>
                     )}
-                    {registryError && (
+                    {manifestError && (
                         <div className="update-modal-status-bar error">
-                            <Icon name="xCircle" size="sm" /> {registryError}
+                            <Icon name="xCircle" size="sm" /> {manifestError}
                         </div>
                     )}
-                    {!registryLoading &&
-                        registryModules !== null &&
+                    {!manifestLoading &&
+                        manifestModules !== null &&
                         uninstalledModules.length === 0 &&
-                        !registryError && (
+                        !manifestError && (
                             <p className="ss-empty">
                                 {t('saba_storage.all_modules_installed', '사용 가능한 모든 모듈이 설치되어 있습니다.')}
                             </p>
@@ -966,11 +966,11 @@ function ExtensionsTab() {
     const {
         extensions,
         refreshExtensions,
-        registryExtensions,
+        manifestExtensions,
         availableUpdates,
-        registryLoading,
+        manifestLoading,
         installingIds,
-        fetchRegistry,
+        fetchManifest,
         installExtension,
         removeExtension,
     } = useExtensions();
@@ -1026,7 +1026,7 @@ function ExtensionsTab() {
     }, [confirmRemoveId, removeExtension]);
 
     const installedIds = new Set(extensions.map((e) => e.id));
-    const uninstalled = registryExtensions.filter((r) => !installedIds.has(r.id));
+    const uninstalled = manifestExtensions.filter((r) => !installedIds.has(r.id));
 
     return (
         <div className="saba-storage-tab-content">
@@ -1115,18 +1115,18 @@ function ExtensionsTab() {
                 </div>
                 <button
                     className="ss-icon-btn"
-                    disabled={registryLoading}
-                    onClick={fetchRegistry}
-                    title={t('extensions.refresh_registry', '레지스트리 새로고침')}
+                    disabled={manifestLoading}
+                    onClick={fetchManifest}
+                    title={t('extensions.refresh_manifest', '매니페스트 새로고침')}
                 >
-                    <Icon name={registryLoading ? 'loader' : 'refresh'} size="sm" />
+                    <Icon name={manifestLoading ? 'loader' : 'refresh'} size="sm" />
                 </button>
             </div>
-            {registryLoading ? (
-                <p className="ss-empty">{t('extensions.registry_loading', '레지스트리를 가져오는 중...')}</p>
+            {manifestLoading ? (
+                <p className="ss-empty">{t('extensions.manifest_loading', '매니페스트를 가져오는 중...')}</p>
             ) : uninstalled.length === 0 ? (
                 <p className="ss-empty">
-                    {registryExtensions.length === 0
+                    {manifestExtensions.length === 0
                         ? t('extensions.store_empty', '새로고침 버튼으로 사용 가능한 익스텐션을 불러오세요.')
                         : t('extensions.all_installed', '모든 익스텐션이 설치되어 있습니다.')}
                 </p>

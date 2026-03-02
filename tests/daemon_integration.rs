@@ -526,3 +526,90 @@ async fn test_ipc_multiple_instances_are_independent() {
     cleanup_test_instances();
 }
 
+// ═══════════════════════════════════════════════════════
+// 7. 서버 업데이트 확인 API
+// ═══════════════════════════════════════════════════════
+
+/// GET /api/instance/:id/check-update — 존재하지 않는 인스턴스 → 404
+#[tokio::test]
+async fn test_check_update_not_found() {
+    let (base_url, _sup, server_task) = boot_ipc().await;
+    let client = reqwest::Client::new();
+    wait_for_ipc_ready(&base_url, &client).await;
+
+    let resp = client
+        .get(format!("{}/api/instance/nonexistent-id/check-update", base_url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::NOT_FOUND);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["error_code"], "instance_not_found");
+
+    server_task.abort();
+}
+
+/// GET /api/instance/:id/check-update — ext_data 없는 인스턴스 → update_available: false
+#[tokio::test]
+async fn test_check_update_no_extension_data() {
+    let (base_url, _sup, server_task) = boot_ipc().await;
+    let client = reqwest::Client::new();
+    wait_for_ipc_ready(&base_url, &client).await;
+
+    // 기존 인스턴스 목록에서 ext_data 없는 인스턴스를 찾거나,
+    // 찾지 못하면 migration 모드로 생성 (중복 네이티브 제한 우회)
+    let list_resp = client
+        .get(format!("{}/api/instances", base_url))
+        .send()
+        .await
+        .unwrap();
+    let instances: Vec<Value> = list_resp.json().await.unwrap();
+
+    let test_id = if let Some(inst) = instances.iter().find(|i| {
+        i.get("extension_data")
+            .and_then(|ed| ed.as_object())
+            .map(|m| m.is_empty())
+            .unwrap_or(true)
+    }) {
+        inst["id"].as_str().unwrap().to_string()
+    } else {
+        // migration 모드로 생성 (임시 디렉터리)
+        let tmp = std::env::temp_dir().join("saba-test-check-update");
+        let _ = fs::create_dir_all(&tmp);
+        let create_resp = client
+            .post(format!("{}/api/instances", base_url))
+            .json(&serde_json::json!({
+                "name": format!("test-check-update-{}", pick_free_port()),
+                "module_name": "minecraft",
+                "migration_source": tmp.to_string_lossy(),
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert!(
+            create_resp.status().is_success(),
+            "Instance creation should succeed, got {}",
+            create_resp.status()
+        );
+        let created: Value = create_resp.json().await.unwrap();
+        created["id"].as_str().unwrap().to_string()
+    };
+
+    let resp = client
+        .get(format!("{}/api/instance/{}/check-update", base_url, test_id))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["update_available"], false);
+    // reason이 "no_extension_data" 또는 "no_hook_handled" (기존 인스턴스는 ext_data가 있을 수 있음)
+    assert!(
+        body["reason"] == "no_extension_data" || body["reason"] == "no_hook_handled",
+        "Expected reason to be no_extension_data or no_hook_handled, got: {:?}",
+        body["reason"]
+    );
+
+    server_task.abort();
+    cleanup_test_instances();
+}

@@ -796,13 +796,20 @@ async function cleanQuit() {
     console.log('Starting clean quit sequence...');
 
     try {
-        // 0. 데몬에서 클라이언트 해제 (봇 프로세스 정보도 전달됨)
-        await unregisterFromDaemon();
+        // 0. 데몬에서 클라이언트 해제 + 데몬에 종료 요청 (shutdown=true)
+        await unregisterFromDaemon({ shutdown: true });
 
-        // 1. Discord 봇 종료
+        // 1. Discord 봇 종료 (프로세스 트리 전체 종료)
         if (discordBotProcess && !discordBotProcess.killed) {
-            console.log('Stopping Discord bot process...');
-            discordBotProcess.kill('SIGTERM');
+            const botPid = discordBotProcess.pid;
+            console.log(`Stopping Discord bot process (PID: ${botPid})...`);
+            if (process.platform === 'win32' && botPid) {
+                try {
+                    execSync(`taskkill /PID ${botPid} /F /T`, { stdio: 'ignore', windowsHide: true });
+                } catch (_e) { /* 이미 종료됨 */ }
+            } else {
+                discordBotProcess.kill('SIGTERM');
+            }
             discordBotProcess = null;
         }
         // 고아 봇 프로세스도 정리
@@ -841,6 +848,22 @@ async function cleanQuit() {
         }
 
         daemonProcess = null;
+
+        // 2.5. Fallback: 프로세스 이름으로 saba-core 종료 (daemonProcess가 null이었던 경우 대비)
+        if (process.platform === 'win32') {
+            try {
+                execSync('taskkill /IM saba-core.exe /F 2>nul', { stdio: 'ignore' });
+                console.log('Fallback: killed saba-core.exe by name');
+            } catch (_e) {
+                // 이미 종료됨 — 무시
+            }
+        } else {
+            try {
+                execSync('pkill -f saba-core 2>/dev/null || true', { stdio: 'ignore' });
+            } catch (_e) {
+                // 무시
+            }
+        }
 
         // 3. 트레이 정리
         if (tray) {
@@ -1013,11 +1036,12 @@ function startHeartbeat() {
     }, 30000); // 30초마다
 }
 
-async function unregisterFromDaemon() {
+async function unregisterFromDaemon(opts = {}) {
     if (!heartbeatClientId) return;
     try {
-        await axios.delete(`${IPC_BASE}/api/client/${heartbeatClientId}/unregister`, { timeout: 2000 });
-        console.log('[Heartbeat] Unregistered from daemon');
+        const qs = opts.shutdown ? '?shutdown=true' : '';
+        await axios.delete(`${IPC_BASE}/api/client/${heartbeatClientId}/unregister${qs}`, { timeout: 2000 });
+        console.log('[Heartbeat] Unregistered from daemon' + (opts.shutdown ? ' (with shutdown request)' : ''));
     } catch (e) {
         console.warn('[Heartbeat] Failed to unregister:', e.message);
     }
@@ -1495,10 +1519,17 @@ app.on('before-quit', () => {
         heartbeatClientId = null;
     }
 
-    // Discord 봇 프로세스 종료
+    // Discord 봇 프로세스 종료 (프로세스 트리 전체)
     if (discordBotProcess && !discordBotProcess.killed) {
-        console.log('Stopping Discord bot on quit...');
-        discordBotProcess.kill('SIGTERM');
+        const botPid = discordBotProcess.pid;
+        console.log(`Stopping Discord bot on quit (PID: ${botPid})...`);
+        if (process.platform === 'win32' && botPid) {
+            try {
+                execSync(`taskkill /PID ${botPid} /F /T`, { stdio: 'ignore', windowsHide: true });
+            } catch (_e) { /* 이미 종료됨 */ }
+        } else {
+            discordBotProcess.kill('SIGTERM');
+        }
         discordBotProcess = null;
     }
     killOrphanBotProcesses();
@@ -1870,6 +1901,38 @@ ipcMain.handle('console:focusPopout', async (_event, instanceId) => {
     return { ok: false };
 });
 
+// PiP 콘솔을 메인 윈도우로 되돌리기 (popin)
+ipcMain.handle('console:popin', async (_event, instanceId) => {
+    if (consolePopoutWindows.has(instanceId)) {
+        const win = consolePopoutWindows.get(instanceId);
+        if (!win.isDestroyed()) {
+            // 팝아웃 창 URL에서 서버 이름 추출
+            const url = new URL(win.webContents.getURL());
+            const serverName = url.searchParams.get('name') || win.getTitle().replace('Console — ', '');
+            // 메인 윈도우에 인앱 콘솔 열기를 요청 (창 닫기 전)
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('console:popinRequest', instanceId, serverName);
+            }
+            win.close(); // close 이벤트에서 popoutClosed 알림이 전송됨
+            return { ok: true };
+        }
+        consolePopoutWindows.delete(instanceId);
+    }
+    return { ok: false };
+});
+
+// PiP 창 alwaysOnTop 토글
+ipcMain.handle('console:toggleAlwaysOnTop', async (_event, instanceId, pinned) => {
+    if (consolePopoutWindows.has(instanceId)) {
+        const win = consolePopoutWindows.get(instanceId);
+        if (!win.isDestroyed()) {
+            win.setAlwaysOnTop(pinned);
+            return { ok: true, pinned };
+        }
+    }
+    return { ok: false };
+});
+
 ipcMain.handle('module:list', async () => {
     try {
         const response = await axios.get(`${IPC_BASE}/api/modules`);
@@ -1913,20 +1976,20 @@ ipcMain.handle('module:refresh', async () => {
     }
 });
 
-// ── Module Registry (사바 스토리지 — 모듈 탭) ──────────────────
-ipcMain.handle('module:registry', async () => {
+// ── Module Manifest (사바 스토리지 — 모듈 탭) ──────────────────
+ipcMain.handle('module:manifest', async () => {
     try {
-        const response = await axios.get(`${IPC_BASE}/api/modules/registry`, { timeout: 15000 });
+        const response = await axios.get(`${IPC_BASE}/api/modules/manifest`, { timeout: 15000 });
         return response.data;
     } catch (error) {
         return { ok: false, error: error.response?.data?.error || error.message };
     }
 });
 
-ipcMain.handle('module:installFromRegistry', async (_event, moduleId) => {
+ipcMain.handle('module:installFromManifest', async (_event, moduleId) => {
     try {
         const response = await axios.post(
-            `${IPC_BASE}/api/modules/registry/${moduleId}/install`,
+            `${IPC_BASE}/api/modules/manifest/${moduleId}/install`,
             {},
             { timeout: 120000 },
         );
@@ -2050,6 +2113,30 @@ ipcMain.handle('instance:dismissProvision', async (_event, name) => {
         return response.data;
     } catch (_error) {
         return { success: false };
+    }
+});
+
+ipcMain.handle('instance:checkUpdate', async (_event, id) => {
+    try {
+        const response = await axios.get(`${IPC_BASE}/api/instance/${id}/check-update`, {
+            timeout: 30000, // SteamCMD app_info_print can be slow
+        });
+        return response.data;
+    } catch (error) {
+        console.error('instance:checkUpdate error:', error.message);
+        return { update_available: false, error: error.message };
+    }
+});
+
+ipcMain.handle('instance:applyUpdate', async (_event, id) => {
+    try {
+        const response = await axios.post(`${IPC_BASE}/api/instance/${id}/apply-update`, {}, {
+            timeout: 10000,
+        });
+        return response.data;
+    } catch (error) {
+        console.error('instance:applyUpdate error:', error.message);
+        return { success: false, error: error.response?.data?.error || error.message };
     }
 });
 
@@ -2394,20 +2481,20 @@ ipcMain.handle('extension:icon', async (_event, extId) => {
     }
 });
 
-// ── Extension Registry & Version Management IPC 핸들러 ──────────
+// ── Extension Manifest & Version Management IPC 핸들러 ──────────
 
-// 원격 레지스트리에서 가용 익스텐션 목록 페치
-ipcMain.handle('extension:fetchRegistry', async () => {
+// 원격 매니페스트에서 가용 익스텐션 목록 페치
+ipcMain.handle('extension:fetchManifest', async () => {
     try {
-        const response = await axios.get(`${IPC_BASE}/api/extensions/registry`, { timeout: 15000 });
+        const response = await axios.get(`${IPC_BASE}/api/extensions/manifest`, { timeout: 15000 });
         return response.data;
     } catch (error) {
-        console.warn('[Extension] Failed to fetch registry:', error.message);
+        console.warn('[Extension] Failed to fetch manifest:', error.message);
         return { success: false, error: error.message, extensions: [], updates: [] };
     }
 });
 
-// 익스텐션 설치 (원격 레지스트리에서 다운로드)
+// 익스텐션 설치 (원격 매니페스트에서 다운로드)
 ipcMain.handle('extension:install', async (_event, extId, opts = {}) => {
     try {
         const response = await axios.post(`${IPC_BASE}/api/extensions/${extId}/install`, opts || {}, {
@@ -2720,7 +2807,15 @@ ipcMain.handle('language:set', (_event, language) => {
     const botRunning = discordBotProcess && !discordBotProcess.killed;
     if (botRunning) {
         console.log('Restarting Discord bot to apply new language setting...');
-        discordBotProcess.kill('SIGTERM');
+        const botPid = discordBotProcess.pid;
+        if (process.platform === 'win32' && botPid) {
+            try {
+                execSync(`taskkill /PID ${botPid} /F /T`, { stdio: 'ignore', windowsHide: true });
+            } catch (_e) { /* 이미 종료됨 */ }
+            discordBotProcess = null;
+        } else {
+            discordBotProcess.kill('SIGTERM');
+        }
 
         // 봇이 종료될 때까지 잠시 대기
         setTimeout(() => {
@@ -2846,6 +2941,7 @@ function handleBotIpcResponse(msg) {
 }
 
 // 고아 봇 프로세스 정리 (이전 앱 실행에서 남은 프로세스)
+// /T 플래그로 프로세스 트리 전체 종료 (ffmpeg, yt-dlp 등 자식 포함)
 function killOrphanBotProcesses() {
     if (process.platform === 'win32') {
         try {
@@ -2867,9 +2963,10 @@ function killOrphanBotProcesses() {
                 if (discordBotProcess && discordBotProcess.pid && String(discordBotProcess.pid) === pid) {
                     continue;
                 }
-                console.log(`[Discord Bot] Killing orphan bot process PID: ${pid}`);
+                console.log(`[Discord Bot] Killing orphan bot process tree PID: ${pid}`);
                 try {
-                    execSync(`taskkill /PID ${pid} /F`, { stdio: 'ignore', windowsHide: true });
+                    // /T: 프로세스 트리 전체 종료 (자식 ffmpeg/yt-dlp 포함)
+                    execSync(`taskkill /PID ${pid} /F /T`, { stdio: 'ignore', windowsHide: true });
                 } catch (_e) {
                     // 이미 종료된 프로세스일 수 있음
                 }
@@ -3005,9 +3102,26 @@ ipcMain.handle('discord:start', async (_event, config) => {
         return { error: `Failed to write bot config: ${e.message}` };
     }
 
-    // GUI용으로도 AppData에 백업 저장 (클라우드 모드는 위에서 cloud 메타데이터 포함하여 이미 저장됨)
+    // GUI용으로도 AppData에 백업 저장
+    // ★ 기존 클라우드 메타데이터(mode, cloud, cloudNodes, cloudMembers)를 보존
     if (config.mode !== 'cloud') {
-        saveBotConfig(configToSave);
+        let existingAppData = {};
+        try {
+            const existing = loadBotConfig();
+            if (existing && typeof existing === 'object') {
+                existingAppData = existing;
+            }
+        } catch (_) {}
+        const merged = {
+            ...existingAppData,
+            ...configToSave,
+            // 클라우드 메타데이터 보존 (현재 세션의 값 우선, 없으면 기존 값 유지)
+            mode: config.mode || existingAppData.mode || 'local',
+            cloud: config.cloud || existingAppData.cloud || {},
+            cloudNodes: config.cloudNodes || existingAppData.cloudNodes || [],
+            cloudMembers: config.cloudMembers || existingAppData.cloudMembers || {},
+        };
+        saveBotConfig(merged);
     }
 
     try {
@@ -3149,20 +3263,48 @@ ipcMain.handle('discord:start', async (_event, config) => {
 
 ipcMain.handle('discord:stop', () => {
     if (discordBotProcess && !discordBotProcess.killed) {
-        console.log('[Discord] Stopping bot process with SIGTERM');
-        discordBotProcess.kill('SIGTERM');
+        const pid = discordBotProcess.pid;
+        console.log(`[Discord] Stopping bot process (PID: ${pid})`);
 
-        // SIGTERM에 응답하지 않으면 5초 후 강제 종료
-        const killTimeout = setTimeout(() => {
-            if (discordBotProcess && !discordBotProcess.killed) {
-                console.log('[Discord] Force killing bot process with SIGKILL');
-                discordBotProcess.kill('SIGKILL');
-            }
-        }, 5000);
+        // Windows: SIGTERM이 자식 프로세스 트리에 전달되지 않으므로 taskkill /T 사용
+        if (process.platform === 'win32' && pid) {
+            // 먼저 봇에 graceful shutdown 메시지 전송 (client.destroy() 호출 유도)
+            try {
+                if (discordBotProcess.stdin && !discordBotProcess.stdin.destroyed) {
+                    discordBotProcess.stdin.write(JSON.stringify({ type: 'shutdown' }) + '\n');
+                }
+            } catch (_e) { /* stdin 이미 닫힘 */ }
 
-        discordBotProcess.once('exit', () => {
-            clearTimeout(killTimeout);
-        });
+            // 1초 후 프로세스 트리 전체 강제 종료 (ffmpeg, yt-dlp 등 자식 포함)
+            const killTimeout = setTimeout(() => {
+                try {
+                    execSync(`taskkill /PID ${pid} /F /T`, { stdio: 'ignore', windowsHide: true });
+                    console.log(`[Discord] Killed bot process tree (PID: ${pid})`);
+                } catch (_e) {
+                    // 이미 종료됨
+                }
+                discordBotProcess = null;
+            }, 1000);
+
+            discordBotProcess.once('exit', () => {
+                clearTimeout(killTimeout);
+                discordBotProcess = null;
+            });
+        } else {
+            // Unix: SIGTERM → fallback SIGKILL
+            discordBotProcess.kill('SIGTERM');
+
+            const killTimeout = setTimeout(() => {
+                if (discordBotProcess && !discordBotProcess.killed) {
+                    console.log('[Discord] Force killing bot process with SIGKILL');
+                    discordBotProcess.kill('SIGKILL');
+                }
+            }, 5000);
+
+            discordBotProcess.once('exit', () => {
+                clearTimeout(killTimeout);
+            });
+        }
 
         return { success: true };
     }

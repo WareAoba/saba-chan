@@ -1,6 +1,8 @@
 // 모든 컴포넌트를 한 곳에서 export
 
+export { ConsoleDock } from './ConsoleDock';
 export { ConsolePanel, PopoutConsole } from './ConsoleView';
+export { ConsoleWindow } from './ConsoleWindow';
 export { default as CustomDropdown } from './CustomDropdown/CustomDropdown';
 export { ErrorFallback } from './ErrorFallback';
 export { default as ExtensionSlot } from './ExtensionSlot';

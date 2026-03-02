@@ -3,7 +3,7 @@ name = "saba-chan-cli"
 version = "0.1.0"
 edition = "2021"
 description = "CLI client for Saba-chan Core Daemon"
-repository = "https://github.com/YOUR_USERNAME/saba-chan"
+repository = "https://github.com/WareAoba/saba-chan"
 license = "MIT"
 keywords = ["cli", "server-management", "game-server"]
 
@@ -26,8 +26,3 @@ winres = "0.1"
 
 [dev-dependencies]
 tempfile = "3"
-
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1

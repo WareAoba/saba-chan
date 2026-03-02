@@ -41,6 +41,11 @@ pub struct ModuleMetadata {
     /// 예: { "saba-core": ">=0.3.0", "ext-steamcmd": ">=1.0.0" }
     #[serde(default)]
     pub dependencies: std::collections::HashMap<String, String>,
+    /// 데몬 표준 키 ↔ 게임별 설정 키 매핑
+    /// 예: { "rest_password": "AdminPassword" } → 데몬의 rest_password가 게임 INI의 AdminPassword에 대응
+    /// 모듈의 get_launch_command 반환 시 이 맵을 통해 자동 동기화
+    #[serde(default)]
+    pub credential_map: std::collections::HashMap<String, String>,
     /// [extension.*] 섹션들을 범용으로 저장 (예: extensions["<ext_id>"] = {...})
     #[serde(default)]
     pub extensions: std::collections::HashMap<String, serde_json::Value>,
@@ -240,6 +245,10 @@ struct ModuleToml {
     /// [docker] 익스텐션 설정 섹션 (컨테이너 격리용)
     #[serde(default, rename = "docker")]
     container: Option<ContainerSectionToml>,
+    /// [credential_map] 데몬 표준 키 ↔ 게임별 설정 키 매핑
+    /// 예: rest_password = "AdminPassword" → 데몬의 rest_password가 게임 INI의 AdminPassword에 대응
+    #[serde(default)]
+    credential_map: Option<std::collections::HashMap<String, String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -593,6 +602,7 @@ impl ModuleToml {
             icon: self.module.icon,
             log_pattern: self.module.log_pattern,
             dependencies: self.module.dependencies,
+            credential_map: self.credential_map.unwrap_or_default(),
             process_name: self.config.as_ref().and_then(|c| c.process_name.clone()),
             default_port: self.config.as_ref().and_then(|c| c.default_port),
             executable_path: self.config.as_ref().and_then(|c| c.executable_path.clone()),

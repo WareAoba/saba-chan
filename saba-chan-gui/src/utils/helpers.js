@@ -149,6 +149,10 @@ export function createTranslateError(t) {
         if (msg.includes('cloud_token_not_found')) {
             return t('errors.cloud_token_not_found');
         }
+        // Bot process exit — translate to user-friendly crash message
+        if (msg.includes('Bot process exited with code') || msg.includes('exited with code')) {
+            return t('errors.process_crashed');
+        }
 
         // Fallback: return original message
         return msg;

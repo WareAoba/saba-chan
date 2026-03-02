@@ -29,7 +29,6 @@ export function useServerActions({
     setLoading,
     setModal,
     setProgressBar,
-    consoleServer,
     openConsole,
     closeConsole,
     setShowModuleManager,
@@ -189,10 +188,11 @@ export function useServerActions({
                 }
             } else if (data && data.error) {
                 console.error('Server list error:', data.error);
+                const translatedErr = translateError(data.error);
                 const now = Date.now();
-                if (!loading && now - lastErrorToastRef.current > 5000) {
+                if (translatedErr && !loading && now - lastErrorToastRef.current > 5000) {
                     safeShowToast(
-                        t('servers.fetch_failed_toast', { error: translateError(data.error) }),
+                        t('servers.fetch_failed_toast', { error: translatedErr }),
                         'warning',
                         3000,
                     );
@@ -207,7 +207,7 @@ export function useServerActions({
             console.error('Failed to fetch servers:', error);
             const errorMsg = translateError(error.message);
             const now = Date.now();
-            if (!loading && now - lastErrorToastRef.current > 5000) {
+            if (errorMsg && !loading && now - lastErrorToastRef.current > 5000) {
                 safeShowToast(t('servers.fetch_update_failed_toast', { error: errorMsg }), 'warning', 3000);
                 lastErrorToastRef.current = now;
             }
@@ -274,8 +274,10 @@ export function useServerActions({
                                     if (filePath) {
                                         const s = servers.find((s) => s.name === name);
                                         if (s) {
+                                            // working_dir 설정 — 실행 파일은 모듈에서 자동 해석됨
+                                            const dir = filePath.replace(/[/\\][^/\\]+$/, '');
                                             await window.api.instanceUpdateSettings(s.id, {
-                                                executable_path: filePath,
+                                                working_dir: dir,
                                             });
                                             safeShowToast(t('servers.jar_path_updated'), 'success', 3000);
                                             await fetchServers();
@@ -329,9 +331,9 @@ export function useServerActions({
 
                                     const s = servers.find((s) => s.name === name);
                                     if (s && installResult.jar_path) {
+                                        // working_dir만 설정 — 실행 파일은 모듈에서 자동 해석됨
                                         await window.api.instanceUpdateSettings(s.id, {
-                                            executable_path: installResult.jar_path,
-                                            working_dir: installResult.install_path,
+                                            working_dir: installResult.install_path || installResult.jar_path.replace(/[/\\][^/\\]+$/, ''),
                                         });
                                     }
 
@@ -546,8 +548,8 @@ export function useServerActions({
                         safeShowToast(t('servers.stop_failed_toast', { error: errorMsg }), 'error', 4000);
                     } else {
                         guiInitiatedOpsRef.current.add(name);
-                        if (srv && consoleServer?.id === srv.id) {
-                            closeConsole();
+                        if (srv) {
+                            closeConsole(srv.id);
                         }
                         setProgressBar({ message: t('servers.stopping_toast', { name }), indeterminate: true });
 
@@ -641,7 +643,7 @@ export function useServerActions({
             const instanceData = {
                 name: serverName.trim(),
                 module_name: moduleName,
-                executable_path: payload?.migration_source ? null : (selectedModuleData?.executable_path || null),
+                // executable_path는 모듈의 server_executable + working_dir에서 자동 해석됨
                 use_container: payload?.use_container || false, // 백엔드가 extension_data로 변환
             };
 

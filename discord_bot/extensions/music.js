@@ -4,18 +4,16 @@
  * 이스터에그 / 추가 기능으로 포함된 음성 채널 음악 재생 익스텐션.
  * 게임 서버 관리와는 별개로, 디스코드 음성 채널에서 유튜브 음악을 재생합니다.
  * 
- * 필요:
- *   - yt-dlp  (pip install yt-dlp 또는 시스템에 설치)
- *   - npm install @discordjs/voice opusscript ffmpeg-static
- * 
- * 선택 (성능 향상):
- *   npm install @discordjs/opus sodium-native
+ * 의존성:
+ *   - Node.js (discord_bot/package.json): @discordjs/voice, opusscript, play-dl, tweetnacl
+ *   - Python (extensions/music/music_deps.py 자동설치): ffmpeg, yt-dlp
  */
 
 const i18n = require('../i18n');
 const { spawn, execSync } = require('child_process');
 const { PassThrough } = require('stream');
 const path = require('path');
+const fs = require('fs');
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 // ── Lazy imports (패키지 미설치 시 graceful fallback) ──
@@ -24,42 +22,94 @@ let musicAvailable = false;
 let ffmpegPath = 'ffmpeg';
 let ytDlpPath = 'yt-dlp';
 
-try {
-    // ffmpeg-static 경로 설정
-    try {
-        const staticPath = require('ffmpeg-static');
-        if (staticPath) {
-            ffmpegPath = staticPath;
-            // prism-media/기타 라이브러리도 찾을 수 있도록
-            if (!process.env.FFMPEG_PATH) process.env.FFMPEG_PATH = staticPath;
-            console.log(`[Music] FFmpeg path: ${staticPath}`);
-        }
-    } catch (_) { /* ffmpeg-static 미설치 시 PATH의 ffmpeg 사용 */ }
+/**
+ * Python music_deps.py 가 기록한 .deps-resolved.json 에서 바이너리 경로를 불러옵니다.
+ * 파일 위치: <extensions_dir>/music/.deps-resolved.json
+ */
+function loadDepsResolved() {
+    const candidates = [];
+    // 1. SABA_EXTENSIONS_DIR 환경변수
+    if (process.env.SABA_EXTENSIONS_DIR) {
+        candidates.push(path.join(process.env.SABA_EXTENSIONS_DIR, 'music', '.deps-resolved.json'));
+    }
+    // 2. 플랫폼별 기본 경로
+    if (process.platform === 'win32' && process.env.APPDATA) {
+        candidates.push(path.join(process.env.APPDATA, 'saba-chan', 'extensions', 'music', '.deps-resolved.json'));
+    } else if (process.env.HOME) {
+        candidates.push(path.join(process.env.HOME, '.config', 'saba-chan', 'extensions', 'music', '.deps-resolved.json'));
+    }
+    // 3. 개발 환경 — 워크스페이스 인접 폴더
+    const devPath = path.resolve(__dirname, '..', '..', '..', 'saba-chan-extensions', 'music', '.deps-resolved.json');
+    candidates.push(devPath);
 
-    // yt-dlp 경로 탐색
-    try {
-        execSync('yt-dlp --version', { stdio: 'ignore', windowsHide: true });
-    } catch (_) {
-        // PATH에 없으면 일반적인 pip 설치 경로 시도
-        const pipScripts = path.join(process.env.APPDATA || '', 'Python', 'Python310', 'Scripts');
-        const candidate = path.join(pipScripts, 'yt-dlp.exe');
+    for (const p of candidates) {
         try {
-            execSync(`"${candidate}" --version`, { stdio: 'ignore', windowsHide: true });
-            ytDlpPath = candidate;
-            console.log(`[Music] yt-dlp found at pip path: ${candidate}`);
-        } catch (_) {
-            // Python 환경 변수에서 찾기
-            const pyUserBase = process.env.PYTHONUSERBASE || '';
-            if (pyUserBase) {
-                const candidate2 = path.join(pyUserBase, 'Scripts', 'yt-dlp.exe');
-                try {
-                    execSync(`"${candidate2}" --version`, { stdio: 'ignore', windowsHide: true });
-                    ytDlpPath = candidate2;
-                } catch (_) {}
+            if (fs.existsSync(p)) {
+                const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+                console.log(`[Music] Loaded deps from: ${p}`);
+                return data;
             }
+        } catch (_) {}
+    }
+    return null;
+}
+
+try {
+    // ── Python 익스텐션이 설치한 바이너리 경로 읽기 ──
+    const deps = loadDepsResolved();
+    if (deps) {
+        if (deps.ffmpeg && deps.ffmpeg.available && deps.ffmpeg.path) {
+            ffmpegPath = deps.ffmpeg.path;
+            if (!process.env.FFMPEG_PATH) process.env.FFMPEG_PATH = ffmpegPath;
+            console.log(`[Music] FFmpeg path (from Python): ${ffmpegPath}`);
+        }
+        if (deps.yt_dlp && deps.yt_dlp.available && deps.yt_dlp.path) {
+            ytDlpPath = deps.yt_dlp.path;
+            console.log(`[Music] yt-dlp path (from Python): ${ytDlpPath}`);
+        }
+    } else {
+        // .deps-resolved.json 미발견 — PATH에서 직접 탐색 (fallback)
+        console.log('[Music] .deps-resolved.json not found, using PATH fallback');
+        try {
+            execSync('ffmpeg -version', { stdio: 'ignore', windowsHide: true });
+            console.log('[Music] ffmpeg found in PATH');
+        } catch (_) {
+            console.warn('[Music] ffmpeg not found in PATH');
+        }
+        try {
+            execSync('yt-dlp --version', { stdio: 'ignore', windowsHide: true });
+            console.log('[Music] yt-dlp found in PATH');
+        } catch (_) {
+            console.warn('[Music] yt-dlp not found in PATH');
         }
     }
-    console.log(`[Music] yt-dlp path: ${ytDlpPath}`);
+
+    // ── prism-media FFmpeg 경로 등록 ──────────────────────────────
+    // @discordjs/voice 는 내부적으로 prism-media 의 FFmpeg 을 사용합니다.
+    // prism-media 는 process.env.FFMPEG_PATH 를 확인하지 않고
+    // require('ffmpeg-static') / PATH 의 'ffmpeg' 만 탐색하므로,
+    // 우리 ffmpegPath 를 직접 등록해야 합니다.
+    try {
+        const prism = require('prism-media');
+        const { spawnSync } = require('child_process');
+        const probe = spawnSync(ffmpegPath, ['-h'], {
+            windowsHide: true,
+            timeout: 5000,
+            stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        if (!probe.error) {
+            const output = Buffer.concat([probe.stdout, probe.stderr].filter(Boolean)).toString();
+            const cachedInfo = { command: ffmpegPath, output };
+            Object.defineProperty(cachedInfo, 'version', {
+                get() { return (/version (.+) Copyright/mi.exec(this.output) || [])[1] || 'unknown'; },
+                enumerable: true,
+            });
+            prism.FFmpeg.getInfo = () => cachedInfo;
+            console.log(`[Music] Registered ffmpeg for prism-media: ${ffmpegPath}`);
+        }
+    } catch (e) {
+        console.warn('[Music] Could not register ffmpeg with prism-media:', e.message);
+    }
 
     voice = require('@discordjs/voice');
     // play-dl은 검색/메타데이터 전용으로 사용 (stream은 yt-dlp)
@@ -67,9 +117,9 @@ try {
     musicAvailable = true;
     console.log('[Music] Extension loaded successfully 🎵');
 } catch (e) {
-    console.warn('[Music] Extension not available — missing packages. Install with:');
-    console.warn('[Music]   npm install @discordjs/voice opusscript ffmpeg-static');
-    console.warn('[Music]   pip install yt-dlp');
+    console.warn('[Music] Extension not available — missing Node.js packages.');
+    console.warn('[Music] Run: cd discord_bot && npm install');
+    console.warn('[Music] Binary tools (ffmpeg, yt-dlp) are managed by the Python music extension.');
 }
 
 // ── Per-guild state ──
@@ -258,7 +308,27 @@ async function requireVoiceChannel(message) {
  */
 async function handleMusicShortcut(message, args, botConfig) {
     if (args.length === 0) return false;
-    if (!musicAvailable) return false;
+    if (!musicAvailable) {
+        // 패키지 미설치라도 음악 명령어라면 안내 메시지 표시 (IPC로 넘기지 않음)
+        const firstArg = args[0];
+        if (isYouTubeUrl(firstArg)) {
+            await message.reply(i18n.t('bot:music.not_available'));
+            return true;
+        }
+        if (args.length >= 2 && isMusicModule(firstArg, botConfig)) {
+            await message.reply(i18n.t('bot:music.not_available'));
+            return true;
+        }
+        // 숏컷 명령어 (재생, 정지 등) — 활성 큐가 없으므로 false 반환하되,
+        // 음악 전용 명령어일 경우는 잡아야 함
+        const customAliases = botConfig.commandAliases?.music || {};
+        const commandName = resolveMusicCommand(firstArg, customAliases);
+        if (commandName && (commandName === 'play' || commandName === 'search')) {
+            await message.reply(i18n.t('bot:music.not_available'));
+            return true;
+        }
+        return false;
+    }
     
     // GUI에서 뮤직봇 비활성화 시 무시
     if (botConfig.musicEnabled === false) return false;

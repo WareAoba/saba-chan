@@ -98,13 +98,13 @@ export function ExtensionProvider({ children }) {
     const [loading, setLoading] = useState(true);
     const loadedRef = useRef(new Set());
 
-    // ── 레지스트리 / 버전관리 상태 ──────────────────────────────
-    /** 원격 레지스트리에서 받아온 가용 익스텐션 목록 */
-    const [registryExtensions, setRegistryExtensions] = useState([]);
+    // ── 매니페스트 / 버전관리 상태 ──────────────────────────────
+    /** 원격 매니페스트에서 받아온 가용 익스텐션 목록 */
+    const [manifestExtensions, setManifestExtensions] = useState([]);
     /** 업데이트 가능한 익스텐션 목록 */
     const [availableUpdates, setAvailableUpdates] = useState([]);
-    /** 레지스트리 페치 중 여부 */
-    const [registryLoading, setRegistryLoading] = useState(false);
+    /** 매니페스트 페치 중 여부 */
+    const [manifestLoading, setManifestLoading] = useState(false);
     /** 현재 설치 진행 중인 익스텐션 ID 집합 */
     const [installingIds, setInstallingIds] = useState(new Set());
 
@@ -253,27 +253,27 @@ export function ExtensionProvider({ children }) {
         [fetchExtensions, t],
     );
 
-    // ── 레지스트리 페치 ──────────────────────────────────────────
-    /** 원격 레지스트리에서 가용 익스텐션 목록을 가져옵니다. */
-    const fetchRegistry = useCallback(async () => {
-        setRegistryLoading(true);
+    // ── 매니페스트 페치 ──────────────────────────────────────────────
+    /** 원격 매니페스트에서 가용 익스텐션 목록을 가져옵니다. */
+    const fetchManifest = useCallback(async () => {
+        setManifestLoading(true);
         try {
-            const data = await window.api.extensionFetchRegistry?.();
+            const data = await window.api.extensionFetchManifest?.();
             if (data) {
-                setRegistryExtensions(data.extensions || []);
+                setManifestExtensions(data.extensions || []);
                 setAvailableUpdates(data.updates || []);
             }
             return data;
         } catch (e) {
-            console.warn('[Extension] Failed to fetch registry:', e);
+            console.warn('[Extension] Failed to fetch manifest:', e);
             return null;
         } finally {
-            setRegistryLoading(false);
+            setManifestLoading(false);
         }
     }, []);
 
     // ── 원클릭 설치 ──────────────────────────────────────────────
-    /** 레지스트리에서 익스텐션을 다운로드·설치합니다. */
+    /** 매니페스트에서 익스텐션을 다운로드·설치합니다. */
     const installExtension = useCallback(
         async (extId, opts = {}) => {
             if (!extId) return false;
@@ -291,7 +291,7 @@ export function ExtensionProvider({ children }) {
                 }
                 // 설치 후 목록 새로고침
                 await fetchExtensions();
-                await fetchRegistry();
+                await fetchManifest();
                 safeShowToast(
                     t('extensions.installed', { id: extId, defaultValue: `Extension '${extId}' installed.` }),
                     'success',
@@ -314,7 +314,7 @@ export function ExtensionProvider({ children }) {
                 });
             }
         },
-        [fetchExtensions, fetchRegistry, t],
+        [fetchExtensions, fetchManifest, t],
     );
 
     // ── 업데이트 체크 ────────────────────────────────────────────
@@ -391,12 +391,12 @@ export function ExtensionProvider({ children }) {
         toggleExtension,
         refreshExtensions: fetchExtensions,
         removeExtension,
-        // 레지스트리 & 버전관리
-        registryExtensions,
+        // 매니페스트 & 버전관리
+        manifestExtensions,
         availableUpdates,
-        registryLoading,
+        manifestLoading,
         installingIds,
-        fetchRegistry,
+        fetchManifest,
         installExtension,
         checkUpdates,
     };
@@ -416,11 +416,11 @@ export function useExtensions() {
             toggleExtension: () => {},
             refreshExtensions: () => {},
             removeExtension: async () => false,
-            registryExtensions: [],
+            manifestExtensions: [],
             availableUpdates: [],
-            registryLoading: false,
+            manifestLoading: false,
             installingIds: new Set(),
-            fetchRegistry: async () => {},
+            fetchManifest: async () => {},
             installExtension: async () => false,
             checkUpdates: async () => {},
         };

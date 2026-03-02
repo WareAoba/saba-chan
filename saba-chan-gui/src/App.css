@@ -349,6 +349,11 @@ span[style*="--icon-loader"] svg,
     flex: 1;
     overflow-y: auto;
     padding: 4px 20px 20px;
+    transition: padding-bottom 0.2s ease;
+}
+
+.app-main-dock-active {
+    padding-bottom: 56px;
 }
 
 .discord-backdrop {
@@ -732,6 +737,39 @@ span[style*="--icon-loader"] svg,
     }
 }
 
+/* 서버 업데이트 배지 (게임 아이콘 왼쪽 하단) */
+.server-update-badge {
+    position: absolute;
+    bottom: -4px;
+    left: -4px;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-card, #1e1e2e);
+    border-radius: 50%;
+    border: 1.5px solid rgba(59, 130, 246, 0.6);
+    z-index: 3;
+    color: #3b82f6;
+    animation: server-update-pulse 2.5s ease-in-out infinite;
+    cursor: help;
+}
+.server-update-badge svg {
+    width: 12px;
+    height: 12px;
+}
+@keyframes server-update-pulse {
+    0%, 100% {
+        opacity: 0.8;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.15);
+    }
+}
+
 /* 별명 충돌(동일 모듈 다중 인스턴스) 배지 (게임 아이콘 오른쪽 상단) */
 .alias-conflict-badge {
     position: absolute;
@@ -835,7 +873,7 @@ span[style*="--icon-loader"] svg,
 .instance-id-badge {
     display: inline-block;
     font-size: 9px;
-    font-family: "Consolas", "Monaco", monospace;
+    font-family: "Cascadia Code", "Consolas", "Monaco", monospace;
     font-weight: 500;
     padding: 1px 5px;
     margin-left: 4px;
@@ -970,6 +1008,39 @@ span[style*="--icon-loader"] svg,
 .status-button.status-provisioning .status-dot {
     background-color: var(--accent-primary, #4a9eff);
     animation: pulse-dot-blue 1s infinite;
+}
+
+/* Update Available 상태 (보라색) */
+.status-button.status-update-available {
+    border-color: rgba(139, 92, 246, 0.5);
+    color: #a78bfa;
+    animation: update-glow 2s ease-in-out infinite;
+}
+
+.status-button.status-update-available .status-dot {
+    background-color: #a78bfa;
+    box-shadow: 0 0 6px rgba(139, 92, 246, 0.6);
+    animation: pulse-dot-purple 2s infinite;
+}
+
+.status-button.status-update-available:hover {
+    border-color: #a78bfa;
+    background: rgba(139, 92, 246, 0.1);
+    color: #c4b5fd;
+}
+
+.status-button.status-update-available:hover .status-dot {
+    background-color: #c4b5fd;
+}
+
+@keyframes pulse-dot-purple {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.3); }
+}
+
+@keyframes update-glow {
+    0%, 100% { box-shadow: none; }
+    50% { box-shadow: 0 0 8px rgba(139, 92, 246, 0.15); }
 }
 
 /* ServerCard 프로비저닝 진행 래퍼 */
@@ -4016,7 +4087,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .console-icon {
-    font-family: "Consolas", "Monaco", "Courier New", monospace;
+    font-family: "Cascadia Code", "Consolas", "Monaco", "Courier New", monospace;
     color: #a6e3a1;
     font-size: 14px;
     font-weight: 700;
@@ -4043,7 +4114,7 @@ span[style*="--icon-loader"] svg,
     flex: 1;
     overflow-y: auto;
     padding: 10px 14px;
-    font-family: "Consolas", "Monaco", "Courier New", monospace;
+    font-family: "Cascadia Code", "Consolas", "Monaco", "Courier New", monospace;
     font-size: 12.5px;
     line-height: 1.6;
     color: #cdd6f4;
@@ -4113,7 +4184,7 @@ span[style*="--icon-loader"] svg,
 
 .console-prompt {
     color: #a6e3a1;
-    font-family: "Consolas", "Monaco", "Courier New", monospace;
+    font-family: "Cascadia Code", "Consolas", "Monaco", "Courier New", monospace;
     font-weight: 700;
     font-size: 14px;
     flex-shrink: 0;
@@ -4126,7 +4197,7 @@ span[style*="--icon-loader"] svg,
     border-radius: 6px;
     padding: 6px 10px;
     color: #cdd6f4;
-    font-family: "Consolas", "Monaco", "Courier New", monospace;
+    font-family: "Cascadia Code", "Consolas", "Monaco", "Courier New", monospace;
     font-size: 12.5px;
     outline: none;
     transition: border-color 0.2s ease;
@@ -4350,6 +4421,25 @@ span[style*="--icon-loader"] svg,
     background: rgba(243, 139, 168, 0.15);
 }
 
+.console-popout-titlebar-popin:hover {
+    color: #a6e3a1;
+    background: rgba(166, 227, 161, 0.1);
+}
+
+.console-popout-titlebar-pin:hover {
+    color: #89b4fa;
+    background: rgba(137, 180, 250, 0.1);
+}
+
+.console-popout-titlebar-pinned {
+    color: #89b4fa !important;
+    background: rgba(137, 180, 250, 0.15);
+}
+
+.console-popout-titlebar-pinned:hover {
+    background: rgba(137, 180, 250, 0.25);
+}
+
 .console-popout-body {
     display: flex;
     flex-direction: column;
@@ -4361,7 +4451,7 @@ span[style*="--icon-loader"] svg,
     flex: 1;
     overflow-y: auto;
     padding: 10px 14px;
-    font-family: "Consolas", "Monaco", "Courier New", monospace;
+    font-family: "Cascadia Code", "Consolas", "Monaco", "Courier New", monospace;
     font-size: 12.5px;
     line-height: 1.6;
     color: #cdd6f4;
@@ -4375,6 +4465,388 @@ span[style*="--icon-loader"] svg,
 .console-popout-body .console-input-row {
     border-top: 1px solid rgba(255, 255, 255, 0.06);
     background: rgba(255, 255, 255, 0.02);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Console Dock (Taskbar)
+   ═══════════════════════════════════════════════════════════ */
+
+.console-dock {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 9000;
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+    padding: 0 16px 8px;
+}
+
+.console-dock-inner {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(24, 24, 37, 0.92);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 6px 10px;
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.04);
+    pointer-events: auto;
+    animation: dock-slide-up 0.2s ease-out;
+}
+
+@keyframes dock-slide-up {
+    from {
+        opacity: 0;
+        transform: translateY(100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.console-dock-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    color: #cdd6f4;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    position: relative;
+    white-space: nowrap;
+    max-width: 180px;
+    overflow: hidden;
+}
+
+.console-dock-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.12);
+    transform: translateY(-2px);
+}
+
+.console-dock-active {
+    border-color: rgba(166, 227, 161, 0.3);
+    background: rgba(166, 227, 161, 0.08);
+}
+
+.console-dock-active:hover {
+    border-color: rgba(166, 227, 161, 0.5);
+    background: rgba(166, 227, 161, 0.12);
+}
+
+.console-dock-minimized {
+    opacity: 0.6;
+    border-style: dashed;
+}
+
+.console-dock-minimized:hover {
+    opacity: 1;
+}
+
+.console-dock-icon {
+    display: flex;
+    align-items: center;
+    color: #a6e3a1;
+    flex-shrink: 0;
+}
+
+.console-dock-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.console-dock-minimized-indicator {
+    position: absolute;
+    bottom: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 16px;
+    height: 2px;
+    background: rgba(166, 227, 161, 0.5);
+    border-radius: 1px;
+}
+
+/* Dock pushed up when progress bar is visible */
+.console-dock-above-progress {
+    bottom: 40px;
+}
+
+/* Pin indicator in dock item */
+.console-dock-pinned {
+    border-color: rgba(137, 180, 250, 0.3);
+}
+
+.console-dock-pin-indicator {
+    color: #89b4fa;
+    margin-left: 2px;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+/* Popout dock item */
+.console-dock-popout {
+    border-color: rgba(166, 227, 161, 0.25);
+    border-style: dashed;
+}
+
+.console-dock-popout:hover {
+    border-color: rgba(166, 227, 161, 0.5);
+    background: rgba(166, 227, 161, 0.08);
+}
+
+.console-dock-popout-badge {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: rgba(166, 227, 161, 0.2);
+    color: #a6e3a1;
+    margin-left: 4px;
+    flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Console Window (Floating Desktop-style)
+   ═══════════════════════════════════════════════════════════ */
+
+.console-window {
+    position: fixed;
+    display: flex;
+    flex-direction: column;
+    background: #1e1e2e;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.03);
+    overflow: hidden;
+    animation: cw-appear 0.2s ease-out;
+    min-width: 360px;
+    min-height: 200px;
+}
+
+.console-window:hover {
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+@keyframes cw-appear {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* ── Title bar ── */
+.cw-titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    cursor: grab;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.cw-titlebar:active {
+    cursor: grabbing;
+}
+
+.cw-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #cdd6f4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cw-controls {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.cw-btn {
+    background: none;
+    border: none;
+    color: #6c7086;
+    cursor: pointer;
+    padding: 3px 6px;
+    border-radius: 4px;
+    line-height: 1;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    font-size: 16px;
+}
+
+.cw-btn:hover {
+    color: #cdd6f4;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.cw-btn-minimize:hover {
+    color: #f9e2af;
+    background: rgba(249, 226, 175, 0.1);
+}
+
+.cw-btn-popout:hover {
+    color: #a6e3a1;
+    background: rgba(166, 227, 161, 0.1);
+}
+
+.cw-btn-close:hover {
+    color: #f38ba8;
+    background: rgba(243, 139, 168, 0.1);
+}
+
+.cw-btn-pin:hover {
+    color: #89b4fa;
+    background: rgba(137, 180, 250, 0.1);
+}
+
+.cw-btn-pinned {
+    color: #89b4fa !important;
+    background: rgba(137, 180, 250, 0.15);
+}
+
+.cw-btn-pinned:hover {
+    background: rgba(137, 180, 250, 0.25);
+}
+
+/* Pinned window glow */
+.console-window.cw-pinned {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(137, 180, 250, 0.3), 0 0 12px rgba(137, 180, 250, 0.08);
+}
+
+/* ── Console output area ── */
+.cw-output {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 12px;
+    font-family: "Cascadia Code", "Consolas", "Monaco", "Courier New", monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    color: #cdd6f4;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+    -webkit-user-select: text;
+    user-select: text;
+    cursor: text;
+}
+
+.cw-output::-webkit-scrollbar {
+    width: 5px;
+}
+
+.cw-output::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.cw-output::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+}
+
+.cw-output::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* ── Resize handles ── */
+.cw-resize {
+    position: absolute;
+    z-index: 10;
+}
+
+.cw-resize-n {
+    top: -3px;
+    left: 8px;
+    right: 8px;
+    height: 6px;
+    cursor: n-resize;
+}
+
+.cw-resize-s {
+    bottom: -3px;
+    left: 8px;
+    right: 8px;
+    height: 6px;
+    cursor: s-resize;
+}
+
+.cw-resize-e {
+    top: 8px;
+    right: -3px;
+    bottom: 8px;
+    width: 6px;
+    cursor: e-resize;
+}
+
+.cw-resize-w {
+    top: 8px;
+    left: -3px;
+    bottom: 8px;
+    width: 6px;
+    cursor: w-resize;
+}
+
+.cw-resize-ne {
+    top: -3px;
+    right: -3px;
+    width: 12px;
+    height: 12px;
+    cursor: ne-resize;
+}
+
+.cw-resize-nw {
+    top: -3px;
+    left: -3px;
+    width: 12px;
+    height: 12px;
+    cursor: nw-resize;
+}
+
+.cw-resize-se {
+    bottom: -3px;
+    right: -3px;
+    width: 12px;
+    height: 12px;
+    cursor: se-resize;
+}
+
+.cw-resize-sw {
+    bottom: -3px;
+    left: -3px;
+    width: 12px;
+    height: 12px;
+    cursor: sw-resize;
+}
+
+/* ── Input row inside floating window (reuses .console-input-row) ── */
+.console-window .console-input-row {
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.02);
+    flex-shrink: 0;
 }
 
 /* ===== Radio Group / Checkbox / Form Hint ===== */

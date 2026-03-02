@@ -118,7 +118,7 @@
   },
   "music": {
     "mod_name": "music",
-    "not_available": "🎵 音樂功能需要安裝額外的套件！\n`npm install @discordjs/voice @discordjs/opus play-dl`",
+    "not_available": "🎵 音樂功能需要安裝額外的套件！\n`cd discord_bot && npm install`",
     "join_voice_first": "🎤 請先加入語音頻道！",
     "no_permission": "🚫 我沒有連接或在語音頻道說話的權限！",
     "searching": "🔍 搜尋中... `{{query}}`",

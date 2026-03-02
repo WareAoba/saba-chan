@@ -3,7 +3,7 @@ name = "saba-core"
 version = "0.1.0"
 edition = "2021"
 description = "Modular game server management platform"
-repository = "https://github.com/YOUR_USERNAME/saba-chan"
+repository = "https://github.com/WareAoba/saba-chan"
 license = "MIT"
 keywords = ["game-server", "palworld", "minecraft", "management"]
 

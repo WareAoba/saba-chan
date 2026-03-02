@@ -401,7 +401,7 @@ fn build_state(mgr: &UpdateManager) -> UpdaterState {
                 installed: c.installed,
             })
             .collect(),
-        worker_busy: false, // TODO: 백그라운드 워커 연동
+        worker_busy: false, // 백그라운드 워커 연동 시 실제 상태 반영 예정
         worker_task: None,
     }
 }

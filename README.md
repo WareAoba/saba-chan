@@ -42,7 +42,7 @@
 
 ```bash
 # 1. 저장소 클론
-git clone https://github.com/YOUR_USERNAME/saba-chan.git
+git clone https://github.com/WareAoba/saba-chan.git
 cd saba-chan
 
 # 2. Core Daemon 빌드

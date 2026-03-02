@@ -32,10 +32,10 @@ export function AddInstanceMigration({
     const [detectedModule, setDetectedModule] = useState(null); // { name, displayName, icon, ... }
     const [noMatch, setNoMatch] = useState(false);
 
-    // -- registry fallback state --
-    const [registryModules, setRegistryModules] = useState(null);
-    const [registryLoading, setRegistryLoading] = useState(false);
-    const [registryError, setRegistryError] = useState(null);
+    // -- manifest fallback state --
+    const [manifestModules, setManifestModules] = useState(null);
+    const [manifestLoading, setManifestLoading] = useState(false);
+    const [manifestError, setManifestError] = useState(null);
     const [manualModule, setManualModule] = useState(null);
 
     // -- configure state --
@@ -100,36 +100,36 @@ export function AddInstanceMigration({
         setScanning(false);
     }, [extensions, t]);
 
-    // ─── 레지스트리 fetch (감지 실패 시) ───
-    const fetchRegistry = useCallback(async () => {
-        if (registryModules !== null) return; // 이미 로드됨
-        setRegistryLoading(true);
-        setRegistryError(null);
+    // ─── 매니페스트 fetch (감지 실패 시) ───
+    const fetchManifest = useCallback(async () => {
+        if (manifestModules !== null) return; // 이미 로드됨
+        setManifestLoading(true);
+        setManifestError(null);
         try {
-            const res = await window.api?.moduleRegistry?.();
-            if (res?.ok && res.registry?.modules) {
-                const mods = Object.entries(res.registry.modules).map(([id, info]) => ({
+            const res = await window.api?.moduleManifest?.();
+            if (res?.ok && res.manifest?.modules) {
+                const mods = Object.entries(res.manifest.modules).map(([id, info]) => ({
                     id,
                     ...info,
                 }));
-                setRegistryModules(mods);
+                setManifestModules(mods);
             } else {
-                setRegistryError(
-                    res?.error || t('migration_modal.registry_fetch_failed'),
+                setManifestError(
+                    res?.error || t('migration_modal.manifest_fetch_failed'),
                 );
-                setRegistryModules([]);
+                setManifestModules([]);
             }
         } catch (e) {
-            setRegistryError(e.message);
-            setRegistryModules([]);
+            setManifestError(e.message);
+            setManifestModules([]);
         }
-        setRegistryLoading(false);
-    }, [registryModules, t]);
+        setManifestLoading(false);
+    }, [manifestModules, t]);
 
-    // noMatch가 되면 자동으로 레지스트리 페치
+    // noMatch가 되면 자동으로 매니페스트 페치
     useEffect(() => {
-        if (noMatch) fetchRegistry();
-    }, [noMatch, fetchRegistry]);
+        if (noMatch) fetchManifest();
+    }, [noMatch, fetchManifest]);
 
     // ─── 감지 결과로 다음 단계 ───
     const proceedWithModule = useCallback((mod) => {
@@ -304,23 +304,23 @@ export function AddInstanceMigration({
                                     {t('migration_modal.select_module_manually')}
                                 </label>
 
-                                {registryLoading && (
+                                {manifestLoading && (
                                     <div className="mg-status mg-status--scanning">
                                         <SabaSpinner size={20} />
-                                        <span>{t('migration_modal.loading_registry')}</span>
+                                        <span>{t('migration_modal.loading_manifest')}</span>
                                     </div>
                                 )}
 
-                                {registryError && (
+                                {manifestError && (
                                     <div className="mg-status mg-status--error">
                                         <Icon name="alertCircle" size="sm" />
-                                        <span>{registryError}</span>
+                                        <span>{manifestError}</span>
                                     </div>
                                 )}
 
-                                {registryModules && registryModules.length > 0 && (
+                                {manifestModules && manifestModules.length > 0 && (
                                     <div className="mg-module-list">
-                                        {registryModules.map((m) => {
+                                        {manifestModules.map((m) => {
                                             const isSelected = manualModule?.id === m.id;
                                             return (
                                                 <button
@@ -351,7 +351,7 @@ export function AddInstanceMigration({
                                     </div>
                                 )}
 
-                                {registryModules && registryModules.length === 0 && !registryLoading && (
+                                {manifestModules && manifestModules.length === 0 && !manifestLoading && (
                                     <p className="mg-no-match-hint">{t('migration_modal.no_modules_available')}</p>
                                 )}
                             </div>

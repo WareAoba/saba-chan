@@ -135,8 +135,8 @@ pub fn submit(app: &mut App) {
 fn get_subcommands_for(first: &str) -> Vec<&'static str> {
     match first {
         "instance" => vec!["list", "create", "delete", "set", "reset", "reorder"],
-        "module" => vec!["list", "info", "refresh", "versions", "install", "registry", "remove", "install-registry"],
-        "extension" | "ext" => vec!["list", "enable", "disable", "install", "remove", "registry", "rescan"],
+        "module" => vec!["list", "info", "refresh", "versions", "install", "manifest", "remove", "install-manifest"],
+        "extension" | "ext" => vec!["list", "enable", "disable", "install", "remove", "manifest", "rescan"],
         "daemon" => vec!["start", "stop", "status", "restart"],
         "bot" => vec!["start", "stop", "status", "token", "prefix", "mode", "relay", "node-token"],
         "config" => vec!["show", "set", "get", "reset", "gui", "system-language"],
@@ -247,9 +247,9 @@ pub fn autocomplete(app: &mut App) {
                 "instance list", "instance create", "instance delete",
                 "instance set", "instance reset", "instance reorder",
                 "module list", "module refresh", "module versions", "module install", "module info",
-                "module registry", "module remove", "module install-registry",
+                "module manifest", "module remove", "module install-manifest",
                 "extension list", "extension enable", "extension disable",
-                "extension install", "extension remove", "extension registry", "extension rescan",
+                "extension install", "extension remove", "extension manifest", "extension rescan",
                 "daemon start", "daemon stop", "daemon status", "daemon restart",
                 "bot start", "bot stop", "bot status", "bot token", "bot prefix",
                 "bot mode", "bot relay", "bot node-token",
@@ -284,10 +284,10 @@ fn dispatch_sync(app: &mut App, lower: &[&str], orig: &[&str]) -> Option<Vec<Out
             Out::Text("  instance list|create|delete|set|reset|reorder <name>".into()),
         ]),
         Some("module") if lower.len() == 1 => Some(vec![
-            Out::Text("  module list|info|refresh|versions|install|registry|remove|install-registry".into()),
+            Out::Text("  module list|info|refresh|versions|install|manifest|remove|install-manifest".into()),
         ]),
         Some("extension") | Some("ext") if lower.len() == 1 => Some(vec![
-            Out::Text("  extension list|enable|disable|install|remove|registry|rescan".into()),
+            Out::Text("  extension list|enable|disable|install|remove|manifest|rescan".into()),
         ]),
         Some("update") if lower.len() == 1 => Some(vec![
             Out::Text("  update check|status|download|apply|config|set|install".into()),
@@ -936,11 +936,11 @@ async fn exec_module(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
             }
         }
-        Some("registry") => match client.fetch_module_registry().await {
+        Some("manifest") => match client.fetch_module_manifest().await {
             Ok(v) => {
                 let list = v.as_array().cloned().unwrap_or_default();
-                if list.is_empty() { return vec![Out::Text("Module registry is empty.".into())]; }
-                let mut o = vec![Out::Ok(format!("{} module(s) in registry:", list.len()))];
+                if list.is_empty() { return vec![Out::Text("Module manifest is empty.".into())]; }
+                let mut o = vec![Out::Ok(format!("{} module(s) in manifest:", list.len()))];
                 for m in &list {
                     let name = m["name"].as_str().or(m["id"].as_str()).unwrap_or("?");
                     let ver = m["version"].as_str().unwrap_or("-");
@@ -955,11 +955,11 @@ async fn exec_module(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
             Ok(r) => vec![Out::Ok(format!("✓ {}", r.get("message").and_then(|v| v.as_str()).unwrap_or("Module removed")))],
             Err(e) => vec![Out::Err(format!("✗ {}", e))],
         },
-        Some("install-registry") if args.len() > 1 => match client.install_module_from_registry(args[1]).await {
-            Ok(r) => vec![Out::Ok(format!("✓ {}", r.get("message").and_then(|v| v.as_str()).unwrap_or("Module installed from registry")))],
+        Some("install-manifest") if args.len() > 1 => match client.install_module_from_manifest(args[1]).await {
+            Ok(r) => vec![Out::Ok(format!("✓ {}", r.get("message").and_then(|v| v.as_str()).unwrap_or("Module installed from manifest")))],
             Err(e) => vec![Out::Err(format!("✗ {}", e))],
         },
-        _ => vec![Out::Err("Usage: module [list|info|refresh|versions|install|registry|remove|install-registry] <name>".into())],
+        _ => vec![Out::Err("Usage: module [list|info|refresh|versions|install|manifest|remove|install-manifest] <name>".into())],
     }
 }
 
@@ -996,11 +996,11 @@ async fn exec_extension(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
             Ok(r) => vec![Out::Ok(format!("✓ {}", r.get("message").and_then(|v| v.as_str()).unwrap_or("Extension removed")))],
             Err(e) => vec![Out::Err(format!("✗ {}", e))],
         },
-        Some("registry") => match client.fetch_extension_registry().await {
+        Some("manifest") => match client.fetch_extension_manifest().await {
             Ok(v) => {
                 let list = v.as_array().cloned().unwrap_or_default();
-                if list.is_empty() { return vec![Out::Text("Extension registry is empty.".into())]; }
-                let mut o = vec![Out::Ok(format!("{} extension(s) in registry:", list.len()))];
+                if list.is_empty() { return vec![Out::Text("Extension manifest is empty.".into())]; }
+                let mut o = vec![Out::Ok(format!("{} extension(s) in manifest:", list.len()))];
                 for ext in &list {
                     let name = ext["name"].as_str().or(ext["id"].as_str()).unwrap_or("?");
                     let ver = ext["version"].as_str().unwrap_or("-");

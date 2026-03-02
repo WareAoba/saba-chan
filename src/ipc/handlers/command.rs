@@ -272,25 +272,26 @@ pub async fn execute_rest_command(
         use_https,
     );
 
-    // 선택적 Basic Auth
+    // Basic Auth — username은 항상 "admin"으로 fallback
     let username = payload
         .get("username")
         .and_then(|v| v.as_str())
-        .or(instance.rest_username.as_deref());
+        .or(instance.rest_username.as_deref())
+        .unwrap_or("admin");
     let password = payload
         .get("password")
         .and_then(|v| v.as_str())
         .or(instance.rest_password.as_deref());
 
-    if let (Some(user), Some(pass)) = (username, password) {
+    if let Some(pass) = password {
         tracing::debug!(
             "REST: Basic auth provided: {}@{}:{}",
-            user,
+            username,
             rest_host,
             rest_port
         );
         // 클라이언트에 인증 정보 설정
-        client = client.with_basic_auth(user.to_string(), pass.to_string());
+        client = client.with_basic_auth(username.to_string(), pass.to_string());
     }
 
     // REST 연결 검증

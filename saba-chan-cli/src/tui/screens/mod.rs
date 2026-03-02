@@ -38,7 +38,7 @@ pub fn build_menu(app: &App) -> Vec<MenuItem> {
         Screen::ServerConsole { .. } => vec![], // 콘솔 사용
         Screen::Modules        => modules::build_modules_menu(app),
         Screen::ModuleDetail { name } => modules::build_module_detail_menu(name),
-        Screen::ModuleRegistry => extensions::build_module_registry_menu(app),
+        Screen::ModuleManifest => extensions::build_module_manifest_menu(app),
         Screen::Bot            => bot::build_bot_menu(app),
         Screen::BotAliases     => vec![], // 별도 처리
         Screen::Settings       => settings::build_settings_menu(app),
@@ -47,7 +47,7 @@ pub fn build_menu(app: &App) -> Vec<MenuItem> {
         Screen::Extensions     => extensions::build_extensions_menu(app),
         Screen::ExtensionList  => extensions::build_extension_list_menu(app),
         Screen::ExtensionDetail { ext_id, .. } => extensions::build_extension_detail_menu(app, ext_id),
-        Screen::ExtensionRegistry => extensions::build_extension_registry_menu(app),
+        Screen::ExtensionManifest => extensions::build_extension_manifest_menu(app),
         Screen::CreateInstanceStep1 => create_instance::build_create_step1_menu(app),
         Screen::CreateInstanceStep2 { .. } => vec![],
         Screen::CommandMode    => vec![], // 커맨드 모드는 메뉴 없음
@@ -76,7 +76,7 @@ pub fn render_screen(app: &App, frame: &mut Frame, area: Rect) {
             &format!("Module: {}", name),
             &app.menu_items, app.menu_selected, frame, area,
         ),
-        Screen::ModuleRegistry => render_list_screen("Module Registry", &app.menu_items, app.menu_selected, frame, area),
+        Screen::ModuleManifest => render_list_screen("Module Manifest", &app.menu_items, app.menu_selected, frame, area),
         Screen::Bot => render_detail_screen("Discord Bot", &app.menu_items, app.menu_selected, frame, area),
         Screen::BotAliases => bot::render_bot_aliases(app, frame, area),
         Screen::Settings => render_detail_screen("Settings", &app.menu_items, app.menu_selected, frame, area),
@@ -88,7 +88,7 @@ pub fn render_screen(app: &App, frame: &mut Frame, area: Rect) {
             &format!("Extension: {}", ext_name),
             &app.menu_items, app.menu_selected, frame, area,
         ),
-        Screen::ExtensionRegistry => render_list_screen("Extension Registry", &app.menu_items, app.menu_selected, frame, area),
+        Screen::ExtensionManifest => render_list_screen("Extension Manifest", &app.menu_items, app.menu_selected, frame, area),
         Screen::CreateInstanceStep1 => render_list_screen(
             "New Instance — Step 1/2: Select Game", &app.menu_items, app.menu_selected, frame, area,
         ),
@@ -260,7 +260,7 @@ pub fn handle_menu_select(app: &mut App) {
             let name = name.clone();
             modules::handle_module_detail_select(app, sel, &name);
         }
-        Screen::ModuleRegistry => extensions::handle_module_registry_select(app, sel),
+        Screen::ModuleManifest => extensions::handle_module_manifest_select(app, sel),
         Screen::Bot => bot::handle_bot_select(app, sel),
         Screen::Settings => settings::handle_settings_select(app, sel),
         Screen::Updates => updates::handle_updates_select(app, sel),
@@ -271,7 +271,7 @@ pub fn handle_menu_select(app: &mut App) {
             let ext_id = ext_id.clone();
             extensions::handle_extension_detail_select(app, sel, &ext_id);
         }
-        Screen::ExtensionRegistry => extensions::handle_extension_registry_select(app, sel),
+        Screen::ExtensionManifest => extensions::handle_extension_manifest_select(app, sel),
         Screen::CreateInstanceStep1 => create_instance::handle_create_step1_select(app, sel),
         Screen::CreateInstanceStep2 { .. } => {} // 인라인 모드에서 처리
         _ => {}
@@ -346,10 +346,10 @@ pub fn execute_confirm(app: &mut App, action: ConfirmAction) {
             });
             app.flash("모듈 삭제됨");
         }
-        ConfirmAction::InstallModuleFromRegistry(module_id) => {
+        ConfirmAction::InstallModuleFromManifest(module_id) => {
             tokio::spawn(async move {
-                match client.install_module_from_registry(&module_id).await {
-                    Ok(_) => push_out(&buf, vec![Out::Ok(format!("✓ Module '{}' installed from registry", module_id))]),
+                match client.install_module_from_manifest(&module_id).await {
+                    Ok(_) => push_out(&buf, vec![Out::Ok(format!("✓ Module '{}' installed from manifest", module_id))]),
                     Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
                 }
             });

@@ -11,13 +11,15 @@ contextBridge.exposeInMainWorld('api', {
     moduleGetLocales: (name) => ipcRenderer.invoke('module:getLocales', name),
     moduleListVersions: (name, options) => ipcRenderer.invoke('module:listVersions', name, options),
     moduleInstallServer: (name, config) => ipcRenderer.invoke('module:installServer', name, config),
-    // Module Registry (사바 스토리지 — 모듈 탭)
-    moduleRegistry: () => ipcRenderer.invoke('module:registry'),
-    moduleInstallFromRegistry: (moduleId) => ipcRenderer.invoke('module:installFromRegistry', moduleId),
+    // Module Manifest (사바 스토리지 — 모듈 탭)
+    moduleManifest: () => ipcRenderer.invoke('module:manifest'),
+    moduleInstallFromManifest: (moduleId) => ipcRenderer.invoke('module:installFromManifest', moduleId),
     moduleRemove: (moduleId) => ipcRenderer.invoke('module:remove', moduleId),
     instanceCreate: (data) => ipcRenderer.invoke('instance:create', data),
     instanceProvisionProgress: (name) => ipcRenderer.invoke('instance:provisionProgress', name),
     instanceDismissProvision: (name) => ipcRenderer.invoke('instance:dismissProvision', name),
+    instanceCheckUpdate: (id) => ipcRenderer.invoke('instance:checkUpdate', id),
+    instanceApplyUpdate: (id) => ipcRenderer.invoke('instance:applyUpdate', id),
     instanceDelete: (id) => ipcRenderer.invoke('instance:delete', id),
     instanceReorder: (orderedIds) => ipcRenderer.invoke('instance:reorder', orderedIds),
     instanceUpdateSettings: (id, settings) => ipcRenderer.invoke('instance:updateSettings', id, settings),
@@ -32,8 +34,8 @@ contextBridge.exposeInMainWorld('api', {
     extensionGuiBundle: (extId) => ipcRenderer.invoke('extension:guiBundle', extId),
     extensionGuiStyles: (extId) => ipcRenderer.invoke('extension:guiStyles', extId),
     extensionIcon: (extId) => ipcRenderer.invoke('extension:icon', extId),
-    // Extension Registry & Version Management API
-    extensionFetchRegistry: () => ipcRenderer.invoke('extension:fetchRegistry'),
+    // Extension Manifest & Version Management API
+    extensionFetchManifest: () => ipcRenderer.invoke('extension:fetchManifest'),
     extensionInstall: (extId, opts) => ipcRenderer.invoke('extension:install', extId, opts),
     extensionRemove: (extId) => ipcRenderer.invoke('extension:remove', extId),
     extensionCheckUpdates: () => ipcRenderer.invoke('extension:checkUpdates'),
@@ -46,10 +48,14 @@ contextBridge.exposeInMainWorld('api', {
     // Console Popout (PiP)
     consolePopout: (instanceId, serverName) => ipcRenderer.invoke('console:popout', instanceId, serverName),
     consoleFocusPopout: (instanceId) => ipcRenderer.invoke('console:focusPopout', instanceId),
+    consolePopin: (instanceId) => ipcRenderer.invoke('console:popin', instanceId),
+    consoleToggleAlwaysOnTop: (instanceId, pinned) => ipcRenderer.invoke('console:toggleAlwaysOnTop', instanceId, pinned),
     onConsolePopoutOpened: (callback) => ipcRenderer.on('console:popoutOpened', (event, instanceId) => callback(instanceId)),
     offConsolePopoutOpened: () => ipcRenderer.removeAllListeners('console:popoutOpened'),
     onConsolePopoutClosed: (callback) => ipcRenderer.on('console:popoutClosed', (event, instanceId) => callback(instanceId)),
     offConsolePopoutClosed: () => ipcRenderer.removeAllListeners('console:popoutClosed'),
+    onConsolePopinRequest: (callback) => ipcRenderer.on('console:popinRequest', (event, instanceId, serverName) => callback(instanceId, serverName)),
+    offConsolePopinRequest: () => ipcRenderer.removeAllListeners('console:popinRequest'),
     // Updater — 데몬 HTTP API를 통한 업데이트 관리
     updaterCheck: () => ipcRenderer.invoke('updater:check'),
     updaterStatus: () => ipcRenderer.invoke('updater:status'),

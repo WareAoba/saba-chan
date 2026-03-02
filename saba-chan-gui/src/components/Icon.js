@@ -204,6 +204,12 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }) => {
                 <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
         ),
+        arrowUp: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="12" y1="19" x2="12" y2="5" />
+                <polyline points="5 12 12 5 19 12" />
+            </svg>
+        ),
         discord: (
             <svg viewBox="0 0 192 192" fill="none">
                 <path
@@ -466,6 +472,13 @@ export const Icon = ({ name, size = 'md', color = 'currentColor' }) => {
                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                 <polyline points="15 3 21 3 21 9" />
                 <line x1="10" y1="14" x2="21" y2="3" />
+            </svg>
+        ),
+        externalLinkIn: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                <polyline points="16 14 10 14 10 8" />
+                <line x1="21" y1="3" x2="10" y2="14" />
             </svg>
         ),
         tool: (

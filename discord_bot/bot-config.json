@@ -21,6 +21,11 @@
     }
   },
   "musicEnabled": true,
+  "mode": "cloud",
+  "cloud": {
+    "relayUrl": "",
+    "hostId": "soKGFF7t62XT"
+  },
   "nodeSettings": {
     "1420751700142063778": {
       "allowedInstances": [

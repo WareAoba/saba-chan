@@ -27,26 +27,32 @@ pub async fn start_managed_handler(
         }
     }
 
-    let supervisor = state.supervisor.read().await;
+    let (module_name, config) = {
+        let supervisor = state.supervisor.read().await;
 
-    let instance = match supervisor.instance_store.get(&id) {
-        Some(i) => i,
-        None => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({"error": format!("Instance not found: {}", id)})),
-            )
-                .into_response()
-        }
+        let instance = match supervisor.instance_store.get(&id) {
+            Some(i) => i,
+            None => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({"error": format!("Instance not found: {}", id)})),
+                )
+                    .into_response()
+            }
+        };
+
+        // API 경유 시작 기록 (name과 id 모두)
+        state.api_actions.record(&instance.name);
+        state.api_actions.record(&id);
+
+        let module_name = instance.module_name.clone();
+        let payload_val = payload.map(|j| j.0).unwrap_or(json!({}));
+        let config = payload_val.get("config").cloned().unwrap_or(json!({}));
+        (module_name, config)
     };
 
-    // API 경유 시작 기록 (name과 id 모두)
-    state.api_actions.record(&instance.name);
-    state.api_actions.record(&id);
-
-    let module_name = instance.module_name.clone();
-    let payload_val = payload.map(|j| j.0).unwrap_or(json!({}));
-    let config = payload_val.get("config").cloned().unwrap_or(json!({}));
+    // write lock: start_managed_server가 REST 자격증명을 동기화할 수 있도록
+    let mut supervisor = state.supervisor.write().await;
 
     match supervisor
         .start_managed_server(&id, &module_name, config)

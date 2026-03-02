@@ -117,6 +117,75 @@ impl ServerInstance {
             .collect()
     }
 
+    /// 모듈의 install 설정(method=steamcmd 등)을 extension_data에 주입합니다.
+    /// 마이그레이션 및 신규 생성 시 호출되어, 이후 SteamCMD 훅이 올바르게 트리거되도록 합니다.
+    /// 반환: 변경이 발생했으면 true
+    pub fn apply_install_extension_data(
+        &mut self,
+        method: &str,
+        app_id: Option<u32>,
+        anonymous: bool,
+        beta: Option<&str>,
+        platform: Option<&str>,
+    ) -> bool {
+        if method != "steamcmd" {
+            return false;
+        }
+        let mut changed = false;
+        // install_method_steamcmd 플래그
+        if !self.ext_enabled("install_method_steamcmd") {
+            self.extension_data.insert(
+                "install_method_steamcmd".to_string(),
+                serde_json::json!(true),
+            );
+            changed = true;
+        }
+        // steamcmd_app_id
+        if let Some(id) = app_id {
+            if self.extension_data.get("steamcmd_app_id")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as u32) != Some(id)
+            {
+                self.extension_data.insert(
+                    "steamcmd_app_id".to_string(),
+                    serde_json::json!(id),
+                );
+                changed = true;
+            }
+        }
+        // steamcmd_anonymous
+        if self.extension_data.get("steamcmd_anonymous")
+            .and_then(|v| v.as_bool()) != Some(anonymous)
+        {
+            self.extension_data.insert(
+                "steamcmd_anonymous".to_string(),
+                serde_json::json!(anonymous),
+            );
+            changed = true;
+        }
+        // steamcmd_beta (optional)
+        if let Some(b) = beta {
+            if self.ext_str("steamcmd_beta") != Some(b) {
+                self.extension_data.insert(
+                    "steamcmd_beta".to_string(),
+                    serde_json::json!(b),
+                );
+                changed = true;
+            }
+        }
+        // steamcmd_platform (optional)
+        if let Some(p) = platform {
+            if self.ext_str("steamcmd_platform") != Some(p) {
+                self.extension_data.insert(
+                    "steamcmd_platform".to_string(),
+                    serde_json::json!(p),
+                );
+                changed = true;
+            }
+        }
+        changed
+    }
+
     /// RCON/REST 비밀번호가 비어있으면 랜덤 비밀번호로 채웁니다.
     /// 변경이 발생하면 true를 반환합니다.
     pub fn ensure_passwords(&mut self) -> bool {
@@ -131,6 +200,12 @@ impl ServerInstance {
             let pw = generate_random_password();
             tracing::info!("Auto-generated REST password for instance {}", self.id);
             self.rest_password = Some(pw);
+            changed = true;
+        }
+        // REST username은 항상 "admin"으로 고정
+        if self.rest_username.as_deref() != Some("admin") {
+            tracing::info!("Forced rest_username to 'admin' for instance {}", self.id);
+            self.rest_username = Some("admin".to_string());
             changed = true;
         }
         changed
@@ -758,5 +833,98 @@ mod tests {
         }"#;
         let inst: ServerInstance = serde_json::from_str(json).unwrap();
         assert!(inst.required_extensions.is_empty(), "Should default to empty");
+    }
+
+    // ── SteamCMD extension_data 자동 주입 테스트 ──
+
+    #[test]
+    fn test_apply_install_extension_data_steamcmd() {
+        let mut inst = ServerInstance::new("test-pw", "palworld");
+        assert!(inst.extension_data.is_empty());
+
+        let changed = inst.apply_install_extension_data(
+            "steamcmd", Some(2394010), true, None, Some("windows"),
+        );
+        assert!(changed, "Should report changes");
+        assert!(inst.ext_enabled("install_method_steamcmd"));
+        assert_eq!(
+            inst.extension_data.get("steamcmd_app_id").and_then(|v| v.as_u64()),
+            Some(2394010)
+        );
+        assert_eq!(
+            inst.extension_data.get("steamcmd_anonymous").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(inst.ext_str("steamcmd_platform"), Some("windows"));
+        assert!(inst.ext_str("steamcmd_beta").is_none());
+    }
+
+    #[test]
+    fn test_apply_install_extension_data_steamcmd_with_beta() {
+        let mut inst = ServerInstance::new("test-zb", "zomboid");
+        let changed = inst.apply_install_extension_data(
+            "steamcmd", Some(380870), true, Some("unstable"), None,
+        );
+        assert!(changed);
+        assert!(inst.ext_enabled("install_method_steamcmd"));
+        assert_eq!(inst.ext_str("steamcmd_beta"), Some("unstable"));
+    }
+
+    #[test]
+    fn test_apply_install_extension_data_non_steamcmd_noop() {
+        let mut inst = ServerInstance::new("test-mc", "minecraft");
+        let changed = inst.apply_install_extension_data(
+            "download", None, true, None, None,
+        );
+        assert!(!changed, "Non-steamcmd method should not change anything");
+        assert!(inst.extension_data.is_empty());
+    }
+
+    #[test]
+    fn test_apply_install_extension_data_idempotent() {
+        let mut inst = ServerInstance::new("test-pw", "palworld");
+        inst.apply_install_extension_data(
+            "steamcmd", Some(2394010), true, None, Some("windows"),
+        );
+
+        // 같은 값으로 다시 호출 → 변경 없음
+        let changed = inst.apply_install_extension_data(
+            "steamcmd", Some(2394010), true, None, Some("windows"),
+        );
+        assert!(!changed, "Calling with same values should be idempotent");
+    }
+
+    #[test]
+    fn test_apply_install_extension_data_preserves_existing() {
+        let mut inst = ServerInstance::new("test-pw", "palworld");
+        // 기존 extension_data에 docker_enabled 같은 다른 플래그가 있을 수 있음
+        inst.extension_data.insert("docker_enabled".to_string(), serde_json::json!(true));
+
+        inst.apply_install_extension_data(
+            "steamcmd", Some(2394010), true, None, None,
+        );
+
+        // docker_enabled가 보존되어야 함
+        assert!(inst.ext_enabled("docker_enabled"));
+        assert!(inst.ext_enabled("install_method_steamcmd"));
+    }
+
+    #[test]
+    fn test_apply_install_extension_data_serialization_roundtrip() {
+        let mut inst = ServerInstance::new("test-pw", "palworld");
+        inst.apply_install_extension_data(
+            "steamcmd", Some(2394010), true, Some("beta-branch"), Some("windows"),
+        );
+
+        let json = serde_json::to_string(&inst).unwrap();
+        let deserialized: ServerInstance = serde_json::from_str(&json).unwrap();
+
+        assert!(deserialized.ext_enabled("install_method_steamcmd"));
+        assert_eq!(
+            deserialized.extension_data.get("steamcmd_app_id").and_then(|v| v.as_u64()),
+            Some(2394010)
+        );
+        assert_eq!(deserialized.ext_str("steamcmd_beta"), Some("beta-branch"));
+        assert_eq!(deserialized.ext_str("steamcmd_platform"), Some("windows"));
     }
 }

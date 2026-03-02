@@ -181,6 +181,28 @@ impl GitHubClient {
         Ok(manifest)
     }
 
+    /// 릴리스 에셋에서 manifest.json을 raw JSON 텍스트로 다운로드
+    /// (ReleaseManifest 구조에 맞지 않는 모듈/익스텐션 매니페스트용)
+    pub async fn fetch_manifest_raw(&self, release: &GitHubRelease) -> Result<String> {
+        let manifest_asset = release.assets.iter()
+            .find(|a| a.name == "manifest.json")
+            .ok_or_else(|| anyhow::anyhow!(
+                "Release '{}' does not contain manifest.json", release.tag_name
+            ))?;
+
+        let response = self.http
+            .get(&manifest_asset.browser_download_url)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            anyhow::bail!("Failed to download manifest.json: {}", response.status());
+        }
+
+        let text = response.text().await?;
+        Ok(text)
+    }
+
     /// 에셋 바이너리 다운로드 → Vec<u8>
     pub async fn download_asset(&self, asset: &GitHubAsset) -> Result<Vec<u8>> {
         tracing::info!("Downloading asset: {} ({} bytes)", asset.name, asset.size);

@@ -194,8 +194,21 @@ async fn run_plugin_inner(
             .unwrap_or(&extensions_dir)
             .to_string_lossy()
             .into_owned();
+
+        // PYTHONPATH 경로 리스트 구분자 (Windows: ';', Unix: ':')
+        #[cfg(windows)]
+        const PYPATH_SEP: char = ';';
+        #[cfg(not(windows))]
+        const PYPATH_SEP: char = ':';
+
+        // 공용 모듈 유틸리티 경로 (daemon_rcon.py, i18n.py 등)
+        let modules_lib_dir = resolve_modules_dir();
+        if modules_lib_dir.is_dir() {
+            pypath = format!("{}{}{}", pypath, PYPATH_SEP, modules_lib_dir.display());
+        }
+
         if let Ok(existing) = std::env::var("PYTHONPATH") {
-            pypath = format!("{}{}{}", pypath, std::path::MAIN_SEPARATOR, existing);
+            pypath = format!("{}{}{}", pypath, PYPATH_SEP, existing);
         }
         cmd.env("PYTHONPATH", &pypath);
     }
@@ -253,8 +266,8 @@ async fn run_plugin_inner(
             let stdout_str = stdout_handle.await.unwrap_or_default();
 
             if !exit_status.success() {
-                tracing::error!("Plugin failed (exit {:?}): {}", exit_status.code(), stderr_str);
-                return Err(anyhow::anyhow!("Plugin execution failed: {}", stderr_str));
+                tracing::error!("Plugin failed (exit {:?}):\n  stderr: {}\n  stdout: {}", exit_status.code(), stderr_str, stdout_str.trim());
+                return Err(anyhow::anyhow!("Plugin execution failed (exit {:?}):\nstderr: {}\nstdout: {}", exit_status.code(), stderr_str, stdout_str.trim()));
             }
 
             match serde_json::from_str::<Value>(&stdout_str) {

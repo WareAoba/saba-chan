@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getCachedRules, highlightLine } from '../utils/syntaxHighlight';
 import { Icon } from './index';
@@ -134,11 +134,31 @@ export function PopoutConsole({
     highlightRules,
 }) {
     const { t } = useTranslation('gui');
+    const [pinned, setPinned] = useState(true); // popout defaults to always-on-top
 
     const compiledRules = useMemo(
         () => (highlightRules ? getCachedRules(popoutParams?.name || '_', highlightRules) : []),
         [highlightRules, popoutParams?.name],
     );
+
+    const handlePopin = useCallback(async () => {
+        try {
+            await window.api?.consolePopin(popoutParams?.instanceId);
+        } catch (err) {
+            console.error('Popin failed:', err);
+        }
+    }, [popoutParams?.instanceId]);
+
+    const handleTogglePin = useCallback(async () => {
+        const newPinned = !pinned;
+        setPinned(newPinned);
+        try {
+            await window.api?.consoleToggleAlwaysOnTop(popoutParams?.instanceId, newPinned);
+        } catch (err) {
+            console.error('Toggle pin failed:', err);
+            setPinned(pinned); // revert on error
+        }
+    }, [pinned, popoutParams?.instanceId]);
 
     return (
         <div className="App console-popout-app">
@@ -148,6 +168,20 @@ export function PopoutConsole({
                     {popoutParams.name}
                 </span>
                 <div className="console-popout-titlebar-controls">
+                    <button
+                        className={`console-popout-titlebar-btn console-popout-titlebar-popin`}
+                        onClick={handlePopin}
+                        title={t('console.popin', { defaultValue: 'Bring back to main window' })}
+                    >
+                        <Icon name="external-link-in" size="sm" />
+                    </button>
+                    <button
+                        className={`console-popout-titlebar-btn console-popout-titlebar-pin${pinned ? ' console-popout-titlebar-pinned' : ''}`}
+                        onClick={handleTogglePin}
+                        title={pinned ? t('console.unpin', { defaultValue: 'Unpin' }) : t('console.pin', { defaultValue: 'Pin on top' })}
+                    >
+                        <Icon name="pin" size="sm" />
+                    </button>
                     <button
                         className="console-popout-titlebar-btn"
                         onClick={() => window.electron?.minimizeWindow()}

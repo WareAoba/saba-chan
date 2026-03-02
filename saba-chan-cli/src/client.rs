@@ -441,9 +441,9 @@ impl DaemonClient {
         self.post_empty(&format!("/api/extensions/{}/disable", ext_id)).await
     }
 
-    /// GET /api/extensions/registry — 원격 익스텐션 레지스트리 조회
-    pub async fn fetch_extension_registry(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/extensions/registry").await
+    /// GET /api/extensions/manifest — 원격 익스텐션 매니페스트 조회
+    pub async fn fetch_extension_manifest(&self) -> anyhow::Result<Value> {
+        self.get_json("/api/extensions/manifest").await
     }
 
     /// POST /api/extensions/{id}/install — 익스텐션 설치
@@ -467,17 +467,17 @@ impl DaemonClient {
         self.post_empty("/api/extensions/rescan").await
     }
 
-    // ============ Module Registry (remote) ============
+    // ============ Module Manifest (remote) ============
 
-    /// GET /api/modules/registry — 원격 모듈 레지스트리 조회
-    pub async fn fetch_module_registry(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/modules/registry").await
+    /// GET /api/modules/manifest — 원격 모듈 매니페스트 조회
+    pub async fn fetch_module_manifest(&self) -> anyhow::Result<Value> {
+        self.get_json("/api/modules/manifest").await
     }
 
-    /// POST /api/modules/registry/{id}/install — 레지스트리에서 모듈 설치
-    pub async fn install_module_from_registry(&self, module_id: &str) -> anyhow::Result<Value> {
+    /// POST /api/modules/manifest/{id}/install — 매니페스트에서 모듈 설치
+    pub async fn install_module_from_manifest(&self, module_id: &str) -> anyhow::Result<Value> {
         self.post_json_long(
-            &format!("/api/modules/registry/{}/install", module_id),
+            &format!("/api/modules/manifest/{}/install", module_id),
             &serde_json::json!({}),
         ).await
     }

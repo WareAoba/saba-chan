@@ -80,7 +80,7 @@ pub enum Screen {
     ServerProperties { name: String, id: String },
     Modules,
     ModuleDetail  { name: String },
-    ModuleRegistry,
+    ModuleManifest,
     Bot,
     BotAliases,
     Settings,
@@ -89,7 +89,7 @@ pub enum Screen {
     Extensions,
     ExtensionList,
     ExtensionDetail { ext_id: String, ext_name: String },
-    ExtensionRegistry,
+    ExtensionManifest,
     CommandMode,
     // ★ 인스턴스 생성 위자드 (신규)
     CreateInstanceStep1,
@@ -108,7 +108,7 @@ impl Screen {
             Self::ServerProperties { .. } => vec!["saba-chan", "Instances", "Properties"],
             Self::Modules        => vec!["saba-chan", "Modules"],
             Self::ModuleDetail { .. } => vec!["saba-chan", "Modules", "Detail"],
-            Self::ModuleRegistry => vec!["saba-chan", "Modules", "Registry"],
+            Self::ModuleManifest => vec!["saba-chan", "Modules", "Manifest"],
             Self::Bot            => vec!["saba-chan", "Discord Bot"],
             Self::BotAliases     => vec!["saba-chan", "Discord Bot", "Aliases"],
             Self::Settings       => vec!["saba-chan", "Settings"],
@@ -117,7 +117,7 @@ impl Screen {
             Self::Extensions     => vec!["saba-chan", "Extensions"],
             Self::ExtensionList  => vec!["saba-chan", "Extensions", "Installed"],
             Self::ExtensionDetail { .. } => vec!["saba-chan", "Extensions", "Detail"],
-            Self::ExtensionRegistry => vec!["saba-chan", "Extensions", "Registry"],
+            Self::ExtensionManifest => vec!["saba-chan", "Extensions", "Manifest"],
             Self::CommandMode    => vec!["saba-chan", "Command"],
             Self::CreateInstanceStep1 => vec!["saba-chan", "Instances", "New", "Select Game"],
             Self::CreateInstanceStep2 { .. } => vec!["saba-chan", "Instances", "New", "Configure"],
@@ -185,7 +185,7 @@ pub enum ConfirmAction {
     RemoveExtension(String), // ext_id
     InstallExtension(String), // ext_id
     RemoveModule(String),   // module_id
-    InstallModuleFromRegistry(String), // module_id
+    InstallModuleFromManifest(String), // module_id
 }
 
 // ═══════════════════════════════════════════════════════
@@ -377,9 +377,9 @@ impl ExtensionSlotRegistry {
     }
 }
 
-/// 레지스트리 아이템 (모듈 또는 익스텐션 공용)
+/// 매니페스트 아이템 (모듈 또는 익스텐션 공용)
 #[derive(Clone, Debug)]
-pub struct RegistryItem {
+pub struct ManifestItem {
     pub id: String,
     pub name: String,
     pub version: String,
@@ -451,8 +451,8 @@ pub struct App {
     pub cached_module_detail: Option<Value>,
     pub cached_update_status: Option<Value>,
     pub cached_extensions: Vec<ExtensionInfo>,
-    pub cached_registry_extensions: Vec<RegistryItem>,
-    pub cached_registry_modules: Vec<RegistryItem>,
+    pub cached_manifest_extensions: Vec<ManifestItem>,
+    pub cached_manifest_modules: Vec<ManifestItem>,
 
     // ── 익스텐션 슬롯 레지스트리 (GUI의 ExtensionContext에 대응) ──
     pub ext_slots: ExtensionSlotRegistry,
@@ -530,8 +530,8 @@ impl App {
             cached_module_detail: None,
             cached_update_status: None,
             cached_extensions: vec![],
-            cached_registry_extensions: vec![],
-            cached_registry_modules: vec![],
+            cached_manifest_extensions: vec![],
+            cached_manifest_modules: vec![],
 
             ext_slots: ExtensionSlotRegistry::default(),
 

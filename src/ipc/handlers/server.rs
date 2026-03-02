@@ -429,13 +429,13 @@ pub async fn get_module_metadata(
     }
 }
 
-/// GET /api/modules/registry - saba-chan-modules 최신 릴리스 manifest 가져오기
-pub async fn fetch_module_registry() -> impl IntoResponse {
+/// GET /api/modules/manifest - saba-chan-modules 최신 릴리스 manifest 가져오기
+pub async fn fetch_module_manifest() -> impl IntoResponse {
     let url = "https://github.com/WareAoba/saba-chan-modules/releases/latest/download/manifest.json";
     match reqwest::get(url).await {
         Ok(resp) if resp.status().is_success() => {
             match resp.json::<serde_json::Value>().await {
-                Ok(data) => (StatusCode::OK, Json(json!({ "ok": true, "registry": data }))).into_response(),
+                Ok(data) => (StatusCode::OK, Json(json!({ "ok": true, "manifest": data }))).into_response(),
                 Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": e.to_string() }))).into_response(),
             }
         }
@@ -446,8 +446,8 @@ pub async fn fetch_module_registry() -> impl IntoResponse {
     }
 }
 
-/// POST /api/modules/registry/:id/install - 모듈 레지스트리에서 모듈 설치
-pub async fn install_module_from_registry(
+/// POST /api/modules/manifest/:id/install - 모듈 매니페스트에서 모듈 설치
+pub async fn install_module_from_manifest(
     Path(module_id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {

@@ -61,10 +61,14 @@ pub async fn client_heartbeat(
 }
 
 /// DELETE /api/client/:id/unregister — 클라이언트 명시적 해제 + 봇 정리
+/// Query: ?shutdown=true → 마지막 클라이언트 해제 후 데몬도 종료 (의도적 종료 시)
 pub async fn client_unregister(
     Path(client_id): Path<String>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
+    let wants_shutdown = params.get("shutdown").map(|v| v == "true").unwrap_or(false);
+
     if let Some(client) = state.client_registry.unregister(&client_id).await {
         // 해당 클라이언트가 관리하던 봇 프로세스 정리
         if let Some(pid) = client.bot_pid {
@@ -72,6 +76,17 @@ pub async fn client_unregister(
         }
         let count = state.client_registry.count().await;
         tracing::info!("[Heartbeat] Active clients after unregister: {}", count);
+
+        // shutdown=true && 남은 클라이언트 0 → 데몬 자체 종료
+        if wants_shutdown && count == 0 {
+            tracing::info!("[Shutdown] Voluntary shutdown requested via unregister — exiting");
+            // 별도 태스크에서 짧은 딜레이 후 종료 (응답을 먼저 보내기 위해)
+            tokio::spawn(async {
+                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                std::process::exit(0);
+            });
+        }
+
         (StatusCode::OK, Json(json!({"ok": true}))).into_response()
     } else {
         (

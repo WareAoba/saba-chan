@@ -17,7 +17,7 @@ pub(super) fn build_modules_menu(app: &App) -> Vec<MenuItem> {
     }
 
     items.push(MenuItem::new("↻ Refresh Modules", Some('r'), "모듈 새로고침"));
-    items.push(MenuItem::new("🌐 Module Registry", Some('R'), "원격 레지스트리에서 모듈 검색/설치"));
+    items.push(MenuItem::new("🌐 Module Manifest", Some('R'), "원격 매니페스트에서 모듈 검색/설치"));
     items
 }
 
@@ -69,8 +69,8 @@ pub(super) fn handle_modules_select(app: &mut App, sel: usize) {
         });
         app.flash("새로고침 중...");
     } else if sel == module_count + 1 {
-        // Module Registry
-        app.push_screen(Screen::ModuleRegistry);
+        // Module Manifest
+        app.push_screen(Screen::ModuleManifest);
     }
 }
 

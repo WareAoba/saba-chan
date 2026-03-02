@@ -63,6 +63,7 @@ pub fn updates_router(state: UpdateState) -> Router {
         .route("/api/updates/check", post(check_updates))
         .route("/api/updates/download", post(download_components))
         .route("/api/updates/apply", post(apply_updates))
+        .route("/api/updates/integrity", get(check_integrity))
         .route("/api/updates/config", get(get_config))
         .route("/api/updates/config", post(set_config))
         .with_state(state)
@@ -321,6 +322,46 @@ async fn apply_updates(
         "needs_updater": needs_updater,
         "requires_updater": !needs_updater.is_empty(),
         "errors": errors,
+    }))
+}
+
+/// GET /api/updates/integrity — 서버에서 매니페스트를 가져와 SHA256 무결성 검증
+async fn check_integrity(
+    State(state): State<UpdateState>,
+) -> impl IntoResponse {
+    let mut mgr = state.manager.write().await;
+
+    let report = match mgr.verify_integrity().await {
+        Ok(r) => r,
+        Err(e) => {
+            return Json(json!({
+                "ok": false,
+                "error": format!("Integrity check failed: {}", e),
+            }));
+        }
+    };
+
+    let components: Vec<Value> = report.components.iter().map(|c| {
+        json!({
+            "component": c.component,
+            "display_name": c.display_name,
+            "status": format!("{:?}", c.status),
+            "expected_hash": c.expected_hash,
+            "actual_hash": c.actual_hash,
+            "file_path": c.file_path,
+            "message": c.message,
+        })
+    }).collect();
+
+    Json(json!({
+        "ok": true,
+        "checked_at": report.checked_at,
+        "overall": format!("{:?}", report.overall),
+        "total": report.total,
+        "verified": report.verified,
+        "failed": report.failed,
+        "skipped": report.skipped,
+        "components": components,
     }))
 }
 

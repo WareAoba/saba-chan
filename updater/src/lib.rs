@@ -42,6 +42,7 @@
 pub mod error;
 pub mod foreground;
 pub mod github;
+pub mod integrity;
 pub mod ipc;
 pub mod queue;
 pub mod scheduler;
@@ -55,6 +56,7 @@ mod tests;
 pub use error::{UpdaterError, RecoveryStrategy, NetworkChecker, ErrorContext};
 pub use foreground::{ForegroundApplier, SelfUpdater, ProcessChecker, ApplyPhase, ApplyProgress, ApplyPreparation};
 pub use github::{ResolvedComponent, ReleaseManifest, ComponentInfo, GitHubRelease};
+pub use integrity::{IntegrityChecker, IntegrityReport, IntegrityStatus, OverallIntegrity, ComponentIntegrity, ComponentHashInfo};
 pub use ipc::{DaemonIpcClient, StateFile, UpdateCompletionMarker, UpdateSummary, UpdaterCommand, UpdaterResponse};
 pub use queue::{DownloadQueue, DownloadRequest, DownloadResult, QueueStatus};
 pub use worker::{BackgroundWorker, BackgroundTask, WorkerEvent, WorkerStatus, AutoCheckScheduler};
@@ -446,6 +448,86 @@ impl UpdateManager {
             }
         }
         self.config = new_config;
+    }
+
+    // ─── 무결성 검증 ────────────────────────────────────────────────────────
+
+    /// 서버(GitHub)에서 매니페스트를 가져와 설치된 컴포넌트의 SHA256을 검증합니다.
+    ///
+    /// 각 리포의 최신 릴리즈에서 manifest.json을 fetch하여 기대 해시를 수집합니다:
+    /// - 코어 리포 (`saba-chan`): saba-core, cli, gui, updater, discord_bot
+    /// - 모듈 리포 (`saba-chan-modules`): module-minecraft, module-palworld, ...
+    /// - 익스텐션 리포 (`saba-chan-extensions`): ext-docker, ext-steamcmd, ...
+    ///
+    /// 로컬 매니페스트는 신뢰할 수 없으므로 사용하지 않습니다.
+    pub async fn verify_integrity(&mut self) -> Result<integrity::IntegrityReport> {
+        let mut expected_hashes = std::collections::HashMap::new();
+
+        // ── 1. 코어 리포 manifest.json (캐시 우선) ──
+        let core_manifest = if let Some(ref m) = self.cached_manifest {
+            m.clone()
+        } else {
+            tracing::info!("[Integrity] 코어 매니페스트를 서버에서 가져옵니다...");
+            let client = self.create_client();
+            let releases = client.fetch_releases(5).await?;
+            let latest = releases.iter()
+                .filter(|r| !r.draft)
+                .find(|r| self.config.include_prerelease || !r.prerelease)
+                .ok_or_else(|| anyhow::anyhow!("코어 릴리즈를 찾을 수 없습니다"))?
+                .clone();
+            let m = client.fetch_manifest(&latest).await?;
+            self.cached_manifest = Some(m.clone());
+            m
+        };
+        expected_hashes.extend(integrity::collect_hashes_from_server_manifest(&core_manifest));
+
+        // ── 2. 모듈 리포 manifest.json ──
+        match self.fetch_repo_manifest("saba-chan-modules").await {
+            Ok(json) => {
+                let module_hashes = integrity::collect_hashes_from_module_manifest(&json);
+                expected_hashes.extend(module_hashes);
+            }
+            Err(e) => {
+                tracing::warn!("[Integrity] 모듈 매니페스트 fetch 실패: {}", e);
+            }
+        }
+
+        // ── 3. 익스텐션 리포 manifest.json ──
+        match self.fetch_repo_manifest("saba-chan-extensions").await {
+            Ok(json) => {
+                let ext_hashes = integrity::collect_hashes_from_extension_manifest(&json);
+                expected_hashes.extend(ext_hashes);
+            }
+            Err(e) => {
+                tracing::warn!("[Integrity] 익스텐션 매니페스트 fetch 실패: {}", e);
+            }
+        }
+
+        // ── 4. 검증 실행 ──
+        let checker = integrity::IntegrityChecker::new(
+            self.install_root.clone(),
+            self.modules_dir.clone(),
+            self.extensions_dir.clone(),
+        );
+
+        Ok(checker.verify_all(&expected_hashes))
+    }
+
+    /// 지정된 리포의 최신 릴리즈에서 manifest.json 에셋을 raw JSON으로 다운로드합니다.
+    async fn fetch_repo_manifest(&self, repo_name: &str) -> Result<String> {
+        let client = GitHubClient::with_base_url(
+            &self.config.github_owner,
+            repo_name,
+            self.config.api_base_url.as_deref(),
+        );
+
+        let releases = client.fetch_releases(3).await?;
+        let latest = releases.iter()
+            .filter(|r| !r.draft)
+            .find(|r| self.config.include_prerelease || !r.prerelease)
+            .ok_or_else(|| anyhow::anyhow!("{} 릴리즈를 찾을 수 없습니다", repo_name))?;
+
+        client.fetch_manifest_raw(latest).await
     }
 
 

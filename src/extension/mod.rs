@@ -280,12 +280,14 @@ pub struct ExtensionListItem {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  원격 레지스트리 타입 정의
+//  원격 매니페스트 타입 정의
 // ═══════════════════════════════════════════════════════════════
 
-/// GitHub 원격 레지스트리에서 가져온 익스텐션 항목
+/// GitHub 원격 매니페스트에서 가져온 익스텐션 항목
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteExtensionInfo {
+    /// 익스텐션 ID (manifest.json에서는 맵의 키 — 역직렬화 후 주입)
+    #[serde(default)]
     pub id: String,
     pub name: String,
     pub version: String,
@@ -294,34 +296,69 @@ pub struct RemoteExtensionInfo {
     #[serde(default)]
     pub author: String,
     /// 배포 패키지 다운로드 URL (.zip)
+    #[serde(default)]
     pub download_url: String,
-    /// 패키지 SHA-256 체크섬 (검증용, null 허용)
+    /// 패키지 SHA-256 체크섬 (무결성 검증용)
     #[serde(default)]
     pub sha256: Option<String>,
     /// 최소 앱 버전 요구사항
     #[serde(default)]
     pub min_app_version: Option<String>,
+    /// 에셋 파일명 (예: "extension-docker.zip")
+    #[serde(default)]
+    pub asset: Option<String>,
+    /// 설치 경로 (예: "extensions/docker")
+    #[serde(default)]
+    pub install_dir: Option<String>,
+    /// 의존성 — 배열 또는 맵 형식 모두 허용
+    #[serde(default, deserialize_with = "deserialize_dependencies")]
+    pub dependencies: HashMap<String, String>,
+    /// GUI 컴포넌트 포함 여부
+    #[serde(default)]
+    pub has_gui: bool,
+    /// i18n 번역 파일 포함 여부
+    #[serde(default)]
+    pub has_i18n: bool,
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
     pub homepage: Option<String>,
 }
 
-/// 원격 레지스트리 응답 전체 형식
+/// 원격 매니페스트 응답 전체 형식
 ///
-/// registry.json 예시:
+/// manifest.json 예시:
 /// ```json
 /// {
-///   "registry_version": "1",
-///   "extensions": [...]
+///   "schema_version": 1,
+///   "generated_at": "2026-02-28T22:35:01Z",
+///   "extensions": {
+///     "docker": { "name": "Docker Isolation", ... },
+///     "steamcmd": { ... }
+///   }
 /// }
 /// ```
-#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExtensionRegistryResponse {
+pub struct ExtensionManifestResponse {
     #[serde(default)]
-    pub registry_version: String,
-    pub extensions: Vec<RemoteExtensionInfo>,
+    pub schema_version: u32,
+    #[serde(default)]
+    pub generated_at: Option<String>,
+    /// ID → 익스텐션 정보 맵
+    pub extensions: HashMap<String, RemoteExtensionInfo>,
+}
+
+impl ExtensionManifestResponse {
+    /// 맵 형식의 응답을 Vec으로 변환 (각 항목에 id 주입)
+    pub fn into_list(self) -> Vec<RemoteExtensionInfo> {
+        self.extensions
+            .into_iter()
+            .map(|(id, mut info)| {
+                info.id = id;
+                info
+            })
+            .collect()
+    }
 }
 
 /// 업데이트 가용 정보 (로컬 버전 vs 원격 버전 비교 결과)
@@ -343,17 +380,17 @@ pub struct ExtensionUpdateInfo {
 //  ExtensionManager
 // ═══════════════════════════════════════════════════════════════
 
-/// 원격 레지스트리 기본 URL (레포지토리 미완성 — 토대만)
-const DEFAULT_REGISTRY_URL: &str =
-    "https://raw.githubusercontent.com/WareAoba/saba-chan-extensions/main/registry.json";
+/// 원격 매니페스트 기본 URL
+const DEFAULT_MANIFEST_URL: &str =
+    "https://raw.githubusercontent.com/WareAoba/saba-chan-extensions/main/manifest.json";
 
 pub struct ExtensionManager {
     extensions_dir: PathBuf,
     discovered: HashMap<String, DiscoveredExtension>,
     enabled: HashSet<String>,
     state_path: PathBuf,
-    /// 원격 레지스트리 URL (커스텀 오버라이드 가능)
-    pub registry_url: String,
+    /// 원격 매니페스트 URL (커스텀 오버라이드 가능)
+    pub manifest_url: String,
 }
 
 #[allow(dead_code)]
@@ -385,7 +422,7 @@ impl ExtensionManager {
             discovered: HashMap::new(),
             enabled: HashSet::new(),
             state_path,
-            registry_url: DEFAULT_REGISTRY_URL.to_string(),
+            manifest_url: DEFAULT_MANIFEST_URL.to_string(),
         };
         mgr.load_state();
         mgr
@@ -1209,30 +1246,39 @@ impl ExtensionManager {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  원격 레지스트리 & 버전 관리
+    //  원격 매니페스트 & 버전 관리
     // ═══════════════════════════════════════════════════════════════
 
-    /// 원격 레지스트리 URL을 커스텀 주소로 오버라이드
-    pub fn set_registry_url(&mut self, url: &str) {
-        self.registry_url = url.to_string();
+    /// 원격 매니페스트 URL을 커스텀 주소로 오버라이드
+    pub fn set_manifest_url(&mut self, url: &str) {
+        self.manifest_url = url.to_string();
     }
 
-    /// 원격 레지스트리에서 가용 익스텐션 목록을 페치합니다.
+    /// 원격 매니페스트에서 가용 익스텐션 목록을 페치합니다.
     ///
-    /// ⚠️  레포지토리 미완성 — 현재는 빈 목록을 반환하는 스텁.
-    ///     레포지토리 완성 후 실제 HTTP 요청으로 교체할 것.
-    pub async fn fetch_registry(&self) -> Result<Vec<RemoteExtensionInfo>> {
-        tracing::debug!("Fetching extension registry from: {}", self.registry_url);
+    /// `manifest_url`(GitHub raw URL)에서 JSON을 가져와 `Vec<RemoteExtensionInfo>`로 반환합니다.
+    pub async fn fetch_manifest(&self) -> Result<Vec<RemoteExtensionInfo>> {
+        tracing::debug!("Fetching extension manifest from: {}", self.manifest_url);
 
-        // TODO: 레포지토리 완성 후 실제 HTTP 요청으로 교체
-        // 현재는 서버 연결 없이 빈 목록 반환
-        // let response = reqwest::get(&self.registry_url).await
-        //     .with_context(|| format!("Failed to fetch registry from {}", self.registry_url))?;
-        // let registry: ExtensionRegistryResponse = response.json().await
-        //     .context("Failed to parse registry response")?;
-        // return Ok(registry.extensions);
+        let response = reqwest::get(&self.manifest_url)
+            .await
+            .with_context(|| format!("Failed to fetch manifest from {}", self.manifest_url))?;
 
-        Ok(Vec::new())
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!(
+                "Manifest fetch failed: HTTP {}",
+                response.status()
+            ));
+        }
+
+        let manifest_resp: ExtensionManifestResponse = response
+            .json()
+            .await
+            .context("Failed to parse manifest response")?;
+
+        let list = manifest_resp.into_list();
+        tracing::info!("Fetched {} extension(s) from manifest", list.len());
+        Ok(list)
     }
 
     /// 설치된 익스텐션 중 원격 버전보다 낮은 것의 업데이트 정보를 반환합니다.
@@ -1280,8 +1326,8 @@ impl ExtensionManager {
 
     /// 원격에서 zip을 다운로드하여 extensions/ 폴더에 설치합니다.
     ///
-    /// ⚠️  레포지토리 미완성 — 현재는 스텁 구현.
-    ///     `download_url`에 실제 파일이 있을 때 동작합니다.
+    /// `download_url`에서 zip 파일을 받아 `extensions/{ext_id}/`에 압축을 풉니다.
+    /// `expected_sha256`가 주어지면 다운로드 후 무결성을 검증합니다 (미구현, v0.2 예정).
     pub async fn install_from_url(
         &self,
         ext_id: &str,
@@ -1290,7 +1336,7 @@ impl ExtensionManager {
     ) -> Result<()> {
         tracing::info!("Installing extension '{}' from {}", ext_id, download_url);
 
-        // TODO: sha256 검증 로직 구현
+        // sha256 검증은 v0.2에서 sha2 크레이트 도입 후 구현 예정
         // 다운로드
         let response = reqwest::get(download_url)
             .await
@@ -2119,6 +2165,11 @@ mod tests {
             download_url: "https://example.com/test_ext.zip".to_string(),
             sha256: None,
             min_app_version: None,
+            asset: None,
+            install_dir: None,
+            dependencies: HashMap::new(),
+            has_gui: false,
+            has_i18n: false,
             tags: vec![],
             homepage: None,
         }];
@@ -2153,6 +2204,11 @@ mod tests {
             download_url: "https://example.com/test_ext.zip".to_string(),
             sha256: None,
             min_app_version: None,
+            asset: None,
+            install_dir: None,
+            dependencies: HashMap::new(),
+            has_gui: false,
+            has_i18n: false,
             tags: vec![],
             homepage: None,
         }];
@@ -2455,5 +2511,234 @@ mod tests {
             "my_ext", "gui", ">=0.2.0", None
         );
         assert!(err.message.contains("not installed"));
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  원격 manifest.json 파싱 호환성 테스트
+    // ═══════════════════════════════════════════════════════════════
+
+    /// 실제 manifest.json 형식을 ExtensionManifestResponse로 역직렬화
+    #[test]
+    fn test_parse_real_manifest_json() {
+        let json = r#"{
+          "schema_version": 1,
+          "generated_at": "2026-02-28T22:35:01.626697+00:00",
+          "extensions": {
+            "docker": {
+              "name": "Docker Isolation",
+              "version": "0.1.0",
+              "description": "Docker 컨테이너를 사용한 게임 서버 격리 실행",
+              "author": "saba-chan",
+              "min_app_version": "0.1.0",
+              "dependencies": { "steamcmd": ">=0.1.0" },
+              "asset": "extension-docker.zip",
+              "sha256": "75266ec15499e0017054195e8c2effe0e4a534ddd97b97736ad3dd3fca903290",
+              "install_dir": "extensions/docker",
+              "download_url": "https://github.com/WareAoba/saba-chan-extensions/releases/latest/download/extension-docker.zip",
+              "has_gui": true,
+              "has_i18n": true
+            },
+            "music": {
+              "name": "Music Bot",
+              "version": "0.1.0",
+              "description": "Discord 음성 채널 음악 재생",
+              "author": "saba-chan",
+              "min_app_version": "0.1.0",
+              "dependencies": [],
+              "asset": "extension-music.zip",
+              "sha256": "a2c102839c3ea070b92381d9a214b628f0090bfe5bf77c286eea086c51821d01",
+              "install_dir": "extensions/music",
+              "download_url": "https://github.com/WareAoba/saba-chan-extensions/releases/latest/download/extension-music.zip",
+              "has_gui": false,
+              "has_i18n": false
+            },
+            "steamcmd": {
+              "name": "SteamCMD",
+              "version": "0.1.0",
+              "dependencies": [],
+              "download_url": "https://example.com/steamcmd.zip"
+            },
+            "ue4-ini": {
+              "name": "UE4 INI Parser",
+              "version": "0.1.0",
+              "dependencies": [],
+              "download_url": "https://example.com/ue4-ini.zip"
+            }
+          }
+        }"#;
+
+        let resp: ExtensionManifestResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.schema_version, 1);
+        assert!(resp.generated_at.is_some());
+        assert_eq!(resp.extensions.len(), 4);
+
+        // docker 항목 검증
+        let docker = &resp.extensions["docker"];
+        assert_eq!(docker.name, "Docker Isolation");
+        assert_eq!(docker.version, "0.1.0");
+        assert!(docker.has_gui);
+        assert!(docker.has_i18n);
+        assert_eq!(docker.dependencies.get("steamcmd").unwrap(), ">=0.1.0");
+        assert!(docker.sha256.is_some());
+        assert!(docker.asset.as_deref() == Some("extension-docker.zip"));
+
+        // music 항목 — dependencies가 빈 배열
+        let music = &resp.extensions["music"];
+        assert!(music.dependencies.is_empty());
+        assert!(!music.has_gui);
+
+        // into_list() 변환 후 id 주입 검증
+        let list = resp.into_list();
+        assert_eq!(list.len(), 4);
+        for item in &list {
+            assert!(!item.id.is_empty(), "id must be injected from map key");
+        }
+        assert!(list.iter().any(|e| e.id == "docker"));
+        assert!(list.iter().any(|e| e.id == "ue4-ini"));
+    }
+
+    /// manifest.json의 ID와 실제 디렉토리명 차이 검증
+    /// ue4-ini (manifest key + manifest id) vs ue4_ini (실제 디렉토리명)
+    #[test]
+    fn test_manifest_id_vs_directory_name_awareness() {
+        // 매니페스트에서는 "ue4-ini", 디렉토리는 "ue4_ini"
+        // mount() 시 디렉토리명을 쓰므로, manifest id와 디렉토리명이 다를 수 있음
+        // install_dir 필드가 이를 해결해야 함
+        let json = r#"{
+          "schema_version": 1,
+          "extensions": {
+            "ue4-ini": {
+              "name": "UE4 INI Parser",
+              "version": "0.1.0",
+              "dependencies": [],
+              "download_url": "https://example.com/ue4-ini.zip",
+              "install_dir": "extensions/ue4-ini"
+            }
+          }
+        }"#;
+
+        let resp: ExtensionManifestResponse = serde_json::from_str(json).unwrap();
+        let list = resp.into_list();
+        let ue4 = &list[0];
+        assert_eq!(ue4.id, "ue4-ini");
+        assert_eq!(ue4.install_dir.as_deref(), Some("extensions/ue4-ini"));
+    }
+
+    /// 실제 manifest.json (로컬 설치용) 파싱 호환성 테스트
+    #[test]
+    fn test_parse_docker_manifest() {
+        let json = r#"{
+          "id": "docker",
+          "name": "Docker Isolation",
+          "version": "0.1.0",
+          "description": "Docker 컨테이너를 사용한 게임 서버 격리 실행",
+          "author": "saba-chan",
+          "min_app_version": "0.1.0",
+          "dependencies": { "steamcmd": ">=0.1.0" },
+          "python_modules": {
+            "docker_engine": "docker_engine.py",
+            "compose_manager": "compose_manager.py"
+          },
+          "hooks": {
+            "daemon.startup": {
+              "module": "docker_engine",
+              "function": "ensure",
+              "condition": null
+            },
+            "server.pre_start": {
+              "module": "compose_manager",
+              "function": "start",
+              "condition": "instance.ext_data.docker_enabled"
+            },
+            "server.post_create": {
+              "module": "compose_manager",
+              "function": "provision",
+              "condition": "instance.ext_data.docker_enabled",
+              "async": true
+            }
+          },
+          "gui": {
+            "bundle": "gui/dist/docker.umd.js",
+            "slots": {
+              "ServerCard.badge": "DockerBadge",
+              "ServerSettings.tab": "DockerTab"
+            }
+          },
+          "cli": {
+            "slots": {
+              "InstanceList.badge": { "text": "🐳", "condition": "instance.ext_data.docker_enabled" }
+            }
+          },
+          "module_config_section": "docker",
+          "instance_fields": {
+            "docker_enabled": { "type": "boolean", "default": false },
+            "docker_cpu_limit": { "type": "number", "optional": true },
+            "docker_memory_limit": { "type": "string", "optional": true }
+          },
+          "i18n_dir": "i18n/"
+        }"#;
+
+        let manifest: ExtensionManifest = serde_json::from_str(json).unwrap();
+        assert_eq!(manifest.id, "docker");
+        assert_eq!(manifest.dependencies.get("steamcmd").unwrap(), ">=0.1.0");
+        assert_eq!(manifest.python_modules.len(), 2);
+        assert_eq!(manifest.hooks.len(), 3);
+
+        // condition: null → None
+        let startup = &manifest.hooks["daemon.startup"];
+        assert!(startup.condition.is_none());
+
+        // condition: "..." → Some(...)
+        let pre_start = &manifest.hooks["server.pre_start"];
+        assert_eq!(pre_start.condition.as_deref(), Some("instance.ext_data.docker_enabled"));
+
+        // async: true → is_async: Some(true)
+        let post_create = &manifest.hooks["server.post_create"];
+        assert_eq!(post_create.is_async, Some(true));
+
+        // gui
+        let gui = manifest.gui.unwrap();
+        assert_eq!(gui.bundle.as_deref(), Some("gui/dist/docker.umd.js"));
+        assert_eq!(gui.slots.len(), 2);
+
+        // cli
+        let cli = manifest.cli.unwrap();
+        assert_eq!(cli.slots.len(), 1);
+
+        // module_config_section
+        assert_eq!(manifest.module_config_section.as_deref(), Some("docker"));
+
+        // instance_fields
+        assert_eq!(manifest.instance_fields.len(), 3);
+        assert_eq!(manifest.instance_fields["docker_enabled"].field_type, "boolean");
+
+        // i18n_dir
+        assert_eq!(manifest.i18n_dir.as_deref(), Some("i18n/"));
+    }
+
+    /// music manifest — gui.builtin, dependencies: [], i18n_dir: null
+    #[test]
+    fn test_parse_music_manifest() {
+        let json = r#"{
+          "id": "music",
+          "name": "Music Bot",
+          "version": "0.1.0",
+          "dependencies": [],
+          "python_modules": { "music_deps": "music_deps.py" },
+          "hooks": {
+            "daemon.startup": { "module": "music_deps", "function": "check_dependencies", "condition": null }
+          },
+          "gui": { "builtin": true, "slots": {} },
+          "instance_fields": {},
+          "i18n_dir": null
+        }"#;
+
+        let manifest: ExtensionManifest = serde_json::from_str(json).unwrap();
+        assert_eq!(manifest.id, "music");
+        assert!(manifest.dependencies.is_empty()); // [] → empty HashMap
+        let gui = manifest.gui.unwrap();
+        assert_eq!(gui.builtin, Some(true));
+        assert!(gui.slots.is_empty());
+        assert!(manifest.i18n_dir.is_none()); // null → None
     }
 }

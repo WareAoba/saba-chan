@@ -106,7 +106,7 @@
   },
   "music": {
     "mod_name": "music",
-    "not_available": "🎵 音楽機能を使うにはパッケージのインストールが必要です！\n`npm install @discordjs/voice @discordjs/opus play-dl`",
+    "not_available": "🎵 音楽機能を使うにはパッケージのインストールが必要です！\n`cd discord_bot && npm install`",
     "join_voice_first": "🎤 まずボイスチャンネルに入ってください！",
     "no_permission": "🚫 ボイスチャンネルに接続または発言する権限がありません！",
     "searching": "🔍 検索中... `{{query}}`",

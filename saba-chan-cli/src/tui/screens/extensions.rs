@@ -1,4 +1,4 @@
-//! 익스텐션 관리 화면 — 목록, 활성화/비활성화, 레지스트리, 설치/삭제
+//! 익스텐션 관리 화면 — 목록, 활성화/비활성화, 매니페스트, 설치/삭제
 
 use crate::client::DaemonClient;
 use crate::tui::app::*;
@@ -19,7 +19,7 @@ async fn reload_ext_slots(client: &DaemonClient, buf: &OutputBuf) {
 pub(super) fn build_extensions_menu(_app: &App) -> Vec<MenuItem> {
     vec![
         MenuItem::new("📦 Installed Extensions", Some('i'), "설치된 익스텐션 목록"),
-        MenuItem::new("🌐 Extension Registry", Some('r'), "원격 레지스트리에서 익스텐션 검색"),
+        MenuItem::new("🌐 Extension Manifest", Some('r'), "원격 매니페스트에서 익스텐션 검색"),
         MenuItem::new("🔄 Check Updates", Some('u'), "익스텐션 업데이트 확인"),
         MenuItem::new("🔍 Rescan Extensions", Some('s'), "익스텐션 디렉토리 재스캔"),
     ]
@@ -58,17 +58,17 @@ pub(super) fn handle_extensions_select(app: &mut App, sel: usize) {
             });
             app.flash("익스텐션 목록 로드 중...");
         }
-        1 => { // Extension Registry
-            app.push_screen(Screen::ExtensionRegistry);
+        1 => { // Extension Manifest
+            app.push_screen(Screen::ExtensionManifest);
             tokio::spawn(async move {
-                match client.fetch_extension_registry().await {
+                match client.fetch_extension_manifest().await {
                     Ok(data) => {
                         let mut lines = vec![];
                         let exts = data.get("extensions").and_then(|v| v.as_array())
                             .or_else(|| data.as_array());
                         if let Some(arr) = exts {
                             if arr.is_empty() {
-                                lines.push(Out::Info("Registry is empty.".into()));
+                                lines.push(Out::Info("Manifest is empty.".into()));
                             } else {
                                 for ext in arr {
                                     let id = ext["id"].as_str().or_else(|| ext["name"].as_str()).unwrap_or("?");
@@ -82,14 +82,14 @@ pub(super) fn handle_extensions_select(app: &mut App, sel: usize) {
                                 }
                             }
                         } else {
-                            lines.push(Out::Info(format!("Registry: {}", data)));
+                            lines.push(Out::Info(format!("Manifest: {}", data)));
                         }
                         push_out(&buf, lines);
                     }
                     Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
                 }
             });
-            app.flash("레지스트리 조회 중...");
+            app.flash("매니페스트 조회 중...");
         }
         2 => { // Check Updates
             tokio::spawn(async move {
@@ -269,11 +269,11 @@ pub(super) fn handle_extension_detail_select(app: &mut App, sel: usize, ext_id: 
 }
 
 // ═══════════════════════════════════════════════════════
-// 레지스트리 화면
+// 익스텐션 매니페스트 화면
 // ═══════════════════════════════════════════════════════
 
-pub(super) fn build_extension_registry_menu(app: &App) -> Vec<MenuItem> {
-    let mut items: Vec<MenuItem> = app.cached_registry_extensions.iter().map(|ext| {
+pub(super) fn build_extension_manifest_menu(app: &App) -> Vec<MenuItem> {
+    let mut items: Vec<MenuItem> = app.cached_manifest_extensions.iter().map(|ext| {
         MenuItem::new(
             &ext.name,
             None,
@@ -282,18 +282,18 @@ pub(super) fn build_extension_registry_menu(app: &App) -> Vec<MenuItem> {
     }).collect();
 
     if items.is_empty() {
-        items.push(MenuItem::new("(Loading or empty registry...)", None, "").with_enabled(false));
+        items.push(MenuItem::new("(Loading or empty manifest...)", None, "").with_enabled(false));
     }
 
-    items.push(MenuItem::new("↻ Refresh Registry", Some('r'), "레지스트리 새로고침"));
+    items.push(MenuItem::new("↻ Refresh Manifest", Some('r'), "매니페스트 새로고침"));
     items
 }
 
-pub(super) fn handle_extension_registry_select(app: &mut App, sel: usize) {
-    let reg_count = app.cached_registry_extensions.len();
+pub(super) fn handle_extension_manifest_select(app: &mut App, sel: usize) {
+    let reg_count = app.cached_manifest_extensions.len();
 
     if sel < reg_count {
-        let ext = &app.cached_registry_extensions[sel];
+        let ext = &app.cached_manifest_extensions[sel];
         let ext_id = ext.id.clone();
         let ext_name = ext.name.clone();
 
@@ -302,11 +302,11 @@ pub(super) fn handle_extension_registry_select(app: &mut App, sel: usize) {
             action: ConfirmAction::InstallExtension(ext_id),
         };
     } else if sel == reg_count {
-        // Refresh registry
+        // Refresh manifest
         let client = app.client.clone();
         let buf = app.async_out.clone();
         tokio::spawn(async move {
-            match client.fetch_extension_registry().await {
+            match client.fetch_extension_manifest().await {
                 Ok(data) => {
                     let mut lines = vec![];
                     let exts = data.get("extensions").and_then(|v| v.as_array())
@@ -325,16 +325,16 @@ pub(super) fn handle_extension_registry_select(app: &mut App, sel: usize) {
                 Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
             }
         });
-        app.flash("레지스트리 새로고침 중...");
+        app.flash("매니페스트 새로고침 중...");
     }
 }
 
 // ═══════════════════════════════════════════════════════
-// 모듈 레지스트리 화면
+// 모듈 매니페스트 화면
 // ═══════════════════════════════════════════════════════
 
-pub(super) fn build_module_registry_menu(app: &App) -> Vec<MenuItem> {
-    let mut items: Vec<MenuItem> = app.cached_registry_modules.iter().map(|m| {
+pub(super) fn build_module_manifest_menu(app: &App) -> Vec<MenuItem> {
+    let mut items: Vec<MenuItem> = app.cached_manifest_modules.iter().map(|m| {
         MenuItem::new(
             &m.name,
             None,
@@ -343,31 +343,31 @@ pub(super) fn build_module_registry_menu(app: &App) -> Vec<MenuItem> {
     }).collect();
 
     if items.is_empty() {
-        items.push(MenuItem::new("(Loading or empty registry...)", None, "").with_enabled(false));
+        items.push(MenuItem::new("(Loading or empty manifest...)", None, "").with_enabled(false));
     }
 
-    items.push(MenuItem::new("↻ Refresh Registry", Some('r'), "레지스트리 새로고침"));
+    items.push(MenuItem::new("↻ Refresh Manifest", Some('r'), "매니페스트 새로고침"));
     items
 }
 
-pub(super) fn handle_module_registry_select(app: &mut App, sel: usize) {
-    let reg_count = app.cached_registry_modules.len();
+pub(super) fn handle_module_manifest_select(app: &mut App, sel: usize) {
+    let reg_count = app.cached_manifest_modules.len();
 
     if sel < reg_count {
-        let m = &app.cached_registry_modules[sel];
+        let m = &app.cached_manifest_modules[sel];
         let mod_id = m.id.clone();
         let mod_name = m.name.clone();
 
         app.input_mode = InputMode::Confirm {
             prompt: format!("Install module '{}'?", mod_name),
-            action: ConfirmAction::InstallModuleFromRegistry(mod_id),
+            action: ConfirmAction::InstallModuleFromManifest(mod_id),
         };
     } else if sel == reg_count {
-        // Refresh registry
+        // Refresh manifest
         let client = app.client.clone();
         let buf = app.async_out.clone();
         tokio::spawn(async move {
-            match client.fetch_module_registry().await {
+            match client.fetch_module_manifest().await {
                 Ok(data) => {
                     let mut lines = vec![];
                     let mods = data.get("modules").and_then(|v| v.as_array())
@@ -386,6 +386,6 @@ pub(super) fn handle_module_registry_select(app: &mut App, sel: usize) {
                 Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
             }
         });
-        app.flash("모듈 레지스트리 새로고침 중...");
+        app.flash("모듈 매니페스트 새로고침 중...");
     }
 }

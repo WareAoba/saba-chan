@@ -947,11 +947,11 @@ fn flush_async_with_fields(app: &mut App) {
 
     // REG_ITEM 파싱: id|name|version|description
     if !reg_lines.is_empty() {
-        app.cached_registry_extensions.clear();
+        app.cached_manifest_extensions.clear();
         for line in reg_lines {
             let parts: Vec<&str> = line.splitn(4, '|').collect();
             if parts.len() >= 4 {
-                app.cached_registry_extensions.push(RegistryItem {
+                app.cached_manifest_extensions.push(ManifestItem {
                     id: parts[0].to_string(),
                     name: parts[1].to_string(),
                     version: parts[2].to_string(),
@@ -963,11 +963,11 @@ fn flush_async_with_fields(app: &mut App) {
 
     // MODREG_ITEM 파싱: id|name|version|description
     if !modreg_lines.is_empty() {
-        app.cached_registry_modules.clear();
+        app.cached_manifest_modules.clear();
         for line in modreg_lines {
             let parts: Vec<&str> = line.splitn(4, '|').collect();
             if parts.len() >= 4 {
-                app.cached_registry_modules.push(RegistryItem {
+                app.cached_manifest_modules.push(ManifestItem {
                     id: parts[0].to_string(),
                     name: parts[1].to_string(),
                     version: parts[2].to_string(),

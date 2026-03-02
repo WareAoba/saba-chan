@@ -238,10 +238,10 @@ pub async fn serve_i18n(
 }
 
 // ══════════════════════════════════════════════════════════════
-//  레지스트리 & 버전관리 핸들러
+//  매니페스트 & 버전관리 핸들러
 // ══════════════════════════════════════════════════════════════
 
-/// GET /api/extensions/registry — 원격 레지스트리에서 가용 익스텐션 목록 페치
+/// GET /api/extensions/manifest — 원격 매니페스트에서 가용 익스텐션 목록 페치
 ///
 /// 응답:
 /// ```json
@@ -250,12 +250,12 @@ pub async fn serve_i18n(
 ///   "updates": [ { "id": "...", "installed_version": "...", "latest_version": "...", ... } ]
 /// }
 /// ```
-pub async fn fetch_registry(
+pub async fn fetch_manifest(
     State(state): State<IPCServer>,
 ) -> Json<serde_json::Value> {
     let mgr = state.extension_manager.read().await;
 
-    match mgr.fetch_registry().await {
+    match mgr.fetch_manifest().await {
         Ok(remote) => {
             // 설치된 익스텐션 중 업데이트 가능한 항목 계산
             let updates = mgr.check_updates_against(&remote);
@@ -274,19 +274,19 @@ pub async fn fetch_registry(
     }
 }
 
-/// POST /api/extensions/:id/install — 레지스트리에서 익스텐션 다운로드 & 설치
+/// POST /api/extensions/:id/install — 매니페스트에서 익스텐션 다운로드 & 설치
 ///
 /// Request body (optional):
 /// ```json
 /// { "download_url": "...", "sha256": "..." }
 /// ```
-/// body가 없으면 레지스트리에서 URL을 조회합니다.
+/// body가 없으면 매니페스트에서 URL을 조회합니다.
 pub async fn install_extension(
     State(state): State<IPCServer>,
     Path(ext_id): Path<String>,
     body: Option<Json<serde_json::Value>>,
 ) -> Json<serde_json::Value> {
-    // body 또는 레지스트리에서 download_url 결정
+    // body 또는 매니페스트에서 download_url 결정
     let (download_url, sha256) = if let Some(Json(b)) = body {
         let url = b.get("download_url")
             .and_then(|v| v.as_str())
@@ -302,23 +302,23 @@ pub async fn install_extension(
     let download_url = match download_url {
         Some(u) => u,
         None => {
-            // 레지스트리에서 해당 익스텐션 URL 조회
+            // 매니페스트에서 해당 익스텐션 URL 조회
             let mgr = state.extension_manager.read().await;
-            match mgr.fetch_registry().await {
+            match mgr.fetch_manifest().await {
                 Ok(remote) => {
                     match remote.iter().find(|r| r.id == ext_id) {
                         Some(entry) => entry.download_url.clone(),
                         None => return Json(json!({
                             "success": false,
-                            "error": format!("Extension '{}' not found in registry", ext_id),
-                            "error_code": "not_in_registry",
+                            "error": format!("Extension '{}' not found in manifest", ext_id),
+                            "error_code": "not_in_manifest",
                         })),
                     }
                 }
                 Err(e) => return Json(json!({
                     "success": false,
-                    "error": format!("Registry fetch failed: {}", e),
-                    "error_code": "registry_fetch_failed",
+                    "error": format!("Manifest fetch failed: {}", e),
+                    "error_code": "manifest_fetch_failed",
                 })),
             }
         }
@@ -341,13 +341,13 @@ pub async fn install_extension(
     }
 }
 
-/// GET /api/extensions/updates — 설치된 익스텐션 업데이트 체크 (레지스트리 비교)
+/// GET /api/extensions/updates — 설치된 익스텐션 업데이트 체크 (매니페스트 비교)
 pub async fn check_extension_updates(
     State(state): State<IPCServer>,
 ) -> Json<serde_json::Value> {
     let mgr = state.extension_manager.read().await;
 
-    match mgr.fetch_registry().await {
+    match mgr.fetch_manifest().await {
         Ok(remote) => {
             let updates = mgr.check_updates_against(&remote);
             Json(json!({

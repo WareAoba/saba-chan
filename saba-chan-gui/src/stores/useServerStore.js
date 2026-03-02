@@ -190,14 +190,16 @@ export const useServerStore = create((set, get) => ({
                 console.log('Module aliases loaded:', aliasesMap);
             } else if (data && data.error) {
                 console.error('Module fetch error:', data.error);
-                safeShowToast(_t('modules.load_failed_toast', { error: _translateError(data.error) }), 'error', 4000);
+                const errMsg = _translateError(data.error);
+                if (errMsg) safeShowToast(_t('modules.load_failed_toast', { error: errMsg }), 'error', 4000);
             } else {
                 debugWarn('No modules data:', data);
                 safeShowToast(_t('modules.list_empty'), 'warning', 3000);
             }
         } catch (error) {
             console.error('Failed to fetch modules:', error);
-            safeShowToast(_t('modules.fetch_failed_toast', { error: _translateError(error.message) }), 'error', 5000);
+            const errMsg = _translateError(error.message);
+            if (errMsg) safeShowToast(_t('modules.fetch_failed_toast', { error: errMsg }), 'error', 5000);
             useUIStore.getState().openModal({
                 type: 'failure',
                 title: _t('modules.load_error_title'),

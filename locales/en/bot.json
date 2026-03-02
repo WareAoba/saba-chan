@@ -118,7 +118,7 @@
   },
   "music": {
     "mod_name": "music",
-    "not_available": "🎵 Music feature requires additional packages!\n`npm install @discordjs/voice @discordjs/opus play-dl`",
+    "not_available": "🎵 Music feature requires additional packages!\n`cd discord_bot && npm install`",
     "join_voice_first": "🎤 Please join a voice channel first!",
     "no_permission": "🚫 I don't have permission to connect or speak in your voice channel!",
     "searching": "🔍 Searching... `{{query}}`",

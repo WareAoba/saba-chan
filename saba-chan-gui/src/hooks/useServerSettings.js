@@ -239,7 +239,8 @@ export function useServerSettings({
                             const srv = servers.find((s) => s.id === settingsServer.id);
                             const workDir =
                                 srv?.module_settings?.working_dir ||
-                                (srv?.executable_path ? srv.executable_path.replace(/[/\\][^/\\]+$/, '') : null);
+                                srv?.working_dir ||
+                                null;
 
                             let targetDir;
                             if (!workDir) {
@@ -268,8 +269,10 @@ export function useServerSettings({
                             }
 
                             if (installResult.jar_path) {
+                                // working_dir 설정 — 실행 파일 경로는 모듈에서 자동 해석됨
+                                const installDir = installResult.install_path || installResult.jar_path.replace(/[/\\][^/\\]+$/, '');
                                 await window.api.instanceUpdateSettings(settingsServer.id, {
-                                    executable_path: installResult.jar_path,
+                                    working_dir: installDir,
                                     server_version: version,
                                 });
                                 handleSettingChange('server_version', version);
