@@ -49,6 +49,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: main  # 태그가 아닌 main의 최신 스크립트·소스를 사용
 
       - name: Setup Python
         uses: actions/setup-python@v5
