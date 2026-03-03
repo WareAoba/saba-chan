@@ -48,6 +48,8 @@ Thumbs.db
 
 # Runtime generated
 modules/
+!modules/i18n.py
+!modules/daemon_rcon.py
 *.log
 
 # User data (개인 설정)
