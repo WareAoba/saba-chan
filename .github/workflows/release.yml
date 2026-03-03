@@ -90,3 +90,26 @@ jobs:
               --clobber
           done
           echo "✓ All assets uploaded"
+
+      - name: Clean up original raw assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "=== Cleaning up raw assets ==="
+          # output/ 에 있는 파일 이름 목록 = 유지할 에셋
+          KEEP_FILES=$(ls output/ | sort)
+          # 릴리즈의 현재 에셋 목록
+          ALL_ASSETS=$(gh release view "${{ github.event.release.tag_name }}" \
+            --repo "${{ github.repository }}" \
+            --json assets --jq '.assets[].name' | sort)
+          # output/에 없는 에셋 삭제
+          for asset in $ALL_ASSETS; do
+            if ! echo "$KEEP_FILES" | grep -qx "$asset"; then
+              echo "  Deleting: $asset"
+              gh release delete-asset "${{ github.event.release.tag_name }}" \
+                "$asset" \
+                --repo "${{ github.repository }}" \
+                --yes
+            fi
+          done
+          echo "✓ Cleanup complete"

@@ -61,7 +61,22 @@
     "auto_generate_passwords_label": "비밀번호 자동 생성",
     "auto_generate_passwords_description": "서버 설정 시 RCON/REST 비밀번호 필드가 비어있으면 자동으로 랜덤 비밀번호를 채웁니다.",
     "port_conflict_check_label": "포트 충돌 검사",
-    "port_conflict_check_description": "여러 서버 인스턴스가 동일한 포트를 사용할 때 경고를 표시합니다."
+    "port_conflict_check_description": "여러 서버 인스턴스가 동일한 포트를 사용할 때 경고를 표시합니다.",
+    "uninstall_label": "사바쨩 삭제",
+    "uninstall_description": "이 컴퓨터에서 사바쨩을 완전히 제거합니다. 모든 프로세스가 종료되고 인스톨러가 제거 모드로 실행됩니다.",
+    "uninstall_confirm_title": "사바쨩 삭제",
+    "uninstall_confirm_message": "정말로 사바쨩을 삭제하시겠습니까? 모든 프로세스(GUI 및 데몬)가 종료됩니다.",
+    "uninstall_confirm_yes": "삭제",
+    "uninstall_confirm_no": "취소",
+    "about_title": "사바쨩 정보",
+    "about_version": "버전",
+    "about_description": "게임 서버를 쉽게 설정, 실행, 관리할 수 있는 게임 서버 관리 도구입니다.",
+    "about_developer": "개발자",
+    "about_developer_name": "WareAoba",
+    "about_github": "GitHub",
+    "about_license": "라이선스",
+    "about_back": "돌아가기",
+    "made_by": "제작자"
   },
   "add_server_modal": {
     "title": "새 서버 추가",
@@ -101,7 +116,8 @@
     "new_server_desc": "게임 모듈을 선택하고 새로운 서버 인스턴스를 처음부터 생성합니다.",
     "migrate_title": "기존 서버 마이그레이션",
     "migrate_desc": "기존 게임 서버 디렉토리를 saba-chan 인스턴스로 가져옵니다.",
-    "migration_coming_soon": "마이그레이션 위자드 단계가 여기에 구현될 예정입니다."
+    "migration_coming_soon": "마이그레이션 위자드 단계가 여기에 구현될 예정입니다.",
+    "no_modules_hint": "먼저 모듈을 추가해주세요."
   },
   "migration_modal": {
     "title": "서버 마이그레이션",

@@ -133,11 +133,12 @@ export function AddInstanceMigration({
 
     // ─── 감지 결과로 다음 단계 ───
     const proceedWithModule = useCallback((mod) => {
+        onStepChange?.('configure'); // 높이 캡처 후 부모 상태 변경 (배칭)
         const name = mod.name || mod.id;
         const existingCount = servers?.filter((s) => s.module === name).length || 0;
         setInstanceName(`migrated-${name}-${existingCount + 1}`);
         setStep('configure');
-    }, [servers]);
+    }, [servers, onStepChange]);
 
     // configure 단계 진입 시 포커스
     useEffect(() => {
@@ -147,9 +148,8 @@ export function AddInstanceMigration({
         }
     }, [step]);
 
-    useEffect(() => {
-        onStepChange?.(step);
-    }, [step, onStepChange]);
+    // onStepChange는 proceedWithModule/handleBackToPickDir에서 동기적으로 호출
+    // (useEffect로 호출하면 paint 이후라 높이 애니메이션 캡처가 실패함)
 
     // ─── 제출 ───
     const handleSubmit = useCallback(async () => {
@@ -170,9 +170,10 @@ export function AddInstanceMigration({
     }, [detectedModule, manualModule, instanceName, dirPath, onAddServer]);
 
     const handleBackToPickDir = useCallback(() => {
+        onStepChange?.('pick-dir'); // 높이 캡처 후 부모 상태 변경 (배칭)
         setStep('pick-dir');
         setInstanceName('');
-    }, []);
+    }, [onStepChange]);
 
     const activeModule = detectedModule || manualModule;
     const activeModuleName = activeModule

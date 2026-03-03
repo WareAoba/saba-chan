@@ -61,7 +61,22 @@
                            "auto_generate_passwords_label":  "Generar contraseñas automáticamente",
                            "auto_generate_passwords_description":  "Rellena automáticamente los campos de contraseña RCON/REST vacíos con contraseñas aleatorias al abrir la configuración del servidor.",
                            "port_conflict_check_label":  "Detección de conflicto de puertos",
-                           "port_conflict_check_description":  "Muestra advertencias cuando múltiples instancias de servidor utilizan el mismo puerto."
+                           "port_conflict_check_description":  "Muestra advertencias cuando múltiples instancias de servidor utilizan el mismo puerto.",
+                           "uninstall_label":  "Desinstalar Saba-chan",
+                           "uninstall_description":  "Eliminar completamente Saba-chan de este equipo. Todos los procesos se detendrán y el instalador se ejecutará en modo de desinstalación.",
+                           "uninstall_confirm_title":  "Desinstalar Saba-chan",
+                           "uninstall_confirm_message":  "¿Está seguro de que desea desinstalar Saba-chan? Todos los procesos (GUI y daemon) se detendrán.",
+                           "uninstall_confirm_yes":  "Desinstalar",
+                           "uninstall_confirm_no":  "Cancelar",
+                           "about_title":  "Acerca de Saba-chan",
+                           "about_version":  "Versión",
+                           "about_description":  "Una herramienta de gestión de servidores de juegos que facilita la configuración, ejecución y administración de servidores dedicados.",
+                           "about_developer":  "Desarrollador",
+                           "about_developer_name":  "WareAoba",
+                           "about_github":  "GitHub",
+                           "about_license":  "Licencia",
+                           "about_back":  "Volver",
+                           "made_by": "Hecho por"
                        },
     "add_server_modal":  {
                              "title":  "Agregar Nuevo Servidor",
@@ -101,7 +116,8 @@
                                "new_server_desc":  "Seleccione un módulo de juego y cree una nueva instancia desde cero.",
                                "migrate_title":  "기존 Migración de servidor",
                                "migrate_desc":  "Importa un directorio de servidor de juego existente en una instancia saba-chan.",
-                               "migration_coming_soon":  "Los pasos del asistente de migración se implementarán aquí."
+                               "migration_coming_soon":  "Los pasos del asistente de migración se implementarán aquí.",
+                               "no_modules_hint":  "Primero agregue un módulo."
                            },
     "migration_modal":  {
                             "title":  "Migración de servidor",

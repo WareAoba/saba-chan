@@ -153,13 +153,25 @@ html, body {
     align-items: center; justify-content: center;
 }
 
+/* ── 그라데이션 색상 전환용 커스텀 속성 ── */
+@property --glow-c1 { syntax: '<color>'; inherits: false; initial-value: #7ec8e3; }
+@property --glow-c2 { syntax: '<color>'; inherits: false; initial-value: #667eea; }
+@property --glow-c3 { syntax: '<color>'; inherits: false; initial-value: #8b5cf6; }
+@property --glow-c4 { syntax: '<color>'; inherits: false; initial-value: #a855f7; }
+@property --glow-c5 { syntax: '<color>'; inherits: false; initial-value: #7c3aed; }
+@property --glow-c6 { syntax: '<color>'; inherits: false; initial-value: #667eea; }
+@property --glow-c7 { syntax: '<color>'; inherits: false; initial-value: #7ec8e3; }
+
 .glow-blur {
     position: absolute; inset: 0;
     border-radius: 50%;
+    --glow-c1: #7ec8e3; --glow-c2: #667eea; --glow-c3: #8b5cf6;
+    --glow-c4: #a855f7; --glow-c5: #7c3aed; --glow-c6: #667eea; --glow-c7: #7ec8e3;
     background: conic-gradient(
-        from 0deg, #3ba5da, #5a6ce4, #b224ff, #f5479e,
-        #f5479e, #b224ff, #5a6ce4, #3ba5da
+        from 0deg, var(--glow-c1), var(--glow-c2), var(--glow-c3), var(--glow-c4),
+        var(--glow-c5), var(--glow-c6), var(--glow-c7)
     );
+    transition: --glow-c1 .8s, --glow-c2 .8s, --glow-c3 .8s, --glow-c4 .8s, --glow-c5 .8s, --glow-c6 .8s, --glow-c7 .8s;
     animation: spin-glow 2.5s linear infinite;
     z-index: 0;
 }
@@ -167,10 +179,13 @@ html, body {
 .glow-ring {
     position: absolute; inset: -10px;
     border-radius: 50%;
+    --glow-c1: #7ec8e3; --glow-c2: #667eea; --glow-c3: #8b5cf6;
+    --glow-c4: #a855f7; --glow-c5: #7c3aed; --glow-c6: #667eea; --glow-c7: #7ec8e3;
     background: conic-gradient(
-        from 0deg, #3ba5da, #5a6ce4, #b224ff, #f5479e,
-        #f5479e, #b224ff, #5a6ce4, #3ba5da
+        from 0deg, var(--glow-c1), var(--glow-c2), var(--glow-c3), var(--glow-c4),
+        var(--glow-c5), var(--glow-c6), var(--glow-c7)
     );
+    transition: --glow-c1 .8s, --glow-c2 .8s, --glow-c3 .8s, --glow-c4 .8s, --glow-c5 .8s, --glow-c6 .8s, --glow-c7 .8s;
     animation: spin-glow 2.5s linear infinite;
     filter: blur(22px);
     opacity: 0.7;
@@ -198,29 +213,35 @@ html, body {
     to { transform: rotate(360deg); }
 }
 
-/* 아이들: 링 회전 천천히 */
+/* 아이들: 메인앱 로딩 색상, 느린 회전 */
 .loading-logo-container.idle .glow-blur,
 .loading-logo-container.idle .glow-ring {
+    --glow-c1: #7ec8e3; --glow-c2: #667eea; --glow-c3: #8b5cf6;
+    --glow-c4: #a855f7; --glow-c5: #7c3aed; --glow-c6: #667eea; --glow-c7: #7ec8e3;
     animation-duration: 6s;
 }
 
-/* 설치 중: 빠른 회전 */
+/* 설치 중: 붉은+푸른 그라데이션, 빠른 회전 */
 .loading-logo-container.spinning .glow-blur,
 .loading-logo-container.spinning .glow-ring {
+    --glow-c1: #3ba5da; --glow-c2: #5a6ce4; --glow-c3: #b224ff;
+    --glow-c4: #f5479e; --glow-c5: #b224ff; --glow-c6: #5a6ce4; --glow-c7: #3ba5da;
     animation-duration: 1s;
 }
 
-/* 완료: 초록 (회전 없음) */
+/* 완료: 초록+하늘색 그라데이션, 느린 스핀 */
 .loading-logo-container.complete .glow-blur,
 .loading-logo-container.complete .glow-ring {
-    background: conic-gradient(from 0deg, #4ade80, #22c55e, #16a34a, #22c55e, #4ade80);
-    animation: none;
+    --glow-c1: #4ade80; --glow-c2: #34d399; --glow-c3: #38bdf8;
+    --glow-c4: #22d3ee; --glow-c5: #34d399; --glow-c6: #4ade80; --glow-c7: #4ade80;
+    animation-duration: 3s;
 }
 
 /* 에러: 빨강 (회전 없음) */
 .loading-logo-container.error .glow-blur,
 .loading-logo-container.error .glow-ring {
-    background: conic-gradient(from 0deg, #f87171, #ef4444, #dc2626, #ef4444, #f87171);
+    --glow-c1: #f87171; --glow-c2: #ef4444; --glow-c3: #dc2626;
+    --glow-c4: #ef4444; --glow-c5: #f87171; --glow-c6: #ef4444; --glow-c7: #f87171;
     animation: none;
 }
 

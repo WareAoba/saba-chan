@@ -28,7 +28,7 @@ pub struct UninstallProgress {
 }
 
 /// GUI 모드 제거 실행
-pub async fn do_uninstall(app: &AppHandle) {
+pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
     use tauri::Emitter;
 
     let emit = |step: &str, msg: &str, pct: i32| {
@@ -94,11 +94,10 @@ pub async fn do_uninstall(app: &AppHandle) {
     emit("shortcuts", "Removing shortcuts...", 20);
     #[cfg(target_os = "windows")]
     {
-        if let Err(e) = shortcuts::remove_desktop_shortcut("Saba-chan") {
-            tracing::warn!("Failed to remove desktop shortcut: {}", e);
-        }
-        if let Err(e) = shortcuts::remove_start_menu_shortcut("Saba-chan") {
-            tracing::warn!("Failed to remove start menu shortcut: {}", e);
+        // 어떤 언어로 설치했든 제거되도록 모든 로케일 이름 시도
+        for name in &["Saba-chan", "사바쨩", "サバちゃん"] {
+            let _ = shortcuts::remove_desktop_shortcut(name);
+            let _ = shortcuts::remove_start_menu_shortcut(name);
         }
     }
 
@@ -116,8 +115,14 @@ pub async fn do_uninstall(app: &AppHandle) {
     }
 
     // Step 5: 사용자 데이터 삭제 (%APPDATA%/saba-chan)
-    emit("data", "Removing user data...", 55);
-    remove_appdata_dir();
+    // python-standalone, python-env, node-portable 등 런타임 디렉토리도 포함
+    if keep_settings {
+        emit("data", "Removing runtime environments (keeping settings)...", 55);
+        remove_appdata_dir_keep_settings();
+    } else {
+        emit("data", "Removing user data and runtime environments...", 55);
+        remove_appdata_dir();
+    }
 
     // Step 6: 임시 파일 삭제
     emit("temp", "Cleaning temporary files...", 70);
@@ -125,8 +130,12 @@ pub async fn do_uninstall(app: &AppHandle) {
 
     // Step 7: 모듈 디렉토리 삭제 (%APPDATA%/saba-chan/modules)
     // (앞서 appdata 전체를 삭제하므로 포함됨 — 혹시 남아있을 경우 대비)
-    emit("modules", "Cleaning modules directory...", 80);
-    remove_modules_dir();
+    if !keep_settings {
+        emit("modules", "Cleaning modules directory...", 80);
+        remove_modules_dir();
+    } else {
+        emit("modules", "Keeping module settings...", 80);
+    }
 
     // Step 8: 레지스트리 삭제
     emit("registry", "Removing registry entries...", 90);
@@ -155,8 +164,10 @@ pub async fn do_silent_uninstall() {
     eprintln!("  Removing shortcuts...");
     #[cfg(target_os = "windows")]
     {
-        let _ = shortcuts::remove_desktop_shortcut("Saba-chan");
-        let _ = shortcuts::remove_start_menu_shortcut("Saba-chan");
+        for name in &["Saba-chan", "사바쨩", "サバちゃん"] {
+            let _ = shortcuts::remove_desktop_shortcut(name);
+            let _ = shortcuts::remove_start_menu_shortcut(name);
+        }
     }
 
     // 설치 디렉토리 삭제
@@ -177,7 +188,7 @@ pub async fn do_silent_uninstall() {
     }
 
     // 사용자 데이터
-    eprintln!("  Removing user data...");
+    eprintln!("  Removing user data and runtime environments...");
     remove_appdata_dir();
 
     // 임시 파일
@@ -272,6 +283,54 @@ fn remove_appdata_dir() {
             let saba_dir = PathBuf::from(home).join(".config").join("saba-chan");
             if saba_dir.exists() {
                 let _ = remove_dir_robust(&saba_dir);
+            }
+        }
+    }
+}
+
+/// 설정 파일만 남기고 나머지 삭제 (바이너리, 런타임, 캐시 등)
+fn remove_appdata_dir_keep_settings() {
+    #[cfg(target_os = "windows")]
+    let saba_dir = std::env::var("APPDATA")
+        .ok()
+        .map(|a| PathBuf::from(a).join("saba-chan"));
+    #[cfg(not(target_os = "windows"))]
+    let saba_dir = std::env::var("HOME")
+        .ok()
+        .map(|h| PathBuf::from(h).join(".config").join("saba-chan"));
+
+    let Some(saba_dir) = saba_dir else { return };
+    if !saba_dir.exists() {
+        return;
+    }
+
+    // 보존할 파일/폴더 패턴 (config, settings, 인스턴스 설정)
+    let keep_names: &[&str] = &[
+        "settings.json",     // GUI 설정
+        "config",            // 글로벌 config 디렉토리
+        "instances",         // 인스턴스별 설정 저장
+        "global.toml",       // 글로벌 설정
+        "bot-config.json",   // 봇 설정
+    ];
+
+    // 삭제 대상: 보존 대상을 제외한 모든 파일/폴더
+    if let Ok(entries) = std::fs::read_dir(&saba_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+
+            if keep_names.iter().any(|k| name_str == *k) {
+                tracing::info!("[Uninstall] Keeping: {:?}", entry.path());
+                continue;
+            }
+
+            let path = entry.path();
+            if path.is_dir() {
+                tracing::info!("[Uninstall] Removing dir: {:?}", path);
+                let _ = remove_dir_robust(&path);
+            } else {
+                tracing::info!("[Uninstall] Removing file: {:?}", path);
+                let _ = std::fs::remove_file(&path);
             }
         }
     }

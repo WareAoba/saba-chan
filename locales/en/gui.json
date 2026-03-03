@@ -61,7 +61,22 @@
     "auto_generate_passwords_label": "Auto-generate Passwords",
     "auto_generate_passwords_description": "Automatically fill empty RCON/REST password fields with random passwords when opening server settings.",
     "port_conflict_check_label": "Port Conflict Detection",
-    "port_conflict_check_description": "Show warnings when multiple server instances use the same port."
+    "port_conflict_check_description": "Show warnings when multiple server instances use the same port.",
+    "uninstall_label": "Uninstall Saba-chan",
+    "uninstall_description": "Completely remove Saba-chan from this computer. All processes will be stopped and the installer will run in uninstall mode.",
+    "uninstall_confirm_title": "Uninstall Saba-chan",
+    "uninstall_confirm_message": "Are you sure you want to uninstall Saba-chan? All processes (GUI and daemon) will be stopped.",
+    "uninstall_confirm_yes": "Uninstall",
+    "uninstall_confirm_no": "Cancel",
+    "about_title": "About Saba-chan",
+    "about_version": "Version",
+    "about_description": "A game server management tool that makes it easy to set up, run, and manage dedicated game servers.",
+    "about_developer": "Developer",
+    "about_developer_name": "WareAoba",
+    "about_github": "GitHub",
+    "about_license": "License",
+    "about_back": "Back",
+    "made_by": "Made by"
   },
   "add_server_modal": {
     "title": "Add New Server",
@@ -101,7 +116,8 @@
     "new_server_desc": "Select a game module and create a fresh server instance from scratch.",
     "migrate_title": "Migrate Existing Server",
     "migrate_desc": "Import an existing game server directory into a saba-chan instance.",
-    "migration_coming_soon": "Migration wizard steps will be implemented here."
+    "migration_coming_soon": "Migration wizard steps will be implemented here.",
+    "no_modules_hint": "Please add a module first."
   },
   "migration_modal": {
     "title": "Server Migration",

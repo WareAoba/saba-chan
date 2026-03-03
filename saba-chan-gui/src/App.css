@@ -2458,9 +2458,17 @@ span[style*="--icon-loader"] svg,
     margin-top: auto;
 }
 
+.add-instance-modal--chooser .modal-footer {
+    margin-top: 0;
+}
+
 .add-instance-modal--chooser .modal-body {
     flex: none;
     overflow: hidden;
+}
+
+.add-instance-modal--chooser .add-instance-stage {
+    flex: none;
 }
 
 .add-instance-progress-wrap {
@@ -2691,14 +2699,63 @@ span[style*="--icon-loader"] svg,
     white-space: normal;
 }
 
+/* disabled choice card */
+.ai-choice-card--disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.ai-choice-card--disabled:hover {
+    transform: none;
+    box-shadow: none;
+    border-color: var(--border-default);
+}
+
+/* wrapper for card + hint in chooser grid */
+.ai-choice-col {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    min-width: 0;
+}
+
+.ai-choice-col .ai-choice-card {
+    flex: 1;
+}
+
+/* hint message below a specific card */
+.ai-no-modules-hint {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    color: var(--warning, #f0a030);
+    font-weight: 500;
+    margin: 6px 2px 0;
+    padding: 0;
+}
+
+.ai-no-modules-hint svg {
+    flex-shrink: 0;
+    width: 15px;
+    height: 15px;
+}
+
 @media (max-width: 900px) {
     .add-instance-modal,
     .add-instance-modal--flow,
-    .add-instance-modal--chooser,
     .add-server-modal {
         width: 94vw;
         max-width: 94vw;
         height: 92vh;
+        max-height: 92vh;
+    }
+
+    .add-instance-modal--chooser {
+        width: 94vw;
+        max-width: 94vw;
+        height: auto;
         max-height: 92vh;
     }
 

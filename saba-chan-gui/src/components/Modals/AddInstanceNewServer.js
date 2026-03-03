@@ -37,6 +37,7 @@ export function AddInstanceNewServer({
 
     // 게임 카드를 눌렀을 때
     const handleGameSelect = (extName) => {
+        onStepChange?.('configure'); // 높이 캡처 후 부모 상태 변경 (배칭)
         setSelectedExtension(extName);
 
         // 자동 이름 생성
@@ -55,12 +56,12 @@ export function AddInstanceNewServer({
         }
     }, [step]);
 
-    useEffect(() => {
-        onStepChange?.(step);
-    }, [step, onStepChange]);
+    // onStepChange는 handleGameSelect/handleBackToSelect에서 동기적으로 호출
+    // (useEffect로 호출하면 paint 이후라 높이 애니메이션 캡처가 실패함)
 
     // configure → select-game 으로 돌아가기
     const handleBackToSelect = () => {
+        onStepChange?.('select-game'); // 높이 캡처 후 부모 상태 변경 (배칭)
         setStep('select-game');
         setSelectedExtension('');
         setNewServerName('');

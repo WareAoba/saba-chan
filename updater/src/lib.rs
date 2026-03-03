@@ -80,6 +80,7 @@ pub enum Component {
     CoreDaemon,
     Cli,
     Gui,
+    Updater,
     Module(String),
     Extension(String),
     DiscordBot,
@@ -93,6 +94,7 @@ impl Component {
             Component::CoreDaemon => "saba-core".to_string(),
             Component::Cli => "cli".to_string(),
             Component::Gui => "gui".to_string(),
+            Component::Updater => "updater".to_string(),
             Component::Module(name) => format!("module-{}", name),
             Component::Extension(name) => format!("ext-{}", name),
             Component::DiscordBot => "discord_bot".to_string(),
@@ -106,6 +108,7 @@ impl Component {
             "saba-core" => Component::CoreDaemon,
             "cli" => Component::Cli,
             "gui" => Component::Gui,
+            "updater" => Component::Updater,
             "discord_bot" => Component::DiscordBot,
             "locales" => Component::Locales,
             k if k.starts_with("module-") => {
@@ -124,6 +127,7 @@ impl Component {
             Component::CoreDaemon => "Saba-Core".to_string(),
             Component::Cli => "CLI".to_string(),
             Component::Gui => "GUI".to_string(),
+            Component::Updater => "Updater".to_string(),
             Component::Module(name) => format!("Module: {}", name),
             Component::Extension(name) => format!("Extension: {}", name),
             Component::DiscordBot => "Discord Bot".to_string(),
@@ -904,6 +908,13 @@ impl UpdateManager {
             }
         }
 
+        if !versions.contains_key("updater") {
+            // 업데이터 자신의 바이너리 버전 = Cargo.toml version (빌드 시 env!로 주입)
+            if let Some(v) = self.read_cargo_version("updater") {
+                versions.insert("updater".to_string(), v);
+            }
+        }
+
         // 모듈: modules/*/module.toml에서 감지
         if let Ok(entries) = std::fs::read_dir(&self.modules_dir) {
             for entry in entries.flatten() {
@@ -1197,6 +1208,11 @@ impl UpdateManager {
                     self.apply_gui_update(staged_path).await?;
                     applied.push(comp.component.display_name());
                 }
+                Component::Updater => {
+                    // Updater 자체 바이너리 교체 (apply 모드에서만 가능)
+                    self.apply_binary_update("saba-chan-updater", staged_path).await?;
+                    applied.push(comp.component.display_name());
+                }
                 Component::CoreDaemon => {
                     // Updater exe can directly replace daemon binary
                     self.apply_binary_update("saba-core", staged_path).await?;
@@ -1235,6 +1251,16 @@ impl UpdateManager {
         if !applied.is_empty() {
             if let Err(e) = self.update_installed_versions_batch(&applied) {
                 tracing::warn!("[UpdateManager] Failed to update installed manifest: {}", e);
+            }
+        }
+
+        // 코어 컴포넌트가 업데이트된 경우, 레지스트리의 DisplayVersion을 코어 버전으로 갱신
+        if let Some(core_comp) = self.status.components.iter()
+            .find(|c| matches!(c.component, Component::CoreDaemon))
+        {
+            let core_version = &core_comp.current_version;
+            if let Err(e) = Self::update_registry_display_version(core_version) {
+                tracing::warn!("[UpdateManager] Failed to update registry DisplayVersion: {}", e);
             }
         }
 
@@ -1383,6 +1409,48 @@ impl UpdateManager {
     }
 
     // ══════════════════════════════════════════════════════
+    // 레지스트리 버전 갱신 (Windows "설치된 앱" 표시)
+    // ══════════════════════════════════════════════════════
+
+    /// Windows 레지스트리의 DisplayVersion을 코어 버전으로 갱신합니다.
+    /// "설정 > 앱 > 설치된 앱"에 표시되는 버전 번호를 업데이트합니다.
+    #[cfg(target_os = "windows")]
+    pub fn update_registry_display_version(version: &str) -> Result<()> {
+        use winreg::enums::*;
+        use winreg::RegKey;
+
+        const UNINSTALL_KEY: &str =
+            r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Saba-chan";
+
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        match hkcu.open_subkey_with_flags(UNINSTALL_KEY, KEY_WRITE) {
+            Ok(key) => {
+                let clean_version = version.trim_start_matches('v');
+                key.set_value("DisplayVersion", &clean_version)?;
+                tracing::info!(
+                    "[UpdateManager] Registry DisplayVersion updated to {}",
+                    clean_version
+                );
+                Ok(())
+            }
+            Err(e) => {
+                // 레지스트리 키가 없으면 (인스톨러 없이 설치된 경우) 무시
+                tracing::debug!(
+                    "[UpdateManager] Registry key not found, skipping DisplayVersion update: {}",
+                    e
+                );
+                Ok(())
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    pub fn update_registry_display_version(_version: &str) -> Result<()> {
+        // Non-Windows: 레지스트리 없음, no-op
+        Ok(())
+    }
+
+    // ══════════════════════════════════════════════════════
     // 버전 의존성 확인
     // ══════════════════════════════════════════════════════
 
@@ -1498,6 +1566,16 @@ impl UpdateManager {
                     restart_needed: false,
                 });
             }
+            Component::Updater => {
+                // Updater도 self-update flow 필요 (실행 중 교체 불가)
+                return Ok(ApplyComponentResult {
+                    component: component.manifest_key(),
+                    success: false,
+                    message: "Updater requires self-update flow".to_string(),
+                    stopped_processes: Vec::new(),
+                    restart_needed: false,
+                });
+            }
             Component::DiscordBot => {
                 self.apply_discord_bot_update(staged_path).await?;
                 ApplyComponentResult {
@@ -1533,6 +1611,31 @@ impl UpdateManager {
 
         // 적용 성공 시 상태 업데이트
         self.mark_component_applied(component);
+
+        // 로컬 매니페스트에 버전 기록
+        if result.success {
+            if let Some(comp_state) = self.status.components.iter()
+                .find(|c| &c.component == component)
+            {
+                if let Err(e) = Self::update_installed_version(
+                    &component.manifest_key(),
+                    &comp_state.current_version,
+                ) {
+                    tracing::warn!("[UpdateManager] Failed to update installed manifest for {}: {}", component.manifest_key(), e);
+                }
+            }
+
+            // 코어 컴포넌트가 업데이트된 경우, 레지스트리의 DisplayVersion도 갱신
+            if matches!(component, Component::CoreDaemon) {
+                if let Some(core_comp) = self.status.components.iter()
+                    .find(|c| matches!(c.component, Component::CoreDaemon))
+                {
+                    if let Err(e) = Self::update_registry_display_version(&core_comp.current_version) {
+                        tracing::warn!("[UpdateManager] Failed to update registry DisplayVersion: {}", e);
+                    }
+                }
+            }
+        }
 
         Ok(result)
     }
@@ -2207,6 +2310,11 @@ rm -f "$0"
                 // discord_bot 디렉토리에 index.js + package.json 존재 확인
                 self.find_discord_bot_directory().ok().map(|d| d.join("index.js").exists()).unwrap_or(false)
             }
+            Component::Updater => {
+                // 업데이터 exe 존재 확인
+                let exe_name = if cfg!(windows) { "saba-chan-updater.exe" } else { "saba-chan-updater" };
+                self.install_root.join(exe_name).exists()
+            }
             Component::Locales => {
                 // locales/ 디렉터리에 en/ 존재 확인
                 self.install_root.join("locales").join("en").exists()
@@ -2220,6 +2328,7 @@ rm -f "$0"
             (Component::CoreDaemon, self.is_component_installed(&Component::CoreDaemon)),
             (Component::Cli, self.is_component_installed(&Component::Cli)),
             (Component::Gui, self.is_component_installed(&Component::Gui)),
+            (Component::Updater, self.is_component_installed(&Component::Updater)),
             (Component::DiscordBot, self.is_component_installed(&Component::DiscordBot)),
             (Component::Locales, self.is_component_installed(&Component::Locales)),
         ];
@@ -2529,6 +2638,7 @@ rm -f "$0"
             Component::Module(name) => self.modules_dir.join(name),
             Component::Extension(name) => self.extensions_dir.join(name),
             Component::DiscordBot => self.install_root.join("discord_bot"),
+            Component::Updater => self.install_root.clone(),
             Component::Locales => self.install_root.join("locales"),
         }
     }

@@ -48,7 +48,7 @@ pub fn register_uninstall_entry(
     key.set_value("Publisher", &"WareAoba")?;
     key.set_value("InstallLocation", &install_location)?;
     key.set_value("UninstallString", &uninstall_cmd)?;
-    key.set_value("DisplayIcon", &format!("{}", install_dir.join("saba-chan-gui").join("Saba-chan.exe").to_string_lossy()))?;
+    key.set_value("DisplayIcon", &format!("{}", install_dir.join("saba-chan-gui").join("saba-chan-gui.exe").to_string_lossy()))?;
     key.set_value("NoModify", &1u32)?;
     key.set_value("NoRepair", &1u32)?;
 

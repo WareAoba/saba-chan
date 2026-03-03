@@ -61,7 +61,22 @@
                            "auto_generate_passwords_label":  "自動生成密碼",
                            "auto_generate_passwords_description":  "打開伺服器設定時，自動用隨機密碼填充空的 RCON/REST 密碼欄位。",
                            "port_conflict_check_label":  "連接埠衝突偵測",
-                           "port_conflict_check_description":  "當多個伺服器實例使用相同連接埠時顯示警告。"
+                           "port_conflict_check_description":  "當多個伺服器實例使用相同連接埠時顯示警告。",
+                           "uninstall_label":  "解除安裝 Saba-chan",
+                           "uninstall_description":  "從此電腦完全移除 Saba-chan。所有程序將被停止，安裝程式將以解除安裝模式執行。",
+                           "uninstall_confirm_title":  "解除安裝 Saba-chan",
+                           "uninstall_confirm_message":  "確定要解除安裝 Saba-chan 嗎？所有程序（GUI 和守護程序）將被停止。",
+                           "uninstall_confirm_yes":  "解除安裝",
+                           "uninstall_confirm_no":  "取消",
+                           "about_title":  "關於 Saba-chan",
+                           "about_version":  "版本",
+                           "about_description":  "一款能夠輕鬆設定、執行和管理遊戲專用伺服器的工具。",
+                           "about_developer":  "開發者",
+                           "about_developer_name":  "WareAoba",
+                           "about_github":  "GitHub",
+                           "about_license":  "授權條款",
+                           "about_back":  "返回",
+                           "made_by": "製作者"
                        },
     "add_server_modal":  {
                              "title":  "新增伺服器",
@@ -101,7 +116,8 @@
                                "new_server_desc":  "選擇遊戲模組並從頭建立新的伺服器實例。",
                                "migrate_title":  "遷移現有伺服器",
                                "migrate_desc":  "將現有遊戲伺服器目錄匯入到 saba-chan 實例中。",
-                               "migration_coming_soon":  "遷移精靈步驟將在此處實施。"
+                               "migration_coming_soon":  "遷移精靈步驟將在此處實施。",
+                               "no_modules_hint":  "請先新增一個模組。"
                            },
     "migration_modal":  {
                             "title":  "伺服器遷移",

@@ -1,31 +1,8 @@
 {
   "prefix": "사바쨩",
-  "moduleAliases": {
-    "palworld": "팰월드"
-  },
-  "commandAliases": {
-    "palworld": {
-      "announce": "공지",
-      "ban": "밴",
-      "info": "정보",
-      "kick": "강퇴",
-      "players": "상태",
-      "save": "저장",
-      "shutdown": "종료",
-      "start": "시작,실행",
-      "status": "",
-      "stop": "정지",
-      "unban": "밴해제",
-      "metrics": "",
-      "settings": ""
-    }
-  },
+  "moduleAliases": {},
+  "commandAliases": {},
   "musicEnabled": true,
-  "mode": "cloud",
-  "cloud": {
-    "relayUrl": "",
-    "hostId": "soKGFF7t62XT"
-  },
   "nodeSettings": {
     "1420751700142063778": {
       "allowedInstances": [

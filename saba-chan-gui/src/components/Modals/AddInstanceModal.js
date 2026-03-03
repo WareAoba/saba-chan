@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useState, useCallback, useRef, useLayoutEffect, useEffect } from 'react';
+import { useState, useCallback, useRef, useLayoutEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import Icon from '../Icon';
 import { useModalClose } from '../../hooks/useModalClose';
@@ -148,6 +148,7 @@ export function AddInstanceModal({
                 {mode === null && (
                     <InstanceChooser
                         t={t}
+                        hasModules={extensions && extensions.length > 0}
                         onSelectNew={() => captureAndSetMode('new')}
                         onSelectMigrate={() => captureAndSetMode('migrate')}
                         onClose={requestClose}
@@ -186,7 +187,7 @@ export function AddInstanceModal({
 /* ─────────────────────────────────────────────
  *  InstanceChooser — 두 경로를 선택하는 카드 UI
  * ───────────────────────────────────────────── */
-function InstanceChooser({ t, onSelectNew, onSelectMigrate, onClose }) {
+function InstanceChooser({ t, hasModules, onSelectNew, onSelectMigrate, onClose }) {
     return (
         <div className="add-instance-stage" key="chooser">
             {/* Header */}
@@ -206,25 +207,35 @@ function InstanceChooser({ t, onSelectNew, onSelectMigrate, onClose }) {
             <div className="modal-body add-instance-chooser-body">
                 <div className="add-instance-chooser-grid" role="group" aria-label={t('add_instance_modal.title')}>
                 {/* 새 서버 */}
-                <button
-                    className="ai-choice-card"
-                    type="button"
-                    onClick={onSelectNew}
-                >
-                    <div className="ai-choice-main">
-                        <div className="ai-choice-icon ai-choice-icon--new">
-                            <Icon name="plus" size="xl" />
+                <div className="ai-choice-col">
+                    <button
+                        className={clsx('ai-choice-card', { 'ai-choice-card--disabled': !hasModules })}
+                        type="button"
+                        onClick={hasModules ? onSelectNew : undefined}
+                        disabled={!hasModules}
+                        aria-disabled={!hasModules}
+                    >
+                        <div className="ai-choice-main">
+                            <div className="ai-choice-icon ai-choice-icon--new">
+                                <Icon name="plus" size="xl" />
+                            </div>
+                            <div className="ai-choice-text">
+                                <span className="ai-choice-title">
+                                    {t('add_instance_modal.new_server_title')}
+                                </span>
+                                <span className="ai-choice-desc">
+                                    {t('add_instance_modal.new_server_desc')}
+                                </span>
+                            </div>
                         </div>
-                        <div className="ai-choice-text">
-                            <span className="ai-choice-title">
-                                {t('add_instance_modal.new_server_title')}
-                            </span>
-                            <span className="ai-choice-desc">
-                                {t('add_instance_modal.new_server_desc')}
-                            </span>
-                        </div>
-                    </div>
-                </button>
+                    </button>
+                    {!hasModules && (
+                        <p className="ai-no-modules-hint">
+                            <Icon name="alertCircle" size="sm" />
+                            {t('add_instance_modal.no_modules_hint')}
+                        </p>
+                    )}
+                </div>
 
                 {/* 기존 서버 마이그레이션 */}
                 <button

@@ -42,6 +42,12 @@ function SettingsModal({
     const [ipcPortChanged, setIpcPortChanged] = useState(false);
     const [ipcPortError, setIpcPortError] = useState('');
     const [localConsoleBuffer, setLocalConsoleBuffer] = useState(consoleBufferSize || 2000);
+    const [showAboutPage, setShowAboutPage] = useState(false);
+    const [aboutExiting, setAboutExiting] = useState(false);
+    const [appVersion, setAppVersion] = useState('0.1.0');
+    const [componentInfo, setComponentInfo] = useState(null);
+    const aboutBtnRef = useRef(null);
+    const [aboutRevealOrigin, setAboutRevealOrigin] = useState({ x: '100%', y: '0%' });
     const tabOrder = ['general', 'appearance', 'extensions', 'advanced'];
     const { isClosing, requestClose } = useModalClose(onClose);
 
@@ -103,6 +109,19 @@ function SettingsModal({
     useEffect(() => {
         if (!isOpen) {
             setShowUpdatePanel(false);
+            setShowAboutPage(false);
+        }
+    }, [isOpen]);
+
+    // 앱 버전 & 컴포넌트 정보 가져오기
+    useEffect(() => {
+        if (isOpen) {
+            if (window.api?.getAppVersion) {
+                window.api.getAppVersion().then((v) => v && setAppVersion(v)).catch(() => {});
+            }
+            if (window.api?.getComponentInfo) {
+                window.api.getComponentInfo().then((info) => info && setComponentInfo(info)).catch(() => {});
+            }
         }
     }, [isOpen]);
 
@@ -125,6 +144,55 @@ function SettingsModal({
             setSlideDirection('slide-right');
         }, 150);
     }, []);
+
+    // 정보 페이지 뒤로가기
+    const handleAboutBack = useCallback(() => {
+        setAboutExiting(true);
+        setTimeout(() => {
+            setAboutExiting(false);
+            setShowAboutPage(false);
+        }, 400);
+    }, []);
+
+    // 정보 페이지 열기 (원형 확장 효과)
+    const handleAboutOpen = useCallback(() => {
+        const btn = aboutBtnRef.current;
+        if (btn) {
+            const container = btn.closest('.settings-modal-container');
+            if (container) {
+                const containerRect = container.getBoundingClientRect();
+                const btnRect = btn.getBoundingClientRect();
+                const x = btnRect.left - containerRect.left + btnRect.width / 2;
+                const y = btnRect.top - containerRect.top + btnRect.height / 2;
+                setAboutRevealOrigin({ x: `${x}px`, y: `${y}px` });
+            }
+        }
+        setShowAboutPage(true);
+    }, []);
+
+    // 사바쨩 삭제 핸들러
+    const handleUninstall = useCallback(() => {
+        if (!window.api?.launchUninstaller) return;
+        // question 모달을 통해 확인
+        if (onTestModal) {
+            onTestModal({
+                type: 'question',
+                title: t('gui:settings_modal.uninstall_confirm_title'),
+                message: t('gui:settings_modal.uninstall_confirm_message'),
+                confirmText: t('gui:settings_modal.uninstall_confirm_yes'),
+                cancelText: t('gui:settings_modal.uninstall_confirm_no'),
+                onConfirm: async () => {
+                    onTestModal(null);
+                    try {
+                        await window.api.launchUninstaller();
+                    } catch (err) {
+                        console.error('Failed to launch uninstaller:', err);
+                    }
+                },
+                onCancel: () => onTestModal(null),
+            });
+        }
+    }, [t, onTestModal]);
 
     // refreshInterval prop이 변경되면 로컬 상태 업데이트
     useEffect(() => {
@@ -213,6 +281,14 @@ function SettingsModal({
                     <>
                         <div className="settings-modal-header">
                             <h2 style={{ fontSize: '1.3rem' }}>{t('gui:settings_modal.title')}</h2>
+                            <button
+                                className="settings-about-btn"
+                                ref={aboutBtnRef}
+                                onClick={handleAboutOpen}
+                                title={t('gui:settings_modal.about_title')}
+                            >
+                                <Icon name="info" size="sm" />
+                            </button>
                         </div>
 
                         <div className="settings-modal-tabs" ref={tabsRef}>
@@ -246,6 +322,7 @@ function SettingsModal({
                 )}
 
                 <div className={clsx('settings-modal-content', { 'update-panel-mode': showUpdatePanel })}>
+
                     {activeTab === 'general' && !showUpdatePanel && (
                         <div
                             className={clsx('settings-tab-content', slideDirection)}
@@ -747,8 +824,114 @@ function SettingsModal({
                                     </div>
                                 </div>
                             )}
+
+                            {/* 사바쨩 삭제 */}
+                            <div className="setting-item setting-item-danger" onClick={handleUninstall}>
+                                <label className="setting-label" style={{ cursor: 'pointer' }}>
+                                    <span className="setting-title setting-title-danger">
+                                        <Icon name="trash" size="sm" /> {t('gui:settings_modal.uninstall_label')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.uninstall_description')}
+                                    </span>
+                                </label>
+                                <Icon name="chevronRight" size="sm" color="var(--color-danger, #e74c3c)" />
+                            </div>
                         </div>
                     )}
+                </div>
+
+                {/* ── 정보 페이지 (원형 확장 오버레이) ── */}
+                <div
+                    className={clsx('about-page-reveal', {
+                        'about-active': showAboutPage && !aboutExiting,
+                        'about-closing': aboutExiting,
+                    })}
+                    style={{ '--reveal-x': aboutRevealOrigin.x, '--reveal-y': aboutRevealOrigin.y }}
+                >
+                    <div className="about-header">
+                        <button className="about-close-btn" onClick={handleAboutBack}>
+                            <Icon name="x" size="sm" />
+                        </button>
+                    </div>
+
+                    <div className="about-scroll-area">
+                        {/* 개발자 프로필 카드 */}
+                        <div className="about-card about-dev-card">
+                            <div className="about-dev-avatar">
+                                <img
+                                    src="https://github.com/WareAoba.png"
+                                    alt="WareAoba"
+                                    className="about-dev-img"
+                                    onError={(e) => { e.target.style.display = 'none'; }}
+                                />
+                            </div>
+                            <div className="about-dev-info">
+                                <span className="about-dev-nickname">와레아오바</span>
+                                <span className="about-dev-id">@WareAoba</span>
+                                <span className="about-dev-bio">인공지능 조련사</span>
+                            </div>
+                            <span className="about-made-by">{t('gui:settings_modal.made_by')}</span>
+                            <button
+                                className="about-dev-github-btn"
+                                onClick={() => {
+                                    if (window.electron?.shell?.openExternal) {
+                                        window.electron.shell.openExternal('https://github.com/WareAoba/saba-chan');
+                                    } else {
+                                        window.open('https://github.com/WareAoba/saba-chan', '_blank');
+                                    }
+                                }}
+                            >
+                                <Icon name="github" size="sm" />
+                                <span>GitHub 리포지토리</span>
+                            </button>
+                        </div>
+
+                        {/* 사바쨩 정보 카드 */}
+                        <div className="about-card about-app-card">
+                            <div className="about-app-logo-container">
+                                <img src="/title.png" alt="Saba-chan" className="about-app-logo" />
+                                <span className="about-version-badge">v{appVersion}</span>
+                            </div>
+                            <div className="about-app-info">
+                                {/* 컴포넌트 버전 */}
+                                <div className="about-component-list">
+                                    <div className="about-component-item">
+                                        <span className="about-component-label"><Icon name="package" size="xs" /> Core</span>
+                                        <span className="about-component-ver">v{componentInfo?.components?.['saba-core'] || appVersion}</span>
+                                    </div>
+                                    <div className="about-component-item">
+                                        <span className="about-component-label"><Icon name="monitor" size="xs" /> GUI</span>
+                                        <span className="about-component-ver">v{componentInfo?.components?.gui || appVersion}</span>
+                                    </div>
+                                    <div className="about-component-item">
+                                        <span className="about-component-label"><Icon name="terminal" size="xs" /> CLI</span>
+                                        <span className="about-component-ver">v{componentInfo?.components?.cli || appVersion}</span>
+                                    </div>
+                                    <div className="about-component-item">
+                                        <span className="about-component-label"><Icon name="discord" size="xs" /> Discord Bot</span>
+                                        <span className="about-component-ver">v{componentInfo?.components?.discord_bot || appVersion}</span>
+                                    </div>
+                                    <div className="about-component-item">
+                                        <span className="about-component-label"><Icon name="refresh" size="xs" /> Updater</span>
+                                        <span className="about-component-ver">v{componentInfo?.components?.updater || appVersion}</span>
+                                    </div>
+                                </div>
+
+                                {/* 마지막 업데이트 & 라이선스 */}
+                                <div className="about-app-footer">
+                                    {componentInfo?.lastUpdated && (
+                                        <span className="about-app-meta">
+                                            <Icon name="clock" size="xs" /> {new Date(componentInfo.lastUpdated).toLocaleDateString(i18n.language, { year: 'numeric', month: 'long', day: 'numeric' })}
+                                        </span>
+                                    )}
+                                    <span className="about-app-meta">
+                                        <Icon name="file" size="xs" /> MIT License
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 {!showUpdatePanel && (

@@ -205,13 +205,18 @@ async fn handle_check_version(
 
     match result {
         Ok(update_status) => {
-            let updates: Vec<ComponentVersion> = update_status
+            // ── Locales 자동 적용: 사용자 비표시 ──
+            // Locales는 작고 재시작이 불필요하므로, 체크 직후 자동으로 다운로드+적용한다.
+            let locales_silently_applied = silent_apply_locales(manager).await;
+
+            // Locales를 제외한 "사용자에게 보이는" 업데이트 목록
+            let visible_updates: Vec<ComponentVersion> = update_status
                 .components
                 .iter()
-                .filter(|c| c.update_available)
+                .filter(|c| c.update_available && !matches!(c.component, Component::Locales))
                 .cloned()
                 .collect();
-            let update_count = updates.len();
+            let visible_count = visible_updates.len();
 
             {
                 let mut s = status.write().await;
@@ -219,24 +224,36 @@ async fn handle_check_version(
                 s.next_check = update_status.next_check.clone();
             }
 
+            // 이벤트에는 Locales를 제외한 컴포넌트만 전달
+            let visible_components: Vec<ComponentVersion> = {
+                let mgr = manager.read().await;
+                mgr.get_status().components.iter()
+                    .filter(|c| !matches!(c.component, Component::Locales))
+                    .cloned()
+                    .collect()
+            };
+
             let _ = event_tx.send(WorkerEvent::CheckCompleted {
-                updates_available: update_count,
-                components: update_status.components.clone(),
+                updates_available: visible_count,
+                components: visible_components,
             });
 
-            // 업데이트가 있으면 알림
-            if update_count > 0 {
-                let names: Vec<String> = updates.iter()
+            // 업데이트가 있으면 알림 (Locales 제외)
+            if visible_count > 0 {
+                let names: Vec<String> = visible_updates.iter()
                     .map(|c| c.component.display_name())
                     .collect();
                 let _ = event_tx.send(WorkerEvent::UpdateNotification {
-                    title: format!("{} Update(s) Available", update_count),
+                    title: format!("{} Update(s) Available", visible_count),
                     message: names.join(", "),
-                    update_count,
+                    update_count: visible_count,
                 });
             }
 
-            tracing::info!("[Worker] Check completed: {} update(s) available", update_count);
+            if locales_silently_applied {
+                tracing::info!("[Worker] Locales silently updated in background");
+            }
+            tracing::info!("[Worker] Check completed: {} visible update(s) available", visible_count);
         }
         Err(e) => {
             let error = format!("{}", e);
@@ -249,6 +266,55 @@ async fn handle_check_version(
         let mut s = status.write().await;
         s.busy = false;
         s.current_task = None;
+    }
+}
+
+/// Locales 컴포넌트를 사용자 비표시로 다운로드+적용한다.
+///
+/// 실패 시에도 에러만 로깅하고 `false`를 반환 — 사용자 흐름에 영향 없음.
+async fn silent_apply_locales(manager: &Arc<RwLock<UpdateManager>>) -> bool {
+    // 1. Locales 업데이트가 있는지 확인
+    let has_locale_update = {
+        let mgr = manager.read().await;
+        mgr.get_status().components.iter().any(|c| {
+            matches!(c.component, Component::Locales) && c.update_available
+        })
+    };
+
+    if !has_locale_update {
+        return false;
+    }
+
+    // 2. 다운로드
+    let download_ok = {
+        let mut mgr = manager.write().await;
+        match mgr.download_component(&Component::Locales).await {
+            Ok(_) => true,
+            Err(e) => {
+                tracing::warn!("[Worker] Silent locales download failed: {}", e);
+                false
+            }
+        }
+    };
+
+    if !download_ok {
+        return false;
+    }
+
+    // 3. 적용
+    {
+        let mut mgr = manager.write().await;
+        match mgr.apply_single_component(&Component::Locales).await {
+            Ok(result) if result.success => true,
+            Ok(result) => {
+                tracing::warn!("[Worker] Silent locales apply returned failure: {}", result.message);
+                false
+            }
+            Err(e) => {
+                tracing::warn!("[Worker] Silent locales apply failed: {}", e);
+                false
+            }
+        }
     }
 }
 

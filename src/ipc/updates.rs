@@ -287,8 +287,8 @@ async fn apply_updates(
                     }
                 }
             }
-            // GUI: 업데이터 exe에서 적용 — GUI 종료+파일교체+재시작 필요
-            Component::Gui => {
+            // GUI/Updater: 업데이터 exe에서 적용 — 종료+파일교체+재시작 필요
+            Component::Gui | Component::Updater => {
                 needs_updater.push(comp.manifest_key());
             }
             // Extension: 모듈과 동일 — 데몬이 직접 적용

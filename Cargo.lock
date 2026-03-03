@@ -3547,6 +3547,7 @@ dependencies = [
  "tokio",
  "toml 0.5.11",
  "tracing",
+ "winreg 0.52.0",
  "zip",
 ]
 

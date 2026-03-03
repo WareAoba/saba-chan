@@ -7,6 +7,7 @@
 
 pub mod github;
 pub mod registry;
+pub mod runtime_bootstrap;
 pub mod shortcuts;
 pub mod uninstall;
 
@@ -260,32 +261,35 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         app.emit("install:progress", &p).ok();
     };
 
-    // Step 1: 설치 디렉토리 생성 (0-5%)
+    // Step 1: 설치 디렉토리 생성 + 쓰기 권한 확인 (0-5%)
     emit("prepare", "Creating install directory...", 2);
     let install_dir = PathBuf::from(&config.install_path);
-    if let Err(e) = std::fs::create_dir_all(&install_dir) {
-        // 권한 부족 시 UAC 상승 시도
-        let kind = e.kind();
-        if kind == std::io::ErrorKind::PermissionDenied {
-            emit("elevate", "Requesting administrator privileges...", 1);
-            match relaunch_as_admin() {
-                Ok(()) => {
-                    // 관리자 권한으로 재실행됨 → 현재 프로세스 종료
-                    std::process::exit(0);
-                }
-                Err(elev_err) => {
-                    emit_error(
-                        &app,
-                        &state,
-                        &format!("Failed to elevate privileges: {}", elev_err),
-                    )
-                    .await;
-                    return;
-                }
+    let _ = std::fs::create_dir_all(&install_dir); // 이미 있어도 OK
+
+    // 실제 쓰기 가능 여부 테스트
+    let needs_elevation = {
+        let probe = install_dir.join(".saba-write-test");
+        match std::fs::write(&probe, b"test") {
+            Ok(_) => { let _ = std::fs::remove_file(&probe); false }
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => true,
+            Err(_) => {
+                // 디렉토리 자체가 없는 경우 (create_dir_all도 실패)
+                !install_dir.exists()
             }
         }
-        emit_error(&app, &state, &format!("Failed to create directory: {}", e)).await;
-        return;
+    };
+
+    if needs_elevation {
+        emit("elevate", "Requesting administrator privileges...", 1);
+        if let Err(elev_err) = elevate_create_dir(&install_dir) {
+            emit_error(
+                &app,
+                &state,
+                &format!("Failed to create directory: {}", elev_err),
+            )
+            .await;
+            return;
+        }
     }
 
     // Step 2: 릴리즈 매니페스트 페치 (5-10%)
@@ -330,7 +334,7 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         }
     };
 
-    // Step 3: 에셋 다운로드 + 압축 해제 (10-65%)
+    // Step 3: 에셋 다운로드 + 압축 해제 (10-45%)
     let components: Vec<_> = manifest.components.iter().collect();
     let total = components.len().max(1);
     let mut installed = Vec::new();
@@ -341,7 +345,7 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
             _ => continue,
         };
 
-        let pct = 10 + (i * 55 / total) as i32;
+        let pct = 10 + (i * 35 / total) as i32;
         emit("download", &format!("Downloading {}...", key), pct);
 
         let download_url = match github::get_asset_download_url(
@@ -384,9 +388,9 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         installed.push(key.to_string());
     }
 
-    // Step 4: 모듈 다운로드 및 설치 (65-80%)
+    // Step 4: 모듈 다운로드 및 설치 (45-55%)
     if !config.selected_modules.is_empty() {
-        emit("modules", "Downloading game modules...", 67);
+        emit("modules", "Downloading game modules...", 47);
 
         let temp_dir = std::env::temp_dir().join("saba-chan-installer");
         let _ = std::fs::create_dir_all(&temp_dir);
@@ -400,7 +404,7 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         .await
         {
             Ok(()) => {
-                emit("modules", "Extracting game modules...", 73);
+                emit("modules", "Extracting game modules...", 52);
                 match extract_modules_from_zipball(
                     &modules_zip,
                     &install_dir,
@@ -423,16 +427,60 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         }
     }
 
-    // Step 5: 설정 파일 생성 (80-85%)
-    emit("config", "Setting up configuration...", 82);
+    // Step 5: 포터블 Python 다운로드 + venv 생성 (55-70%)
+    emit("runtime", "파이썬 런타임 준비중...", 57);
+    let runtime_data_dir = runtime_bootstrap::resolve_runtime_data_dir(&install_dir);
+    let _ = std::fs::create_dir_all(&runtime_data_dir);
+
+    match runtime_bootstrap::setup_python(&runtime_data_dir).await {
+        Ok(python_path) => {
+            tracing::info!("Python 환경 준비 완료: {}", python_path.display());
+            installed.push("runtime:python".to_string());
+        }
+        Err(e) => {
+            tracing::warn!("Python 환경 설정 실패 (비치명적): {}", e);
+            // Python 설정 실패는 치명적이지 않음 — 메인 앱이 첫 실행 시 재시도
+        }
+    }
+
+    // Step 6: 포터블 Node.js 다운로드 + npm install (70-85%)
+    emit("runtime", "Discord 봇 환경 준비중...", 72);
+
+    match runtime_bootstrap::setup_node(&runtime_data_dir).await {
+        Ok(node_path) => {
+            tracing::info!("Node.js 환경 준비 완료: {}", node_path.display());
+            installed.push("runtime:nodejs".to_string());
+
+            // Discord Bot npm install
+            let bot_dir = install_dir.join("discord_bot");
+            if bot_dir.join("package.json").exists() {
+                emit("runtime", "Discord 봇 환경 준비중...", 78);
+                match runtime_bootstrap::npm_install(&node_path, &bot_dir).await {
+                    Ok(()) => {
+                        tracing::info!("Discord Bot npm install 완료");
+                        installed.push("runtime:npm-deps".to_string());
+                    }
+                    Err(e) => {
+                        tracing::warn!("npm install 실패 (비치명적): {}", e);
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            tracing::warn!("Node.js 환경 설정 실패 (비치명적): {}", e);
+        }
+    }
+
+    // Step 7: 설정 파일 생성 (85-88%)
+    emit("config", "Setting up configuration...", 86);
     setup_config(&install_dir, &config);
 
-    // Step 6: 언어 설정 저장 (85-88%)
-    emit("config", "Saving language settings...", 86);
+    // Step 8: 언어 설정 저장 (88-90%)
+    emit("config", "Saving language settings...", 89);
     save_language_setting(&config.language);
 
-    // Step 7: 레지스트리 등록 (88-93%)
-    emit("registry", "Registering application...", 90);
+    // Step 9: 레지스트리 등록 (90-95%)
+    emit("registry", "Registering application...", 92);
     #[cfg(target_os = "windows")]
     {
         if let Err(e) = registry::register_uninstall_entry(&install_dir, &tag) {
@@ -440,19 +488,28 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         }
     }
 
-    // Step 8: 바로가기 (93-100%)
-    emit("shortcuts", "Creating shortcuts...", 95);
+    // Step 10: 바로가기 (95-100%)
+    emit("shortcuts", "Creating shortcuts...", 96);
     #[cfg(target_os = "windows")]
     {
-        let gui_exe = install_dir.join("saba-chan-gui.exe");
+        let gui_exe = install_dir.join("saba-chan-gui").join("saba-chan-gui.exe");
+        let app_name = localized_app_name(&config.language);
+
+        // 기존 바로가기 제거 (언어 변경 시 이전 이름의 잔재 방지)
+        const ALL_SHORTCUT_NAMES: &[&str] = &["Saba-chan", "사바쨩", "サバちゃん"];
+        for old_name in ALL_SHORTCUT_NAMES {
+            let _ = shortcuts::remove_desktop_shortcut(old_name);
+            let _ = shortcuts::remove_start_menu_shortcut(old_name);
+        }
+
         if gui_exe.exists() {
             if config.create_desktop_shortcut {
-                if let Err(e) = shortcuts::create_desktop_shortcut(&gui_exe, "Saba-chan") {
+                if let Err(e) = shortcuts::create_desktop_shortcut(&gui_exe, app_name) {
                     tracing::warn!("Desktop shortcut failed: {}", e);
                 }
             }
             if config.create_start_menu_shortcut {
-                if let Err(e) = shortcuts::create_start_menu_shortcut(&gui_exe, "Saba-chan") {
+                if let Err(e) = shortcuts::create_start_menu_shortcut(&gui_exe, app_name) {
                     tracing::warn!("Start menu shortcut failed: {}", e);
                 }
             }
@@ -493,9 +550,10 @@ async fn emit_error(app: &AppHandle, state: &SharedState, msg: &str) {
 // ═══════════════════════════════════════════════════════
 
 #[tauri::command]
-async fn start_uninstall(app: AppHandle) -> Result<(), String> {
+async fn start_uninstall(app: AppHandle, keep_settings: Option<bool>) -> Result<(), String> {
+    let preserve = keep_settings.unwrap_or(false);
     tauri::async_runtime::spawn(async move {
-        uninstall::do_uninstall(&app).await;
+        uninstall::do_uninstall(&app, preserve).await;
     });
     Ok(())
 }
@@ -508,52 +566,89 @@ async fn get_app_mode(mode: State<'_, AppMode>) -> Result<serde_json::Value, Str
     }))
 }
 
-// ═══════════════════════════════════════════════════════
-// 관리자 권한 상승 (UAC)
-// ═══════════════════════════════════════════════════════
-
-/// 현재 프로세스를 관리자 권한으로 재실행한다.
-#[cfg(target_os = "windows")]
-fn relaunch_as_admin() -> Result<(), String> {
-    use std::os::windows::ffi::OsStrExt;
-
-    let exe = std::env::current_exe().map_err(|e| format!("Cannot get exe path: {}", e))?;
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let args_str = args.join(" ");
-
-    let verb: Vec<u16> = std::ffi::OsStr::new("runas\0").encode_wide().collect();
-    let file: Vec<u16> = {
-        let mut v: Vec<u16> = exe.as_os_str().encode_wide().collect();
-        v.push(0);
-        v
-    };
-    let params: Vec<u16> = {
-        let mut v: Vec<u16> = std::ffi::OsStr::new(&args_str).encode_wide().collect();
-        v.push(0);
-        v
-    };
-
-    let ret = unsafe {
-        windows_sys::Win32::UI::Shell::ShellExecuteW(
-            std::ptr::null_mut(),
-            verb.as_ptr(),
-            file.as_ptr(),
-            params.as_ptr(),
-            std::ptr::null(),
-            windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL,
-        )
-    };
-
-    // ShellExecuteW returns > 32 on success
-    if ret as isize > 32 {
+#[tauri::command]
+async fn launch_app(state: State<'_, SharedState>) -> Result<(), String> {
+    let install_path = state.read().await.install_path.clone();
+    let exe = PathBuf::from(&install_path)
+        .join("saba-chan-gui")
+        .join(if cfg!(windows) { "saba-chan-gui.exe" } else { "saba-chan-gui" });
+    if exe.exists() {
+        std::process::Command::new(&exe)
+            .current_dir(&install_path)
+            .spawn()
+            .map_err(|e| format!("Failed to launch Saba-chan: {}", e))?;
         Ok(())
     } else {
-        Err(format!("ShellExecuteW failed with code: {}", ret as isize))
+        Err(format!("Executable not found: {}", exe.display()))
     }
 }
 
+// ═══════════════════════════════════════════════════════
+// 관리자 권한 상승 (UAC) — 디렉토리 생성 전용
+// ═══════════════════════════════════════════════════════
+
+/// UAC 프롬프트로 디렉토리를 생성하고 현재 사용자에게 쓰기 권한을 부여한다.
+/// 앱 전체를 재시작하지 않고 디렉토리만 상승 처리한다.
+/// ShellExecuteExW("runas")로 자기 자신을 --elevate-mkdir 모드로 실행하므로
+/// UAC 대화상자에 "Windows PowerShell"이 아닌 인스톨러 이름이 표시된다.
+#[cfg(target_os = "windows")]
+fn elevate_create_dir(dir: &Path) -> Result<(), String> {
+    use std::ffi::OsStr;
+    use std::mem::{size_of, zeroed};
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::WaitForSingleObject;
+    use windows_sys::Win32::UI::Shell::{
+        ShellExecuteExW, SHELLEXECUTEINFOW, SEE_MASK_NOCLOSEPROCESS,
+    };
+
+    fn to_wide(s: &str) -> Vec<u16> {
+        OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+    }
+
+    let self_exe = std::env::current_exe()
+        .map_err(|e| format!("Failed to get current exe path: {}", e))?;
+
+    let verb = to_wide("runas");
+    let file = to_wide(&self_exe.to_string_lossy());
+    let params = to_wide(&format!("--elevate-mkdir \"{}\"", dir.to_string_lossy()));
+
+    let mut sei: SHELLEXECUTEINFOW = unsafe { zeroed() };
+    sei.cbSize = size_of::<SHELLEXECUTEINFOW>() as u32;
+    sei.fMask = SEE_MASK_NOCLOSEPROCESS;
+    sei.lpVerb = verb.as_ptr();
+    sei.lpFile = file.as_ptr();
+    sei.lpParameters = params.as_ptr();
+    sei.nShow = 0; // SW_HIDE
+
+    let ok = unsafe { ShellExecuteExW(&mut sei) };
+    if ok == 0 {
+        return Err("UAC elevation was cancelled or failed".into());
+    }
+
+    // 프로세스 완료 대기 (최대 30초)
+    if !sei.hProcess.is_null() {
+        unsafe {
+            WaitForSingleObject(sei.hProcess, 30_000);
+            CloseHandle(sei.hProcess);
+        }
+    }
+
+    if dir.exists() {
+        // 쓰기 권한 확인
+        let probe = dir.join(".saba-write-test");
+        if std::fs::write(&probe, b"test").is_ok() {
+            let _ = std::fs::remove_file(&probe);
+            return Ok(());
+        }
+        return Err("Directory exists but write permission was not granted".into());
+    }
+
+    Err("Directory creation was cancelled or failed".into())
+}
+
 #[cfg(not(target_os = "windows"))]
-fn relaunch_as_admin() -> Result<(), String> {
+fn elevate_create_dir(dir: &Path) -> Result<(), String> {
     Err("Elevation is only supported on Windows".to_string())
 }
 
@@ -590,6 +685,15 @@ async fn browse_folder(app: AppHandle) -> Result<Option<String>, String> {
 // ═══════════════════════════════════════════════════════
 // 헬퍼 함수
 // ═══════════════════════════════════════════════════════
+
+/// 설치 언어에 맞는 앱 표시 이름을 반환한다.
+fn localized_app_name(language: &str) -> &'static str {
+    match language {
+        "ko" => "사바쨩",
+        "ja" => "サバちゃん",
+        _ => "Saba-chan",
+    }
+}
 
 fn get_default_install_path() -> String {
     #[cfg(target_os = "windows")]
@@ -799,6 +903,47 @@ fn save_language_setting(language: &str) {
 pub fn run() {
     let args: Vec<String> = std::env::args().collect();
 
+    // --elevate-mkdir <path> → UAC 상승된 상태에서 디렉토리 생성 + 권한 부여 후 즉시 종료
+    // 이 분기는 elevate_create_dir()가 ShellExecuteW("runas")로 자기 자신을 재실행할 때 진입한다.
+    if let Some(pos) = args.iter().position(|a| a == "--elevate-mkdir") {
+        if let Some(dir_str) = args.get(pos + 1) {
+            let dir = Path::new(dir_str);
+            // 디렉토리 생성
+            if let Err(e) = std::fs::create_dir_all(dir) {
+                eprintln!("elevate-mkdir: failed to create dir: {}", e);
+                std::process::exit(1);
+            }
+            // 현재 사용자에게 전체 권한 부여
+            let username = std::env::var("USERNAME").unwrap_or_else(|_| "Users".into());
+            let icacls = std::process::Command::new("icacls")
+                .args([
+                    dir_str.as_str(),
+                    "/grant",
+                    &format!("{}:(OI)(CI)F", username),
+                    "/T",
+                    "/Q",
+                ])
+                .output();
+            match icacls {
+                Ok(out) if out.status.success() => std::process::exit(0),
+                Ok(out) => {
+                    eprintln!(
+                        "elevate-mkdir: icacls failed: {}",
+                        String::from_utf8_lossy(&out.stderr)
+                    );
+                    std::process::exit(1);
+                }
+                Err(e) => {
+                    eprintln!("elevate-mkdir: icacls spawn error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        } else {
+            eprintln!("elevate-mkdir: missing path argument");
+            std::process::exit(1);
+        }
+    }
+
     let is_uninstall = args.iter().any(|a| a == "--uninstall");
     let is_silent = args.iter().any(|a| a == "--silent");
 
@@ -874,6 +1019,7 @@ pub fn run() {
             get_app_mode,
             get_preferred_language,
             browse_folder,
+            launch_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

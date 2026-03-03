@@ -61,7 +61,22 @@
                            "auto_generate_passwords_label":  "Автоматически генерировать пароли",
                            "auto_generate_passwords_description":  "Автоматически заполняет пустые поля пароля RCON/REST случайными паролями при открытии параметров сервера.",
                            "port_conflict_check_label":  "Обнаружение конфликта портов",
-                           "port_conflict_check_description":  "Показывает предупреждения, когда несколько экземпляров сервера используют один и тот же порт."
+                           "port_conflict_check_description":  "Показывает предупреждения, когда несколько экземпляров сервера используют один и тот же порт.",
+                           "uninstall_label":  "Удалить Saba-chan",
+                           "uninstall_description":  "Полностью удалить Saba-chan с этого компьютера. Все процессы будут остановлены, и программа установки будет запущена в режиме удаления.",
+                           "uninstall_confirm_title":  "Удалить Saba-chan",
+                           "uninstall_confirm_message":  "Вы уверены, что хотите удалить Saba-chan? Все процессы (GUI и демон) будут остановлены.",
+                           "uninstall_confirm_yes":  "Удалить",
+                           "uninstall_confirm_no":  "Отмена",
+                           "about_title":  "О Saba-chan",
+                           "about_version":  "Версия",
+                           "about_description":  "Инструмент для управления игровыми серверами, который упрощает настройку, запуск и управление выделенными серверами.",
+                           "about_developer":  "Разработчик",
+                           "about_developer_name":  "WareAoba",
+                           "about_github":  "GitHub",
+                           "about_license":  "Лицензия",
+                           "about_back":  "Назад",
+                           "made_by": "Создано"
                        },
     "add_server_modal":  {
                              "title":  "Добавить новый сервер",
@@ -101,7 +116,8 @@
                                "new_server_desc":  "Игровой модуль을 Выбрать하고 새로운 서버 인스턴스를 처음부터 생성합니다.",
                                "migrate_title":  "기존 Миграция сервера",
                                "migrate_desc":  "Импортируйте существующий каталог игрового сервера в экземпляр saba-chan.",
-                               "migration_coming_soon":  "Этапы мастера миграции будут реализованы здесь."
+                               "migration_coming_soon":  "Этапы мастера миграции будут реализованы здесь.",
+                               "no_modules_hint":  "Сначала добавьте модуль."
                            },
     "migration_modal":  {
                             "title":  "Миграция сервера",

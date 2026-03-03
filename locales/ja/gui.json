@@ -61,7 +61,22 @@
                            "auto_generate_passwords_label":  "パスワード自動生成",
                            "auto_generate_passwords_description":  "サーバー設定時にRCON/RESTのパスワード欄が空の場合、ランダムなパスワードを自動で入力します。",
                            "port_conflict_check_label":  "ポート競合チェック",
-                           "port_conflict_check_description":  "複数のサーバーインスタンスが同じポートを使用している場合に警告を表示します。"
+                           "port_conflict_check_description":  "複数のサーバーインスタンスが同じポートを使用している場合に警告を表示します。",
+                           "uninstall_label":  "サバちゃんをアンインストール",
+                           "uninstall_description":  "このコンピューターからサバちゃんを完全に削除します。すべてのプロセスが停止され、インストーラーがアンインストールモードで実行されます。",
+                           "uninstall_confirm_title":  "サバちゃんをアンインストール",
+                           "uninstall_confirm_message":  "本当にサバちゃんをアンインストールしますか？すべてのプロセス（GUIおよびデーモン）が停止されます。",
+                           "uninstall_confirm_yes":  "アンインストール",
+                           "uninstall_confirm_no":  "キャンセル",
+                           "about_title":  "サバちゃんについて",
+                           "about_version":  "バージョン",
+                           "about_description":  "ゲームサーバーを簡単にセットアップ、実行、管理できるゲームサーバー管理ツールです。",
+                           "about_developer":  "開発者",
+                           "about_developer_name":  "WareAoba",
+                           "about_github":  "GitHub",
+                           "about_license":  "ライセンス",
+                           "about_back":  "戻る",
+                           "made_by": "作成者"
                        },
     "add_server_modal":  {
                              "title":  "新規サーバーを追加",
@@ -638,7 +653,8 @@
                                "new_server_desc":  "ゲームモジュールを選択し、新しいサーバーインスタンスを最初から作成します。",
                                "migrate_title":  "既存サーバーの移行",
                                "migrate_desc":  "既存のゲームサーバーディレクトリをsaba-chanインスタンスとして取り込みます。",
-                               "migration_coming_soon":  "マイグレーションウィザードの実装はまもなく追加されます。"
+                               "migration_coming_soon":  "マイグレーションウィザードの実装はまもなく追加されます。",
+                               "no_modules_hint":  "先にモジュールを追加してください。"
                            },
     "migration_modal":  {
                             "title":  "サーバー移行",

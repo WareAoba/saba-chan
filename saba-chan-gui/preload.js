@@ -105,6 +105,10 @@ contextBridge.exposeInMainWorld('api', {
     // Logs API
     logsGetPath: () => ipcRenderer.invoke('logs:getPath'),
     logsOpenFolder: () => ipcRenderer.invoke('logs:openFolder'),
+    // Uninstall
+    launchUninstaller: () => ipcRenderer.invoke('app:launchUninstaller'),
+    getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
+    getComponentInfo: () => ipcRenderer.invoke('app:getComponentInfo'),
     // App Lifecycle
     onCloseRequest: (callback) => ipcRenderer.on('app:closeRequest', callback),
     offCloseRequest: () => ipcRenderer.removeAllListeners('app:closeRequest'),

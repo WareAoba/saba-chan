@@ -82,7 +82,8 @@ const parseComponents = (comps) =>
     (comps || [])
         .filter((c) => {
             const k = typeof c.component === 'string' ? c.component : String(c.component);
-            return !k.startsWith('module-');
+            // 모듈은 별도 탭, locales는 백그라운드 자동 업데이트 — UI에 비표시
+            return !k.startsWith('module-') && k !== 'locales';
         })
         .map((c) => {
             const key = typeof c.component === 'string' ? c.component : String(c.component);
@@ -97,13 +98,15 @@ const parseComponents = (comps) =>
                         ? 'terminal'
                         : key === 'discord_bot'
                           ? 'discord'
-                          : 'server',
+                          : key === 'updater'
+                            ? 'refresh'
+                            : 'server',
                 current_version: c.current_version || '—',
                 latest_version: c.latest_version || null,
                 update_available: !!c.update_available,
                 downloaded: !!c.downloaded,
                 installed: !!c.installed,
-                needsUpdater: key === 'gui' || key === 'saba-core',
+                needsUpdater: key === 'gui' || key === 'saba-core' || key === 'updater',
             };
         });
 
@@ -979,6 +982,7 @@ function ExtensionsTab() {
     const [removingIds, setRemovingIds] = useState(new Set());
     const [rescanning, setRescanning] = useState(false);
     const [iconUrls, setIconUrls] = useState({}); // { extId: dataUrl }
+    const [showStore, setShowStore] = useState(false);
 
     // 아이콘 로드: has_icon이 true인 익스텐션의 icon.png를 data URL로 가져옴
     useEffect(() => {
@@ -1011,6 +1015,16 @@ function ExtensionsTab() {
         } catch (_) {}
         setRescanning(false);
     }, [refreshExtensions]);
+
+    // 스토어 열기 (모듈 탭 "더보기" 패턴과 동일)
+    const handleShowStore = useCallback(async () => {
+        if (manifestExtensions.length > 0) {
+            setShowStore(true);
+            return;
+        }
+        setShowStore(true);
+        await fetchManifest();
+    }, [manifestExtensions, fetchManifest]);
 
     const handleConfirmRemove = useCallback(async () => {
         const id = confirmRemoveId;
@@ -1113,24 +1127,37 @@ function ExtensionsTab() {
                 <div className="ss-section-label" style={{ margin: 0 }}>
                     {t('extensions.store_section', '스토어')}
                 </div>
-                <button
-                    className="ss-icon-btn"
-                    disabled={manifestLoading}
-                    onClick={fetchManifest}
-                    title={t('extensions.refresh_manifest', '매니페스트 새로고침')}
-                >
-                    <Icon name={manifestLoading ? 'loader' : 'refresh'} size="sm" />
-                </button>
+                {showStore ? (
+                    <button
+                        className="ss-icon-btn"
+                        disabled={manifestLoading}
+                        onClick={fetchManifest}
+                        title={t('extensions.refresh_manifest', '매니페스트 새로고침')}
+                    >
+                        <Icon name={manifestLoading ? 'loader' : 'refresh'} size="sm" />
+                    </button>
+                ) : (
+                    <button
+                        className="ss-icon-btn"
+                        onClick={handleShowStore}
+                        title={t('extensions.show_more', '더 많은 익스텐션 표시')}
+                    >
+                        <Icon name="chevronDown" size="sm" />
+                    </button>
+                )}
             </div>
-            {manifestLoading ? (
-                <p className="ss-empty">{t('extensions.manifest_loading', '매니페스트를 가져오는 중...')}</p>
-            ) : uninstalled.length === 0 ? (
-                <p className="ss-empty">
-                    {manifestExtensions.length === 0
-                        ? t('extensions.store_empty', '새로고침 버튼으로 사용 가능한 익스텐션을 불러오세요.')
-                        : t('extensions.all_installed', '모든 익스텐션이 설치되어 있습니다.')}
-                </p>
-            ) : (
+
+            {showStore && (
+                <>
+                    {manifestLoading ? (
+                        <p className="ss-empty">{t('extensions.manifest_loading', '매니페스트를 가져오는 중...')}</p>
+                    ) : uninstalled.length === 0 ? (
+                        <p className="ss-empty">
+                            {manifestExtensions.length === 0
+                                ? t('extensions.store_empty', '새로고침 버튼으로 사용 가능한 익스텐션을 불러오세요.')
+                                : t('extensions.all_installed', '모든 익스텐션이 설치되어 있습니다.')}
+                        </p>
+                    ) : (
                 <div className="ss-cards">
                     {uninstalled.map((ext) => (
                         <div className="ss-card" key={ext.id}>
@@ -1164,6 +1191,8 @@ function ExtensionsTab() {
                         </div>
                     ))}
                 </div>
+            )}
+                </>
             )}
 
             {confirmRemoveId && (

@@ -2758,6 +2758,110 @@ ipcMain.handle('daemon:restart', async () => {
 
 // Settings IPC handlers
 ipcMain.handle('settings:load', () => {
+
+// App version
+ipcMain.handle('app:getVersion', () => {
+    return app.getVersion();
+});
+
+ipcMain.handle('app:getComponentInfo', async () => {
+    try {
+        const manifestPath = path.join(getInstallRoot(), 'release-manifest.json');
+        if (fs.existsSync(manifestPath)) {
+            const raw = fs.readFileSync(manifestPath, 'utf-8');
+            const manifest = JSON.parse(raw);
+            const components = {};
+            for (const [key, val] of Object.entries(manifest.components || {})) {
+                components[key] = val.version || manifest.release_version || '0.1.0';
+            }
+            return {
+                version: manifest.release_version || app.getVersion(),
+                components,
+                lastUpdated: fs.statSync(manifestPath).mtime.toISOString(),
+            };
+        }
+    } catch (e) {
+        console.warn('[App] Failed to read release-manifest:', e.message);
+    }
+    return {
+        version: app.getVersion(),
+        components: {},
+        lastUpdated: null,
+    };
+});
+
+// Uninstall — GUI/데몬 종료 후 인스톨러를 --uninstall로 실행
+ipcMain.handle('app:launchUninstaller', async () => {
+    try {
+        // 인스톨러 경로 찾기
+        const installRoot = getInstallRoot();
+        const possibleNames = ['saba-chan-installer.exe', 'Saba-chan Installer.exe'];
+        let installerPath = null;
+
+        // 1) 설치 루트 및 하위 폴더에서 검색
+        const searchDirs = [
+            installRoot,
+            path.join(installRoot, 'saba-chan-gui'),
+            path.join(installRoot, '..'),
+            path.dirname(app.getPath('exe')),
+        ];
+
+        for (const dir of searchDirs) {
+            for (const name of possibleNames) {
+                const candidate = path.join(dir, name);
+                if (require('fs').existsSync(candidate)) {
+                    installerPath = candidate;
+                    break;
+                }
+            }
+            if (installerPath) break;
+        }
+
+        // 2) 레지스트리에서 InstallLocation 확인 (Windows)
+        if (!installerPath && process.platform === 'win32') {
+            try {
+                const regOutput = require('child_process').execSync(
+                    'reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Saba-chan" /v InstallLocation 2>nul',
+                    { encoding: 'utf8', windowsHide: true }
+                );
+                const match = regOutput.match(/InstallLocation\s+REG_SZ\s+(.+)/);
+                if (match) {
+                    const regDir = match[1].trim();
+                    for (const name of possibleNames) {
+                        const candidate = path.join(regDir, name);
+                        if (require('fs').existsSync(candidate)) {
+                            installerPath = candidate;
+                            break;
+                        }
+                    }
+                }
+            } catch (_) { /* 레지스트리 접근 실패 — 무시 */ }
+        }
+
+        if (!installerPath) {
+            return { success: false, error: 'Installer not found' };
+        }
+
+        console.log('[Uninstall] Launching installer:', installerPath);
+
+        // 인스톨러를 --uninstall로 실행 (독립 프로세스)
+        const child = require('child_process').spawn(installerPath, ['--uninstall'], {
+            detached: true,
+            stdio: 'ignore',
+        });
+        child.unref();
+
+        // GUI 종료 (cleanQuit이 데몬도 종료)
+        setTimeout(() => cleanQuit(), 500);
+
+        return { success: true };
+    } catch (err) {
+        console.error('[Uninstall] Failed to launch installer:', err);
+        return { success: false, error: err.message };
+    }
+});
+
+
     return loadSettings();
 });
 

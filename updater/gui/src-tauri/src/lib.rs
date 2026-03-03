@@ -391,6 +391,8 @@ fn build_state(mgr: &UpdateManager) -> UpdaterState {
         components: status
             .components
             .iter()
+            // Locales는 UI에 표시하지 않음 — 백그라운드에서 자동 다운로드/적용
+            .filter(|c| !matches!(c.component, Component::Locales))
             .map(|c| ComponentInfo {
                 key: c.component.manifest_key(),
                 display_name: c.component.display_name(),
