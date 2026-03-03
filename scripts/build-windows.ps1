@@ -241,6 +241,8 @@ $botDest = Join-Path $DistDir "discord_bot"
 Copy-Item -Path $botResult.Path -Destination $botDest -Recurse -Force -ErrorAction SilentlyContinue
 $testDir = Join-Path $botDest "test"
 if (Test-Path $testDir) { Remove-Item $testDir -Recurse -Force -ErrorAction SilentlyContinue }
+$botNodeModules = Join-Path $botDest "node_modules"
+if (Test-Path $botNodeModules) { Remove-Item $botNodeModules -Recurse -Force -ErrorAction SilentlyContinue }
 
 Write-Host "  [OK]" -ForegroundColor Green
 

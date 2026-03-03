@@ -53,6 +53,8 @@ COMPONENTS = [
         "output_name": "saba-core-windows-x64.zip",
         "install_dir": ".",
         "exe_name": "saba-core.exe",
+        # 공유 모듈 유틸리티 — %APPDATA%/saba-chan/modules/ 에 설치됨
+        "extra_files": ["modules/i18n.py", "modules/daemon_rcon.py"],
     },
     {
         "key": "cli",
@@ -168,20 +170,37 @@ def find_raw_file(patterns: list[str]) -> Path | None:
     return None
 
 
-def create_exe_zip(exe_path: Path, output_zip: Path, inner_name: str):
-    """단일 exe를 zip으로 패키징"""
+def create_exe_zip(exe_path: Path, output_zip: Path, inner_name: str,
+                   extra_files: list[str] | None = None):
+    """단일 exe를 zip으로 패키징 (+ optional extra files)"""
     with zipfile.ZipFile(output_zip, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.write(exe_path, inner_name)
+        for rel in (extra_files or []):
+            src = Path(rel)
+            if src.exists():
+                zf.write(src, src.name)  # 루트에 flat하게 포함
+                print(f"    + {src.name} (shared module)")
+            else:
+                print(f"    ⚠ {rel} not found, skipping")
     print(f"    → {output_zip.name} ({output_zip.stat().st_size / 1024 / 1024:.2f} MB)")
 
 
-def copy_or_repackage(raw_file: Path, output_zip: Path, exe_name: str | None):
+def copy_or_repackage(raw_file: Path, output_zip: Path, exe_name: str | None,
+                      extra_files: list[str] | None = None):
     """raw 파일이 exe면 zip으로 감싸고, 이미 zip이면 표준 이름으로 복사"""
     if raw_file.suffix.lower() == ".zip":
+        # 기존 zip에 extra_files 추가
         shutil.copy2(raw_file, output_zip)
+        if extra_files:
+            with zipfile.ZipFile(output_zip, "a", zipfile.ZIP_DEFLATED) as zf:
+                for rel in extra_files:
+                    src = Path(rel)
+                    if src.exists():
+                        zf.write(src, src.name)
+                        print(f"    + {src.name} (shared module)")
         print(f"    → {output_zip.name} (copied from {raw_file.name})")
     elif raw_file.suffix.lower() == ".exe" and exe_name:
-        create_exe_zip(raw_file, output_zip, exe_name)
+        create_exe_zip(raw_file, output_zip, exe_name, extra_files)
     else:
         shutil.copy2(raw_file, output_zip)
         print(f"    → {output_zip.name} (copied)")
@@ -405,7 +424,8 @@ def main():
             raw_file = find_raw_file(comp["raw_patterns"])
             if raw_file:
                 print(f"  raw: {raw_file.name}")
-                copy_or_repackage(raw_file, output_path, comp.get("exe_name"))
+                copy_or_repackage(raw_file, output_path, comp.get("exe_name"),
+                                  comp.get("extra_files"))
                 asset_source = "current"
             else:
                 # 이번 릴리즈에 없음 → 이전 릴리즈에서 가져오기

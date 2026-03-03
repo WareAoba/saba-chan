@@ -388,6 +388,10 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         installed.push(key.to_string());
     }
 
+    // Step 3.5: 공유 모듈 유틸리티(i18n.py, daemon_rcon.py)를 APPDATA/modules/로 설치
+    emit("modules", "Installing shared module utilities...", 46);
+    install_shared_modules(&install_dir);
+
     // Step 4: 모듈 다운로드 및 설치 (45-55%)
     if !config.selected_modules.is_empty() {
         emit("modules", "Downloading game modules...", 47);
@@ -874,6 +878,36 @@ fn extract_modules_from_zipball(
     }
 
     Ok(installed)
+}
+
+/// core zip에 포함된 공유 Python 모듈(i18n.py, daemon_rcon.py)을
+/// %APPDATA%/saba-chan/modules/로 복사한다.
+/// 게임 모듈(minecraft, palworld 등)의 lifecycle.py가 이 유틸리티를 import 한다.
+fn install_shared_modules(install_dir: &Path) {
+    const SHARED_MODULES: &[&str] = &["i18n.py", "daemon_rcon.py"];
+
+    let data_dir = resolve_data_dir();
+    let modules_dir = data_dir.join("modules");
+    let _ = std::fs::create_dir_all(&modules_dir);
+
+    for name in SHARED_MODULES {
+        let src = install_dir.join(name);
+        let dst = modules_dir.join(name);
+        if src.exists() {
+            match std::fs::copy(&src, &dst) {
+                Ok(_) => {
+                    tracing::info!("Shared module installed: {} → {}", src.display(), dst.display());
+                    // install_dir에 남아 있는 복사본 제거 (Program Files에 불필요)
+                    let _ = std::fs::remove_file(&src);
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to install shared module {}: {}", name, e);
+                }
+            }
+        } else {
+            tracing::debug!("Shared module not found in zip: {}", name);
+        }
+    }
 }
 
 fn setup_config(install_dir: &PathBuf, config: &InstallConfig) {

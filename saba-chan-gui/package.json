@@ -128,7 +128,7 @@
           ]
         }
       ],
-      "icon": "build/icon.png",
+      "icon": "build/icon.ico",
       "certificateFile": null,
       "certificatePassword": null
     },
