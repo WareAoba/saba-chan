@@ -435,6 +435,18 @@ def main():
                 )
                 if downloaded:
                     asset_source = "previous"
+
+                    # 이전 릴리즈 zip에도 공유 모듈 주입
+                    extra = comp.get("extra_files")
+                    if extra and downloaded.suffix.lower() == ".zip":
+                        with zipfile.ZipFile(downloaded, "a", zipfile.ZIP_DEFLATED) as zf:
+                            existing = set(zf.namelist())
+                            for rel in extra:
+                                src = Path(rel)
+                                if src.exists() and src.name not in existing:
+                                    zf.write(src, src.name)
+                                    print(f"    + {src.name} (shared module injected)")
+
                     # 이전 릴리즈의 manifest에서 정확한 버전 가져오기
                     # (현재 소스의 버전과 실제 바이너리 버전이 다를 수 있음)
                     prev_version = read_version_from_previous_manifest(

@@ -254,6 +254,18 @@ if (Test-Path $localeSrc) {
     Copy-Item -Path $localeSrc -Destination (Join-Path $DistDir "locales") -Recurse -Force
 }
 
+# 공유 모듈 유틸리티 (i18n.py, daemon_rcon.py) — 인스톨러가 APPDATA/modules/로 설치
+$sharedModules = @("i18n.py", "daemon_rcon.py")
+$modulesSrc = Join-Path $ProjectRoot "modules"
+foreach ($mod in $sharedModules) {
+    $src = Join-Path $modulesSrc $mod
+    if (Test-Path $src) {
+        Copy-Item -Path $src -Destination (Join-Path $DistDir $mod) -Force
+    } else {
+        Write-Host "  [WARN] $mod not found at $src" -ForegroundColor Yellow
+    }
+}
+
 Write-Host "  [OK]" -ForegroundColor Green
 
 # --- 5. Summary ---

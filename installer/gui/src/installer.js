@@ -45,6 +45,33 @@ const T = {
         uninstallCompleteSub: 'Saba-chan has been removed.',
         uninstallFailed: 'Uninstall failed',
         labelLanguage: 'Language',
+        // Install progress
+        progressPrepare: 'Creating install directory...',
+        progressElevate: 'Requesting administrator privileges...',
+        progressFetch: 'Fetching release information...',
+        progressDownload: 'Downloading...',
+        progressExtract: 'Extracting...',
+        progressModulesShared: 'Installing shared module utilities...',
+        progressModulesDownload: 'Downloading game modules...',
+        progressModulesExtract: 'Extracting game modules...',
+        progressRuntimePython: 'Preparing Python runtime...',
+        progressRuntimeNode: 'Preparing Discord bot environment...',
+        progressConfig: 'Setting up configuration...',
+        progressConfigLang: 'Saving language settings...',
+        progressRegistry: 'Registering application...',
+        progressShortcuts: 'Creating shortcuts...',
+        // Uninstall progress
+        uninstallProgressDetect: 'Detecting install location...',
+        uninstallProgressStop: 'Stopping processes...',
+        uninstallProgressShortcuts: 'Removing shortcuts...',
+        uninstallProgressFiles: 'Removing installation files...',
+        uninstallProgressData: 'Removing user data and runtime environments...',
+        uninstallProgressDataKeep: 'Removing runtime environments (keeping settings)...',
+        uninstallProgressTemp: 'Cleaning temporary files...',
+        uninstallProgressModules: 'Cleaning modules directory...',
+        uninstallProgressModulesKeep: 'Keeping module settings...',
+        uninstallProgressRegistry: 'Removing registry entries...',
+        uninstallProgressSelfDelete: 'Scheduling self-deletion...',
     },
     ko: {
         welcome: '사바쨩 인스톨러에 오신 것을 환영합니다',
@@ -79,6 +106,33 @@ const T = {
         uninstallCompleteSub: '사바쨩이 제거되었습니다.',
         uninstallFailed: '제거 실패',
         labelLanguage: '언어',
+        // Install progress
+        progressPrepare: '설치 디렉토리 생성 중...',
+        progressElevate: '관리자 권한 요청 중...',
+        progressFetch: '릴리즈 정보 확인 중...',
+        progressDownload: '다운로드 중...',
+        progressExtract: '압축 해제 중...',
+        progressModulesShared: '공용 모듈 유틸리티 설치 중...',
+        progressModulesDownload: '게임 모듈 다운로드 중...',
+        progressModulesExtract: '게임 모듈 압축 해제 중...',
+        progressRuntimePython: 'Python 런타임 준비 중...',
+        progressRuntimeNode: 'Discord 봇 환경 준비 중...',
+        progressConfig: '설정 구성 중...',
+        progressConfigLang: '언어 설정 저장 중...',
+        progressRegistry: '앱 등록 중...',
+        progressShortcuts: '바로가기 생성 중...',
+        // Uninstall progress
+        uninstallProgressDetect: '설치 위치 확인 중...',
+        uninstallProgressStop: '프로세스 종료 중...',
+        uninstallProgressShortcuts: '바로가기 제거 중...',
+        uninstallProgressFiles: '설치 파일 제거 중...',
+        uninstallProgressData: '사용자 데이터 및 런타임 환경 제거 중...',
+        uninstallProgressDataKeep: '런타임 환경 제거 중 (설정 유지)...',
+        uninstallProgressTemp: '임시 파일 정리 중...',
+        uninstallProgressModules: '모듈 디렉토리 정리 중...',
+        uninstallProgressModulesKeep: '모듈 설정 유지 중...',
+        uninstallProgressRegistry: '레지스트리 항목 제거 중...',
+        uninstallProgressSelfDelete: '자체 삭제 예약 중...',
     },
     ja: {
         welcome: 'サバちゃん インストーラーへようこそ',
@@ -113,6 +167,33 @@ const T = {
         uninstallCompleteSub: 'サバちゃんは削除されました。',
         uninstallFailed: 'アンインストール失敗',
         labelLanguage: '言語',
+        // Install progress
+        progressPrepare: 'インストールディレクトリを作成中...',
+        progressElevate: '管理者権限を要求中...',
+        progressFetch: 'リリース情報を取得中...',
+        progressDownload: 'ダウンロード中...',
+        progressExtract: '展開中...',
+        progressModulesShared: '共有モジュールユーティリティをインストール中...',
+        progressModulesDownload: 'ゲームモジュールをダウンロード中...',
+        progressModulesExtract: 'ゲームモジュールを展開中...',
+        progressRuntimePython: 'Pythonランタイムを準備中...',
+        progressRuntimeNode: 'Discordボット環境を準備中...',
+        progressConfig: '設定を構成中...',
+        progressConfigLang: '言語設定を保存中...',
+        progressRegistry: 'アプリケーションを登録中...',
+        progressShortcuts: 'ショートカットを作成中...',
+        // Uninstall progress
+        uninstallProgressDetect: 'インストール先を検出中...',
+        uninstallProgressStop: 'プロセスを停止中...',
+        uninstallProgressShortcuts: 'ショートカットを削除中...',
+        uninstallProgressFiles: 'インストールファイルを削除中...',
+        uninstallProgressData: 'ユーザーデータとランタイム環境を削除中...',
+        uninstallProgressDataKeep: 'ランタイム環境を削除中（設定は保持）...',
+        uninstallProgressTemp: '一時ファイルをクリーンアップ中...',
+        uninstallProgressModules: 'モジュールディレクトリをクリーンアップ中...',
+        uninstallProgressModulesKeep: 'モジュール設定を保持中...',
+        uninstallProgressRegistry: 'レジストリエントリを削除中...',
+        uninstallProgressSelfDelete: '自己削除をスケジュール中...',
     },
     'zh-CN': {
         welcome: '欢迎使用 Saba-chan 安装程序',
@@ -147,6 +228,33 @@ const T = {
         uninstallCompleteSub: 'Saba-chan 已被移除。',
         uninstallFailed: '卸载失败',
         labelLanguage: '语言',
+        // Install progress
+        progressPrepare: '正在创建安装目录...',
+        progressElevate: '正在请求管理员权限...',
+        progressFetch: '正在获取版本信息...',
+        progressDownload: '正在下载...',
+        progressExtract: '正在解压...',
+        progressModulesShared: '正在安装共享模块工具...',
+        progressModulesDownload: '正在下载游戏模块...',
+        progressModulesExtract: '正在解压游戏模块...',
+        progressRuntimePython: '正在准备 Python 运行时...',
+        progressRuntimeNode: '正在准备 Discord 机器人环境...',
+        progressConfig: '正在配置设置...',
+        progressConfigLang: '正在保存语言设置...',
+        progressRegistry: '正在注册应用程序...',
+        progressShortcuts: '正在创建快捷方式...',
+        // Uninstall progress
+        uninstallProgressDetect: '正在检测安装位置...',
+        uninstallProgressStop: '正在停止进程...',
+        uninstallProgressShortcuts: '正在删除快捷方式...',
+        uninstallProgressFiles: '正在删除安装文件...',
+        uninstallProgressData: '正在删除用户数据和运行时环境...',
+        uninstallProgressDataKeep: '正在删除运行时环境（保留设置）...',
+        uninstallProgressTemp: '正在清理临时文件...',
+        uninstallProgressModules: '正在清理模块目录...',
+        uninstallProgressModulesKeep: '正在保留模块设置...',
+        uninstallProgressRegistry: '正在删除注册表项...',
+        uninstallProgressSelfDelete: '正在计划自我删除...',
     },
     'zh-TW': {
         welcome: '歡迎使用 Saba-chan 安裝程式',
@@ -181,6 +289,33 @@ const T = {
         uninstallCompleteSub: 'Saba-chan 已被移除。',
         uninstallFailed: '解除安裝失敗',
         labelLanguage: '語言',
+        // Install progress
+        progressPrepare: '正在建立安裝目錄...',
+        progressElevate: '正在請求管理員權限...',
+        progressFetch: '正在取得版本資訊...',
+        progressDownload: '正在下載...',
+        progressExtract: '正在解壓縮...',
+        progressModulesShared: '正在安裝共用模組工具...',
+        progressModulesDownload: '正在下載遊戲模組...',
+        progressModulesExtract: '正在解壓縮遊戲模組...',
+        progressRuntimePython: '正在準備 Python 執行環境...',
+        progressRuntimeNode: '正在準備 Discord 機器人環境...',
+        progressConfig: '正在設定組態...',
+        progressConfigLang: '正在儲存語言設定...',
+        progressRegistry: '正在登錄應用程式...',
+        progressShortcuts: '正在建立捷徑...',
+        // Uninstall progress
+        uninstallProgressDetect: '正在偵測安裝位置...',
+        uninstallProgressStop: '正在停止處理程序...',
+        uninstallProgressShortcuts: '正在刪除捷徑...',
+        uninstallProgressFiles: '正在刪除安裝檔案...',
+        uninstallProgressData: '正在刪除使用者資料和執行環境...',
+        uninstallProgressDataKeep: '正在刪除執行環境（保留設定）...',
+        uninstallProgressTemp: '正在清理暫存檔案...',
+        uninstallProgressModules: '正在清理模組目錄...',
+        uninstallProgressModulesKeep: '正在保留模組設定...',
+        uninstallProgressRegistry: '正在刪除登錄檔項目...',
+        uninstallProgressSelfDelete: '正在排程自我刪除...',
     },
     es: {
         welcome: 'Bienvenido al instalador de Saba-chan',
@@ -215,6 +350,33 @@ const T = {
         uninstallCompleteSub: 'Saba-chan ha sido eliminado.',
         uninstallFailed: 'Error en la desinstalación',
         labelLanguage: 'Idioma',
+        // Install progress
+        progressPrepare: 'Creando directorio de instalación...',
+        progressElevate: 'Solicitando privilegios de administrador...',
+        progressFetch: 'Obteniendo información de la versión...',
+        progressDownload: 'Descargando...',
+        progressExtract: 'Extrayendo...',
+        progressModulesShared: 'Instalando utilidades de módulos compartidos...',
+        progressModulesDownload: 'Descargando módulos de juego...',
+        progressModulesExtract: 'Extrayendo módulos de juego...',
+        progressRuntimePython: 'Preparando entorno de Python...',
+        progressRuntimeNode: 'Preparando entorno del bot de Discord...',
+        progressConfig: 'Configurando ajustes...',
+        progressConfigLang: 'Guardando configuración de idioma...',
+        progressRegistry: 'Registrando la aplicación...',
+        progressShortcuts: 'Creando accesos directos...',
+        // Uninstall progress
+        uninstallProgressDetect: 'Detectando ubicación de instalación...',
+        uninstallProgressStop: 'Deteniendo procesos...',
+        uninstallProgressShortcuts: 'Eliminando accesos directos...',
+        uninstallProgressFiles: 'Eliminando archivos de instalación...',
+        uninstallProgressData: 'Eliminando datos de usuario y entornos de ejecución...',
+        uninstallProgressDataKeep: 'Eliminando entornos de ejecución (conservando ajustes)...',
+        uninstallProgressTemp: 'Limpiando archivos temporales...',
+        uninstallProgressModules: 'Limpiando directorio de módulos...',
+        uninstallProgressModulesKeep: 'Conservando ajustes de módulos...',
+        uninstallProgressRegistry: 'Eliminando entradas del registro...',
+        uninstallProgressSelfDelete: 'Programando auto-eliminación...',
     },
     'pt-BR': {
         welcome: 'Bem-vindo ao instalador do Saba-chan',
@@ -249,6 +411,33 @@ const T = {
         uninstallCompleteSub: 'O Saba-chan foi removido.',
         uninstallFailed: 'Falha na desinstalação',
         labelLanguage: 'Idioma',
+        // Install progress
+        progressPrepare: 'Criando diretório de instalação...',
+        progressElevate: 'Solicitando privilégios de administrador...',
+        progressFetch: 'Obtendo informações da versão...',
+        progressDownload: 'Baixando...',
+        progressExtract: 'Extraindo...',
+        progressModulesShared: 'Instalando utilitários de módulos compartilhados...',
+        progressModulesDownload: 'Baixando módulos de jogo...',
+        progressModulesExtract: 'Extraindo módulos de jogo...',
+        progressRuntimePython: 'Preparando ambiente Python...',
+        progressRuntimeNode: 'Preparando ambiente do bot Discord...',
+        progressConfig: 'Configurando definições...',
+        progressConfigLang: 'Salvando configuração de idioma...',
+        progressRegistry: 'Registrando o aplicativo...',
+        progressShortcuts: 'Criando atalhos...',
+        // Uninstall progress
+        uninstallProgressDetect: 'Detectando local de instalação...',
+        uninstallProgressStop: 'Parando processos...',
+        uninstallProgressShortcuts: 'Removendo atalhos...',
+        uninstallProgressFiles: 'Removendo arquivos de instalação...',
+        uninstallProgressData: 'Removendo dados do usuário e ambientes de execução...',
+        uninstallProgressDataKeep: 'Removendo ambientes de execução (mantendo configurações)...',
+        uninstallProgressTemp: 'Limpando arquivos temporários...',
+        uninstallProgressModules: 'Limpando diretório de módulos...',
+        uninstallProgressModulesKeep: 'Mantendo configurações de módulos...',
+        uninstallProgressRegistry: 'Removendo entradas do registro...',
+        uninstallProgressSelfDelete: 'Agendando auto-exclusão...',
     },
     ru: {
         welcome: 'Добро пожаловать в установщик Saba-chan',
@@ -283,6 +472,33 @@ const T = {
         uninstallCompleteSub: 'Saba-chan был удалён.',
         uninstallFailed: 'Ошибка удаления',
         labelLanguage: 'Язык',
+        // Install progress
+        progressPrepare: 'Создание каталога установки...',
+        progressElevate: 'Запрос прав администратора...',
+        progressFetch: 'Получение информации о версии...',
+        progressDownload: 'Загрузка...',
+        progressExtract: 'Извлечение...',
+        progressModulesShared: 'Установка общих утилит модулей...',
+        progressModulesDownload: 'Загрузка игровых модулей...',
+        progressModulesExtract: 'Извлечение игровых модулей...',
+        progressRuntimePython: 'Подготовка среды Python...',
+        progressRuntimeNode: 'Подготовка среды Discord-бота...',
+        progressConfig: 'Настройка конфигурации...',
+        progressConfigLang: 'Сохранение языковых настроек...',
+        progressRegistry: 'Регистрация приложения...',
+        progressShortcuts: 'Создание ярлыков...',
+        // Uninstall progress
+        uninstallProgressDetect: 'Определение места установки...',
+        uninstallProgressStop: 'Остановка процессов...',
+        uninstallProgressShortcuts: 'Удаление ярлыков...',
+        uninstallProgressFiles: 'Удаление файлов установки...',
+        uninstallProgressData: 'Удаление пользовательских данных и сред выполнения...',
+        uninstallProgressDataKeep: 'Удаление сред выполнения (сохранение настроек)...',
+        uninstallProgressTemp: 'Очистка временных файлов...',
+        uninstallProgressModules: 'Очистка каталога модулей...',
+        uninstallProgressModulesKeep: 'Сохранение настроек модулей...',
+        uninstallProgressRegistry: 'Удаление записей реестра...',
+        uninstallProgressSelfDelete: 'Планирование самоудаления...',
     },
     de: {
         welcome: 'Willkommen beim Saba-chan Installationsprogramm',
@@ -317,6 +533,33 @@ const T = {
         uninstallCompleteSub: 'Saba-chan wurde entfernt.',
         uninstallFailed: 'Deinstallation fehlgeschlagen',
         labelLanguage: 'Sprache',
+        // Install progress
+        progressPrepare: 'Installationsverzeichnis wird erstellt...',
+        progressElevate: 'Administratorrechte werden angefordert...',
+        progressFetch: 'Versionsinformationen werden abgerufen...',
+        progressDownload: 'Herunterladen...',
+        progressExtract: 'Entpacken...',
+        progressModulesShared: 'Gemeinsame Modul-Dienstprogramme werden installiert...',
+        progressModulesDownload: 'Spielmodule werden heruntergeladen...',
+        progressModulesExtract: 'Spielmodule werden entpackt...',
+        progressRuntimePython: 'Python-Laufzeitumgebung wird vorbereitet...',
+        progressRuntimeNode: 'Discord-Bot-Umgebung wird vorbereitet...',
+        progressConfig: 'Konfiguration wird eingerichtet...',
+        progressConfigLang: 'Spracheinstellungen werden gespeichert...',
+        progressRegistry: 'Anwendung wird registriert...',
+        progressShortcuts: 'Verknüpfungen werden erstellt...',
+        // Uninstall progress
+        uninstallProgressDetect: 'Installationsort wird erkannt...',
+        uninstallProgressStop: 'Prozesse werden beendet...',
+        uninstallProgressShortcuts: 'Verknüpfungen werden entfernt...',
+        uninstallProgressFiles: 'Installationsdateien werden entfernt...',
+        uninstallProgressData: 'Benutzerdaten und Laufzeitumgebungen werden entfernt...',
+        uninstallProgressDataKeep: 'Laufzeitumgebungen werden entfernt (Einstellungen werden beibehalten)...',
+        uninstallProgressTemp: 'Temporäre Dateien werden bereinigt...',
+        uninstallProgressModules: 'Modulverzeichnis wird bereinigt...',
+        uninstallProgressModulesKeep: 'Moduleinstellungen werden beibehalten...',
+        uninstallProgressRegistry: 'Registrierungseinträge werden entfernt...',
+        uninstallProgressSelfDelete: 'Selbstlöschung wird geplant...',
     },
     fr: {
         welcome: 'Bienvenue dans l\'installateur de Saba-chan',
@@ -351,6 +594,33 @@ const T = {
         uninstallCompleteSub: 'Saba-chan a été supprimé.',
         uninstallFailed: 'Échec de la désinstallation',
         labelLanguage: 'Langue',
+        // Install progress
+        progressPrepare: 'Création du répertoire d\'installation...',
+        progressElevate: 'Demande de privilèges administrateur...',
+        progressFetch: 'Récupération des informations de version...',
+        progressDownload: 'Téléchargement...',
+        progressExtract: 'Extraction...',
+        progressModulesShared: 'Installation des utilitaires de modules partagés...',
+        progressModulesDownload: 'Téléchargement des modules de jeu...',
+        progressModulesExtract: 'Extraction des modules de jeu...',
+        progressRuntimePython: 'Préparation de l\'environnement Python...',
+        progressRuntimeNode: 'Préparation de l\'environnement du bot Discord...',
+        progressConfig: 'Configuration des paramètres...',
+        progressConfigLang: 'Enregistrement des paramètres de langue...',
+        progressRegistry: 'Enregistrement de l\'application...',
+        progressShortcuts: 'Création des raccourcis...',
+        // Uninstall progress
+        uninstallProgressDetect: 'Détection de l\'emplacement d\'installation...',
+        uninstallProgressStop: 'Arrêt des processus...',
+        uninstallProgressShortcuts: 'Suppression des raccourcis...',
+        uninstallProgressFiles: 'Suppression des fichiers d\'installation...',
+        uninstallProgressData: 'Suppression des données utilisateur et des environnements d\'exécution...',
+        uninstallProgressDataKeep: 'Suppression des environnements d\'exécution (conservation des paramètres)...',
+        uninstallProgressTemp: 'Nettoyage des fichiers temporaires...',
+        uninstallProgressModules: 'Nettoyage du répertoire des modules...',
+        uninstallProgressModulesKeep: 'Conservation des paramètres des modules...',
+        uninstallProgressRegistry: 'Suppression des entrées de registre...',
+        uninstallProgressSelfDelete: 'Planification de l\'auto-suppression...',
     },
 };
 
@@ -360,6 +630,46 @@ function tr(key, vars = {}) {
     const b = T[lang] || T.en;
     const t = b[key] || T.en[key] || key;
     return t.replace(/\{\{(\w+)\}\}/g, (_, k) => String(vars[k] ?? ''));
+}
+
+// Step → i18n key mappings for progress messages
+const INSTALL_STEP_KEYS = {
+    'prepare': 'progressPrepare',
+    'elevate': 'progressElevate',
+    'fetch': 'progressFetch',
+    'download': 'progressDownload',
+    'extract': 'progressExtract',
+    'modules-shared': 'progressModulesShared',
+    'modules-download': 'progressModulesDownload',
+    'modules-extract': 'progressModulesExtract',
+    'runtime-python': 'progressRuntimePython',
+    'runtime-node': 'progressRuntimeNode',
+    'config': 'progressConfig',
+    'config-lang': 'progressConfigLang',
+    'registry': 'progressRegistry',
+    'shortcuts': 'progressShortcuts',
+};
+
+const UNINSTALL_STEP_KEYS = {
+    'detect': 'uninstallProgressDetect',
+    'stop': 'uninstallProgressStop',
+    'shortcuts': 'uninstallProgressShortcuts',
+    'files': 'uninstallProgressFiles',
+    'data': 'uninstallProgressData',
+    'data-keep': 'uninstallProgressDataKeep',
+    'temp': 'uninstallProgressTemp',
+    'modules': 'uninstallProgressModules',
+    'modules-keep': 'uninstallProgressModulesKeep',
+    'registry': 'uninstallProgressRegistry',
+    'self-delete': 'uninstallProgressSelfDelete',
+};
+
+/** Translate a progress step name, falling back to the raw message */
+function trStep(stepMap, step, fallback) {
+    const key = stepMap[step];
+    if (!key) return fallback;
+    const b = T[lang] || T.en;
+    return b[key] || T.en[key] || fallback;
 }
 
 function applyTranslations() {
@@ -642,7 +952,7 @@ listen('install:progress', (ev) => {
         return;
     }
 
-    $msg.textContent = p.message;
+    $msg.textContent = trStep(INSTALL_STEP_KEYS, p.step, p.message);
     $pct.textContent = `${p.percent}%`;
     $fill.style.width = `${p.percent}%`;
 });
@@ -727,7 +1037,7 @@ listen('uninstall:progress', (ev) => {
         return;
     }
 
-    $msg.textContent = p.message;
+    $msg.textContent = trStep(UNINSTALL_STEP_KEYS, p.step, p.message);
     $pct.textContent = `${p.percent}%`;
     $fill.style.width = `${p.percent}%`;
 });

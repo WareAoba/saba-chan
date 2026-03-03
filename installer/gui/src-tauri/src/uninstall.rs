@@ -8,7 +8,8 @@
 //! 2. 사용자 데이터: `%APPDATA%/saba-chan` (settings.json, modules 등)
 //! 3. 임시 파일: `%TEMP%/saba-chan-*`
 //! 4. 레지스트리: `HKCU\...\Uninstall\Saba-chan`
-//! 5. 바탕화면/시작메뉴 바로가기//! 6. 자기 자신 (cleanup 스크립트를 통해 프로세스 종료 후 삭제)
+//! 5. 바탕화면/시작메뉴 바로가기
+//! 6. 자기 자신 (cleanup 스크립트를 통해 프로세스 종료 후 삭제)
 use serde::Serialize;
 use std::path::PathBuf;
 use tauri::AppHandle;
@@ -116,7 +117,7 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
     // Step 5: 사용자 데이터 삭제 (%APPDATA%/saba-chan)
     // python-standalone, python-env, node-portable 등 런타임 디렉토리도 포함
     if keep_settings {
-        emit("data", "Removing runtime environments (keeping settings)...", 55);
+        emit("data-keep", "Removing runtime environments (keeping settings)...", 55);
         remove_appdata_dir_keep_settings();
     } else {
         emit("data", "Removing user data and runtime environments...", 55);
@@ -133,7 +134,7 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
         emit("modules", "Cleaning modules directory...", 80);
         remove_modules_dir();
     } else {
-        emit("modules", "Keeping module settings...", 80);
+        emit("modules-keep", "Keeping module settings...", 80);
     }
 
     // Step 8: 레지스트리 삭제

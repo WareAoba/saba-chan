@@ -389,12 +389,12 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
     }
 
     // Step 3.5: 공유 모듈 유틸리티(i18n.py, daemon_rcon.py)를 APPDATA/modules/로 설치
-    emit("modules", "Installing shared module utilities...", 46);
+    emit("modules-shared", "Installing shared module utilities...", 46);
     install_shared_modules(&install_dir);
 
     // Step 4: 모듈 다운로드 및 설치 (45-55%)
     if !config.selected_modules.is_empty() {
-        emit("modules", "Downloading game modules...", 47);
+        emit("modules-download", "Downloading game modules...", 47);
 
         let temp_dir = std::env::temp_dir().join("saba-chan-installer");
         let _ = std::fs::create_dir_all(&temp_dir);
@@ -408,7 +408,7 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         .await
         {
             Ok(()) => {
-                emit("modules", "Extracting game modules...", 52);
+                emit("modules-extract", "Extracting game modules...", 52);
                 let data_dir = resolve_data_dir();
                 match extract_modules_from_zipball(
                     &modules_zip,
@@ -433,7 +433,7 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
     }
 
     // Step 5: 포터블 Python 다운로드 + venv 생성 (55-70%)
-    emit("runtime", "파이썬 런타임 준비중...", 57);
+    emit("runtime-python", "Preparing Python runtime...", 57);
     let runtime_data_dir = runtime_bootstrap::resolve_runtime_data_dir(&install_dir);
     let _ = std::fs::create_dir_all(&runtime_data_dir);
 
@@ -449,7 +449,7 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
     }
 
     // Step 6: 포터블 Node.js 다운로드 + npm install (70-85%)
-    emit("runtime", "Discord 봇 환경 준비중...", 72);
+    emit("runtime-node", "Preparing Discord bot environment...", 72);
 
     match runtime_bootstrap::setup_node(&runtime_data_dir).await {
         Ok(node_path) => {
@@ -459,7 +459,7 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
             // Discord Bot npm install
             let bot_dir = install_dir.join("discord_bot");
             if bot_dir.join("package.json").exists() {
-                emit("runtime", "Discord 봇 환경 준비중...", 78);
+                emit("runtime-node", "Preparing Discord bot environment...", 78);
                 match runtime_bootstrap::npm_install(&node_path, &bot_dir).await {
                     Ok(()) => {
                         tracing::info!("Discord Bot npm install 완료");
@@ -481,7 +481,7 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
     setup_config(&install_dir, &config);
 
     // Step 8: 언어 설정 저장 (88-90%)
-    emit("config", "Saving language settings...", 89);
+    emit("config-lang", "Saving language settings...", 89);
     save_language_setting(&config.language);
 
     // Step 9: 레지스트리 등록 (90-95%)
