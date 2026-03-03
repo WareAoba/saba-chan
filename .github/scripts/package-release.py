@@ -69,7 +69,7 @@ COMPONENTS = [
         "version_type": "npm",
         "raw_patterns": [r"saba-chan-gui\.exe$", r"[Ss]aba.*[Cc]han\.exe$", r"saba-chan-gui.*\.zip$"],
         "output_name": "saba-chan-gui-windows-x64.zip",
-        "install_dir": "saba-chan-gui",
+        "install_dir": ".",
         "exe_name": "saba-chan-gui.exe",
     },
     {

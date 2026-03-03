@@ -22,8 +22,23 @@ let botConfig = {
     commandAliases: {},
 };
 
-const configPath = process.env.BOT_CONFIG_PATH
-    || path.join(__dirname, '..', 'bot-config.json');
+// ── 봇 설정 경로: AppData 기반 (환경변수 > %APPDATA%/saba-chan/bot-config.json > 로컬 fallback) ──
+function resolveConfigPath() {
+    if (process.env.BOT_CONFIG_PATH) {
+        return process.env.BOT_CONFIG_PATH;
+    }
+    // %APPDATA%/saba-chan/bot-config.json (Windows) 또는 ~/.config/saba-chan/bot-config.json (Linux/macOS)
+    const appData = process.platform === 'win32'
+        ? process.env.APPDATA
+        : (process.env.XDG_CONFIG_HOME || path.join(process.env.HOME || '', '.config'));
+    if (appData) {
+        return path.join(appData, 'saba-chan', 'bot-config.json');
+    }
+    // 최종 fallback: 실행 파일 옆
+    return path.join(__dirname, '..', 'bot-config.json');
+}
+
+const configPath = resolveConfigPath();
 
 let _configMtime = 0; // 마지막으로 읽은 파일 수정 시각
 

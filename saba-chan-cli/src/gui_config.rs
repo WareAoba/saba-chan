@@ -35,10 +35,16 @@ fn get_bot_config_path() -> anyhow::Result<PathBuf> {
 }
 
 /// bot-config.json 경로 (public — TUI에서 직접 접근 시)
+/// 항상 AppData 기반 (%APPDATA%/saba-chan/bot-config.json)
 pub fn get_bot_config_path_pub() -> PathBuf {
     get_config_dir()
         .map(|d| d.join("bot-config.json"))
-        .unwrap_or_else(|_| PathBuf::from("bot-config.json"))
+        .unwrap_or_else(|_| {
+            // APPDATA 환경변수가 없는 극단적 경우에도 saba-chan 하위를 유지
+            let fallback = std::env::temp_dir().join("saba-chan");
+            let _ = std::fs::create_dir_all(&fallback);
+            fallback.join("bot-config.json")
+        })
 }
 
 // ============ Settings (settings.json) ============

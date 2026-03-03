@@ -334,7 +334,7 @@ fn test_component_manifest_key_roundtrip() {
 
 #[test]
 fn test_component_display_name() {
-    assert_eq!(Component::CoreDaemon.display_name(), "Core Daemon");
+    assert_eq!(Component::CoreDaemon.display_name(), "Saba-Core");
     assert_eq!(Component::Cli.display_name(), "CLI");
     assert_eq!(Component::Gui.display_name(), "GUI");
     assert_eq!(Component::Module("minecraft".into()).display_name(), "Module: minecraft");
@@ -433,7 +433,7 @@ fn test_manifest_serialization_roundtrip() {
         version: "1.0.0".into(),
         asset: Some("gui.zip".into()),
         sha256: Some("abcdef1234".into()),
-        install_dir: Some("saba-chan-gui".into()),
+        install_dir: Some(".".into()),
         requires: None,
     });
 
@@ -740,7 +740,7 @@ async fn test_fresh_install_simulation() {
 
     let manifest = create_test_manifest("0.2.0", vec![
         ("cli", "0.2.0", "cli-win-x64.zip", Some(".")),
-        ("gui", "0.2.0", "gui-win-x64.zip", Some("saba-chan-gui")),
+        ("gui", "0.2.0", "gui-win-x64.zip", Some(".")),
         ("module-palworld", "1.0.0", "module-palworld.zip", Some("modules/palworld")),
     ]);
 
@@ -804,8 +804,8 @@ async fn test_fresh_install_simulation() {
     let cli_content = std::fs::read(tmp.path().join("saba-chan-cli.exe")).unwrap();
     assert_eq!(cli_content, b"FAKE_CLI_BINARY_v0.2.0");
 
-    assert!(tmp.path().join("saba-chan-gui").join("index.html").exists(), "GUI should be installed");
-    let gui_html = std::fs::read_to_string(tmp.path().join("saba-chan-gui").join("index.html")).unwrap();
+    assert!(tmp.path().join("index.html").exists(), "GUI should be installed");
+    let gui_html = std::fs::read_to_string(tmp.path().join("index.html")).unwrap();
     assert!(gui_html.contains("GUI v0.2.0"));
 
     assert!(tmp.path().join("modules").join("palworld").join("module.toml").exists(), "Module should be installed");
@@ -936,11 +936,11 @@ async fn test_ipc_update_status_endpoint() {
     // 코어 데몬은 항상 설치됨
     let components = json["install_status"]["components"].as_array().unwrap();
     let core = components.iter()
-        .find(|c| c["display_name"] == "Core Daemon")
+        .find(|c| c["display_name"] == "Saba-Core")
         .unwrap();
     assert_eq!(core["installed"], true);
 
-    println!("  ✓ GET /api/install/status → Core Daemon installed");
+    println!("  ✓ GET /api/install/status → Saba-Core installed");
 
     // GET /api/install/progress (초기: null)
     let req = axum::http::Request::builder()
@@ -1195,9 +1195,10 @@ fn test_resolve_install_dir_with_manifest_override() {
     let dir = mgr.resolve_install_dir_for_test(&Component::Cli, Some("custom/bin"));
     assert!(dir.ends_with("custom/bin") || dir.ends_with("custom\\bin"));
 
-    // manifest에 install_dir 없으면 기본 규칙
+    // manifest에 install_dir 없으면 기본 규칙 — GUI는 install_root 직접
     let dir = mgr.resolve_install_dir_for_test(&Component::Gui, None);
-    assert!(dir.to_string_lossy().contains("saba-chan-gui"));
+    // GUI 기본 매핑은 install_root 자체 (portable exe 방식)
+    assert_eq!(dir, tmp.path().to_path_buf());
 
     let dir = mgr.resolve_install_dir_for_test(&Component::Module("mc".into()), None);
     assert!(dir.to_string_lossy().contains("mc"));

@@ -2910,6 +2910,7 @@ ipcMain.handle('language:set', (_event, language) => {
     // Discord 봇이 실행 중이면 재시작하여 새 언어 설정 적용
     const botRunning = discordBotProcess && !discordBotProcess.killed;
     if (botRunning) {
+        botIntentionalExit = true;
         console.log('Restarting Discord bot to apply new language setting...');
         const botPid = discordBotProcess.pid;
         if (process.platform === 'win32' && botPid) {
@@ -3014,6 +3015,7 @@ ipcMain.handle('migration:scanDir', async (_event, dirPath) => {
 
 // Discord Bot process management
 let discordBotProcess = null;
+let botIntentionalExit = false; // 의도적 종료(언어 변경·모드 전환·수동 정지) 시 에러 알림 억제 플래그
 
 // ── 봇 프로세스 IPC 응답 관리 ──
 const pendingBotIpcRequests = new Map(); // id → { resolve, timer }
@@ -3175,16 +3177,14 @@ ipcMain.handle('discord:start', async (_event, config) => {
         return { error: `Bot script not found: ${indexPath}` };
     }
 
-    // 설정을 discord_bot 폴더에 저장 (봇 프로세스가 직접 읽음)
+    // 설정을 AppData에 저장 (단일 원본 — 봇은 BOT_CONFIG_PATH 환경변수로 이 경로를 참조)
     // ★ nodeSettings가 전달되지 않으면 기존 파일에서 보존 (업데이트/복원 후 재시작 시 덮어쓰기 방지)
     let existingNodeSettings = {};
-    const localConfigPath = path.join(botPath, 'bot-config.json');
+    const appDataConfigPath = getBotConfigPath();
     if (!config.nodeSettings || Object.keys(config.nodeSettings).length === 0) {
         try {
-            if (fs.existsSync(localConfigPath)) {
-                const existing = JSON.parse(fs.readFileSync(localConfigPath, 'utf8'));
-                existingNodeSettings = existing.nodeSettings || {};
-            }
+            const existing = loadBotConfig();
+            existingNodeSettings = existing.nodeSettings || {};
         } catch (_) {}
     }
     const configToSave = {
@@ -3198,17 +3198,9 @@ ipcMain.handle('discord:start', async (_event, config) => {
                 : existingNodeSettings,
     };
 
-    // discord_bot/bot-config.json에 저장 (봇이 직접 읽음)
-    try {
-        fs.writeFileSync(localConfigPath, JSON.stringify(configToSave, null, 2), 'utf8');
-        console.log('[Discord Bot] Config saved to:', localConfigPath);
-    } catch (e) {
-        return { error: `Failed to write bot config: ${e.message}` };
-    }
-
-    // GUI용으로도 AppData에 백업 저장
+    // AppData에 저장 (단일 원본)
     // ★ 기존 클라우드 메타데이터(mode, cloud, cloudNodes, cloudMembers)를 보존
-    if (config.mode !== 'cloud') {
+    {
         let existingAppData = {};
         try {
             const existing = loadBotConfig();
@@ -3260,13 +3252,14 @@ ipcMain.handle('discord:start', async (_event, config) => {
         console.log('  - nodeCmd:', nodeCmd);
         console.log('  - botPath:', botPath);
         console.log('  - indexPath:', indexPath);
-        console.log('  - configPath:', localConfigPath);
+        console.log('  - configPath:', appDataConfigPath);
 
         // ── 환경변수 구성 ──
         const spawnEnv = {
             ...process.env,
             IPC_BASE: IPC_BASE,
             SABA_LANG: currentLanguage,
+            BOT_CONFIG_PATH: appDataConfigPath,
         };
 
         if (config.mode === 'cloud') {
@@ -3346,8 +3339,11 @@ ipcMain.handle('discord:start', async (_event, config) => {
 
         discordBotProcess.on('exit', (code) => {
             console.log(`Discord Bot exited with code ${code}`);
-            // 비정상 종료 시 렌더러에 알림
-            if (code && code !== 0) {
+            // 의도적 재시작(언어 변경 등)이면 에러 알림 건너뜀
+            if (botIntentionalExit) {
+                botIntentionalExit = false;
+            } else if (code && code !== 0) {
+                // 비정상 종료 시 렌더러에 알림
                 if (mainWindow && !mainWindow.isDestroyed()) {
                     mainWindow.webContents.send('bot:error', {
                         message: `Bot process exited with code ${code}`,
@@ -3367,6 +3363,7 @@ ipcMain.handle('discord:start', async (_event, config) => {
 
 ipcMain.handle('discord:stop', () => {
     if (discordBotProcess && !discordBotProcess.killed) {
+        botIntentionalExit = true;
         const pid = discordBotProcess.pid;
         console.log(`[Discord] Stopping bot process (PID: ${pid})`);
 
@@ -3472,37 +3469,16 @@ ipcMain.handle('botConfig:save', async (_event, config) => {
             nodeSettings: config.nodeSettings || {},
         };
 
-        // 1. discord_bot 폴더에 저장 (메인 저장소)
-        const installRoot = getInstallRoot();
-        let botPath = path.join(installRoot, 'discord_bot');
-
-        // fallback: temp 추출 디렉토리
-        if (!fs.existsSync(botPath) && app.isPackaged) {
-            const tempDir = path.dirname(app.getPath('exe'));
-            const tempBotPath = path.join(tempDir, 'discord_bot');
-            if (fs.existsSync(tempBotPath)) {
-                botPath = tempBotPath;
-            }
-        }
-
-        const botConfigPath = path.join(botPath, 'bot-config.json');
-
-        try {
-            fs.writeFileSync(botConfigPath, JSON.stringify(configToSave, null, 2), 'utf8');
-            console.log('Bot config saved to:', botConfigPath);
-        } catch (fileError) {
-            return { error: `Failed to save to discord_bot folder: ${fileError.message}` };
-        }
-
-        // 2. AppData에도 백업 (GUI 로드용 — cloudNodes/cloudMembers 캐시 포함)
+        // AppData에 저장 (단일 원본 — 봇은 BOT_CONFIG_PATH 환경변수로 참조)
         const appDataConfig = {
             ...configToSave,
             cloudNodes: config.cloudNodes || [],
             cloudMembers: config.cloudMembers || {},
         };
         saveBotConfig(appDataConfig);
+        console.log('Bot config saved to AppData:', getBotConfigPath());
 
-        // 3. ★ 클라우드 모드: 릴레이 서버에 botConfig 동기화
+        // ★ 클라우드 모드: 릴레이 서버에 botConfig 동기화
         if (config.mode === 'cloud') {
             const relayUrl = config.cloud?.relayUrl;
             const hostId = config.cloud?.hostId;

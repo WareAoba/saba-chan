@@ -405,9 +405,10 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         {
             Ok(()) => {
                 emit("modules", "Extracting game modules...", 52);
+                let data_dir = resolve_data_dir();
                 match extract_modules_from_zipball(
                     &modules_zip,
-                    &install_dir,
+                    &data_dir,
                     &config.selected_modules,
                 ) {
                     Ok(module_names) => {
@@ -492,7 +493,7 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
     emit("shortcuts", "Creating shortcuts...", 96);
     #[cfg(target_os = "windows")]
     {
-        let gui_exe = install_dir.join("saba-chan-gui").join("saba-chan-gui.exe");
+        let gui_exe = install_dir.join("saba-chan-gui.exe");
         let app_name = localized_app_name(&config.language);
 
         // 기존 바로가기 제거 (언어 변경 시 이전 이름의 잔재 방지)
@@ -570,7 +571,6 @@ async fn get_app_mode(mode: State<'_, AppMode>) -> Result<serde_json::Value, Str
 async fn launch_app(state: State<'_, SharedState>) -> Result<(), String> {
     let install_path = state.read().await.install_path.clone();
     let exe = PathBuf::from(&install_path)
-        .join("saba-chan-gui")
         .join(if cfg!(windows) { "saba-chan-gui.exe" } else { "saba-chan-gui" });
     if exe.exists() {
         std::process::Command::new(&exe)
@@ -695,6 +695,24 @@ fn localized_app_name(language: &str) -> &'static str {
     }
 }
 
+/// saba-core와 동일한 데이터 디렉토리 경로 해석
+/// Windows: `%APPDATA%/saba-chan`, Linux/macOS: `~/.config/saba-chan`
+fn resolve_data_dir() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            return PathBuf::from(appdata).join("saba-chan");
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home).join(".config").join("saba-chan");
+        }
+    }
+    PathBuf::from("saba-chan")
+}
+
 fn get_default_install_path() -> String {
     #[cfg(target_os = "windows")]
     {
@@ -803,14 +821,14 @@ fn extract_zip(zip_path: &PathBuf, target_dir: &PathBuf) -> anyhow::Result<()> {
 
 fn extract_modules_from_zipball(
     zip_path: &Path,
-    install_dir: &Path,
+    data_dir: &Path,
     selected_modules: &[String],
 ) -> anyhow::Result<Vec<String>> {
     let file = std::fs::File::open(zip_path)?;
     let mut archive = zip::ZipArchive::new(file)?;
     let mut installed: Vec<String> = Vec::new();
 
-    let modules_dir = install_dir.join("modules");
+    let modules_dir = data_dir.join("modules");
     std::fs::create_dir_all(&modules_dir)?;
 
     for i in 0..archive.len() {
@@ -862,7 +880,8 @@ fn setup_config(install_dir: &PathBuf, config: &InstallConfig) {
     // 설정은 코드에 내장되므로 config 파일 생성 불필요
     // 필수 디렉터리만 생성
     let _ = std::fs::create_dir_all(install_dir.join("locales"));
-    let _ = std::fs::create_dir_all(install_dir.join("modules"));
+    let data_dir = resolve_data_dir();
+    let _ = std::fs::create_dir_all(data_dir.join("modules"));
 
     // 언어 설정만 별도 저장
     save_language_setting(&config.language);

@@ -1454,12 +1454,9 @@ impl Supervisor {
     }
 }
 
-/// Get Discord bot config file path
+/// Get Discord bot config file path (%APPDATA%/saba-chan/bot-config.json)
 pub fn get_discord_bot_config_path() -> String {
-    // 프로젝트 루트 기준으로 경로 설정
-    let current_dir = std::env::current_dir().unwrap_or_default();
-    current_dir
-        .join("discord_bot")
+    crate::plugin::resolve_saba_data_dir()
         .join("bot-config.json")
         .to_string_lossy()
         .to_string()
@@ -1512,8 +1509,8 @@ mod tests {
     fn test_discord_bot_config_path() {
         let path = get_discord_bot_config_path();
         
-        // 경로에 discord_bot/bot-config.json이 포함되어야 함
-        assert!(path.contains("discord_bot"));
+        // 경로에 saba-chan/bot-config.json이 포함되어야 함 (AppData 기반)
+        assert!(path.contains("saba-chan"));
         assert!(path.contains("bot-config.json"));
     }
 

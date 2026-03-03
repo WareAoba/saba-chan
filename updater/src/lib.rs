@@ -28,7 +28,7 @@
 //!   "components": {
 //!     "saba-core": { "version": "0.2.0", "asset": "saba-core-windows-x64.zip", "install_dir": "." },
 //!     "cli":         { "version": "0.2.0", "asset": "saba-cli-windows-x64.zip", "install_dir": "." },
-//!     "gui":         { "version": "0.2.0", "asset": "saba-chan-gui-windows-x64.zip", "install_dir": "saba-chan-gui" },
+//!     "gui":         { "version": "0.2.0", "asset": "saba-chan-gui-windows-x64.zip", "install_dir": "." },
 //!     "module-minecraft": { "version": "2.1.0", "asset": "module-minecraft.zip", "install_dir": "modules/minecraft" },
 //!     "module-palworld":  { "version": "1.0.1", "asset": "module-palworld.zip", "install_dir": "modules/palworld" }
 //!   }
@@ -2117,35 +2117,28 @@ rm -f "$0"
     // ─────── 유틸리티 ────────────────────────────────────────────────────────────────────────
 
     fn find_gui_directory(&self) -> Result<PathBuf> {
-        // 1) install_root 기준 (컴파일된 배포 환경에서 가장 정확)
-        let from_root = self.install_root.join("saba-chan-gui");
-        if from_root.exists() {
-            return Ok(from_root);
+        // 1) Portable exe: install_root/saba-chan-gui.exe (배포 환경 기본)
+        let gui_exe_name = if cfg!(windows) { "saba-chan-gui.exe" } else { "saba-chan-gui" };
+        if self.install_root.join(gui_exe_name).exists() {
+            tracing::info!("[Updater] GUI portable exe found at install_root");
+            return Ok(self.install_root.clone());
         }
 
-        // 2) exe 기준
+        // 2) exe 기준 (exe가 install_root와 다른 위치일 때)
         if let Ok(exe) = std::env::current_exe() {
             if let Some(dir) = exe.parent() {
-                let gui = dir.join("saba-chan-gui");
-                if gui.exists() {
-                    return Ok(gui);
+                if dir.join(gui_exe_name).exists() {
+                    return Ok(dir.to_path_buf());
                 }
             }
         }
 
-        // 3) CWD 기준 (개발 환경)
+        // 3) CWD 기준 (개발 환경 — Electron/소스 구조)
         for p in &["saba-chan-gui", "../saba-chan-gui"] {
             let path = PathBuf::from(p);
             if path.exists() {
                 return Ok(path);
             }
-        }
-
-        // 4) Portable exe fallback: if saba-chan-gui.exe exists in install_root, return install_root itself
-        let gui_exe_name = if cfg!(windows) { "saba-chan-gui.exe" } else { "saba-chan-gui" };
-        if self.install_root.join(gui_exe_name).exists() {
-            tracing::info!("[Updater] GUI portable exe found at install_root, returning install_root as gui_dir");
-            return Ok(self.install_root.clone());
         }
 
         anyhow::bail!("GUI directory not found (checked: install_root={}, exe_dir, cwd)", self.install_root.display())
@@ -2634,7 +2627,7 @@ rm -f "$0"
         match component {
             Component::CoreDaemon => self.install_root.clone(),
             Component::Cli => self.install_root.clone(),
-            Component::Gui => self.install_root.join("saba-chan-gui"),
+            Component::Gui => self.install_root.clone(),
             Component::Module(name) => self.modules_dir.join(name),
             Component::Extension(name) => self.extensions_dir.join(name),
             Component::DiscordBot => self.install_root.join("discord_bot"),

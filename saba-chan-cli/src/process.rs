@@ -258,12 +258,8 @@ pub fn start_bot() -> anyhow::Result<String> {
     let lang = gui_config::get_language().unwrap_or_else(|_| "en".into());
     let prefix = gui_config::get_bot_prefix().unwrap_or_else(|_| "!saba".into());
 
-    // bot-config.json을 discord_bot/ 폴더에 복사 (봇이 직접 읽음)
-    let config = gui_config::load_bot_config()?;
-    fs::write(
-        bot_dir.join("bot-config.json"),
-        serde_json::to_string_pretty(&config)?,
-    )?;
+    // bot-config.json 경로: AppData (단일 원본 — BOT_CONFIG_PATH 환경변수로 전달)
+    let bot_config_path = gui_config::get_bot_config_path_pub();
 
     let ipc_base = crate::gui_config::get_ipc_base_url();
     let mut cmd = Command::new("node");
@@ -271,7 +267,8 @@ pub fn start_bot() -> anyhow::Result<String> {
        .current_dir(&bot_dir)
        .env("DISCORD_TOKEN", &token)
        .env("IPC_BASE", &ipc_base)
-       .env("SABA_LANG", &lang);
+       .env("SABA_LANG", &lang)
+       .env("BOT_CONFIG_PATH", &bot_config_path);
 
     spawn_detached(&mut cmd)?;
     std::thread::sleep(Duration::from_millis(500));

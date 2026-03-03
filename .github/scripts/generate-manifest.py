@@ -44,7 +44,7 @@ COMPONENTS = [
         "version_file": "saba-chan-gui/package.json",
         "version_type": "npm",
         "asset_pattern": r"saba-chan-gui.*\.zip$",
-        "install_dir": "saba-chan-gui",
+        "install_dir": ".",
     },
     {
         "key": "updater",

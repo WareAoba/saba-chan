@@ -8,8 +8,7 @@
 //! 2. 사용자 데이터: `%APPDATA%/saba-chan` (settings.json, modules 등)
 //! 3. 임시 파일: `%TEMP%/saba-chan-*`
 //! 4. 레지스트리: `HKCU\...\Uninstall\Saba-chan`
-//! 5. 바탕화면/시작메뉴 바로가기
-
+//! 5. 바탕화면/시작메뉴 바로가기//! 6. 자기 자신 (cleanup 스크립트를 통해 프로세스 종료 후 삭제)
 use serde::Serialize;
 use std::path::PathBuf;
 use tauri::AppHandle;
@@ -146,6 +145,14 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
         }
     }
 
+    // Step 9: 자기 자신 삭제 (cleanup 스크립트)
+    emit("self-delete", "Scheduling self-deletion...", 95);
+    if let Some(ref dir) = install_dir {
+        schedule_self_delete(Some(dir));
+    } else {
+        schedule_self_delete(None);
+    }
+
     // 완료
     emit_complete("Saba-chan has been completely removed.");
     tracing::info!("[Uninstall] Complete");
@@ -204,6 +211,14 @@ pub async fn do_silent_uninstall() {
     #[cfg(target_os = "windows")]
     {
         let _ = registry::remove_uninstall_entry();
+    }
+
+    // 자기 자신 삭제
+    eprintln!("  Scheduling self-deletion...");
+    {
+        let install_location_ref = install_location.as_ref();
+        let dir = install_location_ref.map(|l| PathBuf::from(l));
+        schedule_self_delete(dir.as_ref());
     }
 
     eprintln!("[OK] Saba-chan has been completely removed.");
@@ -359,6 +374,114 @@ fn remove_modules_dir() {
                 tracing::info!("[Uninstall] Removing modules: {:?}", modules_dir);
                 let _ = remove_dir_robust(&modules_dir);
             }
+        }
+    }
+}
+
+/// 프로세스 종료 후 자기 자신(및 남은 설치 디렉토리)을 삭제하는 cleanup 스크립트를 생성·실행.
+///
+/// Windows에서는 실행 중인 .exe를 직접 삭제할 수 없으므로,
+/// 별도 cmd 스크립트를 spawn하여 프로세스 종료를 대기한 뒤 삭제한다.
+fn schedule_self_delete(install_dir: Option<&PathBuf>) {
+    #[cfg(target_os = "windows")]
+    {
+        use std::io::Write;
+
+        let self_exe = match std::env::current_exe() {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!("[Uninstall] Cannot determine own exe path: {}", e);
+                return;
+            }
+        };
+
+        let pid = std::process::id();
+        let script_path = std::env::temp_dir().join("saba-chan-cleanup.cmd");
+
+        // 설치 디렉토리 삭제 명령 (있으면)
+        let rmdir_line = match install_dir {
+            Some(dir) => format!(
+                "if exist \"{}\" rmdir /s /q \"{}\"",
+                dir.display(),
+                dir.display()
+            ),
+            None => String::new(),
+        };
+
+        // 부모 디렉토리도 정리 시도 (비어있으면 삭제)
+        let parent_line = match self_exe.parent() {
+            Some(parent) => format!(
+                "rmdir \"{}\" 2>nul",
+                parent.display()
+            ),
+            None => String::new(),
+        };
+
+        let script_display = script_path.display().to_string();
+        let script = format!(
+            "@echo off\r\n\
+            :wait\r\n\
+            tasklist /FI \"PID eq {pid}\" 2>nul | find \"{pid}\" >nul\r\n\
+            if not errorlevel 1 (\r\n\
+                timeout /t 1 /nobreak >nul\r\n\
+                goto wait\r\n\
+            )\r\n\
+            del /f /q \"{self_exe}\"\r\n\
+            {rmdir_line}\r\n\
+            {parent_line}\r\n\
+            del /f /q \"{script}\"\r\n",
+            pid = pid,
+            self_exe = self_exe.display(),
+            rmdir_line = rmdir_line,
+            parent_line = parent_line,
+            script = script_display,
+        );
+
+        // 스크립트 파일 작성
+        match std::fs::File::create(&script_path) {
+            Ok(mut f) => {
+                if let Err(e) = f.write_all(script.as_bytes()) {
+                    tracing::warn!("[Uninstall] Failed to write cleanup script: {}", e);
+                    return;
+                }
+            }
+            Err(e) => {
+                tracing::warn!("[Uninstall] Failed to create cleanup script: {}", e);
+                return;
+            }
+        }
+
+        // CREATE_NO_WINDOW 플래그로 cmd 실행 (콘솔 창 숨김)
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        match std::process::Command::new("cmd")
+            .args(["/C", &script_path.to_string_lossy()])
+            .creation_flags(CREATE_NO_WINDOW)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            Ok(_) => tracing::info!(
+                "[Uninstall] Cleanup script spawned: {:?}",
+                script_path
+            ),
+            Err(e) => tracing::warn!(
+                "[Uninstall] Failed to spawn cleanup script: {}",
+                e
+            ),
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Unix: 실행 중인 바이너리도 바로 삭제 가능
+        if let Ok(self_exe) = std::env::current_exe() {
+            let _ = std::fs::remove_file(&self_exe);
+        }
+        if let Some(dir) = install_dir {
+            let _ = remove_dir_robust(dir);
         }
     }
 }

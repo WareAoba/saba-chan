@@ -459,7 +459,7 @@ mod tests {
                     "version": "0.5.0",
                     "asset": "saba-chan-gui-windows-x64.zip",
                     "sha256": null,
-                    "install_dir": "saba-chan-gui"
+                    "install_dir": "."
                 }
             }
         }"#;
