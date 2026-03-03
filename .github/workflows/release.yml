@@ -31,14 +31,30 @@ name: Release — Package & Manifest
 #   discord-bot.zip
 #   locales.zip
 #   manifest.json
+#
+# 트리거:
+#   - published: 드래프트→발행, 또는 새 릴리즈 생성 시
+#   - edited: 기존 릴리즈의 태그/에셋 수정 시 (에셋만 변경해도 재처리)
+#   - workflow_dispatch: Actions 탭에서 수동 실행 (태그 입력 필요)
 # ─────────────────────────────────────────────────────────
 
 on:
   release:
-    types: [published]
+    types: [published, edited]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: '처리할 릴리즈 태그 (예: v0.1.0)'
+        required: true
+        type: string
 
 permissions:
   contents: write
+
+# 동일 릴리즈에 대한 동시 실행 방지 (짧은 시간에 여러 편집 시)
+concurrency:
+  group: release-${{ github.event.release.tag_name || github.event.inputs.tag_name }}
+  cancel-in-progress: true
 
 jobs:
   package-and-manifest:
@@ -46,11 +62,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    env:
+      # release 이벤트와 workflow_dispatch 모두 지원
+      TARGET_TAG: ${{ github.event.release.tag_name || github.event.inputs.tag_name }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           ref: main  # 태그가 아닌 main의 최신 스크립트·소스를 사용
+
+      - name: Verify release exists
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Target tag: ${{ env.TARGET_TAG }}"
+          gh release view "${{ env.TARGET_TAG }}" \
+            --repo "${{ github.repository }}" \
+            --json tagName,name,isDraft \
+            --jq '"\(.tagName) — \(.name) (draft: \(.isDraft))"'
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -62,7 +92,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p staging
-          gh release download "${{ github.event.release.tag_name }}" \
+          gh release download "${{ env.TARGET_TAG }}" \
             --repo "${{ github.repository }}" \
             --dir staging \
             --skip-existing || true
@@ -72,8 +102,8 @@ jobs:
       - name: Package & generate manifest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          RELEASE_ID: ${{ github.event.release.id }}
+          RELEASE_TAG: ${{ env.TARGET_TAG }}
+          RELEASE_ID: ${{ github.event.release.id || '' }}
           REPO_FULL_NAME: ${{ github.repository }}
         run: python .github/scripts/package-release.py
 
@@ -84,7 +114,7 @@ jobs:
           echo "=== Uploading to release ==="
           for f in output/*; do
             echo "  Uploading: $(basename $f)"
-            gh release upload "${{ github.event.release.tag_name }}" \
+            gh release upload "${{ env.TARGET_TAG }}" \
               "$f" \
               --repo "${{ github.repository }}" \
               --clobber
@@ -99,14 +129,14 @@ jobs:
           # output/ 에 있는 파일 이름 목록 = 유지할 에셋
           KEEP_FILES=$(ls output/ | sort)
           # 릴리즈의 현재 에셋 목록
-          ALL_ASSETS=$(gh release view "${{ github.event.release.tag_name }}" \
+          ALL_ASSETS=$(gh release view "${{ env.TARGET_TAG }}" \
             --repo "${{ github.repository }}" \
             --json assets --jq '.assets[].name' | sort)
           # output/에 없는 에셋 삭제
           for asset in $ALL_ASSETS; do
             if ! echo "$KEEP_FILES" | grep -qx "$asset"; then
               echo "  Deleting: $asset"
-              gh release delete-asset "${{ github.event.release.tag_name }}" \
+              gh release delete-asset "${{ env.TARGET_TAG }}" \
                 "$asset" \
                 --repo "${{ github.repository }}" \
                 --yes
