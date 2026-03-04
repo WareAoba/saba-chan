@@ -655,6 +655,41 @@ export function useServerActions({
             console.log('Adding instance:', instanceData);
             const result = await window.api.instanceCreate(instanceData);
 
+            // ── extension_required 처리 ──
+            if (result.error_code === 'extension_required') {
+                setModal({
+                    type: 'question',
+                    title: t('servers.extension_required_title', { defaultValue: 'Extension Required' }),
+                    message:
+                        result.missing_extensions
+                            ? t('servers.extension_required_message_detail', {
+                                  name: serverName,
+                                  extensions: result.missing_extensions.join(', '),
+                                  defaultValue: `Server '${serverName}' requires the following extension(s): ${result.missing_extensions.join(', ')}. Enable them in Settings → Extensions first.`,
+                              })
+                            : t('servers.extension_required_message', {
+                                  name: serverName,
+                                  defaultValue: `Server '${serverName}' requires an extension that is not enabled.`,
+                              }),
+                    buttons: [
+                        {
+                            label: t('servers.extension_open_settings', { defaultValue: 'Open Extension Settings' }),
+                            action: () => {
+                                setModal(null);
+                                if (openSettingsToExtensions) {
+                                    openSettingsToExtensions();
+                                }
+                            },
+                        },
+                        {
+                            label: t('modals.cancel'),
+                            action: () => setModal(null),
+                        },
+                    ],
+                });
+                return;
+            }
+
             if (result.error) {
                 const errorMsg = translateError(result.error);
                 setModal({ type: 'failure', title: t('servers.add_failed_title'), message: errorMsg });

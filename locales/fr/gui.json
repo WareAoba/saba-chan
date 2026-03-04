@@ -366,6 +366,7 @@
                     "progress_complete":  "Installation terminée !",
                     "extension_required_title":  "Extension requise",
                     "extension_required_message":  "Les extensions requises pour le serveur \u0027{{name}}\u0027 ne sont pas activées.",
+                    "extension_required_message_detail":  "Le serveur \u0027{{name}}\u0027 nécessite les extensions suivantes : {{extensions}}. Activez-les dans Paramètres → Extensions.",
                     "extension_open_settings":  "Ouvrir les paramètres d\u0027extension"
                 },
     "settings":  {

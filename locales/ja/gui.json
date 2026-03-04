@@ -309,6 +309,7 @@
                     "progress_complete":  "インストール完了！",
                     "extension_required_title":  "拡張機能が必要です",
                     "extension_required_message":  "サーバー \u0027{{name}}\u0027 に必要な拡張機能が有効になっていません。",
+                    "extension_required_message_detail":  "サーバー \u0027{{name}}\u0027 には次の拡張機能が必要です: {{extensions}}。設定 → 拡張機能で有効にしてください。",
                     "extension_open_settings":  "拡張機能設定を開く"
                 },
     "settings":  {

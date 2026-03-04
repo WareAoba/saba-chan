@@ -12,6 +12,7 @@ pub mod shortcuts;
 pub mod uninstall;
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -517,6 +518,34 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
                 if let Err(e) = shortcuts::create_start_menu_shortcut(&gui_exe, app_name) {
                     tracing::warn!("Start menu shortcut failed: {}", e);
                 }
+            }
+        }
+    }
+
+    // Step 10.5: installed-manifest.json 생성 (업데이터가 현재 버전을 인식하도록)
+    emit("manifest", "Recording installed versions...", 98);
+    {
+        let mut versions = HashMap::new();
+        for (key, info) in &manifest.components {
+            versions.insert(key.clone(), info.version.clone());
+        }
+        let data_dir = resolve_data_dir();
+        let _ = std::fs::create_dir_all(&data_dir);
+        let manifest_path = data_dir.join("installed-manifest.json");
+        match serde_json::to_string_pretty(&versions) {
+            Ok(json) => {
+                if let Err(e) = std::fs::write(&manifest_path, &json) {
+                    tracing::warn!("Failed to write installed-manifest.json: {}", e);
+                } else {
+                    tracing::info!(
+                        "Written installed-manifest.json with {} components to {:?}",
+                        versions.len(),
+                        manifest_path
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to serialize installed-manifest.json: {}", e);
             }
         }
     }

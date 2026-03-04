@@ -286,19 +286,38 @@ fn remove_appdata_dir() {
     #[cfg(target_os = "windows")]
     {
         if let Ok(appdata) = std::env::var("APPDATA") {
-            let saba_dir = PathBuf::from(appdata).join("saba-chan");
+            let appdata_path = PathBuf::from(&appdata);
+
+            // Core daemon 데이터 디렉토리
+            let saba_dir = appdata_path.join("saba-chan");
             if saba_dir.exists() {
                 tracing::info!("[Uninstall] Removing appdata: {:?}", saba_dir);
                 let _ = remove_dir_robust(&saba_dir);
+            }
+
+            // 레거시: Electron이 app.setPath() 이전에 생성한 임시 디렉토리 정리
+            // (현재는 모든 데이터가 saba-chan/ 하나에 통합됨)
+            let gui_dir = appdata_path.join("saba-chan-gui");
+            if gui_dir.exists() {
+                tracing::info!("[Uninstall] Removing legacy Electron dir: {:?}", gui_dir);
+                let _ = remove_dir_robust(&gui_dir);
             }
         }
     }
     #[cfg(not(target_os = "windows"))]
     {
         if let Ok(home) = std::env::var("HOME") {
-            let saba_dir = PathBuf::from(home).join(".config").join("saba-chan");
+            let config_dir = PathBuf::from(&home).join(".config");
+
+            let saba_dir = config_dir.join("saba-chan");
             if saba_dir.exists() {
                 let _ = remove_dir_robust(&saba_dir);
+            }
+
+            // 레거시: Electron 임시 디렉토리 정리
+            let gui_dir = config_dir.join("saba-chan-gui");
+            if gui_dir.exists() {
+                let _ = remove_dir_robust(&gui_dir);
             }
         }
     }

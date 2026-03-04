@@ -366,6 +366,7 @@
                     "progress_complete":  "Installation abgeschlossen!",
                     "extension_required_title":  "Erweiterung erforderlich",
                     "extension_required_message":  "Erforderliche Erweiterungen für Server \u0027{{name}}\u0027 sind nicht aktiviert.",
+                    "extension_required_message_detail":  "Server \u0027{{name}}\u0027 benötigt folgende Erweiterung(en): {{extensions}}. Bitte unter Einstellungen → Erweiterungen aktivieren.",
                     "extension_open_settings":  "Erweiterungseinstellungen öffnen"
                 },
     "settings":  {

@@ -366,6 +366,7 @@
                     "progress_complete":  "Установка завершена!",
                     "extension_required_title":  "Требуется расширение",
                     "extension_required_message":  "Требуемые расширения для сервера \u0027{{name}}\u0027 не включены.",
+                    "extension_required_message_detail":  "Сервер \u0027{{name}}\u0027 требует следующие расширения: {{extensions}}. Включите их в Настройки → Расширения.",
                     "extension_open_settings":  "Открыть параметры расширения"
                 },
     "settings":  {

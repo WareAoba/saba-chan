@@ -366,6 +366,7 @@
                     "progress_complete":  "安装完成！",
                     "extension_required_title":  "需要扩展",
                     "extension_required_message":  "服务器\u0027{{name}}\u0027所需的扩展未启用。",
+                    "extension_required_message_detail":  "服务器\u0027{{name}}\u0027需要以下扩展: {{extensions}}。请在设置 → 扩展中启用。",
                     "extension_open_settings":  "打开扩展设置"
                 },
     "settings":  {

@@ -366,6 +366,7 @@
                     "progress_complete":  "安裝完成！",
                     "extension_required_title":  "需要擴充功能",
                     "extension_required_message":  "伺服器\u0027{{name}}\u0027所需的擴充功能未啟用。",
+                    "extension_required_message_detail":  "伺服器\u0027{{name}}\u0027需要以下擴充功能: {{extensions}}。請在設定 → 擴充功能中啟用。",
                     "extension_open_settings":  "打開擴充功能設定"
                 },
     "settings":  {

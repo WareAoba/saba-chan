@@ -26,6 +26,10 @@ function getSabaDataDir() {
     }
     return path.join(process.env.HOME || '', '.config', 'saba-chan');
 }
+
+// Electron userData를 saba-chan으로 통일 — ready 전에 호출해야 Chromium 내부 데이터도 이 경로 사용
+app.setPath('userData', getSabaDataDir());
+
 function getFixedModulesPath() {
     return process.env.SABA_MODULES_PATH || path.join(getSabaDataDir(), 'modules');
 }
@@ -1437,10 +1441,6 @@ function updateTrayMenu() {
 app.on('ready', () => {
     // Windows에서 OS 알림을 표시하려면 AppUserModelId가 반드시 필요
     app.setAppUserModelId('com.saba-chan.app');
-
-    // userData를 saba-chan으로 통일 (GUI/CLI 공유)
-    const customUserData = path.join(app.getPath('appData'), 'saba-chan');
-    app.setPath('userData', customUserData);
 
     // 로거 초기화 (가장 먼저)
     initLogger();
