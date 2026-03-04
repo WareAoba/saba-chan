@@ -380,9 +380,11 @@ pub struct ExtensionUpdateInfo {
 //  ExtensionManager
 // ═══════════════════════════════════════════════════════════════
 
-/// 원격 매니페스트 기본 URL
+/// 원격 매니페스트 기본 URL — constants 모듈의 함수를 사용하되,
+/// const 문맥에서는 호출 불가하므로 초기화 시점에 lazy 적용
 const DEFAULT_MANIFEST_URL: &str =
     "https://raw.githubusercontent.com/WareAoba/saba-chan-extensions/main/manifest.json";
+// NOTE: 향후 ExtensionManager::new()에서 constants::extensions_manifest_url() 사용 권장
 
 pub struct ExtensionManager {
     extensions_dir: PathBuf,
@@ -428,15 +430,9 @@ impl ExtensionManager {
         mgr
     }
 
-    /// %APPDATA%/saba-chan/extensions_state.json 경로 해석
+    /// extensions_state.json 경로 해석
     fn resolve_state_path() -> PathBuf {
-        if let Ok(appdata) = std::env::var("APPDATA") {
-            PathBuf::from(appdata)
-                .join("saba-chan")
-                .join("extensions_state.json")
-        } else {
-            PathBuf::from("./extensions_state.json")
-        }
+        saba_chan_updater_lib::constants::resolve_extensions_state_path()
     }
 
     /// Python import에서 사용할 수 있도록 ext_id의 하이픈을 언더스코어로 변환합니다.
@@ -489,9 +485,7 @@ impl ExtensionManager {
             return Ok(found);
         }
 
-        // ── 디렉토리명 마이그레이션: 하이픈 → 언더스코어 ──────────
-        // Python import 호환을 위해 하이픈이 포함된 디렉토리를 언더스코어로 rename
-        self.migrate_hyphen_dirs();
+
 
         let entries = std::fs::read_dir(&self.extensions_dir)
             .with_context(|| {
@@ -1406,13 +1400,7 @@ impl ExtensionManager {
             std::fs::remove_dir_all(&dest)
                 .with_context(|| format!("Failed to remove existing extension dir: {}", dest.display()))?;
         }
-        // 레거시: 하이픈 이름으로 된 기존 디렉토리도 제거
-        if dir_name != ext_id {
-            let legacy = self.extensions_dir.join(ext_id);
-            if legacy.is_dir() {
-                let _ = std::fs::remove_dir_all(&legacy);
-            }
-        }
+
 
         let file = std::fs::File::open(&zip_path)?;
         let mut archive = zip::ZipArchive::new(file)
@@ -1452,44 +1440,6 @@ impl ExtensionManager {
         }
         let content = std::fs::read_to_string(&path).ok()?;
         serde_json::from_str(&content).ok()
-    }
-
-    /// 하이픈이 포함된 익스텐션 디렉토리를 언더스코어로 rename (레거시 마이그레이션).
-    /// Python은 하이픈을 모듈명에 사용할 수 없으므로 `from extensions.ue4_ini` 등이
-    /// 동작하려면 디렉토리명이 언더스코어여야 합니다.
-    fn migrate_hyphen_dirs(&self) {
-        let entries = match std::fs::read_dir(&self.extensions_dir) {
-            Ok(e) => e,
-            Err(_) => return,
-        };
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            let name_str = name.to_string_lossy();
-            if !name_str.contains('-') || !entry.path().is_dir() {
-                continue;
-            }
-            let safe_name = name_str.replace('-', "_");
-            let new_path = self.extensions_dir.join(&safe_name);
-            if new_path.exists() {
-                // 이미 언더스코어 디렉토리가 존재하면 레거시 삭제
-                tracing::info!(
-                    "[ExtMigrate] Removing legacy dir '{}' (underscore version exists)",
-                    name_str
-                );
-                let _ = std::fs::remove_dir_all(entry.path());
-            } else {
-                tracing::info!(
-                    "[ExtMigrate] Renaming '{}' → '{}'",
-                    name_str, safe_name
-                );
-                if let Err(e) = std::fs::rename(entry.path(), &new_path) {
-                    tracing::warn!(
-                        "[ExtMigrate] Failed to rename '{}': {}",
-                        name_str, e
-                    );
-                }
-            }
-        }
     }
 
     /// enabled 목록 영속화

@@ -87,10 +87,8 @@ pub async fn create_instance(
         let mut instance = crate::instance::ServerInstance::new(name, module);
 
         // 익스텐션 모드 플래그 (예: 컨테이너 격리)
-        // "use_container" 우선, "use_docker" 레거시 호환
         let use_container_ext = payload
             .get("use_container")
-            .or_else(|| payload.get("use_docker"))
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
@@ -422,11 +420,11 @@ pub async fn create_instance(
                         drop(supervisor);
 
                         tokio::spawn(async move {
-                            // lifecycle.py install_server 호출 (SteamCMD / download 모두 처리)
-                            let result = {
+                            // ── Phase 1: supervisor lock을 최소 시간만 잡고 모듈 경로 복사 ──
+                            let module_path = {
                                 let sup = supervisor_arc.read().await;
-                                let module = match sup.module_loader.get_module(&module_name_owned) {
-                                    Ok(m) => m,
+                                match sup.module_loader.get_module(&module_name_owned) {
+                                    Ok(m) => format!("{}/lifecycle.py", m.path),
                                     Err(e) => {
                                         tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
                                             step: 0, total: 1,
@@ -439,9 +437,14 @@ pub async fn create_instance(
                                         });
                                         return;
                                     }
-                                };
-                                let module_path = format!("{}/lifecycle.py", module.path);
+                                }
+                            };
+                            // supervisor read lock 해제됨 — 이후 플러그인 호출이
+                            // 모니터 태스크의 write lock을 차단하지 않음
 
+                            // ── Phase 2: 플러그인 호출 (lock 없이 실행) ──
+                            // lifecycle.py install_server 호출 (SteamCMD / download 모두 처리)
+                            let result = {
                                 // download 방식 모듈은 먼저 list_versions로 최신 버전 조회
                                 let version = if install_config.method == "download" {
                                     match crate::plugin::run_plugin(
@@ -646,12 +649,28 @@ pub async fn create_instance(
                                         for (key, value) in settings {
                                             instance.module_settings.insert(key.clone(), value.clone());
                                         }
-                                        // port, admin_password 등 core 필드도 동기화
+                                        // port 등 core 필드 동기화
                                         if let Some(port) = settings.get("port").and_then(|v| v.as_u64()) {
                                             instance.port = Some(port as u16);
                                         }
-                                        if let Some(pwd) = settings.get("admin_password").and_then(|v| v.as_str()) {
-                                            instance.rest_password = Some(pwd.to_string());
+                                        // credential_map 역매핑: import된 설정에서 daemon first-class 필드로 동기화
+                                        // 예: Palworld의 credential_map { rest_password = "AdminPassword" }
+                                        //   → settings에 "AdminPassword" 값이 있으면 instance.rest_password에 설정
+                                        if let Ok(module) = supervisor.module_loader.get_module(&module_name_owned) {
+                                            for (daemon_key, game_key) in &module.metadata.credential_map {
+                                                // game_key(예: "AdminPassword")를 case-insensitive로 settings에서 탐색
+                                                let game_key_lower = game_key.to_lowercase();
+                                                let value = settings.iter()
+                                                    .find(|(k, _)| k.to_lowercase() == game_key_lower || k.as_str() == game_key.as_str())
+                                                    .and_then(|(_, v)| v.as_str());
+                                                if let Some(pwd) = value {
+                                                    match daemon_key.as_str() {
+                                                        "rest_password" => instance.rest_password = Some(pwd.to_string()),
+                                                        "rcon_password" => instance.rcon_password = Some(pwd.to_string()),
+                                                        _ => {}
+                                                    }
+                                                }
+                                            }
                                         }
                                         tracing::info!("Migration import_settings: {} settings imported for '{}'", settings.len(), instance_name);
                                     }
@@ -951,6 +970,40 @@ pub async fn update_instance_settings(
     if let Some(rest_password) = settings.get("rest_password").and_then(|v| v.as_str()) {
         updated.rest_password = Some(rest_password.to_string());
     }
+    // credential_map 범용 역동기화: module_settings 키 → daemon first-class 필드
+    // 예: Palworld credential_map { rest_password = "AdminPassword" }
+    //   → module_settings의 "admin_password" (snake_case) 값을 instance.rest_password에 동기화
+    if let Ok(module) = supervisor.module_loader.get_module(&instance.module_name) {
+        for (daemon_key, game_key) in &module.metadata.credential_map {
+            // game_key를 snake_case로 변환하여 module_settings에서 탐색
+            let snake_key = game_key
+                .chars()
+                .enumerate()
+                .fold(String::new(), |mut acc, (i, c)| {
+                    if c.is_uppercase() && i > 0 {
+                        acc.push('_');
+                    }
+                    acc.push(c.to_lowercase().next().unwrap());
+                    acc
+                });
+            let value = settings.get(&snake_key)
+                .or_else(|| settings.get(game_key.as_str()))
+                .and_then(|v| v.as_str());
+            if let Some(pwd) = value {
+                if !pwd.is_empty() {
+                    match daemon_key.as_str() {
+                        "rest_password" if updated.rest_password.as_deref().unwrap_or("").is_empty() => {
+                            updated.rest_password = Some(pwd.to_string());
+                        }
+                        "rcon_password" if updated.rcon_password.as_deref().unwrap_or("").is_empty() => {
+                            updated.rcon_password = Some(pwd.to_string());
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
 
     if let Some(executable_path) = settings.get("executable_path").and_then(|v| v.as_str()) {
         // executable_path는 보통 모듈의 server_executable + working_dir에서 자동 해석되지만,
@@ -1219,7 +1272,7 @@ pub async fn apply_server_update(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    let mut supervisor = state.supervisor.write().await;
+    let supervisor = state.supervisor.read().await;
 
     let instance = match supervisor.instance_store.get(&id) {
         Some(inst) => inst.clone(),
@@ -1271,7 +1324,7 @@ pub async fn apply_server_update(
         .ok()
         .map(|m| (m.metadata.install.clone(), m.path.clone()));
 
-    let (install_config, module_path) = match module_info {
+    let (install_config, _module_path) = match module_info {
         Some((Some(cfg), path)) => (cfg, path),
         _ => {
             return (
@@ -1320,10 +1373,11 @@ pub async fn apply_server_update(
     let name_done = instance_name.clone();
 
     tokio::spawn(async move {
-        let result = {
+        // ── Phase 1: supervisor lock을 최소 시간만 잡고 모듈 경로 복사 ──
+        let lifecycle_path = {
             let sup = supervisor_arc.read().await;
-            let module = match sup.module_loader.get_module(&module_name_owned) {
-                Ok(m) => m,
+            match sup.module_loader.get_module(&module_name_owned) {
+                Ok(m) => format!("{}/lifecycle.py", m.path),
                 Err(e) => {
                     tracker_done.update(
                         &name_done,
@@ -1340,9 +1394,12 @@ pub async fn apply_server_update(
                     );
                     return;
                 }
-            };
-            let lifecycle_path = format!("{}/lifecycle.py", module.path);
+            }
+        };
+        // supervisor read lock 해제됨
 
+        // ── Phase 2: 플러그인 호출 (lock 없이 실행) ──
+        let result = {
             let config = serde_json::json!({
                 "install_dir": &install_dir_str,
                 "accept_eula": true,

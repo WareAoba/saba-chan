@@ -91,6 +91,7 @@ impl RestClient {
 
         if let (Some(user), Some(pass)) = (&self.username, &self.password) {
             let token = BASE64.encode(format!("{}:{}", user, pass));
+            tracing::info!("REST auth: user={}, pass_len={}, token_prefix={}...", user, pass.len(), &token[..8.min(token.len())]);
             req = req.set("Authorization", &format!("Basic {}", token));
         }
 

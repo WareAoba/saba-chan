@@ -15,6 +15,7 @@ const { PassThrough } = require('stream');
 const path = require('path');
 const fs = require('fs');
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { getSabaDataDir } = require('../../shared/constants');
 
 // ── Lazy imports (패키지 미설치 시 graceful fallback) ──
 let voice, playDl;
@@ -32,12 +33,8 @@ function loadDepsResolved() {
     if (process.env.SABA_EXTENSIONS_DIR) {
         candidates.push(path.join(process.env.SABA_EXTENSIONS_DIR, 'music', '.deps-resolved.json'));
     }
-    // 2. 플랫폼별 기본 경로
-    if (process.platform === 'win32' && process.env.APPDATA) {
-        candidates.push(path.join(process.env.APPDATA, 'saba-chan', 'extensions', 'music', '.deps-resolved.json'));
-    } else if (process.env.HOME) {
-        candidates.push(path.join(process.env.HOME, '.config', 'saba-chan', 'extensions', 'music', '.deps-resolved.json'));
-    }
+    // 2. 플랫폼별 기본 경로 (SSOT: getSabaDataDir)
+    candidates.push(path.join(getSabaDataDir(), 'extensions', 'music', '.deps-resolved.json'));
     // 3. 개발 환경 — 워크스페이스 인접 폴더
     const devPath = path.resolve(__dirname, '..', '..', '..', 'saba-chan-extensions', 'music', '.deps-resolved.json');
     candidates.push(devPath);

@@ -45,7 +45,7 @@ pub fn register_uninstall_entry(
 
     key.set_value("DisplayName", &display_name)?;
     key.set_value("DisplayVersion", &version.trim_start_matches('v'))?;
-    key.set_value("Publisher", &"WareAoba")?;
+    key.set_value("Publisher", &saba_chan_updater_lib::constants::GITHUB_OWNER)?;
     key.set_value("InstallLocation", &install_location)?;
     key.set_value("UninstallString", &uninstall_cmd)?;
     key.set_value("DisplayIcon", &format!("{}", install_dir.join("saba-chan-gui.exe").to_string_lossy()))?;

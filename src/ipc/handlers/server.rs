@@ -431,7 +431,7 @@ pub async fn get_module_metadata(
 
 /// GET /api/modules/manifest - saba-chan-modules 최신 릴리스 manifest 가져오기
 pub async fn fetch_module_manifest() -> impl IntoResponse {
-    let url = "https://github.com/WareAoba/saba-chan-modules/releases/latest/download/manifest.json";
+    let url = saba_chan_updater_lib::constants::modules_manifest_url();
     match reqwest::get(url).await {
         Ok(resp) if resp.status().is_success() => {
             match resp.json::<serde_json::Value>().await {
@@ -453,10 +453,7 @@ pub async fn install_module_from_manifest(
 ) -> impl IntoResponse {
     // 레지스트리에서 다운로드 URL 구성
     let asset_name = format!("module-{}.zip", module_id);
-    let download_url = format!(
-        "https://github.com/WareAoba/saba-chan-modules/releases/latest/download/{}",
-        asset_name
-    );
+    let download_url = saba_chan_updater_lib::constants::module_asset_url(&asset_name);
 
     // 설치 디렉토리 결정
     let modules_dir = {
@@ -591,7 +588,9 @@ pub async fn start_server_handler(
             .find(|i| i.name == name)
             .cloned();
         if let Some(mut inst) = inst_opt {
-            if inst.ensure_passwords() {
+            let changed = inst.ensure_passwords();
+
+            if changed {
                 let inst_id = inst.id.clone();
                 if let Err(e) = supervisor.instance_store.update(&inst_id, inst) {
                     tracing::warn!("Failed to save auto-generated passwords for {}: {}", name, e);

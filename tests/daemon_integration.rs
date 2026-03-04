@@ -30,29 +30,30 @@ use serde_json::Value;
 // 테스트 유틸리티
 // ═══════════════════════════════════════════════════════
 
-/// 테스트 종료 시 instances.json에서 테스트 데이터 자동 제거
+/// 테스트 종료 시 인스턴스 디렉토리에서 테스트 데이터 자동 제거
 fn cleanup_test_instances() {
-    let instances_path = std::env::var("SABA_INSTANCES_PATH")
+    let instances_dir = std::env::var("SABA_INSTANCES_PATH")
         .unwrap_or_else(|_| {
-            std::env::var("APPDATA")
-                .map(|appdata| format!("{}\\saba-chan\\instances.json", appdata))
-                .unwrap_or_else(|_| "./instances.json".to_string())
+            saba_chan_updater_lib::constants::resolve_instances_dir()
+                .to_string_lossy()
+                .to_string()
         });
-    let instances_path = instances_path.as_str();
+    let instances_dir = std::path::Path::new(&instances_dir);
 
-    if let Ok(content) = fs::read_to_string(instances_path) {
-        if let Ok(mut instances) = serde_json::from_str::<Vec<Value>>(&content) {
-            let original_count = instances.len();
-            instances.retain(|instance| {
-                instance
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .map(|n| !n.starts_with("test-"))
-                    .unwrap_or(true)
-            });
-            if instances.len() != original_count {
-                if let Ok(json) = serde_json::to_string_pretty(&instances) {
-                    let _ = fs::write(instances_path, json);
+    if let Ok(entries) = fs::read_dir(instances_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() { continue; }
+            let instance_json = path.join("instance.json");
+            if let Ok(content) = fs::read_to_string(&instance_json) {
+                if let Ok(instance) = serde_json::from_str::<Value>(&content) {
+                    if instance.get("name")
+                        .and_then(|v| v.as_str())
+                        .map(|n| n.starts_with("test-"))
+                        .unwrap_or(false)
+                    {
+                        let _ = fs::remove_dir_all(&path);
+                    }
                 }
             }
         }

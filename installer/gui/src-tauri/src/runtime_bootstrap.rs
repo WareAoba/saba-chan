@@ -11,6 +11,7 @@
 //! - nodejs.org 포터블 배포판 다운로드 (~30 MB)
 //! - Discord Bot `npm install` 실행
 
+use saba_chan_updater_lib::constants;
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
 
@@ -618,7 +619,7 @@ pub fn resolve_runtime_data_dir(install_dir: &Path) -> PathBuf {
     #[cfg(target_os = "windows")]
     {
         if let Ok(appdata) = std::env::var("APPDATA") {
-            let dir = PathBuf::from(appdata).join("saba-chan");
+            let dir = PathBuf::from(appdata).join(constants::APP_NAME);
             let _ = std::fs::create_dir_all(&dir);
             return dir;
         }
@@ -631,7 +632,7 @@ pub fn resolve_runtime_data_dir(install_dir: &Path) -> PathBuf {
             let dir = PathBuf::from(home)
                 .join(".local")
                 .join("share")
-                .join("saba-chan");
+                .join(constants::APP_NAME);
             let _ = std::fs::create_dir_all(&dir);
             return dir;
         }

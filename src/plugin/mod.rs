@@ -28,16 +28,7 @@ pub struct ExtensionProgress {
 ///
 /// 디렉토리가 존재하지 않으면 생성을 시도합니다.
 pub fn resolve_extensions_dir() -> std::path::PathBuf {
-    // 환경 변수 오버라이드 (테스트/개발용)
-    if let Ok(dir) = std::env::var("SABA_EXTENSIONS_DIR") {
-        let p = std::path::PathBuf::from(&dir);
-        if !p.exists() {
-            let _ = std::fs::create_dir_all(&p);
-        }
-        return p;
-    }
-
-    let candidate = resolve_saba_data_dir().join("extensions");
+    let candidate = saba_chan_updater_lib::constants::resolve_extensions_dir();
     if !candidate.exists() {
         let _ = std::fs::create_dir_all(&candidate);
     }
@@ -53,42 +44,11 @@ pub fn resolve_extensions_dir() -> std::path::PathBuf {
 ///
 /// 디렉토리가 존재하지 않으면 생성을 시도합니다.
 pub fn resolve_modules_dir() -> std::path::PathBuf {
-    // 환경 변수 오버라이드 (테스트/개발용)
-    if let Ok(dir) = std::env::var("SABA_MODULES_PATH") {
-        let p = std::path::PathBuf::from(&dir);
-        if !p.exists() {
-            let _ = std::fs::create_dir_all(&p);
-        }
-        return p;
-    }
-
-    let candidate = resolve_saba_data_dir().join("modules");
+    let candidate = saba_chan_updater_lib::constants::resolve_modules_dir();
     if !candidate.exists() {
         let _ = std::fs::create_dir_all(&candidate);
     }
     candidate
-}
-
-/// saba-chan 데이터 디렉토리 경로를 해석합니다.
-///
-/// Windows: `%APPDATA%/saba-chan`
-/// Linux/macOS: `~/.config/saba-chan`
-pub fn resolve_saba_data_dir() -> std::path::PathBuf {
-    #[cfg(target_os = "windows")]
-    {
-        if let Ok(appdata) = std::env::var("APPDATA") {
-            return std::path::PathBuf::from(appdata).join("saba-chan");
-        }
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        if let Ok(home) = std::env::var("HOME") {
-            return std::path::PathBuf::from(home)
-                .join(".config")
-                .join("saba-chan");
-        }
-    }
-    std::path::PathBuf::from(".").join("saba-chan")
 }
 
 /// 기본 플러그인 타임아웃 (초)

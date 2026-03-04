@@ -39,6 +39,7 @@
 // 모듈
 // ══════════════════════════════════════════════════════╁E
 
+pub mod constants;
 pub mod error;
 pub mod foreground;
 pub mod github;
@@ -304,8 +305,8 @@ impl Default for UpdateConfig {
             check_interval_hours: 3,
             auto_download: false,
             auto_apply: false,
-            github_owner: "WareAoba".to_string(),
-            github_repo: "saba-chan".to_string(),
+            github_owner: crate::constants::GITHUB_OWNER.to_string(),
+            github_repo: crate::constants::GITHUB_REPO.to_string(),
             include_prerelease: false,
             install_root: None,
             api_base_url: None,
@@ -391,39 +392,12 @@ impl UpdateManager {
     }
 
     fn resolve_staging_dir() -> PathBuf {
-        #[cfg(target_os = "windows")]
-        {
-            std::env::var("APPDATA")
-                .map(|appdata| PathBuf::from(appdata).join("saba-chan").join("updates"))
-                .unwrap_or_else(|_| PathBuf::from("./updates"))
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            std::env::var("HOME")
-                .map(|home| PathBuf::from(home).join(".cache").join("saba-chan").join("updates"))
-                .unwrap_or_else(|_| PathBuf::from("./updates"))
-        }
+        crate::constants::resolve_staging_dir()
     }
 
-    /// 익스텐션 디렉터리: %APPDATA%/saba-chan/extensions 고정 경로
+    /// 익스텐션 디렉터리 — constants 모듈에 위임
     fn resolve_extensions_dir() -> PathBuf {
-        if let Ok(p) = std::env::var("SABA_EXTENSIONS_DIR") {
-            if !p.is_empty() {
-                return PathBuf::from(p);
-            }
-        }
-        #[cfg(target_os = "windows")]
-        {
-            std::env::var("APPDATA")
-                .map(|appdata| PathBuf::from(appdata).join("saba-chan").join("extensions"))
-                .unwrap_or_else(|_| PathBuf::from("./extensions"))
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            std::env::var("HOME")
-                .map(|home| PathBuf::from(home).join(".config").join("saba-chan").join("extensions"))
-                .unwrap_or_else(|_| PathBuf::from("./extensions"))
-        }
+        crate::constants::resolve_extensions_dir()
     }
 
     /// 익스텐션 ID에서 디스크 상의 디렉토리 경로를 해석합니다.
@@ -1358,20 +1332,9 @@ impl UpdateManager {
     // 로컬 설치 매니페스트 (installed-manifest.json)
     // ══════════════════════════════════════════════════════
 
-    /// installed-manifest.json 경로 (설치된 각 컴포넌트 버전 추적)
+    /// installed-manifest.json 경로 — constants 모듈에 위임
     fn installed_manifest_path() -> PathBuf {
-        #[cfg(target_os = "windows")]
-        {
-            std::env::var("APPDATA")
-                .map(|appdata| PathBuf::from(appdata).join("saba-chan").join("installed-manifest.json"))
-                .unwrap_or_else(|_| PathBuf::from("installed-manifest.json"))
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            std::env::var("HOME")
-                .map(|home| PathBuf::from(home).join(".saba-chan").join("installed-manifest.json"))
-                .unwrap_or_else(|_| PathBuf::from("installed-manifest.json"))
-        }
+        crate::constants::resolve_installed_manifest_path()
     }
 
     /// 로컬 설치 매니페스트 로드 — 설치된 컴포넌트 버전 맵 반환
@@ -1878,20 +1841,9 @@ impl UpdateManager {
         }
     }
 
-    /// 데이터 디렉토리 경로 (설정·모듈·확장 등)
+    /// 데이터 디렉토리 경로 (설정·모듈·확장 등) — constants 모듈에 위임
     fn resolve_data_dir() -> PathBuf {
-        #[cfg(target_os = "windows")]
-        {
-            std::env::var("APPDATA")
-                .map(|p| PathBuf::from(p).join("saba-chan"))
-                .unwrap_or_else(|_| PathBuf::from("C:\\ProgramData\\saba-chan"))
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            std::env::var("HOME")
-                .map(|p| PathBuf::from(p).join(".config").join("saba-chan"))
-                .unwrap_or_else(|_| PathBuf::from("/etc/saba-chan"))
-        }
+        crate::constants::resolve_data_dir()
     }
 
     fn rename_with_retry(from: &Path, to: &Path, max_retries: u32) -> Result<()> {

@@ -465,20 +465,20 @@ fn resolve_data_dir() -> Result<PathBuf> {
 #[cfg(target_os = "windows")]
 fn platform_data_dir() -> Result<PathBuf> {
     let appdata = std::env::var("APPDATA").context("APPDATA 환경변수 없음")?;
-    Ok(PathBuf::from(appdata).join("saba-chan"))
+    Ok(PathBuf::from(appdata).join(saba_chan_updater_lib::constants::APP_NAME))
 }
 
 #[cfg(target_os = "linux")]
 fn platform_data_dir() -> Result<PathBuf> {
     let home = std::env::var("HOME").context("HOME 환경변수 없음")?;
-    Ok(PathBuf::from(home).join(".local/share/saba-chan"))
+    Ok(PathBuf::from(home).join(".local/share").join(saba_chan_updater_lib::constants::APP_NAME))
 }
 
 #[cfg(target_os = "macos")]
 fn platform_data_dir() -> Result<PathBuf> {
     let home = std::env::var("HOME").context("HOME 환경변수 없음")?;
     Ok(PathBuf::from(home)
-        .join("Library/Application Support/saba-chan"))
+        .join("Library/Application Support").join(saba_chan_updater_lib::constants::APP_NAME))
 }
 
 /// 포터블 Python 실행 파일 경로

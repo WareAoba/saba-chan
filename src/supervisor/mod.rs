@@ -50,27 +50,14 @@ pub struct Supervisor {
 
 impl Supervisor {
     pub fn new(modules_dir: &str) -> Self {
-        // instances.json은 %APPDATA%/saba-chan/instances.json에 저장
-        let instances_path = std::env::var("SABA_INSTANCES_PATH")
-            .unwrap_or_else(|_| {
-                #[cfg(target_os = "windows")]
-                {
-                    std::env::var("APPDATA")
-                        .map(|appdata| format!("{}\\saba-chan\\instances.json", appdata))
-                        .unwrap_or_else(|_| "./instances.json".to_string())
-                }
-                #[cfg(not(target_os = "windows"))]
-                {
-                    std::env::var("HOME")
-                        .map(|home| format!("{}/.config/saba-chan/instances.json", home))
-                        .unwrap_or_else(|_| "./instances.json".to_string())
-                }
-            });
+        let instances_dir = saba_chan_updater_lib::constants::resolve_instances_dir()
+            .to_string_lossy()
+            .to_string();
         
         Self {
             tracker: ProcessTracker::new(),
             module_loader: ModuleLoader::new(modules_dir),
-            instance_store: InstanceStore::new(&instances_path),
+            instance_store: InstanceStore::new(&instances_dir),
             managed_store: ManagedProcessStore::new(),
             stop_cooldowns: HashMap::new(),
             extension_manager: None,
@@ -554,12 +541,9 @@ impl Supervisor {
         if let Ok(pid) = self.tracker.get_pid(server_name).or_else(|_| self.tracker.get_pid(&instance.id)) {
             config_obj.insert("pid".to_string(), json!(pid));
         }
-        // Pass RCON settings for graceful shutdown
+        // Pass RCON port for graceful shutdown (password is read from game config by Python)
         if let Some(rcon_port) = instance.rcon_port {
             config_obj.insert("rcon_port".to_string(), json!(rcon_port));
-        }
-        if let Some(rcon_pw) = &instance.rcon_password {
-            config_obj.insert("rcon_password".to_string(), json!(rcon_pw));
         }
         config_obj.insert("force".to_string(), json!(force));
         let config = Value::Object(config_obj);
@@ -732,17 +716,18 @@ impl Supervisor {
 
         // 명령어 config 구성 (RCON 설정 포함)
         let pid = self.tracker.get_pid(&instance.id).ok();
+        let instance_dir = self.instance_store.instance_dir(&instance.id);
+        let working_dir = instance.working_dir.clone()
+            .unwrap_or_else(|| instance_dir.join("server").to_string_lossy().to_string());
         let config = json!({
             "command": command,
             "args": args,
             "protocol_mode": &instance.protocol_mode,  // "rest" 또는 "rcon"
+            "working_dir": &working_dir,
             "rcon_host": "127.0.0.1",
             "rcon_port": instance.rcon_port.unwrap_or(default_rcon_port),
-            "rcon_password": instance.rcon_password.clone().unwrap_or_default(),
             "rest_host": instance.rest_host.clone().unwrap_or(default_rest_host),
             "rest_port": instance.rest_port.unwrap_or(default_rest_port),
-            "rest_username": instance.rest_username.clone().unwrap_or_default(),
-            "rest_password": instance.rest_password.clone().unwrap_or_default(),
             "pid": pid,
             "instance_id": instance_id,
         });
@@ -1456,8 +1441,7 @@ impl Supervisor {
 
 /// Get Discord bot config file path (%APPDATA%/saba-chan/bot-config.json)
 pub fn get_discord_bot_config_path() -> String {
-    crate::plugin::resolve_saba_data_dir()
-        .join("bot-config.json")
+    saba_chan_updater_lib::constants::resolve_bot_config_path()
         .to_string_lossy()
         .to_string()
 }

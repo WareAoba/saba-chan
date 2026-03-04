@@ -207,18 +207,7 @@ impl StateFile {
     }
 
     fn default_path() -> PathBuf {
-        #[cfg(target_os = "windows")]
-        {
-            std::env::var("APPDATA")
-                .map(|appdata| PathBuf::from(appdata).join("saba-chan").join("updater-state.json"))
-                .unwrap_or_else(|_| PathBuf::from("updater-state.json"))
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            std::env::var("HOME")
-                .map(|home| PathBuf::from(home).join(".saba-chan").join("updater-state.json"))
-                .unwrap_or_else(|_| PathBuf::from("updater-state.json"))
-        }
+        crate::constants::resolve_updater_state_path()
     }
 
     /// 상태 저장
@@ -289,18 +278,7 @@ impl UpdateCompletionMarker {
     }
 
     fn marker_path() -> PathBuf {
-        #[cfg(target_os = "windows")]
-        {
-            std::env::var("APPDATA")
-                .map(|appdata| PathBuf::from(appdata).join("saba-chan").join("update-complete.json"))
-                .unwrap_or_else(|_| PathBuf::from("update-complete.json"))
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            std::env::var("HOME")
-                .map(|home| PathBuf::from(home).join(".saba-chan").join("update-complete.json"))
-                .unwrap_or_else(|_| PathBuf::from("update-complete.json"))
-        }
+        crate::constants::resolve_update_complete_path()
     }
 
     /// 마커 저장

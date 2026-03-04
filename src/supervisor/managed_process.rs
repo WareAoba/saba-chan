@@ -18,7 +18,6 @@ use anyhow::Result;
 use regex::Regex;
 
 /// Default maximum number of log lines to keep in the ring buffer.
-/// Can be overridden via `log_buffer_size` in config/global.toml.
 const DEFAULT_LOG_BUFFER: usize = 10_000;
 
 // ─── Log Types ───────────────────────────────────────────────

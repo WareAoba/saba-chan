@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next';
 import './Modals.css';
 import { Icon } from '../Icon';
 
+import { DEFAULT_IPC_PORT } from '../../stores/useSettingsStore';
+
 function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
     const { t } = useTranslation('gui');
     const [daemonStatus, setDaemonStatus] = useState('checking');
@@ -128,7 +130,7 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
                         <span className="info-label">
                             <Icon name="hash" size="sm" /> {t('background_modal.ipc_port_label')}
                         </span>
-                        <span className="info-value">{ipcPort || 57474}</span>
+                        <span className="info-value">{ipcPort || DEFAULT_IPC_PORT}</span>
                     </div>
                     <div className="info-row">
                         <span className="info-label">

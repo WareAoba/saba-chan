@@ -5,23 +5,14 @@
 //! - bot-config.json (%APPDATA%/saba-chan/bot-config.json)
 //!   → prefix, moduleAliases, commandAliases
 
+use saba_chan_updater_lib::constants;
 use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 
-/// 공용 설정 디렉토리 경로 (%APPDATA%/saba-chan)
+/// 공용 설정 디렉토리 경로 — constants 모듈에 위임
 fn get_config_dir() -> anyhow::Result<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        let appdata = std::env::var("APPDATA")?;
-        Ok(PathBuf::from(appdata).join("saba-chan"))
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        let home = std::env::var("HOME")?;
-        Ok(PathBuf::from(home).join(".config").join("saba-chan"))
-    }
+    Ok(constants::resolve_data_dir())
 }
 
 /// settings.json 경로
@@ -105,13 +96,13 @@ pub fn get_language() -> anyhow::Result<String> {
         .to_string())
 }
 
-/// IPC 포트 가져오기 (settings.json → ipcPort, 기본값 57474)
+/// IPC 포트 가져오기 (settings.json → ipcPort)
 pub fn get_ipc_port() -> u16 {
     load_settings()
         .ok()
         .and_then(|s| s.get("ipcPort").and_then(|v| v.as_u64()))
         .map(|p| p as u16)
-        .unwrap_or(57474)
+        .unwrap_or(constants::DEFAULT_IPC_PORT)
 }
 
 /// IPC base URL 가져오기 (http://127.0.0.1:{port})
@@ -171,32 +162,10 @@ pub fn get_module_aliases() -> anyhow::Result<Vec<(String, String)>> {
     Ok(aliases)
 }
 
-/// instances.json 경로 (%APPDATA%/saba-chan/instances.json)
+/// 인스턴스 디렉토리 경로 (%APPDATA%/saba-chan/instances/)
 pub fn get_instances_path() -> anyhow::Result<PathBuf> {
     let config_dir = get_config_dir()?;
-    let appdata_path = config_dir.join("instances.json");
-
-    // AppData에 있으면 그대로 사용
-    if appdata_path.exists() {
-        return Ok(appdata_path);
-    }
-
-    // 레거시 경로 마이그레이션: 프로젝트 루트에 있던 instances.json을 AppData로 이동
-    if let Ok(root) = crate::process::find_project_root() {
-        for legacy in &[
-            root.join("config").join("instances.json"),
-            root.join("instances.json"),
-        ] {
-            if legacy.exists() {
-                std::fs::create_dir_all(&config_dir)?;
-                std::fs::rename(legacy, &appdata_path)?;
-                return Ok(appdata_path);
-            }
-        }
-    }
-
-    // 기본: AppData 경로 (없으면 새로 생성됨)
-    Ok(appdata_path)
+    Ok(config_dir.join("instances"))
 }
 
 // ============ Write functions ============
@@ -391,24 +360,11 @@ pub fn clear_node_token() -> anyhow::Result<()> {
 
 // ============ System Language ============
 
-const SUPPORTED_LANGUAGES: &[&str] = &["en", "ko", "ja", "zh-CN", "zh-TW", "es", "pt-BR", "ru", "de", "fr"];
+#[cfg(test)]
+const SUPPORTED_LANGUAGES: &[&str] = saba_chan_updater_lib::constants::SUPPORTED_LANGUAGES;
 
 fn resolve_locale(locale: &str) -> String {
-    let trimmed = locale.trim();
-    if SUPPORTED_LANGUAGES.contains(&trimmed) {
-        return trimmed.to_string();
-    }
-    // Replace underscore with hyphen for matching (e.g. "ko_KR" → "ko-KR")
-    let normalized = trimmed.replace('_', "-");
-    if SUPPORTED_LANGUAGES.contains(&normalized.as_str()) {
-        return normalized;
-    }
-    let base = trimmed.split(&['-', '_', '.'][..]).next().unwrap_or("en");
-    SUPPORTED_LANGUAGES
-        .iter()
-        .find(|&&s| s == base || s.starts_with(&format!("{}-", base)))
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "en".to_string())
+    saba_chan_updater_lib::constants::resolve_locale(locale)
 }
 
 /// 시스템 언어 감지 (Electron의 app.getLocale() 대체)
@@ -471,6 +427,7 @@ pub fn scan_directory(dir_path: &str) -> anyhow::Result<(Vec<String>, Vec<String
 // ============ Module Locales ============
 
 /// 모듈 로케일 데이터 읽기 (modules/{name}/locales/*.json)
+#[allow(dead_code)]
 pub fn get_module_locales(module_name: &str) -> anyhow::Result<std::collections::HashMap<String, Value>> {
     let modules_path = get_modules_path()?;
     let locales_dir = PathBuf::from(&modules_path).join(module_name).join("locales");
@@ -509,7 +466,7 @@ mod extract {
     }
 
     pub(crate) fn extract_ipc_port(settings: &Value) -> u16 {
-        settings.get("ipcPort").and_then(|v| v.as_u64()).map(|p| p as u16).unwrap_or(57474)
+        settings.get("ipcPort").and_then(|v| v.as_u64()).map(|p| p as u16).unwrap_or(constants::DEFAULT_IPC_PORT)
     }
 
     pub(crate) fn extract_console_buffer_size(settings: &Value) -> u64 {

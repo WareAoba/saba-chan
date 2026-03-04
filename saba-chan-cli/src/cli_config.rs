@@ -3,6 +3,7 @@
 //! GUI 설정과 분리된 CLI 전용 설정 파일.
 //! language, autoStart, refreshInterval 등 CLI 고유 옵션을 관리합니다.
 
+use saba_chan_updater_lib::constants;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -44,16 +45,7 @@ impl Default for CliSettings {
 impl CliSettings {
     /// 설정 파일 경로
     fn path() -> anyhow::Result<PathBuf> {
-        #[cfg(target_os = "windows")]
-        {
-            let appdata = std::env::var("APPDATA")?;
-            Ok(PathBuf::from(appdata).join("saba-chan").join("cli-settings.json"))
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            let home = std::env::var("HOME")?;
-            Ok(PathBuf::from(home).join(".config").join("saba-chan").join("cli-settings.json"))
-        }
+        Ok(constants::resolve_data_dir().join("cli-settings.json"))
     }
 
     /// 로드 (없으면 기본값)

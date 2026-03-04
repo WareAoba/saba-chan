@@ -26,12 +26,11 @@
 //! - `1` — 에러
 //! - `2` — 업데이트 없음 (최신 상태)
 
-use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use saba_chan_updater_lib::{Component, UpdateManager};
-use crate::config::{load_updater_config, set_config_value, config_file_path};
+use crate::config::{load_updater_config, set_config_value};
 
 /// CLI 모드 실행 — `--cli` 이후의 인자를 받아 처리
 pub fn run_cli(cli_args: Vec<String>) {
@@ -541,7 +540,7 @@ fn cmd_config(args: &[&str]) -> anyhow::Result<()> {
             println!("  include_prerelease:   {}", cfg.include_prerelease);
             println!("  install_root:         {}", cfg.install_root.as_deref().unwrap_or("(auto — next to executable)"));
             println!();
-            println!("  Config file: {}", config_file_path().display());
+            println!("  Config: embedded defaults (no config file)");
             println!();
             println!("  Change with: --cli config set <key> <value>");
         }
@@ -612,34 +611,9 @@ fn print_help() {
 }
 
 fn resolve_modules_dir() -> String {
-    // 환경 변수 오버라이드 (테스트/개발용)
-    if let Ok(p) = std::env::var("SABA_MODULES_PATH") {
-        if !p.is_empty() {
-            return p;
-        }
+    let p = saba_chan_updater_lib::constants::resolve_modules_dir();
+    if !p.exists() {
+        let _ = std::fs::create_dir_all(&p);
     }
-
-    // 고정 경로: %APPDATA%/saba-chan/modules
-    #[cfg(target_os = "windows")]
-    {
-        if let Ok(appdata) = std::env::var("APPDATA") {
-            let p = PathBuf::from(appdata).join("saba-chan").join("modules");
-            if !p.exists() {
-                let _ = std::fs::create_dir_all(&p);
-            }
-            return p.to_string_lossy().to_string();
-        }
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        if let Ok(home) = std::env::var("HOME") {
-            let p = PathBuf::from(home).join(".config").join("saba-chan").join("modules");
-            if !p.exists() {
-                let _ = std::fs::create_dir_all(&p);
-            }
-            return p.to_string_lossy().to_string();
-        }
-    }
-
-    "modules".to_string()
+    p.to_string_lossy().to_string()
 }

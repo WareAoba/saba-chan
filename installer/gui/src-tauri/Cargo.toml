@@ -24,6 +24,7 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 reqwest = { version = "0.11", features = ["json", "stream"] }
 zip = "0.6"
 sys-locale = "0.3"
+saba-chan-updater-lib = { path = "../../../updater" }
 futures-util = "0.3"
 
 [target.'cfg(windows)'.dependencies]

@@ -17,14 +17,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::RwLock;
-
-const SUPPORTED_LANGUAGES: [&str; 10] = [
-    "en", "ko", "ja", "zh-CN", "zh-TW", "es", "pt-BR", "ru", "de", "fr",
-];
-
-const DEFAULT_GITHUB_OWNER: &str = "WareAoba";
-const DEFAULT_GITHUB_REPO: &str = "saba-chan";
-const MODULES_GITHUB_REPO: &str = "saba-chan-modules";
+use saba_chan_updater_lib::constants;
 
 // ═══════════════════════════════════════════════════════
 // 타입
@@ -48,8 +41,8 @@ impl Default for InstallerState {
     fn default() -> Self {
         Self {
             install_path: get_default_install_path(),
-            github_owner: DEFAULT_GITHUB_OWNER.to_string(),
-            github_repo: DEFAULT_GITHUB_REPO.to_string(),
+            github_owner: constants::GITHUB_OWNER.to_string(),
+            github_repo: constants::GITHUB_REPO.to_string(),
             language: "en".to_string(),
             create_desktop_shortcut: true,
             create_start_menu_shortcut: true,
@@ -403,7 +396,7 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
 
         match github::download_repo_zipball(
             &config.github_owner,
-            MODULES_GITHUB_REPO,
+            constants::GITHUB_MODULES_REPO,
             &modules_zip,
         )
         .await
@@ -731,19 +724,7 @@ fn localized_app_name(language: &str) -> &'static str {
 /// saba-core와 동일한 데이터 디렉토리 경로 해석
 /// Windows: `%APPDATA%/saba-chan`, Linux/macOS: `~/.config/saba-chan`
 fn resolve_data_dir() -> PathBuf {
-    #[cfg(target_os = "windows")]
-    {
-        if let Ok(appdata) = std::env::var("APPDATA") {
-            return PathBuf::from(appdata).join("saba-chan");
-        }
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        if let Ok(home) = std::env::var("HOME") {
-            return PathBuf::from(home).join(".config").join("saba-chan");
-        }
-    }
-    PathBuf::from("saba-chan")
+    constants::resolve_data_dir()
 }
 
 fn get_default_install_path() -> String {
@@ -775,56 +756,33 @@ fn load_main_app_language() -> Option<String> {
 }
 
 fn get_settings_path() -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        let appdata = std::env::var("APPDATA").ok()?;
-        Some(PathBuf::from(appdata).join("saba-chan").join("settings.json"))
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let home = std::env::var("HOME").ok()?;
-        Some(
-            PathBuf::from(home)
-                .join(".config")
-                .join("saba-chan")
-                .join("settings.json"),
-        )
-    }
+    Some(constants::resolve_settings_path())
 }
 
 fn normalize_language_tag(input: &str) -> Option<String> {
-    let trimmed = input.trim();
-    if trimmed.is_empty() {
+    let result = constants::resolve_locale(input);
+    if result == "en" && !input.trim().is_empty() {
+        // resolve_locale always returns a value; check if input was explicitly "en"
+        let trimmed = input.trim();
+        let canonical = trimmed.replace('_', "-");
+        if canonical.eq_ignore_ascii_case("en") || canonical.to_lowercase().starts_with("en") {
+            return Some("en".to_string());
+        }
+        // If resolve_locale fell back to "en" for an unknown input, return None
+        // to let the caller decide
+        for supported in constants::SUPPORTED_LANGUAGES {
+            if supported.eq_ignore_ascii_case(&canonical) {
+                return Some(supported.to_string());
+            }
+        }
+        let base = canonical.to_lowercase();
+        let base = base.split('-').next().unwrap_or("");
+        if ["ko", "ja", "zh", "es", "pt", "ru", "de", "fr"].contains(&base) {
+            return Some(result);
+        }
         return None;
     }
-    let canonical = trimmed.replace('_', "-");
-    for supported in SUPPORTED_LANGUAGES {
-        if supported.eq_ignore_ascii_case(&canonical) {
-            return Some(supported.to_string());
-        }
-    }
-    let lower = canonical.to_lowercase();
-    if lower.starts_with("pt") {
-        return Some("pt-BR".to_string());
-    }
-    if lower.starts_with("zh-cn") || lower.starts_with("zh-hans") {
-        return Some("zh-CN".to_string());
-    }
-    if lower.starts_with("zh-tw") || lower.starts_with("zh-hant") {
-        return Some("zh-TW".to_string());
-    }
-    let base = lower.split('-').next().unwrap_or("en");
-    match base {
-        "en" => Some("en".to_string()),
-        "ko" => Some("ko".to_string()),
-        "ja" => Some("ja".to_string()),
-        "zh" => Some("zh-CN".to_string()),
-        "es" => Some("es".to_string()),
-        "ru" => Some("ru".to_string()),
-        "de" => Some("de".to_string()),
-        "fr" => Some("fr".to_string()),
-        _ => None,
-    }
+    Some(result)
 }
 
 fn extract_zip(zip_path: &PathBuf, target_dir: &PathBuf) -> anyhow::Result<()> {
@@ -951,30 +909,13 @@ fn setup_config(install_dir: &PathBuf, config: &InstallConfig) {
 }
 
 fn save_language_setting(language: &str) {
-    #[cfg(target_os = "windows")]
-    {
-        if let Ok(appdata) = std::env::var("APPDATA") {
-            let settings_dir = PathBuf::from(appdata).join("saba-chan");
-            let _ = std::fs::create_dir_all(&settings_dir);
-            let settings = serde_json::json!({ "language": language });
-            let _ = std::fs::write(
-                settings_dir.join("settings.json"),
-                serde_json::to_string_pretty(&settings).unwrap_or_default(),
-            );
-        }
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        if let Ok(home) = std::env::var("HOME") {
-            let settings_dir = PathBuf::from(home).join(".config").join("saba-chan");
-            let _ = std::fs::create_dir_all(&settings_dir);
-            let settings = serde_json::json!({ "language": language });
-            let _ = std::fs::write(
-                settings_dir.join("settings.json"),
-                serde_json::to_string_pretty(&settings).unwrap_or_default(),
-            );
-        }
-    }
+    let settings_dir = constants::resolve_data_dir();
+    let _ = std::fs::create_dir_all(&settings_dir);
+    let settings = serde_json::json!({ "language": language });
+    let _ = std::fs::write(
+        settings_dir.join("settings.json"),
+        serde_json::to_string_pretty(&settings).unwrap_or_default(),
+    );
 }
 
 // ═══════════════════════════════════════════════════════

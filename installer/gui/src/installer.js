@@ -895,6 +895,7 @@ function toggleMod(id, on) {
 document.getElementById('btn-install')?.addEventListener('click', async () => {
     // 옵션 저장
     await invoke('set_install_path', { path: $installPath.value });
+    await invoke('set_language', { language: lang }); // 설치 직전 최종 동기화
     await invoke('set_shortcut_options', {
         desktop: document.getElementById('chk-desktop').checked,
         startMenu: document.getElementById('chk-startmenu').checked,
@@ -1174,6 +1175,9 @@ document.getElementById('btn-lang')?.addEventListener('click', (e) => {
     } catch (_) {}
 
     applyTranslations();
+
+    // 감지된 언어를 Rust 백엔드에 동기화 (기본값 'en'이 아닌 실제 선택 언어를 설치에 반영)
+    try { await invoke('set_language', { language: lang }); } catch (_) {}
 
     // 링 초기 상태
     $glowRing.className = 'loading-logo-container idle';

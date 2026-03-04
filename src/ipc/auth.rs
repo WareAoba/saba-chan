@@ -18,20 +18,9 @@ static CACHED_TOKEN: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(
 
 /// 토큰 파일의 기본 경로
 fn token_file_path() -> String {
-    std::env::var("SABA_TOKEN_PATH").unwrap_or_else(|_| {
-        #[cfg(target_os = "windows")]
-        {
-            std::env::var("APPDATA")
-                .map(|appdata| format!("{}\\saba-chan\\.ipc_token", appdata))
-                .unwrap_or_else(|_| "config/.ipc_token".to_string())
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            std::env::var("HOME")
-                .map(|home| format!("{}/.config/saba-chan/.ipc_token", home))
-                .unwrap_or_else(|_| "config/.ipc_token".to_string())
-        }
-    })
+    saba_chan_updater_lib::constants::token_file_path()
+        .to_string_lossy()
+        .to_string()
 }
 
 /// 데몬 시작 시 호출: 랜덤 토큰을 생성하고 파일에 저장 + 메모리 캐시

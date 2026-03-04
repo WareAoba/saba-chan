@@ -10,6 +10,7 @@
 //! 4. 레지스트리: `HKCU\...\Uninstall\Saba-chan`
 //! 5. 바탕화면/시작메뉴 바로가기
 //! 6. 자기 자신 (cleanup 스크립트를 통해 프로세스 종료 후 삭제)
+use saba_chan_updater_lib::constants;
 use serde::Serialize;
 use std::path::PathBuf;
 use tauri::AppHandle;
@@ -283,58 +284,16 @@ fn remove_dir_robust(dir: &PathBuf) -> anyhow::Result<()> {
 }
 
 fn remove_appdata_dir() {
-    #[cfg(target_os = "windows")]
-    {
-        if let Ok(appdata) = std::env::var("APPDATA") {
-            let appdata_path = PathBuf::from(&appdata);
-
-            // Core daemon 데이터 디렉토리
-            let saba_dir = appdata_path.join("saba-chan");
-            if saba_dir.exists() {
-                tracing::info!("[Uninstall] Removing appdata: {:?}", saba_dir);
-                let _ = remove_dir_robust(&saba_dir);
-            }
-
-            // 레거시: Electron이 app.setPath() 이전에 생성한 임시 디렉토리 정리
-            // (현재는 모든 데이터가 saba-chan/ 하나에 통합됨)
-            let gui_dir = appdata_path.join("saba-chan-gui");
-            if gui_dir.exists() {
-                tracing::info!("[Uninstall] Removing legacy Electron dir: {:?}", gui_dir);
-                let _ = remove_dir_robust(&gui_dir);
-            }
-        }
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        if let Ok(home) = std::env::var("HOME") {
-            let config_dir = PathBuf::from(&home).join(".config");
-
-            let saba_dir = config_dir.join("saba-chan");
-            if saba_dir.exists() {
-                let _ = remove_dir_robust(&saba_dir);
-            }
-
-            // 레거시: Electron 임시 디렉토리 정리
-            let gui_dir = config_dir.join("saba-chan-gui");
-            if gui_dir.exists() {
-                let _ = remove_dir_robust(&gui_dir);
-            }
-        }
+    let saba_dir = constants::resolve_data_dir();
+    if saba_dir.exists() {
+        tracing::info!("[Uninstall] Removing appdata: {:?}", saba_dir);
+        let _ = remove_dir_robust(&saba_dir);
     }
 }
 
 /// 설정 파일만 남기고 나머지 삭제 (바이너리, 런타임, 캐시 등)
 fn remove_appdata_dir_keep_settings() {
-    #[cfg(target_os = "windows")]
-    let saba_dir = std::env::var("APPDATA")
-        .ok()
-        .map(|a| PathBuf::from(a).join("saba-chan"));
-    #[cfg(not(target_os = "windows"))]
-    let saba_dir = std::env::var("HOME")
-        .ok()
-        .map(|h| PathBuf::from(h).join(".config").join("saba-chan"));
-
-    let Some(saba_dir) = saba_dir else { return };
+    let saba_dir = constants::resolve_data_dir();
     if !saba_dir.exists() {
         return;
     }
@@ -386,15 +345,10 @@ fn remove_temp_files() {
 }
 
 fn remove_modules_dir() {
-    #[cfg(target_os = "windows")]
-    {
-        if let Ok(appdata) = std::env::var("APPDATA") {
-            let modules_dir = PathBuf::from(appdata).join("saba-chan").join("modules");
-            if modules_dir.exists() {
-                tracing::info!("[Uninstall] Removing modules: {:?}", modules_dir);
-                let _ = remove_dir_robust(&modules_dir);
-            }
-        }
+    let modules_dir = constants::resolve_modules_dir();
+    if modules_dir.exists() {
+        tracing::info!("[Uninstall] Removing modules: {:?}", modules_dir);
+        let _ = remove_dir_robust(&modules_dir);
     }
 }
 

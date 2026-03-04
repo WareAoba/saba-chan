@@ -13,14 +13,16 @@ const fs = require('fs');
 const path = require('path');
 const i18n = require('../i18n');
 
-const IPC_BASE = process.env.IPC_BASE || 'http://127.0.0.1:57474';
+const { DEFAULT_DAEMON_URL, getSabaDataDir } = require('../../shared/constants');
+
+const IPC_BASE = process.env.IPC_BASE || DEFAULT_DAEMON_URL;
 
 // ── 토큰 관리 ──
 let _cachedToken = '';
 let _tokenRefreshPromise = null;
 
 const _tokenPath = process.env.SABA_TOKEN_PATH
-    || path.join(process.env.APPDATA || process.env.HOME || '.', 'saba-chan', '.ipc_token');
+    || path.join(getSabaDataDir(), '.ipc_token');
 
 function loadToken() {
     if (!_cachedToken && process.env.SABA_TOKEN) {

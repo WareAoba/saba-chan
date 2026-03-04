@@ -62,8 +62,8 @@ pub async fn execute_rcon_command(
 ) -> impl IntoResponse {
     let supervisor = state.supervisor.read().await;
 
-    // 인스턴스 확인
-    let instance = match supervisor.instance_store.get(&id) {
+    // 인스턴스 확인 (lock 해제 전에 clone)
+    let instance = match supervisor.instance_store.get(&id).cloned() {
         Some(instance) => instance,
         None => {
             return (
@@ -77,14 +77,45 @@ pub async fn execute_rcon_command(
     };
 
     // 모듈에서 기본값 가져오기
-    let (default_rcon_port, _default_rest_port) =
+    let (default_rcon_port, _default_rest_port, module_path) =
         match supervisor.module_loader.get_module(&instance.module_name) {
             Ok(module) => (
                 module.metadata.default_rcon_port(),
                 module.metadata.default_rest_port(),
+                Some(format!("{}/lifecycle.py", module.path)),
             ),
-            Err(_) => (25575, 8212), // 모듈을 찾을 수 없으면 기존 기본값 사용
+            Err(_) => (25575, 8212, None),
         };
+
+    // 게임 설정 파일에서 실제 credential을 읽어옴
+    let instance_dir = supervisor.instance_store.instance_dir(&id);
+    let working_dir = instance.working_dir.clone()
+        .unwrap_or_else(|| instance_dir.join("server").to_string_lossy().to_string());
+
+    // supervisor lock 해제 — run_plugin 전에 release
+    drop(supervisor);
+
+    let file_credentials = if let Some(ref mp) = module_path {
+        tracing::info!("get_credentials(rcon): calling plugin at {} with working_dir={}", mp, working_dir);
+        let cred_config = json!({ "working_dir": &working_dir });
+        match crate::plugin::run_plugin(mp, "get_credentials", cred_config).await {
+            Ok(creds) if creds.get("success").and_then(|v| v.as_bool()).unwrap_or(false) => {
+                tracing::info!("get_credentials(rcon): success");
+                Some(creds)
+            }
+            Ok(creds) => {
+                tracing::warn!("get_credentials(rcon) returned non-success: {:?}", creds);
+                None
+            }
+            Err(e) => {
+                tracing::warn!("get_credentials(rcon) call failed: {}", e);
+                None
+            }
+        }
+    } else {
+        tracing::warn!("get_credentials(rcon): no module_path, skipping");
+        None
+    };
 
     // RCON 커맨드 추출
     let command = match payload.get("command").and_then(|v| v.as_str()) {
@@ -100,28 +131,29 @@ pub async fn execute_rcon_command(
         }
     };
 
-    // RCON 정보 확인
-    let rcon_host = "127.0.0.1".to_string(); // RCON은 항상 localhost
+    // RCON 정보 — 게임 설정 파일에서만 읽음
+    let rcon_host = "127.0.0.1".to_string();
 
-    let rcon_port = match payload.get("rcon_port").and_then(|v| v.as_u64()) {
-        Some(port) => port as u16,
-        None => instance.rcon_port.unwrap_or(default_rcon_port),
-    };
+    let rcon_port = file_credentials.as_ref()
+        .and_then(|c| c.get("rcon_port"))
+        .and_then(|v| v.as_u64())
+        .map(|p| p as u16)
+        .or(instance.rcon_port)
+        .unwrap_or(default_rcon_port);
 
-    let rcon_password = match payload.get("rcon_password").and_then(|v| v.as_str()) {
+    let rcon_password = match file_credentials.as_ref()
+        .and_then(|c| c.get("rcon_password"))
+        .and_then(|v| v.as_str()) {
         Some(pass) => pass.to_string(),
-        None => match &instance.rcon_password {
-            Some(pass) => pass.clone(),
-            None => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({
-                        "error": "RCON password not configured"
-                    })),
-                )
-                    .into_response();
-            }
-        },
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": "RCON password not configured (not found in game config file)"
+                })),
+            )
+                .into_response();
+        }
     };
 
     // RCON 클라이언트 생성 및 실행 (연결 실패 시 최대 2회 재시도)
@@ -199,8 +231,8 @@ pub async fn execute_rest_command(
 ) -> impl IntoResponse {
     let supervisor = state.supervisor.read().await;
 
-    // 인스턴스 확인
-    let instance = match supervisor.instance_store.get(&id) {
+    // 인스턴스 확인 (lock 해제 전에 clone)
+    let instance = match supervisor.instance_store.get(&id).cloned() {
         Some(instance) => instance,
         None => {
             return (
@@ -214,14 +246,46 @@ pub async fn execute_rest_command(
     };
 
     // 모듈에서 기본값 가져오기
-    let (default_rest_port, default_rest_host) =
+    let (default_rest_port, default_rest_host, module_path) =
         match supervisor.module_loader.get_module(&instance.module_name) {
             Ok(module) => (
                 module.metadata.default_rest_port(),
                 module.metadata.default_rest_host(),
+                Some(format!("{}/lifecycle.py", module.path)),
             ),
-            Err(_) => (8212, "127.0.0.1".to_string()), // 모듈을 찾을 수 없으면 기존 기본값 사용
+            Err(_) => (8212, "127.0.0.1".to_string(), None),
         };
+
+    // 게임 설정 파일에서 실제 credential을 읽어옴 (메모리 동기화 문제 방지)
+    let instance_dir = supervisor.instance_store.instance_dir(&id);
+    let working_dir = instance.working_dir.clone()
+        .unwrap_or_else(|| instance_dir.join("server").to_string_lossy().to_string());
+
+    // supervisor lock 해제 — run_plugin 전에 release
+    drop(supervisor);
+
+    let file_credentials = if let Some(ref mp) = module_path {
+        tracing::info!("get_credentials: calling plugin at {} with working_dir={}", mp, working_dir);
+        let cred_config = json!({ "working_dir": &working_dir });
+        match crate::plugin::run_plugin(mp, "get_credentials", cred_config).await {
+            Ok(creds) if creds.get("success").and_then(|v| v.as_bool()).unwrap_or(false) => {
+                tracing::info!("get_credentials: success, rest_password={}",
+                    creds.get("rest_password").and_then(|v| v.as_str()).unwrap_or("(none)").chars().take(4).collect::<String>() + "...");
+                Some(creds)
+            }
+            Ok(creds) => {
+                tracing::warn!("get_credentials returned non-success: {:?}", creds);
+                None
+            }
+            Err(e) => {
+                tracing::warn!("get_credentials call failed: {}", e);
+                None
+            }
+        }
+    } else {
+        tracing::warn!("get_credentials: no module_path, skipping");
+        None
+    };
 
     // REST 엔드포인트 추출
     let endpoint = match payload.get("endpoint").and_then(|v| v.as_str()) {
@@ -272,26 +336,12 @@ pub async fn execute_rest_command(
         use_https,
     );
 
-    // Basic Auth — username은 항상 "admin"으로 fallback
-    let username = payload
-        .get("username")
-        .and_then(|v| v.as_str())
-        .or(instance.rest_username.as_deref())
-        .unwrap_or("admin");
-    let password = payload
-        .get("password")
-        .and_then(|v| v.as_str())
-        .or(instance.rest_password.as_deref());
-
-    if let Some(pass) = password {
-        tracing::debug!(
-            "REST: Basic auth provided: {}@{}:{}",
-            username,
-            rest_host,
-            rest_port
-        );
-        // 클라이언트에 인증 정보 설정
-        client = client.with_basic_auth(username.to_string(), pass.to_string());
+    // Basic Auth — 게임 설정 파일에서만 읽음
+    if let Some(ref creds) = file_credentials {
+        let username = creds.get("rest_username").and_then(|v| v.as_str()).unwrap_or("admin");
+        if let Some(pass) = creds.get("rest_password").and_then(|v| v.as_str()) {
+            client = client.with_basic_auth(username.to_string(), pass.to_string());
+        }
     }
 
     // REST 연결 검증

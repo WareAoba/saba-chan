@@ -6,6 +6,8 @@
 const { invoke } = window.__TAURI__.core;
 const { getCurrentWindow } = window.__TAURI__.window;
 
+// SSOT: shared/constants.js, updater/src/constants.rs 와 동일 목록
+// Tauri 웹뷰 환경이므로 CJS/ESM import 불가 → 인라인 선언 유지
 const SUPPORTED_LANGUAGES = ['en', 'ko', 'ja', 'zh-CN', 'zh-TW', 'es', 'pt-BR', 'ru', 'de', 'fr'];
 
 const TRANSLATIONS = {

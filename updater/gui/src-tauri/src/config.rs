@@ -1,16 +1,9 @@
 //! 업데이터 설정 관리
 //!
 //! 하드코딩 기본값을 사용합니다.
-//! 이전의 config/updater.toml, config/global.toml 파일 로드 로직은 제거되었습니다.
 
 use anyhow::Result;
 use saba_chan_updater_lib::UpdateConfig;
-use std::path::PathBuf;
-
-/// 설정 파일 경로 (레거시 — 표시용)
-pub fn config_file_path() -> PathBuf {
-    PathBuf::from("(embedded defaults)")
-}
 
 /// 설정 로드 — 항상 하드코딩 기본값 반환
 pub fn load_updater_config() -> Result<UpdateConfig> {

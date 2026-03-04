@@ -261,6 +261,7 @@ pub struct ExtSlotData {
 
 /// 익스텐션 인스턴스 필드 정의 (manifest.instance_fields 대응)
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct FieldDefCli {
     pub field_type: String,      // boolean, number, string
     pub default_value: String,   // 기본값 문자열
@@ -298,6 +299,7 @@ impl ExtensionSlotRegistry {
 
     /// 모든 익스텐션의 instance_fields를 순회
     /// (extension_id, field_name, field_def) 튜플 반환
+    #[allow(dead_code)]
     pub fn all_instance_fields(&self) -> Vec<(&str, &str, &FieldDefCli)> {
         self.instance_fields.iter()
             .flat_map(|(ext_id, fields)| {

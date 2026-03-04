@@ -1,4 +1,3 @@
-use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::Duration;
@@ -27,7 +26,7 @@ pub fn find_project_root() -> anyhow::Result<PathBuf> {
     let mut candidate = cwd.clone();
     for _ in 0..5 {
         if candidate.join("modules").is_dir()
-            || candidate.join("config").join("global.toml").exists()
+            || candidate.join("saba-core.exe").exists()
         {
             return Ok(candidate);
         }
@@ -62,7 +61,10 @@ pub fn check_daemon_running() -> bool {
     let port = crate::gui_config::get_ipc_port();
     let addr = format!("127.0.0.1:{}", port);
     std::net::TcpStream::connect_timeout(
-        &addr.parse().unwrap_or_else(|_| "127.0.0.1:57474".parse().unwrap()),
+        &addr.parse().unwrap_or_else(|_| {
+            use saba_chan_updater_lib::constants;
+            format!("127.0.0.1:{}", constants::DEFAULT_IPC_PORT).parse().unwrap()
+        }),
         Duration::from_millis(500),
     )
     .is_ok()
@@ -177,34 +179,16 @@ pub fn start_daemon() -> anyhow::Result<String> {
 
     let modules = gui_config::get_modules_path()
         .unwrap_or_else(|_| {
-            #[cfg(target_os = "windows")]
-            {
-                std::env::var("APPDATA")
-                    .map(|appdata| format!("{}\\saba-chan\\modules", appdata))
-                    .unwrap_or_else(|_| root.join("modules").to_string_lossy().into())
-            }
-            #[cfg(not(target_os = "windows"))]
-            {
-                std::env::var("HOME")
-                    .map(|home| format!("{}/.config/saba-chan/modules", home))
-                    .unwrap_or_else(|_| root.join("modules").to_string_lossy().into())
-            }
+            saba_chan_updater_lib::constants::resolve_modules_dir()
+                .to_string_lossy()
+                .into_owned()
         });
     let instances = gui_config::get_instances_path()
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|_| {
-            #[cfg(target_os = "windows")]
-            {
-                std::env::var("APPDATA")
-                    .map(|appdata| format!("{}\\saba-chan\\instances.json", appdata))
-                    .unwrap_or_else(|_| root.join("instances.json").to_string_lossy().into())
-            }
-            #[cfg(not(target_os = "windows"))]
-            {
-                std::env::var("HOME")
-                    .map(|home| format!("{}/.config/saba-chan/instances.json", home))
-                    .unwrap_or_else(|_| root.join("instances.json").to_string_lossy().into())
-            }
+            saba_chan_updater_lib::constants::resolve_instances_dir()
+                .to_string_lossy()
+                .into_owned()
         });
     let lang = gui_config::get_language().unwrap_or_else(|_| "en".into());
 

@@ -1,10 +1,12 @@
 import { create } from 'zustand';
 
+export const DEFAULT_IPC_PORT = 57474; // shared/constants.js와 동일 — renderer는 CJS require 불가하므로 상수 선언
+
 export const useSettingsStore = create((set, get) => ({
     // ── State ──
     autoRefresh: true,
     refreshInterval: 2000,
-    ipcPort: 57474,
+    ipcPort: DEFAULT_IPC_PORT,
     consoleBufferSize: 2000,
     autoGeneratePasswords: true,
     portConflictCheck: true,
@@ -22,7 +24,7 @@ export const useSettingsStore = create((set, get) => ({
             if (settings) {
                 patch.autoRefresh = settings.autoRefresh ?? true;
                 patch.refreshInterval = settings.refreshInterval ?? 2000;
-                patch.ipcPort = settings.ipcPort ?? 57474;
+                patch.ipcPort = settings.ipcPort ?? DEFAULT_IPC_PORT;
                 patch.consoleBufferSize = settings.consoleBufferSize ?? 2000;
                 patch.autoGeneratePasswords = settings.autoGeneratePasswords ?? true;
                 patch.portConflictCheck = settings.portConflictCheck ?? true;
@@ -81,7 +83,7 @@ export const useSettingsStore = create((set, get) => ({
         set({
             autoRefresh: true,
             refreshInterval: 2000,
-            ipcPort: 57474,
+            ipcPort: DEFAULT_IPC_PORT,
             consoleBufferSize: 2000,
             autoGeneratePasswords: true,
             portConflictCheck: true,

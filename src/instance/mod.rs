@@ -8,8 +8,6 @@
 //!     instance.json          ← 인스턴스 메타데이터 (id, name, module, ports …)
 //!     settings.json          ← 모듈별 동적 게임 설정
 //! ```
-//!
-//! 기존 `instances.json` 단일 파일이 있으면 자동 마이그레이션합니다.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -212,18 +210,10 @@ impl ServerInstance {
     }
 }
 
-/// 영어 대/소문자, 숫자로 이뤄진 8자 랜덤 비밀번호를 생성합니다.
-/// UUID v4의 랜덤 바이트를 시드로 활용하여 외부 크레이트 없이 생성합니다.
+/// 영어 대/소문자, 숫자로 이뤄진 16자 랜덤 비밀번호를 생성합니다.
+/// `constants::generate_random_password()`에 위임합니다.
 pub fn generate_random_password() -> String {
-    const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    let uuid_bytes = *uuid::Uuid::new_v4().as_bytes(); // 16 random bytes
-    let mut password = String::with_capacity(8);
-    for i in 0..8 {
-        // 2바이트씩 조합하여 62로 나눈 나머지를 인덱스로 사용
-        let idx = ((uuid_bytes[i * 2] as u16) << 8 | uuid_bytes[i * 2 + 1] as u16) as usize % CHARSET.len();
-        password.push(CHARSET[idx] as char);
-    }
-    password
+    saba_chan_updater_lib::constants::generate_random_password()
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -233,8 +223,6 @@ pub fn generate_random_password() -> String {
 pub struct InstanceStore {
     /// 인스턴스 루트 디렉토리 (예: %APPDATA%/saba-chan/instances/)
     root_dir: PathBuf,
-    /// 기존 instances.json 경로 (마이그레이션용)
-    legacy_json_path: Option<PathBuf>,
     /// 정렬된 인스턴스 목록 (메모리 캐시)
     instances: Vec<ServerInstance>,
     /// 정렬 순서
@@ -242,36 +230,20 @@ pub struct InstanceStore {
 }
 
 impl InstanceStore {
-    /// `file_path`는 기존 호환을 위해 instances.json 경로를 받되,
-    /// 실제로는 같은 디렉토리의 `instances/` 하위 디렉토리를 사용합니다.
-    pub fn new(file_path: &str) -> Self {
-        let legacy_path = PathBuf::from(file_path);
-        // instances.json의 부모 디렉토리 아래에 instances/ 디렉토리 사용
-        let root_dir = legacy_path
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join("instances");
-
+    /// `root_dir`은 인스턴스를 저장할 디렉토리 경로입니다.
+    pub fn new(root_dir: &str) -> Self {
         Self {
-            root_dir,
-            legacy_json_path: Some(legacy_path),
+            root_dir: PathBuf::from(root_dir),
             instances: Vec::new(),
             order: Vec::new(),
         }
     }
 
-    /// 인스턴스 로드 — 디렉토리 기반 로드, 필요 시 레거시 JSON에서 마이그레이션
+    /// 인스턴스 로드 — 디렉토리 기반 로드
     pub fn load(&mut self) -> Result<()> {
         // 루트 디렉토리 보장
         fs::create_dir_all(&self.root_dir)
             .with_context(|| format!("인스턴스 루트 생성 실패: {}", self.root_dir.display()))?;
-
-        // ── 마이그레이션: 레거시 instances.json → 디렉토리 구조 ──
-        if let Some(ref legacy_path) = self.legacy_json_path {
-            if legacy_path.exists() {
-                self.migrate_from_legacy_json(legacy_path)?;
-            }
-        }
 
         // ── order.json 로드 ──
         let order_path = self.root_dir.join("order.json");
@@ -439,49 +411,7 @@ impl InstanceStore {
         let content = fs::read_to_string(&instance_path)
             .with_context(|| format!("instance.json 읽기 실패: {}", instance_path.display()))?;
 
-        // ── 레거시 필드 마이그레이션: use_docker/docker_* → extension_data ──
-        // (구 버전 instance.json에 존재하던 필드를 extension_data로 통합)
-        let mut raw: serde_json::Value = serde_json::from_str(&content)?;
-        let mut needs_write = false;
-
-        // 레거시 필드 값을 먼저 읽어둠 (borrow 충돌 회피)
-        let legacy_use_docker = raw.get("use_docker").and_then(|v| v.as_bool()).unwrap_or(false);
-        let legacy_cpu = raw.get("docker_cpu_limit").and_then(|v| v.as_f64());
-        let legacy_mem = raw.get("docker_memory_limit").and_then(|v| v.as_str()).map(String::from);
-        let has_legacy = raw.get("use_docker").is_some()
-            || raw.get("docker_cpu_limit").is_some()
-            || raw.get("docker_memory_limit").is_some();
-
-        if has_legacy {
-            if let Some(obj) = raw.as_object_mut() {
-                if legacy_use_docker {
-                    let ext = obj.entry("extension_data")
-                        .or_insert_with(|| serde_json::json!({}));
-                    if let Some(ext_obj) = ext.as_object_mut() {
-                        ext_obj.entry("docker_enabled".to_string())
-                            .or_insert(serde_json::json!(true));
-                        if let Some(cpu) = legacy_cpu {
-                            ext_obj.entry("docker_cpu_limit".to_string())
-                                .or_insert(serde_json::json!(cpu));
-                        }
-                        if let Some(mem) = legacy_mem {
-                            ext_obj.entry("docker_memory_limit".to_string())
-                                .or_insert(serde_json::json!(mem));
-                        }
-                    }
-                    tracing::info!(
-                        "Migrated legacy docker fields → extension_data for instance in {}",
-                        dir.display()
-                    );
-                }
-                obj.remove("use_docker");
-                obj.remove("docker_cpu_limit");
-                obj.remove("docker_memory_limit");
-                needs_write = true;
-            }
-        }
-
-        let mut instance: ServerInstance = serde_json::from_value(raw)?;
+        let mut instance: ServerInstance = serde_json::from_str(&content)?;
 
         // settings.json이 있으면 module_settings 머지
         let settings_path = dir.join("settings.json");
@@ -492,15 +422,6 @@ impl InstanceStore {
             instance.module_settings = settings;
         }
 
-        // 마이그레이션된 instance.json 저장 (레거시 필드 제거)
-        if needs_write {
-            // module_settings 제외하고 저장
-            let mut meta = instance.clone();
-            std::mem::take(&mut meta.module_settings);
-            let migrated = serde_json::to_string_pretty(&meta)?;
-            fs::write(&instance_path, &migrated)?;
-        }
-
         Ok(instance)
     }
 
@@ -508,70 +429,6 @@ impl InstanceStore {
     fn save_order(&self) -> Result<()> {
         let content = serde_json::to_string_pretty(&self.order)?;
         fs::write(self.root_dir.join("order.json"), &content)?;
-        Ok(())
-    }
-
-    // ── 마이그레이션 ────────────────────────────────────────
-
-    /// 레거시 `instances.json`에서 디렉토리 구조로 마이그레이션
-    fn migrate_from_legacy_json(&self, legacy_path: &Path) -> Result<()> {
-        tracing::info!(
-            "레거시 instances.json 발견, 디렉토리 구조로 마이그레이션: {}",
-            legacy_path.display()
-        );
-
-        let content = fs::read_to_string(legacy_path)
-            .with_context(|| format!("레거시 파일 읽기 실패: {}", legacy_path.display()))?;
-        let instances: Vec<ServerInstance> = serde_json::from_str(&content)
-            .with_context(|| "레거시 instances.json 파싱 실패")?;
-
-        let mut order = Vec::with_capacity(instances.len());
-
-        for instance in &instances {
-            let dir = self.root_dir.join(&instance.id);
-            // 이미 마이그레이션된 경우 건너뛰기
-            if dir.join("instance.json").exists() {
-                tracing::debug!("이미 마이그레이션됨: {} ({})", instance.name, instance.id);
-                order.push(instance.id.clone());
-                continue;
-            }
-            self.save_instance(instance)?;
-            order.push(instance.id.clone());
-            tracing::info!(
-                "마이그레이션 완료: {} ({}) → {}",
-                instance.name,
-                instance.id,
-                dir.display()
-            );
-        }
-
-        // order.json 저장 (기존 order.json이 없는 경우만)
-        let order_path = self.root_dir.join("order.json");
-        if !order_path.exists() {
-            let order_json = serde_json::to_string_pretty(&order)?;
-            fs::write(&order_path, &order_json)?;
-        }
-
-        // 레거시 파일을 .bak으로 이동 (덮어쓰지 않음)
-        let bak_path = legacy_path.with_extension("json.migrated");
-        if !bak_path.exists() {
-            fs::rename(legacy_path, &bak_path)?;
-            tracing::info!(
-                "레거시 파일 백업: {} → {}",
-                legacy_path.display(),
-                bak_path.display()
-            );
-        } else {
-            // 이미 .migrated가 있으면 원본 삭제
-            fs::remove_file(legacy_path)?;
-            tracing::info!("레거시 파일 제거: {}", legacy_path.display());
-        }
-
-        tracing::info!(
-            "마이그레이션 완료: {} 인스턴스 → {}",
-            order.len(),
-            self.root_dir.display()
-        );
         Ok(())
     }
 }
@@ -598,9 +455,9 @@ mod tests {
     #[test]
     fn test_add_and_load() {
         let tmp = TempDir::new().unwrap();
-        let json_path = tmp.path().join("instances.json");
+        let instances_dir = tmp.path().join("instances");
 
-        let mut store = InstanceStore::new(json_path.to_str().unwrap());
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
         store.load().unwrap();
         assert_eq!(store.list().len(), 0);
 
@@ -610,7 +467,7 @@ mod tests {
         assert_eq!(store.list().len(), 1);
 
         // 새 store로 다시 로드
-        let mut store2 = InstanceStore::new(json_path.to_str().unwrap());
+        let mut store2 = InstanceStore::new(instances_dir.to_str().unwrap());
         store2.load().unwrap();
         assert_eq!(store2.list().len(), 1);
         assert_eq!(store2.list()[0].id, id);
@@ -625,9 +482,9 @@ mod tests {
     #[test]
     fn test_remove() {
         let tmp = TempDir::new().unwrap();
-        let json_path = tmp.path().join("instances.json");
+        let instances_dir = tmp.path().join("instances");
 
-        let mut store = InstanceStore::new(json_path.to_str().unwrap());
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
         store.load().unwrap();
 
         let inst = make_test_instance("to-delete", "palworld");
@@ -644,9 +501,9 @@ mod tests {
     #[test]
     fn test_update() {
         let tmp = TempDir::new().unwrap();
-        let json_path = tmp.path().join("instances.json");
+        let instances_dir = tmp.path().join("instances");
 
-        let mut store = InstanceStore::new(json_path.to_str().unwrap());
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
         store.load().unwrap();
 
         let inst = make_test_instance("updatable", "minecraft");
@@ -659,7 +516,7 @@ mod tests {
         store.update(&id, updated).unwrap();
 
         // 리로드 확인
-        let mut store2 = InstanceStore::new(json_path.to_str().unwrap());
+        let mut store2 = InstanceStore::new(instances_dir.to_str().unwrap());
         store2.load().unwrap();
         assert_eq!(store2.get(&id).unwrap().name, "updated-name");
         assert_eq!(store2.get(&id).unwrap().port, Some(9999));
@@ -668,9 +525,9 @@ mod tests {
     #[test]
     fn test_reorder() {
         let tmp = TempDir::new().unwrap();
-        let json_path = tmp.path().join("instances.json");
+        let instances_dir = tmp.path().join("instances");
 
-        let mut store = InstanceStore::new(json_path.to_str().unwrap());
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
         store.load().unwrap();
 
         let a = make_test_instance("server-a", "minecraft");
@@ -688,51 +545,18 @@ mod tests {
         assert_eq!(store.list()[1].id, id_a);
 
         // 리로드 후에도 순서 유지
-        let mut store2 = InstanceStore::new(json_path.to_str().unwrap());
+        let mut store2 = InstanceStore::new(instances_dir.to_str().unwrap());
         store2.load().unwrap();
         assert_eq!(store2.list()[0].id, id_b);
         assert_eq!(store2.list()[1].id, id_a);
     }
 
     #[test]
-    fn test_migrate_from_legacy_json() {
-        let tmp = TempDir::new().unwrap();
-        let json_path = tmp.path().join("instances.json");
-
-        // 레거시 instances.json 생성
-        let legacy_instances = vec![
-            make_test_instance("legacy-mc", "minecraft"),
-            make_test_instance("legacy-pw", "palworld"),
-        ];
-        let legacy_json = serde_json::to_string_pretty(&legacy_instances).unwrap();
-        fs::write(&json_path, &legacy_json).unwrap();
-
-        // 로드 → 자동 마이그레이션
-        let mut store = InstanceStore::new(json_path.to_str().unwrap());
-        store.load().unwrap();
-
-        assert_eq!(store.list().len(), 2);
-        assert_eq!(store.list()[0].name, "legacy-mc");
-        assert_eq!(store.list()[1].name, "legacy-pw");
-
-        // 레거시 파일이 .migrated로 이동됨
-        assert!(!json_path.exists());
-        assert!(json_path.with_extension("json.migrated").exists());
-
-        // 디렉토리 구조 확인
-        for inst in &legacy_instances {
-            let dir = store.instance_dir(&inst.id);
-            assert!(dir.join("instance.json").exists());
-            assert!(dir.join("settings.json").exists());
-        }
-    }
-
-    #[test]
     fn test_directory_structure() {
         let tmp = TempDir::new().unwrap();
-        let json_path = tmp.path().join("instances.json");
+        let instances_dir = tmp.path().join("instances");
 
-        let mut store = InstanceStore::new(json_path.to_str().unwrap());
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
         store.load().unwrap();
 
         let mut inst = make_test_instance("struct-test", "minecraft");

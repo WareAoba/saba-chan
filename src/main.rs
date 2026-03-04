@@ -13,9 +13,7 @@ mod validator;
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
-
-/// 기본 IPC 서버 포트
-const DEFAULT_IPC_PORT: u16 = 57474;
+use saba_chan_updater_lib::constants;
 /// 프로세스 모니터링 폴링 간격 (초)
 const MONITOR_INTERVAL_SECS: u64 = 2;
 /// 하트비트 reaper 간격 (초)
@@ -58,7 +56,7 @@ async fn main() -> anyhow::Result<()> {
     let ipc_port = std::env::var("SABA_IPC_PORT")
         .ok()
         .and_then(|p| p.parse::<u16>().ok())
-        .unwrap_or(DEFAULT_IPC_PORT);
+        .unwrap_or(constants::DEFAULT_IPC_PORT);
     let ipc_addr = format!("127.0.0.1:{}", ipc_port);
     let ipc_server = ipc::IPCServer::new(supervisor.clone(), &ipc_addr);
 

@@ -15,18 +15,12 @@ const axios = require('axios');
 const { spawn, execSync } = require('child_process');
 const fs = require('fs');
 const http = require('http');
+const { DEFAULT_IPC_PORT, DEFAULT_DAEMON_URL, SUPPORTED_LANGUAGES, getSabaDataDir } = require('../shared/constants');
 
-const IPC_PORT_DEFAULT = 57474;
-let IPC_BASE = process.env.IPC_BASE || `http://127.0.0.1:${IPC_PORT_DEFAULT}`; // Core Daemon endpoint — updated from settings after app ready
+const IPC_PORT_DEFAULT = DEFAULT_IPC_PORT;
+let IPC_BASE = process.env.IPC_BASE || DEFAULT_DAEMON_URL; // Core Daemon endpoint — updated from settings after app ready
 
-// ── 고정 경로: %APPDATA%/saba-chan ──
-function getSabaDataDir() {
-    if (process.platform === 'win32') {
-        return path.join(process.env.APPDATA || '', 'saba-chan');
-    }
-    return path.join(process.env.HOME || '', '.config', 'saba-chan');
-}
-
+// ── 고정 경로: shared/constants.js SSOT ──
 // Electron userData를 saba-chan으로 통일 — ready 전에 호출해야 Chromium 내부 데이터도 이 경로 사용
 app.setPath('userData', getSabaDataDir());
 
@@ -56,14 +50,7 @@ axios.defaults.timeout = 5000;
 // 데몬이 시작 시 생성하는 .ipc_token 파일을 읽어서 모든 요청에 X-Saba-Token 헤더로 포함
 function getIpcTokenPath() {
     if (process.env.SABA_TOKEN_PATH) return process.env.SABA_TOKEN_PATH;
-    if (process.platform === 'win32') {
-        const appdata = process.env.APPDATA;
-        if (appdata) return path.join(appdata, 'saba-chan', '.ipc_token');
-    } else {
-        const home = process.env.HOME;
-        if (home) return path.join(home, '.config', 'saba-chan', '.ipc_token');
-    }
-    return path.join('config', '.ipc_token');
+    return path.join(getSabaDataDir(), '.ipc_token');
 }
 
 // ── 토큰을 전용 변수로 관리 (axios.defaults.headers.common에 의존하지 않음) ──
@@ -423,16 +410,14 @@ function saveNodeToken(token) {
 function getSystemLanguage() {
     try {
         const locale = app.getLocale(); // 예: 'en-US', 'ko-KR', 'ja-JP', 'zh-CN'
-        const supportedLanguages = ['en', 'ko', 'ja', 'zh-CN', 'zh-TW', 'es', 'pt-BR', 'ru', 'de', 'fr'];
-
         // 정확한 로케일 매칭 (zh-CN, zh-TW, pt-BR 등)
-        if (supportedLanguages.includes(locale)) {
+        if (SUPPORTED_LANGUAGES.includes(locale)) {
             return locale;
         }
 
         // 언어 코드만으로 매칭 (en-US → en, ko-KR → ko 등)
         const baseLang = locale.split('-')[0];
-        const matched = supportedLanguages.find((lang) => lang === baseLang || lang.startsWith(baseLang + '-'));
+        const matched = SUPPORTED_LANGUAGES.find((lang) => lang === baseLang || lang.startsWith(baseLang + '-'));
         if (matched) {
             return matched;
         }
@@ -2314,8 +2299,6 @@ ipcMain.handle('instance:executeCommand', async (_event, id, command) => {
                 instance_id: id,
                 rest_host: instance.rest_host,
                 rest_port: instance.rest_port,
-                username: instance.rest_username,
-                password: instance.rest_password,
             };
         } else if (method === 'dual') {
             // Dual: Python lifecycle 모듈이 REST/RCON을 내부적으로 선택

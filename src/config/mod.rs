@@ -1,10 +1,12 @@
 //! 글로벌 설정 — 컴파일 타임 내장 기본값
 //!
-//! 이전에는 config/global.toml 파일에서 읽었지만,
 //! 값이 사실상 고정이므로 코드에 직접 내장합니다.
 
 /// 글로벌 설정 (하드코딩 기본값)
+///
+/// 향후 설정 확장을 위해 유지합니다.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct GlobalConfig {
     pub ipc_socket: String,
     pub log_buffer_size: usize,

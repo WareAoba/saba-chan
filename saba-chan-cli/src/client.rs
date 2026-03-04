@@ -1,23 +1,13 @@
 use serde_json::Value;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
+use saba_chan_updater_lib::constants;
 
-/// IPC 토큰 파일 경로 (데몬과 동일한 로직)
+/// IPC 토큰 파일 경로 (데몬과 동일한 로직 — constants 모듈 위임)
 fn ipc_token_path() -> String {
-    std::env::var("SABA_TOKEN_PATH").unwrap_or_else(|_| {
-        #[cfg(target_os = "windows")]
-        {
-            std::env::var("APPDATA")
-                .map(|appdata| format!("{}\\saba-chan\\.ipc_token", appdata))
-                .unwrap_or_else(|_| "config/.ipc_token".to_string())
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            std::env::var("HOME")
-                .map(|home| format!("{}/.config/saba-chan/.ipc_token", home))
-                .unwrap_or_else(|_| "config/.ipc_token".to_string())
-        }
-    })
+    constants::token_file_path()
+        .to_string_lossy()
+        .to_string()
 }
 
 /// IPC 토큰 파일에서 토큰 읽기
@@ -42,7 +32,7 @@ pub struct DaemonClient {
 impl DaemonClient {
     pub fn new(base_url: Option<&str>) -> Self {
         let base_url = base_url
-            .unwrap_or("http://127.0.0.1:57474")
+            .unwrap_or(constants::DEFAULT_DAEMON_URL)
             .to_string();
 
         let client = reqwest::Client::builder()

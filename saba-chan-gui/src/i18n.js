@@ -22,6 +22,9 @@ import zhCnGui from '../../locales/zh-CN/gui.json';
 import zhTwCommon from '../../locales/zh-TW/common.json';
 import zhTwGui from '../../locales/zh-TW/gui.json';
 
+// Single Source of Truth — Rust constants 모듈과 동일한 목록
+const SUPPORTED_LANGUAGES = ['en', 'ko', 'ja', 'zh-CN', 'zh-TW', 'es', 'pt-BR', 'ru', 'de', 'fr'];
+
 const resources = {
     en: {
         common: enCommon,
@@ -67,12 +70,11 @@ const resources = {
 
 // 저장된 언어 또는 시스템 언어 가져오기
 const getInitialLanguage = async () => {
-    const supportedLanguages = ['en', 'ko', 'ja', 'zh-CN', 'zh-TW', 'es', 'pt-BR', 'ru', 'de', 'fr'];
     try {
         // 1. Electron settings.json이 단일 진실 원천 (봇·데몬과 공유)
         if (window.electron && window.electron.getLanguage) {
             const savedLanguage = await window.electron.getLanguage();
-            if (savedLanguage && supportedLanguages.includes(savedLanguage)) {
+            if (savedLanguage && SUPPORTED_LANGUAGES.includes(savedLanguage)) {
                 console.log('Using language from Electron settings:', savedLanguage);
                 // localStorage도 동기화 (캐시 역할)
                 localStorage.setItem('i18nextLng', savedLanguage);
@@ -82,7 +84,7 @@ const getInitialLanguage = async () => {
 
         // 2. Electron API 사용 불가 시 localStorage 폴백 (웹 전용 모드 등)
         const storedLang = localStorage.getItem('i18nextLng');
-        if (storedLang && supportedLanguages.includes(storedLang)) {
+        if (storedLang && SUPPORTED_LANGUAGES.includes(storedLang)) {
             console.log('Using language from localStorage:', storedLang);
             return storedLang;
         }
@@ -94,14 +96,14 @@ const getInitialLanguage = async () => {
     const browserLang = navigator.language;
 
     // 정확한 매칭 시도
-    if (supportedLanguages.includes(browserLang)) {
+    if (SUPPORTED_LANGUAGES.includes(browserLang)) {
         console.log('Using browser language:', browserLang);
         return browserLang;
     }
 
     // 언어 코드만으로 매칭 시도
     const baseLang = browserLang.split('-')[0];
-    const matched = supportedLanguages.find((lang) => lang.startsWith(baseLang));
+    const matched = SUPPORTED_LANGUAGES.find((lang) => lang.startsWith(baseLang));
     if (matched) {
         console.log('Using matched language:', matched);
         return matched;
@@ -114,9 +116,8 @@ const getInitialLanguage = async () => {
 
 // 캐시된 언어를 동기적으로 읽어 초기 렌더 시 올바른 언어로 표시
 const getCachedLanguage = () => {
-    const supportedLanguages = ['en', 'ko', 'ja', 'zh-CN', 'zh-TW', 'es', 'pt-BR', 'ru', 'de', 'fr'];
     const cached = localStorage.getItem('i18nextLng');
-    if (cached && supportedLanguages.includes(cached)) {
+    if (cached && SUPPORTED_LANGUAGES.includes(cached)) {
         return cached;
     }
     return 'en';

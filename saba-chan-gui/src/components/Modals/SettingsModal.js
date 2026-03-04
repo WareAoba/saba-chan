@@ -5,7 +5,7 @@ import './Modals.css';
 import { useExtensions } from '../../contexts/ExtensionContext';
 import { useDevMode } from '../../hooks/useDevMode';
 import { useModalClose } from '../../hooks/useModalClose';
-import { useSettingsStore } from '../../stores/useSettingsStore';
+import { useSettingsStore, DEFAULT_IPC_PORT } from '../../stores/useSettingsStore';
 import { getTheme, setTheme as saveTheme } from '../../utils/themeManager';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
@@ -38,7 +38,7 @@ function SettingsModal({
     const [selectedTheme, setSelectedTheme] = useState(getTheme());
     const [slideDirection, setSlideDirection] = useState('');
     const [guiTestOpen, setGuiTestOpen] = useState(false);
-    const [localIpcPort, setLocalIpcPort] = useState(ipcPort || 57474);
+    const [localIpcPort, setLocalIpcPort] = useState(ipcPort || DEFAULT_IPC_PORT);
     const [ipcPortChanged, setIpcPortChanged] = useState(false);
     const [ipcPortError, setIpcPortError] = useState('');
     const [localConsoleBuffer, setLocalConsoleBuffer] = useState(consoleBufferSize || 2000);
@@ -201,7 +201,7 @@ function SettingsModal({
 
     // ipcPort prop 동기화
     useEffect(() => {
-        setLocalIpcPort(ipcPort || 57474);
+        setLocalIpcPort(ipcPort || DEFAULT_IPC_PORT);
         setIpcPortChanged(false);
         setIpcPortError('');
     }, [ipcPort]);
@@ -256,7 +256,7 @@ function SettingsModal({
             return;
         }
         setIpcPortError('');
-        setIpcPortChanged(port !== (ipcPort || 57474));
+        setIpcPortChanged(port !== (ipcPort || DEFAULT_IPC_PORT));
         if (onIpcPortChange) {
             onIpcPortChange(port);
         }
@@ -569,7 +569,7 @@ function SettingsModal({
                                     onChange={(e) => handleIpcPortChange(e.target.value)}
                                     min={1024}
                                     max={65535}
-                                    placeholder="57474"
+                                    placeholder={String(DEFAULT_IPC_PORT)}
                                 />
                             </div>
                             {ipcPortError && (

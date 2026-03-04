@@ -27,10 +27,7 @@ use std::sync::Arc;
 #[allow(unused_imports)]
 use tauri::{State, AppHandle, Emitter, Manager};
 use tokio::sync::RwLock;
-
-const SUPPORTED_LANGUAGES: [&str; 10] = [
-    "en", "ko", "ja", "zh-CN", "zh-TW", "es", "pt-BR", "ru", "de", "fr",
-];
+use saba_chan_updater_lib::constants;
 
 pub mod cli;
 pub mod config;
@@ -409,36 +406,11 @@ fn build_state(mgr: &UpdateManager) -> UpdaterState {
 }
 
 fn resolve_modules_dir() -> String {
-    // 환경 변수 오버라이드 (테스트/개발용)
-    if let Ok(p) = std::env::var("SABA_MODULES_PATH") {
-        if !p.is_empty() {
-            return p;
-        }
+    let p = constants::resolve_modules_dir();
+    if !p.exists() {
+        let _ = std::fs::create_dir_all(&p);
     }
-
-    // 고정 경로: %APPDATA%/saba-chan/modules
-    #[cfg(target_os = "windows")]
-    {
-        if let Ok(appdata) = std::env::var("APPDATA") {
-            let p = PathBuf::from(appdata).join("saba-chan").join("modules");
-            if !p.exists() {
-                let _ = std::fs::create_dir_all(&p);
-            }
-            return p.to_string_lossy().to_string();
-        }
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        if let Ok(home) = std::env::var("HOME") {
-            let p = PathBuf::from(home).join(".config").join("saba-chan").join("modules");
-            if !p.exists() {
-                let _ = std::fs::create_dir_all(&p);
-            }
-            return p.to_string_lossy().to_string();
-        }
-    }
-
-    "modules".to_string()
+    p.to_string_lossy().to_string()
 }
 
 fn load_main_app_language() -> Option<String> {
@@ -452,60 +424,16 @@ fn load_main_app_language() -> Option<String> {
 }
 
 fn get_main_app_settings_path() -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        let appdata = std::env::var("APPDATA").ok()?;
-        return Some(PathBuf::from(appdata).join("saba-chan").join("settings.json"));
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        let home = std::env::var("HOME").ok()?;
-        return Some(
-            PathBuf::from(home)
-                .join(".config")
-                .join("saba-chan")
-                .join("settings.json"),
-        );
-    }
+    let path = constants::resolve_settings_path();
+    Some(path)
 }
 
 fn normalize_language_tag(input: &str) -> Option<String> {
-    let trimmed = input.trim();
-    if trimmed.is_empty() {
+    let resolved = constants::resolve_locale(input);
+    if input.trim().is_empty() {
         return None;
     }
-
-    let canonical = trimmed.replace('_', "-");
-    for supported in SUPPORTED_LANGUAGES {
-        if supported.eq_ignore_ascii_case(&canonical) {
-            return Some(supported.to_string());
-        }
-    }
-
-    let lower = canonical.to_lowercase();
-    if lower.starts_with("pt") {
-        return Some("pt-BR".to_string());
-    }
-    if lower.starts_with("zh-cn") || lower.starts_with("zh-hans") {
-        return Some("zh-CN".to_string());
-    }
-    if lower.starts_with("zh-tw") || lower.starts_with("zh-hant") {
-        return Some("zh-TW".to_string());
-    }
-
-    let base = lower.split('-').next().unwrap_or("en");
-    match base {
-        "en" => Some("en".to_string()),
-        "ko" => Some("ko".to_string()),
-        "ja" => Some("ja".to_string()),
-        "zh" => Some("zh-CN".to_string()),
-        "es" => Some("es".to_string()),
-        "ru" => Some("ru".to_string()),
-        "de" => Some("de".to_string()),
-        "fr" => Some("fr".to_string()),
-        _ => None,
-    }
+    Some(resolved)
 }
 
 // ═══════════════════════════════════════════════════════
