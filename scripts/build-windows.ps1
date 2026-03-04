@@ -244,6 +244,14 @@ if (Test-Path $testDir) { Remove-Item $testDir -Recurse -Force -ErrorAction Sile
 $botNodeModules = Join-Path $botDest "node_modules"
 if (Test-Path $botNodeModules) { Remove-Item $botNodeModules -Recurse -Force -ErrorAction SilentlyContinue }
 
+# Zip discord_bot directory
+$botZip = Join-Path $DistDir "discord_bot.zip"
+if (Test-Path $botZip) { Remove-Item $botZip -Force }
+Compress-Archive -Path $botDest -DestinationPath $botZip -CompressionLevel Optimal
+Remove-Item $botDest -Recurse -Force -ErrorAction SilentlyContinue
+$zipMB = [Math]::Round((Get-Item $botZip).Length / 1MB, 2)
+Write-Host "  [Bot] discord_bot.zip ($zipMB MB)" -ForegroundColor Green
+
 Write-Host "  [OK]" -ForegroundColor Green
 
 # --- 4. Resources ---

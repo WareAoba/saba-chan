@@ -426,6 +426,26 @@ impl UpdateManager {
         }
     }
 
+    /// 익스텐션 ID에서 디스크 상의 디렉토리 경로를 해석합니다.
+    /// Python import 호환을 위해 하이픈→언더스코어 변환도 시도합니다.
+    fn resolve_ext_dir(&self, ext_name: &str) -> PathBuf {
+        // 1. 원본 이름
+        let exact = self.extensions_dir.join(ext_name);
+        if exact.exists() {
+            return exact;
+        }
+        // 2. Python-safe 이름 (하이픈→언더스코어)
+        let safe_name = ext_name.replace('-', "_");
+        if safe_name != ext_name {
+            let safe = self.extensions_dir.join(&safe_name);
+            if safe.exists() {
+                return safe;
+            }
+        }
+        // 없으면 Python-safe 이름으로 반환 (신규 설치용)
+        self.extensions_dir.join(&safe_name)
+    }
+
     /// 현재 업데이트 상태를 반환
     pub fn get_status(&self) -> UpdateStatus {
         self.status.clone()
@@ -1782,7 +1802,7 @@ impl UpdateManager {
 
     /// 익스텐션 업데이트 적용 — zip 압축 해제하여 extensions/ 디렉터리에 배치
     async fn apply_extension_update(&self, ext_name: &str, staged_path: &str) -> Result<()> {
-        let target_dir = self.extensions_dir.join(ext_name);
+        let target_dir = self.resolve_ext_dir(ext_name);
         let staged = Path::new(staged_path);
 
         tracing::info!("[Updater] Applying extension update: {} → {}", ext_name, target_dir.display());
@@ -2343,9 +2363,10 @@ rm -f "$0"
                 module_dir.join("module.toml").exists()
             }
             Component::Extension(name) => {
-                let ext_dir = self.extensions_dir.join(name);
+                let ext_dir = self.resolve_ext_dir(name);
                 // extension.toml 또는 __init__.py가 있으면 설치된 것으로 판단
                 ext_dir.join("extension.toml").exists() || ext_dir.join("__init__.py").exists()
+                    || ext_dir.join("manifest.json").exists()
             }
             Component::DiscordBot => {
                 // discord_bot 디렉토리에 index.js + package.json 존재 확인
@@ -2668,6 +2689,11 @@ rm -f "$0"
     fn resolve_install_dir(&self, component: &Component, manifest_dir: Option<&str>) -> PathBuf {
         // manifest의 install_dir가 지정되면 install_root 하위로 결합
         if let Some(dir) = manifest_dir {
+            // Extension인 경우 디렉토리명의 하이픈을 언더스코어로 변환 (Python import 호환)
+            if matches!(component, Component::Extension(_)) {
+                let safe = dir.replace('-', "_");
+                return self.install_root.join(safe);
+            }
             return self.install_root.join(dir);
         }
 
@@ -2677,7 +2703,7 @@ rm -f "$0"
             Component::Cli => self.install_root.clone(),
             Component::Gui => self.install_root.clone(),
             Component::Module(name) => self.modules_dir.join(name),
-            Component::Extension(name) => self.extensions_dir.join(name),
+            Component::Extension(name) => self.resolve_ext_dir(name),
             Component::DiscordBot => self.install_root.join("discord_bot"),
             Component::Updater => self.install_root.clone(),
             Component::Locales => self.install_root.join("locales"),

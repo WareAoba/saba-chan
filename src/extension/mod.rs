@@ -439,6 +439,40 @@ impl ExtensionManager {
         }
     }
 
+    /// Python import에서 사용할 수 있도록 ext_id의 하이픈을 언더스코어로 변환합니다.
+    /// 예: "ue4-ini" → "ue4_ini"
+    fn python_safe_dir_name(ext_id: &str) -> String {
+        ext_id.replace('-', "_")
+    }
+
+    /// ext_id에 대응하는 디스크 상의 디렉토리를 반환합니다.
+    ///
+    /// 탐색 순서:
+    /// 1. discovered에 등록되어 있으면 해당 `dir` 경로 반환
+    /// 2. `extensions_dir/ext_id` (원본 ID)
+    /// 3. `extensions_dir/python_safe_dir_name(ext_id)` (하이픈→언더스코어)
+    fn ext_dir_on_disk(&self, ext_id: &str) -> PathBuf {
+        // 1. 이미 discover된 익스텐션이면 실제 경로 반환
+        if let Some(ext) = self.discovered.get(ext_id) {
+            return ext.dir.clone();
+        }
+        // 2. ext_id 그대로
+        let path_exact = self.extensions_dir.join(ext_id);
+        if path_exact.exists() {
+            return path_exact;
+        }
+        // 3. 하이픈→언더스코어 변환 (Python import 호환)
+        let safe_name = Self::python_safe_dir_name(ext_id);
+        if safe_name != ext_id {
+            let path_safe = self.extensions_dir.join(&safe_name);
+            if path_safe.exists() {
+                return path_safe;
+            }
+        }
+        // 없으면 Python-safe 디렉토리명 반환 (신규 설치 시 사용)
+        self.extensions_dir.join(&safe_name)
+    }
+
     /// extensions/ 디렉토리를 스캔하여 익스텐션 발견.
     ///
     /// 지원 형식:
@@ -454,6 +488,10 @@ impl ExtensionManager {
             );
             return Ok(found);
         }
+
+        // ── 디렉토리명 마이그레이션: 하이픈 → 언더스코어 ──────────
+        // Python import 호환을 위해 하이픈이 포함된 디렉토리를 언더스코어로 rename
+        self.migrate_hyphen_dirs();
 
         let entries = std::fs::read_dir(&self.extensions_dir)
             .with_context(|| {
@@ -548,7 +586,8 @@ impl ExtensionManager {
             .and_then(|s| s.to_str())
             .ok_or_else(|| anyhow::anyhow!("Invalid zip filename: {}", zip_path.display()))?;
 
-        let dest = self.extensions_dir.join(stem);
+        let dir_name = Self::python_safe_dir_name(stem);
+        let dest = self.extensions_dir.join(&dir_name);
         if dest.is_dir() {
             // 이미 추출된 폴더 존재 → zip 파일 삭제 후 스킵
             if let Err(e) = std::fs::remove_file(zip_path) {
@@ -692,7 +731,7 @@ impl ExtensionManager {
     /// 단일 익스텐션을 핫 마운트 (디스크에서 로드 → discovered에 추가).
     /// 이미 존재하면 매니페스트를 리로드.
     pub fn mount(&mut self, ext_id: &str) -> Result<()> {
-        let ext_path = self.extensions_dir.join(ext_id);
+        let ext_path = self.ext_dir_on_disk(ext_id);
         let manifest_path = ext_path.join("manifest.json");
 
         if !manifest_path.exists() {
@@ -927,7 +966,7 @@ impl ExtensionManager {
         // 발견 목록에서 제거
         self.discovered.remove(ext_id);
         // 디렉토리 삭제
-        let ext_path = self.extensions_dir.join(ext_id);
+        let ext_path = self.ext_dir_on_disk(ext_id);
         if ext_path.exists() {
             std::fs::remove_dir_all(&ext_path)
                 .with_context(|| format!("Failed to remove extension directory: {}", ext_path.display()))?;
@@ -1359,11 +1398,20 @@ impl ExtensionManager {
         std::fs::write(&zip_path, &bytes)
             .with_context(|| format!("Failed to write download to {}", zip_path.display()))?;
 
-        // 압축 해제 (기존 폴더가 있으면 먼저 제거)
-        let dest = self.extensions_dir.join(ext_id);
+        // 압축 해제: Python import와 호환되는 디렉토리명 사용 (하이픈→언더스코어)
+        // 기존 폴더가 있으면 먼저 제거 (하이픈/언더스코어 버전 모두 확인)
+        let dir_name = Self::python_safe_dir_name(ext_id);
+        let dest = self.extensions_dir.join(&dir_name);
         if dest.is_dir() {
             std::fs::remove_dir_all(&dest)
                 .with_context(|| format!("Failed to remove existing extension dir: {}", dest.display()))?;
+        }
+        // 레거시: 하이픈 이름으로 된 기존 디렉토리도 제거
+        if dir_name != ext_id {
+            let legacy = self.extensions_dir.join(ext_id);
+            if legacy.is_dir() {
+                let _ = std::fs::remove_dir_all(&legacy);
+            }
         }
 
         let file = std::fs::File::open(&zip_path)?;
@@ -1404,6 +1452,44 @@ impl ExtensionManager {
         }
         let content = std::fs::read_to_string(&path).ok()?;
         serde_json::from_str(&content).ok()
+    }
+
+    /// 하이픈이 포함된 익스텐션 디렉토리를 언더스코어로 rename (레거시 마이그레이션).
+    /// Python은 하이픈을 모듈명에 사용할 수 없으므로 `from extensions.ue4_ini` 등이
+    /// 동작하려면 디렉토리명이 언더스코어여야 합니다.
+    fn migrate_hyphen_dirs(&self) {
+        let entries = match std::fs::read_dir(&self.extensions_dir) {
+            Ok(e) => e,
+            Err(_) => return,
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if !name_str.contains('-') || !entry.path().is_dir() {
+                continue;
+            }
+            let safe_name = name_str.replace('-', "_");
+            let new_path = self.extensions_dir.join(&safe_name);
+            if new_path.exists() {
+                // 이미 언더스코어 디렉토리가 존재하면 레거시 삭제
+                tracing::info!(
+                    "[ExtMigrate] Removing legacy dir '{}' (underscore version exists)",
+                    name_str
+                );
+                let _ = std::fs::remove_dir_all(entry.path());
+            } else {
+                tracing::info!(
+                    "[ExtMigrate] Renaming '{}' → '{}'",
+                    name_str, safe_name
+                );
+                if let Err(e) = std::fs::rename(entry.path(), &new_path) {
+                    tracing::warn!(
+                        "[ExtMigrate] Failed to rename '{}': {}",
+                        name_str, e
+                    );
+                }
+            }
+        }
     }
 
     /// enabled 목록 영속화
@@ -2612,7 +2698,7 @@ mod tests {
               "version": "0.1.0",
               "dependencies": [],
               "download_url": "https://example.com/ue4-ini.zip",
-              "install_dir": "extensions/ue4-ini"
+              "install_dir": "extensions/ue4_ini"
             }
           }
         }"#;
@@ -2621,7 +2707,7 @@ mod tests {
         let list = resp.into_list();
         let ue4 = &list[0];
         assert_eq!(ue4.id, "ue4-ini");
-        assert_eq!(ue4.install_dir.as_deref(), Some("extensions/ue4-ini"));
+        assert_eq!(ue4.install_dir.as_deref(), Some("extensions/ue4_ini"));
     }
 
     /// 실제 manifest.json (로컬 설치용) 파싱 호환성 테스트

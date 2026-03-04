@@ -459,7 +459,7 @@ function setLanguage(language) {
 
 // Settings 관리
 function getSettingsPath() {
-    const userDataPath = app.getPath('userData'); // %APPDATA%/game-server-gui
+    const userDataPath = app.getPath('userData'); // %APPDATA%/saba-chan
     return path.join(userDataPath, 'settings.json');
 }
 
@@ -2758,6 +2758,8 @@ ipcMain.handle('daemon:restart', async () => {
 
 // Settings IPC handlers
 ipcMain.handle('settings:load', () => {
+    return loadSettings();
+});
 
 // App version
 ipcMain.handle('app:getVersion', () => {
@@ -2859,10 +2861,6 @@ ipcMain.handle('app:launchUninstaller', async () => {
         console.error('[Uninstall] Failed to launch installer:', err);
         return { success: false, error: err.message };
     }
-});
-
-
-    return loadSettings();
 });
 
 ipcMain.handle('guiConfig:sync', async (_event, config) => {

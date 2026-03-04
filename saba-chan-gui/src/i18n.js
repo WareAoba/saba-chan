@@ -112,25 +112,33 @@ const getInitialLanguage = async () => {
     return defaultLang;
 };
 
-// i18n 초기화 (비동기)
-const initI18n = async () => {
-    const initialLanguage = await getInitialLanguage();
-
-    await i18n
-        .use(initReactI18next) // Pass i18n instance to react-i18next (LanguageDetector 제거)
-        .init({
-            resources,
-            defaultNS: 'gui',
-            lng: initialLanguage, // 저장된 언어로 초기화
-            fallbackLng: 'en',
-
-            interpolation: {
-                escapeValue: false, // React already escapes values
-            },
-        });
+// 캐시된 언어를 동기적으로 읽어 초기 렌더 시 올바른 언어로 표시
+const getCachedLanguage = () => {
+    const supportedLanguages = ['en', 'ko', 'ja', 'zh-CN', 'zh-TW', 'es', 'pt-BR', 'ru', 'de', 'fr'];
+    const cached = localStorage.getItem('i18nextLng');
+    if (cached && supportedLanguages.includes(cached)) {
+        return cached;
+    }
+    return 'en';
 };
 
-// 초기화 실행
-initI18n();
+// react-i18next 플러그인을 동기적으로 등록하고 초기화해야
+// React 렌더링 시점에 useTranslation 훅이 정상 동작함
+i18n.use(initReactI18next).init({
+    resources,
+    defaultNS: 'gui',
+    lng: getCachedLanguage(), // localStorage 캐시 → 첫 실행 이후 깜빡임 없음
+    fallbackLng: 'en',
+    interpolation: {
+        escapeValue: false, // React already escapes values
+    },
+});
+
+// Electron settings.json에서 실제 언어를 비동기로 가져와 동기화
+getInitialLanguage().then((lang) => {
+    if (lang && lang !== i18n.language) {
+        i18n.changeLanguage(lang);
+    }
+});
 
 export default i18n;

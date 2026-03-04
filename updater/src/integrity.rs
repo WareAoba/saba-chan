@@ -278,7 +278,10 @@ impl IntegrityChecker {
                 let ext_name = k.strip_prefix("ext-").unwrap_or(k);
                 let dir = info.install_dir.as_deref()
                     .map(|d| PathBuf::from(d.trim_start_matches("extensions/")))
-                    .unwrap_or_else(|| PathBuf::from(ext_name));
+                    .unwrap_or_else(|| {
+                        // Python 호환을 위해 하이픈→언더스코어로 변환
+                        PathBuf::from(ext_name.replace('-', "_"))
+                    });
                 // 익스텐션의 매니페스트 파일
                 Some(self.extensions_dir.join(dir).join("manifest.json"))
             }
