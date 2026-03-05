@@ -1901,6 +1901,25 @@ impl UpdateManager {
             }
         }
 
+        #[cfg(not(target_os = "windows"))]
+        {
+            let process_names: Vec<&str> = match binary_name {
+                n if n.contains("daemon") || n.contains("core") => vec!["saba-core"],
+                n if n.contains("cli") => vec!["saba-chan-cli"],
+                n if n.contains("gui") => vec!["saba-chan-gui"],
+                _ => vec![],
+            };
+            for proc in &process_names {
+                if ProcessChecker::is_running(proc) {
+                    tracing::info!("[Updater] Waiting for {} to exit before applying update...", proc);
+                    let exited = ProcessChecker::wait_for_exit(proc, 15).await;
+                    if !exited {
+                        tracing::warn!("[Updater] {} did not exit within timeout, attempting update anyway", proc);
+                    }
+                }
+            }
+        }
+
         tracing::info!("[Updater] Applying binary update: {} in {}", binary_name, exe_dir.display());
 
         if staged.extension().map(|e| e == "zip").unwrap_or(false) {
@@ -1926,11 +1945,17 @@ impl UpdateManager {
                             tracing::error!("[Updater] Cannot replace {}: {}", out_path.display(), e);
                             anyhow::bail!("Cannot replace {}: {}. Is the process still running?", out_path.display(), e);
                         }
+                    } else if cfg!(unix) && out_path.exists() && Self::is_known_binary(&out_path) {
+                        // Linux: 알려진 바이너리를 .old로 백업 후 교체
+                        let backup = out_path.with_extension("old");
+                        let _ = std::fs::rename(&out_path, &backup);
                     }
                     let mut outfile = std::fs::File::create(&out_path)?;
                     std::io::copy(&mut entry, &mut outfile)?;
                 }
             }
+        } else if Self::is_tar_gz(staged) {
+            Self::extract_tar_gz(staged, &exe_dir)?;
         }
 
         std::fs::remove_file(staged).ok();
@@ -1948,8 +1973,13 @@ impl UpdateManager {
     async fn apply_gui_update(&self, staged_path: &str) -> Result<()> {
         let staged = Path::new(staged_path);
 
-        // Portable exe mode: install_root/saba-chan-gui.exe
-        let portable_exe = self.install_root.join("saba-chan-gui.exe");
+        // Portable exe mode: install_root/saba-chan-gui(.exe)
+        let gui_exe_name = if cfg!(target_os = "windows") {
+            "saba-chan-gui.exe"
+        } else {
+            "saba-chan-gui"
+        };
+        let portable_exe = self.install_root.join(gui_exe_name);
         if portable_exe.exists() {
             tracing::info!("[Updater] GUI portable exe detected at {}", portable_exe.display());
             if staged.extension().map(|e| e == "zip").unwrap_or(false) {
@@ -1972,11 +2002,17 @@ impl UpdateManager {
                                 tracing::error!("[Updater] Cannot replace GUI exe {}: {}", out_path.display(), e);
                                 anyhow::bail!("Cannot replace {}: {}. Is the GUI still running?", out_path.display(), e);
                             }
+                        } else if cfg!(unix) && out_path.exists() && Self::is_known_binary(&out_path) {
+                            // Linux: 알려진 바이너리를 .old로 백업 후 교체
+                            let backup = out_path.with_extension("old");
+                            let _ = std::fs::rename(&out_path, &backup);
                         }
                         let mut outfile = std::fs::File::create(&out_path)?;
                         std::io::copy(&mut entry, &mut outfile)?;
                     }
                 }
+            } else if Self::is_tar_gz(staged) {
+                Self::extract_tar_gz(staged, &self.install_root)?;
             }
             std::fs::remove_file(staged).ok();
             tracing::info!("[Updater] GUI (portable exe) updated");
@@ -2662,7 +2698,7 @@ rm -f "$0"
         }
     }
 
-    /// zip(또는 단일 파일)을 대상 디렉터리에 압축 해제
+    /// zip/tar.gz(또는 단일 파일)을 대상 디렉터리에 압축 해제
     async fn extract_to_directory(&self, staged: &Path, target_dir: &Path) -> Result<()> {
         std::fs::create_dir_all(target_dir)?;
 
@@ -2685,6 +2721,8 @@ rm -f "$0"
                     std::io::copy(&mut entry, &mut outfile)?;
                 }
             }
+        } else if Self::is_tar_gz(staged) {
+            Self::extract_tar_gz(staged, target_dir)?;
         } else {
             // 단일 파일인 경우 target_dir 내부에 복사
             let file_name = staged.file_name().unwrap_or_default();
@@ -2692,6 +2730,83 @@ rm -f "$0"
         }
 
         Ok(())
+    }
+
+    /// ファイル名が .tar.gz で終わるか判定
+    fn is_tar_gz(path: &Path) -> bool {
+        path.file_name()
+            .map(|n| n.to_string_lossy().ends_with(".tar.gz"))
+            .unwrap_or(false)
+    }
+
+    /// tar.gz アーカイブを展開
+    fn extract_tar_gz(archive_path: &Path, target_dir: &Path) -> Result<()> {
+        use flate2::read::GzDecoder;
+        use tar::Archive;
+
+        let file = std::fs::File::open(archive_path)?;
+        let decoder = GzDecoder::new(file);
+        let mut archive = Archive::new(decoder);
+
+        for entry in archive.entries()? {
+            let mut entry = entry?;
+            let entry_path = entry.path()?.into_owned();
+
+            // 경로 탐색 공격 방지
+            if entry_path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+                tracing::warn!("[Updater] Skipping potentially unsafe path: {}", entry_path.display());
+                continue;
+            }
+
+            let out_path = target_dir.join(&entry_path);
+
+            if entry.header().entry_type().is_dir() {
+                std::fs::create_dir_all(&out_path)?;
+            } else {
+                if let Some(parent) = out_path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+
+                // 기존 바이너리를 .old로 백업
+                if out_path.exists() {
+                    if out_path.extension().map(|e| e == "exe").unwrap_or(false) {
+                        let backup = out_path.with_extension("exe.old");
+                        let _ = Self::rename_with_retry(&out_path, &backup, 5);
+                    } else if cfg!(unix) && Self::is_known_binary(&out_path) {
+                        let backup = out_path.with_extension("old");
+                        let _ = std::fs::rename(&out_path, &backup);
+                    }
+                }
+
+                entry.unpack(&out_path)?;
+
+                // Linux: 실행 파일에 실행 권한 부여
+                #[cfg(unix)]
+                if Self::is_known_binary(&out_path) {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mut perms = std::fs::metadata(&out_path)?.permissions();
+                    perms.set_mode(perms.mode() | 0o755);
+                    std::fs::set_permissions(&out_path, perms)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// 경로가 saba-chan 바이너리인지 판별 (확장자 없는 비-바이너리 파일 오인 방지)
+    fn is_known_binary(path: &Path) -> bool {
+        const KNOWN_BINARIES: &[&str] = &[
+            "saba-core",
+            "saba-chan-cli",
+            "saba-chan-gui",
+            "saba-chan-updater",
+            "saba-chan-installer",
+        ];
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .map(|name| KNOWN_BINARIES.contains(&name))
+            .unwrap_or(false)
     }
 
     /// 필수 디렉터리가 없으면 생성

@@ -202,6 +202,10 @@ function getInstallRoot() {
     if (process.env.PORTABLE_EXECUTABLE_DIR) {
         return process.env.PORTABLE_EXECUTABLE_DIR;
     }
+    // Linux AppImage: APPIMAGE 환경변수가 자동 설정됨
+    if (process.env.APPIMAGE) {
+        return path.dirname(process.env.APPIMAGE);
+    }
     return path.dirname(app.getPath('exe'));
 }
 

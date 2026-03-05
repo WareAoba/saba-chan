@@ -15,7 +15,9 @@ use serde::Serialize;
 use std::path::PathBuf;
 use tauri::AppHandle;
 
+#[cfg(target_os = "windows")]
 use crate::registry;
+#[cfg(target_os = "windows")]
 use crate::shortcuts;
 
 /// 제거 진행 이벤트
@@ -68,7 +70,11 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
     // Step 1: 설치 경로 확인
     emit("detect", "Detecting install location...", 5);
 
+    #[cfg(target_os = "windows")]
     let install_location = registry::get_install_location();
+    #[cfg(not(target_os = "windows"))]
+    let install_location: Option<String> = None;
+
     let install_dir = match &install_location {
         Some(loc) if !loc.is_empty() => {
             tracing::info!("[Uninstall] Install location: {}", loc);
@@ -178,9 +184,20 @@ pub async fn do_silent_uninstall() {
             let _ = shortcuts::remove_start_menu_shortcut(name);
         }
     }
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Linux: .desktop 파일 제거
+        if let Some(data_dir) = dirs::data_dir() {
+            let desktop_file = data_dir.join("applications/saba-chan.desktop");
+            let _ = std::fs::remove_file(desktop_file);
+        }
+    }
 
     // 설치 디렉토리 삭제
+    #[cfg(target_os = "windows")]
     let install_location = registry::get_install_location();
+    #[cfg(not(target_os = "windows"))]
+    let install_location: Option<String> = None;
     if let Some(ref loc) = install_location {
         let dir = PathBuf::from(loc);
         if dir.exists() {
@@ -242,6 +259,23 @@ fn stop_saba_processes() {
         for name in &targets {
             let _ = std::process::Command::new("taskkill")
                 .args(["/IM", &format!("{}.exe", name), "/F"])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let targets = [
+            "saba-core",
+            "saba-chan-cli",
+            "saba-chan",
+            "saba-chan-updater",
+        ];
+        for name in &targets {
+            let _ = std::process::Command::new("pkill")
+                .args(["-f", name])
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
                 .status();

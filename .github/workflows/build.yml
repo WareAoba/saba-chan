@@ -88,3 +88,69 @@ jobs:
             installer/gui/src-tauri/target/release/saba-chan-installer.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            saba-chan-gui/package-lock.json
+            discord_bot/package-lock.json
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build Rust workspace (release)
+        run: cargo build --release --workspace
+
+      - name: Build Electron GUI (Linux)
+        working-directory: saba-chan-gui
+        run: |
+          npm ci
+          npm run build
+          npx electron-builder --linux
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64-binaries-${{ github.sha }}
+          path: |
+            target/release/saba-core
+            target/release/saba-chan-cli
+            target/release/saba-chan-updater
+            saba-chan-gui/electron-dist/*.AppImage
+            saba-chan-gui/electron-dist/*.tar.gz
+          retention-days: 30
+
+      - name: Create release (on tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            target/release/saba-core
+            target/release/saba-chan-cli
+            target/release/saba-chan-updater
+            saba-chan-gui/electron-dist/*.AppImage
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

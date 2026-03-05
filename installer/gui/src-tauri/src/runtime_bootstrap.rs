@@ -273,7 +273,8 @@ pub async fn npm_install(node_exe: &Path, bot_dir: &Path) -> Result<(), String> 
     // node.exe가 있는 디렉토리를 PATH에 추가
     if let Some(node_dir) = node_exe.parent() {
         let current_path = std::env::var("PATH").unwrap_or_default();
-        let new_path = format!("{};{}", node_dir.to_string_lossy(), current_path);
+        let sep = if cfg!(target_os = "windows") { ";" } else { ":" };
+        let new_path = format!("{}{}{}", node_dir.to_string_lossy(), sep, current_path);
         cmd.env("PATH", &new_path);
     }
 

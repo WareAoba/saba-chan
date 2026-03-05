@@ -68,7 +68,7 @@
                            "uninstall_confirm_message":  "本当にサバちゃんをアンインストールしますか？すべてのプロセス（GUIおよびデーモン）が停止されます。",
                            "uninstall_confirm_yes":  "アンインストール",
                            "uninstall_confirm_no":  "キャンセル",
-                           "about_title":  "サバちゃんについて",
+                           "about_title":  "情報",
                            "about_version":  "バージョン",
                            "about_description":  "ゲームサーバーを簡単にセットアップ、実行、管理できるゲームサーバー管理ツールです。",
                            "about_developer":  "開発者",

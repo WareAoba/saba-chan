@@ -6,8 +6,10 @@
 //! - `saba-chan-installer --uninstall --silent` → 사일런트 제거 (GUI 없음)
 
 pub mod github;
+#[cfg(target_os = "windows")]
 pub mod registry;
 pub mod runtime_bootstrap;
+#[cfg(target_os = "windows")]
 pub mod shortcuts;
 pub mod uninstall;
 

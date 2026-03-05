@@ -80,14 +80,6 @@
         "to": "shared"
       },
       {
-        "from": "../target/release/saba-core.exe",
-        "to": "."
-      },
-      {
-        "from": "../target/release/saba-chan-updater.exe",
-        "to": "."
-      },
-      {
         "from": "../config",
         "to": "config"
       },
@@ -139,7 +131,36 @@
       ],
       "icon": "build/icon.ico",
       "certificateFile": null,
-      "certificatePassword": null
+      "certificatePassword": null,
+      "extraFiles": [
+        {
+          "from": "../target/release/saba-core.exe",
+          "to": "."
+        },
+        {
+          "from": "../target/release/saba-chan-updater.exe",
+          "to": "."
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] },
+        { "target": "tar.gz", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.png",
+      "category": "Game",
+      "artifactName": "${productName}-${version}-linux-${arch}.${ext}",
+      "extraFiles": [
+        {
+          "from": "../target/release/saba-core",
+          "to": "."
+        },
+        {
+          "from": "../target/release/saba-chan-updater",
+          "to": "."
+        }
+      ]
     },
     "portable": {
       "artifactName": "${productName}.exe"

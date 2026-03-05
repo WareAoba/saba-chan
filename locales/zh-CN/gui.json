@@ -68,7 +68,7 @@
                            "uninstall_confirm_message":  "确定要卸载 Saba-chan 吗？所有进程（GUI 和守护进程）将被停止。",
                            "uninstall_confirm_yes":  "卸载",
                            "uninstall_confirm_no":  "取消",
-                           "about_title":  "关于 Saba-chan",
+                           "about_title":  "关于",
                            "about_version":  "版本",
                            "about_description":  "一款能够轻松设置、运行和管理游戏专用服务器的工具。",
                            "about_developer":  "开发者",

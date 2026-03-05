@@ -45,6 +45,9 @@ pub struct ComponentInfo {
     /// 릴리스 에셋 파일명 (None이면 이번 릴리스에 해당 바이너리 없음 — 버전만 기록)
     #[serde(default)]
     pub asset: Option<String>,
+    /// Linux용 릴리스 에셋 파일명 (None이면 asset 필드를 폴백 사용)
+    #[serde(default)]
+    pub asset_linux: Option<String>,
     /// 선택: 에셋 SHA256 해시
     pub sha256: Option<String>,
     /// 선택: 설치 디렉터리 (install_root 기준 상대경로)
@@ -289,7 +292,12 @@ impl GitHubClient {
         let mut resolved: HashMap<String, ResolvedComponent> = HashMap::new();
 
         for (key, info) in &latest_manifest.components {
-            if let Some(ref asset_name) = info.asset {
+            let effective_asset = if cfg!(target_os = "windows") {
+                info.asset.as_ref()
+            } else {
+                info.asset_linux.as_ref().or(info.asset.as_ref())
+            };
+            if let Some(asset_name) = effective_asset {
                 if let Some(asset) = latest_release.assets.iter().find(|a| &a.name == asset_name) {
                     resolved.insert(key.clone(), ResolvedComponent {
                         latest_version: info.version.clone(),
@@ -348,8 +356,13 @@ impl GitHubClient {
                         // 필요한 버전과 동일한지 확인
                         let target_ver = &target_versions[key];
                         if &info.version == target_ver {
-                            // 에셋이 있는지 확인
-                            if let Some(ref asset_name) = info.asset {
+                            // 에셋이 있는지 확인 (플랫폼별 선택)
+                            let effective_asset = if cfg!(target_os = "windows") {
+                                info.asset.as_ref()
+                            } else {
+                                info.asset_linux.as_ref().or(info.asset.as_ref())
+                            };
+                            if let Some(asset_name) = effective_asset {
                                 if let Some(asset) = older_release.assets.iter().find(|a| &a.name == asset_name) {
                                     tracing::info!(
                                         "[Resolver] {} v{} → 릴리즈 {} 에서 발견",

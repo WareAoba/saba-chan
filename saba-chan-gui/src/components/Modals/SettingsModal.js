@@ -850,6 +850,7 @@ function SettingsModal({
                     style={{ '--reveal-x': aboutRevealOrigin.x, '--reveal-y': aboutRevealOrigin.y }}
                 >
                     <div className="about-header">
+                        <h2 className="about-page-title">{t('gui:settings_modal.about_title')}</h2>
                         <button className="about-close-btn" onClick={handleAboutBack}>
                             <Icon name="x" size="sm" />
                         </button>

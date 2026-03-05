@@ -27,6 +27,7 @@ sys-locale = "0.3"
 saba-chan-updater-lib = { path = "../../../updater" }
 futures-util = "0.3"
 toml = "0.8"
+dirs = "5"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [
