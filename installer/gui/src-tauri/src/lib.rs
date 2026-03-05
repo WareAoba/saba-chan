@@ -19,6 +19,9 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::RwLock;
 use saba_chan_updater_lib::constants;
 
+/// 현재 인스톨러 바이너리의 버전 — tauri.conf.json과 동기화
+const INSTALLER_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 // ═══════════════════════════════════════════════════════
 // 타입
 // ═══════════════════════════════════════════════════════
@@ -35,6 +38,8 @@ pub struct InstallerState {
     pub selected_modules: Vec<String>,
     pub latest_release_tag: Option<String>,
     pub progress: InstallProgress,
+    /// 로드된 모듈 메타데이터 (required_extensions 해석용)
+    pub module_metadata: Vec<ModuleInfo>,
 }
 
 impl Default for InstallerState {
@@ -49,6 +54,7 @@ impl Default for InstallerState {
             selected_modules: Vec::new(),
             latest_release_tag: None,
             progress: InstallProgress::default(),
+            module_metadata: Vec::new(),
         }
     }
 }
@@ -62,6 +68,15 @@ pub struct InstallProgress {
     pub complete: bool,
     pub error: Option<String>,
     pub installed_components: Vec<String>,
+    /// 현재 다운로드 중인 파일 이름
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub download_file: Option<String>,
+    /// 현재 다운로드 수신 바이트
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub download_received: Option<u64>,
+    /// 현재 다운로드 전체 바이트 (Content-Length)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub download_total: Option<u64>,
 }
 
 /// 사용 가능한 모듈 정보
@@ -71,6 +86,9 @@ pub struct ModuleInfo {
     pub name: String,
     pub description: String,
     pub icon: String,
+    /// 이 모듈이 요구하는 익스텐션 ID 목록 (예: ["steamcmd", "ue4-ini"])
+    #[serde(default)]
+    pub required_extensions: Vec<String>,
 }
 
 /// 앱 모드
@@ -137,28 +155,138 @@ async fn set_selected_modules(
 // Tauri 커맨드 — 모듈
 // ═══════════════════════════════════════════════════════
 
-#[tauri::command]
-async fn get_available_modules() -> Result<Vec<ModuleInfo>, String> {
-    Ok(vec![
+/// GitHub raw URL로 모듈 아이콘 경로 생성
+fn module_icon_url(owner: &str, modules_repo: &str, module_name: &str) -> String {
+    format!(
+        "https://raw.githubusercontent.com/{}/{}/main/{}/icon.png",
+        owner, modules_repo, module_name
+    )
+}
+
+/// 하드코딩 폴백 모듈 목록 (네트워크 실패 시 사용)
+fn fallback_modules() -> Vec<ModuleInfo> {
+    let owner = constants::GITHUB_OWNER;
+    let modules_repo = constants::GITHUB_MODULES_REPO;
+    vec![
         ModuleInfo {
             id: "minecraft".into(),
             name: "Minecraft".into(),
             description: "Minecraft server management with RCON support".into(),
-            icon: "icon-minecraft.png".into(),
+            icon: module_icon_url(owner, modules_repo, "minecraft"),
+            required_extensions: Vec::new(),
         },
         ModuleInfo {
             id: "palworld".into(),
             name: "Palworld".into(),
             description: "Palworld dedicated server management via REST API".into(),
-            icon: "icon-palworld.png".into(),
+            icon: module_icon_url(owner, modules_repo, "palworld"),
+            required_extensions: vec!["steamcmd".into(), "ue4-ini".into()],
         },
         ModuleInfo {
             id: "zomboid".into(),
             name: "Project Zomboid".into(),
             description: "Project Zomboid dedicated server management".into(),
-            icon: "icon-zomboid.png".into(),
+            icon: module_icon_url(owner, modules_repo, "zomboid"),
+            required_extensions: vec!["steamcmd".into()],
         },
-    ])
+    ]
+}
+
+/// 원격 module.toml에서 모듈 메타데이터를 파싱
+fn parse_module_info(module_name: &str, toml_str: &str, owner: &str, modules_repo: &str) -> Option<ModuleInfo> {
+    let val: toml::Value = toml::from_str(toml_str).ok()?;
+    let module_section = val.get("module")?;
+
+    let id = module_section
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or(module_name)
+        .to_string();
+
+    let display_name = module_section
+        .get("display_name")
+        .or_else(|| module_section.get("game_name"))
+        .and_then(|v| v.as_str())
+        .unwrap_or(module_name)
+        .to_string();
+
+    let description = module_section
+        .get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let icon = module_icon_url(owner, modules_repo, module_name);
+
+    // [install] 섹션의 requires_extensions
+    let required_extensions = val
+        .get("install")
+        .and_then(|i| i.get("requires_extensions"))
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Some(ModuleInfo {
+        id,
+        name: display_name,
+        description,
+        icon,
+        required_extensions,
+    })
+}
+
+#[tauri::command]
+async fn get_available_modules(state: State<'_, SharedState>) -> Result<Vec<ModuleInfo>, String> {
+    let (owner, modules_repo) = {
+        let s = state.read().await;
+        (s.github_owner.clone(), constants::GITHUB_MODULES_REPO.to_string())
+    };
+
+    // 원격에서 모듈 목록 가져오기 시도
+    match fetch_modules_from_remote(&owner, &modules_repo).await {
+        Ok(modules) if !modules.is_empty() => {
+            tracing::info!("원격에서 {} 모듈 메타데이터 로드 성공", modules.len());
+            Ok(modules)
+        }
+        Ok(_) => {
+            tracing::warn!("원격 모듈 목록이 비어 있음, 폴백 사용");
+            Ok(fallback_modules())
+        }
+        Err(e) => {
+            tracing::warn!("원격 모듈 메타데이터 로드 실패: {}, 폴백 사용", e);
+            Ok(fallback_modules())
+        }
+    }
+}
+
+/// 원격 GitHub 레포에서 모듈 목록 + 각 module.toml을 가져와 파싱
+async fn fetch_modules_from_remote(owner: &str, modules_repo: &str) -> Result<Vec<ModuleInfo>, String> {
+    let module_dirs = github::fetch_module_list(owner, modules_repo)
+        .await
+        .map_err(|e| format!("모듈 디렉토리 목록 가져오기 실패: {}", e))?;
+
+    let mut modules = Vec::new();
+
+    for module_name in &module_dirs {
+        match github::fetch_module_toml(owner, modules_repo, module_name).await {
+            Ok(toml_str) => {
+                if let Some(info) = parse_module_info(module_name, &toml_str, owner, modules_repo) {
+                    modules.push(info);
+                } else {
+                    tracing::warn!("module.toml 파싱 실패: {}", module_name);
+                }
+            }
+            Err(e) => {
+                tracing::warn!("module.toml 가져오기 실패 ({}): {}", module_name, e);
+            }
+        }
+    }
+
+    Ok(modules)
 }
 
 // ═══════════════════════════════════════════════════════
@@ -216,6 +344,7 @@ async fn start_install(
             create_start_menu_shortcut: s.create_start_menu_shortcut,
             selected_modules: s.selected_modules.clone(),
             latest_release_tag: s.latest_release_tag.clone(),
+            module_metadata: s.module_metadata.clone(),
         }
     };
 
@@ -239,6 +368,7 @@ struct InstallConfig {
     create_start_menu_shortcut: bool,
     selected_modules: Vec<String>,
     latest_release_tag: Option<String>,
+    module_metadata: Vec<ModuleInfo>,
 }
 
 /// 설치 실행 (비동기)
@@ -251,6 +381,25 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
             complete: false,
             error: None,
             installed_components: Vec::new(),
+            download_file: None,
+            download_received: None,
+            download_total: None,
+        };
+        app.emit("install:progress", &p).ok();
+    };
+
+    // 다운로드 진행률을 포함한 emit (Fix 4)
+    let _emit_download = |step: &str, msg: &str, pct: i32, file: &str, received: u64, total: Option<u64>| {
+        let p = InstallProgress {
+            step: step.to_string(),
+            message: msg.to_string(),
+            percent: pct,
+            complete: false,
+            error: None,
+            installed_components: Vec::new(),
+            download_file: Some(file.to_string()),
+            download_received: Some(received),
+            download_total: total,
         };
         app.emit("install:progress", &p).ok();
     };
@@ -328,7 +477,30 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         }
     };
 
-    // Step 3: 에셋 다운로드 + 압축 해제 (10-45%)
+    // ── Fix 1: 인스톨러 자체 버전 확인 ──
+    // 릴리스 매니페스트에 installer 컴포넌트가 있으면 현재 바이너리 버전과 비교
+    if let Some(required_version) = github::get_installer_version_from_manifest(&manifest) {
+        if version_compare(INSTALLER_VERSION, &required_version) == std::cmp::Ordering::Less {
+            emit_error(
+                &app,
+                &state,
+                &format!(
+                    "This installer (v{}) is outdated. Version v{} or later is required. \
+                     Please download the latest installer from GitHub.",
+                    INSTALLER_VERSION, required_version
+                ),
+            )
+            .await;
+            return;
+        }
+        tracing::info!(
+            "인스톨러 버전 확인 OK: current={}, required={}",
+            INSTALLER_VERSION,
+            required_version
+        );
+    }
+
+    // Step 3: 에셋 다운로드 + 압축 해제 (10-45%) — Fix 4: 바이트 단위 진행률
     let components: Vec<_> = manifest.components.iter().collect();
     let total = components.len().max(1);
     let mut installed = Vec::new();
@@ -338,6 +510,11 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
             Some(a) if !a.is_empty() => a.clone(),
             _ => continue,
         };
+
+        // installer 컴포넌트는 설치 대상에서 제외 (자기 자신)
+        if key.as_str() == "installer" {
+            continue;
+        }
 
         let pct = 10 + (i * 35 / total) as i32;
         emit("download", &format!("Downloading {}...", key), pct);
@@ -361,7 +538,53 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         let _ = std::fs::create_dir_all(&temp_dir);
         let temp_file = temp_dir.join(&asset_name);
 
-        if let Err(e) = github::download_asset(&download_url, &temp_file).await {
+        // 스트리밍 다운로드 + 바이트 진행률 emit
+        let app_dl = app.clone();
+        let asset_name_clone = asset_name.clone();
+        let key_clone = key.to_string();
+        let pct_start = pct;
+
+        let progress_cb = move |received: u64, total_bytes: Option<u64>| {
+            let dl_pct = if let Some(total) = total_bytes {
+                if total > 0 {
+                    (received as f64 / total as f64 * 100.0) as i32
+                } else {
+                    0
+                }
+            } else {
+                0
+            };
+            let mb_received = received as f64 / 1_048_576.0;
+            let msg = if let Some(total) = total_bytes {
+                let mb_total = total as f64 / 1_048_576.0;
+                format!(
+                    "Downloading {} — {:.1}/{:.1} MB ({}%)",
+                    key_clone, mb_received, mb_total, dl_pct
+                )
+            } else {
+                format!("Downloading {} — {:.1} MB", key_clone, mb_received)
+            };
+            let p = InstallProgress {
+                step: "download".to_string(),
+                message: msg,
+                percent: pct_start,
+                complete: false,
+                error: None,
+                installed_components: Vec::new(),
+                download_file: Some(asset_name_clone.clone()),
+                download_received: Some(received),
+                download_total: total_bytes,
+            };
+            app_dl.emit("install:progress", &p).ok();
+        };
+
+        if let Err(e) = github::download_asset_with_progress(
+            &download_url,
+            &temp_file,
+            Some(progress_cb),
+        )
+        .await
+        {
             tracing::error!("Failed to download {}: {}", asset_name, e);
             continue;
         }
@@ -386,7 +609,7 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
     emit("modules-shared", "Installing shared module utilities...", 46);
     install_shared_modules(&install_dir);
 
-    // Step 4: 모듈 다운로드 및 설치 (45-55%)
+    // Step 4: 모듈 다운로드 및 설치 (45-55%) — Fix 4: 스트리밍 진행률
     if !config.selected_modules.is_empty() {
         emit("modules-download", "Downloading game modules...", 47);
 
@@ -394,10 +617,36 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         let _ = std::fs::create_dir_all(&temp_dir);
         let modules_zip = temp_dir.join("saba-chan-modules.zip");
 
-        match github::download_repo_zipball(
+        // 스트리밍 다운로드 + 진행률
+        let app_mod_dl = app.clone();
+        let modules_progress_cb = move |received: u64, total_bytes: Option<u64>| {
+            let mb_received = received as f64 / 1_048_576.0;
+            let msg = if let Some(total) = total_bytes {
+                let mb_total = total as f64 / 1_048_576.0;
+                let pct = if total > 0 { (received as f64 / total as f64 * 100.0) as i32 } else { 0 };
+                format!("Downloading game modules — {:.1}/{:.1} MB ({}%)", mb_received, mb_total, pct)
+            } else {
+                format!("Downloading game modules — {:.1} MB", mb_received)
+            };
+            let p = InstallProgress {
+                step: "modules-download".to_string(),
+                message: msg,
+                percent: 49,
+                complete: false,
+                error: None,
+                installed_components: Vec::new(),
+                download_file: Some("saba-chan-modules.zip".to_string()),
+                download_received: Some(received),
+                download_total: total_bytes,
+            };
+            app_mod_dl.emit("install:progress", &p).ok();
+        };
+
+        match github::download_repo_zipball_with_progress(
             &config.github_owner,
             constants::GITHUB_MODULES_REPO,
             &modules_zip,
+            Some(modules_progress_cb),
         )
         .await
         {
@@ -424,14 +673,47 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
                 tracing::warn!("Failed to download modules: {}", e);
             }
         }
+
+        // ── Fix 3: 모듈 의존 익스텐션 자동 설치 ──
+        emit("extensions", "Checking required extensions...", 54);
+        let required_extensions = collect_required_extensions(
+            &config.selected_modules,
+            &config.module_metadata,
+        );
+
+        if !required_extensions.is_empty() {
+            tracing::info!(
+                "선택된 모듈에 필요한 익스텐션: {:?}",
+                required_extensions
+            );
+
+            match install_required_extensions(
+                &app,
+                &config.github_owner,
+                &required_extensions,
+                &install_dir,
+            )
+            .await
+            {
+                Ok(ext_names) => {
+                    for name in ext_names {
+                        installed.push(format!("extension:{}", name));
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("익스텐션 자동 설치 일부 실패: {}", e);
+                }
+            }
+        }
     }
 
     // Step 5: 포터블 Python 다운로드 + venv 생성 (55-70%)
+    // Fix 5: 기존 런타임이 손상되었으면 삭제 후 재설치
     emit("runtime-python", "Preparing Python runtime...", 57);
     let runtime_data_dir = runtime_bootstrap::resolve_runtime_data_dir(&install_dir);
     let _ = std::fs::create_dir_all(&runtime_data_dir);
 
-    match runtime_bootstrap::setup_python(&runtime_data_dir).await {
+    match runtime_bootstrap::setup_python_with_repair(&runtime_data_dir).await {
         Ok(python_path) => {
             tracing::info!("Python 환경 준비 완료: {}", python_path.display());
             installed.push("runtime:python".to_string());
@@ -443,9 +725,10 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
     }
 
     // Step 6: 포터블 Node.js 다운로드 + npm install (70-85%)
+    // Fix 5: 기존 런타임이 손상되었으면 삭제 후 재설치
     emit("runtime-node", "Preparing Discord bot environment...", 72);
 
-    match runtime_bootstrap::setup_node(&runtime_data_dir).await {
+    match runtime_bootstrap::setup_node_with_repair(&runtime_data_dir).await {
         Ok(node_path) => {
             tracing::info!("Node.js 환경 준비 완료: {}", node_path.display());
             installed.push("runtime:nodejs".to_string());
@@ -551,6 +834,9 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         complete: true,
         error: None,
         installed_components: installed.clone(),
+        download_file: None,
+        download_received: None,
+        download_total: None,
     };
     state.write().await.progress = final_progress.clone();
     app.emit("install:progress", &final_progress).ok();
@@ -567,6 +853,9 @@ async fn emit_error(app: &AppHandle, state: &SharedState, msg: &str) {
         complete: false,
         error: Some(msg.to_string()),
         installed_components: Vec::new(),
+        download_file: None,
+        download_received: None,
+        download_total: None,
     };
     state.write().await.progress = p.clone();
     app.emit("install:progress", &p).ok();
@@ -916,6 +1205,148 @@ fn save_language_setting(language: &str) {
         settings_dir.join("settings.json"),
         serde_json::to_string_pretty(&settings).unwrap_or_default(),
     );
+}
+
+// ═══════════════════════════════════════════════════════
+// Fix 1: 버전 비교 유틸리티
+// ═══════════════════════════════════════════════════════
+
+/// semver 문자열 비교 (major.minor.patch)
+fn version_compare(a: &str, b: &str) -> std::cmp::Ordering {
+    let parse = |s: &str| -> Vec<u64> {
+        s.trim_start_matches('v')
+            .split('.')
+            .filter_map(|p| p.parse::<u64>().ok())
+            .collect()
+    };
+    let va = parse(a);
+    let vb = parse(b);
+    let max_len = va.len().max(vb.len());
+    for i in 0..max_len {
+        let a_part = va.get(i).copied().unwrap_or(0);
+        let b_part = vb.get(i).copied().unwrap_or(0);
+        match a_part.cmp(&b_part) {
+            std::cmp::Ordering::Equal => continue,
+            other => return other,
+        }
+    }
+    std::cmp::Ordering::Equal
+}
+
+// ═══════════════════════════════════════════════════════
+// Fix 3: 모듈 의존 익스텐션 자동 설치
+// ═══════════════════════════════════════════════════════
+
+/// 선택된 모듈의 required_extensions를 수집 (중복 제거)
+fn collect_required_extensions(
+    selected_modules: &[String],
+    module_metadata: &[ModuleInfo],
+) -> Vec<String> {
+    let mut extensions: Vec<String> = Vec::new();
+    for module_id in selected_modules {
+        if let Some(meta) = module_metadata.iter().find(|m| m.id == *module_id) {
+            for ext in &meta.required_extensions {
+                if !extensions.contains(ext) {
+                    extensions.push(ext.clone());
+                }
+            }
+        }
+    }
+    extensions
+}
+
+/// 필요한 익스텐션을 원격 매니페스트에서 조회하고 다운로드/설치
+async fn install_required_extensions(
+    app: &AppHandle,
+    github_owner: &str,
+    required_extensions: &[String],
+    _install_dir: &Path,
+) -> Result<Vec<String>, String> {
+    let ext_manifest = github::fetch_extensions_manifest(
+        github_owner,
+        constants::GITHUB_EXTENSIONS_REPO,
+    )
+    .await
+    .map_err(|e| format!("익스텐션 매니페스트 페치 실패: {}", e))?;
+
+    let extensions_map = ext_manifest
+        .get("extensions")
+        .and_then(|v| v.as_object())
+        .ok_or("익스텐션 매니페스트에 extensions 키가 없습니다")?;
+
+    let mut installed = Vec::new();
+    let data_dir = resolve_data_dir();
+    let temp_dir = std::env::temp_dir().join("saba-chan-installer");
+    let _ = std::fs::create_dir_all(&temp_dir);
+
+    for ext_id in required_extensions {
+        let ext_info = match extensions_map.get(ext_id.as_str()) {
+            Some(info) => info,
+            None => {
+                tracing::warn!("익스텐션 '{}' 이 매니페스트에 없습니다", ext_id);
+                continue;
+            }
+        };
+
+        let download_url = ext_info
+            .get("download_url")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| format!("익스텐션 '{}' 에 download_url이 없습니다", ext_id))?;
+
+        let default_install_dir = format!("extensions/{}", ext_id);
+        let install_sub_dir = ext_info
+            .get("install_dir")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&default_install_dir);
+
+        let ext_name = ext_info
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or(ext_id.as_str());
+
+        let emit_msg = format!("Installing extension: {}...", ext_name);
+        let p = InstallProgress {
+            step: "extensions".to_string(),
+            message: emit_msg,
+            percent: 54,
+            complete: false,
+            error: None,
+            installed_components: Vec::new(),
+            download_file: Some(format!("extension-{}.zip", ext_id)),
+            download_received: None,
+            download_total: None,
+        };
+        app.emit("install:progress", &p).ok();
+
+        let default_asset_name = format!("extension-{}.zip", ext_id);
+        let asset_name = ext_info
+            .get("asset")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&default_asset_name);
+
+        let temp_file = temp_dir.join(asset_name);
+
+        // 다운로드
+        if let Err(e) = github::download_asset(download_url, &temp_file).await {
+            tracing::warn!("익스텐션 '{}' 다운로드 실패: {}", ext_id, e);
+            continue;
+        }
+
+        // 설치 경로 결정 — data_dir/extensions/<ext_id>
+        let target_dir = data_dir.join(install_sub_dir);
+        let _ = std::fs::create_dir_all(&target_dir);
+
+        if let Err(e) = extract_zip(&temp_file.to_path_buf(), &target_dir.to_path_buf()) {
+            tracing::warn!("익스텐션 '{}' 추출 실패: {}", ext_id, e);
+            continue;
+        }
+
+        let _ = std::fs::remove_file(&temp_file);
+        tracing::info!("익스텐션 '{}' 설치 완료: {}", ext_id, target_dir.display());
+        installed.push(ext_id.clone());
+    }
+
+    Ok(installed)
 }
 
 // ═══════════════════════════════════════════════════════

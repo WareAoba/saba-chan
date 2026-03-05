@@ -131,13 +131,13 @@ $jobGUI = Start-Job -Name "GUI" -ScriptBlock {
     }
     & npm install --save-dev terser --quiet --no-save 2>&1 | Out-Null
 
-    & npm run build --silent 2>&1 | Out-Null
+    $buildOut = & npm run build --silent 2>&1
     $ec = $LASTEXITCODE
-    if ($ec -ne 0) { throw "npm run build failed (exit $ec)" }
+    if ($ec -ne 0) { throw "npm run build failed (exit $ec):`n$($buildOut | Out-String)" }
 
-    & npm run package --silent 2>&1 | Out-Null
+    $pkgOut = & npm run package --silent 2>&1
     $ec = $LASTEXITCODE
-    if ($ec -ne 0) { throw "npm run package failed (exit $ec)" }
+    if ($ec -ne 0) { throw "npm run package failed (exit $ec):`n$($pkgOut | Out-String)" }
     $ErrorActionPreference = "Stop"
 
     $exe = Get-ChildItem -Path "electron-dist" -Filter "Saba-chan.exe" -ErrorAction SilentlyContinue |

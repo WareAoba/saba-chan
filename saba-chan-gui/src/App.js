@@ -508,35 +508,79 @@ function App() {
         // App close request handler
         if (window.api.onCloseRequest) {
             window.api.onCloseRequest(() => {
-                setModal({
-                    type: 'question',
-                    title: t('app_exit.confirm_title'),
-                    message: t('app_exit.confirm_message'),
-                    detail: t('app_exit.confirm_detail'),
-                    buttons: [
-                        {
-                            label: t('app_exit.hide_only_label'),
-                            action: () => {
-                                window.api.closeResponse('hide');
-                                setModal(null);
-                            },
-                        },
-                        {
-                            label: t('app_exit.quit_all_label'),
-                            action: () => {
-                                window.api.closeResponse('quit');
-                                setModal(null);
-                            },
-                        },
-                        {
-                            label: t('modals.cancel'),
-                            action: () => {
-                                window.api.closeResponse('cancel');
-                                setModal(null);
-                            },
-                        },
-                    ],
+                // managed 모드로 실행 중인 인스턴스 검출
+                const currentServers = useServerStore.getState().servers;
+                const currentModules = useServerStore.getState().modules;
+                const runningManaged = currentServers.filter((srv) => {
+                    if (srv.status !== 'running') return false;
+                    const mod = currentModules.find((m) => m.name === srv.module);
+                    const instanceManaged = srv.module_settings?.managed_start;
+                    if (instanceManaged === true) return true;
+                    if (instanceManaged === false) return false;
+                    return (mod?.interaction_mode || 'console') === 'console';
                 });
+
+                const doQuit = () => {
+                    window.api.closeResponse('quit');
+                    setModal(null);
+                };
+
+                const showExitModal = () => {
+                    setModal({
+                        type: 'question',
+                        title: t('app_exit.confirm_title'),
+                        message: t('app_exit.confirm_message'),
+                        detail: t('app_exit.confirm_detail'),
+                        buttons: [
+                            {
+                                label: t('app_exit.hide_only_label'),
+                                action: () => {
+                                    window.api.closeResponse('hide');
+                                    setModal(null);
+                                },
+                            },
+                            {
+                                label: t('app_exit.quit_all_label'),
+                                action: () => {
+                                    if (runningManaged.length > 0) {
+                                        // managed 인스턴스가 실행 중 → 2차 경고
+                                        const names = runningManaged.map((s) => s.name).join(', ');
+                                        setModal({
+                                            type: 'warning',
+                                            title: t('app_exit.managed_warning_title'),
+                                            message: t('app_exit.managed_warning_message', { names, count: runningManaged.length }),
+                                            detail: t('app_exit.managed_warning_detail'),
+                                            buttons: [
+                                                {
+                                                    label: t('app_exit.quit_all_label'),
+                                                    action: doQuit,
+                                                },
+                                                {
+                                                    label: t('modals.cancel'),
+                                                    action: () => {
+                                                        window.api.closeResponse('cancel');
+                                                        setModal(null);
+                                                    },
+                                                },
+                                            ],
+                                        });
+                                    } else {
+                                        doQuit();
+                                    }
+                                },
+                            },
+                            {
+                                label: t('modals.cancel'),
+                                action: () => {
+                                    window.api.closeResponse('cancel');
+                                    setModal(null);
+                                },
+                            },
+                        ],
+                    });
+                };
+
+                showExitModal();
             });
         }
 
@@ -573,6 +617,7 @@ function App() {
                 setConsoleInput={(val) => setConsoleInput(popoutParams.instanceId, val)}
                 sendConsoleCommand={() => sendConsoleCommand(popoutParams.instanceId)}
                 consoleEndRef={null}
+                stdinDisabled={popoutState?.stdinDisabled || false}
                 highlightRules={(() => {
                     const srv = servers.find((s) => s.id === popoutParams.instanceId);
                     const mod = srv && modules.find((m) => m.name === srv.module);
@@ -924,7 +969,7 @@ function App() {
                 {modal && modal.type === 'notification' && (
                     <NotificationModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
                 )}
-                {modal && modal.type === 'question' && (
+                {modal && (modal.type === 'question' || modal.type === 'warning') && (
                     <QuestionModal
                         title={modal.title}
                         message={modal.message}

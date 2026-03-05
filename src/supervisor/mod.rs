@@ -77,8 +77,74 @@ impl Supervisor {
         // 인스턴스 로드
         self.instance_store.load()?;
         tracing::info!("Loaded {} server instances", self.instance_store.list().len());
+
+        // 고아 managed 프로세스 재연결
+        self.reattach_orphaned_managed().await;
         
         Ok(())
+    }
+
+    /// Detect orphaned managed processes from a previous daemon run and restore
+    /// their console log history from disk.
+    ///
+    /// For each instance that has a `managed.pid` file:
+    /// 1. Read the PID and check if it's still alive
+    /// 2. If alive: re-register in tracker + create a stub ManagedProcess with
+    ///    console history loaded from `logs/console.log`
+    /// 3. If dead: clean up the stale PID file
+    async fn reattach_orphaned_managed(&mut self) {
+        let instances: Vec<_> = self.instance_store.list().to_vec();
+        let mut reattached = 0u32;
+
+        for instance in &instances {
+            let inst_dir = self.instance_store.instance_dir(&instance.id);
+            let pid_file = inst_dir.join("managed.pid");
+
+            let pid_str = match std::fs::read_to_string(&pid_file) {
+                Ok(s) => s.trim().to_string(),
+                Err(_) => continue, // no managed.pid → not a managed instance
+            };
+
+            let pid: u32 = match pid_str.parse() {
+                Ok(p) => p,
+                Err(_) => {
+                    let _ = std::fs::remove_file(&pid_file);
+                    continue;
+                }
+            };
+
+            if process::is_process_alive(pid) {
+                // Process is still running — re-register it
+                if let Err(e) = self.tracker.track(&instance.id, pid) {
+                    tracing::warn!("Failed to re-track orphan '{}' (PID {}): {}", instance.name, pid, e);
+                    continue;
+                }
+
+                // Create a stub ManagedProcess with history from disk
+                let stub = managed_process::ManagedProcess::create_reattached_stub(
+                    pid,
+                    &inst_dir,
+                ).await;
+
+                self.managed_store.insert(&instance.id, stub).await;
+                reattached += 1;
+                tracing::info!(
+                    "Reattached orphaned managed process '{}' (PID {})",
+                    instance.name, pid
+                );
+            } else {
+                // Process is dead — clean up stale PID file
+                tracing::info!(
+                    "Cleaning up stale managed.pid for '{}' (PID {} no longer running)",
+                    instance.name, pid
+                );
+                let _ = std::fs::remove_file(&pid_file);
+            }
+        }
+
+        if reattached > 0 {
+            tracing::info!("Reattached {} orphaned managed process(es)", reattached);
+        }
     }
 
     /// 로드된 모듈로부터 module_name → protocols_supported 맵을 빌드합니다.
@@ -199,17 +265,31 @@ impl Supervisor {
 
         if !effective_required.is_empty() {
             if let Some(ref ext_mgr) = self.extension_manager {
-                let enabled = ext_mgr.read().await.enabled_set();
-                // missing_required_extensions를 인라인으로 계산 (effective_required 사용)
+                let ext_mgr_guard = ext_mgr.read().await;
+                let ready = ext_mgr_guard.installed_and_enabled_set();
+                let enabled_not_installed = ext_mgr_guard.enabled_but_not_installed();
+                drop(ext_mgr_guard);
+                // missing: 활성화되지 않았거나 디스크에 설치되지 않은 익스텐션
                 let missing: Vec<String> = effective_required.iter()
-                    .filter(|ext_id| !enabled.contains(ext_id.as_str()))
+                    .filter(|ext_id| !ready.contains(ext_id.as_str()))
                     .cloned()
                     .collect();
                 if !missing.is_empty() {
-                    tracing::error!(
-                        "Instance '{}' requires extensions {:?} but they are not enabled",
-                        server_name, missing
-                    );
+                    // 활성화되었지만 설치되지 않은 항목 구분
+                    let not_installed: Vec<&String> = missing.iter()
+                        .filter(|id| enabled_not_installed.contains(id))
+                        .collect();
+                    if !not_installed.is_empty() {
+                        tracing::error!(
+                            "Instance '{}' requires extensions {:?} which are enabled but not installed on disk",
+                            server_name, not_installed
+                        );
+                    } else {
+                        tracing::error!(
+                            "Instance '{}' requires extensions {:?} but they are not enabled",
+                            server_name, missing
+                        );
+                    }
                     return Ok(json!({
                         "success": false,
                         "error": "extension_required",
@@ -296,6 +376,7 @@ impl Supervisor {
                                         work_dir.to_str().unwrap_or("."),
                                         env_vars,
                                         log_pattern.as_deref(),
+                                        Some(&instance_dir),
                                     ).await
                                 } else {
                                     managed_process::ManagedProcess::spawn_log_follower(
@@ -305,6 +386,7 @@ impl Supervisor {
                                         desc,
                                         log_pattern.as_deref(),
                                         strip_prefix,
+                                        Some(&instance_dir),
                                     ).await
                                 };
                                 match spawn_result {
@@ -484,7 +566,19 @@ impl Supervisor {
         // ── Managed mode: stdin에 stop_command 전송으로 graceful shutdown ──
         if let Some(managed) = self.managed_store.get(&instance.id).await {
             if managed.is_running() {
-                if force {
+                // stdin 사용 가능 여부에 따라 분기
+                // - stdin 있음 (정상 프로세스): graceful stop via stdin
+                // - stdin 없음 (재연결 프로세스): 즉시 force kill
+                //   (managed 모드에서는 RCON이 비활성이므로 force kill이 유일한 수단)
+                let effective_force = force || !managed.is_stdin_available();
+
+                if effective_force {
+                    if !force && !managed.is_stdin_available() {
+                        tracing::info!(
+                            "stdin unavailable for '{}' (reattached process), force killing",
+                            server_name
+                        );
+                    }
                     // Force kill: 즉시 종료
                     tracing::info!("Force-killing managed server '{}'", server_name);
                     if let Ok(pid) = self.tracker.get_pid(&instance.id) {
@@ -498,14 +592,15 @@ impl Supervisor {
                     }
                 }
 
-                // 프로세스 종료 대기 (최대 30초)
-                let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(30);
+                // 프로세스 종료 대기 (force kill 시 5초, graceful 시 30초)
+                let timeout_secs = if effective_force { 5 } else { 30 };
+                let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(timeout_secs);
                 loop {
                     if !managed.is_running() {
                         break;
                     }
                     if tokio::time::Instant::now() >= deadline {
-                        tracing::warn!("Managed server '{}' did not exit in 30s, force killing", server_name);
+                        tracing::warn!("Managed server '{}' did not exit in {}s, force killing", server_name, timeout_secs);
                         if let Ok(pid) = self.tracker.get_pid(&instance.id) {
                             let _ = process::force_kill_pid(pid);
                         }
@@ -518,6 +613,10 @@ impl Supervisor {
 
                 // managed store에서 제거
                 self.managed_store.remove(&instance.id).await;
+
+                // Clean up managed.pid
+                let pid_file = self.instance_store.instance_dir(&instance.id).join("managed.pid");
+                let _ = std::fs::remove_file(&pid_file);
 
                 tracing::info!("Managed server '{}' stopped", server_name);
                 // auto-detect 쿨다운 등록
@@ -867,6 +966,7 @@ impl Supervisor {
                                         work_dir.to_str().unwrap_or("."),
                                         env_vars,
                                         log_pattern.as_deref(),
+                                        Some(&inst_dir),
                                     ).await
                                 } else {
                                     managed_process::ManagedProcess::spawn_log_follower(
@@ -876,6 +976,7 @@ impl Supervisor {
                                         desc,
                                         log_pattern.as_deref(),
                                         strip_prefix,
+                                        Some(&inst_dir),
                                     ).await
                                 };
                                 match spawn_result {
@@ -1068,12 +1169,19 @@ impl Supervisor {
 
         // Spawn managed process
         let log_pattern = module.metadata.log_pattern.as_deref();
-        let managed = ManagedProcess::spawn(program, &args, working_dir, env_vars, log_pattern).await?;
+        let inst_dir = self.instance_store.instance_dir(&instance.id);
+        let managed = ManagedProcess::spawn(program, &args, working_dir, env_vars, log_pattern, Some(&inst_dir)).await?;
         let pid = managed.pid;
 
         // Track the process
         self.tracker.track(&instance.id, pid)?;
         self.managed_store.insert(&instance.id, managed).await;
+
+        // Persist PID to disk for orphan reattachment on daemon restart
+        let pid_file = inst_dir.join("managed.pid");
+        if let Err(e) = std::fs::write(&pid_file, pid.to_string()) {
+            tracing::warn!("Failed to write managed.pid for '{}': {}", instance.name, e);
+        }
 
         tracing::info!("Managed server '{}' started with PID {}", instance.name, pid);
         Ok(json!({
@@ -1098,27 +1206,55 @@ impl Supervisor {
         Ok(format!("Sent to stdin: {}", command))
     }
 
-    /// Get console output from a managed process
+    /// Get console output from a managed process.
+    /// Falls back to reading from the disk log file if no managed process is
+    /// currently registered (e.g. after daemon restart before reattachment, or
+    /// for recently stopped servers).
     pub async fn get_console_output(
         &self,
         instance_id: &str,
         since_id: Option<u64>,
         count: Option<usize>,
     ) -> Result<Value> {
-        let proc = self.managed_store.get(instance_id).await
-            .ok_or_else(|| anyhow::anyhow!("No managed process for instance '{}'", instance_id))?;
+        // Try in-memory managed process first
+        if let Some(proc) = self.managed_store.get(instance_id).await {
+            let lines = if let Some(since) = since_id {
+                proc.get_console_since(since).await
+            } else {
+                proc.get_recent_console(count.unwrap_or(100)).await
+            };
 
-        let lines = if let Some(since) = since_id {
-            proc.get_console_since(since).await
-        } else {
-            proc.get_recent_console(count.unwrap_or(100)).await
-        };
+            return Ok(json!({
+                "success": true,
+                "lines": lines,
+                "running": proc.is_running(),
+                "stdin_available": proc.is_stdin_available(),
+            }));
+        }
 
-        Ok(json!({
-            "success": true,
-            "lines": lines,
-            "running": proc.is_running(),
-        }))
+        // Fallback: read from disk log
+        let inst_dir = self.instance_store.instance_dir(instance_id);
+        let log_path = managed_process::console_log_path(&inst_dir);
+        if log_path.exists() {
+            let effective_count = count.unwrap_or(100);
+            let dir_owned = inst_dir.clone();
+            let lines = tokio::task::spawn_blocking(move || {
+                managed_process::read_console_log_from_disk(&dir_owned, effective_count)
+            }).await.unwrap_or_default();
+
+            // Note: since_id is ignored for disk fallback because disk log IDs
+            // are re-assigned from 0 on each read and don't correspond to the
+            // in-memory session's IDs.
+
+            return Ok(json!({
+                "success": true,
+                "lines": lines,
+                "running": false,
+                "source": "disk",
+            }));
+        }
+
+        Err(anyhow::anyhow!("No managed process or console log for instance '{}'", instance_id))
     }
 
     /// Run validation on an instance (via module's validate function)
@@ -1301,8 +1437,12 @@ impl Supervisor {
     pub async fn monitor_processes(&mut self) -> Result<()> {
         use crate::process_monitor;
 
-        // Clean up dead managed processes
-        self.managed_store.cleanup_dead().await;
+        // Clean up dead managed processes and their PID files
+        let dead_ids = self.managed_store.cleanup_dead().await;
+        for dead_id in &dead_ids {
+            let pid_file = self.instance_store.instance_dir(dead_id).join("managed.pid");
+            let _ = std::fs::remove_file(&pid_file);
+        }
         
         let instances = self.instance_store.list().to_vec();
         let mut tracked_count = 0;

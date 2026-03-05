@@ -317,7 +317,10 @@
                      "confirm_message":  "您想如何退出？",
                      "confirm_detail":  "隐藏 GUI：继续在后台运行（可从托盘重新打开）\n全部退出：停止守护程序并完全退出",
                      "hide_only_label":  "隐藏 GUI",
-                     "quit_all_label":  "全部退出"
+                     "quit_all_label":  "全部退出",
+                     "managed_warning_title":  "⚠️ 托管服务器正在运行",
+                     "managed_warning_message":  "{{count}} 个托管服务器仍在运行：{{names}}",
+                     "managed_warning_detail":  "如果守护程序关闭，这些服务器的控制台连接将丢失，下次启动时只能强制终止。\n确定要退出吗？"
                  },
     "modules":  {
                     "load_failed_toast":  "模块加载失败：{{error}}",
@@ -441,6 +444,7 @@
     "console":  {
                     "waiting":  "等待服务器输出...",
                     "input_placeholder":  "输入命令...",
+                    "stdin_disabled":  "仅显示过去的日志（saba-chan 已重启）— 重启服务器以重新连接",
                     "send":  "发送",
                     "popout":  "在单独的窗口中打开"
                 },

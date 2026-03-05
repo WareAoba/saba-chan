@@ -317,7 +317,10 @@
                      "confirm_message":  "Wie möchten Sie beenden?",
                      "confirm_detail":  "GUI ausblenden: Im Hintergrund weiter ausführen (kann aus System Tray erneut geöffnet werden)\nAlles beenden: Daemon stoppen und vollständig beenden",
                      "hide_only_label":  "GUI ausblenden",
-                     "quit_all_label":  "Alles beenden"
+                     "quit_all_label":  "Alles beenden",
+                     "managed_warning_title":  "⚠️ Verwaltete Server laufen noch",
+                     "managed_warning_message":  "{{count}} verwaltete(r) Server laufen noch: {{names}}",
+                     "managed_warning_detail":  "Wenn der Daemon beendet wird, gehen die Konsolenverbindungen zu diesen Servern verloren und können beim nächsten Start nur erzwungen beendet werden.\nMöchten Sie wirklich beenden?"
                  },
     "modules":  {
                     "load_failed_toast":  "Modulladung fehlgeschlagen: {{error}}",
@@ -441,6 +444,7 @@
     "console":  {
                     "waiting":  "Warte auf Serverausgabe...",
                     "input_placeholder":  "Befehl eingeben...",
+                    "stdin_disabled":  "Nur vergangene Protokolle (saba-chan neu gestartet) — Server neu starten zum Wiederverbinden",
                     "send":  "Senden",
                     "popout":  "In separatem Fenster öffnen"
                 },

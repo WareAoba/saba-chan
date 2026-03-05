@@ -317,7 +317,10 @@
     "confirm_message": "어떻게 종료하시겠습니까?",
     "confirm_detail": "GUI만 닫기: 백그라운드에서 계속 실행 (트레이에서 다시 열기 가능)\n완전히 종료: 데몬까지 모두 종료",
     "hide_only_label": "GUI만 닫기",
-    "quit_all_label": "완전히 종료"
+    "quit_all_label": "완전히 종료",
+    "managed_warning_title": "⚠️ 관리 모드 서버 실행 중",
+    "managed_warning_message": "{{count}}개의 관리 모드 서버가 실행 중입니다: {{names}}",
+    "managed_warning_detail": "데몬이 종료되면 이 서버들의 콘솔 연결이 끊어지고, 다음 실행 시 강제 종료만 가능합니다.\n정말로 종료하시겠습니까?"
   },
   "modules": {
     "load_failed_toast": "모듈 로드 실패: {{error}}",
@@ -441,6 +444,7 @@
   "console": {
     "waiting": "서버 출력을 기다리는 중...",
     "input_placeholder": "명령어를 입력하세요...",
+    "stdin_disabled": "사바쨩 재시작으로 과거 기록만 표시 중! 서버를 재시작하면 다시 연결돼요",
     "send": "전송",
     "popout": "별도 창으로 분리",
     "minimize": "독으로 최소화",

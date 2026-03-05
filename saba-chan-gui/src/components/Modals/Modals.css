@@ -254,16 +254,19 @@
 
 /* 고정 크기 2열 레이아웃 */
 .command-modal-fixed {
+    position: relative;
     display: flex;
     flex-direction: row;
     min-width: 680px;
     max-width: 860px;
     width: 90%;
-    height: 300px;
+    height: 360px;
     max-height: 70vh;
     overflow: hidden;
     text-align: left;
     gap: 0;
+    -webkit-user-select: text;
+    user-select: text;
 }
 
 /* 좌측: 메인 입력 영역 */
@@ -272,13 +275,201 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
     padding: 0;
     overflow: hidden;
 }
 
 .command-modal-main .modal-title {
     text-align: left;
+    flex-shrink: 0;
+}
+
+/* 힌트 칩 인라인 영역 */
+.cmd-hints-inline {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 4px 0 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.cmd-hint-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.12s;
+    flex-shrink: 0;
+}
+
+.cmd-hint-chip:hover,
+.cmd-hint-chip.cmd-hint-active {
+    background-color: var(--cli-suggestion-hover, rgba(99, 115, 219, 0.08));
+}
+
+.cmd-hint-chip.cmd-hint-active {
+    outline: 1px solid var(--brand-primary);
+}
+
+.cmd-hint-name {
+    font-family: "Courier New", monospace;
+    font-weight: bold;
+    font-size: 13px;
+    color: var(--cli-text);
+    flex-shrink: 0;
+}
+
+.cmd-hint-desc {
+    font-size: 11px;
+    color: var(--text-disabled);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.cmd-hints-empty {
+    color: var(--text-disabled);
+    font-size: 12px;
+    padding: 8px 4px;
+}
+
+/* 하단 고정 입력 영역 */
+.cmd-input-fixed {
+    flex-shrink: 0;
+    border-top: 1px solid var(--border-light);
+    padding-top: 6px;
+}
+
+/* 우상단 닫기 버튼 */
+.cmd-modal-close {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    background: none;
+    border: none;
+    font-size: 20px;
+    color: var(--text-disabled);
+    cursor: pointer;
+    padding: 0;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.15s;
+    z-index: 1;
+}
+
+.cmd-modal-close:hover {
+    background: var(--modal-detail-bg, rgba(0,0,0,0.06));
+    color: var(--text-primary);
+}
+
+.cmd-input-meta {
+    display: flex;
+    align-items: center;
+    margin-top: 3px;
+}
+
+.cmd-tab-hint {
+    font-size: 11px;
+    color: var(--text-disabled);
+    font-family: "Courier New", monospace;
+}
+
+/* ===== 우측 실행 히스토리 패널 ===== */
+.command-history-panel {
+    width: 240px;
+    flex-shrink: 0;
+    border-left: 1px solid var(--border-light);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    margin: -28px -32px -28px 0;
+    padding: 0;
+    background-color: var(--bg-surface);
+    border-radius: 0 12px 12px 0;
+}
+
+.cmd-history-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+
+.cmd-history-item {
+    padding: 8px 14px;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+    transition: background-color 0.12s;
+}
+
+.cmd-history-item:hover {
+    background-color: var(--cli-suggestion-hover, rgba(99, 115, 219, 0.08));
+}
+
+.cmd-history-item.cmd-history-success {
+    border-left-color: #22c55e;
+}
+
+.cmd-history-item.cmd-history-failure {
+    border-left-color: #ef4444;
+}
+
+.cmd-history-top {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.cmd-history-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.cmd-history-dot.dot-success {
+    background-color: #22c55e;
+}
+
+.cmd-history-dot.dot-failure {
+    background-color: #ef4444;
+}
+
+.cmd-history-cmd {
+    font-family: "Courier New", monospace;
+    font-size: 12px;
+    font-weight: bold;
+    color: var(--cli-text);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cmd-history-time {
+    font-size: 10px;
+    color: var(--text-disabled);
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.cmd-history-msg {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 3px;
+    padding-left: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .cli-section {

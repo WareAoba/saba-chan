@@ -9,13 +9,20 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command as TokioCommand;
 use tokio::sync::{broadcast, mpsc, Mutex, watch};
 use serde::{Serialize, Deserialize};
 use anyhow::Result;
 use regex::Regex;
+
+/// Console log file name within the instance's logs directory.
+const CONSOLE_LOG_FILENAME: &str = "console.log";
+/// Maximum console log file size before rotation (10 MB).
+const CONSOLE_LOG_MAX_BYTES: u64 = 10 * 1024 * 1024;
+/// Number of rotated files to keep.
+const CONSOLE_LOG_ROTATIONS: usize = 2;
 
 /// Default maximum number of log lines to keep in the ring buffer.
 const DEFAULT_LOG_BUFFER: usize = 10_000;
@@ -58,10 +65,13 @@ pub enum LogLevel {
 // ─── Log Buffer ──────────────────────────────────────────────
 
 /// Ring buffer that stores recent log lines with sequential IDs.
+/// Optionally persists every line to a disk log file via an async channel.
 struct LogBuffer {
     lines: VecDeque<LogLine>,
     next_id: u64,
     max_size: usize,
+    /// Async sender for disk persistence (None = no persistence)
+    file_tx: Option<mpsc::UnboundedSender<String>>,
 }
 
 impl LogBuffer {
@@ -74,6 +84,7 @@ impl LogBuffer {
             lines: VecDeque::with_capacity(max_size),
             next_id: 0,
             max_size,
+            file_tx: None,
         }
     }
 
@@ -92,6 +103,13 @@ impl LogBuffer {
             self.lines.pop_front();
         }
         self.lines.push_back(line.clone());
+
+        // Persist to disk (fire-and-forget)
+        if let Some(ref tx) = self.file_tx {
+            let disk_line = format_log_line_for_disk(&line);
+            let _ = tx.send(disk_line);
+        }
+
         line
     }
 
@@ -132,6 +150,18 @@ pub struct ManagedProcess {
     #[allow(dead_code)]
     running_tx: Arc<watch::Sender<bool>>,
     running_rx: watch::Receiver<bool>,
+    /// Abort handle for the background poller task (reattached stubs only)
+    poller_handle: Option<tokio::task::AbortHandle>,
+    /// Whether stdin is available (false for reattached stubs)
+    stdin_available: bool,
+}
+
+impl Drop for ManagedProcess {
+    fn drop(&mut self) {
+        if let Some(handle) = self.poller_handle.take() {
+            handle.abort();
+        }
+    }
 }
 
 impl ManagedProcess {
@@ -145,12 +175,15 @@ impl ManagedProcess {
     /// * `log_pattern` - Optional regex pattern for extracting log level from output lines.
     ///   The pattern should have a named capture group `level` matching
     ///   INFO, WARN, ERROR, DEBUG etc. If None, all lines default to Info.
+    /// * `instance_dir` - Optional instance directory for console log persistence.
+    ///   If provided, all console output is also written to `{instance_dir}/logs/console.log`.
     pub async fn spawn(
         program: &str,
         args: &[String],
         working_dir: &str,
         env_vars: Vec<(String, String)>,
         log_pattern: Option<&str>,
+        instance_dir: Option<&Path>,
     ) -> Result<Self> {
         let mut cmd = TokioCommand::new(program);
         cmd.args(args)
@@ -178,7 +211,13 @@ impl ManagedProcess {
         let (log_tx, _) = broadcast::channel::<LogLine>(2048);
         let (running_tx, running_rx) = watch::channel(true);
 
-        let log_buffer = Arc::new(Mutex::new(LogBuffer::new()));
+        let mut buf = LogBuffer::new();
+        // Attach disk writer if instance_dir is provided
+        if let Some(dir) = instance_dir {
+            let log_path = console_log_path(dir);
+            buf.file_tx = Some(spawn_disk_writer(log_path));
+        }
+        let log_buffer = Arc::new(Mutex::new(buf));
         let running_tx = Arc::new(running_tx);
 
         // Compile log pattern regex (shared across stdout/stderr readers)
@@ -278,6 +317,8 @@ impl ManagedProcess {
             pid,
             running_tx,
             running_rx,
+            poller_handle: None,
+            stdin_available: true,
         })
     }
 
@@ -301,6 +342,7 @@ impl ManagedProcess {
     /// * `description`   - Human-readable label for log messages
     /// * `log_pattern`   - Optional regex for log level parsing
     /// * `strip_prefix`  - Optional separator to strip from each line (e.g. " | " for compose logs)
+    /// * `instance_dir`  - Optional instance directory for console log persistence
     pub async fn spawn_log_follower(
         program: &str,
         args: &[String],
@@ -308,6 +350,7 @@ impl ManagedProcess {
         description: &str,
         log_pattern: Option<&str>,
         strip_prefix: Option<&str>,
+        instance_dir: Option<&Path>,
     ) -> Result<Self> {
         let mut cmd = TokioCommand::new(program);
         cmd.args(args);
@@ -335,7 +378,12 @@ impl ManagedProcess {
         let (log_tx, _) = broadcast::channel::<LogLine>(2048);
         let (running_tx, running_rx) = watch::channel(true);
 
-        let log_buffer = Arc::new(Mutex::new(LogBuffer::new()));
+        let mut buf = LogBuffer::new();
+        if let Some(dir) = instance_dir {
+            let log_path = console_log_path(dir);
+            buf.file_tx = Some(spawn_disk_writer(log_path));
+        }
+        let log_buffer = Arc::new(Mutex::new(buf));
         let running_tx = Arc::new(running_tx);
 
         let log_regex = log_pattern.and_then(|pat| {
@@ -437,6 +485,8 @@ impl ManagedProcess {
             pid,
             running_tx,
             running_rx,
+            poller_handle: None,
+            stdin_available: false, // log follower has no stdin
         })
     }
 
@@ -461,6 +511,11 @@ impl ManagedProcess {
         *self.running_rx.borrow()
     }
 
+    /// Whether stdin commands can be sent to this process.
+    pub fn is_stdin_available(&self) -> bool {
+        self.stdin_available
+    }
+
     /// Wait until the process exits.
     #[allow(dead_code)]
     pub async fn wait_for_exit(&mut self) {
@@ -468,6 +523,85 @@ impl ManagedProcess {
             if self.running_rx.changed().await.is_err() {
                 break;
             }
+        }
+    }
+
+    /// Create a stub ManagedProcess for an orphaned server process.
+    ///
+    /// This is used when the daemon restarts and finds a still-running server.
+    /// The stub:
+    /// - Loads console history from the disk log file
+    /// - Monitors the process liveness via periodic PID polling
+    /// - Cannot send stdin commands (stdio pipes are lost)
+    /// - Continues writing new log lines to disk
+    pub async fn create_reattached_stub(
+        pid: u32,
+        instance_dir: &Path,
+    ) -> Self {
+        let (stdin_tx, _stdin_rx) = mpsc::channel::<String>(1);
+        let (log_tx, _) = broadcast::channel::<LogLine>(2048);
+        let (running_tx, running_rx) = watch::channel(true);
+        let running_tx = Arc::new(running_tx);
+
+        // Load history from disk (blocking I/O → spawn_blocking)
+        let dir_owned = instance_dir.to_path_buf();
+        let history = tokio::task::spawn_blocking(move || {
+            read_console_log_from_disk(&dir_owned, DEFAULT_LOG_BUFFER)
+        }).await.unwrap_or_default();
+        let next_id = history.last().map(|l| l.id + 1).unwrap_or(0);
+
+        let mut log_buf = LogBuffer::with_capacity(DEFAULT_LOG_BUFFER);
+        log_buf.next_id = next_id;
+        for line in history {
+            log_buf.lines.push_back(line);
+        }
+
+        // Attach disk writer for any new lines
+        let log_path = console_log_path(instance_dir);
+        log_buf.file_tx = Some(spawn_disk_writer(log_path));
+
+        // Add system message about reattachment
+        let sys_msg = format!(
+            "── 💤 사바쨩이 재시작했어요! 서버(PID {}) 재연결 완료 — \
+             과거 로그만 보여줄 수 있어요. 서버를 재시작하면 정상으로 돌아와요! ──",
+            pid
+        );
+        log_buf.push(LogSource::System, sys_msg, LogLevel::Warn);
+
+        let log_buffer = Arc::new(Mutex::new(log_buf));
+
+        // Spawn a background task to monitor process liveness
+        let poller_handle = {
+            let running = running_tx.clone();
+            let buf = log_buffer.clone();
+            let bc = log_tx.clone();
+            let handle = tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                    if !super::process::is_process_alive(pid) {
+                        let exit_msg = format!("Process (PID {}) exited", pid);
+                        tracing::info!("{}", exit_msg);
+                        let log_line = buf.lock().await.push(
+                            LogSource::System, exit_msg, LogLevel::Info
+                        );
+                        let _ = bc.send(log_line);
+                        let _ = running.send(false);
+                        break;
+                    }
+                }
+            });
+            handle.abort_handle()
+        };
+
+        Self {
+            stdin_tx,
+            log_buffer,
+            log_broadcast: log_tx,
+            pid,
+            running_tx,
+            running_rx,
+            poller_handle: Some(poller_handle),
+            stdin_available: false, // reattached stub — stdio pipes lost
         }
     }
 }
@@ -515,16 +649,20 @@ impl ManagedProcessStore {
     }
 
     /// Clean up processes that are no longer running.
-    pub async fn cleanup_dead(&self) {
+    /// Returns the list of instance IDs that were removed.
+    pub async fn cleanup_dead(&self) -> Vec<String> {
         let mut map = self.processes.lock().await;
+        let mut removed = Vec::new();
         map.retain(|id, proc| {
             if !proc.is_running() {
                 tracing::info!("Cleaning up dead managed process for instance '{}'", id);
+                removed.push(id.clone());
                 false
             } else {
                 true
             }
         });
+        removed
     }
 }
 
@@ -566,6 +704,235 @@ fn current_timestamp() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+// ─── Disk Persistence Helpers ────────────────────────────────
+
+/// Format a log line for disk output:
+/// `[2026-03-05 12:34:56] [STDOUT/INFO] actual content`
+fn format_log_line_for_disk(line: &LogLine) -> String {
+    let dt = format_unix_timestamp(line.timestamp);
+    let source = match line.source {
+        LogSource::Stdout => "STDOUT",
+        LogSource::Stderr => "STDERR",
+        LogSource::System => "SYSTEM",
+    };
+    let level = match line.level {
+        LogLevel::Info => "INFO",
+        LogLevel::Warn => "WARN",
+        LogLevel::Error => "ERROR",
+        LogLevel::Debug => "DEBUG",
+    };
+    format!("[{}] [{}/{}] {}", dt, source, level, line.content)
+}
+
+/// Format a Unix timestamp as `YYYY-MM-DD HH:MM:SS` (UTC).
+fn format_unix_timestamp(ts: u64) -> String {
+    let secs = ts;
+    // Days since epoch
+    let days = secs / 86400;
+    let time_of_day = secs % 86400;
+    let hours = time_of_day / 3600;
+    let minutes = (time_of_day % 3600) / 60;
+    let seconds = time_of_day % 60;
+
+    // Civil date from days since 1970-01-01 (Rata Die algorithm)
+    let z = days as i64 + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = (z - era * 146097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+
+    format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", y, m, d, hours, minutes, seconds)
+}
+
+/// Parse `YYYY-MM-DD HH:MM:SS` back to Unix timestamp.
+fn parse_datetime_to_unix(s: &str) -> Option<u64> {
+    // Expected: "2026-03-05 12:34:56"
+    if s.len() < 19 { return None; }
+    let y: i64 = s[0..4].parse().ok()?;
+    let m: u64 = s[5..7].parse().ok()?;
+    let d: u64 = s[8..10].parse().ok()?;
+    let hh: u64 = s[11..13].parse().ok()?;
+    let mm: u64 = s[14..16].parse().ok()?;
+    let ss: u64 = s[17..19].parse().ok()?;
+
+    // Inverse of civil date → days since epoch
+    let y_adj = if m <= 2 { y - 1 } else { y };
+    let m_adj = if m > 2 { m - 3 } else { m + 9 };
+    let era = if y_adj >= 0 { y_adj } else { y_adj - 399 } / 400;
+    let yoe = (y_adj - era * 400) as u64;
+    let doy = (153 * m_adj + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era as u64 * 146097 + doe - 719468;
+
+    Some(days * 86400 + hh * 3600 + mm * 60 + ss)
+}
+
+/// Resolve the console log path for an instance:
+/// `{instance_dir}/logs/console.log`
+pub fn console_log_path(instance_dir: &Path) -> PathBuf {
+    instance_dir.join("logs").join(CONSOLE_LOG_FILENAME)
+}
+
+/// Spawn a background task that writes log lines to a file.
+/// Returns an unbounded sender; dropping it cleanly stops the writer.
+fn spawn_disk_writer(log_path: PathBuf) -> mpsc::UnboundedSender<String> {
+    let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+
+    tokio::spawn(async move {
+        use tokio::fs::{self, OpenOptions};
+        use tokio::io::AsyncWriteExt as _;
+
+        // Ensure parent directory exists
+        if let Some(parent) = log_path.parent() {
+            let _ = fs::create_dir_all(parent).await;
+        }
+
+        let mut file = match OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_path)
+            .await
+        {
+            Ok(f) => f,
+            Err(e) => {
+                tracing::warn!("Failed to open console log '{}': {}", log_path.display(), e);
+                return;
+            }
+        };
+
+        let mut bytes_written: u64 = file.metadata().await.map(|m| m.len()).unwrap_or(0);
+
+        while let Some(line) = rx.recv().await {
+            let data = format!("{}\n", line);
+            let data_len = data.len() as u64;
+            if file.write_all(data.as_bytes()).await.is_err() {
+                break;
+            }
+            bytes_written += data_len;
+
+            // Rotate if needed
+            if bytes_written >= CONSOLE_LOG_MAX_BYTES {
+                let _ = file.flush().await;
+                rotate_log_files(&log_path).await;
+                match OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&log_path)
+                    .await
+                {
+                    Ok(f) => {
+                        file = f;
+                        bytes_written = 0;
+                    }
+                    Err(_) => break,
+                }
+            }
+        }
+
+        let _ = file.flush().await;
+    });
+
+    tx
+}
+
+/// Rotate `console.log` → `console.log.1`, `console.log.1` → `console.log.2`, etc.
+async fn rotate_log_files(log_path: &Path) {
+    use tokio::fs;
+    let base = log_path.to_string_lossy().to_string();
+    // Delete the oldest rotated file first (Windows rename fails if dst exists)
+    let oldest = format!("{}.{}", base, CONSOLE_LOG_ROTATIONS);
+    let _ = fs::remove_file(&oldest).await;
+    // Shift older files: .1 → .2, current → .1
+    for i in (1..=CONSOLE_LOG_ROTATIONS).rev() {
+        let src = if i == 1 {
+            base.clone()
+        } else {
+            format!("{}.{}", base, i - 1)
+        };
+        let dst = format!("{}.{}", base, i);
+        let _ = fs::rename(&src, &dst).await;
+    }
+}
+
+/// Read the most recent `count` lines from the console log on disk.
+/// Used to restore console history when the daemon restarts.
+pub fn read_console_log_from_disk(instance_dir: &Path, count: usize) -> Vec<LogLine> {
+    let log_path = console_log_path(instance_dir);
+    let content = match std::fs::read_to_string(&log_path) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+
+    let total_lines: Vec<&str> = content.lines().collect();
+    let start = total_lines.len().saturating_sub(count);
+    total_lines[start..]
+        .iter()
+        .enumerate()
+        .map(|(i, raw)| parse_disk_log_line(i as u64, raw))
+        .collect()
+}
+
+/// Parse a disk log line back into a `LogLine`.
+/// Format: `[2026-03-05 12:34:56] [STDOUT/INFO] actual content`
+fn parse_disk_log_line(id: u64, raw: &str) -> LogLine {
+    // Try to parse the structured format
+    let (timestamp, source, level, content) =
+        if raw.starts_with('[') {
+            parse_structured_disk_line(raw)
+        } else {
+            (current_timestamp(), LogSource::Stdout, LogLevel::Info, raw.to_string())
+        };
+
+    LogLine { id, timestamp, source, content, level }
+}
+
+/// Parse `[datetime] [SOURCE/LEVEL] content`
+fn parse_structured_disk_line(raw: &str) -> (u64, LogSource, LogLevel, String) {
+    // Find first `]` for datetime
+    let dt_end = raw.find(']').unwrap_or(0);
+    let after_dt = &raw[dt_end + 1..];
+
+    // Find `[SOURCE/LEVEL]`
+    let trimmed = after_dt.trim_start();
+    if let Some(bracket_start) = trimmed.find('[') {
+        if let Some(bracket_end) = trimmed[bracket_start..].find(']') {
+            let tag = &trimmed[bracket_start + 1..bracket_start + bracket_end];
+            let content = trimmed[bracket_start + bracket_end + 1..].trim_start().to_string();
+
+            let (source, level) = if let Some(slash) = tag.find('/') {
+                let src = match &tag[..slash] {
+                    "STDERR" => LogSource::Stderr,
+                    "SYSTEM" => LogSource::System,
+                    _ => LogSource::Stdout,
+                };
+                let lvl = match &tag[slash + 1..] {
+                    "WARN" => LogLevel::Warn,
+                    "ERROR" => LogLevel::Error,
+                    "DEBUG" => LogLevel::Debug,
+                    _ => LogLevel::Info,
+                };
+                (src, lvl)
+            } else {
+                (LogSource::Stdout, LogLevel::Info)
+            };
+
+            // Try parsing timestamp
+            let dt_str = &raw[1..dt_end];
+            let timestamp = parse_datetime_to_unix(dt_str)
+                .unwrap_or_else(current_timestamp);
+
+            return (timestamp, source, level, content);
+        }
+    }
+
+    (current_timestamp(), LogSource::Stdout, LogLevel::Info, raw.to_string())
 }
 
 // ─── Tests ───────────────────────────────────────────────────

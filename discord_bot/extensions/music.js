@@ -5,7 +5,7 @@
  * 게임 서버 관리와는 별개로, 디스코드 음성 채널에서 유튜브 음악을 재생합니다.
  * 
  * 의존성:
- *   - Node.js (discord_bot/package.json): @discordjs/voice, opusscript, play-dl, tweetnacl
+ *   - Node.js (discord_bot/package.json): @discordjs/voice, opusscript, play-dl, sodium-native
  *   - Python (extensions/music/music_deps.py 자동설치): ffmpeg, yt-dlp
  */
 
@@ -22,6 +22,87 @@ let voice, playDl;
 let musicAvailable = false;
 let ffmpegPath = 'ffmpeg';
 let ytDlpPath = 'yt-dlp';
+
+/**
+ * music_deps.py 의 위치 후보를 반환합니다.
+ */
+function getMusicDepsScriptCandidates() {
+    const candidates = [];
+    if (process.env.SABA_EXTENSIONS_DIR) {
+        candidates.push(path.join(process.env.SABA_EXTENSIONS_DIR, 'music', 'music_deps.py'));
+    }
+    candidates.push(path.join(getSabaDataDir(), 'extensions', 'music', 'music_deps.py'));
+    candidates.push(path.resolve(__dirname, '..', '..', '..', 'saba-chan-extensions', 'music', 'music_deps.py'));
+    return candidates;
+}
+
+/**
+ * .deps-resolved.json 이 없을 때 Python music_deps.py 를 직접 실행하여
+ * 의존성을 검사하고 .deps-resolved.json 을 생성합니다.
+ * 생성된 결과를 반환하거나, 실패 시 null 을 반환합니다.
+ */
+function tryRunMusicDeps() {
+    const scriptCandidates = getMusicDepsScriptCandidates();
+    let scriptPath = null;
+    for (const p of scriptCandidates) {
+        if (fs.existsSync(p)) { scriptPath = p; break; }
+    }
+    if (!scriptPath) {
+        console.warn('[Music] music_deps.py not found in any candidate path');
+        return null;
+    }
+
+    // Python 실행 파일 결정
+    const pythonCandidates = [];
+    if (process.platform === 'win32') {
+        // venv (개발 환경)
+        const venvPython = path.resolve(__dirname, '..', '..', '.venv', 'Scripts', 'python.exe');
+        if (fs.existsSync(venvPython)) pythonCandidates.push(venvPython);
+        // 사바쨩 내장 Python (프로덕션)
+        const embeddedPython = path.join(getSabaDataDir(), 'python', 'python.exe');
+        if (fs.existsSync(embeddedPython)) pythonCandidates.push(embeddedPython);
+    }
+    pythonCandidates.push('python3', 'python');
+
+    for (const pyCmd of pythonCandidates) {
+        try {
+            // SABA_EXTENSIONS_DIR 을 Python에 전달하여 올바른 위치에 .deps-resolved.json 기록
+            const spawnEnv = { ...process.env };
+            if (!spawnEnv.SABA_EXTENSIONS_DIR) {
+                spawnEnv.SABA_EXTENSIONS_DIR = path.join(getSabaDataDir(), 'extensions');
+            }
+            const result = require('child_process').spawnSync(
+                pyCmd,
+                [scriptPath, 'check_dependencies'],
+                {
+                    input: '{}',
+                    stdio: ['pipe', 'pipe', 'pipe'],
+                    timeout: 30000,
+                    windowsHide: true,
+                    env: spawnEnv,
+                }
+            );
+            if (result.error) continue;
+            if (result.status !== 0) {
+                const stderr = result.stderr?.toString().trim();
+                if (stderr) console.warn(`[Music] music_deps.py stderr: ${stderr}`);
+                continue;
+            }
+            const output = result.stdout?.toString().trim();
+            if (!output) continue;
+            const parsed = JSON.parse(output);
+            console.log(`[Music] music_deps.py executed successfully (python: ${pyCmd})`);
+            // music_deps.py 가 .deps-resolved.json 을 이미 기록했으므로,
+            // 다시 loadDepsResolved() 로 읽을 수도 있지만 파싱된 결과를 직접 반환
+            return parsed.dependencies || parsed;
+        } catch (e) {
+            // 이 python 후보로 실패 — 다음 시도
+        }
+    }
+
+    console.warn('[Music] Failed to run music_deps.py with any Python interpreter');
+    return null;
+}
 
 /**
  * Python music_deps.py 가 기록한 .deps-resolved.json 에서 바이너리 경로를 불러옵니다.
@@ -65,19 +146,21 @@ try {
             console.log(`[Music] yt-dlp path (from Python): ${ytDlpPath}`);
         }
     } else {
-        // .deps-resolved.json 미발견 — PATH에서 직접 탐색 (fallback)
-        console.log('[Music] .deps-resolved.json not found, using PATH fallback');
-        try {
-            execSync('ffmpeg -version', { stdio: 'ignore', windowsHide: true });
-            console.log('[Music] ffmpeg found in PATH');
-        } catch (_) {
-            console.warn('[Music] ffmpeg not found in PATH');
-        }
-        try {
-            execSync('yt-dlp --version', { stdio: 'ignore', windowsHide: true });
-            console.log('[Music] yt-dlp found in PATH');
-        } catch (_) {
-            console.warn('[Music] yt-dlp not found in PATH');
+        // .deps-resolved.json 미발견 — Python music_deps.py 직접 실행하여 생성 시도
+        console.log('[Music] .deps-resolved.json not found, running music_deps.py to resolve...');
+        const depsGenerated = tryRunMusicDeps();
+        if (depsGenerated) {
+            if (depsGenerated.ffmpeg && depsGenerated.ffmpeg.available && depsGenerated.ffmpeg.path) {
+                ffmpegPath = depsGenerated.ffmpeg.path;
+                if (!process.env.FFMPEG_PATH) process.env.FFMPEG_PATH = ffmpegPath;
+                console.log(`[Music] FFmpeg path (from deps check): ${ffmpegPath}`);
+            }
+            if (depsGenerated.yt_dlp && depsGenerated.yt_dlp.available && depsGenerated.yt_dlp.path) {
+                ytDlpPath = depsGenerated.yt_dlp.path;
+                console.log(`[Music] yt-dlp path (from deps check): ${ytDlpPath}`);
+            }
+        } else {
+            console.warn('[Music] Could not resolve dependencies. ffmpeg/yt-dlp may not work.');
         }
     }
 
@@ -668,10 +751,11 @@ function createYtDlpStream(url) {
     // 에러 처리
     ytdlp.on('error', (err) => {
         console.error('[Music] yt-dlp spawn error:', err.message);
-        ffmpeg.kill();
+        try { ffmpeg.kill(); } catch (_) {}
     });
     ffmpeg.on('error', (err) => {
         console.error('[Music] ffmpeg spawn error:', err.message);
+        try { ytdlp.kill(); } catch (_) {}
     });
 
     // yt-dlp가 비정상 종료되면 ffmpeg stdin 닫기
@@ -1077,7 +1161,7 @@ async function enqueueAndPlay(message, statusMsg, tracks, voiceChannel) {
             adapterCreator: message.guild.voiceAdapterCreator,
             selfDeaf: true,
         });
-        
+
         // 연결 끊김 처리
         queue.connection.on(voice.VoiceConnectionStatus.Disconnected, async () => {
             try {

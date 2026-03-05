@@ -84,11 +84,13 @@ export function ConsoleWindow({
             const startPos = { ...state.position };
 
             const handleDragMove = (moveEvent) => {
-                const dx = moveEvent.clientX - startX;
-                const dy = moveEvent.clientY - startY;
+                const mx = Math.max(0, Math.min(moveEvent.clientX, window.innerWidth));
+                const my = Math.max(0, Math.min(moveEvent.clientY, window.innerHeight));
+                const dx = mx - startX;
+                const dy = my - startY;
                 updatePosition(instanceId, {
-                    x: Math.max(0, startPos.x + dx),
-                    y: Math.max(0, startPos.y + dy),
+                    x: startPos.x + dx,
+                    y: startPos.y + dy,
                 });
             };
 
@@ -118,8 +120,10 @@ export function ConsoleWindow({
             const startPos = { ...state.position };
 
             const handleResizeMove = (moveEvent) => {
-                const dx = moveEvent.clientX - startX;
-                const dy = moveEvent.clientY - startY;
+                const mx = Math.max(0, Math.min(moveEvent.clientX, window.innerWidth));
+                const my = Math.max(0, Math.min(moveEvent.clientY, window.innerHeight));
+                const dx = mx - startX;
+                const dy = my - startY;
 
                 let newWidth = startSize.width;
                 let newHeight = startSize.height;
@@ -148,7 +152,7 @@ export function ConsoleWindow({
                 }
 
                 updateSize(instanceId, { width: newWidth, height: newHeight });
-                updatePosition(instanceId, { x: Math.max(0, newX), y: Math.max(0, newY) });
+                updatePosition(instanceId, { x: newX, y: newY });
             };
 
             const handleResizeEnd = () => {
@@ -266,17 +270,21 @@ export function ConsoleWindow({
             {/* Input row */}
             <div className="console-input-row">
                 <span className="console-prompt">{'>'}</span>
-                <input
-                    type="text"
-                    className="console-input"
-                    value={state.input}
-                    onChange={(e) => setConsoleInput(instanceId, e.target.value)}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter') sendConsoleCommand(instanceId);
-                    }}
-                    placeholder={t('console.input_placeholder')}
-                />
-                <button className="console-send" onClick={() => sendConsoleCommand(instanceId)}>
+                <div className={clsx('console-input-wrap', state.stdinDisabled && 'console-input-disabled')}>
+                    {state.stdinDisabled && <Icon name="alertTriangle" size="sm" />}
+                    <input
+                        type="text"
+                        className="console-input"
+                        value={state.input}
+                        onChange={(e) => setConsoleInput(instanceId, e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') sendConsoleCommand(instanceId);
+                        }}
+                        placeholder={state.stdinDisabled ? t('console.stdin_disabled') : t('console.input_placeholder')}
+                        disabled={state.stdinDisabled}
+                    />
+                </div>
+                <button className="console-send" onClick={() => sendConsoleCommand(instanceId)} disabled={state.stdinDisabled}>
                     {t('console.send')}
                 </button>
             </div>

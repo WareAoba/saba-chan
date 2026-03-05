@@ -317,7 +317,10 @@
                      "confirm_message":  "Comment voulez-vous quitter?",
                      "confirm_detail":  "Masquer l\u0027interface: Continuer en arrière-plan (peut être rouverte depuis le plateau)\nQuitter complètement: Arrêter le daemon et quitter complètement",
                      "hide_only_label":  "Masquer l\u0027interface",
-                     "quit_all_label":  "Quitter complètement"
+                     "quit_all_label":  "Quitter complètement",
+                     "managed_warning_title":  "⚠️ Serveurs gérés en cours d\u0027exécution",
+                     "managed_warning_message":  "{{count}} serveur(s) géré(s) sont encore en cours d\u0027exécution : {{names}}",
+                     "managed_warning_detail":  "Si le daemon s\u0027arrête, les connexions console à ces serveurs seront perdues et ne pourront être arrêtés que de force au prochain lancement.\nÊtes-vous sûr de vouloir quitter ?"
                  },
     "modules":  {
                     "load_failed_toast":  "Échec du chargement du module: {{error}}",
@@ -441,6 +444,7 @@
     "console":  {
                     "waiting":  "En attente de la sortie du serveur...",
                     "input_placeholder":  "Entrez la commande...",
+                    "stdin_disabled":  "Anciens journaux uniquement (saba-chan redémarré) — redémarrez le serveur pour reconnecter",
                     "send":  "Envoyer",
                     "popout":  "Ouvrir dans une fenêtre séparée"
                 },

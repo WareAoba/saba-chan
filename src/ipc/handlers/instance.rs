@@ -191,17 +191,31 @@ pub async fn create_instance(
         // (컨테이너 모드는 컨테이너 내부에서 처리하므로 스킵)
         if !use_container_ext && !instance.required_extensions.is_empty() {
             let ext_mgr = state.extension_manager.read().await;
-            let enabled = ext_mgr.enabled_set();
-            let missing = instance.missing_required_extensions(&enabled);
+            let ready = ext_mgr.installed_and_enabled_set();
+            let enabled_not_installed = ext_mgr.enabled_but_not_installed();
             drop(ext_mgr);
+            let missing = instance.missing_required_extensions(&ready);
             if !missing.is_empty() {
-                let error = json!({
-                    "error": format!(
+                // 활성화되었지만 설치되지 않은 항목 구분
+                let not_installed: Vec<&String> = missing.iter()
+                    .filter(|id| enabled_not_installed.contains(id))
+                    .collect();
+                let msg = if !not_installed.is_empty() {
+                    format!(
+                        "Cannot create instance: required extension(s) not installed: {}. Install them in Settings → Extensions first.",
+                        not_installed.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
+                    )
+                } else {
+                    format!(
                         "Cannot create instance: required extension(s) not enabled: {}. Enable them in Settings → Extensions first.",
                         missing.join(", ")
-                    ),
+                    )
+                };
+                let error = json!({
+                    "error": msg,
                     "error_code": "extension_required",
                     "missing_extensions": missing,
+                    "not_installed": not_installed,
                 });
                 return (StatusCode::UNPROCESSABLE_ENTITY, Json(error)).into_response();
             }

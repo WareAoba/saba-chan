@@ -14,6 +14,7 @@ name: Release — Package & Manifest
 #      - saba-chan-cli.exe / saba-chan-cli-*.zip
 #      - saba-chan-gui.exe / saba-chan-gui-*.zip
 #      - saba-chan-updater.exe / saba-chan-updater-*.zip
+#      - saba-chan-installer.exe / saba-chan-installer-*.zip
 #      - discord-bot.zip
 #      (전부 올릴 필요 없음 — 빠진 것은 이전 릴리즈에서 가져옴)
 #   3. Release 발행 → 이 액션이 자동 수행:
@@ -28,6 +29,7 @@ name: Release — Package & Manifest
 #   saba-chan-cli-windows-x64.zip
 #   saba-chan-gui-windows-x64.zip
 #   saba-chan-updater-windows-x64.zip
+#   saba-chan-installer-windows-x64.zip
 #   discord-bot.zip
 #   locales.zip
 #   manifest.json

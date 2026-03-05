@@ -53,6 +53,12 @@ jobs:
           npm ci
           npm run build
 
+      - name: Build Installer (Tauri)
+        working-directory: installer/gui
+        run: |
+          npm ci
+          npx tauri build
+
       - name: Upload Rust binaries
         uses: actions/upload-artifact@v4
         with:
@@ -63,6 +69,14 @@ jobs:
             target/release/saba-chan-updater.exe
           retention-days: 30
 
+      - name: Upload Installer binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-binary-${{ github.sha }}
+          path: |
+            installer/gui/src-tauri/target/release/saba-chan-installer.exe
+          retention-days: 30
+
       - name: Create release (on tag)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
@@ -71,5 +85,6 @@ jobs:
             target/release/saba-core.exe
             target/release/saba-chan-cli.exe
             target/release/saba-chan-updater.exe
+            installer/gui/src-tauri/target/release/saba-chan-installer.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

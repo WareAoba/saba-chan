@@ -398,42 +398,52 @@ export function ServerCard({
                                     {(() => {
                                         const mod = modules.find((m) => m.name === server.module);
                                         const mode = mod?.interaction_mode || 'console';
-                                        if (mode === 'console') {
-                                            const isPopoutActive = consolePopoutInstanceId === server.id;
-                                            const isOpen = isConsoleOpen ? isConsoleOpen(server.id) : (consoleServer?.id === server.id);
-                                            return (
-                                                <button
-                                                    className={clsx('action-icon', {
-                                                        'action-active':
-                                                            isOpen || isPopoutActive,
-                                                    })}
-                                                    onClick={async () => {
-                                                        if (isPopoutActive) {
-                                                            await window.api.consoleFocusPopout(server.id);
-                                                            return;
-                                                        }
-                                                        if (isOpen) closeConsole(server.id);
-                                                        else openConsole(server.id, server.name);
-                                                    }}
-                                                    title={t('server_actions.console')}
-                                                >
-                                                    <Icon name="terminal" size="md" />
-                                                </button>
-                                            );
-                                        } else {
-                                            return (
-                                                <button
-                                                    className="action-icon"
-                                                    onClick={() => {
-                                                        setCommandServer(server);
-                                                        setShowCommandModal(true);
-                                                    }}
-                                                    title={t('server_actions.command')}
-                                                >
-                                                    <Icon name="command" size="md" />
-                                                </button>
-                                            );
-                                        }
+                                        const supported = mod?.protocols?.supported || [];
+                                        const hasStdin = supported.includes('stdin');
+                                        const hasCommands = (mod?.commands?.fields || []).length > 0;
+                                        // stdin을 지원하는 콘솔 모드에서만 터미널 버튼 표시
+                                        const showConsole = mode === 'console' && hasStdin;
+                                        // 커맨드 모달 버튼: commands가 있거나, 콘솔 모드가 아니거나, stdin 미지원일 때
+                                        const showCommand = hasCommands || !showConsole;
+                                        return (
+                                            <>
+                                                {showConsole && (() => {
+                                                    const isPopoutActive = consolePopoutInstanceId === server.id;
+                                                    const isOpen = isConsoleOpen ? isConsoleOpen(server.id) : (consoleServer?.id === server.id);
+                                                    return (
+                                                        <button
+                                                            className={clsx('action-icon', {
+                                                                'action-active':
+                                                                    isOpen || isPopoutActive,
+                                                            })}
+                                                            onClick={async () => {
+                                                                if (isPopoutActive) {
+                                                                    await window.api.consoleFocusPopout(server.id);
+                                                                    return;
+                                                                }
+                                                                if (isOpen) closeConsole(server.id);
+                                                                else openConsole(server.id, server.name);
+                                                            }}
+                                                            title={t('server_actions.console')}
+                                                        >
+                                                            <Icon name="terminal" size="md" />
+                                                        </button>
+                                                    );
+                                                })()}
+                                                {showCommand && (
+                                                    <button
+                                                        className="action-icon"
+                                                        onClick={() => {
+                                                            setCommandServer(server);
+                                                            setShowCommandModal(true);
+                                                        }}
+                                                        title={t('server_actions.command')}
+                                                    >
+                                                        <Icon name="command" size="md" />
+                                                    </button>
+                                                )}
+                                            </>
+                                        );
                                     })()}
                                 </>
                             ) : (

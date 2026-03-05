@@ -15,6 +15,30 @@ pub enum ProcessError {
     LockPoisoned,
 }
 
+/// Check if a process with the given PID is alive. Cross-platform helper.
+pub fn is_process_alive(pid: u32) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        use winapi::um::processthreadsapi::OpenProcess;
+        use winapi::um::winnt::PROCESS_QUERY_LIMITED_INFORMATION;
+        use winapi::um::handleapi::CloseHandle;
+
+        unsafe {
+            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if handle.is_null() {
+                return false;
+            }
+            CloseHandle(handle);
+            true
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        // kill(pid, 0) checks process existence without actually sending a signal
+        unsafe { libc::kill(pid as i32, 0) == 0 }
+    }
+}
+
 /// Force-kill a process by PID. Cross-platform helper.
 pub fn force_kill_pid(pid: u32) -> Result<()> {
     #[cfg(target_os = "windows")]

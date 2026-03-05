@@ -70,6 +70,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                     server: { id: instanceId, name: serverName },
                     lines: [],
                     input: '',
+                    stdinDisabled: false,
                     minimized: false,
                     pinned: false,
                     position: getDefaultPosition(existingCount),
@@ -82,10 +83,30 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         // Start polling if not already running
         if (!pollingRefs.current[instanceId]) {
             let sinceId = 0;
+            let diskLoaded = false;
             pollingRefs.current[instanceId] = setInterval(async () => {
                 try {
                     const data = await window.api.managedConsole(instanceId, sinceId, 200);
-                    if (data?.lines?.length > 0) {
+                    // disk fallback은 since_id를 무시하고 매번 같은 로그를 반환하므로
+                    // 이미 한 번 로드했으면 다시 append하지 않음
+                    if (data?.source === 'disk') {
+                        if (!diskLoaded && data.lines?.length > 0) {
+                            diskLoaded = true;
+                            setConsoles((prev) => {
+                                if (!prev[instanceId]) return prev;
+                                const maxLines = consoleBufferRef.current || 2000;
+                                const newLines = [...prev[instanceId].lines, ...data.lines];
+                                return {
+                                    ...prev,
+                                    [instanceId]: {
+                                        ...prev[instanceId],
+                                        lines: newLines.length > maxLines ? newLines.slice(-maxLines) : newLines,
+                                    },
+                                };
+                            });
+                        }
+                    } else if (data?.lines?.length > 0) {
+                        diskLoaded = false; // managed process가 복구됨 → 리셋
                         setConsoles((prev) => {
                             if (!prev[instanceId]) return prev;
                             const maxLines = consoleBufferRef.current || 2000;
@@ -99,6 +120,21 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                             };
                         });
                         sinceId = data.lines[data.lines.length - 1].id + 1;
+                    }
+                    // Track stdin availability from backend
+                    if (data && typeof data.stdin_available === 'boolean') {
+                        setConsoles((prev) => {
+                            if (!prev[instanceId]) return prev;
+                            const disabled = !data.stdin_available;
+                            if (prev[instanceId].stdinDisabled === disabled) return prev;
+                            return {
+                                ...prev,
+                                [instanceId]: {
+                                    ...prev[instanceId],
+                                    stdinDisabled: disabled,
+                                },
+                            };
+                        });
                     }
                 } catch (_err) {
                     // silent — server might not be ready yet
@@ -254,6 +290,8 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         if (!state || !state.input.trim()) return;
 
         const cmd = state.input.trim();
+        // 입력을 즉시 클리어하여 중복 전송/후속 입력 삭제 방지
+        setConsoleInput(instanceId, '');
         try {
             const result = await window.api.managedStdin(instanceId, cmd);
             if (result?.error) {
@@ -283,7 +321,6 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                     });
                 }
             }
-            setConsoleInput(instanceId, '');
         } catch (err) {
             safeShowToast(translateError(err.message), 'error', 3000);
         }

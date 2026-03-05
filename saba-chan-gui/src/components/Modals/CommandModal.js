@@ -1,250 +1,213 @@
 import clsx from 'clsx';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import './Modals.css';
 import { useModalClose } from '../../hooks/useModalClose';
-import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 
 function CommandModal({ server, modules, onClose, onExecute }) {
     const { t } = useTranslation('gui');
     const { isClosing, requestClose } = useModalClose(onClose);
     const [commandInput, setCommandInput] = useState('');
-    const [commandInputs, setCommandInputs] = useState({});
     const [loading, setLoading] = useState(false);
-    const [suggestions, setSuggestions] = useState([]);
+    const [history, setHistory] = useState([]); // { id, command, status: 'success'|'failure', message, time }
+    const [highlightIdx, setHighlightIdx] = useState(-1);
+    const inputRef = useRef(null);
+    const historyEndRef = useRef(null);
 
-    // 현재 모듈의 명령어 목록 가져오기
+    // 모듈 명령어 목록
     const currentModule = modules.find((m) => m.name === server.module);
     const commands = currentModule?.commands?.fields || [];
 
-    // 입력값 변경 시 자동완성 제안
-    useEffect(() => {
-        if (commandInput.trim()) {
-            const matching = commands.filter((cmd) => cmd.name.startsWith(commandInput.trim()));
-            setSuggestions(matching);
-        } else {
-            setSuggestions([]);
-        }
-    }, [commandInput, commands]);
+    // 입력값 기준 필터링된 힌트
+    const filteredHints = commandInput.trim()
+        ? commands.filter((cmd) => cmd.name.toLowerCase().startsWith(commandInput.trim().toLowerCase()))
+        : commands;
 
-    // 명령어 선택 시 입력 필드 초기화
+    // 히스토리 추가 시 자동 스크롤
     useEffect(() => {
-        const cmd = commands.find((c) => c.name === commandInput.trim());
-        if (cmd && cmd.inputs) {
-            const initialInputs = {};
-            cmd.inputs.forEach((input) => {
-                initialInputs[input.name] = input.default || '';
-            });
-            setCommandInputs(initialInputs);
-        }
-    }, [commandInput, commands]);
+        historyEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [history]);
 
-    // 입력 값 변경 처리
-    const handleInputChange = (inputName, value) => {
-        setCommandInputs((prev) => ({
-            ...prev,
-            [inputName]: value,
-        }));
+    // Tab 자동완성 & 방향키 힌트 탐색
+    const handleKeyDown = (e) => {
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            if (filteredHints.length > 0) {
+                const idx = highlightIdx >= 0 && highlightIdx < filteredHints.length ? highlightIdx : 0;
+                setCommandInput(filteredHints[idx].name);
+                setHighlightIdx(-1);
+            }
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setHighlightIdx((prev) => (prev + 1) % (filteredHints.length || 1));
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setHighlightIdx((prev) => (prev <= 0 ? filteredHints.length - 1 : prev - 1));
+        } else if (e.key === 'Enter') {
+            handleExecuteCommand();
+        }
     };
+
+    // 입력 변경 시 첫 번째 매칭 항목을 자동 하이라이트
+    useEffect(() => {
+        setHighlightIdx(commandInput.trim() && filteredHints.length > 0 ? 0 : -1);
+    }, [commandInput, filteredHints.length]);
 
     // 명령어 실행
     const handleExecuteCommand = async () => {
-        const cmdName = commandInput.trim();
-        if (!cmdName) {
-            onExecute({
-                type: 'failure',
-                title: t('command_modal.input_error'),
-                message: t('command_modal.enter_command'),
-            });
-            return;
-        }
+        const cmdText = commandInput.trim();
+        if (!cmdText || loading) return;
 
-        // 서버 실행 상태 확인
         if (server.status !== 'running') {
-            onExecute({
-                type: 'failure',
-                title: t('command_modal.server_not_running_title'),
+            const entry = {
+                id: Date.now(),
+                command: cmdText,
+                status: 'failure',
                 message: t('command_modal.server_not_running_message', { name: server.name, status: server.status }),
-            });
+                time: new Date().toLocaleTimeString(),
+            };
+            setHistory((prev) => [...prev, entry]);
             return;
         }
 
-        // 선택된 command 객체 찾기
-        const selectedCommand = commands.find((c) => c.name === cmdName);
-
-        // 디버깅 로그
-        console.log(`[CommandModal] cmdName: ${cmdName}`);
-        console.log(`[CommandModal] Available commands:`, commands);
-        console.log(`[CommandModal] Selected command:`, selectedCommand);
-
-        // 필수 필드 검증 (selectedCommand가 있으면)
-        if (selectedCommand && selectedCommand.inputs && selectedCommand.inputs.length > 0) {
-            for (const field of selectedCommand.inputs) {
-                const value = commandInputs[field.name];
-                if (field.required && (!value || value === '')) {
-                    onExecute({
-                        type: 'failure',
-                        title: t('command_modal.input_error'),
-                        message: t('command_modal.missing_required_field', { field: field.label }),
-                    });
-                    return;
-                }
-            }
-        }
+        // 모듈에 정의된 명령어인지 확인
+        const selectedCommand = commands.find((c) => c.name === cmdText);
 
         setLoading(true);
-
         try {
-            // 선택된 command 객체 전체를 전달 (http_method, inputs 포함)
             const result = await window.api.executeCommand(server.id, {
-                command: cmdName,
-                args: commandInputs,
-                commandMetadata: selectedCommand, // 모듈에서 정의한 명령 메타데이터 (없을 수도 있음)
+                command: cmdText,
+                args: {},
+                commandMetadata: selectedCommand || { method: 'rcon' },
             });
 
-            if (result.error) {
-                onExecute({ type: 'failure', title: t('command_modal.execution_failed'), message: result.error });
-            } else {
-                onExecute({
-                    type: 'success',
-                    title: t('command_modal.success'),
-                    message: result.message || t('command_modal.command_executed', { command: cmdName }),
-                });
-                onClose();
-            }
+            const entry = {
+                id: Date.now(),
+                command: cmdText,
+                status: result.error ? 'failure' : 'success',
+                message: result.error || result.message || result?.data?.response || t('command_modal.command_executed', { command: cmdText }),
+                time: new Date().toLocaleTimeString(),
+            };
+            setHistory((prev) => [...prev, entry]);
         } catch (error) {
-            onExecute({ type: 'failure', title: t('command_modal.execution_error'), message: error.message });
+            const entry = {
+                id: Date.now(),
+                command: cmdText,
+                status: 'failure',
+                message: error.message,
+                time: new Date().toLocaleTimeString(),
+            };
+            setHistory((prev) => [...prev, entry]);
         } finally {
             setLoading(false);
+            setCommandInput('');
+            inputRef.current?.focus();
         }
     };
 
-    const selectedCmd = commands.find((c) => c.name === commandInput.trim());
-
     return (
         <div className={clsx('modal-overlay', { closing: isClosing })} onClick={requestClose}>
-            <div className="modal command-modal" onClick={(e) => e.stopPropagation()}>
-                <h2 className="modal-title">{t('command_modal.title', { name: server.name })}</h2>
+            <div className="modal command-modal-fixed" onClick={(e) => e.stopPropagation()}>
+                {/* 닫기 버튼 (우상단) */}
+                <button className="cmd-modal-close" onClick={requestClose} title={t('modals.close')}>
+                    &times;
+                </button>
 
-                {/* CLI 입력 라인 */}
-                <div className="cli-section">
-                    <label className="cli-label">{t('command_modal.command_label')}</label>
-                    <div className="cli-input-wrapper">
-                        <span className="cli-prompt">$</span>
-                        <input
-                            type="text"
-                            className="cli-input"
-                            value={commandInput}
-                            onChange={(e) => setCommandInput(e.target.value)}
-                            onKeyPress={(e) => {
-                                if (e.key === 'Enter') {
-                                    handleExecuteCommand();
-                                }
-                            }}
-                            placeholder={t('command_modal.command_placeholder')}
-                            autoFocus
-                        />
-                    </div>
+                {/* ── 좌측: 입력 + 힌트 ── */}
+                <div className="command-modal-main">
+                    <h2 className="modal-title">{t('command_modal.title', { name: server.name })}</h2>
 
-                    {/* 자동완성 제안 */}
-                    {suggestions.length > 0 && (
-                        <div className="suggestions-list">
-                            {suggestions.map((cmd) => (
+                    {/* 힌트 영역 (고정 높이) */}
+                    <div className="cmd-hints-inline">
+                        {filteredHints.length > 0 ? (
+                            filteredHints.map((cmd, idx) => (
                                 <div
                                     key={cmd.name}
-                                    className="suggestion-item"
-                                    onClick={() => setCommandInput(cmd.name)}
+                                    className={clsx('cmd-hint-chip', { 'cmd-hint-active': idx === highlightIdx })}
+                                    onClick={() => {
+                                        setCommandInput(cmd.name);
+                                        inputRef.current?.focus();
+                                    }}
                                     title={cmd.description}
                                 >
-                                    <span className="suggestion-name">{cmd.name}</span>
-                                    <span className="suggestion-desc">{cmd.description}</span>
+                                    <span className="cmd-hint-name">{cmd.name}</span>
+                                    {cmd.description && <span className="cmd-hint-desc">{cmd.description}</span>}
                                 </div>
-                            ))}
+                            ))
+                        ) : (
+                            <span className="cmd-hints-empty">
+                                {commandInput.trim()
+                                    ? t('command_modal.no_matching_hints', { defaultValue: 'No matching commands — will send as raw command' })
+                                    : t('command_modal.type_to_filter', { defaultValue: 'Type a command or select from the list' })}
+                            </span>
+                        )}
+                    </div>
+
+                    {/* 입력 라인 (항상 하단 고정) */}
+                    <div className="cmd-input-fixed">
+                        <div className="cli-input-wrapper">
+                            <span className="cli-prompt">$</span>
+                            <input
+                                ref={inputRef}
+                                type="text"
+                                className="cli-input"
+                                value={commandInput}
+                                onChange={(e) => setCommandInput(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                placeholder={t('command_modal.command_placeholder')}
+                                autoFocus
+                                disabled={loading}
+                            />
+                            <button
+                                className="console-send"
+                                onClick={handleExecuteCommand}
+                                disabled={!commandInput.trim() || loading}
+                                title={t('command_modal.execute')}
+                            >
+                                {loading ? '…' : t('console.send')}
+                            </button>
                         </div>
-                    )}
+                        <div className="cmd-input-meta">
+                            <span className="cmd-tab-hint">Tab ↹ {t('command_modal.autocomplete', { defaultValue: 'autocomplete' })}</span>
+                        </div>
+                    </div>
                 </div>
 
-                {/* 명령어 설명 */}
-                {selectedCmd && (
-                    <div className="command-info">
-                        <p className="command-description">
-                            <Icon name="pin" size="sm" /> {selectedCmd.description}
-                        </p>
+                {/* ── 우측: 실행 히스토리 ── */}
+                <div className="command-history-panel">
+                    <div className="hints-panel-header">
+                        <Icon name="list" size="sm" />
+                        {t('command_modal.history', { defaultValue: 'History' })}
                     </div>
-                )}
-
-                {/* 입력 필드 */}
-                {selectedCmd && selectedCmd.inputs && selectedCmd.inputs.length > 0 && (
-                    <div className="command-inputs">
-                        {selectedCmd.inputs.map((input) => (
-                            <div key={input.name} className="input-group">
-                                <label className="input-label">
-                                    {input.label}
-                                    {input.required && <span className="required">*</span>}
-                                </label>
-                                {input.type === 'text' && (
-                                    <input
-                                        type="text"
-                                        className="command-input"
-                                        value={commandInputs[input.name] || ''}
-                                        onChange={(e) => handleInputChange(input.name, e.target.value)}
-                                        placeholder={input.placeholder || ''}
-                                        required={input.required}
-                                    />
-                                )}
-                                {input.type === 'number' && (
-                                    <input
-                                        type="number"
-                                        className="command-input"
-                                        value={commandInputs[input.name] || ''}
-                                        onChange={(e) => handleInputChange(input.name, e.target.value)}
-                                        min={input.min}
-                                        max={input.max}
-                                        required={input.required}
-                                    />
-                                )}
-                                {input.type === 'password' && (
-                                    <input
-                                        type="password"
-                                        className="command-input"
-                                        value={commandInputs[input.name] || ''}
-                                        onChange={(e) => handleInputChange(input.name, e.target.value)}
-                                        required={input.required}
-                                    />
-                                )}
-                                {input.type === 'select' && (
-                                    <CustomDropdown
-                                        className="command-input"
-                                        value={commandInputs[input.name] || ''}
-                                        onChange={(val) => handleInputChange(input.name, val)}
-                                        placeholder={t('command_modal.select_placeholder')}
-                                        options={(input.options || []).map((opt) => ({ value: opt, label: opt }))}
-                                    />
+                    <div className="cmd-history-list">
+                        {history.length === 0 && (
+                            <div className="hints-empty">
+                                {t('command_modal.no_history', { defaultValue: 'No commands executed yet' })}
+                            </div>
+                        )}
+                        {history.map((entry) => (
+                            <div
+                                key={entry.id}
+                                className={clsx('cmd-history-item', `cmd-history-${entry.status}`)}
+                                onClick={() => {
+                                    setCommandInput(entry.command);
+                                    inputRef.current?.focus();
+                                }}
+                                title={entry.message}
+                            >
+                                <div className="cmd-history-top">
+                                    <span className={clsx('cmd-history-dot', `dot-${entry.status}`)} />
+                                    <span className="cmd-history-cmd">{entry.command}</span>
+                                    <span className="cmd-history-time">{entry.time}</span>
+                                </div>
+                                {entry.message && (
+                                    <div className="cmd-history-msg">{entry.message}</div>
                                 )}
                             </div>
                         ))}
+                        <div ref={historyEndRef} />
                     </div>
-                )}
-
-                {/* 버튼 */}
-                <div className="modal-buttons-group">
-                    <button
-                        className="modal-button command-execute"
-                        onClick={handleExecuteCommand}
-                        disabled={!commandInput.trim() || loading}
-                    >
-                        {loading ? (
-                            '...'
-                        ) : (
-                            <>
-                                <Icon name="enter" size="sm" /> {t('command_modal.execute')}
-                            </>
-                        )}
-                    </button>
-                    <button className="modal-button command-cancel" onClick={requestClose}>
-                        <Icon name="close" size="sm" /> {t('modals.close')}
-                    </button>
                 </div>
             </div>
         </div>

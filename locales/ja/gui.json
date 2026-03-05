@@ -260,7 +260,10 @@
                      "confirm_message":  "どのように終了しますか?",
                      "confirm_detail":  "GUIを非表示: バックグラウンドで実行を継続 (トレイから再度開くことができます)\n全て終了: デーモンを停止して完全に終了する",
                      "hide_only_label":  "GUIを非表示",
-                     "quit_all_label":  "全て終了"
+                     "quit_all_label":  "全て終了",
+                     "managed_warning_title":  "⚠️ マネージドサーバーが実行中",
+                     "managed_warning_message":  "{{count}}個のマネージドサーバーが実行中です: {{names}}",
+                     "managed_warning_detail":  "デーモンが終了すると、これらのサーバーへのコンソール接続が失われ、次回起動時に強制終了のみ可能になります。\n本当に終了しますか？"
                  },
     "modules":  {
                     "load_failed_toast":  "モジュール読み込み失敗: {{error}}",
@@ -384,6 +387,7 @@
     "console":  {
                     "waiting":  "サーバー出力を待機中...",
                     "input_placeholder":  "コマンドを入力...",
+                    "stdin_disabled":  "サバちゃん再起動のため過去のログのみ表示中！サーバーを再起動すると復活します",
                     "send":  "送信",
                     "popout":  "別ウィンドウで分離",
                     "minimize":  "ドックに最小化",

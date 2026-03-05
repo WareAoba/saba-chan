@@ -317,7 +317,10 @@
                      "confirm_message":  "Como deseja sair?",
                      "confirm_detail":  "Ocultar GUI: Continuar executando em background (pode ser reaberida da bandeja)\nSair Tudo: Parar daemon e sair completamente",
                      "hide_only_label":  "Ocultar GUI",
-                     "quit_all_label":  "Sair Tudo"
+                     "quit_all_label":  "Sair Tudo",
+                     "managed_warning_title":  "⚠️ Servidores gerenciados em execução",
+                     "managed_warning_message":  "{{count}} servidor(es) gerenciado(s) ainda em execução: {{names}}",
+                     "managed_warning_detail":  "Se o daemon for encerrado, as conexões do console com esses servidores serão perdidas e só poderão ser forçados a parar na próxima inicialização.\nTem certeza de que deseja sair?"
                  },
     "modules":  {
                     "load_failed_toast":  "Falha no carregamento do módulo: {{error}}",
@@ -441,6 +444,7 @@
     "console":  {
                     "waiting":  "Aguardando saída do servidor...",
                     "input_placeholder":  "Digite o comando...",
+                    "stdin_disabled":  "Apenas registros anteriores (saba-chan reiniciou) — reinicie o servidor para reconectar",
                     "send":  "Enviar",
                     "popout":  "Abrir em janela separada"
                 },

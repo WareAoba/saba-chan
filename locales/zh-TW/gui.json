@@ -317,7 +317,10 @@
                      "confirm_message":  "您想如何結束？",
                      "confirm_detail":  "隱藏 GUI：繼續在背景中執行（可從系統匣重新開啟）\n全部結束：停止守護程序並完全結束",
                      "hide_only_label":  "隱藏 GUI",
-                     "quit_all_label":  "全部結束"
+                     "quit_all_label":  "全部結束",
+                     "managed_warning_title":  "⚠️ 託管伺服器正在執行",
+                     "managed_warning_message":  "{{count}} 個託管伺服器仍在執行：{{names}}",
+                     "managed_warning_detail":  "如果守護程式關閉，這些伺服器的主控台連線將遺失，下次啟動時只能強制終止。\n確定要結束嗎？"
                  },
     "modules":  {
                     "load_failed_toast":  "模組載入失敗：{{error}}",
@@ -441,6 +444,7 @@
     "console":  {
                     "waiting":  "等待伺服器輸出...",
                     "input_placeholder":  "輸入命令...",
+                    "stdin_disabled":  "僅顯示過去的日誌（saba-chan 已重新啟動）— 重新啟動伺服器以重新連接",
                     "send":  "發送",
                     "popout":  "在單獨視窗中開啟"
                 },

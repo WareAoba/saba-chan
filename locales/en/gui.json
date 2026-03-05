@@ -315,7 +315,10 @@
     "confirm_message": "How would you like to exit?",
     "confirm_detail": "Hide GUI: Continue running in background (can be reopened from tray)\nQuit All: Stop daemon and exit completely",
     "hide_only_label": "Hide GUI",
-    "quit_all_label": "Quit All"
+    "quit_all_label": "Quit All",
+    "managed_warning_title": "⚠️ Managed Servers Running",
+    "managed_warning_message": "{{count}} managed server(s) are still running: {{names}}",
+    "managed_warning_detail": "If the daemon shuts down, console connections to these servers will be lost and can only be force-killed on next launch.\nAre you sure you want to quit?"
   },
   "modules": {
     "load_failed_toast": "Module load failed: {{error}}",
@@ -439,6 +442,7 @@
   "console": {
     "waiting": "Waiting for server output...",
     "input_placeholder": "Enter command...",
+    "stdin_disabled": "Past logs only (saba-chan restarted) — restart server to reconnect",
     "send": "Send",
     "popout": "Pop out to separate window",
     "minimize": "Minimize to dock",

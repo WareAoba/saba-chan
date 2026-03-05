@@ -124,6 +124,37 @@ pub async fn setup_python(data_dir: &Path) -> Result<PathBuf, String> {
     Ok(venv_python)
 }
 
+/// Fix 5: 기존 런타임이 손상되었으면 강제 삭제 후 재설치하는 Python 설치
+///
+/// 기존 `setup_python`은 포터블 Python이 존재하면 스킵했지만,
+/// 이 함수는 검증에 실패하면 기존 디렉토리를 삭제하고 재다운로드한다.
+pub async fn setup_python_with_repair(data_dir: &Path) -> Result<PathBuf, String> {
+    let portable_dir = data_dir.join(PORTABLE_PYTHON_DIR);
+    let venv_dir = data_dir.join(VENV_DIR_NAME);
+    let portable_exe = portable_python_exe(data_dir);
+
+    // 포터블 Python이 존재하지만 검증 실패 → 삭제 후 재설치
+    if portable_exe.exists() && !verify_python(&portable_exe).await {
+        tracing::warn!(
+            "기존 포터블 Python이 손상됨, 삭제 후 재설치: {}",
+            portable_dir.display()
+        );
+        let _ = std::fs::remove_dir_all(&portable_dir);
+    }
+
+    // venv가 존재하지만 검증 실패 → 삭제
+    let venv_python = venv_python_exe(&venv_dir);
+    if venv_dir.exists() && (!venv_python.exists() || !verify_python(&venv_python).await) {
+        tracing::warn!(
+            "기존 Python venv가 손상됨, 삭제 후 재생성: {}",
+            venv_dir.display()
+        );
+        let _ = std::fs::remove_dir_all(&venv_dir);
+    }
+
+    setup_python(data_dir).await
+}
+
 /// 포터블 Node.js 다운로드
 ///
 /// `data_dir`: 런타임을 설치할 루트 디렉토리 (`%APPDATA%/saba-chan`)
@@ -196,6 +227,24 @@ pub async fn setup_node(data_dir: &Path) -> Result<PathBuf, String> {
 
     tracing::info!("포터블 Node.js 설치 완료: {}", exe.display());
     Ok(exe)
+}
+
+/// Fix 5: 기존 Node.js 런타임이 손상되었으면 강제 삭제 후 재설치
+pub async fn setup_node_with_repair(data_dir: &Path) -> Result<PathBuf, String> {
+    let portable_dir = data_dir.join(PORTABLE_NODE_DIR);
+
+    // 기존 Node.js가 존재하지만 검증 실패 → 삭제 후 재설치
+    if let Some(exe) = find_portable_node_exe(data_dir) {
+        if !verify_node(&exe).await {
+            tracing::warn!(
+                "기존 포터블 Node.js가 손상됨, 삭제 후 재설치: {}",
+                portable_dir.display()
+            );
+            let _ = std::fs::remove_dir_all(&portable_dir);
+        }
+    }
+
+    setup_node(data_dir).await
 }
 
 /// Discord Bot의 npm install 실행

@@ -211,6 +211,8 @@ pub struct ServerInfo {
     pub pid: Option<u32>,
     pub start_time: Option<u64>,
     pub executable_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub working_dir: Option<String>,
     pub port: Option<u16>,
     pub rcon_port: Option<u16>,
     pub rcon_password: Option<String>,

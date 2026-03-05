@@ -36,6 +36,12 @@
       "asset": "locales.zip",
       "sha256": null,
       "install_dir": "locales"
+    },
+    "installer": {
+      "version": "0.1.0",
+      "asset": "saba-chan-installer-windows-x64.zip",
+      "sha256": null,
+      "install_dir": "."
     }
   }
 }

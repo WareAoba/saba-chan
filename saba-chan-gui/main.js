@@ -563,7 +563,7 @@ function startDaemon() {
         RUST_LOG: 'info',
         SABA_LANG: currentLanguage,
         SABA_IPC_PORT: String(ipcPort),
-        SABA_INSTANCES_PATH: path.join(app.getPath('userData'), 'instances.json'),
+        SABA_INSTANCES_PATH: path.join(app.getPath('userData'), 'instances'),
         SABA_MODULES_PATH: getFixedModulesPath(),
     };
 
@@ -3241,6 +3241,7 @@ ipcMain.handle('discord:start', async (_event, config) => {
             IPC_BASE: IPC_BASE,
             SABA_LANG: currentLanguage,
             BOT_CONFIG_PATH: appDataConfigPath,
+            SABA_EXTENSIONS_DIR: getFixedExtensionsPath(),
         };
 
         if (config.mode === 'cloud') {

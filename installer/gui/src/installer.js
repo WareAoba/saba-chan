@@ -60,8 +60,10 @@ const T = {
         progressConfigLang: 'Saving language settings...',
         progressRegistry: 'Registering application...',
         progressShortcuts: 'Creating shortcuts...',
+        progressExtensions: 'Installing required extensions...',
+        installerOutdated: 'Installer outdated',
         // Uninstall progress
-        uninstallProgressDetect: 'Detecting install location...',
+        uninstallProgressDetect: 'Detecting install location...', 
         uninstallProgressStop: 'Stopping processes...',
         uninstallProgressShortcuts: 'Removing shortcuts...',
         uninstallProgressFiles: 'Removing installation files...',
@@ -121,8 +123,10 @@ const T = {
         progressConfigLang: '언어 설정 저장 중...',
         progressRegistry: '앱 등록 중...',
         progressShortcuts: '바로가기 생성 중...',
+        progressExtensions: '필수 익스텐션 설치 중...',
+        installerOutdated: '인스톨러가 구버전입니다',
         // Uninstall progress
-        uninstallProgressDetect: '설치 위치 확인 중...',
+        uninstallProgressDetect: '설치 위치 확인 중...', 
         uninstallProgressStop: '프로세스 종료 중...',
         uninstallProgressShortcuts: '바로가기 제거 중...',
         uninstallProgressFiles: '설치 파일 제거 중...',
@@ -182,8 +186,10 @@ const T = {
         progressConfigLang: '言語設定を保存中...',
         progressRegistry: 'アプリケーションを登録中...',
         progressShortcuts: 'ショートカットを作成中...',
+        progressExtensions: '必要な拡張機能をインストール中...',
+        installerOutdated: 'インストーラーが古いバージョンです',
         // Uninstall progress
-        uninstallProgressDetect: 'インストール先を検出中...',
+        uninstallProgressDetect: 'インストール先を検出中...', 
         uninstallProgressStop: 'プロセスを停止中...',
         uninstallProgressShortcuts: 'ショートカットを削除中...',
         uninstallProgressFiles: 'インストールファイルを削除中...',
@@ -243,8 +249,10 @@ const T = {
         progressConfigLang: '正在保存语言设置...',
         progressRegistry: '正在注册应用程序...',
         progressShortcuts: '正在创建快捷方式...',
+        progressExtensions: '正在安装所需扩展...',
+        installerOutdated: '安装程序版本过旧',
         // Uninstall progress
-        uninstallProgressDetect: '正在检测安装位置...',
+        uninstallProgressDetect: '正在检测安装位置...', 
         uninstallProgressStop: '正在停止进程...',
         uninstallProgressShortcuts: '正在删除快捷方式...',
         uninstallProgressFiles: '正在删除安装文件...',
@@ -304,8 +312,10 @@ const T = {
         progressConfigLang: '正在儲存語言設定...',
         progressRegistry: '正在登錄應用程式...',
         progressShortcuts: '正在建立捷徑...',
+        progressExtensions: '正在安裝所需擴充功能...',
+        installerOutdated: '安裝程式版本過舊',
         // Uninstall progress
-        uninstallProgressDetect: '正在偵測安裝位置...',
+        uninstallProgressDetect: '正在偵測安裝位置...', 
         uninstallProgressStop: '正在停止處理程序...',
         uninstallProgressShortcuts: '正在刪除捷徑...',
         uninstallProgressFiles: '正在刪除安裝檔案...',
@@ -365,8 +375,10 @@ const T = {
         progressConfigLang: 'Guardando configuración de idioma...',
         progressRegistry: 'Registrando la aplicación...',
         progressShortcuts: 'Creando accesos directos...',
+        progressExtensions: 'Instalando extensiones necesarias...',
+        installerOutdated: 'El instalador está desactualizado',
         // Uninstall progress
-        uninstallProgressDetect: 'Detectando ubicación de instalación...',
+        uninstallProgressDetect: 'Detectando ubicación de instalación...', 
         uninstallProgressStop: 'Deteniendo procesos...',
         uninstallProgressShortcuts: 'Eliminando accesos directos...',
         uninstallProgressFiles: 'Eliminando archivos de instalación...',
@@ -426,8 +438,10 @@ const T = {
         progressConfigLang: 'Salvando configuração de idioma...',
         progressRegistry: 'Registrando o aplicativo...',
         progressShortcuts: 'Criando atalhos...',
+        progressExtensions: 'Instalando extensões necessárias...',
+        installerOutdated: 'O instalador está desatualizado',
         // Uninstall progress
-        uninstallProgressDetect: 'Detectando local de instalação...',
+        uninstallProgressDetect: 'Detectando local de instalação...', 
         uninstallProgressStop: 'Parando processos...',
         uninstallProgressShortcuts: 'Removendo atalhos...',
         uninstallProgressFiles: 'Removendo arquivos de instalação...',
@@ -487,6 +501,8 @@ const T = {
         progressConfigLang: 'Сохранение языковых настроек...',
         progressRegistry: 'Регистрация приложения...',
         progressShortcuts: 'Создание ярлыков...',
+        progressExtensions: 'Установка необходимых расширений...',
+        installerOutdated: 'Установщик устарел',
         // Uninstall progress
         uninstallProgressDetect: 'Определение места установки...',
         uninstallProgressStop: 'Остановка процессов...',
@@ -548,6 +564,8 @@ const T = {
         progressConfigLang: 'Spracheinstellungen werden gespeichert...',
         progressRegistry: 'Anwendung wird registriert...',
         progressShortcuts: 'Verknüpfungen werden erstellt...',
+        progressExtensions: 'Erforderliche Erweiterungen werden installiert...',
+        installerOutdated: 'Installer ist veraltet',
         // Uninstall progress
         uninstallProgressDetect: 'Installationsort wird erkannt...',
         uninstallProgressStop: 'Prozesse werden beendet...',
@@ -609,6 +627,8 @@ const T = {
         progressConfigLang: 'Enregistrement des paramètres de langue...',
         progressRegistry: 'Enregistrement de l\'application...',
         progressShortcuts: 'Création des raccourcis...',
+        progressExtensions: 'Installation des extensions requises...',
+        installerOutdated: 'L\'installateur est obsolète',
         // Uninstall progress
         uninstallProgressDetect: 'Détection de l\'emplacement d\'installation...',
         uninstallProgressStop: 'Arrêt des processus...',
@@ -642,6 +662,7 @@ const INSTALL_STEP_KEYS = {
     'modules-shared': 'progressModulesShared',
     'modules-download': 'progressModulesDownload',
     'modules-extract': 'progressModulesExtract',
+    'extensions': 'progressExtensions',
     'runtime-python': 'progressRuntimePython',
     'runtime-node': 'progressRuntimeNode',
     'config': 'progressConfig',
@@ -863,15 +884,31 @@ async function loadModules() {
             const card = document.createElement('div');
             card.className = 'module-card';
             card.dataset.id = m.id;
+            // 의존 익스텐션 표시 (Fix 3)
+            const extBadges = (m.required_extensions || []).length > 0
+                ? `<div class="module-extensions">${(m.required_extensions || []).map(e => `<span class="ext-badge">${esc(e)}</span>`).join(' ')}</div>`
+                : '';
             card.innerHTML = `
-                <div class="module-icon"><img src="${m.icon}" alt="${esc(m.name)}" /></div>
+                <div class="module-icon"></div>
                 <div class="module-info">
                     <div class="module-name">${esc(m.name)}</div>
                     <div class="module-desc">${esc(m.description)}</div>
+                    ${extBadges}
                 </div>
                 <div class="module-check">
                     <input type="checkbox" class="mod-chk" data-id="${m.id}" />
                 </div>`;
+            // 아이콘: img를 먼저 만들고 error 핸들러 연결 후 src 설정
+            const iconContainer = card.querySelector('.module-icon');
+            const iconImg = document.createElement('img');
+            iconImg.alt = m.name;
+            iconImg.addEventListener('error', () => {
+                iconImg.remove();
+                iconContainer.classList.add('icon-fallback');
+                iconContainer.textContent = '🎮';
+            });
+            iconImg.src = m.icon;
+            iconContainer.appendChild(iconImg);
             card.addEventListener('click', (e) => {
                 if (e.target.tagName === 'INPUT') return;
                 const cb = card.querySelector('.mod-chk');
@@ -950,6 +987,26 @@ listen('install:progress', (ev) => {
         $msg.textContent = p.message;
         $pct.textContent = '100%';
         setTimeout(() => enterComplete(p.installed_components), 600);
+        return;
+    }
+
+    // Fix 4: 다운로드 바이트 단위 진행률 표시
+    if (p.download_received != null && p.download_total != null && p.download_total > 0) {
+        const mbReceived = (p.download_received / 1048576).toFixed(1);
+        const mbTotal = (p.download_total / 1048576).toFixed(1);
+        const dlPct = Math.round(p.download_received / p.download_total * 100);
+        const stepMsg = trStep(INSTALL_STEP_KEYS, p.step, p.message);
+        const fileName = p.download_file || '';
+        $msg.textContent = `${stepMsg} (${mbReceived}/${mbTotal} MB — ${dlPct}%)`;
+        $pct.textContent = `${p.percent}%`;
+        $fill.style.width = `${p.percent}%`;
+        return;
+    } else if (p.download_received != null && (!p.download_total || p.download_total === 0)) {
+        const mbReceived = (p.download_received / 1048576).toFixed(1);
+        const stepMsg = trStep(INSTALL_STEP_KEYS, p.step, p.message);
+        $msg.textContent = `${stepMsg} (${mbReceived} MB)`;
+        $pct.textContent = `${p.percent}%`;
+        $fill.style.width = `${p.percent}%`;
         return;
     }
 

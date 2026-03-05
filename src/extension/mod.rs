@@ -980,6 +980,26 @@ impl ExtensionManager {
         self.enabled.clone()
     }
 
+    /// 활성화되어 있고 **디스크에 실제로 설치된** 익스텐션 ID 집합을 반환합니다.
+    /// `enabled_set()`과 달리, `discover()`로 발견된 익스텐션만 포함합니다.
+    /// 모듈 필수 익스텐션 검증 시 이 메서드를 사용하세요.
+    pub fn installed_and_enabled_set(&self) -> HashSet<String> {
+        self.enabled
+            .iter()
+            .filter(|ext_id| self.discovered.contains_key(ext_id.as_str()))
+            .cloned()
+            .collect()
+    }
+
+    /// 활성화되어 있지만 디스크에 설치되지 않은 익스텐션 ID 목록을 반환합니다.
+    pub fn enabled_but_not_installed(&self) -> Vec<String> {
+        self.enabled
+            .iter()
+            .filter(|ext_id| !self.discovered.contains_key(ext_id.as_str()))
+            .cloned()
+            .collect()
+    }
+
     /// 발견된 전체 익스텐션 목록 (활성 상태 포함)
     pub fn list(&self) -> Vec<ExtensionListItem> {
         self.discovered

@@ -43,6 +43,7 @@ export function ConsolePanel({
     consolePopoutInstanceId,
     setConsolePopoutInstanceId,
     highlightRules,
+    stdinDisabled,
 }) {
     const { t } = useTranslation('gui');
 
@@ -102,18 +103,22 @@ export function ConsolePanel({
             </div>
             <div className="console-input-row">
                 <span className="console-prompt">{'>'}</span>
-                <input
-                    type="text"
-                    className="console-input"
-                    value={consoleInput}
-                    onChange={(e) => setConsoleInput(e.target.value)}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter') sendConsoleCommand();
-                    }}
-                    placeholder={t('console.input_placeholder')}
-                    autoFocus
-                />
-                <button className="console-send" onClick={sendConsoleCommand}>
+                <div className={clsx('console-input-wrap', stdinDisabled && 'console-input-disabled')}>
+                    {stdinDisabled && <Icon name="alertTriangle" size="sm" />}
+                    <input
+                        type="text"
+                        className="console-input"
+                        value={consoleInput}
+                        onChange={(e) => setConsoleInput(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') sendConsoleCommand();
+                        }}
+                        placeholder={stdinDisabled ? t('console.stdin_disabled') : t('console.input_placeholder')}
+                        autoFocus
+                        disabled={stdinDisabled}
+                    />
+                </div>
+                <button className="console-send" onClick={sendConsoleCommand} disabled={stdinDisabled}>
                     {t('console.send')}
                 </button>
             </div>
@@ -132,6 +137,7 @@ export function PopoutConsole({
     consoleEndRef,
     sendConsoleCommand,
     highlightRules,
+    stdinDisabled,
 }) {
     const { t } = useTranslation('gui');
     const [pinned, setPinned] = useState(true); // popout defaults to always-on-top
@@ -219,18 +225,22 @@ export function PopoutConsole({
                 </div>
                 <div className="console-input-row">
                     <span className="console-prompt">{'>'}</span>
-                    <input
-                        type="text"
-                        className="console-input"
-                        value={consoleInput}
-                        onChange={(e) => setConsoleInput(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') sendConsoleCommand();
-                        }}
-                        placeholder={t('console.input_placeholder')}
-                        autoFocus
-                    />
-                    <button className="console-send" onClick={sendConsoleCommand}>
+                    <div className={clsx('console-input-wrap', stdinDisabled && 'console-input-disabled')}>
+                        {stdinDisabled && <Icon name="alertTriangle" size="sm" />}
+                        <input
+                            type="text"
+                            className="console-input"
+                            value={consoleInput}
+                            onChange={(e) => setConsoleInput(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') sendConsoleCommand();
+                            }}
+                            placeholder={stdinDisabled ? t('console.stdin_disabled') : t('console.input_placeholder')}
+                            autoFocus
+                            disabled={stdinDisabled}
+                        />
+                    </div>
+                    <button className="console-send" onClick={sendConsoleCommand} disabled={stdinDisabled}>
                         {t('console.send')}
                     </button>
                 </div>

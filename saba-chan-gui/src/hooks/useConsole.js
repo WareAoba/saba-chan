@@ -18,6 +18,7 @@ export function useConsole({ isPopoutMode, popoutParams, consoleBufferRef }) {
     const [consoleServer, setConsoleServer] = useState(null);
     const [consoleLines, setConsoleLines] = useState([]);
     const [consoleInput, setConsoleInput] = useState('');
+    const [stdinDisabled, setStdinDisabled] = useState(false);
     const consoleEndRef = useRef(null);
     const consolePollingRef = useRef(null);
     const [consolePopoutInstanceId, setConsolePopoutInstanceId] = useState(null);
@@ -26,20 +27,38 @@ export function useConsole({ isPopoutMode, popoutParams, consoleBufferRef }) {
         setConsoleServer({ id: instanceId, name: serverName });
         setConsoleLines([]);
         setConsoleInput('');
+        setStdinDisabled(false);
 
         // Start polling
         if (consolePollingRef.current) clearInterval(consolePollingRef.current);
         let sinceId = 0;
+        let diskLoaded = false;
         consolePollingRef.current = setInterval(async () => {
             try {
                 const data = await window.api.managedConsole(instanceId, sinceId, 200);
-                if (data?.lines?.length > 0) {
+                // disk fallback은 since_id를 무시하고 매번 같은 로그를 반환하므로
+                // 이미 한 번 로드했으면 다시 append하지 않음
+                if (data?.source === 'disk') {
+                    if (!diskLoaded && data.lines?.length > 0) {
+                        diskLoaded = true;
+                        setConsoleLines((prev) => {
+                            const newLines = [...prev, ...data.lines];
+                            const maxLines = consoleBufferRef.current || 2000;
+                            return newLines.length > maxLines ? newLines.slice(-maxLines) : newLines;
+                        });
+                    }
+                } else if (data?.lines?.length > 0) {
+                    diskLoaded = false; // managed process가 복구됨 → 리셋
                     setConsoleLines((prev) => {
                         const newLines = [...prev, ...data.lines];
                         const maxLines = consoleBufferRef.current || 2000;
                         return newLines.length > maxLines ? newLines.slice(-maxLines) : newLines;
                     });
                     sinceId = data.lines[data.lines.length - 1].id + 1;
+                }
+                // Track stdin availability from backend
+                if (data && typeof data.stdin_available === 'boolean') {
+                    setStdinDisabled(!data.stdin_available);
                 }
             } catch (_err) {
                 // silent — server might not be ready yet
@@ -59,6 +78,8 @@ export function useConsole({ isPopoutMode, popoutParams, consoleBufferRef }) {
     const sendConsoleCommand = async () => {
         if (!consoleInput.trim() || !consoleServer) return;
         const cmd = consoleInput.trim();
+        // 입력을 즉시 클리어하여 중복 전송/후속 입력 삭제 방지
+        setConsoleInput('');
         try {
             // managed process stdin first
             const result = await window.api.managedStdin(consoleServer.id, cmd);
@@ -81,7 +102,6 @@ export function useConsole({ isPopoutMode, popoutParams, consoleBufferRef }) {
                     setConsoleLines((prev) => [...prev, ...lines]);
                 }
             }
-            setConsoleInput('');
         } catch (err) {
             safeShowToast(translateError(err.message), 'error', 3000);
         }
@@ -135,6 +155,7 @@ export function useConsole({ isPopoutMode, popoutParams, consoleBufferRef }) {
         consoleEndRef,
         consolePopoutInstanceId,
         setConsolePopoutInstanceId,
+        stdinDisabled,
         openConsole,
         closeConsole,
         sendConsoleCommand,

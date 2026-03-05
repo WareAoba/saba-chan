@@ -101,6 +101,15 @@ COMPONENTS = [
         "install_dir": "locales",
         "exe_name": None,
     },
+    {
+        "key": "installer",
+        "version_file": "installer/gui/src-tauri/Cargo.toml",
+        "version_type": "cargo",
+        "raw_patterns": [r"saba-chan-installer\.exe$", r"saba-chan-installer.*\.zip$"],
+        "output_name": "saba-chan-installer-windows-x64.zip",
+        "install_dir": ".",
+        "exe_name": "saba-chan-installer.exe",
+    },
 ]
 
 STAGING_DIR = Path("staging")

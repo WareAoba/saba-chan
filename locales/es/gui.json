@@ -317,7 +317,10 @@
                      "confirm_message":  "¿Cómo desea salir?",
                      "confirm_detail":  "Ocultar GUI: Continuar ejecutándose en segundo plano (puede reabrirse desde la bandeja)\nSalir Todo: Detener demonio y salir completamente",
                      "hide_only_label":  "Ocultar GUI",
-                     "quit_all_label":  "Salir Todo"
+                     "quit_all_label":  "Salir Todo",
+                     "managed_warning_title":  "⚠️ Servidores administrados en ejecución",
+                     "managed_warning_message":  "{{count}} servidor(es) administrado(s) aún en ejecución: {{names}}",
+                     "managed_warning_detail":  "Si el daemon se detiene, las conexiones de consola a estos servidores se perderán y solo podrán ser forzados a detenerse en el próximo inicio.\n¿Está seguro de que desea salir?"
                  },
     "modules":  {
                     "load_failed_toast":  "Fallo la carga del módulo: {{error}}",
@@ -441,6 +444,7 @@
     "console":  {
                     "waiting":  "Esperando salida del servidor...",
                     "input_placeholder":  "Ingrese comando...",
+                    "stdin_disabled":  "Solo registros anteriores (saba-chan reiniciado) — reinicia el servidor para reconectar",
                     "send":  "Enviar",
                     "popout":  "Abrir en ventana separada"
                 },

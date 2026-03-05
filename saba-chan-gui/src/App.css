@@ -4285,6 +4285,43 @@ span[style*="--icon-loader"] svg,
     opacity: 0.85;
 }
 
+/* ── stdin disabled (reattached) warning state ── */
+.console-input-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    position: relative;
+}
+
+.console-input-wrap .console-input {
+    flex: 1;
+}
+
+.console-input-disabled {
+    position: relative;
+}
+
+.console-input-disabled .console-input {
+    border-color: #f9e2af;
+    padding-left: 30px;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.console-input-disabled .console-input::placeholder {
+    color: #f9e2af;
+    opacity: 0.9;
+}
+
+.console-input-disabled > span {
+    position: absolute;
+    left: 8px;
+    color: #f9e2af;
+    z-index: 1;
+    pointer-events: none;
+    flex-shrink: 0;
+}
+
 /* Console toggle active state on server card */
 .action-icon.action-active {
     color: var(--brand-primary, #667eea);
@@ -4797,6 +4834,14 @@ span[style*="--icon-loader"] svg,
 }
 
 /* ── Console output area ── */
+.cw-output,
+.cw-output * {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+}
+
 .cw-output {
     flex: 1;
     overflow-y: auto;
@@ -4807,8 +4852,6 @@ span[style*="--icon-loader"] svg,
     color: #cdd6f4;
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
-    -webkit-user-select: text;
-    user-select: text;
     cursor: text;
 }
 
