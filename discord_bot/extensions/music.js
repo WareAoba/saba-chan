@@ -15,7 +15,7 @@ const { PassThrough } = require('stream');
 const path = require('path');
 const fs = require('fs');
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { getSabaDataDir } = require('../../shared/constants');
+const { getSabaDataDir } = require('../utils/constants');
 
 // ── Lazy imports (패키지 미설치 시 graceful fallback) ──
 let voice, playDl;

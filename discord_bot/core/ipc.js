@@ -13,7 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const i18n = require('../i18n');
 
-const { DEFAULT_DAEMON_URL, getSabaDataDir } = require('../../shared/constants');
+const { DEFAULT_DAEMON_URL, getSabaDataDir } = require('../utils/constants');
 
 const IPC_BASE = process.env.IPC_BASE || DEFAULT_DAEMON_URL;
 

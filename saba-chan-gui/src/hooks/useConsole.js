@@ -33,7 +33,10 @@ export function useConsole({ isPopoutMode, popoutParams, consoleBufferRef }) {
         if (consolePollingRef.current) clearInterval(consolePollingRef.current);
         let sinceId = 0;
         let diskLoaded = false;
+        let polling = false;
         consolePollingRef.current = setInterval(async () => {
+            if (polling) return; // prevent overlapping requests
+            polling = true;
             try {
                 const data = await window.api.managedConsole(instanceId, sinceId, 200);
                 // disk fallback은 since_id를 무시하고 매번 같은 로그를 반환하므로
@@ -62,6 +65,8 @@ export function useConsole({ isPopoutMode, popoutParams, consoleBufferRef }) {
                 }
             } catch (_err) {
                 // silent — server might not be ready yet
+            } finally {
+                polling = false;
             }
         }, 500);
     };
@@ -84,12 +89,13 @@ export function useConsole({ isPopoutMode, popoutParams, consoleBufferRef }) {
             // managed process stdin first
             const result = await window.api.managedStdin(consoleServer.id, cmd);
             if (result?.error) {
-                // stdin failed → try RCON direct (bypass Python lifecycle)
-                console.log('[Console] stdin failed, trying RCON direct:', result.error);
+                // stdin failed → try module command API (protocol-aware routing)
+                console.log('[Console] stdin failed, trying command API:', result.error);
                 const rconResult = await window.api.executeCommand(consoleServer.id, {
                     command: cmd,
                     args: {},
-                    commandMetadata: { method: 'rcon' },
+                    // RCON 하드코딩 대신 Python lifecycle command()가
+                    // 모듈 protocol_mode에 따라 적절한 프로토콜 선택
                 });
                 if (rconResult?.error) {
                     safeShowToast(translateError(rconResult.error), 'error', 3000);

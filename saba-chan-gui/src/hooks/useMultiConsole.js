@@ -3,6 +3,17 @@ import { useTranslation } from 'react-i18next';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
 
 /**
+ * Ref-synced state: keeps a ref updated with the latest state for
+ * synchronous reads inside memoized callbacks (avoids stale-closure
+ * and React 18 batching issues).
+ */
+function useStateRef(state) {
+    const ref = useRef(state);
+    ref.current = state;
+    return ref;
+}
+
+/**
  * Manages multiple simultaneous console instances with individual state.
  *
  * Each console instance tracks its own lines, input, polling, window position/size,
@@ -20,6 +31,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
 
     // Map of instanceId -> console state
     const [consoles, setConsoles] = useState({});
+    const consolesRef = useStateRef(consoles);
     // Global z-index counter for window stacking
     const zCounterRef = useRef(100);
     // Map of instanceId -> polling interval id
@@ -84,7 +96,10 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         if (!pollingRefs.current[instanceId]) {
             let sinceId = 0;
             let diskLoaded = false;
+            let polling = false;
             pollingRefs.current[instanceId] = setInterval(async () => {
+                if (polling) return; // prevent overlapping requests
+                polling = true;
                 try {
                     const data = await window.api.managedConsole(instanceId, sinceId, 200);
                     // disk fallback은 since_id를 무시하고 매번 같은 로그를 반환하므로
@@ -138,6 +153,8 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                     }
                 } catch (_err) {
                     // silent — server might not be ready yet
+                } finally {
+                    polling = false;
                 }
             }, 500);
         }
@@ -280,12 +297,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
     // ── Send command ────────────────────────────────────────
 
     const sendConsoleCommand = useCallback(async (instanceId) => {
-        const state = (() => {
-            // Read current state synchronously via a ref trick
-            let current;
-            setConsoles((prev) => { current = prev; return prev; });
-            return current?.[instanceId];
-        })();
+        const state = consolesRef.current[instanceId];
 
         if (!state || !state.input.trim()) return;
 
@@ -295,11 +307,13 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         try {
             const result = await window.api.managedStdin(instanceId, cmd);
             if (result?.error) {
-                console.log('[Console] stdin failed, trying RCON direct:', result.error);
+                console.log('[Console] stdin failed, trying command API:', result.error);
                 const rconResult = await window.api.executeCommand(instanceId, {
                     command: cmd,
                     args: {},
-                    commandMetadata: { method: 'rcon' },
+                    // RCON 하드코딩 대신 메타데이터 없이 전달하여
+                    // Python lifecycle의 command() 함수가 모듈의 protocol_mode에 따라
+                    // 적절한 프로토콜(REST/RCON)을 자동 선택하도록 위임
                 });
                 if (rconResult?.error) {
                     safeShowToast(translateError(rconResult.error), 'error', 3000);

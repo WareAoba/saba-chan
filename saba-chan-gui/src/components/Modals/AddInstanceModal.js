@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useState, useCallback, useRef, useLayoutEffect } from 'react';
+import { useState, useCallback, useRef, useLayoutEffect, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import Icon from '../Icon';
 import { useModalClose } from '../../hooks/useModalClose';
@@ -42,6 +42,13 @@ export function AddInstanceModal({
     }, [onClose]);
 
     const { isClosing, requestClose } = useModalClose(handleClose);
+
+    // ── 모달 열릴 때 모듈 목록 새로고침 ──
+    useEffect(() => {
+        if (isOpen && onRefreshextensions) {
+            onRefreshextensions();
+        }
+    }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── 높이 애니메이션 ──
     const contentRef = useRef(null);
@@ -238,6 +245,7 @@ function InstanceChooser({ t, hasModules, onSelectNew, onSelectMigrate, onClose 
                 </div>
 
                 {/* 기존 서버 마이그레이션 */}
+                <div className="ai-choice-col">
                 <button
                     className="ai-choice-card"
                     type="button"
@@ -257,6 +265,7 @@ function InstanceChooser({ t, hasModules, onSelectNew, onSelectMigrate, onClose 
                         </div>
                     </div>
                 </button>
+                </div>
                 </div>
             </div>
 

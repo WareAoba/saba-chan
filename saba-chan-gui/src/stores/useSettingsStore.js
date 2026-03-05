@@ -103,6 +103,7 @@ const _settingsKeys = [
     'consoleBufferSize',
     'autoGeneratePasswords',
     'portConflictCheck',
+    '_discordToken',
     '_discordAutoStart',
 ];
 useSettingsStore.subscribe((state, prevState) => {

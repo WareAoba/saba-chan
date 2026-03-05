@@ -64,6 +64,7 @@ async fn main() -> anyhow::Result<()> {
     {
         let mut sup = supervisor.write().await;
         sup.extension_manager = Some(ipc_server.extension_manager.clone());
+        sup.provision_tracker = Some(ipc_server.provision_tracker.clone());
     }
 
     let client_registry = ipc_server.client_registry.clone();

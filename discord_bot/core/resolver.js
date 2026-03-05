@@ -8,7 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 const ipc = require('./ipc');
-const { getSabaDataDir } = require('../../shared/constants');
+const { getSabaDataDir } = require('../utils/constants');
 const {
     buildModuleAliasMap,
     buildCommandAliasMap,

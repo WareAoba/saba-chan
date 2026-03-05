@@ -76,6 +76,10 @@
     ],
     "extraFiles": [
       {
+        "from": "../shared",
+        "to": "shared"
+      },
+      {
         "from": "../target/release/saba-core.exe",
         "to": "."
       },
@@ -112,7 +116,12 @@
         ]
       }
     ],
-    "extraResources": [],
+    "extraResources": [
+      {
+        "from": "../shared",
+        "to": "shared"
+      }
+    ],
     "electronLanguages": [
       "en-US"
     ],

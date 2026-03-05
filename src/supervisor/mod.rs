@@ -42,6 +42,8 @@ pub struct Supervisor {
     stop_cooldowns: HashMap<String, Instant>,
     /// 익스텐션 매니저 (Phase 3에서 optional로 추가)
     pub extension_manager: Option<std::sync::Arc<tokio::sync::RwLock<crate::extension::ExtensionManager>>>,
+    /// 프로비저닝 진행 상태 추적 (auto-detect 억제용)
+    pub provision_tracker: Option<crate::ipc::ProvisionTracker>,
     /// 포트 충돌로 인한 강제 정지 이벤트 큐 (GUI에서 폴링 후 drain)
     pub port_conflict_stops: std::sync::Mutex<Vec<PortConflictStopEvent>>,
     /// GUI 설정: 포트 충돌 검사 건너뛰기 (portConflictCheck 비활성화 시 true)
@@ -61,6 +63,7 @@ impl Supervisor {
             managed_store: ManagedProcessStore::new(),
             stop_cooldowns: HashMap::new(),
             extension_manager: None,
+            provision_tracker: None,
             port_conflict_stops: std::sync::Mutex::new(Vec::new()),
             skip_port_check: std::sync::Arc::new(AtomicBool::new(false)),
         }
@@ -1463,6 +1466,19 @@ impl Supervisor {
                 continue;
             }
             
+            // 프로비저닝 중인 인스턴스는 auto-detect 건너뛰기
+            if let Some(ref pt) = self.provision_tracker {
+                if let Some(progress) = pt.get(&instance.name) {
+                    if !progress.done {
+                        tracing::debug!(
+                            "Skipping auto-detect for '{}' (provisioning in progress)",
+                            instance.name
+                        );
+                        continue;
+                    }
+                }
+            }
+
             // auto_detect가 활성화되어 있고 process_name이 설정되어 있으면 감지 시도
             if instance.auto_detect {
                 // stop 쿨다운 중이면 건너뛰기

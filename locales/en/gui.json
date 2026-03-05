@@ -179,6 +179,9 @@
     "execution_error": "Command Execution Error",
     "success": "Success",
     "command_executed": "Command '{{command}}' has been executed",
+    "click_to_expand": "Click to view details",
+    "show_details": "Show details",
+    "hide_details": "Hide details",
     "select_placeholder": "-- Select --"
   },
   "server_status": {

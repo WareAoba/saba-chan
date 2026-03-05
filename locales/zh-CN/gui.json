@@ -181,6 +181,9 @@
                           "execution_error":  "命令执行错误",
                           "success":  "成功",
                           "command_executed":  "命令\u0027{{command}}\u0027已执行",
+    "click_to_expand": "点击查看详情",
+    "show_details": "显示详情",
+    "hide_details": "隐藏详情",
     "select_placeholder": "-- 选择 --"
                       },
     "server_status":  {

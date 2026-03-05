@@ -201,7 +201,7 @@
 .context-menu {
     position: fixed;
     z-index: 9999;
-    background: var(--card-bg, #fff);
+    background: var(--bg-surface);
     border: 1px solid var(--border-default, #ddd);
     border-radius: 8px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
@@ -231,7 +231,7 @@
     white-space: nowrap;
 }
 .context-menu-item:hover {
-    background: var(--hover-bg, #f0f0f0);
+    background: var(--bg-surface-hover);
 }
 .context-menu-item.danger {
     color: #dc3545;
@@ -470,6 +470,71 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    -webkit-user-select: text;
+    user-select: text;
+    cursor: text;
+}
+
+.cmd-history-status-label {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.cmd-history-status-label.status-success {
+    color: #22c55e;
+    background: rgba(34, 197, 94, 0.1);
+}
+
+.cmd-history-status-label.status-failure {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.cmd-history-detail {
+    font-size: 10.5px;
+    color: var(--text-secondary);
+    margin-top: 6px;
+    padding: 8px 10px;
+    padding-left: 12px;
+    background: var(--bg-surface-tertiary, rgba(0, 0, 0, 0.15));
+    border-radius: 4px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 160px;
+    overflow-y: auto;
+    font-family: "Courier New", monospace;
+    line-height: 1.4;
+    -webkit-user-select: text;
+    user-select: text;
+    cursor: text;
+}
+
+.cmd-history-toggle {
+    display: inline-block;
+    font-size: 10px;
+    color: var(--brand-primary, #4fc0e3);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 0;
+    margin-top: 2px;
+    margin-left: 12px;
+    font-family: inherit;
+    opacity: 0.7;
+    transition: opacity 0.15s;
+}
+
+.cmd-history-toggle:hover {
+    opacity: 1;
+    text-decoration: underline;
+}
+
+.cmd-history-expanded {
+    background-color: var(--cli-suggestion-hover, rgba(99, 115, 219, 0.05));
 }
 
 .cli-section {
@@ -4795,16 +4860,16 @@
 
 .about-version-badge {
     position: absolute;
-    top: 16px;
-    right: 20px;
+    top: -4px;
+    right: -12px;
     font-size: 11px;
     font-weight: 600;
-    color: rgba(255, 255, 255, 0.9);
-    background: rgba(255, 255, 255, 0.2);
-    backdrop-filter: blur(10px);
+    color: #fff;
+    background: var(--brand-gradient);
     padding: 4px 10px;
     border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    border: none;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
     z-index: 2;
 }
 

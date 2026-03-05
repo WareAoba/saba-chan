@@ -124,6 +124,9 @@
                           "execution_error":  "コマンド実行エラー",
                           "success":  "成功",
                           "command_executed":  "コマンド \u0027{{command}}\u0027 が実行されました",
+    "click_to_expand": "クリックして詳細を表示",
+    "show_details": "詳細を表示",
+    "hide_details": "詳細を非表示",
     "select_placeholder": "-- 選択 --"
                       },
     "server_status":  {

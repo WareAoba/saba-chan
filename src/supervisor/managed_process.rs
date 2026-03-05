@@ -113,10 +113,10 @@ impl LogBuffer {
         line
     }
 
-    /// Get all lines with id > `since_id` (for polling).
+    /// Get all lines with id >= `since_id` (for polling).
     fn get_since(&self, since_id: u64) -> Vec<LogLine> {
         self.lines.iter()
-            .filter(|l| l.id > since_id)
+            .filter(|l| l.id >= since_id)
             .cloned()
             .collect()
     }
@@ -490,7 +490,7 @@ impl ManagedProcess {
         })
     }
 
-    /// Get all log lines with `id > since_id`.
+    /// Get all log lines with `id >= since_id`.
     pub async fn get_console_since(&self, since_id: u64) -> Vec<LogLine> {
         self.log_buffer.lock().await.get_since(since_id)
     }
@@ -562,8 +562,8 @@ impl ManagedProcess {
 
         // Add system message about reattachment
         let sys_msg = format!(
-            "── 💤 사바쨩이 재시작했어요! 서버(PID {}) 재연결 완료 — \
-             과거 로그만 보여줄 수 있어요. 서버를 재시작하면 정상으로 돌아와요! ──",
+            "── Daemon restarted. Reattached to running process (PID {}). \
+             stdin is unavailable until next restart. ──",
             pid
         );
         log_buf.push(LogSource::System, sys_msg, LogLevel::Warn);

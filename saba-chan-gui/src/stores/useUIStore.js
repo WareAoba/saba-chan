@@ -20,6 +20,9 @@ export const useUIStore = create((set, _get) => ({
     // ── Notice ──
     unreadNoticeCount: 0,
 
+    // ── Command history (per-server, session only) ──
+    commandHistoryMap: {},  // { [serverId]: [...entries] }
+
     // ── Background ──
     backgroundDaemonStatus: 'checking',
 
@@ -47,6 +50,15 @@ export const useUIStore = create((set, _get) => ({
 
     setShowCommandModal: (val) => set({ showCommandModal: val }),
     setCommandServer: (server) => set({ commandServer: server }),
+
+    getCommandHistory: (serverId) => _get().commandHistoryMap[serverId] || [],
+    pushCommandHistory: (serverId, entry) =>
+        set((state) => ({
+            commandHistoryMap: {
+                ...state.commandHistoryMap,
+                [serverId]: [...(state.commandHistoryMap[serverId] || []), entry],
+            },
+        })),
 
     setShowDiscordSection: (val) => set({ showDiscordSection: val }),
     setShowBackgroundSection: (val) => set({ showBackgroundSection: val }),

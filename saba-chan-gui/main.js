@@ -449,15 +449,28 @@ function getSettingsPath() {
 }
 
 function loadSettings() {
+    const settingsPath = getSettingsPath();
     try {
-        const settingsPath = getSettingsPath();
         if (fs.existsSync(settingsPath)) {
             let data = fs.readFileSync(settingsPath, 'utf8');
             // UTF-8 BOM 제거
             if (data.charCodeAt(0) === 0xfeff) {
                 data = data.slice(1);
             }
-            return JSON.parse(data);
+            const parsed = JSON.parse(data);
+            // 기본값 병합 — 파일에 없는 필드만 채움 (기존 필드 보존)
+            const systemLanguage = getSystemLanguage();
+            return {
+                autoRefresh: true,
+                refreshInterval: 2000,
+                windowBounds: { width: 1200, height: 840 },
+                language: systemLanguage,
+                ipcPort: IPC_PORT_DEFAULT,
+                consoleBufferSize: 2000,
+                autoGeneratePasswords: true,
+                portConflictCheck: true,
+                ...parsed,
+            };
         }
     } catch (error) {
         console.error('Failed to load settings:', error);

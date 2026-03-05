@@ -181,6 +181,9 @@
                           "execution_error":  "Ошибка выполнения команды",
                           "success":  "Успех",
                           "command_executed":  "Команда \u0027{{command}}\u0027 выполнена",
+    "click_to_expand": "Нажмите для просмотра деталей",
+    "show_details": "Показать детали",
+    "hide_details": "Скрыть детали",
     "select_placeholder": "-- Select --"
                       },
     "server_status":  {

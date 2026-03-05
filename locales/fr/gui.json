@@ -181,6 +181,9 @@
                           "execution_error":  "Erreur d\u0027exécution de la commande",
                           "success":  "Succès",
                           "command_executed":  "La commande \u0027{{command}}\u0027 a été exécutée",
+    "click_to_expand": "Cliquer pour voir les détails",
+    "show_details": "Afficher les détails",
+    "hide_details": "Masquer les détails",
     "select_placeholder": "-- Sélection --"
                       },
     "server_status":  {

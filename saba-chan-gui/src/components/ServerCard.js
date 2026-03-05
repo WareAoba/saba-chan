@@ -403,8 +403,8 @@ export function ServerCard({
                                         const hasCommands = (mod?.commands?.fields || []).length > 0;
                                         // stdin을 지원하는 콘솔 모드에서만 터미널 버튼 표시
                                         const showConsole = mode === 'console' && hasStdin;
-                                        // 커맨드 모달 버튼: commands가 있거나, 콘솔 모드가 아니거나, stdin 미지원일 때
-                                        const showCommand = hasCommands || !showConsole;
+                                        // 커맨드 모달 버튼: managed 모드(stdin)가 아니고, commands가 있거나 콘솔이 없을 때
+                                        const showCommand = mode !== 'managed' && (hasCommands || !showConsole);
                                         return (
                                             <>
                                                 {showConsole && (() => {

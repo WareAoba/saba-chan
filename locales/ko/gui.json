@@ -181,6 +181,9 @@
     "execution_error": "명령어 실행 오류",
     "success": "성공",
     "command_executed": "명령어 '{{command}}'가 실행되었습니다",
+    "click_to_expand": "클릭하여 상세 내역 보기",
+    "show_details": "상세 보기",
+    "hide_details": "상세 숨기기",
     "select_placeholder": "-- 선택하세요 --"
   },
   "server_status": {
