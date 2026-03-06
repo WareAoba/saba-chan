@@ -2303,7 +2303,7 @@ rm -f "$0"
             self.copy_dir_recursive(&target_dir, &backup_dir)?;
         }
 
-        // Extract zip
+        // Extract archive (zip or tar.gz)
         if staged.extension().map(|e| e == "zip").unwrap_or(false) {
             let file = std::fs::File::open(staged)?;
             let mut archive = zip::ZipArchive::new(file)?;
@@ -2329,6 +2329,13 @@ rm -f "$0"
                     std::io::copy(&mut entry, &mut outfile)?;
                 }
             }
+        } else if Self::is_tar_gz(staged) {
+            if target_dir.exists() {
+                self.clean_module_dir(&target_dir)?;
+            } else {
+                std::fs::create_dir_all(&target_dir)?;
+            }
+            Self::extract_tar_gz(staged, &target_dir)?;
         } else {
             std::fs::copy(staged, &target_dir)?;
         }

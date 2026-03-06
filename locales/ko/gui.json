@@ -59,7 +59,7 @@
     "relay_url_label": "릴레이 서버 URL (커스텀)",
     "relay_url_description": "클라우드 모드에서 사용할 릴레이 서버의 URL입니다. 비어있으면 기본 서버를 사용합니다.",
     "auto_generate_passwords_label": "비밀번호 자동 생성",
-    "auto_generate_passwords_description": "서버 설정 시 RCON/REST 비밀번호 필드가 비어있으면 자동으로 랜덤 비밀번호를 채웁니다.",
+    "auto_generate_passwords_description": "보안을 위해 매 실행마다 RCON/REST 비밀번호를 랜덤으로 자동 생성합니다.",
     "port_conflict_check_label": "포트 충돌 검사",
     "port_conflict_check_description": "여러 서버 인스턴스가 동일한 포트를 사용할 때 경고를 표시합니다.",
     "uninstall_label": "사바쨩 삭제",

@@ -59,7 +59,7 @@
                            "relay_url_label":  "URL du serveur de relais (Personnalisé)",
                            "relay_url_description":  "URL du serveur de relais pour le mode cloud. Utilise le serveur par défaut s\u0027il est vide.",
                            "auto_generate_passwords_label":  "Générer les mots de passe automatiquement",
-                           "auto_generate_passwords_description":  "Remplit automatiquement les champs de mot de passe RCON/REST vides avec des mots de passe aléatoires lors de l\u0027ouverture des paramètres du serveur.",
+                           "auto_generate_passwords_description":  "Génère automatiquement des mots de passe RCON/REST aléatoires à chaque lancement du serveur pour la sécurité.",
                            "port_conflict_check_label":  "Détection de conflit de port",
                            "port_conflict_check_description":  "Affiche des avertissements lorsque plusieurs instances de serveur utilisent le même port.",
                            "uninstall_label":  "Désinstaller Saba-chan",

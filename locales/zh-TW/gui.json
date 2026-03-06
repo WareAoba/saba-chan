@@ -59,7 +59,7 @@
                            "relay_url_label":  "中繼伺服器 URL (自訂)",
                            "relay_url_description":  "用於雲端模式的中繼伺服器 URL。如果為空，使用預設伺服器。",
                            "auto_generate_passwords_label":  "自動生成密碼",
-                           "auto_generate_passwords_description":  "打開伺服器設定時，自動用隨機密碼填充空的 RCON/REST 密碼欄位。",
+                           "auto_generate_passwords_description":  "為安全起見，每次啟動伺服器時自動生成隨機 RCON/REST 密碼。",
                            "port_conflict_check_label":  "連接埠衝突偵測",
                            "port_conflict_check_description":  "當多個伺服器實例使用相同連接埠時顯示警告。",
                            "uninstall_label":  "解除安裝 Saba-chan",

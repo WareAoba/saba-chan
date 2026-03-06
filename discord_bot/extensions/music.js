@@ -5,8 +5,9 @@
  * 게임 서버 관리와는 별개로, 디스코드 음성 채널에서 유튜브 음악을 재생합니다.
  * 
  * 의존성:
- *   - Node.js (discord_bot/package.json): @discordjs/voice, opusscript, play-dl, sodium-native
- *   - Python (extensions/music/music_deps.py 자동설치): ffmpeg, yt-dlp
+ *   - Node.js (extensions/music/package.json): @discordjs/voice, opusscript, play-dl, sodium-native
+ *     → 익스텐션 활성화 시 music_deps.py 가 npm install 로 자동 설치
+ *   - Python (extensions/music/music_deps.py): ffmpeg, yt-dlp
  */
 
 const i18n = require('../i18n');
@@ -52,17 +53,29 @@ function tryRunMusicDeps() {
         return null;
     }
 
-    // Python 실행 파일 결정
+    // Python 실행 파일 결정 — 사바쨩 격리 환경 우선, 시스템 Python fallback 없음
     const pythonCandidates = [];
     if (process.platform === 'win32') {
+        // 사바쨩 프로덕션 python-env (설치 루트 기준, 최우선)
+        const installRoot = path.resolve(__dirname, '..', '..');
+        const prodPython = path.join(installRoot, 'python-env', 'Scripts', 'python.exe');
+        if (fs.existsSync(prodPython)) pythonCandidates.push(prodPython);
         // venv (개발 환경)
         const venvPython = path.resolve(__dirname, '..', '..', '.venv', 'Scripts', 'python.exe');
         if (fs.existsSync(venvPython)) pythonCandidates.push(venvPython);
-        // 사바쨩 내장 Python (프로덕션)
-        const embeddedPython = path.join(getSabaDataDir(), 'python', 'python.exe');
-        if (fs.existsSync(embeddedPython)) pythonCandidates.push(embeddedPython);
+    } else {
+        // Linux: 사바쨩 격리 venv
+        const installRoot = path.resolve(__dirname, '..', '..');
+        const linuxVenv = path.join(installRoot, 'python-env', 'bin', 'python3');
+        if (fs.existsSync(linuxVenv)) pythonCandidates.push(linuxVenv);
+        const devVenv = path.resolve(__dirname, '..', '..', '.venv', 'bin', 'python3');
+        if (fs.existsSync(devVenv)) pythonCandidates.push(devVenv);
     }
-    pythonCandidates.push('python3', 'python');
+    // 격리 환경을 찾지 못한 경우에만 시스템 Python fallback
+    if (pythonCandidates.length === 0) {
+        console.warn('[Music] No saba-chan isolated Python found, falling back to system Python');
+        pythonCandidates.push('python3', 'python');
+    }
 
     for (const pyCmd of pythonCandidates) {
         try {
@@ -132,6 +145,26 @@ function loadDepsResolved() {
     return null;
 }
 
+/**
+ * Music extension의 node_modules 가 설치된 디렉토리를 반환합니다.
+ * @returns {string|null} 익스텐션 디렉토리 경로 (node_modules 존재 시)
+ */
+function getMusicExtNodeModules() {
+    const candidates = [];
+    if (process.env.SABA_EXTENSIONS_DIR) {
+        candidates.push(path.join(process.env.SABA_EXTENSIONS_DIR, 'music'));
+    }
+    candidates.push(path.join(getSabaDataDir(), 'extensions', 'music'));
+    candidates.push(path.resolve(__dirname, '..', '..', '..', 'saba-chan-extensions', 'music'));
+
+    for (const dir of candidates) {
+        if (fs.existsSync(path.join(dir, 'node_modules', '@discordjs', 'voice'))) {
+            return dir;
+        }
+    }
+    return null;
+}
+
 try {
     // ── Python 익스텐션이 설치한 바이너리 경로 읽기 ──
     const deps = loadDepsResolved();
@@ -164,13 +197,39 @@ try {
         }
     }
 
+    // ── Music extension의 node_modules 에서 보조 패키지 로드 ──
+    // @discordjs/voice 는 discord.js 와 동일 node_modules에 있어야 합니다.
+    // (voice adapter 가 discord.js 의 Gateway 와 직접 상호작용하므로)
+    // opusscript, sodium-native, play-dl, prism-media 등은 extension 쪽에서 로드합니다.
+    const musicExtDir = getMusicExtNodeModules();
+    let extRequire = null;
+    if (musicExtDir) {
+        const { createRequire } = require('module');
+        extRequire = createRequire(path.join(musicExtDir, 'package.json'));
+        console.log(`[Music] Auxiliary deps from extension: ${musicExtDir}`);
+
+        // voice 가 extension 의 encryption/opus 라이브러리를 찾을 수 있도록
+        // extension 의 node_modules 를 NODE_PATH 에 추가
+        const extNodeModules = path.join(musicExtDir, 'node_modules');
+        const sep = process.platform === 'win32' ? ';' : ':';
+        if (!process.env.NODE_PATH || !process.env.NODE_PATH.includes(extNodeModules)) {
+            process.env.NODE_PATH = process.env.NODE_PATH
+                ? process.env.NODE_PATH + sep + extNodeModules
+                : extNodeModules;
+            require('module').Module._initPaths();
+            console.log(`[Music] Added extension node_modules to NODE_PATH`);
+        }
+    } else {
+        console.warn('[Music] Music extension node_modules not found — auxiliary deps may be missing');
+    }
+
     // ── prism-media FFmpeg 경로 등록 ──────────────────────────────
     // @discordjs/voice 는 내부적으로 prism-media 의 FFmpeg 을 사용합니다.
     // prism-media 는 process.env.FFMPEG_PATH 를 확인하지 않고
     // require('ffmpeg-static') / PATH 의 'ffmpeg' 만 탐색하므로,
     // 우리 ffmpegPath 를 직접 등록해야 합니다.
     try {
-        const prism = require('prism-media');
+        const prism = extRequire ? extRequire('prism-media') : require('prism-media');
         const { spawnSync } = require('child_process');
         const probe = spawnSync(ffmpegPath, ['-h'], {
             windowsHide: true,
@@ -193,13 +252,12 @@ try {
 
     voice = require('@discordjs/voice');
     // play-dl은 검색/메타데이터 전용으로 사용 (stream은 yt-dlp)
-    try { playDl = require('play-dl'); } catch (_) {}
+    try { playDl = extRequire ? extRequire('play-dl') : require('play-dl'); } catch (_) {}
     musicAvailable = true;
     console.log('[Music] Extension loaded successfully 🎵');
 } catch (e) {
-    console.warn('[Music] Extension not available — missing Node.js packages.');
-    console.warn('[Music] Run: cd discord_bot && npm install');
-    console.warn('[Music] Binary tools (ffmpeg, yt-dlp) are managed by the Python music extension.');
+    console.warn('[Music] Extension not available:', e.message);
+    console.warn('[Music] discord_bot/에 @discordjs/voice, 그리고 extensions/music/에 보조 패키지가 필요합니다.');
 }
 
 // ── Per-guild state ──

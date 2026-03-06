@@ -1062,6 +1062,7 @@ impl Supervisor {
         }
         // Managed mode indicator → Python module uses this to enforce RCON policy
         cfg.insert("managed".to_string(), json!(true));
+
         let final_config = Value::Object(cfg);
 
         // Get module and call get_launch_command

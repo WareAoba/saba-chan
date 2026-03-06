@@ -59,7 +59,7 @@
                            "relay_url_label":  "リレーサーバーURL（カスタム）",
                            "relay_url_description":  "クラウドモードで使用するリレーサーバーのURLです。空欄の場合はデフォルトサーバーを使用します。",
                            "auto_generate_passwords_label":  "パスワード自動生成",
-                           "auto_generate_passwords_description":  "サーバー設定時にRCON/RESTのパスワード欄が空の場合、ランダムなパスワードを自動で入力します。",
+                           "auto_generate_passwords_description":  "セキュリティのため、サーバー起動ごとにRCON/RESTパスワードをランダムに自動生成します。",
                            "port_conflict_check_label":  "ポート競合チェック",
                            "port_conflict_check_description":  "複数のサーバーインスタンスが同じポートを使用している場合に警告を表示します。",
                            "uninstall_label":  "サバちゃんをアンインストール",
