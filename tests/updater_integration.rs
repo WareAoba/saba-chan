@@ -432,6 +432,7 @@ fn test_manifest_serialization_roundtrip() {
     components.insert("gui".to_string(), saba_chan_updater_lib::github::ComponentInfo {
         version: "1.0.0".into(),
         asset: Some("gui.zip".into()),
+        asset_linux: None,
         sha256: Some("abcdef1234".into()),
         install_dir: Some(".".into()),
         requires: None,

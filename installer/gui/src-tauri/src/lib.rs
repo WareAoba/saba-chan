@@ -249,20 +249,25 @@ async fn get_available_modules(state: State<'_, SharedState>) -> Result<Vec<Modu
     };
 
     // 원격에서 모듈 목록 가져오기 시도
-    match fetch_modules_from_remote(&owner, &modules_repo).await {
+    let modules = match fetch_modules_from_remote(&owner, &modules_repo).await {
         Ok(modules) if !modules.is_empty() => {
             tracing::info!("원격에서 {} 모듈 메타데이터 로드 성공", modules.len());
-            Ok(modules)
+            modules
         }
         Ok(_) => {
             tracing::warn!("원격 모듈 목록이 비어 있음, 폴백 사용");
-            Ok(fallback_modules())
+            fallback_modules()
         }
         Err(e) => {
             tracing::warn!("원격 모듈 메타데이터 로드 실패: {}, 폴백 사용", e);
-            Ok(fallback_modules())
+            fallback_modules()
         }
-    }
+    };
+
+    // 모듈 메타데이터를 state에 저장 (required_extensions 자동 설치에 필요)
+    state.write().await.module_metadata = modules.clone();
+
+    Ok(modules)
 }
 
 /// 원격 GitHub 레포에서 모듈 목록 + 각 module.toml을 가져와 파싱

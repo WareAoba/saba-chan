@@ -744,25 +744,7 @@ const appWindow = getCurrentWindow();
 document.getElementById('btn-minimize')?.addEventListener('click', () => appWindow.minimize());
 document.getElementById('btn-close')?.addEventListener('click', () => appWindow.close());
 
-// ═══════════════════════════════════════════════════════
-// Toast
-// ═══════════════════════════════════════════════════════
 
-const $toast = document.getElementById('toast-container');
-
-function showToast(msg, type = 'info', dur = 3000) {
-    const el = document.createElement('div');
-    el.className = `toast toast-${type}`;
-    const icons = {
-        success: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
-        error:   '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
-        info:    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
-    };
-    el.innerHTML = `<span class="toast-icon">${icons[type] || icons.info}</span><span class="toast-message">${esc(msg)}</span>`;
-    el.addEventListener('click', () => { el.classList.add('toast-removing'); setTimeout(() => el.remove(), 250); });
-    $toast.appendChild(el);
-    if (dur > 0) setTimeout(() => { if (el.parentNode) { el.classList.add('toast-removing'); setTimeout(() => el.remove(), 250); } }, dur);
-}
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
@@ -950,7 +932,6 @@ document.getElementById('btn-install')?.addEventListener('click', async () => {
         await invoke('fetch_latest_release');
     } catch (e) {
         enterError(String(e));
-        showToast(tr('fetchFailed'), 'error', 5000);
         return;
     }
 
@@ -961,7 +942,6 @@ document.getElementById('btn-install')?.addEventListener('click', async () => {
         await invoke('start_install');
     } catch (e) {
         enterError(String(e));
-        showToast(tr('installFailed'), 'error', 5000);
     }
 });
 
@@ -977,7 +957,6 @@ listen('install:progress', (ev) => {
 
     if (p.step === 'error') {
         enterError(p.message);
-        showToast(p.message, 'error', 8000);
         return;
     }
 
@@ -1060,7 +1039,6 @@ document.getElementById('btn-uninstall')?.addEventListener('click', async () => 
     const keepSettings = document.getElementById('chk-keep-settings')?.checked ?? false;
     try { await invoke('start_uninstall', { keepSettings }); } catch (e) {
         enterError(String(e));
-        showToast(tr('uninstallFailed'), 'error', 8000);
     }
 });
 
@@ -1072,7 +1050,6 @@ listen('uninstall:progress', (ev) => {
 
     if (p.step === 'error') {
         enterError(p.message);
-        showToast(p.message, 'error', 8000);
         return;
     }
 
@@ -1085,7 +1062,6 @@ listen('uninstall:progress', (ev) => {
         $fill.classList.add('complete-fill');
         $msg.textContent = p.message;
         $pct.textContent = '100%';
-        showToast(tr('uninstallComplete'), 'success');
 
         // 종료 버튼 표시
         $progressBar.style.display = 'none';

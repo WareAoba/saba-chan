@@ -146,10 +146,11 @@ function loadDepsResolved() {
 }
 
 /**
- * Music extension의 node_modules 가 설치된 디렉토리를 반환합니다.
- * @returns {string|null} 익스텐션 디렉토리 경로 (node_modules 존재 시)
+ * Music extension 디렉토리 (package.json 존재) 를 반환합니다.
+ * node_modules 설치 여부와 무관하게, 익스텐션 자체가 존재하는 디렉토리를 찾습니다.
+ * @returns {string|null}
  */
-function getMusicExtNodeModules() {
+function getMusicExtDir() {
     const candidates = [];
     if (process.env.SABA_EXTENSIONS_DIR) {
         candidates.push(path.join(process.env.SABA_EXTENSIONS_DIR, 'music'));
@@ -158,15 +159,41 @@ function getMusicExtNodeModules() {
     candidates.push(path.resolve(__dirname, '..', '..', '..', 'saba-chan-extensions', 'music'));
 
     for (const dir of candidates) {
-        if (fs.existsSync(path.join(dir, 'node_modules', '@discordjs', 'voice'))) {
+        if (fs.existsSync(path.join(dir, 'package.json'))) {
             return dir;
         }
     }
     return null;
 }
 
+/**
+ * Music extension의 node_modules 가 설치된 디렉토리를 반환합니다.
+ * node_modules/opusscript 를 마커로 사용합니다 (핵심 보조 패키지).
+ * @returns {string|null} 익스텐션 디렉토리 경로 (node_modules 존재 시)
+ */
+function getMusicExtNodeModules() {
+    const dir = getMusicExtDir();
+    if (dir && fs.existsSync(path.join(dir, 'node_modules', 'opusscript'))) {
+        return dir;
+    }
+    return null;
+}
+
 try {
-    // ── Python 익스텐션이 설치한 바이너리 경로 읽기 ──
+    // ── 1단계: 익스텐션 디렉토리 & node_modules 확인 ──
+    // node_modules가 없으면 music_deps.py를 실행하여 npm install + yt-dlp 설치
+    let musicExtDir = getMusicExtNodeModules();
+    if (!musicExtDir) {
+        const extDir = getMusicExtDir();
+        if (extDir) {
+            console.log(`[Music] node_modules not found in ${extDir}, running music_deps.py to bootstrap...`);
+            tryRunMusicDeps();
+            // npm install 완료 후 재확인
+            musicExtDir = getMusicExtNodeModules();
+        }
+    }
+
+    // ── 2단계: Python deps 경로 읽기 (ffmpeg, yt-dlp) ──
     const deps = loadDepsResolved();
     if (deps) {
         if (deps.ffmpeg && deps.ffmpeg.available && deps.ffmpeg.path) {
@@ -179,7 +206,6 @@ try {
             console.log(`[Music] yt-dlp path (from Python): ${ytDlpPath}`);
         }
     } else {
-        // .deps-resolved.json 미발견 — Python music_deps.py 직접 실행하여 생성 시도
         console.log('[Music] .deps-resolved.json not found, running music_deps.py to resolve...');
         const depsGenerated = tryRunMusicDeps();
         if (depsGenerated) {
@@ -197,11 +223,9 @@ try {
         }
     }
 
-    // ── Music extension의 node_modules 에서 보조 패키지 로드 ──
+    // ── 3단계: extension node_modules 에서 보조 패키지 로드 ──
     // @discordjs/voice 는 discord.js 와 동일 node_modules에 있어야 합니다.
-    // (voice adapter 가 discord.js 의 Gateway 와 직접 상호작용하므로)
     // opusscript, sodium-native, play-dl, prism-media 등은 extension 쪽에서 로드합니다.
-    const musicExtDir = getMusicExtNodeModules();
     let extRequire = null;
     if (musicExtDir) {
         const { createRequire } = require('module');

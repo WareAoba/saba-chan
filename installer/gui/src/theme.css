@@ -130,9 +130,6 @@
     /* === No servers panel === */
     --empty-bg: #ffffff;
 
-    /* === Toast === */
-    --toast-shadow: rgba(0, 0, 0, 0.15);
-
     /* === CLI/Terminal (always dark) === */
     --cli-bg: #1e1e1e;
     --cli-border: #444444;
@@ -306,9 +303,6 @@
 
     /* === No servers panel === */
     --empty-bg: #262629;
-
-    /* === Toast === */
-    --toast-shadow: rgba(10, 10, 14, 0.42);
 
     /* === CLI/Terminal (stays dark/gets darker) === */
     --cli-bg: #131316;
@@ -485,9 +479,6 @@
 
         /* === No servers panel === */
         --empty-bg: #262629;
-
-        /* === Toast === */
-        --toast-shadow: rgba(10, 10, 14, 0.42);
 
         /* === CLI/Terminal === */
         --cli-bg: #131316;
