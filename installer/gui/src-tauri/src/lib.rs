@@ -1202,9 +1202,22 @@ fn setup_config(install_dir: &PathBuf, config: &InstallConfig) {
 fn save_language_setting(language: &str) {
     let settings_dir = constants::resolve_data_dir();
     let _ = std::fs::create_dir_all(&settings_dir);
-    let settings = serde_json::json!({ "language": language });
+    let settings_path = settings_dir.join("settings.json");
+
+    // 기존 settings.json이 있으면 로드해서 language만 머지 (discordToken 등 보존)
+    let mut settings = if settings_path.exists() {
+        std::fs::read_to_string(&settings_path)
+            .ok()
+            .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
+            .unwrap_or_else(|| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    settings["language"] = serde_json::Value::String(language.to_string());
+
     let _ = std::fs::write(
-        settings_dir.join("settings.json"),
+        &settings_path,
         serde_json::to_string_pretty(&settings).unwrap_or_default(),
     );
 }

@@ -54,8 +54,7 @@
     - 12.2 [GUI 설정 (settings.json)](#122-gui-설정-settingsjson)
     - 12.3 [CLI 설정 (cli-settings.json)](#123-cli-설정-cli-settingsjson)
     - 12.4 [봇 설정 (bot-config.json)](#124-봇-설정-bot-configjson)
-    - 12.5 [업데이터 설정 (updater.toml)](#125-업데이터-설정-updatertoml)
-    - 12.6 [환경 변수](#126-환경-변수)
+    - 12.5 [환경 변수](#125-환경-변수)
 13. [업데이트 시스템](#13-업데이트-시스템)
     - 13.1 [자동 업데이트](#131-자동-업데이트)
     - 13.2 [수동 업데이트](#132-수동-업데이트)
@@ -948,22 +947,7 @@ include_prerelease = false       # 프리릴리스 포함 여부
 | `cloud.hostId` | string | 호스트 ID |
 | `nodeSettings` | object | 길드별 설정 |
 
-### 12.5 업데이터 설정 (updater.toml)
-
-위치: `config/updater.toml`
-
-```toml
-enabled = true
-check_interval_hours = 3         # 업데이트 확인 간격 (시간)
-auto_download = false            # 자동 다운로드
-auto_apply = false               # 자동 적용
-github_owner = 'WareAoba'
-github_repo = 'saba-chan'
-include_prerelease = false       # 프리릴리스 포함
-api_base_url = ''                # API Base URL (테스트용)
-```
-
-### 12.6 환경 변수
+### 12.5 환경 변수
 
 다음 환경 변수로 설정을 오버라이드할 수 있습니다:
 
@@ -989,14 +973,14 @@ api_base_url = ''                # API Base URL (테스트용)
 
 ### 13.1 자동 업데이트
 
-`updater.toml`에서 설정 가능:
+업데이트 설정은 코드에 내장되어 있습니다:
 
-| 설정 | 동작 |
-|------|------|
-| `enabled = true` | 업데이트 확인 활성화 |
-| `check_interval_hours = 3` | 3시간 간격으로 자동 확인 |
-| `auto_download = true` | 새 버전 발견 시 자동 다운로드 |
-| `auto_apply = true` | 다운로드 완료 시 자동 적용 |
+| 설정 | 기본값 | 동작 |
+|------|--------|------|
+| `enabled` | `true` | 업데이트 확인 활성화 |
+| `check_interval_hours` | `3` | 3시간 간격으로 자동 확인 |
+| `auto_download` | `false` | 새 버전 발견 시 자동 다운로드 |
+| `auto_apply` | `false` | 다운로드 완료 시 자동 적용 |
 
 ### 13.2 수동 업데이트
 
@@ -1265,7 +1249,6 @@ Windows 기준:
 | `%APPDATA%\saba-chan\modules\` | 모듈 디렉토리 |
 | `%APPDATA%\saba-chan\extensions\` | 익스텐션 디렉토리 |
 | `config\global.toml` | 전역 설정 (앱 디렉토리 내) |
-| `config\updater.toml` | 업데이터 설정 (앱 디렉토리 내) |
 
 ---
 

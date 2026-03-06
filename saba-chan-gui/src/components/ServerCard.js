@@ -397,14 +397,16 @@ export function ServerCard({
                                 <>
                                     {(() => {
                                         const mod = modules.find((m) => m.name === server.module);
-                                        const mode = mod?.interaction_mode || 'console';
+                                        const moduleMode = mod?.interaction_mode || 'console';
+                                        const instanceManaged = server.module_settings?.managed_start;
+                                        // 인스턴스별 managed_start 설정 우선, 없으면 모듈 기본값
+                                        const isManaged = instanceManaged === true || (instanceManaged == null && moduleMode === 'console');
                                         const supported = mod?.protocols?.supported || [];
                                         const hasStdin = supported.includes('stdin');
                                         const hasCommands = (mod?.commands?.fields || []).length > 0;
-                                        // stdin을 지원하는 콘솔 모드에서만 터미널 버튼 표시
-                                        const showConsole = mode === 'console' && hasStdin;
-                                        // 커맨드 모달 버튼: managed 모드(stdin)가 아니고, commands가 있거나 콘솔이 없을 때
-                                        const showCommand = mode !== 'managed' && (hasCommands || !showConsole);
+                                        // managed 인스턴스는 콘솔 버튼만, 그 외는 기존 로직
+                                        const showConsole = isManaged && hasStdin;
+                                        const showCommand = !isManaged && (hasCommands || !showConsole);
                                         return (
                                             <>
                                                 {showConsole && (() => {

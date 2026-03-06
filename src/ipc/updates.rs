@@ -37,7 +37,7 @@ pub struct UpdateState {
 }
 
 impl UpdateState {
-    /// updater.toml 또는 global.toml [updater] 섹션에서 설정 로드 후 생성
+    /// 내장 기본값으로 업데이트 매니저 생성
     pub fn new() -> Self {
         let cfg = load_updater_config();
         let modules_dir = resolve_modules_dir();
@@ -74,23 +74,33 @@ pub fn updates_router(state: UpdateState) -> Router {
 // ═══════════════════════════════════════════════════════
 
 /// GET /api/updates/status — 캐시된 상태 반환 (GitHub API 호출 없음)
+///
+/// Locales 컴포넌트는 사용자에게 비표시 — 백그라운드 자동 다운로드/적용 대상이므로
+/// 응답의 `components`, `updates_available` 에서 제외합니다.
 async fn get_status(
     State(state): State<UpdateState>,
 ) -> impl IntoResponse {
     let mgr = state.manager.read().await;
     let status = mgr.get_status();
 
-    let components: Vec<Value> = status.components.iter().map(|c| {
-        json!({
-            "component": c.component.manifest_key(),
-            "display_name": c.component.display_name(),
-            "current_version": c.current_version,
-            "latest_version": c.latest_version,
-            "update_available": c.update_available,
-            "downloaded": c.downloaded,
-            "installed": c.installed,
-        })
-    }).collect();
+    // Locales는 UI에 표시하지 않음 — 백그라운드 자동 적용 대상
+    let components: Vec<Value> = status.components.iter()
+        .filter(|c| !matches!(c.component, Component::Locales))
+        .map(|c| {
+            json!({
+                "component": c.component.manifest_key(),
+                "display_name": c.component.display_name(),
+                "current_version": c.current_version,
+                "latest_version": c.latest_version,
+                "update_available": c.update_available,
+                "downloaded": c.downloaded,
+                "installed": c.installed,
+            })
+        }).collect();
+
+    let visible_update_count = status.components.iter()
+        .filter(|c| c.update_available && !matches!(c.component, Component::Locales))
+        .count();
 
     Json(json!({
         "ok": true,
@@ -98,12 +108,15 @@ async fn get_status(
         "next_check": status.next_check,
         "checking": status.checking,
         "error": status.error,
-        "updates_available": status.components.iter().filter(|c| c.update_available).count(),
+        "updates_available": visible_update_count,
         "components": components,
     }))
 }
 
 /// POST /api/updates/check — GitHub API를 호출하여 최신 릴리스 확인
+///
+/// Locales 컴포넌트는 응답에서 제외하고, 업데이트가 있으면
+/// 백그라운드에서 자동 다운로드+적용합니다 (사용자 비표시).
 async fn check_updates(
     State(state): State<UpdateState>,
 ) -> impl IntoResponse {
@@ -114,21 +127,35 @@ async fn check_updates(
 
     match result {
         Ok(status) => {
-            let components: Vec<Value> = status.components.iter().map(|c| {
-                json!({
-                    "component": c.component.manifest_key(),
-                    "display_name": c.component.display_name(),
-                    "current_version": c.current_version,
-                    "latest_version": c.latest_version,
-                    "update_available": c.update_available,
-                    "downloaded": c.downloaded,
-                    "installed": c.installed,
-                    "release_notes": c.release_notes,
-                })
-            }).collect();
+            // ── Locales 자동 적용: 사용자 비표시 ──
+            // Locales는 작고 재시작이 불필요하므로, 체크 직후 백그라운드에서 자동 다운로드+적용
+            let has_locale_update = status.components.iter()
+                .any(|c| matches!(c.component, Component::Locales) && c.update_available);
+            if has_locale_update {
+                let mgr_clone = state.manager.clone();
+                tokio::spawn(async move {
+                    silent_apply_locales(&mgr_clone).await;
+                });
+            }
+
+            // Locales를 제외한 "사용자에게 보이는" 컴포넌트 목록
+            let components: Vec<Value> = status.components.iter()
+                .filter(|c| !matches!(c.component, Component::Locales))
+                .map(|c| {
+                    json!({
+                        "component": c.component.manifest_key(),
+                        "display_name": c.component.display_name(),
+                        "current_version": c.current_version,
+                        "latest_version": c.latest_version,
+                        "update_available": c.update_available,
+                        "downloaded": c.downloaded,
+                        "installed": c.installed,
+                        "release_notes": c.release_notes,
+                    })
+                }).collect();
 
             let update_names: Vec<String> = status.components.iter()
-                .filter(|c| c.update_available)
+                .filter(|c| c.update_available && !matches!(c.component, Component::Locales))
                 .map(|c| c.component.display_name())
                 .collect();
 
@@ -145,6 +172,44 @@ async fn check_updates(
                 "ok": false,
                 "error": e.to_string(),
             }))
+        }
+    }
+}
+
+/// Locales 컴포넌트를 사용자 비표시로 다운로드+적용합니다.
+///
+/// 실패 시에도 에러만 로깅 — 사용자 흐름에 영향 없음.
+async fn silent_apply_locales(manager: &Arc<RwLock<UpdateManager>>) {
+    // 1. 다운로드
+    let download_ok = {
+        let mut mgr = manager.write().await;
+        match mgr.download_component(&Component::Locales).await {
+            Ok(_) => {
+                tracing::info!("[Updates] Locales silently downloaded");
+                true
+            }
+            Err(e) => {
+                tracing::warn!("[Updates] Silent locales download failed: {}", e);
+                false
+            }
+        }
+    };
+
+    if !download_ok {
+        return;
+    }
+
+    // 2. 적용
+    let mut mgr = manager.write().await;
+    match mgr.apply_single_component(&Component::Locales).await {
+        Ok(result) if result.success => {
+            tracing::info!("[Updates] Locales silently applied");
+        }
+        Ok(result) => {
+            tracing::warn!("[Updates] Silent locales apply returned failure: {}", result.message);
+        }
+        Err(e) => {
+            tracing::warn!("[Updates] Silent locales apply failed: {}", e);
         }
     }
 }
@@ -416,11 +481,6 @@ async fn set_config(
 
     mgr.update_config(cfg.clone());
 
-    // 파일에도 저장 시도
-    if let Err(e) = save_updater_config(&cfg) {
-        tracing::warn!("[Updates] Config save failed: {}", e);
-    }
-
     Json(json!({
         "ok": true,
         "config": cfg,
@@ -444,8 +504,4 @@ fn resolve_modules_dir() -> String {
     dir.to_string_lossy().to_string()
 }
 
-fn save_updater_config(cfg: &UpdateConfig) -> anyhow::Result<()> {
-    // 설정은 하드코딩 기본값이므로 파일 저장 불필요 — no-op
-    let _ = cfg;
-    Ok(())
-}
+

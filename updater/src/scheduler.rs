@@ -13,6 +13,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use super::UpdateManager;
+use super::Component;
 
 /// 스케줄러 설정 — GUI/CLI가 타이머 간격을 결정할 때 참조
 #[derive(Debug, Clone)]
@@ -92,12 +93,15 @@ pub async fn check_once(manager: &Arc<RwLock<UpdateManager>>) -> CheckResult {
 
     match mgr.check_for_updates().await {
         Ok(status) => {
+            // Locales는 백그라운드 자동 적용 대상 — 사용자 알림에서 제외
             let update_names: Vec<String> = status.components.iter()
-                .filter(|c| c.update_available)
+                .filter(|c| c.update_available && !matches!(c.component, Component::Locales))
                 .map(|c| c.component.display_name())
                 .collect();
             let update_count = update_names.len();
-            let total = status.components.len();
+            let total = status.components.iter()
+                .filter(|c| !matches!(c.component, Component::Locales))
+                .count();
 
             if update_count > 0 {
                 tracing::info!(

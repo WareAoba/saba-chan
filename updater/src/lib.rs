@@ -103,23 +103,28 @@ impl Component {
         }
     }
 
-    /// manifest 키로부터 Component 생성
-    pub fn from_manifest_key(key: &str) -> Self {
+    /// manifest 키로부터 Component 생성 (알 수 없는 키는 None)
+    pub fn try_from_manifest_key(key: &str) -> Option<Self> {
         match key {
-            "saba-core" => Component::CoreDaemon,
-            "cli" => Component::Cli,
-            "gui" => Component::Gui,
-            "updater" => Component::Updater,
-            "discord_bot" => Component::DiscordBot,
-            "locales" => Component::Locales,
+            "saba-core" => Some(Component::CoreDaemon),
+            "cli" => Some(Component::Cli),
+            "gui" => Some(Component::Gui),
+            "updater" => Some(Component::Updater),
+            "discord_bot" => Some(Component::DiscordBot),
+            "locales" => Some(Component::Locales),
             k if k.starts_with("module-") => {
-                Component::Module(k.strip_prefix("module-").unwrap().to_string())
+                Some(Component::Module(k.strip_prefix("module-").unwrap().to_string()))
             }
             k if k.starts_with("ext-") => {
-                Component::Extension(k.strip_prefix("ext-").unwrap().to_string())
+                Some(Component::Extension(k.strip_prefix("ext-").unwrap().to_string()))
             }
-            other => Component::Module(other.to_string()),
+            _ => None,
         }
+    }
+
+    /// manifest 키로부터 Component 생성 (하위 호환용, 알 수 없는 키는 Module로 폴백)
+    pub fn from_manifest_key(key: &str) -> Self {
+        Self::try_from_manifest_key(key).unwrap_or_else(|| Component::Module(key.to_string()))
     }
 
     /// 사용자 표시용 이름을 반환하는 메서드
@@ -655,10 +660,34 @@ impl UpdateManager {
                 continue;
             }
 
-            let component = Component::from_manifest_key(key);
+            // 알 수 없는 키(installer 등 업데이트 대상이 아닌 항목)는 건너뛰기
+            let component = match Component::try_from_manifest_key(key) {
+                Some(c) => c,
+                None => {
+                    tracing::debug!("[Updater] Skipping unknown manifest key: {}", key);
+                    continue;
+                }
+            };
             let current = local_versions.get(key).cloned().unwrap_or_default();
-            let update_available = self.compare_versions(&info.version, &current);
             let installed = self.is_component_installed(&component);
+
+            // 설치된 컴포넌트인데 로컬 버전을 감지할 수 없으면 거짓 양성 방지
+            // (프로덕션 환경에서 Cargo.toml/package.json이 없고 installed-manifest도 없는 경우)
+            let update_available = if installed && current.is_empty() {
+                tracing::warn!(
+                    "[Updater] Cannot detect local version for installed component '{}' — \
+                     assuming up-to-date to avoid false notification. \
+                     Run updater apply to populate installed-manifest.",
+                    key
+                );
+                // 감지 불가 → 최신 버전을 로컬 매니페스트에 자동 기록 (다음 체크에서 정상 비교)
+                if let Some(ref ver) = Some(&info.version) {
+                    let _ = Self::update_installed_version(key, ver);
+                }
+                false
+            } else {
+                self.compare_versions(&info.version, &current)
+            };
 
             // resolved_components에서 다운로드 URL 조회
             // (최신 릴리즈에 에셋이 없으면 이전 릴리즈에서 찾은 URL이 들어있음)
@@ -711,9 +740,22 @@ impl UpdateManager {
 
         // 태그에서 버전 추출: "v1.2.0" → "1.2.0"
         let latest_version = release.tag_name.trim_start_matches('v').to_string();
-
-        let update_available = self.compare_versions(&latest_version, &current);
         let installed = self.is_component_installed(&component);
+
+        // 설치된 모듈인데 버전 감지 실패 시 거짓 양성 방지
+        let update_available = if installed && current.is_empty() {
+            tracing::warn!(
+                "[Updater] Cannot detect local version for installed module '{}' — assuming up-to-date",
+                module_name
+            );
+            if let Ok(latest) = SemVer::parse(&latest_version).ok_or(()) {
+                let _ = latest; // SemVer 파싱 가능한 경우에만 매니페스트 기록
+                let _ = Self::update_installed_version(&module_key, &latest_version);
+            }
+            false
+        } else {
+            self.compare_versions(&latest_version, &current)
+        };
 
         // 에셋 파일 탐색 (module-{name}.zip 또는 {name}.zip)
         let asset = release.assets.iter()
@@ -820,8 +862,18 @@ impl UpdateManager {
         let current = local_versions.get(&ext_key).cloned().unwrap_or_default();
 
         let latest_version = release.tag_name.trim_start_matches('v').to_string();
-        let update_available = self.compare_versions(&latest_version, &current);
         let installed = self.is_component_installed(&component);
+
+        // 설치된 익스텐션인데 버전 감지 실패 시 거짓 양성 방지
+        let update_available = if installed && current.is_empty() {
+            tracing::warn!(
+                "[Updater] Cannot detect local version for installed extension '{}' — assuming up-to-date",
+                ext_name
+            );
+            false
+        } else {
+            self.compare_versions(&latest_version, &current)
+        };
 
         let asset = release.assets.iter()
             .find(|a| a.name == format!("ext-{}.zip", ext_name)

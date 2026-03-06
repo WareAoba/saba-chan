@@ -788,8 +788,41 @@ pub async fn delete_instance(
 ) -> impl IntoResponse {
     let mut supervisor = state.supervisor.write().await;
 
+    // ── 인스턴스 존재 확인 ──
+    let instance = match supervisor.instance_store.get(&id) {
+        Some(inst) => inst.clone(),
+        None => {
+            let error = json!({ "success": false, "error": "Instance not found" });
+            return (StatusCode::NOT_FOUND, Json(error)).into_response();
+        }
+    };
+
+    // ── 실행 중이면 먼저 정지 ──
+    let is_running = supervisor.tracker.get_pid(&id).is_ok();
+    if is_running {
+        tracing::info!("Instance '{}' is running, force-stopping before delete...", instance.name);
+
+        // Managed process가 있으면 force kill
+        if let Some(managed) = supervisor.managed_store.remove(&id).await {
+            if managed.is_running() {
+                if let Ok(pid) = supervisor.tracker.get_pid(&id) {
+                    let _ = crate::supervisor::process::force_kill_pid(pid);
+                }
+                // 프로세스 종료 대기
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+        } else {
+            // Managed가 아니면 PID로 직접 kill
+            if let Ok(pid) = supervisor.tracker.get_pid(&id) {
+                let _ = crate::supervisor::process::force_kill_pid(pid);
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+        }
+        let _ = supervisor.tracker.untrack(&id);
+    }
+
     // ── Extension hook: server.pre_delete ──
-    if let Some(instance) = supervisor.instance_store.get(&id) {
+    {
         let ext_mgr = state.extension_manager.clone();
         let ctx = serde_json::json!({
             "instance_id": &id,
@@ -806,19 +839,36 @@ pub async fn delete_instance(
         });
         if handled {
             tracing::info!("Extension handled pre_delete cleanup for '{}'", instance.name);
+            // Docker compose down 후 파일 잠금 해제 대기
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         }
     }
 
-    match supervisor.instance_store.remove(&id) {
-        Ok(_) => {
-            let response = json!({ "success": true });
-            (StatusCode::OK, Json(response)).into_response()
-        }
-        Err(e) => {
-            let error = json!({ "error": format!("Failed to delete instance: {}", e) });
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+    // ── 디렉토리 삭제 (Windows 파일 잠금 대비 재시도) ──
+    let mut last_err = None;
+    for attempt in 0..3 {
+        match supervisor.instance_store.remove(&id) {
+            Ok(_) => {
+                let response = json!({ "success": true });
+                return (StatusCode::OK, Json(response)).into_response();
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Instance '{}' delete attempt {}/3 failed: {}",
+                    instance.name, attempt + 1, e
+                );
+                last_err = Some(e);
+                if attempt < 2 {
+                    // 재시도 전 대기 — 파일 잠금 해제 기다림
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                }
+            }
         }
     }
+
+    let err_msg = last_err.map(|e| format!("{}", e)).unwrap_or_else(|| "Unknown error".to_string());
+    let error = json!({ "success": false, "error": format!("Failed to delete instance: {}", err_msg) });
+    (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
 }
 
 /// PATCH /api/instance/:id - 인스턴스 설정 업데이트

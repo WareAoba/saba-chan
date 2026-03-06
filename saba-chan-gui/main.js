@@ -1154,8 +1154,16 @@ async function checkForUpdates() {
         }
 
         if (data.updates_available > 0) {
-            const names = data.update_names || [];
-            console.log(`[UpdateChecker] ${data.updates_available} update(s) available: ${names.join(', ')}`);
+            // Locales는 백그라운드 자동 적용 대상이므로 알림에서 제외 (서버에서도 필터링하지만 안전장치)
+            const names = (data.update_names || []).filter(n => n !== 'Locales');
+            const filteredCount = names.length;
+
+            if (filteredCount === 0) {
+                console.log('[UpdateChecker] Only Locales updates — skipping notification (auto-applied)');
+                return;
+            }
+
+            console.log(`[UpdateChecker] ${filteredCount} update(s) available: ${names.join(', ')}`);
 
             // 중복 알림 방지: 이전과 동일한 업데이트 목록이면 OS 알림 건너뛰기
             const updateKey = [...names].sort().join('\0');
@@ -1172,7 +1180,7 @@ async function checkForUpdates() {
                 const notifIcon = iconCandidates.find((p) => fs.existsSync(p)) || undefined;
                 const notif = new Notification({
                     title: 'saba-chan — 업데이트 알림',
-                    body: `${data.updates_available}개 업데이트: ${names.join(', ')}`,
+                    body: `${filteredCount}개 업데이트: ${names.join(', ')}`,
                     icon: notifIcon,
                 });
                 notif.on('click', () => {
@@ -1188,11 +1196,13 @@ async function checkForUpdates() {
             }
 
             // 렌더러 프로세스에 알림 전송 (업데이트 센터 모달에서 수동 처리)
+            // Locales를 제외한 컴포넌트만 전달
             if (mainWindow && !mainWindow.isDestroyed()) {
+                const filteredComponents = (data.components || []).filter(c => c.display_name !== 'Locales');
                 mainWindow.webContents.send('updates:available', {
-                    count: data.updates_available,
-                    names: data.update_names,
-                    components: data.components,
+                    count: filteredCount,
+                    names: names,
+                    components: filteredComponents,
                 });
             }
 
@@ -2571,13 +2581,18 @@ ipcMain.handle('updater:check', async () => {
         const data = response.data;
 
         // 업데이트 발견 시 렌더러에 알림 이벤트 전송 → UpdateBanner + 알림 모달
-        if (data.ok && data.updates_available > 0 && mainWindow && !mainWindow.isDestroyed()) {
+        // Locales는 백그라운드 자동 적용 대상이므로 알림에서 제외
+        const visibleNames = (data.update_names || []).filter(n => n !== 'Locales');
+        const visibleComponents = (data.components || []).filter(c => c.display_name !== 'Locales');
+        const visibleCount = visibleNames.length;
+
+        if (data.ok && visibleCount > 0 && mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('updates:available', {
-                count: data.updates_available,
-                updates_available: data.updates_available,
-                names: data.update_names || [],
-                update_names: data.update_names || [],
-                components: data.components || [],
+                count: visibleCount,
+                updates_available: visibleCount,
+                names: visibleNames,
+                update_names: visibleNames,
+                components: visibleComponents,
             });
         }
 
