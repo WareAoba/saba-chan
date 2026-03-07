@@ -2,6 +2,7 @@
   "name": "discord-bot",
   "version": "0.1.0",
   "description": "Discord Bot for Saba-chan",
+  "author": "WareAoba",
   "main": "index.js",
   "bin": "./index.js",
   "scripts": {

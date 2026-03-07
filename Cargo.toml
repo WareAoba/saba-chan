@@ -2,6 +2,7 @@
 name = "saba-core"
 version = "0.1.0"
 edition = "2021"
+authors = ["WareAoba"]
 description = "Modular game server management platform"
 repository = "https://github.com/WareAoba/saba-chan"
 license = "MIT"

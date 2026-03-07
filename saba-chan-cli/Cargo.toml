@@ -2,6 +2,7 @@
 name = "saba-chan-cli"
 version = "0.1.0"
 edition = "2021"
+authors = ["WareAoba"]
 description = "CLI client for Saba-chan Core Daemon"
 repository = "https://github.com/WareAoba/saba-chan"
 license = "MIT"
