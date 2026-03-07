@@ -86,10 +86,6 @@ function DiscordBotModal({
     // ── 멤버 확장 상태 ──
     const [expandedMember, setExpandedMember] = useState({});
 
-    // ── 수동 입력용 로컬 스테이트 ──
-    const [showManualHostId, setShowManualHostId] = useState(false);
-    const [manualHostIdInput, setManualHostIdInput] = useState('');
-
     // ── 페어링 상태 ──
     const [showPairing, setShowPairing] = useState(false);
     const [pairCode, setPairCode] = useState('');
@@ -97,6 +93,7 @@ function DiscordBotModal({
     const [pairExpiresAt, setPairExpiresAt] = useState(null);
     const [pairRemaining, setPairRemaining] = useState(0);
     const [pairCopied, setPairCopied] = useState(false);
+    const [pairPollSecret, setPairPollSecret] = useState('');  // 폴링 인증용 시크릿
     const pairPollRef = useRef(null);
     const pairTimerRef = useRef(null);
 
@@ -150,6 +147,7 @@ function DiscordBotModal({
             setPairRemaining(0);
             setShowPairing(false);
             setPairCopied(false);
+            setPairPollSecret('');
             setShowMusicSettings(false);
         }
     }, [isOpen]);
@@ -567,14 +565,16 @@ function DiscordBotModal({
             const data = await resp.json();
             setPairCode(data.code);
             setPairExpiresAt(data.expiresAt);
+            setPairPollSecret(data.pollSecret);  // ★ pollSecret 저장
             setPairStatus('waiting');
             setPairCopied(false);
 
-            // 폴링 시작
+            // 폴링 시작 (★ pollSecret을 쿼리 파라미터로 전달)
             if (pairPollRef.current) clearInterval(pairPollRef.current);
+            const secret = data.pollSecret;
             pairPollRef.current = setInterval(async () => {
                 try {
-                    const r = await fetch(`${effectiveRelayUrl}/api/pair/${encodeURIComponent(data.code)}/status`);
+                    const r = await fetch(`${effectiveRelayUrl}/api/pair/${encodeURIComponent(data.code)}/status?secret=${encodeURIComponent(secret)}`);
                     if (!r.ok) throw new Error(`HTTP ${r.status}`);
                     const s = await r.json();
                     if (s.status === 'claimed') {
@@ -633,6 +633,7 @@ function DiscordBotModal({
         setPairStatus('idle');
         setPairExpiresAt(null);
         setPairRemaining(0);
+        setPairPollSecret('');
         setShowPairing(false);
     }, []);
 
@@ -644,7 +645,6 @@ function DiscordBotModal({
         setCloudNodes([]);
         setExpandedNode(null);
         setCloudMembers({});
-        setManualHostIdInput('');
     }, [resetPairing, setDiscordCloudHostId, setCloudNodes, setCloudMembers]);
 
     // ══════════════════════════════════════════════
@@ -1264,44 +1264,6 @@ function DiscordBotModal({
                             >
                                 🔗 {t('discord_modal.pair_start_button')}
                             </button>
-
-                            {/* 고급: 수동 호스트 ID 입력 */}
-                            <div style={{ marginTop: 12, textAlign: 'center' }}>
-                                <button
-                                    className="discord-instance-select-btn"
-                                    style={{ fontSize: 11 }}
-                                    onClick={() => setShowManualHostId((prev) => !prev)}
-                                >
-                                    {showManualHostId ? '▲' : '▼'} {t('discord_modal.cloud_manual_toggle')}
-                                </button>
-                            </div>
-                            {showManualHostId && (
-                                <div className="discord-form-group" style={{ marginTop: 8 }}>
-                                    <input
-                                        type="text"
-                                        placeholder={t('discord_modal.host_id_placeholder')}
-                                        value={manualHostIdInput}
-                                        onChange={(e) => setManualHostIdInput(e.target.value)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter' && manualHostIdInput.trim())
-                                                setDiscordCloudHostId(manualHostIdInput.trim());
-                                        }}
-                                        className="discord-input"
-                                        style={{ width: '100%' }}
-                                    />
-                                    <button
-                                        className="discord-pair-start-btn"
-                                        style={{ marginTop: 6, width: '100%', fontSize: 12 }}
-                                        onClick={() => {
-                                            if (manualHostIdInput.trim())
-                                                setDiscordCloudHostId(manualHostIdInput.trim());
-                                        }}
-                                        disabled={!manualHostIdInput.trim()}
-                                    >
-                                        {t('discord_modal.cloud_manual_connect')}
-                                    </button>
-                                </div>
-                            )}
                         </div>
                     </div>
                 )}

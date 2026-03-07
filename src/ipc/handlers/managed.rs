@@ -307,6 +307,35 @@ pub async fn get_version_details_handler(
     }
 }
 
+/// GET /api/instance/:id/installed-version — Detect installed server version from binary
+pub async fn get_installed_version_handler(
+    Path(id): Path<String>,
+    State(state): State<IPCServer>,
+) -> impl IntoResponse {
+    let supervisor = state.supervisor.read().await;
+
+    // Find instance to get module name
+    let instance = match supervisor.instance_store.list().iter().find(|i| i.id == id).cloned() {
+        Some(i) => i,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": format!("Instance '{}' not found", id)})),
+            )
+                .into_response()
+        }
+    };
+
+    match supervisor.get_installed_version(&instance.module_name, &id).await {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
 /// POST /api/module/:name/install — Install a server
 /// Body: { "version": "1.21.11", "install_dir": "/path/to/server",
 ///         "jar_name": "server.jar", "accept_eula": true, "initial_settings": {...} }

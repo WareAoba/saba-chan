@@ -304,6 +304,7 @@ pub async fn list_modules(State(state): State<IPCServer>) -> impl IntoResponse {
                         commands: m.metadata.commands,
                         syntax_highlight: m.metadata.syntax_highlight,
                         dir_signatures: m.metadata.dir_signatures,
+                        install: m.metadata.install,
                     }
                 })
                 .collect();
@@ -355,6 +356,7 @@ pub async fn refresh_modules(State(state): State<IPCServer>) -> impl IntoRespons
                         commands: m.metadata.commands,
                         syntax_highlight: m.metadata.syntax_highlight,
                         dir_signatures: m.metadata.dir_signatures,
+                        install: m.metadata.install,
                     }
                 })
                 .collect();
@@ -670,6 +672,9 @@ pub async fn stop_server_handler(
                     .and_then(|s| s.as_bool())
                     .unwrap_or(false);
                 if success {
+                    // RCON 연결 풀에서 해당 인스턴스 연결 제거
+                    state.rcon_pool.remove(&inst.id);
+
                     // 익스텐션이 외부 프로세스 관리(예: 컨테이너)를 사용하면 ProcessTracker skip
                     if inst.extension_data.is_empty() || !inst.ext_enabled("docker_enabled") {
                         // name과 id 둘 다로 untrack 시도

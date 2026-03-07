@@ -118,6 +118,13 @@ export function useServerSettings({
                 initial._extension_data = { ...latestServer.extension_data };
             }
 
+            // server_version initialization — read from saved module_settings
+            const savedVersion =
+                latestServer.module_settings?.server_version || latestServer.server_version;
+            if (savedVersion) {
+                initial.server_version = String(savedVersion);
+            }
+
             setSettingsValues(initial);
         } else {
             const protocols = module?.protocols || {};
@@ -199,6 +206,23 @@ export function useServerSettings({
                 console.warn('Failed to load versions:', err);
             } finally {
                 setVersionsLoading(false);
+            }
+
+            // Detect installed version from server binary if not already saved
+            const hasSavedVersion =
+                latestServer.module_settings?.server_version || latestServer.server_version;
+            if (!hasSavedVersion && latestServer.id) {
+                try {
+                    const detected = await window.api.instanceGetInstalledVersion(latestServer.id);
+                    if (detected?.success && detected.version) {
+                        setSettingsValues((prev) => ({
+                            ...prev,
+                            server_version: detected.version,
+                        }));
+                    }
+                } catch (err) {
+                    console.warn('Failed to detect installed version:', err);
+                }
             }
         }
     };

@@ -243,6 +243,7 @@ export const useDiscordStore = create((set, get) => ({
                 try {
                     set({ relayConnecting: true });
                     const resp = await fetch(`${relayUrl}/api/hosts/${encodeURIComponent(state.discordCloudHostId)}`, {
+                        headers: { 'X-Saba-Client': '1' },
                         signal: AbortSignal.timeout(5000),
                     });
                     relayOk = resp.ok;

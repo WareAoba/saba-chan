@@ -273,6 +273,9 @@ pub struct ExtensionInfo {
     /// 디렉토리 시그니처 — 마이그레이션 시 기존 서버 폴더 자동 감지용
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dir_signatures: Vec<String>,
+    /// 설치 방식 정보 (download, steamcmd 등)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install: Option<crate::supervisor::module_loader::ModuleInstallConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -496,6 +499,8 @@ pub struct IPCServer {
     pub extension_status_cache: ExtensionStatusCache,
     /// 익스텐션 초기화(daemon.startup) 진행 상태
     pub extension_init_tracker: ExtensionInitTracker,
+    /// 인스턴스별 RCON 연결 풀 (연결 재사용)
+    pub rcon_pool: Arc<crate::protocol::rcon_pool::RconPool>,
 }
 
 impl IPCServer {
@@ -522,6 +527,7 @@ impl IPCServer {
             extension_manager: Arc::new(RwLock::new(ext_mgr)),
             extension_status_cache: ExtensionStatusCache::new(30), // 30초 TTL (Docker/WSL 지연 대비)
             extension_init_tracker: ExtensionInitTracker::new(),
+            rcon_pool: Arc::new(crate::protocol::rcon_pool::RconPool::new()),
         }
     }
 
@@ -569,6 +575,7 @@ impl IPCServer {
             .route("/api/module/:name/versions", get(handlers::managed::list_versions_handler))
             .route("/api/module/:name/version/:version", get(handlers::managed::get_version_details_handler))
             .route("/api/module/:name/install", post(handlers::managed::install_server_handler))
+            .route("/api/instance/:id/installed-version", get(handlers::managed::get_installed_version_handler))
             // ── Bot config ──
             .route("/api/config/bot", get(handlers::bot::get_bot_config).put(handlers::bot::save_bot_config))
             // ── GUI config sync ──

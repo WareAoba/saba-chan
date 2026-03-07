@@ -1,4 +1,5 @@
 pub mod rcon;
+pub mod rcon_pool;
 pub mod rest;
 pub mod client;
 

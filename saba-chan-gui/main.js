@@ -1772,6 +1772,15 @@ ipcMain.handle('module:installServer', async (_event, moduleName, installConfig)
     }
 });
 
+ipcMain.handle('instance:getInstalledVersion', async (_event, instanceId) => {
+    try {
+        const response = await axios.get(`${IPC_BASE}/api/instance/${instanceId}/installed-version`, { timeout: 10000 });
+        return response.data;
+    } catch (error) {
+        return { error: error.response?.data?.error || error.message };
+    }
+});
+
 ipcMain.handle('instance:resetProperties', async (_event, instanceId) => {
     try {
         const response = await axios.post(

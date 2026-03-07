@@ -72,9 +72,9 @@ impl RconClient {
         }
 
         // 일부 서버(Minecraft 등)는 두 번째 응답을 추가로 보냄
-        // 짧은 타임아웃(200ms)으로 두 번째 응답을 시도 — 없으면 싱글 응답 서버로 판단
+        // 짧은 타임아웃(500ms)으로 두 번째 응답을 시도 — 없으면 싱글 응답 서버로 판단
         if let Some(stream) = &self.stream {
-            let _ = stream.set_read_timeout(Some(Duration::from_millis(200)));
+            let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
         }
 
         match self.read_response() {
@@ -84,9 +84,46 @@ impl RconClient {
                 }
                 tracing::debug!("Dual auth response server — both responses OK");
             }
-            Err(_) => {
-                // 두 번째 응답이 없으면 싱글 응답 서버 — 첫 번째 응답으로 판단
-                tracing::debug!("No second auth response (single-response server)");
+            Err(ref e) => {
+                // 타임아웃(WouldBlock/TimedOut)은 정상 — 단일 응답 서버
+                // 연결 종료(UnexpectedEof)는 서버가 연결을 끊은 것 — 인증 실패 가능
+                match e {
+                    ProtocolError::ConnectionError(_) => {
+                        tracing::warn!(
+                            "RCON server closed connection after first auth response (possible auth failure or server issue)"
+                        );
+                        return Err(ProtocolError::AuthError(
+                            "Server closed connection after auth response — check RCON password and server.properties (enable-rcon, rcon.password)".to_string()
+                        ));
+                    }
+                    ProtocolError::TimeoutError(_) => {
+                        tracing::debug!("No second auth response (single-response server)");
+                    }
+                    _ => {
+                        tracing::debug!("No second auth response (error: {})", e);
+                    }
+                }
+            }
+        }
+
+        // 인증 후 연결 상태 확인 — peek으로 소켓이 살아있는지 검증
+        if let Some(stream) = &self.stream {
+            let _ = stream.set_read_timeout(Some(Duration::from_millis(50)));
+            let mut peek_buf = [0u8; 1];
+            match stream.peek(&mut peek_buf) {
+                Ok(0) => {
+                    // 서버가 이미 연결을 닫음
+                    return Err(ProtocolError::AuthError(
+                        "Server closed connection after authentication — verify rcon.password in server.properties".to_string()
+                    ));
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut => {
+                    // 데이터 없이 타임아웃 — 정상 (서버가 아직 데이터를 보내지 않은 상태)
+                }
+                _ => {
+                    // 데이터 있거나 기타 — 정상
+                }
             }
         }
 
@@ -108,23 +145,27 @@ impl RconClient {
             let stream = self.stream.as_mut()
                 .ok_or_else(|| ProtocolError::ConnectionError("Not connected".to_string()))?;
 
-            // 패킷 생성: [ID][타입][페이로드][패딩]
-            let mut packet = Vec::new();
-            packet.write_i32::<LittleEndian>(request_id as i32)
+            // 패킷 본문: [ID (4)][타입 (4)][페이로드][null (1)][null (1)]
+            let mut body = Vec::new();
+            body.write_i32::<LittleEndian>(request_id as i32)
                 .map_err(|e| ProtocolError::Protocol(format!("Failed to write request ID: {}", e)))?;
-            packet.write_i32::<LittleEndian>(command_type)
+            body.write_i32::<LittleEndian>(command_type)
                 .map_err(|e| ProtocolError::Protocol(format!("Failed to write command type: {}", e)))?;
-            packet.extend_from_slice(payload.as_bytes());
-            packet.extend_from_slice(&[0, 0]); // 패딩
+            body.extend_from_slice(payload.as_bytes());
+            body.extend_from_slice(&[0, 0]); // null terminator + empty string
 
-            // 패킷 크기
-            let packet_size = packet.len() as u32;
-
-            // 전송: [크기][패킷]
-            stream.write_u32::<LittleEndian>(packet_size)
+            // 전송 버퍼: [크기 (4)][본문] — 단일 write로 전송
+            // Minecraft RCON 서버는 recv() 한 번으로 전체 패킷을 읽으므로,
+            // 분할 전송 시 서버가 불완전한 패킷으로 판단하여 연결을 끊을 수 있음
+            let mut wire = Vec::with_capacity(4 + body.len());
+            wire.write_i32::<LittleEndian>(body.len() as i32)
                 .map_err(|e| ProtocolError::Protocol(format!("Failed to write packet size: {}", e)))?;
-            stream.write_all(&packet)
+            wire.extend_from_slice(&body);
+
+            stream.write_all(&wire)
                 .map_err(|e| ProtocolError::Protocol(format!("Failed to send packet: {}", e)))?;
+            stream.flush()
+                .map_err(|e| ProtocolError::Protocol(format!("Failed to flush stream: {}", e)))?;
         }
 
         // 응답 수신
@@ -136,9 +177,25 @@ impl RconClient {
         let stream = self.stream.as_mut()
             .ok_or_else(|| ProtocolError::ConnectionError("Not connected".to_string()))?;
 
-        // 패킷 크기 읽기
+        // 패킷 크기 읽기 — 에러 종류를 구분하여 적절한 ProtocolError 반환
         let packet_size = stream.read_u32::<LittleEndian>()
-            .map_err(|e| ProtocolError::Protocol(format!("Failed to read packet size: {}", e)))? as usize;
+            .map_err(|e| {
+                match e.kind() {
+                    std::io::ErrorKind::UnexpectedEof => {
+                        ProtocolError::ConnectionError(format!(
+                            "Server closed connection (failed to read packet size: {})", e
+                        ))
+                    }
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut => {
+                        ProtocolError::TimeoutError(format!(
+                            "Read timed out waiting for response: {}", e
+                        ))
+                    }
+                    _ => {
+                        ProtocolError::Protocol(format!("Failed to read packet size: {}", e))
+                    }
+                }
+            })? as usize;
 
         if packet_size > 4096 {
             return Err(ProtocolError::Protocol(format!("Packet size too large: {}", packet_size)));
@@ -170,6 +227,30 @@ impl RconClient {
             .to_string();
 
         Ok((request_id, payload))
+    }
+
+    /// 연결이 살아있는지 확인
+    pub fn is_connected(&self) -> bool {
+        match &self.stream {
+            None => false,
+            Some(stream) => {
+                // peek으로 소켓 상태 확인 (짧은 타임아웃)
+                let _ = stream.set_read_timeout(Some(Duration::from_millis(50)));
+                let mut peek_buf = [0u8; 1];
+                match stream.peek(&mut peek_buf) {
+                    Ok(0) => false, // 서버가 연결을 닫음
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock
+                        || e.kind() == std::io::ErrorKind::TimedOut => true, // 데이터 없이 타임아웃 = 정상
+                    Err(_) => false, // 기타 에러 = 연결 끊김
+                    Ok(_) => true,   // 데이터 있음 = 연결 살아있음
+                }
+            }
+        }
+    }
+
+    /// RCON 설정(host/port/password)이 동일한지 확인
+    pub fn matches(&self, host: &str, port: u16, password: &str) -> bool {
+        self.host == host && self.port == port && self.password == password
     }
 
     /// 연결 해제

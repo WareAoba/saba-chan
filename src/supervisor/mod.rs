@@ -736,13 +736,31 @@ impl Supervisor {
 
         // Non-managed: module plugin으로 상태 확인
 
+        // tracker에서 PID를 먼저 확인 — start_server()가 저장한 PID
+        let tracked_pid = self.tracker.get_pid(&instance.id)
+            .or_else(|_| self.tracker.get_pid(server_name))
+            .ok();
+
         // Find module
         let module = self.module_loader.get_module(module_name)?;
         let module_path = format!("{}/lifecycle.py", module.path);
 
-        // Build config — 실행 파일은 모듈 정의에서 자동 해석
+        // Build config — 실행 파일, PID, RCON 정보 등 Python status()에 필요한 값 포함
         let mut config_obj = serde_json::Map::new();
         self.insert_resolved_exe(&mut config_obj, instance, module_name);
+        if let Some(pid) = tracked_pid {
+            config_obj.insert("pid".to_string(), json!(pid));
+        }
+        if let Some(rcon_port) = instance.rcon_port {
+            config_obj.insert("rcon_port".to_string(), json!(rcon_port));
+        }
+        if let Some(rcon_pw) = &instance.rcon_password {
+            config_obj.insert("rcon_password".to_string(), json!(rcon_pw));
+        }
+        // module_settings 포함 (server_name 등 Python이 INI 경로 해석에 사용)
+        for (key, value) in &instance.module_settings {
+            config_obj.entry(key.clone()).or_insert_with(|| value.clone());
+        }
         let config = Value::Object(config_obj);
 
         // Ask module for status
@@ -1062,7 +1080,6 @@ impl Supervisor {
         }
         // Managed mode indicator → Python module uses this to enforce RCON policy
         cfg.insert("managed".to_string(), json!(true));
-
         let final_config = Value::Object(cfg);
 
         // Get module and call get_launch_command
@@ -1434,6 +1451,39 @@ impl Supervisor {
         }
 
         let result = crate::plugin::run_plugin(&module_path, "install_server", config).await?;
+        Ok(result)
+    }
+
+    /// Detect the installed server version by inspecting the server binary (e.g. parsing server.jar).
+    /// Delegates to the module's `get_installed_version` lifecycle function.
+    pub async fn get_installed_version(
+        &self,
+        module_name: &str,
+        instance_id: &str,
+    ) -> Result<Value> {
+        let module = self.module_loader.get_module(module_name)?;
+        let module_path = format!("{}/lifecycle.py", module.path);
+
+        let instance = self.instance_store.list()
+            .iter()
+            .find(|i| i.id == instance_id)
+            .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", instance_id))?;
+
+        let install_dir = instance.module_settings
+            .get("working_dir")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let jar_name = instance.module_settings
+            .get("server_jar")
+            .and_then(|v| v.as_str())
+            .unwrap_or("server.jar");
+
+        let config = json!({
+            "install_dir": install_dir,
+            "jar_name": jar_name,
+        });
+
+        let result = crate::plugin::run_plugin(&module_path, "get_installed_version", config).await?;
         Ok(result)
     }
 

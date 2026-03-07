@@ -15,6 +15,7 @@ pub struct ProtocolClient {
 
 impl ProtocolClient {
     /// RCON 클라이언트만 생성
+    #[allow(dead_code)]
     pub fn new_rcon(rcon_host: String, rcon_port: u16, rcon_password: String) -> Self {
         Self {
             rcon: Some(RconClient::new(rcon_host, rcon_port, rcon_password)),
@@ -78,6 +79,7 @@ impl ProtocolClient {
     }
 
     /// RCON만 연결
+    #[allow(dead_code)]
     pub fn connect_rcon(&mut self, timeout: Duration) -> Result<(), ProtocolError> {
         if let Some(rcon) = &mut self.rcon {
             rcon.connect(timeout)?;

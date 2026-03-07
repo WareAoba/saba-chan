@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('api', {
     moduleGetLocales: (name) => ipcRenderer.invoke('module:getLocales', name),
     moduleListVersions: (name, options) => ipcRenderer.invoke('module:listVersions', name, options),
     moduleInstallServer: (name, config) => ipcRenderer.invoke('module:installServer', name, config),
+    instanceGetInstalledVersion: (instanceId) => ipcRenderer.invoke('instance:getInstalledVersion', instanceId),
     // Module Manifest (사바 스토리지 — 모듈 탭)
     moduleManifest: () => ipcRenderer.invoke('module:manifest'),
     moduleInstallFromManifest: (moduleId) => ipcRenderer.invoke('module:installFromManifest', moduleId),

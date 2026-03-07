@@ -156,71 +156,61 @@ pub async fn execute_rcon_command(
         }
     };
 
-    // RCON 클라이언트 생성 및 실행 (연결 실패 시 최대 2회 재시도)
+    // RCON 풀을 통해 명령어 실행 (연결 재사용, 실패 시 자동 재연결)
     let rcon_timeout = std::time::Duration::from_secs(5);
-    let mut last_error = String::new();
+    let rcon_pool = state.rcon_pool.clone();
+    let instance_id = id.clone();
+    let command_owned = command.to_string();
 
-    for attempt in 0..3 {
-        if attempt > 0 {
-            tracing::info!(
-                "RCON retry attempt {} for command '{}'",
-                attempt + 1,
-                command
-            );
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        }
-
-        let mut client = crate::protocol::client::ProtocolClient::new_rcon(
-            rcon_host.clone(),
+    // RCON은 동기 I/O이므로 spawn_blocking으로 실행
+    let result = tokio::task::spawn_blocking(move || {
+        rcon_pool.execute(
+            &instance_id,
+            &rcon_host,
             rcon_port,
-            rcon_password.clone(),
-        );
+            &rcon_password,
+            &command_owned,
+            rcon_timeout,
+        )
+    })
+    .await;
 
-        match client.connect_rcon(rcon_timeout) {
-            Ok(_) => {
-                let cmd = crate::protocol::ServerCommand {
-                    command_type: crate::protocol::CommandType::Rcon,
-                    command: Some(command.to_string()),
-                    endpoint: None,
-                    method: None,
-                    body: None,
-                    timeout_secs: payload.get("timeout").and_then(|v| v.as_u64()),
-                };
-
-                match client.execute(cmd) {
-                    Ok(response) => {
-                        return (
-                            StatusCode::OK,
-                            Json(json!({
-                                "success": response.success,
-                                "data": response.data,
-                                "error": response.error,
-                                "command": command,
-                                "host": rcon_host,
-                                "port": rcon_port,
-                                "protocol": "rcon"
-                            })),
-                        )
-                            .into_response();
-                    }
-                    Err(e) => {
-                        last_error = format!("RCON execution failed: {}", e);
-                        tracing::warn!("{} (attempt {})", last_error, attempt + 1);
-                    }
-                }
-            }
-            Err(e) => {
-                last_error = format!("RCON connection failed: {}", e);
-                tracing::warn!("{} (attempt {})", last_error, attempt + 1);
-            }
+    match result {
+        Ok(Ok(response_text)) => {
+            let cmd_str = payload.get("command").and_then(|v| v.as_str()).unwrap_or("");
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "success": true,
+                    "data": { "response": response_text, "executed": cmd_str },
+                    "error": null,
+                    "command": cmd_str,
+                    "host": "127.0.0.1",
+                    "port": rcon_port,
+                    "protocol": "rcon"
+                })),
+            )
+                .into_response()
+        }
+        Ok(Err(e)) => {
+            let error_msg = format!("RCON execution failed: {}", e);
+            tracing::warn!("{}", error_msg);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": error_msg })),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            let error_msg = format!("RCON task failed: {}", e);
+            tracing::error!("{}", error_msg);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": error_msg })),
+            )
+                .into_response()
         }
     }
-
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({ "error": last_error })),
-    )
-        .into_response()
 }
 
 /// POST /api/instance/:id/rest - REST API 명령어 실행

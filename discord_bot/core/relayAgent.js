@@ -30,8 +30,10 @@ const NODE_TOKEN = process.env.RELAY_NODE_TOKEN || '';
 const HEARTBEAT_INTERVAL = 60_000;   // 60초
 const POLL_RETRY_BASE = 3_000;       // 폴링 실패 시 초기 대기
 const POLL_RETRY_MAX = 60_000;       // 최대 대기 (60초)
+const SLEEP_POLL_INTERVAL = 30_000;  // 수면 상태 시 하트비트 주기로만 체크
 
 let _running = false;
+let _sleeping = false;              // 릴레이 서버가 sleeping 신호를 보냄
 let _heartbeatTimer = null;
 let _pollAbort = null;
 let _consecutiveErrors = 0;          // 연속 에러 카운터 (지수 백오프용)
@@ -63,6 +65,7 @@ function signedHeaders(method, urlPath, body) {
     return {
         'Authorization': `Bearer ${NODE_TOKEN}`,
         'Content-Type': 'application/json',
+        'X-Saba-Client': '1',
         'x-request-timestamp': String(ts),
         'x-request-nonce': nonce,
         'x-request-signature': sig,
@@ -99,7 +102,7 @@ async function checkServerVersion() {
     try {
         const res = await fetch(`${RELAY_URL}/info`, {
             method: 'GET',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-Saba-Client': '1' },
         });
 
         if (!res.ok) {
@@ -161,6 +164,15 @@ async function sendHeartbeat() {
             const data = await res.json().catch(() => ({}));
             if (data.warning === 'UPDATE_REQUIRED') {
                 console.warn(`[RelayAgent] ⚠️ 에이전트 업데이트 필요 — 최소 버전: ${data.minVersion}`);
+            }
+
+            // ★ 수면 상태 동기화 — 하트비트 응답으로 sleep/wake 전환 감지
+            const wasSleeping = _sleeping;
+            _sleeping = !!data.sleeping;
+            if (_sleeping && !wasSleeping) {
+                console.log('[RelayAgent] 😴 서버가 수면 상태입니다 — 폴링 일시정지');
+            } else if (!_sleeping && wasSleeping) {
+                console.log('[RelayAgent] ☀️ 서버가 깨어났습니다 — 폴링 재개');
             }
         }
     } catch (e) {
@@ -246,6 +258,12 @@ async function pollLoop() {
     console.log('[RelayAgent] Poll loop started');
 
     while (_running) {
+        // ★ 수면 상태면 폴링하지 않고 대기 (하트비트에서 깨어남 감지)
+        if (_sleeping) {
+            await sleep(SLEEP_POLL_INTERVAL);
+            continue;
+        }
+
         try {
             _pollAbort = new AbortController();
             const res = await fetch(`${RELAY_URL}/poll`, {
@@ -272,6 +290,16 @@ async function pollLoop() {
             _consecutiveErrors = 0;
 
             const body = await res.json();
+
+            // ★ 서버가 sleeping 신호를 보냄 → 폴링 중단
+            if (body.sleeping) {
+                if (!_sleeping) {
+                    console.log('[RelayAgent] 😴 서버가 수면 상태입니다 — 폴링 일시정지');
+                    _sleeping = true;
+                }
+                continue;
+            }
+
             const commands = body.commands || [];
 
             if (commands.length === 0) {
@@ -382,6 +410,7 @@ function stop() {
 function getStatus() {
     return {
         running: _running,
+        sleeping: _sleeping,
         relayUrl: RELAY_URL || null,
         hasToken: !!NODE_TOKEN,
         agentVersion: AGENT_VERSION,
