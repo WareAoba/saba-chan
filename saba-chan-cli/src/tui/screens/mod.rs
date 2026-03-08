@@ -290,7 +290,7 @@ pub fn execute_confirm(app: &mut App, action: ConfirmAction) {
         ConfirmAction::DeleteInstance(id) => {
             tokio::spawn(async move {
                 match client.delete_instance(&id).await {
-                    Ok(_) => push_out(&buf, vec![Out::Ok(format!("✓ Instance deleted"))]),
+                    Ok(_) => push_out(&buf, vec![Out::Ok("✓ Instance deleted".to_string())]),
                     Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
                 }
             });
@@ -374,8 +374,7 @@ pub fn save_editor_changes(app: &mut App) {
     let changes = app.editor_changes.clone();
     let screen = app.screen.clone();
 
-    match screen {
-        Screen::ServerSettings { name, .. } => {
+    if let Screen::ServerSettings { name, .. } = screen {
             let inst_name = name.clone();
             tokio::spawn(async move {
                 let iid = find_instance_id(&client, &inst_name).await;
@@ -421,8 +420,6 @@ pub fn save_editor_changes(app: &mut App) {
                     }
                 }
             });
-        }
-        _ => {}
     }
 
     app.editor_changes.clear();

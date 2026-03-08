@@ -601,8 +601,8 @@ fn run_apply_mode(args: Vec<String>) {
 
     // 컴포넌트 목록: --apply 뒤 ~ --relaunch 앞까지 (--install-root 제외)
     let component_args: Vec<String> = match relaunch_pos {
-        Some(pos) => filtered_args[..pos].iter().map(|s| s.clone()).collect(),
-        None => filtered_args.iter().map(|s| s.clone()).collect(),
+        Some(pos) => filtered_args[..pos].iter().cloned().collect(),
+        None => filtered_args.iter().cloned().collect(),
     };
 
     // --relaunch 인자
@@ -612,7 +612,7 @@ fn run_apply_mode(args: Vec<String>) {
             if rest.is_empty() {
                 (None, Vec::new())
             } else {
-                (Some(rest[0].clone()), rest[1..].iter().map(|s| s.clone()).collect())
+                (Some(rest[0].clone()), rest[1..].iter().cloned().collect())
             }
         }
         None => (None, Vec::new()),

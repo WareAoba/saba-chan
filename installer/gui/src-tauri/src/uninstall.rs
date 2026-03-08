@@ -236,7 +236,7 @@ pub async fn do_silent_uninstall() {
     eprintln!("  Scheduling self-deletion...");
     {
         let install_location_ref = install_location.as_ref();
-        let dir = install_location_ref.map(|l| PathBuf::from(l));
+        let dir = install_location_ref.map(PathBuf::from);
         schedule_self_delete(dir.as_ref());
     }
 
@@ -286,7 +286,7 @@ fn stop_saba_processes() {
 /// 디렉토리 강제 삭제 (잠금 파일에 대한 재시도 포함)
 fn remove_dir_robust(dir: &PathBuf) -> anyhow::Result<()> {
     // 1차 시도
-    if let Ok(_) = std::fs::remove_dir_all(dir) {
+    if std::fs::remove_dir_all(dir).is_ok() {
         return Ok(());
     }
 

@@ -17,8 +17,10 @@ pub fn load_config_for_gui() -> UpdateConfig {
 
 /// install_root 기반 설정 로드 — 기본값 + install_root 오버라이드
 pub fn load_config_from_root(root: &str) -> UpdateConfig {
-    let mut cfg = UpdateConfig::default();
-    cfg.install_root = Some(root.to_string());
+    let cfg = UpdateConfig {
+        install_root: Some(root.to_string()),
+        ..Default::default()
+    };
     cfg
 }
 

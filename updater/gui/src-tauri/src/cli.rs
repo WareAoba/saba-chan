@@ -142,8 +142,8 @@ async fn cmd_check(manager: Arc<RwLock<UpdateManager>>, flags: &[&str]) -> anyho
     }
 
     // 대화형 모드
-    if result.error.is_some() {
-        eprintln!("✗ Check failed: {}", result.error.unwrap());
+    if let Some(err) = result.error {
+        eprintln!("✗ Check failed: {}", err);
         return Ok(());
     }
 

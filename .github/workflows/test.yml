@@ -64,6 +64,24 @@ jobs:
           rm -rf node_modules
           npm ci
 
+      - name: Create test fixture module
+        shell: bash
+        run: |
+          mkdir -p modules/test-module
+          cat > modules/test-module/module.toml << 'EOF'
+          [module]
+          name = "test-module"
+          version = "0.0.1"
+          description = "CI test fixture"
+          author = "ci"
+          game_name = "TestGame"
+          display_name = "Test Module"
+          entry = "lifecycle.py"
+          EOF
+          cat > modules/test-module/lifecycle.py << 'EOF'
+          # minimal test lifecycle
+          EOF
+
       - name: Build Rust Daemon
         run: cargo build --release
 

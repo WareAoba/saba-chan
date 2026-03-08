@@ -1026,7 +1026,7 @@ fn resolve_data_dir() -> PathBuf {
 fn get_default_install_path() -> String {
     #[cfg(target_os = "windows")]
     {
-        return r"C:\Program Files\Saba-chan".to_string();
+        r"C:\Program Files\Saba-chan".to_string()
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -1193,7 +1193,7 @@ fn install_shared_modules(install_dir: &Path) {
     }
 }
 
-fn setup_config(install_dir: &PathBuf, config: &InstallConfig) {
+fn setup_config(install_dir: &Path, config: &InstallConfig) {
     // 설정은 코드에 내장되므로 config 파일 생성 불필요
     // 필수 디렉터리만 생성
     let _ = std::fs::create_dir_all(install_dir.join("locales"));

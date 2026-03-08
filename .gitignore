@@ -2,6 +2,12 @@
 /target/
 target2/
 
+# Vite
+.vite/
+
+# Python testing
+.pytest_cache/
+
 # Node.js
 node_modules
 npm-debug.log*

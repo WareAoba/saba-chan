@@ -389,7 +389,7 @@ fn cmd_config(app: &mut App, args: &[&str]) -> Vec<Out> {
                         vec![Out::Ok(format!("{} = {}", args[1], val))]
                     }
                 }
-                Err(e) => vec![Out::Err(format!("{}", e))],
+                Err(e) => vec![Out::Err(e.to_string())],
             }
         }
         Some("reset") => {
@@ -403,7 +403,7 @@ fn cmd_config(app: &mut App, args: &[&str]) -> Vec<Out> {
                         vec![Out::Ok(format!("{} reset → {}", args[1], new_val))]
                     }
                 }
-                Err(e) => vec![Out::Err(format!("{}", e))],
+                Err(e) => vec![Out::Err(e.to_string())],
             }
         }
         Some(sub) => vec![Out::Err(format!("Unknown config subcommand: {}. Try: show, get, set, reset, gui", sub))],
@@ -478,7 +478,7 @@ fn cmd_config_gui(args: &[&str]) -> Vec<Out> {
                 return vec![Out::Ok(format!("Refresh interval: {}ms", cur))];
             }
             match args[1].parse::<u64>() {
-                Ok(ms) if ms >= 500 && ms <= 60000 => match gui_config::set_refresh_interval(ms) {
+                Ok(ms) if (500..=60000).contains(&ms) => match gui_config::set_refresh_interval(ms) {
                     Ok(()) => vec![Out::Ok(format!("✓ Refresh interval set to: {}ms", ms))],
                     Err(e) => vec![Out::Err(format!("✗ {}", e))],
                 },
@@ -506,7 +506,7 @@ fn cmd_config_gui(args: &[&str]) -> Vec<Out> {
                 return vec![Out::Ok(format!("Console buffer size: {}", cur))];
             }
             match args[1].parse::<u64>() {
-                Ok(n) if n >= 100 && n <= 50000 => match gui_config::set_console_buffer_size(n) {
+                Ok(n) if (100..=50000).contains(&n) => match gui_config::set_console_buffer_size(n) {
                     Ok(()) => vec![Out::Ok(format!("✓ Console buffer size set to: {}", n))],
                     Err(e) => vec![Out::Err(format!("✗ {}", e))],
                 },
@@ -1228,8 +1228,7 @@ async fn exec_module_cmd(client: &DaemonClient, registry: &ModuleRegistry, modul
 
 fn build_args_map(inputs: &[crate::module_registry::CommandInput], args: &[&str]) -> serde_json::Value {
     let mut map = serde_json::Map::new();
-    let mut arg_idx = 0;
-    for (i, input) in inputs.iter().enumerate() {
+    for (arg_idx, (i, input)) in inputs.iter().enumerate().enumerate() {
         if arg_idx >= args.len() { break; }
         if i == inputs.len() - 1 && input.input_type == "text" {
             map.insert(input.name.clone(), serde_json::Value::String(args[arg_idx..].join(" ")));
@@ -1241,7 +1240,6 @@ fn build_args_map(inputs: &[crate::module_registry::CommandInput], args: &[&str]
         } else {
             map.insert(input.name.clone(), serde_json::Value::String(args[arg_idx].to_string()));
         }
-        arg_idx += 1;
     }
     serde_json::Value::Object(map)
 }

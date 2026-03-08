@@ -1,8 +1,23 @@
+# ═══════════════════════════════════════════════════════════
+# 통합 CI — Lint · Test · Build
+# ═══════════════════════════════════════════════════════════
+#
+# 구조:
+#   1) rust      — Clippy + build + test  (Windows / Ubuntu)
+#   2) js-tests  — Electron GUI (Vitest) + Discord Bot
+#   3) build     — Release 빌드 + 아티팩트 업로드 (main push / tag 시)
+#
+# quick-test.yml: feature branch에서 JS 파일만 변경 시 경량 테스트
+# release.yml:   릴리즈 패키징 & manifest 생성
+# ═══════════════════════════════════════════════════════════
+
 name: CI
 
 on:
   push:
     branches: [main, develop]
+    tags:
+      - 'v*'
   pull_request:
     branches: [main, develop]
 
@@ -10,12 +25,17 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # ─────────────────────────────────────────
+  # 1. Rust — Clippy + Build + Test
+  # ─────────────────────────────────────────
   rust:
-    name: Rust (build + test + clippy)
+    name: Rust (${{ matrix.os }})
     strategy:
       matrix:
         os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+
     steps:
       - uses: actions/checkout@v4
 
@@ -34,11 +54,34 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Create test fixture module
+        shell: bash
+        run: |
+          mkdir -p modules/test-module
+          cat > modules/test-module/module.toml << 'EOF'
+          [module]
+          name = "test-module"
+          version = "0.0.1"
+          description = "CI test fixture"
+          author = "ci"
+          game_name = "TestGame"
+          display_name = "Test Module"
+          entry = "lifecycle.py"
+          EOF
+          cat > modules/test-module/lifecycle.py << 'EOF'
+          # minimal test lifecycle
+          EOF
+
+      - name: Clippy
+        run: cargo clippy --workspace -- -D warnings
 
       - name: Build
         run: cargo build --workspace
@@ -46,12 +89,14 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
-      - name: Clippy
-        run: cargo clippy --workspace -- -D warnings
-
-  discord-bot:
-    name: Discord Bot (Node.js)
+  # ─────────────────────────────────────────
+  # 2. JavaScript — GUI + Discord Bot
+  # ─────────────────────────────────────────
+  js-tests:
+    name: JS Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
     steps:
       - uses: actions/checkout@v4
 
@@ -59,32 +104,18 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: discord_bot/package-lock.json
+          cache-dependency-path: |
+            saba-chan-gui/package-lock.json
+            discord_bot/package-lock.json
 
-      - name: Install dependencies
-        working-directory: discord_bot
-        run: npm ci
-
-      - name: Test
-        working-directory: discord_bot
-        run: npm test
-
-  gui:
-    name: Electron GUI (Vitest)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: saba-chan-gui/package-lock.json
-
-      - name: Install dependencies
+      - name: Install & Test — Electron GUI
         working-directory: saba-chan-gui
-        run: npm ci
+        run: |
+          npm ci
+          npx vitest run
 
-      - name: Test
-        working-directory: saba-chan-gui
-        run: npx vitest run
+      - name: Install & Test — Discord Bot
+        working-directory: discord_bot
+        run: |
+          npm ci
+          npm test

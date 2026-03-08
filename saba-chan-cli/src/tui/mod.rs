@@ -95,8 +95,7 @@ pub async fn run(client: DaemonClient) -> anyhow::Result<()> {
         let client_id = app.client_id.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(2)).await;
-            match client.register_client("cli").await {
-                Ok(id) => {
+            if let Ok(id) = client.register_client("cli").await {
                     let mut lock = client_id.lock().unwrap();
                     *lock = Some(id.clone());
                     drop(lock);
@@ -107,8 +106,6 @@ pub async fn run(client: DaemonClient) -> anyhow::Result<()> {
                             let _ = client.send_heartbeat(&id_owned, None).await;
                         }
                     });
-                }
-                Err(_) => {}
             }
         });
     }
@@ -680,13 +677,13 @@ fn execute_inline_action(app: &mut App, action: InlineAction, value: &str) {
             let result = match key.as_str() {
                 "language" => gui_config::set_language(value),
                 "ipc_port" => value.parse::<u16>().ok()
-                    .map(|p| gui_config::set_ipc_port(p))
+                    .map(gui_config::set_ipc_port)
                     .unwrap_or_else(|| Err(anyhow::anyhow!("Invalid port"))),
                 "refresh_interval" => value.parse::<u64>().ok()
-                    .map(|ms| gui_config::set_refresh_interval(ms))
+                    .map(gui_config::set_refresh_interval)
                     .unwrap_or_else(|| Err(anyhow::anyhow!("Invalid interval"))),
                 "console_buffer" => value.parse::<u64>().ok()
-                    .map(|n| gui_config::set_console_buffer_size(n))
+                    .map(gui_config::set_console_buffer_size)
                     .unwrap_or_else(|| Err(anyhow::anyhow!("Invalid number"))),
                 _ => Err(anyhow::anyhow!("Unknown key")),
             };
@@ -849,27 +846,27 @@ fn flush_async_with_fields(app: &mut App) {
     for out in drained {
         match &out {
             Out::Text(text) | Out::Ok(text) | Out::Info(text) => {
-                if text.starts_with("EDITOR_LOAD_FAIL:") {
+                if let Some(stripped) = text.strip_prefix("EDITOR_LOAD_FAIL:") {
                     // 에디터 데이터 로드 실패 → 이전 화면으로 복귀 + 에러 메시지 표시
-                    let msg = text["EDITOR_LOAD_FAIL:".len()..].to_string();
+                    let msg = stripped.to_string();
                     app.pop_screen();
                     app.output.push(Out::Err(format!("✗ {}", msg)));
                     app.output.push(Out::Blank);
                     return;
-                } else if text.starts_with("EDITOR_FIELD:") {
-                    editor_lines.push(text["EDITOR_FIELD:".len()..].to_string());
-                } else if text.starts_with("EXT_ITEM:") {
-                    ext_lines.push(text["EXT_ITEM:".len()..].to_string());
-                } else if text.starts_with("EXT_SLOTS_INIT:") {
-                    ext_slots_json = Some(text["EXT_SLOTS_INIT:".len()..].to_string());
-                } else if text.starts_with("REG_ITEM:") {
-                    reg_lines.push(text["REG_ITEM:".len()..].to_string());
-                } else if text.starts_with("MODREG_ITEM:") {
-                    modreg_lines.push(text["MODREG_ITEM:".len()..].to_string());
+                } else if let Some(stripped) = text.strip_prefix("EDITOR_FIELD:") {
+                    editor_lines.push(stripped.to_string());
+                } else if let Some(stripped) = text.strip_prefix("EXT_ITEM:") {
+                    ext_lines.push(stripped.to_string());
+                } else if let Some(stripped) = text.strip_prefix("EXT_SLOTS_INIT:") {
+                    ext_slots_json = Some(stripped.to_string());
+                } else if let Some(stripped) = text.strip_prefix("REG_ITEM:") {
+                    reg_lines.push(stripped.to_string());
+                } else if let Some(stripped) = text.strip_prefix("MODREG_ITEM:") {
+                    modreg_lines.push(stripped.to_string());
                 } else if text == "LOADING_DONE" {
                     app.loading = None;
-                } else if text.starts_with("CONSOLE_LINE:") {
-                    app.console_lines.push(text["CONSOLE_LINE:".len()..].to_string());
+                } else if let Some(stripped) = text.strip_prefix("CONSOLE_LINE:") {
+                    app.console_lines.push(stripped.to_string());
                     // 콘솔 라인은 최대 500줄 유지
                     if app.console_lines.len() > 500 {
                         app.console_lines.drain(..app.console_lines.len() - 500);
