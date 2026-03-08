@@ -119,16 +119,30 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // ── CancellationToken: 모든 백그라운드 태스크에 graceful shutdown 전파 ──
+    let shutdown_token = ipc_server.shutdown_token.clone();
+
     // 백그라운드 모니터링 태스크 시작
     let supervisor_monitor = supervisor.clone();
+    let monitor_cancel = shutdown_token.clone();
     tokio::spawn(async move {
         let mut error_count = 0;
         
         loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(MONITOR_INTERVAL_SECS)).await;
+            tokio::select! {
+                _ = monitor_cancel.cancelled() => {
+                    tracing::info!("Monitor task shutting down");
+                    break;
+                }
+                _ = tokio::time::sleep(tokio::time::Duration::from_secs(MONITOR_INTERVAL_SECS)) => {}
+            }
             
+            // Phase 1: write lock 밖에서 프로세스 목록을 한 번 스캔 (비용이 큰 sysinfo 호출)
+            let process_snapshot = crate::process_monitor::get_running_processes_async().await;
+            
+            // Phase 2: write lock 안에서는 snapshot 기반 매칭만 수행 (시스템 콜 없음)
             let mut sup = supervisor_monitor.write().await;
-            match sup.monitor_processes().await {
+            match sup.monitor_processes(&process_snapshot).await {
                 Ok(_) => {
                     if error_count > 0 {
                         tracing::info!("Monitor recovered after {} errors", error_count);
@@ -152,9 +166,16 @@ async fn main() -> anyhow::Result<()> {
 
     // Heartbeat reaper 태스크 — 30초마다 만료 클라이언트 확인, 봇 프로세스 정리
     let registry_reaper = client_registry.clone();
+    let reaper_cancel = shutdown_token.clone();
     tokio::spawn(async move {
         loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(HEARTBEAT_REAPER_INTERVAL_SECS)).await;
+            tokio::select! {
+                _ = reaper_cancel.cancelled() => {
+                    tracing::info!("Heartbeat reaper shutting down");
+                    break;
+                }
+                _ = tokio::time::sleep(tokio::time::Duration::from_secs(HEARTBEAT_REAPER_INTERVAL_SECS)) => {}
+            }
             ipc::reap_expired_clients(&registry_reaper).await;
 
             // 모든 클라이언트가 사라졌으면 watchdog 타이머 시작
@@ -170,6 +191,7 @@ async fn main() -> anyhow::Result<()> {
     //   2. GUI → CLI 순으로 재기동 시도  
     //   3. 재기동 후 60초 내 재접속 없으면 코어 데몬 자체 종료
     let registry_watchdog = client_registry.clone();
+    let watchdog_cancel = shutdown_token.clone();
     tokio::spawn(async move {
         const CHECK_INTERVAL_SECS: u64 = 5;
         const GRACE_PERIOD_SECS: u64 = 15;
@@ -179,7 +201,13 @@ async fn main() -> anyhow::Result<()> {
         let mut restart_attempts: u32 = 0;
 
         loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(CHECK_INTERVAL_SECS)).await;
+            tokio::select! {
+                _ = watchdog_cancel.cancelled() => {
+                    tracing::info!("[Watchdog] Shutting down");
+                    break;
+                }
+                _ = tokio::time::sleep(tokio::time::Duration::from_secs(CHECK_INTERVAL_SECS)) => {}
+            }
 
             // 아직 클라이언트가 연결된 적 없으면 무시 (데몬 첫 기동 시)
             if !registry_watchdog.had_clients_ever().await {
@@ -224,7 +252,8 @@ async fn main() -> anyhow::Result<()> {
                         ipc::kill_bot_pid(pid);
                     }
                 }
-                std::process::exit(1);
+                watchdog_cancel.cancel();
+                break;
             }
 
             // ── 렌더러 프로세스 재기동 시도 ──
@@ -259,6 +288,7 @@ async fn main() -> anyhow::Result<()> {
     // Graceful shutdown: Ctrl+C / SIGTERM 시 정리
     let registry_shutdown = client_registry.clone();
     let supervisor_shutdown = supervisor.clone();
+    let ctrl_c_cancel = shutdown_token.clone();
     tokio::spawn(async move {
         tokio::signal::ctrl_c().await.ok();
         tracing::info!("Shutdown signal received, cleaning up...");
@@ -306,10 +336,12 @@ async fn main() -> anyhow::Result<()> {
             }
         }
 
-        tracing::info!("Cleanup complete, exiting");
-        std::process::exit(0);
+        tracing::info!("Cleanup complete, signaling shutdown");
+        // CancellationToken으로 모든 태스크에 종료 전파 (IPC 서버 포함)
+        ctrl_c_cancel.cancel();
     });
     
+    // IPC 서버 시작 — shutdown_token.cancel() 시 graceful shutdown
     if let Err(e) = ipc_server.start().await {
         tracing::error!("IPC server error: {}", e);
     }

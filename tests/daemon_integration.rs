@@ -260,9 +260,10 @@ async fn test_monitoring_loop_is_stable_under_idle() {
     }
 
     // 프로세스가 없는 상태에서 모니터링 N회 반복 — 패닉/데이터 오염 없어야 함
+    let empty_snapshot: Vec<saba_core::process_monitor::RunningProcess> = vec![];
     for iteration in 0..10 {
         let mut sup = supervisor.write().await;
-        let result = sup.monitor_processes().await;
+        let result = sup.monitor_processes(&empty_snapshot).await;
         assert!(
             result.is_ok(),
             "Monitoring iteration {} should succeed: {:?}",

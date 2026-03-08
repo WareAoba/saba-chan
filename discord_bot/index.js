@@ -203,7 +203,10 @@ if (RELAY_AGENT_MODE) {
     process.stdin.on('error', () => {}); // stdin 닫힘 무시
 
     // 메시지 → processor
-    client.on('messageCreate', (message) => processor.process(message));
+    client.on('messageCreate', (message) => {
+        processor.process(message).catch((e) =>
+            console.error('[Bot] messageCreate error:', e.message));
+    });
 
     // 음성 채널 상태 변경 → 음악 봇 자동 퇴장 (채널 비면)
     const musicExtension = require('./extensions/music');

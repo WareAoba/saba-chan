@@ -46,7 +46,8 @@
     "status_check": "📊 **{{name}}** ステータス: {{status}} {{pid_info}}",
     "not_found": "❌ モジュール \"{{alias}}\" のサーバーが見つかりません ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
-    "not_running_default": "サーバーが実行されていません。最初にサーバーを起動してください"
+    "not_running_default": "サーバーが実行されていません。最初にサーバーを起動してください",
+    "module_missing": "❌ モジュール '{{module}}' がインストールされていません。このサーバーは制御できません。"
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` 実行中...",
@@ -134,6 +135,7 @@
     "invalid_url": "動画情報を取得できません",
     "no_results": "検索結果がありません",
     "search_failed": "検索に失敗しました",
+    "play_error": "トラックの再生に失敗しました。",
     "search_results": "🔍 **検索: {{query}}**",
     "search_choose": "🎵 番号を入力してください (1~5) | `c` キャンセル",
     "play_usage": "🎵 使い方: `{{prefix}} music play <YouTube URLまたは検索キーワード>`",

@@ -402,7 +402,7 @@ export function useServerActions({
                 setModal({
                     type: 'failure',
                     title: t('errors.port_conflict', { defaultValue: 'Port Conflict' }),
-                    message: (result.message || '') + (conflictDetails ? '\n\n' + conflictDetails : ''),
+                    message: translateError(result.message || '') + (conflictDetails ? '\n\n' + conflictDetails : ''),
                 });
                 return;
             }

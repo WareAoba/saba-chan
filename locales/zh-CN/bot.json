@@ -46,7 +46,8 @@
     "status_check": "📊 **{{name}}** 状态：{{status}} {{pid_info}}",
     "not_found": "❌ 找不到模块 \"{{alias}}\" 的服务器（{{resolved}}）",
     "not_running": "❌ **{{name}}**：{{error}}",
-    "not_running_default": "服务器未运行。请先启动服务器"
+    "not_running_default": "服务器未运行。请先启动服务器",
+    "module_missing": "❌ 模块 '{{module}}' 未安装。此服务器无法控制。"
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` 执行中...",
@@ -146,6 +147,7 @@
     "invalid_url": "无法获取视频信息",
     "no_results": "没有搜索结果",
     "search_failed": "搜索失败",
+    "play_error": "播放失败。",
     "search_results": "🔍 **搜索: {{query}}**",
     "search_choose": "🎵 请输入编号 (1~5) | `c` 取消",
     "play_usage": "🎵 用法: `{{prefix}} music play <YouTube链接或搜索关键词>`",

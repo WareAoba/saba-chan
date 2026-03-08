@@ -524,7 +524,8 @@ function DiscordBotModal({
                 setCloudNodes(Array.isArray(nodesData) ? nodesData : []);
             }
         } catch (e) {
-            setCloudError(e.message);
+            setCloudError(t('errors.network_error', { defaultValue: 'Connection failed' }));
+            console.error('[DiscordBotModal] Cloud nodes fetch error:', e.message);
         }
     }, [discordCloudHostId, effectiveRelayUrl]);
 

@@ -46,7 +46,8 @@
     "status_check": "📊 Статус **{{name}}**: {{status}} {{pid_info}}",
     "not_found": "❌ Сервер не найден для модуля \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
-    "not_running_default": "Сервер не запущен. Пожалуйста, сначала запустите сервер"
+    "not_running_default": "Сервер не запущен. Пожалуйста, сначала запустите сервер",
+    "module_missing": "❌ Модуль '{{module}}' не установлен. Этот сервер не может быть управляем."
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` выполняется...",
@@ -146,6 +147,7 @@
     "invalid_url": "Не удалось получить информацию о видео",
     "no_results": "Ничего не найдено",
     "search_failed": "Ошибка поиска",
+    "play_error": "Не удалось воспроизвести трек.",
     "search_results": "🔍 **Поиск: {{query}}**",
     "search_choose": "🎵 Введите номер (1~5) | `c` Отмена",
     "play_usage": "🎵 Использование: `{{prefix}} music play <URL YouTube или запрос>`",

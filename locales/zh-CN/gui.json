@@ -192,7 +192,9 @@
                           "stopping":  "正在停止...",
                           "start":  "启动",
                           "stop":  "停止",
-                          "provisioning":  "正在配置..."
+                          "provisioning":  "正在配置...",
+                          "module_missing":  "找不到模块",
+                          "module_missing_detail":  "找不到模块 '{{module}}'。请安装该模块或删除此实例。"
                       },
     "server_actions":  {
                            "delete_confirm_title":  "删除服务器",
@@ -416,6 +418,7 @@
                    "invalid_token":  "无效的 Discord 令牌。请检查您的令牌。",
                    "cloud_token_not_found":  "缺少节点身份验证令牌。请在云设置中重新配对。",
                    "unknown_error":  "发生未知错误",
+                          "generic_error":  "发生了意外错误。",
                    "port_conflict":  "端口冲突",
                    "port_conflict_detail":  "端口 {{port}} 已被实例 \u0027{{name}}\u0027 使用",
                    "port_conflict_force_stop_toast":  "🚫 {{stopped}} 已被强制停止 — 端口 {{port}} 与 {{existing}} 冲突"

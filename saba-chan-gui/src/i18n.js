@@ -140,6 +140,8 @@ getInitialLanguage().then((lang) => {
     if (lang && lang !== i18n.language) {
         i18n.changeLanguage(lang);
     }
+}).catch((err) => {
+    console.warn('[i18n] Language initialization failed:', err.message);
 });
 
 export default i18n;

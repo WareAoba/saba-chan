@@ -104,19 +104,36 @@ impl LogBuffer {
         }
         self.lines.push_back(line.clone());
 
-        // Persist to disk (fire-and-forget)
+        // Persist to disk — writer 실패 시 시스템 경고를 콘솔 버퍼에 삽입
         if let Some(ref tx) = self.file_tx {
             let disk_line = format_log_line_for_disk(&line);
-            let _ = tx.send(disk_line);
+            if tx.send(disk_line).is_err() {
+                // Writer task가 죽었으므로 더 이상 디스크에 쓰지 않음
+                self.file_tx = None;
+                tracing::warn!("Log disk writer channel closed — disk logging disabled");
+                // GUI에 표시될 시스템 경고 라인 삽입
+                let warn_line = LogLine {
+                    id: self.next_id,
+                    timestamp: current_timestamp(),
+                    source: LogSource::System,
+                    content: "⚠ Log file writer stopped — disk logs may be incomplete. Check disk space.".to_string(),
+                    level: LogLevel::Warn,
+                };
+                self.next_id += 1;
+                if self.lines.len() >= self.max_size {
+                    self.lines.pop_front();
+                }
+                self.lines.push_back(warn_line);
+            }
         }
 
         line
     }
 
-    /// Get all lines with id >= `since_id` (for polling).
+    /// Get all lines with id > `since_id` (for polling).
     fn get_since(&self, since_id: u64) -> Vec<LogLine> {
         self.lines.iter()
-            .filter(|l| l.id >= since_id)
+            .filter(|l| l.id > since_id)
             .cloned()
             .collect()
     }
@@ -812,7 +829,8 @@ fn spawn_disk_writer(log_path: PathBuf) -> mpsc::UnboundedSender<String> {
         while let Some(line) = rx.recv().await {
             let data = format!("{}\n", line);
             let data_len = data.len() as u64;
-            if file.write_all(data.as_bytes()).await.is_err() {
+            if let Err(e) = file.write_all(data.as_bytes()).await {
+                tracing::warn!("Disk writer for '{}' I/O error: {} — stopping log persistence", log_path.display(), e);
                 break;
             }
             bytes_written += data_len;
@@ -831,7 +849,10 @@ fn spawn_disk_writer(log_path: PathBuf) -> mpsc::UnboundedSender<String> {
                         file = f;
                         bytes_written = 0;
                     }
-                    Err(_) => break,
+                    Err(e) => {
+                        tracing::warn!("Disk writer for '{}' rotation failed: {} — stopping log persistence", log_path.display(), e);
+                        break;
+                    }
                 }
             }
         }

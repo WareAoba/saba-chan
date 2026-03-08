@@ -46,7 +46,8 @@
     "status_check": "📊 Status von **{{name}}**: {{status}} {{pid_info}}",
     "not_found": "❌ Kein Server gefunden für Modul \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
-    "not_running_default": "Server läuft nicht. Bitte starten Sie zuerst den Server"
+    "not_running_default": "Server läuft nicht. Bitte starten Sie zuerst den Server",
+    "module_missing": "❌ Das Modul '{{module}}' ist nicht installiert. Dieser Server kann nicht gesteuert werden."
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` wird ausgeführt...",
@@ -146,6 +147,7 @@
     "invalid_url": "Videoinformationen konnten nicht abgerufen werden",
     "no_results": "Keine Ergebnisse gefunden",
     "search_failed": "Suche fehlgeschlagen",
+    "play_error": "Track konnte nicht abgespielt werden.",
     "search_results": "🔍 **Suche: {{query}}**",
     "search_choose": "🎵 Nummer eingeben (1~5) | `c` Abbrechen",
     "play_usage": "🎵 Verwendung: `{{prefix}} music play <YouTube-URL oder Suchbegriff>`",

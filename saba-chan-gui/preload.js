@@ -137,5 +137,9 @@ contextBridge.exposeInMainWorld('electron', {
     // Language settings
     getLanguage: () => ipcRenderer.invoke('language:get'),
     setLanguage: (language) => ipcRenderer.invoke('language:set', language),
-    getSystemLanguage: () => ipcRenderer.invoke('language:getSystem')
+    getSystemLanguage: () => ipcRenderer.invoke('language:getSystem'),
+    // Shell
+    shell: {
+        openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url)
+    }
 });

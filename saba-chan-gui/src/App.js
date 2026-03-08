@@ -488,8 +488,12 @@ function App() {
     // ── Settings Save Functions ─────────────────────────────
 
     const saveCurrentSettings = async () => {
-        useSettingsStore.getState()._setDiscordFields(discordToken, discordAutoStart);
-        await Promise.all([useSettingsStore.getState().save(), useDiscordStore.getState().saveConfig()]);
+        try {
+            useSettingsStore.getState()._setDiscordFields(discordToken, discordAutoStart);
+            await Promise.all([useSettingsStore.getState().save(), useDiscordStore.getState().saveConfig()]);
+        } catch (err) {
+            console.error('[App] Failed to save settings:', err.message);
+        }
     };
 
     // ── One-time module fetch (mount only) ──────────────────
@@ -936,7 +940,8 @@ function App() {
                                         srv?.working_dir ||
                                         null;
                                     if (dir) {
-                                        window.api.shellOpenPath(dir);
+                                        window.api?.shellOpenPath?.(dir)?.catch?.((err) =>
+                                            console.error('[App] shellOpenPath failed:', err.message));
                                     }
                                     setContextMenu(null);
                                 }}

@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useServerStore } from '../stores/useServerStore';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
+
+/** @constant 서버 Running 시 polling 간격 (ms) */
+const POLL_ACTIVE_MS = 500;
+/** @constant 서버 비활성 시 polling 간격 (ms) */
+const POLL_IDLE_MS = 5000;
 
 /**
  * Ref-synced state: keeps a ref updated with the latest state for
@@ -93,20 +99,44 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         });
 
         // Start polling if not already running
+        // 서버 상태에 따라 polling 간격을 동적으로 조절합니다:
+        //   Running (PID 추적 중) → 500ms (빠른 응답)
+        //   Stopped / 기타          → 5000ms (리소스 절약)
         if (!pollingRefs.current[instanceId]) {
             let sinceId = 0;
             let diskLoaded = false;
             let polling = false;
-            pollingRefs.current[instanceId] = setInterval(async () => {
-                if (polling) return; // prevent overlapping requests
-                polling = true;
-                try {
-                    const data = await window.api.managedConsole(instanceId, sinceId, 200);
-                    // disk fallback은 since_id를 무시하고 매번 같은 로그를 반환하므로
-                    // 이미 한 번 로드했으면 다시 append하지 않음
-                    if (data?.source === 'disk') {
-                        if (!diskLoaded && data.lines?.length > 0) {
-                            diskLoaded = true;
+            const schedulePoll = () => {
+                if (!pollingRefs.current[instanceId]?.active) return;
+                const servers = useServerStore.getState().servers;
+                const server = servers.find((s) => s.id === instanceId);
+                const isRunning = server && server.pid > 0;
+                const interval = isRunning ? POLL_ACTIVE_MS : POLL_IDLE_MS;
+                pollingRefs.current[instanceId].timer = setTimeout(async () => {
+                    if (polling) { schedulePoll(); return; }
+                    polling = true;
+                    try {
+                        const data = await window.api.managedConsole(instanceId, sinceId, 200);
+                        // disk fallback은 since_id를 무시하고 매번 같은 로그를 반환하므로
+                        // 이미 한 번 로드했으면 다시 append하지 않음
+                        if (data?.source === 'disk') {
+                            if (!diskLoaded && data.lines?.length > 0) {
+                                diskLoaded = true;
+                                setConsoles((prev) => {
+                                    if (!prev[instanceId]) return prev;
+                                    const maxLines = consoleBufferRef.current || 2000;
+                                    const newLines = [...prev[instanceId].lines, ...data.lines];
+                                    return {
+                                        ...prev,
+                                        [instanceId]: {
+                                            ...prev[instanceId],
+                                            lines: newLines.length > maxLines ? newLines.slice(-maxLines) : newLines,
+                                        },
+                                    };
+                                });
+                            }
+                        } else if (data?.lines?.length > 0) {
+                            diskLoaded = false; // managed process가 복구됨 → 리셋
                             setConsoles((prev) => {
                                 if (!prev[instanceId]) return prev;
                                 const maxLines = consoleBufferRef.current || 2000;
@@ -119,44 +149,33 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                                     },
                                 };
                             });
+                            sinceId = data.lines[data.lines.length - 1].id + 1;
                         }
-                    } else if (data?.lines?.length > 0) {
-                        diskLoaded = false; // managed process가 복구됨 → 리셋
-                        setConsoles((prev) => {
-                            if (!prev[instanceId]) return prev;
-                            const maxLines = consoleBufferRef.current || 2000;
-                            const newLines = [...prev[instanceId].lines, ...data.lines];
-                            return {
-                                ...prev,
-                                [instanceId]: {
-                                    ...prev[instanceId],
-                                    lines: newLines.length > maxLines ? newLines.slice(-maxLines) : newLines,
-                                },
-                            };
-                        });
-                        sinceId = data.lines[data.lines.length - 1].id + 1;
+                        // Track stdin availability from backend
+                        if (data && typeof data.stdin_available === 'boolean') {
+                            setConsoles((prev) => {
+                                if (!prev[instanceId]) return prev;
+                                const disabled = !data.stdin_available;
+                                if (prev[instanceId].stdinDisabled === disabled) return prev;
+                                return {
+                                    ...prev,
+                                    [instanceId]: {
+                                        ...prev[instanceId],
+                                        stdinDisabled: disabled,
+                                    },
+                                };
+                            });
+                        }
+                    } catch (_err) {
+                        // silent — server might not be ready yet
+                    } finally {
+                        polling = false;
                     }
-                    // Track stdin availability from backend
-                    if (data && typeof data.stdin_available === 'boolean') {
-                        setConsoles((prev) => {
-                            if (!prev[instanceId]) return prev;
-                            const disabled = !data.stdin_available;
-                            if (prev[instanceId].stdinDisabled === disabled) return prev;
-                            return {
-                                ...prev,
-                                [instanceId]: {
-                                    ...prev[instanceId],
-                                    stdinDisabled: disabled,
-                                },
-                            };
-                        });
-                    }
-                } catch (_err) {
-                    // silent — server might not be ready yet
-                } finally {
-                    polling = false;
-                }
-            }, 500);
+                    schedulePoll();
+                }, interval);
+            };
+            pollingRefs.current[instanceId] = { active: true, timer: null };
+            schedulePoll();
         }
     }, [consoleBufferRef, getDefaultPosition, getDefaultSize]);
 
@@ -166,7 +185,13 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         // If called without id (legacy compat) close all
         if (!instanceId) {
             for (const id of Object.keys(pollingRefs.current)) {
-                clearInterval(pollingRefs.current[id]);
+                const ref = pollingRefs.current[id];
+                if (ref && typeof ref === 'object') {
+                    ref.active = false;
+                    clearTimeout(ref.timer);
+                } else {
+                    clearInterval(ref);
+                }
             }
             pollingRefs.current = {};
             setConsoles({});
@@ -174,7 +199,13 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         }
 
         if (pollingRefs.current[instanceId]) {
-            clearInterval(pollingRefs.current[instanceId]);
+            const ref = pollingRefs.current[instanceId];
+            if (ref && typeof ref === 'object') {
+                ref.active = false;
+                clearTimeout(ref.timer);
+            } else {
+                clearInterval(ref);
+            }
             delete pollingRefs.current[instanceId];
         }
         setConsoles((prev) => {
@@ -368,7 +399,13 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
     useEffect(() => {
         return () => {
             for (const id of Object.keys(pollingRefs.current)) {
-                clearInterval(pollingRefs.current[id]);
+                const ref = pollingRefs.current[id];
+                if (ref && typeof ref === 'object') {
+                    ref.active = false;
+                    clearTimeout(ref.timer);
+                } else {
+                    clearInterval(ref);
+                }
             }
         };
     }, []);

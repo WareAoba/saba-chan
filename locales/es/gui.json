@@ -192,7 +192,9 @@
                           "stopping":  "Deteniéndose...",
                           "start":  "Iniciar",
                           "stop":  "Detener",
-                          "provisioning":  "Provisioning"
+                          "provisioning":  "Provisioning",
+                          "module_missing":  "Módulo no encontrado",
+                          "module_missing_detail":  "No se encontró el módulo '{{module}}'. Instale el módulo o elimine esta instancia."
                       },
     "server_actions":  {
                            "delete_confirm_title":  "Eliminar Servidor",
@@ -416,6 +418,7 @@
                    "invalid_token":  "Token de Discord inválido. Por favor verifique su token.",
                    "cloud_token_not_found":  "Token de autenticación de nodo faltante. Vuelva a emparejar en la configuración de la nube.",
                    "unknown_error":  "Ocurrió un error desconocido",
+                          "generic_error":  "Ocurrió un error inesperado.",
                    "port_conflict":  "Conflicto de puerto",
                    "port_conflict_detail":  "El puerto {{port}} ya está en uso por la instancia \u0027{{name}}\u0027",
                    "port_conflict_force_stop_toast":  "🚫 {{stopped}} fue detenido forzosamente — el puerto {{port}} conflicta con {{existing}}"

@@ -595,8 +595,12 @@ impl Supervisor {
                     }
                 }
 
-                // 프로세스 종료 대기 (force kill 시 5초, graceful 시 30초)
-                let timeout_secs = if effective_force { 5 } else { 30 };
+                // 프로세스 종료 대기 (force kill 시 5초, graceful 시 모듈 설정값 또는 기본 30초)
+                let module_stop_timeout = self.module_loader.get_module(module_name)
+                    .ok()
+                    .and_then(|m| m.metadata.stop_timeout)
+                    .unwrap_or(30);
+                let timeout_secs = if effective_force { 5 } else { module_stop_timeout };
                 let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(timeout_secs);
                 loop {
                     if !managed.is_running() {
@@ -1488,7 +1492,11 @@ impl Supervisor {
     }
 
     /// 백그라운드 프로세스 모니터링 (주기적 실행)
-    pub async fn monitor_processes(&mut self) -> Result<()> {
+    ///
+    /// `process_snapshot`은 write lock 획득 전에 미리 스캔한 프로세스 목록입니다.
+    /// 이를 통해 비용이 큰 시스템 콜(sysinfo)이 write lock 밖에서 실행되어
+    /// GUI read 요청에 대한 블로킹을 최소화합니다.
+    pub async fn monitor_processes(&mut self, process_snapshot: &[crate::process_monitor::RunningProcess]) -> Result<()> {
         use crate::process_monitor;
 
         // Clean up dead managed processes and their PID files
@@ -1503,11 +1511,11 @@ impl Supervisor {
         let mut auto_detected_count = 0;
         
         for instance in instances {
-            // 이미 추적 중이면 상태만 확인
+            // 이미 추적 중이면 상태만 확인 (snapshot 기반 — 시스템 콜 없음)
             if let Ok(pid) = self.tracker.get_pid(&instance.id) {
                 tracked_count += 1;
                 
-                if !process_monitor::is_running_async(pid).await {
+                if !process_monitor::is_running_in(process_snapshot, pid) {
                     tracing::warn!("Process {} for instance '{}' is no longer running, removing from tracker", pid, instance.name);
                     // tracker에서 제거하여 다음 사이클에서 다시 감지할 수 있도록 함
                     if let Err(e) = self.tracker.untrack(&instance.id) {
@@ -1552,10 +1560,11 @@ impl Supervisor {
                         .map(|m| m.metadata.cmd_patterns.clone())
                         .unwrap_or_default();
 
+                    // snapshot 기반 검색 — 시스템 콜 없음
                     let processes = if cmd_patterns.is_empty() {
-                        process_monitor::find_by_name_async(process_name).await
+                        process_monitor::find_by_name_in(process_snapshot, process_name)
                     } else {
-                        process_monitor::find_by_name_and_cmd_async(process_name, &cmd_patterns).await
+                        process_monitor::find_by_name_and_cmd_in(process_snapshot, process_name, &cmd_patterns)
                     };
 
                     if let Some(process) = processes.first() {
@@ -1731,7 +1740,8 @@ mod tests {
         let mut supervisor = Supervisor::new("./modules");
         
         // 모니터링이 에러 없이 실행되어야 함
-        let result = supervisor.monitor_processes().await;
+        let snapshot = crate::process_monitor::get_running_processes();
+        let result = supervisor.monitor_processes(&snapshot).await;
         assert!(result.is_ok());
     }
 }

@@ -222,7 +222,7 @@ function buildActivePortEntries(ports, supported) {
 export function checkAliasConflicts(targetModule, targetAliases, moduleAliasesPerModule, discordModuleAliases) {
     const conflicts = [];
 
-    if (!targetAliases || targetAliases.length === 0) return conflicts;
+    if (!Array.isArray(targetAliases) || targetAliases.length === 0) return conflicts;
 
     // 다른 모든 모듈의 별명을 수집
     const otherAliasMap = {}; // alias(lower) → moduleName

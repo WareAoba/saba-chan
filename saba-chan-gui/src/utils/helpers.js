@@ -154,7 +154,8 @@ export function createTranslateError(t) {
             return t('errors.process_crashed');
         }
 
-        // Fallback: return original message
-        return msg;
+        // Fallback: log the original for debugging, return generic message
+        console.warn('[translateError] Unmatched error message:', msg);
+        return t('errors.generic_error', { defaultValue: 'An unexpected error occurred.' });
     };
 }

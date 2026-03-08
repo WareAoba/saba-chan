@@ -69,7 +69,7 @@ export function AddInstanceMigration({
                 return;
             }
 
-            const fileLower = result.files.map((f) => f.toLowerCase());
+            const fileLower = (result.files || []).map((f) => f.toLowerCase());
 
             // 각 로컬 모듈의 dir_signatures 와 매치
             let matched = null;

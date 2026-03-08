@@ -501,6 +501,8 @@ pub struct IPCServer {
     pub extension_init_tracker: ExtensionInitTracker,
     /// 인스턴스별 RCON 연결 풀 (연결 재사용)
     pub rcon_pool: Arc<crate::protocol::rcon_pool::RconPool>,
+    /// Graceful shutdown 토큰 — 취소 시 데몬 전체 종료
+    pub shutdown_token: tokio_util::sync::CancellationToken,
 }
 
 impl IPCServer {
@@ -528,6 +530,7 @@ impl IPCServer {
             extension_status_cache: ExtensionStatusCache::new(30), // 30초 TTL (Docker/WSL 지연 대비)
             extension_init_tracker: ExtensionInitTracker::new(),
             rcon_pool: Arc::new(crate::protocol::rcon_pool::RconPool::new()),
+            shutdown_token: tokio_util::sync::CancellationToken::new(),
         }
     }
 
@@ -632,7 +635,10 @@ impl IPCServer {
                     }
                     tracing::info!("IPC listening on http://{}", self.listen_addr);
 
-                    axum::serve(listener, router).await?;
+                    let shutdown_signal = self.shutdown_token.clone();
+                    axum::serve(listener, router)
+                        .with_graceful_shutdown(async move { shutdown_signal.cancelled().await })
+                        .await?;
                     return Ok(());
                 }
                 Err(e) => {
@@ -683,6 +689,7 @@ mod tests {
             protocols: None,
             settings: None,
             syntax_highlight: None,
+            install: None,
             dir_signatures: vec!["PalServer.exe".to_string()],
             commands: Some(crate::supervisor::module_loader::ModuleCommands {
                 fields: vec![
@@ -723,6 +730,7 @@ mod tests {
             protocols: None,
             settings: None,
             syntax_highlight: None,
+            install: None,
             dir_signatures: vec![],
             commands: None,
         };
@@ -747,6 +755,7 @@ mod tests {
                     protocols: None,
                     settings: None,
                     syntax_highlight: None,
+                    install: None,
                     dir_signatures: vec![],
                     commands: Some(crate::supervisor::module_loader::ModuleCommands {
                         fields: vec![

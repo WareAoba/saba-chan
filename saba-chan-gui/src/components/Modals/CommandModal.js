@@ -3,11 +3,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import './Modals.css';
 import { useModalClose } from '../../hooks/useModalClose';
+import { createTranslateError } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { useUIStore } from '../../stores/useUIStore';
 
 function CommandModal({ server, modules, onClose, onExecute }) {
     const { t } = useTranslation('gui');
+    const translateError = createTranslateError(t);
     const { isClosing, requestClose } = useModalClose(onClose);
     const [commandInput, setCommandInput] = useState('');
     const [loading, setLoading] = useState(false);
@@ -188,7 +190,7 @@ function CommandModal({ server, modules, onClose, onExecute }) {
                 command: cmdText,
                 status: 'failure',
                 message: t('command_modal.execution_failed'),
-                detail: error.message,
+                detail: translateError(error.message),
                 time: new Date().toLocaleTimeString(),
             };
             pushHistory(server.id, entry);

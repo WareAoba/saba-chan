@@ -46,7 +46,8 @@
     "status_check": "📊 **{{name}}** 狀態：{{status}} {{pid_info}}",
     "not_found": "❌ 找不到模組 \"{{alias}}\" 的伺服器（{{resolved}}）",
     "not_running": "❌ **{{name}}**：{{error}}",
-    "not_running_default": "伺服器未執行。請先啟動伺服器"
+    "not_running_default": "伺服器未執行。請先啟動伺服器",
+    "module_missing": "❌ 模組 '{{module}}' 未安裝。此伺服器無法控制。"
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` 執行中...",
@@ -146,6 +147,7 @@
     "invalid_url": "無法取得影片資訊",
     "no_results": "沒有搜尋結果",
     "search_failed": "搜尋失敗",
+    "play_error": "播放失敗。",
     "search_results": "🔍 **搜尋: {{query}}**",
     "search_choose": "🎵 請輸入編號 (1~5) | `c` 取消",
     "play_usage": "🎵 用法: `{{prefix}} music play <YouTube連結或搜尋關鍵字>`",

@@ -192,7 +192,9 @@
                           "stopping":  "Остановка...",
                           "start":  "Запустить",
                           "stop":  "Остановить",
-                          "provisioning":  "Provisioning"
+                          "provisioning":  "Provisioning",
+                          "module_missing":  "Модуль не найден",
+                          "module_missing_detail":  "Модуль '{{module}}' не найден. Установите модуль или удалите этот экземпляр."
                       },
     "server_actions":  {
                            "delete_confirm_title":  "Удалить сервер",
@@ -416,6 +418,7 @@
                    "invalid_token":  "Недействительный токен Discord. Пожалуйста, проверьте ваш токен.",
                    "cloud_token_not_found":  "Отсутствует токен аутентификации узла. Повторно выполните сопряжение в параметрах облака.",
                    "unknown_error":  "Произошла неизвестная ошибка",
+                          "generic_error":  "Произошла непредвиденная ошибка.",
                    "port_conflict":  "Конфликт портов",
                    "port_conflict_detail":  "Порт {{port}} уже используется экземпляром \u0027{{name}}\u0027",
                    "port_conflict_force_stop_toast":  "🚫 {{stopped}} был принудительно остановлен — порт {{port}} конфликтует с {{existing}}"

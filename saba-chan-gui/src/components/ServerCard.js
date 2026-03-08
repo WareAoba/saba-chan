@@ -129,6 +129,7 @@ export function ServerCard({
     };
 
     const moduleData = modules.find((m) => m.name === server.module);
+    const moduleMissing = !moduleData;
     const gameName = t(`mod_${server.module}:module.display_name`, {
         defaultValue: moduleData?.game_name || server.module,
     });
@@ -139,7 +140,7 @@ export function ServerCard({
             ref={(el) => {
                 cardRefs.current[server.name] = el;
             }}
-            className={clsx('server-card', { expanded: server.expanded, dragging: draggedName === server.name })}
+            className={clsx('server-card', { expanded: server.expanded, dragging: draggedName === server.name, 'module-missing': moduleMissing })}
             onPointerDown={(e) => handleCardPointerDown(e, index)}
             onContextMenu={onContextMenu}
         >
@@ -227,7 +228,15 @@ export function ServerCard({
                 {/* 익스텐션 제공 헤더 게이지 (예: Docker 메모리) */}
                 <ExtensionSlot slotId="ServerCard.headerGauge" server={server} />
 
-                {server.provisioning ? (
+                {moduleMissing ? (
+                    <span className="status-button status-module-missing" title={t('server_status.module_missing', { defaultValue: 'Module not found' })}>
+                        <span className="status-label">
+                            <Icon name="alertCircle" size="sm" />{' '}
+                            {t('server_status.module_missing', { defaultValue: 'Module not found' })}
+                        </span>
+                        <span className="status-dot"></span>
+                    </span>
+                ) : server.provisioning ? (
                     <span className="status-button status-provisioning" title={t('server_status.provisioning', { defaultValue: 'Provisioning' })}>
                         <span className="status-label">
                             <Icon name="refresh" size="sm" className="spin" />{' '}
@@ -312,7 +321,16 @@ export function ServerCard({
             )}
 
             <div className="server-card-collapsible">
-                {!server.provisioning && (
+                {moduleMissing && (
+                    <div className="module-missing-banner">
+                        <Icon name="alertTriangle" size="sm" />
+                        <span>{t('server_status.module_missing_detail', {
+                            module: server.module,
+                            defaultValue: `Module '${server.module}' could not be found. Install the module or remove this instance.`,
+                        })}</span>
+                    </div>
+                )}
+                {!server.provisioning && !moduleMissing && (
                     <>
                         <div className="server-details">
                             {/* 익스텐션 제공 확장 통계 (예: Docker CPU/메모리 게이지) */}
@@ -390,7 +408,7 @@ export function ServerCard({
                         </div>
 
                         <div className="server-actions">
-                            <button className="action-icon" onClick={() => handleOpenSettings(server)} title={t('context_menu.settings')}>
+                            <button className="action-icon" onClick={() => handleOpenSettings(server)} title={t('context_menu.settings')} disabled={moduleMissing}>
                                 <Icon name="settings" size="md" />
                             </button>
                             {server.status === 'running' ? (
@@ -420,7 +438,11 @@ export function ServerCard({
                                                             })}
                                                             onClick={async () => {
                                                                 if (isPopoutActive) {
-                                                                    await window.api.consoleFocusPopout(server.id);
+                                                                    try {
+                                                                        await window.api.consoleFocusPopout(server.id);
+                                                                    } catch (err) {
+                                                                        console.error('[ServerCard] consoleFocusPopout failed:', err.message);
+                                                                    }
                                                                     return;
                                                                 }
                                                                 if (isOpen) closeConsole(server.id);

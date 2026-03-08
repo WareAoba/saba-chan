@@ -79,11 +79,12 @@ pub async fn client_unregister(
 
         // shutdown=true && 남은 클라이언트 0 → 데몬 자체 종료
         if wants_shutdown && count == 0 {
-            tracing::info!("[Shutdown] Voluntary shutdown requested via unregister — exiting");
+            tracing::info!("[Shutdown] Voluntary shutdown requested via unregister — initiating graceful shutdown");
             // 별도 태스크에서 짧은 딜레이 후 종료 (응답을 먼저 보내기 위해)
-            tokio::spawn(async {
+            let token = state.shutdown_token.clone();
+            tokio::spawn(async move {
                 tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-                std::process::exit(0);
+                token.cancel();
             });
         }
 

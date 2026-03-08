@@ -1189,6 +1189,9 @@ document.getElementById('btn-lang')?.addEventListener('click', (e) => {
 // ═══════════════════════════════════════════════════════
 
 (async function init() {
+    // CSS가 적용된 후 윈도우를 표시하여 흰 화면 방지 (tauri.conf.json: visible=false)
+    getCurrentWindow().show();
+
     // 테마 감지 (OS 설정 기본값)
     applyTheme(getSystemTheme());
 

@@ -1010,6 +1010,53 @@ span[style*="--icon-loader"] svg,
     animation: pulse-dot-blue 1s infinite;
 }
 
+/* 모듈 미존재 상태 */
+.server-card.module-missing {
+    opacity: 0.55;
+    pointer-events: auto;
+}
+
+.server-card.module-missing .server-card-header {
+    cursor: pointer;
+}
+
+.server-card.module-missing .game-icon-container {
+    filter: grayscale(1);
+}
+
+.status-button.status-module-missing {
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #ef4444;
+    cursor: default;
+    pointer-events: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.status-button.status-module-missing .status-dot {
+    background-color: #ef4444;
+}
+
+.module-missing-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 12px;
+    margin-top: 4px;
+    margin-bottom: 8px;
+    border-radius: 6px;
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    color: #ef4444;
+    font-size: 12px;
+    line-height: 1.4;
+}
+.module-missing-banner svg {
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
 /* Update Available 상태 (보라색) */
 .status-button.status-update-available {
     border-color: rgba(139, 92, 246, 0.5);

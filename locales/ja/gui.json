@@ -135,7 +135,9 @@
                           "stopping":  "停止中...",
                           "start":  "起動",
                           "stop":  "停止",
-                          "provisioning":  "プロビジョニング中"
+                          "provisioning":  "プロビジョニング中",
+                          "module_missing":  "モジュールが見つかりません",
+                          "module_missing_detail":  "モジュール '{{module}}' が見つかりません。モジュールをインストールするか、このインスタンスを削除してください。"
                       },
     "server_actions":  {
                            "delete_confirm_title":  "サーバーを削除",
@@ -359,6 +361,7 @@
                    "invalid_token":  "無効なDiscordトークン。トークンを確認してください。",
                    "cloud_token_not_found":  "ノードトークンが見つかりません。クラウド設定から再ペアリングしてください。",
                    "unknown_error":  "不明なエラーが発生しました",
+                          "generic_error":  "予期しないエラーが発生しました。",
                    "port_conflict":  "ポート競合",
                    "port_conflict_detail":  "ポート {{port}} はインスタンス \u0027{{name}}\u0027 で既に使用されています",
                    "port_conflict_force_stop_toast":  "🚫 {{stopped}} が強制停止されました — ポート {{port}} が {{existing}} と競合しています"

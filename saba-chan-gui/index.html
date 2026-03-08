@@ -3,6 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- JS 번들 로드 전에 배경색을 미리 적용하여 흰 화면 플래시 방지 -->
+    <style>
+      html, body { margin: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+      @media (prefers-color-scheme: dark) {
+        html, body { background: linear-gradient(135deg, #1a1a1f 0%, #141418 100%); }
+      }
+    </style>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&family=Noto+Sans+KR:wght@100..900&family=Noto+Sans+JP:wght@100..900&display=swap" rel="stylesheet" />

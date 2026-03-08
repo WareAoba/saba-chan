@@ -42,6 +42,7 @@ ureq = { version = "2.9", default-features = true, features = ["json", "tls"] }
 base64 = "0.21"
 sysinfo = "0.30"
 socket2 = "0.5"
+tokio-util = "0.7"
 saba-chan-updater-lib = { path = "updater" }
 
 [target.'cfg(windows)'.dependencies]

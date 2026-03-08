@@ -823,6 +823,9 @@ async function checkAfterUpdate() {
 // ─── 초기 로드 ──────────────────────────────────────────
 
 (async function init() {
+    // CSS가 적용된 후 윈도우를 표시하여 흰 화면 방지 (tauri.conf.json: visible=false)
+    getCurrentWindow().show();
+
     await initLocalization();
 
     // 1. Apply 모드 확인 (--apply로 실행된 경우)

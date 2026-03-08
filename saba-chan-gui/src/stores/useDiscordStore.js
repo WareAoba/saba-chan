@@ -319,15 +319,19 @@ export const useDiscordStore = create((set, get) => ({
             const handler = (botConfig) => {
                 console.log('[Bot Relaunch] Received signal to relaunch bot with new language settings');
                 setTimeout(async () => {
-                    const state = get();
-                    const configWithToken = { ...botConfig, token: state._discordTokenRef || state.discordToken };
-                    const result = await window.api.discordBotStart(configWithToken);
-                    if (result.error) {
-                        console.error('[Bot Relaunch] Failed to relaunch bot:', result.error);
-                    } else {
-                        console.log('[Bot Relaunch] Bot relaunched successfully');
-                        set({ discordBotStatus: 'running' });
-                        safeShowToast(_t('discord_bot.relaunched_toast'), 'discord', 3000);
+                    try {
+                        const state = get();
+                        const configWithToken = { ...botConfig, token: state._discordTokenRef || state.discordToken };
+                        const result = await window.api.discordBotStart(configWithToken);
+                        if (result.error) {
+                            console.error('[Bot Relaunch] Failed to relaunch bot:', result.error);
+                        } else {
+                            console.log('[Bot Relaunch] Bot relaunched successfully');
+                            set({ discordBotStatus: 'running' });
+                            safeShowToast(_t('discord_bot.relaunched_toast'), 'discord', 3000);
+                        }
+                    } catch (err) {
+                        console.error('[Bot Relaunch] Unhandled error:', err.message);
                     }
                 }, 1000);
             };

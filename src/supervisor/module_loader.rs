@@ -21,6 +21,10 @@ pub struct ModuleMetadata {
     pub icon: Option<String>,  // 아이콘 파일명 (icon.png 등)
     #[serde(default)]
     pub stop_command: Option<String>,  // config.stop_command (e.g. "stop" for Minecraft)
+    /// Graceful stop 타임아웃 (초). 설정하지 않으면 기본값 30초 사용.
+    /// 게임 서버마다 종료 시간이 다르므로 모듈별로 설정.
+    #[serde(default)]
+    pub stop_timeout: Option<u64>,  // config.stop_timeout
     #[serde(default)]
     pub log_pattern: Option<String>,  // regex pattern for log level extraction (e.g. "/(?P<level>INFO|WARN|ERROR|DEBUG)/")
     #[serde(default)]
@@ -301,6 +305,9 @@ struct ConfigSection {
     default_port: Option<u16>,
     #[serde(default)]
     stop_command: Option<String>,
+    /// Graceful stop 타임아웃 (초). 예: Minecraft=30, ARK=120
+    #[serde(default)]
+    stop_timeout: Option<u64>,
     // Allow additional unknown fields to pass through
     #[serde(flatten)]
     _extra: std::collections::HashMap<String, toml::Value>,
@@ -608,6 +615,7 @@ impl ModuleToml {
             executable_path: self.config.as_ref().and_then(|c| c.executable_path.clone()),
             server_executable: self.config.as_ref().and_then(|c| c.server_executable.clone()),
             stop_command: self.config.as_ref().and_then(|c| c.stop_command.clone()),
+            stop_timeout: self.config.as_ref().and_then(|c| c.stop_timeout),
             interaction_mode: self.protocols.as_ref().and_then(|p| p.interaction_mode.clone()),
             protocols_supported: self.protocols.as_ref().and_then(|p| p.supported.clone()),
             protocols_default: self.protocols.as_ref().and_then(|p| p.default.clone()),

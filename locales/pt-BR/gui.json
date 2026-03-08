@@ -192,7 +192,9 @@
                           "stopping":  "Parando...",
                           "start":  "Iniciar",
                           "stop":  "Parar",
-                          "provisioning":  "Provisioning"
+                          "provisioning":  "Provisioning",
+                          "module_missing":  "Módulo não encontrado",
+                          "module_missing_detail":  "O módulo '{{module}}' não foi encontrado. Instale o módulo ou exclua esta instância."
                       },
     "server_actions":  {
                            "delete_confirm_title":  "Deletar Servidor",
@@ -416,6 +418,7 @@
                    "invalid_token":  "Token de Discord inválido. Verifique seu token.",
                    "cloud_token_not_found":  "Token de autenticação de nó ausente. Fazer novo emparelhamento nas configurações de nuvem.",
                    "unknown_error":  "Ocorreu um erro desconhecido",
+                          "generic_error":  "Ocorreu um erro inesperado.",
                    "port_conflict":  "Conflito de porta",
                    "port_conflict_detail":  "A porta {{port}} já está em uso pela instância \u0027{{name}}\u0027",
                    "port_conflict_force_stop_toast":  "🚫 {{stopped}} foi parado forçosamente — a porta {{port}} conflita com {{existing}}"

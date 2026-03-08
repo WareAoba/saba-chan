@@ -158,7 +158,7 @@ export function useDragReorder(servers, setServers) {
                 prev.forEach((s) => {
                     byName[s.name] = s;
                 });
-                return order.map((n) => byName[n]);
+                return order.map((n) => byName[n]).filter(Boolean);
             });
 
             // Persist order to backend

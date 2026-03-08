@@ -14,13 +14,17 @@ const loadTranslations = () => {
         const botPath = path.join(localesPath, lang, 'bot.json');
         
         if (fs.existsSync(commonPath) && fs.existsSync(botPath)) {
-            const common = JSON.parse(fs.readFileSync(commonPath, 'utf8'));
-            const bot = JSON.parse(fs.readFileSync(botPath, 'utf8'));
+            try {
+                const common = JSON.parse(fs.readFileSync(commonPath, 'utf8'));
+                const bot = JSON.parse(fs.readFileSync(botPath, 'utf8'));
             
-            resources[lang] = {
-                common: common,
-                bot: bot,
-            };
+                resources[lang] = {
+                    common: common,
+                    bot: bot,
+                };
+            } catch (e) {
+                console.warn(`[i18n] Failed to parse locale ${lang}:`, e.message);
+            }
         }
     });
     

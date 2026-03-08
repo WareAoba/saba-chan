@@ -192,7 +192,9 @@
                           "stopping":  "Wird beendet...",
                           "start":  "Starten",
                           "stop":  "Stoppen",
-                          "provisioning":  "Provisioning"
+                          "provisioning":  "Provisioning",
+                          "module_missing":  "Modul nicht gefunden",
+                          "module_missing_detail":  "Das Modul '{{module}}' wurde nicht gefunden. Bitte installieren Sie das Modul oder löschen Sie diese Instanz."
                       },
     "server_actions":  {
                            "delete_confirm_title":  "Server löschen",
@@ -416,6 +418,7 @@
                    "invalid_token":  "Ungültiges Discord-Token. Bitte überprüfen Sie Ihr Token.",
                    "cloud_token_not_found":  "Fehlendes Node-Authentifizierungstoken. Bitte führen Sie ein erneutes Pairing in den Cloud-Einstellungen durch.",
                    "unknown_error":  "Ein unbekannter Fehler ist aufgetreten",
+                          "generic_error":  "Ein unerwarteter Fehler ist aufgetreten.",
                    "port_conflict":  "Port-Konflikt",
                    "port_conflict_detail":  "Port {{port}} wird bereits von Instanz \u0027{{name}}\u0027 verwendet",
                    "port_conflict_force_stop_toast":  "🚫 {{stopped}} wurde zwangsgestoppt — Port {{port}} kollidiert mit {{existing}}"

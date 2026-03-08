@@ -190,7 +190,9 @@
     "stopping": "Stopping...",
     "provisioning": "Provisioning",
     "start": "Start",
-    "stop": "Stop"
+    "stop": "Stop",
+    "module_missing": "Module not found",
+    "module_missing_detail": "Module '{{module}}' could not be found. Install the module or remove this instance."
   },
   "server_actions": {
     "delete_confirm_title": "Delete Server",
@@ -414,6 +416,7 @@
     "invalid_token": "Invalid Discord token. Please check your token.",
     "cloud_token_not_found": "Node token not found. Please re-pair in Cloud settings.",
     "unknown_error": "An unknown error occurred",
+    "generic_error": "An unexpected error occurred.",
     "port_conflict": "Port Conflict",
     "port_conflict_detail": "Port {{port}} is already used by instance '{{name}}'",
     "port_conflict_force_stop_toast": "🚫 {{stopped}} was force-stopped — port {{port}} conflicts with {{existing}}"

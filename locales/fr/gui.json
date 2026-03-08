@@ -192,7 +192,9 @@
                           "stopping":  "Arrêt en cours...",
                           "start":  "Démarrer",
                           "stop":  "Arrêter",
-                          "provisioning":  "Provisionnement"
+                          "provisioning":  "Provisionnement",
+                          "module_missing":  "Module introuvable",
+                          "module_missing_detail":  "Le module '{{module}}' est introuvable. Veuillez installer le module ou supprimer cette instance."
                       },
     "server_actions":  {
                            "delete_confirm_title":  "Supprimer le serveur",
@@ -416,6 +418,7 @@
                    "invalid_token":  "Jeton Discord invalide. Veuillez vérifier votre jeton.",
                    "cloud_token_not_found":  "Jeton d\u0027authentification de nœud manquant. Veuillez mélanger à nouveau les paramètres cloud.",
                    "unknown_error":  "Une erreur inconnue s\u0027est produite",
+                   "generic_error":  "Une erreur inattendue s\u0027est produite.",
                    "port_conflict":  "Conflit de port",
                    "port_conflict_detail":  "Le port {{port}} est déjà utilisé par l\u0027instance \u0027{{name}}\u0027",
                    "port_conflict_force_stop_toast":  "🚫 {{stopped}} a été arrêté de force — le port {{port}} est en conflit avec {{existing}}"

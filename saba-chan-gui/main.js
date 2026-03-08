@@ -1264,6 +1264,7 @@ function createWindow() {
         minWidth: 780,
         minHeight: 840,
         show: false, // 준비될 때까지 보이지 않음
+        backgroundColor: '#667eea', // CSS 로드 전 흰 화면 방지 (브랜드 그라디언트 시작색)
         frame: false, // Windows 기본 프레임 제거
         icon: path.join(__dirname, 'build', 'icon.png'),
         webPreferences: {
@@ -3452,6 +3453,19 @@ ipcMain.handle('nodeToken:load', async () => {
 // 로그 파일 경로 반환
 ipcMain.handle('logs:getPath', async () => {
     return logFilePath || '로그 파일 없음';
+});
+
+// 외부 브라우저로 URL 열기
+ipcMain.handle('shell:openExternal', async (_event, url) => {
+    if (!url || typeof url !== 'string') {
+        return { error: 'URL이 지정되지 않았습니다' };
+    }
+    try {
+        await shell.openExternal(url);
+        return { success: true };
+    } catch (err) {
+        return { error: err.message };
+    }
 });
 
 // 파일 탐색기로 폴더 열기

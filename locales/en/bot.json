@@ -46,7 +46,8 @@
     "status_check": "📊 **{{name}}** status: {{status}} {{pid_info}}",
     "not_found": "❌ No server found for module \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
-    "not_running_default": "Server is not running. Please start the server first"
+    "not_running_default": "Server is not running. Please start the server first",
+    "module_missing": "❌ Module '{{module}}' is not installed. This server cannot be controlled."
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` executing...",
@@ -146,6 +147,7 @@
     "invalid_url": "Could not retrieve video info",
     "no_results": "No results found",
     "search_failed": "Search failed",
+    "play_error": "Failed to play track.",
     "search_results": "🔍 **Search: {{query}}**",
     "search_choose": "🎵 Enter a number (1~5) | `c` Cancel",
     "play_usage": "🎵 Usage: `{{prefix}} music play <YouTube URL or search query>`",

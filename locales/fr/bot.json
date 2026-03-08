@@ -46,7 +46,8 @@
     "status_check": "📊 Statut de **{{name}}**: {{status}} {{pid_info}}",
     "not_found": "❌ Aucun serveur trouvé pour le module \"{{alias}}\" ({{resolved}})",
     "not_running": "❌ **{{name}}**: {{error}}",
-    "not_running_default": "Le serveur n'est pas en cours d'exécution. Veuillez d'abord démarrer le serveur"
+    "not_running_default": "Le serveur n'est pas en cours d'exécution. Veuillez d'abord démarrer le serveur",
+    "module_missing": "❌ Le module '{{module}}' n'est pas installé. Ce serveur ne peut pas être contrôlé."
   },
   "command": {
     "executing": "⏳ **{{name}}** - `{{command}}` en cours d'exécution...",
@@ -146,6 +147,7 @@
     "invalid_url": "Impossible de récupérer les informations de la vidéo",
     "no_results": "Aucun résultat trouvé",
     "search_failed": "Échec de la recherche",
+    "play_error": "Échec de la lecture du morceau.",
     "search_results": "🔍 **Recherche : {{query}}**",
     "search_choose": "🎵 Entrez un numéro (1~5) | `c` Annuler",
     "play_usage": "🎵 Utilisation : `{{prefix}} music play <URL YouTube ou recherche>`",

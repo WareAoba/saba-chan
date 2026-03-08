@@ -57,6 +57,7 @@ async function isModuleMounted(moduleAlias, guildId) {
  * @param {import('discord.js').Message} message
  */
 async function process(message) {
+    try {
     if (message.author.bot) return;
 
     // 중복 메시지 처리 방지
@@ -125,6 +126,12 @@ async function process(message) {
         return;
     }
     await handleModuleCommand(message, firstArg, secondArg, args.slice(2), guildId);
+    } catch (e) {
+        console.error('[Processor] Unhandled process error:', e.message);
+        try {
+            await message.reply(`❌ ${i18n.t('bot:errors.error_title')}`);
+        } catch (_) { /* reply itself failed, nothing more to do */ }
+    }
 }
 
 // ──────────────────────────────────────────
@@ -195,7 +202,8 @@ async function handleListCommand(message, guildId) {
             await message.reply(`${listTitle}\n${list}`);
         }
     } catch (error) {
-        await message.reply(`❌ ${i18n.t('bot:messages.command_error')}: ${error.message}`);
+        console.error('[Processor] handleListCommand error:', error.message);
+        await message.reply(`❌ ${i18n.t('bot:messages.command_error')}`).catch(() => {});
     }
 }
 
@@ -314,6 +322,16 @@ async function handleModuleCommand(message, moduleAlias, commandAlias, extraArgs
             return;
         }
 
+        // ── 모듈 존재 여부 확인 ──
+        const modMeta = resolver.getModuleMeta(server.module, guildId);
+        if (!modMeta) {
+            await message.reply(i18n.t('bot:server.module_missing', {
+                module: server.module,
+                defaultValue: `❌ Module '${server.module}' is not installed. This server cannot be controlled.`,
+            }));
+            return;
+        }
+
         // ── 멤버 권한 체크 (차단 목록 기반) ──
         const userId = message.author.id;
         if (resolver.isMemberManaged(guildId, userId)) {
@@ -369,16 +387,16 @@ async function handleModuleCommand(message, moduleAlias, commandAlias, extraArgs
                 500: moduleErrors.internal_server_error || i18n.t('bot:errors.internal_server_error'),
                 503: moduleErrors.server_not_running || i18n.t('bot:errors.service_unavailable'),
             };
-            errorMsg = statusErrors[status] || (data?.error || error.message);
+            errorMsg = statusErrors[status] || (data?.error ? i18n.t('bot:errors.error_title') : i18n.t('bot:errors.error_title'));
         } else if (error.code) {
             const networkErrors = {
                 'ECONNREFUSED': moduleErrors.connection_refused || i18n.t('bot:errors.connection_refused'),
                 'ETIMEDOUT': moduleErrors.timeout || i18n.t('bot:errors.timeout'),
                 'ENOTFOUND': i18n.t('bot:errors.host_not_found'),
             };
-            errorMsg = networkErrors[error.code] || error.message;
+            errorMsg = networkErrors[error.code] || i18n.t('bot:errors.error_title');
         } else {
-            errorMsg = error.message;
+            errorMsg = i18n.t('bot:errors.error_title');
         }
 
         await message.reply(`❌ ${i18n.t('bot:errors.error_title')}: ${errorMsg}`).catch(replyErr => {
@@ -409,7 +427,7 @@ async function executeStart(message, server, moduleName, guildId) {
         await statusMsg.edit(completeMsg);
     } catch (e) {
         console.error('[Processor] executeStart error:', e.message);
-        await statusMsg.edit(`❌ ${i18n.t('bot:errors.error_title')}: ${e.message}`).catch(() => {});
+        await statusMsg.edit(`❌ ${i18n.t('bot:errors.error_title')}`).catch(() => {});
     }
 }
 
@@ -422,7 +440,7 @@ async function executeStop(message, server) {
         await statusMsg.edit(completeMsg);
     } catch (e) {
         console.error('[Processor] executeStop error:', e.message);
-        await statusMsg.edit(`❌ ${i18n.t('bot:errors.error_title')}: ${e.message}`).catch(() => {});
+        await statusMsg.edit(`❌ ${i18n.t('bot:errors.error_title')}`).catch(() => {});
     }
 }
 
@@ -468,7 +486,7 @@ async function executeRawCommand(message, server, moduleName, secondArg, extraAr
         }
     } catch (error) {
         console.error('[Processor] Raw command error:', error.message);
-        await message.reply(i18n.t('bot:messages.raw_command_error', { error: error.response?.data?.error || error.message }));
+        await message.reply(i18n.t('bot:messages.raw_command_error', { error: i18n.t('bot:errors.error_title') }));
     }
 }
 

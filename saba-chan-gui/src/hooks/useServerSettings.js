@@ -49,7 +49,7 @@ export function useServerSettings({
     const [resettingServer, setResettingServer] = useState(false);
 
     // ── Alias editing state ─────────────────────────────────
-    const [editingModuleAliases, setEditingModuleAliases] = useState({});
+    const [editingModuleAliases, setEditingModuleAliases] = useState([]);
     const [editingCommandAliases, setEditingCommandAliases] = useState({});
 
     // ── Close animation ─────────────────────────────────────
@@ -287,7 +287,7 @@ export function useServerSettings({
 
                             if (installResult.error || installResult.success === false) {
                                 setProgressBar(null);
-                                safeShowToast(installResult.error || installResult.message, 'error', 4000);
+                                safeShowToast(translateError(installResult.error || installResult.message), 'error', 4000);
                                 setVersionInstalling(false);
                                 return;
                             }
@@ -352,8 +352,8 @@ export function useServerSettings({
                             if (result?.error) {
                                 safeShowToast(
                                     t('server_settings.reset_failed', {
-                                        error: result.error,
-                                        defaultValue: `Reset failed: ${result.error}`,
+                                        error: translateError(result.error),
+                                        defaultValue: 'Reset failed',
                                     }),
                                     'error',
                                 );
@@ -386,8 +386,8 @@ export function useServerSettings({
                         } catch (err) {
                             safeShowToast(
                                 t('server_settings.reset_error', {
-                                    error: err.message,
-                                    defaultValue: `Reset error: ${err.message}`,
+                                    error: translateError(err.message),
+                                    defaultValue: 'Reset error',
                                 }),
                                 'error',
                             );

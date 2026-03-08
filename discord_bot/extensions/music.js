@@ -1125,7 +1125,7 @@ async function handlePlay(message, args, botConfig) {
         await statusMsg.edit(`❌ ${i18n.t('bot:music.no_results')}`).catch(() => {});
     } catch (e) {
         console.error('[Music] Play error:', e.message);
-        await statusMsg.edit(`❌ ${e.message}`).catch(() => {});
+        await statusMsg.edit(`❌ ${i18n.t('bot:music.play_error')}`).catch(() => {});
     }
 }
 
@@ -1225,7 +1225,7 @@ async function handleSearch(message, args, botConfig) {
         
     } catch (e) {
         console.error('[Music] Search error:', e.message);
-        await statusMsg.edit(`❌ ${e.message}`).catch(() => {});
+        await statusMsg.edit(`❌ ${i18n.t('bot:music.search_failed')}`).catch(() => {});
     }
 }
 
@@ -1233,6 +1233,10 @@ async function handleSearch(message, args, botConfig) {
  * 대기열에 추가하고 재생 시작 (공통 로직)
  */
 async function enqueueAndPlay(message, statusMsg, tracks, voiceChannel) {
+    if (!message.guild) {
+        await message.reply(i18n.t('bot:music.not_available')).catch(() => {});
+        return;
+    }
     const queue = getOrCreateQueue(message.guild.id);
     
     // 음성 채널 연결 (미연결 시)
