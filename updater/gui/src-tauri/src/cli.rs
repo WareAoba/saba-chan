@@ -4,7 +4,7 @@
 //! GUI 윈도우 없이 터미널에서 동작합니다.
 //!
 //! ## 사용법
-//! ```
+//! ```text
 //! saba-chan-updater --cli check                    # 업데이트 확인
 //! saba-chan-updater --cli check --json             # JSON 출력
 //! saba-chan-updater --cli check --notify           # OS 알림용 출력
