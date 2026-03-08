@@ -55,11 +55,15 @@ impl Supervisor {
         let instances_dir = saba_chan_updater_lib::constants::resolve_instances_dir()
             .to_string_lossy()
             .to_string();
-        
+        Self::new_with_instances_dir(modules_dir, &instances_dir)
+    }
+
+    /// 인스턴스 디렉토리를 명시적으로 지정하는 생성자 (테스트 격리용)
+    pub fn new_with_instances_dir(modules_dir: &str, instances_dir: &str) -> Self {
         Self {
             tracker: ProcessTracker::new(),
             module_loader: ModuleLoader::new(modules_dir),
-            instance_store: InstanceStore::new(&instances_dir),
+            instance_store: InstanceStore::new(instances_dir),
             managed_store: ManagedProcessStore::new(),
             stop_cooldowns: HashMap::new(),
             extension_manager: None,

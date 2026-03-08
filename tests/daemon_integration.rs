@@ -104,11 +104,19 @@ entry = "lifecycle.py"
 }
 
 /// 테스트용 IPC 서버 + Supervisor 를 부팅하여 (base_url, abort_handle)을 반환
+/// 각 테스트마다 고유한 임시 인스턴스 디렉토리를 사용하여 병렬 실행 시 격리를 보장한다.
 async fn boot_ipc() -> (String, Arc<RwLock<Supervisor>>, tokio::task::JoinHandle<()>) {
     std::env::set_var("SABA_AUTH_DISABLED", "1");
     ensure_test_module();
 
-    let supervisor = Arc::new(RwLock::new(Supervisor::new("./modules")));
+    // 테스트별 고유 임시 인스턴스 디렉토리 생성 (병렬 격리)
+    let tmp_instances = std::env::temp_dir()
+        .join(format!("saba-test-instances-{}", pick_free_port()));
+    fs::create_dir_all(&tmp_instances).expect("failed to create temp instances dir");
+
+    let supervisor = Arc::new(RwLock::new(
+        Supervisor::new_with_instances_dir("./modules", &tmp_instances.to_string_lossy()),
+    ));
     {
         let mut sup = supervisor.write().await;
         sup.initialize().await.expect("supervisor init failed");
