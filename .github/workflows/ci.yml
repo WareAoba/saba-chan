@@ -76,9 +76,12 @@ jobs:
           display_name = "Test Module"
           entry = "lifecycle.py"
           EOF
+          # Strip leading whitespace from heredoc (YAML indentation artifact)
+          sed -i 's/^[[:space:]]*//' modules/test-module/module.toml
           cat > modules/test-module/lifecycle.py << 'EOF'
           # minimal test lifecycle
           EOF
+          sed -i 's/^[[:space:]]*//' modules/test-module/lifecycle.py
 
       - name: Clippy
         run: cargo clippy --workspace -- -D warnings

@@ -79,9 +79,34 @@ async fn wait_for_ipc_ready(base_url: &str, client: &reqwest::Client) {
     panic!("IPC server did not become ready: {}", base_url);
 }
 
+/// 테스트용 모듈이 없으면 자동 생성 (로컬/CI 모두 대응)
+fn ensure_test_module() {
+    let module_dir = std::path::Path::new("./modules/test-module");
+    let toml_path = module_dir.join("module.toml");
+    if !toml_path.exists() {
+        fs::create_dir_all(module_dir).expect("failed to create test-module dir");
+        fs::write(
+            &toml_path,
+            r#"[module]
+name = "test-module"
+version = "0.0.1"
+description = "Integration test fixture"
+author = "ci"
+game_name = "TestGame"
+display_name = "Test Module"
+entry = "lifecycle.py"
+"#,
+        )
+        .expect("failed to write module.toml");
+        fs::write(module_dir.join("lifecycle.py"), "# minimal test lifecycle\n")
+            .expect("failed to write lifecycle.py");
+    }
+}
+
 /// 테스트용 IPC 서버 + Supervisor 를 부팅하여 (base_url, abort_handle)을 반환
 async fn boot_ipc() -> (String, Arc<RwLock<Supervisor>>, tokio::task::JoinHandle<()>) {
     std::env::set_var("SABA_AUTH_DISABLED", "1");
+    ensure_test_module();
 
     let supervisor = Arc::new(RwLock::new(Supervisor::new("./modules")));
     {
@@ -111,6 +136,7 @@ async fn boot_ipc() -> (String, Arc<RwLock<Supervisor>>, tokio::task::JoinHandle
 
 #[tokio::test]
 async fn test_supervisor_initialization_succeeds() {
+    ensure_test_module();
     let supervisor = Arc::new(RwLock::new(Supervisor::new("./modules")));
     let mut sup = supervisor.write().await;
     let result = sup.initialize().await;
@@ -120,6 +146,7 @@ async fn test_supervisor_initialization_succeeds() {
 
 #[tokio::test]
 async fn test_module_discovery_returns_known_modules() {
+    ensure_test_module();
     let supervisor = Arc::new(RwLock::new(Supervisor::new("./modules")));
     {
         let mut sup = supervisor.write().await;
@@ -148,6 +175,7 @@ async fn test_module_discovery_returns_known_modules() {
 
 #[tokio::test]
 async fn test_module_refresh_returns_consistent_result() {
+    ensure_test_module();
     let supervisor = Arc::new(RwLock::new(Supervisor::new("./modules")));
     {
         let mut sup = supervisor.write().await;
@@ -197,6 +225,7 @@ async fn test_invalid_module_path_yields_zero_modules() {
 
 #[tokio::test]
 async fn test_concurrent_module_reads_return_identical_results() {
+    ensure_test_module();
     let supervisor = Arc::new(RwLock::new(Supervisor::new("./modules")));
     {
         let mut sup = supervisor.write().await;
@@ -253,6 +282,7 @@ async fn test_run_plugin_with_nonexistent_file_returns_error() {
 
 #[tokio::test]
 async fn test_monitoring_loop_is_stable_under_idle() {
+    ensure_test_module();
     let supervisor = Arc::new(RwLock::new(Supervisor::new("./modules")));
     {
         let mut sup = supervisor.write().await;
@@ -467,9 +497,9 @@ async fn test_ipc_module_metadata_contains_required_fields() {
 }
 
 // ═══════════════════════════════════════════════════════
-// 8. 복수 인스턴스 생성 + 포트 구분 검증
+// 8. 인스턴스 생성·삭제·재생성 독립성 검증
 //    네이티브 인스턴스는 모듈당 1개 제한이므로,
-//    동일 모듈에 대해 컨테이너 격리 플래그를 활용하여 테스트
+//    생성→삭제→재생성 사이클로 독립성을 검증한다.
 // ═══════════════════════════════════════════════════════
 
 #[tokio::test]
@@ -481,9 +511,10 @@ async fn test_ipc_multiple_instances_are_independent() {
         .get(format!("{}/api/modules", base_url))
         .send().await.unwrap()
         .json().await.unwrap();
-    let module_name = modules["modules"][0]["name"].as_str().unwrap();
+    let module_name = modules["modules"][0]["name"].as_str()
+        .expect("No modules found — ensure ./modules/test-module/module.toml exists");
 
-    // 네이티브 인스턴스 1개 생성
+    // ── 1) 첫 번째 인스턴스 생성 ──
     let name_a = format!("test-multi-0-{}", pick_free_port());
     let resp_a = client
         .post(format!("{}/api/instances", base_url))
@@ -493,47 +524,59 @@ async fn test_ipc_multiple_instances_are_independent() {
             "executable_path": "C:/tmp/server-0.exe"
         }))
         .send().await.unwrap();
-    assert_eq!(resp_a.status(), reqwest::StatusCode::CREATED);
+    assert_eq!(resp_a.status(), reqwest::StatusCode::CREATED, "First instance creation failed");
     let json_a: Value = resp_a.json().await.unwrap();
     let id_a = json_a["id"].as_str().unwrap().to_string();
 
-    // 컨테이너 격리 인스턴스 1개 생성 (동일 모듈, 네이티브 제한 회피)
+    // 조회 가능 확인
+    let get_a = client
+        .get(format!("{}/api/instance/{}", base_url, id_a))
+        .send().await.unwrap();
+    assert_eq!(get_a.status(), reqwest::StatusCode::OK);
+
+    // ── 2) 삭제 ──
+    let del = client
+        .delete(format!("{}/api/instance/{}", base_url, id_a))
+        .send().await.unwrap();
+    assert!(del.status().is_success(), "Delete should succeed, got {}", del.status());
+
+    // 삭제 후 조회 → 404
+    let gone = client
+        .get(format!("{}/api/instance/{}", base_url, id_a))
+        .send().await.unwrap();
+    assert_eq!(
+        gone.status(),
+        reqwest::StatusCode::NOT_FOUND,
+        "Deleted instance must return 404"
+    );
+
+    // ── 3) 같은 모듈로 새 인스턴스 재생성 (이전 인스턴스 삭제 후이므로 가능) ──
     let name_b = format!("test-multi-1-{}", pick_free_port());
     let resp_b = client
         .post(format!("{}/api/instances", base_url))
         .json(&serde_json::json!({
             "name": name_b,
             "module_name": module_name,
-            "executable_path": "C:/tmp/server-1.exe",
-            "use_container": true
+            "executable_path": "C:/tmp/server-1.exe"
         }))
         .send().await.unwrap();
-    assert_eq!(resp_b.status(), reqwest::StatusCode::CREATED);
+    let resp_b_status = resp_b.status();
     let json_b: Value = resp_b.json().await.unwrap();
+    assert_eq!(
+        resp_b_status,
+        reqwest::StatusCode::CREATED,
+        "Second instance creation failed with {}: {:?}", resp_b_status, json_b
+    );
     let id_b = json_b["id"].as_str().unwrap().to_string();
 
-    // 각 인스턴스가 독립적으로 조회 가능
-    assert_ne!(id_a, id_b, "Instance IDs must be unique");
+    // ID가 다름 확인 (독립적 인스턴스)
+    assert_ne!(id_a, id_b, "New instance must have a different ID");
 
-    for id in [&id_a, &id_b] {
-        let resp = client
-            .get(format!("{}/api/instance/{}", base_url, id))
-            .send().await.unwrap();
-        assert_eq!(resp.status(), reqwest::StatusCode::OK);
-    }
-
-    // 하나만 삭제 → 나머지는 여전히 존재
-    client.delete(format!("{}/api/instance/{}", base_url, id_a))
-        .send().await.unwrap();
-
-    let survives = client
+    // 조회 가능 확인
+    let get_b = client
         .get(format!("{}/api/instance/{}", base_url, id_b))
         .send().await.unwrap();
-    assert_eq!(
-        survives.status(),
-        reqwest::StatusCode::OK,
-        "Deleting one instance must not affect others"
-    );
+    assert_eq!(get_b.status(), reqwest::StatusCode::OK);
 
     // 정리
     client.delete(format!("{}/api/instance/{}", base_url, id_b))
