@@ -1,48 +1,48 @@
 {
-  "release_version": "0.1.0",
+  "release_version": "0.1.1",
   "components": {
     "saba-core": {
-      "version": "0.1.0",
+      "version": "0.1.1",
       "asset": "saba-core-windows-x64.zip",
       "asset_linux": "saba-core-linux-x64.tar.gz",
       "sha256": null,
       "install_dir": "."
     },
     "cli": {
-      "version": "0.1.0",
+      "version": "0.1.1",
       "asset": "saba-chan-cli-windows-x64.zip",
       "asset_linux": "saba-chan-cli-linux-x64.tar.gz",
       "sha256": null,
       "install_dir": "."
     },
     "gui": {
-      "version": "0.1.0",
+      "version": "0.1.1",
       "asset": "saba-chan-gui-windows-x64.zip",
       "asset_linux": "saba-chan-gui-linux-x64.tar.gz",
       "sha256": null,
       "install_dir": "."
     },
     "updater": {
-      "version": "0.1.0",
+      "version": "0.1.1",
       "asset": "saba-chan-updater-windows-x64.zip",
       "asset_linux": "saba-chan-updater-linux-x64.tar.gz",
       "sha256": null,
       "install_dir": "."
     },
     "discord_bot": {
-      "version": "0.1.0",
+      "version": "0.1.1",
       "asset": "discord-bot.zip",
       "sha256": null,
       "install_dir": "discord_bot"
     },
     "locales": {
-      "version": "0.1.0",
+      "version": "0.1.1",
       "asset": "locales.zip",
       "sha256": null,
       "install_dir": "locales"
     },
     "installer": {
-      "version": "0.1.0",
+      "version": "0.1.1",
       "asset": "saba-chan-installer-windows-x64.zip",
       "sha256": null,
       "install_dir": "."

@@ -891,7 +891,7 @@ function SettingsModal({
                         {/* 사바쨩 정보 카드 */}
                         <div className="about-card about-app-card">
                             <div className="about-app-logo-container">
-                                <img src="/title.png" alt="Saba-chan" className="about-app-logo" />
+                                <img src="./title.png" alt="Saba-chan" className="about-app-logo" />
                                 <span className="about-version-badge">v{appVersion}</span>
                             </div>
                             <div className="about-app-info">

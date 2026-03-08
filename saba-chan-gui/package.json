@@ -1,6 +1,6 @@
 {
   "name": "saba-chan-gui",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Saba-chan - Modular Game Server Management GUI",
   "author": "WareAoba",
   "main": "main.js",

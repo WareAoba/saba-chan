@@ -25,7 +25,7 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Split-Path -Parent $ScriptDir
 $ReleaseDir = Join-Path $ProjectRoot $OutputDir
-$DistDir = Join-Path $ReleaseDir "saba-chan-v0.1.0"
+$DistDir = Join-Path $ReleaseDir "saba-chan-v0.1.1"
 
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 

@@ -27,8 +27,8 @@ fn main() {
 FILETYPE 0x1
 FILEFLAGSMASK 0x3f
 FILEFLAGS 0x0
-PRODUCTVERSION 0,1,0,0
-FILEVERSION 0,1,0,0
+PRODUCTVERSION 0,1,1,0
+FILEVERSION 0,1,1,0
 FILEOS 0x40004
 FILESUBTYPE 0x0
 {{
@@ -38,8 +38,8 @@ BLOCK "000004b0"
 {{
 VALUE "ProductName", "Saba-chan Core Daemon"
 VALUE "CompanyName", "Saba-chan"
-VALUE "FileVersion", "0.1.0"
-VALUE "ProductVersion", "0.1.0"
+VALUE "FileVersion", "0.1.1"
+VALUE "ProductVersion", "0.1.1"
 VALUE "FileDescription", "Saba-chan Game Server Management Core"
 VALUE "LegalCopyright", "Copyright (c) 2025 Saba-chan Contributors"
 }}
