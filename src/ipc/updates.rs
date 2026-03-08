@@ -321,7 +321,7 @@ async fn apply_updates(
 
     // 적용 대상 분류
     let pending = mgr.get_pending_components();
-    let targets: Vec<Component> = if body.components.is_empty() {
+    let mut targets: Vec<Component> = if body.components.is_empty() {
         pending.iter().map(|c| c.component.clone()).collect()
     } else {
         body.components.iter()
@@ -330,7 +330,19 @@ async fn apply_updates(
             .collect()
     };
 
-    // 모듈/CLI/DiscordBot는 데몬이 직접 적용, GUI/CoreDaemon은 업데이터 exe 필요
+    // 적용 우선순위에 따라 정렬:
+    // Updater → 모듈/익스텐션/Locales → DiscordBot → CoreDaemon → 비활성 인터페이스 → 활성 인터페이스
+    targets.sort_by_key(|comp| match comp {
+        Component::Updater => 0u8,
+        Component::Module(_) | Component::Extension(_) | Component::Locales => 1,
+        Component::DiscordBot => 2,
+        Component::CoreDaemon => 3,
+        Component::Gui => 4,
+        Component::Cli => 4,
+    });
+
+    // 모듈/CLI/DiscordBot/CoreDaemon/Extension: 데몬이 직접 적용
+    // GUI/Updater: 업데이터 exe에서 적용 — 종료+파일교체+재시작 필요
     let mut applied = Vec::new();
     let mut errors = Vec::new();
     let mut needs_updater = Vec::new();

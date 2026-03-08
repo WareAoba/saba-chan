@@ -1,48 +1,49 @@
 {
-  "release_version": "0.1.1",
+  "_comment": "이 파일은 CI 릴리즈 시 에셋으로 업로드되는 릴리즈 매니페스트 템플릿입니다. 인스톨러가 컴포넌트 에셋을 매핑하고, GUI가 버전 정보를 표시하며, 무결성 검사 폴백에 사용됩니다. 버전은 CI 스크립트(generate-manifest.py)가 각 Cargo.toml/package.json에서 읽어 덮어씁니다. 업데이트 감지에 사용되는 installed-manifest.json(%APPDATA%)과는 별개입니다.",
+  "release_version": "0.1.0",
   "components": {
     "saba-core": {
-      "version": "0.1.1",
+      "version": "0.1.0",
       "asset": "saba-core-windows-x64.zip",
       "asset_linux": "saba-core-linux-x64.tar.gz",
       "sha256": null,
       "install_dir": "."
     },
     "cli": {
-      "version": "0.1.1",
+      "version": "0.1.0",
       "asset": "saba-chan-cli-windows-x64.zip",
       "asset_linux": "saba-chan-cli-linux-x64.tar.gz",
       "sha256": null,
       "install_dir": "."
     },
     "gui": {
-      "version": "0.1.1",
+      "version": "0.1.0",
       "asset": "saba-chan-gui-windows-x64.zip",
       "asset_linux": "saba-chan-gui-linux-x64.tar.gz",
       "sha256": null,
       "install_dir": "."
     },
     "updater": {
-      "version": "0.1.1",
+      "version": "0.1.0",
       "asset": "saba-chan-updater-windows-x64.zip",
       "asset_linux": "saba-chan-updater-linux-x64.tar.gz",
       "sha256": null,
       "install_dir": "."
     },
     "discord_bot": {
-      "version": "0.1.1",
+      "version": "0.1.0",
       "asset": "discord-bot.zip",
       "sha256": null,
       "install_dir": "discord_bot"
     },
     "locales": {
-      "version": "0.1.1",
+      "version": "0.1.0",
       "asset": "locales.zip",
       "sha256": null,
       "install_dir": "locales"
     },
     "installer": {
-      "version": "0.1.1",
+      "version": "0.1.0",
       "asset": "saba-chan-installer-windows-x64.zip",
       "sha256": null,
       "install_dir": "."

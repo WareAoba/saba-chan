@@ -540,10 +540,41 @@ async fn start_apply(
                 tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
                 if let Some(ref cmd) = relaunch_cmd {
                     let extra_refs: Vec<&str> = relaunch_extra.iter().map(|s| s.as_str()).collect();
-                    relaunch_process(cmd, &extra_refs);
+
+                    // GUI exe가 완전히 쓰기 완료될 때까지 대기 (최대 10초)
+                    let exe_path = std::path::Path::new(cmd.as_str());
+                    for attempt in 0..20 {
+                        if exe_path.exists() {
+                            // 파일을 읽기 모드로 열 수 있는지 확인 (다른 프로세스가 쓰기 중이 아닌지)
+                            if std::fs::File::open(exe_path).is_ok() {
+                                break;
+                            }
+                        }
+                        tracing::debug!("[Apply] Waiting for exe to be ready: {} (attempt {})", cmd, attempt + 1);
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    }
+
+                    // 재시작 시도 (최대 3회 재시도)
+                    let mut launched = false;
+                    for attempt in 0..3 {
+                        match try_relaunch_process(cmd, &extra_refs) {
+                            Ok(()) => {
+                                tracing::info!("[Apply] GUI relaunch succeeded (attempt {})", attempt + 1);
+                                launched = true;
+                                break;
+                            }
+                            Err(e) => {
+                                tracing::warn!("[Apply] GUI relaunch attempt {} failed: {}", attempt + 1, e);
+                                tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+                            }
+                        }
+                    }
+                    if !launched {
+                        tracing::error!("[Apply] All GUI relaunch attempts failed for: {}", cmd);
+                    }
                 }
                 // relaunch 여부와 무관하게 updater 프로세스 종료
-                tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                 app_handle.exit(0);
             });
 
@@ -653,6 +684,8 @@ fn run_apply_mode(args: Vec<String>) {
             // apply 모드: 타이틀만 변경 (윈도우 크기는 GUI 모드와 동일)
             if let Some(win) = app.get_webview_window("main") {
                 win.set_title("Saba-chan — Updating...").ok();
+                // 윈도우 포커스 — GUI 종료 후 업데이터 UI가 전면에 표시되도록
+                win.set_focus().ok();
             }
             Ok(())
         })
@@ -669,10 +702,9 @@ fn run_apply_mode(args: Vec<String>) {
         .expect("error while running tauri application");
 }
 
-/// 프로세스 재실행 헬퍼
-fn relaunch_process(cmd: &str, extra_args: &[&str]) {
+/// 프로세스 재실행 헬퍼 (성공/실패 반환)
+fn try_relaunch_process(cmd: &str, extra_args: &[&str]) -> Result<(), String> {
     tracing::info!("[Apply] Relaunching: {} {:?}", cmd, extra_args);
-    std::thread::sleep(std::time::Duration::from_millis(300));
 
     let mut command = std::process::Command::new(cmd);
     for arg in extra_args {
@@ -693,7 +725,16 @@ fn relaunch_process(cmd: &str, extra_args: &[&str]) {
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
-        .ok();
+        .map_err(|e| format!("Failed to relaunch: {}", e))?;
+
+    Ok(())
+}
+
+/// 프로세스 재실행 헬퍼 (기존 에러 무시 버전 — 하위 호환)
+fn relaunch_process(cmd: &str, extra_args: &[&str]) {
+    if let Err(e) = try_relaunch_process(cmd, extra_args) {
+        tracing::error!("[Apply] Relaunch failed: {}", e);
+    }
 }
 
 // ═══════════════════════════════════════════════════════

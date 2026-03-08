@@ -824,7 +824,9 @@ async function checkAfterUpdate() {
 
 (async function init() {
     // CSS가 적용된 후 윈도우를 표시하여 흰 화면 방지 (tauri.conf.json: visible=false)
-    getCurrentWindow().show();
+    const appWindow = getCurrentWindow();
+    await appWindow.show();
+    await appWindow.setFocus();
 
     await initLocalization();
 

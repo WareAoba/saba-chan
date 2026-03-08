@@ -1228,14 +1228,25 @@ impl UpdateManager {
     }
 
     /// 지정한 컴포넌트만 적용 (빈 목록이면 전체 적용)
+    ///
+    /// ## 적용 순서
+    /// 1. **Updater** — 업데이터 자체를 먼저 교체 (데몬이 수행)
+    /// 2. **비-인터페이스**: 사용하지 않는 인터페이스(GUI 사용 중이면 CLI),
+    ///    DiscordBot, CoreDaemon, 모듈, 익스텐션, Locales를 비동기 적용
+    /// 3. **현재 인터페이스**: 마지막에 GUI 또는 CLI를 적용 (재시작 필요)
+    ///
+    /// 이 순서를 지키면 업데이트 도중 프로세스 충돌이 방지됩니다.
     pub async fn apply_components(&mut self, keys: &[String]) -> Result<Vec<String>> {
         let mut applied = Vec::new();
 
-        let components: Vec<ComponentVersion> = self.status.components.iter()
+        let mut components: Vec<ComponentVersion> = self.status.components.iter()
             .filter(|c| c.downloaded && c.update_available)
             .filter(|c| keys.is_empty() || keys.contains(&c.component.manifest_key()))
             .cloned()
             .collect();
+
+        // 적용 우선순위에 따라 정렬
+        components.sort_by_key(|c| Self::component_apply_priority(&c.component));
 
         for comp in &components {
             let staged_path = comp.downloaded_path.as_ref()
@@ -1310,10 +1321,84 @@ impl UpdateManager {
             }
         }
 
+        // 적용 완료 후 .old 백업 파일 정리
+        if !applied.is_empty() {
+            self.cleanup_old_files();
+        }
+
         Ok(applied)
     }
 
+    /// 컴포넌트의 적용 우선순위를 반환합니다.
+    ///
+    /// 낮은 값일수록 먼저 적용됩니다:
+    /// - 0: Updater (업데이터 자체를 가장 먼저)
+    /// - 1: 모듈, 익스텐션, Locales (프로세스 중단 불필요)
+    /// - 2: DiscordBot (프로세스 중단 불필요)
+    /// - 3: CoreDaemon (데몬 프로세스 종료 후 교체)
+    /// - 4: 사용하지 않는 인터페이스 (GUI 사용 중이면 CLI, 반대도 마찬가지)
+    /// - 5: 현재 사용 중인 인터페이스 (마지막에 적용 — 재시작 필요)
+    fn component_apply_priority(component: &Component) -> u8 {
+        match component {
+            Component::Updater => 0,
+            Component::Module(_) | Component::Extension(_) | Component::Locales => 1,
+            Component::DiscordBot => 2,
+            Component::CoreDaemon => 3,
+            // GUI/CLI는 현재 실행 중인 인터페이스를 마지막에 적용
+            Component::Gui => {
+                if ProcessChecker::is_gui_running() { 5 } else { 4 }
+            }
+            Component::Cli => {
+                if ProcessChecker::is_cli_running() { 5 } else { 4 }
+            }
+        }
+    }
+
     // ─────── 2-flow 아키텍처: 개별 컴포넌트 적용 ────────────────────────────────────────────────────────────────────────
+
+    /// 업데이트 적용 후 .old 백업 파일을 정리합니다.
+    ///
+    /// Windows에서 실행 중인 .exe를 교체할 때 기존 파일을 .exe.old로 rename하는데,
+    /// 업데이트 완료 후에는 이 파일들이 불필요합니다.
+    fn cleanup_old_files(&self) {
+        let old_patterns = [
+            "*.exe.old",
+        ];
+
+        for pattern in &old_patterns {
+            // install_root에서 .old 파일 탐색 (재귀 없이 루트만)
+            if let Ok(entries) = std::fs::read_dir(&self.install_root) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                        if name.ends_with(".exe.old") || name.ends_with(".old") {
+                            // saba-chan 관련 바이너리의 .old 파일만 삭제
+                            let is_saba_old = name.starts_with("saba-")
+                                || name.starts_with("discord")
+                                || name.contains("cli")
+                                || name.contains("gui")
+                                || name.contains("core")
+                                || name.contains("updater")
+                                || name.contains("installer");
+                            if is_saba_old {
+                                match std::fs::remove_file(&path) {
+                                    Ok(()) => {
+                                        tracing::info!("[Updater] Cleaned up old file: {}", path.display());
+                                    }
+                                    Err(e) => {
+                                        // 파일이 아직 사용 중이면 다음 번에 정리
+                                        tracing::debug!("[Updater] Cannot remove old file {} (still in use?): {}", path.display(), e);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            let _ = pattern; // suppress unused warning
+        }
+    }
 
     /// 적용 대기 중인 개별 컴포넌트를 반환
     pub fn get_pending_components(&self) -> Vec<&ComponentVersion> {
@@ -2343,6 +2428,56 @@ rm -f "$0"
         // Clean staged file
         std::fs::remove_file(staged).ok();
 
+        // package.json이 있으면 node_modules를 삭제 후 npm install로 클린 재설치
+        let package_json = target_dir.join("package.json");
+        let node_modules = target_dir.join("node_modules");
+        if package_json.exists() {
+            if node_modules.exists() {
+                tracing::info!("[Updater] Discord Bot: removing old node_modules for clean install");
+                if let Err(e) = std::fs::remove_dir_all(&node_modules) {
+                    tracing::warn!("[Updater] Discord Bot: failed to remove node_modules: {}", e);
+                }
+            }
+            tracing::info!("[Updater] Discord Bot: running npm install...");
+            let npm_cmd = if cfg!(target_os = "windows") { "npm.cmd" } else { "npm" };
+            match std::process::Command::new(npm_cmd)
+                .args(["install", "--production", "--no-audit", "--no-fund"])
+                .current_dir(&target_dir)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .output()
+            {
+                Ok(output) => {
+                    if output.status.success() {
+                        tracing::info!("[Updater] Discord Bot: npm install completed successfully");
+                    } else {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        tracing::error!("[Updater] Discord Bot: npm install failed (exit {}): {}", output.status, stderr);
+                        // npm install 실패 시 백업에서 node_modules 복원 시도
+                        let backup_node_modules = backup_dir.join("node_modules");
+                        if backup_node_modules.exists() {
+                            tracing::info!("[Updater] Discord Bot: restoring node_modules from backup");
+                            if let Err(e) = self.copy_dir_recursive(&backup_node_modules, &node_modules) {
+                                tracing::error!("[Updater] Discord Bot: failed to restore node_modules: {}", e);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("[Updater] Discord Bot: failed to run npm: {}", e);
+                    // npm 실행 불가 시 백업에서 node_modules 복원 시도
+                    let backup_node_modules = backup_dir.join("node_modules");
+                    if backup_node_modules.exists() {
+                        tracing::info!("[Updater] Discord Bot: restoring node_modules from backup");
+                        if let Err(e2) = self.copy_dir_recursive(&backup_node_modules, &node_modules) {
+                            tracing::error!("[Updater] Discord Bot: failed to restore node_modules: {}", e2);
+                        }
+                    }
+                }
+            }
+        }
+
         tracing::info!("[Updater] Discord Bot updated successfully");
         Ok(())
     }
@@ -2354,7 +2489,9 @@ rm -f "$0"
             let name_str = name.to_string_lossy();
 
             // __pycache__, .git 등은 건드리지 않음
-            if name_str == "__pycache__" || name_str.starts_with('.') {
+            if name_str == "__pycache__"
+                || name_str.starts_with('.')
+            {
                 continue;
             }
 
