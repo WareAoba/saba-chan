@@ -433,6 +433,12 @@ pub struct ExtensionInitResult {
     pub timestamp: u64,
 }
 
+impl Default for ExtensionInitTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ExtensionInitTracker {
     pub fn new() -> Self {
         Self {

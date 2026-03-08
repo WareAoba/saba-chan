@@ -177,12 +177,10 @@ pub async fn create_instance(
         };
 
         // ── 모듈의 install.requires_extensions → 인스턴스 required_extensions 자동 채우기 ──
-        if let Some((ref install_cfg, _, _, _)) = module_install {
-            if let Some(ref install) = install_cfg {
-                for ext_id in &install.requires_extensions {
-                    if !instance.required_extensions.contains(ext_id) {
-                        instance.required_extensions.push(ext_id.clone());
-                    }
+        if let Some((Some(ref install), _, _, _)) = module_install {
+            for ext_id in &install.requires_extensions {
+                if !instance.required_extensions.contains(ext_id) {
+                    instance.required_extensions.push(ext_id.clone());
                 }
             }
         }
@@ -623,30 +621,26 @@ pub async fn create_instance(
                     // ── SteamCMD extension_data 자동 주입 (마이그레이션) ──
                     // 모듈이 steamcmd 방식일 경우, hook 조건이 올바르게 동작하도록
                     // install_method_steamcmd, steamcmd_app_id 등을 extension_data에 설정
-                    if let Some((ref install_cfg, _, _, _)) = module_install {
-                        if let Some(ref install) = install_cfg {
-                            instance.apply_install_extension_data(
-                                &install.method,
-                                install.app_id,
-                                install.anonymous,
-                                install.beta.as_deref(),
-                                install.platform.as_deref(),
-                            );
-                        }
+                    if let Some((Some(ref install), _, _, _)) = module_install {
+                        instance.apply_install_extension_data(
+                            &install.method,
+                            install.app_id,
+                            install.anonymous,
+                            install.beta.as_deref(),
+                            install.platform.as_deref(),
+                        );
                     }
 
                     // ── executable_path 자동 계산 ──
                     // migration_source(=working_dir)와 server_executable(바이너리 파일명)을 결합
                     // 프론트엔드가 모듈 기본값을 보낼 수 있으므로, migration에서는 항상 재계산
-                    if let (Some(ref work_dir), Some((_, _, _, ref server_exe))) = (&instance.working_dir, &module_install) {
-                        if let Some(ref exe_name) = server_exe {
-                            let resolved = std::path::Path::new(work_dir).join(exe_name);
-                            if resolved.exists() {
-                                instance.executable_path = Some(resolved.to_string_lossy().to_string());
-                                tracing::info!("Migration: executable_path auto-resolved to '{}'", resolved.display());
-                            } else {
-                                tracing::warn!("Migration: expected executable '{}' not found in '{}'", exe_name, work_dir);
-                            }
+                    if let (Some(ref work_dir), Some((_, _, _, Some(ref exe_name)))) = (&instance.working_dir, &module_install) {
+                        let resolved = std::path::Path::new(work_dir).join(exe_name);
+                        if resolved.exists() {
+                            instance.executable_path = Some(resolved.to_string_lossy().to_string());
+                            tracing::info!("Migration: executable_path auto-resolved to '{}'", resolved.display());
+                        } else {
+                            tracing::warn!("Migration: expected executable '{}' not found in '{}'", exe_name, work_dir);
                         }
                     }
 

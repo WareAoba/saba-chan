@@ -17,11 +17,10 @@ pub fn load_config_for_gui() -> UpdateConfig {
 
 /// install_root 기반 설정 로드 — 기본값 + install_root 오버라이드
 pub fn load_config_from_root(root: &str) -> UpdateConfig {
-    let cfg = UpdateConfig {
+    UpdateConfig {
         install_root: Some(root.to_string()),
         ..Default::default()
-    };
-    cfg
+    }
 }
 
 /// config set — 설정 값은 내장이므로 no-op (경고 메시지 출력)

@@ -371,7 +371,9 @@ struct InstallConfig {
     github_owner: String,
     github_repo: String,
     language: String,
+    #[allow(dead_code)]
     create_desktop_shortcut: bool,
+    #[allow(dead_code)]
     create_start_menu_shortcut: bool,
     selected_modules: Vec<String>,
     latest_release_tag: Option<String>,
@@ -970,7 +972,7 @@ fn elevate_create_dir(dir: &Path) -> Result<(), String> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn elevate_create_dir(dir: &Path) -> Result<(), String> {
+fn elevate_create_dir(_dir: &Path) -> Result<(), String> {
     Err("Elevation is only supported on Windows".to_string())
 }
 
@@ -1009,6 +1011,7 @@ async fn browse_folder(app: AppHandle) -> Result<Option<String>, String> {
 // ═══════════════════════════════════════════════════════
 
 /// 설치 언어에 맞는 앱 표시 이름을 반환한다.
+#[allow(dead_code)]
 fn localized_app_name(language: &str) -> &'static str {
     match language {
         "ko" => "사바쨩",

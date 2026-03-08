@@ -468,6 +468,8 @@ async fn test_ipc_module_metadata_contains_required_fields() {
 
 // ═══════════════════════════════════════════════════════
 // 8. 복수 인스턴스 생성 + 포트 구분 검증
+//    네이티브 인스턴스는 모듈당 1개 제한이므로,
+//    동일 모듈에 대해 컨테이너 격리 플래그를 활용하여 테스트
 // ═══════════════════════════════════════════════════════
 
 #[tokio::test]
@@ -481,27 +483,39 @@ async fn test_ipc_multiple_instances_are_independent() {
         .json().await.unwrap();
     let module_name = modules["modules"][0]["name"].as_str().unwrap();
 
-    // 2개 인스턴스 생성
-    let mut ids = vec![];
-    for i in 0..2 {
-        let name = format!("test-multi-{}-{}", i, pick_free_port());
-        let resp = client
-            .post(format!("{}/api/instances", base_url))
-            .json(&serde_json::json!({
-                "name": name,
-                "module_name": module_name,
-                "executable_path": format!("C:/tmp/server-{}.exe", i)
-            }))
-            .send().await.unwrap();
-        assert_eq!(resp.status(), reqwest::StatusCode::CREATED);
-        let json: Value = resp.json().await.unwrap();
-        ids.push(json["id"].as_str().unwrap().to_string());
-    }
+    // 네이티브 인스턴스 1개 생성
+    let name_a = format!("test-multi-0-{}", pick_free_port());
+    let resp_a = client
+        .post(format!("{}/api/instances", base_url))
+        .json(&serde_json::json!({
+            "name": name_a,
+            "module_name": module_name,
+            "executable_path": "C:/tmp/server-0.exe"
+        }))
+        .send().await.unwrap();
+    assert_eq!(resp_a.status(), reqwest::StatusCode::CREATED);
+    let json_a: Value = resp_a.json().await.unwrap();
+    let id_a = json_a["id"].as_str().unwrap().to_string();
+
+    // 컨테이너 격리 인스턴스 1개 생성 (동일 모듈, 네이티브 제한 회피)
+    let name_b = format!("test-multi-1-{}", pick_free_port());
+    let resp_b = client
+        .post(format!("{}/api/instances", base_url))
+        .json(&serde_json::json!({
+            "name": name_b,
+            "module_name": module_name,
+            "executable_path": "C:/tmp/server-1.exe",
+            "use_container": true
+        }))
+        .send().await.unwrap();
+    assert_eq!(resp_b.status(), reqwest::StatusCode::CREATED);
+    let json_b: Value = resp_b.json().await.unwrap();
+    let id_b = json_b["id"].as_str().unwrap().to_string();
 
     // 각 인스턴스가 독립적으로 조회 가능
-    assert_ne!(ids[0], ids[1], "Instance IDs must be unique");
+    assert_ne!(id_a, id_b, "Instance IDs must be unique");
 
-    for id in &ids {
+    for id in [&id_a, &id_b] {
         let resp = client
             .get(format!("{}/api/instance/{}", base_url, id))
             .send().await.unwrap();
@@ -509,11 +523,11 @@ async fn test_ipc_multiple_instances_are_independent() {
     }
 
     // 하나만 삭제 → 나머지는 여전히 존재
-    client.delete(format!("{}/api/instance/{}", base_url, ids[0]))
+    client.delete(format!("{}/api/instance/{}", base_url, id_a))
         .send().await.unwrap();
 
     let survives = client
-        .get(format!("{}/api/instance/{}", base_url, ids[1]))
+        .get(format!("{}/api/instance/{}", base_url, id_b))
         .send().await.unwrap();
     assert_eq!(
         survives.status(),
@@ -522,7 +536,7 @@ async fn test_ipc_multiple_instances_are_independent() {
     );
 
     // 정리
-    client.delete(format!("{}/api/instance/{}", base_url, ids[1]))
+    client.delete(format!("{}/api/instance/{}", base_url, id_b))
         .send().await.unwrap();
     server_task.abort();
     cleanup_test_instances();

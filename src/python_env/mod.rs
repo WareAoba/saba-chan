@@ -386,7 +386,7 @@ async fn download_file(url: &str, dest: &Path) -> Result<()> {
                 "-fSL",
                 "--retry", "3",
                 "-o",
-                &dest.to_string_lossy().into_owned(),
+                &dest.to_string_lossy(),
                 url,
             ]);
             apply_creation_flags(&mut cmd);

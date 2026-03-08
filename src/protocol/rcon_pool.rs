@@ -18,6 +18,12 @@ pub struct RconPool {
     connections: Mutex<HashMap<String, RconClient>>,
 }
 
+impl Default for RconPool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RconPool {
     pub fn new() -> Self {
         Self {
