@@ -4,6 +4,9 @@ use std::sync::{Mutex, MutexGuard};
 use thiserror::Error;
 use anyhow::Result;
 
+#[cfg(not(target_os = "windows"))]
+use nix::libc;
+
 #[derive(Error, Debug)]
 pub enum ProcessError {
     #[error("process {pid} not found")]

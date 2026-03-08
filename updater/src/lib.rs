@@ -681,7 +681,7 @@ impl UpdateManager {
                     key
                 );
                 // 감지 불가 → 최신 버전을 로컬 매니페스트에 자동 기록 (다음 체크에서 정상 비교)
-                if let Some(ref ver) = Some(&info.version) {
+                if let Some(ver) = Some(&info.version) {
                     let _ = Self::update_installed_version(key, ver);
                 }
                 false
@@ -814,7 +814,7 @@ impl UpdateManager {
     fn discover_extension_repos(&self) -> Vec<(String, String)> {
         let mut repos = Vec::new();
         let extensions_dir = &self.extensions_dir;
-        if let Ok(entries) = std::fs::read_dir(&extensions_dir) {
+        if let Ok(entries) = std::fs::read_dir(extensions_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
@@ -977,7 +977,7 @@ impl UpdateManager {
 
         // 익스텐션: extensions/*/extension.toml에서 감지
         let extensions_dir = &self.extensions_dir;
-        if let Ok(entries) = std::fs::read_dir(&extensions_dir) {
+        if let Ok(entries) = std::fs::read_dir(extensions_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
@@ -2470,7 +2470,7 @@ rm -f "$0"
         // 익스텐션: 개별 리포 관리이므로 항상 로컬 extensions/ 스캔
         {
             let extensions_dir = &self.extensions_dir;
-            if let Ok(entries) = std::fs::read_dir(&extensions_dir) {
+            if let Ok(entries) = std::fs::read_dir(extensions_dir) {
                 for entry in entries.flatten() {
                     if entry.path().is_dir() {
                         let name = entry.file_name().to_string_lossy().to_string();

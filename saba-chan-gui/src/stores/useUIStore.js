@@ -1,6 +1,10 @@
 import { create } from 'zustand';
 
 export const useUIStore = create((set, _get) => ({
+    // ── Navigation ──
+    activeTab: 'servers',
+    activeServerId: null,
+
     // ── Modal ──
     modal: null,
     progressBar: null,
@@ -60,6 +64,9 @@ export const useUIStore = create((set, _get) => ({
             },
         })),
 
+    setActiveTab: (tab) => set({ activeTab: tab }),
+    setActiveServerId: (id) => set({ activeServerId: id }),
+
     setShowDiscordSection: (val) => set({ showDiscordSection: val }),
     setShowBackgroundSection: (val) => set({ showBackgroundSection: val }),
     setShowNoticeSection: (val) => set({ showNoticeSection: val }),
@@ -78,6 +85,8 @@ export const useUIStore = create((set, _get) => ({
     // Test-only: reset to initial state
     _resetForTest: () =>
         set({
+            activeTab: 'servers',
+            activeServerId: null,
             modal: null,
             progressBar: null,
             showWaitingImage: false,
