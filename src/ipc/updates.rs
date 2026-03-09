@@ -23,7 +23,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use saba_chan_updater_lib::{
-    Component, UpdateConfig, UpdateManager,
+    Component, DownloadProgress, UpdateConfig, UpdateManager,
 };
 
 // ═══════════════════════════════════════════════════════
@@ -34,6 +34,8 @@ use saba_chan_updater_lib::{
 #[derive(Clone)]
 pub struct UpdateState {
     pub manager: Arc<RwLock<UpdateManager>>,
+    /// 다운로드 진행률 (Manager 잠금 없이 폴링 가능)
+    pub download_progress: Arc<std::sync::Mutex<DownloadProgress>>,
 }
 
 impl UpdateState {
@@ -41,8 +43,10 @@ impl UpdateState {
     pub fn new() -> Self {
         let cfg = load_updater_config();
         let modules_dir = resolve_modules_dir();
-        let manager = Arc::new(RwLock::new(UpdateManager::new(cfg, &modules_dir)));
-        Self { manager }
+        let mgr = UpdateManager::new(cfg, &modules_dir);
+        let progress = mgr.download_progress.clone();
+        let manager = Arc::new(RwLock::new(mgr));
+        Self { manager, download_progress: progress }
     }
 }
 
@@ -62,6 +66,7 @@ pub fn updates_router(state: UpdateState) -> Router {
         .route("/api/updates/status", get(get_status))
         .route("/api/updates/check", post(check_updates))
         .route("/api/updates/download", post(download_components))
+        .route("/api/updates/download/progress", get(get_download_progress))
         .route("/api/updates/apply", post(apply_updates))
         .route("/api/updates/integrity", get(check_integrity))
         .route("/api/updates/config", get(get_config))
@@ -301,6 +306,23 @@ async fn download_components(
     }
 }
 
+/// GET /api/updates/download/progress — 현재 다운로드 진행률 조회
+///
+/// Manager의 RwLock과 독립된 `std::sync::Mutex`를 사용하므로
+/// 다운로드 중에도 블로킹 없이 폴링 가능.
+async fn get_download_progress(
+    State(state): State<UpdateState>,
+) -> impl IntoResponse {
+    let prog = state.download_progress.lock().unwrap().clone();
+    Json(json!({
+        "ok": true,
+        "component": prog.component,
+        "bytes_received": prog.bytes_received,
+        "total_bytes": prog.total_bytes,
+        "active": prog.active,
+    }))
+}
+
 /// POST /api/updates/apply — 다운로드된 업데이트 적용
 ///
 /// - 모듈: 데몬이 직접 적용 (파일 교체)
@@ -331,7 +353,7 @@ async fn apply_updates(
     };
 
     // 적용 우선순위에 따라 정렬:
-    // Updater → 모듈/익스텐션/Locales → DiscordBot → CoreDaemon → 비활성 인터페이스 → 활성 인터페이스
+    // Updater → 모듈/익스텐션/Locales → DiscordBot → CoreDaemon → 인터페이스
     targets.sort_by_key(|comp| match comp {
         Component::Updater => 0u8,
         Component::Module(_) | Component::Extension(_) | Component::Locales => 1,
@@ -341,54 +363,48 @@ async fn apply_updates(
         Component::Cli => 4,
     });
 
-    // 업데이터 자체가 업데이트 대상인 경우:
-    // 모든 컴포넌트를 업데이터 exe에 위임한다.
-    // 업데이터가 (1) 자신을 먼저 교체 → (2) 나머지 적용 → (3) 활성 인터페이스를 마지막에 처리한다.
-    //
-    // 업데이터가 대상이 아닌 경우:
-    // - GUI/Updater: 업데이터 exe에서 적용 (종료+파일교체+재시작)
-    // - 나머지: 데몬이 직접 적용
     let mut applied = Vec::new();
     let mut errors = Vec::new();
-    let mut needs_updater = Vec::new();
+    let mut needs_updater: Vec<String> = Vec::new();
 
-    let updater_pending = targets.iter().any(|c| matches!(c, Component::Updater));
+    // GUI/Updater/CoreDaemon이 포함되면 GUI+데몬이 종료되어야 하므로,
+    // 데몬이 일부만 적용하다 중간에 죽는 문제를 방지하기 위해
+    // **모든** 컴포넌트를 업데이터 exe에 위임한다.
+    // 업데이터가 프로세스 종료 후 올바른 순서로 일괄 적용.
+    let any_needs_restart = targets.iter().any(|c| matches!(c,
+        Component::Gui | Component::Updater | Component::CoreDaemon
+    ));
 
-    if updater_pending {
-        // 업데이터가 대상 → 전부 위임
-        for comp in &targets {
-            needs_updater.push(comp.manifest_key());
-        }
+    if any_needs_restart {
+        // 전부 업데이터에 위임 — 데몬은 아무것도 직접 적용하지 않음
+        needs_updater = targets.iter().map(|c| c.manifest_key()).collect();
     } else {
+        // GUI/데몬 재시작 불필요 → 데몬이 직접 적용
         for comp in &targets {
-            match comp {
-                // GUI/Updater: 업데이터 exe에서 적용 — 종료+파일교체+재시작 필요
-                Component::Gui | Component::Updater => {
-                    needs_updater.push(comp.manifest_key());
+            match mgr.apply_single_component(comp).await {
+                Ok(result) if result.success => {
+                    applied.push(comp.display_name());
                 }
-                // 나머지: 데몬이 직접 적용
-                _ => {
-                    match mgr.apply_single_component(comp).await {
-                        Ok(result) if result.success => {
-                            applied.push(comp.display_name());
-                        }
-                        Ok(result) => {
-                            errors.push(format!("{}: {}", comp.display_name(), result.message));
-                        }
-                        Err(e) => {
-                            errors.push(format!("{}: {}", comp.display_name(), e));
-                        }
-                    }
+                Ok(result) => {
+                    errors.push(format!("{}: {}", comp.display_name(), result.message));
+                }
+                Err(e) => {
+                    errors.push(format!("{}: {}", comp.display_name(), e));
                 }
             }
         }
     }
 
-    // 업데이터 exe가 필요한 컴포넌트가 있으면 pending manifest 재저장
-    // (updater exe가 load_pending_manifest로 읽을 수 있도록 보장)
+    // 업데이터 exe가 필요한 컴포넌트가 있으면:
+    // 1) pending manifest 재저장 (데몬이 적용한 것들은 downloaded=false로 제외됨)
+    // 2) apply-targets.json에 업데이터가 적용해야 할 정확한 컴포넌트 목록 저장
+    //    (GUI가 CLI 인자로 일부만 전달해도 업데이터가 정확한 목록을 알 수 있도록)
     if !needs_updater.is_empty() {
         if let Err(e) = mgr.save_pending_manifest() {
             tracing::warn!("[Updates] Failed to save pending manifest for updater: {}", e);
+        }
+        if let Err(e) = mgr.save_updater_apply_targets(&needs_updater) {
+            tracing::warn!("[Updates] Failed to save apply targets for updater: {}", e);
         }
     }
 

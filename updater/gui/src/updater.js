@@ -170,7 +170,13 @@ function tr(key, vars = {}) {
 
 function applyStaticTranslations() {
     document.documentElement.lang = currentLanguage;
-    document.title = tr('appTitle');
+    const title = tr('appTitle');
+    document.title = title;
+    // Tauri 윈도우 타이틀도 갱신 (setup에서 설정한 하드코딩 타이틀 덮어쓰기)
+    try {
+        const appWindow = getCurrentWindow();
+        appWindow.setTitle(title);
+    } catch (_) {}
     const minBtn = document.getElementById('btn-minimize');
     if (minBtn) minBtn.title = tr('minimize');
     if ($btnClose) $btnClose.title = tr('close');
@@ -826,7 +832,13 @@ async function checkAfterUpdate() {
     // CSS가 적용된 후 윈도우를 표시하여 흰 화면 방지 (tauri.conf.json: visible=false)
     const appWindow = getCurrentWindow();
     await appWindow.show();
+    // Windows에서 전면 윈도우 강제 획득:
+    // 잠시 always-on-top으로 올린 후 setFocus → 해제
+    await appWindow.setAlwaysOnTop(true);
     await appWindow.setFocus();
+    setTimeout(async () => {
+        try { await appWindow.setAlwaysOnTop(false); } catch (_) {}
+    }, 800);
 
     await initLocalization();
 

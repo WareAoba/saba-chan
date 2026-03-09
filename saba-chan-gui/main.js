@@ -2634,6 +2634,16 @@ ipcMain.handle('updater:download', async (_event, components) => {
     }
 });
 
+// 다운로드 진행률 폴링 — 데몬 API `/api/updates/download/progress`
+ipcMain.handle('updater:downloadProgress', async () => {
+    try {
+        const response = await axios.get(`${IPC_BASE}/api/updates/download/progress`, { timeout: 5000 });
+        return response.data;
+    } catch (err) {
+        return { ok: false, error: err.message };
+    }
+});
+
 // 업데이트 적용 — 데몬 API `/api/updates/apply`
 // 모듈은 데몬이 직접 적용, 데몬/GUI/CLI는 needs_updater에 포함
 ipcMain.handle('updater:apply', async (_event, components) => {
@@ -2674,7 +2684,11 @@ ipcMain.handle('updater:launchApply', async (_event, targets) => {
         }
         // GUI 업데이트가 포함된 경우에만 --relaunch 인자 전달
         const hasGuiUpdate = (targets || []).includes('gui');
-        if (hasGuiUpdate) {
+        const hasCoreUpdate = (targets || []).includes('saba-core');
+        // GUI 또는 CoreDaemon 업데이트 시 GUI를 종료해야 함
+        // (데몬은 GUI의 자식 프로세스이므로 GUI 종료 시 함께 종료됨)
+        const needsRelaunch = hasGuiUpdate || hasCoreUpdate;
+        if (needsRelaunch) {
             let guiExe;
             if (!app.isPackaged) {
                 guiExe = process.execPath; // 개발 모드: electron exe
@@ -2692,8 +2706,10 @@ ipcMain.handle('updater:launchApply', async (_event, targets) => {
         }
         console.log(`[Updater] Launching apply: ${updaterExe} ${args.join(' ')}`);
         spawnDetached(updaterExe, args);
-        if (hasGuiUpdate) {
-            setTimeout(() => app.quit(), 500);
+        if (needsRelaunch) {
+            // cleanQuit()으로 데몬을 graceful shutdown 후 종료
+            // (app.quit()은 데몬 정리를 보장하지 않아 업데이터에서 대기 타임아웃 발생)
+            setTimeout(() => cleanQuit(), 500);
         }
         // 데몬/CLI만이면 GUI는 계속 실행 — 업데이터가 백그라운드에서 교체
         return { ok: true, message: 'Updater launched for apply.' };

@@ -488,106 +488,153 @@ async fn start_apply(
 
     tokio::time::sleep(std::time::Duration::from_millis(400)).await;
 
-    // 2. 파일 적용
-    app.emit("apply:progress", ApplyProgressEvent {
-        step: "applying".into(),
-        message: "Applying update files...".into(),
-        percent: 50,
-        applied: vec![],
-    }).ok();
-
+    // 2. 파일 적용 — 컴포넌트별 진행률 보고
     let mut mgr = manager.write().await;
-    // component_args가 있으면 해당 컴포넌트만 적용, 없으면 전체
-    let target_keys: Vec<String> = apply_config.component_args.clone();
-    let result = if target_keys.is_empty() {
-        mgr.apply_updates().await
-    } else {
-        mgr.apply_components(&target_keys).await
-    };
-    match result {
-        Ok(applied) => {
-            // 완료 마커 저장
-            if !applied.is_empty() {
-                let marker = UpdateCompletionMarker::success(applied.clone());
-                let marker = UpdateCompletionMarker {
-                    message: Some(format!("{} updates applied: {}", applied.len(), applied.join(", "))),
-                    ..marker
-                };
-                marker.save().ok();
-            }
-            mgr.clear_pending_manifest();
-
-            app.emit("apply:progress", ApplyProgressEvent {
-                step: "complete".into(),
-                message: if applied.is_empty() {
-                    "No updates to apply.".into()
-                } else {
-                    format!("{} updates applied!", applied.len())
-                },
-                percent: 100,
-                applied: applied.clone(),
-            }).ok();
-
-            drop(mgr);
-
-            // --relaunch가 있을 때만 GUI 재실행 (gui 업데이트 시)
-            // 데몬/CLI만 적용 시에는 relaunch 없이 updater가 자동 종료
-            let relaunch_cmd = apply_config.relaunch_cmd.clone();
-            let relaunch_extra = apply_config.relaunch_extra.clone();
-            let app_handle = app.clone();
-
-            tauri::async_runtime::spawn(async move {
-                tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
-                if let Some(ref cmd) = relaunch_cmd {
-                    let extra_refs: Vec<&str> = relaunch_extra.iter().map(|s| s.as_str()).collect();
-
-                    // GUI exe가 완전히 쓰기 완료될 때까지 대기 (최대 10초)
-                    let exe_path = std::path::Path::new(cmd.as_str());
-                    for attempt in 0..20 {
-                        if exe_path.exists() {
-                            // 파일을 읽기 모드로 열 수 있는지 확인 (다른 프로세스가 쓰기 중이 아닌지)
-                            if std::fs::File::open(exe_path).is_ok() {
-                                break;
-                            }
-                        }
-                        tracing::debug!("[Apply] Waiting for exe to be ready: {} (attempt {})", cmd, attempt + 1);
-                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                    }
-
-                    // 재시작 시도 (최대 3회 재시도)
-                    let mut launched = false;
-                    for attempt in 0..3 {
-                        match try_relaunch_process(cmd, &extra_refs) {
-                            Ok(()) => {
-                                tracing::info!("[Apply] GUI relaunch succeeded (attempt {})", attempt + 1);
-                                launched = true;
-                                break;
-                            }
-                            Err(e) => {
-                                tracing::warn!("[Apply] GUI relaunch attempt {} failed: {}", attempt + 1, e);
-                                tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
-                            }
-                        }
-                    }
-                    if !launched {
-                        tracing::error!("[Apply] All GUI relaunch attempts failed for: {}", cmd);
-                    }
-                }
-                // relaunch 여부와 무관하게 updater 프로세스 종료
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                app_handle.exit(0);
-            });
-
-            Ok(applied)
+    // 데몬이 저장한 apply-targets.json을 우선 사용 (정확한 적용 대상)
+    // 없으면 CLI 인자로 폴백, CLI 인자도 없으면 전체 적용
+    let target_keys: Vec<String> = match mgr.load_updater_apply_targets() {
+        Ok(keys) if !keys.is_empty() => {
+            tracing::info!("[Apply] Using daemon-provided apply targets: {:?}", keys);
+            keys
         }
-        Err(e) => {
-            let msg = format!("Apply failed: {}", e);
+        _ => {
+            let cli_keys = apply_config.component_args.clone();
+            tracing::info!("[Apply] Using CLI args targets: {:?}", cli_keys);
+            cli_keys
+        }
+    };
+
+    // 컴포넌트별로 적용하면서 진행률 보고
+    let total = if target_keys.is_empty() {
+        let pending = mgr.get_pending_components();
+        pending.len()
+    } else {
+        target_keys.len()
+    };
+
+    let mut all_applied = Vec::new();
+    if target_keys.is_empty() {
+        // 전체 적용 (한 번에)
+        app.emit("apply:progress", ApplyProgressEvent {
+            step: "applying".into(),
+            message: format!("Applying {} components...", total),
+            percent: 50,
+            applied: vec![],
+        }).ok();
+
+        match mgr.apply_updates().await {
+            Ok(applied) => all_applied = applied,
+            Err(e) => {
+                let msg = format!("Apply failed: {}", e);
+                app.emit("apply:progress", ApplyProgressEvent {
+                    step: "error".into(), message: msg.clone(), percent: 0, applied: vec![],
+                }).ok();
+                return Err(msg);
+            }
+        }
+    } else {
+        // 개별 컴포넌트 순차 적용 — 각 단계마다 진행률 이벤트 발행
+        for (i, key) in target_keys.iter().enumerate() {
+            let pct = 30 + ((i as i32) * 60 / std::cmp::max(total as i32, 1));
             app.emit("apply:progress", ApplyProgressEvent {
-                step: "error".into(), message: msg.clone(), percent: 0, applied: vec![],
+                step: "applying".into(),
+                message: format!("Applying {} ({}/{})...", key, i + 1, total),
+                percent: pct,
+                applied: all_applied.clone(),
             }).ok();
-            Err(msg)
+
+            match mgr.apply_single_component(
+                &saba_chan_updater_lib::Component::from_manifest_key(key),
+            ).await {
+                Ok(result) if result.success => {
+                    tracing::info!("[Apply] {} applied successfully", key);
+                    all_applied.push(key.clone());
+                }
+                Ok(result) => {
+                    tracing::warn!("[Apply] {} apply returned failure: {}", key, result.message);
+                }
+                Err(e) => {
+                    tracing::error!("[Apply] {} apply error: {}", key, e);
+                }
+            }
         }
     }
+
+    let applied = all_applied;
+
+    // 완료 마커 저장
+    if !applied.is_empty() {
+        let marker = UpdateCompletionMarker::success(applied.clone());
+        let marker = UpdateCompletionMarker {
+            message: Some(format!("{} updates applied: {}", applied.len(), applied.join(", "))),
+            ..marker
+        };
+        marker.save().ok();
+    }
+    mgr.clear_pending_manifest();
+
+    app.emit("apply:progress", ApplyProgressEvent {
+        step: "complete".into(),
+        message: if applied.is_empty() {
+            "No updates to apply.".into()
+        } else {
+            format!("{} updates applied!", applied.len())
+        },
+        percent: 100,
+        applied: applied.clone(),
+    }).ok();
+
+    drop(mgr);
+
+    // --relaunch가 있을 때만 GUI 재실행 (gui 업데이트 시)
+    // 데몬/CLI만 적용 시에는 relaunch 없이 updater가 자동 종료
+    let relaunch_cmd = apply_config.relaunch_cmd.clone();
+    let relaunch_extra = apply_config.relaunch_extra.clone();
+    let app_handle = app.clone();
+
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+        if let Some(ref cmd) = relaunch_cmd {
+            let extra_refs: Vec<&str> = relaunch_extra.iter().map(|s| s.as_str()).collect();
+
+            // GUI exe가 완전히 쓰기 완료될 때까지 대기 (최대 10초)
+            let exe_path = std::path::Path::new(cmd.as_str());
+            for attempt in 0..20 {
+                if exe_path.exists() {
+                    // 파일을 읽기 모드로 열 수 있는지 확인 (다른 프로세스가 쓰기 중이 아닌지)
+                    if std::fs::File::open(exe_path).is_ok() {
+                        break;
+                    }
+                }
+                tracing::debug!("[Apply] Waiting for exe to be ready: {} (attempt {})", cmd, attempt + 1);
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+
+            // 재시작 시도 (최대 3회 재시도)
+            let mut launched = false;
+            for attempt in 0..3 {
+                match try_relaunch_process(cmd, &extra_refs) {
+                    Ok(()) => {
+                        tracing::info!("[Apply] GUI relaunch succeeded (attempt {})", attempt + 1);
+                        launched = true;
+                        break;
+                    }
+                    Err(e) => {
+                        tracing::warn!("[Apply] GUI relaunch attempt {} failed: {}", attempt + 1, e);
+                        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+                    }
+                }
+            }
+            if !launched {
+                tracing::error!("[Apply] All GUI relaunch attempts failed for: {}", cmd);
+            }
+        }
+        // relaunch 여부와 무관하게 updater 프로세스 종료
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        app_handle.exit(0);
+    });
+
+    Ok(applied)
 }
 
 /// --apply 모드 진입: 인자 파싱 → Tauri 윈도우로 진행 상황 표시
@@ -681,20 +728,23 @@ fn run_apply_mode(args: Vec<String>) {
         .manage(apply_config)
         .manage(TestModeConfig::default())
         .setup(|app| {
-            // apply 모드: 타이틀만 변경 (윈도우 크기는 GUI 모드와 동일)
+            // apply 모드: 사용자 언어에 맞는 타이틀 설정
             if let Some(win) = app.get_webview_window("main") {
-                win.set_title("Saba-chan — Updating...").ok();
-                // Windows에서 전면 윈도우 강제 획득:
-                // SetForegroundWindow는 전면 프로세스만 호출 가능하므로,
-                // 잠시 always-on-top으로 올린 후 해제하여 우회한다.
-                win.set_always_on_top(true).ok();
-                win.set_focus().ok();
+                let title = match load_main_app_language().as_deref() {
+                    Some("ko") => "사바쨩 — 업데이트중!",
+                    Some("ja") => "Saba-chan — 更新中...",
+                    Some("zh-CN") => "Saba-chan — 更新中...",
+                    Some("zh-TW") => "Saba-chan — 更新中...",
+                    Some("es") => "Saba-chan — Actualizando...",
+                    Some("pt-BR") => "Saba-chan — Atualizando...",
+                    Some("ru") => "Saba-chan — Обновление...",
+                    Some("de") => "Saba-chan — Aktualisierung...",
+                    Some("fr") => "Saba-chan — Mise à jour...",
+                    _ => "Saba-chan — Updating...",
+                };
+                win.set_title(title).ok();
+                // 포커스 처리는 JS show() 이후에 수행 (setup 시점에는 visible=false)
                 win.request_user_attention(Some(tauri::UserAttentionType::Critical)).ok();
-                let win_clone = win.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_millis(800));
-                    win_clone.set_always_on_top(false).ok();
-                });
             }
             Ok(())
         })

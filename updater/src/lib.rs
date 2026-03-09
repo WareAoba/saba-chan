@@ -66,9 +66,27 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex as StdMutex};
 
 use github::{GitHubClient};
 use version::SemVer;
+
+// ══════════════════════════════════════════════════════
+// 다운로드 진행률
+// ══════════════════════════════════════════════════════
+
+/// 다운로드 진행 상태 (Manager 외부에서 안전하게 폴링 가능)
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DownloadProgress {
+    /// 현재 다운로드 중인 컴포넌트 키 (None = 대기 중)
+    pub component: Option<String>,
+    /// 수신한 바이트 수
+    pub bytes_received: u64,
+    /// 전체 바이트 수 (Content-Length, 0이면 알 수 없음)
+    pub total_bytes: u64,
+    /// 다운로드 활성 여부
+    pub active: bool,
+}
 
 // ══════════════════════════════════════════════════════
 // 컴포넌트 정의
@@ -347,6 +365,8 @@ pub struct UpdateManager {
     resolved_components: HashMap<String, ResolvedComponent>,
     /// 설치 진행 상태
     install_progress: Option<InstallProgress>,
+    /// 다운로드 진행 상태 (Arc로 공유 — Manager 잠금 없이 폴링 가능)
+    pub download_progress: Arc<StdMutex<DownloadProgress>>,
 }
 
 impl UpdateManager {
@@ -393,6 +413,7 @@ impl UpdateManager {
             cached_releases: Vec::new(),
             resolved_components: HashMap::new(),
             install_progress: None,
+            download_progress: Arc::new(StdMutex::new(DownloadProgress::default())),
         }
     }
 
@@ -1190,16 +1211,54 @@ impl UpdateManager {
             key, rc.latest_version, rc.source_release_tag
         );
 
-        // resolved URL에서 직접 다운로드
+        // 진행률 초기화
+        {
+            let mut prog = self.download_progress.lock().unwrap();
+            prog.component = Some(key.clone());
+            prog.bytes_received = 0;
+            prog.total_bytes = 0;
+            prog.active = true;
+        }
+
+        // 스트리밍 다운로드 (진행률 추적)
         let response = reqwest::get(&rc.download_url).await?;
         if !response.status().is_success() {
+            let mut prog = self.download_progress.lock().unwrap();
+            prog.active = false;
             anyhow::bail!("Failed to download {}: {}", rc.asset_name, response.status());
         }
-        let bytes = response.bytes().await?;
+        let total = response.content_length().unwrap_or(0);
+        {
+            let mut prog = self.download_progress.lock().unwrap();
+            prog.total_bytes = total;
+        }
+
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(&dest, &bytes)?;
+
+        {
+            use futures_util::StreamExt;
+            use std::io::Write;
+            let mut file = std::fs::File::create(&dest)?;
+            let mut received: u64 = 0;
+            let mut stream = response.bytes_stream();
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk?;
+                file.write_all(&chunk)?;
+                received += chunk.len() as u64;
+                if let Ok(mut prog) = self.download_progress.lock() {
+                    prog.bytes_received = received;
+                }
+            }
+            file.flush()?;
+        }
+
+        // 진행률 완료
+        {
+            let mut prog = self.download_progress.lock().unwrap();
+            prog.active = false;
+        }
 
         let asset_name = rc.asset_name.clone();
 
@@ -1332,12 +1391,12 @@ impl UpdateManager {
     /// 컴포넌트의 적용 우선순위를 반환합니다.
     ///
     /// 낮은 값일수록 먼저 적용됩니다:
-    /// - 0: Updater (업데이터 자체를 가장 먼저)
+    /// - 0: Updater (업데이트 방식 변경 대응 — 디스크의 바이너리를 먼저 교체)
     /// - 1: 모듈, 익스텐션, Locales (프로세스 중단 불필요)
     /// - 2: DiscordBot (프로세스 중단 불필요)
     /// - 3: CoreDaemon (데몬 프로세스 종료 후 교체)
     /// - 4: 사용하지 않는 인터페이스 (GUI 사용 중이면 CLI, 반대도 마찬가지)
-    /// - 5: 현재 사용 중인 인터페이스 (마지막에 적용 — 재시작 필요)
+    /// - 5: 현재 사용 중인 인터페이스 (재시작 필요)
     fn component_apply_priority(component: &Component) -> u8 {
         match component {
             Component::Updater => 0,
@@ -1463,6 +1522,36 @@ impl UpdateManager {
         if manifest_path.exists() {
             let _ = std::fs::remove_file(&manifest_path);
         }
+        let targets_path = self.staging_dir.join("apply-targets.json");
+        if targets_path.exists() {
+            let _ = std::fs::remove_file(&targets_path);
+        }
+    }
+
+    /// 업데이터 exe가 적용해야 할 컴포넌트 키 목록을 저장합니다.
+    /// 데몬이 apply_updates 응답의 needs_updater 목록을 기록하여,
+    /// GUI가 CLI 인자로 일부만 전달해도 업데이터가 정확한 대상을 알 수 있도록 합니다.
+    pub fn save_updater_apply_targets(&self, keys: &[String]) -> Result<()> {
+        std::fs::create_dir_all(&self.staging_dir)?;
+        let path = self.staging_dir.join("apply-targets.json");
+        let json = serde_json::to_string_pretty(keys)?;
+        std::fs::write(&path, json)?;
+        tracing::info!("[UpdateManager] Saved apply targets: {:?} → {:?}", keys, path);
+        Ok(())
+    }
+
+    /// 데몬이 저장한 업데이터 적용 대상 목록을 읽습니다.
+    /// 파일을 읽은 후 자동 삭제합니다.
+    pub fn load_updater_apply_targets(&self) -> Result<Vec<String>> {
+        let path = self.staging_dir.join("apply-targets.json");
+        if !path.exists() {
+            anyhow::bail!("No apply-targets.json found");
+        }
+        let content = std::fs::read_to_string(&path)?;
+        let keys: Vec<String> = serde_json::from_str(&content)?;
+        std::fs::remove_file(&path).ok();
+        tracing::info!("[UpdateManager] Loaded apply targets: {:?}", keys);
+        Ok(keys)
     }
 
     // ══════════════════════════════════════════════════════
@@ -1677,24 +1766,26 @@ impl UpdateManager {
                 }
             }
             Component::Gui => {
-                // GUI는 업데이터 exe를 통한 self-update flow 필요
-                return Ok(ApplyComponentResult {
+                // 업데이터 exe가 호출한 경우: GUI 파일 직접 교체 (GUI 프로세스는 이미 종료됨)
+                self.apply_gui_update(staged_path).await?;
+                ApplyComponentResult {
                     component: component.manifest_key(),
-                    success: false,
-                    message: "GUI requires self-update flow".to_string(),
+                    success: true,
+                    message: "GUI updated".to_string(),
                     stopped_processes: Vec::new(),
-                    restart_needed: false,
-                });
+                    restart_needed: true,
+                }
             }
             Component::Updater => {
-                // Updater도 self-update flow 필요 (실행 중 교체 불가)
-                return Ok(ApplyComponentResult {
+                // 업데이터 exe가 자기 자신을 교체 (Windows: 실행 중 rename 허용)
+                self.apply_binary_update("saba-chan-updater", staged_path).await?;
+                ApplyComponentResult {
                     component: component.manifest_key(),
-                    success: false,
-                    message: "Updater requires self-update flow".to_string(),
+                    success: true,
+                    message: "Updater updated".to_string(),
                     stopped_processes: Vec::new(),
                     restart_needed: false,
-                });
+                }
             }
             Component::DiscordBot => {
                 self.apply_discord_bot_update(staged_path).await?;
@@ -2083,7 +2174,6 @@ impl UpdateManager {
                             anyhow::bail!("Cannot replace {}: {}. Is the process still running?", out_path.display(), e);
                         }
                     } else if cfg!(unix) && out_path.exists() && Self::is_known_binary(&out_path) {
-                        // Linux: 알려진 바이너리를 .old로 백업 후 교체
                         let backup = out_path.with_extension("old");
                         let _ = std::fs::rename(&out_path, &backup);
                     }

@@ -106,9 +106,40 @@ const parseComponents = (comps) =>
                 update_available: !!c.update_available,
                 downloaded: !!c.downloaded,
                 installed: !!c.installed,
-                needsUpdater: key === 'gui' || key === 'saba-core' || key === 'updater',
+                needsUpdater: key === 'gui' || key === 'saba-core',
             };
         });
+
+// ─────────────────────────────────────────────────────────────
+// 다운로드 진행률 링 (SVG)
+// percent: 0–100 → 프로그레스 링,  -1 → indeterminate(스피너)
+// ─────────────────────────────────────────────────────────────
+function DownloadRing({ percent }) {
+    const r = 13;
+    const circumference = 2 * Math.PI * r;
+    const indeterminate = percent < 0;
+    const offset = indeterminate ? circumference * 0.75 : circumference * (1 - percent / 100);
+    return (
+        <div className="download-ring-wrapper" title={indeterminate ? '...' : `${percent}%`}>
+            <svg className="download-ring-svg" viewBox="0 0 32 32" width="28" height="28">
+                <circle className="download-ring-bg" cx="16" cy="16" r={r}
+                    fill="none" strokeWidth="3" />
+                <circle
+                    className={clsx('download-ring-fill', { indeterminate })}
+                    cx="16" cy="16" r={r}
+                    fill="none" strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeDasharray={circumference}
+                    strokeDashoffset={offset}
+                    transform="rotate(-90 16 16)"
+                />
+            </svg>
+            {!indeterminate && (
+                <span className="download-ring-label">{percent}<small>%</small></span>
+            )}
+        </div>
+    );
+}
 
 function ComponentsTab({ devMode }) {
     const { t } = useTranslation('gui');
@@ -123,7 +154,9 @@ function ComponentsTab({ devMode }) {
     const [pendingRestartAction, setPendingRestartAction] = useState(null);
     const [mockMode, setMockMode] = useState(null);
     const [autoCheckEnabled, setAutoCheckEnabled] = useState(true);
+    const [downloadProgress, setDownloadProgress] = useState({ component: null, percent: 0, active: false });
     const pollRef = useRef(null);
+    const progressPollRef = useRef(null);
     const mountedRef = useRef(true);
 
     const markBusy = useCallback((key) => setBusyKeys((prev) => new Set(prev).add(key)), []);
@@ -136,6 +169,29 @@ function ComponentsTab({ devMode }) {
             }),
         [],
     );
+
+    // ── 다운로드 진행률 폴링 ─────────────────────────────────────────
+    const startProgressPolling = useCallback(() => {
+        if (progressPollRef.current) return;
+        progressPollRef.current = setInterval(async () => {
+            try {
+                const res = await window.api?.updaterDownloadProgress?.();
+                if (res?.ok && mountedRef.current) {
+                    const pct = res.total_bytes > 0
+                        ? Math.round((res.bytes_received / res.total_bytes) * 100)
+                        : -1; // -1 = indeterminate (총 크기 모름)
+                    setDownloadProgress({ component: res.component, percent: pct, active: res.active });
+                }
+            } catch (_) { /* ignore */ }
+        }, 250);
+    }, []);
+    const stopProgressPolling = useCallback(() => {
+        if (progressPollRef.current) {
+            clearInterval(progressPollRef.current);
+            progressPollRef.current = null;
+        }
+        setDownloadProgress({ component: null, percent: 0, active: false });
+    }, []);
 
     const handleToggleMock = useCallback(async (toMock) => {
         setError(null);
@@ -193,6 +249,7 @@ function ComponentsTab({ devMode }) {
         async (key) => {
             markBusy(key);
             setError(null);
+            startProgressPolling();
             try {
                 const res = await window.api?.updaterDownload?.([key]);
                 if (!res?.ok) setError(`${key}: ${res?.error || 'Download failed'}`);
@@ -200,14 +257,15 @@ function ComponentsTab({ devMode }) {
             } catch (e) {
                 setError(`${key}: ${e.message}`);
             }
+            stopProgressPolling();
             clearBusy(key);
         },
-        [refreshStatus, markBusy, clearBusy],
+        [refreshStatus, markBusy, clearBusy, startProgressPolling, stopProgressPolling],
     );
 
     const handleApplyOne = useCallback(
         async (key) => {
-            if (key === 'gui') {
+            if (key === 'gui' || key === 'saba-core') {
                 setPendingRestartAction(() => async () => {
                     markBusy(key);
                     setError(null);
@@ -325,6 +383,7 @@ function ComponentsTab({ devMode }) {
             } catch (_) {}
         }
         for (const key of allKeys) markBusy(key);
+        startProgressPolling();
         for (const key of allKeys) {
             try {
                 const res = await window.api?.updaterDownload?.([key]);
@@ -338,6 +397,7 @@ function ComponentsTab({ devMode }) {
             }
             clearBusy(key);
         }
+        stopProgressPolling();
         await refreshStatus();
 
         // 데몬에 모든 컴포넌트를 보내고, 데몬이 라우팅을 결정하도록 한다.
@@ -363,6 +423,12 @@ function ComponentsTab({ devMode }) {
                 if (launchRes?.ok === false) {
                     hadError = true;
                     setError((prev) => (prev ? prev + '\n' : '') + (launchRes?.error || t('saba_storage.updater_launch_failed')));
+                } else {
+                    // 업데이터 실행 → GUI가 곧 종료되므로 더 이상 진행하지 않음
+                    // (데몬도 자식 프로세스로 함께 종료됨 — 이후 API 호출 불가)
+                    for (const key of allKeys) clearBusy(key);
+                    setBusyAll(false);
+                    return;
                 }
             }
         } catch (e) {
@@ -371,6 +437,7 @@ function ComponentsTab({ devMode }) {
         }
         for (const key of allKeys) clearBusy(key);
         await refreshStatus();
+        // 업데이터 미사용 (데몬 직접 적용) 시에만 봇 재시작
         if (hasDiscordBot && wasBotRunning) {
             try {
                 const settings = await window.api?.settingsLoad?.();
@@ -393,18 +460,15 @@ function ComponentsTab({ devMode }) {
                 setError((prev) => (prev ? prev + '\n' : '') + t('saba_storage.bot_restart_failed', { error: e.message }));
             }
         }
-        const summary = [];
-        if (daemonApplied.length > 0) summary.push(t('saba_storage.apply_completed', { names: daemonApplied.join(', ') }));
-        if (updaterKeys.length > 0) summary.push(t('saba_storage.updater_in_progress'));
-        if (summary.length > 0) setMessage(summary.join(' · '));
+        if (daemonApplied.length > 0) setMessage(t('saba_storage.apply_completed', { names: daemonApplied.join(', ') }));
         else if (!hadError) setMessage(t('saba_storage.update_done'));
         setBusyAll(false);
-    }, [components, refreshStatus, markBusy, clearBusy]);
+    }, [components, refreshStatus, markBusy, clearBusy, startProgressPolling, stopProgressPolling]);
 
     const handleUpdateAll = useCallback(() => {
         const updatable = components.filter((c) => c.update_available);
         if (updatable.length === 0) return;
-        const hasNeedsUpdater = updatable.some((c) => c.key === 'gui' || c.key === 'saba-core' || c.key === 'updater');
+        const hasNeedsUpdater = updatable.some((c) => c.key === 'gui' || c.key === 'saba-core');
         if (hasNeedsUpdater) {
             setPendingRestartAction(() => () => executeUpdateAll());
             setConfirmRestart(true);
@@ -478,6 +542,7 @@ function ComponentsTab({ devMode }) {
         return () => {
             mountedRef.current = false;
             clearInterval(pollRef.current);
+            if (progressPollRef.current) clearInterval(progressPollRef.current);
         };
         // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only initialization — async tasks use refs for mount guard
     }, []);
@@ -553,6 +618,8 @@ function ComponentsTab({ devMode }) {
                 <div className="ss-cards">
                     {components.map((c) => {
                         const isBusy = busyKeys.has(c.key) || busyAll;
+                        const isDownloading = isBusy && downloadProgress.active && downloadProgress.component === c.key;
+                        const pct = downloadProgress.percent;
                         return (
                             <div key={c.key} className="ss-card">
                                 <div className="ss-card-icon">
@@ -569,14 +636,20 @@ function ComponentsTab({ devMode }) {
                                 </div>
                                 <div className="ss-card-actions">
                                     {c.update_available && !c.downloaded && (
-                                        <button
-                                            className="ss-icon-btn accent"
-                                            disabled={isBusy}
-                                            onClick={() => handleDownloadOne(c.key)}
-                                            title={t('saba_storage.download')}
-                                        >
-                                            {isBusy ? <SabaSpinner size="xs" /> : <Icon name="download" size="sm" />}
-                                        </button>
+                                        <>
+                                            {isDownloading ? (
+                                                <DownloadRing percent={pct} />
+                                            ) : (
+                                                <button
+                                                    className="ss-icon-btn accent"
+                                                    disabled={isBusy}
+                                                    onClick={() => handleDownloadOne(c.key)}
+                                                    title={t('saba_storage.download')}
+                                                >
+                                                    {isBusy ? <SabaSpinner size="xs" /> : <Icon name="download" size="sm" />}
+                                                </button>
+                                            )}
+                                        </>
                                     )}
                                     {c.update_available && c.downloaded && (
                                         <button

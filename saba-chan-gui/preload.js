@@ -61,6 +61,7 @@ contextBridge.exposeInMainWorld('api', {
     updaterCheck: () => ipcRenderer.invoke('updater:check'),
     updaterStatus: () => ipcRenderer.invoke('updater:status'),
     updaterDownload: (components) => ipcRenderer.invoke('updater:download', components),
+    updaterDownloadProgress: () => ipcRenderer.invoke('updater:downloadProgress'),
     updaterApply: (components) => ipcRenderer.invoke('updater:apply', components),
     updaterLaunchApply: (targets) => ipcRenderer.invoke('updater:launchApply', targets),
     updaterGetConfig: () => ipcRenderer.invoke('updater:getConfig'),
