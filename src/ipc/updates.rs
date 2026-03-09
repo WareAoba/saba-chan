@@ -341,44 +341,43 @@ async fn apply_updates(
         Component::Cli => 4,
     });
 
-    // 모듈/CLI/DiscordBot/CoreDaemon/Extension: 데몬이 직접 적용
-    // GUI/Updater: 업데이터 exe에서 적용 — 종료+파일교체+재시작 필요
+    // 업데이터 자체가 업데이트 대상인 경우:
+    // 모든 컴포넌트를 업데이터 exe에 위임한다.
+    // 업데이터가 (1) 자신을 먼저 교체 → (2) 나머지 적용 → (3) 활성 인터페이스를 마지막에 처리한다.
+    //
+    // 업데이터가 대상이 아닌 경우:
+    // - GUI/Updater: 업데이터 exe에서 적용 (종료+파일교체+재시작)
+    // - 나머지: 데몬이 직접 적용
     let mut applied = Vec::new();
     let mut errors = Vec::new();
     let mut needs_updater = Vec::new();
 
-    for comp in &targets {
-        match comp {
-            // 모듈/CLI/DiscordBot: 데몬이 직접 적용 (파일 교체)
-            // CoreDaemon: Windows에서 실행 중 exe를 .exe.old로 rename 후 새 바이너리 추출
-            Component::Module(_) | Component::Cli | Component::DiscordBot | Component::CoreDaemon | Component::Locales => {
-                match mgr.apply_single_component(comp).await {
-                    Ok(result) if result.success => {
-                        applied.push(comp.display_name());
-                    }
-                    Ok(result) => {
-                        errors.push(format!("{}: {}", comp.display_name(), result.message));
-                    }
-                    Err(e) => {
-                        errors.push(format!("{}: {}", comp.display_name(), e));
-                    }
+    let updater_pending = targets.iter().any(|c| matches!(c, Component::Updater));
+
+    if updater_pending {
+        // 업데이터가 대상 → 전부 위임
+        for comp in &targets {
+            needs_updater.push(comp.manifest_key());
+        }
+    } else {
+        for comp in &targets {
+            match comp {
+                // GUI/Updater: 업데이터 exe에서 적용 — 종료+파일교체+재시작 필요
+                Component::Gui | Component::Updater => {
+                    needs_updater.push(comp.manifest_key());
                 }
-            }
-            // GUI/Updater: 업데이터 exe에서 적용 — 종료+파일교체+재시작 필요
-            Component::Gui | Component::Updater => {
-                needs_updater.push(comp.manifest_key());
-            }
-            // Extension: 모듈과 동일 — 데몬이 직접 적용
-            Component::Extension(_) => {
-                match mgr.apply_single_component(comp).await {
-                    Ok(result) if result.success => {
-                        applied.push(comp.display_name());
-                    }
-                    Ok(result) => {
-                        errors.push(format!("{}: {}", comp.display_name(), result.message));
-                    }
-                    Err(e) => {
-                        errors.push(format!("{}: {}", comp.display_name(), e));
+                // 나머지: 데몬이 직접 적용
+                _ => {
+                    match mgr.apply_single_component(comp).await {
+                        Ok(result) if result.success => {
+                            applied.push(comp.display_name());
+                        }
+                        Ok(result) => {
+                            errors.push(format!("{}: {}", comp.display_name(), result.message));
+                        }
+                        Err(e) => {
+                            errors.push(format!("{}: {}", comp.display_name(), e));
+                        }
                     }
                 }
             }

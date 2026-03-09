@@ -684,8 +684,17 @@ fn run_apply_mode(args: Vec<String>) {
             // apply 모드: 타이틀만 변경 (윈도우 크기는 GUI 모드와 동일)
             if let Some(win) = app.get_webview_window("main") {
                 win.set_title("Saba-chan — Updating...").ok();
-                // 윈도우 포커스 — GUI 종료 후 업데이터 UI가 전면에 표시되도록
+                // Windows에서 전면 윈도우 강제 획득:
+                // SetForegroundWindow는 전면 프로세스만 호출 가능하므로,
+                // 잠시 always-on-top으로 올린 후 해제하여 우회한다.
+                win.set_always_on_top(true).ok();
                 win.set_focus().ok();
+                win.request_user_attention(Some(tauri::UserAttentionType::Critical)).ok();
+                let win_clone = win.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(800));
+                    win_clone.set_always_on_top(false).ok();
+                });
             }
             Ok(())
         })
@@ -731,6 +740,7 @@ fn try_relaunch_process(cmd: &str, extra_args: &[&str]) -> Result<(), String> {
 }
 
 /// 프로세스 재실행 헬퍼 (기존 에러 무시 버전 — 하위 호환)
+#[allow(unused)]
 fn relaunch_process(cmd: &str, extra_args: &[&str]) {
     if let Err(e) = try_relaunch_process(cmd, extra_args) {
         tracing::error!("[Apply] Relaunch failed: {}", e);

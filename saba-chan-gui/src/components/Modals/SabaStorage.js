@@ -312,9 +312,6 @@ function ComponentsTab({ devMode }) {
         setError(null);
         setMessage(null);
         const allKeys = updatable.map((c) => c.key);
-        const updaterTargets = ['gui', 'saba-core'];
-        const daemonKeys = allKeys.filter((k) => !updaterTargets.includes(k));
-        const updaterKeys = allKeys.filter((k) => updaterTargets.includes(k));
         const hasDiscordBot = allKeys.includes('discord_bot');
         let wasBotRunning = false;
         if (hasDiscordBot) {
@@ -342,39 +339,37 @@ function ComponentsTab({ devMode }) {
             clearBusy(key);
         }
         await refreshStatus();
+
+        // 데몬에 모든 컴포넌트를 보내고, 데몬이 라우팅을 결정하도록 한다.
+        // 업데이터가 대상이면 데몬이 전부 needs_updater로 보내고,
+        // 아니면 데몬이 직접 적용하고 GUI/Updater만 needs_updater로 보낸다.
         let daemonApplied = [];
-        if (daemonKeys.length > 0) {
-            for (const key of daemonKeys) markBusy(key);
-            try {
-                const res = await window.api?.updaterApply?.(daemonKeys);
-                if (res?.ok === false) {
-                    hadError = true;
-                    setError(
-                        (prev) =>
-                            (prev ? prev + '\n' : '') +
-                            (res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || t('saba_storage.apply_failed')),
-                    );
-                } else {
-                    daemonApplied = res?.applied || [];
-                }
-            } catch (e) {
+        for (const key of allKeys) markBusy(key);
+        try {
+            const res = await window.api?.updaterApply?.(allKeys);
+            if (res?.ok === false) {
                 hadError = true;
-                setError((prev) => (prev ? prev + '\n' : '') + e.message);
+                setError(
+                    (prev) =>
+                        (prev ? prev + '\n' : '') +
+                        (res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || t('saba_storage.apply_failed')),
+                );
+            } else {
+                daemonApplied = res?.applied || [];
             }
-            for (const key of daemonKeys) clearBusy(key);
-        }
-        if (updaterKeys.length > 0) {
-            try {
-                const launchRes = await window.api?.updaterLaunchApply?.(updaterKeys);
+            // 데몬이 needs_updater로 보낸 컴포넌트가 있으면 업데이터 exe 스폰
+            if (res?.requires_updater && res?.needs_updater?.length > 0) {
+                const launchRes = await window.api?.updaterLaunchApply?.(res.needs_updater);
                 if (launchRes?.ok === false) {
                     hadError = true;
                     setError((prev) => (prev ? prev + '\n' : '') + (launchRes?.error || t('saba_storage.updater_launch_failed')));
                 }
-            } catch (e) {
-                hadError = true;
-                setError((prev) => (prev ? prev + '\n' : '') + `${t('saba_storage.updater_label')}: ${e.message}`);
             }
+        } catch (e) {
+            hadError = true;
+            setError((prev) => (prev ? prev + '\n' : '') + e.message);
         }
+        for (const key of allKeys) clearBusy(key);
         await refreshStatus();
         if (hasDiscordBot && wasBotRunning) {
             try {
@@ -409,7 +404,7 @@ function ComponentsTab({ devMode }) {
     const handleUpdateAll = useCallback(() => {
         const updatable = components.filter((c) => c.update_available);
         if (updatable.length === 0) return;
-        const hasNeedsUpdater = updatable.some((c) => c.key === 'gui' || c.key === 'saba-core');
+        const hasNeedsUpdater = updatable.some((c) => c.key === 'gui' || c.key === 'saba-core' || c.key === 'updater');
         if (hasNeedsUpdater) {
             setPendingRestartAction(() => () => executeUpdateAll());
             setConfirmRestart(true);
