@@ -829,16 +829,24 @@ async function checkAfterUpdate() {
 // ─── 초기 로드 ──────────────────────────────────────────
 
 (async function init() {
-    // CSS가 적용된 후 윈도우를 표시하여 흰 화면 방지 (tauri.conf.json: visible=false)
+    // 테마 적용 — settings.json에서 읽어 CSS data-theme 속성에 반영
+    try {
+        const theme = await invoke('get_theme');
+        if (theme && ['light', 'dark', 'auto'].includes(theme)) {
+            document.body.setAttribute('data-theme', theme);
+        }
+    } catch (_) {
+        // 테마 로드 실패 시 기본 auto (CSS media query가 처리)
+    }
+
+    // 윈도우 표시는 Rust setup에서 처리 — JS에서는 포커스만 비동기로 시도
+    // (await appWindow.show()가 특정 환경에서 블로킹되는 Tauri v2 이슈 회피)
     const appWindow = getCurrentWindow();
-    await appWindow.show();
-    // Windows에서 전면 윈도우 강제 획득:
-    // 잠시 always-on-top으로 올린 후 setFocus → 해제
-    await appWindow.setAlwaysOnTop(true);
-    await appWindow.setFocus();
-    setTimeout(async () => {
-        try { await appWindow.setAlwaysOnTop(false); } catch (_) {}
-    }, 800);
+    appWindow.show()
+        .then(() => appWindow.setAlwaysOnTop(true))
+        .then(() => appWindow.setFocus())
+        .then(() => setTimeout(() => appWindow.setAlwaysOnTop(false).catch(() => {}), 800))
+        .catch(() => {});
 
     await initLocalization();
 

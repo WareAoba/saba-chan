@@ -781,7 +781,9 @@ function spawnDetached(exe, args) {
         // cmd /c start "" /B "exe" args...
         // /B: 새 창 열지 않음, "": 타이틀 빈 문자열
         // shell: true + cmd start 조합으로 Chromium Job Object에서 벗어남
-        const proc = spawn('cmd.exe', ['/c', 'start', '""', '/B', `"${exe}"`, ...args], {
+        // 공백이 포함된 인자를 따옴표로 감싸야 cmd.exe가 올바르게 파싱
+        const quotedArgs = args.map(a => (a.includes(' ') ? `"${a}"` : a));
+        const proc = spawn('cmd.exe', ['/c', 'start', '""', '/B', `"${exe}"`, ...quotedArgs], {
             detached: true,
             stdio: 'ignore',
             shell: true,
@@ -2667,52 +2669,39 @@ ipcMain.handle('updater:apply', async (_event, components) => {
     }
 });
 
-// 업데이터 exe 스폰 — GUI/CLI/데몬 바이너리 교체 전용
-// 데몬이 직접 적용할 수 없는 셀프업데이트를 업데이터 프로세스에 위임
-ipcMain.handle('updater:launchApply', async (_event, targets) => {
+// 업데이터 exe 스폰 — 업데이트 적용 전용
+// 업데이터가 apply-targets.json에서 적용 대상을 읽고, 파일 교체 후 GUI를 재실행합니다.
+// install_root와 컴포넌트 목록은 업데이터가 자동 추론하므로 전달하지 않습니다.
+ipcMain.handle('updater:launchApply', async (_event, _targets) => {
     try {
         const updaterExe = findUpdaterExe();
         if (!updaterExe) {
             return { ok: false, error: 'Updater exe not found' };
         }
+
         const args = ['--apply'];
-        // 설치 루트 경로 전달 (portable 모드에서 임시 폴더가 아닌 실제 배포 위치)
-        const installRoot = getInstallRoot();
-        args.push('--install-root', installRoot);
-        if (Array.isArray(targets)) {
-            args.push(...targets);
-        }
-        // GUI 업데이트가 포함된 경우에만 --relaunch 인자 전달
-        const hasGuiUpdate = (targets || []).includes('gui');
-        const hasCoreUpdate = (targets || []).includes('saba-core');
-        // GUI 또는 CoreDaemon 업데이트 시 GUI를 종료해야 함
-        // (데몬은 GUI의 자식 프로세스이므로 GUI 종료 시 함께 종료됨)
-        const needsRelaunch = hasGuiUpdate || hasCoreUpdate;
-        if (needsRelaunch) {
-            let guiExe;
-            if (!app.isPackaged) {
-                guiExe = process.execPath; // 개발 모드: electron exe
-            } else if (process.env.PORTABLE_EXECUTABLE_FILE) {
-                // Portable 모드: 임시 폴더가 아닌 원본 exe 경로
-                guiExe = process.env.PORTABLE_EXECUTABLE_FILE;
-            } else {
-                guiExe = app.getPath('exe');
-            }
+
+        // GUI exe 경로: 업데이터가 적용 완료 후 재실행할 대상
+        let guiExe;
+        if (!app.isPackaged) {
+            guiExe = process.execPath; // 개발 모드: electron exe
+            args.push('--relaunch', guiExe, path.resolve(__dirname));
+        } else if (process.env.PORTABLE_EXECUTABLE_FILE) {
+            guiExe = process.env.PORTABLE_EXECUTABLE_FILE;
             args.push('--relaunch', guiExe);
-            // 개발 모드에서는 프로젝트 디렉토리를 절대 경로로 전달
-            if (!app.isPackaged) {
-                args.push(path.resolve(__dirname));
-            }
+        } else {
+            // 프로덕션: 업데이터가 같은 폴더의 saba-chan-gui.exe를 자동 추론
+            // --relaunch 생략 가능하지만, 명시적으로 전달
+            guiExe = app.getPath('exe');
+            args.push('--relaunch', guiExe);
         }
+
         console.log(`[Updater] Launching apply: ${updaterExe} ${args.join(' ')}`);
         spawnDetached(updaterExe, args);
-        if (needsRelaunch) {
-            // cleanQuit()으로 데몬을 graceful shutdown 후 종료
-            // (app.quit()은 데몬 정리를 보장하지 않아 업데이터에서 대기 타임아웃 발생)
-            setTimeout(() => cleanQuit(), 500);
-        }
-        // 데몬/CLI만이면 GUI는 계속 실행 — 업데이터가 백그라운드에서 교체
-        return { ok: true, message: 'Updater launched for apply.' };
+
+        // 업데이터가 실행되면 GUI는 항상 종료 (업데이터가 재실행 담당)
+        setTimeout(() => cleanQuit(), 500);
+        return { ok: true };
     } catch (err) {
         return { ok: false, error: err.message };
     }
