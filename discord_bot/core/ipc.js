@@ -139,7 +139,9 @@ async function startServer(serverId, serverName, serverModule, useManaged) {
 }
 
 async function stopServer(serverName) {
-    return axios.post(`${IPC_BASE}/api/server/${serverName}/stop`, { force: false });
+    // 데몬의 managed stop은 최대 30초(모듈 stop_timeout) + 2초(force kill 대기) 소요.
+    // 기본 axios 타임아웃(15초)으로는 부족하므로 별도 설정.
+    return axios.post(`${IPC_BASE}/api/server/${serverName}/stop`, { force: false }, { timeout: 35000 });
 }
 
 async function sendStdin(serverId, command) {
@@ -172,6 +174,11 @@ async function sendModuleCommand(serverId, commandName, body) {
         args: body,
         instance_id: serverId,
     });
+}
+
+async function getBotConfig() {
+    const res = await axios.get(`${IPC_BASE}/api/config/bot`);
+    return res.data;
 }
 
 // ── 범용 응답 포맷터 ──
@@ -232,5 +239,6 @@ module.exports = {
     sendRcon,
     sendRestCommand,
     sendModuleCommand,
+    getBotConfig,
     formatResponse,
 };

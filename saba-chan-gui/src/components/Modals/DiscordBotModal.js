@@ -1,34 +1,37 @@
 import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import i18n from '../../i18n';
 import './Modals.css';
 import { Icon } from '../Icon';
 import { SabaCheckbox, SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { useExtensions } from '../../contexts/ExtensionContext';
+import { useDiscordStore } from '../../stores/useDiscordStore';
 
 // ── 릴레이 서버 기본 URL (고급 설정에서 오버라이드 가능) ──
 const DEFAULT_RELAY_URL = 'https://saba-chan.online';
 
-// ── 음악 명령어 정의 (music.js의 DEFAULT_COMMAND_ALIASES와 동기화) ──
-const MUSIC_COMMAND_DEFS = {
-    play:    { defaultAliases: ['재생', 'p', 'ㅈㅅ'] },
-    search:  { defaultAliases: ['검색', 'find', 'ㄱㅅ'] },
-    pause:   { defaultAliases: ['일시정지', 'ㅇㅅㅈㅈ'] },
-    resume:  { defaultAliases: ['계속', 'ㄱㅅㄱ'] },
-    skip:    { defaultAliases: ['다음', 'ㄷㅇ', 's', 'next'] },
-    stop:    { defaultAliases: ['정지', 'ㅈㅈ', 'leave', 'disconnect', 'dc'] },
-    queue:   { defaultAliases: ['대기열', 'ㄷㄱㅇ', 'q', 'list'] },
-    np:      { defaultAliases: ['지금', 'ㅈㄱ', 'nowplaying', 'now'] },
-    volume:  { defaultAliases: ['볼륨', 'ㅂㄹ', 'vol', 'v'] },
-    shuffle: { defaultAliases: ['섞기', 'ㅅㄱ', 'random'] },
-    help:    { defaultAliases: ['도움', 'ㄷㅇ말'] },
+// ── 음악 명령어 키 목록 (범용 별명은 i18n bot:music_commands에서 로드) ──
+const UNIVERSAL_COMMAND_ALIASES = {
+    play:    ['p'],
+    search:  ['find'],
+    pause:   [],
+    resume:  ['continue'],
+    skip:    ['s', 'next'],
+    stop:    ['leave', 'disconnect', 'dc'],
+    queue:   ['q', 'list'],
+    np:      ['nowplaying', 'now'],
+    volume:  ['vol', 'v'],
+    shuffle: ['random'],
+    help:    [],
 };
-const DEFAULT_MUSIC_MODULE_ALIASES = ['music', '음악', 'dj'];
+const MUSIC_COMMAND_KEYS = Object.keys(UNIVERSAL_COMMAND_ALIASES);
 
 function DiscordBotModal({
     isOpen,
     onClose,
     isClosing,
+    displayMode = 'popup',
     discordBotStatus,
     discordToken,
     setDiscordToken,
@@ -38,6 +41,10 @@ function DiscordBotModal({
     setDiscordAutoStart,
     discordMusicEnabled,
     setDiscordMusicEnabled,
+    discordMusicChannelId,
+    setDiscordMusicChannelId,
+    discordMusicUISettings,
+    setDiscordMusicUISettings,
     discordBotMode,
     setDiscordBotMode,
     discordCloudRelayUrl,
@@ -102,6 +109,9 @@ function DiscordBotModal({
     const [musicModuleAliases, setMusicModuleAliases] = useState('');
     const [musicCommandAliases, setMusicCommandAliases] = useState({});
     const musicSettingsRef = useRef(null);
+    const [guildChannels, setGuildChannels] = useState(null); // { guildId: { guildName, channels: [...] } }
+    const [channelsLoading, setChannelsLoading] = useState(false);
+    const [channelsError, setChannelsError] = useState(null); // M3: 채널 로드 에러 상태
 
     // ── 페어링 타이머 & 폴링 클린업 ──
     useEffect(() => {
@@ -167,7 +177,7 @@ function DiscordBotModal({
             // 명령어 별명 로드
             const savedCmdAliases = cfg?.commandAliases?.music || {};
             const initial = {};
-            for (const cmd of Object.keys(MUSIC_COMMAND_DEFS)) {
+            for (const cmd of MUSIC_COMMAND_KEYS) {
                 initial[cmd] = savedCmdAliases[cmd] || '';
             }
             setMusicCommandAliases(initial);
@@ -176,16 +186,52 @@ function DiscordBotModal({
             // 기본값으로 초기화
             setMusicModuleAliases('');
             const initial = {};
-            for (const cmd of Object.keys(MUSIC_COMMAND_DEFS)) {
+            for (const cmd of MUSIC_COMMAND_KEYS) {
                 initial[cmd] = '';
             }
             setMusicCommandAliases(initial);
         }
         setShowMusicSettings(true);
+        // 봇이 실행 중이면 채널 목록 로드
+        if (discordBotStatus === 'running') {
+            loadGuildChannels();
+        }
         // 다음 렌더 후 패널로 스크롤
         requestAnimationFrame(() => {
             musicSettingsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
+    }, [discordBotStatus]);
+
+    /** 서버 채널 목록 로드 (재시도 포함) */
+    const loadGuildChannels = useCallback(async () => {
+        setChannelsLoading(true);
+        setChannelsError(null);
+        const maxRetries = 3;
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                const resp = await window.api.discordGuildChannels();
+                if (resp?.data && typeof resp.data === 'object' && Object.keys(resp.data).length > 0) {
+                    setGuildChannels(resp.data);
+                    setChannelsLoading(false);
+                    return;
+                }
+                // BOT_NOT_READY 에러면 잠시 대기 후 재시도
+                if (resp?.error === 'BOT_NOT_READY' && attempt < maxRetries) {
+                    await new Promise(r => setTimeout(r, 2000));
+                    continue;
+                }
+            } catch (e) {
+                console.warn(`[MusicSettings] Channel load attempt ${attempt} failed:`, e);
+                if (attempt < maxRetries) {
+                    await new Promise(r => setTimeout(r, 1500));
+                    continue;
+                }
+            }
+            // 최종 실패
+            setGuildChannels(null);
+            setChannelsError('Failed to load channels');
+        }
+        setChannelsLoading(false);
     }, []);
 
     /** 음악 별명 저장 */
@@ -222,23 +268,36 @@ function DiscordBotModal({
                 ...current,
                 moduleAliases,
                 commandAliases,
+                musicChannelId: discordMusicChannelId || '',
+                musicUISettings: discordMusicUISettings || { queueLines: 5, refreshInterval: 4000 },
             };
             const res = await window.api.botConfigSave(payload);
             if (res.error) {
                 console.error('[MusicSettings] Save failed:', res.error);
+                // M4: 사용자에게 저장 실패 피드백 표시
+                if (window.showToast) window.showToast(res.error, 'error');
             } else {
+                // zustand store 동기화 — startBot이 최신 별명을 전달하도록
+                useDiscordStore.getState().update({
+                    discordModuleAliases: moduleAliases,
+                    discordCommandAliases: commandAliases,
+                    discordMusicChannelId: discordMusicChannelId || '',
+                    discordMusicUISettings: discordMusicUISettings || { queueLines: 5, refreshInterval: 4000 },
+                });
                 console.log('[MusicSettings] Aliases saved');
+                if (window.showToast) window.showToast('Music settings saved', 'success');
             }
         } catch (e) {
             console.error('[MusicSettings] Save error:', e);
+            if (window.showToast) window.showToast(String(e.message || e), 'error');
         }
-    }, [musicModuleAliases, musicCommandAliases]);
+    }, [musicModuleAliases, musicCommandAliases, discordMusicChannelId, discordMusicUISettings]);
 
     /** 음악 별명 초기화 */
     const handleResetMusicAliases = useCallback(async () => {
         setMusicModuleAliases('');
         const cleared = {};
-        for (const cmd of Object.keys(MUSIC_COMMAND_DEFS)) {
+        for (const cmd of MUSIC_COMMAND_KEYS) {
             cleared[cmd] = '';
         }
         setMusicCommandAliases(cleared);
@@ -252,6 +311,11 @@ function DiscordBotModal({
 
             const payload = { ...current, moduleAliases, commandAliases };
             await window.api.botConfigSave(payload);
+            // zustand store 동기화
+            useDiscordStore.getState().update({
+                discordModuleAliases: moduleAliases,
+                discordCommandAliases: commandAliases,
+            });
             console.log('[MusicSettings] Aliases reset');
         } catch (e) {
             console.error('[MusicSettings] Reset error:', e);
@@ -297,26 +361,13 @@ function DiscordBotModal({
         async (guildId) => {
             setMembersLoading(true);
             try {
-                // 먼저 디스코드 길드 멤버를 실시간으로 가져옴
-                const discordResp = await fetch(`${effectiveRelayUrl}/api/nodes/${guildId}/discord-members`);
-                if (discordResp.ok) {
-                    const data = await discordResp.json();
-                    setCloudMembers((prev) => ({
-                        ...prev,
-                        [guildId]: Array.isArray(data) ? data : data.members || [],
-                    }));
-                } else if (discordResp.status === 503) {
-                    // 봇 미접속 — nodePermissions 기반 폴백
-                    console.warn('[DiscordBotModal] Bot unavailable, falling back to permission-based members');
-                    const fallbackResp = await fetch(`${effectiveRelayUrl}/api/nodes/${guildId}/members`);
-                    if (fallbackResp.ok) {
-                        const data = await fallbackResp.json();
-                        setCloudMembers((prev) => ({
-                            ...prev,
-                            [guildId]: Array.isArray(data) ? data : data.members || [],
-                        }));
-                    }
-                }
+                // 데몬 프록시를 통해 멤버 조회 (discord-members → members 폴백은 데몬이 처리)
+                const data = await window.api.relayListNodeMembers(guildId, effectiveRelayUrl);
+                const members = Array.isArray(data) ? data : data?.members || [];
+                setCloudMembers((prev) => ({
+                    ...prev,
+                    [guildId]: members,
+                }));
             } catch (e) {
                 console.warn('[DiscordBotModal] Failed to fetch cloud members:', e);
             } finally {
@@ -515,14 +566,9 @@ function DiscordBotModal({
         if (!discordCloudHostId) return;
         setCloudError('');
         try {
-            // 노드 목록 로드
-            const nodesResp = await fetch(
-                `${effectiveRelayUrl}/api/hosts/${encodeURIComponent(discordCloudHostId)}/nodes`,
-            );
-            if (nodesResp.ok) {
-                const nodesData = await nodesResp.json();
-                setCloudNodes(Array.isArray(nodesData) ? nodesData : []);
-            }
+            // 노드 목록 로드 (데몬 프록시 경유)
+            const nodesData = await window.api.relayListHostNodes(discordCloudHostId, effectiveRelayUrl);
+            setCloudNodes(Array.isArray(nodesData) ? nodesData : []);
         } catch (e) {
             setCloudError(t('errors.network_error', { defaultValue: 'Connection failed' }));
             console.error('[DiscordBotModal] Cloud nodes fetch error:', e.message);
@@ -557,27 +603,21 @@ function DiscordBotModal({
     const startPairing = useCallback(async () => {
         try {
             setPairStatus('idle');
-            const resp = await fetch(`${effectiveRelayUrl}/api/pair/initiate`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ relayUrl: effectiveRelayUrl }),
-            });
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            const data = await resp.json();
+            const data = await window.api.relayInitiatePairing({ relayUrl: effectiveRelayUrl });
+            if (data.error) throw new Error(data.error);
             setPairCode(data.code);
             setPairExpiresAt(data.expiresAt);
             setPairPollSecret(data.pollSecret);  // ★ pollSecret 저장
             setPairStatus('waiting');
             setPairCopied(false);
 
-            // 폴링 시작 (★ pollSecret을 쿼리 파라미터로 전달)
+            // 폴링 시작 (데몬 프록시 경유)
             if (pairPollRef.current) clearInterval(pairPollRef.current);
             const secret = data.pollSecret;
             pairPollRef.current = setInterval(async () => {
                 try {
-                    const r = await fetch(`${effectiveRelayUrl}/api/pair/${encodeURIComponent(data.code)}/status?secret=${encodeURIComponent(secret)}`);
-                    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                    const s = await r.json();
+                    const s = await window.api.relayPollPairingStatus(data.code, secret, effectiveRelayUrl);
+                    if (s.error) throw new Error(s.error);
                     if (s.status === 'claimed') {
                         clearInterval(pairPollRef.current);
                         pairPollRef.current = null;
@@ -1094,8 +1134,10 @@ function DiscordBotModal({
         </div>
     );
 
+    const isSide = displayMode === 'side';
+
     return (
-        <div className={clsx('discord-modal-container', { closing: isClosing })} onClick={(e) => e.stopPropagation()}>
+        <div className={clsx('discord-modal-container', { closing: isClosing, 'side-panel': isSide })} onClick={(e) => e.stopPropagation()}>
             <div className="discord-modal-header">
                 <div className="discord-modal-title">
                     <span
@@ -1526,10 +1568,10 @@ function DiscordBotModal({
                                     </span>
                                 </div>
                                 <div className="discord-music-settings-body">
-                                    {/* 모듈 별명 */}
+                                    {/* M1: 모듈 별명 — 누락된 입력 필드 추가 */}
                                     <div className="discord-music-alias-section">
                                         <h4>
-                                            <Icon name="hash" size="sm" />
+                                            <Icon name="tag" size="sm" />
                                             {t('discord_modal.music_module_aliases_title')}
                                         </h4>
                                         <small>{t('discord_modal.music_module_aliases_desc')}</small>
@@ -1540,25 +1582,6 @@ function DiscordBotModal({
                                             value={musicModuleAliases}
                                             onChange={(e) => setMusicModuleAliases(e.target.value)}
                                         />
-                                        <div className="discord-music-alias-badges">
-                                            {DEFAULT_MUSIC_MODULE_ALIASES.map((a) => (
-                                                <span key={a} className="discord-music-alias-badge default">
-                                                    {a}
-                                                </span>
-                                            ))}
-                                            {musicModuleAliases
-                                                .split(',')
-                                                .map((a) => a.trim())
-                                                .filter((a) => a.length > 0)
-                                                .map((a) => (
-                                                    <span key={a} className="discord-music-alias-badge">
-                                                        {a}
-                                                    </span>
-                                                ))}
-                                        </div>
-                                        <div className="default-hint">
-                                            {t('discord_modal.music_module_aliases_default')}
-                                        </div>
                                     </div>
 
                                     {/* 명령어 별명 */}
@@ -1569,7 +1592,21 @@ function DiscordBotModal({
                                         </h4>
                                         <small>{t('discord_modal.music_command_aliases_desc')}</small>
                                         <div className="discord-music-cmd-grid">
-                                            {Object.entries(MUSIC_COMMAND_DEFS).map(([cmd, def]) => {
+                                            {MUSIC_COMMAND_KEYS.map((cmd) => {
+                                                // i18n에서 현재 언어의 별명 로드, 범용 별명과 병합
+                                                const i18nAliases = i18n.t(`bot:music_commands.${cmd}`, { returnObjects: true });
+                                                const langAliases = Array.isArray(i18nAliases) ? i18nAliases : [];
+                                                const universalAliases = UNIVERSAL_COMMAND_ALIASES[cmd] || [];
+                                                const seen = new Set();
+                                                const defaultAliases = [];
+                                                for (const a of [...langAliases, ...universalAliases]) {
+                                                    const lower = a.toLowerCase();
+                                                    if (!seen.has(lower)) {
+                                                        seen.add(lower);
+                                                        defaultAliases.push(a);
+                                                    }
+                                                }
+
                                                 const currentVal = musicCommandAliases[cmd] || '';
                                                 const currentArr = currentVal
                                                     .split(',')
@@ -1592,7 +1629,7 @@ function DiscordBotModal({
                                                                 className="discord-music-cmd-input"
                                                                 type="text"
                                                                 placeholder={
-                                                                    def.defaultAliases.join(', ') +
+                                                                    defaultAliases.join(', ') +
                                                                     ' (' + t('discord_modal.music_command_aliases_placeholder') + ')'
                                                                 }
                                                                 value={currentVal}
@@ -1605,7 +1642,7 @@ function DiscordBotModal({
                                                             />
                                                             <div className="discord-music-alias-badges">
                                                                 {currentArr.length === 0
-                                                                    ? def.defaultAliases.map((a) => (
+                                                                    ? defaultAliases.map((a) => (
                                                                         <span
                                                                             key={a}
                                                                             className="discord-music-alias-badge default"
@@ -1639,6 +1676,124 @@ function DiscordBotModal({
                                             <Icon name="refresh" size="sm" />
                                             {t('discord_modal.music_aliases_reset')}
                                         </button>
+                                    </div>
+
+                                    {/* 전용 음악 채널 설정 */}
+                                    <div className="discord-music-alias-section discord-music-channel-section">
+                                        <h4>
+                                            <Icon name="hash" size="sm" />
+                                            {t('discord_modal.music_channel_title')}
+                                        </h4>
+                                        <small>{t('discord_modal.music_channel_desc')}</small>
+
+                                        {discordBotStatus !== 'running' ? (
+                                            <div className="discord-music-channel-offline">
+                                                {t('discord_modal.music_channel_bot_offline')}
+                                            </div>
+                                        ) : channelsLoading ? (
+                                            <div className="discord-music-channel-loading">
+                                                <SabaSpinner size="sm" />
+                                                {t('discord_modal.music_channel_loading')}
+                                            </div>
+                                        ) : channelsError ? (
+                                            <div className="discord-music-channel-offline">
+                                                ⚠️ {channelsError}
+                                                <button className="btn btn-refresh-channels" onClick={loadGuildChannels} style={{ marginLeft: 8 }}>
+                                                    <Icon name="refresh" size="sm" />
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div className="discord-music-channel-select-row">
+                                                    <select
+                                                        className="discord-music-channel-select"
+                                                        value={discordMusicChannelId || ''}
+                                                        onChange={(e) => setDiscordMusicChannelId(e.target.value)}
+                                                    >
+                                                        <option value="">
+                                                            {t('discord_modal.music_channel_none')}
+                                                        </option>
+                                                        {guildChannels &&
+                                                            Object.entries(guildChannels).map(
+                                                                ([guildId, guild]) => (
+                                                                    <optgroup
+                                                                        key={guildId}
+                                                                        label={guild.guildName}
+                                                                    >
+                                                                        {guild.channels.map((ch) => (
+                                                                            <option
+                                                                                key={ch.id}
+                                                                                value={ch.id}
+                                                                            >
+                                                                                #{ch.name}
+                                                                                {ch.parentName
+                                                                                    ? ` (${ch.parentName})`
+                                                                                    : ''}
+                                                                            </option>
+                                                                        ))}
+                                                                    </optgroup>
+                                                                ),
+                                                            )}
+                                                    </select>
+                                                    <button
+                                                        className="btn btn-refresh-channels"
+                                                        onClick={loadGuildChannels}
+                                                        title={t('discord_modal.music_channel_refresh_list')}
+                                                    >
+                                                        <Icon name="refresh" size="sm" />
+                                                    </button>
+                                                </div>
+                                            </>
+                                        )}
+
+                                        <div className="discord-music-channel-options">
+                                            <div className="discord-music-channel-option">
+                                                <label>{t('discord_modal.music_channel_queue_lines')}</label>
+                                                <input
+                                                    className="discord-music-channel-number-input"
+                                                    type="number"
+                                                    min="5"
+                                                    max="10"
+                                                    value={discordMusicUISettings?.queueLines || 5}
+                                                    onChange={(e) => {
+                                                        const val = Math.min(10, Math.max(5, parseInt(e.target.value, 10) || 5));
+                                                        setDiscordMusicUISettings({
+                                                            ...discordMusicUISettings,
+                                                            queueLines: val,
+                                                        });
+                                                    }}
+                                                />
+                                            </div>
+                                            <div className="discord-music-channel-option">
+                                                <label>{t('discord_modal.music_channel_refresh')}</label>
+                                                <select
+                                                    className="discord-music-channel-select"
+                                                    value={discordMusicUISettings?.refreshInterval || 4000}
+                                                    onChange={(e) =>
+                                                        setDiscordMusicUISettings({
+                                                            ...discordMusicUISettings,
+                                                            refreshInterval: parseInt(e.target.value, 10),
+                                                        })
+                                                    }
+                                                >
+                                                    <option value={3000}>3{t('discord_modal.music_channel_sec')}</option>
+                                                    <option value={4000}>4{t('discord_modal.music_channel_sec')}</option>
+                                                    <option value={5000}>5{t('discord_modal.music_channel_sec')}</option>
+                                                </select>
+                                            </div>
+                                            <div className="discord-music-channel-option">
+                                                <label>{t('discord_modal.music_normalize')}</label>
+                                                <SabaToggle
+                                                    checked={discordMusicUISettings?.normalize !== false}
+                                                    onChange={(checked) =>
+                                                        setDiscordMusicUISettings({
+                                                            ...discordMusicUISettings,
+                                                            normalize: checked,
+                                                        })
+                                                    }
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

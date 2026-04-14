@@ -2,9 +2,9 @@
  * 설정 저장/로드 라운드트립 테스트
  *
  * 모든 설정 항목에 대해 save → load 왕복을 검증한다.
- * - settings.json (settingsLoad / settingsSave) : 7 필드
- * - bot-config.json (botConfigLoad / botConfigSave) : 10 필드
- * - cross-store sync (token, autoStart) : 2 필드
+ * - settings.json (settingsLoad / settingsSave) : 16 필드 (GUI 전용 + 테마 커스터마이즈 10필드)
+ * - bot-config.json (botConfigLoad / botConfigSave) : 12 필드 (token + autoStart 포함)
+ * - 마이그레이션: settings.json → bot-config.json (레거시 token/autoStart)
  *
  * 각 테스트가 독립적으로 store를 리셋하므로 순서 무관.
  */
@@ -53,7 +53,7 @@ beforeEach(() => {
 describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => {
     // ── 저장 시 모든 7 필드가 payload에 포함되는지 검증 ──
 
-    it('save() payload에 GUI 6필드 + discord 2필드 = 총 8필드 포함', async () => {
+    it('save() payload에 GUI 16필드만 포함 (token/autoStart는 bot-config으로 이전)', async () => {
         mockApi();
         const _store = useSettingsStore.getState();
         // Prepare: settingsPath 필요
@@ -64,7 +64,6 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
             ipcPort: 11111,
             consoleBufferSize: 500,
         });
-        useSettingsStore.getState()._setDiscordFields('tok-abc', true);
 
         await useSettingsStore.getState().save();
 
@@ -76,9 +75,21 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
             consoleBufferSize: 500,
             autoGeneratePasswords: true,
             portConflictCheck: true,
-            discordToken: 'tok-abc',
-            discordAutoStart: true,
+            // Theme customization defaults
+            accentColor: '#667eea',
+            accentSecondary: '#764ba2',
+            useGradient: true,
+            fontScale: 100,
+            enableTransitions: true,
+            consoleSyntaxHighlight: true,
+            consoleBgColor: '#1e1e2e',
+            consoleTextColor: '#cdd6f4',
+            sidebarCompact: false,
+            consoleFontScale: 100,
         });
+        // discordToken/discordAutoStart가 포함되지 않음을 확인
+        expect(payload.discordToken).toBeUndefined();
+        expect(payload.discordAutoStart).toBeUndefined();
     });
 
     // ── 개별 필드 라운드트립: save → load → 값이 동일한지 ──
@@ -101,7 +112,6 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
             }),
         });
         useSettingsStore.setState({ settingsPath: '/s.json', [field]: saved });
-        useSettingsStore.getState()._setDiscordFields('', false);
         await useSettingsStore.getState().save();
         expect(captured[field]).toEqual(saved);
 
@@ -119,76 +129,54 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
         expect(useSettingsStore.getState()[field]).toEqual(saved);
     });
 
-    // ── discordToken 라운드트립 (settings 파일 경유) ──
+    // ── discordToken 라운드트립 (bot-config.json 경유 — 새 SSOT) ──
 
-    it('discordToken: 저장("my-token") → 로드 → settingsStore._discordToken 복원', async () => {
+    it('discordToken: bot-config에 저장 → 로드 → discordStore.discordToken 복원', async () => {
         let captured = null;
         mockApi({
-            settingsSave: vi.fn().mockImplementation(async (data) => {
+            botConfigSave: vi.fn().mockImplementation(async (data) => {
                 captured = data;
                 return { success: true };
             }),
         });
-        useSettingsStore.setState({ settingsPath: '/s.json' });
-        useSettingsStore.getState()._setDiscordFields('my-token', false);
-        await useSettingsStore.getState().save();
-        expect(captured.discordToken).toBe('my-token');
-
-        // Reset + load: App.js에서 하는 것과 동일한 과정 재현
-        useSettingsStore.getState()._resetForTest();
-        useDiscordStore.getState()._resetForTest();
-
-        mockApi({
-            settingsLoad: vi.fn().mockResolvedValue(captured),
-            settingsGetPath: vi.fn().mockResolvedValue('/s.json'),
-        });
-        const raw = await useSettingsStore.getState().load();
-        // App.js 로직: raw settings에서 discord fields 복원
-        if (raw) {
-            useDiscordStore.getState().update({
-                discordToken: raw.discordToken || '',
-                _discordTokenRef: raw.discordToken || '',
-            });
-            useSettingsStore.getState()._setDiscordFields(raw.discordToken || '', raw.discordAutoStart ?? false);
-        }
-
-        expect(useDiscordStore.getState().discordToken).toBe('my-token');
-        expect(useSettingsStore.getState()._discordToken).toBe('my-token');
-    });
-
-    // ── discordAutoStart 라운드트립 (settings 파일 경유) ──
-
-    it('discordAutoStart: 저장(true) → 로드 → discordStore.discordAutoStart 복원', async () => {
-        let captured = null;
-        mockApi({
-            settingsSave: vi.fn().mockImplementation(async (data) => {
-                captured = data;
-                return { success: true };
-            }),
-        });
-        useSettingsStore.setState({ settingsPath: '/s.json' });
-        useSettingsStore.getState()._setDiscordFields('tok', true);
-        await useSettingsStore.getState().save();
-        expect(captured.discordAutoStart).toBe(true);
+        useDiscordStore.setState({ discordToken: 'my-token' });
+        await useDiscordStore.getState().saveConfig();
+        expect(captured.token).toBe('my-token');
 
         // Reset + load
-        useSettingsStore.getState()._resetForTest();
         useDiscordStore.getState()._resetForTest();
 
         mockApi({
-            settingsLoad: vi.fn().mockResolvedValue(captured),
-            settingsGetPath: vi.fn().mockResolvedValue('/s.json'),
+            botConfigLoad: vi.fn().mockResolvedValue(captured),
         });
-        const raw = await useSettingsStore.getState().load();
-        if (raw) {
-            useDiscordStore.getState().update({
-                discordAutoStart: raw.discordAutoStart ?? false,
-            });
-            useSettingsStore.getState()._setDiscordFields(raw.discordToken || '', raw.discordAutoStart ?? false);
-        }
+        await useDiscordStore.getState().loadConfig();
+
+        expect(useDiscordStore.getState().discordToken).toBe('my-token');
+    });
+
+    // ── discordAutoStart 라운드트립 (bot-config.json 경유) ──
+
+    it('discordAutoStart: bot-config에 저장(true) → 로드 → discordStore.discordAutoStart 복원', async () => {
+        let captured = null;
+        mockApi({
+            botConfigSave: vi.fn().mockImplementation(async (data) => {
+                captured = data;
+                return { success: true };
+            }),
+        });
+        useDiscordStore.setState({ discordAutoStart: true });
+        await useDiscordStore.getState().saveConfig();
+        expect(captured.autoStart).toBe(true);
+
+        // Reset + load
+        useDiscordStore.getState()._resetForTest();
+
+        mockApi({
+            botConfigLoad: vi.fn().mockResolvedValue(captured),
+        });
+        await useDiscordStore.getState().loadConfig();
 
         expect(useDiscordStore.getState().discordAutoStart).toBe(true);
-        expect(useSettingsStore.getState()._discordAutoStart).toBe(true);
     });
 
     // ── 전체 필드 동시 라운드트립 ──
@@ -201,8 +189,6 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
             consoleBufferSize: 4000,
             autoGeneratePasswords: true,
             portConflictCheck: true,
-            discordToken: 'roundtrip-token',
-            discordAutoStart: true,
         };
 
         let captured = null;
@@ -219,30 +205,33 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
             ipcPort: custom.ipcPort,
             consoleBufferSize: custom.consoleBufferSize,
         });
-        useSettingsStore.getState()._setDiscordFields(custom.discordToken, custom.discordAutoStart);
         await useSettingsStore.getState().save();
 
-        // Verify payload (modulesPath는 고정 경로이므로 save에 포함되지 않음)
-        expect(captured).toEqual(custom);
+        // Verify payload (token/autoStart는 더 이상 포함되지 않음)
+        expect(captured).toEqual({
+            ...custom,
+            // Theme customization defaults
+            accentColor: '#667eea',
+            accentSecondary: '#764ba2',
+            useGradient: true,
+            fontScale: 100,
+            enableTransitions: true,
+            consoleSyntaxHighlight: true,
+            consoleBgColor: '#1e1e2e',
+            consoleTextColor: '#cdd6f4',
+            sidebarCompact: false,
+            consoleFontScale: 100,
+        });
 
         // Reset
         useSettingsStore.getState()._resetForTest();
-        useDiscordStore.getState()._resetForTest();
 
         // Load
         mockApi({
             settingsLoad: vi.fn().mockResolvedValue(captured),
             settingsGetPath: vi.fn().mockResolvedValue('/s.json'),
         });
-        const raw = await useSettingsStore.getState().load();
-        if (raw) {
-            useDiscordStore.getState().update({
-                discordToken: raw.discordToken || '',
-                _discordTokenRef: raw.discordToken || '',
-                discordAutoStart: raw.discordAutoStart ?? false,
-            });
-            useSettingsStore.getState()._setDiscordFields(raw.discordToken || '', raw.discordAutoStart ?? false);
-        }
+        await useSettingsStore.getState().load();
 
         // Verify all GUI fields
         const s = useSettingsStore.getState();
@@ -250,13 +239,6 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
         expect(s.refreshInterval).toBe(custom.refreshInterval);
         expect(s.ipcPort).toBe(custom.ipcPort);
         expect(s.consoleBufferSize).toBe(custom.consoleBufferSize);
-        expect(s._discordToken).toBe(custom.discordToken);
-        expect(s._discordAutoStart).toBe(custom.discordAutoStart);
-
-        // Verify discord store
-        const d = useDiscordStore.getState();
-        expect(d.discordToken).toBe(custom.discordToken);
-        expect(d.discordAutoStart).toBe(custom.discordAutoStart);
     });
 
     // ── 기본값 복원: 필드가 undefined/missing일 때 ──
@@ -293,10 +275,12 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
 describe('bot-config.json 라운드트립 (botConfigLoad ↔ botConfigSave)', () => {
     // ── 저장 시 모든 10 필드가 payload에 포함되는지 검증 ──
 
-    it('saveConfig() payload에 10개 필드 전부 포함', async () => {
+    it('saveConfig() payload에 12개 필드 전부 포함 (token + autoStart 포함)', async () => {
         mockApi();
         useDiscordStore.setState({
             discordPrefix: '!test',
+            discordToken: 'tok-123',
+            discordAutoStart: true,
             discordBotMode: 'cloud',
             discordCloudRelayUrl: 'https://relay.test',
             discordCloudHostId: 'host-xyz',
@@ -313,11 +297,15 @@ describe('bot-config.json 라운드트립 (botConfigLoad ↔ botConfigSave)', ()
         const payload = window.api.botConfigSave.mock.calls[0][0];
         expect(payload).toEqual({
             prefix: '!test',
+            token: 'tok-123',
+            autoStart: true,
             mode: 'cloud',
             cloud: { relayUrl: 'https://relay.test', hostId: 'host-xyz' },
             moduleAliases: { mc: 'minecraft' },
             commandAliases: { mc: { start: 'go' } },
             musicEnabled: false,
+            musicChannelId: '',
+            musicUISettings: { queueLines: 5, refreshInterval: 4000, normalize: true },
             nodeSettings: { local: { ids: ['a'] } },
             cloudNodes: [{ id: 'n1' }],
             cloudMembers: { u1: 'admin' },
@@ -578,43 +566,57 @@ describe('bot-config.json 라운드트립 (botConfigLoad ↔ botConfigSave)', ()
 // 3. 크로스 스토어 동기화
 // ═══════════════════════════════════════════════════════════════
 
-describe('크로스 스토어 동기화 (discordStore ↔ settingsStore)', () => {
-    it('discordToken 변경 → settingsStore._discordToken 자동 동기화', async () => {
+describe('token/autoStart가 bot-config에 저장됨 (이전의 cross-store sync 대체)', () => {
+    it('discordToken 변경 → bot-config auto-save 트리거', async () => {
+        vi.useFakeTimers();
         mockApi();
+        useDiscordStore.setState({ _settingsReady: true, _botConfigLoaded: true });
+
         useDiscordStore.getState().setDiscordToken('new-tok-123');
-        // Cross-store subscription fires synchronously in Zustand
-        expect(useSettingsStore.getState()._discordToken).toBe('new-tok-123');
+
+        await vi.advanceTimersByTimeAsync(600);
+
+        expect(window.api.botConfigSave).toHaveBeenCalled();
+        const payload = window.api.botConfigSave.mock.calls[0][0];
+        expect(payload.token).toBe('new-tok-123');
+        vi.useRealTimers();
     });
 
-    it('discordAutoStart 변경 → settingsStore._discordAutoStart 자동 동기화', async () => {
+    it('discordAutoStart 변경 → bot-config auto-save 트리거', async () => {
+        vi.useFakeTimers();
         mockApi();
+        useDiscordStore.setState({ _settingsReady: true, _botConfigLoaded: true });
+
         useDiscordStore.getState().update({ discordAutoStart: true });
-        expect(useSettingsStore.getState()._discordAutoStart).toBe(true);
+
+        await vi.advanceTimersByTimeAsync(600);
+
+        expect(window.api.botConfigSave).toHaveBeenCalled();
+        const payload = window.api.botConfigSave.mock.calls[0][0];
+        expect(payload.autoStart).toBe(true);
+        vi.useRealTimers();
     });
 
-    it('token 동기화 후 settings save → payload에 새 token 포함', async () => {
+    it('token 변경 후 bot-config save → payload에 새 token 포함', async () => {
         mockApi();
-        useSettingsStore.setState({ settingsPath: '/s.json' });
+        useDiscordStore.setState({ _settingsReady: true, _botConfigLoaded: true });
 
-        // 1) Change token in discord store
         useDiscordStore.getState().setDiscordToken('synced-token');
+        await useDiscordStore.getState().saveConfig();
 
-        // 2) Save settings
-        await useSettingsStore.getState().save();
-
-        const payload = window.api.settingsSave.mock.calls[0][0];
-        expect(payload.discordToken).toBe('synced-token');
+        const payload = window.api.botConfigSave.mock.calls[0][0];
+        expect(payload.token).toBe('synced-token');
     });
 
-    it('autoStart 동기화 후 settings save → payload에 새 autoStart 포함', async () => {
+    it('autoStart 변경 후 bot-config save → payload에 새 autoStart 포함', async () => {
         mockApi();
-        useSettingsStore.setState({ settingsPath: '/s.json' });
+        useDiscordStore.setState({ _settingsReady: true, _botConfigLoaded: true });
 
         useDiscordStore.getState().update({ discordAutoStart: true });
-        await useSettingsStore.getState().save();
+        await useDiscordStore.getState().saveConfig();
 
-        const payload = window.api.settingsSave.mock.calls[0][0];
-        expect(payload.discordAutoStart).toBe(true);
+        const payload = window.api.botConfigSave.mock.calls[0][0];
+        expect(payload.autoStart).toBe(true);
     });
 });
 
@@ -623,13 +625,12 @@ describe('크로스 스토어 동기화 (discordStore ↔ settingsStore)', () =>
 // ═══════════════════════════════════════════════════════════════
 
 describe('saveCurrentSettings 통합 (settings + botConfig 동시 저장)', () => {
-    /** App.js의 saveCurrentSettings 재현 */
-    async function saveCurrentSettings(token, autoStart) {
-        useSettingsStore.getState()._setDiscordFields(token, autoStart);
+    /** App.js의 saveCurrentSettings 재현 — token/autoStart는 bot-config SSOT */
+    async function saveCurrentSettings() {
         await Promise.all([useSettingsStore.getState().save(), useDiscordStore.getState().saveConfig()]);
     }
 
-    it('모든 17필드가 두 파일에 올바르게 분배되어 저장', async () => {
+    it('모든 27필드가 두 파일에 올바르게 분배되어 저장', async () => {
         mockApi();
 
         // Prepare full state
@@ -655,9 +656,9 @@ describe('saveCurrentSettings 통합 (settings + botConfig 동시 저장)', () =
             cloudMembers: { u: 'a' },
         });
 
-        await saveCurrentSettings('full-tok', true);
+        await saveCurrentSettings();
 
-        // Check settings file
+        // Check settings file — token/autoStart는 더 이상 포함되지 않음
         const settingsPayload = window.api.settingsSave.mock.calls[0][0];
         expect(settingsPayload).toEqual({
             autoRefresh: false,
@@ -666,26 +667,41 @@ describe('saveCurrentSettings 통합 (settings + botConfig 동시 저장)', () =
             consoleBufferSize: 1000,
             autoGeneratePasswords: true,
             portConflictCheck: true,
-            discordToken: 'full-tok',
-            discordAutoStart: true,
+            // Theme customization defaults
+            accentColor: '#667eea',
+            accentSecondary: '#764ba2',
+            useGradient: true,
+            fontScale: 100,
+            enableTransitions: true,
+            consoleSyntaxHighlight: true,
+            consoleBgColor: '#1e1e2e',
+            consoleTextColor: '#cdd6f4',
+            sidebarCompact: false,
+            consoleFontScale: 100,
         });
+        expect(settingsPayload.discordToken).toBeUndefined();
+        expect(settingsPayload.discordAutoStart).toBeUndefined();
 
-        // Check bot config file
+        // Check bot config file — token/autoStart 포함
         const botPayload = window.api.botConfigSave.mock.calls[0][0];
         expect(botPayload).toEqual({
+            token: 'full-tok',
+            autoStart: true,
             prefix: '!go',
             mode: 'cloud',
             cloud: { relayUrl: 'https://r.io', hostId: 'h1' },
             moduleAliases: { x: 'y' },
             commandAliases: { x: { a: 'b' } },
             musicEnabled: false,
+            musicChannelId: '',
+            musicUISettings: { queueLines: 5, refreshInterval: 4000, normalize: true },
             nodeSettings: { n: 1 },
             cloudNodes: [{ id: 'c1' }],
             cloudMembers: { u: 'a' },
         });
     });
 
-    it('saveCurrentSettings → reset → 두 파일 모두 로드 → 17필드 전부 복원', async () => {
+    it('saveCurrentSettings → reset → 두 파일 모두 로드 → 27필드 전부 복원', async () => {
         let settingsCaptured = null;
         let botCaptured = null;
         mockApi({
@@ -721,7 +737,7 @@ describe('saveCurrentSettings 통합 (settings + botConfig 동시 저장)', () =
             cloudMembers: { rtUser: { role: 'mod' } },
         });
 
-        await saveCurrentSettings('rt-token', true);
+        await saveCurrentSettings();
 
         // Reset both stores
         useSettingsStore.getState()._resetForTest();
@@ -734,30 +750,20 @@ describe('saveCurrentSettings 통합 (settings + botConfig 동시 저장)', () =
             botConfigLoad: vi.fn().mockResolvedValue(botCaptured),
         });
 
-        // Step 1: Load settings
-        const raw = await useSettingsStore.getState().load();
-        if (raw) {
-            useDiscordStore.getState().update({
-                discordToken: raw.discordToken || '',
-                _discordTokenRef: raw.discordToken || '',
-                discordAutoStart: raw.discordAutoStart ?? false,
-            });
-            useSettingsStore.getState()._setDiscordFields(raw.discordToken || '', raw.discordAutoStart ?? false);
-        }
+        // Step 1: Load settings (no longer contains token/autoStart)
+        await useSettingsStore.getState().load();
 
-        // Step 2: Load bot config
+        // Step 2: Load bot config (SSOT for token/autoStart)
         await useDiscordStore.getState().loadConfig();
 
-        // Verify ALL 17 fields
+        // Verify settings fields (6 GUI-only)
         const s = useSettingsStore.getState();
         expect(s.autoRefresh).toBe(false);
         expect(s.refreshInterval).toBe(4444);
         expect(s.ipcPort).toBe(8888);
         expect(s.consoleBufferSize).toBe(6000);
 
-        expect(s._discordToken).toBe('rt-token');
-        expect(s._discordAutoStart).toBe(true);
-
+        // Verify discord fields (13 — all from bot-config)
         const d = useDiscordStore.getState();
         expect(d.discordToken).toBe('rt-token');
         expect(d.discordAutoStart).toBe(true);
@@ -808,7 +814,7 @@ describe('자동저장 감시키 완전성', () => {
     it('discord auto-save: 10필드 중 하나(prefix) 변경 시 botConfigSave 호출', async () => {
         vi.useFakeTimers();
         mockApi();
-        useDiscordStore.setState({ _settingsReady: true, discordPrefix: '!saba' });
+        useDiscordStore.setState({ _settingsReady: true, _botConfigLoaded: true, discordPrefix: '!saba' });
 
         useDiscordStore.getState().update({ discordPrefix: '!changed' });
 
@@ -824,7 +830,7 @@ describe('자동저장 감시키 완전성', () => {
     it('discord auto-save: moduleAliases 변경 → botConfigSave 호출', async () => {
         vi.useFakeTimers();
         mockApi();
-        useDiscordStore.setState({ _settingsReady: true });
+        useDiscordStore.setState({ _settingsReady: true, _botConfigLoaded: true });
 
         useDiscordStore.getState().update({ discordModuleAliases: { mc: 'minecraft-new' } });
 
@@ -837,7 +843,7 @@ describe('자동저장 감시키 완전성', () => {
     it('discord auto-save: musicEnabled 변경 → botConfigSave 호출', async () => {
         vi.useFakeTimers();
         mockApi();
-        useDiscordStore.setState({ _settingsReady: true, discordMusicEnabled: true });
+        useDiscordStore.setState({ _settingsReady: true, _botConfigLoaded: true, discordMusicEnabled: true });
 
         useDiscordStore.getState().update({ discordMusicEnabled: false });
 
@@ -847,22 +853,19 @@ describe('자동저장 감시키 완전성', () => {
         vi.useRealTimers();
     });
 
-    it('settings auto-save: discordAutoStart 변경 → 크로스스토어 경유 → settingsSave 호출', async () => {
+    it('discord auto-save: discordAutoStart 변경 → botConfigSave 호출 (크로스스토어 없이)', async () => {
         vi.useFakeTimers();
         mockApi();
-        useSettingsStore.setState({
-            settingsPath: '/s.json',
-            settingsReady: true,
-        });
+        useDiscordStore.setState({ _settingsReady: true, _botConfigLoaded: true });
 
-        // discordStore에서 autoStart 변경 → cross-store sync → _discordAutoStart 변경 → auto-save
+        // discordStore에서 autoStart 변경 → bot-config auto-save 직접 트리거
         useDiscordStore.getState().update({ discordAutoStart: true });
 
         await vi.advanceTimersByTimeAsync(600);
 
-        expect(window.api.settingsSave).toHaveBeenCalled();
-        const payload = window.api.settingsSave.mock.calls[0][0];
-        expect(payload.discordAutoStart).toBe(true);
+        expect(window.api.botConfigSave).toHaveBeenCalled();
+        const payload = window.api.botConfigSave.mock.calls[0][0];
+        expect(payload.autoStart).toBe(true);
 
         vi.useRealTimers();
     });
@@ -933,5 +936,65 @@ describe('설정 에러 핸들링', () => {
         });
 
         await expect(useDiscordStore.getState().saveConfig()).resolves.toBeUndefined();
+    });
+
+    // ── 별명 저장 시 token/autoStart 보존 검증 (regression) ──
+
+    it('saveConfig payload에 token과 autoStart가 항상 포함됨', async () => {
+        let captured = null;
+        mockApi({
+            botConfigSave: vi.fn().mockImplementation(async (data) => {
+                captured = data;
+                return { success: true };
+            }),
+        });
+        useDiscordStore.setState({
+            discordToken: 'MTk4NjIy.real-token',
+            discordAutoStart: true,
+            discordPrefix: '!saba',
+        });
+        await useDiscordStore.getState().saveConfig();
+
+        expect(captured).not.toBeNull();
+        expect(captured.token).toBe('MTk4NjIy.real-token');
+        expect(captured.autoStart).toBe(true);
+    });
+
+    it('부분 저장(prefix+aliases만) 후 토큰이 손실되지 않아야 함', async () => {
+        // 기존 config에 토큰이 있는 상태 시뮬레이션
+        const existingConfig = {
+            prefix: '!saba',
+            token: 'MTk4NjIy.real-token',
+            autoStart: true,
+            moduleAliases: {},
+            commandAliases: {},
+            musicEnabled: true,
+            musicChannelId: '123',
+            mode: 'local',
+        };
+
+        let captured = null;
+        mockApi({
+            botConfigLoad: vi.fn().mockResolvedValue(existingConfig),
+            botConfigSave: vi.fn().mockImplementation(async (data) => {
+                captured = data;
+                return { success: true };
+            }),
+        });
+
+        // 스토어 로드
+        await useDiscordStore.getState().loadConfig();
+        expect(useDiscordStore.getState().discordToken).toBe('MTk4NjIy.real-token');
+
+        // 별명만 변경 후 저장 (saveConfig 경유)
+        useDiscordStore.setState({
+            discordModuleAliases: { minecraft: 'mc' },
+        });
+        await useDiscordStore.getState().saveConfig();
+
+        // 토큰과 autoStart가 보존되어야 함
+        expect(captured.token).toBe('MTk4NjIy.real-token');
+        expect(captured.autoStart).toBe(true);
+        expect(captured.moduleAliases).toEqual({ minecraft: 'mc' });
     });
 });

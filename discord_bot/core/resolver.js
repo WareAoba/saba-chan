@@ -5,10 +5,8 @@
  * 다른 모듈에 resolve 인터페이스를 제공합니다.
  */
 
-const fs = require('fs');
 const path = require('path');
 const ipc = require('./ipc');
-const { getSabaDataDir } = require('../utils/constants');
 const {
     buildModuleAliasMap,
     buildCommandAliasMap,
@@ -23,48 +21,45 @@ let botConfig = {
     commandAliases: {},
 };
 
-// ── 봇 설정 경로: AppData 기반 (환경변수 > SSOT getSabaDataDir() > 로컬 fallback) ──
-function resolveConfigPath() {
-    if (process.env.BOT_CONFIG_PATH) {
-        return process.env.BOT_CONFIG_PATH;
-    }
-    return path.join(getSabaDataDir(), 'bot-config.json');
-}
+let _configLoadedAt = 0; // 마지막으로 설정을 로드한 timestamp
+let _onConfigReload = null; // 설정 리로드 시 호출할 콜백
 
-const configPath = resolveConfigPath();
+async function loadConfig() {
+    try {
+        const prevMusicChannelId = botConfig.musicChannelId;
+        const loaded = await ipc.getBotConfig();
+        botConfig = { ...botConfig, ...loaded };
+        _configLoadedAt = Date.now();
+        const moduleAliasCount = Object.keys(botConfig.moduleAliases || {}).length;
+        const commandAliasCount = Object.keys(botConfig.commandAliases || {}).length;
+        console.log(`[Resolver] Bot config loaded via daemon API (prefix=${botConfig.prefix}, moduleAliases=${moduleAliasCount}, commandAliases=${commandAliasCount})`);
 
-let _configMtime = 0; // 마지막으로 읽은 파일 수정 시각
-
-function loadConfig() {
-    if (fs.existsSync(configPath)) {
-        try {
-            const loaded = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-            botConfig = { ...botConfig, ...loaded };
-            _configMtime = fs.statSync(configPath).mtimeMs;
-            const moduleAliasCount = Object.keys(botConfig.moduleAliases || {}).length;
-            const commandAliasCount = Object.keys(botConfig.commandAliases || {}).length;
-            console.log(`[Resolver] Bot config loaded (prefix=${botConfig.prefix}, moduleAliases=${moduleAliasCount}, commandAliases=${commandAliasCount})`);
-        } catch (e) {
-            console.error('[Resolver] Failed to load bot-config.json:', e.message);
+        // musicChannelId 변경 감지 → 콜백 알림
+        const newMusicChannelId = botConfig.musicChannelId;
+        if (_onConfigReload && JSON.stringify(prevMusicChannelId) !== JSON.stringify(newMusicChannelId)) {
+            console.log(`[Resolver] musicChannelId changed: ${JSON.stringify(prevMusicChannelId)} → ${JSON.stringify(newMusicChannelId)}`);
+            _onConfigReload('musicChannelId', botConfig);
         }
-    } else {
-        console.log('[Resolver] bot-config.json not found at:', configPath, '— using defaults');
+    } catch (e) {
+        console.error('[Resolver] Failed to load bot config from daemon:', e.message);
     }
 }
 
 /**
- * 설정 파일 변경 감지 후 핫-리로드
- * (매 명령어 실행 전 호출 — 파일 mtime만 비교하므로 비용 최소)
+ * 설정 리로드 시 콜백 등록 (index.js에서 호출)
+ * @param {Function} callback - (changedKey: string, newConfig: object) => void
  */
-function reloadConfigIfChanged() {
-    try {
-        if (!fs.existsSync(configPath)) return;
-        const mtime = fs.statSync(configPath).mtimeMs;
-        if (mtime !== _configMtime) {
-            console.log('[Resolver] Config file changed — reloading…');
-            loadConfig();
-        }
-    } catch (_) {}
+function onConfigReload(callback) {
+    _onConfigReload = callback;
+}
+
+/**
+ * 설정 주기적 리로드 (1분 이상 경과 시 데몬에서 다시 로드)
+ */
+async function reloadConfigIfChanged() {
+    if (Date.now() - _configLoadedAt > 5000) {
+        await loadConfig();
+    }
 }
 
 // ── 모듈 메타데이터 / 명령어 ──
@@ -252,8 +247,8 @@ function isMemberManaged(guildId, userId) {
 // ── 초기화 ──
 
 async function init() {
-    console.log('[Resolver] Config path:', configPath);
-    loadConfig();
+    console.log('[Resolver] Loading config from daemon API…');
+    await loadConfig();
 
     console.log('[Resolver] Loading module metadata from IPC…');
     await loadModuleMetadata();
@@ -271,6 +266,7 @@ module.exports = {
     reloadConfigIfChanged,
     loadModuleMetadata,
     ensureGuildMetadata,
+    onConfigReload,
     getConfig,
     getModuleAliases,
     getCommandAliases,

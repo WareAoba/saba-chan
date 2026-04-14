@@ -7,16 +7,17 @@ use crate::tui::app::*;
 use crate::tui::theme::Theme;
 use crate::tui::render;
 
-pub(super) fn build_dashboard_menu(_app: &App) -> Vec<MenuItem> {
+pub(super) fn build_dashboard_menu(app: &App) -> Vec<MenuItem> {
+    let t = |k| app.i18n.t(k);
     vec![
-        MenuItem::new("Instances", Some('1'), "인스턴스 관리"),
-        MenuItem::new("Modules", Some('2'), "게임 모듈 관리"),
-        MenuItem::new("Extensions", Some('3'), "익스텐션 관리"),
-        MenuItem::new("Discord Bot", Some('4'), "디스코드 봇 설정"),
-        MenuItem::new("Settings", Some('5'), "CLI · GUI 설정"),
-        MenuItem::new("Updates", Some('6'), "업데이트 관리"),
-        MenuItem::new("Saba-Core", Some('7'), "코어 데몬 프로세스 관리"),
-        MenuItem::new("Command Mode", Some(':'), "레거시 명령어 입력"),
+        MenuItem::new(&t("menu.servers"), Some('1'), &t("screen.server_console")),
+        MenuItem::new(&t("menu.modules"), Some('2'), &t("screen.module_info")),
+        MenuItem::new("Extensions", Some('3'), &t("screen.ext_installed")),
+        MenuItem::new(&t("menu.bot"), Some('4'), &t("screen.bot_token")),
+        MenuItem::new(&t("menu.settings"), Some('5'), &t("screen.settings_language")),
+        MenuItem::new(&t("menu.updates"), Some('6'), &t("screen.update_check")),
+        MenuItem::new(&t("menu.daemon"), Some('7'), &t("screen.daemon_status")),
+        MenuItem::new(&t("menu.command_mode"), Some(':'), &t("screen.server_execute")),
     ]
 }
 
@@ -41,11 +42,9 @@ pub(super) fn handle_dashboard_select(app: &mut App, sel: usize) {
         0 => { // Servers
             let buf = app.async_out.clone();
             let client = app.client.clone();
-            // 서버 목록 + 인스턴스 목록을 미리 캐시
             tokio::spawn(async move {
-                // 서버 목록과 인스턴스 목록은 화면 전환 후 자동 갱신
                 let _ = client.list_instances().await;
-                let _ = buf; // keep buf alive
+                let _ = buf;
             });
             app.push_screen(Screen::Servers);
         }
@@ -56,7 +55,7 @@ pub(super) fn handle_dashboard_select(app: &mut App, sel: usize) {
         5 => app.push_screen(Screen::Updates),
         6 => app.push_screen(Screen::Daemon),
         7 => {
-            // Command mode
+            // Console mode
             app.push_screen(Screen::CommandMode);
             app.input_mode = InputMode::Command;
         }

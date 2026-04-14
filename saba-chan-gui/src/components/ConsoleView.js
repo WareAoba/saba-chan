@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSettingsStore } from '../stores/useSettingsStore';
 import { getCachedRules, highlightLine } from '../utils/syntaxHighlight';
 import { Icon } from './index';
 
@@ -46,11 +47,12 @@ export function ConsolePanel({
     stdinDisabled,
 }) {
     const { t } = useTranslation('gui');
+    const syntaxEnabled = useSettingsStore((s) => s.consoleSyntaxHighlight);
 
     // 하이라이팅 규칙 컴파일 (모듈 이름 기준 캐싱)
     const compiledRules = useMemo(
-        () => (highlightRules ? getCachedRules(consoleServer?.name || '_', highlightRules) : []),
-        [highlightRules, consoleServer?.name],
+        () => (syntaxEnabled && highlightRules ? getCachedRules(consoleServer?.name || '_', highlightRules) : []),
+        [highlightRules, consoleServer?.name, syntaxEnabled],
     );
 
     return (
@@ -141,10 +143,11 @@ export function PopoutConsole({
 }) {
     const { t } = useTranslation('gui');
     const [pinned, setPinned] = useState(true); // popout defaults to always-on-top
+    const syntaxEnabled = useSettingsStore((s) => s.consoleSyntaxHighlight);
 
     const compiledRules = useMemo(
-        () => (highlightRules ? getCachedRules(popoutParams?.name || '_', highlightRules) : []),
-        [highlightRules, popoutParams?.name],
+        () => (syntaxEnabled && highlightRules ? getCachedRules(popoutParams?.name || '_', highlightRules) : []),
+        [highlightRules, popoutParams?.name, syntaxEnabled],
     );
 
     const handlePopin = useCallback(async () => {

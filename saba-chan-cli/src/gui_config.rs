@@ -1,65 +1,124 @@
-//! GUI가 만든 설정 파일을 공유해서 읽는 모듈
+//! 데몬 API를 통한 설정 읽기/쓰기 모듈
 //!
-//! - settings.json (%APPDATA%/saba-chan/settings.json)
-//!   → discordToken, language, discordAutoStart 등
-//! - bot-config.json (%APPDATA%/saba-chan/bot-config.json)
-//!   → prefix, moduleAliases, commandAliases
+//! 원칙: 모든 설정 읽기/쓰기는 데몬 API를 경유한다.
+//! 로컬 파일 직접 접근은 IPC 포트 부트스트랩에만 허용한다.
+//!
+//! - settings.json → GET/PUT /api/config/gui
+//! - bot-config.json → GET/PUT /api/config/bot
 
 use saba_chan_updater_lib::constants;
 use serde_json::Value;
-use std::fs;
 use std::path::PathBuf;
+
+// ============ Daemon API 헬퍼 (blocking) ============
+
+/// IPC 인증 토큰 읽기 (데몬이 생성한 .ipc_token)
+fn read_ipc_token() -> Option<String> {
+    let path = constants::token_file_path();
+    std::fs::read_to_string(path)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// blocking reqwest 클라이언트로 데몬 API GET 호출
+fn daemon_get(path: &str) -> Option<Value> {
+    let base = format!("http://127.0.0.1:{}", get_ipc_port_local());
+    let token = read_ipc_token()?;
+    reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+        .ok()?
+        .get(format!("{}{}", base, path))
+        .header("X-Saba-Token", &token)
+        .send()
+        .ok()
+        .filter(|r| r.status().is_success())
+        .and_then(|r| r.json().ok())
+}
+
+/// blocking reqwest 클라이언트로 데몬 API PUT 호출
+fn daemon_put(path: &str, body: &Value) -> anyhow::Result<()> {
+    let base = format!("http://127.0.0.1:{}", get_ipc_port_local());
+    let token = read_ipc_token()
+        .ok_or_else(|| anyhow::anyhow!("IPC token not available"))?;
+    let resp = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()?
+        .put(format!("{}{}", base, path))
+        .header("X-Saba-Token", &token)
+        .json(body)
+        .send()?;
+    if !resp.status().is_success() {
+        anyhow::bail!("Daemon PUT {} failed: {}", path, resp.status());
+    }
+    Ok(())
+}
+
+/// blocking reqwest 클라이언트로 데몬 API DELETE 호출
+fn daemon_delete(path: &str) -> anyhow::Result<()> {
+    let base = format!("http://127.0.0.1:{}", get_ipc_port_local());
+    let token = read_ipc_token()
+        .ok_or_else(|| anyhow::anyhow!("IPC token not available"))?;
+    let resp = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()?
+        .delete(format!("{}{}", base, path))
+        .header("X-Saba-Token", &token)
+        .send()?;
+    if !resp.status().is_success() {
+        anyhow::bail!("Daemon DELETE {} failed: {}", path, resp.status());
+    }
+    Ok(())
+}
+
+/// blocking reqwest 클라이언트로 데몬 API POST 호출
+fn daemon_post(path: &str, body: &Value) -> Option<Value> {
+    let base = format!("http://127.0.0.1:{}", get_ipc_port_local());
+    let token = read_ipc_token()?;
+    reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+        .ok()?
+        .post(format!("{}{}", base, path))
+        .header("X-Saba-Token", &token)
+        .json(body)
+        .send()
+        .ok()
+        .filter(|r| r.status().is_success())
+        .and_then(|r| r.json().ok())
+}
 
 /// 공용 설정 디렉토리 경로 — constants 모듈에 위임
 fn get_config_dir() -> anyhow::Result<PathBuf> {
     Ok(constants::resolve_data_dir())
 }
 
-/// settings.json 경로
-fn get_settings_path() -> anyhow::Result<PathBuf> {
-    Ok(get_config_dir()?.join("settings.json"))
+/// IPC 포트 — 로컬 파일에서만 읽기 (daemon_get의 기반이므로 순환 방지)
+/// NOTE: 이것이 유일한 로컬 파일 직접 읽기. daemon API는 이 포트가 있어야 호출 가능.
+fn get_ipc_port_local() -> u16 {
+    let path = constants::resolve_settings_path();
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|c| serde_json::from_str::<Value>(&c).ok())
+        .and_then(|s| s.get("ipcPort").and_then(|v| v.as_u64()))
+        .map(|p| p as u16)
+        .unwrap_or(constants::DEFAULT_IPC_PORT)
 }
 
-/// bot-config.json 경로
-fn get_bot_config_path() -> anyhow::Result<PathBuf> {
-    Ok(get_config_dir()?.join("bot-config.json"))
-}
+// ============ Settings (settings.json) — 데몬 API 전용 ============
 
-/// bot-config.json 경로 (public — TUI에서 직접 접근 시)
-/// 항상 AppData 기반 (%APPDATA%/saba-chan/bot-config.json)
-pub fn get_bot_config_path_pub() -> PathBuf {
-    get_config_dir()
-        .map(|d| d.join("bot-config.json"))
-        .unwrap_or_else(|_| {
-            // APPDATA 환경변수가 없는 극단적 경우에도 saba-chan 하위를 유지
-            let fallback = std::env::temp_dir().join("saba-chan");
-            let _ = std::fs::create_dir_all(&fallback);
-            fallback.join("bot-config.json")
-        })
-}
-
-// ============ Settings (settings.json) ============
-
-/// GUI의 settings.json 전체 로드
+/// GUI 설정 로드 (데몬 API 전용)
 pub fn load_settings() -> anyhow::Result<Value> {
-    let path = get_settings_path()?;
-    if path.exists() {
-        let content = fs::read_to_string(&path)?;
-        Ok(serde_json::from_str(&content)?)
-    } else {
-        Ok(serde_json::json!({
-            "autoRefresh": true,
-            "refreshInterval": 2000,
-            "language": "en"
-        }))
-    }
+    daemon_get("/api/config/gui")
+        .ok_or_else(|| anyhow::anyhow!("데몬에 연결할 수 없습니다. 데몬이 실행 중인지 확인하세요."))
 }
 
-/// Discord 봇 토큰 가져오기 (settings.json → discordToken)
+/// Discord 봇 토큰 가져오기 (bot-config.json → token)
 pub fn get_discord_token() -> anyhow::Result<Option<String>> {
-    let settings = load_settings()?;
-    Ok(settings
-        .get("discordToken")
+    let config = load_bot_config()?;
+    Ok(config
+        .get("token")
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string()))
@@ -110,31 +169,22 @@ pub fn get_ipc_base_url() -> String {
     format!("http://127.0.0.1:{}", get_ipc_port())
 }
 
-/// Discord 자동 시작 설정 가져오기
+/// Discord 자동 시작 설정 가져오기 (bot-config.json → autoStart)
 #[allow(dead_code)]
 pub fn get_discord_auto_start() -> anyhow::Result<bool> {
-    let settings = load_settings()?;
-    Ok(settings
-        .get("discordAutoStart")
+    let config = load_bot_config()?;
+    Ok(config
+        .get("autoStart")
         .and_then(|v| v.as_bool())
         .unwrap_or(false))
 }
 
-// ============ Bot Config (bot-config.json) ============
+// ============ Bot Config (bot-config.json) — 데몬 API 전용 ============
 
-/// GUI의 bot-config.json 전체 로드
+/// 봇 설정 로드 (데몬 API 전용)
 pub fn load_bot_config() -> anyhow::Result<Value> {
-    let path = get_bot_config_path()?;
-    if path.exists() {
-        let content = fs::read_to_string(&path)?;
-        Ok(serde_json::from_str(&content)?)
-    } else {
-        Ok(serde_json::json!({
-            "prefix": "!saba",
-            "moduleAliases": {},
-            "commandAliases": {}
-        }))
-    }
+    daemon_get("/api/config/bot")
+        .ok_or_else(|| anyhow::anyhow!("데몬에 연결할 수 없습니다. 데몬이 실행 중인지 확인하세요."))
 }
 
 /// 봇 prefix 가져오기 (bot-config.json)
@@ -168,42 +218,30 @@ pub fn get_instances_path() -> anyhow::Result<PathBuf> {
     Ok(config_dir.join("instances"))
 }
 
-// ============ Write functions ============
+// ============ Write functions — 데몬 API 전용 ============
 
-/// settings.json에 값 쓰기 (없으면 파일 생성)
+/// GUI 설정 저장 (데몬 API 전용)
 fn save_settings(settings: &Value) -> anyhow::Result<()> {
-    let path = get_settings_path()?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let content = serde_json::to_string_pretty(settings)?;
-    fs::write(&path, content)?;
-    Ok(())
+    daemon_put("/api/config/gui", settings)
 }
 
-/// bot-config.json에 값 쓰기
-fn save_bot_config(config: &Value) -> anyhow::Result<()> {
-    let path = get_bot_config_path()?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let content = serde_json::to_string_pretty(config)?;
-    fs::write(&path, content)?;
-    Ok(())
+/// 봇 설정 저장 (데몬 API 전용)
+pub fn save_bot_config(config: &Value) -> anyhow::Result<()> {
+    daemon_put("/api/config/bot", config)
 }
 
-/// Discord 토큰 설정
+/// Discord 토큰 설정 (bot-config.json → token)
 pub fn set_discord_token(token: &str) -> anyhow::Result<()> {
-    let mut settings = load_settings()?;
-    settings["discordToken"] = serde_json::Value::String(token.to_string());
-    save_settings(&settings)
+    let mut config = load_bot_config()?;
+    config["token"] = serde_json::Value::String(token.to_string());
+    save_bot_config(&config)
 }
 
-/// Discord 토큰 삭제
+/// Discord 토큰 삭제 (bot-config.json → token)
 pub fn clear_discord_token() -> anyhow::Result<()> {
-    let mut settings = load_settings()?;
-    settings["discordToken"] = serde_json::Value::String(String::new());
-    save_settings(&settings)
+    let mut config = load_bot_config()?;
+    config["token"] = serde_json::Value::String(String::new());
+    save_bot_config(&config)
 }
 
 /// 봇 prefix 변경
@@ -213,11 +251,11 @@ pub fn set_bot_prefix(prefix: &str) -> anyhow::Result<()> {
     save_bot_config(&config)
 }
 
-/// Discord 봇 자동 시작 설정 변경
+/// Discord 봇 자동 시작 설정 변경 (bot-config.json → autoStart)
 pub fn set_discord_auto_start(enabled: bool) -> anyhow::Result<()> {
-    let mut settings = load_settings()?;
-    settings["discordAutoStart"] = serde_json::Value::Bool(enabled);
-    save_settings(&settings)
+    let mut config = load_bot_config()?;
+    config["autoStart"] = serde_json::Value::Bool(enabled);
+    save_bot_config(&config)
 }
 
 /// autoRefresh 가져오기
@@ -324,38 +362,24 @@ pub fn get_extensions_path() -> anyhow::Result<String> {
 
 // ============ Node Token (Cloud Pairing) ============
 
-/// .node_token 경로
-fn get_node_token_path() -> anyhow::Result<PathBuf> {
-    Ok(get_config_dir()?.join(".node_token"))
-}
-
-/// 노드 토큰 로드 (클라우드 릴레이 페어링용)
+/// 노드 토큰 로드 (데몬 API 전용)
 pub fn load_node_token() -> anyhow::Result<String> {
-    let path = get_node_token_path()?;
-    if path.exists() {
-        Ok(fs::read_to_string(&path)?.trim().to_string())
-    } else {
-        Ok(String::new())
-    }
+    let data = daemon_get("/api/config/node-token")
+        .ok_or_else(|| anyhow::anyhow!("데몬에 연결할 수 없습니다. 데몬이 실행 중인지 확인하세요."))?;
+    Ok(data.get("token")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string())
 }
 
-/// 노드 토큰 저장
+/// 노드 토큰 저장 (데몬 API 경유)
 pub fn save_node_token(token: &str) -> anyhow::Result<()> {
-    let path = get_node_token_path()?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(&path, token)?;
-    Ok(())
+    daemon_put("/api/config/node-token", &serde_json::json!({ "token": token }))
 }
 
-/// 노드 토큰 삭제
+/// 노드 토큰 삭제 (데몬 API 경유)
 pub fn clear_node_token() -> anyhow::Result<()> {
-    let path = get_node_token_path()?;
-    if path.exists() {
-        fs::remove_file(&path)?;
-    }
-    Ok(())
+    daemon_delete("/api/config/node-token")
 }
 
 // ============ System Language ============
@@ -398,8 +422,20 @@ pub fn get_system_language() -> String {
 
 // ============ Migration (Directory Scan) ============
 
-/// 디렉토리 스캔 — 파일 목록과 하위 디렉토리 목록 반환
+/// 디렉토리 스캔 — 파일 목록과 하위 디렉토리 목록 반환 (데몬 API 우선)
 pub fn scan_directory(dir_path: &str) -> anyhow::Result<(Vec<String>, Vec<String>)> {
+    if let Some(data) = daemon_post("/api/fs/scan-dir", &serde_json::json!({ "path": dir_path })) {
+        let files = data.get("files")
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+            .unwrap_or_default();
+        let dirs = data.get("dirs")
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+            .unwrap_or_default();
+        return Ok((files, dirs));
+    }
+    // 데몬 미연결 시 로컬 폴백 (파일시스템 유틸리티)
     let path = PathBuf::from(dir_path);
     if !path.exists() {
         anyhow::bail!("Directory not found: {}", dir_path);
@@ -407,7 +443,7 @@ pub fn scan_directory(dir_path: &str) -> anyhow::Result<(Vec<String>, Vec<String
     if !path.is_dir() {
         anyhow::bail!("Not a directory: {}", dir_path);
     }
-    let entries = fs::read_dir(&path)?;
+    let entries = std::fs::read_dir(&path)?;
     let mut files = Vec::new();
     let mut dirs = Vec::new();
     for entry in entries {
@@ -426,9 +462,19 @@ pub fn scan_directory(dir_path: &str) -> anyhow::Result<(Vec<String>, Vec<String
 
 // ============ Module Locales ============
 
-/// 모듈 로케일 데이터 읽기 (modules/{name}/locales/*.json)
+/// 모듈 로케일 데이터 읽기 (데몬 API 우선)
 #[allow(dead_code)]
 pub fn get_module_locales(module_name: &str) -> anyhow::Result<std::collections::HashMap<String, Value>> {
+    if let Some(data) = daemon_get(&format!("/api/module/{}/locales", module_name)) {
+        let mut result = std::collections::HashMap::new();
+        if let Some(obj) = data.as_object() {
+            for (lang, val) in obj {
+                result.insert(lang.clone(), val.clone());
+            }
+        }
+        return Ok(result);
+    }
+    // 데몬 미연결 시 로컬 폴백
     let modules_path = get_modules_path()?;
     let locales_dir = PathBuf::from(&modules_path).join(module_name).join("locales");
     let mut result = std::collections::HashMap::new();
@@ -437,12 +483,12 @@ pub fn get_module_locales(module_name: &str) -> anyhow::Result<std::collections:
         return Ok(result); // 빈 결과 (로케일 없음)
     }
 
-    for entry in fs::read_dir(&locales_dir)? {
+    for entry in std::fs::read_dir(&locales_dir)? {
         let entry = entry?;
         let name = entry.file_name().to_string_lossy().to_string();
         if name.ends_with(".json") {
             let lang = name.trim_end_matches(".json").to_string();
-            if let Ok(content) = fs::read_to_string(entry.path()) {
+            if let Ok(content) = std::fs::read_to_string(entry.path()) {
                 if let Ok(parsed) = serde_json::from_str::<Value>(&content) {
                     result.insert(lang, parsed);
                 }
@@ -514,9 +560,7 @@ pub fn config_summary() -> String {
     let extensions_path = get_extensions_path().unwrap_or_default();
     let prefix = get_bot_prefix().unwrap_or_else(|_| "!saba".to_string());
     let lang = get_language().unwrap_or_else(|_| "en".to_string());
-    let settings_path = get_settings_path()
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|_| "?".to_string());
+    let settings_path = constants::resolve_settings_path().display().to_string();
 
     let mut lines = Vec::new();
     lines.push("GUI Configuration:".to_string());

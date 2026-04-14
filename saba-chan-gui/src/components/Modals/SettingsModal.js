@@ -6,7 +6,16 @@ import { useExtensions } from '../../contexts/ExtensionContext';
 import { useDevMode } from '../../hooks/useDevMode';
 import { useModalClose } from '../../hooks/useModalClose';
 import { useSettingsStore, DEFAULT_IPC_PORT } from '../../stores/useSettingsStore';
-import { getTheme, setTheme as saveTheme } from '../../utils/themeManager';
+import {
+    getTheme,
+    setTheme as saveTheme,
+    getCustomTheme,
+    setCustomTheme,
+    resetCustomTheme,
+    ACCENT_PRESETS,
+    THEME_DEFAULTS,
+    applyCustomTheme,
+} from '../../utils/themeManager';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { SabaToggle } from '../ui/SabaUI';
@@ -36,6 +45,7 @@ function SettingsModal({
     const [localRefreshInterval, setLocalRefreshInterval] = useState(refreshInterval);
     const [selectedLanguage, setSelectedLanguage] = useState(i18n.language);
     const [selectedTheme, setSelectedTheme] = useState(getTheme());
+    const [customTheme, setCustomThemeState] = useState(getCustomTheme());
     const [slideDirection, setSlideDirection] = useState('');
     const [guiTestOpen, setGuiTestOpen] = useState(false);
     const [localIpcPort, setLocalIpcPort] = useState(ipcPort || DEFAULT_IPC_PORT);
@@ -245,6 +255,34 @@ function SettingsModal({
     const handleThemeChange = (theme) => {
         setSelectedTheme(theme);
         saveTheme(theme);
+        // Re-apply custom theme after base theme change (accent colors adapt to light/dark)
+        setTimeout(() => applyCustomTheme(customTheme), 50);
+    };
+
+    // 커스텀 테마 속성 변경 핸들러
+    const handleCustomThemeChange = (partial) => {
+        const merged = setCustomTheme(partial);
+        setCustomThemeState(merged);
+        // Sync to settings store for persistence via gui.json
+        useSettingsStore.getState().update(partial);
+    };
+
+    // 테마 초기화 핸들러
+    const handleResetTheme = () => {
+        const defaults = resetCustomTheme();
+        setCustomThemeState(defaults);
+        useSettingsStore.getState().update({
+            accentColor: defaults.accentColor,
+            accentSecondary: defaults.accentSecondary,
+            useGradient: defaults.useGradient,
+            fontScale: defaults.fontScale,
+            enableTransitions: defaults.enableTransitions,
+            consoleSyntaxHighlight: defaults.consoleSyntaxHighlight,
+            consoleBgColor: defaults.consoleBgColor,
+            consoleTextColor: defaults.consoleTextColor,
+            consoleFontScale: defaults.consoleFontScale,
+            sidebarCompact: defaults.sidebarCompact,
+        });
     };
 
     // IPC 포트 변경 핸들러
@@ -419,6 +457,7 @@ function SettingsModal({
                         >
                             <h3>{t('gui:settings_modal.appearance')}</h3>
 
+                            {/* ── 1. 라이트/다크 테마 ── */}
                             <div className="setting-item">
                                 <label className="setting-label">
                                     <span className="setting-title">
@@ -438,6 +477,219 @@ function SettingsModal({
                                         { value: 'dark', label: t('gui:settings_modal.theme_dark'), icon: 'moon' },
                                     ]}
                                 />
+                            </div>
+
+                            {/* ── 2. 강조색 프리셋 ── */}
+                            <div className="setting-item setting-item-vertical">
+                                <label className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="palette" size="sm" /> {t('gui:settings_modal.accent_color_label', 'Accent Color')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.accent_color_description', 'Choose a brand color for buttons, highlights, and accents')}
+                                    </span>
+                                </label>
+                                <div className="accent-preset-grid">
+                                    {ACCENT_PRESETS.map((preset) => (
+                                        <button
+                                            key={preset.name}
+                                            className={clsx('accent-preset-btn', {
+                                                active: customTheme.accentColor === preset.primary,
+                                            })}
+                                            style={{
+                                                background: `linear-gradient(135deg, ${preset.primary} 0%, ${preset.secondary} 100%)`,
+                                            }}
+                                            onClick={() =>
+                                                handleCustomThemeChange({
+                                                    accentColor: preset.primary,
+                                                    accentSecondary: preset.secondary,
+                                                })
+                                            }
+                                            title={t(`gui:settings_modal.accent_${preset.name}`, preset.name)}
+                                        />
+                                    ))}
+                                    <label className="accent-preset-btn accent-preset-custom" title={t('gui:settings_modal.accent_custom', 'Custom')}>
+                                        <input
+                                            type="color"
+                                            value={customTheme.accentColor}
+                                            onChange={(e) =>
+                                                handleCustomThemeChange({
+                                                    accentColor: e.target.value,
+                                                    accentSecondary: e.target.value,
+                                                })
+                                            }
+                                        />
+                                        <Icon name="edit" size="sm" />
+                                    </label>
+                                </div>
+                            </div>
+
+                            {/* ── 2-1. 그라데이션 토글 ── */}
+                            <div className="setting-item">
+                                <label className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="palette" size="sm" /> {t('gui:settings_modal.gradient_label', 'Gradient Effect')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.gradient_description', 'Apply gradient effect to buttons and app background')}
+                                    </span>
+                                </label>
+                                <SabaToggle
+                                    checked={customTheme.useGradient}
+                                    onChange={(checked) => handleCustomThemeChange({ useGradient: checked })}
+                                />
+                            </div>
+
+                            {/* ── 3. 문자 크기 배율 ── */}
+                            <div className="setting-item setting-item-vertical">
+                                <label className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="settings" size="sm" /> {t('gui:settings_modal.font_scale_label', 'Font Size')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.font_scale_description', 'Adjust the overall text size (50%–200%)')}
+                                    </span>
+                                </label>
+                                <div className="font-scale-row">
+                                    <input
+                                        type="range"
+                                        className="font-scale-slider"
+                                        min={50}
+                                        max={200}
+                                        step={5}
+                                        value={customTheme.fontScale}
+                                        onChange={(e) => handleCustomThemeChange({ fontScale: Number(e.target.value) })}
+                                    />
+                                    <span className="font-scale-value">{customTheme.fontScale}%</span>
+                                </div>
+                            </div>
+
+                            {/* ── 4. 트랜지션 토글 ── */}
+                            <div className="setting-item">
+                                <label className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="settings" size="sm" /> {t('gui:settings_modal.transitions_label', 'Animations')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.transitions_description', 'Enable or disable UI transition animations')}
+                                    </span>
+                                </label>
+                                <SabaToggle
+                                    checked={customTheme.enableTransitions}
+                                    onChange={(checked) => handleCustomThemeChange({ enableTransitions: checked })}
+                                />
+                            </div>
+
+                            {/* ── 콘솔 커스터마이즈 섹션 ── */}
+                            <h3 style={{ marginTop: 16 }}>{t('gui:settings_modal.console_appearance_title', 'Console Appearance')}</h3>
+
+                            {/* ── 5-1. 콘솔 구문강조 토글 ── */}
+                            <div className="setting-item">
+                                <label className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="terminal" size="sm" /> {t('gui:settings_modal.console_syntax_label', 'Syntax Highlighting')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.console_syntax_description', 'Color-code log output in the server console')}
+                                    </span>
+                                </label>
+                                <SabaToggle
+                                    checked={customTheme.consoleSyntaxHighlight}
+                                    onChange={(checked) => handleCustomThemeChange({ consoleSyntaxHighlight: checked })}
+                                />
+                            </div>
+
+                            {/* ── 5-2. 콘솔 뒷배경색 ── */}
+                            <div className="setting-item">
+                                <label className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="terminal" size="sm" /> {t('gui:settings_modal.console_bg_label', 'Console Background')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.console_bg_description', 'Background color of the console panel')}
+                                    </span>
+                                </label>
+                                <label className="color-input-wrapper">
+                                    <input
+                                        type="color"
+                                        value={customTheme.consoleBgColor}
+                                        onChange={(e) => handleCustomThemeChange({ consoleBgColor: e.target.value })}
+                                    />
+                                    <span className="color-input-preview" style={{ background: customTheme.consoleBgColor }} />
+                                    <span className="color-input-hex">{customTheme.consoleBgColor}</span>
+                                </label>
+                            </div>
+
+                            {/* ── 5-3. 콘솔 기본 폰트 컬러 ── */}
+                            <div className="setting-item">
+                                <label className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="terminal" size="sm" /> {t('gui:settings_modal.console_text_label', 'Console Text Color')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.console_text_description', 'Default text color in the console output')}
+                                    </span>
+                                </label>
+                                <label className="color-input-wrapper">
+                                    <input
+                                        type="color"
+                                        value={customTheme.consoleTextColor}
+                                        onChange={(e) => handleCustomThemeChange({ consoleTextColor: e.target.value })}
+                                    />
+                                    <span className="color-input-preview" style={{ background: customTheme.consoleTextColor }} />
+                                    <span className="color-input-hex">{customTheme.consoleTextColor}</span>
+                                </label>
+                            </div>
+
+                            {/* ── 5-4. 콘솔 텍스트 크기 ── */}
+                            <div className="setting-item setting-item-vertical">
+                                <label className="setting-label">
+                                    <span className="setting-title">
+                                        <Icon name="terminal" size="sm" /> {t('gui:settings_modal.console_font_scale_label', 'Console Text Size')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.console_font_scale_description', 'Adjust the console text size (50%–200%)')}
+                                    </span>
+                                </label>
+                                <div className="font-scale-row">
+                                    <input
+                                        type="range"
+                                        className="font-scale-slider"
+                                        min={50}
+                                        max={200}
+                                        step={5}
+                                        value={customTheme.consoleFontScale}
+                                        onChange={(e) => handleCustomThemeChange({ consoleFontScale: Number(e.target.value) })}
+                                    />
+                                    <span className="font-scale-value">{customTheme.consoleFontScale}%</span>
+                                </div>
+                            </div>
+
+                            {/* ── 콘솔 미리보기 ── */}
+                            <div
+                                className="console-preview-box"
+                                style={{
+                                    background: customTheme.consoleBgColor,
+                                    color: customTheme.consoleTextColor,
+                                    fontSize: `calc(12.5px * ${customTheme.consoleFontScale / 100})`,
+                                }}
+                            >
+                                <div className="console-preview-line">[12:34:56] Server started on port 25565</div>
+                                <div className="console-preview-line" style={{ color: '#a6e3a1' }}>[12:34:57] Loading world "Overworld"...</div>
+                                <div className="console-preview-line" style={{ color: '#f9e2af' }}>[12:34:58] WARN: Low memory detected</div>
+                                <div className="console-preview-line" style={!customTheme.consoleSyntaxHighlight ? { color: customTheme.consoleTextColor } : { color: '#f38ba8' }}>[12:34:59] ERROR: Connection timeout</div>
+                            </div>
+
+                            {/* ── 초기화 버튼 ── */}
+                            <div className="setting-item setting-item-clickable" onClick={handleResetTheme} style={{ marginTop: 8 }}>
+                                <label className="setting-label" style={{ cursor: 'pointer' }}>
+                                    <span className="setting-title">
+                                        <Icon name="refresh" size="sm" /> {t('gui:settings_modal.reset_theme_label', 'Reset to Default')}
+                                    </span>
+                                    <span className="setting-description">
+                                        {t('gui:settings_modal.reset_theme_description', 'Restore all appearance settings to defaults')}
+                                    </span>
+                                </label>
                             </div>
                         </div>
                     )}

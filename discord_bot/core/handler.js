@@ -16,11 +16,17 @@ const rpsExtension = require('../extensions/rps');
 const extensions = [
     {
         name: 'Music:Shortcut',
-        handler: (msg, args, cfg) => musicExtension.handleMusicShortcut(msg, args, cfg),
+        handler: (msg, args, cfg) => {
+            if (!musicExtension.musicAvailable()) musicExtension.init();
+            return musicExtension.handleMusicShortcut(msg, args, cfg);
+        },
     },
     {
         name: 'Music',
-        handler: (msg, args, cfg) => musicExtension.handleMusicMessage(msg, args, cfg),
+        handler: (msg, args, cfg) => {
+            if (!musicExtension.musicAvailable()) musicExtension.init();
+            return musicExtension.handleMusicMessage(msg, args, cfg);
+        },
     },
     {
         name: 'EasterEgg',

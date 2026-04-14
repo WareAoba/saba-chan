@@ -308,26 +308,52 @@ pub async fn get_version_details_handler(
 }
 
 /// GET /api/instance/:id/installed-version — Detect installed server version from binary
+/// 감지 성공 시 instance.server_version에 자동 저장하여 이후 리스트에서 바로 표시
 pub async fn get_installed_version_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
+    // Phase 1: read lock으로 감지 수행
+    let (_module_name, result) = {
+        let supervisor = state.supervisor.read().await;
 
-    // Find instance to get module name
-    let instance = match supervisor.instance_store.list().iter().find(|i| i.id == id).cloned() {
-        Some(i) => i,
-        None => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({"error": format!("Instance '{}' not found", id)})),
-            )
-                .into_response()
-        }
+        let instance = match supervisor.instance_store.list().iter().find(|i| i.id == id).cloned() {
+            Some(i) => i,
+            None => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({"error": format!("Instance '{}' not found", id)})),
+                )
+                    .into_response()
+            }
+        };
+
+        let module_name = instance.module_name.clone();
+        let res = supervisor.get_installed_version(&module_name, &id).await;
+        (module_name, res)
     };
 
-    match supervisor.get_installed_version(&instance.module_name, &id).await {
-        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+    match result {
+        Ok(result) => {
+            // Phase 2: 감지 성공 시 write lock으로 인스턴스에 버전 저장
+            if result.get("success").and_then(|s| s.as_bool()) == Some(true) {
+                if let Some(version) = result.get("version").and_then(|v| v.as_str()) {
+                    let mut supervisor = state.supervisor.write().await;
+                    if let Some(mut instance) = supervisor.instance_store.get(&id).cloned() {
+                        let already_set = instance.server_version.as_deref() == Some(version);
+                        if !already_set {
+                            instance.server_version = Some(version.to_string());
+                            if let Err(e) = supervisor.instance_store.update(&id, instance) {
+                                tracing::warn!("Failed to persist detected version for '{}': {}", id, e);
+                            } else {
+                                tracing::info!("Auto-saved detected server version '{}' for instance '{}'", version, id);
+                            }
+                        }
+                    }
+                }
+            }
+            (StatusCode::OK, Json(result)).into_response()
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": e.to_string()})),
@@ -374,6 +400,63 @@ pub async fn install_server_handler(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     let initial_settings = payload.get("initial_settings").cloned();
+
+    // ── 필수 익스텐션 의존성 검증 ──
+    {
+        let module = match supervisor.module_loader.get_module(&module_name) {
+            Ok(m) => m,
+            Err(e) => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({"error": format!("Module '{}' not found: {}", module_name, e)})),
+                )
+                    .into_response()
+            }
+        };
+        if let Some(ref install_cfg) = module.metadata.install {
+            if !install_cfg.requires_extensions.is_empty() {
+                let ext_mgr = state.extension_manager.read().await;
+                let ready = ext_mgr.installed_and_enabled_set();
+                let enabled_not_installed = ext_mgr.enabled_but_not_installed();
+                drop(ext_mgr);
+
+                let missing: Vec<String> = install_cfg
+                    .requires_extensions
+                    .iter()
+                    .filter(|ext_id| !ready.contains(ext_id.as_str()))
+                    .cloned()
+                    .collect();
+
+                if !missing.is_empty() {
+                    let not_installed: Vec<&String> = missing
+                        .iter()
+                        .filter(|id| enabled_not_installed.contains(id))
+                        .collect();
+                    let msg = if !not_installed.is_empty() {
+                        format!(
+                            "Cannot install server: required extension(s) not installed: {}. Install them in Settings → Extensions first.",
+                            not_installed.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
+                        )
+                    } else {
+                        format!(
+                            "Cannot install server: required extension(s) not enabled: {}. Enable them in Settings → Extensions first.",
+                            missing.join(", ")
+                        )
+                    };
+                    return (
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        Json(json!({
+                            "error": msg,
+                            "error_code": "extension_required",
+                            "missing_extensions": missing,
+                            "not_installed": not_installed,
+                        })),
+                    )
+                        .into_response();
+                }
+            }
+        }
+    }
 
     match supervisor
         .install_server(

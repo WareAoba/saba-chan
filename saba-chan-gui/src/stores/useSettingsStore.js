@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { THEME_DEFAULTS } from '../utils/themeManager';
 
 export const DEFAULT_IPC_PORT = 57474; // shared/constants.js와 동일 — renderer는 CJS require 불가하므로 상수 선언
 
@@ -12,6 +13,18 @@ export const useSettingsStore = create((set, get) => ({
     portConflictCheck: true,
     settingsPath: '',
     settingsReady: false,
+
+    // ── Theme customization ──
+    accentColor: THEME_DEFAULTS.accentColor,
+    accentSecondary: THEME_DEFAULTS.accentSecondary,
+    useGradient: THEME_DEFAULTS.useGradient,
+    fontScale: THEME_DEFAULTS.fontScale,
+    enableTransitions: THEME_DEFAULTS.enableTransitions,
+    consoleSyntaxHighlight: THEME_DEFAULTS.consoleSyntaxHighlight,
+    consoleBgColor: THEME_DEFAULTS.consoleBgColor,
+    consoleTextColor: THEME_DEFAULTS.consoleTextColor,
+    sidebarCompact: THEME_DEFAULTS.sidebarCompact,
+    consoleFontScale: THEME_DEFAULTS.consoleFontScale,
 
     // ── Actions ──
     load: async () => {
@@ -28,6 +41,18 @@ export const useSettingsStore = create((set, get) => ({
                 patch.consoleBufferSize = settings.consoleBufferSize ?? 2000;
                 patch.autoGeneratePasswords = settings.autoGeneratePasswords ?? true;
                 patch.portConflictCheck = settings.portConflictCheck ?? true;
+
+                // Theme customization
+                patch.accentColor = settings.accentColor ?? THEME_DEFAULTS.accentColor;
+                patch.accentSecondary = settings.accentSecondary ?? THEME_DEFAULTS.accentSecondary;
+                patch.useGradient = settings.useGradient ?? THEME_DEFAULTS.useGradient;
+                patch.fontScale = settings.fontScale ?? THEME_DEFAULTS.fontScale;
+                patch.enableTransitions = settings.enableTransitions ?? THEME_DEFAULTS.enableTransitions;
+                patch.consoleSyntaxHighlight = settings.consoleSyntaxHighlight ?? THEME_DEFAULTS.consoleSyntaxHighlight;
+                patch.consoleBgColor = settings.consoleBgColor ?? THEME_DEFAULTS.consoleBgColor;
+                patch.consoleTextColor = settings.consoleTextColor ?? THEME_DEFAULTS.consoleTextColor;
+                patch.sidebarCompact = settings.sidebarCompact ?? THEME_DEFAULTS.sidebarCompact;
+                patch.consoleFontScale = settings.consoleFontScale ?? THEME_DEFAULTS.consoleFontScale;
             }
             const path = await window.api.settingsGetPath();
             patch.settingsPath = path;
@@ -58,8 +83,18 @@ export const useSettingsStore = create((set, get) => ({
                 consoleBufferSize: state.consoleBufferSize,
                 autoGeneratePasswords: state.autoGeneratePasswords,
                 portConflictCheck: state.portConflictCheck,
-                discordToken: state._discordToken || '',
-                discordAutoStart: state._discordAutoStart ?? false,
+                // Theme customization
+                accentColor: state.accentColor,
+                accentSecondary: state.accentSecondary,
+                useGradient: state.useGradient,
+                fontScale: state.fontScale,
+                enableTransitions: state.enableTransitions,
+                consoleSyntaxHighlight: state.consoleSyntaxHighlight,
+                consoleBgColor: state.consoleBgColor,
+                consoleTextColor: state.consoleTextColor,
+                sidebarCompact: state.sidebarCompact,
+                consoleFontScale: state.consoleFontScale,
+                // discordToken/discordAutoStart는 bot-config.json으로 이전됨
             });
             console.log('[Settings] GUI settings saved');
         } catch (error) {
@@ -91,6 +126,16 @@ export const useSettingsStore = create((set, get) => ({
             settingsReady: false,
             _discordToken: '',
             _discordAutoStart: false,
+            accentColor: THEME_DEFAULTS.accentColor,
+            accentSecondary: THEME_DEFAULTS.accentSecondary,
+            useGradient: THEME_DEFAULTS.useGradient,
+            fontScale: THEME_DEFAULTS.fontScale,
+            enableTransitions: THEME_DEFAULTS.enableTransitions,
+            consoleSyntaxHighlight: THEME_DEFAULTS.consoleSyntaxHighlight,
+            consoleBgColor: THEME_DEFAULTS.consoleBgColor,
+            consoleTextColor: THEME_DEFAULTS.consoleTextColor,
+            sidebarCompact: THEME_DEFAULTS.sidebarCompact,
+            consoleFontScale: THEME_DEFAULTS.consoleFontScale,
         }),
 }));
 
@@ -103,8 +148,19 @@ const _settingsKeys = [
     'consoleBufferSize',
     'autoGeneratePasswords',
     'portConflictCheck',
-    '_discordToken',
-    '_discordAutoStart',
+    // Theme customization
+    'accentColor',
+    'accentSecondary',
+    'useGradient',
+    'fontScale',
+    'enableTransitions',
+    'consoleSyntaxHighlight',
+    'consoleBgColor',
+    'consoleTextColor',
+    'sidebarCompact',
+    'consoleFontScale',
+    // _discordToken, _discordAutoStart는 bot-config.json으로 이전됨 (v0.2+)
+    // 하위 호환: save() 시에는 포함하지 않지만, load() 시 마이그레이션용으로 읽음
 ];
 useSettingsStore.subscribe((state, prevState) => {
     if (!state.settingsReady || !state.settingsPath) return;
@@ -132,6 +188,16 @@ if (import.meta.hot) {
             settingsReady: s.settingsReady,
             _discordToken: s._discordToken,
             _discordAutoStart: s._discordAutoStart,
+            accentColor: s.accentColor,
+            accentSecondary: s.accentSecondary,
+            useGradient: s.useGradient,
+            fontScale: s.fontScale,
+            enableTransitions: s.enableTransitions,
+            consoleSyntaxHighlight: s.consoleSyntaxHighlight,
+            consoleBgColor: s.consoleBgColor,
+            consoleTextColor: s.consoleTextColor,
+            sidebarCompact: s.sidebarCompact,
+            consoleFontScale: s.consoleFontScale,
         };
     });
     if (import.meta.hot.data?.prevState) {

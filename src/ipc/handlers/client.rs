@@ -8,6 +8,19 @@ use serde_json::json;
 
 use super::super::{ClientKind, ClientRegistry, IPCServer};
 
+/// POST /api/daemon/shutdown — 데몬 강제 종료 (CLI 등 외부에서 호출)
+pub async fn daemon_shutdown(
+    State(state): State<IPCServer>,
+) -> impl IntoResponse {
+    tracing::info!("[Shutdown] Daemon shutdown requested via API");
+    let token = state.shutdown_token.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+        token.cancel();
+    });
+    (StatusCode::OK, Json(json!({"ok": true, "message": "Shutdown initiated"}))).into_response()
+}
+
 /// POST /api/client/register — 클라이언트(GUI/CLI) 등록
 pub async fn client_register(
     State(state): State<IPCServer>,
@@ -61,7 +74,8 @@ pub async fn client_heartbeat(
 }
 
 /// DELETE /api/client/:id/unregister — 클라이언트 명시적 해제 + 봇 정리
-/// Query: ?shutdown=true → 마지막 클라이언트 해제 후 데몬도 종료 (의도적 종료 시)
+/// Query: ?shutdown=true → 봇 프로세스 종료 + 마지막 클라이언트 해제 후 데몬도 종료
+///        ?shutdown=false → 봇 프로세스 유지, 데몬도 유지 (인터페이스만 종료)
 pub async fn client_unregister(
     Path(client_id): Path<String>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
@@ -70,9 +84,11 @@ pub async fn client_unregister(
     let wants_shutdown = params.get("shutdown").map(|v| v == "true").unwrap_or(false);
 
     if let Some(client) = state.client_registry.unregister(&client_id).await {
-        // 해당 클라이언트가 관리하던 봇 프로세스 정리
-        if let Some(pid) = client.bot_pid {
-            kill_bot_pid(pid);
+        // shutdown=true(완전 종료)일 때만 봇 프로세스 정리
+        if wants_shutdown {
+            if let Some(pid) = client.bot_pid {
+                kill_bot_pid(pid);
+            }
         }
         let count = state.client_registry.count().await;
         tracing::info!("[Heartbeat] Active clients after unregister: {}", count);
@@ -147,4 +163,24 @@ pub async fn reap_expired_clients(registry: &ClientRegistry) {
             remaining
         );
     }
+}
+
+/// GET /api/daemon/console?since=0&count=200 — 데몬 자체 tracing 로그 조회
+pub async fn daemon_console(
+    State(state): State<IPCServer>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    let since_id = params.get("since").and_then(|s| s.parse::<u64>().ok());
+    let count = params.get("count").and_then(|c| c.parse::<usize>().ok());
+
+    let lines = state.daemon_log_buffer.get_since(since_id, count);
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "lines": lines,
+            "count": lines.len(),
+        })),
+    )
+        .into_response()
 }

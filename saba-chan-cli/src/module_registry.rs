@@ -39,6 +39,14 @@ pub struct ModuleInfo {
     pub display_name: String,
     pub interaction_mode: Option<String>,  // "console" or "commands"
     pub commands: Vec<ModuleCommand>,
+    pub requires_eula: bool,
+}
+
+impl ModuleInfo {
+    /// 모듈의 명령어 중 RCON 메서드를 사용하는 것이 있는지 확인
+    pub fn has_rcon_commands(&self) -> bool {
+        self.commands.iter().any(|c| c.method == "rcon")
+    }
 }
 
 /// 모듈 레지스트리 — 전역 별명 테이블
@@ -58,8 +66,170 @@ pub const LIFECYCLE_COMMANDS: &[&str] = &["start", "stop", "restart", "status"];
 // ═══════════════════════════════════════════════════════
 
 impl ModuleRegistry {
+    /// 데몬 API에서 모듈 목록을 가져와 레지스트리 구성 (aliases 포함)
+    /// 실패 시 None 반환 → load()에서 파일시스템 폴백 사용
+    fn try_load_from_daemon() -> Option<Self> {
+        let base = format!(
+            "http://127.0.0.1:{}",
+            crate::config::get_ipc_port()
+        );
+        let token = {
+            let path = saba_chan_updater_lib::constants::token_file_path();
+            std::fs::read_to_string(path).ok()?.trim().to_string()
+        };
+        if token.is_empty() {
+            return None;
+        }
+
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(3))
+            .build()
+            .ok()?;
+
+        let resp = client
+            .get(format!("{}/api/modules", base))
+            .header("X-Saba-Token", &token)
+            .send()
+            .ok()?;
+
+        if !resp.status().is_success() {
+            return None;
+        }
+
+        let data: serde_json::Value = resp.json().ok()?;
+        let modules_arr = data.get("modules")?.as_array()?;
+
+        let mut modules = Vec::new();
+        let mut alias_to_module = HashMap::new();
+        let mut cmd_aliases: HashMap<String, HashMap<String, String>> = HashMap::new();
+
+        for m in modules_arr {
+            let name = m.get("name")?.as_str()?.to_string();
+            if name.is_empty() {
+                continue;
+            }
+
+            // 기본 별명 등록
+            alias_to_module.insert(name.to_lowercase(), name.clone());
+
+            // module_aliases
+            if let Some(arr) = m.get("module_aliases").and_then(|v| v.as_array()) {
+                for a in arr {
+                    if let Some(s) = a.as_str() {
+                        alias_to_module.insert(s.to_lowercase(), name.clone());
+                    }
+                }
+            }
+
+            // command_aliases
+            let mut this_cmd_aliases = HashMap::new();
+            if let Some(obj) = m.get("command_aliases").and_then(|v| v.as_object()) {
+                for (cmd_name, cmd_val) in obj {
+                    this_cmd_aliases.insert(cmd_name.to_lowercase(), cmd_name.clone());
+                    if let Some(aliases) = cmd_val.get("aliases").and_then(|v| v.as_array()) {
+                        for al in aliases {
+                            if let Some(s) = al.as_str() {
+                                this_cmd_aliases.insert(s.to_lowercase(), cmd_name.clone());
+                            }
+                        }
+                    }
+                }
+            }
+            cmd_aliases.insert(name.clone(), this_cmd_aliases);
+
+            // 명령어 정의
+            let mut commands = Vec::new();
+            if let Some(fields) = m
+                .get("commands")
+                .and_then(|c| c.get("fields"))
+                .and_then(|v| v.as_array())
+            {
+                for field in fields {
+                    let cmd_name = field
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    if cmd_name.is_empty() {
+                        continue;
+                    }
+                    commands.push(ModuleCommand {
+                        name: cmd_name,
+                        description: field
+                            .get("description")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        method: field
+                            .get("method")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        inputs: field
+                            .get("inputs")
+                            .and_then(|v| v.as_array())
+                            .map(|arr| {
+                                arr.iter()
+                                    .map(|inp| CommandInput {
+                                        name: inp
+                                            .get("name")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("")
+                                            .to_string(),
+                                        input_type: inp
+                                            .get("type")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("text")
+                                            .to_string(),
+                                        required: inp
+                                            .get("required")
+                                            .and_then(|v| v.as_bool())
+                                            .unwrap_or(false),
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
+                    });
+                }
+            }
+
+            let interaction_mode = m
+                .get("interaction_mode")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
+            modules.push(ModuleInfo {
+                name,
+                game_name: String::new(),  // API does not return game_name separately
+                display_name: String::new(),
+                interaction_mode,
+                commands,
+                requires_eula: false,  // API에서는 config.eula 정보 없음 → 파일시스템 폴백에서 처리
+            });
+        }
+
+        Some(Self {
+            modules,
+            alias_to_module,
+            cmd_aliases,
+        })
+    }
+
     /// 주어진 modules 디렉토리에서 모든 module.toml을 로드
+    /// 데몬 API가 가용하면 API를 우선 사용하고, 실패 시 파일시스템 폴백
     pub fn load(modules_dir: &str) -> Self {
+        // 데몬 API 우선 시도 (테스트 시에는 파일시스템 전용)
+        #[cfg(not(test))]
+        if let Some(registry) = Self::try_load_from_daemon() {
+            return registry;
+        }
+
+        // 데몬 미연결 시 파일시스템 폴백
+        Self::load_from_filesystem(modules_dir)
+    }
+
+    /// 파일시스템에서 module.toml을 직접 파싱하여 레지스트리 구성 (폴백)
+    fn load_from_filesystem(modules_dir: &str) -> Self {
         let mut modules = Vec::new();
         let mut alias_to_module = HashMap::new();
         let mut cmd_aliases: HashMap<String, HashMap<String, String>> = HashMap::new();
@@ -140,6 +310,13 @@ impl ModuleRegistry {
                 .and_then(|p| p.get("interaction_mode"))
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
+
+            // ── [config] 섹션 → eula ──
+            let requires_eula = table
+                .get("config")
+                .and_then(|c| c.get("eula"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
 
             // [aliases].module_aliases 배열
             if let Some(aliases) = table
@@ -243,6 +420,7 @@ impl ModuleRegistry {
                 display_name,
                 interaction_mode,
                 commands,
+                requires_eula,
             });
         }
 
@@ -461,6 +639,39 @@ method = "rcon"
     fn test_load_nonexistent_dir() {
         let reg = ModuleRegistry::load("/nonexistent/path/that/does/not/exist");
         assert!(reg.modules.is_empty());
+    }
+
+    #[test]
+    fn test_has_rcon_commands() {
+        let (_tmp, reg) = create_test_registry();
+        // test_game의 say, save 명령어는 모두 method = "rcon"
+        let m = reg.get_module("test_game").unwrap();
+        assert!(m.has_rcon_commands());
+    }
+
+    #[test]
+    fn test_has_rcon_commands_false_for_rest_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mod_dir = tmp.path().join("rest_game");
+        fs::create_dir_all(&mod_dir).unwrap();
+        fs::write(
+            mod_dir.join("module.toml"),
+            r#"
+[module]
+name = "rest_game"
+game_name = "REST Game"
+display_name = "REST 게임"
+
+[[commands.fields]]
+name = "backup"
+description = "Backup the world"
+method = "rest"
+"#,
+        )
+        .unwrap();
+        let reg = ModuleRegistry::load(tmp.path().to_str().unwrap());
+        let m = reg.get_module("rest_game").unwrap();
+        assert!(!m.has_rcon_commands());
     }
 
     #[test]

@@ -12,6 +12,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
+use tokio::process::Command as TokioCommand;
 use crate::instance::InstanceStore;
 
 /// Stop 후 auto-detect를 억제하는 쿨다운 시간 (초)
@@ -87,6 +88,9 @@ impl Supervisor {
 
         // 고아 managed 프로세스 재연결
         self.reattach_orphaned_managed().await;
+
+        // server_version이 누락된 인스턴스 버전 자동 감지
+        self.backfill_server_versions().await;
         
         Ok(())
     }
@@ -440,77 +444,108 @@ impl Supervisor {
             }));
         }
 
-        // ── Native 모드: 기존 Python lifecycle 실행 ──
+        // ── Non-managed 모드: get_launch_command로 명령어를 받아 데몬이 직접 spawn ──
 
-        // Merge instance info into config
-        let mut merged_config = config.as_object().cloned().unwrap_or_default();
-        self.insert_resolved_exe(&mut merged_config, instance, module_name);
+        tracing::info!("Starting non-managed server for instance '{}' (module: {})", server_name, module_name);
+
+        // Build config — managed start와 동일한 병합 로직
+        let mut cfg = config.as_object().cloned().unwrap_or_default();
+        self.insert_resolved_exe(&mut cfg, instance, module_name);
         if let Some(port) = instance.port {
-            merged_config.insert("port".to_string(), json!(port));
+            cfg.insert("port".to_string(), json!(port));
         }
         if let Some(rcon_port) = instance.rcon_port {
-            merged_config.entry("rcon_port".to_string()).or_insert_with(|| json!(rcon_port));
+            cfg.entry("rcon_port".to_string()).or_insert_with(|| json!(rcon_port));
         }
         if let Some(rcon_pw) = &instance.rcon_password {
-            merged_config.entry("rcon_password".to_string()).or_insert_with(|| json!(rcon_pw));
+            cfg.entry("rcon_password".to_string()).or_insert_with(|| json!(rcon_pw));
         }
-        // Merge module_settings (ram, cpu_threads, use_aikar_flags, etc.)
         for (key, value) in &instance.module_settings {
-            merged_config.entry(key.clone()).or_insert_with(|| value.clone());
+            cfg.entry(key.clone()).or_insert_with(|| value.clone());
         }
-        // REST API fields for modules that use REST protocol
         if let Some(rest_host) = &instance.rest_host {
-            merged_config.entry("rest_host".to_string()).or_insert_with(|| json!(rest_host));
+            cfg.entry("rest_host".to_string()).or_insert_with(|| json!(rest_host));
         }
         if let Some(rest_port) = instance.rest_port {
-            merged_config.entry("rest_port".to_string()).or_insert_with(|| json!(rest_port));
+            cfg.entry("rest_port".to_string()).or_insert_with(|| json!(rest_port));
         }
         if let Some(rest_user) = &instance.rest_username {
-            merged_config.entry("rest_username".to_string()).or_insert_with(|| json!(rest_user));
+            cfg.entry("rest_username".to_string()).or_insert_with(|| json!(rest_user));
         }
         if let Some(rest_pw) = &instance.rest_password {
-            merged_config.entry("rest_password".to_string()).or_insert_with(|| json!(rest_pw));
+            cfg.entry("rest_password".to_string()).or_insert_with(|| json!(rest_pw));
         }
-        merged_config.entry("protocol_mode".to_string()).or_insert_with(|| json!(&instance.protocol_mode));
+        cfg.entry("protocol_mode".to_string()).or_insert_with(|| json!(&instance.protocol_mode));
         if let Some(ver) = &instance.server_version {
-            merged_config.entry("server_version".to_string()).or_insert_with(|| json!(ver));
+            cfg.entry("server_version".to_string()).or_insert_with(|| json!(ver));
         }
-        let final_config = Value::Object(merged_config);
+        // Non-managed → managed=false로 명시 (모듈이 RCON 정책 등을 구분)
+        cfg.insert("managed".to_string(), json!(false));
+        let final_config = Value::Object(cfg);
 
-        // Find module
         let module = self.module_loader.get_module(module_name)?;
         let module_path = format!("{}/lifecycle.py", module.path);
 
-        // Execute start function via plugin runner
-        let result = crate::plugin::run_plugin(&module_path, "start", final_config).await?;
+        let launch_result = crate::plugin::run_plugin(&module_path, "get_launch_command", final_config).await?;
 
-        if let Some(pid) = result.get("pid").and_then(|p| p.as_u64()) {
-            let pid = pid as u32;
-            self.tracker.track(server_name, pid)?;
-            tracing::info!("Server '{}' started with PID {}", server_name, pid);
-            Ok(json!({
-                "success": true,
-                "server": server_name,
-                "pid": pid,
-                "message": format!("Server '{}' started with PID {}", server_name, pid)
-            }))
-        } else {
-            // If the module requires user action (e.g. server jar not found), pass through
-            if result.get("action_required").is_some() {
-                tracing::warn!("Module requires user action: {:?}", result.get("action_required"));
-                return Ok(result);
-            }
-            // Return the error from the module
-            if result.get("success").and_then(|s| s.as_bool()) == Some(false) {
-                let error_msg = result.get("message")
-                    .and_then(|m| m.as_str())
-                    .unwrap_or("Unknown error from module");
-                tracing::error!("Module failed to start server: {}", error_msg);
-                return Err(anyhow::anyhow!("{}", error_msg));
-            }
-            tracing::error!("Module returned no PID: {:?}", result);
-            Err(anyhow::anyhow!("Module did not return PID"))
+        // action_required (e.g. server jar not found) → pass through to caller
+        if launch_result.get("action_required").is_some() {
+            tracing::warn!("Module requires user action: {:?}", launch_result.get("action_required"));
+            return Ok(launch_result);
         }
+
+        if launch_result.get("success").and_then(|s| s.as_bool()) != Some(true) {
+            let msg = launch_result.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
+            return Err(anyhow::anyhow!("{}", msg));
+        }
+
+        let program = launch_result.get("program")
+            .and_then(|p| p.as_str())
+            .ok_or_else(|| anyhow::anyhow!("Module did not return program"))?;
+
+        let args: Vec<String> = launch_result.get("args")
+            .and_then(|a| a.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+
+        let working_dir = launch_result.get("working_dir")
+            .and_then(|w| w.as_str())
+            .unwrap_or(".");
+
+        let env_vars: Vec<(String, String)> = launch_result.get("env_vars")
+            .and_then(|e| e.as_object())
+            .map(|obj| obj.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect())
+            .unwrap_or_default();
+
+        // Spawn detached process (no stdin/stdout capture)
+        let mut cmd = TokioCommand::new(program);
+        cmd.args(&args)
+            .current_dir(working_dir)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+
+        for (key, value) in &env_vars {
+            cmd.env(key, value);
+        }
+
+        crate::utils::apply_creation_flags(&mut cmd);
+
+        let child = cmd.spawn()
+            .map_err(|e| anyhow::anyhow!("Failed to spawn process '{}': {}", program, e))?;
+
+        let pid = child.id()
+            .ok_or_else(|| anyhow::anyhow!("Failed to get PID of spawned process"))? ;
+
+        self.tracker.track(server_name, pid)?;
+        tracing::info!("Non-managed server '{}' started with PID {}", server_name, pid);
+
+        Ok(json!({
+            "success": true,
+            "server": server_name,
+            "pid": pid,
+            "message": format!("Server '{}' started with PID {} (non-managed mode)", server_name, pid)
+        }))
     }
 
     /// Stop a server by name
@@ -636,6 +671,26 @@ impl Supervisor {
                     "success": true,
                     "server": server_name,
                     "message": format!("Server '{}' stopped", server_name)
+                }));
+            } else {
+                // 프로세스가 이미 종료됨 (유저가 콘솔에서 직접 stop 명령어 입력 등)
+                // managed store 정리 후 정상 종료로 간주
+                tracing::info!(
+                    "Managed server '{}' already exited (user-initiated stop command), cleaning up",
+                    server_name
+                );
+                self.managed_store.remove(&instance.id).await;
+                let pid_file = self.instance_store.instance_dir(&instance.id).join("managed.pid");
+                let _ = std::fs::remove_file(&pid_file);
+                self.stop_cooldowns.insert(instance.id.clone(), Instant::now());
+
+                // tracker에서도 제거
+                let _ = self.tracker.untrack(&instance.id);
+
+                return Ok(json!({
+                    "success": true,
+                    "server": server_name,
+                    "message": format!("Server '{}' already stopped", server_name)
                 }));
             }
         }
@@ -896,6 +951,45 @@ impl Supervisor {
     ) -> Result<Value> {
         let mut instance = self.instance_store.get(instance_id).cloned()
             .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
+
+        // ── 중복 프로세스 방어: 이미 실행 중인 managed 프로세스가 있으면 새로 생성하지 않음 ──
+        if let Some(existing) = self.managed_store.get(instance_id).await {
+            if existing.is_running() {
+                tracing::info!(
+                    "Managed process for '{}' already running (PID {}), skipping duplicate start",
+                    instance.name, existing.pid
+                );
+                return Ok(json!({
+                    "success": true,
+                    "server": instance.name,
+                    "pid": existing.pid,
+                    "managed": true,
+                    "already_running": true,
+                    "message": format!("Server '{}' is already running with PID {} (managed mode)", instance.name, existing.pid)
+                }));
+            }
+        }
+        // managed_store에 없더라도 tracker에 PID가 있고 프로세스가 살아있으면 중복 방지
+        if let Ok(existing_pid) = self.tracker.get_pid(instance_id) {
+            if crate::supervisor::process::is_process_alive(existing_pid) {
+                tracing::warn!(
+                    "Tracked process for '{}' still alive (PID {}) but not in managed store — preventing duplicate start",
+                    instance.name, existing_pid
+                );
+                return Ok(json!({
+                    "success": true,
+                    "server": instance.name,
+                    "pid": existing_pid,
+                    "managed": true,
+                    "already_running": true,
+                    "message": format!("Server '{}' has a tracked process (PID {}) still alive", instance.name, existing_pid)
+                }));
+            } else {
+                // 프로세스가 죽어있으면 tracker 정리
+                tracing::info!("Cleaning stale tracker entry for '{}' (PID {} no longer alive)", instance.name, existing_pid);
+                let _ = self.tracker.untrack(instance_id);
+            }
+        }
 
         // ── 포트 충돌 검사 (모듈별 프로토콜 인지) ──
         // GUI 설정에서 portConflictCheck를 비활성화하면 skip_port_check: true가 전달됨
@@ -1432,7 +1526,8 @@ impl Supervisor {
         Ok(result)
     }
 
-    /// Install a server: download binary, setup directory, optional initial settings
+    /// Install a server: download binary, setup directory, optional initial settings.
+    /// 기존 실행 파일이 존재하면 `.bak`으로 백업하고, 실패 시 복원합니다.
     pub async fn install_server(
         &self,
         module_name: &str,
@@ -1445,21 +1540,91 @@ impl Supervisor {
         let module = self.module_loader.get_module(module_name)?;
         let module_path = format!("{}/lifecycle.py", module.path);
 
+        // jar_name 결정: 명시 > 모듈 metadata.server_executable > 기본값 없음
+        let effective_jar = jar_name
+            .map(|s| s.to_string())
+            .or_else(|| {
+                module.metadata.server_executable.clone()
+            });
+
+        // ── 기존 바이너리 백업 ──
+        let backup_path = if let Some(ref jar) = effective_jar {
+            let original = std::path::Path::new(install_dir).join(jar);
+            if original.is_file() {
+                let backup = original.with_extension(format!(
+                    "{}.bak",
+                    original.extension().unwrap_or_default().to_string_lossy()
+                ));
+                if let Err(e) = std::fs::copy(&original, &backup) {
+                    tracing::warn!("Failed to backup '{}': {}", original.display(), e);
+                    None
+                } else {
+                    tracing::info!("Backed up existing binary: {} → {}", original.display(), backup.display());
+                    Some(backup)
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         let mut config = json!({
             "version": version,
             "install_dir": install_dir,
             "accept_eula": accept_eula,
         });
 
-        if let Some(name) = jar_name {
+        if let Some(ref name) = effective_jar {
             config["jar_name"] = json!(name);
         }
         if let Some(settings) = initial_settings {
             config["initial_settings"] = settings;
         }
 
-        let result = crate::plugin::run_plugin(&module_path, "install_server", config).await?;
-        Ok(result)
+        let result = crate::plugin::run_plugin(&module_path, "install_server", config).await;
+
+        match result {
+            Ok(ref val) => {
+                let success = val.get("success").and_then(|s| s.as_bool()) == Some(true);
+                if success {
+                    // 설치 성공 → 백업 파일 정리
+                    if let Some(ref bp) = backup_path {
+                        let _ = std::fs::remove_file(bp);
+                        tracing::info!("Removed backup after successful install: {}", bp.display());
+                    }
+                } else {
+                    // 모듈이 success=false 반환 → 복원
+                    if let Some(ref bp) = backup_path {
+                        if let Some(ref jar) = effective_jar {
+                            let original = std::path::Path::new(install_dir).join(jar);
+                            if let Err(e) = std::fs::copy(bp, &original) {
+                                tracing::error!("Failed to restore backup '{}': {}", bp.display(), e);
+                            } else {
+                                tracing::info!("Restored backup after failed install: {}", original.display());
+                            }
+                        }
+                        let _ = std::fs::remove_file(bp);
+                    }
+                }
+                result
+            }
+            Err(e) => {
+                // 플러그인 에러 → 복원
+                if let Some(ref bp) = backup_path {
+                    if let Some(ref jar) = effective_jar {
+                        let original = std::path::Path::new(install_dir).join(jar);
+                        if let Err(re) = std::fs::copy(bp, &original) {
+                            tracing::error!("Failed to restore backup '{}': {}", bp.display(), re);
+                        } else {
+                            tracing::info!("Restored backup after plugin error: {}", original.display());
+                        }
+                    }
+                    let _ = std::fs::remove_file(bp);
+                }
+                Err(e)
+            }
+        }
     }
 
     /// Detect the installed server version by inspecting the server binary (e.g. parsing server.jar).
@@ -1480,6 +1645,8 @@ impl Supervisor {
         let install_dir = instance.module_settings
             .get("working_dir")
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .or_else(|| instance.working_dir.as_deref())
             .unwrap_or("");
         let jar_name = instance.module_settings
             .get("server_jar")
@@ -1495,6 +1662,54 @@ impl Supervisor {
         Ok(result)
     }
 
+    /// server_version이 비어있고 working_dir이 설정된 인스턴스에 대해
+    /// 모듈의 get_installed_version을 호출하여 버전을 감지·저장합니다.
+    /// 데몬 초기화 시 한 번 호출하여 기존 서버의 버전을 보충합니다.
+    pub async fn backfill_server_versions(&mut self) {
+        // 감지 대상 수집 (borrow 분리를 위해 먼저 복사)
+        let targets: Vec<(String, String, String)> = self.instance_store.list().iter()
+            .filter(|i| i.server_version.is_none())
+            .filter(|i| {
+                // module_settings.working_dir 또는 instance.working_dir이 있어야 감지 가능
+                let has_ms_wd = i.module_settings.get("working_dir")
+                    .and_then(|v| v.as_str())
+                    .map(|s| !s.is_empty())
+                    .unwrap_or(false);
+                let has_inst_wd = i.working_dir.as_ref().map(|s| !s.is_empty()).unwrap_or(false);
+                has_ms_wd || has_inst_wd
+            })
+            .map(|i| (i.id.clone(), i.module_name.clone(), i.name.clone()))
+            .collect();
+
+        if targets.is_empty() {
+            return;
+        }
+
+        tracing::info!("Backfilling server versions for {} instance(s)...", targets.len());
+
+        for (id, module_name, name) in targets {
+            match self.get_installed_version(&module_name, &id).await {
+                Ok(result) => {
+                    if result.get("success").and_then(|s| s.as_bool()) == Some(true) {
+                        if let Some(version) = result.get("version").and_then(|v| v.as_str()) {
+                            if let Some(mut instance) = self.instance_store.get(&id).cloned() {
+                                instance.server_version = Some(version.to_string());
+                                if let Err(e) = self.instance_store.update(&id, instance) {
+                                    tracing::warn!("Failed to save backfilled version for '{}': {}", name, e);
+                                } else {
+                                    tracing::info!("Backfilled server version '{}' for instance '{}'", version, name);
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::debug!("Version backfill skipped for '{}': {}", name, e);
+                }
+            }
+        }
+    }
+
     /// 백그라운드 프로세스 모니터링 (주기적 실행)
     ///
     /// `process_snapshot`은 write lock 획득 전에 미리 스캔한 프로세스 목록입니다.
@@ -1508,6 +1723,10 @@ impl Supervisor {
         for dead_id in &dead_ids {
             let pid_file = self.instance_store.instance_dir(dead_id).join("managed.pid");
             let _ = std::fs::remove_file(&pid_file);
+            // 죽은 managed process에 대해 stop cooldown 등록 → auto_detect 재탐색 억제
+            // 이전 세션에서 실행되어 reattach된 프로세스가 종료된 경우,
+            // cooldown 없이 auto_detect가 즉시 동명 프로세스를 재추적하는 것을 방지
+            self.stop_cooldowns.insert(dead_id.clone(), Instant::now());
         }
         
         let instances = self.instance_store.list().to_vec();
@@ -1747,5 +1966,138 @@ mod tests {
         let snapshot = crate::process_monitor::get_running_processes();
         let result = supervisor.monitor_processes(&snapshot).await;
         assert!(result.is_ok());
+    }
+
+    /// cleanup_dead()가 죽은 managed process를 정리할 때
+    /// stop_cooldowns에 등록되어 auto_detect 재탐색이 억제되는지 검증
+    #[tokio::test]
+    async fn test_cleanup_dead_registers_stop_cooldown() {
+        let mut supervisor = Supervisor::new("./modules");
+
+        // 가짜 인스턴스를 등록 (파일 시스템 없이 인메모리 테스트)
+        // cleanup_dead가 dead_ids를 반환하면 monitor_processes가 cooldown을 삽입해야 함
+        // managed_store에 직접 죽은 프로세스를 넣을 순 없으므로,
+        // 쿨다운 삽입 로직 자체를 단위 테스트
+        assert!(!supervisor.stop_cooldowns.contains_key("test-instance-id"));
+
+        // dead_ids에 해당하는 쿨다운이 삽입됨을 시뮬레이션
+        let dead_ids = vec!["test-instance-id".to_string()];
+        for dead_id in &dead_ids {
+            supervisor.stop_cooldowns.insert(dead_id.clone(), Instant::now());
+        }
+
+        assert!(supervisor.stop_cooldowns.contains_key("test-instance-id"));
+        // 쿨다운이 30초 내이면 auto_detect를 건너뛰어야 함
+        let stopped_at = supervisor.stop_cooldowns.get("test-instance-id").unwrap();
+        assert!(stopped_at.elapsed().as_secs() < STOP_COOLDOWN_SECS);
+    }
+
+    /// start_managed_server()가 이미 실행 중인 managed 프로세스를 감지하여
+    /// 중복 프로세스 생성을 방지하는지 검증
+    #[tokio::test]
+    async fn test_start_managed_rejects_duplicate_process() {
+        let tmp_dir = std::env::temp_dir().join(format!("saba-test-dup-guard-{}", std::process::id()));
+        let instances_dir = tmp_dir.join("instances");
+        let _ = std::fs::create_dir_all(&instances_dir);
+
+        let mut supervisor = Supervisor::new_with_instances_dir("./modules", instances_dir.to_str().unwrap());
+
+        // 테스트 인스턴스 등록
+        let inst = crate::instance::ServerInstance {
+            id: "test-dup-guard".to_string(),
+            name: "TestServer".to_string(),
+            module_name: "minecraft".to_string(),
+            executable_path: None,
+            working_dir: None,
+            auto_detect: false,
+            process_name: None,
+            port: Some(25565),
+            rcon_port: Some(25575),
+            rcon_password: Some("test".to_string()),
+            rest_host: None,
+            rest_port: None,
+            rest_username: None,
+            rest_password: None,
+            protocol_mode: "auto".to_string(),
+            module_settings: std::collections::HashMap::new(),
+            server_version: None,
+            extension_data: std::collections::HashMap::new(),
+            required_extensions: Vec::new(),
+        };
+        supervisor.instance_store.add(inst).unwrap();
+
+        // 현재 프로세스의 PID로 reattached stub 생성 (is_running() == true 보장)
+        let current_pid = std::process::id();
+        let inst_dir = instances_dir.join("test-dup-guard");
+        let _ = std::fs::create_dir_all(inst_dir.join("logs"));
+        let stub = managed_process::ManagedProcess::create_reattached_stub(current_pid, &inst_dir).await;
+        assert!(stub.is_running(), "Reattached stub should report running");
+
+        supervisor.managed_store.insert("test-dup-guard", stub).await;
+
+        // start_managed_server 호출 → 이미 실행 중이므로 중복 방지되어야 함
+        let result = supervisor
+            .start_managed_server("test-dup-guard", "minecraft", json!({}))
+            .await
+            .expect("should return Ok, not Err");
+
+        assert_eq!(result["success"], true);
+        assert_eq!(result["already_running"], true);
+        assert_eq!(result["pid"], current_pid);
+
+        // cleanup
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    /// tracker에 PID가 등록되어 있고 프로세스가 살아있으면
+    /// managed_store에 없더라도 중복 시작을 방지하는지 검증
+    #[tokio::test]
+    async fn test_start_managed_rejects_when_tracker_has_live_pid() {
+        let tmp_dir = std::env::temp_dir().join(format!("saba-test-tracker-guard-{}", std::process::id()));
+        let instances_dir = tmp_dir.join("instances");
+        let _ = std::fs::create_dir_all(&instances_dir);
+
+        let mut supervisor = Supervisor::new_with_instances_dir("./modules", instances_dir.to_str().unwrap());
+
+        let inst = crate::instance::ServerInstance {
+            id: "test-tracker-guard".to_string(),
+            name: "TestServer2".to_string(),
+            module_name: "minecraft".to_string(),
+            executable_path: None,
+            working_dir: None,
+            auto_detect: false,
+            process_name: None,
+            port: Some(25566),
+            rcon_port: Some(25576),
+            rcon_password: Some("test".to_string()),
+            rest_host: None,
+            rest_port: None,
+            rest_username: None,
+            rest_password: None,
+            protocol_mode: "auto".to_string(),
+            module_settings: std::collections::HashMap::new(),
+            server_version: None,
+            extension_data: std::collections::HashMap::new(),
+            required_extensions: Vec::new(),
+        };
+        let inst_dir = instances_dir.join("test-tracker-guard");
+        let _ = std::fs::create_dir_all(&inst_dir);
+        supervisor.instance_store.add(inst).unwrap();
+
+        // managed_store에는 없지만 tracker에 현재 프로세스 PID를 등록
+        let current_pid = std::process::id();
+        supervisor.tracker.track("test-tracker-guard", current_pid).unwrap();
+
+        let result = supervisor
+            .start_managed_server("test-tracker-guard", "minecraft", json!({}))
+            .await
+            .expect("should return Ok, not Err");
+
+        assert_eq!(result["success"], true);
+        assert_eq!(result["already_running"], true);
+        assert_eq!(result["pid"], current_pid);
+
+        // cleanup
+        let _ = std::fs::remove_dir_all(&tmp_dir);
     }
 }

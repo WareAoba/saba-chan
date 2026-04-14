@@ -8,9 +8,10 @@ use crate::tui::theme::Theme;
 use crate::tui::render;
 
 pub(super) fn build_updates_menu(app: &App) -> Vec<MenuItem> {
+    let t = |k| app.i18n.t(k);
     let mut items = vec![
-        MenuItem::new("Check for Updates", Some('c'), "업데이트 확인"),
-        MenuItem::new("Update Status", Some('s'), "현재 업데이트 상태 조회"),
+        MenuItem::new(&t("screen.update_check"), Some('c'), &t("screen.update_check")),
+        MenuItem::new(&t("screen.update_status"), Some('s'), &t("screen.update_status")),
     ];
 
     // cached_update_status가 있으면 동적 메뉴
@@ -18,16 +19,17 @@ pub(super) fn build_updates_menu(app: &App) -> Vec<MenuItem> {
         if let Some(comps) = status.get("components").and_then(|v| v.as_array()) {
             let any_available = comps.iter().any(|c| c["update_available"].as_bool().unwrap_or(false));
             if any_available {
-                items.push(MenuItem::new("⬆ Download & Apply All", Some('A'), "모든 업데이트 다운로드 후 적용"));
+                items.push(MenuItem::new(&format!("⬆ {}", t("screen.update_download_apply")), Some('A'), &t("screen.update_download_apply")));
             }
         }
     }
 
     items.extend([
-        MenuItem::new("Download Updates", Some('d'), "업데이트 다운로드"),
-        MenuItem::new("Apply Updates", Some('a'), "다운로드된 업데이트 적용"),
-        MenuItem::new("Updater Config", Some('C'), "업데이터 설정 조회"),
-        MenuItem::new("Set Config", Some('S'), "업데이터 설정 변경"),
+        MenuItem::new(&t("screen.update_download"), Some('d'), &t("screen.update_download")),
+        MenuItem::new(&t("screen.update_apply"), Some('a'), &t("screen.update_apply")),
+        MenuItem::new(&format!("🔒 {}", t("screen.update_integrity")), Some('I'), &t("screen.update_integrity")),
+        MenuItem::new(&t("screen.update_config"), Some('C'), &t("screen.update_config")),
+        MenuItem::new(&t("screen.update_set_config"), Some('S'), &t("screen.update_set_config")),
     ]);
     items
 }
@@ -204,6 +206,34 @@ pub(super) fn handle_updates_select(app: &mut App, sel: usize) {
                 }
             });
             app.flash("설정 조회 중...");
+        }
+        Some('I') => { // Integrity Check
+            tokio::spawn(async move {
+                match client.check_update_integrity().await {
+                    Ok(v) => {
+                        let mut lines = vec![Out::Ok("Integrity Check Result:".into())];
+                        let ok = v["ok"].as_bool().unwrap_or(false);
+                        if ok {
+                            lines.push(Out::Ok("  ✓ 모든 파일이 정상입니다.".into()));
+                        } else {
+                            lines.push(Out::Err("  ✗ 무결성 문제가 발견되었습니다.".into()));
+                            if let Some(issues) = v["issues"].as_array() {
+                                for issue in issues {
+                                    let file = issue["file"].as_str().unwrap_or("?");
+                                    let reason = issue["reason"].as_str().unwrap_or("unknown");
+                                    lines.push(Out::Err(format!("    {} — {}", file, reason)));
+                                }
+                            }
+                            if let Some(msg) = v["message"].as_str() {
+                                lines.push(Out::Info(msg.to_string()));
+                            }
+                        }
+                        push_out(&buf, lines);
+                    }
+                    Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
+                }
+            });
+            app.flash("무결성 검사 중...");
         }
         Some('S') => { // Set Config → 인라인 Input
             app.input_mode = InputMode::InlineInput {

@@ -91,6 +91,7 @@ contextBridge.exposeInMainWorld('api', {
     discordBotStart: (config) => ipcRenderer.invoke('discord:start', config),
     discordBotStop: () => ipcRenderer.invoke('discord:stop'),
     discordGuildMembers: () => ipcRenderer.invoke('discord:guildMembers'),
+    discordGuildChannels: () => ipcRenderer.invoke('discord:guildChannels'),
     // Bot error events (from main process)
     onBotError: (callback) => ipcRenderer.on('bot:error', (event, data) => callback(data)),
     offBotError: () => ipcRenderer.removeAllListeners('bot:error'),
@@ -102,6 +103,12 @@ contextBridge.exposeInMainWorld('api', {
     // Node Token API (cloud pairing)
     saveNodeToken: (token) => ipcRenderer.invoke('nodeToken:save', token),
     loadNodeToken: () => ipcRenderer.invoke('nodeToken:load'),
+    // Relay server proxy (cloud mode) — all relay comms go through daemon
+    relayCheckHostStatus: (hostId, relayUrl) => ipcRenderer.invoke('relay:checkHostStatus', hostId, relayUrl),
+    relayListHostNodes: (hostId, relayUrl) => ipcRenderer.invoke('relay:listHostNodes', hostId, relayUrl),
+    relayListNodeMembers: (guildId, relayUrl) => ipcRenderer.invoke('relay:listNodeMembers', guildId, relayUrl),
+    relayInitiatePairing: (payload) => ipcRenderer.invoke('relay:initiatePairing', payload),
+    relayPollPairingStatus: (code, secret, relayUrl) => ipcRenderer.invoke('relay:pollPairingStatus', code, secret, relayUrl),
     // Shell API
     shellOpenPath: (folderPath) => ipcRenderer.invoke('shell:openPath', folderPath),
     // Logs API

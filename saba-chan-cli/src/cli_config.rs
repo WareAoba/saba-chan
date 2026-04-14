@@ -73,7 +73,7 @@ impl CliSettings {
         if !self.language.is_empty() {
             return self.language.clone();
         }
-        crate::gui_config::get_language().unwrap_or_else(|_| "en".into())
+        crate::config::get_language().unwrap_or_else(|_| "en".into())
     }
 
     /// 키-값 문자열로 설정값 가져오기
@@ -84,7 +84,7 @@ impl CliSettings {
             "refresh_interval" | "refresh" => Some(self.refresh_interval.to_string()),
             "bot_prefix" | "prefix" => {
                 let p = if self.bot_prefix.is_empty() {
-                    crate::gui_config::get_bot_prefix().unwrap_or_else(|_| "!saba".into())
+                    crate::config::get_bot_prefix().unwrap_or_else(|_| "!saba".into())
                 } else {
                     self.bot_prefix.clone()
                 };

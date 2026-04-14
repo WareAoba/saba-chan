@@ -1084,3 +1084,113 @@ describe('게임 서버 업데이트 배지', () => {
         expect(window.api.instanceCheckUpdate).not.toHaveBeenCalled();
     }, 20000);
 });
+
+// ════════════════════════════════════════════════════════════
+// 종료 다이얼로그 E2E
+// ════════════════════════════════════════════════════════════
+describe('종료 다이얼로그', () => {
+    it('close 요청 시 "인터페이스만 종료" / "완전히 종료" 두 선택지를 표시한다', async () => {
+        let closeRequestCb = null;
+        window.api = createApiMock({
+            onCloseRequest: vi.fn((cb) => {
+                closeRequestCb = cb;
+            }),
+            closeResponse: vi.fn(),
+        });
+
+        await act(async () => {
+            render(<App />);
+        });
+
+        // 데몬 준비 완료 대기
+        await waitFor(() => expect(window.api.settingsLoad).toHaveBeenCalled(), { timeout: 5000 });
+
+        // close 요청 트리거
+        expect(closeRequestCb).not.toBeNull();
+        act(() => {
+            closeRequestCb();
+        });
+
+        // 다이얼로그에 두 선택지가 버튼으로 표시되어야 함
+        await waitFor(() => {
+            const buttons = screen.getAllByRole('button');
+            const exitInterfaceBtn = buttons.find((b) => /exit interface|인터페이스만 종료/i.test(b.textContent));
+            const quitAllBtn = buttons.find((b) => /quit all|완전히 종료/i.test(b.textContent));
+            expect(exitInterfaceBtn).toBeTruthy();
+            expect(quitAllBtn).toBeTruthy();
+        }, { timeout: 5000 });
+    }, 15000);
+
+    it('"인터페이스만 종료" 클릭 시 closeResponse("exit-interface")를 전송한다', async () => {
+        let closeRequestCb = null;
+        window.api = createApiMock({
+            onCloseRequest: vi.fn((cb) => {
+                closeRequestCb = cb;
+            }),
+            closeResponse: vi.fn(),
+        });
+
+        await act(async () => {
+            render(<App />);
+        });
+
+        await waitFor(() => expect(window.api.settingsLoad).toHaveBeenCalled(), { timeout: 5000 });
+
+        act(() => {
+            closeRequestCb();
+        });
+
+        let exitInterfaceBtn;
+        await waitFor(() => {
+            const buttons = screen.getAllByRole('button');
+            exitInterfaceBtn = buttons.find((b) => /exit interface|인터페이스만 종료/i.test(b.textContent));
+            expect(exitInterfaceBtn).toBeTruthy();
+        }, { timeout: 5000 });
+
+        // "인터페이스만 종료" 클릭
+        act(() => {
+            exitInterfaceBtn.click();
+        });
+
+        expect(window.api.closeResponse).toHaveBeenCalledWith('exit-interface');
+    }, 15000);
+
+    it('"완전히 종료" 클릭 시 closeResponse("quit")를 전송한다 (managed 서버 없음)', async () => {
+        let closeRequestCb = null;
+        window.api = createApiMock({
+            onCloseRequest: vi.fn((cb) => {
+                closeRequestCb = cb;
+            }),
+            closeResponse: vi.fn(),
+            // 모든 서버 stopped
+            serverList: vi.fn().mockResolvedValue({
+                servers: [
+                    { instance_id: 'srv-1', name: 'Test', module: 'palworld', status: 'stopped', start_time: null },
+                ],
+            }),
+        });
+
+        await act(async () => {
+            render(<App />);
+        });
+
+        await waitFor(() => expect(window.api.settingsLoad).toHaveBeenCalled(), { timeout: 5000 });
+
+        act(() => {
+            closeRequestCb();
+        });
+
+        let quitAllBtn;
+        await waitFor(() => {
+            const buttons = screen.getAllByRole('button');
+            quitAllBtn = buttons.find((b) => /quit all|완전히 종료/i.test(b.textContent));
+            expect(quitAllBtn).toBeTruthy();
+        }, { timeout: 5000 });
+
+        act(() => {
+            quitAllBtn.click();
+        });
+
+        expect(window.api.closeResponse).toHaveBeenCalledWith('quit');
+    }, 15000);
+});

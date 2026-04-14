@@ -513,6 +513,142 @@ impl DaemonClient {
         self.get_json("/api/extensions/init-status").await
     }
 
+    // ============ Instance Version & Updates ============
+
+    /// GET /api/instance/{id}/installed-version — 설치된 서버 버전 조회
+    pub async fn get_installed_version(&self, id: &str) -> anyhow::Result<Value> {
+        self.get_json(&format!("/api/instance/{}/installed-version", id)).await
+    }
+
+    /// GET /api/instance/{id}/check-update — 서버 업데이트 확인
+    pub async fn check_instance_update(&self, id: &str) -> anyhow::Result<Value> {
+        self.get_json(&format!("/api/instance/{}/check-update", id)).await
+    }
+
+    /// POST /api/instance/{id}/apply-update — 서버 업데이트 적용
+    pub async fn apply_instance_update(&self, id: &str) -> anyhow::Result<Value> {
+        self.post_json_long(
+            &format!("/api/instance/{}/apply-update", id),
+            &serde_json::json!({}),
+        ).await
+    }
+
+    // ============ External Processes ============
+
+    /// GET /api/ext-processes — 실행 중인 외부 프로세스 목록
+    pub async fn list_ext_processes(&self) -> anyhow::Result<Value> {
+        self.get_json("/api/ext-processes").await
+    }
+
+    /// POST /api/ext-process/{name}/start — 외부 프로세스 시작
+    pub async fn start_ext_process(&self, name: &str, body: Value) -> anyhow::Result<Value> {
+        self.post_json(&format!("/api/ext-process/{}/start", name), &body).await
+    }
+
+    /// POST /api/ext-process/{name}/stop — 외부 프로세스 정지
+    pub async fn stop_ext_process(&self, name: &str) -> anyhow::Result<Value> {
+        self.post_json(&format!("/api/ext-process/{}/stop", name), &serde_json::json!({})).await
+    }
+
+    /// GET /api/ext-process/{name}/status — 외부 프로세스 상태 조회
+    pub async fn get_ext_process_status(&self, name: &str) -> anyhow::Result<Value> {
+        self.get_json(&format!("/api/ext-process/{}/status", name)).await
+    }
+
+    /// GET /api/ext-process/{name}/console — 외부 프로세스 콘솔 로그
+    pub async fn get_ext_process_console(&self, name: &str) -> anyhow::Result<Value> {
+        self.get_json(&format!("/api/ext-process/{}/console", name)).await
+    }
+
+    /// POST /api/ext-process/{name}/stdin — 외부 프로세스 stdin 전송
+    pub async fn send_ext_process_stdin(&self, name: &str, input: &str) -> anyhow::Result<Value> {
+        let body = serde_json::json!({ "input": input });
+        self.post_json(&format!("/api/ext-process/{}/stdin", name), &body).await
+    }
+
+    // ============ System ============
+
+    /// GET /api/system/components — 시스템 컴포넌트 정보 (daemon, GUI, locale 버전)
+    pub async fn get_system_components(&self) -> anyhow::Result<Value> {
+        self.get_json("/api/system/components").await
+    }
+
+    /// POST /api/daemon/shutdown — 데몬 강제 종료
+    pub async fn shutdown_daemon(&self) -> anyhow::Result<Value> {
+        self.post_empty("/api/daemon/shutdown").await
+    }
+
+    /// GET /api/daemon/console — 데몬 트레이싱 로그 조회
+    pub async fn get_daemon_console(&self, since: Option<u64>, count: Option<usize>) -> anyhow::Result<Value> {
+        let mut path = "/api/daemon/console".to_string();
+        let mut params = Vec::new();
+        if let Some(s) = since { params.push(format!("since={}", s)); }
+        if let Some(c) = count { params.push(format!("count={}", c)); }
+        if !params.is_empty() {
+            path = format!("{}?{}", path, params.join("&"));
+        }
+        self.get_json(&path).await
+    }
+
+    /// GET /api/node-env/status — Node.js 포터블 환경 상태
+    pub async fn get_node_env_status(&self) -> anyhow::Result<Value> {
+        self.get_json("/api/node-env/status").await
+    }
+
+    /// POST /api/node-env/setup — Node.js 부트스트랩
+    pub async fn setup_node_env(&self) -> anyhow::Result<Value> {
+        self.post_json_long("/api/node-env/setup", &serde_json::json!({})).await
+    }
+
+    /// GET /api/updates/integrity — 업데이트 무결성 검사
+    pub async fn check_update_integrity(&self) -> anyhow::Result<Value> {
+        self.get_json("/api/updates/integrity").await
+    }
+
+    /// GET /api/updates/download/progress — 다운로드 진행률
+    pub async fn get_download_progress(&self) -> anyhow::Result<Value> {
+        self.get_json("/api/updates/download/progress").await
+    }
+
+    // ============ Extension Config ============
+
+    /// GET /api/extensions/{id}/config — 익스텐션 설정 조회
+    pub async fn get_extension_config(&self, ext_id: &str) -> anyhow::Result<Value> {
+        self.get_json(&format!("/api/extensions/{}/config", ext_id)).await
+    }
+
+    /// PUT /api/extensions/{id}/config — 익스텐션 설정 저장
+    pub async fn save_extension_config(&self, ext_id: &str, config: Value) -> anyhow::Result<Value> {
+        self.put_json(&format!("/api/extensions/{}/config", ext_id), &config).await
+    }
+
+    // ============ Config API ============
+
+    /// GET /api/config/gui — GUI 설정 조회 (데몬 API 경유)
+    pub async fn get_gui_config(&self) -> anyhow::Result<Value> {
+        self.get_json("/api/config/gui").await
+    }
+
+    /// PUT /api/config/gui — GUI 설정 저장 (데몬 API 경유)
+    pub async fn save_gui_config(&self, config: Value) -> anyhow::Result<Value> {
+        self.put_json("/api/config/gui", &config).await
+    }
+
+    /// GET /api/config/node-token — 클라우드 연동 토큰 조회
+    pub async fn get_node_token(&self) -> anyhow::Result<Value> {
+        self.get_json("/api/config/node-token").await
+    }
+
+    /// PUT /api/config/node-token — 토큰 저장
+    pub async fn save_node_token_api(&self, token: &str) -> anyhow::Result<Value> {
+        self.put_json("/api/config/node-token", &serde_json::json!({ "token": token })).await
+    }
+
+    /// DELETE /api/config/node-token — 토큰 삭제
+    pub async fn delete_node_token(&self) -> anyhow::Result<Value> {
+        self.delete_json("/api/config/node-token").await
+    }
+
     // ============ Discord REST API ============
 
     /// Discord REST API로 봇이 참여한 길드 목록 조회

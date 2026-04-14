@@ -111,6 +111,32 @@ async function handleIpcMessage(msg, client) {
                 sendIpcResponse({ id, type: 'guildMembers', data: result });
                 break;
             }
+            case 'getGuildChannels': {
+                if (!client || !client.isReady()) {
+                    sendIpcResponse({ id, type: 'guildChannels', error: 'BOT_NOT_READY', data: {} });
+                    return;
+                }
+                const { ChannelType } = require('discord.js');
+                const channelData = {};
+                for (const [guildId, guild] of client.guilds.cache) {
+                    const textChannels = guild.channels.cache
+                        .filter(ch => ch.type === ChannelType.GuildText)
+                        .sort((a, b) => a.position - b.position)
+                        .map(ch => ({
+                            id: ch.id,
+                            name: ch.name,
+                            position: ch.position,
+                            parentName: ch.parent?.name || null,
+                        }));
+                    channelData[guildId] = {
+                        guildName: guild.name,
+                        guildIcon: guild.iconURL({ size: 32 }) || null,
+                        channels: textChannels,
+                    };
+                }
+                sendIpcResponse({ id, type: 'guildChannels', data: channelData });
+                break;
+            }
             default:
                 sendIpcResponse({ id, type: 'error', error: 'UNKNOWN_TYPE', message: `Unknown IPC type: ${msg.type}` });
         }
@@ -218,6 +244,41 @@ if (RELAY_AGENT_MODE) {
         }
     });
 
+    // ── 버튼 인터랙션 → 음악 컨트롤 버튼 처리 ──
+    client.on('interactionCreate', async (interaction) => {
+        try {
+            if (interaction.isButton()) {
+                await musicExtension.handleButtonInteraction(interaction);
+            }
+        } catch (e) {
+            console.error('[Bot] interactionCreate handler error:', e.message);
+        }
+    });
+
+    // ── 길드 제거 → 리소스 정리 ──
+    client.on('guildDelete', (guild) => {
+        console.log(`[Bot] Removed from guild ${guild.id} (${guild.name}) — cleaning up resources`);
+        try {
+            musicExtension.destroyGuildQueue(guild.id);
+            musicExtension.channelUI.stopChannelUI(guild.id);
+        } catch (e) {
+            console.error('[Bot] guildDelete cleanup error:', e.message);
+        }
+        // 멤버 캐시 무효화
+        _guildMembersCache = null;
+        _guildMembersCacheTime = 0;
+    });
+
+    // ── 채널 삭제 → 음악 채널 UI 정리 ──
+    client.on('channelDelete', (channel) => {
+        if (!channel.guildId) return;
+        const cfg = resolver.getConfig();
+        if (musicExtension.channelUI.isMusicChannel(channel.guildId, channel.id, cfg)) {
+            console.log(`[Bot] Music channel ${channel.id} deleted in guild ${channel.guildId} — stopping channel UI`);
+            musicExtension.channelUI.stopChannelUI(channel.guildId);
+        }
+    });
+
     // Discord 클라이언트 에러 핸들링
     client.on('error', (err) => {
         console.error('[Bot] Discord client error:', err.message);
@@ -240,6 +301,21 @@ if (RELAY_AGENT_MODE) {
         const cfg = resolver.getConfig();
         console.log(`[Bot] Prefix: ${cfg.prefix}`);
 
+        // 설정 변경 시 musicChannelId 핫 리로드
+        resolver.onConfigReload((changedKey, newConfig) => {
+            if (changedKey === 'musicChannelId') {
+                console.log('[Bot] musicChannelId changed — reinitializing channel UI');
+                musicExtension.initMusicChannelUI(client, newConfig).catch(e => {
+                    console.warn('[Bot] Music channel UI reinit error:', e.message);
+                });
+            }
+        });
+
+        // 전용 음악 채널 UI 초기화 (설정되어 있으면)
+        musicExtension.initMusicChannelUI(client, cfg).catch(e => {
+            console.warn('[Bot] Music channel UI init error:', e.message);
+        });
+
         // Guild 멤버를 startup 시 한 번만 prefetch (비차단)
         prefetchGuildMembers(client).catch(e => {
             console.warn('[Bot] Guild prefetch error:', e.message);
@@ -248,8 +324,8 @@ if (RELAY_AGENT_MODE) {
         console.log('[Bot] Ready (local mode)');
     });
 
-    process.on('SIGINT', () => { client.destroy(); process.exit(0); });
-    process.on('SIGTERM', () => { client.destroy(); process.exit(0); });
+    process.on('SIGINT', () => { musicExtension.cleanup(); client.destroy(); process.exit(0); });
+    process.on('SIGTERM', () => { musicExtension.cleanup(); client.destroy(); process.exit(0); });
 
     client.login(process.env.DISCORD_TOKEN).catch(e => {
         console.error('[Bot] Login failed:', e.message);

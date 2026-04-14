@@ -130,7 +130,7 @@
           ]
         }
       ],
-      "icon": "build/icon.ico",
+      "icon": "build/icon.png",
       "certificateFile": null,
       "certificatePassword": null,
       "extraFiles": [

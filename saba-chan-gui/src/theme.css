@@ -4,7 +4,7 @@
 :root,
 [data-theme="light"] {
     /* === Backgrounds === */
-    --bg-app: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --bg-app: linear-gradient(135deg, #fcfcfd 0%, #fdfcfd 100%);
     --bg-surface: #ffffff;
     --bg-surface-hover: #f9f9f9;
     --bg-surface-alt: #f8f9fa;
@@ -14,7 +14,12 @@
     --bg-surface-input-focus: #ffffff;
     --bg-overlay: rgba(0, 0, 0, 0.5);
     --bg-initializing-overlay: rgba(255, 255, 255, 0.85);
-    --bg-loading-bar: rgba(255, 255, 255, 0.2);
+
+    /* === Loading Screen === */
+    --loading-bg: #f0f0f2;
+    --loading-text: #333333;
+    --loading-logo-filter: none;
+    --loading-bar-bg: rgba(0, 0, 0, 0.08);
 
     /* === Text === */
     --text-primary: #333333;
@@ -58,6 +63,7 @@
     --brand-bg-muted: #e0e8ff;
     --brand-bg-info: #e8e8ff;
     --brand-border-light: #e0e8ff;
+    --brand-text: #ffffff;
 
     /* === Buttons === */
     --btn-secondary-bg: #f5f5f5;
@@ -68,9 +74,9 @@
 
     /* === Cards === */
     --card-bg: #ffffff;
-    --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-    --card-hover-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
-    --card-expanded-bg: #f5f5f5;
+    --card-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+    --card-hover-shadow: 0 4px 14px rgba(0, 0, 0, 0.10);
+    --card-expanded-bg: #f7f7f8;
 
     /* === Scrollbar === */
     --scrollbar-thumb: #d0d0d0;
@@ -95,7 +101,7 @@
 
     /* === Badges === */
     --badge-primary-bg: var(--brand-primary);
-    --badge-primary-text: #ffffff;
+    --badge-primary-text: var(--brand-text);
     --badge-subtle-bg: #e8e8ff;
     --badge-subtle-text: var(--brand-primary);
     --badge-default-bg: #f0f0f0;
@@ -181,7 +187,7 @@
 
 [data-theme="dark"] {
     /* === Backgrounds (neutral gray) === */
-    --bg-app: linear-gradient(135deg, #1a1a1f 0%, #141418 100%);
+    --bg-app: linear-gradient(135deg, #0b0b0c 0%, #080809 100%);
     --bg-surface: #1e1e22;
     --bg-surface-hover: #262629;
     --bg-surface-alt: #232326;
@@ -191,7 +197,12 @@
     --bg-surface-input-focus: #1e1e22;
     --bg-overlay: rgba(10, 10, 14, 0.72);
     --bg-initializing-overlay: rgba(26, 26, 30, 0.92);
-    --bg-loading-bar: rgba(255, 255, 255, 0.15);
+
+    /* === Loading Screen === */
+    --loading-bg: #111113;
+    --loading-text: #e8e8ea;
+    --loading-logo-filter: brightness(0) invert(1);
+    --loading-bar-bg: rgba(255, 255, 255, 0.12);
 
     /* === Text === */
     --text-primary: #e8e8ea;
@@ -235,6 +246,7 @@
     --brand-bg-muted: #2c2c34;
     --brand-bg-info: #2c2c34;
     --brand-border-light: #3a3a42;
+    --brand-text: #ffffff;
 
     /* === Buttons === */
     --btn-secondary-bg: #2a2a2e;
@@ -244,10 +256,10 @@
     --btn-secondary-hover-border: #555559;
 
     /* === Cards === */
-    --card-bg: #262629;
-    --card-shadow: 0 2px 8px rgba(10, 10, 14, 0.42);
-    --card-hover-shadow: 0 8px 25px rgba(10, 10, 14, 0.52);
-    --card-expanded-bg: #2a2a2e;
+    --card-bg: #1f1f21;
+    --card-shadow: 0 1px 4px rgba(0, 0, 0, 0.24);
+    --card-hover-shadow: 0 4px 14px rgba(0, 0, 0, 0.34);
+    --card-expanded-bg: #232325;
 
     /* === Scrollbar === */
     --scrollbar-thumb: #48484e;
@@ -272,7 +284,7 @@
 
     /* === Badges === */
     --badge-primary-bg: var(--brand-primary);
-    --badge-primary-text: #ffffff;
+    --badge-primary-text: var(--brand-text);
     --badge-subtle-bg: #2c2c34;
     --badge-subtle-text: var(--brand-primary);
     --badge-default-bg: #343438;
@@ -360,7 +372,7 @@
 @media (prefers-color-scheme: dark) {
     [data-theme="auto"] {
         /* === Backgrounds (neutral gray) === */
-        --bg-app: linear-gradient(135deg, #1a1a1f 0%, #141418 100%);
+        --bg-app: linear-gradient(135deg, #0b0b0c 0%, #080809 100%);
         --bg-surface: #1e1e22;
         --bg-surface-hover: #262629;
         --bg-surface-alt: #232326;
@@ -370,7 +382,12 @@
         --bg-surface-input-focus: #1e1e22;
         --bg-overlay: rgba(10, 10, 14, 0.72);
         --bg-initializing-overlay: rgba(26, 26, 30, 0.92);
-        --bg-loading-bar: rgba(255, 255, 255, 0.15);
+
+        /* === Loading Screen === */
+        --loading-bg: #111113;
+        --loading-text: #e8e8ea;
+        --loading-logo-filter: brightness(0) invert(1);
+        --loading-bar-bg: rgba(255, 255, 255, 0.12);
 
         /* === Text === */
         --text-primary: #e8e8ea;
@@ -414,6 +431,7 @@
         --brand-bg-muted: #2c2c34;
         --brand-bg-info: #2c2c34;
         --brand-border-light: #3a3a42;
+        --brand-text: #ffffff;
 
         /* === Buttons === */
         --btn-secondary-bg: #2a2a2e;
@@ -423,10 +441,10 @@
         --btn-secondary-hover-border: #555559;
 
         /* === Cards === */
-        --card-bg: #262629;
-        --card-shadow: 0 2px 8px rgba(10, 10, 14, 0.42);
-        --card-hover-shadow: 0 8px 25px rgba(10, 10, 14, 0.52);
-        --card-expanded-bg: #2a2a2e;
+        --card-bg: #1f1f21;
+        --card-shadow: 0 1px 4px rgba(0, 0, 0, 0.24);
+        --card-hover-shadow: 0 4px 14px rgba(0, 0, 0, 0.34);
+        --card-expanded-bg: #232325;
 
         /* === Scrollbar === */
         --scrollbar-thumb: #48484e;
@@ -451,7 +469,7 @@
 
         /* === Badges === */
         --badge-primary-bg: var(--brand-primary);
-        --badge-primary-text: #ffffff;
+        --badge-primary-text: var(--brand-text);
         --badge-subtle-bg: #2c2c34;
         --badge-subtle-text: var(--brand-primary);
         --badge-default-bg: #343438;
@@ -558,4 +576,22 @@ button {
         color 0.3s ease,
         border-color 0.3s ease,
         box-shadow 0.3s ease;
+}
+
+/* ── Disable transitions when user prefers ── */
+[data-no-transitions="true"],
+[data-no-transitions="true"] *,
+[data-no-transitions="true"] *::before,
+[data-no-transitions="true"] *::after {
+    transition: none !important;
+    animation-duration: 0.001ms !important;
+}
+
+/* ── Console custom colors ── */
+:root {
+    --console-custom-bg: #1e1e2e;
+    --console-custom-text: #cdd6f4;
+    --console-syntax-highlight: 1;
+    --font-scale: 1;
+    --console-font-scale: 1;
 }

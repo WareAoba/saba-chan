@@ -137,12 +137,19 @@ axios.interceptors.request.use((config) => {
 // ── 401 응답 시 토큰 자동 재로드 + 재시도 인터셉터 ──
 // 데몬 재시작으로 토큰이 갱신된 경우 자동 복구
 // Promise 큐로 직렬화하여 동시 401에 대해 한 번만 갱신
+// ★ 릴레이 프록시 요청(/api/relay/)의 401은 릴레이 서버 인증 실패이므로 제외
 let _tokenRefreshPromise = null;
 axios.interceptors.response.use(
     (response) => response,
     async (error) => {
         const originalRequest = error.config;
         if (error.response && error.response.status === 401 && !originalRequest._retried) {
+            // 릴레이 프록시 요청은 데몬 IPC 토큰과 무관 → 재시도하지 않음
+            const reqUrl = originalRequest.url || '';
+            if (reqUrl.includes('/api/relay/')) {
+                return Promise.reject(error);
+            }
+
             originalRequest._retried = true;
 
             // 이미 갱신 중이면 같은 Promise를 대기
@@ -189,6 +196,7 @@ let daemonProcess = null;
 let settings = null;
 let tray = null;
 let translations = {}; // 번역 객체 캐시
+let keepDaemonAlive = false; // 인터페이스만 종료 시 데몬 유지 플래그
 
 // ========== 설치 루트 경로 ==========
 // Portable exe: PORTABLE_EXECUTABLE_DIR (원본 exe 디렉토리)
@@ -341,71 +349,48 @@ function wait(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Bot Config 경로 (AppData에 저장)
-function getBotConfigPath() {
-    const userDataPath = app.getPath('userData');
-    return path.join(userDataPath, 'bot-config.json');
-}
+// Bot Config — 데몬 API 경유 (파일 직접 접근 금지)
 
-function loadBotConfig() {
-    const configPath = getBotConfigPath();
+async function loadBotConfig() {
     try {
-        if (fs.existsSync(configPath)) {
-            const data = fs.readFileSync(configPath, 'utf8');
-            const parsed = JSON.parse(data);
-            console.log('Bot config loaded from:', configPath);
-            return parsed;
-        }
+        const resp = await axios.get(`${IPC_BASE}/api/config/bot`);
+        return resp.data;
     } catch (error) {
-        console.error('Failed to load bot config:', error);
+        console.warn('Failed to load bot config from daemon, using defaults:', error.message);
+        return { prefix: '!saba', moduleAliases: {}, commandAliases: {} };
     }
-    return { prefix: '!saba', moduleAliases: {}, commandAliases: {} };
 }
 
-function saveBotConfig(config) {
-    const configPath = getBotConfigPath();
+async function saveBotConfig(config) {
     try {
-        const dir = path.dirname(configPath);
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
-        fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
-        console.log('Bot config saved to:', configPath);
+        await axios.put(`${IPC_BASE}/api/config/bot`, config);
+        console.log('Bot config saved via daemon API');
         return true;
     } catch (error) {
-        console.error('Failed to save bot config:', error);
+        console.error('Failed to save bot config via daemon:', error.message);
         return false;
     }
 }
 
-// ── 노드 토큰 관리 (클라우드 모드 릴레이 인증용) ──
-function getNodeTokenPath() {
-    const userDataPath = app.getPath('userData');
-    return path.join(userDataPath, '.node_token');
-}
+// ── 노드 토큰 관리 — 데몬 API 경유 ──
 
-function loadNodeToken() {
+async function loadNodeToken() {
     try {
-        const tokenPath = getNodeTokenPath();
-        if (fs.existsSync(tokenPath)) {
-            return fs.readFileSync(tokenPath, 'utf-8').trim();
-        }
+        const resp = await axios.get(`${IPC_BASE}/api/config/node-token`);
+        return resp.data?.token || '';
     } catch (e) {
-        console.warn('[NodeToken] Failed to load:', e.message);
+        console.warn('[NodeToken] Failed to load from daemon:', e.message);
+        return '';
     }
-    return '';
 }
 
-function saveNodeToken(token) {
+async function saveNodeToken(token) {
     try {
-        const tokenPath = getNodeTokenPath();
-        const dir = path.dirname(tokenPath);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(tokenPath, token, 'utf8');
-        console.log('[NodeToken] Saved to:', tokenPath);
+        await axios.put(`${IPC_BASE}/api/config/node-token`, { token });
+        console.log('[NodeToken] Saved via daemon API');
         return true;
     } catch (e) {
-        console.error('[NodeToken] Failed to save:', e.message);
+        console.error('[NodeToken] Failed to save via daemon:', e.message);
         return false;
     }
 }
@@ -494,38 +479,32 @@ function loadSettings() {
 }
 
 function saveSettings(settings) {
-    try {
-        const settingsPath = getSettingsPath();
-        const dir = path.dirname(settingsPath);
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
+    // 데몬이 아직 시작되지 않은 부트스트랩 단계에서는 로컬 파일에 직접 저장
+    if (!daemonProcess) {
+        try {
+            const settingsPath = getSettingsPath();
+            const dir = path.dirname(settingsPath);
+            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
+            console.log('[saveSettings] Bootstrap: saved locally (daemon not started)');
+        } catch (e) {
+            console.error('[saveSettings] Bootstrap local save failed:', e.message);
         }
-        fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
-        console.log('Settings saved to:', settingsPath);
         return true;
-    } catch (error) {
-        console.error('Failed to save settings:', error);
-        return false;
     }
+
+    // 데몬 가동 중 — API 경유로만 설정 저장 (단일 원천 원칙)
+    axios.put(`${IPC_BASE}/api/config/gui`, settings, { timeout: 5000 })
+        .then(() => console.log('Settings saved via daemon API'))
+        .catch((err) => {
+            console.error('[saveSettings] Daemon API failed:', err.message);
+        });
+    return true;
 }
 
-/**
- * GUI 설정 중 데몬 동작에 영향을 주는 값을 코어 데몬에 동기화합니다.
- * (portConflictCheck 등)
- */
-async function syncGuiConfigToDaemon(settings) {
-    if (!settings) return;
-    const payload = {};
-    if ('portConflictCheck' in settings) {
-        payload.portConflictCheck = settings.portConflictCheck;
-    }
-    if (Object.keys(payload).length === 0) return;
-    try {
-        await axios.put(`${IPC_BASE}/api/config/gui`, payload, { timeout: 5000 });
-    } catch (err) {
-        // 데몬이 아직 시작되지 않았거나 연결 불가 — 무시 (다음 기회에 동기화)
-        console.warn('[syncGuiConfig] Failed:', err.message);
-    }
+// syncGuiConfigToDaemon은 saveSettings에 통합됨 (데몬의 PUT /api/config/gui가 portConflictCheck 동기화도 처리)
+async function syncGuiConfigToDaemon(_settings) {
+    // no-op: save_gui_config 데몬 핸들러가 portConflictCheck 동기화를 통합 처리
 }
 
 // Core Daemon 시작
@@ -588,7 +567,7 @@ function startDaemon() {
     console.log('[Daemon] SABA_INSTANCES_PATH:', daemonEnv.SABA_INSTANCES_PATH);
     console.log('[Daemon] SABA_MODULES_PATH:', daemonEnv.SABA_MODULES_PATH);
 
-    daemonProcess = spawn(daemonPath, [], {
+    daemonProcess = spawn(daemonPath, ['--spawned'], {
         cwd: rootDir,
         env: daemonEnv,
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -606,7 +585,15 @@ function startDaemon() {
 
     if (daemonProcess.stderr) {
         daemonProcess.stderr.on('data', (data) => {
-            console.error('[Daemon Error]', data.toString().trim());
+            // 데몬의 tracing 출력이 stderr로 옴 (라인 버퍼링 보장)
+            const text = data.toString().trim();
+            if (!text) return;
+            // tracing WARN/ERROR 레벨은 console.error, 나머지는 console.log
+            if (/\bWARN\b|\bERROR\b/.test(text)) {
+                console.error('[Daemon]', text);
+            } else {
+                console.log('[Daemon]', text);
+            }
         });
     }
 
@@ -800,28 +787,47 @@ function spawnDetached(exe, args) {
 }
 
 // 안전한 종료 함수
+/**
+ * 인터페이스만 종료 — GUI 프로세스를 완전히 종료하되 데몬은 그대로 유지한다.
+ * 데몬에서 클라이언트 해제(shutdown=false)만 수행하고, 데몬 프로세스는 건드리지 않는다.
+ */
+async function interfaceOnlyQuit() {
+    console.log('Starting interface-only quit sequence...');
+    keepDaemonAlive = true;
+
+    try {
+        // 데몬에서 클라이언트 해제 (shutdown=false → 데몬은 계속 실행)
+        await unregisterFromDaemon({ shutdown: false });
+
+        // 트레이 정리
+        if (tray) {
+            tray.destroy();
+            tray = null;
+        }
+
+        // 메인 윈도우 정리 (close 이벤트 가로채기 해제 후 파괴)
+        if (mainWindow) {
+            mainWindow.removeAllListeners('close');
+            mainWindow.destroy();
+            mainWindow = null;
+        }
+
+        console.log('Interface-only quit sequence completed (daemon kept alive)');
+        closeLogger();
+        app.quit();
+    } catch (error) {
+        console.error('Error during interface-only quit:', error);
+        app.quit();
+    }
+}
+
 async function cleanQuit() {
     console.log('Starting clean quit sequence...');
 
     try {
         // 0. 데몬에서 클라이언트 해제 + 데몬에 종료 요청 (shutdown=true)
+        // → 데몬이 종료되면서 관리 중인 봇 프로세스도 함께 정리됨
         await unregisterFromDaemon({ shutdown: true });
-
-        // 1. Discord 봇 종료 (프로세스 트리 전체 종료)
-        if (discordBotProcess && !discordBotProcess.killed) {
-            const botPid = discordBotProcess.pid;
-            console.log(`Stopping Discord bot process (PID: ${botPid})...`);
-            if (process.platform === 'win32' && botPid) {
-                try {
-                    execSync(`taskkill /PID ${botPid} /F /T`, { stdio: 'ignore', windowsHide: true });
-                } catch (_e) { /* 이미 종료됨 */ }
-            } else {
-                discordBotProcess.kill('SIGTERM');
-            }
-            discordBotProcess = null;
-        }
-        // 고아 봇 프로세스도 정리
-        killOrphanBotProcesses();
 
         // 1.5. Mock 서버 종료
         if (mockServerProcess && !mockServerProcess.killed) {
@@ -1026,7 +1032,13 @@ function startHeartbeat() {
     heartbeatTimer = setInterval(async () => {
         if (!heartbeatClientId) return;
         try {
-            const botPid = discordBotProcess && !discordBotProcess.killed ? discordBotProcess.pid : null;
+            let botPid = null;
+            try {
+                const statusResp = await axios.get(`${IPC_BASE}/api/ext-process/discord-bot/status`, { timeout: 2000 });
+                if (statusResp.data?.status === 'running') {
+                    botPid = statusResp.data.pid ?? null;
+                }
+            } catch (_) { /* 무시 */ }
             await axios.post(
                 `${IPC_BASE}/api/client/${heartbeatClientId}/heartbeat`,
                 {
@@ -1266,7 +1278,7 @@ function createWindow() {
         minWidth: 780,
         minHeight: 840,
         show: false, // 준비될 때까지 보이지 않음
-        backgroundColor: '#667eea', // CSS 로드 전 흰 화면 방지 (브랜드 그라디언트 시작색)
+        backgroundColor: '#f0f0f2', // CSS 로드 전 흰 화면 방지 (라이트 모드 앱 배경 근사값)
         frame: false, // Windows 기본 프레임 제거
         icon: path.join(__dirname, 'build', 'icon.png'),
         webPreferences: {
@@ -1338,9 +1350,9 @@ function createWindow() {
 
 // React에서 종료 선택 응답 처리
 ipcMain.on('app:closeResponse', (_event, choice) => {
-    if (choice === 'hide') {
-        // GUI만 닫기 - 트레이로 최소화
-        mainWindow.hide();
+    if (choice === 'exit-interface') {
+        // 인터페이스만 종료 — GUI 프로세스 완전 종료, 데몬 유지
+        interfaceOnlyQuit();
     } else if (choice === 'quit') {
         // 완전히 종료 - cleanQuit 사용
         mainWindow.removeAllListeners('close'); // close 이벤트 리스너 제거
@@ -1443,6 +1455,12 @@ function updateTrayMenu() {
         },
         { type: 'separator' },
         {
+            label: '🔌 인터페이스만 종료',
+            click: () => {
+                interfaceOnlyQuit();
+            },
+        },
+        {
             label: '❌ 완전히 종료',
             click: () => {
                 cleanQuit();
@@ -1496,12 +1514,9 @@ app.on('ready', () => {
 });
 
 app.on('window-all-closed', () => {
-    // 창이 닫혀도 트레이에서 계속 실행
-    // macOS가 아니면 앱을 완전히 종료하지 않음
-    if (process.platform === 'darwin') {
-        // macOS에서는 기본 동작 유지
-    }
-    // Windows/Linux에서는 트레이에 남아있음
+    // 더 이상 트레이에 숨겨 상주하지 않음.
+    // interfaceOnlyQuit / cleanQuit에서 app.quit()을 명시적으로 호출하므로
+    // 여기서는 추가 동작 불필요.
 });
 
 app.on('before-quit', () => {
@@ -1534,23 +1549,31 @@ app.on('before-quit', () => {
         heartbeatClientId = null;
     }
 
-    // Discord 봇 프로세스 종료 (프로세스 트리 전체)
-    if (discordBotProcess && !discordBotProcess.killed) {
-        const botPid = discordBotProcess.pid;
-        console.log(`Stopping Discord bot on quit (PID: ${botPid})...`);
-        if (process.platform === 'win32' && botPid) {
-            try {
-                execSync(`taskkill /PID ${botPid} /F /T`, { stdio: 'ignore', windowsHide: true });
-            } catch (_e) { /* 이미 종료됨 */ }
-        } else {
-            discordBotProcess.kill('SIGTERM');
-        }
-        discordBotProcess = null;
+    // Discord 봇 종료 요청 (데몬 API 경유 — fire and forget)
+    // 인터페이스만 종료 시에는 데몬이 계속 봇을 관리하므로 스킵
+    if (!keepDaemonAlive) {
+        try {
+            const tokenForShutdown = getIpcToken();
+            const shutdownReq = http.request({
+                hostname: '127.0.0.1',
+                port: currentPort,
+                path: '/api/ext-process/discord-bot/stop',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Saba-Token': tokenForShutdown,
+                },
+                timeout: 2000,
+            });
+            shutdownReq.write('{}');
+            shutdownReq.end();
+        } catch (_e) { /* 무시 */ }
     }
-    killOrphanBotProcesses();
 
-    // 데몬 프로세스 종료
-    stopDaemon();
+    // 데몬 프로세스 종료 (인터페이스만 종료 시에는 데몬 유지)
+    if (!keepDaemonAlive) {
+        stopDaemon();
+    }
 
     // 트레이 제거
     if (tray) {
@@ -1570,15 +1593,6 @@ app.on('before-quit', () => {
 // 앱이 완전히 종료되기 전 최후의 보루
 process.on('exit', () => {
     console.log('Process exiting');
-    // 혹시 남아있을 Discord 봇 프로세스 강제 종료
-    if (discordBotProcess && !discordBotProcess.killed) {
-        try {
-            console.log('Force killing Discord bot process at exit');
-            discordBotProcess.kill('SIGKILL');
-        } catch (_e) {
-            // 무시
-        }
-    }
     // 혹시 남아있을 데몬 프로세스 강제 종료
     if (daemonProcess && !daemonProcess.killed) {
         try {
@@ -1950,7 +1964,13 @@ ipcMain.handle('console:toggleAlwaysOnTop', async (_event, instanceId, pinned) =
     if (consolePopoutWindows.has(instanceId)) {
         const win = consolePopoutWindows.get(instanceId);
         if (!win.isDestroyed()) {
-            win.setAlwaysOnTop(pinned);
+            win.setAlwaysOnTop(pinned, 'floating');
+            if (pinned) {
+                // 재고정 시 윈도우를 최전면으로 끌어올리기
+                if (win.isMinimized()) win.restore();
+                win.moveTop();
+                win.focus();
+            }
             return { ok: true, pinned };
         }
     }
@@ -2032,32 +2052,13 @@ ipcMain.handle('module:remove', async (_event, moduleId) => {
     }
 });
 
-// 모듈의 locale 파일들을 모두 읽어서 반환
+// 모듈의 locale 파일들을 모두 읽어서 반환 — 데몬 API 경유
 ipcMain.handle('module:getLocales', async (_event, moduleName) => {
     try {
-        const settings = loadSettings();
-        const modulesDir = getFixedModulesPath();
-        const localesDir = path.join(modulesDir, moduleName, 'locales');
-        const result = {};
-
-        if (fs.existsSync(localesDir)) {
-            const files = fs.readdirSync(localesDir);
-            for (const file of files) {
-                if (file.endsWith('.json')) {
-                    const lang = file.replace('.json', '');
-                    try {
-                        const content = fs.readFileSync(path.join(localesDir, file), 'utf-8');
-                        result[lang] = JSON.parse(content);
-                    } catch (e) {
-                        console.warn(`Failed to parse locale file ${file} for module ${moduleName}:`, e.message);
-                    }
-                }
-            }
-        }
-
-        return result;
+        const response = await axios.get(`${IPC_BASE}/api/module/${encodeURIComponent(moduleName)}/locales`);
+        return response.data;
     } catch (error) {
-        console.error(`Failed to load locales for module ${moduleName}:`, error);
+        console.error(`Failed to load locales for module ${moduleName}:`, error.message);
         return {};
     }
 });
@@ -2614,6 +2615,74 @@ ipcMain.handle('updater:check', async () => {
     }
 });
 
+// ── Relay server proxy (cloud mode) — daemon API 경유 ──
+
+ipcMain.handle('relay:checkHostStatus', async (_event, hostId, relayUrl) => {
+    try {
+        const params = relayUrl ? `?relayUrl=${encodeURIComponent(relayUrl)}` : '';
+        const resp = await axios.get(
+            `${IPC_BASE}/api/relay/host/${encodeURIComponent(hostId)}/status${params}`,
+            { timeout: 8000 },
+        );
+        return resp.data;
+    } catch (err) {
+        return { ok: false, error: err.message };
+    }
+});
+
+ipcMain.handle('relay:listHostNodes', async (_event, hostId, relayUrl) => {
+    try {
+        const params = relayUrl ? `?relayUrl=${encodeURIComponent(relayUrl)}` : '';
+        const resp = await axios.get(
+            `${IPC_BASE}/api/relay/host/${encodeURIComponent(hostId)}/nodes${params}`,
+            { timeout: 8000 },
+        );
+        return resp.data;
+    } catch (err) {
+        return [];
+    }
+});
+
+ipcMain.handle('relay:listNodeMembers', async (_event, guildId, relayUrl) => {
+    try {
+        const params = relayUrl ? `?relayUrl=${encodeURIComponent(relayUrl)}` : '';
+        const resp = await axios.get(
+            `${IPC_BASE}/api/relay/node/${encodeURIComponent(guildId)}/members${params}`,
+            { timeout: 8000 },
+        );
+        return resp.data;
+    } catch (err) {
+        return [];
+    }
+});
+
+ipcMain.handle('relay:initiatePairing', async (_event, payload) => {
+    try {
+        const resp = await axios.post(`${IPC_BASE}/api/relay/pair/initiate`, payload, {
+            timeout: 8000,
+        });
+        return resp.data;
+    } catch (err) {
+        return { error: err.message };
+    }
+});
+
+ipcMain.handle('relay:pollPairingStatus', async (_event, code, secret, relayUrl) => {
+    try {
+        const params = new URLSearchParams();
+        if (secret) params.set('secret', secret);
+        if (relayUrl) params.set('relayUrl', relayUrl);
+        const qs = params.toString() ? `?${params.toString()}` : '';
+        const resp = await axios.get(
+            `${IPC_BASE}/api/relay/pair/${encodeURIComponent(code)}/status${qs}`,
+            { timeout: 8000 },
+        );
+        return resp.data;
+    } catch (err) {
+        return { error: err.message };
+    }
+});
+
 // 업데이트 상태 조회 (캐시) — 데몬 API `/api/updates/status`
 ipcMain.handle('updater:status', async () => {
     try {
@@ -2786,8 +2855,16 @@ ipcMain.handle('daemon:restart', async () => {
     }
 });
 
-// Settings IPC handlers
-ipcMain.handle('settings:load', () => {
+// Settings IPC handlers — 데몬 가동 중이면 API 경유, 부트스트랩 시 로컬 폴백
+ipcMain.handle('settings:load', async () => {
+    if (daemonProcess && !daemonProcess.killed) {
+        try {
+            const resp = await axios.get(`${IPC_BASE}/api/config/gui`, { timeout: 5000 });
+            return resp.data;
+        } catch (err) {
+            console.warn('[settings:load] Daemon API failed, falling back to local:', err.message);
+        }
+    }
     return loadSettings();
 });
 
@@ -2798,28 +2875,16 @@ ipcMain.handle('app:getVersion', () => {
 
 ipcMain.handle('app:getComponentInfo', async () => {
     try {
-        const manifestPath = path.join(getInstallRoot(), 'release-manifest.json');
-        if (fs.existsSync(manifestPath)) {
-            const raw = fs.readFileSync(manifestPath, 'utf-8');
-            const manifest = JSON.parse(raw);
-            const components = {};
-            for (const [key, val] of Object.entries(manifest.components || {})) {
-                components[key] = val.version || manifest.release_version || '0.1.0';
-            }
-            return {
-                version: manifest.release_version || app.getVersion(),
-                components,
-                lastUpdated: fs.statSync(manifestPath).mtime.toISOString(),
-            };
-        }
+        const response = await axios.get(`${IPC_BASE}/api/system/components`);
+        return response.data;
     } catch (e) {
-        console.warn('[App] Failed to read release-manifest:', e.message);
+        console.warn('[App] Failed to get component info from daemon:', e.message);
+        return {
+            version: app.getVersion(),
+            components: {},
+            lastUpdated: null,
+        };
     }
-    return {
-        version: app.getVersion(),
-        components: {},
-        lastUpdated: null,
-    };
 });
 
 // Uninstall — GUI/데몬 종료 후 인스톨러를 --uninstall로 실행
@@ -2897,16 +2962,26 @@ ipcMain.handle('guiConfig:sync', async (_event, config) => {
     return syncGuiConfigToDaemon(config);
 });
 
-ipcMain.handle('settings:save', (_event, settings) => {
-    // 기존 설정과 병합하여 language, windowBounds 등 GUI가 관리하지 않는 필드를 보호
+ipcMain.handle('settings:save', async (_event, settings) => {
+    // 데몬 가동 중이면 merge base도 API에서 로드 → API로 저장 (단일 원천 원칙)
+    if (daemonProcess && !daemonProcess.killed) {
+        try {
+            const resp = await axios.get(`${IPC_BASE}/api/config/gui`, { timeout: 5000 });
+            const existing = resp.data || {};
+            const merged = { ...existing, ...settings };
+            await axios.put(`${IPC_BASE}/api/config/gui`, merged, { timeout: 5000 });
+            refreshIpcBase();
+            return true;
+        } catch (err) {
+            console.warn('[settings:save] Daemon API failed:', err.message);
+            return false;
+        }
+    }
+    // 부트스트랩 단계 — 로컬 파일 사용
     const existing = loadSettings();
     const merged = { ...existing, ...settings };
     const result = saveSettings(merged);
-    refreshIpcBase(); // IPC 포트 변경 반영
-    // 데몬에 GUI 설정 동기화 (portConflictCheck 등)
-    syncGuiConfigToDaemon(settings).catch(err => {
-        console.warn('[Settings] Failed to sync GUI config to daemon:', err.message);
-    });
+    refreshIpcBase();
     return result;
 });
 
@@ -2926,7 +3001,7 @@ ipcMain.handle('language:get', () => {
     return getLanguage();
 });
 
-ipcMain.handle('language:set', (_event, language) => {
+ipcMain.handle('language:set', async (_event, language) => {
     const success = setLanguage(language);
 
     // 번역 다시 로드
@@ -2935,37 +3010,27 @@ ipcMain.handle('language:set', (_event, language) => {
     // 데몬은 재시작하지 않음 — Python 모듈은 호출 시 환경변수로 언어를 결정하므로
     // 데몬을 재시작하면 실행 중인 서버가 모두 종료됨
 
-    // Discord 봇이 실행 중이면 재시작하여 새 언어 설정 적용
-    const botRunning = discordBotProcess && !discordBotProcess.killed;
-    if (botRunning) {
-        botIntentionalExit = true;
-        console.log('Restarting Discord bot to apply new language setting...');
-        const botPid = discordBotProcess.pid;
-        if (process.platform === 'win32' && botPid) {
-            try {
-                execSync(`taskkill /PID ${botPid} /F /T`, { stdio: 'ignore', windowsHide: true });
-            } catch (_e) { /* 이미 종료됨 */ }
-            discordBotProcess = null;
-        } else {
-            discordBotProcess.kill('SIGTERM');
-        }
+    // Discord 봇이 실행 중이면 데몬 API로 정지 후 렌더러에 재시작 신호 전송
+    try {
+        const statusResp = await axios.get(`${IPC_BASE}/api/ext-process/discord-bot/status`);
+        if (statusResp.data?.status === 'running') {
+            console.log('Stopping Discord bot to apply new language setting...');
+            await axios.post(`${IPC_BASE}/api/ext-process/discord-bot/stop`, {}, { timeout: 5000 });
 
-        // 봇이 종료될 때까지 잠시 대기
-        setTimeout(() => {
-            // 설정 파일에서 봇 토큰과 설정을 다시 로드하여 재시작
-            try {
-                const botConfigPath = getBotConfigPath();
-                if (fs.existsSync(botConfigPath)) {
-                    const botConfig = JSON.parse(fs.readFileSync(botConfigPath, 'utf8'));
-                    // 봇 닫기/재시작을 위해 IPC 이벤트 발생 (mainWindow가 있을 때만)
-                    if (mainWindow) {
+            // 렌더러에 재시작 신호 전송 (봇 설정을 데몬에서 로드)
+            setTimeout(async () => {
+                try {
+                    const botConfig = await loadBotConfig();
+                    if (mainWindow && !mainWindow.isDestroyed()) {
                         mainWindow.webContents.send('bot:relaunch', botConfig);
                     }
+                } catch (error) {
+                    console.error('Failed to relaunch Discord bot:', error);
                 }
-            } catch (error) {
-                console.error('Failed to relaunch Discord bot:', error);
-            }
-        }, 500);
+            }, 500);
+        }
+    } catch (_e) {
+        // 데몬 미연결 — 봇 미실행으로 간주
     }
 
     return { success, language };
@@ -3022,107 +3087,72 @@ ipcMain.handle('migration:scanDir', async (_event, dirPath) => {
         if (!dirPath || typeof dirPath !== 'string') {
             return { error: 'Invalid directory path' };
         }
-        const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
-        const files = entries
-            .filter((e) => e.isFile())
-            .map((e) => e.name);
-        const dirs = entries
-            .filter((e) => e.isDirectory())
-            .map((e) => e.name);
-        return { ok: true, files, dirs };
+        const response = await axios.post(`${IPC_BASE}/api/fs/scan-dir`, { path: dirPath });
+        return response.data;
     } catch (error) {
-        if (error.code === 'ENOENT') {
-            return { error: 'Directory not found' };
-        }
-        if (error.code === 'EACCES' || error.code === 'EPERM') {
-            return { error: 'Permission denied' };
-        }
-        return { error: error.message };
+        const errData = error.response?.data;
+        return { error: errData?.error || error.message };
     }
 });
 
-// Discord Bot process management
-let discordBotProcess = null;
-let botIntentionalExit = false; // 의도적 종료(언어 변경·모드 전환·수동 정지) 시 에러 알림 억제 플래그
+// Discord Bot process management — 데몬 API 경유
+// GUI는 봇 프로세스를 직접 관리하지 않음. 모든 봇 수명주기는 데몬이 담당.
 
-// ── 봇 프로세스 IPC 응답 관리 ──
+// ── 봇 프로세스 IPC 응답 관리 (데몬 경유 stdin으로 전환) ──
 const pendingBotIpcRequests = new Map(); // id → { resolve, timer }
 let botIpcIdCounter = 0;
 
-function sendBotIpcRequest(msg, timeoutMs = 15000) {
-    return new Promise((resolve, reject) => {
-        if (!discordBotProcess || discordBotProcess.killed || !discordBotProcess.stdin) {
-            return reject(new Error('Bot process not running'));
-        }
-        const id = String(++botIpcIdCounter);
-        const timer = setTimeout(() => {
-            pendingBotIpcRequests.delete(id);
-            reject(new Error('Bot IPC timeout'));
-        }, timeoutMs);
-        pendingBotIpcRequests.set(id, { resolve, timer });
-        discordBotProcess.stdin.write(JSON.stringify({ ...msg, id }) + '\n');
-    });
-}
-
-function handleBotIpcResponse(msg) {
-    if (!msg.id) return;
-    const pending = pendingBotIpcRequests.get(msg.id);
-    if (pending) {
-        clearTimeout(pending.timer);
-        pendingBotIpcRequests.delete(msg.id);
-        pending.resolve(msg);
+async function sendBotIpcRequest(msg, timeoutMs = 15000) {
+    const id = String(++botIpcIdCounter);
+    // 데몬의 stdin API로 봇에 메시지 전송
+    try {
+        await axios.post(`${IPC_BASE}/api/ext-process/discord-bot/stdin`, {
+            message: JSON.stringify({ ...msg, id }),
+        });
+    } catch (e) {
+        throw new Error('Bot IPC unavailable: ' + e.message);
     }
-}
 
-// 고아 봇 프로세스 정리 (이전 앱 실행에서 남은 프로세스)
-// /T 플래그로 프로세스 트리 전체 종료 (ffmpeg, yt-dlp 등 자식 포함)
-function killOrphanBotProcesses() {
-    if (process.platform === 'win32') {
+    // 데몬의 console buffer에서 __IPC__ 응답을 폴링
+    const ipcPrefix = '__IPC__:';
+    const deadline = Date.now() + timeoutMs;
+    const pollInterval = 500;
+    let lastLineCount = 0;
+
+    while (Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, pollInterval));
         try {
-            // PowerShell로 discord_bot을 포함하는 node.exe PID 조회
-            const output = execSync(
-                'powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"name=\'node.exe\'\\" | Where-Object { $_.CommandLine -like \'*discord_bot*\' } | Select-Object -ExpandProperty ProcessId"',
-                { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 8000 },
-            )
-                .toString()
-                .trim();
-
-            if (!output) return;
-
-            for (const line of output.split(/\r?\n/)) {
-                const pid = line.trim();
-                if (!pid || isNaN(pid)) continue;
-
-                // 현재 관리 중인 프로세스는 제외
-                if (discordBotProcess && discordBotProcess.pid && String(discordBotProcess.pid) === pid) {
-                    continue;
-                }
-                console.log(`[Discord Bot] Killing orphan bot process tree PID: ${pid}`);
+            const consoleResp = await axios.get(
+                `${IPC_BASE}/api/ext-process/discord-bot/console`,
+                { timeout: 3000 },
+            );
+            const lines = consoleResp.data?.lines || consoleResp.data?.console || [];
+            // 새 줄만 탐색 (이전 폴링 이후 추가된 줄)
+            const startIdx = Math.max(0, lastLineCount - 5); // 약간 겹치게 (누락 방지)
+            lastLineCount = lines.length;
+            for (let i = lines.length - 1; i >= startIdx; i--) {
+                const line = typeof lines[i] === 'string' ? lines[i] : lines[i]?.line || '';
+                // [stdout] 및 [stderr] 접두사 제거
+                const stripped = line.replace(/^\[(stdout|stderr)\]\s*/, '');
+                if (!stripped.startsWith(ipcPrefix)) continue;
                 try {
-                    // /T: 프로세스 트리 전체 종료 (자식 ffmpeg/yt-dlp 포함)
-                    execSync(`taskkill /PID ${pid} /F /T`, { stdio: 'ignore', windowsHide: true });
-                } catch (_e) {
-                    // 이미 종료된 프로세스일 수 있음
-                }
+                    const payload = JSON.parse(stripped.slice(ipcPrefix.length));
+                    if (payload.id === id) return payload;
+                } catch (_) {}
             }
-        } catch (_e) {
-            // 프로세스가 없으면 정상
-            console.log('[Discord Bot] No orphan processes found');
-        }
-    } else {
-        try {
-            execSync('pkill -f "discord_bot" || true', { stdio: 'ignore' });
-        } catch (_e) {
-            // 무시
-        }
+        } catch (_) {}
     }
+
+    return { error: 'TIMEOUT', message: 'Bot IPC response timeout' };
 }
 
-ipcMain.handle('discord:status', () => {
-    if (discordBotProcess && !discordBotProcess.killed) {
-        return 'running';
+ipcMain.handle('discord:status', async () => {
+    try {
+        const resp = await axios.get(`${IPC_BASE}/api/ext-process/discord-bot/status`);
+        return resp.data?.status || 'stopped';
+    } catch (e) {
+        return 'stopped';
     }
-    return 'stopped';
 });
 
 // ── 봇에 연결된 Discord 길드 멤버 목록 조회 (로컬 모드 전용) ──
@@ -3138,315 +3168,151 @@ ipcMain.handle('discord:guildMembers', async () => {
     }
 });
 
-ipcMain.handle('discord:start', async (_event, config) => {
-    // ★ 클라우드 모드: AppData 설정 저장 + 릴레이 서버 동기화 후 에이전트 프로세스 생성으로 진행
-    if (config.mode === 'cloud') {
-        console.log('[Discord Bot] Cloud mode — starting relay agent process');
-
-        // 설정은 AppData에 저장 (prefix, aliases, cloud 메타데이터 포함)
-        const cloudConfigToSave = {
-            prefix: config.prefix || '!saba',
-            moduleAliases: config.moduleAliases || {},
-            commandAliases: config.commandAliases || {},
-            musicEnabled: config.musicEnabled !== false,
-            mode: 'cloud',
-            cloud: config.cloud || {},
-            nodeSettings: config.nodeSettings || {},
-        };
-        saveBotConfig(cloudConfigToSave);
-
-        // ★ 릴레이 서버에 botConfig 동기화 (prefix, 별명) — 비차단
-        const relayUrl = config.cloud?.relayUrl;
-        const hostId = config.cloud?.hostId;
-        if (relayUrl && hostId) {
-            try {
-                const resp = await axios.patch(`${relayUrl}/api/hosts/${hostId}/bot-config`, {
-                    prefix: config.prefix || '!saba',
-                    moduleAliases: config.moduleAliases || {},
-                    commandAliases: config.commandAliases || {},
-                });
-                console.log('[Discord Bot] botConfig synced to relay:', resp.data);
-            } catch (e) {
-                console.warn('[Discord Bot] Failed to sync botConfig to relay:', e.message);
-            }
-        }
-        // ★ early return 제거 — 아래 에이전트 프로세스 생성으로 진행
-    }
-
-    if (discordBotProcess && !discordBotProcess.killed) {
-        return { error: 'Bot is already running' };
-    }
-
-    // 이전 앱 실행에서 남은 고아 봇 프로세스 정리
-    killOrphanBotProcesses();
-
-    // 설치 루트 기준으로 경로 결정 (portable: 원본 exe 디렉토리)
-    const installRoot = getInstallRoot();
-    let botPath = path.join(installRoot, 'discord_bot');
-    let indexPath = path.join(botPath, 'index.js');
-
-    // 설치 루트에 없으면 temp 추출 디렉토리 fallback (최초 실행 시)
-    if (!fs.existsSync(indexPath) && app.isPackaged) {
-        const tempDir = path.dirname(app.getPath('exe'));
-        const tempBotPath = path.join(tempDir, 'discord_bot');
-        if (fs.existsSync(path.join(tempBotPath, 'index.js'))) {
-            botPath = tempBotPath;
-            indexPath = path.join(botPath, 'index.js');
-        }
-    }
-
-    console.log('[Discord Bot] isPackaged:', app.isPackaged);
-    console.log('[Discord Bot] app.getPath(exe):', app.getPath('exe'));
-    console.log('[Discord Bot] botPath:', botPath);
-    console.log('[Discord Bot] indexPath:', indexPath);
-    console.log('[Discord Bot] exists?:', fs.existsSync(indexPath));
-
-    if (!fs.existsSync(indexPath)) {
-        return { error: `Bot script not found: ${indexPath}` };
-    }
-
-    // 설정을 AppData에 저장 (단일 원본 — 봇은 BOT_CONFIG_PATH 환경변수로 이 경로를 참조)
-    // ★ nodeSettings가 전달되지 않으면 기존 파일에서 보존 (업데이트/복원 후 재시작 시 덮어쓰기 방지)
-    let existingNodeSettings = {};
-    const appDataConfigPath = getBotConfigPath();
-    if (!config.nodeSettings || Object.keys(config.nodeSettings).length === 0) {
-        try {
-            const existing = loadBotConfig();
-            existingNodeSettings = existing.nodeSettings || {};
-        } catch (_) {}
-    }
-    const configToSave = {
-        prefix: config.prefix || '!saba',
-        moduleAliases: config.moduleAliases || {},
-        commandAliases: config.commandAliases || {},
-        musicEnabled: config.musicEnabled !== false,
-        nodeSettings:
-            config.nodeSettings && Object.keys(config.nodeSettings).length > 0
-                ? config.nodeSettings
-                : existingNodeSettings,
-    };
-
-    // AppData에 저장 (단일 원본)
-    // ★ 기존 클라우드 메타데이터(mode, cloud, cloudNodes, cloudMembers)를 보존
-    {
-        let existingAppData = {};
-        try {
-            const existing = loadBotConfig();
-            if (existing && typeof existing === 'object') {
-                existingAppData = existing;
-            }
-        } catch (_) {}
-        const merged = {
-            ...existingAppData,
-            ...configToSave,
-            // 클라우드 메타데이터 보존 (현재 세션의 값 우선, 없으면 기존 값 유지)
-            mode: config.mode || existingAppData.mode || 'local',
-            cloud: config.cloud || existingAppData.cloud || {},
-            cloudNodes: config.cloudNodes || existingAppData.cloudNodes || [],
-            cloudMembers: config.cloudMembers || existingAppData.cloudMembers || {},
-        };
-        saveBotConfig(merged);
-    }
-
+ipcMain.handle('discord:guildChannels', async () => {
     try {
-        const currentLanguage = getLanguage();
-
-        // ── Node.js 실행 경로 결정 ──
-        // 1) 데몬의 node-env API로 포터블 Node.js 경로 조회
-        // 2) 실패 시 시스템 'node' 폴백
-        let nodeCmd = 'node';
-        try {
-            const token = getIpcToken();
-            const res = await axios.get(`${IPC_BASE}/api/node-env/status`, {
-                timeout: 3000,
-                headers: { 'X-Saba-Token': token },
-            });
-            const data = res.data;
-            if (data?.available && data?.portable_installed && data?.portable_path) {
-                const portable = data.portable_path;
-                if (fs.existsSync(portable)) {
-                    nodeCmd = portable;
-                    console.log('[Discord Bot] Using portable Node.js:', nodeCmd);
-                }
-            } else if (data?.system_node) {
-                nodeCmd = data.system_node;
-                console.log('[Discord Bot] Using system Node.js:', nodeCmd);
-            }
-        } catch (nodeEnvErr) {
-            console.warn('[Discord Bot] node-env API unavailable, using system node:', nodeEnvErr.message);
+        const resp = await sendBotIpcRequest({ type: 'getGuildChannels' }, 15000);
+        if (resp.error) {
+            return { error: resp.error };
         }
-
-        console.log('[Discord Bot] Starting with:');
-        console.log('  - nodeCmd:', nodeCmd);
-        console.log('  - botPath:', botPath);
-        console.log('  - indexPath:', indexPath);
-        console.log('  - configPath:', appDataConfigPath);
-
-        // ── 환경변수 구성 ──
-        const spawnEnv = {
-            ...process.env,
-            IPC_BASE: IPC_BASE,
-            SABA_LANG: currentLanguage,
-            BOT_CONFIG_PATH: appDataConfigPath,
-            SABA_EXTENSIONS_DIR: getFixedExtensionsPath(),
-        };
-
-        if (config.mode === 'cloud') {
-            // 클라우드 모드: 릴레이 에이전트 모드로 시작 (Discord 로그인 없음)
-            const nodeToken = loadNodeToken();
-            const relayUrl = (config.cloud?.relayUrl || 'https://saba-chan.online').replace(/\/+$/, '');
-            if (!nodeToken) {
-                return { error: 'cloud_token_not_found' };
-            }
-            spawnEnv.RELAY_URL = relayUrl;
-            spawnEnv.RELAY_NODE_TOKEN = nodeToken;
-            console.log('[Discord Bot] Cloud mode — relay agent (relay=' + relayUrl + ')');
-        } else {
-            // 로컬 모드: Discord 로그인
-            spawnEnv.DISCORD_TOKEN = config.token;
-        }
-
-        discordBotProcess = spawn(nodeCmd, [indexPath], {
-            cwd: botPath,
-            env: spawnEnv,
-            stdio: ['pipe', 'pipe', 'pipe'],
-        });
-
-        // ── stdout: 일반 로그 + __IPC__ JSON 응답 구분 ──
-        let stdoutBuf = '';
-        discordBotProcess.stdout.on('data', (data) => {
-            stdoutBuf += data.toString();
-            let nlIdx;
-            while ((nlIdx = stdoutBuf.indexOf('\n')) !== -1) {
-                const line = stdoutBuf.slice(0, nlIdx).trim();
-                stdoutBuf = stdoutBuf.slice(nlIdx + 1);
-                if (!line) continue;
-                if (line.startsWith('__IPC__:')) {
-                    try {
-                        const msg = JSON.parse(line.slice('__IPC__:'.length));
-                        handleBotIpcResponse(msg);
-                    } catch (e) {
-                        console.warn('[Discord Bot IPC] Parse error:', e.message);
-                    }
-                } else {
-                    console.log('[Discord Bot]', line);
-                }
-            }
-        });
-
-        // ── stderr: 에러 로그 + 렌더러에 전달 ──
-        let stderrBuf = '';
-        discordBotProcess.stderr.on('data', (data) => {
-            stderrBuf += data.toString();
-            let nlIdx;
-            while ((nlIdx = stderrBuf.indexOf('\n')) !== -1) {
-                const line = stderrBuf.slice(0, nlIdx).trim();
-                stderrBuf = stderrBuf.slice(nlIdx + 1);
-                if (!line) continue;
-                console.error('[Discord Bot Error]', line);
-                // 핵심 에러 패턴을 렌더러에 전달
-                if (
-                    line.includes('⚠️') ||
-                    line.includes('호환성 실패') ||
-                    line.includes('인증 실패') ||
-                    line.includes('failed to start')
-                ) {
-                    if (mainWindow && !mainWindow.isDestroyed()) {
-                        mainWindow.webContents.send('bot:error', { message: line, type: 'stderr' });
-                    }
-                }
-            }
-        });
-
-        discordBotProcess.on('error', (err) => {
-            console.error('Failed to start Discord Bot:', err);
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('bot:error', { message: err.message, type: 'spawn_error' });
-            }
-            discordBotProcess = null;
-        });
-
-        discordBotProcess.on('exit', (code) => {
-            console.log(`Discord Bot exited with code ${code}`);
-            // 의도적 재시작(언어 변경 등)이면 에러 알림 건너뜀
-            if (botIntentionalExit) {
-                botIntentionalExit = false;
-            } else if (code && code !== 0) {
-                // 비정상 종료 시 렌더러에 알림
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.webContents.send('bot:error', {
-                        message: `Bot process exited with code ${code}`,
-                        type: 'exit',
-                        code,
-                    });
-                }
-            }
-            discordBotProcess = null;
-        });
-
-        return { success: true };
+        return { data: resp.data || {} };
     } catch (e) {
         return { error: e.message };
     }
 });
 
-ipcMain.handle('discord:stop', () => {
-    if (discordBotProcess && !discordBotProcess.killed) {
-        botIntentionalExit = true;
-        const pid = discordBotProcess.pid;
-        console.log(`[Discord] Stopping bot process (PID: ${pid})`);
+ipcMain.handle('discord:start', async (_event, config) => {
+    // 봇 설정을 데몬에 저장 (데몬이 SSOT)
+    let existingConfig = {};
+    try {
+        existingConfig = await loadBotConfig();
+    } catch (_) {}
 
-        // Windows: SIGTERM이 자식 프로세스 트리에 전달되지 않으므로 taskkill /T 사용
-        if (process.platform === 'win32' && pid) {
-            // 먼저 봇에 graceful shutdown 메시지 전송 (client.destroy() 호출 유도)
+    const configToSave = {
+        ...existingConfig,
+        prefix: config.prefix || '!saba',
+        token: config.token || existingConfig.token || '',
+        autoStart: config.autoStart ?? existingConfig.autoStart ?? false,
+        moduleAliases: config.moduleAliases || {},
+        commandAliases: config.commandAliases || {},
+        musicEnabled: config.musicEnabled !== false,
+        musicChannelId: config.musicChannelId || existingConfig.musicChannelId || '',
+        musicUISettings: config.musicUISettings || existingConfig.musicUISettings || {},
+        nodeSettings: config.nodeSettings && Object.keys(config.nodeSettings).length > 0
+            ? config.nodeSettings
+            : (existingConfig.nodeSettings || {}),
+        mode: config.mode || existingConfig.mode || 'local',
+        cloud: config.cloud || existingConfig.cloud || {},
+        cloudNodes: config.cloudNodes || existingConfig.cloudNodes || [],
+        cloudMembers: config.cloudMembers || existingConfig.cloudMembers || {},
+    };
+    await saveBotConfig(configToSave);
+
+    // ★ 클라우드 모드: 릴레이 서버에 botConfig 동기화
+    if (config.mode === 'cloud') {
+        const relayUrl = config.cloud?.relayUrl;
+        const hostId = config.cloud?.hostId;
+        if (relayUrl && hostId) {
             try {
-                if (discordBotProcess.stdin && !discordBotProcess.stdin.destroyed) {
-                    discordBotProcess.stdin.write(JSON.stringify({ type: 'shutdown' }) + '\n');
-                }
-            } catch (_e) { /* stdin 이미 닫힘 */ }
+                await axios.patch(`${relayUrl}/api/hosts/${hostId}/bot-config`, {
+                    prefix: config.prefix || '!saba',
+                    moduleAliases: config.moduleAliases || {},
+                    commandAliases: config.commandAliases || {},
+                });
+            } catch (e) {
+                console.warn('[Discord Bot] Failed to sync botConfig to relay:', e.message);
+            }
+        }
+    }
 
-            // 1초 후 프로세스 트리 전체 강제 종료 (ffmpeg, yt-dlp 등 자식 포함)
-            const killTimeout = setTimeout(() => {
-                try {
-                    execSync(`taskkill /PID ${pid} /F /T`, { stdio: 'ignore', windowsHide: true });
-                    console.log(`[Discord] Killed bot process tree (PID: ${pid})`);
-                } catch (_e) {
-                    // 이미 종료됨
-                }
-                discordBotProcess = null;
-            }, 1000);
+    // 범용 프로세스 시작 API를 통해 봇 실행
+    try {
+        // Node.js 경로 확인 (포터블 → 시스템 폴백)
+        let nodePath = 'node';
+        try {
+            const nodeResp = await axios.post(`${IPC_BASE}/api/node-env/setup`, {}, { timeout: 30000 });
+            if (nodeResp.data?.success && nodeResp.data.node_path) {
+                nodePath = nodeResp.data.node_path;
+            }
+        } catch (_) { /* 시스템 node 폴백 */ }
 
-            discordBotProcess.once('exit', () => {
-                clearTimeout(killTimeout);
-                discordBotProcess = null;
-            });
+        const botDir = path.join(__dirname, '..', 'discord_bot');
+        const envVars = {
+            IPC_BASE,
+            SABA_LANG: getLanguage(),
+            BOT_CONFIG_PATH: path.join(getSabaDataDir(), 'bot-config.json'),
+            SABA_EXTENSIONS_DIR: getFixedExtensionsPath(),
+        };
+
+        if (config.mode === 'cloud') {
+            const nodeToken = await loadNodeToken();
+            if (!nodeToken) {
+                return { error: 'cloud_token_not_found' };
+            }
+            const relayUrl = (config.cloud?.relayUrl || 'https://saba-chan.online').replace(/\/$/, '');
+            envVars.RELAY_URL = relayUrl;
+            envVars.RELAY_NODE_TOKEN = nodeToken;
         } else {
-            // Unix: SIGTERM → fallback SIGKILL
-            discordBotProcess.kill('SIGTERM');
-
-            const killTimeout = setTimeout(() => {
-                if (discordBotProcess && !discordBotProcess.killed) {
-                    console.log('[Discord] Force killing bot process with SIGKILL');
-                    discordBotProcess.kill('SIGKILL');
-                }
-            }, 5000);
-
-            discordBotProcess.once('exit', () => {
-                clearTimeout(killTimeout);
-            });
+            if (!config.token) {
+                return { error: 'Discord token is required for local mode' };
+            }
+            envVars.DISCORD_TOKEN = config.token;
         }
 
-        return { success: true };
+        const startReq = {
+            command: nodePath,
+            args: [path.join(botDir, 'index.js')],
+            cwd: botDir,
+            env: envVars,
+            meta: { mode: config.mode || 'local' },
+        };
+
+        const resp = await axios.post(`${IPC_BASE}/api/ext-process/discord-bot/start`, startReq, { timeout: 15000 });
+
+        // 봇 시작 후 크래시 감지 — 3초 뒤 상태 확인하여 에러 피드백
+        setTimeout(async () => {
+            try {
+                const statusResp = await axios.get(`${IPC_BASE}/api/ext-process/discord-bot/status`, { timeout: 3000 });
+                if (statusResp.data?.status !== 'running') {
+                    // 콘솔 버퍼에서 에러 메시지 추출
+                    let errorMsg = 'Bot process exited unexpectedly';
+                    try {
+                        const consoleResp = await axios.get(`${IPC_BASE}/api/ext-process/discord-bot/console`, { timeout: 3000 });
+                        const lines = consoleResp.data?.lines || consoleResp.data?.console || [];
+                        const errorLines = lines
+                            .map(l => typeof l === 'string' ? l : l?.line || '')
+                            .filter(l => /\[Bot\].*(?:error|failed|fatal)/i.test(l) || /Error:/i.test(l))
+                            .slice(-5);
+                        if (errorLines.length > 0) errorMsg = errorLines.join('\n');
+                    } catch (_) {}
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send('bot:error', { type: 'exit', message: errorMsg });
+                    }
+                }
+            } catch (_) {}
+        }, 3000);
+
+        return resp.data;
+    } catch (e) {
+        const errData = e.response?.data;
+        return { error: errData?.error || e.message };
     }
-    return { error: 'Bot is not running' };
 });
 
-// Bot Config API - AppData에 직접 저장/로드
+ipcMain.handle('discord:stop', async () => {
+    try {
+        const resp = await axios.post(`${IPC_BASE}/api/ext-process/discord-bot/stop`, {}, { timeout: 10000 });
+        return resp.data;
+    } catch (e) {
+        return { error: e.response?.data?.error || e.message };
+    }
+});
+
+// Bot Config API — 데몬 API 경유
 ipcMain.handle('botConfig:load', async () => {
     return loadBotConfig();
 });
 
-// Node Token API (클라우드 페어링용)
+// Node Token API (클라우드 페어링용) — 데몬 API 경유
 ipcMain.handle('nodeToken:save', async (_event, token) => {
     return saveNodeToken(token);
 });
@@ -3501,14 +3367,25 @@ ipcMain.handle('logs:openFolder', async () => {
 
 ipcMain.handle('botConfig:save', async (_event, config) => {
     try {
+        // 기존 파일 내용을 읽어서 병합 — 부분 업데이트 시 token/autoStart 손실 방지
+        let existing = {};
+        try {
+            existing = await loadBotConfig();
+        } catch (_) { /* 데몬 미응답 — 빈 base 사용 */ }
+
         const configToSave = {
-            prefix: config.prefix || '!saba',
-            moduleAliases: config.moduleAliases || {},
-            commandAliases: config.commandAliases || {},
-            musicEnabled: config.musicEnabled !== false,
-            mode: config.mode || 'local',
-            cloud: config.cloud || {},
-            nodeSettings: config.nodeSettings || {},
+            ...existing,
+            prefix: config.prefix !== undefined ? config.prefix : (existing.prefix || '!saba'),
+            token: config.token !== undefined ? config.token : (existing.token || ''),
+            autoStart: config.autoStart !== undefined ? config.autoStart : (existing.autoStart ?? false),
+            moduleAliases: config.moduleAliases || existing.moduleAliases || {},
+            commandAliases: config.commandAliases || existing.commandAliases || {},
+            musicEnabled: config.musicEnabled !== undefined ? config.musicEnabled : (existing.musicEnabled !== false),
+            musicChannelId: config.musicChannelId !== undefined ? config.musicChannelId : (existing.musicChannelId || ''),
+            musicUISettings: config.musicUISettings || existing.musicUISettings || {},
+            mode: config.mode || existing.mode || 'local',
+            cloud: config.cloud || existing.cloud || {},
+            nodeSettings: config.nodeSettings || existing.nodeSettings || {},
         };
 
         // AppData에 저장 (단일 원본 — 봇은 BOT_CONFIG_PATH 환경변수로 참조)
@@ -3518,7 +3395,7 @@ ipcMain.handle('botConfig:save', async (_event, config) => {
             cloudMembers: config.cloudMembers || {},
         };
         saveBotConfig(appDataConfig);
-        console.log('Bot config saved to AppData:', getBotConfigPath());
+        console.log('Bot config saved via daemon API');
 
         // ★ 클라우드 모드: 릴레이 서버에 botConfig 동기화
         if (config.mode === 'cloud') {

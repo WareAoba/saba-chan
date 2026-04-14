@@ -176,6 +176,110 @@ describe('useSettingsStore', () => {
         expect(state.ipcPort).toBe(7777);
         expect(state.refreshInterval).toBe(2000); // 변경 안 됨
     });
+
+    // ── Theme customization ──
+
+    it('초기 상태에 테마 커스터마이즈 필드가 존재해야 한다', () => {
+        const state = useSettingsStore.getState();
+        expect(state.accentColor).toBe('#667eea');
+        expect(state.accentSecondary).toBe('#764ba2');
+        expect(state.useGradient).toBe(true);
+        expect(state.fontScale).toBe(100);
+        expect(state.enableTransitions).toBe(true);
+        expect(state.consoleSyntaxHighlight).toBe(true);
+        expect(state.consoleBgColor).toBe('#1e1e2e');
+        expect(state.consoleTextColor).toBe('#cdd6f4');
+        expect(state.sidebarCompact).toBe(false);
+        expect(state.consoleFontScale).toBe(100);
+    });
+
+    it('_resetForTest()는 테마 커스터마이즈 필드도 초기화해야 한다', () => {
+        useSettingsStore.setState({
+            accentColor: '#ff0000',
+            fontScale: 150,
+            consoleBgColor: '#000000',
+        });
+        useSettingsStore.getState()._resetForTest();
+
+        const state = useSettingsStore.getState();
+        expect(state.accentColor).toBe('#667eea');
+        expect(state.fontScale).toBe(100);
+        expect(state.consoleBgColor).toBe('#1e1e2e');
+    });
+
+    it('update() — 테마 필드 부분 업데이트 적용', () => {
+        useSettingsStore.getState().update({ accentColor: '#ff5500', fontScale: 120 });
+
+        const state = useSettingsStore.getState();
+        expect(state.accentColor).toBe('#ff5500');
+        expect(state.fontScale).toBe(120);
+        expect(state.useGradient).toBe(true); // 변경 안 됨
+    });
+
+    it('load() — 테마 설정이 서버 응답에 포함되면 반영되어야 한다', async () => {
+        mockApi({
+            settingsLoad: vi.fn().mockResolvedValue({
+                accentColor: '#43e97b',
+                accentSecondary: '#38f9d7',
+                useGradient: false,
+                fontScale: 80,
+                enableTransitions: false,
+                consoleSyntaxHighlight: false,
+                consoleBgColor: '#000000',
+                consoleTextColor: '#ffffff',
+                consoleFontScale: 75,
+            }),
+            settingsGetPath: vi.fn().mockResolvedValue('/mock/settings.json'),
+        });
+
+        await useSettingsStore.getState().load();
+
+        const state = useSettingsStore.getState();
+        expect(state.accentColor).toBe('#43e97b');
+        expect(state.accentSecondary).toBe('#38f9d7');
+        expect(state.useGradient).toBe(false);
+        expect(state.fontScale).toBe(80);
+        expect(state.enableTransitions).toBe(false);
+        expect(state.consoleSyntaxHighlight).toBe(false);
+        expect(state.consoleBgColor).toBe('#000000');
+        expect(state.consoleTextColor).toBe('#ffffff');
+        expect(state.consoleFontScale).toBe(75);
+    });
+
+    it('load() — 테마 설정 누락 시 기본값으로 채워져야 한다', async () => {
+        mockApi({
+            settingsLoad: vi.fn().mockResolvedValue({ autoRefresh: true }),
+            settingsGetPath: vi.fn().mockResolvedValue('/mock/settings.json'),
+        });
+
+        await useSettingsStore.getState().load();
+
+        const state = useSettingsStore.getState();
+        expect(state.accentColor).toBe('#667eea');
+        expect(state.fontScale).toBe(100);
+        expect(state.enableTransitions).toBe(true);
+        expect(state.consoleSyntaxHighlight).toBe(true);
+    });
+
+    it('save() — 테마 필드가 payload에 포함되어야 한다', async () => {
+        mockApi();
+        useSettingsStore.setState({
+            settingsPath: '/mock/settings.json',
+            accentColor: '#eb3349',
+            fontScale: 150,
+        });
+
+        await useSettingsStore.getState().save();
+
+        const callArgs = window.api.settingsSave.mock.calls[0][0];
+        expect(callArgs.accentColor).toBe('#eb3349');
+        expect(callArgs.fontScale).toBe(150);
+        expect(callArgs.useGradient).toBe(true);
+        expect(callArgs.consoleSyntaxHighlight).toBe(true);
+        expect(callArgs.consoleBgColor).toBe('#1e1e2e');
+        expect(callArgs.consoleTextColor).toBe('#cdd6f4');
+        expect(callArgs.consoleFontScale).toBe(100);
+    });
 });
 
 // ═════════════════════════════════════════════════════════════
@@ -456,16 +560,30 @@ describe('useDiscordStore', () => {
 // 5. 크로스 스토어 동기화
 // ═════════════════════════════════════════════════════════════
 
-describe('크로스 스토어 동기화', () => {
-    it('discord 토큰은 settings 저장 시 함께 직렬화되어야 한다', async () => {
+describe('token/autoStart 아키텍처 검증', () => {
+    it('settings save 시 token/autoStart가 payload에 포함되지 않아야 한다', async () => {
         useSettingsStore.setState({ settingsPath: '/mock/settings.json' });
+        // _setDiscordFields로 값을 설정해도 save payload에는 포함되지 않음
         useSettingsStore.getState()._setDiscordFields('tok-cross-test', true);
 
         await useSettingsStore.getState().save();
 
         const payload = window.api.settingsSave.mock.calls[0][0];
-        expect(payload.discordToken).toBe('tok-cross-test');
-        expect(payload.discordAutoStart).toBe(true);
+        expect(payload.discordToken).toBeUndefined();
+        expect(payload.discordAutoStart).toBeUndefined();
+    });
+
+    it('token/autoStart는 bot-config save 시 payload에 포함되어야 한다', async () => {
+        useDiscordStore.setState({
+            discordToken: 'tok-cross-test',
+            discordAutoStart: true,
+        });
+
+        await useDiscordStore.getState().saveConfig();
+
+        const payload = window.api.botConfigSave.mock.calls[0][0];
+        expect(payload.token).toBe('tok-cross-test');
+        expect(payload.autoStart).toBe(true);
     });
 
     it('settings 리셋은 discord 내부 필드도 초기화해야 한다', () => {

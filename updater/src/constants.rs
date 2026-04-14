@@ -164,6 +164,29 @@ pub fn resolve_bot_config_path() -> PathBuf {
     resolve_data_dir().join("bot-config.json")
 }
 
+/// Discord 봇 디렉토리 경로 (`discord_bot/`)
+///
+/// `SABA_DISCORD_BOT_DIR` 환경 변수로 오버라이드 가능.
+/// 기본값: 실행 파일과 같은 디렉토리의 `discord_bot/`
+pub fn resolve_discord_bot_dir() -> PathBuf {
+    if let Ok(p) = std::env::var("SABA_DISCORD_BOT_DIR") {
+        if !p.is_empty() {
+            return PathBuf::from(p);
+        }
+    }
+    // 프로덕션: exe와 같은 디렉토리의 discord_bot/
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            let bot_dir = parent.join("discord_bot");
+            if bot_dir.exists() {
+                return bot_dir;
+            }
+        }
+    }
+    // 개발 모드 폴백: cwd 기준
+    PathBuf::from("discord_bot")
+}
+
 /// 스테이징 디렉터리 (업데이트 다운로드 임시 파일)
 pub fn resolve_staging_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
@@ -195,6 +218,14 @@ pub fn resolve_update_complete_path() -> PathBuf {
 /// 익스텐션 상태 파일 경로 (`extensions_state.json`)
 pub fn resolve_extensions_state_path() -> PathBuf {
     resolve_data_dir().join("extensions_state.json")
+}
+
+/// 익스텐션 설정 파일 경로 (`extensionConfig.json`)
+///
+/// 각 익스텐션의 글로벌(인스턴스 독립) 설정을 저장합니다.
+/// 구조: `{ "<ext_id>": { "<key>": <value>, ... }, ... }`
+pub fn resolve_extension_config_path() -> PathBuf {
+    resolve_data_dir().join("extensionConfig.json")
 }
 
 /// 설치 매니페스트 경로 (`installed-manifest.json`)

@@ -1,24 +1,34 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
+import deBot from '../../locales/de/bot.json';
 import deCommon from '../../locales/de/common.json';
 import deGui from '../../locales/de/gui.json';
 // Import translation files
+import enBot from '../../locales/en/bot.json';
 import enCommon from '../../locales/en/common.json';
 import enGui from '../../locales/en/gui.json';
+import esBot from '../../locales/es/bot.json';
 import esCommon from '../../locales/es/common.json';
 import esGui from '../../locales/es/gui.json';
+import frBot from '../../locales/fr/bot.json';
 import frCommon from '../../locales/fr/common.json';
 import frGui from '../../locales/fr/gui.json';
+import jaBot from '../../locales/ja/bot.json';
 import jaCommon from '../../locales/ja/common.json';
 import jaGui from '../../locales/ja/gui.json';
+import koBot from '../../locales/ko/bot.json';
 import koCommon from '../../locales/ko/common.json';
 import koGui from '../../locales/ko/gui.json';
+import ptBrBot from '../../locales/pt-BR/bot.json';
 import ptBrCommon from '../../locales/pt-BR/common.json';
 import ptBrGui from '../../locales/pt-BR/gui.json';
+import ruBot from '../../locales/ru/bot.json';
 import ruCommon from '../../locales/ru/common.json';
 import ruGui from '../../locales/ru/gui.json';
+import zhCnBot from '../../locales/zh-CN/bot.json';
 import zhCnCommon from '../../locales/zh-CN/common.json';
 import zhCnGui from '../../locales/zh-CN/gui.json';
+import zhTwBot from '../../locales/zh-TW/bot.json';
 import zhTwCommon from '../../locales/zh-TW/common.json';
 import zhTwGui from '../../locales/zh-TW/gui.json';
 
@@ -29,42 +39,52 @@ const resources = {
     en: {
         common: enCommon,
         gui: enGui,
+        bot: enBot,
     },
     ko: {
         common: koCommon,
         gui: koGui,
+        bot: koBot,
     },
     ja: {
         common: jaCommon,
         gui: jaGui,
+        bot: jaBot,
     },
     'zh-CN': {
         common: zhCnCommon,
         gui: zhCnGui,
+        bot: zhCnBot,
     },
     'zh-TW': {
         common: zhTwCommon,
         gui: zhTwGui,
+        bot: zhTwBot,
     },
     es: {
         common: esCommon,
         gui: esGui,
+        bot: esBot,
     },
     'pt-BR': {
         common: ptBrCommon,
         gui: ptBrGui,
+        bot: ptBrBot,
     },
     ru: {
         common: ruCommon,
         gui: ruGui,
+        bot: ruBot,
     },
     de: {
         common: deCommon,
         gui: deGui,
+        bot: deBot,
     },
     fr: {
         common: frCommon,
         gui: frGui,
+        bot: frBot,
     },
 };
 

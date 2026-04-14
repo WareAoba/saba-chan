@@ -130,10 +130,10 @@ impl LogBuffer {
         line
     }
 
-    /// Get all lines with id > `since_id` (for polling).
+    /// Get all lines with id >= `since_id` (for polling).
     fn get_since(&self, since_id: u64) -> Vec<LogLine> {
         self.lines.iter()
-            .filter(|l| l.id > since_id)
+            .filter(|l| l.id >= since_id)
             .cloned()
             .collect()
     }
@@ -974,7 +974,10 @@ mod tests {
         buffer.push(LogSource::Stderr, "err 0".into(), LogLevel::Error);
 
         assert_eq!(buffer.lines.len(), 3);
-        assert_eq!(buffer.get_since(0).len(), 2);
+        // get_since(0) → id >= 0 → 전체 3줄 반환
+        assert_eq!(buffer.get_since(0).len(), 3);
+        // get_since(1) → id >= 1 → 2줄 반환 (id=0 제외)
+        assert_eq!(buffer.get_since(1).len(), 2);
         assert_eq!(buffer.get_recent(2).len(), 2);
         assert_eq!(buffer.get_recent(100).len(), 3);
     }
@@ -1012,16 +1015,51 @@ mod tests {
     }
 
     #[test]
-    fn test_log_buffer_get_since_returns_after_id() {
+    fn test_log_buffer_get_since_returns_from_id_inclusive() {
         let mut buffer = LogBuffer::new();
-        let l1 = buffer.push(LogSource::Stdout, "first".into(), LogLevel::Info);
-        let _l2 = buffer.push(LogSource::Stdout, "second".into(), LogLevel::Info);
-        let _l3 = buffer.push(LogSource::Stdout, "third".into(), LogLevel::Info);
+        let l1 = buffer.push(LogSource::Stdout, "first".into(), LogLevel::Info);    // id=0
+        let _l2 = buffer.push(LogSource::Stdout, "second".into(), LogLevel::Info);  // id=1
+        let _l3 = buffer.push(LogSource::Stdout, "third".into(), LogLevel::Info);   // id=2
 
+        // get_since(0) → id >= 0 → 모든 라인 반환
         let since = buffer.get_since(l1.id);
-        assert_eq!(since.len(), 2, "Should return 2 lines after id {}", l1.id);
-        assert_eq!(since[0].content, "second");
-        assert_eq!(since[1].content, "third");
+        assert_eq!(since.len(), 3, "Should return all 3 lines from id {}", l1.id);
+        assert_eq!(since[0].content, "first");
+        assert_eq!(since[1].content, "second");
+        assert_eq!(since[2].content, "third");
+
+        // get_since(1) → id >= 1 → "first" 제외
+        let since_1 = buffer.get_since(1);
+        assert_eq!(since_1.len(), 2);
+        assert_eq!(since_1[0].content, "second");
+        assert_eq!(since_1[1].content, "third");
+    }
+
+    /// GUI 폴링 시퀀스 시뮬레이션:
+    /// 1. 초기 폴링: since=0 → 전체 반환
+    /// 2. 이후 폴링: since=last_id+1 → 새 라인만 반환, 누락 없음
+    #[test]
+    fn test_log_buffer_polling_sequence_no_missing_lines() {
+        let mut buffer = LogBuffer::new();
+        buffer.push(LogSource::Stdout, "line0".into(), LogLevel::Info); // id=0
+        buffer.push(LogSource::Stdout, "line1".into(), LogLevel::Info); // id=1
+        buffer.push(LogSource::Stdout, "line2".into(), LogLevel::Info); // id=2
+
+        // Poll 1: since=0 → id >= 0 → 전체 반환 (id=0 포함)
+        let poll1 = buffer.get_since(0);
+        assert_eq!(poll1.len(), 3);
+        assert_eq!(poll1[0].content, "line0");
+        let since_id = poll1.last().unwrap().id + 1; // GUI: sinceId = 2 + 1 = 3
+
+        // 새 라인 추가
+        buffer.push(LogSource::Stdout, "line3".into(), LogLevel::Info); // id=3
+        buffer.push(LogSource::Stdout, "line4".into(), LogLevel::Info); // id=4
+
+        // Poll 2: since=3 → id >= 3 → line3, line4 반환 (line3 누락 없음)
+        let poll2 = buffer.get_since(since_id);
+        assert_eq!(poll2.len(), 2);
+        assert_eq!(poll2[0].content, "line3");
+        assert_eq!(poll2[1].content, "line4");
     }
 
     #[test]

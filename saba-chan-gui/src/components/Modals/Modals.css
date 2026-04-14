@@ -45,7 +45,7 @@
 }
 
 .modal-icon {
-    font-size: 48px;
+    font-size: calc(48px * var(--font-scale));
     margin-bottom: 16px;
     display: inline-block;
     width: 60px;
@@ -86,14 +86,14 @@
 }
 
 .modal-title {
-    font-size: 17px;
+    font-size: calc(17px * var(--font-scale));
     font-weight: 600;
     margin: 10px 0;
     color: var(--text-primary);
 }
 
 .modal-message {
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     color: var(--text-tertiary);
     margin: 0 0 16px 0;
     line-height: 1.5;
@@ -101,7 +101,7 @@
 }
 
 .modal-detail {
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     color: var(--text-muted);
     margin: 0 0 16px 0;
     line-height: 1.6;
@@ -117,7 +117,7 @@
     border: none;
     height: 38px;
     border-radius: 7px;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -175,7 +175,7 @@
 .modal-prompt-input {
     width: 100%;
     padding: 10px 12px;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     border: 2px solid var(--border-default);
     border-radius: 7px;
     background: var(--input-bg, #fff);
@@ -224,7 +224,7 @@
     align-items: center;
     gap: 8px;
     padding: 8px 14px;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     cursor: pointer;
     color: var(--text-primary);
     transition: background 0.12s;
@@ -318,13 +318,13 @@
 .cmd-hint-name {
     font-family: "Courier New", monospace;
     font-weight: bold;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     color: var(--cli-text);
     flex-shrink: 0;
 }
 
 .cmd-hint-desc {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     color: var(--text-disabled);
     white-space: nowrap;
     overflow: hidden;
@@ -334,7 +334,7 @@
 
 .cmd-hints-empty {
     color: var(--text-disabled);
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     padding: 8px 4px;
 }
 
@@ -352,7 +352,7 @@
     right: 10px;
     background: none;
     border: none;
-    font-size: 20px;
+    font-size: calc(20px * var(--font-scale));
     color: var(--text-disabled);
     cursor: pointer;
     padding: 0;
@@ -378,7 +378,7 @@
 }
 
 .cmd-tab-hint {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     color: var(--text-disabled);
     font-family: "Courier New", monospace;
 }
@@ -445,7 +445,7 @@
 
 .cmd-history-cmd {
     font-family: "Courier New", monospace;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     font-weight: bold;
     color: var(--cli-text);
     flex: 1;
@@ -456,14 +456,14 @@
 }
 
 .cmd-history-time {
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale));
     color: var(--text-disabled);
     flex-shrink: 0;
     white-space: nowrap;
 }
 
 .cmd-history-msg {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     color: var(--text-secondary);
     margin-top: 3px;
     padding-left: 12px;
@@ -476,7 +476,7 @@
 }
 
 .cmd-history-status-label {
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale));
     font-weight: 600;
     padding: 1px 6px;
     border-radius: 3px;
@@ -495,7 +495,7 @@
 }
 
 .cmd-history-detail {
-    font-size: 10.5px;
+    font-size: calc(10.5px * var(--font-scale));
     color: var(--text-secondary);
     margin-top: 6px;
     padding: 8px 10px;
@@ -515,7 +515,7 @@
 
 .cmd-history-toggle {
     display: inline-block;
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale));
     color: var(--brand-primary, #4fc0e3);
     background: none;
     border: none;
@@ -544,7 +544,7 @@
 
 .cli-label {
     display: block;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     font-weight: 700;
     color: var(--text-disabled);
     margin-bottom: 8px;
@@ -572,7 +572,7 @@
     font-weight: bold;
     padding: 12px 12px;
     font-family: "Courier New", monospace;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     user-select: none;
     flex-shrink: 0;
 }
@@ -593,7 +593,7 @@
     bottom: 0;
     pointer-events: none;
     font-family: "Courier New", monospace;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     padding: 12px 0 12px 4px;
     white-space: pre;
     overflow: hidden;
@@ -608,7 +608,7 @@
     border: none;
     color: var(--cli-text);
     font-family: "Courier New", monospace;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     padding: 12px 0 12px 4px;
     outline: none;
 }
@@ -654,7 +654,7 @@
     padding: 6px 10px;
     border-left: 3px solid transparent;
     border-radius: 0 4px 4px 0;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     color: var(--text-secondary);
     min-height: 20px;
     transition:
@@ -684,7 +684,7 @@
     background-color: var(--cli-bg);
     border-radius: 3px;
     font-family: "Courier New", monospace;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     color: var(--text-tertiary);
     white-space: nowrap;
     flex-shrink: 0;
@@ -709,7 +709,7 @@
     align-items: center;
     gap: 6px;
     padding: 16px 14px 10px;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.8px;
@@ -747,12 +747,12 @@
     color: var(--cli-text);
     font-family: "Courier New", monospace;
     font-weight: bold;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
 }
 
 .hint-desc {
     color: var(--text-disabled);
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -761,7 +761,7 @@
 .hints-empty {
     padding: 16px 14px;
     color: var(--text-disabled);
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     text-align: center;
 }
 
@@ -804,7 +804,7 @@
 
 .suggestion-desc {
     color: var(--text-disabled);
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     margin-left: 10px;
     flex: 1;
     text-align: right;
@@ -812,7 +812,7 @@
 
 .command-label {
     display: block;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     font-weight: 600;
     color: var(--text-primary);
     margin-bottom: 8px;
@@ -823,7 +823,7 @@
     padding: 10px;
     border: 1px solid var(--input-border);
     border-radius: 6px;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     background-color: var(--input-bg);
     color: var(--text-primary);
     cursor: pointer;
@@ -845,7 +845,7 @@
 }
 
 .command-description {
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     color: var(--text-secondary);
     margin: 0;
 }
@@ -868,7 +868,7 @@
 
 .input-label {
     display: block;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     font-weight: 600;
     color: var(--text-primary);
     margin-bottom: 6px;
@@ -884,7 +884,7 @@
     padding: 10px;
     border: 1px solid var(--input-border);
     border-radius: 6px;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     background-color: var(--input-bg);
     color: var(--text-primary);
     transition: border-color 0.2s;
@@ -899,7 +899,7 @@
 
 .command-execute {
     background-color: var(--brand-primary);
-    color: white;
+    color: var(--brand-text);
     flex: 1;
 }
 
@@ -961,14 +961,14 @@
 
 .settings-modal-header h2 {
     margin: 0;
-    font-size: 22px;
+    font-size: calc(22px * var(--font-scale));
     color: var(--text-primary);
 }
 
 .settings-modal-close {
     background: none;
     border: none;
-    font-size: 24px;
+    font-size: calc(24px * var(--font-scale));
     color: var(--text-disabled);
     cursor: pointer;
     padding: 0;
@@ -1020,7 +1020,7 @@
     background: none;
     border: none;
     cursor: pointer;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     font-weight: 500;
     color: var(--text-secondary);
     transition: all 0.2s ease;
@@ -1039,7 +1039,7 @@
 
 .settings-tab.active {
     opacity: 1;
-    color: #ffffff;
+    color: var(--brand-text);
     font-weight: 600;
     transition: all 0.3s ease;
 }
@@ -1086,13 +1086,13 @@
 
 .settings-tab-content h3 {
     margin: 0 0 16px 0;
-    font-size: 16px;
+    font-size: calc(16px * var(--font-scale));
     color: var(--text-primary);
 }
 
 .settings-tab-content p {
     color: var(--text-disabled);
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     margin: 0;
 }
 
@@ -1103,6 +1103,7 @@
     align-items: center;
     padding: 16px;
     background: var(--settings-item-bg);
+    border: 1px solid var(--border-light);
     border-radius: 8px;
     margin-bottom: 12px;
 }
@@ -1114,13 +1115,13 @@
 }
 
 .setting-title {
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     font-weight: 600;
     color: var(--text-primary);
 }
 
 .setting-description {
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     color: var(--text-tertiary);
 }
 
@@ -1129,7 +1130,7 @@
     border: 1px solid var(--input-border);
     border-radius: 6px;
     background: var(--input-bg);
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     color: var(--text-primary);
     cursor: pointer;
     min-width: 100px;
@@ -1169,7 +1170,7 @@
     height: 44px;
     border-radius: 8px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     font-weight: 600;
     color: var(--text-tertiary);
     transition: all 0.2s;
@@ -1216,12 +1217,12 @@
 }
 
 .theme-option .theme-icon {
-    font-size: 24px;
+    font-size: calc(24px * var(--font-scale));
     line-height: 1;
 }
 
 .theme-option .theme-label {
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     font-weight: 600;
     color: var(--text-primary);
 }
@@ -1261,6 +1262,64 @@
     transform: rotate(45deg);
 }
 
+/* ===== Discord Bot Side Panel Mode ===== */
+.discord-modal-container.side-panel {
+    position: relative;
+    top: auto;
+    right: auto;
+    width: 520px;
+    min-width: 520px;
+    max-height: none;
+    height: 100%;
+    border-radius: 0;
+    border: none;
+    border-left: 1px solid var(--border-separator);
+    box-shadow: -4px 0 24px var(--shadow-lg);
+    animation: sideSlideIn 0.3s ease-out;
+    z-index: 1;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+.discord-modal-container.side-panel::before {
+    display: none;
+}
+
+.discord-modal-container.side-panel .discord-modal-content {
+    max-height: none;
+    flex: 1;
+}
+
+.discord-modal-container.side-panel .discord-modal-footer {
+    border-radius: 0;
+}
+
+@keyframes sideSlideIn {
+    from {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.discord-modal-container.side-panel.closing {
+    animation: sideSlideOut 0.22s ease-in forwards;
+}
+
+@keyframes sideSlideOut {
+    from {
+        opacity: 1;
+        transform: translateX(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+}
+
 @keyframes dropdownSlide {
     from {
         opacity: 0;
@@ -1288,7 +1347,7 @@
 
 .discord-modal-title h2 {
     margin: 0;
-    font-size: 20px;
+    font-size: calc(20px * var(--font-scale));
     font-weight: 700;
     color: var(--text-primary);
 }
@@ -1296,7 +1355,7 @@
 .discord-modal-close {
     background: none;
     border: none;
-    font-size: 24px;
+    font-size: calc(24px * var(--font-scale));
     color: var(--text-disabled);
     cursor: pointer;
     width: 32px;
@@ -1350,7 +1409,7 @@
     font-weight: 700;
     padding: 4px 12px;
     border-radius: 12px;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
 }
 
 .discord-status-section .status-running {
@@ -1400,12 +1459,12 @@
 
 .discord-form-group label {
     font-weight: 600;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     color: var(--text-primary);
 }
 
 .discord-form-group small {
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     color: var(--text-tertiary);
 }
 
@@ -1418,7 +1477,7 @@
     padding: 12px;
     border: 1px solid var(--input-border);
     border-radius: 8px;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     transition: all 0.2s;
     background-color: var(--input-bg);
     color: var(--text-primary);
@@ -1453,13 +1512,13 @@
 
 .discord-info-box h4 {
     margin: 0 0 8px 0;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     color: var(--text-primary);
 }
 
 .discord-info-box p {
     margin: 8px 0;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     color: var(--text-secondary);
 }
 
@@ -1475,7 +1534,7 @@
 }
 
 .discord-info-box .info-note {
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     color: var(--text-tertiary);
     margin-top: 12px;
 }
@@ -1504,7 +1563,7 @@
 }
 
 .discord-music-toggle-icon {
-    font-size: 24px;
+    font-size: calc(24px * var(--font-scale));
     line-height: 1;
 }
 
@@ -1516,12 +1575,12 @@
 
 .discord-music-toggle-label {
     font-weight: 600;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     color: var(--text-primary);
 }
 
 .discord-music-toggle-desc {
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     color: var(--text-tertiary);
 }
 
@@ -1564,7 +1623,7 @@
 }
 .discord-music-settings-title {
     font-weight: 600;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     color: var(--text-primary);
 }
 .discord-music-settings-body {
@@ -1575,7 +1634,7 @@
 }
 .discord-music-alias-section h4 {
     margin: 0 0 4px 0;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     font-weight: 600;
     color: var(--text-primary);
     display: flex;
@@ -1584,12 +1643,12 @@
 }
 .discord-music-alias-section small {
     display: block;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     color: var(--text-tertiary);
     margin-bottom: 8px;
 }
 .discord-music-alias-section .default-hint {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     color: var(--text-quaternary, var(--text-tertiary));
     margin-top: 4px;
 }
@@ -1600,7 +1659,7 @@
     border-radius: 8px;
     background: var(--input-bg);
     color: var(--text-primary);
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     box-sizing: border-box;
 }
 .discord-music-module-alias-input:focus {
@@ -1624,12 +1683,12 @@
     gap: 1px;
 }
 .discord-music-cmd-name {
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     font-weight: 600;
     color: var(--text-primary);
 }
 .discord-music-cmd-desc {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     color: var(--text-tertiary);
 }
 .discord-music-cmd-input {
@@ -1639,7 +1698,7 @@
     border-radius: 6px;
     background: var(--input-bg);
     color: var(--text-primary);
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     box-sizing: border-box;
 }
 .discord-music-cmd-input:focus {
@@ -1658,7 +1717,7 @@
 .discord-music-alias-badge {
     padding: 2px 8px;
     border-radius: 4px;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     background: var(--brand-primary-faded, rgba(88, 101, 242, 0.12));
     color: var(--brand-primary, #5865f2);
     font-weight: 500;
@@ -1678,7 +1737,7 @@
     gap: 4px;
     padding: 6px 14px;
     border-radius: 8px;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     font-weight: 500;
     cursor: pointer;
     border: 1px solid var(--border-light);
@@ -1686,7 +1745,7 @@
 }
 .discord-music-settings-actions .btn-save {
     background: var(--brand-primary);
-    color: #fff;
+    color: var(--brand-text);
     border-color: var(--brand-primary);
 }
 .discord-music-settings-actions .btn-save:hover {
@@ -1700,6 +1759,83 @@
     background: var(--bg-surface-hover, var(--bg-surface-secondary));
 }
 
+/* ── 전용 음악 채널 설정 ── */
+.discord-music-channel-section {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color, rgba(255,255,255,0.08));
+}
+.discord-music-channel-select-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+    align-items: center;
+}
+.discord-music-channel-select-row > select {
+    flex: 1;
+}
+.btn-refresh-channels {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 8px;
+    border: 1px solid var(--border-color, rgba(255,255,255,0.12));
+    border-radius: 6px;
+    background: var(--bg-input, var(--bg-surface));
+    color: var(--text-secondary);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.btn-refresh-channels:hover {
+    background: var(--bg-surface-hover, var(--bg-surface-secondary));
+    color: var(--text-primary);
+}
+.discord-music-channel-offline,
+.discord-music-channel-loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: var(--bg-surface-secondary, rgba(255,255,255,0.04));
+    color: var(--text-secondary);
+    font-size: calc(13px * var(--font-scale));
+}
+.discord-music-channel-options {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+}
+.discord-music-channel-option {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+}
+.discord-music-channel-option label {
+    font-size: calc(12px * var(--font-scale));
+    color: var(--text-secondary);
+}
+.discord-music-channel-number-input {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid var(--border-color, rgba(255,255,255,0.12));
+    border-radius: 6px;
+    background: var(--bg-input, var(--bg-surface));
+    color: var(--text-primary);
+    font-size: calc(13px * var(--font-scale));
+}
+.discord-music-channel-select {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid var(--border-color, rgba(255,255,255,0.12));
+    border-radius: 6px;
+    background: var(--bg-input, var(--bg-surface));
+    color: var(--text-primary);
+    font-size: calc(13px * var(--font-scale));
+}
+
 /* ── 모드 배지 ── */
 .discord-mode-badge {
     display: inline-flex;
@@ -1708,7 +1844,7 @@
     margin-left: auto;
     padding: 3px 10px;
     border-radius: 12px;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     font-weight: 600;
     white-space: nowrap;
 }
@@ -1742,7 +1878,7 @@
     gap: 12px;
 }
 .discord-mode-toggle-icon {
-    font-size: 24px;
+    font-size: calc(24px * var(--font-scale));
     line-height: 1;
     color: var(--text-primary);
 }
@@ -1753,11 +1889,11 @@
 }
 .discord-mode-toggle-label {
     font-weight: 600;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     color: var(--text-primary);
 }
 .discord-mode-toggle-desc {
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     color: var(--text-tertiary);
 }
 
@@ -1779,7 +1915,7 @@
     border: none;
     color: var(--text-primary);
     font-weight: 600;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     cursor: pointer;
     transition: background 0.2s;
 }
@@ -1802,7 +1938,7 @@
     background: #fff3cd;
     color: #856404;
     border-radius: 8px;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     font-weight: 500;
 }
 
@@ -1815,7 +1951,7 @@
     margin-top: 20px;
     background: var(--settings-item-bg);
     border-radius: 10px;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     color: var(--text-tertiary);
 }
 
@@ -1830,14 +1966,14 @@
 
 .discord-pair-section h4 {
     margin: 0 0 6px 0;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     font-weight: 600;
     color: var(--text-primary);
 }
 
 .discord-pair-section > p {
     margin: 0 0 14px 0;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     color: var(--text-tertiary);
     line-height: 1.5;
 }
@@ -1850,8 +1986,8 @@
     border: none;
     border-radius: 8px;
     background: var(--accent-color);
-    color: #fff;
-    font-size: 13px;
+    color: var(--brand-text);
+    font-size: calc(13px * var(--font-scale));
     font-weight: 600;
     cursor: pointer;
     transition: opacity 0.15s;
@@ -1895,22 +2031,22 @@
     margin-bottom: 8px;
 }
 .discord-cloud-error-icon {
-    font-size: 20px;
+    font-size: calc(20px * var(--font-scale));
 }
 .discord-cloud-error-body strong {
     display: block;
     color: #e74c3c;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     margin-bottom: 4px;
 }
 .discord-cloud-error-body p {
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     color: var(--text-secondary);
     margin: 0;
 }
 .discord-cloud-error-hint {
     display: block;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     color: var(--text-tertiary, #888);
     font-family: monospace;
     margin-top: 4px;
@@ -1921,7 +2057,7 @@
     flex-wrap: wrap;
 }
 .discord-cloud-error-actions .discord-pair-start-btn {
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     padding: 6px 12px;
 }
 
@@ -1935,7 +2071,7 @@
 }
 .discord-relay-url-label {
     display: block;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     font-weight: 600;
     color: var(--text-secondary);
     margin-bottom: 6px;
@@ -1944,7 +2080,7 @@
 }
 .discord-relay-url-hint {
     display: block;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     color: var(--text-tertiary, #888);
     margin-top: 4px;
 }
@@ -1966,7 +2102,7 @@
 }
 
 .discord-pair-code-label {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     color: var(--text-tertiary);
     text-transform: uppercase;
     font-weight: 600;
@@ -1980,7 +2116,7 @@
     border: 1px solid var(--border-light);
     border-radius: 6px;
     font-family: "Consolas", "Monaco", monospace;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     color: var(--text-primary);
     word-break: break-all;
     user-select: all;
@@ -1995,7 +2131,7 @@
     border-radius: 6px;
     background: var(--settings-item-bg);
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     font-weight: 500;
     cursor: pointer;
     transition: all 0.15s;
@@ -2013,7 +2149,7 @@
 }
 
 .discord-pair-instruction {
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     color: var(--text-tertiary);
     margin: 8px 0 4px 0;
 }
@@ -2026,7 +2162,7 @@
     border: 1px solid var(--border-light, #eeeeee);
     border-radius: 6px;
     font-family: "Consolas", "Monaco", monospace;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     color: var(--text-primary, #333333);
     user-select: all;
 }
@@ -2037,7 +2173,7 @@
     align-items: center;
     gap: 10px;
     padding: 10px 0 0 0;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     color: var(--text-secondary);
 }
 
@@ -2045,7 +2181,7 @@
 
 .discord-pair-timer {
     margin-left: auto;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     color: var(--text-tertiary);
     font-variant-numeric: tabular-nums;
 }
@@ -2055,7 +2191,7 @@
     margin-top: 12px;
     padding: 10px 14px;
     border-radius: 8px;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     font-weight: 500;
 }
 
@@ -2077,7 +2213,7 @@
     padding: 12px 16px;
     background: var(--settings-item-bg);
     border-radius: 8px;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     color: var(--text-secondary);
     margin-bottom: 12px;
 }
@@ -2094,17 +2230,17 @@
 }
 
 .discord-cloud-connected-banner strong {
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     color: var(--text-primary);
 }
 
 .discord-cloud-connected-icon {
-    font-size: 18px;
+    font-size: calc(18px * var(--font-scale));
 }
 
 .discord-cloud-host-id {
     display: block;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     color: var(--text-tertiary);
     font-family: "Consolas", "Monaco", monospace;
 }
@@ -2120,20 +2256,20 @@
 
 .discord-cloud-setup-card h4 {
     margin: 8px 0;
-    font-size: 15px;
+    font-size: calc(15px * var(--font-scale));
     font-weight: 600;
     color: var(--text-primary);
 }
 
 .discord-cloud-setup-card > p {
     margin: 0 0 16px 0;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     color: var(--text-tertiary);
     line-height: 1.5;
 }
 
 .discord-cloud-setup-icon {
-    font-size: 28px;
+    font-size: calc(28px * var(--font-scale));
     text-align: center;
 }
 
@@ -2150,14 +2286,14 @@
 
 .discord-cloud-setup-method strong {
     display: block;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     margin-bottom: 4px;
     color: var(--text-primary);
 }
 
 .discord-cloud-setup-method p {
     margin: 0 0 8px 0;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     color: var(--text-tertiary);
     line-height: 1.4;
 }
@@ -2168,7 +2304,7 @@
     background: var(--input-bg);
     border-radius: 6px;
     font-family: "Consolas", "Monaco", monospace;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     color: var(--brand-primary);
 }
 
@@ -2180,9 +2316,9 @@
     height: 24px;
     border-radius: 50%;
     background: var(--accent-color);
-    color: #fff;
+    color: var(--brand-text);
     font-weight: 700;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     flex-shrink: 0;
 }
 
@@ -2193,7 +2329,7 @@
 
 .discord-node-list > h4 {
     margin: 0 0 10px 0;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     font-weight: 600;
     color: var(--text-primary);
 }
@@ -2231,13 +2367,13 @@
 }
 
 .discord-node-guild-name {
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     font-weight: 600;
     color: var(--text-primary);
 }
 
 .discord-node-guild-id {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     color: var(--text-tertiary);
     font-family: "Consolas", "Monaco", monospace;
 }
@@ -2254,13 +2390,13 @@
 
 .discord-node-section h5 {
     margin: 0 0 8px 0;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     font-weight: 600;
     color: var(--text-secondary);
 }
 
 .discord-node-empty {
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     color: var(--text-tertiary);
     font-style: italic;
     margin: 4px 0;
@@ -2280,7 +2416,7 @@
     padding: 8px 12px;
     background: var(--bg-surface);
     border-radius: 6px;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
 }
 
 .discord-node-member-id {
@@ -2290,7 +2426,7 @@
 
 .discord-node-member-cmds {
     color: var(--text-tertiary);
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
 }
 
 .discord-node-instance-row {
@@ -2300,7 +2436,7 @@
     padding: 8px 12px;
     background: var(--bg-surface);
     border-radius: 6px;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
 }
 
 .discord-node-instance-type {
@@ -2326,7 +2462,7 @@
 
 .discord-instance-select-header h4 {
     margin: 0;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     font-weight: 600;
     color: var(--text-primary);
 }
@@ -2337,7 +2473,7 @@
 }
 
 .discord-instance-select-btn {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     padding: 2px 8px;
     border: 1px solid var(--border-color);
     border-radius: 4px;
@@ -2354,7 +2490,7 @@
 
 .discord-instance-select-desc {
     display: block;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     color: var(--text-tertiary);
     margin-bottom: 8px;
 }
@@ -2399,12 +2535,12 @@
 
 .discord-instance-other-node {
     color: var(--text-muted, #888);
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale));
     font-style: italic;
 }
 
 .discord-instance-badge {
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale));
     font-weight: 700;
     padding: 2px 7px;
     border-radius: 4px;
@@ -2439,7 +2575,7 @@
 }
 
 .discord-instance-select-name {
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     font-weight: 500;
     color: var(--text-primary);
     overflow: hidden;
@@ -2448,12 +2584,12 @@
 }
 
 .discord-instance-select-module {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     color: var(--text-tertiary);
 }
 
 .discord-instance-select-status {
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     flex-shrink: 0;
 }
 
@@ -2480,7 +2616,7 @@
 
 .discord-node-tab {
     padding: 6px 14px;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     font-weight: 500;
     border: none;
     background: none;
@@ -2515,7 +2651,7 @@
 .discord-member-add-input {
     flex: 1;
     padding: 6px 10px;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     border: 1px solid var(--border-light);
     border-radius: 6px;
     background: var(--input-bg);
@@ -2536,7 +2672,7 @@
 
 .discord-member-add-btn {
     padding: 6px 14px;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     font-weight: 500;
     border: 1px solid var(--accent-color, #5865f2);
     border-radius: 6px;
@@ -2612,7 +2748,7 @@
 }
 
 .discord-member-perm-name {
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     font-weight: 500;
     color: var(--text-primary);
     overflow: hidden;
@@ -2622,7 +2758,7 @@
 
 .discord-member-perm-id {
     font-family: "Consolas", "Monaco", monospace;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     color: var(--text-tertiary);
 }
 
@@ -2663,7 +2799,7 @@
     color: var(--text-tertiary);
     cursor: pointer;
     border-radius: 4px;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     transition: all 0.15s;
 }
 
@@ -2699,13 +2835,13 @@
 }
 
 .discord-member-instance-name {
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     font-weight: 600;
     color: var(--text-primary);
 }
 
 .discord-member-instance-module {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     color: var(--text-tertiary);
     padding: 1px 6px;
     background: var(--input-bg);
@@ -2727,7 +2863,7 @@
     border-radius: 4px;
     cursor: pointer;
     transition: background 0.1s;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
 }
 
 .discord-cmd-check-item:hover {
@@ -2743,21 +2879,21 @@
 
 .discord-cmd-check-label {
     color: var(--text-primary);
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 .discord-cmd-empty {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     color: var(--text-tertiary);
     font-style: italic;
     margin: 4px 0;
 }
 
 .discord-cmd-hint {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     color: var(--text-tertiary);
     margin-top: 8px;
     padding-top: 6px;
@@ -2773,13 +2909,13 @@
 
 .discord-cloud-empty-nodes p {
     margin: 0 0 4px 0;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
 }
 
 .discord-cloud-empty-nodes small {
     display: block;
     margin-bottom: 8px;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
 }
 
 /* ── 고급 설정 릴레이 URL 입력 ── */
@@ -2790,7 +2926,7 @@
     border-radius: 8px;
     background: var(--input-bg);
     color: var(--text-primary);
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     font-family: "Consolas", "Monaco", monospace;
     outline: none;
     transition: border-color 0.15s;
@@ -2821,7 +2957,7 @@
     height: 44px;
     border-radius: 8px;
     font-weight: 600;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     cursor: pointer;
     transition: all 0.3s ease;
 }
@@ -2853,7 +2989,7 @@
 
 .discord-btn-save {
     background: var(--brand-gradient);
-    color: white;
+    color: var(--brand-text);
 }
 
 .discord-btn-save:hover:not(:disabled) {
@@ -2908,7 +3044,7 @@
 
 .background-modal-title h2 {
     margin: 0;
-    font-size: 18px;
+    font-size: calc(18px * var(--font-scale));
     font-weight: 700;
     color: var(--text-primary);
 }
@@ -2916,7 +3052,7 @@
 .background-modal-close {
     background: none;
     border: none;
-    font-size: 24px;
+    font-size: calc(24px * var(--font-scale));
     color: var(--text-disabled);
     cursor: pointer;
     width: 32px;
@@ -2958,7 +3094,7 @@
     font-weight: 700;
     padding: 4px 12px;
     border-radius: 12px;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
 }
 
 .background-status-section .status-running {
@@ -2985,10 +3121,10 @@
 .background-restart-btn {
     padding: 10px 24px;
     background: var(--brand-gradient);
-    color: white;
+    color: var(--brand-text);
     border: none;
     border-radius: 8px;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     font-weight: 600;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -3026,13 +3162,13 @@
 }
 
 .info-label {
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     font-weight: 600;
     color: var(--text-secondary);
 }
 
 .info-value {
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     font-family: "Courier New", monospace;
     color: var(--brand-primary);
     font-weight: 600;
@@ -3047,19 +3183,19 @@
 
 .background-info-box h4 {
     margin: 0 0 8px 0;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     color: var(--text-primary);
 }
 
 .background-info-box p {
     margin: 8px 0;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     color: var(--text-secondary);
     line-height: 1.5;
 }
 
 .background-info-box .info-note {
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     color: var(--text-tertiary);
     margin-top: 12px;
 }
@@ -3199,15 +3335,15 @@
 
 .notice-modal-title h2 {
     margin: 0;
-    font-size: 16px;
+    font-size: calc(16px * var(--font-scale));
     font-weight: 700;
     color: var(--text-primary);
 }
 
 .notice-count-badge {
     background: var(--brand-primary);
-    color: #fff;
-    font-size: 11px;
+    color: var(--brand-text);
+    font-size: calc(11px * var(--font-scale));
     font-weight: 700;
     padding: 1px 7px;
     border-radius: 10px;
@@ -3228,7 +3364,7 @@
     background: none;
     border: 1px solid var(--border-light);
     color: var(--text-tertiary);
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     font-weight: 600;
     padding: 4px 10px;
     border-radius: 6px;
@@ -3247,7 +3383,7 @@
 .notice-modal-close {
     background: none;
     border: none;
-    font-size: 24px;
+    font-size: calc(24px * var(--font-scale));
     color: var(--text-disabled);
     cursor: pointer;
     width: 28px;
@@ -3296,7 +3432,7 @@
     opacity: 0.5;
 }
 .notice-empty p {
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     margin: 0;
 }
 
@@ -3318,7 +3454,7 @@
 }
 
 .notice-group-label {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     font-weight: 700;
     color: var(--text-tertiary);
     text-transform: uppercase;
@@ -3326,7 +3462,7 @@
 }
 
 .notice-group-count {
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale));
     font-weight: 600;
     color: var(--text-muted);
     background: var(--bg-surface-tertiary);
@@ -3417,7 +3553,7 @@
 }
 
 .notice-card-message {
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     font-weight: 500;
     color: var(--text-primary);
     margin: 0;
@@ -3426,7 +3562,7 @@
 }
 
 .notice-card-time {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     color: var(--text-muted);
     margin-top: 3px;
     display: block;
@@ -3472,7 +3608,7 @@
     height: 18px;
     background: #ef4444;
     color: #fff;
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale));
     font-weight: 700;
     border-radius: 50%;
     display: flex;
@@ -3499,7 +3635,7 @@
     border: 1px solid var(--input-border);
     border-radius: 6px;
     background: var(--input-bg);
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale));
     color: var(--text-primary);
     text-align: right;
     transition: border-color 0.2s;
@@ -3530,7 +3666,7 @@
     padding: 6px 16px;
     margin-top: -8px;
     margin-bottom: 12px;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     color: var(--failure-badge-icon, #ef4444);
 }
 
@@ -3541,7 +3677,7 @@
     padding: 8px 16px;
     margin-top: -8px;
     margin-bottom: 12px;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     color: var(--brand-primary);
     background: rgba(var(--brand-primary-rgb, 99, 102, 241), 0.08);
     border-radius: 6px;
@@ -3554,7 +3690,7 @@
     gap: 10px;
     padding: 12px 16px;
     margin-bottom: 16px;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     color: var(--warning-text, #f59e0b);
     background: rgba(245, 158, 11, 0.08);
     border: 1px solid rgba(245, 158, 11, 0.25);
@@ -3564,11 +3700,11 @@
 .validation-warning-banner strong {
     display: block;
     margin-bottom: 4px;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
 }
 
 .validation-warning-detail {
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     opacity: 0.9;
     margin-top: 2px;
 }
@@ -3588,7 +3724,7 @@
 }
 
 .gui-test-title {
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     font-weight: 700;
     color: var(--text-secondary);
     margin: 0;
@@ -3644,7 +3780,7 @@
     border-radius: 7px;
     background: var(--bg-surface);
     color: var(--text-primary);
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     font-weight: 600;
     cursor: pointer;
     transition: all 0.15s ease;
@@ -3742,7 +3878,7 @@
     align-items: center;
     gap: 8px;
     margin: 0;
-    font-size: 16px;
+    font-size: calc(16px * var(--font-scale));
 }
 
 .update-modal-close {
@@ -3780,7 +3916,7 @@
 }
 
 .update-mock-label {
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale));
     font-weight: 700;
     letter-spacing: 0.5px;
     padding: 2px 6px;
@@ -3806,7 +3942,7 @@
     align-items: center;
     gap: 8px;
     padding: 10px 20px;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     color: var(--text-secondary);
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-light);
@@ -3836,7 +3972,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     color: var(--text-secondary);
 }
 
@@ -3897,13 +4033,13 @@
 }
 
 .update-modal-comp-name {
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     font-weight: 600;
     color: var(--text-primary);
 }
 
 .update-modal-comp-ver {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     color: var(--text-tertiary);
 }
 
@@ -3913,7 +4049,7 @@
 }
 
 .update-modal-badge {
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale));
     font-weight: 600;
     padding: 2px 8px;
     border-radius: 10px;
@@ -3951,7 +4087,7 @@
     align-items: center;
     gap: 6px;
     padding: 6px 20px 10px;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     color: var(--text-tertiary);
     justify-content: center;
 }
@@ -3972,7 +4108,7 @@
     padding: 8px 16px;
     border: none;
     border-radius: 6px;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s;
@@ -3980,7 +4116,7 @@
 
 .update-modal-btn.primary {
     background: var(--brand-primary);
-    color: white;
+    color: var(--brand-text);
 }
 
 .update-modal-btn.primary:hover {
@@ -4025,7 +4161,7 @@
     align-items: center;
     gap: 8px;
     padding: 8px 16px;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     font-weight: 500;
 }
 
@@ -4105,14 +4241,14 @@
 
 .confirm-modal-title {
     margin: 0;
-    font-size: 16px;
+    font-size: calc(16px * var(--font-scale));
     font-weight: 700;
     color: var(--text-primary);
 }
 
 .confirm-modal-message {
     margin: 0;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     line-height: 1.6;
     color: var(--text-secondary);
 }
@@ -4255,7 +4391,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     color: var(--text-secondary);
 }
 
@@ -4291,7 +4427,7 @@
 }
 
 .extension-version {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     font-weight: 400;
     color: var(--text-tertiary);
     margin-left: 4px;
@@ -4360,7 +4496,7 @@
 }
 
 .ss-card-name {
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     font-weight: 600;
     color: var(--text-primary);
     display: flex;
@@ -4370,13 +4506,13 @@
 }
 
 .ss-card-version {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     font-weight: 400;
     color: var(--text-tertiary);
 }
 
 .ss-card-desc {
-    font-size: 11.5px;
+    font-size: calc(11.5px * var(--font-scale));
     color: var(--text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -4498,7 +4634,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 8px;
+    font-size: calc(8px * var(--font-scale));
     font-weight: 700;
     color: var(--text-primary);
     pointer-events: none;
@@ -4506,7 +4642,7 @@
 }
 
 .download-ring-label small {
-    font-size: 5px;
+    font-size: calc(5px * var(--font-scale));
     font-weight: 600;
     opacity: 0.7;
 }
@@ -4549,7 +4685,7 @@
 }
 
 .ss-empty {
-    font-size: 12.5px;
+    font-size: calc(12.5px * var(--font-scale));
     color: var(--text-tertiary);
     padding: 8px 2px;
     margin: 0;
@@ -4592,7 +4728,7 @@
     background: none;
     border: none;
     cursor: pointer;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     font-weight: 500;
     color: var(--text-secondary);
     transition: all 0.2s ease;
@@ -4699,7 +4835,7 @@
 }
 
 .about-page-title {
-    font-size: 18px;
+    font-size: calc(18px * var(--font-scale));
     font-weight: 700;
     color: var(--text-primary);
     margin: 0;
@@ -4732,7 +4868,7 @@
     align-items: center;
     gap: 4px;
     color: var(--brand-primary);
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     font-weight: 500;
     padding: 4px 8px;
     border-radius: 6px;
@@ -4819,7 +4955,7 @@
 }
 
 .about-dev-nickname {
-    font-size: 22px;
+    font-size: calc(22px * var(--font-scale));
     font-weight: 700;
     color: white;
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
@@ -4827,14 +4963,14 @@
 }
 
 .about-dev-id {
-    font-size: 15px;
+    font-size: calc(15px * var(--font-scale));
     color: rgba(255, 255, 255, 0.8);
     font-weight: 500;
     margin: 0;
 }
 
 .about-dev-bio {
-    font-size: 15px;
+    font-size: calc(15px * var(--font-scale));
     color: rgba(255, 255, 255, 0.9);
     font-weight: 400;
     margin: 0;
@@ -4852,7 +4988,7 @@
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.3);
     color: white;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
     font-weight: 600;
     padding: 6px 12px;
     border-radius: 16px;
@@ -4873,7 +5009,7 @@
     position: absolute;
     top: 16px;
     right: 20px;
-    font-size: 16px;
+    font-size: calc(16px * var(--font-scale));
     font-weight: 500;
     color: rgba(255, 255, 255, 0.7);
     text-transform: uppercase;
@@ -4933,9 +5069,9 @@
     position: absolute;
     top: -4px;
     right: -12px;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale));
     font-weight: 600;
-    color: #fff;
+    color: var(--brand-text);
     background: var(--brand-gradient);
     padding: 4px 10px;
     border-radius: 12px;
@@ -4954,7 +5090,7 @@
 }
 
 .about-app-desc {
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     color: rgba(255, 255, 255, 0.9);
     line-height: 1.5;
     margin: 0;
@@ -4978,7 +5114,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 8px 12px;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale));
 }
 
 .about-component-item:not(:last-child) {
@@ -4996,7 +5132,7 @@
 .about-component-ver {
     color: rgba(255, 255, 255, 0.7);
     font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
-    font-size: 11.5px;
+    font-size: calc(11.5px * var(--font-scale));
 }
 
 /* ── Footer meta ── */
@@ -5012,7 +5148,7 @@
     display: flex;
     align-items: center;
     gap: 5px;
-    font-size: 11.5px;
+    font-size: calc(11.5px * var(--font-scale));
     color: rgba(255, 255, 255, 0.7);
 }
 
@@ -5031,5 +5167,171 @@
 
 .setting-title-danger {
     color: var(--color-danger, #e74c3c) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Theme Customization — Accent Presets, Color Picker, Sliders
+   ═══════════════════════════════════════════════════════════ */
+
+.setting-item-vertical {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+/* ── Accent preset grid ── */
+.accent-preset-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.accent-preset-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+    position: relative;
+    padding: 0;
+}
+
+.accent-preset-btn:hover {
+    transform: scale(1.15);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.accent-preset-btn.active {
+    border-color: var(--text-primary);
+    box-shadow: 0 0 0 2px var(--bg-surface), 0 0 0 4px var(--text-primary);
+}
+
+.accent-preset-custom {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: conic-gradient(
+        from 0deg,
+        #f38ba8, #fab387, #f9e2af, #a6e3a1, #89b4fa, #cba6f7, #f38ba8
+    ) !important;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+
+.accent-preset-custom input[type="color"] {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+    border: none;
+    padding: 0;
+}
+
+.accent-preset-custom .icon {
+    color: #ffffff;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+    pointer-events: none;
+}
+
+/* ── Font scale slider ── */
+.font-scale-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+}
+
+.font-scale-slider {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--border-default);
+    outline: none;
+    cursor: pointer;
+}
+
+.font-scale-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--brand-primary);
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+    transition: transform 0.15s ease;
+}
+
+.font-scale-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+}
+
+.font-scale-value {
+    font-size: calc(13px * var(--font-scale));
+    font-weight: 600;
+    color: var(--text-secondary);
+    min-width: 42px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Color input wrapper ── */
+.color-input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    position: relative;
+}
+
+.color-input-wrapper input[type="color"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}
+
+.color-input-preview {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 2px solid var(--border-default);
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+}
+
+.color-input-wrapper:hover .color-input-preview {
+    border-color: var(--brand-primary);
+}
+
+.color-input-hex {
+    font-size: calc(12px * var(--font-scale));
+    font-family: "Cascadia Code", "Consolas", monospace;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+}
+
+/* ── Console preview box ── */
+.console-preview-box {
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-family: "Cascadia Code", "Consolas", "Monaco", "Courier New", monospace;
+    font-size: calc(12px * var(--font-scale));
+    line-height: 1.6;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    margin-top: 4px;
+}
+
+.console-preview-line {
+    white-space: pre-wrap;
+    padding: 1px 0;
 }
 

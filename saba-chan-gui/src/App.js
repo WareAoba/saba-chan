@@ -29,6 +29,7 @@ import useExtensionInitStatus from './hooks/useExtensionInitStatus';
 import { useModalClose } from './hooks/useModalClose';
 import { useServerActions } from './hooks/useServerActions';
 import { useServerSettings } from './hooks/useServerSettings';
+import { useWindowSize, SIDE_PANEL_MIN_WIDTH, SIDE_PANEL_MIN_HEIGHT } from './hooks/useWindowSize';
 import { setDiscordI18n, useDiscordStore } from './stores/useDiscordStore';
 import { setServerI18n, useServerStore } from './stores/useServerStore';
 import { useSettingsStore } from './stores/useSettingsStore';
@@ -53,6 +54,10 @@ function App() {
         if (lang.startsWith('ja')) return './logo-jp.png';
         return './logo-en.png';
     }, [i18n.language]);
+
+    // ── 윈도우 크기 → 사이드 패널 모드 판정 ──
+    const windowSize = useWindowSize();
+    const discordSideMode = windowSize.width >= SIDE_PANEL_MIN_WIDTH && windowSize.height >= SIDE_PANEL_MIN_HEIGHT;
 
     // ── Server Store (Zustand) ─────────────────────────────
     const servers = useServerStore((s) => s.servers);
@@ -114,6 +119,8 @@ function App() {
     const discordModuleAliases = useDiscordStore((s) => s.discordModuleAliases);
     const discordCommandAliases = useDiscordStore((s) => s.discordCommandAliases);
     const discordMusicEnabled = useDiscordStore((s) => s.discordMusicEnabled);
+    const discordMusicChannelId = useDiscordStore((s) => s.discordMusicChannelId);
+    const discordMusicUISettings = useDiscordStore((s) => s.discordMusicUISettings);
     const discordBotMode = useDiscordStore((s) => s.discordBotMode);
     const discordCloudRelayUrl = useDiscordStore((s) => s.discordCloudRelayUrl);
     const discordCloudHostId = useDiscordStore((s) => s.discordCloudHostId);
@@ -406,20 +413,31 @@ function App() {
             const settings = await useSettingsStore.getState().load();
             if (settings) {
                 consoleBufferRef.current = settings.consoleBufferSize ?? 2000;
-                // Set discord token/autoStart in discord store
-                useDiscordStore.getState().update({
-                    discordToken: settings.discordToken || '',
-                    _discordTokenRef: settings.discordToken || '',
-                    discordAutoStart: settings.discordAutoStart ?? false,
-                });
-                // Sync discord fields for settings save
-                useSettingsStore
-                    .getState()
-                    ._setDiscordFields(settings.discordToken || '', settings.discordAutoStart ?? false);
             }
 
-            // Load bot config into discord store
+            // Load bot config into discord store (token/autoStart는 bot-config이 SSOT)
             await useDiscordStore.getState().loadConfig();
+
+            // ── 마이그레이션: settings.json → bot-config.json ──
+            // 기존 settings.json에 discordToken/discordAutoStart가 있고
+            // bot-config에는 아직 없으면 이전
+            if (settings) {
+                const discordState = useDiscordStore.getState();
+                const needsMigration =
+                    (settings.discordToken && !discordState.discordToken) ||
+                    (settings.discordAutoStart && !discordState.discordAutoStart);
+                if (needsMigration) {
+                    console.log('[Migration] Migrating discordToken/autoStart from settings to bot-config');
+                    useDiscordStore.getState().update({
+                        discordToken: settings.discordToken || discordState.discordToken || '',
+                        _discordTokenRef: settings.discordToken || discordState._discordTokenRef || '',
+                        discordAutoStart: settings.discordAutoStart ?? discordState.discordAutoStart ?? false,
+                    });
+                    // 즉시 bot-config에 저장
+                    await useDiscordStore.getState().saveConfig();
+                }
+            }
+
             useDiscordStore.getState().update({ _settingsReady: true });
 
             // Start status polling and listeners
@@ -489,7 +507,6 @@ function App() {
 
     const saveCurrentSettings = async () => {
         try {
-            useSettingsStore.getState()._setDiscordFields(discordToken, discordAutoStart);
             await Promise.all([useSettingsStore.getState().save(), useDiscordStore.getState().saveConfig()]);
         } catch (err) {
             console.error('[App] Failed to save settings:', err.message);
@@ -537,9 +554,9 @@ function App() {
                         detail: t('app_exit.confirm_detail'),
                         buttons: [
                             {
-                                label: t('app_exit.hide_only_label'),
+                                label: t('app_exit.exit_interface_label'),
                                 action: () => {
-                                    window.api.closeResponse('hide');
+                                    window.api.closeResponse('exit-interface');
                                     setModal(null);
                                 },
                             },
@@ -631,11 +648,59 @@ function App() {
         );
     }
 
+    // ── Discord 모달 공통 props (팝업/사이드 패널 공용) ──
+    const discordModalProps = {
+        isOpen: showDiscordSection,
+        onClose: requestDiscordClose,
+        isClosing: isDiscordClosing,
+        discordBotStatus,
+        discordToken,
+        setDiscordToken: (val) => useDiscordStore.getState().setDiscordToken(val),
+        discordPrefix,
+        setDiscordPrefix: (val) => useDiscordStore.getState().update({ discordPrefix: val }),
+        discordAutoStart,
+        setDiscordAutoStart: (val) => useDiscordStore.getState().update({ discordAutoStart: val }),
+        discordMusicEnabled,
+        setDiscordMusicEnabled: (val) => useDiscordStore.getState().update({ discordMusicEnabled: val }),
+        discordMusicChannelId,
+        setDiscordMusicChannelId: (val) => useDiscordStore.getState().update({ discordMusicChannelId: val }),
+        discordMusicUISettings,
+        setDiscordMusicUISettings: (val) => useDiscordStore.getState().update({ discordMusicUISettings: val }),
+        discordBotMode,
+        setDiscordBotMode: (val) => useDiscordStore.getState().switchMode(val),
+        discordCloudRelayUrl,
+        setDiscordCloudRelayUrl: (val) => useDiscordStore.getState().update({ discordCloudRelayUrl: val }),
+        discordCloudHostId,
+        setDiscordCloudHostId: (val) => useDiscordStore.getState().update({ discordCloudHostId: val }),
+        relayConnected,
+        relayConnecting,
+        handleStartDiscordBot,
+        handleStopDiscordBot,
+        saveCurrentSettings,
+        servers,
+        modules,
+        moduleAliasesPerModule,
+        nodeSettings,
+        setNodeSettings: (valOrFn) => {
+            const prev = useDiscordStore.getState().nodeSettings;
+            const next = typeof valOrFn === 'function' ? valOrFn(prev) : valOrFn;
+            useDiscordStore.getState().update({ nodeSettings: next });
+        },
+        cloudNodes,
+        setCloudNodes: (val) => useDiscordStore.getState().update({ cloudNodes: val }),
+        cloudMembers,
+        setCloudMembers: (valOrFn) => {
+            const prev = useDiscordStore.getState().cloudMembers;
+            const next = typeof valOrFn === 'function' ? valOrFn(prev) : valOrFn;
+            useDiscordStore.getState().update({ cloudMembers: next });
+        },
+    };
+
     return (
         <ExtensionProvider>
             <div className="App">
-                {/* Discord overlay backdrop */}
-                {showDiscordSection && <div className="discord-backdrop" onClick={requestDiscordClose} />}
+                {/* Discord overlay backdrop (팝업 모드에서만) */}
+                {showDiscordSection && !discordSideMode && <div className="discord-backdrop" onClick={requestDiscordClose} />}
                 {/* Background overlay backdrop */}
                 {showBackgroundSection && <div className="discord-backdrop" onClick={requestBackgroundClose} />}
                 {/* Notice overlay backdrop */}
@@ -711,56 +776,12 @@ function App() {
                                 ></span>
                                 Discord Bot
                             </button>
-                            <DiscordBotModal
-                                isOpen={showDiscordSection}
-                                onClose={requestDiscordClose}
-                                isClosing={isDiscordClosing}
-                                discordBotStatus={discordBotStatus}
-                                discordToken={discordToken}
-                                setDiscordToken={(val) => useDiscordStore.getState().setDiscordToken(val)}
-                                discordPrefix={discordPrefix}
-                                setDiscordPrefix={(val) => useDiscordStore.getState().update({ discordPrefix: val })}
-                                discordAutoStart={discordAutoStart}
-                                setDiscordAutoStart={(val) =>
-                                    useDiscordStore.getState().update({ discordAutoStart: val })
-                                }
-                                discordMusicEnabled={discordMusicEnabled}
-                                setDiscordMusicEnabled={(val) =>
-                                    useDiscordStore.getState().update({ discordMusicEnabled: val })
-                                }
-                                discordBotMode={discordBotMode}
-                                setDiscordBotMode={(val) => useDiscordStore.getState().switchMode(val)}
-                                discordCloudRelayUrl={discordCloudRelayUrl}
-                                setDiscordCloudRelayUrl={(val) =>
-                                    useDiscordStore.getState().update({ discordCloudRelayUrl: val })
-                                }
-                                discordCloudHostId={discordCloudHostId}
-                                setDiscordCloudHostId={(val) =>
-                                    useDiscordStore.getState().update({ discordCloudHostId: val })
-                                }
-                                relayConnected={relayConnected}
-                                relayConnecting={relayConnecting}
-                                handleStartDiscordBot={handleStartDiscordBot}
-                                handleStopDiscordBot={handleStopDiscordBot}
-                                saveCurrentSettings={saveCurrentSettings}
-                                servers={servers}
-                                modules={modules}
-                                moduleAliasesPerModule={moduleAliasesPerModule}
-                                nodeSettings={nodeSettings}
-                                setNodeSettings={(valOrFn) => {
-                                    const prev = useDiscordStore.getState().nodeSettings;
-                                    const next = typeof valOrFn === 'function' ? valOrFn(prev) : valOrFn;
-                                    useDiscordStore.getState().update({ nodeSettings: next });
-                                }}
-                                cloudNodes={cloudNodes}
-                                setCloudNodes={(val) => useDiscordStore.getState().update({ cloudNodes: val })}
-                                cloudMembers={cloudMembers}
-                                setCloudMembers={(valOrFn) => {
-                                    const prev = useDiscordStore.getState().cloudMembers;
-                                    const next = typeof valOrFn === 'function' ? valOrFn(prev) : valOrFn;
-                                    useDiscordStore.getState().update({ cloudMembers: next });
-                                }}
-                            />
+                            {!discordSideMode && (
+                                <DiscordBotModal
+                                    {...discordModalProps}
+                                    displayMode="popup"
+                                />
+                            )}
                         </div>
                         <div className="background-button-wrapper">
                             <button
@@ -800,6 +821,7 @@ function App() {
                     onAddServer={handleAddServer}
                 />
 
+                <div className="app-body">
                 <main className={`app-main${Object.keys(consoles).length > 0 ? ' app-main-dock-active' : ''}`}>
                     <div className="server-list">
                         {servers.length === 0 ? (
@@ -878,6 +900,15 @@ function App() {
                         hasProgressBar={!!progressBar}
                     />
                 </main>
+
+                {/* 사이드 패널 모드 디스코드 봇 (app-main 우측 서랍) */}
+                {discordSideMode && (
+                    <DiscordBotModal
+                        {...discordModalProps}
+                        displayMode="side"
+                    />
+                )}
+                </div>{/* /app-body */}
 
                 {showSettingsModal && settingsServer && (
                     <ServerSettingsModal

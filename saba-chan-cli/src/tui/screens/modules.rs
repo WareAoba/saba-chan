@@ -3,6 +3,7 @@
 use crate::tui::app::*;
 
 pub(super) fn build_modules_menu(app: &App) -> Vec<MenuItem> {
+    let t = |k| app.i18n.t(k);
     let mut items: Vec<MenuItem> = app.registry.modules.iter().map(|m| {
         let mode = m.interaction_mode.as_deref().unwrap_or("-");
         MenuItem::new(
@@ -16,17 +17,18 @@ pub(super) fn build_modules_menu(app: &App) -> Vec<MenuItem> {
         items.push(MenuItem::new("(No modules loaded)", None, "").with_enabled(false));
     }
 
-    items.push(MenuItem::new("↻ Refresh Modules", Some('r'), "모듈 새로고침"));
-    items.push(MenuItem::new("🌐 Module Manifest", Some('R'), "원격 매니페스트에서 모듈 검색/설치"));
+    items.push(MenuItem::new(&format!("↻ {}", t("screen.module_refresh")), Some('r'), &t("screen.module_refresh")));
+    items.push(MenuItem::new(&format!("🌐 {}", t("screen.module_manifest")), Some('R'), &t("screen.module_manifest")));
     items
 }
 
-pub(super) fn build_module_detail_menu(name: &str) -> Vec<MenuItem> {
+pub(super) fn build_module_detail_menu(app: &App, name: &str) -> Vec<MenuItem> {
+    let t = |k| app.i18n.t(k);
     vec![
-        MenuItem::new("Info", Some('i'), "모듈 상세 정보"),
-        MenuItem::new("Versions", Some('v'), "사용 가능한 버전 목록"),
-        MenuItem::new("Install", Some('I'), &format!("{} 서버 설치", name)),
-        MenuItem::new("🗑 Remove Module", Some('D'), &format!("{} 모듈 삭제", name)),
+        MenuItem::new(&t("screen.module_info"), Some('i'), &t("screen.module_info")),
+        MenuItem::new(&t("screen.module_versions"), Some('v'), &t("screen.module_versions")),
+        MenuItem::new(&t("screen.module_install"), Some('I'), &format!("{} — {}", t("screen.module_install"), name)),
+        MenuItem::new(&format!("🗑 {}", t("screen.module_remove")), Some('D'), &format!("{} — {}", t("screen.module_remove"), name)),
     ]
 }
 
@@ -134,13 +136,32 @@ pub(super) fn handle_module_detail_select(app: &mut App, sel: usize, name: &str)
                 }
             });
         }
-        2 => { // Install → 인라인 Input (버전 입력)
-            app.input_mode = InputMode::InlineInput {
-                prompt: format!("{} 설치 버전 (빈칸=latest)", name),
-                value: String::new(),
-                cursor: 0,
-                on_submit: InlineAction::InstallModule { module_name: name.to_string() },
-            };
+        2 => { // Install → 버전 목록 조회 후 InlineSelect
+            let mod_name = name.to_string();
+            let buf2 = app.async_out.clone();
+            let client2 = app.client.clone();
+            tokio::spawn(async move {
+                match client2.list_versions(&mod_name).await {
+                    Ok(data) => {
+                        if let Some(versions) = data.get("versions").and_then(|v| v.as_array()) {
+                            let version_ids: Vec<String> = versions.iter()
+                                .filter_map(|v| v.as_str().or_else(|| v["id"].as_str()).map(|s| s.to_string()))
+                                .collect();
+                            if version_ids.is_empty() {
+                                push_out(&buf2, vec![Out::Err("사용 가능한 버전이 없습니다".into())]);
+                            } else {
+                                // VERSION_SELECT 프로토콜로 전달
+                                let encoded = version_ids.join("|");
+                                push_out(&buf2, vec![Out::Text(format!("VERSION_SELECT:{}:{}", mod_name, encoded))]);
+                            }
+                        } else {
+                            push_out(&buf2, vec![Out::Err("버전 목록을 파싱할 수 없습니다".into())]);
+                        }
+                    }
+                    Err(e) => push_out(&buf2, vec![Out::Err(format!("✗ {}", e))]),
+                }
+            });
+            app.flash("버전 목록 조회 중...");
         }
         3 => { // Remove Module
             app.input_mode = InputMode::Confirm {

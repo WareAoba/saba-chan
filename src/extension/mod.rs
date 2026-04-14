@@ -200,6 +200,10 @@ pub struct ExtensionManifest {
     pub module_config_section: Option<String>,
     #[serde(default)]
     pub instance_fields: HashMap<String, FieldDef>,
+    /// 익스텐션 글로벌 설정 스키마 — `extensionConfig.json`에 저장되는 필드 정의.
+    /// 인스턴스와 무관한 익스텐션 자체 설정 (예: Discord 봇 토큰, 기본 볼륨 등).
+    #[serde(default)]
+    pub config_fields: HashMap<String, FieldDef>,
     #[serde(default)]
     pub i18n_dir: Option<String>,
 }
@@ -274,6 +278,7 @@ pub struct ExtensionListItem {
     pub gui: Option<GuiManifest>,
     pub cli: Option<CliManifest>,
     pub instance_fields: HashMap<String, FieldDef>,
+    pub config_fields: HashMap<String, FieldDef>,
     /// 익스텐션 디렉토리에 icon.png가 존재하는지 여부
     #[serde(default)]
     pub has_icon: bool,
@@ -391,6 +396,10 @@ pub struct ExtensionManager {
     discovered: HashMap<String, DiscoveredExtension>,
     enabled: HashSet<String>,
     state_path: PathBuf,
+    /// 익스텐션 글로벌 설정 (`extensionConfig.json`)
+    /// 구조: ext_id → { key → value }
+    extension_config: HashMap<String, HashMap<String, Value>>,
+    config_path: PathBuf,
     /// 원격 매니페스트 URL (커스텀 오버라이드 가능)
     pub manifest_url: String,
 }
@@ -399,17 +408,22 @@ pub struct ExtensionManager {
 impl ExtensionManager {
     /// 새 ExtensionManager 생성. `extensions_dir`은 `extensions/` 디렉토리 경로.
     pub fn new(extensions_dir: &str) -> Self {
-        Self::with_state_path(extensions_dir, Self::resolve_state_path())
+        Self::with_state_path(
+            extensions_dir,
+            Self::resolve_state_path(),
+            Self::resolve_config_path(),
+        )
     }
 
     /// 커스텀 state 경로를 지정한 생성자 (테스트 격리용)
     #[cfg(test)]
     pub fn new_isolated(extensions_dir: &str) -> Self {
         let state_path = PathBuf::from(extensions_dir).join(".extensions_state.json");
-        Self::with_state_path(extensions_dir, state_path)
+        let config_path = PathBuf::from(extensions_dir).join("extensionConfig.json");
+        Self::with_state_path(extensions_dir, state_path, config_path)
     }
 
-    fn with_state_path(extensions_dir: &str, state_path: PathBuf) -> Self {
+    fn with_state_path(extensions_dir: &str, state_path: PathBuf, config_path: PathBuf) -> Self {
         let extensions_dir = PathBuf::from(extensions_dir);
 
         // extensions/ 디렉토리가 없으면 생성 (최초 실행 대응)
@@ -424,15 +438,23 @@ impl ExtensionManager {
             discovered: HashMap::new(),
             enabled: HashSet::new(),
             state_path,
+            extension_config: HashMap::new(),
+            config_path,
             manifest_url: DEFAULT_MANIFEST_URL.to_string(),
         };
         mgr.load_state();
+        mgr.load_extension_config();
         mgr
     }
 
     /// extensions_state.json 경로 해석
     fn resolve_state_path() -> PathBuf {
         saba_chan_updater_lib::constants::resolve_extensions_state_path()
+    }
+
+    /// extensionConfig.json 경로 해석
+    fn resolve_config_path() -> PathBuf {
+        saba_chan_updater_lib::constants::resolve_extension_config_path()
     }
 
     /// Python import에서 사용할 수 있도록 ext_id의 하이픈을 언더스코어로 변환합니다.
@@ -965,6 +987,10 @@ impl ExtensionManager {
             std::fs::remove_dir_all(&ext_path)
                 .with_context(|| format!("Failed to remove extension directory: {}", ext_path.display()))?;
         }
+        // extensionConfig에서 해당 익스텐션의 설정 제거
+        if self.extension_config.remove(ext_id).is_some() {
+            self.save_extension_config();
+        }
         self.save_state();
         tracing::info!("Extension removed: {}", ext_id);
         Ok(())
@@ -1019,6 +1045,7 @@ impl ExtensionManager {
                     gui: m.gui.clone(),
                     cli: m.cli.clone(),
                     instance_fields: m.instance_fields.clone(),
+                    config_fields: m.config_fields.clone(),
                     has_icon,
                 }
             })
@@ -1058,6 +1085,20 @@ impl ExtensionManager {
         }
     }
 
+    /// hook context에 extension_config를 주입합니다.
+    /// 이미 존재하지 않는 경우에만 추가합니다.
+    fn inject_extension_config(&self, mut context: Value) -> Value {
+        if let Some(obj) = context.as_object_mut() {
+            if !obj.contains_key("extension_config") {
+                obj.insert(
+                    "extension_config".to_string(),
+                    self.extension_config_as_value(),
+                );
+            }
+        }
+        context
+    }
+
     /// Hook 디스패치: 조건 평가 → run_plugin 호출 → handled 체크
     ///
     /// 반환: Vec<(ext_id, Result<Value>)>
@@ -1081,6 +1122,9 @@ impl ExtensionManager {
         if hooks.is_empty() {
             return Vec::new();
         }
+
+        // extension_config를 context에 자동 주입
+        let context = self.inject_extension_config(context);
 
         let ext_data: HashMap<String, Value> = context
             .get("extension_data")
@@ -1193,6 +1237,9 @@ impl ExtensionManager {
             tracing::warn!("dispatch_hook_with_progress('{}') — no hooks registered (enabled: {:?})", hook_name, self.enabled);
             return Vec::new();
         }
+
+        // extension_config를 context에 자동 주입
+        let context = self.inject_extension_config(context);
 
         let ext_data: HashMap<String, Value> = context
             .get("extension_data")
@@ -1460,6 +1507,100 @@ impl ExtensionManager {
         }
         let content = std::fs::read_to_string(&path).ok()?;
         serde_json::from_str(&content).ok()
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  익스텐션 글로벌 설정 (extensionConfig.json)
+    // ═══════════════════════════════════════════════════════════════
+
+    /// 특정 익스텐션의 글로벌 설정을 반환합니다.
+    pub fn get_extension_config(&self, ext_id: &str) -> HashMap<String, Value> {
+        self.extension_config
+            .get(ext_id)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// 전체 익스텐션 설정 맵을 serde_json::Value로 반환합니다 (hook context 주입용).
+    pub fn extension_config_as_value(&self) -> Value {
+        serde_json::to_value(&self.extension_config).unwrap_or_default()
+    }
+
+    /// 특정 익스텐션의 글로벌 설정을 업데이트합니다.
+    /// 기존 키를 머지(덮어쓰기)하며, 디스크에 즉시 영속화합니다.
+    pub fn set_extension_config(&mut self, ext_id: &str, values: HashMap<String, Value>) {
+        let entry = self.extension_config
+            .entry(ext_id.to_string())
+            .or_insert_with(HashMap::new);
+        for (k, v) in values {
+            entry.insert(k, v);
+        }
+        self.save_extension_config();
+    }
+
+    /// 특정 익스텐션의 글로벌 설정을 통째로 교체합니다.
+    pub fn replace_extension_config(&mut self, ext_id: &str, values: HashMap<String, Value>) {
+        self.extension_config.insert(ext_id.to_string(), values);
+        self.save_extension_config();
+    }
+
+    /// extensionConfig.json 영속화
+    fn save_extension_config(&self) {
+        let json = match serde_json::to_string_pretty(&self.extension_config) {
+            Ok(j) => j,
+            Err(e) => {
+                tracing::error!("Failed to serialize extension config: {}", e);
+                return;
+            }
+        };
+
+        if let Some(parent) = self.config_path.parent() {
+            if !parent.exists() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+        }
+
+        if let Err(e) = std::fs::write(&self.config_path, &json) {
+            tracing::error!(
+                "Failed to save extension config to {}: {}",
+                self.config_path.display(),
+                e
+            );
+        }
+    }
+
+    /// extensionConfig.json 로드
+    fn load_extension_config(&mut self) {
+        if !self.config_path.exists() {
+            return;
+        }
+        match std::fs::read_to_string(&self.config_path) {
+            Ok(content) => {
+                match serde_json::from_str::<HashMap<String, HashMap<String, Value>>>(&content) {
+                    Ok(config) => {
+                        self.extension_config = config;
+                        tracing::info!(
+                            "Loaded extension config: {} extension(s)",
+                            self.extension_config.len()
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to parse extension config {}: {}",
+                            self.config_path.display(),
+                            e
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to read extension config {}: {}",
+                    self.config_path.display(),
+                    e
+                );
+            }
+        }
     }
 
     /// enabled 목록 영속화

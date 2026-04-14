@@ -97,6 +97,8 @@ export function ExtensionProvider({ children }) {
     const [slots, setSlots] = useState({});
     const [loading, setLoading] = useState(true);
     const loadedRef = useRef(new Set());
+    /** 로드된 익스텐션의 버전 추적 (핫로드 시 번들 무효화 판단용) */
+    const loadedVersionsRef = useRef({});
 
     // ── 매니페스트 / 버전관리 상태 ──────────────────────────────
     /** 원격 매니페스트에서 받아온 가용 익스텐션 목록 */
@@ -140,9 +142,21 @@ export function ExtensionProvider({ children }) {
             };
 
             for (const ext of enabled) {
-                // ① 이미 로드된 익스텐션
+                const globalName = `SabaExt${pascalCase(ext.id)}`;
+                const prevVersion = loadedVersionsRef.current[ext.id];
+                const versionChanged = prevVersion && ext.version && prevVersion !== ext.version;
+
+                // 버전 변경 감지 → 기존 번들 무효화 (핫로드)
+                if (versionChanged && loadedRef.current.has(ext.id)) {
+                    delete window[globalName];
+                    loadedRef.current.delete(ext.id);
+                    // 기존 <style> 태그 제거
+                    document.querySelectorAll(`style[data-extension="${ext.id}"]`).forEach((el) => el.remove());
+                    console.info(`[Extension] Bundle invalidated for '${ext.id}' (${prevVersion} → ${ext.version})`);
+                }
+
+                // ① 이미 로드된 익스텐션 (버전 동일)
                 if (loadedRef.current.has(ext.id)) {
-                    const globalName = `SabaExt${pascalCase(ext.id)}`;
                     const mod = window[globalName];
                     if (mod?.registerSlots) {
                         mergeSlots(mod.registerSlots());
@@ -153,6 +167,7 @@ export function ExtensionProvider({ children }) {
                 // ② UMD 번들 동적 로드
                 const mod = await loadExtensionBundle(ext);
                 loadedRef.current.add(ext.id);
+                loadedVersionsRef.current[ext.id] = ext.version;
 
                 if (mod?.registerSlots) {
                     mergeSlots(mod.registerSlots());

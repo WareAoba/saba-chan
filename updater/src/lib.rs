@@ -1413,6 +1413,12 @@ impl UpdateManager {
         }
     }
 
+    /// 테스트 전용: 컴포넌트 적용 우선순위 조회
+    #[cfg(test)]
+    pub fn component_apply_priority_for_test(component: &Component) -> u8 {
+        Self::component_apply_priority(component)
+    }
+
     // ─────── 2-flow 아키텍처: 개별 컴포넌트 적용 ────────────────────────────────────────────────────────────────────────
 
     /// 업데이트 적용 후 .old 백업 파일을 정리합니다.
@@ -1741,7 +1747,7 @@ impl UpdateManager {
                     success: true,
                     message: format!("Module '{}' updated", name),
                     stopped_processes: Vec::new(), // IPC 커맨드 경유 시 해당 없음
-                    restart_needed: true,
+                    restart_needed: false,
                 }
             }
             Component::CoreDaemon => {
@@ -1804,7 +1810,7 @@ impl UpdateManager {
                     success: true,
                     message: format!("Extension '{}' updated", name),
                     stopped_processes: Vec::new(),
-                    restart_needed: true,
+                    restart_needed: false,
                 }
             }
             Component::Locales => {

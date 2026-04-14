@@ -3,6 +3,7 @@ mod plugin;
 mod protocol;
 mod ipc;
 mod config;
+mod config_store;
 mod instance;
 mod process_monitor;
 mod python_env;
@@ -10,8 +11,11 @@ mod node_env;
 mod utils;
 mod extension;
 mod validator;
+mod boot_selector;
+mod daemon_log;
 
 use std::sync::Arc;
+use std::io::IsTerminal;
 use tokio::sync::RwLock;
 use saba_chan_updater_lib::constants;
 /// 프로세스 모니터링 폴링 간격 (초)
@@ -23,8 +27,84 @@ const MONITOR_MAX_CONSECUTIVE_ERRORS: u32 = 10;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt::init();
+    // ── Boot Mode Determination ────────────────────────────────
+    // GUI/CLI가 데몬을 스폰할 때는 --spawned 플래그를 전달하거나
+    // stdin이 터미널이 아닌 경우(파이프/null) 부트 선택기를 건너뜀
+    let args: Vec<String> = std::env::args().collect();
+    let spawned = args.iter().any(|a| a == "--spawned");
+    let interactive =
+        std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+
+    let boot_mode = if !spawned && interactive {
+        Some(boot_selector::run())
+    } else {
+        None
+    };
+
+    let daemon_only = matches!(boot_mode, Some(boot_selector::BootMode::DaemonOnly));
+
+    // ── Daemon Log Buffer (모든 모드 공통) ─────────────────────
+    // tracing 이벤트를 인메모리 링 버퍼에 캡처 → /api/daemon/console 로 노출
+    let daemon_log_buffer = daemon_log::DaemonLogBuffer::new();
+    let daemon_log_layer = daemon_log::DaemonLogLayer::new(daemon_log_buffer.clone());
+
+    // ── Tracing Init (모드에 따라 출력 대상 결정) ──────────────
+    // RUST_LOG 미설정 시 기본 info 레벨 (GUI/CLI 스폰 시와 동일)
+    // 모든 모드에서 DaemonLogLayer를 함께 합성하여 API 접근 보장
+    {
+        use tracing_subscriber::prelude::*;
+
+        let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+
+        match boot_mode {
+            Some(boot_selector::BootMode::Cli) => {
+                // CLI TUI가 터미널을 점유하므로 데몬 로그는 파일로 출력
+                let log_path = constants::resolve_data_dir().join("daemon.log");
+                if let Some(parent) = log_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                match std::fs::OpenOptions::new()
+                    .create(true)
+                    .write(true)
+                    .truncate(true)
+                    .open(&log_path)
+                {
+                    Ok(file) => {
+                        tracing_subscriber::registry()
+                            .with(env_filter)
+                            .with(tracing_subscriber::fmt::layer()
+                                .with_writer(std::sync::Mutex::new(file)))
+                            .with(daemon_log_layer)
+                            .init();
+                    }
+                    Err(_) => {
+                        tracing_subscriber::registry()
+                            .with(env_filter)
+                            .with(tracing_subscriber::fmt::layer()
+                                .with_writer(std::io::stderr))
+                            .with(daemon_log_layer)
+                            .init();
+                    }
+                }
+            }
+            _ => {
+                // GUI / DaemonOnly / spawned 모드: stderr 출력
+                // DaemonLogLayer가 함께 합성되어 버퍼에도 캡처
+                tracing_subscriber::registry()
+                    .with(env_filter)
+                    .with(tracing_subscriber::fmt::layer()
+                        .with_writer(std::io::stderr))
+                    .with(daemon_log_layer)
+                    .init();
+            }
+        }
+    }
+
     tracing::info!("Core Daemon starting");
+    if let Some(ref mode) = boot_mode {
+        tracing::info!("[Boot] Mode: {}", mode);
+    }
 
     // ── Integrity Check (무결성 검증) ──────────────────────────
     // 서버(GitHub)에서 매니페스트를 가져와 설치된 컴포넌트의 SHA256을 검증
@@ -58,7 +138,7 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|p| p.parse::<u16>().ok())
         .unwrap_or(constants::DEFAULT_IPC_PORT);
     let ipc_addr = format!("127.0.0.1:{}", ipc_port);
-    let ipc_server = ipc::IPCServer::new(supervisor.clone(), &ipc_addr);
+    let ipc_server = ipc::IPCServer::new(supervisor.clone(), &ipc_addr, daemon_log_buffer.clone());
 
     // Supervisor에 ExtensionManager 연결
     {
@@ -115,6 +195,19 @@ async fn main() -> anyhow::Result<()> {
                         init_tracker.mark_finished(&ext_id, false, &e.to_string()).await;
                     }
                 }
+            }
+        });
+    }
+
+    // ── Discord Bot auto-start (데몬 기동 시 자동 실행) ──────────
+    // bot-config.json의 autoStart 플래그가 true이면 데몬이 직접 봇을 시작합니다.
+    // GUI 없이 데몬만 실행해도 봇이 동작하도록 보장합니다.
+    {
+        let ext_mgr = ipc_server.ext_process_manager.clone();
+        let ipc_port_for_bot = ipc_port;
+        tokio::spawn(async move {
+            if let Err(e) = auto_start_discord_bot(ext_mgr, ipc_port_for_bot).await {
+                tracing::warn!("[Bot AutoStart] {}", e);
             }
         });
     }
@@ -190,6 +283,19 @@ async fn main() -> anyhow::Result<()> {
     //   1. 15초 대기 (자연 재접속 기회)
     //   2. GUI → CLI 순으로 재기동 시도  
     //   3. 재기동 후 60초 내 재접속 없으면 코어 데몬 자체 종료
+    //
+    // ⚠️ daemon-only 모드에서는 렌더러가 없으므로 watchdog를 건너뜀
+    //    → 메모리 절약 및 불필요한 자살 방지
+    if daemon_only {
+        tracing::info!("[DaemonOnly] Renderer watchdog disabled (no renderer expected)");
+        // 데몬 온리 모드: 터미널 폴링 루프 시작 — 데몬 로그 + 프로세스 콘솔을 stderr에 표시
+        let term_buf = daemon_log_buffer.clone();
+        let term_sup = supervisor.clone();
+        let term_cancel = shutdown_token.clone();
+        tokio::spawn(async move {
+            daemon_log::daemon_terminal_loop(term_buf, term_sup, term_cancel).await;
+        });
+    } else {
     let registry_watchdog = client_registry.clone();
     let watchdog_cancel = shutdown_token.clone();
     tokio::spawn(async move {
@@ -284,10 +390,12 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     });
+    } // end of `if !daemon_only` — watchdog block
 
     // Graceful shutdown: Ctrl+C / SIGTERM 시 정리
     let registry_shutdown = client_registry.clone();
     let supervisor_shutdown = supervisor.clone();
+    let ext_process_shutdown = ipc_server.ext_process_manager.clone();
     let ctrl_c_cancel = shutdown_token.clone();
     tokio::spawn(async move {
         tokio::signal::ctrl_c().await.ok();
@@ -336,11 +444,79 @@ async fn main() -> anyhow::Result<()> {
             }
         }
 
+        // 3. ExtProcessManager의 모든 실행 중 프로세스 정리
+        //    daemon-only 모드에서는 클라이언트가 없어 2번이 무효하므로,
+        //    ExtProcessManager를 통해 직접 시작된 봇 등을 반드시 정리
+        {
+            let mut mgr = ext_process_shutdown.lock().await;
+            mgr.shutdown_all().await;
+        }
+
         tracing::info!("Cleanup complete, signaling shutdown");
         // CancellationToken으로 모든 태스크에 종료 전파 (IPC 서버 포함)
         ctrl_c_cancel.cancel();
     });
-    
+
+    // ── Interface Spawn (부트 선택기 모드에 따른 인터페이스 기동) ──
+    // IPC 서버가 바인드된 후 인터페이스를 스폰하기 위해 백그라운드 태스크 사용.
+    // IPC 포트 연결 가능 확인 후 스폰 → GUI/CLI의 기존 데몬 감지 로직과 연동.
+    if let Some(mode) = boot_mode {
+        let port = ipc_port;
+        tokio::spawn(async move {
+            // IPC 서버가 리스닝을 시작할 때까지 대기
+            let ready = boot_selector::wait_for_ipc_port(
+                port,
+                std::time::Duration::from_secs(15),
+            )
+            .await;
+
+            if !ready {
+                eprintln!("[Boot] IPC server failed to start within timeout");
+                tracing::error!("[Boot] IPC server did not become ready in 15s");
+                return;
+            }
+
+            match mode {
+                boot_selector::BootMode::Gui => {
+                    // GUI 스폰 시도 — 성공한 경우에만 콘솔 숨김
+                    match boot_selector::spawn_gui() {
+                        Ok(()) => {
+                            tracing::info!("[Boot] GUI process launched, hiding console");
+                            boot_selector::hide_console_window();
+                        }
+                        Err(e) => {
+                            tracing::error!("[Boot] Failed to launch GUI: {}", e);
+                            boot_selector::clear_for_daemon_only(port);
+                        }
+                    }
+                }
+                boot_selector::BootMode::Cli => {
+                    // CLI를 현재 콘솔에 마운트
+                    match boot_selector::spawn_cli() {
+                        Ok(mut child) => {
+                            tracing::info!("[Boot] CLI process launched");
+                            // CLI 종료를 백그라운드에서 대기
+                            let _ = tokio::task::spawn_blocking(move || {
+                                let _ = child.wait();
+                                eprintln!();
+                                eprintln!("CLI exited. Daemon still running. Press Ctrl+C to shut down.");
+                            })
+                            .await;
+                        }
+                        Err(e) => {
+                            tracing::error!("[Boot] Failed to launch CLI: {}", e);
+                            boot_selector::clear_for_daemon_only(port);
+                        }
+                    }
+                }
+                boot_selector::BootMode::DaemonOnly => {
+                    tracing::info!("[Boot] Daemon-only mode — no interface spawned");
+                    boot_selector::clear_for_daemon_only(port);
+                }
+            }
+        });
+    }
+
     // IPC 서버 시작 — shutdown_token.cancel() 시 graceful shutdown
     if let Err(e) = ipc_server.start().await {
         tracing::error!("IPC server error: {}", e);
@@ -481,6 +657,149 @@ async fn run_integrity_check_on_startup() {
 /// 무결성 검증용 업데이터 설정 로드 (하드코딩 기본값)
 fn load_updater_config_for_integrity() -> saba_chan_updater_lib::UpdateConfig {
     saba_chan_updater_lib::UpdateConfig::default()
+}
+
+/// 데몬 기동 시 Discord 봇 자동 시작
+///
+/// bot-config.json에서 `autoStart: true`인 경우:
+/// 1. Node.js 경로 해석 (포터블 → 시스템 폴백)
+/// 2. 봇 디렉토리 확인
+/// 3. 환경변수 구성 (IPC_BASE, DISCORD_TOKEN 등)
+/// 4. ext-process 매니저를 통해 프로세스 시작
+async fn auto_start_discord_bot(
+    ext_mgr: ipc::handlers::ext_process::SharedExtProcessManager,
+    ipc_port: u16,
+) -> anyhow::Result<()> {
+    use saba_chan_updater_lib::constants;
+    use std::collections::HashMap;
+
+    // 1. bot-config.json 읽기
+    let bot_config_path = constants::resolve_bot_config_path();
+    let bot_config: serde_json::Value = match std::fs::read_to_string(&bot_config_path) {
+        Ok(content) => serde_json::from_str(&content)
+            .map_err(|e| anyhow::anyhow!("Failed to parse bot-config.json: {}", e))?,
+        Err(_) => {
+            tracing::debug!("[Bot AutoStart] bot-config.json not found, skipping");
+            return Ok(());
+        }
+    };
+
+    // 2. autoStart 플래그 확인
+    let auto_start = bot_config.get("autoStart").and_then(|v| v.as_bool()).unwrap_or(false);
+    if !auto_start {
+        tracing::debug!("[Bot AutoStart] autoStart is false, skipping");
+        return Ok(());
+    }
+
+    let mode = bot_config.get("mode").and_then(|v| v.as_str()).unwrap_or("local");
+
+    // 3. 토큰 확인 (로컬 모드만)
+    let token = bot_config.get("token").and_then(|v| v.as_str()).unwrap_or("");
+    if mode == "local" && token.is_empty() {
+        tracing::debug!("[Bot AutoStart] Local mode but no token in bot-config, skipping");
+        return Ok(());
+    }
+
+    // 4. prefix 확인
+    let prefix = bot_config.get("prefix").and_then(|v| v.as_str()).unwrap_or("!saba");
+    if prefix.is_empty() {
+        tracing::debug!("[Bot AutoStart] No prefix set, skipping");
+        return Ok(());
+    }
+
+    // 5. Node.js 경로 해석
+    let node_path = match node_env::find_or_bootstrap().await {
+        Ok(p) => p,
+        Err(e) => {
+            return Err(anyhow::anyhow!("Failed to resolve Node.js: {}", e));
+        }
+    };
+
+    // 6. 봇 디렉토리 확인 — 상대 경로를 절대 경로로 변환
+    let bot_dir = {
+        let raw = constants::resolve_discord_bot_dir();
+        if raw.is_relative() {
+            std::env::current_dir().unwrap_or_default().join(&raw)
+        } else {
+            raw
+        }
+    };
+    let index_js = bot_dir.join("index.js");
+    if !index_js.exists() {
+        return Err(anyhow::anyhow!(
+            "discord_bot/index.js not found at {}",
+            index_js.display()
+        ));
+    }
+
+    // 7. 환경변수 구성
+    let ipc_base = format!("http://127.0.0.1:{}", ipc_port);
+    let mut env_vars: HashMap<String, String> = HashMap::new();
+    env_vars.insert("IPC_BASE".into(), ipc_base);
+    env_vars.insert("BOT_CONFIG_PATH".into(),
+        bot_config_path.to_string_lossy().to_string());
+    env_vars.insert("SABA_EXTENSIONS_DIR".into(),
+        constants::resolve_extensions_dir().to_string_lossy().to_string());
+
+    // 언어 설정: settings.json에서 language 읽기
+    let lang = read_language_from_settings().unwrap_or_else(|| "en".into());
+    env_vars.insert("SABA_LANG".into(), lang);
+
+    if mode == "cloud" {
+        // 클라우드 모드: relay URL + node token
+        let relay_url = bot_config
+            .get("cloud")
+            .and_then(|c| c.get("relayUrl"))
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .unwrap_or("https://saba-chan.online")
+            .trim_end_matches('/');
+        env_vars.insert("RELAY_URL".into(), relay_url.to_string());
+
+        // node token 읽기
+        let data_dir = constants::resolve_data_dir();
+        let node_token_path = data_dir.join(".node_token");
+        let node_token = std::fs::read_to_string(&node_token_path)
+            .map(|t| t.trim().to_string())
+            .unwrap_or_default();
+        if node_token.is_empty() {
+            return Err(anyhow::anyhow!("Cloud mode but no node token found"));
+        }
+        env_vars.insert("RELAY_NODE_TOKEN".into(), node_token);
+    } else {
+        env_vars.insert("DISCORD_TOKEN".into(), token.to_string());
+    }
+
+    // 8. ext-process 시작 요청 구성
+    let start_req = ipc::handlers::ext_process::StartProcessRequest {
+        command: node_path.to_string_lossy().to_string(),
+        args: vec![index_js.to_string_lossy().to_string()],
+        cwd: Some(bot_dir.to_string_lossy().to_string()),
+        env: env_vars,
+        meta: serde_json::json!({ "mode": mode, "autoStarted": true }),
+    };
+
+    tracing::info!("[Bot AutoStart] Starting Discord bot (mode: {})", mode);
+    match ipc::handlers::ext_process::start_process_internal(
+        &ext_mgr,
+        "discord-bot".into(),
+        start_req,
+    ).await {
+        Ok(pid) => {
+            tracing::info!("[Bot AutoStart] Discord bot started (PID: {})", pid);
+            Ok(())
+        }
+        Err(e) => Err(anyhow::anyhow!("Failed to start Discord bot: {}", e)),
+    }
+}
+
+/// settings.json에서 language 필드를 읽어옵니다.
+fn read_language_from_settings() -> Option<String> {
+    let path = saba_chan_updater_lib::constants::resolve_settings_path();
+    let content = std::fs::read_to_string(&path).ok()?;
+    let content = content.strip_prefix('\u{feff}').unwrap_or(&content);
+    let val: serde_json::Value = serde_json::from_str(content).ok()?;
+    val.get("language").and_then(|v| v.as_str()).map(|s| s.to_string())
 }
 
 

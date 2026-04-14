@@ -16,12 +16,13 @@ async fn reload_ext_slots(client: &DaemonClient, buf: &OutputBuf) {
 // 메인 익스텐션 메뉴
 // ═══════════════════════════════════════════════════════
 
-pub(super) fn build_extensions_menu(_app: &App) -> Vec<MenuItem> {
+pub(super) fn build_extensions_menu(app: &App) -> Vec<MenuItem> {
+    let t = |k| app.i18n.t(k);
     vec![
-        MenuItem::new("📦 Installed Extensions", Some('i'), "설치된 익스텐션 목록"),
-        MenuItem::new("🌐 Extension Manifest", Some('r'), "원격 매니페스트에서 익스텐션 검색"),
-        MenuItem::new("🔄 Check Updates", Some('u'), "익스텐션 업데이트 확인"),
-        MenuItem::new("🔍 Rescan Extensions", Some('s'), "익스텐션 디렉토리 재스캔"),
+        MenuItem::new(&format!("📦 {}", t("screen.ext_installed")), Some('i'), &t("screen.ext_installed")),
+        MenuItem::new(&format!("🌐 {}", t("screen.ext_manifest")), Some('r'), &t("screen.ext_manifest")),
+        MenuItem::new(&format!("🔄 {}", t("screen.ext_check_updates")), Some('u'), &t("screen.ext_check_updates")),
+        MenuItem::new(&format!("🔍 {}", t("screen.ext_rescan")), Some('s'), &t("screen.ext_rescan")),
     ]
 }
 
@@ -194,6 +195,7 @@ pub(super) fn handle_extension_list_select(app: &mut App, sel: usize) {
 // ═══════════════════════════════════════════════════════
 
 pub(super) fn build_extension_detail_menu(app: &App, ext_id: &str) -> Vec<MenuItem> {
+    let t = |k| app.i18n.t(k);
     let is_enabled = app.cached_extensions.iter()
         .find(|e| e.id == ext_id)
         .map(|e| e.enabled)
@@ -201,11 +203,12 @@ pub(super) fn build_extension_detail_menu(app: &App, ext_id: &str) -> Vec<MenuIt
 
     vec![
         if is_enabled {
-            MenuItem::new("○ Disable", Some('d'), "익스텐션 비활성화")
+            MenuItem::new(&format!("○ {}", t("screen.ext_disable")), Some('d'), &t("screen.ext_disable"))
         } else {
-            MenuItem::new("✓ Enable", Some('e'), "익스텐션 활성화")
+            MenuItem::new(&format!("✓ {}", t("screen.ext_enable")), Some('e'), &t("screen.ext_enable"))
         },
-        MenuItem::new("🗑 Remove", Some('D'), "익스텐션 삭제"),
+        MenuItem::new(&format!("🔧 {}", t("screen.ext_config")), Some('c'), &t("screen.ext_config")),
+        MenuItem::new(&format!("🗑 {}", t("screen.ext_remove")), Some('D'), &t("screen.ext_remove")),
     ]
 }
 
@@ -258,7 +261,40 @@ pub(super) fn handle_extension_detail_select(app: &mut App, sel: usize, ext_id: 
                 app.flash("활성화 중...");
             }
         }
-        1 => { // Remove
+        1 => { // Config → 조회 후 편집 InlineInput
+            let ext_id_c = ext_id.clone();
+            let ext_id_edit = ext_id.clone();
+            tokio::spawn(async move {
+                match client.get_extension_config(&ext_id_c).await {
+                    Ok(config) => {
+                        let mut lines = vec![Out::Ok(format!("=== Extension Config: {} ===", ext_id_c))];
+                        if let Some(obj) = config.as_object() {
+                            if obj.is_empty() {
+                                lines.push(Out::Text("  (no config)".into()));
+                            } else {
+                                for (k, v) in obj {
+                                    lines.push(Out::Text(format!("  {} = {}", k, v)));
+                                }
+                            }
+                        } else {
+                            lines.push(Out::Text(format!("  {}", config)));
+                        }
+                        lines.push(Out::Blank);
+                        lines.push(Out::Info("Edit: select 'Config' again and enter key=value".into()));
+                        push_out(&buf, lines);
+                    }
+                    Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
+                }
+            });
+            // 키=값 편집용 InlineInput
+            app.input_mode = InputMode::InlineInput {
+                prompt: format!("{} config (key=value, 빈 값은 조회만)", ext_id_edit),
+                value: String::new(),
+                cursor: 0,
+                on_submit: InlineAction::Custom(format!("EXT_CONFIG:{}", ext_id)),
+            };
+        }
+        2 => { // Remove
             app.input_mode = InputMode::Confirm {
                 prompt: format!("Remove extension '{}'?", ext_id),
                 action: ConfirmAction::RemoveExtension(ext_id),

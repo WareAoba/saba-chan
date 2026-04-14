@@ -24,7 +24,7 @@ use tokio::sync::mpsc;
 
 use app::*;
 use crate::client::DaemonClient;
-use crate::gui_config;
+use crate::config;
 use crate::process;
 
 // ═══════════════════════════════════════════════════════
@@ -64,8 +64,8 @@ pub async fn run(client: DaemonClient) -> anyhow::Result<()> {
             loop {
                 let daemon = tokio::task::spawn_blocking(process::check_daemon_running).await.unwrap_or(false);
                 let bot = tokio::task::spawn_blocking(process::check_bot_running).await.unwrap_or(false);
-                let token = gui_config::get_discord_token().ok().flatten().is_some();
-                let prefix = gui_config::get_bot_prefix().unwrap_or_else(|_| "!saba".into());
+                let token = config::get_discord_token().ok().flatten().is_some();
+                let prefix = config::get_bot_prefix().unwrap_or_else(|_| "!saba".into());
                 let mut servers = Vec::new();
                 if daemon {
                     if let Ok(list) = client.list_servers().await {
@@ -126,7 +126,7 @@ pub async fn run(client: DaemonClient) -> anyhow::Result<()> {
                 }
             }
             let bot_running = tokio::task::spawn_blocking(process::check_bot_running).await.unwrap_or(false);
-            let auto_bot = gui_config::get_discord_auto_start().unwrap_or(false);
+            let auto_bot = config::get_discord_auto_start().unwrap_or(false);
             if !bot_running && auto_bot {
                 tokio::time::sleep(Duration::from_secs(2)).await;
                 match tokio::task::spawn_blocking(process::start_bot).await {
@@ -175,6 +175,73 @@ pub async fn run(client: DaemonClient) -> anyhow::Result<()> {
         app.menu_items = screens::build_menu(&app);
         if app.menu_selected >= app.menu_items.len() && !app.menu_items.is_empty() {
             app.menu_selected = app.menu_items.len() - 1;
+        }
+
+        // --- 콘솔 자동 새로고침 ---
+        if let Screen::ServerConsole { ref id, .. } = app.screen {
+            let should_refresh = app.last_console_refresh
+                .map(|t| t.elapsed() >= Duration::from_secs(2))
+                .unwrap_or(true);
+            if should_refresh && !id.is_empty() {
+                let iid = id.clone();
+                let client = client.clone();
+                let buf = app.async_out.clone();
+                let existing_count = app.console_lines.len();
+                tokio::spawn(async move {
+                    if let Ok(data) = client.get_console(&iid).await {
+                        let new_lines: Vec<String> = if let Some(lines) = data.get("lines").and_then(|v| v.as_array()) {
+                            lines.iter().map(|l| l.as_str().unwrap_or("").to_string()).collect()
+                        } else if let Some(output) = data.get("output").and_then(|v| v.as_str()) {
+                            output.lines().map(|l| l.to_string()).collect()
+                        } else {
+                            vec![]
+                        };
+                        // 새 라인만 전송 (기존보다 더 많은 라인이 있으면)
+                        if new_lines.len() > existing_count {
+                            let fresh = &new_lines[existing_count..];
+                            let out: Vec<Out> = fresh.iter()
+                                .map(|l| Out::Text(format!("CONSOLE_LINE:{}", l)))
+                                .collect();
+                            push_out(&buf, out);
+                        }
+                    }
+                });
+                app.last_console_refresh = Some(Instant::now());
+            }
+        } else {
+            app.last_console_refresh = None;
+        }
+
+        // --- 데몬 로그 스트리밍 (콘솔 모드에서 모든 컴포넌트 로그 표시) ---
+        if matches!(app.screen, Screen::CommandMode) && app.daemon_on {
+            let should_fetch = app.last_daemon_log_fetch
+                .map(|t| t.elapsed() >= Duration::from_secs(1))
+                .unwrap_or(true);
+            if should_fetch {
+                let since_id = app.last_daemon_log_id;
+                let client = client.clone();
+                let buf = app.async_out.clone();
+                tokio::spawn(async move {
+                    if let Ok(data) = client.get_daemon_console(Some(since_id), Some(50)).await {
+                        if let Some(lines) = data.get("lines").and_then(|v| v.as_array()) {
+                            let out: Vec<Out> = lines.iter().filter_map(|entry| {
+                                let id = entry.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
+                                let level = entry.get("level").and_then(|v| v.as_str()).unwrap_or("info");
+                                let target = entry.get("target").and_then(|v| v.as_str()).unwrap_or("");
+                                let msg = entry.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                                if msg.is_empty() { return None; }
+                                Some(Out::Text(format!("DAEMON_LOG:{}:{}:{}: {}", id, level, target, msg)))
+                            }).collect();
+                            if !out.is_empty() {
+                                push_out(&buf, out);
+                            }
+                        }
+                    }
+                });
+                app.last_daemon_log_fetch = Some(Instant::now());
+            }
+        } else {
+            app.last_daemon_log_fetch = None;
         }
 
         // --- 렌더링 ---
@@ -227,6 +294,14 @@ pub async fn run(client: DaemonClient) -> anyhow::Result<()> {
     let maybe_id = app.client_id.lock().unwrap().take();
     if let Some(id) = maybe_id {
         let _ = client.unregister_client(&id).await;
+    }
+
+    // 봇 + 데몬 정지 (exit 명령과 동일한 정리)
+    if process::check_bot_running() {
+        let _ = tokio::task::spawn_blocking(process::stop_bot).await;
+    }
+    if process::check_daemon_running() {
+        let _ = tokio::task::spawn_blocking(process::stop_daemon).await;
     }
 
     // 백그라운드 태스크(상태 폴링, 하트비트 등)가 남아있으면
@@ -675,15 +750,15 @@ fn execute_inline_action(app: &mut App, action: InlineAction, value: &str) {
         }
         InlineAction::SetGuiSetting { key } => {
             let result = match key.as_str() {
-                "language" => gui_config::set_language(value),
+                "language" => config::set_language(value),
                 "ipc_port" => value.parse::<u16>().ok()
-                    .map(gui_config::set_ipc_port)
+                    .map(config::set_ipc_port)
                     .unwrap_or_else(|| Err(anyhow::anyhow!("Invalid port"))),
                 "refresh_interval" => value.parse::<u64>().ok()
-                    .map(gui_config::set_refresh_interval)
+                    .map(config::set_refresh_interval)
                     .unwrap_or_else(|| Err(anyhow::anyhow!("Invalid interval"))),
                 "console_buffer" => value.parse::<u64>().ok()
-                    .map(gui_config::set_console_buffer_size)
+                    .map(config::set_console_buffer_size)
                     .unwrap_or_else(|| Err(anyhow::anyhow!("Invalid number"))),
                 _ => Err(anyhow::anyhow!("Unknown key")),
             };
@@ -694,19 +769,19 @@ fn execute_inline_action(app: &mut App, action: InlineAction, value: &str) {
         }
         InlineAction::SetBotToken => {
             if value.trim().is_empty() {
-                match gui_config::clear_discord_token() {
+                match config::clear_discord_token() {
                     Ok(()) => app.flash("✓ Discord token cleared"),
                     Err(e) => app.flash(&format!("✗ {}", e)),
                 }
             } else {
-                match gui_config::set_discord_token(value) {
+                match config::set_discord_token(value) {
                     Ok(()) => app.flash("✓ Discord token saved"),
                     Err(e) => app.flash(&format!("✗ {}", e)),
                 }
             }
         }
         InlineAction::SetBotPrefix => {
-            match gui_config::set_bot_prefix(value) {
+            match config::set_bot_prefix(value) {
                 Ok(()) => {
                     app.bot_prefix = value.to_string();
                     app.flash(&format!("✓ Prefix: {}", value));
@@ -715,52 +790,48 @@ fn execute_inline_action(app: &mut App, action: InlineAction, value: &str) {
             }
         }
         InlineAction::SetBotMode => {
-            let mut config = gui_config::load_bot_config().unwrap_or_default();
+            let mut config = config::load_bot_config().unwrap_or_default();
             config["mode"] = serde_json::Value::String(value.to_string());
-            let path = gui_config::get_bot_config_path_pub();
-            match app::save_json_file(&path, &config) {
+            match config::save_bot_config(&config) {
                 Ok(()) => app.flash(&format!("✓ Bot mode: {}", value)),
                 Err(e) => app.flash(&format!("✗ {}", e)),
             }
         }
         InlineAction::SetBotMusic => {
             let enabled = value == "ON" || value == "true" || value == "enabled";
-            let mut config = gui_config::load_bot_config().unwrap_or_default();
+            let mut config = config::load_bot_config().unwrap_or_default();
             config["musicEnabled"] = serde_json::Value::Bool(enabled);
-            let path = gui_config::get_bot_config_path_pub();
-            match app::save_json_file(&path, &config) {
+            match config::save_bot_config(&config) {
                 Ok(()) => app.flash(&format!("✓ Music bot: {}", if enabled { "ON" } else { "OFF" })),
                 Err(e) => app.flash(&format!("✗ {}", e)),
             }
         }
         InlineAction::SetBotRelayUrl => {
-            let mut config = gui_config::load_bot_config().unwrap_or_default();
+            let mut config = config::load_bot_config().unwrap_or_default();
             if config.get("cloud").is_none() { config["cloud"] = serde_json::json!({}); }
             config["cloud"]["relayUrl"] = serde_json::Value::String(value.to_string());
-            let path = gui_config::get_bot_config_path_pub();
-            match app::save_json_file(&path, &config) {
+            match config::save_bot_config(&config) {
                 Ok(()) => app.flash(&format!("✓ Relay URL: {}", value)),
                 Err(e) => app.flash(&format!("✗ {}", e)),
             }
         }
         InlineAction::SetBotRelayHostId => {
-            let mut config = gui_config::load_bot_config().unwrap_or_default();
+            let mut config = config::load_bot_config().unwrap_or_default();
             if config.get("cloud").is_none() { config["cloud"] = serde_json::json!({}); }
             config["cloud"]["hostId"] = serde_json::Value::String(value.to_string());
-            let path = gui_config::get_bot_config_path_pub();
-            match app::save_json_file(&path, &config) {
+            match config::save_bot_config(&config) {
                 Ok(()) => app.flash(&format!("✓ Host ID: {}", value)),
                 Err(e) => app.flash(&format!("✗ {}", e)),
             }
         }
         InlineAction::SetBotNodeToken => {
             if value.trim().is_empty() {
-                match gui_config::clear_node_token() {
+                match config::clear_node_token() {
                     Ok(()) => app.flash("✓ Node token cleared"),
                     Err(e) => app.flash(&format!("✗ {}", e)),
                 }
             } else {
-                match gui_config::save_node_token(value.trim()) {
+                match config::save_node_token(value.trim()) {
                     Ok(()) => app.flash("✓ Node token saved"),
                     Err(e) => app.flash(&format!("✗ {}", e)),
                 }
@@ -780,6 +851,30 @@ fn execute_inline_action(app: &mut App, action: InlineAction, value: &str) {
                 }
             });
             app.flash("명령 실행 중...");
+        }
+        InlineAction::RconCommand { instance_name } => {
+            let cmd = value.trim().to_string();
+            if cmd.is_empty() { return; }
+            let client = app.client.clone();
+            let buf = app.async_out.clone();
+            let name = instance_name.clone();
+            tokio::spawn(async move {
+                let iid = screens::find_instance_id(&client, &name).await;
+                if let Some(iid) = iid {
+                    match client.execute_rcon_command(&iid, &cmd).await {
+                        Ok(r) => {
+                            let response = r.get("response").and_then(|v| v.as_str())
+                                .or_else(|| r.get("message").and_then(|v| v.as_str()))
+                                .unwrap_or("OK");
+                            push_out(&buf, vec![Out::Ok(format!("RCON> {}", response))]);
+                        }
+                        Err(e) => push_out(&buf, vec![Out::Err(format!("✗ RCON: {}", e))]),
+                    }
+                } else {
+                    push_out(&buf, vec![Out::Err(format!("✗ Instance '{}' not found", name))]);
+                }
+            });
+            app.flash("RCON 명령 실행 중...");
         }
         InlineAction::InstallModule { module_name } => {
             let version = value.to_string();
@@ -819,7 +914,90 @@ fn execute_inline_action(app: &mut App, action: InlineAction, value: &str) {
                 app.flash("형식: key=value");
             }
         }
-        InlineAction::Custom(_) => {}
+        InlineAction::Custom(ref tag) => {
+            if let Some(ext_id) = tag.strip_prefix("EXT_CONFIG:") {
+                // key=value 형식이면 저장, 비어있으면 조회만 (이미 비동기로 출력됨)
+                if !value.is_empty() {
+                    if let Some((k, v)) = value.split_once('=') {
+                        let ext_id = ext_id.to_string();
+                        let key = k.trim().to_string();
+                        let val = v.trim().to_string();
+                        let client = app.client.clone();
+                        let buf = app.async_out.clone();
+                        tokio::spawn(async move {
+                            // 기존 config를 가져와서 키 업데이트
+                            let mut config = match client.get_extension_config(&ext_id).await {
+                                Ok(c) => c,
+                                Err(e) => {
+                                    push_out(&buf, vec![Out::Err(format!("✗ {}", e))]);
+                                    return;
+                                }
+                            };
+                            // JSON 값 파싱 시도 (숫자, bool 등)
+                            let json_val = if val == "true" {
+                                serde_json::Value::Bool(true)
+                            } else if val == "false" {
+                                serde_json::Value::Bool(false)
+                            } else if let Ok(n) = val.parse::<i64>() {
+                                serde_json::json!(n)
+                            } else {
+                                serde_json::Value::String(val.clone())
+                            };
+                            config[&key] = json_val;
+                            match client.save_extension_config(&ext_id, config).await {
+                                Ok(_) => push_out(&buf, vec![Out::Ok(format!("✓ {} = {}", key, val))]),
+                                Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
+                            }
+                        });
+                        app.flash("설정 저장 중...");
+                    } else {
+                        app.flash("형식: key=value");
+                    }
+                }
+            } else if tag == "BOT_MODULE_ALIAS" {
+                // 형식: "module alias1,alias2"
+                if let Some((module, aliases_str)) = value.split_once(' ') {
+                    let module = module.trim().to_string();
+                    let aliases = aliases_str.trim().to_string();
+                    let mut bot_config = config::load_bot_config().unwrap_or_default();
+                    if bot_config.get("moduleAliases").is_none() {
+                        bot_config["moduleAliases"] = serde_json::json!({});
+                    }
+                    bot_config["moduleAliases"][&module] = serde_json::Value::String(aliases.clone());
+                    match config::save_bot_config(&bot_config) {
+                        Ok(()) => app.flash(&format!("✓ {} → {}", module, aliases)),
+                        Err(e) => app.flash(&format!("✗ {}", e)),
+                    }
+                } else {
+                    app.flash("형식: module alias1,alias2");
+                }
+            } else if tag == "BOT_CMD_ALIAS" {
+                // 형식: "module.command alias1,alias2"
+                if let Some((target, aliases_str)) = value.split_once(' ') {
+                    if let Some((module, cmd)) = target.split_once('.') {
+                        let module = module.trim().to_string();
+                        let cmd = cmd.trim().to_string();
+                        let aliases = aliases_str.trim().to_string();
+                        let mut bot_config = config::load_bot_config().unwrap_or_default();
+                        if bot_config.get("commandAliases").is_none() {
+                            bot_config["commandAliases"] = serde_json::json!({});
+                        }
+                        if bot_config["commandAliases"].get(&module).is_none() {
+                            bot_config["commandAliases"][&module] = serde_json::json!({});
+                        }
+                        bot_config["commandAliases"][&module][&cmd] = serde_json::Value::String(aliases.clone());
+                        match config::save_bot_config(&bot_config) {
+                            Ok(()) => app.flash(&format!("✓ {}.{} → {}", module, cmd, aliases)),
+                            Err(e) => app.flash(&format!("✗ {}", e)),
+                        }
+                    } else {
+                        app.flash("형식: module.command alias1,alias2");
+                    }
+                } else {
+                    app.flash("형식: module.command alias1,alias2");
+                }
+            }
+        }
     }
 }
 
@@ -870,6 +1048,37 @@ fn flush_async_with_fields(app: &mut App) {
                     // 콘솔 라인은 최대 500줄 유지
                     if app.console_lines.len() > 500 {
                         app.console_lines.drain(..app.console_lines.len() - 500);
+                    }
+                } else if let Some(stripped) = text.strip_prefix("DAEMON_LOG:") {
+                    // DAEMON_LOG:<id>:<level>:<target>: <msg>
+                    let parts: Vec<&str> = stripped.splitn(4, ':').collect();
+                    if parts.len() >= 4 {
+                        if let Ok(id) = parts[0].parse::<u64>() {
+                            if id >= app.last_daemon_log_id {
+                                app.last_daemon_log_id = id + 1;
+                            }
+                        }
+                        let level = parts[1];
+                        let target = parts[2];
+                        let msg = parts[3].trim_start();
+                        let formatted = format!("[{}] {} {}", level.to_uppercase(), target, msg);
+                        match level {
+                            "error" => regular_lines.push(Out::Err(formatted)),
+                            "warn" => regular_lines.push(Out::Info(formatted)),
+                            _ => regular_lines.push(Out::Text(formatted)),
+                        }
+                    }
+                } else if let Some(stripped) = text.strip_prefix("VERSION_SELECT:") {
+                    // VERSION_SELECT:<module_name>:<v1>|<v2>|...
+                    if let Some((module_name, versions_str)) = stripped.split_once(':') {
+                        let mut options: Vec<String> = vec!["latest".to_string()];
+                        options.extend(versions_str.split('|').map(|s| s.to_string()));
+                        app.input_mode = InputMode::InlineSelect {
+                            prompt: format!("{} 설치 버전 선택", module_name),
+                            options,
+                            selected: 0,
+                            on_submit: InlineAction::InstallModule { module_name: module_name.to_string() },
+                        };
                     }
                 } else {
                     regular_lines.push(out);

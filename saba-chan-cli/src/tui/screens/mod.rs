@@ -23,6 +23,7 @@ use super::app::*;
 use super::theme::Theme;
 use super::render;
 use crate::client::DaemonClient;
+use crate::config;
 
 // ═══════════════════════════════════════════════════════
 // 메뉴 빌더 (화면별)
@@ -37,10 +38,10 @@ pub fn build_menu(app: &App) -> Vec<MenuItem> {
         Screen::ServerSettings { .. } | Screen::ServerProperties { .. } => vec![], // 에디터 사용
         Screen::ServerConsole { .. } => vec![], // 콘솔 사용
         Screen::Modules        => modules::build_modules_menu(app),
-        Screen::ModuleDetail { name } => modules::build_module_detail_menu(name),
+        Screen::ModuleDetail { name } => modules::build_module_detail_menu(app, name),
         Screen::ModuleManifest => extensions::build_module_manifest_menu(app),
         Screen::Bot            => bot::build_bot_menu(app),
-        Screen::BotAliases     => vec![], // 별도 처리
+        Screen::BotAliases     => bot::build_bot_aliases_menu(app),
         Screen::Settings       => settings::build_settings_menu(app),
         Screen::Updates        => updates::build_updates_menu(app),
         Screen::Daemon         => daemon::build_daemon_menu(app),
@@ -262,6 +263,7 @@ pub fn handle_menu_select(app: &mut App) {
         }
         Screen::ModuleManifest => extensions::handle_module_manifest_select(app, sel),
         Screen::Bot => bot::handle_bot_select(app, sel),
+        Screen::BotAliases => bot::handle_bot_aliases_select(app, sel),
         Screen::Settings => settings::handle_settings_select(app, sel),
         Screen::Updates => updates::handle_updates_select(app, sel),
         Screen::Daemon => daemon::handle_daemon_select(app, sel),
@@ -354,6 +356,32 @@ pub fn execute_confirm(app: &mut App, action: ConfirmAction) {
                 }
             });
             app.flash("모듈 설치 중...");
+        }
+        ConfirmAction::ApplyInstanceUpdate(instance_name) => {
+            tokio::spawn(async move {
+                let iid = find_instance_id(&client, &instance_name).await;
+                if let Some(iid) = iid {
+                    match client.apply_instance_update(&iid).await {
+                        Ok(r) => {
+                            let msg = r.get("message").and_then(|v| v.as_str()).unwrap_or("Update applied");
+                            push_out(&buf, vec![Out::Ok(format!("✓ {}: {}", instance_name, msg))]);
+                        }
+                        Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
+                    }
+                } else {
+                    push_out(&buf, vec![Out::Err(format!("✗ Instance '{}' not found", instance_name))]);
+                }
+            });
+            app.flash("업데이트 적용 중...");
+        }
+        ConfirmAction::Custom(tag) => {
+            if tag == "BOT_ALIAS_RESET" {
+                let mut config = config::load_bot_config().unwrap_or_default();
+                config["moduleAliases"] = serde_json::json!({});
+                config["commandAliases"] = serde_json::json!({});
+                let _ = config::save_bot_config(&config);
+                app.flash("✓ 모든 별명 초기화됨");
+            }
         }
     }
     app.input_mode = InputMode::Normal;

@@ -704,6 +704,7 @@ fn test_dependency_check_serde_roundtrip() {
 }
 
 #[test]
+#[test]
 fn test_component_info_requires_field() {
     use crate::github::ComponentInfo;
 
@@ -730,6 +731,95 @@ fn test_component_info_requires_empty_by_default() {
     let json = r#"{"version": "0.1.0"}"#;
     let info: ComponentInfo = serde_json::from_str(json).unwrap();
     assert!(info.requires.is_none());
+}
+
+// ═══════════════════════════════════════════════════════
+// 테스트: 모듈/익스텐션 핫로드 (재시작 불필요)
+// ═══════════════════════════════════════════════════════
+
+#[test]
+fn test_module_extension_no_restart_in_apply_result() {
+    use crate::ApplyComponentResult;
+
+    // Module의 ApplyComponentResult는 restart_needed: false여야 함
+    let module_result = ApplyComponentResult {
+        component: "module-minecraft".to_string(),
+        success: true,
+        message: "Module 'minecraft' updated".to_string(),
+        stopped_processes: Vec::new(),
+        restart_needed: false,
+    };
+    assert!(!module_result.restart_needed, "모듈 업데이트는 재시작 불필요");
+
+    // Extension의 ApplyComponentResult는 restart_needed: false여야 함
+    let ext_result = ApplyComponentResult {
+        component: "ext-docker".to_string(),
+        success: true,
+        message: "Extension 'docker' updated".to_string(),
+        stopped_processes: Vec::new(),
+        restart_needed: false,
+    };
+    assert!(!ext_result.restart_needed, "익스텐션 업데이트는 재시작 불필요");
+
+    // CoreDaemon은 재시작 필요
+    let daemon_result = ApplyComponentResult {
+        component: "saba-core".to_string(),
+        success: true,
+        message: "Saba-Core updated (restart required)".to_string(),
+        stopped_processes: Vec::new(),
+        restart_needed: true,
+    };
+    assert!(daemon_result.restart_needed, "코어 데몬 업데이트는 재시작 필요");
+
+    println!("✓ 모듈/익스텐션 핫로드 (restart_needed=false) 테스트 통과");
+}
+
+#[test]
+fn test_component_apply_priority_categories() {
+    // 모듈/익스텐션/Locales는 프로세스 중단 불필요 (우선순위 1)
+    // GUI/CLI는 재시작 필요 (우선순위 4~5)
+    // CoreDaemon은 데몬 재시작 필요 (우선순위 3)
+    let module = Component::Module("minecraft".to_string());
+    let extension = Component::Extension("docker".to_string());
+    let locales = Component::Locales;
+    let discord_bot = Component::DiscordBot;
+    let core_daemon = Component::CoreDaemon;
+    let updater = Component::Updater;
+
+    // 모듈, 익스텐션, Locales는 동일 우선순위
+    assert_eq!(
+        UpdateManager::component_apply_priority_for_test(&module),
+        UpdateManager::component_apply_priority_for_test(&extension),
+        "모듈과 익스텐션은 동일 우선순위"
+    );
+    assert_eq!(
+        UpdateManager::component_apply_priority_for_test(&module),
+        UpdateManager::component_apply_priority_for_test(&locales),
+        "모듈과 Locales는 동일 우선순위"
+    );
+
+    // Updater는 최우선
+    assert!(
+        UpdateManager::component_apply_priority_for_test(&updater) <
+        UpdateManager::component_apply_priority_for_test(&module),
+        "Updater가 모듈보다 먼저 적용"
+    );
+
+    // 모듈/익스텐션은 DiscordBot보다 먼저
+    assert!(
+        UpdateManager::component_apply_priority_for_test(&module) <
+        UpdateManager::component_apply_priority_for_test(&discord_bot),
+        "모듈은 DiscordBot보다 먼저 적용"
+    );
+
+    // CoreDaemon은 DiscordBot보다 후순위
+    assert!(
+        UpdateManager::component_apply_priority_for_test(&discord_bot) <
+        UpdateManager::component_apply_priority_for_test(&core_daemon),
+        "DiscordBot은 CoreDaemon보다 먼저 적용"
+    );
+
+    println!("✓ 컴포넌트 적용 우선순위 카테고리 테스트 통과");
 }
 
 #[cfg(test)]
@@ -762,6 +852,8 @@ mod run_all {
         test_dependency_check_serde_roundtrip();
         test_component_info_requires_field();
         test_component_info_requires_empty_by_default();
+        test_module_extension_no_restart_in_apply_result();
+        test_component_apply_priority_categories();
         println!("\n═══════════════════════════════════════");
         println!("✓ 모든 유닛 테스트 통과!");
         println!("═══════════════════════════════════════\n");

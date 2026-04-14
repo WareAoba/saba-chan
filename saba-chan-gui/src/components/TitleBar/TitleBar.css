@@ -62,6 +62,10 @@
     -webkit-app-region: no-drag;
 }
 
+.title-bar-btn:focus-visible {
+    outline: none;
+}
+
 .title-bar-btn:hover {
     background: var(--bg-surface-tertiary);
     color: var(--text-primary);

@@ -76,9 +76,7 @@ pub async fn find_or_bootstrap() -> Result<PathBuf> {
 
     // ── 시스템 Node.js ──
     if let Ok(cmd) = detect_system_node().await {
-        let path = PathBuf::from(&cmd);
-        tracing::info!("시스템 Node.js 사용: {}", cmd);
-        return Ok(path);
+        return Ok(PathBuf::from(&cmd));
     }
 
     // ── 자동 다운로드 ──
@@ -109,11 +107,6 @@ pub async fn detect_system_node() -> Result<String> {
                 if let Some((major, minor)) = parse_node_version(&ver) {
                     if (major, minor) >= MIN_NODE_VERSION {
                         tracing::info!("시스템 Node.js 발견: {} → {}", cmd_name, ver.trim());
-
-                        // which/where 로 절대 경로 얻기
-                        if let Ok(abs) = resolve_absolute_path(cmd_name).await {
-                            return Ok(abs);
-                        }
                         return Ok(cmd_name.to_string());
                     }
                     tracing::debug!(
@@ -511,34 +504,6 @@ fn node_exe_in(dir: &Path) -> PathBuf {
     {
         dir.join("bin").join("node")
     }
-}
-
-/// 명령어의 절대 경로를 얻습니다 (Windows: where, Unix: which)
-async fn resolve_absolute_path(cmd_name: &str) -> Result<String> {
-    #[cfg(target_os = "windows")]
-    let (tool, args) = ("where", vec![cmd_name]);
-    #[cfg(not(target_os = "windows"))]
-    let (tool, args) = ("which", vec![cmd_name]);
-
-    let mut cmd = Command::new(tool);
-    for a in &args {
-        cmd.arg(a);
-    }
-    apply_creation_flags(&mut cmd);
-
-    let output = cmd.output().await?;
-    if output.status.success() {
-        let out = String::from_utf8_lossy(&output.stdout);
-        // where는 여러 줄 반환 가능 → 첫 줄
-        if let Some(first) = out.lines().next() {
-            let p = first.trim();
-            if !p.is_empty() {
-                return Ok(p.to_string());
-            }
-        }
-    }
-
-    Err(anyhow::anyhow!("'{}' 절대경로 해석 실패", cmd_name))
 }
 
 /// 디렉토리에 쓰기 가능한지 확인

@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use crate::cli_config::CliSettings;
 use crate::client::DaemonClient;
-use crate::gui_config;
+use crate::config;
 use crate::i18n::I18n;
 use crate::module_registry::ModuleRegistry;
 
@@ -118,9 +118,11 @@ impl Screen {
             Self::ExtensionList  => vec!["saba-chan", "Extensions", "Installed"],
             Self::ExtensionDetail { .. } => vec!["saba-chan", "Extensions", "Detail"],
             Self::ExtensionManifest => vec!["saba-chan", "Extensions", "Manifest"],
-            Self::CommandMode    => vec!["saba-chan", "Command"],
+            Self::CommandMode    => vec!["saba-chan", "콘솔"],
+            // ★ 인스턴스 생성 위자드 (신규)
             Self::CreateInstanceStep1 => vec!["saba-chan", "Instances", "New", "Select Game"],
             Self::CreateInstanceStep2 { .. } => vec!["saba-chan", "Instances", "New", "Configure"],
+
         }
     }
 }
@@ -171,6 +173,7 @@ pub enum InlineAction {
     SetBotNodeToken,
     CreateInstance { module_name: String },
     ExecuteCommand { instance_id: String },
+    RconCommand { instance_name: String },
     InstallModule { module_name: String },
     UpdateSet,
     Custom(String),
@@ -186,6 +189,8 @@ pub enum ConfirmAction {
     InstallExtension(String), // ext_id
     RemoveModule(String),   // module_id
     InstallModuleFromManifest(String), // module_id
+    ApplyInstanceUpdate(String), // instance name
+    Custom(String),         // 범용 확인 액션
 }
 
 // ═══════════════════════════════════════════════════════
@@ -440,6 +445,7 @@ pub struct App {
     pub console_lines: Vec<String>,
     pub console_input: String,
     pub console_scroll: usize,
+    pub last_console_refresh: Option<std::time::Instant>,
 
     // ── 자동완성 상태 ──
     pub autocomplete_candidates: Vec<String>,
@@ -463,6 +469,10 @@ pub struct App {
     pub loading: Option<String>,
     pub status_message: Option<(String, std::time::Instant)>,
 
+    // ── 데몬 로그 스트리밍 ──
+    pub last_daemon_log_id: u64,
+    pub last_daemon_log_fetch: Option<std::time::Instant>,
+
     // ── 제어 ──
     pub quit: bool,
     pub async_out: OutputBuf,
@@ -474,14 +484,14 @@ impl App {
         let lang = settings.effective_language();
         let i18n = Arc::new(I18n::load(&lang));
 
-        let token_ok = gui_config::get_discord_token().ok().flatten().is_some();
+        let token_ok = config::get_discord_token().ok().flatten().is_some();
         let bot_prefix = if settings.bot_prefix.is_empty() {
-            gui_config::get_bot_prefix().unwrap_or_else(|_| "!saba".into())
+            config::get_bot_prefix().unwrap_or_else(|_| "!saba".into())
         } else {
             settings.bot_prefix.clone()
         };
 
-        let modules_path = gui_config::get_modules_path().unwrap_or_default();
+        let modules_path = config::get_modules_path().unwrap_or_default();
         let registry = Arc::new(ModuleRegistry::load(&modules_path));
         let welcome = i18n.t("welcome");
 
@@ -497,9 +507,9 @@ impl App {
             i18n,
             client_id: Arc::new(Mutex::new(None)),
 
-            screen: Screen::CommandMode,
+            screen: Screen::Dashboard,
             screen_stack: vec![],
-            input_mode: InputMode::Command,
+            input_mode: InputMode::Normal,
 
             menu_items: vec![],
             menu_selected: 0,
@@ -525,6 +535,7 @@ impl App {
             console_lines: vec![],
             console_input: String::new(),
             console_scroll: 0,
+            last_console_refresh: None,
 
             cached_instances: vec![],
             cached_modules: vec![],
@@ -539,6 +550,9 @@ impl App {
 
             loading: None,
             status_message: None,
+
+            last_daemon_log_id: 0,
+            last_daemon_log_fetch: None,
 
             quit: false,
             async_out: Arc::new(Mutex::new(Vec::new())),
@@ -776,14 +790,4 @@ pub fn format_uptime(start_time: Option<u64>) -> String {
         }
         None => "-".into(),
     }
-}
-
-/// JSON 파일 저장
-pub fn save_json_file(path: &std::path::PathBuf, data: &serde_json::Value) -> anyhow::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let content = serde_json::to_string_pretty(data)?;
-    std::fs::write(path, content)?;
-    Ok(())
 }

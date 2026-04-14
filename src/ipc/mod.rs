@@ -184,6 +184,7 @@ pub struct CommandResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct BotConfig {
     pub prefix: String,
     #[serde(default)]
@@ -276,6 +277,12 @@ pub struct ExtensionInfo {
     /// 설치 방식 정보 (download, steamcmd 등)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub install: Option<crate::supervisor::module_loader::ModuleInstallConfig>,
+    /// 모듈 별명 (Discord/CLI 다국어 지원)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub module_aliases: Vec<String>,
+    /// 명령어 별명
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub command_aliases: std::collections::HashMap<String, crate::supervisor::module_loader::CommandAliasInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -509,12 +516,19 @@ pub struct IPCServer {
     pub rcon_pool: Arc<crate::protocol::rcon_pool::RconPool>,
     /// Graceful shutdown 토큰 — 취소 시 데몬 전체 종료
     pub shutdown_token: tokio_util::sync::CancellationToken,
+    /// 범용 익스텐션 프로세스 매니저 (이름 기반 다중 프로세스 관리)
+    pub ext_process_manager: handlers::ext_process::SharedExtProcessManager,
+    /// 중앙 설정 저장소 (타입 안전 JSON 관리)
+    pub config_store: Arc<crate::config_store::ConfigStore>,
+    /// 데몬 자체 로그 버퍼 (tracing 이벤트 캡처)
+    pub daemon_log_buffer: crate::daemon_log::DaemonLogBuffer,
 }
 
 impl IPCServer {
     pub fn new(
         supervisor: Arc<RwLock<crate::supervisor::Supervisor>>,
         listen_addr: &str,
+        daemon_log_buffer: crate::daemon_log::DaemonLogBuffer,
     ) -> Self {
         // ExtensionManager 초기화
         let extensions_dir = crate::plugin::resolve_extensions_dir();
@@ -525,18 +539,30 @@ impl IPCServer {
             tracing::warn!("Failed to discover extensions: {}", e);
         }
 
+        let extension_manager = Arc::new(RwLock::new(ext_mgr));
+
+        // ConfigStore 초기화 (기존 JSON 파일에서 로드)
+        let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
+        let config_store = Arc::new(crate::config_store::ConfigStore::new(&data_dir));
+
         Self {
-            supervisor,
+            supervisor: supervisor.clone(),
             listen_addr: listen_addr.to_string(),
             client_registry: ClientRegistry::new(),
-            update_state: UpdateState::new(),
+            update_state: UpdateState::new().with_hot_reload(
+                supervisor,
+                extension_manager.clone(),
+            ),
             api_actions: ApiActionTracker::new(),
             provision_tracker: ProvisionTracker::new(),
-            extension_manager: Arc::new(RwLock::new(ext_mgr)),
+            extension_manager,
             extension_status_cache: ExtensionStatusCache::new(30), // 30초 TTL (Docker/WSL 지연 대비)
             extension_init_tracker: ExtensionInitTracker::new(),
             rcon_pool: Arc::new(crate::protocol::rcon_pool::RconPool::new()),
             shutdown_token: tokio_util::sync::CancellationToken::new(),
+            ext_process_manager: handlers::ext_process::new_ext_process_manager(),
+            config_store,
+            daemon_log_buffer,
         }
     }
 
@@ -587,12 +613,30 @@ impl IPCServer {
             .route("/api/instance/:id/installed-version", get(handlers::managed::get_installed_version_handler))
             // ── Bot config ──
             .route("/api/config/bot", get(handlers::bot::get_bot_config).put(handlers::bot::save_bot_config))
-            // ── GUI config sync ──
-            .route("/api/config/gui", put(handlers::server::sync_gui_config))
+            // ── GUI config (settings.json) ──
+            .route("/api/config/gui", get(handlers::config::get_gui_config).put(handlers::config::save_gui_config))
+            // ── Node token (cloud relay auth) ──
+            .route("/api/config/node-token", get(handlers::config::get_node_token).put(handlers::config::save_node_token).delete(handlers::config::delete_node_token))
+            // ── Module locales ──
+            .route("/api/module/:name/locales", get(handlers::config::get_module_locales))
+            // ── System components (release manifest) ──
+            .route("/api/system/components", get(handlers::config::get_system_components))
+            // ── Directory scan (migration etc.) ──
+            .route("/api/fs/scan-dir", post(handlers::config::scan_directory))
+            // ── Extension process management (범용) ──
+            .route("/api/ext-processes", get(handlers::ext_process::list_processes))
+            .route("/api/ext-process/:name/start", post(handlers::ext_process::start_process))
+            .route("/api/ext-process/:name/stop", post(handlers::ext_process::stop_process))
+            .route("/api/ext-process/:name/status", get(handlers::ext_process::get_process_status))
+            .route("/api/ext-process/:name/console", get(handlers::ext_process::get_process_console))
+            .route("/api/ext-process/:name/stdin", post(handlers::ext_process::send_process_stdin))
             // ── Client heartbeat ──
             .route("/api/client/register", post(handlers::client::client_register))
             .route("/api/client/:id/heartbeat", post(handlers::client::client_heartbeat))
             .route("/api/client/:id/unregister", delete(handlers::client::client_unregister))
+            // ── Daemon lifecycle ──
+            .route("/api/daemon/shutdown", post(handlers::client::daemon_shutdown))
+            .route("/api/daemon/console", get(handlers::client::daemon_console))
             // ── Extension management ──
             .route("/api/extensions", get(handlers::extension::list_extensions))
             .route("/api/extensions/init-status", get(handlers::extension::extension_init_status))
@@ -605,6 +649,7 @@ impl IPCServer {
             .route("/api/extensions/:id/unmount", post(handlers::extension::unmount_extension))
             .route("/api/extensions/:id/install", post(handlers::extension::install_extension))
             .route("/api/extensions/:id", delete(handlers::extension::remove_extension))
+            .route("/api/extensions/:id/config", get(handlers::extension::get_extension_config).put(handlers::extension::save_extension_config))
             .route("/api/extensions/:id/gui", get(handlers::extension::serve_gui_bundle))
             .route("/api/extensions/:id/gui/styles", get(handlers::extension::serve_gui_styles))
             .route("/api/extensions/:id/icon", get(handlers::extension::serve_icon))
@@ -612,6 +657,12 @@ impl IPCServer {
             // ── Node.js portable environment ──
             .route("/api/node-env/status", get(handlers::node_env::node_env_status))
             .route("/api/node-env/setup", post(handlers::node_env::node_env_setup))
+            // ── Relay server proxy (cloud mode) ──
+            .route("/api/relay/host/:host_id/status", get(handlers::relay::check_host_status))
+            .route("/api/relay/host/:host_id/nodes", get(handlers::relay::list_host_nodes))
+            .route("/api/relay/node/:guild_id/members", get(handlers::relay::list_node_members))
+            .route("/api/relay/pair/initiate", post(handlers::relay::initiate_pairing))
+            .route("/api/relay/pair/:code/status", get(handlers::relay::poll_pairing_status))
             // ── Auth middleware (token-based) ──
             .layer(axum::middleware::from_fn(auth::auth_middleware))
             .with_state(self.clone())
@@ -697,6 +748,8 @@ mod tests {
             syntax_highlight: None,
             install: None,
             dir_signatures: vec!["PalServer.exe".to_string()],
+            module_aliases: vec![],
+            command_aliases: std::collections::HashMap::new(),
             commands: Some(crate::supervisor::module_loader::ModuleCommands {
                 fields: vec![
                     crate::supervisor::module_loader::CommandField {
@@ -738,6 +791,8 @@ mod tests {
             syntax_highlight: None,
             install: None,
             dir_signatures: vec![],
+            module_aliases: vec![],
+            command_aliases: std::collections::HashMap::new(),
             commands: None,
         };
 
@@ -763,6 +818,8 @@ mod tests {
                     syntax_highlight: None,
                     install: None,
                     dir_signatures: vec![],
+                    module_aliases: vec![],
+                    command_aliases: std::collections::HashMap::new(),
                     commands: Some(crate::supervisor::module_loader::ModuleCommands {
                         fields: vec![
                             crate::supervisor::module_loader::CommandField {

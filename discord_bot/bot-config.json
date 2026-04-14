@@ -3,6 +3,11 @@
   "moduleAliases": {},
   "commandAliases": {},
   "musicEnabled": true,
+  "musicChannelId": "",
+  "musicUISettings": {
+    "queueLines": 5,
+    "refreshInterval": 4000
+  },
   "mode": "local",
   "cloud": {
     "relayUrl": "",

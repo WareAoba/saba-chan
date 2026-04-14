@@ -219,6 +219,9 @@ export function useServerSettings({
                             ...prev,
                             server_version: detected.version,
                         }));
+                        // 데몬 핸들러가 감지한 버전을 자동 저장하므로,
+                        // 서버 리스트를 갱신해 카드 배지에도 반영
+                        fetchServers?.();
                     }
                 } catch (err) {
                     console.warn('Failed to detect installed version:', err);
@@ -284,6 +287,22 @@ export function useServerSettings({
                                 install_dir: targetDir,
                                 accept_eula: true,
                             });
+
+                            if (installResult.error_code === 'extension_required') {
+                                setProgressBar(null);
+                                setVersionInstalling(false);
+                                const extList = (installResult.missing_extensions || []).join(', ');
+                                safeShowToast(
+                                    installResult.error ||
+                                        t('server_settings.extension_required_for_install', {
+                                            extensions: extList,
+                                            defaultValue: `Required extension(s) missing: ${extList}. Install them in Settings → Extensions first.`,
+                                        }),
+                                    'error',
+                                    6000,
+                                );
+                                return;
+                            }
 
                             if (installResult.error || installResult.success === false) {
                                 setProgressBar(null);

@@ -10,7 +10,7 @@ use serde_json::Value;
 use super::app::*;
 use crate::cli_config::CliSettings;
 use crate::client::DaemonClient;
-use crate::gui_config;
+use crate::config;
 use crate::module_registry::{ModuleRegistry, LIFECYCLE_COMMANDS};
 use crate::process;
 
@@ -275,7 +275,7 @@ pub fn autocomplete(app: &mut App) {
 fn dispatch_sync(app: &mut App, lower: &[&str], orig: &[&str]) -> Option<Vec<Out>> {
     match lower.first().copied() {
         Some("config") if lower.len() >= 2 && (lower[1] == "system-language" || lower[1] == "system-lang") => {
-            Some(vec![Out::Ok(format!("System language: {}", gui_config::get_system_language()))])
+            Some(vec![Out::Ok(format!("System language: {}", config::get_system_language()))])
         }
         Some("config") => Some(cmd_config(app, &orig[1..])),
         Some("help") => Some(cmd_help(app)),
@@ -329,18 +329,18 @@ fn dispatch_sync(app: &mut App, lower: &[&str], orig: &[&str]) -> Option<Vec<Out
 fn cmd_config(app: &mut App, args: &[&str]) -> Vec<Out> {
     match args.first().copied() {
         None | Some("show") => {
-            let token = gui_config::get_discord_token().ok().flatten();
-            let modules_path = gui_config::get_modules_path().unwrap_or_default();
-            let extensions_path = gui_config::get_extensions_path().unwrap_or_default();
-            let prefix = gui_config::get_bot_prefix().unwrap_or_else(|_| "!saba".into());
-            let gui_lang = gui_config::get_language().unwrap_or_else(|_| "en".into());
-            let auto_start_gui = gui_config::get_discord_auto_start().unwrap_or(false);
-            let auto_refresh = gui_config::get_auto_refresh().unwrap_or(true);
-            let refresh_ms = gui_config::get_refresh_interval().unwrap_or(2000);
-            let ipc_port = gui_config::get_ipc_port();
-            let console_buf = gui_config::get_console_buffer_size().unwrap_or(2000);
-            let auto_pwd = gui_config::get_auto_generate_passwords().unwrap_or(true);
-            let port_check = gui_config::get_port_conflict_check().unwrap_or(true);
+            let token = config::get_discord_token().ok().flatten();
+            let modules_path = config::get_modules_path().unwrap_or_default();
+            let extensions_path = config::get_extensions_path().unwrap_or_default();
+            let prefix = config::get_bot_prefix().unwrap_or_else(|_| "!saba".into());
+            let gui_lang = config::get_language().unwrap_or_else(|_| "en".into());
+            let auto_start_gui = config::get_discord_auto_start().unwrap_or(false);
+            let auto_refresh = config::get_auto_refresh().unwrap_or(true);
+            let refresh_ms = config::get_refresh_interval().unwrap_or(2000);
+            let ipc_port = config::get_ipc_port();
+            let console_buf = config::get_console_buffer_size().unwrap_or(2000);
+            let auto_pwd = config::get_auto_generate_passwords().unwrap_or(true);
+            let port_check = config::get_port_conflict_check().unwrap_or(true);
             let mut lines = vec![
                 Out::Info("CLI Settings:".into()),
                 Out::Text(format!("  language         {}", app.settings.get_value("language").unwrap_or_else(|| "(auto)".into()))),
@@ -414,20 +414,20 @@ fn cmd_config_gui(args: &[&str]) -> Vec<Out> {
     match args.first().copied() {
         Some("language") | Some("lang") => {
             if args.len() < 2 {
-                let cur = gui_config::get_language().unwrap_or_else(|_| "en".into());
+                let cur = config::get_language().unwrap_or_else(|_| "en".into());
                 return vec![
                     Out::Ok(format!("GUI language: {}", cur)),
                     Out::Text("  Available: en, ko, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr".into()),
                 ];
             }
-            match gui_config::set_language(args[1]) {
+            match config::set_language(args[1]) {
                 Ok(()) => vec![Out::Ok(format!("✓ GUI language set to: {}", args[1]))],
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
             }
         }
         Some("token") => {
             if args.len() < 2 {
-                match gui_config::get_discord_token() {
+                match config::get_discord_token() {
                     Ok(Some(t)) => {
                         let masked = if t.len() > 8 { format!("{}...{}", &t[..4], &t[t.len()-4..]) } else { "****".into() };
                         vec![Out::Ok(format!("Token: {}", masked))]
@@ -435,12 +435,12 @@ fn cmd_config_gui(args: &[&str]) -> Vec<Out> {
                     _ => vec![Out::Text("Token: not set".into())],
                 }
             } else if args[1] == "clear" {
-                match gui_config::clear_discord_token() {
+                match config::clear_discord_token() {
                     Ok(()) => vec![Out::Ok("✓ Discord token cleared.".into())],
                     Err(e) => vec![Out::Err(format!("✗ {}", e))],
                 }
             } else {
-                match gui_config::set_discord_token(args[1]) {
+                match config::set_discord_token(args[1]) {
                     Ok(()) => vec![Out::Ok("✓ Discord token saved.".into())],
                     Err(e) => vec![Out::Err(format!("✗ {}", e))],
                 }
@@ -448,11 +448,11 @@ fn cmd_config_gui(args: &[&str]) -> Vec<Out> {
         }
         Some("discord_auto") | Some("discord_auto_start") => {
             if args.len() < 2 {
-                let cur = gui_config::get_discord_auto_start().unwrap_or(false);
+                let cur = config::get_discord_auto_start().unwrap_or(false);
                 return vec![Out::Ok(format!("Discord auto-start: {}", cur))];
             }
             match args[1].parse::<bool>() {
-                Ok(v) => match gui_config::set_discord_auto_start(v) {
+                Ok(v) => match config::set_discord_auto_start(v) {
                     Ok(()) => vec![Out::Ok(format!("✓ Discord auto-start set to: {}", v))],
                     Err(e) => vec![Out::Err(format!("✗ {}", e))],
                 },
@@ -461,11 +461,11 @@ fn cmd_config_gui(args: &[&str]) -> Vec<Out> {
         }
         Some("auto_refresh") => {
             if args.len() < 2 {
-                let cur = gui_config::get_auto_refresh().unwrap_or(true);
+                let cur = config::get_auto_refresh().unwrap_or(true);
                 return vec![Out::Ok(format!("Auto-refresh: {}", cur))];
             }
             match args[1].parse::<bool>() {
-                Ok(v) => match gui_config::set_auto_refresh(v) {
+                Ok(v) => match config::set_auto_refresh(v) {
                     Ok(()) => vec![Out::Ok(format!("✓ Auto-refresh set to: {}", v))],
                     Err(e) => vec![Out::Err(format!("✗ {}", e))],
                 },
@@ -474,11 +474,11 @@ fn cmd_config_gui(args: &[&str]) -> Vec<Out> {
         }
         Some("refresh_interval") => {
             if args.len() < 2 {
-                let cur = gui_config::get_refresh_interval().unwrap_or(2000);
+                let cur = config::get_refresh_interval().unwrap_or(2000);
                 return vec![Out::Ok(format!("Refresh interval: {}ms", cur))];
             }
             match args[1].parse::<u64>() {
-                Ok(ms) if (500..=60000).contains(&ms) => match gui_config::set_refresh_interval(ms) {
+                Ok(ms) if (500..=60000).contains(&ms) => match config::set_refresh_interval(ms) {
                     Ok(()) => vec![Out::Ok(format!("✓ Refresh interval set to: {}ms", ms))],
                     Err(e) => vec![Out::Err(format!("✗ {}", e))],
                 },
@@ -488,11 +488,11 @@ fn cmd_config_gui(args: &[&str]) -> Vec<Out> {
         }
         Some("ipc_port") | Some("port") => {
             if args.len() < 2 {
-                let cur = gui_config::get_ipc_port();
+                let cur = config::get_ipc_port();
                 return vec![Out::Ok(format!("IPC port: {}", cur))];
             }
             match args[1].parse::<u16>() {
-                Ok(p) if p >= 1024 => match gui_config::set_ipc_port(p) {
+                Ok(p) if p >= 1024 => match config::set_ipc_port(p) {
                     Ok(()) => vec![Out::Ok(format!("✓ IPC port set to: {} (restart required)", p))],
                     Err(e) => vec![Out::Err(format!("✗ {}", e))],
                 },
@@ -502,11 +502,11 @@ fn cmd_config_gui(args: &[&str]) -> Vec<Out> {
         }
         Some("console_buffer") | Some("console_buffer_size") => {
             if args.len() < 2 {
-                let cur = gui_config::get_console_buffer_size().unwrap_or(2000);
+                let cur = config::get_console_buffer_size().unwrap_or(2000);
                 return vec![Out::Ok(format!("Console buffer size: {}", cur))];
             }
             match args[1].parse::<u64>() {
-                Ok(n) if (100..=50000).contains(&n) => match gui_config::set_console_buffer_size(n) {
+                Ok(n) if (100..=50000).contains(&n) => match config::set_console_buffer_size(n) {
                     Ok(()) => vec![Out::Ok(format!("✓ Console buffer size set to: {}", n))],
                     Err(e) => vec![Out::Err(format!("✗ {}", e))],
                 },
@@ -516,11 +516,11 @@ fn cmd_config_gui(args: &[&str]) -> Vec<Out> {
         }
         Some("auto_generate_passwords") | Some("auto_passwords") => {
             if args.len() < 2 {
-                let cur = gui_config::get_auto_generate_passwords().unwrap_or(true);
+                let cur = config::get_auto_generate_passwords().unwrap_or(true);
                 return vec![Out::Ok(format!("Auto-generate passwords: {}", cur))];
             }
             match args[1].parse::<bool>() {
-                Ok(v) => match gui_config::set_auto_generate_passwords(v) {
+                Ok(v) => match config::set_auto_generate_passwords(v) {
                     Ok(()) => vec![Out::Ok(format!("✓ Auto-generate passwords set to: {}", v))],
                     Err(e) => vec![Out::Err(format!("✗ {}", e))],
                 },
@@ -529,11 +529,11 @@ fn cmd_config_gui(args: &[&str]) -> Vec<Out> {
         }
         Some("port_conflict_check") | Some("port_check") => {
             if args.len() < 2 {
-                let cur = gui_config::get_port_conflict_check().unwrap_or(true);
+                let cur = config::get_port_conflict_check().unwrap_or(true);
                 return vec![Out::Ok(format!("Port conflict check: {}", cur))];
             }
             match args[1].parse::<bool>() {
-                Ok(v) => match gui_config::set_port_conflict_check(v) {
+                Ok(v) => match config::set_port_conflict_check(v) {
                     Ok(()) => vec![Out::Ok(format!("✓ Port conflict check set to: {}", v))],
                     Err(e) => vec![Out::Err(format!("✗ {}", e))],
                 },
@@ -547,7 +547,7 @@ fn cmd_config_gui(args: &[&str]) -> Vec<Out> {
 fn cmd_bot_token(args: &[&str]) -> Vec<Out> {
     match args.first().copied() {
         None | Some("show") => {
-            match gui_config::get_discord_token() {
+            match config::get_discord_token() {
                 Ok(Some(t)) => {
                     let masked = if t.len() > 8 { format!("{}...{}", &t[..4], &t[t.len()-4..]) } else { "****".into() };
                     vec![Out::Ok(format!("Token: {}", masked))]
@@ -558,13 +558,13 @@ fn cmd_bot_token(args: &[&str]) -> Vec<Out> {
         }
         Some("set") => {
             if args.len() < 2 { return vec![Out::Err("Usage: bot token set <TOKEN>".into())]; }
-            match gui_config::set_discord_token(args[1]) {
+            match config::set_discord_token(args[1]) {
                 Ok(()) => vec![Out::Ok("Discord token saved.".into())],
                 Err(e) => vec![Out::Err(format!("Failed: {}", e))],
             }
         }
         Some("clear") => {
-            match gui_config::clear_discord_token() {
+            match config::clear_discord_token() {
                 Ok(()) => vec![Out::Ok("Discord token cleared.".into())],
                 Err(e) => vec![Out::Err(format!("Failed: {}", e))],
             }
@@ -576,12 +576,12 @@ fn cmd_bot_token(args: &[&str]) -> Vec<Out> {
 fn cmd_bot_prefix(args: &[&str]) -> Vec<Out> {
     match args.first().copied() {
         None | Some("show") => {
-            let prefix = gui_config::get_bot_prefix().unwrap_or_else(|_| "!saba".into());
+            let prefix = config::get_bot_prefix().unwrap_or_else(|_| "!saba".into());
             vec![Out::Ok(format!("Bot prefix: {}", prefix))]
         }
         Some("set") => {
             if args.len() < 2 { return vec![Out::Err("Usage: bot prefix set <PREFIX>".into())]; }
-            match gui_config::set_bot_prefix(args[1]) {
+            match config::set_bot_prefix(args[1]) {
                 Ok(()) => vec![Out::Ok(format!("Bot prefix set to: {}", args[1]))],
                 Err(e) => vec![Out::Err(format!("Failed: {}", e))],
             }
@@ -592,9 +592,9 @@ fn cmd_bot_prefix(args: &[&str]) -> Vec<Out> {
 
 fn cmd_bot_status() -> Vec<Out> {
     let running = process::check_bot_running();
-    let token = gui_config::get_discord_token().ok().flatten();
-    let prefix = gui_config::get_bot_prefix().unwrap_or_else(|_| "!saba".into());
-    let auto = gui_config::get_discord_auto_start().unwrap_or(false);
+    let token = config::get_discord_token().ok().flatten();
+    let prefix = config::get_bot_prefix().unwrap_or_else(|_| "!saba".into());
+    let auto = config::get_discord_auto_start().unwrap_or(false);
     let status_str = if running { "● RUNNING" } else if token.is_none() { "○ NO TOKEN" } else { "○ OFFLINE" };
     vec![
         Out::Ok(format!("Discord Bot: {}", status_str)),
@@ -605,7 +605,7 @@ fn cmd_bot_status() -> Vec<Out> {
 }
 
 fn cmd_bot_mode(lower: &[&str], _orig: &[&str]) -> Vec<Out> {
-    let config = gui_config::load_bot_config().unwrap_or_default();
+    let config = config::load_bot_config().unwrap_or_default();
     let current = config.get("mode").and_then(|v| v.as_str()).unwrap_or("local");
 
     match lower.first().copied() {
@@ -620,10 +620,9 @@ fn cmd_bot_mode(lower: &[&str], _orig: &[&str]) -> Vec<Out> {
             if mode != "local" && mode != "cloud" {
                 return vec![Out::Err("Mode must be 'local' or 'cloud'".into())];
             }
-            let mut config = gui_config::load_bot_config().unwrap_or_default();
+            let mut config = config::load_bot_config().unwrap_or_default();
             config["mode"] = serde_json::Value::String(mode.to_string());
-            let path = gui_config::get_bot_config_path_pub();
-            match save_json_file(&path, &config) {
+            match config::save_bot_config(&config) {
                 Ok(()) => vec![Out::Ok(format!("✓ Bot mode set to: {}", mode))],
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
             }
@@ -635,7 +634,7 @@ fn cmd_bot_mode(lower: &[&str], _orig: &[&str]) -> Vec<Out> {
 fn cmd_bot_node_token(lower: &[&str], orig: &[&str]) -> Vec<Out> {
     match lower.first().copied() {
         None | Some("show") => {
-            match gui_config::load_node_token() {
+            match config::load_node_token() {
                 Ok(token) if token.is_empty() => vec![Out::Text("Node token: (not set)".into())],
                 Ok(token) => {
                     let masked = if token.len() > 12 {
@@ -650,13 +649,13 @@ fn cmd_bot_node_token(lower: &[&str], orig: &[&str]) -> Vec<Out> {
         }
         Some("set") if orig.len() > 1 => {
             let token = orig[1..].join(" ");
-            match gui_config::save_node_token(token.trim()) {
+            match config::save_node_token(token.trim()) {
                 Ok(()) => vec![Out::Ok("✓ Node token saved.".into())],
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
             }
         }
         Some("clear") => {
-            match gui_config::clear_node_token() {
+            match config::clear_node_token() {
                 Ok(()) => vec![Out::Ok("✓ Node token cleared.".into())],
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
             }
@@ -670,7 +669,7 @@ fn cmd_migration_scan(args: &[&str]) -> Vec<Out> {
         return vec![Out::Err("Usage: migration scan <directory>".into())];
     }
     let dir = args.join(" ");
-    match gui_config::scan_directory(&dir) {
+    match config::scan_directory(&dir) {
         Ok((files, dirs)) => {
             let mut o = vec![Out::Ok(format!("Scan: {}", dir))];
             if !dirs.is_empty() {
@@ -695,7 +694,7 @@ fn cmd_migration_scan(args: &[&str]) -> Vec<Out> {
 }
 
 fn cmd_bot_relay(lower: &[&str], orig: &[&str]) -> Vec<Out> {
-    let config = gui_config::load_bot_config().unwrap_or_default();
+    let config = config::load_bot_config().unwrap_or_default();
     let cloud = config.get("cloud").cloned().unwrap_or(serde_json::json!({}));
     let relay_url = cloud.get("relayUrl").and_then(|v| v.as_str()).unwrap_or("");
     let host_id = cloud.get("hostId").and_then(|v| v.as_str()).unwrap_or("");
@@ -713,22 +712,20 @@ fn cmd_bot_relay(lower: &[&str], orig: &[&str]) -> Vec<Out> {
         }
         Some("url") if orig.len() > 1 => {
             let url = orig[1..].join(" ");
-            let mut config = gui_config::load_bot_config().unwrap_or_default();
+            let mut config = config::load_bot_config().unwrap_or_default();
             if config.get("cloud").is_none() { config["cloud"] = serde_json::json!({}); }
             config["cloud"]["relayUrl"] = serde_json::Value::String(url.clone());
-            let path = gui_config::get_bot_config_path_pub();
-            match save_json_file(&path, &config) {
+            match config::save_bot_config(&config) {
                 Ok(()) => vec![Out::Ok(format!("✓ Relay URL set to: {}", url))],
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
             }
         }
         Some("hostid") if orig.len() > 1 => {
             let id = orig[1];
-            let mut config = gui_config::load_bot_config().unwrap_or_default();
+            let mut config = config::load_bot_config().unwrap_or_default();
             if config.get("cloud").is_none() { config["cloud"] = serde_json::json!({}); }
             config["cloud"]["hostId"] = serde_json::Value::String(id.to_string());
-            let path = gui_config::get_bot_config_path_pub();
-            match save_json_file(&path, &config) {
+            match config::save_bot_config(&config) {
                 Ok(()) => vec![Out::Ok(format!("✓ Host ID set to: {}", id))],
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
             }

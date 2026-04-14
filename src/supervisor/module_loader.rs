@@ -63,6 +63,23 @@ pub struct ModuleMetadata {
     /// 예: ["PalServer.exe"] (Palworld), ["server.jar", "server.properties"] (Minecraft)
     #[serde(default)]
     pub dir_signatures: Vec<String>,  // [detection].dir_signatures
+    /// 모듈 별명 — Discord/CLI에서 다국어 이름으로 모듈을 찾을 수 있게 함
+    /// 예: ["팰월드", "pw", "palworld"]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub module_aliases: Vec<String>,
+    /// 명령어 별명 — 각 명령어에 대한 다국어/단축 별명
+    /// 예: { "start": { "aliases": ["시작", "실행"], "description": "Start the server" } }
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub command_aliases: std::collections::HashMap<String, CommandAliasInfo>,
+}
+
+/// 명령어 별명 정보
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommandAliasInfo {
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
 impl ModuleMetadata {
@@ -253,6 +270,9 @@ struct ModuleToml {
     /// 예: rest_password = "AdminPassword" → 데몬의 rest_password가 게임 INI의 AdminPassword에 대응
     #[serde(default)]
     credential_map: Option<std::collections::HashMap<String, String>>,
+    /// [aliases] 모듈 및 명령어 별명 (Discord/CLI 다국어 지원)
+    #[serde(default)]
+    aliases: Option<AliasesSection>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -437,6 +457,24 @@ pub struct ModuleInstallConfig {
 }
 
 fn default_true_mod() -> bool { true }
+
+/// module.toml [aliases] 섹션
+#[derive(Debug, Deserialize)]
+struct AliasesSection {
+    #[serde(default)]
+    module_aliases: Vec<String>,
+    #[serde(default)]
+    commands: std::collections::HashMap<String, CommandAliasSectionToml>,
+}
+
+/// module.toml [aliases.commands.*] 항목
+#[derive(Debug, Deserialize)]
+struct CommandAliasSectionToml {
+    #[serde(default)]
+    aliases: Vec<String>,
+    #[serde(default)]
+    description: Option<String>,
+}
 
 /// Container isolation extension configuration for modules.
 /// Parsed from module.toml [docker] section and stored in ModuleMetadata.extensions.
@@ -667,6 +705,17 @@ impl ModuleToml {
             dir_signatures: self._detection.as_ref()
                 .and_then(|d| d.dir_signatures.clone())
                 .unwrap_or_default(),
+            module_aliases: self.aliases.as_ref()
+                .map(|a| a.module_aliases.clone())
+                .unwrap_or_default(),
+            command_aliases: self.aliases.map(|a| {
+                a.commands.into_iter().map(|(name, info)| {
+                    (name, CommandAliasInfo {
+                        aliases: info.aliases,
+                        description: info.description,
+                    })
+                }).collect()
+            }).unwrap_or_default(),
         }
     }
 }
@@ -996,6 +1045,49 @@ version = "1.0.0"
     fn test_parse_module_toml_empty_string() {
         let result = parse_module_toml("");
         assert!(result.is_err(), "Empty TOML should fail");
+    }
+
+    #[test]
+    fn test_parse_module_toml_aliases() {
+        let toml = r#"
+[module]
+name = "palworld"
+version = "1.0.0"
+entry = "lifecycle.py"
+
+[aliases]
+module_aliases = ["팰월드", "팔월드", "pw"]
+
+[aliases.commands]
+start = { aliases = ["시작", "실행", "켜기"], description = "Start the server" }
+stop = { aliases = ["정지", "끄기"], description = "Stop the server" }
+"#;
+        let meta = parse_module_toml(toml).unwrap();
+        assert_eq!(meta.module_aliases.len(), 3);
+        assert!(meta.module_aliases.contains(&"팰월드".to_string()));
+        assert!(meta.module_aliases.contains(&"pw".to_string()));
+
+        assert_eq!(meta.command_aliases.len(), 2);
+        let start = meta.command_aliases.get("start").unwrap();
+        assert_eq!(start.aliases.len(), 3);
+        assert!(start.aliases.contains(&"시작".to_string()));
+        assert_eq!(start.description.as_deref(), Some("Start the server"));
+
+        let stop = meta.command_aliases.get("stop").unwrap();
+        assert_eq!(stop.aliases.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_module_toml_aliases_empty_by_default() {
+        let toml = r#"
+[module]
+name = "test-game"
+version = "1.0.0"
+entry = "lifecycle.py"
+"#;
+        let meta = parse_module_toml(toml).unwrap();
+        assert!(meta.module_aliases.is_empty());
+        assert!(meta.command_aliases.is_empty());
     }
 
     #[test]

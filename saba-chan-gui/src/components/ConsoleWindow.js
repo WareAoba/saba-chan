@@ -1,6 +1,8 @@
 import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { TITLEBAR_HEIGHT } from '../constants/layout';
+import { useSettingsStore } from '../stores/useSettingsStore';
 import { getCachedRules, highlightLine } from '../utils/syntaxHighlight';
 import { Icon } from './index';
 
@@ -57,10 +59,11 @@ export function ConsoleWindow({
     const consoleEndRef = useRef(null);
     const dragRef = useRef(null);
     const resizeRef = useRef(null);
+    const syntaxEnabled = useSettingsStore((s) => s.consoleSyntaxHighlight);
 
     const compiledRules = useMemo(
-        () => (highlightRules ? getCachedRules(state.server?.name || '_', highlightRules) : []),
-        [highlightRules, state.server?.name],
+        () => (syntaxEnabled && highlightRules ? getCachedRules(state.server?.name || '_', highlightRules) : []),
+        [highlightRules, state.server?.name, syntaxEnabled],
     );
 
     // Auto-scroll on new lines
@@ -90,7 +93,7 @@ export function ConsoleWindow({
                 const dy = my - startY;
                 updatePosition(instanceId, {
                     x: startPos.x + dx,
-                    y: startPos.y + dy,
+                    y: Math.max(TITLEBAR_HEIGHT, startPos.y + dy),
                 });
             };
 
@@ -147,7 +150,7 @@ export function ConsoleWindow({
                     const proposedHeight = startSize.height - dy;
                     if (proposedHeight >= MIN_HEIGHT) {
                         newHeight = proposedHeight;
-                        newY = startPos.y + dy;
+                        newY = Math.max(TITLEBAR_HEIGHT, startPos.y + dy);
                     }
                 }
 

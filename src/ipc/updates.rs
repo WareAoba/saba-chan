@@ -14,7 +14,7 @@
 use axum::{
     extract::State,
     response::IntoResponse,
-    routing::{get, post},
+    routing::{get, post, put},
     Json, Router,
 };
 use serde::Deserialize;
@@ -36,6 +36,9 @@ pub struct UpdateState {
     pub manager: Arc<RwLock<UpdateManager>>,
     /// 다운로드 진행률 (Manager 잠금 없이 폴링 가능)
     pub download_progress: Arc<std::sync::Mutex<DownloadProgress>>,
+    /// 모듈/익스텐션 업데이트 적용 후 핫로드를 위한 참조
+    pub supervisor: Option<Arc<RwLock<crate::supervisor::Supervisor>>>,
+    pub extension_manager: Option<Arc<RwLock<crate::extension::ExtensionManager>>>,
 }
 
 impl UpdateState {
@@ -46,7 +49,23 @@ impl UpdateState {
         let mgr = UpdateManager::new(cfg, &modules_dir);
         let progress = mgr.download_progress.clone();
         let manager = Arc::new(RwLock::new(mgr));
-        Self { manager, download_progress: progress }
+        Self {
+            manager,
+            download_progress: progress,
+            supervisor: None,
+            extension_manager: None,
+        }
+    }
+
+    /// 핫로드를 위한 supervisor/extension_manager 참조 주입
+    pub fn with_hot_reload(
+        mut self,
+        supervisor: Arc<RwLock<crate::supervisor::Supervisor>>,
+        extension_manager: Arc<RwLock<crate::extension::ExtensionManager>>,
+    ) -> Self {
+        self.supervisor = Some(supervisor);
+        self.extension_manager = Some(extension_manager);
+        self
     }
 }
 
@@ -70,7 +89,7 @@ pub fn updates_router(state: UpdateState) -> Router {
         .route("/api/updates/apply", post(apply_updates))
         .route("/api/updates/integrity", get(check_integrity))
         .route("/api/updates/config", get(get_config))
-        .route("/api/updates/config", post(set_config))
+        .route("/api/updates/config", put(set_config))
         .with_state(state)
 }
 
@@ -395,6 +414,10 @@ async fn apply_updates(
         }
     }
 
+    // 적용된 모듈/익스텐션이 있으면 핫로드: 메모리 캐시를 디스크에서 다시 로드
+    let has_module_updates = targets.iter().any(|c| matches!(c, Component::Module(_)));
+    let has_ext_updates = targets.iter().any(|c| matches!(c, Component::Extension(_)));
+
     // 업데이터 exe가 필요한 컴포넌트가 있으면:
     // 1) pending manifest 재저장 (데몬이 적용한 것들은 downloaded=false로 제외됨)
     // 2) apply-targets.json에 업데이터가 적용해야 할 정확한 컴포넌트 목록 저장
@@ -405,6 +428,40 @@ async fn apply_updates(
         }
         if let Err(e) = mgr.save_updater_apply_targets(&needs_updater) {
             tracing::warn!("[Updates] Failed to save apply targets for updater: {}", e);
+        }
+    }
+
+    // UpdateManager lock 해제 (supervisor/extension_manager lock과 교차 잠금 방지)
+    drop(mgr);
+
+    // 데몬이 직접 적용한 경우에만 핫로드 (업데이터 위임 시에는 불필요)
+    if needs_updater.is_empty() {
+        if has_module_updates {
+            if let Some(ref sup) = state.supervisor {
+                let sup = sup.read().await;
+                match sup.refresh_modules() {
+                    Ok(modules) => {
+                        tracing::info!("[Updates] Hot-reloaded {} module(s) after update", modules.len());
+                    }
+                    Err(e) => {
+                        tracing::warn!("[Updates] Failed to hot-reload modules after update: {}", e);
+                    }
+                }
+            }
+        }
+
+        if has_ext_updates {
+            if let Some(ref ext_mgr) = state.extension_manager {
+                let mut ext_mgr = ext_mgr.write().await;
+                match ext_mgr.rescan() {
+                    Ok(newly_found) => {
+                        tracing::info!("[Updates] Hot-reloaded extensions after update ({} new)", newly_found.len());
+                    }
+                    Err(e) => {
+                        tracing::warn!("[Updates] Failed to hot-reload extensions after update: {}", e);
+                    }
+                }
+            }
         }
     }
 

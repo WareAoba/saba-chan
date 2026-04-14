@@ -82,8 +82,8 @@ const parseComponents = (comps) =>
     (comps || [])
         .filter((c) => {
             const k = typeof c.component === 'string' ? c.component : String(c.component);
-            // 모듈은 별도 탭, locales는 백그라운드 자동 업데이트 — UI에 비표시
-            return !k.startsWith('module-') && k !== 'locales';
+            // 모듈/익스텐션은 별도 탭, locales는 백그라운드 자동 업데이트 — UI에 비표시
+            return !k.startsWith('module-') && !k.startsWith('ext-') && k !== 'locales';
         })
         .map((c) => {
             const key = typeof c.component === 'string' ? c.component : String(c.component);

@@ -1,4 +1,4 @@
-//! 인스턴스 상세 화면 — 시작/정지, 콘솔, 설정, 진단 등
+//! 인스턴스 상세 화면 — 시작/정지, 콘솔, 설정, 진단, EULA, 버전, 업데이트 등
 
 use std::time::Duration;
 
@@ -7,36 +7,60 @@ use crate::tui::app::*;
 use super::find_instance_id;
 
 pub(super) fn build_server_detail_menu(app: &App, name: &str) -> Vec<MenuItem> {
+    let t = |k| app.i18n.t(k);
     let is_running = app.servers.iter().any(|s| s.name == name && s.status == "running");
+    let server = app.servers.iter().find(|s| s.name == name);
 
     let mut items = vec![
         if is_running {
-            MenuItem::new("■ Stop", Some('s'), "인스턴스 정지")
+            MenuItem::new(&format!("■ {}", t("screen.server_stop")), Some('s'), &t("screen.server_stop"))
         } else {
-            MenuItem::new("▶ Start", Some('s'), "인스턴스 시작")
+            MenuItem::new(&format!("▶ {}", t("screen.server_start")), Some('s'), &t("screen.server_start"))
         },
     ];
     if is_running {
-        items.push(MenuItem::new("↻ Restart", Some('r'), "인스턴스 재시작"));
+        items.push(MenuItem::new(&format!("↻ {}", t("screen.server_restart")), Some('r'), &t("screen.server_restart")));
     }
     items.extend([
-        MenuItem::new("📟 Console", Some('c'), "서버 콘솔 (실시간)"),
-        MenuItem::new("⚙ Settings", Some('e'), "인스턴스 설정 편집"),
+        MenuItem::new(&format!("📟 {}", t("screen.server_console")), Some('c'), &t("screen.server_console")),
+        MenuItem::new(&format!("⚙ {}", t("screen.server_settings")), Some('e'), &t("screen.server_settings")),
     ]);
 
-    items.push(MenuItem::new("💻 Execute Command", Some('x'), "서버 명령어 실행"));
+    items.push(MenuItem::new(&format!("💻 {}", t("screen.server_execute")), Some('x'), &t("screen.server_execute")));
+
+    // ── RCON 명령어 (모듈의 commands에 rcon method가 있는 경우만) ──
+    let module_name = server.map(|s| s.module.as_str()).unwrap_or("");
+    let has_rcon = app.registry.get_module(module_name)
+        .map(|m| m.has_rcon_commands())
+        .unwrap_or(false);
+    if has_rcon {
+        items.push(MenuItem::new(&format!("🔌 {}", t("screen.server_rcon")), Some('R'), &t("screen.server_rcon")));
+    }
+
+    // ── 서버 버전 / 업데이트 ──
+    items.push(MenuItem::new(&format!("📦 {}", t("screen.server_version")), Some('v'), &t("screen.server_version")));
+    items.push(MenuItem::new(&format!("⬆ {}", t("screen.server_check_update")), Some('u'), &t("screen.server_check_update")));
+
+    // ── EULA 수락 (모듈 메타 기반 동적 판단) ──
+    let needs_eula = app.registry.get_module(module_name)
+        .map(|m| m.requires_eula)
+        .unwrap_or(false);
+    if needs_eula && !is_running {
+        items.push(MenuItem::new(&format!("📜 {}", t("screen.server_eula")), Some('E'), &t("screen.server_eula")));
+    }
+
+    // ── 검증 ──
+    if !is_running {
+        items.push(MenuItem::new(&format!("✔ {}", t("screen.server_validate")), Some('V'), &t("screen.server_validate")));
+    }
 
     // ── InstanceDetail.menu 슬롯 주입 ──
-    // GUI의 <ExtensionSlot slotId="ServerCard.expandedStats"> 등에 대응
-    let server_ext_data = app.servers.iter()
-        .find(|s| s.name == name)
-        .map(|s| &s.extension_data);
+    let server_ext_data = server.map(|s| &s.extension_data);
 
     let detail_menu_slots = app.ext_slots.get_slot("InstanceDetail.menu");
     for slot in detail_menu_slots {
         if let Some(menu_items) = slot.data.as_array() {
             for menu_item in menu_items {
-                // 조건 평가: condition이 있으면 인스턴스의 ext_data를 확인
                 if let Some(condition) = menu_item.get("condition").and_then(|v| v.as_str()) {
                     if let Some(key) = condition.strip_prefix("instance.ext_data.") {
                         let enabled = server_ext_data
@@ -52,7 +76,6 @@ pub(super) fn build_server_detail_menu(app: &App, name: &str) -> Vec<MenuItem> {
                 let action = menu_item.get("action").and_then(|v| v.as_str()).unwrap_or("");
 
                 let mut item = MenuItem::new(label, None, desc);
-                // action을 badge로 표시 (내부 식별자)
                 item.badge = Some(format!("ext:{}/{}", slot.extension_id, action));
                 items.push(item);
             }
@@ -67,7 +90,6 @@ pub(super) fn build_server_detail_menu(app: &App, name: &str) -> Vec<MenuItem> {
                 let label = status_item.get("label").and_then(|v| v.as_str()).unwrap_or("?");
                 let value_key = status_item.get("value_from").and_then(|v| v.as_str()).unwrap_or("");
 
-                // ext_data에서 값 조회
                 let value = server_ext_data
                     .and_then(|ed| ed.get(value_key))
                     .map(|v| match v {
@@ -207,6 +229,112 @@ pub(super) fn handle_server_detail_select(
                 cursor: 0,
                 on_submit: InlineAction::ExecuteCommand { instance_id: iid },
             };
+        }
+        Some('R') => { // RCON Command → 인라인 Input
+            let srv_name = name.clone();
+            app.input_mode = InputMode::InlineInput {
+                prompt: format!("RCON 명령어 ({})", name),
+                value: String::new(),
+                cursor: 0,
+                on_submit: InlineAction::RconCommand { instance_name: srv_name },
+            };
+        }
+        Some('v') => { // Version Info
+            tokio::spawn(async move {
+                let iid = find_instance_id(&client, &name).await;
+                if let Some(iid) = iid {
+                    match client.get_installed_version(&iid).await {
+                        Ok(data) => {
+                            let mut lines = vec![Out::Ok(format!("Version info for '{}':", name))];
+                            let version = data.get("version").and_then(|v| v.as_str()).unwrap_or("unknown");
+                            let build = data.get("build").and_then(|v| v.as_str());
+                            lines.push(Out::Text(format!("  Installed: {}", version)));
+                            if let Some(b) = build {
+                                lines.push(Out::Text(format!("  Build:     {}", b)));
+                            }
+                            push_out(&buf, lines);
+                        }
+                        Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
+                    }
+                } else {
+                    push_out(&buf, vec![Out::Err(format!("✗ Instance '{}' not found", name))]);
+                }
+            });
+            app.flash("버전 조회 중...");
+        }
+        Some('u') => { // Check Update
+            tokio::spawn(async move {
+                let iid = find_instance_id(&client, &name).await;
+                if let Some(iid) = iid {
+                    match client.check_instance_update(&iid).await {
+                        Ok(data) => {
+                            let available = data.get("update_available").and_then(|v| v.as_bool()).unwrap_or(false);
+                            if available {
+                                let current = data.get("current_version").and_then(|v| v.as_str()).unwrap_or("?");
+                                let latest = data.get("latest_version").and_then(|v| v.as_str()).unwrap_or("?");
+                                push_out(&buf, vec![
+                                    Out::Ok(format!("⬆ Update available for '{}':", name)),
+                                    Out::Text(format!("  Current: {}", current)),
+                                    Out::Text(format!("  Latest:  {}", latest)),
+                                    Out::Info("Use 'Apply Update' to install".into()),
+                                ]);
+                            } else {
+                                push_out(&buf, vec![Out::Ok(format!("✓ '{}' is up to date", name))]);
+                            }
+                        }
+                        Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
+                    }
+                } else {
+                    push_out(&buf, vec![Out::Err(format!("✗ Instance '{}' not found", name))]);
+                }
+            });
+            app.flash("업데이트 확인 중...");
+        }
+        Some('E') => { // Accept EULA (Minecraft)
+            tokio::spawn(async move {
+                let iid = find_instance_id(&client, &name).await;
+                if let Some(iid) = iid {
+                    match client.accept_eula(&iid).await {
+                        Ok(_) => push_out(&buf, vec![Out::Ok(format!("✓ EULA accepted for '{}'", name))]),
+                        Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
+                    }
+                } else {
+                    push_out(&buf, vec![Out::Err(format!("✗ Instance '{}' not found", name))]);
+                }
+            });
+            app.flash("EULA 수락 중...");
+        }
+        Some('V') => { // Validate
+            tokio::spawn(async move {
+                let iid = find_instance_id(&client, &name).await;
+                if let Some(iid) = iid {
+                    match client.validate_instance(&iid).await {
+                        Ok(data) => {
+                            let mut lines = vec![Out::Ok(format!("Validation for '{}':", name))];
+                            let valid = data.get("valid").and_then(|v| v.as_bool()).unwrap_or(false);
+                            if valid {
+                                lines.push(Out::Ok("  ✓ All checks passed".into()));
+                            } else if let Some(errors) = data.get("errors").and_then(|v| v.as_array()) {
+                                for err in errors {
+                                    let msg = err.as_str().unwrap_or("?");
+                                    lines.push(Out::Err(format!("  ✗ {}", msg)));
+                                }
+                            }
+                            if let Some(warnings) = data.get("warnings").and_then(|v| v.as_array()) {
+                                for warn in warnings {
+                                    let msg = warn.as_str().unwrap_or("?");
+                                    lines.push(Out::Info(format!("  ⚠ {}", msg)));
+                                }
+                            }
+                            push_out(&buf, lines);
+                        }
+                        Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
+                    }
+                } else {
+                    push_out(&buf, vec![Out::Err(format!("✗ Instance '{}' not found", name))]);
+                }
+            });
+            app.flash("검증 중...");
         }
         Some('d') => { // Diagnose
             tokio::spawn(async move {

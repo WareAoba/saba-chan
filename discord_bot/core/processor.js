@@ -12,10 +12,27 @@ const i18n = require('../i18n');
 const resolver = require('./resolver');
 const handler = require('./handler');
 const ipc = require('./ipc');
+const musicExtension = require('../extensions/music');
 
 // ── 중복 메시지 방지 ──
 const processedMessages = new Set();
 const MESSAGE_CACHE_TTL = 5000;
+
+// ── 다중 길드 불허가 (로컬 모드) ──
+/**
+ * 봇이 2개 이상의 길드에 소속되어 있으면 명령어를 거부합니다.
+ * 릴레이 모드에서는 client가 없으므로 이 체크를 건너뜁니다.
+ * @returns {boolean} true이면 차단됨 (메시지 이미 전송)
+ */
+async function checkMultiGuildBlock(message) {
+    const client = message.client;
+    if (!client) return false;
+    const guildCount = client.guilds.cache.size;
+    if (guildCount <= 1) return false;
+    console.warn(`[Processor] Multi-guild block: bot is in ${guildCount} guilds`);
+    await message.reply(i18n.t('bot:errors.local_single_guild_only', { count: guildCount }));
+    return true;
+}
 
 // ── 노드별 인스턴스 필터링 헬퍼 ──
 
@@ -73,10 +90,21 @@ async function process(message) {
     const prefix = botConfig.prefix;
     const guildId = message.guildId;   // ★ 길드별 메타데이터 해석용
 
+    // ★ 전용 음악 채널 — prefix 없이 바로 처리
+    if (guildId && musicExtension.channelUI.isMusicChannel(guildId, message.channel.id, botConfig)) {
+        // 다중 길드 체크는 prefix 있는 명령에서만 수행 (전용 채널은 아래에서 체크)
+        if (await checkMultiGuildBlock(message)) return;
+        const handled = await musicExtension.handleMusicChannelMessage(message, botConfig);
+        if (handled) return;
+    }
+
     if (!content.startsWith(prefix)) return;
 
+    // ★ 다중 길드 불허가 (로컬 모드)
+    if (await checkMultiGuildBlock(message)) return;
+
     // ★ 설정 파일 변경 감지 → 핫 리로드 (GUI에서 저장한 nodeSettings 즉시 반영)
-    resolver.reloadConfigIfChanged();
+    await resolver.reloadConfigIfChanged();
 
     await resolver.ensureGuildMetadata(guildId);
 
@@ -422,7 +450,23 @@ async function executeStart(message, server, moduleName, guildId) {
     const statusMsg = await message.reply(startMsg);
     try {
         const useManaged = determineUseManaged(server, moduleName, guildId);
-        await ipc.startServer(server.id, server.name, server.module, useManaged);
+        const result = await ipc.startServer(server.id, server.name, server.module, useManaged);
+        const data = result?.data;
+
+        // 데몬이 HTTP 200으로 응답했지만 실패/조치필요인 경우 처리
+        if (data && data.success === false) {
+            const errMsg = data.message || data.error || i18n.t('bot:errors.error_title');
+            console.error(`[Processor] executeStart daemon error: ${errMsg}`);
+            await statusMsg.edit(`❌ ${errMsg}`).catch(() => {});
+            return;
+        }
+        if (data && data.action_required) {
+            const detail = data.message || `Action required: ${data.action_required}`;
+            console.warn(`[Processor] executeStart action_required: ${data.action_required}`);
+            await statusMsg.edit(`⚠️ ${detail}`).catch(() => {});
+            return;
+        }
+
         const completeMsg = i18n.t('bot:server.start_complete', { name: server.name });
         await statusMsg.edit(completeMsg);
     } catch (e) {

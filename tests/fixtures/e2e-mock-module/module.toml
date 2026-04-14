@@ -1,0 +1,37 @@
+[module]
+name = "e2e-mock"
+version = "1.0.0"
+description = "E2E test mock module"
+author = "ci"
+game_name = "MockGame"
+display_name = "E2E Mock Module"
+entry = "lifecycle.py"
+
+[protocols]
+supported = ["stdin"]
+primary = "stdin"
+
+[config]
+default_port = 27015
+executable_name = "mock-server"
+process_names = ["mock-server"]
+server_executable = "server.jar"
+
+[install]
+method = "download"
+install_subdir = "server"
+
+[[settings.fields]]
+name = "server_name"
+label = "Server Name"
+type = "string"
+default = "E2E Test Server"
+required = true
+
+[[settings.fields]]
+name = "max_players"
+label = "Max Players"
+type = "number"
+default = 10
+min = 1
+max = 100

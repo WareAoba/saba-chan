@@ -66,15 +66,64 @@ pub async fn list_extensions(
 }
 
 /// POST /api/extensions/:id/enable — 익스텐션 활성화
+///
+/// 활성화 직후 해당 익스텐션에 daemon.startup 훅이 있으면 비동기로 디스패치하여
+/// npm install 등 환경 구축을 즉시 수행합니다. 재시작 없이 바로 사용 가능하도록.
 pub async fn enable_extension(
     State(state): State<IPCServer>,
     Path(ext_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let mut mgr = state.extension_manager.write().await;
-    match mgr.enable(&ext_id) {
-        Ok(()) => Ok(Json(json!({ "success": true, "id": ext_id }))),
-        Err(e) => Err(extension_err_response(&e)),
+    {
+        let mut mgr = state.extension_manager.write().await;
+        if let Err(e) = mgr.enable(&ext_id) {
+            return Err(extension_err_response(&e));
+        }
     }
+
+    // 활성화 성공 → daemon.startup 훅이 있으면 비동기 디스패치 (npm install 등)
+    let has_startup_hook = {
+        let mgr = state.extension_manager.read().await;
+        mgr.hooks_for("daemon.startup")
+            .iter()
+            .any(|(ext, _)| ext.manifest.id == ext_id)
+    };
+
+    if has_startup_hook {
+        let ext_mgr = state.extension_manager.clone();
+        let init_tracker = state.extension_init_tracker.clone();
+        let ext_id_clone = ext_id.clone();
+        tokio::spawn(async move {
+            init_tracker.mark_started(&ext_id_clone, "Initializing...").await;
+            let ctx = serde_json::json!({});
+            let mgr = ext_mgr.read().await;
+            let results = mgr.dispatch_hook("daemon.startup", ctx).await;
+            // 방금 활성화한 익스텐션의 결과만 처리
+            for (rid, result) in results {
+                if rid != ext_id_clone {
+                    continue;
+                }
+                match result {
+                    Ok(val) => {
+                        let success = val.get("success").and_then(|s| s.as_bool()).unwrap_or(true);
+                        let msg = val.get("message").and_then(|m| m.as_str()).unwrap_or("OK");
+                        if success {
+                            tracing::info!("Extension '{}' post-enable startup complete: {}", rid, msg);
+                        } else {
+                            let err = val.get("error").and_then(|e| e.as_str()).unwrap_or("unknown");
+                            tracing::warn!("Extension '{}' post-enable startup failed: {}", rid, err);
+                        }
+                        init_tracker.mark_finished(&rid, success, msg).await;
+                    }
+                    Err(e) => {
+                        tracing::error!("Extension '{}' post-enable startup error: {}", rid, e);
+                        init_tracker.mark_finished(&rid, false, &e.to_string()).await;
+                    }
+                }
+            }
+        });
+    }
+
+    Ok(Json(json!({ "success": true, "id": ext_id, "startup_dispatched": has_startup_hook })))
 }
 
 /// POST /api/extensions/:id/disable — 익스텐션 비활성화
@@ -327,10 +376,16 @@ pub async fn install_extension(
     let mgr = state.extension_manager.write().await;
     match mgr.install_from_url(&ext_id, &download_url, sha256.as_deref()).await {
         Ok(()) => {
-            // 설치 완료 후 마운트 (write lock 재획득 불가하므로 다음 rescan에서 처리됨)
+            // 설치 완료 후 마운트 (write lock 재획득)
             drop(mgr);
             let mut mgr = state.extension_manager.write().await;
-            let _ = mgr.mount(&ext_id);
+            if let Err(e) = mgr.mount(&ext_id) {
+                tracing::warn!("Extension '{}' installed but mount failed: {} — try rescan", ext_id, e);
+                // mount 실패 시 rescan으로 폴백
+                if let Err(e2) = mgr.rescan() {
+                    tracing::error!("Extension '{}' rescan also failed: {}", ext_id, e2);
+                }
+            }
             Json(json!({ "success": true, "id": ext_id }))
         }
         Err(e) => Json(json!({
@@ -429,4 +484,47 @@ async fn serve_static_file(
             .into_response()),
         Err(_) => Err(StatusCode::NOT_FOUND),
     }
+}
+
+/// GET /api/extensions/:id/config — 익스텐션 글로벌 설정 조회
+///
+/// 해당 익스텐션의 `extensionConfig.json` 저장 값을 반환합니다.
+pub async fn get_extension_config(
+    State(state): State<IPCServer>,
+    Path(ext_id): Path<String>,
+) -> Json<serde_json::Value> {
+    let mgr = state.extension_manager.read().await;
+    let config = mgr.get_extension_config(&ext_id);
+    Json(json!({ "config": config }))
+}
+
+/// PUT /api/extensions/:id/config — 익스텐션 글로벌 설정 저장
+///
+/// 요청 body: `{ "key1": value1, "key2": value2, ... }`
+/// 기존 키를 머지(덮어쓰기)합니다. 키를 제거하려면 null을 전달하세요.
+pub async fn save_extension_config(
+    State(state): State<IPCServer>,
+    Path(ext_id): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let values: std::collections::HashMap<String, serde_json::Value> = match body.as_object() {
+        Some(obj) => obj
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect(),
+        None => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "success": false,
+                    "error": "Request body must be a JSON object",
+                })),
+            ));
+        }
+    };
+
+    let mut mgr = state.extension_manager.write().await;
+    mgr.set_extension_config(&ext_id, values);
+    let updated = mgr.get_extension_config(&ext_id);
+    Ok(Json(json!({ "success": true, "config": updated })))
 }

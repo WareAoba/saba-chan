@@ -25,6 +25,8 @@ use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
 use std::fs;
 use serde_json::Value;
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 
 // ═══════════════════════════════════════════════════════
 // 테스트 유틸리티
@@ -127,7 +129,7 @@ async fn boot_ipc() -> (String, Arc<RwLock<Supervisor>>, tokio::task::JoinHandle
     let base_url = format!("http://{}", listen_addr);
 
     let sup_clone = supervisor.clone();
-    let server = IPCServer::new(sup_clone, &listen_addr);
+    let server = IPCServer::new(sup_clone, &listen_addr, saba_core::daemon_log::DaemonLogBuffer::new());
     let server_task = tokio::spawn(async move {
         let _ = server.start().await;
     });
@@ -677,6 +679,170 @@ async fn test_check_update_no_extension_data() {
         body["reason"]
     );
 
+    server_task.abort();
+    cleanup_test_instances();
+}
+
+// ═══════════════════════════════════════════════════════
+// 8. 클라이언트 등록/해제 — 봇 프로세스 관리
+// ═══════════════════════════════════════════════════════
+
+/// 더미 프로세스를 시작하여 PID를 반환. 테스트 후 자동 정리 가능.
+fn spawn_dummy_process() -> std::process::Child {
+    #[cfg(target_os = "windows")]
+    {
+        // CREATE_NO_WINDOW (0x0800_0000) — 창 표시 없이 백그라운드에서 실행
+        std::process::Command::new("cmd")
+            .args(["/C", "ping -n 300 127.0.0.1 > NUL"])
+            .creation_flags(0x0800_0000)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("failed to spawn dummy process")
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::process::Command::new("sleep")
+            .arg("300")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("failed to spawn dummy process")
+    }
+}
+
+/// 프로세스가 살아있는지 확인
+fn is_process_alive(pid: u32) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        let output = std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {}", pid), "/NH", "/FO", "CSV"])
+            .output()
+            .expect("failed to run tasklist");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        stdout.contains(&pid.to_string())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let output = std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .status()
+            .expect("failed to check process");
+        output.success()
+    }
+}
+
+/// shutdown=false로 unregister하면 봇 프로세스가 살아있어야 한다.
+/// (인터페이스만 종료 시나리오)
+#[tokio::test]
+async fn test_client_unregister_interface_only_keeps_bot_alive() {
+    let (base_url, _supervisor, server_task) = boot_ipc().await;
+    let client = reqwest::Client::new();
+
+    // 1. 클라이언트 등록
+    let reg_resp = client
+        .post(format!("{}/api/client/register", base_url))
+        .json(&serde_json::json!({"kind": "gui"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(reg_resp.status(), reqwest::StatusCode::OK);
+    let reg_body: Value = reg_resp.json().await.unwrap();
+    let client_id = reg_body["client_id"].as_str().unwrap();
+
+    // 2. 더미 프로세스를 봇 대역으로 시작
+    let mut dummy = spawn_dummy_process();
+    let dummy_pid = dummy.id();
+    assert!(is_process_alive(dummy_pid), "Dummy process should be alive initially");
+
+    // 3. heartbeat로 bot_pid 전달
+    let hb_resp = client
+        .post(format!("{}/api/client/{}/heartbeat", base_url, client_id))
+        .json(&serde_json::json!({"bot_pid": dummy_pid}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(hb_resp.status(), reqwest::StatusCode::OK);
+
+    // 4. shutdown=false로 unregister (인터페이스만 종료)
+    let unreg_resp = client
+        .delete(format!(
+            "{}/api/client/{}/unregister?shutdown=false",
+            base_url, client_id
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unreg_resp.status(), reqwest::StatusCode::OK);
+
+    // 5. 봇(더미 프로세스)이 여전히 살아있어야 한다
+    sleep(Duration::from_millis(500)).await;
+    assert!(
+        is_process_alive(dummy_pid),
+        "Bot process should remain alive when shutdown=false (interface-only quit)"
+    );
+
+    // 정리
+    let _ = dummy.kill();
+    let _ = dummy.wait();
+    server_task.abort();
+    cleanup_test_instances();
+}
+
+/// shutdown=true로 unregister하면 봇 프로세스가 종료되어야 한다.
+/// (완전 종료 시나리오)
+#[tokio::test]
+async fn test_client_unregister_full_shutdown_kills_bot() {
+    let (base_url, _supervisor, server_task) = boot_ipc().await;
+    let client = reqwest::Client::new();
+
+    // 1. 클라이언트 등록
+    let reg_resp = client
+        .post(format!("{}/api/client/register", base_url))
+        .json(&serde_json::json!({"kind": "gui"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(reg_resp.status(), reqwest::StatusCode::OK);
+    let reg_body: Value = reg_resp.json().await.unwrap();
+    let client_id = reg_body["client_id"].as_str().unwrap();
+
+    // 2. 더미 프로세스를 봇 대역으로 시작
+    let mut dummy = spawn_dummy_process();
+    let dummy_pid = dummy.id();
+
+    // 3. heartbeat로 bot_pid 전달
+    let hb_resp = client
+        .post(format!("{}/api/client/{}/heartbeat", base_url, client_id))
+        .json(&serde_json::json!({"bot_pid": dummy_pid}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(hb_resp.status(), reqwest::StatusCode::OK);
+
+    // 4. shutdown=true로 unregister (완전 종료)
+    let unreg_resp = client
+        .delete(format!(
+            "{}/api/client/{}/unregister?shutdown=true",
+            base_url, client_id
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unreg_resp.status(), reqwest::StatusCode::OK);
+
+    // 5. 봇(더미 프로세스)이 종료되어야 한다
+    sleep(Duration::from_millis(1000)).await;
+    assert!(
+        !is_process_alive(dummy_pid),
+        "Bot process should be killed when shutdown=true (full shutdown)"
+    );
+
+    // 정리
+    let _ = dummy.kill();
+    let _ = dummy.wait();
     server_task.abort();
     cleanup_test_instances();
 }

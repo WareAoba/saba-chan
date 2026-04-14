@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { TITLEBAR_HEIGHT } from '../constants/layout';
 import { useServerStore } from '../stores/useServerStore';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
 
@@ -56,7 +57,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         const offset = existingCount * 30;
         return {
             x: 80 + offset,
-            y: 60 + offset,
+            y: TITLEBAR_HEIGHT + 20 + offset,
         };
     }, []);
 
