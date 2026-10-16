@@ -81,3 +81,7 @@ saba-chan-gui/coverage/
 .github/cache/
 # Tauri가 Linux 빌드 때 생성하는 스키마
 **/src-tauri/gen/schemas/linux-schema.json
+
+# 테스트 실행 산출물
+vitest-result.txt
+test_config.json
