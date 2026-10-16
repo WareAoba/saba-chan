@@ -94,6 +94,10 @@ const consoleLines = [
 ];
 
 const ok = (v = {}) => Promise.resolve(v);
+// 주소 뒤에 ?daemon=stopped&bot=running 처럼 붙이면 상태 표시를 바꿔 볼 수 있다
+const params = new URLSearchParams(globalThis.location?.search || '');
+const mockBot = params.get('bot') || 'stopped';
+const mockDaemonUp = params.get('daemon') !== 'stopped';
 const settings = {};
 
 const impl = {
@@ -108,12 +112,13 @@ const impl = {
     botConfigLoad: () =>
         ok({
             prefix: '!saba',
-            cloud: { relayUrl: 'https://relay.example', hostId: '' },
+            cloud: { relayUrl: 'https://relay.example', hostId: mockBot === 'stopped' ? '' : 'mock-host' },
             moduleAliases: {},
             commandAliases: {},
         }),
-    discordBotStatus: () => ok({ status: 'stopped' }),
-    daemonStatus: () => ok({ running: true }),
+    discordBotStatus: () => ok(mockBot === 'stopped' ? 'stopped' : 'running'),
+    relayCheckHostStatus: () => ok(mockBot === 'running' ? { online: true } : { error: 'offline' }),
+    daemonStatus: () => ok({ running: mockDaemonUp }),
     extensionList: () => ok({ extensions: [] }),
     extensionInitStatus: () => ok({ initializing: false, in_progress: {} }),
     getAppVersion: () => ok('0.1.1'),

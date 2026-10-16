@@ -75,12 +75,6 @@
     border-color: var(--line);
     box-shadow: var(--shadow-raised);
 }
-.appbar-tab-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--chip-color);
-}
 .appbar-spacer {
     flex: 1;
 }
@@ -92,6 +86,74 @@
 .appbar-ext-init {
     display: inline-flex;
     -webkit-app-region: no-drag;
+}
+/* 연결 경로: 데몬 ── 봇. 끊긴 구간이 곧 할 일이다 */
+.conn-rail {
+    display: inline-flex;
+    align-items: center;
+    height: 30px;
+    padding: 0 3px;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--line);
+    background: var(--inset);
+    -webkit-app-region: no-drag;
+}
+.conn-node {
+    --btn-height: 24px;
+    --btn-padding: 0 9px;
+    --btn-font-size: var(--fs-sm);
+    gap: 7px;
+    border: none;
+    border-radius: var(--r-pill);
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-1);
+    font-weight: 500;
+}
+.conn-node:hover {
+    background: var(--bg-3);
+}
+.conn-node[aria-expanded="true"] {
+    background: var(--bg-3);
+}
+.daemon-stopped .conn-node,
+.daemon-checking .conn-node {
+    color: var(--chip-color);
+    font-weight: 600;
+}
+.conn-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+    background: var(--chip-color);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--chip-color) 18%, transparent);
+}
+.conn-node.pulse .conn-dot {
+    animation: chip-pulse 1.2s var(--ease) infinite;
+}
+.conn-link {
+    width: 22px;
+    height: 2px;
+    border-radius: 1px;
+    flex: none;
+    background: var(--chip-color);
+    opacity: 0.7;
+}
+.conn-link.link-stopped {
+    opacity: 0.35;
+}
+/* 연결 중: 점선이 봇 쪽으로 흐른다 */
+.conn-link.link-connecting {
+    opacity: 1;
+    background: repeating-linear-gradient(90deg, var(--chip-color) 0 4px, transparent 4px 8px);
+    background-size: 8px 2px;
+    animation: conn-flow 0.8s linear infinite;
+}
+@keyframes conn-flow {
+    to {
+        background-position: 8px 0;
+    }
 }
 .chip-btn {
     --btn-height: 30px;

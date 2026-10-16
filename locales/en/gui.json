@@ -803,6 +803,17 @@
     "delete": "Delete server",
     "delete_stop_first": "Stop the server before deleting it",
     "back": "Back to list",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "conn_label": "Connection status",
+    "daemon_short": "Daemon",
+    "bot_running": "Bot online",
+    "bot_connecting": "Bot connecting",
+    "bot_stopped": "Bot off",
+    "daemon_tip_running": "The Saba-chan daemon is running on this PC. Click for details",
+    "daemon_tip_checking": "Checking the daemon",
+    "daemon_tip_stopped": "The daemon is stopped. Click to start it again",
+    "bot_tip_running": "The Discord bot is connected through the Saba-chan cloud",
+    "bot_tip_connecting": "The bot is on and connecting to the Saba-chan cloud",
+    "bot_tip_stopped": "The Discord bot is off. Click to go turn it on"
   }
 }

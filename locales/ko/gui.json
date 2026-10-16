@@ -803,6 +803,17 @@
     "delete": "서버 삭제",
     "delete_stop_first": "서버를 끈 다음 삭제할 수 있어요",
     "back": "목록으로",
-    "loading": "불러오는 중…"
+    "loading": "불러오는 중…",
+    "conn_label": "연결 상태",
+    "daemon_short": "데몬",
+    "bot_running": "봇 온라인",
+    "bot_connecting": "봇 연결 중",
+    "bot_stopped": "봇 꺼짐",
+    "daemon_tip_running": "내 PC에서 사바쨩 데몬이 돌고 있어요. 눌러서 자세히 보기",
+    "daemon_tip_checking": "데몬 상태를 확인하고 있어요",
+    "daemon_tip_stopped": "데몬이 꺼져 있어요. 눌러서 다시 켤 수 있어요",
+    "bot_tip_running": "디스코드 봇이 사바쨩 클라우드를 통해 연결돼 있어요",
+    "bot_tip_connecting": "봇을 켰고, 사바쨩 클라우드에 연결하는 중이에요",
+    "bot_tip_stopped": "디스코드 봇이 꺼져 있어요. 눌러서 켜러 가기"
   }
 }

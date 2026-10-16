@@ -4,7 +4,7 @@ import BackgroundModal from '../Modals/BackgroundModal';
 import NoticeModal from '../Modals/NoticeModal';
 import ExtensionSlot from '../ExtensionSlot';
 import { Icon } from '../Icon';
-import { StatusChip } from '../ui/StatusChip';
+import { ConnectionRail } from './ConnectionRail';
 
 /** 상단 탭 = 큰 기능 한 개 = 한 페이지 (A7). 새 페이지는 여기에 한 줄 추가한다. */
 export const APP_PAGES = [
@@ -12,9 +12,6 @@ export const APP_PAGES = [
     { id: 'discord', icon: 'discord', labelKey: 'shell.nav_discord' },
     { id: 'settings', icon: 'cog', labelKey: 'shell.nav_settings' },
 ];
-
-const DAEMON_TONE = { running: 'ok', checking: 'warn', stopped: 'stop', error: 'stop' };
-const DISCORD_TONE = { running: 'ok', connecting: 'warn' };
 
 /**
  * 창 맨 위 한 줄: 로고 · 페이지 탭 · 상태 · 알림 · 창 버튼.
@@ -36,7 +33,6 @@ export function AppBar({
     daemonProps,
 }) {
     const { t } = useTranslation('gui');
-    const discordTone = DISCORD_TONE[discordStatus] || 'idle';
 
     return (
         <header className="appbar">
@@ -56,9 +52,6 @@ export function AppBar({
                     >
                         <Icon name={p.icon} size="sm" />
                         <span>{t(p.labelKey)}</span>
-                        {p.id === 'discord' && (
-                            <span className={clsx('appbar-tab-dot', `tone-${discordTone}`)} aria-hidden="true" />
-                        )}
                     </button>
                 ))}
             </nav>
@@ -73,13 +66,13 @@ export function AppBar({
                     </span>
                 )}
                 <div className="popover-anchor">
-                    <button type="button" className="chip-btn" onClick={onToggleDaemon} aria-expanded={showDaemon}>
-                        <StatusChip
-                            tone={DAEMON_TONE[daemonStatus] || 'warn'}
-                            label={t(`shell.daemon_${daemonStatus === 'error' ? 'stopped' : daemonStatus}`)}
-                            className="bare"
-                        />
-                    </button>
+                    <ConnectionRail
+                        daemonStatus={daemonStatus}
+                        botStatus={discordStatus}
+                        onDaemonClick={onToggleDaemon}
+                        daemonExpanded={showDaemon}
+                        onBotClick={() => onNavigate('discord')}
+                    />
                     <BackgroundModal {...daemonProps} isOpen={showDaemon} />
                 </div>
                 <div className="popover-anchor">
