@@ -1,0 +1,354 @@
+//! saba-runner로 띄운 서버에 붙기 (C8b)
+//!
+//! 러너(`runner/` 크레이트)가 서버를 자식으로 쥐고 로그 파일·stdin 포트·`exit.json`을 남긴다.
+//! 데몬은 그 파일과 포트에 붙을 뿐이라, 데몬이 재시작해도 `attach_runner`로 콘솔 기록,
+//! stdin, 종료 코드를 그대로 다시 잡는다. 프로토콜은 `saba_runner`에 있다.
+//!
+//! 러너 실행 파일이 없으면(개발 중 빌드 누락 등) 호출 쪽이 예전 직접 실행(`spawn`)으로 돌아간다.
+
+use super::*;
+use saba_runner::{exit_file, read_json, runner_file, ExitInfo, RunnerInfo, TOKEN_ENV};
+use std::io::{Read, Seek, SeekFrom};
+
+const RUN_DIR: &str = "run";
+const TOKEN_FILE: &str = "token";
+const SESSIONS_DIR: &str = "sessions";
+/// 세션 로그 기본 보관 개수
+pub const DEFAULT_LOG_SESSIONS: usize = 20;
+
+/// `<instance>/run/`
+pub fn run_dir(instance_dir: &Path) -> PathBuf {
+    instance_dir.join(RUN_DIR)
+}
+
+/// `<instance>/logs/sessions/`
+pub fn sessions_dir(instance_dir: &Path) -> PathBuf {
+    instance_dir.join("logs").join(SESSIONS_DIR)
+}
+
+/// 러너 실행 파일. `SABA_RUNNER_PATH`가 있으면 그것, 없으면 데몬 실행 파일 옆(또는 한 단계 위).
+pub fn runner_binary() -> Option<PathBuf> {
+    if let Some(path) = std::env::var_os("SABA_RUNNER_PATH").map(PathBuf::from) {
+        return path.is_file().then_some(path);
+    }
+    let exe = std::env::current_exe().ok()?;
+    let name = format!("saba-runner{}", std::env::consts::EXE_SUFFIX);
+    exe.ancestors()
+        .skip(1)
+        .take(2)
+        .map(|dir| dir.join(&name))
+        .find(|p| p.is_file())
+}
+
+/// 세션 로그를 최근 `keep`개만 남긴다 (이름이 시작 시각이라 이름 순이 시간 순).
+pub fn prune_sessions(instance_dir: &Path, keep: usize) {
+    let Ok(entries) = std::fs::read_dir(sessions_dir(instance_dir)) else { return };
+    let mut logs: Vec<PathBuf> = entries
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|x| x == "log"))
+        .collect();
+    logs.sort();
+    let excess = logs.len().saturating_sub(keep);
+    for old in &logs[..excess] {
+        let _ = std::fs::remove_file(old);
+    }
+}
+
+/// 가장 최근 세션 로그. 없으면 None.
+pub fn latest_session_log(instance_dir: &Path) -> Option<PathBuf> {
+    std::fs::read_dir(sessions_dir(instance_dir))
+        .ok()?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|x| x == "log"))
+        .max()
+}
+
+impl ManagedProcess {
+    /// 러너로 서버를 띄우고 붙는다.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn spawn_with_runner(
+        runner: &Path,
+        program: &str,
+        args: &[String],
+        working_dir: &str,
+        env_vars: Vec<(String, String)>,
+        log_pattern: Option<&str>,
+        instance_dir: &Path,
+        keep_sessions: usize,
+    ) -> Result<Self> {
+        let run = run_dir(instance_dir);
+        std::fs::create_dir_all(&run)?;
+        let _ = std::fs::remove_file(runner_file(&run));
+        let _ = std::fs::remove_file(exit_file(&run));
+        let token = uuid::Uuid::new_v4().to_string();
+        std::fs::write(run.join(TOKEN_FILE), &token)?;
+
+        let log = sessions_dir(instance_dir).join(format!("{}.log", saba_runner::session_stamp(current_timestamp())));
+        std::fs::create_dir_all(sessions_dir(instance_dir))?;
+        prune_sessions(instance_dir, keep_sessions.saturating_sub(1));
+
+        let mut cmd = TokioCommand::new(runner);
+        cmd.arg("--run-dir").arg(&run)
+            .arg("--log").arg(&log)
+            .arg("--cwd").arg(working_dir)
+            .arg("--")
+            .arg(program)
+            .args(args)
+            .envs(env_vars)
+            .env(TOKEN_ENV, &token)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .kill_on_drop(false);
+        // 데몬의 터미널 시그널(Ctrl+C)이 서버까지 가지 않게 따로 프로세스 그룹을 둔다
+        #[cfg(unix)]
+        cmd.process_group(0);
+        crate::utils::apply_creation_flags(&mut cmd);
+
+        let mut child = cmd.spawn()
+            .map_err(|e| anyhow::anyhow!("Failed to spawn saba-runner '{}': {}", runner.display(), e))?;
+        tokio::spawn(async move {
+            let _ = child.wait().await; // 데몬이 사는 동안 좀비를 남기지 않는다
+        });
+
+        // 러너가 서버를 띄우고 runner.json을 쓸 때까지
+        for _ in 0..100 {
+            if let Some(info) = read_json::<RunnerInfo>(&runner_file(&run)) {
+                return Ok(Self::from_runner(info, token, run, log_pattern, Vec::new(), 0, None));
+            }
+            if exit_file(&run).exists() {
+                let tail = std::fs::read_to_string(&log).unwrap_or_default();
+                let reason = tail.lines().last().unwrap_or("saba-runner exited").to_string();
+                return Err(anyhow::anyhow!("{}", reason));
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        Err(anyhow::anyhow!("saba-runner did not start '{}' in time", program))
+    }
+
+    /// 데몬 재시작 뒤, 아직 살아 있는 러너에 다시 붙는다. 러너가 없거나 끝났으면 None.
+    pub async fn attach_runner(instance_dir: &Path, log_pattern: Option<&str>) -> Option<Self> {
+        let run = run_dir(instance_dir);
+        let info: RunnerInfo = read_json(&runner_file(&run))?;
+        if exit_file(&run).exists() || !crate::supervisor::process::is_process_alive(info.runner_pid) {
+            return None;
+        }
+        let token = std::fs::read_to_string(run.join(TOKEN_FILE)).ok()?.trim().to_string();
+
+        let path = info.log.clone();
+        let (history, offset) = tokio::task::spawn_blocking(move || {
+            let content = std::fs::read_to_string(&path).unwrap_or_default();
+            let lines: Vec<&str> = content.lines().collect();
+            let start = lines.len().saturating_sub(DEFAULT_LOG_BUFFER);
+            let history: Vec<LogLine> = lines[start..]
+                .iter()
+                .enumerate()
+                .map(|(i, raw)| parse_disk_log_line(i as u64, raw))
+                .collect();
+            (history, content.len() as u64)
+        })
+        .await
+        .ok()?;
+
+        let notice = format!("── Daemon restarted. Reattached to saba-runner (server PID {}). ──", info.pid);
+        Some(Self::from_runner(info, token, run, log_pattern, history, offset, Some(notice)))
+    }
+
+    fn from_runner(
+        info: RunnerInfo,
+        token: String,
+        run: PathBuf,
+        log_pattern: Option<&str>,
+        history: Vec<LogLine>,
+        offset: u64,
+        notice: Option<String>,
+    ) -> Self {
+        let mut buf = LogBuffer::new();
+        buf.next_id = history.last().map(|l| l.id + 1).unwrap_or(0);
+        buf.lines.extend(history);
+        if let Some(msg) = notice {
+            buf.push(LogSource::System, msg, LogLevel::Info);
+        }
+        let log_buffer = Arc::new(Mutex::new(buf));
+        let (running_tx, running_rx) = watch::channel(true);
+        let regex = log_pattern.and_then(|p| Regex::new(p).ok());
+
+        // 러너 로그 파일을 따라 읽어 콘솔 버퍼로 (러너가 디스크 기록을 맡는다)
+        let tail = {
+            let buf = log_buffer.clone();
+            let path = info.log.clone();
+            let running = running_rx.clone();
+            tokio::spawn(async move {
+                let mut pos = offset;
+                let mut partial: Vec<u8> = Vec::new();
+                loop {
+                    let stopped = !*running.borrow();
+                    let path = path.clone();
+                    let chunk = tokio::task::spawn_blocking(move || read_from(&path, pos)).await.ok().flatten();
+                    if let Some(bytes) = chunk {
+                        pos += bytes.len() as u64;
+                        partial.extend_from_slice(&bytes);
+                        while let Some(nl) = partial.iter().position(|b| *b == b'\n') {
+                            let raw: Vec<u8> = partial.drain(..=nl).collect();
+                            let raw = String::from_utf8_lossy(&raw);
+                            let mut line = parse_disk_log_line(0, raw.trim_end_matches(['\r', '\n']));
+                            line.level = match line.source {
+                                LogSource::System => line.level,
+                                source => {
+                                    let level = parse_log_level(&line.content, regex.as_ref());
+                                    if source == LogSource::Stderr && level == LogLevel::Info { LogLevel::Warn } else { level }
+                                }
+                            };
+                            buf.lock().await.push(line.source, line.content, line.level);
+                        }
+                    }
+                    if stopped {
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                }
+            })
+        };
+
+        // 종료 감시: exit.json이 생기거나 러너가 사라지면 끝
+        {
+            let running = running_tx;
+            let buf = log_buffer.clone();
+            let run = run.clone();
+            let runner_pid = info.runner_pid;
+            tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    let exit: Option<ExitInfo> = read_json(&exit_file(&run));
+                    if exit.is_some() || !crate::supervisor::process::is_process_alive(runner_pid) {
+                        if exit.is_none() {
+                            buf.lock().await.push(LogSource::System, "saba-runner exited without an exit record".into(), LogLevel::Warn);
+                        }
+                        let _ = running.send(false);
+                        let _ = tail.await; // 마지막 출력까지 버퍼에 옮긴다
+                        break;
+                    }
+                }
+            });
+        }
+
+        // stdin: 러너 포트로 한 줄씩. 연결이 끊기면 다음 명령 때 다시 붙는다.
+        let (stdin_tx, mut stdin_rx) = mpsc::channel::<String>(256);
+        {
+            let port = info.port;
+            tokio::spawn(async move {
+                let mut conn: Option<tokio::net::TcpStream> = None;
+                while let Some(cmd) = stdin_rx.recv().await {
+                    let line = format!("{}\n", cmd.trim_end_matches(['\r', '\n']));
+                    for _attempt in 0..2 {
+                        if conn.is_none() {
+                            conn = connect_stdin(port, &token).await;
+                        }
+                        let Some(stream) = conn.as_mut() else { break };
+                        if stream.write_all(line.as_bytes()).await.is_ok() {
+                            break;
+                        }
+                        conn = None;
+                    }
+                }
+            });
+        }
+
+        Self {
+            stdin_tx,
+            log_buffer,
+            pid: info.pid,
+            running_rx,
+            poller_handle: None,
+            stdin_available: true,
+        }
+    }
+}
+
+async fn connect_stdin(port: u16, token: &str) -> Option<tokio::net::TcpStream> {
+    let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.ok()?;
+    stream.write_all(format!("{}\n", token).as_bytes()).await.ok()?;
+    Some(stream)
+}
+
+/// `pos`부터 파일 끝까지. 새 내용이 없으면 None.
+fn read_from(path: &Path, pos: u64) -> Option<Vec<u8>> {
+    let mut file = std::fs::File::open(path).ok()?;
+    if file.metadata().ok()?.len() <= pos {
+        return None;
+    }
+    file.seek(SeekFrom::Start(pos)).ok()?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).ok()?;
+    Some(bytes)
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    async fn wait_for(proc: &ManagedProcess, text: &str) -> bool {
+        for _ in 0..50 {
+            if proc.get_recent_console(100).await.iter().any(|l| l.content == text) {
+                return true;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        false
+    }
+
+    /// 데몬이 떨어졌다 다시 붙어도 콘솔 기록과 stdin이 이어지고, 끝나면 종료 기록이 남는다
+    #[tokio::test]
+    async fn runner_keeps_console_and_stdin_across_reattach() {
+        let Some(runner) = runner_binary() else {
+            eprintln!("SKIP: saba-runner binary not built (cargo build -p saba-runner)");
+            return;
+        };
+        let tmp = tempfile::tempdir().unwrap();
+        let inst = tmp.path();
+
+        let proc = ManagedProcess::spawn_with_runner(&runner, "cat", &[], inst.to_str().unwrap(), Vec::new(), None, inst, 3)
+            .await
+            .unwrap();
+        proc.send_command("before restart").await.unwrap();
+        assert!(wait_for(&proc, "before restart").await);
+        let pid = proc.pid;
+        drop(proc); // 데몬 재시작 흉내
+
+        let again = ManagedProcess::attach_runner(inst, None).await.expect("runner still alive");
+        assert_eq!(again.pid, pid);
+        assert!(wait_for(&again, "before restart").await, "history comes back from the session log");
+        assert!(again.is_stdin_available());
+        again.send_command("after restart").await.unwrap();
+        assert!(wait_for(&again, "after restart").await);
+
+        crate::supervisor::process::force_kill_pid(pid).unwrap();
+        for _ in 0..50 {
+            if !again.is_running() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        assert!(!again.is_running());
+        let exit: ExitInfo = read_json(&exit_file(&run_dir(inst))).expect("exit.json");
+        assert!(!exit.success);
+        assert!(ManagedProcess::attach_runner(inst, None).await.is_none());
+        assert!(latest_session_log(inst).is_some());
+    }
+
+    #[test]
+    fn old_session_logs_are_pruned() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = sessions_dir(tmp.path());
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["20260101-000000.log", "20260102-000000.log", "20260103-000000.log"] {
+            std::fs::write(dir.join(name), "").unwrap();
+        }
+        prune_sessions(tmp.path(), 2);
+        let mut left: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
+        left.sort();
+        assert_eq!(left, ["20260102-000000.log", "20260103-000000.log"]);
+        assert_eq!(latest_session_log(tmp.path()), Some(dir.join("20260103-000000.log")));
+    }
+}

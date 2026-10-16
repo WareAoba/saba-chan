@@ -52,6 +52,8 @@ COMPONENTS = [
         "exe_name": "saba-core.exe",
         # 공유 모듈 유틸리티 — %APPDATA%/saba-chan/modules/ 에 설치됨
         "extra_files": ["modules/i18n.py", "modules/daemon_rcon.py"],
+        # 데몬 옆에 함께 설치되는 실행 파일 (staging/에서 찾는다). saba-runner: 서버 콘솔 감시 (C8b)
+        "extra_staged": [r"saba-runner\.exe$"],
     },
     {
         "key": "cli",
@@ -373,8 +375,14 @@ def main():
             raw_file = find_raw_file(comp["raw_patterns"])
             if raw_file:
                 print(f"  raw: {raw_file.name}")
-                copy_or_repackage(raw_file, output_path, comp.get("exe_name"),
-                                  comp.get("extra_files"))
+                extra = list(comp.get("extra_files", []))
+                for pattern in comp.get("extra_staged", []):
+                    staged = find_raw_file([pattern])
+                    if staged:
+                        extra.append(str(staged))
+                    else:
+                        print(f"    ⚠ {pattern} not in staging — component ships without it")
+                copy_or_repackage(raw_file, output_path, comp.get("exe_name"), extra)
                 asset_source = "current"
             else:
                 # 이번 릴리즈에 없음 → 이전 릴리즈에서 가져오기

@@ -668,7 +668,8 @@ function waitForExit(proc, timeoutMs) {
 function forceKillDaemon(proc) {
     try {
         if (process.platform === 'win32') {
-            execSync(`taskkill /PID ${proc.pid} /F /T`, { stdio: 'ignore' });
+            // /T 없이: 서버는 saba-runner가 쥐고 있어 데몬만 끊고, 다음 기동 때 다시 붙는다
+            execSync(`taskkill /PID ${proc.pid} /F`, { stdio: 'ignore' });
         } else {
             proc.kill('SIGKILL');
         }

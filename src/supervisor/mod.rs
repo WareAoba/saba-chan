@@ -112,6 +112,23 @@ impl Supervisor {
             let inst_dir = self.instance_store.instance_dir(&instance.id);
             let pid_file = inst_dir.join("managed.pid");
 
+            // saba-runner가 쥔 서버면 콘솔·stdin까지 그대로 다시 붙는다 (C8b)
+            let log_pattern = self.module_loader.get_module(&instance.module_name)
+                .ok()
+                .and_then(|m| m.metadata.log_pattern.clone());
+            if let Some(proc) = managed_process::ManagedProcess::attach_runner(&inst_dir, log_pattern.as_deref()).await {
+                let pid = proc.pid;
+                if let Err(e) = self.tracker.track(&instance.id, pid) {
+                    tracing::warn!("Failed to re-track '{}' (PID {}): {}", instance.name, pid, e);
+                    continue;
+                }
+                let _ = std::fs::write(&pid_file, pid.to_string());
+                self.managed_store.insert(&instance.id, proc).await;
+                reattached += 1;
+                tracing::info!("Reattached '{}' through saba-runner (PID {})", instance.name, pid);
+                continue;
+            }
+
             let pid_str = match std::fs::read_to_string(&pid_file) {
                 Ok(s) => s.trim().to_string(),
                 Err(_) => continue, // no managed.pid → not a managed instance
@@ -1295,7 +1312,20 @@ impl Supervisor {
         // Spawn managed process
         let log_pattern = module.metadata.log_pattern.as_deref();
         let inst_dir = self.instance_store.instance_dir(&instance.id);
-        let managed = ManagedProcess::spawn(program, &args, working_dir, env_vars, log_pattern, Some(&inst_dir)).await?;
+        // saba-runner가 서버를 쥐면 데몬이 재시작해도 콘솔·stdin·종료 코드가 이어진다 (C8b)
+        let managed = match managed_process::runner_binary() {
+            Some(runner) => {
+                let keep = instance.module_settings.get("log_sessions_keep")
+                    .and_then(|v| v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+                    .map(|n| n.max(1) as usize)
+                    .unwrap_or(managed_process::DEFAULT_LOG_SESSIONS);
+                ManagedProcess::spawn_with_runner(&runner, program, &args, working_dir, env_vars, log_pattern, &inst_dir, keep).await?
+            }
+            None => {
+                tracing::warn!("saba-runner not found next to the daemon; '{}' is attached directly and will lose its console if the daemon restarts", instance.name);
+                ManagedProcess::spawn(program, &args, working_dir, env_vars, log_pattern, Some(&inst_dir)).await?
+            }
+        };
         let pid = managed.pid;
 
         // Track the process
@@ -1397,7 +1427,7 @@ impl Supervisor {
 
         // Fallback: read from disk log
         let inst_dir = self.instance_store.instance_dir(instance_id);
-        let log_path = managed_process::console_log_path(&inst_dir);
+        let log_path = managed_process::latest_console_log(&inst_dir);
         if log_path.exists() {
             let effective_count = count.unwrap_or(100);
             let dir_owned = inst_dir.clone();

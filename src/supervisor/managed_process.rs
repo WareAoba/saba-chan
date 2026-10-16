@@ -17,6 +17,9 @@ use serde::{Serialize, Deserialize};
 use anyhow::Result;
 use regex::Regex;
 
+mod runner;
+pub use runner::{latest_session_log, runner_binary, DEFAULT_LOG_SESSIONS};
+
 /// Console log file name within the instance's logs directory.
 const CONSOLE_LOG_FILENAME: &str = "console.log";
 /// Maximum console log file size before rotation (10 MB).
@@ -747,6 +750,16 @@ pub fn console_log_path(instance_dir: &Path) -> PathBuf {
     instance_dir.join("logs").join(CONSOLE_LOG_FILENAME)
 }
 
+/// 가장 최근 콘솔 기록 파일: saba-runner 세션 로그와 직접 실행 때의 `console.log` 중 더 최근 것.
+pub fn latest_console_log(instance_dir: &Path) -> PathBuf {
+    let direct = console_log_path(instance_dir);
+    let modified = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    match latest_session_log(instance_dir) {
+        Some(session) if modified(&session) >= modified(&direct) => session,
+        _ => direct,
+    }
+}
+
 /// Spawn a background task that writes log lines to a file.
 /// Returns an unbounded sender; dropping it cleanly stops the writer.
 fn spawn_disk_writer(log_path: PathBuf) -> mpsc::UnboundedSender<String> {
@@ -835,7 +848,7 @@ async fn rotate_log_files(log_path: &Path) {
 /// Read the most recent `count` lines from the console log on disk.
 /// Used to restore console history when the daemon restarts.
 pub fn read_console_log_from_disk(instance_dir: &Path, count: usize) -> Vec<LogLine> {
-    let log_path = console_log_path(instance_dir);
+    let log_path = latest_console_log(instance_dir);
     let content = match std::fs::read_to_string(&log_path) {
         Ok(c) => c,
         Err(_) => return Vec::new(),
