@@ -982,6 +982,16 @@ async fn browse_folder(app: AppHandle) -> Result<Option<String>, String> {
 // 헬퍼 함수
 // ═══════════════════════════════════════════════════════
 
+/// 설치 언어에 맞는 앱 표시 이름을 반환한다 (바로가기 이름, Windows 전용).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn localized_app_name(language: &str) -> &'static str {
+    match language {
+        "ko" => "사바쨩",
+        "ja" => "サバちゃん",
+        _ => "Saba-chan",
+    }
+}
+
 /// saba-core와 동일한 데이터 디렉토리 경로 해석
 /// Windows: `%APPDATA%/saba-chan`, Linux/macOS: `~/.config/saba-chan`
 fn resolve_data_dir() -> PathBuf {
