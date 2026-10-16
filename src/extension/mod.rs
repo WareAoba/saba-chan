@@ -503,10 +503,6 @@ pub struct ExtensionUpdateInfo {
     pub installed_version: String,
     pub latest_version: String,
     pub download_url: String,
-    /// 다운로드 완료 여부 (현재는 항상 false — 다운로드 큐 구현 시 활용)
-    pub downloaded: bool,
-    /// 적용(설치) 완료 여부
-    pub installed: bool,
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -635,55 +631,69 @@ impl ExtensionManager {
         Ok(found)
     }
 
-    /// `.zip` 파일을 같은 이름의 폴더로 압축 해제.
-    /// 이미 폴더가 있으면 None 반환 (스킵).
+    /// extensions/ 폴더에 놓인 `.zip`을 풀어 설치한다. 같은 익스텐션 폴더가 있으면 zip 내용으로 바꾼다
+    /// (예전에는 zip을 지우고 새 내용을 버렸다). 다 풀고 나면 zip을 지운다.
     fn extract_zip_extension(&self, zip_path: &std::path::Path) -> Result<Option<String>> {
         let stem = zip_path
             .file_stem()
             .and_then(|s| s.to_str())
             .ok_or_else(|| anyhow::anyhow!("Invalid zip filename: {}", zip_path.display()))?;
-
-        let dir_name = Self::python_safe_dir_name(stem);
-        let dest = self.extensions_dir.join(&dir_name);
-        if dest.is_dir() {
-            // 이미 추출된 폴더 존재 → zip 파일 삭제 후 스킵
-            if let Err(e) = std::fs::remove_file(zip_path) {
-                tracing::warn!("Failed to remove zip after extraction: {}", e);
-            }
-            return Ok(None);
+        let bytes = std::fs::read(zip_path)
+            .with_context(|| format!("Failed to read zip: {}", zip_path.display()))?;
+        let staging = self.extensions_dir.join(format!(".staging-{}", Self::python_safe_dir_name(stem)));
+        if staging.exists() {
+            std::fs::remove_dir_all(&staging)?;
         }
-
-        let file = std::fs::File::open(zip_path)
-            .with_context(|| format!("Failed to open zip: {}", zip_path.display()))?;
-        let mut archive = zip::ZipArchive::new(file)
-            .with_context(|| format!("Failed to read zip archive: {}", zip_path.display()))?;
-
-        for i in 0..archive.len() {
-            let mut zip_file = archive.by_index(i)?;
-            let outpath = match zip_file.enclosed_name() {
-                Some(p) => dest.join(p),
-                None => continue,
-            };
-            if zip_file.is_dir() {
-                std::fs::create_dir_all(&outpath)?;
-            } else {
-                if let Some(parent) = outpath.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                let mut outfile = std::fs::File::create(&outpath)
-                    .with_context(|| format!("Failed to create {}", outpath.display()))?;
-                std::io::copy(&mut zip_file, &mut outfile)
-                    .with_context(|| format!("Failed to write {}", outpath.display()))?;
+        let ext_id = (|| -> Result<String> {
+            zip::ZipArchive::new(std::io::Cursor::new(&bytes))?.extract(&staging)?;
+            let content = std::fs::read_to_string(staging.join("manifest.json"))
+                .context("zip has no manifest.json at its root")?;
+            Ok(parse_manifest(&content)?.0.id)
+        })();
+        let ext_id = match ext_id {
+            Ok(id) => id,
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(&staging);
+                return Err(e);
             }
-        }
-
-        // 성공 후 zip 파일 제거
+        };
+        let dest = self.extensions_dir.join(Self::python_safe_dir_name(&ext_id));
+        Self::swap_into_place(&staging, &dest)?;
         if let Err(e) = std::fs::remove_file(zip_path) {
             tracing::warn!("Failed to remove zip after extraction: {}", e);
         }
+        tracing::info!("Extracted zip extension '{}' to {}", ext_id, dest.display());
+        Ok(Some(ext_id))
+    }
 
-        tracing::info!("Extracted zip extension '{}' to {}", stem, dest.display());
-        Ok(Some(stem.to_string()))
+    /// `staged` 폴더를 `dest` 자리에 둔다. 옛 `dest`는 새 폴더가 자리를 잡은 뒤에 지우고,
+    /// 실패하면 옛 폴더를 되돌린다.
+    fn swap_into_place(staged: &std::path::Path, dest: &std::path::Path) -> Result<()> {
+        let backup = dest.with_file_name(format!(
+            ".old-{}",
+            dest.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()
+        ));
+        if backup.exists() {
+            std::fs::remove_dir_all(&backup)?;
+        }
+        let had_old = dest.exists();
+        if had_old {
+            std::fs::rename(dest, &backup)
+                .with_context(|| format!("Failed to move old {} aside", dest.display()))?;
+        }
+        if let Err(e) = std::fs::rename(staged, dest) {
+            if had_old {
+                let _ = std::fs::rename(&backup, dest);
+            }
+            let _ = std::fs::remove_dir_all(staged);
+            anyhow::bail!("Failed to put {} in place: {}", dest.display(), e);
+        }
+        if had_old {
+            if let Err(e) = std::fs::remove_dir_all(&backup) {
+                tracing::warn!("Failed to remove old extension files {}: {}", backup.display(), e);
+            }
+        }
+        Ok(())
     }
 
     fn load_manifest(&self, path: &std::path::Path) -> Result<(ExtensionManifest, Vec<String>)> {
@@ -710,6 +720,8 @@ impl ExtensionManager {
             .with_context(|| format!("Failed to read extensions directory: {}", self.extensions_dir.display()))?
             .filter_map(|e| e.ok().map(|e| e.path()))
             .filter(|p| p.is_dir() && p.join("manifest.json").is_file())
+            // `.staging-*`, `.old-*`는 설치 도중의 임시 폴더
+            .filter(|p| !p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.')))
             .collect();
         dirs.sort();
 
@@ -1430,8 +1442,6 @@ impl ExtensionManager {
                         installed_version: local.manifest.version.clone(),
                         latest_version: remote_ext.version.clone(),
                         download_url: remote_ext.download_url.clone(),
-                        downloaded: false,
-                        installed: false,
                     });
                 }
             }
@@ -1439,76 +1449,96 @@ impl ExtensionManager {
         updates
     }
 
-    /// 원격에서 zip을 다운로드하여 extensions/ 폴더에 설치합니다.
-    ///
-    /// `download_url`에서 zip 파일을 받아 `extensions/{ext_id}/`에 압축을 풉니다.
-    /// `expected_sha256`가 주어지면 다운로드 후 무결성을 검증합니다 (미구현, v0.2 예정).
-    pub async fn install_from_url(
-        &self,
-        ext_id: &str,
-        download_url: &str,
-        _expected_sha256: Option<&str>,
-    ) -> Result<()> {
-        tracing::info!("Installing extension '{}' from {}", ext_id, download_url);
-
-        // sha256 검증은 v0.2에서 sha2 크레이트 도입 후 구현 예정
-        // 다운로드
+    /// 익스텐션 패키지(zip)를 받는다. 락 없이 부르면 된다
+    pub async fn download_package(download_url: &str) -> Result<Vec<u8>> {
         let response = reqwest::get(download_url)
             .await
             .with_context(|| format!("Failed to download extension from {}", download_url))?;
-
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!(
-                "Download failed: HTTP {}",
-                response.status()
-            ));
+            anyhow::bail!("Download failed: HTTP {}", response.status());
         }
+        Ok(response.bytes().await.context("Failed to read download response body")?.to_vec())
+    }
 
-        let bytes = response
-            .bytes()
-            .await
-            .context("Failed to read download response body")?;
+    pub fn extensions_dir(&self) -> &std::path::Path {
+        &self.extensions_dir
+    }
 
-        // 임시 zip 파일로 저장
-        let zip_path = self.extensions_dir.join(format!("{}.zip", ext_id));
-        std::fs::write(&zip_path, &bytes)
-            .with_context(|| format!("Failed to write download to {}", zip_path.display()))?;
-
-        // 압축 해제: Python import와 호환되는 디렉토리명 사용 (하이픈→언더스코어)
-        // 기존 폴더가 있으면 먼저 제거 (하이픈/언더스코어 버전 모두 확인)
-        let dir_name = Self::python_safe_dir_name(ext_id);
-        let dest = self.extensions_dir.join(&dir_name);
-        if dest.is_dir() {
-            std::fs::remove_dir_all(&dest)
-                .with_context(|| format!("Failed to remove existing extension dir: {}", dest.display()))?;
-        }
-
-        let file = std::fs::File::open(&zip_path)?;
-        let mut archive = zip::ZipArchive::new(file)
-            .context("Failed to read downloaded zip archive")?;
-
-        for i in 0..archive.len() {
-            let mut zip_file = archive.by_index(i)?;
-            let outpath = match zip_file.enclosed_name() {
-                Some(p) => dest.join(p),
-                None => continue,
-            };
-            if zip_file.is_dir() {
-                std::fs::create_dir_all(&outpath)?;
-            } else {
-                if let Some(parent) = outpath.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                let mut outfile = std::fs::File::create(&outpath)?;
-                std::io::copy(&mut zip_file, &mut outfile)?;
+    /// 받은 zip을 검사하고 `extensions/.staging-<id>`에 푼다. 락 없이 부르면 된다.
+    /// sha256(있으면), manifest 스키마, manifest id, min_app_version을 여기서 확인하므로
+    /// 실패해도 설치된 익스텐션은 그대로다.
+    pub fn stage_package(
+        extensions_dir: &std::path::Path,
+        ext_id: &str,
+        bytes: &[u8],
+        expected_sha256: Option<&str>,
+    ) -> Result<PathBuf> {
+        if let Some(expected) = expected_sha256.filter(|s| !s.is_empty()) {
+            use sha2::{Digest, Sha256};
+            let actual = hex::encode(Sha256::digest(bytes));
+            if !actual.eq_ignore_ascii_case(expected) {
+                anyhow::bail!("sha256 mismatch for '{}': expected {}, got {}", ext_id, expected, actual);
             }
         }
+        let staging = extensions_dir.join(format!(".staging-{}", Self::python_safe_dir_name(ext_id)));
+        if staging.exists() {
+            std::fs::remove_dir_all(&staging)
+                .with_context(|| format!("Failed to clear {}", staging.display()))?;
+        }
+        let result = (|| -> Result<()> {
+            let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+                .context("Failed to read downloaded zip archive")?;
+            archive.extract(&staging).context("Failed to extract extension zip")?;
+            let content = std::fs::read_to_string(staging.join("manifest.json"))
+                .context("Package has no manifest.json at its root")?;
+            let (manifest, _) = parse_manifest(&content)?;
+            if manifest.id != ext_id {
+                return Err(ExtensionError::id_mismatch(&manifest.id, ext_id).into());
+            }
+            if let Some(reason) = Self::incompatibility(&manifest) {
+                anyhow::bail!("Cannot install '{}': {}", ext_id, reason);
+            }
+            Ok(())
+        })();
+        if let Err(e) = result {
+            let _ = std::fs::remove_dir_all(&staging);
+            return Err(e);
+        }
+        Ok(staging)
+    }
 
-        // 임시 zip 삭제
-        let _ = std::fs::remove_file(&zip_path);
-
-        tracing::info!("Extension '{}' installed successfully", ext_id);
+    /// 검사를 마친 패키지 폴더로 익스텐션을 바꿔 끼운다 (새로 설치 또는 업데이트).
+    /// 실행 중인 인스턴스가 쓰고 있으면 거부한다. 옛 폴더는 새 폴더가 자리를 잡은 뒤에 지운다.
+    pub fn install_staged(
+        &mut self,
+        ext_id: &str,
+        staged: &std::path::Path,
+        running_ext_data: &[(&str, &HashMap<String, Value>)],
+    ) -> Result<()> {
+        let using = self.instances_using_ext(ext_id, running_ext_data);
+        if !using.is_empty() {
+            let _ = std::fs::remove_dir_all(staged);
+            return Err(ExtensionError::in_use(ext_id, &using).into());
+        }
+        let dest = self.ext_dir_on_disk(ext_id);
+        Self::swap_into_place(staged, &dest)?;
+        self.mount(ext_id)?;
+        tracing::info!("Extension '{}' installed", ext_id);
         Ok(())
+    }
+
+    /// 이 익스텐션이 의존하지만 아직 없는 익스텐션 (원격 목록에 있는 것만; `saba-core` 같은 컴포넌트는 제외)
+    pub fn missing_dependencies(&self, ext_id: &str, remote: &[RemoteExtensionInfo]) -> Vec<String> {
+        let Some(ext) = self.discovered.get(ext_id) else { return Vec::new() };
+        let mut missing: Vec<String> = ext
+            .manifest
+            .dependencies
+            .keys()
+            .filter(|dep| !self.discovered.contains_key(*dep) && remote.iter().any(|r| &r.id == *dep))
+            .cloned()
+            .collect();
+        missing.sort();
+        missing
     }
 
     /// i18n JSON 로드
@@ -1822,6 +1852,72 @@ mod tests {
         let err = mgr.remove("box", &[("stopped", &used)]).unwrap_err();
         assert_eq!(err.downcast_ref::<ExtensionError>().unwrap().error_code, "in_use");
         assert!(tmp.path().join("box").exists());
+    }
+
+    fn zip_package(manifest: Value, extra: &str) -> Vec<u8> {
+        use std::io::Write;
+        let mut buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut w = zip::ZipWriter::new(&mut buf);
+            let opts = zip::write::FileOptions::default();
+            w.start_file("manifest.json", opts).unwrap();
+            w.write_all(manifest.to_string().as_bytes()).unwrap();
+            w.start_file("data.txt", opts).unwrap();
+            w.write_all(extra.as_bytes()).unwrap();
+            w.finish().unwrap();
+        }
+        buf.into_inner()
+    }
+
+    #[test]
+    fn install_checks_package_then_swaps_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let v = |ver: &str| json!({"id": "box", "name": "B", "version": ver,
+            "instance_fields": {"box_enabled": {"type": "boolean"}}, "dependencies": {"helper": ">=0.1.0"}});
+        write_ext(tmp.path(), "box", v("0.1.0"));
+        std::fs::write(tmp.path().join("box/data.txt"), "old").unwrap();
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+
+        let pkg = zip_package(v("0.2.0"), "new");
+        let err = ExtensionManager::stage_package(tmp.path(), "box", &pkg, Some("00")).unwrap_err();
+        assert!(err.to_string().contains("sha256"), "{err}");
+        let err = ExtensionManager::stage_package(tmp.path(), "other", &pkg, None).unwrap_err();
+        assert!(format!("{err:#}").contains("does not match"), "{err:#}");
+        assert_eq!(std::fs::read_to_string(tmp.path().join("box/data.txt")).unwrap(), "old");
+
+        use sha2::{Digest, Sha256};
+        let sha = hex::encode(Sha256::digest(&pkg));
+        let staged = ExtensionManager::stage_package(tmp.path(), "box", &pkg, Some(&sha)).unwrap();
+        let running: HashMap<String, Value> = [("box_enabled".to_string(), json!(true))].into_iter().collect();
+        let err = mgr.install_staged("box", &staged, &[("srv", &running)]).unwrap_err();
+        assert_eq!(err.downcast_ref::<ExtensionError>().unwrap().error_code, "in_use");
+        assert!(!staged.exists(), "refused package is cleaned up");
+
+        let staged = ExtensionManager::stage_package(tmp.path(), "box", &pkg, None).unwrap();
+        mgr.install_staged("box", &staged, &[]).unwrap();
+        assert_eq!(std::fs::read_to_string(tmp.path().join("box/data.txt")).unwrap(), "new");
+        assert_eq!(mgr.discovered["box"].manifest.version, "0.2.0");
+        assert!(!tmp.path().join(".old-box").exists());
+
+        let remote: Vec<RemoteExtensionInfo> = serde_json::from_value(json!([
+            {"id": "helper", "name": "H", "version": "0.1.0", "download_url": "x"}
+        ])).unwrap();
+        assert_eq!(mgr.missing_dependencies("box", &remote), ["helper"]);
+    }
+
+    #[test]
+    fn dropped_zip_replaces_existing_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let m = json!({"id": "box", "name": "B", "version": "0.1.0"});
+        write_ext(tmp.path(), "box", m.clone());
+        std::fs::write(tmp.path().join("box/data.txt"), "old").unwrap();
+        std::fs::write(tmp.path().join("extension-box.zip"), zip_package(m, "new")).unwrap();
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+        assert_eq!(std::fs::read_to_string(tmp.path().join("box/data.txt")).unwrap(), "new");
+        assert!(!tmp.path().join("extension-box.zip").exists());
+        assert!(mgr.discovered.contains_key("box"));
     }
 
     #[test]
@@ -2347,8 +2443,6 @@ mod tests {
         assert_eq!(updates[0].id, "test_ext");
         assert_eq!(updates[0].installed_version, "1.0.0");
         assert_eq!(updates[0].latest_version, "2.0.0");
-        assert!(!updates[0].downloaded);
-        assert!(!updates[0].installed);
     }
 
     /// check_updates_against — 이미 최신이면 빈 목록
