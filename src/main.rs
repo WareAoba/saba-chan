@@ -132,8 +132,9 @@ async fn main() -> anyhow::Result<()> {
     };
 
     // ── Integrity Check (무결성 검증) ──────────────────────────
-    // 서버(GitHub)에서 매니페스트를 가져와 설치된 컴포넌트의 SHA256을 검증
-    run_integrity_check_on_startup().await;
+    // 서버(GitHub)에서 매니페스트를 가져와 설치된 컴포넌트의 SHA256을 검증.
+    // 결과는 로그로만 남으므로 네트워크를 기다리며 기동을 막지 않는다.
+    tokio::spawn(run_integrity_check_on_startup());
 
     // Load config
     let cfg = config::GlobalConfig::load().ok();

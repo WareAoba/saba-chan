@@ -3,7 +3,7 @@
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-fn spawn_daemon(data_dir: &std::path::Path, port: u16) -> std::process::Child {
+fn spawn_daemon(data_dir: &std::path::Path, port: u16, stderr: Stdio) -> std::process::Child {
     Command::new(env!("CARGO_BIN_EXE_saba-core"))
         .arg("--spawned")
         .env("SABA_DATA_DIR", data_dir)
@@ -12,7 +12,7 @@ fn spawn_daemon(data_dir: &std::path::Path, port: u16) -> std::process::Child {
         .env("SABA_INSTANCES_PATH", data_dir.join("instances"))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::piped())
+        .stderr(stderr)
         .spawn()
         .expect("spawn saba-core")
 }
@@ -26,7 +26,8 @@ fn second_daemon_exits_without_touching_running_one() {
     let data_dir = tempfile::tempdir().unwrap();
     let lock_path = data_dir.path().join("daemon.lock");
 
-    let mut first = spawn_daemon(data_dir.path(), free_port());
+    // 읽지 않는 파이프는 로그가 쌓이면 데몬을 멈추게 하므로 첫 데몬의 stderr는 버린다
+    let mut first = spawn_daemon(data_dir.path(), free_port(), Stdio::null());
 
     // 첫 데몬이 잠금과 토큰을 모두 기록할 때까지 대기
     let token_path = data_dir.path().join(".ipc_token");
@@ -38,7 +39,7 @@ fn second_daemon_exits_without_touching_running_one() {
     }
     let token_before = std::fs::read_to_string(&token_path).unwrap();
 
-    let second = spawn_daemon(data_dir.path(), free_port())
+    let second = spawn_daemon(data_dir.path(), free_port(), Stdio::piped())
         .wait_with_output()
         .expect("wait second daemon");
     assert_eq!(second.status.code(), Some(2), "second daemon must exit with code 2");
