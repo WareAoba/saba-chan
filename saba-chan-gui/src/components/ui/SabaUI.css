@@ -261,7 +261,7 @@
 
 /* light variant — white track on dark bg */
 .saba-spinner.light {
-    border-color: rgba(255, 255, 255, 0.25);
+    border-color: color-mix(in srgb, var(--text-1) 25%, transparent);
     border-top-color: #fff;
 }
 

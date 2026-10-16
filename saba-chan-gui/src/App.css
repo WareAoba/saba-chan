@@ -302,7 +302,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .discord-status .status-running {
-    color: #4caf50;
+    color: var(--ok);
 }
 
 .discord-status .status-stopped {
@@ -310,7 +310,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .discord-status .status-error {
-    color: #f44336;
+    color: var(--stop);
 }
 
 .discord-token-form {
@@ -371,12 +371,12 @@ span[style*="--icon-loader"] svg,
 
 .btn-discord-active {
     background: var(--bg-surface);
-    border-color: #3ba55d;
+    border-color: var(--ok);
 }
 
 .btn-discord-active:hover {
     background: var(--bg-surface-secondary);
-    border-color: #3ba55d;
+    border-color: var(--ok);
 }
 
 .btn-background {
@@ -405,12 +405,12 @@ span[style*="--icon-loader"] svg,
 
 .btn-background-active {
     background: var(--bg-surface);
-    border-color: #3ba55d;
+    border-color: var(--ok);
 }
 
 .btn-background-active:hover {
     background: var(--bg-surface-secondary);
-    border-color: #3ba55d;
+    border-color: var(--ok);
 }
 
 /* Updater Test button */
@@ -430,15 +430,15 @@ span[style*="--icon-loader"] svg,
     white-space: nowrap;
 }
 .btn-updater-test:hover {
-    border-color: #8b5cf6;
-    color: #8b5cf6;
+    border-color: var(--accent);
+    color: var(--accent);
     box-shadow: 0 4px 8px var(--shadow-md);
     transform: translateY(-1px);
 }
 .btn-updater-test-active {
     background: #f5f3ff;
-    border-color: #8b5cf6;
-    color: #8b5cf6;
+    border-color: var(--accent);
+    color: var(--accent);
 }
 
 .status-indicator {
@@ -450,8 +450,8 @@ span[style*="--icon-loader"] svg,
 }
 
 .status-online {
-    background: #3ba55d;
-    box-shadow: 0 0 0 2px rgba(59, 165, 93, 0.2);
+    background: var(--ok);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ok) 20%, transparent);
 }
 
 .status-offline {
@@ -460,14 +460,14 @@ span[style*="--icon-loader"] svg,
 }
 
 .status-checking {
-    background: #faa61a;
-    box-shadow: 0 0 0 2px rgba(250, 166, 26, 0.2);
+    background: var(--warn);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--warn) 20%, transparent);
     animation: pulse 1s ease-in-out infinite;
 }
 
 .status-connecting {
-    background: #faa61a;
-    box-shadow: 0 0 0 2px rgba(250, 166, 26, 0.2);
+    background: var(--warn);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--warn) 20%, transparent);
     animation: pulse 1s ease-in-out infinite;
 }
 
@@ -513,7 +513,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .discord-prefix-form .warning-text {
-    color: #f44336;
+    color: var(--stop);
     font-weight: bold;
 }
 
@@ -584,14 +584,14 @@ span[style*="--icon-loader"] svg,
     margin-left: 8px;
     background: none;
     border: none;
-    color: #f44336;
+    color: var(--stop);
     cursor: pointer;
     font-size: calc(14px * var(--font-scale));
     padding: 0 4px;
 }
 
 .btn-alias-remove:hover {
-    color: #d32f2f;
+    color: var(--stop);
 }
 
 .alias-add-form {
@@ -662,12 +662,12 @@ span[style*="--icon-loader"] svg,
 }
 
 .btn-save {
-    background: #4caf50;
+    background: var(--ok);
     color: white;
 }
 
 .btn-save:hover {
-    background: #43a047;
+    background: var(--ok);
 }
 
 .path-input {
@@ -1526,7 +1526,7 @@ span[style*="--icon-loader"] svg,
     padding: 24px 20px;
     border-radius: 12px;
     border: 1.5px solid var(--border-default);
-    background: linear-gradient(135deg, var(--bg-surface) 0%, var(--bg-surface-tertiary) 100%);
+    background: var(--bg-surface);
     cursor: pointer;
     transition: all 0.2s ease;
     text-align: left;
@@ -1545,14 +1545,14 @@ span[style*="--icon-loader"] svg,
     left: 0;
     right: 0;
     bottom: 0;
-    background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 50%);
+    background: none;
     opacity: 0;
     transition: opacity 0.2s ease;
 }
 
 .ai-choice-card:hover {
     border-color: var(--brand-primary);
-    background: linear-gradient(135deg, var(--bg-surface-hover) 0%, var(--bg-surface-tertiary) 100%);
+    background: var(--bg-surface-hover);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15), 0 0 0 1px var(--brand-primary);
     transform: translateY(-2px);
 }
@@ -1601,15 +1601,15 @@ span[style*="--icon-loader"] svg,
 }
 
 .ai-choice-icon--new {
-    background: linear-gradient(135deg, rgba(79, 192, 227, 0.2), rgba(102, 126, 234, 0.1));
+    background: color-mix(in srgb, var(--info) 14%, transparent);
     color: var(--brand-primary);
     border: 1px solid rgba(79, 192, 227, 0.3);
 }
 
 .ai-choice-icon--migrate {
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(251, 191, 36, 0.1));
+    background: color-mix(in srgb, var(--warn) 16%, transparent);
     color: var(--warning, #f0a030);
-    border: 1px solid rgba(245, 158, 11, 0.3);
+    border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
 }
 
 .ai-choice-text {
@@ -1991,7 +1991,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .btn-browse {
-    background-color: #607d8b;
+    background-color: var(--bg-4);
     color: white;
     border: none;
     padding: 10px 16px;
@@ -2003,7 +2003,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .btn-browse:hover {
-    background-color: #546e7a;
+    background-color: var(--bg-4);
 }
 
 .field-hint {
@@ -2037,7 +2037,7 @@ span[style*="--icon-loader"] svg,
 /* legacy add-server-form duplicated focus styles kept for MigrationModal compatibility */
 
 .btn-confirm {
-    background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+    background: var(--ok);
     color: var(--text-on-primary);
     border: none;
     padding: 0 20px;
@@ -2051,7 +2051,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .btn-cancel {
-    background: #f44336;
+    background: var(--stop);
     color: var(--text-on-primary);
     border: none;
     padding: 0 20px;
@@ -2380,7 +2380,7 @@ span[style*="--icon-loader"] svg,
 .extension-tab.active {
     background: var(--brand-primary);
     color: var(--brand-text);
-    border-bottom-color: #764ba2;
+    border-bottom-color: var(--accent);
 }
 
 .module-aliases-detail {
@@ -2661,9 +2661,9 @@ span[style*="--icon-loader"] svg,
 }
 
 .module-aliases-actions .btn-save {
-    background: linear-gradient(135deg, #4caf50, #66bb6a);
+    background: var(--ok);
     color: #fff;
-    box-shadow: 0 4px 10px rgba(76, 175, 80, 0.2);
+    box-shadow: 0 4px 10px color-mix(in srgb, var(--ok) 20%, transparent);
 }
 
 .module-aliases-actions .btn-reset {
@@ -2699,7 +2699,7 @@ span[style*="--icon-loader"] svg,
 
 .discord-info-box code {
     background: var(--bg-surface);
-    color: #d32f2f;
+    color: var(--stop);
     padding: 4px 10px;
     border-radius: 4px;
     font-family: "Courier New", monospace;
@@ -2894,7 +2894,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .protocol-badge.rest {
-    background: linear-gradient(135deg, #4caf50 0%, #43a047 100%);
+    background: var(--ok);
     color: var(--text-on-primary);
 }
 
@@ -3012,7 +3012,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .global-progress-fill.complete {
-    background: linear-gradient(135deg, #4caf50 0%, #43a047 100%);
+    background: var(--ok);
 }
 
 .global-progress-fill.indeterminate {
@@ -3043,7 +3043,7 @@ span[style*="--icon-loader"] svg,
     border-radius: 12px;
     margin-top: 16px;
     overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    border: 1px solid color-mix(in srgb, var(--text-1) 6%, transparent);
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
     animation: console-slide-up 0.25s ease-out;
     height: 380px;
@@ -3066,8 +3066,8 @@ span[style*="--icon-loader"] svg,
     align-items: center;
     justify-content: space-between;
     padding: 8px 14px;
-    background: rgba(255, 255, 255, 0.04);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: color-mix(in srgb, var(--text-1) 4%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--text-1) 6%, transparent);
     flex-shrink: 0;
 }
 
@@ -3113,7 +3113,7 @@ span[style*="--icon-loader"] svg,
     line-height: 1.6;
     color: var(--console-custom-text, #cdd6f4);
     scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+    scrollbar-color: color-mix(in srgb, var(--text-1) 10%, transparent) transparent;
     -webkit-user-select: text;
     user-select: text;
     cursor: text;
@@ -3128,12 +3128,12 @@ span[style*="--icon-loader"] svg,
 }
 
 .console-output::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
+    background: color-mix(in srgb, var(--text-1) 10%, transparent);
     border-radius: 3px;
 }
 
 .console-output::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: color-mix(in srgb, var(--text-1) 20%, transparent);
 }
 
 .console-empty {
@@ -3171,8 +3171,8 @@ span[style*="--icon-loader"] svg,
     align-items: center;
     gap: 8px;
     padding: 8px 14px;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
-    background: rgba(255, 255, 255, 0.02);
+    border-top: 1px solid color-mix(in srgb, var(--text-1) 6%, transparent);
+    background: color-mix(in srgb, var(--text-1) 2%, transparent);
     flex-shrink: 0;
 }
 
@@ -3186,8 +3186,8 @@ span[style*="--icon-loader"] svg,
 
 .console-input {
     flex: 1;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: color-mix(in srgb, var(--text-1) 5%, transparent);
+    border: 1px solid color-mix(in srgb, var(--text-1) 8%, transparent);
     border-radius: 6px;
     padding: 6px 10px;
     color: #cdd6f4;
@@ -3262,7 +3262,7 @@ span[style*="--icon-loader"] svg,
 /* Console toggle active state on server card */
 .action-icon.action-active {
     color: var(--brand-primary, #667eea);
-    background: rgba(102, 126, 234, 0.12);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 /* Boolean toggle in settings */
@@ -3379,8 +3379,8 @@ span[style*="--icon-loader"] svg,
     align-items: center;
     justify-content: space-between;
     padding: 6px 12px;
-    background: rgba(255, 255, 255, 0.04);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: color-mix(in srgb, var(--text-1) 4%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--text-1) 6%, transparent);
     -webkit-app-region: drag;
     flex-shrink: 0;
     user-select: none;
@@ -3416,7 +3416,7 @@ span[style*="--icon-loader"] svg,
 
 .console-popout-titlebar-btn:hover {
     color: #cdd6f4;
-    background: rgba(255, 255, 255, 0.08);
+    background: color-mix(in srgb, var(--text-1) 8%, transparent);
 }
 
 .console-popout-titlebar-close:hover {
@@ -3459,15 +3459,15 @@ span[style*="--icon-loader"] svg,
     line-height: 1.6;
     color: var(--console-custom-text, #cdd6f4);
     scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+    scrollbar-color: color-mix(in srgb, var(--text-1) 10%, transparent) transparent;
     -webkit-user-select: text;
     user-select: text;
     cursor: text;
 }
 
 .console-popout-body .console-input-row {
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
-    background: rgba(255, 255, 255, 0.02);
+    border-top: 1px solid color-mix(in srgb, var(--text-1) 6%, transparent);
+    background: color-mix(in srgb, var(--text-1) 2%, transparent);
 }
 
 /* ===== Radio Group / Checkbox / Form Hint ===== */
@@ -3576,7 +3576,7 @@ span[style*="--icon-loader"] svg,
     justify-content: center;
     font-size: calc(11px * var(--font-scale));
     font-weight: 700;
-    background: rgba(255, 255, 255, 0.15);
+    background: color-mix(in srgb, var(--text-1) 15%, transparent);
 }
 
 .migration-step-arrow {
@@ -3602,7 +3602,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .migration-form .btn-browse {
-    background-color: #607d8b;
+    background-color: var(--bg-4);
     color: white;
     border: none;
     padding: 10px 16px;
@@ -3614,7 +3614,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .migration-form .btn-browse:hover {
-    background-color: #546e7a;
+    background-color: var(--bg-4);
 }
 
 /* Step 2: Review */
@@ -3647,7 +3647,7 @@ span[style*="--icon-loader"] svg,
     overflow-y: auto;
     margin-bottom: 12px;
     scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+    scrollbar-color: color-mix(in srgb, var(--text-1) 10%, transparent) transparent;
 }
 
 .migration-category {
@@ -3728,7 +3728,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .migration-badge-important {
-    background: #ff9800;
+    background: var(--warn);
     color: var(--text-primary);
     font-size: calc(9px * var(--font-scale));
     padding: 1px 6px;
@@ -3785,7 +3785,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .migration-error {
-    background: rgba(244, 67, 54, 0.1);
+    background: color-mix(in srgb, var(--stop) 10%, transparent);
     color: var(--failure-badge-icon);
     padding: 10px 14px;
     border-radius: 6px;
@@ -3801,7 +3801,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .migration-warnings h4 {
-    color: #ff9800;
+    color: var(--warn);
     font-size: calc(12px * var(--font-scale));
     margin-bottom: 6px;
 }
@@ -3820,7 +3820,7 @@ span[style*="--icon-loader"] svg,
 
 .migration-warnings li::before {
     content: "⚠ ";
-    color: #ff9800;
+    color: var(--warn);
 }
 
 /* Migration footer buttons */
