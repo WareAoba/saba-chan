@@ -8,10 +8,21 @@ use zip::ZipArchive;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModuleMetadata {
+    /// module.toml `schema_version`. 없으면 0(스키마 이전 모듈: 모르는 키는 경고만)
+    #[serde(default)]
+    pub schema_version: u32,
     pub name: String,
     pub version: String,
     pub description: Option<String>,
-    pub entry: String,  // lifecycle.py 경로
+    /// 사람에게 보여줄 이름 (없으면 name)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    /// 게임 이름 (예: "Palworld")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub game_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    pub entry: String,  // 모듈 폴더 기준 Python 진입 파일 (보통 lifecycle.py)
     pub process_name: Option<String>,  // config.process_name
     pub default_port: Option<u16>,  // config.default_port
     pub executable_path: Option<String>,  // config.executable_path
@@ -79,6 +90,15 @@ pub struct ModuleMetadata {
     /// saba-runner가 따라 읽어 콘솔에 합친다. 예: ["Pal/Saved/Logs/*.log"]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub log_files: Vec<String>,
+    /// [detection] graceful_exit_patterns — 정상 종료 때 콘솔에 찍히는 문구 (정규식). A1 크래시 판정용
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub graceful_exit_patterns: Vec<String>,
+    /// [detection] crash_artifacts — 크래시 때 생기는 파일 (작업 디렉터리 기준, 마지막 칸만 `*` `?`). A1용
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub crash_artifacts: Vec<String>,
+    /// 로드는 됐지만 고쳐야 할 점 (스키마 이전 모듈의 모르는 키 등)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
 }
 
 /// 명령어 별명 정보
@@ -198,6 +218,10 @@ pub struct CommandField {
     pub http_method: Option<String>,  // "GET", "POST" (REST only)
     pub endpoint_template: Option<String>,  // REST endpoint template
     pub rcon_template: Option<String>,  // RCON command template (e.g., "kick {userid}")
+    /// 위험도: "safe" | "caution" | "danger". 없으면 "caution"으로 본다.
+    /// 모델이 추론한 명령의 확인 정책이 이 값을 쓴다 (roadmap §10)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub risk: Option<String>,
     #[serde(default)]
     pub inputs: Vec<CommandInput>,
 }
@@ -243,18 +267,56 @@ pub struct LoadedModule {
     pub path: String,  // 압축 해제된 디렉토리 또는 원본 디렉토리 절대 경로
 }
 
-// ── module.toml 강타입 스키마 (serde 직접 역직렬화) ──
+impl LoadedModule {
+    /// 데몬이 실행할 Python 진입 파일 (`[module] entry`)
+    pub fn entry_path(&self) -> String {
+        Path::new(&self.path).join(&self.metadata.entry).to_string_lossy().to_string()
+    }
+
+    fn check_entry(&self) -> Result<()> {
+        if !Path::new(&self.entry_path()).is_file() {
+            anyhow::bail!("module.entry '{}' not found in {}", self.metadata.entry, self.path);
+        }
+        Ok(())
+    }
+
+    /// 이 폴더가 이 모듈의 게임 서버 폴더인가 (`[detection] dir_signatures`가 전부 있으면)
+    pub fn matches_dir(&self, dir: &Path) -> bool {
+        let sigs = &self.metadata.dir_signatures;
+        !sigs.is_empty() && sigs.iter().all(|s| dir.join(s).exists())
+    }
+}
+
+/// 로드하지 못한 모듈과 그 이유 (`GET /api/modules`의 `failed`)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModuleLoadError {
+    pub path: String,
+    pub error: String,
+}
+
+// ── module.toml 스키마 v1 (serde 직접 역직렬화) ──
+//
+// 이 구조체들이 module.toml 계약 그 자체다. 키를 더하거나 빼면 `module_json_schema()`가
+// 내보내는 JSON Schema(saba-chan-modules/schema/module.schema.json)도 같이 바뀐다.
+// 모르는 키: schema_version = 1 이면 로드 거부, 없으면(스키마 이전 모듈) 경고만 남긴다.
+
+/// 이 데몬이 아는 module.toml 스키마 버전
+pub const MODULE_SCHEMA_VERSION: u32 = 1;
+
+/// 명령 위험도로 쓸 수 있는 값
+pub const COMMAND_RISKS: [&str; 3] = ["safe", "caution", "danger"];
 
 /// module.toml 최상위 구조
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields, title = "saba-chan module.toml (schema v1)")]
 struct ModuleToml {
     module: ModuleSection,
     #[serde(default)]
     protocols: Option<ProtocolsSection>,
     #[serde(default)]
     config: Option<ConfigSection>,
-    #[serde(default, rename = "detection")]
-    _detection: Option<DetectionSection>,
+    #[serde(default)]
+    detection: Option<DetectionSection>,
     #[serde(default)]
     settings: Option<SettingsSection>,
     #[serde(default)]
@@ -269,6 +331,9 @@ struct ModuleToml {
     /// [launch] 실행 관련 선언 (C8b)
     #[serde(default)]
     launch: Option<LaunchSection>,
+    /// [update] 예전 GitHub 업데이트 경로가 읽는 키 (데몬은 안 읽는다). L3에서 GitHub 경로와 함께 지운다
+    #[serde(default, rename = "update")]
+    _update: Option<LegacyUpdateSection>,
     /// [credential_map] 데몬 표준 키 ↔ 게임별 설정 키 매핑
     /// 예: rest_password = "AdminPassword" → 데몬의 rest_password가 게임 INI의 AdminPassword에 대응
     #[serde(default)]
@@ -279,19 +344,32 @@ struct ModuleToml {
     /// [errors] 오류 코드 → 사용자 메시지 (채팅 명령 응답용)
     #[serde(default)]
     errors: std::collections::HashMap<String, String>,
+    /// [extensions.<익스텐션 id>] 익스텐션이 읽는 모듈별 설정. 데몬은 내용을 보지 않고
+    /// `ModuleMetadata.extensions`에 그대로 넘긴다 (익스텐션이 늘어나도 스키마는 그대로)
+    #[serde(default)]
+    #[schemars(with = "std::collections::HashMap<String, serde_json::Map<String, serde_json::Value>>")]
+    extensions: std::collections::HashMap<String, toml::Value>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
 struct ModuleSection {
+    /// 이 파일이 따르는 스키마 버전. 지금은 1
+    #[serde(default)]
+    schema_version: Option<u32>,
+    /// 모듈 id (폴더 이름과 같게)
     name: String,
     version: String,
     #[serde(default)]
     description: Option<String>,
+    /// 모듈 폴더 기준 Python 진입 파일 (예: "lifecycle.py")
     entry: String,
-    #[serde(default, rename = "game_name")]
-    _game_name: Option<String>,
-    #[serde(default, rename = "display_name")]
-    _display_name: Option<String>,
+    #[serde(default)]
+    game_name: Option<String>,
+    #[serde(default)]
+    display_name: Option<String>,
+    #[serde(default)]
+    author: Option<String>,
     #[serde(default)]
     icon: Option<String>,
     #[serde(default)]
@@ -302,23 +380,38 @@ struct ModuleSection {
     dependencies: std::collections::HashMap<String, String>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
+struct LegacyUpdateSection {
+    /// 업데이터가 GitHub에서 이 모듈을 찾을 저장소 이름 (예전 경로)
+    #[serde(default)]
+    #[serde(rename = "github_repo")]
+    _github_repo: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
 struct LaunchSection {
+    /// 서버가 콘솔 대신 파일에 쓰는 로그 (작업 디렉터리 기준, 마지막 칸만 `*` `?`)
     #[serde(default)]
     log_files: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
 struct ProtocolsSection {
+    /// "rcon" | "rest" | "stdin"
     #[serde(default)]
     supported: Option<Vec<String>>,
     #[serde(default)]
     default: Option<String>,
+    /// "console" | "commands"
     #[serde(default)]
     interaction_mode: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
 struct ConfigSection {
     #[serde(default)]
     executable_path: Option<String>,
@@ -333,31 +426,38 @@ struct ConfigSection {
     /// Graceful stop 타임아웃 (초). 예: Minecraft=30, ARK=120
     #[serde(default)]
     stop_timeout: Option<u64>,
-    // Allow additional unknown fields to pass through
-    #[serde(flatten)]
-    _extra: std::collections::HashMap<String, toml::Value>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
 struct DetectionSection {
     #[serde(default)]
     process_patterns: Option<Vec<String>>,
     #[serde(default)]
     cmd_patterns: Option<Vec<String>>,
-    /// 디렉토리 내 파일/폴더 시그니처 — 기존 서버 마이그레이션 시 자동 감지에 사용
+    /// 디렉토리 내 파일/폴더 시그니처 — 전부 있어야 이 게임의 서버 폴더로 본다
     #[serde(default)]
     dir_signatures: Option<Vec<String>>,
+    /// 정상 종료 때 콘솔에 찍히는 문구 (정규식)
+    #[serde(default)]
+    graceful_exit_patterns: Vec<String>,
+    /// 크래시 때 생기는 파일 (작업 디렉터리 기준, 마지막 칸만 `*` `?`)
+    #[serde(default)]
+    crash_artifacts: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
 struct SettingsSection {
     #[serde(default)]
     fields: Vec<SettingFieldToml>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
 struct SettingFieldToml {
     name: String,
+    /// "text" | "number" | "password" | "boolean" | "select" | "file" 등
     #[serde(rename = "type", default = "default_field_type")]
     field_type: String,
     #[serde(default)]
@@ -367,6 +467,7 @@ struct SettingFieldToml {
     #[serde(default)]
     required: Option<bool>,
     #[serde(default)]
+    #[schemars(with = "Option<serde_json::Value>")]
     default: Option<toml::Value>,
     #[serde(default)]
     min: Option<f64>,
@@ -376,6 +477,7 @@ struct SettingFieldToml {
     step: Option<f64>,
     #[serde(default)]
     options: Option<Vec<String>>,
+    /// "basic"(기본) | "advanced" | "saba-chan" 등
     #[serde(default)]
     group: Option<String>,
 }
@@ -383,8 +485,10 @@ struct SettingFieldToml {
 fn default_field_type() -> String { "text".to_string() }
 
 /// module.toml [install] 섹션
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
 struct InstallSectionToml {
+    /// "manual"(기본) | "download" | "steamcmd"
     #[serde(default)]
     method: Option<String>,
     #[serde(default)]
@@ -397,6 +501,7 @@ struct InstallSectionToml {
     platform: Option<String>,
     #[serde(default)]
     download_url: Option<String>,
+    /// 설치할 베타 브랜치 (지정하면 항상 이 브랜치로 설치)
     #[serde(default)]
     beta: Option<String>,
     /// 이 설치 방식이 요구하는 익스텐션 ID 목록
@@ -406,7 +511,8 @@ struct InstallSectionToml {
 }
 
 /// module.toml [docker] 섹션 — 컨테이너 격리 익스텐션 설정
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
 struct ContainerSectionToml {
     #[serde(default)]
     image: Option<String>,
@@ -461,7 +567,8 @@ pub struct ModuleInstallConfig {
 fn default_true_mod() -> bool { true }
 
 /// module.toml [aliases] 섹션
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
 struct AliasesSection {
     #[serde(default)]
     module_aliases: Vec<String>,
@@ -470,7 +577,8 @@ struct AliasesSection {
 }
 
 /// module.toml [aliases.commands.*] 항목
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
 struct CommandAliasSectionToml {
     #[serde(default)]
     aliases: Vec<String>,
@@ -524,13 +632,15 @@ pub struct ContainerExtensionConfig {
 
 fn default_restart_policy() -> String { "unless-stopped".to_string() }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
 struct CommandsSection {
     #[serde(default)]
     fields: Vec<CommandFieldToml>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
 struct CommandFieldToml {
     name: String,
     #[serde(default)]
@@ -545,13 +655,15 @@ struct CommandFieldToml {
     endpoint_template: Option<String>,
     #[serde(default)]
     rcon_template: Option<String>,
+    /// "safe" | "caution" | "danger" (없으면 caution)
     #[serde(default)]
-    command_template: Option<String>,
+    risk: Option<String>,
     #[serde(default)]
     inputs: Vec<CommandInputToml>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
 struct CommandInputToml {
     name: String,
     #[serde(default)]
@@ -563,6 +675,7 @@ struct CommandInputToml {
     #[serde(default)]
     placeholder: Option<String>,
     #[serde(default)]
+    #[schemars(with = "Option<serde_json::Value>")]
     default: Option<toml::Value>,
     #[serde(default)]
     min: Option<f64>,
@@ -572,13 +685,15 @@ struct CommandInputToml {
     options: Option<Vec<String>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
 struct SyntaxHighlightSection {
     #[serde(default)]
     rules: Vec<HighlightRuleToml>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
 struct HighlightRuleToml {
     name: String,
     pattern: String,
@@ -619,7 +734,8 @@ impl ModuleToml {
                 method: f.method,
                 http_method: f.http_method,
                 endpoint_template: f.endpoint_template,
-                rcon_template: f.rcon_template.or(f.command_template),
+                rcon_template: f.rcon_template,
+                risk: f.risk,
                 inputs: f.inputs.into_iter().map(|i| CommandInput {
                     name: i.name,
                     label: i.label,
@@ -651,9 +767,13 @@ impl ModuleToml {
         };
 
         ModuleMetadata {
+            schema_version: self.module.schema_version.unwrap_or(0),
             name: self.module.name,
             version: self.module.version,
             description: self.module.description,
+            display_name: self.module.display_name,
+            game_name: self.module.game_name,
+            author: self.module.author,
             entry: self.module.entry,
             icon: self.module.icon,
             log_pattern: self.module.log_pattern,
@@ -683,7 +803,10 @@ impl ModuleToml {
                 requires_extensions: i.requires_extensions,
             }),
             extensions: {
-                let mut ext_map = std::collections::HashMap::new();
+                let mut ext_map: std::collections::HashMap<String, serde_json::Value> = self.extensions
+                    .into_iter()
+                    .filter_map(|(id, v)| Some((id, serde_json::to_value(v).ok()?)))
+                    .collect();
                 if let Some(d) = self.container {
                     if let Some(img) = d.image {
                         let cfg = ContainerExtensionConfig {
@@ -708,14 +831,20 @@ impl ModuleToml {
                 }
                 ext_map
             },
-            process_patterns: self._detection.as_ref()
+            process_patterns: self.detection.as_ref()
                 .and_then(|d| d.process_patterns.clone())
                 .unwrap_or_default(),
-            cmd_patterns: self._detection.as_ref()
+            cmd_patterns: self.detection.as_ref()
                 .and_then(|d| d.cmd_patterns.clone())
                 .unwrap_or_default(),
-            dir_signatures: self._detection.as_ref()
+            dir_signatures: self.detection.as_ref()
                 .and_then(|d| d.dir_signatures.clone())
+                .unwrap_or_default(),
+            graceful_exit_patterns: self.detection.as_ref()
+                .map(|d| d.graceful_exit_patterns.clone())
+                .unwrap_or_default(),
+            crash_artifacts: self.detection
+                .map(|d| d.crash_artifacts)
                 .unwrap_or_default(),
             module_aliases: self.aliases.as_ref()
                 .map(|a| a.module_aliases.clone())
@@ -729,21 +858,106 @@ impl ModuleToml {
                 }).collect()
             }).unwrap_or_default(),
             errors: self.errors,
+            warnings: Vec::new(),
         }
     }
 }
 
 /// TOML 문자열에서 ModuleMetadata를 파싱합니다.
-/// 필수 필드 누락 시 명확한 에러 메시지를 반환합니다.
+///
+/// - `schema_version`이 이 데몬보다 새로우면 거부한다 (모듈을 먼저 업데이트한 경우).
+/// - `schema_version = 1`이면 모르는 키와 잘못된 값을 오류로 낸다 (오타가 조용히 사라지지 않게).
+/// - `schema_version`이 없으면 스키마 이전 모듈로 보고 같은 문제를 `warnings`에만 남긴다.
 pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
-    let toml_data: ModuleToml = toml::from_str(content)
+    let content = content.trim_start_matches('\u{feff}');
+    let mut unknown = Vec::new();
+    let mut de = toml::Deserializer::new(content);
+    let toml_data: ModuleToml = serde_ignored::deserialize(&mut de, |path| {
+        // serde_ignored는 Option 한 겹마다 `?`를 끼운다: "config.?.ram" → "config.ram"
+        let key: Vec<String> = path.to_string().split('.').filter(|p| *p != "?").map(str::to_string).collect();
+        unknown.push(key.join("."))
+    })
         .map_err(|e| anyhow::anyhow!("Failed to parse module.toml: {}", e))?;
-    Ok(toml_data.into_metadata())
+
+    let mut problems: Vec<String> = unknown.into_iter().map(|k| format!("unknown key '{}'", k)).collect();
+    problems.extend(toml_data.value_problems());
+
+    let mut meta = toml_data.into_metadata();
+    match meta.schema_version {
+        0 => {
+            for p in &problems {
+                tracing::warn!("module '{}': {} (ignored)", meta.name, p);
+            }
+            meta.warnings = problems;
+            meta.warnings.push(format!(
+                "no schema_version; add `schema_version = {}` under [module]",
+                MODULE_SCHEMA_VERSION
+            ));
+        }
+        MODULE_SCHEMA_VERSION => {
+            if !problems.is_empty() {
+                anyhow::bail!("module.toml does not match schema v{}: {}", MODULE_SCHEMA_VERSION, problems.join("; "));
+            }
+        }
+        v => anyhow::bail!(
+            "module.toml schema_version {} is not supported by this saba-chan (supports {}); update saba-chan",
+            v,
+            MODULE_SCHEMA_VERSION
+        ),
+    }
+    Ok(meta)
+}
+
+impl ModuleToml {
+    /// 키는 맞지만 값이 계약을 벗어난 곳
+    fn value_problems(&self) -> Vec<String> {
+        let mut problems = Vec::new();
+        let entry = Path::new(&self.module.entry);
+        if self.module.entry.is_empty()
+            || entry.is_absolute()
+            || entry.components().any(|c| !matches!(c, std::path::Component::Normal(_)))
+        {
+            problems.push(format!("module.entry '{}' must be a path inside the module folder", self.module.entry));
+        }
+        for cmd in self.commands.iter().flat_map(|c| &c.fields) {
+            if let Some(risk) = &cmd.risk {
+                if !COMMAND_RISKS.contains(&risk.as_str()) {
+                    problems.push(format!(
+                        "commands '{}': risk '{}' must be one of {}",
+                        cmd.name,
+                        risk,
+                        COMMAND_RISKS.join(", ")
+                    ));
+                }
+            }
+        }
+        problems
+    }
+}
+
+/// 모듈 폴더 하나를 데몬과 같은 규칙으로 읽는다 (`saba-core module validate`)
+pub fn load_module_dir(module_path: &Path) -> Result<LoadedModule> {
+    let toml_path = module_path.join("module.toml");
+    let content = fs::read_to_string(&toml_path)
+        .map_err(|e| anyhow::anyhow!("Failed to read {}: {}", toml_path.display(), e))?;
+    let module = LoadedModule {
+        metadata: parse_module_toml(&content)?,
+        path: module_path.to_string_lossy().to_string(),
+    };
+    module.check_entry()?;
+    Ok(module)
+}
+
+/// module.toml 스키마 v1의 JSON Schema (편집기 자동완성·모듈 저장소 CI 검증용)
+pub fn module_json_schema() -> serde_json::Value {
+    serde_json::to_value(schemars::schema_for!(ModuleToml)).unwrap_or_default()
 }
 
 pub struct ModuleLoader {
     modules_dir: String,
     cached_modules: RwLock<Option<Vec<LoadedModule>>>,
+    /// 마지막 탐색에서 로드하지 못한 모듈
+    load_errors: RwLock<Vec<ModuleLoadError>>,
 }
 
 impl ModuleLoader {
@@ -751,7 +965,13 @@ impl ModuleLoader {
         Self {
             modules_dir: modules_dir.to_string(),
             cached_modules: RwLock::new(None),
+            load_errors: RwLock::new(Vec::new()),
         }
+    }
+
+    /// 마지막 탐색에서 로드하지 못한 모듈과 이유
+    pub fn load_errors(&self) -> Vec<ModuleLoadError> {
+        self.load_errors.read().unwrap().clone()
     }
 
     /// 모듈 디렉토리 경로 반환
@@ -773,6 +993,7 @@ impl ModuleLoader {
         }
 
         let mut modules = Vec::new();
+        let mut errors = Vec::new();
 
         if !Path::new(&self.modules_dir).exists() {
             tracing::warn!("Modules directory does not exist: {}", self.modules_dir);
@@ -800,6 +1021,7 @@ impl ModuleLoader {
                             path.display(),
                             e
                         );
+                        errors.push(ModuleLoadError { path: path.to_string_lossy().to_string(), error: e.to_string() });
                     }
                 }
             }
@@ -821,6 +1043,7 @@ impl ModuleLoader {
                                 path.display(),
                                 e
                             );
+                            errors.push(ModuleLoadError { path: path.to_string_lossy().to_string(), error: e.to_string() });
                         }
                     }
                 }
@@ -828,20 +1051,13 @@ impl ModuleLoader {
         }
 
         *self.cached_modules.write().unwrap() = Some(modules.clone());
+        *self.load_errors.write().unwrap() = errors;
         Ok(modules)
     }
 
     /// 폴더에서 개별 모듈 로드 (module.toml 파싱)
     fn load_module_from_dir(&self, module_path: &Path) -> Result<LoadedModule> {
-        let toml_path = module_path.join("module.toml");
-        let content = fs::read_to_string(&toml_path)
-            .map_err(|e| anyhow::anyhow!("Failed to read {}: {}", toml_path.display(), e))?;
-        let metadata = parse_module_toml(&content)?;
-
-        Ok(LoadedModule {
-            metadata,
-            path: module_path.to_string_lossy().to_string(),
-        })
+        load_module_dir(module_path)
     }
 
     /// ZIP 파일에서 모듈 로드 (압축 해제 후 임시 디렉토리 사용)
@@ -893,10 +1109,12 @@ impl ModuleLoader {
         // temp_dir에서 extracted_dir로 복사
         copy_dir_all(&extract_path, &extracted_dir)?;
 
-        Ok(LoadedModule {
+        let module = LoadedModule {
             metadata,
             path: extracted_dir.to_string_lossy().to_string(),
-        })
+        };
+        module.check_entry()?;
+        Ok(module)
     }
 
     /// 모듈 이름으로 모듈 조회
@@ -1323,6 +1541,96 @@ entry = "lifecycle.py"
         assert_eq!(parse_module_toml(toml).unwrap().log_files, vec!["Pal/Saved/Logs/*.log"]);
         let plain = "[module]\nname = \"g\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n";
         assert!(parse_module_toml(plain).unwrap().log_files.is_empty());
+    }
+
+    const V1: &str = "[module]\nschema_version = 1\nname = \"g\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n";
+
+    #[test]
+    fn schema_v1_rejects_unknown_keys() {
+        let err = parse_module_toml(&format!("{V1}\n[config]\nram = \"4G\"\n")).unwrap_err().to_string();
+        assert!(err.contains("config.ram"), "{err}");
+        let err = parse_module_toml(&format!("{V1}\n[[commands.fields]]\nname = \"kick\"\nrcon_templat = \"kick\"\n"))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("rcon_templat"), "{err}");
+        assert!(parse_module_toml(V1).unwrap().warnings.is_empty());
+    }
+
+    #[test]
+    fn modules_without_schema_version_still_load_with_warnings() {
+        let toml = "\u{feff}[module]\nname = \"g\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[config]\nram = \"4G\"\n";
+        let meta = parse_module_toml(toml).unwrap();
+        assert_eq!(meta.schema_version, 0);
+        assert!(meta.warnings.iter().any(|w| w.contains("config.ram")), "{:?}", meta.warnings);
+        assert!(meta.warnings.iter().any(|w| w.contains("schema_version")));
+    }
+
+    #[test]
+    fn newer_schema_version_is_refused() {
+        let toml = V1.replace("schema_version = 1", "schema_version = 2");
+        let err = parse_module_toml(&toml).unwrap_err().to_string();
+        assert!(err.contains("schema_version 2"), "{err}");
+    }
+
+    #[test]
+    fn schema_v1_checks_values() {
+        let bad_risk = format!("{V1}\n[[commands.fields]]\nname = \"stop\"\nrisk = \"scary\"\n");
+        assert!(parse_module_toml(&bad_risk).unwrap_err().to_string().contains("risk"));
+        let ok_risk = bad_risk.replace("scary", "danger");
+        let meta = parse_module_toml(&ok_risk).unwrap();
+        assert_eq!(meta.commands.unwrap().fields[0].risk.as_deref(), Some("danger"));
+        let escape = V1.replace("lifecycle.py", "../evil.py");
+        assert!(parse_module_toml(&escape).unwrap_err().to_string().contains("module.entry"));
+    }
+
+    #[test]
+    fn schema_v1_reads_names_detection_and_extension_sections() {
+        let toml = format!(
+            "{V1}display_name = \"G\"\ngame_name = \"Game\"\nauthor = \"me\"\n\n[detection]\ngraceful_exit_patterns = [\"Stopping\"]\ncrash_artifacts = [\"crash-reports/*.txt\"]\n\n[extensions.backup]\npaths = [\"world\"]\n"
+        );
+        let meta = parse_module_toml(&toml).unwrap();
+        assert_eq!(meta.display_name.as_deref(), Some("G"));
+        assert_eq!(meta.game_name.as_deref(), Some("Game"));
+        assert_eq!(meta.graceful_exit_patterns, vec!["Stopping"]);
+        assert_eq!(meta.crash_artifacts, vec!["crash-reports/*.txt"]);
+        assert_eq!(meta.extensions["backup"]["paths"][0], "world");
+    }
+
+    #[test]
+    fn json_schema_forbids_unknown_keys() {
+        let schema = module_json_schema();
+        assert_eq!(schema["additionalProperties"], false);
+        assert_eq!(schema["required"], serde_json::json!(["module"]));
+        let defs = &schema["definitions"];
+        assert_eq!(defs["ConfigSection"]["additionalProperties"], false);
+        assert!(defs["ModuleSection"]["properties"]["schema_version"].is_object());
+    }
+
+    #[test]
+    fn loader_reports_broken_modules_and_missing_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let good = dir.path().join("good");
+        std::fs::create_dir_all(&good).unwrap();
+        std::fs::write(good.join("module.toml"), V1.replace("\"g\"", "\"good\"")).unwrap();
+        std::fs::write(good.join("lifecycle.py"), "").unwrap();
+        std::fs::write(good.join("server.jar"), "").unwrap();
+        let no_entry = dir.path().join("noentry");
+        std::fs::create_dir_all(&no_entry).unwrap();
+        std::fs::write(no_entry.join("module.toml"), V1).unwrap();
+        let loader = ModuleLoader::new(dir.path().to_str().unwrap());
+        let modules = loader.discover_modules().unwrap();
+        assert_eq!(modules.len(), 1);
+        assert!(modules[0].entry_path().ends_with("lifecycle.py"));
+        let errors = loader.load_errors();
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].error.contains("not found"), "{:?}", errors);
+
+        let mut m = modules[0].clone();
+        assert!(!m.matches_dir(&good), "no signatures, no match");
+        m.metadata.dir_signatures = vec!["server.jar".into(), "lifecycle.py".into()];
+        assert!(m.matches_dir(&good));
+        m.metadata.dir_signatures.push("missing.txt".into());
+        assert!(!m.matches_dir(&good));
     }
 
     #[test]

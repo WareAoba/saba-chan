@@ -215,7 +215,7 @@ pub async fn execute_rcon_command(
             Ok(module) => (
                 module.metadata.default_rcon_port(),
                 module.metadata.default_rest_port(),
-                Some(format!("{}/lifecycle.py", module.path)),
+                Some(module.entry_path()),
             ),
             Err(_) => (25575, 8212, None),
         };
@@ -356,7 +356,7 @@ pub async fn execute_rest_command(
             Ok(module) => (
                 module.metadata.default_rest_port(),
                 module.metadata.default_rest_host(),
-                Some(format!("{}/lifecycle.py", module.path)),
+                Some(module.entry_path()),
             ),
             Err(_) => (8212, "127.0.0.1".to_string(), None),
         };

@@ -169,7 +169,7 @@ pub async fn create_instance(
             Some((
                 loaded_module.metadata.install.clone(),
                 loaded_module.metadata.extensions.get("docker").cloned(),  // 컨테이너 익스텐션 설정
-                loaded_module.path.clone(),  // 모듈 디렉토리 경로 (마이그레이션 설정 import 시 사용)
+                loaded_module.entry_path(),  // 모듈 진입 파일 (마이그레이션 설정 import 시 사용)
                 loaded_module.metadata.server_executable.clone(),  // 바이너리 파일명 (마이그레이션 시 executable_path 자동 계산)
             ))
         } else {
@@ -438,7 +438,7 @@ pub async fn create_instance(
                             let module_path = {
                                 let sup = supervisor_arc.read().await;
                                 match sup.module_loader.get_module(&module_name_owned) {
-                                    Ok(m) => format!("{}/lifecycle.py", m.path),
+                                    Ok(m) => m.entry_path(),
                                     Err(e) => {
                                         tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
                                             step: 0, total: 1,
@@ -647,12 +647,11 @@ pub async fn create_instance(
                     }
 
                     // ── 기존 INI 설정 import ──
-                    if let Some((_, _, ref module_path, ref _server_exe)) = module_install {
-                        let lifecycle_path = format!("{}/lifecycle.py", module_path);
+                    if let Some((_, _, ref lifecycle_path, ref _server_exe)) = module_install {
                         let import_config = json!({
                             "working_dir": instance.working_dir,
                         });
-                        match crate::plugin::run_plugin(&lifecycle_path, "import_settings", import_config).await {
+                        match crate::plugin::run_plugin(lifecycle_path, "import_settings", import_config).await {
                             Ok(result) => {
                                 if result.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
                                     if let Some(settings) = result.get("settings").and_then(|v| v.as_object()) {
@@ -1449,7 +1448,7 @@ pub async fn apply_server_update(
         let lifecycle_path = {
             let sup = supervisor_arc.read().await;
             match sup.module_loader.get_module(&module_name_owned) {
-                Ok(m) => format!("{}/lifecycle.py", m.path),
+                Ok(m) => m.entry_path(),
                 Err(e) => {
                     tracker_done.update(
                         &name_done,
