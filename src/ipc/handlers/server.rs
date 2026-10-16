@@ -17,7 +17,7 @@ use super::super::{
 /// `daemon:status` 폴링 및 데몬 ready 체크에 사용됩니다.
 pub async fn health_check() -> impl IntoResponse {
     let version = env!("CARGO_PKG_VERSION");
-    (StatusCode::OK, Json(json!({ "ok": true, "version": version })))
+    (StatusCode::OK, Json(json!({ "ok": true, "version": version, "pid": std::process::id() })))
 }
 
 /// GET /api/servers - 모든 서버 목록 (인스턴스 기반)

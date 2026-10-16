@@ -237,44 +237,52 @@ pub fn stop_daemon() -> anyhow::Result<String> {
         return Ok("ℹ Saba-Core is not running".into());
     }
 
-    // 1차: 데몬 API를 통한 graceful shutdown
+    // 강제 종료가 필요할 때를 위해 PID를 먼저 받아 둔다 (이름 기반 kill은 다른 사용자의 데몬까지 죽인다)
     let base = config::get_ipc_base_url();
     let token_ipc = load_ipc_token();
     let client = build_daemon_client(3)?;
+    let pid = with_token(client.get(format!("{}/health", base)), &token_ipc)
+        .send()
+        .ok()
+        .and_then(|r| r.json::<serde_json::Value>().ok())
+        .and_then(|v| v.get("pid").and_then(|p| p.as_u64()));
 
+    // 1차: 데몬 API를 통한 graceful shutdown
     let api_ok = with_token(
         client.post(format!("{}/api/daemon/shutdown", base)).json(&serde_json::json!({})),
         &token_ipc,
     ).send().map(|r| r.status().is_success()).unwrap_or(false);
 
     if api_ok {
-        std::thread::sleep(Duration::from_secs(2));
-        if !check_daemon_running() {
-            return Ok("✓ Saba-Core stopped (graceful)".into());
+        for _ in 0..15 {
+            std::thread::sleep(Duration::from_secs(1));
+            if !check_daemon_running() {
+                return Ok("✓ Saba-Core stopped (graceful)".into());
+            }
         }
     }
 
-    // 2차: graceful 실패 → OS 강제 종료
-    force_kill_daemon()?;
+    // 2차: graceful 실패 → 그 데몬의 PID만 강제 종료
+    let Some(pid) = pid else {
+        anyhow::bail!("Saba-Core did not stop and its PID is unknown; stop it manually");
+    };
+    force_kill_daemon(pid)?;
     std::thread::sleep(Duration::from_secs(1));
     Ok("✓ Saba-Core stopped (forced)".into())
 }
 
-/// OS 수준에서 데몬 프로세스를 강제 종료.
-///
-/// ⚠️ [에이전트 주의] 프로세스 **이름** 기반으로 kill하므로,
-///   동일 이름의 프로세스가 여러 개이면 전부 종료된다.
-///   PID 기반 종료가 필요하면 데몬 API에서 PID를 반환받아야 한다.
-fn force_kill_daemon() -> anyhow::Result<()> {
+/// OS 수준에서 데몬 프로세스를 PID로 강제 종료.
+fn force_kill_daemon(pid: u64) -> anyhow::Result<()> {
+    let pid = pid.to_string();
     if cfg!(target_os = "windows") {
         let mut cmd = Command::new("taskkill");
-        cmd.args(["/IM", "saba-core.exe", "/F"])
+        cmd.args(["/PID", &pid, "/F", "/T"])
             .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
         no_window(&mut cmd);
         cmd.status()?;
     } else {
-        Command::new("pkill")
-            .args(["-f", "saba-core"])
+        Command::new("kill")
+            .args(["-KILL", &pid])
             .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null())
             .status()?;
     }
