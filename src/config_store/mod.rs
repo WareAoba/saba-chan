@@ -1,8 +1,10 @@
 //! 중앙 설정 저장소 (ConfigStore)
 //!
-//! 모든 JSON 설정 파일의 저장/로드를 타입 안전하게 처리한다.
-//! - settings.json (GUI 설정)
-//! - bot-config.json (Discord 봇 설정)
+//! 설정 파일은 `<data_dir>/config.json` 하나다(`saba_chan_updater_lib::config_file`).
+//! 이 저장소는 그중 타입이 정해진 네임스페이스를 캐시하고 검증한다.
+//! - `gui` (GUI 설정)
+//! - `relay` (릴레이·디스코드 연동 설정)
+//! - 그 밖의 클라이언트 네임스페이스(`cli` 등)는 JSON 그대로 (`/api/config/client/:kind`)
 //!
 //! 설계 원칙:
 //! - `serde(default)` + 강타입으로 필드 누락/오타를 컴파일 타임에 방지
@@ -12,7 +14,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use saba_chan_updater_lib::config_file::ConfigFile;
+use std::path::Path;
 use tokio::sync::RwLock;
 
 // ── GUI Settings (settings.json) ──
@@ -137,21 +140,26 @@ impl Default for BotConfig {
 
 // ── ConfigStore ──
 
-/// 중앙 설정 저장소 — 모든 JSON 설정의 인메모리 캐시 + 파일 I/O
+/// 중앙 설정 저장소 — config.json의 타입 있는 네임스페이스 캐시
 pub struct ConfigStore {
-    data_dir: PathBuf,
+    file: ConfigFile,
     gui_settings: RwLock<GuiSettings>,
     bot_config: RwLock<BotConfig>,
 }
 
+/// 클라이언트 네임스페이스로 쓸 수 없는 키 (각자 전용 API가 있다)
+const RESERVED_SECTIONS: &[&str] = &["schemaVersion", "gui", "relay", "updates", "boot", "extensions"];
+
 impl ConfigStore {
-    /// 새 ConfigStore 생성 (디스크에서 기존 설정 로드)
+    /// 새 ConfigStore 생성 (디스크에서 기존 설정 로드, 예전 파일은 이관)
     pub fn new(data_dir: &Path) -> Self {
-        let gui = load_from_file::<GuiSettings>(&data_dir.join("settings.json"));
-        let bot = load_from_file::<BotConfig>(&data_dir.join("bot-config.json"));
+        let file = ConfigFile::at(data_dir);
+        let doc = file.load();
+        let gui = section_or_default::<GuiSettings>(&doc, "gui");
+        let bot = section_or_default::<BotConfig>(&doc, "relay");
 
         Self {
-            data_dir: data_dir.to_path_buf(),
+            file,
             gui_settings: RwLock::new(gui),
             bot_config: RwLock::new(bot),
         }
@@ -181,8 +189,7 @@ impl ConfigStore {
 
         let settings: GuiSettings = serde_json::from_value(merged)
             .map_err(|e| ConfigStoreError::InvalidData(format!("Invalid GUI settings: {}", e)))?;
-        let path = self.data_dir.join("settings.json");
-        save_to_file(&path, &settings)?;
+        self.file.set_section("gui", serde_json::to_value(&settings)?)?;
         *self.gui_settings.write().await = settings.clone();
         Ok(settings)
     }
@@ -210,12 +217,50 @@ impl ConfigStore {
 
         let config: BotConfig = serde_json::from_value(merged)
             .map_err(|e| ConfigStoreError::InvalidData(format!("Invalid bot config: {}", e)))?;
-        let path = self.data_dir.join("bot-config.json");
-        save_to_file(&path, &config)?;
+        self.file.set_section("relay", serde_json::to_value(&config)?)?;
         *self.bot_config.write().await = config.clone();
         Ok(config)
     }
 
+
+    // ── Client namespaces ──
+
+    /// 클라이언트 네임스페이스 이름 검사: 소문자로 시작, 소문자·숫자·`-`, 32자 이하, 예약어 제외
+    pub fn is_client_section(kind: &str) -> bool {
+        let mut chars = kind.chars();
+        matches!(chars.next(), Some(c) if c.is_ascii_lowercase())
+            && kind.len() <= 32
+            && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+            && !RESERVED_SECTIONS.contains(&kind)
+    }
+
+    /// 클라이언트 네임스페이스 읽기 (없으면 빈 객체)
+    pub fn get_client_section(&self, kind: &str) -> Result<Value, ConfigStoreError> {
+        if !Self::is_client_section(kind) {
+            return Err(ConfigStoreError::InvalidData(format!("Invalid config section: {}", kind)));
+        }
+        Ok(match self.file.section(kind) {
+            Value::Null => Value::Object(serde_json::Map::new()),
+            v => v,
+        })
+    }
+
+    /// 클라이언트 네임스페이스에 부분 업데이트(최상위 키 머지). 결과를 돌려준다.
+    pub fn merge_client_section(&self, kind: &str, patch: Value) -> Result<Value, ConfigStoreError> {
+        if !Self::is_client_section(kind) {
+            return Err(ConfigStoreError::InvalidData(format!("Invalid config section: {}", kind)));
+        }
+        if !patch.is_object() {
+            return Err(ConfigStoreError::InvalidData("Config section must be a JSON object".into()));
+        }
+        let mut merged = Value::Null;
+        self.file.update(|doc| {
+            let current = doc.remove(kind).filter(Value::is_object).unwrap_or_else(|| Value::Object(Default::default()));
+            merged = merge_json(current, patch);
+            doc.insert(kind.to_string(), merged.clone());
+        })?;
+        Ok(merged)
+    }
 }
 
 // ── Error ──
@@ -232,40 +277,18 @@ pub enum ConfigStoreError {
 
 // ── File helpers ──
 
-/// 파일에서 타입 T를 로드. 실패 시 Default 반환.
-fn load_from_file<T: for<'de> Deserialize<'de> + Default>(path: &Path) -> T {
-    match std::fs::read_to_string(path) {
-        Ok(content) => {
-            // BOM 제거
-            let content = content.strip_prefix('\u{feff}').unwrap_or(&content);
-            serde_json::from_str(content).unwrap_or_default()
-        }
-        Err(_) => T::default(),
+/// 문서의 네임스페이스를 타입 T로. 없거나 형식이 틀리면 Default (틀린 경우 경고).
+fn section_or_default<T: for<'de> Deserialize<'de> + Default>(
+    doc: &serde_json::Map<String, Value>,
+    key: &str,
+) -> T {
+    match doc.get(key) {
+        None | Some(Value::Null) => T::default(),
+        Some(v) => serde_json::from_value(v.clone()).unwrap_or_else(|e| {
+            tracing::warn!("[Config] Section '{}' is invalid, using defaults: {}", key, e);
+            T::default()
+        }),
     }
-}
-
-/// 타입 T를 파일에 저장 (pretty print).
-fn save_to_file<T: Serialize>(path: &Path, value: &T) -> Result<(), ConfigStoreError> {
-    write_json_atomic(path, value)
-}
-
-/// JSON을 임시 파일에 쓰고 rename으로 교체한다. 쓰는 도중 꺼져도 기존 파일이 남는다.
-pub(crate) fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<(), ConfigStoreError> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let json_str = serde_json::to_string_pretty(value)?;
-    let mut tmp = path.as_os_str().to_owned();
-    tmp.push(".tmp");
-    let tmp = std::path::PathBuf::from(tmp);
-    {
-        use std::io::Write;
-        let mut f = std::fs::File::create(&tmp)?;
-        f.write_all(json_str.as_bytes())?;
-        f.sync_all()?;
-    }
-    std::fs::rename(&tmp, path)?;
-    Ok(())
 }
 
 /// 두 JSON Value를 머지 (base에 overlay를 덮어씌움)
@@ -604,6 +627,24 @@ mod tests {
     }
 
     // ── merge_json ──
+
+    #[tokio::test]
+    async fn client_sections_merge_and_reject_reserved_names() {
+        let tmp = TempDir::new().unwrap();
+        let store = ConfigStore::new(tmp.path());
+        store.merge_client_section("cli", serde_json::json!({ "auto_start": false })).unwrap();
+        store.merge_client_section("cli", serde_json::json!({ "language": "ko" })).unwrap();
+        let cli = ConfigStore::new(tmp.path()).get_client_section("cli").unwrap();
+        assert_eq!(cli["auto_start"], false);
+        assert_eq!(cli["language"], "ko");
+
+        for bad in ["gui", "updates", "extensions", "Cli", "../x", ""] {
+            assert!(store.get_client_section(bad).is_err(), "{} must be rejected", bad);
+        }
+        // GUI 섹션은 클라이언트 섹션 쓰기에 영향받지 않는다
+        store.set_gui_settings_from_json(serde_json::json!({ "language": "ja" })).await.unwrap();
+        assert_eq!(ConfigStore::new(tmp.path()).get_client_section("cli").unwrap()["language"], "ko");
+    }
 
     #[test]
     fn merge_json_overlay_wins() {

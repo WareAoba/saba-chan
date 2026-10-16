@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::RwLock;
+use saba_chan_updater_lib::config_file::ConfigFile;
 use saba_chan_updater_lib::constants;
 
 /// 현재 인스톨러 바이너리의 버전 — tauri.conf.json과 동기화
@@ -1018,16 +1019,11 @@ fn get_default_install_path() -> String {
 }
 
 fn load_main_app_language() -> Option<String> {
-    let path = get_settings_path()?;
-    let content = std::fs::read_to_string(path).ok()?;
-    let val: serde_json::Value = serde_json::from_str(&content).ok()?;
-    val.get("language")
+    ConfigFile::default_location()
+        .section("gui")
+        .get("language")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
-}
-
-fn get_settings_path() -> Option<PathBuf> {
-    Some(constants::resolve_settings_path())
 }
 
 fn normalize_language_tag(input: &str) -> Option<String> {
@@ -1163,27 +1159,20 @@ fn setup_config(install_dir: &Path, config: &InstallConfig) {
     save_language_setting(&config.language);
 }
 
+/// 설치 시 고른 언어를 GUI 설정(`config.json`의 `gui.language`)에 넣는다. 다른 키는 보존.
 fn save_language_setting(language: &str) {
-    let settings_dir = constants::resolve_data_dir();
-    let _ = std::fs::create_dir_all(&settings_dir);
-    let settings_path = settings_dir.join("settings.json");
-
-    // 기존 settings.json이 있으면 로드해서 language만 머지 (다른 키 보존)
-    let mut settings = if settings_path.exists() {
-        std::fs::read_to_string(&settings_path)
-            .ok()
-            .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
-            .unwrap_or_else(|| serde_json::json!({}))
-    } else {
-        serde_json::json!({})
-    };
-
-    settings["language"] = serde_json::Value::String(language.to_string());
-
-    let _ = std::fs::write(
-        &settings_path,
-        serde_json::to_string_pretty(&settings).unwrap_or_default(),
-    );
+    let result = ConfigFile::default_location().update(|doc| {
+        let gui = doc
+            .entry("gui".to_string())
+            .or_insert_with(|| serde_json::json!({}));
+        if !gui.is_object() {
+            *gui = serde_json::json!({});
+        }
+        gui["language"] = serde_json::Value::String(language.to_string());
+    });
+    if let Err(e) = result {
+        tracing::warn!("Failed to save language setting: {}", e);
+    }
 }
 
 // ═══════════════════════════════════════════════════════

@@ -334,11 +334,17 @@ fn remove_appdata_dir_keep_settings() {
 
     // 보존할 파일/폴더 패턴 (config, settings, 인스턴스 설정)
     let keep_names: &[&str] = &[
-        "settings.json",     // GUI 설정
-        "config",            // 글로벌 config 디렉토리
+        "config.json",       // 모든 사용자 설정 (config_file)
+        "config.json.bak",   // 직전 설정 백업
         "instances",         // 인스턴스별 설정 저장
-        "global.toml",       // 글로벌 설정
-        "bot-config.json",   // 봇 설정
+        // 아직 이관되지 않은 예전 설정 파일 (다음 실행 때 config.json으로 이관)
+        "settings.json",
+        "bot-config.json",
+        "cli-settings.json",
+        "update-config.json",
+        "boot-config.json",
+        "extensions_state.json",
+        "extensionConfig.json",
     ];
 
     // 삭제 대상: 보존 대상을 제외한 모든 파일/폴더

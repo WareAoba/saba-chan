@@ -19,6 +19,7 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
+use saba_chan_updater_lib::config_file::ConfigFile;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -596,25 +597,27 @@ async fn set_config(
 // 설정 유틸리티
 // ═══════════════════════════════════════════════════════
 
-/// 업데이트 설정 파일. C9에서 단일 설정 파일로 합칠 때 `updates` 섹션이 된다.
-fn updater_config_path() -> std::path::PathBuf {
-    saba_chan_updater_lib::constants::resolve_data_dir().join("update-config.json")
+/// 저장된 업데이트 설정 (`config.json`의 `updates`). 없거나 깨졌으면 기본값.
+pub(crate) fn load_updater_config() -> UpdateConfig {
+    load_updater_config_from(&ConfigFile::default_location())
 }
 
-/// 저장된 업데이트 설정을 읽는다. 없거나 깨졌으면 기본값.
-fn load_updater_config() -> UpdateConfig {
-    let path = updater_config_path();
-    match std::fs::read_to_string(&path) {
-        Ok(text) => serde_json::from_str(text.trim_start_matches('\u{feff}')).unwrap_or_else(|e| {
-            tracing::warn!("[Updates] Ignoring unreadable {}: {}", path.display(), e);
+fn load_updater_config_from(file: &ConfigFile) -> UpdateConfig {
+    match file.section("updates") {
+        serde_json::Value::Null => UpdateConfig::default(),
+        v => serde_json::from_value(v).unwrap_or_else(|e| {
+            tracing::warn!("[Updates] Ignoring invalid 'updates' config: {}", e);
             UpdateConfig::default()
         }),
-        Err(_) => UpdateConfig::default(),
     }
 }
 
-fn save_updater_config(cfg: &UpdateConfig) -> Result<(), crate::config_store::ConfigStoreError> {
-    crate::config_store::write_json_atomic(&updater_config_path(), cfg)
+fn save_updater_config(cfg: &UpdateConfig) -> std::io::Result<()> {
+    save_updater_config_to(&ConfigFile::default_location(), cfg)
+}
+
+fn save_updater_config_to(file: &ConfigFile, cfg: &UpdateConfig) -> std::io::Result<()> {
+    file.set_section("updates", serde_json::to_value(cfg).map_err(std::io::Error::other)?)
 }
 
 fn resolve_modules_dir() -> String {
@@ -637,13 +640,12 @@ mod tests {
         cfg.enabled = false;
         cfg.check_interval_hours = 6;
         cfg.auto_download = true;
-        save_updater_config(&cfg).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        save_updater_config_to(&ConfigFile::at(dir.path()), &cfg).unwrap();
 
-        let loaded = load_updater_config();
+        let loaded = load_updater_config_from(&ConfigFile::at(dir.path()));
         assert!(!loaded.enabled);
         assert_eq!(loaded.check_interval_hours, 6);
         assert!(loaded.auto_download);
-
-        let _ = std::fs::remove_file(updater_config_path());
     }
 }

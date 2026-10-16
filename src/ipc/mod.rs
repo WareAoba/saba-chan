@@ -586,6 +586,7 @@ impl IPCServer {
             .route("/api/config/bot", get(handlers::bot::get_bot_config).put(handlers::bot::save_bot_config))
             // ── GUI config (settings.json) ──
             .route("/api/config/gui", get(handlers::config::get_gui_config).put(handlers::config::save_gui_config))
+            .route("/api/config/client/:kind", get(handlers::config::get_client_config).put(handlers::config::save_client_config))
             // ── Node token (cloud relay auth) ──
             .route("/api/config/node-token", get(handlers::config::get_node_token).put(handlers::config::save_node_token).delete(handlers::config::delete_node_token))
             // ── Module locales ──

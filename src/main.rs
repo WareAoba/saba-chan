@@ -569,7 +569,7 @@ async fn run_integrity_check_on_startup() {
     use saba_chan_updater_lib::UpdateManager;
 
     // 업데이트 설정 로드 (github_owner 등 필요)
-    let cfg = load_updater_config_for_integrity();
+    let cfg = ipc::updates::load_updater_config();
     if cfg.github_owner.is_empty() {
         tracing::info!("[Integrity] GitHub owner가 설정되지 않아 무결성 검증을 건너뜁니다");
         return;
@@ -642,9 +642,5 @@ async fn run_integrity_check_on_startup() {
     tracing::info!("══════════════════════════════════════════════════");
 }
 
-/// 무결성 검증용 업데이터 설정 로드 (하드코딩 기본값)
-fn load_updater_config_for_integrity() -> saba_chan_updater_lib::UpdateConfig {
-    saba_chan_updater_lib::UpdateConfig::default()
-}
 
 

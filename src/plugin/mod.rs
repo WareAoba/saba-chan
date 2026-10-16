@@ -108,17 +108,12 @@ async fn run_plugin_inner(
     // 활성화된 익스텐션 목록을 Python에 전달 (비활성 익스텐션 import 방지용)
     let extensions_dir = resolve_extensions_dir();
     if extensions_dir.is_dir() {
-        let state_path = if let Ok(appdata) = std::env::var("APPDATA") {
-            std::path::PathBuf::from(&appdata)
-                .join("saba-chan")
-                .join("extensions_state.json")
-        } else {
-            std::path::PathBuf::from("./extensions_state.json")
-        };
-        if let Ok(content) = std::fs::read_to_string(&state_path) {
-            if let Ok(enabled_list) = serde_json::from_str::<Vec<String>>(&content) {
-                cmd.env("SABA_ENABLED_EXTENSIONS", enabled_list.join(","));
-            }
+        let enabled = saba_chan_updater_lib::config_file::ConfigFile::default_location()
+            .section("extensions")
+            .get("enabled")
+            .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok());
+        if let Some(enabled_list) = enabled {
+            cmd.env("SABA_ENABLED_EXTENSIONS", enabled_list.join(","));
         }
 
         let mut pypath = extensions_dir.parent()

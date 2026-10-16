@@ -237,12 +237,13 @@ fn emit_progress(app: &AppHandle, step: &str, message: &str, percent: i32, appli
     }).ok();
 }
 
-/// settings.json에서 키 값 읽기
+/// GUI 설정(`config.json`의 `gui`)에서 키 값 읽기
 fn load_setting(key: &str) -> Option<String> {
-    let path = constants::resolve_settings_path();
-    let content = std::fs::read_to_string(path).ok()?;
-    let value: serde_json::Value = serde_json::from_str(&content).ok()?;
-    value.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
+    saba_chan_updater_lib::config_file::ConfigFile::default_location()
+        .section("gui")
+        .get(key)
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
 }
 
 fn normalize_tag(input: &str) -> Option<String> {

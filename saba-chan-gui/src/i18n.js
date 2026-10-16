@@ -91,7 +91,7 @@ const resources = {
 // 저장된 언어 또는 시스템 언어 가져오기
 const getInitialLanguage = async () => {
     try {
-        // 1. Electron settings.json이 단일 진실 원천 (봇·데몬과 공유)
+        // 1. config.json의 gui.language가 단일 진실 원천 (데몬과 공유)
         if (window.electron && window.electron.getLanguage) {
             const savedLanguage = await window.electron.getLanguage();
             if (savedLanguage && SUPPORTED_LANGUAGES.includes(savedLanguage)) {
@@ -155,7 +155,7 @@ i18n.use(initReactI18next).init({
     },
 });
 
-// Electron settings.json에서 실제 언어를 비동기로 가져와 동기화
+// config.json(gui)에서 실제 언어를 비동기로 가져와 동기화
 getInitialLanguage().then((lang) => {
     if (lang && lang !== i18n.language) {
         i18n.changeLanguage(lang);

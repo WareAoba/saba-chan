@@ -12,7 +12,7 @@ use super::super::IPCServer;
 
 // ── GUI Settings ──
 
-/// GET /api/config/gui — GUI 설정(settings.json) 조회
+/// GET /api/config/gui — GUI 설정(config.json의 gui) 조회
 pub async fn get_gui_config(State(state): State<IPCServer>) -> impl IntoResponse {
     let json = state.config_store.get_gui_settings_json().await;
     (StatusCode::OK, Json(json)).into_response()
@@ -38,6 +38,34 @@ pub async fn save_gui_config(
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": format!("{}", e) })),
         ).into_response(),
+    }
+}
+
+// ── Client namespaces ──
+
+/// GET /api/config/client/:kind — 클라이언트별 설정 네임스페이스 (예: `cli`)
+pub async fn get_client_config(
+    Path(kind): Path<String>,
+    State(state): State<IPCServer>,
+) -> impl IntoResponse {
+    match state.config_store.get_client_section(&kind) {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, Json(json!({ "error": e.to_string() }))).into_response(),
+    }
+}
+
+/// PUT /api/config/client/:kind — 최상위 키 단위로 머지해 저장, 결과를 돌려준다
+pub async fn save_client_config(
+    Path(kind): Path<String>,
+    State(state): State<IPCServer>,
+    Json(patch): Json<Value>,
+) -> impl IntoResponse {
+    match state.config_store.merge_client_section(&kind, patch) {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err(crate::config_store::ConfigStoreError::InvalidData(msg)) => {
+            (StatusCode::BAD_REQUEST, Json(json!({ "error": msg }))).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() }))).into_response(),
     }
 }
 

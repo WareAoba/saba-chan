@@ -7,7 +7,7 @@
 //!
 //! GUI/CLI가 데몬을 스폰할 때는 `--spawned` 플래그를 전달하여 이 화면을 건너뜁니다.
 
-use saba_chan_updater_lib::constants;
+use saba_chan_updater_lib::config_file::ConfigFile;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::PathBuf;
@@ -55,29 +55,18 @@ impl Default for BootConfig {
 //  Config Persistence
 // ══════════════════════════════════════════════════════
 
-/// boot-config.json 경로
-fn config_path() -> PathBuf {
-    constants::resolve_data_dir().join("boot-config.json")
-}
-
-/// 디스크에서 부트 설정 로드 (실패 시 기본값)
+/// 디스크에서 부트 설정 로드 (`config.json`의 `boot`, 실패 시 기본값)
 pub fn load_config() -> BootConfig {
-    let path = config_path();
-    std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+    serde_json::from_value(ConfigFile::default_location().section("boot")).unwrap_or_default()
 }
 
 /// 부트 설정을 디스크에 저장
 pub fn save_config(mode: BootMode) {
-    let path = config_path();
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
     let config = BootConfig { last_mode: mode };
-    if let Ok(json) = serde_json::to_string_pretty(&config) {
-        let _ = std::fs::write(path, json);
+    if let Ok(value) = serde_json::to_value(&config) {
+        if let Err(e) = ConfigFile::default_location().set_section("boot", value) {
+            tracing::warn!("Failed to save boot config: {}", e);
+        }
     }
 }
 

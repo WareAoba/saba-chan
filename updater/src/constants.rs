@@ -157,11 +157,6 @@ pub fn resolve_instances_dir() -> PathBuf {
     resolve_data_dir().join("instances")
 }
 
-/// 설정 파일 경로 (`settings.json`)
-pub fn resolve_settings_path() -> PathBuf {
-    resolve_data_dir().join("settings.json")
-}
-
 /// 테스트 빌드에서 사용자 데이터 폴더 대신 쓰는 프로세스별 임시 루트.
 ///
 /// `test-isolation` 기능은 saba-core의 dev-dependency에서만 켜지므로
@@ -212,19 +207,6 @@ pub fn resolve_updater_state_path() -> PathBuf {
 /// 업데이트 완료 마커 경로 (`update-complete.json`)
 pub fn resolve_update_complete_path() -> PathBuf {
     resolve_data_dir().join("update-complete.json")
-}
-
-/// 익스텐션 상태 파일 경로 (`extensions_state.json`)
-pub fn resolve_extensions_state_path() -> PathBuf {
-    resolve_data_dir().join("extensions_state.json")
-}
-
-/// 익스텐션 설정 파일 경로 (`extensionConfig.json`)
-///
-/// 각 익스텐션의 글로벌(인스턴스 독립) 설정을 저장합니다.
-/// 구조: `{ "<ext_id>": { "<key>": <value>, ... }, ... }`
-pub fn resolve_extension_config_path() -> PathBuf {
-    resolve_data_dir().join("extensionConfig.json")
 }
 
 /// 설치 매니페스트 경로 (`installed-manifest.json`)

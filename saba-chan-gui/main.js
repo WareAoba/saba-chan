@@ -432,45 +432,55 @@ function setLanguage(language) {
 }
 
 // Settings 관리
+// 모든 설정은 <data_dir>/config.json 하나에 네임스페이스별로 들어간다(데몬 config_file).
+// GUI 설정은 그중 `gui`. 데몬이 떠 있으면 데몬 API로만 쓰고, 읽기와 데몬 기동 전
+// 부트스트랩 쓰기만 파일을 직접 다룬다.
 function getSettingsPath() {
     const userDataPath = app.getPath('userData'); // %APPDATA%/saba-chan
-    return path.join(userDataPath, 'settings.json');
+    return path.join(userDataPath, 'config.json');
 }
 
-function loadSettings() {
-    const settingsPath = getSettingsPath();
-    try {
-        if (fs.existsSync(settingsPath)) {
-            let data = fs.readFileSync(settingsPath, 'utf8');
-            // UTF-8 BOM 제거
-            if (data.charCodeAt(0) === 0xfeff) {
-                data = data.slice(1);
-            }
-            const parsed = JSON.parse(data);
-            // 기본값 병합 — 파일에 없는 필드만 채움 (기존 필드 보존)
-            const systemLanguage = getSystemLanguage();
-            return {
-                autoRefresh: true,
-                refreshInterval: 2000,
-                windowBounds: { width: 1200, height: 840 },
-                language: systemLanguage,
-                ipcPort: IPC_PORT_DEFAULT,
-                consoleBufferSize: 2000,
-                autoGeneratePasswords: true,
-                portConflictCheck: true,
-                ...parsed,
-            };
+function readJsonFile(filePath) {
+    if (!fs.existsSync(filePath)) return null;
+    let data = fs.readFileSync(filePath, 'utf8');
+    if (data.charCodeAt(0) === 0xfeff) data = data.slice(1); // UTF-8 BOM
+    return JSON.parse(data);
+}
+
+/** config.json 전체 (깨졌으면 .bak, 없으면 빈 객체) */
+function readConfigDocument() {
+    const configPath = getSettingsPath();
+    for (const candidate of [configPath, `${configPath}.bak`]) {
+        try {
+            const doc = readJsonFile(candidate);
+            if (doc && typeof doc === 'object' && !Array.isArray(doc)) return doc;
+        } catch (error) {
+            console.error(`Failed to read ${candidate}:`, error.message);
         }
-    } catch (error) {
-        console.error('Failed to load settings:', error);
     }
-    // 기본 설정 (시스템 언어로 초기화)
-    const systemLanguage = getSystemLanguage();
+    return {};
+}
+
+/** 데몬 기동 전 GUI 설정 저장 — 다른 네임스페이스는 보존, tmp → rename */
+function writeGuiSection(gui) {
+    const configPath = getSettingsPath();
+    const dir = path.dirname(configPath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const doc = readConfigDocument();
+    doc.gui = gui;
+    doc.schemaVersion = doc.schemaVersion || 1;
+    const tmp = `${configPath}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(doc, null, 2), 'utf8');
+    if (fs.existsSync(configPath)) fs.copyFileSync(configPath, `${configPath}.bak`);
+    fs.renameSync(tmp, configPath);
+}
+
+function defaultSettings() {
     return {
         autoRefresh: true,
         refreshInterval: 2000,
         windowBounds: { width: 1200, height: 840 },
-        language: systemLanguage,
+        language: getSystemLanguage(),
         ipcPort: IPC_PORT_DEFAULT,
         consoleBufferSize: 2000,
         autoGeneratePasswords: true,
@@ -478,14 +488,25 @@ function loadSettings() {
     };
 }
 
+function loadSettings() {
+    let gui = readConfigDocument().gui;
+    if (!gui) {
+        // 아직 데몬이 config.json으로 이관하기 전 (예전 settings.json)
+        try {
+            gui = readJsonFile(path.join(path.dirname(getSettingsPath()), 'settings.json'));
+        } catch (error) {
+            console.error('Failed to load legacy settings.json:', error.message);
+        }
+    }
+    // 기본값 병합 — 파일에 없는 필드만 채움 (기존 필드 보존)
+    return { ...defaultSettings(), ...(gui || {}) };
+}
+
 function saveSettings(settings) {
     // 데몬이 아직 시작되지 않은 부트스트랩 단계에서는 로컬 파일에 직접 저장
     if (!daemonProcess) {
         try {
-            const settingsPath = getSettingsPath();
-            const dir = path.dirname(settingsPath);
-            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-            fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
+            writeGuiSection(settings);
             console.log('[saveSettings] Bootstrap: saved locally (daemon not started)');
         } catch (e) {
             console.error('[saveSettings] Bootstrap local save failed:', e.message);

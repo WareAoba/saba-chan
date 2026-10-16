@@ -1,10 +1,11 @@
 //! 데몬 API를 통한 설정 읽기/쓰기 모듈
 //!
 //! 원칙: 모든 설정 읽기/쓰기는 데몬 API를 경유한다.
-//! 로컬 파일 직접 접근은 IPC 포트 부트스트랩에만 허용한다.
+//! 로컬 파일 직접 접근은 IPC 포트 부트스트랩(`config.json`의 `gui.ipcPort`)에만 허용한다.
 //!
-//! - settings.json → GET/PUT /api/config/gui
-//! - bot-config.json → GET/PUT /api/config/bot
+//! - gui   → GET/PUT /api/config/gui
+//! - relay → GET/PUT /api/config/bot
+//! - cli   → GET/PUT /api/config/client/cli
 
 use saba_chan_updater_lib::constants;
 use serde_json::Value;
@@ -55,6 +56,11 @@ fn daemon_put(path: &str, body: &Value) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// 클라이언트 설정 네임스페이스 저장 (`PUT /api/config/client/:kind`)
+pub fn put_client_section(kind: &str, value: &Value) -> anyhow::Result<()> {
+    daemon_put(&format!("/api/config/client/{}", kind), value)
+}
+
 /// blocking reqwest 클라이언트로 데몬 API DELETE 호출
 fn daemon_delete(path: &str) -> anyhow::Result<()> {
     let base = format!("http://127.0.0.1:{}", get_ipc_port_local());
@@ -97,16 +103,15 @@ fn get_config_dir() -> anyhow::Result<PathBuf> {
 /// IPC 포트 — 로컬 파일에서만 읽기 (daemon_get의 기반이므로 순환 방지)
 /// NOTE: 이것이 유일한 로컬 파일 직접 읽기. daemon API는 이 포트가 있어야 호출 가능.
 fn get_ipc_port_local() -> u16 {
-    let path = constants::resolve_settings_path();
-    std::fs::read_to_string(path)
-        .ok()
-        .and_then(|c| serde_json::from_str::<Value>(&c).ok())
-        .and_then(|s| s.get("ipcPort").and_then(|v| v.as_u64()))
+    saba_chan_updater_lib::config_file::ConfigFile::default_location()
+        .section("gui")
+        .get("ipcPort")
+        .and_then(|v| v.as_u64())
         .map(|p| p as u16)
         .unwrap_or(constants::DEFAULT_IPC_PORT)
 }
 
-// ============ Settings (settings.json) — 데몬 API 전용 ============
+// ============ GUI Settings (config.json의 gui) — 데몬 API 전용 ============
 
 /// GUI 설정 로드 (데몬 API 전용)
 pub fn load_settings() -> anyhow::Result<Value> {
@@ -145,7 +150,7 @@ pub fn get_language() -> anyhow::Result<String> {
         .to_string())
 }
 
-/// IPC 포트 가져오기 (settings.json → ipcPort)
+/// IPC 포트 가져오기 (gui.ipcPort)
 pub fn get_ipc_port() -> u16 {
     load_settings()
         .ok()
@@ -160,7 +165,7 @@ pub fn get_ipc_base_url() -> String {
     format!("http://127.0.0.1:{}", get_ipc_port_local())
 }
 
-// ============ Bot Config (bot-config.json) — 데몬 API 전용 ============
+// ============ Relay Config (config.json의 relay) — 데몬 API 전용 ============
 
 /// 봇 설정 로드 (데몬 API 전용)
 pub fn load_bot_config() -> anyhow::Result<Value> {
@@ -168,7 +173,7 @@ pub fn load_bot_config() -> anyhow::Result<Value> {
         .ok_or_else(|| anyhow::anyhow!("데몬에 연결할 수 없습니다. 데몬이 실행 중인지 확인하세요."))
 }
 
-/// 봇 prefix 가져오기 (bot-config.json)
+/// 봇 prefix 가져오기 (relay.prefix)
 pub fn get_bot_prefix() -> anyhow::Result<String> {
     let config = load_bot_config()?;
     Ok(config
@@ -619,86 +624,6 @@ mod tests {
         let mut s = json!({"language": "en"});
         s["language"] = Value::String("ja".to_string());
         assert_eq!(extract_language(&s), "ja");
-    }
-
-    // ── File-based round-trip test ──
-
-    #[test]
-    fn test_settings_file_roundtrip() {
-        // Use a temp dir as fake APPDATA
-        let tmp = tempfile::tempdir().unwrap();
-        let saba_dir = tmp.path().join("saba-chan");
-        std::fs::create_dir_all(&saba_dir).unwrap();
-
-        let settings_path = saba_dir.join("settings.json");
-        let original = json!({
-            "autoRefresh": false,
-            "refreshInterval": 3000,
-            "ipcPort": 8080,
-            "consoleBufferSize": 1024,
-            "autoGeneratePasswords": false,
-            "portConflictCheck": false,
-            "language": "ja"
-        });
-
-        // Write
-        let content = serde_json::to_string_pretty(&original).unwrap();
-        std::fs::write(&settings_path, &content).unwrap();
-
-        // Read back
-        let loaded: Value = serde_json::from_str(&std::fs::read_to_string(&settings_path).unwrap()).unwrap();
-
-        assert_eq!(extract_auto_refresh(&loaded), false);
-        assert_eq!(extract_refresh_interval(&loaded), 3000);
-        assert_eq!(extract_ipc_port(&loaded), 8080);
-        assert_eq!(extract_console_buffer_size(&loaded), 1024);
-        assert_eq!(extract_auto_generate_passwords(&loaded), false);
-        assert_eq!(extract_port_conflict_check(&loaded), false);
-        assert_eq!(extract_language(&loaded), "ja");
-
-        // Mutate and re-write
-        let mut modified = loaded;
-        modified["autoRefresh"] = Value::Bool(true);
-        modified["refreshInterval"] = json!(1500);
-        modified["language"] = Value::String("ko".to_string());
-
-        let content2 = serde_json::to_string_pretty(&modified).unwrap();
-        std::fs::write(&settings_path, &content2).unwrap();
-
-        let reloaded: Value = serde_json::from_str(&std::fs::read_to_string(&settings_path).unwrap()).unwrap();
-        assert_eq!(extract_auto_refresh(&reloaded), true);
-        assert_eq!(extract_refresh_interval(&reloaded), 1500);
-        assert_eq!(extract_language(&reloaded), "ko");
-        // Other values should remain unchanged
-        assert_eq!(extract_ipc_port(&reloaded), 8080);
-    }
-
-    #[test]
-    fn test_bot_config_file_roundtrip() {
-        let tmp = tempfile::tempdir().unwrap();
-        let saba_dir = tmp.path().join("saba-chan");
-        std::fs::create_dir_all(&saba_dir).unwrap();
-
-        let bot_config_path = saba_dir.join("bot-config.json");
-        let original = json!({
-            "prefix": "!test",
-            "moduleAliases": {"palworld": "팰월드"},
-            "commandAliases": {},
-        });
-
-        std::fs::write(&bot_config_path, serde_json::to_string_pretty(&original).unwrap()).unwrap();
-
-        let loaded: Value = serde_json::from_str(&std::fs::read_to_string(&bot_config_path).unwrap()).unwrap();
-        assert_eq!(extract_bot_prefix(&loaded), "!test");
-
-        // Mutate
-        let mut modified = loaded;
-        modified["prefix"] = Value::String("사바쨩".to_string());
-
-        std::fs::write(&bot_config_path, serde_json::to_string_pretty(&modified).unwrap()).unwrap();
-
-        let reloaded: Value = serde_json::from_str(&std::fs::read_to_string(&bot_config_path).unwrap()).unwrap();
-        assert_eq!(extract_bot_prefix(&reloaded), "사바쨩");
     }
 
     // ── Edge cases ──
