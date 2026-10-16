@@ -80,6 +80,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main  # 태그가 아닌 main의 최신 스크립트·소스를 사용
+          fetch-depth: 0  # 릴리즈 노트가 이전 태그부터의 커밋을 읽는다
 
       - name: Verify release exists
         env:
@@ -246,3 +247,15 @@ jobs:
             fi
           done
           echo "✓ Cleanup complete"
+
+      # 정리 단계가 output/에 없는 에셋을 지우므로 맨 마지막에 붙인다
+      - name: Attach release notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p notes
+          python scripts/changelog.py --until "${{ env.TARGET_TAG }}" \
+            --version "${TARGET_TAG#v}" --output notes/CHANGELOG.md
+          cat notes/CHANGELOG.md >> "$GITHUB_STEP_SUMMARY"
+          gh release upload "${{ env.TARGET_TAG }}" notes/CHANGELOG.md \
+            --repo "${{ github.repository }}" --clobber

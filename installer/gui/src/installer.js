@@ -26,6 +26,7 @@ const T = {
         installSub: 'Please wait...',
         preparing: 'Preparing...',
         fetchingRelease: 'Checking for the latest release...',
+        modulesUnavailable: 'Could not load the game module list. You can add modules in the app after installing.',
         completeTitle: 'Installation Complete!',
         completeSub: 'Saba-chan is ready.',
         btnClose: 'Close',
@@ -88,6 +89,7 @@ const T = {
         installSub: '잠시만 기다려 주세요...!',
         preparing: '준비 중...',
         fetchingRelease: '최신 릴리즈 확인 중...',
+        modulesUnavailable: '게임 모듈 목록을 불러오지 못했습니다. 설치한 뒤 앱에서 모듈을 추가할 수 있습니다.',
         completeTitle: '설치 완료!',
         completeSub: '사바쨩이 준비되었습니다.',
         btnClose: '닫기',
@@ -889,7 +891,13 @@ async function loadModules() {
             card.querySelector('.mod-chk').addEventListener('change', (e) => toggleMod(m.id, e.target.checked));
             $list.appendChild(card);
         }
-    } catch (_) {}
+    } catch (_) {
+        $list.innerHTML = '';
+        const note = document.createElement('div');
+        note.className = 'module-desc';
+        note.textContent = tr('modulesUnavailable');
+        $list.appendChild(note);
+    }
 }
 
 function toggleMod(id, on) {

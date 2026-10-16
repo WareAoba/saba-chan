@@ -8,19 +8,21 @@
 pub mod github;
 #[cfg(target_os = "windows")]
 pub mod registry;
+pub mod release;
 pub mod runtime_bootstrap;
 #[cfg(target_os = "windows")]
 pub mod shortcuts;
 pub mod uninstall;
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::RwLock;
 use saba_chan_updater_lib::config_file::ConfigFile;
 use saba_chan_updater_lib::constants;
+use saba_chan_updater_lib::relay::ReleaseManifest;
+use saba_chan_updater_lib::UpdateManager;
 
 /// 현재 인스톨러 바이너리의 버전 — tauri.conf.json과 동기화
 const INSTALLER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -33,13 +35,14 @@ const INSTALLER_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[derive(Debug)]
 pub struct InstallerState {
     pub install_path: String,
+    /// 모듈·익스텐션을 받는 GitHub 계정 (U9e 전까지)
     pub github_owner: String,
-    pub github_repo: String,
     pub language: String,
     pub create_desktop_shortcut: bool,
     pub create_start_menu_shortcut: bool,
     pub selected_modules: Vec<String>,
-    pub latest_release_tag: Option<String>,
+    /// fetch_latest_release가 받은 검증된 manifest
+    pub release: Option<ReleaseManifest>,
     pub progress: InstallProgress,
     /// 로드된 모듈 메타데이터 (required_extensions 해석용)
     pub module_metadata: Vec<ModuleInfo>,
@@ -50,12 +53,11 @@ impl Default for InstallerState {
         Self {
             install_path: get_default_install_path(),
             github_owner: constants::GITHUB_OWNER.to_string(),
-            github_repo: constants::GITHUB_REPO.to_string(),
             language: "en".to_string(),
             create_desktop_shortcut: true,
             create_start_menu_shortcut: true,
             selected_modules: Vec::new(),
-            latest_release_tag: None,
+            release: None,
             progress: InstallProgress::default(),
             module_metadata: Vec::new(),
         }
@@ -116,7 +118,7 @@ async fn get_installer_state(state: State<'_, SharedState>) -> Result<serde_json
         "create_desktop_shortcut": s.create_desktop_shortcut,
         "create_start_menu_shortcut": s.create_start_menu_shortcut,
         "selected_modules": s.selected_modules,
-        "latest_release_tag": s.latest_release_tag,
+        "latest_release_tag": s.release.as_ref().map(|r| r.version.clone()),
         "progress": s.progress,
     }))
 }
@@ -164,35 +166,6 @@ fn module_icon_url(owner: &str, modules_repo: &str, module_name: &str) -> String
         "https://raw.githubusercontent.com/{}/{}/main/{}/icon.png",
         owner, modules_repo, module_name
     )
-}
-
-/// 하드코딩 폴백 모듈 목록 (네트워크 실패 시 사용)
-fn fallback_modules() -> Vec<ModuleInfo> {
-    let owner = constants::GITHUB_OWNER;
-    let modules_repo = constants::GITHUB_MODULES_REPO;
-    vec![
-        ModuleInfo {
-            id: "minecraft".into(),
-            name: "Minecraft".into(),
-            description: "Minecraft server management with RCON support".into(),
-            icon: module_icon_url(owner, modules_repo, "minecraft"),
-            required_extensions: Vec::new(),
-        },
-        ModuleInfo {
-            id: "palworld".into(),
-            name: "Palworld".into(),
-            description: "Palworld dedicated server management via REST API".into(),
-            icon: module_icon_url(owner, modules_repo, "palworld"),
-            required_extensions: vec!["steamcmd".into(), "ue4-ini".into()],
-        },
-        ModuleInfo {
-            id: "zomboid".into(),
-            name: "Project Zomboid".into(),
-            description: "Project Zomboid dedicated server management".into(),
-            icon: module_icon_url(owner, modules_repo, "zomboid"),
-            required_extensions: vec!["steamcmd".into()],
-        },
-    ]
 }
 
 /// 원격 module.toml에서 모듈 메타데이터를 파싱
@@ -249,21 +222,12 @@ async fn get_available_modules(state: State<'_, SharedState>) -> Result<Vec<Modu
         (s.github_owner.clone(), constants::GITHUB_MODULES_REPO.to_string())
     };
 
-    // 원격에서 모듈 목록 가져오기 시도
-    let modules = match fetch_modules_from_remote(&owner, &modules_repo).await {
-        Ok(modules) if !modules.is_empty() => {
-            tracing::info!("원격에서 {} 모듈 메타데이터 로드 성공", modules.len());
-            modules
-        }
-        Ok(_) => {
-            tracing::warn!("원격 모듈 목록이 비어 있음, 폴백 사용");
-            fallback_modules()
-        }
-        Err(e) => {
-            tracing::warn!("원격 모듈 메타데이터 로드 실패: {}, 폴백 사용", e);
-            fallback_modules()
-        }
-    };
+    // 목록은 원격에서만 온다. 실패하면 화면이 알리고, 모듈은 설치 뒤 앱에서 받을 수 있다.
+    let modules = fetch_modules_from_remote(&owner, &modules_repo).await?;
+    if modules.is_empty() {
+        return Err("No modules found in the module repository".into());
+    }
+    tracing::info!("원격에서 {} 모듈 메타데이터 로드 성공", modules.len());
 
     // 모듈 메타데이터를 state에 저장 (required_extensions 자동 설치에 필요)
     state.write().await.module_metadata = modules.clone();
@@ -298,38 +262,21 @@ async fn fetch_modules_from_remote(owner: &str, modules_repo: &str) -> Result<Ve
 }
 
 // ═══════════════════════════════════════════════════════
-// Tauri 커맨드 — GitHub (항상 최신 릴리스)
+// Tauri 커맨드 — 릴리즈 (relay 서명 manifest, U10)
 // ═══════════════════════════════════════════════════════
 
 #[tauri::command]
 async fn fetch_latest_release(
     state: State<'_, SharedState>,
 ) -> Result<serde_json::Value, String> {
-    let (owner, repo) = {
-        let s = state.read().await;
-        (s.github_owner.clone(), s.github_repo.clone())
-    };
-
-    let releases = github::fetch_releases(&owner, &repo)
-        .await
-        .map_err(|e| format!("Failed to fetch releases: {}", e))?;
-
-    let latest = releases
-        .iter()
-        .find(|r| !r.prerelease)
-        .or(releases.first())
-        .ok_or("No releases found")?;
-
-    let tag = latest.tag_name.clone();
-    let name = latest.name.clone().unwrap_or_else(|| tag.clone());
-
-    state.write().await.latest_release_tag = Some(tag.clone());
-
-    Ok(serde_json::json!({
-        "tag": tag,
-        "name": name,
-        "published_at": latest.published_at,
-    }))
+    let manifest = release::fetch_latest().await?;
+    let info = serde_json::json!({
+        "tag": manifest.version,
+        "name": manifest.version,
+        "published_at": manifest.released_at,
+    });
+    state.write().await.release = Some(manifest);
+    Ok(info)
 }
 
 // ═══════════════════════════════════════════════════════
@@ -346,12 +293,11 @@ async fn start_install(
         InstallConfig {
             install_path: s.install_path.clone(),
             github_owner: s.github_owner.clone(),
-            github_repo: s.github_repo.clone(),
             language: s.language.clone(),
             create_desktop_shortcut: s.create_desktop_shortcut,
             create_start_menu_shortcut: s.create_start_menu_shortcut,
             selected_modules: s.selected_modules.clone(),
-            latest_release_tag: s.latest_release_tag.clone(),
+            release: s.release.clone(),
             module_metadata: s.module_metadata.clone(),
         }
     };
@@ -370,7 +316,6 @@ async fn start_install(
 struct InstallConfig {
     install_path: String,
     github_owner: String,
-    github_repo: String,
     language: String,
     // 바로가기는 Windows에서만 만든다
     #[cfg_attr(not(windows), allow(dead_code))]
@@ -378,7 +323,7 @@ struct InstallConfig {
     #[cfg_attr(not(windows), allow(dead_code))]
     create_start_menu_shortcut: bool,
     selected_modules: Vec<String>,
-    latest_release_tag: Option<String>,
+    release: Option<ReleaseManifest>,
     module_metadata: Vec<ModuleInfo>,
 }
 
@@ -446,173 +391,89 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         }
     }
 
-    // Step 2: 릴리즈 매니페스트 페치 (5-10%)
+    // Step 2: 서명된 릴리즈 manifest (5-10%)
     emit("fetch", "Fetching release information...", 7);
-    let tag = match &config.latest_release_tag {
-        Some(t) => t.clone(),
-        None => {
-            match github::fetch_releases(&config.github_owner, &config.github_repo).await {
-                Ok(releases) => {
-                    match releases.iter().find(|r| !r.prerelease).or(releases.first()) {
-                        Some(r) => r.tag_name.clone(),
-                        None => {
-                            emit_error(&app, &state, "No releases found").await;
-                            return;
-                        }
-                    }
-                }
-                Err(e) => {
-                    emit_error(
-                        &app,
-                        &state,
-                        &format!("Failed to fetch releases: {}", e),
-                    )
-                    .await;
-                    return;
-                }
+    let manifest = match config.release.clone() {
+        Some(m) => m,
+        None => match release::fetch_latest().await {
+            Ok(m) => m,
+            Err(e) => {
+                emit_error(&app, &state, &e).await;
+                return;
             }
-        }
+        },
     };
 
-    let manifest = match github::fetch_manifest(
-        &config.github_owner,
-        &config.github_repo,
-        &tag,
-    )
-    .await
-    {
-        Ok(m) => m,
-        Err(e) => {
-            emit_error(&app, &state, &format!("Failed to fetch manifest: {}", e)).await;
-            return;
-        }
-    };
-
-    // ── Fix 1: 인스톨러 자체 버전 확인 ──
-    // 릴리스 매니페스트에 installer 컴포넌트가 있으면 현재 바이너리 버전과 비교
-    if let Some(required_version) = github::get_installer_version_from_manifest(&manifest) {
-        if version_compare(INSTALLER_VERSION, &required_version) == std::cmp::Ordering::Less {
+    // 설치기 자체가 이 릴리즈를 설치할 수 있는 버전인지
+    if let Some(required_version) = release::required_installer_version(&manifest) {
+        if version_compare(INSTALLER_VERSION, required_version) == std::cmp::Ordering::Less {
             emit_error(
                 &app,
                 &state,
                 &format!(
                     "This installer (v{}) is outdated. Version v{} or later is required. \
-                     Please download the latest installer from GitHub.",
+                     Please download the latest installer.",
                     INSTALLER_VERSION, required_version
                 ),
             )
             .await;
             return;
         }
-        tracing::info!(
-            "인스톨러 버전 확인 OK: current={}, required={}",
-            INSTALLER_VERSION,
-            required_version
-        );
     }
 
-    // Step 3: 에셋 다운로드 + 압축 해제 (10-45%) — Fix 4: 바이트 단위 진행률
-    let components: Vec<_> = manifest.components.iter().collect();
+    // Step 3: R2에서 받고 SHA-256 확인 후 압축 해제 (10-45%)
+    // 하나라도 실패하면 설치를 멈춘다. 반쯤 설치된 앱은 업데이터도 고치기 어렵다.
+    let components = release::installable(&manifest);
     let total = components.len().max(1);
     let mut installed = Vec::new();
+    let mut installed_versions = UpdateManager::load_installed_manifest();
+    let temp_dir = std::env::temp_dir().join("saba-chan-installer");
+    let _ = std::fs::create_dir_all(&temp_dir);
 
     for (i, (key, info)) in components.iter().enumerate() {
-        let asset_name = match &info.asset {
-            Some(a) if !a.is_empty() => a.clone(),
-            _ => continue,
-        };
-
-        // installer 컴포넌트는 설치 대상에서 제외 (자기 자신)
-        if key.as_str() == "installer" {
-            continue;
-        }
-
         let pct = 10 + (i * 35 / total) as i32;
         emit("download", &format!("Downloading {}...", key), pct);
 
-        let download_url = match github::get_asset_download_url(
-            &config.github_owner,
-            &config.github_repo,
-            &tag,
-            &asset_name,
-        )
-        .await
-        {
-            Ok(url) => url,
-            Err(e) => {
-                tracing::error!("Failed to get URL for {}: {}", key, e);
-                continue;
-            }
-        };
-
-        let temp_dir = std::env::temp_dir().join("saba-chan-installer");
-        let _ = std::fs::create_dir_all(&temp_dir);
-        let temp_file = temp_dir.join(&asset_name);
-
-        // 스트리밍 다운로드 + 바이트 진행률 emit
+        let temp_file = temp_dir.join(&info.filename);
         let app_dl = app.clone();
-        let asset_name_clone = asset_name.clone();
-        let key_clone = key.to_string();
-        let pct_start = pct;
-
+        let file_name = info.filename.clone();
+        let key_name = key.to_string();
         let progress_cb = move |received: u64, total_bytes: Option<u64>| {
-            let dl_pct = if let Some(total) = total_bytes {
-                if total > 0 {
-                    (received as f64 / total as f64 * 100.0) as i32
-                } else {
-                    0
-                }
-            } else {
-                0
-            };
             let mb_received = received as f64 / 1_048_576.0;
-            let msg = if let Some(total) = total_bytes {
-                let mb_total = total as f64 / 1_048_576.0;
-                format!(
+            let msg = match total_bytes {
+                Some(total) => format!(
                     "Downloading {} — {:.1}/{:.1} MB ({}%)",
-                    key_clone, mb_received, mb_total, dl_pct
-                )
-            } else {
-                format!("Downloading {} — {:.1} MB", key_clone, mb_received)
+                    key_name,
+                    mb_received,
+                    total as f64 / 1_048_576.0,
+                    received * 100 / total.max(1)
+                ),
+                None => format!("Downloading {} — {:.1} MB", key_name, mb_received),
             };
             let p = InstallProgress {
                 step: "download".to_string(),
                 message: msg,
-                percent: pct_start,
-                complete: false,
-                error: None,
-                installed_components: Vec::new(),
-                download_file: Some(asset_name_clone.clone()),
+                percent: pct,
+                download_file: Some(file_name.clone()),
                 download_received: Some(received),
                 download_total: total_bytes,
+                ..Default::default()
             };
             app_dl.emit("install:progress", &p).ok();
         };
 
-        if let Err(e) = github::download_asset_with_progress(
-            &download_url,
-            &temp_file,
-            Some(progress_cb),
-        )
-        .await
-        {
-            tracing::error!("Failed to download {}: {}", asset_name, e);
-            continue;
+        if let Err(e) = release::download(info, &temp_file, progress_cb).await {
+            emit_error(&app, &state, &format!("Failed to download {}: {}", key, e)).await;
+            return;
         }
 
         emit("extract", &format!("Extracting {}...", key), pct + 3);
-
-        let target_dir = match &info.install_dir {
-            Some(d) if !d.is_empty() && d != "." => install_dir.join(d),
-            _ => install_dir.clone(),
-        };
-
-        if let Err(e) = extract_zip(&temp_file, &target_dir) {
-            tracing::error!("Failed to extract {}: {}", asset_name, e);
-            continue;
+        if let Err(e) = extract_zip(&temp_file, &release::target_dir(&install_dir, info)) {
+            emit_error(&app, &state, &format!("Failed to extract {}: {}", key, e)).await;
+            return;
         }
-
         let _ = std::fs::remove_file(&temp_file);
+        installed_versions.insert(key.to_string(), info.version.clone());
         installed.push(key.to_string());
     }
 
@@ -747,7 +608,7 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
     emit("registry", "Registering application...", 92);
     #[cfg(target_os = "windows")]
     {
-        if let Err(e) = registry::register_uninstall_entry(&install_dir, &tag) {
+        if let Err(e) = registry::register_uninstall_entry(&install_dir, &manifest.version) {
             tracing::warn!("Failed to create registry entry: {}", e);
         }
     }
@@ -780,32 +641,10 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         }
     }
 
-    // Step 10.5: installed-manifest.json 생성 (업데이터가 현재 버전을 인식하도록)
+    // Step 10.5: 설치한 버전 기록 (업데이터가 같은 파일을 읽는다)
     emit("manifest", "Recording installed versions...", 98);
-    {
-        let mut versions = HashMap::new();
-        for (key, info) in &manifest.components {
-            versions.insert(key.clone(), info.version.clone());
-        }
-        let data_dir = resolve_data_dir();
-        let _ = std::fs::create_dir_all(&data_dir);
-        let manifest_path = data_dir.join("installed-manifest.json");
-        match serde_json::to_string_pretty(&versions) {
-            Ok(json) => {
-                if let Err(e) = std::fs::write(&manifest_path, &json) {
-                    tracing::warn!("Failed to write installed-manifest.json: {}", e);
-                } else {
-                    tracing::info!(
-                        "Written installed-manifest.json with {} components to {:?}",
-                        versions.len(),
-                        manifest_path
-                    );
-                }
-            }
-            Err(e) => {
-                tracing::warn!("Failed to serialize installed-manifest.json: {}", e);
-            }
-        }
+    if let Err(e) = UpdateManager::save_installed_manifest(&installed_versions) {
+        tracing::warn!("Failed to write installed manifest: {}", e);
     }
 
     // 완료

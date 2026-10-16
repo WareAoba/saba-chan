@@ -262,7 +262,39 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
 
 /// GET /api/modules - 모든 모듈 목록
 /// 모듈 하나를 API 응답 모양으로 (아이콘은 base64 data URL로)
-fn module_info(m: crate::supervisor::module_loader::LoadedModule) -> ExtensionInfo {
+/// 지금 설치된 컴포넌트 버전 (`versions.toml`과 같은 키: saba-core, module-<이름>, ext-<id>, gui, cli ...).
+/// 업데이터가 기록한 installed-manifest를 바탕으로, 데몬이 직접 아는 값(코어, 로드된 모듈, 발견된 익스텐션)으로 덮는다 (U11, M9).
+pub async fn component_versions(state: &IPCServer) -> std::collections::BTreeMap<String, String> {
+    let mut versions: std::collections::BTreeMap<String, String> =
+        saba_chan_updater_lib::UpdateManager::load_installed_manifest().into_iter().collect();
+    versions.insert(crate::supervisor::module_loader::CORE_COMPONENT.to_string(), crate::supervisor::module_loader::DAEMON_VERSION.to_string());
+    if let Ok(modules) = state.supervisor.read().await.list_modules() {
+        for m in modules {
+            versions.insert(format!("module-{}", m.metadata.name), m.metadata.version);
+        }
+    }
+    for ext in state.extension_manager.read().await.list() {
+        versions.insert(format!("ext-{}", ext.id), ext.version);
+    }
+    versions
+}
+
+/// GET /api/version — 코어·모듈·익스텐션·인터페이스 버전을 한 번에
+pub async fn version_handler(State(state): State<IPCServer>) -> impl IntoResponse {
+    Json(json!({
+        "version": crate::supervisor::module_loader::DAEMON_VERSION,
+        "components": component_versions(&state).await,
+    }))
+}
+
+fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std::collections::BTreeMap<String, String>) -> ExtensionInfo {
+    let installed: std::collections::HashMap<String, String> = versions.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let unmet_dependencies = m
+        .metadata
+        .check_dependencies(&installed)
+        .into_iter()
+        .map(|(component, required, installed)| crate::ipc::UnmetDependency { component, required, installed })
+        .collect();
     let icon_base64 = m.metadata.icon.as_ref().and_then(|icon_file| {
         let icon_path = std::path::Path::new(&m.path).join(icon_file);
         std::fs::read(&icon_path).ok().map(|data| {
@@ -280,6 +312,7 @@ fn module_info(m: crate::supervisor::module_loader::LoadedModule) -> ExtensionIn
         game_name: meta.game_name,
         author: meta.author,
         warnings: meta.warnings,
+        unmet_dependencies,
         path: m.path,
         executable_path: meta.executable_path,
         icon: icon_base64,
@@ -301,10 +334,11 @@ fn module_info(m: crate::supervisor::module_loader::LoadedModule) -> ExtensionIn
 fn module_list_response(
     supervisor: &crate::supervisor::Supervisor,
     modules: anyhow::Result<Vec<crate::supervisor::module_loader::LoadedModule>>,
+    versions: &std::collections::BTreeMap<String, String>,
 ) -> axum::response::Response {
     match modules {
         Ok(modules) => {
-            let modules = modules.into_iter().map(module_info).collect();
+            let modules = modules.into_iter().map(|m| module_info(m, versions)).collect();
             let failed = supervisor.module_loader.load_errors();
             (StatusCode::OK, Json(ExtensionListResponse { modules, failed })).into_response()
         }
@@ -316,18 +350,20 @@ fn module_list_response(
 }
 
 pub async fn list_modules(State(state): State<IPCServer>) -> impl IntoResponse {
+    let versions = component_versions(&state).await;
     let supervisor = state.supervisor.read().await;
-    module_list_response(&supervisor, supervisor.list_modules())
+    module_list_response(&supervisor, supervisor.list_modules(), &versions)
 }
 
 /// POST /api/modules/refresh - 모듈 캐시를 새로고침하고 다시 발견
 pub async fn refresh_modules(State(state): State<IPCServer>) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
-    let modules = supervisor.refresh_modules();
+    let modules = state.supervisor.read().await.refresh_modules();
     if let Ok(m) = &modules {
         tracing::info!("Module cache refreshed. Found {} modules", m.len());
     }
-    module_list_response(&supervisor, modules)
+    let versions = component_versions(&state).await;
+    let supervisor = state.supervisor.read().await;
+    module_list_response(&supervisor, modules, &versions)
 }
 
 /// GET /api/modules/schema - module.toml 스키마 v1 (JSON Schema)
