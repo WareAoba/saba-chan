@@ -224,6 +224,8 @@ async fn main() -> anyhow::Result<()> {
             tracing::warn!("Failed to initialize supervisor: {}", e);
         }
     }
+    // server_version이 비어 있는 인스턴스의 버전 감지 (모듈 Python 호출이라 기동을 막지 않게 뒤에서)
+    tokio::spawn(supervisor::Supervisor::backfill_server_versions(supervisor.clone()));
 
     // Generate IPC auth token
     match ipc::auth::generate_and_save_token() {
@@ -268,8 +270,7 @@ async fn main() -> anyhow::Result<()> {
             }
 
             let ctx = serde_json::json!({});
-            let mgr = ext_mgr.read().await;
-            let results = mgr.dispatch_hook("daemon.startup", ctx).await;
+            let results = extension::run_hook(&ext_mgr, "daemon.startup", ctx).await;
 
             for (ext_id, result) in results {
                 match result {
@@ -509,11 +510,10 @@ async fn main() -> anyhow::Result<()> {
                         })
                     }).collect::<Vec<_>>(),
                 });
-                let mgr = ext_mgr.read().await;
                 // 익스텐션이 멈춰도 종료는 진행되게 상한을 둔다
                 let results = match tokio::time::timeout(
                     std::time::Duration::from_secs(30),
-                    mgr.dispatch_hook("daemon.shutdown", ctx),
+                    extension::run_hook(ext_mgr, "daemon.shutdown", ctx),
                 )
                 .await
                 {

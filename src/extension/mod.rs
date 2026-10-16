@@ -1136,55 +1136,15 @@ impl ExtensionManager {
         context
     }
 
-    /// Hook 디스패치: 조건 평가 → run_plugin 호출 → handled 체크
-    ///
-    /// 반환: Vec<(ext_id, Result<Value>)>
-    /// handled=true가 나오면 이후 익스텐션은 스킵 (chain-of-responsibility)
-    pub async fn dispatch_hook(
-        &self,
-        hook_name: &str,
-        context: Value,
-    ) -> Vec<(String, Result<Value>)> {
-        self.dispatch_hook_timed(hook_name, context, crate::plugin::DEFAULT_PLUGIN_TIMEOUT_SECS).await
-    }
-
-    /// 타임아웃 지정 가능한 hook 디스패치 (server.list_enrich 등 빠른 반환이 필요한 hook용)
-    pub async fn dispatch_hook_timed(
-        &self,
-        hook_name: &str,
-        context: Value,
-        timeout_secs: u64,
-    ) -> Vec<(String, Result<Value>)> {
-        self.dispatch_hook_inner(hook_name, context, timeout_secs, None).await
-    }
-
-    /// 익스텐션 하나에만 hook을 보낸다 (예: 방금 켠 익스텐션의 `daemon.startup`)
-    pub async fn dispatch_hook_to(
-        &self,
-        ext_id: &str,
-        hook_name: &str,
-        context: Value,
-    ) -> Option<Result<Value>> {
-        self.dispatch_hook_inner(hook_name, context, crate::plugin::DEFAULT_PLUGIN_TIMEOUT_SECS, Some(ext_id))
-            .await
-            .into_iter()
-            .next()
-            .map(|(_, r)| r)
-    }
-
-    async fn dispatch_hook_inner(
-        &self,
-        hook_name: &str,
-        context: Value,
-        timeout_secs: u64,
-        only: Option<&str>,
-    ) -> Vec<(String, Result<Value>)> {
+    /// 이 hook에서 부를 익스텐션 함수 목록을 정한다 (조건 평가, extension_config 주입).
+    /// Python 실행은 돌려준 `HookPlan`으로, 매니저 락을 놓은 뒤에 한다 (C12).
+    pub fn plan_hook(&self, hook_name: &str, context: Value, only: Option<&str>) -> HookPlan {
         let mut hooks = self.hooks_for(hook_name);
         if let Some(id) = only {
             hooks.retain(|(ext, _)| ext.manifest.id == id);
         }
         if hooks.is_empty() {
-            return Vec::new();
+            return HookPlan { hook: hook_name.to_string(), context, calls: Vec::new() };
         }
 
         // extension_config를 context에 자동 주입
@@ -1195,177 +1155,32 @@ impl ExtensionManager {
             .and_then(|v| serde_json::from_value(v.clone()).ok())
             .unwrap_or_default();
 
-        let mut results = Vec::new();
-
-        for (ext, binding) in hooks {
-            // 조건 평가
-            if let Some(ref cond) = binding.condition {
-                if !Self::evaluate_condition(cond, &ext_data) {
-                    continue;
+        let calls = hooks
+            .into_iter()
+            .filter(|(ext, binding)| match binding.condition {
+                Some(ref cond) if !Self::evaluate_condition(cond, &ext_data) => {
+                    tracing::debug!("Hook '{}' from '{}' skipped: condition '{}' is false", hook_name, ext.manifest.id, cond);
+                    false
                 }
-            }
-
-            // Python 모듈 절대 경로 해석
-            let module_file = match ext.manifest.python_modules.get(&binding.module) {
-                Some(rel_path) => ext.dir.join(rel_path),
-                None => {
-                    tracing::error!(
-                        "Extension '{}' hook '{}' references unknown module '{}'",
-                        ext.manifest.id,
-                        hook_name,
-                        binding.module
-                    );
-                    results.push((
-                        ext.manifest.id.clone(),
-                        Err(anyhow::anyhow!(
-                            "Unknown python module: {}",
-                            binding.module
-                        )),
-                    ));
-                    continue;
-                }
-            };
-
-            let module_path = module_file.to_string_lossy().to_string();
-            tracing::debug!(
-                "Dispatching hook '{}' → ext '{}' → {}::{}",
-                hook_name,
-                ext.manifest.id,
-                binding.module,
-                binding.function
-            );
-
-            let result = crate::plugin::run_plugin_with_timeout(
-                &module_path,
-                &binding.function,
-                context.clone(),
-                timeout_secs,
-            )
-            .await;
-
-            match &result {
-                Ok(val) => {
-                    tracing::debug!(
-                        "Hook '{}' ext '{}' returned: {}",
-                        hook_name,
-                        ext.manifest.id,
-                        serde_json::to_string(val).unwrap_or_default()
-                    );
-                    results.push((ext.manifest.id.clone(), Ok(val.clone())));
-
-                    // handled=true → chain 종료
-                    if val
-                        .get("handled")
-                        .and_then(|h| h.as_bool())
-                        == Some(true)
-                    {
-                        tracing::debug!(
-                            "Hook '{}' handled by extension '{}', skipping remaining",
+                _ => true,
+            })
+            .map(|(ext, binding)| {
+                let target = match ext.manifest.python_modules.get(&binding.module) {
+                    Some(rel_path) => Ok((ext.dir.join(rel_path).to_string_lossy().to_string(), binding.function.clone())),
+                    None => {
+                        tracing::error!(
+                            "Extension '{}' hook '{}' references unknown module '{}'",
+                            ext.manifest.id,
                             hook_name,
-                            ext.manifest.id
-                        );
-                        break;
-                    }
-                }
-                Err(e) => {
-                    tracing::error!(
-                        "Hook '{}' ext '{}' failed: {}",
-                        hook_name,
-                        ext.manifest.id,
-                        e
-                    );
-                    results.push((
-                        ext.manifest.id.clone(),
-                        Err(anyhow::anyhow!("Hook dispatch failed: {}", e)),
-                    ));
-                    // 에러 시 graceful degradation — 기본 동작 진행을 위해 계속
-                }
-            }
-        }
-
-        results
-    }
-
-    /// Hook 디스패치 + 진행률 콜백 (server.post_create 등 장시간 hook용)
-    pub async fn dispatch_hook_with_progress<F>(
-        &self,
-        hook_name: &str,
-        context: Value,
-        on_progress: F,
-    ) -> Vec<(String, Result<Value>)>
-    where
-        F: Fn(crate::plugin::ExtensionProgress) + Send + Sync + 'static,
-    {
-        let on_progress = std::sync::Arc::new(on_progress);
-        let hooks = self.hooks_for(hook_name);
-        if hooks.is_empty() {
-            tracing::warn!("dispatch_hook_with_progress('{}') — no hooks registered (enabled: {:?})", hook_name, self.enabled);
-            return Vec::new();
-        }
-
-        // extension_config를 context에 자동 주입
-        let context = self.inject_extension_config(context);
-
-        let ext_data: HashMap<String, Value> = context
-            .get("extension_data")
-            .and_then(|v| serde_json::from_value(v.clone()).ok())
-            .unwrap_or_default();
-
-        tracing::info!("dispatch_hook_with_progress('{}') — {} hook(s), ext_data keys: {:?}", hook_name, hooks.len(), ext_data.keys().collect::<Vec<_>>());
-
-        let mut results = Vec::new();
-
-        for (ext, binding) in hooks {
-            if let Some(ref cond) = binding.condition {
-                if !Self::evaluate_condition(cond, &ext_data) {
-                    tracing::warn!("Hook '{}' from '{}' skipped: condition '{}' evaluated to false (ext_data: {:?})", hook_name, ext.manifest.id, cond, ext_data);
-                    continue;
-                }
-            }
-
-            let module_file = match ext.manifest.python_modules.get(&binding.module) {
-                Some(rel_path) => ext.dir.join(rel_path),
-                None => {
-                    results.push((
-                        ext.manifest.id.clone(),
-                        Err(anyhow::anyhow!(
-                            "Unknown python module: {}",
                             binding.module
-                        )),
-                    ));
-                    continue;
-                }
-            };
-
-            let module_path = module_file.to_string_lossy().to_string();
-
-            let progress = on_progress.clone();
-            let result = crate::plugin::run_plugin_with_progress_and_timeout(
-                &module_path,
-                &binding.function,
-                context.clone(),
-                move |p| progress(p),
-                1800, // 30분 — SteamCMD/다운로드 등 장시간 프로비저닝 허용
-            )
-            .await;
-
-            match &result {
-                Ok(val) => {
-                    results.push((ext.manifest.id.clone(), Ok(val.clone())));
-                    if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
-                        break;
+                        );
+                        Err(format!("Unknown python module: {}", binding.module))
                     }
-                }
-                Err(e) => {
-                    results.push((
-                        ext.manifest.id.clone(),
-                        Err(anyhow::anyhow!("Hook dispatch failed: {}", e)),
-                    ));
-                }
-            }
-        }
-
-        results
+                };
+                HookCall { ext_id: ext.manifest.id.clone(), target }
+            })
+            .collect();
+        HookPlan { hook: hook_name.to_string(), context, calls }
     }
 
     /// 활성 익스텐션의 GUI 매니페스트 목록
@@ -1391,15 +1206,20 @@ impl ExtensionManager {
     //  원격 매니페스트 & 버전 관리
     // ═══════════════════════════════════════════════════════════════
 
+    /// 매니페스트 URL. 네트워크 요청은 매니저 락을 놓고 `fetch_manifest_from`으로 (C12)
+    pub fn manifest_url(&self) -> String {
+        self.manifest_url.clone()
+    }
+
     /// 원격 매니페스트에서 가용 익스텐션 목록을 페치합니다.
     ///
     /// `manifest_url`(GitHub raw URL)에서 JSON을 가져와 `Vec<RemoteExtensionInfo>`로 반환합니다.
-    pub async fn fetch_manifest(&self) -> Result<Vec<RemoteExtensionInfo>> {
-        tracing::debug!("Fetching extension manifest from: {}", self.manifest_url);
+    pub async fn fetch_manifest_from(manifest_url: &str) -> Result<Vec<RemoteExtensionInfo>> {
+        tracing::debug!("Fetching extension manifest from: {}", manifest_url);
 
-        let response = reqwest::get(&self.manifest_url)
+        let response = reqwest::get(manifest_url)
             .await
-            .with_context(|| format!("Failed to fetch manifest from {}", self.manifest_url))?;
+            .with_context(|| format!("Failed to fetch manifest from {}", manifest_url))?;
 
         if !response.status().is_success() {
             return Err(anyhow::anyhow!(
@@ -1637,6 +1457,118 @@ impl ExtensionManager {
 // ═══════════════════════════════════════════════════════════════
 //  Tests
 // ═══════════════════════════════════════════════════════════════
+
+/// `ExtensionManager::plan_hook`이 정한 hook 실행 목록
+pub struct HookPlan {
+    hook: String,
+    context: Value,
+    calls: Vec<HookCall>,
+}
+
+struct HookCall {
+    ext_id: String,
+    /// (Python 파일 경로, 함수 이름), 또는 왜 부를 수 없는지
+    target: std::result::Result<(String, String), String>,
+}
+
+impl HookPlan {
+    /// 우선순위 순서로 부른다. `handled=true`가 나오면 나머지는 건너뛴다 (chain-of-responsibility).
+    /// 실패한 익스텐션은 기록만 하고 다음으로 넘어간다.
+    pub async fn run(self, timeout_secs: u64) -> Vec<(String, Result<Value>)> {
+        self.run_inner(timeout_secs, None).await
+    }
+
+    /// 진행률 콜백과 함께, 30분까지 기다린다 (SteamCMD 다운로드 등 장시간 프로비저닝)
+    pub async fn run_with_progress<F>(self, on_progress: F) -> Vec<(String, Result<Value>)>
+    where
+        F: Fn(crate::plugin::ExtensionProgress) + Send + Sync + 'static,
+    {
+        if self.calls.is_empty() {
+            tracing::warn!("Hook '{}' with progress: no enabled extension handles it", self.hook);
+        }
+        self.run_inner(1800, Some(std::sync::Arc::new(on_progress))).await
+    }
+
+    async fn run_inner(
+        self,
+        timeout_secs: u64,
+        on_progress: Option<std::sync::Arc<dyn Fn(crate::plugin::ExtensionProgress) + Send + Sync>>,
+    ) -> Vec<(String, Result<Value>)> {
+        let mut results = Vec::new();
+        for call in self.calls {
+            let (module_path, function) = match call.target {
+                Ok(t) => t,
+                Err(msg) => {
+                    results.push((call.ext_id, Err(anyhow::anyhow!(msg))));
+                    continue;
+                }
+            };
+            tracing::debug!("Dispatching hook '{}' → ext '{}' → {}::{}", self.hook, call.ext_id, module_path, function);
+            let result = match &on_progress {
+                Some(progress) => {
+                    let progress = progress.clone();
+                    crate::plugin::run_plugin_with_progress_and_timeout(&module_path, &function, self.context.clone(), move |p| progress(p), timeout_secs).await
+                }
+                None => crate::plugin::run_plugin_with_timeout(&module_path, &function, self.context.clone(), timeout_secs).await,
+            };
+            match result {
+                Ok(val) => {
+                    let handled = val.get("handled").and_then(|h| h.as_bool()) == Some(true);
+                    results.push((call.ext_id.clone(), Ok(val)));
+                    if handled {
+                        tracing::debug!("Hook '{}' handled by extension '{}', skipping remaining", self.hook, call.ext_id);
+                        break;
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Hook '{}' ext '{}' failed: {}", self.hook, call.ext_id, e);
+                    results.push((call.ext_id, Err(anyhow::anyhow!("Hook dispatch failed: {}", e))));
+                }
+            }
+        }
+        results
+    }
+}
+
+/// 매니저 락은 실행 목록을 정할 때만 잡고, Python은 락 밖에서 부른다 (C12).
+/// 오래 걸리는 hook(post_create 최대 30분) 동안에도 익스텐션 켜기·끄기와 다른 hook이 막히지 않는다.
+pub async fn run_hook(mgr: &tokio::sync::RwLock<ExtensionManager>, hook_name: &str, context: Value) -> Vec<(String, Result<Value>)> {
+    run_hook_timed(mgr, hook_name, context, crate::plugin::DEFAULT_PLUGIN_TIMEOUT_SECS).await
+}
+
+pub async fn run_hook_timed(
+    mgr: &tokio::sync::RwLock<ExtensionManager>,
+    hook_name: &str,
+    context: Value,
+    timeout_secs: u64,
+) -> Vec<(String, Result<Value>)> {
+    let plan = mgr.read().await.plan_hook(hook_name, context, None);
+    plan.run(timeout_secs).await
+}
+
+/// 익스텐션 하나에만 (예: 방금 켠 익스텐션의 `daemon.startup`)
+pub async fn run_hook_to(
+    mgr: &tokio::sync::RwLock<ExtensionManager>,
+    ext_id: &str,
+    hook_name: &str,
+    context: Value,
+) -> Option<Result<Value>> {
+    let plan = mgr.read().await.plan_hook(hook_name, context, Some(ext_id));
+    plan.run(crate::plugin::DEFAULT_PLUGIN_TIMEOUT_SECS).await.into_iter().next().map(|(_, r)| r)
+}
+
+pub async fn run_hook_with_progress<F>(
+    mgr: &tokio::sync::RwLock<ExtensionManager>,
+    hook_name: &str,
+    context: Value,
+    on_progress: F,
+) -> Vec<(String, Result<Value>)>
+where
+    F: Fn(crate::plugin::ExtensionProgress) + Send + Sync + 'static,
+{
+    let plan = mgr.read().await.plan_hook(hook_name, context, None);
+    plan.run_with_progress(on_progress).await
+}
 
 #[cfg(test)]
 mod tests {

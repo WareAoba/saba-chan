@@ -100,9 +100,8 @@ pub async fn enable_extension(
         let ext_id_clone = ext_id.clone();
         tokio::spawn(async move {
             init_tracker.mark_started(&ext_id_clone, "Initializing...").await;
-            let mgr = ext_mgr.read().await;
             // 방금 켠 익스텐션에만 보낸다 (다른 익스텐션의 startup을 다시 돌리지 않게)
-            let result = mgr.dispatch_hook_to(&ext_id_clone, "daemon.startup", serde_json::json!({})).await;
+            let result = crate::extension::run_hook_to(&ext_mgr, &ext_id_clone, "daemon.startup", serde_json::json!({})).await;
             let rid = ext_id_clone;
             match result {
                 Some(Ok(val)) => {
@@ -296,12 +295,12 @@ pub async fn serve_i18n(
 pub async fn fetch_manifest(
     State(state): State<IPCServer>,
 ) -> Json<serde_json::Value> {
-    let mgr = state.extension_manager.read().await;
-
-    match mgr.fetch_manifest().await {
+    // 네트워크 요청은 매니저 락 밖에서 (C12)
+    let url = state.extension_manager.read().await.manifest_url();
+    match ExtensionManager::fetch_manifest_from(&url).await {
         Ok(remote) => {
             // 설치된 익스텐션 중 업데이트 가능한 항목 계산
-            let updates = mgr.check_updates_against(&remote);
+            let updates = state.extension_manager.read().await.check_updates_against(&remote);
             Json(json!({
                 "success": true,
                 "extensions": remote,
@@ -341,10 +340,11 @@ pub async fn install_extension(
     let field = |k: &str| body.as_ref().and_then(|Json(b)| b.get(k)).and_then(|v| v.as_str()).map(str::to_string);
     let (explicit_url, explicit_sha) = (field("download_url"), field("sha256"));
 
-    let (remote, extensions_dir) = {
+    let (url, extensions_dir) = {
         let mgr = state.extension_manager.read().await;
-        (mgr.fetch_manifest().await, mgr.extensions_dir().to_path_buf())
+        (mgr.manifest_url(), mgr.extensions_dir().to_path_buf())
     };
+    let remote = ExtensionManager::fetch_manifest_from(&url).await;
     let fail = |error: String, code: &str| Json(json!({ "success": false, "error": error, "error_code": code }));
 
     let mut queue = vec![ext_id.clone()];
@@ -396,11 +396,10 @@ pub async fn install_extension(
 pub async fn check_extension_updates(
     State(state): State<IPCServer>,
 ) -> Json<serde_json::Value> {
-    let mgr = state.extension_manager.read().await;
-
-    match mgr.fetch_manifest().await {
+    let url = state.extension_manager.read().await.manifest_url();
+    match ExtensionManager::fetch_manifest_from(&url).await {
         Ok(remote) => {
-            let updates = mgr.check_updates_against(&remote);
+            let updates = state.extension_manager.read().await.check_updates_against(&remote);
             Json(json!({
                 "success": true,
                 "updates": updates,

@@ -894,10 +894,7 @@ async fn e2e_version_backfill_on_startup() {
     fs::write(work_dir.join("version.txt"), "1.20.4").unwrap();
 
     // backfill 실행
-    {
-        let mut supervisor = sup.write().await;
-        supervisor.backfill_server_versions().await;
-    }
+    saba_core::supervisor::Supervisor::backfill_server_versions(sup.clone()).await;
 
     // 서버 리스트에서 버전 확인
     let list_resp = client

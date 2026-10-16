@@ -317,9 +317,8 @@ pub async fn create_instance(
                     let tracker_done = tracker.clone();
                     let name_done = inst_clone.name.clone();
                     tokio::spawn(async move {
-                        let mgr = ext_mgr.read().await;
-                        let results = mgr.dispatch_hook_with_progress(
-                            "server.post_create", ctx, on_progress,
+                        let results = crate::extension::run_hook_with_progress(
+                            &ext_mgr, "server.post_create", ctx, on_progress,
                         ).await;
                         // 완료 또는 에러 상태 기록 (Err variant + Python success:false 모두 체크)
                         let err = results.iter().find_map(|(_, r)| match r {
@@ -647,6 +646,11 @@ pub async fn create_instance(
                     }
 
                     // ── 기존 INI 설정 import ──
+                    // 모듈 호출은 데몬 락 밖에서 (C12). 필요한 값만 챙기고 락을 놓는다.
+                    let credential_map = supervisor.module_loader.get_module(&module_name_owned)
+                        .map(|m| m.metadata.credential_map.clone())
+                        .unwrap_or_default();
+                    drop(supervisor);
                     if let Some((_, _, ref lifecycle_path, ref _server_exe)) = module_install {
                         let import_config = json!({
                             "working_dir": instance.working_dir,
@@ -665,8 +669,8 @@ pub async fn create_instance(
                                         // credential_map 역매핑: import된 설정에서 daemon first-class 필드로 동기화
                                         // 예: Palworld의 credential_map { rest_password = "AdminPassword" }
                                         //   → settings에 "AdminPassword" 값이 있으면 instance.rest_password에 설정
-                                        if let Ok(module) = supervisor.module_loader.get_module(&module_name_owned) {
-                                            for (daemon_key, game_key) in &module.metadata.credential_map {
+                                        {
+                                            for (daemon_key, game_key) in &credential_map {
                                                 // game_key(예: "AdminPassword")를 case-insensitive로 settings에서 탐색
                                                 let game_key_lower = game_key.to_lowercase();
                                                 let value = settings.iter()
@@ -691,7 +695,7 @@ pub async fn create_instance(
                         }
                     }
                     // 마이그레이션 변경사항 저장 (executable_path, import된 설정 등)
-                    let _ = supervisor.instance_store.update(&id, instance.clone());
+                    let _ = state.supervisor.write().await.instance_store.update(&id, instance.clone());
                     let response = json!({ "success": true, "id": id });
                     (StatusCode::CREATED, Json(response)).into_response()
                 }
@@ -784,7 +788,7 @@ pub async fn delete_instance(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    let mut supervisor = state.supervisor.write().await;
+    let supervisor = state.supervisor.write().await;
 
     // ── 인스턴스 존재 확인 ──
     let instance = match supervisor.instance_store.get(&id) {
@@ -796,27 +800,20 @@ pub async fn delete_instance(
     };
 
     // ── 실행 중이면 먼저 정지 ──
-    let is_running = supervisor.tracker.get_pid(&id).is_ok();
-    if is_running {
+    // 저장소에서 떼어 내는 것만 락 안에서, 강제 종료 대기는 락 밖에서 (C12)
+    let running_pid = supervisor.tracker.get_pid(&id).ok();
+    let managed = supervisor.managed_store.remove(&id).await;
+    let _ = supervisor.tracker.untrack(&id);
+    drop(supervisor);
+    if let Some(pid) = running_pid {
         tracing::info!("Instance '{}' is running, force-stopping before delete...", instance.name);
-
-        // Managed process가 있으면 force kill
-        if let Some(managed) = supervisor.managed_store.remove(&id).await {
-            if managed.is_running() {
-                if let Ok(pid) = supervisor.tracker.get_pid(&id) {
-                    let _ = crate::supervisor::process::force_kill_pid(pid);
-                }
-                // 프로세스 종료 대기
-                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-            }
-        } else {
-            // Managed가 아니면 PID로 직접 kill
-            if let Ok(pid) = supervisor.tracker.get_pid(&id) {
-                let _ = crate::supervisor::process::force_kill_pid(pid);
-                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-            }
+        // Managed process가 있으면 그 PID, 아니면 추적하던 PID를 강제 종료
+        let pid = managed.as_ref().filter(|m| m.is_running()).map(|m| m.pid).unwrap_or(pid);
+        if managed.as_ref().is_none_or(|m| m.is_running()) {
+            let _ = crate::supervisor::process::force_kill_pid(pid);
+            // 프로세스 종료 대기
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         }
-        let _ = supervisor.tracker.untrack(&id);
     }
 
     // ── Extension hook: server.pre_delete ──
@@ -828,8 +825,7 @@ pub async fn delete_instance(
             "module": &instance.module_name,
             "extension_data": &instance.extension_data,
         });
-        let mgr = ext_mgr.read().await;
-        let results = mgr.dispatch_hook("server.pre_delete", ctx).await;
+        let results = crate::extension::run_hook(&ext_mgr, "server.pre_delete", ctx).await;
         let handled = results.iter().any(|(_id, r)| {
             r.as_ref()
                 .map(|v| v.get("handled").and_then(|h| h.as_bool()) == Some(true))
@@ -845,7 +841,8 @@ pub async fn delete_instance(
     // ── 디렉토리 삭제 (Windows 파일 잠금 대비 재시도) ──
     let mut last_err = None;
     for attempt in 0..3 {
-        match supervisor.instance_store.remove(&id) {
+        let removed = state.supervisor.write().await.instance_store.remove(&id);
+        match removed {
             Ok(_) => {
                 let response = json!({ "success": true });
                 return (StatusCode::OK, Json(response)).into_response();
@@ -1190,6 +1187,15 @@ pub async fn update_instance_settings(
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response();
     }
 
+    // 익스텐션 hook에 넘길 값을 챙기고 락을 놓는다. 아래 모듈·익스텐션 호출은 락 밖에서 (C12)
+    let instance_dir = supervisor.instance_store.instance_dir(&id);
+    // 모듈의 모든 익스텐션 설정을 범용으로 전달 (특정 익스텐션 이름 참조 없음)
+    let module_extensions = supervisor.module_loader.get_module(&updated_clone.module_name)
+        .ok()
+        .map(|m| serde_json::to_value(&m.metadata.extensions).unwrap_or_default())
+        .unwrap_or_else(|| serde_json::json!({}));
+    drop(supervisor);
+
     // server.properties 동기화 (변경된 항목이 있을 때만)
     if !props_sync.is_empty() {
         tracing::info!(
@@ -1198,10 +1204,7 @@ pub async fn update_instance_settings(
             props_sync
         );
         let props_value = Value::Object(props_sync);
-        match supervisor
-            .manage_properties(&id, "write", Some(props_value))
-            .await
-        {
+        match crate::supervisor::Supervisor::manage_properties(&state.supervisor, &id, "write", Some(props_value)).await {
             Ok(_) => tracing::info!("server.properties synced successfully for instance {}", id),
             Err(e) => tracing::warn!(
                 "Failed to sync server.properties for instance {}: {}",
@@ -1215,14 +1218,6 @@ pub async fn update_instance_settings(
     // instance_dir + 모듈 익스텐션 설정을 범용으로 전달 → 각 extension이 자체 판단
     if !updated_clone.extension_data.is_empty() {
         let ext_mgr = state.extension_manager.clone();
-        let instance_dir = supervisor.instance_store.instance_dir(&id);
-
-        // 모듈의 모든 익스텐션 설정을 범용으로 전달 (특정 익스텐션 이름 참조 없음)
-        let module_extensions = supervisor.module_loader.get_module(&updated_clone.module_name)
-            .ok()
-            .map(|m| serde_json::to_value(&m.metadata.extensions).unwrap_or_default())
-            .unwrap_or_else(|| serde_json::json!({}));
-
         let ctx = serde_json::json!({
             "instance_id": &id,
             "instance_dir": instance_dir.to_string_lossy(),
@@ -1231,8 +1226,7 @@ pub async fn update_instance_settings(
             "extension_data": &updated_clone.extension_data,
             "settings": &settings,
         });
-        let mgr = ext_mgr.read().await;
-        let _results = mgr.dispatch_hook("server.settings_changed", ctx).await;
+        let _results = crate::extension::run_hook(&ext_mgr, "server.settings_changed", ctx).await;
     }
 
     // 게임 설정 파일의 비밀번호·포트가 바뀌었을 수 있다
@@ -1313,8 +1307,7 @@ pub async fn check_server_update(
         "extension_data": &instance.extension_data,
     });
 
-    let mgr = state.extension_manager.read().await;
-    let results = mgr.dispatch_hook("server.check_update", ctx).await;
+    let results = crate::extension::run_hook(&state.extension_manager, "server.check_update", ctx).await;
 
     // 첫 번째 성공 결과를 클라이언트로 전달
     for (_ext_id, result) in &results {
