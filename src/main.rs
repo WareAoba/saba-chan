@@ -300,6 +300,7 @@ async fn main() -> anyhow::Result<()> {
     // 백그라운드 모니터링 태스크 시작
     let supervisor_monitor = supervisor.clone();
     let monitor_cancel = shutdown_token.clone();
+    let restart_ipc = ipc_server.clone();
     tokio::spawn(async move {
         let mut error_count = 0;
         
@@ -335,6 +336,12 @@ async fn main() -> anyhow::Result<()> {
                         error_count = 0;
                     }
                 }
+            }
+            // 크래시로 끝난 서버 다시 띄우기 (A1). 대기는 락 밖에서.
+            let restarts = sup.take_pending_restarts();
+            drop(sup);
+            for (instance_id, delay) in restarts {
+                tokio::spawn(ipc::handlers::server::auto_restart(restart_ipc.clone(), instance_id, delay));
             }
         }
     });

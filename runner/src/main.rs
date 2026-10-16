@@ -9,11 +9,11 @@
 //! 쓰고, stdin을 로컬 포트로 받고, 종료 코드를 `exit.json`에 남긴다.
 //! 파일 형식은 `saba_runner`(lib.rs)에 있다.
 
-use saba_runner::{exit_file, format_line, now, runner_file, write_json, ExitInfo, RunnerInfo, Stream, TOKEN_ENV};
+use saba_runner::{exit_file, format_line, matching_files, now, runner_file, write_json, ExitInfo, RunnerInfo, Stream, TOKEN_ENV};
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex};
 
@@ -95,30 +95,6 @@ fn serve_stdin(conn: TcpStream, token: &str, stdin: &Mutex<Option<ChildStdin>>) 
             return;
         }
     }
-}
-
-/// 마지막 칸의 `*`(아무 글자 여럿)와 `?`(한 글자)만 아는 이름 비교
-fn wildcard(pattern: &[char], name: &[char]) -> bool {
-    match (pattern.first(), name.first()) {
-        (None, None) => true,
-        (Some('*'), _) => wildcard(&pattern[1..], name) || (!name.is_empty() && wildcard(pattern, &name[1..])),
-        (Some('?'), Some(_)) => wildcard(&pattern[1..], &name[1..]),
-        (Some(p), Some(n)) if p == n => wildcard(&pattern[1..], &name[1..]),
-        _ => false,
-    }
-}
-
-fn matching_files(pattern: &Path) -> Vec<PathBuf> {
-    let (Some(dir), Some(name)) = (pattern.parent(), pattern.file_name()) else { return Vec::new() };
-    let name: Vec<char> = name.to_string_lossy().chars().collect();
-    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
-    let mut files: Vec<PathBuf> = entries
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.is_file())
-        .filter(|p| p.file_name().is_some_and(|n| wildcard(&name, &n.to_string_lossy().chars().collect::<Vec<_>>())))
-        .collect();
-    files.sort();
-    files
 }
 
 /// 로그 파일들을 따라 읽는다. 시작 때 있던 파일은 끝에서부터, 새로 생긴 파일은 처음부터.
@@ -205,13 +181,13 @@ fn run(args: Args) -> Result<i32, String> {
         Err(e) => {
             let msg = format!("Failed to spawn process '{}': {}", args.program, e);
             write_log(&log, Stream::System, &msg);
-            let _ = write_json(&exit_file(&args.run_dir), &ExitInfo { code: None, success: false, ended_at: now() });
+            let _ = write_json(&exit_file(&args.run_dir), &ExitInfo { code: None, success: false, ended_at: now(), signal: None });
             return Err(msg);
         }
     };
     write_log(&log, Stream::System, &format!("Process started with PID {}", child.id()));
 
-    let info = RunnerInfo { runner_pid: std::process::id(), pid: child.id(), port, log: args.log.clone(), started_at: now() };
+    let info = RunnerInfo { runner_pid: std::process::id(), pid: child.id(), port, log: args.log.clone(), started_at: now(), cwd: args.cwd.clone() };
     write_json(&runner_file(&args.run_dir), &info).map_err(|e| e.to_string())?;
 
     let readers = [
@@ -244,7 +220,7 @@ fn run(args: Args) -> Result<i32, String> {
     });
     let _ = done_rx.recv_timeout(std::time::Duration::from_secs(2));
     write_log(&log, Stream::System, &format!("Process exited with {}", status));
-    let exit = ExitInfo { code: status.code(), success: status.success(), ended_at: now() };
+    let exit = ExitInfo::from_status(&status);
     let _ = write_json(&exit_file(&args.run_dir), &exit);
     let _ = std::fs::remove_file(runner_file(&args.run_dir));
     Ok(status.code().unwrap_or(1))
@@ -263,11 +239,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::wildcard;
-
-    fn m(p: &str, n: &str) -> bool {
-        wildcard(&p.chars().collect::<Vec<_>>(), &n.chars().collect::<Vec<_>>())
-    }
+    use saba_runner::wildcard as m;
 
     #[test]
     fn wildcard_matches_names() {

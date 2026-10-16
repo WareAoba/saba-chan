@@ -168,6 +168,44 @@ pub struct ManagedProcess {
     poller_handle: Option<tokio::task::AbortHandle>,
     /// Whether stdin is available (false for reattached stubs)
     stdin_available: bool,
+    /// 끝난 방식. 끝나기 전엔 None, 알 수 없게 끝나도 None (크래시 판정 A1)
+    exit: Arc<std::sync::Mutex<Option<ProcessExit>>>,
+    /// 시작 시각 (unix 초). 이보다 새 크래시 파일만 이번 실행의 것으로 본다
+    pub started_at: u64,
+    /// 서버 작업 폴더. 모르면 None
+    pub working_dir: Option<PathBuf>,
+    /// 로그만 따라 읽는 프로세스(서버 자체가 아님). 이것이 끝나도 서버 종료로 보지 않는다
+    pub log_follower: bool,
+}
+
+/// 서버 프로세스가 끝난 방식
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ProcessExit {
+    pub code: Option<i32>,
+    /// unix 시그널 번호
+    pub signal: Option<i32>,
+}
+
+impl From<&saba_runner::ExitInfo> for ProcessExit {
+    fn from(e: &saba_runner::ExitInfo) -> Self {
+        Self { code: e.code, signal: e.signal }
+    }
+}
+
+impl From<&std::process::ExitStatus> for ProcessExit {
+    fn from(status: &std::process::ExitStatus) -> Self {
+        (&saba_runner::ExitInfo::from_status(status)).into()
+    }
+}
+
+async fn futures_join(handles: Vec<tokio::task::JoinHandle<()>>) {
+    for h in handles {
+        let _ = h.await;
+    }
+}
+
+fn unix_now() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
 }
 
 impl Drop for ManagedProcess {
@@ -199,6 +237,8 @@ impl ManagedProcess {
         log_pattern: Option<&str>,
         instance_dir: Option<&Path>,
     ) -> Result<Self> {
+        let exit: Arc<std::sync::Mutex<Option<ProcessExit>>> = Default::default();
+        let started_at = unix_now();
         let mut cmd = TokioCommand::new(program);
         cmd.args(args)
             .current_dir(working_dir)
@@ -250,24 +290,25 @@ impl ManagedProcess {
         let stdin = child.stdin.take();
 
         // ── stdout reader ────────────────────────────────────
+        let mut readers = Vec::new();
         if let Some(stdout) = stdout {
             let buf = log_buffer.clone();
             let re = log_regex.clone();
-            tokio::spawn(async move {
+            readers.push(tokio::spawn(async move {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
                     let level = parse_log_level(&line, re.as_deref());
                     buf.lock().await.push(LogSource::Stdout, line, level);
                 }
-            });
+            }));
         }
 
         // ── stderr reader ────────────────────────────────────
         if let Some(stderr) = stderr {
             let buf = log_buffer.clone();
             let re = log_regex.clone();
-            tokio::spawn(async move {
+            readers.push(tokio::spawn(async move {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
@@ -276,7 +317,7 @@ impl ManagedProcess {
                     let effective = if level == LogLevel::Info { LogLevel::Warn } else { level };
                     buf.lock().await.push(LogSource::Stderr, line, effective);
                 }
-            });
+            }));
         }
 
         // ── stdin writer ─────────────────────────────────────
@@ -299,11 +340,18 @@ impl ManagedProcess {
         {
             let running = running_tx.clone();
             let buf = log_buffer.clone();
+            let exit = exit.clone();
             tokio::spawn(async move {
                 let exit_msg = match child.wait().await {
-                    Ok(status) => format!("Process exited with {}", status),
+                    Ok(status) => {
+                        *exit.lock().unwrap_or_else(|e| e.into_inner()) = Some((&status).into());
+                        format!("Process exited with {}", status)
+                    }
                     Err(e) => format!("Failed to wait for process: {}", e),
                 };
+                // 마지막 출력까지 버퍼에 넣은 뒤 끝났다고 알린다 (종료 판정이 콘솔 끝을 읽는다).
+                // 손자 프로세스가 파이프를 쥐고 있으면 오래 기다리지 않는다.
+                let _ = tokio::time::timeout(std::time::Duration::from_secs(2), futures_join(readers)).await;
                 tracing::info!("{}", exit_msg);
                 buf.lock().await.push(LogSource::System, exit_msg, LogLevel::Info);
                 let _ = running.send(false);
@@ -323,6 +371,10 @@ impl ManagedProcess {
             running_rx,
             poller_handle: None,
             stdin_available: true,
+            exit,
+            started_at,
+            working_dir: Some(PathBuf::from(working_dir)),
+            log_follower: false,
         })
     }
 
@@ -481,6 +533,10 @@ impl ManagedProcess {
             running_rx,
             poller_handle: None,
             stdin_available: false, // log follower has no stdin
+            exit: Default::default(),
+            started_at: unix_now(),
+            working_dir: Some(working_dir.to_path_buf()),
+            log_follower: true,
         })
     }
 
@@ -497,6 +553,16 @@ impl ManagedProcess {
     /// Whether the process is still running.
     pub fn is_running(&self) -> bool {
         *self.running_rx.borrow()
+    }
+
+    /// 데몬이 남기는 안내 한 줄 (콘솔과 디스크 로그에 같이 남는다)
+    pub async fn push_system_line(&self, content: String, level: LogLevel) {
+        self.log_buffer.lock().await.push(LogSource::System, content, level);
+    }
+
+    /// 끝난 방식. 아직 돌고 있거나 알 수 없게 끝났으면 None.
+    pub fn exit(&self) -> Option<ProcessExit> {
+        *self.exit.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// Whether stdin commands can be sent to this process.
@@ -573,6 +639,10 @@ impl ManagedProcess {
             running_rx,
             poller_handle: Some(poller_handle),
             stdin_available: false, // reattached stub — stdio pipes lost
+            exit: Default::default(),
+            started_at: unix_now(),
+            working_dir: None,
+            log_follower: false,
         }
     }
 }
@@ -619,20 +689,16 @@ impl ManagedProcessStore {
     }
 
     /// Clean up processes that are no longer running.
-    /// Returns the list of instance IDs that were removed.
-    pub async fn cleanup_dead(&self) -> Vec<String> {
+    /// Returns the removed processes so the caller can judge how they ended.
+    pub async fn cleanup_dead(&self) -> Vec<(String, Arc<ManagedProcess>)> {
         let mut map = self.processes.lock().await;
-        let mut removed = Vec::new();
-        map.retain(|id, proc| {
-            if !proc.is_running() {
+        let dead: Vec<String> = map.iter().filter(|(_, p)| !p.is_running()).map(|(id, _)| id.clone()).collect();
+        dead.into_iter()
+            .filter_map(|id| {
                 tracing::info!("Cleaning up dead managed process for instance '{}'", id);
-                removed.push(id.clone());
-                false
-            } else {
-                true
-            }
-        });
-        removed
+                map.remove(&id).map(|p| (id, p))
+            })
+            .collect()
     }
 }
 

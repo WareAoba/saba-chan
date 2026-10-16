@@ -2,15 +2,16 @@ pub mod process;
 pub mod state_machine;
 pub mod module_loader;
 pub mod managed_process;
+pub mod crash;
 
 use anyhow::Result;
 use process::ProcessTracker;
 use module_loader::{ModuleLoader, LoadedModule};
 use managed_process::{ManagedProcess, ManagedProcessStore};
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::process::Command as TokioCommand;
 use crate::instance::InstanceStore;
 
@@ -50,6 +51,24 @@ pub struct Supervisor {
     pub port_conflict_stops: std::sync::Mutex<Vec<PortConflictStopEvent>>,
     /// GUI 설정: 포트 충돌 검사 건너뛰기 (portConflictCheck 비활성화 시 true)
     pub skip_port_check: std::sync::Arc<AtomicBool>,
+    /// 데몬이 정지를 보낸 인스턴스. 이 상태로 끝나면 사용자 정지다 (A1)
+    stop_requested: HashSet<String>,
+    /// 자동 재시작 시각 (한도 계산용)
+    restart_history: HashMap<String, VecDeque<Instant>>,
+    /// 종료 이력 (GET /api/instance/:id/events)
+    exit_events: HashMap<String, VecDeque<crash::ExitEvent>>,
+    /// 모니터가 정한 재시작 (인스턴스 ID, 대기). 데몬 루프가 가져가 실행한다
+    pending_restarts: Vec<(String, Duration)>,
+}
+
+/// 인스턴스 설정의 참/거짓 값 (`true`/`false` 문자열도 받는다)
+fn setting_flag(instance: &crate::instance::ServerInstance, key: &str, default: bool) -> bool {
+    match instance.module_settings.get(key) {
+        Some(Value::Bool(b)) => *b,
+        Some(Value::String(s)) if s == "true" => true,
+        Some(Value::String(s)) if s == "false" => false,
+        _ => default,
+    }
 }
 
 impl Supervisor {
@@ -72,6 +91,10 @@ impl Supervisor {
             provision_tracker: None,
             port_conflict_stops: std::sync::Mutex::new(Vec::new()),
             skip_port_check: std::sync::Arc::new(AtomicBool::new(false)),
+            stop_requested: HashSet::new(),
+            restart_history: HashMap::new(),
+            exit_events: HashMap::new(),
+            pending_restarts: Vec::new(),
         }
     }
 
@@ -576,6 +599,7 @@ impl Supervisor {
             .iter()
             .find(|i| i.name == server_name)
             .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
+        self.stop_requested.insert(instance.id.clone());
 
         // ── Extension hook: server.stop ──
         // 정지 전에 불린다. 익스텐션(예: 컨테이너)이 정지를 맡으면 handled=true를 돌려준다.
@@ -985,6 +1009,7 @@ impl Supervisor {
     ) -> Result<Value> {
         let mut instance = self.instance_store.get(instance_id).cloned()
             .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
+        self.stop_requested.remove(instance_id);
 
         // ── 중복 프로세스 방어: 이미 실행 중인 managed 프로세스가 있으면 새로 생성하지 않음 ──
         if let Some(existing) = self.managed_store.get(instance_id).await {
@@ -1795,12 +1820,109 @@ impl Supervisor {
     /// `process_snapshot`은 write lock 획득 전에 미리 스캔한 프로세스 목록입니다.
     /// 이를 통해 비용이 큰 시스템 콜(sysinfo)이 write lock 밖에서 실행되어
     /// GUI read 요청에 대한 블로킹을 최소화합니다.
+    /// 끝난 managed 프로세스가 왜 끝났는지 가르고, 크래시면 재시작을 예약한다 (A1)
+    async fn judge_exit(&mut self, instance_id: &str, proc: &ManagedProcess) {
+        use managed_process::{LogLevel, LogSource};
+        if proc.log_follower {
+            return;
+        }
+        let stop_requested = self.stop_requested.remove(instance_id);
+        let Some(instance) = self.instance_store.get(instance_id).cloned() else { return };
+        let (graceful, artifacts) = self
+            .module_loader
+            .get_module(&instance.module_name)
+            .map(|m| (m.metadata.graceful_exit_patterns.clone(), m.metadata.crash_artifacts.clone()))
+            .unwrap_or_default();
+        let tail: Vec<String> = proc
+            .get_recent_console(crash::CONSOLE_TAIL_LINES)
+            .await
+            .into_iter()
+            .filter(|l| l.source != LogSource::System)
+            .map(|l| l.content)
+            .collect();
+        let working_dir = proc.working_dir.clone().or_else(|| instance.working_dir.as_ref().map(std::path::PathBuf::from));
+        let crash_files = match &working_dir {
+            Some(dir) if !stop_requested => crash::new_crash_files(dir, &artifacts, proc.started_at),
+            _ => Vec::new(),
+        };
+        let verdict = crash::classify(&crash::ExitFacts {
+            stop_requested,
+            exit: proc.exit(),
+            console_tail: &tail,
+            graceful_patterns: &graceful,
+            new_crash_files: &crash_files,
+        });
+
+        let auto_restart = setting_flag(&instance, "auto_restart", true);
+        let on_unknown = setting_flag(&instance, "restart_on_unknown_exit", false);
+        let (restart_in, note) = if crash::wants_restart(verdict.kind, auto_restart, on_unknown) {
+            let history = self.restart_history.entry(instance_id.to_string()).or_default();
+            match crash::next_restart_delay(history, Instant::now()) {
+                Some(delay) => {
+                    self.pending_restarts.push((instance_id.to_string(), delay));
+                    (Some(delay.as_secs()), None)
+                }
+                None => (None, Some(format!("auto restart gave up after {} restarts in 10 minutes", crash::MAX_RESTARTS))),
+            }
+        } else if verdict.kind == crash::ExitKind::Crash && !auto_restart {
+            (None, Some("auto_restart is off".to_string()))
+        } else {
+            (None, None)
+        };
+
+        let line = match (verdict.kind, restart_in, &note) {
+            (crash::ExitKind::Crash, Some(secs), _) => Some(format!("── Crash detected ({}). Restarting in {}s. ──", verdict.evidence, secs)),
+            (crash::ExitKind::UnknownExit, Some(secs), _) => Some(format!("── Server ended unexpectedly ({}). Restarting in {}s. ──", verdict.evidence, secs)),
+            (crash::ExitKind::Crash, None, Some(why)) => Some(format!("── Crash detected ({}). Not restarting: {}. ──", verdict.evidence, why)),
+            (crash::ExitKind::UnknownExit, None, Some(why)) => Some(format!("── Server ended unexpectedly ({}). Not restarting: {}. ──", verdict.evidence, why)),
+            _ => None,
+        };
+        if let Some(line) = line {
+            tracing::warn!("'{}': {}", instance.name, line);
+            proc.push_system_line(line, LogLevel::Warn).await;
+        } else {
+            tracing::info!("'{}' exited: {:?} ({})", instance.name, verdict.kind, verdict.evidence);
+        }
+
+        let events = self.exit_events.entry(instance_id.to_string()).or_default();
+        events.push_back(crash::ExitEvent { at: saba_runner::now(), verdict, restart_in_secs: restart_in, note });
+        while events.len() > crash::EVENTS_KEPT {
+            events.pop_front();
+        }
+    }
+
+    /// 모니터가 정한 재시작을 가져간다. 대기 뒤 `restart_still_wanted`로 다시 확인하고 시작한다.
+    pub fn take_pending_restarts(&mut self) -> Vec<(String, Duration)> {
+        std::mem::take(&mut self.pending_restarts)
+    }
+
+    /// 대기하는 동안 사용자가 정지·시작했거나 인스턴스가 지워졌으면 false
+    pub async fn restart_still_wanted(&self, instance_id: &str) -> bool {
+        if self.stop_requested.contains(instance_id) || self.instance_store.get(instance_id).is_none() {
+            return false;
+        }
+        !matches!(self.managed_store.get(instance_id).await, Some(p) if p.is_running())
+    }
+
+    /// 자동 재시작이 실패했을 때 이력에 남긴다
+    pub fn record_restart_failure(&mut self, instance_id: &str, reason: String) {
+        if let Some(last) = self.exit_events.get_mut(instance_id).and_then(|e| e.back_mut()) {
+            last.note = Some(format!("restart failed: {}", reason));
+        }
+    }
+
+    /// 최근 종료 이력, 오래된 것부터
+    pub fn exit_events(&self, instance_id: &str) -> Vec<crash::ExitEvent> {
+        self.exit_events.get(instance_id).map(|e| e.iter().cloned().collect()).unwrap_or_default()
+    }
+
     pub async fn monitor_processes(&mut self, process_snapshot: &[crate::process_monitor::RunningProcess]) -> Result<()> {
         use crate::process_monitor;
 
         // Clean up dead managed processes and their PID files
-        let dead_ids = self.managed_store.cleanup_dead().await;
-        for dead_id in &dead_ids {
+        let dead = self.managed_store.cleanup_dead().await;
+        for (dead_id, proc) in &dead {
+            self.judge_exit(dead_id, proc).await;
             let pid_file = self.instance_store.instance_dir(dead_id).join("managed.pid");
             let _ = std::fs::remove_file(&pid_file);
             // 죽은 managed process에 대해 stop cooldown 등록 → auto_detect 재탐색 억제
@@ -2076,6 +2198,69 @@ mod tests {
         assert!(!supervisor.uses_managed_start(&inst("console-game", Some(json!(false)))));
         assert!(!supervisor.uses_managed_start(&inst("console-game", Some(json!("false")))));
         assert!(!supervisor.uses_managed_start(&inst("api-game", Some(json!(false)))));
+    }
+
+    /// 끝난 managed 서버를 크래시·정상 종료·사용자 정지·강제 종료로 가르고 크래시만 재시작한다 (A1)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn exits_are_judged_and_only_crashes_restart() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules_dir = tmp.path().join("modules");
+        let dir = modules_dir.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [detection]\ngraceful_exit_patterns = [\"Stopping the server\"]\ncrash_artifacts = [\"hs_err_pid*.log\"]\n",
+        )
+        .unwrap();
+        let instances_dir = tmp.path().join("instances");
+        std::fs::create_dir_all(&instances_dir).unwrap();
+        let mut supervisor = Supervisor::new_with_instances_dir(modules_dir.to_str().unwrap(), instances_dir.to_str().unwrap());
+
+        let cases = [
+            ("crash", "touch hs_err_pid1.log; exit 1", None),
+            ("clean", "echo Stopping the server; exit 1", None),
+            ("killed", "exit 1", None),
+            ("stopped", "touch hs_err_pid1.log; exit 1", None),
+            ("off", "touch hs_err_pid1.log; exit 1", Some(false)),
+        ];
+        for (id, script, auto_restart) in cases {
+            let mut inst = crate::instance::ServerInstance::new(id, "game");
+            inst.id = id.to_string();
+            if let Some(flag) = auto_restart {
+                inst.module_settings.insert("auto_restart".into(), json!(flag));
+            }
+            supervisor.instance_store.add(inst).unwrap();
+            let work = tmp.path().join(id);
+            std::fs::create_dir_all(&work).unwrap();
+            let proc = managed_process::ManagedProcess::spawn("sh", &["-c".into(), script.into()], work.to_str().unwrap(), Vec::new(), None, None)
+                .await
+                .unwrap();
+            supervisor.managed_store.insert(id, proc).await;
+        }
+        supervisor.stop_requested.insert("stopped".into());
+        for _ in 0..50 {
+            if supervisor.managed_store.running_instance_ids().await.is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        supervisor.monitor_processes(&[]).await.unwrap();
+
+        let kind = |id: &str| supervisor.exit_events(id).last().map(|e| e.verdict.kind);
+        assert_eq!(kind("crash"), Some(crash::ExitKind::Crash));
+        assert_eq!(kind("clean"), Some(crash::ExitKind::InGameStop));
+        assert_eq!(kind("killed"), Some(crash::ExitKind::UnknownExit));
+        assert_eq!(kind("stopped"), Some(crash::ExitKind::UserStop));
+        assert_eq!(kind("off"), Some(crash::ExitKind::Crash));
+        assert_eq!(supervisor.exit_events("off")[0].note.as_deref(), Some("auto_restart is off"));
+        assert_eq!(supervisor.take_pending_restarts(), vec![("crash".to_string(), Duration::from_secs(5))]);
+        assert!(supervisor.restart_still_wanted("crash").await);
+        supervisor.stop_requested.insert("crash".into());
+        assert!(!supervisor.restart_still_wanted("crash").await, "a stop during the wait cancels the restart");
     }
 
     /// managed 모드에서는 모듈이 stdin을 지원할 때만 명령을 stdin으로 보낸다 (M3)

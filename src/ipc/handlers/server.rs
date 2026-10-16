@@ -579,6 +579,32 @@ pub async fn start_instance_handler(
     (resp.status, Json(Value::Object(body))).into_response()
 }
 
+/// 크래시 뒤 자동 재시작 (A1). 대기하는 동안 사용자가 정지·시작했으면 그만둔다.
+pub async fn auto_restart(state: IPCServer, instance_id: String, delay: std::time::Duration) {
+    tokio::time::sleep(delay).await;
+    if !state.supervisor.read().await.restart_still_wanted(&instance_id).await {
+        tracing::info!("Auto restart of '{}' skipped: stopped or started meanwhile", instance_id);
+        return;
+    }
+    tracing::info!("Auto restarting '{}' after a crash", instance_id);
+    let resp = crate::ipc::internal::into_internal(start_instance_handler(Path(instance_id.clone()), State(state.clone())).await).await;
+    let ok = resp.status.is_success() && resp.body.get("success").and_then(Value::as_bool) != Some(false);
+    if !ok {
+        let reason = resp.body.get("error").or_else(|| resp.body.get("message")).and_then(Value::as_str).unwrap_or("start failed").to_string();
+        tracing::warn!("Auto restart of '{}' failed: {}", instance_id, reason);
+        state.supervisor.write().await.record_restart_failure(&instance_id, reason);
+    }
+}
+
+/// GET /api/instance/:id/events — 최근 종료 이력 (사용자 정지, 게임 안 정지, 크래시, 원인 모를 종료)
+pub async fn instance_events_handler(Path(id): Path<String>, State(state): State<IPCServer>) -> impl IntoResponse {
+    let supervisor = state.supervisor.read().await;
+    if supervisor.instance_store.get(&id).is_none() {
+        return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response();
+    }
+    Json(json!({ "events": supervisor.exit_events(&id) })).into_response()
+}
+
 /// POST /api/server/:name/start - 서버 시작
 pub async fn start_server_handler(
     Path(name): Path<String>,

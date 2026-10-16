@@ -635,6 +635,7 @@ impl IPCServer {
             .route("/api/server/:name/status", get(handlers::server::get_server_status))
             .route("/api/server/:name/start", post(handlers::server::start_server_handler))
             .route("/api/instance/:id/start", post(handlers::server::start_instance_handler))
+            .route("/api/instance/:id/events", get(handlers::server::instance_events_handler))
             .route("/api/server/:name/stop", post(handlers::server::stop_server_handler))
             .route("/api/modules", get(handlers::server::list_modules))
             .route("/api/modules/refresh", post(handlers::server::refresh_modules))
