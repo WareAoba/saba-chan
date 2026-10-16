@@ -17,7 +17,7 @@ use axum::{
 };
 use serde_json::json;
 
-use crate::extension::ExtensionError;
+use crate::extension::{ExtensionError, ExtensionManager};
 use crate::ipc::IPCServer;
 
 /// anyhow::Error 에서 ExtensionError를 추출하여 구조화된 응답을 반환.
@@ -28,7 +28,8 @@ fn extension_err_response(
     if let Some(ext_err) = err.downcast_ref::<ExtensionError>() {
         let status = match ext_err.error_code.as_str() {
             "not_found" | "not_mounted" | "manifest_not_found" => StatusCode::NOT_FOUND,
-            "dependency_missing" | "dependency_not_enabled" | "component_version_unsatisfied" => {
+            "dependency_missing" | "dependency_not_enabled" | "component_version_unsatisfied"
+            | "app_version_unsatisfied" => {
                 StatusCode::UNPROCESSABLE_ENTITY
             }
             "has_dependents" | "in_use" => StatusCode::CONFLICT,
@@ -62,7 +63,12 @@ pub async fn list_extensions(
 ) -> Json<serde_json::Value> {
     let mgr = state.extension_manager.read().await;
     let list = mgr.list();
-    Json(json!({ "extensions": list }))
+    let failed = mgr.load_errors();
+    if failed.is_empty() {
+        Json(json!({ "extensions": list }))
+    } else {
+        Json(json!({ "extensions": list, "failed": failed }))
+    }
 }
 
 /// POST /api/extensions/:id/enable — 익스텐션 활성화
@@ -129,16 +135,7 @@ pub async fn disable_extension(
     Path(ext_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     // 실행 중인 인스턴스만 검사 (정지된 인스턴스는 비활성화를 차단하지 않음)
-    let active_ext_data = {
-        let sup = state.supervisor.read().await;
-        let running_ids = sup.managed_store.running_instance_ids().await;
-        sup.instance_store
-            .list()
-            .iter()
-            .filter(|inst| running_ids.contains(&inst.id))
-            .map(|inst| (inst.name.clone(), inst.extension_data.clone()))
-            .collect::<Vec<_>>()
-    };
+    let active_ext_data = instance_ext_data(&state, true).await;
     let refs: Vec<(&str, &std::collections::HashMap<String, serde_json::Value>)> =
         active_ext_data
             .iter()
@@ -320,77 +317,79 @@ pub async fn fetch_manifest(
     }
 }
 
-/// POST /api/extensions/:id/install — 매니페스트에서 익스텐션 다운로드 & 설치
+/// 인스턴스 이름과 extension_data (`running_only`면 실행 중인 것만)
+async fn instance_ext_data(state: &IPCServer, running_only: bool) -> Vec<(String, std::collections::HashMap<String, serde_json::Value>)> {
+    let sup = state.supervisor.read().await;
+    let running_ids = sup.managed_store.running_instance_ids().await;
+    sup.instance_store
+        .list()
+        .iter()
+        .filter(|inst| !running_only || running_ids.contains(&inst.id))
+        .map(|inst| (inst.name.clone(), inst.extension_data.clone()))
+        .collect()
+}
+
+/// POST /api/extensions/:id/install — 익스텐션 설치·업데이트 (`{download_url?, sha256?}`)
 ///
-/// Request body (optional):
-/// ```json
-/// { "download_url": "...", "sha256": "..." }
-/// ```
-/// body가 없으면 매니페스트에서 URL을 조회합니다.
+/// 받기·검사·압축 해제는 락 없이 하고, 폴더 교체만 write 락 안에서 한다.
+/// 실행 중인 인스턴스가 쓰는 익스텐션은 교체하지 않는다. 의존 익스텐션이 없으면 원격 목록에서 같이 설치한다.
 pub async fn install_extension(
     State(state): State<IPCServer>,
     Path(ext_id): Path<String>,
     body: Option<Json<serde_json::Value>>,
 ) -> Json<serde_json::Value> {
-    // body 또는 매니페스트에서 download_url 결정
-    let (download_url, sha256) = if let Some(Json(b)) = body {
-        let url = b.get("download_url")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        let sha = b.get("sha256")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        (url, sha)
-    } else {
-        (None, None)
-    };
+    let field = |k: &str| body.as_ref().and_then(|Json(b)| b.get(k)).and_then(|v| v.as_str()).map(str::to_string);
+    let (explicit_url, explicit_sha) = (field("download_url"), field("sha256"));
 
-    let download_url = match download_url {
-        Some(u) => u,
-        None => {
-            // 매니페스트에서 해당 익스텐션 URL 조회
-            let mgr = state.extension_manager.read().await;
-            match mgr.fetch_manifest().await {
-                Ok(remote) => {
-                    match remote.iter().find(|r| r.id == ext_id) {
-                        Some(entry) => entry.download_url.clone(),
-                        None => return Json(json!({
-                            "success": false,
-                            "error": format!("Extension '{}' not found in manifest", ext_id),
-                            "error_code": "not_in_manifest",
-                        })),
-                    }
-                }
-                Err(e) => return Json(json!({
-                    "success": false,
-                    "error": format!("Manifest fetch failed: {}", e),
-                    "error_code": "manifest_fetch_failed",
-                })),
-            }
-        }
+    let (remote, extensions_dir) = {
+        let mgr = state.extension_manager.read().await;
+        (mgr.fetch_manifest().await, mgr.extensions_dir().to_path_buf())
     };
+    let fail = |error: String, code: &str| Json(json!({ "success": false, "error": error, "error_code": code }));
 
-    let mgr = state.extension_manager.write().await;
-    match mgr.install_from_url(&ext_id, &download_url, sha256.as_deref()).await {
-        Ok(()) => {
-            // 설치 완료 후 마운트 (write lock 재획득)
-            drop(mgr);
-            let mut mgr = state.extension_manager.write().await;
-            if let Err(e) = mgr.mount(&ext_id) {
-                tracing::warn!("Extension '{}' installed but mount failed: {} — try rescan", ext_id, e);
-                // mount 실패 시 rescan으로 폴백
-                if let Err(e2) = mgr.rescan() {
-                    tracing::error!("Extension '{}' rescan also failed: {}", ext_id, e2);
-                }
-            }
-            Json(json!({ "success": true, "id": ext_id }))
+    let mut queue = vec![ext_id.clone()];
+    let mut installed: Vec<String> = Vec::new();
+    while let Some(id) = queue.pop() {
+        if installed.contains(&id) {
+            continue;
         }
-        Err(e) => Json(json!({
-            "success": false,
-            "error": e.to_string(),
-            "error_code": "install_failed",
-        })),
+        let entry = remote.as_ref().ok().and_then(|r| r.iter().find(|e| e.id == id).cloned());
+        let (url, sha) = if id == ext_id && explicit_url.is_some() {
+            (explicit_url.clone().unwrap_or_default(), explicit_sha.clone())
+        } else {
+            match (&entry, &remote) {
+                (Some(e), _) => (e.download_url.clone(), explicit_sha.clone().filter(|_| id == ext_id).or(e.sha256.clone())),
+                (None, Ok(_)) => {
+                    return fail(format!("Extension '{}' not found in manifest", id), "not_in_manifest");
+                }
+                (None, Err(e)) => return fail(format!("Manifest fetch failed: {}", e), "manifest_fetch_failed"),
+            }
+        };
+
+        let staged = match ExtensionManager::download_package(&url).await.and_then(|bytes| {
+            ExtensionManager::stage_package(&extensions_dir, &id, &bytes, sha.as_deref())
+        }) {
+            Ok(p) => p,
+            Err(e) => return fail(format!("{:#}", e), "install_failed"),
+        };
+
+        let running = instance_ext_data(&state, true).await;
+        let refs: Vec<(&str, &std::collections::HashMap<String, serde_json::Value>)> =
+            running.iter().map(|(n, d)| (n.as_str(), d)).collect();
+        let mut mgr = state.extension_manager.write().await;
+        if let Err(e) = mgr.install_staged(&id, &staged, &refs) {
+            let (_, Json(body)) = extension_err_response(&e);
+            if body.get("error_code").and_then(|c| c.as_str()) == Some("internal") {
+                return fail(e.to_string(), "install_failed");
+            }
+            return Json(body);
+        }
+        installed.push(id.clone());
+        if let Ok(r) = &remote {
+            queue.extend(mgr.missing_dependencies(&id, r));
+        }
     }
+    Json(json!({ "success": true, "id": ext_id, "installed": installed }))
 }
 
 /// GET /api/extensions/updates — 설치된 익스텐션 업데이트 체크 (매니페스트 비교)
@@ -422,17 +421,8 @@ pub async fn remove_extension(
     State(state): State<IPCServer>,
     Path(ext_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    // 실행 중인 인스턴스만 검사
-    let active_ext_data = {
-        let sup = state.supervisor.read().await;
-        let running_ids = sup.managed_store.running_instance_ids().await;
-        sup.instance_store
-            .list()
-            .iter()
-            .filter(|inst| running_ids.contains(&inst.id))
-            .map(|inst| (inst.name.clone(), inst.extension_data.clone()))
-            .collect::<Vec<_>>()
-    };
+    // 지우면 되돌릴 수 없으므로 정지된 인스턴스도 검사한다 (disable은 실행 중인 것만)
+    let active_ext_data = instance_ext_data(&state, false).await;
     let refs: Vec<(&str, &std::collections::HashMap<String, serde_json::Value>)> =
         active_ext_data
             .iter()

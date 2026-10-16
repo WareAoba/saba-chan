@@ -30,6 +30,9 @@ pub struct RunnerInfo {
     /// 이 세션의 콘솔 로그 파일
     pub log: PathBuf,
     pub started_at: u64,
+    /// 서버 작업 폴더. 크래시 파일(`crash_artifacts`)을 찾는 기준
+    #[serde(default)]
+    pub cwd: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -38,6 +41,19 @@ pub struct ExitInfo {
     pub code: Option<i32>,
     pub success: bool,
     pub ended_at: u64,
+    /// 시그널로 끝났으면 그 번호 (unix)
+    #[serde(default)]
+    pub signal: Option<i32>,
+}
+
+impl ExitInfo {
+    pub fn from_status(status: &std::process::ExitStatus) -> Self {
+        #[cfg(unix)]
+        let signal = std::os::unix::process::ExitStatusExt::signal(status);
+        #[cfg(not(unix))]
+        let signal = None;
+        Self { code: status.code(), success: status.success(), ended_at: now(), signal }
+    }
 }
 
 pub fn runner_file(run_dir: &Path) -> PathBuf {
@@ -57,6 +73,34 @@ pub fn write_json<T: Serialize>(path: &Path, value: &T) -> std::io::Result<()> {
 
 pub fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
     serde_json::from_slice(&std::fs::read(path).ok()?).ok()
+}
+
+/// 마지막 칸의 `*`(아무 글자 여럿)와 `?`(한 글자)만 아는 이름 비교
+pub fn wildcard(pattern: &str, name: &str) -> bool {
+    fn go(p: &[char], n: &[char]) -> bool {
+        match (p.first(), n.first()) {
+            (None, None) => true,
+            (Some('*'), _) => go(&p[1..], n) || (!n.is_empty() && go(p, &n[1..])),
+            (Some('?'), Some(_)) => go(&p[1..], &n[1..]),
+            (Some(a), Some(b)) if a == b => go(&p[1..], &n[1..]),
+            _ => false,
+        }
+    }
+    go(&pattern.chars().collect::<Vec<_>>(), &name.chars().collect::<Vec<_>>())
+}
+
+/// `dir/이름패턴`에 맞는 파일들 (정렬). 와일드카드는 마지막 칸에만.
+pub fn matching_files(pattern: &Path) -> Vec<PathBuf> {
+    let (Some(dir), Some(name)) = (pattern.parent(), pattern.file_name()) else { return Vec::new() };
+    let name = name.to_string_lossy();
+    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let mut files: Vec<PathBuf> = entries
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.is_file())
+        .filter(|p| p.file_name().is_some_and(|n| wildcard(&name, &n.to_string_lossy())))
+        .collect();
+    files.sort();
+    files
 }
 
 /// 출력 갈래
@@ -128,7 +172,7 @@ mod tests {
     fn json_files_round_trip() {
         let dir = std::env::temp_dir().join(format!("saba-runner-proto-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let info = RunnerInfo { runner_pid: 1, pid: 2, port: 3, log: dir.join("a.log"), started_at: 4 };
+        let info = RunnerInfo { runner_pid: 1, pid: 2, port: 3, log: dir.join("a.log"), started_at: 4, cwd: None };
         write_json(&runner_file(&dir), &info).unwrap();
         assert_eq!(read_json::<RunnerInfo>(&runner_file(&dir)), Some(info));
         let _ = std::fs::remove_dir_all(&dir);

@@ -197,18 +197,21 @@ impl ManagedProcess {
         }
         let log_buffer = Arc::new(Mutex::new(buf));
         let (running_tx, running_rx) = watch::channel(true);
+        // 러너가 끝났다는 신호. 로그 따라 읽기를 마저 끝낸 뒤에 running을 내린다.
+        let (ended_tx, ended_rx) = watch::channel(false);
+        let exit_slot: Arc<std::sync::Mutex<Option<ProcessExit>>> = Default::default();
         let regex = log_pattern.and_then(|p| Regex::new(p).ok());
 
         // 러너 로그 파일을 따라 읽어 콘솔 버퍼로 (러너가 디스크 기록을 맡는다)
         let tail = {
             let buf = log_buffer.clone();
             let path = info.log.clone();
-            let running = running_rx.clone();
+            let ended = ended_rx;
             tokio::spawn(async move {
                 let mut pos = offset;
                 let mut partial: Vec<u8> = Vec::new();
                 loop {
-                    let stopped = !*running.borrow();
+                    let stopped = *ended.borrow();
                     let path = path.clone();
                     let chunk = tokio::task::spawn_blocking(move || read_from(&path, pos)).await.ok().flatten();
                     if let Some(bytes) = chunk {
@@ -242,16 +245,19 @@ impl ManagedProcess {
             let buf = log_buffer.clone();
             let run = run.clone();
             let runner_pid = info.runner_pid;
+            let exit_slot = exit_slot.clone();
             tokio::spawn(async move {
                 loop {
                     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                     let exit: Option<ExitInfo> = read_json(&exit_file(&run));
                     if exit.is_some() || !crate::supervisor::process::is_process_alive(runner_pid) {
+                        *exit_slot.lock().unwrap_or_else(|e| e.into_inner()) = exit.as_ref().map(ProcessExit::from);
                         if exit.is_none() {
                             buf.lock().await.push(LogSource::System, "saba-runner exited without an exit record".into(), LogLevel::Warn);
                         }
+                        let _ = ended_tx.send(true);
+                        let _ = tail.await; // 마지막 출력까지 버퍼에 옮긴 뒤 끝났다고 알린다
                         let _ = running.send(false);
-                        let _ = tail.await; // 마지막 출력까지 버퍼에 옮긴다
                         break;
                     }
                 }
@@ -287,6 +293,10 @@ impl ManagedProcess {
             running_rx,
             poller_handle: None,
             stdin_available: true,
+            exit: exit_slot,
+            started_at: info.started_at,
+            working_dir: info.cwd.clone(),
+            log_follower: false,
         }
     }
 }
