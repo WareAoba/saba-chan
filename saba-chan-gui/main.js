@@ -1846,6 +1846,16 @@ ipcMain.handle('module:getLocales', async (_event, moduleName) => {
     }
 });
 
+// 폴더가 어느 모듈의 게임 서버 폴더인지 데몬이 판정한다 (dir_signatures)
+ipcMain.handle('module:detect', async (_event, dirPath) => {
+    try {
+        const response = await axios.post(`${IPC_BASE}/api/modules/detect`, { path: dirPath });
+        return response.data;
+    } catch (error) {
+        return { matches: [], error: error.response?.data?.error || error.message };
+    }
+});
+
 ipcMain.handle('module:getMetadata', async (_event, moduleName) => {
     try {
         const response = await axios.get(`${IPC_BASE}/api/module/${moduleName}`);
