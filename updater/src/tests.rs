@@ -27,6 +27,7 @@ fn test_config(mock_url: &str) -> UpdateConfig {
         include_prerelease: true,
         install_root: Some("./test_install".to_string()),
         api_base_url: Some(mock_url.to_string()),
+        ..Default::default()
     }
 }
 

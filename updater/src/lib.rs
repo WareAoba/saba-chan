@@ -40,13 +40,16 @@
 // ══════════════════════════════════════════════════════╁E
 
 pub mod constants;
+pub mod download;
 pub mod error;
 pub mod foreground;
 pub mod github;
 pub mod integrity;
 pub mod ipc;
 pub mod queue;
+pub mod relay;
 pub mod scheduler;
+pub mod signature;
 pub mod version;
 pub mod worker;
 
@@ -316,6 +319,23 @@ pub struct UpdateConfig {
     /// 예: "http://127.0.0.1:9876" 처럼 GitHub API 대신 사용할 URL 설정)
     #[serde(default)]
     pub api_base_url: Option<String>,
+    /// 업데이트 출처. `relay`(릴레이 + R2)가 목표 경로이고 `github`는 레거시(L3에서 삭제).
+    pub source: UpdateSource,
+    /// 릴레이 주소 (None이면 relay::DEFAULT_RELAY_URL)
+    pub relay_url: Option<String>,
+    /// 릴레이 업데이트 채널 (stable | beta | nightly)
+    pub channel: String,
+}
+
+/// 업데이트 출처 슬롯. 새 배포 경로가 생기면 변형을 추가하고 `check_for_updates`에서 분기한다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum UpdateSource {
+    /// GitHub Releases (레거시)
+    #[default]
+    Github,
+    /// 릴레이 서명 manifest + Cloudflare R2 바이너리
+    Relay,
 }
 
 impl Default for UpdateConfig {
@@ -330,6 +350,9 @@ impl Default for UpdateConfig {
             include_prerelease: false,
             install_root: None,
             api_base_url: None,
+            source: UpdateSource::default(),
+            relay_url: None,
+            channel: relay::DEFAULT_CHANNEL.to_string(),
         }
     }
 }
@@ -600,6 +623,9 @@ impl UpdateManager {
     /// 2. 에셋이 없는 컴포넌트 → 이전 릴리즈 순회하며 탐색
     /// 3. 각 컴포넌트별로 실제 에셋이 존재하는 릴리즈 기록 (`resolved_components`)
     pub async fn check_for_updates(&mut self) -> Result<UpdateStatus> {
+        if self.config.source == UpdateSource::Relay {
+            return self.check_relay().await;
+        }
         if self.config.github_owner.is_empty() || self.config.github_repo.is_empty() {
             anyhow::bail!("GitHub owner/repo not configured");
         }
@@ -670,6 +696,96 @@ impl UpdateManager {
             error: None,
         };
 
+        Ok(self.status.clone())
+    }
+
+    /// 릴레이 경로: 서명된 manifest 하나로 모든 컴포넌트의 최신 버전과 R2 URL을 얻는다.
+    async fn check_relay(&mut self) -> Result<UpdateStatus> {
+        self.status.checking = true;
+        self.status.error = None;
+
+        let local_versions = self.collect_local_versions();
+        let relay_url = self.config.relay_url.clone().unwrap_or_else(|| relay::DEFAULT_RELAY_URL.to_string());
+        let client = relay::RelayClient::new(&relay_url);
+        let platform = relay::current_platform();
+        let current = local_versions.get("saba-core").cloned().unwrap_or_default();
+
+        let release = match client
+            .fetch_verified_release(&self.config.channel, &platform, &current, &relay::anon_client_id())
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::error!("[Updater] Relay check failed: {}", e);
+                self.status.checking = false;
+                self.status.error = Some(format!("Relay check failed: {}", e));
+                return Err(e.into());
+            }
+        };
+
+        let mut components = Vec::new();
+        self.resolved_components.clear();
+        if let Some(release) = release {
+            let notes = release.latest.notes.as_ref().and_then(|n| n.get("ko").or_else(|| n.get("en")).cloned());
+            let mut legacy = ReleaseManifest { release_version: release.manifest.version.clone(), components: HashMap::new() };
+            for (key, info) in &release.manifest.components {
+                let Some(component) = Component::try_from_manifest_key(key) else {
+                    tracing::debug!("[Updater] Skipping unknown manifest key: {}", key);
+                    continue;
+                };
+                let current = local_versions.get(key).cloned().unwrap_or_default();
+                let installed = self.is_component_installed(&component);
+                // 설치돼 있는데 로컬 버전을 모르면 알림 대신 최신으로 기록 (GitHub 경로와 같은 규칙)
+                let update_available = if installed && current.is_empty() {
+                    let _ = Self::update_installed_version(key, &info.version);
+                    false
+                } else {
+                    self.compare_versions(&info.version, &current)
+                };
+                self.resolved_components.insert(key.clone(), ResolvedComponent {
+                    latest_version: info.version.clone(),
+                    source_release_tag: format!("relay:{}", release.manifest.version),
+                    download_url: info.url.clone(),
+                    asset_name: info.filename.clone(),
+                    install_dir: info.install_dir.clone(),
+                    sha256: Some(info.sha256.clone()),
+                    requires: info.requires.clone(),
+                });
+                legacy.components.insert(key.clone(), github::ComponentInfo {
+                    version: info.version.clone(),
+                    asset: Some(info.filename.clone()),
+                    asset_linux: None,
+                    sha256: Some(info.sha256.clone()),
+                    install_dir: info.install_dir.clone(),
+                    requires: info.requires.clone(),
+                });
+                components.push(ComponentVersion {
+                    component,
+                    update_available,
+                    current_version: current,
+                    latest_version: Some(info.version.clone()),
+                    download_url: Some(info.url.clone()),
+                    asset_name: Some(info.filename.clone()),
+                    release_notes: notes.clone(),
+                    published_at: release.latest.released_at.clone(),
+                    downloaded: false,
+                    downloaded_path: None,
+                    installed,
+                });
+            }
+            // 무결성 검사·의존성 검사·설치 상태가 같은 manifest를 보게 한다
+            self.cached_manifest = Some(legacy);
+        }
+
+        let now = chrono_now_iso();
+        let next = chrono_add_hours_iso(&now, self.config.check_interval_hours);
+        self.status = UpdateStatus {
+            last_check: Some(now),
+            next_check: Some(next),
+            components,
+            checking: false,
+            error: None,
+        };
         Ok(self.status.clone())
     }
 
@@ -1146,35 +1262,22 @@ impl UpdateManager {
         let mut downloaded = Vec::new();
 
         // 업데이트 가능하고 아직 다운로드하지 않은 컴포넌트 목록
-        let to_download: Vec<(String, String, String)> = self.status.components.iter()
+        let to_download: Vec<(String, ResolvedComponent)> = self.status.components.iter()
             .filter(|c| c.update_available && !c.downloaded)
             .filter_map(|c| {
                 let key = c.component.manifest_key();
                 // resolved_components에서 실제 다운로드 소스 조회
-                self.resolved_components.get(&key).map(|rc| {
-                    (key, rc.download_url.clone(), rc.asset_name.clone())
-                })
+                self.resolved_components.get(&key).map(|rc| (key, rc.clone()))
             })
             .collect();
 
-        for (key, url, asset_name) in &to_download {
-            // URL에서 직접 다운로드 (특정 릴리즈의 에셋 URL)
-            let dest = self.staging_dir.join(asset_name);
+        let client = reqwest::Client::new();
+        for (key, rc) in &to_download {
+            let dest = self.staging_dir.join(&rc.asset_name);
             tracing::info!("[Updater] Downloading {} from resolved source", key);
-
-            // resolved_components에 저장된 URL로 직접 다운로드
-            let response = reqwest::get(url).await?;
-            if !response.status().is_success() {
-                anyhow::bail!("Failed to download {}: {}", asset_name, response.status());
-            }
-            let bytes = response.bytes().await?;
-            if let Some(parent) = dest.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            std::fs::write(&dest, &bytes)?;
-            tracing::info!("[Updater] Downloaded {} ({} bytes)", asset_name, bytes.len());
-
-            downloaded.push(asset_name.clone());
+            download::download_verified(&client, &rc.download_url, &dest, rc.sha256.as_deref(), None).await?;
+            tracing::info!("[Updater] Downloaded {}", rc.asset_name);
+            downloaded.push(rc.asset_name.clone());
         }
 
         // 상태 업데이트: downloaded 플래그 설정
@@ -1230,38 +1333,21 @@ impl UpdateManager {
             prog.active = true;
         }
 
-        // 스트리밍 다운로드 (진행률 추적)
-        let response = reqwest::get(&rc.download_url).await?;
-        if !response.status().is_success() {
-            let mut prog = self.download_progress.lock().unwrap();
-            prog.active = false;
-            anyhow::bail!("Failed to download {}: {}", rc.asset_name, response.status());
-        }
-        let total = response.content_length().unwrap_or(0);
-        {
-            let mut prog = self.download_progress.lock().unwrap();
-            prog.total_bytes = total;
-        }
-
-        if let Some(parent) = dest.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-
-        {
-            use futures_util::StreamExt;
-            use std::io::Write;
-            let mut file = std::fs::File::create(&dest)?;
-            let mut received: u64 = 0;
-            let mut stream = response.bytes_stream();
-            while let Some(chunk) = stream.next().await {
-                let chunk = chunk?;
-                file.write_all(&chunk)?;
-                received += chunk.len() as u64;
-                if let Ok(mut prog) = self.download_progress.lock() {
-                    prog.bytes_received = received;
-                }
+        // 스트리밍 다운로드 + SHA-256 검증 (불일치면 파일 삭제)
+        let client = reqwest::Client::new();
+        let result = download::download_verified(
+            &client,
+            &rc.download_url,
+            &dest,
+            rc.sha256.as_deref(),
+            Some(&self.download_progress),
+        )
+        .await;
+        if let Err(e) = result {
+            if let Ok(mut prog) = self.download_progress.lock() {
+                prog.active = false;
             }
-            file.flush()?;
+            anyhow::bail!("Failed to download {}: {}", rc.asset_name, e);
         }
 
         // 진행률 완료

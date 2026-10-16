@@ -224,6 +224,7 @@ fn create_test_manager(
         include_prerelease: false,
         install_root: Some(tmpdir.path().to_string_lossy().to_string()),
         api_base_url: None,
+        ..Default::default()
     };
 
     UpdateManager::new(config, &modules_dir.to_string_lossy())
@@ -368,6 +369,7 @@ fn test_update_config_serialization() {
         include_prerelease: true,
         install_root: Some("/opt/saba".into()),
         api_base_url: None,
+        ..Default::default()
     };
 
     let json = serde_json::to_string(&cfg).unwrap();

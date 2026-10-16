@@ -561,6 +561,24 @@ async fn set_config(
     if let Some(v) = body.get("api_base_url").and_then(|v| v.as_str()) {
         cfg.api_base_url = Some(v.to_string());
     }
+    if let Some(v) = body.get("source") {
+        match serde_json::from_value::<saba_chan_updater_lib::UpdateSource>(v.clone()) {
+            Ok(src) => cfg.source = src,
+            Err(_) => {
+                return (
+                    axum::http::StatusCode::BAD_REQUEST,
+                    Json(json!({ "ok": false, "error": "source must be \"github\" or \"relay\"" })),
+                )
+                    .into_response();
+            }
+        }
+    }
+    if let Some(v) = body.get("relay_url").and_then(|v| v.as_str()) {
+        cfg.relay_url = if v.is_empty() { None } else { Some(v.to_string()) };
+    }
+    if let Some(v) = body.get("channel").and_then(|v| v.as_str()) {
+        cfg.channel = v.to_string();
+    }
 
     mgr.update_config(cfg.clone());
     if let Err(e) = save_updater_config(&cfg) {
@@ -571,6 +589,7 @@ async fn set_config(
         "ok": true,
         "config": cfg,
     }))
+    .into_response()
 }
 
 // ═══════════════════════════════════════════════════════

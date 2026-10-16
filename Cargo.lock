@@ -3596,14 +3596,18 @@ name = "saba-chan-updater-lib"
 version = "0.1.1"
 dependencies = [
  "anyhow",
+ "base64 0.21.7",
  "chrono",
  "flate2",
  "futures-util",
  "reqwest 0.11.27",
+ "ring",
  "serde",
  "serde_json",
+ "sha2",
  "tar",
  "tempfile",
+ "thiserror 1.0.69",
  "tokio",
  "toml 0.5.11",
  "tracing",
