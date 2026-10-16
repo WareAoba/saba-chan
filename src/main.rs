@@ -61,6 +61,34 @@ fn module_tool(args: &[String]) -> i32 {
     }
 }
 
+/// `saba-core extension validate <익스텐션 폴더>...` — manifest.json을 데몬과 같은 규칙으로 검사
+fn extension_tool(args: &[String]) -> i32 {
+    if args.first().map(String::as_str) != Some("validate") || args.len() < 2 {
+        eprintln!("usage: saba-core extension validate <extension dir>...");
+        return 2;
+    }
+    let mut failed = 0;
+    for dir in &args[1..] {
+        let path = std::path::Path::new(dir).join("manifest.json");
+        let result = std::fs::read_to_string(&path)
+            .map_err(anyhow::Error::from)
+            .and_then(|c| saba_core::extension::parse_manifest(&c));
+        match result {
+            Ok((m, warnings)) => {
+                println!("ok    {} ({} v{})", dir, m.id, m.version);
+                for w in warnings {
+                    println!("      warning: {}", w);
+                }
+            }
+            Err(e) => {
+                println!("FAIL  {}: {:#}", dir, e);
+                failed += 1;
+            }
+        }
+    }
+    i32::from(failed > 0)
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // ── Boot Mode Determination ────────────────────────────────
@@ -69,6 +97,9 @@ async fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).map(String::as_str) == Some("module") {
         std::process::exit(module_tool(&args[2..]));
+    }
+    if args.get(1).map(String::as_str) == Some("extension") {
+        std::process::exit(extension_tool(&args[2..]));
     }
     let spawned = args.iter().any(|a| a == "--spawned");
     let interactive =

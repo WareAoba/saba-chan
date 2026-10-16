@@ -28,7 +28,8 @@ fn extension_err_response(
     if let Some(ext_err) = err.downcast_ref::<ExtensionError>() {
         let status = match ext_err.error_code.as_str() {
             "not_found" | "not_mounted" | "manifest_not_found" => StatusCode::NOT_FOUND,
-            "dependency_missing" | "dependency_not_enabled" | "component_version_unsatisfied" => {
+            "dependency_missing" | "dependency_not_enabled" | "component_version_unsatisfied"
+            | "app_version_unsatisfied" => {
                 StatusCode::UNPROCESSABLE_ENTITY
             }
             "has_dependents" | "in_use" => StatusCode::CONFLICT,
@@ -62,7 +63,12 @@ pub async fn list_extensions(
 ) -> Json<serde_json::Value> {
     let mgr = state.extension_manager.read().await;
     let list = mgr.list();
-    Json(json!({ "extensions": list }))
+    let failed = mgr.load_errors();
+    if failed.is_empty() {
+        Json(json!({ "extensions": list }))
+    } else {
+        Json(json!({ "extensions": list, "failed": failed }))
+    }
 }
 
 /// POST /api/extensions/:id/enable — 익스텐션 활성화
@@ -422,14 +428,12 @@ pub async fn remove_extension(
     State(state): State<IPCServer>,
     Path(ext_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    // 실행 중인 인스턴스만 검사
+    // 지우면 되돌릴 수 없으므로 정지된 인스턴스도 검사한다 (disable은 실행 중인 것만)
     let active_ext_data = {
         let sup = state.supervisor.read().await;
-        let running_ids = sup.managed_store.running_instance_ids().await;
         sup.instance_store
             .list()
             .iter()
-            .filter(|inst| running_ids.contains(&inst.id))
             .map(|inst| (inst.name.clone(), inst.extension_data.clone()))
             .collect::<Vec<_>>()
     };

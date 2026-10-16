@@ -229,7 +229,7 @@ async fn run_plugin_inner(
                 return Err(anyhow::anyhow!("Plugin execution failed (exit {:?}):\nstderr: {}\nstdout: {}", exit_status.code(), stderr_str, stdout_str.trim()));
             }
 
-            match serde_json::from_str::<Value>(&stdout_str) {
+            match parse_plugin_output(&stdout_str) {
                 Ok(result) => {
                     tracing::debug!("Plugin result (raw): {}", stdout_str.trim());
                     Ok(result)
@@ -259,10 +259,29 @@ async fn run_plugin_inner(
 // detect_python_command()는 python_env::get_python_path()로 대체됨.
 // 시스템 Python 탐지는 python_env 모듈에서 venv 부트스트랩 시 수행합니다.
 
+/// 결과는 stdout 전체 또는 마지막 줄의 JSON (앞에 찍힌 print는 무시)
+fn parse_plugin_output(stdout: &str) -> serde_json::Result<Value> {
+    serde_json::from_str::<Value>(stdout).or_else(|e| {
+        stdout
+            .lines()
+            .rev()
+            .find(|l| !l.trim().is_empty())
+            .map(|l| serde_json::from_str::<Value>(l.trim()))
+            .unwrap_or(Err(e))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn plugin_result_is_whole_stdout_or_last_line() {
+        assert_eq!(parse_plugin_output("{\n  \"ok\": 1\n}\n").unwrap(), json!({"ok": 1}));
+        assert_eq!(parse_plugin_output("debug print\n{\"ok\": 2}\n\n").unwrap(), json!({"ok": 2}));
+        assert!(parse_plugin_output("{\"ok\": 3}\nnot json\n").is_err());
+    }
 
     #[tokio::test]
     async fn test_run_plugin_with_invalid_path() {
