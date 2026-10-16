@@ -371,9 +371,10 @@ struct InstallConfig {
     github_owner: String,
     github_repo: String,
     language: String,
-    #[allow(dead_code)]
+    // 바로가기는 Windows에서만 만든다
+    #[cfg_attr(not(windows), allow(dead_code))]
     create_desktop_shortcut: bool,
-    #[allow(dead_code)]
+    #[cfg_attr(not(windows), allow(dead_code))]
     create_start_menu_shortcut: bool,
     selected_modules: Vec<String>,
     latest_release_tag: Option<String>,
@@ -980,16 +981,6 @@ async fn browse_folder(app: AppHandle) -> Result<Option<String>, String> {
 // ═══════════════════════════════════════════════════════
 // 헬퍼 함수
 // ═══════════════════════════════════════════════════════
-
-/// 설치 언어에 맞는 앱 표시 이름을 반환한다.
-#[allow(dead_code)]
-fn localized_app_name(language: &str) -> &'static str {
-    match language {
-        "ko" => "사바쨩",
-        "ja" => "サバちゃん",
-        _ => "Saba-chan",
-    }
-}
 
 /// saba-core와 동일한 데이터 디렉토리 경로 해석
 /// Windows: `%APPDATA%/saba-chan`, Linux/macOS: `~/.config/saba-chan`

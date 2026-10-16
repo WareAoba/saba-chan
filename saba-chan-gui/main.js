@@ -502,11 +502,6 @@ function saveSettings(settings) {
     return true;
 }
 
-// syncGuiConfigToDaemon은 saveSettings에 통합됨 (데몬의 PUT /api/config/gui가 portConflictCheck 동기화도 처리)
-async function syncGuiConfigToDaemon(_settings) {
-    // no-op: save_gui_config 데몬 핸들러가 portConflictCheck 동기화를 통합 처리
-}
-
 // Core Daemon 시작
 function startDaemon() {
     const isDev = !app.isPackaged;
@@ -1002,14 +997,6 @@ async function syncInstallRoot() {
     }
 }
 
-async function preloadLightData() {
-    // 레거시: 응답을 버리는 워밍업 요청이었으나 Rust 데모닌에 HTTP 캐시가 없으므로
-    // supervisor lock만 유발하는 순 오버헤드였음. 렌더러가 이미 로드 시 실제 데이터를 페치하므로 여기서는
-    // 로딩 상태 변경만 수행한다.
-    sendStatus('modules', '새 모듈 목록 준비 중...');
-    sendStatus('instances', '인스턴스 목록 준비 중...');
-}
-
 // ── Client Heartbeat (데몬이 GUI 생존 여부를 추적) ────────────
 let heartbeatClientId = null;
 let heartbeatTimer = null;
@@ -1063,7 +1050,9 @@ async function runBackgroundInit() {
     sendStatus('init', '초기화 시작');
     await ensureDaemon();
     updateTrayMenu();
-    await preloadLightData();
+    // 실제 데이터는 렌더러가 로드할 때 가져온다. 여기서는 로딩 표시만 넘긴다.
+    sendStatus('modules', '새 모듈 목록 준비 중...');
+    sendStatus('instances', '인스턴스 목록 준비 중...');
 
     // 데몬에 클라이언트 등록 및 heartbeat 시작
     await registerWithDaemon();
@@ -1073,12 +1062,6 @@ async function runBackgroundInit() {
     startUpdateChecker();
 
     sendStatus('ready', '백그라운드 초기화 완료');
-
-    // 데몬에 GUI 설정 초기 동기화 (portConflictCheck 등)
-    const currentSettings = loadSettings();
-    syncGuiConfigToDaemon(currentSettings).catch(err => {
-        console.warn('[Init] Failed to sync initial GUI config to daemon:', err.message);
-    });
 
     // Discord Bot 자동 시작은 React App.js에서 처리
 }
@@ -1758,19 +1741,6 @@ ipcMain.handle('module:installServer', async (_event, moduleName, installConfig)
 ipcMain.handle('instance:getInstalledVersion', async (_event, instanceId) => {
     try {
         const response = await axios.get(`${IPC_BASE}/api/instance/${instanceId}/installed-version`, { timeout: 10000 });
-        return response.data;
-    } catch (error) {
-        return { error: error.response?.data?.error || error.message };
-    }
-});
-
-ipcMain.handle('instance:resetProperties', async (_event, instanceId) => {
-    try {
-        const response = await axios.post(
-            `${IPC_BASE}/api/instance/${instanceId}/properties/reset`,
-            {},
-            { timeout: 10000 },
-        );
         return response.data;
     } catch (error) {
         return { error: error.response?.data?.error || error.message };
@@ -2924,10 +2894,6 @@ ipcMain.handle('app:launchUninstaller', async () => {
     }
 });
 
-ipcMain.handle('guiConfig:sync', async (_event, config) => {
-    return syncGuiConfigToDaemon(config);
-});
-
 ipcMain.handle('settings:save', async (_event, settings) => {
     // 데몬 가동 중이면 merge base도 API에서 로드 → API로 저장 (단일 원천 원칙)
     if (daemonProcess && !daemonProcess.killed) {
@@ -2955,13 +2921,6 @@ ipcMain.handle('settings:getPath', () => {
     return getSettingsPath();
 });
 
-ipcMain.handle('paths:getFixed', () => {
-    return {
-        modulesPath: getFixedModulesPath(),
-        extensionsPath: getFixedExtensionsPath(),
-    };
-});
-
 // Language IPC handlers
 ipcMain.handle('language:get', () => {
     return getLanguage();
@@ -2977,10 +2936,6 @@ ipcMain.handle('language:set', async (_event, language) => {
     // 데몬을 재시작하면 실행 중인 서버가 모두 종료됨
 
     return { success, language };
-});
-
-ipcMain.handle('language:getSystem', () => {
-    return getSystemLanguage();
 });
 
 // File dialog handlers

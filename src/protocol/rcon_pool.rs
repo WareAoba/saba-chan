@@ -119,16 +119,6 @@ impl RconPool {
         }
     }
 
-    /// 모든 RCON 연결 해제
-    #[allow(dead_code)]
-    pub fn clear(&self) {
-        let mut conns = self.connections.lock().unwrap();
-        let count = conns.len();
-        conns.clear();
-        if count > 0 {
-            tracing::info!("RCON pool: cleared {} connections", count);
-        }
-    }
 }
 
 #[cfg(test)]
@@ -142,10 +132,4 @@ mod tests {
         pool.remove("nonexistent");
     }
 
-    #[test]
-    fn test_pool_clear() {
-        let pool = RconPool::new();
-        pool.clear();
-        // 빈 풀 clear는 정상 동작
-    }
 }

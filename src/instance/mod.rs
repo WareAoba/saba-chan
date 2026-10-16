@@ -94,14 +94,7 @@ impl ServerInstance {
             .unwrap_or(false)
     }
 
-    /// extension_data에서 f64 값을 읽습니다.
-    #[allow(dead_code)]
-    pub fn ext_f64(&self, key: &str) -> Option<f64> {
-        self.extension_data.get(key).and_then(|v| v.as_f64())
-    }
-
     /// extension_data에서 문자열 값을 읽습니다.
-    #[allow(dead_code)]
     pub fn ext_str(&self, key: &str) -> Option<&str> {
         self.extension_data.get(key).and_then(|v| v.as_str())
     }
@@ -361,16 +354,6 @@ impl InstanceStore {
         Ok(())
     }
 
-    // ── 하위 호환: 전체 저장 ──
-    // 기존 코드에서 save()를 호출하는 곳이 있을 수 있으므로 유지
-    #[allow(dead_code)]
-    pub fn save(&self) -> Result<()> {
-        for inst in &self.instances {
-            self.save_instance(inst)?;
-        }
-        self.save_order()?;
-        Ok(())
-    }
 
     /// 인스턴스 디렉토리의 절대 경로를 반환합니다.
     pub fn instance_dir(&self, id: &str) -> PathBuf {

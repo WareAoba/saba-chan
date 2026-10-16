@@ -14,15 +14,6 @@ pub struct ProtocolClient {
 }
 
 impl ProtocolClient {
-    /// RCON 클라이언트만 생성
-    #[allow(dead_code)]
-    pub fn new_rcon(rcon_host: String, rcon_port: u16, rcon_password: String) -> Self {
-        Self {
-            rcon: Some(RconClient::new(rcon_host, rcon_port, rcon_password)),
-            rest: None,
-            command_type: CommandType::Rcon,
-        }
-    }
 
     /// REST 클라이언트만 생성
     pub fn new_rest(rest_host: String, rest_port: u16, use_https: bool) -> Self {
@@ -39,52 +30,6 @@ impl ProtocolClient {
             rest.set_basic_auth(username, password);
         }
         self
-    }
-
-    /// RCON과 REST 모두 사용 (RCON 우선, 실패 시 REST로 fallback)
-    #[allow(dead_code)]
-    pub fn new_both(
-        rcon_host: String, rcon_port: u16, rcon_password: String,
-        rest_host: String, rest_port: u16, use_https: bool,
-    ) -> Self {
-        Self {
-            rcon: Some(RconClient::new(rcon_host, rcon_port, rcon_password)),
-            rest: Some(RestClient::new(rest_host, rest_port, use_https)),
-            command_type: CommandType::Both,
-        }
-    }
-
-    /// 모든 프로토콜 연결
-    #[allow(dead_code)]
-    pub fn connect_all(&mut self, timeout: Duration) -> Result<(), ProtocolError> {
-        if let Some(rcon) = &mut self.rcon {
-            if let Err(e) = rcon.connect(timeout) {
-                tracing::warn!("RCON connection failed: {}", e);
-                if self.command_type == CommandType::Rcon {
-                    return Err(e);
-                }
-            }
-        }
-
-        if let Some(rest) = &mut self.rest {
-            if let Err(e) = rest.verify_connection(timeout) {
-                tracing::warn!("REST connection verification failed: {}", e);
-                if self.command_type == CommandType::Rest {
-                    return Err(e);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// RCON만 연결
-    #[allow(dead_code)]
-    pub fn connect_rcon(&mut self, timeout: Duration) -> Result<(), ProtocolError> {
-        if let Some(rcon) = &mut self.rcon {
-            rcon.connect(timeout)?;
-        }
-        Ok(())
     }
 
     /// REST만 연결
@@ -156,16 +101,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_rcon_client_creation() {
-        let client = ProtocolClient::new_rcon(
-            "127.0.0.1".to_string(),
-            25575,
-            "test_password".to_string(),
-        );
-        assert_eq!(client.command_type, CommandType::Rcon);
-    }
-
-    #[test]
     fn test_rest_client_creation() {
         let client = ProtocolClient::new_rest(
             "127.0.0.1".to_string(),
@@ -175,23 +110,4 @@ mod tests {
         assert_eq!(client.command_type, CommandType::Rest);
     }
 
-    #[test]
-    fn test_both_client_creation() {
-        let client = ProtocolClient::new_both(
-            "127.0.0.1".to_string(), 25575, "password".to_string(),
-            "127.0.0.1".to_string(), 8212, false,
-        );
-        assert_eq!(client.command_type, CommandType::Both);
-    }
-
-    #[test]
-    fn test_client_creation_with_debug() {
-        let client = ProtocolClient::new_rcon(
-            "game.example.com".to_string(),
-            25575,
-            "secret".to_string(),
-        );
-        let debug_str = format!("{:?}", client);
-        assert!(debug_str.contains("ProtocolClient"));
-    }
 }

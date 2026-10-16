@@ -24,7 +24,6 @@ contextBridge.exposeInMainWorld('api', {
     instanceDelete: (id) => ipcRenderer.invoke('instance:delete', id),
     instanceReorder: (orderedIds) => ipcRenderer.invoke('instance:reorder', orderedIds),
     instanceUpdateSettings: (id, settings) => ipcRenderer.invoke('instance:updateSettings', id, settings),
-    instanceResetProperties: (id) => ipcRenderer.invoke('instance:resetProperties', id),
     instanceResetServer: (id) => ipcRenderer.invoke('instance:resetServer', id),
     executeCommand: (id, command) => ipcRenderer.invoke('instance:executeCommand', id, command),
     // Extension API
@@ -72,15 +71,12 @@ contextBridge.exposeInMainWorld('api', {
     mockServerStatus: () => ipcRenderer.invoke('mockServer:status'),
     // Updater events (from main process background checker)
     onUpdatesAvailable: (callback) => ipcRenderer.on('updates:available', (event, data) => callback(data)),
-    offUpdatesAvailable: () => ipcRenderer.removeAllListeners('updates:available'),
     onUpdateCompleted: (callback) => ipcRenderer.on('updates:completed', (event, data) => callback(data)),
-    offUpdateCompleted: () => ipcRenderer.removeAllListeners('updates:completed'),
     // Settings API
     settingsLoad: () => ipcRenderer.invoke('settings:load'),
     settingsSave: (settings) => ipcRenderer.invoke('settings:save', settings),
     settingsGetPath: () => ipcRenderer.invoke('settings:getPath'),
     // Fixed Paths API
-    getFixedPaths: () => ipcRenderer.invoke('paths:getFixed'),
     // Dialog API
     openFileDialog: (options) => ipcRenderer.invoke('dialog:openFile', options),
     openFolderDialog: () => ipcRenderer.invoke('dialog:openFolder'),
@@ -94,7 +90,6 @@ contextBridge.exposeInMainWorld('api', {
     botConfigLoad: () => ipcRenderer.invoke('botConfig:load'),
     botConfigSave: (config) => ipcRenderer.invoke('botConfig:save', config),
     // GUI Config sync to daemon
-    syncGuiConfig: (config) => ipcRenderer.invoke('guiConfig:sync', config),
     // Node Token API (cloud pairing)
     saveNodeToken: (token) => ipcRenderer.invoke('nodeToken:save', token),
     loadNodeToken: () => ipcRenderer.invoke('nodeToken:load'),
@@ -137,7 +132,6 @@ contextBridge.exposeInMainWorld('electron', {
     // Language settings
     getLanguage: () => ipcRenderer.invoke('language:get'),
     setLanguage: (language) => ipcRenderer.invoke('language:set', language),
-    getSystemLanguage: () => ipcRenderer.invoke('language:getSystem'),
     // Shell
     shell: {
         openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url)

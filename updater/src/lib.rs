@@ -924,19 +924,6 @@ impl UpdateManager {
         }
     }
 
-    /// staging 디렉터리에서 다운로드 상태 확인
-    #[allow(dead_code)]
-    fn check_staged_status(&self, asset_name: Option<&str>) -> (bool, Option<String>) {
-        match asset_name {
-            Some(name) => {
-                let staged_path = self.staging_dir.join(name);
-                let exists = staged_path.exists();
-                (exists, if exists { Some(staged_path.to_string_lossy().to_string()) } else { None })
-            }
-            None => (false, None),
-        }
-    }
-
 
     // ─────── 로컬 버전 수집 ────────────────────────────────────────────────────────────────────────
 
@@ -2269,111 +2256,6 @@ impl UpdateManager {
         std::fs::remove_file(staged).ok();
         tracing::info!("[Updater] GUI updated successfully");
         Ok(())
-    }
-
-    /// 코어 데몬의 업데이트를 준비 (재시작 후 적용)
-    #[allow(dead_code)]
-    async fn prepare_daemon_update(&self, staged_path: &str) -> Result<Option<String>> {
-        let staged = Path::new(staged_path);
-        let daemon_exe_name = if cfg!(target_os = "windows") { "saba-core.exe" } else { "saba-core" };
-        let exe_path = self.install_root.join(daemon_exe_name);
-        let exe_dir = self.install_root.clone();
-
-        let result_script_path: String;
-
-        // Windows: 재시작 후 자동 업데이트를 위한 PowerShell 스크립트를 생성
-        #[cfg(target_os = "windows")]
-        {
-            let script_path = exe_dir.join("_update_daemon.ps1");
-            let script = format!(
-                r#"# saba-chan daemon auto-update script
-# Wait for the daemon process to exit
-Start-Sleep -Seconds 2
-
-$exePath = "{exe}"
-$stagedPath = "{staged}"
-$backupPath = "$exePath.old"
-
-# Backup current executable
-if (Test-Path $exePath) {{
-    Move-Item -Force $exePath $backupPath
-}}
-
-# Extract update
-if ($stagedPath -like "*.zip") {{
-    Expand-Archive -Path $stagedPath -DestinationPath "{exe_dir}" -Force
-}} else {{
-    Copy-Item -Force $stagedPath $exePath
-}}
-
-# Restart daemon
-Start-Process -FilePath $exePath
-Remove-Item -Force $stagedPath -ErrorAction SilentlyContinue
-Remove-Item -Force $MyInvocation.MyCommand.Source -ErrorAction SilentlyContinue
-"#,
-                exe = exe_path.display(),
-                staged = staged.display(),
-                exe_dir = exe_dir.display(),
-            );
-
-            std::fs::write(&script_path, script)?;
-            tracing::info!(
-                "[Updater] Daemon update prepared — run {} after stopping daemon",
-                script_path.display()
-            );
-            result_script_path = script_path.display().to_string();
-        }
-
-        #[cfg(not(target_os = "windows"))]
-        {
-            let script_path = exe_dir.join("_update_daemon.sh");
-            let script = format!(
-                r#"#!/bin/bash
-# saba-chan daemon auto-update script
-sleep 2
-
-EXE="{exe}"
-STAGED="{staged}"
-
-# Backup
-cp "$EXE" "$EXE.old"
-
-# Extract or copy
-if [[ "$STAGED" == *.zip ]]; then
-    unzip -o "$STAGED" -d "{exe_dir}"
-else
-    cp "$STAGED" "$EXE"
-    chmod +x "$EXE"
-fi
-
-# Restart
-"$EXE" &
-rm -f "$STAGED"
-rm -f "$0"
-"#,
-                exe = exe_path.display(),
-                staged = staged.display(),
-                exe_dir = exe_dir.display(),
-            );
-
-            std::fs::write(&script_path, &script)?;
-            // 실행 권한 부여
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let mut perms = std::fs::metadata(&script_path)?.permissions();
-                perms.set_mode(0o755);
-                std::fs::set_permissions(&script_path, perms)?;
-            }
-
-            tracing::info!(
-                "[Updater] Daemon update prepared — run {} after stopping daemon",
-                script_path.display()
-            );
-            result_script_path = script_path.display().to_string();
-        }
-
-        Ok(Some(result_script_path))
     }
 
     // ─────── 유틸리티 ────────────────────────────────────────────────────────────────────────

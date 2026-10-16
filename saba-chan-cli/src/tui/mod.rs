@@ -662,7 +662,7 @@ fn handle_mouse(app: &mut App, mouse: MouseEvent) {
                     let max = app.console_lines.len().saturating_sub(1);
                     if app.console_scroll < max { app.console_scroll = (app.console_scroll + 3).min(max); }
                 }
-                Screen::ServerSettings { .. } | Screen::ServerProperties { .. } => {
+                Screen::ServerSettings { .. } => {
                     for _ in 0..3 { app.editor_up(); }
                 }
                 _ => {
@@ -678,7 +678,7 @@ fn handle_mouse(app: &mut App, mouse: MouseEvent) {
                 Screen::ServerConsole { .. } => {
                     app.console_scroll = app.console_scroll.saturating_sub(3);
                 }
-                Screen::ServerSettings { .. } | Screen::ServerProperties { .. } => {
+                Screen::ServerSettings { .. } => {
                     for _ in 0..3 { app.editor_down(); }
                 }
                 _ => {

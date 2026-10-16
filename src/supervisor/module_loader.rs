@@ -119,24 +119,11 @@ impl ModuleMetadata {
         self.get_setting_default("rest_host").unwrap_or_else(|| "127.0.0.1".to_string())
     }
 
-    /// SteamCMD app ID를 가져옵니다 (install.method == "steamcmd"일 때)
-    #[allow(dead_code)]
-    pub fn steam_app_id(&self) -> Option<u32> {
-        self.install.as_ref()
-            .filter(|i| i.method == "steamcmd")
-            .and_then(|i| i.app_id)
-    }
-
-    /// 특정 익스텐션의 모듈 설정이 있는지 확인합니다
-    #[allow(dead_code)]
-    pub fn has_extension_config(&self, ext_name: &str) -> bool {
-        self.extensions.contains_key(ext_name)
-    }
 
     /// 컴포넌트 버전 의존성을 확인합니다.
     /// `installed_versions`: 컴포넌트 키 → 설치된 버전 (예: "saba-core" → "0.3.0")
     /// 미충족 의존성 목록을 (컴포넌트키, 요구버전, 설치버전Option) 튜플로 반환합니다.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // 아직 로드 경로에 연결 안 됨: M9(모듈 호환성 검사)에서 사용
     pub fn check_dependencies(
         &self,
         installed_versions: &std::collections::HashMap<String, String>,
@@ -241,8 +228,6 @@ pub struct SettingField {
 pub struct LoadedModule {
     pub metadata: ModuleMetadata,
     pub path: String,  // 압축 해제된 디렉토리 또는 원본 디렉토리 절대 경로
-    #[allow(dead_code)]
-    pub is_zip: bool,  // ZIP에서 로드되었는지 여부
 }
 
 // ── module.toml 강타입 스키마 (serde 직접 역직렬화) ──
@@ -251,8 +236,6 @@ pub struct LoadedModule {
 #[derive(Debug, Deserialize)]
 struct ModuleToml {
     module: ModuleSection,
-    #[serde(default, rename = "update")]
-    _update: Option<UpdateSection>,
     #[serde(default)]
     protocols: Option<ProtocolsSection>,
     #[serde(default)]
@@ -304,13 +287,6 @@ struct ModuleSection {
 }
 
 #[derive(Debug, Deserialize)]
-struct UpdateSection {
-    #[serde(default)]
-    #[allow(dead_code)]
-    github_repo: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
 struct ProtocolsSection {
     #[serde(default)]
     supported: Option<Vec<String>>,
@@ -346,9 +322,6 @@ struct DetectionSection {
     process_patterns: Option<Vec<String>>,
     #[serde(default)]
     cmd_patterns: Option<Vec<String>>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    common_paths: Option<Vec<String>>,
     /// 디렉토리 내 파일/폴더 시그니처 — 기존 서버 마이그레이션 시 자동 감지에 사용
     #[serde(default)]
     dir_signatures: Option<Vec<String>>,
@@ -836,7 +809,6 @@ impl ModuleLoader {
         Ok(LoadedModule {
             metadata,
             path: module_path.to_string_lossy().to_string(),
-            is_zip: false,
         })
     }
 
@@ -888,12 +860,10 @@ impl ModuleLoader {
         Ok(LoadedModule {
             metadata,
             path: extracted_dir.to_string_lossy().to_string(),
-            is_zip: true,
         })
     }
 
     /// 모듈 이름으로 모듈 조회
-    #[allow(dead_code)]
     pub fn get_module(&self, name: &str) -> Result<LoadedModule> {
         let modules = self.discover_modules()?;
         modules

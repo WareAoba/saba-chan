@@ -5,7 +5,6 @@ pub mod managed;
 pub mod client;
 pub mod bot;
 pub mod config;
-pub mod python_env;
 pub mod extension;
 pub mod relay;
 pub mod chat;

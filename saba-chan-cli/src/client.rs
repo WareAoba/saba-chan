@@ -28,7 +28,6 @@ pub struct DaemonClient {
     token: Arc<RwLock<Option<String>>>,
 }
 
-#[allow(dead_code)]
 impl DaemonClient {
     pub fn new(base_url: Option<&str>) -> Self {
         let base_url = base_url
@@ -220,21 +219,7 @@ impl DaemonClient {
         self.post_json(&format!("/api/instance/{}/rcon", id), &body).await
     }
 
-    /// POST /api/instance/{id}/rest
-    pub async fn execute_rest_command(&self, id: &str, command: &str) -> anyhow::Result<Value> {
-        let body = serde_json::json!({ "command": command });
-        self.post_json(&format!("/api/instance/{}/rest", id), &body).await
-    }
-
     // ============ Managed Process ============
-
-    /// POST /api/instance/{id}/managed/start — 관리형 서버 시작
-    pub async fn start_managed(&self, id: &str) -> anyhow::Result<Value> {
-        self.post_json_long(
-            &format!("/api/instance/{}/managed/start", id),
-            &serde_json::json!({}),
-        ).await
-    }
 
     /// GET /api/instance/{id}/console — 콘솔 출력 가져오기
     pub async fn get_console(&self, id: &str) -> anyhow::Result<Value> {
@@ -252,16 +237,6 @@ impl DaemonClient {
     /// POST /api/instance/{id}/validate — 인스턴스 설정 검증
     pub async fn validate_instance(&self, id: &str) -> anyhow::Result<Value> {
         self.post_empty(&format!("/api/instance/{}/validate", id)).await
-    }
-
-    /// GET /api/instance/{id}/properties — 서버 속성 파일 읽기
-    pub async fn read_properties(&self, id: &str) -> anyhow::Result<Value> {
-        self.get_json(&format!("/api/instance/{}/properties", id)).await
-    }
-
-    /// PUT /api/instance/{id}/properties — 서버 속성 파일 쓰기
-    pub async fn write_properties(&self, id: &str, data: Value) -> anyhow::Result<Value> {
-        self.put_json(&format!("/api/instance/{}/properties", id), &data).await
     }
 
     /// POST /api/instance/{id}/accept-eula — EULA 수락
@@ -301,26 +276,9 @@ impl DaemonClient {
         self.get_json(&format!("/api/module/{}/versions", module)).await
     }
 
-    /// GET /api/module/{name}/version/{version} — 버전 상세 정보
-    pub async fn get_version_details(&self, module: &str, version: &str) -> anyhow::Result<Value> {
-        self.get_json(&format!("/api/module/{}/version/{}", module, version)).await
-    }
-
     /// POST /api/module/{name}/install — 서버 설치
     pub async fn install_server(&self, module: &str, data: Value) -> anyhow::Result<Value> {
         self.post_json_long(&format!("/api/module/{}/install", module), &data).await
-    }
-
-    // ============ Bot Config ============
-
-    /// GET /api/config/bot — 봇 설정 가져오기
-    pub async fn get_bot_config(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/config/bot").await
-    }
-
-    /// PUT /api/config/bot — 봇 설정 저장
-    pub async fn save_bot_config(&self, config: Value) -> anyhow::Result<Value> {
-        self.put_json("/api/config/bot", &config).await
     }
 
     // ============ Client Heartbeat ============
@@ -376,11 +334,6 @@ impl DaemonClient {
 
     // ============ Installer ============
 
-    /// GET /api/install/status — 설치 상태 확인
-    pub async fn get_install_status(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/install/status").await
-    }
-
     /// POST /api/install/run — 최초 설치 실행
     pub async fn run_install(&self, components: Option<Vec<String>>) -> anyhow::Result<Value> {
         let body = match components {
@@ -396,11 +349,6 @@ impl DaemonClient {
             &format!("/api/install/component/{}", key),
             &serde_json::json!({}),
         ).await
-    }
-
-    /// GET /api/install/progress — 설치 진행 상태 조회
-    pub async fn get_install_progress(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/install/progress").await
     }
 
     // ============ Extensions ============
@@ -480,33 +428,11 @@ impl DaemonClient {
         self.post_empty(&format!("/api/instance/{}/server/reset", id)).await
     }
 
-    /// POST /api/instance/{id}/properties/reset — 프로퍼티 리셋
-    pub async fn reset_properties(&self, id: &str) -> anyhow::Result<Value> {
-        self.post_empty(&format!("/api/instance/{}/properties/reset", id)).await
-    }
-
-    /// GET /api/provision-progress/{name} — 프로비저닝 진행 상태
-    pub async fn get_provision_progress(&self, name: &str) -> anyhow::Result<Value> {
-        self.get_json(&format!("/api/provision-progress/{}", name)).await
-    }
-
-    /// DELETE /api/provision-progress/{name} — 프로비저닝 상태 해제
-    pub async fn dismiss_provision(&self, name: &str) -> anyhow::Result<Value> {
-        self.delete_json(&format!("/api/provision-progress/{}", name)).await
-    }
-
     // ============ Updater Extended ============
 
     /// POST /api/updates/config — 업데이터 설정 변경
     pub async fn set_update_config(&self, config: Value) -> anyhow::Result<Value> {
         self.post_json("/api/updates/config", &config).await
-    }
-
-    // ============ Extension Init Status ============
-
-    /// GET /api/extensions/init-status — 익스텐션 초기화 상태
-    pub async fn get_extension_init_status(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/extensions/init-status").await
     }
 
     // ============ Instance Version & Updates ============
@@ -521,24 +447,11 @@ impl DaemonClient {
         self.get_json(&format!("/api/instance/{}/check-update", id)).await
     }
 
-    /// POST /api/instance/{id}/apply-update — 서버 업데이트 적용
-    pub async fn apply_instance_update(&self, id: &str) -> anyhow::Result<Value> {
-        self.post_json_long(
-            &format!("/api/instance/{}/apply-update", id),
-            &serde_json::json!({}),
-        ).await
-    }
-
     // ============ System ============
 
     /// GET /api/system/components — 시스템 컴포넌트 정보 (daemon, GUI, locale 버전)
     pub async fn get_system_components(&self) -> anyhow::Result<Value> {
         self.get_json("/api/system/components").await
-    }
-
-    /// POST /api/daemon/shutdown — 데몬 강제 종료
-    pub async fn shutdown_daemon(&self) -> anyhow::Result<Value> {
-        self.post_empty("/api/daemon/shutdown").await
     }
 
     /// GET /api/daemon/console — 데몬 트레이싱 로그 조회
@@ -558,11 +471,6 @@ impl DaemonClient {
         self.get_json("/api/updates/integrity").await
     }
 
-    /// GET /api/updates/download/progress — 다운로드 진행률
-    pub async fn get_download_progress(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/updates/download/progress").await
-    }
-
     // ============ Extension Config ============
 
     /// GET /api/extensions/{id}/config — 익스텐션 설정 조회
@@ -574,32 +482,4 @@ impl DaemonClient {
     pub async fn save_extension_config(&self, ext_id: &str, config: Value) -> anyhow::Result<Value> {
         self.put_json(&format!("/api/extensions/{}/config", ext_id), &config).await
     }
-
-    // ============ Config API ============
-
-    /// GET /api/config/gui — GUI 설정 조회 (데몬 API 경유)
-    pub async fn get_gui_config(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/config/gui").await
-    }
-
-    /// PUT /api/config/gui — GUI 설정 저장 (데몬 API 경유)
-    pub async fn save_gui_config(&self, config: Value) -> anyhow::Result<Value> {
-        self.put_json("/api/config/gui", &config).await
-    }
-
-    /// GET /api/config/node-token — 클라우드 연동 토큰 조회
-    pub async fn get_node_token(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/config/node-token").await
-    }
-
-    /// PUT /api/config/node-token — 토큰 저장
-    pub async fn save_node_token_api(&self, token: &str) -> anyhow::Result<Value> {
-        self.put_json("/api/config/node-token", &serde_json::json!({ "token": token })).await
-    }
-
-    /// DELETE /api/config/node-token — 토큰 삭제
-    pub async fn delete_node_token(&self) -> anyhow::Result<Value> {
-        self.delete_json("/api/config/node-token").await
-    }
-
 }

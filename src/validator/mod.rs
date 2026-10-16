@@ -14,11 +14,11 @@ use serde_json::Value;
 pub struct ValidationError {
     pub field: String,
     pub message: String,
-    #[allow(dead_code)] // 공개 API — 에러 종류 구분용
     pub error_type: ValidationErrorType,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ValidationErrorType {
     Required,
     TypeMismatch,
@@ -42,7 +42,6 @@ pub struct PortConflict {
     /// 충돌하는 상대 인스턴스 이름
     pub conflicting_instance_name: String,
     /// 충돌하는 상대 인스턴스 ID
-    #[allow(dead_code)] // 공개 API — 충돌 진단 정보
     pub conflicting_instance_id: String,
     /// 상대 인스턴스의 포트 종류
     pub conflicting_port_type: String,

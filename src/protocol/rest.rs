@@ -26,14 +26,6 @@ impl RestClient {
         }
     }
 
-    /// Basic Auth 설정 (빌더 패턴)
-    #[allow(dead_code)] // 공개 API — 빌더 패턴 일부
-    pub fn with_basic_auth(mut self, username: String, password: String) -> Self {
-        self.username = Some(username);
-        self.password = Some(password);
-        self
-    }
-
     /// Basic Auth 설정 (가변 참조 버전)
     pub fn set_basic_auth(&mut self, username: String, password: String) {
         self.username = Some(username);
@@ -184,9 +176,9 @@ mod tests {
 
     #[test]
     fn test_rest_client_with_auth() {
-        let client = RestClient::new("127.0.0.1".to_string(), 8212, false)
-            .with_basic_auth("admin".to_string(), "password".to_string());
-        
+        let mut client = RestClient::new("127.0.0.1".to_string(), 8212, false);
+        client.set_basic_auth("admin".to_string(), "password".to_string());
+
         assert_eq!(client.username, Some("admin".to_string()));
         assert_eq!(client.password, Some("password".to_string()));
     }

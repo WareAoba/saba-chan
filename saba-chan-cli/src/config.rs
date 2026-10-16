@@ -178,21 +178,6 @@ pub fn get_bot_prefix() -> anyhow::Result<String> {
         .to_string())
 }
 
-/// 모듈 별명 조회 (bot-config.json → moduleAliases)
-#[allow(dead_code)]
-pub fn get_module_aliases() -> anyhow::Result<Vec<(String, String)>> {
-    let config = load_bot_config()?;
-    let mut aliases = Vec::new();
-    if let Some(map) = config.get("moduleAliases").and_then(|m| m.as_object()) {
-        for (alias, module) in map {
-            if let Some(module_str) = module.as_str() {
-                aliases.push((alias.clone(), module_str.to_string()));
-            }
-        }
-    }
-    Ok(aliases)
-}
-
 /// 인스턴스 디렉토리 경로 (%APPDATA%/saba-chan/instances/)
 pub fn get_instances_path() -> anyhow::Result<PathBuf> {
     let config_dir = get_config_dir()?;
@@ -291,7 +276,6 @@ pub fn set_port_conflict_check(enabled: bool) -> anyhow::Result<()> {
 }
 
 /// 언어 설정 변경
-#[allow(dead_code)]
 pub fn set_language(lang: &str) -> anyhow::Result<()> {
     let mut settings = load_settings()?;
     settings["language"] = serde_json::Value::String(lang.to_string());
@@ -300,7 +284,6 @@ pub fn set_language(lang: &str) -> anyhow::Result<()> {
 
 /// 익스텐션 경로 가져오기 — %APPDATA%/saba-chan/extensions 고정
 /// SABA_EXTENSIONS_DIR 환경 변수가 설정되면 해당 경로를 우선 사용 (테스트/개발용)
-#[allow(dead_code)]
 pub fn get_extensions_path() -> anyhow::Result<String> {
     // 환경 변수 오버라이드
     if let Ok(p) = std::env::var("SABA_EXTENSIONS_DIR") {
@@ -421,42 +404,6 @@ pub fn scan_directory(dir_path: &str) -> anyhow::Result<(Vec<String>, Vec<String
 }
 
 // ============ Module Locales ============
-
-/// 모듈 로케일 데이터 읽기 (데몬 API 우선)
-#[allow(dead_code)]
-pub fn get_module_locales(module_name: &str) -> anyhow::Result<std::collections::HashMap<String, Value>> {
-    if let Some(data) = daemon_get(&format!("/api/module/{}/locales", module_name)) {
-        let mut result = std::collections::HashMap::new();
-        if let Some(obj) = data.as_object() {
-            for (lang, val) in obj {
-                result.insert(lang.clone(), val.clone());
-            }
-        }
-        return Ok(result);
-    }
-    // 데몬 미연결 시 로컬 폴백
-    let modules_path = get_modules_path()?;
-    let locales_dir = PathBuf::from(&modules_path).join(module_name).join("locales");
-    let mut result = std::collections::HashMap::new();
-
-    if !locales_dir.exists() {
-        return Ok(result); // 빈 결과 (로케일 없음)
-    }
-
-    for entry in std::fs::read_dir(&locales_dir)? {
-        let entry = entry?;
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name.ends_with(".json") {
-            let lang = name.trim_end_matches(".json").to_string();
-            if let Ok(content) = std::fs::read_to_string(entry.path()) {
-                if let Ok(parsed) = serde_json::from_str::<Value>(&content) {
-                    result.insert(lang, parsed);
-                }
-            }
-        }
-    }
-    Ok(result)
-}
 
 /// 주어진 JSON에서 settings 값을 추출하는 순수 함수들 (테스트 가능)
 #[cfg(test)]

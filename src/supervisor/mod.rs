@@ -2,7 +2,6 @@ pub mod process;
 pub mod state_machine;
 pub mod module_loader;
 pub mod managed_process;
-pub mod error;
 
 use anyhow::Result;
 use process::ProcessTracker;
@@ -27,6 +26,8 @@ pub struct PortConflictStopEvent {
     pub stopped_id: String,
     /// 충돌 상대 인스턴스 이름
     pub existing_name: String,
+    /// 충돌 상대 인스턴스 ID
+    pub existing_id: String,
     /// 충돌 포트 번호
     pub port: u16,
     /// 타임스탬프 (epoch ms)
@@ -1847,6 +1848,7 @@ impl Supervisor {
                                                 stopped_name: instance.name.clone(),
                                                 stopped_id: instance.id.clone(),
                                                 existing_name: conflict.conflicting_instance_name.clone(),
+                                                existing_id: conflict.conflicting_instance_id.clone(),
                                                 port: conflict.port,
                                                 timestamp_ms: ts,
                                             });
@@ -1863,12 +1865,6 @@ impl Supervisor {
         Ok(())
     }
 
-    pub async fn monitor(&mut self) -> Result<()> {
-        // Periodically check process health
-        tracing::info!("Supervisor monitoring started");
-        Ok(())
-    }
-
     /// 포트 충돌 강제 정지 이벤트를 drain (GUI 폴링에서 한 번 읽으면 비움)
     pub fn drain_port_conflict_stops(&self) -> Vec<PortConflictStopEvent> {
         self.port_conflict_stops
@@ -1876,15 +1872,6 @@ impl Supervisor {
             .map(|mut events| std::mem::take(&mut *events))
             .unwrap_or_default()
     }
-}
-
-#[allow(dead_code)]
-pub async fn run() -> Result<()> {
-    tracing::info!("Supervisor starting");
-    let mut supervisor = Supervisor::new("./modules");
-    supervisor.initialize().await?;
-    supervisor.monitor().await?;
-    Ok(())
 }
 
 #[cfg(test)]

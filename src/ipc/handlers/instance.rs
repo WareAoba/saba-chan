@@ -892,6 +892,10 @@ pub async fn update_instance_settings(
                 );
                 if !errors.is_empty() {
                     let error_details: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
+                    let fields: Vec<Value> = errors
+                        .iter()
+                        .map(|e| json!({ "field": e.field, "type": e.error_type, "message": e.message }))
+                        .collect();
                     tracing::warn!(
                         "Settings validation failed for instance {}: {:?}",
                         id, error_details
@@ -901,6 +905,7 @@ pub async fn update_instance_settings(
                         "error_code": "validation_failed",
                         "message": "Settings validation failed",
                         "details": error_details,
+                        "fields": fields,
                     });
                     return (StatusCode::BAD_REQUEST, Json(error)).into_response();
                 }

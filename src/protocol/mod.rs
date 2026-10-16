@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 
 /// 프로토콜 통신 오류 타입
 #[derive(Error, Debug)]
-#[allow(dead_code)] // 공개 API — 프로토콜 에러 변형 전체 노출 필요
 pub enum ProtocolError {
     #[error("Connection failed: {0}")]
     ConnectionError(String),
@@ -24,12 +23,6 @@ pub enum ProtocolError {
 
     #[error("Protocol-specific error: {0}")]
     Protocol(String),
-
-    #[error("Invalid configuration: {0}")]
-    ConfigError(String),
-
-    #[error("Unknown error: {0}")]
-    Unknown(String),
 }
 
 /// 통신 타입
@@ -99,23 +92,7 @@ pub struct ServerResponse {
 }
 
 impl ServerResponse {
-    #[allow(dead_code)]
-    pub fn success(data: serde_json::Value) -> Self {
-        Self {
-            success: true,
-            data: Some(data),
-            error: None,
-        }
-    }
 
-    #[allow(dead_code)]
-    pub fn error(error: String) -> Self {
-        Self {
-            success: false,
-            data: None,
-            error: Some(error),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -144,11 +121,4 @@ mod tests {
         assert!(json.contains("say hello"));
     }
 
-    #[test]
-    fn test_server_response() {
-        let resp = ServerResponse::success(serde_json::json!({"result": "ok"}));
-        assert!(resp.success);
-        assert!(resp.data.is_some());
-        assert!(resp.error.is_none());
-    }
 }

@@ -172,25 +172,6 @@ pub struct CommandRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)]
-pub struct CommandResponse {
-    pub success: bool,
-    pub message: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)]
-pub struct BotConfig {
-    pub prefix: String,
-    #[serde(default)]
-    #[serde(rename = "moduleAliases")]
-    pub module_aliases: HashMap<String, String>,
-    #[serde(default)]
-    #[serde(rename = "commandAliases")]
-    pub command_aliases: HashMap<String, HashMap<String, String>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerListResponse {
     pub servers: Vec<ServerInfo>,
     /// 포트 충돌로 인한 강제 정지 이벤트 (drain — 한 번 읽으면 비워짐)
@@ -469,12 +450,6 @@ impl ExtensionInitTracker {
             message: message.to_string(),
             timestamp: ts,
         });
-    }
-
-    #[allow(dead_code)]
-    pub async fn is_initializing(&self) -> bool {
-        let state = self.inner.read().await;
-        !state.in_progress.is_empty()
     }
 
     pub async fn snapshot(&self) -> serde_json::Value {

@@ -54,21 +54,6 @@ pub fn resolve_modules_dir() -> std::path::PathBuf {
 /// 기본 플러그인 타임아웃 (초)
 pub const DEFAULT_PLUGIN_TIMEOUT_SECS: u64 = 120;
 
-/// extensions/<name>.py 의 절대경로를 해석합니다.
-/// 익스텐션 디렉토리에서 파일 존재 여부를 검사합니다.
-fn resolve_extension_path(extension_name: &str) -> anyhow::Result<std::path::PathBuf> {
-    let extensions_dir = resolve_extensions_dir();
-    let ext_path = extensions_dir.join(format!("{}.py", extension_name));
-    if !ext_path.exists() {
-        return Err(anyhow::anyhow!(
-            "Extension not found: {} (searched {})",
-            extension_name,
-            ext_path.display()
-        ));
-    }
-    Ok(ext_path)
-}
-
 /// Plugin runner executes Python modules (short-lived)
 /// Returns JSON output from stdout only
 /// Called by Supervisor for module lifecycle management
@@ -81,20 +66,6 @@ pub async fn run_plugin(module_path: &str, function: &str, config: Value) -> Res
 /// Like `run_plugin` but with a custom timeout (seconds).
 pub async fn run_plugin_with_timeout(module_path: &str, function: &str, config: Value, timeout_secs: u64) -> Result<Value> {
     run_plugin_inner(module_path, function, config, None, timeout_secs).await
-}
-
-/// Like `run_plugin` but invokes a callback for each `PROGRESS:{json}` line
-/// emitted on stderr by the Python extension.
-pub async fn run_plugin_with_progress<F>(
-    module_path: &str,
-    function: &str,
-    config: Value,
-    on_progress: F,
-) -> Result<Value>
-where
-    F: Fn(ExtensionProgress) + Send + 'static,
-{
-    run_plugin_inner(module_path, function, config, Some(Box::new(on_progress)), DEFAULT_PLUGIN_TIMEOUT_SECS).await
 }
 
 /// Like `run_plugin_with_progress` but with a custom timeout.
@@ -259,29 +230,6 @@ async fn run_plugin_inner(
 
 // detect_python_command()는 python_env::get_python_path()로 대체됨.
 // 시스템 Python 탐지는 python_env 모듈에서 venv 부트스트랩 시 수행합니다.
-
-/// Extension runner – extensions/<name>.py 를 plugin 프로토콜로 실행합니다.
-/// run_plugin과 동일한 프로토콜이지만, 경로를 extensions/ 디렉토리에서 자동으로 해석합니다.
-#[allow(dead_code)]
-pub async fn run_extension(extension_name: &str, function: &str, config: Value) -> Result<Value> {
-    let ext_path = resolve_extension_path(extension_name)?;
-    run_plugin(ext_path.to_string_lossy().as_ref(), function, config).await
-}
-
-/// Like `run_extension` but with real-time progress callback.
-#[allow(dead_code)]
-pub async fn run_extension_with_progress<F>(
-    extension_name: &str,
-    function: &str,
-    config: Value,
-    on_progress: F,
-) -> Result<Value>
-where
-    F: Fn(ExtensionProgress) + Send + 'static,
-{
-    let ext_path = resolve_extension_path(extension_name)?;
-    run_plugin_with_progress(ext_path.to_string_lossy().as_ref(), function, config, on_progress).await
-}
 
 #[cfg(test)]
 mod tests {

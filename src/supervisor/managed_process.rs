@@ -12,7 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::path::{Path, PathBuf};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command as TokioCommand;
-use tokio::sync::{broadcast, mpsc, Mutex, watch};
+use tokio::sync::{mpsc, Mutex, watch};
 use serde::{Serialize, Deserialize};
 use anyhow::Result;
 use regex::Regex;
@@ -151,21 +151,15 @@ impl LogBuffer {
 /// Provides:
 /// - Async stdin command injection via `send_command()`
 /// - Buffered console output via `get_console_since()` / `get_recent_console()`
-/// - Real-time log broadcast via `subscribe()`
 /// - Running state monitoring via `is_running()`
 pub struct ManagedProcess {
     /// Channel to send commands to stdin
     stdin_tx: mpsc::Sender<String>,
     /// Log buffer for recent console output
     log_buffer: Arc<Mutex<LogBuffer>>,
-    /// Broadcast channel for real-time log events
-    #[allow(dead_code)]
-    log_broadcast: broadcast::Sender<LogLine>,
     /// Process PID
     pub pid: u32,
     /// Watch channel for running state
-    #[allow(dead_code)]
-    running_tx: Arc<watch::Sender<bool>>,
     running_rx: watch::Receiver<bool>,
     /// Abort handle for the background poller task (reattached stubs only)
     poller_handle: Option<tokio::task::AbortHandle>,
@@ -225,7 +219,6 @@ impl ManagedProcess {
 
         // Channels
         let (stdin_tx, stdin_rx) = mpsc::channel::<String>(256);
-        let (log_tx, _) = broadcast::channel::<LogLine>(2048);
         let (running_tx, running_rx) = watch::channel(true);
 
         let mut buf = LogBuffer::new();
@@ -256,15 +249,13 @@ impl ManagedProcess {
         // ── stdout reader ────────────────────────────────────
         if let Some(stdout) = stdout {
             let buf = log_buffer.clone();
-            let bc = log_tx.clone();
             let re = log_regex.clone();
             tokio::spawn(async move {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
                     let level = parse_log_level(&line, re.as_deref());
-                    let log_line = buf.lock().await.push(LogSource::Stdout, line, level);
-                    let _ = bc.send(log_line);
+                    buf.lock().await.push(LogSource::Stdout, line, level);
                 }
             });
         }
@@ -272,7 +263,6 @@ impl ManagedProcess {
         // ── stderr reader ────────────────────────────────────
         if let Some(stderr) = stderr {
             let buf = log_buffer.clone();
-            let bc = log_tx.clone();
             let re = log_regex.clone();
             tokio::spawn(async move {
                 let reader = BufReader::new(stderr);
@@ -281,8 +271,7 @@ impl ManagedProcess {
                     let level = parse_log_level(&line, re.as_deref());
                     // stderr lines default to at least Warn
                     let effective = if level == LogLevel::Info { LogLevel::Warn } else { level };
-                    let log_line = buf.lock().await.push(LogSource::Stderr, line, effective);
-                    let _ = bc.send(log_line);
+                    buf.lock().await.push(LogSource::Stderr, line, effective);
                 }
             });
         }
@@ -307,15 +296,13 @@ impl ManagedProcess {
         {
             let running = running_tx.clone();
             let buf = log_buffer.clone();
-            let bc = log_tx.clone();
             tokio::spawn(async move {
                 let exit_msg = match child.wait().await {
                     Ok(status) => format!("Process exited with {}", status),
                     Err(e) => format!("Failed to wait for process: {}", e),
                 };
                 tracing::info!("{}", exit_msg);
-                let log_line = buf.lock().await.push(LogSource::System, exit_msg, LogLevel::Info);
-                let _ = bc.send(log_line);
+                buf.lock().await.push(LogSource::System, exit_msg, LogLevel::Info);
                 let _ = running.send(false);
             });
         }
@@ -323,16 +310,13 @@ impl ManagedProcess {
         // System log entry
         {
             let msg = format!("Process started with PID {}", pid);
-            let log_line = log_buffer.lock().await.push(LogSource::System, msg, LogLevel::Info);
-            let _ = log_tx.send(log_line);
+            log_buffer.lock().await.push(LogSource::System, msg, LogLevel::Info);
         }
 
         Ok(Self {
             stdin_tx,
             log_buffer,
-            log_broadcast: log_tx,
             pid,
-            running_tx,
             running_rx,
             poller_handle: None,
             stdin_available: true,
@@ -346,7 +330,7 @@ impl ManagedProcess {
     }
 
     /// Spawn a log follower that streams an extension-provided command's output
-    /// into the standard LogBuffer/broadcast infrastructure.
+    /// into the standard LogBuffer infrastructure.
     ///
     /// This allows extension-managed processes (e.g. containers) to share
     /// the same console API (`GET /api/instance/:id/console?since=N`) as native
@@ -392,7 +376,6 @@ impl ManagedProcess {
         // Channels — stdin is not used for container log followers, but we keep the
         // interface compatible with ManagedProcess.
         let (stdin_tx, _stdin_rx) = mpsc::channel::<String>(1);
-        let (log_tx, _) = broadcast::channel::<LogLine>(2048);
         let (running_tx, running_rx) = watch::channel(true);
 
         let mut buf = LogBuffer::new();
@@ -419,7 +402,6 @@ impl ManagedProcess {
         // ── stdout reader ──
         if let Some(stdout) = stdout {
             let buf = log_buffer.clone();
-            let bc = log_tx.clone();
             let re = log_regex.clone();
             let prefix = strip_prefix.map(String::from);
             tokio::spawn(async move {
@@ -436,8 +418,7 @@ impl ManagedProcess {
                         line
                     };
                     let level = parse_log_level(&content, re.as_deref());
-                    let log_line = buf.lock().await.push(LogSource::Stdout, content, level);
-                    let _ = bc.send(log_line);
+                    buf.lock().await.push(LogSource::Stdout, content, level);
                 }
             });
         }
@@ -445,7 +426,6 @@ impl ManagedProcess {
         // ── stderr reader ──
         if let Some(stderr) = stderr {
             let buf = log_buffer.clone();
-            let bc = log_tx.clone();
             let re = log_regex;
             let prefix = strip_prefix.map(String::from);
             tokio::spawn(async move {
@@ -463,8 +443,7 @@ impl ManagedProcess {
                     };
                     let level = parse_log_level(&content, re.as_deref());
                     let effective = if level == LogLevel::Info { LogLevel::Warn } else { level };
-                    let log_line = buf.lock().await.push(LogSource::Stderr, content, effective);
-                    let _ = bc.send(log_line);
+                    buf.lock().await.push(LogSource::Stderr, content, effective);
                 }
             });
         }
@@ -473,7 +452,6 @@ impl ManagedProcess {
         {
             let running = running_tx.clone();
             let buf = log_buffer.clone();
-            let bc = log_tx.clone();
             let desc = description_owned.clone();
             tokio::spawn(async move {
                 let exit_msg = match child.wait().await {
@@ -481,8 +459,7 @@ impl ManagedProcess {
                     Err(e) => format!("Log follower '{}' error: {}", desc, e),
                 };
                 tracing::info!("{}", exit_msg);
-                let log_line = buf.lock().await.push(LogSource::System, exit_msg, LogLevel::Info);
-                let _ = bc.send(log_line);
+                buf.lock().await.push(LogSource::System, exit_msg, LogLevel::Info);
                 let _ = running.send(false);
             });
         }
@@ -491,16 +468,13 @@ impl ManagedProcess {
         {
             let msg = format!("Log streaming started: '{}'", description_owned);
             tracing::info!("{}", msg);
-            let log_line = log_buffer.lock().await.push(LogSource::System, msg, LogLevel::Info);
-            let _ = log_tx.send(log_line);
+            log_buffer.lock().await.push(LogSource::System, msg, LogLevel::Info);
         }
 
         Ok(Self {
             stdin_tx,
             log_buffer,
-            log_broadcast: log_tx,
             pid,
-            running_tx,
             running_rx,
             poller_handle: None,
             stdin_available: false, // log follower has no stdin
@@ -517,12 +491,6 @@ impl ManagedProcess {
         self.log_buffer.lock().await.get_recent(count)
     }
 
-    /// Subscribe to real-time log events.
-    #[allow(dead_code)]
-    pub fn subscribe(&self) -> broadcast::Receiver<LogLine> {
-        self.log_broadcast.subscribe()
-    }
-
     /// Whether the process is still running.
     pub fn is_running(&self) -> bool {
         *self.running_rx.borrow()
@@ -531,16 +499,6 @@ impl ManagedProcess {
     /// Whether stdin commands can be sent to this process.
     pub fn is_stdin_available(&self) -> bool {
         self.stdin_available
-    }
-
-    /// Wait until the process exits.
-    #[allow(dead_code)]
-    pub async fn wait_for_exit(&mut self) {
-        while self.is_running() {
-            if self.running_rx.changed().await.is_err() {
-                break;
-            }
-        }
     }
 
     /// Create a stub ManagedProcess for an orphaned server process.
@@ -556,7 +514,6 @@ impl ManagedProcess {
         instance_dir: &Path,
     ) -> Self {
         let (stdin_tx, _stdin_rx) = mpsc::channel::<String>(1);
-        let (log_tx, _) = broadcast::channel::<LogLine>(2048);
         let (running_tx, running_rx) = watch::channel(true);
         let running_tx = Arc::new(running_tx);
 
@@ -591,17 +548,13 @@ impl ManagedProcess {
         let poller_handle = {
             let running = running_tx.clone();
             let buf = log_buffer.clone();
-            let bc = log_tx.clone();
             let handle = tokio::spawn(async move {
                 loop {
                     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                     if !super::process::is_process_alive(pid) {
                         let exit_msg = format!("Process (PID {}) exited", pid);
                         tracing::info!("{}", exit_msg);
-                        let log_line = buf.lock().await.push(
-                            LogSource::System, exit_msg, LogLevel::Info
-                        );
-                        let _ = bc.send(log_line);
+                        buf.lock().await.push(LogSource::System, exit_msg, LogLevel::Info);
                         let _ = running.send(false);
                         break;
                     }
@@ -613,9 +566,7 @@ impl ManagedProcess {
         Self {
             stdin_tx,
             log_buffer,
-            log_broadcast: log_tx,
             pid,
-            running_tx,
             running_rx,
             poller_handle: Some(poller_handle),
             stdin_available: false, // reattached stub — stdio pipes lost
@@ -650,7 +601,6 @@ impl ManagedProcessStore {
     }
 
     /// Remove a managed process (e.g., after it exits).
-    #[allow(dead_code)]
     pub async fn remove(&self, instance_id: &str) -> Option<Arc<ManagedProcess>> {
         let mut map = self.processes.lock().await;
         map.remove(instance_id)

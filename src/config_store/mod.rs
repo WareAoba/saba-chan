@@ -144,7 +144,6 @@ pub struct ConfigStore {
     bot_config: RwLock<BotConfig>,
 }
 
-#[allow(dead_code)]
 impl ConfigStore {
     /// 새 ConfigStore 생성 (디스크에서 기존 설정 로드)
     pub fn new(data_dir: &Path) -> Self {
@@ -163,14 +162,6 @@ impl ConfigStore {
     /// GUI 설정 읽기 (인메모리 캐시에서 반환)
     pub async fn get_gui_settings(&self) -> GuiSettings {
         self.gui_settings.read().await.clone()
-    }
-
-    /// GUI 설정 전체 교체 (인메모리 + 디스크)
-    pub async fn set_gui_settings(&self, settings: GuiSettings) -> Result<(), ConfigStoreError> {
-        let path = self.data_dir.join("settings.json");
-        save_to_file(&path, &settings)?;
-        *self.gui_settings.write().await = settings;
-        Ok(())
     }
 
     /// GUI 설정을 JSON Value로 반환 (API 응답용)
@@ -203,14 +194,6 @@ impl ConfigStore {
         self.bot_config.read().await.clone()
     }
 
-    /// 봇 설정 전체 교체 (인메모리 + 디스크)
-    pub async fn set_bot_config(&self, config: BotConfig) -> Result<(), ConfigStoreError> {
-        let path = self.data_dir.join("bot-config.json");
-        save_to_file(&path, &config)?;
-        *self.bot_config.write().await = config;
-        Ok(())
-    }
-
     /// 봇 설정을 JSON Value로 반환 (API 응답용)
     pub async fn get_bot_config_json(&self) -> Value {
         let config = self.bot_config.read().await;
@@ -233,10 +216,6 @@ impl ConfigStore {
         Ok(config)
     }
 
-    /// data_dir 경로 반환 (테스트/디버그용)
-    pub fn data_dir(&self) -> &Path {
-        &self.data_dir
-    }
 }
 
 // ── Error ──
@@ -476,7 +455,7 @@ mod tests {
         settings.accent_color = "#ff0000".to_string();
         settings.font_scale = 150;
 
-        store.set_gui_settings(settings.clone()).await.unwrap();
+        store.set_gui_settings_from_json(serde_json::to_value(&settings).unwrap()).await.unwrap();
 
         // 인메모리 확인
         let loaded = store.get_gui_settings().await;
@@ -501,7 +480,7 @@ mod tests {
         config.cloud.relay_url = "https://relay.test".to_string();
         config.module_aliases.insert("mc".to_string(), "minecraft".to_string());
 
-        store.set_bot_config(config.clone()).await.unwrap();
+        store.set_bot_config_from_json(serde_json::to_value(&config).unwrap()).await.unwrap();
 
         // 인메모리 확인
         let loaded = store.get_bot_config().await;

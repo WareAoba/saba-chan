@@ -68,6 +68,7 @@ pub const LIFECYCLE_COMMANDS: &[&str] = &["start", "stop", "restart", "status"];
 impl ModuleRegistry {
     /// 데몬 API에서 모듈 목록을 가져와 레지스트리 구성 (aliases 포함)
     /// 실패 시 None 반환 → load()에서 파일시스템 폴백 사용
+    #[cfg_attr(test, allow(dead_code))]
     fn try_load_from_daemon() -> Option<Self> {
         let base = format!(
             "http://127.0.0.1:{}",

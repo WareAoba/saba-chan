@@ -121,28 +121,6 @@ pub async fn ensure_venv() -> Result<PathBuf> {
     Ok(python_exe)
 }
 
-/// pip 패키지를 관리 venv에 설치합니다.
-#[allow(dead_code)]
-pub async fn pip_install(packages: &[&str]) -> Result<()> {
-    let python_exe = get_python_path().await?;
-    tracing::info!("pip install: {:?}", packages);
-    let mut args = vec!["install", "--upgrade"];
-    args.extend(packages);
-    run_pip(&python_exe, &args).await
-}
-
-/// requirements.txt로부터 의존성을 설치합니다.
-#[allow(dead_code)]
-pub async fn pip_install_requirements(requirements_path: &Path) -> Result<()> {
-    let python_exe = get_python_path().await?;
-    tracing::info!("requirements 설치: {}", requirements_path.display());
-    run_pip(
-        &python_exe,
-        &["install", "-r", &requirements_path.to_string_lossy()],
-    )
-    .await
-}
-
 /// 시스템에서 Python ≥ 3.10 을 탐지합니다.
 pub async fn detect_system_python() -> Result<String> {
     let candidates = ["python", "python3", "py"];
@@ -177,55 +155,6 @@ pub async fn detect_system_python() -> Result<String> {
         MIN_PYTHON_VERSION.0,
         MIN_PYTHON_VERSION.1
     ))
-}
-
-/// 진단 정보를 JSON으로 반환합니다. (IPC 엔드포인트용)
-#[allow(dead_code)]
-pub async fn status() -> serde_json::Value {
-    let data_dir = match resolve_data_dir() {
-        Ok(d) => d,
-        Err(e) => {
-            return serde_json::json!({
-                "available": false,
-                "error": e.to_string(),
-            })
-        }
-    };
-
-    let venv_dir = data_dir.join(VENV_DIR_NAME);
-    let python_exe = venv_python_exe(&venv_dir);
-    let portable_exe = portable_python_exe(&data_dir);
-    let venv_ok = python_exe.exists() && verify_python(&python_exe).await;
-
-    let mut info = serde_json::json!({
-        "available": venv_ok,
-        "venv_dir": venv_dir.to_string_lossy(),
-        "venv_python": python_exe.to_string_lossy(),
-        "portable_python_installed": portable_exe.exists(),
-        "portable_python_path": portable_exe.to_string_lossy(),
-        "python_version_bundled": PYTHON_VERSION,
-    });
-
-    if venv_ok {
-        if let Ok(ver) = get_version(&python_exe).await {
-            info["python_version"] = serde_json::json!(ver);
-        }
-    }
-
-    if let Ok(url) = python_download_url() {
-        info["portable_download_url"] = serde_json::json!(url);
-    }
-
-    match detect_system_python().await {
-        Ok(cmd) => {
-            info["system_python"] = serde_json::json!(cmd);
-        }
-        Err(_) => {
-            info["system_python"] = serde_json::json!(null);
-        }
-    }
-
-    info
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -530,16 +459,6 @@ async fn verify_python(exe: &Path) -> bool {
     matches!(cmd.output().await, Ok(o) if o.status.success())
 }
 
-/// Python --version 문자열 반환
-#[allow(dead_code)]
-async fn get_version(exe: &Path) -> Result<String> {
-    let mut cmd = Command::new(exe);
-    cmd.arg("--version");
-    apply_creation_flags(&mut cmd);
-    let output = cmd.output().await?;
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
 /// pip 명령 실행
 async fn run_pip(python_exe: &Path, args: &[&str]) -> Result<()> {
     let mut cmd = Command::new(python_exe);
@@ -658,13 +577,5 @@ mod tests {
             Ok(cmd) => println!("시스템 Python: {}", cmd),
             Err(e) => println!("시스템 Python 없음 (정상): {}", e),
         }
-    }
-
-    #[tokio::test]
-    async fn test_status_returns_json() {
-        let s = status().await;
-        assert!(s.get("available").is_some());
-        assert!(s.get("venv_dir").is_some());
-        assert!(s.get("portable_python_installed").is_some());
     }
 }

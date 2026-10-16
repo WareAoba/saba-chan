@@ -3,7 +3,6 @@ pub mod plugin;  // Keep - used for Python lifecycle integration
 pub mod python_env;  // Python 가상환경 관리 (venv 부트스트랩, pip)
 pub mod protocol;  // 새로운 프로토콜 통신 모듈
 pub mod ipc;
-pub mod config;
 pub mod config_store;  // 중앙 설정 저장소 (타입 안전 JSON 관리)
 pub mod instance;
 pub mod process_monitor;

@@ -2,7 +2,6 @@ mod supervisor;
 mod plugin;
 mod protocol;
 mod ipc;
-mod config;
 mod config_store;
 mod instance;
 mod process_monitor;
@@ -135,10 +134,6 @@ async fn main() -> anyhow::Result<()> {
     // 서버(GitHub)에서 매니페스트를 가져와 설치된 컴포넌트의 SHA256을 검증.
     // 결과는 로그로만 남으므로 네트워크를 기다리며 기동을 막지 않는다.
     tokio::spawn(run_integrity_check_on_startup());
-
-    // Load config
-    let cfg = config::GlobalConfig::load().ok();
-    let _ = &cfg; // 향후 설정 참조를 위해 유지
 
     // Initialize supervisor with module loader
     // 모듈 경로: %APPDATA%/saba-chan/modules (환경 변수 오버라이드 가능)

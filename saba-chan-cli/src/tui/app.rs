@@ -70,14 +70,12 @@ pub fn push_out(buf: &OutputBuf, lines: Vec<Out>) {
 // ═══════════════════════════════════════════════════════
 
 #[derive(Clone, Debug)]
-#[allow(dead_code)]
 pub enum Screen {
     Dashboard,
     Servers,
     ServerDetail  { name: String, id: String, module_name: String },
-    ServerConsole { name: String, id: String },
-    ServerSettings { name: String, id: String, module_name: String },
-    ServerProperties { name: String, id: String },
+    ServerConsole { id: String },
+    ServerSettings { name: String },
     Modules,
     ModuleDetail  { name: String },
     ModuleManifest,
@@ -105,7 +103,6 @@ impl Screen {
             Self::ServerDetail  { .. } => vec!["saba-chan", "Instances", "Detail"],
             Self::ServerConsole { .. } => vec!["saba-chan", "Instances", "Console"],
             Self::ServerSettings { .. } => vec!["saba-chan", "Instances", "Settings"],
-            Self::ServerProperties { .. } => vec!["saba-chan", "Instances", "Properties"],
             Self::Modules        => vec!["saba-chan", "Modules"],
             Self::ModuleDetail { .. } => vec!["saba-chan", "Modules", "Detail"],
             Self::ModuleManifest => vec!["saba-chan", "Modules", "Manifest"],
@@ -160,7 +157,6 @@ pub enum InputMode {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-#[allow(dead_code)]
 pub enum InlineAction {
     SetCliSetting { key: String },
     SetGuiSetting { key: String },
@@ -177,16 +173,13 @@ pub enum InlineAction {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-#[allow(dead_code)]
 pub enum ConfirmAction {
     DeleteInstance(String), // id
-    StopServer(String),     // name
     ResetServer(String),    // id
     RemoveExtension(String), // ext_id
     InstallExtension(String), // ext_id
     RemoveModule(String),   // module_id
     InstallModuleFromManifest(String), // module_id
-    ApplyInstanceUpdate(String), // instance name
     Custom(String),         // 범용 확인 액션
 }
 
@@ -263,7 +256,7 @@ pub struct ExtSlotData {
 
 /// 익스텐션 인스턴스 필드 정의 (manifest.instance_fields 대응)
 #[derive(Clone, Debug)]
-#[allow(dead_code)]
+#[allow(dead_code)] // 슬롯: 익스텐션 인스턴스 필드 편집 UI가 아직 값을 읽지 않는다
 pub struct FieldDefCli {
     pub field_type: String,      // boolean, number, string
     pub default_value: String,   // 기본값 문자열
@@ -297,17 +290,6 @@ impl ExtensionSlotRegistry {
     /// GUI의 `<ExtensionSlot slotId="...">` 에 대응
     pub fn get_slot(&self, slot_id: &str) -> &[ExtSlotData] {
         self.slots.get(slot_id).map(|v| v.as_slice()).unwrap_or(&[])
-    }
-
-    /// 모든 익스텐션의 instance_fields를 순회
-    /// (extension_id, field_name, field_def) 튜플 반환
-    #[allow(dead_code)]
-    pub fn all_instance_fields(&self) -> Vec<(&str, &str, &FieldDefCli)> {
-        self.instance_fields.iter()
-            .flat_map(|(ext_id, fields)| {
-                fields.iter().map(move |(name, def)| (ext_id.as_str(), name.as_str(), def))
-            })
-            .collect()
     }
 
     /// 전체 레지스트리 초기화 (익스텐션 데이터 재로드 시)
@@ -394,7 +376,6 @@ pub struct ManifestItem {
 // App (메인 상태)
 // ═══════════════════════════════════════════════════════
 
-#[allow(dead_code)]
 pub struct App {
     pub client: DaemonClient,
 
@@ -450,10 +431,6 @@ pub struct App {
     pub autocomplete_visible: bool,
 
     // ── 캐시 데이터 ──
-    pub cached_instances: Vec<Value>,
-    pub cached_modules: Vec<Value>,
-    pub cached_server_detail: Option<Value>,
-    pub cached_module_detail: Option<Value>,
     pub cached_update_status: Option<Value>,
     pub cached_extensions: Vec<ExtensionInfo>,
     pub cached_manifest_extensions: Vec<ManifestItem>,
@@ -535,10 +512,6 @@ impl App {
             console_scroll: 0,
             last_console_refresh: None,
 
-            cached_instances: vec![],
-            cached_modules: vec![],
-            cached_server_detail: None,
-            cached_module_detail: None,
             cached_update_status: None,
             cached_extensions: vec![],
             cached_manifest_extensions: vec![],
@@ -587,14 +560,6 @@ impl App {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn go_home(&mut self) {
-        self.screen = Screen::Dashboard;
-        self.screen_stack.clear();
-        self.menu_selected = 0;
-        self.input_mode = InputMode::Normal;
-    }
-
     // ── 상태 갱신 ──
 
     pub fn apply_status(&mut self, snap: Snapshot) {
@@ -603,18 +568,6 @@ impl App {
         self.token_ok = snap.token;
         self.bot_prefix = snap.prefix;
         self.servers = snap.servers;
-    }
-
-    #[allow(dead_code)]
-    pub fn flush_async(&mut self) {
-        let drained = {
-            let mut buf = self.async_out.lock().unwrap();
-            if buf.is_empty() { return; }
-            buf.drain(..).collect::<Vec<_>>()
-        };
-        let cmd_start = self.output.len().saturating_sub(1);
-        self.output.extend(drained);
-        self.smart_scroll(cmd_start);
     }
 
     pub fn smart_scroll(&mut self, cmd_start: usize) {

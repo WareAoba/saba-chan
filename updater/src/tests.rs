@@ -704,7 +704,6 @@ fn test_dependency_check_serde_roundtrip() {
 }
 
 #[test]
-#[test]
 fn test_component_info_requires_field() {
     use crate::github::ComponentInfo;
 

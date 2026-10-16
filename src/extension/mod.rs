@@ -404,7 +404,6 @@ pub struct ExtensionManager {
     pub manifest_url: String,
 }
 
-#[allow(dead_code)]
 impl ExtensionManager {
     /// 새 ExtensionManager 생성. `extensions_dir`은 `extensions/` 디렉토리 경로.
     pub fn new(extensions_dir: &str) -> Self {
@@ -506,8 +505,6 @@ impl ExtensionManager {
             );
             return Ok(found);
         }
-
-
 
         let entries = std::fs::read_dir(&self.extensions_dir)
             .with_context(|| {
@@ -958,13 +955,6 @@ impl ExtensionManager {
         Ok(())
     }
 
-    /// 강제 비활성화 (인스턴스/의존성 무시) — 내부 마이그레이션/관리용
-    pub fn force_disable(&mut self, ext_id: &str) {
-        self.enabled.remove(ext_id);
-        self.save_state();
-        tracing::warn!("Extension force-disabled: {}", ext_id);
-    }
-
     /// 익스텐션 제거 — 비활성화 후 디렉토리 삭제
     pub fn remove(
         &mut self,
@@ -999,11 +989,6 @@ impl ExtensionManager {
     /// 활성 여부 확인
     pub fn is_enabled(&self, ext_id: &str) -> bool {
         self.enabled.contains(ext_id)
-    }
-
-    /// 현재 활성화된 익스텐션 ID 집합의 복제본을 반환합니다.
-    pub fn enabled_set(&self) -> HashSet<String> {
-        self.enabled.clone()
     }
 
     /// 활성화되어 있고 **디스크에 실제로 설치된** 익스텐션 ID 집합을 반환합니다.
@@ -1305,27 +1290,6 @@ impl ExtensionManager {
         results
     }
 
-    /// 해당 config 섹션명을 관할하는 활성 익스텐션이 있는지
-    pub fn should_parse_config_section(&self, section: &str) -> bool {
-        self.discovered.values().any(|ext| {
-            self.enabled.contains(&ext.manifest.id)
-                && ext.manifest.module_config_section.as_deref() == Some(section)
-        })
-    }
-
-    /// 활성 익스텐션의 instance_fields를 합산
-    pub fn all_instance_fields(&self) -> HashMap<String, FieldDef> {
-        let mut fields = HashMap::new();
-        for ext in self.discovered.values() {
-            if self.enabled.contains(&ext.manifest.id) {
-                for (k, v) in &ext.manifest.instance_fields {
-                    fields.insert(k.clone(), v.clone());
-                }
-            }
-        }
-        fields
-    }
-
     /// 활성 익스텐션의 GUI 매니페스트 목록
     pub fn gui_manifests(&self) -> Vec<(&str, &GuiManifest)> {
         self.discovered
@@ -1348,11 +1312,6 @@ impl ExtensionManager {
     // ═══════════════════════════════════════════════════════════════
     //  원격 매니페스트 & 버전 관리
     // ═══════════════════════════════════════════════════════════════
-
-    /// 원격 매니페스트 URL을 커스텀 주소로 오버라이드
-    pub fn set_manifest_url(&mut self, url: &str) {
-        self.manifest_url = url.to_string();
-    }
 
     /// 원격 매니페스트에서 가용 익스텐션 목록을 페치합니다.
     ///
@@ -1414,16 +1373,6 @@ impl ExtensionManager {
         updates
     }
 
-    /// 버전 문자열 비교 (updater 크레이트의 SemVer를 사용, 폴백 포함)
-    ///
-    /// 기존 업데이터와 동일한 `SemVer` 타입을 사용하여 동작을 보장합니다.
-    pub fn is_newer_version(candidate: &str, current: &str) -> bool {
-        match (SemVer::parse(candidate), SemVer::parse(current)) {
-            (Some(c), Some(cur)) => c.is_newer_than(&cur),
-            _ => candidate > current,
-        }
-    }
-
     /// 원격에서 zip을 다운로드하여 extensions/ 폴더에 설치합니다.
     ///
     /// `download_url`에서 zip 파일을 받아 `extensions/{ext_id}/`에 압축을 풉니다.
@@ -1467,7 +1416,6 @@ impl ExtensionManager {
             std::fs::remove_dir_all(&dest)
                 .with_context(|| format!("Failed to remove existing extension dir: {}", dest.display()))?;
         }
-
 
         let file = std::fs::File::open(&zip_path)?;
         let mut archive = zip::ZipArchive::new(file)
@@ -1535,12 +1483,6 @@ impl ExtensionManager {
         for (k, v) in values {
             entry.insert(k, v);
         }
-        self.save_extension_config();
-    }
-
-    /// 특정 익스텐션의 글로벌 설정을 통째로 교체합니다.
-    pub fn replace_extension_config(&mut self, ext_id: &str, values: HashMap<String, Value>) {
-        self.extension_config.insert(ext_id.to_string(), values);
         self.save_extension_config();
     }
 
@@ -2011,26 +1953,6 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("child_ext"));
     }
 
-    #[test]
-    fn test_force_disable() {
-        let tmp = tempfile::tempdir().unwrap();
-        let ext_dir = tmp.path().join("test_ext");
-        std::fs::create_dir_all(&ext_dir).unwrap();
-        std::fs::write(
-            ext_dir.join("manifest.json"),
-            r#"{"id":"test_ext","name":"Test","version":"0.1.0"}"#,
-        )
-        .unwrap();
-
-        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
-        mgr.discover().unwrap();
-        mgr.enable("test_ext").unwrap();
-        assert!(mgr.is_enabled("test_ext"));
-
-        mgr.force_disable("test_ext");
-        assert!(!mgr.is_enabled("test_ext"));
-    }
-
     // ═══════════════════════════════════════════════════════════════
     //  추가 심층 테스트
     // ═══════════════════════════════════════════════════════════════
@@ -2280,65 +2202,6 @@ mod tests {
 
         // 존재하지 않는 hook 이름
         assert!(mgr.hooks_for("nonexistent.hook").is_empty());
-    }
-
-    /// should_parse_config_section — module_config_section 매칭
-    #[test]
-    fn test_should_parse_config_section() {
-        let tmp = tempfile::tempdir().unwrap();
-        let ext_dir = tmp.path().join("docker");
-        std::fs::create_dir_all(&ext_dir).unwrap();
-        std::fs::write(ext_dir.join("manifest.json"), json!({
-            "id": "docker", "name": "Docker", "version": "1.0.0",
-            "module_config_section": "docker"
-        }).to_string()).unwrap();
-
-        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
-        mgr.discover().unwrap();
-
-        // 비활성 → false
-        assert!(!mgr.should_parse_config_section("docker"));
-
-        mgr.enable("docker").unwrap();
-        assert!(mgr.should_parse_config_section("docker"));
-        assert!(!mgr.should_parse_config_section("other_section"));
-    }
-
-    /// all_instance_fields — 여러 익스텐션의 필드 합산
-    #[test]
-    fn test_all_instance_fields_merges_across_extensions() {
-        let tmp = tempfile::tempdir().unwrap();
-
-        let make_ext = |id: &str, field: &str| {
-            let dir = tmp.path().join(id);
-            std::fs::create_dir_all(&dir).unwrap();
-            std::fs::write(dir.join("manifest.json"), json!({
-                "id": id, "name": id, "version": "0.1.0",
-                "instance_fields": { field: { "type": "boolean", "default": false } }
-            }).to_string()).unwrap();
-        };
-
-        make_ext("ext_a", "field_a");
-        make_ext("ext_b", "field_b");
-
-        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
-        mgr.discover().unwrap();
-        mgr.enable("ext_a").unwrap();
-        mgr.enable("ext_b").unwrap();
-
-        let fields = mgr.all_instance_fields();
-        assert!(fields.contains_key("field_a"));
-        assert!(fields.contains_key("field_b"));
-        assert_eq!(fields.len(), 2);
-    }
-
-    /// is_newer_version 유틸리티
-    #[test]
-    fn test_is_newer_version() {
-        assert!(ExtensionManager::is_newer_version("1.1.0", "1.0.0"));
-        assert!(ExtensionManager::is_newer_version("2.0.0", "1.9.9"));
-        assert!(!ExtensionManager::is_newer_version("1.0.0", "1.0.0"));
-        assert!(!ExtensionManager::is_newer_version("0.9.0", "1.0.0"));
     }
 
     /// check_updates_against — 로컬 < 원격이면 업데이트 정보 반환
