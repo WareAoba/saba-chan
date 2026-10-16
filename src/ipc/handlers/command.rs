@@ -334,17 +334,6 @@ pub async fn execute_rest_command(
         }
     }
 
-    // REST 연결 검증
-    if let Err(e) = client.connect_rest(std::time::Duration::from_secs(5)) {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "error": format!("REST connection failed: {}", e)
-            })),
-        )
-            .into_response();
-    }
-
     // 메서드 결정
     let method = payload
         .get("method")
@@ -368,7 +357,28 @@ pub async fn execute_rest_command(
         timeout_secs: payload.get("timeout").and_then(|v| v.as_u64()),
     };
 
-    match client.execute(cmd) {
+    // 연결 확인과 요청은 블로킹 I/O라 async 런타임 밖에서 실행한다
+    enum RestFailure {
+        Connect(String),
+        Execute(String),
+    }
+    let outcome = tokio::task::spawn_blocking(move || {
+        client
+            .connect_rest(std::time::Duration::from_secs(5))
+            .map_err(|e| RestFailure::Connect(e.to_string()))?;
+        client.execute(cmd).map_err(|e| RestFailure::Execute(e.to_string()))
+    })
+    .await
+    .unwrap_or_else(|e| Err(RestFailure::Execute(format!("task failed: {}", e))));
+
+    match outcome {
+        Err(RestFailure::Connect(e)) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "error": format!("REST connection failed: {}", e)
+            })),
+        )
+            .into_response(),
         Ok(response) => (
             StatusCode::OK,
             Json(json!({
@@ -383,7 +393,7 @@ pub async fn execute_rest_command(
             })),
         )
             .into_response(),
-        Err(e) => (
+        Err(RestFailure::Execute(e)) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({
                 "error": format!("REST execution failed: {}", e)

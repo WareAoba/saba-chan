@@ -320,6 +320,9 @@ pub struct ProvisionProgress {
 #[derive(Debug, Clone)]
 pub struct ProvisionTracker {
     inner: Arc<std::sync::Mutex<HashMap<String, ProvisionProgress>>>,
+    /// 새로 만드는 중인 인스턴스 이름. 실패 후 dismiss할 때 롤백(삭제)해도 되는 것은
+    /// 이 목록에 있는 것뿐이다. 기존 인스턴스의 업데이트 실패는 롤백하지 않는다.
+    creating: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
 }
 
 impl Default for ProvisionTracker {
@@ -330,7 +333,22 @@ impl Default for ProvisionTracker {
 
 impl ProvisionTracker {
     pub fn new() -> Self {
-        Self { inner: Arc::new(std::sync::Mutex::new(HashMap::new())) }
+        Self {
+            inner: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            creating: Arc::new(std::sync::Mutex::new(Default::default())),
+        }
+    }
+
+    /// 신규 생성 프로비저닝 시작을 기록한다.
+    pub fn mark_creating(&self, name: &str) {
+        if let Ok(mut set) = self.creating.lock() {
+            set.insert(name.to_string());
+        }
+    }
+
+    /// 신규 생성 표시를 지우고, 표시가 있었는지 돌려준다.
+    pub fn take_creating(&self, name: &str) -> bool {
+        self.creating.lock().map(|mut set| set.remove(name)).unwrap_or(false)
     }
 
     pub fn update(&self, instance_id: &str, progress: ProvisionProgress) {
@@ -484,8 +502,11 @@ pub struct IPCServer {
     pub extension_init_tracker: ExtensionInitTracker,
     /// 인스턴스별 RCON 연결 풀 (연결 재사용)
     pub rcon_pool: Arc<crate::protocol::rcon_pool::RconPool>,
-    /// Graceful shutdown 토큰 — 취소 시 데몬 전체 종료
+    /// Graceful shutdown 토큰 — 정리가 끝난 뒤 취소되며, 취소 시 모든 태스크 종료
     pub shutdown_token: tokio_util::sync::CancellationToken,
+    /// 종료 요청 — API·워치독 등은 이것만 취소한다. main의 정리 태스크가 받아서
+    /// Ctrl+C와 같은 정리(익스텐션 daemon.shutdown 훅 등)를 거친 뒤 `shutdown_token`을 취소한다.
+    pub stop_requested: tokio_util::sync::CancellationToken,
     /// 범용 익스텐션 프로세스 매니저 (이름 기반 다중 프로세스 관리)
     /// 중앙 설정 저장소 (타입 안전 JSON 관리)
     pub config_store: Arc<crate::config_store::ConfigStore>,
@@ -531,10 +552,20 @@ impl IPCServer {
             extension_init_tracker: ExtensionInitTracker::new(),
             rcon_pool: Arc::new(crate::protocol::rcon_pool::RconPool::new()),
             shutdown_token: tokio_util::sync::CancellationToken::new(),
+            stop_requested: tokio_util::sync::CancellationToken::new(),
             config_store,
             daemon_log_buffer,
             relay_agent: crate::relay_agent::RelayAgent::new(),
         }
+    }
+
+    /// 응답을 먼저 보낼 수 있게 잠깐 뒤에 종료를 요청한다 (정리 경로는 main이 처리).
+    pub fn request_shutdown(&self) {
+        let stop = self.stop_requested.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+            stop.cancel();
+        });
     }
 
     pub async fn start(self) -> Result<()> {
@@ -699,6 +730,16 @@ impl IPCServer {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn only_new_instances_are_marked_for_rollback() {
+        let tracker = ProvisionTracker::new();
+        tracker.mark_creating("fresh");
+        assert!(tracker.take_creating("fresh"));
+        // 한 번 꺼내면 끝 — 이후 업데이트 실패를 dismiss해도 롤백하지 않는다
+        assert!(!tracker.take_creating("fresh"));
+        assert!(!tracker.take_creating("existing"));
+    }
 
     #[tokio::test]
     async fn test_ipc_handle_request() {

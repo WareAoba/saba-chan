@@ -275,6 +275,7 @@ pub async fn create_instance(
                     let inst_clone = instance.clone();
 
                     // 초기 프로비저닝 상태 등록 (범용 — 스텝 정보는 extension이 제공)
+                    tracker.mark_creating(&inst_clone.name);
                     tracker.update(&inst_clone.name, crate::ipc::ProvisionProgress {
                         step: 0,
                         total: 1,
@@ -413,6 +414,7 @@ pub async fn create_instance(
                             "steamcmd" => "steamcmd",
                             _ => "download",
                         };
+                        tracker.mark_creating(&instance_name);
                         tracker.update(&instance_name, crate::ipc::ProvisionProgress {
                             step: 0,
                             total: 1,
@@ -707,7 +709,8 @@ pub async fn create_instance(
 }
 
 /// DELETE /api/provision-progress/:name - 프로비저닝 상태 클리어 (에러 dismiss용)
-/// 프로비저닝 실패 상태였으면 인스턴스도 자동 롤백(삭제)
+/// 신규 생성 프로비저닝이 실패한 상태였으면 인스턴스도 롤백(삭제)한다.
+/// 기존 인스턴스의 업데이트 실패는 진행 표시만 지운다.
 pub async fn dismiss_provision_progress(
     Path(name): Path<String>,
     State(state): State<IPCServer>,
@@ -718,11 +721,13 @@ pub async fn dismiss_provision_progress(
         .get(&name)
         .map(|p| p.error.is_some())
         .unwrap_or(false);
+    let was_creating = state.provision_tracker.take_creating(&name);
 
     state.provision_tracker.remove(&name);
 
-    // 프로비저닝 실패 시: 자동 롤백 — 인스턴스 삭제
-    if had_error {
+    // 신규 생성이 실패했을 때만 롤백 — 인스턴스 삭제
+    let rolled_back = had_error && was_creating;
+    if rolled_back {
         let mut supervisor = state.supervisor.write().await;
         if let Some(id) = supervisor
             .instance_store
@@ -743,7 +748,7 @@ pub async fn dismiss_provision_progress(
         }
     }
 
-    (StatusCode::OK, Json(json!({ "success": true, "rolled_back": had_error }))).into_response()
+    (StatusCode::OK, Json(json!({ "success": true, "rolled_back": rolled_back }))).into_response()
 }
 
 /// GET /api/provision-progress/:name - 프로비저닝 진행 상태 (서버 이름 기준)
@@ -886,7 +891,8 @@ pub async fn update_instance_settings(
     if let Some(settings_obj) = settings.as_object() {
         if let Ok(module) = supervisor.module_loader.get_module(&instance.module_name) {
             if let Some(ref settings_meta) = module.metadata.settings {
-                let errors = crate::validator::validate_all_settings(
+                // 부분 변경이므로 보낸 필드만 검증한다
+                let errors = crate::validator::validate_settings_patch(
                     &settings_meta.fields,
                     settings_obj,
                 );
@@ -1414,7 +1420,8 @@ pub async fn apply_server_update(
     let instance_name = instance.name.clone();
     let module_name_owned = instance.module_name.clone();
 
-    // 프로비저닝 상태 등록
+    // 프로비저닝 상태 등록 (기존 인스턴스 업데이트 — 실패해도 롤백 대상이 아니다)
+    tracker.take_creating(&instance_name);
     tracker.update(
         &instance_name,
         crate::ipc::ProvisionProgress {

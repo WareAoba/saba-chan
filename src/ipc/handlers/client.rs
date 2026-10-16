@@ -13,11 +13,7 @@ pub async fn daemon_shutdown(
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
     tracing::info!("[Shutdown] Daemon shutdown requested via API");
-    let token = state.shutdown_token.clone();
-    tokio::spawn(async move {
-        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-        token.cancel();
-    });
+    state.request_shutdown();
     (StatusCode::OK, Json(json!({"ok": true, "message": "Shutdown initiated"}))).into_response()
 }
 
@@ -84,12 +80,7 @@ pub async fn client_unregister(
         // shutdown=true && 남은 클라이언트 0 → 데몬 자체 종료
         if wants_shutdown && count == 0 {
             tracing::info!("[Shutdown] Voluntary shutdown requested via unregister — initiating graceful shutdown");
-            // 별도 태스크에서 짧은 딜레이 후 종료 (응답을 먼저 보내기 위해)
-            let token = state.shutdown_token.clone();
-            tokio::spawn(async move {
-                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-                token.cancel();
-            });
+            state.request_shutdown();
         }
 
         (StatusCode::OK, Json(json!({"ok": true}))).into_response()

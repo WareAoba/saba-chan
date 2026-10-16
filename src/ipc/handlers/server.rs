@@ -47,10 +47,12 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
         start_time: Option<u64>,
     }
 
-    let snapshots: Vec<InstanceSnapshot> = {
+    let (snapshots, all_instances, module_protocols): (Vec<InstanceSnapshot>, Vec<_>, _) = {
         let supervisor = state.supervisor.read().await;
         let instances = supervisor.instance_store.list();
-        instances.iter().map(|instance| {
+        let all_instances = instances.to_vec();
+        let module_protocols = supervisor.build_module_protocols_map();
+        let snapshots =         instances.iter().map(|instance| {
             let pid = supervisor.tracker.get_pid(&instance.id).ok();
             let start_time = if pid.is_some() {
                 supervisor.tracker.get_start_time(&instance.id).ok()
@@ -82,7 +84,8 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
                 pid,
                 start_time,
             }
-        }).collect()
+        }).collect();
+        (snapshots, all_instances, module_protocols)
     };
     // supervisor read lock 해제됨 — 이후 extension dispatch에 의해 블로킹되어도
     // 다른 API 핸들러가 supervisor write lock을 획득할 수 있음
@@ -221,38 +224,29 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
         });
     }
 
-    // ── 포트 충돌 계산: 모든 서버 간 포트 겹침을 검사하여 per-server 정보 채움 ──
+    // ── 포트 충돌 계산: 시작 시 검사(check_port_conflicts)와 같은 기준 ──
+    // 모듈이 지원하지 않는 프로토콜의 포트는 제외한다. 목록은 "켜면 부딪힐" 서버를
+    // 미리 보여주는 용도라 정지된 서버끼리도 비교한다(시작 시에는 실행 중인 것만).
     {
-        // 포트 → (server_index, port_type) 매핑
-        let mut port_map: std::collections::HashMap<u16, Vec<(usize, &str)>> = std::collections::HashMap::new();
-        for (idx, srv) in servers.iter().enumerate() {
-            for (p, pt) in [
-                (srv.port, "port"),
-                (srv.rcon_port, "rcon_port"),
-                (srv.rest_port, "rest_port"),
-            ] {
-                if let Some(port) = p {
-                    port_map.entry(port).or_default().push((idx, pt));
-                }
-            }
-        }
-        // 2개 이상 겹치는 포트에 대해 충돌 정보 추가
-        for (&port, entries) in &port_map {
-            if entries.len() < 2 { continue; }
-            for &(idx, pt) in entries {
-                let mut conflicts_for_this: Vec<PortConflictInfo> = Vec::new();
-                for &(other_idx, other_pt) in entries {
-                    if other_idx == idx { continue; }
-                    conflicts_for_this.push(PortConflictInfo {
-                        port,
-                        port_type: pt.to_string(),
-                        conflict_name: servers[other_idx].name.clone(),
-                        conflict_id: servers[other_idx].id.clone(),
-                        conflict_port_type: other_pt.to_string(),
-                    });
-                }
-                servers[idx].port_conflicts.extend(conflicts_for_this);
-            }
+        let every_id: std::collections::HashSet<String> =
+            all_instances.iter().map(|i| i.id.clone()).collect();
+        for srv in servers.iter_mut() {
+            let Some(target) = all_instances.iter().find(|i| i.id == srv.id) else { continue };
+            srv.port_conflicts = crate::validator::check_port_conflicts(
+                target,
+                &all_instances,
+                &every_id,
+                Some(&module_protocols),
+            )
+            .into_iter()
+            .map(|c| PortConflictInfo {
+                port: c.port,
+                port_type: c.port_type,
+                conflict_name: c.conflicting_instance_name,
+                conflict_id: c.conflicting_instance_id,
+                conflict_port_type: c.conflicting_port_type,
+            })
+            .collect();
         }
     }
 

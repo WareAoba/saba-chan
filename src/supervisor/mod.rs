@@ -161,7 +161,7 @@ impl Supervisor {
 
     /// 로드된 모듈로부터 module_name → protocols_supported 맵을 빌드합니다.
     /// `check_port_conflicts`에 전달하여 미지원 프로토콜 포트를 충돌 검사에서 제외합니다.
-    fn build_module_protocols_map(&self) -> HashMap<String, Vec<String>> {
+    pub(crate) fn build_module_protocols_map(&self) -> HashMap<String, Vec<String>> {
         let mut map = HashMap::new();
         if let Ok(modules) = self.module_loader.discover_modules() {
             for m in modules {
@@ -560,11 +560,12 @@ impl Supervisor {
             .find(|i| i.name == server_name)
             .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
 
-        // ── Extension hook: server.post_stop ──
+        // ── Extension hook: server.stop ──
+        // 정지 전에 불린다. 익스텐션(예: 컨테이너)이 정지를 맡으면 handled=true를 돌려준다.
         if let Some(ref ext_mgr) = self.extension_manager {
             let instance_dir = self.instance_store.instance_dir(&instance.id);
             let results = ext_mgr.read().await
-                .dispatch_hook("server.post_stop", json!({
+                .dispatch_hook("server.stop", json!({
                     "instance_id": instance.id.clone(),
                     "instance_dir": instance_dir.to_string_lossy(),
                     "module": module_name,

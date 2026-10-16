@@ -2,7 +2,7 @@
 //!
 //! - `validate_setting_value`: module.toml의 SettingField 스키마를 기반으로
 //!   개별 설정값의 타입·범위·필수여부를 검증합니다.
-//! - `validate_all_settings`: 모듈의 모든 설정 필드를 한 번에 검증합니다.
+//! - `validate_settings_patch`: 부분 변경 요청에 들어 있는 설정 필드만 검증합니다.
 //! - `check_port_conflicts`: 실행 중인 인스턴스와 포트 충돌을 검사합니다.
 
 use crate::instance::ServerInstance;
@@ -218,28 +218,20 @@ fn validate_string(field: &SettingField, value: &Value) -> Result<(), Validation
     }
 }
 
-/// 모듈의 전체 설정 필드를 한꺼번에 검증합니다.
-///
-/// # Arguments
-/// * `fields` - module.toml의 settings.fields 목록
-/// * `settings` - 사용자가 입력한 전체 설정값 (JSON 오브젝트)
-///
-/// # Returns
-/// 검증 오류 목록 (비어있으면 모두 유효)
-pub fn validate_all_settings(
+/// 부분 변경(PATCH) 검증: 요청에 들어 있는 필드만 검사한다.
+/// 보내지 않은 필수 필드는 기존 값을 유지하므로 오류가 아니다.
+/// 필수 필드를 `null`·빈 문자열로 지우려는 요청은 여전히 오류다.
+pub fn validate_settings_patch(
     fields: &[SettingField],
     settings: &serde_json::Map<String, Value>,
 ) -> Vec<ValidationError> {
-    let mut errors = Vec::new();
-
-    for field in fields {
-        let value = settings.get(&field.name);
-        if let Err(e) = validate_setting_value(field, value) {
-            errors.push(e);
-        }
-    }
-
-    errors
+    fields
+        .iter()
+        .filter_map(|field| {
+            let value = settings.get(&field.name)?;
+            validate_setting_value(field, Some(value)).err()
+        })
+        .collect()
 }
 
 /// 인스턴스의 포트가 다른 실행 중인 인스턴스와 충돌하는지 검사합니다.
@@ -666,43 +658,21 @@ mod tests {
         assert!(validate_setting_value(&field, Some(&val)).is_ok());
     }
 
-    /// validate_all_settings — 복합 스키마 일괄 검증
     #[test]
-    fn test_validate_all_settings_batch() {
-        let mut port_field = make_field("port", "number");
-        port_field.required = Some(true);
-        port_field.min = Some(1024.0);
-        port_field.max = Some(65535.0);
-
-        let mut name_field = make_field("name", "text");
-        name_field.required = Some(true);
-
-        let mut mode_field = make_field("mode", "select");
-        mode_field.options = Some(vec!["survival".into(), "creative".into()]);
-
-        let optional_field = make_field("motd", "text");
-
-        let fields = vec![port_field, name_field, mode_field, optional_field];
-
-        // 올바른 설정
-        let mut settings = serde_json::Map::new();
-        settings.insert("port".into(), Value::Number(serde_json::Number::from(25565)));
-        settings.insert("name".into(), Value::String("My Server".into()));
-        settings.insert("mode".into(), Value::String("survival".into()));
-
-        let errors = validate_all_settings(&fields, &settings);
-        assert!(errors.is_empty(), "Valid settings should have no errors: {:?}", errors);
-
-        // port 누락 + mode 잘못됨
-        let mut bad_settings = serde_json::Map::new();
-        bad_settings.insert("name".into(), Value::String("Test".into()));
-        bad_settings.insert("mode".into(), Value::String("hardcore".into()));
-
-        let errors = validate_all_settings(&fields, &bad_settings);
-        assert_eq!(errors.len(), 2, "Should find 2 errors: {:?}", errors);
-        let error_fields: Vec<&str> = errors.iter().map(|e| e.field.as_str()).collect();
-        assert!(error_fields.contains(&"port"));
-        assert!(error_fields.contains(&"mode"));
+    fn patch_validation_only_checks_sent_fields() {
+        let mut players = make_field("max_players", "number");
+        players.required = Some(true);
+        players.min = Some(1.0);
+        players.max = Some(100.0);
+        let mut motd = make_field("motd", "text");
+        motd.required = Some(true);
+        let fields = vec![players, motd];
+        // 필수 필드 motd를 보내지 않아도 통과 (기존 값 유지)
+        let patch = serde_json::json!({ "max_players": 10 });
+        assert!(validate_settings_patch(&fields, patch.as_object().unwrap()).is_empty());
+        // 보낸 값은 여전히 검사하고, 필수 값을 지우려는 것도 막는다
+        let bad = serde_json::json!({ "max_players": 500, "motd": "" });
+        assert_eq!(validate_settings_patch(&fields, bad.as_object().unwrap()).len(), 2);
     }
 
     /// 포트 충돌 — 같은 game port와 rcon_port 간 크로스 충돌

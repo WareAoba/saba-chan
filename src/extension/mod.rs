@@ -12,6 +12,24 @@ use saba_chan_updater_lib::config_file::ConfigFile;
 use saba_chan_updater_lib::version::SemVer;
 
 /// npm package.json 스타일 dependencies 디시리얼라이저.
+/// 예전 hook 이름 → 지금 이름. `server.post_stop`은 실제로는 정지 **전에** 불려
+/// 익스텐션이 정지를 대신 처리하는 hook이었으므로 `server.stop`으로 바뀌었다.
+const HOOK_ALIASES: &[(&str, &str)] = &[("server.post_stop", "server.stop")];
+
+/// hook 맵을 읽으며 예전 이름을 지금 이름으로 바꾼다 (둘 다 있으면 지금 이름이 이긴다).
+fn deserialize_hooks<'de, D>(deserializer: D) -> Result<HashMap<String, HookBinding>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let mut hooks = HashMap::<String, HookBinding>::deserialize(deserializer)?;
+    for (old, new) in HOOK_ALIASES {
+        if let Some(binding) = hooks.remove(*old) {
+            hooks.entry(new.to_string()).or_insert(binding);
+        }
+    }
+    Ok(hooks)
+}
+
 /// 배열 형식과 맵 형식 모두 지원:
 /// - `["steamcmd", "ue4-ini"]` → `{"steamcmd": "*", "ue4-ini": "*"}`
 /// - `{"steamcmd": ">=0.1.0", "saba-core": ">=0.3.0"}` → 그대로
@@ -189,7 +207,7 @@ pub struct ExtensionManifest {
     pub dependencies: HashMap<String, String>,
     #[serde(default)]
     pub python_modules: HashMap<String, String>, // name → relative path
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_hooks")]
     pub hooks: HashMap<String, HookBinding>, // hook_name → binding
     #[serde(default)]
     pub gui: Option<GuiManifest>,
@@ -1951,7 +1969,9 @@ mod tests {
         assert_eq!(manifest.dependencies.get("steamcmd").unwrap(), "*");
         assert_eq!(manifest.hooks.len(), 2);
         assert!(manifest.hooks.contains_key("server.pre_start"));
-        assert!(manifest.hooks.contains_key("server.post_stop"));
+        // 예전 이름은 읽을 때 지금 이름으로 바뀐다
+        assert!(manifest.hooks.contains_key("server.stop"));
+        assert!(!manifest.hooks.contains_key("server.post_stop"));
         assert_eq!(manifest.python_modules.len(), 2);
         assert_eq!(manifest.instance_fields.len(), 2);
         assert!(manifest.gui.is_some());

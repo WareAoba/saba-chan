@@ -217,6 +217,7 @@ async fn main() -> anyhow::Result<()> {
 
     // ── CancellationToken: 모든 백그라운드 태스크에 graceful shutdown 전파 ──
     let shutdown_token = ipc_server.shutdown_token.clone();
+    let stop_requested_token = ipc_server.stop_requested.clone();
 
     // 백그라운드 모니터링 태스크 시작
     let supervisor_monitor = supervisor.clone();
@@ -301,6 +302,7 @@ async fn main() -> anyhow::Result<()> {
     } else {
     let registry_watchdog = client_registry.clone();
     let watchdog_cancel = shutdown_token.clone();
+    let watchdog_stop = stop_requested_token.clone();
     tokio::spawn(async move {
         const CHECK_INTERVAL_SECS: u64 = 5;
         const GRACE_PERIOD_SECS: u64 = 15;
@@ -352,13 +354,8 @@ async fn main() -> anyhow::Result<()> {
                     restart_attempts
                 );
                 tracing::error!("[Watchdog] Core daemon is terminating itself (self-destruct).");
-                // 봇 프로세스 등 정리
-                let timeout = std::time::Duration::from_secs(0);
-                let all = registry_watchdog.reap_expired(timeout).await;
-                for (id, client) in &all {
-                    tracing::info!("[Watchdog] Cleanup client {} ({:?})", id, client.kind);
-                }
-                watchdog_cancel.cancel();
+                // 정리는 종료 경로 하나(아래 Graceful shutdown 태스크)가 맡는다
+                watchdog_stop.cancel();
                 break;
             }
 
@@ -396,9 +393,13 @@ async fn main() -> anyhow::Result<()> {
     let registry_shutdown = client_registry.clone();
     let supervisor_shutdown = supervisor.clone();
     let ctrl_c_cancel = shutdown_token.clone();
+    let stop_requested = stop_requested_token.clone();
     tokio::spawn(async move {
-        tokio::signal::ctrl_c().await.ok();
-        tracing::info!("Shutdown signal received, cleaning up...");
+        // 종료 경로는 하나: Ctrl+C/SIGTERM, API(/api/daemon/shutdown, unregister), 워치독 모두 여기로
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => tracing::info!("Shutdown signal received, cleaning up..."),
+            _ = stop_requested.cancelled() => tracing::info!("Shutdown requested, cleaning up..."),
+        }
 
         // 1. 익스텐션 정리 (컨테이너 종료 등은 extension hook으로 위임)
         {
@@ -421,7 +422,19 @@ async fn main() -> anyhow::Result<()> {
                     }).collect::<Vec<_>>(),
                 });
                 let mgr = ext_mgr.read().await;
-                let results = mgr.dispatch_hook("daemon.shutdown", ctx).await;
+                // 익스텐션이 멈춰도 종료는 진행되게 상한을 둔다
+                let results = match tokio::time::timeout(
+                    std::time::Duration::from_secs(30),
+                    mgr.dispatch_hook("daemon.shutdown", ctx),
+                )
+                .await
+                {
+                    Ok(results) => results,
+                    Err(_) => {
+                        tracing::warn!("[Shutdown] daemon.shutdown hooks timed out after 30s");
+                        Vec::new()
+                    }
+                };
                 let handled = results.iter().any(|(_id, r)| {
                     r.as_ref()
                         .map(|v| v.get("handled").and_then(|h| h.as_bool()) == Some(true))
