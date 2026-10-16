@@ -234,6 +234,15 @@ pub struct ProtocolsInfo {
     pub default: Option<String>,
 }
 
+/// 맞지 않는 컴포넌트 의존성 하나
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnmetDependency {
+    pub component: String,
+    pub required: String,
+    /// 설치돼 있지 않으면 None
+    pub installed: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtensionInfo {
     pub name: String,
@@ -251,6 +260,9 @@ pub struct ExtensionInfo {
     /// 로드는 됐지만 모듈 작성자가 고쳐야 할 점
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
+    /// `[module.dependencies]` 중 지금 설치된 버전이 못 맞추는 것 (M9). saba-core 미달은 아예 로드하지 않는다
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unmet_dependencies: Vec<UnmetDependency>,
     pub path: String,
     pub executable_path: Option<String>,
     pub icon: Option<String>,
@@ -639,6 +651,7 @@ impl IPCServer {
             .route("/api/server/:name/stop", post(handlers::server::stop_server_handler))
             .route("/api/modules", get(handlers::server::list_modules))
             .route("/api/modules/refresh", post(handlers::server::refresh_modules))
+            .route("/api/version", get(handlers::server::version_handler))
             .route("/api/modules/schema", get(handlers::server::module_schema))
             .route("/api/modules/detect", post(handlers::server::detect_module_dir))
             .route("/api/modules/manifest", get(handlers::server::fetch_module_manifest))
@@ -833,6 +846,7 @@ mod tests {
             game_name: None,
             author: None,
             warnings: Vec::new(),
+            unmet_dependencies: Vec::new(),
             path: "/modules/palworld".to_string(),
             executable_path: Some("PalServer.exe".to_string()),
             icon: None,
@@ -882,6 +896,7 @@ mod tests {
             game_name: None,
             author: None,
             warnings: Vec::new(),
+            unmet_dependencies: Vec::new(),
             path: "/modules/test".to_string(),
             executable_path: None,
             icon: None,
@@ -915,6 +930,7 @@ mod tests {
                     game_name: None,
                     author: None,
                     warnings: Vec::new(),
+                    unmet_dependencies: Vec::new(),
                     path: "/modules/palworld".to_string(),
                     executable_path: None,
                     icon: None,

@@ -374,6 +374,13 @@ pub fn parse_manifest(content: &str) -> Result<(ExtensionManifest, Vec<String>)>
 }
 
 /// `">=1.2.0"` 또는 `"1.2.0"` 요구를 `have`가 만족하는가
+/// `min_app_version`을 이 데몬이 만족하지 않으면 사용자에게 보일 이유
+fn app_version_problem(min_app_version: Option<&str>) -> Option<String> {
+    min_app_version
+        .filter(|v| !version_satisfies(APP_VERSION, v))
+        .map(|v| format!("requires saba-chan {} or newer (this is {})", v, APP_VERSION))
+}
+
 fn version_satisfies(have: &str, required: &str) -> bool {
     let min = required.trim_start_matches(">=").trim();
     matches!((SemVer::parse(have), SemVer::parse(min)), (Some(h), Some(m)) if h >= m)
@@ -437,6 +444,9 @@ pub struct RemoteExtensionInfo {
     /// 최소 앱 버전 요구사항
     #[serde(default)]
     pub min_app_version: Option<String>,
+    /// 이 데몬에서 설치할 수 없으면 그 이유 (`min_app_version` 미달). 데몬이 채운다 (M9)
+    #[serde(default, skip_deserializing)]
+    pub incompatible: Option<String>,
     /// 에셋 파일명 (예: "extension-docker.zip")
     #[serde(default)]
     pub asset: Option<String>,
@@ -503,6 +513,8 @@ pub struct ExtensionUpdateInfo {
     pub installed_version: String,
     pub latest_version: String,
     pub download_url: String,
+    /// 새 버전이 이 데몬에서 돌지 않으면 그 이유 (M9)
+    pub incompatible: Option<String>,
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -885,10 +897,7 @@ impl ExtensionManager {
 
     /// 이 데몬에서 켤 수 없는 이유 (`min_app_version`이 더 높음)
     fn incompatibility(m: &ExtensionManifest) -> Option<String> {
-        m.min_app_version
-            .as_deref()
-            .filter(|v| !version_satisfies(APP_VERSION, v))
-            .map(|v| format!("requires saba-chan {} or newer (this is {})", v, APP_VERSION))
+        app_version_problem(m.min_app_version.as_deref())
     }
 
     /// 컴포넌트 버전 정보를 함께 받아 dependencies를 검증하면서 활성화.
@@ -1233,7 +1242,10 @@ impl ExtensionManager {
             .await
             .context("Failed to parse manifest response")?;
 
-        let list = manifest_resp.into_list();
+        let mut list = manifest_resp.into_list();
+        for ext in &mut list {
+            ext.incompatible = app_version_problem(ext.min_app_version.as_deref());
+        }
         tracing::info!("Fetched {} extension(s) from manifest", list.len());
         Ok(list)
     }
@@ -1262,6 +1274,7 @@ impl ExtensionManager {
                         installed_version: local.manifest.version.clone(),
                         latest_version: remote_ext.version.clone(),
                         download_url: remote_ext.download_url.clone(),
+                        incompatible: app_version_problem(remote_ext.min_app_version.as_deref()),
                     });
                 }
             }
@@ -2361,6 +2374,7 @@ mod tests {
             download_url: "https://example.com/test_ext.zip".to_string(),
             sha256: None,
             min_app_version: None,
+            incompatible: None,
             asset: None,
             install_dir: None,
             dependencies: HashMap::new(),
@@ -2398,6 +2412,7 @@ mod tests {
             download_url: "https://example.com/test_ext.zip".to_string(),
             sha256: None,
             min_app_version: None,
+            incompatible: None,
             asset: None,
             install_dir: None,
             dependencies: HashMap::new(),

@@ -147,7 +147,6 @@ impl ModuleMetadata {
     /// 컴포넌트 버전 의존성을 확인합니다.
     /// `installed_versions`: 컴포넌트 키 → 설치된 버전 (예: "saba-core" → "0.3.0")
     /// 미충족 의존성 목록을 (컴포넌트키, 요구버전, 설치버전Option) 튜플로 반환합니다.
-    #[allow(dead_code)] // 아직 로드 경로에 연결 안 됨: M9(모듈 호환성 검사)에서 사용
     pub fn check_dependencies(
         &self,
         installed_versions: &std::collections::HashMap<String, String>,
@@ -273,9 +272,22 @@ impl LoadedModule {
         Path::new(&self.path).join(&self.metadata.entry).to_string_lossy().to_string()
     }
 
-    fn check_entry(&self) -> Result<()> {
+    /// 데몬이 이 모듈을 쓸 수 있는가: 진입 파일이 있고, `[module.dependencies] saba-core`를 만족한다 (M9)
+    fn check_loadable(&self) -> Result<()> {
         if !Path::new(&self.entry_path()).is_file() {
             anyhow::bail!("module.entry '{}' not found in {}", self.metadata.entry, self.path);
+        }
+        let core = std::collections::HashMap::from([(CORE_COMPONENT.to_string(), DAEMON_VERSION.to_string())]);
+        let needs_newer_core = self
+            .metadata
+            .check_dependencies(&core)
+            .into_iter()
+            .find(|(component, _, _)| component == CORE_COMPONENT);
+        if let Some((_, required, _)) = needs_newer_core {
+            anyhow::bail!(
+                "module '{}' requires saba-core {} (this is {}); update saba-chan",
+                self.metadata.name, required, DAEMON_VERSION
+            );
         }
         Ok(())
     }
@@ -304,6 +316,10 @@ pub struct ModuleLoadError {
 pub const MODULE_SCHEMA_VERSION: u32 = 1;
 
 /// 명령 위험도로 쓸 수 있는 값
+/// 모듈 `[module.dependencies]`에서 데몬을 가리키는 키
+pub const CORE_COMPONENT: &str = "saba-core";
+/// 이 데몬의 버전 (모듈 호환 검사 기준)
+pub const DAEMON_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const COMMAND_RISKS: [&str; 3] = ["safe", "caution", "danger"];
 
 /// module.toml 최상위 구조
@@ -944,7 +960,7 @@ pub fn load_module_dir(module_path: &Path) -> Result<LoadedModule> {
         metadata: parse_module_toml(&content)?,
         path: module_path.to_string_lossy().to_string(),
     };
-    module.check_entry()?;
+    module.check_loadable()?;
     Ok(module)
 }
 
@@ -1113,7 +1129,7 @@ impl ModuleLoader {
             metadata,
             path: extracted_dir.to_string_lossy().to_string(),
         };
-        module.check_entry()?;
+        module.check_loadable()?;
         Ok(module)
     }
 
@@ -1631,6 +1647,27 @@ entry = "lifecycle.py"
         assert!(m.matches_dir(&good));
         m.metadata.dir_signatures.push("missing.txt".into());
         assert!(!m.matches_dir(&good));
+    }
+
+    /// 모듈이 더 새 saba-core를 요구하면 로드하지 않고 이유를 남긴다 (M9)
+    #[test]
+    fn module_needing_newer_core_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        for (name, need) in [("fits", DAEMON_VERSION.to_string()), ("future", "99.0.0".to_string())] {
+            let m = dir.path().join(name);
+            std::fs::create_dir_all(&m).unwrap();
+            std::fs::write(
+                m.join("module.toml"),
+                format!("{}\n[module.dependencies]\n\"saba-core\" = \">={}\"\n", V1.replace("\"g\"", &format!("\"{name}\"")), need),
+            )
+            .unwrap();
+            std::fs::write(m.join("lifecycle.py"), "").unwrap();
+        }
+        let loader = ModuleLoader::new(dir.path().to_str().unwrap());
+        let modules = loader.discover_modules().unwrap();
+        assert_eq!(modules.iter().map(|m| m.metadata.name.as_str()).collect::<Vec<_>>(), ["fits"]);
+        let errors = loader.load_errors();
+        assert!(errors[0].error.contains("requires saba-core >=99.0.0"), "{:?}", errors);
     }
 
     #[test]
