@@ -1,6 +1,8 @@
 # saba-chan 개발 규칙 (시스템 레벨 강제)
 
 > 이 파일의 모든 규칙은 코드 작성 시 **반드시** 준수해야 한다. 예외 없음.
+>
+> 구조와 계약에 관한 사실은 `docs/architecture/`(코드 기준 문서)만 믿는다. 그 밖의 오래된 문서·주석의 설명을 사실로 가정하지 않고 코드로 확인한다.
 
 ## 아키텍처 원칙
 - 모든 데이터(설정, 로그)는 `AppData/Roaming/saba-chan` 폴더에만 기록한다. 다른 경로 금지.
@@ -12,7 +14,7 @@
 ## 경로·설정 경유 원칙
 - 경로, 포트, 설정값은 **프로젝트 내 정의된 상수·설정 체계**를 통해 임포트한다.
 - 코드 내 임의 경로 직접 하드코딩 **금지**.
-- 데몬 → 모듈/익스텐션: config(stdin JSON) + env var 상속(`DAEMON_API_URL`, `PYTHONPATH` 등).
+- 데몬 → 모듈/익스텐션: config(stdin JSON) + env var 상속(`PYTHONPATH`, `SABA_ENABLED_EXTENSIONS` 등).
 - 데몬 자체: `constants` 모듈의 상수(`DEFAULT_IPC_PORT` 등) + env var(`SABA_IPC_PORT` 등).
 - GUI/CLI → 데몬: IPC를 통해 설정 전달. 직접 파일 접근 금지.
 - 프로세스 시작 시점에 필수 설정값 존재를 검증할 것.
@@ -41,10 +43,11 @@
 - **테스트 우선 개발(TDD)** 을 기본으로 한다. 코드를 작성하기 전에 기대 동작을 검증하는 테스트를 먼저 작성한다.
 - 기존 코드를 수정할 때도 변경 의도를 검증할 테스트를 **먼저** 작성하고, 실패를 확인한 후 코드를 수정한다.
 - 모듈/익스텐션을 수정하는 경우, 단위 테스트 외에 데몬 연동 **E2E 테스트**(`tests/e2e_cross_component.rs`)도 함께 설계한다.
+- 계약(API 라우트, `module.toml` 키, hook, manifest 필드)을 바꾸면 같은 커밋에서 `docs/architecture/`의 해당 절을 고친다.
 
 ## 변경 시 테스트 실행 의무
 - 코드를 수정한 뒤에는 반드시 관련 테스트를 실행하여 회귀가 없는지 확인한다.
-- **GUI (saba-chan-gui)**: `cd saba-chan-gui && npx vitest run` — 108개 전체 통과 확인.
+- **GUI (saba-chan-gui)**: `cd saba-chan-gui && npx vitest run` — 전체 통과 확인.
 - **Rust (daemon/CLI/updater)**: `cargo test --workspace` — 전체 통과 확인.
 - **Discord Bot**: `cd discord_bot && npm test` — 전체 통과 확인.
 - 테스트가 깨진 상태로 커밋하지 않는다. 테스트 실패 시 원인을 파악하고 수정한다.
