@@ -633,10 +633,10 @@ impl IPCServer {
             .route("/api/relay/agent/stop", post(handlers::chat::agent_stop))
             // ── Chat command processor ──
             .route("/api/chat/command", post(handlers::chat::chat_command))
-            // ── Auth middleware (token-based) ──
-            .layer(axum::middleware::from_fn(auth::auth_middleware))
             .with_state(self.clone())
-            .merge(updates::updates_router(self.update_state.clone()));
+            .merge(updates::updates_router(self.update_state.clone()))
+            // ── Auth middleware (token-based) — 업데이트 라우터까지 모든 라우트에 ──
+            .layer(axum::middleware::from_fn(auth::auth_middleware));
 
         // TCP 리스너 (SO_REUSEADDR + 바인딩 재시도)
         let addr: std::net::SocketAddr = self.listen_addr.parse()
