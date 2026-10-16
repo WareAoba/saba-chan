@@ -46,7 +46,7 @@ function createApiMock(overrides = {}) {
         daemonStatus: vi.fn().mockResolvedValue({ running: true }),
         moduleList: vi.fn().mockResolvedValue({ modules: [] }),
         moduleGetLocales: vi.fn().mockResolvedValue({}),
-        moduleGetMetadata: vi.fn().mockResolvedValue({ toml: { aliases: {}, commands: { fields: [] } } }),
+        moduleGetMetadata: vi.fn().mockResolvedValue({ metadata: { module_aliases: [], commands: { fields: [] } } }),
         serverList: vi.fn().mockResolvedValue({ servers: [] }),
         onStatusUpdate: vi.fn(),
         onUpdatesAvailable: vi.fn(),

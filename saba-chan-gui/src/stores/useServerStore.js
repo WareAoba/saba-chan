@@ -153,20 +153,18 @@ export const useServerStore = create((set, get) => ({
                 for (const mod of data.modules) {
                     try {
                         const metadata = await window.api.moduleGetMetadata(mod.name);
-                        if (metadata && metadata.toml) {
-                            const aliases = metadata.toml.aliases || {};
-                            const aliasCommands = aliases.commands || {};
-                            const commandFields = metadata.toml.commands?.fields || [];
+                        // 데몬이 파싱한 메타데이터만 쓴다 (원본 toml은 응답에서 빠질 예정)
+                        const meta = metadata?.metadata;
+                        if (meta) {
                             const mergedCommands = {};
-
-                            for (const [cmdName, cmdData] of Object.entries(aliasCommands)) {
+                            for (const [cmdName, cmdData] of Object.entries(meta.command_aliases || {})) {
                                 mergedCommands[cmdName] = {
                                     aliases: cmdData.aliases || [],
                                     description: cmdData.description || '',
                                     label: cmdName,
                                 };
                             }
-                            for (const cmdField of commandFields) {
+                            for (const cmdField of meta.commands?.fields || []) {
                                 const cmdName = cmdField.name;
                                 if (!mergedCommands[cmdName]) {
                                     mergedCommands[cmdName] = {
@@ -180,7 +178,10 @@ export const useServerStore = create((set, get) => ({
                                     if (cmdField.label) mergedCommands[cmdName].label = cmdField.label;
                                 }
                             }
-                            aliasesMap[mod.name] = { ...aliases, commands: mergedCommands };
+                            aliasesMap[mod.name] = {
+                                module_aliases: meta.module_aliases || [],
+                                commands: mergedCommands,
+                            };
                         }
                     } catch (e) {
                         console.warn(`Failed to load metadata for module ${mod.name}:`, e);

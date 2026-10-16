@@ -26,7 +26,7 @@ function mockApi(overrides = {}) {
             daemonStatus: vi.fn().mockResolvedValue({ running: true }),
             moduleList: vi.fn().mockResolvedValue({ modules: [] }),
             moduleGetLocales: vi.fn().mockResolvedValue({}),
-            moduleGetMetadata: vi.fn().mockResolvedValue({ toml: {} }),
+            moduleGetMetadata: vi.fn().mockResolvedValue({ metadata: {} }),
             ...overrides,
         },
         {
@@ -617,5 +617,25 @@ describe('에지 케이스', () => {
         useUIStore.getState().setActiveTab('settings');
         useUIStore.getState().setActiveTab('settings');
         expect(useUIStore.getState().activeTab).toBe('settings');
+    });
+});
+
+describe('useServerStore 모듈 별명 (파싱된 메타데이터)', () => {
+    it('metadata의 module_aliases·command_aliases·commands로 별명 표를 만든다', async () => {
+        mockApi({
+            moduleList: vi.fn().mockResolvedValue({ modules: [{ name: 'palworld' }] }),
+            moduleGetMetadata: vi.fn().mockResolvedValue({
+                metadata: {
+                    module_aliases: ['팰월드', 'pw'],
+                    command_aliases: { players: { aliases: ['접속자'], description: '접속자 목록' } },
+                    commands: { fields: [{ name: 'players', label: '접속자' }, { name: 'save', label: '저장' }] },
+                },
+            }),
+        });
+        await useServerStore.getState().fetchModules();
+        const map = useServerStore.getState().moduleAliasesPerModule.palworld;
+        expect(map.module_aliases).toEqual(['팰월드', 'pw']);
+        expect(map.commands.players).toEqual({ aliases: ['접속자'], description: '접속자 목록', label: '접속자' });
+        expect(map.commands.save.label).toBe('저장');
     });
 });

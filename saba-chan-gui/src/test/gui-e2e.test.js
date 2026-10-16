@@ -73,7 +73,7 @@ function createApiMock(overrides = {}) {
             ],
         }),
         moduleGetLocales: vi.fn().mockResolvedValue({}),
-        moduleGetMetadata: vi.fn().mockResolvedValue({ toml: { aliases: {}, commands: { fields: [] } } }),
+        moduleGetMetadata: vi.fn().mockResolvedValue({ metadata: { module_aliases: [], commands: { fields: [] } } }),
         serverList: vi.fn().mockResolvedValue({
             servers: [
                 {
