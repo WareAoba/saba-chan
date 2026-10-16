@@ -117,19 +117,12 @@ pub struct BotConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
+#[derive(Default)]
 pub struct CloudConfig {
     pub relay_url: String,
     pub host_id: String,
 }
 
-impl Default for CloudConfig {
-    fn default() -> Self {
-        Self {
-            relay_url: String::new(),
-            host_id: String::new(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]

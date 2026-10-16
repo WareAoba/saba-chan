@@ -1646,7 +1646,7 @@ impl Supervisor {
             .get("working_dir")
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
-            .or_else(|| instance.working_dir.as_deref())
+            .or(instance.working_dir.as_deref())
             .unwrap_or("");
         let jar_name = instance.module_settings
             .get("server_jar")
@@ -1878,13 +1878,6 @@ impl Supervisor {
     }
 }
 
-/// Get Discord bot config file path (%APPDATA%/saba-chan/bot-config.json)
-pub fn get_discord_bot_config_path() -> String {
-    saba_chan_updater_lib::constants::resolve_bot_config_path()
-        .to_string_lossy()
-        .to_string()
-}
-
 #[allow(dead_code)]
 pub async fn run() -> Result<()> {
     tracing::info!("Supervisor starting");
@@ -1926,15 +1919,6 @@ mod tests {
         // 캐시 무효화 및 재발견
         let refreshed = supervisor.refresh_modules();
         assert!(refreshed.is_ok());
-    }
-
-    #[test]
-    fn test_discord_bot_config_path() {
-        let path = get_discord_bot_config_path();
-        
-        // 경로에 saba-chan/bot-config.json이 포함되어야 함 (AppData 기반)
-        assert!(path.contains("saba-chan"));
-        assert!(path.contains("bot-config.json"));
     }
 
     #[tokio::test]

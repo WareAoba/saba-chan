@@ -13,6 +13,7 @@ mod extension;
 mod validator;
 mod boot_selector;
 mod daemon_log;
+mod instance_lock;
 
 use std::sync::Arc;
 use std::io::IsTerminal;
@@ -106,6 +107,29 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("[Boot] Mode: {}", mode);
     }
 
+    let ipc_port = std::env::var("SABA_IPC_PORT")
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok())
+        .unwrap_or(constants::DEFAULT_IPC_PORT);
+    let ipc_addr = format!("127.0.0.1:{}", ipc_port);
+
+    // ── Single Instance ───────────────────────────────────────
+    // 토큰 생성·Supervisor 초기화보다 먼저 잠근다. 두 번째 데몬이 .ipc_token을
+    // 덮어써 실행 중인 데몬이 401을 내는 문제를 막는다.
+    let _instance_lock = match instance_lock::acquire_default(&ipc_addr) {
+        Ok(lock) => Some(lock),
+        Err(e @ instance_lock::AcquireError::AlreadyRunning(_)) => {
+            tracing::error!("{}", e);
+            eprintln!("{}", e);
+            std::process::exit(2);
+        }
+        Err(e) => {
+            // 잠금 파일을 못 여는 환경(읽기 전용 등)에서는 기존 동작대로 계속한다.
+            tracing::warn!("{} — continuing without single-instance guard", e);
+            None
+        }
+    };
+
     // ── Integrity Check (무결성 검증) ──────────────────────────
     // 서버(GitHub)에서 매니페스트를 가져와 설치된 컴포넌트의 SHA256을 검증
     run_integrity_check_on_startup().await;
@@ -133,11 +157,6 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Start IPC HTTP server
-    let ipc_port = std::env::var("SABA_IPC_PORT")
-        .ok()
-        .and_then(|p| p.parse::<u16>().ok())
-        .unwrap_or(constants::DEFAULT_IPC_PORT);
-    let ipc_addr = format!("127.0.0.1:{}", ipc_port);
     let ipc_server = ipc::IPCServer::new(supervisor.clone(), &ipc_addr, daemon_log_buffer.clone());
 
     // Supervisor에 ExtensionManager 연결

@@ -91,6 +91,9 @@ pub fn resolve_data_dir() -> PathBuf {
             return PathBuf::from(dir);
         }
     }
+    if let Some(dir) = test_isolated_root() {
+        return dir;
+    }
     #[cfg(target_os = "windows")]
     {
         if let Ok(appdata) = std::env::var("APPDATA") {
@@ -187,8 +190,32 @@ pub fn resolve_discord_bot_dir() -> PathBuf {
     PathBuf::from("discord_bot")
 }
 
+/// 테스트 빌드에서 사용자 데이터 폴더 대신 쓰는 프로세스별 임시 루트.
+///
+/// `test-isolation` 기능은 saba-core의 dev-dependency에서만 켜지므로
+/// 일반 빌드에는 영향이 없다. 테스트가 실제 `%APPDATA%`/`~/.config`를
+/// 건드리지 않게 한다.
+#[cfg(any(test, feature = "test-isolation"))]
+fn test_isolated_root() -> Option<PathBuf> {
+    static ROOT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    Some(
+        ROOT.get_or_init(|| {
+            std::env::temp_dir().join(format!("{}-test-{}", APP_NAME, std::process::id()))
+        })
+        .clone(),
+    )
+}
+
+#[cfg(not(any(test, feature = "test-isolation")))]
+fn test_isolated_root() -> Option<PathBuf> {
+    None
+}
+
 /// 스테이징 디렉터리 (업데이트 다운로드 임시 파일)
 pub fn resolve_staging_dir() -> PathBuf {
+    if let Some(dir) = test_isolated_root() {
+        return dir.join("updates");
+    }
     #[cfg(target_os = "windows")]
     {
         resolve_data_dir().join("updates")

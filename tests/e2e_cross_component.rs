@@ -99,11 +99,19 @@ async fn boot_e2e_ipc() -> (
 ) {
     std::env::set_var("SABA_AUTH_DISABLED", "1");
 
-    // 테스트용 데이터 디렉토리 격리 — 실제 AppData 오염 방지
-    let data_dir = std::env::temp_dir()
-        .join(format!("saba-e2e-data-{}", pick_free_port()));
-    fs::create_dir_all(&data_dir).expect("create data dir");
-    std::env::set_var("SABA_DATA_DIR", data_dir.to_str().unwrap());
+    // 테스트용 데이터 디렉토리 격리 — 실제 AppData 오염 방지.
+    // SABA_DATA_DIR은 프로세스 전역이라 테스트마다 바꾸면 병렬 테스트끼리 서로의
+    // 폴더를 가리키고 지운다. 프로세스당 하나만 만들고 지우지 않는다.
+    static DATA_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    let data_dir = DATA_DIR
+        .get_or_init(|| {
+            let dir = std::env::temp_dir()
+                .join(format!("saba-e2e-data-{}", std::process::id()));
+            fs::create_dir_all(&dir).expect("create data dir");
+            std::env::set_var("SABA_DATA_DIR", dir.to_str().unwrap());
+            dir
+        })
+        .clone();
 
     let modules_dir = setup_e2e_modules_dir();
     let instances_dir = std::env::temp_dir()
@@ -140,7 +148,8 @@ async fn boot_e2e_ipc() -> (
 fn cleanup_dirs(modules_dir: &std::path::Path, instances_dir: &std::path::Path, data_dir: &std::path::Path) {
     let _ = fs::remove_dir_all(modules_dir);
     let _ = fs::remove_dir_all(instances_dir);
-    let _ = fs::remove_dir_all(data_dir);
+    // data_dir는 프로세스 내 모든 테스트가 공유하므로 지우지 않는다 (boot_e2e_ipc 참고)
+    let _ = data_dir;
 }
 
 /// Python 실행 파일 경로를 찾습니다 (시스템 Python 또는 saba-chan venv)

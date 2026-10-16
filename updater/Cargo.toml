@@ -20,6 +20,10 @@ zip = "0.6"
 tar = "0.4"
 flate2 = "1"
 
+[features]
+# 테스트 전용: 데이터 경로를 프로세스별 임시 폴더로 돌린다 (constants::resolve_data_dir)
+test-isolation = []
+
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
 

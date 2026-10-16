@@ -85,6 +85,8 @@ pub fn save_config(mode: BootMode) {
 //  Key Input Types
 // ══════════════════════════════════════════════════════
 
+// 비 Windows에서는 키 입력을 읽지 않으므로 Delete 외 변형이 만들어지지 않는다.
+#[cfg_attr(not(windows), allow(dead_code))]
 #[derive(Debug, PartialEq)]
 enum Key {
     Delete,

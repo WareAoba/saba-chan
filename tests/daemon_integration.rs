@@ -834,9 +834,11 @@ async fn test_client_unregister_full_shutdown_kills_bot() {
     assert_eq!(unreg_resp.status(), reqwest::StatusCode::OK);
 
     // 5. 봇(더미 프로세스)이 종료되어야 한다
+    // 더미는 이 테스트의 자식이라, 죽어도 wait 전까지 좀비로 남아 kill -0에 살아 있게 보인다.
+    // try_wait로 종료 여부를 직접 확인한다.
     sleep(Duration::from_millis(1000)).await;
     assert!(
-        !is_process_alive(dummy_pid),
+        dummy.try_wait().unwrap().is_some() || !is_process_alive(dummy_pid),
         "Bot process should be killed when shutdown=true (full shutdown)"
     );
 

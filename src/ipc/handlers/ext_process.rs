@@ -98,7 +98,7 @@ impl ExtProcessManager {
             tracing::info!("[Shutdown] Stopping ext-process '{}'", name);
 
             // stdin graceful shutdown 시도
-            if let Some(entry) = self.processes.get(&*name) {
+            if let Some(entry) = self.processes.get(name) {
                 if let Some(tx) = &entry.stdin_tx {
                     let _ = tx.send(
                         serde_json::to_string(&serde_json::json!({"type": "shutdown"}))
@@ -127,6 +127,12 @@ impl ExtProcessManager {
                 }
             }
         }
+    }
+}
+
+impl Default for ExtProcessManager {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

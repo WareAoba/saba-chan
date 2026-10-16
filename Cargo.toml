@@ -66,6 +66,7 @@ version = "1"
 features = ["full"]
 [dev-dependencies]
 regex-lite = "0.1"
+saba-chan-updater-lib = { path = "updater", features = ["test-isolation"] }
 tower = { version = "0.4", features = ["util"] }
 
 [profile.release]

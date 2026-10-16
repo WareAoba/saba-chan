@@ -680,6 +680,9 @@ impl IPCServer {
                 socket2::Type::STREAM,
                 Some(socket2::Protocol::TCP),
             )?;
+            // Unix에서는 TIME_WAIT 포트 재사용만 허용한다. Windows의 SO_REUSEADDR는
+            // 이미 리슨 중인 포트에도 바인드를 허용하므로 켜지 않는다.
+            #[cfg(not(windows))]
             socket.set_reuse_address(true)?;
             socket.set_nonblocking(true)?;
             match socket.bind(&addr.into()) {

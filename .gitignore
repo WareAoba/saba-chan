@@ -84,3 +84,5 @@ discord_bot/coverage/
 
 # GitHub Actions
 .github/cache/
+# Tauri가 Linux 빌드 때 생성하는 스키마
+**/src-tauri/gen/schemas/linux-schema.json

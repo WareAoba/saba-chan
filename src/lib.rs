@@ -13,3 +13,4 @@ pub mod extension;  // 범용 익스텐션 시스템
 pub mod validator;  // 설정값 타입 검증 및 포트 충돌 검사
 pub mod boot_selector;  // BIOS 스타일 부트 선택기
 pub mod daemon_log;  // 데몬 로그 버퍼 + tracing Layer
+pub mod instance_lock;  // 데몬 단일 인스턴스 잠금

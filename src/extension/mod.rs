@@ -1531,7 +1531,7 @@ impl ExtensionManager {
     pub fn set_extension_config(&mut self, ext_id: &str, values: HashMap<String, Value>) {
         let entry = self.extension_config
             .entry(ext_id.to_string())
-            .or_insert_with(HashMap::new);
+            .or_default();
         for (k, v) in values {
             entry.insert(k, v);
         }

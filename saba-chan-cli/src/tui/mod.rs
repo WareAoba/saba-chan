@@ -566,9 +566,8 @@ fn handle_key(app: &mut App, key: KeyEvent) {
                     let max = app.console_lines.len().saturating_sub(1);
                     if app.console_scroll < max { app.console_scroll += 1; }
                 }
-                KeyCode::Down => {
-                    if app.console_scroll > 0 { app.console_scroll -= 1; }
-                }
+                KeyCode::Down
+                    if app.console_scroll > 0 => { app.console_scroll -= 1; }
                 _ => {}
             }
         }

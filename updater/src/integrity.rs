@@ -127,7 +127,7 @@ impl IntegrityChecker {
         }
 
         // 정렬: 코어 컴포넌트 → 모듈 → 익스텐션 순
-        components.sort_by(|a, b| component_sort_key(&a.component).cmp(&component_sort_key(&b.component)));
+        components.sort_by_key(|a| component_sort_key(&a.component));
 
         let total = components.len();
         let verified = components.iter().filter(|c| c.status == IntegrityStatus::Verified).count();
