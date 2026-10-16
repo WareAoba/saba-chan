@@ -554,7 +554,8 @@ impl Supervisor {
         let pid = child.id()
             .ok_or_else(|| anyhow::anyhow!("Failed to get PID of spawned process"))? ;
 
-        self.tracker.track(server_name, pid)?;
+        // 다른 경로(포트 충돌 검사·상태·정지)와 같은 키(인스턴스 id)로 추적한다
+        self.tracker.track(&instance.id, pid)?;
         tracing::info!("Non-managed server '{}' started with PID {}", server_name, pid);
 
         Ok(json!({
@@ -626,29 +627,42 @@ impl Supervisor {
         // ── Managed mode: stdin에 stop_command 전송으로 graceful shutdown ──
         if let Some(managed) = self.managed_store.get(&instance.id).await {
             if managed.is_running() {
-                // stdin 사용 가능 여부에 따라 분기
-                // - stdin 있음 (정상 프로세스): graceful stop via stdin
-                // - stdin 없음 (재연결 프로세스): 즉시 force kill
-                //   (managed 모드에서는 RCON이 비활성이므로 force kill이 유일한 수단)
-                let effective_force = force || !managed.is_stdin_available();
+                // 정지 방법
+                // - force: 즉시 PID 강제 종료
+                // - 모듈이 stdin을 받고 stdin이 열려 있음: stop_command를 stdin으로
+                // - 그 밖(REST 전용 게임, stdin 없는 재부착): 모듈 lifecycle.py `stop()`에
+                //   PID와 managed=true를 넘겨 맡긴다. 시간 안에 안 끝나면 아래에서 강제 종료.
+                let module_has_stdin = self.module_loader.get_module(module_name)
+                    .ok()
+                    .and_then(|m| m.metadata.protocols_supported)
+                    .is_some_and(|p| p.iter().any(|s| s == "stdin"));
+                let via_stdin = module_has_stdin && managed.is_stdin_available();
+                let effective_force = force;
 
                 if effective_force {
-                    if !force && !managed.is_stdin_available() {
-                        tracing::info!(
-                            "stdin unavailable for '{}' (reattached process), force killing",
-                            server_name
-                        );
-                    }
-                    // Force kill: 즉시 종료
                     tracing::info!("Force-killing managed server '{}'", server_name);
                     if let Ok(pid) = self.tracker.get_pid(&instance.id) {
                         let _ = process::force_kill_pid(pid);
                     }
-                } else {
-                    // Graceful: stdin에 stop_command 전송
+                } else if via_stdin {
                     tracing::info!("Sending '{}' to managed server '{}' via stdin", stop_cmd, server_name);
                     if let Err(e) = managed.send_command(&stop_cmd).await {
                         tracing::warn!("Failed to send stop command via stdin: {}", e);
+                    }
+                } else {
+                    tracing::info!("Asking module '{}' to stop managed server '{}'", module_name, server_name);
+                    let module = self.module_loader.get_module(module_name)?;
+                    let mut config_obj = serde_json::Map::new();
+                    self.insert_resolved_exe(&mut config_obj, instance, module_name);
+                    config_obj.insert("pid".to_string(), json!(managed.pid));
+                    config_obj.insert("managed".to_string(), json!(true));
+                    config_obj.insert("force".to_string(), json!(false));
+                    if let Some(port) = instance.rest_port {
+                        config_obj.insert("rest_port".to_string(), json!(port));
+                    }
+                    let module_path = format!("{}/lifecycle.py", module.path);
+                    if let Err(e) = crate::plugin::run_plugin(&module_path, "stop", Value::Object(config_obj)).await {
+                        tracing::warn!("Module stop for '{}' failed: {} (will force kill on timeout)", server_name, e);
                     }
                 }
 
@@ -1319,7 +1333,7 @@ impl Supervisor {
                     .and_then(|v| v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
                     .map(|n| n.max(1) as usize)
                     .unwrap_or(managed_process::DEFAULT_LOG_SESSIONS);
-                ManagedProcess::spawn_with_runner(&runner, program, &args, working_dir, env_vars, log_pattern, &inst_dir, keep).await?
+                ManagedProcess::spawn_with_runner(&runner, program, &args, working_dir, env_vars, log_pattern, &inst_dir, keep, &module.metadata.log_files).await?
             }
             None => {
                 tracing::warn!("saba-runner not found next to the daemon; '{}' is attached directly and will lose its console if the daemon restarts", instance.name);
@@ -1350,19 +1364,15 @@ impl Supervisor {
 
     /// 이 인스턴스를 managed(데몬이 자식 프로세스로 stdin/stdout을 쥐고)로 시작하는가.
     /// 인스턴스 설정 `managed_start`가 우선, 없으면 managed가 기본이다(오너 결정).
-    /// 모듈이 `interaction_mode = "commands"`로 콘솔이 없다고 밝힌 경우만 기본이 non-managed.
+    /// non-managed는 프로세스를 직접 관리하고 싶은 사용자를 위한 선택지로 남긴다.
     pub fn uses_managed_start(&self, instance: &crate::instance::ServerInstance) -> bool {
         match instance.module_settings.get("managed_start") {
             Some(Value::Bool(b)) => *b,
             Some(Value::String(s)) if s == "true" => true,
             Some(Value::String(s)) if s == "false" => false,
-            _ => self
-                .module_loader
-                .get_module(&instance.module_name)
-                .ok()
-                .and_then(|m| m.metadata.interaction_mode)
-                .map(|mode| mode != "commands")
-                .unwrap_or(true),
+            // C8b: 모든 서버가 기본 managed (saba-runner가 PID·로그·종료 코드를 쥔다).
+            // stdin이 없는 게임은 명령을 RCON/REST로, 정지를 모듈 stop()으로 처리한다.
+            _ => true,
         }
     }
 
@@ -2061,10 +2071,10 @@ mod tests {
         assert!(supervisor.uses_managed_start(&inst("console-game", None)));
         assert!(supervisor.uses_managed_start(&inst("plain-game", None)), "managed is the default");
         assert!(supervisor.uses_managed_start(&inst("missing-module", None)));
-        assert!(!supervisor.uses_managed_start(&inst("api-game", None)));
+        assert!(supervisor.uses_managed_start(&inst("api-game", None)), "games without a console are managed too (C8b)");
         assert!(!supervisor.uses_managed_start(&inst("console-game", Some(json!(false)))));
         assert!(!supervisor.uses_managed_start(&inst("console-game", Some(json!("false")))));
-        assert!(supervisor.uses_managed_start(&inst("api-game", Some(json!(true)))));
+        assert!(!supervisor.uses_managed_start(&inst("api-game", Some(json!(false)))));
     }
 
     /// managed 모드에서는 모듈이 stdin을 지원할 때만 명령을 stdin으로 보낸다 (M3)

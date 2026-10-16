@@ -75,6 +75,7 @@ impl ManagedProcess {
         log_pattern: Option<&str>,
         instance_dir: &Path,
         keep_sessions: usize,
+        log_files: &[String],
     ) -> Result<Self> {
         let run = run_dir(instance_dir);
         std::fs::create_dir_all(&run)?;
@@ -90,8 +91,11 @@ impl ManagedProcess {
         let mut cmd = TokioCommand::new(runner);
         cmd.arg("--run-dir").arg(&run)
             .arg("--log").arg(&log)
-            .arg("--cwd").arg(working_dir)
-            .arg("--")
+            .arg("--cwd").arg(working_dir);
+        for pattern in log_files {
+            cmd.arg("--tail").arg(pattern);
+        }
+        cmd.arg("--")
             .arg(program)
             .args(args)
             .envs(env_vars)
@@ -308,7 +312,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let inst = tmp.path();
 
-        let proc = ManagedProcess::spawn_with_runner(&runner, "cat", &[], inst.to_str().unwrap(), Vec::new(), None, inst, 3)
+        let proc = ManagedProcess::spawn_with_runner(&runner, "cat", &[], inst.to_str().unwrap(), Vec::new(), None, inst, 3, &[])
             .await
             .unwrap();
         proc.send_command("before restart").await.unwrap();
@@ -335,6 +339,27 @@ mod tests {
         assert!(!exit.success);
         assert!(ManagedProcess::attach_runner(inst, None).await.is_none());
         assert!(latest_session_log(inst).is_some());
+    }
+
+    /// 모듈이 [launch] log_files로 밝힌 파일 로그도 콘솔에 합쳐진다
+    #[tokio::test]
+    async fn declared_log_files_join_the_console() {
+        let Some(runner) = runner_binary() else {
+            eprintln!("SKIP: saba-runner binary not built (cargo build -p saba-runner)");
+            return;
+        };
+        let tmp = tempfile::tempdir().unwrap();
+        let inst = tmp.path();
+        std::fs::write(inst.join("game.log"), "old line\n").unwrap();
+        let script = "sleep 1; echo 'from the log file' >> game.log; sleep 5".to_string();
+        let proc = ManagedProcess::spawn_with_runner(
+            &runner, "sh", &["-c".into(), script], inst.to_str().unwrap(), Vec::new(), None, inst, 3, &["*.log".into()],
+        )
+        .await
+        .unwrap();
+        assert!(wait_for(&proc, "from the log file").await);
+        assert!(!proc.get_recent_console(100).await.iter().any(|l| l.content == "old line"), "only new lines");
+        crate::supervisor::process::force_kill_pid(proc.pid).unwrap();
     }
 
     #[test]

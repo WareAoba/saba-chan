@@ -1,6 +1,9 @@
 //! saba-runner — 게임 서버 하나를 띄우고 콘솔을 지킨다 (C8b)
 //!
-//! 사용법: `saba-runner --run-dir <dir> --log <file> [--cwd <dir>] -- <program> [args...]`
+//! 사용법: `saba-runner --run-dir <dir> --log <file> [--cwd <dir>] [--tail <pattern>]... -- <program> [args...]`
+//!
+//! `--tail`: 서버가 콘솔 대신 파일에 쓰는 로그(예: `Pal/Saved/Logs/*.log`)를 따라 읽어
+//! 같은 세션 로그에 합친다. 상대 경로는 `--cwd` 기준, `*` `?`는 마지막 칸에만.
 //!
 //! 데몬이 이 프로세스를 띄우고 떠나도 된다. 러너가 서버의 stdout/stderr를 로그 파일에
 //! 쓰고, stdin을 로컬 포트로 받고, 종료 코드를 `exit.json`에 남긴다.
@@ -10,7 +13,7 @@ use saba_runner::{exit_file, format_line, now, runner_file, write_json, ExitInfo
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex};
 
@@ -18,6 +21,7 @@ struct Args {
     run_dir: PathBuf,
     log: PathBuf,
     cwd: Option<PathBuf>,
+    tails: Vec<String>,
     program: String,
     program_args: Vec<String>,
 }
@@ -25,11 +29,13 @@ struct Args {
 fn parse_args() -> Result<Args, String> {
     let mut it = std::env::args().skip(1);
     let (mut run_dir, mut log, mut cwd) = (None, None, None);
+    let mut tails = Vec::new();
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--run-dir" => run_dir = it.next().map(PathBuf::from),
             "--log" => log = it.next().map(PathBuf::from),
             "--cwd" => cwd = it.next().map(PathBuf::from),
+            "--tail" => tails.extend(it.next()),
             "--" => break,
             other => return Err(format!("unknown argument '{}'", other)),
         }
@@ -39,6 +45,7 @@ fn parse_args() -> Result<Args, String> {
         run_dir: run_dir.ok_or("missing --run-dir")?,
         log: log.ok_or("missing --log")?,
         cwd,
+        tails,
         program,
         program_args: it.collect(),
     })
@@ -88,6 +95,76 @@ fn serve_stdin(conn: TcpStream, token: &str, stdin: &Mutex<Option<ChildStdin>>) 
             return;
         }
     }
+}
+
+/// 마지막 칸의 `*`(아무 글자 여럿)와 `?`(한 글자)만 아는 이름 비교
+fn wildcard(pattern: &[char], name: &[char]) -> bool {
+    match (pattern.first(), name.first()) {
+        (None, None) => true,
+        (Some('*'), _) => wildcard(&pattern[1..], name) || (!name.is_empty() && wildcard(pattern, &name[1..])),
+        (Some('?'), Some(_)) => wildcard(&pattern[1..], &name[1..]),
+        (Some(p), Some(n)) if p == n => wildcard(&pattern[1..], &name[1..]),
+        _ => false,
+    }
+}
+
+fn matching_files(pattern: &Path) -> Vec<PathBuf> {
+    let (Some(dir), Some(name)) = (pattern.parent(), pattern.file_name()) else { return Vec::new() };
+    let name: Vec<char> = name.to_string_lossy().chars().collect();
+    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let mut files: Vec<PathBuf> = entries
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.is_file())
+        .filter(|p| p.file_name().is_some_and(|n| wildcard(&name, &n.to_string_lossy().chars().collect::<Vec<_>>())))
+        .collect();
+    files.sort();
+    files
+}
+
+/// 로그 파일들을 따라 읽는다. 시작 때 있던 파일은 끝에서부터, 새로 생긴 파일은 처음부터.
+/// 파일이 줄어들면(새로 쓰기 시작) 처음부터 다시.
+fn follow_files(patterns: Vec<PathBuf>, log: Log) {
+    std::thread::spawn(move || {
+        let mut offsets: std::collections::HashMap<PathBuf, u64> = patterns
+            .iter()
+            .flat_map(|p| matching_files(p))
+            .map(|f| {
+                let len = std::fs::metadata(&f).map(|m| m.len()).unwrap_or(0);
+                (f, len)
+            })
+            .collect();
+        let mut partial: std::collections::HashMap<PathBuf, Vec<u8>> = Default::default();
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            for file in patterns.iter().flat_map(|p| matching_files(p)) {
+                let len = std::fs::metadata(&file).map(|m| m.len()).unwrap_or(0);
+                let pos = offsets.entry(file.clone()).or_insert(0);
+                if len < *pos {
+                    *pos = 0;
+                }
+                if len == *pos {
+                    continue;
+                }
+                let Ok(mut f) = File::open(&file) else { continue };
+                use std::io::Seek;
+                if f.seek(std::io::SeekFrom::Start(*pos)).is_err() {
+                    continue;
+                }
+                let mut bytes = Vec::new();
+                if f.read_to_end(&mut bytes).is_err() {
+                    continue;
+                }
+                *pos += bytes.len() as u64;
+                let buf = partial.entry(file.clone()).or_default();
+                buf.extend_from_slice(&bytes);
+                while let Some(nl) = buf.iter().position(|b| *b == b'\n') {
+                    let line: Vec<u8> = buf.drain(..=nl).collect();
+                    let line = String::from_utf8_lossy(&line);
+                    write_log(&log, Stream::Stdout, line.trim_end_matches(['\r', '\n']));
+                }
+            }
+        }
+    });
 }
 
 fn spawn_child(args: &Args) -> std::io::Result<Child> {
@@ -141,6 +218,10 @@ fn run(args: Args) -> Result<i32, String> {
         child.stdout.take().map(|s| pump(s, log.clone(), Stream::Stdout)),
         child.stderr.take().map(|s| pump(s, log.clone(), Stream::Stderr)),
     ];
+    if !args.tails.is_empty() {
+        let base = args.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
+        follow_files(args.tails.iter().map(|t| base.join(t)).collect(), log.clone());
+    }
     let stdin = Arc::new(Mutex::new(child.stdin.take()));
     {
         let stdin = stdin.clone();
@@ -178,4 +259,22 @@ fn main() {
         }
     };
     std::process::exit(code);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wildcard;
+
+    fn m(p: &str, n: &str) -> bool {
+        wildcard(&p.chars().collect::<Vec<_>>(), &n.chars().collect::<Vec<_>>())
+    }
+
+    #[test]
+    fn wildcard_matches_names() {
+        assert!(m("*.log", "Pal.log"));
+        assert!(m("Pal-?.log", "Pal-1.log"));
+        assert!(!m("*.log", "Pal.txt"));
+        assert!(m("*", ""));
+        assert!(!m("a?", "a"));
+    }
 }
