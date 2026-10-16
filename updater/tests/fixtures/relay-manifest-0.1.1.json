@@ -1,0 +1,67 @@
+{
+  "keyId": "saba-updater-v1",
+  "manifest": {
+    "channel": "stable",
+    "components": {
+      "cli": {
+        "asset": "saba-chan-cli-windows-x64.zip",
+        "install_dir": ".",
+        "sha256": "94fb706683ce0615281e82b51a2fb8bef11b00423a51bd58b21a8ee5a255e467",
+        "size_bytes": 2555117,
+        "url": "https://pub-7193a1c92bf24fd992506560aa6d2a5d.r2.dev/releases/0.1.1/saba-chan-cli-windows-x64.zip",
+        "version": "0.1.1"
+      },
+      "discord_bot": {
+        "asset": "discord-bot.zip",
+        "install_dir": "discord_bot",
+        "sha256": "9477e367ae1477a82e9354c5554f005b3321ec35fe688460764c993c820d4105",
+        "size_bytes": 157929,
+        "url": "https://pub-7193a1c92bf24fd992506560aa6d2a5d.r2.dev/releases/0.1.1/discord-bot.zip",
+        "version": "0.1.1"
+      },
+      "gui": {
+        "asset": "saba-chan-gui-windows-x64.zip",
+        "install_dir": ".",
+        "sha256": "61815d0ec1768117517a67fa74e59e18a3eaa604e0c736ca38da2e3bbcf666a6",
+        "size_bytes": 128565223,
+        "url": "https://pub-7193a1c92bf24fd992506560aa6d2a5d.r2.dev/releases/0.1.1/saba-chan-gui-windows-x64.zip",
+        "version": "0.1.1"
+      },
+      "installer": {
+        "asset": "saba-chan-installer-windows-x64.zip",
+        "install_dir": ".",
+        "sha256": "79b7d2e11749df943c216f24367b64893a4c7d07381d96e77f06126b31cdf07c",
+        "size_bytes": 12116153,
+        "url": "https://pub-7193a1c92bf24fd992506560aa6d2a5d.r2.dev/releases/0.1.1/saba-chan-installer-windows-x64.zip",
+        "version": "0.1.1"
+      },
+      "locales": {
+        "asset": "locales.zip",
+        "install_dir": "locales",
+        "sha256": "c2824895ecc0afb29414a9476e23a2708a68416fb4bd7c5b1fc01d19b893c00c",
+        "size_bytes": 213607,
+        "url": "https://pub-7193a1c92bf24fd992506560aa6d2a5d.r2.dev/releases/0.1.1/locales.zip",
+        "version": "0.1.1"
+      },
+      "saba-core": {
+        "asset": "saba-core-windows-x64.zip",
+        "install_dir": ".",
+        "sha256": "ccdd62052af9bb99fbca6f08ff0e7b900eb36342449358557a797ef1890bb7ae",
+        "size_bytes": 6465440,
+        "url": "https://pub-7193a1c92bf24fd992506560aa6d2a5d.r2.dev/releases/0.1.1/saba-core-windows-x64.zip",
+        "version": "0.1.1"
+      },
+      "updater": {
+        "asset": "saba-chan-updater-windows-x64.zip",
+        "install_dir": ".",
+        "sha256": "19f9eb763b2d58b2b5aaad554a9152b4fa1d9db7afaaaab3e8439176991e8895",
+        "size_bytes": 9708939,
+        "url": "https://pub-7193a1c92bf24fd992506560aa6d2a5d.r2.dev/releases/0.1.1/saba-chan-updater-windows-x64.zip",
+        "version": "0.1.1"
+      }
+    },
+    "platform": "windows-x64",
+    "version": "0.1.1"
+  },
+  "signature": "R4IBNoL3f5abEYc8k+cW85yW4qOc8bSBWe5w6vbRek+9Ou2mKvfml4KXyBk6bbysz7v0kEnCcfFPWoXUXyVABw=="
+}

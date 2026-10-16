@@ -20,7 +20,7 @@ use serde_json::Value;
 /// 업데이터가 믿는 서명 공개키 (keyId, base64 원시 32바이트 공개키)
 pub const TRUSTED_KEYS: &[(&str, &str)] = &[(
     "saba-updater-v1",
-    "1CjNaGRWQcEs0Gjm12+GEV6SjVzzNBI49nDM3bUR9VM=",
+    "bxKwq1Xq2yM/GJgGuCYHWeeXUjQ3MakwGuqYHOZTERU=",
 )];
 
 /// 릴레이가 돌려주는 서명된 manifest 봉투

@@ -5,6 +5,10 @@
   check     어긋난 파일이 있으면 목록을 출력하고 1로 끝난다 (CI)
   manifest  빌드된 에셋 폴더로 릴레이용 릴리즈 manifest(서명 전 JSON)를 만든다.
             서명은 `cargo run -p saba-chan-updater-lib --example release_signing -- sign`.
+  registration  서명된 봉투로 릴레이 `POST /admin/releases` 본문을 만든다.
+
+manifest 형식은 운영 중인 릴레이(0.1.1)와 같다:
+  {channel, platform, version, components: {<키>: {asset, install_dir, sha256, size_bytes, url, version}}}
 """
 
 from __future__ import annotations
@@ -179,44 +183,78 @@ def cmd_sync(data: dict) -> int:
     return 0
 
 
+def r2_key(release: str, asset: str) -> str:
+    return f"releases/{release}/{asset}"
+
+
 def cmd_manifest(data: dict, args: argparse.Namespace) -> int:
-    """에셋 폴더에서 `<키>-<버전>-<플랫폼>.zip`(또는 `<키>-<버전>.zip`)을 찾아 manifest를 만든다."""
+    """에셋 폴더에서 각 컴포넌트의 `asset` 파일을 찾아 manifest를 만든다. 없는 컴포넌트는 빠진다."""
     assets = Path(args.assets)
     base = args.base_url.rstrip("/")
+    release = data["release"]["version"]
     components = {}
     for key, comp in data["components"].items():
-        version = comp["version"]
-        candidates = [f"{key}-{version}-{args.platform}.zip", f"{key}-{version}.zip"]
-        asset = next((assets / c for c in candidates if (assets / c).is_file()), None)
-        if asset is None:
-            print(f"skip {key}: none of {candidates} in {assets}", file=sys.stderr)
+        if "asset" not in comp:
             continue
-        blob = asset.read_bytes()
-        entry = {
-            "version": version,
-            "filename": asset.name,
-            "sizeBytes": len(blob),
+        name = comp["asset"].format(platform=args.platform)
+        path = assets / name
+        if not path.is_file():
+            print(f"skip {key}: {path} not found", file=sys.stderr)
+            continue
+        blob = path.read_bytes()
+        components[key] = {
+            "asset": name,
+            "install_dir": comp.get("install_dir", "."),
             "sha256": hashlib.sha256(blob).hexdigest(),
-            "url": f"{base}/{version}/{asset.name}",
+            "size_bytes": len(blob),
+            "url": f"{base}/{r2_key(release, name)}",
+            "version": comp["version"],
         }
-        for opt in ("installDir", "requires"):
-            snake = {"installDir": "install_dir"}.get(opt, opt)
-            if snake in comp:
-                entry[opt] = comp[snake]
-        components[key] = entry
+    if not components:
+        sys.exit(f"no assets found in {assets}")
     manifest = {
-        "version": data["release"]["version"],
         "channel": args.channel or data["release"].get("channel", "stable"),
-        "platform": args.platform,
-        "isCritical": args.critical,
         "components": components,
+        "platform": args.platform,
+        "version": release,
     }
-    text = json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
-    if args.out:
-        Path(args.out).write_text(text, encoding="utf-8")
+    write_json(manifest, args.out)
+    return 0
+
+
+def cmd_registration(args: argparse.Namespace) -> int:
+    """`POST /admin/releases` 본문. signedManifest는 서명 봉투 전체를 JSON 문자열로 넣는다."""
+    signed = json.loads(Path(args.signed).read_text(encoding="utf-8"))
+    manifest = signed["manifest"]
+    release = manifest["version"]
+    body = {
+        "version": release,
+        "channel": manifest["channel"],
+        "rolloutPercent": args.rollout,
+        "isCritical": args.critical,
+        "signedManifest": json.dumps(signed, ensure_ascii=False, separators=(",", ":"), sort_keys=True),
+        "assets": [
+            {
+                "component": key,
+                "platform": manifest["platform"],
+                "filename": comp["asset"],
+                "sizeBytes": comp["size_bytes"],
+                "sha256": comp["sha256"],
+                "r2Key": r2_key(release, comp["asset"]),
+            }
+            for key, comp in sorted(manifest["components"].items())
+        ],
+    }
+    write_json(body, args.out)
+    return 0
+
+
+def write_json(value: dict, out: str | None) -> None:
+    text = json.dumps(value, indent=2, ensure_ascii=False) + "\n"
+    if out:
+        Path(out).write_text(text, encoding="utf-8")
     else:
         sys.stdout.write(text)
-    return 0
 
 
 def main() -> int:
@@ -229,9 +267,16 @@ def main() -> int:
     m.add_argument("--base-url", required=True, help="R2 공개 URL 접두사 (<base>/<version>/<file>)")
     m.add_argument("--platform", required=True, help="windows-x64, linux-x64 ...")
     m.add_argument("--channel")
-    m.add_argument("--critical", action="store_true")
     m.add_argument("--out")
+    r = sub.add_parser("registration")
+    r.add_argument("--signed", required=True, help="release_signing sign 출력")
+    r.add_argument("--rollout", type=int, default=100)
+    r.add_argument("--critical", action="store_true")
+    r.add_argument("--out")
     args = parser.parse_args()
+
+    if args.cmd == "registration":
+        return cmd_registration(args)
 
     data = load()
     if args.cmd == "check":

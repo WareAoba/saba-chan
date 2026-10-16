@@ -21,6 +21,8 @@ use crate::version::SemVer;
 pub const DEFAULT_RELAY_URL: &str = "https://saba-chan.online";
 /// 기본 채널
 pub const DEFAULT_CHANNEL: &str = "stable";
+/// 릴레이가 외부 업데이트 요청에 요구하는 헤더
+pub const CLIENT_HEADER: (&str, &str) = ("X-Saba-Client", "1");
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -60,21 +62,23 @@ pub struct ReleaseManifest {
     pub components: HashMap<String, ManifestComponent>,
 }
 
+/// manifest 컴포넌트 항목. 필드 이름은 운영 중인 manifest(0.1.1~)를 따른다:
+/// `asset`, `size_bytes`, `install_dir`. 예전 초안 이름(`filename` 등)도 읽는다.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ManifestComponent {
     pub version: String,
+    #[serde(rename = "asset", alias = "filename")]
     pub filename: String,
-    #[serde(default)]
+    #[serde(default, rename = "size_bytes", alias = "sizeBytes", skip_serializing_if = "Option::is_none")]
     pub size_bytes: Option<u64>,
     pub sha256: String,
     /// R2 공개 URL
     pub url: String,
     /// install_root 기준 설치 폴더
-    #[serde(default)]
+    #[serde(default, rename = "install_dir", alias = "installDir", skip_serializing_if = "Option::is_none")]
     pub install_dir: Option<String>,
     /// 이 컴포넌트가 요구하는 다른 컴포넌트의 최소 버전 (예: `{"saba-core": ">=0.3.0"}`)
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requires: Option<HashMap<String, String>>,
 }
 
@@ -108,8 +112,11 @@ pub struct RelayClient {
 
 impl RelayClient {
     pub fn new(base_url: &str) -> Self {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(CLIENT_HEADER.0, reqwest::header::HeaderValue::from_static(CLIENT_HEADER.1));
         let http = reqwest::Client::builder()
             .user_agent(concat!("saba-chan-updater/", env!("CARGO_PKG_VERSION")))
+            .default_headers(headers)
             .timeout(std::time::Duration::from_secs(20))
             .build()
             .unwrap_or_default();
@@ -243,6 +250,44 @@ pub fn anon_client_id() -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// 운영 릴레이가 실제로 내려준 0.1.1 manifest (서명 봉투 그대로)
+    const PRODUCTION_0_1_1: &str = include_str!("../tests/fixtures/relay-manifest-0.1.1.json");
+
+    #[test]
+    fn production_manifest_verifies_with_bundled_key() {
+        let signed: SignedManifest = serde_json::from_str(PRODUCTION_0_1_1).unwrap();
+        assert_eq!(signed.key_id, "saba-updater-v1");
+        let m = verify_release(&signed, "windows-x64", "0.1.0").expect("production manifest must verify");
+        assert_eq!(m.version, "0.1.1");
+        let gui = &m.components["gui"];
+        assert_eq!(gui.filename, "saba-chan-gui-windows-x64.zip");
+        assert_eq!(gui.size_bytes, Some(128565223));
+        assert_eq!(gui.install_dir.as_deref(), Some("."));
+        assert_eq!(m.components["locales"].install_dir.as_deref(), Some("locales"));
+        assert!(m.components["saba-core"].url.starts_with("https://pub-7193a1c92bf24fd992506560aa6d2a5d.r2.dev/releases/0.1.1/"));
+        assert_eq!(m.components.len(), 7);
+    }
+
+    #[test]
+    fn production_manifest_tampering_and_downgrade_are_rejected() {
+        let mut signed: SignedManifest = serde_json::from_str(PRODUCTION_0_1_1).unwrap();
+        assert!(matches!(verify_release(&signed, "windows-x64", "0.2.0"), Err(RelayError::Downgrade { .. })));
+        assert!(matches!(verify_release(&signed, "linux-x64", "0.1.0"), Err(RelayError::WrongTarget { .. })));
+        signed.manifest["components"]["gui"]["url"] = serde_json::json!("https://evil.example/gui.zip");
+        assert!(matches!(
+            verify_release(&signed, "windows-x64", "0.1.0"),
+            Err(RelayError::Signature(signature::SignatureError::Invalid))
+        ));
+    }
+
+    #[test]
+    fn components_serialize_with_production_field_names() {
+        let signed: SignedManifest = serde_json::from_str(PRODUCTION_0_1_1).unwrap();
+        let m: ReleaseManifest = serde_json::from_value(signed.manifest.clone()).unwrap();
+        let back = serde_json::to_value(&m.components["cli"]).unwrap();
+        assert_eq!(back, signed.manifest["components"]["cli"]);
+    }
 
     fn manifest(version: &str, platform: &str) -> serde_json::Value {
         json!({

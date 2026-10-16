@@ -1,7 +1,7 @@
 //! 업데이터 릴레이(R2) 경로 E2E — mock 릴레이 + mock R2로 확인 → 서명 검증 → 다운로드
 //! → 해시 검증까지 한 번에 돌린다. 변조된 에셋과 신뢰하지 않는 서명도 확인한다.
 
-use axum::{extract::State, routing::get, Json, Router};
+use axum::{extract::State, http::{HeaderMap, StatusCode}, response::IntoResponse, routing::get, Json, Router};
 use saba_chan_updater_lib::signature;
 use saba_chan_updater_lib::{relay, Component, UpdateConfig, UpdateManager, UpdateSource};
 use serde_json::{json, Value};
@@ -13,6 +13,11 @@ const GOOD_ASSET: &[u8] = b"PK-good-module-bytes";
 struct Mock {
     base: String,
     signed: Value,
+}
+
+/// 운영 릴레이처럼 `X-Saba-Client: 1`이 없으면 거절한다
+fn has_client_header(headers: &HeaderMap) -> bool {
+    headers.get(relay::CLIENT_HEADER.0).and_then(|v| v.to_str().ok()) == Some(relay::CLIENT_HEADER.1)
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -30,13 +35,13 @@ async fn start_mock(sign_with: &str, key_id: &str) -> String {
         "components": {
             "module-good": {
                 "version": "9.0.0",
-                "filename": "module-good-9.0.0.zip",
+                "asset": "module-good-9.0.0.zip",
                 "sha256": sha256_hex(GOOD_ASSET),
                 "url": format!("{}/r2/module-good-9.0.0.zip", base),
             },
             "module-bad": {
                 "version": "9.0.0",
-                "filename": "module-bad-9.0.0.zip",
+                "asset": "module-bad-9.0.0.zip",
                 // R2가 다른 바이트를 준다 (변조·손상 흉내)
                 "sha256": sha256_hex(b"what the manifest promised"),
                 "url": format!("{}/r2/module-bad-9.0.0.zip", base),
@@ -49,7 +54,10 @@ async fn start_mock(sign_with: &str, key_id: &str) -> String {
     let app = Router::new()
         .route(
             "/v1/updates/check",
-            get(|State(m): State<Arc<Mock>>| async move {
+            get(|State(m): State<Arc<Mock>>, headers: HeaderMap| async move {
+                if !has_client_header(&headers) {
+                    return StatusCode::BAD_REQUEST.into_response();
+                }
                 Json(json!({
                     "upToDate": false,
                     "latest": {
@@ -59,11 +67,17 @@ async fn start_mock(sign_with: &str, key_id: &str) -> String {
                         "notes": { "ko": "테스트 릴리즈" }
                     }
                 }))
+                .into_response()
             }),
         )
         .route(
             "/v1/updates/manifest/9.0.0",
-            get(|State(m): State<Arc<Mock>>| async move { Json(m.signed.clone()) }),
+            get(|State(m): State<Arc<Mock>>, headers: HeaderMap| async move {
+                if !has_client_header(&headers) {
+                    return StatusCode::BAD_REQUEST.into_response();
+                }
+                Json(m.signed.clone()).into_response()
+            }),
         )
         .route("/r2/module-good-9.0.0.zip", get(|| async { GOOD_ASSET.to_vec() }))
         .route("/r2/module-bad-9.0.0.zip", get(|| async { b"tampered".to_vec() }))
