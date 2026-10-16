@@ -1323,14 +1323,14 @@ entry = "lifecycle.py"
 "saba-core" = ">=0.3.0"
 "gui" = ">=0.2.0"
 "ext-steamcmd" = ">=1.0.0"
-"discord_bot" = ">=0.1.0"
+"cli" = ">=0.1.0"
 "#;
         let meta = parse_module_toml(toml).unwrap();
         let mut installed = std::collections::HashMap::new();
         installed.insert("saba-core".to_string(), "0.5.0".to_string());
         installed.insert("gui".to_string(), "0.3.0".to_string());
         installed.insert("ext-steamcmd".to_string(), "1.0.0".to_string());
-        installed.insert("discord_bot".to_string(), "0.1.0".to_string());
+        installed.insert("cli".to_string(), "0.1.0".to_string());
 
         let issues = meta.check_dependencies(&installed);
         assert!(issues.is_empty(), "All cross-type dependencies should be satisfied");
@@ -1340,10 +1340,10 @@ entry = "lifecycle.py"
         partial.insert("saba-core".to_string(), "0.5.0".to_string());
         partial.insert("gui".to_string(), "0.1.0".to_string()); // too low
         partial.insert("ext-steamcmd".to_string(), "1.0.0".to_string());
-        // discord_bot missing entirely
+        // cli missing entirely
 
         let issues = meta.check_dependencies(&partial);
-        assert_eq!(issues.len(), 2, "gui too low + discord_bot missing");
+        assert_eq!(issues.len(), 2, "gui too low + cli missing");
     }
 }
 

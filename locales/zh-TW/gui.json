@@ -332,8 +332,6 @@
     "docker_restart_hint": "資源限制變更將在重啟伺服器後應用。"
   },
   "discord_bot": {
-    "token_missing_title": "缺少權杖",
-    "token_missing_message": "請輸入 Discord 機器人權杖。",
     "prefix_missing_title": "缺少前置詞",
     "prefix_missing_message": "請設定機器人前置詞。範例：!pal、!mc",
     "start_failed_toast": "Discord 機器人啟動失敗：{{error}}",
@@ -342,7 +340,6 @@
     "stop_failed_toast": "Discord 機器人停止失敗：{{error}}",
     "stopped_toast": "Discord 機器人已停止",
     "stop_error_toast": "Discord 機器人停止例外：{{error}}",
-    "relaunched_toast": "Discord 機器人已重新啟動",
     "unknown_error": "發生預期外的機器人錯誤"
   },
   "app_exit": {

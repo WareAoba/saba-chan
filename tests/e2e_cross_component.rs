@@ -2,20 +2,19 @@
 //! 컴포넌트 간 완전형 E2E 테스트
 //! ═══════════════════════════════════════════════════════════════════
 //!
-//! 데몬 ↔ 모듈(Python lifecycle) ↔ ext-process(봇/익스텐션) ↔ API 전체를
+//! 데몬 ↔ 모듈(Python lifecycle) ↔ API 전체를
 //! 하나의 파이프라인으로 검증합니다.
 //!
 //! ## 테스트 범위
 //! 1. 데몬 부팅 → 모듈 발견 → 모듈 메타데이터 스키마 계약
 //! 2. 인스턴스 생성 → 설정 적용 (Python configure) → validate 호출
-//! 3. ext-process 생명주기: start → console 캡처 → stdin 명령 → stop
 //! 4. 설정 CRUD: GUI 설정 저장/로드, 봇 설정 저장/로드
 //! 5. 클라이언트 등록/하트비트 프로토콜
-//! 6. 크로스 컴포넌트: 모듈 + ext-process 동시 운영 + 상태 조회 일관성
+//! 6. 크로스 컴포넌트: 인스턴스 운영 중 상태 조회 일관성
 //!
 //! ## 필수 조건
 //! - Python 3.x 시스템에 설치 (또는 saba-chan venv 존재)
-//! - 테스트 fixture: tests/fixtures/e2e-mock-module/, tests/fixtures/mock_ext_process.py
+//! - 테스트 fixture: tests/fixtures/e2e-mock-module/
 
 use saba_core::supervisor::Supervisor;
 use saba_core::ipc::IPCServer;
@@ -338,157 +337,6 @@ async fn e2e_instance_lifecycle_with_python_module() {
 }
 
 // ═══════════════════════════════════════════════════════
-// 3. ext-process 생명주기: start → console → stdin → stop
-// ═══════════════════════════════════════════════════════
-
-#[tokio::test]
-async fn e2e_ext_process_full_lifecycle() {
-    let python = match find_python() {
-        Some(p) => p,
-        None => {
-            eprintln!("SKIP: Python not found, skipping ext-process E2E test");
-            return;
-        }
-    };
-
-    let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
-    let client = reqwest::Client::new();
-
-    let mock_script = std::path::Path::new("./tests/fixtures/mock_ext_process.py")
-        .canonicalize()
-        .expect("mock script must exist");
-
-    // ── 1) Start ext-process
-    let start_resp = client
-        .post(format!("{}/api/ext-process/e2e-test-bot/start", base_url))
-        .json(&json!({
-            "command": python,
-            "args": [mock_script.to_string_lossy()],
-            "env": {"E2E_TEST": "1"},
-            "meta": {"type": "test-bot", "version": "1.0.0"}
-        }))
-        .send().await.unwrap();
-    assert_eq!(
-        start_resp.status(),
-        reqwest::StatusCode::OK,
-        "ext-process start should succeed"
-    );
-    let start_json: Value = start_resp.json().await.unwrap();
-    assert!(start_json["ok"].as_bool().unwrap_or(false));
-    assert!(start_json["pid"].as_u64().is_some(), "Must have PID");
-
-    // 프로세스 시작 대기
-    sleep(Duration::from_millis(1500)).await;
-
-    // ── 2) Status 확인
-    let status_resp = client
-        .get(format!("{}/api/ext-process/e2e-test-bot/status", base_url))
-        .send().await.unwrap();
-    assert_eq!(status_resp.status(), reqwest::StatusCode::OK);
-    let status_json: Value = status_resp.json().await.unwrap();
-    assert_eq!(
-        status_json["status"].as_str(),
-        Some("running"),
-        "Process should be running"
-    );
-
-    // ── 3) Console 읽기 — READY 메시지 확인
-    let console_resp = client
-        .get(format!(
-            "{}/api/ext-process/e2e-test-bot/console?since=0&count=50",
-            base_url
-        ))
-        .send().await.unwrap();
-    assert_eq!(console_resp.status(), reqwest::StatusCode::OK);
-    let console_json: Value = console_resp.json().await.unwrap();
-    let lines = console_json["lines"]
-        .as_array()
-        .expect("console must have lines array");
-    let all_text: String = lines
-        .iter()
-        .filter_map(|l| l["line"].as_str().or_else(|| l.as_str()))
-        .collect::<Vec<&str>>()
-        .join("\n");
-    assert!(
-        all_text.contains("E2E_MOCK_EXT_STARTED") || all_text.contains("READY"),
-        "Console should contain startup messages, got: {}",
-        all_text
-    );
-
-    // ── 4) stdin으로 ping 명령 전송
-    let stdin_resp = client
-        .post(format!("{}/api/ext-process/e2e-test-bot/stdin", base_url))
-        .json(&json!({ "message": "{\"type\": \"ping\"}" }))
-        .send().await.unwrap();
-    assert!(
-        stdin_resp.status().is_success(),
-        "stdin send should succeed"
-    );
-
-    // 명령 처리 대기
-    sleep(Duration::from_millis(1000)).await;
-
-    // ── 5) Console에서 pong 응답 확인
-    let console_resp2 = client
-        .get(format!(
-            "{}/api/ext-process/e2e-test-bot/console?since=0&count=100",
-            base_url
-        ))
-        .send().await.unwrap();
-    let console_json2: Value = console_resp2.json().await.unwrap();
-    let lines2 = console_json2["lines"]
-        .as_array()
-        .expect("console lines");
-    let all_text2: String = lines2
-        .iter()
-        .filter_map(|l| l["line"].as_str().or_else(|| l.as_str()))
-        .collect::<Vec<&str>>()
-        .join("\n");
-    assert!(
-        all_text2.contains("pong"),
-        "Console should contain pong response after ping, got: {}",
-        all_text2
-    );
-
-    // ── 6) Duplicate start → conflict
-    let dup_resp = client
-        .post(format!("{}/api/ext-process/e2e-test-bot/start", base_url))
-        .json(&json!({
-            "command": python,
-            "args": [mock_script.to_string_lossy()],
-        }))
-        .send().await.unwrap();
-    assert_eq!(
-        dup_resp.status(),
-        reqwest::StatusCode::CONFLICT,
-        "Duplicate start should return 409 CONFLICT"
-    );
-
-    // ── 7) Stop (graceful)
-    let stop_resp = client
-        .post(format!("{}/api/ext-process/e2e-test-bot/stop", base_url))
-        .send().await.unwrap();
-    assert!(stop_resp.status().is_success());
-
-    // 종료 대기
-    sleep(Duration::from_millis(2500)).await;
-
-    // ── 8) 종료 후 status → stopped
-    let final_status = client
-        .get(format!("{}/api/ext-process/e2e-test-bot/status", base_url))
-        .send().await.unwrap();
-    let final_json: Value = final_status.json().await.unwrap();
-    assert_eq!(
-        final_json["status"].as_str(),
-        Some("stopped"),
-        "Process should be stopped after stop"
-    );
-
-    task.abort();
-    cleanup_dirs(&m_dir, &i_dir, &d_dir);
-}
-
-// ═══════════════════════════════════════════════════════
 // 4. 설정 API 라운드트립 (GUI config + Bot config)
 // ═══════════════════════════════════════════════════════
 
@@ -600,19 +448,11 @@ async fn e2e_client_registration_heartbeat() {
 }
 
 // ═══════════════════════════════════════════════════════
-// 6. 크로스 컴포넌트: 모듈 + ext-process 동시 운영
+// 6. 크로스 컴포넌트: 인스턴스 운영 중 상태 조회
 // ═══════════════════════════════════════════════════════
 
 #[tokio::test]
 async fn e2e_cross_component_simultaneous_operation() {
-    let python = match find_python() {
-        Some(p) => p,
-        None => {
-            eprintln!("SKIP: Python not found");
-            return;
-        }
-    };
-
     let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
     let client = reqwest::Client::new();
 
@@ -629,23 +469,7 @@ async fn e2e_cross_component_simultaneous_operation() {
     let inst_json: Value = create_resp.json().await.unwrap();
     let instance_id = inst_json["id"].as_str().unwrap();
 
-    // ── B) ext-process 시작 (봇 사이드)
-    let mock_script = std::path::Path::new("./tests/fixtures/mock_ext_process.py")
-        .canonicalize()
-        .unwrap();
-    let start_resp = client
-        .post(format!("{}/api/ext-process/e2e-cross-bot/start", base_url))
-        .json(&json!({
-            "command": python,
-            "args": [mock_script.to_string_lossy()],
-            "env": {"E2E_TEST": "1"},
-        }))
-        .send().await.unwrap();
-    assert_eq!(start_resp.status(), reqwest::StatusCode::OK);
-
-    sleep(Duration::from_millis(1500)).await;
-
-    // ── C) 동시에 양쪽 상태 조회 — 둘 다 정상이어야 함
+    // ── C) 상태 조회
 
     // 모듈 사이드: 서버 목록에 인스턴스 존재
     let servers = client
@@ -662,29 +486,13 @@ async fn e2e_cross_component_simultaneous_operation() {
         });
     assert!(has_instance, "Instance should be in server list");
 
-    // ext-process 사이드: 프로세스 running
-    let ext_status = client
-        .get(format!("{}/api/ext-process/e2e-cross-bot/status", base_url))
-        .send().await.unwrap();
-    let ext_json: Value = ext_status.json().await.unwrap();
-    assert_eq!(ext_json["status"].as_str(), Some("running"));
-
-    // ext-process 목록에도 존재
-    let ext_list = client
-        .get(format!("{}/api/ext-processes", base_url))
-        .send().await.unwrap();
-    assert!(ext_list.status().is_success());
-
     // health 엔드포인트도 정상
     let health = client
         .get(format!("{}/health", base_url))
         .send().await.unwrap();
     assert_eq!(health.status(), reqwest::StatusCode::OK);
 
-    // ── D) 정리: 양쪽 모두 중지
-    let _ = client
-        .post(format!("{}/api/ext-process/e2e-cross-bot/stop", base_url))
-        .send().await;
+    // ── D) 정리
     let _ = client
         .delete(format!("{}/api/instance/{}", base_url, instance_id))
         .send().await;
@@ -852,7 +660,6 @@ async fn e2e_api_error_schema_consistency() {
 
     let error_cases = vec![
         ("GET", "/api/instance/nonexistent-id"),
-        ("GET", "/api/ext-process/nonexistent/status"),
     ];
 
     for (method, path) in error_cases {

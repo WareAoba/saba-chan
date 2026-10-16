@@ -9,7 +9,6 @@ pub(super) fn build_settings_menu(app: &App) -> Vec<MenuItem> {
     let console_buf = config::get_console_buffer_size().unwrap_or(2000);
     let auto_pwd = config::get_auto_generate_passwords().unwrap_or(true);
     let port_check = config::get_port_conflict_check().unwrap_or(true);
-    let discord_auto = config::get_discord_auto_start().unwrap_or(false);
 
     vec![
         // CLI 설정
@@ -34,11 +33,6 @@ pub(super) fn build_settings_menu(app: &App) -> Vec<MenuItem> {
             app.bot_prefix,
         )),
         // 공용 설정 (데몬/서버에 영향)
-        MenuItem::new(&t("screen.settings_discord_auto"), Some('d'), &format!(
-            "{}: {}",
-            t("screen.settings_discord_auto"),
-            if discord_auto { "ON" } else { "OFF" },
-        )),
         MenuItem::new(&t("screen.settings_ipc_port"), Some('P'), &format!(
             "{}: {}",
             t("screen.settings_ipc_port"),
@@ -98,12 +92,7 @@ pub(super) fn handle_settings_select(app: &mut App, sel: usize) {
                 on_submit: InlineAction::SetBotPrefix,
             };
         }
-        4 => { // Discord auto-start toggle
-            let current = config::get_discord_auto_start().unwrap_or(false);
-            let _ = config::set_discord_auto_start(!current);
-            app.flash(&format!("Discord Auto-start: {}", if !current { "ON" } else { "OFF" }));
-        }
-        5 => { // IPC Port → 인라인 Input
+        4 => { // IPC Port → 인라인 Input
             let current = config::get_ipc_port();
             app.input_mode = InputMode::InlineInput {
                 prompt: "데몬 IPC 포트 (1024+)".into(),
@@ -112,7 +101,7 @@ pub(super) fn handle_settings_select(app: &mut App, sel: usize) {
                 on_submit: InlineAction::SetGuiSetting { key: "ipc_port".into() },
             };
         }
-        6 => { // Console buffer → 인라인 Input
+        5 => { // Console buffer → 인라인 Input
             let current = config::get_console_buffer_size().unwrap_or(2000);
             app.input_mode = InputMode::InlineInput {
                 prompt: "콘솔 버퍼 크기 (100-50000)".into(),
@@ -121,12 +110,12 @@ pub(super) fn handle_settings_select(app: &mut App, sel: usize) {
                 on_submit: InlineAction::SetGuiSetting { key: "console_buffer".into() },
             };
         }
-        7 => { // Auto Passwords toggle
+        6 => { // Auto Passwords toggle
             let current = config::get_auto_generate_passwords().unwrap_or(true);
             let _ = config::set_auto_generate_passwords(!current);
             app.flash(&format!("Auto Passwords: {}", if !current { "ON" } else { "OFF" }));
         }
-        8 => { // Port Conflict Check toggle
+        7 => { // Port Conflict Check toggle
             let current = config::get_port_conflict_check().unwrap_or(true);
             let _ = config::set_port_conflict_check(!current);
             app.flash(&format!("Port Conflict Check: {}", if !current { "ON" } else { "OFF" }));

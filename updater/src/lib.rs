@@ -102,7 +102,6 @@ pub enum Component {
     Updater,
     Module(String),
     Extension(String),
-    DiscordBot,
     Locales,
 }
 
@@ -116,7 +115,6 @@ impl Component {
             Component::Updater => "updater".to_string(),
             Component::Module(name) => format!("module-{}", name),
             Component::Extension(name) => format!("ext-{}", name),
-            Component::DiscordBot => "discord_bot".to_string(),
             Component::Locales => "locales".to_string(),
         }
     }
@@ -128,7 +126,6 @@ impl Component {
             "cli" => Some(Component::Cli),
             "gui" => Some(Component::Gui),
             "updater" => Some(Component::Updater),
-            "discord_bot" => Some(Component::DiscordBot),
             "locales" => Some(Component::Locales),
             k if k.starts_with("module-") => {
                 Some(Component::Module(k.strip_prefix("module-").unwrap().to_string()))
@@ -154,7 +151,6 @@ impl Component {
             Component::Updater => "Updater".to_string(),
             Component::Module(name) => format!("Module: {}", name),
             Component::Extension(name) => format!("Extension: {}", name),
-            Component::DiscordBot => "Discord Bot".to_string(),
             Component::Locales => "Locales".to_string(),
         }
     }
@@ -483,7 +479,7 @@ impl UpdateManager {
     /// 서버(GitHub)에서 매니페스트를 가져와 설치된 컴포넌트의 SHA256을 검증합니다.
     ///
     /// 각 리포의 최신 릴리즈에서 manifest.json을 fetch하여 기대 해시를 수집합니다:
-    /// - 코어 리포 (`saba-chan`): saba-core, cli, gui, updater, discord_bot
+    /// - 코어 리포 (`saba-chan`): saba-core, cli, gui, updater
     /// - 모듈 리포 (`saba-chan-modules`): module-minecraft, module-palworld, ...
     /// - 익스텐션 리포 (`saba-chan-extensions`): ext-docker, ext-steamcmd, ...
     ///
@@ -581,7 +577,7 @@ impl UpdateManager {
         let local_versions = self.collect_local_versions();
         let mut components = Vec::new();
 
-        // ══ 1. 코어 리포 체크 (saba-core, cli, gui, updater, discord_bot) ══
+        // ══ 1. 코어 리포 체크 (saba-core, cli, gui, updater) ══
         let core_client = self.create_client();
         match self.check_core_repo(&core_client, &local_versions).await {
             Ok(core_components) => {
@@ -969,12 +965,6 @@ impl UpdateManager {
             }
         }
 
-        if !versions.contains_key("discord_bot") {
-            if let Some(v) = self.read_package_json_version("discord_bot") {
-                versions.insert("discord_bot".to_string(), v);
-            }
-        }
-
         if !versions.contains_key("updater") {
             // 업데이터 자신의 바이너리 버전 = Cargo.toml version (빌드 시 env!로 주입)
             if let Some(v) = self.read_cargo_version("updater") {
@@ -1291,7 +1281,7 @@ impl UpdateManager {
     /// ## 적용 순서
     /// 1. **Updater** — 업데이터 자체를 먼저 교체 (데몬이 수행)
     /// 2. **비-인터페이스**: 사용하지 않는 인터페이스(GUI 사용 중이면 CLI),
-    ///    DiscordBot, CoreDaemon, 모듈, 익스텐션, Locales를 비동기 적용
+    ///    CoreDaemon, 모듈, 익스텐션, Locales를 비동기 적용
     /// 3. **현재 인터페이스**: 마지막에 GUI 또는 CLI를 적용 (재시작 필요)
     ///
     /// 이 순서를 지키면 업데이트 도중 프로세스 충돌이 방지됩니다.
@@ -1332,10 +1322,6 @@ impl UpdateManager {
                 Component::CoreDaemon => {
                     // Updater exe can directly replace daemon binary
                     self.apply_binary_update("saba-core", staged_path).await?;
-                    applied.push(comp.component.display_name());
-                }
-                Component::DiscordBot => {
-                    self.apply_discord_bot_update(staged_path).await?;
                     applied.push(comp.component.display_name());
                 }
                 Component::Extension(name) => {
@@ -1393,7 +1379,6 @@ impl UpdateManager {
     /// 낮은 값일수록 먼저 적용됩니다:
     /// - 0: Updater (업데이트 방식 변경 대응 — 디스크의 바이너리를 먼저 교체)
     /// - 1: 모듈, 익스텐션, Locales (프로세스 중단 불필요)
-    /// - 2: DiscordBot (프로세스 중단 불필요)
     /// - 3: CoreDaemon (데몬 프로세스 종료 후 교체)
     /// - 4: 사용하지 않는 인터페이스 (GUI 사용 중이면 CLI, 반대도 마찬가지)
     /// - 5: 현재 사용 중인 인터페이스 (재시작 필요)
@@ -1401,7 +1386,6 @@ impl UpdateManager {
         match component {
             Component::Updater => 0,
             Component::Module(_) | Component::Extension(_) | Component::Locales => 1,
-            Component::DiscordBot => 2,
             Component::CoreDaemon => 3,
             // GUI/CLI는 현재 실행 중인 인터페이스를 마지막에 적용
             Component::Gui => {
@@ -1439,7 +1423,6 @@ impl UpdateManager {
                         if name.ends_with(".exe.old") || name.ends_with(".old") {
                             // saba-chan 관련 바이너리의 .old 파일만 삭제
                             let is_saba_old = name.starts_with("saba-")
-                                || name.starts_with("discord")
                                 || name.contains("cli")
                                 || name.contains("gui")
                                 || name.contains("core")
@@ -1789,16 +1772,6 @@ impl UpdateManager {
                     component: component.manifest_key(),
                     success: true,
                     message: "Updater updated".to_string(),
-                    stopped_processes: Vec::new(),
-                    restart_needed: false,
-                }
-            }
-            Component::DiscordBot => {
-                self.apply_discord_bot_update(staged_path).await?;
-                ApplyComponentResult {
-                    component: component.manifest_key(),
-                    success: true,
-                    message: "Discord Bot updated".to_string(),
                     stopped_processes: Vec::new(),
                     restart_needed: false,
                 }
@@ -2433,151 +2406,6 @@ rm -f "$0"
         anyhow::bail!("GUI directory not found (checked: install_root={}, exe_dir, cwd)", self.install_root.display())
     }
 
-    fn find_discord_bot_directory(&self) -> Result<PathBuf> {
-        // 1) install_root 기준 (컴파일된 배포 환경에서 가장 정확)
-        let from_root = self.install_root.join("discord_bot");
-        if from_root.exists() {
-            return Ok(from_root);
-        }
-
-        // 2) exe 기준
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(dir) = exe.parent() {
-                let bot = dir.join("discord_bot");
-                if bot.exists() {
-                    return Ok(bot);
-                }
-            }
-        }
-
-        // 3) CWD 기준 (개발 환경)
-        for p in &["discord_bot", "../discord_bot"] {
-            let path = PathBuf::from(p);
-            if path.exists() {
-                return Ok(path);
-            }
-        }
-
-        anyhow::bail!("Discord Bot directory not found")
-    }
-
-    async fn apply_discord_bot_update(&self, staged_path: &str) -> Result<()> {
-        let target_dir = self.find_discord_bot_directory()
-            .unwrap_or_else(|_| {
-                // If not found, create next to exe or in current dir
-                if let Ok(exe) = std::env::current_exe() {
-                    exe.parent().map(|p| p.join("discord_bot")).unwrap_or_else(|| PathBuf::from("discord_bot"))
-                } else {
-                    PathBuf::from("discord_bot")
-                }
-            });
-        let staged = Path::new(staged_path);
-
-        tracing::info!("[Updater] Applying Discord Bot update -> {}", target_dir.display());
-
-        // Backup existing
-        let backup_dir = self.staging_dir.join("discord_bot_backup");
-        if target_dir.exists() {
-            if backup_dir.exists() {
-                std::fs::remove_dir_all(&backup_dir)?;
-            }
-            self.copy_dir_recursive(&target_dir, &backup_dir)?;
-        }
-
-        // Extract archive (zip or tar.gz)
-        if staged.extension().map(|e| e == "zip").unwrap_or(false) {
-            let file = std::fs::File::open(staged)?;
-            let mut archive = zip::ZipArchive::new(file)?;
-
-            if target_dir.exists() {
-                self.clean_module_dir(&target_dir)?;
-            } else {
-                std::fs::create_dir_all(&target_dir)?;
-            }
-
-            for i in 0..archive.len() {
-                let mut entry = archive.by_index(i)?;
-                let name = entry.name().to_string();
-                let out_path = target_dir.join(&name);
-
-                if entry.is_dir() {
-                    std::fs::create_dir_all(&out_path)?;
-                } else {
-                    if let Some(parent) = out_path.parent() {
-                        std::fs::create_dir_all(parent)?;
-                    }
-                    let mut outfile = std::fs::File::create(&out_path)?;
-                    std::io::copy(&mut entry, &mut outfile)?;
-                }
-            }
-        } else if Self::is_tar_gz(staged) {
-            if target_dir.exists() {
-                self.clean_module_dir(&target_dir)?;
-            } else {
-                std::fs::create_dir_all(&target_dir)?;
-            }
-            Self::extract_tar_gz(staged, &target_dir)?;
-        } else {
-            std::fs::copy(staged, &target_dir)?;
-        }
-
-        // Clean staged file
-        std::fs::remove_file(staged).ok();
-
-        // package.json이 있으면 node_modules를 삭제 후 npm install로 클린 재설치
-        let package_json = target_dir.join("package.json");
-        let node_modules = target_dir.join("node_modules");
-        if package_json.exists() {
-            if node_modules.exists() {
-                tracing::info!("[Updater] Discord Bot: removing old node_modules for clean install");
-                if let Err(e) = std::fs::remove_dir_all(&node_modules) {
-                    tracing::warn!("[Updater] Discord Bot: failed to remove node_modules: {}", e);
-                }
-            }
-            tracing::info!("[Updater] Discord Bot: running npm install...");
-            let npm_cmd = if cfg!(target_os = "windows") { "npm.cmd" } else { "npm" };
-            match std::process::Command::new(npm_cmd)
-                .args(["install", "--production", "--no-audit", "--no-fund"])
-                .current_dir(&target_dir)
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .output()
-            {
-                Ok(output) => {
-                    if output.status.success() {
-                        tracing::info!("[Updater] Discord Bot: npm install completed successfully");
-                    } else {
-                        let stderr = String::from_utf8_lossy(&output.stderr);
-                        tracing::error!("[Updater] Discord Bot: npm install failed (exit {}): {}", output.status, stderr);
-                        // npm install 실패 시 백업에서 node_modules 복원 시도
-                        let backup_node_modules = backup_dir.join("node_modules");
-                        if backup_node_modules.exists() {
-                            tracing::info!("[Updater] Discord Bot: restoring node_modules from backup");
-                            if let Err(e) = self.copy_dir_recursive(&backup_node_modules, &node_modules) {
-                                tracing::error!("[Updater] Discord Bot: failed to restore node_modules: {}", e);
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    tracing::error!("[Updater] Discord Bot: failed to run npm: {}", e);
-                    // npm 실행 불가 시 백업에서 node_modules 복원 시도
-                    let backup_node_modules = backup_dir.join("node_modules");
-                    if backup_node_modules.exists() {
-                        tracing::info!("[Updater] Discord Bot: restoring node_modules from backup");
-                        if let Err(e2) = self.copy_dir_recursive(&backup_node_modules, &node_modules) {
-                            tracing::error!("[Updater] Discord Bot: failed to restore node_modules: {}", e2);
-                        }
-                    }
-                }
-            }
-        }
-
-        tracing::info!("[Updater] Discord Bot updated successfully");
-        Ok(())
-    }
-
     fn clean_module_dir(&self, dir: &Path) -> Result<()> {
         for entry in std::fs::read_dir(dir)?.flatten() {
             let path = entry.path();
@@ -2648,10 +2476,6 @@ rm -f "$0"
                 ext_dir.join("extension.toml").exists() || ext_dir.join("__init__.py").exists()
                     || ext_dir.join("manifest.json").exists()
             }
-            Component::DiscordBot => {
-                // discord_bot 디렉토리에 index.js + package.json 존재 확인
-                self.find_discord_bot_directory().ok().map(|d| d.join("index.js").exists()).unwrap_or(false)
-            }
             Component::Updater => {
                 // 업데이터 exe 존재 확인
                 let exe_name = if cfg!(windows) { "saba-chan-updater.exe" } else { "saba-chan-updater" };
@@ -2671,7 +2495,6 @@ rm -f "$0"
             (Component::Cli, self.is_component_installed(&Component::Cli)),
             (Component::Gui, self.is_component_installed(&Component::Gui)),
             (Component::Updater, self.is_component_installed(&Component::Updater)),
-            (Component::DiscordBot, self.is_component_installed(&Component::DiscordBot)),
             (Component::Locales, self.is_component_installed(&Component::Locales)),
         ];
 
@@ -2984,7 +2807,6 @@ rm -f "$0"
             Component::Gui => self.install_root.clone(),
             Component::Module(name) => self.modules_dir.join(name),
             Component::Extension(name) => self.resolve_ext_dir(name),
-            Component::DiscordBot => self.install_root.join("discord_bot"),
             Component::Updater => self.install_root.clone(),
             Component::Locales => self.install_root.join("locales"),
         }

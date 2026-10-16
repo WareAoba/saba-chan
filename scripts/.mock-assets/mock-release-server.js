@@ -139,10 +139,6 @@ function generateAssets() {
             innerFile: 'module.toml',
             content: `name = "minecraft"\nversion = "${MOCK_VERSION}"\ntype = "java"\n`,
         },
-        'discord-bot.zip': {
-            innerFile: 'package.json',
-            content: JSON.stringify({ name: "saba-chan-discord-bot", version: MOCK_VERSION, main: "index.js" }, null, 2),
-        },
     };
 
     // manifest.json — 본체 전용 (모듈은 별도 레포에서 관리)
@@ -166,12 +162,6 @@ function generateAssets() {
                 asset: 'saba-chan-gui-windows-x64.zip',
                 sha256: null,
                 install_dir: 'saba-chan-gui',
-            },
-            discord_bot: {
-                version: MOCK_VERSION,
-                asset: 'discord-bot.zip',
-                sha256: null,
-                install_dir: 'discord_bot',
             },
         },
     };

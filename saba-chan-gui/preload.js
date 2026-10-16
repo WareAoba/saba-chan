@@ -86,15 +86,10 @@ contextBridge.exposeInMainWorld('api', {
     openFolderDialog: () => ipcRenderer.invoke('dialog:openFolder'),
     // Migration API
     migrationScanDir: (dirPath) => ipcRenderer.invoke('migration:scanDir', dirPath),
-    // Discord Bot API
+    // Discord 릴레이 에이전트 API (데몬 내장)
     discordBotStatus: () => ipcRenderer.invoke('discord:status'),
-    discordBotStart: (config) => ipcRenderer.invoke('discord:start', config),
+    discordBotStart: () => ipcRenderer.invoke('discord:start'),
     discordBotStop: () => ipcRenderer.invoke('discord:stop'),
-    discordGuildMembers: () => ipcRenderer.invoke('discord:guildMembers'),
-    discordGuildChannels: () => ipcRenderer.invoke('discord:guildChannels'),
-    // Bot error events (from main process)
-    onBotError: (callback) => ipcRenderer.on('bot:error', (event, data) => callback(data)),
-    offBotError: () => ipcRenderer.removeAllListeners('bot:error'),
     // Bot Config API
     botConfigLoad: () => ipcRenderer.invoke('botConfig:load'),
     botConfigSave: (config) => ipcRenderer.invoke('botConfig:save', config),
@@ -122,9 +117,6 @@ contextBridge.exposeInMainWorld('api', {
     onCloseRequest: (callback) => ipcRenderer.on('app:closeRequest', callback),
     offCloseRequest: () => ipcRenderer.removeAllListeners('app:closeRequest'),
     closeResponse: (choice) => ipcRenderer.send('app:closeResponse', choice),
-    // Bot Relaunch (when language changes)
-    onBotRelaunch: (callback) => ipcRenderer.on('bot:relaunch', (event, config) => callback(config)),
-    offBotRelaunch: () => ipcRenderer.removeAllListeners('bot:relaunch'),
     // Status Update Events
     onStatusUpdate: (callback) => ipcRenderer.on('status:update', (event, data) => callback(data)),
     offStatusUpdate: () => ipcRenderer.removeAllListeners('status:update'),

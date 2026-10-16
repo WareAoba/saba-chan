@@ -162,34 +162,6 @@ pub fn resolve_settings_path() -> PathBuf {
     resolve_data_dir().join("settings.json")
 }
 
-/// 봇 설정 파일 경로 (`bot-config.json`)
-pub fn resolve_bot_config_path() -> PathBuf {
-    resolve_data_dir().join("bot-config.json")
-}
-
-/// Discord 봇 디렉토리 경로 (`discord_bot/`)
-///
-/// `SABA_DISCORD_BOT_DIR` 환경 변수로 오버라이드 가능.
-/// 기본값: 실행 파일과 같은 디렉토리의 `discord_bot/`
-pub fn resolve_discord_bot_dir() -> PathBuf {
-    if let Ok(p) = std::env::var("SABA_DISCORD_BOT_DIR") {
-        if !p.is_empty() {
-            return PathBuf::from(p);
-        }
-    }
-    // 프로덕션: exe와 같은 디렉토리의 discord_bot/
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(parent) = exe.parent() {
-            let bot_dir = parent.join("discord_bot");
-            if bot_dir.exists() {
-                return bot_dir;
-            }
-        }
-    }
-    // 개발 모드 폴백: cwd 기준
-    PathBuf::from("discord_bot")
-}
-
 /// 테스트 빌드에서 사용자 데이터 폴더 대신 쓰는 프로세스별 임시 루트.
 ///
 /// `test-isolation` 기능은 saba-core의 dev-dependency에서만 켜지므로

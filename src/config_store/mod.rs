@@ -97,19 +97,16 @@ impl Default for GuiSettings {
 // ── Bot Config (bot-config.json) ──
 
 /// Discord 봇 설정 — bot-config.json에 저장되는 모든 필드
+///
+/// 디스코드 봇은 클라우드 릴레이에서만 돈다. 로컬 봇용 필드(token, autoStart,
+/// mode, music*)는 제거됐고, 예전 파일에 남아 있어도 읽을 때 무시된다.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct BotConfig {
     pub prefix: String,
-    pub token: String,
-    pub auto_start: bool,
-    pub mode: String,
     pub cloud: CloudConfig,
     pub module_aliases: HashMap<String, String>,
     pub command_aliases: HashMap<String, Value>,
-    pub music_enabled: bool,
-    pub music_channel_id: String,
-    pub music_ui_settings: MusicUiSettings,
     pub node_settings: Value,
     pub cloud_nodes: Vec<Value>,
     pub cloud_members: HashMap<String, Value>,
@@ -124,38 +121,13 @@ pub struct CloudConfig {
 }
 
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase", default)]
-pub struct MusicUiSettings {
-    pub queue_lines: u32,
-    pub refresh_interval: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub normalize: Option<bool>,
-}
-
-impl Default for MusicUiSettings {
-    fn default() -> Self {
-        Self {
-            queue_lines: 5,
-            refresh_interval: 4000,
-            normalize: None,
-        }
-    }
-}
-
 impl Default for BotConfig {
     fn default() -> Self {
         Self {
             prefix: "!saba".to_string(),
-            token: String::new(),
-            auto_start: false,
-            mode: "local".to_string(),
             cloud: CloudConfig::default(),
             module_aliases: HashMap::new(),
             command_aliases: HashMap::new(),
-            music_enabled: true,
-            music_channel_id: String::new(),
-            music_ui_settings: MusicUiSettings::default(),
             node_settings: Value::Object(serde_json::Map::new()),
             cloud_nodes: Vec::new(),
             cloud_members: HashMap::new(),
@@ -415,12 +387,11 @@ mod tests {
         let config = BotConfig::default();
         let value = serde_json::to_value(&config).unwrap();
         assert!(value.get("prefix").is_some());
-        assert!(value.get("autoStart").is_some());
+        assert!(value.get("autoStart").is_none());
         assert!(value.get("moduleAliases").is_some());
         assert!(value.get("commandAliases").is_some());
-        assert!(value.get("musicEnabled").is_some());
-        assert!(value.get("musicChannelId").is_some());
-        assert!(value.get("musicUiSettings").is_some());
+        assert!(value.get("token").is_none());
+        assert!(value.get("musicEnabled").is_none());
         assert!(value.get("nodeSettings").is_some());
         assert!(value.get("cloudNodes").is_some());
         assert!(value.get("cloudMembers").is_some());
@@ -434,12 +405,11 @@ mod tests {
 
     #[test]
     fn bot_config_partial_json() {
-        let json = r#"{"prefix": "!test", "token": "tok-123"}"#;
+        let json = r#"{"prefix": "!test", "cloud": {"hostId": "h1"}}"#;
         let loaded: BotConfig = serde_json::from_str(json).unwrap();
         assert_eq!(loaded.prefix, "!test");
-        assert_eq!(loaded.token, "tok-123");
-        assert!(!loaded.auto_start); // default
-        assert_eq!(loaded.mode, "local"); // default
+        assert_eq!(loaded.cloud.host_id, "h1");
+        assert!(loaded.module_aliases.is_empty()); // default
     }
 
     #[test]
@@ -461,15 +431,12 @@ mod tests {
             "cloudMembers": { "u1": "admin" }
         }"#;
         let loaded: BotConfig = serde_json::from_str(json).unwrap();
+        // 예전 로컬 봇 필드(token, autoStart, mode, music*)는 무시된다
         assert_eq!(loaded.prefix, "!saba");
-        assert_eq!(loaded.token, "my-token");
-        assert!(loaded.auto_start);
-        assert_eq!(loaded.mode, "cloud");
         assert_eq!(loaded.cloud.relay_url, "https://relay.test");
         assert_eq!(loaded.cloud.host_id, "host-1");
         assert_eq!(loaded.module_aliases.get("mc").map(|s| s.as_str()), Some("minecraft"));
-        assert!(!loaded.music_enabled);
-        assert_eq!(loaded.music_channel_id, "ch-123");
+        assert!(serde_json::to_value(&loaded).unwrap().get("token").is_none());
     }
 
     #[test]
@@ -531,9 +498,6 @@ mod tests {
 
         let mut config = BotConfig::default();
         config.prefix = "!test".to_string();
-        config.token = "secret-token".to_string();
-        config.auto_start = true;
-        config.mode = "cloud".to_string();
         config.cloud.relay_url = "https://relay.test".to_string();
         config.module_aliases.insert("mc".to_string(), "minecraft".to_string());
 
@@ -542,8 +506,6 @@ mod tests {
         // 인메모리 확인
         let loaded = store.get_bot_config().await;
         assert_eq!(loaded.prefix, "!test");
-        assert_eq!(loaded.token, "secret-token");
-        assert!(loaded.auto_start);
         assert_eq!(loaded.cloud.relay_url, "https://relay.test");
 
         // 디스크에서 새로 로드
@@ -584,27 +546,23 @@ mod tests {
         // 완전한 설정 저장
         let full = serde_json::json!({
             "prefix": "!saba",
-            "token": "tok-1",
-            "autoStart": true,
-            "musicEnabled": true,
-            "musicChannelId": "ch-1"
+            "cloud": { "relayUrl": "https://relay.test", "hostId": "h1" },
+            "moduleAliases": { "minecraft": "mc" }
         });
         store.set_bot_config_from_json(full).await.unwrap();
 
         // 일부만 업데이트
         let partial = serde_json::json!({
-            "prefix": "!new",
-            "token": "tok-2"
+            "prefix": "!new"
         });
         let result = store.set_bot_config_from_json(partial).await.unwrap();
 
         // 업데이트된 필드
         assert_eq!(result.prefix, "!new");
-        assert_eq!(result.token, "tok-2");
-        // 기존 값 유지
-        assert!(result.auto_start);
-        assert!(result.music_enabled);
-        assert_eq!(result.music_channel_id, "ch-1");
+        // 기존 값 유지 (최상위 키 단위 병합)
+        assert_eq!(result.cloud.host_id, "h1");
+        assert_eq!(result.cloud.relay_url, "https://relay.test");
+        assert_eq!(result.module_aliases.get("minecraft").map(|s| s.as_str()), Some("mc"));
     }
 
     #[tokio::test]

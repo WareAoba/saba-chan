@@ -332,8 +332,6 @@
     "docker_restart_hint": "Los cambios del límite de recursos se aplicarán después de reiniciar el servidor."
   },
   "discord_bot": {
-    "token_missing_title": "Token Faltante",
-    "token_missing_message": "Por favor ingrese el token del Bot de Discord.",
     "prefix_missing_title": "Prefijo Faltante",
     "prefix_missing_message": "Por favor configure el prefijo del bot. Ejemplo: !pal, !mc",
     "start_failed_toast": "Falló el inicio del bot de Discord: {{error}}",
@@ -342,7 +340,6 @@
     "stop_failed_toast": "Falló la detención del bot de Discord: {{error}}",
     "stopped_toast": "El bot de Discord ha sido detenido",
     "stop_error_toast": "Excepción al detener el bot de Discord: {{error}}",
-    "relaunched_toast": "El bot de Discord ha sido reiniciado",
     "unknown_error": "An unexpected bot error occurred"
   },
   "app_exit": {

@@ -54,13 +54,6 @@ COMPONENTS = [
         "install_dir": ".",
     },
     {
-        "key": "discord_bot",
-        "version_file": "discord_bot/package.json",
-        "version_type": "npm",
-        "asset_pattern": r"discord-bot.*\.zip$",
-        "install_dir": "discord_bot",
-    },
-    {
         "key": "locales",
         "version_file": "Cargo.toml",           # 루트 버전 사용
         "version_type": "cargo",

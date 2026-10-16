@@ -111,8 +111,6 @@ if (typeof window !== 'undefined') {
         onUpdateCompleted: vi.fn(),
         onCloseRequest: vi.fn(),
         offCloseRequest: vi.fn(),
-        onBotRelaunch: vi.fn(),
-        offBotRelaunch: vi.fn(),
         onConsolePopoutOpened: vi.fn(),
         onConsolePopoutClosed: vi.fn(),
         offConsolePopoutOpened: vi.fn(),

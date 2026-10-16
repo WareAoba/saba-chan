@@ -164,10 +164,7 @@ pub enum InputMode {
 pub enum InlineAction {
     SetCliSetting { key: String },
     SetGuiSetting { key: String },
-    SetBotToken,
     SetBotPrefix,
-    SetBotMode,
-    SetBotMusic,
     SetBotRelayUrl,
     SetBotRelayHostId,
     SetBotNodeToken,
@@ -484,7 +481,8 @@ impl App {
         let lang = settings.effective_language();
         let i18n = Arc::new(I18n::load(&lang));
 
-        let token_ok = config::get_discord_token().ok().flatten().is_some();
+        // 노드 토큰 유무는 상태 모니터가 첫 폴링에서 채운다.
+        let token_ok = false;
         let bot_prefix = if settings.bot_prefix.is_empty() {
             config::get_bot_prefix().unwrap_or_else(|_| "!saba".into())
         } else {

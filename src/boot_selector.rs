@@ -102,7 +102,7 @@ enum Key {
 
 #[cfg(windows)]
 mod win32 {
-    #![allow(non_snake_case)]
+    #![allow(non_snake_case, clippy::upper_case_acronyms)]
 
     type HANDLE = *mut std::ffi::c_void;
     type HWND = *mut std::ffi::c_void;

@@ -30,7 +30,6 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Default)]
 pub struct ChatSettings {
     pub prefix: String,
-    pub mode: String,
     pub module_aliases: HashMap<String, String>,
     pub command_aliases: HashMap<String, Value>,
     pub node_settings: Value,
@@ -40,7 +39,6 @@ impl From<&BotConfig> for ChatSettings {
     fn from(cfg: &BotConfig) -> Self {
         Self {
             prefix: cfg.prefix.clone(),
-            mode: cfg.mode.clone(),
             module_aliases: cfg.module_aliases.clone(),
             command_aliases: cfg.command_aliases.clone(),
             node_settings: cfg.node_settings.clone(),
@@ -168,18 +166,10 @@ impl<D: DaemonApi> Ctx<'_, D> {
 
     // ── 노드 설정 (허용 인스턴스 / 멤버 권한) ──
 
-    /// 클라우드: 길드 키로만 조회. 그 외: 길드 키 → "local" 폴백.
+    /// 길드(노드)별 설정. 설정이 없는 길드는 제한 없음.
     fn node_settings(&self) -> Option<&Value> {
-        let ns = self.settings.node_settings.as_object()?;
-        let guild = self.req.guild_id.as_deref();
-        if let Some(cfg) = guild.and_then(|g| ns.get(g)) {
-            return Some(cfg);
-        }
-        if self.settings.mode == "cloud" {
-            None
-        } else {
-            ns.get("local")
-        }
+        let guild = self.req.guild_id.as_deref()?;
+        self.settings.node_settings.as_object()?.get(guild)
     }
 
     fn allowed_instances(&self) -> Option<Vec<&str>> {

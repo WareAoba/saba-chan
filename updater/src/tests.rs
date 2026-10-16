@@ -662,10 +662,10 @@ fn test_dependency_issue_not_installed() {
     use crate::DependencyIssue;
 
     let issue = DependencyIssue {
-        required_component: "discord_bot".to_string(),
+        required_component: "gui".to_string(),
         required_version: ">=0.1.0".to_string(),
         installed_version: None,
-        message: "cli requires discord_bot >=0.1.0 but not installed is installed".to_string(),
+        message: "cli requires gui >=0.1.0 but not installed is installed".to_string(),
     };
     assert!(issue.installed_version.is_none());
 }
@@ -713,7 +713,7 @@ fn test_component_info_requires_field() {
         "asset": "gui-windows-x64.zip",
         "requires": {
             "saba-core": ">=0.3.0",
-            "discord_bot": ">=0.1.0"
+            "cli": ">=0.1.0"
         }
     }"#;
     let info: ComponentInfo = serde_json::from_str(json).unwrap();
@@ -721,7 +721,7 @@ fn test_component_info_requires_field() {
     let requires = info.requires.unwrap();
     assert_eq!(requires.len(), 2);
     assert_eq!(requires.get("saba-core").unwrap(), ">=0.3.0");
-    assert_eq!(requires.get("discord_bot").unwrap(), ">=0.1.0");
+    assert_eq!(requires.get("cli").unwrap(), ">=0.1.0");
 }
 
 #[test]
@@ -782,7 +782,6 @@ fn test_component_apply_priority_categories() {
     let module = Component::Module("minecraft".to_string());
     let extension = Component::Extension("docker".to_string());
     let locales = Component::Locales;
-    let discord_bot = Component::DiscordBot;
     let core_daemon = Component::CoreDaemon;
     let updater = Component::Updater;
 
@@ -805,18 +804,11 @@ fn test_component_apply_priority_categories() {
         "Updater가 모듈보다 먼저 적용"
     );
 
-    // 모듈/익스텐션은 DiscordBot보다 먼저
+    // 모듈/익스텐션은 CoreDaemon보다 먼저
     assert!(
         UpdateManager::component_apply_priority_for_test(&module) <
-        UpdateManager::component_apply_priority_for_test(&discord_bot),
-        "모듈은 DiscordBot보다 먼저 적용"
-    );
-
-    // CoreDaemon은 DiscordBot보다 후순위
-    assert!(
-        UpdateManager::component_apply_priority_for_test(&discord_bot) <
         UpdateManager::component_apply_priority_for_test(&core_daemon),
-        "DiscordBot은 CoreDaemon보다 먼저 적용"
+        "모듈은 CoreDaemon보다 먼저 적용"
     );
 
     println!("✓ 컴포넌트 적용 우선순위 카테고리 테스트 통과");

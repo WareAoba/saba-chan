@@ -332,8 +332,6 @@
     "docker_restart_hint": "资源限制更改将在重启服务器后应用。"
   },
   "discord_bot": {
-    "token_missing_title": "缺少令牌",
-    "token_missing_message": "请输入 Discord 机器人令牌。",
     "prefix_missing_title": "缺少前缀",
     "prefix_missing_message": "请设置机器人前缀。示例：!pal、!mc",
     "start_failed_toast": "Discord 机器人启动失败：{{error}}",
@@ -342,7 +340,6 @@
     "stop_failed_toast": "Discord 机器人停止失败：{{error}}",
     "stopped_toast": "Discord 机器人已停止",
     "stop_error_toast": "Discord 机器人停止异常：{{error}}",
-    "relaunched_toast": "Discord 机器人已重新启动",
     "unknown_error": "发生了意外的机器人错误。"
   },
   "app_exit": {

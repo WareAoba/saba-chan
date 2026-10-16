@@ -16,7 +16,7 @@ pub mod auth;
 pub mod internal;
 use updates::UpdateState;
 
-pub use handlers::client::{kill_bot_pid, reap_expired_clients};
+pub use handlers::client::reap_expired_clients;
 
 // ── Client Heartbeat Registry ──────────────────────────────
 
@@ -33,8 +33,6 @@ pub enum ClientKind {
 pub struct RegisteredClient {
     pub kind: ClientKind,
     pub last_heartbeat: std::time::Instant,
-    /// 이 클라이언트가 시작한 Discord 봇 프로세스의 PID (있을 경우)
-    pub bot_pid: Option<u32>,
 }
 
 /// 클라이언트 레지스트리 — 여러 GUI/CLI 인스턴스의 생존 여부를 추적
@@ -70,7 +68,6 @@ impl ClientRegistry {
         map.insert(id.clone(), RegisteredClient {
             kind,
             last_heartbeat: std::time::Instant::now(),
-            bot_pid: None,
         });
         // 클라이언트가 등록되면 "한 번이라도 연결됨" 플래그 세팅, lost 타임스탬프 해제
         *self.had_clients_ever.write().await = true;
@@ -78,14 +75,11 @@ impl ClientRegistry {
         id
     }
 
-    /// Heartbeat 수신 — TTL 갱신, 선택적으로 bot_pid 업데이트
-    pub async fn heartbeat(&self, client_id: &str, bot_pid: Option<u32>) -> bool {
+    /// Heartbeat 수신 — TTL 갱신
+    pub async fn heartbeat(&self, client_id: &str) -> bool {
         let mut map = self.inner.write().await;
         if let Some(client) = map.get_mut(client_id) {
             client.last_heartbeat = std::time::Instant::now();
-            if let Some(pid) = bot_pid {
-                client.bot_pid = Some(pid);
-            }
             true
         } else {
             false
@@ -518,7 +512,6 @@ pub struct IPCServer {
     /// Graceful shutdown 토큰 — 취소 시 데몬 전체 종료
     pub shutdown_token: tokio_util::sync::CancellationToken,
     /// 범용 익스텐션 프로세스 매니저 (이름 기반 다중 프로세스 관리)
-    pub ext_process_manager: handlers::ext_process::SharedExtProcessManager,
     /// 중앙 설정 저장소 (타입 안전 JSON 관리)
     pub config_store: Arc<crate::config_store::ConfigStore>,
     /// 데몬 자체 로그 버퍼 (tracing 이벤트 캡처)
@@ -563,7 +556,6 @@ impl IPCServer {
             extension_init_tracker: ExtensionInitTracker::new(),
             rcon_pool: Arc::new(crate::protocol::rcon_pool::RconPool::new()),
             shutdown_token: tokio_util::sync::CancellationToken::new(),
-            ext_process_manager: handlers::ext_process::new_ext_process_manager(),
             config_store,
             daemon_log_buffer,
             relay_agent: crate::relay_agent::RelayAgent::new(),
@@ -628,12 +620,6 @@ impl IPCServer {
             // ── Directory scan (migration etc.) ──
             .route("/api/fs/scan-dir", post(handlers::config::scan_directory))
             // ── Extension process management (범용) ──
-            .route("/api/ext-processes", get(handlers::ext_process::list_processes))
-            .route("/api/ext-process/:name/start", post(handlers::ext_process::start_process))
-            .route("/api/ext-process/:name/stop", post(handlers::ext_process::stop_process))
-            .route("/api/ext-process/:name/status", get(handlers::ext_process::get_process_status))
-            .route("/api/ext-process/:name/console", get(handlers::ext_process::get_process_console))
-            .route("/api/ext-process/:name/stdin", post(handlers::ext_process::send_process_stdin))
             // ── Client heartbeat ──
             .route("/api/client/register", post(handlers::client::client_register))
             .route("/api/client/:id/heartbeat", post(handlers::client::client_heartbeat))
@@ -659,8 +645,6 @@ impl IPCServer {
             .route("/api/extensions/:id/icon", get(handlers::extension::serve_icon))
             .route("/api/extensions/:id/i18n/:locale", get(handlers::extension::serve_i18n))
             // ── Node.js portable environment ──
-            .route("/api/node-env/status", get(handlers::node_env::node_env_status))
-            .route("/api/node-env/setup", post(handlers::node_env::node_env_setup))
             // ── Relay server proxy (cloud mode) ──
             .route("/api/relay/host/:host_id/status", get(handlers::relay::check_host_status))
             .route("/api/relay/host/:host_id/nodes", get(handlers::relay::list_host_nodes))

@@ -112,6 +112,12 @@ async fn agent_round_trips_a_relay_command() {
 
     let relay_state: Shared = Arc::default();
     let relay_url = start_mock_relay(relay_state.clone()).await;
+    // 페어링된 노드: 데몬이 뜨자마자 에이전트가 이 릴레이로 붙어야 한다
+    std::fs::write(
+        data_dir.join("bot-config.json"),
+        json!({ "prefix": "!saba", "cloud": { "relayUrl": relay_url } }).to_string(),
+    )
+    .unwrap();
 
     let modules_dir = data_dir.join("modules");
     let instances_dir = data_dir.join("instances");
@@ -138,14 +144,7 @@ async fn agent_round_trips_a_relay_command() {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
-    let saved = client
-        .put(format!("{}/api/config/bot", base))
-        .json(&json!({ "prefix": "!saba", "cloud": { "relayUrl": relay_url } }))
-        .send()
-        .await
-        .unwrap();
-    assert!(saved.status().is_success(), "save bot config: {}", saved.status());
-
+    // 이미 자동 시작됐으므로 start는 그대로 성공해야 한다
     let started: Value = client.post(format!("{}/api/relay/agent/start", base)).send().await.unwrap().json().await.unwrap();
     assert_eq!(started["success"], true, "{}", started);
 

@@ -264,8 +264,8 @@
     "docker_install_failed": "Docker 자동 설치에 실패했습니다: {{error}}",
     "docker_daemon_starting": "Docker 데몬을 시작하고 있습니다…",
     "migrate_title": "기존 서버 마이그레이션",
-    "migrate_confirm": "'{{path}}'\uc758 서버를 saba-chan으로 마이그레이션하시겠습니까? 파일을 {{action}}합니다.",
-    "migrate_success": "\uc11c\ubc84\uac00 '{{name}}'으로 성공적으로 마이그레이션되었습니다",
+    "migrate_confirm": "'{{path}}'의 서버를 saba-chan으로 마이그레이션하시겠습니까? 파일을 {{action}}합니다.",
+    "migrate_success": "서버가 '{{name}}'으로 성공적으로 마이그레이션되었습니다",
     "migrate_failed": "서버 마이그레이션에 실패했습니다",
     "migrate_detect_title": "기존 서버 감지",
     "migrate_no_servers_found": "기존 서버 설치가 감지되지 않았습니다",
@@ -332,8 +332,6 @@
     "docker_restart_hint": "리소스 제한 변경은 서버를 재시작한 후 적용됩니다."
   },
   "discord_bot": {
-    "token_missing_title": "토큰 없음",
-    "token_missing_message": "Discord Bot 토큰을 입력하세요.",
     "prefix_missing_title": "Prefix 없음",
     "prefix_missing_message": "봇 별명(Prefix)을 설정하세요. 예: !pal, !mc",
     "start_failed_toast": "Discord 봇 시작 실패: {{error}}",
@@ -342,7 +340,6 @@
     "stop_failed_toast": "Discord 봇 정지 실패: {{error}}",
     "stopped_toast": "Discord 봇이 정지되었습니다",
     "stop_error_toast": "Discord 봇 정지 예외: {{error}}",
-    "relaunched_toast": "Discord 봇이 재시작되었습니다",
     "unknown_error": "예기치 못한 봇 오류가 발생했습니다"
   },
   "app_exit": {

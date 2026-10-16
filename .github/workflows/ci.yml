@@ -4,7 +4,7 @@
 #
 # 구조:
 #   1) rust      — Clippy + build + test  (Windows / Ubuntu)
-#   2) js-tests  — Electron GUI (Vitest) + Discord Bot
+#   2) js-tests  — Electron GUI (Vitest)
 #   3) build     — Release 빌드 + 아티팩트 업로드 (main push / tag 시)
 #
 # quick-test.yml: feature branch에서 JS 파일만 변경 시 경량 테스트
@@ -93,7 +93,7 @@ jobs:
         run: cargo test --workspace
 
   # ─────────────────────────────────────────
-  # 2. JavaScript — GUI + Discord Bot
+  # 2. JavaScript — GUI
   # ─────────────────────────────────────────
   js-tests:
     name: JS Tests
@@ -107,18 +107,10 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: |
-            saba-chan-gui/package-lock.json
-            discord_bot/package-lock.json
+          cache-dependency-path: saba-chan-gui/package-lock.json
 
       - name: Install & Test — Electron GUI
         working-directory: saba-chan-gui
         run: |
           npm ci
           npx vitest run
-
-      - name: Install & Test — Discord Bot
-        working-directory: discord_bot
-        run: |
-          npm ci
-          npm test

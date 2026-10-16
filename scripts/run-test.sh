@@ -7,7 +7,6 @@
 #   2. Rust 업데이터 통합 테스트
 #   3. 릴레이 서버 E2E (Vitest + PostgreSQL)
 #   4. GUI E2E (Vitest + jsdom)
-#   5. Discord 봇 통합 (Jest)
 #
 # 사용법:
 #   ./run-test.sh                    # 전체
@@ -117,9 +116,6 @@ echo -e "${GRAY}NoInstall   : $NO_INSTALL${NC}"
 if [[ "$SUITE" == "all" || "$SUITE" == "gui" ]]; then
   ensure_npm "$REPO_ROOT/saba-chan-gui" "GUI" || exit 1
 fi
-if [[ "$SUITE" == "all" || "$SUITE" == "discord" ]]; then
-  ensure_npm "$REPO_ROOT/discord_bot" "Discord" || exit 1
-fi
 if [[ "$SUITE" == "all" || "$SUITE" == "relay" ]]; then
   if [[ -n "$RELAY_DIR" ]]; then ensure_npm "$RELAY_DIR" "Relay" || exit 1; fi
 fi
@@ -145,11 +141,6 @@ fi
 # 3) GUI E2E
 if [[ "$SUITE" == "all" || "$SUITE" == "gui" ]]; then
   run_step "GUI-E2E" "$REPO_ROOT/saba-chan-gui" "npx vitest run"
-fi
-
-# 4) Discord Bot Integration
-if [[ "$SUITE" == "all" || "$SUITE" == "discord" ]]; then
-  run_step "Discord-Integration" "$REPO_ROOT/discord_bot" "npm test"
 fi
 
 # ── 요약 ────────────────────────────────────────────────────

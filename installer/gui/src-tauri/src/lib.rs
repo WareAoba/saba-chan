@@ -733,35 +733,6 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         }
     }
 
-    // Step 6: 포터블 Node.js 다운로드 + npm install (70-85%)
-    // Fix 5: 기존 런타임이 손상되었으면 삭제 후 재설치
-    emit("runtime-node", "Preparing Discord bot environment...", 72);
-
-    match runtime_bootstrap::setup_node_with_repair(&runtime_data_dir).await {
-        Ok(node_path) => {
-            tracing::info!("Node.js 환경 준비 완료: {}", node_path.display());
-            installed.push("runtime:nodejs".to_string());
-
-            // Discord Bot npm install
-            let bot_dir = install_dir.join("discord_bot");
-            if bot_dir.join("package.json").exists() {
-                emit("runtime-node", "Preparing Discord bot environment...", 78);
-                match runtime_bootstrap::npm_install(&node_path, &bot_dir).await {
-                    Ok(()) => {
-                        tracing::info!("Discord Bot npm install 완료");
-                        installed.push("runtime:npm-deps".to_string());
-                    }
-                    Err(e) => {
-                        tracing::warn!("npm install 실패 (비치명적): {}", e);
-                    }
-                }
-            }
-        }
-        Err(e) => {
-            tracing::warn!("Node.js 환경 설정 실패 (비치명적): {}", e);
-        }
-    }
-
     // Step 7: 설정 파일 생성 (85-88%)
     emit("config", "Setting up configuration...", 86);
     setup_config(&install_dir, &config);
@@ -1212,7 +1183,7 @@ fn save_language_setting(language: &str) {
     let _ = std::fs::create_dir_all(&settings_dir);
     let settings_path = settings_dir.join("settings.json");
 
-    // 기존 settings.json이 있으면 로드해서 language만 머지 (discordToken 등 보존)
+    // 기존 settings.json이 있으면 로드해서 language만 머지 (다른 키 보존)
     let mut settings = if settings_path.exists() {
         std::fs::read_to_string(&settings_path)
             .ok()

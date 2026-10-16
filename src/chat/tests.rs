@@ -100,7 +100,7 @@ fn fixture() -> FakeDaemon {
 }
 
 fn settings() -> ChatSettings {
-    ChatSettings { prefix: "!saba".into(), mode: "cloud".into(), ..Default::default() }
+    ChatSettings { prefix: "!saba".into(), ..Default::default() }
 }
 
 async fn run(api: &FakeDaemon, s: &ChatSettings, text: &str) -> String {

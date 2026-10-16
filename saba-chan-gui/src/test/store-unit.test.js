@@ -160,14 +160,6 @@ describe('useSettingsStore', () => {
         expect(payload.modulesPath).toBeUndefined();
     });
 
-    it('_setDiscordFields() — discord 토큰과 autoStart 저장', () => {
-        useSettingsStore.getState()._setDiscordFields('my-token-123', true);
-
-        const state = useSettingsStore.getState();
-        expect(state._discordToken).toBe('my-token-123');
-        expect(state._discordAutoStart).toBe(true);
-    });
-
     it('update() — 부분 업데이트 적용', () => {
         useSettingsStore.getState().update({ autoRefresh: false, ipcPort: 7777 });
 
@@ -461,42 +453,28 @@ describe('useServerStore', () => {
 describe('useDiscordStore', () => {
     it('초기 상태 검증', () => {
         const state = useDiscordStore.getState();
-        expect(state.discordToken).toBe('');
         expect(state.discordPrefix).toBe('!saba');
-        expect(state.discordAutoStart).toBe(false);
-        expect(state.discordMusicEnabled).toBe(true);
         expect(state.discordBotStatus).toBe('stopped');
-        expect(state.discordBotMode).toBe('local');
         expect(state.botStatusReady).toBe(false);
-    });
-
-    it('setDiscordToken() — 토큰 설정 + ref 동기화', () => {
-        useDiscordStore.getState().setDiscordToken('tok-secret-123');
-        const state = useDiscordStore.getState();
-        expect(state.discordToken).toBe('tok-secret-123');
-        expect(state._discordTokenRef).toBe('tok-secret-123');
+        // 로컬 봇 시절 필드는 더 이상 없다
+        expect(state.discordToken).toBeUndefined();
+        expect(state.discordBotMode).toBeUndefined();
     });
 
     it('update() — 부분 업데이트', () => {
-        useDiscordStore.getState().update({
-            discordPrefix: '!s',
-            discordMusicEnabled: false,
-        });
+        useDiscordStore.getState().update({ discordPrefix: '!s' });
         const state = useDiscordStore.getState();
         expect(state.discordPrefix).toBe('!s');
-        expect(state.discordMusicEnabled).toBe(false);
-        expect(state.discordAutoStart).toBe(false); // 미변경
+        expect(state.discordCloudHostId).toBe(''); // 미변경
     });
 
     it('loadConfig() — bot-config에서 모든 필드 로드', async () => {
         mockApi({
             botConfigLoad: vi.fn().mockResolvedValue({
                 prefix: '!bot',
-                mode: 'cloud',
                 cloud: { relayUrl: 'https://relay.example.com', hostId: 'h123' },
                 moduleAliases: { palworld: 'pw' },
                 commandAliases: { palworld: { start: '시작' } },
-                musicEnabled: false,
                 nodeSettings: { guild1: { defaultHostId: 'h1' } },
             }),
         });
@@ -505,13 +483,12 @@ describe('useDiscordStore', () => {
 
         const state = useDiscordStore.getState();
         expect(state.discordPrefix).toBe('!bot');
-        expect(state.discordBotMode).toBe('cloud');
         expect(state.discordCloudRelayUrl).toBe('https://relay.example.com');
         expect(state.discordCloudHostId).toBe('h123');
         expect(state.discordModuleAliases).toEqual({ palworld: 'pw' });
         expect(state.discordCommandAliases).toEqual({ palworld: { start: '시작' } });
-        expect(state.discordMusicEnabled).toBe(false);
         expect(state.nodeSettings).toEqual({ guild1: { defaultHostId: 'h1' } });
+        expect(state._botConfigLoaded).toBe(true);
     });
 
     it('loadConfig() — 빈 설정이면 기본값 유지', async () => {
@@ -523,8 +500,7 @@ describe('useDiscordStore', () => {
 
         const state = useDiscordStore.getState();
         expect(state.discordPrefix).toBe('!saba');
-        expect(state.discordBotMode).toBe('local');
-        expect(state.discordMusicEnabled).toBe(true);
+        expect(state.discordCloudRelayUrl).toBe('');
     });
 
     it('loadConfig() — 실패 시 에러 모달 없이 조용히 실패', async () => {
@@ -540,7 +516,6 @@ describe('useDiscordStore', () => {
 
     it('_resetForTest() — 완전 리셋', () => {
         useDiscordStore.setState({
-            discordToken: 'xxx',
             discordPrefix: '!!',
             discordBotStatus: 'running',
             botStatusReady: true,
@@ -549,7 +524,6 @@ describe('useDiscordStore', () => {
         useDiscordStore.getState()._resetForTest();
 
         const state = useDiscordStore.getState();
-        expect(state.discordToken).toBe('');
         expect(state.discordPrefix).toBe('!saba');
         expect(state.discordBotStatus).toBe('stopped');
         expect(state.botStatusReady).toBe(false);
@@ -560,12 +534,9 @@ describe('useDiscordStore', () => {
 // 5. 크로스 스토어 동기화
 // ═════════════════════════════════════════════════════════════
 
-describe('token/autoStart 아키텍처 검증', () => {
-    it('settings save 시 token/autoStart가 payload에 포함되지 않아야 한다', async () => {
+describe('bot-config 저장 계약', () => {
+    it('settings save payload에는 디스코드 필드가 없다', async () => {
         useSettingsStore.setState({ settingsPath: '/mock/settings.json' });
-        // _setDiscordFields로 값을 설정해도 save payload에는 포함되지 않음
-        useSettingsStore.getState()._setDiscordFields('tok-cross-test', true);
-
         await useSettingsStore.getState().save();
 
         const payload = window.api.settingsSave.mock.calls[0][0];
@@ -573,26 +544,17 @@ describe('token/autoStart 아키텍처 검증', () => {
         expect(payload.discordAutoStart).toBeUndefined();
     });
 
-    it('token/autoStart는 bot-config save 시 payload에 포함되어야 한다', async () => {
-        useDiscordStore.setState({
-            discordToken: 'tok-cross-test',
-            discordAutoStart: true,
-        });
+    it('bot-config save payload에는 로컬 봇 필드(token/autoStart/mode/music)가 없다', async () => {
+        useDiscordStore.setState({ discordPrefix: '!x', discordCloudHostId: 'h1' });
 
         await useDiscordStore.getState().saveConfig();
 
         const payload = window.api.botConfigSave.mock.calls[0][0];
-        expect(payload.token).toBe('tok-cross-test');
-        expect(payload.autoStart).toBe(true);
-    });
-
-    it('settings 리셋은 discord 내부 필드도 초기화해야 한다', () => {
-        useSettingsStore.getState()._setDiscordFields('tok-xxx', true);
-        expect(useSettingsStore.getState()._discordToken).toBe('tok-xxx');
-
-        useSettingsStore.getState()._resetForTest();
-        expect(useSettingsStore.getState()._discordToken).toBe('');
-        expect(useSettingsStore.getState()._discordAutoStart).toBe(false);
+        expect(payload.prefix).toBe('!x');
+        expect(payload.cloud).toEqual({ relayUrl: '', hostId: 'h1' });
+        for (const legacy of ['token', 'autoStart', 'mode', 'musicEnabled', 'musicChannelId', 'musicUISettings']) {
+            expect(payload).not.toHaveProperty(legacy);
+        }
     });
 });
 

@@ -87,26 +87,6 @@
       {
         "from": "../locales",
         "to": "locales"
-      },
-      {
-        "from": "../discord_bot",
-        "to": "discord_bot",
-        "filter": [
-          "**/*",
-          "!node_modules/**/{*.map,*.d.ts,*.ts,test,tests,coverage,CHANGELOG.md,README.md,LICENSE,AUTHORS}",
-          "!node_modules/**/{package.json.orig,npm-shrinkwrap.json,yarn.lock}",
-          "!node_modules/.bin/**",
-          "!node_modules/.package-lock.json",
-          "!.git",
-          "!.github",
-          "!.eslintrc*",
-          "!.prettierrc*",
-          "!.env",
-          "!.env.example",
-          "!test/**",
-          "!*.test.js",
-          "!*.spec.js"
-        ]
       }
     ],
     "extraResources": [

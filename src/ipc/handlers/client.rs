@@ -51,18 +51,12 @@ pub async fn client_register(
         .into_response()
 }
 
-/// POST /api/client/:id/heartbeat — TTL 갱신
+/// POST /api/client/:id/heartbeat — TTL 갱신 (본문은 무시)
 pub async fn client_heartbeat(
     Path(client_id): Path<String>,
     State(state): State<IPCServer>,
-    Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    let bot_pid = payload
-        .get("bot_pid")
-        .and_then(|v| v.as_u64())
-        .map(|p| p as u32);
-
-    if state.client_registry.heartbeat(&client_id, bot_pid).await {
+    if state.client_registry.heartbeat(&client_id).await {
         (StatusCode::OK, Json(json!({"ok": true}))).into_response()
     } else {
         (
@@ -73,9 +67,9 @@ pub async fn client_heartbeat(
     }
 }
 
-/// DELETE /api/client/:id/unregister — 클라이언트 명시적 해제 + 봇 정리
-/// Query: ?shutdown=true → 봇 프로세스 종료 + 마지막 클라이언트 해제 후 데몬도 종료
-///        ?shutdown=false → 봇 프로세스 유지, 데몬도 유지 (인터페이스만 종료)
+/// DELETE /api/client/:id/unregister — 클라이언트 명시적 해제
+/// Query: ?shutdown=true → 마지막 클라이언트 해제 후 데몬도 종료
+///        ?shutdown=false → 데몬 유지 (인터페이스만 종료)
 pub async fn client_unregister(
     Path(client_id): Path<String>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
@@ -83,13 +77,7 @@ pub async fn client_unregister(
 ) -> impl IntoResponse {
     let wants_shutdown = params.get("shutdown").map(|v| v == "true").unwrap_or(false);
 
-    if let Some(client) = state.client_registry.unregister(&client_id).await {
-        // shutdown=true(완전 종료)일 때만 봇 프로세스 정리
-        if wants_shutdown {
-            if let Some(pid) = client.bot_pid {
-                kill_bot_pid(pid);
-            }
-        }
+    if state.client_registry.unregister(&client_id).await.is_some() {
         let count = state.client_registry.count().await;
         tracing::info!("[Heartbeat] Active clients after unregister: {}", count);
 
@@ -114,32 +102,7 @@ pub async fn client_unregister(
     }
 }
 
-/// 특정 PID의 봇 프로세스를 종료
-pub fn kill_bot_pid(pid: u32) {
-    tracing::info!("[Heartbeat] Killing bot process PID: {}", pid);
-
-    #[cfg(target_os = "windows")]
-    {
-        let _ = std::process::Command::new("taskkill")
-            .args(["/PID", &pid.to_string(), "/F"])
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = std::process::Command::new("kill")
-            .args(["-9", &pid.to_string()])
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
-    }
-}
-
-/// 백그라운드 태스크에서 호출 — 만료 클라이언트 정리 및 고아 봇 프로세스 종료
+/// 백그라운드 태스크에서 호출 — 만료 클라이언트 정리
 pub async fn reap_expired_clients(registry: &ClientRegistry) {
     let timeout = std::time::Duration::from_secs(90);
     let expired = registry.reap_expired(timeout).await;
@@ -150,9 +113,6 @@ pub async fn reap_expired_clients(registry: &ClientRegistry) {
             id,
             client.kind
         );
-        if let Some(pid) = client.bot_pid {
-            kill_bot_pid(pid);
-        }
     }
 
     if !expired.is_empty() {

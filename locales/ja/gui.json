@@ -275,8 +275,6 @@
     "installing": "インストール中..."
   },
   "discord_bot": {
-    "token_missing_title": "トークンがありません",
-    "token_missing_message": "Discord Botトークンを入力してください。",
     "prefix_missing_title": "プレフィックスがありません",
     "prefix_missing_message": "ボットのプレフィックスを設定してください。例: !pal, !mc",
     "start_failed_toast": "Discordボット起動失敗: {{error}}",
@@ -285,7 +283,6 @@
     "stop_failed_toast": "Discordボット停止失敗: {{error}}",
     "stopped_toast": "Discordボットが停止しました",
     "stop_error_toast": "Discordボット停止例外: {{error}}",
-    "relaunched_toast": "Discordボットが再起動されました",
     "unknown_error": "予期しないボットエラーが発生しました"
   },
   "app_exit": {

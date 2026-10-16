@@ -63,8 +63,10 @@ pub async fn run(client: DaemonClient) -> anyhow::Result<()> {
         tokio::spawn(async move {
             loop {
                 let daemon = tokio::task::spawn_blocking(process::check_daemon_running).await.unwrap_or(false);
-                let bot = tokio::task::spawn_blocking(process::check_bot_running).await.unwrap_or(false);
-                let token = config::get_discord_token().ok().flatten().is_some();
+                let agent = tokio::task::spawn_blocking(process::bot_agent_status).await.ok().flatten();
+                let agent_flag = |key: &str| agent.as_ref().and_then(|a| a.get(key)).and_then(|v| v.as_bool()).unwrap_or(false);
+                let bot = agent_flag("running");
+                let token = agent_flag("hasToken");
                 let prefix = config::get_bot_prefix().unwrap_or_else(|_| "!saba".into());
                 let mut servers = Vec::new();
                 if daemon {
@@ -103,7 +105,7 @@ pub async fn run(client: DaemonClient) -> anyhow::Result<()> {
                     tokio::spawn(async move {
                         loop {
                             tokio::time::sleep(Duration::from_secs(30)).await;
-                            let _ = client.send_heartbeat(&id_owned, None).await;
+                            let _ = client.send_heartbeat(&id_owned).await;
                         }
                     });
             }
@@ -123,16 +125,6 @@ pub async fn run(client: DaemonClient) -> anyhow::Result<()> {
                     Ok(Ok(msg)) => push_out(&buf, msg.lines().map(|l| Out::Info(l.into())).collect()),
                     Ok(Err(e)) => push_out(&buf, vec![Out::Err(format!("Auto-start Saba-Core failed: {}", e))]),
                     Err(e) => push_out(&buf, vec![Out::Err(format!("Auto-start: {}", e))]),
-                }
-            }
-            let bot_running = tokio::task::spawn_blocking(process::check_bot_running).await.unwrap_or(false);
-            let auto_bot = config::get_discord_auto_start().unwrap_or(false);
-            if !bot_running && auto_bot {
-                tokio::time::sleep(Duration::from_secs(2)).await;
-                match tokio::task::spawn_blocking(process::start_bot).await {
-                    Ok(Ok(msg)) => push_out(&buf, vec![Out::Info(msg)]),
-                    Ok(Err(e)) => push_out(&buf, vec![Out::Err(format!("Auto-start bot: {}", e))]),
-                    Err(e) => push_out(&buf, vec![Out::Err(format!("Auto-start bot: {}", e))]),
                 }
             }
         });
@@ -296,10 +288,7 @@ pub async fn run(client: DaemonClient) -> anyhow::Result<()> {
         let _ = client.unregister_client(&id).await;
     }
 
-    // 봇 + 데몬 정지 (exit 명령과 동일한 정리)
-    if process::check_bot_running() {
-        let _ = tokio::task::spawn_blocking(process::stop_bot).await;
-    }
+    // 데몬 정지 (exit 명령과 동일한 정리 — 릴레이 에이전트는 데몬과 함께 멈춘다)
     if process::check_daemon_running() {
         let _ = tokio::task::spawn_blocking(process::stop_daemon).await;
     }
@@ -766,42 +755,12 @@ fn execute_inline_action(app: &mut App, action: InlineAction, value: &str) {
                 Err(e) => app.flash(&format!("✗ {}", e)),
             }
         }
-        InlineAction::SetBotToken => {
-            if value.trim().is_empty() {
-                match config::clear_discord_token() {
-                    Ok(()) => app.flash("✓ Discord token cleared"),
-                    Err(e) => app.flash(&format!("✗ {}", e)),
-                }
-            } else {
-                match config::set_discord_token(value) {
-                    Ok(()) => app.flash("✓ Discord token saved"),
-                    Err(e) => app.flash(&format!("✗ {}", e)),
-                }
-            }
-        }
         InlineAction::SetBotPrefix => {
             match config::set_bot_prefix(value) {
                 Ok(()) => {
                     app.bot_prefix = value.to_string();
                     app.flash(&format!("✓ Prefix: {}", value));
                 }
-                Err(e) => app.flash(&format!("✗ {}", e)),
-            }
-        }
-        InlineAction::SetBotMode => {
-            let mut config = config::load_bot_config().unwrap_or_default();
-            config["mode"] = serde_json::Value::String(value.to_string());
-            match config::save_bot_config(&config) {
-                Ok(()) => app.flash(&format!("✓ Bot mode: {}", value)),
-                Err(e) => app.flash(&format!("✗ {}", e)),
-            }
-        }
-        InlineAction::SetBotMusic => {
-            let enabled = value == "ON" || value == "true" || value == "enabled";
-            let mut config = config::load_bot_config().unwrap_or_default();
-            config["musicEnabled"] = serde_json::Value::Bool(enabled);
-            match config::save_bot_config(&config) {
-                Ok(()) => app.flash(&format!("✓ Music bot: {}", if enabled { "ON" } else { "OFF" })),
                 Err(e) => app.flash(&format!("✗ {}", e)),
             }
         }

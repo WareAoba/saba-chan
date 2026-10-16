@@ -1032,20 +1032,7 @@ function startHeartbeat() {
     heartbeatTimer = setInterval(async () => {
         if (!heartbeatClientId) return;
         try {
-            let botPid = null;
-            try {
-                const statusResp = await axios.get(`${IPC_BASE}/api/ext-process/discord-bot/status`, { timeout: 2000 });
-                if (statusResp.data?.status === 'running') {
-                    botPid = statusResp.data.pid ?? null;
-                }
-            } catch (_) { /* 무시 */ }
-            await axios.post(
-                `${IPC_BASE}/api/client/${heartbeatClientId}/heartbeat`,
-                {
-                    bot_pid: botPid,
-                },
-                { timeout: 3000 },
-            );
+            await axios.post(`${IPC_BASE}/api/client/${heartbeatClientId}/heartbeat`, {}, { timeout: 3000 });
         } catch (e) {
             // 데몬이 재시작되었을 수 있으므로 재등록 시도
             if (e.response?.status === 404 || e.code === 'ECONNREFUSED') {
@@ -1547,27 +1534,6 @@ app.on('before-quit', () => {
             /* 무시 */
         }
         heartbeatClientId = null;
-    }
-
-    // Discord 봇 종료 요청 (데몬 API 경유 — fire and forget)
-    // 인터페이스만 종료 시에는 데몬이 계속 봇을 관리하므로 스킵
-    if (!keepDaemonAlive) {
-        try {
-            const tokenForShutdown = getIpcToken();
-            const shutdownReq = http.request({
-                hostname: '127.0.0.1',
-                port: currentPort,
-                path: '/api/ext-process/discord-bot/stop',
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Saba-Token': tokenForShutdown,
-                },
-                timeout: 2000,
-            });
-            shutdownReq.write('{}');
-            shutdownReq.end();
-        } catch (_e) { /* 무시 */ }
     }
 
     // 데몬 프로세스 종료 (인터페이스만 종료 시에는 데몬 유지)
@@ -3010,29 +2976,6 @@ ipcMain.handle('language:set', async (_event, language) => {
     // 데몬은 재시작하지 않음 — Python 모듈은 호출 시 환경변수로 언어를 결정하므로
     // 데몬을 재시작하면 실행 중인 서버가 모두 종료됨
 
-    // Discord 봇이 실행 중이면 데몬 API로 정지 후 렌더러에 재시작 신호 전송
-    try {
-        const statusResp = await axios.get(`${IPC_BASE}/api/ext-process/discord-bot/status`);
-        if (statusResp.data?.status === 'running') {
-            console.log('Stopping Discord bot to apply new language setting...');
-            await axios.post(`${IPC_BASE}/api/ext-process/discord-bot/stop`, {}, { timeout: 5000 });
-
-            // 렌더러에 재시작 신호 전송 (봇 설정을 데몬에서 로드)
-            setTimeout(async () => {
-                try {
-                    const botConfig = await loadBotConfig();
-                    if (mainWindow && !mainWindow.isDestroyed()) {
-                        mainWindow.webContents.send('bot:relaunch', botConfig);
-                    }
-                } catch (error) {
-                    console.error('Failed to relaunch Discord bot:', error);
-                }
-            }, 500);
-        }
-    } catch (_e) {
-        // 데몬 미연결 — 봇 미실행으로 간주
-    }
-
     return { success, language };
 });
 
@@ -3095,212 +3038,30 @@ ipcMain.handle('migration:scanDir', async (_event, dirPath) => {
     }
 });
 
-// Discord Bot process management — 데몬 API 경유
-// GUI는 봇 프로세스를 직접 관리하지 않음. 모든 봇 수명주기는 데몬이 담당.
-
-// ── 봇 프로세스 IPC 응답 관리 (데몬 경유 stdin으로 전환) ──
-const pendingBotIpcRequests = new Map(); // id → { resolve, timer }
-let botIpcIdCounter = 0;
-
-async function sendBotIpcRequest(msg, timeoutMs = 15000) {
-    const id = String(++botIpcIdCounter);
-    // 데몬의 stdin API로 봇에 메시지 전송
-    try {
-        await axios.post(`${IPC_BASE}/api/ext-process/discord-bot/stdin`, {
-            message: JSON.stringify({ ...msg, id }),
-        });
-    } catch (e) {
-        throw new Error('Bot IPC unavailable: ' + e.message);
-    }
-
-    // 데몬의 console buffer에서 __IPC__ 응답을 폴링
-    const ipcPrefix = '__IPC__:';
-    const deadline = Date.now() + timeoutMs;
-    const pollInterval = 500;
-    let lastLineCount = 0;
-
-    while (Date.now() < deadline) {
-        await new Promise(r => setTimeout(r, pollInterval));
-        try {
-            const consoleResp = await axios.get(
-                `${IPC_BASE}/api/ext-process/discord-bot/console`,
-                { timeout: 3000 },
-            );
-            const lines = consoleResp.data?.lines || consoleResp.data?.console || [];
-            // 새 줄만 탐색 (이전 폴링 이후 추가된 줄)
-            const startIdx = Math.max(0, lastLineCount - 5); // 약간 겹치게 (누락 방지)
-            lastLineCount = lines.length;
-            for (let i = lines.length - 1; i >= startIdx; i--) {
-                const line = typeof lines[i] === 'string' ? lines[i] : lines[i]?.line || '';
-                // [stdout] 및 [stderr] 접두사 제거
-                const stripped = line.replace(/^\[(stdout|stderr)\]\s*/, '');
-                if (!stripped.startsWith(ipcPrefix)) continue;
-                try {
-                    const payload = JSON.parse(stripped.slice(ipcPrefix.length));
-                    if (payload.id === id) return payload;
-                } catch (_) {}
-            }
-        } catch (_) {}
-    }
-
-    return { error: 'TIMEOUT', message: 'Bot IPC response timeout' };
-}
-
+// Discord 릴레이 에이전트 — 데몬 내장. 봇 본체는 클라우드에서 돈다.
 ipcMain.handle('discord:status', async () => {
     try {
-        const resp = await axios.get(`${IPC_BASE}/api/ext-process/discord-bot/status`);
-        return resp.data?.status || 'stopped';
-    } catch (e) {
+        const resp = await axios.get(`${IPC_BASE}/api/relay/agent`, { timeout: 3000 });
+        return resp.data?.running ? 'running' : 'stopped';
+    } catch (_e) {
         return 'stopped';
     }
 });
 
-// ── 봇에 연결된 Discord 길드 멤버 목록 조회 (로컬 모드 전용) ──
-ipcMain.handle('discord:guildMembers', async () => {
+ipcMain.handle('discord:start', async () => {
     try {
-        const resp = await sendBotIpcRequest({ type: 'getGuildMembers' }, 15000);
-        if (resp.error) {
-            return { error: resp.error };
-        }
-        return { data: resp.data || {} };
-    } catch (e) {
-        return { error: e.message };
-    }
-});
-
-ipcMain.handle('discord:guildChannels', async () => {
-    try {
-        const resp = await sendBotIpcRequest({ type: 'getGuildChannels' }, 15000);
-        if (resp.error) {
-            return { error: resp.error };
-        }
-        return { data: resp.data || {} };
-    } catch (e) {
-        return { error: e.message };
-    }
-});
-
-ipcMain.handle('discord:start', async (_event, config) => {
-    // 봇 설정을 데몬에 저장 (데몬이 SSOT)
-    let existingConfig = {};
-    try {
-        existingConfig = await loadBotConfig();
-    } catch (_) {}
-
-    const configToSave = {
-        ...existingConfig,
-        prefix: config.prefix || '!saba',
-        token: config.token || existingConfig.token || '',
-        autoStart: config.autoStart ?? existingConfig.autoStart ?? false,
-        moduleAliases: config.moduleAliases || {},
-        commandAliases: config.commandAliases || {},
-        musicEnabled: config.musicEnabled !== false,
-        musicChannelId: config.musicChannelId || existingConfig.musicChannelId || '',
-        musicUISettings: config.musicUISettings || existingConfig.musicUISettings || {},
-        nodeSettings: config.nodeSettings && Object.keys(config.nodeSettings).length > 0
-            ? config.nodeSettings
-            : (existingConfig.nodeSettings || {}),
-        mode: config.mode || existingConfig.mode || 'local',
-        cloud: config.cloud || existingConfig.cloud || {},
-        cloudNodes: config.cloudNodes || existingConfig.cloudNodes || [],
-        cloudMembers: config.cloudMembers || existingConfig.cloudMembers || {},
-    };
-    await saveBotConfig(configToSave);
-
-    // ★ 클라우드 모드: 릴레이 서버에 botConfig 동기화
-    if (config.mode === 'cloud') {
-        const relayUrl = config.cloud?.relayUrl;
-        const hostId = config.cloud?.hostId;
-        if (relayUrl && hostId) {
-            try {
-                await axios.patch(`${relayUrl}/api/hosts/${hostId}/bot-config`, {
-                    prefix: config.prefix || '!saba',
-                    moduleAliases: config.moduleAliases || {},
-                    commandAliases: config.commandAliases || {},
-                });
-            } catch (e) {
-                console.warn('[Discord Bot] Failed to sync botConfig to relay:', e.message);
-            }
-        }
-    }
-
-    // 범용 프로세스 시작 API를 통해 봇 실행
-    try {
-        // Node.js 경로 확인 (포터블 → 시스템 폴백)
-        let nodePath = 'node';
-        try {
-            const nodeResp = await axios.post(`${IPC_BASE}/api/node-env/setup`, {}, { timeout: 30000 });
-            if (nodeResp.data?.success && nodeResp.data.node_path) {
-                nodePath = nodeResp.data.node_path;
-            }
-        } catch (_) { /* 시스템 node 폴백 */ }
-
-        const botDir = path.join(__dirname, '..', 'discord_bot');
-        const envVars = {
-            IPC_BASE,
-            SABA_LANG: getLanguage(),
-            BOT_CONFIG_PATH: path.join(getSabaDataDir(), 'bot-config.json'),
-            SABA_EXTENSIONS_DIR: getFixedExtensionsPath(),
-        };
-
-        if (config.mode === 'cloud') {
-            const nodeToken = await loadNodeToken();
-            if (!nodeToken) {
-                return { error: 'cloud_token_not_found' };
-            }
-            const relayUrl = (config.cloud?.relayUrl || 'https://saba-chan.online').replace(/\/$/, '');
-            envVars.RELAY_URL = relayUrl;
-            envVars.RELAY_NODE_TOKEN = nodeToken;
-        } else {
-            if (!config.token) {
-                return { error: 'Discord token is required for local mode' };
-            }
-            envVars.DISCORD_TOKEN = config.token;
-        }
-
-        const startReq = {
-            command: nodePath,
-            args: [path.join(botDir, 'index.js')],
-            cwd: botDir,
-            env: envVars,
-            meta: { mode: config.mode || 'local' },
-        };
-
-        const resp = await axios.post(`${IPC_BASE}/api/ext-process/discord-bot/start`, startReq, { timeout: 15000 });
-
-        // 봇 시작 후 크래시 감지 — 3초 뒤 상태 확인하여 에러 피드백
-        setTimeout(async () => {
-            try {
-                const statusResp = await axios.get(`${IPC_BASE}/api/ext-process/discord-bot/status`, { timeout: 3000 });
-                if (statusResp.data?.status !== 'running') {
-                    // 콘솔 버퍼에서 에러 메시지 추출
-                    let errorMsg = 'Bot process exited unexpectedly';
-                    try {
-                        const consoleResp = await axios.get(`${IPC_BASE}/api/ext-process/discord-bot/console`, { timeout: 3000 });
-                        const lines = consoleResp.data?.lines || consoleResp.data?.console || [];
-                        const errorLines = lines
-                            .map(l => typeof l === 'string' ? l : l?.line || '')
-                            .filter(l => /\[Bot\].*(?:error|failed|fatal)/i.test(l) || /Error:/i.test(l))
-                            .slice(-5);
-                        if (errorLines.length > 0) errorMsg = errorLines.join('\n');
-                    } catch (_) {}
-                    if (mainWindow && !mainWindow.isDestroyed()) {
-                        mainWindow.webContents.send('bot:error', { type: 'exit', message: errorMsg });
-                    }
-                }
-            } catch (_) {}
-        }, 3000);
-
+        const resp = await axios.post(`${IPC_BASE}/api/relay/agent/start`, {}, { timeout: 10000 });
         return resp.data;
     } catch (e) {
         const errData = e.response?.data;
+        if (errData?.error_code === 'node_token_missing') return { error: 'cloud_token_not_found' };
         return { error: errData?.error || e.message };
     }
 });
 
 ipcMain.handle('discord:stop', async () => {
     try {
-        const resp = await axios.post(`${IPC_BASE}/api/ext-process/discord-bot/stop`, {}, { timeout: 10000 });
+        const resp = await axios.post(`${IPC_BASE}/api/relay/agent/stop`, {}, { timeout: 10000 });
         return resp.data;
     } catch (e) {
         return { error: e.response?.data?.error || e.message };
@@ -3366,55 +3127,10 @@ ipcMain.handle('logs:openFolder', async () => {
 });
 
 ipcMain.handle('botConfig:save', async (_event, config) => {
+    // 데몬이 bot-config의 SSOT. 최상위 키 단위로 병합되므로 부분 저장도 안전하다.
+    // 릴레이 서버로의 동기화는 데몬 에이전트의 하트비트(botConfig)가 담당한다.
     try {
-        // 기존 파일 내용을 읽어서 병합 — 부분 업데이트 시 token/autoStart 손실 방지
-        let existing = {};
-        try {
-            existing = await loadBotConfig();
-        } catch (_) { /* 데몬 미응답 — 빈 base 사용 */ }
-
-        const configToSave = {
-            ...existing,
-            prefix: config.prefix !== undefined ? config.prefix : (existing.prefix || '!saba'),
-            token: config.token !== undefined ? config.token : (existing.token || ''),
-            autoStart: config.autoStart !== undefined ? config.autoStart : (existing.autoStart ?? false),
-            moduleAliases: config.moduleAliases || existing.moduleAliases || {},
-            commandAliases: config.commandAliases || existing.commandAliases || {},
-            musicEnabled: config.musicEnabled !== undefined ? config.musicEnabled : (existing.musicEnabled !== false),
-            musicChannelId: config.musicChannelId !== undefined ? config.musicChannelId : (existing.musicChannelId || ''),
-            musicUISettings: config.musicUISettings || existing.musicUISettings || {},
-            mode: config.mode || existing.mode || 'local',
-            cloud: config.cloud || existing.cloud || {},
-            nodeSettings: config.nodeSettings || existing.nodeSettings || {},
-        };
-
-        // AppData에 저장 (단일 원본 — 봇은 BOT_CONFIG_PATH 환경변수로 참조)
-        const appDataConfig = {
-            ...configToSave,
-            cloudNodes: config.cloudNodes || [],
-            cloudMembers: config.cloudMembers || {},
-        };
-        saveBotConfig(appDataConfig);
-        console.log('Bot config saved via daemon API');
-
-        // ★ 클라우드 모드: 릴레이 서버에 botConfig 동기화
-        if (config.mode === 'cloud') {
-            const relayUrl = config.cloud?.relayUrl;
-            const hostId = config.cloud?.hostId;
-            if (relayUrl && hostId) {
-                try {
-                    await axios.patch(`${relayUrl}/api/hosts/${hostId}/bot-config`, {
-                        prefix: configToSave.prefix,
-                        moduleAliases: configToSave.moduleAliases,
-                        commandAliases: configToSave.commandAliases,
-                    });
-                    console.log('[BotConfig] Synced to relay server');
-                } catch (relayErr) {
-                    console.warn('[BotConfig] Failed to sync to relay:', relayErr.message);
-                }
-            }
-        }
-
+        if (!(await saveBotConfig(config || {}))) return { error: 'Failed to save bot config' };
         return { success: true, message: 'Bot config saved' };
     } catch (error) {
         console.error('Failed to save bot config:', error.message);

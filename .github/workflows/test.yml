@@ -33,9 +33,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: |
-            saba-chan-gui/package-lock.json
-            discord_bot/package-lock.json
+          cache-dependency-path: saba-chan-gui/package-lock.json
 
       - name: Cache Rust dependencies
         uses: actions/cache@v4
@@ -52,13 +50,6 @@ jobs:
 
       - name: Install Electron GUI dependencies
         working-directory: saba-chan-gui
-        shell: bash
-        run: |
-          rm -rf node_modules
-          npm ci
-
-      - name: Install Discord Bot dependencies
-        working-directory: discord_bot
         shell: bash
         run: |
           rm -rf node_modules
@@ -92,17 +83,11 @@ jobs:
         working-directory: saba-chan-gui
         run: npx vitest run
 
-      - name: Run Discord Bot Tests
-        working-directory: discord_bot
-        run: npm test
-
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results-${{ matrix.os }}
-          path: |
-            saba-chan-gui/coverage/
-            discord_bot/coverage/
+          path: saba-chan-gui/coverage/
           retention-days: 7
 

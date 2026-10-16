@@ -1162,10 +1162,6 @@ function SettingsModal({
                                         <span className="about-component-ver">v{componentInfo?.components?.cli || appVersion}</span>
                                     </div>
                                     <div className="about-component-item">
-                                        <span className="about-component-label"><Icon name="discord" size="xs" /> Discord Bot</span>
-                                        <span className="about-component-ver">v{componentInfo?.components?.discord_bot || appVersion}</span>
-                                    </div>
-                                    <div className="about-component-item">
                                         <span className="about-component-label"><Icon name="refresh" size="xs" /> Updater</span>
                                         <span className="about-component-ver">v{componentInfo?.components?.updater || appVersion}</span>
                                     </div>

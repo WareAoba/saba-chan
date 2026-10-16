@@ -21,7 +21,6 @@ saba-chan-gui/build/
 saba-chan-gui/dist/
 saba-chan-gui/electron-dist/
 saba-chan-gui/extensions/*.py
-discord_bot/node_modules/
 
 # CLI
 saba-chan-cli/target/
@@ -31,7 +30,6 @@ saba-chan-cli/.rustc_info.json
 .env
 .env.local
 .env.*.local
-discord_bot/.env
 
 # Relay-Server
 server-chan/
@@ -80,7 +78,6 @@ coverage/
 *.profraw
 *.profdata
 saba-chan-gui/coverage/
-discord_bot/coverage/
 
 # GitHub Actions
 .github/cache/

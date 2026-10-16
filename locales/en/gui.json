@@ -161,16 +161,18 @@
     "instance_name": "Instance Name",
     "instance_name_placeholder": "e.g., migrated-minecraft-1",
     "scanning": "Scanning directory…",
-    "scan_button": "Start Scan",    "scan_error": "Failed to scan the directory.",
+    "scan_button": "Start Scan",
+    "scan_error": "Failed to scan the directory.",
     "auto_detected": "Automatically detected",
     "no_auto_detect": "Could not automatically detect the game server. Please select a module below.",
     "select_module_manually": "Available Modules",
-    "loading_manifest": "Loading module list\u2026",
+    "loading_manifest": "Loading module list…",
     "manifest_fetch_failed": "Failed to fetch module registry.",
     "no_modules_available": "No modules available.",
     "configure_title": "Configure Migration",
     "configure_subtitle": "Name the new instance for the migrated server.",
-    "migrate_hint": "The selected directory will be linked to the new instance. Server files remain in their original location.",    "next": "Next",
+    "migrate_hint": "The selected directory will be linked to the new instance. Server files remain in their original location.",
+    "next": "Next",
     "back": "Back",
     "detected_items": "Detected Items",
     "total_size": "Total Size",
@@ -330,8 +332,6 @@
     "docker_restart_hint": "Resource limit changes take effect after restarting the server."
   },
   "discord_bot": {
-    "token_missing_title": "Token Missing",
-    "token_missing_message": "Please enter Discord Bot token.",
     "prefix_missing_title": "Prefix Missing",
     "prefix_missing_message": "Please set bot prefix. Example: !pal, !mc",
     "start_failed_toast": "Discord bot start failed: {{error}}",
@@ -340,7 +340,6 @@
     "stop_failed_toast": "Discord bot stop failed: {{error}}",
     "stopped_toast": "Discord bot has been stopped",
     "stop_error_toast": "Discord bot stop exception: {{error}}",
-    "relaunched_toast": "Discord bot has been restarted",
     "unknown_error": "An unexpected bot error occurred"
   },
   "app_exit": {
@@ -654,7 +653,7 @@
     "just_now": "just now",
     "minutes_ago": "{{count}} min ago",
     "yesterday": "Yesterday",
-    "click_to_open": "\u2014 click to open"
+    "click_to_open": "— click to open"
   },
   "updates": {
     "available_title": "Updates Available",
@@ -734,7 +733,7 @@
     "bot_replacing": "Replacing Discord Bot files...",
     "bot_restarting": "Restarting Discord Bot...",
     "bot_restarted": "Discord Bot updated and restarted",
-    "bot_no_token": "Discord Bot updated (no token \u2014 manual restart required)",
+    "bot_no_token": "Discord Bot updated (no token — manual restart required)",
     "bot_restart_failed": "Discord Bot restart failed: {{error}}",
     "apply_failed": "Apply failed",
     "apply_completed": "{{names}} applied",

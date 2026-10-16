@@ -114,16 +114,6 @@ pub fn load_settings() -> anyhow::Result<Value> {
         .ok_or_else(|| anyhow::anyhow!("데몬에 연결할 수 없습니다. 데몬이 실행 중인지 확인하세요."))
 }
 
-/// Discord 봇 토큰 가져오기 (bot-config.json → token)
-pub fn get_discord_token() -> anyhow::Result<Option<String>> {
-    let config = load_bot_config()?;
-    Ok(config
-        .get("token")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string()))
-}
-
 /// 모듈 경로 가져오기 — %APPDATA%/saba-chan/modules 고정
 /// SABA_MODULES_PATH 환경 변수가 설정되면 해당 경로를 우선 사용 (테스트/개발용)
 pub fn get_modules_path() -> anyhow::Result<String> {
@@ -168,16 +158,6 @@ pub fn get_ipc_port() -> u16 {
 /// NOTE: 로컬 파일에서 포트를 읽는다 — async 런타임 안에서도 안전.
 pub fn get_ipc_base_url() -> String {
     format!("http://127.0.0.1:{}", get_ipc_port_local())
-}
-
-/// Discord 자동 시작 설정 가져오기 (bot-config.json → autoStart)
-#[allow(dead_code)]
-pub fn get_discord_auto_start() -> anyhow::Result<bool> {
-    let config = load_bot_config()?;
-    Ok(config
-        .get("autoStart")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false))
 }
 
 // ============ Bot Config (bot-config.json) — 데몬 API 전용 ============
@@ -231,31 +211,10 @@ pub fn save_bot_config(config: &Value) -> anyhow::Result<()> {
     daemon_put("/api/config/bot", config)
 }
 
-/// Discord 토큰 설정 (bot-config.json → token)
-pub fn set_discord_token(token: &str) -> anyhow::Result<()> {
-    let mut config = load_bot_config()?;
-    config["token"] = serde_json::Value::String(token.to_string());
-    save_bot_config(&config)
-}
-
-/// Discord 토큰 삭제 (bot-config.json → token)
-pub fn clear_discord_token() -> anyhow::Result<()> {
-    let mut config = load_bot_config()?;
-    config["token"] = serde_json::Value::String(String::new());
-    save_bot_config(&config)
-}
-
 /// 봇 prefix 변경
 pub fn set_bot_prefix(prefix: &str) -> anyhow::Result<()> {
     let mut config = load_bot_config()?;
     config["prefix"] = serde_json::Value::String(prefix.to_string());
-    save_bot_config(&config)
-}
-
-/// Discord 봇 자동 시작 설정 변경 (bot-config.json → autoStart)
-pub fn set_discord_auto_start(enabled: bool) -> anyhow::Result<()> {
-    let mut config = load_bot_config()?;
-    config["autoStart"] = serde_json::Value::Bool(enabled);
     save_bot_config(&config)
 }
 
@@ -528,14 +487,6 @@ mod extract {
         settings.get("portConflictCheck").and_then(|v| v.as_bool()).unwrap_or(true)
     }
 
-    pub(crate) fn extract_discord_token(settings: &Value) -> Option<String> {
-        settings.get("discordToken").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(|s| s.to_string())
-    }
-
-    pub(crate) fn extract_discord_auto_start(settings: &Value) -> bool {
-        settings.get("discordAutoStart").and_then(|v| v.as_bool()).unwrap_or(false)
-    }
-
     pub(crate) fn extract_language(settings: &Value) -> String {
         settings.get("language").and_then(|v| v.as_str()).unwrap_or("en").to_string()
     }
@@ -544,34 +495,6 @@ mod extract {
         config.get("prefix").and_then(|v| v.as_str()).unwrap_or("!saba").to_string()
     }
 
-    pub(crate) fn extract_bot_mode(config: &Value) -> String {
-        config.get("mode").and_then(|v| v.as_str()).unwrap_or("local").to_string()
-    }
-
-    pub(crate) fn extract_music_enabled(config: &Value) -> bool {
-        config.get("musicEnabled").and_then(|v| v.as_bool()).unwrap_or(false)
-    }
-}
-
-/// 설정 요약 출력용
-#[allow(dead_code)]
-pub fn config_summary() -> String {
-    let token = get_discord_token().ok().flatten();
-    let modules_path = get_modules_path().unwrap_or_default();
-    let extensions_path = get_extensions_path().unwrap_or_default();
-    let prefix = get_bot_prefix().unwrap_or_else(|_| "!saba".to_string());
-    let lang = get_language().unwrap_or_else(|_| "en".to_string());
-    let settings_path = constants::resolve_settings_path().display().to_string();
-
-    let mut lines = Vec::new();
-    lines.push("GUI Configuration:".to_string());
-    lines.push(format!("  Settings:    {}", settings_path));
-    lines.push(format!("  Token:       {}", if token.is_some() { "✓ configured" } else { "✗ not set" }));
-    lines.push(format!("  Prefix:      {}", prefix));
-    lines.push(format!("  Modules:     {}", modules_path));
-    lines.push(format!("  Extensions:  {}", extensions_path));
-    lines.push(format!("  Language:    {}", lang));
-    lines.join("\n")
 }
 
 // ============ Tests ============
@@ -649,32 +572,6 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_discord_token_present() {
-        let s = json!({"discordToken": "abc123"});
-        assert_eq!(extract_discord_token(&s), Some("abc123".to_string()));
-    }
-
-    #[test]
-    fn test_extract_discord_token_empty() {
-        let s = json!({"discordToken": ""});
-        assert_eq!(extract_discord_token(&s), None);
-    }
-
-    #[test]
-    fn test_extract_discord_token_missing() {
-        let s = json!({});
-        assert_eq!(extract_discord_token(&s), None);
-    }
-
-    #[test]
-    fn test_extract_discord_auto_start() {
-        let s = json!({"discordAutoStart": true});
-        assert_eq!(extract_discord_auto_start(&s), true);
-        let s = json!({});
-        assert_eq!(extract_discord_auto_start(&s), false); // default false
-    }
-
-    #[test]
     fn test_extract_language() {
         let s = json!({"language": "ko"});
         assert_eq!(extract_language(&s), "ko");
@@ -692,24 +589,6 @@ mod tests {
         assert_eq!(extract_bot_prefix(&c), "!saba");
     }
 
-    #[test]
-    fn test_extract_bot_mode() {
-        let c = json!({"mode": "cloud"});
-        assert_eq!(extract_bot_mode(&c), "cloud");
-        let c = json!({});
-        assert_eq!(extract_bot_mode(&c), "local"); // default "local"
-    }
-
-    #[test]
-    fn test_extract_music_enabled() {
-        let c = json!({"musicEnabled": true});
-        assert_eq!(extract_music_enabled(&c), true);
-        let c = json!({"musicEnabled": false});
-        assert_eq!(extract_music_enabled(&c), false);
-        let c = json!({});
-        assert_eq!(extract_music_enabled(&c), false); // default false
-    }
-
     // ── Combined real-world data simulation ──
 
     #[test]
@@ -721,8 +600,6 @@ mod tests {
             "consoleBufferSize": 2000,
             "autoGeneratePasswords": true,
             "portConflictCheck": false,
-            "discordToken": "test-token-abc",
-            "discordAutoStart": true,
             "language": "ko"
         });
 
@@ -732,8 +609,6 @@ mod tests {
         assert_eq!(extract_console_buffer_size(&settings), 2000);
         assert_eq!(extract_auto_generate_passwords(&settings), true);
         assert_eq!(extract_port_conflict_check(&settings), false);
-        assert_eq!(extract_discord_token(&settings), Some("test-token-abc".to_string()));
-        assert_eq!(extract_discord_auto_start(&settings), true);
         assert_eq!(extract_language(&settings), "ko");
     }
 
@@ -743,13 +618,9 @@ mod tests {
             "prefix": "사바쨩",
             "moduleAliases": {"palworld": "팰월드"},
             "commandAliases": {},
-            "musicEnabled": true,
-            "mode": "local"
         });
 
         assert_eq!(extract_bot_prefix(&config), "사바쨩");
-        assert_eq!(extract_bot_mode(&config), "local");
-        assert_eq!(extract_music_enabled(&config), true);
     }
 
     // ── Settings mutation tests (JSON level) ──
@@ -797,13 +668,6 @@ mod tests {
     }
 
     #[test]
-    fn test_settings_mutation_discord_auto_start() {
-        let mut s = json!({});
-        s["discordAutoStart"] = Value::Bool(true);
-        assert_eq!(extract_discord_auto_start(&s), true);
-    }
-
-    #[test]
     fn test_settings_mutation_language() {
         let mut s = json!({"language": "en"});
         s["language"] = Value::String("ja".to_string());
@@ -827,8 +691,6 @@ mod tests {
             "consoleBufferSize": 1024,
             "autoGeneratePasswords": false,
             "portConflictCheck": false,
-            "discordToken": "roundtrip-token",
-            "discordAutoStart": true,
             "language": "ja"
         });
 
@@ -845,8 +707,6 @@ mod tests {
         assert_eq!(extract_console_buffer_size(&loaded), 1024);
         assert_eq!(extract_auto_generate_passwords(&loaded), false);
         assert_eq!(extract_port_conflict_check(&loaded), false);
-        assert_eq!(extract_discord_token(&loaded), Some("roundtrip-token".to_string()));
-        assert_eq!(extract_discord_auto_start(&loaded), true);
         assert_eq!(extract_language(&loaded), "ja");
 
         // Mutate and re-write
@@ -864,7 +724,6 @@ mod tests {
         assert_eq!(extract_language(&reloaded), "ko");
         // Other values should remain unchanged
         assert_eq!(extract_ipc_port(&reloaded), 8080);
-        assert_eq!(extract_discord_token(&reloaded), Some("roundtrip-token".to_string()));
     }
 
     #[test]
@@ -878,29 +737,21 @@ mod tests {
             "prefix": "!test",
             "moduleAliases": {"palworld": "팰월드"},
             "commandAliases": {},
-            "musicEnabled": true,
-            "mode": "cloud"
         });
 
         std::fs::write(&bot_config_path, serde_json::to_string_pretty(&original).unwrap()).unwrap();
 
         let loaded: Value = serde_json::from_str(&std::fs::read_to_string(&bot_config_path).unwrap()).unwrap();
         assert_eq!(extract_bot_prefix(&loaded), "!test");
-        assert_eq!(extract_bot_mode(&loaded), "cloud");
-        assert_eq!(extract_music_enabled(&loaded), true);
 
         // Mutate
         let mut modified = loaded;
         modified["prefix"] = Value::String("사바쨩".to_string());
-        modified["mode"] = Value::String("local".to_string());
-        modified["musicEnabled"] = Value::Bool(false);
 
         std::fs::write(&bot_config_path, serde_json::to_string_pretty(&modified).unwrap()).unwrap();
 
         let reloaded: Value = serde_json::from_str(&std::fs::read_to_string(&bot_config_path).unwrap()).unwrap();
         assert_eq!(extract_bot_prefix(&reloaded), "사바쨩");
-        assert_eq!(extract_bot_mode(&reloaded), "local");
-        assert_eq!(extract_music_enabled(&reloaded), false);
     }
 
     // ── Edge cases ──
@@ -932,8 +783,6 @@ mod tests {
         assert_eq!(extract_console_buffer_size(&s), 2000);
         assert_eq!(extract_auto_generate_passwords(&s), true);
         assert_eq!(extract_port_conflict_check(&s), true);
-        assert_eq!(extract_discord_token(&s), None);
-        assert_eq!(extract_discord_auto_start(&s), false);
         assert_eq!(extract_language(&s), "en");
     }
 
@@ -960,8 +809,6 @@ mod tests {
             "commandAliases": {}
         });
         assert_eq!(extract_bot_prefix(&default), "!saba");
-        assert_eq!(extract_bot_mode(&default), "local"); // not in default → fallback
-        assert_eq!(extract_music_enabled(&default), false); // not in default → fallback
     }
 
     // ── Node Token tests ──

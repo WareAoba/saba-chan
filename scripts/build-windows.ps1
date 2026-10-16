@@ -9,7 +9,6 @@ Saba-chan Windows Release Build (Parallel)
   saba-chan-gui.exe           - Electron GUI
   saba-chan-updater.exe       - 업데이터 (GUI + CLI 모드)
   saba-chan-installer.exe     - 인스톨러/언인스톨러 (Tauri)
-  discord_bot/               - Node.js Discord 봇
   locales/                   - 다국어 리소스
 
 .EXAMPLE
@@ -51,7 +50,7 @@ Write-Host "  [OK]" -ForegroundColor Green
 
 # --- 2. Parallel Builds ---
 Write-Host "[2/5] Starting parallel builds..." -ForegroundColor Yellow
-Write-Host "  Rust (daemon+cli+updater) | GUI (vite+electron) | Discord Bot" -ForegroundColor DarkGray
+Write-Host "  Rust (daemon+cli+updater) | GUI (vite+electron)" -ForegroundColor DarkGray
 Write-Host ""
 
 # 2a. Rust workspace build (all 3 binaries at once)
@@ -151,40 +150,11 @@ $jobGUI = Start-Job -Name "GUI" -ScriptBlock {
     return @{ Path = $exe.FullName; Info = "saba-chan-gui.exe ($mb MB)" }
 } -ArgumentList $ProjectRoot
 
-# 2c. Discord Bot (npm install --production)
-$jobBot = Start-Job -Name "Bot" -ScriptBlock {
-    param($root)
-    $botDir = Join-Path $root "discord_bot"
-    Set-Location $botDir
-
-    if (Test-Path "node_modules") {
-        Remove-Item "node_modules" -Recurse -Force -ErrorAction SilentlyContinue
-        # Wait for Windows file handles to fully release after deletion
-        Start-Sleep -Seconds 2
-    }
-    $ErrorActionPreference = "Continue"
-    $maxAttempts = 3
-    $ec = 1
-    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-        & npm install --omit=dev --quiet --no-save 2>&1 | Out-Null
-        $ec = $LASTEXITCODE
-        if ($ec -eq 0) { break }
-        if ($attempt -lt $maxAttempts) {
-            Write-Host "[Bot] npm install failed (exit $ec), retrying... ($attempt/$maxAttempts)"
-            Start-Sleep -Seconds 3
-        }
-    }
-    $ErrorActionPreference = "Stop"
-    if ($ec -ne 0) { throw "npm install failed (exit $ec)" }
-    return @{ Path = $botDir }
-} -ArgumentList $ProjectRoot
-
 # Wait for all jobs
-$allJobs = @($jobRust, $jobGUI, $jobBot)
+$allJobs = @($jobRust, $jobGUI)
 $failedJobs = @()
 $rustResult = $null
 $guiResult = $null
-$botResult = $null
 
 foreach ($job in $allJobs) {
     $result = $null
@@ -206,10 +176,6 @@ foreach ($job in $allJobs) {
         "GUI" {
             $guiResult = $result
             Write-Host "  [GUI] $($result.Info)" -ForegroundColor Green
-        }
-        "Bot" {
-            $botResult = $result
-            Write-Host "  [Bot] OK" -ForegroundColor Green
         }
     }
     Remove-Job $job -Force
@@ -236,21 +202,6 @@ foreach ($t in $rustResult.Targets) {
 }
 
 Copy-Item -Path $guiResult.Path -Destination (Join-Path $DistDir "saba-chan-gui.exe") -Force
-
-$botDest = Join-Path $DistDir "discord_bot"
-Copy-Item -Path $botResult.Path -Destination $botDest -Recurse -Force -ErrorAction SilentlyContinue
-$testDir = Join-Path $botDest "test"
-if (Test-Path $testDir) { Remove-Item $testDir -Recurse -Force -ErrorAction SilentlyContinue }
-$botNodeModules = Join-Path $botDest "node_modules"
-if (Test-Path $botNodeModules) { Remove-Item $botNodeModules -Recurse -Force -ErrorAction SilentlyContinue }
-
-# Zip discord_bot directory contents (not the folder itself, to avoid double-nesting)
-$botZip = Join-Path $DistDir "discord_bot.zip"
-if (Test-Path $botZip) { Remove-Item $botZip -Force }
-Compress-Archive -Path (Join-Path $botDest "*") -DestinationPath $botZip -CompressionLevel Optimal
-Remove-Item $botDest -Recurse -Force -ErrorAction SilentlyContinue
-$zipMB = [Math]::Round((Get-Item $botZip).Length / 1MB, 2)
-Write-Host "  [Bot] discord_bot.zip ($zipMB MB)" -ForegroundColor Green
 
 Write-Host "  [OK]" -ForegroundColor Green
 

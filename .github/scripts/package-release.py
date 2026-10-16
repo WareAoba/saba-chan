@@ -84,15 +84,6 @@ COMPONENTS = [
         "exe_name": "saba-chan-updater.exe",
     },
     {
-        "key": "discord_bot",
-        "version_file": "discord_bot/package.json",
-        "version_type": "npm",
-        "raw_patterns": [r"discord.?bot.*\.zip$"],
-        "output_name": "discord-bot.zip",
-        "install_dir": "discord_bot",
-        "exe_name": None,  # zip 그대로 사용
-    },
-    {
         "key": "locales",
         "version_file": "Cargo.toml",  # 루트 버전 사용
         "version_type": "cargo",

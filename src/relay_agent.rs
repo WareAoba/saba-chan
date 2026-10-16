@@ -136,16 +136,10 @@ impl RelayAgent {
     }
 }
 
-/// 데몬 기동 시: 노드 토큰이 있고 봇 자동 시작이 켜져 있으면 에이전트를 띄운다
+/// 데몬 기동 시: 이 노드가 페어링돼 있으면(노드 토큰 존재) 에이전트를 띄운다
 pub async fn auto_start(server: &IPCServer) {
-    let bot = server.config_store.get_bot_config().await;
-    if !bot.auto_start {
-        tracing::debug!("[RelayAgent] autoStart off — not starting");
-        return;
-    }
-    match server.relay_agent.start(server.clone()).await {
-        Ok(()) => {}
-        Err(e) => tracing::info!("[RelayAgent] not started: {}", e),
+    if let Err(e) = server.relay_agent.start(server.clone()).await {
+        tracing::info!("[RelayAgent] not started: {}", e);
     }
 }
 

@@ -372,11 +372,10 @@ async fn apply_updates(
     };
 
     // 적용 우선순위에 따라 정렬:
-    // Updater → 모듈/익스텐션/Locales → DiscordBot → CoreDaemon → 인터페이스
+    // Updater → 모듈/익스텐션/Locales → CoreDaemon → 인터페이스
     targets.sort_by_key(|comp| match comp {
         Component::Updater => 0u8,
         Component::Module(_) | Component::Extension(_) | Component::Locales => 1,
-        Component::DiscordBot => 2,
         Component::CoreDaemon => 3,
         Component::Gui => 4,
         Component::Cli => 4,

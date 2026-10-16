@@ -332,8 +332,6 @@
     "docker_restart_hint": "Изменения лимитов ресурсов будут применены после перезагрузки сервера."
   },
   "discord_bot": {
-    "token_missing_title": "Отсутствует токен",
-    "token_missing_message": "Пожалуйста, введите токен бота Discord.",
     "prefix_missing_title": "Отсутствует префикс",
     "prefix_missing_message": "Пожалуйста, установите префикс бота. Пример: !pal, !mc",
     "start_failed_toast": "Ошибка запуска бота Discord: {{error}}",
@@ -342,7 +340,6 @@
     "stop_failed_toast": "Ошибка остановки бота Discord: {{error}}",
     "stopped_toast": "Бот Discord остановлен",
     "stop_error_toast": "Исключение при остановке бота Discord: {{error}}",
-    "relaunched_toast": "Бот Discord был перезапущен",
     "unknown_error": "An unexpected bot error occurred"
   },
   "app_exit": {

@@ -2571,7 +2571,7 @@ mod tests {
             "dependencies": {
                 "saba-core": ">=0.3.0",
                 "gui": ">=0.2.0",
-                "discord_bot": ">=0.1.0"
+                "cli": ">=0.1.0"
             }
         }).to_string()).unwrap();
 
@@ -2581,7 +2581,7 @@ mod tests {
         let mut versions = HashMap::new();
         versions.insert("saba-core".to_string(), "0.5.0".to_string());
         versions.insert("gui".to_string(), "0.3.0".to_string());
-        versions.insert("discord_bot".to_string(), "0.1.0".to_string());
+        versions.insert("cli".to_string(), "0.1.0".to_string());
 
         let result = mgr.enable_with_versions("advanced_ext", &versions);
         assert!(result.is_ok(), "All cross-type component deps satisfied");

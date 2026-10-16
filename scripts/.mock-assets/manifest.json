@@ -18,12 +18,6 @@
       "asset": "saba-chan-gui-windows-x64.zip",
       "sha256": null,
       "install_dir": "saba-chan-gui"
-    },
-    "discord_bot": {
-      "version": "0.2.0",
-      "asset": "discord-bot.zip",
-      "sha256": null,
-      "install_dir": "discord_bot"
     }
   }
 }

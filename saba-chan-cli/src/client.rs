@@ -336,12 +336,8 @@ impl DaemonClient {
     }
 
     /// POST /api/client/{id}/heartbeat — 생존 신호 전송
-    pub async fn send_heartbeat(&self, client_id: &str, bot_pid: Option<u32>) -> anyhow::Result<()> {
-        let body = match bot_pid {
-            Some(pid) => serde_json::json!({ "bot_pid": pid }),
-            None => serde_json::json!({}),
-        };
-        self.post_json(&format!("/api/client/{}/heartbeat", client_id), &body).await?;
+    pub async fn send_heartbeat(&self, client_id: &str) -> anyhow::Result<()> {
+        self.post_json(&format!("/api/client/{}/heartbeat", client_id), &serde_json::json!({})).await?;
         Ok(())
     }
 
@@ -533,39 +529,6 @@ impl DaemonClient {
         ).await
     }
 
-    // ============ External Processes ============
-
-    /// GET /api/ext-processes — 실행 중인 외부 프로세스 목록
-    pub async fn list_ext_processes(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/ext-processes").await
-    }
-
-    /// POST /api/ext-process/{name}/start — 외부 프로세스 시작
-    pub async fn start_ext_process(&self, name: &str, body: Value) -> anyhow::Result<Value> {
-        self.post_json(&format!("/api/ext-process/{}/start", name), &body).await
-    }
-
-    /// POST /api/ext-process/{name}/stop — 외부 프로세스 정지
-    pub async fn stop_ext_process(&self, name: &str) -> anyhow::Result<Value> {
-        self.post_json(&format!("/api/ext-process/{}/stop", name), &serde_json::json!({})).await
-    }
-
-    /// GET /api/ext-process/{name}/status — 외부 프로세스 상태 조회
-    pub async fn get_ext_process_status(&self, name: &str) -> anyhow::Result<Value> {
-        self.get_json(&format!("/api/ext-process/{}/status", name)).await
-    }
-
-    /// GET /api/ext-process/{name}/console — 외부 프로세스 콘솔 로그
-    pub async fn get_ext_process_console(&self, name: &str) -> anyhow::Result<Value> {
-        self.get_json(&format!("/api/ext-process/{}/console", name)).await
-    }
-
-    /// POST /api/ext-process/{name}/stdin — 외부 프로세스 stdin 전송
-    pub async fn send_ext_process_stdin(&self, name: &str, input: &str) -> anyhow::Result<Value> {
-        let body = serde_json::json!({ "input": input });
-        self.post_json(&format!("/api/ext-process/{}/stdin", name), &body).await
-    }
-
     // ============ System ============
 
     /// GET /api/system/components — 시스템 컴포넌트 정보 (daemon, GUI, locale 버전)
@@ -588,16 +551,6 @@ impl DaemonClient {
             path = format!("{}?{}", path, params.join("&"));
         }
         self.get_json(&path).await
-    }
-
-    /// GET /api/node-env/status — Node.js 포터블 환경 상태
-    pub async fn get_node_env_status(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/node-env/status").await
-    }
-
-    /// POST /api/node-env/setup — Node.js 부트스트랩
-    pub async fn setup_node_env(&self) -> anyhow::Result<Value> {
-        self.post_json_long("/api/node-env/setup", &serde_json::json!({})).await
     }
 
     /// GET /api/updates/integrity — 업데이트 무결성 검사
@@ -649,37 +602,4 @@ impl DaemonClient {
         self.delete_json("/api/config/node-token").await
     }
 
-    // ============ Discord REST API ============
-
-    /// Discord REST API로 봇이 참여한 길드 목록 조회
-    pub async fn discord_guild_list(&self, token: &str) -> anyhow::Result<Vec<Value>> {
-        let url = "https://discord.com/api/v10/users/@me/guilds";
-        let response = self.client
-            .get(url)
-            .header("Authorization", format!("Bot {}", token))
-            .send()
-            .await?;
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            anyhow::bail!("Discord API returned {}: {}", status, body);
-        }
-        Ok(response.json().await?)
-    }
-
-    /// Discord REST API로 특정 길드의 멤버 목록 조회 (최대 1000명)
-    pub async fn discord_guild_members(&self, token: &str, guild_id: &str) -> anyhow::Result<Vec<Value>> {
-        let url = format!("https://discord.com/api/v10/guilds/{}/members?limit=1000", guild_id);
-        let response = self.client
-            .get(&url)
-            .header("Authorization", format!("Bot {}", token))
-            .send()
-            .await?;
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            anyhow::bail!("Discord API returned {}: {}", status, body);
-        }
-        Ok(response.json().await?)
-    }
 }

@@ -96,11 +96,9 @@ const parseComponents = (comps) =>
                       ? 'monitor'
                       : key === 'cli'
                         ? 'terminal'
-                        : key === 'discord_bot'
-                          ? 'discord'
-                          : key === 'updater'
-                            ? 'refresh'
-                            : 'server',
+                        : key === 'updater'
+                          ? 'refresh'
+                          : 'server',
                 current_version: c.current_version || '—',
                 latest_version: c.latest_version || null,
                 update_available: !!c.update_available,
@@ -289,52 +287,6 @@ function ComponentsTab({ devMode }) {
                 setConfirmRestart(true);
                 return;
             }
-            if (key === 'discord_bot') {
-                markBusy(key);
-                setError(null);
-                setMessage(null);
-                try {
-                    const botStatus = await window.api?.discordBotStatus?.();
-                    const wasBotRunning = botStatus === 'running';
-                    if (wasBotRunning) {
-                        setMessage(t('saba_storage.bot_stopping'));
-                        await window.api?.discordBotStop?.();
-                        await new Promise((r) => setTimeout(r, 2000));
-                    }
-                    setMessage(t('saba_storage.bot_replacing'));
-                    const res = await window.api?.updaterApply?.([key]);
-                    if (res?.ok === false) {
-                        setError(
-                            `${key}: ${res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || t('saba_storage.apply_failed')}`,
-                        );
-                    } else if (res?.applied?.length > 0) {
-                        setMessage(t('saba_storage.apply_completed', { names: res.applied.join(', ') }));
-                        if (wasBotRunning) {
-                            setMessage(t('saba_storage.bot_restarting'));
-                            const settings = await window.api?.settingsLoad?.();
-                            const botConfig = await window.api?.botConfigLoad?.();
-                            const token = settings?.discordToken;
-                            if (token) {
-                                const startRes = await window.api?.discordBotStart?.({
-                                    token,
-                                    prefix: botConfig?.prefix || '!saba',
-                                    moduleAliases: botConfig?.moduleAliases || {},
-                                    commandAliases: botConfig?.commandAliases || {},
-                                });
-                                if (startRes?.error) setError(t('saba_storage.bot_restart_failed', { error: startRes.error }));
-                                else setMessage(t('saba_storage.bot_restarted'));
-                            } else {
-                                setMessage(t('saba_storage.bot_no_token'));
-                            }
-                        }
-                    }
-                    await refreshStatus();
-                } catch (e) {
-                    setError(`${key}: ${e.message}`);
-                }
-                clearBusy(key);
-                return;
-            }
             markBusy(key);
             setError(null);
             setMessage(null);
@@ -370,18 +322,6 @@ function ComponentsTab({ devMode }) {
         setError(null);
         setMessage(null);
         const allKeys = updatable.map((c) => c.key);
-        const hasDiscordBot = allKeys.includes('discord_bot');
-        let wasBotRunning = false;
-        if (hasDiscordBot) {
-            try {
-                const s = await window.api?.discordBotStatus?.();
-                wasBotRunning = s === 'running';
-                if (wasBotRunning) {
-                    await window.api?.discordBotStop?.();
-                    await new Promise((r) => setTimeout(r, 2000));
-                }
-            } catch (_) {}
-        }
         for (const key of allKeys) markBusy(key);
         startProgressPolling();
         for (const key of allKeys) {
@@ -437,29 +377,6 @@ function ComponentsTab({ devMode }) {
         }
         for (const key of allKeys) clearBusy(key);
         await refreshStatus();
-        // 업데이터 미사용 (데몬 직접 적용) 시에만 봇 재시작
-        if (hasDiscordBot && wasBotRunning) {
-            try {
-                const settings = await window.api?.settingsLoad?.();
-                const botConfig = await window.api?.botConfigLoad?.();
-                const token = settings?.discordToken;
-                if (token) {
-                    const s = await window.api?.discordBotStart?.({
-                        token,
-                        prefix: botConfig?.prefix || '!saba',
-                        moduleAliases: botConfig?.moduleAliases || {},
-                        commandAliases: botConfig?.commandAliases || {},
-                    });
-                    if (s?.error) {
-                        hadError = true;
-                        setError((prev) => (prev ? prev + '\n' : '') + t('saba_storage.bot_restart_failed', { error: s.error }));
-                    }
-                }
-            } catch (e) {
-                hadError = true;
-                setError((prev) => (prev ? prev + '\n' : '') + t('saba_storage.bot_restart_failed', { error: e.message }));
-            }
-        }
         if (daemonApplied.length > 0) setMessage(t('saba_storage.apply_completed', { names: daemonApplied.join(', ') }));
         else if (!hadError) setMessage(t('saba_storage.update_done'));
         setBusyAll(false);

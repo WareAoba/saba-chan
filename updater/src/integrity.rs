@@ -6,7 +6,7 @@
 //! 비교하여 위변조 여부를 판정합니다.
 //!
 //! ## 매니페스트 소스
-//! - **코어 컴포넌트** (saba-core, cli, gui, updater, discord_bot):
+//! - **코어 컴포넌트** (saba-core, cli, gui, updater):
 //!   `manifest.json` (GitHub 릴리즈에서 다운로드, 설치 시 로컬에 저장)
 //! - **모듈**: 모듈 리포의 `manifest.json`
 //! - **익스텐션**: 익스텐션 리포의 `manifest.json` (GitHub 릴리즈 에셋)
@@ -264,11 +264,6 @@ impl IntegrityChecker {
                 let name = if cfg!(windows) { "saba-chan-updater.exe" } else { "saba-chan-updater" };
                 Some(self.install_root.join(name))
             }
-            "discord_bot" => {
-                let dir = info.install_dir.as_deref().unwrap_or("discord_bot");
-                // 디스코드 봇은 Node.js — index.js를 기준으로 해시
-                Some(self.install_root.join(dir).join("index.js"))
-            }
             k if k.starts_with("module-") => {
                 let module_name = k.strip_prefix("module-").unwrap_or(k);
                 // 모듈은 Python — lifecycle.py를 기준으로 해시
@@ -487,7 +482,6 @@ pub fn collect_hashes_from_server_manifest(
         ("cli", "CLI"),
         ("gui", "GUI"),
         ("updater", "Updater"),
-        ("discord_bot", "Discord Bot"),
     ]);
 
     for (key, info) in &manifest.components {
@@ -641,7 +635,6 @@ pub fn collect_core_hashes(manifest_path: &Path) -> HashMap<String, ComponentHas
         ("cli", "CLI"),
         ("gui", "GUI"),
         ("updater", "Updater"),
-        ("discord_bot", "Discord Bot"),
     ]);
 
     for (key, entry) in &manifest.components {
@@ -781,7 +774,6 @@ fn component_sort_key(key: &str) -> (u8, String) {
         "cli" => (1, key.to_string()),
         "gui" => (2, key.to_string()),
         "updater" => (3, key.to_string()),
-        "discord_bot" => (4, key.to_string()),
         k if k.starts_with("module-") => (5, key.to_string()),
         k if k.starts_with("ext-") => (6, key.to_string()),
         _ => (7, key.to_string()),
