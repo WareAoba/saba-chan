@@ -56,7 +56,7 @@ export function ServerDetail({
         { id: 'info', label: t('shell.tab_info'), icon: <Icon name="info" size="sm" /> },
     ].filter(Boolean);
 
-    // null = 아직 고르지 않음 → 그 서버의 첫 탭(콘솔이 있으면 콘솔)
+    // null = 아직 고르지 않음 → 아래 defaultTab
     const [tab, setTab] = useState(null);
     // biome-ignore lint/correctness/useExhaustiveDependencies: 서버가 바뀔 때만 초기화
     useEffect(() => {
@@ -69,7 +69,13 @@ export function ServerDetail({
         setTab(requestedTab);
         useUIStore.getState().clearRequestedServerTab();
     }, [requestedTab]);
-    const activeTab = tabs.some((x) => x.id === tab) ? tab : tabs[0].id;
+    // 기본 탭: 콘솔이 있으면 콘솔, 켜져 있으면 명령, 꺼져 있으면 정보 (쓸 수 있는 것부터)
+    const defaultTab = interaction.console
+        ? 'console'
+        : server.status === 'running' && interaction.commands
+          ? 'commands'
+          : 'info';
+    const activeTab = tabs.some((x) => x.id === tab) ? tab : defaultTab;
 
     const conflicts = portConflictCheck ? server.port_conflicts || [] : [];
     const uptime = status === 'running' && server.start_time ? formatUptime(server.start_time) : null;
