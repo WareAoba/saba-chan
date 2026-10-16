@@ -95,6 +95,24 @@ pub async fn run_plugin(module_path: &str, function: &str, config: Value) -> Res
     run_plugin_inner(module_path, function, config, None, DEFAULT_PLUGIN_TIMEOUT_SECS).await
 }
 
+/// 데몬 락 안에서 만들고 락을 놓은 뒤 실행하는 모듈 호출 (C12).
+/// Python은 몇 분까지 걸릴 수 있어서, 락을 쥔 채 기다리면 모니터와 다른 요청이 모두 멈춘다.
+pub struct PluginCall {
+    pub entry: String,
+    pub function: String,
+    pub config: Value,
+}
+
+impl PluginCall {
+    pub fn new(entry: impl Into<String>, function: &str, config: Value) -> Self {
+        Self { entry: entry.into(), function: function.to_string(), config }
+    }
+
+    pub async fn run(self) -> Result<Value> {
+        run_plugin(&self.entry, &self.function, self.config).await
+    }
+}
+
 /// Like `run_plugin` but with a custom timeout (seconds).
 pub async fn run_plugin_with_timeout(module_path: &str, function: &str, config: Value, timeout_secs: u64) -> Result<Value> {
     run_plugin_inner(module_path, function, config, None, timeout_secs).await

@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('api', {
     moduleRefresh: () => ipcRenderer.invoke('module:refresh'),
     moduleGetMetadata: (name) => ipcRenderer.invoke('module:getMetadata', name),
     moduleDetect: (path) => ipcRenderer.invoke('module:detect', path),
+    instanceEvents: (id) => ipcRenderer.invoke('instance:events', id),
     moduleGetLocales: (name) => ipcRenderer.invoke('module:getLocales', name),
     moduleListVersions: (name, options) => ipcRenderer.invoke('module:listVersions', name, options),
     moduleInstallServer: (name, config) => ipcRenderer.invoke('module:installServer', name, config),

@@ -112,8 +112,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
                     "instance_dir": &instance.instance_dir,
                     "process_patterns": &instance.process_patterns,
                 });
-                let mgr = ext_mgr.read().await;
-                let results = mgr.dispatch_hook_timed("server.list_enrich", ctx, 10).await;
+                let results = crate::extension::run_hook_timed(&ext_mgr, "server.list_enrich", ctx, 10).await;
                 // 첫 번째 성공 응답만 캐시한다 (실패는 다음 목록 요청에서 다시 시도)
                 match results.into_iter().find_map(|(_id, r)| r.ok()) {
                     Some(result) => {
@@ -499,20 +498,16 @@ pub async fn get_server_status(
     Path(name): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
-
     // instance에서 모듈명 조회
-    let instance = supervisor
+    let module_name = state.supervisor.read().await
         .instance_store
         .list()
         .iter()
-        .find(|i| i.name == name);
+        .find(|i| i.name == name)
+        .map(|i| i.module_name.clone());
 
-    if let Some(inst) = instance {
-        match supervisor
-            .get_server_status(&name, &inst.module_name)
-            .await
-        {
+    if let Some(module_name) = module_name {
+        match crate::supervisor::Supervisor::get_server_status(&state.supervisor, &name, &module_name).await {
             Ok(result) => (StatusCode::OK, Json(result)).into_response(),
             Err(e) => {
                 let error = json!({ "error": format!("Failed to get status: {}", e) });
@@ -639,10 +634,7 @@ pub async fn start_server_handler(
         }
     }
 
-    let supervisor = state.supervisor.read().await;
-
-    match supervisor
-        .start_server(&name, &payload.module, payload.config)
+    match crate::supervisor::Supervisor::start_server(&state.supervisor, &name, &payload.module, payload.config)
         .await
     {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
@@ -694,11 +686,8 @@ pub async fn stop_server_handler(
     if let Some(inst) = instance {
         // instance id로도 API 액션 기록
         state.api_actions.record(&inst.id);
-        let mut supervisor = state.supervisor.write().await;
-        match supervisor
-            .stop_server(&name, &inst.module_name, payload.force)
-            .await
-        {
+        // 락은 stop_server가 단계마다 짧게 잡는다 (C12)
+        match crate::supervisor::Supervisor::stop_server(&state.supervisor, &name, &inst.module_name, payload.force).await {
             Ok(result) => {
                 // 실제 종료 성공 시에만 tracker에서 제거
                 let success = result
@@ -712,6 +701,7 @@ pub async fn stop_server_handler(
                     // 익스텐션이 외부 프로세스 관리(예: 컨테이너)를 사용하면 ProcessTracker skip
                     if inst.extension_data.is_empty() || !inst.ext_enabled("docker_enabled") {
                         // name과 id 둘 다로 untrack 시도
+                        let supervisor = state.supervisor.read().await;
                         let _ = supervisor.tracker.untrack(&name);
                         if let Err(e) = supervisor.tracker.untrack(&inst.id) {
                             tracing::warn!("Failed to untrack stopped server '{}': {}", name, e);

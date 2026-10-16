@@ -129,8 +129,7 @@ async fn run_module_command(
     args: Value,
 ) -> crate::ipc::internal::InternalResponse {
     use crate::ipc::internal::InternalResponse;
-    let supervisor = state.supervisor.read().await;
-    match supervisor.execute_command(&instance.id, &instance.module_name, command, args).await {
+    match crate::supervisor::Supervisor::execute_command(&state.supervisor, &instance.id, &instance.module_name, command, args).await {
         Ok(message) => InternalResponse {
             status: StatusCode::OK,
             body: json!({ "success": true, "message": message, "protocol": "module" }),
