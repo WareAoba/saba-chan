@@ -212,6 +212,9 @@ export function ServerDetail({
                                 server={server}
                                 state={consoleProps.consoles[server.id]}
                                 highlightRules={moduleData?.syntax_highlight?.rules || null}
+                                quickCommands={(moduleData?.commands?.fields || []).filter(
+                                    (c) => (c.method || 'stdin') === 'stdin',
+                                )}
                                 openConsole={consoleProps.openConsole}
                                 setConsoleInput={consoleProps.setConsoleInput}
                                 sendConsoleCommand={consoleProps.sendConsoleCommand}

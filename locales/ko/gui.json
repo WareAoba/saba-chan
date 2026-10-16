@@ -819,6 +819,13 @@
     "update_failed": "업데이트가 끝나지 못했어요",
     "update_components": "바뀐 것: {{list}}",
     "update_failed_components": "실패한 것: {{list}}",
-    "dismiss": "닫기"
+    "dismiss": "닫기",
+    "console_quick": "자주 쓰는 명령",
+    "console_hint": "Enter 보내기 · ↑ 이전 명령",
+    "daemon_about": "서버 실행과 모든 기능을 맡는 내 PC의 서비스예요",
+    "daemon_address": "주소",
+    "daemon_protocol": "통신",
+    "daemon_link": "GUI 연결",
+    "copy": "복사"
   }
 }

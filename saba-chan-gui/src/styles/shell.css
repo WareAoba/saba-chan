@@ -550,23 +550,52 @@
     padding: var(--sp-6) 0;
     text-align: center;
 }
+/* 입력줄: 콘솔 안에 떠 있는 둥근 칸. 콘솔은 테마와 상관없이 어두우므로 색은 콘솔 색에서만 파생한다 */
+.term-quick {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0 var(--sp-3) var(--sp-2);
+}
+.term-chip {
+    --btn-height: 26px;
+    --btn-padding: 0 10px;
+    --btn-font-size: 12px;
+    border-radius: var(--r-pill);
+    border: 1px solid color-mix(in srgb, var(--console-custom-text) 14%, transparent);
+    background: color-mix(in srgb, var(--console-custom-text) 6%, transparent);
+    color: color-mix(in srgb, var(--console-custom-text) 80%, transparent);
+    box-shadow: none;
+    font-weight: 500;
+}
+.term-chip:hover {
+    background: color-mix(in srgb, var(--console-custom-text) 12%, transparent);
+    color: var(--console-custom-text);
+}
 .term-input {
     display: flex;
     align-items: center;
     gap: var(--sp-2);
-    padding: var(--sp-2) var(--sp-3);
-    /* 콘솔은 테마와 상관없이 어두우므로 입력줄도 콘솔 색에서만 파생한다 */
-    border-top: 1px solid color-mix(in srgb, var(--console-custom-text) 10%, transparent);
-    background: color-mix(in srgb, var(--console-custom-bg) 85%, #000);
-}
-.term-prompt {
+    margin: 0 var(--sp-3) var(--sp-3);
+    padding: 0 6px 0 12px;
+    height: 44px;
+    border-radius: var(--r-md);
+    border: 1px solid color-mix(in srgb, var(--console-custom-text) 14%, transparent);
+    background: color-mix(in srgb, var(--console-custom-bg) 70%, #000);
     color: var(--accent);
-    font-family: var(--font-mono);
-    font-weight: 700;
+    transition: border-color var(--dur-fast, 0.15s) ease, box-shadow var(--dur-fast, 0.15s) ease;
+}
+.term-input.focused {
+    border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.term-input.disabled {
+    color: color-mix(in srgb, var(--console-custom-text) 35%, transparent);
 }
 .term-field {
     flex: 1;
-    height: 34px;
+    min-width: 0;
+    height: 100%;
     background: transparent;
     border: none;
     outline: none;
@@ -576,6 +605,41 @@
 }
 .term-field::placeholder {
     color: color-mix(in srgb, var(--console-custom-text) 45%, transparent);
+}
+.term-hint {
+    font-size: 11px;
+    white-space: nowrap;
+    color: color-mix(in srgb, var(--console-custom-text) 38%, transparent);
+}
+.term-input.focused .term-hint {
+    display: none;
+}
+.term-send {
+    --btn-height: 32px;
+    --btn-padding: 0;
+    width: 32px;
+    border-radius: var(--r-sm);
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    box-shadow: none;
+}
+.term-send:disabled {
+    background: color-mix(in srgb, var(--console-custom-text) 12%, transparent);
+    color: color-mix(in srgb, var(--console-custom-text) 45%, transparent);
+    opacity: 1;
+}
+.term-divider {
+    width: 1px;
+    height: 20px;
+    background: color-mix(in srgb, var(--console-custom-text) 14%, transparent);
+}
+.term-popout {
+    color: color-mix(in srgb, var(--console-custom-text) 60%, transparent);
+}
+.term-popout:hover {
+    color: var(--console-custom-text);
+    background: color-mix(in srgb, var(--console-custom-text) 10%, transparent);
 }
 .term-placeholder {
     align-items: center;
@@ -824,4 +888,97 @@
 }
 .update-banner-msg {
     color: var(--text-2);
+}
+
+/* ── 데몬(백그라운드 서비스) 팝업: 상태 → 할 일 → 연결 정보 → 보조 동작 순 ── */
+.popover-anchor .bg-pop {
+    width: 340px;
+    padding: var(--sp-4);
+    gap: var(--sp-3);
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-float);
+    overflow: visible;
+}
+.bg-pop::before {
+    display: none;
+}
+.bg-pop-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+}
+.bg-pop-orb {
+    width: 38px;
+    height: 38px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    border-radius: var(--r-md);
+    color: var(--chip-color);
+    background: color-mix(in srgb, var(--chip-color) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--chip-color) 30%, transparent);
+}
+.bg-pop-orb.pulse {
+    animation: chip-pulse 1.2s var(--ease) infinite;
+}
+.bg-pop-title {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.bg-pop-title strong {
+    font-size: var(--fs-md, 15px);
+    color: var(--chip-color);
+}
+.bg-pop-title span {
+    font-size: 12px;
+    color: var(--text-2);
+    line-height: 1.4;
+}
+.bg-pop-facts {
+    margin: 0;
+    padding: var(--sp-1) var(--sp-3);
+    border-radius: var(--r-md);
+    background: var(--inset);
+    border: 1px solid var(--line);
+}
+.bg-pop-facts > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 36px;
+    gap: var(--sp-3);
+}
+.bg-pop-facts > div + div {
+    border-top: 1px solid var(--line);
+}
+.bg-pop-facts dt {
+    color: var(--text-2);
+    font-size: 12px;
+}
+.bg-pop-facts dd {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    color: var(--text-1);
+}
+.bg-pop-facts .mono {
+    font-family: var(--font-mono);
+}
+.bg-pop-copy {
+    --btn-height: 24px;
+    width: 24px;
+    color: var(--text-3);
+}
+.bg-pop-note {
+    margin: 0;
+    font-size: 11.5px;
+    color: var(--text-3);
+    line-height: 1.5;
 }

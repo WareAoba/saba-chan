@@ -1,10 +1,18 @@
 import clsx from 'clsx';
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { getCachedRules } from '../../utils/syntaxHighlight';
 import { HighlightedContent } from '../ConsoleView';
 import { Icon } from '../Icon';
+
+// 서버별 보낸 명령 기록 (탭을 오가도 남도록 모듈 범위). 앱을 다시 켜면 비운다.
+const HISTORY_MAX = 50;
+const histories = new Map();
+const historyOf = (id) => {
+    if (!histories.has(id)) histories.set(id, []);
+    return histories.get(id);
+};
 
 /**
  * 상세 화면에 박힌 콘솔. 창을 따로 열지 않아도 로그를 보고 명령을 보낼 수 있다(L).
@@ -14,6 +22,7 @@ export function ServerConsole({
     server,
     state,
     highlightRules,
+    quickCommands = [],
     openConsole,
     setConsoleInput,
     sendConsoleCommand,
@@ -24,7 +33,11 @@ export function ServerConsole({
     const { t } = useTranslation('gui');
     const syntaxEnabled = useSettingsStore((s) => s.consoleSyntaxHighlight);
     const outputRef = useRef(null);
+    const inputRef = useRef(null);
     const stickRef = useRef(true);
+    const cursorRef = useRef(-1); // 기록에서 몇 번째를 보고 있는지 (-1 = 새로 입력 중)
+    const draftRef = useRef('');
+    const [focused, setFocused] = useState(false);
 
     // 탭이 보이면 로그 폴링 시작 (이미 열려 있으면 그대로)
     useEffect(() => {
@@ -89,21 +102,67 @@ export function ServerConsole({
                     </div>
                 ))}
             </div>
+            {!stdinDisabled && quickCommands.length > 0 && (
+                <div className="term-quick" role="group" aria-label={t('shell.console_quick')}>
+                    {quickCommands.slice(0, 6).map((c) => (
+                        <button
+                            key={c.name}
+                            type="button"
+                            className="term-chip"
+                            title={c.description || c.name}
+                            onClick={() => {
+                                // 바로 보내지 않고 채워만 둔다: 인자가 필요하거나 위험한 명령도 있으니까
+                                setConsoleInput(server.id, c.inputs?.length ? `${c.name} ` : c.name);
+                                inputRef.current?.focus();
+                            }}
+                        >
+                            {c.label || c.name}
+                        </button>
+                    ))}
+                </div>
+            )}
             <form
-                className="term-input"
+                className={clsx('term-input', { focused, disabled: stdinDisabled })}
                 onSubmit={(e) => {
                     e.preventDefault();
+                    const cmd = (state?.input || '').trim();
+                    if (!cmd || stdinDisabled) return;
+                    const hist = historyOf(server.id);
+                    if (hist[hist.length - 1] !== cmd) hist.push(cmd);
+                    if (hist.length > HISTORY_MAX) hist.shift();
+                    cursorRef.current = -1;
                     sendConsoleCommand(server.id);
                 }}
             >
-                <span className="term-prompt" aria-hidden="true">
-                    {'>'}
-                </span>
+                <Icon name="chevronRight" size="sm" />
                 <input
+                    ref={inputRef}
                     type="text"
                     className="term-field"
                     value={state?.input || ''}
-                    onChange={(e) => setConsoleInput(server.id, e.target.value)}
+                    onChange={(e) => {
+                        cursorRef.current = -1;
+                        setConsoleInput(server.id, e.target.value);
+                    }}
+                    onFocus={() => setFocused(true)}
+                    onBlur={() => setFocused(false)}
+                    onKeyDown={(e) => {
+                        // ↑/↓ 로 보냈던 명령을 다시 꺼낸다 (터미널과 같은 손버릇)
+                        const hist = historyOf(server.id);
+                        if (!hist.length || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+                        e.preventDefault();
+                        if (cursorRef.current === -1) draftRef.current = state?.input || '';
+                        const next =
+                            e.key === 'ArrowUp'
+                                ? cursorRef.current === -1
+                                    ? hist.length - 1
+                                    : Math.max(0, cursorRef.current - 1)
+                                : cursorRef.current === -1 || cursorRef.current >= hist.length - 1
+                                  ? -1
+                                  : cursorRef.current + 1;
+                        cursorRef.current = next;
+                        setConsoleInput(server.id, next === -1 ? draftRef.current : hist[next]);
+                    }}
                     placeholder={
                         server.status !== 'running'
                             ? t('shell.console_offline_input')
@@ -113,13 +172,23 @@ export function ServerConsole({
                     }
                     disabled={stdinDisabled}
                     aria-label={t('console.input_placeholder')}
+                    autoComplete="off"
+                    spellCheck={false}
                 />
-                <button type="submit" className="btn btn-primary btn-sm" disabled={stdinDisabled || !state?.input}>
-                    {t('console.send')}
+                {!stdinDisabled && <span className="term-hint">{t('shell.console_hint')}</span>}
+                <button
+                    type="submit"
+                    className="term-send"
+                    disabled={stdinDisabled || !state?.input?.trim()}
+                    title={t('console.send')}
+                    aria-label={t('console.send')}
+                >
+                    <Icon name="arrowUp" size="sm" />
                 </button>
+                <span className="term-divider" aria-hidden="true" />
                 <button
                     type="button"
-                    className="icon-btn"
+                    className="icon-btn term-popout"
                     onClick={onPopout}
                     title={t('console.popout')}
                     aria-label={t('console.popout')}

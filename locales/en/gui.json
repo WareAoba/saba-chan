@@ -819,6 +819,13 @@
     "update_failed": "The update did not finish",
     "update_components": "Updated: {{list}}",
     "update_failed_components": "Failed: {{list}}",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "console_quick": "Quick commands",
+    "console_hint": "Enter to send · ↑ previous",
+    "daemon_about": "The service on this PC that runs your servers and every feature",
+    "daemon_address": "Address",
+    "daemon_protocol": "Protocol",
+    "daemon_link": "GUI link",
+    "copy": "Copy"
   }
 }

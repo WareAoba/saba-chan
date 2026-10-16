@@ -50,31 +50,6 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
         return null;
     }
 
-    const getStatusClass = () => {
-        switch (daemonStatus) {
-            case 'running':
-                return 'status-online';
-            case 'stopped':
-            case 'error':
-                return 'status-offline';
-            default:
-                return 'status-checking';
-        }
-    };
-
-    const getStatusText = () => {
-        switch (daemonStatus) {
-            case 'running':
-                return t('background_modal.status_running');
-            case 'stopped':
-                return t('background_modal.status_stopped');
-            case 'error':
-                return t('background_modal.status_error');
-            default:
-                return t('background_modal.status_checking');
-        }
-    };
-
     const handleRestartDaemon = async () => {
         setRestarting(true);
         try {
@@ -91,99 +66,92 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
         }
     };
 
+    const tone =
+        daemonStatus === 'running' ? 'ok' : daemonStatus === 'stopped' || daemonStatus === 'error' ? 'stop' : 'warn';
+    const port = ipcPort || DEFAULT_IPC_PORT;
+    const address = `${t('background_modal.ipc_host_value')}:${port}`;
+
     return (
         <div
-            className={clsx('background-modal-container', { closing: isClosing })}
+            className={clsx('background-modal-container', 'bg-pop', { closing: isClosing })}
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-label={t('background_modal.title')}
         >
-            <div className="background-modal-header">
-                <div className="background-modal-title">
-                    <span className={clsx('status-indicator', getStatusClass())}></span>
-                    <h2>{t('background_modal.title')}</h2>
+            {/* 1. 지금 상태 한 줄 + 이게 뭔지 한 줄 */}
+            <div className={clsx('bg-pop-head', `tone-${tone}`)}>
+                <span className={clsx('bg-pop-orb', { pulse: tone === 'warn' })} aria-hidden="true">
+                    <Icon name="server" size="sm" />
+                </span>
+                <div className="bg-pop-title">
+                    <strong>
+                        {t(
+                            `shell.daemon_${daemonStatus === 'error' ? 'stopped' : daemonStatus === 'running' || daemonStatus === 'stopped' ? daemonStatus : 'checking'}`,
+                        )}
+                    </strong>
+                    <span>{t('shell.daemon_about')}</span>
                 </div>
-                <button className="background-modal-close" onClick={onClose}>
+                <button type="button" className="icon-btn" onClick={onClose} aria-label={t('shell.dismiss')}>
                     <Icon name="close" size="sm" />
                 </button>
             </div>
 
-            <div className="background-modal-content">
-                <div className="background-status-section">
-                    <span className="status-label">{t('background_modal.daemon_label')}</span>
-                    <span
-                        className={clsx(
-                            'status-value',
-                            daemonStatus === 'running' ? 'status-running' : 'status-stopped',
-                        )}
-                    >
-                        {getStatusText()}
-                    </span>
-                </div>
+            {/* 2. 꺼져 있으면 할 일이 먼저 */}
+            {(daemonStatus === 'stopped' || daemonStatus === 'error') && (
+                <button
+                    type="button"
+                    className="btn btn-primary btn-block bg-pop-cta"
+                    onClick={handleRestartDaemon}
+                    disabled={restarting}
+                >
+                    <Icon name="refresh" size="sm" />
+                    {restarting ? t('background_modal.restarting_button') : t('background_modal.restart_button')}
+                </button>
+            )}
 
-                <div className="background-info-section">
-                    <div className="info-row">
-                        <span className="info-label">
-                            <Icon name="plug" size="sm" /> {t('background_modal.ipc_host_label')}
-                        </span>
-                        <span className="info-value">{t('background_modal.ipc_host_value')}</span>
-                    </div>
-                    <div className="info-row">
-                        <span className="info-label">
-                            <Icon name="hash" size="sm" /> {t('background_modal.ipc_port_label')}
-                        </span>
-                        <span className="info-value">{ipcPort || DEFAULT_IPC_PORT}</span>
-                    </div>
-                    <div className="info-row">
-                        <span className="info-label">
-                            <Icon name="broadcast" size="sm" /> {t('background_modal.protocol_label')}
-                        </span>
-                        <span className="info-value">{t('background_modal.protocol_value')}</span>
-                    </div>
-                    <div className="info-row">
-                        <span className="info-label">
-                            <Icon name="clock" size="sm" /> {t('background_modal.uptime_label')}
-                        </span>
-                        <span className="info-value">{uptime}</span>
-                    </div>
-                </div>
-
-                {(daemonStatus === 'stopped' || daemonStatus === 'error') && (
-                    <div className="background-restart-section">
-                        <button className="background-restart-btn" onClick={handleRestartDaemon} disabled={restarting}>
-                            {restarting ? (
-                                t('background_modal.restarting_button')
-                            ) : (
-                                <>
-                                    <Icon name="refresh" size="sm" /> {t('background_modal.restart_button')}
-                                </>
-                            )}
-                        </button>
-                    </div>
-                )}
-
-                {/* 로그 폴더 열기: 기능은 있었는데 버튼이 없었다 */}
-                {window.api?.logsOpenFolder && (
-                    <div className="background-restart-section">
+            {/* 3. 연결 정보 (개발·문제 해결용) */}
+            <dl className="bg-pop-facts">
+                <div>
+                    <dt>{t('shell.daemon_address')}</dt>
+                    <dd className="mono">
+                        {address}
                         <button
                             type="button"
-                            className="btn btn-ghost btn-block"
-                            onClick={() =>
-                                window.api.logsOpenFolder().catch?.((err) => console.error('[Background] logs folder:', err.message))
-                            }
+                            className="icon-btn bg-pop-copy"
+                            onClick={() => navigator.clipboard?.writeText(`http://${address}`).catch(() => {})}
+                            title={t('shell.copy')}
+                            aria-label={t('shell.copy')}
                         >
-                            <Icon name="folder" size="sm" /> {t('shell.open_logs_folder')}
+                            <Icon name="copy" size={14} />
                         </button>
-                    </div>
-                )}
-
-                <div className="background-info-box">
-                    <h4>
-                        <Icon name="lightbulb" size="sm" style={{ marginRight: '8px' }} />{' '}
-                        {t('background_modal.about_title')}
-                    </h4>
-                    <p>{t('background_modal.about_description')}</p>
-                    <p className="info-note">{t('background_modal.about_note')}</p>
+                    </dd>
                 </div>
-            </div>
+                <div>
+                    <dt>{t('shell.daemon_protocol')}</dt>
+                    <dd className="mono">{t('background_modal.protocol_value')}</dd>
+                </div>
+                <div>
+                    <dt>{t('shell.daemon_link')}</dt>
+                    <dd>{uptime}</dd>
+                </div>
+            </dl>
+
+            {/* 4. 보조 동작 */}
+            {window.api?.logsOpenFolder && (
+                <button
+                    type="button"
+                    className="btn btn-ghost btn-block"
+                    onClick={() =>
+                        window.api
+                            .logsOpenFolder()
+                            .catch?.((err) => console.error('[Background] logs folder:', err.message))
+                    }
+                >
+                    <Icon name="folder" size="sm" /> {t('shell.open_logs_folder')}
+                </button>
+            )}
+
+            <p className="bg-pop-note">{t('background_modal.about_note')}</p>
         </div>
     );
 }
