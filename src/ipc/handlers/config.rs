@@ -135,60 +135,30 @@ pub async fn get_module_locales(
 
 // ── System Components ──
 
-/// GET /api/system/components — 릴리스 매니페스트 정보
+/// GET /api/system/components — 설치된 컴포넌트 버전
+///
+/// `installed-manifest.json`(업데이터가 적용할 때마다 기록)이 기준이고, 거기에 없는
+/// 컴포넌트는 이 빌드에 묶인 `versions.toml` 버전으로 채운다.
 pub async fn get_system_components(State(_state): State<IPCServer>) -> impl IntoResponse {
-    // install root = 실행 파일의 부모 디렉토리
-    let install_root = std::env::current_exe()
+    use saba_chan_updater_lib::{versions, UpdateManager};
+
+    let bundled = versions::bundled();
+    let mut components: std::collections::BTreeMap<String, String> = bundled.components.clone();
+    components.extend(UpdateManager::load_installed_manifest());
+
+    let manifest_path = saba_chan_updater_lib::constants::resolve_installed_manifest_path();
+    let last_updated = std::fs::metadata(&manifest_path)
+        .and_then(|m| m.modified())
         .ok()
-        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-        .unwrap_or_else(|| std::path::PathBuf::from("."));
-
-    let manifest_path = install_root.join("release-manifest.json");
-
-    if manifest_path.exists() {
-        if let Ok(raw) = std::fs::read_to_string(&manifest_path) {
-            if let Ok(manifest) = serde_json::from_str::<Value>(&raw) {
-                let mut components = json!({});
-                if let Some(comps) = manifest.get("components").and_then(|c| c.as_object()) {
-                    for (key, val) in comps {
-                        let ver = val
-                            .get("version")
-                            .or_else(|| manifest.get("release_version"))
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("0.1.0");
-                        components[key] = json!(ver);
-                    }
-                }
-                let last_updated = std::fs::metadata(&manifest_path)
-                    .ok()
-                    .and_then(|m| m.modified().ok())
-                    .map(|t| {
-                        // SystemTime → RFC3339-ish string without chrono
-                        let dur = t
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default();
-                        format!("{}", dur.as_secs())
-                    });
-
-                return (
-                    StatusCode::OK,
-                    Json(json!({
-                        "version": manifest.get("release_version").and_then(|v| v.as_str()).unwrap_or("0.1.0"),
-                        "components": components,
-                        "lastUpdated": last_updated
-                    })),
-                )
-                    .into_response();
-            }
-        }
-    }
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs().to_string());
 
     (
         StatusCode::OK,
         Json(json!({
-            "version": env!("CARGO_PKG_VERSION"),
-            "components": {},
-            "lastUpdated": null
+            "version": bundled.release,
+            "components": components,
+            "lastUpdated": last_updated
         })),
     )
         .into_response()

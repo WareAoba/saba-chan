@@ -1,0 +1,47 @@
+# 사바쨩 버전의 원천. 버전을 올릴 때는 이 파일만 고친다.
+#
+#   python scripts/versions.py sync    # 아래 files 에 버전을 써 넣는다 (Cargo.lock 포함)
+#   python scripts/versions.py check   # 어긋난 파일이 있으면 실패 (CI)
+#   python scripts/versions.py manifest --assets <dir> --base-url <url> --platform <p>
+#                                       # 릴레이에 올릴 릴리즈 manifest(서명 전)를 만든다
+#
+# 컴포넌트 키는 업데이터·릴레이 manifest 키와 같다
+# (saba-core, cli, gui, updater, installer, locales, module-<이름>, ext-<이름>).
+# 새 컴포넌트는 [components.<키>] 하나만 추가하면 된다. files 가 없으면 버전만 기록한다.
+
+[release]
+version = "0.1.1"
+channel = "stable"
+
+[components.saba-core]
+version = "0.1.1"
+files = ["Cargo.toml"]
+
+[components.cli]
+version = "0.1.1"
+files = ["saba-chan-cli/Cargo.toml"]
+
+[components.gui]
+version = "0.1.1"
+files = ["saba-chan-gui/package.json", "saba-chan-gui/package-lock.json"]
+
+[components.updater]
+version = "0.1.1"
+files = [
+    "updater/Cargo.toml",
+    "updater/gui/src-tauri/Cargo.toml",
+    "updater/gui/src-tauri/tauri.conf.json",
+]
+
+[components.installer]
+version = "0.1.1"
+files = [
+    "installer/gui/src-tauri/Cargo.toml",
+    "installer/gui/src-tauri/tauri.conf.json",
+]
+
+[components.locales]
+version = "0.1.1"
+
+# 모듈·익스텐션은 별도 저장소라 files 대신 릴리즈 때 그 저장소의 module.toml /
+# manifest.json 버전을 읽어 여기에 채운다(U9d 릴리즈 워크플로).

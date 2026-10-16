@@ -51,6 +51,7 @@ pub mod relay;
 pub mod scheduler;
 pub mod signature;
 pub mod version;
+pub mod versions;
 pub mod worker;
 
 #[cfg(test)]
@@ -1081,31 +1082,9 @@ impl UpdateManager {
         // 1. 설치 매니페스트 우선 로드 (가장 신뢰할 수 있는 소스)
         let mut versions = Self::load_installed_manifest();
 
-        // 2. 매니페스트에 없는 컴포넌트는 기존 방법으로 감지 (폴백)
-        if !versions.contains_key("saba-core") {
-            versions.insert(
-                "saba-core".to_string(),
-                env!("CARGO_PKG_VERSION").to_string(),
-            );
-        }
-
-        if !versions.contains_key("cli") {
-            if let Some(v) = self.read_cargo_version("saba-chan-cli") {
-                versions.insert("cli".to_string(), v);
-            }
-        }
-
-        if !versions.contains_key("gui") {
-            if let Some(v) = self.read_package_json_version("saba-chan-gui") {
-                versions.insert("gui".to_string(), v);
-            }
-        }
-
-        if !versions.contains_key("updater") {
-            // 업데이터 자신의 바이너리 버전 = Cargo.toml version (빌드 시 env!로 주입)
-            if let Some(v) = self.read_cargo_version("updater") {
-                versions.insert("updater".to_string(), v);
-            }
+        // 2. 매니페스트에 없는 앱 컴포넌트는 빌드에 묶인 versions.toml 버전 (폴백)
+        for (key, version) in &crate::versions::bundled().components {
+            versions.entry(key.clone()).or_insert_with(|| version.clone());
         }
 
         // 모듈: modules/*/module.toml에서 감지
@@ -1139,61 +1118,6 @@ impl UpdateManager {
 
         tracing::debug!("[UpdateManager] Local versions: {:?}", versions);
         versions
-    }
-
-    fn read_cargo_version(&self, crate_dir: &str) -> Option<String> {
-        // 실행 파일 경로와 여러 후보 디렉터리를 탐색
-        let candidates = vec![
-            PathBuf::from(crate_dir).join("Cargo.toml"),
-            PathBuf::from("..").join(crate_dir).join("Cargo.toml"),
-        ];
-
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(dir) = exe.parent() {
-                let p = dir.join(crate_dir).join("Cargo.toml");
-                if p.exists() {
-                    return self.parse_cargo_toml_version(&p);
-                }
-            }
-        }
-
-        for p in candidates {
-            if let Some(v) = self.parse_cargo_toml_version(&p) {
-                return Some(v);
-            }
-        }
-        None
-    }
-
-    fn parse_cargo_toml_version(&self, path: &Path) -> Option<String> {
-        let content = std::fs::read_to_string(path).ok()?;
-        for line in content.lines() {
-            let trimmed = line.trim();
-            if trimmed.starts_with("version") && trimmed.contains('=') {
-                let value = trimmed.split('=').nth(1)?.trim();
-                let version = value.trim_matches('"').trim_matches('\'');
-                return Some(version.to_string());
-            }
-        }
-        None
-    }
-
-    fn read_package_json_version(&self, dir: &str) -> Option<String> {
-        let candidates = vec![
-            PathBuf::from(dir).join("package.json"),
-            PathBuf::from("..").join(dir).join("package.json"),
-        ];
-
-        for p in candidates {
-            if let Ok(content) = std::fs::read_to_string(&p) {
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                    if let Some(v) = json.get("version").and_then(|v| v.as_str()) {
-                        return Some(v.to_string());
-                    }
-                }
-            }
-        }
-        None
     }
 
     fn read_module_version(&self, module_toml: &Path) -> Option<(String, String)> {

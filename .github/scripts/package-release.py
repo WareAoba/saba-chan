@@ -37,8 +37,7 @@ from pathlib import Path
 # ─── 컴포넌트 정의 ──────────────────────────────────────
 # 각 컴포넌트의 정보
 #   key           — manifest.json의 키
-#   version_file  — 버전을 읽을 파일 (현재 체크아웃 기준)
-#   version_type  — "cargo" 또는 "npm"
+#   버전은 저장소 루트 versions.toml의 [components.<key>]에서 읽는다
 #   raw_patterns  — staging/에서 찾을 원본 파일 패턴 (exe, zip 등)
 #   output_name   — 최종 zip 파일 이름 (이전 릴리즈 탐색 기준)
 #   install_dir   — 인스톨러가 설치할 디렉터리
@@ -47,8 +46,6 @@ from pathlib import Path
 COMPONENTS = [
     {
         "key": "saba-core",
-        "version_file": "Cargo.toml",
-        "version_type": "cargo",
         "raw_patterns": [r"saba-core\.exe$", r"saba-core.*\.zip$"],
         "output_name": "saba-core-windows-x64.zip",
         "install_dir": ".",
@@ -58,8 +55,6 @@ COMPONENTS = [
     },
     {
         "key": "cli",
-        "version_file": "saba-chan-cli/Cargo.toml",
-        "version_type": "cargo",
         "raw_patterns": [r"saba-chan-cli\.exe$", r"saba-chan-cli.*\.zip$"],
         "output_name": "saba-chan-cli-windows-x64.zip",
         "install_dir": ".",
@@ -67,8 +62,6 @@ COMPONENTS = [
     },
     {
         "key": "gui",
-        "version_file": "saba-chan-gui/package.json",
-        "version_type": "npm",
         "raw_patterns": [r"saba-chan-gui\.exe$", r"[Ss]aba.*[Cc]han\.exe$", r"saba-chan-gui.*\.zip$"],
         "output_name": "saba-chan-gui-windows-x64.zip",
         "install_dir": ".",
@@ -76,8 +69,6 @@ COMPONENTS = [
     },
     {
         "key": "updater",
-        "version_file": "updater/Cargo.toml",
-        "version_type": "cargo",
         "raw_patterns": [r"saba-chan-updater\.exe$", r"saba-chan-updater.*\.zip$"],
         "output_name": "saba-chan-updater-windows-x64.zip",
         "install_dir": ".",
@@ -85,8 +76,6 @@ COMPONENTS = [
     },
     {
         "key": "locales",
-        "version_file": "Cargo.toml",  # 루트 버전 사용
-        "version_type": "cargo",
         "raw_patterns": [],  # 소스에서 직접 생성
         "output_name": "locales.zip",
         "install_dir": "locales",
@@ -94,8 +83,6 @@ COMPONENTS = [
     },
     {
         "key": "installer",
-        "version_file": "installer/gui/src-tauri/Cargo.toml",
-        "version_type": "cargo",
         "raw_patterns": [r"saba-chan-installer\.exe$", r"saba-chan-installer.*\.zip$"],
         "output_name": "saba-chan-installer-windows-x64.zip",
         "install_dir": ".",
@@ -118,45 +105,11 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def parse_semver(version_str: str) -> tuple[int, int, int]:
-    """시맨틱 버전 → (major, minor, patch) 튜플"""
-    v = version_str.lstrip("v").split("-")[0]
-    parts = v.split(".")
-    return (
-        int(parts[0]) if len(parts) > 0 else 0,
-        int(parts[1]) if len(parts) > 1 else 0,
-        int(parts[2]) if len(parts) > 2 else 0,
-    )
-
-
-def read_cargo_version(file_path: str) -> str | None:
-    """Cargo.toml에서 [package] version 추출"""
-    try:
-        content = Path(file_path).read_text(encoding="utf-8")
-        in_package = False
-        for line in content.splitlines():
-            stripped = line.strip()
-            if stripped == "[package]":
-                in_package = True
-                continue
-            if stripped.startswith("[") and stripped != "[package]":
-                in_package = False
-                continue
-            if in_package and stripped.startswith("version"):
-                return stripped.split("=", 1)[1].strip().strip('"').strip("'")
-    except FileNotFoundError:
-        print(f"  ⚠ {file_path} not found")
-    return None
-
-
-def read_npm_version(file_path: str) -> str | None:
-    """package.json에서 version 필드 추출"""
-    try:
-        data = json.loads(Path(file_path).read_text(encoding="utf-8"))
-        return data.get("version")
-    except (FileNotFoundError, json.JSONDecodeError):
-        print(f"  ⚠ {file_path} not found or invalid")
-    return None
+def read_bundled_version(key: str) -> str | None:
+    """versions.toml의 [components.<key>] version"""
+    import tomllib
+    data = tomllib.loads(Path("versions.toml").read_text(encoding="utf-8"))
+    return data.get("components", {}).get(key, {}).get("version")
 
 
 def find_raw_file(patterns: list[str]) -> Path | None:
@@ -387,7 +340,6 @@ def main():
 
     # 각 컴포넌트 처리
     manifest_components = {}
-    all_versions = []
     from_current = []   # 이번 릴리즈에서 패키징된 컴포넌트
     from_previous = []  # 이전 릴리즈에서 가져온 컴포넌트
     skipped = []        # 에셋을 찾지 못한 컴포넌트
@@ -397,10 +349,7 @@ def main():
         print(f"[{key}]")
 
         # 1. 버전 읽기 (현재 소스 기준 — 이전 릴리즈에서 가져올 경우 덮어씌움)
-        if comp["version_type"] == "cargo":
-            version = read_cargo_version(comp["version_file"])
-        else:
-            version = read_npm_version(comp["version_file"])
+        version = read_bundled_version(key)
 
         if not version:
             print(f"  version: (not found, skipping)")
@@ -460,7 +409,6 @@ def main():
                     skipped.append(key)
                     continue
 
-        all_versions.append(version)
 
         # 3. SHA256 계산
         sha = sha256_file(output_path)
@@ -482,11 +430,9 @@ def main():
 
         print()
 
-    # release_version = 컴포넌트 중 가장 높은 버전
-    if all_versions:
-        release_version = max(all_versions, key=parse_semver)
-    else:
-        release_version = release_tag.lstrip("v") if release_tag else "0.0.0"
+    # release_version = versions.toml의 [release] version
+    import tomllib
+    release_version = tomllib.loads(Path("versions.toml").read_text(encoding="utf-8"))["release"]["version"]
 
     # manifest.json 생성
     manifest = {

@@ -43,8 +43,6 @@ server-chan/
 resources/
 
 target/
-scripts/
-!.github/scripts/
 
 # OS
 .DS_Store
