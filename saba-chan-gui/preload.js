@@ -2,7 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
     serverList: () => ipcRenderer.invoke('server:list'),
-    serverStart: (name, options = {}) => ipcRenderer.invoke('server:start', name, options),
+    instanceStart: (instanceId) => ipcRenderer.invoke('instance:start', instanceId),
     serverStop: (name, options = {}) => ipcRenderer.invoke('server:stop', name, options),
     serverStatus: (name) => ipcRenderer.invoke('server:status', name),
     moduleList: () => ipcRenderer.invoke('module:list'),
@@ -42,7 +42,6 @@ contextBridge.exposeInMainWorld('api', {
     extensionRescan: () => ipcRenderer.invoke('extension:rescan'),
     extensionInitStatus: () => ipcRenderer.invoke('extension:initStatus'),
     // Managed Process API (console capture)
-    managedStart: (instanceId, options = {}) => ipcRenderer.invoke('managed:start', instanceId, options),
     managedConsole: (instanceId, since, count) => ipcRenderer.invoke('managed:console', instanceId, since, count),
     managedStdin: (instanceId, command) => ipcRenderer.invoke('managed:stdin', instanceId, command),
     // Console Popout (PiP)

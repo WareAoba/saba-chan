@@ -157,10 +157,9 @@ impl DaemonClient {
         self.get_json(&format!("/api/server/{}/status", name)).await
     }
 
-    /// POST /api/server/{name}/start
-    pub async fn start_server(&self, name: &str, module: &str) -> anyhow::Result<Value> {
-        let body = serde_json::json!({ "module": module, "config": {} });
-        self.post_json(&format!("/api/server/{}/start", name), &body).await
+    /// POST /api/instance/{id 또는 이름}/start — 시작 방식(managed 여부)은 데몬이 정한다
+    pub async fn start_instance(&self, id_or_name: &str) -> anyhow::Result<Value> {
+        self.post_json(&format!("/api/instance/{}/start", id_or_name), &serde_json::json!({})).await
     }
 
     /// POST /api/server/{name}/stop

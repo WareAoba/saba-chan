@@ -30,8 +30,8 @@ impl DaemonApi for FakeDaemon {
     async fn modules(&self) -> Vec<ModuleView> {
         self.modules.clone()
     }
-    async fn start(&self, server: &ServerView, managed: bool) -> InternalResponse {
-        self.respond(format!("start {} managed={}", server.id, managed))
+    async fn start(&self, server: &ServerView) -> InternalResponse {
+        self.respond(format!("start {}", server.id))
     }
     async fn stop(&self, server: &ServerView) -> InternalResponse {
         self.respond(format!("stop {}", server.name))
@@ -42,7 +42,7 @@ impl DaemonApi for FakeDaemon {
 }
 
 fn server(id: &str, name: &str, module: &str, status: &str) -> ServerView {
-    ServerView { id: id.into(), name: name.into(), module: module.into(), status: status.into(), pid: None, module_settings: HashMap::new() }
+    ServerView { id: id.into(), name: name.into(), module: module.into(), status: status.into(), pid: None }
 }
 
 fn input(name: &str, required: bool) -> CommandInput {
@@ -74,7 +74,6 @@ fn fixture() -> FakeDaemon {
 
     let minecraft = ModuleView {
         name: "minecraft".into(),
-        interaction_mode: Some("console".into()),
         module_aliases: vec!["마크".into(), "mc".into()],
         command_aliases: vec![("start".into(), vec!["시작".into()]), ("kick".into(), vec!["추방".into()])],
         commands: vec![kick, say],
@@ -119,19 +118,11 @@ async fn list_shows_status() {
 }
 
 #[tokio::test]
-async fn start_via_alias_uses_managed_for_console_modules() {
+async fn start_via_alias_asks_the_daemon_to_start() {
     let api = fixture();
     let out = run(&api, &settings(), "마크 시작").await;
-    assert_eq!(api.calls(), vec!["start i-mc managed=true"]);
+    assert_eq!(api.calls(), vec!["start i-mc"]);
     assert!(out.contains("survival"), "{}", out);
-}
-
-#[tokio::test]
-async fn instance_setting_overrides_managed_start() {
-    let mut api = fixture();
-    api.servers[0].module_settings.insert("managed_start".into(), json!("false"));
-    run(&api, &settings(), "survival start").await;
-    assert_eq!(api.calls(), vec!["start i-mc managed=false"]);
 }
 
 #[tokio::test]
@@ -231,5 +222,5 @@ async fn two_instances_of_one_module_need_instance_name() {
     let cat = Catalog::for_language("en");
     assert_eq!(run(&api, &settings(), "mc start").await, cat.t("errors.multiple_instances", &[("module", "minecraft")]));
     run(&api, &settings(), "creative start").await;
-    assert_eq!(api.calls(), vec!["start i-mc2 managed=true"]);
+    assert_eq!(api.calls(), vec!["start i-mc2"]);
 }

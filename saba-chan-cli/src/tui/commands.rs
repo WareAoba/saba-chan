@@ -1082,7 +1082,7 @@ async fn exec_module_cmd(client: &DaemonClient, registry: &ModuleRegistry, modul
 
     if LIFECYCLE_COMMANDS.contains(&cmd_name.as_str()) {
         match cmd_name.as_str() {
-            "start" => match client.start_server(&instance_name, module_name).await {
+            "start" => match client.start_instance(&instance_id).await {
                 Ok(r) => vec![Out::Ok(format!("✓ {} — {}", instance_name, r.get("message").and_then(|v| v.as_str()).unwrap_or("Started")))],
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
             },
@@ -1093,7 +1093,7 @@ async fn exec_module_cmd(client: &DaemonClient, registry: &ModuleRegistry, modul
             "restart" => {
                 if let Err(e) = client.stop_server(&instance_name, false).await { return vec![Out::Err(format!("✗ {}", e))]; }
                 tokio::time::sleep(Duration::from_secs(1)).await;
-                match client.start_server(&instance_name, module_name).await {
+                match client.start_instance(&instance_id).await {
                     Ok(_) => vec![Out::Ok(format!("✓ {} — Restarted", instance_name))],
                     Err(e) => vec![Out::Err(format!("✗ {}", e))],
                 }

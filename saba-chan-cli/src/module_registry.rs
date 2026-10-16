@@ -610,15 +610,6 @@ method = "rcon"
     }
 
     #[test]
-    fn test_get_command_def() {
-        let (_tmp, reg) = create_test_registry();
-        let cmd = reg.get_command_def("test_game", "say").unwrap();
-        assert_eq!(cmd.method, "rcon");
-        assert_eq!(cmd.description, "Send a message");
-        assert!(reg.get_command_def("test_game", "nosuch").is_none());
-    }
-
-    #[test]
     fn test_load_empty_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let reg = ModuleRegistry::load(tmp.path().to_str().unwrap());

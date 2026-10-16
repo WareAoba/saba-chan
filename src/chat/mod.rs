@@ -330,7 +330,7 @@ impl<D: DaemonApi> Ctx<'_, D> {
         }
 
         match command.as_str() {
-            "start" => self.start(server, module).await,
+            "start" => self.start(server).await,
             "stop" => self.stop(server).await,
             "status" => self.status(server),
             _ => match module.command(&command) {
@@ -340,8 +340,8 @@ impl<D: DaemonApi> Ctx<'_, D> {
         }
     }
 
-    async fn start(&self, server: &ServerView, module: &ModuleView) -> String {
-        let resp = self.api.start(server, use_managed_start(server, module)).await;
+    async fn start(&self, server: &ServerView) -> String {
+        let resp = self.api.start(server).await;
         if !resp.is_success() {
             let detail = resp.str_field("error").unwrap_or_default();
             tracing::warn!("[Chat] 시작 실패 {}: {}", server.name, detail);
@@ -430,16 +430,6 @@ impl<D: DaemonApi> Ctx<'_, D> {
                 format!("❌ {}: {}", self.t("errors.error_title", &[]), text)
             }
         }
-    }
-}
-
-/// 관리형(stdin 캡처) 시작 여부: 인스턴스 설정 managed_start가 우선, 없으면 콘솔형 모듈이면 관리형.
-pub fn use_managed_start(server: &ServerView, module: &ModuleView) -> bool {
-    match server.module_settings.get("managed_start") {
-        Some(Value::Bool(b)) => *b,
-        Some(Value::String(s)) if s == "true" => true,
-        Some(Value::String(s)) if s == "false" => false,
-        _ => module.interaction_mode.as_deref() == Some("console"),
     }
 }
 

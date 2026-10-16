@@ -141,7 +141,7 @@ pub(super) fn handle_server_detail_select(
                 });
             } else {
                 tokio::spawn(async move {
-                    match client.start_server(&name, &module_name).await {
+                    match client.start_instance(&id).await {
                         Ok(r) => push_out(&buf, vec![Out::Ok(format!(
                             "✓ {}", r.get("message").and_then(|v| v.as_str()).unwrap_or("Started")
                         ))]),
@@ -158,7 +158,7 @@ pub(super) fn handle_server_detail_select(
                     return;
                 }
                 tokio::time::sleep(Duration::from_secs(1)).await;
-                match client.start_server(&name, &module_name).await {
+                match client.start_instance(&id).await {
                     Ok(_) => push_out(&buf, vec![Out::Ok("✓ Server restarted".into())]),
                     Err(e) => push_out(&buf, vec![Out::Err(format!("✗ Start: {}", e))]),
                 }

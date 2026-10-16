@@ -4,12 +4,12 @@
 //! 맡습니다. 테스트에서는 가짜 구현을 꽂아 처리기만 따로 검증합니다.
 
 use crate::ipc::internal::{into_internal, InternalResponse};
-use crate::ipc::{CommandRequest, IPCServer, ServerStartRequest, ServerStopRequest};
+use crate::ipc::{CommandRequest, IPCServer, ServerStopRequest};
 use crate::supervisor::module_loader::CommandField;
 use axum::extract::{Path, State};
 use axum::Json;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::json;
 use std::collections::HashMap;
 
 /// 채팅 처리에 필요한 인스턴스 정보
@@ -21,8 +21,6 @@ pub struct ServerView {
     pub status: String,
     #[serde(default)]
     pub pid: Option<u32>,
-    #[serde(default)]
-    pub module_settings: HashMap<String, Value>,
 }
 
 impl ServerView {
@@ -35,7 +33,6 @@ impl ServerView {
 #[derive(Debug, Clone, Default)]
 pub struct ModuleView {
     pub name: String,
-    pub interaction_mode: Option<String>,
     pub module_aliases: Vec<String>,
     /// 명령어 이름 → 별명 목록 (module.toml [aliases.commands])
     pub command_aliases: Vec<(String, Vec<String>)>,
@@ -55,7 +52,8 @@ impl ModuleView {
 pub trait DaemonApi {
     async fn servers(&self) -> Result<Vec<ServerView>, String>;
     async fn modules(&self) -> Vec<ModuleView>;
-    async fn start(&self, server: &ServerView, managed: bool) -> InternalResponse;
+    /// 서버 시작 — 경로(managed 여부)는 데몬이 고른다
+    async fn start(&self, server: &ServerView) -> InternalResponse;
     async fn stop(&self, server: &ServerView) -> InternalResponse;
     /// 게임 명령 (`POST /api/instance/:id/command`와 같은 경로). 인자는 순서대로.
     async fn command(&self, instance_id: &str, command: &str, args: Vec<String>) -> InternalResponse;
@@ -92,7 +90,6 @@ impl DaemonApi for IPCServer {
                 command_aliases.sort_by(|a, b| a.0.cmp(&b.0));
                 ModuleView {
                     name: meta.name,
-                    interaction_mode: meta.interaction_mode,
                     module_aliases: meta.module_aliases,
                     command_aliases,
                     commands: meta.commands.map(|c| c.fields).unwrap_or_default(),
@@ -102,14 +99,8 @@ impl DaemonApi for IPCServer {
             .collect()
     }
 
-    async fn start(&self, server: &ServerView, managed: bool) -> InternalResponse {
-        use crate::ipc::handlers::{managed::start_managed_handler, server::start_server_handler};
-        if managed {
-            into_internal(start_managed_handler(Path(server.id.clone()), State(self.clone()), Some(Json(json!({})))).await).await
-        } else {
-            let req = ServerStartRequest { module: server.module.clone(), config: json!({}) };
-            into_internal(start_server_handler(Path(server.name.clone()), State(self.clone()), Json(req)).await).await
-        }
+    async fn start(&self, server: &ServerView) -> InternalResponse {
+        into_internal(crate::ipc::handlers::server::start_instance_handler(Path(server.id.clone()), State(self.clone())).await).await
     }
 
     async fn stop(&self, server: &ServerView) -> InternalResponse {

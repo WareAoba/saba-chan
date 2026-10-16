@@ -604,6 +604,14 @@ impl IPCServer {
     pub async fn start(self) -> Result<()> {
         tracing::info!("IPC HTTP server starting on {}", self.listen_addr);
 
+        // 포트 충돌 검사 여부는 전역 설정 하나(gui.portConflictCheck). 저장 시에도 갱신된다.
+        let check_ports = self.config_store.get_gui_settings().await.port_conflict_check;
+        self.supervisor
+            .read()
+            .await
+            .skip_port_check
+            .store(!check_ports, std::sync::atomic::Ordering::Relaxed);
+
         let router = Router::new()
             // ── 경량 ping (lock / 디스크 I/O 없음) ──
             .route("/health", get(handlers::server::health_check))
@@ -611,6 +619,7 @@ impl IPCServer {
             .route("/api/servers", get(handlers::server::list_servers))
             .route("/api/server/:name/status", get(handlers::server::get_server_status))
             .route("/api/server/:name/start", post(handlers::server::start_server_handler))
+            .route("/api/instance/:id/start", post(handlers::server::start_instance_handler))
             .route("/api/server/:name/stop", post(handlers::server::stop_server_handler))
             .route("/api/modules", get(handlers::server::list_modules))
             .route("/api/modules/refresh", post(handlers::server::refresh_modules))

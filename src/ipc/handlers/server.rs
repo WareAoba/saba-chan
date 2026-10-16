@@ -4,7 +4,7 @@
     response::IntoResponse,
     Json,
 };
-use serde_json::json;
+use serde_json::{json, Value};
 
 use super::super::{
     IPCServer, ExtensionInfo, ExtensionListResponse, PortConflictInfo, ProtocolsInfo, ServerInfo, ServerListResponse,
@@ -567,6 +567,57 @@ pub async fn get_server_status(
         });
         (StatusCode::NOT_FOUND, Json(error)).into_response()
     }
+}
+
+/// POST /api/instance/:id/start — 서버 시작. 경로(managed / non-managed)는 데몬이 고른다.
+///
+/// `:id`는 인스턴스 ID, 없으면 이름으로 찾는다(CLI·채팅처럼 이름만 아는 쪽용).
+/// 정책은 `Supervisor::uses_managed_start`, 포트 충돌 검사는 전역 설정 하나다.
+/// 응답은 고른 경로의 응답 그대로에 `managed`를 더한 것이다.
+pub async fn start_instance_handler(
+    Path(id): Path<String>,
+    State(state): State<IPCServer>,
+) -> axum::response::Response {
+    let picked = {
+        let supervisor = state.supervisor.read().await;
+        supervisor
+            .instance_store
+            .get(&id)
+            .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == id))
+            .cloned()
+            .map(|inst| {
+                let managed = supervisor.uses_managed_start(&inst);
+                (inst, managed)
+            })
+    };
+    let Some((instance, managed)) = picked else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" })),
+        )
+            .into_response();
+    };
+
+    let resp = if managed {
+        crate::ipc::internal::into_internal(
+            super::managed::start_managed_handler(Path(instance.id.clone()), State(state.clone()), None).await,
+        )
+        .await
+    } else {
+        let req = ServerStartRequest { module: instance.module_name.clone(), config: json!({}) };
+        crate::ipc::internal::into_internal(start_server_handler(Path(instance.name.clone()), State(state.clone()), Json(req)).await)
+            .await
+    };
+    let mut body = match resp.body {
+        Value::Object(map) => map,
+        other => {
+            let mut map = serde_json::Map::new();
+            map.insert("data".into(), other);
+            map
+        }
+    };
+    body.insert("managed".into(), json!(managed));
+    (resp.status, Json(Value::Object(body))).into_response()
 }
 
 /// POST /api/server/:name/start - 서버 시작

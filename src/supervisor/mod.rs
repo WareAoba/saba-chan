@@ -233,9 +233,8 @@ impl Supervisor {
             .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
 
         // ── 포트 충돌 검사 (모듈별 프로토콜 인지) ──
-        // GUI 설정에서 portConflictCheck를 비활성화하면 skip_port_check: true가 전달됨
-        let skip_port_check = config.get("skip_port_check").and_then(|v| v.as_bool()).unwrap_or(false);
-        if !skip_port_check {
+        // 끄는 방법은 전역 설정(gui.portConflictCheck) 하나뿐이다
+        if !self.skip_port_check.load(Ordering::Relaxed) {
             let all_instances = self.instance_store.list();
             let running_ids: std::collections::HashSet<String> = all_instances
                 .iter()
@@ -996,9 +995,8 @@ impl Supervisor {
         }
 
         // ── 포트 충돌 검사 (모듈별 프로토콜 인지) ──
-        // GUI 설정에서 portConflictCheck를 비활성화하면 skip_port_check: true가 전달됨
-        let skip_port_check = config.get("skip_port_check").and_then(|v| v.as_bool()).unwrap_or(false);
-        if !skip_port_check {
+        // 끄는 방법은 전역 설정(gui.portConflictCheck) 하나뿐이다
+        if !self.skip_port_check.load(Ordering::Relaxed) {
             let all_instances = self.instance_store.list();
             let running_ids: std::collections::HashSet<String> = all_instances
                 .iter()
@@ -1318,6 +1316,24 @@ impl Supervisor {
             "managed": true,
             "message": format!("Server '{}' started with PID {} (managed mode)", instance.name, pid)
         }))
+    }
+
+    /// 이 인스턴스를 managed(데몬이 자식 프로세스로 stdin/stdout을 쥐고)로 시작하는가.
+    /// 인스턴스 설정 `managed_start`가 우선, 없으면 managed가 기본이다(오너 결정).
+    /// 모듈이 `interaction_mode = "commands"`로 콘솔이 없다고 밝힌 경우만 기본이 non-managed.
+    pub fn uses_managed_start(&self, instance: &crate::instance::ServerInstance) -> bool {
+        match instance.module_settings.get("managed_start") {
+            Some(Value::Bool(b)) => *b,
+            Some(Value::String(s)) if s == "true" => true,
+            Some(Value::String(s)) if s == "false" => false,
+            _ => self
+                .module_loader
+                .get_module(&instance.module_name)
+                .ok()
+                .and_then(|m| m.metadata.interaction_mode)
+                .map(|mode| mode != "commands")
+                .unwrap_or(true),
+        }
     }
 
     /// 콘솔 명령을 stdin으로 보내야 하는가.
@@ -1984,6 +2000,41 @@ mod tests {
         // 쿨다운이 30초 내이면 auto_detect를 건너뛰어야 함
         let stopped_at = supervisor.stop_cooldowns.get("test-instance-id").unwrap();
         assert!(stopped_at.elapsed().as_secs() < STOP_COOLDOWN_SECS);
+    }
+
+    /// 시작 경로 정책 (C8): 인스턴스 설정 > 모듈이 콘솔 없음을 밝혔는지 > managed 기본
+    #[test]
+    fn managed_start_policy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules_dir = tmp.path().join("modules");
+        for (name, mode) in [("console-game", "\ninteraction_mode = \"console\""), ("api-game", "\ninteraction_mode = \"commands\""), ("plain-game", "")] {
+            let dir = modules_dir.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                dir.join("module.toml"),
+                format!("[module]\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[protocols]\nsupported = [\"rcon\"]{mode}\n"),
+            )
+            .unwrap();
+        }
+        let supervisor = Supervisor::new_with_instances_dir(
+            modules_dir.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let inst = |module: &str, setting: Option<Value>| {
+            let mut i = crate::instance::ServerInstance::new("s", module);
+            if let Some(v) = setting {
+                i.module_settings.insert("managed_start".into(), v);
+            }
+            i
+        };
+
+        assert!(supervisor.uses_managed_start(&inst("console-game", None)));
+        assert!(supervisor.uses_managed_start(&inst("plain-game", None)), "managed is the default");
+        assert!(supervisor.uses_managed_start(&inst("missing-module", None)));
+        assert!(!supervisor.uses_managed_start(&inst("api-game", None)));
+        assert!(!supervisor.uses_managed_start(&inst("console-game", Some(json!(false)))));
+        assert!(!supervisor.uses_managed_start(&inst("console-game", Some(json!("false")))));
+        assert!(supervisor.uses_managed_start(&inst("api-game", Some(json!(true)))));
     }
 
     /// managed 모드에서는 모듈이 stdin을 지원할 때만 명령을 stdin으로 보낸다 (M3)

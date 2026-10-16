@@ -1639,33 +1639,23 @@ ipcMain.handle('server:list', async () => {
     }
 });
 
-ipcMain.handle('server:start', async (_event, name, options = {}) => {
+// 시작 방식(managed 여부)과 포트 충돌 검사는 데몬이 인스턴스·전역 설정으로 정한다
+ipcMain.handle('instance:start', async (_event, instanceId) => {
     try {
-        if (!options.module) {
-            return { error: '모듈이 지정되지 않았습니다. 인스턴스 설정을 확인해주세요.' };
-        }
-        const body = {
-            module: options.module,
-            config: options.config || {},
-        };
-        const response = await axios.post(`${IPC_BASE}/api/server/${name}/start`, body, { timeout: 30000 });
+        const response = await axios.post(`${IPC_BASE}/api/instance/${instanceId}/start`, {}, { timeout: 30000 });
         return response.data;
     } catch (error) {
         if (error.response) {
             const status = error.response.status;
-            const data = error.response.data;
-
+            const data = error.response.data || {};
+            const message = data.error_message || data.error || data.message;
             switch (status) {
-                case 400:
-                    return { error: t('server.start_failed', { error: data.error || t('info') }) };
                 case 404:
-                    return { error: t('server.not_found', { name }) };
+                    return { ...data, error: t('server.not_found', { name: instanceId }) };
                 case 409:
-                    return { error: t('server.already_running', { name }) };
-                case 500:
-                    return { error: `${t('error')}: ${data.error || data.message}` };
+                    return { ...data, error: message || t('server.already_running', { name: instanceId }) };
                 default:
-                    return { error: t('server.start_failed', { error: data.error || error.message }) };
+                    return { ...data, error: t('server.start_failed', { error: message || error.message }) };
             }
         }
 
@@ -1784,19 +1774,6 @@ ipcMain.handle('instance:resetServer', async (_event, instanceId) => {
 });
 
 // ── Managed Process API (stdin/stdout capture) ───────────────
-
-ipcMain.handle('managed:start', async (_event, instanceId, options = {}) => {
-    try {
-        const response = await axios.post(
-            `${IPC_BASE}/api/instance/${instanceId}/managed/start`,
-            { config: options.config || {} },
-            { timeout: 30000 },
-        );
-        return response.data;
-    } catch (error) {
-        return { error: error.response?.data?.error || error.message };
-    }
-});
 
 ipcMain.handle('managed:console', async (_event, instanceId, since = 0, count = 200) => {
     try {
