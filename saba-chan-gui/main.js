@@ -635,59 +635,45 @@ function startDaemon() {
     });
 }
 
-// Core Daemon 종료 (크로스 플랫폼)
-function stopDaemon() {
-    if (!daemonProcess) {
-        console.log('Daemon is not running');
-        return;
-    }
-
-    console.log(`Attempting to stop daemon (PID: ${daemonProcess.pid})`);
-
+// Core Daemon 종료: API로 정상 종료를 요청하고, 시간 안에 안 끝나면 이 GUI가 띄운 PID만 강제 종료한다.
+// 이름 기반 kill(taskkill /IM, pkill -f)은 다른 사용자의 데몬까지 죽일 수 있어 쓰지 않는다.
+async function stopDaemon({ timeoutMs = 15000 } = {}) {
+    const proc = daemonProcess;
     try {
-        if (!daemonProcess.killed) {
-            if (process.platform === 'win32') {
-                // Windows: taskkill로 프로세스 트리 전체 종료
-                try {
-                    execSync(`taskkill /PID ${daemonProcess.pid} /F /T`, { stdio: 'ignore' });
-                    console.log('Daemon terminated via taskkill');
-                } catch (e) {
-                    console.warn('taskkill failed, trying process.kill:', e.message);
-                    daemonProcess.kill('SIGTERM');
-                }
-                // Windows: 즉시 참조 제거 (taskkill이 동기적으로 종료)
-                daemonProcess = null;
-                console.log('Daemon stopped');
-            } else {
-                // Unix/Linux/macOS: SIGTERM으로 우아하게 종료 시도
-                daemonProcess.kill('SIGTERM');
-                console.log('Sent SIGTERM to daemon');
+        await axios.post(`${IPC_BASE}/api/daemon/shutdown`, {}, { timeout: 2000 });
+        console.log('Daemon shutdown requested via API');
+    } catch (e) {
+        console.warn('Daemon shutdown API failed:', e.message);
+    }
+    if (!proc) return;
+    if (!(await waitForExit(proc, timeoutMs))) {
+        console.warn(`Daemon did not exit in ${timeoutMs}ms, force killing PID ${proc.pid}`);
+        forceKillDaemon(proc);
+    }
+    if (daemonProcess === proc) daemonProcess = null;
+    console.log('Daemon stopped');
+}
 
-                // 프로세스 참조를 exit 이벤트에서 정리 (SIGKILL 타이머가 참조 필요)
-                const proc = daemonProcess;
+function waitForExit(proc, timeoutMs) {
+    if (proc.exitCode !== null || proc.signalCode !== null) return Promise.resolve(true);
+    return new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(false), timeoutMs);
+        proc.once('exit', () => {
+            clearTimeout(timer);
+            resolve(true);
+        });
+    });
+}
 
-                // 2초 후에도 살아있으면 SIGKILL
-                const killTimeout = setTimeout(() => {
-                    if (proc && !proc.killed) {
-                        console.warn('SIGTERM timeout, sending SIGKILL');
-                        try {
-                            proc.kill('SIGKILL');
-                        } catch (e) {
-                            console.error('SIGKILL failed:', e);
-                        }
-                    }
-                }, 2000);
-
-                proc.once('exit', () => {
-                    clearTimeout(killTimeout);
-                    daemonProcess = null;
-                    console.log('Daemon stopped');
-                });
-            }
+function forceKillDaemon(proc) {
+    try {
+        if (process.platform === 'win32') {
+            execSync(`taskkill /PID ${proc.pid} /F /T`, { stdio: 'ignore' });
+        } else {
+            proc.kill('SIGKILL');
         }
-    } catch (error) {
-        console.error('Error stopping daemon:', error);
-        daemonProcess = null;
+    } catch (e) {
+        console.debug('Force kill error (process may already be dead):', e.message);
     }
 }
 
@@ -854,48 +840,8 @@ async function cleanQuit() {
             mockServerProcess = null;
         }
 
-        // 2. 데몬 종료
-        stopDaemon();
-
-        // 2. 데몬이 종료될 때까지 대기 (최대 3초)
-        let attempts = 0;
-        while (daemonProcess && !daemonProcess.killed && attempts < 6) {
-            await wait(500);
-            attempts++;
-        }
-
-        if (daemonProcess) {
-            console.warn('Daemon still running after waiting, force killing');
-            try {
-                if (process.platform === 'win32') {
-                    // Windows: taskkill로 강제 종료
-                    execSync(`taskkill /PID ${daemonProcess.pid} /F /T 2>nul`, { stdio: 'ignore' });
-                } else {
-                    // Unix/Linux/macOS: SIGKILL로 강제 종료
-                    daemonProcess.kill('SIGKILL');
-                }
-            } catch (e) {
-                console.debug('Force kill error (process may already be dead):', e.message);
-            }
-        }
-
-        daemonProcess = null;
-
-        // 2.5. Fallback: 프로세스 이름으로 saba-core 종료 (daemonProcess가 null이었던 경우 대비)
-        if (process.platform === 'win32') {
-            try {
-                execSync('taskkill /IM saba-core.exe /F 2>nul', { stdio: 'ignore' });
-                console.log('Fallback: killed saba-core.exe by name');
-            } catch (_e) {
-                // 이미 종료됨 — 무시
-            }
-        } else {
-            try {
-                execSync('pkill -f saba-core 2>/dev/null || true', { stdio: 'ignore' });
-            } catch (_e) {
-                // 무시
-            }
-        }
+        // 2. 데몬 종료 (정상 종료를 기다리고, 안 되면 자기가 띄운 PID만 강제 종료)
+        await stopDaemon();
 
         // 3. 트레이 정리
         if (tray) {
@@ -1433,8 +1379,8 @@ function updateTrayMenu() {
         {
             label: '🛑 데몬 종료',
             enabled: !!daemonProcess,
-            click: () => {
-                stopDaemon();
+            click: async () => {
+                await stopDaemon();
                 updateTrayMenu();
             },
         },
@@ -1542,9 +1488,10 @@ app.on('before-quit', () => {
         heartbeatClientId = null;
     }
 
-    // 데몬 프로세스 종료 (인터페이스만 종료 시에는 데몬 유지)
-    if (!keepDaemonAlive) {
-        stopDaemon();
+    // 비정상 종료 경로(cleanQuit을 거치지 않음): 기다릴 수 없으니 자기가 띄운 데몬만 정리한다
+    if (!keepDaemonAlive && daemonProcess) {
+        forceKillDaemon(daemonProcess);
+        daemonProcess = null;
     }
 
     // 트레이 제거
@@ -2626,10 +2573,15 @@ ipcMain.handle('daemon:status', async () => {
 // Daemon 재시작 IPC 핸들러
 ipcMain.handle('daemon:restart', async () => {
     try {
-        if (daemonProcess && !daemonProcess.killed) {
-            console.log('Killing existing daemon process...');
-            daemonProcess.kill();
-            await wait(1000);
+        await stopDaemon();
+        // 이 GUI가 띄우지 않은 데몬이면 프로세스를 기다릴 수 없으니, 응답이 멎을 때까지 기다린다
+        for (let i = 0; i < 30; i++) {
+            try {
+                await axios.get(`${IPC_BASE}/health`, { timeout: 500 });
+            } catch (_) {
+                break;
+            }
+            await wait(500);
         }
         console.log('Starting daemon...');
         settings = loadSettings();
