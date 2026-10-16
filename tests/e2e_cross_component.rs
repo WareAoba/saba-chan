@@ -151,6 +151,22 @@ fn cleanup_dirs(modules_dir: &std::path::Path, instances_dir: &std::path::Path, 
     let _ = data_dir;
 }
 
+/// 인스턴스 생성 시 비동기 프로비저닝(mock 모듈은 최신 2.0.0 설치)이 같은
+/// working_dir에 version.txt를 쓴다. 테스트가 직접 파일을 쓰기 전에 끝날 때까지 기다린다.
+async fn wait_for_provision(base_url: &str, client: &reqwest::Client, name: &str) {
+    for _ in 0..300 {
+        let p: Value = client
+            .get(format!("{}/api/provision-progress/{}", base_url, name))
+            .send().await.unwrap()
+            .json().await.unwrap();
+        if !p["active"].as_bool().unwrap_or(false) || p["done"].as_bool().unwrap_or(false) {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    panic!("provisioning of {} did not finish", name);
+}
+
 /// Python 실행 파일 경로를 찾습니다 (시스템 Python 또는 saba-chan venv)
 fn find_python() -> Option<String> {
     // Windows: python.exe, Unix: python3
@@ -713,6 +729,7 @@ async fn e2e_version_auto_detect_and_persist() {
     assert!(create_resp.status().is_success());
     let created: Value = create_resp.json().await.unwrap();
     let instance_id = created["id"].as_str().unwrap().to_string();
+    wait_for_provision(&base_url, &client, "VersionTest").await;
 
     // 2. 인스턴스의 working_dir 경로를 확인하여 version.txt 작성
     // (인스턴스 생성 시 working_dir가 자동 설정될 수 있으므로 실제 경로에 맞춤)
@@ -835,6 +852,7 @@ async fn e2e_version_backfill_on_startup() {
         .send().await.unwrap();
     let created: Value = create_resp.json().await.unwrap();
     let instance_id = created["id"].as_str().unwrap().to_string();
+    wait_for_provision(&base_url, &client, "BackfillTest").await;
 
     // 자동 설정된 working_dir에 version.txt 작성
     let inst_resp = client
