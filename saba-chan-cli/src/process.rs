@@ -218,7 +218,8 @@ pub fn start_daemon() -> anyhow::Result<String> {
        .env("RUST_LOG", "info")
        .env("SABA_MODULES_PATH", &modules)
        .env("SABA_INSTANCES_PATH", &instances)
-       .env("SABA_LANG", &lang);
+       .env("SABA_LANG", &lang)
+       .env("SABA_IPC_PORT", config::get_ipc_port().to_string());
 
     spawn_detached(&mut cmd)?;
 

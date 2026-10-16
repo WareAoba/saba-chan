@@ -141,8 +141,11 @@ pub fn get_modules_path() -> anyhow::Result<String> {
 }
 
 /// 언어 설정 가져오기
+/// 데몬이 떠 있으면 데몬 API로, 아니면(데몬을 띄우기 직전 등) 설정 파일에서 읽는다.
 pub fn get_language() -> anyhow::Result<String> {
-    let settings = load_settings()?;
+    let settings = load_settings().unwrap_or_else(|_| {
+        saba_chan_updater_lib::config_file::ConfigFile::default_location().section("gui")
+    });
     Ok(settings
         .get("language")
         .and_then(|v| v.as_str())
@@ -150,13 +153,9 @@ pub fn get_language() -> anyhow::Result<String> {
         .to_string())
 }
 
-/// IPC 포트 가져오기 (gui.ipcPort)
+/// IPC 포트 가져오기 (gui.ipcPort). 데몬에 닿으려면 먼저 알아야 하므로 설정 파일에서 읽는다.
 pub fn get_ipc_port() -> u16 {
-    load_settings()
-        .ok()
-        .and_then(|s| s.get("ipcPort").and_then(|v| v.as_u64()))
-        .map(|p| p as u16)
-        .unwrap_or(constants::DEFAULT_IPC_PORT)
+    get_ipc_port_local()
 }
 
 /// IPC base URL 가져오기 (http://127.0.0.1:{port})

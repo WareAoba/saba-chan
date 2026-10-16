@@ -107,9 +107,17 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("[Boot] Mode: {}", mode);
     }
 
+    // 포트: SABA_IPC_PORT > config.json의 gui.ipcPort > 기본값 (GUI·CLI가 같은 값을 읽는다)
     let ipc_port = std::env::var("SABA_IPC_PORT")
         .ok()
         .and_then(|p| p.parse::<u16>().ok())
+        .or_else(|| {
+            saba_chan_updater_lib::config_file::ConfigFile::default_location()
+                .section("gui")
+                .get("ipcPort")
+                .and_then(|v| v.as_u64())
+                .and_then(|p| u16::try_from(p).ok())
+        })
         .unwrap_or(constants::DEFAULT_IPC_PORT);
     let ipc_addr = format!("127.0.0.1:{}", ipc_port);
 

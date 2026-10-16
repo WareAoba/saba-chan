@@ -502,25 +502,27 @@ function loadSettings() {
     return { ...defaultSettings(), ...(gui || {}) };
 }
 
-function saveSettings(settings) {
-    // 데몬이 아직 시작되지 않은 부트스트랩 단계에서는 로컬 파일에 직접 저장
-    if (!daemonProcess) {
-        try {
-            writeGuiSection(settings);
-            console.log('[saveSettings] Bootstrap: saved locally (daemon not started)');
-        } catch (e) {
-            console.error('[saveSettings] Bootstrap local save failed:', e.message);
-        }
+// 데몬이 응답하면 API로만 저장한다(단일 원천). 내가 띄운 데몬인지와 무관하다 —
+// 이미 떠 있던 데몬에 붙은 경우에도 파일을 직접 쓰면 데몬 메모리와 어긋난다.
+// 데몬이 아예 응답하지 않을 때(부트스트랩)만 파일에 직접 쓴다.
+async function saveSettings(settings) {
+    try {
+        await axios.put(`${IPC_BASE}/api/config/gui`, settings, { timeout: 5000 });
         return true;
+    } catch (err) {
+        if (err.response) {
+            console.error('[saveSettings] Daemon rejected settings:', err.message);
+            return false;
+        }
     }
-
-    // 데몬 가동 중 — API 경유로만 설정 저장 (단일 원천 원칙)
-    axios.put(`${IPC_BASE}/api/config/gui`, settings, { timeout: 5000 })
-        .then(() => console.log('Settings saved via daemon API'))
-        .catch((err) => {
-            console.error('[saveSettings] Daemon API failed:', err.message);
-        });
-    return true;
+    try {
+        writeGuiSection(settings);
+        console.log('[saveSettings] Daemon not reachable: saved locally');
+        return true;
+    } catch (e) {
+        console.error('[saveSettings] Local save failed:', e.message);
+        return false;
+    }
 }
 
 // Core Daemon 시작
@@ -2814,13 +2816,11 @@ ipcMain.handle('daemon:restart', async () => {
 
 // Settings IPC handlers — 데몬 가동 중이면 API 경유, 부트스트랩 시 로컬 폴백
 ipcMain.handle('settings:load', async () => {
-    if (daemonProcess && !daemonProcess.killed) {
-        try {
-            const resp = await axios.get(`${IPC_BASE}/api/config/gui`, { timeout: 5000 });
-            return resp.data;
-        } catch (err) {
-            console.warn('[settings:load] Daemon API failed, falling back to local:', err.message);
-        }
+    try {
+        const resp = await axios.get(`${IPC_BASE}/api/config/gui`, { timeout: 5000 });
+        return resp.data;
+    } catch (err) {
+        console.warn('[settings:load] Daemon API failed, falling back to local:', err.message);
     }
     return loadSettings();
 });
@@ -2916,24 +2916,19 @@ ipcMain.handle('app:launchUninstaller', async () => {
 });
 
 ipcMain.handle('settings:save', async (_event, settings) => {
-    // 데몬 가동 중이면 merge base도 API에서 로드 → API로 저장 (단일 원천 원칙)
-    if (daemonProcess && !daemonProcess.killed) {
-        try {
-            const resp = await axios.get(`${IPC_BASE}/api/config/gui`, { timeout: 5000 });
-            const existing = resp.data || {};
-            const merged = { ...existing, ...settings };
-            await axios.put(`${IPC_BASE}/api/config/gui`, merged, { timeout: 5000 });
-            refreshIpcBase();
-            return true;
-        } catch (err) {
+    // 데몬이 응답하면 merge base도 API에서 읽는다 (단일 원천 원칙)
+    let existing;
+    try {
+        const resp = await axios.get(`${IPC_BASE}/api/config/gui`, { timeout: 5000 });
+        existing = resp.data || {};
+    } catch (err) {
+        if (err.response) {
             console.warn('[settings:save] Daemon API failed:', err.message);
             return false;
         }
+        existing = loadSettings(); // 데몬 없음 — 부트스트랩
     }
-    // 부트스트랩 단계 — 로컬 파일 사용
-    const existing = loadSettings();
-    const merged = { ...existing, ...settings };
-    const result = saveSettings(merged);
+    const result = await saveSettings({ ...existing, ...settings });
     refreshIpcBase();
     return result;
 });
@@ -2948,7 +2943,7 @@ ipcMain.handle('language:get', () => {
 });
 
 ipcMain.handle('language:set', async (_event, language) => {
-    const success = setLanguage(language);
+    const success = await setLanguage(language);
 
     // 번역 다시 로드
     translations = loadTranslations();
