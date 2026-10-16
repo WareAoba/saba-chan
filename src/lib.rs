@@ -14,3 +14,5 @@ pub mod validator;  // 설정값 타입 검증 및 포트 충돌 검사
 pub mod boot_selector;  // BIOS 스타일 부트 선택기
 pub mod daemon_log;  // 데몬 로그 버퍼 + tracing Layer
 pub mod instance_lock;  // 데몬 단일 인스턴스 잠금
+pub mod chat;  // 채팅 명령 처리기 (릴레이 에이전트, /api/chat/command)
+pub mod relay_agent;  // 클라우드 릴레이 ↔ 데몬 에이전트

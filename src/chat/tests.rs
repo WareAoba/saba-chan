@@ -1,0 +1,229 @@
+use super::*;
+use crate::supervisor::module_loader::CommandInput;
+use axum::http::StatusCode;
+use serde_json::json;
+use std::sync::Mutex;
+
+/// 호출을 기록하고 정해진 응답을 돌려주는 가짜 데몬
+#[derive(Default)]
+struct FakeDaemon {
+    servers: Vec<ServerView>,
+    modules: Vec<ModuleView>,
+    reply: Option<InternalResponse>,
+    calls: Mutex<Vec<String>>,
+}
+
+impl FakeDaemon {
+    fn respond(&self, call: String) -> InternalResponse {
+        self.calls.lock().unwrap().push(call);
+        self.reply.clone().unwrap_or(InternalResponse { status: StatusCode::OK, body: json!({"success": true}) })
+    }
+    fn calls(&self) -> Vec<String> {
+        self.calls.lock().unwrap().clone()
+    }
+}
+
+impl DaemonApi for FakeDaemon {
+    async fn servers(&self) -> Result<Vec<ServerView>, String> {
+        Ok(self.servers.clone())
+    }
+    async fn modules(&self) -> Vec<ModuleView> {
+        self.modules.clone()
+    }
+    async fn start(&self, server: &ServerView, managed: bool) -> InternalResponse {
+        self.respond(format!("start {} managed={}", server.id, managed))
+    }
+    async fn stop(&self, server: &ServerView) -> InternalResponse {
+        self.respond(format!("stop {}", server.name))
+    }
+    async fn rcon(&self, id: &str, command: &str) -> InternalResponse {
+        self.respond(format!("rcon {} {}", id, command))
+    }
+    async fn rest(&self, id: &str, endpoint: &str, method: &str, body: Value) -> InternalResponse {
+        self.respond(format!("rest {} {} {} {}", id, method, endpoint, body))
+    }
+    async fn module_command(&self, id: &str, command: &str, args: Value) -> InternalResponse {
+        self.respond(format!("module {} {} {}", id, command, args))
+    }
+}
+
+fn server(id: &str, name: &str, module: &str, status: &str) -> ServerView {
+    ServerView { id: id.into(), name: name.into(), module: module.into(), status: status.into(), pid: None, module_settings: HashMap::new() }
+}
+
+fn input(name: &str, required: bool) -> CommandInput {
+    CommandInput { name: name.into(), label: None, input_type: None, required: Some(required), placeholder: None, default: None }
+}
+
+fn field(name: &str, method: &str) -> CommandField {
+    CommandField {
+        name: name.into(),
+        label: name.into(),
+        description: None,
+        method: Some(method.into()),
+        http_method: None,
+        endpoint_template: None,
+        rcon_template: None,
+        inputs: vec![],
+    }
+}
+
+fn fixture() -> FakeDaemon {
+    let mut kick = field("kick", "rcon");
+    kick.rcon_template = Some("kick {player} {reason}".into());
+    kick.inputs = vec![input("player", true), input("reason", false)];
+    let mut say = field("say", "rcon");
+    say.rcon_template = Some("say {message}".into());
+    say.inputs = vec![input("message", true)];
+    let mut players = field("players", "rest");
+    players.endpoint_template = Some("/v1/api/players".into());
+
+    let minecraft = ModuleView {
+        name: "minecraft".into(),
+        interaction_mode: Some("console".into()),
+        module_aliases: vec!["마크".into(), "mc".into()],
+        command_aliases: vec![("start".into(), vec!["시작".into()]), ("kick".into(), vec!["추방".into()])],
+        commands: vec![kick, say],
+        errors: HashMap::from([("server_not_running".to_string(), "MC is off".to_string())]),
+    };
+    let palworld = ModuleView {
+        name: "palworld".into(),
+        module_aliases: vec!["팰월드".into()],
+        commands: vec![players],
+        ..Default::default()
+    };
+    FakeDaemon {
+        servers: vec![server("i-mc", "survival", "minecraft", "running"), server("i-pal", "pal1", "palworld", "stopped")],
+        modules: vec![minecraft, palworld],
+        ..Default::default()
+    }
+}
+
+fn settings() -> ChatSettings {
+    ChatSettings { prefix: "!saba".into(), mode: "cloud".into(), ..Default::default() }
+}
+
+async fn run(api: &FakeDaemon, s: &ChatSettings, text: &str) -> String {
+    let req = ChatRequest { text: text.into(), guild_id: Some("g1".into()), user_id: Some("u1".into()) };
+    process(api, s, &Catalog::for_language("en"), &req).await
+}
+
+#[tokio::test]
+async fn help_lists_mounted_modules_with_aliases() {
+    let api = fixture();
+    let out = run(&api, &settings(), "").await;
+    assert!(out.contains("**minecraft** (마크, mc)"), "{}", out);
+    assert!(out.contains("**palworld** (팰월드)"), "{}", out);
+    assert_eq!(run(&api, &settings(), "!saba help").await, out);
+}
+
+#[tokio::test]
+async fn list_shows_status() {
+    let out = run(&fixture(), &settings(), "list").await;
+    assert!(out.contains("survival") && out.contains("🟢"), "{}", out);
+    assert!(out.contains("pal1") && out.contains("⚪"), "{}", out);
+}
+
+#[tokio::test]
+async fn start_via_alias_uses_managed_for_console_modules() {
+    let api = fixture();
+    let out = run(&api, &settings(), "마크 시작").await;
+    assert_eq!(api.calls(), vec!["start i-mc managed=true"]);
+    assert!(out.contains("survival"), "{}", out);
+}
+
+#[tokio::test]
+async fn instance_setting_overrides_managed_start() {
+    let mut api = fixture();
+    api.servers[0].module_settings.insert("managed_start".into(), json!("false"));
+    run(&api, &settings(), "survival start").await;
+    assert_eq!(api.calls(), vec!["start i-mc managed=false"]);
+}
+
+#[tokio::test]
+async fn rcon_template_fills_inputs_and_drops_missing_optionals() {
+    let api = fixture();
+    run(&api, &settings(), "mc 추방 Steve").await;
+    run(&api, &settings(), "mc say hello there world").await;
+    assert_eq!(api.calls(), vec!["rcon i-mc kick Steve", "rcon i-mc say hello there world"]);
+}
+
+#[tokio::test]
+async fn missing_required_input_is_reported_without_calling() {
+    let api = fixture();
+    let out = run(&api, &settings(), "mc kick").await;
+    assert!(out.contains("player"), "{}", out);
+    assert!(api.calls().is_empty());
+}
+
+#[tokio::test]
+async fn defined_command_on_stopped_server_reports_not_running() {
+    let api = fixture();
+    let out = run(&api, &settings(), "팰월드 players").await;
+    assert!(api.calls().is_empty());
+    assert!(out.contains("pal1"), "{}", out);
+}
+
+#[tokio::test]
+async fn module_error_text_is_used_for_failures() {
+    let mut api = fixture();
+    api.reply = Some(InternalResponse { status: StatusCode::OK, body: json!({"success": false, "error": "raw", "error_code": "server_not_running"}) });
+    let out = run(&api, &settings(), "mc say hi").await;
+    assert!(out.contains("MC is off"), "{}", out);
+
+    api.reply = Some(InternalResponse { status: StatusCode::INTERNAL_SERVER_ERROR, body: json!({"error": "RCON execution failed"}) });
+    let out = run(&api, &settings(), "mc say hi").await;
+    assert!(out.starts_with("❌"), "{}", out);
+}
+
+#[tokio::test]
+async fn unknown_inputs() {
+    let api = fixture();
+    let s = settings();
+    let cat = Catalog::for_language("en");
+    assert_eq!(run(&api, &s, "nothing").await, cat.t("errors.unknown_input", &[]));
+    assert_eq!(run(&api, &s, "mc dance").await, cat.t("errors.command_not_found", &[]));
+    assert!(run(&api, &s, "nothing start").await.contains("nothing"));
+}
+
+#[tokio::test]
+async fn single_module_word_shows_module_help() {
+    let out = run(&fixture(), &settings(), "survival").await;
+    assert!(out.contains("!saba survival kick <player> [reason]"), "{}", out);
+}
+
+#[tokio::test]
+async fn node_settings_filter_instances_and_deny_commands() {
+    let api = fixture();
+    let mut s = settings();
+    s.node_settings = json!({
+        "g1": {
+            "allowedInstances": ["i-mc"],
+            "memberPermissions": { "u1": { "i-mc": ["stop"] } }
+        }
+    });
+    let cat = Catalog::for_language("en");
+    assert_eq!(run(&api, &s, "mc stop").await, cat.t("errors.permission_denied", &[]));
+    assert_eq!(run(&api, &s, "팰월드 start").await, cat.t("errors.unknown_input", &[]));
+    assert!(!run(&api, &s, "list").await.contains("pal1"));
+    assert!(api.calls().is_empty());
+}
+
+#[tokio::test]
+async fn ambiguous_alias_is_rejected() {
+    let mut api = fixture();
+    api.modules[1].module_aliases.push("mc".into());
+    let out = run(&api, &settings(), "mc start").await;
+    assert!(out.contains("minecraft, palworld"), "{}", out);
+    assert!(api.calls().is_empty());
+}
+
+#[tokio::test]
+async fn two_instances_of_one_module_need_instance_name() {
+    let mut api = fixture();
+    api.servers.push(server("i-mc2", "creative", "minecraft", "running"));
+    let cat = Catalog::for_language("en");
+    assert_eq!(run(&api, &settings(), "mc start").await, cat.t("errors.multiple_instances", &[("module", "minecraft")]));
+    run(&api, &settings(), "creative start").await;
+    assert_eq!(api.calls(), vec!["start i-mc2 managed=true"]);
+}

@@ -71,6 +71,10 @@ pub struct ModuleMetadata {
     /// 예: { "start": { "aliases": ["시작", "실행"], "description": "Start the server" } }
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub command_aliases: std::collections::HashMap<String, CommandAliasInfo>,
+    /// [errors] 오류 코드 → 사용자 메시지 (예: server_not_running, auth_failed)
+    /// 채팅 명령 처리기가 데몬 오류를 모듈 고유 문구로 바꿀 때 사용
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub errors: std::collections::HashMap<String, String>,
 }
 
 /// 명령어 별명 정보
@@ -273,6 +277,9 @@ struct ModuleToml {
     /// [aliases] 모듈 및 명령어 별명 (Discord/CLI 다국어 지원)
     #[serde(default)]
     aliases: Option<AliasesSection>,
+    /// [errors] 오류 코드 → 사용자 메시지 (채팅 명령 응답용)
+    #[serde(default)]
+    errors: std::collections::HashMap<String, String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -716,6 +723,7 @@ impl ModuleToml {
                     })
                 }).collect()
             }).unwrap_or_default(),
+            errors: self.errors,
         }
     }
 }

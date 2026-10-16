@@ -13,6 +13,7 @@ use tokio::sync::RwLock;
 pub mod handlers;
 pub mod updates;
 pub mod auth;
+pub mod internal;
 use updates::UpdateState;
 
 pub use handlers::client::{kill_bot_pid, reap_expired_clients};
@@ -522,6 +523,8 @@ pub struct IPCServer {
     pub config_store: Arc<crate::config_store::ConfigStore>,
     /// 데몬 자체 로그 버퍼 (tracing 이벤트 캡처)
     pub daemon_log_buffer: crate::daemon_log::DaemonLogBuffer,
+    /// 클라우드 릴레이 에이전트 (디스코드 명령 수신)
+    pub relay_agent: crate::relay_agent::RelayAgent,
 }
 
 impl IPCServer {
@@ -563,6 +566,7 @@ impl IPCServer {
             ext_process_manager: handlers::ext_process::new_ext_process_manager(),
             config_store,
             daemon_log_buffer,
+            relay_agent: crate::relay_agent::RelayAgent::new(),
         }
     }
 
@@ -663,6 +667,12 @@ impl IPCServer {
             .route("/api/relay/node/:guild_id/members", get(handlers::relay::list_node_members))
             .route("/api/relay/pair/initiate", post(handlers::relay::initiate_pairing))
             .route("/api/relay/pair/:code/status", get(handlers::relay::poll_pairing_status))
+            // ── Relay agent (cloud Discord bot ↔ daemon) ──
+            .route("/api/relay/agent", get(handlers::chat::agent_status))
+            .route("/api/relay/agent/start", post(handlers::chat::agent_start))
+            .route("/api/relay/agent/stop", post(handlers::chat::agent_stop))
+            // ── Chat command processor ──
+            .route("/api/chat/command", post(handlers::chat::chat_command))
             // ── Auth middleware (token-based) ──
             .layer(axum::middleware::from_fn(auth::auth_middleware))
             .with_state(self.clone())
@@ -694,6 +704,10 @@ impl IPCServer {
                         tracing::info!("IPC bind succeeded on attempt {}", attempt);
                     }
                     tracing::info!("IPC listening on http://{}", self.listen_addr);
+
+                    // 릴레이 에이전트 자동 시작 (노드 토큰 + autoStart일 때)
+                    let agent_server = self.clone();
+                    tokio::spawn(async move { crate::relay_agent::auto_start(&agent_server).await });
 
                     let shutdown_signal = self.shutdown_token.clone();
                     axum::serve(listener, router)

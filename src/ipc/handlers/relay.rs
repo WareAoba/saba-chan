@@ -35,7 +35,7 @@ fn encode_path_segment(s: &str) -> String {
 }
 
 /// Resolve relay server URL (override via query param, fallback to default)
-fn resolve_relay_url(relay_url: Option<&str>) -> String {
+pub(crate) fn resolve_relay_url(relay_url: Option<&str>) -> String {
     let url = relay_url
         .filter(|u| !u.is_empty())
         .unwrap_or("https://saba-chan.online");
@@ -57,14 +57,14 @@ fn relay_client() -> Result<reqwest::Client, reqwest::Error> {
 }
 
 /// Parse a node token (sbn_{nodeId}.{secret}) into (nodeId, secret).
-fn parse_node_token(token: &str) -> Option<(&str, &str)> {
+pub(crate) fn parse_node_token(token: &str) -> Option<(&str, &str)> {
     let rest = token.strip_prefix("sbn_")?;
     let dot = rest.find('.')?;
     Some((&rest[..dot], &rest[dot + 1..]))
 }
 
 /// Load node token from the data directory file (.node_token).
-fn load_node_token() -> Option<String> {
+pub(crate) fn load_node_token() -> Option<String> {
     let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
     let token_path = data_dir.join(".node_token");
     std::fs::read_to_string(&token_path)
@@ -75,7 +75,7 @@ fn load_node_token() -> Option<String> {
 
 /// Generate HMAC-SHA256 signed headers for relay server authentication.
 /// Returns None if no valid node token is available.
-fn signed_headers(
+pub(crate) fn signed_headers(
     method: &str,
     url_path: &str,
     body: Option<&str>,

@@ -14,6 +14,8 @@ mod validator;
 mod boot_selector;
 mod daemon_log;
 mod instance_lock;
+mod chat;
+mod relay_agent;
 
 use std::sync::Arc;
 use std::io::IsTerminal;
@@ -711,6 +713,10 @@ async fn auto_start_discord_bot(
     }
 
     let mode = bot_config.get("mode").and_then(|v| v.as_str()).unwrap_or("local");
+    if mode == "cloud" {
+        // 클라우드 모드는 데몬 내장 릴레이 에이전트(relay_agent)가 담당한다
+        return Ok(());
+    }
 
     // 3. 토큰 확인 (로컬 모드만)
     let token = bot_config.get("token").and_then(|v| v.as_str()).unwrap_or("");

@@ -10,3 +10,4 @@ pub mod python_env;
 pub mod node_env;
 pub mod extension;
 pub mod relay;
+pub mod chat;
