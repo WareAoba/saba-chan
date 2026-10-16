@@ -427,6 +427,20 @@ impl ProcessChecker {
         }
     }
 
+    /// PID로 실행 중인지 확인 (이름이 같은 다른 프로세스와 헷갈리지 않는다)
+    pub fn is_pid_running(pid: u32) -> bool {
+        use std::process::Command;
+        if cfg!(target_os = "windows") {
+            Command::new("tasklist")
+                .args(["/FI", &format!("PID eq {}", pid), "/NH"])
+                .output()
+                .map(|o| String::from_utf8_lossy(&o.stdout).split_whitespace().any(|w| w == pid.to_string()))
+                .unwrap_or(false)
+        } else {
+            Command::new("kill").args(["-0", &pid.to_string()]).output().map(|o| o.status.success()).unwrap_or(false)
+        }
+    }
+
     /// 프로세스 종료 대기
     pub async fn wait_for_exit(process_name: &str, timeout_secs: u64) -> bool {
         let start = std::time::Instant::now();

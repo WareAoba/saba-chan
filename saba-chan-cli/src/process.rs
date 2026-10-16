@@ -276,7 +276,7 @@ fn force_kill_daemon(pid: u64) -> anyhow::Result<()> {
     let pid = pid.to_string();
     if cfg!(target_os = "windows") {
         let mut cmd = Command::new("taskkill");
-        cmd.args(["/PID", &pid, "/F", "/T"])
+        cmd.args(["/PID", &pid, "/F"]) // /T 없이: 서버는 saba-runner가 쥐고 있다
             .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
         no_window(&mut cmd);
         cmd.status()?;

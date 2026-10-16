@@ -569,14 +569,14 @@ impl IPCServer {
         let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
         let config_store = Arc::new(crate::config_store::ConfigStore::new(&data_dir));
 
+        let stop_requested = tokio_util::sync::CancellationToken::new();
         Self {
             supervisor: supervisor.clone(),
             listen_addr: listen_addr.to_string(),
             client_registry: ClientRegistry::new(),
-            update_state: UpdateState::new().with_hot_reload(
-                supervisor,
-                extension_manager.clone(),
-            ),
+            update_state: UpdateState::new()
+                .with_hot_reload(supervisor, extension_manager.clone())
+                .with_stop_signal(stop_requested.clone()),
             api_actions: ApiActionTracker::new(),
             provision_tracker: ProvisionTracker::new(),
             extension_manager,
@@ -585,7 +585,7 @@ impl IPCServer {
             rcon_pool: Arc::new(crate::protocol::rcon_pool::RconPool::new()),
             credentials: CredentialsCache::default(),
             shutdown_token: tokio_util::sync::CancellationToken::new(),
-            stop_requested: tokio_util::sync::CancellationToken::new(),
+            stop_requested,
             config_store,
             daemon_log_buffer,
             relay_agent: crate::relay_agent::RelayAgent::new(),

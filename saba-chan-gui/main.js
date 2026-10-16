@@ -668,7 +668,8 @@ function waitForExit(proc, timeoutMs) {
 function forceKillDaemon(proc) {
     try {
         if (process.platform === 'win32') {
-            execSync(`taskkill /PID ${proc.pid} /F /T`, { stdio: 'ignore' });
+            // /T 없이: 서버는 saba-runner가 쥐고 있어 데몬만 끊고, 다음 기동 때 다시 붙는다
+            execSync(`taskkill /PID ${proc.pid} /F`, { stdio: 'ignore' });
         } else {
             proc.kill('SIGKILL');
         }
@@ -761,34 +762,6 @@ ipcMain.handle('mockServer:status', async () => {
     const running = mockServerProcess != null && !mockServerProcess.killed;
     return { running };
 });
-
-// ── 프로세스 완전 분리 스폰 (Chromium Job Object 회피) ──────
-// Chromium(Electron)은 프로덕션에서 Job Object로 자식 프로세스를 관리하며,
-// app.quit() 시 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE로 자식을 모두 종료합니다.
-// detached: true만으로는 Job Object에서 벗어나지 못하므로,
-// Windows에서는 cmd.exe /c start로 스폰하여 완전히 분리합니다.
-function spawnDetached(exe, args) {
-    if (process.platform === 'win32') {
-        // cmd /c start "" /B "exe" args...
-        // /B: 새 창 열지 않음, "": 타이틀 빈 문자열
-        // shell: true + cmd start 조합으로 Chromium Job Object에서 벗어남
-        // 공백이 포함된 인자를 따옴표로 감싸야 cmd.exe가 올바르게 파싱
-        const quotedArgs = args.map(a => (a.includes(' ') ? `"${a}"` : a));
-        const proc = spawn('cmd.exe', ['/c', 'start', '""', '/B', `"${exe}"`, ...quotedArgs], {
-            detached: true,
-            stdio: 'ignore',
-            shell: true,
-            windowsHide: true,
-        });
-        proc.unref();
-    } else {
-        const proc = spawn(exe, args, {
-            detached: true,
-            stdio: 'ignore',
-        });
-        proc.unref();
-    }
-}
 
 // 안전한 종료 함수
 /**
@@ -1037,78 +1010,30 @@ async function runBackgroundInit() {
 
 // runDeferredTasks 제거됨 - Discord Bot 자동 시작은 React에서 처리
 
-// ── 업데이터 exe 경로 해석 ────────────────────────────────────
-
-/**
- * 업데이터 exe 경로를 찾습니다.
- * 개발: updater/gui/src-tauri/target/{release,debug}/saba-chan-updater.exe
- * 프로덕션: exe와 같은 디렉토리의 saba-chan-updater.exe
- */
-function findUpdaterExe() {
-    const isDev = !app.isPackaged;
-    if (isDev) {
-        const rootDir = path.join(__dirname, '..');
-        // workspace root target (cargo workspace가 여기에 빌드)
-        const wsRelease = path.join(rootDir, 'target', 'release', 'saba-chan-updater.exe');
-        const wsDebug = path.join(rootDir, 'target', 'debug', 'saba-chan-updater.exe');
-        // crate-local target (fallback)
-        const crateRelease = path.join(
-            rootDir,
-            'updater',
-            'gui',
-            'src-tauri',
-            'target',
-            'release',
-            'saba-chan-updater.exe',
-        );
-        const crateDebug = path.join(
-            rootDir,
-            'updater',
-            'gui',
-            'src-tauri',
-            'target',
-            'debug',
-            'saba-chan-updater.exe',
-        );
-        // workspace root 우선, 최신 빌드가 여기 있음
-        if (fs.existsSync(wsRelease)) return wsRelease;
-        if (fs.existsSync(crateRelease)) return crateRelease;
-        if (fs.existsSync(wsDebug)) return wsDebug;
-        if (fs.existsSync(crateDebug)) return crateDebug;
-        return null;
-    } else {
-        // 설치 루트에서 찾기 (portable: 원본 exe 디렉토리)
-        const rootDir = getInstallRoot();
-        const p = path.join(rootDir, 'saba-chan-updater.exe');
-        if (fs.existsSync(p)) return p;
-        // fallback: 추출 temp 디렉토리
-        const tempDir = path.dirname(app.getPath('exe'));
-        const tp = path.join(tempDir, 'saba-chan-updater.exe');
-        return fs.existsSync(tp) ? tp : null;
-    }
-}
-
-// ── 업데이트 주기적 체크 (데몬 HTTP API) ────────────────────
-const UPDATE_CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3시간
-const UPDATE_INITIAL_DELAY_MS = 0; // 데몬 준비 후 즉시 체크
+// ── 업데이트 알림 (데몬 HTTP API) ────────────────────────
+// 확인 주기는 데몬이 정한다(U6, 설정 check_interval_hours). GUI는 데몬이 캐시한 결과
+// (`GET /api/updates/status`)를 가끔 읽어 새 업데이트가 생겼을 때만 알린다.
+const UPDATE_STATUS_POLL_MS = 10 * 60 * 1000; // 10분
 let updateCheckTimer = null;
 // 마지막으로 OS 알림을 보낸 업데이트 목록의 fingerprint (중복 알림 방지)
 let lastNotifiedUpdateKey = null;
 
 async function checkForUpdates() {
     try {
-        // 데몬 API를 통해 업데이트 확인
-        const response = await axios.post(`${IPC_BASE}/api/updates/check`, {}, { timeout: 30000 });
+        // 데몬이 마지막으로 확인한 결과 (확인 자체는 데몬이 주기적으로 한다)
+        const response = await axios.get(`${IPC_BASE}/api/updates/status`, { timeout: 5000 });
         const data = response.data;
 
-        if (!data.ok) {
-            console.warn('[UpdateChecker] Check failed:', data.error);
+        if (!data.ok || data.error) {
+            if (data.error) console.warn('[UpdateChecker] Daemon check failed:', data.error);
             return;
         }
 
         if (data.updates_available > 0) {
             // Locales는 백그라운드 자동 적용 대상이므로 알림에서 제외 (서버에서도 필터링하지만 안전장치)
-            const names = (data.update_names || []).filter(n => n !== 'Locales');
+            const names = (data.components || [])
+                .filter((c) => c.update_available && c.display_name !== 'Locales')
+                .map((c) => c.display_name);
             const filteredCount = names.length;
 
             if (filteredCount === 0) {
@@ -1159,8 +1084,7 @@ async function checkForUpdates() {
                 });
             }
 
-            // 자동 다운로드/적용은 하지 않음 — 사용자가 업데이트 센터에서 수동 처리
-            // auto_download/auto_apply 설정은 향후 구현 예정
+            // 적용은 사용자가 업데이트 센터에서 고른다 (auto_download이면 데몬이 미리 받아 둔다)
         } else {
             console.log('[UpdateChecker] No updates available');
         }
@@ -1170,33 +1094,9 @@ async function checkForUpdates() {
 }
 
 function startUpdateChecker() {
-    // config의 enabled 플래그를 확인하여 비활성화 상태이면 체크하지 않음
-    (async () => {
-        try {
-            const response = await axios.get(`${IPC_BASE}/api/updates/config`, { timeout: 5000 });
-            const cfg = response.data?.config || response.data;
-            if (cfg?.enabled === false) {
-                console.log('[UpdateChecker] Auto-check disabled by config');
-                return;
-            }
-        } catch (_) {
-            // config 조회 실패 시 기본 동작(체크 실행)
-        }
-        _doStartUpdateChecker();
-    })();
-}
-
-function _doStartUpdateChecker() {
     stopUpdateChecker();
-    if (UPDATE_INITIAL_DELAY_MS > 0) {
-        setTimeout(() => {
-            checkForUpdates();
-            updateCheckTimer = setInterval(checkForUpdates, UPDATE_CHECK_INTERVAL_MS);
-        }, UPDATE_INITIAL_DELAY_MS);
-    } else {
-        checkForUpdates();
-        updateCheckTimer = setInterval(checkForUpdates, UPDATE_CHECK_INTERVAL_MS);
-    }
+    checkForUpdates();
+    updateCheckTimer = setInterval(checkForUpdates, UPDATE_STATUS_POLL_MS);
 }
 
 function stopUpdateChecker() {
@@ -2492,39 +2392,36 @@ ipcMain.handle('updater:apply', async (_event, components) => {
     }
 });
 
-// 업데이터 exe 스폰 — 업데이트 적용 전용
-// 업데이터가 apply-targets.json에서 적용 대상을 읽고, 파일 교체 후 GUI를 재실행합니다.
-// install_root와 컴포넌트 목록은 업데이터가 자동 추론하므로 전달하지 않습니다.
+// 업데이트 적용 시작 — 업데이터 실행은 데몬이 한다 (U7)
+// 데몬이 업데이터를 띄우고 스스로 종료한다. GUI는 다시 띄울 자기 실행 경로만 알려주고 종료한다.
 ipcMain.handle('updater:launchApply', async (_event, _targets) => {
     try {
-        const updaterExe = findUpdaterExe();
-        if (!updaterExe) {
-            return { ok: false, error: 'Updater exe not found' };
-        }
-
-        const args = ['--apply'];
-
-        // GUI exe 경로: 업데이터가 적용 완료 후 재실행할 대상
-        let guiExe;
+        let relaunch;
         if (!app.isPackaged) {
-            guiExe = process.execPath; // 개발 모드: electron exe
-            args.push('--relaunch', guiExe, path.resolve(__dirname));
+            relaunch = [process.execPath, path.resolve(__dirname)]; // 개발 모드: electron exe + 앱 경로
         } else if (process.env.PORTABLE_EXECUTABLE_FILE) {
-            guiExe = process.env.PORTABLE_EXECUTABLE_FILE;
-            args.push('--relaunch', guiExe);
+            relaunch = [process.env.PORTABLE_EXECUTABLE_FILE];
         } else {
-            // 프로덕션: 업데이터가 같은 폴더의 saba-chan-gui.exe를 자동 추론
-            // --relaunch 생략 가능하지만, 명시적으로 전달
-            guiExe = app.getPath('exe');
-            args.push('--relaunch', guiExe);
+            relaunch = [app.getPath('exe')];
         }
-
-        console.log(`[Updater] Launching apply: ${updaterExe} ${args.join(' ')}`);
-        spawnDetached(updaterExe, args);
-
-        // 업데이터가 실행되면 GUI는 항상 종료 (업데이터가 재실행 담당)
+        const response = await axios.post(`${IPC_BASE}/api/updates/launch-updater`, { relaunch }, { timeout: 10000 });
+        if (!response.data?.ok) {
+            return { ok: false, error: response.data?.error || 'Failed to launch updater' };
+        }
+        console.log('[Updater] Daemon launched the updater; quitting GUI');
         setTimeout(() => cleanQuit(), 500);
         return { ok: true };
+    } catch (err) {
+        return { ok: false, error: err.response?.data?.error || err.message };
+    }
+});
+
+// 마지막 업데이트 적용 결과 — 데몬 API `/api/updates/last-result` (확인하면 clear)
+ipcMain.handle('updater:lastResult', async (_event, { clear = false } = {}) => {
+    try {
+        const url = `${IPC_BASE}/api/updates/last-result`;
+        const response = clear ? await axios.delete(url, { timeout: 5000 }) : await axios.get(url, { timeout: 5000 });
+        return response.data;
     } catch (err) {
         return { ok: false, error: err.message };
     }
@@ -2540,20 +2437,10 @@ ipcMain.handle('updater:getConfig', async () => {
     }
 });
 
-// 업데이트 설정 변경 — 데몬 API + 백그라운드 체커 연동
+// 업데이트 설정 변경 — 데몬 API (확인 주기·켜기/끄기는 데몬 스케줄러가 다음 회차에 반영)
 ipcMain.handle('updater:setConfig', async (_event, config) => {
     try {
         const response = await axios.put(`${IPC_BASE}/api/updates/config`, config, { timeout: 5000 });
-        // enabled 플래그가 변경된 경우 백그라운드 체커 시작/중지
-        if (config && typeof config.enabled === 'boolean') {
-            if (config.enabled) {
-                console.log('[UpdateChecker] Auto-check enabled — starting background checker');
-                _doStartUpdateChecker();
-            } else {
-                console.log('[UpdateChecker] Auto-check disabled — stopping background checker');
-                stopUpdateChecker();
-            }
-        }
         return response.data;
     } catch (err) {
         return { ok: false, error: err.message };

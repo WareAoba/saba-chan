@@ -3,11 +3,16 @@
 //! 업데이트 확인(check)과 다운로드(download)를 데몬 프로세스 내에서 수행합니다.
 //! 파일 적용(apply)은 별도 업데이터 프로세스에서 처리합니다.
 //!
+//! 주기 확인은 데몬이 한다(U6, `spawn_update_scheduler`): `check_interval_hours`마다 확인하고,
+//! `auto_download`이면 내려받아 둔다. GUI·CLI는 `/api/updates/status`를 읽어 표시만 한다.
+//!
 //! ## 엔드포인트
 //! - `GET  /api/updates/status`              — 캐시된 업데이트 상태 조회
 //! - `POST /api/updates/check`               — 업데이트 확인 (GitHub API 호출)
 //! - `POST /api/updates/download`            — 선택 컴포넌트 다운로드
 //! - `POST /api/updates/apply`               — 업데이터 exe 스폰하여 적용
+//! - `POST /api/updates/launch-updater`      — 데몬이 업데이터를 띄우고 스스로 종료 (U7)
+//! - `GET  /api/updates/last-result`         — 마지막 업데이트 적용 결과 (DELETE로 확인 처리)
 //! - `GET  /api/updates/config`              — 업데이트 설정 조회
 //! - `PUT  /api/updates/config`              — 업데이트 설정 변경
 
@@ -40,6 +45,8 @@ pub struct UpdateState {
     /// 모듈/익스텐션 업데이트 적용 후 핫로드를 위한 참조
     pub supervisor: Option<Arc<RwLock<crate::supervisor::Supervisor>>>,
     pub extension_manager: Option<Arc<RwLock<crate::extension::ExtensionManager>>>,
+    /// 업데이터를 띄운 뒤 데몬을 끝내는 신호 (IPCServer::stop_requested)
+    pub stop_requested: Option<tokio_util::sync::CancellationToken>,
 }
 
 impl UpdateState {
@@ -55,6 +62,7 @@ impl UpdateState {
             download_progress: progress,
             supervisor: None,
             extension_manager: None,
+            stop_requested: None,
         }
     }
 
@@ -66,6 +74,11 @@ impl UpdateState {
     ) -> Self {
         self.supervisor = Some(supervisor);
         self.extension_manager = Some(extension_manager);
+        self
+    }
+
+    pub fn with_stop_signal(mut self, stop_requested: tokio_util::sync::CancellationToken) -> Self {
+        self.stop_requested = Some(stop_requested);
         self
     }
 }
@@ -88,6 +101,8 @@ pub fn updates_router(state: UpdateState) -> Router {
         .route("/api/updates/download", post(download_components))
         .route("/api/updates/download/progress", get(get_download_progress))
         .route("/api/updates/apply", post(apply_updates))
+        .route("/api/updates/launch-updater", post(launch_updater))
+        .route("/api/updates/last-result", get(get_last_result).delete(clear_last_result))
         .route("/api/updates/integrity", get(check_integrity))
         .route("/api/updates/config", get(get_config))
         .route("/api/updates/config", put(set_config))
@@ -145,23 +160,8 @@ async fn get_status(
 async fn check_updates(
     State(state): State<UpdateState>,
 ) -> impl IntoResponse {
-    let result = {
-        let mut mgr = state.manager.write().await;
-        mgr.check_for_updates().await
-    };
-
-    match result {
+    match check_and_follow_up(&state).await {
         Ok(status) => {
-            // ── Locales 자동 적용: 사용자 비표시 ──
-            // Locales는 작고 재시작이 불필요하므로, 체크 직후 백그라운드에서 자동 다운로드+적용
-            let has_locale_update = status.components.iter()
-                .any(|c| matches!(c.component, Component::Locales) && c.update_available);
-            if has_locale_update {
-                let mgr_clone = state.manager.clone();
-                tokio::spawn(async move {
-                    silent_apply_locales(&mgr_clone).await;
-                });
-            }
 
             // Locales를 제외한 "사용자에게 보이는" 컴포넌트 목록
             let components: Vec<Value> = status.components.iter()
@@ -199,6 +199,77 @@ async fn check_updates(
             }))
         }
     }
+}
+
+/// 확인 한 번과 그 뒤처리. 수동 확인(`POST /check`)과 주기 확인이 같은 길을 쓴다.
+/// - Locales 업데이트는 사용자에게 보이지 않게 바로 적용
+/// - `auto_download`이면 나머지 업데이트를 내려받아 두고 pending manifest 저장
+///   (적용은 사용자가 고른다. `auto_apply`는 아직 동작하지 않는다)
+async fn check_and_follow_up(state: &UpdateState) -> anyhow::Result<saba_chan_updater_lib::UpdateStatus> {
+    let (status, auto_download) = {
+        let mut mgr = state.manager.write().await;
+        let status = mgr.check_for_updates().await?;
+        (status, mgr.get_config().auto_download)
+    };
+
+    let has_locale_update = status.components.iter()
+        .any(|c| matches!(c.component, Component::Locales) && c.update_available);
+    if has_locale_update {
+        let mgr_clone = state.manager.clone();
+        tokio::spawn(async move {
+            silent_apply_locales(&mgr_clone).await;
+        });
+    }
+
+    let has_visible_update = status.components.iter()
+        .any(|c| c.update_available && !c.downloaded && !matches!(c.component, Component::Locales));
+    if auto_download && has_visible_update {
+        let manager = state.manager.clone();
+        tokio::spawn(async move {
+            let mut mgr = manager.write().await;
+            match mgr.download_available_updates().await {
+                Ok(downloaded) => {
+                    tracing::info!("[Updates] Auto-downloaded {} update(s)", downloaded.len());
+                    if let Err(e) = mgr.save_pending_manifest() {
+                        tracing::warn!("[Updates] Failed to save pending manifest: {}", e);
+                    }
+                }
+                Err(e) => tracing::warn!("[Updates] Auto-download failed: {}", e),
+            }
+        });
+    }
+    Ok(status)
+}
+
+/// 데몬 기동 후 업데이트를 주기적으로 확인한다 (U6).
+/// 설정은 매 회 다시 읽는다. 꺼져 있으면(`enabled=false`) 확인하지 않고 설정만 다시 본다.
+pub fn spawn_update_scheduler(state: UpdateState, shutdown: tokio_util::sync::CancellationToken) {
+    /// 기동 직후에는 다른 초기화가 먼저 끝나도록 잠깐 기다린다
+    const FIRST_CHECK_DELAY: std::time::Duration = std::time::Duration::from_secs(30);
+    /// 꺼져 있거나 실패했을 때 다시 볼 간격
+    const RETRY: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+
+    tokio::spawn(async move {
+        let mut wait = FIRST_CHECK_DELAY;
+        loop {
+            tokio::select! {
+                _ = shutdown.cancelled() => break,
+                _ = tokio::time::sleep(wait) => {}
+            }
+            let cfg = state.manager.read().await.get_config();
+            if !cfg.enabled {
+                wait = RETRY;
+                continue;
+            }
+            wait = match check_and_follow_up(&state).await {
+                Ok(_) => std::time::Duration::from_secs(u64::from(cfg.check_interval_hours.max(1)) * 3600),
+                Err(e) => {
+                    tracing::warn!("[Updates] Scheduled check failed: {}", e);
+                    RETRY
+                }
+            };
+        }
+    });
 }
 
 /// Locales 컴포넌트를 사용자 비표시로 다운로드+적용합니다.
@@ -472,6 +543,115 @@ async fn apply_updates(
         "requires_updater": !needs_updater.is_empty(),
         "errors": errors,
     }))
+}
+
+/// POST /api/updates/launch-updater — 데몬이 업데이터를 띄우고 스스로 종료한다 (U7)
+///
+/// `apply`가 `requires_updater: true`를 돌려준 뒤 부른다. 어느 클라이언트가 떠 있든
+/// 적용 경로가 하나가 되도록 업데이터 실행은 데몬만 한다.
+/// Body: `{ "relaunch": ["<exe>", "추가 인자"...] }` — 적용 후 다시 띄울 프로그램(생략하면 업데이터가 GUI를 찾는다)
+#[derive(Deserialize, Default)]
+struct LaunchUpdaterRequest {
+    #[serde(default)]
+    relaunch: Vec<String>,
+}
+
+async fn launch_updater(
+    State(state): State<UpdateState>,
+    body: Option<Json<LaunchUpdaterRequest>>,
+) -> axum::response::Response {
+    let body = body.map(|Json(b)| b).unwrap_or_default();
+    let Some(updater) = updater_binary() else {
+        return (
+            axum::http::StatusCode::NOT_FOUND,
+            Json(json!({ "ok": false, "error": "saba-chan-updater not found next to the daemon" })),
+        )
+            .into_response();
+    };
+    if state.manager.read().await.get_pending_components().is_empty() {
+        return (
+            axum::http::StatusCode::CONFLICT,
+            Json(json!({ "ok": false, "error": "No downloaded updates to apply" })),
+        )
+            .into_response();
+    }
+
+    let mut args = vec!["--apply".to_string(), "--wait-pid".to_string(), std::process::id().to_string()];
+    if !body.relaunch.is_empty() {
+        args.push("--relaunch".to_string());
+        args.extend(body.relaunch);
+    }
+    if let Err(e) = spawn_detached(&updater, &args) {
+        return (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "ok": false, "error": format!("Failed to start updater: {}", e) })),
+        )
+            .into_response();
+    }
+    tracing::info!("[Updates] Launched updater {} {:?}; daemon is shutting down", updater.display(), args);
+
+    if let Some(stop) = state.stop_requested.clone() {
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await; // 응답이 나가도록
+            stop.cancel();
+        });
+    }
+    Json(json!({ "ok": true, "updater_launched": true, "daemon_stopping": true })).into_response()
+}
+
+/// 업데이터 실행 파일. `SABA_UPDATER_PATH`가 있으면 그것, 없으면 데몬 실행 파일 옆(또는 한 단계 위).
+fn updater_binary() -> Option<std::path::PathBuf> {
+    if let Some(path) = std::env::var_os("SABA_UPDATER_PATH").map(std::path::PathBuf::from) {
+        return path.is_file().then_some(path);
+    }
+    let exe = std::env::current_exe().ok()?;
+    let name = format!("saba-chan-updater{}", std::env::consts::EXE_SUFFIX);
+    exe.ancestors().skip(1).take(2).map(|dir| dir.join(&name)).find(|p| p.is_file())
+}
+
+/// 데몬이 끝나도 살아남게 띄운다
+fn spawn_detached(program: &std::path::Path, args: &[String]) -> std::io::Result<()> {
+    let mut cmd = std::process::Command::new(program);
+    cmd.args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+        // 데몬을 띄운 쪽의 Job Object가 닫혀도 업데이터가 살아남게 빠져나온다. 허용되지 않으면 그냥 띄운다.
+        cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB);
+        match cmd.spawn() {
+            Err(e) if e.raw_os_error() == Some(5) => {
+                cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+                cmd.spawn().map(|_| ())
+            }
+            other => other.map(|_| ()),
+        }
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+        cmd.spawn().map(|_| ())
+    }
+}
+
+/// GET /api/updates/last-result — 마지막 적용 결과 (업데이터가 남긴 완료 마커). 없으면 `result: null`.
+async fn get_last_result() -> impl IntoResponse {
+    let marker = saba_chan_updater_lib::UpdateCompletionMarker::load();
+    Json(json!({ "ok": true, "result": marker }))
+}
+
+/// DELETE /api/updates/last-result — 사용자가 결과를 확인했다
+async fn clear_last_result() -> impl IntoResponse {
+    match saba_chan_updater_lib::UpdateCompletionMarker::clear() {
+        Ok(()) => Json(json!({ "ok": true })),
+        Err(e) => Json(json!({ "ok": false, "error": e })),
+    }
 }
 
 /// GET /api/updates/integrity — 서버에서 매니페스트를 가져와 SHA256 무결성 검증

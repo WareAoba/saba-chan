@@ -75,6 +75,10 @@ pub struct ModuleMetadata {
     /// 채팅 명령 처리기가 데몬 오류를 모듈 고유 문구로 바꿀 때 사용
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub errors: std::collections::HashMap<String, String>,
+    /// [launch] log_files — 서버가 콘솔 대신 파일에 쓰는 로그 (작업 디렉터리 기준, 마지막 칸만 `*` `?` 허용).
+    /// saba-runner가 따라 읽어 콘솔에 합친다. 예: ["Pal/Saved/Logs/*.log"]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub log_files: Vec<String>,
 }
 
 /// 명령어 별명 정보
@@ -262,6 +266,9 @@ struct ModuleToml {
     /// [docker] 익스텐션 설정 섹션 (컨테이너 격리용)
     #[serde(default, rename = "docker")]
     container: Option<ContainerSectionToml>,
+    /// [launch] 실행 관련 선언 (C8b)
+    #[serde(default)]
+    launch: Option<LaunchSection>,
     /// [credential_map] 데몬 표준 키 ↔ 게임별 설정 키 매핑
     /// 예: rest_password = "AdminPassword" → 데몬의 rest_password가 게임 INI의 AdminPassword에 대응
     #[serde(default)]
@@ -293,6 +300,12 @@ struct ModuleSection {
     /// 예: { "saba-core" = ">=0.3.0", "ext-steamcmd" = ">=1.0.0" }
     #[serde(default)]
     dependencies: std::collections::HashMap<String, String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct LaunchSection {
+    #[serde(default)]
+    log_files: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -644,6 +657,7 @@ impl ModuleToml {
             entry: self.module.entry,
             icon: self.module.icon,
             log_pattern: self.module.log_pattern,
+            log_files: self.launch.map(|l| l.log_files).unwrap_or_default(),
             dependencies: self.module.dependencies,
             credential_map: self.credential_map.unwrap_or_default(),
             process_name: self.config.as_ref().and_then(|c| c.process_name.clone()),
@@ -1301,6 +1315,14 @@ entry = "lifecycle.py"
 
         let issues = meta.check_dependencies(&installed);
         assert!(issues.is_empty(), "Exact version match should satisfy >=");
+    }
+
+    #[test]
+    fn launch_log_files_are_read() {
+        let toml = "[module]\nname = \"g\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[launch]\nlog_files = [\"Pal/Saved/Logs/*.log\"]\n";
+        assert_eq!(parse_module_toml(toml).unwrap().log_files, vec!["Pal/Saved/Logs/*.log"]);
+        let plain = "[module]\nname = \"g\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n";
+        assert!(parse_module_toml(plain).unwrap().log_files.is_empty());
     }
 
     #[test]

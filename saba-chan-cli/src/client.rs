@@ -326,6 +326,16 @@ impl DaemonClient {
         self.post_empty("/api/updates/apply").await
     }
 
+    /// POST /api/updates/launch-updater — 데몬이 업데이터를 띄우고 종료한다 (U7)
+    pub async fn launch_updater(&self) -> anyhow::Result<Value> {
+        self.post_json("/api/updates/launch-updater", &serde_json::json!({})).await
+    }
+
+    /// GET /api/updates/last-result — 마지막 업데이트 적용 결과
+    pub async fn last_update_result(&self) -> anyhow::Result<Value> {
+        self.get_json("/api/updates/last-result").await
+    }
+
     /// GET /api/updates/config — 업데이트 설정 조회
     pub async fn get_update_config(&self) -> anyhow::Result<Value> {
         self.get_json("/api/updates/config").await

@@ -997,6 +997,17 @@ async fn exec_update(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
                 if let Some(comps) = v["components"].as_array() {
                     for c in comps { lines.push(Out::Text(format!("  {:<20} v{}", c["component"].as_str().unwrap_or("?"), c["current_version"].as_str().unwrap_or("?")))); }
                 }
+                if let Ok(last) = client.last_update_result().await {
+                    let r = &last["result"];
+                    if !r.is_null() {
+                        let ok = r["success"].as_bool().unwrap_or(false);
+                        let msg = r["message"].as_str().unwrap_or("");
+                        lines.push(Out::Text(format!("  Last apply ({}): {} {}", r["timestamp"].as_str().unwrap_or("?"), if ok { "✓" } else { "✗" }, msg)));
+                        for f in r["failed"].as_array().into_iter().flatten() {
+                            lines.push(Out::Text(format!("    ✗ {}", f.as_str().unwrap_or("?"))));
+                        }
+                    }
+                }
                 lines
             }
             Err(e) => vec![Out::Err(format!("✗ {}", e))],
@@ -1031,34 +1042,11 @@ async fn exec_update(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
             }
         }
-        Some("launch-apply") => {
-            // updater exe 찾기
-            let root = process::find_project_root().unwrap_or_else(|_| std::env::current_dir().unwrap_or_default());
-            let candidates = [
-                root.join("target").join("release").join("saba-chan-updater.exe"),
-                root.join("target").join("debug").join("saba-chan-updater.exe"),
-                root.join("saba-chan-updater.exe"),
-                root.join("updater").join("gui").join("src-tauri").join("target").join("release").join("saba-chan-updater.exe"),
-            ];
-            let updater_exe = candidates.iter().find(|p| p.exists());
-            match updater_exe {
-                Some(exe) => {
-                    // 업데이터는 설치 경로를 자기 exe 위치에서, 적용 대상은
-                    // apply-targets.json에서 읽으므로 --apply만 넘긴다.
-                    match std::process::Command::new(exe)
-                        .arg("--apply")
-                        .stdin(std::process::Stdio::null())
-                        .stdout(std::process::Stdio::null())
-                        .stderr(std::process::Stdio::null())
-                        .spawn()
-                    {
-                        Ok(_) => vec![Out::Ok(format!("✓ Updater launched: {}", exe.display()))],
-                        Err(e) => vec![Out::Err(format!("✗ Failed to launch updater: {}", e))],
-                    }
-                }
-                None => vec![Out::Err("✗ Updater executable not found. Searched in target/release and target/debug.".into())],
-            }
-        }
+        Some("launch-apply") => match client.launch_updater().await {
+            // 업데이터 실행은 데몬이 한다. 데몬은 업데이터를 띄운 뒤 스스로 종료한다.
+            Ok(_) => vec![Out::Ok("✓ Updater launched by the daemon; the daemon is shutting down to apply".into())],
+            Err(e) => vec![Out::Err(format!("✗ {}", e))],
+        },
         _ => vec![Out::Text("  update check|status|download|apply|config|set|install|launch-apply [targets...]".into())],
     }
 }

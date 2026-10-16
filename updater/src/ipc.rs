@@ -256,6 +256,9 @@ pub struct UpdateCompletionMarker {
     pub updated_components: Vec<String>,
     pub success: bool,
     pub message: Option<String>,
+    /// 적용하지 못한 컴포넌트와 이유 (`"gui: ..."`)
+    #[serde(default)]
+    pub failed: Vec<String>,
 }
 
 impl UpdateCompletionMarker {
@@ -265,6 +268,7 @@ impl UpdateCompletionMarker {
             updated_components: components,
             success: true,
             message: None,
+            failed: Vec::new(),
         }
     }
 
@@ -274,6 +278,7 @@ impl UpdateCompletionMarker {
             updated_components: Vec::new(),
             success: false,
             message: Some(message),
+            failed: Vec::new(),
         }
     }
 

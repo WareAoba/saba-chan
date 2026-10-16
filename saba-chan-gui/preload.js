@@ -62,6 +62,7 @@ contextBridge.exposeInMainWorld('api', {
     updaterDownloadProgress: () => ipcRenderer.invoke('updater:downloadProgress'),
     updaterApply: (components) => ipcRenderer.invoke('updater:apply', components),
     updaterLaunchApply: (targets) => ipcRenderer.invoke('updater:launchApply', targets),
+    updaterLastResult: (opts) => ipcRenderer.invoke('updater:lastResult', opts),
     updaterGetConfig: () => ipcRenderer.invoke('updater:getConfig'),
     updaterSetConfig: (config) => ipcRenderer.invoke('updater:setConfig', config),
     // Mock Server (테스트용)

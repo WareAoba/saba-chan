@@ -100,6 +100,7 @@ $jobRust = Start-Job -Name "Rust" -ScriptBlock {
 
     $targets = @(
         @{ Name = "saba-core.exe";       Path = (Join-Path $root "target\release\saba-core.exe") },
+        @{ Name = "saba-runner.exe";     Path = (Join-Path $root "target\release\saba-runner.exe") },
         @{ Name = "saba-chan-cli.exe";      Path = (Join-Path $root "target\release\saba-chan-cli.exe") },
         @{ Name = "saba-chan-updater.exe";  Path = (Join-Path $root "target\release\saba-chan-updater.exe") },
         @{ Name = "saba-chan-installer.exe"; Path = (Join-Path $root "target\release\saba-chan-installer.exe") }

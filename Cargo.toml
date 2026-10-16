@@ -9,7 +9,7 @@ license = "MIT"
 keywords = ["game-server", "palworld", "minecraft", "management"]
 
 [workspace]
-members = [".", "updater", "updater/gui/src-tauri", "installer/gui/src-tauri", "saba-chan-cli"]
+members = [".", "runner", "updater", "updater/gui/src-tauri", "installer/gui/src-tauri", "saba-chan-cli"]
 
 [[bin]]
 name = "saba-core"
@@ -47,6 +47,7 @@ hmac = "0.12"
 sha2 = "0.10"
 hex = "0.4"
 saba-chan-updater-lib = { path = "updater" }
+saba-runner = { path = "runner" }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["processthreadsapi", "winnt", "handleapi"] }

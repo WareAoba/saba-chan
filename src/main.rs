@@ -271,6 +271,9 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
+    // 업데이트 주기 확인 — GUI가 꺼져 있어도 데몬이 확인한다 (U6)
+    ipc::updates::spawn_update_scheduler(ipc_server.update_state.clone(), shutdown_token.clone());
+
     // Heartbeat reaper 태스크 — 30초마다 만료 클라이언트 확인, 봇 프로세스 정리
     let registry_reaper = client_registry.clone();
     let reaper_cancel = shutdown_token.clone();
