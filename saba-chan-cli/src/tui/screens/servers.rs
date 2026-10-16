@@ -2,7 +2,7 @@
 
 use crate::tui::app::*;
 
-/// 익스텐션 슬롯 조건을 평가한다 (GUI의 DockerBadge 조건 평가에 대응)
+/// 익스텐션 슬롯 조건을 평가한다 (GUI 슬롯 조건 평가에 대응)
 /// condition 형식: "instance.ext_data.<key>"
 fn evaluate_badge_condition(condition: &str, server: &ServerInfo) -> bool {
     if let Some(key) = condition.strip_prefix("instance.ext_data.") {

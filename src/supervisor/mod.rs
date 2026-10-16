@@ -508,25 +508,6 @@ impl Supervisor {
             }
         }
 
-        // ── Extension이 처리하지 않았으나 extension_data에 외부 프로세스 관리 플래그가 있는 경우 → 에러 ──
-        if instance.ext_enabled("docker_enabled") {
-            tracing::error!(
-                "Instance '{}' has extension flags but no extension handled it. \
-                 Is the required extension enabled?",
-                server_name
-            );
-            return Ok(json!({
-                "success": false,
-                "action_required": "extension_required",
-                "instance_name": server_name,
-                "message": format!(
-                    "Instance '{}' requires an extension to start, but no extension handled the request. \
-                     Please check that the required extension is enabled.",
-                    server_name
-                )
-            }));
-        }
-
         let call = {
             let s = sup.read().await;
             // ── Non-managed 모드: get_launch_command로 명령어를 받아 데몬이 직접 spawn ──
@@ -677,23 +658,6 @@ impl Supervisor {
                     }
                 }
             }
-        }
-
-        // ── Extension이 처리하지 않았으나 extension 플래그가 있는 경우 → 에러 ──
-        if instance.ext_enabled("docker_enabled") {
-            tracing::error!(
-                "Instance '{}' has extension flags but no extension handled stop.",
-                server_name
-            );
-            return Ok(json!({
-                "success": false,
-                "action_required": "extension_required",
-                "instance_name": server_name,
-                "message": format!(
-                    "Instance '{}' requires an extension to stop, but no extension handled the request.",
-                    server_name
-                )
-            }));
         }
 
         // ── Native 모드 ──
@@ -885,16 +849,6 @@ impl Supervisor {
             }
         }
 
-        // ── Extension 플래그가 있으나 처리되지 않은 경우 → 최소 응답 ──
-        if instance.ext_enabled("docker_enabled") {
-            return Ok(json!({
-                "server": server_name,
-                "status": "stopped",
-                "online": false,
-                "message": "Required extension is not enabled"
-            }));
-        }
-
         let call = {
             let s = sup.read().await;
             // Managed 프로세스가 있으면 plugin 호출 없이 직접 판단
@@ -999,14 +953,6 @@ impl Supervisor {
             // 인스턴스 정보 얻기
             let instance = s.instance_store.get(instance_id)
                 .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
-
-            // ── Extension 관리 인스턴스에서 명령어 직접 실행은 미지원 → 에러 ──
-            if instance.ext_enabled("docker_enabled") {
-                return Err(anyhow::anyhow!(
-                    "Instance '{}' is managed by an extension. Direct command execution is not supported.",
-                    instance.name
-                ));
-            }
 
             // 모듈 찾기
             let module = s.module_loader.get_module(module_name)?;
@@ -1271,24 +1217,6 @@ impl Supervisor {
                     }
                 }
             }
-        }
-
-        // ── Extension이 처리하지 않았으나 extension 플래그가 있는 경우 → 에러 ──
-        if instance.ext_enabled("docker_enabled") {
-            tracing::error!(
-                "Managed instance '{}' has extension flags but no extension handled it.",
-                instance.name
-            );
-            return Ok(json!({
-                "success": false,
-                "action_required": "extension_required",
-                "instance_name": instance.name,
-                "message": format!(
-                    "Instance '{}' requires an extension to start, but no extension handled the request. \
-                     Please check that the required extension is enabled.",
-                    instance.name
-                )
-            }));
         }
 
         // ── 3) 실행 명령 받기: 준비는 읽기 락, 모듈 호출은 락 밖 ──

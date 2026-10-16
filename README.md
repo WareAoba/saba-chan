@@ -29,7 +29,7 @@
 └────────┬────────┘                    │
          │ IPC                  ┌──────▼──────┐
          └────────────────────► │ Extensions  │
-                                │ (Docker 등) │
+                                │(SteamCMD 등)│
                                 └─────────────┘
 ```
 
@@ -91,7 +91,6 @@
 
 | ID | 이름 | 설명 |
 |----|------|------|
-| `docker` | Docker Isolation | Docker 컨테이너로 게임 서버를 격리하여 실행. GUI 뱃지 및 통계 슬롯 포함 |
 | `steamcmd` | SteamCMD | SteamCMD 기반 서버 자동 설치 / 업데이트 |
 | `music` | Music Bot | Discord 음성 채널 음악 재생 (yt-dlp + ffmpeg) |
 | `ue4-ini` | UE4 INI Parser | Unreal Engine 4 INI OptionSettings 파싱 |

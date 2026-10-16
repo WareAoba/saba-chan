@@ -272,7 +272,7 @@ pub struct HookBinding {
     pub module: String,   // python_modules의 키
     pub function: String, // Python 함수명
     #[serde(default)]
-    pub condition: Option<String>, // "instance.ext_data.docker_enabled"
+    pub condition: Option<String>, // 예: "instance.ext_data.<flag>"
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1044,6 +1044,7 @@ impl ExtensionManager {
     }
 
     /// 활성 여부 확인
+    #[cfg(test)]
     pub fn is_enabled(&self, ext_id: &str) -> bool {
         self.enabled.contains(ext_id)
     }
@@ -1488,25 +1489,6 @@ impl HookPlan {
     /// 우선순위 순서로 부른다. `handled=true`가 나오면 나머지는 건너뛴다 (chain-of-responsibility).
     /// 실패한 익스텐션은 기록만 하고 다음으로 넘어간다.
     pub async fn run(self, timeout_secs: u64) -> Vec<(String, Result<Value>)> {
-        self.run_inner(timeout_secs, None).await
-    }
-
-    /// 진행률 콜백과 함께, 30분까지 기다린다 (SteamCMD 다운로드 등 장시간 프로비저닝)
-    pub async fn run_with_progress<F>(self, on_progress: F) -> Vec<(String, Result<Value>)>
-    where
-        F: Fn(crate::plugin::ExtensionProgress) + Send + Sync + 'static,
-    {
-        if self.calls.is_empty() {
-            tracing::warn!("Hook '{}' with progress: no enabled extension handles it", self.hook);
-        }
-        self.run_inner(1800, Some(std::sync::Arc::new(on_progress))).await
-    }
-
-    async fn run_inner(
-        self,
-        timeout_secs: u64,
-        on_progress: Option<std::sync::Arc<dyn Fn(crate::plugin::ExtensionProgress) + Send + Sync>>,
-    ) -> Vec<(String, Result<Value>)> {
         let mut results = Vec::new();
         for call in self.calls {
             let (module_path, function) = match call.target {
@@ -1517,13 +1499,7 @@ impl HookPlan {
                 }
             };
             tracing::debug!("Dispatching hook '{}' → ext '{}' → {}::{}", self.hook, call.ext_id, module_path, function);
-            let result = match &on_progress {
-                Some(progress) => {
-                    let progress = progress.clone();
-                    crate::plugin::run_plugin_with_progress_and_timeout(&module_path, &function, self.context.clone(), move |p| progress(p), timeout_secs).await
-                }
-                None => crate::plugin::run_plugin_with_timeout(&module_path, &function, self.context.clone(), timeout_secs).await,
-            };
+            let result = crate::plugin::run_plugin_with_timeout(&module_path, &function, self.context.clone(), timeout_secs).await;
             match result {
                 Ok(val) => {
                     let handled = val.get("handled").and_then(|h| h.as_bool()) == Some(true);
@@ -1544,7 +1520,7 @@ impl HookPlan {
 }
 
 /// 매니저 락은 실행 목록을 정할 때만 잡고, Python은 락 밖에서 부른다 (C12).
-/// 오래 걸리는 hook(post_create 최대 30분) 동안에도 익스텐션 켜기·끄기와 다른 hook이 막히지 않는다.
+/// 오래 걸리는 hook 동안에도 익스텐션 켜기·끄기와 다른 hook이 막히지 않는다.
 pub async fn run_hook(mgr: &tokio::sync::RwLock<ExtensionManager>, hook_name: &str, context: Value) -> Vec<(String, Result<Value>)> {
     run_hook_timed(mgr, hook_name, context, crate::plugin::DEFAULT_PLUGIN_TIMEOUT_SECS).await
 }
@@ -1568,19 +1544,6 @@ pub async fn run_hook_to(
 ) -> Option<Result<Value>> {
     let plan = mgr.read().await.plan_hook(hook_name, context, Some(ext_id));
     plan.run(crate::plugin::DEFAULT_PLUGIN_TIMEOUT_SECS).await.into_iter().next().map(|(_, r)| r)
-}
-
-pub async fn run_hook_with_progress<F>(
-    mgr: &tokio::sync::RwLock<ExtensionManager>,
-    hook_name: &str,
-    context: Value,
-    on_progress: F,
-) -> Vec<(String, Result<Value>)>
-where
-    F: Fn(crate::plugin::ExtensionProgress) + Send + Sync + 'static,
-{
-    let plan = mgr.read().await.plan_hook(hook_name, context, None);
-    plan.run_with_progress(on_progress).await
 }
 
 #[cfg(test)]

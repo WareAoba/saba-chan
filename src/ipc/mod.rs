@@ -607,7 +607,7 @@ impl IPCServer {
             api_actions: ApiActionTracker::new(),
             provision_tracker: ProvisionTracker::new(),
             extension_manager,
-            extension_status_cache: ExtensionStatusCache::new(30), // 30초 TTL (Docker/WSL 지연 대비)
+            extension_status_cache: ExtensionStatusCache::new(30), // 30초 TTL
             extension_init_tracker: ExtensionInitTracker::new(),
             rcon_pool: Arc::new(crate::protocol::rcon_pool::RconPool::new()),
             credentials: CredentialsCache::default(),

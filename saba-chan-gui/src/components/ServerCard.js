@@ -225,7 +225,7 @@ export function ServerCard({
                     </p>
                 </div>
 
-                {/* 익스텐션 제공 헤더 게이지 (예: Docker 메모리) */}
+                {/* 익스텐션 제공 헤더 게이지  */}
                 <ExtensionSlot slotId="ServerCard.headerGauge" server={server} />
 
                 {moduleMissing ? (
@@ -302,7 +302,7 @@ export function ServerCard({
             {/* -- 프로비저닝 진행 상태 -- */}
             {server.provisioning && (
                 <>
-                    {/* 익스텐션 제공 UI (Docker 등) */}
+                    {/* 익스텐션 제공 UI  */}
                     <ExtensionSlot
                         slotId="ServerCard.provision"
                         server={server}
@@ -310,7 +310,7 @@ export function ServerCard({
                         onDismiss={handleDismissProvision}
                         t={t}
                     />
-                    {/* 네이티브 프로비저닝 UI (SteamCMD / download — 비-Docker) */}
+                    {/* 네이티브 프로비저닝 UI (SteamCMD / download) */}
                     <NativeProvision
                         server={server}
                         provisionProgress={provisionProgress}
@@ -333,7 +333,7 @@ export function ServerCard({
                 {!server.provisioning && !moduleMissing && (
                     <>
                         <div className="server-details">
-                            {/* 익스텐션 제공 확장 통계 (예: Docker CPU/메모리 게이지) */}
+                            {/* 익스텐션 제공 확장 통계  */}
                             <ExtensionSlot slotId="ServerCard.expandedStats" server={server} t={t} />
                             {/* 포트 충돌 경고 배너 */}
                             {portConflictCheck && server.port_conflicts && server.port_conflicts.length > 0 && (
