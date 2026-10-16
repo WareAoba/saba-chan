@@ -20,11 +20,12 @@
     --bg-3: #24262b;
     --bg-4: #2e3036;
     --inset: #0a0b0d;
-    --surface-gradient: linear-gradient(145deg, #1f2025 0%, #16171a 100%);
-    --surface-gradient-hover: linear-gradient(145deg, #25272c 0%, #1a1b1f 100%);
-    --panel-gradient: linear-gradient(180deg, #16171a 0%, #121315 100%);
-    --appbar-gradient: linear-gradient(180deg, #17181b 0%, #111214 100%);
-    --sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.045) 0%, rgba(255, 255, 255, 0) 60%);
+    /* 면은 단색이 기본이다. 그라데이션 변수 이름은 슬롯으로 남겨 둔다 */
+    --surface-gradient: #191a1e;
+    --surface-gradient-hover: #1f2025;
+    --panel-gradient: #141518;
+    --appbar-gradient: #111214;
+    --sheen: linear-gradient(transparent, transparent);
 
     /* 선 (A2) */
     --line: rgba(255, 255, 255, 0.07);
@@ -47,12 +48,10 @@
     --info-soft: rgba(78, 161, 255, 0.12);
 
     /* 입체 (N1·N2) */
-    --shadow-raised: -1px -1px 0 rgba(255, 255, 255, 0.03), 4px 6px 14px rgba(0, 0, 0, 0.55),
-        inset 0 1px 0 rgba(255, 255, 255, 0.05);
-    --shadow-raised-hover: -1px -1px 0 rgba(255, 255, 255, 0.04), 6px 10px 22px rgba(0, 0, 0, 0.6),
-        inset 0 1px 0 rgba(255, 255, 255, 0.07);
-    --shadow-inset: inset 2px 3px 6px rgba(0, 0, 0, 0.6), inset -1px -1px 0 rgba(255, 255, 255, 0.04);
-    --shadow-float: 0 18px 48px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+    --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --shadow-raised-hover: 0 2px 6px rgba(0, 0, 0, 0.4);
+    --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.45);
+    --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.35);
     --scrim: rgba(5, 6, 8, 0.66);
 
     --console-bg: #0a0b0d;
@@ -68,11 +67,11 @@
     --bg-3: #ffffff;
     --bg-4: #ffffff;
     --inset: #e2e5eb;
-    --surface-gradient: linear-gradient(145deg, #ffffff 0%, #f1f3f6 100%);
-    --surface-gradient-hover: linear-gradient(145deg, #ffffff 0%, #f6f7f9 100%);
-    --panel-gradient: linear-gradient(180deg, #f0f2f5 0%, #eaecf0 100%);
-    --appbar-gradient: linear-gradient(180deg, #f4f5f8 0%, #e9ebef 100%);
-    --sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0) 60%);
+    --surface-gradient: #ffffff;
+    --surface-gradient-hover: #fafbfc;
+    --panel-gradient: #f3f4f7;
+    --appbar-gradient: #eef0f3;
+    --sheen: linear-gradient(transparent, transparent);
 
     --line: rgba(20, 24, 36, 0.08);
     --line-strong: rgba(20, 24, 36, 0.16);
@@ -91,10 +90,10 @@
     --warn-soft: rgba(184, 110, 0, 0.12);
     --info-soft: rgba(31, 111, 214, 0.1);
 
-    --shadow-raised: -4px -4px 10px rgba(255, 255, 255, 0.9), 4px 5px 12px rgba(150, 158, 178, 0.35);
-    --shadow-raised-hover: -5px -5px 12px rgba(255, 255, 255, 0.95), 6px 8px 18px rgba(150, 158, 178, 0.42);
-    --shadow-inset: inset 2px 2px 5px rgba(150, 158, 178, 0.35), inset -2px -2px 5px rgba(255, 255, 255, 0.9);
-    --shadow-float: 0 18px 44px rgba(40, 48, 70, 0.18), 0 2px 8px rgba(40, 48, 70, 0.1);
+    --shadow-raised: 0 1px 2px rgba(20, 24, 36, 0.06);
+    --shadow-raised-hover: 0 2px 6px rgba(20, 24, 36, 0.09);
+    --shadow-inset: inset 0 1px 2px rgba(20, 24, 36, 0.07);
+    --shadow-float: 0 12px 32px rgba(20, 24, 36, 0.14), 0 1px 3px rgba(20, 24, 36, 0.08);
     --scrim: rgba(30, 34, 44, 0.35);
 
     --console-bg: #15161a;
@@ -111,11 +110,11 @@
         --bg-3: #ffffff;
         --bg-4: #ffffff;
         --inset: #e2e5eb;
-        --surface-gradient: linear-gradient(145deg, #ffffff 0%, #f1f3f6 100%);
-        --surface-gradient-hover: linear-gradient(145deg, #ffffff 0%, #f6f7f9 100%);
-        --panel-gradient: linear-gradient(180deg, #f0f2f5 0%, #eaecf0 100%);
-        --appbar-gradient: linear-gradient(180deg, #f4f5f8 0%, #e9ebef 100%);
-        --sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0) 60%);
+        --surface-gradient: #ffffff;
+        --surface-gradient-hover: #fafbfc;
+        --panel-gradient: #f3f4f7;
+        --appbar-gradient: #eef0f3;
+        --sheen: linear-gradient(transparent, transparent);
         --line: rgba(20, 24, 36, 0.08);
         --line-strong: rgba(20, 24, 36, 0.16);
         --text-1: #1b1d23;
@@ -130,10 +129,10 @@
         --stop-soft: rgba(217, 59, 65, 0.1);
         --warn-soft: rgba(184, 110, 0, 0.12);
         --info-soft: rgba(31, 111, 214, 0.1);
-        --shadow-raised: -4px -4px 10px rgba(255, 255, 255, 0.9), 4px 5px 12px rgba(150, 158, 178, 0.35);
-        --shadow-raised-hover: -5px -5px 12px rgba(255, 255, 255, 0.95), 6px 8px 18px rgba(150, 158, 178, 0.42);
-        --shadow-inset: inset 2px 2px 5px rgba(150, 158, 178, 0.35), inset -2px -2px 5px rgba(255, 255, 255, 0.9);
-        --shadow-float: 0 18px 44px rgba(40, 48, 70, 0.18), 0 2px 8px rgba(40, 48, 70, 0.1);
+        --shadow-raised: 0 1px 2px rgba(20, 24, 36, 0.06);
+        --shadow-raised-hover: 0 2px 6px rgba(20, 24, 36, 0.09);
+        --shadow-inset: inset 0 1px 2px rgba(20, 24, 36, 0.07);
+        --shadow-float: 0 12px 32px rgba(20, 24, 36, 0.14), 0 1px 3px rgba(20, 24, 36, 0.08);
         --scrim: rgba(30, 34, 44, 0.35);
         --console-bg: #15161a;
         --console-text: #d6d8e0;
@@ -147,7 +146,7 @@
     --brand-secondary: #906abf;
     --brand-hover: #6c7dd8;
     --brand-text: #ffffff;
-    --brand-gradient: linear-gradient(135deg, #7d8ee8 0%, #906abf 100%);
+    --brand-gradient: #7d8ee8;
     --brand-shadow: rgba(125, 142, 232, 0.3);
     --brand-shadow-light: rgba(125, 142, 232, 0.18);
     --brand-shadow-subtle: rgba(125, 142, 232, 0.08);

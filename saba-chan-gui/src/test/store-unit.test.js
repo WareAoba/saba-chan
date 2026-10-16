@@ -175,7 +175,7 @@ describe('useSettingsStore', () => {
         const state = useSettingsStore.getState();
         expect(state.accentColor).toBe('#667eea');
         expect(state.accentSecondary).toBe('#764ba2');
-        expect(state.useGradient).toBe(true);
+        expect(state.useGradient).toBe(false);
         expect(state.fontScale).toBe(100);
         expect(state.enableTransitions).toBe(true);
         expect(state.consoleSyntaxHighlight).toBe(true);
@@ -205,7 +205,7 @@ describe('useSettingsStore', () => {
         const state = useSettingsStore.getState();
         expect(state.accentColor).toBe('#ff5500');
         expect(state.fontScale).toBe(120);
-        expect(state.useGradient).toBe(true); // 변경 안 됨
+        expect(state.useGradient).toBe(false); // 변경 안 됨
     });
 
     it('load() — 테마 설정이 서버 응답에 포함되면 반영되어야 한다', async () => {
@@ -266,7 +266,7 @@ describe('useSettingsStore', () => {
         const callArgs = window.api.settingsSave.mock.calls[0][0];
         expect(callArgs.accentColor).toBe('#eb3349');
         expect(callArgs.fontScale).toBe(150);
-        expect(callArgs.useGradient).toBe(true);
+        expect(callArgs.useGradient).toBe(false);
         expect(callArgs.consoleSyntaxHighlight).toBe(true);
         expect(callArgs.consoleBgColor).toBe('#1e1e2e');
         expect(callArgs.consoleTextColor).toBe('#cdd6f4');

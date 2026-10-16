@@ -46,10 +46,7 @@
     font-size: var(--fs-lg);
     font-weight: 800;
     letter-spacing: -0.02em;
-    background: linear-gradient(180deg, var(--text-1) 30%, var(--text-2) 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    color: var(--text-1);
 }
 .appbar-tabs {
     display: flex;
@@ -496,8 +493,9 @@
     align-items: center;
     gap: var(--sp-2);
     padding: var(--sp-2) var(--sp-3);
-    border-top: 1px solid var(--line);
-    background: color-mix(in srgb, var(--console-custom-bg) 70%, var(--bg-1));
+    /* 콘솔은 테마와 상관없이 어두우므로 입력줄도 콘솔 색에서만 파생한다 */
+    border-top: 1px solid color-mix(in srgb, var(--console-custom-text) 10%, transparent);
+    background: color-mix(in srgb, var(--console-custom-bg) 85%, #000);
 }
 .term-prompt {
     color: var(--accent);
@@ -515,7 +513,7 @@
     font-size: calc(13px * var(--console-font-scale, 1));
 }
 .term-field::placeholder {
-    color: var(--text-3);
+    color: color-mix(in srgb, var(--console-custom-text) 45%, transparent);
 }
 .term-placeholder {
     align-items: center;
@@ -743,7 +741,7 @@
     background: var(--brand-gradient);
     color: var(--brand-text);
     border: none;
-    box-shadow: var(--shadow-raised), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    box-shadow: var(--shadow-raised);
 }
 .btn.btn-cancel {
     background: transparent;

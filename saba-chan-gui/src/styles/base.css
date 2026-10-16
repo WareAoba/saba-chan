@@ -107,11 +107,11 @@ button:disabled {
 .btn-primary {
     background: var(--brand-gradient);
     color: var(--brand-text);
-    box-shadow: var(--shadow-raised), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    box-shadow: var(--shadow-raised);
 }
 .btn-primary:hover:not(:disabled) {
     filter: brightness(1.08);
-    box-shadow: var(--shadow-raised-hover), 0 0 0 1px var(--brand-shadow-medium), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+    box-shadow: var(--shadow-raised-hover);
 }
 .btn-primary:active:not(:disabled) {
     transform: translateY(1px);
@@ -138,7 +138,7 @@ button:disabled {
 .btn-danger {
     background: var(--stop);
     color: #fff;
-    box-shadow: var(--shadow-raised), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    box-shadow: var(--shadow-raised);
 }
 .btn-danger:hover:not(:disabled) {
     filter: brightness(1.08);
