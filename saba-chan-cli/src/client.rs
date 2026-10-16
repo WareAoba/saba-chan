@@ -332,25 +332,6 @@ impl DaemonClient {
         self.get_json("/api/updates/config").await
     }
 
-    // ============ Installer ============
-
-    /// POST /api/install/run — 최초 설치 실행
-    pub async fn run_install(&self, components: Option<Vec<String>>) -> anyhow::Result<Value> {
-        let body = match components {
-            Some(comps) => serde_json::json!({ "components": comps }),
-            None => serde_json::json!({}),
-        };
-        self.post_json_long("/api/install/run", &body).await
-    }
-
-    /// POST /api/install/component/{key} — 특정 컴포넌트 설치
-    pub async fn install_component(&self, key: &str) -> anyhow::Result<Value> {
-        self.post_json_long(
-            &format!("/api/install/component/{}", key),
-            &serde_json::json!({}),
-        ).await
-    }
-
     // ============ Extensions ============
 
     /// GET /api/extensions — 설치된 익스텐션 목록
@@ -430,9 +411,9 @@ impl DaemonClient {
 
     // ============ Updater Extended ============
 
-    /// POST /api/updates/config — 업데이터 설정 변경
+    /// PUT /api/updates/config — 업데이터 설정 변경
     pub async fn set_update_config(&self, config: Value) -> anyhow::Result<Value> {
-        self.post_json("/api/updates/config", &config).await
+        self.put_json("/api/updates/config", &config).await
     }
 
     // ============ Instance Version & Updates ============

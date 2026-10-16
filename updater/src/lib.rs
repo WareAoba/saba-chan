@@ -295,6 +295,7 @@ pub struct SelfUpdateInfo {
 
 /// 업데이트 설정
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct UpdateConfig {
     pub enabled: bool,
     /// 확인 주기 (시간 단위, 기본값 3, 최소 1시간에서 최대 8시간)
@@ -331,6 +332,38 @@ impl Default for UpdateConfig {
             api_base_url: None,
         }
     }
+}
+
+/// zip을 `target_dir`에 푼다. 모든 압축 해제는 이 함수를 거친다.
+///
+/// 엔트리 경로는 `enclosed_name()`으로 검사해 `..`나 절대 경로로
+/// `target_dir` 밖에 쓰는 엔트리(zip-slip)를 거부한다. `before_write`는
+/// 파일을 쓰기 직전에 호출된다(실행 중 바이너리를 비켜 두는 데 쓴다).
+pub fn extract_zip(
+    staged: &Path,
+    target_dir: &Path,
+    mut before_write: impl FnMut(&Path) -> Result<()>,
+) -> Result<()> {
+    let file = std::fs::File::open(staged)?;
+    let mut archive = zip::ZipArchive::new(file)?;
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i)?;
+        let Some(rel) = entry.enclosed_name() else {
+            anyhow::bail!("Unsafe path in archive {}: {}", staged.display(), entry.name());
+        };
+        let out_path = target_dir.join(rel);
+        if entry.is_dir() {
+            std::fs::create_dir_all(&out_path)?;
+            continue;
+        }
+        if let Some(parent) = out_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        before_write(&out_path)?;
+        let mut outfile = std::fs::File::create(&out_path)?;
+        std::io::copy(&mut entry, &mut outfile)?;
+    }
+    Ok(())
 }
 
 // ══════════════════════════════════════════════════════
@@ -1921,30 +1954,13 @@ impl UpdateManager {
 
         // zip 압축 해제
         if staged.extension().map(|e| e == "zip").unwrap_or(false) {
-            let file = std::fs::File::open(staged)?;
-            let mut archive = zip::ZipArchive::new(file)?;
-
             // 기존 파일을 삭제하고 새 파일로 교체
             if target_dir.exists() {
                 // __pycache__와 같은 캐시 파일은 제외하고 삭제
                 self.clean_module_dir(&target_dir)?;
             }
 
-            for i in 0..archive.len() {
-                let mut entry = archive.by_index(i)?;
-                let name = entry.name().to_string();
-                let out_path = target_dir.join(&name);
-
-                if entry.is_dir() {
-                    std::fs::create_dir_all(&out_path)?;
-                } else {
-                    if let Some(parent) = out_path.parent() {
-                        std::fs::create_dir_all(parent)?;
-                    }
-                    let mut outfile = std::fs::File::create(&out_path)?;
-                    std::io::copy(&mut entry, &mut outfile)?;
-                }
-            }
+            extract_zip(staged, &target_dir, |_| Ok(()))?;
         } else {
             // zip이 아닌 단일 파일인 경우 직접 복사
             std::fs::copy(staged, &target_dir)?;
@@ -1975,28 +1991,11 @@ impl UpdateManager {
 
         // zip 압축 해제
         if staged.extension().map(|e| e == "zip").unwrap_or(false) {
-            let file = std::fs::File::open(staged)?;
-            let mut archive = zip::ZipArchive::new(file)?;
-
             if target_dir.exists() {
                 self.clean_module_dir(&target_dir)?;
             }
 
-            for i in 0..archive.len() {
-                let mut entry = archive.by_index(i)?;
-                let name = entry.name().to_string();
-                let out_path = target_dir.join(&name);
-
-                if entry.is_dir() {
-                    std::fs::create_dir_all(&out_path)?;
-                } else {
-                    if let Some(parent) = out_path.parent() {
-                        std::fs::create_dir_all(parent)?;
-                    }
-                    let mut outfile = std::fs::File::create(&out_path)?;
-                    std::io::copy(&mut entry, &mut outfile)?;
-                }
-            }
+            extract_zip(staged, &target_dir, |_| Ok(()))?;
         } else {
             std::fs::copy(staged, &target_dir)?;
         }
@@ -2117,36 +2116,7 @@ impl UpdateManager {
         tracing::info!("[Updater] Applying binary update: {} in {}", binary_name, exe_dir.display());
 
         if staged.extension().map(|e| e == "zip").unwrap_or(false) {
-            let file = std::fs::File::open(staged)?;
-            let mut archive = zip::ZipArchive::new(file)?;
-
-            for i in 0..archive.len() {
-                let mut entry = archive.by_index(i)?;
-                let name = entry.name().to_string();
-                let out_path = exe_dir.join(&name);
-
-                if entry.is_dir() {
-                    std::fs::create_dir_all(&out_path)?;
-                } else {
-                    if let Some(parent) = out_path.parent() {
-                        std::fs::create_dir_all(parent)?;
-                    }
-                    // Windows에서 실행 중인 .exe를 .old로 rename (재시도 포함)
-                    // Windows: 실행 중인 .exe를 .old로 rename (재시도 포함)
-                    if out_path.exists() && out_path.extension().map(|e| e == "exe").unwrap_or(false) {
-                        let backup = out_path.with_extension("exe.old");
-                        if let Err(e) = Self::rename_with_retry(&out_path, &backup, 5) {
-                            tracing::error!("[Updater] Cannot replace {}: {}", out_path.display(), e);
-                            anyhow::bail!("Cannot replace {}: {}. Is the process still running?", out_path.display(), e);
-                        }
-                    } else if cfg!(unix) && out_path.exists() && Self::is_known_binary(&out_path) {
-                        let backup = out_path.with_extension("old");
-                        let _ = std::fs::rename(&out_path, &backup);
-                    }
-                    let mut outfile = std::fs::File::create(&out_path)?;
-                    std::io::copy(&mut entry, &mut outfile)?;
-                }
-            }
+            extract_zip(staged, &exe_dir, Self::move_aside_binary)?;
         } else if Self::is_tar_gz(staged) {
             Self::extract_tar_gz(staged, &exe_dir)?;
         }
@@ -2176,34 +2146,7 @@ impl UpdateManager {
         if portable_exe.exists() {
             tracing::info!("[Updater] GUI portable exe detected at {}", portable_exe.display());
             if staged.extension().map(|e| e == "zip").unwrap_or(false) {
-                let file = std::fs::File::open(staged)?;
-                let mut archive = zip::ZipArchive::new(file)?;
-                for i in 0..archive.len() {
-                    let mut entry = archive.by_index(i)?;
-                    let name = entry.name().to_string();
-                    if name.contains("..") { continue; }
-                    let out_path = self.install_root.join(&name);
-                    if entry.is_dir() {
-                        std::fs::create_dir_all(&out_path)?;
-                    } else {
-                        if let Some(parent) = out_path.parent() {
-                            std::fs::create_dir_all(parent)?;
-                        }
-                        if out_path.exists() && out_path.extension().map(|e| e == "exe").unwrap_or(false) {
-                            let backup = out_path.with_extension("exe.old");
-                            if let Err(e) = Self::rename_with_retry(&out_path, &backup, 5) {
-                                tracing::error!("[Updater] Cannot replace GUI exe {}: {}", out_path.display(), e);
-                                anyhow::bail!("Cannot replace {}: {}. Is the GUI still running?", out_path.display(), e);
-                            }
-                        } else if cfg!(unix) && out_path.exists() && Self::is_known_binary(&out_path) {
-                            // Linux: 알려진 바이너리를 .old로 백업 후 교체
-                            let backup = out_path.with_extension("old");
-                            let _ = std::fs::rename(&out_path, &backup);
-                        }
-                        let mut outfile = std::fs::File::create(&out_path)?;
-                        std::io::copy(&mut entry, &mut outfile)?;
-                    }
-                }
+                extract_zip(staged, &self.install_root, Self::move_aside_binary)?;
             } else if Self::is_tar_gz(staged) {
                 Self::extract_tar_gz(staged, &self.install_root)?;
             }
@@ -2235,23 +2178,7 @@ impl UpdateManager {
         };
         tracing::info!("[Updater] Applying GUI update to dir: {}", extract_dir.display());
         if staged.extension().map(|e| e == "zip").unwrap_or(false) {
-            let file = std::fs::File::open(staged)?;
-            let mut archive = zip::ZipArchive::new(file)?;
-            for i in 0..archive.len() {
-                let mut entry = archive.by_index(i)?;
-                let name = entry.name().to_string();
-                if name.contains("..") { continue; }
-                let out_path = extract_dir.join(&name);
-                if entry.is_dir() {
-                    std::fs::create_dir_all(&out_path)?;
-                } else {
-                    if let Some(parent) = out_path.parent() {
-                        std::fs::create_dir_all(parent)?;
-                    }
-                    let mut outfile = std::fs::File::create(&out_path)?;
-                    std::io::copy(&mut entry, &mut outfile)?;
-                }
-            }
+            extract_zip(staged, &extract_dir, |_| Ok(()))?;
         }
         std::fs::remove_file(staged).ok();
         tracing::info!("[Updater] GUI updated successfully");
@@ -2694,29 +2621,30 @@ impl UpdateManager {
         }
     }
 
+    /// 덮어쓸 실행 파일을 `.old`로 옮긴다. Windows는 실행 중인 exe를 지울 수
+    /// 없지만 이름은 바꿀 수 있다.
+    fn move_aside_binary(out_path: &Path) -> Result<()> {
+        if !out_path.exists() {
+            return Ok(());
+        }
+        if out_path.extension().map(|e| e == "exe").unwrap_or(false) {
+            let backup = out_path.with_extension("exe.old");
+            if let Err(e) = Self::rename_with_retry(out_path, &backup, 5) {
+                tracing::error!("[Updater] Cannot replace {}: {}", out_path.display(), e);
+                anyhow::bail!("Cannot replace {}: {}. Is the process still running?", out_path.display(), e);
+            }
+        } else if cfg!(unix) && Self::is_known_binary(out_path) {
+            let _ = std::fs::rename(out_path, out_path.with_extension("old"));
+        }
+        Ok(())
+    }
+
     /// zip/tar.gz(또는 단일 파일)을 대상 디렉터리에 압축 해제
     async fn extract_to_directory(&self, staged: &Path, target_dir: &Path) -> Result<()> {
         std::fs::create_dir_all(target_dir)?;
 
         if staged.extension().map(|e| e == "zip").unwrap_or(false) {
-            let file = std::fs::File::open(staged)?;
-            let mut archive = zip::ZipArchive::new(file)?;
-
-            for i in 0..archive.len() {
-                let mut entry = archive.by_index(i)?;
-                let name = entry.name().to_string();
-                let out_path = target_dir.join(&name);
-
-                if entry.is_dir() {
-                    std::fs::create_dir_all(&out_path)?;
-                } else {
-                    if let Some(parent) = out_path.parent() {
-                        std::fs::create_dir_all(parent)?;
-                    }
-                    let mut outfile = std::fs::File::create(&out_path)?;
-                    std::io::copy(&mut entry, &mut outfile)?;
-                }
-            }
+            extract_zip(staged, target_dir, |_| Ok(()))?;
         } else if Self::is_tar_gz(staged) {
             Self::extract_tar_gz(staged, target_dir)?;
         } else {
@@ -2749,7 +2677,14 @@ impl UpdateManager {
             let entry_path = entry.path()?.into_owned();
 
             // 경로 탐색 공격 방지
-            if entry_path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+            if entry_path.components().any(|c| {
+                matches!(
+                    c,
+                    std::path::Component::ParentDir
+                        | std::path::Component::RootDir
+                        | std::path::Component::Prefix(_)
+                )
+            }) {
                 tracing::warn!("[Updater] Skipping potentially unsafe path: {}", entry_path.display());
                 continue;
             }

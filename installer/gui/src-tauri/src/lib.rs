@@ -1056,29 +1056,9 @@ fn normalize_language_tag(input: &str) -> Option<String> {
     Some(result)
 }
 
-fn extract_zip(zip_path: &PathBuf, target_dir: &PathBuf) -> anyhow::Result<()> {
-    let file = std::fs::File::open(zip_path)?;
-    let mut archive = zip::ZipArchive::new(file)?;
-
+fn extract_zip(zip_path: &Path, target_dir: &Path) -> anyhow::Result<()> {
     std::fs::create_dir_all(target_dir)?;
-
-    for i in 0..archive.len() {
-        let mut entry = archive.by_index(i)?;
-        let name = entry.name().to_string();
-        let out_path = target_dir.join(&name);
-
-        if entry.is_dir() {
-            std::fs::create_dir_all(&out_path)?;
-        } else {
-            if let Some(parent) = out_path.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            let mut out_file = std::fs::File::create(&out_path)?;
-            std::io::copy(&mut entry, &mut out_file)?;
-        }
-    }
-
-    Ok(())
+    saba_chan_updater_lib::extract_zip(zip_path, target_dir, |_| Ok(()))
 }
 
 fn extract_modules_from_zipball(
@@ -1095,7 +1075,11 @@ fn extract_modules_from_zipball(
 
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
-        let name = entry.name().to_string();
+        // zip-slip 방지: 상위 경로·절대 경로 엔트리는 거부
+        let Some(safe) = entry.enclosed_name() else {
+            anyhow::bail!("Unsafe path in archive: {}", entry.name());
+        };
+        let name = safe.to_string_lossy().replace('\\', "/");
 
         // Strip root dir prefix (e.g., "WareAoba-saba-chan-modules-abc1234/")
         let parts: Vec<&str> = name.splitn(2, '/').collect();

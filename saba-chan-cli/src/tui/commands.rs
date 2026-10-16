@@ -133,7 +133,7 @@ fn get_subcommands_for(first: &str) -> Vec<&'static str> {
         "daemon" => vec!["start", "stop", "status", "restart"],
         "bot" => vec!["start", "stop", "status", "prefix", "relay", "node-token"],
         "config" => vec!["show", "set", "get", "reset", "gui", "system-language"],
-        "update" => vec!["check", "status", "download", "apply", "config", "set", "install", "launch-apply"],
+        "update" => vec!["check", "status", "download", "apply", "config", "set", "launch-apply"],
         "migration" => vec!["scan"],
         _ => vec![],
     }
@@ -652,7 +652,7 @@ fn cmd_help(app: &App) -> Vec<Out> {
         Out::Text("  extension [list|enable|disable|install|remove|registry|rescan]".into()),
         Out::Text("  daemon    [start|stop|status|restart]".into()),
         Out::Text("  bot       [start|stop|status|prefix|relay|node-token]".into()),
-        Out::Text("  update    [check|status|download|apply|config|install|launch-apply]".into()),
+        Out::Text("  update    [check|status|download|apply|config|set|launch-apply]".into()),
         Out::Text("  config    [show|set|get|reset|gui|system-language]".into()),
         Out::Text("  migration [scan] <directory>".into()),
         Out::Text("  menu     — Interactive menu mode (F2)".into()),
@@ -1031,16 +1031,6 @@ async fn exec_update(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
             }
         }
-        Some("install") if args.len() >= 2 => {
-            match client.install_component(args[1]).await {
-                Ok(v) => vec![Out::Ok(format!("✓ {}", v.get("message").and_then(|m| m.as_str()).unwrap_or("Installed")))],
-                Err(e) => vec![Out::Err(format!("✗ {}", e))],
-            }
-        }
-        Some("install") => match client.run_install(None).await {
-            Ok(v) => vec![Out::Ok(format!("✓ {}", v.get("message").and_then(|m| m.as_str()).unwrap_or("Install initiated")))],
-            Err(e) => vec![Out::Err(format!("✗ {}", e))],
-        },
         Some("launch-apply") => {
             // updater exe 찾기
             let root = process::find_project_root().unwrap_or_else(|_| std::env::current_dir().unwrap_or_default());
@@ -1053,14 +1043,10 @@ async fn exec_update(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
             let updater_exe = candidates.iter().find(|p| p.exists());
             match updater_exe {
                 Some(exe) => {
-                    let install_root = root.to_string_lossy().to_string();
-                    let mut cmd_args = vec!["--apply".to_string(), "--install-root".to_string(), install_root];
-                    // targets 추가
-                    if args.len() > 1 {
-                        cmd_args.extend(args[1..].iter().map(|s| s.to_string()));
-                    }
+                    // 업데이터는 설치 경로를 자기 exe 위치에서, 적용 대상은
+                    // apply-targets.json에서 읽으므로 --apply만 넘긴다.
                     match std::process::Command::new(exe)
-                        .args(&cmd_args)
+                        .arg("--apply")
                         .stdin(std::process::Stdio::null())
                         .stdout(std::process::Stdio::null())
                         .stderr(std::process::Stdio::null())

@@ -850,3 +850,49 @@ mod run_all {
         println!("═══════════════════════════════════════\n");
     }
 }
+
+#[test]
+fn test_extract_zip_rejects_paths_outside_target() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let zip_path = tmp.path().join("evil.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+        let opts = zip::write::FileOptions::default();
+        zw.start_file("ok/inner.txt", opts).unwrap();
+        zw.write_all(b"fine").unwrap();
+        zw.start_file("../escaped.txt", opts).unwrap();
+        zw.write_all(b"bad").unwrap();
+        zw.finish().unwrap();
+    }
+    let target = tmp.path().join("out");
+    std::fs::create_dir_all(&target).unwrap();
+
+    let result = crate::extract_zip(&zip_path, &target, |_| Ok(()));
+    assert!(result.is_err(), "archive with ../ entry must be rejected");
+    assert!(!tmp.path().join("escaped.txt").exists());
+}
+
+#[test]
+fn test_extract_zip_writes_nested_files() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let zip_path = tmp.path().join("ok.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+        let opts = zip::write::FileOptions::default();
+        zw.add_directory("a/", opts).unwrap();
+        zw.start_file("a/b/c.txt", opts).unwrap();
+        zw.write_all(b"hello").unwrap();
+        zw.finish().unwrap();
+    }
+    let target = tmp.path().join("out");
+    let mut seen = Vec::new();
+    crate::extract_zip(&zip_path, &target, |p| {
+        seen.push(p.to_path_buf());
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(std::fs::read_to_string(target.join("a/b/c.txt")).unwrap(), "hello");
+    assert_eq!(seen, vec![target.join("a/b/c.txt")]);
+}

@@ -2725,7 +2725,7 @@ ipcMain.handle('updater:getConfig', async () => {
 // 업데이트 설정 변경 — 데몬 API + 백그라운드 체커 연동
 ipcMain.handle('updater:setConfig', async (_event, config) => {
     try {
-        const response = await axios.post(`${IPC_BASE}/api/updates/config`, config, { timeout: 5000 });
+        const response = await axios.put(`${IPC_BASE}/api/updates/config`, config, { timeout: 5000 });
         // enabled 플래그가 변경된 경우 백그라운드 체커 시작/중지
         if (config && typeof config.enabled === 'boolean') {
             if (config.enabled) {

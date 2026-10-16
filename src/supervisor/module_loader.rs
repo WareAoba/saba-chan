@@ -817,15 +817,19 @@ impl ModuleLoader {
         let file = fs::File::open(zip_path)?;
         let mut archive = ZipArchive::new(file)?;
 
-        // ZIP 내부에서 module.toml 찾기
+        // ZIP 내부에서 가장 얕은 위치의 module.toml을 고른다
+        // (`ends_with`로 고르면 `foo_module.toml`이나 하위 폴더 것이 먼저 잡힌다)
+        let toml_index = (0..archive.len())
+            .filter_map(|i| {
+                let name = archive.by_index(i).ok()?.name().to_string();
+                let depth = name.trim_end_matches('/').matches('/').count();
+                (name.rsplit('/').next() == Some("module.toml")).then_some((depth, i))
+            })
+            .min()
+            .map(|(_, i)| i);
         let mut toml_content = String::new();
-        for i in 0..archive.len() {
-            let mut file = archive.by_index(i)?;
-            let name = file.name().to_string();
-            if name.ends_with("module.toml") {
-                file.read_to_string(&mut toml_content)?;
-                break;
-            }
+        if let Some(i) = toml_index {
+            archive.by_index(i)?.read_to_string(&mut toml_content)?;
         }
 
         if toml_content.is_empty() {

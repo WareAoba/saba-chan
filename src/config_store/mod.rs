@@ -246,11 +246,25 @@ fn load_from_file<T: for<'de> Deserialize<'de> + Default>(path: &Path) -> T {
 
 /// 타입 T를 파일에 저장 (pretty print).
 fn save_to_file<T: Serialize>(path: &Path, value: &T) -> Result<(), ConfigStoreError> {
+    write_json_atomic(path, value)
+}
+
+/// JSON을 임시 파일에 쓰고 rename으로 교체한다. 쓰는 도중 꺼져도 기존 파일이 남는다.
+pub(crate) fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<(), ConfigStoreError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let json_str = serde_json::to_string_pretty(value)?;
-    std::fs::write(path, json_str)?;
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = std::path::PathBuf::from(tmp);
+    {
+        use std::io::Write;
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(json_str.as_bytes())?;
+        f.sync_all()?;
+    }
+    std::fs::rename(&tmp, path)?;
     Ok(())
 }
 
