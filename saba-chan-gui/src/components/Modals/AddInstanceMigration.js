@@ -70,23 +70,16 @@ export function AddInstanceMigration({ extensions, servers, onAddServer, onStepC
                     }),
                 });
 
-                let matched = null;
-                if (window.api?.moduleDetect) {
-                    // 데몬이 module.toml [detection].dir_signatures 로 판정한다 (POST /api/modules/detect)
-                    const det = await window.api.moduleDetect(path);
-                    const names = (det?.matches || []).map((m) => m.name);
-                    const ext = names.map((n) => extensions.find((e) => e.name === n)).find(Boolean);
-                    if (ext) matched = withName(ext);
-                } else {
-                    // 예전 데몬: 화면 쪽에서 같은 규칙으로 맞춰 본다
-                    const fileLower = (result.files || []).map((f) => f.toLowerCase());
-                    const ext = extensions.find(
-                        (e) =>
-                            e.dir_signatures?.length &&
-                            e.dir_signatures.every((sig) => fileLower.includes(sig.toLowerCase())),
-                    );
-                    if (ext) matched = withName(ext);
+                // 데몬이 module.toml [detection].dir_signatures 로 판정한다 (POST /api/modules/detect)
+                const det = await window.api.moduleDetect(path);
+                if (det?.error) {
+                    setScanError(det.error);
+                    setScanning(false);
+                    return;
                 }
+                const names = (det?.matches || []).map((m) => m.name);
+                const ext = names.map((n) => extensions.find((e) => e.name === n)).find(Boolean);
+                const matched = ext ? withName(ext) : null;
 
                 if (matched) {
                     setDetectedModule(matched);

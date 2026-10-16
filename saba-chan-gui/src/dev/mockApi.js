@@ -108,6 +108,7 @@ const settings = {};
 const impl = {
     serverList: () => ok({ servers: servers.map((s) => ({ ...s })) }),
     moduleList: () => ok({ modules, failed: mockFailed }),
+    moduleDetect: () => ok({ matches: [{ name: 'minecraft', display_name: 'Minecraft: Java Edition' }] }),
     settingsLoad: () => ok(settings),
     settingsSave: (s) => {
         Object.assign(settings, s);
