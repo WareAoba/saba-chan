@@ -21,6 +21,14 @@ import { useModalClose } from './useModalClose';
  * @param {Function} params.fetchServers - Server list refresh function
  * @returns {Object} Settings modal state and handlers
  */
+
+/** 크래시 자동 재시작 설정 (module_settings 에 저장, 기본값은 데몬과 같다: 켜짐 / 원인 모를 종료는 꺼짐) */
+const asFlag = (v, dflt) => (v === true || v === 'true' ? true : v === false || v === 'false' ? false : dflt);
+const restartFlagsOf = (server) => ({
+    auto_restart: asFlag(server?.module_settings?.auto_restart, true),
+    restart_on_unknown_exit: asFlag(server?.module_settings?.restart_on_unknown_exit, false),
+});
+
 export function useServerSettings({
     servers,
     modules,
@@ -119,12 +127,12 @@ export function useServerSettings({
             }
 
             // server_version initialization — read from saved module_settings
-            const savedVersion =
-                latestServer.module_settings?.server_version || latestServer.server_version;
+            const savedVersion = latestServer.module_settings?.server_version || latestServer.server_version;
             if (savedVersion) {
                 initial.server_version = String(savedVersion);
             }
 
+            Object.assign(initial, restartFlagsOf(latestServer));
             setSettingsValues(initial);
         } else {
             const protocols = module?.protocols || {};
@@ -141,6 +149,7 @@ export function useServerSettings({
                           _extension_data: { ...latestServer.extension_data },
                       }
                     : {}),
+                ...restartFlagsOf(latestServer),
             });
         }
 
@@ -209,8 +218,7 @@ export function useServerSettings({
             }
 
             // Detect installed version from server binary if not already saved
-            const hasSavedVersion =
-                latestServer.module_settings?.server_version || latestServer.server_version;
+            const hasSavedVersion = latestServer.module_settings?.server_version || latestServer.server_version;
             if (!hasSavedVersion && latestServer.id) {
                 try {
                     const detected = await window.api.instanceGetInstalledVersion(latestServer.id);
@@ -264,10 +272,7 @@ export function useServerSettings({
                         setProgressBar({ message: t('servers.progress_downloading', { version }), percent: 0 });
                         try {
                             const srv = servers.find((s) => s.id === settingsServer.id);
-                            const workDir =
-                                srv?.module_settings?.working_dir ||
-                                srv?.working_dir ||
-                                null;
+                            const workDir = srv?.module_settings?.working_dir || srv?.working_dir || null;
 
                             let targetDir;
                             if (!workDir) {
@@ -306,14 +311,19 @@ export function useServerSettings({
 
                             if (installResult.error || installResult.success === false) {
                                 setProgressBar(null);
-                                safeShowToast(translateError(installResult.error || installResult.message), 'error', 4000);
+                                safeShowToast(
+                                    translateError(installResult.error || installResult.message),
+                                    'error',
+                                    4000,
+                                );
                                 setVersionInstalling(false);
                                 return;
                             }
 
                             if (installResult.jar_path) {
                                 // working_dir 설정 — 실행 파일 경로는 모듈에서 자동 해석됨
-                                const installDir = installResult.install_path || installResult.jar_path.replace(/[/\\][^/\\]+$/, '');
+                                const installDir =
+                                    installResult.install_path || installResult.jar_path.replace(/[/\\][^/\\]+$/, '');
                                 await window.api.instanceUpdateSettings(settingsServer.id, {
                                     working_dir: installDir,
                                     server_version: version,
@@ -452,6 +462,11 @@ export function useServerSettings({
 
             if (settingsValues.server_version) {
                 convertedSettings.server_version = settingsValues.server_version;
+            }
+
+            // 크래시 자동 재시작 (데몬이 module_settings 에서 읽는다)
+            for (const key of ['auto_restart', 'restart_on_unknown_exit']) {
+                if (typeof settingsValues[key] === 'boolean') convertedSettings[key] = settingsValues[key];
             }
 
             const protocols = module?.protocols || {};

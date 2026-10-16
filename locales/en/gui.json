@@ -837,6 +837,19 @@
     "risk_caution": "Caution",
     "risk_danger": "Danger",
     "risk_confirm": "'{{command}}' is hard to undo. Run it anyway?",
-    "risk_run": "Run"
+    "risk_run": "Run",
+    "restart_title": "Auto restart",
+    "restart_desc": "Saba-chan starts the server again if it goes down abnormally. Stopping it yourself or from inside the game never triggers a restart.",
+    "restart_on_crash": "Restart after a crash",
+    "restart_on_crash_hint": "When the exit was clearly an error",
+    "restart_on_unknown": "Also restart on unknown exits",
+    "restart_on_unknown_hint": "Includes cases like a Task Manager kill that can't be classified",
+    "exit_title": "Recent exits",
+    "exit_empty": "Nothing recorded yet",
+    "exit_user_stop": "Stopped by you",
+    "exit_in_game_stop": "Stopped in game",
+    "exit_crash": "Crash",
+    "exit_unknown_exit": "Unknown",
+    "exit_restart_in": "Restarting in {{secs}}s"
   }
 }

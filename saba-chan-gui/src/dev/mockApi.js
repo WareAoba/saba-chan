@@ -108,6 +108,21 @@ const settings = {};
 const impl = {
     serverList: () => ok({ servers: servers.map((s) => ({ ...s })) }),
     moduleList: () => ok({ modules, failed: mockFailed }),
+    instanceEvents: () =>
+        ok({
+            events: [
+                { at: now() - 7200, kind: 'user_stop', exit_code: 0 },
+                {
+                    at: now() - 3600,
+                    kind: 'crash',
+                    exit_code: -1073741819,
+                    evidence: 'hs_err_pid4120.log',
+                    restart_in_secs: 10,
+                    note: 'restarting',
+                },
+                { at: now() - 600, kind: 'unknown_exit', exit_code: 1, note: 'restart_on_unknown_exit is off' },
+            ],
+        }),
     moduleDetect: () => ok({ matches: [{ name: 'minecraft', display_name: 'Minecraft: Java Edition' }] }),
     settingsLoad: () => ok(settings),
     settingsSave: (s) => {

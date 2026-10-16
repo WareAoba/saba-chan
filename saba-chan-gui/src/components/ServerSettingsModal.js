@@ -189,6 +189,37 @@ function GeneralTab({
                 </div>
             )}
 
+            {/* 크래시 자동 재시작 (데몬 A1: instance module_settings 의 auto_restart / restart_on_unknown_exit) */}
+            <div className="protocol-mode-section restart-section">
+                <div className="protocol-mode-header">
+                    <span className="protocol-mode-title">
+                        <Icon name="refresh" size="sm" /> {t('shell.restart_title')}
+                    </span>
+                </div>
+                <p className="protocol-mode-description">{t('shell.restart_desc')}</p>
+                <div className="restart-row">
+                    <span>
+                        <strong>{t('shell.restart_on_crash')}</strong>
+                        <small>{t('shell.restart_on_crash_hint')}</small>
+                    </span>
+                    <SabaToggle
+                        checked={settingsValues.auto_restart !== false}
+                        onChange={(checked) => handleSettingChange('auto_restart', checked)}
+                    />
+                </div>
+                <div className={clsx('restart-row', { disabled: settingsValues.auto_restart === false })}>
+                    <span>
+                        <strong>{t('shell.restart_on_unknown')}</strong>
+                        <small>{t('shell.restart_on_unknown_hint')}</small>
+                    </span>
+                    <SabaToggle
+                        checked={settingsValues.restart_on_unknown_exit === true}
+                        disabled={settingsValues.auto_restart === false}
+                        onChange={(checked) => handleSettingChange('restart_on_unknown_exit', checked)}
+                    />
+                </div>
+            </div>
+
             {/* Module settings fields grouped */}
             {hasModuleSettings ? (
                 (() => {
@@ -225,63 +256,65 @@ function GeneralTab({
                                     </h4>
                                     {/* Server version selector — only for download-based modules (not SteamCMD) */}
                                     {module?.install?.method === 'download' && (
-                                    <div className="settings-field">
-                                        <label>
-                                            {t('server_settings.server_version', { defaultValue: 'Server Version' })}
-                                        </label>
-                                        {versionsLoading ? (
-                                            <div className="version-loading">
-                                                <Icon name="loader" size="sm" />{' '}
-                                                {t('server_settings.loading_versions', {
-                                                    defaultValue: 'Loading versions...',
+                                        <div className="settings-field">
+                                            <label>
+                                                {t('server_settings.server_version', {
+                                                    defaultValue: 'Server Version',
                                                 })}
-                                            </div>
-                                        ) : (
-                                            <div className="version-select-row">
-                                                <CustomDropdown
-                                                    value={settingsValues.server_version || ''}
-                                                    onChange={(val) => handleSettingChange('server_version', val)}
-                                                    placeholder={t('server_settings.select_version', {
-                                                        defaultValue: 'Select version',
+                                            </label>
+                                            {versionsLoading ? (
+                                                <div className="version-loading">
+                                                    <Icon name="loader" size="sm" />{' '}
+                                                    {t('server_settings.loading_versions', {
+                                                        defaultValue: 'Loading versions...',
                                                     })}
-                                                    options={availableVersions.map((v) => ({
-                                                        value: v.id || v.version || v,
-                                                        label: `${v.id || v.version || v}${v.type ? ` (${v.type})` : ''}`,
-                                                    }))}
-                                                />
-                                                <button
-                                                    className="btn btn-sm btn-primary version-install-btn"
-                                                    onClick={handleInstallVersion}
-                                                    disabled={!settingsValues.server_version || versionInstalling}
-                                                    title={t('server_settings.install_version_tooltip', {
-                                                        defaultValue: 'Download and install this version',
-                                                    })}
-                                                >
-                                                    {versionInstalling ? (
-                                                        <>
-                                                            <Icon name="loader" size="sm" />{' '}
-                                                            {t('server_settings.installing', {
-                                                                defaultValue: 'Installing...',
-                                                            })}
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <Icon name="download" size="sm" />{' '}
-                                                            {t('server_settings.install_version_button', {
-                                                                defaultValue: 'Install',
-                                                            })}
-                                                        </>
-                                                    )}
-                                                </button>
-                                            </div>
-                                        )}
-                                        <small className="field-description">
-                                            {t('server_settings.version_description_install', {
-                                                defaultValue:
-                                                    'Select a version and click Install to download the server JAR.',
-                                            })}
-                                        </small>
-                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="version-select-row">
+                                                    <CustomDropdown
+                                                        value={settingsValues.server_version || ''}
+                                                        onChange={(val) => handleSettingChange('server_version', val)}
+                                                        placeholder={t('server_settings.select_version', {
+                                                            defaultValue: 'Select version',
+                                                        })}
+                                                        options={availableVersions.map((v) => ({
+                                                            value: v.id || v.version || v,
+                                                            label: `${v.id || v.version || v}${v.type ? ` (${v.type})` : ''}`,
+                                                        }))}
+                                                    />
+                                                    <button
+                                                        className="btn btn-sm btn-primary version-install-btn"
+                                                        onClick={handleInstallVersion}
+                                                        disabled={!settingsValues.server_version || versionInstalling}
+                                                        title={t('server_settings.install_version_tooltip', {
+                                                            defaultValue: 'Download and install this version',
+                                                        })}
+                                                    >
+                                                        {versionInstalling ? (
+                                                            <>
+                                                                <Icon name="loader" size="sm" />{' '}
+                                                                {t('server_settings.installing', {
+                                                                    defaultValue: 'Installing...',
+                                                                })}
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Icon name="download" size="sm" />{' '}
+                                                                {t('server_settings.install_version_button', {
+                                                                    defaultValue: 'Install',
+                                                                })}
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            )}
+                                            <small className="field-description">
+                                                {t('server_settings.version_description_install', {
+                                                    defaultValue:
+                                                        'Select a version and click Install to download the server JAR.',
+                                                })}
+                                            </small>
+                                        </div>
                                     )}
                                     {sabaFields.map((f) => (
                                         <SettingsField
@@ -652,86 +685,86 @@ export function ServerSettingsModal({
 
     const content = (
         <>
-                {!embedded && (
-                    <div className="modal-header">
-                        <h3 style={{ fontSize: '1.3rem' }}>
-                            {settingsServer.name} - {t('server_settings.title')}
-                        </h3>
-                    </div>
-                )}
-
-                {/* Tab header */}
-                <div className="settings-tabs" ref={tabsRef}>
-                    <div className="settings-tab-indicator" ref={indicatorRef} />
-                    <button
-                        className={clsx('settings-tab', { active: settingsActiveTab === 'general' })}
-                        onClick={() => setSettingsActiveTab('general')}
-                    >
-                        <Icon name="gamepad" size="sm" /> {t('server_settings.general_tab')}
-                    </button>
-                    <button
-                        className={clsx('settings-tab', { active: settingsActiveTab === 'aliases' })}
-                        onClick={() => setSettingsActiveTab('aliases')}
-                    >
-                        <Icon name="discord" size="sm" /> {t('server_settings.aliases_tab')}
-                    </button>
+            {!embedded && (
+                <div className="modal-header">
+                    <h3 style={{ fontSize: '1.3rem' }}>
+                        {settingsServer.name} - {t('server_settings.title')}
+                    </h3>
                 </div>
+            )}
 
-                <div className="modal-body">
-                    {settingsActiveTab === 'general' && (
-                        <GeneralTab
-                            settingsServer={settingsServer}
-                            settingsValues={settingsValues}
-                            modules={modules}
-                            advancedExpanded={advancedExpanded}
-                            setAdvancedExpanded={setAdvancedExpanded}
-                            versionsLoading={versionsLoading}
-                            availableVersions={availableVersions}
-                            versionInstalling={versionInstalling}
-                            handleSettingChange={handleSettingChange}
-                            handleInstallVersion={handleInstallVersion}
-                            handleResetServer={handleResetServer}
-                            resettingServer={resettingServer}
-                            validationErrors={validationErrors}
-                            portConflicts={portConflicts}
-                        />
-                    )}
-                    {settingsActiveTab === 'aliases' && (
-                        <AliasesTab
-                            settingsServer={settingsServer}
-                            editingModuleAliases={editingModuleAliases}
-                            setEditingModuleAliases={setEditingModuleAliases}
-                            editingCommandAliases={editingCommandAliases}
-                            setEditingCommandAliases={setEditingCommandAliases}
-                            handleSaveAliasesForModule={handleSaveAliasesForModule}
-                            handleResetAliasesForModule={handleResetAliasesForModule}
-                            aliasConflicts={aliasConflicts}
-                            servers={servers}
-                        />
-                    )}
-                    <ExtensionSlot
-                        slotId="ServerSettings.tab"
-                        server={settingsServer}
-                        activeTab={settingsActiveTab}
-                        setActiveTab={setSettingsActiveTab}
-                        settings={settingsValues}
-                        onSettingsChange={handleSettingChange}
-                        t={t}
+            {/* Tab header */}
+            <div className="settings-tabs" ref={tabsRef}>
+                <div className="settings-tab-indicator" ref={indicatorRef} />
+                <button
+                    className={clsx('settings-tab', { active: settingsActiveTab === 'general' })}
+                    onClick={() => setSettingsActiveTab('general')}
+                >
+                    <Icon name="gamepad" size="sm" /> {t('server_settings.general_tab')}
+                </button>
+                <button
+                    className={clsx('settings-tab', { active: settingsActiveTab === 'aliases' })}
+                    onClick={() => setSettingsActiveTab('aliases')}
+                >
+                    <Icon name="discord" size="sm" /> {t('server_settings.aliases_tab')}
+                </button>
+            </div>
+
+            <div className="modal-body">
+                {settingsActiveTab === 'general' && (
+                    <GeneralTab
+                        settingsServer={settingsServer}
+                        settingsValues={settingsValues}
+                        modules={modules}
+                        advancedExpanded={advancedExpanded}
+                        setAdvancedExpanded={setAdvancedExpanded}
+                        versionsLoading={versionsLoading}
+                        availableVersions={availableVersions}
+                        versionInstalling={versionInstalling}
+                        handleSettingChange={handleSettingChange}
+                        handleInstallVersion={handleInstallVersion}
+                        handleResetServer={handleResetServer}
+                        resettingServer={resettingServer}
+                        validationErrors={validationErrors}
+                        portConflicts={portConflicts}
                     />
-                </div>
+                )}
+                {settingsActiveTab === 'aliases' && (
+                    <AliasesTab
+                        settingsServer={settingsServer}
+                        editingModuleAliases={editingModuleAliases}
+                        setEditingModuleAliases={setEditingModuleAliases}
+                        editingCommandAliases={editingCommandAliases}
+                        setEditingCommandAliases={setEditingCommandAliases}
+                        handleSaveAliasesForModule={handleSaveAliasesForModule}
+                        handleResetAliasesForModule={handleResetAliasesForModule}
+                        aliasConflicts={aliasConflicts}
+                        servers={servers}
+                    />
+                )}
+                <ExtensionSlot
+                    slotId="ServerSettings.tab"
+                    server={settingsServer}
+                    activeTab={settingsActiveTab}
+                    setActiveTab={setSettingsActiveTab}
+                    settings={settingsValues}
+                    onSettingsChange={handleSettingChange}
+                    t={t}
+                />
+            </div>
 
-                <div className="modal-footer">
-                    {settingsActiveTab !== 'aliases' && (
-                        <button className="btn btn-confirm" onClick={handleSaveSettings}>
-                            <Icon name="save" size="sm" /> {t('server_settings.save_settings')}
-                        </button>
-                    )}
-                    {!embedded && (
-                        <button className="btn btn-cancel" onClick={onClose}>
-                            <Icon name="close" size="sm" /> {t('server_settings.close')}
-                        </button>
-                    )}
-                </div>
+            <div className="modal-footer">
+                {settingsActiveTab !== 'aliases' && (
+                    <button className="btn btn-confirm" onClick={handleSaveSettings}>
+                        <Icon name="save" size="sm" /> {t('server_settings.save_settings')}
+                    </button>
+                )}
+                {!embedded && (
+                    <button className="btn btn-cancel" onClick={onClose}>
+                        <Icon name="close" size="sm" /> {t('server_settings.close')}
+                    </button>
+                )}
+            </div>
         </>
     );
 

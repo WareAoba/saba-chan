@@ -837,6 +837,19 @@
     "risk_caution": "주의",
     "risk_danger": "위험",
     "risk_confirm": "'{{command}}'은(는) 되돌리기 어려운 명령이에요. 정말 실행할까요?",
-    "risk_run": "실행"
+    "risk_run": "실행",
+    "restart_title": "자동 재시작",
+    "restart_desc": "서버가 비정상으로 꺼지면 사바쨩이 다시 켜요. 직접 끄거나 게임 안에서 끈 건 다시 켜지 않아요.",
+    "restart_on_crash": "크래시 나면 다시 켜기",
+    "restart_on_crash_hint": "오류로 꺼진 게 확실할 때",
+    "restart_on_unknown": "이유를 모를 때도 다시 켜기",
+    "restart_on_unknown_hint": "작업 관리자로 끈 것처럼 판단이 안 될 때도 포함",
+    "exit_title": "최근 종료 기록",
+    "exit_empty": "아직 기록이 없어요",
+    "exit_user_stop": "직접 끔",
+    "exit_in_game_stop": "게임 안에서 끔",
+    "exit_crash": "크래시",
+    "exit_unknown_exit": "이유 모름",
+    "exit_restart_in": "{{secs}}초 뒤 다시 켬"
   }
 }

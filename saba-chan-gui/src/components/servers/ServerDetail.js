@@ -12,6 +12,7 @@ import CommandModal from '../Modals/CommandModal';
 import { NativeProvision } from '../NativeProvision';
 import { ServerSettingsModal } from '../ServerSettingsModal';
 import { Segmented, StatusChip } from '../ui/StatusChip';
+import { ExitHistory } from './ExitHistory';
 import { ServerConsole } from './ServerConsole';
 
 /**
@@ -339,6 +340,7 @@ function InfoTab({ server, moduleData, gameName, uptime, onDelete }) {
                     </div>
                 ))}
             </dl>
+            <ExitHistory server={server} />
             <ExtensionSlot slotId="ServerCard.expandedStats" server={server} t={t} />
             <ExtensionSlot slotId="ServerDetail.section" server={server} t={t} />
             <div className="info-actions">
