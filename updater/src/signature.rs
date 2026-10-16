@@ -97,18 +97,35 @@ pub fn verify_with(signed: &SignedManifest, keys: &[(&str, &str)]) -> Result<(),
 
 /// manifest에 서명한다. 릴리즈 빌더(`examples/release_signing.rs`)와 테스트가 쓴다.
 ///
-/// `pkcs8_b64`는 `generate_key_pair()`가 만든 base64 PKCS#8 개인키다.
-pub fn sign(manifest: Value, key_id: &str, pkcs8_b64: &str) -> Result<SignedManifest, SignatureError> {
-    let pkcs8 = BASE64
-        .decode(pkcs8_b64.trim())
-        .map_err(|_| SignatureError::BadKey("not base64".into()))?;
-    let pair = Ed25519KeyPair::from_pkcs8(&pkcs8).map_err(|e| SignatureError::BadKey(e.to_string()))?;
+/// `private_key`는 64자리 hex Ed25519 seed(기존 `updater-v1.sk.hex` 형식) 또는
+/// `generate_key_pair()`가 만든 base64 PKCS#8 개인키다.
+pub fn sign(manifest: Value, key_id: &str, private_key: &str) -> Result<SignedManifest, SignatureError> {
+    let pair = load_key_pair(private_key)?;
     let sig = pair.sign(&canonical_json(&manifest));
     Ok(SignedManifest {
         manifest,
         signature: BASE64.encode(sig.as_ref()),
         key_id: key_id.to_string(),
     })
+}
+
+fn load_key_pair(private_key: &str) -> Result<Ed25519KeyPair, SignatureError> {
+    let key = private_key.trim();
+    if key.len() == 64 && key.chars().all(|c| c.is_ascii_hexdigit()) {
+        let seed: Vec<u8> = (0..32)
+            .map(|i| u8::from_str_radix(&key[i * 2..i * 2 + 2], 16).expect("checked hex"))
+            .collect();
+        return Ed25519KeyPair::from_seed_unchecked(&seed).map_err(|e| SignatureError::BadKey(e.to_string()));
+    }
+    let pkcs8 = BASE64
+        .decode(key)
+        .map_err(|_| SignatureError::BadKey("neither 64-hex seed nor base64 PKCS#8".into()))?;
+    Ed25519KeyPair::from_pkcs8(&pkcs8).map_err(|e| SignatureError::BadKey(e.to_string()))
+}
+
+/// 개인키(hex seed 또는 PKCS#8)에서 base64 공개키를 구한다. `TRUSTED_KEYS` 대조용.
+pub fn public_key_of(private_key: &str) -> Result<String, SignatureError> {
+    Ok(BASE64.encode(load_key_pair(private_key)?.public_key().as_ref()))
 }
 
 /// 새 키쌍을 만든다. 반환값은 (base64 PKCS#8 개인키, base64 공개키).
@@ -170,6 +187,22 @@ mod tests {
         let reparsed: SignedManifest =
             serde_json::from_str(&serde_json::to_string(&signed).unwrap()).unwrap();
         assert_eq!(verify_with(&reparsed, &[("k1", &public)]), Ok(()));
+    }
+
+    #[test]
+    fn hex_seed_keys_sign_and_verify() {
+        let seed = "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60";
+        // RFC 8032 테스트 벡터 1의 공개키
+        let public = public_key_of(seed).unwrap();
+        assert_eq!(
+            BASE64.decode(&public).unwrap(),
+            [
+                0xd7, 0x5a, 0x98, 0x01, 0x82, 0xb1, 0x0a, 0xb7, 0xd5, 0x4b, 0xfe, 0xd3, 0xc9, 0x64, 0x07, 0x3a,
+                0x0e, 0xe1, 0x72, 0xf3, 0xda, 0xa6, 0x23, 0x25, 0xaf, 0x02, 0x1a, 0x68, 0xf7, 0x07, 0x51, 0x1a
+            ]
+        );
+        let signed = sign(json!({ "version": "0.1.1" }), "k1", seed).unwrap();
+        assert_eq!(verify_with(&signed, &[("k1", &public)]), Ok(()));
     }
 
     #[test]

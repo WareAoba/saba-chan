@@ -2,7 +2,8 @@
 //!
 //! ```text
 //! cargo run -p saba-chan-updater-lib --example release_signing -- gen-key
-//! UPDATER_SIGNING_KEY=<base64 pkcs8> cargo run -p saba-chan-updater-lib \
+//! cargo run -p saba-chan-updater-lib --example release_signing -- pubkey   # UPDATER_SIGNING_KEY의 공개키
+//! UPDATER_SIGNING_KEY=<64자리 hex seed | base64 pkcs8> cargo run -p saba-chan-updater-lib \
 //!     --example release_signing -- sign manifest.json [key-id] > signed.json
 //! ```
 //!
@@ -19,6 +20,10 @@ fn main() {
             println!("private (UPDATER_SIGNING_KEY): {}", private);
             println!("public  (TRUSTED_KEYS):        {}", public);
         }
+        Some("pubkey") => {
+            let key = std::env::var("UPDATER_SIGNING_KEY").expect("UPDATER_SIGNING_KEY is not set");
+            println!("{}", signature::public_key_of(&key).expect("bad key"));
+        }
         Some("sign") if args.len() >= 2 => {
             let key = std::env::var("UPDATER_SIGNING_KEY").expect("UPDATER_SIGNING_KEY is not set");
             let key_id = args.get(2).map(String::as_str).unwrap_or(signature::TRUSTED_KEYS[0].0);
@@ -29,7 +34,7 @@ fn main() {
             println!("{}", serde_json::to_string_pretty(&signed).unwrap());
         }
         _ => {
-            eprintln!("usage: release_signing gen-key | sign <manifest.json> [key-id]");
+            eprintln!("usage: release_signing gen-key | pubkey | sign <manifest.json> [key-id]");
             std::process::exit(2);
         }
     }
