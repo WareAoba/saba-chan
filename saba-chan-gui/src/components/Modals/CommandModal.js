@@ -76,42 +76,10 @@ function CommandModal({ server, modules, onClose, onExecute }) {
             return;
         }
 
-        // 입력 텍스트를 명령어 이름과 인라인 인자로 분리
-        // 예: "announce hello world" → cmdName="announce", inlineParts=["hello", "world"]
-        const [cmdName, ...inlineParts] = cmdText.split(/\s+/);
-        const inlineText = inlineParts.join(' ');
-
-        // 대소문자 무시하여 모듈 정의 명령어 검색
-        const selectedCommand = commands.find(
-            (c) => c.name.toLowerCase() === cmdName.toLowerCase()
-        );
-
-        // 인라인 인자를 명령어 입력 스키마에 따라 args 객체로 변환
-        const args = {};
-        if (selectedCommand?.inputs?.length > 0 && inlineText) {
-            const parts = inlineText.split(/\s+/);
-            for (let i = 0; i < selectedCommand.inputs.length; i++) {
-                if (parts.length === 0) break;
-                if (i < selectedCommand.inputs.length - 1) {
-                    // 마지막이 아닌 입력: 단어 하나만 할당
-                    args[selectedCommand.inputs[i].name] = parts.shift();
-                } else {
-                    // 마지막 입력: 나머지 텍스트 전체 할당
-                    args[selectedCommand.inputs[i].name] = parts.join(' ');
-                }
-            }
-        }
-
         setLoading(true);
         try {
-            const result = await window.api.executeCommand(server.id, {
-                command: cmdName,
-                args,
-                // 매칭된 명령어가 있으면 해당 메타데이터(method, endpoint 등) 사용,
-                // 없으면 null → main.js에서 Python lifecycle /command 엔드포인트로 라우팅
-                // (RCON 하드코딩 폴백 제거 — 모듈의 protocol_mode에 따라 자동 결정)
-                commandMetadata: selectedCommand || null,
-            });
+            // 한 줄 그대로 보낸다 — 명령 찾기·인자 나누기·검증·라우팅은 데몬이 한다
+            const result = await window.api.executeCommand(server.id, { command: cmdText });
 
             // 응답 메시지 추출 — REST API는 data.response에 {"raw":""} 같은
             // 빈 객체를 반환할 수 있으므로 이를 감지하여 깔끔한 성공/실패 표시로 변환

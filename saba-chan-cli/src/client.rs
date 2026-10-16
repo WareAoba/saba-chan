@@ -98,14 +98,14 @@ impl DaemonClient {
                 }
                 let response = builder.send().await?;
                 if !response.status().is_success() {
-                    anyhow::bail!("Server returned {}: {}", response.status(), response.text().await?);
+                    return Err(api_error(response).await);
                 }
                 return Ok(response.json().await?);
             }
         }
 
         if !response.status().is_success() {
-            anyhow::bail!("Server returned {}: {}", response.status(), response.text().await?);
+            return Err(api_error(response).await);
         }
         Ok(response.json().await?)
     }
@@ -228,7 +228,7 @@ impl DaemonClient {
 
     /// POST /api/instance/{id}/stdin — stdin으로 텍스트 전송
     pub async fn send_stdin(&self, id: &str, input: &str) -> anyhow::Result<Value> {
-        let body = serde_json::json!({ "input": input });
+        let body = serde_json::json!({ "command": input });
         self.post_json(&format!("/api/instance/{}/stdin", id), &body).await
     }
 
@@ -463,4 +463,20 @@ impl DaemonClient {
     pub async fn save_extension_config(&self, ext_id: &str, config: Value) -> anyhow::Result<Value> {
         self.put_json(&format!("/api/extensions/{}/config", ext_id), &config).await
     }
+}
+
+/// 실패 응답을 사람이 읽을 오류로. 데몬이 준 모듈 문구(`error_message`) → 원인(`error`) → 본문 순.
+async fn api_error(response: reqwest::Response) -> anyhow::Error {
+    let status = response.status();
+    let text = response.text().await.unwrap_or_default();
+    let detail = serde_json::from_str::<Value>(&text)
+        .ok()
+        .and_then(|v| {
+            v.get("error_message")
+                .or_else(|| v.get("error"))
+                .and_then(|m| m.as_str())
+                .map(str::to_string)
+        })
+        .unwrap_or(text);
+    anyhow::anyhow!("Server returned {}: {}", status, detail)
 }

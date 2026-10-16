@@ -57,9 +57,8 @@ pub trait DaemonApi {
     async fn modules(&self) -> Vec<ModuleView>;
     async fn start(&self, server: &ServerView, managed: bool) -> InternalResponse;
     async fn stop(&self, server: &ServerView) -> InternalResponse;
-    async fn rcon(&self, instance_id: &str, command: &str) -> InternalResponse;
-    async fn rest(&self, instance_id: &str, endpoint: &str, http_method: &str, body: Value) -> InternalResponse;
-    async fn module_command(&self, instance_id: &str, command: &str, args: Value) -> InternalResponse;
+    /// 게임 명령 (`POST /api/instance/:id/command`와 같은 경로). 인자는 순서대로.
+    async fn command(&self, instance_id: &str, command: &str, args: Vec<String>) -> InternalResponse;
 }
 
 impl DaemonApi for IPCServer {
@@ -118,19 +117,8 @@ impl DaemonApi for IPCServer {
         into_internal(crate::ipc::handlers::server::stop_server_handler(Path(server.name.clone()), State(self.clone()), Json(req)).await).await
     }
 
-    async fn rcon(&self, instance_id: &str, command: &str) -> InternalResponse {
-        let body = json!({ "command": command });
-        into_internal(crate::ipc::handlers::command::execute_rcon_command(Path(instance_id.to_string()), State(self.clone()), Json(body)).await).await
-    }
-
-    async fn rest(&self, instance_id: &str, endpoint: &str, http_method: &str, body: Value) -> InternalResponse {
-        // 호스트/포트는 넘기지 않는다 — 핸들러가 인스턴스 설정 → 모듈 기본값 순으로 채운다
-        let payload = json!({ "endpoint": endpoint, "method": http_method, "body": body });
-        into_internal(crate::ipc::handlers::command::execute_rest_command(Path(instance_id.to_string()), State(self.clone()), Json(payload)).await).await
-    }
-
-    async fn module_command(&self, instance_id: &str, command: &str, args: Value) -> InternalResponse {
-        let req = CommandRequest { command: command.to_string(), args };
+    async fn command(&self, instance_id: &str, command: &str, args: Vec<String>) -> InternalResponse {
+        let req = CommandRequest { command: command.to_string(), args: json!(args) };
         into_internal(crate::ipc::handlers::command::execute_command(Path(instance_id.to_string()), State(self.clone()), Json(req)).await).await
     }
 }

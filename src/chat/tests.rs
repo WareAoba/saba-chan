@@ -36,14 +36,8 @@ impl DaemonApi for FakeDaemon {
     async fn stop(&self, server: &ServerView) -> InternalResponse {
         self.respond(format!("stop {}", server.name))
     }
-    async fn rcon(&self, id: &str, command: &str) -> InternalResponse {
-        self.respond(format!("rcon {} {}", id, command))
-    }
-    async fn rest(&self, id: &str, endpoint: &str, method: &str, body: Value) -> InternalResponse {
-        self.respond(format!("rest {} {} {} {}", id, method, endpoint, body))
-    }
-    async fn module_command(&self, id: &str, command: &str, args: Value) -> InternalResponse {
-        self.respond(format!("module {} {} {}", id, command, args))
+    async fn command(&self, id: &str, command: &str, args: Vec<String>) -> InternalResponse {
+        self.respond(format!("command {} {} {:?}", id, command, args))
     }
 }
 
@@ -52,7 +46,7 @@ fn server(id: &str, name: &str, module: &str, status: &str) -> ServerView {
 }
 
 fn input(name: &str, required: bool) -> CommandInput {
-    CommandInput { name: name.into(), label: None, input_type: None, required: Some(required), placeholder: None, default: None }
+    CommandInput { name: name.into(), label: None, input_type: None, required: Some(required), placeholder: None, default: None, min: None, max: None, options: None }
 }
 
 fn field(name: &str, method: &str) -> CommandField {
@@ -141,27 +135,39 @@ async fn instance_setting_overrides_managed_start() {
 }
 
 #[tokio::test]
-async fn rcon_template_fills_inputs_and_drops_missing_optionals() {
+async fn defined_commands_go_to_the_daemon_command_path_by_canonical_name() {
     let api = fixture();
     run(&api, &settings(), "mc 추방 Steve").await;
     run(&api, &settings(), "mc say hello there world").await;
-    assert_eq!(api.calls(), vec!["rcon i-mc kick Steve", "rcon i-mc say hello there world"]);
+    assert_eq!(
+        api.calls(),
+        vec![
+            r#"command i-mc kick ["Steve"]"#,
+            r#"command i-mc say ["hello", "there", "world"]"#,
+        ]
+    );
 }
 
 #[tokio::test]
-async fn missing_required_input_is_reported_without_calling() {
-    let api = fixture();
+async fn missing_argument_reply_names_the_input() {
+    let mut api = fixture();
+    api.reply = Some(InternalResponse {
+        status: StatusCode::BAD_REQUEST,
+        body: json!({"error": "'player' is required", "error_code": "missing_argument", "field": "player"}),
+    });
     let out = run(&api, &settings(), "mc kick").await;
-    assert!(out.contains("player"), "{}", out);
-    assert!(api.calls().is_empty());
+    assert!(out.contains("player") && out.contains("!saba"), "{}", out);
 }
 
 #[tokio::test]
-async fn defined_command_on_stopped_server_reports_not_running() {
-    let api = fixture();
-    let out = run(&api, &settings(), "팰월드 players").await;
-    assert!(api.calls().is_empty());
-    assert!(out.contains("pal1"), "{}", out);
+async fn not_running_reply_uses_the_module_text() {
+    let mut api = fixture();
+    api.reply = Some(InternalResponse {
+        status: StatusCode::CONFLICT,
+        body: json!({"error": "not running", "error_code": "server_not_running", "error_message": "MC is off"}),
+    });
+    let out = run(&api, &settings(), "mc say hi").await;
+    assert!(out.contains("survival") && out.contains("MC is off"), "{}", out);
 }
 
 #[tokio::test]

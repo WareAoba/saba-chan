@@ -449,16 +449,6 @@ impl ModuleRegistry {
         self.cmd_aliases.get(module_name)?.get(&key).cloned()
     }
 
-    /// 모듈 명령어 정의 가져오기
-    pub fn get_command_def(&self, module_name: &str, cmd_name: &str) -> Option<&ModuleCommand> {
-        self.modules
-            .iter()
-            .find(|m| m.name == module_name)?
-            .commands
-            .iter()
-            .find(|c| c.name == cmd_name)
-    }
-
     /// 등록된 모든 모듈 canonical name
     pub fn module_names(&self) -> Vec<&str> {
         self.modules.iter().map(|m| m.name.as_str()).collect()

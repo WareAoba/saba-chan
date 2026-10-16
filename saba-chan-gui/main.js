@@ -2203,160 +2203,31 @@ ipcMain.handle('instance:updateSettings', async (_event, id, settings) => {
 // ── 모듈-독립적 입력값 검증 헬퍼 ──────────────────────────────
 // module.toml의 inputs 스키마에 따라 args를 검증하고 정규화합니다.
 // 모듈 이름을 전혀 참조하지 않으므로 어떤 게임 모듈에도 동일하게 동작합니다.
-function buildValidatedBody(inputs, args, inlineMessage) {
-    const body = {};
-    if (inputs && inputs.length > 0) {
-        for (const field of inputs) {
-            const value = args?.[field.name];
-
-            // 필수 필드 확인
-            if (field.required && (value === undefined || value === null || value === '')) {
-                throw new Error(`필수 필드 '${field.label || field.name}'이(가) 누락되었습니다`);
-            }
-
-            // 값이 있으면 타입 검증 및 추가
-            if (value !== undefined && value !== null && value !== '') {
-                if (field.type === 'number') {
-                    const numValue = Number(value);
-                    if (isNaN(numValue)) {
-                        throw new Error(`'${field.label || field.name}'은(는) 숫자여야 합니다`);
-                    }
-                    body[field.name] = numValue;
-                } else {
-                    body[field.name] = String(value);
-                }
-            } else if (field.default !== undefined) {
-                body[field.name] = field.default;
-            }
-        }
-    }
-    // 입력 스키마가 비어 있지만 사용자가 인라인으로 메시지를 입력한 경우
-    if (inlineMessage && Object.keys(body).length === 0) {
-        body.message = inlineMessage;
-    }
-    return body;
-}
-
+// 게임 명령 — 해석(명령 정의·별명·인자 검증)과 라우팅(RCON·REST·stdin·모듈)은 데몬이 한다.
+// command는 "say hello"처럼 한 줄이어도 되고, 이름 + args(이름별 객체)여도 된다.
 ipcMain.handle('instance:executeCommand', async (_event, id, command) => {
+    const payload = {
+        command: (command.command || '').trim(),
+        args: command.args && Object.keys(command.args).length > 0 ? command.args : null,
+    };
     try {
-        console.log(`[Main] Executing command for instance ${id}:`, command);
-
-        // 사용자가 "announce hi" 같이 입력하면 첫 단어는 명령어, 나머지는 메시지로 분리
-        const rawCommand = command.command || '';
-        const [cmdName, ...restParts] = rawCommand.trim().split(/\s+/);
-        const inlineMessage = restParts.join(' ');
-
-        // Step 1: 인스턴스 정보 가져오기
-        const instanceUrl = `${IPC_BASE}/api/instance/${id}`;
-        const instanceResponse = await axios.get(instanceUrl);
-        const instance = instanceResponse.data;
-
-        console.log(`[Main] Instance module: ${instance.module_name}`);
-
-        // Step 2: 명령어 메타데이터 확인 (프론트엔드에서 전달받거나 없으면 null)
-        // commandMetadata는 module.toml의 commands.fields 중 하나 — method, rcon_template, endpoint_template 등 포함
-        const cmdMeta = command.commandMetadata || null;
-        const method = cmdMeta?.method || null;
-        const args = command.args || {};
-
-        console.log(`[Main] Command: ${cmdName}, method: ${method || '(none → stdin/command fallback)'}`);
-
-        // Step 3: method에 따라 프로토콜 라우팅 (모듈 이름 참조 없음!)
-        //   rcon  → RCON 템플릿 치환 후 /rcon 엔드포인트
-        //   rest  → REST endpoint_template + http_method 로 /rest 엔드포인트
-        //   dual  → Python lifecycle 모듈이 프로토콜 선택 (/command 엔드포인트)
-        //   없음  → 기본 command 엔드포인트 (stdin 기반)
-        let protocolUrl;
-        let commandPayload;
-
-        if (method === 'rcon') {
-            // RCON: rcon_template에서 입력값을 치환하여 명령어 생성
-            let rconCmd = cmdMeta?.rcon_template || cmdName;
-            for (const [key, value] of Object.entries(args)) {
-                if (value !== undefined && value !== null && value !== '') {
-                    rconCmd = rconCmd.replace(`{${key}}`, value);
-                }
-            }
-            // 치환되지 않은 선택적 파라미터 제거
-            rconCmd = rconCmd.replace(/\s*\{\w+\}/g, '').trim();
-
-            console.log(`[Main] RCON command: ${rconCmd}`);
-            protocolUrl = `${IPC_BASE}/api/instance/${id}/rcon`;
-            commandPayload = { command: rconCmd };
-        } else if (method === 'rest') {
-            // REST: endpoint_template과 http_method로 직접 API 호출
-            const endpoint = cmdMeta?.endpoint_template || `/v1/api/${cmdName}`;
-            const httpMethod = (cmdMeta?.http_method || 'GET').toUpperCase();
-            const validatedBody = buildValidatedBody(cmdMeta?.inputs, args, inlineMessage);
-
-            console.log(`[Main] REST ${httpMethod} ${endpoint}`, validatedBody);
-            protocolUrl = `${IPC_BASE}/api/instance/${id}/rest`;
-            commandPayload = {
-                endpoint,
-                method: httpMethod,
-                body: validatedBody,
-                instance_id: id,
-                rest_host: instance.rest_host,
-                rest_port: instance.rest_port,
-            };
-        } else if (method === 'dual') {
-            // Dual: Python lifecycle 모듈이 REST/RCON을 내부적으로 선택
-            // (예: Palworld lifecycle.py가 플레이어 ID 변환 + 프로토콜 라우팅 수행)
-            const validatedBody = buildValidatedBody(cmdMeta?.inputs, args, inlineMessage);
-
-            console.log(`[Main] Dual-mode via module lifecycle: ${cmdName}`, validatedBody);
-            protocolUrl = `${IPC_BASE}/api/instance/${id}/command`;
-            commandPayload = {
-                command: cmdName,
-                args: validatedBody,
-                instance_id: id,
-            };
-        } else {
-            // 메서드 미지정: 기본 command 엔드포인트 (stdin 기반 또는 모듈 lifecycle 처리)
-            console.log(`[Main] Generic command endpoint: ${cmdName}`);
-            protocolUrl = `${IPC_BASE}/api/instance/${id}/command`;
-            commandPayload = {
-                command: cmdName,
-                args: args,
-                instance_id: id,
-            };
-        }
-
-        // RCON/REST는 빠르지만, /command (Python lifecycle)는 subprocess 스폰 시간이 필요
-        const requestTimeout = method === 'dual' || !method ? 30000 : 10000;
-        console.log(`[Main] POST ${protocolUrl} (timeout: ${requestTimeout}ms)`);
-        const response = await axios.post(protocolUrl, commandPayload, { timeout: requestTimeout });
-        console.log(`[Main] Response:`, response.data);
-
+        const response = await axios.post(`${IPC_BASE}/api/instance/${id}/command`, payload, { timeout: 30000 });
         return response.data;
     } catch (error) {
-        console.error(`[Main] Error executing command:`, error.message, error.response?.data || '');
-
-        // HTTP 응답 에러 → 상태 코드 기반 분류 (모듈명 참조 없음)
+        console.error('[Main] Error executing command:', error.message, error.response?.data || '');
         if (error.response) {
-            const status = error.response.status;
-            const data = error.response.data;
-            const detail = data?.error || data?.message || '';
-
-            const errorMap = {
-                400: `잘못된 요청: ${detail || '입력값을 확인해주세요'}`,
-                401: `인증 실패: 서버 설정에서 사용자명/비밀번호를 확인해주세요`,
-                403: `접근 거부: 권한이 없습니다`,
-                404: `명령어를 찾을 수 없음: 서버가 실행중이지 않거나 명령어가 존재하지 않습니다`,
-                500: `서버 내부 오류: ${detail || '서버에서 오류가 발생했습니다'}`,
-                503: `서비스 사용 불가: 서버가 응답하지 않습니다. 서버 상태를 확인해주세요`,
+            const data = error.response.data || {};
+            // 데몬이 모듈 [errors] 문구(error_message) 또는 원인(error)을 준다
+            return {
+                error: data.error_message || data.error || `오류 (HTTP ${error.response.status})`,
+                error_code: data.error_code,
+                field: data.field,
             };
-
-            return { error: errorMap[status] || `오류 (HTTP ${status}): ${detail || error.message}` };
         }
-
-        // 네트워크 에러 → 에러 코드 기반 분류
         const networkErrors = {
             ECONNREFUSED: '데몬에 연결할 수 없습니다. 데몬이 실행중인지 확인해주세요',
             ETIMEDOUT: '요청 시간 초과: 서버가 응답하지 않습니다',
-            ENOTFOUND: '서버를 찾을 수 없습니다. 네트워크 설정을 확인해주세요',
         };
-
         return { error: networkErrors[error.code] || `명령어 실행 실패: ${error.message}` };
     }
 });

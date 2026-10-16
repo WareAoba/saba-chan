@@ -23,7 +23,7 @@ use crate::supervisor::module_loader::CommandField;
 use aliases::ModuleAliases;
 use api::{DaemonApi, ModuleView, ServerView};
 use i18n::Catalog;
-use serde_json::{Map, Value};
+use serde_json::Value;
 use std::collections::HashMap;
 
 /// 처리기가 쓰는 봇 설정 일부
@@ -70,26 +70,6 @@ impl TopLevel {
             "help" | "도움" | "도움말" => Some(Self::Help),
             "list" | "목록" => Some(Self::List),
             _ => None,
-        }
-    }
-}
-
-/// module.toml 명령의 실행 방식
-enum Method<'a> {
-    Rcon,
-    Rest,
-    /// 모듈 lifecycle.py의 명령 핸들러 (module.toml의 "dual"/"both")
-    Module,
-    Unsupported(&'a str),
-}
-
-impl<'a> Method<'a> {
-    fn of(cmd: &'a CommandField) -> Self {
-        match cmd.method.as_deref().unwrap_or("") {
-            "rcon" => Self::Rcon,
-            "rest" => Self::Rest,
-            "dual" | "both" => Self::Module,
-            other => Self::Unsupported(other),
         }
     }
 }
@@ -199,10 +179,6 @@ impl<D: DaemonApi> Ctx<'_, D> {
 
     fn module(&self, name: &str) -> Option<&ModuleView> {
         self.modules.iter().find(|m| m.name == name)
-    }
-
-    fn module_errors(&self, name: &str) -> Option<&HashMap<String, String>> {
-        self.module(name).map(|m| &m.errors)
     }
 
     fn is_mounted(&self, alias: &str, servers: &[ServerView]) -> bool {
@@ -399,74 +375,61 @@ impl<D: DaemonApi> Ctx<'_, D> {
         self.t("server.status_check", &[("name", &server.name), ("status", &status), ("pid_info", &pid)]).trim_end().to_string()
     }
 
+    /// 정의된 명령 실행 — 해석·검증·라우팅은 데몬 명령 경로(`crate::commands`)가 한다
     async fn run_defined(&self, server: &ServerView, module: &ModuleView, field: &CommandField, alias: &str, cmd_alias: &str, extra: &[&str]) -> String {
-        let method = Method::of(field);
-        if let Method::Unsupported(m) = method {
-            let m = if m.is_empty() { "unknown" } else { m };
-            return format!("❓ {}: {}", self.t("messages.command_error", &[]), m);
-        }
-
-        if !server.is_running() {
-            let default = self.t("server.not_running_default", &[]);
-            let error = module.errors.get("server_not_running").cloned().unwrap_or(default);
-            return self.t("server.not_running", &[("name", &server.name), ("error", &error)]);
-        }
-
-        let inputs = match bind_inputs(field, extra) {
-            Ok(v) => v,
-            Err(missing) => {
-                let description = if missing.label.as_deref().unwrap_or("").is_empty() { missing.name.clone() } else { missing.label.clone().unwrap_or_default() };
-                return self.t(
-                    "command.missing_required",
-                    &[("arg_name", &missing.name), ("prefix", &self.settings.prefix), ("alias", alias), ("command", cmd_alias), ("description", &description)],
-                );
-            }
-        };
-
-        let resp = match method {
-            Method::Rcon => {
-                let line = render_rcon(field.rcon_template.as_deref().unwrap_or(&field.name), &inputs);
-                self.api.rcon(&server.id, &line).await
-            }
-            Method::Rest => {
-                let endpoint = field.endpoint_template.clone().unwrap_or_else(|| format!("/v1/api/{}", field.name));
-                let http_method = field.http_method.as_deref().unwrap_or("GET").to_uppercase();
-                self.api.rest(&server.id, &endpoint, &http_method, Value::Object(inputs)).await
-            }
-            Method::Module => self.api.module_command(&server.id, &field.name, Value::Object(inputs)).await,
-            Method::Unsupported(_) => unreachable!("handled above"),
-        };
-        self.render_result(server, &module.name, &field.name, resp)
+        let args = extra.iter().map(|s| s.to_string()).collect();
+        let resp = self.api.command(&server.id, &field.name, args).await;
+        self.render_result(server, module, field, alias, cmd_alias, resp)
     }
 
-    fn render_result(&self, server: &ServerView, module: &str, command: &str, resp: InternalResponse) -> String {
-        let errors = self.module_errors(module);
-        let module_msg = |code: &str| errors.and_then(|e| e.get(code)).cloned();
-
-        if !resp.is_success() {
-            let mapped = match resp.status.as_u16() {
-                401 | 403 => module_msg("auth_failed").unwrap_or_else(|| self.t("errors.auth_failed", &[])),
-                404 => resp.str_field("error").map(str::to_string).unwrap_or_else(|| self.t("errors.not_found", &[])),
-                503 => module_msg("server_not_running").unwrap_or_else(|| self.t("errors.service_unavailable", &[])),
-                _ => resp
-                    .str_field("error_code")
-                    .and_then(module_msg)
-                    .or_else(|| module_msg("internal_server_error"))
-                    .unwrap_or_else(|| self.t("errors.internal_server_error", &[])),
-            };
-            if let Some(detail) = resp.str_field("error") {
-                tracing::warn!("[Chat] {} {} 실패 ({}): {}", server.name, command, resp.status, detail);
-            }
-            return format!("❌ {}: {}", self.t("errors.error_title", &[]), mapped);
-        }
-
-        if resp.body.get("success").and_then(|v| v.as_bool()) == Some(true) {
+    fn render_result(&self, server: &ServerView, module: &ModuleView, field: &CommandField, alias: &str, cmd_alias: &str, resp: InternalResponse) -> String {
+        let failed = !resp.is_success() || resp.body.get("success").and_then(|v| v.as_bool()) == Some(false);
+        if !failed {
             let text = format::format_response(resp.body.get("data").unwrap_or(&Value::Null), self.cat);
-            return self.t("command.execute_complete", &[("name", &server.name), ("command", command), ("response", &text)]);
+            return self.t("command.execute_complete", &[("name", &server.name), ("command", &field.name), ("response", &text)]);
         }
-        let raw = resp.str_field("error").map(str::to_string).unwrap_or_else(|| self.t("errors.unknown", &[]));
-        let friendly = resp.str_field("error_code").and_then(module_msg).unwrap_or(raw);
-        self.t("command.execute_failed", &[("name", &server.name), ("error", &friendly)])
+
+        let code = crate::commands::error_code(resp.status.as_u16(), &resp.body);
+        let module_text = resp
+            .str_field("error_message")
+            .map(str::to_string)
+            .or_else(|| module.errors.get(&code).cloned());
+        if let Some(detail) = resp.str_field("error") {
+            tracing::warn!("[Chat] {} {} 실패 ({}): {}", server.name, field.name, resp.status, detail);
+        }
+
+        match code.as_str() {
+            "missing_argument" => {
+                let name = resp.str_field("field").unwrap_or_default();
+                let description = field
+                    .inputs
+                    .iter()
+                    .find(|i| i.name == name)
+                    .and_then(|i| i.label.clone().filter(|l| !l.is_empty()))
+                    .unwrap_or_else(|| name.to_string());
+                self.t(
+                    "command.missing_required",
+                    &[("arg_name", name), ("prefix", &self.settings.prefix), ("alias", alias), ("command", cmd_alias), ("description", &description)],
+                )
+            }
+            "server_not_running" => {
+                let error = module_text.unwrap_or_else(|| self.t("server.not_running_default", &[]));
+                self.t("server.not_running", &[("name", &server.name), ("error", &error)])
+            }
+            "invalid_argument" => error_line(&self.t("errors.error_title", &[]), resp.str_field("error").unwrap_or_default()),
+            "auth_failed" => format!("❌ {}: {}", self.t("errors.error_title", &[]), module_text.unwrap_or_else(|| self.t("errors.auth_failed", &[]))),
+            "not_found" => format!(
+                "❌ {}: {}",
+                self.t("errors.error_title", &[]),
+                resp.str_field("error").map(str::to_string).unwrap_or_else(|| self.t("errors.not_found", &[]))
+            ),
+            _ => {
+                let text = module_text
+                    .or_else(|| module.errors.get("internal_server_error").cloned())
+                    .unwrap_or_else(|| self.t("errors.internal_server_error", &[]));
+                format!("❌ {}: {}", self.t("errors.error_title", &[]), text)
+            }
+        }
     }
 }
 
@@ -478,36 +441,6 @@ pub fn use_managed_start(server: &ServerView, module: &ModuleView) -> bool {
         Some(Value::String(s)) if s == "false" => false,
         _ => module.interaction_mode.as_deref() == Some("console"),
     }
-}
-
-/// 인자를 명령 입력 칸에 차례로 넣는다. 마지막 칸은 남은 인자를 모두 받는다
-/// (예: "say hello world"의 메시지). 필수 칸이 비면 그 칸을 Err로.
-fn bind_inputs<'f>(field: &'f CommandField, extra: &[&str]) -> Result<Map<String, Value>, &'f crate::supervisor::module_loader::CommandInput> {
-    let mut out = Map::new();
-    let last = field.inputs.len().saturating_sub(1);
-    for (i, input) in field.inputs.iter().enumerate() {
-        let value = if i == last && extra.len() > i { Some(extra[i..].join(" ")) } else { extra.get(i).map(|s| s.to_string()) };
-        match value {
-            Some(v) => {
-                out.insert(input.name.clone(), Value::String(v));
-            }
-            None if input.required.unwrap_or(false) => return Err(input),
-            None => {}
-        }
-    }
-    Ok(out)
-}
-
-/// RCON 템플릿 채우기: {key}를 값으로, 남은 {key} 자리는 앞 공백과 함께 지운다
-fn render_rcon(template: &str, inputs: &Map<String, Value>) -> String {
-    let mut line = template.to_string();
-    for (key, value) in inputs {
-        let v = value.as_str().map(str::to_string).unwrap_or_else(|| value.to_string());
-        line = line.replacen(&format!("{{{}}}", key), &v, 1);
-    }
-    static LEFTOVER: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    let re = LEFTOVER.get_or_init(|| regex::Regex::new(r"\s*\{\w+\}").expect("valid regex"));
-    re.replace_all(&line, "").trim().to_string()
 }
 
 fn error_line(title: &str, detail: &str) -> String {

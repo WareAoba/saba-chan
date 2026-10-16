@@ -268,6 +268,36 @@ pub struct ExtensionListResponse {
 
 // ── API Action Tracker ──────────────────────────────────────
 
+/// 게임 설정 파일에서 읽은 접속 정보(`get_credentials`) 캐시.
+/// 명령마다 Python을 띄우지 않도록 인스턴스별로 잠깐 보관한다. 설정을 바꾸거나
+/// 접속이 실패하면 지워서 다음 명령이 다시 읽게 한다.
+#[derive(Clone, Default)]
+pub struct CredentialsCache {
+    inner: Arc<std::sync::Mutex<HashMap<String, (std::time::Instant, Value)>>>,
+}
+
+impl CredentialsCache {
+    const TTL: std::time::Duration = std::time::Duration::from_secs(60);
+
+    pub fn get(&self, instance_id: &str) -> Option<Value> {
+        let map = self.inner.lock().ok()?;
+        let (at, creds) = map.get(instance_id)?;
+        (at.elapsed() < Self::TTL).then(|| creds.clone())
+    }
+
+    pub fn put(&self, instance_id: &str, creds: Value) {
+        if let Ok(mut map) = self.inner.lock() {
+            map.insert(instance_id.to_string(), (std::time::Instant::now(), creds));
+        }
+    }
+
+    pub fn invalidate(&self, instance_id: &str) {
+        if let Ok(mut map) = self.inner.lock() {
+            map.remove(instance_id);
+        }
+    }
+}
+
 /// API(CLI/Discord 등)를 통한 서버 시작/정지 시점을 기록하여
 /// GUI가 "예기치 않은" 상태 변경과 "API 경유" 상태 변경을 구분할 수 있게 함
 #[derive(Clone, Default)]
@@ -502,6 +532,8 @@ pub struct IPCServer {
     pub extension_init_tracker: ExtensionInitTracker,
     /// 인스턴스별 RCON 연결 풀 (연결 재사용)
     pub rcon_pool: Arc<crate::protocol::rcon_pool::RconPool>,
+    /// 인스턴스별 게임 접속 정보 캐시 (명령마다 Python get_credentials를 띄우지 않게)
+    pub credentials: CredentialsCache,
     /// Graceful shutdown 토큰 — 정리가 끝난 뒤 취소되며, 취소 시 모든 태스크 종료
     pub shutdown_token: tokio_util::sync::CancellationToken,
     /// 종료 요청 — API·워치독 등은 이것만 취소한다. main의 정리 태스크가 받아서
@@ -551,6 +583,7 @@ impl IPCServer {
             extension_status_cache: ExtensionStatusCache::new(30), // 30초 TTL (Docker/WSL 지연 대비)
             extension_init_tracker: ExtensionInitTracker::new(),
             rcon_pool: Arc::new(crate::protocol::rcon_pool::RconPool::new()),
+            credentials: CredentialsCache::default(),
             shutdown_token: tokio_util::sync::CancellationToken::new(),
             stop_requested: tokio_util::sync::CancellationToken::new(),
             config_store,
@@ -732,6 +765,17 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn credentials_cache_keeps_until_invalidated() {
+        let cache = CredentialsCache::default();
+        assert!(cache.get("a").is_none());
+        cache.put("a", json!({ "rcon_password": "x" }));
+        assert_eq!(cache.get("a").unwrap()["rcon_password"], "x");
+        assert!(cache.get("b").is_none());
+        cache.invalidate("a");
+        assert!(cache.get("a").is_none());
+    }
+
+    #[test]
     fn only_new_instances_are_marked_for_rollback() {
         let tracker = ProvisionTracker::new();
         tracker.mark_creating("fresh");
@@ -866,6 +910,9 @@ mod tests {
                                         required: Some(true),
                                         placeholder: Some("공지 내용".to_string()),
                                         default: None,
+                                        min: None,
+                                        max: None,
+                                        options: None,
                                     },
                                 ],
                             },
@@ -925,6 +972,9 @@ mod tests {
             required: Some(true),
             placeholder: Some("steam_xxxxxxxxx".to_string()),
             default: None,
+            min: None,
+            max: None,
+            options: None,
         };
 
         let json = serde_json::to_value(&input).unwrap();

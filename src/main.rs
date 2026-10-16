@@ -13,6 +13,7 @@ mod boot_selector;
 mod daemon_log;
 mod instance_lock;
 mod chat;
+mod commands;
 mod relay_agent;
 
 use std::sync::Arc;

@@ -189,7 +189,8 @@ pub struct CommandField {
     pub name: String,
     pub label: String,
     pub description: Option<String>,
-    pub method: Option<String>,  // "rest", "rcon", "both"
+    /// "rcon" | "rest" | "module"(lifecycle.py `command()`; 예전 이름 "dual"/"both"도 받는다). 해석은 `crate::commands`
+    pub method: Option<String>,
     pub http_method: Option<String>,  // "GET", "POST" (REST only)
     pub endpoint_template: Option<String>,  // REST endpoint template
     pub rcon_template: Option<String>,  // RCON command template (e.g., "kick {userid}")
@@ -207,6 +208,14 @@ pub struct CommandInput {
     pub placeholder: Option<String>,
     #[serde(default)]
     pub default: Option<toml::Value>,
+    /// number 입력의 허용 범위
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<f64>,
+    /// 고를 수 있는 값 목록 (있으면 이 중 하나여야 한다)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub options: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -542,6 +551,12 @@ struct CommandInputToml {
     placeholder: Option<String>,
     #[serde(default)]
     default: Option<toml::Value>,
+    #[serde(default)]
+    min: Option<f64>,
+    #[serde(default)]
+    max: Option<f64>,
+    #[serde(default)]
+    options: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -599,6 +614,9 @@ impl ModuleToml {
                     required: i.required,
                     placeholder: i.placeholder,
                     default: i.default,
+                    min: i.min,
+                    max: i.max,
+                    options: i.options,
                 }).collect(),
             }).collect();
             if fields.is_empty() { None } else { Some(ModuleCommands { fields }) }
@@ -703,7 +721,7 @@ impl ModuleToml {
 
 /// TOML 문자열에서 ModuleMetadata를 파싱합니다.
 /// 필수 필드 누락 시 명확한 에러 메시지를 반환합니다.
-fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
+pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
     let toml_data: ModuleToml = toml::from_str(content)
         .map_err(|e| anyhow::anyhow!("Failed to parse module.toml: {}", e))?;
     Ok(toml_data.into_metadata())

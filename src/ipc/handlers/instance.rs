@@ -1236,6 +1236,8 @@ pub async fn update_instance_settings(
         let _results = mgr.dispatch_hook("server.settings_changed", ctx).await;
     }
 
+    // 게임 설정 파일의 비밀번호·포트가 바뀌었을 수 있다
+    state.credentials.invalidate(&id);
     (StatusCode::OK, Json(json!({ "success": true }))).into_response()
 }
 

@@ -1105,13 +1105,8 @@ async fn exec_module_cmd(client: &DaemonClient, registry: &ModuleRegistry, modul
             _ => vec![],
         }
     } else {
-        let arg_value = if let Some(cmd_def) = registry.get_command_def(module_name, &cmd_name) {
-            build_args_map(&cmd_def.inputs, &args[1..])
-        } else {
-            let mut map = serde_json::Map::new();
-            if args.len() > 1 { map.insert("args".into(), serde_json::Value::String(args[1..].join(" "))); }
-            serde_json::Value::Object(map)
-        };
+        // 인자는 순서대로 넘긴다 — 명령 정의·별명·검증·라우팅은 데몬이 한다
+        let arg_value = serde_json::json!(args[1..]);
         match client.execute_command(&instance_id, &cmd_name, Some(arg_value)).await {
             Ok(r) => vec![Out::Ok(format!("✓ {} — {}", instance_name, r.get("message").or(r.get("result")).and_then(|v| v.as_str()).unwrap_or("OK")))],
             Err(e) => vec![Out::Err(format!("✗ {}", e))],
@@ -1119,20 +1114,3 @@ async fn exec_module_cmd(client: &DaemonClient, registry: &ModuleRegistry, modul
     }
 }
 
-fn build_args_map(inputs: &[crate::module_registry::CommandInput], args: &[&str]) -> serde_json::Value {
-    let mut map = serde_json::Map::new();
-    for (arg_idx, (i, input)) in inputs.iter().enumerate().enumerate() {
-        if arg_idx >= args.len() { break; }
-        if i == inputs.len() - 1 && input.input_type == "text" {
-            map.insert(input.name.clone(), serde_json::Value::String(args[arg_idx..].join(" ")));
-            break;
-        }
-        if input.input_type == "number" {
-            if let Ok(n) = args[arg_idx].parse::<i64>() { map.insert(input.name.clone(), serde_json::json!(n)); }
-            else { map.insert(input.name.clone(), serde_json::Value::String(args[arg_idx].to_string())); }
-        } else {
-            map.insert(input.name.clone(), serde_json::Value::String(args[arg_idx].to_string()));
-        }
-    }
-    serde_json::Value::Object(map)
-}

@@ -4,54 +4,166 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use serde_json::json;
+use serde_json::{json, Value};
 
 use super::super::{CommandRequest, IPCServer};
 
-/// POST /api/instance/:id/command - 명령어 실행
+/// POST /api/instance/:id/command - 게임 명령 실행 (모든 인터페이스의 단일 경로)
+///
+/// 요청 해석·검증·라우팅은 `crate::commands`가 한다. 응답은 실제로 실행한 경로
+/// (RCON·REST·stdin·모듈)의 응답 본문에 `command`를 더한 것이고, 실패하면
+/// `error_code`와 모듈 `[errors]`의 사용자용 문구 `error_message`를 더한다.
 pub async fn execute_command(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
     Json(req): Json<CommandRequest>,
-) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
+) -> axum::response::Response {
+    use crate::commands::{Args, Plan, Request};
+    use crate::ipc::internal::{into_internal, InternalResponse};
 
-    // 인스턴스 확인
-    let instance = match supervisor.instance_store.get(&id) {
-        Some(instance) => instance,
-        None => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({
-                    "error": format!("Instance not found: {}", id)
-                })),
+    let request = Request::parse(&req.command, &req.args);
+    if request.name.is_empty() {
+        return command_reply(
+            InternalResponse { status: StatusCode::BAD_REQUEST, body: json!({ "error": "Missing 'command' field" }) },
+            "",
+            &Default::default(),
+        );
+    }
+
+    let (instance, metadata, running, stdin_route) = {
+        let supervisor = state.supervisor.read().await;
+        let Some(instance) = supervisor.instance_store.get(&id).cloned() else {
+            return command_reply(
+                InternalResponse {
+                    status: StatusCode::NOT_FOUND,
+                    body: json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" }),
+                },
+                &request.name,
+                &Default::default(),
+            );
+        };
+        let metadata = supervisor.module_loader.get_module(&instance.module_name).ok().map(|m| m.metadata);
+        let running = supervisor.tracker.get_pid(&instance.id).is_ok();
+        let stdin_route = supervisor.routes_commands_to_stdin(&instance.id).await;
+        (instance, metadata, running, stdin_route)
+    };
+    let errors = metadata.as_ref().map(|m| m.errors.clone()).unwrap_or_default();
+    // 응답의 command는 별명이 아니라 정의된 이름 (정의에 없으면 입력 그대로)
+    let name = metadata
+        .as_ref()
+        .and_then(|m| crate::commands::find(m, &request.name))
+        .map(|f| f.name.clone())
+        .unwrap_or_else(|| request.name.clone());
+
+    let plan = match &metadata {
+        Some(meta) => crate::commands::plan(meta, &request),
+        None => Ok(Plan::Raw { line: request.line.clone() }),
+    };
+    let plan = match plan {
+        Ok(plan) => plan,
+        Err(e) => {
+            return command_reply(
+                InternalResponse {
+                    status: StatusCode::BAD_REQUEST,
+                    body: json!({ "error": e.message, "error_code": e.code, "field": e.field }),
+                },
+                &name,
+                &errors,
             )
-                .into_response();
         }
     };
 
-    // Supervisor를 통해 명령어 전달
-    let result = supervisor
-        .execute_command(&instance.id, &instance.module_name, &req.command, req.args)
-        .await;
-
-    match result {
-        Ok(message) => (
-            StatusCode::OK,
-            Json(json!({
-                "success": true,
-                "message": message
-            })),
-        )
-            .into_response(),
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": e.to_string()
-            })),
-        )
-            .into_response(),
+    // 익스텐션(컨테이너 등)이 관리하는 인스턴스는 PID 추적 대상이 아니므로 건너뛴다
+    if !running && !stdin_route && !instance.ext_enabled("docker_enabled") {
+        return command_reply(
+            InternalResponse {
+                status: StatusCode::CONFLICT,
+                body: json!({
+                    "error": format!("Server '{}' is not running", instance.name),
+                    "error_code": "server_not_running",
+                }),
+            },
+            &name,
+            &errors,
+        );
     }
+
+    let resp = match plan {
+        Plan::Rcon { line } => {
+            into_internal(execute_rcon_command(Path(id.clone()), State(state.clone()), Json(json!({ "command": line }))).await).await
+        }
+        Plan::Rest { endpoint, http_method, body } => {
+            into_internal(
+                execute_rest_command(
+                    Path(id.clone()),
+                    State(state.clone()),
+                    Json(json!({ "endpoint": endpoint, "method": http_method, "body": body })),
+                )
+                .await,
+            )
+            .await
+        }
+        Plan::Module { command, args } => run_module_command(&state, &instance, &command, Value::Object(args)).await,
+        Plan::Raw { line } if stdin_route => {
+            into_internal(
+                super::managed::send_stdin_handler(Path(id.clone()), State(state.clone()), Json(json!({ "command": line })))
+                    .await,
+            )
+            .await
+        }
+        Plan::Raw { line } => match &request.args {
+            Args::Named(args) if !args.is_empty() => {
+                run_module_command(&state, &instance, &request.name, Value::Object(args.clone())).await
+            }
+            _ => run_module_command(&state, &instance, &line, json!({})).await,
+        },
+    };
+    command_reply(resp, &name, &errors)
+}
+
+/// 모듈 lifecycle.py `command()` 실행
+async fn run_module_command(
+    state: &IPCServer,
+    instance: &crate::instance::ServerInstance,
+    command: &str,
+    args: Value,
+) -> crate::ipc::internal::InternalResponse {
+    use crate::ipc::internal::InternalResponse;
+    let supervisor = state.supervisor.read().await;
+    match supervisor.execute_command(&instance.id, &instance.module_name, command, args).await {
+        Ok(message) => InternalResponse {
+            status: StatusCode::OK,
+            body: json!({ "success": true, "message": message, "protocol": "module" }),
+        },
+        Err(e) => InternalResponse { status: StatusCode::INTERNAL_SERVER_ERROR, body: json!({ "error": e.to_string() }) },
+    }
+}
+
+/// 실행 결과에 명령 이름과(실패 시) 오류 코드·모듈 문구를 붙인다
+fn command_reply(
+    resp: crate::ipc::internal::InternalResponse,
+    command: &str,
+    errors: &std::collections::HashMap<String, String>,
+) -> axum::response::Response {
+    let mut body = match resp.body {
+        Value::Object(map) => map,
+        Value::Null => serde_json::Map::new(),
+        other => {
+            let mut map = serde_json::Map::new();
+            map.insert("data".into(), other);
+            map
+        }
+    };
+    body.insert("command".into(), json!(command));
+    if !resp.status.is_success() {
+        let code = crate::commands::error_code(resp.status.as_u16(), &Value::Object(body.clone()));
+        if let Some(message) = errors.get(&code) {
+            body.insert("error_message".into(), json!(message));
+        }
+        body.insert("error_code".into(), json!(code));
+        body.entry("success").or_insert(json!(false));
+    }
+    (resp.status, Json(Value::Object(body))).into_response()
 }
 
 /// POST /api/instance/:id/rcon - RCON 명령어 실행
@@ -116,27 +228,7 @@ pub async fn execute_rcon_command(
     // supervisor lock 해제 — run_plugin 전에 release
     drop(supervisor);
 
-    let file_credentials = if let Some(ref mp) = module_path {
-        tracing::info!("get_credentials(rcon): calling plugin at {} with working_dir={}", mp, working_dir);
-        let cred_config = json!({ "working_dir": &working_dir });
-        match crate::plugin::run_plugin(mp, "get_credentials", cred_config).await {
-            Ok(creds) if creds.get("success").and_then(|v| v.as_bool()).unwrap_or(false) => {
-                tracing::info!("get_credentials(rcon): success");
-                Some(creds)
-            }
-            Ok(creds) => {
-                tracing::warn!("get_credentials(rcon) returned non-success: {:?}", creds);
-                None
-            }
-            Err(e) => {
-                tracing::warn!("get_credentials(rcon) call failed: {}", e);
-                None
-            }
-        }
-    } else {
-        tracing::warn!("get_credentials(rcon): no module_path, skipping");
-        None
-    };
+    let file_credentials = instance_credentials(&state, &id, module_path.as_deref(), &working_dir).await;
 
     // RCON 커맨드 추출
     let command = match payload.get("command").and_then(|v| v.as_str()) {
@@ -214,6 +306,8 @@ pub async fn execute_rcon_command(
                 .into_response()
         }
         Ok(Err(e)) => {
+            // 비밀번호·포트가 바뀌었을 수 있다 — 다음 명령은 설정 파일을 다시 읽는다
+            state.credentials.invalidate(&id);
             let error_msg = format!("RCON execution failed: {}", e);
             tracing::warn!("{}", error_msg);
             (
@@ -275,28 +369,7 @@ pub async fn execute_rest_command(
     // supervisor lock 해제 — run_plugin 전에 release
     drop(supervisor);
 
-    let file_credentials = if let Some(ref mp) = module_path {
-        tracing::info!("get_credentials: calling plugin at {} with working_dir={}", mp, working_dir);
-        let cred_config = json!({ "working_dir": &working_dir });
-        match crate::plugin::run_plugin(mp, "get_credentials", cred_config).await {
-            Ok(creds) if creds.get("success").and_then(|v| v.as_bool()).unwrap_or(false) => {
-                tracing::info!("get_credentials: success, rest_password={}",
-                    creds.get("rest_password").and_then(|v| v.as_str()).unwrap_or("(none)").chars().take(4).collect::<String>() + "...");
-                Some(creds)
-            }
-            Ok(creds) => {
-                tracing::warn!("get_credentials returned non-success: {:?}", creds);
-                None
-            }
-            Err(e) => {
-                tracing::warn!("get_credentials call failed: {}", e);
-                None
-            }
-        }
-    } else {
-        tracing::warn!("get_credentials: no module_path, skipping");
-        None
-    };
+    let file_credentials = instance_credentials(&state, &id, module_path.as_deref(), &working_dir).await;
 
     // REST 엔드포인트 추출
     let endpoint = match payload.get("endpoint").and_then(|v| v.as_str()) {
@@ -392,6 +465,11 @@ pub async fn execute_rest_command(
     .await
     .unwrap_or_else(|e| Err(RestFailure::Execute(format!("task failed: {}", e))));
 
+    // 인증 실패 등으로 접속 정보가 바뀌었을 수 있다 — 다음 명령은 설정 파일을 다시 읽는다
+    if !matches!(&outcome, Ok(response) if response.success) {
+        state.credentials.invalidate(&id);
+    }
+
     match outcome {
         Err(RestFailure::Connect(e)) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -421,5 +499,36 @@ pub async fn execute_rest_command(
             })),
         )
             .into_response(),
+    }
+}
+
+/// 게임 설정 파일의 접속 정보 (lifecycle.py `get_credentials`). 캐시가 있으면 Python을 띄우지 않는다.
+async fn instance_credentials(
+    state: &IPCServer,
+    instance_id: &str,
+    module_path: Option<&str>,
+    working_dir: &str,
+) -> Option<Value> {
+    if let Some(creds) = state.credentials.get(instance_id) {
+        return Some(creds);
+    }
+    let Some(module_path) = module_path else {
+        tracing::warn!("get_credentials: no module_path for {}, skipping", instance_id);
+        return None;
+    };
+    let config = json!({ "working_dir": working_dir });
+    match crate::plugin::run_plugin(module_path, "get_credentials", config).await {
+        Ok(creds) if creds.get("success").and_then(|v| v.as_bool()).unwrap_or(false) => {
+            state.credentials.put(instance_id, creds.clone());
+            Some(creds)
+        }
+        Ok(creds) => {
+            tracing::warn!("get_credentials returned non-success for {}: {:?}", instance_id, creds.get("message"));
+            None
+        }
+        Err(e) => {
+            tracing::warn!("get_credentials call failed for {}: {}", instance_id, e);
+            None
+        }
     }
 }

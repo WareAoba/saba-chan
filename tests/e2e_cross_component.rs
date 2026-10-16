@@ -78,6 +78,21 @@ author = "ci"
 game_name = "TestGame"
 display_name = "Test Module"
 entry = "lifecycle.py"
+
+[commands]
+
+[[commands.fields]]
+name = "say"
+label = "Say"
+method = "rcon"
+rcon_template = "say {message}"
+inputs = [{ name = "message", type = "text", label = "Message", required = true }]
+
+[aliases.commands.say]
+aliases = ["말"]
+
+[errors]
+server_not_running = "The test server is off"
 "#,
     )
     .expect("write test module.toml");
@@ -901,4 +916,50 @@ async fn e2e_version_backfill_on_startup() {
     let _ = fs::remove_dir_all(&work_dir);
     task.abort();
     cleanup_dirs(&m_dir, &i_dir, &d_dir);
+}
+
+// ═══════════════════════════════════════════════════════
+// 게임 명령 단일 경로 (C7)
+// ═══════════════════════════════════════════════════════
+
+/// `/api/instance/:id/command`가 module.toml 정의로 명령을 해석·검증하고,
+/// 실패하면 오류 코드와 모듈 `[errors]` 문구를 돌려준다.
+#[tokio::test]
+async fn command_endpoint_validates_and_maps_module_errors() {
+    let (base_url, supervisor, server_task, modules_dir, instances_dir, data_dir) = boot_e2e_ipc().await;
+    let client = reqwest::Client::new();
+
+    let mut inst = saba_core::instance::ServerInstance::new("cmd-test", "test-module");
+    inst.id = "cmd-test-id".to_string();
+    supervisor.write().await.instance_store.add(inst).unwrap();
+    let url = format!("{}/api/instance/cmd-test-id/command", base_url);
+
+    // 필수 인자 누락 → 400, 어느 칸인지 알려준다 (별명으로 불러도 같은 명령)
+    let resp = client.post(&url).json(&json!({ "command": "말" })).send().await.unwrap();
+    assert_eq!(resp.status().as_u16(), 400);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["error_code"], "missing_argument");
+    assert_eq!(body["field"], "message");
+    assert_eq!(body["command"], "say");
+
+    // 꺼진 서버 → 409 + 모듈 문구
+    for request in [json!({ "command": "say hello" }), json!({ "command": "say", "args": ["hello"] }), json!({ "command": "tp a b" })] {
+        let resp = client.post(&url).json(&request).send().await.unwrap();
+        assert_eq!(resp.status().as_u16(), 409, "{}", request);
+        let body: Value = resp.json().await.unwrap();
+        assert_eq!(body["error_code"], "server_not_running");
+        assert_eq!(body["error_message"], "The test server is off");
+    }
+
+    // 없는 인스턴스 → 404
+    let resp = client
+        .post(format!("{}/api/instance/nope/command", base_url))
+        .json(&json!({ "command": "say hi" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 404);
+
+    server_task.abort();
+    cleanup_dirs(&modules_dir, &instances_dir, &data_dir);
 }
