@@ -212,7 +212,12 @@
     "click_to_expand": "Click to view details",
     "show_details": "Show details",
     "hide_details": "Hide details",
-    "select_placeholder": "-- Select --"
+    "select_placeholder": "-- Select --",
+    "autocomplete": "autocomplete",
+    "history": "History",
+    "no_history": "No commands executed yet",
+    "no_matching_hints": "No matching commands — will send as raw command",
+    "type_to_filter": "Type a command or select from the list"
   },
   "server_status": {
     "running": "Running",
@@ -826,6 +831,12 @@
     "daemon_address": "Address",
     "daemon_protocol": "Protocol",
     "daemon_link": "GUI link",
-    "copy": "Copy"
+    "copy": "Copy",
+    "modules_failed": "{{count}} module(s) failed to load",
+    "module_load_error": "Load error: {{error}}",
+    "risk_caution": "Caution",
+    "risk_danger": "Danger",
+    "risk_confirm": "'{{command}}' is hard to undo. Run it anyway?",
+    "risk_run": "Run"
   }
 }

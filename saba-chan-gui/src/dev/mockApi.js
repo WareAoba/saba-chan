@@ -23,6 +23,7 @@ const modules = [
                 },
                 { name: 'list', label: '접속자 목록', method: 'stdin' },
                 { name: 'save-all', label: '월드 저장', method: 'stdin' },
+                { name: 'stop', label: '서버 정지', method: 'stdin', risk: 'danger' },
             ],
         },
         settings: { fields: [{ name: 'port', label: '포트', type: 'number', default: 25565 }] },
@@ -99,11 +100,14 @@ const params = new URLSearchParams(globalThis.location?.search || '');
 const mockBot = params.get('bot') || 'stopped';
 const mockDaemonUp = params.get('daemon') !== 'stopped';
 const mockUpdate = params.get('update'); // ok | fail
+const mockFailed = params.get('failed') // 불러오지 못한 모듈 보기
+    ? [{ path: 'modules/terraria', error: "module.toml: unknown field 'protocl' (did you mean 'protocol'?)" }]
+    : [];
 const settings = {};
 
 const impl = {
     serverList: () => ok({ servers: servers.map((s) => ({ ...s })) }),
-    moduleList: () => ok({ modules }),
+    moduleList: () => ok({ modules, failed: mockFailed }),
     settingsLoad: () => ok(settings),
     settingsSave: (s) => {
         Object.assign(settings, s);

@@ -2,7 +2,9 @@ import clsx from 'clsx';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useWindowSize } from '../../hooks/useWindowSize';
+import { useServerStore } from '../../stores/useServerStore';
 import { useUIStore } from '../../stores/useUIStore';
+import { failedModuleName } from '../../utils/failedModules';
 import { Icon } from '../Icon';
 import { ServerDetail } from './ServerDetail';
 import { ServerRow } from './ServerRow';
@@ -29,6 +31,7 @@ export function ServersPage({
     settingsProps,
 }) {
     const { t } = useTranslation('gui');
+    const failedModules = useServerStore((st) => st.failedModules) || [];
     const { width } = useWindowSize();
     const singleColumn = width < SINGLE_COLUMN_MAX_WIDTH;
     const selectedId = useUIStore((s) => s.activeServerId);
@@ -90,6 +93,23 @@ export function ServersPage({
                             />
                         )}
                     </div>
+                    {failedModules.length > 0 && (
+                        // 모듈이 목록에서 사라진 이유를 알려준다 (module.toml 오류 등)
+                        <details className="notice tone-warn module-failures">
+                            <summary>
+                                <Icon name="alertTriangle" size="sm" />
+                                {t('shell.modules_failed', { count: failedModules.length })}
+                            </summary>
+                            <ul>
+                                {failedModules.map((f) => (
+                                    <li key={f.path}>
+                                        <strong>{failedModuleName(f)}</strong>
+                                        <span>{f.error}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </details>
+                    )}
                     <div className="server-list" role="listbox" aria-label={t('shell.nav_servers')}>
                         {visible.length === 0 && <p className="muted pad">{t('shell.no_match')}</p>}
                         {visible.map((server) => (

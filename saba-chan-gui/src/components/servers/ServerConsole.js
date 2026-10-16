@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../../stores/useSettingsStore';
+import { needsConfirm } from '../../utils/commandRisk';
 import { getCachedRules } from '../../utils/syntaxHighlight';
 import { HighlightedContent } from '../ConsoleView';
 import { Icon } from '../Icon';
@@ -38,6 +39,7 @@ export function ServerConsole({
     const cursorRef = useRef(-1); // 기록에서 몇 번째를 보고 있는지 (-1 = 새로 입력 중)
     const draftRef = useRef('');
     const [focused, setFocused] = useState(false);
+    const [confirmText, setConfirmText] = useState(null); // 위험 명령 확인 대기
 
     // 탭이 보이면 로그 폴링 시작 (이미 열려 있으면 그대로)
     useEffect(() => {
@@ -108,7 +110,7 @@ export function ServerConsole({
                         <button
                             key={c.name}
                             type="button"
-                            className="term-chip"
+                            className={clsx('term-chip', c.risk && `risk-${c.risk}`)}
                             title={c.description || c.name}
                             onClick={() => {
                                 // 바로 보내지 않고 채워만 둔다: 인자가 필요하거나 위험한 명령도 있으니까
@@ -121,12 +123,39 @@ export function ServerConsole({
                     ))}
                 </div>
             )}
+            {confirmText && confirmText === (state?.input || '').trim() && (
+                <div className="notice tone-stop risk-confirm term-confirm" role="alert">
+                    <Icon name="alertTriangle" size="sm" />
+                    <span className="risk-confirm-text">{t('shell.risk_confirm', { command: confirmText })}</span>
+                    <button
+                        type="button"
+                        className="btn btn-danger btn-sm"
+                        onClick={() => {
+                            const hist = historyOf(server.id);
+                            if (hist[hist.length - 1] !== confirmText) hist.push(confirmText);
+                            setConfirmText(null);
+                            sendConsoleCommand(server.id);
+                        }}
+                    >
+                        {t('shell.risk_run')}
+                    </button>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setConfirmText(null)}>
+                        {t('common:cancel', { defaultValue: '취소' })}
+                    </button>
+                </div>
+            )}
             <form
                 className={clsx('term-input', { focused, disabled: stdinDisabled })}
                 onSubmit={(e) => {
                     e.preventDefault();
                     const cmd = (state?.input || '').trim();
                     if (!cmd || stdinDisabled) return;
+                    // 되돌리기 어려운 명령은 한 번 더 확인한다 (module.toml risk = "danger")
+                    if (needsConfirm(quickCommands, cmd) && confirmText !== cmd) {
+                        setConfirmText(cmd);
+                        return;
+                    }
+                    setConfirmText(null);
                     const hist = historyOf(server.id);
                     if (hist[hist.length - 1] !== cmd) hist.push(cmd);
                     if (hist.length > HISTORY_MAX) hist.shift();

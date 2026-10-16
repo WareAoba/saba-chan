@@ -212,7 +212,12 @@
     "click_to_expand": "클릭하여 상세 내역 보기",
     "show_details": "상세 보기",
     "hide_details": "상세 숨기기",
-    "select_placeholder": "-- 선택하세요 --"
+    "select_placeholder": "-- 선택하세요 --",
+    "autocomplete": "자동 완성",
+    "history": "실행 기록",
+    "no_history": "아직 실행한 명령이 없어요",
+    "no_matching_hints": "맞는 명령이 없어요. 입력한 그대로 보내요",
+    "type_to_filter": "명령을 입력하거나 목록에서 고르세요"
   },
   "server_status": {
     "running": "실행중",
@@ -826,6 +831,12 @@
     "daemon_address": "주소",
     "daemon_protocol": "통신",
     "daemon_link": "GUI 연결",
-    "copy": "복사"
+    "copy": "복사",
+    "modules_failed": "모듈 {{count}}개를 불러오지 못했어요",
+    "module_load_error": "불러오다 난 오류: {{error}}",
+    "risk_caution": "주의",
+    "risk_danger": "위험",
+    "risk_confirm": "'{{command}}'은(는) 되돌리기 어려운 명령이에요. 정말 실행할까요?",
+    "risk_run": "실행"
   }
 }

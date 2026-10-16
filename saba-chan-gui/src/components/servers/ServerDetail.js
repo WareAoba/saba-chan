@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { applyInstanceUpdate, dismissInstanceProvision, useMaintenanceOf } from '../../hooks/useInstanceMaintenance';
+import { useServerStore } from '../../stores/useServerStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
+import { failureForModule } from '../../utils/failedModules';
 import { useUIStore } from '../../stores/useUIStore';
 import { STATUS_TONE, initials, interactionOf, primaryAction, protocolLabel, viewStatus } from '../../utils/serverView';
 import ExtensionSlot from '../ExtensionSlot';
@@ -35,6 +37,9 @@ export function ServerDetail({
     const portConflictCheck = useSettingsStore((s) => s.portConflictCheck);
     const { provisionProgress, updateInfo, updatingServer } = useMaintenanceOf(server.id);
     const status = viewStatus(server, moduleData);
+    const moduleFailure = useServerStore((st) =>
+        status === 'missing' ? failureForModule(st.failedModules, server.module) : null,
+    );
     const action = primaryAction(status);
     const interaction = interactionOf(server, moduleData);
     const gameName = t(`mod_${server.module}:module.display_name`, {
@@ -169,6 +174,11 @@ export function ServerDetail({
                             module: server.module,
                             defaultValue: `Module '${server.module}' could not be found.`,
                         })}
+                        {moduleFailure && (
+                            <span className="notice-detail">
+                                {t('shell.module_load_error', { error: moduleFailure.error })}
+                            </span>
+                        )}
                     </span>
                 </div>
             )}

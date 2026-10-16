@@ -17,6 +17,7 @@ export const useServerStore = create((set, get) => ({
     // ── State ──
     servers: [],
     modules: [],
+    failedModules: [], // 데몬이 불러오지 못한 모듈 [{ path, error }]
     loading: true,
     moduleAliasesPerModule: {},
 
@@ -44,6 +45,7 @@ export const useServerStore = create((set, get) => ({
         set({
             servers: [],
             modules: [],
+            failedModules: [], // 데몬이 불러오지 못한 모듈 [{ path, error }]
             loading: true,
             moduleAliasesPerModule: {},
             daemonReady: false,
@@ -127,7 +129,7 @@ export const useServerStore = create((set, get) => ({
 
             if (data && data.modules) {
                 console.log('Setting modules:', data.modules.length, 'modules');
-                set({ modules: data.modules });
+                set({ modules: data.modules, failedModules: data.failed || [] });
 
                 // Register module locales
                 if (_i18n) {
@@ -216,6 +218,7 @@ if (import.meta.hot) {
         data.prevState = {
             servers: s.servers,
             modules: s.modules,
+            failedModules: s.failedModules,
             loading: s.loading,
             moduleAliasesPerModule: s.moduleAliasesPerModule,
             daemonReady: s.daemonReady,

@@ -14,14 +14,7 @@ import { SabaSpinner } from '../ui/SabaUI';
  *   - 로컬에 설치된 모듈 중 dir_signatures가 매치되는 것이 없으면
  *   - 레지스트리에서 모듈 목록을 fetch 하여 수동 선택 가능하게 보여준다
  */
-export function AddInstanceMigration({
-    extensions,
-    servers,
-    onAddServer,
-    onStepChange,
-    onBack,
-    onClose,
-}) {
+export function AddInstanceMigration({ extensions, servers, onAddServer, onStepChange, onBack, onClose }) {
     const { t } = useTranslation('gui');
     const [step, setStep] = useState('pick-dir'); // 'pick-dir' | 'configure'
 
@@ -54,51 +47,59 @@ export function AddInstanceMigration({
     }, [extensions]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ─── 디렉토리 스캔 + 모듈 감지 ───
-    const performScan = useCallback(async (path) => {
-        setScanning(true);
-        setScanError(null);
-        setDetectedModule(null);
-        setNoMatch(false);
-        setManualModule(null);
+    const performScan = useCallback(
+        async (path) => {
+            setScanning(true);
+            setScanError(null);
+            setDetectedModule(null);
+            setNoMatch(false);
+            setManualModule(null);
 
-        try {
-            const result = await window.api?.migrationScanDir?.(path);
-            if (!result?.ok) {
-                setScanError(result?.error || t('migration_modal.scan_error'));
-                setScanning(false);
-                return;
-            }
-
-            const fileLower = (result.files || []).map((f) => f.toLowerCase());
-
-            // 각 로컬 모듈의 dir_signatures 와 매치
-            let matched = null;
-            for (const ext of extensions) {
-                const sigs = ext.dir_signatures;
-                if (!sigs || sigs.length === 0) continue;
-
-                const allMatch = sigs.every((sig) =>
-                    fileLower.includes(sig.toLowerCase()),
-                );
-                if (allMatch) {
-                    const displayName = t(`mod_${ext.name}:module.display_name`, {
-                        defaultValue: ext.game_name || ext.name,
-                    });
-                    matched = { ...ext, displayName };
-                    break;
+            try {
+                const result = await window.api?.migrationScanDir?.(path);
+                if (!result?.ok) {
+                    setScanError(result?.error || t('migration_modal.scan_error'));
+                    setScanning(false);
+                    return;
                 }
-            }
 
-            if (matched) {
-                setDetectedModule(matched);
-            } else {
-                setNoMatch(true);
+                const withName = (ext) => ({
+                    ...ext,
+                    displayName: t(`mod_${ext.name}:module.display_name`, {
+                        defaultValue: ext.display_name || ext.game_name || ext.name,
+                    }),
+                });
+
+                let matched = null;
+                if (window.api?.moduleDetect) {
+                    // 데몬이 module.toml [detection].dir_signatures 로 판정한다 (POST /api/modules/detect)
+                    const det = await window.api.moduleDetect(path);
+                    const names = (det?.matches || []).map((m) => m.name);
+                    const ext = names.map((n) => extensions.find((e) => e.name === n)).find(Boolean);
+                    if (ext) matched = withName(ext);
+                } else {
+                    // 예전 데몬: 화면 쪽에서 같은 규칙으로 맞춰 본다
+                    const fileLower = (result.files || []).map((f) => f.toLowerCase());
+                    const ext = extensions.find(
+                        (e) =>
+                            e.dir_signatures?.length &&
+                            e.dir_signatures.every((sig) => fileLower.includes(sig.toLowerCase())),
+                    );
+                    if (ext) matched = withName(ext);
+                }
+
+                if (matched) {
+                    setDetectedModule(matched);
+                } else {
+                    setNoMatch(true);
+                }
+            } catch (err) {
+                setScanError(err.message);
             }
-        } catch (err) {
-            setScanError(err.message);
-        }
-        setScanning(false);
-    }, [extensions, t]);
+            setScanning(false);
+        },
+        [extensions, t],
+    );
 
     // ─── 매니페스트 fetch (감지 실패 시) ───
     const fetchManifest = useCallback(async () => {
@@ -114,9 +115,7 @@ export function AddInstanceMigration({
                 }));
                 setManifestModules(mods);
             } else {
-                setManifestError(
-                    res?.error || t('migration_modal.manifest_fetch_failed'),
-                );
+                setManifestError(res?.error || t('migration_modal.manifest_fetch_failed'));
                 setManifestModules([]);
             }
         } catch (e) {
@@ -132,13 +131,16 @@ export function AddInstanceMigration({
     }, [noMatch, fetchManifest]);
 
     // ─── 감지 결과로 다음 단계 ───
-    const proceedWithModule = useCallback((mod) => {
-        onStepChange?.('configure'); // 높이 캡처 후 부모 상태 변경 (배칭)
-        const name = mod.name || mod.id;
-        const existingCount = servers?.filter((s) => s.module === name).length || 0;
-        setInstanceName(`migrated-${name}-${existingCount + 1}`);
-        setStep('configure');
-    }, [servers, onStepChange]);
+    const proceedWithModule = useCallback(
+        (mod) => {
+            onStepChange?.('configure'); // 높이 캡처 후 부모 상태 변경 (배칭)
+            const name = mod.name || mod.id;
+            const existingCount = servers?.filter((s) => s.module === name).length || 0;
+            setInstanceName(`migrated-${name}-${existingCount + 1}`);
+            setStep('configure');
+        },
+        [servers, onStepChange],
+    );
 
     // configure 단계 진입 시 포커스
     useEffect(() => {
@@ -177,7 +179,7 @@ export function AddInstanceMigration({
 
     const activeModule = detectedModule || manualModule;
     const activeModuleName = activeModule
-        ? (activeModule.displayName || activeModule.display_name || activeModule.name || activeModule.id)
+        ? activeModule.displayName || activeModule.display_name || activeModule.name || activeModule.id
         : '';
 
     // 모듈별 네이티브 인스턴스 존재 여부
@@ -338,9 +340,7 @@ export function AddInstanceMigration({
                                                             {m.display_name || m.id}
                                                         </span>
                                                         {m.description && (
-                                                            <span className="mg-module-item-desc">
-                                                                {m.description}
-                                                            </span>
+                                                            <span className="mg-module-item-desc">{m.description}</span>
                                                         )}
                                                     </div>
                                                     {isSelected && (
