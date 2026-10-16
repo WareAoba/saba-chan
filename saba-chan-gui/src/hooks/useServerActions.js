@@ -374,6 +374,13 @@ export function useServerActions({
                 return;
             }
 
+            // ── error_code: start_in_progress — 같은 서버를 이미 켜는 중 (다른 창·봇·더블클릭) ──
+            if (result.error_code === 'start_in_progress') {
+                // 실제로 켜지는 중이므로 '켜는 중' 표시는 그대로 두고 알려만 준다
+                safeShowToast(t('servers.start_in_progress', { name }), 'info', 3000);
+                return;
+            }
+
             // ── error_code: port_conflict — 데몬이 포트 충돌 감지 ──
             if (result.error_code === 'port_conflict' || result.error === 'port_conflict') {
                 revertOptimistic(name);

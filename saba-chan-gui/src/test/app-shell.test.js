@@ -162,6 +162,22 @@ describe('서버 페이지', () => {
         await waitFor(() => expect(instanceStart).toHaveBeenCalledWith('srv-2'));
     }, 20000);
 
+    it('이미 켜는 중이면 실패 대신 안내 토스트를 띄우고 켜는 중 표시를 유지한다', async () => {
+        const instanceStart = vi.fn().mockResolvedValue({ success: false, error_code: 'start_in_progress' });
+        await boot({
+            serverList: vi.fn().mockResolvedValue(twoServers),
+            moduleList: vi.fn().mockResolvedValue(palworld),
+            instanceStart,
+        });
+        await waitFor(() => expect(document.querySelectorAll('.server-row')).toHaveLength(2), { timeout: 8000 });
+        const toast = vi.spyOn(window, 'showToast');
+        const startBtn = document.querySelectorAll('.server-row')[1].querySelector('.server-row-action.action-start');
+        await act(async () => fireEvent.click(startBtn));
+        await waitFor(() => expect(instanceStart).toHaveBeenCalled());
+        await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.stringContaining('Beta'), 'info', 3000, undefined));
+        expect(toast).not.toHaveBeenCalledWith(expect.any(String), 'error', expect.anything());
+    }, 20000);
+
     it('좁은 창에서는 목록만 보이고, 줄을 누르면 상세와 돌아가기 버튼이 보인다', async () => {
         await boot(
             { serverList: vi.fn().mockResolvedValue(twoServers), moduleList: vi.fn().mockResolvedValue(palworld) },

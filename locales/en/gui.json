@@ -405,7 +405,8 @@
     "extension_required_title": "Extension Required",
     "extension_required_message": "Server '{{name}}' requires an extension that is not currently enabled.",
     "extension_required_message_detail": "Server '{{name}}' requires the following extension(s): {{extensions}}. Enable them in Settings → Extensions first.",
-    "extension_open_settings": "Open Extension Settings"
+    "extension_open_settings": "Open Extension Settings",
+    "start_in_progress": "'{{name}}' is already starting. Hang on a moment."
   },
   "settings": {
     "save_failed_title": "Settings save failed",
