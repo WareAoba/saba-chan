@@ -2,8 +2,11 @@ import { create } from 'zustand';
 
 export const useUIStore = create((set, _get) => ({
     // ── Navigation ──
+    // activeTab = 상단 페이지 (servers | discord | settings), activeServerId = 서버 페이지에서 고른 서버
     activeTab: 'servers',
     activeServerId: null,
+    // 서버 상세에 "이 탭을 열어 달라"는 요청 (우클릭 메뉴 등). 상세가 읽고 비운다.
+    requestedServerTab: null,
 
     // ── Modal ──
     modal: null,
@@ -41,16 +44,23 @@ export const useUIStore = create((set, _get) => ({
 
     setShowModuleManager: (val) => set({ showModuleManager: val }),
 
+    // 설정은 이제 페이지다. 이름은 호출부 호환을 위해 그대로 둔다.
     openSettings: (initialView = null) =>
         set({
+            activeTab: 'settings',
             showGuiSettingsModal: true,
             settingsInitialView: initialView,
         }),
     closeSettings: () =>
         set({
+            activeTab: 'servers',
             showGuiSettingsModal: false,
             settingsInitialView: null,
         }),
+
+    showServerTab: (serverId, tab) =>
+        set({ activeTab: 'servers', activeServerId: serverId, requestedServerTab: tab }),
+    clearRequestedServerTab: () => set({ requestedServerTab: null }),
 
     setShowCommandModal: (val) => set({ showCommandModal: val }),
     setCommandServer: (server) => set({ commandServer: server }),
@@ -87,6 +97,7 @@ export const useUIStore = create((set, _get) => ({
         set({
             activeTab: 'servers',
             activeServerId: null,
+            requestedServerTab: null,
             modal: null,
             progressBar: null,
             showWaitingImage: false,

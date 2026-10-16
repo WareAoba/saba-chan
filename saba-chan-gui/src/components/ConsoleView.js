@@ -8,7 +8,7 @@ import { Icon } from './index';
 /**
  * 단일 콘솔 라인의 content를 하이라이팅하여 렌더링
  */
-function HighlightedContent({ text, compiledRules }) {
+export function HighlightedContent({ text, compiledRules }) {
     const segments = useMemo(() => highlightLine(text, compiledRules), [text, compiledRules]);
 
     if (!compiledRules || compiledRules.length === 0 || segments.length <= 1) {

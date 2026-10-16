@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { THEME_DEFAULTS } from '../utils/themeManager';
+import { THEME_DEFAULTS, getTheme, setCustomTheme, setTheme } from '../utils/themeManager';
 
 export const DEFAULT_IPC_PORT = 57474; // shared/constants.js와 동일 — renderer는 CJS require 불가하므로 상수 선언
 
@@ -15,6 +15,8 @@ export const useSettingsStore = create((set, get) => ({
     settingsReady: false,
 
     // ── Theme customization ──
+    // 테마 모드(auto/light/dark)도 config.json이 원천이다. localStorage는 첫 화면 깜빡임 방지용 캐시.
+    theme: 'auto',
     accentColor: THEME_DEFAULTS.accentColor,
     accentSecondary: THEME_DEFAULTS.accentSecondary,
     useGradient: THEME_DEFAULTS.useGradient,
@@ -43,6 +45,7 @@ export const useSettingsStore = create((set, get) => ({
                 patch.portConflictCheck = settings.portConflictCheck ?? true;
 
                 // Theme customization
+                patch.theme = settings.theme ?? getTheme();
                 patch.accentColor = settings.accentColor ?? THEME_DEFAULTS.accentColor;
                 patch.accentSecondary = settings.accentSecondary ?? THEME_DEFAULTS.accentSecondary;
                 patch.useGradient = settings.useGradient ?? THEME_DEFAULTS.useGradient;
@@ -60,6 +63,24 @@ export const useSettingsStore = create((set, get) => ({
 
             patch.settingsReady = true;
             set(patch);
+            if (settings) {
+                // config.json 값을 화면에 적용하고 캐시도 맞춘다
+                setTheme(patch.theme);
+                setCustomTheme({
+                    accentColor: patch.accentColor,
+                    accentSecondary: patch.accentSecondary,
+                    useGradient: patch.useGradient,
+                    fontScale: patch.fontScale,
+                    enableTransitions: patch.enableTransitions,
+                    consoleSyntaxHighlight: patch.consoleSyntaxHighlight,
+                    consoleBgColor: patch.consoleBgColor,
+                    consoleTextColor: patch.consoleTextColor,
+                    consoleFontScale: patch.consoleFontScale,
+                    sidebarCompact: patch.sidebarCompact,
+                });
+                // 예전 버전은 테마 모드를 브라우저 저장소에만 뒀다 — 한 번 config.json으로 옮긴다
+                if (settings.theme == null && !isTest) get().save();
+            }
             if (!isTest) console.log('[Settings] Ready flag set to true');
             return settings; // Return raw settings for discord token etc.
         } catch (error) {
@@ -84,6 +105,7 @@ export const useSettingsStore = create((set, get) => ({
                 autoGeneratePasswords: state.autoGeneratePasswords,
                 portConflictCheck: state.portConflictCheck,
                 // Theme customization
+                theme: state.theme,
                 accentColor: state.accentColor,
                 accentSecondary: state.accentSecondary,
                 useGradient: state.useGradient,
@@ -117,6 +139,7 @@ export const useSettingsStore = create((set, get) => ({
             portConflictCheck: true,
             settingsPath: '',
             settingsReady: false,
+            theme: 'auto',
             accentColor: THEME_DEFAULTS.accentColor,
             accentSecondary: THEME_DEFAULTS.accentSecondary,
             useGradient: THEME_DEFAULTS.useGradient,
@@ -140,6 +163,7 @@ const _settingsKeys = [
     'autoGeneratePasswords',
     'portConflictCheck',
     // Theme customization
+    'theme',
     'accentColor',
     'accentSecondary',
     'useGradient',
@@ -175,6 +199,7 @@ if (import.meta.hot) {
             portConflictCheck: s.portConflictCheck,
             settingsPath: s.settingsPath,
             settingsReady: s.settingsReady,
+            theme: s.theme,
             accentColor: s.accentColor,
             accentSecondary: s.accentSecondary,
             useGradient: s.useGradient,

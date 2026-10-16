@@ -1,0 +1,351 @@
+import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { applyInstanceUpdate, dismissInstanceProvision, useMaintenanceOf } from '../../hooks/useInstanceMaintenance';
+import { useSettingsStore } from '../../stores/useSettingsStore';
+import { useUIStore } from '../../stores/useUIStore';
+import { STATUS_TONE, initials, interactionOf, primaryAction, protocolLabel, viewStatus } from '../../utils/serverView';
+import ExtensionSlot from '../ExtensionSlot';
+import { Icon } from '../Icon';
+import CommandModal from '../Modals/CommandModal';
+import { NativeProvision } from '../NativeProvision';
+import { ServerSettingsModal } from '../ServerSettingsModal';
+import { Segmented, StatusChip } from '../ui/StatusChip';
+import { ServerConsole } from './ServerConsole';
+
+/**
+ * 오른쪽 서버 상세. 머리(이름·상태·켜기/끄기) + 탭(콘솔 · 명령 · 설정 · 정보).
+ * 예전에는 콘솔·명령·설정이 각각 떠다니는 창/모달이었다.
+ */
+export function ServerDetail({
+    server,
+    moduleData,
+    modules,
+    servers,
+    setServers,
+    formatUptime,
+    onStart,
+    onStop,
+    onDelete,
+    onBack,
+    setModal,
+    consoleProps,
+    settingsProps,
+}) {
+    const { t } = useTranslation('gui');
+    const portConflictCheck = useSettingsStore((s) => s.portConflictCheck);
+    const { provisionProgress, updateInfo, updatingServer } = useMaintenanceOf(server.id);
+    const status = viewStatus(server, moduleData);
+    const action = primaryAction(status);
+    const interaction = interactionOf(server, moduleData);
+    const gameName = t(`mod_${server.module}:module.display_name`, {
+        defaultValue: moduleData?.game_name || server.module,
+    });
+
+    const tabs = [
+        interaction.console && {
+            id: 'console',
+            label: t('shell.tab_console'),
+            icon: <Icon name="terminal" size="sm" />,
+        },
+        interaction.commands && {
+            id: 'commands',
+            label: t('shell.tab_commands'),
+            icon: <Icon name="command" size="sm" />,
+        },
+        { id: 'settings', label: t('shell.tab_settings'), icon: <Icon name="settings" size="sm" /> },
+        { id: 'info', label: t('shell.tab_info'), icon: <Icon name="info" size="sm" /> },
+    ].filter(Boolean);
+
+    // null = 아직 고르지 않음 → 그 서버의 첫 탭(콘솔이 있으면 콘솔)
+    const [tab, setTab] = useState(null);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 서버가 바뀔 때만 초기화
+    useEffect(() => {
+        setTab(null);
+    }, [server.id]);
+    // 우클릭 메뉴 등 바깥에서 특정 탭을 요청하면 그 탭으로
+    const requestedTab = useUIStore((s) => s.requestedServerTab);
+    useEffect(() => {
+        if (!requestedTab) return;
+        setTab(requestedTab);
+        useUIStore.getState().clearRequestedServerTab();
+    }, [requestedTab]);
+    const activeTab = tabs.some((x) => x.id === tab) ? tab : tabs[0].id;
+
+    const conflicts = portConflictCheck ? server.port_conflicts || [] : [];
+    const uptime = status === 'running' && server.start_time ? formatUptime(server.start_time) : null;
+
+    const primaryButton = (() => {
+        if (status === 'missing') return null;
+        if (updateInfo && status === 'stopped') {
+            return (
+                <button
+                    type="button"
+                    className="btn btn-info"
+                    disabled={updatingServer}
+                    onClick={() => applyInstanceUpdate(server, setServers)}
+                    title={t('server_status.update_available', {
+                        local: updateInfo.local_buildid,
+                        remote: updateInfo.remote_buildid,
+                        defaultValue: `${updateInfo.local_buildid} → ${updateInfo.remote_buildid}`,
+                    })}
+                >
+                    <Icon name="arrowUp" size="sm" /> {updatingServer ? t('shell.updating') : t('shell.update')}
+                </button>
+            );
+        }
+        if (action === 'busy') {
+            return (
+                <button type="button" className="btn btn-ghost btn-lg" disabled>
+                    <span className="spinner" aria-hidden="true" /> {t(`shell.status_${status}`)}
+                </button>
+            );
+        }
+        return action === 'stop' ? (
+            <button type="button" className="btn btn-danger btn-lg" onClick={() => onStop(server.name)}>
+                <Icon name="stop" size="sm" /> {t('shell.stop')}
+            </button>
+        ) : (
+            <button
+                type="button"
+                className="btn btn-primary btn-lg"
+                onClick={() => onStart(server.name, server.module)}
+            >
+                <Icon name="play" size="sm" /> {t('shell.start')}
+            </button>
+        );
+    })();
+
+    return (
+        <section className="server-detail" aria-label={server.name}>
+            <header className="detail-head">
+                {onBack && (
+                    <button
+                        type="button"
+                        className="icon-btn detail-back"
+                        onClick={onBack}
+                        aria-label={t('shell.back')}
+                    >
+                        <Icon name="chevronLeft" size="sm" />
+                    </button>
+                )}
+                <div className="detail-icon">
+                    {moduleData?.icon ? <img src={moduleData.icon} alt="" /> : <span>{initials(gameName)}</span>}
+                </div>
+                <div className="detail-title">
+                    <h1>{server.name}</h1>
+                    <div className="detail-sub">
+                        <span>{gameName}</span>
+                        {server.server_version && <span className="tag">{server.server_version}</span>}
+                        {server.port && (
+                            <span className="muted">
+                                {t('shell.info_port')} {server.port}
+                            </span>
+                        )}
+                    </div>
+                </div>
+                <ExtensionSlot slotId="ServerCard.headerGauge" server={server} />
+                <div className="detail-actions">
+                    <StatusChip
+                        tone={STATUS_TONE[status]}
+                        label={t(`shell.status_${status}`)}
+                        detail={uptime}
+                        pulse={status === 'starting' || status === 'stopping'}
+                    />
+                    {primaryButton}
+                </div>
+            </header>
+
+            {status === 'missing' && (
+                <div className="notice tone-warn">
+                    <Icon name="alertTriangle" size="sm" />
+                    <span>
+                        {t('server_status.module_missing_detail', {
+                            module: server.module,
+                            defaultValue: `Module '${server.module}' could not be found.`,
+                        })}
+                    </span>
+                </div>
+            )}
+
+            {conflicts.length > 0 && (
+                <div className="notice tone-warn">
+                    <Icon name="alertCircle" size="sm" />
+                    <span>
+                        <strong>{t('errors.port_conflict')}</strong>{' '}
+                        {conflicts
+                            .map((c) => t('errors.port_conflict_detail', { port: c.port, name: c.conflict_name }))
+                            .join(', ')}
+                    </span>
+                </div>
+            )}
+
+            {server.provisioning && (
+                <div className="detail-provision">
+                    <ExtensionSlot
+                        slotId="ServerCard.provision"
+                        server={server}
+                        provisionProgress={provisionProgress}
+                        onDismiss={() => dismissInstanceProvision(server, setServers)}
+                        t={t}
+                    />
+                    <NativeProvision
+                        server={server}
+                        provisionProgress={provisionProgress}
+                        onDismiss={() => dismissInstanceProvision(server, setServers)}
+                        t={t}
+                    />
+                </div>
+            )}
+
+            {status !== 'missing' && !server.provisioning && (
+                <>
+                    <Segmented items={tabs} value={activeTab} onChange={setTab} ariaLabel={server.name} />
+                    <div className="detail-body" key={`${server.id}-${activeTab}`}>
+                        {activeTab === 'console' && (
+                            <ServerConsole
+                                server={server}
+                                state={consoleProps.consoles[server.id]}
+                                highlightRules={moduleData?.syntax_highlight?.rules || null}
+                                openConsole={consoleProps.openConsole}
+                                setConsoleInput={consoleProps.setConsoleInput}
+                                sendConsoleCommand={consoleProps.sendConsoleCommand}
+                                poppedOut={consoleProps.consolePopoutInstanceId === server.id}
+                                onPopout={async () => {
+                                    try {
+                                        const result = await window.api.consolePopout(server.id, server.name);
+                                        if (result?.ok) consoleProps.setConsolePopoutInstanceId(server.id);
+                                    } catch (err) {
+                                        console.error('[ServerDetail] popout failed:', err);
+                                    }
+                                }}
+                                onPopin={() => consoleProps.popinConsole(server.id)}
+                            />
+                        )}
+                        {activeTab === 'commands' &&
+                            (server.status === 'running' ? (
+                                <CommandModal
+                                    server={server}
+                                    modules={modules}
+                                    onClose={() => {}}
+                                    onExecute={setModal}
+                                    embedded
+                                />
+                            ) : (
+                                <div className="empty-inline">
+                                    <Icon name="command" size="lg" />
+                                    <p>{t('shell.commands_offline')}</p>
+                                </div>
+                            ))}
+                        {activeTab === 'settings' && (
+                            <SettingsTab
+                                server={server}
+                                settingsProps={settingsProps}
+                                modules={modules}
+                                servers={servers}
+                            />
+                        )}
+                        {activeTab === 'info' && (
+                            <InfoTab
+                                server={server}
+                                moduleData={moduleData}
+                                gameName={gameName}
+                                uptime={uptime}
+                                onDelete={onDelete}
+                            />
+                        )}
+                    </div>
+                </>
+            )}
+            {(status === 'missing' || server.provisioning) && (
+                <InfoTab
+                    server={server}
+                    moduleData={moduleData}
+                    gameName={gameName}
+                    uptime={uptime}
+                    onDelete={onDelete}
+                />
+            )}
+        </section>
+    );
+}
+
+/** 설정 탭: 예전 "서버 설정" 모달 내용을 그대로 박아 넣는다 */
+function SettingsTab({ server, settingsProps, modules, servers }) {
+    const { t } = useTranslation('gui');
+    const { showSettingsModal, settingsServer, handleOpenSettings } = settingsProps;
+    const ready = showSettingsModal && settingsServer?.id === server.id;
+
+    // 탭을 열거나 저장 뒤 닫히면 최신 값으로 다시 연다
+    // biome-ignore lint/correctness/useExhaustiveDependencies: handleOpenSettings는 매 렌더 새로 만들어진다
+    useEffect(() => {
+        if (!ready) handleOpenSettings(server);
+    }, [ready, server.id]);
+
+    if (!ready) {
+        return (
+            <div className="empty-inline">
+                <span className="spinner" aria-hidden="true" />
+                <p>{t('shell.loading')}</p>
+            </div>
+        );
+    }
+    return <ServerSettingsModal {...settingsProps} modules={modules} servers={servers} embedded onClose={() => {}} />;
+}
+
+/** 정보 탭: 숫자·주소·관리 동작 */
+function InfoTab({ server, moduleData, gameName, uptime, onDelete }) {
+    const { t } = useTranslation('gui');
+    const supported = moduleData?.protocols?.supported || [];
+    const workingDir = server.module_settings?.working_dir || server.working_dir || null;
+    const rows = [
+        [t('shell.info_module'), gameName],
+        server.server_version && [t('shell.info_version'), server.server_version],
+        uptime && [t('shell.info_uptime'), uptime],
+        server.status === 'running' && server.pid && ['PID', server.pid],
+        server.port && [t('shell.info_port'), server.port],
+        server.rcon_port && supported.includes('rcon') && ['RCON', server.rcon_port],
+        server.rest_port && ['REST', `${server.rest_host || '127.0.0.1'}:${server.rest_port}`],
+        moduleData && [t('shell.info_protocol'), protocolLabel(server, moduleData)],
+        server.id && [t('shell.info_id'), <code key="id">{server.id}</code>],
+    ].filter(Boolean);
+    const busy = server.status === 'running' || server.status === 'starting' || server.status === 'stopping';
+
+    return (
+        <div className="info-tab">
+            <dl className="info-grid">
+                {rows.map(([k, v]) => (
+                    <div className="info-cell" key={k}>
+                        <dt>{k}</dt>
+                        <dd>{v}</dd>
+                    </div>
+                ))}
+            </dl>
+            <ExtensionSlot slotId="ServerCard.expandedStats" server={server} t={t} />
+            <ExtensionSlot slotId="ServerDetail.section" server={server} t={t} />
+            <div className="info-actions">
+                {workingDir && (
+                    <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() =>
+                            window.api
+                                ?.shellOpenPath?.(workingDir)
+                                ?.catch?.((err) => console.error('[ServerDetail] open folder:', err.message))
+                        }
+                    >
+                        <Icon name="folder" size="sm" /> {t('shell.open_folder')}
+                    </button>
+                )}
+                <button
+                    type="button"
+                    className="btn btn-ghost btn-danger-text"
+                    onClick={() => onDelete(server)}
+                    disabled={busy}
+                    title={busy ? t('shell.delete_stop_first') : undefined}
+                >
+                    <Icon name="trash" size="sm" /> {t('shell.delete')}
+                </button>
+            </div>
+        </div>
+    );
+}

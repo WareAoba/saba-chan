@@ -160,6 +160,21 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
                     </div>
                 )}
 
+                {/* 로그 폴더 열기: 기능은 있었는데 버튼이 없었다 */}
+                {window.api?.logsOpenFolder && (
+                    <div className="background-restart-section">
+                        <button
+                            type="button"
+                            className="btn btn-ghost btn-block"
+                            onClick={() =>
+                                window.api.logsOpenFolder().catch?.((err) => console.error('[Background] logs folder:', err.message))
+                            }
+                        >
+                            <Icon name="folder" size="sm" /> {t('shell.open_logs_folder')}
+                        </button>
+                    </div>
+                )}
+
                 <div className="background-info-box">
                     <h4>
                         <Icon name="lightbulb" size="sm" style={{ marginRight: '8px' }} />{' '}

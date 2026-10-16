@@ -577,6 +577,7 @@ export function ServerSettingsModal({
     handleResetAliasesForModule,
     isClosing,
     onClose,
+    embedded = false,
     // validation props
     servers,
     moduleAliasesPerModule,
@@ -649,14 +650,15 @@ export function ServerSettingsModal({
         return () => window.removeEventListener('resize', syncIndicator);
     }, [syncIndicator]);
 
-    return (
-        <div className={clsx('modal-overlay', { closing: isClosing })} onClick={onClose}>
-            <div className="modal-content modal-content-large" onClick={(e) => e.stopPropagation()}>
-                <div className="modal-header">
-                    <h3 style={{ fontSize: '1.3rem' }}>
-                        {settingsServer.name} - {t('server_settings.title')}
-                    </h3>
-                </div>
+    const content = (
+        <>
+                {!embedded && (
+                    <div className="modal-header">
+                        <h3 style={{ fontSize: '1.3rem' }}>
+                            {settingsServer.name} - {t('server_settings.title')}
+                        </h3>
+                    </div>
+                )}
 
                 {/* Tab header */}
                 <div className="settings-tabs" ref={tabsRef}>
@@ -724,10 +726,22 @@ export function ServerSettingsModal({
                             <Icon name="save" size="sm" /> {t('server_settings.save_settings')}
                         </button>
                     )}
-                    <button className="btn btn-cancel" onClick={onClose}>
-                        <Icon name="close" size="sm" /> {t('server_settings.close')}
-                    </button>
+                    {!embedded && (
+                        <button className="btn btn-cancel" onClick={onClose}>
+                            <Icon name="close" size="sm" /> {t('server_settings.close')}
+                        </button>
+                    )}
                 </div>
+        </>
+    );
+
+    // 서버 상세의 "설정" 탭에 박아 넣을 때: 겹쳐 뜨는 창 없이 같은 내용
+    if (embedded) return <div className="server-settings-embedded">{content}</div>;
+
+    return (
+        <div className={clsx('modal-overlay', { closing: isClosing })} onClick={onClose}>
+            <div className="modal-content modal-content-large" onClick={(e) => e.stopPropagation()}>
+                {content}
             </div>
         </div>
     );

@@ -423,7 +423,7 @@ describe('설정 자동저장 크로스 플로우', () => {
 // 6. 서버 목록 ↔ 모듈 매핑 E2E
 // ════════════════════════════════════════════════════════════
 describe('서버 목록 ↔ 모듈 크로스 렌더링', () => {
-    it('서버 2개 + 모듈 2개 → ServerCard 렌더링, 상태 표시', async () => {
+    it('서버 2개 + 모듈 2개 → 서버 목록 렌더링, 상태 표시', async () => {
         window.api = createApiMock();
 
         await act(async () => {
@@ -433,8 +433,8 @@ describe('서버 목록 ↔ 모듈 크로스 렌더링', () => {
         await waitFor(
             () => {
                 // 서버 이름이 UI에 표시됨
-                expect(screen.getByText('PW-Main')).toBeInTheDocument();
-                expect(screen.getByText('MC-Creative')).toBeInTheDocument();
+                expect(screen.getAllByText('PW-Main').length).toBeGreaterThan(0);
+                expect(screen.getAllByText('MC-Creative').length).toBeGreaterThan(0);
             },
             { timeout: 8000 },
         );
@@ -508,7 +508,7 @@ describe('uptime 포맷팅 통합', () => {
 
         await waitFor(
             () => {
-                expect(screen.getByText('Uptime-Test')).toBeInTheDocument();
+                expect(screen.getAllByText('Uptime-Test').length).toBeGreaterThan(0);
             },
             { timeout: 8000 },
         );
@@ -582,8 +582,8 @@ describe('풀 라이프사이클 시나리오', () => {
         // 서버 카드 렌더링
         await waitFor(
             () => {
-                expect(screen.getByText('PW-Main')).toBeInTheDocument();
-                expect(screen.getByText('MC-Creative')).toBeInTheDocument();
+                expect(screen.getAllByText('PW-Main').length).toBeGreaterThan(0);
+                expect(screen.getAllByText('MC-Creative').length).toBeGreaterThan(0);
             },
             { timeout: 8000 },
         );
@@ -698,7 +698,7 @@ describe('게임 서버 업데이트 배지', () => {
         // 서버 카드가 렌더링될 때까지 대기
         await waitFor(
             () => {
-                expect(screen.getByText('PW-Steam')).toBeInTheDocument();
+                expect(screen.getAllByText('PW-Steam').length).toBeGreaterThan(0);
             },
             { timeout: 10000 },
         );
@@ -706,16 +706,16 @@ describe('게임 서버 업데이트 배지', () => {
         // 업데이트 배지가 표시될 때까지 대기
         await waitFor(
             () => {
-                const badge = document.querySelector('.server-update-badge');
+                const badge = document.querySelector('.server-row-flag');
                 expect(badge).toBeInTheDocument();
             },
             { timeout: 5000 },
         );
 
-        // 업데이트 버튼이 표시되어야 함 (보라색 status-update-available)
+        // 상세 화면 머리에 켜기 대신 업데이트 버튼
         await waitFor(
             () => {
-                const updateBtn = document.querySelector('.status-button.status-update-available');
+                const updateBtn = document.querySelector('.detail-actions .btn-info');
                 expect(updateBtn).toBeInTheDocument();
             },
             { timeout: 3000 },
@@ -757,7 +757,7 @@ describe('게임 서버 업데이트 배지', () => {
 
         await waitFor(
             () => {
-                expect(screen.getByText('PW-Update')).toBeInTheDocument();
+                expect(screen.getAllByText('PW-Update').length).toBeGreaterThan(0);
             },
             { timeout: 10000 },
         );
@@ -765,14 +765,14 @@ describe('게임 서버 업데이트 배지', () => {
         // 업데이트 버튼 대기 후 클릭
         await waitFor(
             () => {
-                const updateBtn = document.querySelector('.status-button.status-update-available');
+                const updateBtn = document.querySelector('.detail-actions .btn-info');
                 expect(updateBtn).toBeInTheDocument();
             },
             { timeout: 5000 },
         );
 
         await act(async () => {
-            const updateBtn = document.querySelector('.status-button.status-update-available');
+            const updateBtn = document.querySelector('.detail-actions .btn-info');
             updateBtn.click();
         });
 
@@ -806,14 +806,14 @@ describe('게임 서버 업데이트 배지', () => {
 
         await waitFor(
             () => {
-                expect(screen.getByText('MC-Steam')).toBeInTheDocument();
+                expect(screen.getAllByText('MC-Steam').length).toBeGreaterThan(0);
             },
             { timeout: 10000 },
         );
 
         // 약간의 대기 후 배지가 없음을 확인
         await new Promise((r) => setTimeout(r, 2000));
-        const badge = document.querySelector('.server-update-badge');
+        const badge = document.querySelector('.server-row-flag');
         expect(badge).toBeNull();
     }, 20000);
 
@@ -838,7 +838,7 @@ describe('게임 서버 업데이트 배지', () => {
 
         await waitFor(
             () => {
-                expect(screen.getByText('MC-Vanilla')).toBeInTheDocument();
+                expect(screen.getAllByText('MC-Vanilla').length).toBeGreaterThan(0);
             },
             { timeout: 10000 },
         );

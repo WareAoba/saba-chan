@@ -843,9 +843,13 @@ function DiscordBotModal({
     );
 
     const isSide = displayMode === 'side';
+    const isPage = displayMode === 'page';
 
     return (
-        <div className={clsx('discord-modal-container', { closing: isClosing, 'side-panel': isSide })} onClick={(e) => e.stopPropagation()}>
+        <div
+            className={clsx('discord-modal-container', { closing: isClosing && !isPage, 'side-panel': isSide, 'page-panel': isPage })}
+            onClick={(e) => e.stopPropagation()}
+        >
             <div className="discord-modal-header">
                 <div className="discord-modal-title">
                     <span
@@ -857,9 +861,11 @@ function DiscordBotModal({
                     ></span>
                     <h2>{t('discord_modal.title')}</h2>
                 </div>
-                <button className="discord-modal-close" onClick={onClose}>
-                    <Icon name="close" size="sm" />
-                </button>
+                {!isPage && (
+                    <button className="discord-modal-close" onClick={onClose}>
+                        <Icon name="close" size="sm" />
+                    </button>
+                )}
             </div>
 
             <div className="discord-modal-content">

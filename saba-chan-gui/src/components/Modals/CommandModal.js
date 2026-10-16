@@ -7,7 +7,7 @@ import { createTranslateError } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { useUIStore } from '../../stores/useUIStore';
 
-function CommandModal({ server, modules, onClose, onExecute }) {
+function CommandModal({ server, modules, onClose, onExecute, embedded = false }) {
     const { t } = useTranslation('gui');
     const translateError = createTranslateError(t);
     const { isClosing, requestClose } = useModalClose(onClose);
@@ -31,7 +31,7 @@ function CommandModal({ server, modules, onClose, onExecute }) {
 
     // 히스토리 추가 시 자동 스크롤
     useEffect(() => {
-        historyEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        historyEndRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
     }, [history]);
 
     // Tab 자동완성 & 방향키 힌트 탐색
@@ -169,17 +169,12 @@ function CommandModal({ server, modules, onClose, onExecute }) {
         }
     };
 
-    return (
-        <div className={clsx('modal-overlay', { closing: isClosing })} onClick={requestClose}>
-            <div className="modal command-modal-fixed" onClick={(e) => e.stopPropagation()}>
-                {/* 닫기 버튼 (우상단) */}
-                <button className="cmd-modal-close" onClick={requestClose} title={t('modals.close')}>
-                    &times;
-                </button>
+    const body = (
+        <>
 
                 {/* ── 좌측: 입력 + 힌트 ── */}
                 <div className="command-modal-main">
-                    <h2 className="modal-title">{t('command_modal.title', { name: server.name })}</h2>
+                    {!embedded && <h2 className="modal-title">{t('command_modal.title', { name: server.name })}</h2>}
 
                     {/* 힌트 영역 (고정 높이) */}
                     <div className="cmd-hints-inline">
@@ -219,7 +214,7 @@ function CommandModal({ server, modules, onClose, onExecute }) {
                                 onChange={(e) => setCommandInput(e.target.value)}
                                 onKeyDown={handleKeyDown}
                                 placeholder={t('command_modal.command_placeholder')}
-                                autoFocus
+                                autoFocus={!embedded}
                                 disabled={loading}
                             />
                             <button
@@ -278,6 +273,20 @@ function CommandModal({ server, modules, onClose, onExecute }) {
                         <div ref={historyEndRef} />
                     </div>
                 </div>
+        </>
+    );
+
+    // 서버 상세의 "명령" 탭에 그대로 박아 넣을 때
+    if (embedded) return <div className="command-embedded">{body}</div>;
+
+    return (
+        <div className={clsx('modal-overlay', { closing: isClosing })} onClick={requestClose}>
+            <div className="modal command-modal-fixed" onClick={(e) => e.stopPropagation()}>
+                {/* 닫기 버튼 (우상단) */}
+                <button className="cmd-modal-close" onClick={requestClose} title={t('modals.close')}>
+                    &times;
+                </button>
+                {body}
             </div>
         </div>
     );

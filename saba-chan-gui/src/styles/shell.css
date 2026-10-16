@@ -1,0 +1,752 @@
+/* ════════════════════════════════════════════════════════════════
+ * 새 레이아웃: 상단바 + 페이지 + 서버 목록/상세 (gui-design-reference §3)
+ * ════════════════════════════════════════════════════════════════ */
+
+.App {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-0);
+    color: var(--text-1);
+    overflow: hidden;
+}
+
+/* ── 상단바 ── */
+.appbar {
+    position: relative;
+    z-index: 1000;
+    height: var(--appbar-h);
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-4);
+    padding-left: var(--sp-4);
+    background: var(--appbar-gradient);
+    border-bottom: 1px solid var(--line);
+    -webkit-app-region: drag;
+}
+.appbar button,
+.appbar .popover-anchor > *:not(button) {
+    -webkit-app-region: no-drag;
+}
+.appbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-right: var(--sp-2);
+}
+.appbar-logo {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px var(--line-strong);
+    pointer-events: none;
+}
+.appbar-name {
+    font-size: var(--fs-lg);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    background: linear-gradient(180deg, var(--text-1) 30%, var(--text-2) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+.appbar-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 3px;
+    border-radius: var(--r-sm);
+    background: var(--inset);
+    box-shadow: var(--shadow-inset);
+    border: 1px solid var(--line);
+}
+.appbar-tab {
+    --btn-height: 30px;
+    --btn-padding: 0 14px;
+    --btn-font-size: var(--fs-sm);
+    border-radius: 8px;
+    color: var(--text-2);
+    border: 1px solid transparent;
+    position: relative;
+}
+.appbar-tab:hover:not(.active) {
+    color: var(--text-1);
+}
+.appbar-tab.active {
+    color: var(--text-1);
+    background: var(--surface-gradient);
+    border-color: var(--line);
+    box-shadow: var(--shadow-raised);
+}
+.appbar-tab-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--chip-color);
+}
+.appbar-spacer {
+    flex: 1;
+}
+.appbar-status {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+}
+.appbar-ext-init {
+    display: inline-flex;
+    -webkit-app-region: no-drag;
+}
+.chip-btn {
+    --btn-height: 30px;
+    --btn-padding: 0 12px;
+    --btn-font-size: var(--fs-sm);
+    border-radius: var(--r-pill);
+    border: 1px solid var(--line);
+    background: var(--inset);
+    box-shadow: var(--shadow-inset);
+}
+.chip-btn:hover {
+    border-color: var(--line-strong);
+}
+.appbar-window {
+    display: flex;
+    height: 100%;
+    margin-left: var(--sp-2);
+}
+.win-btn {
+    --btn-height: 100%;
+    width: 44px;
+    padding: 0;
+    border-radius: 0;
+    color: var(--text-2);
+}
+.win-btn:hover {
+    background: var(--bg-3);
+    color: var(--text-1);
+}
+.win-btn.win-close:hover {
+    background: var(--stop);
+    color: #fff;
+}
+
+/* 상단바에서 펼쳐지는 패널(데몬·알림): 버튼 아래에 붙는다 */
+.popover-anchor {
+    position: relative;
+    display: flex;
+}
+.popover-anchor .background-modal-container,
+.popover-anchor .notice-modal-container {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    left: auto;
+    z-index: 1100;
+}
+.popover-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+}
+
+/* ── 본문 ── */
+.app-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    position: relative;
+}
+.page {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    animation: page-in var(--dur) var(--ease);
+}
+.page-scroll {
+    overflow-y: auto;
+    justify-content: center;
+    align-items: flex-start;
+    padding: var(--sp-6);
+    background: var(--panel-gradient);
+}
+@keyframes page-in {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+}
+
+/* ── 빈 화면 (R4 마스코트 + 다음 할 일) ── */
+.page-empty {
+    align-items: center;
+    justify-content: center;
+    background: var(--panel-gradient);
+}
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: var(--sp-3);
+    padding: var(--sp-8);
+    max-width: 420px;
+}
+.empty-mascot {
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    box-shadow: var(--shadow-raised), 0 0 0 4px var(--line);
+    margin-bottom: var(--sp-2);
+}
+.empty-state h2 {
+    font-size: var(--fs-xl);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+}
+.empty-state p {
+    color: var(--text-2);
+    margin-bottom: var(--sp-3);
+}
+.empty-inline {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-3);
+    min-height: 220px;
+    color: var(--text-3);
+    text-align: center;
+}
+
+/* ── 서버 페이지: 목록 | 상세 ── */
+.servers-page {
+    background: var(--bg-0);
+}
+.server-list-pane {
+    width: var(--list-w);
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    background: var(--panel-gradient);
+    border-right: 1px solid var(--line);
+    min-height: 0;
+}
+.single-column .server-list-pane {
+    width: 100%;
+    border-right: none;
+}
+.server-list-head {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: var(--sp-4);
+}
+.server-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 var(--sp-3) var(--sp-4);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.server-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: 10px 10px 10px 12px;
+    border-radius: var(--r-md);
+    border: 1px solid transparent;
+    cursor: pointer;
+    outline: none;
+    transition:
+        background var(--dur-fast) var(--ease),
+        box-shadow var(--dur-fast) var(--ease),
+        border-color var(--dur-fast) var(--ease);
+}
+.server-row:hover {
+    background: var(--bg-2);
+}
+.server-row:focus-visible {
+    border-color: var(--accent);
+}
+.server-row.selected {
+    background: var(--surface-gradient);
+    border-color: var(--line);
+    box-shadow: var(--shadow-raised);
+}
+.server-row.selected::before {
+    content: '';
+    position: absolute;
+    left: -1px;
+    top: 14px;
+    bottom: 14px;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--brand-gradient);
+}
+.server-row.dragging {
+    z-index: 10;
+    box-shadow: var(--shadow-float);
+    opacity: 0.95;
+}
+.server-row-icon {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    flex: none;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    background: var(--surface-gradient);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-raised);
+    font-weight: 800;
+    color: var(--text-2);
+}
+.server-row-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 11px;
+}
+.server-row-dot {
+    position: absolute;
+    right: -3px;
+    bottom: -3px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--chip-color);
+    box-shadow: 0 0 0 3px var(--bg-1);
+}
+.server-row-text {
+    flex: 1;
+    min-width: 0;
+}
+.server-row-name {
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.server-row-sub {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+    white-space: nowrap;
+    overflow: hidden;
+}
+.server-row-sub .status-chip {
+    font-size: var(--fs-xs);
+}
+.server-row-sub .status-chip-dot {
+    display: none;
+}
+.server-row-sub .sep {
+    opacity: 0.6;
+}
+.server-row-flag {
+    color: var(--info);
+    display: inline-flex;
+}
+.server-row-action {
+    border-color: var(--line);
+    background: var(--surface-gradient);
+    box-shadow: var(--shadow-raised);
+}
+.server-row-action.action-start {
+    color: var(--ok);
+}
+.server-row-action.action-stop {
+    color: var(--stop);
+}
+
+/* ── 서버 상세 ── */
+.server-detail-pane {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    background:
+        radial-gradient(1200px 400px at 70% -10%, var(--brand-shadow-subtle), transparent 60%),
+        var(--bg-0);
+}
+.server-detail {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: var(--sp-6);
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+    min-height: 100%;
+}
+.detail-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-4);
+    padding: var(--sp-5);
+    border-radius: var(--r-lg);
+    background: var(--sheen), var(--surface-gradient);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-raised);
+    flex-wrap: wrap;
+}
+.detail-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    display: grid;
+    place-items: center;
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--text-2);
+    background: var(--inset);
+    box-shadow: var(--shadow-inset);
+    border: 1px solid var(--line);
+    flex: none;
+}
+.detail-icon img {
+    width: 100%;
+    height: 100%;
+    border-radius: 15px;
+    object-fit: cover;
+}
+.detail-title {
+    flex: 1;
+    min-width: 180px;
+}
+.detail-title h1 {
+    font-size: var(--fs-2xl);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+}
+.detail-sub {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    color: var(--text-2);
+    font-size: var(--fs-sm);
+    margin-top: 4px;
+    flex-wrap: wrap;
+}
+.detail-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+}
+.detail-back {
+    margin-right: -4px;
+}
+.server-detail > .segmented {
+    align-self: flex-start;
+}
+.detail-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    animation: page-in var(--dur) var(--ease);
+}
+.detail-provision {
+    border-radius: var(--r-md);
+}
+
+/* ── 콘솔 (N2: 눌린 화면) ── */
+.term {
+    display: flex;
+    flex-direction: column;
+    height: max(360px, calc(100vh - 330px));
+    border-radius: var(--r-lg);
+    background: var(--console-custom-bg);
+    color: var(--console-custom-text);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-inset);
+    overflow: hidden;
+}
+.term-output {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--sp-4);
+    font-family: var(--font-mono);
+    font-size: calc(13px * var(--console-font-scale, 1));
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    -webkit-user-select: text;
+    user-select: text;
+}
+.term-output * {
+    font-family: var(--font-mono);
+    -webkit-user-select: text;
+    user-select: text;
+}
+.term-empty {
+    color: var(--text-3);
+    font-family: var(--font-sans);
+    padding: var(--sp-6) 0;
+    text-align: center;
+}
+.term-input {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-2) var(--sp-3);
+    border-top: 1px solid var(--line);
+    background: color-mix(in srgb, var(--console-custom-bg) 70%, var(--bg-1));
+}
+.term-prompt {
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-weight: 700;
+}
+.term-field {
+    flex: 1;
+    height: 34px;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--console-custom-text);
+    font-family: var(--font-mono);
+    font-size: calc(13px * var(--console-font-scale, 1));
+}
+.term-field::placeholder {
+    color: var(--text-3);
+}
+.term-placeholder {
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-3);
+    color: var(--text-2);
+}
+
+/* ── 정보 탭 ── */
+.info-tab {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+}
+.info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: var(--sp-3);
+}
+.info-cell {
+    padding: var(--sp-3) var(--sp-4);
+    border-radius: var(--r-md);
+    background: var(--surface-gradient);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-raised);
+}
+.info-cell dt {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+.info-cell dd {
+    font-size: var(--fs-lg);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+    -webkit-user-select: text;
+    user-select: text;
+}
+.info-cell dd code {
+    font-size: var(--fs-sm);
+}
+.info-actions {
+    display: flex;
+    gap: var(--sp-2);
+    flex-wrap: wrap;
+    padding-top: var(--sp-2);
+    border-top: 1px solid var(--line);
+}
+
+/* ── 박아 넣은 옛 화면들 (명령·서버 설정·설정·디스코드) ── */
+.command-embedded {
+    display: flex;
+    gap: var(--sp-4);
+    min-height: 420px;
+}
+.command-embedded .command-modal-main,
+.command-embedded .command-history-panel {
+    border-radius: var(--r-lg);
+    background: var(--surface-gradient);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-raised);
+    padding: var(--sp-4);
+}
+.command-embedded .command-modal-main {
+    flex: 1.4;
+    display: flex;
+    flex-direction: column;
+}
+.command-embedded .command-history-panel {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+    margin: 0;
+    padding: var(--sp-3) 0 0;
+}
+.command-embedded .cli-input-wrapper {
+    background: var(--inset);
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    box-shadow: var(--shadow-inset);
+    padding-right: 4px;
+}
+.command-embedded .cli-input-wrapper:focus-within {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-inset), var(--accent-ring);
+}
+.command-embedded .cli-input {
+    color: var(--text-1);
+    background: transparent;
+}
+
+.server-settings-embedded {
+    border-radius: var(--r-lg);
+    background: var(--surface-gradient);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-raised);
+    padding: var(--sp-2) var(--sp-5) var(--sp-5);
+}
+.server-settings-embedded .modal-body {
+    max-height: none;
+    overflow: visible;
+    padding: var(--sp-4) 0;
+}
+.server-settings-embedded .modal-footer {
+    position: sticky;
+    bottom: 0;
+    background: transparent;
+    border-top: 1px solid var(--line);
+    padding: var(--sp-3) 0 0;
+}
+
+.settings-page {
+    width: 100%;
+    max-width: 880px;
+}
+.settings-page .settings-modal-container {
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    height: auto;
+    animation: none;
+    position: static;
+    transform: none;
+    background: var(--sheen), var(--surface-gradient);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-raised);
+    border-radius: var(--r-lg);
+}
+.settings-page .settings-modal-content {
+    max-height: none;
+    overflow: visible;
+}
+
+
+.discord-modal-container.page-panel {
+    position: static;
+    transform: none;
+    width: 100%;
+    max-width: 880px;
+    max-height: none;
+    height: auto;
+    animation: none;
+    background: var(--sheen), var(--surface-gradient);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-raised);
+    border-radius: var(--r-lg);
+}
+.discord-modal-container.page-panel::before {
+    display: none;
+}
+.discord-modal-container.page-panel .discord-modal-content {
+    max-height: none;
+    overflow: visible;
+}
+
+/* ── 좁은 창 ── */
+@media (max-width: 899px) {
+    .appbar-name {
+        display: none;
+    }
+    .appbar-tab span {
+        display: none;
+    }
+    .server-detail {
+        padding: var(--sp-4);
+    }
+    .command-embedded {
+        flex-direction: column;
+    }
+}
+
+/* 로딩 화면 위의 빈 상단바 (창 이동 + 창 버튼만) */
+.appbar-bare {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: transparent;
+    border-bottom: none;
+}
+
+/* 옛 화면의 탭 줄·확인 버튼을 새 체계로 맞춘다 */
+.server-settings-embedded .settings-tabs,
+.settings-page .settings-modal-tabs {
+    display: inline-flex;
+    width: auto;
+    gap: 4px;
+    padding: 4px;
+    margin: var(--sp-3) 0 0;
+    border-radius: var(--r-md);
+    background: var(--inset);
+    box-shadow: var(--shadow-inset);
+    border: 1px solid var(--line);
+}
+.settings-page .settings-modal-tabs {
+    height: auto;
+    margin: 0 24px;
+    align-self: flex-start;
+}
+.server-settings-embedded .settings-tab-indicator,
+.settings-page .settings-tab-indicator {
+    display: none;
+}
+.server-settings-embedded .settings-tab,
+.settings-page .settings-tab {
+    height: 32px;
+    padding: 0 14px;
+    font-size: var(--fs-sm);
+    flex: none;
+    background: transparent;
+    color: var(--text-2);
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+}
+.server-settings-embedded .settings-tab.active,
+.settings-page .settings-tab.active {
+    color: var(--text-1);
+    background: var(--surface-gradient);
+    border-color: var(--line);
+    box-shadow: var(--shadow-raised);
+}
+.btn.btn-confirm {
+    background: var(--brand-gradient);
+    color: var(--brand-text);
+    border: none;
+    box-shadow: var(--shadow-raised), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.btn.btn-cancel {
+    background: transparent;
+    color: var(--text-1);
+    border: 1px solid var(--line-strong);
+}

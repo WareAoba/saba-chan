@@ -2,7 +2,7 @@
  * 설정 저장/로드 라운드트립 테스트
  *
  * 모든 설정 항목에 대해 save → load 왕복을 검증한다.
- * - settings.json (settingsLoad / settingsSave) : 16 필드 (GUI 전용 + 테마 커스터마이즈 10필드)
+ * - settings.json (settingsLoad / settingsSave) : 17 필드 (GUI 전용 + 테마 모드 + 테마 커스터마이즈 10필드)
  * - bot-config.json (botConfigLoad / botConfigSave) : 데몬 BotConfig 키 (로컬 봇 키 없음)
  *
  * 각 테스트가 독립적으로 store를 리셋하므로 순서 무관.
@@ -52,7 +52,7 @@ beforeEach(() => {
 describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => {
     // ── 저장 시 모든 7 필드가 payload에 포함되는지 검증 ──
 
-    it('save() payload에 GUI 16필드만 포함 (token/autoStart는 bot-config으로 이전)', async () => {
+    it('save() payload에 GUI 17필드만 포함 (token/autoStart는 bot-config으로 이전)', async () => {
         mockApi();
         const _store = useSettingsStore.getState();
         // Prepare: settingsPath 필요
@@ -75,6 +75,7 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
             autoGeneratePasswords: true,
             portConflictCheck: true,
             // Theme customization defaults
+            theme: 'auto',
             accentColor: '#667eea',
             accentSecondary: '#764ba2',
             useGradient: true,
@@ -98,6 +99,8 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
         { field: 'refreshInterval', saved: 7777, defaultVal: 2000 },
         { field: 'ipcPort', saved: 33333, defaultVal: 57474 },
         { field: 'consoleBufferSize', saved: 100, defaultVal: 2000 },
+        // 테마 모드도 config.json이 원천 (예전엔 브라우저 저장소에만 있었다)
+        { field: 'theme', saved: 'dark', defaultVal: 'auto' },
         // modulesPath는 설정이 아닌 고정 경로이므로 save 대상에서 제외
     ];
 
@@ -160,6 +163,7 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
         expect(captured).toEqual({
             ...custom,
             // Theme customization defaults
+            theme: 'auto',
             accentColor: '#667eea',
             accentSecondary: '#764ba2',
             useGradient: true,
@@ -480,6 +484,7 @@ describe('saveCurrentSettings 통합 (settings + botConfig 동시 저장)', () =
             autoGeneratePasswords: true,
             portConflictCheck: true,
             // Theme customization defaults
+            theme: 'auto',
             accentColor: '#667eea',
             accentSecondary: '#764ba2',
             useGradient: true,

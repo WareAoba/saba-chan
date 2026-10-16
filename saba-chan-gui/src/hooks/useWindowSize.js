@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 /**
  * 윈도우 크기를 추적하는 훅.
- * 디스코드 사이드 패널 등 반응형 레이아웃 조건 판단에 사용.
+ * 서버 페이지의 한 열/두 열 전환 등 반응형 레이아웃 판단에 사용.
  */
 export function useWindowSize() {
     const [size, setSize] = useState({
@@ -20,7 +20,3 @@ export function useWindowSize() {
 
     return size;
 }
-
-/** 사이드 패널 표시 조건: 서버 카드 2열 + 사이드 패널 여유분 */
-export const SIDE_PANEL_MIN_WIDTH = 1700;
-export const SIDE_PANEL_MIN_HEIGHT = 600;

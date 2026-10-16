@@ -37,6 +37,7 @@ function SettingsModal({
     initialView,
     discordCloudRelayUrl,
     onDiscordCloudRelayUrlChange,
+    variant = 'modal',
 }) {
     const { t, i18n } = useTranslation(['gui', 'common']);
     const [activeTab, setActiveTab] = useState('general');
@@ -127,7 +128,7 @@ function SettingsModal({
     useEffect(() => {
         if (isOpen) {
             if (window.api?.getAppVersion) {
-                window.api.getAppVersion().then((v) => v && setAppVersion(v)).catch(() => {});
+                window.api.getAppVersion().then((v) => typeof v === 'string' && setAppVersion(v)).catch(() => {});
             }
             if (window.api?.getComponentInfo) {
                 window.api.getComponentInfo().then((info) => info && setComponentInfo(info)).catch(() => {});
@@ -255,6 +256,7 @@ function SettingsModal({
     const handleThemeChange = (theme) => {
         setSelectedTheme(theme);
         saveTheme(theme);
+        useSettingsStore.getState().update({ theme });
         // Re-apply custom theme after base theme change (accent colors adapt to light/dark)
         setTimeout(() => applyCustomTheme(customTheme), 50);
     };
@@ -312,8 +314,13 @@ function SettingsModal({
         return null;
     }
 
+    const isPage = variant === 'page';
+
     return (
-        <div className={clsx('settings-modal-overlay', { closing: isClosing })} onClick={requestClose}>
+        <div
+            className={clsx(isPage ? 'settings-page' : 'settings-modal-overlay', { closing: isClosing && !isPage })}
+            onClick={isPage ? undefined : requestClose}
+        >
             <div className="settings-modal-container" onClick={(e) => e.stopPropagation()}>
                 {!showUpdatePanel && (
                     <>
@@ -1183,7 +1190,7 @@ function SettingsModal({
                     </div>
                 </div>
 
-                {!showUpdatePanel && (
+                {!showUpdatePanel && !isPage && (
                     <div className="settings-modal-footer">
                         <button className="settings-btn-cancel" onClick={requestClose}>
                             {t('gui:modals.cancel')}
