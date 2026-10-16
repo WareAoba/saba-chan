@@ -810,3 +810,18 @@
     color: var(--text-1);
     border: 1px solid var(--line-strong);
 }
+
+/* 재시작 뒤 업데이트 결과 (한 번만, 닫으면 데몬에서 지운다) */
+.update-banner {
+    margin: var(--sp-3) var(--sp-5) 0;
+    align-items: center;
+}
+.update-banner-text {
+    flex: 1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+}
+.update-banner-msg {
+    color: var(--text-2);
+}

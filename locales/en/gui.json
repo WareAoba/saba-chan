@@ -814,6 +814,11 @@
     "daemon_tip_stopped": "The daemon is stopped. Click to start it again",
     "bot_tip_running": "The Discord bot is connected through the Saba-chan cloud",
     "bot_tip_connecting": "The bot is on and connecting to the Saba-chan cloud",
-    "bot_tip_stopped": "The Discord bot is off. Click to go turn it on"
+    "bot_tip_stopped": "The Discord bot is off. Click to go turn it on",
+    "update_done": "Update complete",
+    "update_failed": "The update did not finish",
+    "update_components": "Updated: {{list}}",
+    "update_failed_components": "Failed: {{list}}",
+    "dismiss": "Dismiss"
   }
 }

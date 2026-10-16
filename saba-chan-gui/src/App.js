@@ -28,6 +28,7 @@ import { setServerI18n, useServerStore } from './stores/useServerStore';
 import { useSettingsStore } from './stores/useSettingsStore';
 import { useUIStore } from './stores/useUIStore';
 // 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
+import { UpdateResultBanner } from './components/shell/UpdateResultBanner';
 import './styles/shell.css';
 function App() {
     const { t, i18n } = useTranslation('gui');
@@ -720,6 +721,7 @@ function App() {
                     }
                     daemonProps={{ onClose: requestBackgroundClose, isClosing: isBackgroundClosing, ipcPort }}
                 />
+                <UpdateResultBanner daemonReady={backgroundDaemonStatus === 'running'} />
 
                 {/* AddInstanceModal — 새 서버 / 마이그레이션 선택 */}
                 <AddInstanceModal

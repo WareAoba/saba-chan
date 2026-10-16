@@ -98,6 +98,7 @@ const ok = (v = {}) => Promise.resolve(v);
 const params = new URLSearchParams(globalThis.location?.search || '');
 const mockBot = params.get('bot') || 'stopped';
 const mockDaemonUp = params.get('daemon') !== 'stopped';
+const mockUpdate = params.get('update'); // ok | fail
 const settings = {};
 
 const impl = {
@@ -119,6 +120,18 @@ const impl = {
     discordBotStatus: () => ok(mockBot === 'stopped' ? 'stopped' : 'running'),
     relayCheckHostStatus: () => ok(mockBot === 'running' ? { online: true } : { error: 'offline' }),
     daemonStatus: () => ok({ running: mockDaemonUp }),
+    updaterLastResult: ({ clear } = {}) =>
+        ok(
+            !mockUpdate || clear
+                ? null
+                : {
+                      timestamp: now(),
+                      success: mockUpdate === 'ok',
+                      updated_components: mockUpdate === 'ok' ? ['saba-core', 'saba-chan-gui'] : ['saba-chan-gui'],
+                      failed: mockUpdate === 'ok' ? [] : ['saba-core'],
+                      message: mockUpdate === 'ok' ? '' : '데몬 파일을 교체하지 못했어요 (사용 중)',
+                  },
+        ),
     extensionList: () => ok({ extensions: [] }),
     extensionInitStatus: () => ok({ initializing: false, in_progress: {} }),
     getAppVersion: () => ok('0.1.1'),
