@@ -5,8 +5,12 @@
 //!
 //! ## 실행
 //! ```text
-//! saba-chan-updater --apply [--relaunch <exe> [extra...]]
+//! saba-chan-updater --apply [--wait-pid <pid>] [--relaunch <exe> [extra...]]
 //! ```
+//!
+//! 보통 데몬이 띄운다(`POST /api/updates/launch-updater`, U7). `--wait-pid`는 데몬 PID로,
+//! 데몬이 끝날 때까지(최대 30초) 기다린 뒤 적용한다. 결과는 성공·실패 모두
+//! 완료 마커(`update-complete.json`)에 남고, 다음 데몬이 `/api/updates/last-result`로 보여준다.
 //!
 //! ## 데이터 소스
 //! - `%APPDATA%/saba-chan/updates/apply-targets.json` — 적용 대상 컴포넌트
@@ -81,6 +85,7 @@ async fn start_apply(
             .map_err(|e| {
                 let msg = format!("Failed to load manifest: {}", e);
                 emit_progress(&app, "error", &msg, 0, &[]);
+                UpdateCompletionMarker::failure(msg.clone()).save().ok();
                 msg
             })?
     };
@@ -98,6 +103,7 @@ async fn start_apply(
 
     // 3. 적용
     let mut applied = Vec::new();
+    let mut failed: Vec<String> = Vec::new();
 
     if target_keys.is_empty() {
         // apply-targets.json이 없거나 비어있으면 전체 적용
@@ -109,6 +115,7 @@ async fn start_apply(
             Err(e) => {
                 let msg = format!("Apply failed: {}", e);
                 emit_progress(&app, "error", &msg, 0, &[]);
+                UpdateCompletionMarker::failure(msg.clone()).save().ok();
                 return Err(msg);
             }
         }
@@ -129,23 +136,28 @@ async fn start_apply(
                 }
                 Ok(result) => {
                     tracing::warn!("[Apply] {} failed: {}", key, result.message);
+                    failed.push(format!("{}: {}", key, result.message));
                 }
                 Err(e) => {
                     tracing::error!("[Apply] {} error: {}", key, e);
+                    failed.push(format!("{}: {}", key, e));
                 }
             }
         }
     }
 
-    // 4. 완료 마커 저장
-    if !applied.is_empty() {
-        let marker = UpdateCompletionMarker::success(applied.clone());
-        let marker = UpdateCompletionMarker {
-            message: Some(format!("{} updates applied: {}", applied.len(), applied.join(", "))),
-            ..marker
-        };
-        marker.save().ok();
-    }
+    // 4. 완료 마커 저장 — 성공·실패 모두 남겨 "됐는지 안 됐는지" 볼 수 있게 한다
+    let marker = UpdateCompletionMarker {
+        message: Some(if failed.is_empty() {
+            format!("{} updates applied: {}", applied.len(), applied.join(", "))
+        } else {
+            format!("{} applied, {} failed", applied.len(), failed.len())
+        }),
+        success: failed.is_empty(),
+        failed: failed.clone(),
+        ..UpdateCompletionMarker::success(applied.clone())
+    };
+    marker.save().ok();
     mgr.clear_pending_manifest();
 
     emit_progress(&app, "complete", &{
@@ -212,8 +224,8 @@ async fn get_theme() -> Result<String, String> {
 /// 업데이트 완료 마커 확인 (프론트엔드 호환용)
 #[tauri::command]
 async fn check_after_update() -> Result<serde_json::Value, String> {
+    // 지우지 않는다: 다음 데몬이 /api/updates/last-result로 보여 주고, 클라이언트가 확인하면 지운다
     if let Some(marker) = UpdateCompletionMarker::load() {
-        UpdateCompletionMarker::clear().ok();
         Ok(serde_json::json!({
             "updated": marker.success,
             "components": marker.updated_components,
@@ -384,8 +396,24 @@ pub fn run() {
 
     tracing::info!("[Apply] Relaunch: {:?} {:?}", relaunch_exe, relaunch_extra);
 
-    // GUI 프로세스 종료 대기
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    // 띄운 쪽(데몬) 종료 대기. PID를 모르면 예전처럼 잠깐만 기다린다.
+    let wait_pid = after_apply
+        .iter()
+        .position(|a| a == "--wait-pid")
+        .and_then(|i| after_apply.get(i + 1))
+        .and_then(|p| p.parse::<u32>().ok());
+    match wait_pid {
+        Some(pid) => {
+            for _ in 0..60 {
+                if !saba_chan_updater_lib::ProcessChecker::is_pid_running(pid) {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+            tracing::info!("[Apply] Waited for PID {} to exit", pid);
+        }
+        None => std::thread::sleep(std::time::Duration::from_millis(500)),
+    }
 
     let apply_config = ApplyConfig { relaunch_exe, relaunch_extra };
 

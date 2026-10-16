@@ -13,6 +13,13 @@ use std::io::{Read, Seek, SeekFrom};
 const RUN_DIR: &str = "run";
 const TOKEN_FILE: &str = "token";
 const SESSIONS_DIR: &str = "sessions";
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+#[cfg(windows)]
+const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+#[cfg(windows)]
+const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+
 /// 세션 로그 기본 보관 개수
 pub const DEFAULT_LOG_SESSIONS: usize = 20;
 
@@ -107,9 +114,24 @@ impl ManagedProcess {
         // 데몬의 터미널 시그널(Ctrl+C)이 서버까지 가지 않게 따로 프로세스 그룹을 둔다
         #[cfg(unix)]
         cmd.process_group(0);
+        // Windows: 데몬을 띄운 쪽(예: Electron)의 Job Object가 닫혀도 러너가 살아남도록 빠져나온다.
+        // Job이 빠져나가기를 허용하지 않으면 그 플래그 없이 다시 띄운다.
+        #[cfg(windows)]
+        cmd.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB);
+        #[cfg(not(windows))]
         crate::utils::apply_creation_flags(&mut cmd);
 
-        let mut child = cmd.spawn()
+        let spawned = cmd.spawn();
+        #[cfg(windows)]
+        let spawned = match spawned {
+            Err(e) if e.raw_os_error() == Some(5) => {
+                tracing::warn!("saba-runner cannot leave the parent job ({}); its server stops if the daemon's parent closes", e);
+                cmd.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
+                cmd.spawn()
+            }
+            other => other,
+        };
+        let mut child = spawned
             .map_err(|e| anyhow::anyhow!("Failed to spawn saba-runner '{}': {}", runner.display(), e))?;
         tokio::spawn(async move {
             let _ = child.wait().await; // 데몬이 사는 동안 좀비를 남기지 않는다
