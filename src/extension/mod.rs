@@ -225,6 +225,13 @@ pub struct ExtensionManifest {
     pub config_fields: HashMap<String, FieldDef>,
     #[serde(default)]
     pub i18n_dir: Option<String>,
+    /// 같은 hook을 여러 익스텐션이 받을 때의 순서. 작을수록 먼저 (기본 100, 같으면 id 순)
+    #[serde(default = "default_hook_priority")]
+    pub priority: i32,
+}
+
+fn default_hook_priority() -> i32 {
+    100
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1038,17 +1045,17 @@ impl ExtensionManager {
             .collect()
     }
 
-    /// 지정된 hook에 바인딩된 활성 익스텐션 목록
+    /// 지정된 hook에 바인딩된 활성 익스텐션 목록. 실행 순서대로 (`priority`, 그다음 id)
     pub fn hooks_for(&self, hook_name: &str) -> Vec<(&DiscoveredExtension, &HookBinding)> {
-        let mut result = Vec::new();
-        for ext in self.discovered.values() {
-            if !self.enabled.contains(&ext.manifest.id) {
-                continue;
-            }
-            if let Some(binding) = ext.manifest.hooks.get(hook_name) {
-                result.push((ext, binding));
-            }
-        }
+        let mut result: Vec<_> = self
+            .discovered
+            .values()
+            .filter(|ext| self.enabled.contains(&ext.manifest.id))
+            .filter_map(|ext| ext.manifest.hooks.get(hook_name).map(|b| (ext, b)))
+            .collect();
+        result.sort_by(|(a, _), (b, _)| {
+            (a.manifest.priority, &a.manifest.id).cmp(&(b.manifest.priority, &b.manifest.id))
+        });
         result
     }
 
@@ -1104,7 +1111,34 @@ impl ExtensionManager {
         context: Value,
         timeout_secs: u64,
     ) -> Vec<(String, Result<Value>)> {
-        let hooks = self.hooks_for(hook_name);
+        self.dispatch_hook_inner(hook_name, context, timeout_secs, None).await
+    }
+
+    /// 익스텐션 하나에만 hook을 보낸다 (예: 방금 켠 익스텐션의 `daemon.startup`)
+    pub async fn dispatch_hook_to(
+        &self,
+        ext_id: &str,
+        hook_name: &str,
+        context: Value,
+    ) -> Option<Result<Value>> {
+        self.dispatch_hook_inner(hook_name, context, crate::plugin::DEFAULT_PLUGIN_TIMEOUT_SECS, Some(ext_id))
+            .await
+            .into_iter()
+            .next()
+            .map(|(_, r)| r)
+    }
+
+    async fn dispatch_hook_inner(
+        &self,
+        hook_name: &str,
+        context: Value,
+        timeout_secs: u64,
+        only: Option<&str>,
+    ) -> Vec<(String, Result<Value>)> {
+        let mut hooks = self.hooks_for(hook_name);
+        if let Some(id) = only {
+            hooks.retain(|(ext, _)| ext.manifest.id == id);
+        }
         if hooks.is_empty() {
             return Vec::new();
         }
@@ -1216,8 +1250,9 @@ impl ExtensionManager {
         on_progress: F,
     ) -> Vec<(String, Result<Value>)>
     where
-        F: Fn(crate::plugin::ExtensionProgress) + Send + 'static,
+        F: Fn(crate::plugin::ExtensionProgress) + Send + Sync + 'static,
     {
+        let on_progress = std::sync::Arc::new(on_progress);
         let hooks = self.hooks_for(hook_name);
         if hooks.is_empty() {
             tracing::warn!("dispatch_hook_with_progress('{}') — no hooks registered (enabled: {:?})", hook_name, self.enabled);
@@ -1260,11 +1295,12 @@ impl ExtensionManager {
 
             let module_path = module_file.to_string_lossy().to_string();
 
+            let progress = on_progress.clone();
             let result = crate::plugin::run_plugin_with_progress_and_timeout(
                 &module_path,
                 &binding.function,
                 context.clone(),
-                on_progress,
+                move |p| progress(p),
                 1800, // 30분 — SteamCMD/다운로드 등 장시간 프로비저닝 허용
             )
             .await;
@@ -1283,9 +1319,6 @@ impl ExtensionManager {
                     ));
                 }
             }
-
-            // progress 콜백은 한 번만 소비 가능하므로 첫 번째 익스텐션만 progress 지원
-            break;
         }
 
         results
@@ -1677,6 +1710,33 @@ mod tests {
     }
 
     // ── 동적 마운트/언마운트 테스트 ──
+
+    #[test]
+    fn hooks_run_in_priority_then_id_order() {
+        let tmp = tempfile::tempdir().unwrap();
+        for (id, priority) in [("beta", None), ("zeta", Some(10)), ("alpha", None), ("off", Some(0))] {
+            let dir = tmp.path().join(id);
+            std::fs::create_dir_all(&dir).unwrap();
+            let mut manifest = json!({
+                "id": id, "name": id, "version": "0.1.0",
+                "python_modules": { "m": "m.py" },
+                "hooks": { "daemon.startup": { "module": "m", "function": "f" } },
+            });
+            if let Some(p) = priority {
+                manifest["priority"] = json!(p);
+            }
+            std::fs::write(dir.join("manifest.json"), manifest.to_string()).unwrap();
+        }
+        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        mgr.discover().unwrap();
+        for id in ["alpha", "beta", "zeta"] {
+            mgr.enabled.insert(id.to_string());
+        }
+        for _ in 0..5 {
+            let order: Vec<&str> = mgr.hooks_for("daemon.startup").iter().map(|(e, _)| e.manifest.id.as_str()).collect();
+            assert_eq!(order, ["zeta", "alpha", "beta"], "disabled 'off' is skipped, priority 10 before default 100");
+        }
+    }
 
     #[test]
     fn test_mount_unmount() {

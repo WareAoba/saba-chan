@@ -114,12 +114,14 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
                 });
                 let mgr = ext_mgr.read().await;
                 let results = mgr.dispatch_hook_timed("server.list_enrich", ctx, 10).await;
-                // 첫 번째 성공 응답을 캐시 (handled 여부 무관)
-                let result = results.into_iter()
-                    .find_map(|(_id, r)| r.ok())
-                    .unwrap_or_else(|| json!({"handled": false}));
-                state.extension_status_cache.set(&instance.id, result.clone());
-                result
+                // 첫 번째 성공 응답만 캐시한다 (실패는 다음 목록 요청에서 다시 시도)
+                match results.into_iter().find_map(|(_id, r)| r.ok()) {
+                    Some(result) => {
+                        state.extension_status_cache.set(&instance.id, result.clone());
+                        result
+                    }
+                    None => json!({"handled": false}),
+                }
             };
 
             // handled: true인 경우만 Extension이 서버 정보를 제공
@@ -363,59 +365,30 @@ pub async fn get_module_metadata(
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
     let supervisor = state.supervisor.read().await;
-
     match supervisor.list_modules() {
-        Ok(modules) => {
-            if let Some(module) = modules.iter().find(|m| m.metadata.name == name) {
-                // TOML에서 aliases 섹션 읽기 시도
-                let module_path = format!("{}/module.toml", module.path);
-                match std::fs::read_to_string(&module_path) {
-                    Ok(content) => match toml::from_str::<serde_json::Value>(&content) {
-                        Ok(parsed) => (
-                            StatusCode::OK,
-                            Json(json!({
-                                "name": &module.metadata.name,
-                                "version": &module.metadata.version,
-                                "description": &module.metadata.description,
-                                "path": &module.path,
-                                "metadata": &module.metadata,
-                                "toml": parsed,
-                            })),
-                        )
-                            .into_response(),
-                        Err(_) => (
-                            StatusCode::OK,
-                            Json(json!({
-                                "name": &module.metadata.name,
-                                "version": &module.metadata.version,
-                                "description": &module.metadata.description,
-                                "path": &module.path,
-                                "metadata": &module.metadata,
-                            })),
-                        )
-                            .into_response(),
-                    },
-                    Err(_) => (
-                        StatusCode::OK,
-                        Json(json!({
-                            "name": &module.metadata.name,
-                            "version": &module.metadata.version,
-                            "description": &module.metadata.description,
-                            "path": &module.path,
-                            "metadata": &module.metadata,
-                        })),
-                    )
-                        .into_response(),
-                }
-            } else {
-                let error = json!({ "error": format!("Module '{}' not found", name) });
-                (StatusCode::NOT_FOUND, Json(error)).into_response()
-            }
-        }
-        Err(e) => {
-            let error = json!({ "error": format!("Failed to list modules: {}", e) });
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
-        }
+        Ok(modules) => match modules.iter().find(|m| m.metadata.name == name) {
+            Some(module) => (
+                StatusCode::OK,
+                Json(json!({
+                    "name": &module.metadata.name,
+                    "version": &module.metadata.version,
+                    "description": &module.metadata.description,
+                    "path": &module.path,
+                    "metadata": &module.metadata,
+                })),
+            )
+                .into_response(),
+            None => (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Module '{}' not found", name) })),
+            )
+                .into_response(),
+        },
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to list modules: {}", e) })),
+        )
+            .into_response(),
     }
 }
 
