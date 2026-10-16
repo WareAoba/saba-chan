@@ -94,31 +94,28 @@ pub async fn enable_extension(
         let ext_id_clone = ext_id.clone();
         tokio::spawn(async move {
             init_tracker.mark_started(&ext_id_clone, "Initializing...").await;
-            let ctx = serde_json::json!({});
             let mgr = ext_mgr.read().await;
-            let results = mgr.dispatch_hook("daemon.startup", ctx).await;
-            // 방금 활성화한 익스텐션의 결과만 처리
-            for (rid, result) in results {
-                if rid != ext_id_clone {
-                    continue;
-                }
-                match result {
-                    Ok(val) => {
-                        let success = val.get("success").and_then(|s| s.as_bool()).unwrap_or(true);
-                        let msg = val.get("message").and_then(|m| m.as_str()).unwrap_or("OK");
-                        if success {
-                            tracing::info!("Extension '{}' post-enable startup complete: {}", rid, msg);
-                        } else {
-                            let err = val.get("error").and_then(|e| e.as_str()).unwrap_or("unknown");
-                            tracing::warn!("Extension '{}' post-enable startup failed: {}", rid, err);
-                        }
-                        init_tracker.mark_finished(&rid, success, msg).await;
+            // 방금 켠 익스텐션에만 보낸다 (다른 익스텐션의 startup을 다시 돌리지 않게)
+            let result = mgr.dispatch_hook_to(&ext_id_clone, "daemon.startup", serde_json::json!({})).await;
+            let rid = ext_id_clone;
+            match result {
+                Some(Ok(val)) => {
+                    let success = val.get("success").and_then(|s| s.as_bool()).unwrap_or(true);
+                    let msg = val.get("message").and_then(|m| m.as_str()).unwrap_or("OK");
+                    if success {
+                        tracing::info!("Extension '{}' post-enable startup complete: {}", rid, msg);
+                    } else {
+                        let err = val.get("error").and_then(|e| e.as_str()).unwrap_or("unknown");
+                        tracing::warn!("Extension '{}' post-enable startup failed: {}", rid, err);
                     }
-                    Err(e) => {
-                        tracing::error!("Extension '{}' post-enable startup error: {}", rid, e);
-                        init_tracker.mark_finished(&rid, false, &e.to_string()).await;
-                    }
+                    init_tracker.mark_finished(&rid, success, msg).await;
                 }
+                Some(Err(e)) => {
+                    tracing::error!("Extension '{}' post-enable startup error: {}", rid, e);
+                    init_tracker.mark_finished(&rid, false, &e.to_string()).await;
+                }
+                // 조건이 맞지 않아 실행하지 않았다
+                None => init_tracker.mark_finished(&rid, true, "OK").await,
             }
         });
     }
