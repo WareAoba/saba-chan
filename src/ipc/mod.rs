@@ -239,6 +239,18 @@ pub struct ExtensionInfo {
     pub name: String,
     pub version: String,
     pub description: Option<String>,
+    /// module.toml schema_version (0 = 스키마 이전 모듈)
+    #[serde(default)]
+    pub schema_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub game_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    /// 로드는 됐지만 모듈 작성자가 고쳐야 할 점
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
     pub path: String,
     pub executable_path: Option<String>,
     pub icon: Option<String>,
@@ -264,6 +276,9 @@ pub struct ExtensionInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtensionListResponse {
     pub modules: Vec<ExtensionInfo>,
+    /// 로드하지 못한 모듈과 이유
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failed: Vec<crate::supervisor::module_loader::ModuleLoadError>,
 }
 
 // ── API Action Tracker ──────────────────────────────────────
@@ -623,6 +638,8 @@ impl IPCServer {
             .route("/api/server/:name/stop", post(handlers::server::stop_server_handler))
             .route("/api/modules", get(handlers::server::list_modules))
             .route("/api/modules/refresh", post(handlers::server::refresh_modules))
+            .route("/api/modules/schema", get(handlers::server::module_schema))
+            .route("/api/modules/detect", post(handlers::server::detect_module_dir))
             .route("/api/modules/manifest", get(handlers::server::fetch_module_manifest))
             .route("/api/modules/manifest/:id/install", post(handlers::server::install_module_from_manifest))
             .route("/api/modules/:id", delete(handlers::server::remove_module))
@@ -810,6 +827,11 @@ mod tests {
             name: "palworld".to_string(),
             version: "1.0.0".to_string(),
             description: Some("Palworld 서버 관리".to_string()),
+            schema_version: 1,
+            display_name: None,
+            game_name: None,
+            author: None,
+            warnings: Vec::new(),
             path: "/modules/palworld".to_string(),
             executable_path: Some("PalServer.exe".to_string()),
             icon: None,
@@ -831,6 +853,7 @@ mod tests {
                         http_method: Some("GET".to_string()),
                         endpoint_template: Some("/v1/api/players".to_string()),
                         rcon_template: None,
+                        risk: None,
                         inputs: vec![],
                     },
                 ],
@@ -853,6 +876,11 @@ mod tests {
             name: "test".to_string(),
             version: "1.0.0".to_string(),
             description: None,
+            schema_version: 1,
+            display_name: None,
+            game_name: None,
+            author: None,
+            warnings: Vec::new(),
             path: "/modules/test".to_string(),
             executable_path: None,
             icon: None,
@@ -875,11 +903,17 @@ mod tests {
     #[test]
     fn test_module_list_response_includes_commands() {
         let response = ExtensionListResponse {
+            failed: Vec::new(),
             modules: vec![
                 ExtensionInfo {
                     name: "palworld".to_string(),
                     version: "1.0.0".to_string(),
                     description: Some("Palworld".to_string()),
+                    schema_version: 1,
+                    display_name: None,
+                    game_name: None,
+                    author: None,
+                    warnings: Vec::new(),
                     path: "/modules/palworld".to_string(),
                     executable_path: None,
                     icon: None,
@@ -901,6 +935,7 @@ mod tests {
                                 http_method: Some("GET".to_string()),
                                 endpoint_template: Some("/v1/api/info".to_string()),
                                 rcon_template: None,
+                                risk: None,
                                 inputs: vec![],
                             },
                             crate::supervisor::module_loader::CommandField {
@@ -911,6 +946,7 @@ mod tests {
                                 http_method: Some("POST".to_string()),
                                 endpoint_template: Some("/v1/api/announce".to_string()),
                                 rcon_template: None,
+                                risk: None,
                                 inputs: vec![
                                     crate::supervisor::module_loader::CommandInput {
                                         name: "message".to_string(),

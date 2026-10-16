@@ -501,7 +501,7 @@ impl Supervisor {
         let final_config = Value::Object(cfg);
 
         let module = self.module_loader.get_module(module_name)?;
-        let module_path = format!("{}/lifecycle.py", module.path);
+        let module_path = module.entry_path();
 
         let launch_result = crate::plugin::run_plugin(&module_path, "get_launch_command", final_config).await?;
 
@@ -660,7 +660,7 @@ impl Supervisor {
                     if let Some(port) = instance.rest_port {
                         config_obj.insert("rest_port".to_string(), json!(port));
                     }
-                    let module_path = format!("{}/lifecycle.py", module.path);
+                    let module_path = module.entry_path();
                     if let Err(e) = crate::plugin::run_plugin(&module_path, "stop", Value::Object(config_obj)).await {
                         tracing::warn!("Module stop for '{}' failed: {} (will force kill on timeout)", server_name, e);
                     }
@@ -729,7 +729,7 @@ impl Supervisor {
 
         // ── Non-managed mode: Python lifecycle.py를 통한 정지 ──
         let module = self.module_loader.get_module(module_name)?;
-        let module_path = format!("{}/lifecycle.py", module.path);
+        let module_path = module.entry_path();
 
         // Build config with all necessary info for stop
         let mut config_obj = serde_json::Map::new();
@@ -840,7 +840,7 @@ impl Supervisor {
 
         // Find module
         let module = self.module_loader.get_module(module_name)?;
-        let module_path = format!("{}/lifecycle.py", module.path);
+        let module_path = module.entry_path();
 
         // Build config — 실행 파일, PID, RCON 정보 등 Python status()에 필요한 값 포함
         let mut config_obj = serde_json::Map::new();
@@ -924,7 +924,7 @@ impl Supervisor {
 
         // 모듈 찾기
         let module = self.module_loader.get_module(module_name)?;
-        let module_path = format!("{}/lifecycle.py", module.path);
+        let module_path = module.entry_path();
 
         // 모듈의 기본값 가져오기 (하드코딩 대신 모듈 설정 사용)
         let default_rcon_port = module.metadata.default_rcon_port();
@@ -1219,7 +1219,7 @@ impl Supervisor {
 
         // Get module and call get_launch_command
         let module = self.module_loader.get_module(module_name)?;
-        let module_path = format!("{}/lifecycle.py", module.path);
+        let module_path = module.entry_path();
 
         tracing::info!("get_launch_command config: {}", serde_json::to_string_pretty(&final_config).unwrap_or_default());
 
@@ -1466,7 +1466,7 @@ impl Supervisor {
             .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
 
         let module = self.module_loader.get_module(&instance.module_name)?;
-        let module_path = format!("{}/lifecycle.py", module.path);
+        let module_path = module.entry_path();
 
         let mut cfg = serde_json::Map::new();
         if let Some(exe_path) = &instance.executable_path {
@@ -1496,7 +1496,7 @@ impl Supervisor {
             .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
 
         let module = self.module_loader.get_module(&instance.module_name)?;
-        let module_path = format!("{}/lifecycle.py", module.path);
+        let module_path = module.entry_path();
 
         let mut cfg = serde_json::Map::new();
         // working_dir 결정: 명시적 설정 > executable_path의 부모 디렉토리
@@ -1534,7 +1534,7 @@ impl Supervisor {
             .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
 
         let module = self.module_loader.get_module(&instance.module_name)?;
-        let module_path = format!("{}/lifecycle.py", module.path);
+        let module_path = module.entry_path();
 
         let mut cfg = serde_json::Map::new();
         if let Some(work_dir) = &instance.working_dir {
@@ -1551,7 +1551,7 @@ impl Supervisor {
             .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", instance_id))?;
 
         let module = self.module_loader.get_module(&instance.module_name)?;
-        let module_path = format!("{}/lifecycle.py", module.path);
+        let module_path = module.entry_path();
 
         let mut cfg = serde_json::Map::new();
         if let Some(work_dir) = &instance.working_dir {
@@ -1580,7 +1580,7 @@ impl Supervisor {
         per_page: u32,
     ) -> Result<Value> {
         let module = self.module_loader.get_module(module_name)?;
-        let module_path = format!("{}/lifecycle.py", module.path);
+        let module_path = module.entry_path();
 
         let config = json!({
             "include_snapshots": include_snapshots,
@@ -1599,7 +1599,7 @@ impl Supervisor {
         version: &str,
     ) -> Result<Value> {
         let module = self.module_loader.get_module(module_name)?;
-        let module_path = format!("{}/lifecycle.py", module.path);
+        let module_path = module.entry_path();
 
         let config = json!({ "version": version });
         let result = crate::plugin::run_plugin(&module_path, "get_version_details", config).await?;
@@ -1618,7 +1618,7 @@ impl Supervisor {
         initial_settings: Option<Value>,
     ) -> Result<Value> {
         let module = self.module_loader.get_module(module_name)?;
-        let module_path = format!("{}/lifecycle.py", module.path);
+        let module_path = module.entry_path();
 
         // jar_name 결정: 명시 > 모듈 metadata.server_executable > 기본값 없음
         let effective_jar = jar_name
@@ -1715,7 +1715,7 @@ impl Supervisor {
         instance_id: &str,
     ) -> Result<Value> {
         let module = self.module_loader.get_module(module_name)?;
-        let module_path = format!("{}/lifecycle.py", module.path);
+        let module_path = module.entry_path();
 
         let instance = self.instance_store.list()
             .iter()
@@ -2050,6 +2050,7 @@ mod tests {
         for (name, mode) in [("console-game", "\ninteraction_mode = \"console\""), ("api-game", "\ninteraction_mode = \"commands\""), ("plain-game", "")] {
             let dir = modules_dir.join(name);
             std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("lifecycle.py"), "").unwrap();
             std::fs::write(
                 dir.join("module.toml"),
                 format!("[module]\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[protocols]\nsupported = [\"rcon\"]{mode}\n"),
@@ -2086,6 +2087,7 @@ mod tests {
         for (name, protocols) in [("console-game", r#"["rcon", "stdin"]"#), ("rest-game", r#"["rest"]"#)] {
             let dir = modules_dir.join(name);
             std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("lifecycle.py"), "").unwrap();
             std::fs::write(
                 dir.join("module.toml"),
                 format!(

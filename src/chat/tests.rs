@@ -58,6 +58,7 @@ fn field(name: &str, method: &str) -> CommandField {
         http_method: None,
         endpoint_template: None,
         rcon_template: None,
+        risk: None,
         inputs: vec![],
     }
 }

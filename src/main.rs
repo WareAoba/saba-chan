@@ -27,12 +27,49 @@ const HEARTBEAT_REAPER_INTERVAL_SECS: u64 = 30;
 /// 모니터 연속 실패 허용 횟수
 const MONITOR_MAX_CONSECUTIVE_ERRORS: u32 = 10;
 
+/// `saba-core module schema` — module.toml JSON Schema 출력
+/// `saba-core module validate <모듈 폴더>...` — 데몬과 같은 규칙으로 검사 (실패하면 종료 코드 1)
+fn module_tool(args: &[String]) -> i32 {
+    use saba_core::supervisor::module_loader::{load_module_dir, module_json_schema};
+    match args.first().map(String::as_str) {
+        Some("schema") => {
+            println!("{}", serde_json::to_string_pretty(&module_json_schema()).unwrap_or_default());
+            0
+        }
+        Some("validate") if args.len() > 1 => {
+            let mut failed = 0;
+            for dir in &args[1..] {
+                match load_module_dir(std::path::Path::new(dir)) {
+                    Ok(m) => {
+                        println!("ok    {} ({} v{})", dir, m.metadata.name, m.metadata.version);
+                        for w in &m.metadata.warnings {
+                            println!("      warning: {}", w);
+                        }
+                    }
+                    Err(e) => {
+                        println!("FAIL  {}: {}", dir, e);
+                        failed += 1;
+                    }
+                }
+            }
+            i32::from(failed > 0)
+        }
+        _ => {
+            eprintln!("usage: saba-core module schema | saba-core module validate <module dir>...");
+            2
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // ── Boot Mode Determination ────────────────────────────────
     // GUI/CLI가 데몬을 스폰할 때는 --spawned 플래그를 전달하거나
     // stdin이 터미널이 아닌 경우(파이프/null) 부트 선택기를 건너뜀
     let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("module") {
+        std::process::exit(module_tool(&args[2..]));
+    }
     let spawned = args.iter().any(|a| a == "--spawned");
     let interactive =
         std::io::stdin().is_terminal() && std::io::stdout().is_terminal();

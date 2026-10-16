@@ -260,51 +260,52 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
 }
 
 /// GET /api/modules - 모든 모듈 목록
-pub async fn list_modules(State(state): State<IPCServer>) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
+/// 모듈 하나를 API 응답 모양으로 (아이콘은 base64 data URL로)
+fn module_info(m: crate::supervisor::module_loader::LoadedModule) -> ExtensionInfo {
+    let icon_base64 = m.metadata.icon.as_ref().and_then(|icon_file| {
+        let icon_path = std::path::Path::new(&m.path).join(icon_file);
+        std::fs::read(&icon_path).ok().map(|data| {
+            use base64::{engine::general_purpose, Engine as _};
+            format!("data:image/png;base64,{}", general_purpose::STANDARD.encode(&data))
+        })
+    });
+    let meta = m.metadata;
+    ExtensionInfo {
+        name: meta.name,
+        version: meta.version,
+        description: meta.description,
+        schema_version: meta.schema_version,
+        display_name: meta.display_name,
+        game_name: meta.game_name,
+        author: meta.author,
+        warnings: meta.warnings,
+        path: m.path,
+        executable_path: meta.executable_path,
+        icon: icon_base64,
+        interaction_mode: meta.interaction_mode,
+        protocols: meta.protocols_supported.map(|supported| ProtocolsInfo {
+            supported,
+            default: meta.protocols_default,
+        }),
+        settings: meta.settings,
+        commands: meta.commands,
+        syntax_highlight: meta.syntax_highlight,
+        dir_signatures: meta.dir_signatures,
+        install: meta.install,
+        module_aliases: meta.module_aliases,
+        command_aliases: meta.command_aliases,
+    }
+}
 
-    match supervisor.list_modules() {
+fn module_list_response(
+    supervisor: &crate::supervisor::Supervisor,
+    modules: anyhow::Result<Vec<crate::supervisor::module_loader::LoadedModule>>,
+) -> axum::response::Response {
+    match modules {
         Ok(modules) => {
-            let module_infos: Vec<ExtensionInfo> = modules
-                .into_iter()
-                .map(|m| {
-                    // 아이콘 파일을 base64로 인코딩
-                    let icon_base64 = m.metadata.icon.as_ref().and_then(|icon_file| {
-                        let icon_path = std::path::Path::new(&m.path).join(icon_file);
-                        std::fs::read(&icon_path).ok().map(|data| {
-                            use base64::{engine::general_purpose, Engine as _};
-                            format!(
-                                "data:image/png;base64,{}",
-                                general_purpose::STANDARD.encode(&data)
-                            )
-                        })
-                    });
-
-                    ExtensionInfo {
-                        name: m.metadata.name,
-                        version: m.metadata.version,
-                        description: m.metadata.description,
-                        path: m.path,
-                        executable_path: m.metadata.executable_path,
-                        icon: icon_base64,
-                        interaction_mode: m.metadata.interaction_mode,
-                        protocols: m.metadata.protocols_supported.map(|supported| {
-                            ProtocolsInfo {
-                                supported,
-                                default: m.metadata.protocols_default,
-                            }
-                        }),
-                        settings: m.metadata.settings,
-                        commands: m.metadata.commands,
-                        syntax_highlight: m.metadata.syntax_highlight,
-                        dir_signatures: m.metadata.dir_signatures,
-                        install: m.metadata.install,
-                        module_aliases: m.metadata.module_aliases,
-                        command_aliases: m.metadata.command_aliases,
-                    }
-                })
-                .collect();
-            (StatusCode::OK, Json(ExtensionListResponse { modules: module_infos })).into_response()
+            let modules = modules.into_iter().map(module_info).collect();
+            let failed = supervisor.module_loader.load_errors();
+            (StatusCode::OK, Json(ExtensionListResponse { modules, failed })).into_response()
         }
         Err(e) => {
             let error = json!({ "error": format!("Failed to list modules: {}", e) });
@@ -313,62 +314,47 @@ pub async fn list_modules(State(state): State<IPCServer>) -> impl IntoResponse {
     }
 }
 
+pub async fn list_modules(State(state): State<IPCServer>) -> impl IntoResponse {
+    let supervisor = state.supervisor.read().await;
+    module_list_response(&supervisor, supervisor.list_modules())
+}
+
 /// POST /api/modules/refresh - 모듈 캐시를 새로고침하고 다시 발견
 pub async fn refresh_modules(State(state): State<IPCServer>) -> impl IntoResponse {
     let supervisor = state.supervisor.read().await;
-
-    match supervisor.refresh_modules() {
-        Ok(modules) => {
-            let module_infos: Vec<ExtensionInfo> = modules
-                .into_iter()
-                .map(|m| {
-                    // 아이콘 파일을 base64로 인코딩
-                    let icon_base64 = m.metadata.icon.as_ref().and_then(|icon_file| {
-                        let icon_path = std::path::Path::new(&m.path).join(icon_file);
-                        std::fs::read(&icon_path).ok().map(|data| {
-                            use base64::{engine::general_purpose, Engine as _};
-                            format!(
-                                "data:image/png;base64,{}",
-                                general_purpose::STANDARD.encode(&data)
-                            )
-                        })
-                    });
-
-                    ExtensionInfo {
-                        name: m.metadata.name,
-                        version: m.metadata.version,
-                        description: m.metadata.description,
-                        path: m.path,
-                        executable_path: m.metadata.executable_path,
-                        icon: icon_base64,
-                        interaction_mode: m.metadata.interaction_mode,
-                        protocols: m.metadata.protocols_supported.map(|supported| {
-                            ProtocolsInfo {
-                                supported,
-                                default: m.metadata.protocols_default,
-                            }
-                        }),
-                        settings: m.metadata.settings,
-                        commands: m.metadata.commands,
-                        syntax_highlight: m.metadata.syntax_highlight,
-                        dir_signatures: m.metadata.dir_signatures,
-                        install: m.metadata.install,
-                        module_aliases: m.metadata.module_aliases,
-                        command_aliases: m.metadata.command_aliases,
-                    }
-                })
-                .collect();
-            tracing::info!(
-                "Module cache refreshed. Found {} modules",
-                module_infos.len()
-            );
-            (StatusCode::OK, Json(ExtensionListResponse { modules: module_infos })).into_response()
-        }
-        Err(e) => {
-            let error = json!({ "error": format!("Failed to refresh modules: {}", e) });
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
-        }
+    let modules = supervisor.refresh_modules();
+    if let Ok(m) = &modules {
+        tracing::info!("Module cache refreshed. Found {} modules", m.len());
     }
+    module_list_response(&supervisor, modules)
+}
+
+/// GET /api/modules/schema - module.toml 스키마 v1 (JSON Schema)
+pub async fn module_schema() -> impl IntoResponse {
+    Json(crate::supervisor::module_loader::module_json_schema())
+}
+
+/// POST /api/modules/detect `{path}` - 이 폴더가 어느 모듈의 게임 서버 폴더인지
+/// (`[detection] dir_signatures`가 전부 있는 모듈). 기존 서버 가져오기에서 쓴다.
+pub async fn detect_module_dir(
+    State(state): State<IPCServer>,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let Some(path) = body.get("path").and_then(|v| v.as_str()) else {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "path is required" }))).into_response();
+    };
+    let dir = std::path::Path::new(path);
+    if !dir.is_dir() {
+        return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("not a folder: {}", path) }))).into_response();
+    }
+    let supervisor = state.supervisor.read().await;
+    let modules = supervisor.list_modules().unwrap_or_default();
+    let matches: Vec<_> = modules
+        .iter()
+        .filter(|m| m.matches_dir(dir))
+        .map(|m| json!({ "name": m.metadata.name, "display_name": m.metadata.display_name }))
+        .collect();
+    (StatusCode::OK, Json(json!({ "matches": matches }))).into_response()
 }
 
 /// GET /api/module/:name - 모듈 메타데이터 조회 (별명 포함)
