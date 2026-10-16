@@ -76,6 +76,27 @@ pub async fn execute_rcon_command(
         }
     };
 
+    // managed 모드(RCON 꺼짐, stdin 제어)면 같은 명령을 stdin으로 보낸다.
+    // GUI·디스코드·모듈 역호출이 모두 이 엔드포인트를 쓰므로 여기서 한 번에 라우팅한다.
+    if supervisor.routes_commands_to_stdin(&id).await {
+        let Some(command) = payload.get("command").and_then(|v| v.as_str()) else {
+            return (StatusCode::BAD_REQUEST, Json(json!({ "error": "Missing 'command' field" })))
+                .into_response();
+        };
+        return match supervisor.send_stdin_command(&id, command).await {
+            Ok(message) => (
+                StatusCode::OK,
+                Json(json!({ "success": true, "message": message, "data": null, "protocol": "stdin" })),
+            )
+                .into_response(),
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("stdin command failed: {}", e) })),
+            )
+                .into_response(),
+        };
+    }
+
     // 모듈에서 기본값 가져오기
     let (default_rcon_port, _default_rest_port, module_path) =
         match supervisor.module_loader.get_module(&instance.module_name) {

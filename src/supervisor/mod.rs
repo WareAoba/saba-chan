@@ -713,6 +713,8 @@ impl Supervisor {
             config_obj.insert("rcon_port".to_string(), json!(rcon_port));
         }
         config_obj.insert("force".to_string(), json!(force));
+        // managed 서버는 위에서 데몬이 직접 멈춘다. 여기까지 오면 항상 non-managed.
+        config_obj.insert("managed".to_string(), json!(false));
         let config = Value::Object(config_obj);
 
         // Execute stop function
@@ -1316,6 +1318,26 @@ impl Supervisor {
             "managed": true,
             "message": format!("Server '{}' started with PID {} (managed mode)", instance.name, pid)
         }))
+    }
+
+    /// 콘솔 명령을 stdin으로 보내야 하는가.
+    /// managed 모드는 RCON을 끄고 stdin으로 제어하므로, 모듈이 `stdin`을 지원하고
+    /// stdin이 열린 managed 프로세스가 돌고 있으면 RCON 대신 stdin을 쓴다.
+    pub async fn routes_commands_to_stdin(&self, instance_id: &str) -> bool {
+        let Some(instance) = self.instance_store.get(instance_id) else { return false };
+        let module_has_stdin = self
+            .module_loader
+            .get_module(&instance.module_name)
+            .ok()
+            .and_then(|m| m.metadata.protocols_supported)
+            .is_some_and(|p| p.iter().any(|s| s == "stdin"));
+        if !module_has_stdin {
+            return false;
+        }
+        match self.managed_store.get(instance_id).await {
+            Some(proc) => proc.is_running() && proc.is_stdin_available(),
+            None => false,
+        }
     }
 
     /// Send a command to a managed process's stdin
@@ -1962,6 +1984,60 @@ mod tests {
         // 쿨다운이 30초 내이면 auto_detect를 건너뛰어야 함
         let stopped_at = supervisor.stop_cooldowns.get("test-instance-id").unwrap();
         assert!(stopped_at.elapsed().as_secs() < STOP_COOLDOWN_SECS);
+    }
+
+    /// managed 모드에서는 모듈이 stdin을 지원할 때만 명령을 stdin으로 보낸다 (M3)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn commands_route_to_stdin_only_for_managed_stdin_modules() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules_dir = tmp.path().join("modules");
+        for (name, protocols) in [("console-game", r#"["rcon", "stdin"]"#), ("rest-game", r#"["rest"]"#)] {
+            let dir = modules_dir.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                dir.join("module.toml"),
+                format!(
+                    "[module]\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[protocols]\nsupported = {protocols}\n"
+                ),
+            )
+            .unwrap();
+        }
+        let instances_dir = tmp.path().join("instances");
+        std::fs::create_dir_all(&instances_dir).unwrap();
+        let mut supervisor = Supervisor::new_with_instances_dir(
+            modules_dir.to_str().unwrap(),
+            instances_dir.to_str().unwrap(),
+        );
+
+        for (id, module) in [("console", "console-game"), ("rest", "rest-game"), ("idle", "console-game")] {
+            let mut inst = crate::instance::ServerInstance::new(id, module);
+            inst.id = id.to_string();
+            supervisor.instance_store.add(inst).unwrap();
+        }
+        for id in ["console", "rest"] {
+            let proc = managed_process::ManagedProcess::spawn(
+                "cat",
+                &[],
+                tmp.path().to_str().unwrap(),
+                Vec::new(),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+            supervisor.managed_store.insert(id, proc).await;
+        }
+
+        assert!(supervisor.routes_commands_to_stdin("console").await);
+        assert!(!supervisor.routes_commands_to_stdin("rest").await, "module without stdin keeps RCON/REST");
+        assert!(!supervisor.routes_commands_to_stdin("idle").await, "no managed process keeps RCON");
+
+        for id in ["console", "rest"] {
+            if let Some(proc) = supervisor.managed_store.get(id).await {
+                let _ = process::force_kill_pid(proc.pid);
+            }
+        }
     }
 
     /// start_managed_server()가 이미 실행 중인 managed 프로세스를 감지하여

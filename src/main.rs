@@ -120,6 +120,7 @@ async fn main() -> anyhow::Result<()> {
         })
         .unwrap_or(constants::DEFAULT_IPC_PORT);
     let ipc_addr = format!("127.0.0.1:{}", ipc_port);
+    plugin::set_ipc_port(ipc_port);
 
     // ── Single Instance ───────────────────────────────────────
     // 토큰 생성·Supervisor 초기화보다 먼저 잠근다. 두 번째 데몬이 .ipc_token을

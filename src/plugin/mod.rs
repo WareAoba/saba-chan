@@ -4,6 +4,38 @@ use tokio::process::Command;
 use tokio::io::{AsyncWriteExt, AsyncBufReadExt, BufReader};
 use crate::utils::apply_creation_flags;
 
+/// 데몬 IPC 포트. 모듈이 데몬 API를 역호출할 때 쓴다(main이 기동 시 한 번 설정).
+static IPC_PORT: std::sync::OnceLock<u16> = std::sync::OnceLock::new();
+
+pub fn set_ipc_port(port: u16) {
+    let _ = IPC_PORT.set(port);
+}
+
+/// Python 실행마다 넣는 데몬 연결 정보.
+/// - `SABA_IPC_PORT`, `SABA_IPC_URL`: 데몬 API 주소
+/// - `SABA_TOKEN_PATH`: `X-Saba-Token` 값이 든 파일 (토큰 자체는 env에 넣지 않는다)
+/// - `SABA_LANG`: 지금 GUI 언어. 언어를 바꿔도 데몬은 재시작하지 않으므로 매번 읽는다.
+fn daemon_env() -> Vec<(&'static str, String)> {
+    let port = *IPC_PORT.get().unwrap_or(&saba_chan_updater_lib::constants::DEFAULT_IPC_PORT);
+    let mut env = vec![
+        ("SABA_IPC_PORT", port.to_string()),
+        ("SABA_IPC_URL", format!("http://127.0.0.1:{}", port)),
+        (
+            "SABA_TOKEN_PATH",
+            saba_chan_updater_lib::constants::token_file_path().to_string_lossy().into_owned(),
+        ),
+    ];
+    let lang = saba_chan_updater_lib::config_file::ConfigFile::default_location()
+        .section("gui")
+        .get("language")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    if let Some(lang) = lang {
+        env.push(("SABA_LANG", lang));
+    }
+    env
+}
+
 /// Progress info emitted by Python extensions via stderr "PROGRESS:{json}" lines
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct ExtensionProgress {
@@ -103,7 +135,8 @@ async fn run_plugin_inner(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .env("PYTHONIOENCODING", "utf-8")
-        .env("PYTHONUNBUFFERED", "1");
+        .env("PYTHONUNBUFFERED", "1")
+        .envs(daemon_env());
 
     // 활성화된 익스텐션 목록을 Python에 전달 (비활성 익스텐션 import 방지용)
     let extensions_dir = resolve_extensions_dir();

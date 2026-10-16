@@ -18,8 +18,13 @@ Usage (session-like, replaces extensions.rcon.RconClient):
     response = client.command("save")
     response2 = client.command("quit")
 
-Environment:
-    DAEMON_API_URL  — base URL of the daemon (default: http://127.0.0.1:57474)
+Calling any other daemon endpoint (stdin, REST, ...):
+    from daemon_rcon import daemon_post
+    result = daemon_post(f"/api/instance/{instance_id}/stdin", {"command": "save"})
+
+Environment (the daemon sets these for every Python run):
+    SABA_IPC_URL     — base URL of the daemon (DAEMON_API_URL still overrides it)
+    SABA_TOKEN_PATH  — file holding the X-Saba-Token value
 """
 
 import json
@@ -35,7 +40,49 @@ _DEFAULT_DAEMON_URL = "http://127.0.0.1:57474"
 
 def _daemon_url():
     """Resolve the daemon API base URL."""
-    return os.environ.get("DAEMON_API_URL", _DEFAULT_DAEMON_URL)
+    return (
+        os.environ.get("DAEMON_API_URL")
+        or os.environ.get("SABA_IPC_URL")
+        or _DEFAULT_DAEMON_URL
+    )
+
+
+def _daemon_headers():
+    """JSON headers plus the daemon auth token when one is available."""
+    headers = {"Content-Type": "application/json"}
+    token_path = os.environ.get("SABA_TOKEN_PATH")
+    if token_path:
+        try:
+            with open(token_path, encoding="utf-8") as f:
+                token = f.read().strip()
+            if token:
+                headers["X-Saba-Token"] = token
+        except OSError:
+            pass
+    return headers
+
+
+def daemon_post(path, payload, timeout=10):
+    """POST JSON to a daemon endpoint with auth and return the decoded reply.
+
+    Raises:
+        ConnectionError: If the daemon is unreachable or answers with an HTTP error.
+    """
+    url = f"{_daemon_url()}{path}"
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers=_daemon_headers(),
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        raise ConnectionError(f"Daemon request failed (HTTP {e.code}): {body}") from e
+    except urllib.error.URLError as e:
+        raise ConnectionError(f"Daemon unreachable at {url}: {e}") from e
 
 
 # ─── One-shot function ────────────────────────────────────────
@@ -59,42 +106,23 @@ def daemon_rcon_command(instance_id, command, *, rcon_port=None, rcon_password=N
     Raises:
         ConnectionError: If the daemon is unreachable or RCON fails.
     """
-    url = f"{_daemon_url()}/api/instance/{instance_id}/rcon"
-
     payload = {"command": command}
     if rcon_port is not None:
         payload["rcon_port"] = int(rcon_port)
     if rcon_password is not None:
         payload["rcon_password"] = rcon_password
 
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=data,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
+    result = daemon_post(f"/api/instance/{instance_id}/rcon", payload, timeout=timeout)
+    if result.get("error"):
+        raise ConnectionError(f"RCON failed: {result['error']}")
 
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
-
-        if result.get("error"):
-            raise ConnectionError(f"RCON failed: {result['error']}")
-
-        # Extract response text from data.data or data itself
-        response_data = result.get("data")
-        if isinstance(response_data, dict):
-            return response_data.get("data", str(response_data))
-        if response_data is not None:
-            return str(response_data)
-        return result.get("message", "")
-
-    except urllib.error.URLError as e:
-        raise ConnectionError(f"Daemon unreachable at {url}: {e}") from e
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        raise ConnectionError(f"RCON request failed (HTTP {e.code}): {body}") from e
+    # Extract response text from data.data or data itself
+    response_data = result.get("data")
+    if isinstance(response_data, dict):
+        return response_data.get("data", str(response_data))
+    if response_data is not None:
+        return str(response_data)
+    return result.get("message", "")
 
 
 # ─── Session-like class ──────────────────────────────────────
