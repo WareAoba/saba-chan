@@ -1039,7 +1039,10 @@
     "scale_note": "Relative to the 2-minute peak",
     "network_note": "Whole-machine traffic, not split by instance · relative to the 2-minute peak",
     "sizes_pending": "Measuring instance folders",
-    "footnote": "Disk IO and network are relative to the 2-minute peak. Network is whole-machine traffic, not split by instance."
+    "footnote": "Disk IO and network are whole-machine values, not split by instance. Rings are relative to the 2-minute peak.",
+    "all_disk_io": "All disk IO",
+    "disk_io_note": "Whole-machine physical disk IO, not split by instance · relative to the 2-minute peak",
+    "disk_io_process_note": "Physical disk counters unavailable; showing the sum of process IO (includes cache hits)"
   },
   "audit": {
     "title": "Activity log",

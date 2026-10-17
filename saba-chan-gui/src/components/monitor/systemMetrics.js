@@ -119,14 +119,10 @@ export function buildRings(snap, slots, peaks = { diskIo: 0, network: 0 }) {
         sub: { key: 'monitor.read_write', vars: { read: formatRate(io.read_bps || 0), write: formatRate(io.write_bps || 0) } },
         total: ioScale,
         format: formatRate,
-        noteKey: 'monitor.scale_note',
+        // 실제 디스크 IO는 인스턴스별로 나누지 않는다: 프로세스 IO 카운터는 캐시 읽기까지 세서 몫이 맞지 않는다
+        noteKey: io.source === 'process' ? 'monitor.disk_io_process_note' : 'monitor.disk_io_note',
         segments: [
-            ...instanceSegments(
-                insts.map((i) => ({ id: i.id, value: (i.disk_read_bps || 0) + (i.disk_write_bps || 0) })),
-                slots,
-                names,
-            ),
-            others((io.others_read_bps || 0) + (io.others_write_bps || 0)),
+            { key: '__all', labelKey: 'monitor.all_disk_io', value: ioTotal, color: 'var(--accent)' },
             idle(ioScale - ioTotal),
         ],
     });

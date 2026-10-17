@@ -13,7 +13,7 @@ const snapshot = (overrides = {}) => ({
     window_ms: 2000,
     cpu: { cores: 8, total_percent: 50, others_percent: 20 },
     memory: { total_bytes: 16 * GB, used_bytes: 10 * GB, others_bytes: 6 * GB },
-    disk_io: { read_bps: 3 * MB, write_bps: 1 * MB, others_read_bps: 1 * MB, others_write_bps: 0 },
+    disk_io: { read_bps: 3 * MB, write_bps: 1 * MB, source: 'physical', per_instance: false },
     network: { rx_bps: 2 * MB, tx_bps: 0, per_instance: false },
     disks: [
         {
@@ -67,7 +67,9 @@ describe('시스템 모니터 원형 그래프 계산', () => {
         expect(values(ring(rings, 'network'))).toEqual({ __all: 2 * MB, __idle: 2 * MB });
         expect(ring(rings, 'network').noteKey).toBe('monitor.network_note');
         expect(ring(rings, 'disk_io').total).toBe(8 * MB);
-        expect(values(ring(rings, 'disk_io'))).toEqual({ a: 3 * MB, __others: 1 * MB, __idle: 4 * MB });
+        // 실제 디스크 IO는 나누지 않는다 (프로세스 IO는 캐시 읽기까지 세서 몫이 맞지 않는다)
+        expect(values(ring(rings, 'disk_io'))).toEqual({ __all: 4 * MB, __idle: 4 * MB });
+        expect(ring(rings, 'disk_io').noteKey).toBe('monitor.disk_io_note');
     });
 });
 
