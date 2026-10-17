@@ -1040,6 +1040,14 @@
   "launch_preview": {
     "title": "Vorschau der Startargumente",
     "action_required": "Vor dem Start nötig: {{reason}}",
-    "failed": "Die Vorschau konnte nicht berechnet werden."
+    "failed": "Die Vorschau konnte nicht berechnet werden.",
+    "extra_label": "Zusätzliche Argumente",
+    "extra_placeholder": "z. B. -players=16 -useperfthreads",
+    "arg_error": "{{arg}}: {{field}} erwartet {{expected}} (erhalten: {{got}})",
+    "type_number": "eine Zahl",
+    "type_boolean": "wahr/falsch",
+    "type_text": "Text",
+    "type_select": "einen der aufgeführten Werte",
+    "unknown_args": "Argumente ohne passende Einstellung werden unverändert übergeben: {{args}}"
   }
 }

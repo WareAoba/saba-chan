@@ -2288,3 +2288,18 @@ button.appbar-preflight {
     font-size: var(--fs-sm);
     color: var(--warn);
 }
+.launch-preview-extra {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+}
+.launch-preview-input {
+    font-family: var(--font-mono);
+}
+.launch-preview-note {
+    margin: 0;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+}

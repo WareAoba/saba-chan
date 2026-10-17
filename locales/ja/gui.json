@@ -1040,6 +1040,14 @@
   "launch_preview": {
     "title": "起動引数のプレビュー",
     "action_required": "起動前に対応が必要です: {{reason}}",
-    "failed": "プレビューを計算できませんでした。"
+    "failed": "プレビューを計算できませんでした。",
+    "extra_label": "追加の引数",
+    "extra_placeholder": "例: -players=16 -useperfthreads",
+    "arg_error": "{{arg}}: {{field}}には{{expected}}が必要です（入力: {{got}}）",
+    "type_number": "数値",
+    "type_boolean": "真偽値",
+    "type_text": "文字列",
+    "type_select": "決められた値のいずれか",
+    "unknown_args": "設定にない引数はそのまま渡します: {{args}}"
   }
 }

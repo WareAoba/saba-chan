@@ -37,7 +37,10 @@ describe('LaunchPreview', () => {
             await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
         });
         expect(window.api.instanceLaunchPreview).toHaveBeenCalledTimes(1);
-        expect(window.api.instanceLaunchPreview).toHaveBeenCalledWith('s1', { port: 25566, nogui: true });
+        expect(window.api.instanceLaunchPreview).toHaveBeenCalledWith('s1', {
+            settings: { port: 25566, nogui: true },
+            extra_args: '',
+        });
         expect(screen.getByText('java -jar server.jar --port 25566 nogui')).toBeTruthy();
 
         // 실행 인자가 아닌 필드만 바뀌면 다시 묻지 않는다
@@ -52,5 +55,29 @@ describe('LaunchPreview', () => {
             await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
         });
         expect(screen.getByText(/Needs attention before launch: No server jar/)).toBeTruthy();
+    });
+
+    it('추가 인자는 맞는 필드에 반영하고, 타입 오류와 남는 인자를 보인다', async () => {
+        window.api.instanceLaunchPreview = vi.fn().mockResolvedValue({
+            success: true,
+            command_line: 'srv --port abc -fast',
+            fields_from_args: { port: 25570 },
+            unknown_args: ['-fast'],
+            errors: [{ arg: '--port', field: 'port', expected: 'number', got: 'abc' }],
+        });
+        const onFields = vi.fn();
+        const props = { serverId: 's1', fields, values: {}, onExtraArgsChange: () => {}, onFieldsFromArgs: onFields };
+        const { rerender } = render(<LaunchPreview {...props} extraArgs="" />);
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+        });
+        expect(onFields).not.toHaveBeenCalled(); // 추가 인자가 그대로면 필드를 건드리지 않는다
+        rerender(<LaunchPreview {...props} extraArgs="--port abc -fast" />);
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+        });
+        expect(onFields).toHaveBeenCalledWith({ port: 25570 });
+        expect(screen.getByText(/--port: port expects a number \(got abc\)/)).toBeTruthy();
+        expect(screen.getByText(/passed as is: -fast/)).toBeTruthy();
     });
 });

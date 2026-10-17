@@ -373,11 +373,19 @@ const impl = {
                 },
             ].filter((e) => !instance || e.instanceId === instance),
         }),
-    instanceLaunchPreview: (_id, draft = {}) =>
-        ok({
+    instanceLaunchPreview: (_id, { settings: draft = {}, extra_args = '' } = {}) => {
+        const args = extra_args.split(/\s+/).filter(Boolean);
+        const portArg = args.find((a) => a.startsWith('-port='));
+        const port = portArg ? portArg.slice(6) : draft.port;
+        const bad = portArg && !/^\d+$/.test(port);
+        return ok({
             success: true,
-            command_line: `PalServer.exe -port=${draft.port ?? 8211} -publiclobby -adminpassword=********`,
-        }),
+            command_line: ['PalServer.exe', `-port=${port ?? 8211}`, '-adminpassword=********', ...args.filter((a) => a !== portArg)].join(' '),
+            fields_from_args: portArg && !bad ? { port: Number(port) } : {},
+            unknown_args: args.filter((a) => a !== portArg),
+            errors: bad ? [{ arg: portArg, field: 'port', expected: 'number', got: port }] : [],
+        });
+    },
     relayNodeChannels: (guildId) => ok({ guildId, ...mockChannels }),
     relayNodeChannelsSave: (guildId, patch) => {
         Object.assign(mockChannels, patch);

@@ -514,6 +514,17 @@ export function ServerSettingsModal({
                         serverId={settingsServer.id}
                         fields={module.settings.fields}
                         values={settingsValues}
+                        extraArgs={settingsValues.extra_args || ''}
+                        onExtraArgsChange={(v) => handleSettingChange('extra_args', v)}
+                        onFieldsFromArgs={(found) => {
+                            for (const [k, v] of Object.entries(found)) handleSettingChange(k, v);
+                        }}
+                        labelOf={(name) => {
+                            const f = module.settings.fields.find((x) => x.name === name);
+                            return t(`mod_${settingsServer.module}:settings.${name}.label`, {
+                                defaultValue: f?.label || name,
+                            });
+                        }}
                     />
                 )}
                 {settingsSource === 'stored' && (
