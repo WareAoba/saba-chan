@@ -648,6 +648,80 @@
     color: var(--text-2);
 }
 
+/* ── 따로 띄운 콘솔 창 (PiP): 제목줄 + 상세 화면 콘솔. 콘솔은 테마와 상관없이 어두우므로 색은 콘솔 색에서 파생한다 ── */
+.App.console-popout-app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    padding: 0;
+    background: var(--console-custom-bg);
+    color: var(--console-custom-text);
+    overflow: hidden;
+}
+.console-popout-titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-2);
+    padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-3);
+    border-bottom: 1px solid color-mix(in srgb, var(--console-custom-text) 10%, transparent);
+    -webkit-app-region: drag;
+    flex-shrink: 0;
+    user-select: none;
+}
+.console-popout-titlebar-title {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    min-width: 0;
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.console-popout-titlebar-controls {
+    display: flex;
+    gap: 2px;
+    -webkit-app-region: no-drag;
+}
+.console-popout-titlebar-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 28px;
+    border: none;
+    border-radius: var(--r-sm);
+    background: none;
+    color: color-mix(in srgb, var(--console-custom-text) 60%, transparent);
+    cursor: pointer;
+}
+.console-popout-titlebar-btn:hover {
+    color: var(--console-custom-text);
+    background: color-mix(in srgb, var(--console-custom-text) 10%, transparent);
+}
+.console-popout-titlebar-pinned {
+    color: var(--console-info);
+    background: color-mix(in srgb, var(--console-info) 15%, transparent);
+}
+.console-popout-titlebar-close:hover {
+    color: var(--console-error);
+    background: color-mix(in srgb, var(--console-error) 15%, transparent);
+}
+.console-popout-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+.console-popout-body .term {
+    flex: 1;
+    height: auto;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+}
+
 /* ── 정보 탭 ── */
 .info-tab {
     display: flex;

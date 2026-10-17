@@ -261,11 +261,11 @@ export function ServerDetail({
                                 openConsole={consoleProps.openConsole}
                                 setConsoleInput={consoleProps.setConsoleInput}
                                 sendConsoleCommand={consoleProps.sendConsoleCommand}
-                                poppedOut={consoleProps.consolePopoutInstanceId === server.id}
+                                poppedOut={consoleProps.consolePopoutIds.includes(server.id)}
                                 onPopout={async () => {
+                                    // 창이 열리면 main.js가 console:popoutOpened로 알려 준다
                                     try {
-                                        const result = await window.api.consolePopout(server.id, server.name);
-                                        if (result?.ok) consoleProps.setConsolePopoutInstanceId(server.id);
+                                        await window.api.consolePopout(server.id, server.name);
                                     } catch (err) {
                                         console.error('[ServerDetail] popout failed:', err);
                                     }

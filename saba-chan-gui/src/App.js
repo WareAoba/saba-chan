@@ -28,7 +28,7 @@ import { setDiscordI18n, useDiscordStore } from './stores/useDiscordStore';
 import { setServerI18n, useServerStore } from './stores/useServerStore';
 import { useSettingsStore } from './stores/useSettingsStore';
 import { useUIStore } from './stores/useUIStore';
-import { isManaged } from './utils/serverView';
+import { consoleQuickCommands, isManaged } from './utils/serverView';
 // 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
 import { announceLastUpdateResult, PatchNotesModal } from './components/Modals/PatchNotesModal';
 import './styles/shell.css';
@@ -130,8 +130,7 @@ function App() {
 
     const {
         consoles,
-        consolePopoutInstanceId,
-        setConsolePopoutInstanceId,
+        consolePopoutIds,
         openConsole,
         closeConsole,
         popinConsole,
@@ -559,21 +558,18 @@ function App() {
 
     // Popout Console Mode (full-window console)
     if (isPopoutMode) {
-        const popoutState = consoles[popoutParams.instanceId];
+        const srv = servers.find((s) => s.id === popoutParams.instanceId);
+        const mod = srv && modules.find((m) => m.name === srv.module);
         return (
             <PopoutConsole
                 popoutParams={popoutParams}
-                consoleLines={popoutState?.lines || []}
-                consoleInput={popoutState?.input || ''}
-                setConsoleInput={(val) => setConsoleInput(popoutParams.instanceId, val)}
-                sendConsoleCommand={() => sendConsoleCommand(popoutParams.instanceId)}
-                consoleEndRef={null}
-                stdinDisabled={popoutState?.stdinDisabled || false}
-                highlightRules={(() => {
-                    const srv = servers.find((s) => s.id === popoutParams.instanceId);
-                    const mod = srv && modules.find((m) => m.name === srv.module);
-                    return mod?.syntax_highlight?.rules || null;
-                })()}
+                server={srv}
+                state={consoles[popoutParams.instanceId]}
+                highlightRules={mod?.syntax_highlight?.rules || null}
+                quickCommands={consoleQuickCommands(mod?.commands?.fields)}
+                openConsole={openConsole}
+                setConsoleInput={setConsoleInput}
+                sendConsoleCommand={sendConsoleCommand}
             />
         );
     }
@@ -645,8 +641,7 @@ function App() {
         openConsole,
         setConsoleInput,
         sendConsoleCommand,
-        consolePopoutInstanceId,
-        setConsolePopoutInstanceId,
+        consolePopoutIds,
         popinConsole,
     };
     const settingsProps = {
