@@ -36,18 +36,10 @@ export function previewLine(res) {
 /**
  * 서버 설정 맨 위: 데몬이 계산한 최종 실행 인자 (읽기 전용) + 직접 덧붙일 인자.
  * 설정이나 추가 인자를 바꾸면 잠깐 뒤 저장하지 않은 값으로 다시 묻는다. 비밀번호는 데몬이 가려서 준다.
- * 추가 인자 중 설정에 해당하는 것은 그 칸에 바로 반영하고(onSettingsFromArgs), 남은 것은 저장할 때 쓴다(onLeftoverArgs).
+ * 추가 인자 중 설정에 해당하는 것은 그 칸에 바로 반영한다(onSettingsFromArgs). 남는 인자는 저장할 때 다시 나눈다.
  * 형식이 틀리면 칸마다 따로 알리지 않고 "잘못된 형식" 토스트 하나로 알린다 (모듈마다 형식이 달라서).
  */
-export function LaunchPreview({
-    serverId,
-    fields,
-    values,
-    extraArgs = '',
-    onExtraArgsChange,
-    onSettingsFromArgs,
-    onLeftoverArgs,
-}) {
+export function LaunchPreview({ serverId, fields, values, extraArgs = '', onExtraArgsChange, onSettingsFromArgs }) {
     const { t } = useTranslation('gui');
     const draft = useMemo(() => launchDraft(fields, values), [fields, values]);
     const key = JSON.stringify([draft, extraArgs]);
@@ -73,7 +65,6 @@ export function LaunchPreview({
             if (mine !== seq.current) return;
             setRes(next);
             setLoading(false);
-            if (Array.isArray(next?.extra_args)) onLeftoverArgs?.(next.extra_args);
             if (extraArgs !== appliedExtra.current) {
                 appliedExtra.current = extraArgs;
                 const found = next?.settings_from_args;

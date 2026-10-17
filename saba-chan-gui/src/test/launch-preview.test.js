@@ -1,6 +1,7 @@
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEBOUNCE_MS, LaunchPreview, joinArgs, launchDraft } from '../components/servers/LaunchPreview';
+import { settleLaunchArgs } from '../hooks/useServerSettings';
 
 const fields = [
     { name: 'port', field_type: 'number' },
@@ -35,7 +36,7 @@ describe('LaunchPreview', () => {
         expect(container.innerHTML).toBe('');
     });
 
-    it('값이 바뀌면 잠깐 기다렸다 한 번만 묻고, 추가 인자는 칸에 반영하고 남는 것만 저장용으로 올린다', async () => {
+    it('값이 바뀌면 잠깐 기다렸다 한 번만 묻고, 추가 인자 중 설정에 맞는 것은 칸에 반영한다', async () => {
         window.api.instanceLaunchPreview = vi.fn().mockResolvedValue({
             success: true,
             has_launch_args: true,
@@ -45,14 +46,12 @@ describe('LaunchPreview', () => {
             errors: [],
         });
         const onSettings = vi.fn();
-        const onLeftover = vi.fn();
         const props = {
             serverId: 's1',
             fields,
             values: { port: '25570' },
             onExtraArgsChange: () => {},
             onSettingsFromArgs: onSettings,
-            onLeftoverArgs: onLeftover,
         };
         const { rerender } = render(<LaunchPreview {...props} extraArgs="" />);
         rerender(<LaunchPreview {...props} extraArgs="-Xmx4G -fast" />);
@@ -65,7 +64,6 @@ describe('LaunchPreview', () => {
         );
         expect(screen.getByText('java -Xmx4G -jar server.jar --port 25570 -fast')).toBeTruthy();
         expect(onSettings).toHaveBeenCalledWith({ ram: '4G' });
-        expect(onLeftover).toHaveBeenCalledWith(['-fast']);
         expect(window.showToast).not.toHaveBeenCalled();
     });
 
@@ -88,5 +86,19 @@ describe('LaunchPreview', () => {
         await settle();
         expect(window.showToast).toHaveBeenCalledTimes(1);
         expect(screen.queryByText(/memory_size/)).toBeNull(); // 칸마다 형식 설명을 보이지 않는다
+    });
+
+    it('저장 직전에 추가 인자를 다시 나눠, 방금 고친 인자도 빠지지 않는다', async () => {
+        window.api.instanceLaunchPreview = vi.fn().mockResolvedValue({
+            success: true,
+            has_launch_args: true,
+            settings_from_args: { ram: '6G' },
+            extra_args: ['-fast'],
+        });
+        const res = await settleLaunchArgs('s1', fields, { port: '1', _launch_extra_args: '-Xmx6G -fast' });
+        expect(window.api.instanceLaunchPreview).toHaveBeenCalledWith('s1', { port: 1, nogui: false }, '-Xmx6G -fast');
+        expect(res).toEqual({ extra_args: ['-fast'], settings: { ram: '6G' } });
+        window.api.instanceLaunchPreview = vi.fn().mockResolvedValue({ success: true, has_launch_args: false });
+        expect(await settleLaunchArgs('s1', fields, {})).toBeNull();
     });
 });
