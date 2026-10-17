@@ -103,6 +103,33 @@ pub fn matching_files(pattern: &Path) -> Vec<PathBuf> {
     files
 }
 
+/// 자식 출력 한 줄(바이트)을 글자로. 줄 끝 `\r\n`은 뗀다.
+///
+/// 어떤 Windows 서버는 첫 줄을 UTF-16LE로 쓰고 이후는 UTF-8로 쓴다. 바이트 절반 가까이가
+/// 홀수 자리 0이면 UTF-16LE로 읽는다. UTF-16 줄의 `\n` 뒤에 남은 0 바이트가 다음 줄
+/// 앞에 붙으므로 앞뒤의 NUL은 버린다. 잘못된 UTF-8은 대체 문자로.
+pub fn decode_line(bytes: &[u8]) -> String {
+    let bytes = trim_nul(bytes);
+    let odd_nuls = bytes.iter().skip(1).step_by(2).filter(|b| **b == 0).count();
+    let text = if bytes.len() >= 2 && odd_nuls * 2 >= bytes.len() / 2 {
+        let units: Vec<u16> = bytes.chunks(2).map(|c| u16::from_le_bytes([c[0], *c.get(1).unwrap_or(&0)])).collect();
+        String::from_utf16_lossy(&units).trim_start_matches('\u{feff}').to_string()
+    } else {
+        String::from_utf8_lossy(bytes).trim_start_matches('\u{feff}').to_string()
+    };
+    text.trim_end_matches(['\r', '\n', '\0']).to_string()
+}
+
+fn trim_nul(mut b: &[u8]) -> &[u8] {
+    while let [0, rest @ ..] = b {
+        b = rest;
+    }
+    while let [rest @ .., 0] = b {
+        b = rest;
+    }
+    b
+}
+
 /// 출력 갈래
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stream {
@@ -166,6 +193,19 @@ mod tests {
         assert_eq!(format_timestamp(0), "1970-01-01 00:00:00");
         assert_eq!(format_timestamp(1_772_713_496), "2026-03-05 12:24:56");
         assert_eq!(session_stamp(1_772_713_496), "20260305-122456");
+    }
+
+    #[test]
+    fn lines_decode_utf16_and_utf8() {
+        let utf16: Vec<u8> = "\u{feff}Server starting\r\n".encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+        // read_until(b'\n')가 자른 모양: 앞 줄은 `\n`에서 끝나고, 그 뒤 0은 다음 줄 앞에 붙는다
+        let nl = utf16.iter().rposition(|b| *b == b'\n').unwrap();
+        assert_eq!(decode_line(&utf16[..=nl]), "Server starting");
+        let mut next = utf16[nl + 1..].to_vec();
+        next.extend_from_slice("다음 줄\n".as_bytes());
+        assert_eq!(decode_line(&next), "다음 줄");
+        assert_eq!(decode_line(b"plain\r\n"), "plain");
+        assert_eq!(decode_line(b""), "");
     }
 
     #[test]

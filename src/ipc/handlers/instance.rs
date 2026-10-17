@@ -808,9 +808,14 @@ pub async fn delete_instance(
     if let Some(pid) = running_pid {
         tracing::info!("Instance '{}' is running, force-stopping before delete...", instance.name);
         // Managed process가 있으면 그 PID, 아니면 추적하던 PID를 강제 종료
-        let pid = managed.as_ref().filter(|m| m.is_running()).map(|m| m.pid).unwrap_or(pid);
+        match managed.as_ref() {
+            Some(m) if m.is_running() => m.force_kill(),
+            Some(_) => {}
+            None => {
+                let _ = crate::supervisor::process::force_kill_pid(pid);
+            }
+        }
         if managed.as_ref().is_none_or(|m| m.is_running()) {
-            let _ = crate::supervisor::process::force_kill_pid(pid);
             // 프로세스 종료 대기
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         }

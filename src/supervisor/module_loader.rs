@@ -90,6 +90,9 @@ pub struct ModuleMetadata {
     /// saba-runner가 따라 읽어 콘솔에 합친다. 예: ["Pal/Saved/Logs/*.log"]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub log_files: Vec<String>,
+    /// [launch] console — 서버 콘솔을 잇는 방식. 기본 pipe
+    #[serde(default)]
+    pub console: ConsoleMode,
     /// [detection] graceful_exit_patterns — 정상 종료 때 콘솔에 찍히는 문구 (정규식). A1 크래시 판정용
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub graceful_exit_patterns: Vec<String>,
@@ -411,6 +414,29 @@ struct LaunchSection {
     /// 서버가 콘솔 대신 파일에 쓰는 로그 (작업 디렉터리 기준, 마지막 칸만 `*` `?`)
     #[serde(default)]
     log_files: Vec<String>,
+    /// "pipe"(기본) | "pty". 출력을 파이프로 주면 끝날 때까지 모아 두는 서버(stdout 블록 버퍼링)는
+    /// "pty"로 의사 콘솔(Windows ConPTY)에 띄워 줄마다 받는다. stdout과 stderr가 한 갈래로 합쳐진다.
+    #[serde(default)]
+    console: ConsoleMode,
+}
+
+/// saba-runner가 서버 콘솔을 잇는 방식 (`[launch] console`)
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ConsoleMode {
+    #[default]
+    Pipe,
+    Pty,
+}
+
+impl ConsoleMode {
+    /// saba-runner `--console` 값
+    pub fn as_arg(self) -> &'static str {
+        match self {
+            ConsoleMode::Pipe => "pipe",
+            ConsoleMode::Pty => "pty",
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -793,6 +819,7 @@ impl ModuleToml {
             entry: self.module.entry,
             icon: self.module.icon,
             log_pattern: self.module.log_pattern,
+            console: self.launch.as_ref().map(|l| l.console).unwrap_or_default(),
             log_files: self.launch.map(|l| l.log_files).unwrap_or_default(),
             dependencies: self.module.dependencies,
             credential_map: self.credential_map.unwrap_or_default(),
@@ -1557,6 +1584,9 @@ entry = "lifecycle.py"
         assert_eq!(parse_module_toml(toml).unwrap().log_files, vec!["Pal/Saved/Logs/*.log"]);
         let plain = "[module]\nname = \"g\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n";
         assert!(parse_module_toml(plain).unwrap().log_files.is_empty());
+        assert_eq!(parse_module_toml(plain).unwrap().console, ConsoleMode::Pipe);
+        let pty = toml.replace("log_files", "console = \"pty\"\nlog_files");
+        assert_eq!(parse_module_toml(&pty).unwrap().console, ConsoleMode::Pty);
     }
 
     const V1: &str = "[module]\nschema_version = 1\nname = \"g\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n";

@@ -724,7 +724,7 @@ impl Supervisor {
 
                 if force {
                     tracing::info!("Force-killing managed server '{}'", server_name);
-                    let _ = process::force_kill_pid(managed.pid);
+                    managed.force_kill();
                 } else if via_stdin {
                     tracing::info!("Sending '{}' to managed server '{}' via stdin", stop_cmd, server_name);
                     if let Err(e) = managed.send_command(&stop_cmd).await {
@@ -753,7 +753,7 @@ impl Supervisor {
                     }
                     if tokio::time::Instant::now() >= deadline {
                         tracing::warn!("Managed server '{}' did not exit in {}s, force killing", server_name, timeout_secs);
-                        let _ = process::force_kill_pid(managed.pid);
+                        managed.force_kill();
                         // 추가 대기
                         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
                         break;
@@ -1455,7 +1455,10 @@ impl Supervisor {
                     .and_then(|v| v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
                     .map(|n| n.max(1) as usize)
                     .unwrap_or(managed_process::DEFAULT_LOG_SESSIONS);
-                ManagedProcess::spawn_with_runner(&runner, program, &args, working_dir, env_vars, log_pattern, &inst_dir, keep, &module.metadata.log_files).await?
+                ManagedProcess::spawn_with_runner(
+                    &runner, program, &args, working_dir, env_vars, log_pattern, &inst_dir, keep,
+                    managed_process::RunnerLaunch { log_files: &module.metadata.log_files, console: module.metadata.console },
+                ).await?
             }
             None => {
                 tracing::warn!("saba-runner not found next to the daemon; '{}' is attached directly and will lose its console if the daemon restarts", instance.name);

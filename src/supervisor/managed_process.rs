@@ -18,6 +18,7 @@ use anyhow::Result;
 use regex::Regex;
 
 mod runner;
+pub use runner::RunnerLaunch;
 pub use runner::{latest_session_log, runner_binary, DEFAULT_LOG_SESSIONS};
 
 /// Console log file name within the instance's logs directory.
@@ -176,6 +177,8 @@ pub struct ManagedProcess {
     pub working_dir: Option<PathBuf>,
     /// 로그만 따라 읽는 프로세스(서버 자체가 아님). 이것이 끝나도 서버 종료로 보지 않는다
     pub log_follower: bool,
+    /// saba-runner가 띄웠으면 러너 PID. 러너를 죽이면 러너의 Job Object가 서버 트리 전체를 끝낸다
+    pub runner_pid: Option<u32>,
 }
 
 /// 서버 프로세스가 끝난 방식
@@ -217,6 +220,14 @@ impl Drop for ManagedProcess {
 }
 
 impl ManagedProcess {
+    /// 강제 종료. 러너가 있으면 러너도 죽여, 런처가 띄운 손자 프로세스까지 Job Object로 끝낸다.
+    pub fn force_kill(&self) {
+        let _ = super::process::force_kill_pid(self.pid);
+        if let Some(runner) = self.runner_pid {
+            let _ = super::process::force_kill_pid(runner);
+        }
+    }
+
     /// Spawn a new managed process.
     ///
     /// # Arguments
@@ -375,6 +386,7 @@ impl ManagedProcess {
             started_at,
             working_dir: Some(PathBuf::from(working_dir)),
             log_follower: false,
+            runner_pid: None,
         })
     }
 
@@ -537,6 +549,7 @@ impl ManagedProcess {
             started_at: unix_now(),
             working_dir: Some(working_dir.to_path_buf()),
             log_follower: true,
+            runner_pid: None,
         })
     }
 
@@ -643,6 +656,7 @@ impl ManagedProcess {
             started_at: unix_now(),
             working_dir: None,
             log_follower: false,
+            runner_pid: None,
         }
     }
 }

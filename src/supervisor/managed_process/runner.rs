@@ -7,6 +7,7 @@
 //! 러너 실행 파일이 없으면(개발 중 빌드 누락 등) 호출 쪽이 예전 직접 실행(`spawn`)으로 돌아간다.
 
 use super::*;
+use crate::supervisor::module_loader::ConsoleMode;
 use saba_runner::{exit_file, read_json, runner_file, ExitInfo, RunnerInfo, TOKEN_ENV};
 use std::io::{Read, Seek, SeekFrom};
 
@@ -70,6 +71,13 @@ pub fn latest_session_log(instance_dir: &Path) -> Option<PathBuf> {
         .max()
 }
 
+/// 러너에 넘기는 모듈 `[launch]` 선언
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RunnerLaunch<'a> {
+    pub log_files: &'a [String],
+    pub console: ConsoleMode,
+}
+
 impl ManagedProcess {
     /// 러너로 서버를 띄우고 붙는다.
     #[allow(clippy::too_many_arguments)]
@@ -82,7 +90,7 @@ impl ManagedProcess {
         log_pattern: Option<&str>,
         instance_dir: &Path,
         keep_sessions: usize,
-        log_files: &[String],
+        launch: RunnerLaunch<'_>,
     ) -> Result<Self> {
         let run = run_dir(instance_dir);
         std::fs::create_dir_all(&run)?;
@@ -98,8 +106,9 @@ impl ManagedProcess {
         let mut cmd = TokioCommand::new(runner);
         cmd.arg("--run-dir").arg(&run)
             .arg("--log").arg(&log)
-            .arg("--cwd").arg(working_dir);
-        for pattern in log_files {
+            .arg("--cwd").arg(working_dir)
+            .arg("--console").arg(launch.console.as_arg());
+        for pattern in launch.log_files {
             cmd.arg("--tail").arg(pattern);
         }
         cmd.arg("--")
@@ -297,6 +306,7 @@ impl ManagedProcess {
             started_at: info.started_at,
             working_dir: info.cwd.clone(),
             log_follower: false,
+            runner_pid: Some(info.runner_pid),
         }
     }
 }
@@ -344,7 +354,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let inst = tmp.path();
 
-        let proc = ManagedProcess::spawn_with_runner(&runner, "cat", &[], inst.to_str().unwrap(), Vec::new(), None, inst, 3, &[])
+        let proc = ManagedProcess::spawn_with_runner(&runner, "cat", &[], inst.to_str().unwrap(), Vec::new(), None, inst, 3, RunnerLaunch::default())
             .await
             .unwrap();
         proc.send_command("before restart").await.unwrap();
@@ -385,13 +395,39 @@ mod tests {
         std::fs::write(inst.join("game.log"), "old line\n").unwrap();
         let script = "sleep 1; echo 'from the log file' >> game.log; sleep 5".to_string();
         let proc = ManagedProcess::spawn_with_runner(
-            &runner, "sh", &["-c".into(), script], inst.to_str().unwrap(), Vec::new(), None, inst, 3, &["*.log".into()],
+            &runner, "sh", &["-c".into(), script], inst.to_str().unwrap(), Vec::new(), None, inst, 3,
+            RunnerLaunch { log_files: &["*.log".into()], console: ConsoleMode::Pipe },
         )
         .await
         .unwrap();
         assert!(wait_for(&proc, "from the log file").await);
         assert!(!proc.get_recent_console(100).await.iter().any(|l| l.content == "old line"), "only new lines");
         crate::supervisor::process::force_kill_pid(proc.pid).unwrap();
+    }
+
+    /// [launch] console = "pty": 파이프면 출력을 모아 두는 서버도 줄마다 나오고, stdin도 의사 콘솔로 간다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn pty_console_streams_block_buffered_output() {
+        let Some(runner) = runner_binary() else {
+            eprintln!("SKIP: saba-runner binary not built (cargo build -p saba-runner)");
+            return;
+        };
+        let tmp = tempfile::tempdir().unwrap();
+        let inst = tmp.path();
+        // python은 stdout이 파이프면 블록 버퍼링한다. 첫 줄은 끝나기 한참 전에 보여야 한다.
+        let script = "import sys, time\nprint('early line')\nfor line in sys.stdin:\n    print('got ' + line.strip())\n    time.sleep(30)".to_string();
+        let env = vec![("PYTHONUNBUFFERED".to_string(), String::new())];
+        let proc = ManagedProcess::spawn_with_runner(
+            &runner, "python3", &["-c".into(), script], inst.to_str().unwrap(), env, None, inst, 3,
+            RunnerLaunch { log_files: &[], console: ConsoleMode::Pty },
+        )
+        .await
+        .unwrap();
+        assert!(wait_for(&proc, "early line").await, "output arrives while the server runs");
+        proc.send_command("ping").await.unwrap();
+        assert!(wait_for(&proc, "got ping").await);
+        proc.force_kill();
     }
 
     #[test]
