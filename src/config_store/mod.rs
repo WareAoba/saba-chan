@@ -162,6 +162,9 @@ pub struct ChatbotConfig {
     pub settings: serde_json::Map<String, Value>,
     /// 길드별로 덮어쓰는 설정 (예: channelIds)
     pub guilds: HashMap<String, serde_json::Map<String, Value>>,
+    /// 사용자가 지웠는데 릴레이 삭제를 아직 확인 못 함. 다음 연결 때 다시 지운다
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub pending_relay_delete: bool,
 }
 
 impl ChatbotConfig {
