@@ -615,6 +615,82 @@ pub async fn start_instance_handler(
     (resp.status, Json(Value::Object(body))).into_response()
 }
 
+/// id(또는 이름)로 인스턴스 이름을 찾는다
+async fn instance_name_of(state: &IPCServer, id: &str) -> Option<String> {
+    let supervisor = state.supervisor.read().await;
+    supervisor
+        .instance_store
+        .get(id)
+        .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == id))
+        .map(|i| i.name.clone())
+}
+
+fn instance_not_found(id: &str) -> axum::response::Response {
+    (
+        StatusCode::NOT_FOUND,
+        Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" })),
+    )
+        .into_response()
+}
+
+/// POST /api/instance/:id/stop — id로 정지 (`{force?}`). 응답은 `/api/server/:name/stop`과 같다
+pub async fn stop_instance_handler(
+    Path(id): Path<String>,
+    State(state): State<IPCServer>,
+    body: Option<Json<ServerStopRequest>>,
+) -> axum::response::Response {
+    let Some(name) = instance_name_of(&state, &id).await else {
+        return instance_not_found(&id);
+    };
+    let req = body.map(|Json(b)| b).unwrap_or(ServerStopRequest { force: false });
+    stop_server_handler(Path(name), State(state), Json(req)).await.into_response()
+}
+
+/// POST /api/instance/:id/restart — 정지(`{force?}`) 뒤 시작. 꺼져 있으면 시작만 한다.
+/// 응답은 시작 응답에 `stopped`(정지했는가)를 더한 것. 정지가 실패하면 그 응답을 그대로 준다
+pub async fn restart_instance_handler(
+    Path(id): Path<String>,
+    State(state): State<IPCServer>,
+    body: Option<Json<ServerStopRequest>>,
+) -> axum::response::Response {
+    let picked = {
+        let supervisor = state.supervisor.read().await;
+        supervisor
+            .instance_store
+            .get(&id)
+            .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == id))
+            .map(|i| (i.id.clone(), i.name.clone(), supervisor.tracker.get_pid(&i.id).is_ok()))
+    };
+    let Some((inst_id, name, running)) = picked else {
+        return instance_not_found(&id);
+    };
+    if running {
+        let req = body.map(|Json(b)| b).unwrap_or(ServerStopRequest { force: false });
+        let stop = crate::ipc::internal::into_internal(stop_server_handler(Path(name), State(state.clone()), Json(req)).await).await;
+        if !stop.status.is_success() || stop.body.get("success").and_then(Value::as_bool) == Some(false) {
+            return (stop.status, Json(stop.body)).into_response();
+        }
+        // 정지 응답이 프로세스가 끝나기 전에 올 수 있다: 끝날 때까지 기다린다 (최대 2분)
+        for _ in 0..240 {
+            let alive = {
+                let supervisor = state.supervisor.read().await;
+                supervisor.tracker.get_pid(&inst_id).is_ok() || supervisor.managed_store.running_instance_ids().await.contains(&inst_id)
+            };
+            if !alive {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+    }
+    let start = crate::ipc::internal::into_internal(start_instance_handler(Path(inst_id), State(state)).await).await;
+    let mut body = match start.body {
+        Value::Object(map) => map,
+        other => serde_json::Map::from_iter([("data".to_string(), other)]),
+    };
+    body.insert("stopped".into(), json!(running));
+    (start.status, Json(Value::Object(body))).into_response()
+}
+
 /// 크래시 뒤 자동 재시작 (A1). 대기하는 동안 사용자가 정지·시작했으면 그만둔다.
 pub async fn auto_restart(state: IPCServer, instance_id: String, delay: std::time::Duration) {
     tokio::time::sleep(delay).await;

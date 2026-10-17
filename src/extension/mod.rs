@@ -261,6 +261,31 @@ pub struct ExtensionManifest {
     /// 같은 hook을 여러 익스텐션이 받을 때의 순서. 작을수록 먼저 (기본 100, 같으면 id 순)
     #[serde(default = "default_hook_priority")]
     pub priority: i32,
+    /// 인스턴스 명령 카탈로그에 더하는 명령. 모듈 명령과 같은 화면·CLI·디스코드·AI 해석에 실린다
+    #[serde(default)]
+    pub commands: Vec<ExtensionCommand>,
+}
+
+/// 익스텐션이 선언하는 게임 명령. 실행하면 `module`의 `function`을 부른다
+/// (context: instance_id, instance_name, module, extension_data, args, extension_config)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtensionCommand {
+    pub name: String,
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    /// "safe" | "caution" | "danger" (없으면 caution)
+    #[serde(default)]
+    pub risk: Option<String>,
+    #[serde(default)]
+    pub inputs: Vec<crate::supervisor::module_loader::CommandInput>,
+    /// python_modules의 키
+    pub module: String,
+    pub function: String,
+    /// 이 조건이 참인 인스턴스에서만 보인다 (예: "instance.ext_data.<flag>")
+    #[serde(default)]
+    pub condition: Option<String>,
 }
 
 fn default_hook_priority() -> i32 {
@@ -348,6 +373,11 @@ pub fn parse_manifest(content: &str) -> Result<(ExtensionManifest, Vec<String>)>
         }
         if !manifest.python_modules.contains_key(&binding.module) {
             problems.push(format!("hook '{}' uses unknown python module '{}'", name, binding.module));
+        }
+    }
+    for cmd in &manifest.commands {
+        if !manifest.python_modules.contains_key(&cmd.module) {
+            problems.push(format!("command '{}' uses unknown python module '{}'", cmd.name, cmd.module));
         }
     }
 
@@ -1110,6 +1140,41 @@ impl ExtensionManager {
             (a.manifest.priority, &a.manifest.id).cmp(&(b.manifest.priority, &b.manifest.id))
         });
         result
+    }
+
+    /// 이 인스턴스(`ext_data`)에서 쓸 수 있는 익스텐션 명령. `priority`, id 순
+    pub fn commands_for(&self, ext_data: &HashMap<String, Value>) -> Vec<(&str, &ExtensionCommand)> {
+        let mut exts: Vec<_> = self.discovered.values().filter(|e| self.enabled.contains(&e.manifest.id)).collect();
+        exts.sort_by(|a, b| (a.manifest.priority, &a.manifest.id).cmp(&(b.manifest.priority, &b.manifest.id)));
+        exts.into_iter()
+            .flat_map(|ext| ext.manifest.commands.iter().map(move |c| (ext.manifest.id.as_str(), c)))
+            .filter(|(_, c)| c.condition.as_deref().is_none_or(|cond| Self::evaluate_condition(cond, ext_data)))
+            .collect()
+    }
+
+    /// 익스텐션 명령 `name`을 부를 계획. 이 인스턴스에서 그 명령을 가진 익스텐션이 없으면 None.
+    /// `context`에는 extension_data가 들어 있어야 한다
+    pub fn plan_command(&self, name: &str, context: Value) -> Option<HookPlan> {
+        let ext_data: HashMap<String, Value> = context
+            .get("extension_data")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
+        let (ext_id, cmd) = self
+            .commands_for(&ext_data)
+            .into_iter()
+            .find(|(_, c)| c.name.eq_ignore_ascii_case(name))?;
+        let ext = self.discovered.get(ext_id)?;
+        let target = ext
+            .manifest
+            .python_modules
+            .get(&cmd.module)
+            .map(|rel| (ext.dir.join(rel).to_string_lossy().to_string(), cmd.function.clone()))
+            .ok_or_else(|| format!("Unknown python module: {}", cmd.module));
+        Some(HookPlan {
+            hook: format!("command.{}", cmd.name),
+            context: self.inject_extension_config(context),
+            calls: vec![HookCall { ext_id: ext_id.to_string(), target }],
+        })
     }
 
     /// 조건 문자열 평가: "instance.ext_data.<key>" → ext_data[key] == true

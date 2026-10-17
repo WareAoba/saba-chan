@@ -719,6 +719,41 @@ pub async fn delete_instance(
     (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
 }
 
+/// POST /api/instance/:id/rename — 이름 바꾸기 (`{name}`). 실행 중이면 409 `server_running`,
+/// 같은 이름이 있으면 409 `name_taken`. 응답 `{success, id, name, previous}`
+pub async fn rename_instance(
+    State(state): State<IPCServer>,
+    Path(id): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let fail = |status: StatusCode, error: String, code: &str| {
+        (status, Json(json!({ "success": false, "error": error, "error_code": code }))).into_response()
+    };
+    let Some(new_name) = body.get("name").and_then(|v| v.as_str()).map(str::trim).filter(|n| !n.is_empty()) else {
+        return fail(StatusCode::BAD_REQUEST, "Missing 'name'".into(), "invalid_request");
+    };
+    let mut supervisor = state.supervisor.write().await;
+    let Some(mut instance) = supervisor.instance_store.get(&id).cloned() else {
+        return fail(StatusCode::NOT_FOUND, format!("Instance not found: {}", id), "not_found");
+    };
+    if instance.name == new_name {
+        return Json(json!({ "success": true, "id": id, "name": new_name, "previous": new_name })).into_response();
+    }
+    if supervisor.instance_store.list().iter().any(|i| i.id != id && i.name == new_name) {
+        return fail(StatusCode::CONFLICT, format!("An instance named '{}' already exists", new_name), "name_taken");
+    }
+    // 실행 중인 서버는 이름으로도 추적되므로 꺼진 뒤에만 바꾼다
+    let running = supervisor.tracker.get_pid(&id).is_ok() || supervisor.managed_store.running_instance_ids().await.contains(&id);
+    if running {
+        return fail(StatusCode::CONFLICT, "Stop the server before renaming it".into(), "server_running");
+    }
+    let previous = std::mem::replace(&mut instance.name, new_name.to_string());
+    if let Err(e) = supervisor.instance_store.update(&id, instance) {
+        return fail(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), "internal");
+    }
+    Json(json!({ "success": true, "id": id, "name": new_name, "previous": previous })).into_response()
+}
+
 /// PATCH /api/instance/:id - 인스턴스 설정 업데이트
 pub async fn update_instance_settings(
     State(state): State<IPCServer>,

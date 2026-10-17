@@ -623,18 +623,9 @@ async fn try_restart_renderer() -> bool {
         Err(_) => std::path::PathBuf::from("."),
     };
 
-    // GUI를 먼저 시도, 실패하면 CLI 시도
-    let candidates: Vec<(&str, std::path::PathBuf)> = if cfg!(windows) {
-        vec![
-            ("GUI", exe_dir.join("saba-chan-gui.exe")),
-            ("CLI", exe_dir.join("saba-chan-cli.exe")),
-        ]
-    } else {
-        vec![
-            ("GUI", exe_dir.join("saba-chan-gui")),
-            ("CLI", exe_dir.join("saba-chan-cli")),
-        ]
-    };
+    // GUI만 다시 띄운다. CLI는 터미널 없이 띄워 봐야 쓸 수 없고, heartbeat 클라이언트도 아니다
+    let candidates: Vec<(&str, std::path::PathBuf)> =
+        vec![("GUI", exe_dir.join(format!("saba-chan-gui{}", std::env::consts::EXE_SUFFIX)))];
 
     for (label, path) in &candidates {
         if !path.exists() {
