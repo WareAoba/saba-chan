@@ -5,7 +5,7 @@
 //!
 //! ## 실행
 //! ```text
-//! saba-chan-updater --apply [--wait-pid <pid>] [--relaunch <exe> [extra...]]
+//! saba-chan-updater --apply [--wait-pid <pid>] --launch-token <t> [--relaunch <exe> [extra...]]
 //! ```
 //!
 //! 보통 데몬이 띄운다(`POST /api/updates/launch-updater`, U7). `--wait-pid`는 데몬 PID로,
@@ -395,6 +395,20 @@ pub fn run() {
     };
 
     tracing::info!("[Apply] Relaunch: {:?} {:?}", relaunch_exe, relaunch_extra);
+
+    // 데몬이 끊어 준 실행 표가 있어야 적용한다 (한 번만 쓴다)
+    let token = after_apply
+        .iter()
+        .position(|a| a == "--launch-token")
+        .filter(|&i| relaunch_pos.is_none_or(|r| i < r))
+        .and_then(|i| after_apply.get(i + 1))
+        .cloned()
+        .unwrap_or_default();
+    if !saba_chan_updater_lib::launch_ticket::redeem(&saba_chan_updater_lib::constants::resolve_staging_dir(), &token) {
+        tracing::error!("[Apply] Missing or stale launch token; refusing to apply");
+        eprintln!("이 업데이터는 사바쨩이 업데이트를 적용할 때만 실행됩니다.");
+        std::process::exit(1);
+    }
 
     // 띄운 쪽(데몬) 종료 대기. PID를 모르면 예전처럼 잠깐만 기다린다.
     let wait_pid = after_apply
