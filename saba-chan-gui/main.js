@@ -1816,6 +1816,16 @@ ipcMain.handle('module:detect', async (_event, dirPath) => {
     }
 });
 
+// 모듈 코드가 쓰는 위험한 능력과 module.toml [permissions] 선언 비교 (데몬 응답 그대로)
+ipcMain.handle('module:audit', async (_event, moduleName) => {
+    try {
+        const response = await axios.get(`${IPC_BASE}/api/module/${encodeURIComponent(moduleName)}/audit`);
+        return response.data;
+    } catch (error) {
+        return errorBody(error);
+    }
+});
+
 // 최근 종료 이력 (사용자 정지, 게임 안 정지, 크래시, 원인 모를 종료)
 ipcMain.handle('instance:events', async (_event, id) => {
     try {
