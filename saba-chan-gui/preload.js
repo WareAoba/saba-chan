@@ -103,6 +103,8 @@ contextBridge.exposeInMainWorld('api', {
     loadNodeToken: () => ipcRenderer.invoke('nodeToken:load'),
     deleteNodeToken: () => ipcRenderer.invoke('nodeToken:delete'),
     // 설정·서버 목록 내보내기/가져오기 (A9): {secrets} / {path?, dryRun, overwrite}. 취소하면 {canceled: true}
+    // 감사 로그 (A10): {limit?, instance?} → {entries: [{ts, source, user?, guild?, action, instanceId, instance?, command?, args?, ok, status}]}
+    auditList: (opts) => ipcRenderer.invoke('audit:list', opts),
     dataExport: (opts) => ipcRenderer.invoke('dataTransfer:export', opts),
     dataImport: (opts) => ipcRenderer.invoke('dataTransfer:import', opts),
     // Relay server proxy (cloud mode) — all relay comms go through daemon

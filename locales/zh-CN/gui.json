@@ -684,7 +684,8 @@
     "preflight_failed_short": "Python 准备失败",
     "preflight_failed": "Python 准备失败，将在下次操作服务器时重试。（{{error}}）",
     "module_needs": "版本要求未满足：{{deps}}",
-    "tab_maintenance": "备份与计划"
+    "tab_maintenance": "备份与计划",
+    "tab_audit": "记录"
   },
   "discord": {
     "nav_connection": "连接",
@@ -1013,5 +1014,27 @@
     "err_write_failed": "无法写入文件。请检查保存位置和权限。",
     "err_generic": "处理失败，请稍后重试。",
     "restart_hint": "导入的界面设置将在重启 Saba-chan 后生效。"
+  },
+  "audit": {
+    "title": "操作记录",
+    "desc_server": "显示谁在何时从何处操作了此服务器。最新的在前。",
+    "desc_all": "显示谁在何时从何处操作了所有服务器。最新的在前。",
+    "refresh": "刷新",
+    "empty": "暂无记录。",
+    "load_failed": "无法加载操作记录。",
+    "more": "显示更多",
+    "ok": "成功",
+    "failed": "失败（{{status}}）",
+    "action_start": "启动",
+    "action_stop": "停止",
+    "action_restart": "重启",
+    "action_command": "命令",
+    "action_stdin": "控制台输入",
+    "source_gui": "应用",
+    "source_cli": "CLI",
+    "source_api": "API",
+    "source_discord": "Discord",
+    "source_schedule": "计划任务",
+    "source_daemon": "守护进程"
   }
 }

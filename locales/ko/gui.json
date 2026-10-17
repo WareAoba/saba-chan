@@ -684,7 +684,8 @@
     "preflight_failed_short": "Python 준비 실패",
     "preflight_failed": "Python 준비에 실패했어요. 서버를 다룰 때 다시 시도합니다. ({{error}})",
     "module_needs": "필요한 버전이 맞지 않아요: {{deps}}",
-    "tab_maintenance": "백업·예약"
+    "tab_maintenance": "백업·예약",
+    "tab_audit": "기록"
   },
   "discord": {
     "nav_connection": "연결",
@@ -1038,6 +1039,31 @@
     "scale_note": "최근 2분 최대값 기준",
     "network_note": "인스턴스별 구분 없이 전체 트래픽 · 최근 2분 최대값 기준",
     "sizes_pending": "인스턴스 폴더 크기를 재는 중",
-    "footnote": "디스크 IO·네트워크는 최근 2분 최대값 기준이에요. 네트워크는 인스턴스별로 나누지 않은 전체 트래픽이에요."
+    "footnote": "디스크 IO·네트워크는 PC 전체 값이고 서버별로 나누지 않아요. 원은 최근 2분 최대값 기준이에요.",
+    "all_disk_io": "전체 디스크 IO",
+    "disk_io_note": "실제 디스크 전체 값이에요. 서버별로는 나누지 않아요 · 최근 2분 최대값 기준",
+    "disk_io_process_note": "실제 디스크 값을 읽지 못해 프로세스 IO 합(캐시 포함)을 보여요"
+  },
+  "audit": {
+    "title": "작업 기록",
+    "desc_server": "이 서버를 누가 언제 어디서 조작했는지 보여 줘요. 최신 기록이 먼저 나와요.",
+    "desc_all": "모든 서버를 누가 언제 어디서 조작했는지 보여 줘요. 최신 기록이 먼저 나와요.",
+    "refresh": "새로고침",
+    "empty": "아직 기록이 없어요.",
+    "load_failed": "기록을 불러오지 못했어요.",
+    "more": "더 보기",
+    "ok": "성공",
+    "failed": "실패 ({{status}})",
+    "action_start": "시작",
+    "action_stop": "정지",
+    "action_restart": "재시작",
+    "action_command": "명령",
+    "action_stdin": "콘솔 입력",
+    "source_gui": "앱",
+    "source_cli": "CLI",
+    "source_api": "API",
+    "source_discord": "디스코드",
+    "source_schedule": "예약 작업",
+    "source_daemon": "데몬"
   }
 }

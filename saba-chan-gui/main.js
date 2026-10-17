@@ -106,12 +106,11 @@ axios.interceptors.request.use((config) => {
     if (!isDaemonRequest(config)) return config;
     config.maxRedirects = 0;
     const token = getIpcToken();
-    if (token && config.headers) {
-        if (typeof config.headers.set === 'function') {
-            config.headers.set('X-Saba-Token', token);
-        } else {
-            config.headers['X-Saba-Token'] = token;
-        }
+    if (config.headers) {
+        // 감사 로그의 출처 (A10)
+        const put = (k, v) => (typeof config.headers.set === 'function' ? config.headers.set(k, v) : (config.headers[k] = v));
+        if (token) put('X-Saba-Token', token);
+        put('X-Saba-Client', 'gui');
     }
     return config;
 });
@@ -2338,6 +2337,15 @@ ipcMain.handle('relay:listNodeMembers', async (_event, guildId, relayUrl) => {
 });
 
 // 챗봇 채널(여럿)·음악 채널(하나) 배정. 실패하면 데몬 본문({error, channelId?})을 그대로 돌려준다
+// 감사 로그 (A10): {limit?, instance?} → {entries: [...]} 최신이 먼저
+ipcMain.handle('audit:list', (_event, opts = {}) => {
+    const params = new URLSearchParams();
+    if (opts.limit) params.set('limit', String(opts.limit));
+    if (opts.instance) params.set('instance', String(opts.instance));
+    const qs = params.toString();
+    return daemonCall('get', `/api/audit${qs ? `?${qs}` : ''}`, undefined, 10000);
+});
+
 ipcMain.handle('relay:nodeChannels', (_event, guildId) =>
     daemonCall('get', `/api/relay/node/${encodeURIComponent(guildId)}/channels`, undefined, 15000));
 

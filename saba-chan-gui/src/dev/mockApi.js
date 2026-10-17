@@ -169,10 +169,10 @@ const impl = {
             guilds: { 'guild-1': { memo: '' } },
             hasApiKey: true,
         }),
-    chatbotSave: (patch) => ok({ success: true, settings: patch.settings || {}, guilds: {}, hasApiKey: true, sync: [] }),
+    chatbotSave: (patch) =>
+        ok({ success: true, settings: patch.settings || {}, guilds: {}, hasApiKey: true, sync: [] }),
     chatbotClearMemory: () => ok({ success: true }),
-    migrationScanDir: () =>
-        ok({ ok: true, matches: [{ name: 'minecraft', display_name: 'Minecraft: Java Edition' }] }),
+    migrationScanDir: () => ok({ ok: true, matches: [{ name: 'minecraft', display_name: 'Minecraft: Java Edition' }] }),
     settingsLoad: () => ok(settings),
     settingsSave: (s) => {
         Object.assign(settings, s);
@@ -247,12 +247,7 @@ const impl = {
             window_ms: 2000,
             cpu: { cores: 16, total_percent: instCpu + jitter(14, 6), others_percent: jitter(14, 6) },
             memory: { total_bytes: 32 * GB, used_bytes: 19.6 * GB, others_bytes: 19.6 * GB - 6.4 * GB },
-            disk_io: {
-                read_bps: 9 * MB,
-                write_bps: 4 * MB,
-                others_read_bps: jitter(5 * MB, 3 * MB),
-                others_write_bps: jitter(1 * MB, 1 * MB),
-            },
+            disk_io: { read_bps: jitter(0.3 * MB, 0.4 * MB), write_bps: jitter(0.2 * MB, 0.3 * MB), source: 'physical', per_instance: false },
             network: { rx_bps: jitter(3.2 * MB, 2 * MB), tx_bps: jitter(1.1 * MB, 1 * MB), per_instance: false },
             disks: [
                 {
@@ -330,6 +325,51 @@ const impl = {
             config: ['gui', 'chatbot'],
             nodeToken: 'kept',
             path: path || 'C:\\Users\\me\\saba-chan-export.zip',
+        }),
+    auditList: ({ instance } = {}) =>
+        ok({
+            entries: [
+                {
+                    ts: now() - 30,
+                    source: 'discord',
+                    user: '284019384710293847',
+                    guild: '1029384756102938475',
+                    action: 'command',
+                    instanceId: 'mc-1',
+                    instance: '마크 서버',
+                    command: 'say',
+                    args: '["안녕"]',
+                    ok: true,
+                    status: 200,
+                },
+                {
+                    ts: now() - 600,
+                    source: 'gui',
+                    action: 'restart',
+                    instanceId: 'mc-1',
+                    instance: '마크 서버',
+                    ok: true,
+                    status: 200,
+                },
+                {
+                    ts: now() - 3600,
+                    source: 'schedule',
+                    action: 'stop',
+                    instanceId: 'pal-1',
+                    instance: '팰월드',
+                    ok: false,
+                    status: 500,
+                },
+                {
+                    ts: now() - 7200,
+                    source: 'cli',
+                    action: 'start',
+                    instanceId: 'mc-1',
+                    instance: '마크 서버',
+                    ok: true,
+                    status: 200,
+                },
+            ].filter((e) => !instance || e.instanceId === instance),
         }),
     relayNodeChannels: (guildId) => ok({ guildId, ...mockChannels }),
     relayNodeChannelsSave: (guildId, patch) => {

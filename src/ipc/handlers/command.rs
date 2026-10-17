@@ -18,6 +18,14 @@ pub async fn execute_command(
     State(state): State<IPCServer>,
     Json(req): Json<CommandRequest>,
 ) -> axum::response::Response {
+    let (command, args) = (req.command.clone(), req.args.clone());
+    let resp = run_command(&id, &state, req).await;
+    super::audited(&state, "command", &id, Some(&command), Some(&args), resp).await
+}
+
+async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::response::Response {
+    let id = id.to_string();
+    let state = state.clone();
     use crate::commands::{Args, Plan, Request};
     use crate::ipc::internal::{into_internal, InternalResponse};
 

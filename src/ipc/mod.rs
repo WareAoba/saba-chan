@@ -624,6 +624,7 @@ impl IPCServer {
             // ── 경량 ping (lock / 디스크 I/O 없음) ──
             .route("/health", get(handlers::server::health_check))
             .route("/api/diagnostics", get(handlers::diagnostics::diagnostics))
+            .route("/api/audit", get(handlers::diagnostics::audit))
             // ── Server query/control ──
             .route("/api/servers", get(handlers::server::list_servers))
             .route("/api/server/:name/status", get(handlers::server::get_server_status))
@@ -749,6 +750,8 @@ impl IPCServer {
             .with_state(self.clone())
             .merge(updates::updates_router(self.update_state.clone()))
             // ── Auth middleware (token-based) — 업데이트 라우터까지 모든 라우트에 ──
+            // 감사 로그 출처 (A10): 요청마다 X-Saba-Client로 정한다
+            .layer(axum::middleware::from_fn(crate::audit::layer))
             .layer(axum::middleware::from_fn(auth::auth_middleware));
 
         // TCP 리스너 (SO_REUSEADDR + 바인딩 재시도)

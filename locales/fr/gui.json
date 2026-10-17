@@ -684,7 +684,8 @@
     "preflight_failed_short": "Échec de l'installation de Python",
     "preflight_failed": "La préparation de Python a échoué. Nouvel essai à la prochaine action sur un serveur. ({{error}})",
     "module_needs": "Prérequis non satisfaits : {{deps}}",
-    "tab_maintenance": "Sauvegardes"
+    "tab_maintenance": "Sauvegardes",
+    "tab_audit": "Journal"
   },
   "discord": {
     "nav_connection": "Connexion",
@@ -1013,5 +1014,27 @@
     "err_write_failed": "Impossible d'écrire le fichier. Vérifiez l'emplacement et les autorisations.",
     "err_generic": "Une erreur s'est produite. Veuillez réessayer.",
     "restart_hint": "Les paramètres de l'app importés s'appliquent après le redémarrage de Saba-chan."
+  },
+  "audit": {
+    "title": "Journal d'activité",
+    "desc_server": "Qui a fait quoi sur ce serveur, quand et d'où. Les plus récents en premier.",
+    "desc_all": "Qui a fait quoi sur tous les serveurs, quand et d'où. Les plus récents en premier.",
+    "refresh": "Actualiser",
+    "empty": "Aucune activité pour l'instant.",
+    "load_failed": "Impossible de charger le journal d'activité.",
+    "more": "Afficher plus",
+    "ok": "Réussi",
+    "failed": "Échec ({{status}})",
+    "action_start": "Démarrer",
+    "action_stop": "Arrêter",
+    "action_restart": "Redémarrer",
+    "action_command": "Commande",
+    "action_stdin": "Saisie console",
+    "source_gui": "App",
+    "source_cli": "CLI",
+    "source_api": "API",
+    "source_discord": "Discord",
+    "source_schedule": "Planification",
+    "source_daemon": "Démon"
   }
 }
