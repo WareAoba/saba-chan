@@ -169,88 +169,25 @@ Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `u
 
 ---
 
-## 3. CLI (saba-chan-cli, Rust TUI)
+## 3. CLI (saba-chan-cli, Rust)
 
-### 3.1 구조
-- `main.rs`(15줄): `config::get_ipc_base_url()`로 포트를 정한다. 이 값은 **settings.json을 로컬에서 직접 읽어** `ipcPort`를 꺼낸다(config.rs:99-107). 그다음 `DaemonClient`를 만들고 `tui::run`을 호출한다. 서브커맨드 방식의 일회성 CLI는 없고 **TUI 전용**이다(TUI 안에 명령 입력줄이 있다).
-- `client.rs`: async reqwest 클라이언트(기본 5초, long 120초). 토큰 파일을 읽어 `X-Saba-Token`을 보내고, 401이면 토큰을 다시 읽어 1회 재시도한다(67-104).
-- `process.rs`: blocking. daemon/bot 수명주기를 관리한다.
-- `config.rs`: daemon `/api/config/*`를 감싼 blocking 래퍼.
-- `cli_config.rs`: CLI 전용 `cli-settings.json`.
-- `module_registry.rs`: alias 매핑.
-- `i18n.rs`: `locales/<lang>/cli.json`.
-- `tui/`: app/mod/render/commands/screens.
+> 이 절은 CLI 리메이크(PR #6, 브랜치 `claude/cli-remake-b1wszk`) 기준이다. 예전 TUI(`tui/`, `process.rs`, `config.rs`, `gui_config.rs`, `cli_config.rs`, `module_registry.rs`)는 이 리메이크에서 모두 지워졌다.
 
-### 3.2 TUI 화면 (`tui/app.rs:74-97`)
-Dashboard, Servers, ServerDetail, ServerConsole, ServerSettings, ServerProperties, Modules, ModuleDetail, ModuleManifest, Bot, BotAliases, Settings, Updates, Daemon, Extensions, ExtensionList, ExtensionDetail, ExtensionManifest, CommandMode, CreateInstanceStep1/2.
+### 3.1 쓰는 방법 세 가지
+- **한 번 실행하는 하위 명령**: clap 기반(`cli.rs`). `status`, `start|stop|restart <서버>`, `console`, `run <서버> <게임 명령>`, `server …`(list, info, add, remove, settings, set, properties, rcon, rest, update, history, validate, diagnose, accept-eula, rename 등), `daemon …`, `module …`, `extension …`, `bot …`, `update …`, `config …`, `chat <문장>`, `version`, `completions <셸>` (`cli.rs:40-100`).
+- **대화형 셸**: 인자 없이 터미널에서 실행하면 열린다(`main.rs:66`, `shell.rs`). 한 줄이 명령 하나이고 Tab으로 명령·서버 이름·게임 명령을 채운다. 첫 단어가 명령이 아니면 디스코드와 같은 채팅 처리기로 보낸다(`shell.rs:1-5, 183`). 셸을 닫아도 데몬과 서버는 계속 돈다.
+- **스크립트용 `--json`**: stdout에는 JSON 문서 하나만 나가고, 안내와 진행 표시는 stderr로 간다(`output.rs:1-6`). 종료 코드: 0 성공, 1 실패, 2 사용법·모호함, 3 데몬 응답 없음, 4 대상 없음, 130 취소(`error.rs:40-46`). 전역 옵션은 `--json`, `--yes`, `--lang`, `--port`, `--no-color`.
 
-명령 입력줄의 상위 명령(`tui/commands.rs`): `help, daemon start|stop|restart|status, bot start|stop|status|token|prefix|mode|relay|node-token, server/instance list|start|stop|status|create|delete|reorder|…, module list|refresh|versions|install|manifest|install-manifest|remove, extension list|enable|disable|install|remove|rescan, update check|status|download|apply|config|set|install|launch-apply, config get|set|reset|show, exit/quit/q`. 모듈 단축 명령도 받는다(`palworld start`, `팰월드 시작` 등. `module_registry`가 module.toml의 alias를 해석한다).
+### 3.2 구조
+- `client.rs`: 데몬 HTTP 클라이언트. 토큰 파일을 읽어 `X-Saba-Token`을 보내고, 401이면 토큰을 다시 읽어 1회 재시도한다(`client.rs:28-34, 95-110`). 업데이터 실행도 데몬 API로 요청한다(`launch_updater` `:555`).
+- `bootstrap.rs`: 데몬이 뜨기 전에 필요한 것만 직접 한다. `config.json`의 `gui.ipcPort`·`gui.language` 읽기(우선순위 `SABA_IPC_PORT` > 파일 > 기본값, `:18-28`), `saba-core` 실행 파일 찾기와 분리 실행(`:49-90`), 정상 종료가 안 될 때 **그 PID만** 강제 종료(`:92`).
+- `ctx.rs`: 데몬이 필요한 명령 앞에서 `ensure_daemon`이 데몬을 확인하고 없으면 띄운다(`:21, 40-60`).
+- `catalog.rs`: 게임 명령을 하드코딩하지 않는다. `GET /api/modules`의 `commands`·`command_aliases`와 `GET /api/instance/:id/commands`로 목록·사용법·입력 칸을 만든다. 인자 검사의 최종 판단은 데몬이 한다.
+- `slots.rs`: 익스텐션 manifest의 `cli.slots`(데이터만, 코드 실행 없음). 지원 자리는 `InstanceList.badge`, `InstanceDetail.status`, `CreateInstance.options`.
+- `i18n.rs`: 설치 폴더의 `locales/<lang>/cli.json`을 먼저 읽고, 없으면 바이너리에 넣어 둔 en/ko를 쓴다(`:11-12, 36-45`).
+- `cmd/`: 명령 갈래마다 파일 하나(bot, config, console, daemon, extension, module, server, status, update).
 
-시작 시퀀스(`tui/mod.rs:85-140`):
-1. 2초 뒤 `POST /api/client/register {kind:'cli'}`를 1회 시도하고, 성공하면 30초 주기로 heartbeat를 보낸다. **등록에 실패하면 다시 시도하지 않는다.** auto-start로 daemon이 늦게 뜨면 CLI는 등록되지 않은 채로 남는다.
-2. `cli-settings.auto_start`가 켜져 있으면 1초 뒤 daemon이 없을 때 `process::start_daemon`을 실행하고, bot의 autoStart가 켜져 있으면 `start_bot`도 실행한다.
-3. `exit`를 입력하면 **항상 bot과 daemon을 모두 정지한다**(commands.rs:35-60). GUI의 "인터페이스만 종료"에 해당하는 선택지가 없다.
-
-### 3.3 CLI가 호출하는 daemon endpoint (`client.rs`)
-대부분 GUI와 같다. CLI에만 있는 호출과 존재하지 않는 호출은 아래와 같다.
-
-| 메서드 (client.rs 줄) | Endpoint | 상태 |
-|---|---|---|
-| validate_instance (253) | POST /api/instance/:id/validate | ✓ 603 (CLI 전용) |
-| read/write_properties (258/263) | GET/PUT /api/instance/:id/properties | ✓ 604 (CLI 전용) |
-| accept_eula (268), diagnose (273) | POST …/accept-eula, …/diagnose | ✓ 607-608 (CLI 전용) |
-| get_version_details (305) | GET /api/module/:name/version/:v | ✓ 611 |
-| get/save_extension_config (616/621) | /api/extensions/:id/config | ✓ 652 |
-| shutdown_daemon (577), get_daemon_console (582) | /api/daemon/shutdown, /api/daemon/console | ✓ 638-639 |
-| list_ext_processes (539) | GET /api/ext-processes | ✓ 627 |
-| check_update_integrity (604) | GET /api/updates/integrity | ✓ |
-| get_node_env_status (594) | GET /api/node-env/status | ✓ 658 |
-| **get_install_status (384)** | GET /api/install/status | ✗ **라우트 없음** |
-| **run_install (389)** | POST /api/install/run | ✗ **라우트 없음** (commands.rs:1130 `update install`) |
-| **install_component (398)** | POST /api/install/component/:key | ✗ **라우트 없음** (commands.rs:1125) |
-| **get_install_progress (406)** | GET /api/install/progress | ✗ **라우트 없음** |
-| **set_update_config (505)** | **POST** /api/updates/config | ✗ **daemon은 PUT만 제공. 405** (commands.rs:1119, tui/mod.rs:907) |
-| discord_guild_list (655), discord_guild_members (671) | **https://discord.com/api/v10 직접 호출** | dead code (`#[allow(dead_code)]` impl 30). 호출하는 곳이 없다 |
-
-`src/`와 `updater/` 전체를 grep해도 `api/install`은 없다. 즉 CLI의 `update install …` 명령은 반드시 404가 난다.
-
-### 3.4 config.rs / gui_config.rs / cli_config.rs
-- **config.rs**: "모든 설정은 daemon API를 경유한다"(1-7)는 원칙을 따르는 blocking 래퍼다. `load_settings`는 `GET /api/config/gui`, `save_settings`는 `PUT`, `load/save_bot_config`는 `/api/config/bot`을 쓰고, node-token은 GET/PUT/DELETE를 쓴다.
-  - CLI가 **GUI 설정(settings.json)을 편집하는 이유**: `ipcPort, language, autoRefresh, refreshInterval, consoleBufferSize, autoGeneratePasswords, portConflictCheck`가 GUI와 CLI, daemon이 공유하는 "앱 설정"이기 때문이다(config.rs:263-343. TUI Settings 화면과 `config set`에서 쓴다). 파일 이름은 `gui`지만 실질적으로는 전역 설정이다.
-  - 예외: `get_ipc_port_local()`(99-107)은 settings.json을 직접 읽는다. 순환을 피하기 위한 부트스트랩으로 문서화되어 있다. `get_modules_path`/`get_extensions_path`(129-147, 345-363)는 디렉터리를 **로컬에서 직접 생성**한다. `scan_directory`(427-463)와 `get_module_locales`(468-500)는 daemon 호출이 실패하면 **로컬 파일시스템으로 fallback**한다.
-- **gui_config.rs**: config.rs와 거의 같은 사본이다(diff 결과 `get_ipc_base_url`이 `get_ipc_port()`를 쓰는지 `get_ipc_port_local()`을 쓰는지만 다르다). **`main.rs`에 `mod gui_config;`가 없어서 컴파일되지 않는 죽은 파일**이다. 테스트도 돌지 않는다.
-- **cli_config.rs**: `<dataDir>/cli-settings.json`을 `fs::read_to_string`과 `fs::write`로 **직접** 읽고 쓴다(52-68). 키는 `language`(비어 있으면 GUI 설정을 따름), `auto_start`(기본 true), `refresh_interval`(초, 기본 2), `bot_prefix`이다. daemon API에는 대응하는 저장소가 없다.
-
-### 3.5 process.rs: CLI가 직접 하는 프로세스 관리
-- `start_daemon`(192-231): `find_daemon_binary()`로 바이너리를 찾아 `--spawned`와 env `RUST_LOG, SABA_MODULES_PATH, SABA_INSTANCES_PATH, SABA_LANG`을 넘기고 **detached spawn**한다(spawn_detached 159-174). `SABA_IPC_PORT`는 넘기지 않는다. GUI(main.js:563)와 다른 점이다.
-  - 버그: `SABA_LANG`은 `config::get_language()`에서 오는데(204), 이 함수는 daemon API를 호출한다. 그런데 이 시점에는 daemon이 아직 없어서 **항상 "en"으로 fallback**된다.
-- `stop_daemon`(234-260): `POST /api/daemon/shutdown`을 보내고, 실패하면 `force_kill_daemon`으로 **`taskkill /IM saba-core.exe /F` 또는 `pkill -f saba-core`**를 실행한다(267-290). 프로세스 이름 기반이라 같은 이름의 프로세스를 모두 죽인다.
-- `check_daemon_running`(98-106): TCP connect로 확인한다.
-- `start_bot`(380-412): `POST /api/node-env/setup`으로 node 경로를 받고, `POST /api/ext-process/discord-bot/start`에 `{command:node, args:[index.js], cwd, env}`를 보낸다.
-  - 버그: **Discord 토큰을 `settings.discordToken`에서 읽는다**(process.rs:325). GUI는 토큰을 bot-config의 `token`에 저장하고, settings에 남아 있던 값은 마이그레이션으로 옮긴다(App.js:418-436). 따라서 GUI로 설정한 사용자는 CLI `bot start`에서 "Discord token not set" 오류를 받는다. 같은 CLI의 `config::get_discord_token()`(config.rs:118)은 bot-config에서 읽어 서로 모순된다.
-  - **cloud 모드를 지원하지 않는다**: `RELAY_URL`과 `RELAY_NODE_TOKEN`을 넘기지 않고 항상 `DISCORD_TOKEN`을 넘긴다(build_bot_env 347-360).
-- `launch-apply`(commands.rs:1134-1165): updater exe를 직접 spawn한다. 인자는 `--apply --install-root <root> [targets]`이다. GUI는 `--apply --relaunch <gui>`를 쓴다. 두 클라이언트가 updater에 다른 인자 규약을 쓰므로 updater 쪽 문서와 대조해야 한다.
-
-### 3.6 module_registry.rs
-`try_load_from_daemon`(70-…)은 `GET /api/modules`를 호출해 alias 맵을 만든다. 실패하면 **`<modules>/*/module.toml`을 직접 읽어 파싱한다**(235-275 부근). 토큰 파일도 따로 직접 읽는다(76-79).
-
-### 3.7 GUI 대비 기능 격차 (CLI가 못 하는 것과 CLI만 하는 것)
-
-| 기능 | GUI | CLI |
-|---|---|---|
-| 인스턴스 CRUD, 시작/정지, 콘솔, 명령, 설정 | ✓ | ✓ |
-| 마이그레이션(폴더 스캔 후 감지) | ✓ | 부분 (scan_directory만 있고 자동 감지 플로우는 없다) |
-| Cloud 모드 bot 기동 | ✓ | ✗ (env 미전달) |
-| Cloud 페어링(relay/pair/*), 노드 및 멤버 목록 | ✓ | ✗ (`bot relay url/hostid`로 설정만 편집하고, relay API는 호출하지 않는다) |
-| 노드별 allowedInstances, memberPermissions 편집 | ✓ | ✗ |
-| 음악 채널 설정 | ✓ | 화면 키(`screen.bot_music`)만 있다 |
-| 확장 GUI 번들 주입 | ✓ | ✗ (구조상 해당 없음) |
-| properties 직접 편집, EULA 동의, diagnose, validate | ✗ | ✓ |
-| daemon 콘솔 로그 보기, daemon API shutdown | ✗ | ✓ |
-| 업데이트 integrity 검사 | ✗ | ✓ |
-| "인터페이스만 종료" | ✓ | ✗ (exit하면 daemon까지 종료) |
-
----
+사용자 안내서는 `saba-chan-cli/README.md`에 있다.
 
 ## 4. Discord Bot (discord_bot/, "server-chan")
 
@@ -362,13 +299,10 @@ POST /api/ext-process/discord-bot/start
 ## 6. 불일치, 죽은 코드, stub, 버그 (file:line)
 
 ### 6.1 존재하지 않는 endpoint나 잘못된 HTTP 메서드 호출
+(예전 TUI CLI의 항목들은 CLI 리메이크에서 코드째 사라져 뺐다. §3 참조.)
 1. `saba-chan-gui/main.js:2792`: `updater:setConfig`가 `axios.post('/api/updates/config')`를 호출한다. daemon은 GET/PUT만 제공하므로(updates.rs:91-92) 405가 난다. 영향을 받는 곳은 SabaStorage의 자동 체크 on/off(201)와 Mock 토글(196-215)이다.
-2. `saba-chan-cli/src/client.rs:505-506`: `set_update_config`도 POST를 쓴다. 같은 405이고 `update set`과 Updates 화면이 영향을 받는다.
-3. `saba-chan-cli/src/client.rs:384-407`: `/api/install/status|run|component/:key|progress` 4개는 daemon과 updater 어디에도 라우트가 없다. `update install` 명령이 실패한다(commands.rs:1125-1133).
 
 ### 6.2 죽은 코드와 stub
-- `saba-chan-cli/src/gui_config.rs` 전체(1086줄): `mod` 선언이 없어 컴파일되지 않는 config.rs 사본이다.
-- `saba-chan-cli/src/client.rs:655-684`: Discord REST를 직접 호출하는 함수 2개. 호출하는 곳이 없다.
 - `saba-chan-gui/main.js:501-503` `syncGuiConfigToDaemon`(no-op)과 이를 부르는 `guiConfig:sync` 채널(2961), `runBackgroundInit`의 호출(1091-1094).
 - `saba-chan-gui/main.js:1005-1011` `preloadLightData`: 상태 메시지만 보낸다(주석에서 레거시라고 인정함).
 - `discord_bot/core/resolver.js:129-131` `ensureGuildMetadata` 빈 stub. `ipc.getModules(guildId)`의 인자도 무시된다.
@@ -380,12 +314,8 @@ POST /api/ext-process/discord-bot/start
 ### 6.3 기능 버그
 - **before-quit bot 정지 요청 누락**: main.js:1536(`const currentPort`가 if와 try 블록 안에 선언됨)과 1559(블록 밖에서 참조) 때문에 ReferenceError가 나고 조용히 무시된다.
 - **SabaStorage bot 재시작 실패**: SabaStorage.js:316, 445가 `settings?.discordToken`을 읽는다. 이 키는 bot-config으로 옮겨져 비어 있으므로 업데이트 후 bot 재시작이 항상 "no token"으로 끝난다. cloud 모드 정보도 넘기지 않는다.
-- **CLI bot start 토큰 소스 오류**: process.rs:325는 `settings.discordToken`을 읽고, config.rs:118은 `botConfig.token`을 읽는다. cloud 모드는 지원하지 않는다(347-360).
-- **CLI가 띄운 daemon 언어가 항상 en**: process.rs:213이 daemon 기동 전에 daemon API로 언어를 조회한다.
-- **CLI daemon 기동 시 `SABA_IPC_PORT` 미전달**: process.rs:216-221. 사용자 지정 포트를 쓰면 daemon이 기본 포트로 뜨고 CLI는 지정 포트로 접속하게 된다. daemon이 settings에서 포트를 직접 읽는지는 daemon 문서와 대조해야 한다.
 - **settings 경로 분기 기준 오류**: main.js:483, 2860, 2967이 `daemonProcess`(내가 spawn했는가)로 판단한다. daemon이 살아 있는데도 settings.json을 직접 쓰는 경우가 생긴다(§1.3).
 - **botConfig:save 비동기 누락**: main.js:3397에서 `saveBotConfig`를 await하지 않는다. 실패해도 `{success:true}`를 반환한다. 또 `cloudNodes`/`cloudMembers`가 입력에 없으면 `[]`/`{}`로 **덮어써서 지워진다**(3392-3396). 같은 파일의 `discord:start`(3205-3206)는 기존 값을 보존한다.
-- **CLI 등록 재시도 없음**: tui/mod.rs:93-111.
 - **resolver 주석과 코드 불일치**: resolver.js:57(1분)과 60(5초).
 - **Palworld 기본값 하드코딩**: discord_bot/core/ipc.js:164-167(`8212`, `admin`).
 - **updater exe 이름 하드코딩**: main.js:1113-1148, commands.rs:1137-1142에서 `.exe`로 고정되어 있어 비 Windows 환경에서 launch-apply가 불가능하다.
@@ -432,22 +362,16 @@ POST /api/ext-process/discord-bot/start
 
 (renderer는 `fetch`, `axios`, 직접 IP 접근을 하지 않는다. 모두 preload를 거친다.)
 
-### 7.3 CLI (`saba-chan-cli/src`)
+### 7.3 CLI (`saba-chan-cli/src`, PR #6 기준)
+예전 TUI의 우회 지점 C3~C7, C11~C13(로컬 fallback, `cli-settings.json`, updater 직접 실행 등)과 이름 기반 kill은 리메이크에서 사라졌다. 남은 것은 부트스트랩뿐이다.
+
 | # | 위치 | 분류 | 내용 | 비고 |
 |---|---|---|---|---|
-| C1 | config.rs:16-22, client.rs(`read_ipc_token`), process.rs:296-301, module_registry.rs:76-79 | FS-R | `.ipc_token` 읽기(4곳에 중복 구현) | 불가피 |
-| C2 | config.rs:99-107 | FS-R/CFG | settings.json에서 `ipcPort` 직접 읽기 | 불가피(문서화됨) |
-| C3 | config.rs:129-147, 345-363 | FS-W | modules/extensions 디렉터리 `create_dir_all` | daemon 책임이어야 한다 |
-| C4 | config.rs:427-463 | FS-R | `scan_directory` 로컬 fallback(`read_dir`) | |
-| C5 | config.rs:468-500 | FS-R | `get_module_locales` 로컬 fallback(모듈 locales 직접 읽기) | |
-| C6 | module_registry.rs:235-275 부근 | FS-R | daemon이 실패하면 `<modules>/*/module.toml` 직접 파싱 | |
-| C7 | cli_config.rs:52-68 | FS-R/FS-W/CFG | `cli-settings.json` 직접 읽기/쓰기 | daemon에 대응하는 저장소가 없다 |
-| C8 | i18n.rs:64-90 | FS-R | `locales/<lang>/cli.json` 직접 읽기 | |
-| C9 | process.rs:192-231 (215-223) | PROC | **saba-core detached spawn** | 불가피(부트스트랩) |
-| C10 | process.rs:262-290 | PROC | **`taskkill /IM saba-core.exe /F` 및 `pkill -f saba-core`**(API shutdown이 실패했을 때) | 이름 기반 강제 종료 |
-| C11 | commands.rs:1134-1165 (1150) | PROC | updater exe 직접 spawn(`--apply --install-root`) | |
-| C12 | client.rs:655-684 | EXT | Discord REST(`discord.com/api/v10`) 직접 호출 | dead code |
-| C13 | commands.rs:35-60 | PROC(간접) | exit 시 bot과 daemon 무조건 정지 | 정책 문제 |
+| C1 | client.rs:28-34 | FS-R | `.ipc_token` 읽기 (한 곳) | 불가피 |
+| C2 | bootstrap.rs:18-28 | FS-R/CFG | `config.json`에서 `gui.ipcPort`·`gui.language` 읽기 | 불가피 |
+| C8 | i18n.rs:36-45 | FS-R | 설치 폴더 `locales/<lang>/cli.json` 읽기 (없으면 내장본) | |
+| C9 | bootstrap.rs:49-90 | PROC | saba-core 분리 실행 | 불가피(부트스트랩) |
+| C10 | bootstrap.rs:92, cmd/daemon.rs:102 | PROC | API 종료가 안 될 때 데몬 PID만 강제 종료 | 이름 기반 kill 아님 |
 
 ### 7.4 discord_bot (server-chan)
 | # | 위치 | 분류 | 내용 | 비고 |
@@ -468,9 +392,7 @@ POST /api/ext-process/discord-bot/start
 - **원칙 위반 정도가 가장 큰 항목**:
   - G2, G3, G4: GUI가 settings.json을 직접 읽고 쓴다. 분기 기준이 잘못되어 daemon이 살아 있어도 이 경로를 탄다.
   - G17: GUI가 relay에 직접 PATCH한다.
-  - C7: CLI 전용 설정 파일이 daemon 밖에 있다.
-  - C3~C6: CLI의 로컬 fallback.
   - B5: bot이 relay와 직접 통신한다. daemon에 relay 프록시가 있는데도 쓰지 않는다.
   - B6: bot이 의존성 설치용 Python을 직접 실행한다.
-- **부트스트랩상 불가피한 항목**(토큰 파일, ipcPort, daemon 최초 spawn): G1, G7, C1, C2, C9, B1. 다만 daemon **종료**(G8~G12, C10)는 `/api/daemon/shutdown`이 있으므로 API로 대체할 수 있다. 이름 기반 kill(G9, C10)은 특히 위험하다.
-- **daemon에 API가 없어서 우회하는 항목**: relay bot-config PATCH(G17), relay agent 통신(B5), CLI 설정 저장소(C7), updater 실행(G14, C11), 언인스톨러(G16).
+- **부트스트랩상 불가피한 항목**(토큰 파일, ipcPort, daemon 최초 spawn): G1, G7, C1, C2, C9, B1. 다만 daemon **종료**(G8~G12)는 `/api/daemon/shutdown`이 있으므로 API로 대체할 수 있다. 이름 기반 kill(G9)은 특히 위험하다.
+- **daemon에 API가 없어서 우회하는 항목**: relay bot-config PATCH(G17), relay agent 통신(B5), updater 실행(G14), 언인스톨러(G16).
