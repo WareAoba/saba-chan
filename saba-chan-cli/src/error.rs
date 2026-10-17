@@ -90,7 +90,7 @@ impl CliError {
 }
 
 /// 데몬 오류 코드별 안내. 새 코드는 여기 한 줄.
-fn api_hint(code: &str, body: &Value) -> Option<String> {
+pub fn api_hint(code: &str, body: &Value) -> Option<String> {
     let list = |key: &str| {
         body.get(key)
             .and_then(Value::as_array)

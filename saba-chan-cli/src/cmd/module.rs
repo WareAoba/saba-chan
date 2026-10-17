@@ -130,8 +130,15 @@ async fn list(ctx: &Ctx) -> Result<()> {
             output::print_table(t);
         }
         for f in r.get("failed").and_then(Value::as_array).into_iter().flatten() {
-            ctx.out
-                .warn(&t!("module.failed", path = s(f, "path"), error = s(f, "error")));
+            let what = if s(f, "module").is_empty() {
+                s(f, "path")
+            } else {
+                s(f, "module")
+            };
+            ctx.out.warn(&t!("module.failed", path = what, error = s(f, "error")));
+            if let Some(h) = crate::error::api_hint(s(f, "error_code"), f) {
+                ctx.out.hint(&h);
+            }
         }
     });
     Ok(())
