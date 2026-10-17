@@ -435,7 +435,7 @@ async fn get_download_progress(
 /// POST /api/updates/apply — 다운로드된 업데이트 적용
 ///
 /// - 모듈: 데몬이 직접 적용 (파일 교체)
-/// - 데몬/GUI/CLI: 업데이터 exe를 스폰하여 적용 (응답에 requires_updater: true)
+/// - 데몬/GUI/CLI·업데이터: 적용하지 않고 `requires_updater: true`로 돌려준다. 실제 적용은 `POST /api/updates/launch-updater`
 ///
 /// Body: `{ "components": ["module-minecraft", "saba-core"] }` (선택 적용, 비어있으면 전체)
 #[derive(Deserialize, Default)]

@@ -84,8 +84,8 @@ entry = "lifecycle.py"
 [[commands.fields]]
 name = "say"
 label = "Say"
-method = "rcon"
-rcon_template = "say {message}"
+method = "console"
+console_template = "say {message}"
 inputs = [{ name = "message", type = "text", label = "Message", required = true }]
 
 [aliases.commands.say]
