@@ -19,6 +19,7 @@ import {
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { safeShowToast } from '../../utils/helpers';
+import { LANGUAGE_OPTIONS } from '../../utils/languages';
 import { SabaToggle } from '../ui/SabaUI';
 import { AuditLog, auditAvailable } from '../servers/AuditTab';
 import { DataTransferSection, dataTransferAvailable } from './DataTransferSection';
@@ -393,18 +394,7 @@ function SettingsModal({
                                     className="setting-select"
                                     value={selectedLanguage}
                                     onChange={(val) => handleLanguageChange(val)}
-                                    options={[
-                                        { value: 'en', label: 'English' },
-                                        { value: 'ko', label: '한국어 (Korean)' },
-                                        { value: 'ja', label: '日本語 (Japanese)' },
-                                        { value: 'zh-CN', label: '简体中文 (Simplified Chinese)' },
-                                        { value: 'zh-TW', label: '繁體中文 (Traditional Chinese)' },
-                                        { value: 'es', label: 'Español (Spanish)' },
-                                        { value: 'pt-BR', label: 'Português (Portuguese - Brazil)' },
-                                        { value: 'ru', label: 'Русский (Russian)' },
-                                        { value: 'de', label: 'Deutsch (German)' },
-                                        { value: 'fr', label: 'Français (French)' },
-                                    ]}
+                                    options={LANGUAGE_OPTIONS}
                                 />
                             </div>
 

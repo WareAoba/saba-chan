@@ -879,7 +879,30 @@
     "perm_owner_mismatch": "リレーが別のオーナー（{{relay}}）を報告しました。ここではオーナーは {{owner}} のままです。リレーが正しければオーナーを変更してください。",
     "perm_owner_use_relay": "このオーナーにする",
     "perm_owner_use_relay_confirm": "本当に {{name}}（{{id}}）をオーナーにする",
-    "perm_commands_help_hint": "help と list は禁止以外のすべてのレベルで使え、変更できません。"
+    "perm_commands_help_hint": "help と list は禁止以外のすべてのレベルで使え、変更できません。",
+    "tab_bot": "ボット設定",
+    "bot_settings": {
+      "loading": "ボット設定を読み込み中…",
+      "general_title": "一般",
+      "language": "ボットの言語",
+      "language_auto": "自動（アプリの言語に従う）",
+      "sleeping": "スリープ",
+      "sleeping_hint": "オンにすると、このサーバーでボットがサーバーコマンドに応答しません。",
+      "music_title": "音楽",
+      "music_enabled": "音楽機能",
+      "music_ui": "音楽プレイヤー表示",
+      "music_ui_hint": "音楽チャンネルに再生中の曲と再生待ちを表示します。",
+      "music_normalize": "音量の均一化",
+      "music_normalize_hint": "曲ごとの音量差をそろえます。",
+      "queue_lines": "再生待ちの表示行数",
+      "lines": "行",
+      "refresh": "プレイヤーの更新間隔",
+      "range": "{{min}}から{{max}}までの整数を入力してください。",
+      "not_synced": "保存しましたが、まだDiscordに反映されていません。次の接続時に反映されます。",
+      "err_not_paired": "このサーバーはペアリングされていません。",
+      "err_invalid": "無効な値です: {{field}}",
+      "err_generic": "ボット設定を変更できませんでした。"
+    }
   },
   "maintenance": {
     "load_failed": "バックアップ・予約の情報を読み込めませんでした。",

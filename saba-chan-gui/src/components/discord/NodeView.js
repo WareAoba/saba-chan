@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Icon } from '../Icon';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { Segmented } from '../ui/StatusChip';
+import { BotSettingsTab, botSettingsAvailable } from './BotSettingsTab';
 import { ChannelsTab, channelsAvailable } from './ChannelsTab';
 import * as P from './nodePermissions';
 import { PermissionPanel, permissionsAvailable } from './PermissionsTab';
@@ -388,6 +389,9 @@ export function NodeView({
                     ...(channelsAvailable()
                         ? [{ id: 'channels', label: t('discord.tab_channels'), icon: <Icon name="hash" size="sm" /> }]
                         : []),
+                    ...(botSettingsAvailable()
+                        ? [{ id: 'bot', label: t('discord.tab_bot'), icon: <Icon name="settings" size="sm" /> }]
+                        : []),
                 ]}
             />
 
@@ -395,6 +399,7 @@ export function NodeView({
                 <InstancesTab node={node} nodes={nodes} servers={servers} settings={settings} update={update} />
             )}
             {activeTab === 'channels' && <ChannelsTab key={node.guildId} node={node} />}
+            {activeTab === 'bot' && <BotSettingsTab key={node.guildId} node={node} />}
             {levels && (activeTab === 'members' || activeTab === 'commands') && (
                 <PermissionPanel
                     key={node.guildId}
