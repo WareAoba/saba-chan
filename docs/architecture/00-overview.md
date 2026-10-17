@@ -39,7 +39,7 @@
 | **인터페이스** | 데몬 조작 도구. 혼자서는 아무것도 못함. 파일 수정도 데몬 API로 | `saba-chan-gui`(Electron+React), `saba-chan-cli`(Rust, 하위 명령 + 대화형 셸). 둘 다 데몬 HTTP API 클라이언트 |
 | **모듈** | 게임 서버 구동 "설명서", Python | `saba-chan-modules/<game>/{module.toml, lifecycle.py, locales/}`. 데몬이 `python lifecycle.py <함수명>`을 단발 실행(stdin JSON → stdout JSON) |
 | **플러그인** | 데몬 기능 추가·인터페이스 컴포넌트 주입, Python | 코드에서는 **extension**이라 부름. `saba-chan-extensions/<name>/{manifest.json, *.py, gui/dist/*.umd.js}`. 데몬이 hook 시점에 같은 Python 실행기로 호출, GUI가 UMD 번들을 slot에 주입 |
-| **서버쨩** | 데몬과 연계해 디스코드 봇 구동 + 봇 추가 기능 | 두 갈래로 나뉘어 있다(아래 §2). ① `saba-chan/discord_bot`(Node, 로컬 봇·relay agent) ② `server-chan/relay-server`(Fastify+PostgreSQL, 중앙 클라우드 봇 + 중계) |
+| **서버쨩** | 데몬과 연계해 디스코드 봇 구동 + 봇 추가 기능 | 클라우드 릴레이에서만 돈다. 데몬은 relay_agent로 바깥으로 연결한다(04 §4). 로컬 봇(`saba-chan/discord_bot`)은 L1에서 지웠다 |
 
 ### 용어 충돌 (문서·코드 읽을 때 주의)
 
@@ -61,20 +61,16 @@
    │     │            │                                        │
    │     │            ├─ plugin 실행기: python <file>.py <fn>  ─┼─► 모듈 lifecycle.py
    │     │            │                                        ├─► 플러그인 hook (*.py)
-   │     │            └─ managed process(stdin/stdout), RCON, REST ─► 게임 서버
-   │     ├─ ext-process 매니저 ─► discord_bot(Node) 실행        │
-   │     ├─ /api/relay/* 프록시 ─────────────────────────────────┼─► server-chan relay
+   │     │            └─ managed process(stdin/stdout), REST ─► 게임 서버
+   │     ├─ relay_agent ─(롱폴링, HMAC 서명, 바깥으로만)────────┼─► 클라우드 릴레이 ─ 사바쨩 봇 ─ Discord
+   │     ├─ /api/relay/* 프록시(페어링·봇 초대·노드 조회) ───────┼─► 클라우드 릴레이
    │     └─ /api/updates/* ─ updater lib ─► 릴레이 + R2         │
    └───────────────────────────────────────────────────────────┘
-                         ▲ HTTP + X-Saba-Token
-   discord_bot (Node) ───┘
-     ├ local 모드: 사용자 봇 토큰으로 Discord 직접 로그인
-     └ cloud 모드: Discord 로그인 없이 relay를 long-poll(/poll 25s, HMAC 서명)해서
-                   받은 명령을 데몬에 실행시키고 /result, /heartbeat로 보고
-   server-chan relay ── 중앙 Discord 봇(discord.js) ── PostgreSQL command_queue
 ```
 
-- server-chan 운영 부가 구성요소(chatbot-server, music-server)와 운영 배포 구성은 server-chan 비공개 문서에서 다룬다.
+- 게임 명령은 stdin으로 보낸다. 관리 모드(기본)에서는 RCON을 끄고, RCON은 관리하지 않는 모드에서만 쓰는 예비 경로다(02 RCON 정책).
+- 로컬 Discord 봇은 L1에서 지웠다. 봇은 클라우드 릴레이에서만 돌고 데몬은 relay_agent로 붙는다(04 §4).
+- 릴레이 쪽 봇(게이트웨이·음악·챗봇)은 server-chan에서 다시 만드는 중이라 이 문서에서 다루지 않는다.
 
 ## 3. 핵심 계약 요약 (상세는 각 문서)
 

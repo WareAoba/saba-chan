@@ -26,7 +26,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:572-668`(인증 미들웨어 
 | 업데이트 백그라운드 체크 | main.js:1153-1268 | 3시간 주기로 `POST /api/updates/check`. 결과는 OS Notification과 renderer `updates:available` 이벤트로 알린다. 자동 다운로드는 없다("향후 구현 예정" 주석, 1223-1224) |
 | **Updater exe spawn** | `updater:launchApply` main.js:2744-2777, `findUpdaterExe()` 1108-1150 | `saba-chan-updater.exe --apply --relaunch <gui exe>`를 **detached**로 실행한다(Windows는 `cmd /c start`로 Job Object를 회피, `spawnDetached` 766-787). 이후 `cleanQuit()`. 파일명이 `.exe`로 하드코딩되어 있어 Linux/macOS에서는 updater를 찾지 못한다 |
 | **Installer spawn(언인스톨)** | `app:launchUninstaller` main.js:2891-2959 | 설치 경로를 직접 탐색하고, Windows는 `reg query HKCU\…\Uninstall\Saba-chan`도 본다(2920). 이후 `saba-chan-installer.exe --uninstall`을 detached로 실행한다 |
-| **Mock release server spawn** | main.js:679-759 | `node scripts/mock-release-server.js --port 9876`(테스트/개발용). preload에 노출되어 있지만 renderer는 사용하지 않는다 |
+| 모의 릴레이(개발용) | — | GUI는 더 이상 띄우지 않는다(`mockServer:*` IPC와 preload 항목은 f6ca7b6에서 삭제). 개발자가 `node scripts/mock-release-server.js`를 직접 실행하거나 `scripts/build-core.ps1 -MockRelay`(모의 서명 키를 믿는 개발 빌드, 배포 금지)로 쓴다 |
 | 디스코드 연결 | `discord:start/stop/status` main.js:2805-2833 | GUI는 봇을 띄우지 않는다. 데몬의 릴레이 에이전트를 `/api/relay/agent{,/start,/stop}`로 켜고 끈다(§4) |
 | 콘솔 팝아웃 창 | main.js:1865-1978 | 별도 `BrowserWindow`에 `?console-popout=<id>&name=` 쿼리를 붙여 같은 React 번들을 로드한다 |
 | 트레이 | main.js:1366-1472 | 데몬 시작/종료, "인터페이스만 종료", "완전히 종료" 메뉴. 트레이 메뉴의 "데몬 시작"은 API가 아니라 `startDaemon()`을 직접 호출한다 |
@@ -66,7 +66,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:572-668`(인증 미들웨어 
 | instanceUpdateSettings (26) | instance:updateSettings | 2209 | PATCH /api/instance/:id | ✓ 589 |
 | instanceResetProperties (27) | instance:resetProperties | 1801 | POST /api/instance/:id/properties/reset | ✓ 605 (**renderer 미사용**) |
 | instanceResetServer (28) | instance:resetServer | 1814 | POST /api/instance/:id/server/reset | ✓ 606 |
-| executeCommand (29) | instance:executeCommand | 2281 | GET /api/instance/:id 후 method별로 POST …/rcon, …/rest, …/command 중 하나 | ✓ 596-598 |
+| executeCommand (29) | instance:executeCommand | 2281 | GET /api/instance/:id 후 method별로 POST …/rcon, …/rest, …/command 중 하나. 관리 모드(기본)에서는 RCON이 꺼져 있고 명령은 stdin으로 간다(02 RCON 정책) | ✓ 596-598 |
 | extensionList…extensionInitStatus (31-44) | extension:* | 2408-2588 | /api/extensions, /:id/enable, /disable, /i18n/:locale, /gui, /gui/styles, /icon, /manifest, /:id/install, DELETE /:id, /updates, /rescan, /init-status | ✓ 641-656 (확장 UI 로딩은 다른 문서에서 다룸) |
 | managedStart (46) | managed:start | 1829 | POST /api/instance/:id/managed/start | ✓ 600 |
 | managedConsole (47) | managed:console | 1842 | GET /api/instance/:id/console?since&count | ✓ 601 |
@@ -79,8 +79,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:572-668`(인증 미들웨어 
 | updaterApply (65) | updater:apply | 2720 | POST /api/updates/apply | ✓ |
 | updaterLaunchApply (66) | updater:launchApply | 2744 | **updater exe 직접 spawn** | n/a |
 | updaterGetConfig (67) | updater:getConfig | 2780 | GET /api/updates/config | ✓ |
-| updaterSetConfig (68) | updater:setConfig | 2790 | **POST** /api/updates/config | ✗ **daemon은 GET/PUT만 제공(updates.rs:91-92). 405가 나서 설정 변경과 SabaStorage의 Mock 토글이 동작하지 않는다** |
-| mockServerStart/Stop/Status (70-72) | mockServer:* | 679-759 | `node` 프로세스 직접 spawn | n/a (renderer 미사용) |
+| updaterSetConfig | updater:setConfig | 2505 | PUT /api/updates/config | ✓ |
 | settingsLoad (79) | settings:load | 2859 | `daemonProcess`가 있으면 GET /api/config/gui, 없으면 **settings.json 직접 읽기** | ✓ 617 |
 | settingsSave (80) | settings:save | 2965 | `daemonProcess`가 있으면 GET 후 merge해서 PUT /api/config/gui, 없으면 **settings.json 직접 쓰기** | ✓ 617 |
 | settingsGetPath (81) | settings:getPath | 2988 | 로컬 경로 문자열 | n/a |
@@ -107,7 +106,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:572-668`(인증 미들웨어 
 
 Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `updates:available`, `updates:completed`, `bot:error`, `bot:relaunch`, `console:popoutOpened/Closed/popinRequest`, `app:closeRequest`.
 
-**renderer(src/, 테스트 제외)에서 쓰지 않는 preload API**: `instanceResetProperties`, `mockServerStart/Stop/Status`, `offUpdatesAvailable`, `offUpdateCompleted`, `getFixedPaths`, `offBotError`, `syncGuiConfig`, `logsGetPath`, `logsOpenFolder`, `getSystemLanguage`. 반대로 **renderer가 호출하지 않는 daemon 라우트**: `/api/instance/:id/validate`, `/properties`(GET/PUT), `/accept-eula`, `/diagnose`, `/api/module/:name/version/:version`, `/api/extensions/:id/mount|unmount|config`, `/api/daemon/shutdown`, `/api/daemon/console`, `/api/ext-processes`, `/api/updates/integrity`, `/api/node-env/status`. 이 중 일부는 CLI만 사용한다(§3.4).
+**renderer(src/, 테스트 제외)에서 쓰지 않는 preload API**: `instanceResetProperties`, `offUpdatesAvailable`, `offUpdateCompleted`, `getFixedPaths`, `offBotError`, `syncGuiConfig`, `logsGetPath`, `logsOpenFolder`, `getSystemLanguage`. 반대로 **renderer가 호출하지 않는 daemon 라우트**: `/api/instance/:id/validate`, `/properties`(GET/PUT), `/accept-eula`, `/diagnose`, `/api/module/:name/version/:version`, `/api/extensions/:id/mount|unmount|config`, `/api/daemon/shutdown`, `/api/daemon/console`, `/api/ext-processes`, `/api/updates/integrity`, `/api/node-env/status`. 이 중 일부는 CLI만 사용한다(§3.4).
 
 ### 1.3 GUI가 읽고 쓰는 설정 파일
 
@@ -137,7 +136,7 @@ Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `u
   - components 탭: updater check/download/progress/apply/launchApply.
   - modules 탭: 설치된 모듈과 `saba-chan-modules` 레지스트리(`moduleManifest`, `moduleInstallFromManifest`, `moduleRemove`).
   - extensions 탭: 확장 레지스트리.
-  - devMode에서는 Mock 릴리스 서버 토글(196-215)을 제공한다. 이 토글은 `updaterSetConfig`를 쓰므로 실제로는 405로 실패한다.
+  - devMode에서는 Mock 릴리스 서버 토글(`handleToggleMock`, 194-219)을 제공한다. 이 토글은 L3에서 없어진 `api_base_url`/`github_owner`/`github_repo`를 보내므로 데몬이 무시하고 아무것도 바뀌지 않는다. 모의 릴레이로 바꾸려면 `relay_url`을 보내야 한다(01의 업데이트 설정).
 - **DiscordBotModal.js**(1851줄): local/cloud 모드, 토큰, prefix, module/command alias, 음악(활성화, 전용 채널 `discordGuildChannels`, UI 설정), 노드(길드)별 `allowedInstances`와 멤버별 차단 명령(`memberPermissions`, 멤버 목록은 local이면 `discordGuildMembers`, cloud면 `relayListNodeMembers`)을 다룬다. Cloud 페어링은 `relayInitiatePairing`으로 시작해 `relayPollPairingStatus`로 진행 상황을 확인하고 `saveNodeToken`으로 마무리한다. 기본 relay는 `https://saba-chan.online`(12)이다. side-panel 모드가 있다.
 - **BackgroundModal.js**: daemon 상태(`daemonStatus`)와 재시작(`daemonRestart`).
 - **NoticeModal.js**: 앱 내 공지와 알림 목록(localStorage). 업데이트 모달로 연결된다.
@@ -159,7 +158,7 @@ Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `u
 
 - Rust 쪽 SSOT는 `updater/src/constants.rs`이고(constants.js:7 주석), CLI는 `saba_chan_updater_lib::constants`를 사용한다.
 - 그 밖의 포트:
-  - mock release server 9876 (main.js:683, SabaStorage.js:202)
+  - 모의 릴레이 `scripts/mock-release-server.js` 9876 (개발용, GUI가 띄우지 않음)
   - Vite dev 5173 (main.js:1320)
   - Relay 기본 URL `https://saba-chan.online` (main.js:3251, DiscordBotModal.js:12)
 
@@ -245,12 +244,12 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 
 ### 6.1 존재하지 않는 endpoint나 잘못된 HTTP 메서드 호출
 (예전 TUI CLI의 항목들은 CLI 리메이크에서 코드째 사라져 뺐다. §3 참조.)
-1. `saba-chan-gui/main.js:2792`: `updater:setConfig`가 `axios.post('/api/updates/config')`를 호출한다. daemon은 GET/PUT만 제공하므로(updates.rs:91-92) 405가 난다. 영향을 받는 곳은 SabaStorage의 자동 체크 on/off(201)와 Mock 토글(196-215)이다.
+1. ~~`updater:setConfig`가 POST를 써서 405~~ 해결됨: 이제 PUT이다(qcza9f main.js:2505).
 
 ### 6.2 죽은 코드와 stub
 - `saba-chan-gui/main.js:501-503` `syncGuiConfigToDaemon`(no-op)과 이를 부르는 `guiConfig:sync` 채널(2961), `runBackgroundInit`의 호출(1091-1094).
 - `saba-chan-gui/main.js:1005-1011` `preloadLightData`: 상태 메시지만 보낸다(주석에서 레거시라고 인정함).
-- renderer가 쓰지 않는 preload API 12개(§1.2). `mockServer:*` 핸들러 3개.
+- renderer가 쓰지 않는 preload API(§1.2).
 - main.js:1223-1224: auto_download/auto_apply는 "향후 구현 예정" 상태다.
 
 ### 6.3 기능 버그
@@ -283,7 +282,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 | G10 | 2820-2856 | PROC | `daemon:restart`: 프로세스 kill 후 startDaemon | API를 쓰지 않는다 |
 | G11 | 1443-1456 | PROC | 트레이 메뉴의 데몬 시작/종료 | |
 | G12 | 1597-1604 | PROC | `process.on('exit')`에서 daemon SIGKILL | |
-| G13 | 679-759 (694) | PROC | `node scripts/mock-release-server.js` spawn | 개발용 |
+| G13 | — | — | ~~`node scripts/mock-release-server.js` spawn~~ 없어짐(f6ca7b6). 개발자가 직접 실행한다 | |
 | G14 | 766-787, 2744-2777 (2769) | PROC | **updater exe detached spawn**(`--apply --relaunch`) | 업데이트 적용은 daemon `/api/updates/apply`로 하고, 실행 파일 교체는 클라이언트가 updater를 띄워서 한다 |
 | G15 | 1108-1150 | FS-R | updater exe 경로 탐색(`existsSync`) | |
 | G16 | 2891-2959 (2920, 2945) | OS/PROC | `reg query HKCU\…\Uninstall\Saba-chan`, installer `--uninstall` spawn | |
