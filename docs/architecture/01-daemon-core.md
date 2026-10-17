@@ -46,7 +46,7 @@
    - `initialize()`는 모듈 탐색, 인스턴스 로드, 고아 managed 프로세스 재연결(`managed.pid`)을 한다(`supervisor/mod.rs:123-139`).
    - `server_version` 백필은 모듈 Python 호출이라 기동을 막지 않게 별도 task로 돈다(`main.rs:278`).
 8. **IPC 토큰 생성** `ipc::auth::generate_and_save_token()` (`main.rs:281-284`). 실패해도 경고만 하고 진행한다.
-9. **IPC 서버 객체 생성** (`main.rs:287`): `IPCServer::new`(`ipc/mod.rs:576-616`)가 ExtensionManager를 만들고 `discover()`를 호출한다. ConfigStore(`config.json`)도 이때 만든다.
+9. **IPC 서버 객체 생성** (`main.rs:287`): `IPCServer::new`(`ipc/mod.rs:578-618`)가 ExtensionManager를 만들고 `discover()`를 호출한다. ConfigStore(`config.json`)도 이때 만든다.
 10. Supervisor에 `extension_manager`와 `provision_tracker`를 주입한다(`main.rs:290-294`).
 11. **백그라운드 태스크 기동**
     - 익스텐션 `daemon.startup` 훅 비동기 디스패치(`main.rs:299-345`). 진행 상황은 `ExtensionInitTracker`에 기록되고 `/api/extensions/init-status`로 노출된다.
@@ -63,7 +63,7 @@
     - GUI 모드: `saba-chan-gui --spawned-by-daemon`을 detach로 띄우고 콘솔 창을 숨긴다(Windows만).
     - CLI 모드: `saba-chan-cli`를 stdio를 상속해 같은 콘솔에 붙인다.
     - 인터페이스 바이너리는 데몬 exe와 같은 디렉토리에서만 찾는다(`boot_selector.rs:445-462`).
-13. **`ipc_server.start().await`** (`main.rs:662`): 이 호출이 블로킹 메인 루프다. 바인드에 성공하면 릴레이 에이전트 자동 시작을 띄우고(`ipc/mod.rs:785-787`), `shutdown_token`이 cancel되면 graceful shutdown한다.
+13. **`ipc_server.start().await`** (`main.rs:662`): 이 호출이 블로킹 메인 루프다. 바인드에 성공하면 릴레이 에이전트 자동 시작을 띄우고(`ipc/mod.rs:787-789`), `shutdown_token`이 cancel되면 graceful shutdown한다.
 
 ### 1.2 부트 선택기 (`src/boot_selector.rs`)
 
@@ -82,9 +82,9 @@
 | `SABA_MODULES_PATH` | `constants.rs:95` | 모듈 디렉토리 |
 | `SABA_EXTENSIONS_DIR` | `constants.rs:107` | 익스텐션 디렉토리 |
 | `SABA_INSTANCES_PATH` | `constants.rs:119` | 인스턴스 루트 |
-| `SABA_AUTH_DISABLED=1` | `ipc/auth.rs:99` | 토큰 검사 비활성화. **디버그 빌드에서만** 듣는다 |
+| `SABA_AUTH_DISABLED=1` | `ipc/auth.rs:104` | 토큰 검사 비활성화. **디버그 빌드에서만** 듣는다 |
 | `SABA_PYTHON_URL`, `SABA_PYTHON_SHA256` | `updater/src/python_pin.rs:32-38` | 포터블 Python 미러 주소와 그 해시 |
-| `SABA_UPDATER_PATH` | `ipc/updates.rs:619-621` | 업데이터 실행 파일 경로 |
+| `SABA_UPDATER_PATH` | `ipc/updates.rs:641-643` | 업데이터 실행 파일 경로 |
 | `SABA_LOCALES_DIR` | `chat/i18n.rs:95` | 채팅 응답 로케일 폴더 |
 | `APPDATA`, `HOME` | 경로 해석 | 플랫폼 기본 경로 |
 
@@ -97,7 +97,7 @@
 
 로컬 Discord 봇 실행 경로(`node_env`, `discord_bot` ext-process)는 L1(7b5102f)에서 지웠다. 디스코드 봇은 클라우드 릴레이에서만 돌고, 데몬은 릴레이 에이전트로 붙는다.
 
-1. IPC 서버가 뜬 뒤 `relay_agent::auto_start`를 띄운다(`ipc/mod.rs:785-787`). 수동 제어는 `/api/relay/agent{,/start,/stop}`.
+1. IPC 서버가 뜬 뒤 `relay_agent::auto_start`를 띄운다(`ipc/mod.rs:787-789`). 수동 제어는 `/api/relay/agent{,/start,/stop}`.
 2. `GET /info`로 최소 에이전트 버전을 확인하고, 60초마다 `POST /heartbeat`로 서버·모듈·봇 설정 메타데이터를 올린다(`relay_agent.rs:22`).
 3. `GET /poll`(롱폴링)로 디스코드 명령을 받아 채팅 처리기(`crate::chat`)로 실행하고 `POST /result/:id`로 돌려준다.
 4. 인증은 노드 토큰(`<data_dir>/.node_token`) HMAC 서명이다(`relay_agent.rs:1-10`).
@@ -140,7 +140,7 @@
 
 - `<data_dir>/daemon.lock`에 OS 배타 잠금을 건다(`instance_lock.rs:1-8, 75-99`). 잠금은 프로세스가 끝나면 OS가 풀어 주므로 비정상 종료 뒤에도 남지 않는다. 실행 중 데몬의 pid와 주소는 옆의 `daemon.lock.owner`에 쓴다.
 - 잠금은 토큰 생성·Supervisor 초기화보다 먼저 잡는다(`main.rs:240-255`). 그래서 두 번째 데몬은 `.ipc_token`을 덮어쓰기 전에 종료 코드 2로 끝난다.
-- TCP 바인드는 2초 간격으로 10회 재시도한다(`ipc/mod.rs:758-809`). `SO_REUSEADDR`는 **Unix에서만** 켠다. Windows의 `SO_REUSEADDR`는 이미 리슨 중인 포트에도 바인드를 허용하므로 켜지 않는다(`ipc/mod.rs:770-773`).
+- TCP 바인드는 2초 간격으로 10회 재시도한다(`ipc/mod.rs:760-811`). `SO_REUSEADDR`는 **Unix에서만** 켠다. Windows의 `SO_REUSEADDR`는 이미 리슨 중인 포트에도 바인드를 허용하므로 켜지 않는다(`ipc/mod.rs:772-775`).
 - 잠금 파일을 열 수 없는 환경(읽기 전용 등)에서는 잠금 없이 진행하므로, 그때는 바인드만이 방어선이다.
 
 ---
@@ -149,20 +149,20 @@
 
 ### 2.1 공통 규약
 
-- **라우터 정의 위치**: `src/ipc/mod.rs:638-756` (axum 0.7), 업데이트 라우트는 `src/ipc/updates.rs:97-109`.
+- **라우터 정의 위치**: `src/ipc/mod.rs:640-758` (axum 0.7), 업데이트 라우트는 `src/ipc/updates.rs:98-109`.
 - **경로 파라미터 표기**: axum 0.7의 `:param` 문법을 쓴다.
-- **인증 적용 범위**: `.layer(auth_middleware)`는 업데이트 라우터를 `.merge()`한 **뒤에** 달린다(`ipc/mod.rs:754-756`).
+- **인증 적용 범위**: `.layer(auth_middleware)`는 업데이트 라우터를 `.merge()`한 **뒤에** 달린다(`ipc/mod.rs:756-758`).
   - 따라서 **`/health`와 `/api/updates/*`를 포함한 모든 라우트에 토큰이 필요하다.**
-  - `/health`의 "경량 ping" 주석(`ipc/mod.rs:639`, `server.rs:14-17`)과 달리 토큰 없이는 401이다.
-  - 미들웨어는 토큰보다 먼저 `Host` 헤더가 루프백(`127.0.0.1`, `localhost`, `::1`)인지 보고, 아니면 본문 없는 403을 돌려준다(`auth.rs:74-96`). DNS 리바인딩 방어다.
+  - `/health`의 "경량 ping" 주석(`ipc/mod.rs:641`, `server.rs:14-17`)과 달리 토큰 없이는 401이다.
+  - 미들웨어는 토큰보다 먼저 `Host` 헤더가 루프백(`127.0.0.1`, `localhost`, `::1`)인지 보고, 아니면 본문 없는 403을 돌려준다(`auth.rs:74-101`). DNS 리바인딩 방어다.
 - **에러 형식이 통일돼 있지 않다.** 다음 형식들이 섞여 있다.
   - `{"error": "..."}` (+ 선택적으로 `"error_code"`)
   - `{"ok": false, "error": ...}` (updates, modules manifest/install/remove, `/api/config/:kind/*`, `/api/fs/scan-dir`는 성공 시 ok)
   - `{"success": false, "error", "error_code", ...}` (익스텐션, 백업, 이름 변경 등)
   - 인증 실패: 본문 없는 401, Host 거부: 본문 없는 403
   - 일부 핸들러는 실패해도 HTTP 200을 돌려준다(modules manifest/install/remove, extensions manifest/install).
-- **JSON 바디 파싱 실패**: axum 기본 거부 응답(400/415/422, 텍스트 본문)이 나간다.
-- **식별자 혼용**: 예전 경로는 서버를 **이름**(`/api/server/:name/*`, `/api/provision-progress/:name`)으로, 나머지는 인스턴스 **UUID**(`/api/instance/:id/*`)로 가리킨다. `/api/instance/:id/start|stop|restart`는 id가 없으면 이름으로도 찾는다(`server.rs:569-573, 654-661`).
+- **JSON 바디 파싱 실패**: axum 기본 거부 응답(400/415/422, 텍스트 본문)이 나간다. `/api/updates/download`·`apply`만 본문을 직접 읽어 `{ok:false, error, error_code:"invalid_body"}` 400을 준다.
+- **식별자 혼용**: 예전 경로는 서버를 **이름**(`/api/server/:name/*`, `/api/provision-progress/:name`)으로, 나머지는 인스턴스 **UUID**(`/api/instance/:id/*`)로 가리킨다. `/api/instance/:id/start|stop|restart`는 id가 없으면 이름으로도 찾는다(`server.rs:573-577, 658-665`).
 
 ### 2.2 라우트 표
 
@@ -173,24 +173,25 @@
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
 | GET | `/health` | `server.rs:18` `health_check` | - | `{ok:true, version, pid}` |
-| GET | `/api/version` | `server.rs:275` | - | `{version, components:{saba-core, module-<이름>, ext-<id>, ...}}` |
+| GET | `/api/version` | `server.rs:279` | - | `{version, components:{saba-core, module-<이름>, ext-<id>, ...}}` |
 | GET | `/api/servers` | `server.rs:24` `list_servers` | - | `{servers:[ServerInfo], port_conflict_stops?:[...]}` (아래 설명) |
-| GET | `/api/server/:name/status` | `server.rs:530` | - | supervisor 결과 JSON 그대로. 404 시 `{error, error_code:"instance_not_found"}` |
-| POST | `/api/server/:name/start` | `server.rs:758` | `{module: string (필수), config?: any}` | supervisor 결과. 에러 시 404/422/500 + `error_code`∈{instance_not_found, executable_missing, start_failed} |
-| POST | `/api/server/:name/stop` | `server.rs:814` | `{force?: bool}` (바디 필수) | supervisor 결과. 에러 시 `error_code`∈{instance_not_found, stop_failed} |
-| POST | `/api/instance/:id/start` | `server.rs:564` | - | 데몬이 고른 경로(managed/non-managed, `Supervisor::uses_managed_start`)의 응답 + `managed`. 404 `not_found`, 409 `preflight_failed`(모듈 validate의 critical 문제) |
-| POST | `/api/instance/:id/stop` | `server.rs:672` | 선택 `{force?}` | `/api/server/:name/stop`과 같다 |
-| POST | `/api/instance/:id/restart` | `server.rs:683` | 선택 `{force?}` | 정지(최대 2분 대기) 뒤 시작 응답 + `stopped` |
-| GET | `/api/instance/:id/events` | `server.rs:749` | - | `{events:[...]}` 최근 종료 이력 / 404 |
+| GET | `/api/server/:name/status` | `server.rs:534` | - | supervisor 결과 JSON 그대로. 404 시 `{error, error_code:"instance_not_found"}` |
+| POST | `/api/server/:name/start` | `server.rs:762` | `{module: string (필수), config?: any}` | supervisor 결과. 에러 시 404/422/500 + `error_code`∈{instance_not_found, executable_missing, start_failed} |
+| POST | `/api/server/:name/stop` | `server.rs:818` | `{force?: bool}` (바디 필수) | supervisor 결과. 에러 시 `error_code`∈{instance_not_found, stop_failed} |
+| POST | `/api/instance/:id/start` | `server.rs:568` | - | 데몬이 고른 경로(managed/non-managed, `Supervisor::uses_managed_start`)의 응답 + `managed`. 404 `not_found`, 409 `preflight_failed`(모듈 validate의 critical 문제) |
+| POST | `/api/instance/:id/stop` | `server.rs:676` | 선택 `{force?}` | `/api/server/:name/stop`과 같다 |
+| POST | `/api/instance/:id/restart` | `server.rs:687` | 선택 `{force?}` | 정지(최대 2분 대기) 뒤 시작 응답 + `stopped` |
+| GET | `/api/instance/:id/events` | `server.rs:753` | - | `{events:[...]}` 최근 종료 이력 / 404 |
 
-`GET /api/servers` 응답의 `ServerInfo` 필드(`ipc/mod.rs:183-217`):
+`GET /api/servers` 응답의 `ServerInfo` 필드(`ipc/mod.rs:183-220`):
 
 - 기본: `id, name, module, status, pid, start_time, executable_path, working_dir?, port`
 - 접속 정보: `rest_host, rest_port, rest_username, rest_password, protocol_mode`
-- 설정과 상태: `module_settings, server_version, last_api_action?, provisioning, extension_status?, extension_data, port_conflicts?`
+- 설정과 상태: `module_settings, server_version, last_api_action?, provisioning, managed, extension_status?, extension_data, port_conflicts?`
+- `managed`는 saba-runner가 맡아 실행하는지다. 판정은 데몬의 `Supervisor::uses_managed_start` 하나이고(`server.rs:81`), 클라이언트는 이 값을 그대로 쓴다.
 - **REST 비밀번호가 평문으로 포함된다.**
 
-`port_conflict_stops`는 한 번 읽으면 비워지는 drain 큐다(`server.rs:246-250`).
+`port_conflict_stops`는 한 번 읽으면 비워지는 drain 큐다(`server.rs:250-254`).
 
 `status` 값은 다음 중 하나다.
 
@@ -202,22 +203,22 @@
 
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
-| GET | `/api/modules` | `server.rs:344` | - | `{modules:[ExtensionInfo], failed?:[...]}` (아래 설명) |
-| POST | `/api/modules/refresh` | `server.rs:351` | - | 위와 같음 |
-| GET | `/api/modules/schema` | `server.rs:362` | - | module.toml JSON Schema |
-| POST | `/api/modules/detect` | `server.rs:368` | `{path}` | `{matches:[{name, display_name}]}` (`dir_signatures`가 맞는 모듈) / 400 / 404 |
-| GET | `/api/modules/manifest` | `server.rs:425` | - | `{ok, manifest}` 또는 `{ok:false,error}`. 항상 200 |
-| POST | `/api/modules/manifest/:id/install` | `server.rs:448` | - | `{ok, module_id, version}` 또는 `{ok:false,error}`. 항상 200 |
-| DELETE | `/api/modules/:id` | `server.rs:504` | - | `{ok, id}`. 항상 200 |
-| GET | `/api/module/:name` | `server.rs:390` | - | `{name, version, description, path, metadata}` / 404 |
+| GET | `/api/modules` | `server.rs:348` | - | `{modules:[ExtensionInfo], failed?:[...]}` (아래 설명) |
+| POST | `/api/modules/refresh` | `server.rs:355` | - | 위와 같음 |
+| GET | `/api/modules/schema` | `server.rs:366` | - | module.toml JSON Schema |
+| POST | `/api/modules/detect` | `server.rs:372` | `{path}` | `{matches:[{name, display_name}]}` (`dir_signatures`가 맞는 모듈) / 400 / 404 |
+| GET | `/api/modules/manifest` | `server.rs:429` | - | `{ok, manifest}` 또는 `{ok:false,error}`. 항상 200 |
+| POST | `/api/modules/manifest/:id/install` | `server.rs:452` | - | `{ok, module_id, version}` 또는 `{ok:false,error}`. 항상 200 |
+| DELETE | `/api/modules/:id` | `server.rs:508` | - | `{ok, id}`. 항상 200 |
+| GET | `/api/module/:name` | `server.rs:394` | - | `{name, version, description, path, metadata}` / 404 |
 | GET | `/api/module/:name/versions` | `managed.rs:242` | query `include_snapshots, page=1, per_page=25` | supervisor 결과 |
 | GET | `/api/module/:name/version/:version` | `managed.rs:271` | - | supervisor 결과 |
 | POST | `/api/module/:name/install` | `managed.rs:342` | `{version*, install_dir*, jar_name?, accept_eula?, initial_settings?}` | 200(success) / 422 / 404 / 400 / 500 |
 | GET | `/api/module/:name/locales` | `config.rs:193` | - | `{<lang>: <json>}` |
 
-- `ExtensionInfo`(이름과 달리 모듈 정보다, `ipc/mod.rs:245-284`) 필드: `name, version, description, schema_version, display_name?, game_name?, author?, warnings?, unmet_dependencies?, path, executable_path, icon(base64 data URL), interaction_mode, protocols{supported,default}, settings, commands, syntax_highlight, dir_signatures?, install?, module_aliases?, command_aliases?`
-- `/api/modules/manifest`는 최신 릴리즈 서명 manifest의 `module-*` 컴포넌트를 `{ok, manifest:{modules:{<이름>:{version, sha256, size_bytes, display_name, ...}}}}`로 돌려준다(`relay::latest_catalog`, `handlers/server.rs:422-445`).
-- `/api/modules/manifest/:id/install`은 같은 manifest의 `module-<id>`를 R2에서 받아 SHA-256을 확인하고(`download_verified`), staging에 푼 뒤 `module.toml`이 있을 때만 `modules/<id>`와 바꾸고 refresh한다(`:447-502`). `id`의 `..`, `/`, `\`는 거부한다.
+- `ExtensionInfo`(이름과 달리 모듈 정보다, `ipc/mod.rs:248-287`) 필드: `name, version, description, schema_version, display_name?, game_name?, author?, warnings?, unmet_dependencies?, path, executable_path, icon(base64 data URL), interaction_mode, protocols{supported,default}, settings, commands, syntax_highlight, dir_signatures?, install?, module_aliases?, command_aliases?`
+- `/api/modules/manifest`는 최신 릴리즈 서명 manifest의 `module-*` 컴포넌트를 `{ok, manifest:{modules:{<이름>:{version, sha256, size_bytes, display_name, ...}}}}`로 돌려준다(`relay::latest_catalog`, `handlers/server.rs:426-449`).
+- `/api/modules/manifest/:id/install`은 같은 manifest의 `module-<id>`를 R2에서 받아 SHA-256을 확인하고(`download_verified`), staging에 푼 뒤 `module.toml`이 있을 때만 `modules/<id>`와 바꾸고 refresh한다(`:451-506`). `id`의 `..`, `/`, `\`는 거부한다.
 
 #### 인스턴스 (handlers/instance.rs)
 
@@ -227,24 +228,25 @@
 | POST | `/api/instances` | `instance.rs:71` | `{name*, module_name*, executable_path?, working_dir?, migration_source?, port?}` | 201 `{success, id, provisioning?}`. 409 `working_dir_in_use`, 422 `extension_required`, 400/500 |
 | PUT | `/api/instances/reorder` | `instance.rs:19` | `{order:[id]}` | `{success:true}` / 400 |
 | GET | `/api/instance/:id` | `instance.rs:49` | - | `ServerInstance` / 404 `{error, error_code}` |
-| DELETE | `/api/instance/:id` | `instance.rs:622` | - | `{success}` / 404 / 500 |
-| PATCH | `/api/instance/:id` | `instance.rs:745` | 임의 키-값 객체 | `{success:true}` / 400 `validation_failed{details, fields}` / 404 / 500 |
-| POST | `/api/instance/:id/rename` | `instance.rs:711` | `{name}` | `{success, id, name, previous}` / 409 `name_taken`·`server_running` / 404 |
-| GET | `/api/provision-progress/:name` | `instance.rs:593` | - | `{active:false}` 또는 `{active:true, step,total,label,message,done,error,percent?,steps?}` |
-| DELETE | `/api/provision-progress/:name` | `instance.rs:552` | - | `{success, rolled_back}`. **신규 생성**의 프로비저닝이 실패한 상태였을 때만 인스턴스를 삭제한다 |
-| GET | `/api/instance/:id/check-update` | `instance.rs:1064` | - | 훅 결과 또는 `{update_available:false, reason}` |
-| POST | `/api/instance/:id/apply-update` | `instance.rs:1157` | - | `{success,id,provisioning:true}`. 409 `server_running`, 400 `no_install_config`/`update_unsupported`(설치 방식 익스텐션이 설치한 인스턴스가 아님) |
+| DELETE | `/api/instance/:id` | `instance.rs:635` | - | `{success}` / 404 / 500 |
+| PATCH | `/api/instance/:id` | `instance.rs:758` | 임의 키-값 객체 | `{success:true}` / 400 `validation_failed{details, fields}` / 404 / 500 |
+| POST | `/api/instance/:id/rename` | `instance.rs:724` | `{name}` | `{success, id, name, previous}` / 409 `name_taken`·`server_running` / 404 |
+| GET | `/api/provision-progress/:name` | `instance.rs:606` | - | `{active:false}` 또는 `{active:true, step,total,label,message,done,error,percent?,steps?}` |
+| DELETE | `/api/provision-progress/:name` | `instance.rs:565` | - | `{success, rolled_back}`. **신규 생성**의 프로비저닝이 실패한 상태였을 때만 인스턴스를 삭제한다 |
+| GET | `/api/instance/:id/check-update` | `instance.rs:1077` | - | 훅 결과 또는 `{update_available:false, reason}` |
+| POST | `/api/instance/:id/apply-update` | `instance.rs:1170` | - | `{success,id,provisioning:true}`. 409 `server_running`, 400 `no_install_config`/`update_unsupported`(설치 방식 익스텐션이 설치한 인스턴스가 아님) |
 
 `POST /api/instances` 동작 세부:
 
 - 모듈의 `install.requires_extensions`가 활성·설치돼 있지 않으면 422 `extension_required`다(`instance.rs:141-180`).
 - 다른 인스턴스가 같은 `working_dir`를 쓰면 409다(`instance.rs:200-213`). 포트를 주지 않으면 다른 인스턴스와 겹치지 않게 기본 포트를 옮긴다(`:217-234`).
-- `migration_source`가 있으면 데몬 락을 놓은 뒤 `import_settings`를 **동기로** 호출한다(`instance.rs:510-534`).
+- `migration_source`가 있으면 데몬 락을 놓은 뒤 `import_settings`를 **동기로** 호출한다(`instance.rs:523-547`).
+- 인스턴스를 저장한 직후 `server.post_create` 훅을 백그라운드로 보내고 결과를 기다리지 않는다(`instance.rs:244-257`). ctx는 `{instance_id, instance_dir, instance, module, migration}`이다.
 - 모듈에 `install` 설정이 있으면 `lifecycle.py install_server`를 백그라운드로 실행한다(타임아웃 30분).
 
 `PATCH /api/instance/:id` 동작 세부:
 
-- 알려진 키(`port, rest_*, executable_path, protocol_mode, server_version, extension_data`)는 일급 필드로 반영한다. 예전 RCON 키(`rcon_port, rcon_password, enable_rcon`)는 받아도 어디에도 반영하지 않는다(`instance.rs:809-823`).
+- 알려진 키(`port, rest_*, executable_path, protocol_mode, server_version, extension_data`)는 일급 필드로 반영한다. 예전 RCON 키(`rcon_port, rcon_password, enable_rcon`)는 받아도 어디에도 반영하지 않는다(`instance.rs:822-836`).
 - 나머지 키는 전부 `module_settings`로 들어간다.
 - 이후 락을 놓고 `manage_properties("write")`로 게임 설정 파일과 동기화하고, `extension_data`가 비어 있지 않으면 `server.settings_changed` 훅을 보낸다.
 
@@ -278,10 +280,10 @@
 
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
-| GET/POST | `/api/instance/:id/backups` | `backup.rs:171/178` | - | `{success, backups}` / `{success, backup}`. 400 `nothing_to_back_up` |
-| DELETE | `/api/instance/:id/backups/:name` | `backup.rs:186` | - | `{success}` / 404 `backup_not_found` |
-| POST | `/api/instance/:id/backups/:name/restore` | `backup.rs:197` | - | `{success, restored, pre_restore_backup}`. 409 `server_running`·`backup_busy` |
-| GET/PUT | `/api/instance/:id/schedule` | `backup.rs:229/245` | `{schedule:[...], backup_keep}` | 400 `validation_failed` |
+| GET/POST | `/api/instance/:id/backups` | `backup.rs:183/190` | - | `{success, backups}` / `{success, backup}`. 400 `nothing_to_back_up`·`backup_unsupported`(모듈에 `[backup]` 없음), 500 `backup_failed`(`backup_paths` 실패) |
+| DELETE | `/api/instance/:id/backups/:name` | `backup.rs:198` | - | `{success}` / 404 `backup_not_found` |
+| POST | `/api/instance/:id/backups/:name/restore` | `backup.rs:209` | - | `{success, restored, pre_restore_backup}`. 409 `server_running`·`backup_busy`. 복원할 백업은 안전 백업 뒤 정리에서 뺀다(`backup.rs:221-222`) |
+| GET/PUT | `/api/instance/:id/schedule` | `backup.rs:242/258` | `{schedule:[...], backup_keep}` | 400 `validation_failed` |
 
 #### 설정 (handlers/bot.rs, handlers/config.rs)
 
@@ -299,7 +301,7 @@
 | DELETE | `/api/config/node-token` | `config.rs:173` | - | `{ok}`. 먼저 릴레이 에이전트를 멈춘다 |
 | GET | `/api/system/components` | `config.rs:233` | - | `{version, components:{key:ver}, lastUpdated}` (`installed-manifest.json` + 번들 `versions.toml`) |
 | POST | `/api/fs/scan-dir` | `config.rs:266` | `{path}` | `{ok, files, dirs}` / 404 / 500. **임의 경로 열람 가능** |
-| GET | `/api/runtime/preflight` | `ipc/mod.rs:721` | - | `{phase, percent, complete, error, components:{python}}` |
+| GET | `/api/runtime/preflight` | `ipc/mod.rs:723` | - | `{phase, percent, complete, error, components:{python}}` |
 
 #### 클라이언트와 데몬 수명 (handlers/client.rs)
 
@@ -311,7 +313,7 @@
 | POST | `/api/daemon/shutdown` | `client.rs:12` | - | `{ok, message}`. 200ms 뒤 `stop_requested` cancel |
 | GET | `/api/daemon/console` | `client.rs:120` | `since, count=200` | `{lines:[{id,timestamp,level,target,message}], count}` |
 
-`unregister`에 `shutdown=true`를 주고 남은 클라이언트가 0이면 데몬도 종료한다(`client.rs:80-84`). 둘 다 `request_shutdown`(`ipc/mod.rs:619-625`)을 거쳐 §1.1의 종료 경로로 간다.
+`unregister`에 `shutdown=true`를 주고 남은 클라이언트가 0이면 데몬도 종료한다(`client.rs:80-84`). 둘 다 `request_shutdown`(`ipc/mod.rs:621-627`)을 거쳐 §1.1의 종료 경로로 간다.
 
 #### 익스텐션 (handlers/extension.rs; 구현은 `extension/mod.rs`)
 
@@ -342,38 +344,38 @@
 
 | Method | Path | Handler | 비고 |
 |---|---|---|---|
-| GET | `/api/relay/host/:host_id/status` | `relay.rs:187` | query `relayUrl?`. relay `/api/hosts/:id` 프록시 (HMAC 서명) |
-| GET | `/api/relay/host/:host_id/nodes` | `relay.rs:199` | `/api/hosts/:id/nodes` |
-| GET | `/api/relay/node/:guild_id/members` | `relay.rs:212` | `/api/nodes/:id/discord-members`, 503이면 `/members`로 폴백 |
-| GET | `/api/relay/bot-invite` | `relay.rs:243-262` | query `relayUrl?`. relay `/api/bot-invite`(공개, 서명 없음)를 그대로 전달. 봇 초대 URL `{url}` |
-| POST | `/api/relay/pair/initiate` | `relay.rs:264` | 바디를 그대로 `/api/pair/initiate`에 전달 (서명 없음) |
-| GET | `/api/relay/pair/:code/status` | `relay.rs:297` | `secret?, relayUrl?`. `status:"claimed"`이면 `nodeToken`을 `.node_token`에 자동 저장 |
+| GET | `/api/relay/host/:host_id/status` | `relay.rs:211` | query `relayUrl?`. relay `/api/hosts/:id` 프록시 (HMAC 서명). 서명 요청의 `relayUrl`은 설정한 릴레이와 같거나 루프백일 때만 따른다(`signed_relay_url`, `relay.rs:45-67`) |
+| GET | `/api/relay/host/:host_id/nodes` | `relay.rs:223` | `/api/hosts/:id/nodes` |
+| GET | `/api/relay/node/:guild_id/members` | `relay.rs:236` | `/api/nodes/:id/discord-members`, 503이면 `/members`로 폴백 |
+| GET | `/api/relay/bot-invite` | `relay.rs:267-286` | query `relayUrl?`. relay `/api/bot-invite`(공개, 서명 없음)를 그대로 전달. 봇 초대 URL `{url}` |
+| POST | `/api/relay/pair/initiate` | `relay.rs:288` | 바디를 그대로 `/api/pair/initiate`에 전달 (서명 없음) |
+| GET | `/api/relay/pair/:code/status` | `relay.rs:321` | `secret?, relayUrl?`. `status:"claimed"`이면 `nodeToken`을 `.node_token`에 자동 저장 |
 | GET | `/api/relay/agent` | `chat.rs:16` | 에이전트 상태 `{running, sleeping, relayUrl, hasToken, ...}` |
 | POST | `/api/relay/agent/start`, `/stop` | `chat.rs:21/33` | 토큰이 없으면 409 `node_token_missing` |
 | POST | `/api/chat/command` | `chat.rs:10` | `{text, guild_id?, user_id?}` → `{reply}` |
-| GET/PUT/DELETE | `/api/chatbot` | `chatbot.rs:35/174/196` | AI 챗봇 설정 (`config.json`의 `chatbot`). 바뀔 때마다 릴레이에 동기화, 클라이언트에는 `hasApiKey`만 |
-| DELETE | `/api/chatbot/memory` | `chatbot.rs:218` | query `guildId?` |
+| GET/PUT/DELETE | `/api/chatbot` | `chatbot.rs:70/245/267` | AI 챗봇 설정 (`config.json`의 `chatbot`). 바뀔 때마다 릴레이에 동기화, 클라이언트에는 `hasApiKey`·`pendingRelayDelete`만. PUT은 릴레이 기본값 위에 전체 설정을 얹어 보낸다(`chatbot.rs:33-59`). DELETE가 릴레이에 닿지 못하면 `pendingRelayDelete:true`로 남기고 다음 연결 때 다시 지운다(`:199-243`) |
+| DELETE | `/api/chatbot/memory` | `chatbot.rs:283` | query `guildId?` |
 
-Relay 서명 방식(`relay.rs:76-113`):
+Relay 서명 방식(`relay.rs:100-137`):
 
 - 헤더: `Authorization: Bearer <node_token>`, `x-request-timestamp`, `x-request-nonce`, `x-request-signature`.
 - 서명값: `HMAC-SHA256(secret, "METHOD\npath\nts\nnonce\nbody")`.
-- 고정 헤더 `X-Saba-Client: 1`이 모든 relay 요청에 붙는다. timeout은 5초다(`relay.rs:45-57`).
+- 고정 헤더 `X-Saba-Client: 1`이 모든 relay 요청에 붙는다. timeout은 5초다(`relay.rs:69-81`).
 
 #### 업데이트 (ipc/updates.rs)
 
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
-| GET | `/api/updates/status` | `updates.rs:120` | - | `{ok,last_check,next_check,checking,error,updates_available,components:[{component,display_name,current_version,latest_version,update_available,downloaded,installed}]}` (Locales 제외) |
-| POST | `/api/updates/check` | `updates.rs:160` | - | `{ok,updates_available,update_names,components(+release_notes),last_check}`. Locales 업데이트가 있으면 백그라운드에서 조용히 적용 |
-| POST | `/api/updates/download` | `updates.rs:324` | `{components?:[key]}` | `{ok,downloaded,count,errors?}` |
-| GET | `/api/updates/download/progress` | `updates.rs:404` | - | `{ok,component,bytes_received,total_bytes,active}` |
-| POST | `/api/updates/apply` | `updates.rs:429` | `{components?:[key]}` | `{ok,applied,needs_updater,requires_updater,errors}` |
-| POST | `/api/updates/launch-updater` | `updates.rs:559` | 선택 `{relaunch:[exe, args...]}` | `{ok, updater_launched, daemon_stopping}`. 404(업데이터 없음) / 409(받은 업데이트 없음) |
-| GET/DELETE | `/api/updates/last-result` | `updates.rs:661/667` | - | 마지막 적용 결과 / 확인 처리 |
-| GET | `/api/updates/integrity` | `updates.rs:675` | - | `{ok,checked_at,overall,total,verified,failed,skipped,components[...]}` |
-| GET | `/api/updates/config` | `updates.rs:705` | - | `{ok, config, mock_relay}` |
-| PUT | `/api/updates/config` | `updates.rs:720` | 부분 `{enabled,check_interval_hours(1-8),auto_download,auto_apply,install_root,relay_url,channel}` | `{ok, config}`. `config.json`의 `updates` 절에 저장한다(`:751-753, 781-787`) |
+| GET | `/api/updates/status` | `updates.rs:121` | - | `{ok,last_check,next_check,checking,error,updates_available,components:[{component,display_name,current_version,latest_version,update_available,downloaded,installed}]}` (Locales 제외) |
+| POST | `/api/updates/check` | `updates.rs:161` | - | `{ok,updates_available,update_names,components(+release_notes),last_check}`. Locales 업데이트가 있으면 백그라운드에서 조용히 적용 |
+| POST | `/api/updates/download` | `updates.rs:338` | 선택 `{components?:[key]}`. 본문이 없거나 공백이면 전부, 깨진 JSON은 400 `invalid_body`(`updates.rs:320-329`) | `{ok,downloaded,count,errors?}` |
+| GET | `/api/updates/download/progress` | `updates.rs:422` | - | `{ok,component,bytes_received,total_bytes,active}` |
+| POST | `/api/updates/apply` | `updates.rs:447` | download와 같은 본문 규칙 | `{ok,applied,needs_updater,requires_updater,errors}` |
+| POST | `/api/updates/launch-updater` | `updates.rs:581` | 선택 `{relaunch:[exe, args...]}` | `{ok, updater_launched, daemon_stopping}`. 404(업데이터 없음) / 409(받은 업데이트 없음) |
+| GET/DELETE | `/api/updates/last-result` | `updates.rs:683/689` | - | 마지막 적용 결과 / 확인 처리 |
+| GET | `/api/updates/integrity` | `updates.rs:697` | - | `{ok,checked_at,overall,total,verified,failed,skipped,components[...]}` |
+| GET | `/api/updates/config` | `updates.rs:727` | - | `{ok, config, mock_relay}` |
+| PUT | `/api/updates/config` | `updates.rs:742` | 부분 `{enabled,check_interval_hours(1-8),auto_download,install_root,relay_url,channel}` | `{ok, config}`. `config.json`의 `updates` 절에 저장한다(`:770-772, 800-806`) |
 
 ---
 
@@ -384,14 +386,14 @@ Relay 서명 방식(`relay.rs:76-113`):
   - `constants::token_file_path()`, 기본값은 `<data_dir>/.ipc_token`이고 `SABA_TOKEN_PATH`로 바꿀 수 있다.
   - Unix에서는 퍼미션을 0600으로 둔다.
   - 프로세스 전역 `static CACHED_TOKEN: RwLock<Option<String>>`에도 캐시한다(`auth.rs:17`).
-- **Host 검사**: 토큰 검사보다 먼저, `Host` 헤더가 루프백이 아니면 403을 돌려준다. 헤더가 없으면 통과시킨다(`auth.rs:74-96`).
-- **검증**: 헤더 `X-Saba-Token` 값과 정확히 일치하는지 비교한다(`auth.rs:129`).
-  - 상수 시간 비교가 아니다.
+- **Host 검사**: 토큰 검사보다 먼저, `Host` 헤더가 루프백이 아니면 403을 돌려준다. 헤더가 없으면 통과시킨다(`auth.rs:74-101`).
+- **검증**: 헤더 `X-Saba-Token` 값과 정확히 일치하는지 비교한다(`auth.rs:134`).
+  - 상수 시간 비교다(`constant_time_eq`, `auth.rs:86-89`). 길이 차이는 숨기지 않는다(UUID 고정 길이).
   - 불일치하면 본문 없이 401을 돌려준다.
   - 실패 로그는 30초에 한 번으로 제한하고, 토큰 앞 8자를 로그에 남긴다.
 - **우회 경로**
-  - `SABA_AUTH_DISABLED=1`이면 토큰 검사를 건너뛴다. **디버그 빌드에서만** 동작하며(`auth.rs:98-101`), 통합 테스트가 이 방식을 쓴다(`tests/daemon_integration.rs:111`).
-  - 캐시도 없고 토큰 파일도 없으면 **거부한다**(fail-closed, `auth.rs:110-119`).
+  - `SABA_AUTH_DISABLED=1`이면 토큰 검사를 건너뛴다. **디버그 빌드에서만** 동작하며(`auth.rs:103-106`), 통합 테스트가 이 방식을 쓴다(`tests/daemon_integration.rs:111`).
+  - 캐시도 없고 토큰 파일도 없으면 **거부한다**(fail-closed, `auth.rs:115-124`).
 - **토큰을 쓰는 클라이언트**: GUI(`saba-chan-gui/main.js:69,180`, 파일 재읽기 포함), CLI(`saba-chan-cli/src/client.rs:8`, `config.rs:18`), Python 모듈(`modules/daemon_rcon.py:65-71`, `SABA_TOKEN_PATH`). 모두 토큰 파일을 직접 읽어 헤더에 넣는다.
 - **CORS 레이어가 없다.** 브라우저에서 오는 교차 출처 요청은 사전 요청(preflight)에서 막히고, 단순 요청도 토큰이 없으면 401이다. 모든 라우트가 인증을 거치므로 바디 없는 POST를 CSRF로 부를 수 있던 예전 `/api/updates/*` 경로도 막혔다.
 
@@ -420,7 +422,7 @@ Relay 서명 방식(`relay.rs:76-113`):
 | `backup_keep` | Option<u32> | 자동 백업 보관 개수 (기본 10) |
 
 - RCON 필드(`rcon_port`, `rcon_password`)는 없다. 예전 `instance.json`·`settings.json`에 남은 RCON 키는 로드할 때 한 번 지우고 다시 쓴다(`instance/mod.rs:419-448, 463-480`).
-- `ensure_passwords()`(`instance/mod.rs:190`)는 시작할 때(`server.rs:780`, `managed.rs:23`) 비어 있는 REST 비밀번호를 16자 영숫자로 채운다.
+- `ensure_passwords()`(`instance/mod.rs:190`)는 시작할 때(`server.rs:784`, `managed.rs:23`) 비어 있는 REST 비밀번호를 16자 영숫자로 채운다.
 - 비밀번호 생성은 `constants::generate_random_password`가 uuid v4 바이트에 `% 62`를 적용하는 방식이다(`constants.rs:188-201`). 모듈로 편향이 있고, 두 번째 uuid는 계산만 하고 쓰지 않는다.
 - `GuiSettings.autoGeneratePasswords`는 이 동작에 **반영되지 않는다.**
 
@@ -442,21 +444,21 @@ Relay 서명 방식(`relay.rs:76-113`):
 1. **생성**: `POST /api/instances`. 두 갈래로 나뉜다.
    - 네이티브 설치: `download` 방식은 `lifecycle.py list_versions`, 이어서 `install_server`. 그 밖의 방식은 같은 이름의 설치 방식 익스텐션이 `extension_data`를 보고 맡는다.
    - 마이그레이션: `import_settings`
-2. **프로비저닝 추적**: `ProvisionTracker`가 **인스턴스 이름**을 키로 쓴다(`ipc/mod.rs:376-425`).
+2. **프로비저닝 추적**: `ProvisionTracker`가 **인스턴스 이름**을 키로 쓴다(`ipc/mod.rs:379-428`).
    - 성공하면 5초 뒤 자동으로 지운다.
    - 실패하면 사용자가 dismiss할 때까지 남겨 두고, dismiss하면 **신규 생성이었던 경우만**(`mark_creating`/`take_creating`) 인스턴스를 롤백(삭제)한다.
 3. **시작**: 클라이언트는 `/api/instance/:id/start`를 쓴다. 데몬이 `uses_managed_start`(`supervisor/mod.rs:1479-1488`, 기본 managed)로 경로를 고르고, 모듈 validate의 critical 문제가 있으면 막는다.
    - `/api/server/:name/start`: native/supervisor `start_server`
    - `/api/instance/:id/managed/start`: stdio를 캡처하는 managed 방식
 4. **모니터링**: 2초 루프(`main.rs:351`)가 PID와 패턴을 매칭해 auto-detect하고, 크래시를 감지하면 자동 재시작을 예약한다. 세부는 supervisor 담당 문서에 있다.
-5. **정지**: `/api/instance/:id/stop` 또는 `/api/server/:name/stop`(`stop_instance`, `server.rs:834`). 성공하면 tracker에서 id로 untrack한다(`server.rs:870`).
-6. **삭제**: 실행 중이면 force kill(2초 대기), `server.pre_delete` 훅, 디렉토리 삭제(최대 3회 재시도) 순으로 진행한다(`instance.rs:622-708`).
+5. **정지**: `/api/instance/:id/stop` 또는 `/api/server/:name/stop`(`stop_instance`, `server.rs:838`). 성공하면 tracker에서 id로 untrack한다(`server.rs:874`).
+6. **삭제**: 실행 중이면 force kill(2초 대기), `server.pre_delete` 훅, 디렉토리 삭제(최대 3회 재시도) 순으로 진행한다(`instance.rs:635-721`).
 
 ### 4.4 config_store와 전역 설정 스키마 (`src/config_store/mod.rs`)
 
 - 모든 사용자 설정은 `<data_dir>/config.json` 하나에 네임스페이스별로 들어간다(`updater/src/config_file.rs:1-27`). 저장은 임시 파일 → fsync → 직전 파일을 `config.json.bak`으로 복사 → rename이고, 깨진 파일은 `.bak`에서 복구한다. 예전 개별 파일(`settings.json`, `bot-config.json`, `cli-settings.json`, `update-config.json`, `boot-config.json`, `extensions_state.json`, `extensionConfig.json`)은 해당 키가 없을 때 한 번 이관하고, 원본은 그대로 두며 `.migrated` 사본을 남긴다(`config_file.rs:37-45, 155-182`).
-- `ConfigStore`는 그중 `gui`와 `relay`(봇 설정) 네임스페이스를 메모리에 캐시하고 쓸 때 `config.json`에 flush한다(`config_store/mod.rs:190-285`). 기동할 때 한 번 로드한다(`ipc/mod.rs:592-594`). `chatbot`은 캐시 없이 읽고 쓰며, 그 밖의 클라이언트 네임스페이스(`cli` 등)는 JSON 그대로 최상위 키 머지한다(`:349-384`).
-- PUT 동작: 현재 값을 JSON으로 바꾼 뒤 요청값을 **얕게** 머지하고(`merge_json`, `:415`), 강타입으로 역직렬화해 저장한다.
+- `ConfigStore`는 그중 `gui`와 `relay`(봇 설정) 네임스페이스를 메모리에 캐시하고 쓸 때 `config.json`에 flush한다(`config_store/mod.rs:193-288`). 기동할 때 한 번 로드한다(`ipc/mod.rs:594-596`). `chatbot`은 캐시 없이 읽고 쓰며, 그 밖의 클라이언트 네임스페이스(`cli` 등)는 JSON 그대로 최상위 키 머지한다(`:352-387`).
+- PUT 동작: 현재 값을 JSON으로 바꾼 뒤 요청값을 **얕게** 머지하고(`merge_json`, `:418`), 강타입으로 역직렬화해 저장한다.
 - 스키마에 없는 키는 **저장할 때 버려진다.** 예를 들어 레거시 `discordToken`이나 GUI가 임의로 넣은 키가 그렇다.
 
 **GuiSettings** (camelCase, `config_store/mod.rs:26-56`)
@@ -476,8 +478,8 @@ Relay 서명 방식(`relay.rs:76-113`):
 
 **데몬이 실제로 쓰는 설정값은 일부뿐이다.**
 
-- `portConflictCheck`: 기동할 때 `skip_port_check` 원자 변수를 초기화하고(`ipc/mod.rs:630-636`), PUT·reset이 성공하면 갱신한다(`config.rs:29, 89-92`). start 경로와 모니터가 이 값 하나만 본다(`supervisor/mod.rs:365, 1159, 2194`).
-- `language`: Python 실행의 `SABA_LANG`, 채팅 응답, 예약 공지, 익스텐션 설명 언어에 쓴다(`plugin/mod.rs:28-35`, `chat/api.rs:119`, `backup.rs:344`, `extension.rs:73`).
+- `portConflictCheck`: 기동할 때 `skip_port_check` 원자 변수를 초기화하고(`ipc/mod.rs:632-638`), PUT·reset이 성공하면 갱신한다(`config.rs:29, 89-92`). start 경로와 모니터가 이 값 하나만 본다(`supervisor/mod.rs:365, 1159, 2194`).
+- `language`: Python 실행의 `SABA_LANG`, 채팅 응답, 예약 공지, 익스텐션 설명 언어에 쓴다(`plugin/mod.rs:28-35`, `chat/api.rs:119`, `backup.rs:375`, `extension.rs:73`).
 - `ipcPort`: `SABA_IPC_PORT`가 없을 때 데몬 포트로 쓴다(`main.rs:225-236`).
 - `autoGeneratePasswords`: 미사용.
 
@@ -490,7 +492,7 @@ Relay 서명 방식(`relay.rs:76-113`):
 ### 5.1 RCON은 없다
 
 - 데몬은 RCON을 쓰지 않는다. 예전 `protocol/rcon.rs`와 `rcon_pool.rs`는 지워졌다. 게임 명령은 모두 stdin으로 간다(§5.4, 02 RCON 정책).
-- 인스턴스 모델에서도 `rcon_port`, `rcon_password` 필드를 지웠다. 예전 파일에 남은 RCON 키는 로드할 때 지우고(§4.1), PATCH로 와도 버린다(`instance.rs:809-823, 996-998`). 모듈 config에도 RCON 키를 넘기지 않는다(`supervisor/mod.rs:1057-1066`).
+- 인스턴스 모델에서도 `rcon_port`, `rcon_password` 필드를 지웠다. 예전 파일에 남은 RCON 키는 로드할 때 지우고(§4.1), PATCH로 와도 버린다(`instance.rs:822-836, 1009-1011`). 모듈 config에도 RCON 키를 넘기지 않는다(`supervisor/mod.rs:1057-1066`).
 
 ### 5.2 REST (`protocol/rest.rs`)
 
@@ -509,7 +511,7 @@ Relay 서명 방식(`relay.rs:76-113`):
 |---|---|
 | `POST /api/instance/:id/command` | 모든 인터페이스의 단일 명령 경로다. 요청 해석·검증은 `crate::commands`가 한다. 모듈에 없는 이름이면 활성 익스텐션 명령을 먼저 본다(`command.rs:58-102`). 그다음 모듈 정의대로 `/rcon`(stdin), `/rest`, `lifecycle.py command`, 원시 stdin 중 하나로 보낸다(`command.rs:136-161`). 꺼져 있고 콘솔도 없으면 409 `server_not_running`이다. `Supervisor::execute_command`(`supervisor/mod.rs:1024-1070`)는 config `{command,args,protocol_mode,working_dir,rest_host,rest_port,pid,instance_id}`를 락 안에서 만들고, 락을 놓은 뒤 Python을 실행한다 |
 | `POST /api/instance/:id/rcon` | 이름은 호환용이고 **언제나 stdin으로 보낸다.** `routes_commands_to_stdin`(`supervisor/mod.rs:1493-1508`)이 콘솔 있는 서버(관리 모드, 재접속 후에도 saba-runner가 stdin 유지)를 확인하면 `via_stdin`(`command.rs:308-356`)이 한 줄을 쓰고 콘솔 출력을 최대 약 1.5초 모아 `data.response`로 돌려준다. 콘솔이 없으면 409 `no_command_path`(`command.rs:263-306`) |
-| `POST /api/instance/:id/rest` | 접속 정보는 `get_credentials`(게임 설정 파일)에서 읽고 인스턴스별로 캐시한다(`CredentialsCache`, `ipc/mod.rs:299-325`; `command.rs:532-560`). 실패하면 캐시를 지운다. host와 port는 payload, instance, 모듈 기본값 순으로 정하고, 동기 ureq 호출은 `spawn_blocking`으로 감싼다(`command.rs:485-492`) |
+| `POST /api/instance/:id/rest` | 접속 정보는 `get_credentials`(게임 설정 파일)에서 읽고 인스턴스별로 캐시한다(`CredentialsCache`, `ipc/mod.rs:302-328`; `command.rs:532-560`). 실패하면 캐시를 지운다. host와 port는 payload, instance, 모듈 기본값 순으로 정하고, 동기 ureq 호출은 `spawn_blocking`으로 감싼다(`command.rs:485-492`) |
 | `POST /api/instance/:id/stdin` | `/rcon`과 같은 `via_stdin` 경로다(`managed.rs:90-98`) |
 
 ---
@@ -575,9 +577,9 @@ Relay 서명 방식(`relay.rs:76-113`):
   - `text|password|file`: 문자열(숫자, 불리언도 허용)
   - 알 수 없는 타입은 통과시킨다.
   - `required==Some(true)`인데 값이 `null`이거나 빈 문자열이면 에러다.
-- `PATCH /api/instance/:id`는 `validate_settings_patch`(`:222-238`)로 **요청에 들어 있는 필드만** 검사한다(`instance.rs:766`). 보내지 않은 필수 필드는 오류가 아니다.
+- `PATCH /api/instance/:id`는 `validate_settings_patch`(`:222-238`)로 **요청에 들어 있는 필드만** 검사한다(`instance.rs:779`). 보내지 않은 필수 필드는 오류가 아니다.
 - `check_port_conflicts`(`:253`)는 주어진 인스턴스 집합과 포트가 겹치는지 검사한다. 모듈이 지원하는 프로토콜의 포트만 본다. supervisor의 start 경로와 모니터는 **실행 중인** 인스턴스만 넘긴다.
-- `GET /api/servers`의 `port_conflicts`도 같은 함수를 쓰되(`server.rs:220-244`), "켜면 부딪힐" 서버를 미리 보여 주려고 정지된 인스턴스까지 모두 넘긴다.
+- `GET /api/servers`의 `port_conflicts`도 같은 함수를 쓰되(`server.rs:224-248`), "켜면 부딪힐" 서버를 미리 보여 주려고 정지된 인스턴스까지 모두 넘긴다.
 
 ### 7.3 기타
 
@@ -589,21 +591,21 @@ Relay 서명 방식(`relay.rs:76-113`):
 
 ## 8. updates.rs: 업데이트 엔드포인트와 외부 URL
 
-- `UpdateState`가 `UpdateManager`(updater 크레이트)를 `Arc<RwLock>`으로 감싼다. 설정은 `config.json`의 `updates` 절에서 읽고(`load_updater_config`, `updates.rs:767-779`), 없거나 깨졌으면 `UpdateConfig::default()`를 쓴다.
-  - 필드(`updater/src/lib.rs:247-262`): `enabled`(기본 true), `check_interval_hours`(3), `auto_download`(false), `auto_apply`(false), `install_root`, `relay_url`(None이면 `https://saba-chan.online`), `channel`(`stable`).
-- `PUT /api/updates/config`는 바꾼 설정을 `config.json`에 저장한다(`updates.rs:751-753`).
-- 주기 확인은 데몬의 `spawn_update_scheduler`가 한다(`updates.rs:246`). `check_interval_hours`마다 확인하고 `auto_download`이면 받아 둔다.
+- `UpdateState`가 `UpdateManager`(updater 크레이트)를 `Arc<RwLock>`으로 감싼다. 설정은 `config.json`의 `updates` 절에서 읽고(`load_updater_config`, `updates.rs:786-798`), 없거나 깨졌으면 `UpdateConfig::default()`를 쓴다.
+  - 필드(`updater/src/lib.rs:236-264`): `enabled`(기본 true), `check_interval_hours`(3), `auto_download`(false), `install_root`, `relay_url`(None이면 `https://saba-chan.online`), `channel`(`stable`).
+- `PUT /api/updates/config`는 바꾼 설정을 `config.json`에 저장한다(`updates.rs:770-772`).
+- 주기 확인은 데몬의 `spawn_update_scheduler`가 한다(`updates.rs:247`). `check_interval_hours`마다 확인하고 `auto_download`이면 받아 둔다.
 - **접속하는 외부 URL**
   - 릴레이: `GET {relay_url}/v1/updates/check?channel&platform&current&client_id`, `GET /v1/updates/manifest/:version`, `POST /v1/updates/event`(익명 진행 이벤트). 모든 요청에 `X-Saba-Client: 1` 헤더(`updater/src/relay.rs:1-25, 160-195`).
   - manifest의 각 컴포넌트 `url`(R2 공개 주소). 받을 때 `sha256`을 확인한다(`updater/src/download.rs:40`).
   - manifest는 번들된 공개키로 Ed25519 서명을 검증하고, 플랫폼이 다르거나 현재보다 낮은 버전이면 거부한다(`relay.rs:233-252`, `signature.rs`).
-  - `/api/modules/manifest*`, 익스텐션 목록(`ExtensionManager::fetch_remote`), 설치기는 같은 함수 `relay::latest_catalog`를 쓴다(`relay.rs:107-115`). 데몬 쪽 호출은 모두 `None`을 넘기므로 기본 릴레이와 `stable` 채널을 쓰며 `relay_url` 설정을 보지 않는다(`server.rs:426, 456`, `extension/mod.rs:1284`).
+  - `/api/modules/manifest*`, 익스텐션 목록(`ExtensionManager::fetch_remote`), 설치기는 같은 함수 `relay::latest_catalog`를 쓴다(`relay.rs:107-115`). 데몬 쪽 호출은 모두 `None`을 넘기므로 기본 릴레이와 `stable` 채널을 쓰며 `relay_url` 설정을 보지 않는다(`server.rs:430, 460`, `extension/mod.rs:1284`).
   - Python 런타임만 예외로 `github.com/indygreg/python-build-standalone` 릴리즈에서 받는다(고정 해시 검사, §6).
-- **apply 규칙**(`updates.rs:429-546`)
+- **apply 규칙**(`updates.rs:447-568`)
   - 대상에 GUI, Updater, CoreDaemon 중 하나라도 있으면 **전부** 업데이터 exe에 맡긴다. 이때 `needs_updater`를 채우고 `requires_updater:true`를 돌려준다.
   - 그렇지 않으면 데몬이 직접 적용하고, 모듈은 refresh, 익스텐션은 rescan으로 핫 리로드한다.
-  - 업데이터 실행은 클라이언트가 `POST /api/updates/launch-updater`로 데몬에 맡긴다(`updates.rs:548-617`). 데몬이 이번 적용에만 쓰는 실행 표(`launch_ticket::issue`)를 만들어 `--apply --wait-pid <pid> --launch-token <표>`로 업데이터를 detach로 띄우고, 0.5초 뒤 `stop_requested`로 스스로 종료한다.
-- `/api/updates/*`도 다른 라우트처럼 토큰 인증을 거친다(`ipc/mod.rs:754-756`). `relay_url`을 바꿔도 manifest 서명 검증은 그대로라 다른 서버가 파일을 바꿔 끼울 수는 없다.
+  - 업데이터 실행은 클라이언트가 `POST /api/updates/launch-updater`로 데몬에 맡긴다(`updates.rs:570-639`). 데몬이 이번 적용에만 쓰는 실행 표(`launch_ticket::issue`)를 만들어 `--apply --wait-pid <pid> --launch-token <표>`로 업데이터를 detach로 띄우고, 0.5초 뒤 `stop_requested`로 스스로 종료한다.
+- `/api/updates/*`도 다른 라우트처럼 토큰 인증을 거친다(`ipc/mod.rs:756-758`). `relay_url`을 바꿔도 manifest 서명 검증은 그대로라 다른 서버가 파일을 바꿔 끼울 수는 없다.
 
 ---
 
@@ -622,23 +624,23 @@ Relay 서명 방식(`relay.rs:76-113`):
    - ~~`get_module_locales` 로컬 폴백, 컴파일되지 않는 `gui_config.rs` 사본~~ → 해결: 둘 다 지워졌다.
 6. ~~**Discord 봇(server-chan)이 `bot-config.json`을 파일 경로(`BOT_CONFIG_PATH`)로 받는다.**~~ → 해결: 로컬 봇이 없다. 릴레이 에이전트가 하트비트로 봇 설정을 올린다(§1.4).
 7. **토큰 파일 직접 읽기**(GUI, CLI, Python 모듈)는 인증 부트스트랩 구조상 피할 수 없으므로 예외로 본다.
-8. ~~**반대 방향 위반: 코어 안에 특정 익스텐션 이름이 하드코딩돼 있다.**~~ → 해결: `docker`·steamcmd 분기가 코어에서 빠졌다. 설치 방식은 `install_method_<방식>` 슬롯으로 범용화됐다(`instance/mod.rs:67-148`, `instance.rs:1227-1240`). 이름은 테스트에만 남아 있다.
+8. ~~**반대 방향 위반: 코어 안에 특정 익스텐션 이름이 하드코딩돼 있다.**~~ → 해결: `docker`·steamcmd 분기가 코어에서 빠졌다. 설치 방식은 `install_method_<방식>` 슬롯으로 범용화됐다(`instance/mod.rs:67-148`, `instance.rs:1240-1253`). 이름은 테스트에만 남아 있다.
 
 ### 9.B 보안과 정합성
 
-1. ~~`/api/updates/*`에 인증이 없다~~ 해결됨: 업데이트 라우터도 인증 미들웨어 안에 있다(`ipc/mod.rs:754-756`). 업데이트 출처 설정은 `relay_url`뿐이고, 서명되지 않은 manifest는 받지 않는다.
-2. **`/health`는 인증이 필요하다.** 주석이 말하는 "경량 ping"과 다르다(`ipc/mod.rs:639`). 클라이언트의 ready 체크가 토큰을 읽기 전에 실행되면 401을 받는다.
-3. ~~**토큰이 없으면 fail-open이다**~~ → 해결: 캐시도 파일도 없으면 401로 거부한다(`auth.rs:110-119`). 비교는 여전히 상수 시간이 아니다(`auth.rs:129`).
-4. ~~**단일 인스턴스 보장이 없다.**~~ → 해결: `daemon.lock` 배타 잠금을 토큰 생성 전에 잡고(`main.rs:240-255`), Windows에서는 `SO_REUSEADDR`를 켜지 않는다(`ipc/mod.rs:770-773`). §1.6.
+1. ~~`/api/updates/*`에 인증이 없다~~ 해결됨: 업데이트 라우터도 인증 미들웨어 안에 있다(`ipc/mod.rs:756-758`). 업데이트 출처 설정은 `relay_url`뿐이고, 서명되지 않은 manifest는 받지 않는다.
+2. **`/health`는 인증이 필요하다.** 주석이 말하는 "경량 ping"과 다르다(`ipc/mod.rs:641`). 클라이언트의 ready 체크가 토큰을 읽기 전에 실행되면 401을 받는다.
+3. ~~**토큰이 없으면 fail-open이다**~~ → 해결: 캐시도 파일도 없으면 401로 거부한다(`auth.rs:115-124`). ~~비교가 상수 시간이 아니다~~ → 해결: `constant_time_eq`로 끝까지 비교한다(`auth.rs:86-89, 134`).
+4. ~~**단일 인스턴스 보장이 없다.**~~ → 해결: `daemon.lock` 배타 잠금을 토큰 생성 전에 잡고(`main.rs:240-255`), Windows에서는 `SO_REUSEADDR`를 켜지 않는다(`ipc/mod.rs:772-775`). §1.6.
 5. ~~`/api/ext-process/:name/start`는 임의 명령을 실행~~(라우트 삭제). **`/api/fs/scan-dir`는 임의 디렉토리를 열람**한다(`config.rs:266-309`). 토큰만 있으면 쓸 수 있으며, 설계상 의도된 기능이지만 위험 범위가 넓다.
-6. **relay 토큰 유출 가능성**: `?relayUrl=`을 호출자가 지정할 수 있는데, 서명 헤더에는 `Authorization: Bearer <node_token>` 원문이 들어간다(`relay.rs:38-43, 108`). 따라서 임의 호스트로 노드 토큰을 보낼 수 있다.
-7. ~~**`POST /api/modules/manifest/:id/install`에 경로 검사가 없다**~~ → 해결: `..`, `/`, `\`를 거부한다(`server.rs:453-455`). `get_module_locales`는 여전히 이름을 그대로 `join`한다(`config.rs:201-203`).
+6. ~~**relay 토큰 유출 가능성**: `?relayUrl=`로 임의 호스트에 `Authorization: Bearer <node_token>`을 보낼 수 있다~~ → 해결: 서명 요청(host status·nodes·members)은 `signed_relay_url`로 설정한 릴레이(없으면 기본)만 쓰고, 요청 주소가 그와 같거나 루프백(모의 릴레이)일 때만 따른다(`relay.rs:45-67, 211-241`). 챗봇 동기화도 설정한 릴레이만 쓴다(`chatbot.rs:150-153`). 서명 없는 bot-invite·pair는 여전히 `relayUrl`을 그대로 따른다(`relay.rs:271, 298, 326`).
+7. ~~**`POST /api/modules/manifest/:id/install`에 경로 검사가 없다**~~ → 해결: `..`, `/`, `\`를 거부한다(`server.rs:457-459`). `get_module_locales`는 여전히 이름을 그대로 `join`한다(`config.rs:201-203`).
 8. **비밀값이 평문으로 응답에 실린다.** `GET /api/instances`, `/api/servers`에는 REST 비밀번호가 들어 있다. ~~`/api/config/bot`의 Discord 토큰~~(BotConfig에서 `token` 삭제). REST Basic 토큰 앞부분과 비밀번호 길이는 로그에 남는다(`rest.rs:86`).
 9. **익스텐션 설치에 사용자 지정 `download_url`을 허용하고 sha256은 선택**이다(`extension.rs:357-375`). ~~포터블 Python/Node 다운로드에 체크섬 검증이 없다~~ → 해결: Python은 고정 해시로 검사하고(§6.1), Node 다운로드는 지워졌다.
-10. ~~**프로비저닝 dismiss 롤백 경쟁**~~ → 해결: 롤백은 신규 생성으로 표시된 이름(`mark_creating`)일 때만 한다. 기존 인스턴스의 업데이트 실패는 진행 표시만 지운다(`instance.rs:552-590`, `ipc/mod.rs:376-407`).
-11. ~~**`/api/daemon/shutdown`과 `unregister?shutdown=true`는 토큰만 cancel한다**~~ → 해결: 둘 다 `stop_requested`를 cancel하고, main의 단일 종료 경로가 `daemon.shutdown` 훅과 클라이언트 정리를 거친다(`ipc/mod.rs:619-625`, `main.rs:533-599`).
+10. ~~**프로비저닝 dismiss 롤백 경쟁**~~ → 해결: 롤백은 신규 생성으로 표시된 이름(`mark_creating`)일 때만 한다. 기존 인스턴스의 업데이트 실패는 진행 표시만 지운다(`instance.rs:565-603`, `ipc/mod.rs:379-410`).
+11. ~~**`/api/daemon/shutdown`과 `unregister?shutdown=true`는 토큰만 cancel한다**~~ → 해결: 둘 다 `stop_requested`를 cancel하고, main의 단일 종료 경로가 `daemon.shutdown` 훅과 클라이언트 정리를 거친다(`ipc/mod.rs:621-627`, `main.rs:533-599`).
 12. ~~**`SABA_ENABLED_EXTENSIONS` 경로 해석 버그**~~ → 해결: `config.json`의 `extensions.enabled`를 `ConfigFile::default_location()`(`SABA_DATA_DIR` 반영)으로 읽는다(`plugin/mod.rs:200-205`).
-13. ~~**락을 오래 잡는 문제**~~ → 해결(C12): supervisor 함수는 `&RwLock`을 받아 단계마다 짧게 잠그고 Python은 락 밖에서 실행한다(`PluginCall`, `supervisor/mod.rs:1024-1070`). 마이그레이션 `import_settings`(`instance.rs:510-534`), managed 시작(`managed.rs:56`), 익스텐션 다운로드(`extension.rs:382-393`, write lock 전에 받음)도 락 밖이다. 2초 모니터는 여전히 `monitor_processes` 동안 write lock을 잡는다(`main.rs:371-372`).
+13. ~~**락을 오래 잡는 문제**~~ → 해결(C12): supervisor 함수는 `&RwLock`을 받아 단계마다 짧게 잠그고 Python은 락 밖에서 실행한다(`PluginCall`, `supervisor/mod.rs:1024-1070`). 마이그레이션 `import_settings`(`instance.rs:523-547`), managed 시작(`managed.rs:56`), 익스텐션 다운로드(`extension.rs:382-393`, write lock 전에 받음)도 락 밖이다. 2초 모니터는 여전히 `monitor_processes` 동안 write lock을 잡는다(`main.rs:371-372`).
 14. ~~**REST 명령이 async 핸들러 안에서 동기로 실행된다**~~ → 해결: `spawn_blocking`으로 실행한다(`command.rs:485-492`).
 15. ~~**ext-process 출력이 stderr로 새어 나간다.**~~ → 해결: `ext_process.rs`가 지워졌다.
 
@@ -647,14 +649,14 @@ Relay 서명 방식(`relay.rs:76-113`):
 - ~~`src/config/mod.rs`의 `GlobalConfig`는 미사용이다~~ → 해결: 지워졌다.
 - ~~`handlers/python_env.rs`의 세 핸들러는 라우트가 없다~~ → 해결: 핸들러와 `pip_install*`가 지워졌다. 런타임 상태는 `/api/runtime/preflight`가 보인다.
 - ~~`plugin::run_extension*`, `RestClient::with_basic_auth`, `ServerResponse::success/error`, `CommandResponse`, `BotConfig`(ipc/mod.rs), `ExtensionInitTracker::is_initializing`, `InstanceStore::save`, `ServerInstance::ext_f64`, `process_monitor::find_by_name*` 동기 버전 미사용~~ → 해결: 모두 지워졌다(`ext_str`는 테스트 전용, `instance/mod.rs:110-113`).
-- ~~업데이트 설정의 `check_interval_hours`, `auto_download`, `auto_apply`는 저장만 되고 아무 동작이 없다~~ → 해결: `config.json`에 저장되고, 데몬 스케줄러가 주기와 `auto_download`를 쓴다(`updates.rs:246`, `:751-753`).
+- ~~업데이트 설정의 `check_interval_hours`, `auto_download`, `auto_apply`는 저장만 되고 아무 동작이 없다~~ → 해결: `config.json`에 저장되고, 데몬 스케줄러가 주기와 `auto_download`를 쓴다(`updates.rs:247`, `:770-772`). `auto_apply`는 설정에서 지워졌고 적용은 언제나 사용자가 고른다(`updater/src/lib.rs:236-251`).
 - ~~`skip_port_check` 계열이 따로 논다~~ → 해결: 기동 시 `gui.portConflictCheck`로 초기화하고, start 경로와 모니터가 같은 원자 변수 하나만 본다(§4.4).
 - `GuiSettings.autoGeneratePasswords`는 데몬에서 효과가 없다. ~~`ipcPort`~~는 데몬 포트로 쓴다(§4.4).
 - 비 Windows 부트 선택기는 키 입력을 지원하지 않는데도 DEL 안내를 표시한다(`boot_selector.rs:244-248, 308`).
-- `ServerStartRequest.module`이 필수 필드다(`ipc/mod.rs:155-159`). 인스턴스에 이미 모듈 정보가 있는데도 `/api/server/:name/start` 호출자가 다시 보내야 한다. `/api/instance/:id/start`는 이 값을 데몬이 채운다(`server.rs:598`).
+- `ServerStartRequest.module`이 필수 필드다(`ipc/mod.rs:155-159`). 인스턴스에 이미 모듈 정보가 있는데도 `/api/server/:name/start` 호출자가 다시 보내야 한다. `/api/instance/:id/start`는 이 값을 데몬이 채운다(`server.rs:602`).
 - `python_env`의 데이터 디렉토리가 `constants::resolve_data_dir()`와 어긋난다(§6). 같은 파일 상단 주석은 `<data_dir>`라고 적고 있다.
-- `install_server` 진행 콜백은 `step/total`을 그대로 넘기지만, 완료될 때는 `step:0,total:1`로 덮어쓴다(`instance.rs:427-436`). 백그라운드 설치의 진행 단계 정보가 사라진다.
-- `CLAUDE`/문서 주장 검증: `src/ipc/updates.rs:13`의 doc-claim "`/api/updates/apply` — 업데이터 exe 스폰하여 적용"은 **코드와 다르다.** `apply`는 응답 플래그만 돌려주고, 업데이터 실행은 `/api/updates/launch-updater`가 한다. 그 밖의 README/docs 내용은 이 문서에서 근거로 쓰지 않았다.
+- `install_server` 진행 콜백은 `step/total`을 그대로 넘기지만, 완료될 때는 `step:0,total:1`로 덮어쓴다(`instance.rs:440-449`). 백그라운드 설치의 진행 단계 정보가 사라진다.
+- ~~`CLAUDE`/문서 주장 검증: `src/ipc/updates.rs:13`의 doc-claim "`/api/updates/apply` — 업데이터 exe 스폰하여 적용"은 코드와 다르다~~ → 해결: 모듈 머리 주석이 "`requires_updater`로 돌려주고 실제 적용은 `launch-updater`가 한다"로 바뀌었다(`updates.rs:13-14`). 핸들러 주석(`updates.rs:437`)에는 "업데이터 exe를 스폰하여 적용"이 아직 남아 있다. 그 밖의 README/docs 내용은 이 문서에서 근거로 쓰지 않았다.
 
 ### 9.D 테스트 계약 (`tests/daemon_integration.rs`)
 
