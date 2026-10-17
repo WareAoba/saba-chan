@@ -740,6 +740,26 @@ async function cleanQuit() {
     }
 }
 
+// 토큰 재로드 후 검증 재시도 (최대 3회, 500ms 간격). 3회 실패해도 일단 진행 (이후 자동 복구에 맡김)
+async function reloadTokenUntilValid() {
+    for (let retry = 0; retry < 3; retry++) {
+        loadIpcToken();
+        try {
+            const verifyResp = await axios.get(`${IPC_BASE}/health`, { timeout: 1000 });
+            // 예전 데몬은 token 칸 없이 200 (토큰이 맞을 때만)
+            if (verifyResp.status === 200 && (verifyResp.data?.token ?? 'valid') === 'valid') {
+                console.log('✓ Token refreshed and verified');
+                return true;
+            }
+        } catch (verifyErr) {
+            console.warn(`[Auth] Token verify attempt ${retry + 1} failed:`, verifyErr.message);
+        }
+        await wait(500);
+    }
+    console.warn('[Auth] Token verification failed after 3 retries, proceeding anyway');
+    return false;
+}
+
 // 이미 떠 있는 데몬이 있으면 재실행하지 않고 재사용
 async function ensureDaemon() {
     try {
@@ -748,6 +768,14 @@ async function ensureDaemon() {
         // /health 엔드포인트로 체크 (lock / 디스크 I/O 없이 즉시 응답)
         sendStatus('daemon', t('daemon.checking'));
         const response = await axios.get(`${IPC_BASE}/health`, { timeout: 1000 });
+        // /health는 토큰 없이 답하고 보낸 토큰 상태(token)를 알려 준다 (A6). 예전 데몬은 401을 준다(아래 catch)
+        if (response.status === 200 && response.data?.token && response.data.token !== 'valid') {
+            console.log('Existing daemon detected (stale token). Reloading token...');
+            await reloadTokenUntilValid();
+            sendStatus('daemon', t('daemon.existing_running'));
+            await syncInstallRoot();
+            return;
+        }
         if (response.status === 200) {
             console.log('Existing daemon detected on IPC port. Skipping launch.');
             sendStatus('daemon', t('daemon.existing_running'));
@@ -758,24 +786,7 @@ async function ensureDaemon() {
         // 401 = 데몬은 떠있지만 토큰이 맞지 않음 (이전 세션 토큰)
         if (err.response && err.response.status === 401) {
             console.log('Existing daemon detected (auth failed — stale token). Reloading token...');
-            // 토큰 재로드 후 검증 재시도 (최대 3회, 500ms 간격)
-            for (let retry = 0; retry < 3; retry++) {
-                loadIpcToken();
-                try {
-                    const verifyResp = await axios.get(`${IPC_BASE}/health`, { timeout: 1000 });
-                    if (verifyResp.status === 200) {
-                        console.log('✓ Token refreshed and verified');
-                        sendStatus('daemon', t('daemon.existing_running'));
-                        await syncInstallRoot();
-                        return;
-                    }
-                } catch (verifyErr) {
-                    console.warn(`[Auth] Token verify attempt ${retry + 1} failed:`, verifyErr.message);
-                }
-                await wait(500);
-            }
-            // 3회 실패해도 일단 진행 (GUI는 표시하고 이후 자동 복구에 맡김)
-            console.warn('[Auth] Token verification failed after 3 retries, proceeding anyway');
+            await reloadTokenUntilValid();
             sendStatus('daemon', t('daemon.existing_running'));
             await syncInstallRoot();
             return;
@@ -2045,6 +2056,11 @@ ipcMain.handle('instance:readLiveSettings', (_event, id) =>
 // 부팅 직후 Python 준비 상태: {phase, percent, complete, error, components: {python}}
 ipcMain.handle('runtime:preflight', () => daemonCall('get', '/api/runtime/preflight', undefined, 5000));
 
+// 시스템 모니터: 데몬이 표본을 뜬다. 처음 한 번은 두 번 떠서 조금 걸린다
+// sizes=false면 데몬이 인스턴스 폴더 크기를 새로 재지 않는다 (접힌 요약)
+ipcMain.handle('system:metrics', (_event, opts = {}) =>
+    daemonCall('get', `/api/system/metrics${opts.sizes === false ? '?sizes=false' : ''}`, undefined, 5000));
+
 ipcMain.handle('config:defaults', (_event, kind) =>
     daemonCall('get', `/api/config/${kind}/defaults`));
 
@@ -2315,6 +2331,13 @@ ipcMain.handle('relay:listNodeMembers', async (_event, guildId, relayUrl) => {
         return [];
     }
 });
+
+// 챗봇 채널(여럿)·음악 채널(하나) 배정. 실패하면 데몬 본문({error, channelId?})을 그대로 돌려준다
+ipcMain.handle('relay:nodeChannels', (_event, guildId) =>
+    daemonCall('get', `/api/relay/node/${encodeURIComponent(guildId)}/channels`, undefined, 15000));
+
+ipcMain.handle('relay:nodeChannelsSave', (_event, guildId, patch) =>
+    daemonCall('put', `/api/relay/node/${encodeURIComponent(guildId)}/channels`, patch, 15000));
 
 ipcMain.handle('relay:botInvite', async (_event, relayUrl) => {
     try {
@@ -2794,6 +2817,33 @@ ipcMain.handle('nodeToken:load', async () => {
 
 // 연결 해제: 데몬이 릴레이 에이전트를 멈추고 토큰을 지운다
 ipcMain.handle('nodeToken:delete', () => daemonCall('delete', '/api/config/node-token'));
+
+// 설정·서버 목록 내보내기/가져오기 (A9). 파일은 데몬이 읽고 쓴다: 여기서는 경로만 고른다.
+// 가져오기는 path 없이 부르면 파일을 고르게 하고, 결과에 path를 붙여 준다 (dryRun 미리보기 뒤 같은 path로 다시 부른다)
+ipcMain.handle('dataTransfer:export', async (_event, opts = {}) => {
+    const result = await dialog.showSaveDialog({
+        defaultPath: `saba-chan-export-${new Date().toISOString().slice(0, 10)}.zip`,
+        filters: [{ name: 'Zip', extensions: ['zip'] }],
+    });
+    if (result.canceled || !result.filePath) return { canceled: true };
+    return daemonCall('post', '/api/migration/export', { path: result.filePath, secrets: !!opts.secrets }, 120000);
+});
+
+ipcMain.handle('dataTransfer:import', async (_event, opts = {}) => {
+    let filePath = typeof opts.path === 'string' && opts.path ? opts.path : null;
+    if (!filePath) {
+        const result = await dialog.showOpenDialog({
+            properties: ['openFile'],
+            filters: [{ name: 'Zip', extensions: ['zip'] }],
+        });
+        if (result.canceled || !result.filePaths[0]) return { canceled: true };
+        filePath = result.filePaths[0];
+    }
+    const body = await daemonCall('post', '/api/migration/import', {
+        path: filePath, dryRun: !!opts.dryRun, overwrite: !!opts.overwrite,
+    }, 120000);
+    return { ...body, path: filePath };
+});
 
 // 로그 파일 경로 반환
 ipcMain.handle('logs:getPath', async () => {

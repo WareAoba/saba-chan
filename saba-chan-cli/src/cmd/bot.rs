@@ -73,6 +73,9 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             ctx.out.data(&r, |r| print_list(r, "members"));
             Ok(())
         }
+        BotCmd::Channels { guild, chatbot, no_chatbot, music, no_music } => {
+            channels(ctx, &guild, ChannelChange { chatbot, no_chatbot, music, no_music }).await
+        }
         BotCmd::Invite => {
             let cfg = ctx.api.bot_config().await?;
             let r = ctx.api.bot_invite(relay_of(&cfg)).await?;
@@ -320,6 +323,98 @@ async fn server_alias(ctx: &Ctx, query: Option<&str>, names: &[String], clear: b
     Ok(())
 }
 
+struct ChannelChange {
+    chatbot: Vec<String>,
+    no_chatbot: bool,
+    music: Option<String>,
+    no_music: bool,
+}
+
+/// 이름(앞의 `#` 무시) 또는 id → 채널 id
+fn channel_id(list: &[Value], query: &str) -> Result<String> {
+    let q = query.trim().trim_start_matches('#');
+    if let Some(c) = list.iter().find(|c| s(c, "id") == q) {
+        return Ok(s(c, "id").to_string());
+    }
+    let named: Vec<&Value> = list.iter().filter(|c| s(c, "name").eq_ignore_ascii_case(q)).collect();
+    match named.as_slice() {
+        [one] => Ok(s(one, "id").to_string()),
+        [] => Err(crate::error::CliError::NotFound {
+            what: t!("bot.channel"),
+            query: query.to_string(),
+            suggestions: list
+                .iter()
+                .map(|c| s(c, "name").to_string())
+                .filter(|n| n.to_lowercase().contains(&q.to_lowercase()))
+                .take(3)
+                .collect(),
+        }
+        .into()),
+        _ => Err(usage(t!("bot.channel_ambiguous", name = q))),
+    }
+}
+
+async fn channels(ctx: &Ctx, guild: &str, change: ChannelChange) -> Result<()> {
+    let cfg = ctx.api.bot_config().await?;
+    let relay = relay_of(&cfg);
+    let current = ctx.api.node_channels(guild, relay).await?;
+    let list = current.get("channels").and_then(Value::as_array).cloned().unwrap_or_default();
+    let mut patch = Map::new();
+    if change.no_chatbot {
+        patch.insert("chatbot".into(), json!([]));
+    } else if !change.chatbot.is_empty() {
+        let ids = change.chatbot.iter().map(|q| channel_id(&list, q)).collect::<Result<Vec<_>>>()?;
+        patch.insert("chatbot".into(), json!(ids));
+    }
+    if change.no_music {
+        patch.insert("music".into(), Value::Null);
+    } else if let Some(q) = &change.music {
+        let id = channel_id(&list, q)?;
+        if current.get("music").and_then(Value::as_str) != Some(id.as_str()) {
+            let name = list.iter().find(|c| s(c, "id") == id).map_or(id.clone(), |c| s(c, "name").to_string());
+            ctx.ask.ensure(&t!("bot.confirm_music_channel", name = name))?;
+        }
+        patch.insert("music".into(), json!(id));
+    }
+    let r = if patch.is_empty() {
+        current
+    } else {
+        let r = ctx.api.set_node_channels(guild, Value::Object(patch), relay).await?;
+        if !ctx.out.json {
+            println!("{} {}", console::style("✓").green().bold(), t!("bot.channels_saved"));
+        }
+        r
+    };
+    ctx.out.data(&r, print_channels);
+    Ok(())
+}
+
+fn print_channels(r: &Value) {
+    let list = r.get("channels").and_then(Value::as_array).cloned().unwrap_or_default();
+    let name = |id: &str| {
+        list.iter()
+            .find(|c| s(c, "id") == id)
+            .map_or(id.to_string(), |c| format!("#{}", s(c, "name")))
+    };
+    let chatbot: Vec<String> = r
+        .get("chatbot")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(name)
+        .collect();
+    let none = || output::dim(&t!("bot.channel_none"));
+    let music = r.get("music").and_then(Value::as_str).map(name);
+    output::print_kv(&[
+        (t!("bot.chatbot_channels"), if chatbot.is_empty() { none() } else { chatbot.join(", ") }),
+        (t!("bot.music_channel"), music.unwrap_or_else(none)),
+    ]);
+    if r.get("botAvailable").and_then(Value::as_bool) == Some(false) {
+        eprintln!("{} {}", console::style("!").yellow().bold(), t!("bot.channels_bot_missing"));
+    }
+}
+
 async fn nodes(ctx: &Ctx) -> Result<()> {
     let cfg = ctx.api.bot_config().await?;
     let host = cfg.pointer("/cloud/hostId").and_then(Value::as_str).unwrap_or("");
@@ -383,4 +478,23 @@ async fn config(ctx: &Ctx, pairs: &[String]) -> Result<()> {
     let r = ctx.api.save_bot_config(Value::Object(patch)).await?;
     ctx.out.done(&t!("bot.config_saved"), &r);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn channels_are_found_by_id_or_name_and_a_shared_name_must_use_the_id() {
+        let list = vec![
+            json!({ "id": "1", "name": "잡담" }),
+            json!({ "id": "2", "name": "music" }),
+            json!({ "id": "3", "name": "Music" }),
+        ];
+        assert_eq!(channel_id(&list, "1").unwrap(), "1");
+        assert_eq!(channel_id(&list, "#잡담").unwrap(), "1");
+        assert!(channel_id(&list, "music").is_err());
+        assert_eq!(channel_id(&list, "3").unwrap(), "3");
+        assert!(channel_id(&list, "공지").is_err());
+    }
 }

@@ -57,7 +57,15 @@
     "invite": "이 링크로 디스코드 서버에 봇을 초대하세요:",
     "no_server_aliases": "정한 서버 별명이 없어요. 예: saba-chan-cli bot server-alias 이름 크리",
     "server_alias_set": "이제 채팅에서 {{name}}을(를) 이렇게 부를 수 있어요: {{aliases}}",
-    "server_alias_cleared": "{{name}}의 채팅 별명을 지웠어요."
+    "server_alias_cleared": "{{name}}의 채팅 별명을 지웠어요.",
+    "channel": "채널",
+    "channel_ambiguous": "이름이 {{name}}인 채널이 여럿이에요. id로 적어 주세요.",
+    "channel_none": "없음",
+    "chatbot_channels": "챗봇 채널",
+    "music_channel": "음악 채널",
+    "confirm_music_channel": "#{{name}}을(를) 음악 채널로 정하면 그 채널의 일반 메시지는 지워져요. 계속할까요?",
+    "channels_saved": "채널 배정을 바꿨어요.",
+    "channels_bot_missing": "봇이 이 디스코드 서버에 없어서 채널 목록을 볼 수 없어요. 초대: saba-chan-cli bot invite"
   },
   "col": {
     "aliases": "별명",
@@ -100,7 +108,26 @@
     "saved": "저장했어요: {{keys}}",
     "confirm_reset_all": "모든 설정을 기본값으로 되돌릴까요?",
     "confirm_reset": "{{keys}}를 기본값으로 되돌릴까요?",
-    "all": "모든 설정"
+    "all": "모든 설정",
+    "confirm_export_secrets": "비밀번호·챗봇 API 키·봇 페어링도 파일에 그대로 들어가요. 계속할까요?",
+    "exported": "{{path}}에 설정과 서버 {{count}}개를 저장했어요.",
+    "export_no_secrets": "비밀번호·API 키·봇 페어링은 빠졌어요. 넣으려면 --secrets.",
+    "import_preview": "가져오면 이렇게 바뀌어요 (아직 바꾸지 않았어요).",
+    "imported": "가져왔어요.",
+    "import_added": "새 서버",
+    "import_replaced": "덮어쓴 서버",
+    "import_settings": "설정",
+    "import_skipped": "{{name}}: 건너뜀 ({{reason}})",
+    "import_missing_module": "{{module}} 모듈이 이 PC에 없어요. 모듈을 설치해야 그 서버를 켤 수 있어요.",
+    "import_move_files": "게임 서버 파일은 들어 있지 않아요. 서버 폴더를 같은 경로로 옮기거나 서버 설정에서 폴더를 바꾸세요.",
+    "skip_reason": {
+      "exists": "이미 있음, 덮어쓰려면 --overwrite",
+      "running": "켜져 있음",
+      "working_dir_in_use": "다른 서버가 같은 폴더를 씀",
+      "invalid_id": "잘못된 id",
+      "save_failed": "저장 실패"
+    },
+    "import_token_moved": "봇 페어링도 옮겼어요. 옛 PC는 연결을 끊으세요 (옛 PC에서: saba-chan-cli bot unpair)."
   },
   "console": {
     "attach_help": "{{name}} 콘솔에 붙었어요. 명령을 입력하세요. 도움말 :help, 나가기 :q (서버는 계속 돌아요).",
@@ -520,7 +547,11 @@
       "chatbot.clear": "챗봇 설정과 키 모두 지우기",
       "chatbot.forget": "챗봇이 기억하는 내용 지우기 (모든 디스코드 서버 또는 하나)",
       "module.audit": "모듈의 Python 코드가 하는 일을 선언한 권한과 비교",
-      "extension.audit": "익스텐션의 Python 코드가 하는 일을 선언한 권한과 비교"
+      "extension.audit": "익스텐션의 Python 코드가 하는 일을 선언한 권한과 비교",
+      "config.export": "설정과 서버 목록을 zip으로 저장 (다른 PC로 옮길 때, 게임 파일은 빠짐)",
+      "config.import": "내보낸 zip에서 설정과 서버 가져오기",
+      "bot.channels": "디스코드 서버의 챗봇 채널(여러 개)·음악 채널(하나). 옵션이 없으면 보기만",
+      "monitor": "CPU·메모리·디스크·네트워크 사용량과 서버별 몫"
     },
     "arg": {
       "json": "글 대신 기계가 읽는 JSON으로 출력",
@@ -587,7 +618,17 @@
       "message": "공지할 말",
       "delete": "저장된 키를 지우기",
       "chatbot.set.guild": "이 디스코드 서버에만 (서버 id)",
-      "chatbot.forget.guild": "이 디스코드 서버만 (서버 id)"
+      "chatbot.forget.guild": "이 디스코드 서버만 (서버 id)",
+      "file": "zip 파일 경로",
+      "secrets": "비밀번호·챗봇 API 키·봇 페어링도 저장",
+      "dry_run": "바뀔 내용만 보기",
+      "overwrite": "이미 있는 서버를 덮어쓰기 (켜져 있는 서버는 건너뜀)",
+      "bot.channels.chatbot": "챗봇이 대화할 채널, 이름 또는 id (쉼표로 여러 개). 지금 목록을 바꿈",
+      "bot.channels.no_chatbot": "챗봇 채널 모두 해제",
+      "bot.channels.music": "음악 플레이어 채널, 이름 또는 id. 그 채널의 일반 메시지는 지워짐",
+      "bot.channels.no_music": "음악 채널 해제",
+      "monitor.watch": "Ctrl+C까지 계속 새로 고침",
+      "monitor.interval": "--watch 새로 고침 간격 (초)"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 실행하면 대화형 셸이 열려요.\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },
@@ -700,5 +741,21 @@
       "where": "위치",
       "what": "코드"
     }
+  },
+  "monitor": {
+    "cpu": "CPU",
+    "memory": "메모리",
+    "disk_io": "디스크 IO",
+    "disk": "디스크",
+    "network": "네트워크",
+    "read_write": "읽기 {{read}} · 쓰기 {{write}}",
+    "disk_free": "남은 공간 {{free}} / {{total}}",
+    "rx_tx": "받기 {{rx}} · 보내기 {{tx}}",
+    "others": "나머지 프로세스",
+    "idle": "유휴·남은 공간",
+    "legend": "█ 서버(색) ·",
+    "none_running": "켜진 서버가 없어요",
+    "network_note": "네트워크는 서버별로 나누지 않은 전체 트래픽이에요. 디스크 IO·네트워크 막대는 지켜본 동안의 최대값 기준이에요.",
+    "watch_hint": "Ctrl+C로 끝내요"
   }
 }

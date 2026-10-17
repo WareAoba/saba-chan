@@ -47,6 +47,8 @@ pub struct GuiSettings {
     pub window_opacity: u32,
     /// 콘솔 글꼴 배율 (%)
     pub console_font_scale: u32,
+    /// 서버 페이지의 시스템 모니터 펼침 여부
+    pub system_monitor_open: bool,
 
     // Window state (GUI가 저장하지만 데몬이 중개)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -98,6 +100,7 @@ impl Default for GuiSettings {
             sidebar_compact: false,
             window_opacity: 100,
             console_font_scale: 100,
+            system_monitor_open: true,
             window_bounds: None,
             language: None,
         }
@@ -160,7 +163,7 @@ pub struct ChatbotConfig {
     pub api_key: Option<String>,
     /// 모든 길드에 쓰는 설정 (ChatbotSettings 일부)
     pub settings: serde_json::Map<String, Value>,
-    /// 길드별로 덮어쓰는 설정 (예: channelIds)
+    /// 길드별로 덮어쓰는 설정 (예: memo). 채널 배정은 릴레이가 원본이라 두지 않는다
     pub guilds: HashMap<String, serde_json::Map<String, Value>>,
     /// 사용자가 지웠는데 릴레이 삭제를 아직 확인 못 함. 다음 연결 때 다시 지운다
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -168,13 +171,15 @@ pub struct ChatbotConfig {
 }
 
 impl ChatbotConfig {
-    /// 예전 키를 지금 계약으로 (2026-10-17: `persona` → `memo`)
+    /// 예전 키를 지금 계약으로 (2026-10-17: `persona` → `memo`; 챗봇 채널 `channelIds`는 릴레이가 원본이 되어 지운다)
     fn migrate(&mut self) {
         for map in std::iter::once(&mut self.settings).chain(self.guilds.values_mut()) {
             if let Some(persona) = map.remove("persona") {
                 map.entry("memo").or_insert(persona);
             }
+            map.remove("channelIds");
         }
+        self.guilds.retain(|_, over| !over.is_empty());
     }
 
     /// 한 길드에 보낼 설정 (공통 위에 길드 것)
@@ -195,6 +200,9 @@ pub struct ConfigStore {
     gui_settings: RwLock<GuiSettings>,
     bot_config: RwLock<BotConfig>,
 }
+
+/// 이 PC에만 맞는 네임스페이스. 내보내기에서 뺀다
+const LOCAL_SECTIONS: &[&str] = &["schemaVersion", "updates", "boot", "extensions"];
 
 /// 클라이언트 네임스페이스로 쓸 수 없는 키 (각자 전용 API가 있다)
 const RESERVED_SECTIONS: &[&str] = &["schemaVersion", "gui", "relay", "updates", "boot", "extensions", "chatbot"];
@@ -346,6 +354,52 @@ impl ConfigStore {
         }
     }
 
+    // ── 내보내기·가져오기 (A9) ──
+
+    /// 다른 PC로 옮길 설정 네임스페이스. 이 PC에만 맞는 것(업데이트 채널·부트·익스텐션 켜짐)은 뺀다.
+    /// `secrets`가 false면 챗봇 API 키를 뺀다.
+    pub fn portable_sections(&self, secrets: bool) -> serde_json::Map<String, Value> {
+        let mut doc = self.file.load();
+        doc.retain(|k, _| !LOCAL_SECTIONS.contains(&k.as_str()));
+        if !secrets {
+            if let Some(Value::Object(chatbot)) = doc.get_mut("chatbot") {
+                chatbot.remove("apiKey");
+                chatbot.remove("pendingRelayDelete");
+            }
+        }
+        doc
+    }
+
+    /// 내보낸 설정을 지금 설정 위에 머지한다(없는 키는 그대로 둔다). 반영한 네임스페이스 이름을 돌려준다.
+    pub async fn import_sections(&self, sections: serde_json::Map<String, Value>) -> Result<Vec<String>, ConfigStoreError> {
+        let mut applied = Vec::new();
+        for (key, value) in sections {
+            if !value.is_object() {
+                continue;
+            }
+            match key.as_str() {
+                "gui" => {
+                    self.set_gui_settings_from_json(value).await?;
+                }
+                "relay" => {
+                    self.set_bot_config_from_json(value).await?;
+                }
+                "chatbot" => {
+                    let merged = merge_json(serde_json::to_value(self.get_chatbot())?, value);
+                    let cfg: ChatbotConfig = serde_json::from_value(merged)
+                        .map_err(|e| ConfigStoreError::InvalidData(format!("Invalid chatbot config: {}", e)))?;
+                    self.set_chatbot(&cfg)?;
+                }
+                k if Self::is_client_section(k) => {
+                    self.merge_client_section(k, value)?;
+                }
+                _ => continue,
+            }
+            applied.push(key);
+        }
+        Ok(applied)
+    }
+
     // ── Client namespaces ──
 
     /// 클라이언트 네임스페이스 이름 검사: 소문자로 시작, 소문자·숫자·`-`, 32자 이하, 예약어 제외
@@ -436,6 +490,33 @@ mod tests {
 
     // ── GuiSettings 직렬화/역직렬화 ──
 
+    #[tokio::test]
+    async fn portable_sections_leave_out_local_ones_and_import_keeps_the_local_api_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConfigStore::new(dir.path());
+        store.file.set_section("updates", serde_json::json!({"channel": "beta"})).unwrap();
+        store.file.set_section("chatbot", serde_json::json!({"apiKey": "k", "settings": {"model": "m"}})).unwrap();
+        store.merge_client_section("cli", serde_json::json!({"color": false})).unwrap();
+
+        let out = store.portable_sections(false);
+        assert!(!out.contains_key("updates"));
+        assert!(out["chatbot"].get("apiKey").is_none());
+        assert_eq!(out["cli"], serde_json::json!({"color": false}));
+        assert!(store.portable_sections(true)["chatbot"].get("apiKey").is_some());
+
+        let mut incoming = serde_json::Map::new();
+        incoming.insert("chatbot".into(), serde_json::json!({"settings": {"model": "n"}}));
+        incoming.insert("gui".into(), serde_json::json!({"language": "ja"}));
+        incoming.insert("updates".into(), serde_json::json!({"channel": "stable"}));
+        let applied = store.import_sections(incoming).await.unwrap();
+        assert_eq!(applied, ["chatbot", "gui"]);
+        let chatbot = store.get_chatbot();
+        assert_eq!(chatbot.api_key.as_deref(), Some("k"));
+        assert_eq!(chatbot.settings["model"], "n");
+        assert_eq!(store.get_gui_settings().await.language.as_deref(), Some("ja"));
+        assert_eq!(store.file.section("updates")["channel"], "beta");
+    }
+
     #[test]
     fn chatbot_persona_moves_to_memo() {
         let dir = tempfile::tempdir().unwrap();
@@ -445,6 +526,21 @@ mod tests {
         assert_eq!(cfg.settings.get("memo"), Some(&serde_json::json!("hi")));
         assert!(!cfg.settings.contains_key("persona"));
         assert_eq!(cfg.guilds["g"].get("memo"), Some(&serde_json::json!("keep")));
+    }
+
+    /// 챗봇 채널은 릴레이가 원본이다: 예전 `channelIds`는 읽을 때 지우고, 그것만 있던 길드도 지운다
+    #[test]
+    fn chatbot_channel_ids_are_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConfigStore::new(dir.path());
+        store.file.set_section("chatbot", serde_json::json!({
+            "settings": {"channelIds": ["1"], "model": "m"},
+            "guilds": {"a": {"channelIds": ["2"]}, "b": {"channelIds": ["3"], "memo": "keep"}}
+        })).unwrap();
+        let cfg = store.get_chatbot();
+        assert!(!cfg.settings.contains_key("channelIds") && cfg.settings.contains_key("model"));
+        assert!(!cfg.guilds.contains_key("a"));
+        assert_eq!(cfg.guilds["b"].len(), 1);
     }
 
     #[test]

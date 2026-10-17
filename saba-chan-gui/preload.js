@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('api', {
     instanceCommands: (id) => ipcRenderer.invoke('instance:commands', id),
     instanceReadLiveSettings: (id) => ipcRenderer.invoke('instance:readLiveSettings', id),
     runtimePreflight: () => ipcRenderer.invoke('runtime:preflight'),
+    systemMetrics: (opts) => ipcRenderer.invoke('system:metrics', opts),
     configDefaults: (kind) => ipcRenderer.invoke('config:defaults', kind),
     configReset: (kind, keys) => ipcRenderer.invoke('config:reset', kind, keys),
     // Extension API
@@ -101,11 +102,17 @@ contextBridge.exposeInMainWorld('api', {
     saveNodeToken: (token) => ipcRenderer.invoke('nodeToken:save', token),
     loadNodeToken: () => ipcRenderer.invoke('nodeToken:load'),
     deleteNodeToken: () => ipcRenderer.invoke('nodeToken:delete'),
+    // 설정·서버 목록 내보내기/가져오기 (A9): {secrets} / {path?, dryRun, overwrite}. 취소하면 {canceled: true}
+    dataExport: (opts) => ipcRenderer.invoke('dataTransfer:export', opts),
+    dataImport: (opts) => ipcRenderer.invoke('dataTransfer:import', opts),
     // Relay server proxy (cloud mode) — all relay comms go through daemon
     relayCheckHostStatus: (hostId, relayUrl) => ipcRenderer.invoke('relay:checkHostStatus', hostId, relayUrl),
     relayListHostNodes: (hostId, relayUrl) => ipcRenderer.invoke('relay:listHostNodes', hostId, relayUrl),
     relayListNodeMembers: (guildId, relayUrl) => ipcRenderer.invoke('relay:listNodeMembers', guildId, relayUrl),
     relayBotInvite: (relayUrl) => ipcRenderer.invoke('relay:botInvite', relayUrl),
+    // 채널 배정: {guildId, chatbot: [id], music: id|null, botAvailable, channels: [{id, name, category}]}. patch = {chatbot?, music?}
+    relayNodeChannels: (guildId) => ipcRenderer.invoke('relay:nodeChannels', guildId),
+    relayNodeChannelsSave: (guildId, patch) => ipcRenderer.invoke('relay:nodeChannelsSave', guildId, patch),
     instanceAcceptEula: (id) => ipcRenderer.invoke('instance:acceptEula', id),
     instanceBackups: (id) => ipcRenderer.invoke('instance:backups', id),
     instanceBackupCreate: (id) => ipcRenderer.invoke('instance:backupCreate', id),

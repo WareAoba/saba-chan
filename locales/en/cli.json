@@ -57,7 +57,15 @@
     "invite": "Invite the bot to your Discord server with this link:",
     "no_server_aliases": "No server names set. Example: saba-chan-cli bot server-alias NAME 크리",
     "server_alias_set": "In chat, {{name}} can now be called: {{aliases}}",
-    "server_alias_cleared": "Removed the chat names of {{name}}."
+    "server_alias_cleared": "Removed the chat names of {{name}}.",
+    "channel": "channel",
+    "channel_ambiguous": "More than one channel is named {{name}}. Use its id.",
+    "channel_none": "none",
+    "chatbot_channels": "Chatbot channels",
+    "music_channel": "Music channel",
+    "confirm_music_channel": "Making #{{name}} the music channel deletes ordinary messages in it. Continue?",
+    "channels_saved": "Channel assignment changed.",
+    "channels_bot_missing": "The bot is not in this Discord server, so its channels can't be listed. Invite it: saba-chan-cli bot invite"
   },
   "col": {
     "aliases": "Aliases",
@@ -100,7 +108,26 @@
     "saved": "Saved: {{keys}}",
     "confirm_reset_all": "Reset every setting to its default?",
     "confirm_reset": "Reset {{keys}} to the default?",
-    "all": "all settings"
+    "all": "all settings",
+    "confirm_export_secrets": "Passwords, the chatbot API key and the bot pairing go into the file as they are. Continue?",
+    "exported": "Saved settings and {{count}} servers to {{path}}.",
+    "export_no_secrets": "Passwords, API keys and the bot pairing were left out. Add --secrets to include them.",
+    "import_preview": "Importing would change this (nothing changed yet).",
+    "imported": "Imported.",
+    "import_added": "New servers",
+    "import_replaced": "Replaced servers",
+    "import_settings": "Settings",
+    "import_skipped": "{{name}}: skipped ({{reason}})",
+    "import_missing_module": "The {{module}} module is not on this PC. Install it before starting that server.",
+    "import_move_files": "Game server files are not included. Move the server folders to the same paths, or change the folder in the server settings.",
+    "skip_reason": {
+      "exists": "already exists, use --overwrite to replace",
+      "running": "running",
+      "working_dir_in_use": "another server uses the same folder",
+      "invalid_id": "invalid id",
+      "save_failed": "could not save"
+    },
+    "import_token_moved": "The bot pairing moved too. Disconnect the old PC (on the old PC: saba-chan-cli bot unpair)."
   },
   "console": {
     "attach_help": "Attached to {{name}}. Type a command, :help for help, :q to leave (the server keeps running).",
@@ -398,11 +425,25 @@
     "cmd": {
       "bot.alias.list": "List aliases",
       "bot.alias.add": "Add an alias",
-      "bot.alias.remove": "Remove an alias"
+      "bot.alias.remove": "Remove an alias",
+      "config.export": "Save settings and the server list to a zip, to move to another PC (game files not included)",
+      "config.import": "Bring in settings and servers from an export zip",
+      "bot.channels": "Chatbot channels (several) and the music channel (one) of a paired Discord server. No options: show",
+      "monitor": "CPU, memory, disk and network use, and each server's share"
     },
     "arg": {
       "server": "Server name (a part is enough)",
-      "ids": "One or more extension ids"
+      "ids": "One or more extension ids",
+      "file": "zip file path",
+      "secrets": "Also save passwords, the chatbot API key and the bot pairing",
+      "dry_run": "Only show what would change",
+      "overwrite": "Replace servers that already exist (running ones are skipped)",
+      "bot.channels.chatbot": "Channels the chatbot talks in, by name or id (comma-separated). Replaces the current list",
+      "bot.channels.no_chatbot": "Unassign every chatbot channel",
+      "bot.channels.music": "The music player channel, by name or id. Other messages in it get deleted",
+      "bot.channels.no_music": "Unassign the music channel",
+      "monitor.watch": "Keep refreshing until Ctrl+C",
+      "monitor.interval": "Seconds between refreshes with --watch"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments to open the interactive shell.\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },
@@ -515,5 +556,21 @@
       "where": "Where",
       "what": "Code"
     }
+  },
+  "monitor": {
+    "cpu": "CPU",
+    "memory": "Memory",
+    "disk_io": "Disk IO",
+    "disk": "Disk",
+    "network": "Network",
+    "read_write": "Read {{read}} · Write {{write}}",
+    "disk_free": "{{free}} free of {{total}}",
+    "rx_tx": "In {{rx}} · Out {{tx}}",
+    "others": "Other processes",
+    "idle": "Idle / free",
+    "legend": "█ Servers (color) ·",
+    "none_running": "No servers are running",
+    "network_note": "Network is whole-machine traffic, not split by server. Disk IO and network bars scale to the peak seen while watching.",
+    "watch_hint": "Press Ctrl+C to stop"
   }
 }

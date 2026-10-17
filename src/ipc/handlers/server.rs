@@ -15,9 +15,11 @@ use super::super::{
 ///
 /// supervisor lock이나 디스크 I/O 없이 즉시 응답합니다.
 /// `daemon:status` 폴링 및 데몬 ready 체크에 사용됩니다.
-pub async fn health_check() -> impl IntoResponse {
+/// 토큰 없이 부를 수 있다(A6). `token`은 보낸 토큰이 맞는지(`valid`·`invalid`·`missing`)
+pub async fn health_check(headers: axum::http::HeaderMap) -> impl IntoResponse {
     let version = env!("CARGO_PKG_VERSION");
-    (StatusCode::OK, Json(json!({ "ok": true, "version": version, "pid": std::process::id() })))
+    let token = super::super::auth::token_status(&headers);
+    (StatusCode::OK, Json(json!({ "ok": true, "version": version, "pid": std::process::id(), "token": token })))
 }
 
 /// GET /api/servers - 모든 서버 목록 (인스턴스 기반)

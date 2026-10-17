@@ -27,6 +27,8 @@ export const useSettingsStore = create((set, get) => ({
     consoleTextColor: THEME_DEFAULTS.consoleTextColor,
     sidebarCompact: THEME_DEFAULTS.sidebarCompact,
     consoleFontScale: THEME_DEFAULTS.consoleFontScale,
+    // 서버 페이지의 시스템 모니터를 펼쳐 둘지 (접으면 요약 한 줄)
+    systemMonitorOpen: true,
 
     // ── Actions ──
     load: async () => {
@@ -56,6 +58,7 @@ export const useSettingsStore = create((set, get) => ({
                 patch.consoleTextColor = settings.consoleTextColor ?? THEME_DEFAULTS.consoleTextColor;
                 patch.sidebarCompact = settings.sidebarCompact ?? THEME_DEFAULTS.sidebarCompact;
                 patch.consoleFontScale = settings.consoleFontScale ?? THEME_DEFAULTS.consoleFontScale;
+                patch.systemMonitorOpen = settings.systemMonitorOpen ?? true;
             }
             const path = await window.api.settingsGetPath();
             patch.settingsPath = path;
@@ -133,6 +136,7 @@ export const useSettingsStore = create((set, get) => ({
                 consoleTextColor: state.consoleTextColor,
                 sidebarCompact: state.sidebarCompact,
                 consoleFontScale: state.consoleFontScale,
+                systemMonitorOpen: state.systemMonitorOpen,
             });
             console.log('[Settings] GUI settings saved');
         } catch (error) {
@@ -167,6 +171,7 @@ export const useSettingsStore = create((set, get) => ({
             consoleTextColor: THEME_DEFAULTS.consoleTextColor,
             sidebarCompact: THEME_DEFAULTS.sidebarCompact,
             consoleFontScale: THEME_DEFAULTS.consoleFontScale,
+            systemMonitorOpen: true,
         }),
 }));
 
@@ -191,6 +196,7 @@ const _settingsKeys = [
     'consoleTextColor',
     'sidebarCompact',
     'consoleFontScale',
+    'systemMonitorOpen',
 ];
 useSettingsStore.subscribe((state, prevState) => {
     if (!state.settingsReady || !state.settingsPath) return;
