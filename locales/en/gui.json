@@ -231,6 +231,7 @@
     "delete_confirm_title": "Delete Server",
     "delete_confirm_message": "Are you sure you want to delete server '{{name}}'?",
     "server_added": "Instance '{{name}}' has been added",
+    "server_detected": "Detected server: {{type}} {{version}} · {{count}} plugins/mods{{names}}",
     "server_provisioned": "Instance '{{name}}' has been provisioned",
     "provisioning": "Provisioning…",
     "provision_failed_title": "Provisioning Failed",

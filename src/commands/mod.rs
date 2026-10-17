@@ -15,10 +15,72 @@
 //! - `module`(예전 이름 `dual`/`both`) 또는 생략: 모듈 `lifecycle.py`의 `command()`가 처리
 //!
 //! 정의에 없는 명령은 한 줄 그대로 `Plan::Raw`가 된다(콘솔 입력).
+//!
+//! `[commands] hook = true`인 모듈은 lifecycle `instance_commands()`로 인스턴스마다 명령을 더 준다
+//! (서버에 설치된 플러그인 명령 등, `InstanceCommands`). 같은 이름이면 module.toml 쪽이 먼저다.
 //! 새 실행 방식은 `Plan`에 갈래 하나와 `plan()`의 match 한 줄을 더하면 된다(슬롯).
 
 use crate::supervisor::module_loader::{CommandField, CommandInput, ModuleMetadata};
 use serde_json::{Map, Value};
+
+/// lifecycle `instance_commands()`가 준 인스턴스별 명령
+#[derive(Debug, Clone, Default)]
+pub struct InstanceCommands {
+    pub fields: Vec<CommandField>,
+    /// 명령 이름 → 묶음 이름 (예: 그 명령을 주는 플러그인)
+    pub groups: std::collections::HashMap<String, String>,
+    /// 모듈이 판정한 이 인스턴스의 구성요소 (설치된 플러그인·모드 등). 데몬은 내용을 보지 않고 넘긴다
+    pub components: Value,
+}
+
+#[derive(serde::Deserialize)]
+struct InstanceCommandItem {
+    #[serde(flatten)]
+    field: CommandField,
+    #[serde(default)]
+    group: Option<String>,
+}
+
+impl InstanceCommands {
+    /// `{commands: [명령 필드 + group], components}`를 읽는다. 모양이 틀린 항목은 건너뛴다.
+    pub fn parse(value: &Value) -> Self {
+        let mut out = Self { components: value.get("components").cloned().unwrap_or(Value::Null), ..Self::default() };
+        for item in value.get("commands").and_then(Value::as_array).into_iter().flatten() {
+            let Ok(InstanceCommandItem { mut field, group }) = serde_json::from_value::<InstanceCommandItem>(item.clone())
+            else {
+                continue;
+            };
+            // 이름·템플릿이 콘솔 한 줄을 넘으면 뺀다 (NUL은 공백이 아니라 따로 본다)
+            if field.name.trim().is_empty()
+                || field.name.contains(char::is_whitespace)
+                || has_line_break(&field.name)
+                || field.console_template.as_deref().is_some_and(has_line_break)
+            {
+                continue;
+            }
+            if field.method.as_deref() == Some("rcon") {
+                field.method = Some("console".into());
+            }
+            if let Some(group) = group {
+                out.groups.insert(field.name.clone(), group);
+            }
+            out.fields.push(field);
+        }
+        out
+    }
+}
+
+/// module.toml 명령 뒤에 인스턴스별 명령을 붙인 메타데이터. module.toml의 이름·별명과 겹치는 것은 뺀다.
+pub fn with_instance_commands(module: &ModuleMetadata, extra: &InstanceCommands) -> ModuleMetadata {
+    let mut merged = module.clone();
+    let commands = merged.commands.get_or_insert_with(Default::default);
+    for field in &extra.fields {
+        if find(module, &field.name).is_none() {
+            commands.fields.push(field.clone());
+        }
+    }
+    merged
+}
 
 /// 요청 인자
 #[derive(Debug, Clone, PartialEq)]

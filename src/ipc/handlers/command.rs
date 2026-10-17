@@ -55,6 +55,16 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
         let stdin_route = supervisor.routes_commands_to_stdin(&instance.id).await;
         (instance, metadata, running, stdin_route)
     };
+    // module.toml에 없는 이름이면 인스턴스별 명령(설치된 플러그인 명령 등)에서도 찾는다
+    let metadata = match metadata {
+        Some(meta)
+            if meta.commands.as_ref().is_some_and(|c| c.hook) && crate::commands::find(&meta, &request.name).is_none() =>
+        {
+            let extra = instance_commands(&state, &instance, false).await;
+            Some(crate::commands::with_instance_commands(&meta, &extra))
+        }
+        other => other,
+    };
     let errors = metadata.as_ref().map(|m| m.errors.clone()).unwrap_or_default();
     // 응답의 command는 별명이 아니라 정의된 이름 (정의에 없으면 입력 그대로)
     let name = metadata
@@ -174,9 +184,63 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> axum::
     command_reply(resp, &name, &errors)
 }
 
-/// GET /api/instance/:id/commands — 이 인스턴스에서 쓸 수 있는 명령 전체 (모듈 + 활성 익스텐션)
+/// 인스턴스별 명령 기억 (인스턴스 id → 읽은 때, 명령). 판정에 Python을 띄우므로 명령 실행 때는
+/// 잠깐 기억한 것을 쓰고, 목록 API는 매번 새로 읽는다 (플러그인을 넣고 빼면 바로 보이게).
+static INSTANCE_COMMANDS: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, (std::time::Instant, crate::commands::InstanceCommands)>>,
+> = std::sync::OnceLock::new();
+const INSTANCE_COMMANDS_TTL: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// 모듈 lifecycle `instance_commands()` (`[commands] hook = true`인 모듈만). 실패하면 빈 목록.
+async fn instance_commands(
+    state: &IPCServer,
+    instance: &crate::instance::ServerInstance,
+    fresh: bool,
+) -> crate::commands::InstanceCommands {
+    let cache = INSTANCE_COMMANDS.get_or_init(Default::default);
+    if !fresh {
+        if let Some((at, cached)) = cache.lock().ok().and_then(|c| c.get(&instance.id).cloned()) {
+            if at.elapsed() < INSTANCE_COMMANDS_TTL {
+                return cached;
+            }
+        }
+    }
+    let entry = {
+        let supervisor = state.supervisor.read().await;
+        match supervisor.module_loader.get_module(&instance.module_name) {
+            Ok(m) if m.metadata.commands.as_ref().is_some_and(|c| c.hook) => m.entry_path(),
+            _ => return Default::default(),
+        }
+    };
+    let mut config = serde_json::Map::new();
+    if let Some(dir) = &instance.working_dir {
+        config.insert("working_dir".into(), json!(dir));
+    }
+    crate::supervisor::Supervisor::insert_instance_fields(&mut config, instance);
+    let loaded = match crate::plugin::run_plugin(&entry, "instance_commands", Value::Object(config)).await {
+        Ok(value) if value.get("success").and_then(Value::as_bool) != Some(false) => {
+            crate::commands::InstanceCommands::parse(&value)
+        }
+        Ok(value) => {
+            tracing::warn!("instance_commands failed for '{}': {}", instance.name, value["message"]);
+            Default::default()
+        }
+        Err(e) => {
+            tracing::warn!("instance_commands failed for '{}': {}", instance.name, e);
+            Default::default()
+        }
+    };
+    if let Ok(mut c) = cache.lock() {
+        c.insert(instance.id.clone(), (std::time::Instant::now(), loaded.clone()));
+    }
+    loaded
+}
+
+/// GET /api/instance/:id/commands — 이 인스턴스에서 쓸 수 있는 명령 전체 (모듈 + 인스턴스별 + 활성 익스텐션)
 ///
-/// `{commands: [{name, label, description, risk, inputs, source: "module"|"extension", extension?, aliases?}]}`
+/// `{commands: [{name, label, description, risk, inputs, source: "module"|"extension", group?, extension?, aliases?}],
+///   components?}` — 인스턴스별 명령(`[commands] hook`)은 source "module"에 `group`(예: 플러그인 이름)이 붙고,
+/// `components`는 모듈이 판정한 구성요소(설치된 플러그인·모드 등)를 그대로 넘긴 것이다.
 pub async fn list_instance_commands(Path(id): Path<String>, State(state): State<IPCServer>) -> axum::response::Response {
     let (instance, metadata) = {
         let supervisor = state.supervisor.read().await;
@@ -205,6 +269,26 @@ pub async fn list_instance_commands(Path(id): Path<String>, State(state): State<
             }));
         }
     }
+    let extra = match &metadata {
+        Some(meta) if meta.commands.as_ref().is_some_and(|c| c.hook) => Some(instance_commands(&state, &instance, true).await),
+        _ => None,
+    };
+    if let (Some(meta), Some(extra)) = (&metadata, &extra) {
+        for field in &extra.fields {
+            if crate::commands::find(meta, &field.name).is_some() {
+                continue; // module.toml이 먼저다
+            }
+            commands.push(json!({
+                "name": field.name,
+                "label": field.label,
+                "description": field.description,
+                "risk": field.risk.as_deref().unwrap_or("caution"),
+                "inputs": field.inputs,
+                "source": "module",
+                "group": extra.groups.get(&field.name),
+            }));
+        }
+    }
     let mgr = state.extension_manager.read().await;
     for (ext_id, cmd) in mgr.commands_for(&instance.extension_data) {
         if commands.iter().any(|c| c["name"].as_str().is_some_and(|n| n.eq_ignore_ascii_case(&cmd.name))) {
@@ -220,7 +304,11 @@ pub async fn list_instance_commands(Path(id): Path<String>, State(state): State<
             "extension": ext_id,
         }));
     }
-    Json(json!({ "commands": commands })).into_response()
+    let mut body = json!({ "commands": commands });
+    if let Some(extra) = extra.filter(|e| !e.components.is_null()) {
+        body["components"] = extra.components;
+    }
+    Json(body).into_response()
 }
 
 /// 모듈 lifecycle.py `command()` 실행

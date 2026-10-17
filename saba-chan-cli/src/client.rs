@@ -219,7 +219,7 @@ impl Api {
             .cloned()
             .unwrap_or_default())
     }
-    /// POST /api/instances — `{name, module_name, port?, migration_source?, executable_path?, working_dir?}`
+    /// POST /api/instances — `{name, module_name, port?, migration_source?, executable_path?, working_dir?, module_settings?}`
     pub async fn create_instance(&self, body: Value) -> Result<Value> {
         self.post_long("/api/instances", body).await
     }

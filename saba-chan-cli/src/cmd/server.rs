@@ -424,8 +424,46 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
         }
     }
 
+    // 5-1) 만들 때 고르는 모듈 설정 (`install = true`, 예: 마인크래프트 서버 종류). 설치할 파일이
+    // 달라지므로 만든 뒤가 아니라 만들 때 보낸다. --set으로 주지 않았으면 새 서버일 때 묻는다
+    let fields = setting_fields(&module);
+    let is_install = |key: &str| fields.iter().any(|f| s(f, "name") == key && f.get("install") == Some(&json!(true)));
+    let mut module_settings = Map::new();
+    let mut later_set = Vec::new();
+    for (k, v) in split_pairs(&a.set)? {
+        if is_install(&k) {
+            let (key, value) = typed_setting(&fields, &Value::Null, &k, &v)?;
+            module_settings.insert(key, value);
+        } else {
+            later_set.push((k, v));
+        }
+    }
+    if from.is_none() && ctx.ask.enabled {
+        for f in fields.iter().filter(|f| is_install(s(f, "name"))) {
+            if module_settings.contains_key(s(f, "name")) {
+                continue;
+            }
+            let options: Vec<String> = f
+                .get("options")
+                .and_then(Value::as_array)
+                .map(|o| o.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                .unwrap_or_default();
+            if options.is_empty() {
+                continue;
+            }
+            let label = if s(f, "label").is_empty() { s(f, "name") } else { s(f, "label") };
+            let default = options.iter().position(|o| Some(o.as_str()) == f.get("default").and_then(Value::as_str));
+            if let Some(i) = ctx.ask.select(label, &options, default.unwrap_or(0))? {
+                module_settings.insert(s(f, "name").to_string(), json!(options[i]));
+            }
+        }
+    }
+
     // 6) 만들기
     let mut body = json!({ "name": name, "module_name": module_name });
+    if !module_settings.is_empty() {
+        body["module_settings"] = Value::Object(module_settings);
+    }
     if let Some(p) = a.game_port {
         body["port"] = json!(p);
     }
@@ -438,12 +476,9 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
 
     // 7) 설정 (--set, 익스텐션 칸)
     let mut patch = Map::new();
-    if !a.set.is_empty() {
-        let fields = setting_fields(&module);
-        for (k, v) in split_pairs(&a.set)? {
-            let (key, value) = typed_setting(&fields, &Value::Null, &k, &v)?;
-            insert_patch(&mut patch, &key, value);
-        }
+    for (k, v) in later_set {
+        let (key, value) = typed_setting(&fields, &Value::Null, &k, &v)?;
+        insert_patch(&mut patch, &key, value);
     }
     if !ext_data.is_empty() {
         patch
