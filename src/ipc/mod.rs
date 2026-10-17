@@ -39,18 +39,12 @@ pub struct RegisteredClient {
 #[derive(Debug, Clone)]
 pub struct ClientRegistry {
     inner: Arc<RwLock<HashMap<String, RegisteredClient>>>,
-    /// 한 번이라도 클라이언트가 등록된 적이 있는지
-    had_clients_ever: Arc<RwLock<bool>>,
-    /// 마지막 클라이언트가 사라진 시점 (None = 아직 클라이언트 있음)
-    last_client_lost_at: Arc<RwLock<Option<std::time::Instant>>>,
 }
 
 impl Default for ClientRegistry {
     fn default() -> Self {
         Self {
             inner: Arc::new(RwLock::new(HashMap::new())),
-            had_clients_ever: Arc::new(RwLock::new(false)),
-            last_client_lost_at: Arc::new(RwLock::new(None)),
         }
     }
 }
@@ -69,9 +63,6 @@ impl ClientRegistry {
             kind,
             last_heartbeat: std::time::Instant::now(),
         });
-        // 클라이언트가 등록되면 "한 번이라도 연결됨" 플래그 세팅, lost 타임스탬프 해제
-        *self.had_clients_ever.write().await = true;
-        *self.last_client_lost_at.write().await = None;
         id
     }
 
@@ -122,30 +113,6 @@ impl ClientRegistry {
     /// 현재 등록된 클라이언트 수
     pub async fn count(&self) -> usize {
         self.inner.read().await.len()
-    }
-
-    /// 등록된 모든 클라이언트가 있는지 (데몬 자동 종료 판단용)
-    pub async fn has_clients(&self) -> bool {
-        !self.inner.read().await.is_empty()
-    }
-
-    /// 한 번이라도 클라이언트가 등록된 적이 있었는지
-    pub async fn had_clients_ever(&self) -> bool {
-        *self.had_clients_ever.read().await
-    }
-
-    /// 마지막 클라이언트가 사라진 시점 (None이면 아직 클라이언트가 있거나 연결된 적 없음)
-    pub async fn last_client_lost_at(&self) -> Option<std::time::Instant> {
-        *self.last_client_lost_at.read().await
-    }
-
-    /// 클라이언트가 0이 되었을 때 lost 타임스탬프를 기록 (reaper에서 호출)
-    pub async fn mark_all_clients_lost(&self) {
-        let mut ts = self.last_client_lost_at.write().await;
-        if ts.is_none() {
-            *ts = Some(std::time::Instant::now());
-            tracing::warn!("[Watchdog] All renderer clients lost — watchdog timer started");
-        }
     }
 }
 
