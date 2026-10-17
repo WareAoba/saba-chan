@@ -38,6 +38,14 @@ pub fn find_key_name(entries: &[(String, String)], install_dir: &Path) -> Option
         .map(|(name, _)| name.clone())
 }
 
+/// 이 설치본 말고 남은 사바쨩 설치가 없는지 (`install_dir`가 None이면 어느 항목도 내 것이 아니다).
+/// 사용자 데이터 폴더는 설치본들이 함께 쓰므로 마지막 설치본을 지울 때만 지운다
+pub fn is_last_install(entries: &[(String, String)], install_dir: Option<&Path>) -> bool {
+    entries
+        .iter()
+        .all(|(_, loc)| install_dir.is_some_and(|dir| crate::same_path(Path::new(loc), dir)))
+}
+
 /// 레지스트리에 있는 사바쨩 항목들 `(키 이름, InstallLocation)`
 #[cfg(target_os = "windows")]
 pub fn entries() -> Vec<(String, String)> {
@@ -103,6 +111,17 @@ mod tests {
         assert_eq!(pick_key_name(&both, b), other);
         assert_eq!(find_key_name(&both, b).as_deref(), Some(other.as_str()));
         assert_eq!(find_key_name(&both, Path::new("/opt/saba-c")), None);
+    }
+
+    #[test]
+    fn shared_data_goes_only_with_the_last_install() {
+        let a = Path::new("/opt/saba-a");
+        assert!(is_last_install(&[], Some(a)));
+        assert!(is_last_install(&[], None));
+        assert!(is_last_install(&[entry(BASE_KEY, "/opt/saba-a")], Some(a)));
+        let two = vec![entry(BASE_KEY, "/opt/saba-a"), entry("Saba-chan-1234abcd", "/opt/saba-b")];
+        assert!(!is_last_install(&two, Some(a)));
+        assert!(!is_last_install(&[entry(BASE_KEY, "/opt/saba-a")], None));
     }
 
     #[test]
