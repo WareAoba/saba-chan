@@ -2400,6 +2400,12 @@ const discordSettingsPath = (guild) => `/api/discord/${encodeURIComponent(guild)
 ipcMain.handle('discord:settings:get', (_event, guild) => daemonCall('get', discordSettingsPath(guild)));
 ipcMain.handle('discord:settings:set', (_event, guild, patch) => daemonCall('patch', discordSettingsPath(guild), patch || {}));
 
+// 터미널로 열기 (I4): 데몬이 새 콘솔 창에 CLI를 띄운다. {view: 'console'|'shell', instance?}
+ipcMain.handle('clients:launch', (_event, opts) => {
+    const { view, instance } = opts || {};
+    return daemonCall('post', '/api/clients/launch', { kind: 'cli', view, instance });
+});
+
 ipcMain.handle('audit:list', (_event, opts) => {
     const { limit, instance } = opts || {};
     const params = new URLSearchParams();

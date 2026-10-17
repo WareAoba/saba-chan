@@ -132,6 +132,9 @@ contextBridge.exposeInMainWorld('api', {
     discordSettingsGet: (guild) => ipcRenderer.invoke('discord:settings:get', guild),
     // 바꿀 키만 → {success, settings, sync:{guildId, ok, status?, error?}}
     discordSettingsSet: (guild, patch) => ipcRenderer.invoke('discord:settings:set', guild, patch),
+    // 터미널로 열기 (I4): {view: 'console'|'shell', instance?} → {success, pid} 또는 {error, error_code}
+    // (unsupported_platform·cli_not_found·not_found·invalid_input)
+    openInTerminal: (opts) => ipcRenderer.invoke('clients:launch', opts),
     // 설정·서버 목록 내보내기/가져오기 (A9): {secrets} / {path?, dryRun, overwrite}. 취소하면 {canceled: true}
     dataExport: (opts) => ipcRenderer.invoke('dataTransfer:export', opts),
     dataImport: (opts) => ipcRenderer.invoke('dataTransfer:import', opts),
