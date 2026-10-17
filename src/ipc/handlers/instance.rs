@@ -201,7 +201,7 @@ pub async fn create_instance(
                 // ── Extension hook: server.post_create ──
                 if !migration_mode {
                     // ── Native provisioning: 서버 바이너리 설치 ──
-                    // install 설정이 있는 모듈만 프로비저닝 (steamcmd / download)
+                    // install 설정이 있는 모듈만 프로비저닝 (download / 익스텐션 방식)
                     let has_install = module_install.as_ref()
                         .and_then(|(install, _, _)| install.as_ref())
                         .is_some();
@@ -211,14 +211,8 @@ pub async fn create_instance(
                             .and_then(|(install, _, _)| install.clone())
                             .unwrap();
 
-                        // ── SteamCMD extension_data 자동 주입 (신규 생성) ──
-                        instance.apply_install_extension_data(
-                            &install_config.method,
-                            install_config.app_id,
-                            install_config.anonymous,
-                            install_config.beta.as_deref(),
-                            install_config.platform.as_deref(),
-                        );
+                        // ── 설치 방식 익스텐션이 읽을 extension_data (신규 생성) ──
+                        instance.apply_install_extension_data(&install_config.method, &install_config.extension_fields());
                         // 인스턴스 재저장 (extension_data 업데이트)
                         let _ = supervisor.instance_store.update(&id, instance.clone());
 
@@ -240,14 +234,14 @@ pub async fn create_instance(
 
                         // 초기 프로비저닝 상태 등록
                         let provision_label = match install_config.method.as_str() {
-                            "steamcmd" => "steamcmd",
-                            _ => "download",
+                            "manual" | "download" => "download".to_string(),
+                            other => other.to_string(),
                         };
                         tracker.mark_creating(&instance_name);
                         tracker.update(&instance_name, crate::ipc::ProvisionProgress {
                             step: 0,
                             total: 1,
-                            label: provision_label.to_string(),
+                            label: provision_label.clone(),
                             message: "Installing server...".to_string(),
                             done: false,
                             error: None,
@@ -310,7 +304,7 @@ pub async fn create_instance(
                                         }
                                     }
                                 } else {
-                                    None // steamcmd 방식은 version 불필요
+                                    None // 익스텐션 방식은 version 불필요
                                 };
 
                                 // download 방식인데 버전을 파악하지 못한 경우 에러
@@ -343,7 +337,7 @@ pub async fn create_instance(
                                     tracker_progress.update(&name_progress, crate::ipc::ProvisionProgress {
                                         step: prog.step.unwrap_or(0),
                                         total: prog.total.unwrap_or(1),
-                                        label: prog.label.unwrap_or_else(|| provision_label.to_string()),
+                                        label: prog.label.unwrap_or_else(|| provision_label.clone()),
                                         message: msg,
                                         done: false,
                                         error: None,
@@ -354,7 +348,7 @@ pub async fn create_instance(
 
                                 crate::plugin::run_plugin_with_progress_and_timeout(
                                     &module_path, "install_server", config, on_progress,
-                                    1800, // 30분 — SteamCMD 대용량 다운로드 허용
+                                    1800, // 30분 — 대용량 다운로드 허용
                                 ).await
                             };
 
@@ -449,17 +443,10 @@ pub async fn create_instance(
                 } else {
                     // 마이그레이션: 기존 디렉토리에 직접 연결, 추가 설치 없음
 
-                    // ── SteamCMD extension_data 자동 주입 (마이그레이션) ──
-                    // 모듈이 steamcmd 방식일 경우, hook 조건이 올바르게 동작하도록
-                    // install_method_steamcmd, steamcmd_app_id 등을 extension_data에 설정
+                    // ── 설치 방식 익스텐션이 읽을 extension_data (마이그레이션) ──
+                    // hook 조건(`instance.ext_data.install_method_<방식>`)이 맞게 동작하도록
                     if let Some((Some(ref install), _, _)) = module_install {
-                        instance.apply_install_extension_data(
-                            &install.method,
-                            install.app_id,
-                            install.anonymous,
-                            install.beta.as_deref(),
-                            install.platform.as_deref(),
-                        );
+                        instance.apply_install_extension_data(&install.method, &install.extension_fields());
                     }
 
                     // ── executable_path 자동 계산 ──
@@ -1071,7 +1058,7 @@ pub async fn update_instance_settings(
 
 /// GET /api/instance/:id/check-update - 게임 서버 업데이트 확인
 ///
-/// extension_data에 install_method_steamcmd 가 있는 인스턴스에 대해
+/// 설치 방식 익스텐션(`install_method_<방식>`)으로 설치된 인스턴스에 대해
 /// server.check_update hook을 디스패치하여 buildid 비교 결과를 반환합니다.
 pub async fn check_server_update(
     Path(id): Path<String>,
@@ -1122,10 +1109,10 @@ pub async fn check_server_update(
     let install_dir = instance_dir.join(&install_subdir);
     let install_dir_str = install_dir.to_string_lossy().to_string();
 
-    // app_id: extension_data에서 우선, 없으면 module config에서
-    let app_id = instance
-        .extension_data
-        .get("steamcmd_app_id")
+    // app_id: extension_data(`<방식>_app_id`)에서 우선, 없으면 module config에서
+    let app_id = install_config
+        .as_ref()
+        .and_then(|cfg| instance.extension_data.get(&format!("{}_app_id", cfg.method)))
         .and_then(|v| v.as_u64())
         .or_else(|| install_config.as_ref().and_then(|cfg| cfg.app_id.map(|id| id as u64)));
 
@@ -1198,23 +1185,6 @@ pub async fn apply_server_update(
             .into_response();
     }
 
-    // SteamCMD 인스턴스인지 확인
-    let is_steamcmd = instance
-        .extension_data
-        .get("install_method_steamcmd")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    if !is_steamcmd {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": "Only SteamCMD-installed instances can be updated this way.",
-                "error_code": "not_steamcmd",
-            })),
-        )
-            .into_response();
-    }
-
     // 모듈에서 install config 가져오기
     let module_info = supervisor
         .module_loader
@@ -1236,6 +1206,21 @@ pub async fn apply_server_update(
         }
     };
 
+    // 익스텐션이 설치한 인스턴스만 이 경로로 업데이트한다 (설치 방식 슬롯)
+    let method = install_config.method.clone();
+    let by_extension = !crate::instance::BUILTIN_INSTALL_METHODS.contains(&method.as_str())
+        && instance.ext_enabled(&crate::instance::install_method_key(&method));
+    if !by_extension {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Only instances installed by an install-method extension can be updated this way.",
+                "error_code": "update_unsupported",
+            })),
+        )
+            .into_response();
+    }
+
     let instance_dir = supervisor.instance_store.instance_dir(&id);
     let install_subdir = install_config
         .install_subdir
@@ -1256,7 +1241,7 @@ pub async fn apply_server_update(
         crate::ipc::ProvisionProgress {
             step: 0,
             total: 1,
-            label: "steamcmd".to_string(),
+            label: method.clone(),
             message: "Updating server...".to_string(),
             done: false,
             error: None,
@@ -1314,7 +1299,7 @@ pub async fn apply_server_update(
                     crate::ipc::ProvisionProgress {
                         step: prog.step.unwrap_or(0),
                         total: prog.total.unwrap_or(1),
-                        label: prog.label.unwrap_or_else(|| "steamcmd".to_string()),
+                        label: prog.label.unwrap_or_else(|| method.clone()),
                         message: msg,
                         done: false,
                         error: None,
@@ -1329,7 +1314,7 @@ pub async fn apply_server_update(
                 "install_server",
                 config,
                 on_progress,
-                1800, // 30분 — SteamCMD 대용량 다운로드 허용
+                1800, // 30분 — 대용량 다운로드 허용
             )
             .await
         };

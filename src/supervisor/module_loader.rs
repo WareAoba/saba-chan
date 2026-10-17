@@ -573,6 +573,26 @@ pub struct ModuleInstallConfig {
 
 fn default_true_mod() -> bool { true }
 
+impl ModuleInstallConfig {
+    /// 설치 방식 익스텐션에 넘기는 값 (`Instance::apply_install_extension_data`)
+    pub fn extension_fields(&self) -> Vec<(&'static str, serde_json::Value)> {
+        let mut fields = vec![("anonymous", serde_json::json!(self.anonymous))];
+        if let Some(id) = self.app_id {
+            fields.push(("app_id", serde_json::json!(id)));
+        }
+        if let Some(beta) = &self.beta {
+            fields.push(("beta", serde_json::json!(beta)));
+        }
+        if let Some(platform) = &self.platform {
+            fields.push(("platform", serde_json::json!(platform)));
+        }
+        if let Some(url) = &self.download_url {
+            fields.push(("download_url", serde_json::json!(url)));
+        }
+        fields
+    }
+}
+
 /// module.toml [aliases] 섹션
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[schemars(deny_unknown_fields)]
