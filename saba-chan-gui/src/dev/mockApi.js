@@ -160,7 +160,8 @@ const impl = {
         }),
     chatbotSave: (patch) => ok({ success: true, settings: patch.settings || {}, guilds: {}, hasApiKey: true, sync: [] }),
     chatbotClearMemory: () => ok({ success: true }),
-    moduleDetect: () => ok({ matches: [{ name: 'minecraft', display_name: 'Minecraft: Java Edition' }] }),
+    migrationScanDir: () =>
+        ok({ ok: true, matches: [{ name: 'minecraft', display_name: 'Minecraft: Java Edition' }] }),
     settingsLoad: () => ok(settings),
     settingsSave: (s) => {
         Object.assign(settings, s);
