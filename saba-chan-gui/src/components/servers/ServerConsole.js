@@ -30,6 +30,7 @@ export function ServerConsole({
     poppedOut,
     onPopout,
     onPopin,
+    autoFocus = false,
 }) {
     const { t } = useTranslation('gui');
     const syntaxEnabled = useSettingsStore((s) => s.consoleSyntaxHighlight);
@@ -52,6 +53,11 @@ export function ServerConsole({
     );
 
     const lines = state?.lines || [];
+
+    // 따로 띄운 창은 명령을 치려고 여는 창이라 열리자마자 입력칸에 커서를 둔다
+    useEffect(() => {
+        if (autoFocus) inputRef.current?.focus();
+    }, [autoFocus]);
 
     // 맨 아래를 보고 있을 때만 새 줄을 따라 내려간다
     // biome-ignore lint/correctness/useExhaustiveDependencies: 줄 수가 바뀔 때만 스크롤
@@ -214,16 +220,20 @@ export function ServerConsole({
                 >
                     <Icon name="arrowUp" size="sm" />
                 </button>
-                <span className="term-divider" aria-hidden="true" />
-                <button
-                    type="button"
-                    className="icon-btn term-popout"
-                    onClick={onPopout}
-                    data-tooltip={t('console.popout')}
-                    aria-label={t('console.popout')}
-                >
-                    <Icon name="externalLink" size="sm" />
-                </button>
+                {onPopout && (
+                    <>
+                        <span className="term-divider" aria-hidden="true" />
+                        <button
+                            type="button"
+                            className="icon-btn term-popout"
+                            onClick={onPopout}
+                            data-tooltip={t('console.popout')}
+                            aria-label={t('console.popout')}
+                        >
+                            <Icon name="externalLink" size="sm" />
+                        </button>
+                    </>
+                )}
             </form>
         </div>
     );

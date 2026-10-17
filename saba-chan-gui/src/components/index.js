@@ -1,6 +1,5 @@
 // 모든 컴포넌트를 한 곳에서 export
 
-export { PopoutConsole } from './ConsoleView';
 export { default as CustomDropdown } from './CustomDropdown/CustomDropdown';
 export { ErrorFallback } from './ErrorFallback';
 export { default as ExtensionSlot } from './ExtensionSlot';
@@ -13,5 +12,6 @@ export { FailureModal, NotificationModal, QuestionModal, SuccessModal } from './
 export { default as NoticeModal } from './Modals/NoticeModal';
 export { default as SettingsModal } from './Modals/SettingsModal';
 export { ServerSettingsModal } from './ServerSettingsModal';
+export { PopoutConsole } from './servers/PopoutConsole';
 export { default as Toast } from './Toast/Toast';
 export { SabaCheckbox, SabaSpinner, SabaToggle } from './ui/SabaUI';

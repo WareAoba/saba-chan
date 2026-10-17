@@ -44,8 +44,8 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
     const zCounterRef = useRef(100);
     // Map of instanceId -> polling interval id
     const pollingRefs = useRef({});
-    // Popout tracking (same as original)
-    const [consolePopoutInstanceId, setConsolePopoutInstanceId] = useState(null);
+    // 따로 띄운 창에 가 있는 콘솔들 (여러 서버를 동시에 띄울 수 있다)
+    const [consolePopoutIds, setConsolePopoutIds] = useState([]);
 
     // ── Helpers ─────────────────────────────────────────────
 
@@ -426,10 +426,12 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
     useEffect(() => {
         if (isPopoutMode) return;
         const handlePopoutOpened = (instanceId) => {
-            setConsolePopoutInstanceId(instanceId);
+            setConsolePopoutIds((prev) => (prev.includes(instanceId) ? prev : [...prev, instanceId]));
+            // 띄운 창이 따로 읽으니 이 창은 읽기를 멈춘다. 돌아오면 상세 화면이 다시 연다
+            closeConsole(instanceId);
         };
         const handlePopoutClosed = (instanceId) => {
-            setConsolePopoutInstanceId((prev) => (prev === instanceId ? null : prev));
+            setConsolePopoutIds((prev) => prev.filter((id) => id !== instanceId));
         };
         const handlePopinRequest = (instanceId, serverName) => {
             // PiP → 인앱 전환: 인앱 콘솔 창 열기
@@ -443,13 +445,12 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
             if (window.api.offConsolePopoutClosed) window.api.offConsolePopoutClosed();
             if (window.api.offConsolePopinRequest) window.api.offConsolePopinRequest();
         };
-    }, [isPopoutMode, openConsole]);
+    }, [isPopoutMode, openConsole, closeConsole]);
 
     return {
         consoles,
         consoleServer,
-        consolePopoutInstanceId,
-        setConsolePopoutInstanceId,
+        consolePopoutIds,
         openConsole,
         closeConsole,
         minimizeConsole,
