@@ -791,6 +791,7 @@
     "usage_list_word": "list",
     "usage_list": "Server list and status",
     "usage_start_word": "start",
-    "usage_command": "Module word + command word"
+    "usage_command": "Module word + command word",
+    "disconnect_failed": "Couldn't disconnect: {{error}}. The bot may still accept commands."
   }
 }

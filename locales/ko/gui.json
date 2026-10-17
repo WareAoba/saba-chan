@@ -791,6 +791,7 @@
     "usage_list_word": "목록",
     "usage_list": "서버 목록과 상태",
     "usage_start_word": "시작",
-    "usage_command": "모듈 단어 + 명령 단어"
+    "usage_command": "모듈 단어 + 명령 단어",
+    "disconnect_failed": "연결을 끊지 못했어요: {{error}}. 봇이 아직 명령을 받을 수 있어요."
   }
 }

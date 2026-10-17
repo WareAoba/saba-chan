@@ -194,4 +194,21 @@ describe('DiscordPage', () => {
         expect(window.api.discordBotStop).toHaveBeenCalled();
         expect(window.api.deleteNodeToken).toHaveBeenCalled();
     });
+
+    it('연결 해제가 실패하면 알리고 화면 상태는 그대로 둔다', async () => {
+        window.api.discordBotStop = vi.fn().mockResolvedValue({ success: true });
+        window.api.deleteNodeToken = vi.fn().mockResolvedValue({ ok: false, error: 'EPERM' });
+        const save = vi.fn().mockResolvedValue();
+        await act(async () => render(<Harness save={save} />));
+        const btn = await waitFor(() => {
+            const b = document.querySelector('.dc-danger-zone .btn');
+            expect(b).not.toBeNull();
+            return b;
+        });
+        await act(async () => fireEvent.click(btn));
+        await act(async () => fireEvent.click(btn));
+        expect(window.showToast).toHaveBeenCalledWith(expect.stringContaining('EPERM'), 'error', 5000, undefined);
+        expect(save).not.toHaveBeenCalled();
+        expect(document.querySelector('.dc-danger-zone')).not.toBeNull();
+    });
 });

@@ -222,16 +222,20 @@ export function DiscordPage({
 
     // 연결 해제: 화면만 비우면 데몬 에이전트가 계속 명령을 받는다 → 에이전트를 멈추고 노드 토큰을 지운다
     // (토큰이 남아 있으면 데몬이 다음 시작 때 에이전트를 다시 켠다)
+    // 하나라도 실패하면 화면을 비우지 않는다 (비우면 끊긴 줄 알지만 명령은 계속 들어온다)
     const disconnect = async () => {
-        try {
-            await window.api.discordBotStop?.();
-        } catch (e) {
-            console.warn('[Discord] agent stop failed:', e);
-        }
-        try {
-            await window.api.deleteNodeToken?.();
-        } catch (e) {
-            console.warn('[Discord] node token delete failed:', e);
+        const failure = (r) => (!r ? 'no response' : r.error || (r.ok === false || r.success === false ? 'failed' : null));
+        for (const call of [window.api.discordBotStop, window.api.deleteNodeToken]) {
+            let err;
+            try {
+                err = call ? failure(await call()) : 'unavailable';
+            } catch (e) {
+                err = e.message || String(e);
+            }
+            if (err) {
+                safeShowToast(t('discord.disconnect_failed', { error: err }), 'error', 5000);
+                return;
+            }
         }
         pairing.reset();
         setDiscordCloudHostId('');
