@@ -6,6 +6,9 @@
 
 ---
 
+
+> **2026-10-17 L3 이후**: 업데이트·모듈 목록·익스텐션 목록은 모두 릴레이의 서명된 릴리즈 manifest 하나에서 나온다. GitHub 업데이트 경로(`github.rs`, `api_base_url`, `github_owner`/`github_repo`, `include_prerelease`, 익스텐션 `manifest_url`, module.toml `[update]`, modules·extensions 저장소의 릴리즈 워크플로)는 없다. 근거 커밋: saba-chan 65e1763·8b840f7·60768a7, modules a26bdeb, extensions 301ff2c.
+
 ## 0. 용어 정리: "plugin" vs "extension" (프로젝트 오너 프레이밍 대비)
 
 프로젝트 오너가 정의한 구조는 다음과 같다.
@@ -25,7 +28,7 @@
 | `ipc::ExtensionInfo` / `ExtensionListResponse { modules }` | 이름은 extension이지만 **실제로는 module 정보**다(명명 혼동). | `src/ipc/mod.rs:261-290`, `handlers/server.rs:10,274` |
 | GUI `selectedExtension` | AddServer 모달에서 **module 이름**을 담는 상태다. | `saba-chan-gui/src/components/Modals/AddInstanceNewServer.js:24,79` |
 | `discord_bot/extensions/*.js` | Discord 봇 내부 기능 파일(music.js, rps.js 등)이다. daemon extension 시스템과 **별개인 제3의 "extension" 개념**이다. | `saba-chan/discord_bot/extensions/` |
-| updater의 extension 업데이트 | `extension.toml` + `[update].github_repo`를 찾는 **또 다른 체계**다. 실제 익스텐션에는 `extension.toml`이 없다. | `updater/src/lib.rs:835-860,1100-1115` |
+| updater의 extension 업데이트 | 릴리즈 manifest의 `ext-<id>` 항목. 데몬의 익스텐션 목록(`fetch_remote`)과 같은 manifest를 본다. | `updater/src/lib.rs:469-530`, `src/extension/mod.rs:1268` |
 
 **결론**: 코드에서 "plugin"과 "extension"은 서로 다른 계층이다. `plugin`은 Python 프로세스 실행 프로토콜이고, `extension`은 그 위의 확장 시스템이다. 오너가 말하는 "plugin"은 코드의 `extension`에 해당하고, 코드의 `plugin` 모듈은 module과 extension이 공유하는 하위 런타임이다. `plg/:263-284`의 `run_extension`/`run_extension_with_progress`는 `extensions/<name>.py` 단일 파일이라는 옛 레이아웃을 가정한 `#[allow(dead_code)]` 잔재다.
 
@@ -212,20 +215,14 @@
 
 에러 코드 → HTTP 매핑: `handlers/extension.rs:25-57`. not_found/not_mounted/manifest_not_found는 404, dependency_*와 component_version_unsatisfied는 422, has_dependents/in_use는 409, id_mismatch는 400.
 
-### 3.4 원격 레지스트리 · 설치 · 업데이트
+### 3.4 원격 목록 · 설치 · 업데이트
 
-- URL: `DEFAULT_MANIFEST_URL = "https://raw.githubusercontent.com/WareAoba/saba-chan-extensions/main/manifest.json"`, 하드코딩(`ext/:390-392`). `constants::extensions_manifest_url()`(`updater/src/constants.rs:63`)과 값은 같지만 그 함수를 쓰지 않는다(주석에 TODO). `set_manifest_url()`은 호출처 0건이다. module 레지스트리는 `releases/latest/download/manifest.json`을 쓰므로 **extension과 module의 레지스트리 소스 방식이 다르다**(raw main 브랜치 vs 릴리즈 에셋).
-- `GET /api/extensions/manifest`: 원격 목록과 `check_updates_against`를 반환한다(`handlers/extension.rs:302`).
-- `GET /api/extensions/updates`: 업데이트 목록만 반환한다. `ExtensionUpdateInfo.downloaded/installed`는 항상 false다(`ext/:378-381`, 미구현 필드).
-- `POST /api/extensions/:id/install` (body `{download_url?, sha256?}`): body가 없으면 manifest를 fetch해서 URL을 찾는다. `install_from_url`(`ext/:1431-1498`)은 zip을 받아 `extensions/<id>.zip`에 저장한 뒤 **기존 폴더를 삭제하고** 압축을 풀고 mount한다(실패하면 rescan).
-  - **sha256 검증은 미구현이다**(`_expected_sha256`, 주석 "v0.2 예정"). GUI도 sha256을 넘기지 않는다(`SabaStorage.js:1164,1249`).
-  - `min_app_version`과 `dependencies`는 검사하지 않는다. docker를 설치해도 steamcmd는 설치되지 않는다.
-  - 업데이트는 같은 install 엔드포인트로 덮어쓴다. **실행 중이거나 enabled인 익스텐션이어도 아무 검사 없이 디렉토리를 지운다.** enabled 상태는 id 기준이라 유지된다. 설치 후 자동 enable은 없다.
-- 별도 경로: `ipc/updates.rs:454`는 업데이트를 적용한 뒤 `rescan()`을 부른다. updater 쪽 익스텐션 업데이트(`updater/src/lib.rs:835-1115, 2001`)는 `extension.toml`을 기준으로 하는데, 실제 익스텐션은 모두 `manifest.json`만 가지므로 **이 경로는 사실상 dead**이고 업데이트 체계가 둘로 갈려 있다.
-- 배포(`EXT/.github/workflows/release-extensions.yml`, `EXT/.github/scripts/build_extensions.py`):
-  - 루트에서 `.`이나 `_`로 시작하지 않고 `manifest.json`이 있는 디렉토리를 찾는다. `extension-{id}.zip`으로 압축하며 `__pycache__`, `node_modules`, `*.pyc`, `test_*`, `package-lock.json`은 제외한다. sha256을 계산하고, `has_gui = bool(gui.slots)`, `has_i18n = i18n_dir is not None`으로 정한다. 생성한 `manifest.json`을 릴리즈하고 main에 커밋한다(`[skip ci]`).
-  - **기존 릴리즈를 모두 삭제한다**(workflow "Delete previous releases"). 그래서 버전 롤백이나 고정이 불가능하고 `latest/download`만 존재한다.
-  - zip에 들어가는 원치 않는 파일: `docker/docker/dockerd.pid`(커밋된 런타임 산출물), `music/.deps-resolved.json`(`.gitignore`에 있지만 커밋됨, 개발자 로컬 경로가 담겼을 수 있음), `docker/saba-docker-io/saba-docker-io`(Go 바이너리 커밋), `docker/gui/src/*`. GUI 번들 빌드 스크립트(package.json, esbuild 설정)가 리포에 없다. `docker.umd.js`는 커밋된 산출물을 그대로 배포한다.
+- **출처**: 최신 릴리즈의 서명된 manifest에 든 `ext-<id>` 컴포넌트다. `ExtensionManager::fetch_remote()`가 `relay::latest_catalog`를 부르고 `from_release`가 `meta`(이름·설명·작성자·`min_app_version`·의존성)와 `version`, `download_url`(R2), `sha256`, `asset`을 목록 항목으로 만든다(`ext/:1266-1300`). `manifest_url`, `set_manifest_url`, raw `main/manifest.json`은 없다. 앱보다 새 버전을 요구하면 `incompatible`로 표시한다.
+- `GET /api/extensions/manifest`: 원격 목록과 `check_updates_against` 결과를 돌려준다(`handlers/extension.rs:290-330`).
+- `GET /api/extensions/updates`: 업데이트 목록만 돌려준다(`handlers/extension.rs:391-410`).
+- `POST /api/extensions/:id/install` (body `{download_url?, sha256?}`): body가 없으면 원격 목록에서 URL과 sha256을 찾는다. 빠진 익스텐션 의존성도 차례로 함께 설치한다(`handlers/extension.rs:335-388`). `install_from_url`은 sha256(있으면), manifest 스키마, id, `min_app_version`을 확인한다(`ext/:1359-1372`).
+- 업데이터의 일괄 업데이트(`/api/updates/*`)는 설치된 `ext-*`만 비교하고, 적용 뒤 `rescan()`으로 다시 읽는다.
+- 배포: 익스텐션 저장소에는 릴리즈 워크플로도 생성된 `manifest.json`도 없다. 코어 릴리즈 워크플로가 `saba-chan-extensions`의 `main`을 checkout하고 `versions.py manifest --extensions-repo`가 `ext-<id>.zip`을 만들어 같은 릴리즈 manifest에 싣는다(`D:.github/workflows/release.yml:173-193`, `D:scripts/versions.py:246-265`). 지금 저장소에는 `steamcmd`, `ue4_ini` 두 개만 있다.
 
 ### 3.5 의존성 처리 (music 의존성, node)
 
@@ -338,7 +335,7 @@
 
 1. `HookBinding.is_async`(`ext/:217-218`): 읽는 곳이 없다.
 2. `min_app_version`(`ext/:182,311`): 강제하지 않는다.
-3. `should_parse_config_section`(`ext/:1309`), `all_instance_fields`(`:1317`), `force_disable`(`:962`), `enabled_set`(`:1005`), `is_newer_version`(`:1420`), `set_manifest_url`(`:1353`), `replace_extension_config`(`:1542`), `enable_with_versions`(외부 호출 0건): `impl` 전체에 `#[allow(dead_code)]`가 걸려 있다(`ext/:407`).
+3. `should_parse_config_section`(`ext/:1309`), `all_instance_fields`(`:1317`), `force_disable`(`:962`), `enabled_set`(`:1005`), `is_newer_version`(`:1420`), `replace_extension_config`(`:1542`), `enable_with_versions`(외부 호출 0건): `impl` 전체에 `#[allow(dead_code)]`가 걸려 있다(`ext/:407`).
 4. `install_from_url`의 sha256 검증: 스텁이다(`ext/:1435,1439`).
 5. `ExtensionUpdateInfo.downloaded/installed`: 항상 false다(`ext/:378-381,1408-1409`).
 6. `plugin::run_extension*`(`plg/:263-284`): 옛 레이아웃이다.

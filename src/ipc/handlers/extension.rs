@@ -296,8 +296,7 @@ pub async fn fetch_manifest(
     State(state): State<IPCServer>,
 ) -> Json<serde_json::Value> {
     // 네트워크 요청은 매니저 락 밖에서 (C12)
-    let url = state.extension_manager.read().await.manifest_url();
-    match ExtensionManager::fetch_manifest_from(&url).await {
+    match ExtensionManager::fetch_remote().await {
         Ok(remote) => {
             // 설치된 익스텐션 중 업데이트 가능한 항목 계산
             let updates = state.extension_manager.read().await.check_updates_against(&remote);
@@ -340,11 +339,8 @@ pub async fn install_extension(
     let field = |k: &str| body.as_ref().and_then(|Json(b)| b.get(k)).and_then(|v| v.as_str()).map(str::to_string);
     let (explicit_url, explicit_sha) = (field("download_url"), field("sha256"));
 
-    let (url, extensions_dir) = {
-        let mgr = state.extension_manager.read().await;
-        (mgr.manifest_url(), mgr.extensions_dir().to_path_buf())
-    };
-    let remote = ExtensionManager::fetch_manifest_from(&url).await;
+    let extensions_dir = state.extension_manager.read().await.extensions_dir().to_path_buf();
+    let remote = ExtensionManager::fetch_remote().await;
     let fail = |error: String, code: &str| Json(json!({ "success": false, "error": error, "error_code": code }));
 
     let mut queue = vec![ext_id.clone()];
@@ -396,8 +392,7 @@ pub async fn install_extension(
 pub async fn check_extension_updates(
     State(state): State<IPCServer>,
 ) -> Json<serde_json::Value> {
-    let url = state.extension_manager.read().await.manifest_url();
-    match ExtensionManager::fetch_manifest_from(&url).await {
+    match ExtensionManager::fetch_remote().await {
         Ok(remote) => {
             let updates = state.extension_manager.read().await.check_updates_against(&remote);
             Json(json!({

@@ -1,25 +1,18 @@
-//! 무결성 검증 — 설치된 컴포넌트의 SHA256 해시를 매니페스트와 비교
+//! 무결성 검증 — 업데이터가 설치할 때 기록한 파일별 SHA-256과 지금 디스크의 파일을 비교한다.
 //!
-//! ## 동작 원리
-//! 업데이터가 모든 컴포넌트(코어, CLI, GUI, 모듈, 익스텐션, 디스코드 봇)의
-//! 설치 파일을 스캔하여 SHA256 해시를 계산하고, 매니페스트에 기록된 기대값과
-//! 비교하여 위변조 여부를 판정합니다.
-//!
-//! ## 매니페스트 소스
-//! - **코어 컴포넌트** (saba-core, cli, gui, updater):
-//!   `manifest.json` (GitHub 릴리즈에서 다운로드, 설치 시 로컬에 저장)
-//! - **모듈**: 모듈 리포의 `manifest.json`
-//! - **익스텐션**: 익스텐션 리포의 `manifest.json` (GitHub 릴리즈 에셋)
-//!
-//! ## 검증 후 결과
-//! 코어 데몬이 IPC를 통해 요청하면 검증 결과를 반환하며,
-//! 코어는 이를 터미널에 출력합니다.
+//! 릴리즈 manifest의 `sha256`은 zip의 해시라 풀린 파일과 비교할 수 없다. 그래서 적용할 때
+//! zip에서 푼 파일마다 해시를 `<데이터 폴더>/installed-files.json`에 적어 두고(`record_install`),
+//! 검사(`verify_installed`)는 그 기록만 본다. 네트워크를 쓰지 않는다.
+//! 업데이터가 설치하지 않은 컴포넌트(설치기로 처음 깐 것)는 기록이 없어 결과에 나오지 않는다.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+
+/// 컴포넌트 키 → (파일 절대 경로 → sha256)
+pub type InstalledFiles = BTreeMap<String, BTreeMap<String, String>>;
 
 // ══════════════════════════════════════════════════════
 // 검증 결과 구조체
@@ -28,17 +21,17 @@ use std::path::{Path, PathBuf};
 /// 개별 컴포넌트의 무결성 검증 결과
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComponentIntegrity {
-    /// 컴포넌트 키 (예: "saba-core", "module-minecraft", "ext-docker")
+    /// 컴포넌트 키 (예: "saba-core", "module-minecraft", "ext-steamcmd")
     pub component: String,
     /// 사용자 표시용 이름
     pub display_name: String,
     /// 검증 상태
     pub status: IntegrityStatus,
-    /// 매니페스트에 기록된 기대 해시
+    /// 기록된 해시 (문제가 난 파일의 것)
     pub expected_hash: Option<String>,
     /// 실제 계산된 해시
     pub actual_hash: Option<String>,
-    /// 검증 대상 파일 경로
+    /// 문제가 난 파일 경로
     pub file_path: Option<String>,
     /// 상세 메시지
     pub message: String,
@@ -47,15 +40,13 @@ pub struct ComponentIntegrity {
 /// 무결성 상태
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum IntegrityStatus {
-    /// 검증 통과 — 해시 일치
+    /// 기록된 파일이 모두 그대로다
     Verified,
-    /// 해시 불일치 — 위변조 가능성
+    /// 설치한 뒤 내용이 바뀐 파일이 있다
     Tampered,
-    /// 매니페스트에 해시가 없음 — 검증 불가 (개발 환경 등)
-    NoHash,
-    /// 파일을 찾을 수 없음
+    /// 설치한 파일이 없어졌다
     FileNotFound,
-    /// 검증 중 오류 발생
+    /// 파일을 읽지 못했다
     Error,
 }
 
@@ -68,13 +59,13 @@ pub struct IntegrityReport {
     pub overall: OverallIntegrity,
     /// 개별 컴포넌트 결과
     pub components: Vec<ComponentIntegrity>,
-    /// 검증된 컴포넌트 수
+    /// 검증한 컴포넌트 수
     pub total: usize,
     /// 통과한 컴포넌트 수
     pub verified: usize,
     /// 실패한 컴포넌트 수 (Tampered + Error)
     pub failed: usize,
-    /// 검증 불가 수 (NoHash + FileNotFound)
+    /// 파일이 없어진 컴포넌트 수
     pub skipped: usize,
 }
 
@@ -83,207 +74,111 @@ pub struct IntegrityReport {
 pub enum OverallIntegrity {
     /// 모든 컴포넌트 검증 통과
     AllVerified,
-    /// 일부 해시 없음 (개발 환경 등) — 위변조는 감지되지 않음
+    /// 바뀐 파일은 없지만 없어진 파일이 있다
     Partial,
-    /// 하나 이상의 컴포넌트에서 위변조가 감지됨
+    /// 하나 이상의 컴포넌트에서 바뀐 파일이 있다
     TamperDetected,
-    /// 검증 대상이 없음
+    /// 기록된 설치가 없다
     Empty,
 }
 
 // ══════════════════════════════════════════════════════
-// IntegrityChecker
+// 기록과 검증
 // ══════════════════════════════════════════════════════
 
-/// 무결성 검증기
-pub struct IntegrityChecker {
-    /// 설치 루트 디렉터리 (코어 바이너리 기준)
-    install_root: PathBuf,
-    /// 모듈 디렉터리
-    modules_dir: PathBuf,
-    /// 익스텐션 디렉터리
-    extensions_dir: PathBuf,
+fn records_path() -> PathBuf {
+    crate::constants::resolve_data_dir().join("installed-files.json")
 }
 
-impl IntegrityChecker {
-    pub fn new(install_root: PathBuf, modules_dir: PathBuf, extensions_dir: PathBuf) -> Self {
-        Self {
-            install_root,
-            modules_dir,
-            extensions_dir,
-        }
+fn load_records(path: &Path) -> InstalledFiles {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+/// 적용한 컴포넌트의 파일 해시를 기록한다. 같은 컴포넌트의 이전 기록은 바꾼다
+pub fn record_install(component_key: &str, files: &[PathBuf]) -> Result<(), String> {
+    record_install_at(&records_path(), component_key, files)
+}
+
+fn record_install_at(path: &Path, component_key: &str, files: &[PathBuf]) -> Result<(), String> {
+    let mut hashes = BTreeMap::new();
+    for file in files {
+        hashes.insert(file.to_string_lossy().to_string(), compute_sha256(file)?);
     }
-
-    /// 모든 컴포넌트의 무결성을 검증합니다.
-    ///
-    /// # Arguments
-    /// * `expected_hashes` - 컴포넌트 키 → 기대 SHA256 해시 맵
-    ///   (manifest.json + 모듈/익스텐션 manifest에서 수집)
-    pub fn verify_all(&self, expected_hashes: &HashMap<String, ComponentHashInfo>) -> IntegrityReport {
-        let mut components = Vec::new();
-
-        for (key, info) in expected_hashes {
-            let result = self.verify_component(key, info);
-            components.push(result);
-        }
-
-        // 정렬: 코어 컴포넌트 → 모듈 → 익스텐션 순
-        components.sort_by_key(|a| component_sort_key(&a.component));
-
-        let total = components.len();
-        let verified = components.iter().filter(|c| c.status == IntegrityStatus::Verified).count();
-        let failed = components.iter().filter(|c| matches!(c.status, IntegrityStatus::Tampered | IntegrityStatus::Error)).count();
-        let skipped = components.iter().filter(|c| matches!(c.status, IntegrityStatus::NoHash | IntegrityStatus::FileNotFound)).count();
-
-        let overall = if total == 0 {
-            OverallIntegrity::Empty
-        } else if failed > 0 {
-            OverallIntegrity::TamperDetected
-        } else if verified == total {
-            OverallIntegrity::AllVerified
-        } else {
-            OverallIntegrity::Partial
-        };
-
-        IntegrityReport {
-            checked_at: chrono::Utc::now().to_rfc3339(),
-            overall,
-            components,
-            total,
-            verified,
-            failed,
-            skipped,
-        }
+    let mut records = load_records(path);
+    records.insert(component_key.to_string(), hashes);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
+    let json = serde_json::to_string_pretty(&records).map_err(|e| e.to_string())?;
+    std::fs::write(path, json).map_err(|e| e.to_string())
+}
 
-    /// 단일 컴포넌트의 무결성을 검증합니다.
-    fn verify_component(&self, key: &str, info: &ComponentHashInfo) -> ComponentIntegrity {
-        let display_name = info.display_name.clone();
-        let file_path = self.resolve_component_path(key, info);
+/// 기록된 모든 설치를 검사한다
+pub fn verify_installed() -> IntegrityReport {
+    verify_records(&load_records(&records_path()))
+}
 
-        // 1. 기대 해시가 없으면 NoHash
-        let expected = match &info.expected_sha256 {
-            Some(h) if !h.is_empty() => h.clone(),
-            _ => {
-                return ComponentIntegrity {
-                    component: key.to_string(),
-                    display_name,
-                    status: IntegrityStatus::NoHash,
-                    expected_hash: None,
-                    actual_hash: None,
-                    file_path: file_path.as_ref().map(|p| p.to_string_lossy().to_string()),
-                    message: "매니페스트에 SHA256 해시가 없습니다".to_string(),
-                };
-            }
-        };
+pub fn verify_records(records: &InstalledFiles) -> IntegrityReport {
+    let mut components: Vec<ComponentIntegrity> = records
+        .iter()
+        .map(|(key, files)| verify_component(key, files))
+        .collect();
+    components.sort_by_key(|c| component_sort_key(&c.component));
 
-        // 2. 파일 경로 해결
-        let path = match file_path {
-            Some(ref p) if p.exists() => p,
-            Some(ref p) => {
-                return ComponentIntegrity {
-                    component: key.to_string(),
-                    display_name,
-                    status: IntegrityStatus::FileNotFound,
-                    expected_hash: Some(expected),
-                    actual_hash: None,
-                    file_path: Some(p.to_string_lossy().to_string()),
-                    message: format!("파일을 찾을 수 없습니다: {}", p.display()),
-                };
-            }
-            None => {
-                return ComponentIntegrity {
-                    component: key.to_string(),
-                    display_name,
-                    status: IntegrityStatus::FileNotFound,
-                    expected_hash: Some(expected),
-                    actual_hash: None,
-                    file_path: None,
-                    message: "컴포넌트 파일 경로를 해결할 수 없습니다".to_string(),
-                };
-            }
-        };
+    let total = components.len();
+    let count = |f: fn(&IntegrityStatus) -> bool| components.iter().filter(|c| f(&c.status)).count();
+    let verified = count(|s| *s == IntegrityStatus::Verified);
+    let failed = count(|s| matches!(s, IntegrityStatus::Tampered | IntegrityStatus::Error));
+    let skipped = count(|s| *s == IntegrityStatus::FileNotFound);
+    let overall = if total == 0 {
+        OverallIntegrity::Empty
+    } else if failed > 0 {
+        OverallIntegrity::TamperDetected
+    } else if verified == total {
+        OverallIntegrity::AllVerified
+    } else {
+        OverallIntegrity::Partial
+    };
 
-        // 3. SHA256 계산
-        match compute_sha256(path) {
+    IntegrityReport {
+        checked_at: chrono::Utc::now().to_rfc3339(),
+        overall,
+        components,
+        total,
+        verified,
+        failed,
+        skipped,
+    }
+}
+
+fn verify_component(key: &str, files: &BTreeMap<String, String>) -> ComponentIntegrity {
+    let result = |status, expected: Option<&String>, actual: Option<String>, file: Option<&String>, message: String| {
+        ComponentIntegrity {
+            component: key.to_string(),
+            display_name: crate::Component::from_manifest_key(key).display_name(),
+            status,
+            expected_hash: expected.cloned(),
+            actual_hash: actual,
+            file_path: file.cloned(),
+            message,
+        }
+    };
+    for (file, expected) in files {
+        if !Path::new(file).is_file() {
+            return result(IntegrityStatus::FileNotFound, Some(expected), None, Some(file), "installed file is missing".into());
+        }
+        match compute_sha256(Path::new(file)) {
+            Ok(actual) if actual.eq_ignore_ascii_case(expected) => {}
             Ok(actual) => {
-                if actual == expected.to_lowercase() {
-                    ComponentIntegrity {
-                        component: key.to_string(),
-                        display_name,
-                        status: IntegrityStatus::Verified,
-                        expected_hash: Some(expected),
-                        actual_hash: Some(actual),
-                        file_path: Some(path.to_string_lossy().to_string()),
-                        message: "검증 통과".to_string(),
-                    }
-                } else {
-                    ComponentIntegrity {
-                        component: key.to_string(),
-                        display_name,
-                        status: IntegrityStatus::Tampered,
-                        expected_hash: Some(expected),
-                        actual_hash: Some(actual),
-                        file_path: Some(path.to_string_lossy().to_string()),
-                        message: "SHA256 해시 불일치 — 파일이 변조되었을 수 있습니다".to_string(),
-                    }
-                }
+                return result(IntegrityStatus::Tampered, Some(expected), Some(actual), Some(file), "file changed since install".into());
             }
-            Err(e) => {
-                ComponentIntegrity {
-                    component: key.to_string(),
-                    display_name,
-                    status: IntegrityStatus::Error,
-                    expected_hash: Some(expected),
-                    actual_hash: None,
-                    file_path: Some(path.to_string_lossy().to_string()),
-                    message: format!("해시 계산 중 오류: {}", e),
-                }
-            }
+            Err(e) => return result(IntegrityStatus::Error, Some(expected), None, Some(file), e),
         }
     }
-
-    /// 컴포넌트 키와 install_dir로 실제 파일 경로를 해결합니다.
-    fn resolve_component_path(&self, key: &str, info: &ComponentHashInfo) -> Option<PathBuf> {
-        match key {
-            // 코어 바이너리: install_root 기준
-            "saba-core" => {
-                let name = if cfg!(windows) { "saba-core.exe" } else { "saba-core" };
-                Some(self.install_root.join(name))
-            }
-            "cli" => {
-                let name = if cfg!(windows) { "saba-chan-cli.exe" } else { "saba-chan-cli" };
-                Some(self.install_root.join(name))
-            }
-            "gui" => {
-                // GUI는 install_dir이 "saba-chan-gui"로 지정됨
-                let dir = info.install_dir.as_deref().unwrap_or("saba-chan-gui");
-                let name = if cfg!(windows) { "saba-chan-gui.exe" } else { "saba-chan-gui" };
-                Some(self.install_root.join(dir).join(name))
-            }
-            "updater" => {
-                let name = if cfg!(windows) { "saba-chan-updater.exe" } else { "saba-chan-updater" };
-                Some(self.install_root.join(name))
-            }
-            k if k.starts_with("module-") => {
-                let module_name = k.strip_prefix("module-").unwrap_or(k);
-                // 모듈은 Python — lifecycle.py를 기준으로 해시
-                Some(self.modules_dir.join(module_name).join("lifecycle.py"))
-            }
-            k if k.starts_with("ext-") => {
-                let ext_name = k.strip_prefix("ext-").unwrap_or(k);
-                let dir = info.install_dir.as_deref()
-                    .map(|d| PathBuf::from(d.trim_start_matches("extensions/")))
-                    .unwrap_or_else(|| {
-                        // Python 호환을 위해 하이픈→언더스코어로 변환
-                        PathBuf::from(ext_name.replace('-', "_"))
-                    });
-                // 익스텐션의 매니페스트 파일
-                Some(self.extensions_dir.join(dir).join("manifest.json"))
-            }
-            _ => None,
-        }
-    }
+    result(IntegrityStatus::Verified, None, None, None, format!("{} files match", files.len()))
 }
 
 // ══════════════════════════════════════════════════════
@@ -310,67 +205,7 @@ pub fn compute_sha256(path: &Path) -> Result<String, String> {
         hasher.update(&buffer[..n]);
     }
 
-    Ok(hex_encode(&hasher.finalize()))
-}
-
-fn hex_encode(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{:02x}", b)).collect()
-}
-
-// ══════════════════════════════════════════════════════
-// 해시 정보 수집용 구조체
-// ══════════════════════════════════════════════════════
-
-/// 검증 대상 컴포넌트의 해시 정보
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ComponentHashInfo {
-    /// 사용자 표시용 이름
-    pub display_name: String,
-    /// 매니페스트에 기록된 기대 SHA256 해시
-    pub expected_sha256: Option<String>,
-    /// 설치 디렉터리 (install_root 기준 상대경로)
-    pub install_dir: Option<String>,
-}
-
-// ══════════════════════════════════════════════════════
-// 해시 정보 수집 헬퍼
-// ══════════════════════════════════════════════════════
-
-/// 릴레이의 서명된 manifest에서 컴포넌트 해시 정보를 수집합니다.
-/// 이것이 신뢰할 수 있는 소스입니다.
-pub fn collect_hashes_from_server_manifest(
-    manifest: &crate::relay::ReleaseManifest,
-) -> HashMap<String, ComponentHashInfo> {
-    let mut hashes = HashMap::new();
-
-    let display_names: HashMap<&str, &str> = HashMap::from([
-        ("saba-core", "Saba-Core"),
-        ("cli", "CLI"),
-        ("gui", "GUI"),
-        ("updater", "Updater"),
-    ]);
-
-    for (key, info) in &manifest.components {
-        let display_name = if key.starts_with("module-") {
-            let module_name = key.strip_prefix("module-").unwrap_or(key);
-            format!("Module: {}", module_name)
-        } else if key.starts_with("ext-") {
-            let ext_name = key.strip_prefix("ext-").unwrap_or(key);
-            format!("Extension: {}", ext_name)
-        } else {
-            display_names.get(key.as_str())
-                .unwrap_or(&key.as_str())
-                .to_string()
-        };
-
-        hashes.insert(key.clone(), ComponentHashInfo {
-            display_name,
-            expected_sha256: Some(info.sha256.clone()),
-            install_dir: info.install_dir.clone(),
-        });
-    }
-
-    hashes
+    Ok(hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect())
 }
 
 /// 컴포넌트 키를 정렬 우선순위로 변환 (코어 → 모듈 → 익스텐션)
@@ -380,83 +215,55 @@ fn component_sort_key(key: &str) -> (u8, String) {
         "cli" => (1, key.to_string()),
         "gui" => (2, key.to_string()),
         "updater" => (3, key.to_string()),
-        k if k.starts_with("module-") => (5, key.to_string()),
-        k if k.starts_with("ext-") => (6, key.to_string()),
-        _ => (7, key.to_string()),
+        k if k.starts_with("module-") => (10, k.to_string()),
+        k if k.starts_with("ext-") => (20, k.to_string()),
+        k => (5, k.to_string()),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
-
-    #[test]
-    fn test_sha256_empty() {
-        // SHA-256 of empty input = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-        let mut hasher = Sha256::new();
-        hasher.update([]);
-        let result = hex_encode(&hasher.finalize());
-        assert_eq!(result, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
-    }
 
     #[test]
     fn test_sha256_hello() {
-        // SHA-256 of "hello" = 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
-        let mut hasher = Sha256::new();
-        hasher.update(b"hello");
-        let result = hex_encode(&hasher.finalize());
-        assert_eq!(result, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
-    }
-
-    #[test]
-    fn test_sha256_multiblock() {
-        // Test with data spanning multiple blocks (>64 bytes)
-        let data = "a".repeat(200);
-        let mut hasher = Sha256::new();
-        hasher.update(data.as_bytes());
-        let result = hex_encode(&hasher.finalize());
-        // hex-encoded SHA-256 is always 64 chars
-        assert_eq!(result.len(), 64);
-        assert!(!result.is_empty());
-    }
-
-    #[test]
-    fn test_compute_sha256_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let file_path = dir.path().join("test.txt");
-        let mut f = std::fs::File::create(&file_path).unwrap();
-        f.write_all(b"hello").unwrap();
-        drop(f);
-
-        let hash = compute_sha256(&file_path).unwrap();
-        assert_eq!(hash, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
-    }
-
-    #[test]
-    fn test_integrity_verified() {
-        let dir = tempfile::tempdir().unwrap();
-        let file_path = dir.path().join("test.bin");
-        std::fs::write(&file_path, b"test content").unwrap();
-
-        let actual_hash = compute_sha256(&file_path).unwrap();
-
-        let checker = IntegrityChecker::new(
-            dir.path().to_path_buf(),
-            dir.path().join("modules"),
-            dir.path().join("extensions"),
+        let tmp = tempfile::tempdir().unwrap();
+        let f = tmp.path().join("h.txt");
+        std::fs::write(&f, b"hello").unwrap();
+        assert_eq!(
+            compute_sha256(&f).unwrap(),
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
         );
+    }
 
-        let mut hashes = HashMap::new();
-        hashes.insert("saba-core".to_string(), ComponentHashInfo {
-            display_name: "Saba-Core".to_string(),
-            expected_sha256: Some(actual_hash),
-            install_dir: None,
-        });
+    #[test]
+    fn recorded_files_verify_until_changed_or_removed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let records = tmp.path().join("installed-files.json");
+        let a = tmp.path().join("a.py");
+        let b = tmp.path().join("b.py");
+        std::fs::write(&a, b"one").unwrap();
+        std::fs::write(&b, b"two").unwrap();
+        record_install_at(&records, "module-test", &[a.clone(), b.clone()]).unwrap();
 
-        let report = checker.verify_all(&hashes);
-        // FileNotFound because "saba-core.exe" (or "saba-core") doesn't match "test.bin"
-        // This is expected — full integration test would use proper file layout
-        assert_eq!(report.total, 1);
+        let report = verify_records(&load_records(&records));
+        assert_eq!(report.overall, OverallIntegrity::AllVerified);
+        assert_eq!(report.components[0].status, IntegrityStatus::Verified);
+
+        std::fs::write(&a, b"changed").unwrap();
+        let report = verify_records(&load_records(&records));
+        assert_eq!(report.overall, OverallIntegrity::TamperDetected);
+        assert_eq!(report.components[0].file_path.as_deref(), Some(a.to_string_lossy().as_ref()));
+
+        std::fs::write(&a, b"one").unwrap();
+        std::fs::remove_file(&b).unwrap();
+        let report = verify_records(&load_records(&records));
+        assert_eq!(report.components[0].status, IntegrityStatus::FileNotFound);
+        assert_eq!(report.overall, OverallIntegrity::Partial);
+    }
+
+    #[test]
+    fn nothing_recorded_is_empty() {
+        assert_eq!(verify_records(&InstalledFiles::new()).overall, OverallIntegrity::Empty);
     }
 }

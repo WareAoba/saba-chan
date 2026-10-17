@@ -48,7 +48,7 @@ mod tests;
 pub use error::{UpdaterError, RecoveryStrategy, NetworkChecker, ErrorContext};
 pub use foreground::{ForegroundApplier, SelfUpdater, ProcessChecker, ApplyPhase, ApplyProgress, ApplyPreparation};
 pub use relay::{ReleaseManifest, ManifestComponent};
-pub use integrity::{IntegrityChecker, IntegrityReport, IntegrityStatus, OverallIntegrity, ComponentIntegrity, ComponentHashInfo};
+pub use integrity::{IntegrityReport, IntegrityStatus, OverallIntegrity, ComponentIntegrity};
 pub use ipc::{DaemonIpcClient, StateFile, UpdateCompletionMarker, UpdateSummary, UpdaterCommand, UpdaterResponse};
 pub use queue::{DownloadQueue, DownloadRequest, DownloadResult, QueueStatus};
 pub use worker::{BackgroundWorker, BackgroundTask, WorkerEvent, WorkerStatus, AutoCheckScheduler};
@@ -279,16 +279,27 @@ impl Default for UpdateConfig {
     }
 }
 
+/// 같은 파일을 가리키는 경로인지. Windows 파일 이름은 대소문자를 가리지 않는다
+fn same_path(a: &Path, b: &Path) -> bool {
+    if cfg!(windows) {
+        a.to_string_lossy().to_lowercase() == b.to_string_lossy().to_lowercase()
+    } else {
+        a == b
+    }
+}
+
 /// zip을 `target_dir`에 푼다. 모든 압축 해제는 이 함수를 거친다.
 ///
 /// 엔트리 경로는 `enclosed_name()`으로 검사해 `..`나 절대 경로로
 /// `target_dir` 밖에 쓰는 엔트리(zip-slip)를 거부한다. `before_write`는
 /// 파일을 쓰기 직전에 호출된다(실행 중 바이너리를 비켜 두는 데 쓴다).
+/// 쓴 파일 경로를 돌려준다(무결성 기록용).
 pub fn extract_zip(
     staged: &Path,
     target_dir: &Path,
     mut before_write: impl FnMut(&Path) -> Result<()>,
-) -> Result<()> {
+) -> Result<Vec<PathBuf>> {
+    let mut written = Vec::new();
     let file = std::fs::File::open(staged)?;
     let mut archive = zip::ZipArchive::new(file)?;
     for i in 0..archive.len() {
@@ -307,8 +318,9 @@ pub fn extract_zip(
         before_write(&out_path)?;
         let mut outfile = std::fs::File::create(&out_path)?;
         std::io::copy(&mut entry, &mut outfile)?;
+        written.push(out_path);
     }
-    Ok(())
+    Ok(written)
 }
 
 // ══════════════════════════════════════════════════════
@@ -432,35 +444,14 @@ impl UpdateManager {
 
     // ─── 무결성 검증 ────────────────────────────────────────────────────────
 
-    /// 릴레이의 서명된 manifest로 설치된 컴포넌트의 SHA256을 검증한다.
-    /// 로컬 매니페스트는 신뢰할 수 없으므로 쓰지 않는다.
-    pub async fn verify_integrity(&mut self) -> Result<integrity::IntegrityReport> {
-        let manifest = self.latest_manifest().await?;
-        let expected_hashes = integrity::collect_hashes_from_server_manifest(&manifest);
-        let checker = integrity::IntegrityChecker::new(
-            self.install_root.clone(),
-            self.modules_dir.clone(),
-            self.extensions_dir.clone(),
-        );
-        Ok(checker.verify_all(&expected_hashes))
+    /// 업데이터가 설치하며 기록한 파일 해시와 지금 파일을 비교한다 (네트워크 없음).
+    /// 릴리즈 manifest의 sha256은 zip의 해시라 설치된 파일과 직접 비교할 수 없다
+    pub fn verify_integrity(&self) -> integrity::IntegrityReport {
+        integrity::verify_installed()
     }
 
     fn relay_client(&self) -> relay::RelayClient {
         relay::RelayClient::new(self.config.relay_url.as_deref().unwrap_or(relay::DEFAULT_RELAY_URL))
-    }
-
-    /// 캐시된 manifest, 없으면 이 채널·플랫폼의 최신 릴리즈 manifest
-    async fn latest_manifest(&mut self) -> Result<ReleaseManifest> {
-        if let Some(m) = &self.cached_manifest {
-            return Ok(m.clone());
-        }
-        let release = self
-            .relay_client()
-            .fetch_verified_release(&self.config.channel, &relay::current_platform(), "", &relay::anon_client_id())
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("no published release for this platform"))?;
-        self.cached_manifest = Some(release.manifest.clone());
-        Ok(release.manifest)
     }
 
     // ─── 업데이트 확인 ────────────────────────────────────────────────────────
@@ -502,7 +493,7 @@ impl UpdateManager {
                 if !installed && matches!(component, Component::Module(_) | Component::Extension(_)) {
                     continue;
                 }
-                // 설치돼 있는데 로컬 버전을 모르면 알림 대신 최신으로 기록 
+                // 설치돼 있는데 로컬 버전을 모르면 알림 대신 최신으로 기록
                 let update_available = if installed && current.is_empty() {
                     let _ = Self::update_installed_version(key, &info.version);
                     false
@@ -800,41 +791,9 @@ impl UpdateManager {
 
         for comp in &components {
             let staged_path = Self::verified_staged_path(comp)?;
-
-            match &comp.component {
-                Component::Module(name) => {
-                    self.apply_module_update(name, staged_path).await?;
-                    applied.push(comp.component.display_name());
-                }
-                Component::Cli => {
-                    self.apply_binary_update("saba-cli", staged_path).await?;
-                    applied.push(comp.component.display_name());
-                }
-                Component::Gui => {
-                    self.apply_gui_update(staged_path).await?;
-                    applied.push(comp.component.display_name());
-                }
-                Component::Updater => {
-                    // Updater 자체 바이너리 교체 (apply 모드에서만 가능)
-                    self.apply_binary_update("saba-chan-updater", staged_path).await?;
-                    applied.push(comp.component.display_name());
-                }
-                Component::CoreDaemon => {
-                    // Updater exe can directly replace daemon binary
-                    self.apply_binary_update("saba-core", staged_path).await?;
-                    applied.push(comp.component.display_name());
-                }
-                Component::Extension(name) => {
-                    self.apply_extension_update(name, staged_path).await?;
-                    applied.push(comp.component.display_name());
-                }
-                Component::Locales => {
-                    // locales.zip → locales/ 디렉터리에 압축 해제
-                    let target = self.install_root.join("locales");
-                    self.extract_to_directory(Path::new(staged_path), &target).await?;
-                    applied.push(comp.component.display_name());
-                }
-            }
+            let files = self.apply_one(&comp.component, staged_path).await?;
+            Self::record_files(&comp.component, &files);
+            applied.push(comp.component.display_name());
         }
 
         // 적용 완료된 컴포넌트의 상태 업데이트
@@ -872,6 +831,33 @@ impl UpdateManager {
         }
 
         Ok(applied)
+    }
+
+    /// 컴포넌트 하나를 적용하고 쓴 파일을 돌려준다
+    async fn apply_one(&self, component: &Component, staged_path: &str) -> Result<Vec<PathBuf>> {
+        match component {
+            Component::Module(name) => self.apply_module_update(name, staged_path).await,
+            Component::Extension(name) => self.apply_extension_update(name, staged_path).await,
+            Component::Cli => self.apply_binary_update("saba-cli", staged_path).await,
+            // 업데이터 자신(Windows는 실행 중인 exe의 이름을 바꿀 수 있다)과 데몬은 같은 방식
+            Component::Updater => self.apply_binary_update("saba-chan-updater", staged_path).await,
+            Component::CoreDaemon => self.apply_binary_update("saba-core", staged_path).await,
+            Component::Gui => self.apply_gui_update(staged_path).await,
+            Component::Locales => {
+                let target = self.install_root.join("locales");
+                self.extract_to_directory(Path::new(staged_path), &target).await
+            }
+        }
+    }
+
+    /// 무결성 검사용으로 설치한 파일의 해시를 적는다. 실패해도 적용은 성공이다
+    fn record_files(component: &Component, files: &[PathBuf]) {
+        if files.is_empty() {
+            return;
+        }
+        if let Err(e) = integrity::record_install(&component.manifest_key(), files) {
+            tracing::warn!("[Updater] Could not record installed files for {}: {}", component.display_name(), e);
+        }
     }
 
     /// 적용할 받은 파일. 다운로드 뒤 바뀌었으면(sha256 불일치) 적용하지 않는다 (C13)
@@ -1233,82 +1219,22 @@ impl UpdateManager {
             .ok_or_else(|| anyhow::anyhow!("Component {:?} is not ready for apply", component))?;
 
         let staged_path = Self::verified_staged_path(&comp)?;
+        let files = self.apply_one(component, staged_path).await?;
+        Self::record_files(component, &files);
 
-        let result = match component {
-            Component::Module(name) => {
-                self.apply_module_update(name, staged_path).await?;
-                ApplyComponentResult {
-                    component: component.manifest_key(),
-                    success: true,
-                    message: format!("Module '{}' updated", name),
-                    stopped_processes: Vec::new(), // IPC 커맨드 경유 시 해당 없음
-                    restart_needed: false,
-                }
-            }
-            Component::CoreDaemon => {
-                // Windows: 실행 중인 exe를 .exe.old로 rename 후 새 바이너리 추출
-                self.apply_binary_update("saba-core", staged_path).await?;
-                ApplyComponentResult {
-                    component: component.manifest_key(),
-                    success: true,
-                    message: "Saba-Core updated (restart required)".to_string(),
-                    stopped_processes: Vec::new(),
-                    restart_needed: true,
-                }
-            }
-            Component::Cli => {
-                self.apply_binary_update("saba-cli", staged_path).await?;
-                ApplyComponentResult {
-                    component: component.manifest_key(),
-                    success: true,
-                    message: "CLI updated".to_string(),
-                    stopped_processes: Vec::new(),
-                    restart_needed: false,
-                }
-            }
-            Component::Gui => {
-                // 업데이터 exe가 호출한 경우: GUI 파일 직접 교체 (GUI 프로세스는 이미 종료됨)
-                self.apply_gui_update(staged_path).await?;
-                ApplyComponentResult {
-                    component: component.manifest_key(),
-                    success: true,
-                    message: "GUI updated".to_string(),
-                    stopped_processes: Vec::new(),
-                    restart_needed: true,
-                }
-            }
-            Component::Updater => {
-                // 업데이터 exe가 자기 자신을 교체 (Windows: 실행 중 rename 허용)
-                self.apply_binary_update("saba-chan-updater", staged_path).await?;
-                ApplyComponentResult {
-                    component: component.manifest_key(),
-                    success: true,
-                    message: "Updater updated".to_string(),
-                    stopped_processes: Vec::new(),
-                    restart_needed: false,
-                }
-            }
-            Component::Extension(name) => {
-                self.apply_extension_update(name, staged_path).await?;
-                ApplyComponentResult {
-                    component: component.manifest_key(),
-                    success: true,
-                    message: format!("Extension '{}' updated", name),
-                    stopped_processes: Vec::new(),
-                    restart_needed: false,
-                }
-            }
-            Component::Locales => {
-                let target = self.install_root.join("locales");
-                self.extract_to_directory(Path::new(staged_path), &target).await?;
-                ApplyComponentResult {
-                    component: component.manifest_key(),
-                    success: true,
-                    message: "Locales updated".to_string(),
-                    stopped_processes: Vec::new(),
-                    restart_needed: false,
-                }
-            }
+        let message = match component {
+            Component::Module(name) => format!("Module '{}' updated", name),
+            Component::Extension(name) => format!("Extension '{}' updated", name),
+            Component::CoreDaemon => "Saba-Core updated (restart required)".to_string(),
+            other => format!("{} updated", other.display_name()),
+        };
+        let result = ApplyComponentResult {
+            component: component.manifest_key(),
+            success: true,
+            message,
+            stopped_processes: Vec::new(), // IPC 커맨드 경유 시 해당 없음
+            // 데몬은 새 프로세스로, GUI는 업데이터가 다시 띄운다
+            restart_needed: matches!(component, Component::CoreDaemon | Component::Gui),
         };
 
         // 적용 성공 시 상태 업데이트
@@ -1429,26 +1355,26 @@ impl UpdateManager {
     }
 
     /// 모듈 업데이트 적용 — 기존 zip 파일을 압축 해제하여 디렉터리에 배치
-    async fn apply_module_update(&self, module_name: &str, staged_path: &str) -> Result<()> {
+    async fn apply_module_update(&self, module_name: &str, staged_path: &str) -> Result<Vec<PathBuf>> {
         let target_dir = self.modules_dir.join(module_name);
         tracing::info!("[Updater] Applying module update: {} → {}", module_name, target_dir.display());
-        self.replace_dir(&target_dir, Path::new(staged_path), &format!("{}_backup", module_name))?;
+        let files = self.replace_dir(&target_dir, Path::new(staged_path), &format!("{}_backup", module_name))?;
         tracing::info!("[Updater] Module '{}' updated successfully", module_name);
-        Ok(())
+        Ok(files)
     }
 
     /// 익스텐션 업데이트 적용 — zip 압축 해제하여 extensions/ 디렉터리에 배치
-    async fn apply_extension_update(&self, ext_name: &str, staged_path: &str) -> Result<()> {
+    async fn apply_extension_update(&self, ext_name: &str, staged_path: &str) -> Result<Vec<PathBuf>> {
         let target_dir = self.resolve_ext_dir(ext_name);
         tracing::info!("[Updater] Applying extension update: {} → {}", ext_name, target_dir.display());
-        self.replace_dir(&target_dir, Path::new(staged_path), &format!("{}_ext_backup", ext_name))?;
+        let files = self.replace_dir(&target_dir, Path::new(staged_path), &format!("{}_ext_backup", ext_name))?;
         tracing::info!("[Updater] Extension '{}' updated successfully", ext_name);
-        Ok(())
+        Ok(files)
     }
 
     /// `target_dir`을 받은 zip 내용으로 바꾼다. 도중에 실패하면 백업으로 되돌린다 (C13).
     /// `__pycache__`와 점(.)으로 시작하는 항목은 남긴다
-    fn replace_dir(&self, target_dir: &Path, staged: &Path, backup_name: &str) -> Result<()> {
+    fn replace_dir(&self, target_dir: &Path, staged: &Path, backup_name: &str) -> Result<Vec<PathBuf>> {
         let backup_dir = self.staging_dir.join(backup_name);
         let had_target = target_dir.exists();
         if had_target {
@@ -1457,18 +1383,20 @@ impl UpdateManager {
             }
             self.copy_dir_recursive(target_dir, &backup_dir)?;
         }
-        let result = (|| -> Result<()> {
+        let result = (|| -> Result<Vec<PathBuf>> {
             if staged.extension().is_some_and(|e| e == "zip") {
                 if had_target {
                     self.clean_module_dir(target_dir)?;
                 }
-                extract_zip(staged, target_dir, |_| Ok(()))?;
+                extract_zip(staged, target_dir, |_| Ok(()))
             } else {
                 std::fs::copy(staged, target_dir)?;
+                Ok(Vec::new())
             }
-            Ok(())
         })();
-        if let Err(e) = result {
+        let files = match result {
+            Ok(files) => files,
+            Err(e) => {
             tracing::error!("[Updater] Replacing {} failed, restoring backup: {}", target_dir.display(), e);
             if had_target {
                 let _ = self.clean_module_dir(target_dir);
@@ -1477,10 +1405,11 @@ impl UpdateManager {
                 }
             }
             return Err(e);
-        }
+            }
+        };
         std::fs::remove_file(staged).ok();
         let _ = std::fs::remove_dir_all(&backup_dir);
-        Ok(())
+        Ok(files)
     }
 
     fn rename_with_retry(from: &Path, to: &Path, max_retries: u32) -> Result<()> {
@@ -1513,7 +1442,7 @@ impl UpdateManager {
         ))
     }
 
-    async fn apply_binary_update(&self, binary_name: &str, staged_path: &str) -> Result<()> {
+    async fn apply_binary_update(&self, binary_name: &str, staged_path: &str) -> Result<Vec<PathBuf>> {
         let staged = Path::new(staged_path);
 
         let exe_dir = self.install_root.clone();
@@ -1558,6 +1487,7 @@ impl UpdateManager {
         }
 
         tracing::info!("[Updater] Applying binary update: {} in {}", binary_name, exe_dir.display());
+        let mut files = Vec::new();
 
         if staged.extension().map(|e| e == "zip").unwrap_or(false) {
             // 옮겨 둔 실행 파일을 기억해 두었다가, 풀다가 실패하면 되돌린다 (C13)
@@ -1565,7 +1495,7 @@ impl UpdateManager {
             let result = extract_zip(staged, &exe_dir, |out_path| {
                 // 같은 경로가 zip에 두 번 있으면 두 번째는 덮어쓰기만 한다. 다시 비켜 두면
                 // 원래 백업이 새 파일로 바뀌어 되돌릴 수 없게 된다
-                if moved.iter().any(|(p, _)| p == out_path) {
+                if moved.iter().any(|(p, _)| same_path(p, out_path)) {
                     return Ok(());
                 }
                 let existed = out_path.exists();
@@ -1577,15 +1507,18 @@ impl UpdateManager {
                 }
                 Ok(())
             });
-            if let Err(e) = result {
-                tracing::error!("[Updater] Applying {} failed, restoring previous binaries: {}", binary_name, e);
-                for (original, backup) in moved.iter().rev() {
-                    let _ = std::fs::remove_file(original);
-                    if let Err(re) = std::fs::rename(backup, original) {
-                        tracing::error!("[Updater] Restore of {} failed: {}", original.display(), re);
+            match result {
+                Ok(written) => files = written,
+                Err(e) => {
+                    tracing::error!("[Updater] Applying {} failed, restoring previous binaries: {}", binary_name, e);
+                    for (original, backup) in moved.iter().rev() {
+                        let _ = std::fs::remove_file(original);
+                        if let Err(re) = std::fs::rename(backup, original) {
+                            tracing::error!("[Updater] Restore of {} failed: {}", original.display(), re);
+                        }
                     }
+                    return Err(e);
                 }
-                return Err(e);
             }
         } else if Self::is_tar_gz(staged) {
             Self::extract_tar_gz(staged, &exe_dir)?;
@@ -1595,11 +1528,11 @@ impl UpdateManager {
         tracing::info!("[Updater] Binary '{}' updated", binary_name);
         // 공유 모듈(i18n.py, daemon_rcon.py)은 새 데몬이 자기 안에 든 판으로 맞춘다 (plugin::ensure_shared_modules)
 
-        Ok(())
+        Ok(files)
     }
 
     /// GUI 업데이트 적용
-    async fn apply_gui_update(&self, staged_path: &str) -> Result<()> {
+    async fn apply_gui_update(&self, staged_path: &str) -> Result<Vec<PathBuf>> {
         let staged = Path::new(staged_path);
 
         // Portable exe mode: install_root/saba-chan-gui(.exe)
@@ -1611,14 +1544,15 @@ impl UpdateManager {
         let portable_exe = self.install_root.join(gui_exe_name);
         if portable_exe.exists() {
             tracing::info!("[Updater] GUI portable exe detected at {}", portable_exe.display());
+            let mut files = Vec::new();
             if staged.extension().map(|e| e == "zip").unwrap_or(false) {
-                extract_zip(staged, &self.install_root, Self::move_aside_binary)?;
+                files = extract_zip(staged, &self.install_root, Self::move_aside_binary)?;
             } else if Self::is_tar_gz(staged) {
                 Self::extract_tar_gz(staged, &self.install_root)?;
             }
             std::fs::remove_file(staged).ok();
             tracing::info!("[Updater] GUI (portable exe) updated");
-            return Ok(());
+            return Ok(files);
         }
 
         // Directory mode fallback (unpacked Electron / dev)
@@ -1643,12 +1577,13 @@ impl UpdateManager {
             }
         };
         tracing::info!("[Updater] Applying GUI update to dir: {}", extract_dir.display());
+        let mut files = Vec::new();
         if staged.extension().map(|e| e == "zip").unwrap_or(false) {
-            extract_zip(staged, &extract_dir, |_| Ok(()))?;
+            files = extract_zip(staged, &extract_dir, |_| Ok(()))?;
         }
         std::fs::remove_file(staged).ok();
         tracing::info!("[Updater] GUI updated successfully");
-        Ok(())
+        Ok(files)
     }
 
     // ─────── 유틸리티 ────────────────────────────────────────────────────────────────────────
@@ -1808,20 +1743,22 @@ impl UpdateManager {
     }
 
     /// zip/tar.gz(또는 단일 파일)을 대상 디렉터리에 압축 해제
-    async fn extract_to_directory(&self, staged: &Path, target_dir: &Path) -> Result<()> {
+    async fn extract_to_directory(&self, staged: &Path, target_dir: &Path) -> Result<Vec<PathBuf>> {
         std::fs::create_dir_all(target_dir)?;
 
         if staged.extension().map(|e| e == "zip").unwrap_or(false) {
-            extract_zip(staged, target_dir, |_| Ok(()))?;
+            return extract_zip(staged, target_dir, |_| Ok(()));
         } else if Self::is_tar_gz(staged) {
             Self::extract_tar_gz(staged, target_dir)?;
         } else {
             // 단일 파일인 경우 target_dir 내부에 복사
             let file_name = staged.file_name().unwrap_or_default();
-            std::fs::copy(staged, target_dir.join(file_name))?;
+            let dest = target_dir.join(file_name);
+            std::fs::copy(staged, &dest)?;
+            return Ok(vec![dest]);
         }
 
-        Ok(())
+        Ok(Vec::new())
     }
 
     /// ファイル名が .tar.gz で終わるか判定

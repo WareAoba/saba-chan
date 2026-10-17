@@ -408,7 +408,10 @@ pub fn run() {
     let installed = saba_chan_updater_lib::UpdateManager::load_installed_manifest();
     let accepted = match token {
         Some(t) => launch_ticket::redeem(&saba_chan_updater_lib::constants::resolve_staging_dir(), &t),
-        None => launch_ticket::core_predates_tickets(installed.get("saba-core").map(String::as_str)),
+        None => {
+            launch_ticket::core_predates_tickets(installed.get("saba-core").map(String::as_str))
+                && launch_ticket::claim_legacy_apply(&saba_chan_updater_lib::constants::resolve_staging_dir())
+        }
     };
     if !accepted {
         tracing::error!("[Apply] Missing or stale launch token; refusing to apply");

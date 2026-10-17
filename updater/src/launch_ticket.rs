@@ -8,15 +8,48 @@ use std::path::{Path, PathBuf};
 
 const FILE_NAME: &str = "apply-ticket";
 
-/// 표를 끊기 시작한 데몬 버전. 이보다 오래된 데몬은 `--launch-token` 없이 업데이터를 띄운다
+/// 표를 끊기 시작한 데몬 버전. 이보다 오래된 데몬은 `--launch-token` 없이 업데이터를 띄운다.
+/// 이 버전 이상 데몬은 기동할 때 자기 버전을 installed-manifest에 적는다(`record_core_version`)
 pub const CORE_ISSUES_TICKETS_SINCE: &str = "0.1.2";
 
-/// 전환 경로: 설치된 데몬이 표를 모르는 버전이면(또는 알 수 없으면) 표 없는 적용을 받아 준다.
-/// 업데이터만 먼저 새것으로 바뀐 경우에도 옛 데몬이 다음 적용을 할 수 있게 한다
+/// 전환 경로: 설치된 데몬이 표를 모르는 버전이면 표 없는 적용을 받아 준다.
+/// 업데이터만 먼저 새것으로 바뀐 경우에도 옛 데몬이 다음 적용을 할 수 있게 한다.
+/// 버전이 없으면 옛 데몬이다(새 데몬은 기동 때 늘 적는다). 읽을 수 없는 버전은 거부
 pub fn core_predates_tickets(installed_core: Option<&str>) -> bool {
     use crate::version::SemVer;
     let since = SemVer::parse(CORE_ISSUES_TICKETS_SINCE).expect("valid version");
-    installed_core.and_then(SemVer::parse).is_none_or(|v| v < since)
+    match installed_core {
+        None => true,
+        Some(v) => SemVer::parse(v).is_some_and(|v| v < since),
+    }
+}
+
+/// 데몬 기동 때 부른다: 표를 끊는 데몬이라는 기록
+pub fn record_core_version(version: &str) {
+    if let Err(e) = crate::UpdateManager::update_installed_version("saba-core", version) {
+        tracing::warn!("[Updater] Could not record core version: {}", e);
+    }
+}
+
+/// 표 없는 적용끼리도 한 번에 하나만: 살아 있는 다른 프로세스가 쥐고 있으면 false
+pub fn claim_legacy_apply(staging_dir: &Path) -> bool {
+    use std::io::Write;
+    let lock = staging_dir.join(format!("{}.legacy-lock", FILE_NAME));
+    let _ = std::fs::create_dir_all(staging_dir);
+    for _ in 0..2 {
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&lock) {
+            Ok(mut f) => return write!(f, "{}", std::process::id()).is_ok(),
+            Err(_) => {
+                let holder = std::fs::read_to_string(&lock).ok().and_then(|s| s.trim().parse::<u32>().ok());
+                if holder.is_some_and(crate::ProcessChecker::is_pid_running) {
+                    return false;
+                }
+                // 죽은 프로세스가 남긴 잠금은 치운다
+                let _ = std::fs::remove_file(&lock);
+            }
+        }
+    }
+    false
 }
 
 fn ticket_path(staging_dir: &Path) -> PathBuf {
@@ -54,8 +87,18 @@ mod tests {
     fn only_pre_ticket_cores_may_skip_the_ticket() {
         assert!(core_predates_tickets(Some("0.1.1")));
         assert!(core_predates_tickets(None));
+        assert!(!core_predates_tickets(Some("garbage")));
         assert!(!core_predates_tickets(Some("0.1.2")));
         assert!(!core_predates_tickets(Some("0.2.0")));
+    }
+
+    #[test]
+    fn legacy_applies_are_serialised() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(claim_legacy_apply(tmp.path()));
+        assert!(!claim_legacy_apply(tmp.path()), "this process still holds it");
+        std::fs::write(tmp.path().join("apply-ticket.legacy-lock"), "4000000000").unwrap();
+        assert!(claim_legacy_apply(tmp.path()), "a dead holder's lock is taken over");
     }
 
     #[test]
