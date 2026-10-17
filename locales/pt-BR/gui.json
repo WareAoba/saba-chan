@@ -650,10 +650,6 @@
     "bot_tip_running": "O bot do Discord está conectado pela nuvem do Saba-chan",
     "bot_tip_connecting": "O bot está ligado e conectando à nuvem do Saba-chan",
     "bot_tip_stopped": "O bot do Discord está desligado. Clique para ir ligá-lo",
-    "update_done": "Atualização concluída",
-    "update_failed": "A atualização não foi concluída",
-    "update_components": "Atualizados: {{list}}",
-    "update_failed_components": "Falharam: {{list}}",
     "dismiss": "Dispensar",
     "console_quick": "Comandos rápidos",
     "console_hint": "Enter para enviar · ↑ anterior",
@@ -810,7 +806,27 @@
     "words_instances_title": "Apelidos de servidor",
     "words_instances_desc": "Ao rodar vários servidores do mesmo jogo, dê a cada um sua própria palavra no lugar da palavra do módulo. O bot procura pelo nome do servidor, depois pelo apelido do servidor e por fim pela palavra do módulo.",
     "words_instance_aria": "Apelidos de {{name}}",
-    "words_conflict_instance": "'{{alias}}' já é usado por {{other}}"
+    "words_conflict_instance": "'{{alias}}' já é usado por {{other}}",
+    "tab_channels": "Canais",
+    "channels_loading": "Carregando canais…",
+    "channels_no_bot": "O bot não está neste servidor ou não responde, então os canais não podem ser listados. Você só pode remover as atribuições atuais.",
+    "channels_chatbot": "Canais do chatbot",
+    "channels_chatbot_hint": "O chatbot só conversa nos canais escolhidos aqui. Até {{max}}.",
+    "channels_chatbot_aria": "Usar #{{channel}} como canal do chatbot",
+    "channels_is_music": "Usado para música",
+    "channels_none": "Nenhum canal de texto disponível.",
+    "channels_too_many": "Você pode escolher até {{max}} canais do chatbot.",
+    "channels_music": "Canal de música",
+    "channels_music_hint": "Onde fica o player de música. Os avisos também vão para cá.",
+    "channels_music_none": "Nenhum (remover)",
+    "channels_music_warn": "Todas as mensagens comuns em {{channel}} serão apagadas. Escolha um canal só para música.",
+    "channels_reload": "Atualizar",
+    "channels_save": "Salvar",
+    "channels_save_confirm": "Salvar e apagar mensagens",
+    "channels_err_conflict": "O mesmo canal não pode ser do chatbot e de música ao mesmo tempo.",
+    "channels_err_unknown": "{{channel}} não é um canal de texto que o bot pode usar neste servidor.",
+    "channels_err_bot": "Não foi possível verificar o bot, então nada mudou. Remover ainda funciona.",
+    "channels_err_generic": "Não foi possível salvar as atribuições de canais."
   },
   "maintenance": {
     "load_failed": "Não foi possível carregar os backups e agendamentos.",
@@ -904,16 +920,12 @@
     "guild_inherit": "Padrão ({{state}})",
     "on": "Ligado",
     "off": "Desligado",
-    "channels": "IDs de canais",
-    "channels_placeholder": "ID numérico do canal",
-    "channels_aria": "IDs de canais de {{name}}",
     "memory_clear": "Limpar memória",
     "memory_clear_confirm": "Clique para limpar",
     "memory_cleared": "Memória de {{name}} limpa.",
     "err_ambientSeconds": "O intervalo de participação espontânea deve ser de {{min}}–{{max}} segundos.",
     "err_sessionSeconds": "A duração da conversa deve ser de {{min}}–{{max}} segundos.",
     "err_triggers": "Até {{max}} palavras de chamada.",
-    "err_channels": "Até {{max}} canais por servidor.",
     "memo": "Nota do nó",
     "memo_aria": "Nota do nó de {{name}}",
     "memo_placeholder": "O que a Saba-chan deve saber sobre este servidor: tom, como chamar as pessoas, clima, interesses. Adicionado após as instruções padrão.",
@@ -926,7 +938,8 @@
     "tool_images_hint": "Desenha imagens (10 por dia).",
     "tool_social_notes": "Notas sociais",
     "tool_social_notes_hint": "Guarda notas privadas sobre o clima e as pessoas. Nunca aparecem no app.",
-    "relay_delete_pending": "As configurações antigas do chatbot ainda não foram removidas do relay. Será tentado de novo na próxima conexão."
+    "relay_delete_pending": "As configurações antigas do chatbot ainda não foram removidas do relay. Será tentado de novo na próxima conexão.",
+    "channels_moved": "Escolha os canais do chatbot na aba Canais de cada servidor do Discord."
   },
   "module_audit": {
     "title": "O módulo '{{module}}' usa recursos que não declara.",
@@ -952,5 +965,15 @@
     "verified_tip": "Do catálogo assinado e sem alterações desde então.",
     "modified_tip": "Arquivos mudaram depois da instalação pelo catálogo. Reinstale se você não os editou.",
     "unverified_tip": "Não foi instalado pelo catálogo assinado. Confirme se você confia na origem."
+  },
+  "patch_notes": {
+    "title": "Notas da atualização",
+    "title_version": "Notas da atualização do Saba-chan {{version}}",
+    "notice_success": "O Saba-chan foi atualizado para {{version}}. Clique para ver as notas",
+    "notice_failed": "Alguns itens não puderam ser atualizados ({{count}}). Clique para ver detalhes",
+    "unknown_version": "a nova versão",
+    "failed": "Não foi possível aplicar a atualização.",
+    "partial": "{{count}} itens não puderam ser atualizados.",
+    "no_notes": "Não há notas para esta versão."
   }
 }

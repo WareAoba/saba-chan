@@ -650,10 +650,6 @@
     "bot_tip_running": "Discord 機器人已透過 Saba-chan 雲端連線",
     "bot_tip_connecting": "機器人已開啟，正在連線到 Saba-chan 雲端",
     "bot_tip_stopped": "Discord 機器人已關閉。按一下前往開啟",
-    "update_done": "更新完成",
-    "update_failed": "更新未能完成",
-    "update_components": "已更新：{{list}}",
-    "update_failed_components": "失敗：{{list}}",
     "dismiss": "關閉",
     "console_quick": "常用命令",
     "console_hint": "Enter 傳送 · ↑ 上一個",
@@ -810,7 +806,27 @@
     "words_instances_title": "伺服器別名",
     "words_instances_desc": "同一款遊戲有多個伺服器時，可以為每個伺服器設定專屬的詞來取代模組詞。機器人依伺服器名稱 → 伺服器別名 → 模組詞的順序尋找。",
     "words_instance_aria": "{{name}} 的別名",
-    "words_conflict_instance": "'{{alias}}' 已被 {{other}} 使用"
+    "words_conflict_instance": "'{{alias}}' 已被 {{other}} 使用",
+    "tab_channels": "頻道",
+    "channels_loading": "正在載入頻道…",
+    "channels_no_bot": "機器人不在此伺服器或無法連線，因此無法列出頻道。你只能取消目前的指派。",
+    "channels_chatbot": "聊天機器人頻道",
+    "channels_chatbot_hint": "聊天機器人只在這裡選擇的頻道中對話。最多 {{max}} 個。",
+    "channels_chatbot_aria": "將 #{{channel}} 設為聊天機器人頻道",
+    "channels_is_music": "用於音樂",
+    "channels_none": "沒有可用的文字頻道。",
+    "channels_too_many": "聊天機器人頻道最多 {{max}} 個。",
+    "channels_music": "音樂頻道",
+    "channels_music_hint": "音樂播放器所在的頻道。公告也會發到這裡。",
+    "channels_music_none": "無（取消）",
+    "channels_music_warn": "{{channel}} 中的一般訊息都會被刪除。請選擇專用的音樂頻道。",
+    "channels_reload": "重新整理",
+    "channels_save": "儲存",
+    "channels_save_confirm": "知悉會刪除訊息並儲存",
+    "channels_err_conflict": "同一個頻道不能同時作為聊天機器人頻道和音樂頻道。",
+    "channels_err_unknown": "{{channel}} 不是機器人在此伺服器可用的文字頻道。",
+    "channels_err_bot": "無法確認機器人，因此沒有變更。取消指派仍然可以。",
+    "channels_err_generic": "無法儲存頻道指派。"
   },
   "maintenance": {
     "load_failed": "無法載入備份與排程資訊。",
@@ -904,16 +920,12 @@
     "guild_inherit": "依照預設（{{state}}）",
     "on": "開啟",
     "off": "關閉",
-    "channels": "回答的頻道 ID",
-    "channels_placeholder": "頻道 ID 數字",
-    "channels_aria": "{{name}} 的頻道 ID",
     "memory_clear": "清除記憶",
     "memory_clear_confirm": "點擊清除",
     "memory_cleared": "已清除 {{name}} 的記憶。",
     "err_ambientSeconds": "主動發言間隔須介於 {{min}}–{{max}} 秒。",
     "err_sessionSeconds": "對話維持時間須介於 {{min}}–{{max}} 秒。",
     "err_triggers": "呼叫詞最多 {{max}} 個。",
-    "err_channels": "每個伺服器最多 {{max}} 個頻道。",
     "memo": "節點備忘",
     "memo_aria": "{{name}} 的節點備忘",
     "memo_placeholder": "薩巴醬需要了解的這個伺服器的情況：語氣、稱呼、氣氛、興趣等。附加在預設指令之後。",
@@ -926,7 +938,8 @@
     "tool_images_hint": "畫圖（每天 10 張）。",
     "tool_social_notes": "察言觀色備忘",
     "tool_social_notes_hint": "記錄關於氣氛和成員的私人備忘，不會在應用程式中顯示。",
-    "relay_delete_pending": "舊的聊天機器人設定尚未從中繼刪除，下次連線時會再次刪除。"
+    "relay_delete_pending": "舊的聊天機器人設定尚未從中繼刪除，下次連線時會再次刪除。",
+    "channels_moved": "聊天機器人對話的頻道在各 Discord 伺服器的「頻道」分頁中選擇。"
   },
   "module_audit": {
     "title": "模組 '{{module}}' 使用了未宣告的功能。",
@@ -952,5 +965,15 @@
     "verified_tip": "來自簽署目錄，安裝後未被變更。",
     "modified_tip": "從目錄安裝後檔案已被變更。如果不是你自己改的，請重新安裝。",
     "unverified_tip": "不是從簽署目錄安裝的。請確認你信任其來源。"
+  },
+  "patch_notes": {
+    "title": "更新說明",
+    "title_version": "Saba-chan {{version}} 更新說明",
+    "notice_success": "Saba-chan 已更新到 {{version}}。點擊查看更新說明",
+    "notice_failed": "有 {{count}} 個項目未能更新。點擊查看詳情",
+    "unknown_version": "新版本",
+    "failed": "無法套用更新。",
+    "partial": "有 {{count}} 個項目未能更新。",
+    "no_notes": "此版本沒有更新說明。"
   }
 }

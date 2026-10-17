@@ -25,7 +25,6 @@ export const CHATBOT_TOOLS = ['research', 'lol', 'images', 'social_notes'];
 const LIMITS = { ambientSeconds: [0, 86400], sessionSeconds: [0, 600] };
 export const MEMO_MAX = 8000;
 const TRIGGER_MAX = 10;
-const CHANNEL_MAX = 20;
 
 export const chatbotAvailable = () => !!window.api?.chatbotGet;
 
@@ -67,13 +66,11 @@ export function settingsProblems(draft, t) {
 
 const guildDraft = (g = {}) => ({
     enabled: typeof g.enabled === 'boolean' ? (g.enabled ? 'on' : 'off') : 'inherit',
-    channelIds: Array.isArray(g.channelIds) ? g.channelIds.map(String) : [],
     memo: typeof g.memo === 'string' ? g.memo : '',
 });
 
 const guildPatch = (d) => ({
     enabled: d.enabled === 'inherit' ? null : d.enabled === 'on',
-    channelIds: d.channelIds.length ? d.channelIds : null,
     memo: d.memo.trim() ? d.memo : null,
 });
 
@@ -266,7 +263,6 @@ function SettingsEditor({ data, nodes, nameOf, onSaved }) {
         }));
 
     const problems = settingsProblems(s, t);
-    const badChannels = guildIds.some((id) => draftGuild(id).channelIds.length > CHANNEL_MAX);
     const badMemo = guildIds.some((id) => draftGuild(id).memo.length > MEMO_MAX);
     const dirty = !same(base.settings, draft.settings) || guildIds.some((id) => !same(baseGuild(id), draftGuild(id)));
 
@@ -463,17 +459,7 @@ function SettingsEditor({ data, nodes, nameOf, onSaved }) {
                                             </button>
                                         )}
                                     </div>
-                                    <div className="cb-guild-channels">
-                                        <span>{t('chatbot.channels')}</span>
-                                        <TagInput
-                                            value={g.channelIds}
-                                            onChange={(v) =>
-                                                setGuild(id, { channelIds: v.filter((c) => /^\d+$/.test(c)) })
-                                            }
-                                            placeholder={t('chatbot.channels_placeholder')}
-                                            ariaLabel={t('chatbot.channels_aria', { name })}
-                                        />
-                                    </div>
+                                    <p className="dc-hint">{t('chatbot.channels_moved')}</p>
                                     <label className="cb-guild-memo">
                                         <span className="cb-memo-head">
                                             <span>{t('chatbot.memo')}</span>
@@ -494,11 +480,6 @@ function SettingsEditor({ data, nodes, nameOf, onSaved }) {
                             );
                         })}
                     </ul>
-                )}
-                {badChannels && (
-                    <p className="dc-field-error">
-                        <Icon name="alertTriangle" size="xs" /> {t('chatbot.err_channels', { max: CHANNEL_MAX })}
-                    </p>
                 )}
                 {badMemo && (
                     <p className="dc-field-error">
@@ -538,7 +519,7 @@ function SettingsEditor({ data, nodes, nameOf, onSaved }) {
                 <button
                     type="button"
                     className="btn btn-primary"
-                    disabled={!dirty || saving || problems.length > 0 || badChannels || badMemo}
+                    disabled={!dirty || saving || problems.length > 0 || badMemo}
                     onClick={save}
                 >
                     <Icon name="save" size="sm" /> {t('discord.save')}

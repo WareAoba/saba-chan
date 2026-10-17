@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Icon } from '../Icon';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { Segmented } from '../ui/StatusChip';
+import { ChannelsTab, channelsAvailable } from './ChannelsTab';
 import * as P from './nodePermissions';
 
 export const initialOf = (name) => (name || '?').trim().charAt(0).toUpperCase() || '?';
@@ -369,12 +370,16 @@ export function NodeView({
                 items={[
                     { id: 'instances', label: t('discord.tab_instances'), icon: <Icon name="server" size="sm" /> },
                     { id: 'members', label: t('discord.tab_members'), icon: <Icon name="user" size="sm" /> },
+                    ...(channelsAvailable()
+                        ? [{ id: 'channels', label: t('discord.tab_channels'), icon: <Icon name="hash" size="sm" /> }]
+                        : []),
                 ]}
             />
 
             {activeTab === 'instances' && (
                 <InstancesTab node={node} nodes={nodes} servers={servers} settings={settings} update={update} />
             )}
+            {activeTab === 'channels' && <ChannelsTab key={node.guildId} node={node} />}
             {activeTab === 'members' && !member && (
                 <MembersTab
                     node={node}

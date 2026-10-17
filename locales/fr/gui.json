@@ -650,10 +650,6 @@
     "bot_tip_running": "Le bot Discord est connecté via le cloud Saba-chan",
     "bot_tip_connecting": "Le bot est activé et se connecte au cloud Saba-chan",
     "bot_tip_stopped": "Le bot Discord est désactivé. Cliquez pour aller l'activer",
-    "update_done": "Mise à jour terminée",
-    "update_failed": "La mise à jour n'a pas abouti",
-    "update_components": "Mis à jour : {{list}}",
-    "update_failed_components": "Échec : {{list}}",
     "dismiss": "Fermer",
     "console_quick": "Commandes rapides",
     "console_hint": "Entrée pour envoyer · ↑ précédente",
@@ -810,7 +806,27 @@
     "words_instances_title": "Alias de serveur",
     "words_instances_desc": "Si vous avez plusieurs serveurs du même jeu, donnez à chacun son propre mot à la place du mot du module. Le bot cherche d'abord le nom du serveur, puis l'alias du serveur, puis le mot du module.",
     "words_instance_aria": "Alias de {{name}}",
-    "words_conflict_instance": "« {{alias}} » est déjà utilisé par {{other}}"
+    "words_conflict_instance": "« {{alias}} » est déjà utilisé par {{other}}",
+    "tab_channels": "Salons",
+    "channels_loading": "Chargement des salons…",
+    "channels_no_bot": "Le bot n'est pas sur ce serveur ou est injoignable : impossible de lister les salons. Vous pouvez seulement retirer les attributions actuelles.",
+    "channels_chatbot": "Salons du chatbot",
+    "channels_chatbot_hint": "Le chatbot ne parle que dans les salons choisis ici. Jusqu'à {{max}}.",
+    "channels_chatbot_aria": "Utiliser #{{channel}} comme salon du chatbot",
+    "channels_is_music": "Utilisé pour la musique",
+    "channels_none": "Aucun salon textuel disponible.",
+    "channels_too_many": "Vous pouvez choisir jusqu'à {{max}} salons du chatbot.",
+    "channels_music": "Salon musique",
+    "channels_music_hint": "Là où se trouve le lecteur de musique. Les annonces y vont aussi.",
+    "channels_music_none": "Aucun (retirer)",
+    "channels_music_warn": "Tous les messages ordinaires de {{channel}} seront supprimés. Choisissez un salon dédié à la musique.",
+    "channels_reload": "Actualiser",
+    "channels_save": "Enregistrer",
+    "channels_save_confirm": "Enregistrer et supprimer les messages",
+    "channels_err_conflict": "Un même salon ne peut pas être à la fois salon du chatbot et salon musique.",
+    "channels_err_unknown": "{{channel}} n'est pas un salon textuel utilisable par le bot sur ce serveur.",
+    "channels_err_bot": "Le bot n'a pas pu être vérifié, rien n'a changé. Le retrait fonctionne toujours.",
+    "channels_err_generic": "Impossible d'enregistrer les attributions de salons."
   },
   "maintenance": {
     "load_failed": "Impossible de charger les sauvegardes et la planification.",
@@ -904,16 +920,12 @@
     "guild_inherit": "Par défaut ({{state}})",
     "on": "Activé",
     "off": "Désactivé",
-    "channels": "ID des salons",
-    "channels_placeholder": "ID numérique du salon",
-    "channels_aria": "ID des salons pour {{name}}",
     "memory_clear": "Effacer la mémoire",
     "memory_clear_confirm": "Cliquez pour effacer",
     "memory_cleared": "Mémoire effacée pour {{name}}.",
     "err_ambientSeconds": "L'intervalle d'intervention doit être compris entre {{min}} et {{max}} secondes.",
     "err_sessionSeconds": "La durée de conversation doit être comprise entre {{min}} et {{max}} secondes.",
     "err_triggers": "Jusqu'à {{max}} mots déclencheurs.",
-    "err_channels": "Jusqu'à {{max}} salons par serveur.",
     "memo": "Note du nœud",
     "memo_aria": "Note du nœud pour {{name}}",
     "memo_placeholder": "Ce que Saba-chan doit savoir de ce serveur : ton, façon d'appeler les gens, ambiance, centres d'intérêt. Ajouté après les instructions par défaut.",
@@ -926,7 +938,8 @@
     "tool_images_hint": "Dessine des images (10 par jour).",
     "tool_social_notes": "Notes sociales",
     "tool_social_notes_hint": "Garde des notes privées sur l'ambiance et les gens. Jamais affichées dans l'app.",
-    "relay_delete_pending": "Les anciens réglages du chatbot n'ont pas encore été supprimés du relais. Nouvelle tentative à la prochaine connexion."
+    "relay_delete_pending": "Les anciens réglages du chatbot n'ont pas encore été supprimés du relais. Nouvelle tentative à la prochaine connexion.",
+    "channels_moved": "Choisissez les salons du chatbot dans l'onglet Salons de chaque serveur Discord."
   },
   "module_audit": {
     "title": "Le module '{{module}}' utilise des capacités non déclarées.",
@@ -952,5 +965,15 @@
     "verified_tip": "Issu du catalogue signé et inchangé depuis.",
     "modified_tip": "Des fichiers ont changé après l'installation depuis le catalogue. Réinstallez-le si vous ne les avez pas modifiés.",
     "unverified_tip": "Non installé depuis le catalogue signé. Vérifiez que vous faites confiance à sa source."
+  },
+  "patch_notes": {
+    "title": "Notes de mise à jour",
+    "title_version": "Notes de mise à jour de Saba-chan {{version}}",
+    "notice_success": "Saba-chan a été mis à jour vers {{version}}. Cliquez pour voir les notes",
+    "notice_failed": "Certains éléments n'ont pas pu être mis à jour ({{count}}). Cliquez pour les détails",
+    "unknown_version": "la nouvelle version",
+    "failed": "La mise à jour n'a pas pu être appliquée.",
+    "partial": "{{count}} éléments n'ont pas pu être mis à jour.",
+    "no_notes": "Aucune note de mise à jour pour cette version."
   }
 }

@@ -650,10 +650,6 @@
     "bot_tip_running": "Discordボットはサバちゃんクラウド経由で接続されています",
     "bot_tip_connecting": "ボットを起動し、サバちゃんクラウドに接続しています",
     "bot_tip_stopped": "Discordボットは停止しています。クリックで設定画面へ",
-    "update_done": "アップデートが完了しました",
-    "update_failed": "アップデートを完了できませんでした",
-    "update_components": "更新: {{list}}",
-    "update_failed_components": "失敗: {{list}}",
     "dismiss": "閉じる",
     "console_quick": "よく使うコマンド",
     "console_hint": "Enterで送信 · ↑で前のコマンド",
@@ -810,7 +806,27 @@
     "words_instances_title": "サーバーごとの別名",
     "words_instances_desc": "同じゲームのサーバーが複数あるとき、モジュールの単語の代わりにサーバーごとに別の単語を使えます。ボットはサーバー名 → サーバーの別名 → モジュールの単語の順に探します。",
     "words_instance_aria": "{{name}} の別名",
-    "words_conflict_instance": "'{{alias}}' はすでに {{other}} で使われています"
+    "words_conflict_instance": "'{{alias}}' はすでに {{other}} で使われています",
+    "tab_channels": "チャンネル",
+    "channels_loading": "チャンネルを読み込み中…",
+    "channels_no_bot": "ボットがこのサーバーにいないか接続できないため、チャンネル一覧を表示できません。今の割り当てを解除することだけできます。",
+    "channels_chatbot": "チャットボットのチャンネル",
+    "channels_chatbot_hint": "チャットボットはここで選んだチャンネルでだけ会話します。最大 {{max}} 個まで。",
+    "channels_chatbot_aria": "#{{channel}} をチャットボットのチャンネルにする",
+    "channels_is_music": "音楽で使用中",
+    "channels_none": "選べるテキストチャンネルがありません。",
+    "channels_too_many": "チャットボットのチャンネルは最大 {{max}} 個までです。",
+    "channels_music": "音楽チャンネル",
+    "channels_music_hint": "音楽プレイヤーを置くチャンネルです。お知らせもここに送られます。",
+    "channels_music_none": "なし（解除）",
+    "channels_music_warn": "{{channel}} の通常メッセージはすべて削除されます。音楽専用のチャンネルを選んでください。",
+    "channels_reload": "再読み込み",
+    "channels_save": "保存",
+    "channels_save_confirm": "メッセージ削除を了承して保存",
+    "channels_err_conflict": "同じチャンネルをチャットボットと音楽に同時に割り当てることはできません。",
+    "channels_err_unknown": "{{channel}} はこのサーバーでボットが使えるテキストチャンネルではありません。",
+    "channels_err_bot": "ボットを確認できなかったため変更していません。解除は今でもできます。",
+    "channels_err_generic": "チャンネルの割り当てを保存できませんでした。"
   },
   "maintenance": {
     "load_failed": "バックアップ・予約の情報を読み込めませんでした。",
@@ -904,16 +920,12 @@
     "guild_inherit": "既定値に従う（{{state}}）",
     "on": "オン",
     "off": "オフ",
-    "channels": "返事をするチャンネルID",
-    "channels_placeholder": "チャンネルIDの数字",
-    "channels_aria": "{{name}} のチャンネルID",
     "memory_clear": "記憶を消去",
     "memory_clear_confirm": "クリックして消去",
     "memory_cleared": "{{name}} の記憶を消去しました。",
     "err_ambientSeconds": "自発的な発言の間隔は{{min}}〜{{max}}秒にしてください。",
     "err_sessionSeconds": "会話の継続時間は{{min}}〜{{max}}秒にしてください。",
     "err_triggers": "呼びかけの言葉は{{max}}個までです。",
-    "err_channels": "チャンネルはサーバーごとに{{max}}個までです。",
     "memo": "ノードメモ",
     "memo_aria": "{{name}} のノードメモ",
     "memo_placeholder": "このサーバーについてサバちゃんが知っておくこと：口調、呼び方、雰囲気、興味など。基本の指示の後ろに付きます。",
@@ -926,7 +938,8 @@
     "tool_images_hint": "絵を描きます（1日10枚）。",
     "tool_social_notes": "空気読みメモ",
     "tool_social_notes_hint": "雰囲気や人について自分だけのメモを残します。アプリには表示されません。",
-    "relay_delete_pending": "以前のチャットボット設定をまだリレーから削除できていません。次の接続時にもう一度削除します。"
+    "relay_delete_pending": "以前のチャットボット設定をまだリレーから削除できていません。次の接続時にもう一度削除します。",
+    "channels_moved": "チャットボットが話すチャンネルは、各 Discord サーバー画面の「チャンネル」タブで選びます。"
   },
   "module_audit": {
     "title": "モジュール '{{module}}' が宣言していない機能を使っています。",
@@ -952,5 +965,15 @@
     "verified_tip": "署名付きカタログから入手し、その後変更されていません。",
     "modified_tip": "カタログからインストールした後にファイルが変更されています。自分で編集していなければ再インストールしてください。",
     "unverified_tip": "署名付きカタログからインストールされていません。信頼できる入手元か確認してください。"
+  },
+  "patch_notes": {
+    "title": "パッチノート",
+    "title_version": "サバちゃん {{version}} パッチノート",
+    "notice_success": "サバちゃんが {{version}} に更新されました。クリックしてパッチノートを表示",
+    "notice_failed": "更新できなかった項目があります（{{count}} 件）。クリックして詳細を表示",
+    "unknown_version": "新しいバージョン",
+    "failed": "アップデートを適用できませんでした。",
+    "partial": "{{count}} 件の項目を更新できませんでした。",
+    "no_notes": "このバージョンのパッチノートはありません。"
   }
 }
