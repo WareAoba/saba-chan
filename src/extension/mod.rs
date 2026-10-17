@@ -1116,7 +1116,7 @@ impl ExtensionManager {
                     min_app_version: m.min_app_version.clone(),
                     incompatible: Self::incompatibility(m),
                     warnings: ext.warnings.clone(),
-                    trust: saba_chan_updater_lib::integrity::trust_of(&format!("ext-{}", m.id)),
+                    trust: saba_chan_updater_lib::integrity::trust_of(&format!("ext-{}", m.id), &ext.dir),
                 }
             })
             .collect()

@@ -299,7 +299,10 @@ fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std
         })
     });
     let folder = std::path::Path::new(&m.path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    let trust = saba_chan_updater_lib::integrity::trust_of(&format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, folder));
+    let trust = saba_chan_updater_lib::integrity::trust_of(
+        &format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, folder),
+        std::path::Path::new(&m.path),
+    );
     let meta = m.metadata;
     ExtensionInfo {
         name: meta.name,

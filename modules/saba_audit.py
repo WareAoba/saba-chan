@@ -10,6 +10,7 @@
 
 정적 검사는 악성 코드를 다 막지 못한다 (동적 import, 난독화). 선언과 다른 곳을 사용자에게
 보여 주는 한 겹일 뿐이다. 새 권한은 아래 표에 한 줄씩 더한다.
+`opaque_code`(읽을 소스 없는 바이트코드)와 `stdlib_shadow`(표준 모듈을 가리는 파일)는 선언할 수 없어 늘 보고된다.
 """
 
 import ast
@@ -163,6 +164,20 @@ def opaque_findings(root):
     return out
 
 
+def shadow_findings(root):
+    """폴더 맨 위의 표준 모듈 이름 파일·패키지. 실행 시 sys.path[0]이 이 폴더라 표준 모듈 대신 불린다"""
+    stdlib = getattr(sys, "stdlib_module_names", frozenset())
+    out = []
+    for path in sorted(root.iterdir()):
+        name = path.stem if path.is_file() and path.suffix.lower() in (".py", ".pyc", ".pyd", ".so") else path.name
+        if path.is_dir() and not (path / "__init__.py").is_file():
+            continue
+        if name in stdlib:
+            out.append({"permission": "stdlib_shadow", "file": path.relative_to(root).as_posix(), "line": 0,
+                        "detail": f"replaces the standard module '{name}'"})
+    return out
+
+
 def scan(folder):
     root = Path(folder)
     files = {}
@@ -181,7 +196,7 @@ def scan(folder):
                    and (Path(rel).stem in names or rel.split("/", 1)[0] in names)}
         targets |= pending
 
-    findings = opaque_findings(root)
+    findings = opaque_findings(root) + shadow_findings(root)
     for rel in sorted(targets):
         findings.extend(scan_file(files[rel], rel))
     return findings

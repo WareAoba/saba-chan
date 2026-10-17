@@ -132,6 +132,15 @@ mod tests {
             "{:?}",
             found
         );
+        // 표준 모듈 이름을 가리는 파일·패키지 (cloud review 5)
+        std::fs::write(p.join("json.py"), "x = 1\n").unwrap();
+        std::fs::create_dir(p.join("socket")).unwrap();
+        std::fs::write(p.join("socket/__init__.py"), "").unwrap();
+        let found = scan(&python, p).await.unwrap();
+        let shadows: Vec<&str> = found.iter().filter(|f| f.permission == "stdlib_shadow").map(|f| f.file.as_str()).collect();
+        assert_eq!(shadows, vec!["json.py", "socket"], "{:?}", found);
+        let found: Vec<Finding> = found.into_iter().filter(|f| f.permission != "stdlib_shadow").collect();
+        assert_eq!(found.len(), 3, "{:?}", found);
         // opaque_code는 선언할 수 없는 권한이라 늘 남는다
         let all = ModulePermissions { native_code: true, ..Default::default() };
         assert_eq!(undeclared(&all, &found).len(), 2);

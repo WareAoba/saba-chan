@@ -6,7 +6,8 @@
 //! 업데이터가 설치하지 않은 컴포넌트(설치기로 처음 깐 것)는 기록이 없어 결과에 나오지 않는다.
 //!
 //! 신뢰 출처(M12): 서명된 릴리즈 카탈로그에서 받은 컴포넌트 키는 `<데이터 폴더>/official-components.json`에
-//! 따로 적는다(`set_official`). `trust_of`는 "카탈로그에서 받았고 그 뒤로 파일이 그대로인가"를 답한다.
+//! 따로 적는다(`set_official`). `trust_of`는 "카탈로그에서 받았고 그 뒤로 코드 파일이 그대로인가"를 답한다.
+//! 이것은 설치 출처 표시다. 기록 파일은 서명되지 않으므로, 이미 실행된 코드가 기록을 고쳤다면 막지 못한다.
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -179,20 +180,51 @@ fn set_official_at(path: &Path, component_key: &str, official: bool) -> Result<(
     std::fs::write(path, json).map_err(|e| e.to_string())
 }
 
-/// 컴포넌트 키(`module-<id>`, `ext-<id>`)의 신뢰 표시
-pub fn trust_of(component_key: &str) -> Trust {
-    trust_at(&records_path(), &official_path(), component_key)
+/// Python이 불러올 수 있는 파일. 설치 기록에 없는 것이 폴더에 생기면 "modified"
+const CODE_SUFFIXES: &[&str] = &["py", "pyc", "pyo", "pyw", "so", "pyd", "dll", "dylib", "pth"];
+
+/// 컴포넌트 키(`module-<id>`, `ext-<id>`)의 신뢰 표시. `dir`은 그 컴포넌트가 설치된 폴더
+pub fn trust_of(component_key: &str, dir: &Path) -> Trust {
+    trust_at(&records_path(), &official_path(), component_key, dir)
 }
 
-fn trust_at(records: &Path, official: &Path, component_key: &str) -> Trust {
+fn trust_at(records: &Path, official: &Path, component_key: &str, dir: &Path) -> Trust {
     if !load_official(official).contains(component_key) {
         return Trust::Unverified;
     }
-    match load_records(records).get(component_key) {
-        Some(files) if verify_component(component_key, files).status == IntegrityStatus::Verified => Trust::Verified,
-        Some(_) => Trust::Modified,
-        None => Trust::Unverified,
+    let records = load_records(records);
+    let Some(files) = records.get(component_key) else {
+        return Trust::Unverified;
+    };
+    if verify_component(component_key, files).status != IntegrityStatus::Verified || has_unrecorded_code(dir, files) {
+        return Trust::Modified;
     }
+    Trust::Verified
+}
+
+/// 설치 기록에 없는 코드 파일이 폴더에 있나 (`__pycache__`는 데몬이 읽지 않으므로 뺀다)
+fn has_unrecorded_code(dir: &Path, recorded: &BTreeMap<String, String>) -> bool {
+    // 기록의 경로와 폴더 경로가 다른 모양(상대 경로, `\\?\` 접두사)일 수 있어 둘 다 정규화해 비교한다
+    let recorded: BTreeSet<PathBuf> = recorded.keys().filter_map(|p| std::fs::canonicalize(p).ok()).collect();
+    let Ok(dir) = std::fs::canonicalize(dir) else { return false };
+    fn walk(dir: &Path, recorded: &BTreeSet<PathBuf>) -> bool {
+        let Ok(entries) = std::fs::read_dir(dir) else { return false };
+        entries.flatten().any(|entry| {
+            let path = entry.path();
+            let Ok(kind) = entry.file_type() else { return false };
+            if kind.is_dir() {
+                return entry.file_name() != "__pycache__" && walk(&path, recorded);
+            }
+            let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+            let code = path
+                .extension()
+                .map(|e| e.to_string_lossy().to_ascii_lowercase())
+                .is_some_and(|e| CODE_SUFFIXES.contains(&e.as_str()))
+                || name.contains(".so.");
+            code && !recorded.contains(&path)
+        })
+    }
+    walk(&dir, &recorded)
 }
 
 /// 기록된 모든 설치를 검사한다
@@ -330,20 +362,38 @@ mod tests {
     fn only_untouched_catalog_installs_are_trusted() {
         let tmp = tempfile::tempdir().unwrap();
         let (records, official) = (tmp.path().join("installed-files.json"), tmp.path().join("official.json"));
-        let a = tmp.path().join("lifecycle.py");
+        let dir = tmp.path().join("x");
+        std::fs::create_dir(&dir).unwrap();
+        let a = dir.join("lifecycle.py");
         std::fs::write(&a, b"one").unwrap();
         record_install_at(&records, "module-x", std::slice::from_ref(&a)).unwrap();
+        let trust = |key: &str| trust_at(&records, &official, key, &dir);
         // 기록은 있어도 카탈로그에서 받은 것이 아니면 검증되지 않은 것
-        assert_eq!(trust_at(&records, &official, "module-x"), Trust::Unverified);
+        assert_eq!(trust("module-x"), Trust::Unverified);
 
         set_official_at(&official, "module-x", true).unwrap();
-        assert_eq!(trust_at(&records, &official, "module-x"), Trust::Verified);
+        assert_eq!(trust("module-x"), Trust::Verified);
+        // 코드가 아닌 파일이나 __pycache__는 상관없다
+        std::fs::write(dir.join("server.properties"), b"x").unwrap();
+        std::fs::create_dir(dir.join("__pycache__")).unwrap();
+        std::fs::write(dir.join("__pycache__/lifecycle.cpython-312.pyc"), b"x").unwrap();
+        assert_eq!(trust("module-x"), Trust::Verified);
+        // 기록에 없는 코드 파일(표준 모듈을 가리는 json.py 등)이 생기면 바뀐 것 (cloud review 5)
+        std::fs::write(dir.join("json.py"), b"import socket").unwrap();
+        assert_eq!(trust("module-x"), Trust::Modified);
+        std::fs::remove_file(dir.join("json.py")).unwrap();
+        std::fs::create_dir(dir.join("lib")).unwrap();
+        std::fs::write(dir.join("lib/fast.pyd"), b"MZ").unwrap();
+        assert_eq!(trust("module-x"), Trust::Modified);
+        std::fs::remove_dir_all(dir.join("lib")).unwrap();
+        assert_eq!(trust("module-x"), Trust::Verified);
+
         std::fs::write(&a, b"changed").unwrap();
-        assert_eq!(trust_at(&records, &official, "module-x"), Trust::Modified);
+        assert_eq!(trust("module-x"), Trust::Modified);
 
         set_official_at(&official, "module-x", false).unwrap();
-        assert_eq!(trust_at(&records, &official, "module-x"), Trust::Unverified);
-        assert_eq!(trust_at(&records, &official, "ext-none"), Trust::Unverified);
+        assert_eq!(trust("module-x"), Trust::Unverified);
+        assert_eq!(trust("ext-none"), Trust::Unverified);
         assert_eq!(serde_json::to_value(Trust::Modified).unwrap(), "modified");
     }
 
