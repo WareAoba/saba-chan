@@ -35,7 +35,7 @@
 3. **로그 버퍼와 tracing 초기화** (`main.rs:162-218`)
    - `DaemonLogBuffer`(링 버퍼 10,000줄, `daemon_log.rs:21`)와 `DaemonLogLayer`를 모든 모드에 합성한다.
    - 필터는 `RUST_LOG`이며 기본값은 `info`다.
-   - CLI 모드는 TUI가 터미널을 차지하므로 로그를 `<data_dir>/daemon.log` 파일로 보낸다(truncate, `main.rs:179-187`). 나머지 모드는 stderr로 보낸다.
+   - CLI 모드는 CLI 대화형 셸이 터미널을 차지하므로 로그를 `<data_dir>/daemon.log` 파일로 보낸다(truncate, `main.rs:179-187`). 나머지 모드는 stderr로 보낸다.
 4. **IPC 포트 결정** (`main.rs:225-238`)
    - `SABA_IPC_PORT` 환경변수, 없으면 `config.json`의 `gui.ipcPort`, 둘 다 없으면 `DEFAULT_IPC_PORT = 57474`(`constants.rs:32`)다.
    - **바인드 주소는 `127.0.0.1`로 고정이다.** 포트는 `plugin::set_ipc_port`로 Python 실행 환경에도 넘긴다.
@@ -61,7 +61,7 @@
 12. **인터페이스 스폰** (`main.rs:601-659`)
     - IPC 포트가 열릴 때까지 최대 15초 기다린다(`boot_selector::wait_for_ipc_port`).
     - GUI 모드: `saba-chan-gui --spawned-by-daemon`을 detach로 띄우고 콘솔 창을 숨긴다(Windows만).
-    - CLI 모드: `saba-chan-cli`를 stdio를 상속해 같은 콘솔에 붙인다.
+    - CLI 모드: `saba-chan-cli`를 stdio를 상속해 같은 콘솔에 붙인다. 인자 없이 터미널에서 열린 CLI는 대화형 셸로 들어간다(`saba-chan-cli/src/main.rs:65-69`, PR #6 기준).
     - 인터페이스 바이너리는 데몬 exe와 같은 디렉토리에서만 찾는다(`boot_selector.rs:445-462`).
 13. **`ipc_server.start().await`** (`main.rs:662`): 이 호출이 블로킹 메인 루프다. 바인드에 성공하면 릴레이 에이전트 자동 시작을 띄우고(`ipc/mod.rs:787-789`), `shutdown_token`이 cancel되면 graceful shutdown한다.
 
@@ -394,7 +394,7 @@ Relay 서명 방식(`relay.rs:100-137`):
 - **우회 경로**
   - `SABA_AUTH_DISABLED=1`이면 토큰 검사를 건너뛴다. **디버그 빌드에서만** 동작하며(`auth.rs:103-106`), 통합 테스트가 이 방식을 쓴다(`tests/daemon_integration.rs:111`).
   - 캐시도 없고 토큰 파일도 없으면 **거부한다**(fail-closed, `auth.rs:115-124`).
-- **토큰을 쓰는 클라이언트**: GUI(`saba-chan-gui/main.js:69,180`, 파일 재읽기 포함), CLI(`saba-chan-cli/src/client.rs:8`, `config.rs:18`), Python 모듈(`modules/daemon_rcon.py:65-71`, `SABA_TOKEN_PATH`). 모두 토큰 파일을 직접 읽어 헤더에 넣는다.
+- **토큰을 쓰는 클라이언트**: GUI(`saba-chan-gui/main.js:69,180`, 파일 재읽기 포함), CLI(`saba-chan-cli/src/client.rs:28-33`, 401이면 파일을 다시 읽고 한 번 재시도 `:97-103`. PR #6 기준), Python 모듈(`modules/daemon_rcon.py:65-71`, `SABA_TOKEN_PATH`). 모두 토큰 파일을 직접 읽어 헤더에 넣는다.
 - **CORS 레이어가 없다.** 브라우저에서 오는 교차 출처 요청은 사전 요청(preflight)에서 막히고, 단순 요청도 토큰이 없으면 401이다. 모든 라우트가 인증을 거치므로 바디 없는 POST를 CSRF로 부를 수 있던 예전 `/api/updates/*` 경로도 막혔다.
 
 ---
@@ -617,11 +617,10 @@ Relay 서명 방식(`relay.rs:100-137`):
 2. ~~**GUI가 relay 서버를 직접 호출한다.**~~ → 해결: `main.js`에 릴레이 직접 호출이 없다. 봇 설정·초대·페어링은 데몬의 `/api/relay/*`, `/api/config/bot`을 거친다.
 3. ~~**봇 실행 로직이 GUI에 중복돼 있다.**~~ → 해결: 로컬 봇과 범용 `/api/ext-process/*`가 지워졌다(L1). 디스코드 연동은 데몬의 `relay_agent.rs` 하나뿐이다.
 4. **GUI가 데몬의 경로 정책을 결정한다.** `main.js:596-603`에서 `SABA_INSTANCES_PATH`, `SABA_MODULES_PATH`, `SABA_IPC_PORT`를 GUI가 정해 주입한다.
-5. **CLI가 로컬 파일을 직접 읽는다.**
-   - `saba-chan-cli/src/config.rs:105-112`의 `get_ipc_port_local`이 `config.json`의 `gui.ipcPort`를 직접 읽는다. 주석에 "유일한 로컬 파일 직접 읽기"라고 적혀 있다.
-   - 데몬은 `SABA_IPC_PORT`를 먼저 보므로(`main.rs:225-236`), GUI가 이 변수로 띄운 데몬과 포트가 다를 수 있다.
-   - `scan_directory`는 데몬에 연결되지 않으면 로컬 fs로 폴백한다(`config.rs:373-410`).
-   - ~~`get_module_locales` 로컬 폴백, 컴파일되지 않는 `gui_config.rs` 사본~~ → 해결: 둘 다 지워졌다.
+5. **CLI가 로컬 파일을 직접 읽는다.** (CLI 참조는 PR #6 리메이크 기준)
+   - 데몬을 찾고 띄우는 `saba-chan-cli/src/bootstrap.rs`만 `config.json`의 `gui` 섹션을 직접 읽는다(`ipcPort`, `language`, `:14-46`). 파일 머리 주석이 이를 유일한 예외로 적어 둔다(`:1-6`).
+   - ~~데몬은 `SABA_IPC_PORT`를 먼저 보므로 포트가 다를 수 있다~~ → 해결: CLI도 `SABA_IPC_PORT` > `gui.ipcPort` > 기본값 순으로 읽어 데몬(`main.rs:225-236`)과 같다(`bootstrap.rs:18-25`). 다만 GUI가 데몬에만 넣어 준 환경변수는 따로 띄운 CLI가 보지 못한다.
+   - ~~`scan_directory` 로컬 fs 폴백, `get_module_locales` 로컬 폴백, 컴파일되지 않는 `gui_config.rs` 사본~~ → 해결: 예전 `config.rs`·`gui_config.rs`가 리메이크에서 지워졌다. CLI 문구(`locales/<lang>/cli.json`)는 로컬에서 읽는다(`i18n.rs:38`).
 6. ~~**Discord 봇(server-chan)이 `bot-config.json`을 파일 경로(`BOT_CONFIG_PATH`)로 받는다.**~~ → 해결: 로컬 봇이 없다. 릴레이 에이전트가 하트비트로 봇 설정을 올린다(§1.4).
 7. **토큰 파일 직접 읽기**(GUI, CLI, Python 모듈)는 인증 부트스트랩 구조상 피할 수 없으므로 예외로 본다.
 8. ~~**반대 방향 위반: 코어 안에 특정 익스텐션 이름이 하드코딩돼 있다.**~~ → 해결: `docker`·steamcmd 분기가 코어에서 빠졌다. 설치 방식은 `install_method_<방식>` 슬롯으로 범용화됐다(`instance/mod.rs:67-148`, `instance.rs:1240-1253`). 이름은 테스트에만 남아 있다.

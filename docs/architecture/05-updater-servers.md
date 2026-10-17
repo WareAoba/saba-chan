@@ -138,7 +138,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 3. **apply 분기**: `POST /api/updates/apply {components:[…]}` (`updates.rs:447-568`). 본문이 없거나 공백이면 전체 대상, 깨진 JSON이면 400 `invalid_body`다(`:320-329`). download도 같다
    - 대상에 `Gui`, `Updater`, `CoreDaemon` 중 하나라도 있으면 **전부 updater exe에 맡긴다**(`updates.rs:483-492`). 이때 daemon은 `staging/pending.json`(`state.rs:15-30`)과 `staging/apply-targets.json`(`state.rs:87-94`)을 쓰고 `{requires_updater:true, needs_updater:[…]}`를 응답한다.
    - 그렇지 않으면 daemon이 직접 `apply_single_component`를 실행한다. 그 뒤 모듈은 `supervisor.refresh_modules()`, 익스텐션은 `extension_manager.rescan()`으로 hot-reload한다(`updates.rs:531-559`).
-4. **updater exe 실행**은 데몬이 한다: `POST /api/updates/launch-updater {relaunch}` → 데몬이 일회용 실행 표를 끊고(`launch_ticket.rs:1-5`) `saba-chan-updater --apply --wait-pid <데몬 PID> --launch-token <표> [--relaunch …]`를 분리 실행한 뒤 스스로 종료한다(`src/ipc/updates.rs:581-639`). GUI(`main.js:2458-2471`)와 CLI(`saba-chan-cli/src/tui/commands.rs:1045`, `client.rs:329-332`)는 이 API만 부른다.
+4. **updater exe 실행**은 데몬이 한다: `POST /api/updates/launch-updater {relaunch}` → 데몬이 일회용 실행 표를 끊고(`launch_ticket.rs:1-5`) `saba-chan-updater --apply --wait-pid <데몬 PID> --launch-token <표> [--relaunch …]`를 분리 실행한 뒤 스스로 종료한다(`src/ipc/updates.rs:581-639`). GUI(`main.js:2458-2471`)와 CLI(PR #6 기준 `update apply`, `saba-chan-cli/src/cmd/update.rs:249`, `client.rs:620-624`)는 이 API만 부른다.
 5. **updater exe** (`updater/gui/src-tauri/src/lib.rs`)
    - 인자는 `--apply [--wait-pid <pid>] --launch-token <t> [--relaunch <exe> [extra…]]`다(`lib.rs:388-403`). 표가 없거나 맞지 않으면 적용하지 않고 끝낸다. 표를 모르는 옛 데몬(0.1.2 미만)이 띄운 경우만 표 없이 받는다(`lib.rs:407-428`). `--wait-pid`가 있으면 그 PID가 끝나기를 최대 30초 기다린다(`lib.rs:430-447`). install_root는 자기 exe 위치로 정한다(`lib.rs:451-457`).
    - `load_pending_manifest()` → `apply-targets.json`의 key를 차례로 `apply_single_component()` → 성공·실패 모두 `UpdateCompletionMarker`(`<data_dir>/update-complete.json`, 실패 목록 `failed` 포함)를 저장 → `clear_pending_manifest()`가 `pending.json`/`apply-targets.json`과 받아 둔 압축 파일(`.zip`, `.tar.gz`, `.part`, 실패한 것 포함)을 지움(updater-lib `state.rs:63-82`) → 2초 뒤 `--after-update`를 붙여 relaunch(`lib.rs:73-198`, 312-350). 진행 상황은 Tauri 이벤트 `apply:progress`로 알린다. 다음 데몬이 결과를 `GET /api/updates/last-result`로 보여 준다(`updates.rs:682-694`).
@@ -172,9 +172,9 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 
 불일치:
 - ~~GUI의 `updater:setConfig`가 POST로 보내 405가 난다~~ → 해결: PUT으로 보낸다(`saba-chan-gui/main.js:2505-2507`).
-- ~~CLI의 `apply_updates`와 `download_updates`는 body 없이 POST하는데(`saba-chan-cli/src/client.rs:319-327`, `post_empty`) `Json` extractor가 거부할 수 있다~~ → 해결: 데몬이 본문을 바이트로 받아 비었으면 기본값(전체)으로 읽고, 깨진 JSON만 400으로 거부한다(`src/ipc/updates.rs:320-343, 447-452`).
-- ~~CLI가 daemon에 없는 `/api/install*`을 호출한다~~ → 해결: CLI에 그 호출이 없다(grep 0건).
-- ~~CLI `launch-apply`가 넘기는 `--install-root`와 대상 인자를 updater가 무시한다~~ → 해결: `launch-apply`는 `POST /api/updates/launch-updater`만 부른다(`commands.rs:1045-1049`).
+- ~~CLI의 `apply_updates`와 `download_updates`는 body 없이 POST하는데 `Json` extractor가 거부할 수 있다~~ → 해결: PR #6 CLI는 `{components:[...]}` 본문을 늘 보낸다(`saba-chan-cli/src/client.rs:609-619`). 데몬도 본문을 바이트로 받아 비었으면 기본값(전체)으로 읽고, 깨진 JSON만 400으로 거부한다(`src/ipc/updates.rs:320-343, 447-452`).
+- ~~CLI가 daemon에 없는 `/api/install*`을 호출한다~~ → 해결: PR #6 CLI에 그 호출이 없다(grep 0건).
+- ~~CLI `launch-apply`가 넘기는 `--install-root`와 대상 인자를 updater가 무시한다~~ → 해결: PR #6 CLI는 `update apply`에서 데몬이 updater가 필요하다고 답하면 확인 후 `POST /api/updates/launch-updater {relaunch:[saba-core, --spawned]}`만 부른다(`saba-chan-cli/src/cmd/update.rs:237-249`, `client.rs:620-624`).
 - ~~자동 확인 주기를 GUI의 `setInterval`이 돌린다~~ → 해결: daemon이 `spawn_update_scheduler`로 기동 30초 뒤부터 `check_interval_hours`마다 확인한다(`updates.rs:247-274`, `src/main.rs:401`). GUI는 10분마다 캐시된 `GET /api/updates/status`만 읽어 알린다(`main.js:940-1028`). ~~`auto_apply`는 어디에서도 쓰이지 않는다~~ → 해결: 설정에서 지웠다. `auto_download`만 남았다(`updates.rs:207-208`).
 
 ---
@@ -352,7 +352,7 @@ zod 스키마는 `middleware/schemas.ts` 한 곳에 모여 있다.
 ### 6.1 소유자 프레이밍("daemon이 주인, 인터페이스는 무력") 위반
 
 1. ~~**GUI가 업데이트 주기를 직접 돌린다**~~ → 해결: daemon이 주기 확인을 한다(`src/ipc/updates.rs:247-274`). GUI는 캐시된 상태만 10분마다 읽는다(`saba-chan-gui/main.js:940-1028`).
-2. ~~**GUI와 CLI가 updater exe를 직접 spawn한다**~~ → 해결: 둘 다 `POST /api/updates/launch-updater`만 부르고 updater는 daemon이 띄운다(`updates.rs:581-639`, `main.js:2458-2471`, `saba-chan-cli/src/tui/commands.rs:1045`).
+2. ~~**GUI와 CLI가 updater exe를 직접 spawn한다**~~ → 해결: 둘 다 `POST /api/updates/launch-updater`만 부르고 updater는 daemon이 띄운다(`updates.rs:581-639`, `main.js:2458-2471`, `saba-chan-cli/src/cmd/update.rs:249`).
 3. ~~**GUI가 relay를 직접 호출한다**(`PATCH /api/hosts/:id/bot-config`)~~ → 해결: GUI는 bot config를 daemon에 저장하고, relay 동기화는 agent heartbeat가 맡는다(`main.js:2857-2867`, `relay_agent.rs:313-321`).
 4. ~~**GUI가 Discord bot 실행 명령을 조립한다**, 실행 경로가 두 개~~ → 해결: 로컬 Discord bot이 없어졌다. relay agent는 daemon 안에서 노드 토큰이 있으면 기동 때 자동으로 시작한다(`relay_agent.rs:155-160`, `ipc/mod.rs:787-789`).
 5. GUI가 daemon을 `--spawned`로 spawn하고(`main.js:608`) installer를 `--uninstall`로 실행한다(`main.js:2653`). 인터페이스가 프로세스 감독 역할을 맡고 있다.
@@ -374,8 +374,8 @@ zod 스키마는 `middleware/schemas.ts` 한 곳에 모여 있다.
 | U5 | ~~`prepare_daemon_update`는 사용되지 않는다. rollback 경로가 없다~~ → 해결: 함수는 지워졌고, 적용 도중 실패하면 백업·`.old`로 되돌린다. 적용이 끝난 뒤 이전 판으로 돌아가는 경로는 여전히 없다 | `apply.rs:24-62, 142-171` |
 | U6 | ~~v2 모듈(worker/foreground/queue/scheduler/ipc)이 죽은 코드다. `cli.rs.removed`, `lib.rs.bak` 잔재~~ → 해결: 지워졌다(e023a75). ~~헤더 주석만 남았다~~ → 해결: 헤더도 현재 파일 구성으로 바뀌었다 | `lib.rs:1-12` |
 | U7 | ~~설정이 저장되지 않는다, GUI가 POST를 쓴다~~ → 해결: `config.json` `updates` 절, GUI도 PUT | `updates.rs:727-806`, `main.js:2505-2507` |
-| U8 | ~~CLI의 `/api/install/*`은 daemon에 없다~~(호출이 지워졌다). ~~CLI apply·download는 여전히 body 없는 POST다~~ → 해결: 데몬이 본문 없는 apply·download를 전체 대상으로 받는다 | `saba-chan-cli/src/client.rs:319-327`, `src/ipc/updates.rs:320-343` |
-| U9 | ~~CLI `launch-apply`가 넘기는 `--install-root`와 대상 인자를 updater가 무시한다~~ → 해결: `launch-apply`는 daemon의 `launch-updater`만 부른다 | `commands.rs:1045-1049` |
+| U8 | ~~CLI의 `/api/install/*`은 daemon에 없다~~(호출이 지워졌다). ~~CLI apply·download는 여전히 body 없는 POST다~~ → 해결: PR #6 CLI는 본문을 보내고, 데몬도 본문 없는 apply·download를 전체 대상으로 받는다 | `saba-chan-cli/src/client.rs:609-619`, `src/ipc/updates.rs:320-343` |
+| U9 | ~~CLI `launch-apply`가 넘기는 `--install-root`와 대상 인자를 updater가 무시한다~~ → 해결: PR #6 CLI `update apply`는 daemon의 `launch-updater`만 부른다 | `saba-chan-cli/src/cmd/update.rs:237-249` |
 | U10 | CI가 windows-x64 릴리즈만 만든다 | `package-release.py`, `release.yml` |
 | U11 | ~~`generate-manifest.py`, `release-manifest.json` 템플릿~~ 지워졌다 | `.github/` |
 | U12 | ~~모듈과 익스텐션 소스가 4갈래로 갈린다~~ 해결됨: 모두 같은 릴리즈 manifest | §1.4 |
