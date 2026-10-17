@@ -806,9 +806,16 @@ impl Supervisor {
                 }
 
                 let mut s = sup.write().await;
-                // managed store에서 제거 (그새 모니터가 치웠으면 그대로 둔다)
+                // managed store에서 제거 (그새 모니터가 치웠으면 그쪽이 이미 종료를 기록했다)
                 if s.managed_store.get(&instance.id).await.is_some_and(|p| Arc::ptr_eq(&p, &managed)) {
                     s.managed_store.remove(&instance.id).await;
+                    // 종료 기록 (user_stop)과 정지 표시 정리
+                    s.judge_exit(&instance.id, &managed).await;
+                    if force {
+                        if let Some(last) = s.exit_events.get_mut(&instance.id).and_then(|e| e.back_mut()) {
+                            last.verdict.evidence = "force stop requested through saba-chan".into();
+                        }
+                    }
                 }
 
                 // Clean up managed.pid
@@ -831,7 +838,11 @@ impl Supervisor {
                     server_name
                 );
                 let mut s = sup.write().await;
-                s.managed_store.remove(&instance.id).await;
+                // 이미 스스로 끝났다: 정지 요청 때문이 아니므로 표시를 지우고 기록한다
+                s.stop_requested.remove(&instance.id);
+                if let Some(proc) = s.managed_store.remove(&instance.id).await {
+                    s.judge_exit(&instance.id, &proc).await;
+                }
                 let pid_file = s.instance_store.instance_dir(&instance.id).join("managed.pid");
                 let _ = std::fs::remove_file(&pid_file);
                 s.stop_cooldowns.insert(instance.id.clone(), Instant::now());
@@ -1610,6 +1621,10 @@ impl Supervisor {
             }
             // Extension 데이터 전달 (Python lifecycle 스크립트에서 참조)
             cfg.insert("extension_data".to_string(), json!(&instance.extension_data));
+            // 시작 때와 같은 인스턴스 값 (zomboid server_name·cache_dir 등)
+            Self::insert_instance_fields(&mut cfg, instance);
+            // 켜져 있으면 자기 포트를 "다른 프로그램이 쓰는 중"으로 보지 않게
+            cfg.insert("running".to_string(), json!(s.tracker.get_pid(instance_id).is_ok()));
 
             crate::plugin::PluginCall::new(module_path, "validate", Value::Object(cfg))
         };
@@ -1710,7 +1725,12 @@ impl Supervisor {
             // If managed, provide recent console output for diagnosis
             if let Some(proc) = s.managed_store.get(&instance.id).await {
                 let recent = proc.get_recent_console(500).await;
-                let log_lines: Vec<String> = recent.iter().map(|l| l.content.clone()).collect();
+                // 이번 실행의 줄만 (재부착 때 디스크에서 읽어 온 지난 실행의 오류를 지금 문제로 보지 않게)
+                let log_lines: Vec<String> = recent
+                    .iter()
+                    .filter(|l| l.timestamp >= proc.started_at)
+                    .map(|l| l.content.clone())
+                    .collect();
                 cfg.insert("log_lines".to_string(), json!(log_lines));
             }
 
