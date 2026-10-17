@@ -2,84 +2,12 @@
 //!
 //! ## 테스트 시나리오
 //! 1. 버전 페치: Mock 서버에서 릴리스 정보 가져오기
-//! 2. 큐 처리: 다수 다운로드 순차 처리
-//! 3. 에러 복구: 네트워크 끊김 시 재시도
-//! 4. 포그라운드 적용: 파일 교체 플로우
+//! 2. 에러 복구: 네트워크 끊김 시 재시도
 
 use crate::{
     Component, UpdateConfig, UpdateManager,
-    DownloadQueue, DownloadRequest,
     UpdaterError, RecoveryStrategy, NetworkChecker,
 };
-
-// ═══════════════════════════════════════════════════════
-// 테스트 2: 큐 처리
-// ═══════════════════════════════════════════════════════
-
-#[tokio::test]
-async fn test_queue_priority_ordering() {
-    let queue = DownloadQueue::new();
-
-    // 낮은 우선순위 먼저 추가
-    queue.enqueue(DownloadRequest::new(Component::Module("low1".into()))).await;
-    queue.enqueue(DownloadRequest::new(Component::Module("low2".into()))).await;
-    
-    // 높은 우선순위 추가 (앞으로 가야 함)
-    queue.enqueue(
-        DownloadRequest::new(Component::Module("high".into()))
-            .with_priority(10)
-    ).await;
-
-    // 중간 우선순위 추가
-    queue.enqueue(
-        DownloadRequest::new(Component::Module("medium".into()))
-            .with_priority(5)
-    ).await;
-
-    let status = queue.get_status().await;
-    assert_eq!(status.pending, 4);
-    
-    println!("✓ 큐 우선순위 정렬 테스트 통과");
-}
-
-#[tokio::test]
-async fn test_queue_batch_enqueue() {
-    let queue = DownloadQueue::new();
-
-    let requests = vec![
-        DownloadRequest::new(Component::Cli),
-        DownloadRequest::new(Component::Gui),
-        DownloadRequest::new(Component::Module("minecraft".into())),
-        DownloadRequest::new(Component::Module("palworld".into())),
-    ];
-
-    queue.enqueue_batch(requests).await;
-    
-    let status = queue.get_status().await;
-    assert_eq!(status.pending, 4);
-    
-    println!("✓ 큐 배치 추가 테스트 통과");
-}
-
-#[tokio::test]
-async fn test_queue_pause_resume() {
-    let queue = DownloadQueue::new();
-    
-    // 큐에 항목 추가
-    queue.enqueue(DownloadRequest::new(Component::Cli)).await;
-    
-    // 일시정지
-    queue.pause().await;
-    let status = queue.get_status().await;
-    assert!(status.paused);
-    
-    // 재개
-    queue.resume().await;
-    let status = queue.get_status().await;
-    assert!(!status.paused);
-    
-    println!("✓ 큐 일시정지/재개 테스트 통과");
-}
 
 // ═══════════════════════════════════════════════════════
 // 테스트 3: 에러 복구
@@ -486,50 +414,6 @@ async fn test_network_checker_default_has_endpoints() {
 }
 
 // ═══════════════════════════════════════════════════════
-// 테스트 7: 큐 심층 테스트
-// ═══════════════════════════════════════════════════════
-
-#[tokio::test]
-async fn test_queue_clear() {
-    let queue = DownloadQueue::new();
-    queue.enqueue(DownloadRequest::new(Component::Cli)).await;
-    queue.enqueue(DownloadRequest::new(Component::Gui)).await;
-    queue.enqueue(DownloadRequest::new(Component::Module("mc".into()))).await;
-
-    let status = queue.get_status().await;
-    assert_eq!(status.pending, 3);
-
-    queue.clear().await;
-    let status = queue.get_status().await;
-    assert_eq!(status.pending, 0, "clear should empty the queue");
-}
-
-#[tokio::test]
-async fn test_queue_with_callback() {
-    let queue = DownloadQueue::new();
-    let req = DownloadRequest::new(Component::Cli)
-        .with_callback("cb-123".to_string());
-    assert_eq!(req.callback_id.as_deref(), Some("cb-123"));
-    queue.enqueue(req).await;
-
-    let status = queue.get_status().await;
-    assert_eq!(status.pending, 1);
-}
-
-#[tokio::test]
-async fn test_queue_empty_status() {
-    let queue = DownloadQueue::new();
-    let status = queue.get_status().await;
-    assert_eq!(status.pending, 0);
-    assert!(!status.paused);
-    assert!(status.current.is_none());
-}
-
-// ═══════════════════════════════════════════════════════
-// 메인 — 모든 테스트 실행
-// ═══════════════════════════════════════════════════════
-
-// ═══════════════════════════════════════════════════════
 // 테스트 8: 의존성 구조체 및 검증
 // ═══════════════════════════════════════════════════════
 
@@ -855,4 +739,13 @@ fn same_path_ignores_dot_components() {
     let dir = std::path::Path::new("/opt/saba");
     assert!(super::same_path(&dir.join("saba-core.exe"), &dir.join("./saba-core.exe")));
     assert!(!super::same_path(&dir.join("a.exe"), &dir.join("b.exe")));
+}
+
+#[test]
+fn extension_versions_come_from_manifest_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let ext = dir.path().join("ue4_ini");
+    std::fs::create_dir_all(&ext).unwrap();
+    std::fs::write(ext.join("manifest.json"), r#"{"id": "ue4-ini", "version": "0.2.0"}"#).unwrap();
+    assert_eq!(super::read_extension_version(&ext.join("manifest.json")), Some(("ue4-ini".into(), "0.2.0".into())));
 }

@@ -92,31 +92,8 @@ pub async fn send_stdin_handler(
     State(state): State<IPCServer>,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
-
-    let command = match payload.get("command").and_then(|v| v.as_str()) {
-        Some(cmd) => cmd,
-        None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Missing 'command' field"})),
-            )
-                .into_response()
-        }
-    };
-
-    match supervisor.send_stdin_command(&id, command).await {
-        Ok(msg) => (
-            StatusCode::OK,
-            Json(json!({"success": true, "message": msg})),
-        )
-            .into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": e.to_string()})),
-        )
-            .into_response(),
-    }
+    // 명령 경로와 같은 응답: 보낸 뒤 찍힌 콘솔 줄을 data.response로
+    super::command::via_stdin(&state, &id, &payload).await
 }
 
 /// POST /api/instance/:id/validate — Validate prerequisites

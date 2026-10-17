@@ -7,7 +7,6 @@
 //! 1. **버전 파싱/비교** — SemVer 유효성, 순서 비교
 //! 2. **파일 덮어쓰기** — zip 해제, 모듈 교체, 바이너리 교체
 //! 3. **설정 변경** — UpdateConfig round-trip
-//! 4. **스케줄러** — SchedulerConfig 유틸리티
 //!
 //! 릴레이 check → download → apply 전체 흐름은 `updater_relay_e2e.rs`.
 //!
@@ -22,7 +21,6 @@ use saba_chan_updater_lib::{
     Component,
     UpdateConfig, UpdateManager,
 };
-use saba_chan_updater_lib::scheduler::SchedulerConfig;
 use saba_chan_updater_lib::version::SemVer;
 
 // ═══════════════════════════════════════════════════════
@@ -207,32 +205,6 @@ fn test_update_config_serialization() {
     assert!(restored.auto_download);
     assert_eq!(restored.channel, "beta");
     assert_eq!(restored.install_root, Some("/opt/saba".into()));
-}
-
-// ═══════════════════════════════════════════════════════
-// 4. SchedulerConfig 테스트
-// ═══════════════════════════════════════════════════════
-
-#[test]
-fn test_scheduler_config_defaults() {
-    let sc = SchedulerConfig::default();
-    assert!(sc.enabled);
-    assert_eq!(sc.interval_hours, 3);
-}
-
-#[test]
-fn test_scheduler_interval_duration() {
-    let sc = SchedulerConfig { interval_hours: 6, enabled: true };
-    assert_eq!(sc.interval_duration(), std::time::Duration::from_secs(6 * 3600));
-}
-
-#[test]
-fn test_scheduler_checks_per_day() {
-    let sc = SchedulerConfig { interval_hours: 3, enabled: true };
-    assert_eq!(sc.checks_per_day(), 8);
-
-    let sc2 = SchedulerConfig { interval_hours: 6, enabled: true };
-    assert_eq!(sc2.checks_per_day(), 4);
 }
 
 // ═══════════════════════════════════════════════════════

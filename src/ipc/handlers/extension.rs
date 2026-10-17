@@ -57,11 +57,21 @@ fn extension_err_response(
     }
 }
 
-/// GET /api/extensions — 발견된 전체 익스텐션 목록
+#[derive(serde::Deserialize, Default)]
+pub struct LangQuery {
+    #[serde(default)]
+    lang: Option<String>,
+}
+
+/// GET /api/extensions?lang= — 발견된 전체 익스텐션 목록. 설명은 `lang`(없으면 GUI 언어)으로
 pub async fn list_extensions(
     State(state): State<IPCServer>,
+    axum::extract::Query(q): axum::extract::Query<LangQuery>,
 ) -> Json<serde_json::Value> {
-    let language = state.config_store.get_gui_settings().await.language.unwrap_or_default();
+    let language = match q.lang.filter(|l| !l.is_empty()) {
+        Some(l) => l,
+        None => state.config_store.get_gui_settings().await.language.unwrap_or_default(),
+    };
     let mgr = state.extension_manager.read().await;
     let mut list = mgr.list();
     // 설명은 GUI 언어로 (없으면 "ko-KR" → "ko", 그래도 없으면 manifest의 영어 description)

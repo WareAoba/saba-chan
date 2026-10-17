@@ -20,6 +20,13 @@ const { DEFAULT_IPC_PORT, DEFAULT_DAEMON_URL, SUPPORTED_LANGUAGES, getSabaDataDi
 const IPC_PORT_DEFAULT = DEFAULT_IPC_PORT;
 let IPC_BASE = process.env.IPC_BASE || DEFAULT_DAEMON_URL; // Core Daemon endpoint — updated from settings after app ready
 
+/** 데몬이 준 오류 본문(error_code, details 등)을 버리지 않고 렌더러에 넘긴다 */
+function errorBody(err, extra = {}) {
+    const data = err.response?.data;
+    const body = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+    return { ...body, ...extra, error: body.error || err.message };
+}
+
 // ── 고정 경로: shared/constants.js SSOT ──
 // Electron userData를 saba-chan으로 통일 — ready 전에 호출해야 Chromium 내부 데이터도 이 경로 사용
 app.setPath('userData', getSabaDataDir());
@@ -1630,7 +1637,7 @@ ipcMain.handle('module:listVersions', async (_event, moduleName, options = {}) =
         const response = await axios.get(`${IPC_BASE}/api/module/${moduleName}/versions?${params}`, { timeout: 15000 });
         return response.data;
     } catch (error) {
-        return { error: error.response?.data?.error || error.message };
+        return errorBody(error);
     }
 });
 
@@ -1642,7 +1649,7 @@ ipcMain.handle('module:installServer', async (_event, moduleName, installConfig)
         });
         return response.data;
     } catch (error) {
-        return { error: error.response?.data?.error || error.message };
+        return errorBody(error);
     }
 });
 
@@ -1651,7 +1658,7 @@ ipcMain.handle('instance:getInstalledVersion', async (_event, instanceId) => {
         const response = await axios.get(`${IPC_BASE}/api/instance/${instanceId}/installed-version`, { timeout: 10000 });
         return response.data;
     } catch (error) {
-        return { error: error.response?.data?.error || error.message };
+        return errorBody(error);
     }
 });
 
@@ -1664,7 +1671,7 @@ ipcMain.handle('instance:resetServer', async (_event, instanceId) => {
         );
         return response.data;
     } catch (error) {
-        return { error: error.response?.data?.error || error.message };
+        return errorBody(error);
     }
 });
 
@@ -1677,7 +1684,7 @@ ipcMain.handle('managed:console', async (_event, instanceId, since = 0, count = 
         });
         return response.data;
     } catch (error) {
-        return { error: error.response?.data?.error || error.message };
+        return errorBody(error);
     }
 });
 
@@ -1686,7 +1693,7 @@ ipcMain.handle('managed:stdin', async (_event, instanceId, command) => {
         const response = await axios.post(`${IPC_BASE}/api/instance/${instanceId}/stdin`, { command });
         return response.data;
     } catch (error) {
-        return { error: error.response?.data?.error || error.message };
+        return errorBody(error);
     }
 });
 
@@ -1854,7 +1861,7 @@ ipcMain.handle('module:manifest', async () => {
         const response = await axios.get(`${IPC_BASE}/api/modules/manifest`, { timeout: 15000 });
         return response.data;
     } catch (error) {
-        return { ok: false, error: error.response?.data?.error || error.message };
+        return errorBody(error, { ok: false });
     }
 });
 
@@ -1867,7 +1874,7 @@ ipcMain.handle('module:installFromManifest', async (_event, moduleId) => {
         );
         return response.data;
     } catch (error) {
-        return { ok: false, error: error.response?.data?.error || error.message };
+        return errorBody(error, { ok: false });
     }
 });
 
@@ -1876,7 +1883,7 @@ ipcMain.handle('module:remove', async (_event, moduleId) => {
         const response = await axios.delete(`${IPC_BASE}/api/modules/${moduleId}`, { timeout: 15000 });
         return response.data;
     } catch (error) {
-        return { ok: false, error: error.response?.data?.error || error.message };
+        return errorBody(error, { ok: false });
     }
 });
 
@@ -1897,7 +1904,7 @@ ipcMain.handle('module:detect', async (_event, dirPath) => {
         const response = await axios.post(`${IPC_BASE}/api/modules/detect`, { path: dirPath });
         return response.data;
     } catch (error) {
-        return { matches: [], error: error.response?.data?.error || error.message };
+        return errorBody(error, { matches: [] });
     }
 });
 
@@ -1907,7 +1914,7 @@ ipcMain.handle('instance:events', async (_event, id) => {
         const response = await axios.get(`${IPC_BASE}/api/instance/${encodeURIComponent(id)}/events`);
         return response.data;
     } catch (error) {
-        return { events: [], error: error.response?.data?.error || error.message };
+        return errorBody(error, { events: [] });
     }
 });
 
@@ -1946,15 +1953,17 @@ ipcMain.handle('instance:create', async (_event, data) => {
             const status = error.response.status;
             const errData = error.response.data;
 
+            const body = errData && typeof errData === 'object' ? errData : {};
+            // error_code(working_dir_in_use 등)·instance를 렌더러가 쓸 수 있게 본문을 그대로 넘긴다
             switch (status) {
                 case 400:
-                    return { error: `잘못된 요청: ${errData.error || '입력값을 확인해주세요'}` };
+                    return { ...body, error: body.error || '잘못된 요청: 입력값을 확인해주세요' };
                 case 409:
-                    return { error: `이미 존재하는 인스턴스 이름입니다` };
+                    return { ...body, error: body.error || '이미 존재하는 인스턴스 이름입니다' };
                 case 500:
-                    return { error: `인스턴스 생성 오류: ${errData.error || errData.message || '내부 오류 발생'}` };
+                    return { ...body, error: `인스턴스 생성 오류: ${body.error || body.message || '내부 오류 발생'}` };
                 default:
-                    return { error: `생성 실패 (HTTP ${status}): ${errData.error || error.message}` };
+                    return { ...body, error: `생성 실패 (HTTP ${status}): ${body.error || error.message}` };
             }
         }
 
@@ -2009,7 +2018,7 @@ ipcMain.handle('instance:applyUpdate', async (_event, id) => {
         return response.data;
     } catch (error) {
         console.error('instance:applyUpdate error:', error.message);
-        return { success: false, error: error.response?.data?.error || error.message };
+        return errorBody(error, { success: false });
     }
 });
 
@@ -2421,7 +2430,7 @@ ipcMain.handle('relay:botInvite', async (_event, relayUrl) => {
         const resp = await axios.get(`${IPC_BASE}/api/relay/bot-invite${params}`, { timeout: 8000 });
         return resp.data;
     } catch (err) {
-        return { error: err.response?.data?.error || err.message };
+        return errorBody(err);
     }
 });
 
@@ -2438,6 +2447,7 @@ async function daemonJson(method, path, data, timeout = 15000) {
 // 큰 월드는 묶고 푸는 데 몇 분 걸린다
 const BACKUP_TIMEOUT = 10 * 60 * 1000;
 const instancePath = (id, rest = '') => `/api/instance/${encodeURIComponent(id)}${rest}`;
+ipcMain.handle('instance:acceptEula', (_e, id) => daemonJson('post', instancePath(id, '/accept-eula')));
 ipcMain.handle('instance:backups', (_e, id) => daemonJson('get', instancePath(id, '/backups')));
 ipcMain.handle('instance:backupCreate', (_e, id) => daemonJson('post', instancePath(id, '/backups'), undefined, BACKUP_TIMEOUT));
 ipcMain.handle('instance:backupDelete', (_e, id, name) =>
@@ -2463,7 +2473,7 @@ ipcMain.handle('relay:initiatePairing', async (_event, payload) => {
         });
         return resp.data;
     } catch (err) {
-        return { error: err.message };
+        return errorBody(err);
     }
 });
 
@@ -2479,7 +2489,7 @@ ipcMain.handle('relay:pollPairingStatus', async (_event, code, secret, relayUrl)
         );
         return resp.data;
     } catch (err) {
-        return { error: err.message };
+        return errorBody(err);
     }
 });
 
@@ -2558,7 +2568,7 @@ ipcMain.handle('updater:launchApply', async (_event, _targets) => {
         setTimeout(() => cleanQuit(), 500);
         return { ok: true };
     } catch (err) {
-        return { ok: false, error: err.response?.data?.error || err.message };
+        return errorBody(err, { ok: false });
     }
 });
 
@@ -2868,7 +2878,7 @@ ipcMain.handle('discord:stop', async () => {
         const resp = await axios.post(`${IPC_BASE}/api/relay/agent/stop`, {}, { timeout: 10000 });
         return resp.data;
     } catch (e) {
-        return { error: e.response?.data?.error || e.message };
+        return errorBody(e);
     }
 });
 

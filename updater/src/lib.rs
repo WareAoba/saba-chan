@@ -30,28 +30,23 @@ pub mod download;
 pub mod python_pin;
 pub mod launch_ticket;
 pub mod error;
-pub mod foreground;
 pub mod integrity;
-pub mod ipc;
-pub mod queue;
+pub mod marker;
+pub mod process;
 pub mod relay;
-pub mod scheduler;
 pub mod signature;
 pub mod version;
 pub mod versions;
-pub mod worker;
 
 #[cfg(test)]
 mod tests;
 
 // Re-exports for convenience
 pub use error::{UpdaterError, RecoveryStrategy, NetworkChecker, ErrorContext};
-pub use foreground::{ForegroundApplier, SelfUpdater, ProcessChecker, ApplyPhase, ApplyProgress, ApplyPreparation};
+pub use process::ProcessChecker;
 pub use relay::{ReleaseManifest, ManifestComponent};
 pub use integrity::{IntegrityReport, IntegrityStatus, OverallIntegrity, ComponentIntegrity};
-pub use ipc::{DaemonIpcClient, StateFile, UpdateCompletionMarker, UpdateSummary, UpdaterCommand, UpdaterResponse};
-pub use queue::{DownloadQueue, DownloadRequest, DownloadResult, QueueStatus};
-pub use worker::{BackgroundWorker, BackgroundTask, WorkerEvent, WorkerStatus, AutoCheckScheduler};
+pub use marker::UpdateCompletionMarker;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -277,6 +272,12 @@ impl Default for UpdateConfig {
             channel: relay::DEFAULT_CHANNEL.to_string(),
         }
     }
+}
+
+/// 익스텐션 manifest.json의 (id, version)
+fn read_extension_version(manifest: &Path) -> Option<(String, String)> {
+    let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(manifest).ok()?).ok()?;
+    Some((v.get("id")?.as_str()?.to_string(), v.get("version")?.as_str()?.to_string()))
 }
 
 /// 같은 파일을 가리키는 경로인지. 구성 요소로 비교해 `./`는 무시하고,
@@ -574,14 +575,13 @@ impl UpdateManager {
             }
         }
 
-        // 익스텐션: extensions/*/extension.toml에서 감지
+        // 익스텐션: extensions/*/manifest.json의 id·version
         let extensions_dir = &self.extensions_dir;
         if let Ok(entries) = std::fs::read_dir(extensions_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
-                    let ext_toml = path.join("extension.toml");
-                    if let Some((name, version)) = self.read_extension_version(&ext_toml) {
+                    if let Some((name, version)) = read_extension_version(&path.join("manifest.json")) {
                         let key = format!("ext-{}", name);
                         versions.entry(key).or_insert(version);
                     }
@@ -595,33 +595,6 @@ impl UpdateManager {
 
     fn read_module_version(&self, module_toml: &Path) -> Option<(String, String)> {
         let content = std::fs::read_to_string(module_toml).ok()?;
-        let mut name = None;
-        let mut version = None;
-
-        for line in content.lines() {
-            let trimmed = line.trim();
-            if trimmed.starts_with("name") && trimmed.contains('=') {
-                let val = trimmed.split('=').nth(1)?.trim().trim_matches('"');
-                name = Some(val.to_string());
-            }
-            if trimmed.starts_with("version") && trimmed.contains('=') {
-                let val = trimmed.split('=').nth(1)?.trim().trim_matches('"');
-                version = Some(val.to_string());
-            }
-            if name.is_some() && version.is_some() {
-                break;
-            }
-        }
-
-        match (name, version) {
-            (Some(n), Some(v)) => Some((n, v)),
-            _ => None,
-        }
-    }
-
-    /// extension.toml에서 이름과 버전 읽기
-    fn read_extension_version(&self, ext_toml: &Path) -> Option<(String, String)> {
-        let content = std::fs::read_to_string(ext_toml).ok()?;
         let mut name = None;
         let mut version = None;
 
@@ -1688,9 +1661,7 @@ impl UpdateManager {
             }
             Component::Extension(name) => {
                 let ext_dir = self.resolve_ext_dir(name);
-                // extension.toml 또는 __init__.py가 있으면 설치된 것으로 판단
-                ext_dir.join("extension.toml").exists() || ext_dir.join("__init__.py").exists()
-                    || ext_dir.join("manifest.json").exists()
+                ext_dir.join("manifest.json").exists() || ext_dir.join("__init__.py").exists()
             }
             Component::Updater => {
                 // 업데이터 exe 존재 확인

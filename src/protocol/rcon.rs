@@ -17,6 +17,8 @@ pub struct RconClient {
     port: u16,
     password: String,
     request_id: u32,
+    /// 마지막 명령이 서버까지 갔는지. 간 뒤의 실패(응답 시간 초과 등)는 다시 보내면 두 번 실행된다
+    delivered: bool,
 }
 
 impl RconClient {
@@ -27,6 +29,7 @@ impl RconClient {
             port,
             password,
             request_id: 0,
+            delivered: false,
         }
     }
 
@@ -131,6 +134,11 @@ impl RconClient {
     }
 
     /// 명령어 실행 — 실제 응답 페이로드를 파싱하여 반환
+    /// 마지막 명령을 서버에 보냈는지 (응답을 못 받았어도)
+    pub fn delivered(&self) -> bool {
+        self.delivered
+    }
+
     pub fn execute_command(&mut self, command: &str) -> Result<String, ProtocolError> {
         self.request_id += 1;
         let (_id, payload) = self.send_command_internal(self.request_id, 2, command)?;
@@ -141,6 +149,7 @@ impl RconClient {
     /// command_type: 2 = command, 3 = auth
     /// Returns (response_id, payload_string)
     fn send_command_internal(&mut self, request_id: u32, command_type: i32, payload: &str) -> Result<(i32, String), ProtocolError> {
+        self.delivered = false;
         {
             let stream = self.stream.as_mut()
                 .ok_or_else(|| ProtocolError::ConnectionError("Not connected".to_string()))?;
@@ -167,6 +176,7 @@ impl RconClient {
             stream.flush()
                 .map_err(|e| ProtocolError::Protocol(format!("Failed to flush stream: {}", e)))?;
         }
+        self.delivered = true;
 
         // 응답 수신
         self.read_response()
