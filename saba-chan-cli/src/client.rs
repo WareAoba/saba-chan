@@ -452,9 +452,14 @@ impl Api {
         self.get(&format!("/api/config/{}/defaults", seg(kind))).await
     }
     /// POST /api/config/:kind/reset — `keys`(최상위 키)만, 비우면 전부 기본값으로
+    /// 키가 없으면 전체 초기화 (`keys`를 빼고 보낸다. 빈 배열은 400)
     pub async fn config_reset(&self, kind: &str, keys: &[String]) -> Result<Value> {
-        self.post(&format!("/api/config/{}/reset", seg(kind)), json!({ "keys": keys }))
-            .await
+        let body = if keys.is_empty() {
+            json!({})
+        } else {
+            json!({ "keys": keys })
+        };
+        self.post(&format!("/api/config/{}/reset", seg(kind)), body).await
     }
     pub async fn bot_config(&self) -> Result<Value> {
         self.get("/api/config/bot").await

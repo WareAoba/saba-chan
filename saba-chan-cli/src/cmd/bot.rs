@@ -28,7 +28,7 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
         BotCmd::Pair { relay_url } => pair(ctx, relay_url).await,
         BotCmd::Unpair => {
             ctx.ask.ensure(&t!("bot.confirm_unpair"))?;
-            let _ = ctx.api.agent_stop().await;
+            // 데몬이 토큰을 지우기 전에 에이전트를 먼저 끈다
             let r = ctx.api.delete_node_token().await?;
             ctx.out.done(&t!("bot.unpaired"), &r);
             Ok(())
@@ -81,7 +81,12 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             };
             ctx.ask.ensure(&q)?;
             let r = ctx.api.config_reset("bot", &keys).await?;
-            ctx.out.done(&t!("bot.config_saved"), &r);
+            let what = if keys.is_empty() {
+                t!("config.all")
+            } else {
+                keys.join(", ")
+            };
+            ctx.out.done(&t!("config.reset", key = what), &r);
             Ok(())
         }
         BotCmd::Config { pairs } => config(ctx, &pairs).await,
