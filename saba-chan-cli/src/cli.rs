@@ -394,10 +394,12 @@ pub enum ExtCmd {
     Disable { extension: Option<String> },
     /// Extensions available to download
     Available,
-    /// Download and install (or update) an extension
+    /// Download and install (or update) extensions
     Install {
-        id: String,
-        /// Install from this URL instead of the catalog
+        /// One or more extension ids
+        #[arg(required = true, num_args = 1..)]
+        ids: Vec<String>,
+        /// Install from this URL instead of the catalog (one id only)
         #[arg(long)]
         url: Option<String>,
         #[arg(long)]

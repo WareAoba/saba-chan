@@ -183,7 +183,8 @@
     "status_idle": "Nothing is starting up.",
     "unmounted": "{{id}} unloaded.",
     "up_to_date": "All extensions are up to date.",
-    "updated": "{{id}} updated to {{version}}."
+    "updated": "{{id}} updated to {{version}}.",
+    "url_one_id": "--url and --sha256 work with one extension id at a time."
   },
   "history": {
     "none": "No stops recorded yet."
@@ -376,7 +377,8 @@
       "bot.alias.remove": "Remove an alias"
     },
     "arg": {
-      "server": "Server name (a part is enough)"
+      "server": "Server name (a part is enough)",
+      "ids": "One or more extension ids"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments to open the interactive shell.\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },

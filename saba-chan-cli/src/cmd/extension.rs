@@ -27,7 +27,7 @@ pub async fn run(ctx: &Ctx, cmd: ExtCmd) -> Result<()> {
             Ok(())
         }
         ExtCmd::Available => available(ctx).await,
-        ExtCmd::Install { id, url, sha256 } => install(ctx, &id, url, sha256).await,
+        ExtCmd::Install { ids, url, sha256 } => install_many(ctx, &ids, url, sha256).await,
         ExtCmd::Update { extension } => update(ctx, extension.as_deref()).await,
         ExtCmd::Remove { extension } => {
             let e = resolve::extension(ctx, extension.as_deref()).await?;
@@ -255,7 +255,23 @@ async fn available(ctx: &Ctx) -> Result<()> {
     Ok(())
 }
 
-async fn install(ctx: &Ctx, id: &str, url: Option<String>, sha256: Option<String>) -> Result<()> {
+async fn install_many(ctx: &Ctx, ids: &[String], url: Option<String>, sha256: Option<String>) -> Result<()> {
+    if ids.len() == 1 {
+        return install(ctx, &ids[0], url, sha256).await.map(|_| ());
+    }
+    if url.is_some() || sha256.is_some() {
+        return Err(crate::error::usage(t!("ext.url_one_id")));
+    }
+    // 하나씩 설치하고, 실패하면 거기서 멈춘다 (앞의 것은 이미 설치됨)
+    let mut results = Vec::new();
+    for id in ids {
+        results.push(install(ctx, id, None, None).await?);
+    }
+    ctx.out.data(&json!({ "results": results }), |_| {});
+    Ok(())
+}
+
+async fn install(ctx: &Ctx, id: &str, url: Option<String>, sha256: Option<String>) -> Result<Value> {
     let mut body = Map::new();
     if let Some(u) = url {
         body.insert("download_url".into(), Value::String(u));
@@ -283,7 +299,7 @@ async fn install(ctx: &Ctx, id: &str, url: Option<String>, sha256: Option<String
     if !ctx.out.json {
         ctx.out.hint(&format!("saba-chan-cli extension enable {}", id));
     }
-    Ok(())
+    Ok(r)
 }
 
 async fn update(ctx: &Ctx, q: Option<&str>) -> Result<()> {

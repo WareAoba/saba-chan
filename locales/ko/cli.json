@@ -183,7 +183,8 @@
     "status_idle": "준비 중인 익스텐션이 없어요.",
     "unmounted": "{{id}}를 내렸어요.",
     "up_to_date": "모든 익스텐션이 최신이에요.",
-    "updated": "{{id}}를 {{version}}로 업데이트했어요."
+    "updated": "{{id}}를 {{version}}로 업데이트했어요.",
+    "url_one_id": "--url과 --sha256은 익스텐션 하나에만 쓸 수 있어요."
   },
   "history": {
     "none": "아직 종료 기록이 없어요."
@@ -526,7 +527,8 @@
       "shell": "bash, zsh, fish, powershell, elvish",
       "game_port": "게임 포트",
       "keys": "설정 키",
-      "server.rename.name": "새 이름"
+      "server.rename.name": "새 이름",
+      "ids": "익스텐션 ID (여러 개 가능)"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 실행하면 대화형 셸이 열려요.\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },
