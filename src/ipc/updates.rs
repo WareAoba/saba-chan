@@ -212,6 +212,7 @@ async fn check_and_follow_up(state: &UpdateState) -> anyhow::Result<saba_chan_up
         let status = mgr.check_for_updates().await?;
         (status, mgr.get_config().auto_download)
     };
+    announce_new_updates(&status);
 
     let has_locale_update = status.components.iter()
         .any(|c| matches!(c.component, Component::Locales) && c.update_available);
@@ -271,6 +272,25 @@ pub fn spawn_update_scheduler(state: UpdateState, shutdown: tokio_util::sync::Ca
             };
         }
     });
+}
+
+/// 사용자에게 보이는 업데이트가 지난번 알린 것과 달라졌을 때만 `update.available` (P4)
+fn announce_new_updates(status: &saba_chan_updater_lib::UpdateStatus) {
+    static LAST: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+    let found: Vec<(String, String)> = status.components.iter()
+        .filter(|c| c.update_available && !matches!(c.component, Component::Locales))
+        .map(|c| (c.component.manifest_key(), c.latest_version.clone().unwrap_or_default()))
+        .collect();
+    let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+    if found.is_empty() || *last == found {
+        *last = found;
+        return;
+    }
+    let components: Vec<Value> = found.iter()
+        .map(|(component, version)| json!({ "component": component, "latestVersion": version }))
+        .collect();
+    crate::events::emit("update.available", json!({ "components": components }));
+    *last = found;
 }
 
 /// Locales 컴포넌트를 사용자 비표시로 다운로드+적용합니다.

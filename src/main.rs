@@ -19,6 +19,7 @@ mod chat;
 mod commands;
 mod module_audit;
 mod audit;
+mod events;
 mod sandbox;
 mod actions;
 mod launch_args;

@@ -167,10 +167,17 @@ impl AuditLog {
         if let Some(args) = event.args.filter(|a| !a.is_null()) {
             obj.insert("args".into(), Value::String(clip(&args.to_string())));
         }
-        let _guard = self.lock.lock().unwrap_or_else(|e| e.into_inner());
-        if let Err(e) = self.append(&line) {
-            tracing::warn!("[Audit] Could not write {}: {}", self.path.display(), e);
+        {
+            let _guard = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+            if let Err(e) = self.append(&line) {
+                tracing::warn!("[Audit] Could not write {}: {}", self.path.display(), e);
+            }
         }
+        // 활동 줄·토스트용 (P4). 기록과 같은 모양, `ts`는 이벤트의 `at`이 대신한다
+        if let Some(obj) = line.as_object_mut() {
+            obj.remove("ts");
+        }
+        crate::events::emit("action.run", line);
     }
 
     fn append(&self, line: &Value) -> std::io::Result<()> {

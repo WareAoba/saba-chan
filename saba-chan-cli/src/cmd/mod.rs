@@ -31,7 +31,7 @@ pub async fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
         Cmd::Status => status::run(ctx).await,
         Cmd::Version => status::version(ctx).await,
         Cmd::Monitor(a) => monitor::run(ctx, a).await,
-        Cmd::Audit { server, limit } => audit::run(ctx, server.as_deref(), limit).await,
+        Cmd::Audit { server, limit, follow } => audit::run(ctx, server.as_deref(), limit, follow).await,
         Cmd::Perm(c) => perm::run(ctx, c).await,
         Cmd::Sandbox(c) => sandbox::run(ctx, c).await,
         Cmd::Do { action, server, plan, input } => do_action::run(ctx, action.as_deref(), server.as_deref(), plan, &input).await,

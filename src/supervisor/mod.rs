@@ -2224,8 +2224,15 @@ impl Supervisor {
             tracing::info!("'{}' exited: {:?} ({})", instance.name, verdict.kind, verdict.evidence);
         }
 
+        let event = crash::ExitEvent { at: saba_runner::now(), verdict, restart_in_secs: restart_in, note };
+        if let Ok(serde_json::Value::Object(mut data)) = serde_json::to_value(&event) {
+            data.remove("at");
+            data.insert("instanceId".into(), instance_id.into());
+            data.insert("instance".into(), instance.name.clone().into());
+            crate::events::emit("instance.exit", data.into());
+        }
         let events = self.exit_events.entry(instance_id.to_string()).or_default();
-        events.push_back(crash::ExitEvent { at: saba_runner::now(), verdict, restart_in_secs: restart_in, note });
+        events.push_back(event);
         while events.len() > crash::EVENTS_KEPT {
             events.pop_front();
         }

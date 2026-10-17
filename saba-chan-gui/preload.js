@@ -132,6 +132,12 @@ contextBridge.exposeInMainWorld('api', {
     discordSettingsGet: (guild) => ipcRenderer.invoke('discord:settings:get', guild),
     // 바꿀 키만 → {success, settings, sync:{guildId, ok, status?, error?}}
     discordSettingsSet: (guild, patch) => ipcRenderer.invoke('discord:settings:set', guild, patch),
+    // 데몬 이벤트 스트림 (P4): cb({id, type, data}). type 'resync'면 목록을 다시 읽는다. 돌려주는 함수로 해제
+    onDaemonEvent: (callback) => {
+        const listener = (event, data) => callback(data);
+        ipcRenderer.on('events:message', listener);
+        return () => ipcRenderer.removeListener('events:message', listener);
+    },
     // 설정·서버 목록 내보내기/가져오기 (A9): {secrets} / {path?, dryRun, overwrite}. 취소하면 {canceled: true}
     dataExport: (opts) => ipcRenderer.invoke('dataTransfer:export', opts),
     dataImport: (opts) => ipcRenderer.invoke('dataTransfer:import', opts),

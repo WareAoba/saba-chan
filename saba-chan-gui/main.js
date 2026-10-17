@@ -903,6 +903,97 @@ async function unregisterFromDaemon(opts = {}) {
     }
 }
 
+// ── 데몬 이벤트 스트림 (P4, GET /api/events) ────────────────
+// 연결 하나를 유지하고 받은 이벤트를 창에 `events:message`({id, type, data})로 넘긴다.
+// 끊기면 마지막 번호로 다시 붙는다. 놓친 건이 있으면 데몬이 `resync`를 보낸다.
+const EVENTS_RETRY_MS = 3000;
+let eventsReq = null;
+let eventsLastId = null;
+let eventsRetryTimer = null;
+let eventsStopped = false;
+
+/** SSE 한 덩어리 → {id, type, data}. 주석(ping)뿐이면 null */
+function parseSseBlock(block) {
+    let id = null;
+    let type = 'message';
+    const data = [];
+    for (const line of block.split('\n')) {
+        if (!line || line.startsWith(':')) continue;
+        const at = line.indexOf(':');
+        const field = at < 0 ? line : line.slice(0, at);
+        const value = at < 0 ? '' : line.slice(at + 1).replace(/^ /, '');
+        if (field === 'id') id = Number(value);
+        else if (field === 'event') type = value;
+        else if (field === 'data') data.push(value);
+    }
+    if (!data.length) return null;
+    let parsed = {};
+    try {
+        parsed = JSON.parse(data.join('\n'));
+    } catch (_) {
+        return null;
+    }
+    return { id, type, data: parsed };
+}
+
+function scheduleEventsReconnect() {
+    eventsReq = null;
+    if (eventsStopped || eventsRetryTimer) return;
+    eventsRetryTimer = setTimeout(() => {
+        eventsRetryTimer = null;
+        connectDaemonEvents();
+    }, EVENTS_RETRY_MS);
+}
+
+function connectDaemonEvents() {
+    if (eventsStopped || eventsReq) return;
+    const headers = { Accept: 'text/event-stream', 'X-Saba-Client': 'gui' };
+    const token = getIpcToken();
+    if (token) headers['X-Saba-Token'] = token;
+    if (eventsLastId != null) headers['Last-Event-ID'] = String(eventsLastId);
+    let closed = false;
+    const done = () => {
+        if (closed) return;
+        closed = true;
+        scheduleEventsReconnect();
+    };
+    const req = http.get(new URL('/api/events', IPC_BASE), { headers }, (res) => {
+        if (res.statusCode !== 200) {
+            // 토큰이 바뀌었을 수 있다 (데몬 재시작)
+            if (res.statusCode === 401) loadIpcToken();
+            res.resume();
+            done();
+            return;
+        }
+        res.setEncoding('utf8');
+        let buf = '';
+        res.on('data', (chunk) => {
+            buf += chunk;
+            let end = buf.indexOf('\n\n');
+            while (end >= 0) {
+                const event = parseSseBlock(buf.slice(0, end));
+                buf = buf.slice(end + 2);
+                end = buf.indexOf('\n\n');
+                if (!event) continue;
+                if (event.id != null && Number.isFinite(event.id)) eventsLastId = event.id;
+                if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('events:message', event);
+            }
+        });
+        res.on('end', done);
+        res.on('error', done);
+    });
+    req.on('error', done);
+    eventsReq = req;
+}
+
+function stopDaemonEvents() {
+    eventsStopped = true;
+    if (eventsRetryTimer) clearTimeout(eventsRetryTimer);
+    eventsRetryTimer = null;
+    if (eventsReq) eventsReq.destroy();
+    eventsReq = null;
+}
+
 async function runBackgroundInit() {
     sendStatus('init', '초기화 시작');
     await ensureDaemon();
@@ -914,6 +1005,7 @@ async function runBackgroundInit() {
     // 데몬에 클라이언트 등록 및 heartbeat 시작
     await registerWithDaemon();
     startHeartbeat();
+    connectDaemonEvents();
 
     // 업데이트 주기적 체크 시작 (기본 3시간 간격)
     startUpdateChecker();
@@ -1313,6 +1405,7 @@ app.on('before-quit', () => {
 
     // 업데이트 체커 정지
     stopUpdateChecker();
+    stopDaemonEvents();
 
     // Heartbeat 정지 (동기적으로)
     if (heartbeatTimer) {
