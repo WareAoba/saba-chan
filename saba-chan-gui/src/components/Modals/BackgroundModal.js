@@ -5,6 +5,7 @@ import './Modals.css';
 import { Icon } from '../Icon';
 
 import { DEFAULT_IPC_PORT } from '../../stores/useSettingsStore';
+import { useUIStore } from '../../stores/useUIStore';
 
 function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
     const { t } = useTranslation('gui');
@@ -52,6 +53,8 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
 
     const handleRestartDaemon = async () => {
         setRestarting(true);
+        // 재시작은 5초 폴링 사이에 끝날 수 있다. 상태를 한번 내려 둬야 데몬을 따라가는 것들(실행 환경 준비 표시 등)이 다시 본다
+        useUIStore.getState().setBackgroundDaemonStatus('checking');
         try {
             const result = await window.api.daemonRestart();
             if (result.success) {

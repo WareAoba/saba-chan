@@ -9,13 +9,15 @@ const FAILED_POLL_MS = 5000; // 실패는 저장되지 않아 다음 모듈 호�
 /**
  * 데몬이 부팅 때 Python 실행 환경을 준비하는 동안 상단 바에 진행 고리를 띄운다
  * (GET /api/runtime/preflight). 끝나면 사라지고, 실패하면 경고로 남는다.
+ * 데몬이 다시 켜지면(daemonStatus가 running으로 돌아오면) 처음부터 다시 본다.
  */
-export function RuntimePreflight() {
+export function RuntimePreflight({ daemonStatus }) {
     const { t } = useTranslation('gui');
     const [state, setState] = useState(null);
 
     useEffect(() => {
-        if (!window.api?.runtimePreflight) return undefined;
+        setState(null);
+        if (!window.api?.runtimePreflight || daemonStatus !== 'running') return undefined;
         let alive = true;
         let timer;
         const poll = async () => {
@@ -35,7 +37,7 @@ export function RuntimePreflight() {
             alive = false;
             clearTimeout(timer);
         };
-    }, []);
+    }, [daemonStatus]);
 
     if (!state || state.phase === 'preflight-done' || state.phase === 'preflight-idle') return null;
 
@@ -48,13 +50,7 @@ export function RuntimePreflight() {
     const c = 2 * Math.PI * r;
 
     return (
-        <span
-            className={clsx('appbar-preflight', { failed })}
-            role="status"
-            tabIndex={0}
-            data-tooltip={label}
-            aria-label={label}
-        >
+        <output className={clsx('appbar-preflight', { failed })} data-tooltip={label} aria-label={label}>
             {failed ? (
                 <Icon name="alertTriangle" size="sm" />
             ) : (
@@ -77,6 +73,6 @@ export function RuntimePreflight() {
             <span className="appbar-preflight-text">
                 {failed ? t('shell.preflight_failed_short') : t('shell.preflight_short')}
             </span>
-        </span>
+        </output>
     );
 }

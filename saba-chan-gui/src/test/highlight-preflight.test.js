@@ -46,7 +46,7 @@ describe('실행 환경 준비 표시 (C5)', () => {
             { phase: 'preflight-done', percent: 100, complete: true },
         ];
         window.api = { runtimePreflight: vi.fn(() => Promise.resolve(steps.shift())) };
-        await act(async () => render(<RuntimePreflight />));
+        await act(async () => render(<RuntimePreflight daemonStatus="running" />));
         const chip = document.querySelector('.appbar-preflight');
         expect(chip.getAttribute('data-tooltip')).toContain('40%');
         await act(async () => vi.advanceTimersByTimeAsync(1000));
@@ -61,16 +61,29 @@ describe('실행 환경 준비 표시 (C5)', () => {
             { phase: 'preflight-done', percent: 100, complete: true },
         ];
         window.api = { runtimePreflight: vi.fn(() => Promise.resolve(steps.shift())) };
-        await act(async () => render(<RuntimePreflight />));
+        await act(async () => render(<RuntimePreflight daemonStatus="running" />));
         const chip = document.querySelector('.appbar-preflight.failed');
         expect(chip.getAttribute('data-tooltip')).toContain('pip timeout');
         await act(async () => vi.advanceTimersByTimeAsync(5000));
         expect(document.querySelector('.appbar-preflight')).toBeNull();
     });
 
+    it('데몬이 다시 켜지면 처음부터 다시 묻는다', async () => {
+        const steps = [
+            { phase: 'preflight-done', percent: 100, complete: true },
+            { phase: 'preflight-python', percent: 10, complete: false },
+        ];
+        window.api = { runtimePreflight: vi.fn(() => Promise.resolve(steps.shift())) };
+        const view = await act(async () => render(<RuntimePreflight daemonStatus="running" />));
+        expect(document.querySelector('.appbar-preflight')).toBeNull();
+        await act(async () => view.rerender(<RuntimePreflight daemonStatus="stopped" />));
+        await act(async () => view.rerender(<RuntimePreflight daemonStatus="running" />));
+        expect(document.querySelector('.appbar-preflight').getAttribute('data-tooltip')).toContain('10%');
+    });
+
     it('IPC가 없으면 아무것도 그리지 않는다', async () => {
         window.api = {};
-        await act(async () => render(<RuntimePreflight />));
+        await act(async () => render(<RuntimePreflight daemonStatus="running" />));
         expect(document.querySelector('.appbar-preflight')).toBeNull();
     });
 });

@@ -61,7 +61,7 @@ export function AppBar({
 
             <div className="appbar-status">
                 <ExtensionSlot slotId="AppBar.status" />
-                <RuntimePreflight />
+                <RuntimePreflight daemonStatus={daemonStatus} />
                 {extInitializing && (
                     <span className="appbar-ext-init" title={extInitLabel}>
                         <span className="spinner" aria-hidden="true" />
