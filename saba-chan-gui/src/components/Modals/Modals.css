@@ -3686,3 +3686,16 @@
     padding: 1px 0;
 }
 
+
+.cmd-history-reply {
+    margin: 4px 0 0 12px;
+    max-height: 7.5em;
+    overflow: auto;
+    font-family: var(--font-mono);
+    font-size: calc(11px * var(--font-scale));
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    -webkit-user-select: text;
+    user-select: text;
+}

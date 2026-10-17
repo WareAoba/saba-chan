@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TITLEBAR_HEIGHT } from '../constants/layout';
 import { useServerStore } from '../stores/useServerStore';
+import { commandReplyLines } from '../utils/commandReply';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
 
 /** @constant 서버 Running 시 polling 간격 (ms) */
@@ -350,11 +351,11 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                 if (rconResult?.error) {
                     safeShowToast(translateError(rconResult.error), 'error', 3000);
                 } else {
-                    const responseText = rconResult?.data?.response || rconResult?.message || '';
                     const lines = [{ id: Date.now(), content: `> ${cmd}`, source: 'STDIN', level: 'INFO' }];
-                    if (responseText) {
-                        lines.push({ id: Date.now() + 1, content: responseText, source: 'STDOUT', level: 'INFO' });
-                    }
+                    // 데몬이 서버의 답을 data.response로 준다 (여러 줄일 수 있다)
+                    commandReplyLines(rconResult).forEach((content, i) => {
+                        lines.push({ id: Date.now() + 1 + i, content, source: 'STDOUT', level: 'INFO' });
+                    });
                     setConsoles((prev) => {
                         if (!prev[instanceId]) return prev;
                         return {

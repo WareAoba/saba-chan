@@ -335,7 +335,11 @@
     "rename_name_taken": "'{{name}}' という名前はすでに使われています",
     "rename_server_running": "名前を変更するにはサーバーを停止してください",
     "dependency_unmet_title": "必要な要件を満たしていません",
-    "dependency_unmet_message": "'{{name}}' のモジュールには以下のバージョンが必要です。アップデートするか、拡張機能をインストールして有効にしてから、もう一度起動してください。"
+    "dependency_unmet_message": "'{{name}}' のモジュールには以下のバージョンが必要です。アップデートするか、拡張機能をインストールして有効にしてから、もう一度起動してください。",
+    "preflight_failed_title": "'{{name}}' の起動前チェックで問題が見つかりました",
+    "eula_notice": "Minecraft EULA: https://aka.ms/MinecraftEULA",
+    "eula_accept_and_start": "EULA に同意して起動",
+    "working_dir_in_use": "サーバー '{{instance}}' がすでにこのフォルダーを使っています。1つのフォルダーに2つのサーバーを作ると、ワールドと設定を互いに上書きします。別のフォルダーを選んでください。"
   },
   "settings": {
     "save_failed_title": "設定保存失敗",

@@ -5,6 +5,7 @@ import { useExtensions } from '../../contexts/ExtensionContext';
 import { Icon } from '../Icon';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { QuestionModal } from './Modals';
+import { localizedDescription } from '../../utils/localizedText';
 
 // ─────────────────────────────────────────────────────────────
 // 사바 스토리지 (구 업데이트 센터)
@@ -950,7 +951,7 @@ function ModulesTab() {
 // 익스텐션 탭
 // ─────────────────────────────────────────────────────────────
 function ExtensionsTab() {
-    const { t } = useTranslation('gui');
+    const { t, i18n } = useTranslation('gui');
     const {
         extensions,
         refreshExtensions,
@@ -990,6 +991,14 @@ function ExtensionsTab() {
         })();
         return () => { cancelled = true; };
     }, [extensions]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // 설치된 익스텐션 설명은 데몬이 GUI 언어로 골라 준다 → 언어가 바뀌면 다시 받는다
+    const firstLanguage = useRef(i18n.language);
+    useEffect(() => {
+        if (firstLanguage.current === i18n.language) return;
+        firstLanguage.current = i18n.language;
+        refreshExtensions?.();
+    }, [i18n.language]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // 익스텐션 디렉토리 재스캔 + 목록 갱신
     const handleRescan = useCallback(async () => {
@@ -1068,8 +1077,8 @@ function ExtensionsTab() {
                                             <span className="ss-update-badge">v{updateInfo.latest_version}</span>
                                         )}
                                     </span>
-                                    {(ext.description || ext.id) && (
-                                        <span className="ss-card-desc">{ext.description || ext.id}</span>
+                                    {(localizedDescription(ext, i18n.language) || ext.id) && (
+                                        <span className="ss-card-desc">{localizedDescription(ext, i18n.language) || ext.id}</span>
                                     )}
                                 </div>
                                 <div className="ss-card-actions">
@@ -1155,8 +1164,8 @@ function ExtensionsTab() {
                                     {ext.version && <span className="ss-card-version">v{ext.version}</span>}
                                     {ext.author && <span className="ss-card-version">· {ext.author}</span>}
                                 </span>
-                                {(ext.description || ext.id) && (
-                                    <span className="ss-card-desc">{ext.description || ext.id}</span>
+                                {(localizedDescription(ext, i18n.language) || ext.id) && (
+                                    <span className="ss-card-desc">{localizedDescription(ext, i18n.language) || ext.id}</span>
                                 )}
                             </div>
                             <div className="ss-card-actions">

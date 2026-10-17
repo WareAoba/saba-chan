@@ -391,7 +391,11 @@
     "rename_name_taken": "« {{name}} » est déjà utilisé",
     "rename_server_running": "Arrêtez le serveur avant de le renommer",
     "dependency_unmet_title": "Prérequis manquants",
-    "dependency_unmet_message": "Le module de « {{name}} » nécessite les versions ci-dessous. Mettez à jour, ou installez et activez l'extension, puis relancez."
+    "dependency_unmet_message": "Le module de « {{name}} » nécessite les versions ci-dessous. Mettez à jour, ou installez et activez l'extension, puis relancez.",
+    "preflight_failed_title": "La vérification avant démarrage de '{{name}}' a trouvé un problème",
+    "eula_notice": "CLUF de Minecraft : https://aka.ms/MinecraftEULA",
+    "eula_accept_and_start": "Accepter le CLUF et démarrer",
+    "working_dir_in_use": "Le serveur '{{instance}}' utilise déjà ce dossier. Deux serveurs dans un même dossier écrasent le monde et les réglages l'un de l'autre. Choisissez un autre dossier."
   },
   "settings": {
     "save_failed_title": "Échec de l'enregistrement des paramètres",

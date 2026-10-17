@@ -391,7 +391,11 @@
     "rename_name_taken": "'{{name}}' ist bereits vergeben",
     "rename_server_running": "Stoppe den Server, bevor du ihn umbenennst",
     "dependency_unmet_title": "Fehlende Voraussetzungen",
-    "dependency_unmet_message": "Das Modul für '{{name}}' benötigt die unten stehenden Versionen. Aktualisiere oder installiere und aktiviere die Erweiterung und starte dann erneut."
+    "dependency_unmet_message": "Das Modul für '{{name}}' benötigt die unten stehenden Versionen. Aktualisiere oder installiere und aktiviere die Erweiterung und starte dann erneut.",
+    "preflight_failed_title": "Die Startprüfung für '{{name}}' hat ein Problem gefunden",
+    "eula_notice": "Minecraft-EULA: https://aka.ms/MinecraftEULA",
+    "eula_accept_and_start": "EULA akzeptieren und starten",
+    "working_dir_in_use": "Der Server '{{instance}}' verwendet diesen Ordner bereits. Zwei Server in einem Ordner überschreiben gegenseitig Welt und Einstellungen. Wähle einen anderen Ordner."
   },
   "settings": {
     "save_failed_title": "Einstellungsspeicherung fehlgeschlagen",

@@ -152,11 +152,14 @@ function CommandModal({ server, modules, onClose, onExecute, embedded = false })
                 detail = result.error;
             }
 
+            // 서버가 돌려준 답(RCON 응답·명령 뒤 콘솔 줄)은 펼치지 않아도 보인다
+            const reply = !isError && displayMsg !== result.message && typeof displayMsg === 'string' ? displayMsg : null;
             const entry = {
                 id: Date.now(),
                 command: cmdText,
                 status,
                 message: displayMsg,
+                reply,
                 detail,
                 time: new Date().toLocaleTimeString(),
             };
@@ -303,6 +306,9 @@ function CommandModal({ server, modules, onClose, onExecute, embedded = false })
                                 </span>
                                 <span className="cmd-history-time">{entry.time}</span>
                             </div>
+                            {entry.reply && expandedId !== entry.id && (
+                                <pre className="cmd-history-reply">{entry.reply}</pre>
+                            )}
                             {expandedId === entry.id && (entry.message || entry.detail) && (
                                 <pre className="cmd-history-detail" onClick={(e) => e.stopPropagation()}>
                                     {entry.detail || entry.message}

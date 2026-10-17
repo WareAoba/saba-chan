@@ -387,6 +387,46 @@ export function useServerActions({
                 return;
             }
 
+            // ── error_code: preflight_failed — 켜기 전 점검(모듈 validate)이 critical 문제를 냈다 ──
+            if (result.error_code === 'preflight_failed') {
+                revertOptimistic(name);
+                const issues = Array.isArray(result.issues) ? result.issues : [];
+                const others = issues.slice(1).map((i) => `• ${i.message || i.code}`);
+                const message = [result.error, result.solution, others.length ? others.join('\n') : null]
+                    .filter(Boolean)
+                    .join('\n\n');
+                const title = t('servers.preflight_failed_title', { name });
+                if (result.issue_code === 'EULA_NOT_ACCEPTED' && window.api.instanceAcceptEula) {
+                    setModal({
+                        type: 'question',
+                        title,
+                        message: `${message}\n\n${t('servers.eula_notice')}`,
+                        buttons: [
+                            {
+                                label: t('servers.eula_accept_and_start'),
+                                action: async () => {
+                                    setModal(null);
+                                    const accepted = await window.api.instanceAcceptEula(srv.id);
+                                    if (accepted?.success === false || accepted?.error) {
+                                        safeShowToast(
+                                            translateError(accepted.error || accepted.message || ''),
+                                            'error',
+                                            5000,
+                                        );
+                                        return;
+                                    }
+                                    handleStart(name, module);
+                                },
+                            },
+                            { label: t('modals.cancel'), action: () => setModal(null) },
+                        ],
+                    });
+                } else {
+                    setModal({ type: 'failure', title, message });
+                }
+                return;
+            }
+
             // ── error_code: start_in_progress — 같은 서버를 이미 켜는 중 (다른 창·봇·더블클릭) ──
             if (result.error_code === 'start_in_progress') {
                 // 실제로 켜지는 중이므로 '켜는 중' 표시는 그대로 두고 알려만 준다
@@ -751,6 +791,15 @@ export function useServerActions({
                             action: () => setModal(null),
                         },
                     ],
+                });
+                return;
+            }
+
+            if (result.error_code === 'working_dir_in_use') {
+                setModal({
+                    type: 'failure',
+                    title: t('servers.add_failed_title'),
+                    message: t('servers.working_dir_in_use', { instance: result.instance || '?' }),
                 });
                 return;
             }

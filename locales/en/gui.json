@@ -391,7 +391,11 @@
     "rename_name_taken": "'{{name}}' is already taken",
     "rename_server_running": "Stop the server before renaming it",
     "dependency_unmet_title": "Missing requirements",
-    "dependency_unmet_message": "The module for '{{name}}' needs the versions below. Update, or install and enable the extension, then start again."
+    "dependency_unmet_message": "The module for '{{name}}' needs the versions below. Update, or install and enable the extension, then start again.",
+    "preflight_failed_title": "The pre-start check for '{{name}}' found a problem",
+    "eula_notice": "Minecraft EULA: https://aka.ms/MinecraftEULA",
+    "eula_accept_and_start": "Accept EULA and start",
+    "working_dir_in_use": "Server '{{instance}}' already uses this folder. Two servers in one folder overwrite each other's world and settings. Pick another folder."
   },
   "settings": {
     "save_failed_title": "Settings save failed",
