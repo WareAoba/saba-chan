@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createTranslateError, retryWithBackoff, safeShowToast } from '../utils/helpers';
-import { showTrustWarnings } from '../utils/trustNotice';
+import { showTrustWarnings, startBlockedText } from '../utils/trustNotice';
 
 /**
  * Manages server CRUD operations: fetch, start, stop, status, add, delete.
@@ -444,6 +444,14 @@ export function useServerActions({
                     title: t('errors.port_conflict', { defaultValue: 'Port Conflict' }),
                     message: translateError(result.message || '') + (conflictDetails ? '\n\n' + conflictDetails : ''),
                 });
+                return;
+            }
+
+            // ── action_required: 확인되지 않은 구성요소라 데몬이 막음 (악성코드 검사·서버 폴더 밖 실행) ──
+            const blocked = startBlockedText(result, t);
+            if (blocked) {
+                revertOptimistic(name);
+                safeShowToast(t('servers.start_failed_toast', { error: blocked }), 'error', 8000);
                 return;
             }
 

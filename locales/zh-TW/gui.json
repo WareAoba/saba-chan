@@ -1023,6 +1023,10 @@
       "module_modified": "模組（{{id}}）的檔案在安裝後被變更。如果不是您自己修改的，請重新安裝。",
       "extension_unverified": "已啟用非官方目錄來源的擴充功能（{{id}}）。請確認其來源可信。",
       "extension_modified": "擴充功能（{{id}}）的檔案在安裝後被變更。如果不是您自己修改的，請重新安裝。"
+    },
+    "start_blocked": {
+      "malware_detected": "防毒軟體將此未驗證元件的檔案標記為惡意：{{file}}",
+      "launch_outside_instance": "此未驗證模組試圖執行伺服器資料夾之外的程式：{{file}}"
     }
   },
   "patch_notes": {

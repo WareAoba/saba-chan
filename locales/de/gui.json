@@ -1023,6 +1023,10 @@
       "module_modified": "Das Modul ({{id}}) wurde nach der Installation verändert. Installiere es neu, falls du es nicht selbst bearbeitet hast.",
       "extension_unverified": "Eine Erweiterung ({{id}}) aktiviert, die nicht aus dem offiziellen Katalog stammt. Stelle sicher, dass du der Quelle vertraust.",
       "extension_modified": "Die Erweiterung ({{id}}) wurde nach der Installation verändert. Installiere sie neu, falls du sie nicht selbst bearbeitet hast."
+    },
+    "start_blocked": {
+      "malware_detected": "Der Virenschutz hat eine Datei dieser nicht verifizierten Komponente gemeldet: {{file}}",
+      "launch_outside_instance": "Dieses nicht verifizierte Modul wollte ein Programm außerhalb des Serverordners starten: {{file}}"
     }
   },
   "patch_notes": {

@@ -1023,6 +1023,10 @@
       "module_modified": "Le module ({{id}}) a été modifié après son installation. Réinstallez-le si vous ne l'avez pas modifié vous-même.",
       "extension_unverified": "Extension ({{id}}) activée alors qu'elle ne provient pas du catalogue officiel. Vérifiez que sa source est fiable.",
       "extension_modified": "L'extension ({{id}}) a été modifiée après son installation. Réinstallez-la si vous ne l'avez pas modifiée vous-même."
+    },
+    "start_blocked": {
+      "malware_detected": "L'antivirus a signalé un fichier de ce composant non vérifié : {{file}}",
+      "launch_outside_instance": "Ce module non vérifié a tenté de lancer un programme hors du dossier du serveur : {{file}}"
     }
   },
   "patch_notes": {
