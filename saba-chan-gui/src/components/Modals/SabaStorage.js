@@ -6,7 +6,7 @@ import { Icon } from '../Icon';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { QuestionModal } from './Modals';
 import { localizedDescription } from '../../utils/localizedText';
-import { ExtensionAuditNotice } from '../servers/ModuleAuditNotice';
+import { clearModuleAuditCache, ExtensionAuditNotice } from '../servers/ModuleAuditNotice';
 import { TrustBadge } from '../ui/TrustBadge';
 
 // ─────────────────────────────────────────────────────────────
@@ -293,6 +293,7 @@ function ComponentsTab({ devMode }) {
             setMessage(null);
             try {
                 const res = await window.api?.updaterApply?.([key]);
+                clearModuleAuditCache();
                 if (res?.ok === false) {
                     setError(`${key}: ${res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || t('saba_storage.apply_failed')}`);
                 } else {
@@ -348,6 +349,7 @@ function ComponentsTab({ devMode }) {
         for (const key of allKeys) markBusy(key);
         try {
             const res = await window.api?.updaterApply?.(allKeys);
+            clearModuleAuditCache();
             if (res?.ok === false) {
                 hadError = true;
                 setError(
@@ -672,7 +674,10 @@ function ModulesTab() {
     const loadInstalledModules = useCallback(async () => {
         try {
             const res = await window.api?.moduleList?.();
-            if (res?.modules) setInstalledModules(res.modules);
+            if (res?.modules) {
+                clearModuleAuditCache();
+                setInstalledModules(res.modules);
+            }
         } catch (_) {}
     }, []);
 
@@ -681,7 +686,10 @@ function ModulesTab() {
         setRefreshingModules(true);
         try {
             const res = await window.api?.moduleRefresh?.();
-            if (res?.modules) setInstalledModules(res.modules);
+            if (res?.modules) {
+                clearModuleAuditCache();
+                setInstalledModules(res.modules);
+            }
         } catch (_) {}
         setRefreshingModules(false);
     }, []);
@@ -750,6 +758,7 @@ function ModulesTab() {
             if (res?.ok) {
                 setInstallResults((prev) => ({ ...prev, [moduleId]: 'ok' }));
                 // 설치 후 로컬 모듈 목록 갱신
+                clearModuleAuditCache();
                 const listRes = await window.api?.moduleRefresh?.();
                 if (listRes?.modules) setInstalledModules(listRes.modules);
             } else {

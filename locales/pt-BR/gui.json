@@ -941,7 +941,9 @@
     "perm_fs_outside_instance": "arquivos fora da pasta do servidor",
     "perm_unparsable": "código que não pôde ser verificado",
     "ext_title": "A extensão '{{name}}' usa recursos que não declara.",
-    "ext_summary": "O código usa {{perms}}, mas as permissions do manifest.json não listam isso. Confirme se você confia nesta extensão."
+    "ext_summary": "O código usa {{perms}}, mas as permissions do manifest.json não listam isso. Confirme se você confia nesta extensão.",
+    "perm_opaque_code": "código compilado sem fonte (.pyc)",
+    "perm_stdlib_shadow": "arquivos que encobrem a biblioteca padrão"
   },
   "trust": {
     "verified": "Verificado",

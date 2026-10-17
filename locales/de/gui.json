@@ -941,7 +941,9 @@
     "perm_fs_outside_instance": "Dateien außerhalb des Serverordners",
     "perm_unparsable": "nicht prüfbarer Code",
     "ext_title": "Die Erweiterung '{{name}}' nutzt Funktionen, die sie nicht angibt.",
-    "ext_summary": "Ihr Code nutzt {{perms}}, aber die permissions in manifest.json führen das nicht auf. Stelle sicher, dass du dieser Erweiterung vertraust."
+    "ext_summary": "Ihr Code nutzt {{perms}}, aber die permissions in manifest.json führen das nicht auf. Stelle sicher, dass du dieser Erweiterung vertraust.",
+    "perm_opaque_code": "kompilierter Code ohne Quelltext (.pyc)",
+    "perm_stdlib_shadow": "Dateien, die die Standardbibliothek überdecken"
   },
   "trust": {
     "verified": "Geprüft",

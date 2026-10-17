@@ -941,7 +941,9 @@
     "perm_fs_outside_instance": "서버 폴더 밖 파일 접근",
     "perm_unparsable": "검사할 수 없는 코드",
     "ext_title": "'{{name}}' 익스텐션이 선언하지 않은 기능을 써요.",
-    "ext_summary": "코드에서 {{perms}}을(를) 쓰는데 manifest.json의 permissions에는 없어요. 믿을 수 있는 익스텐션인지 확인해 주세요."
+    "ext_summary": "코드에서 {{perms}}을(를) 쓰는데 manifest.json의 permissions에는 없어요. 믿을 수 있는 익스텐션인지 확인해 주세요.",
+    "perm_opaque_code": "읽을 수 없는 컴파일된 코드(.pyc)",
+    "perm_stdlib_shadow": "표준 라이브러리를 가리는 파일"
   },
   "trust": {
     "verified": "확인됨",

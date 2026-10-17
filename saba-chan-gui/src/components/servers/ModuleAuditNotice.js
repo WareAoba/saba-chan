@@ -1,12 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../Icon';
 
 // 모듈 코드는 바뀔 때만 다시 검사하면 된다: 이 창이 떠 있는 동안 모듈 이름별로 한 번
+// 설치·업데이트·삭제 뒤에는 비우고, 떠 있는 경고도 다시 묻게 세대를 올린다
 const cache = new Map();
+let generation = 0;
+const listeners = new Set();
 
 export function clearModuleAuditCache() {
     cache.clear();
+    generation += 1;
+    for (const l of listeners) l();
+}
+
+function subscribe(listener) {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
 }
 
 // 모듈과 익스텐션은 같은 검사·같은 응답 모양이다 (GET /api/module/:name/audit, /api/extensions/:id/audit)
@@ -49,6 +59,7 @@ export function ExtensionAuditNotice({ extId, name }) {
 function AuditNotice({ kind, id, name }) {
     const { t } = useTranslation('gui');
     const source = SOURCES[kind];
+    const gen = useSyncExternalStore(subscribe, () => generation);
     const [undeclared, setUndeclared] = useState([]);
     const [open, setOpen] = useState(false);
 
@@ -63,7 +74,7 @@ function AuditNotice({ kind, id, name }) {
         return () => {
             alive = false;
         };
-    }, [kind, id, source.api]);
+    }, [kind, id, source.api, gen]);
 
     if (undeclared.length === 0) return null;
     const kinds = [...new Set(undeclared.map((f) => f.permission))];
@@ -83,9 +94,7 @@ function AuditNotice({ kind, id, name }) {
                         {undeclared.map((f) => (
                             <li key={`${f.file}:${f.line}:${f.permission}`}>
                                 <span>{label(f.permission)}</span>
-                                <code>
-                                    {f.file}:{f.line}
-                                </code>
+                                <code>{f.line > 0 ? `${f.file}:${f.line}` : f.file}</code>
                                 {f.detail && <span className="muted">{f.detail}</span>}
                             </li>
                         ))}
