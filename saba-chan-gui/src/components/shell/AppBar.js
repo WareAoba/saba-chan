@@ -5,6 +5,7 @@ import NoticeModal from '../Modals/NoticeModal';
 import ExtensionSlot from '../ExtensionSlot';
 import { Icon } from '../Icon';
 import { ConnectionRail } from './ConnectionRail';
+import { RuntimePreflight } from './RuntimePreflight';
 
 /** 상단 탭 = 큰 기능 한 개 = 한 페이지 (A7). 새 페이지는 여기에 한 줄 추가한다. */
 export const APP_PAGES = [
@@ -60,6 +61,7 @@ export function AppBar({
 
             <div className="appbar-status">
                 <ExtensionSlot slotId="AppBar.status" />
+                <RuntimePreflight />
                 {extInitializing && (
                     <span className="appbar-ext-init" title={extInitLabel}>
                         <span className="spinner" aria-hidden="true" />

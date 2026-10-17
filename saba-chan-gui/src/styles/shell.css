@@ -1954,3 +1954,42 @@
         transform: translateY(2px);
     }
 }
+
+/* 실행 환경 준비 (C5): 데몬이 부팅 때 Python을 준비하는 동안만 보인다 */
+.appbar-preflight {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 10px 0 7px;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--line);
+    background: var(--inset);
+    color: var(--text-2);
+    font-size: 12px;
+    -webkit-app-region: no-drag;
+}
+.appbar-preflight.failed {
+    color: var(--warn);
+    background: var(--warn-soft);
+    border-color: transparent;
+}
+.appbar-preflight .preflight-track {
+    stroke: var(--line);
+}
+.appbar-preflight .preflight-fill {
+    stroke: var(--accent);
+    transition: stroke-dashoffset 0.4s ease;
+}
+.appbar-preflight .preflight-fill.indeterminate {
+    transform-origin: 9px 9px;
+    animation: preflight-spin 1s linear infinite;
+}
+@keyframes preflight-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}

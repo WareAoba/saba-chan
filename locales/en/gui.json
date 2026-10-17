@@ -677,7 +677,11 @@
     "exit_unknown_exit": "Unknown",
     "exit_restart_in": "Restarting in {{secs}}s",
     "restart": "Restart",
-    "rename": "Rename"
+    "rename": "Rename",
+    "preflight_short": "Preparing Python",
+    "preflight_python": "Preparing the Python runtime servers need ({{percent}}%)",
+    "preflight_failed_short": "Python setup failed",
+    "preflight_failed": "Preparing Python failed. It will retry on the next server action. ({{error}})"
   },
   "discord": {
     "nav_connection": "Connection",

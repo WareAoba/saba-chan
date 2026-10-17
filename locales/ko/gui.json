@@ -677,7 +677,11 @@
     "exit_unknown_exit": "이유 모름",
     "exit_restart_in": "{{secs}}초 뒤 다시 켬",
     "restart": "재시작",
-    "rename": "이름 바꾸기"
+    "rename": "이름 바꾸기",
+    "preflight_short": "Python 준비 중",
+    "preflight_python": "서버 실행에 필요한 Python을 준비하고 있어요 ({{percent}}%)",
+    "preflight_failed_short": "Python 준비 실패",
+    "preflight_failed": "Python 준비에 실패했어요. 서버를 다룰 때 다시 시도합니다. ({{error}})"
   },
   "discord": {
     "nav_connection": "연결",

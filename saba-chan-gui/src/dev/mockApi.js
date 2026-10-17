@@ -167,9 +167,23 @@ const impl = {
         return ok({ success: true, stopped: true });
     },
     instanceRename: (id, name) => {
-        if (servers.some((s) => s.name === name && s.id !== id)) return ok({ success: false, error_code: 'name_taken' });
+        if (servers.some((s) => s.name === name && s.id !== id))
+            return ok({ success: false, error_code: 'name_taken' });
         servers = servers.map((s) => (s.id === id ? { ...s, name } : s));
         return ok({ success: true, id, name });
+    },
+    // 부팅 뒤 몇 초 동안 Python 준비 진행을 흉내 낸다
+    runtimePreflight: () => {
+        const started = (globalThis.__mockPreflightStart ??= Date.now());
+        const percent = Math.min(100, Math.round(((Date.now() - started) / 6000) * 100));
+        const done = percent >= 100;
+        return ok({
+            phase: done ? 'preflight-done' : 'preflight-python',
+            percent,
+            complete: done,
+            error: null,
+            components: { python: done ? 'ok' : 'running' },
+        });
     },
     instanceCommands: (id) => {
         const srv = servers.find((s) => s.id === id);
@@ -177,7 +191,13 @@ const impl = {
         return ok({
             commands: [
                 ...(mod?.commands?.fields || []).map((f) => ({ ...f, risk: f.risk || 'caution', source: 'module' })),
-                { name: 'backup-now', label: '지금 백업', risk: 'caution', source: 'extension', extension: 'world-backup' },
+                {
+                    name: 'backup-now',
+                    label: '지금 백업',
+                    risk: 'caution',
+                    source: 'extension',
+                    extension: 'world-backup',
+                },
             ],
         });
     },
@@ -211,12 +231,12 @@ const impl = {
                 !mockUpdate || clear
                     ? null
                     : {
-                      timestamp: now(),
-                      success: mockUpdate === 'ok',
-                      updated_components: mockUpdate === 'ok' ? ['saba-core', 'saba-chan-gui'] : ['saba-chan-gui'],
-                      failed: mockUpdate === 'ok' ? [] : ['saba-core'],
-                      message: mockUpdate === 'ok' ? '' : '데몬 파일을 교체하지 못했어요 (사용 중)',
-                  },
+                          timestamp: now(),
+                          success: mockUpdate === 'ok',
+                          updated_components: mockUpdate === 'ok' ? ['saba-core', 'saba-chan-gui'] : ['saba-chan-gui'],
+                          failed: mockUpdate === 'ok' ? [] : ['saba-core'],
+                          message: mockUpdate === 'ok' ? '' : '데몬 파일을 교체하지 못했어요 (사용 중)',
+                      },
         }),
     extensionList: () => ok({ extensions: [] }),
     extensionInitStatus: () => ok({ initializing: false, in_progress: {} }),
