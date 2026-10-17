@@ -45,7 +45,6 @@
 
 - `src/plugin/`은 오너가 말하는 "플러그인"이 **아니다.** 모듈과 익스텐션이 함께 쓰는 **Python 실행기**다. 오너의 "플러그인" = 코드의 `src/extension/` + `saba-chan-extensions`.
 - `ipc::ExtensionInfo`, GUI의 `selectedExtension`은 이름과 달리 **모듈**을 가리킨다.
-- `discord_bot/extensions/*.js`(music 등)는 Python 익스텐션과 별개인 **세 번째 "extension"** 개념(봇 내부 JS 기능)이다.
 - 이 문서 세트에서는 오너 용어를 따르되 처음 나올 때 코드 이름을 병기한다: 플러그인(extension), 실행기(plugin).
 
 ## 2. 구성요소 간 연결 (코드 기준)
@@ -92,7 +91,7 @@
 2. GUI가 relay에 bot-config를 직접 PATCH한다. 데몬 `relay.rs` 주석의 "GUI/CLI는 relay에 직접 접근 금지"와 정면 충돌하고, 실제로 항상 실패한다(04 G17).
 3. 게임 명령 해석(rcon/rest 분기, 템플릿 치환, 기본 endpoint)을 GUI와 봇이 **각각** 구현한다. 데몬은 raw `/rcon`, `/rest`만 제공한다(02 §6.5 #1).
 4. managed/native 시작 경로 선택, 기존 폴더→모듈 판정을 인터페이스가 한다(02 §6.5 #2, #3).
-5. 디스코드 봇 실행 명령을 GUI와 데몬(`auto_start_discord_bot`)이 따로 조립하고, GUI가 Discord 토큰을 데몬으로 다시 넘긴다(01 §9.A-3).
+5. ~~디스코드 봇 실행 명령을 GUI와 데몬이 따로 조립한다~~ 없어짐: 로컬 봇이 L1에서 지워졌다.
 6. ~~CLI 로컬 fs 폴백·자체 설정 파일~~ CLI 리메이크(PR #6)에서 해결됨. 남은 것은 부트스트랩뿐이다(04 §7.3).
 7. 업데이트 3시간 타이머를 GUI가 돌리고, 업데이터 exe를 GUI가 직접 실행한다(CLI는 리메이크 뒤 데몬 API로 요청)(05 §6.1).
 8. 봇이 `bot-config.json`을 파일로 읽고, music 기능이 Python(`music_deps.py`)·yt-dlp·ffmpeg를 데몬 없이 직접 실행한다(04 B5, B6).
