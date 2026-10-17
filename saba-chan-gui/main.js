@@ -2415,6 +2415,16 @@ ipcMain.handle('relay:listNodeMembers', async (_event, guildId, relayUrl) => {
     }
 });
 
+ipcMain.handle('relay:botInvite', async (_event, relayUrl) => {
+    try {
+        const params = relayUrl ? `?relayUrl=${encodeURIComponent(relayUrl)}` : '';
+        const resp = await axios.get(`${IPC_BASE}/api/relay/bot-invite${params}`, { timeout: 8000 });
+        return resp.data;
+    } catch (err) {
+        return { error: err.response?.data?.error || err.message };
+    }
+});
+
 ipcMain.handle('relay:initiatePairing', async (_event, payload) => {
     try {
         const resp = await axios.post(`${IPC_BASE}/api/relay/pair/initiate`, payload, {
