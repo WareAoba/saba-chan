@@ -1597,6 +1597,11 @@ ipcMain.handle('managed:stdin', async (_event, instanceId, command) => {
 // ── Console Popout (PiP) Window ──────────────────────────────
 const consolePopoutWindows = new Map(); // instanceId → BrowserWindow
 
+// 열린 팝아웃 목록: 메인 창을 다시 불러오면 renderer가 이것으로 상태를 맞춘다
+ipcMain.handle('console:popoutList', () =>
+    [...consolePopoutWindows.entries()].filter(([, win]) => win && !win.isDestroyed()).map(([id]) => id),
+);
+
 ipcMain.handle('console:popout', async (_event, instanceId, serverName) => {
     // 이미 열려 있으면 포커스
     if (consolePopoutWindows.has(instanceId)) {
@@ -1960,6 +1965,14 @@ ipcMain.handle('instance:reorder', async (_event, orderedIds) => {
     }
 });
 
+// 실행 인자 미리보기: 저장된 설정 위에 초안·추가 인자를 얹어 데몬이 실행 줄을 계산한다 (서버는 띄우지 않는다).
+// extraArgs를 넘기지 않으면 저장된 추가 인자로 본다
+ipcMain.handle('instance:launchPreview', (_event, id, settings, extraArgs) => {
+    const body = { settings: settings || {} };
+    if (extraArgs !== undefined && extraArgs !== null) body.extra_args = extraArgs;
+    return daemonCall('post', `/api/instance/${encodeURIComponent(id)}/launch-preview`, body, 15000);
+});
+
 ipcMain.handle('instance:updateSettings', async (_event, id, settings) => {
     try {
         console.log(`[Main] Updating settings for instance ${id}:`, settings);
@@ -1977,7 +1990,14 @@ ipcMain.handle('instance:updateSettings', async (_event, id, settings) => {
 
             switch (status) {
                 case 400:
-                    return { error: `잘못된 설정값: ${data.error || '입력값을 확인해주세요'}` };
+                    // 데몬의 검증 결과를 그대로: error_code가 invalid_format이면 renderer가 "잘못된 형식입니다"를 띄운다
+                    return {
+                        status,
+                        error: `잘못된 설정값: ${data.message || data.error || '입력값을 확인해주세요'}`,
+                        error_code: data.error_code,
+                        details: data.details,
+                        fields: data.fields,
+                    };
                 case 404:
                     return { error: `인스턴스를 찾을 수 없습니다` };
                 case 500:

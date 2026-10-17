@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld('api', {
     instanceDelete: (id) => ipcRenderer.invoke('instance:delete', id),
     instanceReorder: (orderedIds) => ipcRenderer.invoke('instance:reorder', orderedIds),
     instanceUpdateSettings: (id, settings) => ipcRenderer.invoke('instance:updateSettings', id, settings),
+    // 실행 인자 미리보기: (id, 설정 초안 {필드: 값}, 추가 인자 문자열|배열?) →
+    // {success, has_launch_args, command_line, program, args, settings_from_args, extra_args, extra_args_text, errors}
+    instanceLaunchPreview: (id, settings, extraArgs) => ipcRenderer.invoke('instance:launchPreview', id, settings, extraArgs),
     instanceResetServer: (id) => ipcRenderer.invoke('instance:resetServer', id),
     executeCommand: (id, command) => ipcRenderer.invoke('instance:executeCommand', id, command),
     instanceStop: (id, opts) => ipcRenderer.invoke('instance:stop', id, opts),
@@ -58,6 +61,8 @@ contextBridge.exposeInMainWorld('api', {
     managedStdin: (instanceId, command) => ipcRenderer.invoke('managed:stdin', instanceId, command),
     // Console Popout (PiP)
     consolePopout: (instanceId, serverName) => ipcRenderer.invoke('console:popout', instanceId, serverName),
+    // 지금 열린 콘솔 팝아웃의 instanceId 목록 (메인 창을 다시 불러온 뒤 상태를 맞출 때)
+    consolePopoutList: () => ipcRenderer.invoke('console:popoutList'),
     consoleFocusPopout: (instanceId) => ipcRenderer.invoke('console:focusPopout', instanceId),
     consolePopin: (instanceId) => ipcRenderer.invoke('console:popin', instanceId),
     consoleToggleAlwaysOnTop: (instanceId, pinned) => ipcRenderer.invoke('console:toggleAlwaysOnTop', instanceId, pinned),

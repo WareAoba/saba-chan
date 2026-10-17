@@ -39,6 +39,13 @@ def get_launch_command(config):
     else:
         program = "/bin/sh"
         args = ["-c", f"echo 'E2E_MOCK_SERVER_STARTED port={port}' && sleep 86400"]
+    # 설정 필드의 arg 모양 (module.toml)과 같은 자리에 넣는다
+    if config.get("memory"):
+        args += [f"-Xmx{config['memory']}", f"-Xms{config['memory']}"]
+    if config.get("max_players"):
+        args += ["-maxplayers", str(config["max_players"])]
+    if config.get("admin_password"):
+        args += ["-adminpassword", config["admin_password"]]
     return {
         "success": True,
         "program": program,

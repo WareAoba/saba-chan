@@ -437,6 +437,62 @@ async fn e2e_config_roundtrip() {
 // ═══════════════════════════════════════════════════════
 
 #[tokio::test]
+async fn e2e_launch_preview_binds_typed_args_and_saves_extra_args() {
+    let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
+    let client = reqwest::Client::new();
+    let created: Value = client
+        .post(format!("{}/api/instances", base_url))
+        .json(&json!({ "name": format!("preview-{}", pick_free_port()), "module_name": "e2e-mock" }))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    let id = created["id"].as_str().expect("instance id").to_string();
+    let preview = |body: Value| {
+        let (client, url) = (client.clone(), format!("{}/api/instance/{}/launch-preview", base_url, id));
+        async move { client.post(url).json(&body).send().await.unwrap().json::<Value>().await.unwrap() }
+    };
+
+    // 친 인자가 필드로 읽히고, 나머지는 추가 인자로 남아 끝에 붙는다. 비밀번호는 가린다
+    let v = preview(json!({
+        "settings": { "admin_password": "hunter22" },
+        "extra_args": "-Xmx4G -maxplayers 20 --motd \"My Server\"",
+    })).await;
+    assert_eq!(v["success"], true, "{}", v);
+    assert_eq!(v["has_launch_args"], true);
+    assert_eq!(v["settings_from_args"], json!({ "memory": "4G", "max_players": 20 }));
+    assert_eq!(v["extra_args"], json!(["--motd", "My Server"]));
+    assert_eq!(v["extra_args_text"], "--motd \"My Server\"");
+    assert_eq!(v["errors"], json!([]));
+    let args: Vec<&str> = v["args"].as_array().unwrap().iter().map(|a| a.as_str().unwrap()).collect();
+    assert!(args.ends_with(&["-Xmx4G", "-Xms4G", "-maxplayers", "20", "-adminpassword", "***", "--motd", "My Server"]), "{:?}", args);
+    assert!(!v["command_line"].as_str().unwrap().contains("hunter22"));
+
+    // 형식이 틀리면 필드로 넣지 않고 오류 (양쪽 방향)
+    let v = preview(json!({ "settings": { "memory": "4GB" }, "extra_args": ["-Xmx4096"] })).await;
+    let errors: Vec<(Value, &str, &str)> = v["errors"].as_array().unwrap().iter()
+        .map(|e| (e["arg"].clone(), e["field"].as_str().unwrap(), e["expected"].as_str().unwrap()))
+        .collect();
+    assert_eq!(errors, [(Value::Null, "memory", "memory_size"), (json!("-Xmx4096"), "memory", "memory_size")]);
+
+    // 저장: 형식이 틀린 값은 400 invalid_format, 추가 인자는 인스턴스에 남는다
+    let bad = client.patch(format!("{}/api/instance/{}", base_url, id))
+        .json(&json!({ "memory": "4 G" })).send().await.unwrap();
+    assert_eq!(bad.status(), reqwest::StatusCode::BAD_REQUEST);
+    assert_eq!(bad.json::<Value>().await.unwrap()["error_code"], "invalid_format");
+    let ok = client.patch(format!("{}/api/instance/{}", base_url, id))
+        .json(&json!({ "memory": "1024M", "extra_args": "--motd \"My Server\"" })).send().await.unwrap();
+    assert!(ok.status().is_success(), "{}", ok.status());
+    let servers: Value = client.get(format!("{}/api/servers", base_url)).send().await.unwrap().json().await.unwrap();
+    let me = servers["servers"].as_array().unwrap().iter().find(|s| s["id"] == id.as_str()).unwrap();
+    assert_eq!(me["extra_args"], json!(["--motd", "My Server"]));
+    let v = preview(json!({})).await;
+    let args = v["args"].as_array().unwrap();
+    assert!(args.contains(&json!("-Xmx1024M")) && args.ends_with(&[json!("--motd"), json!("My Server")]), "{}", v);
+
+    task.abort();
+    cleanup_dirs(&m_dir, &i_dir, &d_dir);
+}
+
+#[tokio::test]
 async fn e2e_client_registration_heartbeat() {
     let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
     let client = reqwest::Client::new();

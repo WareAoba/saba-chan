@@ -194,6 +194,9 @@ pub struct ServerInfo {
     /// 포트 충돌 정보 — 이 인스턴스의 포트가 다른 인스턴스와 겹치는 목록
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub port_conflicts: Vec<PortConflictInfo>,
+    /// 설정 필드에 없는 추가 실행 인자 (`ServerInstance::extra_args`)
+    #[serde(default)]
+    pub extra_args: Vec<String>,
 }
 
 /// 포트 충돌 요약 (서버 목록 API에서 반환)
@@ -649,6 +652,7 @@ impl IPCServer {
             .route("/api/instances/reorder", put(handlers::instance::reorder_instances))
             .route("/api/instance/:id/rename", post(handlers::instance::rename_instance))
             .route("/api/instance/:id", get(handlers::instance::get_instance).delete(handlers::instance::delete_instance).patch(handlers::instance::update_instance_settings))
+            .route("/api/instance/:id/launch-preview", post(handlers::instance::launch_preview))
             // ── Provision progress ──
             .route("/api/provision-progress/:name", get(handlers::instance::get_provision_progress).delete(handlers::instance::dismiss_provision_progress))
             // ── Command execution ──

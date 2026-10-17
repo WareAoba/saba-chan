@@ -65,7 +65,8 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | instanceApplyUpdate (25) | instance:applyUpdate | 1921 | POST /api/instance/:id/apply-update | ✓ 670 |
 | instanceDelete (26) | instance:delete | 1933 | DELETE /api/instance/:id | ✓ 665 |
 | instanceReorder (27) | instance:reorder | 1962 | PUT /api/instances/reorder {order} | ✓ 663 |
-| instanceUpdateSettings (28) | instance:updateSettings | 1974 | PATCH /api/instance/:id | ✓ 665 |
+| instanceUpdateSettings (28) | instance:updateSettings | 1982 | PATCH /api/instance/:id. 400이면 `{status, error, error_code, details, fields}`를 그대로 넘긴다(`invalid_format`이면 형식 오류 알림) | ✓ 665 |
+| instanceLaunchPreview (31) | instance:launchPreview | 1966 | POST /api/instance/:id/launch-preview `{settings, extra_args?}` (extra_args를 안 넘기면 저장된 것) | ✓ (LaunchPreview.js) |
 | instanceResetServer (29) | instance:resetServer | 1573 | POST /api/instance/:id/server/reset | ✓ 684 |
 | executeCommand (30) | instance:executeCommand | 2014 | POST /api/instance/:id/command {command, args}. 명령 해석과 라우팅(REST·stdin·모듈)은 데몬이 한다(2012 주석). GUI는 `…/rcon`, `…/rest`를 직접 부르지 않는다 | ✓ 672 |
 | instanceStop/Restart/Rename/Commands (31-34) | instance:stop/restart/rename/commands | 2054-2065 | POST …/stop·…/restart {force}(restart는 150초 timeout), POST …/rename {name}, GET …/commands | ✓ 649, 650, 664, 673 (미사용) |
@@ -76,6 +77,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | managedConsole (55) | managed:console | 1588 | GET /api/instance/:id/console?since&count | ✓ 678 |
 | managedStdin (56) | managed:stdin | 1599 | POST /api/instance/:id/stdin | ✓ 679 |
 | consolePopout/FocusPopout/Popin/ToggleAlwaysOnTop (58-61) | console:* | 1611-1721 | Electron 창 조작만 (daemon 호출 없음) | n/a |
+| consolePopoutList (65) | console:popoutList | 1600 | 열린(파괴되지 않은) 팝아웃 창의 instanceId 배열. daemon 호출 없음 | n/a |
 | updaterCheck (69) | updater:check | 2267 | POST /api/updates/check | ✓ updates.rs:101 |
 | updaterStatus (70) | updater:status | 2405 | GET /api/updates/status | ✓ 100 |
 | updaterDownload (71) | updater:download | 2416 | POST /api/updates/download (본문이 없으면 전부) | ✓ 102 |
@@ -197,6 +199,7 @@ Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `u
 - `cmd/`: 명령 갈래마다 파일 하나(backup, bot, chatbot, config, console, daemon, extension, module, schedule, server, status, update).
 
 - `bot channels GUILD [--chatbot 이름,…] [--no-chatbot] [--music 이름] [--no-music]`: 채널 이름이나 id를 GET 응답의 `channels`로 id로 바꿔 PUT한다. 음악 채널을 새로 정할 때는 메시지가 지워진다고 확인을 받는다.
+- `server launch-preview [SERVER] [--args "..."]`: `POST /api/instance/:id/launch-preview`의 `command_line`을 보여 주고, 형식이 틀린 인자는 "잘못된 형식입니다"로 알린다. `--args`가 없으면 저장된 추가 인자로 본다.
 - `audit [SERVER] [--limit N]`(A10): `GET /api/audit`를 표로 보여 준다. CLI 요청에는 `X-Saba-Client: cli`가 붙는다.
 - `config export FILE [--secrets]`·`config import FILE [--dry-run] [--overwrite]`(A9): 경로를 절대 경로로 바꿔 `/api/migration/*`에 넘긴다. 파일은 데몬이 읽고 쓴다.
 
