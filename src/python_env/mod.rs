@@ -53,12 +53,57 @@ const PORTABLE_DIR_NAME: &str = "python-standalone";
 static VENV_PYTHON: OnceCell<PathBuf> = OnceCell::const_new();
 
 /// 관리 venv의 Python 인터프리터 경로를 반환합니다.
-/// 최초 호출 시 전체 부트스트랩(다운로드 포함)을 자동 수행합니다.
+/// 최초 호출 시 전체 부트스트랩(다운로드 포함)을 자동 수행합니다. 실패는 캐시하지 않는다(다음 호출이 다시 시도)
 pub async fn get_python_path() -> Result<PathBuf> {
-    VENV_PYTHON
-        .get_or_try_init(ensure_venv)
-        .await
-        .cloned()
+    if let Some(path) = VENV_PYTHON.get() {
+        return Ok(path.clone());
+    }
+    set_preflight(Preflight::Running);
+    let result = VENV_PYTHON.get_or_try_init(ensure_venv).await.cloned();
+    set_preflight(match &result {
+        Ok(_) => Preflight::Ready,
+        Err(e) => Preflight::Failed(format!("{:#}", e)),
+    });
+    result
+}
+
+// ── 부팅 사전 점검 (GET /api/runtime/preflight) ──────────────────
+
+/// Python 준비 상태. 데몬이 부팅하자마자 준비를 시작하고, GUI는 끝날 때까지 이것을 본다
+#[derive(Debug, Clone, PartialEq)]
+pub enum Preflight {
+    Idle,
+    Running,
+    Ready,
+    Failed(String),
+}
+
+static PREFLIGHT: std::sync::Mutex<Preflight> = std::sync::Mutex::new(Preflight::Idle);
+
+fn set_preflight(state: Preflight) {
+    *PREFLIGHT.lock().unwrap_or_else(|e| e.into_inner()) = state;
+}
+
+/// `{phase, percent, complete, error, components: {python}}`. complete는 성공·실패 모두 끝난 상태
+pub fn preflight_snapshot() -> serde_json::Value {
+    let state = PREFLIGHT.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let (phase, percent, python) = match &state {
+        Preflight::Idle => ("preflight-idle", 0, "pending"),
+        Preflight::Running => ("preflight-python", 55, "running"),
+        Preflight::Ready => ("preflight-done", 100, "ok"),
+        Preflight::Failed(_) => ("preflight-failed", 0, "failed"),
+    };
+    let error = match state {
+        Preflight::Failed(e) => Some(e),
+        _ => None,
+    };
+    serde_json::json!({
+        "phase": phase,
+        "percent": percent,
+        "complete": matches!(python, "ok" | "failed"),
+        "error": error,
+        "components": { "python": python },
+    })
 }
 
 // ═══════════════════════════════════════════════════════════════

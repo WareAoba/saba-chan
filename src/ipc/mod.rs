@@ -717,6 +717,7 @@ impl IPCServer {
             // ── Extension management ──
             .route("/api/extensions", get(handlers::extension::list_extensions))
             .route("/api/extensions/init-status", get(handlers::extension::extension_init_status))
+            .route("/api/runtime/preflight", get(|| async { axum::Json(crate::python_env::preflight_snapshot()) }))
             .route("/api/extensions/rescan", post(handlers::extension::rescan_extensions))
             .route("/api/extensions/manifest", get(handlers::extension::fetch_manifest))
             .route("/api/extensions/updates", get(handlers::extension::check_extension_updates))
