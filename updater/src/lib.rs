@@ -777,7 +777,7 @@ impl UpdateManager {
 
         // 적용 완료된 컴포넌트의 상태 업데이트
         for comp in &mut self.status.components {
-            if applied.iter().any(|a| a.starts_with(&comp.component.display_name())) {
+            if applied.contains(&comp.component.display_name()) {
                 comp.update_available = false;
                 comp.downloaded = false;
                 comp.downloaded_path = None;
