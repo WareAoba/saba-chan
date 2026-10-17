@@ -3,7 +3,7 @@
 
 use axum::{extract::State, http::{HeaderMap, StatusCode}, response::IntoResponse, routing::get, Json, Router};
 use saba_chan_updater_lib::signature;
-use saba_chan_updater_lib::{relay, Component, UpdateConfig, UpdateManager, UpdateSource};
+use saba_chan_updater_lib::{relay, Component, UpdateConfig, UpdateManager};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
@@ -88,7 +88,6 @@ async fn start_mock(sign_with: &str, key_id: &str) -> String {
 
 fn manager(relay_url: &str, modules_dir: &std::path::Path) -> UpdateManager {
     let cfg = UpdateConfig {
-        source: UpdateSource::Relay,
         relay_url: Some(relay_url.to_string()),
         ..Default::default()
     };

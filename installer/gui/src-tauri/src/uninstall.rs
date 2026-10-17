@@ -289,7 +289,7 @@ fn stop_saba_processes() {
         let _ = std::process::Command::new("sh")
             .args([
                 "-c",
-                "kt() { for c in $(pgrep -P \"$1\"); do kt \"$c\"; done; kill -KILL \"$1\" 2>/dev/null; }; \
+                "kt() { local c; for c in $(pgrep -P \"$1\"); do kt \"$c\"; done; kill -KILL \"$1\" 2>/dev/null; }; \
                  for p in $(pgrep -x saba-runner) $(pgrep -x saba-core); do for c in $(pgrep -P \"$p\"); do kt \"$c\"; kill -KILL -- -\"$c\" 2>/dev/null; done; done",
             ])
             .stdout(std::process::Stdio::null())

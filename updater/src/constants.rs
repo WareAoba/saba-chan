@@ -21,17 +21,8 @@ use std::path::PathBuf;
 /// 앱 이름 — 경로 구성, 레지스트리 등에서 사용
 pub const APP_NAME: &str = "saba-chan";
 
-/// GitHub 저장소 소유자
-pub const GITHUB_OWNER: &str = "WareAoba";
-
-/// GitHub 메인 저장소 이름
-pub const GITHUB_REPO: &str = "saba-chan";
-
-/// GitHub 모듈 저장소 이름
-pub const GITHUB_MODULES_REPO: &str = "saba-chan-modules";
-
-/// GitHub 익스텐션 저장소 이름
-pub const GITHUB_EXTENSIONS_REPO: &str = "saba-chan-extensions";
+/// 배포자 이름 (설치 레지스트리 Publisher)
+pub const PUBLISHER: &str = "WareAoba";
 
 // ══════════════════════════════════════════════════════
 //  네트워크 상수

@@ -8,6 +8,17 @@ use std::path::{Path, PathBuf};
 
 const FILE_NAME: &str = "apply-ticket";
 
+/// 표를 끊기 시작한 데몬 버전. 이보다 오래된 데몬은 `--launch-token` 없이 업데이터를 띄운다
+pub const CORE_ISSUES_TICKETS_SINCE: &str = "0.1.2";
+
+/// 전환 경로: 설치된 데몬이 표를 모르는 버전이면(또는 알 수 없으면) 표 없는 적용을 받아 준다.
+/// 업데이터만 먼저 새것으로 바뀐 경우에도 옛 데몬이 다음 적용을 할 수 있게 한다
+pub fn core_predates_tickets(installed_core: Option<&str>) -> bool {
+    use crate::version::SemVer;
+    let since = SemVer::parse(CORE_ISSUES_TICKETS_SINCE).expect("valid version");
+    installed_core.and_then(SemVer::parse).is_none_or(|v| v < since)
+}
+
 fn ticket_path(staging_dir: &Path) -> PathBuf {
     staging_dir.join(FILE_NAME)
 }
@@ -23,17 +34,29 @@ pub fn issue(staging_dir: &Path) -> std::io::Result<String> {
     Ok(token)
 }
 
-/// 표를 쓴다. 저장된 표와 같으면 true. 어느 쪽이든 저장된 표는 지운다
+/// 표를 쓴다. 저장된 표와 같으면 true. 어느 쪽이든 저장된 표는 지운다.
+/// 이름 바꾸기로 표를 먼저 차지하므로 두 프로세스가 같은 표를 함께 쓸 수 없다
 pub fn redeem(staging_dir: &Path, token: &str) -> bool {
-    let path = ticket_path(staging_dir);
-    let stored = std::fs::read_to_string(&path).ok();
-    let _ = std::fs::remove_file(&path);
+    let claimed = staging_dir.join(format!("{}.claimed-{}", FILE_NAME, std::process::id()));
+    if std::fs::rename(ticket_path(staging_dir), &claimed).is_err() {
+        return false;
+    }
+    let stored = std::fs::read_to_string(&claimed).ok();
+    let _ = std::fs::remove_file(&claimed);
     matches!(stored, Some(s) if !token.is_empty() && s.trim() == token)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_pre_ticket_cores_may_skip_the_ticket() {
+        assert!(core_predates_tickets(Some("0.1.1")));
+        assert!(core_predates_tickets(None));
+        assert!(!core_predates_tickets(Some("0.1.2")));
+        assert!(!core_predates_tickets(Some("0.2.0")));
+    }
 
     #[test]
     fn a_ticket_works_once() {
