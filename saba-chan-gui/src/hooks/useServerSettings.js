@@ -26,6 +26,36 @@ const restartFlagsOf = (server) => ({
 /** 문자열 칸 값으로 (없으면 null) */
 const fieldValue = (v) => (v === undefined || v === null ? null : String(v));
 
+/** 데몬이 인스턴스 최상위에 저장하는 공통 필드 (src/ipc/handlers/instance.rs known_fields). 이 값들은 module_settings가 낡았을 수 있다 */
+const TOP_LEVEL_FIELDS = new Set([
+    'port',
+    'rcon_port',
+    'rcon_password',
+    'rest_host',
+    'rest_port',
+    'rest_username',
+    'rest_password',
+    'executable_path',
+    'protocol_mode',
+    'server_version',
+]);
+
+/** 저장된 값: 공통 필드는 최상위가, 나머지는 module_settings가 진짜다 */
+const savedValue = (server, name) => {
+    const top = fieldValue(server[name]);
+    const cached = fieldValue(server.module_settings?.[name]);
+    return TOP_LEVEL_FIELDS.has(name) ? (top ?? cached) : (cached ?? top);
+};
+
+/**
+ * 실제 설정 값을 칸 값으로. 문자열 칸에 숫자가 오면 (모듈이 "000123"을 123으로 바꾼 경우)
+ * 저장된 문자열이 같은 수를 뜻할 때 그 문자열을 지킨다.
+ */
+const liveFieldValue = (field, v, saved) => {
+    if (typeof v === 'number' && field.field_type !== 'number' && saved !== null && Number(saved) === v) return saved;
+    return fieldValue(v);
+};
+
 export function useServerSettings({ servers, modules, setModal, setProgressBar, fetchServers }) {
     const { t } = useTranslation('gui');
     const translateError = createTranslateError(t);
@@ -72,14 +102,12 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
         touchedFields.current = new Set();
 
         // Initialize settings values from module schema
-        // 우선순위: 실제 설정(아래에서 비동기로 덮음) > module_settings > 최상위 필드 > 기본값.
-        // 최상위 port 등은 데몬이 module_settings와 맞추기 전까지 낡았을 수 있어 module_settings가 먼저다.
+        // 우선순위: 실제 설정(아래에서 비동기로 덮음) > 저장된 값(savedValue) > 기본값.
         const module = modules.find((m) => m.name === latestServer.module);
         if (module && module.settings && module.settings.fields) {
             const initial = {};
             module.settings.fields.forEach((field) => {
-                let value =
-                    fieldValue(latestServer.module_settings?.[field.name]) ?? fieldValue(latestServer[field.name]);
+                let value = savedValue(latestServer, field.name);
                 if (value === null) {
                     value = fieldValue(field.default) ?? '';
                     defaultedFields.current.add(field.name);
@@ -149,7 +177,11 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                 if (live?.success && live.settings && typeof live.settings === 'object') {
                     const patch = {};
                     for (const field of module.settings.fields) {
-                        const v = fieldValue(live.settings[field.name]);
+                        const v = liveFieldValue(
+                            field,
+                            live.settings[field.name],
+                            savedValue(latestServer, field.name),
+                        );
                         if (v === null || touchedFields.current.has(field.name)) continue;
                         patch[field.name] = v;
                         defaultedFields.current.delete(field.name);
