@@ -296,6 +296,8 @@ impl Supervisor {
         if let Some(v) = &instance.rest_password { put("rest_password", json!(v)); }
         put("protocol_mode", json!(&instance.protocol_mode));
         if let Some(v) = &instance.server_version { put("server_version", json!(v)); }
+        // 모듈 도우미(daemon_stdin_command 등)가 데몬 API로 이 인스턴스를 가리킬 때 쓴다
+        put("instance_id", json!(&instance.id));
     }
 
     /// 모듈 `[module.dependencies]`를 못 맞추면 시작을 막는 응답. 다 맞으면 None
@@ -2564,6 +2566,44 @@ mod tests {
                 let _ = process::force_kill_pid(proc.pid);
             }
         }
+    }
+
+    /// 콘솔이 있는 managed 서버의 일반 정지는 stop_command를 stdin으로 보내고 스스로 끝나기를 기다린다
+    /// (강제 종료 먼저가 아니다: 세이브를 건너뛰지 않게)
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn normal_stop_asks_the_console_and_waits() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules_dir = tmp.path().join("modules");
+        let dir = modules_dir.join("console-game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nname = \"console-game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[config]\nstop_command = \"quit-now\"\n\n[protocols]\nsupported = [\"stdin\"]\n",
+        )
+        .unwrap();
+        let mut supervisor = Supervisor::new_with_instances_dir(
+            modules_dir.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let mut inst = crate::instance::ServerInstance::new("srv", "console-game");
+        inst.id = "srv".into();
+        supervisor.instance_store.add(inst).unwrap();
+        // 받은 줄을 남기고 스스로 끝나는 "게임 서버"
+        let got = tmp.path().join("got");
+        let script = format!("read line; printf '%s' \"$line\" > '{}'; exit 0", got.display());
+        let proc = managed_process::ManagedProcess::spawn("sh", &["-c".into(), script], tmp.path().to_str().unwrap(), Vec::new(), None, None)
+            .await
+            .unwrap();
+        supervisor.managed_store.insert("srv", proc).await;
+
+        let supervisor = tokio::sync::RwLock::new(supervisor);
+        let started = std::time::Instant::now();
+        let result = Supervisor::stop_server(&supervisor, "srv", "console-game", false).await.unwrap();
+        assert_eq!(result["success"], true, "{}", result);
+        assert_eq!(std::fs::read_to_string(&got).unwrap(), "quit-now", "the stop command went over stdin");
+        assert!(started.elapsed() < std::time::Duration::from_secs(10), "it exited on its own, not after the kill timeout");
     }
 
     /// start_managed_server()가 이미 실행 중인 managed 프로세스를 감지하여

@@ -97,9 +97,11 @@ fn import_guard_dir() -> Option<std::path::PathBuf> {
 
 /// 데몬에 넣어 둔 공용 Python 유틸리티. 모듈 폴더에 이것과 다른 판이 있으면 덮어쓴다.
 /// 설치·업데이트 경로와 상관없이(개발 빌드를 복사만 해도) 모듈이 데몬과 같은 판을 쓴다 (C7)
-const SHARED_MODULES: [(&str, &str); 2] = [
+const SHARED_MODULES: [(&str, &str); 3] = [
     ("i18n.py", include_str!("../../modules/i18n.py")),
     ("daemon_rcon.py", include_str!("../../modules/daemon_rcon.py")),
+    // 모듈 코드 검사기 (M12): 적합성 키트가 `--shared-libs`에서 찾는다
+    ("saba_audit.py", crate::module_audit::SCRIPT),
 ];
 
 /// 공용 유틸리티를 `dir`에 맞춰 둔다. 내용이 같으면 쓰지 않는다

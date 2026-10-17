@@ -268,6 +268,9 @@ pub struct ExtensionManifest {
     /// 인스턴스 명령 카탈로그에 더하는 명령. 모듈 명령과 같은 화면·CLI·디스코드·AI 해석에 실린다
     #[serde(default)]
     pub commands: Vec<ExtensionCommand>,
+    /// 코드가 쓰는 위험한 능력 선언 (모듈 `[permissions]`와 같은 표). `extension audit`가 코드와 대조한다
+    #[serde(default)]
+    pub permissions: crate::supervisor::module_loader::ModulePermissions,
 }
 
 /// 익스텐션이 선언하는 게임 명령. 실행하면 `module`의 `function`을 부른다
@@ -466,6 +469,8 @@ pub struct ExtensionListItem {
     pub incompatible: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
+    /// 신뢰 표시: verified(서명된 카탈로그에서 받았고 그대로) · modified · unverified (M12)
+    pub trust: saba_chan_updater_lib::integrity::Trust,
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -675,7 +680,7 @@ impl ExtensionManager {
         };
         let dest = self.extensions_dir.join(Self::python_safe_dir_name(&ext_id));
         Self::swap_into_place(&staging, &dest)?;
-        Self::record_files(&ext_id, &dest);
+        Self::record_files(&ext_id, &dest, false);
         if let Err(e) = std::fs::remove_file(zip_path) {
             tracing::warn!("Failed to remove zip after extraction: {}", e);
         }
@@ -683,9 +688,13 @@ impl ExtensionManager {
         Ok(Some(ext_id))
     }
 
-    /// 설치한 파일의 해시를 적어 둔다. 무결성 검사가 이 기록과 비교한다
-    fn record_files(ext_id: &str, dest: &std::path::Path) {
-        if let Err(e) = saba_chan_updater_lib::integrity::record_dir(&format!("ext-{}", ext_id), dest) {
+    /// 설치한 파일의 해시를 적어 둔다. 무결성 검사가 이 기록과 비교한다.
+    /// `official`: 서명된 카탈로그에서 받은 것인지 (신뢰 표시)
+    fn record_files(ext_id: &str, dest: &std::path::Path, official: bool) {
+        let key = format!("ext-{}", ext_id);
+        let recorded = saba_chan_updater_lib::integrity::record_dir(&key, dest)
+            .and_then(|_| saba_chan_updater_lib::integrity::set_official(&key, official));
+        if let Err(e) = recorded {
             tracing::warn!("Could not record installed files for extension '{}': {}", ext_id, e);
         }
     }
@@ -1107,6 +1116,7 @@ impl ExtensionManager {
                     min_app_version: m.min_app_version.clone(),
                     incompatible: Self::incompatibility(m),
                     warnings: ext.warnings.clone(),
+                    trust: saba_chan_updater_lib::integrity::trust_of(&format!("ext-{}", m.id)),
                 }
             })
             .collect()
@@ -1270,6 +1280,11 @@ impl ExtensionManager {
     }
 
     /// 익스텐션 파일 절대 경로
+    /// 발견된 익스텐션 (manifest + 폴더)
+    pub fn discovered(&self, ext_id: &str) -> Option<&DiscoveredExtension> {
+        self.discovered.get(ext_id)
+    }
+
     pub fn extension_file_path(&self, ext_id: &str, relative: &str) -> Option<PathBuf> {
         self.discovered.get(ext_id).map(|ext| ext.dir.join(relative))
     }
@@ -1421,6 +1436,7 @@ impl ExtensionManager {
         ext_id: &str,
         staged: &std::path::Path,
         running_ext_data: &[(&str, &HashMap<String, Value>)],
+        official: bool,
     ) -> Result<()> {
         if let Err(e) = ensure_valid_extension_id(ext_id) {
             let _ = std::fs::remove_dir_all(staged);
@@ -1433,7 +1449,7 @@ impl ExtensionManager {
         }
         let dest = self.ext_dir_on_disk(ext_id);
         Self::swap_into_place(staged, &dest)?;
-        Self::record_files(ext_id, &dest);
+        Self::record_files(ext_id, &dest, official);
         self.mount(ext_id)?;
         tracing::info!("Extension '{}' installed", ext_id);
         Ok(())
@@ -1821,6 +1837,13 @@ mod tests {
         assert_eq!(m.schema_version, 0);
         assert!(warnings.iter().any(|w| w.contains("never fired")), "{warnings:?}");
 
+        let mut perms = ok.clone();
+        perms["permissions"] = json!({"network": true, "spawn_process": true});
+        let (m, _) = parse_manifest(&perms.to_string()).unwrap();
+        assert!(m.permissions.network && m.permissions.spawn_process && !m.permissions.native_code);
+        perms["permissions"]["netwrok"] = json!(true);
+        assert!(parse_manifest(&perms.to_string()).unwrap_err().to_string().contains("netwrok"));
+
         let mut newer = ok.clone();
         newer["schema_version"] = json!(2);
         assert!(parse_manifest(&newer.to_string()).unwrap_err().to_string().contains("schema_version 2"));
@@ -1910,12 +1933,12 @@ mod tests {
         let sha = hex::encode(Sha256::digest(&pkg));
         let staged = ExtensionManager::stage_package(tmp.path(), "box", &pkg, Some(&sha)).unwrap();
         let running: HashMap<String, Value> = [("box_enabled".to_string(), json!(true))].into_iter().collect();
-        let err = mgr.install_staged("box", &staged, &[("srv", &running)]).unwrap_err();
+        let err = mgr.install_staged("box", &staged, &[("srv", &running)], false).unwrap_err();
         assert_eq!(err.downcast_ref::<ExtensionError>().unwrap().error_code, "in_use");
         assert!(!staged.exists(), "refused package is cleaned up");
 
         let staged = ExtensionManager::stage_package(tmp.path(), "box", &pkg, None).unwrap();
-        mgr.install_staged("box", &staged, &[]).unwrap();
+        mgr.install_staged("box", &staged, &[], false).unwrap();
         assert_eq!(std::fs::read_to_string(tmp.path().join("box/data.txt")).unwrap(), "new");
         assert_eq!(mgr.discovered["box"].manifest.version, "0.2.0");
         assert!(!tmp.path().join(".old-box").exists());

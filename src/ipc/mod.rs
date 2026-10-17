@@ -248,6 +248,8 @@ pub struct UnmetDependency {
 pub struct ExtensionInfo {
     pub name: String,
     pub version: String,
+    /// 신뢰 표시: verified(서명된 카탈로그에서 받았고 그대로) · modified · unverified (M12)
+    pub trust: saba_chan_updater_lib::integrity::Trust,
     pub description: Option<String>,
     /// module.toml schema_version (0 = 스키마 이전 모듈)
     #[serde(default)]
@@ -658,6 +660,7 @@ impl IPCServer {
             .route("/api/modules/manifest/:id/install", post(handlers::server::install_module_from_manifest))
             .route("/api/modules/:id", delete(handlers::server::remove_module))
             .route("/api/module/:name", get(handlers::server::get_module_metadata))
+            .route("/api/module/:name/audit", get(handlers::server::audit_module))
             // ── Instance CRUD ──
             .route("/api/instances", get(handlers::instance::list_instances).post(handlers::instance::create_instance))
             .route("/api/instances/reorder", put(handlers::instance::reorder_instances))
@@ -734,6 +737,7 @@ impl IPCServer {
             .route("/api/extensions/:id/gui", get(handlers::extension::serve_gui_bundle))
             .route("/api/extensions/:id/gui/styles", get(handlers::extension::serve_gui_styles))
             .route("/api/extensions/:id/icon", get(handlers::extension::serve_icon))
+            .route("/api/extensions/:id/audit", get(handlers::extension::audit_extension))
             .route("/api/extensions/:id/i18n/:locale", get(handlers::extension::serve_i18n))
             // ── Node.js portable environment ──
             // ── Relay server proxy (cloud mode) ──
@@ -853,6 +857,7 @@ mod tests {
     #[test]
     fn test_module_info_serialization_with_commands() {
         let module_info = ExtensionInfo {
+            trust: saba_chan_updater_lib::integrity::Trust::Unverified,
             name: "palworld".to_string(),
             version: "1.0.0".to_string(),
             description: Some("Palworld 서버 관리".to_string()),
@@ -903,6 +908,7 @@ mod tests {
     #[test]
     fn test_module_info_without_commands() {
         let module_info = ExtensionInfo {
+            trust: saba_chan_updater_lib::integrity::Trust::Unverified,
             name: "test".to_string(),
             version: "1.0.0".to_string(),
             description: None,
@@ -937,6 +943,7 @@ mod tests {
             failed: Vec::new(),
             modules: vec![
                 ExtensionInfo {
+                    trust: saba_chan_updater_lib::integrity::Trust::Unverified,
                     name: "palworld".to_string(),
                     version: "1.0.0".to_string(),
                     description: Some("Palworld".to_string()),

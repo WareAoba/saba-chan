@@ -6,6 +6,7 @@
 //! GET  /api/extensions/:id/gui      → GUI 번들 서빙
 //! GET  /api/extensions/:id/gui/styles → CSS 서빙
 //! GET  /api/extensions/:id/icon     → 아이콘 (icon.png) 서빙
+//! GET  /api/extensions/:id/audit    → 코드가 쓰는 위험한 능력과 manifest `permissions` 비교
 //! GET  /api/extensions/:id/i18n/:locale → i18n JSON
 //! DELETE /api/extensions/:id         → 제거 (비활성화 + 디렉토리 삭제)
 
@@ -372,7 +373,7 @@ pub async fn install_extension(
             (explicit_url.clone().unwrap_or_default(), explicit_sha.clone())
         } else {
             match (&entry, &remote) {
-                (Some(e), _) => (e.download_url.clone(), explicit_sha.clone().filter(|_| id == ext_id).or(e.sha256.clone())),
+                (Some(e), _) => (e.download_url.clone(), e.sha256.clone()),
                 (None, Ok(_)) => {
                     return fail(format!("Extension '{}' not found in manifest", id), "not_in_manifest");
                 }
@@ -391,7 +392,9 @@ pub async fn install_extension(
         let refs: Vec<(&str, &std::collections::HashMap<String, serde_json::Value>)> =
             running.iter().map(|(n, d)| (n.as_str(), d)).collect();
         let mut mgr = state.extension_manager.write().await;
-        if let Err(e) = mgr.install_staged(&id, &staged, &refs) {
+        // 카탈로그의 주소와 해시로 받았을 때만 공식 설치다
+        let official = entry.as_ref().is_some_and(|e| e.download_url == url && e.sha256.is_some() && e.sha256 == sha);
+        if let Err(e) = mgr.install_staged(&id, &staged, &refs, official) {
             let (_, Json(body)) = extension_err_response(&e);
             if body.get("error_code").and_then(|c| c.as_str()) == Some("internal") {
                 return fail(e.to_string(), "install_failed");
@@ -443,7 +446,10 @@ pub async fn remove_extension(
 
     let mut mgr = state.extension_manager.write().await;
     match mgr.remove(&ext_id, &refs) {
-        Ok(()) => Ok(Json(serde_json::json!({ "success": true, "id": ext_id }))),
+        Ok(()) => {
+            let _ = saba_chan_updater_lib::integrity::set_official(&format!("ext-{}", ext_id), false);
+            Ok(Json(serde_json::json!({ "success": true, "id": ext_id })))
+        }
         Err(e) => Err(extension_err_response(&e)),
     }
 }
@@ -468,6 +474,28 @@ pub async fn serve_icon(
     };
 
     serve_static_file(&icon_path, "image/png").await
+}
+
+/// GET /api/extensions/:id/audit — `GET /api/module/:name/audit`와 같은 모양
+pub async fn audit_extension(State(state): State<IPCServer>, Path(ext_id): Path<String>) -> Response {
+    let found = {
+        let mgr = state.extension_manager.read().await;
+        mgr.discovered(&ext_id).map(|e| (e.dir.clone(), e.manifest.permissions.clone()))
+    };
+    let Some((dir, declared)) = found else {
+        return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Extension '{}' not found", ext_id), "error_code": "not_found" }))).into_response();
+    };
+    let scanned = match crate::python_env::get_python_path().await {
+        Ok(python) => crate::module_audit::scan(&python, &dir).await,
+        Err(e) => Err(e),
+    };
+    match scanned {
+        Ok(findings) => {
+            let undeclared = crate::module_audit::undeclared(&declared, &findings);
+            Json(json!({ "success": true, "declared": declared, "findings": findings, "undeclared": undeclared })).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("{:#}", e), "error_code": "audit_failed" }))).into_response(),
+    }
 }
 
 /// 파일을 읽어서 HTTP 응답으로 반환
