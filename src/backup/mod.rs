@@ -100,11 +100,12 @@ pub fn create(dir: &Path, kind: BackupKind, paths: &[PathBuf]) -> Result<BackupI
         bail!("nothing to back up: none of the module's backup paths exist");
     }
     fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
-    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    // 밀리초까지 넣어 이름순이 곧 만든 순서가 되게 한다 (같은 초에 만든 복원 전 백업이 더 오래돼 보이지 않게)
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S-%3f").to_string();
     let mut name = format!("{}-{}.zip", stamp, kind.as_str());
     let mut n = 2;
     while dir.join(&name).exists() {
-        name = format!("{}-{}-{}.zip", stamp, n, kind.as_str());
+        name = format!("{}{}-{}.zip", stamp, n, kind.as_str());
         n += 1;
     }
     let final_path = dir.join(&name);
@@ -196,12 +197,13 @@ pub fn delete(dir: &Path, name: &str) -> Result<()> {
     Ok(())
 }
 
-/// 자동 백업(수동 제외)을 새것 `keep`개만 남긴다. 지운 이름을 돌려준다
-pub fn prune(dir: &Path, keep: usize) -> Vec<String> {
+/// 자동 백업(수동 제외)을 새것 `keep`개만 남긴다. `protect`는 넘쳐도 지우지 않는다 (복원 중인 백업). 지운 이름을 돌려준다
+pub fn prune(dir: &Path, keep: usize, protect: Option<&str>) -> Vec<String> {
     list(dir)
         .into_iter()
         .filter(|b| b.kind != BackupKind::Manual)
         .skip(keep)
+        .filter(|b| Some(b.name.as_str()) != protect)
         .filter(|b| fs::remove_file(dir.join(&b.name)).is_ok())
         .map(|b| b.name)
         .collect()
@@ -327,11 +329,25 @@ mod tests {
         let dir = tmp.path().join("backups");
         let manual = create(&dir, BackupKind::Manual, &[w.clone()]).unwrap();
         let autos: Vec<_> = (0..3).map(|_| create(&dir, BackupKind::Scheduled, &[w.clone()]).unwrap().name).collect();
-        let removed = prune(&dir, 1);
+        let removed = prune(&dir, 1, None);
         assert_eq!(removed.len(), 2);
         let left: Vec<_> = list(&dir).into_iter().map(|b| b.name).collect();
         assert!(left.contains(&manual.name));
         assert!(left.contains(autos.iter().max().unwrap()));
+    }
+
+    #[test]
+    fn prune_never_removes_the_backup_being_restored() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let dir = tmp.path().join("backups");
+        let oldest = create(&dir, BackupKind::Scheduled, &[w.clone()]).unwrap().name;
+        let safety = create(&dir, BackupKind::PreRestore, &[w.clone()]).unwrap().name;
+        let removed = prune(&dir, 1, Some(&oldest));
+        assert!(removed.is_empty(), "keep=1 would drop the oldest auto backup, but it is the restore target");
+        let left: Vec<_> = list(&dir).into_iter().map(|b| b.name).collect();
+        assert!(left.contains(&oldest) && left.contains(&safety));
+        assert!(restore(&dir, &oldest).is_ok());
     }
 
     #[test]

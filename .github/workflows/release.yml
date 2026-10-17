@@ -225,8 +225,8 @@ jobs:
         run: |
           curl -fsS -X POST "${{ vars.RELAY_URL }}/admin/releases" \
             -H "x-internal-secret: $RELAY_INTERNAL_SECRET" \
-            -H "Content-Type: application/json" \
-            --data @release-registration.json
+            -H "Content-Type: application/json; charset=utf-8" \
+            --data-binary @release-registration.json
           echo
           curl -fsS -H 'X-Saba-Client: 1' \
             "${{ vars.RELAY_URL }}/v1/updates/manifest/${{ steps.r2.outputs.version }}" > /dev/null

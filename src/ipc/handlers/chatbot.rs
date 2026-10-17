@@ -7,7 +7,11 @@
 //! - `PUT /api/chatbot` `{settings?, guilds?: {id: {...}|null}, apiKey?: string|null}` — `settings`·길드 값은
 //!   키별로 합치고 `null`인 키는 지운다(릴레이 기본값). 릴레이가 400을 주면 저장하지 않는다.
 //!   응답: GET과 같은 내용 + `sync: [{guildId, ok, status?, error?}]`
-//! - `DELETE /api/chatbot` — 설정과 키를 지우고 릴레이에서도 지운다
+//! - `DELETE /api/chatbot` — 설정과 키를 지우고 릴레이에서도 지운다. 릴레이에 못 닿으면
+//!   `pendingRelayDelete: true`로 답하고 다음 연결 때 다시 지운다
+//!
+//! 릴레이 PUT은 받은 키만 합치므로 데몬은 늘 전체 설정을 보낸다: 지운 키(null)는 `RELAY_DEFAULTS` 값으로.
+//! 릴레이에 새 설정이 생기면 그 기본값을 이 표에 한 줄 더한다
 //! - `DELETE /api/chatbot/memory?guildId=` — 장기 기억 지우기 (guildId가 없으면 모든 길드)
 
 use axum::{
@@ -24,11 +28,42 @@ use super::relay::{apply_signed_headers, client, encode_path_segment, resolve_re
 use super::super::IPCServer;
 use crate::config_store::ChatbotConfig;
 
+/// 릴레이 `ChatbotSettings` 기본값 (/mnt/project-files/chatbot/contract.md §1).
+/// 기본값으로 되돌린 키도 릴레이에 실제로 닿게 PUT마다 깔고 그 위에 사용자 설정을 얹는다
+fn relay_defaults() -> Map<String, Value> {
+    let Value::Object(map) = json!({
+        "enabled": false,
+        "channelIds": [],
+        "provider": "openai",
+        "model": "gpt-6-luna",
+        "memo": "",
+        "triggerWords": ["사바쨩", "사바"],
+        "confirmCommands": true,
+        "ambientSeconds": 0,
+        "sessionSeconds": 180,
+        "memory": true,
+        "webSearch": true,
+        "disabledTools": [],
+    }) else {
+        unreachable!()
+    };
+    map
+}
+
+/// 길드 하나에 PUT할 본문: 기본값 위에 사용자 설정, 키는 데몬 것 (없으면 릴레이 것도 지운다)
+fn put_body(cfg: &ChatbotConfig, guild: &str) -> Map<String, Value> {
+    let mut body = relay_defaults();
+    body.extend(cfg.effective(guild));
+    body.insert("apiKey".into(), json!(cfg.api_key));
+    body
+}
+
 fn view(cfg: &ChatbotConfig) -> Map<String, Value> {
     let mut out = Map::new();
     out.insert("settings".into(), Value::Object(cfg.settings.clone()));
     out.insert("guilds".into(), json!(cfg.guilds));
     out.insert("hasApiKey".into(), json!(cfg.api_key.as_deref().is_some_and(|k| !k.is_empty())));
+    out.insert("pendingRelayDelete".into(), json!(cfg.pending_relay_delete));
     out
 }
 
@@ -88,24 +123,28 @@ fn apply(cfg: &mut ChatbotConfig, patch: ChatbotPatch) -> Result<(), String> {
     if let Some(key) = patch.api_key {
         cfg.api_key = key.map(|k| k.trim().to_string()).filter(|k| !k.is_empty());
     }
+    // PUT은 전체 설정을 보내므로 남은 삭제를 덮는다
+    cfg.pending_relay_delete = false;
     Ok(())
 }
 
-/// 이 호스트가 들어 있는 길드: 릴레이의 호스트 노드 목록 + 길드별 설정이 있는 길드
-async fn guild_ids(state: &IPCServer, base: &str, cfg: &ChatbotConfig) -> BTreeSet<String> {
+/// 이 호스트가 들어 있는 길드: 릴레이의 호스트 노드 목록 + 길드별 설정이 있는 길드.
+/// 둘째 값은 릴레이 목록을 받았는지 (호스트가 없으면 받을 것도 없으니 true)
+async fn guild_ids(state: &IPCServer, base: &str, cfg: &ChatbotConfig) -> (BTreeSet<String>, bool) {
     let mut ids: BTreeSet<String> = cfg.guilds.keys().cloned().collect();
     let host = state.config_store.get_bot_config().await.cloud.host_id;
     if host.trim().is_empty() {
-        return ids;
+        return (ids, true);
     }
-    let Ok(http) = client() else { return ids };
+    let Ok(http) = client() else { return (ids, false) };
     let path = format!("/api/hosts/{}/nodes", encode_path_segment(host.trim()));
-    if let Ok((code, Some(Value::Array(nodes)))) = send(apply_signed_headers(http.get(format!("{}{}", base, path)), "GET", &path, None)).await {
-        if code.is_success() {
+    match send(apply_signed_headers(http.get(format!("{}{}", base, path)), "GET", &path, None)).await {
+        Ok((code, Some(Value::Array(nodes)))) if code.is_success() => {
             ids.extend(nodes.iter().filter_map(|n| n.get("guildId").and_then(Value::as_str).map(str::to_string)));
+            (ids, true)
         }
+        _ => (ids, false),
     }
-    ids
 }
 
 async fn relay_base(state: &IPCServer) -> String {
@@ -147,10 +186,8 @@ pub async fn push_all(state: &IPCServer, cfg: &ChatbotConfig) -> Vec<(String, Re
     }
     let base = relay_base(state).await;
     let mut out = Vec::new();
-    for guild in guild_ids(state, &base, cfg).await {
-        let mut body = cfg.effective(&guild);
-        // 원본은 데몬: 키가 없으면 릴레이의 것도 지운다
-        body.insert("apiKey".into(), json!(cfg.api_key));
+    for guild in guild_ids(state, &base, cfg).await.0 {
+        let body = put_body(cfg, &guild);
         let path = format!("/api/nodes/{}/chatbot", encode_path_segment(&guild));
         let outcome = call(&base, reqwest::Method::PUT, &path, Some(Value::Object(body).to_string())).await;
         out.push((guild, outcome));
@@ -158,9 +195,43 @@ pub async fn push_all(state: &IPCServer, cfg: &ChatbotConfig) -> Vec<(String, Re
     out
 }
 
+/// 릴레이에서 이 호스트 길드들의 설정과 키를 지운다. 모두 지워졌으면 true
+async fn delete_remote(state: &IPCServer, cfg: &ChatbotConfig) -> (bool, Vec<Value>) {
+    if super::relay::load_node_token().is_none() {
+        return (true, Vec::new());
+    }
+    let base = relay_base(state).await;
+    let (guilds, listed) = guild_ids(state, &base, cfg).await;
+    let mut rows = Vec::new();
+    for guild in guilds {
+        let path = format!("/api/nodes/{}/chatbot", encode_path_segment(&guild));
+        let outcome = call(&base, reqwest::Method::DELETE, &path, None).await;
+        // 이미 없는 노드(404)는 지워진 것으로 본다
+        let gone = matches!(&outcome, Ok((c, _)) if c.is_success() || *c == StatusCode::NOT_FOUND);
+        let mut row = result_row(&guild, &outcome);
+        row["ok"] = json!(gone);
+        rows.push(row);
+    }
+    // 길드 목록을 못 받았으면 빠진 길드가 있을 수 있다
+    (listed && rows.iter().all(|r| r["ok"] == json!(true)), rows)
+}
+
 /// 릴레이 에이전트가 연결된 직후 한 번
 pub async fn sync_on_connect(state: &IPCServer) {
     let cfg = state.config_store.get_chatbot();
+    if cfg.pending_relay_delete {
+        let (done, rows) = delete_remote(state, &cfg).await;
+        if done {
+            let mut cleared = cfg.clone();
+            cleared.pending_relay_delete = false;
+            if let Err(e) = state.config_store.set_chatbot(&cleared) {
+                tracing::warn!("[Chatbot] could not clear the pending delete: {}", e);
+            }
+        } else {
+            tracing::warn!("[Chatbot] relay delete still pending: {}", json!(rows));
+        }
+        return;
+    }
     if cfg == ChatbotConfig::default() {
         return;
     }
@@ -195,18 +266,12 @@ pub async fn put_chatbot(State(state): State<IPCServer>, Json(patch): Json<Chatb
 
 pub async fn delete_chatbot(State(state): State<IPCServer>) -> Response {
     let cfg = state.config_store.get_chatbot();
-    let base = relay_base(&state).await;
-    let mut rows = Vec::new();
-    if super::relay::load_node_token().is_some() {
-        for guild in guild_ids(&state, &base, &cfg).await {
-            let path = format!("/api/nodes/{}/chatbot", encode_path_segment(&guild));
-            rows.push(result_row(&guild, &call(&base, reqwest::Method::DELETE, &path, None).await));
-        }
-    }
-    if let Err(e) = state.config_store.set_chatbot(&ChatbotConfig::default()) {
+    let (done, rows) = delete_remote(&state, &cfg).await;
+    let cleared = ChatbotConfig { pending_relay_delete: !done, ..ChatbotConfig::default() };
+    if let Err(e) = state.config_store.set_chatbot(&cleared) {
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string() }))).into_response();
     }
-    Json(json!({ "success": true, "sync": rows })).into_response()
+    Json(json!({ "success": true, "sync": rows, "pendingRelayDelete": !done })).into_response()
 }
 
 #[derive(Deserialize)]
@@ -223,7 +288,7 @@ pub async fn delete_memory(State(state): State<IPCServer>, Query(q): Query<Memor
     let base = relay_base(&state).await;
     let guilds = match q.guild_id.filter(|g| !g.is_empty()) {
         Some(g) => BTreeSet::from([g]),
-        None => guild_ids(&state, &base, &cfg).await,
+        None => guild_ids(&state, &base, &cfg).await.0,
     };
     let mut rows = Vec::new();
     for guild in guilds {
@@ -240,6 +305,34 @@ mod tests {
 
     fn patch(v: Value) -> ChatbotPatch {
         serde_json::from_value(v).unwrap()
+    }
+
+    #[test]
+    fn settings_reset_to_default_still_reach_the_relay() {
+        let mut cfg = ChatbotConfig::default();
+        apply(&mut cfg, patch(json!({"settings": {"enabled": true, "confirmCommands": false}}))).unwrap();
+        // GUI는 기본값으로 되돌릴 때 null을 보낸다. 릴레이는 받은 키만 합치므로 빠뜨리면 예전 값이 남는다
+        apply(&mut cfg, patch(json!({"settings": {"enabled": null, "confirmCommands": null}}))).unwrap();
+        let body = put_body(&cfg, "g1");
+        assert_eq!(body["enabled"], json!(false));
+        assert_eq!(body["confirmCommands"], json!(true));
+        assert_eq!(body["apiKey"], Value::Null, "no key here means delete it there");
+        apply(&mut cfg, patch(json!({"settings": {"model": "m2"}, "guilds": {"g1": {"channelIds": ["7"]}}}))).unwrap();
+        let body = put_body(&cfg, "g1");
+        assert_eq!(body["model"], json!("m2"));
+        assert_eq!(body["channelIds"], json!(["7"]));
+        assert_eq!(put_body(&cfg, "g2")["channelIds"], json!([]));
+    }
+
+    #[test]
+    fn a_pending_relay_delete_survives_until_a_new_put() {
+        let pending = ChatbotConfig { pending_relay_delete: true, ..ChatbotConfig::default() };
+        assert_ne!(pending, ChatbotConfig::default(), "sync_on_connect must not skip it as empty");
+        let text = serde_json::to_string(&pending).unwrap();
+        assert_eq!(serde_json::from_str::<ChatbotConfig>(&text).unwrap(), pending);
+        let mut cfg = pending;
+        apply(&mut cfg, patch(json!({"settings": {"enabled": true}}))).unwrap();
+        assert!(!cfg.pending_relay_delete, "a full PUT replaces what the delete would have removed");
     }
 
     #[test]
