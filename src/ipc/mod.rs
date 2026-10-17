@@ -33,6 +33,9 @@ pub enum ClientKind {
 pub struct RegisteredClient {
     pub kind: ClientKind,
     pub last_heartbeat: std::time::Instant,
+    /// 클라이언트가 알려 준 자기 PID와 설치 폴더 (인스톨러가 이 설치의 GUI만 끌 때 쓴다)
+    pub pid: Option<u32>,
+    pub install_root: Option<String>,
 }
 
 /// 클라이언트 레지스트리 — 여러 GUI/CLI 인스턴스의 생존 여부를 추적
@@ -55,15 +58,22 @@ impl ClientRegistry {
     }
 
     /// 새 클라이언트 등록, client_id 반환
-    pub async fn register(&self, kind: ClientKind) -> String {
+    pub async fn register(&self, kind: ClientKind, pid: Option<u32>, install_root: Option<String>) -> String {
         let id = uuid::Uuid::new_v4().to_string();
         let mut map = self.inner.write().await;
-        tracing::info!("[Heartbeat] Client registered: {} ({:?})", id, kind);
+        tracing::info!("[Heartbeat] Client registered: {} ({:?}, PID {:?})", id, kind, pid);
         map.insert(id.clone(), RegisteredClient {
             kind,
             last_heartbeat: std::time::Instant::now(),
+            pid,
+            install_root,
         });
         id
+    }
+
+    /// 등록된 클라이언트 (id와 함께)
+    pub async fn list(&self) -> Vec<(String, RegisteredClient)> {
+        self.inner.read().await.iter().map(|(id, c)| (id.clone(), c.clone())).collect()
     }
 
     /// Heartbeat 수신 — TTL 갱신
@@ -690,6 +700,7 @@ impl IPCServer {
             // ── Extension process management (범용) ──
             // ── Client heartbeat ──
             .route("/api/client/register", post(handlers::client::client_register))
+            .route("/api/clients", get(handlers::client::client_list))
             .route("/api/client/:id/heartbeat", post(handlers::client::client_heartbeat))
             .route("/api/client/:id/unregister", delete(handlers::client::client_unregister))
             // ── Daemon lifecycle ──

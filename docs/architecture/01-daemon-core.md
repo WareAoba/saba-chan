@@ -307,7 +307,8 @@
 
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
-| POST | `/api/client/register` | `client.rs:21` | `{kind:"gui"\|"cli"}` | `{client_id, kind, heartbeat_interval_ms:30000, timeout_ms:90000}` |
+| POST | `/api/client/register` | `client.rs:21` | `{kind:"gui"\|"cli", pid?, installRoot?}` | `{client_id, kind, heartbeat_interval_ms:30000, timeout_ms:90000}` |
+| GET | `/api/clients` | `client.rs` `client_list` | - | `{clients:[{id, kind, pid, installRoot}]}`. 인스톨러·제거기가 데몬을 끄기 전에 이 설치(`installRoot`)의 GUI PID를 받아, 임시 폴더에 풀린 포터블 GUI까지 끈다 |
 | POST | `/api/client/:id/heartbeat` | `client.rs:51` | 본문은 무시 | `{ok}` / 404 |
 | DELETE | `/api/client/:id/unregister` | `client.rs:69` | query `shutdown=true\|false` | `{ok}` / 404 |
 | POST | `/api/daemon/shutdown` | `client.rs:12` | - | `{ok, message}`. 200ms 뒤 `stop_requested` cancel |

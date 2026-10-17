@@ -856,7 +856,12 @@ let heartbeatTimer = null;
 
 async function registerWithDaemon() {
     try {
-        const res = await axios.post(`${IPC_BASE}/api/client/register`, { kind: 'gui' }, { timeout: 3000 });
+        // PID·설치 폴더: 인스톨러가 임시 폴더에 풀린 포터블 GUI도 이 설치의 것으로 찾아 끈다
+        const res = await axios.post(
+            `${IPC_BASE}/api/client/register`,
+            { kind: 'gui', pid: process.pid, installRoot: getInstallRoot() },
+            { timeout: 3000 },
+        );
         heartbeatClientId = res.data.client_id;
         console.log(`[Heartbeat] Registered with daemon as client: ${heartbeatClientId}`);
         return true;

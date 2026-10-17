@@ -86,7 +86,7 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
     // Step 2: 프로세스 종료
     emit("stop", "Stopping saba-chan processes...", 10);
     if let Some(dir) = &install_dir {
-        stop_saba_processes(dir);
+        stop_saba_processes(dir).await;
     }
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
@@ -172,7 +172,7 @@ pub async fn do_silent_uninstall() {
     // 프로세스 종료
     eprintln!("  Stopping processes...");
     if let Some(dir) = &install_dir {
-        stop_saba_processes(dir);
+        stop_saba_processes(dir).await;
     }
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
@@ -254,7 +254,13 @@ pub fn target_dir() -> Option<PathBuf> {
 }
 
 /// 이 설치 폴더의 실행 파일로 떠 있는 사바쨩 프로세스만 끝낸다 (다른 설치본의 데몬·서버는 그대로)
-fn stop_saba_processes(install_dir: &Path) {
+async fn stop_saba_processes(install_dir: &Path) {
+    // 데몬을 끄기 전에 데몬에 등록된 이 설치의 GUI를 물어 둔다 (임시 폴더에 풀린 포터블 GUI도 여기 있다)
+    let dirs = [install_dir.to_path_buf(), comparable_dir(install_dir)];
+    let registered = match DaemonApi::from_config() {
+        Some(api) => api.registered_guis(&dirs).await,
+        None => Vec::new(),
+    };
     // saba-runner가 게임 서버를 잡(Job Object)에 묶고 있다: 데몬·러너는 트리째 끝내 서버도 끝낸다.
     // GUI·CLI는 트리 없이: GUI가 이 제거기를 자식으로 띄우므로 트리째 끝내면 제거기도 죽는다.
     const TARGETS: [(&str, bool); 6] = [
@@ -279,6 +285,104 @@ fn stop_saba_processes(install_dir: &Path) {
     for pid in unpacked {
         tracing::info!("[Uninstall] Stopping unpacked GUI process (PID {})", pid);
         kill_pid(pid, false);
+    }
+    stop_registered_guis(&registered, "[Uninstall]");
+}
+
+/// 데몬 API (설정된 포트·토큰 파일)
+struct DaemonApi {
+    client: reqwest::Client,
+    port: u16,
+    token: String,
+}
+
+impl DaemonApi {
+    fn from_config() -> Option<Self> {
+        let port = saba_chan_updater_lib::config_file::ConfigFile::default_location()
+            .section("gui")
+            .get("ipcPort")
+            .and_then(|v| v.as_u64())
+            .and_then(|p| u16::try_from(p).ok())
+            .unwrap_or(saba_chan_updater_lib::constants::DEFAULT_IPC_PORT);
+        let token = std::fs::read_to_string(saba_chan_updater_lib::constants::token_file_path()).unwrap_or_default();
+        let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(3)).build().ok()?;
+        Some(Self { client, port, token: token.trim().to_string() })
+    }
+
+    fn url(&self, path: &str) -> String {
+        format!("http://127.0.0.1:{}{}", self.port, path)
+    }
+
+    /// 데몬에 등록된 GUI 중 이 설치 폴더에서 띄운 것의 PID. 데몬이 없거나 옛 버전이면 비어 있다
+    async fn registered_guis(&self, dirs: &[PathBuf]) -> Vec<u32> {
+        let resp = self.client.get(self.url("/api/clients")).header("X-Saba-Token", &self.token).send().await;
+        match resp {
+            Ok(r) if r.status().is_success() => match r.json::<serde_json::Value>().await {
+                Ok(v) => {
+                    let pids = guis_of(&v, dirs);
+                    tracing::info!("[Install] GUI clients registered from this install: {:?}", pids);
+                    pids
+                }
+                Err(e) => {
+                    tracing::info!("[Install] Cannot read the daemon's client list: {}", e);
+                    Vec::new()
+                }
+            },
+            Ok(r) => {
+                tracing::info!("[Install] The daemon has no client list ({})", r.status());
+                Vec::new()
+            }
+            Err(e) => {
+                tracing::info!("[Install] No daemon to ask for GUI clients ({})", e);
+                Vec::new()
+            }
+        }
+    }
+}
+
+/// `GET /api/clients` 응답에서 이 설치 폴더(`installRoot`)에서 띄운 GUI의 PID
+fn guis_of(clients: &serde_json::Value, dirs: &[PathBuf]) -> Vec<u32> {
+    let norm = |p: &str| p.replace('\\', "/").trim_end_matches('/').to_lowercase();
+    let mut wanted: Vec<String> = dirs.iter().map(|d| norm(&d.to_string_lossy())).collect();
+    wanted.dedup();
+    let mut pids: Vec<u32> = clients
+        .get("clients")
+        .and_then(|c| c.as_array())
+        .into_iter()
+        .flatten()
+        .filter(|c| c.get("kind").and_then(|k| k.as_str()) == Some("gui"))
+        .filter_map(|c| {
+            let root = c.get("installRoot")?.as_str()?;
+            let roots = [norm(root), norm(&comparable_dir(Path::new(root)).to_string_lossy())];
+            let pid = u32::try_from(c.get("pid")?.as_u64()?).ok()?;
+            roots.iter().any(|r| wanted.contains(r)).then_some(pid)
+        })
+        .collect();
+    pids.sort_unstable();
+    pids.dedup();
+    pids
+}
+
+/// 데몬에 등록돼 있던 GUI를 끈다. 그 PID가 지금도 GUI 이름의 프로세스일 때만 (PID 재사용 대비)
+fn stop_registered_guis(pids: &[u32], tag: &str) {
+    if pids.is_empty() {
+        return;
+    }
+    let mut names: Vec<&str> = saba_chan_updater_lib::GUI_EXE_NAMES.iter().map(|n| n.trim_end_matches(".exe")).collect();
+    if !names.iter().any(|n| n.eq_ignore_ascii_case("Saba-chan")) {
+        names.push("Saba-chan");
+    }
+    let listing = list_named(&names);
+    for &pid in pids {
+        if pid == std::process::id() {
+            continue;
+        }
+        if pid_listed(&listing, pid) {
+            tracing::info!("{} Closing GUI registered with the daemon (PID {})", tag, pid);
+            kill_pid(pid, false);
+        } else {
+            tracing::info!("{} Registered GUI PID {} is already gone", tag, pid);
+        }
     }
 }
 
@@ -367,23 +471,16 @@ pub async fn stop_daemon_before_install(install_dir: &Path) {
     }
     let mut daemons: Vec<u32> = filter_in(&listing, &dirs, &["saba-core"]).into_iter().map(|(pid, _)| pid).collect();
 
-    // 실행 파일 경로로 못 찾았으면 (경로를 못 읽는 프로세스 등) 설정된 포트의 데몬에게 PID를 묻는다
-    let port = saba_chan_updater_lib::config_file::ConfigFile::default_location()
-        .section("gui")
-        .get("ipcPort")
-        .and_then(|v| v.as_u64())
-        .and_then(|p| u16::try_from(p).ok())
-        .unwrap_or(saba_chan_updater_lib::constants::DEFAULT_IPC_PORT);
-    let token = std::fs::read_to_string(saba_chan_updater_lib::constants::token_file_path()).unwrap_or_default();
-    let Ok(client) = reqwest::Client::builder().timeout(std::time::Duration::from_secs(3)).build() else {
+    let Some(api) = DaemonApi::from_config() else {
         return;
     };
+    let port = api.port;
+    // 데몬을 끄기 전에 이 설치에서 띄운 GUI를 물어 둔다 (임시 폴더에 풀린 포터블 GUI도 여기 있다)
+    let registered = api.registered_guis(&dirs).await;
+
+    // 실행 파일 경로로 못 찾았으면 (경로를 못 읽는 프로세스 등) 설정된 포트의 데몬에게 PID를 묻는다
     if daemons.is_empty() {
-        let health = client
-            .get(format!("http://127.0.0.1:{}/health", port))
-            .header("X-Saba-Token", token.trim())
-            .send()
-            .await;
+        let health = api.client.get(api.url("/health")).header("X-Saba-Token", &api.token).send().await;
         let pid = match health {
             Ok(r) => r.json::<serde_json::Value>().await.ok().and_then(|v| v.get("pid").and_then(|p| p.as_u64())),
             Err(e) => {
@@ -409,9 +506,10 @@ pub async fn stop_daemon_before_install(install_dir: &Path) {
         tracing::info!("[Install] No daemon from this install is running");
     } else {
         tracing::info!("[Install] A daemon from this install is running (PID {:?}); asking it to shut down", daemons);
-        let sent = client
-            .post(format!("http://127.0.0.1:{}/api/daemon/shutdown", port))
-            .header("X-Saba-Token", token.trim())
+        let sent = api
+            .client
+            .post(api.url("/api/daemon/shutdown"))
+            .header("X-Saba-Token", &api.token)
             .json(&serde_json::json!({}))
             .send()
             .await;
@@ -442,11 +540,21 @@ pub async fn stop_daemon_before_install(install_dir: &Path) {
 
     // GUI·CLI에는 종료 API가 없다: 이 설치의 것만 끈다. 트리째가 아니다: 데몬이 남아 있으면
     // GUI 아래에 데몬·게임 서버가 있을 수 있다 (Electron 렌더러는 본 프로세스가 끝나면 따라 끝난다)
+    // 포터블 실행기(saba-chan-gui.exe)의 자손은 실행기를 끄기 전에 찾아 둔다: 실제 GUI는 임시 폴더에 풀려 돈다
     let gui: Vec<&str> = saba_chan_updater_lib::GUI_EXE_NAMES.iter().map(|n| n.trim_end_matches(".exe")).collect();
-    for (pid, name) in filter_in(&list_named(&gui), &dirs, &gui) {
+    let found = filter_in(&list_named(&gui), &dirs, &gui);
+    let launchers: Vec<u32> =
+        found.iter().filter(|(_, n)| n.eq_ignore_ascii_case("saba-chan-gui")).map(|(pid, _)| *pid).collect();
+    let unpacked = descendants_of(&launchers, install_dir);
+    for (pid, name) in found {
         tracing::info!("[Install] Closing {} (PID {})", name, pid);
         kill_pid(pid, false);
     }
+    for pid in unpacked {
+        tracing::info!("[Install] Closing unpacked GUI process (PID {})", pid);
+        kill_pid(pid, false);
+    }
+    stop_registered_guis(&registered, "[Install]");
     for (pid, name) in filter_in(&list_named(&["saba-chan-cli"]), &dirs, &["saba-chan-cli"]) {
         tracing::info!("[Install] Closing {} (PID {})", name, pid);
         kill_pid(pid, false);
@@ -838,6 +946,21 @@ mod tests {
         found.sort();
         assert_eq!(found, vec![20, 21, 22]);
         assert!(descendants_in(listing, &[], 30, &places).is_empty());
+    }
+
+    #[test]
+    fn only_guis_registered_from_this_install_are_picked() {
+        // 1 = 이 설치(임시 폴더에 풀린 포터블 GUI도 installRoot는 설치 폴더), 2 = 다른 설치본, 3 = CLI, 4 = 옛 GUI(정보 없음)
+        let clients = serde_json::json!({"clients": [
+            {"id": "a", "kind": "gui", "pid": 20, "installRoot": "C:\\Saba\\"},
+            {"id": "b", "kind": "gui", "pid": 60, "installRoot": "D:\\Other"},
+            {"id": "c", "kind": "cli", "pid": 70, "installRoot": "C:\\Saba"},
+            {"id": "d", "kind": "gui", "pid": null, "installRoot": null},
+            {"id": "e", "kind": "gui", "pid": 21, "installRoot": "c:/saba"},
+        ]});
+        let dirs = [PathBuf::from("C:\\Saba")];
+        assert_eq!(guis_of(&clients, &dirs), vec![20, 21]);
+        assert!(guis_of(&serde_json::json!({}), &dirs).is_empty());
     }
 
     #[test]

@@ -444,7 +444,7 @@ async fn e2e_client_registration_heartbeat() {
     // ── 1) 클라이언트 등록
     let reg_resp = client
         .post(format!("{}/api/client/register", base_url))
-        .json(&json!({}))
+        .json(&json!({"kind": "gui", "pid": 4321, "installRoot": "C:\\Saba"}))
         .send().await.unwrap();
     
     if reg_resp.status().is_success() {
@@ -463,6 +463,14 @@ async fn e2e_client_registration_heartbeat() {
                 "Heartbeat should succeed, got: {}",
                 hb_resp.status()
             );
+
+            // ── 2-1) 인스톨러가 볼 목록: 알려 준 PID·설치 폴더가 그대로 보인다
+            let list: Value = client
+                .get(format!("{}/api/clients", base_url))
+                .send().await.unwrap()
+                .json().await.unwrap();
+            let me = list["clients"].as_array().unwrap().iter().find(|c| c["id"] == cid).cloned();
+            assert_eq!(me, Some(json!({"id": cid, "kind": "gui", "pid": 4321, "installRoot": "C:\\Saba"})));
 
             // ── 3) 등록 해제
             let unreg_resp = client
@@ -616,9 +624,11 @@ async fn e2e_python_lifecycle_direct_call() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let parsed: Value = serde_json::from_str(&stdout)
                 .expect(&format!("get_launch_command should return JSON, got: {}", stdout));
+            // 데몬이 읽는 계약 그대로 (02-modules): 없으면 시작이 실패한다
+            assert_eq!(parsed.get("success"), Some(&json!(true)), "get_launch_command must report success");
             assert!(
-                parsed.get("command").is_some(),
-                "get_launch_command must return 'command' field"
+                parsed.get("program").is_some(),
+                "get_launch_command must return 'program' field"
             );
             assert!(
                 parsed.get("args").is_some(),
