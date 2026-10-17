@@ -64,6 +64,15 @@ pub fn process_under_any(process: &RunningProcess, roots: &[String]) -> bool {
     paths.into_iter().any(|p| roots.iter().any(|r| under(p, r)))
 }
 
+/// 여러 인스턴스가 함께 쓰는 폴더(예: 같은 설치 폴더의 실행 파일)는 주인을 가리는 근거가 못 된다: 양쪽에서 뺀다
+pub fn drop_shared_roots(own: Vec<String>, other: Vec<String>) -> (Vec<String>, Vec<String>) {
+    let own_n: Vec<String> = own.iter().map(|r| normalize_path(r)).collect();
+    let other_n: Vec<String> = other.iter().map(|r| normalize_path(r)).collect();
+    let own_kept = own.into_iter().zip(&own_n).filter(|(_, n)| !other_n.contains(n)).map(|(r, _)| r).collect();
+    let other_kept = other.into_iter().zip(&other_n).filter(|(_, n)| !own_n.contains(n)).map(|(r, _)| r).collect();
+    (own_kept, other_kept)
+}
+
 /// 자동 감지 후보 중 이 인스턴스의 프로세스를 고른다.
 /// - `taken`: 다른 인스턴스가 이미 추적하는 PID — 절대 고르지 않는다
 /// - `own_roots`: 이 인스턴스의 폴더들, `other_roots`: 같은 모듈의 다른 인스턴스 폴더들
@@ -186,6 +195,21 @@ mod tests {
         let own_b = vec![r"C:\Games\bin".to_string(), r"C:\Saba\instances\b".to_string()];
         assert_eq!(pick_owned_process(&[&sb, &sa], &none, &own_a, &own_b, false).map(|p| p.pid), Some(40));
         assert!(pick_owned_process(&[&sb], &none, &own_a, &own_b, false).is_none());
+        // 작업 폴더가 공유 실행 폴더보다 짧아도, 공유 폴더를 빼면 각자 자기 서버를 찾는다
+        let short = |pid: u32, cwd: &str| RunningProcess {
+            pid,
+            name: "server.exe".into(),
+            executable_path: Some(r"C:\Program Files\Game\bin\server.exe".into()),
+            cmd: vec![],
+            cwd: Some(cwd.into()),
+        };
+        let (pa, pb) = (short(60, r"C:\A"), short(70, r"C:\B"));
+        let bin = r"C:\Program Files\Game\bin".to_string();
+        let (own, other) = drop_shared_roots(vec![bin.clone(), r"C:\A".into()], vec![bin.clone(), r"C:\B".into()]);
+        assert_eq!(own, vec![r"C:\A".to_string()]);
+        assert_eq!(pick_owned_process(&[&pb, &pa], &none, &own, &other, false).map(|p| p.pid), Some(60));
+        let (own_b, other_b) = drop_shared_roots(vec![bin.clone(), r"C:\B".into()], vec![bin, r"C:\A".into()]);
+        assert_eq!(pick_owned_process(&[&pa, &pb], &none, &own_b, &other_b, false).map(|p| p.pid), Some(70));
         // "a"가 "ab"의 접두어여도 섞이지 않는다
         let ab = proc(30, r"C:\Saba\instances\ab");
         assert!(pick_owned_process(&[&ab], &none, &roots_a, &[], false).is_none());
