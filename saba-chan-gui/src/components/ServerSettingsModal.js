@@ -515,8 +515,9 @@ export function ServerSettingsModal({
                         serverId={settingsServer.id}
                         fields={module?.settings?.fields}
                         values={settingsValues}
-                        extraArgs={settingsValues._launch_extra_args || ''}
+                        extraArgs={settingsValues._launch_extra_args}
                         onExtraArgsChange={(v) => handleSettingChange('_launch_extra_args', v)}
+                        onExtraArgsLoaded={(v) => handleSettingChange('_launch_extra_args', v)}
                         onSettingsFromArgs={(found) => {
                             for (const [k, v] of Object.entries(found)) handleSettingChange(k, v);
                         }}
