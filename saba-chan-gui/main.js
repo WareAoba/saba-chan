@@ -2425,6 +2425,22 @@ ipcMain.handle('relay:botInvite', async (_event, relayUrl) => {
     }
 });
 
+// AI 챗봇 설정: 키는 데몬에만 있고 응답에는 hasApiKey만 온다
+async function chatbotCall(method, path, data) {
+    try {
+        const resp = await axios({ method, url: `${IPC_BASE}${path}`, data, timeout: 15000 });
+        return resp.data;
+    } catch (err) {
+        return err.response?.data || { success: false, error: err.message };
+    }
+}
+ipcMain.handle('chatbot:get', () => chatbotCall('get', '/api/chatbot'));
+ipcMain.handle('chatbot:save', (_event, patch) => chatbotCall('put', '/api/chatbot', patch));
+ipcMain.handle('chatbot:clear', () => chatbotCall('delete', '/api/chatbot'));
+ipcMain.handle('chatbot:clearMemory', (_event, guildId) =>
+    chatbotCall('delete', `/api/chatbot/memory${guildId ? `?guildId=${encodeURIComponent(guildId)}` : ''}`),
+);
+
 ipcMain.handle('relay:initiatePairing', async (_event, payload) => {
     try {
         const resp = await axios.post(`${IPC_BASE}/api/relay/pair/initiate`, payload, {

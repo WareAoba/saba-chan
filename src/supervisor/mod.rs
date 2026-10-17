@@ -282,7 +282,7 @@ impl Supervisor {
 
     /// 모듈 함수가 인스턴스를 알아보는 데 쓰는 값 (포트·비밀번호·모듈 설정·REST·데이터 폴더 등).
     /// 시작·정지·설정·초기화 모두 같은 값을 받아야 같은 서버 파일을 다룬다. 이미 있는 키는 두다.
-    fn insert_instance_fields(cfg: &mut serde_json::Map<String, Value>, instance: &crate::instance::ServerInstance) {
+    pub(crate) fn insert_instance_fields(cfg: &mut serde_json::Map<String, Value>, instance: &crate::instance::ServerInstance) {
         let mut put = |key: &str, value: Value| {
             cfg.entry(key.to_string()).or_insert(value);
         };
@@ -2599,6 +2599,8 @@ mod tests {
             server_version: None,
             extension_data: std::collections::HashMap::new(),
             required_extensions: Vec::new(),
+            schedule: Vec::new(),
+            backup_keep: None,
         };
         supervisor.instance_store.add(inst).unwrap();
 
@@ -2655,6 +2657,8 @@ mod tests {
             server_version: None,
             extension_data: std::collections::HashMap::new(),
             required_extensions: Vec::new(),
+            schedule: Vec::new(),
+            backup_keep: None,
         };
         let inst_dir = instances_dir.join("test-tracker-guard");
         let _ = std::fs::create_dir_all(&inst_dir);

@@ -109,6 +109,10 @@ contextBridge.exposeInMainWorld('api', {
     relayListHostNodes: (hostId, relayUrl) => ipcRenderer.invoke('relay:listHostNodes', hostId, relayUrl),
     relayListNodeMembers: (guildId, relayUrl) => ipcRenderer.invoke('relay:listNodeMembers', guildId, relayUrl),
     relayBotInvite: (relayUrl) => ipcRenderer.invoke('relay:botInvite', relayUrl),
+    chatbotGet: () => ipcRenderer.invoke('chatbot:get'),
+    chatbotSave: (patch) => ipcRenderer.invoke('chatbot:save', patch),
+    chatbotClear: () => ipcRenderer.invoke('chatbot:clear'),
+    chatbotClearMemory: (guildId) => ipcRenderer.invoke('chatbot:clearMemory', guildId),
     relayInitiatePairing: (payload) => ipcRenderer.invoke('relay:initiatePairing', payload),
     relayPollPairingStatus: (code, secret, relayUrl) => ipcRenderer.invoke('relay:pollPairingStatus', code, secret, relayUrl),
     // Shell API

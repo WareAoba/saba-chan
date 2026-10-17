@@ -106,6 +106,9 @@ impl RelayAgent {
                 return;
             }
             tracing::info!("[RelayAgent] started (relay={})", session.base);
+            // 챗봇 설정은 데몬이 원본: 연결될 때마다 릴레이에 맞춘다
+            let sync_server = session.server.clone();
+            tokio::spawn(async move { crate::ipc::handlers::chatbot::sync_on_connect(&sync_server).await });
             tokio::join!(session.heartbeat_loop(), session.poll_loop());
             agent.finish(generation, None);
             tracing::info!("[RelayAgent] stopped");

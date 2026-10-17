@@ -127,5 +127,9 @@
     "scissors": "Scissors",
     "rock": "Rock",
     "paper": "Paper"
+  },
+  "schedule": {
+    "restart_warning": "The server restarts in {{minutes}} min.",
+    "update_warning": "The server restarts for an update in {{minutes}} min."
   }
 }

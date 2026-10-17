@@ -1,0 +1,345 @@
+//! 월드·세이브 백업 (A2)
+//!
+//! 모듈 `[backup] paths`가 가리키는 폴더·파일을 `<인스턴스 폴더>/backups/<시각>-<종류>.zip` 하나로 묶는다.
+//! zip 안에는 `saba-backup.json`(항목 번호 → 원래 절대 경로)과 `<번호>/...` 파일이 들어 있어
+//! 복원 때 원래 자리로 돌려놓는다. 이 파일의 함수는 모두 블로킹이다 (호출자가 spawn_blocking).
+
+use anyhow::{bail, Context, Result};
+use serde::{Deserialize, Serialize};
+use std::fs::{self, File};
+use std::io;
+use std::path::{Path, PathBuf};
+
+const MANIFEST: &str = "saba-backup.json";
+
+/// 백업 종류. `Manual`만 정리(prune)에서 빠진다
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum BackupKind {
+    Manual,
+    Scheduled,
+    PreUpdate,
+    PreRestore,
+}
+
+impl BackupKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            BackupKind::Manual => "manual",
+            BackupKind::Scheduled => "scheduled",
+            BackupKind::PreUpdate => "pre-update",
+            BackupKind::PreRestore => "pre-restore",
+        }
+    }
+
+    fn from_name(name: &str) -> Option<Self> {
+        let stem = name.strip_suffix(".zip")?;
+        [Self::Manual, Self::Scheduled, Self::PreUpdate, Self::PreRestore]
+            .into_iter()
+            .find(|k| stem.ends_with(&format!("-{}", k.as_str())))
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BackupInfo {
+    pub name: String,
+    pub kind: BackupKind,
+    /// 유닉스 시각 (초)
+    pub created: u64,
+    pub size: u64,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Manifest {
+    version: u32,
+    paths: Vec<ManifestEntry>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ManifestEntry {
+    entry: String,
+    path: PathBuf,
+    is_file: bool,
+}
+
+/// 백업 폴더
+pub fn backups_dir(instance_dir: &Path) -> PathBuf {
+    instance_dir.join("backups")
+}
+
+/// `[backup] paths` 패턴을 실제 경로로. `{설정 이름}`은 `lookup`으로 바꾸고(값이 비면 그 경로는 뺀다),
+/// 상대 경로는 `base`(서버 작업 폴더) 기준이다. 없는 경로도 뺀다
+pub fn resolve_paths(patterns: &[String], base: &Path, lookup: impl Fn(&str) -> Option<String>) -> Vec<PathBuf> {
+    let placeholder = regex::Regex::new(r"\{([A-Za-z0-9_]+)\}").expect("valid regex");
+    let mut out: Vec<PathBuf> = Vec::new();
+    for pattern in patterns {
+        let mut missing = false;
+        let filled = placeholder.replace_all(pattern, |c: &regex::Captures| {
+            match lookup(&c[1]).filter(|v| !v.is_empty()) {
+                Some(v) => v,
+                None => {
+                    missing = true;
+                    String::new()
+                }
+            }
+        });
+        if missing {
+            continue;
+        }
+        let path = base.join(filled.as_ref());
+        if path.exists() && !out.contains(&path) {
+            out.push(path);
+        }
+    }
+    out
+}
+
+/// 새 백업을 만든다. 같은 초에 두 번 만들면 이름 뒤에 번호를 붙인다
+pub fn create(dir: &Path, kind: BackupKind, paths: &[PathBuf]) -> Result<BackupInfo> {
+    if paths.is_empty() {
+        bail!("nothing to back up: none of the module's backup paths exist");
+    }
+    fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let mut name = format!("{}-{}.zip", stamp, kind.as_str());
+    let mut n = 2;
+    while dir.join(&name).exists() {
+        name = format!("{}-{}-{}.zip", stamp, n, kind.as_str());
+        n += 1;
+    }
+    let final_path = dir.join(&name);
+    let partial = dir.join(format!("{}.partial", name));
+    let written = write_zip(&partial, paths);
+    if let Err(e) = written {
+        let _ = fs::remove_file(&partial);
+        return Err(e);
+    }
+    fs::rename(&partial, &final_path)?;
+    info(&final_path).context("read new backup")
+}
+
+fn write_zip(target: &Path, paths: &[PathBuf]) -> Result<()> {
+    let mut zip = zip::ZipWriter::new(File::create(target)?);
+    let opts = zip::write::FileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated)
+        .large_file(true);
+    let mut manifest = Manifest { version: 1, paths: Vec::new() };
+    for (i, path) in paths.iter().enumerate() {
+        let entry = i.to_string();
+        let is_file = path.is_file();
+        if is_file {
+            zip.start_file(&entry, opts)?;
+            io::copy(&mut File::open(path)?, &mut zip)?;
+        } else {
+            zip.add_directory(format!("{}/", entry), opts)?;
+            add_dir(&mut zip, path, &entry, opts)?;
+        }
+        manifest.paths.push(ManifestEntry { entry, path: path.clone(), is_file });
+    }
+    zip.start_file(MANIFEST, opts)?;
+    serde_json::to_writer_pretty(&mut zip, &manifest)?;
+    zip.finish()?.sync_all()?;
+    Ok(())
+}
+
+fn add_dir(zip: &mut zip::ZipWriter<File>, dir: &Path, prefix: &str, opts: zip::write::FileOptions) -> Result<()> {
+    for item in fs::read_dir(dir)? {
+        let item = item?;
+        let name = format!("{}/{}", prefix, item.file_name().to_string_lossy());
+        let kind = item.file_type()?;
+        if kind.is_dir() {
+            zip.add_directory(format!("{}/", name), opts)?;
+            add_dir(zip, &item.path(), &name, opts)?;
+        } else if kind.is_file() {
+            zip.start_file(&name, opts)?;
+            // 서버가 쓰는 중이라 잠긴 파일(Windows)은 건너뛰지 않고 실패로 알린다: 반쪽 백업을 믿지 않게
+            io::copy(&mut File::open(item.path()).with_context(|| format!("read {}", item.path().display()))?, zip)?;
+        }
+    }
+    Ok(())
+}
+
+fn info(path: &Path) -> Option<BackupInfo> {
+    let name = path.file_name()?.to_str()?.to_string();
+    let kind = BackupKind::from_name(&name)?;
+    let meta = fs::metadata(path).ok()?;
+    let created = meta.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+    Some(BackupInfo { name, kind, created, size: meta.len() })
+}
+
+/// 새것부터
+pub fn list(dir: &Path) -> Vec<BackupInfo> {
+    let mut out: Vec<BackupInfo> = fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| info(&e.path()))
+        .collect();
+    out.sort_by(|a, b| b.name.cmp(&a.name));
+    out
+}
+
+/// API로 받은 이름이 백업 폴더 안의 백업 파일만 가리키게
+fn checked(dir: &Path, name: &str) -> Result<PathBuf> {
+    if name.contains(['/', '\\']) || name.starts_with('.') || BackupKind::from_name(name).is_none() {
+        bail!("invalid backup name: {}", name);
+    }
+    let path = dir.join(name);
+    if !path.is_file() {
+        bail!("backup not found: {}", name);
+    }
+    Ok(path)
+}
+
+pub fn delete(dir: &Path, name: &str) -> Result<()> {
+    fs::remove_file(checked(dir, name)?)?;
+    Ok(())
+}
+
+/// 자동 백업(수동 제외)을 새것 `keep`개만 남긴다. 지운 이름을 돌려준다
+pub fn prune(dir: &Path, keep: usize) -> Vec<String> {
+    list(dir)
+        .into_iter()
+        .filter(|b| b.kind != BackupKind::Manual)
+        .skip(keep)
+        .filter(|b| fs::remove_file(dir.join(&b.name)).is_ok())
+        .map(|b| b.name)
+        .collect()
+}
+
+/// 백업을 원래 자리로 돌려놓는다. 서버는 꺼져 있어야 한다 (호출자가 확인).
+/// 경로마다 기존 것을 옆으로 치워 두고 풀어 넣은 뒤 지운다. 도중에 실패하면 치워 둔 것을 되돌린다
+pub fn restore(dir: &Path, name: &str) -> Result<Vec<PathBuf>> {
+    let mut zip = zip::ZipArchive::new(File::open(checked(dir, name)?)?)?;
+    let manifest: Manifest = serde_json::from_reader(zip.by_name(MANIFEST).context("not a saba-chan backup")?)?;
+    let mut restored = Vec::new();
+    for entry in &manifest.paths {
+        let aside = aside_path(&entry.path);
+        let had_old = entry.path.exists();
+        if had_old {
+            fs::rename(&entry.path, &aside).with_context(|| format!("move aside {}", entry.path.display()))?;
+        }
+        match extract_entry(&mut zip, entry) {
+            Ok(()) => {
+                if had_old {
+                    remove_any(&aside);
+                }
+                restored.push(entry.path.clone());
+            }
+            Err(e) => {
+                remove_any(&entry.path);
+                if had_old {
+                    let _ = fs::rename(&aside, &entry.path);
+                }
+                return Err(e.context(format!("restore {}", entry.path.display())));
+            }
+        }
+    }
+    Ok(restored)
+}
+
+fn aside_path(path: &Path) -> PathBuf {
+    let mut name = path.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+    name.push(".saba-restore-old");
+    path.with_file_name(name)
+}
+
+fn remove_any(path: &Path) {
+    let _ = if path.is_dir() { fs::remove_dir_all(path) } else { fs::remove_file(path) };
+}
+
+fn extract_entry(zip: &mut zip::ZipArchive<File>, entry: &ManifestEntry) -> Result<()> {
+    if entry.is_file {
+        if let Some(parent) = entry.path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        io::copy(&mut zip.by_name(&entry.entry)?, &mut File::create(&entry.path)?)?;
+        return Ok(());
+    }
+    fs::create_dir_all(&entry.path)?;
+    let prefix = PathBuf::from(&entry.entry);
+    for i in 0..zip.len() {
+        let mut file = zip.by_index(i)?;
+        // enclosed_name: `..`나 절대 경로로 폴더 밖에 쓰는 항목을 막는다
+        let Some(rel) = file.enclosed_name().and_then(|p| p.strip_prefix(&prefix).ok()).map(Path::to_path_buf) else {
+            continue;
+        };
+        let out = entry.path.join(rel);
+        if file.is_dir() {
+            fs::create_dir_all(&out)?;
+        } else {
+            if let Some(parent) = out.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            io::copy(&mut file, &mut File::create(&out)?)?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn world(root: &Path) -> PathBuf {
+        let w = root.join("world");
+        fs::create_dir_all(w.join("region")).unwrap();
+        fs::write(w.join("level.dat"), b"level").unwrap();
+        fs::write(w.join("region/r.0.0.mca"), b"chunks").unwrap();
+        w
+    }
+
+    #[test]
+    fn resolve_fills_settings_and_drops_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        world(tmp.path());
+        let patterns = vec!["{level_name}".to_string(), "{level_name}_nether".to_string(), "{unset}/x".to_string()];
+        let got = resolve_paths(&patterns, tmp.path(), |k| (k == "level_name").then(|| "world".to_string()));
+        assert_eq!(got, vec![tmp.path().join("world")]);
+    }
+
+    #[test]
+    fn create_restore_roundtrip_and_rollback_layout() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let props = tmp.path().join("server.properties");
+        fs::write(&props, b"a=1").unwrap();
+        let dir = tmp.path().join("backups");
+        let b = create(&dir, BackupKind::Manual, &[w.clone(), props.clone()]).unwrap();
+        assert!(b.name.ends_with("-manual.zip"));
+
+        fs::write(w.join("level.dat"), b"broken").unwrap();
+        fs::write(w.join("new.dat"), b"x").unwrap();
+        fs::write(&props, b"a=2").unwrap();
+        let restored = restore(&dir, &b.name).unwrap();
+        assert_eq!(restored.len(), 2);
+        assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level");
+        assert_eq!(fs::read(w.join("region/r.0.0.mca")).unwrap(), b"chunks");
+        assert!(!w.join("new.dat").exists(), "restore replaces the folder, not merges");
+        assert_eq!(fs::read(&props).unwrap(), b"a=1");
+        assert!(!aside_path(&w).exists());
+    }
+
+    #[test]
+    fn prune_keeps_manual_and_newest_auto() {
+        let tmp = tempfile::tempdir().unwrap();
+        let w = world(tmp.path());
+        let dir = tmp.path().join("backups");
+        let manual = create(&dir, BackupKind::Manual, &[w.clone()]).unwrap();
+        let autos: Vec<_> = (0..3).map(|_| create(&dir, BackupKind::Scheduled, &[w.clone()]).unwrap().name).collect();
+        let removed = prune(&dir, 1);
+        assert_eq!(removed.len(), 2);
+        let left: Vec<_> = list(&dir).into_iter().map(|b| b.name).collect();
+        assert!(left.contains(&manual.name));
+        assert!(left.contains(autos.iter().max().unwrap()));
+    }
+
+    #[test]
+    fn names_from_the_api_stay_inside_the_backup_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        for bad in ["../x-manual.zip", "..\\x-manual.zip", "x.zip", ".hidden-manual.zip"] {
+            assert!(delete(tmp.path(), bad).is_err(), "{}", bad);
+        }
+        assert!(create(tmp.path(), BackupKind::Manual, &[]).is_err());
+    }
+}
