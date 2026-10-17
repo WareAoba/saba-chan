@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld('api', {
     extensionList: () => ipcRenderer.invoke('extension:list'),
     extensionEnable: (extId) => ipcRenderer.invoke('extension:enable', extId),
     extensionDisable: (extId) => ipcRenderer.invoke('extension:disable', extId),
+    extensionAudit: (extId) => ipcRenderer.invoke('extension:audit', extId),
     extensionI18n: (extId, locale) => ipcRenderer.invoke('extension:i18n', extId, locale),
     extensionGuiBundle: (extId) => ipcRenderer.invoke('extension:guiBundle', extId),
     extensionGuiStyles: (extId) => ipcRenderer.invoke('extension:guiStyles', extId),
