@@ -217,10 +217,11 @@ def download_from_previous_release(
     asset_name: str,
     current_tag: str,
     releases: list[dict],
-) -> Path | None:
+) -> tuple[Path, str] | None:
     """이전 릴리즈에서 에셋을 찾아 output/ 에 직접 다운로드
 
-    최신 릴리즈부터 순회하며 해당 에셋이 포함된 첫 번째 릴리즈에서 다운로드.
+    최신 릴리즈부터 순회하며 manifest.json도 함께 실린 첫 번째 릴리즈에서 받는다.
+    (파일, 그 릴리즈 태그)를 돌려준다: 버전은 반드시 같은 태그의 manifest에서 읽는다.
     """
     repo = os.environ.get("REPO_FULL_NAME", "")
     if not repo:
@@ -231,7 +232,7 @@ def download_from_previous_release(
         if tag == current_tag:
             continue
 
-        if asset_name not in release.get("assets", []):
+        if asset_name not in release.get("assets", []) or "manifest.json" not in release.get("assets", []):
             continue
 
         print(f"    ← {tag} 에서 발견, 다운로드 중...")
@@ -252,7 +253,7 @@ def download_from_previous_release(
                         print(f"    → {asset_name} ({size / 1024 / 1024:.2f} MB, from {tag})")
                     else:
                         print(f"    → {asset_name} ({size / 1024:.1f} KB, from {tag})")
-                    return dest
+                    return dest, tag
             else:
                 print(f"    ⚠ download failed: {result.stderr.strip()}")
         except subprocess.TimeoutExpired:
@@ -262,12 +263,10 @@ def download_from_previous_release(
 
 
 def read_version_from_previous_manifest(
-    asset_name: str,
     comp_key: str,
-    current_tag: str,
-    releases: list[dict],
-) -> str | None:
-    """이전 릴리즈의 manifest.json에서 해당 컴포넌트의 버전을 읽어옴.
+    tag: str,
+) -> tuple[str, str | None] | None:
+    """에셋을 받아 온 바로 그 릴리즈(tag)의 manifest.json에서 (버전, sha256)을 읽는다.
 
     이전 릴리즈의 바이너리를 가져올 때, 현재 소스의 버전이 아니라
     해당 빌드 시점의 manifest에 기록된 버전을 사용해야 정확하다.
@@ -276,48 +275,26 @@ def read_version_from_previous_manifest(
     if not repo:
         return None
 
-    for release in releases:
-        tag = release["tag"]
-        if tag == current_tag:
-            continue
-        if asset_name not in release.get("assets", []):
-            continue
-        if "manifest.json" not in release.get("assets", []):
-            continue
-
-        # 이전 릴리즈의 manifest.json 다운로드
-        try:
-            result = subprocess.run(
-                ["gh", "api",
-                 f"repos/{repo}/releases/tags/{tag}",
-                 "--jq",
-                 '.assets[] | select(.name == "manifest.json") | .url'],
-                capture_output=True, text=True, timeout=15,
-            )
-            if result.returncode != 0:
-                continue
-
-            asset_url = result.stdout.strip()
-            if not asset_url:
-                continue
-
-            manifest_result = subprocess.run(
-                ["gh", "api", asset_url,
-                 "-H", "Accept: application/octet-stream"],
-                capture_output=True, text=True, timeout=15,
-            )
-            if manifest_result.returncode != 0:
-                continue
-
-            manifest = json.loads(manifest_result.stdout)
-            comp_info = manifest.get("components", {}).get(comp_key, {})
-            version = comp_info.get("version")
-            if version:
-                return version
-        except (subprocess.TimeoutExpired, json.JSONDecodeError):
-            continue
-
-    return None
+    try:
+        result = subprocess.run(
+            ["gh", "api", f"repos/{repo}/releases/tags/{tag}",
+             "--jq", '.assets[] | select(.name == "manifest.json") | .url'],
+            capture_output=True, text=True, timeout=15,
+        )
+        asset_url = result.stdout.strip() if result.returncode == 0 else ""
+        if not asset_url:
+            return None
+        manifest_result = subprocess.run(
+            ["gh", "api", asset_url, "-H", "Accept: application/octet-stream"],
+            capture_output=True, text=True, timeout=15,
+        )
+        if manifest_result.returncode != 0:
+            return None
+        comp_info = json.loads(manifest_result.stdout).get("components", {}).get(comp_key, {})
+    except (subprocess.TimeoutExpired, json.JSONDecodeError):
+        return None
+    version = comp_info.get("version")
+    return (version, comp_info.get("sha256")) if version else None
 
 
 # ─── 메인 ────────────────────────────────────────────────
@@ -392,7 +369,17 @@ def main():
                     comp["output_name"], release_tag, previous_releases,
                 )
                 if downloaded:
+                    downloaded, prev_tag = downloaded
                     asset_source = "previous"
+                    # 버전과 sha는 이 파일을 받아 온 바로 그 릴리즈의 manifest에서만 읽는다
+                    prev = read_version_from_previous_manifest(key, prev_tag)
+                    if not prev:
+                        # 실제 버전을 모르는 바이너리를 소스 버전으로 서명하면 안 된다
+                        sys.exit(f"  ✗ {key}: reused {comp['output_name']} from {prev_tag} but its version is unknown "
+                                 f"(manifest unreadable); build it in this release instead")
+                    prev_version, prev_sha = prev
+                    if prev_sha and sha256_file(downloaded) != prev_sha:
+                        sys.exit(f"  ✗ {key}: {comp['output_name']} from {prev_tag} does not match that release's manifest sha256")
 
                     # 이전 릴리즈 zip에도 공유 모듈 주입
                     extra = comp.get("extra_files")
@@ -405,15 +392,6 @@ def main():
                                     zf.write(src, src.name)
                                     print(f"    + {src.name} (shared module injected)")
 
-                    # 이전 릴리즈의 manifest에서 정확한 버전 가져오기
-                    # (현재 소스의 버전과 실제 바이너리 버전이 다를 수 있음)
-                    prev_version = read_version_from_previous_manifest(
-                        comp["output_name"], key, release_tag, previous_releases,
-                    )
-                    if not prev_version:
-                        # 실제 버전을 모르는 바이너리를 소스 버전으로 서명하면 안 된다
-                        sys.exit(f"  ✗ {key}: reused {comp['output_name']} but its version is unknown "
-                                 f"(previous manifest unreadable); build it in this release instead")
                     if prev_version != version:
                         print(f"  version: {prev_version} (from previous manifest, overrides source {version})")
                         version = prev_version

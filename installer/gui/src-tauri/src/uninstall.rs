@@ -283,9 +283,13 @@ fn stop_saba_processes() {
             "saba-chan",
             "saba-chan-updater",
         ];
-        // 러너가 띄운 게임 서버(자식)를 먼저 끝낸다
+        // 러너는 자기 프로세스 그룹의 리더다(데몬이 process_group(0)으로 띄움). PTY로 띄운 서버는 따로 세션·그룹을 연다.
+        // 그래서 러너 자식마다 그 그룹을, 이어서 러너 그룹을 통째로 끝내 손자 프로세스까지 남기지 않는다
         let _ = std::process::Command::new("sh")
-            .args(["-c", "for p in $(pgrep -f saba-runner); do pkill -P \"$p\"; done"])
+            .args([
+                "-c",
+                "for r in $(pgrep -x saba-runner); do for c in $(pgrep -P \"$r\"); do kill -KILL -- -\"$c\" 2>/dev/null; kill -KILL \"$c\" 2>/dev/null; done; kill -KILL -- -\"$r\" 2>/dev/null; done",
+            ])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status();
