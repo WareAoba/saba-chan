@@ -221,6 +221,18 @@
         "description": "Installe la mise à jour téléchargée et redémarre l'application"
       }
     },
+    "discord": {
+      "settings": {
+        "get": {
+          "title": "Paramètres Discord",
+          "description": "Langue, veille et musique"
+        },
+        "set": {
+          "title": "Modifier les paramètres Discord",
+          "description": "Langue, veille et musique"
+        }
+      }
+    },
     "field": {
       "action": "Action",
       "instance": "Serveur",
@@ -238,7 +250,11 @@
       "trust": "Confiance",
       "version": "Version à installer",
       "installed": "Version installée",
-      "official_catalog": "catalogue officiel"
+      "official_catalog": "catalogue officiel",
+      "guild": "Serveur Discord",
+      "locale": "Langue",
+      "sleeping": "Veille",
+      "music": "Musique"
     }
   }
 }

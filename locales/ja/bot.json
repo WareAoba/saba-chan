@@ -221,6 +221,18 @@
         "description": "ダウンロードしたアップデートをインストールしてアプリを再起動します"
       }
     },
+    "discord": {
+      "settings": {
+        "get": {
+          "title": "Discord設定を見る",
+          "description": "言語・スリープ・音楽機能"
+        },
+        "set": {
+          "title": "Discord設定を変更",
+          "description": "言語・スリープ・音楽機能"
+        }
+      }
+    },
     "field": {
       "action": "操作",
       "instance": "サーバー",
@@ -238,7 +250,11 @@
       "trust": "信頼",
       "version": "インストールするバージョン",
       "installed": "現在のバージョン",
-      "official_catalog": "公式カタログ"
+      "official_catalog": "公式カタログ",
+      "guild": "Discordサーバー",
+      "locale": "言語",
+      "sleeping": "スリープ",
+      "music": "音楽"
     }
   }
 }

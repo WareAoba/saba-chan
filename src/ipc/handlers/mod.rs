@@ -10,6 +10,7 @@ pub mod relay;
 pub mod chat;
 pub mod backup;
 pub mod chatbot;
+pub mod discord;
 pub mod migration;
 pub mod diagnostics;
 pub mod system;

@@ -705,6 +705,11 @@ impl IPCServer {
                 "/api/permissions/:guild_id/members/:discord_id",
                 axum::routing::put(handlers::permissions::set_member).delete(handlers::permissions::remove_member),
             )
+            // ── 디스코드 길드 설정 (I2) ──
+            .route(
+                "/api/discord/:guild_id/settings",
+                get(handlers::discord::get_settings).patch(handlers::discord::patch_settings),
+            )
             // ── 액션 카탈로그 (P2) ──
             .route("/api/actions", get(handlers::actions::list_actions))
             .route("/api/actions/:id/plan", post(handlers::actions::plan_action))

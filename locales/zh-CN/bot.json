@@ -221,6 +221,18 @@
         "description": "安装已下载的更新并重启应用"
       }
     },
+    "discord": {
+      "settings": {
+        "get": {
+          "title": "查看 Discord 设置",
+          "description": "语言、睡眠和音乐功能"
+        },
+        "set": {
+          "title": "更改 Discord 设置",
+          "description": "语言、睡眠和音乐功能"
+        }
+      }
+    },
     "field": {
       "action": "操作",
       "instance": "服务器",
@@ -238,7 +250,11 @@
       "trust": "信任",
       "version": "要安装的版本",
       "installed": "当前版本",
-      "official_catalog": "官方目录"
+      "official_catalog": "官方目录",
+      "guild": "Discord 服务器",
+      "locale": "语言",
+      "sleeping": "睡眠",
+      "music": "音乐"
     }
   }
 }

@@ -221,6 +221,18 @@
         "description": "Устанавливает загруженное обновление и перезапускает приложение"
       }
     },
+    "discord": {
+      "settings": {
+        "get": {
+          "title": "Настройки Discord",
+          "description": "Язык, сон и музыка"
+        },
+        "set": {
+          "title": "Изменить настройки Discord",
+          "description": "Язык, сон и музыка"
+        }
+      }
+    },
     "field": {
       "action": "Действие",
       "instance": "Сервер",
@@ -238,7 +250,11 @@
       "trust": "Доверие",
       "version": "Устанавливаемая версия",
       "installed": "Установленная версия",
-      "official_catalog": "официальный каталог"
+      "official_catalog": "официальный каталог",
+      "guild": "Сервер Discord",
+      "locale": "Язык",
+      "sleeping": "Сон",
+      "music": "Музыка"
     }
   }
 }

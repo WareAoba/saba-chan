@@ -65,7 +65,19 @@
     "music_channel": "음악 채널",
     "confirm_music_channel": "#{{name}}을(를) 음악 채널로 정하면 그 채널의 일반 메시지는 지워져요. 계속할까요?",
     "channels_saved": "채널 배정을 바꿨어요.",
-    "channels_bot_missing": "봇이 이 디스코드 서버에 없어서 채널 목록을 볼 수 없어요. 초대: saba-chan-cli bot invite"
+    "channels_bot_missing": "봇이 이 디스코드 서버에 없어서 채널 목록을 볼 수 없어요. 초대: saba-chan-cli bot invite",
+    "discord_saved": "디스코드 설정을 저장했어요.",
+    "discord_not_synced": "이 PC에는 저장했지만 봇에 닿지 않았어요. 봇이 다시 연결되면 보내요.",
+    "on": "켜짐",
+    "off": "꺼짐",
+    "locale": "언어",
+    "locale_auto": "자동 (이 PC의 언어)",
+    "sleeping": "잠자기",
+    "music": "음악",
+    "music_ui": "플레이어 패널",
+    "music_queue_lines": "대기열 줄 수",
+    "music_refresh": "패널 새로고침",
+    "music_normalize": "음량 고르게"
   },
   "col": {
     "aliases": "별명",
@@ -567,7 +579,11 @@
       "perm.cap": "챗봇을 거친 요청이 쓸 수 있는 가장 높은 레벨",
       "perm.command": "명령 하나에 필요한 레벨 (`<서버 id>/<명령>`). 레벨을 비우면 프리셋으로 돌아가요",
       "perm.owner": "고정된 디스코드 서버 주인 바꾸기",
-      "do": "데몬 액션을 id로 실행 (`saba do`만 치면 목록)"
+      "do": "데몬 액션을 id로 실행 (`saba do`만 치면 목록)",
+      "bot.lang": "디스코드 서버에서 봇이 답하는 언어 (`auto`는 이 PC의 언어). 값이 없으면 보기",
+      "bot.sleep": "디스코드 서버에서 봇 재우기 (깨울 때까지 명령을 받지 않아요)",
+      "bot.wake": "디스코드 서버에서 봇 깨우기",
+      "bot.music": "디스코드 서버의 음악 플레이어 설정. 옵션이 없으면 보기"
     },
     "arg": {
       "json": "글 대신 기계가 읽는 JSON으로 출력",
@@ -649,7 +665,14 @@
       "bot.channels.no_music": "음악 채널 해제",
       "monitor.watch": "Ctrl+C까지 계속 새로 고침",
       "monitor.interval": "--watch 새로 고침 간격 (초)",
-      "audit.limit": "보여 줄 기록 수"
+      "audit.limit": "보여 줄 기록 수",
+      "bot.lang.value": "auto 또는 언어 코드 (ko, en, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr)",
+      "bot.music.on": "음악 켜기",
+      "bot.music.off": "음악 끄기",
+      "bot.music.ui": "플레이어 패널 보이기 (on 또는 off)",
+      "bot.music.queue_lines": "플레이어 패널의 대기열 줄 수 (1-20)",
+      "bot.music.refresh": "플레이어 패널 새로고침 간격, 밀리초 (2000-10000)",
+      "bot.music.normalize": "곡마다 음량 고르게 (on 또는 off)"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 실행하면 대화형 셸이 열려요.\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },
