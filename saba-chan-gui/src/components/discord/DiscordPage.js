@@ -11,6 +11,7 @@ import { ChatbotView, chatbotAvailable } from './ChatbotView';
 import { ConnectionView } from './ConnectionView';
 import { Avatar, NodeView } from './NodeView';
 import * as P from './nodePermissions';
+import { permissionsAvailable } from './PermissionsTab';
 import { usePairing } from './usePairing';
 import { WordsView } from './WordsView';
 
@@ -431,7 +432,7 @@ export function DiscordPage({
                                             ? t('discord.node_sub_all')
                                             : t('discord.node_sub_pick', { count })}
                                     </span>
-                                    {restricted > 0 && (
+                                    {restricted > 0 && !permissionsAvailable() && (
                                         <>
                                             <span className="sep">·</span>
                                             <span>{t('discord.node_sub_members', { count: restricted })}</span>

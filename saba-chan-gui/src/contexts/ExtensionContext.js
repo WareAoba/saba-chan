@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { clearModuleAuditCache } from '../components/servers/ModuleAuditNotice';
 import i18n from '../i18n';
 import { safeShowToast } from '../utils/helpers';
+import { showTrustWarnings } from '../utils/trustNotice';
 
 const ExtensionContext = createContext(null);
 
@@ -255,6 +256,7 @@ export function ExtensionProvider({ children }) {
                     return false;
                 }
 
+                if (enable) showTrustWarnings(result, t);
                 await fetchExtensions(); // 목록 새로 가져오기
                 return true;
             } catch (e) {

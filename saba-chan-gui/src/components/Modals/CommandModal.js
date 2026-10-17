@@ -202,6 +202,11 @@ function CommandModal({ server, modules, onClose, onExecute, embedded = false })
                                 title={cmd.description}
                             >
                                 <span className="cmd-hint-name">{cmd.name}</span>
+                                {cmd.group && (
+                                    <span className="cmd-source" title={cmd.group}>
+                                        <Icon name="extension" size="xs" /> {cmd.group}
+                                    </span>
+                                )}
                                 {cmd.source === 'extension' && (
                                     <span className="cmd-source" title={cmd.extension}>
                                         <Icon name="extension" size="xs" /> {cmd.extension}

@@ -60,6 +60,7 @@ fn module() -> ModuleMetadata {
     .expect("minimal module.toml");
     meta.commands = Some(ModuleCommands {
         fields: vec![give, say, announce, weather, field("kickall", "dual", vec![]), field("odd", "ftp", vec![])],
+        hook: false,
     });
     meta.command_aliases.insert(
         "say".into(),
@@ -158,4 +159,36 @@ fn a_line_break_inside_an_argument_cannot_add_a_second_console_command() {
         let err = plan_of("say", json!({ "message": value })).unwrap_err();
         assert_eq!((err.code, err.field.as_deref()), ("invalid_argument", Some("message")), "{value:?}");
     }
+}
+
+#[test]
+fn instance_commands_come_after_module_commands_and_bind_like_them() {
+    let extra = InstanceCommands::parse(&json!({
+        "commands": [
+            { "name": "lp-user-info", "label": "User info", "method": "console", "console_template": "lp user {user} info",
+              "risk": "safe", "group": "LuckPerms",
+              "inputs": [{ "name": "user", "type": "text", "required": true }] },
+            // 같은 이름(별명 포함)은 module.toml이 먼저다
+            { "name": "말", "label": "shadow", "method": "console", "console_template": "nope" },
+            { "name": "home", "label": "/home", "method": "rcon", "console_template": "home {args}",
+              "inputs": [{ "name": "args", "type": "text", "required": false }] },
+            // 모양이 틀린 항목은 건너뛴다
+            { "name": "two words", "label": "x" },
+            { "label": "no name" },
+            { "name": "nul\u{0}x", "label": "x", "method": "console", "console_template": "x" },
+            { "name": "split", "label": "x", "method": "console", "console_template": "say a\nstop" },
+        ],
+        "components": [{ "id": "LuckPerms", "kind": "paper" }],
+    }));
+    assert_eq!(extra.fields.len(), 3);
+    assert_eq!(extra.groups.get("lp-user-info").map(String::as_str), Some("LuckPerms"));
+    assert_eq!(extra.components[0]["id"], "LuckPerms");
+
+    let merged = with_instance_commands(&module(), &extra);
+    let plan_with = |line: &str| plan(&merged, &Request::parse(line, &Value::Null));
+    assert_eq!(plan_with("lp-user-info Steve"), Ok(Plan::Console { line: "lp user Steve info".into() }));
+    assert_eq!(plan_with("home"), Ok(Plan::Console { line: "home".into() }));
+    assert_eq!(plan_with("home bed 2"), Ok(Plan::Console { line: "home bed 2".into() }));
+    assert_eq!(plan_with("말 hi"), plan(&module(), &Request::parse("말 hi", &Value::Null)));
+    assert_eq!(plan_with("lp-user-info").unwrap_err().code, "missing_argument");
 }

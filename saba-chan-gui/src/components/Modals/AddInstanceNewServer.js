@@ -1,7 +1,11 @@
 import { useRef, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import ExtensionSlot from '../ExtensionSlot';
 import Icon from '../Icon';
+
+/** 모듈이 만들 때 고르라고 한 설정 (`install = true`, 예: 마인크래프트 서버 종류) */
+const installFields = (module) => (module?.settings?.fields || []).filter((f) => f.install && f.field_type === 'select');
 
 /**
  * AddInstanceNewServer — "새 서버로 추가" 흐름.
@@ -24,6 +28,7 @@ export function AddInstanceNewServer({
     const [selectedExtension, setSelectedExtension] = useState('');
     const [newServerName, setNewServerName] = useState('');
     const [submitting, setSubmitting] = useState(false);
+    const [installValues, setInstallValues] = useState({});
     const nameInputRef = useRef(null);
 
     // 게임 카드를 눌렀을 때
@@ -34,6 +39,7 @@ export function AddInstanceNewServer({
         // 자동 이름 생성
         const existingCount = servers.filter((s) => s.module === extName).length;
         setNewServerName(`my-${extName}-${existingCount + 1}`);
+        setInstallValues({});
 
         setStep('configure');
     };
@@ -68,6 +74,7 @@ export function AddInstanceNewServer({
                 name: newServerName.trim(),
                 module_name: selectedExtension,
                 accept_eula: true,
+                module_settings: installValues,
             });
         } finally {
             setSubmitting(false);
@@ -223,6 +230,30 @@ export function AddInstanceNewServer({
                             }}
                         />
                     </div>
+
+                    {/* 모듈이 만들 때 고르라고 한 설정 (설치할 서버 파일이 달라진다) */}
+                    {installFields(selectedModule).map((field) => {
+                        const modNs = `mod_${selectedModule.name}`;
+                        return (
+                            <div className="as-section as-section-card" key={field.name}>
+                                <label className="as-label">
+                                    <Icon name="settings" size="sm" />
+                                    {t(`${modNs}:settings.${field.name}.label`, { defaultValue: field.label })}
+                                </label>
+                                <CustomDropdown
+                                    value={String(installValues[field.name] ?? field.default ?? '')}
+                                    onChange={(val) => setInstallValues((prev) => ({ ...prev, [field.name]: val }))}
+                                    options={(field.options || []).map((opt) => ({ value: opt, label: opt }))}
+                                    disabled={submitting}
+                                />
+                                <p className="as-provision-hint">
+                                    {t(`${modNs}:settings.${field.name}.description`, {
+                                        defaultValue: field.description || '',
+                                    })}
+                                </p>
+                            </div>
+                        );
+                    })}
 
                     {/* 익스텐션 슬롯 — 서버 생성 옵션 */}
                     <ExtensionSlot slotId="AddServer.options" t={t} />

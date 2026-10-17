@@ -240,7 +240,8 @@
 
 - 모듈의 `install.requires_extensions`가 활성·설치돼 있지 않으면 422 `extension_required`다(`instance.rs:141-180`).
 - 다른 인스턴스가 같은 `working_dir`를 쓰면 409다(`instance.rs:200-213`). 포트를 주지 않으면 다른 인스턴스와 겹치지 않게 기본 포트를 옮긴다(`:217-234`).
-- `migration_source`가 있으면 데몬 락을 놓은 뒤 `import_settings`를 **동기로** 호출한다(`instance.rs:523-547`).
+- `module_settings{}`를 주면 모듈이 선언한 설정 이름만, select는 고를 수 있는 값만 받아 기본값보다 먼저 넣는다(`instance.rs` "만들 때 고른 설정"). GUI·CLI는 `install = true`인 설정(예: 마인크래프트 서버 종류)을 만들 때 묻는다. 프로비저닝 `install_server`는 이 인스턴스 설정을 `settings{}`로 받는다(업데이트 경로도 같다).
+- `migration_source`가 있으면 데몬 락을 놓은 뒤 `import_settings`를 **동기로** 호출한다(`instance.rs:523-547`). 결과의 `executable_path`(작업 폴더 기준, 폴더 안의 파일일 때만)를 실행 파일로 쓰고, `detected`는 응답에 그대로 붙인다(`{success, id, detected?}`).
 - 인스턴스를 저장한 직후 `server.post_create` 훅을 백그라운드로 보내고 결과를 기다리지 않는다(`instance.rs:244-257`). ctx는 `{instance_id, instance_dir, instance, module, migration}`이다.
 - 모듈에 `install` 설정이 있으면 `lifecycle.py install_server`를 백그라운드로 실행한다(타임아웃 30분).
 
@@ -255,7 +256,7 @@
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
 | POST | `/api/instance/:id/command` | `command.rs:16` | `{command*, args?}` | 실행한 경로의 응답 + `command`. 실패 시 `error_code`, 모듈 `[errors]` 문구 `error_message`. 404 / 400 / 409 `server_not_running` |
-| GET | `/api/instance/:id/commands` | `command.rs:172` | - | `{commands:[{name,label,description,risk,inputs,source:"module"\|"extension",...}]}` |
+| GET | `/api/instance/:id/commands` | `command.rs` `list_instance_commands` | - | `{commands:[{name,label,description,risk,inputs,source:"module"\|"extension",group?,...}], components?}`. `[commands] hook = true`인 모듈은 lifecycle `instance_commands()`가 준 인스턴스별 명령이 module.toml 명령 뒤에 `group`(예: 플러그인 이름)과 함께 붙고, `components`는 모듈이 판정한 구성요소를 그대로 넘긴다. 목록은 매번 새로 읽는다 |
 | POST | `/api/instance/:id/rcon` | `command.rs:263` | `{command*}` | 이름만 남은 호환 경로. 언제나 stdin으로 보낸다: `{success, message, data:{response,executed}\|null, protocol:"stdin"}` / 404 / 409 `no_command_path`(콘솔 없음) |
 | POST | `/api/instance/:id/rest` | `command.rs:358` | `{endpoint*, method?, body?, timeout?, rest_host?, rest_port?, use_https?}` | `{success, data, error, endpoint, method, host, port, protocol:"rest"}` / 400 / 500 |
 
@@ -575,7 +576,8 @@ Relay 서명 방식(`relay.rs:100-137`):
 
 - `list_versions` → `{latest:{release}}` 또는 `{latest_release}`
 - `install_server` → `{success, executable_path?, install_path?, message?}`
-- `import_settings` → `{success, settings{}}`
+- `import_settings` → `{success, settings{}, executable_path?, detected?}`
+- `instance_commands` → `{success, commands:[명령 필드 + group?], components?}` (`[commands] hook = true`일 때)
 - `get_credentials` → `{success, rest_username?, rest_password?, ...}`. 데몬은 REST 값만 쓴다(`command.rs:450-455`)
 - `command` → `{success, message}`
 - 나머지(start/stop/status/properties/eula/diagnose 등)는 supervisor가 호출한다.
