@@ -130,6 +130,26 @@ const mockSpans = (text) => {
 };
 
 const ok = (v = {}) => Promise.resolve(v);
+
+const mockPerms = {};
+const mockPermissions = (guildId) => {
+    mockPerms[guildId] ??= {
+        guildId,
+        ownerDiscordId: 'u-1',
+        relayOwnerDiscordId: guildId === 'guild-1' ? 'u-9' : null,
+        defaultLevel: 1,
+        preset: 'default',
+        chatbotCap: 0,
+        members: { 'u-2': 2, 'u-5': -1 },
+        commandLevels: {},
+        presets: {
+            loose: { safe: 0, caution: 0, danger: 1 },
+            default: { safe: 0, caution: 1, danger: 2 },
+            strict: { safe: 1, caution: 2, danger: 3 },
+        },
+    };
+    return mockPerms[guildId];
+};
 // 주소 뒤에 ?daemon=stopped&bot=running 처럼 붙이면 상태 표시를 바꿔 볼 수 있다
 const params = new URLSearchParams(globalThis.location?.search || '');
 const mockBot = params.get('bot') || 'stopped';
@@ -268,7 +288,12 @@ const impl = {
             window_ms: 2000,
             cpu: { cores: 16, total_percent: instCpu + jitter(14, 6), others_percent: jitter(14, 6) },
             memory: { total_bytes: 32 * GB, used_bytes: 19.6 * GB, others_bytes: 19.6 * GB - 6.4 * GB },
-            disk_io: { read_bps: jitter(0.3 * MB, 0.4 * MB), write_bps: jitter(0.2 * MB, 0.3 * MB), source: 'physical', per_instance: false },
+            disk_io: {
+                read_bps: jitter(0.3 * MB, 0.4 * MB),
+                write_bps: jitter(0.2 * MB, 0.3 * MB),
+                source: 'physical',
+                per_instance: false,
+            },
             network: { rx_bps: jitter(3.2 * MB, 2 * MB), tx_bps: jitter(1.1 * MB, 1 * MB), per_instance: false },
             disks: [
                 {
@@ -435,14 +460,37 @@ const impl = {
         Object.assign(mockChannels, patch);
         return ok({ guildId, ...mockChannels });
     },
+    // 데몬 P1 권한 (GET/PATCH /api/permissions/:guildId, PUT/DELETE …/members/:id)
+    permissionsGet: (guildId) => ok(mockPermissions(guildId)),
+    permissionsUpdate: (guildId, patch) => {
+        const p = mockPermissions(guildId);
+        const { commandLevels, ...rest } = patch || {};
+        Object.assign(p, rest);
+        for (const [k, v] of Object.entries(commandLevels || {})) {
+            if (v === null) delete p.commandLevels[k];
+            else p.commandLevels[k] = v;
+        }
+        if (rest.ownerDiscordId) p.relayOwnerDiscordId = null;
+        return ok(p);
+    },
+    permissionsSetMember: (guildId, id, level) => {
+        const p = mockPermissions(guildId);
+        if (id === p.ownerDiscordId) return ok({ error: 'owner', error_code: 'owner_fixed' });
+        p.members[id] = level;
+        return ok(p);
+    },
+    permissionsRemoveMember: (guildId, id) => {
+        delete mockPermissions(guildId).members[id];
+        return ok({ success: true });
+    },
     relayListNodeMembers: (guildId) =>
         ok(
             guildId === 'guild-1'
                 ? [
-                      { id: 'u-1', username: 'wareaoba', displayName: '아오바' },
-                      { id: 'u-2', username: 'mint', displayName: '민트' },
-                      { id: 'u-3', username: 'newbie01', displayName: '뉴비' },
-                      { id: 'u-4', username: 'sabafan', displayName: '사바팬' },
+                      { id: 'u-1', username: 'wareaoba', displayName: '아오바', level: 2 },
+                      { id: 'u-2', username: 'mint', displayName: '민트', level: 2 },
+                      { id: 'u-3', username: 'newbie01', displayName: '뉴비', level: 0 },
+                      { id: 'u-4', username: 'sabafan', displayName: '사바팬', level: 1 },
                   ]
                 : [{ id: 'u-1', username: 'wareaoba', displayName: '아오바' }],
         ),
