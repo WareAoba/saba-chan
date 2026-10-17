@@ -301,7 +301,12 @@ impl Supervisor {
 
     /// 모듈 `[module.dependencies]`를 못 맞추면 시작을 막는 응답. 다 맞으면 None
     async fn unmet_dependencies_response(&self, module_name: &str, instance_name: &str) -> Option<Value> {
-        let unmet = self.unmet_module_dependencies(module_name).await?;
+        // 데몬이 모자라 아예 로드하지 못한 모듈도 같은 응답을 준다
+        let failed = self.module_loader.get_module(module_name).err().and_then(|_| self.module_loader.load_failure(module_name));
+        let unmet = match failed {
+            Some(f) if f.error_code.is_some() => f.missing_dependencies,
+            _ => self.unmet_module_dependencies(module_name).await?,
+        };
         tracing::warn!("Module '{}' dependencies unmet for '{}': {}", module_name, instance_name, unmet.join(", "));
         Some(json!({
             "success": false,
@@ -2344,6 +2349,30 @@ mod tests {
         // 쿨다운이 30초 내이면 auto_detect를 건너뛰어야 함
         let stopped_at = supervisor.stop_cooldowns.get("test-instance-id").unwrap();
         assert!(stopped_at.elapsed().as_secs() < STOP_COOLDOWN_SECS);
+    }
+
+    /// 데몬보다 새 saba-core를 요구해 로드되지 못한 모듈도 시작 응답과 목록이 이유를 준다
+    #[tokio::test]
+    async fn module_needing_newer_core_reports_unsatisfied() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules").join("future");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nname = \"future\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[module.dependencies]\nsaba-core = \">=99.0.0\"\n",
+        )
+        .unwrap();
+        let supervisor = Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        assert!(supervisor.module_loader.get_module("future").unwrap_err().to_string().contains("requires saba-core"));
+        let failed = supervisor.module_loader.load_failure("future").unwrap();
+        assert_eq!(failed.error_code.as_deref(), Some("module_dependency_unsatisfied"));
+        let resp = supervisor.unmet_dependencies_response("future", "srv").await.unwrap();
+        assert_eq!(resp["error_code"], "module_dependency_unsatisfied");
+        assert!(resp["missing_dependencies"][0].as_str().unwrap().starts_with("saba-core >=99.0.0"));
     }
 
     /// [module.dependencies]: 익스텐션이 없거나 낮으면 막고, 맞으면 통과. 데몬이 모르는 키(gui)는 넘긴다

@@ -42,6 +42,7 @@
 pub mod config_file;
 pub mod constants;
 pub mod download;
+pub mod python_pin;
 pub mod error;
 pub mod foreground;
 pub mod github;

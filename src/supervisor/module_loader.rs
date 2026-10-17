@@ -314,10 +314,7 @@ impl LoadedModule {
             .into_iter()
             .find(|(component, _, _)| component == CORE_COMPONENT);
         if let Some((_, required, _)) = needs_newer_core {
-            anyhow::bail!(
-                "module '{}' requires saba-core {} (this is {}); update saba-chan",
-                self.metadata.name, required, DAEMON_VERSION
-            );
+            return Err(UnmetCoreDependency { module: self.metadata.name.clone(), required }.into());
         }
         Ok(())
     }
@@ -334,6 +331,38 @@ impl LoadedModule {
 pub struct ModuleLoadError {
     pub path: String,
     pub error: String,
+    /// module.toml을 읽었으면 모듈 이름
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub module: Option<String>,
+    /// 기계가 읽는 이유. 데몬 버전이 모자라면 `module_dependency_unsatisfied`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
+    /// 못 맞춘 의존성 (`"saba-core >=0.3.0 (installed 0.1.1)"` 꼴)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub missing_dependencies: Vec<String>,
+}
+
+impl ModuleLoadError {
+    fn new(path: &Path, e: &anyhow::Error) -> Self {
+        let unmet = e.downcast_ref::<UnmetCoreDependency>();
+        Self {
+            path: path.to_string_lossy().to_string(),
+            error: e.to_string(),
+            module: unmet.map(|u| u.module.clone()),
+            error_code: unmet.map(|_| "module_dependency_unsatisfied".to_string()),
+            missing_dependencies: unmet
+                .map(|u| vec![format!("{} {} (installed {})", CORE_COMPONENT, u.required, DAEMON_VERSION)])
+                .unwrap_or_default(),
+        }
+    }
+}
+
+/// 모듈이 이 데몬보다 새 saba-core를 요구한다 (로드하지 않는다)
+#[derive(Debug, thiserror::Error)]
+#[error("module '{module}' requires saba-core {required} (this is {DAEMON_VERSION}); update saba-chan")]
+pub struct UnmetCoreDependency {
+    pub module: String,
+    pub required: String,
 }
 
 // ── module.toml 스키마 v1 (serde 직접 역직렬화) ──
@@ -1064,7 +1093,7 @@ impl ModuleLoader {
                             path.display(),
                             e
                         );
-                        errors.push(ModuleLoadError { path: path.to_string_lossy().to_string(), error: e.to_string() });
+                        errors.push(ModuleLoadError::new(&path, &e));
                     }
                 }
             }
@@ -1086,7 +1115,7 @@ impl ModuleLoader {
                                 path.display(),
                                 e
                             );
-                            errors.push(ModuleLoadError { path: path.to_string_lossy().to_string(), error: e.to_string() });
+                            errors.push(ModuleLoadError::new(&path, &e));
                         }
                     }
                 }
@@ -1167,7 +1196,16 @@ impl ModuleLoader {
             .iter()
             .find(|m| m.metadata.name == name)
             .cloned()
-            .ok_or_else(|| anyhow::anyhow!("Module '{}' not found", name))
+            .ok_or_else(|| match self.load_failure(name) {
+                // 있지만 이 데몬으로는 못 쓰는 모듈: "없음" 대신 이유를 준다
+                Some(failed) => anyhow::anyhow!(failed.error),
+                None => anyhow::anyhow!("Module '{}' not found", name),
+            })
+    }
+
+    /// 이름이 `name`인 모듈을 읽었지만 쓸 수 없었다면 그 기록
+    pub fn load_failure(&self, name: &str) -> Option<ModuleLoadError> {
+        self.load_errors.read().unwrap().iter().find(|e| e.module.as_deref() == Some(name)).cloned()
     }
 }
 
