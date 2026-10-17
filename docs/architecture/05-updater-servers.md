@@ -168,7 +168,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 | POST | `/api/updates/launch-updater` | body `{relaunch:[exe, …]}`. 데몬이 updater를 띄우고 스스로 종료한다(`updates.rs:581-639`) |
 | GET / DELETE | `/api/updates/last-result` | updater가 남긴 마지막 적용 결과. DELETE는 확인 처리(`updates.rs:682-694`) |
 | GET | `/api/updates/integrity` | 설치 때 기록한 파일 해시와 비교 |
-| GET / **PUT** | `/api/updates/config` | 설정 `{enabled, check_interval_hours(1-8), auto_download, install_root, relay_url, channel}`(`auto_apply`는 f498525에서 빠졌다). `config.json`의 `updates` 절에 저장한다. GET은 `mock_relay`(모의 릴레이를 믿는 개발 빌드인지)도 준다(`updates.rs:727-806`) |
+| GET / **PUT** | `/api/updates/config` | 설정 `{enabled, check_interval_hours(1-8), auto_download, install_root, relay_url, channel}`(`auto_apply`는 f498525에서 빠졌다). `config.json`의 `updates` 절에 저장한다. GET은 `mock_relay`(모의 릴레이를 믿는 개발 빌드인지)도 준다(`updates.rs:727-806`). 업데이트 출처(`relay_url`)는 앱에서 바꾸지 않는다: 릴리즈 빌드의 PUT은 비우기만 받고 다른 값은 403 `relay_url_not_settable`(D7) |
 
 불일치:
 - ~~GUI의 `updater:setConfig`가 POST로 보내 405가 난다~~ → 해결: PUT으로 보낸다(`saba-chan-gui/main.js:2505-2507`).

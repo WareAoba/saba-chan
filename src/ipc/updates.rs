@@ -759,7 +759,20 @@ async fn set_config(
     if let Some(v) = body.get("install_root").and_then(|v| v.as_str()) {
         cfg.install_root = Some(v.to_string());
     }
+    // 업데이트 출처는 앱에서 바꾸지 않는다 (D7): config.json의 updates.relay_url로만.
+    // 모의 릴레이를 믿는 개발 빌드만 앱(개발 옵션)에서 바꿀 수 있다. 비우기(기본 릴레이로 되돌리기)는 늘 된다
     if let Some(v) = body.get("relay_url").and_then(|v| v.as_str()) {
+        if !v.is_empty() && !cfg!(feature = "mock-relay") {
+            return (
+                axum::http::StatusCode::FORBIDDEN,
+                Json(json!({
+                    "ok": false,
+                    "error": "The update source can only be changed in config.json (updates.relay_url)",
+                    "error_code": "relay_url_not_settable",
+                })),
+            )
+                .into_response();
+        }
         cfg.relay_url = if v.is_empty() { None } else { Some(v.to_string()) };
     }
     if let Some(v) = body.get("channel").and_then(|v| v.as_str()) {
@@ -829,6 +842,19 @@ mod tests {
     }
 
     use super::*;
+
+    /// D7: 릴리즈 빌드에서는 앱이 업데이트 출처를 바꿀 수 없다 (거부는 저장 전에 끝난다)
+    #[cfg(not(feature = "mock-relay"))]
+    #[tokio::test]
+    async fn the_update_source_cannot_be_changed_from_the_app() {
+        let state = UpdateState::new();
+        let before = state.manager.read().await.get_config().relay_url;
+        let resp = set_config(State(state.clone()), Json(json!({ "relay_url": "https://evil.example" })))
+            .await
+            .into_response();
+        assert_eq!(resp.status(), axum::http::StatusCode::FORBIDDEN);
+        assert_eq!(state.manager.read().await.get_config().relay_url, before);
+    }
 
     #[test]
     fn updater_config_survives_restart() {

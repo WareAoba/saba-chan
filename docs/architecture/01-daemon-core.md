@@ -372,7 +372,7 @@ Relay 서명 방식(`relay.rs:100-137`):
 | GET/DELETE | `/api/updates/last-result` | `updates.rs:683/689` | - | 마지막 적용 결과 / 확인 처리 |
 | GET | `/api/updates/integrity` | `updates.rs:697` | - | `{ok,checked_at,overall,total,verified,failed,skipped,components[...]}` |
 | GET | `/api/updates/config` | `updates.rs:727` | - | `{ok, config, mock_relay}` |
-| PUT | `/api/updates/config` | `updates.rs:742` | 부분 `{enabled,check_interval_hours(1-8),auto_download,install_root,relay_url,channel}` | `{ok, config}`. `config.json`의 `updates` 절에 저장한다(`:770-772, 800-806`) |
+| PUT | `/api/updates/config` | `updates.rs:742` | 부분 `{enabled,check_interval_hours(1-8),auto_download,install_root,relay_url,channel}` | `{ok, config}`. `config.json`의 `updates` 절에 저장한다(`:770-772, 800-806`). 비어 있지 않은 `relay_url`은 개발 빌드(`mock-relay`)만 받고, 릴리즈 빌드는 403 `relay_url_not_settable`(D7: 출처는 config.json에서만) |
 
 ---
 
