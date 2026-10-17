@@ -55,6 +55,15 @@ beforeEach(() => {
 // ═════════════════════════════════════════════════════════════
 
 describe('useSettingsStore', () => {
+    it.each(['light', 'auto'])('업그레이드: 데몬에 theme이 없으면 예전 브라우저 값(%s)을 지킨다', async (old) => {
+        localStorage.setItem('saba-chan-theme', old);
+        window.api.settingsLoad = vi.fn().mockResolvedValue({ autoRefresh: true });
+        window.api.settingsGetPath = vi.fn().mockResolvedValue('x');
+        await useSettingsStore.getState().load();
+        expect(useSettingsStore.getState().theme).toBe(old);
+        localStorage.removeItem('saba-chan-theme');
+    });
+
     it('초기 상태가 올바른 기본값을 가져야 한다', () => {
         const state = useSettingsStore.getState();
         expect(state.autoRefresh).toBe(true);
