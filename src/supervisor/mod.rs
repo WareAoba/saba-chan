@@ -1598,6 +1598,8 @@ impl Supervisor {
 
             let mut cfg = serde_json::Map::new();
             if let Some(exe_path) = &instance.executable_path {
+                // 시작 때와 같은 두 키 (모듈마다 읽는 키가 다르다)
+                cfg.insert("server_executable".to_string(), json!(exe_path));
                 cfg.insert("server_jar".to_string(), json!(exe_path));
             }
             if let Some(work_dir) = &instance.working_dir {

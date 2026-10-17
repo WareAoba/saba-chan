@@ -121,4 +121,37 @@ mod tests {
         assert!(parse_sha256("abc").is_err());
         assert!(parse_sha256(&"g".repeat(64)).is_err());
     }
+
+    /// 한 번만 응답하는 가짜 서버. `response`를 보내고 연결을 닫는다
+    async fn serve_once(response: &'static [u8]) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = sock.read(&mut buf).await;
+            let _ = sock.write_all(response).await;
+        });
+        format!("http://{}/asset.zip", addr)
+    }
+
+    #[tokio::test]
+    async fn a_cut_off_download_fails_and_leaves_nothing() {
+        let url = serve_once(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\nonly ten b").await;
+        let tmp = tempfile::tempdir().unwrap();
+        let dest = tmp.path().join("asset.zip");
+        let err = download_verified(&reqwest::Client::new(), &url, &dest, None, None).await.unwrap_err();
+        assert!(matches!(err, DownloadError::Http(_)), "{:?}", err);
+        assert!(!dest.exists());
+    }
+
+    #[tokio::test]
+    async fn an_error_status_is_not_saved() {
+        let url = serve_once(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n").await;
+        let tmp = tempfile::tempdir().unwrap();
+        let dest = tmp.path().join("asset.zip");
+        assert!(download_verified(&reqwest::Client::new(), &url, &dest, None, None).await.is_err());
+        assert!(!dest.exists());
+    }
 }

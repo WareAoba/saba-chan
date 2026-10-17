@@ -279,13 +279,19 @@ impl Default for UpdateConfig {
     }
 }
 
-/// 같은 파일을 가리키는 경로인지. Windows 파일 이름은 대소문자를 가리지 않는다
+/// 같은 파일을 가리키는 경로인지. 구성 요소로 비교해 `./`는 무시하고,
+/// Windows 파일 이름은 대소문자를 가리지 않는다
 fn same_path(a: &Path, b: &Path) -> bool {
-    if cfg!(windows) {
-        a.to_string_lossy().to_lowercase() == b.to_string_lossy().to_lowercase()
-    } else {
-        a == b
-    }
+    let parts = |p: &Path| -> Vec<String> {
+        p.components()
+            .filter(|c| !matches!(c, std::path::Component::CurDir))
+            .map(|c| {
+                let s = c.as_os_str().to_string_lossy();
+                if cfg!(windows) { s.to_lowercase() } else { s.into_owned() }
+            })
+            .collect()
+    };
+    parts(a) == parts(b)
 }
 
 /// zip을 `target_dir`에 푼다. 모든 압축 해제는 이 함수를 거친다.

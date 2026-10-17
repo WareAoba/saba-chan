@@ -267,7 +267,13 @@ impl InstanceStore {
                     continue;
                 }
                 match self.load_instance_from_dir(&path) {
-                    Ok(inst) => loaded.push(inst),
+                    // 폴더 이름과 id가 다르면 저장·삭제가 다른 폴더를 건드린다: 건너뛴다
+                    Ok(inst) if path.file_name().is_some_and(|n| n == inst.id.as_str()) => loaded.push(inst),
+                    Ok(inst) => tracing::warn!(
+                        "인스턴스 건너뜀: 폴더 이름 {} 과 id {} 가 다름",
+                        path.display(),
+                        inst.id
+                    ),
                     Err(e) => {
                         tracing::warn!(
                             "인스턴스 로드 실패 ({}): {}",
@@ -321,7 +327,7 @@ impl InstanceStore {
 
     pub fn remove(&mut self, id: &str) -> Result<()> {
         // 디렉토리 삭제
-        let dir = self.root_dir.join(id);
+        let dir = self.checked_dir(id)?;
         if dir.exists() {
             fs::remove_dir_all(&dir)
                 .with_context(|| format!("인스턴스 디렉토리 삭제 실패: {}", dir.display()))?;
@@ -338,14 +344,21 @@ impl InstanceStore {
             .iter()
             .position(|i| i.id == id)
             .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", id))?;
+        if instance.id != id {
+            anyhow::bail!("instance id cannot change ({} -> {})", id, instance.id);
+        }
         self.save_instance(&instance)?;
         self.instances[pos] = instance;
         Ok(())
     }
 
     pub fn reorder(&mut self, ordered_ids: &[String]) -> Result<()> {
-        let mut reordered = Vec::with_capacity(self.instances.len());
+        let mut reordered: Vec<ServerInstance> = Vec::with_capacity(self.instances.len());
         for id in ordered_ids {
+            // 같은 id가 두 번 와도 인스턴스는 한 번만
+            if reordered.iter().any(|i| i.id == *id) {
+                continue;
+            }
             if let Some(pos) = self.instances.iter().position(|i| i.id == *id) {
                 reordered.push(self.instances[pos].clone());
             }
@@ -367,11 +380,23 @@ impl InstanceStore {
         self.root_dir.join(id)
     }
 
+    /// 쓰거나 지울 인스턴스 폴더: id가 경로 한 칸이고, 폴더가 심볼릭 링크가 아니어야 한다
+    fn checked_dir(&self, id: &str) -> Result<PathBuf> {
+        if !crate::utils::is_single_path_component(id) {
+            anyhow::bail!("invalid instance id: {:?}", id);
+        }
+        let dir = self.root_dir.join(id);
+        if fs::symlink_metadata(&dir).is_ok_and(|m| m.file_type().is_symlink()) {
+            anyhow::bail!("instance directory is a symlink: {}", dir.display());
+        }
+        Ok(dir)
+    }
+
     // ── Internal: 디렉토리 I/O ──────────────────────────────
 
     /// 단일 인스턴스를 디렉토리에 저장
     fn save_instance(&self, instance: &ServerInstance) -> Result<()> {
-        let dir = self.root_dir.join(&instance.id);
+        let dir = self.checked_dir(&instance.id)?;
         fs::create_dir_all(&dir)?;
 
         // instance.json — 메타데이터 (module_settings 제외)

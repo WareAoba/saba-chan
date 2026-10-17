@@ -227,3 +227,19 @@ async fn two_instances_of_one_module_need_instance_name() {
     run(&api, &settings(), "creative start").await;
     assert_eq!(api.calls(), vec!["start i-mc2"]);
 }
+
+#[tokio::test]
+async fn instance_aliases_pick_one_of_several_instances() {
+    let mut api = fixture();
+    api.servers.push(server("i-mc2", "creative", "minecraft", "running"));
+    let mut s = settings();
+    s.instance_aliases = HashMap::from([("i-mc2".to_string(), "크리, cr".to_string())]);
+    run(&api, &s, "CR start").await;
+    run(&api, &s, "크리 start").await;
+    assert_eq!(api.calls(), vec!["start i-mc2", "start i-mc2"]);
+    // 두 인스턴스가 같은 별명을 쓰면 고르지 않는다
+    let first = api.servers[0].id.clone();
+    s.instance_aliases.insert(first, "cr".into());
+    let cat = Catalog::for_language("en");
+    assert_eq!(run(&api, &s, "cr start").await, cat.t("errors.multiple_instances", &[("module", "minecraft")]));
+}

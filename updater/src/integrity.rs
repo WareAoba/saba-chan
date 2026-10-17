@@ -116,6 +116,25 @@ fn record_install_at(path: &Path, component_key: &str, files: &[PathBuf]) -> Res
     std::fs::write(path, json).map_err(|e| e.to_string())
 }
 
+/// 폴더째 설치한 컴포넌트(익스텐션 스토어 설치 등)의 모든 파일을 기록한다
+pub fn record_dir(component_key: &str, dir: &Path) -> Result<(), String> {
+    fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let kind = entry.file_type()?;
+            if kind.is_dir() {
+                walk(&entry.path(), out)?;
+            } else if kind.is_file() {
+                out.push(entry.path());
+            }
+        }
+        Ok(())
+    }
+    let mut files = Vec::new();
+    walk(dir, &mut files).map_err(|e| e.to_string())?;
+    record_install(component_key, &files)
+}
+
 /// 기록된 모든 설치를 검사한다
 pub fn verify_installed() -> IntegrityReport {
     verify_records(&load_records(&records_path()))
@@ -166,17 +185,28 @@ fn verify_component(key: &str, files: &BTreeMap<String, String>) -> ComponentInt
             message,
         }
     };
+    // 모든 파일을 본다. 바뀐 파일이 없어진 파일보다 먼저 보고된다
+    let mut missing: Option<ComponentIntegrity> = None;
+    let mut unreadable: Option<ComponentIntegrity> = None;
     for (file, expected) in files {
         if !Path::new(file).is_file() {
-            return result(IntegrityStatus::FileNotFound, Some(expected), None, Some(file), "installed file is missing".into());
+            missing.get_or_insert_with(|| {
+                result(IntegrityStatus::FileNotFound, Some(expected), None, Some(file), "installed file is missing".into())
+            });
+            continue;
         }
         match compute_sha256(Path::new(file)) {
             Ok(actual) if actual.eq_ignore_ascii_case(expected) => {}
             Ok(actual) => {
                 return result(IntegrityStatus::Tampered, Some(expected), Some(actual), Some(file), "file changed since install".into());
             }
-            Err(e) => return result(IntegrityStatus::Error, Some(expected), None, Some(file), e),
+            Err(e) => {
+                unreadable.get_or_insert_with(|| result(IntegrityStatus::Error, Some(expected), None, Some(file), e));
+            }
         }
+    }
+    if let Some(r) = unreadable.or(missing) {
+        return r;
     }
     result(IntegrityStatus::Verified, None, None, None, format!("{} files match", files.len()))
 }
@@ -254,6 +284,12 @@ mod tests {
         let report = verify_records(&load_records(&records));
         assert_eq!(report.overall, OverallIntegrity::TamperDetected);
         assert_eq!(report.components[0].file_path.as_deref(), Some(a.to_string_lossy().as_ref()));
+
+        // 없어진 파일이 앞에 있어도 뒤의 바뀐 파일을 놓치지 않는다
+        std::fs::remove_file(&a).unwrap();
+        std::fs::write(&b, b"changed").unwrap();
+        let report = verify_records(&load_records(&records));
+        assert_eq!(report.overall, OverallIntegrity::TamperDetected);
 
         std::fs::write(&a, b"one").unwrap();
         std::fs::remove_file(&b).unwrap();

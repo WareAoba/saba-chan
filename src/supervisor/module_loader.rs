@@ -1157,6 +1157,9 @@ impl ModuleLoader {
 
         // 임시 디렉토리 경로를 영구적으로 유지 (tempdir는 Drop시 삭제되므로)
         // 대신 modules/.extracted/ 디렉토리 사용
+        if !crate::utils::is_single_path_component(&metadata.name) {
+            anyhow::bail!("module name {:?} in {} is not a plain folder name", metadata.name, zip_path.display());
+        }
         let extracted_dir = PathBuf::from(&self.modules_dir)
             .join(".extracted")
             .join(&metadata.name);
