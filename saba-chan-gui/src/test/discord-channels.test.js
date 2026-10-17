@@ -37,6 +37,12 @@ describe('ChannelsTab', () => {
         expect(screen.getByText(/All regular messages in #music will be deleted/)).toBeTruthy();
         fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
         expect(window.api.relayNodeChannelsSave).not.toHaveBeenCalled();
+        // 확인 상태에서 채널을 바꾸면 다시 확인받는다
+        fireEvent.change(select, { target: { value: '' } });
+        fireEvent.change(select, { target: { value: '222' } });
+        expect(screen.getByRole('button', { name: /^Save$/ })).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
+        expect(window.api.relayNodeChannelsSave).not.toHaveBeenCalled();
         fireEvent.click(screen.getByRole('button', { name: /Save and delete messages/ }));
         await waitFor(() =>
             expect(window.api.relayNodeChannelsSave).toHaveBeenCalledWith('g1', { chatbot: ['111'], music: '222' }),

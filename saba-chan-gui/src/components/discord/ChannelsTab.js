@@ -107,11 +107,14 @@ export function ChannelsTab({ node }) {
             ...d,
             chatbot: d.chatbot.includes(id) ? d.chatbot.filter((x) => x !== id) : [...d.chatbot, id],
         }));
-    const setMusic = (id) =>
+    const setMusic = (id) => {
+        // 경고를 확인한 채널이 바뀌면 다시 확인받는다
+        setArmed(false);
         setDraft((d) => ({
             chatbot: id ? d.chatbot.filter((x) => x !== id) : d.chatbot,
             music: id || null,
         }));
+    };
 
     const save = async () => {
         if (newMusic && !armed) {
