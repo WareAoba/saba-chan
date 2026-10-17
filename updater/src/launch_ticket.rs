@@ -19,6 +19,7 @@ pub fn core_predates_tickets(installed_core: Option<&str>) -> bool {
     use crate::version::SemVer;
     let since = SemVer::parse(CORE_ISSUES_TICKETS_SINCE).expect("valid version");
     match installed_core {
+        // 0.1.1 설치는 코어 버전을 적은 적이 없다
         None => true,
         Some(v) => SemVer::parse(v).is_some_and(|v| v < since),
     }
@@ -31,25 +32,28 @@ pub fn record_core_version(version: &str) {
     }
 }
 
-/// 표 없는 적용끼리도 한 번에 하나만: 살아 있는 다른 프로세스가 쥐고 있으면 false
+/// 표 없는 적용끼리도 한 번에 하나만: 다른 프로세스가 쥐고 있으면 false.
+/// OS 파일 잠금을 프로세스가 끝날 때까지 쥔다. 프로세스가 죽으면 OS가 풀어 주므로
+/// 남은 잠금을 치우는 단계가 없다
 pub fn claim_legacy_apply(staging_dir: &Path) -> bool {
-    use std::io::Write;
-    let lock = staging_dir.join(format!("{}.legacy-lock", FILE_NAME));
-    let _ = std::fs::create_dir_all(staging_dir);
-    for _ in 0..2 {
-        match std::fs::OpenOptions::new().write(true).create_new(true).open(&lock) {
-            Ok(mut f) => return write!(f, "{}", std::process::id()).is_ok(),
-            Err(_) => {
-                let holder = std::fs::read_to_string(&lock).ok().and_then(|s| s.trim().parse::<u32>().ok());
-                if holder.is_some_and(crate::ProcessChecker::is_pid_running) {
-                    return false;
-                }
-                // 죽은 프로세스가 남긴 잠금은 치운다
-                let _ = std::fs::remove_file(&lock);
-            }
-        }
+    static HELD: std::sync::OnceLock<std::fs::File> = std::sync::OnceLock::new();
+    if HELD.get().is_some() {
+        return true;
     }
-    false
+    let _ = std::fs::create_dir_all(staging_dir);
+    match try_hold(&staging_dir.join(format!("{}.legacy-lock", FILE_NAME))) {
+        Some(file) => {
+            let _ = HELD.set(file);
+            true
+        }
+        None => false,
+    }
+}
+
+fn try_hold(lock: &Path) -> Option<std::fs::File> {
+    let file = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(lock).ok()?;
+    file.try_lock().ok()?;
+    Some(file)
 }
 
 fn ticket_path(staging_dir: &Path) -> PathBuf {
@@ -95,10 +99,11 @@ mod tests {
     #[test]
     fn legacy_applies_are_serialised() {
         let tmp = tempfile::tempdir().unwrap();
-        assert!(claim_legacy_apply(tmp.path()));
-        assert!(!claim_legacy_apply(tmp.path()), "this process still holds it");
-        std::fs::write(tmp.path().join("apply-ticket.legacy-lock"), "4000000000").unwrap();
-        assert!(claim_legacy_apply(tmp.path()), "a dead holder's lock is taken over");
+        let lock = tmp.path().join("apply-ticket.legacy-lock");
+        let held = try_hold(&lock).expect("first claim");
+        assert!(try_hold(&lock).is_none(), "a held lock blocks others");
+        drop(held); // 프로세스가 끝난 것과 같다
+        assert!(try_hold(&lock).is_some(), "a released lock can be taken");
     }
 
     #[test]

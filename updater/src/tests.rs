@@ -849,3 +849,10 @@ fn staged_file_is_rechecked_before_apply() {
     comp.staged_sha256 = Some("0".repeat(64));
     assert!(UpdateManager::verified_staged_path(&comp).is_err());
 }
+
+#[test]
+fn same_path_ignores_dot_components() {
+    let dir = std::path::Path::new("/opt/saba");
+    assert!(super::same_path(&dir.join("saba-core.exe"), &dir.join("./saba-core.exe")));
+    assert!(!super::same_path(&dir.join("a.exe"), &dir.join("b.exe")));
+}

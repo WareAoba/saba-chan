@@ -4,10 +4,9 @@
 #
 # 구조:
 #   1) rust      — Clippy + build + test  (Windows / Ubuntu)
-#   2) js-tests  — Electron GUI (Vitest)
+#   2) js-tests  — Electron GUI (Vitest + build), 업데이터/설치기 스크립트 문법
 #   3) build     — Release 빌드 + 아티팩트 업로드 (main push / tag 시)
 #
-# quick-test.yml: feature branch에서 JS 파일만 변경 시 경량 테스트
 # release.yml:   릴리즈 패키징 & manifest 생성
 # ═══════════════════════════════════════════════════════════
 
@@ -109,7 +108,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: saba-chan-gui/package-lock.json
 
@@ -118,3 +117,8 @@ jobs:
         run: |
           npm ci
           npx vitest run
+          npx vite build
+
+      # 번들러 없이 그대로 실리는 스크립트는 문법만 확인한다
+      - name: Syntax check — main/preload, updater, installer
+        run: node --check saba-chan-gui/main.js && node --check saba-chan-gui/preload.js && node --check updater/gui/src/updater.js && node --check installer/gui/src/installer.js

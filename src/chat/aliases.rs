@@ -126,6 +126,11 @@ fn split_aliases(s: &str) -> impl Iterator<Item = &str> {
     s.split(',').map(str::trim).filter(|a| !a.is_empty())
 }
 
+/// "a, b, c" 목록에 `input`이 있는지 (대소문자 무시)
+pub fn alias_listed(list: &str, input: &str) -> bool {
+    split_aliases(list).any(|a| a.to_string().eq_ignore_ascii_case_unicode(input))
+}
+
 /// 대소문자 무시 비교 (ASCII 밖 문자도 소문자화). 한글 별명은 그대로 비교된다.
 trait CaseInsensitive {
     fn eq_ignore_ascii_case_unicode(&self, other: &str) -> bool;

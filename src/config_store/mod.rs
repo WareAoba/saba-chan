@@ -117,6 +117,8 @@ pub struct BotConfig {
     pub cloud: CloudConfig,
     pub module_aliases: HashMap<String, String>,
     pub command_aliases: HashMap<String, Value>,
+    /// 인스턴스 ID → 그 인스턴스를 부르는 별명 ("a, b"). 같은 게임 서버가 여럿일 때 쓴다
+    pub instance_aliases: HashMap<String, String>,
     pub node_settings: Value,
     pub cloud_nodes: Vec<Value>,
     pub cloud_members: HashMap<String, Value>,
@@ -138,6 +140,7 @@ impl Default for BotConfig {
             cloud: CloudConfig::default(),
             module_aliases: HashMap::new(),
             command_aliases: HashMap::new(),
+            instance_aliases: HashMap::new(),
             node_settings: Value::Object(serde_json::Map::new()),
             cloud_nodes: Vec::new(),
             cloud_members: HashMap::new(),
