@@ -12,8 +12,8 @@ const SUMMARY_INTERVAL_MS = 5000;
 
 export const systemMonitorAvailable = () => !!window.api?.systemMetrics;
 
-/** 데몬 표본을 주기적으로 받는다. 창이 가려져 있으면 쉰다. */
-export function useSystemMetrics(intervalMs) {
+/** 데몬 표본을 주기적으로 받는다. 창이 가려져 있으면 쉰다. 요약만 볼 때는 폴더 크기를 재지 않게 한다. */
+export function useSystemMetrics(intervalMs, sizes = true) {
     const [state, setState] = useState({ snapshot: null, peaks: peaksOf([]) });
     const [error, setError] = useState(false);
     const history = useRef([]);
@@ -25,7 +25,7 @@ export function useSystemMetrics(intervalMs) {
         const tick = async () => {
             if (!document.hidden) {
                 try {
-                    const snap = await window.api.systemMetrics();
+                    const snap = await window.api.systemMetrics({ sizes });
                     if (!alive) return;
                     if (snap && snap.cpu) {
                         history.current = [...history.current, snap].slice(-PEAK_WINDOW);
@@ -45,7 +45,7 @@ export function useSystemMetrics(intervalMs) {
             alive = false;
             clearTimeout(timer);
         };
-    }, [intervalMs]);
+    }, [intervalMs, sizes]);
 
     return { ...state, error };
 }
@@ -116,7 +116,7 @@ export function SystemMonitor({ layout = 'top', servers = [] }) {
     const { t } = useTranslation('gui');
     const open = useSettingsStore((s) => s.systemMonitorOpen);
     const update = useSettingsStore((s) => s.update);
-    const { snapshot, error, peaks } = useSystemMetrics(open ? OPEN_INTERVAL_MS : SUMMARY_INTERVAL_MS);
+    const { snapshot, error, peaks } = useSystemMetrics(open ? OPEN_INTERVAL_MS : SUMMARY_INTERVAL_MS, open);
     const order = useMemo(() => servers.map((s) => s.id), [servers]);
     const slots = useMemo(() => colorSlots(order), [order]);
     const rings = useMemo(() => buildRings(snapshot, slots, peaks), [snapshot, slots, peaks]);

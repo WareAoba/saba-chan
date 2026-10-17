@@ -2046,7 +2046,9 @@ ipcMain.handle('instance:readLiveSettings', (_event, id) =>
 ipcMain.handle('runtime:preflight', () => daemonCall('get', '/api/runtime/preflight', undefined, 5000));
 
 // 시스템 모니터: 데몬이 표본을 뜬다. 처음 한 번은 두 번 떠서 조금 걸린다
-ipcMain.handle('system:metrics', () => daemonCall('get', '/api/system/metrics', undefined, 5000));
+// sizes=false면 데몬이 인스턴스 폴더 크기를 새로 재지 않는다 (접힌 요약)
+ipcMain.handle('system:metrics', (_event, opts = {}) =>
+    daemonCall('get', `/api/system/metrics${opts.sizes === false ? '?sizes=false' : ''}`, undefined, 5000));
 
 ipcMain.handle('config:defaults', (_event, kind) =>
     daemonCall('get', `/api/config/${kind}/defaults`));

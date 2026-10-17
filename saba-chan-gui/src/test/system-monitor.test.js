@@ -97,6 +97,8 @@ describe('SystemMonitor', () => {
         expect(useSettingsStore.getState().systemMonitorOpen).toBe(false);
         expect(document.querySelector('.monitor-ring')).toBeNull();
         expect(document.querySelector('.monitor-summary').textContent).toContain('50%');
+        // 요약만 볼 때는 데몬이 폴더 크기를 재지 않게 한다
+        await waitFor(() => expect(window.api.systemMetrics).toHaveBeenLastCalledWith({ sizes: false }));
     });
 
     it('데몬에 API가 없으면 아무것도 그리지 않는다', () => {

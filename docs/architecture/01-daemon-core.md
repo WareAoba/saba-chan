@@ -298,7 +298,7 @@
 | PUT | `/api/config/node-token` | `config.rs:145` | `{token}` | `{ok}` |
 | DELETE | `/api/config/node-token` | `config.rs:173` | - | `{ok}`. 먼저 릴레이 에이전트를 멈춘다 |
 | GET | `/api/system/components` | `config.rs:233` | - | `{version, components:{key:ver}, lastUpdated}` (`installed-manifest.json` + 번들 `versions.toml`) |
-| GET | `/api/system/metrics` | `system.rs:13` | - | 시스템 모니터 표본 `{sampled_at_ms, window_ms, cpu:{cores,total_percent,others_percent}, memory:{total_bytes,used_bytes,others_bytes}, disk_io:{read_bps,write_bps,others_read_bps,others_write_bps}, network:{rx_bps,tx_bps,per_instance:false}, disks:[{mount,total_bytes,available_bytes,others_bytes,instances:[{id,bytes}],sizes_at_ms}], instances:[{id,name,running,process_count,cpu_percent,memory_bytes,disk_read_bps,disk_write_bps}]}` (§10) |
+| GET | `/api/system/metrics` | `system.rs:30` | `?sizes=false` | 시스템 모니터 표본 `{sampled_at_ms, window_ms, cpu:{cores,total_percent,others_percent}, memory:{total_bytes,used_bytes,others_bytes}, disk_io:{read_bps,write_bps,others_read_bps,others_write_bps}, network:{rx_bps,tx_bps,per_instance:false}, disks:[{mount,total_bytes,available_bytes,others_bytes,instances:[{id,bytes}],sizes_at_ms}], instances:[{id,name,running,process_count,cpu_percent,memory_bytes,disk_read_bps,disk_write_bps}]}` (§10) |
 | GET | `/api/runtime/preflight` | `ipc/mod.rs:696` | - | `{phase, percent, complete, error, components:{python}}` |
 
 #### 클라이언트와 데몬 수명 (handlers/client.rs)
@@ -673,4 +673,4 @@ Relay 서명 방식(`relay.rs:100-137`):
 - CPU·메모리: 인스턴스 - 나머지(`others_*`) - 유휴(전체 - 사용). 전체 값은 인스턴스 합보다 작아지지 않게 맞춘다.
 - 디스크 IO: OS가 기계 전체 값을 따로 주지 않아 모든 프로세스 IO의 합을 전체로 쓴다. Windows의 프로세스 IO 카운터는 디스크 밖 IO도 센다. 유휴 몫은 클라이언트가 최근 최대값을 눈금으로 정한다.
 - 네트워크: 인터페이스 합(루프백 제외)만 준다. 프로세스별 값은 싸게 얻을 길이 없다(Windows는 ETW·관리자 권한). `per_instance`는 항상 false.
-- 디스크 용량: 데이터 폴더나 인스턴스 폴더(인스턴스 폴더 + `working_dir`)가 있는 디스크만, 데이터 폴더 디스크가 먼저. 인스턴스 몫은 폴더 크기를 별도 스레드에서 재고 60초 재사용한다(`DIR_SIZE_TTL`). 아직 못 쟀으면 `sizes_at_ms`가 null.
+- 디스크 용량: 데이터 폴더나 인스턴스 폴더(인스턴스 폴더 + `working_dir`)가 있는 디스크만, 데이터 폴더 디스크가 먼저. 인스턴스 몫은 폴더 크기를 별도 스레드에서 재고 10분 재사용한다(`DIR_SIZE_TTL`). `?sizes=false` 요청(GUI의 접힌 요약)은 새로 재지 않고 마지막 값을 쓴다. 아직 못 쟀으면 `sizes_at_ms`가 null.

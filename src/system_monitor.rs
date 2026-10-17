@@ -5,7 +5,7 @@
 //! - 디스크 IO: OS가 기계 전체 값을 따로 주지 않아 모든 프로세스의 IO 합을 전체로 쓴다.
 //!   Windows의 프로세스 IO 카운터는 디스크 밖 IO(파이프 등)도 센다.
 //! - 네트워크: 프로세스별 값을 싸게 얻을 길이 없어(Windows는 ETW·관리자 권한 필요) 기계 전체만 준다.
-//! - 디스크 용량의 인스턴스 몫은 폴더 크기를 따로 훑어 60초 동안 재사용한다.
+//! - 디스크 용량의 인스턴스 몫은 폴더 크기를 따로 훑어 10분 동안 재사용한다. 요약만 보는 요청은 훑지 않는다.
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -18,8 +18,10 @@ use sysinfo::{Disks, Networks, Pid, ProcessRefreshKind, System};
 const MIN_SAMPLE_INTERVAL: Duration = Duration::from_millis(900);
 /// 직전 표본이 이보다 오래됐으면 짧은 간격으로 두 번 떠서 "지금" 값을 만든다
 const STALE_AFTER: Duration = Duration::from_secs(10);
-/// 인스턴스 폴더 크기 재사용 시간
-const DIR_SIZE_TTL: Duration = Duration::from_secs(60);
+/// 인스턴스 폴더 크기 재사용 시간 (월드·백업 폴더는 파일이 수만 개라 자주 훑지 않는다)
+const DIR_SIZE_TTL: Duration = Duration::from_secs(600);
+/// 디스크 목록 갱신 간격
+const DISK_LIST_TTL: Duration = Duration::from_secs(60);
 
 /// 핸들러가 supervisor에서 복사해 넘기는 인스턴스 정보
 #[derive(Debug, Clone)]
@@ -272,8 +274,11 @@ impl SystemMonitor {
     }
 
     /// 표본을 뜬다. 동기 시스템 콜이므로 `spawn_blocking` 안에서 부른다.
-    pub fn sample(&self, roots: &[InstanceRoot], extra_dirs: &[PathBuf]) -> MetricsSnapshot {
-        self.refresh_dir_sizes_if_stale(roots);
+    /// `measure_dirs`가 false면(요약만 보는 화면) 폴더 크기를 새로 재지 않고 마지막 값을 쓴다.
+    pub fn sample(&self, roots: &[InstanceRoot], extra_dirs: &[PathBuf], measure_dirs: bool) -> MetricsSnapshot {
+        if measure_dirs {
+            self.refresh_dir_sizes_if_stale(roots);
+        }
         let mut guard = self.sampler.lock().unwrap_or_else(|e| e.into_inner());
         let sampler = guard.get_or_insert_with(|| Sampler {
             system: System::new(),
@@ -296,7 +301,7 @@ impl SystemMonitor {
         }
         let window = sampler.last_refresh.map(|t| t.elapsed()).unwrap_or_default();
         Self::refresh(sampler);
-        if sampler.disks_listed_at.is_none_or(|t| t.elapsed() > DIR_SIZE_TTL) {
+        if sampler.disks_listed_at.is_none_or(|t| t.elapsed() > DISK_LIST_TTL) {
             sampler.disks.refresh_list();
             sampler.disks_listed_at = Some(Instant::now());
         } else {
@@ -562,7 +567,7 @@ mod tests {
         let monitor = SystemMonitor::new();
         let me = std::process::id();
         let roots = vec![InstanceRoot { id: "me".into(), name: "test".into(), pid: Some(me), dirs: vec![] }];
-        let snap = monitor.sample(&roots, &[]);
+        let snap = monitor.sample(&roots, &[], false);
         assert!(snap.memory.total_bytes > 0);
         assert!(snap.memory.used_bytes >= snap.memory.others_bytes);
         assert!(snap.cpu.total_percent <= 100.0 && snap.cpu.total_percent >= snap.cpu.others_percent);
@@ -570,6 +575,8 @@ mod tests {
         let inst = &snap.instances[0];
         assert!(inst.running && inst.memory_bytes > 0);
         // 바로 다시 부르면 같은 표본
-        assert_eq!(monitor.sample(&roots, &[]).sampled_at_ms, snap.sampled_at_ms);
+        assert_eq!(monitor.sample(&roots, &[], false).sampled_at_ms, snap.sampled_at_ms);
+        // 요약 요청은 폴더 크기를 재지 않는다
+        assert!(monitor.dir_sizes.lock().unwrap().measured_at.is_none() && !monitor.dir_sizes.lock().unwrap().running);
     }
 }

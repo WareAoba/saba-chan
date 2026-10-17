@@ -2,15 +2,32 @@
 //!
 //! - `GET /api/system/metrics` — 기계 전체 CPU·RAM·디스크 IO·디스크 용량·네트워크와 인스턴스별 몫
 //!   (형식: `crate::system_monitor::MetricsSnapshot`). 부를 때만 표본을 뜬다.
+//!   `?sizes=false`: 인스턴스 폴더 크기를 새로 재지 않는다 (요약만 보는 화면)
 
-use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use axum::{
+    extract::{Query, State},
+    http::StatusCode,
+    response::IntoResponse,
+    Json,
+};
+use serde::Deserialize;
 use serde_json::json;
 use std::path::PathBuf;
 
 use super::super::IPCServer;
 use crate::system_monitor::InstanceRoot;
 
-pub async fn get_metrics(State(state): State<IPCServer>) -> impl IntoResponse {
+#[derive(Deserialize)]
+pub struct MetricsQuery {
+    #[serde(default = "default_sizes")]
+    sizes: bool,
+}
+
+fn default_sizes() -> bool {
+    true
+}
+
+pub async fn get_metrics(State(state): State<IPCServer>, Query(q): Query<MetricsQuery>) -> impl IntoResponse {
     let roots: Vec<InstanceRoot> = {
         let supervisor = state.supervisor.read().await;
         supervisor
@@ -34,7 +51,7 @@ pub async fn get_metrics(State(state): State<IPCServer>) -> impl IntoResponse {
     let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
     let monitor = state.system_monitor.clone();
     // sysinfo는 동기 시스템 콜이다
-    match tokio::task::spawn_blocking(move || monitor.sample(&roots, &[data_dir])).await {
+    match tokio::task::spawn_blocking(move || monitor.sample(&roots, &[data_dir], q.sizes)).await {
         Ok(snapshot) => (StatusCode::OK, Json(json!(snapshot))).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() }))).into_response(),
     }
