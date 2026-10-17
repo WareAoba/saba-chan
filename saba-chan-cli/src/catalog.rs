@@ -325,13 +325,13 @@ mod tests {
             "name": "minecraft",
             "interaction_mode": "console",
             "commands": { "fields": [
-                { "name": "give", "label": "Give", "method": "rcon", "risk": "caution",
+                { "name": "give", "label": "Give", "method": "console", "risk": "caution",
                   "inputs": [
                     { "name": "player", "required": true },
                     { "name": "item", "required": true },
                     { "name": "amount", "type": "number", "min": 1, "max": 64, "default": 1 }
                   ] },
-                { "name": "say", "label": "Say", "method": "rcon", "risk": "safe",
+                { "name": "say", "label": "Say", "method": "console", "risk": "safe",
                   "inputs": [ { "name": "message", "required": true } ] },
                 { "name": "difficulty", "label": "Difficulty", "risk": "danger",
                   "inputs": [ { "name": "level", "options": ["peaceful", "easy", "hard"], "required": true } ] },

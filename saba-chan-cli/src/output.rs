@@ -169,7 +169,7 @@ pub fn show(v: &Value) -> String {
         Value::String(s) if s.is_empty() => style("\"\"").dim().to_string(),
         Value::String(s) => s.clone(),
         Value::Bool(b) => yes_no(*b),
-        // 단순 값 목록은 쉼표로 (["rcon","stdin"] → rcon, stdin)
+        // 단순 값 목록은 쉼표로 (["console","rest"] → console, rest)
         Value::Array(a) if a.is_empty() => style("—").dim().to_string(),
         Value::Array(a) if a.iter().all(|x| !x.is_object() && !x.is_array()) => {
             a.iter().map(show).collect::<Vec<_>>().join(", ")
