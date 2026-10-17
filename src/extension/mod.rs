@@ -521,11 +521,10 @@ pub struct ExtensionUpdateInfo {
 //  ExtensionManager
 // ═══════════════════════════════════════════════════════════════
 
-/// 원격 매니페스트 기본 URL — constants 모듈의 함수를 사용하되,
-/// const 문맥에서는 호출 불가하므로 초기화 시점에 lazy 적용
-const DEFAULT_MANIFEST_URL: &str =
-    "https://raw.githubusercontent.com/WareAoba/saba-chan-extensions/main/manifest.json";
-// NOTE: 향후 ExtensionManager::new()에서 constants::extensions_manifest_url() 사용 권장
+/// 기본 익스텐션 목록: 최신 릴리즈의 서명된 manifest에 든 `ext-*` 컴포넌트 (U9e).
+/// 다른 값은 `{extensions: {...}}` JSON을 주는 URL로 읽는다 (개발·테스트용).
+pub const RELAY_CATALOG: &str = "relay:";
+const DEFAULT_MANIFEST_URL: &str = RELAY_CATALOG;
 
 pub struct ExtensionManager {
     extensions_dir: PathBuf,
@@ -1225,6 +1224,16 @@ impl ExtensionManager {
     ///
     /// `manifest_url`(GitHub raw URL)에서 JSON을 가져와 `Vec<RemoteExtensionInfo>`로 반환합니다.
     pub async fn fetch_manifest_from(manifest_url: &str) -> Result<Vec<RemoteExtensionInfo>> {
+        if manifest_url == RELAY_CATALOG {
+            let catalog = saba_chan_updater_lib::relay::latest_catalog(None)
+                .await
+                .context("Failed to fetch the release manifest")?;
+            let mut list = catalog.map(|m| Self::from_release(&m)).unwrap_or_default();
+            for ext in &mut list {
+                ext.incompatible = app_version_problem(ext.min_app_version.as_deref());
+            }
+            return Ok(list);
+        }
         tracing::debug!("Fetching extension manifest from: {}", manifest_url);
 
         let response = reqwest::get(manifest_url)
@@ -1249,6 +1258,38 @@ impl ExtensionManager {
         }
         tracing::info!("Fetched {} extension(s) from manifest", list.len());
         Ok(list)
+    }
+
+    /// 릴리즈 manifest의 `ext-<id>` 컴포넌트를 익스텐션 목록으로 (meta에 이름·설명·의존성)
+    pub fn from_release(manifest: &saba_chan_updater_lib::relay::ReleaseManifest) -> Vec<RemoteExtensionInfo> {
+        manifest
+            .addons(saba_chan_updater_lib::relay::EXTENSION_PREFIX)
+            .into_iter()
+            .filter_map(|(id, comp)| {
+                let mut info = match &comp.meta {
+                    Some(Value::Object(meta)) => meta.clone(),
+                    _ => serde_json::Map::new(),
+                };
+                info.entry("name").or_insert_with(|| Value::String(id.to_string()));
+                info.insert("version".into(), Value::String(comp.version.clone()));
+                info.insert("download_url".into(), Value::String(comp.url.clone()));
+                info.insert("sha256".into(), Value::String(comp.sha256.clone()));
+                info.insert("asset".into(), Value::String(comp.filename.clone()));
+                if let Some(dir) = &comp.install_dir {
+                    info.insert("install_dir".into(), Value::String(dir.clone()));
+                }
+                match serde_json::from_value::<RemoteExtensionInfo>(Value::Object(info)) {
+                    Ok(mut ext) => {
+                        ext.id = id.to_string();
+                        Some(ext)
+                    }
+                    Err(e) => {
+                        tracing::warn!("Skipping extension '{}' in release manifest: {}", id, e);
+                        None
+                    }
+                }
+            })
+            .collect()
     }
 
     /// 설치된 익스텐션 중 원격 버전보다 낮은 것의 업데이트 정보를 반환합니다.
@@ -2797,6 +2838,31 @@ mod tests {
     }
 
     /// 실제 manifest.json (로컬 설치용) 파싱 호환성 테스트
+    /// 릴리즈 manifest의 `ext-*` 컴포넌트가 익스텐션 목록이 된다 (U9e)
+    #[test]
+    fn release_manifest_ext_components_become_the_catalog() {
+        let manifest: saba_chan_updater_lib::relay::ReleaseManifest = serde_json::from_value(serde_json::json!({
+            "version": "0.2.0", "channel": "stable", "platform": "windows-x64",
+            "components": {
+                "saba-core": {"version": "0.2.0", "asset": "c.zip", "sha256": "a", "url": "https://r2/c.zip"},
+                "module-palworld": {"version": "0.1.0", "asset": "module-palworld.zip", "sha256": "b", "url": "https://r2/m.zip"},
+                "ext-ue4-ini": {
+                    "version": "0.1.2", "asset": "ext-ue4-ini.zip", "sha256": "c", "url": "https://r2/e.zip",
+                    "install_dir": "extensions/ue4_ini",
+                    "meta": {"name": "UE4 INI", "dependencies": ["steamcmd"], "min_app_version": "0.1.0"}
+                }
+            }
+        })).unwrap();
+        let list = ExtensionManager::from_release(&manifest);
+        assert_eq!(list.len(), 1);
+        let ext = &list[0];
+        assert_eq!((ext.id.as_str(), ext.name.as_str(), ext.version.as_str()), ("ue4-ini", "UE4 INI", "0.1.2"));
+        assert_eq!(ext.download_url, "https://r2/e.zip");
+        assert_eq!(ext.sha256.as_deref(), Some("c"));
+        assert_eq!(ext.install_dir.as_deref(), Some("extensions/ue4_ini"));
+        assert!(ext.dependencies.contains_key("steamcmd"));
+    }
+
     #[test]
     fn test_parse_docker_manifest() {
         let json = r#"{

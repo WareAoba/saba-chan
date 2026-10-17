@@ -427,80 +427,85 @@ pub async fn get_module_metadata(
     }
 }
 
-/// GET /api/modules/manifest - saba-chan-modules 최신 릴리스 manifest 가져오기
+/// GET /api/modules/manifest - 설치할 수 있는 모듈 목록 (최신 릴리즈의 서명된 manifest, U9e)
+///
+/// `{ok, manifest: {modules: {<이름>: {version, display_name, description, ...}}}}`
 pub async fn fetch_module_manifest() -> impl IntoResponse {
-    let url = saba_chan_updater_lib::constants::modules_manifest_url();
-    match reqwest::get(url).await {
-        Ok(resp) if resp.status().is_success() => {
-            match resp.json::<serde_json::Value>().await {
-                Ok(data) => (StatusCode::OK, Json(json!({ "ok": true, "manifest": data }))).into_response(),
-                Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": e.to_string() }))).into_response(),
+    match saba_chan_updater_lib::relay::latest_catalog(None).await {
+        Ok(catalog) => {
+            let mut modules = serde_json::Map::new();
+            if let Some(manifest) = &catalog {
+                for (name, comp) in manifest.addons(saba_chan_updater_lib::relay::MODULE_PREFIX) {
+                    let mut info = match &comp.meta {
+                        Some(serde_json::Value::Object(meta)) => meta.clone(),
+                        _ => serde_json::Map::new(),
+                    };
+                    info.insert("version".into(), json!(comp.version));
+                    info.insert("sha256".into(), json!(comp.sha256));
+                    info.insert("size_bytes".into(), json!(comp.size_bytes));
+                    modules.insert(name.to_string(), serde_json::Value::Object(info));
+                }
             }
-        }
-        Ok(resp) => {
-            (StatusCode::OK, Json(json!({ "ok": false, "error": format!("HTTP {}", resp.status()) }))).into_response()
+            (StatusCode::OK, Json(json!({ "ok": true, "manifest": { "modules": modules } }))).into_response()
         }
         Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": e.to_string() }))).into_response(),
     }
 }
 
-/// POST /api/modules/manifest/:id/install - 모듈 매니페스트에서 모듈 설치
+/// POST /api/modules/manifest/:id/install - 최신 릴리즈에서 모듈을 받아 설치한다 (SHA-256 검증)
 pub async fn install_module_from_manifest(
     Path(module_id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    // 레지스트리에서 다운로드 URL 구성
-    let asset_name = format!("module-{}.zip", module_id);
-    let download_url = saba_chan_updater_lib::constants::module_asset_url(&asset_name);
+    let fail = |error: String| (StatusCode::OK, Json(json!({ "ok": false, "error": error }))).into_response();
+    if module_id.contains("..") || module_id.contains('/') || module_id.contains('\\') {
+        return fail("Invalid module ID".into());
+    }
+    let catalog = match saba_chan_updater_lib::relay::latest_catalog(None).await {
+        Ok(Some(m)) => m,
+        Ok(None) => return fail("No release is published".into()),
+        Err(e) => return fail(e.to_string()),
+    };
+    let Some(comp) = catalog
+        .components
+        .get(&format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, module_id))
+        .cloned()
+    else {
+        return fail(format!("Module '{}' is not in the latest release", module_id));
+    };
 
-    // 설치 디렉토리 결정
     let modules_dir = {
         let supervisor = state.supervisor.read().await;
         std::path::PathBuf::from(supervisor.module_loader.modules_dir())
     };
-
+    let zip_path = modules_dir.join(format!("_tmp_module_{}.zip", module_id));
+    let staging = modules_dir.join(format!(".staging-{}", module_id));
     let target_dir = modules_dir.join(&module_id);
 
-    // 임시 zip 다운로드
-    let zip_path = modules_dir.join(format!("_tmp_module_{}.zip", module_id));
-
-    match reqwest::get(&download_url).await {
-        Ok(resp) if resp.status().is_success() => {
-            match resp.bytes().await {
-                Ok(bytes) => {
-                    if let Err(e) = std::fs::write(&zip_path, &bytes) {
-                        return (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Failed to write zip: {}", e) }))).into_response();
-                    }
-                    // zip 압축 해제
-                    match std::fs::File::open(&zip_path) {
-                        Ok(file) => {
-                            match zip::ZipArchive::new(std::io::BufReader::new(file)) {
-                                Ok(mut archive) => {
-                                    if let Err(e) = archive.extract(&target_dir) {
-                                        let _ = std::fs::remove_file(&zip_path);
-                                        return (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Failed to extract: {}", e) }))).into_response();
-                                    }
-                                    let _ = std::fs::remove_file(&zip_path);
-                                    // 모듈 캐시 새로고침
-                                    let supervisor = state.supervisor.read().await;
-                                    let _ = supervisor.refresh_modules();
-                                    (StatusCode::OK, Json(json!({ "ok": true, "module_id": module_id }))).into_response()
-                                }
-                                Err(e) => {
-                                    let _ = std::fs::remove_file(&zip_path);
-                                    (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Invalid zip: {}", e) }))).into_response()
-                                }
-                            }
-                        }
-                        Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Failed to open zip: {}", e) }))).into_response(),
-                    }
-                }
-                Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Failed to read response: {}", e) }))).into_response(),
-            }
+    let result: anyhow::Result<()> = async {
+        let http = reqwest::Client::new();
+        saba_chan_updater_lib::download::download_verified(&http, &comp.url, &zip_path, Some(&comp.sha256), None).await?;
+        let _ = std::fs::remove_dir_all(&staging);
+        saba_chan_updater_lib::extract_zip(&zip_path, &staging, |_| Ok(()))?;
+        if !staging.join("module.toml").is_file() {
+            anyhow::bail!("package has no module.toml");
         }
-        Ok(resp) => (StatusCode::OK, Json(json!({ "ok": false, "error": format!("HTTP {}", resp.status()) }))).into_response(),
-        Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": e.to_string() }))).into_response(),
+        // 다 받은 뒤에만 기존 폴더를 바꾼다
+        if target_dir.exists() {
+            std::fs::remove_dir_all(&target_dir)?;
+        }
+        std::fs::rename(&staging, &target_dir)?;
+        Ok(())
     }
+    .await;
+    let _ = std::fs::remove_file(&zip_path);
+    let _ = std::fs::remove_dir_all(&staging);
+    if let Err(e) = result {
+        return fail(format!("{:#}", e));
+    }
+    let supervisor = state.supervisor.read().await;
+    let _ = supervisor.refresh_modules();
+    (StatusCode::OK, Json(json!({ "ok": true, "module_id": module_id, "version": comp.version }))).into_response()
 }
 
 /// DELETE /api/modules/:id — 모듈 제거 (디렉토리 삭제 + 캐시 갱신)

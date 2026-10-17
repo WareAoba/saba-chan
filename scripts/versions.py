@@ -7,6 +7,11 @@
             서명은 `cargo run -p saba-chan-updater-lib --example release_signing -- sign`.
   registration  서명된 봉투로 릴레이 `POST /admin/releases` 본문을 만든다.
 
+manifest에 --modules-repo / --extensions-repo를 주면 그 저장소의 모듈(module.toml이 있는
+폴더)과 익스텐션(manifest.json이 있는 폴더)을 zip으로 묶어 같은 manifest에 넣는다 (U9e).
+키는 module-<이름>, ext-<id>, 버전은 각자의 module.toml / manifest.json, 목록 화면용
+정보는 meta에 든다.
+
 manifest 형식은 운영 중인 릴레이(0.1.1)와 같다:
   {channel, platform, version, components: {<키>: {asset, install_dir, sha256, size_bytes, url, version}}}
 """
@@ -187,6 +192,80 @@ def r2_key(release: str, asset: str) -> str:
     return f"releases/{release}/{asset}"
 
 
+SKIP_PARTS = {"__pycache__", ".git", ".pytest_cache", "tests"}
+
+
+def zip_folder(src: Path, dest: Path) -> None:
+    """폴더 안 파일을 zip 루트에 넣는다 (캐시·테스트 제외, 순서 고정)."""
+    import zipfile
+
+    with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
+        for path in sorted(src.rglob("*")):
+            rel = path.relative_to(src)
+            if path.is_dir() or SKIP_PARTS & set(rel.parts) or path.suffix == ".pyc":
+                continue
+            zf.write(path, rel.as_posix())
+
+
+def raw_url(repo: str, ref: str | None, rel: str) -> str | None:
+    if not ref:
+        return None
+    return f"https://raw.githubusercontent.com/{repo}/{ref}/{rel}"
+
+
+def addon_components(args: argparse.Namespace, assets: Path) -> dict:
+    """모듈·익스텐션 저장소를 zip으로 묶고 `{키: {version, asset, install_dir, meta, requires?}}`를 돌려준다."""
+    found = {}
+    if args.modules_repo:
+        root = Path(args.modules_repo)
+        for toml_path in sorted(root.glob("*/module.toml")):
+            folder = toml_path.parent
+            if folder.name.startswith(("_", ".")):
+                continue
+            mod = tomllib.loads(toml_path.read_text(encoding="utf-8"))
+            info = mod.get("module", {})
+            name = info.get("name", folder.name)
+            asset = f"module-{name}.zip"
+            zip_folder(folder, assets / asset)
+            meta = {
+                "display_name": info.get("display_name") or info.get("game_name") or name,
+                "game_name": info.get("game_name"),
+                "description": info.get("description", ""),
+                "requires_extensions": mod.get("install", {}).get("requires_extensions", []),
+            }
+            icon = raw_url("WareAoba/saba-chan-modules", args.addons_ref, f"{folder.name}/{info.get('icon', 'icon.png')}")
+            if icon and (folder / info.get("icon", "icon.png")).is_file():
+                meta["icon"] = icon
+            comp = {"version": info["version"], "asset": asset, "install_dir": f"modules/{name}",
+                    "meta": {k: v for k, v in meta.items() if v is not None}}
+            core = info.get("dependencies", {}).get("saba-core")
+            if core:
+                comp["requires"] = {"saba-core": core}
+            found[f"module-{name}"] = comp
+    if args.extensions_repo:
+        root = Path(args.extensions_repo)
+        for man_path in sorted(root.glob("*/manifest.json")):
+            folder = man_path.parent
+            ext = json.loads(man_path.read_text(encoding="utf-8"))
+            ext_id = ext["id"]
+            asset = f"ext-{ext_id}.zip"
+            zip_folder(folder, assets / asset)
+            deps = ext.get("dependencies", [])
+            meta = {
+                "name": ext.get("name", ext_id),
+                "description": ext.get("description", ""),
+                "author": ext.get("author", ""),
+                "min_app_version": ext.get("min_app_version"),
+                "dependencies": deps,
+                "has_gui": "gui" in ext,
+                "has_i18n": (folder / "i18n").is_dir(),
+            }
+            found[f"ext-{ext_id}"] = {"version": ext["version"], "asset": asset,
+                                      "install_dir": f"extensions/{folder.name}",
+                                      "meta": {k: v for k, v in meta.items() if v is not None}}
+    return found
+
+
 def cmd_manifest(data: dict, args: argparse.Namespace) -> int:
     """에셋 폴더에서 각 컴포넌트의 `asset` 파일을 찾아 manifest를 만든다. 없는 컴포넌트는 빠진다."""
     assets = Path(args.assets)
@@ -209,6 +288,14 @@ def cmd_manifest(data: dict, args: argparse.Namespace) -> int:
             "size_bytes": len(blob),
             "url": f"{base}/{r2_key(release, name)}",
             "version": comp["version"],
+        }
+    for key, comp in addon_components(args, assets).items():
+        blob = (assets / comp["asset"]).read_bytes()
+        components[key] = {
+            **comp,
+            "sha256": hashlib.sha256(blob).hexdigest(),
+            "size_bytes": len(blob),
+            "url": f"{base}/{r2_key(release, comp['asset'])}",
         }
     if not components:
         sys.exit(f"no assets found in {assets}")
@@ -268,6 +355,9 @@ def main() -> int:
     m.add_argument("--platform", required=True, help="windows-x64, linux-x64 ...")
     m.add_argument("--channel")
     m.add_argument("--out")
+    m.add_argument("--modules-repo", help="saba-chan-modules 체크아웃 (모듈을 같이 싣는다)")
+    m.add_argument("--extensions-repo", help="saba-chan-extensions 체크아웃")
+    m.add_argument("--addons-ref", help="아이콘 URL에 쓸 모듈 저장소 커밋")
     r = sub.add_parser("registration")
     r.add_argument("--signed", required=True, help="release_signing sign 출력")
     r.add_argument("--rollout", type=int, default=100)

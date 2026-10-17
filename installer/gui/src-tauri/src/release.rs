@@ -31,15 +31,55 @@ pub fn required_installer_version(manifest: &ReleaseManifest) -> Option<&str> {
     manifest.components.get("installer").map(|c| c.version.as_str())
 }
 
-/// 설치할 컴포넌트 (키 순서로 정렬)
+/// 설치 폴더에 풀 컴포넌트 (키 순서로 정렬). 모듈·익스텐션은 고른 것만 데이터 폴더에 따로 설치한다
 pub fn installable(manifest: &ReleaseManifest) -> Vec<(&String, &ManifestComponent)> {
     let mut list: Vec<_> = manifest
         .components
         .iter()
+        .filter(|(key, _)| !key.starts_with(relay::MODULE_PREFIX) && !key.starts_with(relay::EXTENSION_PREFIX))
         .filter(|(key, _)| Component::try_from_manifest_key(key).is_some())
         .collect();
     list.sort_by(|a, b| a.0.cmp(b.0));
     list
+}
+
+/// 설치 화면의 모듈 목록 (`module-*` 컴포넌트와 그 meta)
+pub fn modules(manifest: &ReleaseManifest) -> Vec<crate::ModuleInfo> {
+    manifest
+        .addons(relay::MODULE_PREFIX)
+        .into_iter()
+        .map(|(name, comp)| {
+            let meta = comp.meta.as_ref();
+            let text = |key: &str| meta.and_then(|m| m.get(key)).and_then(|v| v.as_str()).map(str::to_string);
+            crate::ModuleInfo {
+                id: name.to_string(),
+                name: text("display_name").or_else(|| text("game_name")).unwrap_or_else(|| name.to_string()),
+                description: text("description").unwrap_or_default(),
+                icon: text("icon").unwrap_or_default(),
+                required_extensions: meta
+                    .and_then(|m| m.get("requires_extensions"))
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    .unwrap_or_default(),
+            }
+        })
+        .collect()
+}
+
+/// 모듈·익스텐션 하나를 받아(SHA-256 검증) `target`에 새로 푼다
+pub async fn install_addon(info: &ManifestComponent, target: &Path) -> Result<(), String> {
+    let temp_dir = std::env::temp_dir().join("saba-chan-installer");
+    std::fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
+    let zip = temp_dir.join(&info.filename);
+    download(info, &zip, |_, _| {}).await?;
+    let result = (|| {
+        if target.exists() {
+            std::fs::remove_dir_all(target)?;
+        }
+        std::fs::create_dir_all(target)?;
+        saba_chan_updater_lib::extract_zip(&zip, target, |_| Ok(()))
+    })();
+    let _ = std::fs::remove_file(&zip);
+    result.map_err(|e| e.to_string())
 }
 
 /// 컴포넌트가 풀릴 폴더
@@ -94,13 +134,14 @@ mod tests {
             url: "https://example.invalid/x.zip".into(),
             install_dir: install_dir.map(Into::into),
             requires: None,
+            meta: None,
         }
     }
 
     #[test]
     fn installs_what_the_updater_knows_and_reads_installer_requirement() {
         let mut components = HashMap::new();
-        for key in ["saba-core", "gui", "cli", "updater", "locales", "installer", "discord_bot"] {
+        for key in ["saba-core", "gui", "cli", "updater", "locales", "installer", "discord_bot", "module-palworld", "ext-steamcmd"] {
             components.insert(key.to_string(), component("0.2.0", None));
         }
         let manifest = ReleaseManifest {
@@ -112,7 +153,7 @@ mod tests {
             components,
         };
         let keys: Vec<_> = installable(&manifest).into_iter().map(|(k, _)| k.as_str()).collect();
-        assert_eq!(keys, ["cli", "gui", "locales", "saba-core", "updater"], "installer and the legacy bot are skipped");
+        assert_eq!(keys, ["cli", "gui", "locales", "saba-core", "updater"], "installer, the legacy bot and add-ons are skipped");
         assert_eq!(required_installer_version(&manifest), Some("0.2.0"));
 
         let root = Path::new("/opt/saba");

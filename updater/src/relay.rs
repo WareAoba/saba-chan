@@ -80,6 +80,38 @@ pub struct ManifestComponent {
     /// 이 컴포넌트가 요구하는 다른 컴포넌트의 최소 버전 (예: `{"saba-core": ">=0.3.0"}`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requires: Option<HashMap<String, String>>,
+    /// 모듈·익스텐션 목록 화면용 정보 (U9e). 모듈: display_name, description, game_name,
+    /// requires_extensions. 익스텐션: name, description, author, min_app_version, dependencies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<serde_json::Value>,
+}
+
+/// 모듈 컴포넌트 키 접두사 (`module-<이름>`)
+pub const MODULE_PREFIX: &str = "module-";
+/// 익스텐션 컴포넌트 키 접두사 (`ext-<id>`)
+pub const EXTENSION_PREFIX: &str = "ext-";
+
+impl ReleaseManifest {
+    /// 키가 `prefix`로 시작하는 컴포넌트를 `(접두사 뗀 이름, 항목)`으로, 이름 순으로
+    pub fn addons(&self, prefix: &str) -> Vec<(&str, &ManifestComponent)> {
+        let mut list: Vec<_> = self
+            .components
+            .iter()
+            .filter_map(|(key, c)| key.strip_prefix(prefix).map(|name| (name, c)))
+            .collect();
+        list.sort_by(|a, b| a.0.cmp(b.0));
+        list
+    }
+}
+
+/// 모듈·익스텐션 목록의 출처: 이 플랫폼 최신 릴리즈의 서명된 manifest (U9e).
+/// 데몬·설치기가 같은 함수를 쓴다. 게시된 릴리즈가 없으면 `Ok(None)`.
+pub async fn latest_catalog(relay_url: Option<&str>) -> Result<Option<ReleaseManifest>, RelayError> {
+    let client = RelayClient::new(relay_url.unwrap_or(DEFAULT_RELAY_URL));
+    let release = client
+        .fetch_verified_release(DEFAULT_CHANNEL, &current_platform(), "", &anon_client_id())
+        .await?;
+    Ok(release.map(|r| r.manifest))
 }
 
 /// 확인 결과
