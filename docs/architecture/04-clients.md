@@ -289,12 +289,12 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 | G4 | 2569-2577 | FS-R/CFG | `settings:load`: API 실패 시 로컬 폴백 | 위와 같음 |
 | G5 | 245-298 | FS-W | 로그 디렉터리 생성과 로그 파일 쓰기 | GUI 자체 로그 |
 | G6 | 313-333 | FS-R | `locales/<lang>/common.json` 직접 읽기 | |
-| G7 | 549-657 (608) | PROC | **saba-core spawn** (`--spawned`, env 주입) | 불가피(daemon 부재 시 부트스트랩) |
+| G7 | 549-657 (608-617), 783-797 | PROC | **saba-core spawn** (`--spawned`, env 주입). `detached: true`, `windowsHide: true`로 분리해 띄운다(콘솔 창 없음, 로그는 GUI가 사는 동안 파이프로 받는다). Windows에서 분리하지 않은 자식은 Electron의 kill-on-close 잡에 묶여 GUI와 함께 죽기 때문이다. 인터페이스만 종료하면(`interfaceOnlyQuit`, 706-740) 파이프를 놓고 `unref()`해 데몬이 남는다. GUI가 죽거나 강제 종료돼도 데몬은 남고, 다음 GUI 실행 때 `ensureDaemon`이 `/health`로 떠 있는 데몬을 찾아 다시 붙는다(783-797). 데몬을 끄는 것은 전체 종료(cleanQuit, G8)뿐이다 | 불가피(daemon 부재 시 부트스트랩) |
 | G8 | 660-704 (689-703) | PROC | daemon 종료: `POST /api/daemon/shutdown` 후 15초 안에 안 끝나면 **자기 PID만** kill(`taskkill /PID /F`, SIGKILL) | API 우선, kill은 대비책 |
 | G9 | — | — | ~~cleanQuit의 이름 기반 `taskkill /IM saba-core.exe`·`pkill -f saba-core`~~ → 해결: cleanQuit(736-769)은 unregister(shutdown=true) 후 `stopDaemon()`만 부르고, 이름 기반 kill은 없다(659 주석) | |
 | G10 | 2525-2566 | PROC | `daemon:restart`: `stopDaemon()`(API 우선) 후 `startDaemon()`으로 직접 spawn | 재기동 API가 없다 |
 | G11 | 1241-1256 | PROC | 트레이 메뉴: "데몬 종료"는 `stopDaemon()`, "데몬 시작"은 `startDaemon()` 직접 호출 | |
-| G12 | 1353-1356, 1376-1387 | PROC | before-quit(cleanQuit을 거치지 않은 경로)에서 자기 데몬 `forceKillDaemon`, `process.on('exit')`에서 SIGKILL | 둘 다 자기가 띄운 프로세스만 |
+| G12 | 1364-1368, 1385-1395 | PROC | before-quit(cleanQuit을 거치지 않은 경로)에서 자기 데몬 `forceKillDaemon`, `process.on('exit')`에서 SIGKILL. 인터페이스만 종료한 경우(`keepDaemonAlive`)는 둘 다 건너뛴다 | 둘 다 자기가 띄운 프로세스만 |
 | G13 | — | — | ~~`node scripts/mock-release-server.js` spawn~~ 없어짐(f6ca7b6). 개발자가 직접 실행한다 | |
 | G14 | — | — | ~~updater exe detached spawn(`--apply --relaunch`)~~ → 해결: GUI는 `POST /api/updates/launch-updater {relaunch}`만 보내고 업데이터는 데몬이 띄운다(main.js:2461-2482, `src/ipc/updates.rs:570-639`) | |
 | G15 | — | — | ~~updater exe 경로 탐색(`existsSync`)~~ → 해결: 데몬의 `updater_binary()`가 찾는다(`updates.rs:642-649`) | |
