@@ -2378,6 +2378,11 @@ ipcMain.handle('permissions:setMember', (_event, guildId, discordId, level) =>
 ipcMain.handle('permissions:removeMember', (_event, guildId, discordId) =>
     daemonCall('delete', permPath(guildId, discordId)));
 
+// 확인되지 않은 구성요소를 격리 없이 돌리기 동의: 실행 결과 `action_required: sandbox_unavailable`의 `component`
+const unisolatedPath = (component) => `/api/sandbox/unisolated/${encodeURIComponent(component)}`;
+ipcMain.handle('sandbox:listUnisolated', () => daemonCall('get', '/api/sandbox/unisolated'));
+ipcMain.handle('sandbox:allowUnisolated', (_event, component) => daemonCall('post', unisolatedPath(component), {}));
+ipcMain.handle('sandbox:revokeUnisolated', (_event, component) => daemonCall('delete', unisolatedPath(component)));
 // 액션 카탈로그 (P2): 본문은 데몬 HTTP 본문 그대로. 실패하면 {success:false, error_code, error} 본문을 넘긴다
 ipcMain.handle('actions:list', (_event, opts) => {
     const { surface = 'gui', instance, locale } = opts || {};

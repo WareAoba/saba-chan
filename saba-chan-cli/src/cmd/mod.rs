@@ -12,6 +12,7 @@ pub mod extension;
 pub mod module;
 pub mod monitor;
 pub mod perm;
+pub mod sandbox;
 pub mod schedule;
 pub mod server;
 pub mod status;
@@ -32,6 +33,7 @@ pub async fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
         Cmd::Monitor(a) => monitor::run(ctx, a).await,
         Cmd::Audit { server, limit } => audit::run(ctx, server.as_deref(), limit).await,
         Cmd::Perm(c) => perm::run(ctx, c).await,
+        Cmd::Sandbox(c) => sandbox::run(ctx, c).await,
         Cmd::Do { action, server, plan, input } => do_action::run(ctx, action.as_deref(), server.as_deref(), plan, &input).await,
         Cmd::Server(c) => server::run(ctx, c).await,
         Cmd::Start(a) => server::start(ctx, a).await,
@@ -91,6 +93,9 @@ pub fn print_trust_warnings(ctx: &Ctx, r: &Value) {
         let id = w.get("module").or_else(|| w.get("extension")).and_then(Value::as_str).unwrap_or_default();
         if let Some(text) = crate::i18n::try_t(&format!("trust.notice.{}", code)) {
             ctx.out.warn(&text.replace("{{id}}", id));
+        }
+        if w.get("isolated").and_then(Value::as_bool) == Some(true) {
+            ctx.out.warn(&t!("trust.notice.isolated"));
         }
     }
 }

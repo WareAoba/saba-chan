@@ -102,6 +102,9 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | permissionsUpdate | permissions:update | - | PATCH /api/permissions/:guildId `{defaultLevel?, preset?, chatbotCap?, ownerDiscordId?, commandLevels?}` | - |
 | permissionsSetMember | permissions:setMember | - | PUT /api/permissions/:guildId/members/:discordId `{level}` | - |
 | permissionsRemoveMember | permissions:removeMember | - | DELETE /api/permissions/:guildId/members/:discordId | - |
+| sandboxListUnisolated | sandbox:listUnisolated | - | GET /api/sandbox/unisolated `{components:[{component, fingerprint, current}]}` | - |
+| sandboxAllowUnisolated | sandbox:allowUnisolated | - | POST /api/sandbox/unisolated/:component. `sandbox_unavailable` 응답의 `component`를 넘긴다 | - |
+| sandboxRevokeUnisolated | sandbox:revokeUnisolated | - | DELETE /api/sandbox/unisolated/:component | - |
 | actionsList | actions:list | - | GET /api/actions?surface=gui&instance?&locale? (P2) | - |
 | actionsPlan | actions:plan | - | POST /api/actions/:id/plan `{input, instance?}` | - |
 | actionsRun | actions:run | - | POST /api/actions/:id/run `{input, instance?}` 또는 `{planId}` | - |

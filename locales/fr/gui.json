@@ -879,7 +879,30 @@
     "perm_owner_mismatch": "Le relais a signalé un autre propriétaire ({{relay}}). Ici, le propriétaire reste {{owner}}. Si le relais a raison, changez le propriétaire.",
     "perm_owner_use_relay": "Utiliser ce propriétaire",
     "perm_owner_use_relay_confirm": "Vraiment faire de {{name}} ({{id}}) le propriétaire",
-    "perm_commands_help_hint": "help et list sont ouverts à tous les niveaux sauf banni et ne peuvent pas être modifiés."
+    "perm_commands_help_hint": "help et list sont ouverts à tous les niveaux sauf banni et ne peuvent pas être modifiés.",
+    "tab_bot": "Paramètres du bot",
+    "bot_settings": {
+      "loading": "Chargement des paramètres du bot…",
+      "general_title": "Général",
+      "language": "Langue du bot",
+      "language_auto": "Automatique (langue de l'app)",
+      "sleeping": "Veille",
+      "sleeping_hint": "Activé, le bot ne répond plus aux commandes serveur sur ce serveur.",
+      "music_title": "Musique",
+      "music_enabled": "Fonctions musique",
+      "music_ui": "Panneau du lecteur",
+      "music_ui_hint": "Affiche le titre en cours et la file dans le salon musique.",
+      "music_normalize": "Normaliser le volume",
+      "music_normalize_hint": "Harmonise le volume entre les titres.",
+      "queue_lines": "Lignes de file affichées",
+      "lines": "lignes",
+      "refresh": "Intervalle d'actualisation du lecteur",
+      "range": "Saisis un nombre entier de {{min}} à {{max}}.",
+      "not_synced": "Enregistré, mais pas encore appliqué sur Discord. Ce sera fait à la prochaine connexion.",
+      "err_not_paired": "Ce serveur n'est pas appairé.",
+      "err_invalid": "Valeur non valide : {{field}}",
+      "err_generic": "Impossible de modifier les paramètres du bot."
+    }
   },
   "maintenance": {
     "load_failed": "Impossible de charger les sauvegardes et la planification.",

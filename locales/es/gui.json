@@ -879,7 +879,30 @@
     "perm_owner_mismatch": "El relay informó otro propietario ({{relay}}). Aquí el propietario sigue siendo {{owner}}. Si el relay tiene razón, cambia el propietario.",
     "perm_owner_use_relay": "Usar este propietario",
     "perm_owner_use_relay_confirm": "Hacer propietario a {{name}} ({{id}}) de verdad",
-    "perm_commands_help_hint": "help y list están abiertos a todos los niveles salvo bloqueado y no se pueden cambiar."
+    "perm_commands_help_hint": "help y list están abiertos a todos los niveles salvo bloqueado y no se pueden cambiar.",
+    "tab_bot": "Ajustes del bot",
+    "bot_settings": {
+      "loading": "Cargando ajustes del bot…",
+      "general_title": "General",
+      "language": "Idioma del bot",
+      "language_auto": "Automático (idioma de la app)",
+      "sleeping": "Dormir",
+      "sleeping_hint": "Si está activado, el bot no responde a comandos de servidor en este servidor.",
+      "music_title": "Música",
+      "music_enabled": "Funciones de música",
+      "music_ui": "Panel del reproductor",
+      "music_ui_hint": "Muestra la canción actual y la cola en el canal de música.",
+      "music_normalize": "Normalizar volumen",
+      "music_normalize_hint": "Iguala el volumen entre canciones.",
+      "queue_lines": "Líneas de cola visibles",
+      "lines": "líneas",
+      "refresh": "Intervalo de actualización del reproductor",
+      "range": "Introduce un número entero de {{min}} a {{max}}.",
+      "not_synced": "Guardado, pero aún no aplicado en Discord. Se aplicará en la próxima conexión.",
+      "err_not_paired": "Este servidor no está emparejado.",
+      "err_invalid": "Valor no válido: {{field}}",
+      "err_generic": "No se pudieron cambiar los ajustes del bot."
+    }
   },
   "maintenance": {
     "load_failed": "No se pudieron cargar las copias de seguridad ni las programaciones.",

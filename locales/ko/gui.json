@@ -880,7 +880,30 @@
     "perm_owner_mismatch": "릴레이가 다른 소유자({{relay}})를 알려 왔어요. 여기서는 소유자가 {{owner}}(으)로 그대로예요. 릴레이 쪽이 맞다면 소유자를 바꿔 주세요.",
     "perm_owner_use_relay": "이 소유자로 바꾸기",
     "perm_owner_use_relay_confirm": "정말 {{name}}({{id}})을(를) 소유자로",
-    "perm_commands_help_hint": "help·list는 금지가 아니면 누구나 쓸 수 있고, 바꿀 수 없어요."
+    "perm_commands_help_hint": "help·list는 금지가 아니면 누구나 쓸 수 있고, 바꿀 수 없어요.",
+    "tab_bot": "봇 설정",
+    "bot_settings": {
+      "loading": "봇 설정을 불러오는 중…",
+      "general_title": "일반",
+      "language": "봇 언어",
+      "language_auto": "자동 (앱 언어 따름)",
+      "sleeping": "잠자기",
+      "sleeping_hint": "켜면 봇이 이 서버에서 서버 명령에 답하지 않아요.",
+      "music_title": "음악",
+      "music_enabled": "음악 기능",
+      "music_ui": "음악 플레이어 화면",
+      "music_ui_hint": "음악 채널에 재생 중인 곡과 대기열을 띄워요.",
+      "music_normalize": "음량 평준화",
+      "music_normalize_hint": "곡마다 다른 음량을 비슷하게 맞춰요.",
+      "queue_lines": "대기열 표시 줄 수",
+      "lines": "줄",
+      "refresh": "플레이어 새로고침 간격",
+      "range": "{{min}}에서 {{max}} 사이의 정수를 넣어 주세요.",
+      "not_synced": "저장했지만 아직 디스코드에 반영되지 않았어요. 다음에 연결되면 반영돼요.",
+      "err_not_paired": "이 서버와 페어링되어 있지 않아요.",
+      "err_invalid": "잘못된 값이에요: {{field}}",
+      "err_generic": "봇 설정을 바꾸지 못했어요."
+    }
   },
   "maintenance": {
     "load_failed": "백업·예약 정보를 불러오지 못했어요.",

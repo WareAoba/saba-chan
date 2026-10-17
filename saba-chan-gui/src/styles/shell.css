@@ -2496,7 +2496,8 @@ button.appbar-preflight {
 }
 
 /* 디스코드 서버 채널 배정 */
-.dc-channels {
+.dc-channels,
+.dc-bot-settings {
     display: flex;
     flex-direction: column;
     gap: var(--sp-4);
