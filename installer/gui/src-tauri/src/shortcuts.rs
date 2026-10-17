@@ -9,6 +9,9 @@
 #[cfg(target_os = "windows")]
 use std::path::Path;
 
+/// 언어별로 쓴 바로가기 이름 전부 (언어를 바꿔 다시 설치해도 옛 이름을 지울 수 있게)
+pub const ALL_SHORTCUT_NAMES: &[&str] = &["Saba-chan", "사바쨩", "サバちゃん"];
+
 // ── Windows Known Folder GUIDs ──────────────────────────
 
 /// `{B4BFCC3A-DB2C-424C-B029-7FE99A87C641}` — 바탕화면
@@ -51,31 +54,53 @@ pub fn create_start_menu_shortcut(target_exe: &Path, name: &str) -> anyhow::Resu
     Ok(())
 }
 
-/// 바탕화면 바로가기 제거
+/// 이 설치 폴더를 가리키는 바로가기만 지운다 (바탕화면 `<이름>.lnk`, 시작 메뉴 `<이름>\*.lnk`).
+/// 같은 이름이라도 다른 설치(예: 다른 폴더에 한 테스트 설치와 진짜 설치)의 바로가기는 두고,
+/// 시작 메뉴 폴더는 비었을 때만 지운다.
 #[cfg(target_os = "windows")]
-pub fn remove_desktop_shortcut(name: &str) -> anyhow::Result<()> {
-    let desktop = get_desktop_path()?;
-    let lnk_path = desktop.join(format!("{}.lnk", name));
-    if lnk_path.exists() {
-        std::fs::remove_file(&lnk_path)?;
-        tracing::info!("[Shortcut] Removed desktop shortcut: {:?}", lnk_path);
-    }
-    Ok(())
+pub fn remove_shortcuts_into(install_dir: &Path, names: &[&str]) {
+    const SCRIPT: &str = r#"
+$sh = New-Object -ComObject WScript.Shell
+$root = $env:SABA_INSTALL_DIR.TrimEnd('\') + '\'
+function Check($lnk) {
+  try { $t = $sh.CreateShortcut($lnk).TargetPath } catch { $t = '' }
+  if ($t -and $t.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) {
+    Remove-Item -LiteralPath $lnk -Force -ErrorAction SilentlyContinue; "removed|$lnk"
+  } else { "kept|$lnk|$t" }
 }
-
-/// 시작 메뉴 바로가기 제거
-#[cfg(target_os = "windows")]
-pub fn remove_start_menu_shortcut(name: &str) -> anyhow::Result<()> {
-    let start_menu = get_start_menu_path()?;
-    let program_dir = start_menu.join(name);
-    if program_dir.exists() {
-        std::fs::remove_dir_all(&program_dir)?;
-        tracing::info!(
-            "[Shortcut] Removed start menu folder: {:?}",
-            program_dir
-        );
+foreach ($p in ($env:SABA_LNKS -split '\|')) { if ($p -and (Test-Path -LiteralPath $p)) { Check $p } }
+foreach ($d in ($env:SABA_DIRS -split '\|')) {
+  if ($d -and (Test-Path -LiteralPath $d)) {
+    Get-ChildItem -LiteralPath $d -Filter *.lnk -ErrorAction SilentlyContinue | ForEach-Object { Check $_.FullName }
+    if (-not (Get-ChildItem -LiteralPath $d -Force -ErrorAction SilentlyContinue)) {
+      Remove-Item -LiteralPath $d -Force -ErrorAction SilentlyContinue; "removed|$d"
+    } else { "kept|$d" }
+  }
+}"#;
+    let desktop = get_desktop_path().ok();
+    let start_menu = get_start_menu_path().ok();
+    let lnks: Vec<String> = desktop
+        .iter()
+        .flat_map(|d| names.iter().map(move |n| d.join(format!("{}.lnk", n)).to_string_lossy().into_owned()))
+        .collect();
+    let dirs: Vec<String> = start_menu
+        .iter()
+        .flat_map(|d| names.iter().map(move |n| d.join(n).to_string_lossy().into_owned()))
+        .collect();
+    let out = saba_chan_updater_lib::process::hide_console(&mut std::process::Command::new("powershell"))
+        .args(["-NoProfile", "-NonInteractive", "-Command", SCRIPT])
+        .env("SABA_INSTALL_DIR", install_dir)
+        .env("SABA_LNKS", lnks.join("|"))
+        .env("SABA_DIRS", dirs.join("|"))
+        .output();
+    match out {
+        Ok(o) => {
+            for line in String::from_utf8_lossy(&o.stdout).lines().filter(|l| !l.trim().is_empty()) {
+                tracing::info!("[Shortcut] {}", line.trim());
+            }
+        }
+        Err(e) => tracing::warn!("[Shortcut] Could not check old shortcuts: {}", e),
     }
-    Ok(())
 }
 
 /// PowerShell WScript.Shell으로 .lnk 생성
@@ -97,9 +122,10 @@ fn create_shortcut_via_powershell(
         lnk_str, target_str, working_dir, description,
     );
 
-    let output = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", &ps_script])
-        .output()?;
+    let output = saba_chan_updater_lib::process::hide_console(
+        std::process::Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-Command", &ps_script]),
+    )
+    .output()?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -199,11 +225,4 @@ pub fn create_start_menu_shortcut(
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn remove_desktop_shortcut(_name: &str) -> anyhow::Result<()> {
-    Ok(())
-}
-
-#[cfg(not(target_os = "windows"))]
-pub fn remove_start_menu_shortcut(_name: &str) -> anyhow::Result<()> {
-    Ok(())
-}
+pub fn remove_shortcuts_into(_install_dir: &std::path::Path, _names: &[&str]) {}

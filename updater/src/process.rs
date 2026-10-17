@@ -1,5 +1,17 @@
 //! 이름·PID로 프로세스가 떠 있는지 본다 (적용 전 GUI·CLI 종료 대기)
 
+/// 콘솔 프로그램(tasklist·taskkill·powershell 등)을 창 없이 띄운다. Windows가 아니면 아무것도 안 한다.
+/// GUI 프로그램(인스톨러·업데이터)이 콘솔 프로그램을 부르면 Windows는 부를 때마다 새 콘솔 창을 연다.
+pub fn hide_console(cmd: &mut std::process::Command) -> &mut std::process::Command {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 /// 프로세스 체커 — 특정 프로세스가 실행 중인지 확인
 pub struct ProcessChecker;
 
@@ -9,9 +21,7 @@ impl ProcessChecker {
     pub fn is_running(process_name: &str) -> bool {
         use std::process::Command;
 
-        let output = Command::new("tasklist")
-            .args(["/FI", &format!("IMAGENAME eq {}", process_name)])
-            .output();
+        let output = hide_console(Command::new("tasklist").args(["/FI", &format!("IMAGENAME eq {}", process_name)])).output();
 
         match output {
             Ok(output) => {
@@ -41,8 +51,7 @@ impl ProcessChecker {
     pub fn is_pid_running(pid: u32) -> bool {
         use std::process::Command;
         if cfg!(target_os = "windows") {
-            Command::new("tasklist")
-                .args(["/FI", &format!("PID eq {}", pid), "/NH"])
+            hide_console(Command::new("tasklist").args(["/FI", &format!("PID eq {}", pid), "/NH"]))
                 .output()
                 .map(|o| String::from_utf8_lossy(&o.stdout).split_whitespace().any(|w| w == pid.to_string()))
                 .unwrap_or(false)

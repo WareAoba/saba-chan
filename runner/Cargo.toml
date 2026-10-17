@@ -1,6 +1,6 @@
 [package]
 name = "saba-runner"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 authors = ["WareAoba"]
 description = "Keeps one game server's console alive across daemon restarts"

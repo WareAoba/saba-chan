@@ -493,12 +493,9 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         let gui_exe = saba_chan_updater_lib::find_gui_exe(&install_dir);
         let app_name = localized_app_name(&config.language);
 
-        // 기존 바로가기 제거 (언어 변경 시 이전 이름의 잔재 방지)
-        const ALL_SHORTCUT_NAMES: &[&str] = &["Saba-chan", "사바쨩", "サバちゃん"];
-        for old_name in ALL_SHORTCUT_NAMES {
-            let _ = shortcuts::remove_desktop_shortcut(old_name);
-            let _ = shortcuts::remove_start_menu_shortcut(old_name);
-        }
+        // 이 설치가 전에 만든 바로가기 제거 (언어 변경 시 이전 이름의 잔재 방지).
+        // 다른 폴더에 설치된 같은 이름의 바로가기는 둔다
+        shortcuts::remove_shortcuts_into(&install_dir, shortcuts::ALL_SHORTCUT_NAMES);
 
         match &gui_exe {
             Some(gui_exe) => {
@@ -994,7 +991,7 @@ pub fn run() {
                 eprintln!("elevate-mkdir: missing --grant user");
                 std::process::exit(1);
             };
-            let icacls = std::process::Command::new("icacls")
+            let icacls = saba_chan_updater_lib::process::hide_console(&mut std::process::Command::new("icacls"))
                 .args([
                     dir_str.as_str(),
                     "/grant",

@@ -194,6 +194,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 | 단계 | 내용 |
 |---|---|
 | 1 (0-5%) | install dir 생성, 쓰기 probe, 필요하면 권한 상승 |
+| 1.5 | 덮어쓰기 전에 이 설치 폴더의 프로세스를 끈다(`uninstall.rs` `stop_daemon_before_install`). `saba-core`는 실행 파일 경로(받은 경로와 실제 경로 둘 다)로 찾고, 못 찾으면 설정된 포트의 `/health` PID를 보고 그 exe가 이 폴더 안이거나 경로를 못 읽을 때만 대상으로 삼는다. `/api/daemon/shutdown` 후 20초 안에 안 끝나면 그 PID만 kill. 이어서 이 폴더의 GUI exe와 `saba-chan-cli`를 그 PID만 끈다(트리째 끄면 데몬이 남았을 때 그 아래 게임 서버까지 죽는다). 단계마다 `%TEMP%\saba-chan-installer.log`에 남긴다 |
 | 2 (5-10%) | 릴레이에서 서명된 최신 manifest를 받아 검증한다(`release.rs:16-28` `fetch_latest`) |
 | 2.5 | manifest의 `installer.version`이 현재 `CARGO_PKG_VERSION`보다 높으면 설치를 차단한다(`lib.rs:330-345`) |
 | 3 (10-45%) | 업데이터가 아는 키 중 모듈·익스텐션을 뺀 컴포넌트(`installer` 제외)를 R2에서 받아 SHA-256을 확인하고 `install_dir/<install_dir>`에 푼다(`release.rs:35-45`, `lib.rs:347-401`). 하나라도 실패하면 설치를 멈춘다 |
@@ -203,7 +204,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 | 6 | 없음: 로컬 Discord bot이 없어져 portable Node·npm install 단계도 지워졌다 |
 | 7-8 | `setup_config`, 언어 설정을 `config.json`의 `gui.language`에 저장(`lib.rs:840-865`) |
 | 9 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Saba-chan*` 등록. 키는 설치 폴더마다 따로다: 첫 설치본은 `Saba-chan`, 다른 폴더는 `Saba-chan-<폴더 해시 8자>`(`registry.rs:15-77`, `updater/src/uninstall_entry.rs:12-31`) |
-| 10 | 바탕화면·시작 메뉴 바로가기. 대상은 설치 폴더의 GUI exe(`saba-chan-gui.exe` 또는 0.1.1의 `Saba-chan.exe`)다(`lib.rs:486-515`) |
+| 10 | 바탕화면·시작 메뉴 바로가기. 대상은 설치 폴더의 GUI exe(`saba-chan-gui.exe` 또는 0.1.1의 `Saba-chan.exe`)다. 만들기 전에 언어별 옛 이름(`shortcuts::ALL_SHORTCUT_NAMES`)의 바로가기를 지우되, `.lnk` 대상이 이 설치 폴더 안인 것만 지우고 시작 메뉴 폴더는 비었을 때만 지운다(`shortcuts::remove_shortcuts_into`). 제거(uninstall)도 같은 함수를 쓴다 |
 | 10.5 | `installed-manifest.json` 생성. updater 버전 판정의 1순위 소스다(`lib.rs:517-521`) |
 
 레지스트리·바로가기처럼 실패해도 계속하는 단계는 완료 화면에 실패 목록과 로그 경로로 보여 준다(`lib.rs:277-284, 523-546`).

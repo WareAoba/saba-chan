@@ -1,6 +1,6 @@
 [package]
 name = "saba-chan-cli"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 authors = ["WareAoba"]
 description = "Command-line interface for the Saba-chan daemon"
