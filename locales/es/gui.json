@@ -1036,5 +1036,14 @@
     "source_discord": "Discord",
     "source_schedule": "Programación",
     "source_daemon": "Daemon"
+  },
+  "launch_preview": {
+    "title": "Vista previa de argumentos de inicio",
+    "action_required": "Requiere atención antes de iniciar: {{reason}}",
+    "failed": "No se pudo calcular la vista previa.",
+    "extra_label": "Argumentos adicionales",
+    "extra_placeholder": "p. ej. -players=16 -useperfthreads",
+    "unknown_args": "Los argumentos sin ajuste correspondiente se pasan tal cual: {{args}}",
+    "invalid_format": "Formato no válido."
   }
 }

@@ -48,7 +48,9 @@ const modules = [
         trust: 'modified',
         description: 'Palworld 전용 서버',
         commands: { fields: [{ name: 'players', label: '접속자', method: 'rest' }] },
-        settings: { fields: [{ name: 'port', label: '포트', type: 'number', default: 8211 }] },
+        settings: {
+            fields: [{ name: 'port', label: '포트', type: 'number', field_type: 'number', default: 8211 }],
+        },
     },
     {
         name: 'zomboid',
@@ -371,6 +373,22 @@ const impl = {
                 },
             ].filter((e) => !instance || e.instanceId === instance),
         }),
+    instanceLaunchPreview: (id, draft = {}, extra = '') => {
+        if (id !== 'srv-2') return ok({ success: true, has_launch_args: false });
+        const args = String(extra).split(/\s+/).filter(Boolean);
+        const portArg = args.find((a) => a.startsWith('-port='));
+        const port = portArg ? portArg.slice(6) : draft.port;
+        const bad = portArg && !/^\d+$/.test(port);
+        const rest = args.filter((a) => a !== portArg);
+        return ok({
+            success: true,
+            has_launch_args: true,
+            command_line: ['PalServer.exe', `-port=${port ?? 8211}`, '-adminpassword=***', ...rest].join(' '),
+            settings_from_args: portArg && !bad ? { port: Number(port) } : {},
+            extra_args: rest,
+            errors: bad ? [{ arg: portArg, field: 'port', expected: 'port', got: port }] : [],
+        });
+    },
     relayNodeChannels: (guildId) => ok({ guildId, ...mockChannels }),
     relayNodeChannelsSave: (guildId, patch) => {
         Object.assign(mockChannels, patch);

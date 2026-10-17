@@ -1065,5 +1065,14 @@
     "source_discord": "디스코드",
     "source_schedule": "예약 작업",
     "source_daemon": "데몬"
+  },
+  "launch_preview": {
+    "title": "실행 인자 미리보기",
+    "action_required": "실행하려면 먼저 해결해야 해요: {{reason}}",
+    "failed": "미리보기를 계산하지 못했어요.",
+    "extra_label": "추가 인자",
+    "extra_placeholder": "예: -players=16 -useperfthreads",
+    "unknown_args": "설정에 없는 인자는 그대로 넘겨요: {{args}}",
+    "invalid_format": "잘못된 형식입니다."
   }
 }

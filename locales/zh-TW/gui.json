@@ -1036,5 +1036,14 @@
     "source_discord": "Discord",
     "source_schedule": "排程工作",
     "source_daemon": "背景服務"
+  },
+  "launch_preview": {
+    "title": "啟動參數預覽",
+    "action_required": "啟動前需要處理：{{reason}}",
+    "failed": "無法計算預覽。",
+    "extra_label": "額外參數",
+    "extra_placeholder": "例如：-players=16 -useperfthreads",
+    "unknown_args": "沒有對應設定的參數將原樣傳遞：{{args}}",
+    "invalid_format": "格式無效。"
   }
 }
