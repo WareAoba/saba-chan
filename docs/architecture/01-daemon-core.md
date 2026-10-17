@@ -54,10 +54,8 @@
     - 업데이트 주기 확인 `spawn_update_scheduler`(`main.rs:401`)와 인스턴스 예약 작업(백업·재시작·공지·업데이트) 실행기 `backup::spawn_scheduler`(`main.rs:403`, 30초 주기)를 띄운다.
     - 하트비트 reaper: 30초 주기로 90초 넘게 하트비트가 없는 클라이언트를 정리한다(`main.rs:405-424`, `handlers/client.rs:97-117`).
     - 렌더러 watchdog은 없다. 인터페이스가 모두 떠나도 데몬은 남고 GUI를 다시 띄우지 않는다. 다음에 켠 GUI·CLI가 다시 붙는다(C14).
-      - 클라이언트가 한 번이라도 연결된 적이 있다가 모두 끊기면 15초 유예 후 **GUI만** 재기동을 시도한다(`try_restart_renderer`, `main.rs:672-706`). CLI는 터미널 없이 띄워도 쓸 수 없어 후보에서 뺐다.
-      - 재기동 후 60초 안에 재접속이 없으면 다시 시도하고, 최대 2회 실패하면 `stop_requested`를 cancel해 아래 종료 경로로 **스스로 종료**한다.
     - DaemonOnly 모드: `daemon_log::daemon_terminal_loop`가 500ms마다 각 인스턴스 콘솔을 stderr에 출력한다(`daemon_log.rs:192`).
-    - 종료 경로는 하나다(`main.rs:533-599`). Ctrl+C 또는 `stop_requested`(API `/api/daemon/shutdown`, `unregister?shutdown=true`, `launch-updater`)를 받으면 `daemon.shutdown` 훅(30초 상한), 클라이언트 정리, `shutdown_token` cancel 순으로 정리한다.
+    - 종료 경로는 하나다(`main.rs:533-599`). Ctrl+C, SIGTERM(Unix) 또는 `stop_requested`(API `/api/daemon/shutdown`, `unregister?shutdown=true`, `launch-updater`)를 받으면 `daemon.shutdown` 훅(30초 상한), 클라이언트 정리, `shutdown_token` cancel 순으로 정리한다.
 12. **인터페이스 스폰** (`main.rs:601-659`)
     - IPC 포트가 열릴 때까지 최대 15초 기다린다(`boot_selector::wait_for_ipc_port`).
     - GUI 모드: `saba-chan-gui --spawned-by-daemon`을 detach로 띄우고 콘솔 창을 숨긴다(Windows만).

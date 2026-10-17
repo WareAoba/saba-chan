@@ -126,9 +126,19 @@ pub async fn process<D: DaemonApi>(api: &D, settings: &ChatSettings, cat: &Catal
             if module_known && !mounted {
                 return cat.t("errors.unknown_input", &[]);
             }
-            ctx.module_command(first, cmd, &args[2..], &servers).await
+            ctx.module_command(first, cmd, skip_words(text, 2), &servers).await
         }
     }
+}
+
+/// 앞의 낱말 `n`개를 건너뛴 나머지 원문 (따옴표 안의 공백을 그대로 두려고 나누기 전 문자열을 쓴다)
+fn skip_words(text: &str, n: usize) -> &str {
+    let mut rest = text.trim_start();
+    for _ in 0..n {
+        let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+        rest = rest[end..].trim_start();
+    }
+    rest
 }
 
 /// 릴레이는 접두사 없이 보내지만, 사용자가 붙여 보낸 경우도 받아 준다
@@ -329,7 +339,7 @@ impl<D: DaemonApi> Ctx<'_, D> {
 
     // ── 모듈 + 명령어 ──
 
-    async fn module_command(&self, alias: &str, cmd_alias: &str, extra: &[&str], servers: &[ServerView]) -> String {
+    async fn module_command(&self, alias: &str, cmd_alias: &str, extra: &str, servers: &[ServerView]) -> String {
         if let Some(msg) = self.alias_conflict(alias) {
             return msg;
         }
@@ -395,8 +405,8 @@ impl<D: DaemonApi> Ctx<'_, D> {
     }
 
     /// 정의된 명령 실행 — 해석·검증·라우팅은 데몬 명령 경로(`crate::commands`)가 한다
-    async fn run_defined(&self, server: &ServerView, module: &ModuleView, field: &CommandField, alias: &str, cmd_alias: &str, extra: &[&str]) -> String {
-        let args = split_quoted(&extra.join(" "));
+    async fn run_defined(&self, server: &ServerView, module: &ModuleView, field: &CommandField, alias: &str, cmd_alias: &str, extra: &str) -> String {
+        let args = split_quoted(extra);
         let resp = self.api.command(&server.id, &field.name, args).await;
         self.render_result(server, module, field, alias, cmd_alias, resp)
     }
@@ -457,34 +467,29 @@ impl<D: DaemonApi> Ctx<'_, D> {
 /// 정의에 없는 명령은 원문 그대로 콘솔로 가므로 이 규칙을 쓰지 않는다
 pub fn split_quoted(text: &str) -> Vec<String> {
     let mut out = Vec::new();
-    let mut words = text.split_whitespace().peekable();
-    while let Some(word) = words.next() {
-        let Some(open) = word.strip_prefix('"') else {
-            out.push(word.to_string());
-            continue;
-        };
-        if let Some(inner) = open.strip_suffix('"') {
-            out.push(inner.to_string());
+    let mut rest = text.trim_start();
+    while !rest.is_empty() {
+        let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+        let word = &rest[..end];
+        // 따옴표로 시작한 낱말이면, 공백 앞에 오는 닫는 따옴표(또는 끝)까지를 원문 그대로 한 칸으로
+        if word.len() > 1 && word.starts_with('"') && word.ends_with('"') {
+            out.push(word[1..word.len() - 1].to_string());
+            rest = rest[end..].trim_start();
             continue;
         }
-        // 닫는 따옴표로 끝나는 낱말까지 모은다. 끝까지 없으면 따옴표째 낱말로 돌려놓는다
-        let mut group = vec![open];
-        let mut closed = false;
-        while let Some(next) = words.peek().copied() {
-            words.next();
-            if let Some(last) = next.strip_suffix('"') {
-                group.push(last);
-                closed = true;
-                break;
+        if word.starts_with('"') {
+            let body = &rest[1..];
+            let close = body.char_indices().find(|&(i, c)| {
+                c == '"' && body[i + 1..].chars().next().is_none_or(char::is_whitespace)
+            });
+            if let Some((i, _)) = close {
+                out.push(body[..i].to_string());
+                rest = body[i + 1..].trim_start();
+                continue;
             }
-            group.push(next);
         }
-        if closed {
-            out.push(group.join(" "));
-        } else {
-            out.push(word.to_string());
-            out.extend(group[1..].iter().map(|w| w.to_string()));
-        }
+        out.push(word.to_string());
+        rest = rest[end..].trim_start();
     }
     out
 }

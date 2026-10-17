@@ -253,4 +253,7 @@ fn quoted_arguments_stay_together() {
     assert_eq!(split_quoted(r#"{"text":"a b"}"#), vec![r#"{"text":"a"#, r#"b"}"#]);
     assert_eq!(split_quoted(r#""open ended"#), vec![r#""open"#, "ended"]);
     assert_eq!(split_quoted("plain  words"), vec!["plain", "words"]);
+    // 따옴표 안의 공백은 그대로 둔다
+    assert_eq!(split_quoted(r#"say "two  spaces" now"#), vec!["say", "two  spaces", "now"]);
+    assert_eq!(super::skip_words("  mc   say  \"a  b\"", 2), "\"a  b\"");
 }

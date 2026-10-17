@@ -273,6 +273,47 @@ fn stop_saba_processes(install_dir: &Path) {
     }
 }
 
+/// 다시 설치·덮어쓰기 전에 이 설치 폴더의 데몬을 끈다. 데몬은 인터페이스가 없어도 남아 있으므로
+/// 파일이 잠겨 설치가 실패하지 않게 한다. 먼저 `/api/daemon/shutdown`으로 정상 종료를 부탁하고,
+/// 20초 안에 안 끝나면 그 PID만 강제 종료한다 (트리째가 아니다: 게임 서버는 러너가 쥐고 있다)
+pub async fn stop_daemon_before_install(install_dir: &Path) {
+    let running = || processes_in(install_dir, &["saba-core"]);
+    if running().is_empty() {
+        return;
+    }
+    tracing::info!("[Install] A daemon from this install is running; asking it to shut down");
+    let port = saba_chan_updater_lib::config_file::ConfigFile::default_location()
+        .section("gui")
+        .get("ipcPort")
+        .and_then(|v| v.as_u64())
+        .and_then(|p| u16::try_from(p).ok())
+        .unwrap_or(saba_chan_updater_lib::constants::DEFAULT_IPC_PORT);
+    let token = std::fs::read_to_string(saba_chan_updater_lib::constants::token_file_path()).unwrap_or_default();
+    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(3)).build();
+    if let Ok(client) = client {
+        let sent = client
+            .post(format!("http://127.0.0.1:{}/api/daemon/shutdown", port))
+            .header("X-Saba-Token", token.trim())
+            .json(&serde_json::json!({}))
+            .send()
+            .await;
+        if let Err(e) = sent {
+            tracing::warn!("[Install] Shutdown request failed: {}", e);
+        }
+    }
+    for _ in 0..40 {
+        if running().is_empty() {
+            tracing::info!("[Install] Daemon stopped");
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+    for (pid, name) in running() {
+        tracing::warn!("[Install] {} (PID {}) did not stop; killing it", name, pid);
+        kill_pid(pid, false);
+    }
+}
+
 /// `pid|name|exe` 줄들에서 `install_dir` 안의 실행 파일만 고른다. name은 확장자 뗀 이름
 fn filter_processes(listing: &str, install_dir: &Path, names: &[&str]) -> Vec<(u32, String)> {
     let norm = |p: &str| p.replace('\\', "/").trim_end_matches('/').to_lowercase();

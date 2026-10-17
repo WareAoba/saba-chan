@@ -490,9 +490,10 @@ async fn main() -> anyhow::Result<()> {
     let ctrl_c_cancel = shutdown_token.clone();
     let stop_requested = stop_requested_token.clone();
     tokio::spawn(async move {
-        // 종료 경로는 하나: Ctrl+C/SIGTERM, API(/api/daemon/shutdown, unregister), 워치독 모두 여기로
+        // 종료 경로는 하나: Ctrl+C·SIGTERM, API(/api/daemon/shutdown, unregister?shutdown=true, 업데이터) 모두 여기로
         tokio::select! {
             _ = tokio::signal::ctrl_c() => tracing::info!("Shutdown signal received, cleaning up..."),
+            _ = sigterm() => tracing::info!("SIGTERM received, cleaning up..."),
             _ = stop_requested.cancelled() => tracing::info!("Shutdown requested, cleaning up..."),
         }
 
@@ -621,6 +622,18 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+
+/// SIGTERM을 기다린다 (Unix). Windows에는 없으므로 끝나지 않는다
+async fn sigterm() {
+    #[cfg(unix)]
+    {
+        if let Ok(mut term) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            term.recv().await;
+            return;
+        }
+    }
+    std::future::pending::<()>().await
+}
 
 #[cfg(test)]
 mod tests {
