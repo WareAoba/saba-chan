@@ -20,6 +20,7 @@ import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { safeShowToast } from '../../utils/helpers';
 import { SabaToggle } from '../ui/SabaUI';
+import { DataTransferSection, dataTransferAvailable } from './DataTransferSection';
 import SabaStorage from './SabaStorage';
 import { TOKEN_COLORS } from '../../utils/syntaxHighlight';
 
@@ -893,6 +894,8 @@ function SettingsModal({
                                     ]}
                                 />
                             </div>
+
+                            {dataTransferAvailable() && <DataTransferSection />}
 
                             {/* GUI 컴포넌트 테스트 섹션 (개발자 모드 전용) */}
                             {devMode && (
