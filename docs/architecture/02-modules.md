@@ -124,6 +124,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `options` | **Vec<String>** | 문자열만 허용 |
 | `group` | String | 관례상 `saba-chan` / `advanced` / 없음(basic) |
 | `port` | bool | `false`. 네트워크 포트 값이면 true. 같은 게임 인스턴스를 여럿 만들 때 데몬이 겹치지 않게 옮긴다 |
+| `install` | bool | `false`. 서버를 만들 때 고르는 설정(받을 서버 파일이 달라지는 값). GUI 새 서버 화면과 CLI `server add`가 묻고 `POST /api/instances`의 `module_settings`로 보낸다. GUI는 select만 보인다 |
 
 - `fields`가 비어 있으면 `settings = None`이 된다.
 - 데몬이 직접 의미를 부여하는 setting 이름은 `rest_port`(기본 8212), `rest_host`(기본 127.0.0.1) (`:158-166`), 시작 경로를 고르는 `managed_start`(`mod.rs:1479-1489`), 자동 재시작의 `auto_restart`·`restart_on_unknown_exit`(`mod.rs:1993-1994`), 세션 로그 보관 수 `log_sessions_keep`(`mod.rs:1436-1439`)이다.
@@ -143,6 +144,8 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `inputs` | Vec<CommandInput> | |
 
 `command_template` 별칭은 없어졌다.
+
+`[commands] hook = true`면 lifecycle `instance_commands()`가 인스턴스마다 명령을 더 준다(설치된 플러그인 명령처럼 서버 폴더에 따라 달라지는 것). 결과는 `{success, commands:[명령 필드와 같은 모양 + group?], components?}`이다. 데몬(`crate::commands::InstanceCommands`)은 module.toml 명령 뒤에 붙여 같은 방식으로 해석하고, module.toml의 이름·별명과 겹치는 것과 이름에 공백이 있는 것은 뺀다. 명령 실행은 module.toml에서 못 찾은 이름일 때만 이 목록을 보며 60초 동안 기억한 값을 쓰고, `GET /api/instance/:id/commands`는 매번 새로 읽는다(`D:src/ipc/handlers/command.rs` `instance_commands`). `fields` 없이 `hook`만 있어도 된다.
 
 `[[commands.fields.inputs]]` (`CommandInputToml` `:738-757`)의 허용 키: `name`✔, `label`, `type`, `required`, `placeholder`, `default`, `min`, `max`, `options`. 데몬이 입력을 묶고 검사할 때 이 값을 쓴다 (`commands/mod.rs:133-`).
 
@@ -227,7 +230,9 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 - `list_versions`: 데몬은 `latest.release` 또는 `latest_release`만 읽는다 (`instance.rs:343-358`).
 - `get_installed_version`: `version`.
 - `get_credentials`: `success`, `rest_username`, `rest_password`. 데몬은 REST 자격증명만 쓴다 (`command.rs:450-452, 531-558`). 지금은 palworld만 구현한다. minecraft·zomboid는 RCON 값만 돌려주던 이 함수를 지웠다.
-- `import_settings`: `success`, `settings{}`. `port`·`rest_port`와 credential_map의 게임 키(→ `rest_password`)는 인스턴스 필드로도 맞춘다 (`D:src/instance/mod.rs:154-186`).
+- `import_settings`: `success`, `settings{}`. `port`·`rest_port`와 credential_map의 게임 키(→ `rest_password`)는 인스턴스 필드로도 맞춘다 (`D:src/instance/mod.rs:154-186`). 마이그레이션에서는 `executable_path`(작업 폴더 기준 상대 경로, 모듈이 찾은 서버 실행 파일)와 `detected`(판정 결과, 데몬은 내용을 보지 않고 생성 응답에 넘긴다)도 읽는다.
+- `instance_commands`: `success`, `commands[]`(명령 필드 + `group`), `components` (`[commands] hook = true`일 때).
+- `install_server`: config에 인스턴스 설정 `settings{}`가 온다(프로비저닝·업데이트).
 - `backup_paths`: `success`, `paths[]` (`[backup] hook = true`일 때).
 
 ### 2.3 데몬이 호출하는 함수 전체 목록과 전달 config
@@ -245,6 +250,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 | `reset_properties` | `POST /properties/reset` | 위와 같음 |
 | `reset_server` | `POST /server/reset` | 위와 같음 |
 | `import_settings` | 마이그레이션 인스턴스 생성 `instance.rs:527-531`, `GET /api/instance/:id/settings/live` (`managed.rs:150-176`) | 마이그레이션은 `working_dir`만, live는 위와 같음 |
+| `instance_commands` | `GET /api/instance/:id/commands`, module.toml에 없는 이름의 명령 실행 (`[commands] hook = true`일 때, `D:src/ipc/handlers/command.rs`) | `working_dir`, 인스턴스 값(`insert_instance_fields`) |
 | `accept_eula` | `POST /accept-eula` | `working_dir` |
 | `diagnose_log` | `POST /diagnose` | `working_dir`, `log_lines[]`(managed일 때 최근 500줄 중 이번 실행분, `mod.rs:1704-1712`) |
 | `list_versions` | `GET /api/module/:name/versions`, 프로비저닝(download 방식) | `include_snapshots`, `page`, `per_page` 또는 `{}` |
@@ -398,10 +404,12 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 | 항목 | 내용 |
 |---|---|
 | protocols | `supported=["stdin"]`, default stdin, `interaction_mode=console` |
+| 서버 종류 | 설정 `server_type`(`install = true`): vanilla, paper, folia, purpur, pufferfish, spigot, craftbukkit, fabric, quilt, forge, neoforge. 판정·설치 소스·실행 대상은 `M:minecraft/server_types.py`의 표(`SERVER_TYPES`, versions.list 접두사, Main-Class, 폴더 흔적)만 읽는다. 판정은 jar 안의 `META-INF/versions.list`(번들된 서버 jar 이름)와 MANIFEST Main-Class, 그다음 폴더 흔적(`config/paper-global.yml`, `purpur.yml`, `.fabric/`, `libraries/net/neoforged/neoforge/<버전>/` 등)으로 한다. 설치는 vanilla(Mojang), paper·folia(PaperMC Fill v3, 안정 채널, sha256 검사), purpur(Purpur API, md5), fabric(Fabric meta 서버 런처 → `fabric-server-launch.jar`)만 되고 나머지는 가져오기로 추가한다. 1.17+ Forge/NeoForge는 `@libraries/…/<버전>/win_args.txt`(또는 unix)로 띄운다. 고른 종류와 서버 파일이 다르면 `validate`가 `SERVER_TYPE_MISMATCH` 경고를 낸다 |
+| 플러그인·모드 | `M:minecraft/plugins.py`가 `plugins/*.jar`·`mods/*.jar`의 `paper-plugin.yml`·`plugin.yml`·`fabric.mod.json`·`quilt.mod.json`·`META-INF/(neoforge.)mods.toml`을 읽어 판정한다(파일 이름은 보지 않는다, `.jar.disabled`는 꺼짐). `instance_commands()`가 plugin.yml에 선언된 명령을 자유 입력 한 칸(`{args}`)으로, `M:minecraft/plugin_catalog/<slug>.json`(플러그인 id `match`가 키, 공식 문서·소스 기준)의 명령을 입력 칸까지 준다. 한국어 문구는 `plugin_catalog/locales/ko.json`, 없으면 데이터의 영어. 카탈로그 22종 740개(EssentialsX·Spawn·Chat·Discord, LuckPerms, WorldEdit, WorldGuard, Multiverse Core·Portals·NetherPortals·Inventories, CoreProtect, GriefPrevention, Geyser, Floodgate, ViaVersion, PlaceholderAPI, Vault, spark, Chunky, ChunkyBorder, Citizens). 콘솔에서 못 쓰는 명령은 각 파일 `player_only`에 이름만 적는다 |
 | 설치 | `install.method="download"`. `ServerInstaller`(`:1480-1750`)가 Mojang `version_manifest_v2`(`:1477`)에서 버전 목록을 받아 jar를 내려받는다. Java는 `JavaDetector`와 `JavaDownloader`(Adoptium API `:284`)로 감지하거나 `<working_dir>/java/`에 번들로 받는다 |
-| 실행 | `get_launch_command`가 `java -Xmx/-Xms{ram}`, 선택적 Aikar flags, `jvm_args`, `-jar server.jar nogui`를 만든다. 시작 전에 `enable-rcon=false`를 강제한다(모든 모드) |
+| 실행 | `get_launch_command`가 `java -Xmx/-Xms{ram}`, 선택적 Aikar flags, `jvm_args`, 실행 대상(`server_types.launch_target`: `-jar <서버 jar> nogui` 또는 Forge/NeoForge 인자 파일)을 만든다. 시작 전에 `enable-rcon=false`를 강제한다(모든 모드) |
 | 설정 | `ServerPropertiesManager`가 `server.properties`를 읽고 쓴다. 모듈 폴더에 동봉된 `server.properties`를 기본값으로 쓴다 (`_load_default_properties` `:507`). settings 66개(saba-chan 5 / advanced 40 / basic 21) |
-| 명령 | 17개, 전부 `method="console"`(콘솔 stdin): say, give, save-all, list, weather, difficulty, gamemode, time, tp, kick, ban, pardon, op, deop, whitelist, seed, stop |
+| 명령 | `[commands] hook = true`(설치된 플러그인·모드 명령은 위 행). module.toml에는 17개, 전부 `method="console"`(콘솔 stdin): say, give, save-all, list, weather, difficulty, gamemode, time, tp, kick, ban, pardon, op, deop, whitelist, seed, stop |
 | 정지 | managed는 데몬이 stdin으로 `stop`을 보낸다. 모듈 `stop()`은 force가 아니면 콘솔 `stop`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고 30초 기다린 뒤에만 `force_kill`한다 (`:1266-1318`). ~~RCON `stop` 시도 후 실패하면 바로 강제 종료~~ → 해결. `command()`도 `daemon_stdin_command`로 콘솔에 보낸다 (`:1425-`) |
 | 기타 | `EulaManager`(accept_eula), `ErrorDetector`(diagnose_log), `MinecraftPing`(SLP 기반 status), `get_installed_version`(jar 내부 `version.json` 파싱), syntax_highlight 규칙 36개. 색은 모두 GUI 팔레트 토큰이다(`saba-chan-gui/src/utils/syntaxHighlight.js:16-36`). ~~팔레트에 없는 `notice`·`critical`을 써서 색이 안 나왔다~~ → 해결: `info`·`error`로 바꿨다 (zomboid의 `duration`도 `number`로) |
 | 미등록 | `get_credentials`만 없다(RCON 값만 돌려주던 것이라 지웠다). `import_settings`, `reset_properties`, `reset_server`는 등록됨 |

@@ -231,6 +231,7 @@
     "delete_confirm_title": "서버 삭제",
     "delete_confirm_message": "서버 '{{name}}'을(를) 삭제하시겠습니까?",
     "server_added": "인스턴스 '{{name}}'이(가) 추가되었습니다",
+    "server_detected": "감지한 서버: {{type}} {{version}} · 플러그인·모드 {{count}}개{{names}}",
     "server_provisioned": "인스턴스 '{{name}}'이(가) 프로비저닝되었습니다",
     "provisioning": "프로비저닝 중…",
     "provision_failed_title": "프로비저닝 실패",

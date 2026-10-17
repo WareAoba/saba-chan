@@ -101,6 +101,25 @@ pub async fn create_instance(
                 instance.rest_port = Some(loaded_module.metadata.default_rest_port());
             }
 
+            // 만들 때 고른 설정 (예: 마인크래프트 서버 종류 — 설치할 jar가 달라진다).
+            // 모듈이 선언한 이름만, select는 고를 수 있는 값만 받는다
+            if let (Some(chosen), Some(settings)) = (
+                payload.get("module_settings").and_then(|v| v.as_object()),
+                loaded_module.metadata.settings.as_ref(),
+            ) {
+                for field in &settings.fields {
+                    let Some(value) = chosen.get(&field.name) else { continue };
+                    let allowed = match (&field.options, value.as_str()) {
+                        (Some(options), Some(v)) => options.iter().any(|o| o == v),
+                        (Some(_), None) => false,
+                        (None, _) => !value.is_object() && !value.is_array(),
+                    };
+                    if allowed {
+                        instance.module_settings.insert(field.name.clone(), value.clone());
+                    }
+                }
+            }
+
             // settings.fields의 default 값을 module_settings에 자동 채우기
             if let Some(ref settings) = loaded_module.metadata.settings {
                 for field in &settings.fields {
@@ -308,6 +327,8 @@ pub async fn create_instance(
                         let tracker_done = tracker.clone();
                         let name_done = instance_name.clone();
                         let id_done = id.clone();
+                        // install_server가 보는 인스턴스 설정 (서버 종류처럼 받을 파일을 바꾸는 값)
+                        let install_settings = instance.module_settings.clone();
 
                         // Drop supervisor lock before spawning background task
                         drop(supervisor);
@@ -380,6 +401,7 @@ pub async fn create_instance(
                                 let mut config = serde_json::json!({
                                     "install_dir": &install_dir_str,
                                     "accept_eula": true,
+                                    "settings": &install_settings,
                                 });
                                 if let Some(ref ver) = version {
                                     config["version"] = serde_json::json!(ver);
@@ -524,6 +546,7 @@ pub async fn create_instance(
                         .map(|m| (m.metadata.credential_map.clone(), m.metadata.setting_types()))
                         .unwrap_or_default();
                     drop(supervisor);
+                    let mut detected: Option<Value> = None;
                     if let Some((_, ref lifecycle_path, ref _server_exe)) = module_install {
                         let import_config = json!({
                             "working_dir": instance.working_dir,
@@ -535,6 +558,17 @@ pub async fn create_instance(
                                         instance.apply_imported_settings(settings, &credential_map, &setting_types);
                                         tracing::info!("Migration import_settings: {} settings imported for '{}'", settings.len(), instance_name);
                                     }
+                                    // 모듈이 서버 파일을 직접 찾았으면 (예: paper-1.21.4.jar) 그것을 쓴다
+                                    if let (Some(rel), Some(dir)) = (
+                                        result.get("executable_path").and_then(|v| v.as_str()),
+                                        instance.working_dir.as_deref(),
+                                    ) {
+                                        let resolved = std::path::Path::new(dir).join(rel);
+                                        if resolved.is_file() && resolved.starts_with(dir) {
+                                            instance.executable_path = Some(resolved.to_string_lossy().to_string());
+                                        }
+                                    }
+                                    detected = result.get("detected").cloned();
                                 }
                             }
                             Err(e) => {
@@ -544,7 +578,11 @@ pub async fn create_instance(
                     }
                     // 마이그레이션 변경사항 저장 (executable_path, import된 설정 등)
                     let _ = state.supervisor.write().await.instance_store.update(&id, instance.clone());
-                    let response = json!({ "success": true, "id": id });
+                    // 모듈이 판정한 것(서버 종류, 설치된 플러그인 등)을 그대로 돌려준다
+                    let mut response = json!({ "success": true, "id": id });
+                    if let Some(detected) = detected {
+                        response["detected"] = detected;
+                    }
                     (StatusCode::CREATED, Json(response)).into_response()
                 }
             }
@@ -1264,6 +1302,7 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
     let supervisor_arc = state.supervisor.clone();
     let instance_name = instance.name.clone();
     let module_name_owned = instance.module_name.clone();
+    let install_settings = instance.module_settings.clone();
 
     // 프로비저닝 상태 등록 (기존 인스턴스 업데이트 — 실패해도 롤백 대상이 아니다)
     tracker.take_creating(&instance_name);
@@ -1340,6 +1379,7 @@ pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::t
             let config = serde_json::json!({
                 "install_dir": &install_dir_str,
                 "accept_eula": true,
+                "settings": &install_settings,
             });
 
             let tracker_progress = tracker_done.clone();

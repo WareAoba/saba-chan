@@ -723,7 +723,7 @@ export function useServerActions({
 
     // ── handleAddServer ─────────────────────────────────────
     const handleAddServer = async (payload) => {
-        // payload = { name, module_name, accept_eula?, migration_source? }
+        // payload = { name, module_name, accept_eula?, migration_source?, module_settings? }
         const serverName = typeof payload === 'string' ? payload : payload?.name;
         const moduleName = typeof payload === 'string' ? arguments[1] : payload?.module_name;
 
@@ -752,6 +752,11 @@ export function useServerActions({
                 module_name: moduleName,
                 // executable_path는 모듈의 server_executable + working_dir에서 자동 해석됨
             };
+
+            // 만들 때 고른 모듈 설정 (예: 서버 종류)
+            if (payload?.module_settings && Object.keys(payload.module_settings).length > 0) {
+                instanceData.module_settings = payload.module_settings;
+            }
 
             // 마이그레이션: 기존 서버 디렉토리 직접 연결
             if (payload?.migration_source) {
@@ -813,10 +818,22 @@ export function useServerActions({
                     setShowModuleManager(false);
                     fetchServers();
                 } else {
+                    // 마이그레이션: 모듈이 판정한 서버 종류와 플러그인·모드
+                    const detected = result.detected;
+                    const components = (detected?.components || []).filter((c) => c.enabled !== false);
+                    const detectedLine = detected?.server_type
+                        ? '\n' +
+                          t('server_actions.server_detected', {
+                              type: detected.server_type,
+                              version: detected.version || '',
+                              count: components.length,
+                              names: components.length ? ` (${components.map((c) => c.name).join(', ')})` : '',
+                          })
+                        : '';
                     setModal({
                         type: 'success',
                         title: t('command_modal.success'),
-                        message: t('server_actions.server_added', { name: serverName }),
+                        message: t('server_actions.server_added', { name: serverName }) + detectedLine,
                     });
                     setShowModuleManager(false);
                     fetchServers();

@@ -392,6 +392,7 @@ mod tests {
             options: None,
             group: None,
             port: false,
+            install: false,
         }
     }
 

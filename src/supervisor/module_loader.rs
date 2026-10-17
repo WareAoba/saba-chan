@@ -250,9 +250,13 @@ pub struct ModuleSettings {
     pub fields: Vec<SettingField>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ModuleCommands {
     pub fields: Vec<CommandField>,
+    /// true면 lifecycle `instance_commands()`가 인스턴스마다 명령을 더 준다 (설치된 플러그인 명령 등).
+    /// 해석은 `crate::commands::InstanceCommands`
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hook: bool,
 }
 
 /// 콘솔 구문 하이라이팅 — 모듈별로 정의되는 로그 하이라이팅 규칙
@@ -343,6 +347,10 @@ pub struct SettingField {
     /// 네트워크 포트 값인가. 같은 게임을 여러 개 만들 때 데몬이 겹치지 않게 옮긴다
     #[serde(default)]
     pub port: bool,
+    /// 서버를 만들 때 고르는 설정 (받을 서버 파일이 달라지는 값. 예: 마인크래프트 서버 종류).
+    /// GUI·CLI가 만들기 화면에서 묻고 `POST /api/instances`의 `module_settings`로 보낸다
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub install: bool,
 }
 
 /// 인스턴스 필드로도 저장되는 포트 설정 이름 (`ServerInstance::port` 등)
@@ -658,6 +666,9 @@ struct SettingFieldToml {
     /// 네트워크 포트 값이면 true. 인스턴스를 만들 때 다른 인스턴스와 겹치지 않게 옮겨진다
     #[serde(default)]
     port: bool,
+    /// 서버를 만들 때 고르는 설정이면 true (설치할 파일이 달라지는 값)
+    #[serde(default)]
+    install: bool,
 }
 
 fn default_field_type() -> String { "text".to_string() }
@@ -757,6 +768,9 @@ struct CommandAliasSectionToml {
 struct CommandsSection {
     #[serde(default)]
     fields: Vec<CommandFieldToml>,
+    /// lifecycle `instance_commands()`로 인스턴스별 명령을 더 받는다
+    #[serde(default)]
+    hook: bool,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -869,6 +883,7 @@ impl ModuleToml {
                 options: f.options,
                 group: f.group,
                 port: f.port,
+                install: f.install,
             }).collect();
             if fields.is_empty() { None } else { Some(ModuleSettings { fields }) }
         } else {
@@ -897,7 +912,7 @@ impl ModuleToml {
                     options: i.options,
                 }).collect(),
             }).collect();
-            if fields.is_empty() { None } else { Some(ModuleCommands { fields }) }
+            if fields.is_empty() && !c.hook { None } else { Some(ModuleCommands { fields, hook: c.hook }) }
         } else {
             None
         };
@@ -1348,6 +1363,16 @@ entry = "lifecycle.py"
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("name"), "Error should mention missing field 'name': {}", err_msg);
+    }
+
+    #[test]
+    fn commands_hook_alone_keeps_the_commands_section() {
+        let meta = parse_module_toml(
+            "[module]\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[commands]\nhook = true\n",
+        )
+        .unwrap();
+        let commands = meta.commands.expect("hook without fields still declares the section");
+        assert!(commands.hook && commands.fields.is_empty());
     }
 
     #[test]

@@ -874,6 +874,7 @@ mod tests {
                         inputs: vec![],
                     },
                 ],
+                hook: false,
             }),
         };
 
@@ -983,6 +984,7 @@ mod tests {
                                 ],
                             },
                         ],
+                        hook: false,
                     }),
                 },
             ],
