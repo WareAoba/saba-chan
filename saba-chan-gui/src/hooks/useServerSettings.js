@@ -29,8 +29,6 @@ const fieldValue = (v) => (v === undefined || v === null ? null : String(v));
 /** 데몬이 인스턴스 최상위에 저장하는 공통 필드 (src/ipc/handlers/instance.rs known_fields). 이 값들은 module_settings가 낡았을 수 있다 */
 const TOP_LEVEL_FIELDS = new Set([
     'port',
-    'rcon_port',
-    'rcon_password',
     'rest_host',
     'rest_port',
     'rest_username',
