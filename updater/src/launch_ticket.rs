@@ -19,6 +19,7 @@ pub fn core_predates_tickets(installed_core: Option<&str>) -> bool {
     use crate::version::SemVer;
     let since = SemVer::parse(CORE_ISSUES_TICKETS_SINCE).expect("valid version");
     match installed_core {
+        // 0.1.1 설치는 코어 버전을 적은 적이 없다
         None => true,
         Some(v) => SemVer::parse(v).is_some_and(|v| v < since),
     }
@@ -31,25 +32,45 @@ pub fn record_core_version(version: &str) {
     }
 }
 
-/// 표 없는 적용끼리도 한 번에 하나만: 살아 있는 다른 프로세스가 쥐고 있으면 false
+/// 표 없는 적용끼리도 한 번에 하나만: 살아 있는 다른 프로세스가 쥐고 있으면 false.
+/// 잠금은 PID가 이미 적힌 임시 파일을 덮어쓰지 않는 하드 링크로 한 번에 만든다.
+/// 비었거나 읽을 수 없는 잠금은 쥔 것으로 본다
 pub fn claim_legacy_apply(staging_dir: &Path) -> bool {
-    use std::io::Write;
     let lock = staging_dir.join(format!("{}.legacy-lock", FILE_NAME));
+    let pid = std::process::id();
+    let tmp = staging_dir.join(format!("{}.legacy-lock.{}", FILE_NAME, pid));
     let _ = std::fs::create_dir_all(staging_dir);
-    for _ in 0..2 {
-        match std::fs::OpenOptions::new().write(true).create_new(true).open(&lock) {
-            Ok(mut f) => return write!(f, "{}", std::process::id()).is_ok(),
-            Err(_) => {
-                let holder = std::fs::read_to_string(&lock).ok().and_then(|s| s.trim().parse::<u32>().ok());
-                if holder.is_some_and(crate::ProcessChecker::is_pid_running) {
-                    return false;
-                }
-                // 죽은 프로세스가 남긴 잠금은 치운다
-                let _ = std::fs::remove_file(&lock);
-            }
-        }
+    if std::fs::write(&tmp, pid.to_string()).is_err() {
+        return false;
     }
-    false
+    let mut claimed = false;
+    for _ in 0..2 {
+        if std::fs::hard_link(&tmp, &lock).is_ok() {
+            claimed = true;
+            break;
+        }
+        let Some(dead) = read_pid(&lock) else { break };
+        if crate::ProcessChecker::is_pid_running(dead) {
+            break;
+        }
+        // 죽은 프로세스의 잠금: 이름을 바꿔 하나만 차지하고, 그사이 바뀌었으면 되돌린다
+        let stale = staging_dir.join(format!("{}.legacy-lock.stale-{}", FILE_NAME, pid));
+        if std::fs::rename(&lock, &stale).is_err() {
+            break;
+        }
+        if read_pid(&stale) != Some(dead) {
+            let _ = std::fs::hard_link(&stale, &lock);
+            let _ = std::fs::remove_file(&stale);
+            break;
+        }
+        let _ = std::fs::remove_file(&stale);
+    }
+    let _ = std::fs::remove_file(&tmp);
+    claimed
+}
+
+fn read_pid(path: &Path) -> Option<u32> {
+    std::fs::read_to_string(path).ok()?.trim().parse().ok()
 }
 
 fn ticket_path(staging_dir: &Path) -> PathBuf {
@@ -99,6 +120,8 @@ mod tests {
         assert!(!claim_legacy_apply(tmp.path()), "this process still holds it");
         std::fs::write(tmp.path().join("apply-ticket.legacy-lock"), "4000000000").unwrap();
         assert!(claim_legacy_apply(tmp.path()), "a dead holder's lock is taken over");
+        std::fs::write(tmp.path().join("apply-ticket.legacy-lock"), "").unwrap();
+        assert!(!claim_legacy_apply(tmp.path()), "an empty lock counts as held");
     }
 
     #[test]

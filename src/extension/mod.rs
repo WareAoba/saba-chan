@@ -669,11 +669,19 @@ impl ExtensionManager {
         };
         let dest = self.extensions_dir.join(Self::python_safe_dir_name(&ext_id));
         Self::swap_into_place(&staging, &dest)?;
+        Self::record_files(&ext_id, &dest);
         if let Err(e) = std::fs::remove_file(zip_path) {
             tracing::warn!("Failed to remove zip after extraction: {}", e);
         }
         tracing::info!("Extracted zip extension '{}' to {}", ext_id, dest.display());
         Ok(Some(ext_id))
+    }
+
+    /// 설치한 파일의 해시를 적어 둔다. 무결성 검사가 이 기록과 비교한다
+    fn record_files(ext_id: &str, dest: &std::path::Path) {
+        if let Err(e) = saba_chan_updater_lib::integrity::record_dir(&format!("ext-{}", ext_id), dest) {
+            tracing::warn!("Could not record installed files for extension '{}': {}", ext_id, e);
+        }
     }
 
     /// `staged` 폴더를 `dest` 자리에 둔다. 옛 `dest`는 새 폴더가 자리를 잡은 뒤에 지우고,
@@ -1418,6 +1426,7 @@ impl ExtensionManager {
         }
         let dest = self.ext_dir_on_disk(ext_id);
         Self::swap_into_place(staged, &dest)?;
+        Self::record_files(ext_id, &dest);
         self.mount(ext_id)?;
         tracing::info!("Extension '{}' installed", ext_id);
         Ok(())
