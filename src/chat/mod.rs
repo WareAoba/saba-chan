@@ -335,7 +335,8 @@ impl<D: DaemonApi> Ctx<'_, D> {
             "status" => self.status(server),
             _ => match module.command(&command) {
                 Some(field) => self.run_defined(server, module, field, alias, cmd_alias, extra).await,
-                None => self.t("errors.command_not_found", &[]),
+                // 없는 명령이면 이 모듈에서 쓸 수 있는 명령을 같이 보여준다
+                None => format!("{}\n\n{}", self.t("errors.command_not_found", &[]), self.module_help(alias, servers)),
             },
         }
     }

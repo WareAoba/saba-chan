@@ -355,6 +355,18 @@ pub struct ExtensionLoadError {
 /// - `schema_version = 1`: 모르는 키, 데몬이 부르지 않는 hook, 없는 python_modules 참조는 오류
 /// - 없음(0): 같은 문제를 경고로만 돌려준다
 /// - 그보다 새 버전: 거부
+/// 익스텐션 id는 폴더 이름이 되므로 한 단계 이름이어야 한다: 영문·숫자·`-`·`_`만.
+pub fn is_valid_extension_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+fn ensure_valid_extension_id(id: &str) -> Result<()> {
+    if !is_valid_extension_id(id) {
+        anyhow::bail!("invalid extension id '{}': use only letters, digits, '-' and '_'", id);
+    }
+    Ok(())
+}
+
 pub fn parse_manifest(content: &str) -> Result<(ExtensionManifest, Vec<String>)> {
     let mut unknown = Vec::new();
     let mut de = serde_json::Deserializer::from_str(content.trim_start_matches('\u{feff}'));
@@ -363,6 +375,7 @@ pub fn parse_manifest(content: &str) -> Result<(ExtensionManifest, Vec<String>)>
         unknown.push(key.join("."))
     })?;
     de.end()?;
+    ensure_valid_extension_id(&manifest.id)?;
 
     let mut problems: Vec<String> = unknown.into_iter().map(|k| format!("unknown key '{}'", k)).collect();
     let mut hooks: Vec<_> = manifest.hooks.iter().collect();
@@ -1413,6 +1426,7 @@ impl ExtensionManager {
         bytes: &[u8],
         expected_sha256: Option<&str>,
     ) -> Result<PathBuf> {
+        ensure_valid_extension_id(ext_id)?;
         if let Some(expected) = expected_sha256.filter(|s| !s.is_empty()) {
             use sha2::{Digest, Sha256};
             let actual = hex::encode(Sha256::digest(bytes));
@@ -1455,6 +1469,10 @@ impl ExtensionManager {
         staged: &std::path::Path,
         running_ext_data: &[(&str, &HashMap<String, Value>)],
     ) -> Result<()> {
+        if let Err(e) = ensure_valid_extension_id(ext_id) {
+            let _ = std::fs::remove_dir_all(staged);
+            return Err(e);
+        }
         let using = self.instances_using_ext(ext_id, running_ext_data);
         if !using.is_empty() {
             let _ = std::fs::remove_dir_all(staged);
@@ -1656,6 +1674,18 @@ pub async fn run_hook_to(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn extension_id_must_be_a_single_folder_name() {
+        for ok in ["steamcmd", "music-bot", "a_b2"] {
+            assert!(is_valid_extension_id(ok), "{}", ok);
+        }
+        for bad in ["", "../instances", "..", "a/b", "a\\b", "C:x", "/abs", "a.b"] {
+            assert!(!is_valid_extension_id(bad), "{}", bad);
+        }
+        let err = parse_manifest(r#"{"id":"../instances","name":"x","version":"1.0.0"}"#).unwrap_err();
+        assert!(err.to_string().contains("invalid extension id"), "{}", err);
+    }
 
     #[test]
     fn test_evaluate_condition_bool_true() {
