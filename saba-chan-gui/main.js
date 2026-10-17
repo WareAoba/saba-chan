@@ -1598,6 +1598,16 @@ ipcMain.handle('managed:stdin', async (_event, instanceId, command) => {
 const consolePopoutWindows = new Map(); // instanceId → BrowserWindow
 
 // 열린 팝아웃 목록: 메인 창을 다시 불러오면 renderer가 이것으로 상태를 맞춘다
+// 데몬 로그 버퍼 (GET /api/daemon/console): 하단 활동 줄·데몬 콘솔 창용
+ipcMain.handle('daemon:console', (_event, opts) => {
+    const { since, count } = opts || {};
+    const params = new URLSearchParams();
+    if (since !== undefined && since !== null) params.set('since', String(since));
+    if (count) params.set('count', String(count));
+    const qs = params.toString();
+    return daemonCall('get', `/api/daemon/console${qs ? `?${qs}` : ''}`, undefined, 10000);
+});
+
 ipcMain.handle('console:popoutList', () =>
     [...consolePopoutWindows.entries()].filter(([, win]) => win && !win.isDestroyed()).map(([id]) => id),
 );

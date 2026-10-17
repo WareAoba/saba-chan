@@ -63,6 +63,8 @@ contextBridge.exposeInMainWorld('api', {
     consolePopout: (instanceId, serverName) => ipcRenderer.invoke('console:popout', instanceId, serverName),
     // 지금 열린 콘솔 팝아웃의 instanceId 목록 (메인 창을 다시 불러온 뒤 상태를 맞출 때)
     consolePopoutList: () => ipcRenderer.invoke('console:popoutList'),
+    // 데몬 자신의 로그 버퍼: {since?, count?} → {lines: [{id, timestamp, level, target, message}], count}
+    daemonConsole: (opts) => ipcRenderer.invoke('daemon:console', opts),
     consoleFocusPopout: (instanceId) => ipcRenderer.invoke('console:focusPopout', instanceId),
     consolePopin: (instanceId) => ipcRenderer.invoke('console:popin', instanceId),
     consoleToggleAlwaysOnTop: (instanceId, pinned) => ipcRenderer.invoke('console:toggleAlwaysOnTop', instanceId, pinned),

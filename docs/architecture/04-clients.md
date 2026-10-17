@@ -77,6 +77,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | managedConsole (55) | managed:console | 1588 | GET /api/instance/:id/console?since&count | ✓ 678 |
 | managedStdin (56) | managed:stdin | 1599 | POST /api/instance/:id/stdin | ✓ 679 |
 | consolePopout/FocusPopout/Popin/ToggleAlwaysOnTop (58-61) | console:* | 1611-1721 | Electron 창 조작만 (daemon 호출 없음) | n/a |
+| daemonConsole (67) | daemon:console | 1600 | GET /api/daemon/console?since&count. `{lines:[{id, timestamp, level, target, message}], count}` 그대로 | ✓ |
 | consolePopoutList (65) | console:popoutList | 1600 | 열린(파괴되지 않은) 팝아웃 창의 instanceId 배열. daemon 호출 없음 | n/a |
 | updaterCheck (69) | updater:check | 2267 | POST /api/updates/check | ✓ updates.rs:101 |
 | updaterStatus (70) | updater:status | 2405 | GET /api/updates/status | ✓ 100 |
