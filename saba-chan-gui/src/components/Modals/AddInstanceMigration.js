@@ -70,14 +70,8 @@ export function AddInstanceMigration({ extensions, servers, onAddServer, onStepC
                     }),
                 });
 
-                // 데몬이 module.toml [detection].dir_signatures 로 판정한다 (POST /api/modules/detect)
-                const det = await window.api.moduleDetect(path);
-                if (det?.error) {
-                    setScanError(det.error);
-                    setScanning(false);
-                    return;
-                }
-                const names = (det?.matches || []).map((m) => m.name);
+                // scanDir가 곧 POST /api/modules/detect다: 데몬이 module.toml [detection].dir_signatures 로 판정한 결과
+                const names = (result.matches || []).map((m) => m.name);
                 const ext = names.map((n) => extensions.find((e) => e.name === n)).find(Boolean);
                 const matched = ext ? withName(ext) : null;
 
