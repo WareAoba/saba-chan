@@ -32,20 +32,20 @@ def get_launch_command(config):
     working_dir = config.get("working_dir", MODULE_DIR)
     port = config.get("port", 27015)
 
+    # 계약 (docs/architecture/02-modules.md): success, program, args, working_dir, env_vars
     if sys.platform == "win32":
-        return {
-            "command": "cmd.exe",
-            "args": ["/c", f"echo E2E_MOCK_SERVER_STARTED port={port} && timeout /t 86400 /nobreak > nul"],
-            "cwd": working_dir,
-            "env": {"E2E_TEST": "1"}
-        }
+        program = "cmd.exe"
+        args = ["/c", f"echo E2E_MOCK_SERVER_STARTED port={port} && timeout /t 86400 /nobreak > nul"]
     else:
-        return {
-            "command": "/bin/sh",
-            "args": ["-c", f"echo 'E2E_MOCK_SERVER_STARTED port={port}' && sleep 86400"],
-            "cwd": working_dir,
-            "env": {"E2E_TEST": "1"}
-        }
+        program = "/bin/sh"
+        args = ["-c", f"echo 'E2E_MOCK_SERVER_STARTED port={port}' && sleep 86400"]
+    return {
+        "success": True,
+        "program": program,
+        "args": args,
+        "working_dir": working_dir,
+        "env_vars": {"E2E_TEST": "1"},
+    }
 
 
 def stop(config):

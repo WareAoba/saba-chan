@@ -92,6 +92,22 @@ fn setting_flag(instance: &crate::instance::ServerInstance, key: &str, default: 
     }
 }
 
+/// 모듈 함수가 성공을 알리지 않았을 때 사용자에게 보일 이유. 모듈이 준 `message`·`error`를 쓰고,
+/// 둘 다 없으면 계약 위반(예: `success`·`program` 없이 옛 키만 돌려줌)을 그대로 알린다
+pub(crate) fn module_failure(result: &Value, module: &str, function: &str) -> String {
+    let field = |k: &str| result.get(k).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
+    if let Some(msg) = field("message").or_else(|| field("error")) {
+        return msg.to_string();
+    }
+    let keys: Vec<&str> = result.as_object().map(|o| o.keys().map(String::as_str).collect()).unwrap_or_default();
+    format!(
+        "Module '{}' {}() did not report success (returned: {})",
+        module,
+        function,
+        if keys.is_empty() { "nothing".to_string() } else { keys.join(", ") }
+    )
+}
+
 impl Supervisor {
     pub fn new(modules_dir: &str) -> Self {
         let instances_dir = saba_chan_updater_lib::constants::resolve_instances_dir()
@@ -608,8 +624,7 @@ impl Supervisor {
         }
 
         if launch_result.get("success").and_then(|s| s.as_bool()) != Some(true) {
-            let msg = launch_result.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-            return Err(anyhow::anyhow!("{}", msg));
+            return Err(anyhow::anyhow!("{}", module_failure(&launch_result, module_name, "get_launch_command")));
         }
 
         let program = launch_result.get("program")
@@ -1339,8 +1354,7 @@ impl Supervisor {
         }
 
         if launch_result.get("success").and_then(|s| s.as_bool()) != Some(true) {
-            let msg = launch_result.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-            return Err(anyhow::anyhow!("{}", msg));
+            return Err(anyhow::anyhow!("{}", module_failure(&launch_result, module_name, "get_launch_command")));
         }
 
         let program = launch_result.get("program")
@@ -2415,6 +2429,15 @@ mod tests {
     }
 
     /// 시작 경로 정책 (C8): 인스턴스 설정 > 모듈이 콘솔 없음을 밝혔는지 > managed 기본
+    #[test]
+    fn a_module_failure_says_why_instead_of_unknown_error() {
+        assert_eq!(module_failure(&json!({"success": false, "message": "jar missing"}), "mc", "get_launch_command"), "jar missing");
+        assert_eq!(module_failure(&json!({"success": false, "error": "bad port"}), "mc", "get_launch_command"), "bad port");
+        let legacy = module_failure(&json!({"command": "sh", "args": []}), "e2e-mock", "get_launch_command");
+        assert!(legacy.contains("e2e-mock") && legacy.contains("command") && legacy.contains("args"), "{}", legacy);
+        assert!(module_failure(&Value::Null, "m", "f").contains("nothing"));
+    }
+
     #[test]
     fn managed_start_policy() {
         let tmp = tempfile::tempdir().unwrap();
