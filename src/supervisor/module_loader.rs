@@ -42,6 +42,9 @@ pub struct ModuleMetadata {
     /// [backup] 월드·세이브 백업 선언 (A2). 없으면 이 모듈은 백업을 지원하지 않는다
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub backup: Option<ModuleBackup>,
+    /// [permissions] 모듈 코드가 쓰는 능력 (M12). 코드 검사 결과와 대조한다
+    #[serde(default)]
+    pub permissions: ModulePermissions,
     #[serde(default)]
     pub log_pattern: Option<String>,  // regex pattern for log level extraction (e.g. "/(?P<level>INFO|WARN|ERROR|DEBUG)/")
     #[serde(default)]
@@ -108,6 +111,47 @@ pub struct ModuleMetadata {
     /// 로드는 됐지만 고쳐야 할 점 (스키마 이전 모듈의 모르는 키 등)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
+}
+
+/// `[permissions]` — 모듈 Python 코드가 쓰는 능력 (M12). 선언하지 않은 능력을 코드에서 찾으면
+/// `saba-core module audit`과 `GET /api/module/:name/audit`이 알린다. 새 권한은 여기와
+/// `PERMISSIONS`, `modules/saba_audit.py` 표에 한 줄씩 더한다
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct ModulePermissions {
+    /// 네트워크 접속 (socket, urllib, requests 등). 데몬 API 호출(daemon_rcon)은 포함하지 않는다
+    #[serde(default)]
+    pub network: bool,
+    /// 다른 프로그램 실행·프로세스 신호 (subprocess, os.system, os.kill 등)
+    #[serde(default)]
+    pub spawn_process: bool,
+    /// 네이티브 코드 (ctypes, cffi, winreg)
+    #[serde(default)]
+    pub native_code: bool,
+    /// 실행 중에 만든 코드 실행 (eval, exec, compile, 동적 __import__, pickle, importlib)
+    #[serde(default)]
+    pub dynamic_code: bool,
+    /// 환경 변수 전체 읽기 (dict(os.environ) 등)
+    #[serde(default)]
+    pub env_secrets: bool,
+    /// 서버 작업 폴더 밖의 파일 쓰기 (정적 검사로는 찾지 못한다: 선언만)
+    #[serde(default)]
+    pub fs_outside_instance: bool,
+}
+
+impl ModulePermissions {
+    /// 선언했는지. 모르는 이름이면 None (검사기가 새 권한을 먼저 알게 된 경우)
+    pub fn declares(&self, name: &str) -> Option<bool> {
+        Some(match name {
+            "network" => self.network,
+            "spawn_process" => self.spawn_process,
+            "native_code" => self.native_code,
+            "dynamic_code" => self.dynamic_code,
+            "env_secrets" => self.env_secrets,
+            "fs_outside_instance" => self.fs_outside_instance,
+            _ => return None,
+        })
+    }
 }
 
 /// `[backup]` — 무엇을 백업할지
@@ -451,6 +495,9 @@ struct ModuleToml {
     /// [backup] 월드·세이브 백업 (A2)
     #[serde(default)]
     backup: Option<ModuleBackup>,
+    /// [permissions] 모듈 코드가 쓰는 능력 (M12)
+    #[serde(default)]
+    permissions: ModulePermissions,
     /// [errors] 오류 코드 → 사용자 메시지 (채팅 명령 응답용)
     #[serde(default)]
     errors: std::collections::HashMap<String, String>,
@@ -898,6 +945,7 @@ impl ModuleToml {
             stop_timeout: self.config.as_ref().and_then(|c| c.stop_timeout),
             announce_command: self.config.as_ref().and_then(|c| c.announce_command.clone()),
             backup: self.backup,
+            permissions: self.permissions,
             interaction_mode: self.protocols.as_ref().and_then(|p| p.interaction_mode.clone()),
             protocols_supported: self.protocols.as_ref().and_then(|p| p.supported.clone()),
             protocols_default: self.protocols.as_ref().and_then(|p| p.default.clone()),

@@ -658,6 +658,7 @@ impl IPCServer {
             .route("/api/modules/manifest/:id/install", post(handlers::server::install_module_from_manifest))
             .route("/api/modules/:id", delete(handlers::server::remove_module))
             .route("/api/module/:name", get(handlers::server::get_module_metadata))
+            .route("/api/module/:name/audit", get(handlers::server::audit_module))
             // ── Instance CRUD ──
             .route("/api/instances", get(handlers::instance::list_instances).post(handlers::instance::create_instance))
             .route("/api/instances/reorder", put(handlers::instance::reorder_instances))
