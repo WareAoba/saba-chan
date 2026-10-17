@@ -8,6 +8,7 @@ pub mod instance;
 pub mod backup;  // 월드·세이브 백업 (A2)
 pub mod scheduler;  // 인스턴스 예약 작업 (A3)
 pub mod process_monitor;
+pub mod system_monitor;
 pub mod utils;
 pub mod extension;  // 범용 익스텐션 시스템
 pub mod validator;  // 설정값 타입 검증 및 포트 충돌 검사

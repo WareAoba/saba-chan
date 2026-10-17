@@ -92,6 +92,8 @@ pub enum Cmd {
         )]
         text: Vec<String>,
     },
+    /// CPU, memory, disk and network use, and each server's share
+    Monitor(MonitorArgs),
     /// Versions of every installed part
     Version,
     /// Open the interactive shell
@@ -101,6 +103,16 @@ pub enum Cmd {
         #[arg(value_name = "SHELL")]
         shell: clap_complete::Shell,
     },
+}
+
+#[derive(Args, Debug)]
+pub struct MonitorArgs {
+    /// Keep refreshing until Ctrl+C
+    #[arg(short, long)]
+    pub watch: bool,
+    /// Seconds between refreshes with --watch
+    #[arg(long, default_value_t = 2, value_name = "SECONDS")]
+    pub interval: u64,
 }
 
 // ── backup / schedule / chatbot ──

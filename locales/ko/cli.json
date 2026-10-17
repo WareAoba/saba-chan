@@ -520,7 +520,8 @@
       "chatbot.clear": "챗봇 설정과 키 모두 지우기",
       "chatbot.forget": "챗봇이 기억하는 내용 지우기 (모든 디스코드 서버 또는 하나)",
       "module.audit": "모듈의 Python 코드가 하는 일을 선언한 권한과 비교",
-      "extension.audit": "익스텐션의 Python 코드가 하는 일을 선언한 권한과 비교"
+      "extension.audit": "익스텐션의 Python 코드가 하는 일을 선언한 권한과 비교",
+      "monitor": "CPU·메모리·디스크·네트워크 사용량과 서버별 몫"
     },
     "arg": {
       "json": "글 대신 기계가 읽는 JSON으로 출력",
@@ -587,7 +588,9 @@
       "message": "공지할 말",
       "delete": "저장된 키를 지우기",
       "chatbot.set.guild": "이 디스코드 서버에만 (서버 id)",
-      "chatbot.forget.guild": "이 디스코드 서버만 (서버 id)"
+      "chatbot.forget.guild": "이 디스코드 서버만 (서버 id)",
+      "monitor.watch": "Ctrl+C까지 계속 새로 고침",
+      "monitor.interval": "--watch 새로 고침 간격 (초)"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 실행하면 대화형 셸이 열려요.\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },
@@ -700,5 +703,21 @@
       "where": "위치",
       "what": "코드"
     }
+  },
+  "monitor": {
+    "cpu": "CPU",
+    "memory": "메모리",
+    "disk_io": "디스크 IO",
+    "disk": "디스크",
+    "network": "네트워크",
+    "read_write": "읽기 {{read}} · 쓰기 {{write}}",
+    "disk_free": "남은 공간 {{free}} / {{total}}",
+    "rx_tx": "받기 {{rx}} · 보내기 {{tx}}",
+    "others": "나머지 프로세스",
+    "idle": "유휴·남은 공간",
+    "legend": "█ 서버(색) ·",
+    "none_running": "켜진 서버가 없어요",
+    "network_note": "네트워크는 서버별로 나누지 않은 전체 트래픽이에요. 디스크 IO·네트워크 막대는 지켜본 동안의 최대값 기준이에요.",
+    "watch_hint": "Ctrl+C로 끝내요"
   }
 }

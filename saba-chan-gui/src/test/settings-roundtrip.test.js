@@ -52,7 +52,7 @@ beforeEach(() => {
 describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => {
     // ── 저장 시 모든 7 필드가 payload에 포함되는지 검증 ──
 
-    it('save() payload에 GUI 17필드만 포함 (token/autoStart는 bot-config으로 이전)', async () => {
+    it('save() payload에 GUI 18필드만 포함 (token/autoStart는 bot-config으로 이전)', async () => {
         mockApi();
         const _store = useSettingsStore.getState();
         // Prepare: settingsPath 필요
@@ -86,6 +86,7 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
             consoleTextColor: '#cdd6f4',
             sidebarCompact: false,
             consoleFontScale: 100,
+            systemMonitorOpen: true,
         });
         // discordToken/discordAutoStart가 포함되지 않음을 확인
         expect(payload.discordToken).toBeUndefined();
@@ -98,6 +99,7 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
         { field: 'autoRefresh', saved: false, defaultVal: true },
         { field: 'refreshInterval', saved: 7777, defaultVal: 2000 },
         { field: 'ipcPort', saved: 33333, defaultVal: 57474 },
+        { field: 'systemMonitorOpen', saved: false, defaultVal: true },
         { field: 'consoleBufferSize', saved: 100, defaultVal: 2000 },
         // 테마 모드도 config.json이 원천 (예전엔 브라우저 저장소에만 있었다)
         { field: 'theme', saved: 'dark', defaultVal: 'auto' },
@@ -174,6 +176,7 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
             consoleTextColor: '#cdd6f4',
             sidebarCompact: false,
             consoleFontScale: 100,
+            systemMonitorOpen: true,
         });
 
         // Reset
@@ -495,6 +498,7 @@ describe('saveCurrentSettings 통합 (settings + botConfig 동시 저장)', () =
             consoleTextColor: '#cdd6f4',
             sidebarCompact: false,
             consoleFontScale: 100,
+            systemMonitorOpen: true,
         });
         expect(settingsPayload.discordToken).toBeUndefined();
         expect(settingsPayload.discordAutoStart).toBeUndefined();
