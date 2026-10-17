@@ -365,10 +365,11 @@ impl Session {
         if status.as_u16() == 204 {
             return Ok(());
         }
-        let body: Value = tokio::select! {
+        let text = tokio::select! {
             _ = self.cancel.cancelled() => return Ok(()),
-            b = resp.json() => b.unwrap_or(Value::Null),
+            b = resp.text() => b.unwrap_or_default(),
         };
+        let body = decode_poll(&text);
         if !status.is_success() {
             return Err(format!("poll {}: {}", status, body.get("error").and_then(|v| v.as_str()).unwrap_or("")));
         }
@@ -427,6 +428,63 @@ impl Session {
 }
 
 /// 알아보지 못한 입력은 실패와 코드로 돌려준다: 릴레이는 그 코드를 보고 모델 해석기에 정확한 명령을 묻는다
+/// poll 응답 본문. 릴레이가 이모지를 반으로 잘라 짝 없는 서로게이트(`\ud83d`)가 오면 serde_json이
+/// 본문 전체를 거부해 그 묶음의 명령이 다 사라진다: 짝 없는 서로게이트만 U+FFFD로 바꿔 다시 읽는다
+fn decode_poll(text: &str) -> Value {
+    match serde_json::from_str(text) {
+        Ok(v) => v,
+        Err(e) => match serde_json::from_str(&replace_lone_surrogates(text)) {
+            Ok(v) => {
+                tracing::warn!("[RelayAgent] poll body had broken text ({}); decoded with replacement characters", e);
+                v
+            }
+            Err(e) => {
+                tracing::warn!("[RelayAgent] poll body is not JSON ({}), {} bytes dropped", e, text.len());
+                Value::Null
+            }
+        },
+    }
+}
+
+/// JSON 문자열의 `\uXXXX` 중 짝이 없는 서로게이트를 `\ufffd`로
+fn replace_lone_surrogates(text: &str) -> String {
+    let hex = |s: &str| u16::from_str_radix(s, 16).ok();
+    let bytes = text.as_bytes();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    let mut last = 0;
+    while i < bytes.len() {
+        if bytes[i] != b'\\' {
+            i += 1;
+            continue;
+        }
+        // 이스케이프 하나: `\\`는 건너뛴다
+        if bytes.get(i + 1) != Some(&b'u') {
+            i += 2;
+            continue;
+        }
+        let Some(unit) = text.get(i + 2..i + 6).and_then(hex) else {
+            i += 2;
+            continue;
+        };
+        let low_next = || {
+            (text.get(i + 6..i + 8) == Some("\\u")).then(|| text.get(i + 8..i + 12).and_then(hex)).flatten()
+        };
+        match unit {
+            0xD800..=0xDBFF if low_next().is_some_and(|l| (0xDC00..=0xDFFF).contains(&l)) => i += 12,
+            0xD800..=0xDFFF => {
+                out.push_str(&text[last..i]);
+                out.push_str("\\ufffd");
+                i += 6;
+                last = i;
+            }
+            _ => i += 6,
+        }
+    }
+    out.push_str(&text[last..]);
+    out
+}
+
 fn raw_command_result(reply: crate::chat::Reply) -> Value {
     match reply.code {
         Some(code) => json!({ "success": false, "data": { "code": code, "error": reply.text, "args": reply.args } }),
@@ -491,6 +549,18 @@ fn allowed_instances_by_guild(node_settings: &Value) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_half_emoji_does_not_drop_the_whole_poll_batch() {
+        let body = r#"{"commands":[{"id":"1","payload":{"text":"say \ud83d"}},{"id":"2","payload":{"text":"ok 😀 \\ud83d"}}]}"#;
+        let v = decode_poll(body);
+        let cmds = v["commands"].as_array().unwrap();
+        assert_eq!(cmds.len(), 2);
+        assert_eq!(cmds[0]["payload"]["text"], "say \u{fffd}");
+        // 짝이 맞는 이모지와 이스케이프된 역슬래시 뒤의 글자는 그대로
+        assert_eq!(cmds[1]["payload"]["text"], "ok 😀 \\ud83d");
+        assert_eq!(decode_poll("not json"), Value::Null);
+    }
 
     #[test]
     fn allowed_instances_are_sent_only_for_guilds_that_list_them() {

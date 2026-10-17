@@ -298,7 +298,16 @@ pub fn redact(
     values.sort_by_key(|v| std::cmp::Reverse(v.len()));
     let scrub = |s: &str| values.iter().fold(s.to_string(), |acc, v| acc.replace(v.as_str(), MASK));
     let text = text.map(|t| scrub(&t));
-    let args = args.map(|a| if values.is_empty() { a } else { serde_json::from_str(&scrub(&a.to_string())).unwrap_or(a) });
+    // 직렬화한 글자가 아니라 값 하나하나에서 가린다 (따옴표가 든 비밀번호는 직렬화하면 모양이 바뀐다)
+    fn scrub_value(v: Value, scrub: &dyn Fn(&str) -> String) -> Value {
+        match v {
+            Value::String(s) => Value::String(scrub(&s)),
+            Value::Array(items) => Value::Array(items.into_iter().map(|i| scrub_value(i, scrub)).collect()),
+            Value::Object(map) => Value::Object(map.into_iter().map(|(k, v)| (k, scrub_value(v, scrub))).collect()),
+            other => other,
+        }
+    }
+    let args = args.map(|a| scrub_value(a, &scrub));
     (text, args)
 }
 
@@ -381,6 +390,10 @@ inputs = [{ name = "message", type = "text" }]
         // 평범한 명령은 그대로
         assert_eq!(r("say hello", json!(["hello"])), (Some("say hello".into()), Some(json!(["hello"]))));
         assert_eq!(redact(None, None, Some("stop"), None), (Some("stop".into()), None));
+        // 따옴표가 든 비밀번호도 인자 값 안에서 가린다 (직렬화한 글자에서는 모양이 바뀐다)
+        inst.module_settings.insert("admin_password".into(), json!("p\"ss1"));
+        let quoted = json!(["x p\"ss1"]);
+        assert_eq!(redact(Some(&module), Some(&inst), Some("say"), Some(&quoted)).1, Some(json!(["x ***"])));
     }
 
     #[tokio::test]
