@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useWindowSize } from '../../hooks/useWindowSize';
+import { useDiscordStore } from '../../stores/useDiscordStore';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { SINGLE_COLUMN_MAX_WIDTH } from '../servers/ServersPage';
@@ -15,6 +16,9 @@ import { WordsView } from './WordsView';
 
 export const DEFAULT_RELAY_URL = 'https://saba-chan.online';
 const AUTOSAVE_MS = 600;
+
+/** 짝짓기 전에 릴레이 주소(설정 화면에서 바꿨을 수 있다)를 config에 저장한다. 실패하면 false */
+const saveRelayUrl = () => useDiscordStore.getState().saveConfig();
 
 /** 연결 상태 머신: no_host → connecting → connected | error */
 export function cloudStateOf({ hostId, connected, connecting, error }) {
@@ -207,6 +211,7 @@ export function DiscordPage({
     // ── 페어링 ──
     const pairing = usePairing({
         relayUrl,
+        beforeStart: saveRelayUrl,
         onClaimed: async (s) => {
             if (s.hostId) setDiscordCloudHostId(s.hostId);
             if (s.nodeToken && window.api?.saveNodeToken) {
@@ -252,6 +257,7 @@ export function DiscordPage({
     const inviteBot = window.api?.relayBotInvite
         ? async () => {
               try {
+                  await saveRelayUrl();
                   const res = await window.api.relayBotInvite(relayUrl);
                   const url = res?.url || res?.inviteUrl || res?.invite_url;
                   if (!url) throw new Error(res?.error || 'no invite url');
