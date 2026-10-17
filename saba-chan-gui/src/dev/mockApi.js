@@ -131,6 +131,12 @@ const mockSpans = (text) => {
 
 const ok = (v = {}) => Promise.resolve(v);
 
+const mockBotSettings = {
+    locale: 'auto',
+    sleeping: false,
+    music: { enabled: true, ui: true, queueLines: 10, refreshInterval: 5000, normalize: true },
+};
+
 const mockPerms = {};
 const mockPermissions = (guildId) => {
     mockPerms[guildId] ??= {
@@ -459,6 +465,14 @@ const impl = {
     relayNodeChannelsSave: (guildId, patch) => {
         Object.assign(mockChannels, patch);
         return ok({ guildId, ...mockChannels });
+    },
+    // 디스코드 봇 취향 설정 (I2: GET/PATCH /api/discord/:guild/settings)
+    discordSettingsGet: (guildId) => ok({ guildId, ...mockBotSettings, sync: { ok: true } }),
+    discordSettingsSet: (guildId, patch) => {
+        const { music, ...rest } = patch;
+        Object.assign(mockBotSettings, rest);
+        if (music) Object.assign(mockBotSettings.music, music);
+        return ok({ success: true, settings: { guildId, ...mockBotSettings }, sync: { ok: true } });
     },
     // 데몬 액션 카탈로그 (P2: GET /api/actions, POST …/:id/plan·run)
     actionsList: ({ instance } = {}) =>

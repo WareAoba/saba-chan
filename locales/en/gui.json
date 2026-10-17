@@ -880,7 +880,30 @@
     "perm_owner_mismatch": "The relay reported a different owner ({{relay}}). The owner here stays {{owner}}. If the relay is right, change the owner.",
     "perm_owner_use_relay": "Use this owner",
     "perm_owner_use_relay_confirm": "Really make {{name}} ({{id}}) the owner",
-    "perm_commands_help_hint": "help and list are open to every level except banned, and can't be changed."
+    "perm_commands_help_hint": "help and list are open to every level except banned, and can't be changed.",
+    "tab_bot": "Bot settings",
+    "bot_settings": {
+      "loading": "Loading bot settings…",
+      "general_title": "General",
+      "language": "Bot language",
+      "language_auto": "Auto (follow app language)",
+      "sleeping": "Sleep",
+      "sleeping_hint": "When on, the bot won't answer server commands in this server.",
+      "music_title": "Music",
+      "music_enabled": "Music features",
+      "music_ui": "Music player panel",
+      "music_ui_hint": "Shows the current track and queue in the music channel.",
+      "music_normalize": "Volume normalization",
+      "music_normalize_hint": "Evens out loudness between tracks.",
+      "queue_lines": "Queue lines shown",
+      "lines": "lines",
+      "refresh": "Player refresh interval",
+      "range": "Enter a whole number from {{min}} to {{max}}.",
+      "not_synced": "Saved, but not applied to Discord yet. It will be applied on the next connection.",
+      "err_not_paired": "This server isn't paired.",
+      "err_invalid": "Invalid value: {{field}}",
+      "err_generic": "Couldn't change bot settings."
+    }
   },
   "maintenance": {
     "load_failed": "Couldn't load backups and schedules.",

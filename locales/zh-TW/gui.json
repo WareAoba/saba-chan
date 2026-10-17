@@ -879,7 +879,30 @@
     "perm_owner_mismatch": "中繼回報了另一位擁有者（{{relay}}）。此處擁有者仍為 {{owner}}。如果中繼是對的，請變更擁有者。",
     "perm_owner_use_relay": "改用此擁有者",
     "perm_owner_use_relay_confirm": "確認將 {{name}}（{{id}}）設為擁有者",
-    "perm_commands_help_hint": "help 與 list 對禁止以外的所有等級開放，且無法變更。"
+    "perm_commands_help_hint": "help 與 list 對禁止以外的所有等級開放，且無法變更。",
+    "tab_bot": "機器人設定",
+    "bot_settings": {
+      "loading": "正在載入機器人設定…",
+      "general_title": "一般",
+      "language": "機器人語言",
+      "language_auto": "自動（跟隨應用程式語言）",
+      "sleeping": "休眠",
+      "sleeping_hint": "開啟後，機器人在此伺服器中不回應伺服器指令。",
+      "music_title": "音樂",
+      "music_enabled": "音樂功能",
+      "music_ui": "音樂播放器面板",
+      "music_ui_hint": "在音樂頻道顯示目前曲目和佇列。",
+      "music_normalize": "音量平衡",
+      "music_normalize_hint": "讓不同曲目的音量更接近。",
+      "queue_lines": "佇列顯示行數",
+      "lines": "行",
+      "refresh": "播放器重新整理間隔",
+      "range": "請輸入 {{min}} 到 {{max}} 之間的整數。",
+      "not_synced": "已儲存，但尚未同步到 Discord。下次連線時會同步。",
+      "err_not_paired": "此伺服器尚未配對。",
+      "err_invalid": "無效的值：{{field}}",
+      "err_generic": "無法變更機器人設定。"
+    }
   },
   "maintenance": {
     "load_failed": "無法載入備份與排程資訊。",

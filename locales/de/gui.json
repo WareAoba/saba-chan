@@ -879,7 +879,30 @@
     "perm_owner_mismatch": "Das Relay meldet einen anderen Besitzer ({{relay}}). Hier bleibt {{owner}} Besitzer. Wenn das Relay recht hat, ändere den Besitzer.",
     "perm_owner_use_relay": "Diesen Besitzer verwenden",
     "perm_owner_use_relay_confirm": "{{name}} ({{id}}) wirklich zum Besitzer machen",
-    "perm_commands_help_hint": "help und list stehen allen Stufen außer Gesperrt offen und lassen sich nicht ändern."
+    "perm_commands_help_hint": "help und list stehen allen Stufen außer Gesperrt offen und lassen sich nicht ändern.",
+    "tab_bot": "Bot-Einstellungen",
+    "bot_settings": {
+      "loading": "Bot-Einstellungen werden geladen…",
+      "general_title": "Allgemein",
+      "language": "Bot-Sprache",
+      "language_auto": "Automatisch (App-Sprache)",
+      "sleeping": "Schlafen",
+      "sleeping_hint": "Wenn aktiviert, antwortet der Bot auf diesem Server nicht auf Serverbefehle.",
+      "music_title": "Musik",
+      "music_enabled": "Musikfunktionen",
+      "music_ui": "Player-Anzeige",
+      "music_ui_hint": "Zeigt den aktuellen Titel und die Warteschlange im Musikkanal.",
+      "music_normalize": "Lautstärke angleichen",
+      "music_normalize_hint": "Gleicht die Lautstärke zwischen Titeln an.",
+      "queue_lines": "Angezeigte Warteschlangenzeilen",
+      "lines": "Zeilen",
+      "refresh": "Aktualisierungsintervall des Players",
+      "range": "Gib eine ganze Zahl von {{min}} bis {{max}} ein.",
+      "not_synced": "Gespeichert, aber noch nicht in Discord übernommen. Wird bei der nächsten Verbindung übernommen.",
+      "err_not_paired": "Dieser Server ist nicht gekoppelt.",
+      "err_invalid": "Ungültiger Wert: {{field}}",
+      "err_generic": "Bot-Einstellungen konnten nicht geändert werden."
+    }
   },
   "maintenance": {
     "load_failed": "Backups und Zeitpläne konnten nicht geladen werden.",

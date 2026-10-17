@@ -879,7 +879,30 @@
     "perm_owner_mismatch": "中继报告了另一个所有者（{{relay}}）。此处所有者仍为 {{owner}}。如果中继是对的，请更改所有者。",
     "perm_owner_use_relay": "改用此所有者",
     "perm_owner_use_relay_confirm": "确认将 {{name}}（{{id}}）设为所有者",
-    "perm_commands_help_hint": "help 和 list 对除禁止外的所有级别开放，且无法更改。"
+    "perm_commands_help_hint": "help 和 list 对除禁止外的所有级别开放，且无法更改。",
+    "tab_bot": "机器人设置",
+    "bot_settings": {
+      "loading": "正在加载机器人设置…",
+      "general_title": "常规",
+      "language": "机器人语言",
+      "language_auto": "自动（跟随应用语言）",
+      "sleeping": "休眠",
+      "sleeping_hint": "开启后，机器人在此服务器中不响应服务器命令。",
+      "music_title": "音乐",
+      "music_enabled": "音乐功能",
+      "music_ui": "音乐播放器面板",
+      "music_ui_hint": "在音乐频道显示当前曲目和队列。",
+      "music_normalize": "音量均衡",
+      "music_normalize_hint": "让不同曲目的音量更接近。",
+      "queue_lines": "队列显示行数",
+      "lines": "行",
+      "refresh": "播放器刷新间隔",
+      "range": "请输入 {{min}} 到 {{max}} 之间的整数。",
+      "not_synced": "已保存，但尚未同步到 Discord。下次连接时会同步。",
+      "err_not_paired": "此服务器尚未配对。",
+      "err_invalid": "无效的值：{{field}}",
+      "err_generic": "无法更改机器人设置。"
+    }
   },
   "maintenance": {
     "load_failed": "无法加载备份和计划信息。",
