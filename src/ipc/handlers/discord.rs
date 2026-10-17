@@ -183,9 +183,26 @@ fn invalid(field: &str, reason: &str) -> Response {
         .into_response()
 }
 
+/// 읽고-바꾸고-저장하기를 한 번에 하나씩 (동시에 온 두 PATCH가 서로의 키를 지우지 않게)
+static SETTINGS_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// 데몬에 저장된 값. 아직 없으면(업그레이드 뒤 첫 연결 전) 릴레이 값을, 그것도 못 읽으면 기본값
 async fn current(state: &IPCServer, guild: &str) -> GuildSettings {
     let bot = state.config_store.get_bot_config().await;
-    GuildSettings::from_node(bot.node_settings.get(guild)).unwrap_or_default()
+    if let Some(s) = GuildSettings::from_node(bot.node_settings.get(guild)) {
+        return s;
+    }
+    relay_settings(&relay_base(state).await, guild).await.map(|body| GuildSettings::from_relay(&body)).unwrap_or_default()
+}
+
+/// 릴레이 `GET /api/nodes/:guild/settings` (페어링이 없거나 못 읽으면 None)
+async fn relay_settings(base: &str, guild: &str) -> Option<Value> {
+    load_node_token()?;
+    let path = format!("/api/nodes/{}/settings", encode_path_segment(guild));
+    match call(base, reqwest::Method::GET, &path, None).await {
+        Ok((c, body)) if c.is_success() => Some(body),
+        _ => None,
+    }
 }
 
 async fn save(state: &IPCServer, guild: &str, s: &GuildSettings) -> Result<(), crate::config_store::ConfigStoreError> {
@@ -224,10 +241,7 @@ fn changed(have: &Value, want: &Value) -> Map<String, Value> {
 /// 릴레이 값을 못 읽으면 `before`(데몬이 마지막으로 맞춘 값)와 비교한다
 async fn push(state: &IPCServer, base: &str, guild: &str, before: &Value, s: &GuildSettings) -> Result<(StatusCode, Value), String> {
     let path = format!("/api/nodes/{}/settings", encode_path_segment(guild));
-    let have = match call(base, reqwest::Method::GET, &path, None).await {
-        Ok((c, body)) if c.is_success() => body,
-        _ => before.clone(),
-    };
+    let have = relay_settings(base, guild).await.unwrap_or_else(|| before.clone());
     let mut diff = changed(&have, &s.relay_body());
     if diff.is_empty() {
         return Ok((StatusCode::OK, Value::Null));
@@ -252,6 +266,7 @@ pub async fn patch_settings(State(state): State<IPCServer>, Path(guild): Path<St
     if load_node_token().is_none() {
         return (StatusCode::CONFLICT, Json(json!({ "success": false, "error": "Not paired with the relay", "error_code": "not_paired" }))).into_response();
     }
+    let _turn = SETTINGS_LOCK.lock().await;
     let before = current(&state, &guild).await;
     let mut next = before.clone();
     if let Err((field, reason)) = next.apply(patch) {
@@ -277,6 +292,7 @@ pub async fn sync_on_connect(state: &IPCServer) {
     if load_node_token().is_none() {
         return;
     }
+    let _turn = SETTINGS_LOCK.lock().await;
     let base = relay_base(state).await;
     let bot = state.config_store.get_bot_config().await;
     let mut guilds: Vec<String> = bot.node_settings.as_object().map(|m| m.keys().cloned().collect()).unwrap_or_default();
