@@ -19,6 +19,7 @@ mod chat;
 mod commands;
 mod module_audit;
 mod audit;
+mod launch_args;
 mod relay_agent;
 
 use std::sync::Arc;
