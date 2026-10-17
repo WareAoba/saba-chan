@@ -2,6 +2,10 @@
 
 use super::*;
 
+
+/// 받아 둔 업데이트의 릴리즈 요약 (staging 폴더)
+const PENDING_RELEASE: &str = "pending-release.json";
+
 impl UpdateManager {
     /// 적용 대기 중인 개별 컴포넌트를 반환
     pub fn get_pending_components(&self) -> Vec<&ComponentVersion> {
@@ -25,8 +29,19 @@ impl UpdateManager {
         let manifest_path = self.staging_dir.join("pending.json");
         let json = serde_json::to_string_pretty(&pending)?;
         std::fs::write(&manifest_path, json)?;
+        // 적용 결과에 실을 릴리즈 버전·패치노트 (pending.json 형식은 예전 업데이터와 맞춰 그대로 둔다)
+        if let Some(release) = &self.latest_release {
+            let summary = crate::marker::ReleaseSummary::from(release);
+            std::fs::write(self.staging_dir.join(PENDING_RELEASE), serde_json::to_string_pretty(&summary)?)?;
+        }
         tracing::info!("[UpdateManager] Saved pending manifest: {} components → {:?}", pending.len(), manifest_path);
         Ok(())
+    }
+
+    /// 받아 둔 업데이트의 릴리즈 (버전·패치노트). 업데이터가 완료 마커에 싣는다
+    pub fn pending_release(&self) -> Option<crate::marker::ReleaseSummary> {
+        let text = std::fs::read_to_string(self.staging_dir.join(PENDING_RELEASE)).ok()?;
+        serde_json::from_str(&text).ok()
     }
 
     /// staging 디렉터리의 매니페스트를 읽어 컴포넌트 상태를 복원합니다.
@@ -70,6 +85,7 @@ impl UpdateManager {
         if targets_path.exists() {
             let _ = std::fs::remove_file(&targets_path);
         }
+        let _ = std::fs::remove_file(self.staging_dir.join(PENDING_RELEASE));
         // pending이 없으면 받아 둔 압축 파일도 쓸모없다 (적용에 실패한 것까지). 다음 확인 때 다시 받는다
         if let Ok(entries) = std::fs::read_dir(&self.staging_dir) {
             for path in entries.flatten().map(|e| e.path()).filter(|p| p.is_file()) {

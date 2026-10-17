@@ -2468,7 +2468,10 @@ ipcMain.handle('updater:launchApply', async (_event, _targets) => {
 ipcMain.handle('updater:lastResult', async (_event, { clear = false } = {}) => {
     try {
         const url = `${IPC_BASE}/api/updates/last-result`;
-        const response = clear ? await axios.delete(url, { timeout: 5000 }) : await axios.get(url, { timeout: 5000 });
+        // lang: 데몬이 이 언어의 패치노트를 `notes`에 골라 준다
+        const response = clear
+            ? await axios.delete(url, { timeout: 5000 })
+            : await axios.get(url, { params: { lang: getLanguage() }, timeout: 5000 });
         return response.data;
     } catch (err) {
         return { ok: false, error: err.message };

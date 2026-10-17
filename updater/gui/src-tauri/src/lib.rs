@@ -155,6 +155,8 @@ async fn start_apply(
         }),
         success: failed.is_empty(),
         failed: failed.clone(),
+        // 적용한 릴리즈의 버전·패치노트: 앱이 결과 알림을 누르면 보여 준다 (A5)
+        release: mgr.pending_release(),
         ..UpdateCompletionMarker::success(applied.clone())
     };
     marker.save().ok();
