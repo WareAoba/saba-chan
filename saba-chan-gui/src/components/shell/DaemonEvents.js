@@ -27,7 +27,10 @@ export function DaemonEvents({ onServersChanged }) {
                 timer = setTimeout(() => refetchRef.current?.(), REFETCH_DEBOUNCE_MS);
             }
             if (ev.type === 'update.available') {
-                const names = Array.isArray(ev.data.components) ? ev.data.components : [];
+                // 이름 문자열 또는 {name|id, ...} 객체를 모두 받는다
+                const names = (Array.isArray(ev.data.components) ? ev.data.components : [])
+                    .map((c) => (typeof c === 'string' ? c : c?.name || c?.id))
+                    .filter(Boolean);
                 if (names.length && window.__sabaNotice) {
                     window.__sabaNotice.addNotice({
                         message: `📦 ${tr('updates.found', { count: names.length, names: names.join(', ') })}`,
