@@ -76,6 +76,16 @@ describe('콘솔 줄 그리기', () => {
         expect(document.body.textContent).toContain(text);
     });
 
+    it('설계 초안 이름(level.error, address, stack…)도 확정 토큰으로 받는다', () => {
+        expect(
+            spanSegments('E 1.2.3.4 at x', [
+                [0, 1, 'level.error'],
+                [2, 9, 'address'],
+                [10, 14, 'stack'],
+            ]).map((s) => s.token),
+        ).toEqual(['error', null, 'ip', null, 'dim']);
+    });
+
     it('빈 spans면 칠하지 않고, 범위를 넘는 구간은 잘라 낸다', () => {
         expect(spanSegments('abc', [])).toEqual([{ text: 'abc', token: null, style: null }]);
         expect(spanSegments('abc', [[1, 99, 'warning']]).map((s) => [s.text, s.token])).toEqual([
@@ -150,5 +160,9 @@ describe('콘솔 바탕 밝기 → 토큰 색 묶음', () => {
         expect(document.documentElement.getAttribute('data-console-tone')).toBe('light');
         applyCustomTheme({ ...THEME_DEFAULTS, consoleBgColor: '#1e1e2e' });
         expect(document.documentElement.hasAttribute('data-console-tone')).toBe(false);
+        for (const bg of ['#fff', 'rgb(250, 250, 250)']) {
+            applyCustomTheme({ ...THEME_DEFAULTS, consoleBgColor: bg });
+            expect(document.documentElement.getAttribute('data-console-tone')).toBe('light');
+        }
     });
 });

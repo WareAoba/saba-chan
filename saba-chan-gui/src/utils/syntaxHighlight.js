@@ -39,7 +39,25 @@ export const TOKENS = [
     'path',
     'dim',
 ];
-const TOKEN_ALIASES = { warning: 'warn', trace: 'debug', comment: 'dim' };
+// 옛 모듈 값과, 설계 초안(design.md §3.2)의 이름도 확정 어휘로 받는다 (데몬이 어느 쪽을 보내도 칠해지게)
+const TOKEN_ALIASES = {
+    warning: 'warn',
+    trace: 'debug',
+    comment: 'dim',
+    'level.error': 'error',
+    'level.warn': 'warn',
+    'level.info': 'info',
+    'level.debug': 'debug',
+    system: 'info',
+    join: 'success',
+    leave: 'warn',
+    chat: 'string',
+    id: 'uuid',
+    address: 'ip',
+    resource: 'keyword',
+    stack: 'dim',
+    muted: 'dim',
+};
 
 /** 토큰 이름(또는 옛 별칭) → 토큰, 아니면 null */
 export function tokenOf(name) {
