@@ -80,7 +80,7 @@ pub async fn get_console_handler(
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::NOT_FOUND,
-            Json(json!({"error": e.to_string()})),
+            Json(json!({"error": e.to_string(), "error_code": "not_found"})),
         )
             .into_response(),
     }

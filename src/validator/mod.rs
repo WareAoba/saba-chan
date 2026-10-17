@@ -4,6 +4,7 @@
 //!   개별 설정값의 타입·범위·필수여부를 검증합니다.
 //! - `validate_settings_patch`: 부분 변경 요청에 들어 있는 설정 필드만 검증합니다.
 //! - `check_port_conflicts`: 실행 중인 인스턴스와 포트 충돌을 검사합니다.
+//! - `shift_ports_clear_of`: 새 인스턴스의 포트를 다른 인스턴스와 겹치지 않게 옮깁니다.
 
 use crate::instance::ServerInstance;
 use crate::supervisor::module_loader::SettingField;
@@ -296,6 +297,59 @@ pub fn check_port_conflicts(
     conflicts
 }
 
+/// 인스턴스가 쓰는 포트 `(설정 이름, 값)`: 인스턴스 필드(`port`, `rcon_port`, `rest_port`)와
+/// 모듈 설정 중 `port = true`로 표시된 값
+pub fn instance_ports(instance: &ServerInstance, port_fields: &[&str]) -> Vec<(String, u16)> {
+    let mut ports: Vec<(String, u16)> = [("port", instance.port), ("rcon_port", instance.rcon_port), ("rest_port", instance.rest_port)]
+        .into_iter()
+        .filter_map(|(name, port)| port.map(|p| (name.to_string(), p)))
+        .collect();
+    for name in port_fields {
+        if crate::supervisor::module_loader::CORE_PORT_FIELDS.contains(name) {
+            continue;
+        }
+        let value = instance.module_settings.get(*name).and_then(|v| match v {
+            Value::Number(n) => n.as_u64(),
+            Value::String(s) => s.parse().ok(),
+            _ => None,
+        });
+        if let Some(port) = value.and_then(|p| u16::try_from(p).ok()) {
+            ports.push((name.to_string(), port));
+        }
+    }
+    ports
+}
+
+/// 포트를 옮기는 폭의 단위. 게임이 몰래 쓰는 옆 포트(예: 좀보이드 port+1)와도 겹치지 않게 넉넉히 둔다
+pub const PORT_SHIFT_STEP: u16 = 10;
+
+/// `taken`과 겹치는 포트가 있으면 인스턴스의 모든 포트를 같은 폭(`PORT_SHIFT_STEP`의 배수)만큼 옮긴다.
+/// 같은 게임의 포트 묶음이 함께 움직이므로 서로의 간격이 유지된다. 옮긴 폭을 돌려준다(안 옮겼으면 None).
+pub fn shift_ports_clear_of(instance: &mut ServerInstance, port_fields: &[&str], taken: &std::collections::HashSet<u16>) -> Option<u16> {
+    let ports = instance_ports(instance, port_fields);
+    let delta = (0..=u16::MAX / PORT_SHIFT_STEP).map(|k| k * PORT_SHIFT_STEP).find(|&delta| {
+        ports.iter().all(|(_, p)| p.checked_add(delta).is_some_and(|q| !taken.contains(&q)))
+    })?;
+    if delta == 0 {
+        return None;
+    }
+    for (name, port) in ports {
+        let moved = port + delta;
+        match name.as_str() {
+            "port" => instance.port = Some(moved),
+            "rcon_port" => instance.rcon_port = Some(moved),
+            "rest_port" => instance.rest_port = Some(moved),
+            _ => {}
+        }
+        // 인스턴스 필드는 같은 이름의 모듈 설정이 있을 때만 그것도 맞춘다
+        let core = crate::supervisor::module_loader::CORE_PORT_FIELDS.contains(&name.as_str());
+        if !core || instance.module_settings.contains_key(&name) {
+            instance.module_settings.insert(name, serde_json::json!(moved));
+        }
+    }
+    Some(delta)
+}
+
 /// 인스턴스에서 모듈이 실제 사용하는 포트만 수집합니다.
 ///
 /// `module_protocols`가 제공되면 해당 모듈의 `protocols_supported`를 참조하여
@@ -345,6 +399,7 @@ mod tests {
             step: None,
             options: None,
             group: None,
+            port: false,
         }
     }
 
@@ -400,6 +455,27 @@ mod tests {
 
         let val_invalid = Value::String("impossible".into());
         assert!(validate_setting_value(&field, Some(&val_invalid)).is_err());
+    }
+
+    #[test]
+    fn new_instance_ports_move_together_past_taken_ones() {
+        let mut inst = ServerInstance::new("b", "zomboid");
+        inst.port = Some(16261);
+        inst.rcon_port = Some(27015);
+        inst.module_settings.insert("port".into(), serde_json::json!(16261));
+        inst.module_settings.insert("steam_port1".into(), serde_json::json!(8766));
+        let fields = ["port", "steam_port1"];
+
+        let free: std::collections::HashSet<u16> = [25565].into();
+        assert_eq!(shift_ports_clear_of(&mut inst, &fields, &free), None, "nothing taken, nothing moves");
+
+        let taken: std::collections::HashSet<u16> = [16261, 8766, 27025].into();
+        assert_eq!(shift_ports_clear_of(&mut inst, &fields, &taken), Some(20), "+10 would hit rcon 27025");
+        assert_eq!(inst.port, Some(16281));
+        assert_eq!(inst.rcon_port, Some(27035));
+        assert_eq!(inst.module_settings["port"], serde_json::json!(16281));
+        assert_eq!(inst.module_settings["steam_port1"], serde_json::json!(8786));
+        assert!(!inst.module_settings.contains_key("rcon_port"), "no module setting is invented for core fields");
     }
 
     #[test]

@@ -43,30 +43,6 @@ pub const DEFAULT_IPC_PORT: u16 = 57474;
 /// 기본 Daemon API URL
 pub const DEFAULT_DAEMON_URL: &str = "http://127.0.0.1:57474";
 
-/// 원격 모듈 매니페스트 URL
-pub fn modules_manifest_url() -> String {
-    format!(
-        "https://github.com/{}/{}/releases/latest/download/manifest.json",
-        GITHUB_OWNER, GITHUB_MODULES_REPO
-    )
-}
-
-/// 원격 모듈 에셋 다운로드 URL
-pub fn module_asset_url(asset_name: &str) -> String {
-    format!(
-        "https://github.com/{}/{}/releases/latest/download/{}",
-        GITHUB_OWNER, GITHUB_MODULES_REPO, asset_name
-    )
-}
-
-/// 원격 익스텐션 매니페스트 URL
-pub fn extensions_manifest_url() -> String {
-    format!(
-        "https://raw.githubusercontent.com/{}/{}/main/manifest.json",
-        GITHUB_OWNER, GITHUB_EXTENSIONS_REPO
-    )
-}
-
 // ══════════════════════════════════════════════════════
 //  지원 언어
 // ══════════════════════════════════════════════════════
@@ -327,13 +303,6 @@ mod tests {
         let pw1 = generate_random_password();
         let pw2 = generate_random_password();
         assert_ne!(pw1, pw2);
-    }
-
-    #[test]
-    fn test_modules_manifest_url() {
-        let url = modules_manifest_url();
-        assert!(url.contains(GITHUB_OWNER));
-        assert!(url.contains(GITHUB_MODULES_REPO));
     }
 
     #[test]

@@ -41,6 +41,46 @@ pub async fn save_gui_config(
     }
 }
 
+// ── 기본값 ──
+
+/// GET /api/config/:kind/defaults — `gui` 또는 `bot` 설정의 기본값
+pub async fn get_config_defaults(Path(kind): Path<String>) -> impl IntoResponse {
+    match crate::config_store::ConfigStore::defaults_json(&kind) {
+        Some(defaults) => (StatusCode::OK, Json(json!({ "ok": true, "defaults": defaults }))).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "ok": false, "error": format!("Unknown config: {}", kind), "error_code": "not_found" })),
+        )
+            .into_response(),
+    }
+}
+
+/// POST /api/config/:kind/reset — `{keys?: [..]}`를 기본값으로 (없으면 전부). 응답 `{ok, config}`
+pub async fn reset_config(
+    State(state): State<IPCServer>,
+    Path(kind): Path<String>,
+    body: Option<Json<Value>>,
+) -> impl IntoResponse {
+    let keys: Option<Vec<String>> = body
+        .and_then(|Json(b)| b.get("keys").cloned())
+        .and_then(|k| serde_json::from_value(k).ok());
+    if kind == "gui" {
+        // 저장 경로와 같은 부수 효과 (포트 검사 플래그)
+        if keys.as_ref().is_none_or(|k| k.iter().any(|k| k == "portConflictCheck")) {
+            let check = crate::config_store::GuiSettings::default().port_conflict_check;
+            state.supervisor.read().await.skip_port_check.store(!check, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+    match state.config_store.reset_to_defaults(&kind, keys.as_deref()).await {
+        Ok(config) => (StatusCode::OK, Json(json!({ "ok": true, "config": config }))).into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "ok": false, "error": e.to_string(), "error_code": "invalid_request" })),
+        )
+            .into_response(),
+    }
+}
+
 // ── Client namespaces ──
 
 /// GET /api/config/client/:kind — 클라이언트별 설정 네임스페이스 (예: `cli`)

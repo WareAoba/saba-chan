@@ -427,80 +427,85 @@ pub async fn get_module_metadata(
     }
 }
 
-/// GET /api/modules/manifest - saba-chan-modules 최신 릴리스 manifest 가져오기
+/// GET /api/modules/manifest - 설치할 수 있는 모듈 목록 (최신 릴리즈의 서명된 manifest, U9e)
+///
+/// `{ok, manifest: {modules: {<이름>: {version, display_name, description, ...}}}}`
 pub async fn fetch_module_manifest() -> impl IntoResponse {
-    let url = saba_chan_updater_lib::constants::modules_manifest_url();
-    match reqwest::get(url).await {
-        Ok(resp) if resp.status().is_success() => {
-            match resp.json::<serde_json::Value>().await {
-                Ok(data) => (StatusCode::OK, Json(json!({ "ok": true, "manifest": data }))).into_response(),
-                Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": e.to_string() }))).into_response(),
+    match saba_chan_updater_lib::relay::latest_catalog(None).await {
+        Ok(catalog) => {
+            let mut modules = serde_json::Map::new();
+            if let Some(manifest) = &catalog {
+                for (name, comp) in manifest.addons(saba_chan_updater_lib::relay::MODULE_PREFIX) {
+                    let mut info = match &comp.meta {
+                        Some(serde_json::Value::Object(meta)) => meta.clone(),
+                        _ => serde_json::Map::new(),
+                    };
+                    info.insert("version".into(), json!(comp.version));
+                    info.insert("sha256".into(), json!(comp.sha256));
+                    info.insert("size_bytes".into(), json!(comp.size_bytes));
+                    modules.insert(name.to_string(), serde_json::Value::Object(info));
+                }
             }
-        }
-        Ok(resp) => {
-            (StatusCode::OK, Json(json!({ "ok": false, "error": format!("HTTP {}", resp.status()) }))).into_response()
+            (StatusCode::OK, Json(json!({ "ok": true, "manifest": { "modules": modules } }))).into_response()
         }
         Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": e.to_string() }))).into_response(),
     }
 }
 
-/// POST /api/modules/manifest/:id/install - 모듈 매니페스트에서 모듈 설치
+/// POST /api/modules/manifest/:id/install - 최신 릴리즈에서 모듈을 받아 설치한다 (SHA-256 검증)
 pub async fn install_module_from_manifest(
     Path(module_id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    // 레지스트리에서 다운로드 URL 구성
-    let asset_name = format!("module-{}.zip", module_id);
-    let download_url = saba_chan_updater_lib::constants::module_asset_url(&asset_name);
+    let fail = |error: String| (StatusCode::OK, Json(json!({ "ok": false, "error": error }))).into_response();
+    if module_id.contains("..") || module_id.contains('/') || module_id.contains('\\') {
+        return fail("Invalid module ID".into());
+    }
+    let catalog = match saba_chan_updater_lib::relay::latest_catalog(None).await {
+        Ok(Some(m)) => m,
+        Ok(None) => return fail("No release is published".into()),
+        Err(e) => return fail(e.to_string()),
+    };
+    let Some(comp) = catalog
+        .components
+        .get(&format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, module_id))
+        .cloned()
+    else {
+        return fail(format!("Module '{}' is not in the latest release", module_id));
+    };
 
-    // 설치 디렉토리 결정
     let modules_dir = {
         let supervisor = state.supervisor.read().await;
         std::path::PathBuf::from(supervisor.module_loader.modules_dir())
     };
-
+    let zip_path = modules_dir.join(format!("_tmp_module_{}.zip", module_id));
+    let staging = modules_dir.join(format!(".staging-{}", module_id));
     let target_dir = modules_dir.join(&module_id);
 
-    // 임시 zip 다운로드
-    let zip_path = modules_dir.join(format!("_tmp_module_{}.zip", module_id));
-
-    match reqwest::get(&download_url).await {
-        Ok(resp) if resp.status().is_success() => {
-            match resp.bytes().await {
-                Ok(bytes) => {
-                    if let Err(e) = std::fs::write(&zip_path, &bytes) {
-                        return (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Failed to write zip: {}", e) }))).into_response();
-                    }
-                    // zip 압축 해제
-                    match std::fs::File::open(&zip_path) {
-                        Ok(file) => {
-                            match zip::ZipArchive::new(std::io::BufReader::new(file)) {
-                                Ok(mut archive) => {
-                                    if let Err(e) = archive.extract(&target_dir) {
-                                        let _ = std::fs::remove_file(&zip_path);
-                                        return (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Failed to extract: {}", e) }))).into_response();
-                                    }
-                                    let _ = std::fs::remove_file(&zip_path);
-                                    // 모듈 캐시 새로고침
-                                    let supervisor = state.supervisor.read().await;
-                                    let _ = supervisor.refresh_modules();
-                                    (StatusCode::OK, Json(json!({ "ok": true, "module_id": module_id }))).into_response()
-                                }
-                                Err(e) => {
-                                    let _ = std::fs::remove_file(&zip_path);
-                                    (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Invalid zip: {}", e) }))).into_response()
-                                }
-                            }
-                        }
-                        Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Failed to open zip: {}", e) }))).into_response(),
-                    }
-                }
-                Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Failed to read response: {}", e) }))).into_response(),
-            }
+    let result: anyhow::Result<()> = async {
+        let http = reqwest::Client::new();
+        saba_chan_updater_lib::download::download_verified(&http, &comp.url, &zip_path, Some(&comp.sha256), None).await?;
+        let _ = std::fs::remove_dir_all(&staging);
+        saba_chan_updater_lib::extract_zip(&zip_path, &staging, |_| Ok(()))?;
+        if !staging.join("module.toml").is_file() {
+            anyhow::bail!("package has no module.toml");
         }
-        Ok(resp) => (StatusCode::OK, Json(json!({ "ok": false, "error": format!("HTTP {}", resp.status()) }))).into_response(),
-        Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": e.to_string() }))).into_response(),
+        // 다 받은 뒤에만 기존 폴더를 바꾼다
+        if target_dir.exists() {
+            std::fs::remove_dir_all(&target_dir)?;
+        }
+        std::fs::rename(&staging, &target_dir)?;
+        Ok(())
     }
+    .await;
+    let _ = std::fs::remove_file(&zip_path);
+    let _ = std::fs::remove_dir_all(&staging);
+    if let Err(e) = result {
+        return fail(format!("{:#}", e));
+    }
+    let supervisor = state.supervisor.read().await;
+    let _ = supervisor.refresh_modules();
+    (StatusCode::OK, Json(json!({ "ok": true, "module_id": module_id, "version": comp.version }))).into_response()
 }
 
 /// DELETE /api/modules/:id — 모듈 제거 (디렉토리 삭제 + 캐시 갱신)
@@ -608,6 +613,82 @@ pub async fn start_instance_handler(
     };
     body.insert("managed".into(), json!(managed));
     (resp.status, Json(Value::Object(body))).into_response()
+}
+
+/// id(또는 이름)로 인스턴스 이름을 찾는다
+async fn instance_name_of(state: &IPCServer, id: &str) -> Option<String> {
+    let supervisor = state.supervisor.read().await;
+    supervisor
+        .instance_store
+        .get(id)
+        .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == id))
+        .map(|i| i.name.clone())
+}
+
+fn instance_not_found(id: &str) -> axum::response::Response {
+    (
+        StatusCode::NOT_FOUND,
+        Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" })),
+    )
+        .into_response()
+}
+
+/// POST /api/instance/:id/stop — id로 정지 (`{force?}`). 응답은 `/api/server/:name/stop`과 같다
+pub async fn stop_instance_handler(
+    Path(id): Path<String>,
+    State(state): State<IPCServer>,
+    body: Option<Json<ServerStopRequest>>,
+) -> axum::response::Response {
+    let Some(name) = instance_name_of(&state, &id).await else {
+        return instance_not_found(&id);
+    };
+    let req = body.map(|Json(b)| b).unwrap_or(ServerStopRequest { force: false });
+    stop_server_handler(Path(name), State(state), Json(req)).await.into_response()
+}
+
+/// POST /api/instance/:id/restart — 정지(`{force?}`) 뒤 시작. 꺼져 있으면 시작만 한다.
+/// 응답은 시작 응답에 `stopped`(정지했는가)를 더한 것. 정지가 실패하면 그 응답을 그대로 준다
+pub async fn restart_instance_handler(
+    Path(id): Path<String>,
+    State(state): State<IPCServer>,
+    body: Option<Json<ServerStopRequest>>,
+) -> axum::response::Response {
+    let picked = {
+        let supervisor = state.supervisor.read().await;
+        supervisor
+            .instance_store
+            .get(&id)
+            .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == id))
+            .map(|i| (i.id.clone(), i.name.clone(), supervisor.tracker.get_pid(&i.id).is_ok()))
+    };
+    let Some((inst_id, name, running)) = picked else {
+        return instance_not_found(&id);
+    };
+    if running {
+        let req = body.map(|Json(b)| b).unwrap_or(ServerStopRequest { force: false });
+        let stop = crate::ipc::internal::into_internal(stop_server_handler(Path(name), State(state.clone()), Json(req)).await).await;
+        if !stop.status.is_success() || stop.body.get("success").and_then(Value::as_bool) == Some(false) {
+            return (stop.status, Json(stop.body)).into_response();
+        }
+        // 정지 응답이 프로세스가 끝나기 전에 올 수 있다: 끝날 때까지 기다린다 (최대 2분)
+        for _ in 0..240 {
+            let alive = {
+                let supervisor = state.supervisor.read().await;
+                supervisor.tracker.get_pid(&inst_id).is_ok() || supervisor.managed_store.running_instance_ids().await.contains(&inst_id)
+            };
+            if !alive {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+    }
+    let start = crate::ipc::internal::into_internal(start_instance_handler(Path(inst_id), State(state)).await).await;
+    let mut body = match start.body {
+        Value::Object(map) => map,
+        other => serde_json::Map::from_iter([("data".to_string(), other)]),
+    };
+    body.insert("stopped".into(), json!(running));
+    (start.status, Json(Value::Object(body))).into_response()
 }
 
 /// 크래시 뒤 자동 재시작 (A1). 대기하는 동안 사용자가 정지·시작했으면 그만둔다.

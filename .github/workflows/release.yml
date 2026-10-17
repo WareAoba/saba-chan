@@ -159,6 +159,23 @@ jobs:
             exit 1
           fi
 
+      # 모듈·익스텐션도 같은 릴리즈에 싣는다 (U9e). 둘 다 공개 저장소, main 기준
+      - name: Checkout modules
+        if: steps.r2.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: WareAoba/saba-chan-modules
+          ref: main
+          path: addons/modules
+
+      - name: Checkout extensions
+        if: steps.r2.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: WareAoba/saba-chan-extensions
+          ref: main
+          path: addons/extensions
+
       - name: Install Rust toolchain
         if: steps.r2.outputs.enabled == 'true'
         uses: dtolnay/rust-toolchain@stable
@@ -170,6 +187,8 @@ jobs:
         run: |
           python scripts/versions.py manifest --assets output \
             --base-url "${{ vars.R2_PUBLIC_BASE }}" --platform windows-x64 \
+            --modules-repo addons/modules --extensions-repo addons/extensions \
+            --addons-ref "$(git -C addons/modules rev-parse HEAD)" \
             --out release-manifest.unsigned.json
           # 번들된 공개키로 검증까지 통과해야 출력된다
           cargo run --quiet -p saba-chan-updater-lib --example release_signing -- \
