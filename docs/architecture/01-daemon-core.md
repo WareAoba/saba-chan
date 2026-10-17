@@ -157,7 +157,7 @@
   - 미들웨어는 토큰보다 먼저 `Host` 헤더가 루프백(`127.0.0.1`, `localhost`, `::1`)인지 보고, 아니면 본문 없는 403을 돌려준다(`auth.rs:74-101`). DNS 리바인딩 방어다.
 - **에러 형식이 통일돼 있지 않다.** 다음 형식들이 섞여 있다.
   - `{"error": "..."}` (+ 선택적으로 `"error_code"`)
-  - `{"ok": false, "error": ...}` (updates, modules manifest/install/remove, `/api/config/:kind/*`, `/api/fs/scan-dir`는 성공 시 ok)
+  - `{"ok": false, "error": ...}` (updates, modules manifest/install/remove, `/api/config/:kind/*`는 성공 시 ok)
   - `{"success": false, "error", "error_code", ...}` (익스텐션, 백업, 이름 변경 등)
   - 인증 실패: 본문 없는 401, Host 거부: 본문 없는 403
   - 일부 핸들러는 실패해도 HTTP 200을 돌려준다(modules manifest/install/remove, extensions manifest/install).
@@ -300,7 +300,6 @@
 | PUT | `/api/config/node-token` | `config.rs:145` | `{token}` | `{ok}` |
 | DELETE | `/api/config/node-token` | `config.rs:173` | - | `{ok}`. 먼저 릴레이 에이전트를 멈춘다 |
 | GET | `/api/system/components` | `config.rs:233` | - | `{version, components:{key:ver}, lastUpdated}` (`installed-manifest.json` + 번들 `versions.toml`) |
-| POST | `/api/fs/scan-dir` | `config.rs:266` | `{path}` | `{ok, files, dirs}` / 404 / 500. **임의 경로 열람 가능** |
 | GET | `/api/runtime/preflight` | `ipc/mod.rs:723` | - | `{phase, percent, complete, error, components:{python}}` |
 
 #### 클라이언트와 데몬 수명 (handlers/client.rs)
@@ -631,7 +630,7 @@ Relay 서명 방식(`relay.rs:100-137`):
 2. **`/health`는 인증이 필요하다.** 주석이 말하는 "경량 ping"과 다르다(`ipc/mod.rs:641`). 클라이언트의 ready 체크가 토큰을 읽기 전에 실행되면 401을 받는다.
 3. ~~**토큰이 없으면 fail-open이다**~~ → 해결: 캐시도 파일도 없으면 401로 거부한다(`auth.rs:115-124`). ~~비교가 상수 시간이 아니다~~ → 해결: `constant_time_eq`로 끝까지 비교한다(`auth.rs:86-89, 134`).
 4. ~~**단일 인스턴스 보장이 없다.**~~ → 해결: `daemon.lock` 배타 잠금을 토큰 생성 전에 잡고(`main.rs:240-255`), Windows에서는 `SO_REUSEADDR`를 켜지 않는다(`ipc/mod.rs:772-775`). §1.6.
-5. ~~`/api/ext-process/:name/start`는 임의 명령을 실행~~(라우트 삭제). **`/api/fs/scan-dir`는 임의 디렉토리를 열람**한다(`config.rs:266-309`). 토큰만 있으면 쓸 수 있으며, 설계상 의도된 기능이지만 위험 범위가 넓다.
+5. ~~`/api/ext-process/:name/start`는 임의 명령을 실행~~(라우트 삭제). ~~`/api/fs/scan-dir`는 임의 디렉토리를 열람한다~~ → 해결: 지웠다. 마이그레이션은 게임 폴더 판정(`POST /api/modules/detect`)만 쓴다(D2).
 6. ~~**relay 토큰 유출 가능성**: `?relayUrl=`로 임의 호스트에 `Authorization: Bearer <node_token>`을 보낼 수 있다~~ → 해결: 서명 요청(host status·nodes·members)은 `signed_relay_url`로 설정한 릴레이(없으면 기본)만 쓰고, 요청 주소가 그와 같거나 루프백(모의 릴레이)일 때만 따른다(`relay.rs:45-67, 211-241`). 챗봇 동기화도 설정한 릴레이만 쓴다(`chatbot.rs:150-153`). ~~서명 없는 bot-invite·pair는 `relayUrl`을 그대로 따른다~~ → 해결: 페어링(시작·상태)과 bot-invite도 같은 규칙을 쓴다(`relay.rs:271, 299, 327`, 59a93b8).
 7. ~~**`POST /api/modules/manifest/:id/install`에 경로 검사가 없다**~~ → 해결: `..`, `/`, `\`를 거부한다(`server.rs:457-459`). `get_module_locales`는 여전히 이름을 그대로 `join`한다(`config.rs:201-203`).
 8. **비밀값이 평문으로 응답에 실린다.** `GET /api/instances`, `/api/servers`에는 REST 비밀번호가 들어 있다. ~~`/api/config/bot`의 Discord 토큰~~(BotConfig에서 `token` 삭제). REST Basic 토큰 앞부분과 비밀번호 길이는 로그에 남는다(`rest.rs:86`).

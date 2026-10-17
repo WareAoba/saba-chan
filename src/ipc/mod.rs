@@ -678,7 +678,6 @@ impl IPCServer {
             // ── System components (release manifest) ──
             .route("/api/system/components", get(handlers::config::get_system_components))
             // ── Directory scan (migration etc.) ──
-            .route("/api/fs/scan-dir", post(handlers::config::scan_directory))
             // ── Extension process management (범용) ──
             // ── Client heartbeat ──
             .route("/api/client/register", post(handlers::client::client_register))
