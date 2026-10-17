@@ -1563,6 +1563,8 @@ impl Supervisor {
                 }
                 "reset" => "reset_properties",
                 "reset_server" => "reset_server",
+                // 실제 설정 파일을 saba-chan 키로 (설정 화면이 캐시 대신 실제 값을 보여 준다)
+                "import" => "import_settings",
                 _ => "read_properties",
             };
 
