@@ -308,7 +308,8 @@
     "reset_confirm": "Completely reset server '{{name}}'?\n\nThis will delete all worlds, settings, logs, and other data.\nOnly the server JAR and eula.txt will be kept.\n\nThis action cannot be undone.",
     "reset_success": "Server '{{name}}' has been reset ({{count}} items deleted)",
     "reset_failed": "Reset failed: {{error}}",
-    "reset_error": "Reset error: {{error}}"
+    "reset_error": "Reset error: {{error}}",
+    "stored_values_notice": "Couldn't read the server's settings file, so these are the last saved values. Saving only applies the fields you change."
   },
   "discord_bot": {
     "prefix_missing_title": "Prefix Missing",

@@ -71,9 +71,22 @@ describe('서버 설정 창: 실제 설정', () => {
         expect(result.current.settingsValues.title).toBe('Default');
         act(() => result.current.handleSettingChange('password', 'pw'));
         await act(async () => result.current.handleSaveSettings());
+        expect(result.current.settingsSource).toBe('stored');
         const sent = window.api.instanceUpdateSettings.mock.calls[0][1];
-        expect(sent).toMatchObject({ port: 2222, password: 'pw' });
+        expect(sent).toMatchObject({ password: 'pw' });
         expect(sent).not.toHaveProperty('title');
+        expect(sent).not.toHaveProperty('port'); // 저장된 값도 확인 못 했으니 고치지 않으면 보내지 않는다
+    });
+
+    it('실제 설정을 읽었으면 그 값과 (데몬이 맞춘) 캐시 값은 저장하고, 기본값만 있던 칸은 뺀다', async () => {
+        window.api.instanceReadLiveSettings = vi.fn().mockResolvedValue({ success: true, settings: { title: '진짜' } });
+        const { result } = setup();
+        await act(async () => result.current.handleOpenSettings({ id: 's', name: 'S', module: 'game', port: 2222 }));
+        expect(result.current.settingsSource).toBe('live');
+        await act(async () => result.current.handleSaveSettings());
+        const sent = window.api.instanceUpdateSettings.mock.calls[0][1];
+        expect(sent).toMatchObject({ port: 2222, title: '진짜' });
+        expect(sent).not.toHaveProperty('password');
     });
 
     it('늦게 온 실제 설정은 사용자가 이미 고친 칸과 나중에 연 다른 서버를 덮지 않는다', async () => {

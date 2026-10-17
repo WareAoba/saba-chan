@@ -434,6 +434,7 @@ function GeneralTab({
 export function ServerSettingsModal({
     settingsServer,
     settingsValues,
+    settingsSource,
     settingsActiveTab,
     setSettingsActiveTab,
     modules,
@@ -542,6 +543,12 @@ export function ServerSettingsModal({
             </div>
 
             <div className="modal-body">
+                {settingsSource === 'stored' && (
+                    <div className="notice tone-warn">
+                        <Icon name="alertTriangle" size="sm" />
+                        <span>{t('server_settings.stored_values_notice')}</span>
+                    </div>
+                )}
                 {settingsActiveTab === 'general' && (
                     <GeneralTab
                         settingsServer={settingsServer}

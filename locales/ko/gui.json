@@ -308,7 +308,8 @@
     "reset_confirm": "'{{name}}' 서버를 완전히 초기화하시겠습니까?\n\n모든 월드, 설정, 로그 및 기타 데이터가 삭제됩니다.\n서버 JAR과 eula.txt만 유지됩니다.\n\n이 작업은 되돌릴 수 없습니다.",
     "reset_success": "'{{name}}' 서버가 초기화되었습니다 ({{count}}개 항목 삭제됨)",
     "reset_failed": "초기화 실패: {{error}}",
-    "reset_error": "초기화 오류: {{error}}"
+    "reset_error": "초기화 오류: {{error}}",
+    "stored_values_notice": "설정 파일을 읽지 못해 마지막으로 저장된 값을 보여 주고 있어요. 저장하면 직접 바꾼 칸만 반영됩니다."
   },
   "discord_bot": {
     "prefix_missing_title": "Prefix 없음",

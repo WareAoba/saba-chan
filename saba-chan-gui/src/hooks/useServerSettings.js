@@ -70,9 +70,11 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
     const [versionsLoading, setVersionsLoading] = useState(false);
     const [versionInstalling, setVersionInstalling] = useState(false);
     const [resettingServer, setResettingServer] = useState(false);
-    // 실제 설정을 못 읽어 module.toml 기본값으로 채운 칸. 사용자가 고치지 않으면 저장하지 않는다
-    // (기본값을 저장하면 게임 안이나 파일에서 바꾼 값을 덮어쓴다)
-    const defaultedFields = useRef(new Set());
+    // 실제 설정으로 확인하지 못한 칸 (저장된 캐시나 module.toml 기본값). 사용자가 고치지 않으면 저장하지 않는다
+    // (그대로 저장하면 게임 안이나 파일에서 바꾼 값을 덮어쓴다)
+    const unconfirmedFields = useRef(new Set());
+    // 'loading' 실제 설정 읽는 중 / 'live' 실제 설정 / 'stored' 못 읽어 저장된 값을 보여 주는 중
+    const [settingsSource, setSettingsSource] = useState('loading');
     const touchedFields = useRef(new Set());
     const openRequest = useRef(0);
 
@@ -98,8 +100,10 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
 
         const request = ++openRequest.current;
         setSettingsServer(latestServer);
-        defaultedFields.current = new Set();
+        unconfirmedFields.current = new Set();
         touchedFields.current = new Set();
+        setSettingsSource('loading');
+        const defaulted = new Set();
 
         // Initialize settings values from module schema
         // 우선순위: 실제 설정(아래에서 비동기로 덮음) > 저장된 값(savedValue) > 기본값.
@@ -110,8 +114,9 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                 let value = savedValue(latestServer, field.name);
                 if (value === null) {
                     value = fieldValue(field.default) ?? '';
-                    defaultedFields.current.add(field.name);
+                    defaulted.add(field.name);
                 }
+                unconfirmedFields.current.add(field.name);
                 initial[field.name] = value;
             });
 
@@ -170,7 +175,11 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
         setShowSettingsModal(true);
 
         // 디스크의 실제 설정으로 덮는다. 그사이 사용자가 고친 칸과, 다른 서버로 바꿔 연 경우는 건드리지 않는다
-        if (latestServer.id && window.api.instanceReadLiveSettings && module?.settings?.fields) {
+        if (!module?.settings?.fields) {
+            setSettingsSource('live');
+        } else if (!latestServer.id || !window.api.instanceReadLiveSettings) {
+            setSettingsSource('stored');
+        } else {
             try {
                 const live = await window.api.instanceReadLiveSettings(latestServer.id);
                 if (request !== openRequest.current) return;
@@ -182,17 +191,21 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                             live.settings[field.name],
                             savedValue(latestServer, field.name),
                         );
+                        // 읽기에 성공하면 데몬이 캐시도 맞춘다: 실제 값이 없는 칸은 캐시가 확인된 값이다 (기본값만 아니면)
+                        if (v !== null || !defaulted.has(field.name)) unconfirmedFields.current.delete(field.name);
                         if (v === null || touchedFields.current.has(field.name)) continue;
                         patch[field.name] = v;
-                        defaultedFields.current.delete(field.name);
                     }
                     setSettingsValues((prev) => ({ ...prev, ...patch }));
+                    setSettingsSource('live');
                 } else {
-                    console.warn('Live settings unavailable; defaults will not be saved:', live?.error);
+                    console.warn('Live settings unavailable; only edited fields will be saved:', live?.error);
+                    setSettingsSource('stored');
                 }
             } catch (err) {
                 if (request !== openRequest.current) return;
-                console.warn('Live settings unavailable; defaults will not be saved:', err);
+                console.warn('Live settings unavailable; only edited fields will be saved:', err);
+                setSettingsSource('stored');
             }
         }
 
@@ -432,7 +445,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
             if (module && module.settings && module.settings.fields) {
                 module.settings.fields.forEach((field) => {
                     const value = settingsValues[field.name];
-                    if (defaultedFields.current.has(field.name) && !touchedFields.current.has(field.name)) return;
+                    if (unconfirmedFields.current.has(field.name) && !touchedFields.current.has(field.name)) return;
 
                     if (field.field_type === 'boolean') {
                         convertedSettings[field.name] = value === true || value === 'true';
@@ -521,6 +534,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
         showSettingsModal,
         settingsServer,
         settingsValues,
+        settingsSource,
         settingsActiveTab,
         setSettingsActiveTab,
         advancedExpanded,

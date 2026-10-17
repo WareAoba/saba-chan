@@ -221,7 +221,7 @@ function ComponentsTab({ devMode }) {
         } catch (_) {}
     }, []);
 
-    // 수동 새로고침 — GitHub API 호출 (사용자 명시적 요청 시에만)
+    // 수동 새로고침 — 데몬이 릴레이(/v1/updates/check)에 묻는다 (사용자 명시적 요청 시에만)
     const handleCheck = useCallback(async () => {
         setChecking(true);
         setError(null);
