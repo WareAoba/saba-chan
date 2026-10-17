@@ -1,299 +1,72 @@
-# saba-chan-cli: �E�임 �E�벁E�E��E� �E�E���E�E�E�������이�E�
+# saba-chan-cli
 
-Saba-chan Core Daemon�E�E�E�어���기 �E�E�� �E�E��E�� CLI ����E��E��E�����E�E���E�. 
-Windows, macOS, Linux�E��E �E�일���겁E�E�동���며, **Electron GUI�E� �E��E�E���일�E�E�E��E�����E�다**.
+사바쨩 데몬을 터미널에서 다루는 명령줄 도구입니다. GUI로 할 수 있는 일은 모두 여기서도 할 수 있고,
+모든 동작은 데몬 API를 거칩니다 (CLI가 직접 서버 파일을 만지지 않습니다).
 
-## 🚀 �E��E� �E�작
+## 빠르게
 
-### �E�드
-
-```bash
-cd cli
-cargo build --release
+```sh
+saba-chan-cli                      # 터미널에서 인자 없이 → 대화형 셸
+saba-chan-cli status               # 데몬·서버·디스코드·업데이트 한눈에
+saba-chan-cli server add           # 새 서버 (필요한 것을 물어봐요)
+saba-chan-cli start pal            # 이름은 일부만 적어도 돼요
+saba-chan-cli console pal          # 콘솔 보면서 입력 (:q 나가기, 서버는 계속 돌아요)
+saba-chan-cli run pal kick Steve   # 게임 명령 (모듈이 정의한 명령, 별명도 됨)
+saba-chan-cli chat 팰월드 시작      # 디스코드와 같은 채팅 처리
 ```
 
-�E�성�E�E�E�이�E�리:
-- **Windows**: `target/release/saba-chan-cli.exe`
-- **macOS/Linux**: `target/release/saba-chan-cli`
+데몬이 꺼져 있으면 켤지 물어봅니다. CLI를 닫아도 데몬과 서버는 계속 돕니다.
 
-### �E����E
+## 명령
 
-#### 1�E�⃣ �E�����E REPL �E��E�E(�E�장) 🎯
+| 갈래 | 하는 일 |
+|---|---|
+| `status`, `version` | 전체 상태, 설치된 부분의 버전 |
+| `server` (`start` `stop` `restart` `console` `run`은 바로 써도 됨) | 목록·정보·추가·삭제·켜기·끄기·콘솔·게임 명령·설정(`settings`, `set`)·게임 설정 파일(`properties`)·RCON·REST·버전·업데이트·설치 진행·종료 기록·점검(`validate`, `diagnose`)·EULA·초기화·순서 |
+| `module` | 게임 모듈 목록·정보·명령·설치할 수 있는 버전·받기·지우기·폴더 감지·서버 파일만 받기 |
+| `extension` | 익스텐션 목록·켜기·끄기·받기·업데이트·지우기·설정 |
+| `bot` | 디스코드 봇 연결: 페어링(코드 표시 → 디스코드에 입력)·연결·끊기·접두사·게임 별명·노드·멤버·설정 |
+| `update` | 사바쨩 업데이트 확인·받기·적용·마지막 결과·무결성 확인·설정 |
+| `config` | 앱 설정 보기·바꾸기 (`cli.키`는 CLI 전용 칸) |
+| `daemon` | 데몬 켜기·끄기·다시 켜기·로그 |
+| `shell`, `completions` | 대화형 셸, 셸 자동 완성 스크립트 |
 
-���E��그�E� �E�작 �E�E�E�동�E��E�E�E�����E �E��E�롁E�E�E������E�다:
+`saba-chan-cli <명령> --help`로 자세한 사용법을 볼 수 있습니다.
 
-```bash
-saba-chan-cli
+게임 명령은 설치된 모듈이 정합니다 (`saba-chan-cli server commands pal`). 인자는 순서대로 주거나
+`이름=값`으로 줍니다. 빠진 인자는 물어보고, 되돌릴 수 없는 명령은 확인을 받습니다.
+정의되지 않은 줄은 콘솔에 그대로 보냅니다 (모듈이 허용할 때).
+
+## 스크립트에서
+
+- `--json`: stdout에는 JSON 하나만 나갑니다. 안내·진행 표시는 stderr로 갑니다.
+- `--yes` (`-y`): 확인 질문에 예. 터미널이 아니면 묻지 않으므로, 확인이 필요한 명령은 `--yes`가 있어야 합니다.
+- 종료 코드: `0` 성공 · `1` 실패 · `2` 사용법 오류·여러 개가 맞음 · `3` 데몬에 연결할 수 없음 · `4` 대상 없음 · `130` 취소
+- 실패하면 `--json` 출력에 `error`, `error_code`, (있으면) `suggestions`가 들어갑니다.
+
+## 설정과 환경 변수
+
+| 무엇 | 어디서 |
+|---|---|
+| 데몬 포트 | `--port`, `SABA_IPC_PORT`, 설정 파일의 `ipcPort`, 기본 57474 |
+| 언어 | `--lang`, `SABA_LANG`, 설정 파일의 `language`, 시스템 언어, 영어 |
+| 데몬 실행 파일 | `SABA_CORE_PATH`, CLI와 같은 폴더 |
+| 색 끄기 | `--no-color`, `NO_COLOR` |
+
+문구는 `locales/<언어>/cli.json`에 있습니다. 영어·한국어는 실행 파일에 들어 있고, 없는 문구는 영어로 보입니다.
+새 언어는 그 파일 하나만 더하면 됩니다.
+
+## 익스텐션이 CLI에 더하는 것
+
+익스텐션 manifest의 `cli.slots`로 화면에 내용을 끼울 수 있습니다 (데이터만, 코드 실행 없음).
+
+- `InstanceList.badge` `{text, condition?}`: 서버 목록 이름 옆 표시. `condition`은 `instance.ext_data.<키>`.
+- `InstanceDetail.status` `[{label, value_from}]`: 서버 정보에 줄 추가.
+- `CreateInstance.options` `[{field, type, label, default?}]`: 서버를 추가할 때 묻고 `extension_data`에 저장.
+
+## 빌드
+
+```sh
+cargo build -p saba-chan-cli --release
+cargo test -p saba-chan-cli
 ```
-
-#### 2�E�⃣ �E��E� �E�E���E� �E��E�E
-
-����E�E�E�업�E�E�E�행���고 �E�E��합�E�다:
-
-```bash
-saba-chan-cli server "�ÁE�드�E?�h�E status
-saba-chan-cli bot config prefix "!play"
-saba-chan-cli alias list
-```
-
-#### 3�E�⃣ JSON �E�력
-
-���E��그�E�밁E�E�는 �E�동���를 �E�E�� JSON ���식�E��E�E�E�력:
-
-```bash
-saba-chan-cli --json server "����E�드�E�벁E status
-saba-chan-cli -j alias list
-```
-
-## 🎮 �E�E���E� �E�E��E�E��E��E�E
-
-### �E�벁E�E�어 `server <�E�벁E��E�E�는 ID>`
-
-�E��E�����E� �E��E�E���E�E�E�벁E�� �E�어����E�다 (`instances.json` �E��E�):
-
-```bash
-saba-chan-cli server "����E�드�E�벁E           # �E��E��E�E status �E�력
-saba-chan-cli server "����E�드�E�벁E status    # �E�E�E ���인
-saba-chan-cli server "����E�드�E�벁E start     # �E�작
-saba-chan-cli server "����E�드�E�벁E stop      # �E�지
-saba-chan-cli server "����E�드�E�벁E restart   # �E��E�작
-saba-chan-cli server "����E�드�E�벁E exec "�E�E��"    # �E��E���� �E�E�� �E����E
-saba-chan-cli server "����E�드�E�벁E rcon "�E�E��"    # RCON �E�E�� �E����E
-saba-chan-cli server "����E�드�E�벁E rest "�E�E��"    # REST �E�E�� �E����E
-
-# �E�는 UUID�E�도 �E��E�
-saba-chan-cli server 68b29cef-e584-4bd0-91dc-771865e31e25 status
-```
-
-### �E��E�E�E��E� `module`
-
-```bash
-saba-chan-cli module list                      # �E��E�된 �E��E�E�E��E�E
-saba-chan-cli module info <�E��E�몁E             # �E��E�E�E�보 �E����E
-saba-chan-cli module reload                    # �E��E� �E��E�E�E��E�E�E�드
-saba-chan-cli module path <�E��E�E               # �E��E�E�E�렉�E�E� �E��E�E(TODO)
-saba-chan-cli module mount <�E��E�E              # �E�E�E��E�E�E�운��� (TODO)
-saba-chan-cli module unmount <�E��E�몁E          # �E��E�E�E��E�운��� (TODO)
-```
-
-### �E��E� �E�어 `daemon`
-
-```bash
-saba-chan-cli daemon status                    # �E��E� �E�E�E ���인
-saba-chan-cli daemon start                     # �E��E� �E�작 (TODO)
-saba-chan-cli daemon stop                      # �E��E� �E�지 (TODO)
-saba-chan-cli daemon restart                   # �E��E� �E��E�작 (TODO)
-```
-
-### Discord �E�E�E�어 `bot`
-
-�E�E�E��E� �E�E�E��E�E(GUI と共朁E:
-
-```bash
-saba-chan-cli bot status                       # �E�E�E�E�E ���인 (TODO)
-saba-chan-cli bot start                        # �E�E�E�작 (TODO)
-saba-chan-cli bot stop                         # �E�E�E�지 (TODO)
-
-saba-chan-cli bot config prefix "!play"        # �E�E�� ���E������E� �E��E�
-saba-chan-cli bot config alias "���" "palworld" # �E��E�E�E�E��E�E�가
-saba-chan-cli bot config remove-alias "���"     # �E��E�E�E�E��E�E�거
-saba-chan-cli bot config show                  # ���E�� �E�E�E��E�E�E����E
-```
-
-### �E�E��E& �E��E�E`alias`
-
-```bash
-saba-chan-cli alias list                            # �E��E� �E�벁E�E��E�E�E�E��E�E����E
-saba-chan-cli alias module "���" "palworld"         # �E��E�E�E�E��E�E�가
-saba-chan-cli alias remove-module "���"             # �E��E�E�E�E��E�E�거
-```
-
-**�E��E�**: �E�벁E�E�E��E�� `instances.json`�E�E�E�벁E�E��E�E���E�E�E��E��E��E�다.
-
-## 💾 ���일 �E�E��E�E�E������성
-
-### Windows
-| ���일 | �E�E��E| �E��E�E|
-|------|------|------|
-| `bot-config.json` | `%APPDATA%\saba-chan\` | Discord �E�E�E��E�E(GUI�E� �E��E�) |
-| `instances.json` | ���E��젝트 �E���� �E�는 `config\` | �E�벁E�E��E�����E� �E�의 |
-| `saba-cli.json` | `%APPDATA%\saba-chan\` | CLI �E�E�� �E��E�E|
-
-### Linux/macOS
-| ���일 | �E�E��E| �E��E�E|
-|------|------|------|
-| `bot-config.json` | `~/.config/saba-chan/` | Discord �E�E�E��E�E(GUI�E� �E��E�) |
-| `instances.json` | ���E��젝트 �E���� �E�는 `config/` | �E�벁E�E��E�����E� �E�의 |
-| `saba-cli.json` | `~/.config/saba-chan/` | CLI �E�E�� �E��E�E|
-
-### ���일 ���식
-
-**bot-config.json** (Electron GUI�E� �E�일):
-```json
-{
-  "prefix": "!saba-chan-cli",
-  "moduleAliases": {
-    "���": "palworld",
-    "�E�인": "minecraft"
-  },
-  "commandAliases": {}
-}
-```
-
-**instances.json**:
-```json
-[
-  {
-    "id": "68b29cef-e584-4bd0-91dc-771865e31e25",
-    "name": "����E�드�E�벁E,
-    "module_name": "palworld",
-    "executable_path": "D:\\PalServer\\PalServer.exe",
-    "port": 8211,
-    "rcon_port": 25575,
-    "rcon_password": "xxxx",
-    "protocol_mode": "rest"
-  }
-]
-```
-
-## ⚙︁E�E�E�� �E��E�E
-
-### Daemon URL �E��E�
-
-�E��E��E�E `http://127.0.0.1:57474`
-
-**�E�E���E�E�E��E�E**
-```bash
-saba-chan-cli --daemon http://my-server:57474 server "����E�드�E�벁E status
-```
-
-**�E��E�E���일:**
-```bash
-saba-chan-cli config show                           # ���E�� �E��E�E�E��E�
-saba-chan-cli config set key value                 # �E��E�E�E��E�
-saba-chan-cli config reset                         # �E��E��E�으�E�E�E�기���E
-```
-
-**saba-cli.json** (�E�동 �E�성):
-```json
-{
-  "daemon_url": "http://127.0.0.1:57474"
-}
-```
-
-## 💡 �E�����E �E��E�E(REPL)
-
-```bash
-saba-chan-cli
-```
-
-����E�E
-✁E**�E��E�각E�E��E�터�E�E* - 2�E�마다 �E�E�E �E�동 �E��E�
-✁E**�E��E� �E�E�� �E�E��** - �E�E���E� �E�E��E���E�E�시 �E�E�E ���인
-✁E**�E�E�� ���스����E�** - �E�E�E�E�� ���살���롁E�E��E�E�E�E�� �E��E��E�
-✁E**�E�시 �E��E�** - �E�E�� �E����E�E��E��E� �E�롁E���인
-
-## 🔄 �E��E� �E�시
-
-### �E�벁E�E�작/�E�지
-
-```bash
-# ����E�드 �E�벁E�E�작
-saba-chan-cli server "����E�드�E�벁E start
-
-# �E�인����E�프��� �E�벁E�E�지
-saba-chan-cli server "my-minecraft-1" stop
-
-# �E�벁E�E��E�작
-saba-chan-cli server "����E�드�E�벁E restart
-```
-
-### RCON �E�E�� �E����E
-
-```bash
-# ����E�드 �E�벁E�� �E�시�E� �E�E�E
-saba-chan-cli server "����E�드�E�벁E rcon "say Server restarts in 5 minutes!"
-```
-
-### �E�E�E��E�E
-
-```bash
-# �E�E�E�E�� ���E������E��E� !play�E�E�E��E�
-saba-chan-cli bot config prefix "!play"
-
-# �E��E�E�E�E��E�E�가 (�E�E�� "!��� info" �E�은 �E�으�E�E�E��E� �E��E�)
-saba-chan-cli bot config alias "���" "palworld"
-
-# ���E�� �E��E�E���인
-saba-chan-cli bot config show
-```
-
-## 🐧 Linux/����E�리�E� �E�벁E���E�E�E��E�
-
-GUI �E�E�� �E��E�E�� �E�벁E���E�도 �E�E��E�� �E�일���겁E�E�동����E�다:
-
-```bash
-# SSH�E�E�E��E
-ssh user@server.com
-
-# �E�����E �E��E�롁E�E��E�
-saba-chan-cli
-
-# �E��E� �E��E� �E��E� �E��E�
-saba-chan-cli> server "����E�드�E�벁E start
-saba-chan-cli> module reload
-saba-chan-cli> bot config show
-saba-chan-cli> exit
-```
-
-## 📋 �E�E���E� �E��E� �E�퍼�E��E�
-
-| �E�주 | �E�E���E� | �E��E�E|
-|------|--------|------|
-| **�E�벁E* | `server <name> [status\|start\|stop\|restart]` | �E�벁E�E�어 |
-| | `server <name> [exec\|rcon\|rest] <cmd>` | �E�E�� �E����E|
-| **�E��E�E* | `module [list\|info\|reload]` | �E��E�E�E��E� |
-| **�E�E* | `bot [status\|start\|stop]` | �E�E���E��세�E� |
-| | `bot config [prefix\|alias\|show]` | �E�E�E��E�E|
-| **�E�E��E* | `alias list` | �E��E� �E�E��E�E����E|
-| | `alias module <alias> <module>` | �E��E�E�E�E��E�E�가 |
-| **�E��E�E* | `config [show\|set\|reset]` | CLI �E��E�E|
-| **Health** | `health` | Daemon �E�E�E |
-
-## 🔧 �E�밁E
-
-### ���E��젝트 �E��E�
-
-```
-saba-chan-cli/
-├── src/
-━E  ├── main.rs              # �E�E���E�E clap ���싱
-━E  ├── client.rs            # Daemon API HTTP ����E��E��E����
-━E  ├── alias.rs             # bot-config.json & instances.json �E��E�
-━E  ├── commands/            # �E�E�E�E���E� �E����E
-━E  ━E  ├── server.rs
-━E  ━E  ├── module.rs
-━E  ━E  ├── instance.rs
-━E  ━E  ├── exec.rs
-━E  ━E  └── config.rs
-━E  ├── interactive/         # REPL �E��E�E
-━E  ━E  ├── state.rs
-━E  ━E  ├── repl.rs
-━E  ━E  └── mod.rs
-━E  └── utils/
-━E      ├── table.rs
-━E      └── mod.rs
-└── Cargo.toml
-```
-
-### �E�존�E�
-
-- **clap**: CLI ���싱
-- **tokio**: �E�E���E� �E�����E�E
-- **reqwest**: HTTP ����E��E��E����
-- **rustyline**: �E�����E �E�E��
-- **serde_json**: JSON �E�리
-
-## 📝 �E��E��E��E�
-
-���E��젝트�E�E�E��E��E��E��E� �E��E�E���E�.

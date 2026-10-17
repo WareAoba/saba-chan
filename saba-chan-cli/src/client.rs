@@ -1,491 +1,754 @@
-use serde_json::Value;
+//! 데몬 HTTP API — CLI가 쓰는 모든 계약이 이 파일 한 곳에 있다
+//!
+//! 응답 정규화: HTTP 오류뿐 아니라 200인데 `ok:false`/`success:false`인 응답도 `CliError::Api`로 바꾼다.
+//! 오류 문구는 데몬이 준 순서대로 `error_message`(모듈의 사용자용 문구) → `error` → `message`.
+
+use crate::error::{CliError, Result};
+use reqwest::Method;
+use serde_json::{json, Value};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
-use saba_chan_updater_lib::constants;
 
-/// IPC 토큰 파일 경로 (데몬과 동일한 로직 — constants 모듈 위임)
-fn ipc_token_path() -> String {
-    constants::token_file_path()
-        .to_string_lossy()
-        .to_string()
+/// 짧은 조회
+const QUICK: Duration = Duration::from_secs(10);
+/// 원격 목록 조회·모듈 호출처럼 몇 초 걸리는 것
+const SLOW: Duration = Duration::from_secs(60);
+/// 설치·다운로드
+const LONG: Duration = Duration::from_secs(30 * 60);
+
+#[derive(Clone)]
+pub struct Api {
+    http: reqwest::Client,
+    base: String,
+    /// 데몬 포트 (데몬을 띄울 때 그대로 넘긴다)
+    pub port: u16,
+    token: Arc<RwLock<Option<String>>>,
 }
 
-/// IPC 토큰 파일에서 토큰 읽기
-fn read_ipc_token() -> Option<String> {
-    std::fs::read_to_string(ipc_token_path())
+fn read_token() -> Option<String> {
+    std::fs::read_to_string(saba_chan_updater_lib::constants::token_file_path())
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
 }
 
-#[derive(Debug, Clone)]
-pub struct DaemonClient {
-    client: reqwest::Client,
-    /// 장시간 작업용 (install, managed start 등)
-    long_client: reqwest::Client,
-    base_url: String,
-    /// IPC 인증 토큰 (데몬이 .ipc_token 파일에 저장, 401 시 자동 갱신)
-    token: Arc<RwLock<Option<String>>>,
+/// 경로 조각 하나를 URL에 넣을 수 있게
+pub fn seg(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{:02X}", b));
+        }
+    }
+    out
 }
 
-impl DaemonClient {
-    pub fn new(base_url: Option<&str>) -> Self {
-        let base_url = base_url
-            .unwrap_or(constants::DEFAULT_DAEMON_URL)
-            .to_string();
-
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(5))
+impl Api {
+    pub fn new(port: u16) -> Self {
+        let http = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(2))
+            .no_proxy()
             .build()
-            .expect("Failed to create HTTP client");
-
-        let long_client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(120))
-            .build()
-            .expect("Failed to create long-timeout HTTP client");
-
-        let token = read_ipc_token();
-
-        Self { client, long_client, base_url, token: Arc::new(RwLock::new(token)) }
-    }
-
-    // ─── 토큰 관리 ───
-
-    fn get_token(&self) -> Option<String> {
-        self.token.read().ok().and_then(|t| t.clone())
-    }
-
-    /// 토큰 파일을 다시 읽어 캐시 갱신 (데몬 재시작 시 토큰이 바뀜)
-    fn refresh_token(&self) -> Option<String> {
-        let new_token = read_ipc_token();
-        if let Ok(mut t) = self.token.write() {
-            *t = new_token.clone();
+            .expect("http client");
+        Self {
+            http,
+            base: format!("http://127.0.0.1:{}", port),
+            port,
+            token: Arc::new(RwLock::new(read_token())),
         }
-        new_token
     }
 
-    // ─── 중앙 HTTP 실행기 (토큰 주입 + 401 재시도) ───
+    pub fn base_url(&self) -> &str {
+        &self.base
+    }
 
-    async fn request(
+    async fn send(
         &self,
-        method: reqwest::Method,
+        method: &Method,
         path: &str,
         body: Option<&Value>,
-        use_long: bool,
-    ) -> anyhow::Result<Value> {
-        let url = format!("{}{}", self.base_url, path);
-        let client = if use_long { &self.long_client } else { &self.client };
+        timeout: Duration,
+    ) -> Result<reqwest::Response> {
+        let mut req = self
+            .http
+            .request(method.clone(), format!("{}{}", self.base, path))
+            .timeout(timeout);
+        if let Some(t) = self.token.read().ok().and_then(|t| t.clone()) {
+            req = req.header("X-Saba-Token", t);
+        }
+        if let Some(b) = body {
+            req = req.json(b);
+        }
+        req.send().await.map_err(|e| {
+            if e.is_connect() {
+                CliError::DaemonDown { url: self.base.clone() }.into()
+            } else if e.is_timeout() {
+                CliError::Failed(t!("err.timeout", path = path)).into()
+            } else {
+                anyhow::anyhow!(e)
+            }
+        })
+    }
 
-        // 1차 시도
-        let response = {
-            let mut builder = client.request(method.clone(), &url);
-            if let Some(token) = self.get_token() {
-                builder = builder.header("X-Saba-Token", &token);
+    pub async fn call(&self, method: Method, path: &str, body: Option<Value>, timeout: Duration) -> Result<Value> {
+        let mut resp = self.send(&method, path, body.as_ref(), timeout).await?;
+        // 데몬이 다시 뜨면 토큰이 바뀐다 → 한 번 다시 읽고 재시도
+        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            let fresh = read_token();
+            if let Ok(mut t) = self.token.write() {
+                *t = fresh;
             }
-            if let Some(b) = body {
-                builder = builder.json(b);
-            }
-            builder.send().await?
+            resp = self.send(&method, path, body.as_ref(), timeout).await?;
+        }
+        let status = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        let value: Value = if text.trim().is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_str(&text).unwrap_or_else(|_| Value::String(text.clone()))
         };
-
-        // 401 → 토큰 갱신 후 1회 재시도
-        if response.status() == reqwest::StatusCode::UNAUTHORIZED {
-            if let Some(new_token) = self.refresh_token() {
-                let mut builder = client.request(method, &url);
-                builder = builder.header("X-Saba-Token", &new_token);
-                if let Some(b) = body {
-                    builder = builder.json(b);
-                }
-                let response = builder.send().await?;
-                if !response.status().is_success() {
-                    return Err(api_error(response).await);
-                }
-                return Ok(response.json().await?);
-            }
-        }
-
-        if !response.status().is_success() {
-            return Err(api_error(response).await);
-        }
-        Ok(response.json().await?)
+        check(status, value)
     }
 
-    // ─── 내부 헬퍼 ───
-
-    async fn get_json(&self, path: &str) -> anyhow::Result<Value> {
-        self.request(reqwest::Method::GET, path, None, false).await
+    async fn get(&self, path: &str) -> Result<Value> {
+        self.call(Method::GET, path, None, QUICK).await
+    }
+    async fn get_slow(&self, path: &str) -> Result<Value> {
+        self.call(Method::GET, path, None, SLOW).await
+    }
+    async fn post(&self, path: &str, body: Value) -> Result<Value> {
+        self.call(Method::POST, path, Some(body), SLOW).await
+    }
+    async fn post_long(&self, path: &str, body: Value) -> Result<Value> {
+        self.call(Method::POST, path, Some(body), LONG).await
+    }
+    async fn put(&self, path: &str, body: Value) -> Result<Value> {
+        self.call(Method::PUT, path, Some(body), QUICK).await
+    }
+    async fn put_slow(&self, path: &str, body: Value) -> Result<Value> {
+        self.call(Method::PUT, path, Some(body), SLOW).await
+    }
+    async fn patch(&self, path: &str, body: Value) -> Result<Value> {
+        self.call(Method::PATCH, path, Some(body), SLOW).await
+    }
+    async fn delete(&self, path: &str) -> Result<Value> {
+        self.call(Method::DELETE, path, None, SLOW).await
     }
 
-    async fn post_json(&self, path: &str, body: &Value) -> anyhow::Result<Value> {
-        self.request(reqwest::Method::POST, path, Some(body), false).await
+    // ── 데몬 ──
+
+    /// GET /health — 락 없이 답하는 ping (`{ok, version, pid}`)
+    pub async fn health(&self) -> Result<Value> {
+        self.call(Method::GET, "/health", None, Duration::from_secs(2)).await
+    }
+    /// GET /api/version — 코어·모듈·익스텐션 버전
+    pub async fn version(&self) -> Result<Value> {
+        self.get("/api/version").await
+    }
+    /// GET /api/system/components — 릴리스 버전과 설치된 구성요소 `{version, components, lastUpdated}`
+    pub async fn system_components(&self) -> Result<Value> {
+        self.get("/api/system/components").await
+    }
+    /// POST /api/daemon/shutdown
+    pub async fn shutdown(&self) -> Result<Value> {
+        self.post("/api/daemon/shutdown", json!({})).await
+    }
+    /// GET /api/daemon/console?since=&count=
+    pub async fn daemon_console(&self, since: Option<u64>, count: Option<usize>) -> Result<Value> {
+        self.get(&with_query(
+            "/api/daemon/console",
+            &[
+                ("since", since.map(|v| v.to_string())),
+                ("count", count.map(|v| v.to_string())),
+            ],
+        ))
+        .await
     }
 
-    async fn post_empty(&self, path: &str) -> anyhow::Result<Value> {
-        self.request(reqwest::Method::POST, path, None, false).await
+    // ── 서버 (런타임 상태) ──
+
+    /// GET /api/servers — 상태가 붙은 서버 목록 (익스텐션 hook 포함이라 느릴 수 있다)
+    pub async fn servers(&self) -> Result<Value> {
+        self.get_slow("/api/servers").await
+    }
+    /// POST /api/instance/:id/start — managed 여부는 데몬이 고른다
+    pub async fn start(&self, id: &str) -> Result<Value> {
+        self.post_long(&format!("/api/instance/{}/start", seg(id)), json!({}))
+            .await
+    }
+    /// POST /api/instance/:id/stop
+    pub async fn stop(&self, id: &str, force: bool) -> Result<Value> {
+        self.post_long(&format!("/api/instance/{}/stop", seg(id)), json!({ "force": force }))
+            .await
+    }
+    /// POST /api/instance/:id/restart — 멈추고(최대 2분) 다시 켠다. 꺼져 있었으면 켜기만. 응답은 시작 응답 + `stopped`
+    pub async fn restart(&self, id: &str, force: bool) -> Result<Value> {
+        self.post_long(&format!("/api/instance/{}/restart", seg(id)), json!({ "force": force }))
+            .await
+    }
+    /// POST /api/instance/:id/rename — 409 name_taken / server_running
+    pub async fn rename(&self, id: &str, name: &str) -> Result<Value> {
+        self.post(&format!("/api/instance/{}/rename", seg(id)), json!({ "name": name }))
+            .await
+    }
+    /// GET /api/instance/:id/commands — 모듈 + 켜진 익스텐션 명령
+    pub async fn instance_commands(&self, id: &str) -> Result<Value> {
+        self.get(&format!("/api/instance/{}/commands", seg(id))).await
+    }
+    /// GET /api/instance/:id/events — 종료 기록 (A1)
+    pub async fn exit_events(&self, id: &str) -> Result<Value> {
+        self.get(&format!("/api/instance/{}/events", seg(id))).await
     }
 
-    async fn post_json_long(&self, path: &str, body: &Value) -> anyhow::Result<Value> {
-        self.request(reqwest::Method::POST, path, Some(body), true).await
-    }
+    // ── 인스턴스 (설정) ──
 
-    async fn delete_json(&self, path: &str) -> anyhow::Result<Value> {
-        self.request(reqwest::Method::DELETE, path, None, false).await
-    }
-
-    async fn patch_json(&self, path: &str, body: &Value) -> anyhow::Result<Value> {
-        self.request(reqwest::Method::PATCH, path, Some(body), false).await
-    }
-
-    async fn put_json(&self, path: &str, body: &Value) -> anyhow::Result<Value> {
-        self.request(reqwest::Method::PUT, path, Some(body), false).await
-    }
-
-    // ============ Servers (런타임) ============
-
-    /// GET /api/servers — 서버 런타임 상태 (status, pid 포함, {"servers": [...]})
-    pub async fn list_servers(&self) -> anyhow::Result<Vec<Value>> {
-        let data = self.get_json("/api/servers").await?;
-        Ok(data
-            .get("servers")
-            .and_then(|v| v.as_array())
+    /// GET /api/instances
+    pub async fn instances(&self) -> Result<Vec<Value>> {
+        Ok(self
+            .get("/api/instances")
+            .await?
+            .as_array()
             .cloned()
             .unwrap_or_default())
     }
-
-    /// GET /api/server/{name}/status
-    pub async fn get_server_status(&self, name: &str) -> anyhow::Result<Value> {
-        self.get_json(&format!("/api/server/{}/status", name)).await
+    /// POST /api/instances — `{name, module_name, port?, migration_source?, executable_path?, working_dir?}`
+    pub async fn create_instance(&self, body: Value) -> Result<Value> {
+        self.post_long("/api/instances", body).await
+    }
+    /// DELETE /api/instance/:id
+    pub async fn delete_instance(&self, id: &str) -> Result<Value> {
+        self.delete(&format!("/api/instance/{}", seg(id))).await
+    }
+    /// PATCH /api/instance/:id — 공통 필드·모듈 설정·`extension_data` 부분 변경
+    pub async fn update_instance(&self, id: &str, patch: Value) -> Result<Value> {
+        self.patch(&format!("/api/instance/{}", seg(id)), patch).await
+    }
+    /// PUT /api/instances/reorder — `{order: [id...]}`
+    pub async fn reorder(&self, ids: &[String]) -> Result<Value> {
+        self.put("/api/instances/reorder", json!({ "order": ids })).await
+    }
+    /// GET /api/provision-progress/:name
+    pub async fn provision_progress(&self, name: &str) -> Result<Value> {
+        self.get(&format!("/api/provision-progress/{}", seg(name))).await
+    }
+    /// DELETE /api/provision-progress/:name — 실패한 새 서버면 데몬이 롤백한다
+    pub async fn dismiss_provision(&self, name: &str) -> Result<Value> {
+        self.delete(&format!("/api/provision-progress/{}", seg(name))).await
+    }
+    /// GET /api/instance/:id/check-update
+    pub async fn check_server_update(&self, id: &str) -> Result<Value> {
+        self.get_slow(&format!("/api/instance/{}/check-update", seg(id))).await
+    }
+    /// POST /api/instance/:id/apply-update
+    pub async fn apply_server_update(&self, id: &str) -> Result<Value> {
+        self.post_long(&format!("/api/instance/{}/apply-update", seg(id)), json!({}))
+            .await
+    }
+    /// GET /api/instance/:id/installed-version
+    pub async fn installed_version(&self, id: &str) -> Result<Value> {
+        self.get_slow(&format!("/api/instance/{}/installed-version", seg(id)))
+            .await
     }
 
-    /// POST /api/instance/{id 또는 이름}/start — 시작 방식(managed 여부)은 데몬이 정한다
-    pub async fn start_instance(&self, id_or_name: &str) -> anyhow::Result<Value> {
-        self.post_json(&format!("/api/instance/{}/start", id_or_name), &serde_json::json!({})).await
+    // ── 명령 ──
+
+    /// POST /api/instance/:id/command — 모듈 명령 카탈로그로 해석된다 (이름·인자 또는 한 줄)
+    pub async fn command(&self, id: &str, command: &str, args: Value) -> Result<Value> {
+        self.post(
+            &format!("/api/instance/{}/command", seg(id)),
+            json!({ "command": command, "args": args }),
+        )
+        .await
     }
-
-    /// POST /api/server/{name}/stop
-    pub async fn stop_server(&self, name: &str, force: bool) -> anyhow::Result<Value> {
-        let body = serde_json::json!({ "force": force });
-        self.post_json(&format!("/api/server/{}/stop", name), &body).await
-    }
-
-    // ============ Instances (설정) ============
-
-    /// GET /api/instances — 인스턴스 설정 목록 (베어 배열)
-    pub async fn list_instances(&self) -> anyhow::Result<Vec<Value>> {
-        let data = self.get_json("/api/instances").await?;
-        Ok(data.as_array().cloned().unwrap_or_default())
-    }
-
-    /// GET /api/instance/{id}
-    pub async fn get_instance(&self, id: &str) -> anyhow::Result<Value> {
-        self.get_json(&format!("/api/instance/{}", id)).await
-    }
-
-    /// POST /api/instances — 인스턴스 생성
-    pub async fn create_instance(&self, data: Value) -> anyhow::Result<Value> {
-        self.post_json("/api/instances", &data).await
-    }
-
-    /// DELETE /api/instance/{id}
-    pub async fn delete_instance(&self, id: &str) -> anyhow::Result<Value> {
-        self.delete_json(&format!("/api/instance/{}", id)).await
-    }
-
-    /// PATCH /api/instance/{id} — 인스턴스 설정 업데이트
-    pub async fn update_instance(&self, id: &str, settings: Value) -> anyhow::Result<Value> {
-        self.patch_json(&format!("/api/instance/{}", id), &settings).await
-    }
-
-    /// PUT /api/instances/reorder — 인스턴스 순서 변경
-    pub async fn reorder_instances(&self, order: Value) -> anyhow::Result<Value> {
-        self.put_json("/api/instances/reorder", &order).await
-    }
-
-    // ============ Commands ============
-
-    /// POST /api/instance/{id}/command
-    pub async fn execute_command(&self, id: &str, command: &str, args: Option<Value>) -> anyhow::Result<Value> {
-        let body = serde_json::json!({
-            "command": command,
-            "args": args.unwrap_or(Value::Null)
-        });
-        self.post_json(&format!("/api/instance/{}/command", id), &body).await
-    }
-
-    /// POST /api/instance/{id}/rcon
-    pub async fn execute_rcon_command(&self, id: &str, command: &str) -> anyhow::Result<Value> {
-        let body = serde_json::json!({ "command": command });
-        self.post_json(&format!("/api/instance/{}/rcon", id), &body).await
-    }
-
-    // ============ Managed Process ============
-
-    /// GET /api/instance/{id}/console — 콘솔 출력 가져오기
-    pub async fn get_console(&self, id: &str) -> anyhow::Result<Value> {
-        self.get_json(&format!("/api/instance/{}/console", id)).await
-    }
-
-    /// POST /api/instance/{id}/stdin — stdin으로 텍스트 전송
-    pub async fn send_stdin(&self, id: &str, input: &str) -> anyhow::Result<Value> {
-        let body = serde_json::json!({ "command": input });
-        self.post_json(&format!("/api/instance/{}/stdin", id), &body).await
-    }
-
-    // ============ Instance Utilities ============
-
-    /// POST /api/instance/{id}/validate — 인스턴스 설정 검증
-    pub async fn validate_instance(&self, id: &str) -> anyhow::Result<Value> {
-        self.post_empty(&format!("/api/instance/{}/validate", id)).await
-    }
-
-    /// POST /api/instance/{id}/accept-eula — EULA 수락
-    pub async fn accept_eula(&self, id: &str) -> anyhow::Result<Value> {
-        self.post_empty(&format!("/api/instance/{}/accept-eula", id)).await
-    }
-
-    /// POST /api/instance/{id}/diagnose — 서버 진단
-    pub async fn diagnose(&self, id: &str) -> anyhow::Result<Value> {
-        self.post_empty(&format!("/api/instance/{}/diagnose", id)).await
-    }
-
-    // ============ Modules ============
-
-    /// GET /api/modules — 로드된 모듈 목록
-    pub async fn list_modules(&self) -> anyhow::Result<Vec<Value>> {
-        let data = self.get_json("/api/modules").await?;
-        Ok(data
-            .get("modules")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default())
-    }
-
-    /// GET /api/module/{name} — 모듈 상세 정보
-    pub async fn get_module(&self, name: &str) -> anyhow::Result<Value> {
-        self.get_json(&format!("/api/module/{}", name)).await
-    }
-
-    /// POST /api/modules/refresh — 모듈 새로고침
-    pub async fn refresh_modules(&self) -> anyhow::Result<Value> {
-        self.post_empty("/api/modules/refresh").await
-    }
-
-    /// GET /api/module/{name}/versions — 사용 가능한 버전 목록
-    pub async fn list_versions(&self, module: &str) -> anyhow::Result<Value> {
-        self.get_json(&format!("/api/module/{}/versions", module)).await
-    }
-
-    /// POST /api/module/{name}/install — 서버 설치
-    pub async fn install_server(&self, module: &str, data: Value) -> anyhow::Result<Value> {
-        self.post_json_long(&format!("/api/module/{}/install", module), &data).await
-    }
-
-    // ============ Client Heartbeat ============
-
-    /// POST /api/client/register — 데몬에 클라이언트 등록
-    pub async fn register_client(&self, kind: &str) -> anyhow::Result<String> {
-        let body = serde_json::json!({ "kind": kind });
-        let data = self.post_json("/api/client/register", &body).await?;
-        data.get("client_id")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .ok_or_else(|| anyhow::anyhow!("No client_id in response"))
-    }
-
-    /// POST /api/client/{id}/heartbeat — 생존 신호 전송
-    pub async fn send_heartbeat(&self, client_id: &str) -> anyhow::Result<()> {
-        self.post_json(&format!("/api/client/{}/heartbeat", client_id), &serde_json::json!({})).await?;
-        Ok(())
-    }
-
-    /// DELETE /api/client/{id}/unregister — 클라이언트 해제
-    pub async fn unregister_client(&self, client_id: &str) -> anyhow::Result<()> {
-        self.delete_json(&format!("/api/client/{}/unregister", client_id)).await?;
-        Ok(())
-    }
-
-    // ============ Updates ============
-
-    /// POST /api/updates/check — 업데이트 수동 확인
-    pub async fn check_updates(&self) -> anyhow::Result<Value> {
-        self.post_empty("/api/updates/check").await
-    }
-
-    /// GET /api/updates/status — 업데이트 상태 조회
-    pub async fn get_update_status(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/updates/status").await
-    }
-
-    /// POST /api/updates/download — 업데이트 전체 다운로드
-    pub async fn download_updates(&self) -> anyhow::Result<Value> {
-        self.post_empty("/api/updates/download").await
-    }
-
-    /// POST /api/updates/apply — 업데이트 적용
-    pub async fn apply_updates(&self) -> anyhow::Result<Value> {
-        self.post_empty("/api/updates/apply").await
-    }
-
-    /// POST /api/updates/launch-updater — 데몬이 업데이터를 띄우고 종료한다 (U7)
-    pub async fn launch_updater(&self) -> anyhow::Result<Value> {
-        self.post_json("/api/updates/launch-updater", &serde_json::json!({})).await
-    }
-
-    /// GET /api/updates/last-result — 마지막 업데이트 적용 결과
-    pub async fn last_update_result(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/updates/last-result").await
-    }
-
-    /// GET /api/updates/config — 업데이트 설정 조회
-    pub async fn get_update_config(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/updates/config").await
-    }
-
-    // ============ Extensions ============
-
-    /// GET /api/extensions — 설치된 익스텐션 목록
-    pub async fn list_extensions(&self) -> anyhow::Result<Vec<Value>> {
-        let data = self.get_json("/api/extensions").await?;
-        Ok(data
-            .get("extensions")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_else(|| {
-                data.as_array().cloned().unwrap_or_default()
-            }))
-    }
-
-    /// POST /api/extensions/{id}/enable — 익스텐션 활성화
-    pub async fn enable_extension(&self, ext_id: &str) -> anyhow::Result<Value> {
-        self.post_empty(&format!("/api/extensions/{}/enable", ext_id)).await
-    }
-
-    /// POST /api/extensions/{id}/disable — 익스텐션 비활성화
-    pub async fn disable_extension(&self, ext_id: &str) -> anyhow::Result<Value> {
-        self.post_empty(&format!("/api/extensions/{}/disable", ext_id)).await
-    }
-
-    /// GET /api/extensions/manifest — 원격 익스텐션 매니페스트 조회
-    pub async fn fetch_extension_manifest(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/extensions/manifest").await
-    }
-
-    /// POST /api/extensions/{id}/install — 익스텐션 설치
-    pub async fn install_extension(&self, ext_id: &str, opts: Option<Value>) -> anyhow::Result<Value> {
-        let body = opts.unwrap_or_else(|| serde_json::json!({}));
-        self.post_json_long(&format!("/api/extensions/{}/install", ext_id), &body).await
-    }
-
-    /// DELETE /api/extensions/{id} — 익스텐션 삭제
-    pub async fn remove_extension(&self, ext_id: &str) -> anyhow::Result<Value> {
-        self.delete_json(&format!("/api/extensions/{}", ext_id)).await
-    }
-
-    /// GET /api/extensions/updates — 익스텐션 업데이트 확인
-    pub async fn check_extension_updates(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/extensions/updates").await
-    }
-
-    /// POST /api/extensions/rescan — 익스텐션 재스캔
-    pub async fn rescan_extensions(&self) -> anyhow::Result<Value> {
-        self.post_empty("/api/extensions/rescan").await
-    }
-
-    // ============ Module Manifest (remote) ============
-
-    /// GET /api/modules/manifest — 원격 모듈 매니페스트 조회
-    pub async fn fetch_module_manifest(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/modules/manifest").await
-    }
-
-    /// POST /api/modules/manifest/{id}/install — 매니페스트에서 모듈 설치
-    pub async fn install_module_from_manifest(&self, module_id: &str) -> anyhow::Result<Value> {
-        self.post_json_long(
-            &format!("/api/modules/manifest/{}/install", module_id),
-            &serde_json::json!({}),
-        ).await
-    }
-
-    /// DELETE /api/modules/{id} — 모듈 삭제
-    pub async fn remove_module(&self, module_id: &str) -> anyhow::Result<Value> {
-        self.delete_json(&format!("/api/modules/{}", module_id)).await
-    }
-
-    // ============ Instance Extended ============
-
-    /// POST /api/instance/{id}/server/reset — 서버 리셋
-    pub async fn reset_server(&self, id: &str) -> anyhow::Result<Value> {
-        self.post_empty(&format!("/api/instance/{}/server/reset", id)).await
-    }
-
-    // ============ Updater Extended ============
-
-    /// PUT /api/updates/config — 업데이터 설정 변경
-    pub async fn set_update_config(&self, config: Value) -> anyhow::Result<Value> {
-        self.put_json("/api/updates/config", &config).await
-    }
-
-    // ============ Instance Version & Updates ============
-
-    /// GET /api/instance/{id}/installed-version — 설치된 서버 버전 조회
-    pub async fn get_installed_version(&self, id: &str) -> anyhow::Result<Value> {
-        self.get_json(&format!("/api/instance/{}/installed-version", id)).await
-    }
-
-    /// GET /api/instance/{id}/check-update — 서버 업데이트 확인
-    pub async fn check_instance_update(&self, id: &str) -> anyhow::Result<Value> {
-        self.get_json(&format!("/api/instance/{}/check-update", id)).await
-    }
-
-    // ============ System ============
-
-    /// GET /api/system/components — 시스템 컴포넌트 정보 (daemon, GUI, locale 버전)
-    pub async fn get_system_components(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/system/components").await
-    }
-
-    /// GET /api/daemon/console — 데몬 트레이싱 로그 조회
-    pub async fn get_daemon_console(&self, since: Option<u64>, count: Option<usize>) -> anyhow::Result<Value> {
-        let mut path = "/api/daemon/console".to_string();
-        let mut params = Vec::new();
-        if let Some(s) = since { params.push(format!("since={}", s)); }
-        if let Some(c) = count { params.push(format!("count={}", c)); }
-        if !params.is_empty() {
-            path = format!("{}?{}", path, params.join("&"));
+    /// POST /api/instance/:id/rest — `{endpoint, method, body?}`
+    pub async fn rest(&self, id: &str, method: &str, endpoint: &str, body: Option<Value>) -> Result<Value> {
+        let mut req = json!({ "endpoint": endpoint, "method": method });
+        if let Some(b) = body {
+            req["body"] = b;
         }
-        self.get_json(&path).await
+        self.post(&format!("/api/instance/{}/rest", seg(id)), req).await
+    }
+    /// POST /api/instance/:id/stdin — 콘솔 한 줄 그대로
+    pub async fn stdin(&self, id: &str, line: &str) -> Result<Value> {
+        self.post(&format!("/api/instance/{}/stdin", seg(id)), json!({ "command": line }))
+            .await
+    }
+    /// GET /api/instance/:id/console?since=&count=
+    pub async fn console(&self, id: &str, since: Option<u64>, count: Option<usize>) -> Result<Value> {
+        self.get(&with_query(
+            &format!("/api/instance/{}/console", seg(id)),
+            &[
+                ("since", since.map(|v| v.to_string())),
+                ("count", count.map(|v| v.to_string())),
+            ],
+        ))
+        .await
     }
 
-    /// GET /api/updates/integrity — 업데이트 무결성 검사
-    pub async fn check_update_integrity(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/updates/integrity").await
+    // ── 인스턴스 도구 (모듈 lifecycle 호출) ──
+
+    pub async fn validate(&self, id: &str) -> Result<Value> {
+        self.post(&format!("/api/instance/{}/validate", seg(id)), json!({}))
+            .await
+    }
+    pub async fn diagnose(&self, id: &str) -> Result<Value> {
+        self.post(&format!("/api/instance/{}/diagnose", seg(id)), json!({}))
+            .await
+    }
+    pub async fn accept_eula(&self, id: &str) -> Result<Value> {
+        self.post(&format!("/api/instance/{}/accept-eula", seg(id)), json!({}))
+            .await
+    }
+    /// POST /api/instance/:id/server/reset — 서버 파일 초기화
+    pub async fn reset_server(&self, id: &str) -> Result<Value> {
+        self.post_long(&format!("/api/instance/{}/server/reset", seg(id)), json!({}))
+            .await
+    }
+    /// GET /api/instance/:id/settings/live — 실제 설정 파일에서 읽는다 (캐시도 갱신) `{success, settings}`
+    pub async fn live_settings(&self, id: &str) -> Result<Value> {
+        self.get_slow(&format!("/api/instance/{}/settings/live", seg(id))).await
+    }
+    /// GET /api/runtime/preflight — 부팅 준비(Python 등) `{phase, percent, complete, error, components}`
+    pub async fn preflight(&self) -> Result<Value> {
+        self.get("/api/runtime/preflight").await
+    }
+    /// GET /api/instance/:id/properties — 게임 설정 파일
+    pub async fn properties(&self, id: &str) -> Result<Value> {
+        self.get_slow(&format!("/api/instance/{}/properties", seg(id))).await
+    }
+    /// PUT /api/instance/:id/properties — `{settings: {...}}`
+    pub async fn write_properties(&self, id: &str, settings: Value) -> Result<Value> {
+        self.call(
+            Method::PUT,
+            &format!("/api/instance/{}/properties", seg(id)),
+            Some(json!({ "settings": settings })),
+            SLOW,
+        )
+        .await
+    }
+    pub async fn reset_properties(&self, id: &str) -> Result<Value> {
+        self.post(&format!("/api/instance/{}/properties/reset", seg(id)), json!({}))
+            .await
     }
 
-    // ============ Extension Config ============
+    // ── 모듈 ──
 
-    /// GET /api/extensions/{id}/config — 익스텐션 설정 조회
-    pub async fn get_extension_config(&self, ext_id: &str) -> anyhow::Result<Value> {
-        self.get_json(&format!("/api/extensions/{}/config", ext_id)).await
+    /// GET /api/modules — `{modules: [...], failed: [...]}`
+    pub async fn modules(&self) -> Result<Value> {
+        self.get("/api/modules").await
+    }
+    pub async fn refresh_modules(&self) -> Result<Value> {
+        self.post("/api/modules/refresh", json!({})).await
+    }
+    /// GET /api/modules/schema — module.toml JSON Schema
+    /// GET /api/module/:name/audit — 코드 검사 `{declared, findings, undeclared}`
+    pub async fn module_audit(&self, name: &str) -> Result<Value> {
+        self.get_slow(&format!("/api/module/{}/audit", seg(name))).await
+    }
+    /// GET /api/extensions/:id/audit — 모듈 검사와 같은 모양
+    pub async fn extension_audit(&self, id: &str) -> Result<Value> {
+        self.get_slow(&format!("/api/extensions/{}/audit", seg(id))).await
+    }
+    pub async fn module_schema(&self) -> Result<Value> {
+        self.get("/api/modules/schema").await
+    }
+    /// POST /api/modules/detect — 폴더가 어떤 게임 서버인지
+    pub async fn detect(&self, path: &str) -> Result<Value> {
+        self.post("/api/modules/detect", json!({ "path": path })).await
+    }
+    /// GET /api/modules/manifest — 원격 모듈 목록
+    pub async fn module_manifest(&self) -> Result<Value> {
+        self.get_slow("/api/modules/manifest").await
+    }
+    pub async fn install_module(&self, id: &str) -> Result<Value> {
+        self.post_long(&format!("/api/modules/manifest/{}/install", seg(id)), json!({}))
+            .await
+    }
+    pub async fn remove_module(&self, id: &str) -> Result<Value> {
+        self.delete(&format!("/api/modules/{}", seg(id))).await
+    }
+    /// GET /api/module/:name/locales — 모듈 문구 (라벨 번역)
+    pub async fn module_locales(&self, name: &str) -> Result<Value> {
+        self.get(&format!("/api/module/{}/locales", seg(name))).await
+    }
+    /// GET /api/module/:name/versions
+    pub async fn module_versions(&self, name: &str, snapshots: bool, page: u32, per_page: u32) -> Result<Value> {
+        self.get_slow(&format!(
+            "/api/module/{}/versions?include_snapshots={}&page={}&per_page={}",
+            seg(name),
+            snapshots,
+            page,
+            per_page
+        ))
+        .await
+    }
+    pub async fn module_version(&self, name: &str, version: &str) -> Result<Value> {
+        self.get_slow(&format!("/api/module/{}/version/{}", seg(name), seg(version)))
+            .await
+    }
+    /// POST /api/module/:name/install — 서버 파일만 받는다 `{version, install_dir, jar_name?, accept_eula?}`
+    pub async fn install_server_files(&self, name: &str, body: Value) -> Result<Value> {
+        self.post_long(&format!("/api/module/{}/install", seg(name)), body)
+            .await
     }
 
-    /// PUT /api/extensions/{id}/config — 익스텐션 설정 저장
-    pub async fn save_extension_config(&self, ext_id: &str, config: Value) -> anyhow::Result<Value> {
-        self.put_json(&format!("/api/extensions/{}/config", ext_id), &config).await
+    // ── 익스텐션 ──
+
+    pub async fn extensions(&self) -> Result<Value> {
+        // 설명은 CLI 표시 언어로 (데몬은 없으면 GUI 언어를 쓴다)
+        self.get(&with_query(
+            "/api/extensions",
+            &[("lang", Some(crate::i18n::lang().to_string()))],
+        ))
+        .await
+    }
+    pub async fn extension_init_status(&self) -> Result<Value> {
+        self.get("/api/extensions/init-status").await
+    }
+    pub async fn rescan_extensions(&self) -> Result<Value> {
+        self.post("/api/extensions/rescan", json!({})).await
+    }
+    pub async fn extension_manifest(&self) -> Result<Value> {
+        self.get_slow("/api/extensions/manifest").await
+    }
+    pub async fn extension_updates(&self) -> Result<Value> {
+        self.get_slow("/api/extensions/updates").await
+    }
+    pub async fn enable_extension(&self, id: &str) -> Result<Value> {
+        self.post(&format!("/api/extensions/{}/enable", seg(id)), json!({}))
+            .await
+    }
+    pub async fn disable_extension(&self, id: &str) -> Result<Value> {
+        self.post(&format!("/api/extensions/{}/disable", seg(id)), json!({}))
+            .await
+    }
+    /// POST /api/extensions/:id/mount — 디스크에서 다시 읽어 등록
+    pub async fn mount_extension(&self, id: &str) -> Result<Value> {
+        self.post(&format!("/api/extensions/{}/mount", seg(id)), json!({}))
+            .await
+    }
+    pub async fn unmount_extension(&self, id: &str) -> Result<Value> {
+        self.post(&format!("/api/extensions/{}/unmount", seg(id)), json!({}))
+            .await
+    }
+    /// POST /api/extensions/:id/install — 설치·업데이트 `{download_url?, sha256?}`
+    pub async fn install_extension(&self, id: &str, body: Value) -> Result<Value> {
+        self.post_long(&format!("/api/extensions/{}/install", seg(id)), body)
+            .await
+    }
+    pub async fn remove_extension(&self, id: &str) -> Result<Value> {
+        self.delete(&format!("/api/extensions/{}", seg(id))).await
+    }
+    pub async fn extension_config(&self, id: &str) -> Result<Value> {
+        self.get(&format!("/api/extensions/{}/config", seg(id))).await
+    }
+    /// PUT /api/extensions/:id/config — 키 단위 머지, null이면 삭제
+    pub async fn save_extension_config(&self, id: &str, values: Value) -> Result<Value> {
+        self.put(&format!("/api/extensions/{}/config", seg(id)), values).await
+    }
+
+    // ── 설정 ──
+
+    /// GET/PUT /api/config/gui — 앱 전체 설정 (이름은 gui지만 GUI·CLI·데몬이 같이 쓴다)
+    pub async fn app_config(&self) -> Result<Value> {
+        self.get("/api/config/gui").await
+    }
+    pub async fn save_app_config(&self, full: Value) -> Result<Value> {
+        self.put("/api/config/gui", full).await
+    }
+    /// GET/PUT /api/config/client/cli — CLI 전용 네임스페이스 (최상위 키 머지)
+    pub async fn cli_config(&self) -> Result<Value> {
+        self.get("/api/config/client/cli").await
+    }
+    pub async fn save_cli_config(&self, patch: Value) -> Result<Value> {
+        self.put("/api/config/client/cli", patch).await
+    }
+    /// GET/PUT /api/config/bot — 디스코드 연동 설정 (전체 저장)
+    /// GET /api/config/:kind/defaults (gui | bot)
+    pub async fn config_defaults(&self, kind: &str) -> Result<Value> {
+        self.get(&format!("/api/config/{}/defaults", seg(kind))).await
+    }
+    /// POST /api/config/:kind/reset — `keys`(최상위 키)만, 비우면 전부 기본값으로
+    /// 키가 없으면 전체 초기화 (`keys`를 빼고 보낸다. 빈 배열은 400)
+    pub async fn config_reset(&self, kind: &str, keys: &[String]) -> Result<Value> {
+        let body = if keys.is_empty() {
+            json!({})
+        } else {
+            json!({ "keys": keys })
+        };
+        self.post(&format!("/api/config/{}/reset", seg(kind)), body).await
+    }
+    pub async fn bot_config(&self) -> Result<Value> {
+        self.get("/api/config/bot").await
+    }
+    pub async fn save_bot_config(&self, full: Value) -> Result<Value> {
+        self.put("/api/config/bot", full).await
+    }
+    pub async fn save_node_token(&self, token: &str) -> Result<Value> {
+        self.put("/api/config/node-token", json!({ "token": token })).await
+    }
+    pub async fn delete_node_token(&self) -> Result<Value> {
+        self.delete("/api/config/node-token").await
+    }
+
+    // ── 디스코드 릴레이 ──
+
+    /// GET /api/relay/agent — `{running, sleeping, relayUrl, hasToken, lastHeartbeatAt, lastError, commandsHandled}`
+    pub async fn agent(&self) -> Result<Value> {
+        self.get("/api/relay/agent").await
+    }
+    pub async fn agent_start(&self) -> Result<Value> {
+        self.post("/api/relay/agent/start", json!({})).await
+    }
+    pub async fn agent_stop(&self) -> Result<Value> {
+        self.post("/api/relay/agent/stop", json!({})).await
+    }
+    /// POST /api/relay/pair/initiate — `{code, expiresAt, pollSecret}`
+    pub async fn pair_initiate(&self, relay_url: Option<&str>) -> Result<Value> {
+        let body = match relay_url {
+            Some(u) => json!({ "relayUrl": u }),
+            None => json!({}),
+        };
+        self.post("/api/relay/pair/initiate", body).await
+    }
+    /// GET /api/relay/pair/:code/status — 성공(`claimed`)하면 데몬이 노드 토큰을 저장한다
+    pub async fn pair_status(&self, code: &str, secret: &str, relay_url: Option<&str>) -> Result<Value> {
+        self.get(&with_query(
+            &format!("/api/relay/pair/{}/status", seg(code)),
+            &[
+                ("secret", Some(secret.to_string())),
+                ("relayUrl", relay_url.map(str::to_string)),
+            ],
+        ))
+        .await
+    }
+    pub async fn host_nodes(&self, host_id: &str, relay_url: Option<&str>) -> Result<Value> {
+        self.get(&with_query(
+            &format!("/api/relay/host/{}/nodes", seg(host_id)),
+            &[("relayUrl", relay_url.map(str::to_string))],
+        ))
+        .await
+    }
+    pub async fn node_members(&self, guild_id: &str, relay_url: Option<&str>) -> Result<Value> {
+        self.get(&with_query(
+            &format!("/api/relay/node/{}/members", seg(guild_id)),
+            &[("relayUrl", relay_url.map(str::to_string))],
+        ))
+        .await
+    }
+    // ── 백업·예약 ──
+
+    /// GET /api/instance/:id/backups — `{backups: [{name, kind, created, size}]}`
+    pub async fn backups(&self, id: &str) -> Result<Value> {
+        self.get(&format!("/api/instance/{}/backups", seg(id))).await
+    }
+    /// POST /api/instance/:id/backups — `{backup}`
+    pub async fn create_backup(&self, id: &str) -> Result<Value> {
+        self.post_long(&format!("/api/instance/{}/backups", seg(id)), json!({}))
+            .await
+    }
+    pub async fn delete_backup(&self, id: &str, name: &str) -> Result<Value> {
+        self.delete(&format!("/api/instance/{}/backups/{}", seg(id), seg(name)))
+            .await
+    }
+    /// POST …/backups/:name/restore — 켜져 있으면 409 `server_running`
+    pub async fn restore_backup(&self, id: &str, name: &str) -> Result<Value> {
+        self.post_long(
+            &format!("/api/instance/{}/backups/{}/restore", seg(id), seg(name)),
+            json!({}),
+        )
+        .await
+    }
+    /// GET /api/instance/:id/schedule — `{schedule, backup_keep, backup_supported, announce_supported}`
+    pub async fn schedule(&self, id: &str) -> Result<Value> {
+        self.get(&format!("/api/instance/{}/schedule", seg(id))).await
+    }
+    /// PUT /api/instance/:id/schedule — `{schedule: [...], backup_keep?}` (목록 전체를 바꾼다)
+    pub async fn save_schedule(&self, id: &str, body: Value) -> Result<Value> {
+        self.put(&format!("/api/instance/{}/schedule", seg(id)), body).await
+    }
+
+    // ── AI 챗봇 ──
+
+    /// GET /api/chatbot — `{settings, guilds, hasApiKey}` (키 자체는 오지 않는다)
+    pub async fn chatbot(&self) -> Result<Value> {
+        self.get("/api/chatbot").await
+    }
+    /// PUT /api/chatbot — `{settings?, guilds?, apiKey?: string|null}` (apiKey를 빼면 그대로)
+    pub async fn save_chatbot(&self, patch: Value) -> Result<Value> {
+        self.put_slow("/api/chatbot", patch).await
+    }
+    /// DELETE /api/chatbot — 설정과 키를 모두 지운다
+    pub async fn clear_chatbot(&self) -> Result<Value> {
+        self.delete("/api/chatbot").await
+    }
+    /// DELETE /api/chatbot/memory?guildId= — 장기 기억 (없으면 모든 길드)
+    pub async fn forget_chatbot(&self, guild: Option<&str>) -> Result<Value> {
+        self.delete(&with_query(
+            "/api/chatbot/memory",
+            &[("guildId", guild.map(str::to_string))],
+        ))
+        .await
+    }
+
+    /// GET /api/relay/bot-invite — 봇 초대 URL `{url}`
+    pub async fn bot_invite(&self, relay_url: Option<&str>) -> Result<Value> {
+        self.get(&with_query(
+            "/api/relay/bot-invite",
+            &[("relayUrl", relay_url.map(str::to_string))],
+        ))
+        .await
+    }
+    /// POST /api/chat/command — 디스코드와 같은 텍스트 명령 처리 (`{reply}`)
+    pub async fn chat(&self, text: &str) -> Result<Value> {
+        self.post("/api/chat/command", json!({ "text": text })).await
+    }
+
+    // ── 업데이트 ──
+
+    pub async fn update_status(&self) -> Result<Value> {
+        self.get("/api/updates/status").await
+    }
+    pub async fn update_check(&self) -> Result<Value> {
+        self.post_long("/api/updates/check", json!({})).await
+    }
+    pub async fn update_download(&self, components: &[String]) -> Result<Value> {
+        self.post_long("/api/updates/download", json!({ "components": components }))
+            .await
+    }
+    pub async fn update_progress(&self) -> Result<Value> {
+        self.get("/api/updates/download/progress").await
+    }
+    pub async fn update_apply(&self, components: &[String]) -> Result<Value> {
+        self.post_long("/api/updates/apply", json!({ "components": components }))
+            .await
+    }
+    /// POST /api/updates/launch-updater — 데몬이 업데이터를 띄우고 스스로 종료한다
+    pub async fn launch_updater(&self, relaunch: &[String]) -> Result<Value> {
+        self.post("/api/updates/launch-updater", json!({ "relaunch": relaunch }))
+            .await
+    }
+    pub async fn update_last_result(&self) -> Result<Value> {
+        self.get("/api/updates/last-result").await
+    }
+    pub async fn clear_update_last_result(&self) -> Result<Value> {
+        self.delete("/api/updates/last-result").await
+    }
+    pub async fn update_integrity(&self) -> Result<Value> {
+        self.get_slow("/api/updates/integrity").await
+    }
+    pub async fn update_config(&self) -> Result<Value> {
+        self.get("/api/updates/config").await
+    }
+    pub async fn save_update_config(&self, patch: Value) -> Result<Value> {
+        self.put("/api/updates/config", patch).await
     }
 }
 
-/// 실패 응답을 사람이 읽을 오류로. 데몬이 준 모듈 문구(`error_message`) → 원인(`error`) → 본문 순.
-async fn api_error(response: reqwest::Response) -> anyhow::Error {
-    let status = response.status();
-    let text = response.text().await.unwrap_or_default();
-    let detail = serde_json::from_str::<Value>(&text)
-        .ok()
-        .and_then(|v| {
-            v.get("error_message")
-                .or_else(|| v.get("error"))
-                .and_then(|m| m.as_str())
-                .map(str::to_string)
-        })
-        .unwrap_or(text);
-    anyhow::anyhow!("Server returned {}: {}", status, detail)
+fn with_query(path: &str, params: &[(&str, Option<String>)]) -> String {
+    let q: Vec<String> = params
+        .iter()
+        .filter_map(|(k, v)| v.as_ref().map(|v| format!("{}={}", k, seg(v))))
+        .collect();
+    if q.is_empty() {
+        path.to_string()
+    } else {
+        format!("{}?{}", path, q.join("&"))
+    }
+}
+
+/// 상태 코드와 본문으로 성공·실패를 정한다
+pub fn check(status: u16, body: Value) -> Result<Value> {
+    let flag_false = |k: &str| body.get(k).and_then(Value::as_bool) == Some(false);
+    if (200..300).contains(&status) && !flag_false("ok") && !flag_false("success") {
+        return Ok(body);
+    }
+    let pick = |k: &str| {
+        body.get(k)
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    let code = pick("error_code");
+    // 내부 오류일 때 error_message는 뭉뚱그린 문구라 구체적인 error가 낫다
+    let generic = code.as_deref() == Some("internal_server_error") && pick("error").is_some();
+    let message = pick("error_message")
+        .filter(|_| !generic)
+        .or_else(|| pick("error").filter(|e| Some(e) != code.as_ref()))
+        .or_else(|| pick("message"))
+        .or_else(|| pick("error"))
+        .or_else(|| body.as_str().map(str::to_string))
+        .unwrap_or_else(|| format!("HTTP {}", status));
+    Err(CliError::Api {
+        status,
+        code,
+        message,
+        body,
+    }
+    .into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn api_err(r: Result<Value>) -> CliError {
+        r.unwrap_err().downcast::<CliError>().unwrap()
+    }
+
+    #[test]
+    fn internal_error_shows_the_specific_cause() {
+        let e = api_err(check(
+            500,
+            json!({ "error": "RCON execution failed: refused", "error_code": "internal_server_error", "error_message": "Internal server error occurred" }),
+        ));
+        match e {
+            CliError::Api { message, .. } => assert_eq!(message, "RCON execution failed: refused"),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn ok_false_with_200_is_an_error() {
+        let e = api_err(check(200, json!({ "ok": false, "error": "Module not found" })));
+        assert!(matches!(e, CliError::Api { status: 200, ref message, .. } if message == "Module not found"));
+    }
+
+    #[test]
+    fn module_message_wins_over_raw_error() {
+        let e = api_err(check(
+            409,
+            json!({ "error": "Server 'a' is not running", "error_code": "server_not_running", "error_message": "서버가 꺼져 있어요" }),
+        ));
+        match e {
+            CliError::Api { code, message, .. } => {
+                assert_eq!(code.as_deref(), Some("server_not_running"));
+                assert_eq!(message, "서버가 꺼져 있어요");
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn validation_error_uses_message_not_code() {
+        let e = api_err(check(
+            400,
+            json!({ "error": "validation_failed", "error_code": "validation_failed", "message": "Settings validation failed" }),
+        ));
+        assert_eq!(e.to_string(), "Settings validation failed");
+    }
+
+    #[test]
+    fn success_passes_through() {
+        assert_eq!(check(201, json!({ "success": true, "id": "x" })).unwrap()["id"], "x");
+        assert!(check(200, Value::Null).is_ok());
+    }
+
+    #[test]
+    fn encodes_path_segments_and_queries() {
+        assert_eq!(seg("내 서버/1"), "%EB%82%B4%20%EC%84%9C%EB%B2%84%2F1");
+        assert_eq!(with_query("/x", &[("a", Some("1".into())), ("b", None)]), "/x?a=1");
+    }
 }

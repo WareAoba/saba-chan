@@ -1,0 +1,165 @@
+//! `backup` — 서버 월드 백업 목록·만들기·지우기·되돌리기
+//!
+//! 무엇을 백업할지는 모듈이 정한다 (데몬이 지원하지 않으면 `backup_unsupported`).
+//! 되돌리기는 서버가 꺼져 있어야 한다. 켜져 있으면 끄고 되돌린 뒤 다시 켤지 묻는다.
+//! 되돌리기 직전 상태는 데몬이 `pre-restore` 백업으로 남긴다.
+
+use crate::cli::{BackupCmd, StartArgs};
+use crate::cmd::server::{runtime, shell_word, status_of, stop_server};
+use crate::ctx::Ctx;
+use crate::error::Result;
+use crate::output::{self, s};
+use crate::resolve::{self, Server};
+use serde_json::Value;
+
+pub async fn run(ctx: &Ctx, cmd: BackupCmd) -> Result<()> {
+    match cmd {
+        BackupCmd::List { server } => list(ctx, server.as_deref()).await,
+        BackupCmd::Create { server } => create(ctx, server.as_deref()).await,
+        BackupCmd::Delete { server, backup } => {
+            let sv = resolve::server(ctx, Some(&server)).await?;
+            let name = pick(ctx, &sv, &backup).await?;
+            ctx.ask
+                .ensure(&t!("backup.confirm_delete", backup = name, name = sv.name))?;
+            let r = ctx.api.delete_backup(&sv.id, &name).await?;
+            ctx.out.done(&t!("backup.deleted", backup = name), &r);
+            Ok(())
+        }
+        BackupCmd::Restore { server, backup } => restore(ctx, &server, &backup).await,
+    }
+}
+
+async fn backups(ctx: &Ctx, sv: &Server) -> Result<Vec<Value>> {
+    let r = ctx.api.backups(&sv.id).await?;
+    Ok(r.get("backups").and_then(Value::as_array).cloned().unwrap_or_default())
+}
+
+async fn list(ctx: &Ctx, server: Option<&str>) -> Result<()> {
+    let sv = resolve::server(ctx, server).await?;
+    let r = ctx.api.backups(&sv.id).await?;
+    ctx.out.data(&r, |r| {
+        let items = r.get("backups").and_then(Value::as_array).cloned().unwrap_or_default();
+        if items.is_empty() {
+            println!("{}", output::dim(&t!("backup.none", name = sv.name)));
+            ctx.out
+                .hint(&format!("saba-chan-cli backup create {}", shell_word(&sv.name)));
+            return;
+        }
+        let mut t = output::table(&[
+            t!("backup.col.name"),
+            t!("backup.col.kind"),
+            t!("backup.col.when"),
+            t!("backup.col.size"),
+        ]);
+        for b in &items {
+            t.add_row(vec![
+                s(b, "name").to_string(),
+                kind_label(s(b, "kind")),
+                b.get("created")
+                    .and_then(Value::as_u64)
+                    .map(output::ago)
+                    .unwrap_or_default(),
+                b.get("size").and_then(Value::as_u64).map(size).unwrap_or_default(),
+            ]);
+        }
+        output::print_table(t);
+    });
+    Ok(())
+}
+
+async fn create(ctx: &Ctx, server: Option<&str>) -> Result<()> {
+    let sv = resolve::server(ctx, server).await?;
+    let spin = crate::progress::spinner(&t!("backup.creating", name = sv.name));
+    let r = ctx.api.create_backup(&sv.id).await;
+    spin.finish_and_clear();
+    let r = r?;
+    ctx.out
+        .done(&t!("backup.created", backup = name_of(r.get("backup"))), &r);
+    Ok(())
+}
+
+async fn restore(ctx: &Ctx, server: &str, backup: &str) -> Result<()> {
+    let sv = resolve::server(ctx, Some(server)).await?;
+    let name = pick(ctx, &sv, backup).await?;
+    let was_running = status_of(&runtime(ctx, &sv).await?) != "stopped";
+    if was_running {
+        ctx.ask
+            .ensure(&t!("backup.confirm_restore_running", backup = name, name = sv.name))?;
+        stop_server(ctx, &sv, false, false).await?;
+    } else {
+        ctx.ask
+            .ensure(&t!("backup.confirm_restore", backup = name, name = sv.name))?;
+    }
+    let spin = crate::progress::spinner(&t!("backup.restoring", backup = name));
+    let r = ctx.api.restore_backup(&sv.id, &name).await;
+    spin.finish_and_clear();
+    let r = r?;
+    ctx.out.done(&t!("backup.restored", backup = name, name = sv.name), &r);
+    let pre = name_of(r.get("pre_restore_backup"));
+    if !pre.is_empty() {
+        ctx.out.note(&t!("backup.pre_restore", backup = pre));
+    }
+    if was_running
+        && ctx
+            .ask
+            .confirm(&t!("backup.start_again", name = sv.name), true)
+            .unwrap_or(false)
+    {
+        return crate::cmd::server::start(
+            ctx,
+            StartArgs {
+                server: Some(sv.id.clone()),
+                ..Default::default()
+            },
+        )
+        .await;
+    }
+    Ok(())
+}
+
+/// 백업 이름: 정확히, 앞부분만, 또는 `latest`(가장 최근)
+async fn pick(ctx: &Ctx, sv: &Server, query: &str) -> Result<String> {
+    let items = backups(ctx, sv).await?;
+    if query.eq_ignore_ascii_case("latest") {
+        if let Some(b) = items
+            .iter()
+            .max_by_key(|b| b.get("created").and_then(Value::as_u64).unwrap_or(0))
+        {
+            return Ok(s(b, "name").to_string());
+        }
+    }
+    let what = t!("noun.backup");
+    let label = |b: &Value| format!("{} ({})", s(b, "name"), kind_label(s(b, "kind")));
+    let found = resolve::find(&items, query, |b| vec![s(b, "name").to_string()], label);
+    let b = resolve::settle(ctx, &what, query, found, label)?;
+    Ok(s(&b, "name").to_string())
+}
+
+/// 데몬은 백업을 `{name, ...}`로 준다 (이름 문자열만 와도 받는다)
+fn name_of(v: Option<&Value>) -> String {
+    match v {
+        Some(Value::String(n)) => n.clone(),
+        Some(b) => s(b, "name").to_string(),
+        None => String::new(),
+    }
+}
+
+fn kind_label(kind: &str) -> String {
+    crate::i18n::try_t(&format!("backup.kind.{}", kind)).unwrap_or_else(|| kind.to_string())
+}
+
+/// 바이트 → 사람이 읽는 크기
+pub fn size(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+    let mut v = bytes as f64;
+    let mut i = 0;
+    while v >= 1024.0 && i < UNITS.len() - 1 {
+        v /= 1024.0;
+        i += 1;
+    }
+    if i == 0 {
+        format!("{} B", bytes)
+    } else {
+        format!("{:.1} {}", v, UNITS[i])
+    }
+}
