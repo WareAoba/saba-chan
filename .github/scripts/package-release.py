@@ -55,6 +55,8 @@ COMPONENTS = [
         "extra_files": ["modules/i18n.py", "modules/daemon_rcon.py"],
         # 데몬 옆에 함께 설치되는 실행 파일 (staging/에서 찾는다). saba-runner: 서버 콘솔 감시 (C8b)
         "extra_staged": [r"saba-runner\.exe$"],
+        # 이 컴포넌트 zip에 함께 든 다른 exe: 재포장할 때 빼지 않는다 (staging에 따로 없을 때 대비)
+        "bundles": ["saba-runner.exe"],
     },
     {
         "key": "cli",
@@ -146,9 +148,12 @@ OTHER_COMPONENT_EXES = {"saba-core.exe", "saba-runner.exe", "saba-chan-updater.e
 
 
 def repack_zip(raw_file: Path, output_zip: Path, exe_name: str | None,
-               extra_files: list[str] | None = None):
+               extra_files: list[str] | None = None, bundles: list[str] | None = None):
     """zip을 표준 형태로 다시 담는다: 경로 구분자 `/`, 루트의 앱 exe(예: Electron의 Saba-chan.exe)는
-    `exe_name`으로, 다른 컴포넌트의 exe는 뺀다."""
+    `exe_name`으로, 다른 컴포넌트의 exe는 뺀다 (`bundles`에 적은 것은 남긴다).
+    `extra_files`와 이름이 같은 항목은 extra 쪽(이번 빌드)으로 바꾼다."""
+    keep = {b.lower() for b in (bundles or [])}
+    replaced = {Path(rel).name.lower() for rel in (extra_files or []) if Path(rel).exists()}
     with zipfile.ZipFile(raw_file) as src, zipfile.ZipFile(output_zip, "w", zipfile.ZIP_DEFLATED) as dst:
         root_exes = [i.filename.replace("\\", "/") for i in src.infolist()
                      if i.filename.lower().endswith(".exe") and "/" not in i.filename.replace("\\", "/")]
@@ -157,7 +162,10 @@ def repack_zip(raw_file: Path, output_zip: Path, exe_name: str | None,
         rename = app_exes[0] if exe_name and not has_exe and len(app_exes) == 1 else None
         for info in src.infolist():
             name = info.filename.replace("\\", "/")
-            if name.lower() in OTHER_COMPONENT_EXES and exe_name and name.lower() != exe_name.lower():
+            if name.lower() in replaced:
+                continue
+            if (name.lower() in OTHER_COMPONENT_EXES and exe_name and name.lower() != exe_name.lower()
+                    and name.lower() not in keep):
                 print(f"    - {name} (shipped by its own component)")
                 continue
             if name == rename:
@@ -176,10 +184,10 @@ def repack_zip(raw_file: Path, output_zip: Path, exe_name: str | None,
 
 
 def copy_or_repackage(raw_file: Path, output_zip: Path, exe_name: str | None,
-                      extra_files: list[str] | None = None):
+                      extra_files: list[str] | None = None, bundles: list[str] | None = None):
     """raw 파일이 exe면 zip으로 감싸고, 이미 zip이면 표준 형태로 다시 담는다"""
     if raw_file.suffix.lower() == ".zip":
-        repack_zip(raw_file, output_zip, exe_name, extra_files)
+        repack_zip(raw_file, output_zip, exe_name, extra_files, bundles)
     elif raw_file.suffix.lower() == ".exe" and exe_name:
         create_exe_zip(raw_file, output_zip, exe_name, extra_files)
     else:
@@ -385,7 +393,7 @@ def main():
                         extra.append(str(staged))
                     else:
                         print(f"    ⚠ {pattern} not in staging — component ships without it")
-                copy_or_repackage(raw_file, output_path, comp.get("exe_name"), extra)
+                copy_or_repackage(raw_file, output_path, comp.get("exe_name"), extra, comp.get("bundles"))
                 asset_source = "current"
             else:
                 # 이번 릴리즈에 없음 → 이전 릴리즈에서 가져오기

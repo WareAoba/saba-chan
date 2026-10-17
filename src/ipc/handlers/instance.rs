@@ -241,7 +241,20 @@ pub async fn create_instance(
         // 인스턴스 저장 (프로비저닝은 비동기로 수행)
         match supervisor.instance_store.add(instance.clone()) {
             Ok(_) => {
-                // ── Extension hook: server.post_create ──
+                // ── Extension hook: server.post_create (결과를 기다리지 않는다) ──
+                {
+                    let ext_mgr = state.extension_manager.clone();
+                    let ctx = serde_json::json!({
+                        "instance_id": &id,
+                        "instance_dir": instance_dir.to_string_lossy(),
+                        "instance": serde_json::to_value(&instance).unwrap_or_default(),
+                        "module": &module_name_owned,
+                        "migration": migration_mode,
+                    });
+                    tokio::spawn(async move {
+                        let _ = crate::extension::run_hook(&ext_mgr, "server.post_create", ctx).await;
+                    });
+                }
                 if !migration_mode {
                     // ── Native provisioning: 서버 바이너리 설치 ──
                     // install 설정이 있는 모듈만 프로비저닝 (download / 익스텐션 방식)

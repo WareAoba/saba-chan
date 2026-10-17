@@ -42,6 +42,30 @@ pub(crate) fn resolve_relay_url(relay_url: Option<&str>) -> String {
     url.trim_end_matches('/').to_string()
 }
 
+/// 노드 토큰을 실어 보내는 요청의 릴레이 주소. 설정한 릴레이(없으면 기본)만 쓴다:
+/// `?relayUrl=`로 아무 호스트나 넣어 토큰을 빼내지 못하게. 요청한 주소가 설정과 같거나
+/// 루프백(모의 릴레이 시험)일 때만 그것을 따른다
+pub(crate) fn signed_relay_url(configured: &str, requested: Option<&str>) -> String {
+    let configured = resolve_relay_url(Some(configured.trim()));
+    let Some(requested) = requested.map(str::trim).filter(|u| !u.is_empty()) else { return configured };
+    let requested = resolve_relay_url(Some(requested));
+    let loopback = reqwest::Url::parse(&requested)
+        .ok()
+        .and_then(|u| u.host_str().map(|h| matches!(h, "localhost" | "127.0.0.1" | "[::1]")))
+        .unwrap_or(false);
+    if requested == configured || loopback {
+        requested
+    } else {
+        tracing::warn!("Ignoring relayUrl {} for a signed request; using the configured relay", requested);
+        configured
+    }
+}
+
+async fn signed_base(state: &IPCServer, requested: Option<&str>) -> String {
+    let configured = state.config_store.get_bot_config().await.cloud.relay_url;
+    signed_relay_url(&configured, requested)
+}
+
 /// Create an HTTP client with 5s timeout for relay requests.
 /// Automatically includes X-Saba-Client: 1 header required by nginx.
 fn relay_client() -> Result<reqwest::Client, reqwest::Error> {
@@ -187,9 +211,9 @@ fn invalid_response(_: StatusCode) -> Response {
 pub async fn check_host_status(
     Path(host_id): Path<String>,
     Query(params): Query<RelayQueryParams>,
-    State(_state): State<IPCServer>,
+    State(state): State<IPCServer>,
 ) -> Response {
-    let base = resolve_relay_url(params.relay_url.as_deref());
+    let base = signed_base(&state, params.relay_url.as_deref()).await;
     let path = format!("/api/hosts/{}", encode_path_segment(&host_id));
     signed_get(&base, &path, |code| (code, Json(json!({ "ok": code.is_success() }))).into_response()).await
 }
@@ -199,9 +223,9 @@ pub async fn check_host_status(
 pub async fn list_host_nodes(
     Path(host_id): Path<String>,
     Query(params): Query<RelayQueryParams>,
-    State(_state): State<IPCServer>,
+    State(state): State<IPCServer>,
 ) -> Response {
-    let base = resolve_relay_url(params.relay_url.as_deref());
+    let base = signed_base(&state, params.relay_url.as_deref()).await;
     let path = format!("/api/hosts/{}/nodes", encode_path_segment(&host_id));
     signed_get(&base, &path, empty_list).await
 }
@@ -212,9 +236,9 @@ pub async fn list_host_nodes(
 pub async fn list_node_members(
     Path(guild_id): Path<String>,
     Query(params): Query<RelayQueryParams>,
-    State(_state): State<IPCServer>,
+    State(state): State<IPCServer>,
 ) -> Response {
-    let base = resolve_relay_url(params.relay_url.as_deref());
+    let base = signed_base(&state, params.relay_url.as_deref()).await;
     let client = match client() {
         Ok(c) => c,
         Err(r) => return r,
@@ -335,6 +359,17 @@ pub async fn poll_pairing_status(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn signed_requests_never_follow_an_arbitrary_relay_url() {
+        let cfg = "https://saba-chan.online/";
+        assert_eq!(signed_relay_url(cfg, None), "https://saba-chan.online");
+        assert_eq!(signed_relay_url(cfg, Some("https://evil.example")), "https://saba-chan.online");
+        assert_eq!(signed_relay_url("", Some("https://evil.example")), "https://saba-chan.online");
+        assert_eq!(signed_relay_url(cfg, Some("https://saba-chan.online")), "https://saba-chan.online");
+        assert_eq!(signed_relay_url(cfg, Some("http://127.0.0.1:9000/")), "http://127.0.0.1:9000", "mock relay");
+        assert_eq!(signed_relay_url("https://my.relay", None), "https://my.relay");
+    }
+
     use super::*;
     use axum::{routing::get, Router};
 

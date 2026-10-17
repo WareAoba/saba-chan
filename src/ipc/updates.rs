@@ -9,8 +9,9 @@
 //! ## 엔드포인트
 //! - `GET  /api/updates/status`              — 캐시된 업데이트 상태 조회
 //! - `POST /api/updates/check`               — 업데이트 확인 (릴레이의 서명된 manifest)
-//! - `POST /api/updates/download`            — 선택 컴포넌트 다운로드
-//! - `POST /api/updates/apply`               — 업데이터 exe 스폰하여 적용
+//! - `POST /api/updates/download`            — 선택 컴포넌트 다운로드 (본문 없으면 전부)
+//! - `POST /api/updates/apply`               — 모듈 등은 데몬이 바로 적용, 재시작이 필요한 것은
+//!   `requires_updater`로 돌려주고 실제 적용은 `launch-updater`가 한다 (본문 없으면 전부)
 //! - `POST /api/updates/launch-updater`      — 데몬이 업데이터를 띄우고 스스로 종료 (U7)
 //! - `GET  /api/updates/last-result`         — 마지막 업데이트 적용 결과 (DELETE로 확인 처리)
 //! - `GET  /api/updates/config`              — 업데이트 설정 조회
@@ -204,7 +205,7 @@ async fn check_updates(
 /// 확인 한 번과 그 뒤처리. 수동 확인(`POST /check`)과 주기 확인이 같은 길을 쓴다.
 /// - Locales 업데이트는 사용자에게 보이지 않게 바로 적용
 /// - `auto_download`이면 나머지 업데이트를 내려받아 두고 pending manifest 저장
-///   (적용은 사용자가 고른다. `auto_apply`는 아직 동작하지 않는다)
+///   (적용은 언제나 사용자가 고른다)
 async fn check_and_follow_up(state: &UpdateState) -> anyhow::Result<saba_chan_updater_lib::UpdateStatus> {
     let (status, auto_download) = {
         let mut mgr = state.manager.write().await;
@@ -314,17 +315,34 @@ async fn silent_apply_locales(manager: &Arc<RwLock<UpdateManager>>) {
 ///
 /// Body: `{ "components": ["gui", "cli", "module-minecraft"] }`
 /// 비어있으면 업데이트 가능한 전체를 다운로드
-#[derive(Deserialize)]
+/// 본문이 없거나 비면 기본값 (CLI는 본문 없이 POST한다). 있는데 깨졌으면 400:
+/// 잘못된 본문을 "전부"로 읽어 모든 컴포넌트를 건드리지 않게
+fn body_or_default<T: serde::de::DeserializeOwned + Default>(bytes: &[u8]) -> Result<T, String> {
+    if bytes.iter().all(u8::is_ascii_whitespace) {
+        return Ok(T::default());
+    }
+    serde_json::from_slice(bytes).map_err(|e| format!("invalid JSON body: {}", e))
+}
+
+fn bad_body(error: String) -> axum::response::Response {
+    (axum::http::StatusCode::BAD_REQUEST, Json(json!({ "ok": false, "error": error, "error_code": "invalid_body" }))).into_response()
+}
+
+#[derive(Deserialize, Default)]
 struct DownloadRequest {
     /// 다운로드할 컴포넌트 키 목록. 비어있으면 전체.
     #[serde(default)]
     components: Vec<String>,
 }
 
-async fn download_components(
-    State(state): State<UpdateState>,
-    Json(body): Json<DownloadRequest>,
-) -> impl IntoResponse {
+async fn download_components(State(state): State<UpdateState>, raw: axum::body::Bytes) -> axum::response::Response {
+    match body_or_default::<DownloadRequest>(&raw) {
+        Ok(body) => download_components_with(state, body).await.into_response(),
+        Err(e) => bad_body(e),
+    }
+}
+
+async fn download_components_with(state: UpdateState, body: DownloadRequest) -> impl IntoResponse {
     let mut mgr = state.manager.write().await;
 
     // 아직 체크하지 않았으면 먼저 체크
@@ -420,16 +438,20 @@ async fn get_download_progress(
 /// - 데몬/GUI/CLI: 업데이터 exe를 스폰하여 적용 (응답에 requires_updater: true)
 ///
 /// Body: `{ "components": ["module-minecraft", "saba-core"] }` (선택 적용, 비어있으면 전체)
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 struct ApplyRequest {
     #[serde(default)]
     components: Vec<String>,
 }
 
-async fn apply_updates(
-    State(state): State<UpdateState>,
-    Json(body): Json<ApplyRequest>,
-) -> impl IntoResponse {
+async fn apply_updates(State(state): State<UpdateState>, raw: axum::body::Bytes) -> axum::response::Response {
+    match body_or_default::<ApplyRequest>(&raw) {
+        Ok(body) => apply_updates_with(state, body).await.into_response(),
+        Err(e) => bad_body(e),
+    }
+}
+
+async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl IntoResponse {
     let mut mgr = state.manager.write().await;
 
     // 적용 대상 분류
@@ -734,9 +756,6 @@ async fn set_config(
     if let Some(v) = body.get("auto_download").and_then(|v| v.as_bool()) {
         cfg.auto_download = v;
     }
-    if let Some(v) = body.get("auto_apply").and_then(|v| v.as_bool()) {
-        cfg.auto_apply = v;
-    }
     if let Some(v) = body.get("install_root").and_then(|v| v.as_str()) {
         cfg.install_root = Some(v.to_string());
     }
@@ -798,6 +817,17 @@ fn resolve_modules_dir() -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn apply_and_download_accept_a_missing_body_but_not_a_broken_one() {
+        let empty: super::ApplyRequest = super::body_or_default(b"").ok().unwrap();
+        assert!(empty.components.is_empty());
+        let blank: super::DownloadRequest = super::body_or_default(b" \n").ok().unwrap();
+        assert!(blank.components.is_empty());
+        let some: super::ApplyRequest = super::body_or_default(br#"{"components":["gui"]}"#).ok().unwrap();
+        assert_eq!(some.components, vec!["gui".to_string()]);
+        assert!(super::body_or_default::<super::ApplyRequest>(b"{oops").is_err(), "a broken body must not mean 'everything'");
+    }
+
     use super::*;
 
     #[test]

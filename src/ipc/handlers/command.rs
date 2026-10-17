@@ -134,7 +134,7 @@ pub async fn execute_command(
     }
 
     let resp = match plan {
-        Plan::Rcon { line } => {
+        Plan::Console { line } => {
             into_internal(execute_rcon_command(Path(id.clone()), State(state.clone()), Json(json!({ "command": line }))).await).await
         }
         Plan::Rest { endpoint, http_method, body } => {

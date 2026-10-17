@@ -53,7 +53,6 @@ fn create_test_manager(tmpdir: &TempDir) -> UpdateManager {
         enabled: true,
         check_interval_hours: 3,
         auto_download: false,
-        auto_apply: false,
         install_root: Some(tmpdir.path().to_string_lossy().to_string()),
         ..Default::default()
     };
@@ -182,7 +181,6 @@ fn test_update_config_default() {
     assert!(cfg.enabled);
     assert_eq!(cfg.check_interval_hours, 3);
     assert!(!cfg.auto_download);
-    assert!(!cfg.auto_apply);
     assert!(cfg.install_root.is_none());
     assert!(cfg.relay_url.is_none());
 }
@@ -193,7 +191,6 @@ fn test_update_config_serialization() {
         enabled: true,
         check_interval_hours: 6,
         auto_download: true,
-        auto_apply: false,
         install_root: Some("/opt/saba".into()),
         channel: "beta".into(),
         ..Default::default()

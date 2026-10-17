@@ -10,7 +10,7 @@
 //!
 //! 명령 찾기: 이름(대소문자 무시) → `[aliases.commands]`의 별명.
 //! 정의된 명령의 `method`:
-//! - `rcon`: `rcon_template`의 `{입력}` 자리를 채워 서버 콘솔(stdin)로. 이름은 예전 그대로다 (RCON은 쓰지 않는다)
+//! - `console`: `console_template`의 `{입력}` 자리를 채워 서버 콘솔(stdin)로. 예전 이름 `rcon`도 받는다 (RCON은 쓰지 않는다)
 //! - `rest`: `endpoint_template` + `http_method`, 입력을 본문으로
 //! - `module`(예전 이름 `dual`/`both`) 또는 생략: 모듈 `lifecycle.py`의 `command()`가 처리
 //!
@@ -66,7 +66,8 @@ impl Request {
 /// 실행 계획
 #[derive(Debug, Clone, PartialEq)]
 pub enum Plan {
-    Rcon { line: String },
+    /// 서버 콘솔(stdin)에 보낼 한 줄
+    Console { line: String },
     Rest { endpoint: String, http_method: String, body: Map<String, Value> },
     /// lifecycle.py `command()`에 위임
     Module { command: String, args: Map<String, Value> },
@@ -107,8 +108,8 @@ pub fn plan(module: &ModuleMetadata, req: &Request) -> Result<Plan, PlanError> {
     };
     let inputs = bind(&field.inputs, &req.args)?;
     match field.method.as_deref().unwrap_or("module") {
-        "rcon" => Ok(Plan::Rcon {
-            line: render_template(field.rcon_template.as_deref().unwrap_or(&field.name), &inputs),
+        "console" | "rcon" => Ok(Plan::Console {
+            line: render_template(field.console_template.as_deref().unwrap_or(&field.name), &inputs),
         }),
         "rest" => Ok(Plan::Rest {
             endpoint: field
