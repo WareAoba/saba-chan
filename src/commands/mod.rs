@@ -129,7 +129,8 @@ pub fn plan(module: &ModuleMetadata, req: &Request) -> Result<Plan, PlanError> {
 }
 
 /// 입력 칸에 값을 넣고 검사한다. 빈 칸은 기본값으로 채우고, 필수인데 없으면 오류.
-fn bind(inputs: &[CommandInput], args: &Args) -> Result<Map<String, Value>, PlanError> {
+/// 익스텐션 명령도 같은 검사를 쓴다.
+pub fn bind(inputs: &[CommandInput], args: &Args) -> Result<Map<String, Value>, PlanError> {
     let mut given: Map<String, Value> = match args {
         Args::Named(map) => map.clone(),
         Args::Positional(words) => {

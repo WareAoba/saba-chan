@@ -23,21 +23,22 @@ pub async fn save_gui_config(
     State(state): State<IPCServer>,
     Json(settings): Json<Value>,
 ) -> impl IntoResponse {
-    // portConflictCheck 동기화 (기존 sync_gui_config 로직 통합)
-    if let Some(port_conflict_check) = settings.get("portConflictCheck").and_then(|v| v.as_bool()) {
-        let skip = !port_conflict_check;
-        let supervisor = state.supervisor.read().await;
-        supervisor
-            .skip_port_check
-            .store(skip, std::sync::atomic::Ordering::Relaxed);
-    }
-
     match state.config_store.set_gui_settings_from_json(settings).await {
-        Ok(_) => (StatusCode::OK, Json(json!({ "ok": true }))).into_response(),
+        Ok(saved) => {
+            // 저장에 성공한 뒤에만 런타임 포트 검사 플래그를 맞춘다
+            state.supervisor.read().await.skip_port_check.store(!saved.port_conflict_check, std::sync::atomic::Ordering::Relaxed);
+            (StatusCode::OK, Json(json!({ "ok": true }))).into_response()
+        }
+        Err(crate::config_store::ConfigStoreError::InvalidData(msg)) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "ok": false, "error": msg, "error_code": "invalid_request" })),
+        )
+            .into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": format!("{}", e) })),
-        ).into_response(),
+            Json(json!({ "ok": false, "error": format!("{}", e) })),
+        )
+            .into_response(),
     }
 }
 
@@ -61,18 +62,29 @@ pub async fn reset_config(
     Path(kind): Path<String>,
     body: Option<Json<Value>>,
 ) -> impl IntoResponse {
-    let keys: Option<Vec<String>> = body
-        .and_then(|Json(b)| b.get("keys").cloned())
-        .and_then(|k| serde_json::from_value(k).ok());
-    if kind == "gui" {
-        // 저장 경로와 같은 부수 효과 (포트 검사 플래그)
-        if keys.as_ref().is_none_or(|k| k.iter().any(|k| k == "portConflictCheck")) {
-            let check = crate::config_store::GuiSettings::default().port_conflict_check;
-            state.supervisor.read().await.skip_port_check.store(!check, std::sync::atomic::Ordering::Relaxed);
-        }
-    }
+    let keys: Option<Vec<String>> = match body.and_then(|Json(b)| b.get("keys").cloned()) {
+        None | Some(Value::Null) => None,
+        Some(k) => match serde_json::from_value(k) {
+            Ok(keys) => Some(keys),
+            Err(_) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "ok": false, "error": "keys must be an array of setting names", "error_code": "invalid_request" })),
+                )
+                    .into_response()
+            }
+        },
+    };
     match state.config_store.reset_to_defaults(&kind, keys.as_deref()).await {
-        Ok(config) => (StatusCode::OK, Json(json!({ "ok": true, "config": config }))).into_response(),
+        Ok(config) => {
+            // 저장에 성공한 뒤에만 런타임 플래그(포트 검사)를 맞춘다
+            if kind == "gui" {
+                if let Some(check) = config.get("portConflictCheck").and_then(Value::as_bool) {
+                    state.supervisor.read().await.skip_port_check.store(!check, std::sync::atomic::Ordering::Relaxed);
+                }
+            }
+            (StatusCode::OK, Json(json!({ "ok": true, "config": config }))).into_response()
+        }
         Err(e) => (
             StatusCode::BAD_REQUEST,
             Json(json!({ "ok": false, "error": e.to_string(), "error_code": "invalid_request" })),
@@ -148,7 +160,10 @@ pub async fn save_node_token(
 }
 
 /// DELETE /api/config/node-token
-pub async fn delete_node_token(State(_state): State<IPCServer>) -> impl IntoResponse {
+/// 연결 해제: 토큰을 지우기 전에 릴레이 에이전트를 멈춰 더는 원격 명령을 받지 않는다.
+/// 토큰이 없으면 다음 기동 때도 자동 시작하지 않는다.
+pub async fn delete_node_token(State(state): State<IPCServer>) -> impl IntoResponse {
+    state.relay_agent.stop();
     let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
     let token_path = data_dir.join(".node_token");
 

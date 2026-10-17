@@ -271,6 +271,9 @@ def cmd_manifest(data: dict, args: argparse.Namespace) -> int:
     assets = Path(args.assets)
     base = args.base_url.rstrip("/")
     release = data["release"]["version"]
+    # 패키저(package-release.py)가 남긴 manifest.json: 이전 릴리즈에서 가져온 에셋은 실제 버전이 적혀 있다
+    packaged_path = assets / "manifest.json"
+    packaged = json.loads(packaged_path.read_text(encoding="utf-8")).get("components", {}) if packaged_path.is_file() else {}
     components = {}
     for key, comp in data["components"].items():
         if "asset" not in comp:
@@ -281,13 +284,22 @@ def cmd_manifest(data: dict, args: argparse.Namespace) -> int:
             print(f"skip {key}: {path} not found", file=sys.stderr)
             continue
         blob = path.read_bytes()
+        sha = hashlib.sha256(blob).hexdigest()
+        version = comp["version"]
+        pkg = packaged.get(key)
+        if pkg:
+            if pkg.get("sha256") and pkg["sha256"] != sha:
+                sys.exit(f"{key}: {name} differs from the packaged one (sha256 mismatch)")
+            if pkg.get("version") and pkg["version"] != version:
+                print(f"{key}: reused asset is {pkg['version']}, not {version}; signing it as {pkg['version']}", file=sys.stderr)
+                version = pkg["version"]
         components[key] = {
             "asset": name,
             "install_dir": comp.get("install_dir", "."),
-            "sha256": hashlib.sha256(blob).hexdigest(),
+            "sha256": sha,
             "size_bytes": len(blob),
             "url": f"{base}/{r2_key(release, name)}",
-            "version": comp["version"],
+            "version": version,
         }
     for key, comp in addon_components(args, assets).items():
         blob = (assets / comp["asset"]).read_bytes()

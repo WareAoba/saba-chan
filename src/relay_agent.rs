@@ -45,6 +45,8 @@ pub struct AgentStatus {
 struct Inner {
     cancel: Option<CancellationToken>,
     status: AgentStatus,
+    /// 시작할 때마다 늘어난다. 끝난 세션이 새 세션의 상태를 지우지 않게 한다
+    generation: u64,
 }
 
 /// 에이전트 핸들 — 복제해도 같은 에이전트를 가리킵니다.
@@ -76,15 +78,16 @@ impl RelayAgent {
             let url = bot.cloud.relay_url.trim().to_string();
             resolve_relay_url(Some(url.as_str()))
         };
-        let cancel = {
+        let (cancel, generation) = {
             let mut inner = self.lock();
             if inner.cancel.is_some() {
                 return Ok(());
             }
             let token = server.shutdown_token.child_token();
             inner.cancel = Some(token.clone());
+            inner.generation += 1;
             inner.status = AgentStatus { running: true, relay_url: Some(relay_url.clone()), ..Default::default() };
-            token
+            (token, inner.generation)
         };
 
         let agent = self.clone();
@@ -92,33 +95,39 @@ impl RelayAgent {
             let client = match http_client() {
                 Ok(c) => c,
                 Err(e) => {
-                    agent.finish(Some(format!("http client: {}", e)));
+                    agent.finish(generation, Some(format!("http client: {}", e)));
                     return;
                 }
             };
             let session = Session { agent: agent.clone(), server, client, base: relay_url, cancel: cancel.clone() };
             if let Err(e) = session.check_version().await {
                 tracing::error!("[RelayAgent] {}", e);
-                agent.finish(Some(e));
+                agent.finish(generation, Some(e));
                 return;
             }
             tracing::info!("[RelayAgent] started (relay={})", session.base);
             tokio::join!(session.heartbeat_loop(), session.poll_loop());
-            agent.finish(None);
+            agent.finish(generation, None);
             tracing::info!("[RelayAgent] stopped");
         });
         Ok(())
     }
 
     pub fn stop(&self) {
-        if let Some(cancel) = self.lock().cancel.take() {
+        let mut inner = self.lock();
+        if let Some(cancel) = inner.cancel.take() {
             cancel.cancel();
         }
-        self.lock().status.running = false;
+        inner.status.running = false;
+        inner.status.sleeping = false;
     }
 
-    fn finish(&self, error: Option<String>) {
+    /// 세션이 끝났을 때. 그 사이 새 세션이 시작됐으면(세대가 다르면) 아무것도 건드리지 않는다
+    fn finish(&self, generation: u64, error: Option<String>) {
         let mut inner = self.lock();
+        if inner.generation != generation {
+            return;
+        }
         inner.cancel = None;
         inner.status.running = false;
         inner.status.sleeping = false;
@@ -428,6 +437,21 @@ fn now_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finished_old_session_leaves_new_session_alone() {
+        let agent = RelayAgent::new();
+        {
+            let mut inner = agent.lock();
+            inner.generation = 2;
+            inner.cancel = Some(CancellationToken::new());
+            inner.status.running = true;
+        }
+        agent.finish(1, Some("old".into()));
+        assert!(agent.lock().cancel.is_some() && agent.lock().status.running);
+        agent.finish(2, None);
+        assert!(agent.lock().cancel.is_none() && !agent.lock().status.running);
+    }
 
     #[test]
     fn semver_compare() {

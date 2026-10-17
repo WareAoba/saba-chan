@@ -614,8 +614,7 @@ impl Supervisor {
         }))
     }
 
-    /// Stop a server by name
-    /// Called by IPC API: POST /api/server/:name/stop
+    /// 서버 정지. `server_name`은 인스턴스 id (이름은 겹칠 수 있다); 예전 호출을 위해 이름도 받는다
     ///
     /// 데몬 락은 준비와 정리 때만 잡는다. 익스텐션 hook, 모듈 `stop()`, 종료 대기(최대
     /// `stop_timeout`초)는 락 밖에서 한다 (C12).
@@ -625,9 +624,8 @@ impl Supervisor {
         // ── 1) 준비 (쓰기 락: 정지 표시를 남긴다) ──
         let (instance, hook, managed) = {
             let mut s = sup.write().await;
-            let instance = s.instance_store.list()
-                .iter()
-                .find(|i| i.name == server_name)
+            let instance = s.instance_store.get(server_name)
+                .or_else(|| s.instance_store.list().iter().find(|i| i.name == server_name))
                 .cloned()
                 .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
             s.stop_requested.insert(instance.id.clone());
@@ -1980,6 +1978,22 @@ impl Supervisor {
         self.exit_events.get(instance_id).map(|e| e.iter().cloned().collect()).unwrap_or_default()
     }
 
+    /// 인스턴스 서버 파일이 있을 수 있는 폴더들 (작업 폴더, 실행 파일 폴더, 인스턴스 폴더)
+    fn instance_roots(&self, instance: &crate::instance::ServerInstance) -> Vec<String> {
+        let mut roots = Vec::new();
+        if let Some(dir) = instance.working_dir.as_deref().filter(|d| !d.is_empty()) {
+            roots.push(dir.to_string());
+        }
+        if let Some(parent) = instance.executable_path.as_deref().and_then(|p| std::path::Path::new(p).parent()) {
+            let parent = parent.to_string_lossy().to_string();
+            if !parent.is_empty() {
+                roots.push(parent);
+            }
+        }
+        roots.push(self.instance_store.instance_dir(&instance.id).to_string_lossy().to_string());
+        roots
+    }
+
     pub async fn monitor_processes(&mut self, process_snapshot: &[crate::process_monitor::RunningProcess]) -> Result<()> {
         use crate::process_monitor;
 
@@ -1996,6 +2010,7 @@ impl Supervisor {
         }
         
         let instances = self.instance_store.list().to_vec();
+        let all_instances_snapshot = instances.clone();
         let mut tracked_count = 0;
         let mut auto_detected_count = 0;
         
@@ -2056,7 +2071,21 @@ impl Supervisor {
                         process_monitor::find_by_name_and_cmd_in(process_snapshot, process_name, &cmd_patterns)
                     };
 
-                    if let Some(process) = processes.first() {
+                    // 같은 게임 인스턴스가 여럿이면 폴더로 주인을 가리고, 다른 인스턴스가 잡은 PID는 빼고 고른다
+                    let siblings: Vec<&crate::instance::ServerInstance> = all_instances_snapshot
+                        .iter()
+                        .filter(|i| i.module_name == instance.module_name && i.id != instance.id)
+                        .collect();
+                    let taken: std::collections::HashSet<u32> = all_instances_snapshot
+                        .iter()
+                        .filter(|i| i.id != instance.id)
+                        .filter_map(|i| self.tracker.get_pid(&i.id).ok())
+                        .collect();
+                    let own_roots = self.instance_roots(&instance);
+                    let other_roots: Vec<String> = siblings.iter().flat_map(|i| self.instance_roots(i)).collect();
+                    let picked = process_monitor::pick_owned_process(&processes, &taken, &own_roots, &other_roots, siblings.is_empty());
+
+                    if let Some(process) = picked {
                                 auto_detected_count += 1;
                                 tracing::info!(
                                     "Auto-detected process '{}' (PID: {}) for instance '{}'",

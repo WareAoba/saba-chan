@@ -639,11 +639,8 @@ pub async fn stop_instance_handler(
     State(state): State<IPCServer>,
     body: Option<Json<ServerStopRequest>>,
 ) -> axum::response::Response {
-    let Some(name) = instance_name_of(&state, &id).await else {
-        return instance_not_found(&id);
-    };
-    let req = body.map(|Json(b)| b).unwrap_or(ServerStopRequest { force: false });
-    stop_server_handler(Path(name), State(state), Json(req)).await.into_response()
+    let force = body.map(|Json(b)| b.force).unwrap_or(false);
+    stop_instance(state, &id, force).await
 }
 
 /// POST /api/instance/:id/restart — 정지(`{force?}`) 뒤 시작. 꺼져 있으면 시작만 한다.
@@ -655,21 +652,33 @@ pub async fn restart_instance_handler(
 ) -> axum::response::Response {
     let picked = {
         let supervisor = state.supervisor.read().await;
-        supervisor
+        let found = supervisor
             .instance_store
             .get(&id)
             .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == id))
-            .map(|i| (i.id.clone(), i.name.clone(), supervisor.tracker.get_pid(&i.id).is_ok()))
+            .cloned();
+        match found {
+            Some(i) => {
+                let tracked = supervisor.tracker.get_pid(&i.id).is_ok()
+                    || supervisor.managed_store.running_instance_ids().await.contains(&i.id);
+                Some((i.id.clone(), tracked, !i.extension_data.is_empty()))
+            }
+            None => None,
+        }
     };
-    let Some((inst_id, name, running)) = picked else {
+    let Some((inst_id, tracked, ext_managed)) = picked else {
         return instance_not_found(&id);
     };
-    if running {
-        let req = body.map(|Json(b)| b).unwrap_or(ServerStopRequest { force: false });
-        let stop = crate::ipc::internal::into_internal(stop_server_handler(Path(name), State(state.clone()), Json(req)).await).await;
-        if !stop.status.is_success() || stop.body.get("success").and_then(Value::as_bool) == Some(false) {
+    let force = body.map(|Json(b)| b.force).unwrap_or(false);
+    let mut running = tracked;
+    if tracked || ext_managed {
+        // 익스텐션이 맡은 서버는 데몬 추적표에 없을 수 있다: 정지를 맡겨 보고, 꺼져 있었으면 시작만 한다
+        let stop = crate::ipc::internal::into_internal(stop_instance(state.clone(), &inst_id, force).await).await;
+        let stopped = stop.status.is_success() && stop.body.get("success").and_then(Value::as_bool) != Some(false);
+        if tracked && !stopped {
             return (stop.status, Json(stop.body)).into_response();
         }
+        running = stopped;
         // 정지 응답이 프로세스가 끝나기 전에 올 수 있다: 끝날 때까지 기다린다 (최대 2분)
         for _ in 0..240 {
             let alive = {
@@ -778,33 +787,48 @@ pub async fn stop_server_handler(
     Path(name): Path<String>,
     State(state): State<IPCServer>,
     Json(payload): Json<ServerStopRequest>,
-) -> impl IntoResponse {
+) -> axum::response::Response {
+    let id = {
+        let supervisor = state.supervisor.read().await;
+        supervisor.instance_store.list().iter().find(|i| i.name == name).map(|i| i.id.clone())
+    };
+    match id {
+        Some(id) => stop_instance(state, &id, payload.force).await,
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": format!("Server '{}' not found", name), "error_code": "instance_not_found" })),
+        )
+            .into_response(),
+    }
+}
+
+/// 인스턴스 하나를 id로 정지한다. 이름은 겹칠 수 있으니 정지 경로는 모두 id를 쓴다
+pub async fn stop_instance(state: IPCServer, id: &str, force: bool) -> axum::response::Response {
+    let payload = ServerStopRequest { force };
+    let Some(name) = instance_name_of(&state, id).await else {
+        return instance_not_found(id);
+    };
     // API 경유 정지 기록 (GUI 외부 정지 감지용)
     state.api_actions.record(&name);
     // 익스텐션 상태 캐시 무효화 — 정지 직후 fresh 상태 반영
     {
         let sup = state.supervisor.read().await;
-        if let Some(inst) = sup.instance_store.list().iter().find(|i| i.name == name) {
-            state.extension_status_cache.invalidate(&inst.id);
+        if sup.instance_store.get(id).is_some() {
+            state.extension_status_cache.invalidate(id);
         }
     }
 
     // instance에서 모듈명과 ID 조회 (read lock으로 조회 후 즉시 해제)
     let instance = {
         let supervisor = state.supervisor.read().await;
-        supervisor
-            .instance_store
-            .list()
-            .iter()
-            .find(|i| i.name == name)
-            .cloned()
+        supervisor.instance_store.get(id).cloned()
     };
 
     if let Some(inst) = instance {
         // instance id로도 API 액션 기록
         state.api_actions.record(&inst.id);
         // 락은 stop_server가 단계마다 짧게 잡는다 (C12)
-        match crate::supervisor::Supervisor::stop_server(&state.supervisor, &name, &inst.module_name, payload.force).await {
+        match crate::supervisor::Supervisor::stop_server(&state.supervisor, &inst.id, &inst.module_name, payload.force).await {
             Ok(result) => {
                 // 실제 종료 성공 시에만 tracker에서 제거
                 let success = result
