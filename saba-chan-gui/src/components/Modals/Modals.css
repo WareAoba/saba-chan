@@ -3711,3 +3711,28 @@
     color: var(--warn);
     box-shadow: inset 0 0 0 1px var(--warn-soft);
 }
+
+/* 패치노트 */
+.patch-notes-modal {
+    max-width: 560px;
+    width: 100%;
+    text-align: left;
+    gap: var(--sp-3);
+}
+.patch-notes-body {
+    white-space: pre-wrap;
+    max-height: 50vh;
+    overflow-y: auto;
+    padding: var(--sp-3);
+    border-radius: var(--r-md);
+    background: var(--inset);
+    color: var(--text-1);
+    font-size: var(--fs-sm);
+    line-height: 1.6;
+}
+.patch-notes-failed {
+    margin: var(--sp-1) 0 0;
+    padding-left: var(--sp-4);
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+}

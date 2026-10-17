@@ -2,6 +2,17 @@
  * 개발용 가짜 window.api — Electron 없이 `npm run dev`로 브라우저에서 화면을 볼 때만 쓴다.
  * index.js가 DEV 빌드이고 window.api가 없을 때만 설치한다. 프로덕션 번들에는 들어가지 않는다.
  */
+const mockChannels = {
+    chatbot: ['111'],
+    music: null,
+    botAvailable: true,
+    channels: [
+        { id: '111', name: '잡담', category: '채팅' },
+        { id: '112', name: '질문', category: '채팅' },
+        { id: '221', name: '음악', category: '놀이' },
+        { id: '222', name: '공지', category: '' },
+    ],
+};
 const now = () => Math.floor(Date.now() / 1000);
 
 const modules = [
@@ -155,7 +166,7 @@ const impl = {
         ok({
             success: true,
             settings: { enabled: true, ambientSeconds: 0 },
-            guilds: { 'guild-1': { channelIds: ['1234567890'] } },
+            guilds: { 'guild-1': { memo: '' } },
             hasApiKey: true,
         }),
     chatbotSave: (patch) => ok({ success: true, settings: patch.settings || {}, guilds: {}, hasApiKey: true, sync: [] }),
@@ -246,6 +257,11 @@ const impl = {
             { guildId: 'guild-1', guildName: '사바 마을' },
             { guildId: 'guild-2', guildName: '주말 게임방' },
         ]),
+    relayNodeChannels: (guildId) => ok({ guildId, ...mockChannels }),
+    relayNodeChannelsSave: (guildId, patch) => {
+        Object.assign(mockChannels, patch);
+        return ok({ guildId, ...mockChannels });
+    },
     relayListNodeMembers: (guildId) =>
         ok(
             guildId === 'guild-1'
@@ -267,6 +283,8 @@ const impl = {
     updaterLastResult: ({ clear } = {}) =>
         ok({
             ok: true,
+            version: '0.1.3',
+            notes: '- 디스코드 서버별 챗봇·음악 채널 배정\n- 업데이트 결과 알림과 패치노트',
             result:
                 !mockUpdate || clear
                     ? null

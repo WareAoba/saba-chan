@@ -650,10 +650,6 @@
     "bot_tip_running": "디스코드 봇이 사바쨩 클라우드를 통해 연결돼 있어요",
     "bot_tip_connecting": "봇을 켰고, 사바쨩 클라우드에 연결하는 중이에요",
     "bot_tip_stopped": "디스코드 봇이 꺼져 있어요. 눌러서 켜러 가기",
-    "update_done": "업데이트를 마쳤어요",
-    "update_failed": "업데이트가 끝나지 못했어요",
-    "update_components": "바뀐 것: {{list}}",
-    "update_failed_components": "실패한 것: {{list}}",
     "dismiss": "닫기",
     "console_quick": "자주 쓰는 명령",
     "console_hint": "Enter 보내기 · ↑ 이전 명령",
@@ -810,7 +806,27 @@
     "words_instances_title": "서버별 별명",
     "words_instances_desc": "같은 게임 서버가 여럿일 때, 모듈 단어 자리에 서버마다 다른 이름을 쓸 수 있어요. 봇은 서버 이름 → 서버 별명 → 모듈 단어 순서로 찾습니다.",
     "words_instance_aria": "{{name}} 별명",
-    "words_conflict_instance": "'{{alias}}'는 이미 {{other}}에 쓰이고 있어요"
+    "words_conflict_instance": "'{{alias}}'는 이미 {{other}}에 쓰이고 있어요",
+    "tab_channels": "채널",
+    "channels_loading": "채널 목록을 불러오는 중…",
+    "channels_no_bot": "봇이 이 서버에 없거나 연결되지 않아 채널 목록을 볼 수 없어요. 지금 배정된 채널을 해제하는 것만 할 수 있어요.",
+    "channels_chatbot": "챗봇 채널",
+    "channels_chatbot_hint": "챗봇은 여기서 고른 채널에서만 대화해요. 최대 {{max}}개까지 고를 수 있어요.",
+    "channels_chatbot_aria": "#{{channel}}을(를) 챗봇 채널로",
+    "channels_is_music": "음악 채널로 쓰는 중",
+    "channels_none": "고를 수 있는 텍스트 채널이 없어요.",
+    "channels_too_many": "챗봇 채널은 최대 {{max}}개까지예요.",
+    "channels_music": "음악 채널",
+    "channels_music_hint": "음악 플레이어가 놓이는 채널이에요. 공지도 이 채널로 가요.",
+    "channels_music_none": "없음 (해제)",
+    "channels_music_warn": "{{channel}}의 일반 메시지는 모두 지워져요. 음악 전용 채널을 고르세요.",
+    "channels_reload": "새로 고침",
+    "channels_save": "저장",
+    "channels_save_confirm": "메시지 삭제를 알고 저장",
+    "channels_err_conflict": "같은 채널을 챗봇과 음악에 동시에 배정할 수 없어요.",
+    "channels_err_unknown": "{{channel}}은(는) 이 서버에서 봇이 쓸 수 있는 텍스트 채널이 아니에요.",
+    "channels_err_bot": "봇을 확인할 수 없어 바꾸지 못했어요. 해제는 지금도 할 수 있어요.",
+    "channels_err_generic": "채널 배정을 저장하지 못했어요."
   },
   "maintenance": {
     "load_failed": "백업·예약 정보를 불러오지 못했어요.",
@@ -904,16 +920,12 @@
     "guild_inherit": "기본값 따름 ({{state}})",
     "on": "켜기",
     "off": "끄기",
-    "channels": "대답할 채널 ID",
-    "channels_placeholder": "채널 ID 숫자",
-    "channels_aria": "{{name}} 채널 ID",
     "memory_clear": "기억 지우기",
     "memory_clear_confirm": "눌러서 지우기",
     "memory_cleared": "{{name}}의 기억을 지웠어요.",
     "err_ambientSeconds": "자발적 대화 간격은 {{min}}~{{max}}초 사이여야 해요.",
     "err_sessionSeconds": "대화 유지 시간은 {{min}}~{{max}}초 사이여야 해요.",
     "err_triggers": "부르는 말은 {{max}}개까지예요.",
-    "err_channels": "채널은 서버마다 {{max}}개까지예요.",
     "memo": "노드 메모",
     "memo_aria": "{{name}} 노드 메모",
     "memo_placeholder": "이 서버에서 사바쨩이 알아 둘 것: 말투, 호칭, 방 분위기, 관심사 등. 사바쨩 기본 지침 뒤에 붙어요.",
@@ -926,7 +938,8 @@
     "tool_images_hint": "그림을 그려 줘요 (하루 10장).",
     "tool_social_notes": "눈치 메모",
     "tool_social_notes_hint": "분위기와 사람들에 대해 혼자만 보는 메모를 남겨요. 내용은 앱에 보이지 않아요.",
-    "relay_delete_pending": "예전 챗봇 설정을 릴레이에서 아직 지우지 못했어요. 다음에 연결될 때 다시 지웁니다."
+    "relay_delete_pending": "예전 챗봇 설정을 릴레이에서 아직 지우지 못했어요. 다음에 연결될 때 다시 지웁니다.",
+    "channels_moved": "챗봇이 대화할 채널은 디스코드 서버 화면의 '채널' 탭에서 골라요."
   },
   "module_audit": {
     "title": "'{{module}}' 모듈이 선언하지 않은 기능을 써요.",
@@ -952,5 +965,15 @@
     "verified_tip": "공식 카탈로그에서 받았고 그 뒤로 바뀌지 않았어요.",
     "modified_tip": "공식 카탈로그에서 받은 뒤 파일이 바뀌었어요. 직접 고친 게 아니면 다시 설치해 주세요.",
     "unverified_tip": "공식 카탈로그에서 받지 않았어요. 믿을 수 있는 출처인지 확인해 주세요."
+  },
+  "patch_notes": {
+    "title": "패치노트",
+    "title_version": "사바쨩 {{version}} 패치노트",
+    "notice_success": "사바쨩이 {{version}}(으)로 업데이트됐어요. 눌러서 패치노트 보기",
+    "notice_failed": "업데이트하지 못한 항목이 있어요 ({{count}}개). 눌러서 자세히 보기",
+    "unknown_version": "새 버전",
+    "failed": "업데이트를 적용하지 못했어요.",
+    "partial": "{{count}}개 항목은 업데이트하지 못했어요.",
+    "no_notes": "이 버전의 패치노트가 없어요."
   }
 }

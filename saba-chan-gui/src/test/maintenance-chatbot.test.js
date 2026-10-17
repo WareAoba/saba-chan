@@ -171,7 +171,7 @@ describe('ChatbotView', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await waitFor(() => expect(window.api.chatbotSave).toHaveBeenCalled());
         const patch = window.api.chatbotSave.mock.calls[0][0];
-        expect(patch.guilds).toEqual({ g1: { enabled: false, channelIds: null, memo: null } });
+        expect(patch.guilds).toEqual({ g1: { enabled: false, memo: null } });
         expect(patch.settings.disabledTools).toEqual(['images']);
     });
 
@@ -233,7 +233,7 @@ describe('ChatbotView', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await screen.findByText(/channelIds too long/);
         expect(window.api.chatbotSave).toHaveBeenCalledWith({
-            guilds: { g1: { enabled: true, channelIds: null, memo: null } },
+            guilds: { g1: { enabled: true, memo: null } },
         });
 
         fireEvent.click(screen.getByRole('button', { name: 'Clear memory' }));

@@ -650,10 +650,6 @@
     "bot_tip_running": "Discord 机器人已通过 Saba-chan 云端连接",
     "bot_tip_connecting": "机器人已开启，正在连接 Saba-chan 云端",
     "bot_tip_stopped": "Discord 机器人已关闭。点击前往开启",
-    "update_done": "更新完成",
-    "update_failed": "更新未能完成",
-    "update_components": "已更新：{{list}}",
-    "update_failed_components": "失败：{{list}}",
     "dismiss": "关闭",
     "console_quick": "常用命令",
     "console_hint": "Enter 发送 · ↑ 上一条",
@@ -810,7 +806,27 @@
     "words_instances_title": "服务器别名",
     "words_instances_desc": "同一游戏有多个服务器时，可以为每个服务器设置专属的词来代替模块词。机器人按服务器名称 → 服务器别名 → 模块词的顺序查找。",
     "words_instance_aria": "{{name}} 的别名",
-    "words_conflict_instance": "'{{alias}}' 已被 {{other}} 使用"
+    "words_conflict_instance": "'{{alias}}' 已被 {{other}} 使用",
+    "tab_channels": "频道",
+    "channels_loading": "正在加载频道…",
+    "channels_no_bot": "机器人不在此服务器或无法连接，因此无法列出频道。你只能取消当前的分配。",
+    "channels_chatbot": "聊天机器人频道",
+    "channels_chatbot_hint": "聊天机器人只在这里选择的频道中对话。最多 {{max}} 个。",
+    "channels_chatbot_aria": "将 #{{channel}} 设为聊天机器人频道",
+    "channels_is_music": "用于音乐",
+    "channels_none": "没有可用的文字频道。",
+    "channels_too_many": "聊天机器人频道最多 {{max}} 个。",
+    "channels_music": "音乐频道",
+    "channels_music_hint": "音乐播放器所在的频道。公告也会发到这里。",
+    "channels_music_none": "无（取消）",
+    "channels_music_warn": "{{channel}} 中的普通消息都会被删除。请选择一个专用的音乐频道。",
+    "channels_reload": "刷新",
+    "channels_save": "保存",
+    "channels_save_confirm": "知晓会删除消息并保存",
+    "channels_err_conflict": "同一个频道不能同时作为聊天机器人频道和音乐频道。",
+    "channels_err_unknown": "{{channel}} 不是机器人在此服务器可用的文字频道。",
+    "channels_err_bot": "无法确认机器人，因此没有更改。取消分配仍然可以。",
+    "channels_err_generic": "无法保存频道分配。"
   },
   "maintenance": {
     "load_failed": "无法加载备份和计划信息。",
@@ -904,16 +920,12 @@
     "guild_inherit": "跟随默认（{{state}}）",
     "on": "开启",
     "off": "关闭",
-    "channels": "回答的频道 ID",
-    "channels_placeholder": "频道 ID 数字",
-    "channels_aria": "{{name}} 的频道 ID",
     "memory_clear": "清除记忆",
     "memory_clear_confirm": "点击清除",
     "memory_cleared": "已清除 {{name}} 的记忆。",
     "err_ambientSeconds": "主动发言间隔须在 {{min}}–{{max}} 秒之间。",
     "err_sessionSeconds": "对话保持时间须在 {{min}}–{{max}} 秒之间。",
     "err_triggers": "呼叫词最多 {{max}} 个。",
-    "err_channels": "每个服务器最多 {{max}} 个频道。",
     "memo": "节点备忘",
     "memo_aria": "{{name}} 的节点备忘",
     "memo_placeholder": "萨巴酱需要了解的这个服务器的情况：语气、称呼、氛围、兴趣等。附加在默认指令之后。",
@@ -926,7 +938,8 @@
     "tool_images_hint": "画图（每天 10 张）。",
     "tool_social_notes": "察言观色备忘",
     "tool_social_notes_hint": "记录关于氛围和成员的私人备忘，不会在应用中显示。",
-    "relay_delete_pending": "旧的聊天机器人设置尚未从中继删除，下次连接时会再次删除。"
+    "relay_delete_pending": "旧的聊天机器人设置尚未从中继删除，下次连接时会再次删除。",
+    "channels_moved": "聊天机器人对话的频道在各 Discord 服务器的「频道」标签页中选择。"
   },
   "module_audit": {
     "title": "模块 '{{module}}' 使用了未声明的功能。",
@@ -952,5 +965,15 @@
     "verified_tip": "来自签名目录，安装后未被更改。",
     "modified_tip": "从目录安装后文件已被更改。如果不是你自己改的，请重新安装。",
     "unverified_tip": "不是从签名目录安装的。请确认你信任其来源。"
+  },
+  "patch_notes": {
+    "title": "更新说明",
+    "title_version": "Saba-chan {{version}} 更新说明",
+    "notice_success": "Saba-chan 已更新到 {{version}}。点击查看更新说明",
+    "notice_failed": "有 {{count}} 个项目未能更新。点击查看详情",
+    "unknown_version": "新版本",
+    "failed": "无法应用更新。",
+    "partial": "有 {{count}} 个项目未能更新。",
+    "no_notes": "此版本没有更新说明。"
   }
 }

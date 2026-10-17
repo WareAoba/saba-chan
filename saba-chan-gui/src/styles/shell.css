@@ -853,21 +853,6 @@
     border: 1px solid var(--line-strong);
 }
 
-/* 재시작 뒤 업데이트 결과 (한 번만, 닫으면 데몬에서 지운다) */
-.update-banner {
-    margin: var(--sp-3) var(--sp-5) 0;
-    align-items: center;
-}
-.update-banner-text {
-    flex: 1;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 12px;
-}
-.update-banner-msg {
-    color: var(--text-2);
-}
-
 /* ── 데몬(백그라운드 서비스) 팝업: 상태 → 할 일 → 연결 정보 → 보조 동작 순 ── */
 .popover-anchor .bg-pop {
     width: 340px;
@@ -2225,4 +2210,32 @@ button.appbar-preflight {
 }
 .module-audit-list code {
     font-family: var(--font-mono);
+}
+
+/* 디스코드 서버 채널 배정 */
+.dc-channels {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+}
+.dc-channel-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+}
+.dc-channel-cat {
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    color: var(--text-3);
+    text-transform: uppercase;
+    margin-top: var(--sp-2);
+}
+.dc-channel-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: 2px 0;
+}
+.dc-channel-row.disabled {
+    opacity: 0.55;
 }

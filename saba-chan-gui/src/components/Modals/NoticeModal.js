@@ -4,6 +4,9 @@ import { useTranslation } from 'react-i18next';
 import './Modals.css';
 import { Icon } from '../Icon';
 
+/** 업데이트 결과 알림의 액션: 누르면 패치노트를 연다 */
+export const PATCH_NOTES_ACTION = 'openPatchNotes';
+
 // ─── localStorage 키 ───────────────────────────────────
 const STORAGE_KEY = 'saba-chan-notices';
 
@@ -29,7 +32,7 @@ function saveNotices(notices) {
 }
 
 /** 새 알림 추가 (전역 함수로 노출) */
-function addNotice({ message, type = 'info', source = 'saba-chan', action = null, dedup = false }) {
+function addNotice({ message, type = 'info', source = 'saba-chan', action = null, dedup = false, data = null }) {
     const notices = loadNotices();
 
     // 중복 방지: 같은 source + action이 이미 있으면 기존 알림을 업데이트
@@ -42,6 +45,7 @@ function addNotice({ message, type = 'info', source = 'saba-chan', action = null
             existing.type = type;
             existing.timestamp = new Date().toISOString();
             existing.read = false;
+            existing.data = data;
             notices.unshift(existing);
             saveNotices(notices);
             window.dispatchEvent(new CustomEvent('saba-notice-update'));
@@ -55,6 +59,7 @@ function addNotice({ message, type = 'info', source = 'saba-chan', action = null
         type, // 'info' | 'success' | 'error'
         source, // 'saba-chan' 또는 서버 모듈 이름
         action, // 'openUpdateModal' 등 클릭 시 실행할 액션
+        data, // 액션에 넘길 값 (예: 패치노트)
         timestamp: new Date().toISOString(),
         read: false,
     };
@@ -65,15 +70,25 @@ function addNotice({ message, type = 'info', source = 'saba-chan', action = null
     return notice;
 }
 
+// 업데이트 결과 알림을 지우면 데몬에도 확인했다고 알린다 (다음 실행에 다시 뜨지 않게)
+function acknowledgeRemoved(removed) {
+    if (removed.some((n) => n.action === PATCH_NOTES_ACTION)) {
+        Promise.resolve(window.api?.updaterLastResult?.({ clear: true })).catch(() => {});
+    }
+}
+
 /** 단일 알림 삭제 */
 function removeNotice(id) {
-    const notices = loadNotices().filter((n) => n.id !== id);
+    const all = loadNotices();
+    const notices = all.filter((n) => n.id !== id);
+    acknowledgeRemoved(all.filter((n) => n.id === id));
     saveNotices(notices);
     window.dispatchEvent(new CustomEvent('saba-notice-update'));
 }
 
 /** 전체 알림 삭제 */
 function clearAllNotices() {
+    acknowledgeRemoved(loadNotices());
     saveNotices([]);
     window.dispatchEvent(new CustomEvent('saba-notice-update'));
 }
@@ -108,7 +123,7 @@ function NoticeCard({ notice, onDismiss, onAction, t }) {
     const timeStr = formatTime(notice.timestamp, t);
 
     const handleClick = () => {
-        if (clickable && onAction) onAction(notice.action);
+        if (clickable && onAction) onAction(notice.action, notice);
     };
 
     return (
@@ -174,7 +189,7 @@ function formatTime(isoString, t) {
 
 // ─── 알림 모달 본체 ─────────────────────────────────────
 
-function NoticeModal({ isOpen, onClose, isClosing, onOpenUpdateModal }) {
+function NoticeModal({ isOpen, onClose, isClosing, onOpenUpdateModal, onOpenPatchNotes }) {
     const { t } = useTranslation('gui');
     const [notices, setNotices] = useState(loadNotices);
 
@@ -262,10 +277,13 @@ function NoticeModal({ isOpen, onClose, isClosing, onOpenUpdateModal }) {
                                     key={notice.id}
                                     notice={notice}
                                     onDismiss={handleDismiss}
-                                    onAction={(action) => {
+                                    onAction={(action, n) => {
                                         if (action === 'openUpdateModal' && onOpenUpdateModal) {
                                             onClose();
                                             onOpenUpdateModal();
+                                        } else if (action === PATCH_NOTES_ACTION && onOpenPatchNotes) {
+                                            onClose();
+                                            onOpenPatchNotes(n.data);
                                         }
                                     }}
                                     t={t}

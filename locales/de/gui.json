@@ -650,10 +650,6 @@
     "bot_tip_running": "Der Discord-Bot ist über die Saba-chan-Cloud verbunden",
     "bot_tip_connecting": "Der Bot ist an und verbindet sich mit der Saba-chan-Cloud",
     "bot_tip_stopped": "Der Discord-Bot ist aus. Klicke, um ihn einzuschalten",
-    "update_done": "Update abgeschlossen",
-    "update_failed": "Das Update wurde nicht abgeschlossen",
-    "update_components": "Aktualisiert: {{list}}",
-    "update_failed_components": "Fehlgeschlagen: {{list}}",
     "dismiss": "Schließen",
     "console_quick": "Schnellbefehle",
     "console_hint": "Enter zum Senden · ↑ vorheriger",
@@ -810,7 +806,27 @@
     "words_instances_title": "Server-Aliasse",
     "words_instances_desc": "Wenn du mehrere Server desselben Spiels betreibst, gib jedem anstelle des Modulworts ein eigenes Wort. Der Bot sucht zuerst nach Servername, dann nach Server-Alias und dann nach Modulwort.",
     "words_instance_aria": "Aliasse für {{name}}",
-    "words_conflict_instance": "'{{alias}}' wird bereits von {{other}} verwendet"
+    "words_conflict_instance": "'{{alias}}' wird bereits von {{other}} verwendet",
+    "tab_channels": "Kanäle",
+    "channels_loading": "Kanäle werden geladen…",
+    "channels_no_bot": "Der Bot ist nicht auf diesem Server oder nicht erreichbar, daher können keine Kanäle angezeigt werden. Du kannst nur aktuelle Zuweisungen aufheben.",
+    "channels_chatbot": "Chatbot-Kanäle",
+    "channels_chatbot_hint": "Der Chatbot spricht nur in den hier gewählten Kanälen. Bis zu {{max}}.",
+    "channels_chatbot_aria": "#{{channel}} als Chatbot-Kanal nutzen",
+    "channels_is_music": "Wird für Musik genutzt",
+    "channels_none": "Keine Textkanäle verfügbar.",
+    "channels_too_many": "Du kannst bis zu {{max}} Chatbot-Kanäle wählen.",
+    "channels_music": "Musikkanal",
+    "channels_music_hint": "Hier steht der Musikplayer. Ankündigungen landen auch hier.",
+    "channels_music_none": "Keiner (aufheben)",
+    "channels_music_warn": "Alle normalen Nachrichten in {{channel}} werden gelöscht. Wähle einen reinen Musikkanal.",
+    "channels_reload": "Aktualisieren",
+    "channels_save": "Speichern",
+    "channels_save_confirm": "Speichern und Nachrichten löschen",
+    "channels_err_conflict": "Derselbe Kanal kann nicht gleichzeitig Chatbot- und Musikkanal sein.",
+    "channels_err_unknown": "{{channel}} ist kein Textkanal, den der Bot auf diesem Server nutzen kann.",
+    "channels_err_bot": "Der Bot konnte nicht geprüft werden, daher wurde nichts geändert. Aufheben funktioniert weiterhin.",
+    "channels_err_generic": "Kanalzuweisungen konnten nicht gespeichert werden."
   },
   "maintenance": {
     "load_failed": "Backups und Zeitpläne konnten nicht geladen werden.",
@@ -904,16 +920,12 @@
     "guild_inherit": "Standard ({{state}})",
     "on": "An",
     "off": "Aus",
-    "channels": "Kanal-IDs",
-    "channels_placeholder": "Numerische Kanal-ID",
-    "channels_aria": "Kanal-IDs für {{name}}",
     "memory_clear": "Gedächtnis löschen",
     "memory_clear_confirm": "Zum Löschen klicken",
     "memory_cleared": "Gedächtnis für {{name}} gelöscht.",
     "err_ambientSeconds": "Das Intervall für Einwürfe muss {{min}}–{{max}} Sekunden betragen.",
     "err_sessionSeconds": "Das Gesprächsfenster muss {{min}}–{{max}} Sekunden betragen.",
     "err_triggers": "Bis zu {{max}} Auslösewörter.",
-    "err_channels": "Bis zu {{max}} Kanäle pro Server.",
     "memo": "Knotennotiz",
     "memo_aria": "Knotennotiz für {{name}}",
     "memo_placeholder": "Was Saba-chan über diesen Server wissen soll: Tonfall, Anrede, Stimmung, Interessen. Wird nach den Standardanweisungen angehängt.",
@@ -926,7 +938,8 @@
     "tool_images_hint": "Zeichnet Bilder (10 pro Tag).",
     "tool_social_notes": "Soziale Notizen",
     "tool_social_notes_hint": "Führt private Notizen über Stimmung und Leute. Werden in der App nie angezeigt.",
-    "relay_delete_pending": "Die alten Chatbot-Einstellungen wurden noch nicht vom Relay entfernt. Beim nächsten Verbinden wird es erneut versucht."
+    "relay_delete_pending": "Die alten Chatbot-Einstellungen wurden noch nicht vom Relay entfernt. Beim nächsten Verbinden wird es erneut versucht.",
+    "channels_moved": "Die Kanäle des Chatbots wählst du im Tab „Kanäle“ des jeweiligen Discord-Servers."
   },
   "module_audit": {
     "title": "Modul '{{module}}' nutzt nicht deklarierte Fähigkeiten.",
@@ -952,5 +965,15 @@
     "verified_tip": "Aus dem signierten Katalog und seitdem unverändert.",
     "modified_tip": "Dateien wurden nach der Installation aus dem Katalog geändert. Neu installieren, falls du sie nicht selbst bearbeitet hast.",
     "unverified_tip": "Nicht aus dem signierten Katalog installiert. Stelle sicher, dass du der Quelle vertraust."
+  },
+  "patch_notes": {
+    "title": "Patchnotes",
+    "title_version": "Patchnotes zu Saba-chan {{version}}",
+    "notice_success": "Saba-chan wurde auf {{version}} aktualisiert. Klicke für die Patchnotes",
+    "notice_failed": "Einige Elemente konnten nicht aktualisiert werden ({{count}}). Klicke für Details",
+    "unknown_version": "die neue Version",
+    "failed": "Das Update konnte nicht angewendet werden.",
+    "partial": "{{count}} Elemente konnten nicht aktualisiert werden.",
+    "no_notes": "Für diese Version gibt es keine Patchnotes."
   }
 }
