@@ -104,8 +104,14 @@ fn validation_lines(body: &Value) -> Vec<String> {
 
 pub fn table(headers: &[String]) -> Table {
     let mut t = Table::new();
+    // 폭을 모르는 터미널(파이프, 크기 0인 pty)에서는 줄이지 않는다
+    let known_width = console::Term::stdout().size_checked().is_some_and(|(_, w)| w >= 40);
     t.load_preset(presets::NOTHING)
-        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_content_arrangement(if known_width {
+            ContentArrangement::Dynamic
+        } else {
+            ContentArrangement::Disabled
+        })
         .set_header(headers.iter().map(|h| style(h).dim().to_string()));
     t
 }

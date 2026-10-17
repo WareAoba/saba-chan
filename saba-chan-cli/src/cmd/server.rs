@@ -264,18 +264,66 @@ fn progress_line(p: &Value) -> String {
 // ── 추가·삭제 ──
 
 async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
-    // 1) 게임
-    let module = match a.module.as_deref() {
-        Some(q) => resolve::module(ctx, Some(q)).await?,
-        None => {
-            let all = resolve::modules(ctx).await?;
-            if all.is_empty() {
-                return Err(failed(t!("add.no_modules")));
+    let all = resolve::modules(ctx).await?;
+    if all.is_empty() {
+        return Err(failed(t!("add.no_modules")));
+    }
+    let given = match a.module.as_deref() {
+        Some(q) => Some(resolve::module(ctx, Some(q)).await?),
+        None => None,
+    };
+
+    // 1) 새로 설치 / 기존 폴더 (폴더를 고르면 게임은 폴더를 보고 알아낸다)
+    let mut from = a.from.clone();
+    if from.is_none() && ctx.ask.enabled && a.name.is_none() {
+        let installs = given
+            .as_ref()
+            .map_or(true, |m| m.get("install").is_some_and(|i| !i.is_null()));
+        let choices = [t!("add.fresh_install"), t!("add.use_existing")];
+        if ctx
+            .ask
+            .select(&t!("add.ask_source"), &choices, if installs { 0 } else { 1 })?
+            == Some(1)
+        {
+            from = ctx.ask.text(&t!("add.ask_folder"), None, false)?;
+        }
+    }
+
+    // 2) 게임
+    let module = match (given, from.as_deref()) {
+        (Some(m), Some(dir)) => {
+            check_folder(ctx, dir, s(&m, "name")).await?;
+            m
+        }
+        (Some(m), None) => m,
+        (None, Some(dir)) => {
+            let found = detected(ctx, dir).await?;
+            let hits: Vec<Value> = all
+                .iter()
+                .filter(|m| found.iter().any(|f| f == s(m, "name")))
+                .cloned()
+                .collect();
+            match hits.len() {
+                1 => {
+                    ctx.out
+                        .note(&t!("add.folder_is", dir = dir, game = resolve::module_label(&hits[0])));
+                    hits.into_iter().next().unwrap()
+                }
+                0 => {
+                    ctx.out.warn(&t!("add.folder_unrecognized", dir = dir));
+                    if !ctx.ask.enabled {
+                        return Err(usage(t!("add.module_required")));
+                    }
+                    resolve::choose(ctx, &t!("noun.game"), all.clone(), resolve::module_label)?
+                }
+                _ => resolve::choose(ctx, &t!("noun.game"), hits, resolve::module_label)?,
             }
+        }
+        (None, None) => {
             if !ctx.ask.enabled {
                 return Err(usage(t!("add.module_required")));
             }
-            resolve::choose(ctx, &t!("noun.game"), all, resolve::module_label)?
+            resolve::choose(ctx, &t!("noun.game"), all.clone(), resolve::module_label)?
         }
     };
     let module_name = s(&module, "name").to_string();
@@ -284,8 +332,11 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     } else {
         s(&module, "display_name").to_string()
     };
+    if from.is_none() && !module.get("install").is_some_and(|i| !i.is_null()) {
+        ctx.out.warn(&t!("add.no_installer", game = display));
+    }
 
-    // 2) 이름
+    // 3) 이름
     let existing: Vec<String> = resolve::servers(ctx)
         .await?
         .into_iter()
@@ -315,25 +366,6 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     }
     if taken(&name) {
         return Err(usage(t!("add.name_taken", name = name)));
-    }
-
-    // 3) 새로 설치 / 기존 폴더
-    let mut from = a.from.clone();
-    let installs = module.get("install").is_some_and(|i| !i.is_null());
-    if from.is_none() && ctx.ask.enabled && a.name.is_none() {
-        let choices = [t!("add.fresh_install"), t!("add.use_existing")];
-        if ctx
-            .ask
-            .select(&t!("add.ask_source"), &choices, if installs { 0 } else { 1 })?
-            == Some(1)
-        {
-            from = ctx.ask.text(&t!("add.ask_folder"), None, false)?;
-        }
-    }
-    if let Some(dir) = from.as_deref() {
-        check_folder(ctx, dir, &module_name).await?;
-    } else if !installs {
-        ctx.out.warn(&t!("add.no_installer", game = display));
     }
 
     // 4) 필요한 익스텐션
@@ -443,16 +475,20 @@ fn shell_word(s: &str) -> String {
     }
 }
 
-/// 기존 폴더가 이 게임 서버인지 데몬에게 물어본다
-async fn check_folder(ctx: &Ctx, dir: &str, module: &str) -> Result<()> {
+/// 폴더를 보고 어떤 게임인지 (모듈 이름들)
+async fn detected(ctx: &Ctx, dir: &str) -> Result<Vec<String>> {
     let r = ctx.api.detect(dir).await?;
-    let matches: Vec<String> = r
-        .get("matches")
+    Ok(r.get("matches")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
         .map(|m| s(m, "name").to_string())
-        .collect();
+        .collect())
+}
+
+/// 기존 폴더가 이 게임 서버인지 데몬에게 물어본다
+async fn check_folder(ctx: &Ctx, dir: &str, module: &str) -> Result<()> {
+    let matches = detected(ctx, dir).await?;
     if matches.iter().any(|m| m == module) {
         return Ok(());
     }

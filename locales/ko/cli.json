@@ -10,7 +10,7 @@
     "install_failed": "설치 실패: {{error}}",
     "install_failed_removed": "설치에 실패해서 새 서버를 지웠어요: {{error}}",
     "installing": "설치 중",
-    "module_required": "--module로 게임을 골라 주세요.",
+    "module_required": "--module로 게임을 골라 주세요 (기존 폴더면 --from만 줘도 알아봐요).",
     "name_empty": "이름이 비어 있어요.",
     "name_taken": "{{name}}이라는 서버가 이미 있어요.",
     "needs_extensions": "이 게임에는 익스텐션이 필요해요: {{ids}}. 지금 설치하고 켤까요?",
@@ -20,7 +20,8 @@
     "settings_failed": "일부 설정을 저장하지 못했어요: {{error}}",
     "still_installing": "{{name}}은(는) 뒤에서 계속 설치 중이에요.",
     "use_anyway": "그래도 쓸까요?",
-    "use_existing": "기존 서버 폴더 쓰기"
+    "use_existing": "기존 서버 폴더 쓰기",
+    "folder_is": "{{dir}}은(는) {{game}} 서버로 보여요."
   },
   "bot": {
     "alias": "별명",

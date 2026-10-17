@@ -10,7 +10,7 @@
     "install_failed": "Install failed: {{error}}",
     "install_failed_removed": "Install failed and the new server was removed: {{error}}",
     "installing": "Installing",
-    "module_required": "Pick a game with --module.",
+    "module_required": "Pick a game with --module (for an existing folder, --from alone is enough).",
     "name_empty": "The name can't be empty.",
     "name_taken": "A server named {{name}} already exists.",
     "needs_extensions": "This game needs these extensions: {{ids}}. Install and turn them on now?",
@@ -20,7 +20,8 @@
     "settings_failed": "Some settings were not saved: {{error}}",
     "still_installing": "{{name}} is still installing in the background.",
     "use_anyway": "Use it anyway?",
-    "use_existing": "Use an existing server folder"
+    "use_existing": "Use an existing server folder",
+    "folder_is": "{{dir}} looks like a {{game}} server."
   },
   "bot": {
     "alias": "Alias",
