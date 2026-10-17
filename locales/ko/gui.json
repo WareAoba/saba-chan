@@ -1065,5 +1065,10 @@
     "source_discord": "디스코드",
     "source_schedule": "예약 작업",
     "source_daemon": "데몬"
+  },
+  "launch_preview": {
+    "title": "실행 인자 미리보기",
+    "action_required": "실행하려면 먼저 해결해야 해요: {{reason}}",
+    "failed": "미리보기를 계산하지 못했어요."
   }
 }

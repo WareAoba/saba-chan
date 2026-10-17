@@ -1036,5 +1036,10 @@
     "source_discord": "Discord",
     "source_schedule": "Agendamento",
     "source_daemon": "Daemon"
+  },
+  "launch_preview": {
+    "title": "Prévia dos argumentos de inicialização",
+    "action_required": "Precisa de atenção antes de iniciar: {{reason}}",
+    "failed": "Não foi possível calcular a prévia."
   }
 }

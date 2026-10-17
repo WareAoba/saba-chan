@@ -1036,5 +1036,10 @@
     "source_discord": "Discord",
     "source_schedule": "Programación",
     "source_daemon": "Daemon"
+  },
+  "launch_preview": {
+    "title": "Vista previa de argumentos de inicio",
+    "action_required": "Requiere atención antes de iniciar: {{reason}}",
+    "failed": "No se pudo calcular la vista previa."
   }
 }

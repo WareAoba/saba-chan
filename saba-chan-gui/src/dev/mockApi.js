@@ -48,7 +48,9 @@ const modules = [
         trust: 'modified',
         description: 'Palworld 전용 서버',
         commands: { fields: [{ name: 'players', label: '접속자', method: 'rest' }] },
-        settings: { fields: [{ name: 'port', label: '포트', type: 'number', default: 8211 }] },
+        settings: {
+            fields: [{ name: 'port', label: '포트', type: 'number', field_type: 'number', default: 8211, launch_arg: true }],
+        },
     },
     {
         name: 'zomboid',
@@ -370,6 +372,11 @@ const impl = {
                     status: 200,
                 },
             ].filter((e) => !instance || e.instanceId === instance),
+        }),
+    instanceLaunchPreview: (_id, draft = {}) =>
+        ok({
+            success: true,
+            command_line: `PalServer.exe -port=${draft.port ?? 8211} -publiclobby -adminpassword=********`,
         }),
     relayNodeChannels: (guildId) => ok({ guildId, ...mockChannels }),
     relayNodeChannelsSave: (guildId, patch) => {

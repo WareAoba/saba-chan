@@ -1036,5 +1036,10 @@
     "source_discord": "Discord",
     "source_schedule": "Zeitplan",
     "source_daemon": "Daemon"
+  },
+  "launch_preview": {
+    "title": "Vorschau der Startargumente",
+    "action_required": "Vor dem Start nötig: {{reason}}",
+    "failed": "Die Vorschau konnte nicht berechnet werden."
   }
 }

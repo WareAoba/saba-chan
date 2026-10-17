@@ -1036,5 +1036,10 @@
     "source_discord": "Discord",
     "source_schedule": "计划任务",
     "source_daemon": "守护进程"
+  },
+  "launch_preview": {
+    "title": "启动参数预览",
+    "action_required": "启动前需要处理：{{reason}}",
+    "failed": "无法计算预览。"
   }
 }

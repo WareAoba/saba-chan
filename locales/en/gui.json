@@ -1065,5 +1065,10 @@
     "source_discord": "Discord",
     "source_schedule": "Schedule",
     "source_daemon": "Daemon"
+  },
+  "launch_preview": {
+    "title": "Launch arguments preview",
+    "action_required": "Needs attention before launch: {{reason}}",
+    "failed": "Couldn't compute the preview."
   }
 }

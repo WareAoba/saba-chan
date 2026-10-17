@@ -1036,5 +1036,10 @@
     "source_discord": "Discord",
     "source_schedule": "排程工作",
     "source_daemon": "背景服務"
+  },
+  "launch_preview": {
+    "title": "啟動參數預覽",
+    "action_required": "啟動前需要處理：{{reason}}",
+    "failed": "無法計算預覽。"
   }
 }
