@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { getCachedRules, highlightLine } from '../utils/syntaxHighlight';
@@ -16,116 +16,22 @@ export function HighlightedContent({ text, compiledRules }) {
         return <>{text}</>;
     }
 
+    // 조각의 줄 안 시작 위치를 key로 쓴다 (같은 줄 안에서 겹치지 않는다)
+    let offset = 0;
     return (
         <>
-            {segments.map((seg, i) =>
-                seg.style ? (
-                    <span key={i} style={seg.style}>
+            {segments.map((seg) => {
+                const at = offset;
+                offset += seg.text.length;
+                return seg.style ? (
+                    <span key={at} style={seg.style}>
                         {seg.text}
                     </span>
                 ) : (
                     seg.text
-                ),
-            )}
+                );
+            })}
         </>
-    );
-}
-
-/**
- * ConsolePanel — embedded console panel for managed server processes.
- */
-export function ConsolePanel({
-    consoleServer,
-    consoleLines,
-    consoleInput,
-    setConsoleInput,
-    consoleEndRef,
-    sendConsoleCommand,
-    closeConsole,
-    consolePopoutInstanceId,
-    setConsolePopoutInstanceId,
-    highlightRules,
-    stdinDisabled,
-}) {
-    const { t } = useTranslation('gui');
-    const syntaxEnabled = useSettingsStore((s) => s.consoleSyntaxHighlight);
-
-    // 하이라이팅 규칙 컴파일 (모듈 이름 기준 캐싱)
-    const compiledRules = useMemo(
-        () => (syntaxEnabled && highlightRules ? getCachedRules(consoleServer?.name || '_', highlightRules) : []),
-        [highlightRules, consoleServer?.name, syntaxEnabled],
-    );
-
-    return (
-        <div className="console-panel">
-            <div className="console-header">
-                <span className="console-title">
-                    <span className="console-icon">{'>'}_</span>
-                    {consoleServer.name}
-                </span>
-                <div className="console-header-actions">
-                    <button
-                        className="console-popout-btn"
-                        onClick={async () => {
-                            try {
-                                const serverId = consoleServer.id;
-                                const serverName = consoleServer.name;
-                                const result = await window.api.consolePopout(serverId, serverName);
-                                if (result?.ok) setConsolePopoutInstanceId(serverId);
-                                closeConsole();
-                            } catch (err) {
-                                console.error('Popout failed:', err);
-                            }
-                        }}
-                        title={t('console.popout', { defaultValue: 'Pop out to separate window' })}
-                    >
-                        <Icon name="external-link" size="sm" />
-                    </button>
-                    <button className="console-close" onClick={closeConsole} title={t('modals.close')}>
-                        &times;
-                    </button>
-                </div>
-            </div>
-            <div className="console-output">
-                {consoleLines.length === 0 && <div className="console-empty">{t('console.waiting')}</div>}
-                {consoleLines.map((line) => (
-                    <div
-                        key={line.id}
-                        className={clsx(
-                            'console-line',
-                            `console-${line.source?.toLowerCase() || 'stdout'}`,
-                            `console-level-${line.level?.toLowerCase() || 'info'}`,
-                        )}
-                    >
-                        <span className="console-content">
-                            <HighlightedContent text={line.content} compiledRules={compiledRules} />
-                        </span>
-                    </div>
-                ))}
-                <div ref={consoleEndRef} />
-            </div>
-            <div className="console-input-row">
-                <span className="console-prompt">{'>'}</span>
-                <div className={clsx('console-input-wrap', stdinDisabled && 'console-input-disabled')}>
-                    {stdinDisabled && <Icon name="alertTriangle" size="sm" />}
-                    <input
-                        type="text"
-                        className="console-input"
-                        value={consoleInput}
-                        onChange={(e) => setConsoleInput(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') sendConsoleCommand();
-                        }}
-                        placeholder={stdinDisabled ? t('console.stdin_disabled') : t('console.input_placeholder')}
-                        autoFocus
-                        disabled={stdinDisabled}
-                    />
-                </div>
-                <button className="console-send" onClick={sendConsoleCommand} disabled={stdinDisabled}>
-                    {t('console.send')}
-                </button>
-            </div>
-        </div>
     );
 }
 
@@ -145,6 +51,9 @@ export function PopoutConsole({
     const { t } = useTranslation('gui');
     const [pinned, setPinned] = useState(true); // popout defaults to always-on-top
     const syntaxEnabled = useSettingsStore((s) => s.consoleSyntaxHighlight);
+    // 팝아웃 창은 명령을 치려고 여는 창이라 열리자마자 입력칸에 커서를 둔다
+    const inputRef = useRef(null);
+    useEffect(() => inputRef.current?.focus(), []);
 
     const compiledRules = useMemo(
         () => (syntaxEnabled && highlightRules ? getCachedRules(popoutParams?.name || '_', highlightRules) : []),
@@ -179,6 +88,7 @@ export function PopoutConsole({
                 </span>
                 <div className="console-popout-titlebar-controls">
                     <button
+                        type="button"
                         className={`console-popout-titlebar-btn console-popout-titlebar-popin`}
                         onClick={handlePopin}
                         title={t('console.popin', { defaultValue: 'Bring back to main window' })}
@@ -186,6 +96,7 @@ export function PopoutConsole({
                         <Icon name="external-link-in" size="sm" />
                     </button>
                     <button
+                        type="button"
                         className={`console-popout-titlebar-btn console-popout-titlebar-pin${pinned ? ' console-popout-titlebar-pinned' : ''}`}
                         onClick={handleTogglePin}
                         title={
@@ -197,6 +108,7 @@ export function PopoutConsole({
                         <Icon name="pin" size="sm" />
                     </button>
                     <button
+                        type="button"
                         className="console-popout-titlebar-btn"
                         onClick={() => window.electron?.minimizeWindow()}
                         title={t('title_bar.minimize')}
@@ -204,6 +116,7 @@ export function PopoutConsole({
                         ─
                     </button>
                     <button
+                        type="button"
                         className="console-popout-titlebar-btn console-popout-titlebar-close"
                         onClick={() => window.electron?.closeWindow()}
                         title={t('title_bar.close')}
@@ -244,11 +157,16 @@ export function PopoutConsole({
                                 if (e.key === 'Enter') sendConsoleCommand();
                             }}
                             placeholder={stdinDisabled ? t('console.stdin_disabled') : t('console.input_placeholder')}
-                            autoFocus
+                            ref={inputRef}
                             disabled={stdinDisabled}
                         />
                     </div>
-                    <button className="console-send" onClick={sendConsoleCommand} disabled={stdinDisabled}>
+                    <button
+                        type="button"
+                        className="console-send"
+                        onClick={sendConsoleCommand}
+                        disabled={stdinDisabled}
+                    >
                         {t('console.send')}
                     </button>
                 </div>
