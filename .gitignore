@@ -85,3 +85,4 @@ saba-chan-gui/coverage/
 # 테스트 실행 산출물
 vitest-result.txt
 test_config.json
+scripts/.mock-assets/
