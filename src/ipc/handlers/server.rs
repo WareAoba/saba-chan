@@ -298,10 +298,13 @@ fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std
             format!("data:image/png;base64,{}", general_purpose::STANDARD.encode(&data))
         })
     });
+    let folder = std::path::Path::new(&m.path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let trust = saba_chan_updater_lib::integrity::trust_of(&format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, folder));
     let meta = m.metadata;
     ExtensionInfo {
         name: meta.name,
         version: meta.version,
+        trust,
         description: meta.description,
         schema_version: meta.schema_version,
         display_name: meta.display_name,
@@ -511,6 +514,13 @@ pub async fn install_module_from_manifest(
             std::fs::remove_dir_all(&target_dir)?;
         }
         std::fs::rename(&staging, &target_dir)?;
+        // 서명된 카탈로그에서 받은 것: 신뢰 표시가 "verified"가 된다 (파일이 그대로인 동안)
+        let key = format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, module_id);
+        if let Err(e) = saba_chan_updater_lib::integrity::record_dir(&key, &target_dir)
+            .and_then(|_| saba_chan_updater_lib::integrity::set_official(&key, true))
+        {
+            tracing::warn!("Could not record installed files for module '{}': {}", module_id, e);
+        }
         Ok(())
     }
     .await;
@@ -544,6 +554,7 @@ pub async fn remove_module(
     if let Err(e) = std::fs::remove_dir_all(&module_path) {
         return (StatusCode::OK, Json(json!({ "ok": false, "error": e.to_string() }))).into_response();
     }
+    let _ = saba_chan_updater_lib::integrity::set_official(&format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, module_id), false);
     // 캐시 갱신 (write lock)
     let supervisor = state.supervisor.write().await;
     let _ = supervisor.refresh_modules();
