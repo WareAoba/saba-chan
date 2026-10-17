@@ -108,6 +108,7 @@ contextBridge.exposeInMainWorld('api', {
     relayCheckHostStatus: (hostId, relayUrl) => ipcRenderer.invoke('relay:checkHostStatus', hostId, relayUrl),
     relayListHostNodes: (hostId, relayUrl) => ipcRenderer.invoke('relay:listHostNodes', hostId, relayUrl),
     relayListNodeMembers: (guildId, relayUrl) => ipcRenderer.invoke('relay:listNodeMembers', guildId, relayUrl),
+    relayBotInvite: (relayUrl) => ipcRenderer.invoke('relay:botInvite', relayUrl),
     relayInitiatePairing: (payload) => ipcRenderer.invoke('relay:initiatePairing', payload),
     relayPollPairingStatus: (code, secret, relayUrl) => ipcRenderer.invoke('relay:pollPairingStatus', code, secret, relayUrl),
     // Shell API
