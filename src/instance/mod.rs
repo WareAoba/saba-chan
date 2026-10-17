@@ -168,8 +168,8 @@ impl ServerInstance {
             let game_key = credential_map.get(daemon_key).map(String::as_str).unwrap_or(daemon_key);
             let value = settings.iter()
                 .find(|(k, _)| k.eq_ignore_ascii_case(game_key) || k.as_str() == daemon_key)
-                .and_then(|(_, v)| v.as_str())
-                .filter(|v| !v.is_empty());
+                .and_then(|(_, v)| v.as_str());
+            // 파일이 비어 있으면 비어 있는 것이 사실이다: 옛 캐시 값을 남기지 않는다
             if let Some(pwd) = value {
                 match daemon_key {
                     "rcon_password" => self.rcon_password = Some(pwd.to_string()),
