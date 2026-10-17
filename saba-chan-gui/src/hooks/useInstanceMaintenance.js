@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
+import { extensionInstallMethod } from '../utils/installMethod';
 
-const STEAM_UPDATE_CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3시간
+const UPDATE_CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3시간
 const PROVISION_POLL_MS = 1200;
 
 /**
@@ -21,13 +22,14 @@ export function useMaintenanceOf(id) {
 }
 
 /** 확인 작업 실행: 서버마다 정확히 한 곳(목록 줄)에서 호출한다 */
-export function useInstanceMaintenance(server) {
+export function useInstanceMaintenance(server, module) {
     const patch = useMaintenanceStore((s) => s.patch);
+    const installMethod = extensionInstallMethod(server, module);
 
-    // SteamCMD 인스턴스의 게임 서버 업데이트 확인 (3시간 주기)
+    // 익스텐션 방식(예: steamcmd)으로 설치한 인스턴스의 게임 서버 업데이트 확인 (3시간 주기)
     useEffect(() => {
         if (server.provisioning) return;
-        if (!server.extension_data?.install_method_steamcmd) return;
+        if (!installMethod) return;
         if (!window.api?.instanceCheckUpdate) return;
 
         let cancelled = false;
@@ -41,12 +43,12 @@ export function useInstanceMaintenance(server) {
             }
         };
         doCheck();
-        const timer = setInterval(doCheck, STEAM_UPDATE_CHECK_INTERVAL_MS);
+        const timer = setInterval(doCheck, UPDATE_CHECK_INTERVAL_MS);
         return () => {
             cancelled = true;
             clearInterval(timer);
         };
-    }, [server.id, server.provisioning, server.extension_data?.install_method_steamcmd, patch]);
+    }, [server.id, server.provisioning, installMethod, patch]);
 
     // 프로비저닝 진행률 폴링 — server.provisioning이 true인 동안
     useEffect(() => {
@@ -77,7 +79,7 @@ export function useInstanceMaintenance(server) {
     }, [server.id, server.provisioning, server.name, patch]);
 }
 
-/** 게임 서버 업데이트 적용 (SteamCMD) */
+/** 게임 서버 업데이트 적용 (설치 방식 익스텐션; 지원 안 하면 데몬이 update_unsupported) */
 export async function applyInstanceUpdate(server, setServers) {
     const { patch } = useMaintenanceStore.getState();
     if (!window.api?.instanceApplyUpdate) return;

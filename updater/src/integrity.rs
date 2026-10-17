@@ -655,7 +655,7 @@ mod tests {
     fn test_sha256_empty() {
         // SHA-256 of empty input = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
         let mut hasher = Sha256::new();
-        hasher.update(&[]);
+        hasher.update([]);
         let result = hex_encode(&hasher.finalize());
         assert_eq!(result, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
     }

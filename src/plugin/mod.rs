@@ -47,8 +47,6 @@ pub struct ExtensionProgress {
     pub total: Option<u8>,
     /// 현재 단계 식별자 (예: "checking_engine")
     pub label: Option<String>,
-    /// 전체 단계 목록 (첫 progress에서만 전송)
-    pub steps: Option<Vec<String>>,
 }
 
 /// extensions/ 디렉토리 경로를 해석합니다.

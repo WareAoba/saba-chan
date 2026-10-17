@@ -91,7 +91,7 @@
 - **안전한 설계** — Daemon 크래시가 게임 서버에 영향을 주지 않음
 - **자동 업데이트** — GitHub Releases 기반 자동 업데이트 시스템
 - **Discord 봇 통합** — 디스코드에서 서버를 직접 제어
-- **익스텐션 시스템** — Docker 격리, SteamCMD 자동화 등 범용 확장 기능
+- **익스텐션 시스템** — SteamCMD 자동화 등 범용 확장 기능
 - **10개 언어 지원** — 한국어, 영어, 일본어, 독일어, 스페인어, 프랑스어, 포르투갈어(BR), 러시아어, 중국어(간체/번체)
 
 ---
@@ -212,7 +212,7 @@ GUI에서 **시작(▶)** 버튼을 클릭하거나, CLI에서 해당 서버를 
          │                           │
          │ IPC                ┌──────▼──────┐
          └──────────────────► │ Extensions  │
-                              │ (Docker 등) │
+                              │(SteamCMD 등)│
                               └─────────────┘
 ```
 
@@ -274,7 +274,7 @@ GUI를 실행하면 로딩 화면이 표시되며 Core Daemon에 연결될 때�
 - 서버 이름 및 게임 종류
 - 현재 상태 (실행 중 / 정지 / 오류)
 - 시작/정지 버튼
-- 익스텐션 뱃지 (Docker 등)
+- 익스텐션 뱃지
 
 ### 6.2 인스턴스 관리
 
@@ -653,7 +653,6 @@ mygame/
 | `[credential_map]` | 자격증명 동기화 — 데몬 키 ↔ 게임 키 매핑 |
 | `[config]` | 기본 실행 설정 — executable_path, process_name, default_port, stop_command |
 | `[install]` | 서버 설치 — method (steamcmd/download/manual), app_id, download_url |
-| `[docker]` | Docker 컨테이너 설정 — image, ports, volumes, environment |
 | `[detection]` | 자동 감지 — process_patterns, cmd_patterns, common_paths |
 | `[settings]` | GUI/CLI 설정 필드 정의 |
 | `[commands]` | 서버 명령어 정의 |
@@ -689,7 +688,6 @@ mygame/
 
 | ID | 이름 | 설명 | GUI 포함 |
 |----|------|------|---------|
-| `docker` | Docker Isolation | Docker 컨테이너로 게임 서버를 격리하여 실행 | ✅ |
 | `steamcmd` | SteamCMD | SteamCMD 기반 서버 설치/업데이트 자동화 | ❌ |
 | `music` | Music Bot | Discord 음성 채널 음악 재생 (yt-dlp + ffmpeg) | ❌ |
 | `ue4-ini` | UE4 INI Parser | Unreal Engine 4 INI OptionSettings 파싱 | ❌ |
@@ -1324,10 +1322,6 @@ Windows 기준:
 ### Q: 원격에서 서버를 관리할 수 있나요?
 
 **A:** Discord 봇을 통해 디스코드 채팅에서 원격으로 서버를 제어할 수 있습니다. NAT 뒤에 있어 포트 포워딩이 불가능한 경우에도 클라우드 모드(릴레이 서버)를 사용하면 원격 제어가 가능합니다.
-
-### Q: Docker로 게임 서버를 격리하여 실행할 수 있나요?
-
-**A:** Docker 익스텐션을 활성화하면 게임 서버를 Docker 컨테이너에서 격리하여 실행할 수 있습니다. 인스턴스 설정에서 `docker_enabled`를 켜고, CPU/메모리 제한을 설정할 수 있습니다.
 
 ### Q: 지원하는 언어를 변경하려면?
 

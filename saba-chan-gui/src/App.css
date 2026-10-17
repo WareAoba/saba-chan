@@ -195,7 +195,7 @@ span[style*="--icon-loader"] svg,
     border-top: 1px solid var(--border-light, #333);
 }
 
-/* Native Provision (비-Docker 프로비저닝) */
+/* Native Provision */
 .native-provision {
     padding: 4px 0 2px;
 }
@@ -235,7 +235,7 @@ span[style*="--icon-loader"] svg,
     color: var(--text-primary, #eee);
 }
 
-/* 프로비저닝 에러/해제 (공용 — Docker & Native 공통) */
+/* 프로비저닝 에러/해제  */
 .as-provision-error-row {
     display: flex;
     flex-direction: column;
@@ -594,30 +594,6 @@ span[style*="--icon-loader"] svg,
     padding: 3px 7px;
     border-radius: 6px;
     font-weight: 600;
-}
-
-.as-game-card--has-native {
-    border-color: var(--border-success, rgba(74, 222, 128, 0.3));
-}
-
-/* native limit warning */
-.as-native-limit-warning {
-    display: flex;
-    align-items: flex-start;
-    gap: 6px;
-    margin: 0 0 12px;
-    padding: 10px 12px;
-    font-size: calc(12px * var(--font-scale));
-    color: var(--text-warning, #fbbf24);
-    background: var(--bg-warning-subtle, rgba(251, 191, 36, 0.08));
-    border: 1px solid var(--border-warning, rgba(251, 191, 36, 0.25));
-    border-radius: 8px;
-    line-height: 1.4;
-}
-
-.as-native-limit-warning svg {
-    flex-shrink: 0;
-    margin-top: 1px;
 }
 
 /* -- selected game summary (step 2 header) -- */

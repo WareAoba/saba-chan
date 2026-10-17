@@ -24,7 +24,7 @@ export function ServerRow({
     onContextMenu,
 }) {
     const { t } = useTranslation('gui');
-    useInstanceMaintenance(server);
+    useInstanceMaintenance(server, moduleData);
     const { updateInfo } = useMaintenanceOf(server.id);
     const status = viewStatus(server, moduleData);
     const action = primaryAction(status);

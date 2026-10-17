@@ -13,7 +13,20 @@ path = "src/lib.rs"
 [[bin]]
 name = "saba-runner"
 path = "src/main.rs"
+required-features = ["bin"]
+
+# 데몬은 프로토콜(lib)만 쓴다: `default-features = false`
+[features]
+default = ["bin"]
+bin = ["dep:portable-pty", "dep:strip-ansi-escapes", "dep:windows-sys"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+# --console pty: Windows ConPTY / unix pty
+portable-pty = { version = "0.9", optional = true }
+strip-ansi-escapes = { version = "0.2", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+# Job Object: 러너가 끝나면(강제 종료 포함) 서버 프로세스 트리도 끝난다
+windows-sys = { version = "0.59", optional = true, features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }

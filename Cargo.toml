@@ -49,7 +49,7 @@ hmac = "0.12"
 sha2 = "0.10"
 hex = "0.4"
 saba-chan-updater-lib = { path = "updater" }
-saba-runner = { path = "runner" }
+saba-runner = { path = "runner", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["processthreadsapi", "winnt", "handleapi"] }

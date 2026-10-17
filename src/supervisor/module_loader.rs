@@ -90,6 +90,9 @@ pub struct ModuleMetadata {
     /// saba-runner가 따라 읽어 콘솔에 합친다. 예: ["Pal/Saved/Logs/*.log"]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub log_files: Vec<String>,
+    /// [launch] console — 서버 콘솔을 잇는 방식. 기본 pipe
+    #[serde(default)]
+    pub console: ConsoleMode,
     /// [detection] graceful_exit_patterns — 정상 종료 때 콘솔에 찍히는 문구 (정규식). A1 크래시 판정용
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub graceful_exit_patterns: Vec<String>,
@@ -341,9 +344,6 @@ struct ModuleToml {
     syntax_highlight: Option<SyntaxHighlightSection>,
     #[serde(default)]
     install: Option<InstallSectionToml>,
-    /// [docker] 익스텐션 설정 섹션 (컨테이너 격리용)
-    #[serde(default, rename = "docker")]
-    container: Option<ContainerSectionToml>,
     /// [launch] 실행 관련 선언 (C8b)
     #[serde(default)]
     launch: Option<LaunchSection>,
@@ -411,6 +411,29 @@ struct LaunchSection {
     /// 서버가 콘솔 대신 파일에 쓰는 로그 (작업 디렉터리 기준, 마지막 칸만 `*` `?`)
     #[serde(default)]
     log_files: Vec<String>,
+    /// "pipe"(기본) | "pty". 출력을 파이프로 주면 끝날 때까지 모아 두는 서버(stdout 블록 버퍼링)는
+    /// "pty"로 의사 콘솔(Windows ConPTY)에 띄워 줄마다 받는다. stdout과 stderr가 한 갈래로 합쳐진다.
+    #[serde(default)]
+    console: ConsoleMode,
+}
+
+/// saba-runner가 서버 콘솔을 잇는 방식 (`[launch] console`)
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ConsoleMode {
+    #[default]
+    Pipe,
+    Pty,
+}
+
+impl ConsoleMode {
+    /// saba-runner `--console` 값
+    pub fn as_arg(self) -> &'static str {
+        match self {
+            ConsoleMode::Pipe => "pipe",
+            ConsoleMode::Pty => "pty",
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -526,38 +549,6 @@ struct InstallSectionToml {
     requires_extensions: Vec<String>,
 }
 
-/// module.toml [docker] 섹션 — 컨테이너 격리 익스텐션 설정
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-#[schemars(deny_unknown_fields)]
-struct ContainerSectionToml {
-    #[serde(default)]
-    image: Option<String>,
-    #[serde(default)]
-    working_dir: Option<String>,
-    #[serde(default)]
-    restart: Option<String>,
-    #[serde(default)]
-    command: Option<String>,
-    #[serde(default)]
-    entrypoint: Option<String>,
-    #[serde(default)]
-    user: Option<String>,
-    #[serde(default)]
-    ports: Vec<String>,
-    #[serde(default)]
-    volumes: Vec<String>,
-    #[serde(default)]
-    environment: std::collections::HashMap<String, String>,
-    #[serde(default)]
-    dockerfile: Option<String>,
-    /// CPU 제한 (코어 수, 예: 2.0)
-    #[serde(default)]
-    cpu_limit: Option<f64>,
-    /// 메모리 제한 (예: "4g", "512m")
-    #[serde(default)]
-    memory_limit: Option<String>,
-}
-
 /// ModuleMetadata에서 사용하는 공개 설치 설정
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModuleInstallConfig {
@@ -582,6 +573,26 @@ pub struct ModuleInstallConfig {
 
 fn default_true_mod() -> bool { true }
 
+impl ModuleInstallConfig {
+    /// 설치 방식 익스텐션에 넘기는 값 (`Instance::apply_install_extension_data`)
+    pub fn extension_fields(&self) -> Vec<(&'static str, serde_json::Value)> {
+        let mut fields = vec![("anonymous", serde_json::json!(self.anonymous))];
+        if let Some(id) = self.app_id {
+            fields.push(("app_id", serde_json::json!(id)));
+        }
+        if let Some(beta) = &self.beta {
+            fields.push(("beta", serde_json::json!(beta)));
+        }
+        if let Some(platform) = &self.platform {
+            fields.push(("platform", serde_json::json!(platform)));
+        }
+        if let Some(url) = &self.download_url {
+            fields.push(("download_url", serde_json::json!(url)));
+        }
+        fields
+    }
+}
+
 /// module.toml [aliases] 섹션
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[schemars(deny_unknown_fields)]
@@ -601,52 +612,6 @@ struct CommandAliasSectionToml {
     #[serde(default)]
     description: Option<String>,
 }
-
-/// Container isolation extension configuration for modules.
-/// Parsed from module.toml [docker] section and stored in ModuleMetadata.extensions.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ContainerExtensionConfig {
-    /// Container image (e.g. "cm2network/steamcmd:latest")
-    pub image: String,
-    /// Working directory inside the container
-    #[serde(default)]
-    pub working_dir: Option<String>,
-    /// Restart policy (default: "unless-stopped")
-    #[serde(default = "default_restart_policy")]
-    pub restart: String,
-    /// Container command (supports template variables like {port})
-    #[serde(default)]
-    pub command: Option<String>,
-    /// Container entrypoint override
-    #[serde(default)]
-    pub entrypoint: Option<String>,
-    /// User to run the container as (e.g. "1000:1000")
-    #[serde(default)]
-    pub user: Option<String>,
-    /// Port mappings: "{host_port}:{container_port}/protocol" with template variables
-    #[serde(default)]
-    pub ports: Vec<String>,
-    /// Volume mounts: "host_path:container_path"
-    #[serde(default)]
-    pub volumes: Vec<String>,
-    /// Environment variables (supports template variables)
-    #[serde(default)]
-    pub environment: std::collections::HashMap<String, String>,
-    /// Optional Dockerfile path (relative to module directory) for custom builds
-    #[serde(default)]
-    pub dockerfile: Option<String>,
-    /// Optional: additional compose service options as raw YAML
-    #[serde(default)]
-    pub extra_options: std::collections::HashMap<String, String>,
-    /// CPU limit (number of cores, e.g. 2.0)
-    #[serde(default)]
-    pub cpu_limit: Option<f64>,
-    /// Memory limit (e.g. "4g", "512m")
-    #[serde(default)]
-    pub memory_limit: Option<String>,
-}
-
-fn default_restart_policy() -> String { "unless-stopped".to_string() }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[schemars(deny_unknown_fields)]
@@ -793,6 +758,7 @@ impl ModuleToml {
             entry: self.module.entry,
             icon: self.module.icon,
             log_pattern: self.module.log_pattern,
+            console: self.launch.as_ref().map(|l| l.console).unwrap_or_default(),
             log_files: self.launch.map(|l| l.log_files).unwrap_or_default(),
             dependencies: self.module.dependencies,
             credential_map: self.credential_map.unwrap_or_default(),
@@ -819,32 +785,10 @@ impl ModuleToml {
                 requires_extensions: i.requires_extensions,
             }),
             extensions: {
-                let mut ext_map: std::collections::HashMap<String, serde_json::Value> = self.extensions
+                let ext_map: std::collections::HashMap<String, serde_json::Value> = self.extensions
                     .into_iter()
                     .filter_map(|(id, v)| Some((id, serde_json::to_value(v).ok()?)))
                     .collect();
-                if let Some(d) = self.container {
-                    if let Some(img) = d.image {
-                        let cfg = ContainerExtensionConfig {
-                            image: img,
-                            working_dir: d.working_dir,
-                            restart: d.restart.unwrap_or_else(|| "unless-stopped".to_string()),
-                            command: d.command,
-                            entrypoint: d.entrypoint,
-                            user: d.user,
-                            ports: d.ports,
-                            volumes: d.volumes,
-                            environment: d.environment,
-                            dockerfile: d.dockerfile,
-                            extra_options: std::collections::HashMap::new(),
-                            cpu_limit: d.cpu_limit,
-                            memory_limit: d.memory_limit,
-                        };
-                        if let Ok(val) = serde_json::to_value(cfg) {
-                            ext_map.insert("docker".to_string(), val);
-                        }
-                    }
-                }
                 ext_map
             },
             process_patterns: self.detection.as_ref()
@@ -1557,6 +1501,9 @@ entry = "lifecycle.py"
         assert_eq!(parse_module_toml(toml).unwrap().log_files, vec!["Pal/Saved/Logs/*.log"]);
         let plain = "[module]\nname = \"g\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n";
         assert!(parse_module_toml(plain).unwrap().log_files.is_empty());
+        assert_eq!(parse_module_toml(plain).unwrap().console, ConsoleMode::Pipe);
+        let pty = toml.replace("log_files", "console = \"pty\"\nlog_files");
+        assert_eq!(parse_module_toml(&pty).unwrap().console, ConsoleMode::Pty);
     }
 
     const V1: &str = "[module]\nschema_version = 1\nname = \"g\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n";

@@ -141,7 +141,7 @@ export function useServerSettings({
         setAdvancedExpanded(false);
         setShowSettingsModal(true);
 
-        // Async load versions — only for download-based modules (skip SteamCMD modules)
+        // Async load versions — only for download-based modules (extension install methods have no version list)
         const mod = modules.find((m) => m.name === latestServer.module);
         const installMethod = mod?.install?.method;
         setAvailableVersions([]);

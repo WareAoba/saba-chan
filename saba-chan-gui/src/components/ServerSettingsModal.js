@@ -254,7 +254,7 @@ function GeneralTab({
                                         <Icon name="settings" size="sm" />{' '}
                                         {t('server_settings.saba_chan_group', { defaultValue: 'saba-chan Settings' })}
                                     </h4>
-                                    {/* Server version selector — only for download-based modules (not SteamCMD) */}
+                                    {/* Server version selector — only for download-based modules */}
                                     {module?.install?.method === 'download' && (
                                         <div className="settings-field">
                                             <label>
