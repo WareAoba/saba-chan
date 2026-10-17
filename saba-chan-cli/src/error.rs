@@ -99,6 +99,32 @@ fn api_hint(code: &str, body: &Value) -> Option<String> {
     };
     match code {
         "extension_required" => Some(t!("err.hint.extension_required", ids = list("missing_extensions"))),
+        "module_dependency_unsatisfied" => {
+            // 항목 꼴: "ext-steamcmd >=1.0.0 (not installed)"
+            let deps: Vec<&str> = body
+                .get("missing_dependencies")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .collect();
+            let ext = |missing: bool| {
+                deps.iter()
+                    .filter(|d| d.ends_with("(not installed)") == missing)
+                    .filter_map(|d| d.split_whitespace().next()?.strip_prefix("ext-"))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            };
+            let (install, old) = (ext(true), ext(false));
+            let mut hints = Vec::new();
+            if !install.is_empty() {
+                hints.push(t!("err.hint.extension_required", ids = install));
+            }
+            if !old.is_empty() || deps.iter().any(|d| d.starts_with("saba-core")) {
+                hints.push(t!("err.hint.dependency_outdated"));
+            }
+            (!hints.is_empty()).then(|| hints.join("\n  "))
+        }
         "server_not_running" => Some(t!("err.hint.server_not_running")),
         "server_running" => Some(t!("err.hint.server_running")),
         "node_token_missing" => Some(t!("err.hint.node_token_missing")),

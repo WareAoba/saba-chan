@@ -1014,6 +1014,11 @@ async fn settings(ctx: &Ctx, query: Option<&str>) -> Result<()> {
         .ok()
         .and_then(|r| r.get("settings").cloned())
         .filter(|v| v.as_object().is_some_and(|o| !o.is_empty()));
+    // 데몬이 읽은 값으로 인스턴스(포트·비밀번호 칸 등)도 맞췄으니 다시 받는다
+    let sv = match &live {
+        Some(_) => resolve::server(ctx, Some(&sv.id)).await.unwrap_or(sv),
+        None => sv,
+    };
     let label = |f: &Value| {
         locales
             .as_ref()

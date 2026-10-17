@@ -138,7 +138,8 @@
       "node_token_missing": "Pair this PC first: saba-chan-cli bot pair",
       "server_not_running": "Start the server first: saba-chan-cli start NAME",
       "server_running": "Stop the server first: saba-chan-cli stop NAME",
-      "update_unsupported": "This server can't be updated from Saba-chan. Update its files yourself."
+      "update_unsupported": "This server can't be updated from Saba-chan. Update its files yourself.",
+      "dependency_outdated": "Update to newer versions: saba-chan-cli update check"
     },
     "not_a_bool": "\"{{value}}\" is not yes/no (use true or false).",
     "not_a_number": "\"{{value}}\" is not a number.",
