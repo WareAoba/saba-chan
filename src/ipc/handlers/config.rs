@@ -60,10 +60,23 @@ pub async fn get_config_defaults(Path(kind): Path<String>) -> impl IntoResponse 
 pub async fn reset_config(
     State(state): State<IPCServer>,
     Path(kind): Path<String>,
-    body: Option<Json<Value>>,
+    body: axum::body::Bytes,
 ) -> impl IntoResponse {
-    let keys: Option<Vec<String>> = match body.and_then(|Json(b)| b.get("keys").cloned()) {
-        None | Some(Value::Null) => None,
+    let bad = |msg: &str| {
+        (StatusCode::BAD_REQUEST, Json(json!({ "ok": false, "error": msg, "error_code": "invalid_request" }))).into_response()
+    };
+    // 빈 본문 = 전부. 깨진 JSON은 전부 초기화로 치지 않고 거부한다
+    let body: Option<Value> = if body.iter().all(u8::is_ascii_whitespace) {
+        None
+    } else {
+        match serde_json::from_slice(&body) {
+            Ok(v) => Some(v),
+            Err(_) => return bad("body is not valid JSON"),
+        }
+    };
+    let keys: Option<Vec<String>> = match body.as_ref().and_then(|b| b.get("keys")).cloned() {
+        None => None,
+        Some(Value::Null) => return bad("keys is null; omit keys to reset everything"),
         Some(k) => match serde_json::from_value(k) {
             Ok(keys) => Some(keys),
             Err(_) => {

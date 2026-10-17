@@ -310,9 +310,8 @@ impl Supervisor {
         let (instance, _starting, hook) = {
             let s = sup.read().await;
             // Find instance to get executable_path and working_dir
-            let instance = s.instance_store.list()
-                .iter()
-                .find(|i| i.name == server_name)
+            let instance = s.instance_store.get(server_name)
+                .or_else(|| s.instance_store.list().iter().find(|i| i.name == server_name))
                 .cloned()
                 .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
 
@@ -424,6 +423,8 @@ impl Supervisor {
             });
             (instance, starting, hook)
         };
+        // 받은 키가 id여도 메시지·응답에는 이름을 쓴다
+        let server_name = instance.name.as_str();
 
         if let Some((ext_mgr, ctx)) = hook {
             let results = crate::extension::run_hook(&ext_mgr, "server.pre_start", ctx).await;
@@ -637,6 +638,8 @@ impl Supervisor {
             let managed = s.managed_store.get(&instance.id).await;
             (instance, hook, managed)
         };
+        // 받은 키가 id여도 메시지·응답에는 이름을 쓴다
+        let server_name = instance.name.as_str();
 
         // ── Extension hook: server.stop ──
         // 정지 전에 불린다. 익스텐션(예: 컨테이너)이 정지를 맡으면 handled=true를 돌려준다.
@@ -1959,7 +1962,9 @@ impl Supervisor {
         if let Some(dir) = instance.working_dir.as_deref().filter(|d| !d.is_empty()) {
             roots.push(dir.to_string());
         }
-        if let Some(parent) = instance.executable_path.as_deref().and_then(|p| std::path::Path::new(p).parent()) {
+        // module_settings의 실행 파일 경로까지 본 실제 실행 파일
+        let exe = self.resolve_executable(instance, &instance.module_name);
+        if let Some(parent) = exe.as_deref().and_then(|p| std::path::Path::new(p).parent()) {
             let parent = parent.to_string_lossy().to_string();
             if !parent.is_empty() {
                 roots.push(parent);
@@ -2070,8 +2075,10 @@ impl Supervisor {
                         .filter(|i| i.id != instance.id)
                         .filter_map(|i| self.tracker.get_pid(&i.id).ok())
                         .collect();
-                    let own_roots = self.instance_roots(&instance);
-                    let other_roots: Vec<String> = siblings.iter().flat_map(|i| self.instance_roots(i)).collect();
+                    let (own_roots, other_roots) = process_monitor::drop_shared_roots(
+                        self.instance_roots(&instance),
+                        siblings.iter().flat_map(|i| self.instance_roots(i)).collect(),
+                    );
                     let picked = process_monitor::pick_owned_process(&processes, &taken, &own_roots, &other_roots, siblings.is_empty());
 
                     if let Some(process) = picked {

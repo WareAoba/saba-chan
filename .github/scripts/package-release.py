@@ -30,6 +30,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import subprocess
 import zipfile
 from pathlib import Path
@@ -409,7 +410,11 @@ def main():
                     prev_version = read_version_from_previous_manifest(
                         comp["output_name"], key, release_tag, previous_releases,
                     )
-                    if prev_version and prev_version != version:
+                    if not prev_version:
+                        # 실제 버전을 모르는 바이너리를 소스 버전으로 서명하면 안 된다
+                        sys.exit(f"  ✗ {key}: reused {comp['output_name']} but its version is unknown "
+                                 f"(previous manifest unreadable); build it in this release instead")
+                    if prev_version != version:
                         print(f"  version: {prev_version} (from previous manifest, overrides source {version})")
                         version = prev_version
                 else:
