@@ -53,7 +53,8 @@ export function initials(name = '') {
 /** 모듈이 정한 프로토콜 표시 이름 */
 export function protocolLabel(server, moduleData) {
     const proto = server.protocol_mode;
-    if (proto === 'auto' || proto === 'rest') {
+    // 'rcon'은 데몬에서 빠졌다: 예전 값이면 모듈 기본으로 보여 준다
+    if (proto === 'auto' || proto === 'rest' || proto === 'rcon') {
         const supported = moduleData?.protocols?.supported || [];
         if (proto === 'rest' && supported.includes('rest')) return 'REST';
         if (moduleData?.protocols?.default) return moduleData.protocols.default.toUpperCase();

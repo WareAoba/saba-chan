@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TITLEBAR_HEIGHT } from '../constants/layout';
 import { useServerStore } from '../stores/useServerStore';
-import { commandReplyLines } from '../utils/commandReply';
+import { commandReplyLines, isNoCommandPath } from '../utils/commandReply';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
 
 /** @constant 서버 Running 시 polling 간격 (ms) */
@@ -341,19 +341,20 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
             const result = await window.api.managedStdin(instanceId, cmd);
             if (result?.error) {
                 console.log('[Console] stdin failed, trying command API:', result.error);
-                const rconResult = await window.api.executeCommand(instanceId, {
+                const cmdResult = await window.api.executeCommand(instanceId, {
                     command: cmd,
                     args: {},
-                    // RCON 하드코딩 대신 메타데이터 없이 전달하여
-                    // Python lifecycle의 command() 함수가 모듈의 protocol_mode에 따라
-                    // 적절한 프로토콜(REST/RCON)을 자동 선택하도록 위임
                 });
-                if (rconResult?.error) {
-                    safeShowToast(translateError(rconResult.error), 'error', 3000);
+                if (cmdResult?.error) {
+                    safeShowToast(
+                        isNoCommandPath(cmdResult) ? t('servers.no_command_path') : translateError(cmdResult.error),
+                        'error',
+                        5000,
+                    );
                 } else {
                     const lines = [{ id: Date.now(), content: `> ${cmd}`, source: 'STDIN', level: 'INFO' }];
                     // 데몬이 서버의 답을 data.response로 준다 (여러 줄일 수 있다)
-                    commandReplyLines(rconResult).forEach((content, i) => {
+                    commandReplyLines(cmdResult).forEach((content, i) => {
                         lines.push({ id: Date.now() + 1 + i, content, source: 'STDOUT', level: 'INFO' });
                     });
                     setConsoles((prev) => {
@@ -371,7 +372,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         } catch (err) {
             safeShowToast(translateError(err.message), 'error', 3000);
         }
-    }, [setConsoleInput, translateError]);
+    }, [setConsoleInput, translateError, t]);
 
     // ── Derived: for ServerCard backward compat ─────────────
 

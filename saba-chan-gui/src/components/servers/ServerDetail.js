@@ -412,7 +412,6 @@ function InfoTab({ server, moduleData, gameName, uptime, onDelete }) {
         uptime && [t('shell.info_uptime'), uptime],
         server.status === 'running' && server.pid && ['PID', server.pid],
         server.port && [t('shell.info_port'), server.port],
-        server.rcon_port && supported.includes('rcon') && ['RCON', server.rcon_port],
         server.rest_port && ['REST', `${server.rest_host || '127.0.0.1'}:${server.rest_port}`],
         moduleData && [t('shell.info_protocol'), protocolLabel(server, moduleData)],
         server.id && [t('shell.info_id'), <code key="id">{server.id}</code>],

@@ -2305,30 +2305,6 @@ span[style*="--icon-loader"] svg,
     margin-bottom: 12px;
 }
 
-.protocol-toggle-container {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: var(--bg-surface);
-    border-radius: 8px;
-    padding: 8px 16px;
-    border: 1px solid var(--border-separator);
-}
-
-.protocol-label {
-    font-size: calc(14px * var(--font-scale));
-    font-weight: 500;
-    color: var(--text-muted);
-    min-width: 50px;
-    text-align: center;
-    transition: color 0.3s ease;
-}
-
-.protocol-label.active {
-    color: var(--brand-primary);
-    font-weight: 600;
-}
-
 /* Toggle Switch — replaced by SabaUI components */
 
 .protocol-mode-hint {
@@ -2367,11 +2343,6 @@ span[style*="--icon-loader"] svg,
 .protocol-badge.rest {
     background: var(--ok);
     color: var(--text-on-primary);
-}
-
-.protocol-badge.rcon {
-    background: var(--brand-gradient);
-    color: var(--brand-text);
 }
 
 /* ═══════════════════════════════════════════════════════════

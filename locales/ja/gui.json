@@ -59,7 +59,7 @@
     "relay_url_label": "リレーサーバーURL（カスタム）",
     "relay_url_description": "クラウドモードで使用するリレーサーバーのURLです。空欄の場合はデフォルトサーバーを使用します。",
     "auto_generate_passwords_label": "パスワード自動生成",
-    "auto_generate_passwords_description": "セキュリティのため、サーバー起動ごとにRCON/RESTパスワードをランダムに自動生成します。",
+    "auto_generate_passwords_description": "セキュリティのため、サーバー起動ごとにRESTパスワードをランダムに自動生成します。",
     "port_conflict_check_label": "ポート競合チェック",
     "port_conflict_check_description": "複数のサーバーインスタンスが同じポートを使用している場合に警告を表示します。",
     "uninstall_label": "サバちゃんをアンインストール",
@@ -212,9 +212,6 @@
     "general_tab": "一般設定",
     "aliases_tab": "Discord 別名",
     "protocol_title": "サーバー操作方式",
-    "protocol_description": "サーバーコマンドを実行する際に使用するプロトコルを選択します。",
-    "protocol_rest_hint": "REST API は HTTP ベースで安定しており、認証が容易です。",
-    "protocol_rcon_hint": "RCON はリアルタイムのコンソールコマンドを直接送信します。",
     "protocol_single_only": "このモジュールは <strong>{{protocol}}</strong> プロトコルのみサポートしています。",
     "no_settings": "このモジュールには追加の設定項目がありません。",
     "module_aliases_title": "モジュール別名（Discord でこのサーバーを呼ぶ名前）",
@@ -339,7 +336,8 @@
     "preflight_failed_title": "'{{name}}' の起動前チェックで問題が見つかりました",
     "eula_notice": "Minecraft EULA: https://aka.ms/MinecraftEULA",
     "eula_accept_and_start": "EULA に同意して起動",
-    "working_dir_in_use": "サーバー '{{instance}}' がすでにこのフォルダーを使っています。1つのフォルダーに2つのサーバーを作ると、ワールドと設定を互いに上書きします。別のフォルダーを選んでください。"
+    "working_dir_in_use": "サーバー '{{instance}}' がすでにこのフォルダーを使っています。1つのフォルダーに2つのサーバーを作ると、ワールドと設定を互いに上書きします。別のフォルダーを選んでください。",
+    "no_command_path": "このサーバーにはコマンドを送るコンソールがありません。サバちゃんから起動するとコマンドを送れます。"
   },
   "settings": {
     "save_failed_title": "設定保存失敗",

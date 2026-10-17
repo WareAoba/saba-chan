@@ -8,6 +8,7 @@ import { needsConfirm } from '../../utils/commandRisk';
 import { createTranslateError } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { useUIStore } from '../../stores/useUIStore';
+import { isNoCommandPath } from '../../utils/commandReply';
 
 function CommandModal({ server, modules, onClose, onExecute, embedded = false }) {
     const { t } = useTranslation('gui');
@@ -116,7 +117,7 @@ function CommandModal({ server, modules, onClose, onExecute, embedded = false })
             // 사용자에게 보여줄 간결한 메시지
             let displayMsg;
             if (isError) {
-                displayMsg = result.error;
+                displayMsg = isNoCommandPath(result) ? t('servers.no_command_path') : result.error;
             } else if (!isEmptyResponse(responseObj)) {
                 // 의미 있는 응답이 있을 때: 문자열이면 그대로, 객체면 간략 표시
                 if (typeof responseObj === 'string') {
@@ -149,10 +150,10 @@ function CommandModal({ server, modules, onClose, onExecute, embedded = false })
                 if (detailParts.length > 0) detail = detailParts.join('\n');
             }
             if (isError && !detail) {
-                detail = result.error;
+                detail = displayMsg;
             }
 
-            // 서버가 돌려준 답(RCON 응답·명령 뒤 콘솔 줄)은 펼치지 않아도 보인다
+            // 서버가 돌려준 답(명령 뒤 콘솔 줄)은 펼치지 않아도 보인다
             const reply = !isError && displayMsg !== result.message && typeof displayMsg === 'string' ? displayMsg : null;
             const entry = {
                 id: Date.now(),

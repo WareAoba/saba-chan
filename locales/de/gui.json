@@ -59,7 +59,7 @@
     "relay_url_label": "Relay-Server-URL (Benutzerdefiniert)",
     "relay_url_description": "URL des Relay-Servers für Cloud-Modus. Verwendet Standardserver wenn leer.",
     "auto_generate_passwords_label": "Passwörter automatisch generieren",
-    "auto_generate_passwords_description": "Generiert bei jedem Serverstart automatisch zufällige RCON/REST-Passwörter für mehr Sicherheit.",
+    "auto_generate_passwords_description": "Generiert bei jedem Serverstart automatisch zufällige REST-Passwörter für mehr Sicherheit.",
     "port_conflict_check_label": "Portkonflikterkennung",
     "port_conflict_check_description": "Zeigt Warnungen an, wenn mehrere Serverinstanzen denselben Port verwenden.",
     "uninstall_label": "Saba-chan deinstallieren",
@@ -268,9 +268,6 @@
     "general_tab": "Allgemeine Einstellungen",
     "aliases_tab": "Discord-Aliase",
     "protocol_title": "Server-Steuerungsmethode",
-    "protocol_description": "Wählen Sie das Protokoll für die Ausführung von Serverbefehlen.",
-    "protocol_rest_hint": "REST API ist HTTP-basiert, stabil und einfach zu authentifizieren.",
-    "protocol_rcon_hint": "RCON sendet Echtzeit-Konsolenbefehle direkt.",
     "protocol_single_only": "Dieses Modul unterstützt nur das <strong>{{protocol}}</strong>-Protokoll.",
     "no_settings": "Dieses Modul hat keine zusätzlichen Einstellungen.",
     "module_aliases_title": "Modul-Aliase (Namen für diesen Server in Discord)",
@@ -395,7 +392,8 @@
     "preflight_failed_title": "Die Startprüfung für '{{name}}' hat ein Problem gefunden",
     "eula_notice": "Minecraft-EULA: https://aka.ms/MinecraftEULA",
     "eula_accept_and_start": "EULA akzeptieren und starten",
-    "working_dir_in_use": "Der Server '{{instance}}' verwendet diesen Ordner bereits. Zwei Server in einem Ordner überschreiben gegenseitig Welt und Einstellungen. Wähle einen anderen Ordner."
+    "working_dir_in_use": "Der Server '{{instance}}' verwendet diesen Ordner bereits. Zwei Server in einem Ordner überschreiben gegenseitig Welt und Einstellungen. Wähle einen anderen Ordner.",
+    "no_command_path": "Dieser Server hat keine Konsole für Befehle. Starte ihn über Saba-chan, um Befehle zu senden."
   },
   "settings": {
     "save_failed_title": "Einstellungsspeicherung fehlgeschlagen",

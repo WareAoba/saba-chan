@@ -59,7 +59,7 @@
     "relay_url_label": "URL do Servidor de Retransmissão (Personalizado)",
     "relay_url_description": "URL do servidor de retransmissão para o modo nuvem. Usa servidor padrão se vazio.",
     "auto_generate_passwords_label": "Gerar senhas automaticamente",
-    "auto_generate_passwords_description": "Gera automaticamente senhas RCON/REST aleatórias a cada inicialização do servidor para segurança.",
+    "auto_generate_passwords_description": "Gera automaticamente senhas REST aleatórias a cada inicialização do servidor para segurança.",
     "port_conflict_check_label": "Detecção de conflito de porta",
     "port_conflict_check_description": "Mostra avisos quando várias instâncias de servidor usam a mesma porta.",
     "uninstall_label": "Desinstalar Saba-chan",
@@ -268,9 +268,6 @@
     "general_tab": "Configurações Gerais",
     "aliases_tab": "Aliases do Discord",
     "protocol_title": "Método de Controle do Servidor",
-    "protocol_description": "Selecione o protocolo a ser usado ao executar comandos do servidor.",
-    "protocol_rest_hint": "REST API é baseada em HTTP, estável e fácil de autenticar.",
-    "protocol_rcon_hint": "RCON envia comandos de console em tempo real diretamente.",
     "protocol_single_only": "Este módulo suporta apenas o protocolo <strong>{{protocol}}</strong>.",
     "no_settings": "Este módulo não possui configurações adicionais.",
     "module_aliases_title": "Aliases do Módulo (Nomes para chamar este servidor no Discord)",
@@ -395,7 +392,8 @@
     "preflight_failed_title": "A verificação antes de iniciar '{{name}}' encontrou um problema",
     "eula_notice": "EULA do Minecraft: https://aka.ms/MinecraftEULA",
     "eula_accept_and_start": "Aceitar a EULA e iniciar",
-    "working_dir_in_use": "O servidor '{{instance}}' já usa esta pasta. Dois servidores na mesma pasta sobrescrevem o mundo e as configurações um do outro. Escolha outra pasta."
+    "working_dir_in_use": "O servidor '{{instance}}' já usa esta pasta. Dois servidores na mesma pasta sobrescrevem o mundo e as configurações um do outro. Escolha outra pasta.",
+    "no_command_path": "Este servidor não tem console para enviar comandos. Inicie-o pela Saba-chan para enviar comandos."
   },
   "settings": {
     "save_failed_title": "Falha ao salvar configurações",

@@ -132,46 +132,12 @@ function GeneralTab({
     const hasModuleSettings = module?.settings?.fields?.length > 0;
     const protocols = module?.protocols || {};
     const supportedProtocols = protocols.supported || [];
-    const showProtocolToggle = supportedProtocols.includes('rest') && supportedProtocols.includes('rcon');
     const modNs = `mod_${settingsServer.module}`;
 
     return (
         <div className="settings-form">
-            {/* Protocol mode toggle */}
-            {showProtocolToggle && (
-                <div className="protocol-mode-section">
-                    <div className="protocol-mode-header">
-                        <span className="protocol-mode-title">
-                            <Icon name="plug" size="sm" /> {t('server_settings.protocol_title')}
-                        </span>
-                    </div>
-                    <p className="protocol-mode-description">{t('server_settings.protocol_description')}</p>
-                    <div className="protocol-toggle-container">
-                        <span className={clsx('protocol-label', { active: settingsValues.protocol_mode === 'rest' })}>
-                            REST
-                        </span>
-                        <SabaToggle
-                            size="lg"
-                            checked={settingsValues.protocol_mode === 'rcon'}
-                            onChange={(checked) => handleSettingChange('protocol_mode', checked ? 'rcon' : 'rest')}
-                        />
-                        <span className={clsx('protocol-label', { active: settingsValues.protocol_mode === 'rcon' })}>
-                            RCON
-                        </span>
-                    </div>
-                    <p className="protocol-mode-hint">
-                        <span className="hint-icon">
-                            <Icon name="lightbulb" size="sm" />
-                        </span>
-                        {settingsValues.protocol_mode === 'rest'
-                            ? t('server_settings.protocol_rest_hint')
-                            : t('server_settings.protocol_rcon_hint')}
-                    </p>
-                </div>
-            )}
-
             {/* Single protocol info */}
-            {!showProtocolToggle && supportedProtocols.length > 0 && (
+            {supportedProtocols.length > 0 && (
                 <div className="protocol-mode-section protocol-mode-info">
                     <div className="protocol-mode-header">
                         <span className="protocol-mode-title">
@@ -478,7 +444,6 @@ export function ServerSettingsModal({
         if (!settingsServer || !servers) return [];
         const targetPorts = {
             port: settingsValues.port ?? settingsServer.port,
-            rcon_port: settingsValues.rcon_port ?? settingsServer.rcon_port,
             rest_port: settingsValues.rest_port ?? settingsServer.rest_port,
         };
         return checkPortConflicts(settingsServer.id, targetPorts, servers, moduleProtocols, settingsServer.module);

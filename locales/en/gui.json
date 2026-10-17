@@ -59,7 +59,7 @@
     "relay_url_label": "Relay Server URL (Custom)",
     "relay_url_description": "URL of the relay server for cloud mode. Uses default server if empty.",
     "auto_generate_passwords_label": "Auto-generate Passwords",
-    "auto_generate_passwords_description": "Automatically generate random RCON/REST passwords on every server launch for security.",
+    "auto_generate_passwords_description": "Automatically generate random REST passwords on every server launch for security.",
     "port_conflict_check_label": "Port Conflict Detection",
     "port_conflict_check_description": "Show warnings when multiple server instances use the same port.",
     "uninstall_label": "Uninstall Saba-chan",
@@ -268,9 +268,6 @@
     "general_tab": "General Settings",
     "aliases_tab": "Discord words",
     "protocol_title": "Server Control Method",
-    "protocol_description": "Select the protocol to use when executing server commands.",
-    "protocol_rest_hint": "REST API is HTTP-based, stable, and easy to authenticate.",
-    "protocol_rcon_hint": "RCON sends real-time console commands directly.",
     "protocol_single_only": "This module only supports the <strong>{{protocol}}</strong> protocol.",
     "no_settings": "This module has no additional settings.",
     "module_aliases_title": "Module Aliases (Names to call this server on Discord)",
@@ -395,7 +392,8 @@
     "preflight_failed_title": "The pre-start check for '{{name}}' found a problem",
     "eula_notice": "Minecraft EULA: https://aka.ms/MinecraftEULA",
     "eula_accept_and_start": "Accept EULA and start",
-    "working_dir_in_use": "Server '{{instance}}' already uses this folder. Two servers in one folder overwrite each other's world and settings. Pick another folder."
+    "working_dir_in_use": "Server '{{instance}}' already uses this folder. Two servers in one folder overwrite each other's world and settings. Pick another folder.",
+    "no_command_path": "This server has no console to send commands to. Start it from Saba-chan to send commands."
   },
   "settings": {
     "save_failed_title": "Settings save failed",

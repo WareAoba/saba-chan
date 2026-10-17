@@ -786,7 +786,7 @@ function SettingsModal({
                                         {t('gui:settings_modal.auto_generate_passwords_label', 'Auto-generate Passwords')}
                                     </span>
                                     <span className="setting-description">
-                                        {t('gui:settings_modal.auto_generate_passwords_description', 'Automatically generate random RCON/REST passwords on every server launch for security.')}
+                                        {t('gui:settings_modal.auto_generate_passwords_description', 'Automatically generate random REST passwords on every server launch for security.')}
                                     </span>
                                 </label>
                                 <SabaToggle

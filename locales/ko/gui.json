@@ -59,7 +59,7 @@
     "relay_url_label": "릴레이 서버 URL (커스텀)",
     "relay_url_description": "클라우드 모드에서 사용할 릴레이 서버의 URL입니다. 비어있으면 기본 서버를 사용합니다.",
     "auto_generate_passwords_label": "비밀번호 자동 생성",
-    "auto_generate_passwords_description": "보안을 위해 매 실행마다 RCON/REST 비밀번호를 랜덤으로 자동 생성합니다.",
+    "auto_generate_passwords_description": "보안을 위해 매 실행마다 REST 비밀번호를 랜덤으로 자동 생성합니다.",
     "port_conflict_check_label": "포트 충돌 검사",
     "port_conflict_check_description": "여러 서버 인스턴스가 동일한 포트를 사용할 때 경고를 표시합니다.",
     "uninstall_label": "사바쨩 삭제",
@@ -268,9 +268,6 @@
     "general_tab": "일반 설정",
     "aliases_tab": "디스코드 단어",
     "protocol_title": "서버 조작 방식",
-    "protocol_description": "서버 명령어를 실행할 때 사용할 프로토콜을 선택합니다.",
-    "protocol_rest_hint": "REST API는 HTTP 기반으로 안정적이며 인증이 용이합니다.",
-    "protocol_rcon_hint": "RCON은 실시간 콘솔 명령어를 직접 전송합니다.",
     "protocol_single_only": "이 모듈은 <strong>{{protocol}}</strong> 프로토콜만 지원합니다.",
     "no_settings": "이 모듈에는 추가 설정 항목이 없습니다.",
     "module_aliases_title": "모듈 별명 (Discord에서 이 서버를 부를 이름)",
@@ -395,7 +392,8 @@
     "preflight_failed_title": "'{{name}}' 서버를 켜기 전 점검에서 문제가 있어요",
     "eula_notice": "마인크래프트 EULA: https://aka.ms/MinecraftEULA",
     "eula_accept_and_start": "EULA에 동의하고 켜기",
-    "working_dir_in_use": "'{{instance}}' 서버가 이미 이 폴더를 쓰고 있어요. 한 폴더에 서버를 둘 만들면 월드와 설정을 서로 덮어씁니다. 다른 폴더를 골라 주세요."
+    "working_dir_in_use": "'{{instance}}' 서버가 이미 이 폴더를 쓰고 있어요. 한 폴더에 서버를 둘 만들면 월드와 설정을 서로 덮어씁니다. 다른 폴더를 골라 주세요.",
+    "no_command_path": "이 서버는 명령을 보낼 콘솔이 없어요. 사바쨩에서 서버를 켜야 명령을 보낼 수 있어요."
   },
   "settings": {
     "save_failed_title": "설정 저장 실패",

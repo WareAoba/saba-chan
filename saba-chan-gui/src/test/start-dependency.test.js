@@ -111,6 +111,9 @@ describe('명령 답과 언어별 설명', () => {
         ]);
         expect(commandReplyLines({ data: { response: { raw: '' } } })).toEqual([]);
         expect(commandReplyLines({ data: null, message: 'sent' })).toEqual(['sent']);
+        const { isNoCommandPath } = await import('../utils/commandReply');
+        expect(isNoCommandPath({ error: 'no_command_path', message: 'x' })).toBe(true);
+        expect(isNoCommandPath({ error: 'other' })).toBe(false);
     });
 
     it('GUI 언어 → 기본 언어 → 영어 description', async () => {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { commandReplyLines } from '../utils/commandReply';
+import { commandReplyLines, isNoCommandPath } from '../utils/commandReply';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
 
 /**
@@ -92,18 +92,20 @@ export function useConsole({ isPopoutMode, popoutParams, consoleBufferRef }) {
             if (result?.error) {
                 // stdin failed → try module command API (protocol-aware routing)
                 console.log('[Console] stdin failed, trying command API:', result.error);
-                const rconResult = await window.api.executeCommand(consoleServer.id, {
+                const cmdResult = await window.api.executeCommand(consoleServer.id, {
                     command: cmd,
                     args: {},
-                    // RCON 하드코딩 대신 Python lifecycle command()가
-                    // 모듈 protocol_mode에 따라 적절한 프로토콜 선택
                 });
-                if (rconResult?.error) {
-                    safeShowToast(translateError(rconResult.error), 'error', 3000);
+                if (cmdResult?.error) {
+                    safeShowToast(
+                        isNoCommandPath(cmdResult) ? t('servers.no_command_path') : translateError(cmdResult.error),
+                        'error',
+                        5000,
+                    );
                 } else {
                     const lines = [{ id: Date.now(), content: `> ${cmd}`, source: 'STDIN', level: 'INFO' }];
                     // 데몬이 서버의 답을 data.response로 준다 (여러 줄일 수 있다)
-                    commandReplyLines(rconResult).forEach((content, i) => {
+                    commandReplyLines(cmdResult).forEach((content, i) => {
                         lines.push({ id: Date.now() + 1 + i, content, source: 'STDOUT', level: 'INFO' });
                     });
                     setConsoleLines((prev) => [...prev, ...lines]);

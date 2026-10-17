@@ -59,7 +59,7 @@
     "relay_url_label": "URL del servidor de retransmisión (Personalizado)",
     "relay_url_description": "URL del servidor de retransmisión para el modo en la nube. Usa servidor predeterminado si está vacío.",
     "auto_generate_passwords_label": "Generar contraseñas automáticamente",
-    "auto_generate_passwords_description": "Genera automáticamente contraseñas RCON/REST aleatorias en cada inicio del servidor por seguridad.",
+    "auto_generate_passwords_description": "Genera automáticamente contraseñas REST aleatorias en cada inicio del servidor por seguridad.",
     "port_conflict_check_label": "Detección de conflicto de puertos",
     "port_conflict_check_description": "Muestra advertencias cuando múltiples instancias de servidor utilizan el mismo puerto.",
     "uninstall_label": "Desinstalar Saba-chan",
@@ -268,9 +268,6 @@
     "general_tab": "Configuración General",
     "aliases_tab": "Alias de Discord",
     "protocol_title": "Método de Control del Servidor",
-    "protocol_description": "Seleccione el protocolo a utilizar al ejecutar comandos del servidor.",
-    "protocol_rest_hint": "REST API está basada en HTTP, es estable y fácil de autenticar.",
-    "protocol_rcon_hint": "RCON envía comandos de consola en tiempo real directamente.",
     "protocol_single_only": "Este módulo solo soporta el protocolo <strong>{{protocol}}</strong>.",
     "no_settings": "Este módulo no tiene configuraciones adicionales.",
     "module_aliases_title": "Alias del Módulo (Nombres para llamar a este servidor en Discord)",
@@ -395,7 +392,8 @@
     "preflight_failed_title": "La comprobación previa de '{{name}}' encontró un problema",
     "eula_notice": "EULA de Minecraft: https://aka.ms/MinecraftEULA",
     "eula_accept_and_start": "Aceptar la EULA e iniciar",
-    "working_dir_in_use": "El servidor '{{instance}}' ya usa esta carpeta. Dos servidores en una carpeta sobrescriben el mundo y los ajustes del otro. Elige otra carpeta."
+    "working_dir_in_use": "El servidor '{{instance}}' ya usa esta carpeta. Dos servidores en una carpeta sobrescriben el mundo y los ajustes del otro. Elige otra carpeta.",
+    "no_command_path": "Este servidor no tiene consola para enviar comandos. Inícialo desde Saba-chan para enviar comandos."
   },
   "settings": {
     "save_failed_title": "Falló guardar configuración",

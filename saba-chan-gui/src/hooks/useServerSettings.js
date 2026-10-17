@@ -476,13 +476,9 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
             const protocols = module?.protocols || {};
             const supportedProtocols = protocols.supported || [];
 
+            // 모듈이 정한 프로토콜만 쓴다 (RCON은 데몬에서 빠졌다: 예전에 저장된 'rcon'도 여기서 바뀐다)
             if (supportedProtocols.length > 0) {
-                if (supportedProtocols.includes('rest') && supportedProtocols.includes('rcon')) {
-                    convertedSettings.protocol_mode =
-                        settingsValues.protocol_mode || protocols.default || supportedProtocols[0];
-                } else {
-                    convertedSettings.protocol_mode = protocols.default || supportedProtocols[0];
-                }
+                convertedSettings.protocol_mode = protocols.default || supportedProtocols[0];
             } else {
                 convertedSettings.protocol_mode = settingsValues.protocol_mode || 'auto';
             }

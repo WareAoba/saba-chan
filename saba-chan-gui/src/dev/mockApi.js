@@ -12,7 +12,7 @@ const modules = [
         version: '1.2.0',
         description: 'Minecraft Java 서버',
         interaction_mode: 'console',
-        protocols: { supported: ['stdin', 'rcon'], default: 'rcon' },
+        protocols: { supported: ['stdin'], default: 'stdin' },
         commands: {
             fields: [
                 {

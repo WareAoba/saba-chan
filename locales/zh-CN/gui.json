@@ -59,7 +59,7 @@
     "relay_url_label": "中继服务器 URL (自定义)",
     "relay_url_description": "用于云模式的中继服务器 URL。如果为空，使用默认服务器。",
     "auto_generate_passwords_label": "自动生成密码",
-    "auto_generate_passwords_description": "为安全起见，每次启动服务器时自动生成随机 RCON/REST 密码。",
+    "auto_generate_passwords_description": "为安全起见，每次启动服务器时自动生成随机 REST 密码。",
     "port_conflict_check_label": "端口冲突检测",
     "port_conflict_check_description": "当多个服务器实例使用相同端口时显示警告。",
     "uninstall_label": "卸载 Saba-chan",
@@ -268,9 +268,6 @@
     "general_tab": "常规设置",
     "aliases_tab": "Discord 别名",
     "protocol_title": "服务器控制方式",
-    "protocol_description": "选择执行服务器命令时使用的协议。",
-    "protocol_rest_hint": "REST API 基于 HTTP，稳定且易于认证。",
-    "protocol_rcon_hint": "RCON 直接发送实时控制台命令。",
     "protocol_single_only": "此模块仅支持 <strong>{{protocol}}</strong> 协议。",
     "no_settings": "此模块没有额外的设置项。",
     "module_aliases_title": "模块别名（在 Discord 中称呼此服务器的名称）",
@@ -395,7 +392,8 @@
     "preflight_failed_title": "'{{name}}' 的启动前检查发现了问题",
     "eula_notice": "Minecraft EULA：https://aka.ms/MinecraftEULA",
     "eula_accept_and_start": "同意 EULA 并启动",
-    "working_dir_in_use": "服务器 '{{instance}}' 已在使用此文件夹。同一文件夹中的两个服务器会互相覆盖世界和设置。请选择其他文件夹。"
+    "working_dir_in_use": "服务器 '{{instance}}' 已在使用此文件夹。同一文件夹中的两个服务器会互相覆盖世界和设置。请选择其他文件夹。",
+    "no_command_path": "此服务器没有可接收命令的控制台。请从萨巴酱启动服务器后再发送命令。"
   },
   "settings": {
     "save_failed_title": "设置保存失败",
