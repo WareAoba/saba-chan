@@ -3736,3 +3736,45 @@
     font-family: var(--font-mono);
     font-size: var(--fs-xs);
 }
+
+/* 설정 > 고급: 데이터 내보내기·가져오기 */
+.data-transfer {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.data-transfer-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+}
+.data-transfer-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+.data-transfer-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border-radius: var(--r-md);
+    background: var(--inset);
+}
+.data-transfer-head {
+    font-weight: 600;
+}
+.data-transfer-summary ul {
+    margin: 0;
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.data-transfer-skip {
+    color: var(--text-2);
+}

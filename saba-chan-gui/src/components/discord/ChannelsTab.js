@@ -29,6 +29,8 @@ export function channelsErrorText(res, t, nameOf) {
             return t('discord.channels_err_unknown', { channel: nameOf(res?.channelId) });
         case 'BOT_UNAVAILABLE':
             return t('discord.channels_err_bot');
+        case 'INVALID_BODY':
+            return t('discord.channels_err_generic');
         default:
             return res?.message || res?.error || t('discord.channels_err_generic');
     }

@@ -257,6 +257,30 @@ const impl = {
             { guildId: 'guild-1', guildName: '사바 마을' },
             { guildId: 'guild-2', guildName: '주말 게임방' },
         ]),
+    dataExport: ({ secrets } = {}) =>
+        ok({
+            success: true,
+            path: 'C:\\Users\\me\\saba-chan-export.zip',
+            secrets: !!secrets,
+            instances: [{ id: 'mc-1', name: '마크 서버' }],
+            config: ['gui', 'chatbot'],
+        }),
+    dataImport: ({ path, dryRun, overwrite } = {}) =>
+        ok({
+            success: true,
+            dryRun: !!dryRun,
+            appVersion: '0.1.3',
+            secrets: true,
+            instances: {
+                added: [{ id: 'pal-1', name: '팰월드' }],
+                replaced: overwrite ? [{ id: 'mc-1', name: '마크 서버' }] : [],
+                skipped: overwrite ? [] : [{ id: 'mc-1', name: '마크 서버', reason: 'exists' }],
+            },
+            missingModules: ['zomboid'],
+            config: ['gui', 'chatbot'],
+            nodeToken: 'kept',
+            path: path || 'C:\\Users\\me\\saba-chan-export.zip',
+        }),
     relayNodeChannels: (guildId) => ok({ guildId, ...mockChannels }),
     relayNodeChannelsSave: (guildId, patch) => {
         Object.assign(mockChannels, patch);
