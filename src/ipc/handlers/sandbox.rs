@@ -21,6 +21,12 @@ async fn result(component: String, allow: bool) -> impl IntoResponse {
     }
 }
 
+/// GET /api/sandbox/unisolated — 동의 목록
+pub async fn list_unisolated() -> impl IntoResponse {
+    let list = tokio::task::spawn_blocking(crate::sandbox::unisolated_list).await.unwrap_or_default();
+    Json(json!({ "components": list }))
+}
+
 /// POST /api/sandbox/unisolated/:component
 pub async fn allow_unisolated(Path(component): Path<String>) -> impl IntoResponse {
     result(component, true).await

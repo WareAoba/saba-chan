@@ -102,6 +102,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | permissionsUpdate | permissions:update | - | PATCH /api/permissions/:guildId `{defaultLevel?, preset?, chatbotCap?, ownerDiscordId?, commandLevels?}` | - |
 | permissionsSetMember | permissions:setMember | - | PUT /api/permissions/:guildId/members/:discordId `{level}` | - |
 | permissionsRemoveMember | permissions:removeMember | - | DELETE /api/permissions/:guildId/members/:discordId | - |
+| sandboxListUnisolated | sandbox:listUnisolated | - | GET /api/sandbox/unisolated `{components:[{component, fingerprint, current}]}` | - |
 | sandboxAllowUnisolated | sandbox:allowUnisolated | - | POST /api/sandbox/unisolated/:component. `sandbox_unavailable` 응답의 `component`를 넘긴다 | - |
 | sandboxRevokeUnisolated | sandbox:revokeUnisolated | - | DELETE /api/sandbox/unisolated/:component | - |
 | dataExport / dataImport (105-106) | dataTransfer:export/import | 2800/2809 | 저장·열기 다이얼로그로 경로를 고른 뒤 POST /api/migration/export `{path, secrets}` · /api/migration/import `{path, dryRun, overwrite}`. 취소하면 `{canceled:true}`. 가져오기 결과에는 `path`를 붙여 미리보기(`dryRun`) 뒤 같은 파일로 다시 부를 수 있다 | ✓ (A9) |

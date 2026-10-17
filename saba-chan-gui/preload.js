@@ -118,6 +118,8 @@ contextBridge.exposeInMainWorld('api', {
     permissionsSetMember: (guildId, discordId, level) => ipcRenderer.invoke('permissions:setMember', guildId, discordId, level),
     permissionsRemoveMember: (guildId, discordId) => ipcRenderer.invoke('permissions:removeMember', guildId, discordId),
     // 격리를 준비할 수 없을 때 그 구성요소를 격리 없이 돌리기 (파일이 바뀌면 다시 묻는다): {success, component, fingerprint}
+    // 동의 목록: {components: [{component, fingerprint, current}]} (current=false면 파일이 바뀌어 다시 묻는다)
+    sandboxListUnisolated: () => ipcRenderer.invoke('sandbox:listUnisolated'),
     sandboxAllowUnisolated: (component) => ipcRenderer.invoke('sandbox:allowUnisolated', component),
     sandboxRevokeUnisolated: (component) => ipcRenderer.invoke('sandbox:revokeUnisolated', component),
     // 설정·서버 목록 내보내기/가져오기 (A9): {secrets} / {path?, dryRun, overwrite}. 취소하면 {canceled: true}

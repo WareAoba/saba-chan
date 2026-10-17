@@ -372,6 +372,19 @@ pub fn unisolated_allowed(key: &str, dir: &Path) -> bool {
     section.get(CONSENT_KEY).and_then(|m| m.get(key)).and_then(Value::as_str).is_some_and(|fp| fp == fingerprint(dir))
 }
 
+/// 동의 목록: `[{component, fingerprint, current}]` (`current`: 지금 파일과 지문이 같은가. 다르면 다시 묻는다)
+pub fn unisolated_list() -> Vec<Value> {
+    let section = consent_file().section(CONSENT_SECTION);
+    let Some(entries) = section.get(CONSENT_KEY).and_then(Value::as_object) else { return Vec::new() };
+    entries
+        .iter()
+        .map(|(key, fp)| {
+            let current = component_dir(key).is_some_and(|d| fp.as_str() == Some(fingerprint(&d).as_str()));
+            serde_json::json!({ "component": key, "fingerprint": fp, "current": current })
+        })
+        .collect()
+}
+
 /// 설치 기록 키의 폴더 (`module-<이름>` → modules/<이름>). 이름에 경로 문자가 있으면 None
 pub fn component_dir(key: &str) -> Option<PathBuf> {
     let (root, name) = if let Some(name) = key.strip_prefix(saba_chan_updater_lib::relay::MODULE_PREFIX) {

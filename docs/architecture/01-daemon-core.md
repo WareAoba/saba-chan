@@ -315,6 +315,7 @@
 | GET | `/api/permissions/:guildId` | `permissions.rs` `get_permissions` | - | `{guildId, ownerDiscordId, relayOwnerDiscordId, defaultLevel, preset, chatbotCap, members, commandLevels, presets}` |
 | PATCH | `/api/permissions/:guildId` | `permissions.rs` `update_permissions` | `{defaultLevel?, preset?, chatbotCap?, ownerDiscordId?, commandLevels?:{key: level\|null}}` | 바뀐 전체(GET과 같은 모양). 하나라도 틀리면 저장하지 않고 400 `invalid_level`·`invalid_preset`·`invalid_command`·`invalid_member`·`unknown_key`. `ownerDiscordId`는 고정된 주인을 바꾸는 유일한 길이다(CLI `saba perm owner`) |
 | PUT·DELETE | `/api/permissions/:guildId/members/:discordId` | `permissions.rs` `set_member`·`remove_member` | PUT `{level: -1..2}` | 바뀐 전체. 주인이면 400 `owner_fixed`. DELETE는 기본 레벨로 되돌린다 |
+| GET | `/api/sandbox/unisolated` | `sandbox.rs` `list_unisolated` | - | `{components:[{component, fingerprint, current}]}`. `current`가 false면 파일이 바뀌어 동의가 쓰이지 않는다. 릴레이로는 열지 않는다 |
 | POST·DELETE | `/api/sandbox/unisolated/:component` | `sandbox.rs` `allow_unisolated`·`revoke_unisolated` | - | `{success, component, fingerprint}`(DELETE는 `fingerprint:null`). `component`는 `module-<이름>`·`ext-<이름>`. 없으면 404 `unknown_component`. 확인되지 않은 구성요소를 격리 없이 돌리기 동의(02 문서 §2.1) |
 | POST | `/api/client/:id/heartbeat` | `client.rs:51` | 본문은 무시 | `{ok}` / 404 |
 | DELETE | `/api/client/:id/unregister` | `client.rs:69` | query `shutdown=true\|false` | `{ok}` / 404 |

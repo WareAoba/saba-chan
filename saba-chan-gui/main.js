@@ -2380,6 +2380,7 @@ ipcMain.handle('permissions:removeMember', (_event, guildId, discordId) =>
 
 // 확인되지 않은 구성요소를 격리 없이 돌리기 동의: 실행 결과 `action_required: sandbox_unavailable`의 `component`
 const unisolatedPath = (component) => `/api/sandbox/unisolated/${encodeURIComponent(component)}`;
+ipcMain.handle('sandbox:listUnisolated', () => daemonCall('get', '/api/sandbox/unisolated'));
 ipcMain.handle('sandbox:allowUnisolated', (_event, component) => daemonCall('post', unisolatedPath(component), {}));
 ipcMain.handle('sandbox:revokeUnisolated', (_event, component) => daemonCall('delete', unisolatedPath(component)));
 
