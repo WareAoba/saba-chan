@@ -2076,6 +2076,39 @@ ipcMain.handle('instance:executeCommand', async (_event, id, command) => {
     }
 });
 
+// 데몬 응답 본문을 그대로 돌려준다. HTTP 오류면 데몬이 준 본문({ok, error, error_code})을 돌려준다.
+async function daemonCall(method, path, body, timeout = 30000) {
+    try {
+        const response = await axios({ method, url: `${IPC_BASE}${path}`, data: body, timeout });
+        return response.data;
+    } catch (error) {
+        if (error.response) {
+            return error.response.data || { ok: false, error: `HTTP ${error.response.status}` };
+        }
+        return { ok: false, error: error.message, error_code: error.code };
+    }
+}
+
+ipcMain.handle('instance:stop', (_event, id, opts = {}) =>
+    daemonCall('post', `/api/instance/${id}/stop`, { force: !!opts.force }));
+
+// 재시작은 데몬이 프로세스 종료를 최대 2분 기다린다
+ipcMain.handle('instance:restart', (_event, id, opts = {}) =>
+    daemonCall('post', `/api/instance/${id}/restart`, { force: !!opts.force }, 150000));
+
+ipcMain.handle('instance:rename', (_event, id, name) =>
+    daemonCall('post', `/api/instance/${id}/rename`, { name }));
+
+ipcMain.handle('instance:commands', (_event, id) =>
+    daemonCall('get', `/api/instance/${id}/commands`));
+
+ipcMain.handle('config:defaults', (_event, kind) =>
+    daemonCall('get', `/api/config/${kind}/defaults`));
+
+// keys를 생략하면 kind 전체를 기본값으로 되돌린다
+ipcMain.handle('config:reset', (_event, kind, keys) =>
+    daemonCall('post', `/api/config/${kind}/reset`, keys ? { keys } : {}));
+
 // ── Extension IPC 핸들러 ──────────
 
 // 익스텐션 목록 조회
