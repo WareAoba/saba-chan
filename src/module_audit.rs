@@ -34,7 +34,7 @@ pub fn undeclared(permissions: &ModulePermissions, findings: &[Finding]) -> Vec<
 /// `python`으로 `dir`의 .py 파일을 검사한다 (막히는 호출: 데몬 안에서는 `scan`)
 pub fn scan_blocking(python: &Path, dir: &Path) -> Result<Vec<Finding>> {
     // -I: 검사할 폴더의 파일이 import되지 않게 (현재 폴더·PYTHONPATH 무시)
-    let out = std::process::Command::new(python)
+    let out = saba_chan_updater_lib::process::hide_console(&mut std::process::Command::new(python))
         .arg("-I")
         .arg("-c")
         .arg(SCRIPT)

@@ -94,10 +94,9 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
     emit("shortcuts", "Removing shortcuts...", 20);
     #[cfg(target_os = "windows")]
     {
-        // 어떤 언어로 설치했든 제거되도록 모든 로케일 이름 시도
-        for name in &["Saba-chan", "사바쨩", "サバちゃん"] {
-            let _ = shortcuts::remove_desktop_shortcut(name);
-            let _ = shortcuts::remove_start_menu_shortcut(name);
+        // 어떤 언어로 설치했든 이 설치를 가리키는 것만 (다른 폴더의 설치 바로가기는 둔다)
+        if let Some(dir) = &install_dir {
+            shortcuts::remove_shortcuts_into(dir, shortcuts::ALL_SHORTCUT_NAMES);
         }
     }
 
@@ -181,9 +180,9 @@ pub async fn do_silent_uninstall() {
     eprintln!("  Removing shortcuts...");
     #[cfg(target_os = "windows")]
     {
-        for name in &["Saba-chan", "사바쨩", "サバちゃん"] {
-            let _ = shortcuts::remove_desktop_shortcut(name);
-            let _ = shortcuts::remove_start_menu_shortcut(name);
+        // 어떤 언어로 설치했든 이 설치를 가리키는 것만 (다른 폴더의 설치 바로가기는 둔다)
+        if let Some(dir) = &install_dir {
+            shortcuts::remove_shortcuts_into(dir, shortcuts::ALL_SHORTCUT_NAMES);
         }
     }
     #[cfg(not(target_os = "windows"))]
@@ -353,15 +352,22 @@ fn descendants_of(_roots: &[u32], _install_dir: &Path) -> Vec<u32> {
     Vec::new()
 }
 
-/// 다시 설치·덮어쓰기 전에 이 설치 폴더의 데몬을 끈다. 데몬은 인터페이스가 없어도 남아 있으므로
-/// 파일이 잠겨 설치가 실패하지 않게 한다. 먼저 `/api/daemon/shutdown`으로 정상 종료를 부탁하고,
-/// 20초 안에 안 끝나면 그 PID만 강제 종료한다 (트리째가 아니다: 게임 서버는 러너가 쥐고 있다)
+/// 다시 설치·덮어쓰기 전에 이 설치 폴더의 데몬·GUI·CLI를 끈다. 데몬은 인터페이스가 없어도 남아 있으므로
+/// 파일이 잠겨 설치가 실패하지 않게 한다 (os error 32). 데몬은 먼저 `/api/daemon/shutdown`으로 정상 종료를
+/// 부탁하고, 20초 안에 안 끝나면 그 PID만 강제 종료한다 (트리째가 아니다: 게임 서버는 러너가 쥐고 있다).
+/// 단계마다 로그를 남긴다 (`%TEMP%\saba-chan-installer.log`).
 pub async fn stop_daemon_before_install(install_dir: &Path) {
-    let running = || processes_in(install_dir, &["saba-core"]);
-    if running().is_empty() {
-        return;
+    // 받은 경로와 실제 경로 둘 다로 찾는다 (실행 파일 경로는 띄운 경로 그대로 보인다)
+    let dir = comparable_dir(install_dir);
+    let dirs = [install_dir.to_path_buf(), dir.clone()];
+    tracing::info!("[Install] Checking for running Saba-chan processes in {} (real path {})", install_dir.display(), dir.display());
+    let listing = list_named(&["saba-core"]);
+    for line in listing.lines().filter(|l| !l.trim().is_empty()) {
+        tracing::info!("[Install] saba-core process: {}", line.trim());
     }
-    tracing::info!("[Install] A daemon from this install is running; asking it to shut down");
+    let mut daemons: Vec<u32> = filter_in(&listing, &dirs, &["saba-core"]).into_iter().map(|(pid, _)| pid).collect();
+
+    // 실행 파일 경로로 못 찾았으면 (경로를 못 읽는 프로세스 등) 설정된 포트의 데몬에게 PID를 묻는다
     let port = saba_chan_updater_lib::config_file::ConfigFile::default_location()
         .section("gui")
         .get("ipcPort")
@@ -369,29 +375,134 @@ pub async fn stop_daemon_before_install(install_dir: &Path) {
         .and_then(|p| u16::try_from(p).ok())
         .unwrap_or(saba_chan_updater_lib::constants::DEFAULT_IPC_PORT);
     let token = std::fs::read_to_string(saba_chan_updater_lib::constants::token_file_path()).unwrap_or_default();
-    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(3)).build();
-    if let Ok(client) = client {
+    let Ok(client) = reqwest::Client::builder().timeout(std::time::Duration::from_secs(3)).build() else {
+        return;
+    };
+    if daemons.is_empty() {
+        let health = client
+            .get(format!("http://127.0.0.1:{}/health", port))
+            .header("X-Saba-Token", token.trim())
+            .send()
+            .await;
+        let pid = match health {
+            Ok(r) => r.json::<serde_json::Value>().await.ok().and_then(|v| v.get("pid").and_then(|p| p.as_u64())),
+            Err(e) => {
+                tracing::info!("[Install] No daemon answers on port {} ({})", port, e);
+                None
+            }
+        };
+        if let Some(pid) = pid.and_then(|p| u32::try_from(p).ok()) {
+            match daemon_owner(&listing, pid, &dirs) {
+                Owner::Here => daemons.push(pid),
+                Owner::Unknown => {
+                    tracing::info!("[Install] Daemon PID {} on port {} has no readable path; stopping it to be safe", pid, port);
+                    daemons.push(pid);
+                }
+                Owner::Elsewhere(exe) => {
+                    tracing::info!("[Install] Daemon PID {} on port {} belongs to another install ({}); leaving it", pid, port, exe)
+                }
+            }
+        }
+    }
+
+    if daemons.is_empty() {
+        tracing::info!("[Install] No daemon from this install is running");
+    } else {
+        tracing::info!("[Install] A daemon from this install is running (PID {:?}); asking it to shut down", daemons);
         let sent = client
             .post(format!("http://127.0.0.1:{}/api/daemon/shutdown", port))
             .header("X-Saba-Token", token.trim())
             .json(&serde_json::json!({}))
             .send()
             .await;
-        if let Err(e) = sent {
-            tracing::warn!("[Install] Shutdown request failed: {}", e);
+        match sent {
+            Ok(r) => tracing::info!("[Install] Shutdown request answered {}", r.status()),
+            Err(e) => tracing::warn!("[Install] Shutdown request failed: {}", e),
         }
-    }
-    for _ in 0..40 {
-        if running().is_empty() {
+        let alive = |daemons: &[u32]| -> Vec<u32> {
+            let listing = list_named(&["saba-core"]);
+            daemons.iter().copied().filter(|pid| pid_listed(&listing, *pid)).collect()
+        };
+        let mut left = daemons.clone();
+        for _ in 0..40 {
+            left = alive(&daemons);
+            if left.is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+        if left.is_empty() {
             tracing::info!("[Install] Daemon stopped");
-            return;
         }
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        for pid in left {
+            tracing::warn!("[Install] saba-core (PID {}) did not stop; killing it", pid);
+            kill_pid(pid, false);
+        }
     }
-    for (pid, name) in running() {
-        tracing::warn!("[Install] {} (PID {}) did not stop; killing it", name, pid);
+
+    // GUI·CLI에는 종료 API가 없다: 이 설치의 것만 끈다 (GUI는 Electron 자식까지)
+    let gui: Vec<&str> = saba_chan_updater_lib::GUI_EXE_NAMES.iter().map(|n| n.trim_end_matches(".exe")).collect();
+    for (pid, name) in filter_in(&list_named(&gui), &dirs, &gui) {
+        tracing::info!("[Install] Closing {} (PID {})", name, pid);
+        kill_pid(pid, true);
+    }
+    for (pid, name) in filter_in(&list_named(&["saba-chan-cli"]), &dirs, &["saba-chan-cli"]) {
+        tracing::info!("[Install] Closing {} (PID {})", name, pid);
         kill_pid(pid, false);
     }
+}
+
+/// 비교할 설치 경로: 있으면 실제 경로로 (짧은 이름·`..`·대소문자 차이를 없앤다), Windows의 `\\?\` 접두사는 뗀다
+fn comparable_dir(dir: &Path) -> std::path::PathBuf {
+    match std::fs::canonicalize(dir) {
+        Ok(p) => {
+            let s = p.to_string_lossy();
+            match s.strip_prefix(r"\\?\UNC\") {
+                Some(rest) => std::path::PathBuf::from(format!(r"\\{}", rest)),
+                None => std::path::PathBuf::from(s.strip_prefix(r"\\?\").unwrap_or(&s)),
+            }
+        }
+        Err(_) => dir.to_path_buf(),
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum Owner {
+    Here,
+    Unknown,
+    Elsewhere(String),
+}
+
+/// `pid|name|exe` 목록에서 그 PID의 실행 파일이 이 설치 폴더 안인지
+fn daemon_owner(listing: &str, pid: u32, dirs: &[std::path::PathBuf]) -> Owner {
+    if filter_in(listing, dirs, &["saba-core"]).iter().any(|(p, _)| *p == pid) {
+        return Owner::Here;
+    }
+    let exe = listing.lines().find_map(|line| {
+        let mut parts = line.trim().splitn(3, '|');
+        (parts.next()?.trim().parse::<u32>().ok()? == pid).then(|| parts.nth(1).unwrap_or("").trim().to_string())
+    });
+    match exe {
+        Some(exe) if !exe.is_empty() => Owner::Elsewhere(exe),
+        _ => Owner::Unknown,
+    }
+}
+
+/// 여러 경로 표기 중 하나라도 맞는 프로세스 (PID 중복 없이)
+fn filter_in(listing: &str, dirs: &[std::path::PathBuf], names: &[&str]) -> Vec<(u32, String)> {
+    let mut found: Vec<(u32, String)> = Vec::new();
+    for dir in dirs {
+        for hit in filter_processes(listing, dir, names) {
+            if !found.iter().any(|(p, _)| *p == hit.0) {
+                found.push(hit);
+            }
+        }
+    }
+    found
+}
+
+fn pid_listed(listing: &str, pid: u32) -> bool {
+    listing.lines().any(|l| l.trim().split('|').next().and_then(|p| p.trim().parse::<u32>().ok()) == Some(pid))
 }
 
 /// `pid|name|exe` 줄들에서 `install_dir` 안의 실행 파일만 고른다. name은 확장자 뗀 이름
@@ -412,38 +523,43 @@ fn filter_processes(listing: &str, install_dir: &Path, names: &[&str]) -> Vec<(u
         .collect()
 }
 
-#[cfg(target_os = "windows")]
 fn processes_in(install_dir: &Path, names: &[&str]) -> Vec<(u32, String)> {
+    filter_processes(&list_named(names), install_dir, names)
+}
+
+/// 이름이 `names`인 프로세스 목록 (`pid|name|exe` 줄). 경로를 못 읽으면 exe는 빈칸
+#[cfg(target_os = "windows")]
+fn list_named(names: &[&str]) -> String {
     let filter = names.iter().map(|n| format!("Name='{}.exe'", n)).collect::<Vec<_>>().join(" OR ");
     let script = format!(
         "Get-CimInstance Win32_Process -Filter \"{}\" | ForEach-Object {{ \"$($_.ProcessId)|$($_.Name)|$($_.ExecutablePath)\" }}",
         filter
     );
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    let out = std::process::Command::new("powershell")
+    let out = saba_chan_updater_lib::process::hide_console(&mut std::process::Command::new("powershell"))
         .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-        .creation_flags(CREATE_NO_WINDOW)
         .output();
     match out {
-        Ok(o) => filter_processes(&String::from_utf8_lossy(&o.stdout), install_dir, names),
+        Ok(o) => String::from_utf8_lossy(&o.stdout).into_owned(),
         Err(e) => {
             tracing::warn!("[Uninstall] Cannot list processes: {}", e);
-            Vec::new()
+            String::new()
         }
     }
 }
 
 #[cfg(not(target_os = "windows"))]
-fn processes_in(install_dir: &Path, names: &[&str]) -> Vec<(u32, String)> {
+fn list_named(names: &[&str]) -> String {
     let mut listing = String::new();
     for entry in std::fs::read_dir("/proc").into_iter().flatten().flatten() {
         let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else { continue };
         let Ok(exe) = std::fs::read_link(entry.path().join("exe")) else { continue };
         let name = exe.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        listing.push_str(&format!("{}|{}|{}\n", pid, name, exe.display()));
+        let stem = name.strip_suffix(".exe").unwrap_or(&name);
+        if names.iter().any(|n| n.eq_ignore_ascii_case(stem)) {
+            listing.push_str(&format!("{}|{}|{}\n", pid, name, exe.display()));
+        }
     }
-    filter_processes(&listing, install_dir, names)
+    listing
 }
 
 #[cfg(target_os = "windows")]
@@ -454,7 +570,7 @@ fn kill_pid(pid: u32, tree: bool) {
         args.push("/T");
     }
     args.push("/F");
-    let _ = std::process::Command::new("taskkill")
+    let _ = saba_chan_updater_lib::process::hide_console(&mut std::process::Command::new("taskkill"))
         .args(&args)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -732,6 +848,19 @@ mod tests {
         std::fs::write(dir.join(format!("saba-core{}", ext)), b"").unwrap();
         assert!(looks_like_install_dir(&dir));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_daemon_on_the_port_is_stopped_only_when_it_is_ours_or_unknown() {
+        let listing = "10|saba-core.exe|C:\\Saba\\saba-core.exe\n20|saba-core.exe|D:\\Other\\saba-core.exe\n30|saba-core.exe|\n";
+        let dirs = [std::path::PathBuf::from("c:/saba")];
+        assert_eq!(daemon_owner(listing, 10, &dirs), Owner::Here);
+        assert_eq!(daemon_owner(listing, 20, &dirs), Owner::Elsewhere("D:\\Other\\saba-core.exe".into()));
+        assert_eq!(daemon_owner(listing, 30, &dirs), Owner::Unknown);
+        assert_eq!(daemon_owner(listing, 99, &dirs), Owner::Unknown);
+        assert!(pid_listed(listing, 20) && !pid_listed(listing, 99));
+        let two = [std::path::PathBuf::from("C:\\Saba"), std::path::PathBuf::from("c:/SABA/")];
+        assert_eq!(filter_in(listing, &two, &["saba-core"]).len(), 1);
     }
 
     #[test]
