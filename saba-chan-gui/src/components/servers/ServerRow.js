@@ -81,7 +81,7 @@ export function ServerRow({
                     if (action === 'stop') onStop(server.name);
                     else if (action === 'start') onStart(server.name, server.module);
                 }}
-                title={action === 'stop' ? t('shell.stop') : action === 'start' ? t('shell.start') : statusLabel}
+                data-tooltip={action === 'stop' ? t('shell.stop') : action === 'start' ? t('shell.start') : statusLabel}
                 aria-label={`${server.name} ${action === 'stop' ? t('shell.stop') : t('shell.start')}`}
             >
                 {action === 'busy' ? (

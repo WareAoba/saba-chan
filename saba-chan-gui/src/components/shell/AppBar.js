@@ -80,7 +80,7 @@ export function AppBar({
                         type="button"
                         className="icon-btn"
                         onClick={onToggleNotice}
-                        title={t('notice_modal.tooltip')}
+                        data-tooltip={t('notice_modal.tooltip')}
                         aria-label={t('notice_modal.tooltip')}
                         aria-expanded={showNotice}
                     >

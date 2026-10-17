@@ -219,7 +219,7 @@ export function ServerConsole({
                     type="button"
                     className="icon-btn term-popout"
                     onClick={onPopout}
-                    title={t('console.popout')}
+                    data-tooltip={t('console.popout')}
                     aria-label={t('console.popout')}
                 >
                     <Icon name="externalLink" size="sm" />

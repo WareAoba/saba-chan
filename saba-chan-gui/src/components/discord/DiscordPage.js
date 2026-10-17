@@ -224,7 +224,8 @@ export function DiscordPage({
     // (토큰이 남아 있으면 데몬이 다음 시작 때 에이전트를 다시 켠다)
     // 하나라도 실패하면 화면을 비우지 않는다 (비우면 끊긴 줄 알지만 명령은 계속 들어온다)
     const disconnect = async () => {
-        const failure = (r) => (!r ? 'no response' : r.error || (r.ok === false || r.success === false ? 'failed' : null));
+        const failure = (r) =>
+            !r ? 'no response' : r.error || (r.ok === false || r.success === false ? 'failed' : null);
         for (const call of [window.api.discordBotStop, window.api.deleteNodeToken]) {
             let err;
             try {
@@ -354,7 +355,8 @@ export function DiscordPage({
                                 <button
                                     type="button"
                                     className="icon-btn dc-nav-add"
-                                    title={t('discord.pair_start')}
+                                    data-tooltip={t('discord.pair_start')}
+                                    aria-label={t('discord.pair_start')}
                                     onClick={() => {
                                         go({ kind: 'connection' });
                                         if (!pairing.active) pairing.start();

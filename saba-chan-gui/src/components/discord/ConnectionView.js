@@ -175,7 +175,13 @@ export function ConnectionView({
                     </div>
                 </div>
                 <div className="detail-actions">
-                    <button type="button" className="icon-btn" onClick={onReload} title={t('discord.reload')}>
+                    <button
+                        type="button"
+                        className="icon-btn"
+                        onClick={onReload}
+                        data-tooltip={t('discord.reload')}
+                        aria-label={t('discord.reload')}
+                    >
                         <Icon name="refresh" size="sm" />
                     </button>
                 </div>

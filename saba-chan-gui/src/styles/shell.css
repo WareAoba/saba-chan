@@ -1910,3 +1910,47 @@
     height: 40px;
     max-width: 420px;
 }
+
+/* ── 말풍선 (data-tooltip, components/ui/Tooltip.js) ── */
+.saba-tooltip {
+    position: fixed;
+    z-index: 3000;
+    max-width: 280px;
+    padding: 6px 10px;
+    border-radius: var(--r-xs);
+    background: var(--bg-4);
+    color: var(--text-1);
+    border: 1px solid var(--line-strong);
+    box-shadow: var(--shadow-float);
+    font-size: var(--fs-xs);
+    font-weight: 500;
+    line-height: 1.45;
+    white-space: normal;
+    pointer-events: none;
+    animation: tooltip-in 120ms var(--ease);
+}
+.saba-tooltip-arrow {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    margin-left: -4px;
+    background: inherit;
+    border: inherit;
+    transform: rotate(45deg);
+}
+.saba-tooltip-top .saba-tooltip-arrow {
+    bottom: -5px;
+    border-top: none;
+    border-left: none;
+}
+.saba-tooltip-bottom .saba-tooltip-arrow {
+    top: -5px;
+    border-bottom: none;
+    border-right: none;
+}
+@keyframes tooltip-in {
+    from {
+        opacity: 0;
+        transform: translateY(2px);
+    }
+}

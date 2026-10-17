@@ -121,7 +121,7 @@ export function ServerDetail({
                         type="button"
                         className="icon-btn"
                         onClick={() => onRestart(server.name)}
-                        title={t('shell.restart')}
+                        data-tooltip={t('shell.restart')}
                         aria-label={t('shell.restart')}
                     >
                         <Icon name="refresh" size="sm" />
@@ -328,7 +328,7 @@ function ServerName({ server, canRename, onRename }) {
                         type="button"
                         className="icon-btn detail-rename"
                         onClick={() => setEditing(true)}
-                        title={t('shell.rename')}
+                        data-tooltip={t('shell.rename')}
                         aria-label={t('shell.rename')}
                     >
                         <Icon name="edit" size="sm" />

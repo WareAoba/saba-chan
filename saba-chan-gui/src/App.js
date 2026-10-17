@@ -16,6 +16,7 @@ import {
 import { DiscordPage } from './components/discord/DiscordPage';
 import { AppBar } from './components/shell/AppBar';
 import { ServersPage } from './components/servers/ServersPage';
+import { TooltipProvider } from './components/ui/Tooltip';
 import { ExtensionProvider } from './contexts/ExtensionContext';
 import { useMultiConsole } from './hooks/useMultiConsole';
 import { useDragReorder } from './hooks/useDragReorder';
@@ -494,7 +495,10 @@ function App() {
                                         setModal({
                                             type: 'warning',
                                             title: t('app_exit.managed_warning_title'),
-                                            message: t('app_exit.managed_warning_message', { names, count: runningManaged.length }),
+                                            message: t('app_exit.managed_warning_message', {
+                                                names,
+                                                count: runningManaged.length,
+                                            }),
                                             detail: t('app_exit.managed_warning_detail'),
                                             buttons: [
                                                 {
@@ -672,208 +676,213 @@ function App() {
 
     return (
         <ExtensionProvider>
-            <div className="App">
-                {anyPopoverOpen && (
-                    <div
-                        className="popover-backdrop"
-                        onClick={() => {
-                            if (showBackgroundSection) requestBackgroundClose();
-                            if (showNoticeSection) requestNoticeClose();
-                        }}
-                    />
-                )}
-                <Toast />
-                <AppBar
-                    page={page}
-                    onNavigate={(p) => {
-                        setDiscordView(null);
-                        setPage(p);
-                    }}
-                    daemonStatus={backgroundDaemonStatus}
-                    discordStatus={discordBotStatus}
-                    unreadCount={unreadNoticeCount}
-                    extInitializing={extInitializing}
-                    extInitLabel={
-                        Object.values(extInitInProgress).join(', ') ||
-                        t('common:initializing', { defaultValue: 'Initializing extensions…' })
-                    }
-                    showNotice={showNoticeSection}
-                    onToggleNotice={() => (showNoticeSection ? requestNoticeClose() : setShowNoticeSection(true))}
-                    noticeProps={{
-                        onClose: requestNoticeClose,
-                        isClosing: isNoticeClosing,
-                        onOpenUpdateModal: () => useUIStore.getState().openSettings('update'),
-                    }}
-                    showDaemon={showBackgroundSection}
-                    onToggleDaemon={() =>
-                        showBackgroundSection ? requestBackgroundClose() : setShowBackgroundSection(true)
-                    }
-                    daemonProps={{ onClose: requestBackgroundClose, isClosing: isBackgroundClosing, ipcPort }}
-                />
-                <UpdateResultBanner daemonReady={backgroundDaemonStatus === 'running'} />
-
-                {/* AddInstanceModal — 새 서버 / 마이그레이션 선택 */}
-                <AddInstanceModal
-                    isOpen={showModuleManager}
-                    onClose={() => setShowModuleManager(false)}
-                    extensions={modules}
-                    servers={servers}
-                    onRefreshextensions={fetchModules}
-                    onAddServer={handleAddServer}
-                />
-
-                <div className="app-body" data-page={page}>
-                    {page === 'servers' && (
-                        <ServersPage
-                            servers={servers}
-                            setServers={setServers}
-                            modules={modules}
-                            formatUptime={formatUptime}
-                            onAddServer={() => setShowModuleManager(true)}
-                            onStart={handleStart}
-                            onStop={handleStop}
-                            onRestart={handleRestart}
-                            onRename={handleRename}
-                            onDelete={handleDeleteServer}
-                            setModal={setModal}
-                            drag={{ draggedName, cardRefs, skipNextClick, handleCardPointerDown }}
-                            consoleProps={consoleProps}
-                            settingsProps={settingsProps}
+            <TooltipProvider>
+                <div className="App">
+                    {anyPopoverOpen && (
+                        <div
+                            className="popover-backdrop"
+                            onClick={() => {
+                                if (showBackgroundSection) requestBackgroundClose();
+                                if (showNoticeSection) requestNoticeClose();
+                            }}
                         />
                     )}
-                    {page === 'discord' && <DiscordPage {...discordPageProps} initialView={discordView} />}
-                    {page === 'settings' && (
-                        <div className="page page-scroll">
-                            <SettingsModal
-                                variant="page"
-                                isOpen
-                                onClose={() => setPage('servers')}
-                                refreshInterval={refreshInterval}
-                                onRefreshIntervalChange={(val) => useSettingsStore.getState().update({ refreshInterval: val })}
-                                ipcPort={ipcPort}
-                                onIpcPortChange={(val) => useSettingsStore.getState().update({ ipcPort: val })}
-                                consoleBufferSize={consoleBufferSize}
-                                onConsoleBufferSizeChange={(val) => {
-                                    useSettingsStore.getState().update({ consoleBufferSize: val });
-                                    consoleBufferRef.current = val;
-                                }}
-                                discordCloudRelayUrl={discordCloudRelayUrl}
-                                onDiscordCloudRelayUrlChange={(val) =>
-                                    useDiscordStore.getState().update({ discordCloudRelayUrl: val })
-                                }
-                                onTestModal={setModal}
-                                onTestProgressBar={setProgressBar}
-                                initialView={settingsInitialView}
-                                onTestWaitingImage={() => {
-                                    setShowWaitingImage(true);
-                                    setTimeout(() => setShowWaitingImage(false), 4000);
-                                }}
-                                onTestLoadingScreen={runLoadingScreenTest}
+                    <Toast />
+                    <AppBar
+                        page={page}
+                        onNavigate={(p) => {
+                            setDiscordView(null);
+                            setPage(p);
+                        }}
+                        daemonStatus={backgroundDaemonStatus}
+                        discordStatus={discordBotStatus}
+                        unreadCount={unreadNoticeCount}
+                        extInitializing={extInitializing}
+                        extInitLabel={
+                            Object.values(extInitInProgress).join(', ') ||
+                            t('common:initializing', { defaultValue: 'Initializing extensions…' })
+                        }
+                        showNotice={showNoticeSection}
+                        onToggleNotice={() => (showNoticeSection ? requestNoticeClose() : setShowNoticeSection(true))}
+                        noticeProps={{
+                            onClose: requestNoticeClose,
+                            isClosing: isNoticeClosing,
+                            onOpenUpdateModal: () => useUIStore.getState().openSettings('update'),
+                        }}
+                        showDaemon={showBackgroundSection}
+                        onToggleDaemon={() =>
+                            showBackgroundSection ? requestBackgroundClose() : setShowBackgroundSection(true)
+                        }
+                        daemonProps={{ onClose: requestBackgroundClose, isClosing: isBackgroundClosing, ipcPort }}
+                    />
+                    <UpdateResultBanner daemonReady={backgroundDaemonStatus === 'running'} />
+
+                    {/* AddInstanceModal — 새 서버 / 마이그레이션 선택 */}
+                    <AddInstanceModal
+                        isOpen={showModuleManager}
+                        onClose={() => setShowModuleManager(false)}
+                        extensions={modules}
+                        servers={servers}
+                        onRefreshextensions={fetchModules}
+                        onAddServer={handleAddServer}
+                    />
+
+                    <div className="app-body" data-page={page}>
+                        {page === 'servers' && (
+                            <ServersPage
+                                servers={servers}
+                                setServers={setServers}
+                                modules={modules}
+                                formatUptime={formatUptime}
+                                onAddServer={() => setShowModuleManager(true)}
+                                onStart={handleStart}
+                                onStop={handleStop}
+                                onRestart={handleRestart}
+                                onRename={handleRename}
+                                onDelete={handleDeleteServer}
+                                setModal={setModal}
+                                drag={{ draggedName, cardRefs, skipNextClick, handleCardPointerDown }}
+                                consoleProps={consoleProps}
+                                settingsProps={settingsProps}
                             />
+                        )}
+                        {page === 'discord' && <DiscordPage {...discordPageProps} initialView={discordView} />}
+                        {page === 'settings' && (
+                            <div className="page page-scroll">
+                                <SettingsModal
+                                    variant="page"
+                                    isOpen
+                                    onClose={() => setPage('servers')}
+                                    refreshInterval={refreshInterval}
+                                    onRefreshIntervalChange={(val) =>
+                                        useSettingsStore.getState().update({ refreshInterval: val })
+                                    }
+                                    ipcPort={ipcPort}
+                                    onIpcPortChange={(val) => useSettingsStore.getState().update({ ipcPort: val })}
+                                    consoleBufferSize={consoleBufferSize}
+                                    onConsoleBufferSizeChange={(val) => {
+                                        useSettingsStore.getState().update({ consoleBufferSize: val });
+                                        consoleBufferRef.current = val;
+                                    }}
+                                    discordCloudRelayUrl={discordCloudRelayUrl}
+                                    onDiscordCloudRelayUrlChange={(val) =>
+                                        useDiscordStore.getState().update({ discordCloudRelayUrl: val })
+                                    }
+                                    onTestModal={setModal}
+                                    onTestProgressBar={setProgressBar}
+                                    initialView={settingsInitialView}
+                                    onTestWaitingImage={() => {
+                                        setShowWaitingImage(true);
+                                        setTimeout(() => setShowWaitingImage(false), 4000);
+                                    }}
+                                    onTestLoadingScreen={runLoadingScreenTest}
+                                />
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Context Menu */}
+                    {contextMenu && (
+                        <>
+                            <div
+                                className="context-menu-overlay"
+                                onClick={() => setContextMenu(null)}
+                                onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    setContextMenu(null);
+                                }}
+                            />
+                            <div className="context-menu" style={{ top: contextMenu.y, left: contextMenu.x }}>
+                                <div
+                                    className="context-menu-item"
+                                    onClick={() => {
+                                        useUIStore.getState().showServerTab(contextMenu.server.id, 'settings');
+                                        setContextMenu(null);
+                                    }}
+                                >
+                                    <Icon name="settings" size="sm" />
+                                    {t('context_menu.settings', { defaultValue: 'Settings' })}
+                                </div>
+                                <div
+                                    className="context-menu-item"
+                                    onClick={() => {
+                                        const srv = contextMenu.server;
+                                        const dir = srv?.module_settings?.working_dir || srv?.working_dir || null;
+                                        if (dir) {
+                                            window.api
+                                                ?.shellOpenPath?.(dir)
+                                                ?.catch?.((err) =>
+                                                    console.error('[App] shellOpenPath failed:', err.message),
+                                                );
+                                        }
+                                        setContextMenu(null);
+                                    }}
+                                >
+                                    <Icon name="folder" size="sm" />
+                                    {t('context_menu.open_folder', { defaultValue: 'Open in File Explorer' })}
+                                </div>
+                                <div className="context-menu-separator" />
+                                <div
+                                    className="context-menu-item danger"
+                                    onClick={() => {
+                                        handleDeleteServer(contextMenu.server);
+                                        setContextMenu(null);
+                                    }}
+                                >
+                                    <Icon name="trash" size="sm" />
+                                    {t('context_menu.delete', { defaultValue: 'Delete' })}
+                                </div>
+                            </div>
+                        </>
+                    )}
+
+                    {/* 모달 렌더링 */}
+                    {modal && modal.type === 'success' && (
+                        <SuccessModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
+                    )}
+                    {modal && modal.type === 'failure' && (
+                        <FailureModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
+                    )}
+                    {modal && modal.type === 'notification' && (
+                        <NotificationModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
+                    )}
+                    {modal && (modal.type === 'question' || modal.type === 'warning') && (
+                        <QuestionModal
+                            title={modal.title}
+                            message={modal.message}
+                            detail={modal.detail}
+                            buttons={modal.buttons}
+                            onConfirm={modal.onConfirm}
+                            onCancel={() => setModal(null)}
+                        />
+                    )}
+
+                    {/* waiting.png (느린 진행 감지) */}
+                    {showWaitingImage && (
+                        <div className="waiting-image-overlay" onClick={() => setShowWaitingImage(false)}>
+                            <img src="./waiting.png" alt="waiting" className="waiting-image" />
+                        </div>
+                    )}
+
+                    {/* 글로벌 프로그레스바 */}
+                    {progressBar && (
+                        <div className="global-progress-bar">
+                            <div className="global-progress-content">
+                                <span className="global-progress-message">{progressBar.message}</span>
+                                {progressBar.percent != null && !progressBar.indeterminate && (
+                                    <span className="global-progress-percent">{Math.round(progressBar.percent)}%</span>
+                                )}
+                            </div>
+                            <div className="global-progress-track">
+                                <div
+                                    className={`global-progress-fill ${progressBar.indeterminate ? 'indeterminate' : ''} ${progressBar.percent === 100 ? 'complete' : ''}`}
+                                    style={progressBar.indeterminate ? {} : { width: `${progressBar.percent || 0}%` }}
+                                />
+                            </div>
                         </div>
                     )}
                 </div>
-
-                {/* Context Menu */}
-                {contextMenu && (
-                    <>
-                        <div
-                            className="context-menu-overlay"
-                            onClick={() => setContextMenu(null)}
-                            onContextMenu={(e) => {
-                                e.preventDefault();
-                                setContextMenu(null);
-                            }}
-                        />
-                        <div className="context-menu" style={{ top: contextMenu.y, left: contextMenu.x }}>
-                            <div
-                                className="context-menu-item"
-                                onClick={() => {
-                                    useUIStore.getState().showServerTab(contextMenu.server.id, 'settings');
-                                    setContextMenu(null);
-                                }}
-                            >
-                                <Icon name="settings" size="sm" />
-                                {t('context_menu.settings', { defaultValue: 'Settings' })}
-                            </div>
-                            <div
-                                className="context-menu-item"
-                                onClick={() => {
-                                    const srv = contextMenu.server;
-                                    const dir = srv?.module_settings?.working_dir ||
-                                        srv?.working_dir ||
-                                        null;
-                                    if (dir) {
-                                        window.api?.shellOpenPath?.(dir)?.catch?.((err) =>
-                                            console.error('[App] shellOpenPath failed:', err.message));
-                                    }
-                                    setContextMenu(null);
-                                }}
-                            >
-                                <Icon name="folder" size="sm" />
-                                {t('context_menu.open_folder', { defaultValue: 'Open in File Explorer' })}
-                            </div>
-                            <div className="context-menu-separator" />
-                            <div
-                                className="context-menu-item danger"
-                                onClick={() => {
-                                    handleDeleteServer(contextMenu.server);
-                                    setContextMenu(null);
-                                }}
-                            >
-                                <Icon name="trash" size="sm" />
-                                {t('context_menu.delete', { defaultValue: 'Delete' })}
-                            </div>
-                        </div>
-                    </>
-                )}
-
-                {/* 모달 렌더링 */}
-                {modal && modal.type === 'success' && (
-                    <SuccessModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
-                )}
-                {modal && modal.type === 'failure' && (
-                    <FailureModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
-                )}
-                {modal && modal.type === 'notification' && (
-                    <NotificationModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
-                )}
-                {modal && (modal.type === 'question' || modal.type === 'warning') && (
-                    <QuestionModal
-                        title={modal.title}
-                        message={modal.message}
-                        detail={modal.detail}
-                        buttons={modal.buttons}
-                        onConfirm={modal.onConfirm}
-                        onCancel={() => setModal(null)}
-                    />
-                )}
-
-                {/* waiting.png (느린 진행 감지) */}
-                {showWaitingImage && (
-                    <div className="waiting-image-overlay" onClick={() => setShowWaitingImage(false)}>
-                        <img src="./waiting.png" alt="waiting" className="waiting-image" />
-                    </div>
-                )}
-
-                {/* 글로벌 프로그레스바 */}
-                {progressBar && (
-                    <div className="global-progress-bar">
-                        <div className="global-progress-content">
-                            <span className="global-progress-message">{progressBar.message}</span>
-                            {progressBar.percent != null && !progressBar.indeterminate && (
-                                <span className="global-progress-percent">{Math.round(progressBar.percent)}%</span>
-                            )}
-                        </div>
-                        <div className="global-progress-track">
-                            <div
-                                className={`global-progress-fill ${progressBar.indeterminate ? 'indeterminate' : ''} ${progressBar.percent === 100 ? 'complete' : ''}`}
-                                style={progressBar.indeterminate ? {} : { width: `${progressBar.percent || 0}%` }}
-                            />
-                        </div>
-                    </div>
-                )}
-            </div>
+            </TooltipProvider>
         </ExtensionProvider>
     );
 }

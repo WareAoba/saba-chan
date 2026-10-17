@@ -119,7 +119,7 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
                             type="button"
                             className="icon-btn bg-pop-copy"
                             onClick={() => navigator.clipboard?.writeText(`http://${address}`).catch(() => {})}
-                            title={t('shell.copy')}
+                            data-tooltip={t('shell.copy')}
                             aria-label={t('shell.copy')}
                         >
                             <Icon name="copy" size={14} />
