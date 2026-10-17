@@ -145,17 +145,19 @@ jobs:
           AWS_DEFAULT_REGION: auto
           VERSION: ${{ steps.r2.outputs.version }}
         run: |
+          # 확인하지 못하면 "없다"로 치지 않고 멈춘다 (덮어쓰기 방지)
           code=$(curl -s -o /dev/null -w '%{http_code}' -H 'X-Saba-Client: 1' \
             "${{ vars.RELAY_URL }}/v1/updates/manifest/$VERSION")
-          if [ "$code" = "200" ]; then
-            echo "::error::Relay already has $VERSION; bump versions.toml"
-            exit 1
-          fi
-          existing=$(aws s3 ls "s3://${{ vars.R2_BUCKET }}/releases/$VERSION/" \
-            --endpoint-url "${{ vars.R2_ENDPOINT }}" || true)
-          if [ -n "$existing" ]; then
-            echo "::error::R2 releases/$VERSION/ already has objects:"
-            echo "$existing"
+          case "$code" in
+            404) ;;
+            200) echo "::error::Relay already has $VERSION; bump versions.toml"; exit 1 ;;
+            *) echo "::error::Relay check for $VERSION returned HTTP $code; cannot confirm it is new"; exit 1 ;;
+          esac
+          count=$(aws s3api list-objects-v2 --bucket "${{ vars.R2_BUCKET }}" \
+            --prefix "releases/$VERSION/" --max-keys 1 --query 'KeyCount' --output text \
+            --endpoint-url "${{ vars.R2_ENDPOINT }}")
+          if [ "$count" != "0" ]; then
+            echo "::error::R2 releases/$VERSION/ already has objects (KeyCount=$count)"
             exit 1
           fi
 

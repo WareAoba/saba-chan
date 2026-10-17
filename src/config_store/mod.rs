@@ -240,30 +240,52 @@ impl ConfigStore {
         }
     }
 
-    /// `keys`(없으면 전부)를 기본값으로 되돌리고 바뀐 설정 전체를 돌려준다.
-    /// 키는 최상위 이름이다 (예: `language`, `portConflictCheck`)
+    /// 기본값이 "없음"이라 기본값 JSON에 나오지 않는 키 (초기화하면 지운다)
+    fn optional_keys(kind: &str) -> &'static [&'static str] {
+        match kind {
+            "gui" => &["windowBounds", "language"],
+            _ => &[],
+        }
+    }
+
+    /// `keys`(None이면 전부)를 기본값으로 되돌리고 바뀐 설정 전체를 돌려준다.
+    /// 키는 최상위 이름이다 (예: `language`, `portConflictCheck`). 빈 목록·모르는 키는 오류.
     pub async fn reset_to_defaults(&self, kind: &str, keys: Option<&[String]>) -> Result<Value, ConfigStoreError> {
         let defaults = Self::defaults_json(kind)
+            .and_then(|d| d.as_object().cloned())
             .ok_or_else(|| ConfigStoreError::InvalidData(format!("Unknown config: {}", kind)))?;
-        let patch = match keys {
+        let full = match keys {
             None => defaults,
+            Some([]) => {
+                return Err(ConfigStoreError::InvalidData("keys is empty; omit keys to reset everything".into()))
+            }
             Some(keys) => {
-                let obj = defaults.as_object().cloned().unwrap_or_default();
-                let mut patch = serde_json::Map::new();
+                let current = if kind == "gui" { self.get_gui_settings_json().await } else { self.get_bot_config_json().await };
+                let mut current = current.as_object().cloned().unwrap_or_default();
                 for key in keys {
-                    let value = obj
-                        .get(key)
-                        .ok_or_else(|| ConfigStoreError::InvalidData(format!("Unknown {} setting: {}", kind, key)))?;
-                    patch.insert(key.clone(), value.clone());
+                    if let Some(value) = defaults.get(key) {
+                        current.insert(key.clone(), value.clone());
+                    } else if Self::optional_keys(kind).contains(&key.as_str()) {
+                        current.remove(key);
+                    } else {
+                        return Err(ConfigStoreError::InvalidData(format!("Unknown {} setting: {}", kind, key)));
+                    }
                 }
-                Value::Object(patch)
+                current
             }
         };
+        // 머지하지 않고 통째로 바꾼다 (지운 키가 되살아나지 않게)
         if kind == "gui" {
-            self.set_gui_settings_from_json(patch).await?;
+            let settings: GuiSettings = serde_json::from_value(Value::Object(full))
+                .map_err(|e| ConfigStoreError::InvalidData(format!("Invalid GUI settings: {}", e)))?;
+            self.file.set_section("gui", serde_json::to_value(&settings)?)?;
+            *self.gui_settings.write().await = settings;
             Ok(self.get_gui_settings_json().await)
         } else {
-            self.set_bot_config_from_json(patch).await?;
+            let config: BotConfig = serde_json::from_value(Value::Object(full))
+                .map_err(|e| ConfigStoreError::InvalidData(format!("Invalid bot config: {}", e)))?;
+            self.file.set_section("relay", serde_json::to_value(&config)?)?;
+            *self.bot_config.write().await = config;
             Ok(self.get_bot_config_json().await)
         }
     }
@@ -524,6 +546,21 @@ mod tests {
 
         let bot = store.get_bot_config().await;
         assert_eq!(bot, BotConfig::default());
+    }
+
+    #[tokio::test]
+    async fn reset_clears_optional_keys_and_rejects_empty_or_unknown() {
+        let tmp = TempDir::new().unwrap();
+        let store = ConfigStore::new(tmp.path());
+        store.set_gui_settings_from_json(serde_json::json!({"language": "ko", "fontScale": 150})).await.unwrap();
+
+        let out = store.reset_to_defaults("gui", Some(&["language".to_string()])).await.unwrap();
+        assert!(out.get("language").is_none());
+        assert_eq!(out["fontScale"], 150);
+        assert!(store.reset_to_defaults("gui", Some(&[])).await.is_err());
+        assert!(store.reset_to_defaults("gui", Some(&["nope".to_string()])).await.is_err());
+        let out = store.reset_to_defaults("gui", None).await.unwrap();
+        assert_eq!(out["fontScale"], 100);
     }
 
     #[tokio::test]

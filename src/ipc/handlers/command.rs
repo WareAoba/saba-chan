@@ -64,10 +64,19 @@ pub async fn execute_command(
             "module": &instance.module_name,
             "extension_data": &instance.extension_data,
             "running": running,
-            "args": &req.args,
         });
-        let planned = state.extension_manager.read().await.plan_command(&request.name, context);
-        if let Some(plan) = planned {
+        let planned = state.extension_manager.read().await.plan_command(&request.name, &request.args, context);
+        if let Some(Err(e)) = &planned {
+            return command_reply(
+                InternalResponse {
+                    status: StatusCode::BAD_REQUEST,
+                    body: json!({ "error": e.message, "error_code": e.code, "field": e.field }),
+                },
+                &request.name,
+                &errors,
+            );
+        }
+        if let Some(Ok(plan)) = planned {
             let resp = match plan.run(crate::plugin::DEFAULT_PLUGIN_TIMEOUT_SECS).await.into_iter().next() {
                 Some((ext_id, Ok(value))) => {
                     let failed = value.get("success").and_then(Value::as_bool) == Some(false);

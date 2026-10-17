@@ -2793,6 +2793,9 @@ ipcMain.handle('nodeToken:load', async () => {
     return loadNodeToken();
 });
 
+// 연결 해제: 데몬이 릴레이 에이전트를 멈추고 토큰을 지운다
+ipcMain.handle('nodeToken:delete', () => daemonCall('delete', '/api/config/node-token'));
+
 // 로그 파일 경로 반환
 ipcMain.handle('logs:getPath', async () => {
     return logFilePath || '로그 파일 없음';
