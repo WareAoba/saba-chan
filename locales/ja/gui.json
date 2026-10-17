@@ -927,5 +927,18 @@
     "tool_social_notes": "空気読みメモ",
     "tool_social_notes_hint": "雰囲気や人について自分だけのメモを残します。アプリには表示されません。",
     "relay_delete_pending": "以前のチャットボット設定をまだリレーから削除できていません。次の接続時にもう一度削除します。"
+  },
+  "module_audit": {
+    "title": "モジュール '{{module}}' が宣言していない機能を使っています。",
+    "summary": "コードで {{perms}} を使っていますが、module.toml に記載がありません。信頼できるモジュールか確認してください。",
+    "show": "詳細（{{count}} か所）",
+    "hide": "閉じる",
+    "perm_network": "ネットワーク接続",
+    "perm_spawn_process": "他のプログラムの実行",
+    "perm_native_code": "ネイティブコードの読み込み",
+    "perm_dynamic_code": "動的コードの実行",
+    "perm_env_secrets": "環境変数（秘密情報）の読み取り",
+    "perm_fs_outside_instance": "サーバーフォルダー外のファイル",
+    "perm_unparsable": "検査できないコード"
   }
 }

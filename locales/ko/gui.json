@@ -927,5 +927,18 @@
     "tool_social_notes": "눈치 메모",
     "tool_social_notes_hint": "분위기와 사람들에 대해 혼자만 보는 메모를 남겨요. 내용은 앱에 보이지 않아요.",
     "relay_delete_pending": "예전 챗봇 설정을 릴레이에서 아직 지우지 못했어요. 다음에 연결될 때 다시 지웁니다."
+  },
+  "module_audit": {
+    "title": "'{{module}}' 모듈이 선언하지 않은 기능을 써요.",
+    "summary": "코드에서 {{perms}}을(를) 쓰는데 모듈 설명(module.toml)에는 없어요. 믿을 수 있는 모듈인지 확인해 주세요.",
+    "show": "자세히 ({{count}}곳)",
+    "hide": "접기",
+    "perm_network": "네트워크 접속",
+    "perm_spawn_process": "다른 프로그램 실행",
+    "perm_native_code": "네이티브 코드 불러오기",
+    "perm_dynamic_code": "동적 코드 실행",
+    "perm_env_secrets": "환경 변수(비밀값) 읽기",
+    "perm_fs_outside_instance": "서버 폴더 밖 파일 접근",
+    "perm_unparsable": "검사할 수 없는 코드"
   }
 }

@@ -2193,3 +2193,36 @@ button.appbar-preflight {
 .cb-counter.over {
     color: var(--warn);
 }
+
+/* ── 모듈 코드 검사 경고 ── */
+.module-audit-body {
+    flex: 1;
+    min-width: 0;
+}
+.module-audit .btn-link {
+    margin-left: 6px;
+    padding: 0;
+    height: auto;
+    border: none;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    cursor: pointer;
+    text-decoration: underline;
+}
+.module-audit-list {
+    list-style: none;
+    margin-top: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: var(--fs-xs);
+}
+.module-audit-list li {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.module-audit-list code {
+    font-family: var(--font-mono);
+}

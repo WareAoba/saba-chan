@@ -927,5 +927,18 @@
     "tool_social_notes": "察言觀色備忘",
     "tool_social_notes_hint": "記錄關於氣氛和成員的私人備忘，不會在應用程式中顯示。",
     "relay_delete_pending": "舊的聊天機器人設定尚未從中繼刪除，下次連線時會再次刪除。"
+  },
+  "module_audit": {
+    "title": "模組 '{{module}}' 使用了未宣告的功能。",
+    "summary": "其程式碼使用了 {{perms}}，但 module.toml 中未列出。請確認你信任此模組。",
+    "show": "詳細（{{count}} 處）",
+    "hide": "收合",
+    "perm_network": "網路存取",
+    "perm_spawn_process": "執行其他程式",
+    "perm_native_code": "載入原生程式碼",
+    "perm_dynamic_code": "執行動態程式碼",
+    "perm_env_secrets": "讀取環境變數（機密）",
+    "perm_fs_outside_instance": "伺服器資料夾以外的檔案",
+    "perm_unparsable": "無法檢查的程式碼"
   }
 }

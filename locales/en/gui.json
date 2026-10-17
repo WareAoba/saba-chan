@@ -927,5 +927,18 @@
     "tool_social_notes": "Social notes",
     "tool_social_notes_hint": "Keeps private notes about the mood and people. Never shown in the app.",
     "relay_delete_pending": "The old chatbot settings haven't been removed from the relay yet. It will retry on the next connection."
+  },
+  "module_audit": {
+    "title": "Module '{{module}}' uses capabilities it doesn't declare.",
+    "summary": "Its code uses {{perms}}, which module.toml doesn't list. Make sure you trust this module.",
+    "show": "Details ({{count}})",
+    "hide": "Hide",
+    "perm_network": "network access",
+    "perm_spawn_process": "running other programs",
+    "perm_native_code": "loading native code",
+    "perm_dynamic_code": "running dynamic code",
+    "perm_env_secrets": "reading environment secrets",
+    "perm_fs_outside_instance": "files outside the server folder",
+    "perm_unparsable": "code that couldn't be checked"
   }
 }

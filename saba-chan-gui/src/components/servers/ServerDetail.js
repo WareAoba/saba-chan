@@ -22,6 +22,7 @@ import { ServerSettingsModal } from '../ServerSettingsModal';
 import { Segmented, StatusChip } from '../ui/StatusChip';
 import { ExitHistory } from './ExitHistory';
 import { MaintenanceTab, maintenanceAvailable } from './MaintenanceTab';
+import { ModuleAuditNotice } from './ModuleAuditNotice';
 import { ServerConsole } from './ServerConsole';
 
 /**
@@ -212,6 +213,8 @@ export function ServerDetail({
                     </span>
                 </div>
             )}
+
+            {status !== 'missing' && <ModuleAuditNotice moduleName={server.module} />}
 
             {conflicts.length > 0 && (
                 <div className="notice tone-warn">

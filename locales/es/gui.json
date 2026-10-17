@@ -927,5 +927,18 @@
     "tool_social_notes": "Notas sociales",
     "tool_social_notes_hint": "Guarda notas privadas sobre el ambiente y las personas. Nunca se muestran en la app.",
     "relay_delete_pending": "Los ajustes antiguos del chatbot aún no se han borrado del relay. Se reintentará en la próxima conexión."
+  },
+  "module_audit": {
+    "title": "El módulo '{{module}}' usa capacidades que no declara.",
+    "summary": "Su código usa {{perms}}, que module.toml no incluye. Asegúrate de que confías en este módulo.",
+    "show": "Detalles ({{count}})",
+    "hide": "Ocultar",
+    "perm_network": "acceso a la red",
+    "perm_spawn_process": "ejecución de otros programas",
+    "perm_native_code": "carga de código nativo",
+    "perm_dynamic_code": "ejecución de código dinámico",
+    "perm_env_secrets": "lectura de secretos del entorno",
+    "perm_fs_outside_instance": "archivos fuera de la carpeta del servidor",
+    "perm_unparsable": "código que no se pudo revisar"
   }
 }
