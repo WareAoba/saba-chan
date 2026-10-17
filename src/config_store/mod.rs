@@ -32,8 +32,9 @@ pub struct GuiSettings {
     pub port_conflict_check: bool,
 
     // Theme customization
-    /// "dark" | "light" | "system"
-    pub theme: String,
+    /// "dark" | "light" | "auto". 없으면 GUI가 정한다(예전 브라우저 저장값 이전, 기본 auto)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
     pub accent_color: String,
     pub accent_secondary: String,
     pub use_gradient: bool,
@@ -85,7 +86,7 @@ impl Default for GuiSettings {
             console_buffer_size: 2000,
             auto_generate_passwords: true,
             port_conflict_check: true,
-            theme: "dark".to_string(),
+            theme: None,
             accent_color: "#667eea".to_string(),
             accent_secondary: "#764ba2".to_string(),
             use_gradient: true,
@@ -243,7 +244,7 @@ impl ConfigStore {
     /// 기본값이 "없음"이라 기본값 JSON에 나오지 않는 키 (초기화하면 지운다)
     fn optional_keys(kind: &str) -> &'static [&'static str] {
         match kind {
-            "gui" => &["windowBounds", "language"],
+            "gui" => &["windowBounds", "language", "theme"],
             _ => &[],
         }
     }

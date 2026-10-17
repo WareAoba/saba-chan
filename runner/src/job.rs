@@ -7,7 +7,8 @@
 use std::mem::{size_of, zeroed};
 use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
 use windows_sys::Win32::System::JobObjects::{
-    AssignProcessToJobObject, CreateJobObjectW, JobObjectBasicAccountingInformation, JobObjectExtendedLimitInformation,
+    AssignProcessToJobObject, CreateJobObjectW, JobObjectBasicAccountingInformation, JobObjectBasicProcessIdList,
+    JobObjectExtendedLimitInformation,
     QueryInformationJobObject, SetInformationJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
 };
@@ -70,6 +71,30 @@ impl Job {
             } else {
                 info.ActiveProcesses
             }
+        }
+    }
+}
+
+impl Job {
+    /// 잡 안에서 살아 있는 프로세스 PID (런처가 남긴 진짜 서버를 찾는 데 쓴다)
+    pub fn process_ids(&self) -> Vec<u32> {
+        const MAX: usize = 256;
+        // 헤더(u32 두 개) 뒤에 PID 배열이 이어지는 가변 길이 구조체
+        let mut buf = vec![0usize; 1 + MAX];
+        unsafe {
+            let ok = QueryInformationJobObject(
+                self.0,
+                JobObjectBasicProcessIdList,
+                buf.as_mut_ptr() as *mut _,
+                (buf.len() * size_of::<usize>()) as u32,
+                std::ptr::null_mut(),
+            );
+            if ok == 0 {
+                return Vec::new();
+            }
+            let header = buf.as_ptr() as *const u32;
+            let listed = (*header.add(1) as usize).min(MAX);
+            buf[1..1 + listed].iter().map(|&pid| pid as u32).collect()
         }
     }
 }

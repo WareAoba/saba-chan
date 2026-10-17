@@ -29,6 +29,11 @@ pub fn run_dir(instance_dir: &Path) -> PathBuf {
     instance_dir.join(RUN_DIR)
 }
 
+/// 러너가 지금 서버로 보는 PID. 런처가 끝나고 남긴 서버를 따라가면 러너가 runner.json을 고친다
+pub fn runner_server_pid(instance_dir: &Path) -> Option<u32> {
+    read_json::<RunnerInfo>(&runner_file(&run_dir(instance_dir))).map(|i| i.pid)
+}
+
 /// `<instance>/logs/sessions/`
 pub fn sessions_dir(instance_dir: &Path) -> PathBuf {
     instance_dir.join("logs").join(SESSIONS_DIR)

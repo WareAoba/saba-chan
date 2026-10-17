@@ -338,7 +338,15 @@ fn run(args: Args) -> Result<i32, String> {
             write_log(&log, Stream::System, &format!(
                 "PID {} exited with {:?} and left {} process(es) running; following them as the server. \
                  Point the module at the real server executable to get its console.", pid, exit.code, left));
+            // 데몬이 상태를 판단하는 PID를 살아 있는 서버 PID로 바꿔 둔다
+            let mut followed = None;
             while job.active_processes() > 0 {
+                let current = job.process_ids().into_iter().next();
+                if current.is_some() && current != followed {
+                    followed = current;
+                    let info = RunnerInfo { pid: current.unwrap_or(pid), ..info.clone() };
+                    let _ = write_json(&runner_file(&args.run_dir), &info);
+                }
                 std::thread::sleep(Duration::from_secs(1));
             }
             // 진짜 서버의 종료 코드는 알 수 없다
