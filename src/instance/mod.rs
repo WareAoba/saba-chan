@@ -55,6 +55,12 @@ pub struct ServerInstance {
     /// 여기에 선언된 익스텐션이 활성화되어 있지 않으면 시작이 차단됩니다.
     #[serde(default)]
     pub required_extensions: Vec<String>,
+    /// 예약 작업 (A3): 백업·재시작·공지·업데이트
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub schedule: Vec<crate::scheduler::ScheduledTask>,
+    /// 자동 백업(예약·업데이트 전·복원 전)을 몇 개 남길지. 수동 백업은 세지 않는다. 기본 10
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backup_keep: Option<u32>,
 }
 
 fn default_protocol_mode() -> String {
@@ -91,6 +97,8 @@ impl ServerInstance {
             server_version: None,
             extension_data: HashMap::new(),
             required_extensions: Vec::new(),
+            schedule: Vec::new(),
+            backup_keep: None,
         }
     }
 

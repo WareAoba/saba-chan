@@ -686,6 +686,11 @@ impl IPCServer {
             .route("/api/instance/:id/server/reset", post(handlers::managed::reset_server_handler))
             .route("/api/instance/:id/accept-eula", post(handlers::managed::accept_eula_handler))
             .route("/api/instance/:id/diagnose", post(handlers::managed::diagnose_handler))
+            // 백업 (A2)·예약 작업 (A3)
+            .route("/api/instance/:id/backups", get(handlers::backup::list_backups).post(handlers::backup::create_backup))
+            .route("/api/instance/:id/backups/:name", delete(handlers::backup::delete_backup))
+            .route("/api/instance/:id/backups/:name/restore", post(handlers::backup::restore_backup))
+            .route("/api/instance/:id/schedule", get(handlers::backup::get_schedule).put(handlers::backup::put_schedule))
             // ── Server installation endpoints ──
             .route("/api/module/:name/versions", get(handlers::managed::list_versions_handler))
             .route("/api/module/:name/version/:version", get(handlers::managed::get_version_details_handler))

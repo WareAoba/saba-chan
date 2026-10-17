@@ -8,3 +8,4 @@ pub mod config;
 pub mod extension;
 pub mod relay;
 pub mod chat;
+pub mod backup;

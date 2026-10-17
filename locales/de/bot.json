@@ -127,5 +127,9 @@
     "scissors": "Schere",
     "rock": "Stein",
     "paper": "Papier"
+  },
+  "schedule": {
+    "restart_warning": "Der Server startet in {{minutes}} Min. neu.",
+    "update_warning": "Der Server startet in {{minutes}} Min. für ein Update neu."
   }
 }

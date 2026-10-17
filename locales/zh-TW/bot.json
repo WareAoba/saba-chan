@@ -127,5 +127,9 @@
     "scissors": "剪刀",
     "rock": "石頭",
     "paper": "布"
+  },
+  "schedule": {
+    "restart_warning": "伺服器將在 {{minutes}} 分鐘後重新啟動。",
+    "update_warning": "伺服器將在 {{minutes}} 分鐘後重新啟動以進行更新。"
   }
 }

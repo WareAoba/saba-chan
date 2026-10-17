@@ -21,13 +21,13 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:572-668`(인증 미들웨어 
 | **Daemon spawn** | `startDaemon()` main.js:507-604 | dev 모드는 `target/release/saba-core(.exe)`, prod 모드는 `getInstallRoot()/saba-core(.exe)`를 `--spawned` 인자로 실행한다. env는 `RUST_LOG=info, SABA_LANG, SABA_IPC_PORT, SABA_INSTANCES_PATH=<userData>/instances, SABA_MODULES_PATH`. stdout/stderr는 GUI 로그로 넘긴다 |
 | Daemon 재사용/기동 판단 | `ensureDaemon()` main.js:907-986 | `GET /health`가 200이면 기존 daemon을 재사용한다. 401이면 토큰을 다시 읽으며 최대 3회 재시도한다. ECONNREFUSED/timeout이면 `startDaemon()`을 호출하고 500ms 간격으로 최대 8회 폴링한다 |
 | Daemon 종료 | `stopDaemon()` main.js:607-674, `cleanQuit()` 824-904 | Windows는 `taskkill /PID … /F /T`, Unix는 SIGTERM을 보내고 2초 뒤 SIGKILL한다. 그 뒤 **프로세스 이름 기반 fallback**(`taskkill /IM saba-core.exe /F` 869, `pkill -f saba-core` 876)을 실행한다 |
-| 클라이언트 등록/heartbeat | main.js:1014-1073 | `POST /api/client/register {kind:'gui'}`, 30초마다 `GET /api/ext-process/discord-bot/status`로 bot pid를 조회한 뒤 `POST /api/client/:id/heartbeat {bot_pid}`를 보낸다. 종료 시 `DELETE /api/client/:id/unregister[?shutdown=true]`를 호출한다 |
+| 클라이언트 등록/heartbeat | main.js:1014-1073 | `POST /api/client/register {kind:'gui'}`, 이후 주기적으로 `POST /api/client/:id/heartbeat`를 보낸다(봇 pid 조회는 로컬 봇과 함께 없어졌다). 종료 시 `DELETE /api/client/:id/unregister[?shutdown=true]`를 호출한다 |
 | install_root 동기화 | `syncInstallRoot()` main.js:989-1003 | `PUT /api/updates/config {install_root}` |
 | 업데이트 백그라운드 체크 | main.js:1153-1268 | 3시간 주기로 `POST /api/updates/check`. 결과는 OS Notification과 renderer `updates:available` 이벤트로 알린다. 자동 다운로드는 없다("향후 구현 예정" 주석, 1223-1224) |
 | **Updater exe spawn** | `updater:launchApply` main.js:2744-2777, `findUpdaterExe()` 1108-1150 | `saba-chan-updater.exe --apply --relaunch <gui exe>`를 **detached**로 실행한다(Windows는 `cmd /c start`로 Job Object를 회피, `spawnDetached` 766-787). 이후 `cleanQuit()`. 파일명이 `.exe`로 하드코딩되어 있어 Linux/macOS에서는 updater를 찾지 못한다 |
 | **Installer spawn(언인스톨)** | `app:launchUninstaller` main.js:2891-2959 | 설치 경로를 직접 탐색하고, Windows는 `reg query HKCU\…\Uninstall\Saba-chan`도 본다(2920). 이후 `saba-chan-installer.exe --uninstall`을 detached로 실행한다 |
 | **Mock release server spawn** | main.js:679-759 | `node scripts/mock-release-server.js --port 9876`(테스트/개발용). preload에 노출되어 있지만 renderer는 사용하지 않는다 |
-| Discord bot 기동 | `discord:start` main.js:3183-3299 | **GUI가 bot을 직접 spawn하지는 않는다.** `POST /api/ext-process/discord-bot/start`로 daemon에게 node 프로세스 실행을 요청한다(§4.1) |
+| 디스코드 연결 | `discord:start/stop/status` main.js:2805-2833 | GUI는 봇을 띄우지 않는다. 데몬의 릴레이 에이전트를 `/api/relay/agent{,/start,/stop}`로 켜고 끈다(§4) |
 | 콘솔 팝아웃 창 | main.js:1865-1978 | 별도 `BrowserWindow`에 `?console-popout=<id>&name=` 쿼리를 붙여 같은 React 번들을 로드한다 |
 | 트레이 | main.js:1366-1472 | 데몬 시작/종료, "인터페이스만 종료", "완전히 종료" 메뉴. 트레이 메뉴의 "데몬 시작"은 API가 아니라 `startDaemon()`을 직접 호출한다 |
 | 종료 플로우 | main.js:1312-1361, 1352 | 창 close를 가로채 renderer에 `app:closeRequest`를 보내고, 선택 결과 `exit-interface`/`quit`/`cancel`을 받는다 |
@@ -87,12 +87,9 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:572-668`(인증 미들웨어 
 | getFixedPaths (83) | paths:getFixed | 2992 | 로컬 경로 계산 | n/a (renderer 미사용) |
 | openFileDialog / openFolderDialog (85-86) | dialog:* | 3044/3073 | Electron 네이티브 다이얼로그 | n/a |
 | migrationScanDir (88) | migration:scanDir | 3085 | POST /api/fs/scan-dir | ✓ 625 |
-| discordBotStatus (90) | discord:status | 3149 | GET /api/ext-process/discord-bot/status | ✓ 630 |
-| discordBotStart (91) | discord:start | 3183 | PUT /api/config/bot, **PATCH {relayUrl}/api/hosts/:hostId/bot-config(외부 직접)**, POST /api/node-env/setup, POST /api/ext-process/discord-bot/start | ✓ 615/659/628 |
-| discordBotStop (92) | discord:stop | 3301 | POST /api/ext-process/discord-bot/stop | ✓ 629 |
-| discordGuildMembers / Channels (93-94) | discord:guildMembers/Channels | 3159/3171 | POST …/discord-bot/stdin 후 GET …/discord-bot/console 폴링(`__IPC__:` 응답 찾기) | ✓ 631-632 |
+| discordBotStatus / Start / Stop (96-98) | discord:status/start/stop | 2805-2833 | GET /api/relay/agent, POST /api/relay/agent/start·stop. 노드 토큰이 없으면 `cloud_token_not_found` | ✓ |
 | botConfigLoad (99) | botConfig:load | 3311 | GET /api/config/bot | ✓ 615 |
-| botConfigSave (100) | botConfig:save | 3368 | GET 후 merge해서 PUT /api/config/bot (**await 없음**, 3397), cloud면 relay에 직접 PATCH(3406) | ✓ |
+| botConfigSave (101) | botConfig:save | 2898-2908 | PUT /api/config/bot(최상위 키 단위 병합). 릴레이 동기화는 에이전트 하트비트가 맡는다 | ✓ |
 | syncGuiConfig (102) | guiConfig:sync | 2961 | **no-op**(`syncGuiConfigToDaemon` 501-503 본문이 비어 있음) | 죽은 채널 |
 | saveNodeToken / loadNodeToken (104-105) | nodeToken:* | 3316/3320 | PUT/GET /api/config/node-token | ✓ 619 |
 | relayCheckHostStatus… relayPollPairingStatus (107-111) | relay:* | 2620-2685 | GET /api/relay/host/:id/status, /nodes, GET /api/relay/node/:guild/members, POST /api/relay/pair/initiate, GET /api/relay/pair/:code/status | ✓ 661-665 |
@@ -105,7 +102,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:572-668`(인증 미들웨어 
 | daemonStatus (132) | daemon:status | 2810 | GET /health | ✓ 574 |
 | daemonRestart (133) | daemon:restart | 2820 | **자기가 spawn한 daemon 프로세스를 kill한 뒤 `startDaemon()`.** API(`/api/daemon/shutdown`)를 거치지 않는다 | — |
 | minimize/maximize/closeWindow (135-137) | window:* | 3428-3451 | 창 조작 | n/a |
-| electron.getLanguage/setLanguage/getSystemLanguage (146-148) | language:* | 3000-3041 | 로컬 settings.json 읽기/쓰기. 언어가 바뀌면 bot을 정지시키고(`POST …/discord-bot/stop`) renderer에 `bot:relaunch`를 보낸다 | 부분 |
+| electron.getLanguage/setLanguage/getSystemLanguage (146-148) | language:* | 3000-3041 | 로컬 settings.json 읽기/쓰기. 언어를 저장하고 번역을 다시 읽는다. 데몬은 재시작하지 않고, 로컬 봇 재시작 단계는 없어졌다(qcza9f main.js:2737-2747) | 부분 |
 | electron.shell.openExternal (151) | shell:openExternal | 3330 | 외부 URL 열기 | n/a |
 
 Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `updates:available`, `updates:completed`, `bot:error`, `bot:relaunch`, `console:popoutOpened/Closed/popinRequest`, `app:closeRequest`.
@@ -117,7 +114,7 @@ Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `u
 | 파일 | 경로 | 접근 방식 | 스키마 |
 |---|---|---|---|
 | settings.json | `<dataDir>/settings.json` (main.js:432-435) | `loadSettings()`(437-477)는 **항상 파일을 직접 읽는다.** `saveSettings()`(480-498)는 `daemonProcess`가 null이면 파일에 직접 쓰고, 아니면 `PUT /api/config/gui` | 기본값(main.js:452-462): `autoRefresh, refreshInterval(2000), windowBounds{width,height,x,y}, language, ipcPort(57474), consoleBufferSize(2000), autoGeneratePasswords, portConflictCheck`. renderer가 추가로 저장하는 키(useSettingsStore.js:79-98): `accentColor, accentSecondary, useGradient, fontScale, enableTransitions, consoleSyntaxHighlight, consoleBgColor, consoleTextColor, sidebarCompact, consoleFontScale`. 레거시 키 `discordToken/discordAutoStart`는 App.js:418-436에서 bot-config로 마이그레이션한다 |
-| bot-config.json | daemon이 관리(`/api/config/bot`) | GUI는 API만 사용 | `prefix, token, autoStart, moduleAliases, commandAliases, musicEnabled, musicChannelId, musicUISettings{queueLines,refreshInterval}, nodeSettings{<guildId>:{allowedInstances[], memberPermissions{<userId>:{<serverId>:[deniedCmd]}}}}, mode('local'/'cloud'), cloud{relayUrl,hostId}, cloudNodes[], cloudMembers{}` (main.js:3200-3217, 3376-3406) |
+| bot-config.json | daemon이 관리(`/api/config/bot`) | GUI는 API만 사용 | `prefix, cloud{relayUrl,hostId}, moduleAliases, commandAliases, instanceAliases{<인스턴스ID>:"별명, 별명"}, nodeSettings, cloudNodes[], cloudMembers{}`. 로컬 봇 필드(`token`, `autoStart`, `mode`, `music*`)는 없다(01 §4 BotConfig) |
 | node token | `/api/config/node-token` | API | `{token: "sbn_<nodeId>.<secret>"}` |
 | .ipc_token | `<dataDir>/.ipc_token` 또는 `SABA_TOKEN_PATH` | 직접 읽기(필수 부트스트랩) | 평문 UUID |
 | logs | `<dataDir>/logs/*.log` | 직접 쓰기 | — |
@@ -137,7 +134,7 @@ Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `u
 - **CommandModal.js**: 모듈 `commands.fields` 기반 명령 힌트, 자동완성, 입력 폼. `executeCommand`(107)로 실행한다.
 - **SettingsModal.js**: 탭은 `general / appearance / extensions / advanced`(335-353)이다. 버전과 컴포넌트 정보(`getComponentInfo`), 언어, 테마, IPC 포트, 언인스톨(`launchUninstaller`)이 있고, SabaStorage로 들어가는 진입점이 있다.
 - **SabaStorage.js**(구 업데이트 센터, 1280줄): 탭은 `components / modules / extensions`(61-70)이다.
-  - components 탭: updater check/download/progress/apply/launchApply. `discord_bot` 컴포넌트를 갱신할 때는 bot을 정지했다가 다시 시작한다(297-330).
+  - components 탭: updater check/download/progress/apply/launchApply.
   - modules 탭: 설치된 모듈과 `saba-chan-modules` 레지스트리(`moduleManifest`, `moduleInstallFromManifest`, `moduleRemove`).
   - extensions 탭: 확장 레지스트리.
   - devMode에서는 Mock 릴리스 서버 토글(196-215)을 제공한다. 이 토글은 `updaterSetConfig`를 쓰므로 실제로는 405로 실패한다.
@@ -157,15 +154,13 @@ Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `u
 | APP_NAME | `saba-chan` | dataDir 이름 |
 | DEFAULT_IPC_PORT | `57474` | main.js:18-20, useSettingsStore, bot |
 | DEFAULT_DAEMON_URL | `http://127.0.0.1:57474` | |
-| SUPPORTED_LANGUAGES | en, ko, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr | main.js. **중복 정의 위치**: `saba-chan-gui/src/i18n.js:36`, `discord_bot/i18n.js:10`, `discord_bot/utils/constants.js:46` |
+| SUPPORTED_LANGUAGES | en, ko, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr | main.js. **중복 정의 위치**: `saba-chan-gui/src/i18n.js:36` |
 | getSabaDataDir() | `SABA_DATA_DIR`, Windows는 `%APPDATA%/saba-chan`, 그 외는 `$HOME/.config/saba-chan` | |
 
 - Rust 쪽 SSOT는 `updater/src/constants.rs`이고(constants.js:7 주석), CLI는 `saba_chan_updater_lib::constants`를 사용한다.
-- `discord_bot/utils/constants.js`는 `../../shared`를 먼저 찾고 실패하면 `../shared`를 찾는 프록시다. 둘 다 없으면 상수를 **인라인으로 복제**해 쓴다(24-50).
 - 그 밖의 포트:
   - mock release server 9876 (main.js:683, SabaStorage.js:202)
   - Vite dev 5173 (main.js:1320)
-  - Palworld REST 기본 8212가 **bot 코어에 하드코딩**되어 있다(discord_bot/core/ipc.js:165). 모듈 중립 원칙에 어긋난다
   - Relay 기본 URL `https://saba-chan.online` (main.js:3251, DiscordBotModal.js:12)
 
 ---
@@ -190,100 +185,51 @@ Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `u
 
 사용자 안내서는 `saba-chan-cli/README.md`에 있다.
 
-## 4. Discord Bot (discord_bot/, "server-chan")
+## 4. 디스코드 연동 (데몬 쪽)
 
-### 4.1 기동 경로
-bot을 **직접 spawn하는 클라이언트는 없다.** GUI와 CLI 모두 daemon의 범용 외부 프로세스 API를 쓴다.
+> 로컬 Discord 봇 실행(`discord_bot/`, Node, ext-process)은 레거시이며 L1(7b5102f)에서 지웠다. 디스코드 봇 자체는 클라우드 릴레이에서 돌고, 그 쪽(게이트웨이·음악·챗봇)은 지금 server-chan에서 다시 만드는 중이라 여기서 다루지 않는다. 이 절은 데몬 쪽의 안정된 계약만 적는다.
+
+### 4.1 구조
 
 ```
-POST /api/ext-process/discord-bot/start
-{ command: <node path from POST /api/node-env/setup or "node">,
-  args: ["<installRoot>/discord_bot/index.js"], cwd: "<…>/discord_bot",
-  env: { IPC_BASE, SABA_LANG, BOT_CONFIG_PATH, SABA_EXTENSIONS_DIR,
-         DISCORD_TOKEN            (local)
-         | RELAY_URL, RELAY_NODE_TOKEN (cloud) },
-  meta: { mode } }
+Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 relay_agent ─ 채팅 처리기(crate::chat) ─ 데몬 내부 API
 ```
-(GUI는 main.js:3238-3269, CLI는 process.rs:347-412. 요청 구조체는 `src/ipc/handlers/ext_process.rs:144-157`.)
 
-- GUI는 bot 디렉터리를 `path.join(__dirname,'..','discord_bot')`로 정한다(main.js:3238). 패키징된 앱에서 `__dirname`이 asar 내부일 수 있어 경로가 깨질 가능성이 있다. CLI는 `current_exe()` 기준이다.
-- **`BOT_CONFIG_PATH`는 bot 코드 어디에서도 읽지 않는다**(grep 결과 0건). bot은 설정을 `GET /api/config/bot`으로 받는다(core/ipc.js:179-182). 이 env는 죽은 값이다. `discord_bot/bot-config.json`(16줄, `hostId: "soKGFF7t62XT"` 포함) 역시 pkg asset에만 포함되고 런타임에서는 읽지 않는 잔존물이다.
-- 3초 뒤 상태를 확인해 정지되어 있으면, console 버퍼에서 에러 줄을 골라 renderer에 `bot:error`로 보낸다(main.js:3272-3292).
-- 종료: GUI `discord:stop`, 언어 변경(main.js:3018), `before-quit`(main.js:1552-1571)에서 정지 요청을 보낸다.
-  - **버그**: `before-quit`의 bot 정지 요청은 블록 스코프 밖의 `currentPort`(1536에서 `const`로 선언됨)를 1559에서 참조한다. 그래서 ReferenceError가 나고 try/catch에 삼켜져 **요청이 전송되지 않는다.** 실제 정리는 `cleanQuit`의 `unregister?shutdown=true`에 의존한다.
+- 데몬이 먼저 릴레이로 나가서 연결한다. 데몬은 들어오는 연결을 받지 않는다.
+- 페어링으로 받은 노드 토큰(`sbn_<id>.<secret>`)이 있어야 에이전트가 뜬다. 페어링은 `/api/relay/pair/initiate`, `/api/relay/pair/:code/status`(01 §4 Relay 프록시)로 하고, 토큰은 `/api/config/node-token`으로 다룬다.
 
-### 4.2 Daemon과의 통신 (`core/ipc.js`)
-- base는 `IPC_BASE` env이고 기본값은 57474이다. 토큰은 `SABA_TOKEN` env 또는 `.ipc_token`을 직접 읽는다(24-48). 401이면 다시 읽고 재시도한다(71-108).
-- 사용하는 endpoint:
-  - `GET /api/servers`, `GET /api/modules`, `GET /api/module/:name`(→ `.toml`), `GET /api/config/bot`
-  - 시작: `POST /api/instance/:id/managed/start` 또는 `POST /api/server/:name/start {module, config:{}}`. 어느 쪽을 쓸지는 `determineUseManaged`가 instance의 `module_settings.managed_start`나 모듈의 `interaction_mode=='console'`로 정한다(processor.js:438-446).
-  - 정지: `POST /api/server/:name/stop {force:false}`(35초 timeout).
-  - 명령: `POST /api/instance/:id/stdin`, `/rcon`, `/rest`, `/command`.
-  - `sendRestCommand`는 `rest_username/rest_password`를 기본값 `'admin'`과 `''`로 채워 보낸다(ipc.js:158-169). 자격증명을 bot이 지정하는 셈이다.
-- GUI와 bot 사이 양방향 IPC(local 모드만): GUI가 `POST /api/ext-process/discord-bot/stdin {message: JSON}`을 보내면, bot은 stdin 한 줄을 JSON으로 파싱해(index.js:204-228) `getGuildMembers`/`getGuildChannels`/`shutdown`을 처리하고 stdout에 `__IPC__:{json}`을 쓴다. GUI는 `GET …/console`을 500ms 간격으로 폴링해 `id`가 맞는 줄을 찾는다(main.js:3105-3147).
-  - 취약점: console 응답은 기본 최근 200줄이고(`ext_process.rs:419-423`), GUI는 `lastLineCount-5`부터만 스캔한다. 버퍼가 200줄로 찬 뒤에는 폴링 사이에 로그가 6줄 이상 들어오면 응답을 놓쳐 TIMEOUT이 날 수 있다.
+### 4.2 릴레이 에이전트 (`src/relay_agent.rs`)
 
-### 4.3 명령 체계 (prefix 기반 메시지 명령. **slash command는 없다**)
-- 진입점은 `messageCreate`에서 `processor.process`로 이어진다(index.js:232).
-- prefix 기본값은 `!saba`이고 bot-config `prefix`로 바꿀 수 있다. `checkMultiGuildBlock`이 있어서 **local 모드에서 bot이 2개 이상의 길드에 들어가 있으면 모든 명령을 거부한다**(processor.js:27-35).
-- 처리 순서(processor.js:76-164):
-  0. 전용 음악 채널이면 prefix 없이 처리한다.
-  1. `resolver.reloadConfigIfChanged()`: 마지막 로드 후 5초가 지났으면 `/api/config/bot`을 다시 읽는다. 주석(resolver.js:57)은 "1분"이라고 되어 있지만 코드는 5000ms다.
-  2. 확장 파이프라인(core/handler.js:16-39): `Music:Shortcut`(prefix 뒤에 YouTube URL이나 음악 명령) → `Music` → `EasterEgg`(easter_eggs.js 트리거 `할건해야제`, `갈래말래` 등) → `RPS`(트리거 `가위바위보/rps/ㄱㅂㅂ`, 버튼 UI).
-  3. 빈 입력, `help`, `도움`이면 도움말(모듈 목록과 alias)을 보여준다.
-  4. `list`, `목록`이면 서버 목록을 보여준다(`nodeSettings[guild].allowedInstances`로 필터링).
-  5. `<모듈 alias>`만 오면 그 모듈의 명령 도움말을 보여준다.
-  6. `<모듈 alias> <명령 alias> [args…]`이면 `memberPermissions` 차단 목록을 확인한 뒤 내장 `start/stop/status`이거나 module.toml에 정의된 명령을 method(rcon/rest/dual/기본)에 맞춰 호출한다. 정의되지 않은 명령은 raw로 stdin이나 rcon에 보낸다(processor.js:506-536).
-- Alias는 `utils/aliasResolver.js`가 module.toml의 alias와 bot-config `moduleAliases/commandAliases`를 합친다. 충돌을 검사하며, 충돌하면 `bot:errors.alias_conflict`를 응답한다.
-- i18n(`discord_bot/i18n.js`): 시작할 때 `locales/<lang>/{common,bot}.json`을 **파일로 직접 읽는다**. `lng`는 `SABA_LANG`이고 defaultNS는 `bot`이다. 언어를 바꾸면 프로세스를 재시작해야 한다(GUI가 `bot:relaunch`로 처리).
-- `resolver.ensureGuildMetadata`(resolver.js:129-131)는 **본문이 빈 stub**이다. 길드별 메타데이터 API(`ipc.getModules(guildId)`의 인자)도 무시된다.
+| 단계 | 요청 | 내용 |
+|---|---|---|
+| 버전 확인 | `GET /info` | 릴레이가 요구하는 최소 에이전트 버전 확인 |
+| 하트비트 | `POST /heartbeat` (60초) | `agentVersion`, `os`, `metadata`(서버·모듈·봇 설정). 릴레이가 `UPDATE_REQUIRED`를 주면 경고 로그(`relay_agent.rs:218-240`) |
+| 명령 받기 | `GET /poll` (롱폴링) | 디스코드에서 온 명령. 현재 `payload.action`은 `raw_command` 하나다 |
+| 결과 보내기 | `POST /result/:id` | 채팅 처리기의 응답 `{success, data:{text}}` (`:389-400`) |
 
-### 4.4 음악 확장 (`extensions/music.js` 3114줄 + `musicChannelUI.js` 487줄)
-- 의존성: `@discordjs/voice`, opusscript/sodium-native, play-dl(검색과 메타데이터), yt-dlp(스트림), ffmpeg.
-  - 의존성 해석: 먼저 `.deps-resolved.json`(SABA_EXTENSIONS_DIR/music, dataDir/extensions/music)을 읽는다. 없으면 **격리된 Python(`<installRoot>/python-env` 또는 `.venv`)으로 `music_deps.py check_dependencies`를 `spawnSync`로 직접 실행한다**(music.js:50-127). 확장 디렉터리의 `node_modules`를 `NODE_PATH`에 주입하고(292-300), `FFMPEG_PATH` env를 직접 바꾼다.
-- 명령(`MUSIC_COMMANDS` 607-623): `play, search, pause, resume, skip, stop, queue, np, volume, shuffle, loop, loopoff, radio(자동재생/추천), normalize(loudnorm 2-pass), help`.
-  - 범용 alias(629-645): `p, find, s/next, leave/disconnect/dc, q/list, nowplaying/now, vol/v, random, repeat, unloop, autoplay, norm/loudnorm`. 모듈 alias는 `music`, `dj`. 언어별 alias는 `bot:music_commands`에서 가져온다.
-  - 바로가기: prefix 뒤에 YouTube URL만 붙여도 재생한다.
-  - `musicEnabled === false`이면 모두 비활성화된다(849, 928, 2956).
-- 기능: 길드별 큐, 볼륨(기본 0.5), 5분 idle 시 자동 퇴장, 음성 채널이 비면 퇴장(`handleVoiceStateUpdate`), 다음 곡 prefetch, radio 모드(시드 기반 추천 5곡 보충), loudnorm 정규화(`I=-14:TP=-1:LRA=11`), 오류 분류(연령 제한, 지역 차단, 저작권, 도구 미설치 등).
-  - 버튼 인터랙션: `music_vol_down/up, prev, next, pause_resume, radio, normalize`(2260-2348).
-- **전용 음악 채널 UI**(musicChannelUI.js): 지정한 텍스트 채널 하나를 점유한다. 진행바, 큐, 버튼을 3~5초마다 갱신하고, prefix 없이 검색어를 받으며, 응답은 10초 뒤 지운다. `musicChannelId`가 바뀌면 resolver 콜백으로 다시 초기화한다(index.js:305-312).
-- relay(cloud) 모드에서 들어온 mock 메시지에는 `member`/`guild`가 없어서 음악 명령을 처리할 수 없다(`isRelayMessage` 802-804).
+- 모든 요청은 노드 토큰으로 HMAC 서명하고 `X-Saba-Client: 1` 헤더를 붙인다(`relay_agent.rs:159-163`, `handlers/relay.rs` `signed_headers`).
+- 데몬이 뜨면 `auto_start`가 에이전트를 켠다(토큰이 없으면 조용히 건너뜀, `ipc/mod.rs:783`, `relay_agent.rs:153-157`).
+- 상태 `GET /api/relay/agent`: `{running, sleeping, relay_url, has_token, agent_version, last_heartbeat_at, last_error, commands_handled}` (`relay_agent.rs:31-42`). 켜고 끄기는 `POST /api/relay/agent/start`, `/stop`.
+- 새 명령 종류는 `handle_payload`의 action 분기에 더한다.
 
-### 4.5 Relay/Cloud 모드: 정확한 프로토콜 (`core/relayAgent.js`)
-`RELAY_URL`과 `RELAY_NODE_TOKEN`이 모두 있으면 **Discord에 로그인하지 않는 "relay agent" 모드**로 동작한다(index.js:24, 156-187). Discord 게이트웨이는 server-chan relay 서버가 맡고, 로컬 bot은 명령 실행기 역할만 한다.
+### 4.3 채팅 처리기 (`src/chat/`)
 
-- 토큰 형식은 `sbn_<nodeId>.<secret>`이다(relayAgent.js:43-47). 오류 메시지(358)에는 `<hostId>`라고 되어 있어 표기가 맞지 않는다.
-- **모든 요청 서명**(58-73):
-  ```
-  Authorization: Bearer <RELAY_NODE_TOKEN>
-  X-Saba-Client: 1
-  x-request-timestamp: <unix sec>
-  x-request-nonce: <uuid>
-  x-request-signature: hex(HMAC-SHA256(secret,
-        METHOD \n urlPath \n ts \n nonce \n JSON(body)|''))
-  ```
-- 엔드포인트:
-  1. `GET {RELAY}/info`(서명 없음): `{version, minAgentVersion}`. agent 버전(package.json `0.1.1`)이 최소 버전보다 낮으면 시작을 중단한다(101-132).
-  2. `POST {RELAY}/heartbeat` body `{agentVersion, os, metadata:{servers, modules, moduleDetails:{}}}`. 60초 주기다(136-181). 응답의 `sleeping:true`면 폴링을 멈추고, `warning:'UPDATE_REQUIRED'`면 경고만 남긴다. heartbeat는 매번 daemon의 `/api/servers`와 `/api/modules` 결과 **전체**를 relay로 업로드한다.
-  3. `GET {RELAY}/poll`(롱폴링): 204면 명령 없음이고, 200이면 `{commands:[{id, payload:{action:'raw_command', text}, requestedBy, guildId, channelId}], sleeping?}`이다. 실패하면 3초에서 60초까지 지수 백오프한다. sleeping 상태면 30초 간격으로 대기한다(257-339).
-  4. 받은 명령마다 `createMockMessage`(prefix와 text를 붙인 가짜 discord.js Message)를 만들어 `processor.process`로 **local 모드와 같은 처리 체인**을 태운다. 마지막 reply 텍스트를 결과로 쓴다(185-233).
-  5. `POST {RELAY}/result/:requestId` body `{success, data:{text}|{error}}`(237-253).
-- GUI 쪽 cloud 지원: 페어링, 노드 목록, 멤버 목록은 daemon `/api/relay/*` 프록시를 거친다. 그러나 **bot-config 동기화(`PATCH {relayUrl}/api/hosts/:hostId/bot-config {prefix, moduleAliases, commandAliases}`)는 GUI main이 relay에 직접 axios로 호출한다**(main.js:3216, 3406). daemon에 이 프록시가 없기 때문이다. preload.js:106의 "all relay comms go through daemon" 주석은 코드와 맞지 않는다.
+- 디스코드 명령과 CLI `chat`, `POST /api/chat/command {text, guild_id?, user_id?} → {reply}`가 모두 같은 처리기를 쓴다(`handlers/chat.rs:9-13`).
+- 대상 서버 찾기: 인스턴스 이름 → `instanceAliases`(인스턴스 ID → `"별명, 별명"`) → 모듈 별명(`moduleAliases`) 순이다. 같은 게임 서버가 여럿인데 하나로 좁혀지지 않으면 `errors.multiple_instances`로 답한다(`chat/mod.rs:256-285`).
+- 명령 별명은 `commandAliases`, 접두사는 `prefix`(기본 `!saba`)다. 응답 문구는 `locales/<lang>/bot.json`을 바이너리에 넣어 쓴다(`chat/i18n.rs`).
+- 노드(디스코드 서버)별 허용 인스턴스와 멤버별 명령 권한은 `nodeSettings`에 있다.
 
-### 4.6 테스트
-`discord_bot/test/`: `music.test.js`(107 케이스), `integration.test.js`(31), `ipc-timeout.test.js`(9). jest.
-`package.json`의 `"discord.js": "^14.0.0"`이고 lockfile은 14.25.1이다. `client.once('clientReady')`(index.js:291)는 14.22 이상에서만 발생하는 이벤트이므로, 범위 하한 `^14.0.0`은 실제 요구사항과 맞지 않는다.
+### 4.4 봇 초대
 
----
+- `GET /api/relay/bot-invite`(query `relayUrl?`)가 릴레이의 공개 `/api/bot-invite` 응답 `{url}`을 그대로 돌려준다. 공개 엔드포인트라 서명하지 않는다(`handlers/relay.rs:240-259`).
 
 ## 5. 로케일 구조 (`locales/<lang>/{common,gui,bot,cli}.json`, 10개 언어)
 
 | 파일 | 최상위 키(en) | 소비자 |
 |---|---|---|
-| common.json (leaf 43개) | app_name, success/error/…, daemon, modules, server, network, port_conflict 등 21개 | GUI renderer(`common` ns), **GUI main 프로세스**(main.js:294-310, 알림과 status 메시지), bot(`common` ns) |
+| common.json (leaf 43개) | app_name, success/error/…, daemon, modules, server, network, port_conflict 등 21개 | GUI renderer(`common` ns), **GUI main 프로세스**(알림과 status 메시지) |
 | gui.json (en leaf 707개) | title, menu, title_bar, modals, settings_modal, add_instance_modal, migration_modal, command_modal, server_*, discord_bot, discord_modal, notice_modal, updates, extensions, saba_storage, validation, context_menu 등 29개 | GUI renderer(`gui` ns) |
-| bot.json (leaf 184개) | commands, help, modules, list, status, server, command, responses, errors, messages, cloud, relay, music, music_commands, music_ui, rps | bot(defaultNS `bot`). GUI renderer도 import한다(i18n.js:3-33. DiscordBotModal의 음악 alias 표시용) |
+| bot.json | 채팅 응답 문구 | 데몬 채팅 처리기(`src/chat/i18n.rs`, 빌드 때 포함). GUI renderer도 import한다 |
 | cli.json (en leaf 200개) | welcome, status, help, *_cmd, menu, screen 등 16개 | CLI `i18n.rs`. `<root>/locales` 또는 실행 파일 옆의 `locales`를 런타임에 읽는다(64-84) |
 
 - GUI renderer는 10개 언어의 common, gui, bot JSON을 **빌드 시 정적으로 import**한다(i18n.js:3-33). 언어 소스는 `window.electron.getLanguage()`가 1순위, localStorage `i18nextLng`가 2순위다(92-139). 확장 i18n은 daemon `/api/extensions/:id/i18n/:locale`에서 받는다.
@@ -292,8 +238,6 @@ POST /api/ext-process/discord-bot/start
   - cli.json: ko를 제외한 8개 언어가 168개로 **32~33개가 빠져 있다**(`screen.bot_*`, `screen.ext_*`, `screen.settings_*`, `screen.update_*` 등).
 - 하드코딩된 한국어 문자열이 i18n을 거치지 않는 곳:
   - main.js의 트레이 메뉴(1427-1468), 업데이트 알림(1196-1197), 오류 매핑(2226-2241, 2373-2400), `preloadLightData`(1009-1010)
-  - processor.js의 `defaultValue`(371)
-  - easter_eggs 트리거
 
 ---
 
@@ -306,24 +250,19 @@ POST /api/ext-process/discord-bot/start
 ### 6.2 죽은 코드와 stub
 - `saba-chan-gui/main.js:501-503` `syncGuiConfigToDaemon`(no-op)과 이를 부르는 `guiConfig:sync` 채널(2961), `runBackgroundInit`의 호출(1091-1094).
 - `saba-chan-gui/main.js:1005-1011` `preloadLightData`: 상태 메시지만 보낸다(주석에서 레거시라고 인정함).
-- `discord_bot/core/resolver.js:129-131` `ensureGuildMetadata` 빈 stub. `ipc.getModules(guildId)`의 인자도 무시된다.
-- `BOT_CONFIG_PATH` env(main.js:3242, process.rs:358, 364)를 읽는 코드가 없다. `discord_bot/bot-config.json`은 런타임에서 쓰이지 않는다.
 - renderer가 쓰지 않는 preload API 12개(§1.2). `mockServer:*` 핸들러 3개.
 - main.js:1223-1224: auto_download/auto_apply는 "향후 구현 예정" 상태다.
-- `discord_bot/core/relayAgent.js:410-418` `getStatus`: export만 되어 있고 사용하는 곳이 없다.
 
 ### 6.3 기능 버그
 - **before-quit bot 정지 요청 누락**: main.js:1536(`const currentPort`가 if와 try 블록 안에 선언됨)과 1559(블록 밖에서 참조) 때문에 ReferenceError가 나고 조용히 무시된다.
 - **SabaStorage bot 재시작 실패**: SabaStorage.js:316, 445가 `settings?.discordToken`을 읽는다. 이 키는 bot-config으로 옮겨져 비어 있으므로 업데이트 후 bot 재시작이 항상 "no token"으로 끝난다. cloud 모드 정보도 넘기지 않는다.
 - **settings 경로 분기 기준 오류**: main.js:483, 2860, 2967이 `daemonProcess`(내가 spawn했는가)로 판단한다. daemon이 살아 있는데도 settings.json을 직접 쓰는 경우가 생긴다(§1.3).
-- **botConfig:save 비동기 누락**: main.js:3397에서 `saveBotConfig`를 await하지 않는다. 실패해도 `{success:true}`를 반환한다. 또 `cloudNodes`/`cloudMembers`가 입력에 없으면 `[]`/`{}`로 **덮어써서 지워진다**(3392-3396). 같은 파일의 `discord:start`(3205-3206)는 기존 값을 보존한다.
 - **resolver 주석과 코드 불일치**: resolver.js:57(1분)과 60(5초).
-- **Palworld 기본값 하드코딩**: discord_bot/core/ipc.js:164-167(`8212`, `admin`).
 - **updater exe 이름 하드코딩**: main.js:1113-1148, commands.rs:1137-1142에서 `.exe`로 고정되어 있어 비 Windows 환경에서 launch-apply가 불가능하다.
 
 ---
 
-## 7. ★ Daemon 우회 지점 전수 목록 (GUI · CLI · discord_bot)
+## 7. ★ Daemon 우회 지점 전수 목록 (GUI · CLI)
 
 > 기준: "인터페이스는 혼자서 아무것도 못 한다. 파일 편집도 daemon API를 거친다."
 > 분류: **[FS-R]** 직접 파일 읽기 / **[FS-W]** 직접 파일·디렉터리 쓰기 / **[PROC]** 프로세스 spawn·kill / **[EXT]** 외부 서비스 직접 호출 / **[CFG]** 설정 파일 직접 편집 / **[OS]** OS 레지스트리·셸
@@ -348,7 +287,7 @@ POST /api/ext-process/discord-bot/start
 | G14 | 766-787, 2744-2777 (2769) | PROC | **updater exe detached spawn**(`--apply --relaunch`) | 업데이트 적용은 daemon `/api/updates/apply`로 하고, 실행 파일 교체는 클라이언트가 updater를 띄워서 한다 |
 | G15 | 1108-1150 | FS-R | updater exe 경로 탐색(`existsSync`) | |
 | G16 | 2891-2959 (2920, 2945) | OS/PROC | `reg query HKCU\…\Uninstall\Saba-chan`, installer `--uninstall` spawn | |
-| G17 | 3216, 3406 | EXT | **relay 서버 `PATCH {relayUrl}/api/hosts/:hostId/bot-config` 직접 호출**(daemon 프록시 없음) | preload.js:106 주석과 모순 |
+| G17 | — | — | ~~relay `PATCH /api/hosts/:hostId/bot-config` 직접 호출~~ 없어짐: 봇 설정은 `PUT /api/config/bot`, 릴레이 동기화는 에이전트 하트비트 | |
 | G18 | 3330-3366 | OS | `shell.openExternal`, `shell.openPath`(로그 폴더, 인스턴스 폴더) | UI 성격 |
 | G19 | 3044-3083 | OS | 네이티브 파일/폴더 다이얼로그 | UI 성격(경로 선택만 하고, 실제 스캔은 daemon) |
 | G20 | 94-122 | — | `http.request` 전역 monkey-patch | 우회는 아니지만 모든 Node HTTP에 영향을 준다 |
@@ -374,26 +313,11 @@ POST /api/ext-process/discord-bot/start
 | C9 | bootstrap.rs:49-90 | PROC | saba-core 분리 실행 | 불가피(부트스트랩) |
 | C10 | bootstrap.rs:92, cmd/daemon.rs:102 | PROC | API 종료가 안 될 때 데몬 PID만 강제 종료 | 이름 기반 kill 아님 |
 
-### 7.4 discord_bot (server-chan)
-| # | 위치 | 분류 | 내용 | 비고 |
-|---|---|---|---|---|
-| B1 | core/ipc.js:24-48, 82 | FS-R | `.ipc_token` 직접 읽기 | 불가피 |
-| B2 | i18n.js:6-32 | FS-R | `locales/*/{common,bot}.json` 직접 읽기 | |
-| B3 | utils/constants.js:16-52 | — | shared 상수를 찾지 못하면 인라인 복제 사용 | SSOT 위반 위험 |
-| B4 | index.js:192-333 | EXT | Discord Gateway 로그인(discord.js) | 역할상 정당(server-chan 본연의 일) |
-| B5 | core/relayAgent.js:103, 151, 240, 269 | EXT | **server-chan relay(`/info`, `/heartbeat`, `/poll`, `/result/:id`) 직접 HTTP 호출**. daemon `/api/relay/*` 프록시를 쓰지 않는다 | daemon의 servers와 modules 전체를 relay에 업로드한다(140-148) |
-| B6 | extensions/music.js:50-127 (92) | PROC | 격리 Python으로 `music_deps.py check_dependencies` **spawnSync**. 결과 파일 `.deps-resolved.json`이 만들어진다(FS-W, Python 쪽) | 의존성 설치는 확장/daemon 책임이어야 한다 |
-| B7 | extensions/music.js:129-190, 143-144 | FS-R | `.deps-resolved.json`, 확장 `package.json`, `node_modules` 존재 확인과 직접 읽기 | |
-| B8 | extensions/music.js:292-300, 214-269 | ENV | `process.env.NODE_PATH`, `FFMPEG_PATH` 전역 변경(cleanup 3100-3111에서 복원) | |
-| B9 | extensions/music.js:313-360, 1178-, 1274-1550 | PROC | `ffmpeg`, `yt-dlp` spawn(검증, 메타데이터, 스트림, 2-pass loudnorm) | 기능 본질상 필요 |
-| B10 | extensions/music.js:1090-1170 | EXT | play-dl을 통한 YouTube 검색과 정보 조회 | 기능 본질상 필요 |
-| B11 | core/ipc.js:158-169 | — | REST 자격증명 기본값(`admin`/`''`, 포트 8212)을 bot이 주입 | daemon과 모듈의 책임 침범 |
+### 7.4 디스코드 봇
+로컬 봇이 없어져 이 목록(B1~B11)은 사라졌다. 릴레이와의 통신은 데몬의 relay_agent만 한다(§4).
 
 ### 7.5 요약 판정
 - **원칙 위반 정도가 가장 큰 항목**:
   - G2, G3, G4: GUI가 settings.json을 직접 읽고 쓴다. 분기 기준이 잘못되어 daemon이 살아 있어도 이 경로를 탄다.
-  - G17: GUI가 relay에 직접 PATCH한다.
-  - B5: bot이 relay와 직접 통신한다. daemon에 relay 프록시가 있는데도 쓰지 않는다.
-  - B6: bot이 의존성 설치용 Python을 직접 실행한다.
-- **부트스트랩상 불가피한 항목**(토큰 파일, ipcPort, daemon 최초 spawn): G1, G7, C1, C2, C9, B1. 다만 daemon **종료**(G8~G12)는 `/api/daemon/shutdown`이 있으므로 API로 대체할 수 있다. 이름 기반 kill(G9)은 특히 위험하다.
-- **daemon에 API가 없어서 우회하는 항목**: relay bot-config PATCH(G17), relay agent 통신(B5), updater 실행(G14), 언인스톨러(G16).
+- **부트스트랩상 불가피한 항목**(토큰 파일, ipcPort, daemon 최초 spawn): G1, G7, C1, C2, C9. 다만 daemon **종료**(G8~G12)는 `/api/daemon/shutdown`이 있으므로 API로 대체할 수 있다. 이름 기반 kill(G9)은 특히 위험하다.
+- **daemon에 API가 없어서 우회하는 항목**: updater 실행(G14), 언인스톨러(G16).

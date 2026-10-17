@@ -1198,32 +1198,49 @@ pub async fn apply_server_update(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
+    match begin_server_update(&state, &id).await {
+        Ok(_) => (
+            StatusCode::OK,
+            Json(json!({
+                "success": true,
+                "id": id,
+                "provisioning": true,
+            })),
+        )
+            .into_response(),
+        Err(r) => r,
+    }
+}
+
+/// 업데이트를 백그라운드로 시작한다. 작업은 성공 여부를 돌려준다 (예약 업데이트가 기다린다)
+#[allow(clippy::result_large_err)]
+pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::task::JoinHandle<bool>, axum::response::Response> {
     let supervisor = state.supervisor.read().await;
 
-    let instance = match supervisor.instance_store.get(&id) {
+    let instance = match supervisor.instance_store.get(id) {
         Some(inst) => inst.clone(),
         None => {
-            return (
+            return Err((
                 StatusCode::NOT_FOUND,
                 Json(json!({
                     "error": format!("Instance not found: {}", id),
                     "error_code": "instance_not_found",
                 })),
             )
-                .into_response();
+                .into_response());
         }
     };
 
     // 실행 중이면 업데이트 불가
-    if supervisor.tracker.get_pid(&id).is_ok() {
-        return (
+    if supervisor.tracker.get_pid(id).is_ok() {
+        return Err((
             StatusCode::CONFLICT,
             Json(json!({
                 "error": "Cannot update while server is running. Stop the server first.",
                 "error_code": "server_running",
             })),
         )
-            .into_response();
+            .into_response());
     }
 
     // 모듈에서 install config 가져오기
@@ -1236,14 +1253,14 @@ pub async fn apply_server_update(
     let (install_config, _module_path) = match module_info {
         Some((Some(cfg), path)) => (cfg, path),
         _ => {
-            return (
+            return Err((
                 StatusCode::BAD_REQUEST,
                 Json(json!({
                     "error": "Module install configuration not found.",
                     "error_code": "no_install_config",
                 })),
             )
-                .into_response();
+                .into_response());
         }
     };
 
@@ -1252,17 +1269,17 @@ pub async fn apply_server_update(
     let by_extension = !crate::instance::BUILTIN_INSTALL_METHODS.contains(&method.as_str())
         && instance.ext_enabled(&crate::instance::install_method_key(&method));
     if !by_extension {
-        return (
+        return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({
                 "error": "Only instances installed by an install-method extension can be updated this way.",
                 "error_code": "update_unsupported",
             })),
         )
-            .into_response();
+            .into_response());
     }
 
-    let instance_dir = supervisor.instance_store.instance_dir(&id);
+    let instance_dir = supervisor.instance_store.instance_dir(id);
     let install_subdir = install_config
         .install_subdir
         .clone()
@@ -1297,7 +1314,29 @@ pub async fn apply_server_update(
     let tracker_done = tracker.clone();
     let name_done = instance_name.clone();
 
-    tokio::spawn(async move {
+    let backup_state = state.clone();
+    let backup_id = id.to_string();
+    Ok(tokio::spawn(async move {
+        // ── Phase 0: 업데이트 전 백업 (A2). 백업할 것이 없으면 그냥 진행, 실패하면 업데이트하지 않는다 ──
+        if let Err(r) = super::backup::take_backup(&backup_state, &backup_id, crate::backup::BackupKind::PreUpdate).await {
+            let reason = crate::ipc::internal::into_internal(r).await.body["error"].as_str().unwrap_or("backup failed").to_string();
+            tracing::error!("Pre-update backup failed for '{}': {}", name_done, reason);
+            tracker_done.update(
+                &name_done,
+                crate::ipc::ProvisionProgress {
+                    step: 0,
+                    total: 1,
+                    label: "done".to_string(),
+                    message: "Update failed".to_string(),
+                    done: true,
+                    error: Some(format!("Pre-update backup failed: {}", reason)),
+                    percent: Some(100),
+                    steps: None,
+                },
+            );
+            return false;
+        }
+
         // ── Phase 1: supervisor lock을 최소 시간만 잡고 모듈 경로 복사 ──
         let lifecycle_path = {
             let sup = supervisor_arc.read().await;
@@ -1317,7 +1356,7 @@ pub async fn apply_server_update(
                             steps: None,
                         },
                     );
-                    return;
+                    return false;
                 }
             }
         };
@@ -1360,7 +1399,7 @@ pub async fn apply_server_update(
             .await
         };
 
-        match result {
+        let updated = match result {
             Ok(val) => {
                 let success = val
                     .get("success")
@@ -1403,6 +1442,7 @@ pub async fn apply_server_update(
                         },
                     );
                 }
+                success
             }
             Err(e) => {
                 tracing::error!("Server update error for '{}': {}", name_done, e);
@@ -1419,8 +1459,9 @@ pub async fn apply_server_update(
                         steps: None,
                     },
                 );
+                false
             }
-        }
+        };
 
         // 5초 후 프로비저닝 tracker 자동 정리
         let tracker_cleanup = tracker_done.clone();
@@ -1429,15 +1470,7 @@ pub async fn apply_server_update(
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             tracker_cleanup.remove(&name_cleanup);
         });
-    });
+        updated
+    }))
 
-    (
-        StatusCode::OK,
-        Json(json!({
-            "success": true,
-            "id": id,
-            "provisioning": true,
-        })),
-    )
-        .into_response()
 }

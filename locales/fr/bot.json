@@ -127,5 +127,9 @@
     "scissors": "Ciseaux",
     "rock": "Pierre",
     "paper": "Papier"
+  },
+  "schedule": {
+    "restart_warning": "Le serveur redémarre dans {{minutes}} min.",
+    "update_warning": "Le serveur redémarre pour une mise à jour dans {{minutes}} min."
   }
 }
