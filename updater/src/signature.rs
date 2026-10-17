@@ -23,6 +23,10 @@ pub const TRUSTED_KEYS: &[(&str, &str)] = &[(
     "bxKwq1Xq2yM/GJgGuCYHWeeXUjQ3MakwGuqYHOZTERU=",
 )];
 
+/// 개발용 모의 릴레이(`scripts/mock-release-server.js`)가 쓰는 공개된 고정 키.
+/// 개인 seed가 스크립트에 그대로 있으므로 `mock-relay` 기능으로 빌드한 개발용 바이너리만 믿는다.
+pub const MOCK_RELAY_KEY: (&str, &str) = ("saba-updater-mock", "7rOellzBdm/2xEeM5Zc0sZ6JpyPRRyNf9Gd23UexH5E=");
+
 /// 릴레이가 돌려주는 서명된 manifest 봉투
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -67,6 +71,10 @@ pub fn canonical_json(value: &Value) -> Vec<u8> {
 
 /// 번들된 공개키로 서명된 manifest를 검증한다.
 pub fn verify(signed: &SignedManifest) -> Result<(), SignatureError> {
+    #[cfg(feature = "mock-relay")]
+    if signed.key_id == MOCK_RELAY_KEY.0 {
+        return verify_with(signed, &[MOCK_RELAY_KEY]);
+    }
     #[cfg(feature = "test-isolation")]
     if signed.key_id == TEST_KEY_ID {
         if let Ok(public) = std::env::var(TEST_PUBKEY_ENV) {
@@ -187,6 +195,16 @@ mod tests {
         let reparsed: SignedManifest =
             serde_json::from_str(&serde_json::to_string(&signed).unwrap()).unwrap();
         assert_eq!(verify_with(&reparsed, &[("k1", &public)]), Ok(()));
+    }
+
+    #[test]
+    fn mock_relay_key_matches_the_mock_server_seed() {
+        // scripts/mock-release-server.js의 MOCK_SEED ("saba-mock-relay-not-for-release!")
+        let seed = "736162612d6d6f636b2d72656c61792d6e6f742d666f722d72656c6561736521";
+        assert_eq!(public_key_of(seed).unwrap(), MOCK_RELAY_KEY.1);
+        // 기본 빌드는 모의 키를 믿지 않는다
+        let signed = sign(serde_json::json!({"v": 1}), MOCK_RELAY_KEY.0, seed).unwrap();
+        assert_eq!(verify(&signed).is_ok(), cfg!(feature = "mock-relay"));
     }
 
     #[test]

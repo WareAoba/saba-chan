@@ -507,32 +507,7 @@ pub async fn create_instance(
                             Ok(result) => {
                                 if result.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
                                     if let Some(settings) = result.get("settings").and_then(|v| v.as_object()) {
-                                        for (key, value) in settings {
-                                            instance.module_settings.insert(key.clone(), value.clone());
-                                        }
-                                        // port 등 core 필드 동기화
-                                        if let Some(port) = settings.get("port").and_then(|v| v.as_u64()) {
-                                            instance.port = Some(port as u16);
-                                        }
-                                        // credential_map 역매핑: import된 설정에서 daemon first-class 필드로 동기화
-                                        // 예: Palworld의 credential_map { rest_password = "AdminPassword" }
-                                        //   → settings에 "AdminPassword" 값이 있으면 instance.rest_password에 설정
-                                        {
-                                            for (daemon_key, game_key) in &credential_map {
-                                                // game_key(예: "AdminPassword")를 case-insensitive로 settings에서 탐색
-                                                let game_key_lower = game_key.to_lowercase();
-                                                let value = settings.iter()
-                                                    .find(|(k, _)| k.to_lowercase() == game_key_lower || k.as_str() == game_key.as_str())
-                                                    .and_then(|(_, v)| v.as_str());
-                                                if let Some(pwd) = value {
-                                                    match daemon_key.as_str() {
-                                                        "rest_password" => instance.rest_password = Some(pwd.to_string()),
-                                                        "rcon_password" => instance.rcon_password = Some(pwd.to_string()),
-                                                        _ => {}
-                                                    }
-                                                }
-                                            }
-                                        }
+                                        instance.apply_imported_settings(settings, &credential_map);
                                         tracing::info!("Migration import_settings: {} settings imported for '{}'", settings.len(), instance_name);
                                     }
                                 }

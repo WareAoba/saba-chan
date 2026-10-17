@@ -2102,6 +2102,13 @@ ipcMain.handle('instance:rename', (_event, id, name) =>
 ipcMain.handle('instance:commands', (_event, id) =>
     daemonCall('get', `/api/instance/${id}/commands`));
 
+// 설정 화면용: 디스크의 실제 설정 (실패하면 success:false — 그때는 기본값으로 저장하지 말 것)
+ipcMain.handle('instance:readLiveSettings', (_event, id) =>
+    daemonCall('get', `/api/instance/${id}/settings/live`, undefined, 60000));
+
+// 부팅 직후 Python 준비 상태: {phase, percent, complete, error, components: {python}}
+ipcMain.handle('runtime:preflight', () => daemonCall('get', '/api/runtime/preflight', undefined, 5000));
+
 ipcMain.handle('config:defaults', (_event, kind) =>
     daemonCall('get', `/api/config/${kind}/defaults`));
 

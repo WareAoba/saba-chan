@@ -804,14 +804,22 @@ fn format_unix_timestamp(ts: u64) -> String {
 
 /// Parse `YYYY-MM-DD HH:MM:SS` back to Unix timestamp.
 fn parse_datetime_to_unix(s: &str) -> Option<u64> {
-    // Expected: "2026-03-05 12:34:56"
-    if s.len() < 19 { return None; }
+    // Expected: "2026-03-05 12:34:56" — 정확히 ASCII 19자 (바이트로 자르므로 비 ASCII면 패닉할 수 있었다)
+    let b = s.as_bytes();
+    if b.len() != 19 || !s.is_ascii() || b[4] != b'-' || b[7] != b'-' || b[10] != b' ' || b[13] != b':' || b[16] != b':' {
+        return None;
+    }
     let y: i64 = s[0..4].parse().ok()?;
     let m: u64 = s[5..7].parse().ok()?;
     let d: u64 = s[8..10].parse().ok()?;
     let hh: u64 = s[11..13].parse().ok()?;
     let mm: u64 = s[14..16].parse().ok()?;
     let ss: u64 = s[17..19].parse().ok()?;
+    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let month_days = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    if !(1970..=9999).contains(&y) || !(1..=12).contains(&m) || d == 0 || d > month_days[(m - 1) as usize] || hh > 23 || mm > 59 || ss > 60 {
+        return None;
+    }
 
     // Inverse of civil date → days since epoch
     let y_adj = if m <= 2 { y - 1 } else { y };
@@ -989,7 +997,7 @@ fn parse_structured_disk_line(raw: &str) -> (u64, LogSource, LogLevel, String) {
             };
 
             // Try parsing timestamp
-            let dt_str = &raw[1..dt_end];
+            let dt_str = raw.get(1..dt_end).unwrap_or("");
             let timestamp = parse_datetime_to_unix(dt_str)
                 .unwrap_or_else(current_timestamp);
 
@@ -1005,6 +1013,19 @@ fn parse_structured_disk_line(raw: &str) -> (u64, LogSource, LogLevel, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn log_timestamp_parser_rejects_bad_input_without_panicking() {
+        assert_eq!(parse_datetime_to_unix("1970-01-01 00:00:10"), Some(10));
+        assert!(parse_datetime_to_unix("2024-02-29 12:00:00").is_some());
+        for bad in ["2023-02-29 12:00:00", "2026-13-01 00:00:00", "2026-01-01T00:00:00", "가나다라마바사아자차카타파하가나다라마", "short", ""] {
+            assert_eq!(parse_datetime_to_unix(bad), None, "{}", bad);
+        }
+        // ']'가 맨 앞이거나 날짜 자리에 다국어가 와도 패닉하지 않는다
+        let _ = parse_disk_log_line(0, "]x [STDOUT/INFO] hi");
+        let line = parse_disk_log_line(0, "[가나다] [STDERR/WARN] 경고");
+        assert_eq!(line.content, "경고");
+    }
 
     // ═══════════════════════════════════════════════════════
     // LogBuffer 단위 테스트

@@ -27,6 +27,8 @@ thiserror = "1.0"
 [features]
 # 테스트 전용: 데이터 경로를 프로세스별 임시 폴더로 돌린다 (constants::resolve_data_dir)
 test-isolation = []
+# 개발용 모의 릴레이의 고정 키를 믿는다. 릴리즈 빌드에는 켜지 않는다
+mock-relay = []
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

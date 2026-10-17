@@ -166,6 +166,38 @@ pub async fn write_properties_handler(
     }
 }
 
+/// GET /api/instance/:id/settings/live — 디스크의 실제 설정을 모듈 `import_settings`로 읽어 돌려준다.
+///
+/// `module_settings`는 마지막으로 saba-chan이 저장한 값의 캐시라 게임 안이나 파일에서 바꾼 값과
+/// 어긋날 수 있다. 읽기에 성공하면 캐시도 실제 값으로 맞춘다. 실패하면 `success: false`를 그대로
+/// 돌려주므로, 인터페이스는 그때 기본값으로 덮어쓰지 말아야 한다. Python은 락 밖에서 돈다.
+pub async fn read_live_settings_handler(
+    Path(id): Path<String>,
+    State(state): State<IPCServer>,
+) -> impl IntoResponse {
+    match Supervisor::manage_properties(&state.supervisor, &id, "import", None).await {
+        Ok(result) => {
+            let ok = result.get("success").and_then(|v| v.as_bool()) == Some(true);
+            let settings = result.get("settings").and_then(|v| v.as_object()).filter(|s| !s.is_empty());
+            if let (true, Some(settings)) = (ok, settings) {
+                let mut supervisor = state.supervisor.write().await;
+                if let Some(mut inst) = supervisor.instance_store.get(&id).cloned() {
+                    let credential_map = supervisor.module_loader.get_module(&inst.module_name)
+                        .map(|m| m.metadata.credential_map.clone())
+                        .unwrap_or_default();
+                    // 포트·비밀번호 같은 인스턴스 필드도 파일 값으로 맞춘다 (GUI는 그쪽을 먼저 읽는다)
+                    inst.apply_imported_settings(settings, &credential_map);
+                    if let Err(e) = supervisor.instance_store.update(&id, inst) {
+                        tracing::warn!("Live settings read: cache refresh failed for {}: {}", id, e);
+                    }
+                }
+            }
+            (StatusCode::OK, Json(result)).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string() }))).into_response(),
+    }
+}
+
 /// POST /api/instance/:id/properties/reset — Reset server.properties to defaults
 pub async fn reset_properties_handler(
     Path(id): Path<String>,

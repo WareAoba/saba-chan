@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('api', {
     instanceRestart: (id, opts) => ipcRenderer.invoke('instance:restart', id, opts),
     instanceRename: (id, name) => ipcRenderer.invoke('instance:rename', id, name),
     instanceCommands: (id) => ipcRenderer.invoke('instance:commands', id),
+    instanceReadLiveSettings: (id) => ipcRenderer.invoke('instance:readLiveSettings', id),
+    runtimePreflight: () => ipcRenderer.invoke('runtime:preflight'),
     configDefaults: (kind) => ipcRenderer.invoke('config:defaults', kind),
     configReset: (kind, keys) => ipcRenderer.invoke('config:reset', kind, keys),
     // Extension API

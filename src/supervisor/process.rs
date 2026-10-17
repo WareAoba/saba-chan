@@ -112,6 +112,18 @@ impl ProcessTracker {
         Ok(())
     }
 
+    /// 같은 서버의 PID만 바꾼다 (런처가 끝나고 진짜 서버로 넘어갈 때). 시작 시각은 그대로
+    pub fn replace_pid(&self, server_name: &str, pid: u32) -> Result<()> {
+        let mut processes = self.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
+        match processes.get_mut(server_name) {
+            Some(info) => info.pid = pid,
+            None => {
+                processes.insert(server_name.to_string(), ProcessInfo { pid, start_time: current_timestamp() });
+            }
+        }
+        Ok(())
+    }
+
     /// Get PID by server name
     pub fn get_pid(&self, server_name: &str) -> Result<u32, ProcessError> {
         let processes = self.lock()?;

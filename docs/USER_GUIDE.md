@@ -836,7 +836,7 @@ GUI의 **업데이트** 탭 또는 CLI에서:
 | `cli` | CLI |
 | `gui` | GUI |
 | `updater` | Updater 자체 |
-| `installer` | 설치 프로그램 |
+| (`installer`) | 설치 프로그램: manifest에 실려도 업데이트 대상이 아니다 (새로 설치할 때만 쓴다) |
 | `locales` | 다국어 파일 |
 | `module-{name}` | 개별 모듈 (설치한 것만 업데이트) |
 | `ext-{name}` | 개별 익스텐션 (설치한 것만 업데이트) |

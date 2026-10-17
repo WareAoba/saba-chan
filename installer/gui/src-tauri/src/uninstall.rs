@@ -250,17 +250,24 @@ pub async fn do_silent_uninstall() {
 fn stop_saba_processes() {
     #[cfg(target_os = "windows")]
     {
-        // saba-runner가 게임 서버를 잡(Job Object)에 묶고 있다: 러너를 트리째(/T) 끝내면 서버도 끝난다
-        let targets = [
-            "saba-core",
-            "saba-runner",
-            "saba-chan-cli",
-            "Saba-chan",        // Electron GUI
-            "saba-chan-updater",
+        // saba-runner가 게임 서버를 잡(Job Object)에 묶고 있다: 데몬·러너는 트리째(/T) 끝내 서버도 끝낸다.
+        // GUI·CLI는 /T 없이: GUI가 이 제거기를 자식으로 띄우므로 트리째 끝내면 제거기도 죽는다.
+        let targets: [(&str, bool); 5] = [
+            ("saba-core", true),
+            ("saba-runner", true),
+            ("saba-chan-cli", false),
+            ("Saba-chan", false), // Electron GUI
+            ("saba-chan-updater", false),
         ];
-        for name in &targets {
+        for (name, tree) in targets {
+            let image = format!("{}.exe", name);
+            let mut args = vec!["/IM", image.as_str()];
+            if tree {
+                args.push("/T");
+            }
+            args.push("/F");
             let _ = std::process::Command::new("taskkill")
-                .args(["/IM", &format!("{}.exe", name), "/T", "/F"])
+                .args(&args)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
                 .status();
@@ -276,6 +283,17 @@ fn stop_saba_processes() {
             "saba-chan",
             "saba-chan-updater",
         ];
+        // 게임 서버는 데몬(직접 띄운 비관리 서버)이나 러너의 자식이고, 그 아래 손자가 있을 수 있다
+        // (PTY로 띄운 서버는 따로 세션·그룹을 연다). 데몬·러너의 자식 트리를 아래부터 통째로 끝낸다
+        let _ = std::process::Command::new("sh")
+            .args([
+                "-c",
+                "kt() { for c in $(pgrep -P \"$1\"); do kt \"$c\"; done; kill -KILL \"$1\" 2>/dev/null; }; \
+                 for p in $(pgrep -x saba-runner) $(pgrep -x saba-core); do for c in $(pgrep -P \"$p\"); do kill -KILL -- -\"$c\" 2>/dev/null; kt \"$c\"; done; done",
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
         for name in &targets {
             let _ = std::process::Command::new("pkill")
                 .args(["-f", name])

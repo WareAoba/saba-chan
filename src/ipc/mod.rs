@@ -682,6 +682,7 @@ impl IPCServer {
             .route("/api/instance/:id/validate", post(handlers::managed::validate_instance_handler))
             .route("/api/instance/:id/properties", get(handlers::managed::read_properties_handler).put(handlers::managed::write_properties_handler))
             .route("/api/instance/:id/properties/reset", post(handlers::managed::reset_properties_handler))
+            .route("/api/instance/:id/settings/live", get(handlers::managed::read_live_settings_handler))
             .route("/api/instance/:id/server/reset", post(handlers::managed::reset_server_handler))
             .route("/api/instance/:id/accept-eula", post(handlers::managed::accept_eula_handler))
             .route("/api/instance/:id/diagnose", post(handlers::managed::diagnose_handler))
@@ -716,6 +717,7 @@ impl IPCServer {
             // ── Extension management ──
             .route("/api/extensions", get(handlers::extension::list_extensions))
             .route("/api/extensions/init-status", get(handlers::extension::extension_init_status))
+            .route("/api/runtime/preflight", get(|| async { axum::Json(crate::python_env::preflight_snapshot()) }))
             .route("/api/extensions/rescan", post(handlers::extension::rescan_extensions))
             .route("/api/extensions/manifest", get(handlers::extension::fetch_manifest))
             .route("/api/extensions/updates", get(handlers::extension::check_extension_updates))

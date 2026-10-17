@@ -653,21 +653,13 @@ pub async fn restart_instance_handler(
 ) -> axum::response::Response {
     let picked = {
         let supervisor = state.supervisor.read().await;
-        let found = supervisor
+        supervisor
             .instance_store
             .get(&id)
             .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == id))
-            .cloned();
-        match found {
-            Some(i) => {
-                let tracked = supervisor.tracker.get_pid(&i.id).is_ok()
-                    || supervisor.managed_store.running_instance_ids().await.contains(&i.id);
-                Some((i.id.clone(), tracked))
-            }
-            None => None,
-        }
+            .map(|i| i.id.clone())
     };
-    let Some((inst_id, tracked)) = picked else {
+    let Some(inst_id) = picked else {
         return instance_not_found(&id);
     };
     let force = body.map(|Json(b)| b.force).unwrap_or(false);
@@ -675,12 +667,12 @@ pub async fn restart_instance_handler(
     {
         // 데몬이 추적하지 않아도 익스텐션이 맡은 서버일 수 있다: 정지를 먼저 맡긴다
         let stop = crate::ipc::internal::into_internal(stop_instance(state.clone(), &inst_id, force).await).await;
+        // 꺼져 있던 일반 인스턴스는 정지가 아무것도 하지 않고 was_running=false를 준다
         let ok = stop.status.is_success() && stop.body.get("success").and_then(Value::as_bool) != Some(false);
-        let handled = stop.body.get("handled").and_then(Value::as_bool) == Some(true);
-        if (tracked || handled) && !ok {
+        if !ok {
             return (stop.status, Json(stop.body)).into_response();
         }
-        running = tracked || handled;
+        running = stop.body.get("was_running").and_then(Value::as_bool) != Some(false);
         // 정지 응답이 프로세스가 끝나기 전에 올 수 있다: 끝날 때까지 기다린다 (최대 2분)
         for _ in 0..240 {
             let alive = {
@@ -842,9 +834,8 @@ pub async fn stop_instance(state: IPCServer, key: &str, force: bool) -> axum::re
                     // RCON 연결 풀에서 해당 인스턴스 연결 제거
                     state.rcon_pool.remove(&inst.id);
 
-                    // name과 id 둘 다로 untrack 시도
+                    // tracker는 id로만 찾는다: 이름이 다른 인스턴스의 id와 같아도 그쪽을 건드리지 않는다
                     let supervisor = state.supervisor.read().await;
-                    let _ = supervisor.tracker.untrack(&name);
                     if let Err(e) = supervisor.tracker.untrack(&inst.id) {
                         tracing::warn!("Failed to untrack stopped server '{}': {}", name, e);
                     } else {
