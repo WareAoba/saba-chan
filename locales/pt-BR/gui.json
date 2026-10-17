@@ -1022,11 +1022,21 @@
       "module_unverified": "Criado com um módulo ({{id}}) que não veio do catálogo oficial. Confirme que você confia na origem.",
       "module_modified": "O módulo ({{id}}) foi alterado depois de instalado. Reinstale-o se não foi você quem o editou.",
       "extension_unverified": "Extensão ({{id}}) ativada sem vir do catálogo oficial. Confirme que você confia na origem.",
-      "extension_modified": "A extensão ({{id}}) foi alterada depois de instalada. Reinstale-a se não foi você quem a editou."
+      "extension_modified": "A extensão ({{id}}) foi alterada depois de instalada. Reinstale-a se não foi você quem a editou.",
+      "isolated": "Este componente roda em um ambiente isolado (somente pastas permitidas)"
     },
     "start_blocked": {
       "malware_detected": "O antivírus sinalizou um arquivo deste componente não verificado: {{file}}",
-      "launch_outside_instance": "Este módulo não verificado tentou executar um programa fora da pasta do servidor: {{file}}"
+      "launch_outside_instance": "Este módulo não verificado tentou executar um programa fora da pasta do servidor: {{file}}",
+      "unscannable_file": "Este componente não verificado tem arquivos compilados sem o código-fonte e não pode ser analisado: {{file}}",
+      "sandbox_unavailable": "Não foi possível preparar um ambiente isolado para {{component}}, então ele não foi executado."
+    },
+    "sandbox": {
+      "title": "Executar sem isolamento?",
+      "message": "Não foi possível preparar um ambiente isolado para {{component}}. {{detail}}\n\nSe você confia nele, pode executá-lo sem isolamento. Ele poderá então acessar todos os seus arquivos e a rede com as permissões da sua conta. Você será perguntado de novo se os arquivos mudarem.",
+      "allow": "Executar sem isolamento",
+      "allowed": "{{component}} vai rodar sem isolamento. Você será perguntado de novo se os arquivos mudarem.",
+      "allow_failed": "Não foi possível salvar o consentimento: {{error}}"
     }
   },
   "patch_notes": {
@@ -1115,5 +1125,32 @@
     "console_title": "Console do daemon",
     "console_empty": "Ainda não há logs do daemon.",
     "console_failed": "Não foi possível carregar os logs do daemon."
+  },
+  "palette": {
+    "title": "Paleta de comandos",
+    "placeholder": "Buscar ações…",
+    "loading": "Carregando ações…",
+    "empty": "Nenhuma ação correspondente.",
+    "failed": "Não foi possível carregar ou executar a ação.",
+    "need_server": "Escolha um servidor primeiro.",
+    "invalid_input": "Verifique {{field}}: {{reason}}",
+    "plan_expired": "A confirmação expirou. Tente de novo.",
+    "back": "Voltar",
+    "next": "Avançar",
+    "confirm_title": "Executar {{action}}?",
+    "confirm_run": "Executar",
+    "done": "Concluído: {{action}}",
+    "hint": "↑↓ mover · Enter executar · Esc fechar"
+  },
+  "unisolated": {
+    "title": "Executar sem isolamento",
+    "description": "Componentes que você aceitou executar sem isolamento porque não foi possível preparar um ambiente isolado. Eles podem acessar todos os seus arquivos e a rede.",
+    "empty": "Nenhum componente roda sem isolamento.",
+    "active": "Em uso",
+    "stale": "Os arquivos mudaram desde que você aceitou, então este consentimento não é usado. Você será perguntado de novo.",
+    "revoke": "Remover",
+    "revoke_named": "Remover o consentimento de {{component}}",
+    "revoked": "Consentimento para executar {{component}} sem isolamento removido.",
+    "failed": "Não foi possível carregar ou alterar a lista."
   }
 }

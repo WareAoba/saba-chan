@@ -1022,11 +1022,21 @@
       "module_unverified": "已使用非官方目录来源的模块（{{id}}）创建。请确认其来源可信。",
       "module_modified": "模块（{{id}}）的文件在安装后被更改。如果不是您自己修改的，请重新安装。",
       "extension_unverified": "已启用非官方目录来源的扩展（{{id}}）。请确认其来源可信。",
-      "extension_modified": "扩展（{{id}}）的文件在安装后被更改。如果不是您自己修改的，请重新安装。"
+      "extension_modified": "扩展（{{id}}）的文件在安装后被更改。如果不是您自己修改的，请重新安装。",
+      "isolated": "此组件在隔离环境中运行（仅可访问允许的文件夹）"
     },
     "start_blocked": {
       "malware_detected": "杀毒软件将此未验证组件的文件标记为恶意：{{file}}",
-      "launch_outside_instance": "此未验证模块试图运行服务器文件夹之外的程序：{{file}}"
+      "launch_outside_instance": "此未验证模块试图运行服务器文件夹之外的程序：{{file}}",
+      "unscannable_file": "此未验证组件含有没有源文件的编译文件，无法扫描：{{file}}",
+      "sandbox_unavailable": "无法为 {{component}} 准备隔离环境，因此未运行。"
+    },
+    "sandbox": {
+      "title": "不隔离直接运行？",
+      "message": "无法为 {{component}} 准备隔离环境。{{detail}}\n\n如果您信任它，可以不隔离直接运行。这样它将能以您的账户权限访问所有文件和网络。文件更改后会再次询问。",
+      "allow": "不隔离运行",
+      "allowed": "{{component}} 将不隔离运行。文件更改后会再次询问。",
+      "allow_failed": "无法保存同意：{{error}}"
     }
   },
   "patch_notes": {
@@ -1115,5 +1125,32 @@
     "console_title": "守护进程控制台",
     "console_empty": "暂无守护进程日志。",
     "console_failed": "无法加载守护进程日志。"
+  },
+  "palette": {
+    "title": "命令面板",
+    "placeholder": "搜索操作…",
+    "loading": "正在加载操作…",
+    "empty": "没有匹配的操作。",
+    "failed": "无法加载或执行该操作。",
+    "need_server": "请先选择服务器。",
+    "invalid_input": "请检查 {{field}}：{{reason}}",
+    "plan_expired": "确认已过期，请重试。",
+    "back": "返回",
+    "next": "下一步",
+    "confirm_title": "执行 {{action}}？",
+    "confirm_run": "执行",
+    "done": "完成：{{action}}",
+    "hint": "↑↓ 移动 · Enter 执行 · Esc 关闭"
+  },
+  "unisolated": {
+    "title": "不隔离运行",
+    "description": "因无法准备隔离环境而同意不隔离运行的组件。它们可以以您的账户权限访问所有文件和网络。",
+    "empty": "没有不隔离运行的组件。",
+    "active": "使用中",
+    "stale": "同意后文件已更改，此同意不再使用。下次运行时会再次询问。",
+    "revoke": "删除",
+    "revoke_named": "删除 {{component}} 的同意",
+    "revoked": "已删除 {{component}} 不隔离运行的同意。",
+    "failed": "无法加载或更改同意列表。"
   }
 }

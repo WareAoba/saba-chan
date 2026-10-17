@@ -1023,11 +1023,21 @@
       "module_unverified": "공식 카탈로그에서 받지 않은 모듈({{id}})로 만들었어요. 믿을 수 있는 곳에서 받은 것인지 확인해 주세요.",
       "module_modified": "모듈({{id}})의 파일이 설치한 뒤 바뀌었어요. 직접 고친 것이 아니라면 다시 설치해 주세요.",
       "extension_unverified": "공식 카탈로그에서 받지 않은 익스텐션({{id}})을 켰어요. 믿을 수 있는 곳에서 받은 것인지 확인해 주세요.",
-      "extension_modified": "익스텐션({{id}})의 파일이 설치한 뒤 바뀌었어요. 직접 고친 것이 아니라면 다시 설치해 주세요."
+      "extension_modified": "익스텐션({{id}})의 파일이 설치한 뒤 바뀌었어요. 직접 고친 것이 아니라면 다시 설치해 주세요.",
+      "isolated": "이 구성요소는 격리된 환경에서 실행됩니다 (허용된 폴더만 접근)"
     },
     "start_blocked": {
       "malware_detected": "확인되지 않은 구성요소의 파일을 백신이 악성으로 판정했어요: {{file}}",
-      "launch_outside_instance": "확인되지 않은 모듈이 서버 폴더 밖의 프로그램을 실행하려 했어요: {{file}}"
+      "launch_outside_instance": "확인되지 않은 모듈이 서버 폴더 밖의 프로그램을 실행하려 했어요: {{file}}",
+      "unscannable_file": "확인되지 않은 구성요소에 원본 없이 컴파일된 파일이 있어 검사할 수 없어요: {{file}}",
+      "sandbox_unavailable": "{{component}}의 격리 환경을 준비하지 못해 실행하지 않았어요."
+    },
+    "sandbox": {
+      "title": "격리 없이 실행할까요?",
+      "message": "{{component}}의 격리 환경을 준비하지 못했어요. {{detail}}\n\n믿을 수 있는 구성요소라면 격리 없이 실행할 수 있어요. 그러면 이 구성요소는 내 계정 권한으로 모든 파일과 네트워크에 접근할 수 있게 됩니다. 파일이 바뀌면 다시 물어요.",
+      "allow": "격리 없이 실행",
+      "allowed": "{{component}}을(를) 격리 없이 돌리기로 했어요. 파일이 바뀌면 다시 물어요.",
+      "allow_failed": "동의를 저장하지 못했어요: {{error}}"
     }
   },
   "patch_notes": {
@@ -1145,5 +1155,32 @@
     "console_title": "데몬 콘솔",
     "console_empty": "데몬 로그가 아직 없어요.",
     "console_failed": "데몬 로그를 불러오지 못했어요."
+  },
+  "palette": {
+    "title": "명령 팔레트",
+    "placeholder": "액션 검색…",
+    "loading": "액션을 불러오는 중…",
+    "empty": "맞는 액션이 없어요.",
+    "failed": "액션을 불러오거나 실행하지 못했어요.",
+    "need_server": "먼저 서버를 골라 주세요.",
+    "invalid_input": "{{field}}을(를) 확인해 주세요: {{reason}}",
+    "plan_expired": "확인 시간이 지났어요. 다시 해 주세요.",
+    "back": "뒤로",
+    "next": "다음",
+    "confirm_title": "‘{{action}}’ 실행할까요?",
+    "confirm_run": "실행",
+    "done": "완료: {{action}}",
+    "hint": "↑↓ 이동 · Enter 실행 · Esc 닫기"
+  },
+  "unisolated": {
+    "title": "격리 없이 돌리기",
+    "description": "격리 환경을 준비하지 못해 격리 없이 돌리기로 한 구성요소예요. 내 계정 권한으로 모든 파일과 네트워크에 접근할 수 있어요.",
+    "empty": "격리 없이 돌리는 구성요소가 없어요.",
+    "active": "쓰는 중",
+    "stale": "동의한 뒤 파일이 바뀌어 이 동의는 쓰이지 않아요. 다음 실행 때 다시 물어요.",
+    "revoke": "지우기",
+    "revoke_named": "{{component}}의 동의 지우기",
+    "revoked": "{{component}}의 격리 없이 돌리기 동의를 지웠어요.",
+    "failed": "동의 목록을 불러오거나 바꾸지 못했어요."
   }
 }

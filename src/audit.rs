@@ -91,8 +91,9 @@ pub fn current() -> Origin {
 }
 
 /// HTTP 요청마다 출처를 정하는 미들웨어
+/// 데몬 안에서 부르는 요청(액션 카탈로그)은 확장값 `Origin`을 그대로 쓴다. HTTP로는 넣을 수 없다
 pub async fn layer(req: axum::extract::Request, next: axum::middleware::Next) -> axum::response::Response {
-    let origin = Origin::from_headers(req.headers());
+    let origin = req.extensions().get::<Origin>().cloned().unwrap_or_else(|| Origin::from_headers(req.headers()));
     with_origin(origin, next.run(req)).await
 }
 

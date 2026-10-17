@@ -15,6 +15,7 @@ import {
 } from './components';
 import { DiscordPage } from './components/discord/DiscordPage';
 import { ActivityBar, activityAvailable } from './components/shell/ActivityBar';
+import { CommandPalette, paletteAvailable } from './components/shell/CommandPalette';
 import { AppBar } from './components/shell/AppBar';
 import { ServersPage } from './components/servers/ServersPage';
 import { TooltipProvider } from './components/ui/Tooltip';
@@ -780,6 +781,7 @@ function App() {
                     </div>
 
                     {activityAvailable() && <ActivityBar />}
+                    {paletteAvailable() && <CommandPalette />}
 
                     {/* Context Menu */}
                     {contextMenu && (

@@ -611,19 +611,9 @@ impl IPCServer {
         });
     }
 
-    pub async fn start(self) -> Result<()> {
-        tracing::info!("IPC HTTP server starting on {}", self.listen_addr);
-
-        // 포트 충돌 검사 여부는 전역 설정 하나(gui.portConflictCheck). 저장 시에도 갱신된다.
-        let check_ports = self.config_store.get_gui_settings().await.port_conflict_check;
-        self.supervisor
-            .read()
-            .await
-            .skip_port_check
-            .store(!check_ports, std::sync::atomic::Ordering::Relaxed);
-
-        handlers::diagnostics::mark_started();
-        let router = Router::new()
+    /// 데몬 HTTP 라우터 전체 (인증·감사 미들웨어 포함). 액션 카탈로그도 이것을 안에서 부른다
+    pub fn router(&self) -> Router {
+        Router::new()
             // ── 경량 ping (lock / 디스크 I/O 없음) ──
             .route("/health", get(handlers::server::health_check))
             .route("/api/diagnostics", get(handlers::diagnostics::diagnostics))
@@ -721,6 +711,10 @@ impl IPCServer {
                 "/api/sandbox/unisolated/:component",
                 post(handlers::sandbox::allow_unisolated).delete(handlers::sandbox::revoke_unisolated),
             )
+            // ── 액션 카탈로그 (P2) ──
+            .route("/api/actions", get(handlers::actions::list_actions))
+            .route("/api/actions/:id/plan", post(handlers::actions::plan_action))
+            .route("/api/actions/:id/run", post(handlers::actions::run_action))
             .route("/api/client/:id/heartbeat", post(handlers::client::client_heartbeat))
             .route("/api/client/:id/unregister", delete(handlers::client::client_unregister))
             // ── Daemon lifecycle ──
@@ -771,7 +765,22 @@ impl IPCServer {
             // ── Auth middleware (token-based) — 업데이트 라우터까지 모든 라우트에 ──
             // 감사 로그 출처 (A10): 요청마다 X-Saba-Client로 정한다
             .layer(axum::middleware::from_fn(crate::audit::layer))
-            .layer(axum::middleware::from_fn(auth::auth_middleware));
+            .layer(axum::middleware::from_fn(auth::auth_middleware))
+    }
+
+    pub async fn start(self) -> Result<()> {
+        tracing::info!("IPC HTTP server starting on {}", self.listen_addr);
+
+        // 포트 충돌 검사 여부는 전역 설정 하나(gui.portConflictCheck). 저장 시에도 갱신된다.
+        let check_ports = self.config_store.get_gui_settings().await.port_conflict_check;
+        self.supervisor
+            .read()
+            .await
+            .skip_port_check
+            .store(!check_ports, std::sync::atomic::Ordering::Relaxed);
+
+        handlers::diagnostics::mark_started();
+        let router = self.router();
 
         // TCP 리스너 (SO_REUSEADDR + 바인딩 재시도)
         let addr: std::net::SocketAddr = self.listen_addr.parse()

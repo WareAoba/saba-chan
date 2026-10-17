@@ -66,7 +66,7 @@ pub fn read_token_from_file() -> Option<String> {
 
 /// 데몬이 기대하는 토큰. generate_and_save_token()이 넣은 캐시를 먼저 쓰고,
 /// 캐시가 없으면(외부 데몬 등) 파일에서 읽는다
-fn expected_token() -> Option<String> {
+pub(crate) fn expected_token() -> Option<String> {
     let cached = CACHED_TOKEN.read().unwrap_or_else(|e| e.into_inner()).clone();
     cached.or_else(read_token_from_file)
 }

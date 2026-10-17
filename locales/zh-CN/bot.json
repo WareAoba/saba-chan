@@ -131,5 +131,114 @@
   "schedule": {
     "restart_warning": "服务器将在 {{minutes}} 分钟后重启。",
     "update_warning": "服务器将在 {{minutes}} 分钟后重启以进行更新。"
+  },
+  "actions": {
+    "instance": {
+      "list": {
+        "title": "服务器列表",
+        "description": "已登记的服务器及其状态"
+      },
+      "events": {
+        "title": "启动与停止记录",
+        "description": "何时以及为何启动或停止"
+      },
+      "create": {
+        "title": "创建服务器"
+      },
+      "settings": {
+        "set": {
+          "title": "更改服务器设置"
+        }
+      },
+      "schedule": {
+        "set": {
+          "title": "更改计划任务"
+        }
+      },
+      "delete": {
+        "title": "删除服务器"
+      }
+    },
+    "server": {
+      "status": {
+        "title": "服务器状态",
+        "description": "单个服务器的状态"
+      },
+      "start": {
+        "title": "启动服务器"
+      },
+      "stop": {
+        "title": "停止服务器"
+      },
+      "restart": {
+        "title": "重启服务器"
+      },
+      "console": {
+        "tail": {
+          "title": "控制台末尾",
+          "description": "控制台最后 20 行"
+        }
+      }
+    },
+    "monitor": {
+      "summary": {
+        "title": "资源使用情况",
+        "description": "CPU、内存、磁盘和网络"
+      }
+    },
+    "backup": {
+      "list": {
+        "title": "备份列表"
+      },
+      "create": {
+        "title": "创建备份"
+      },
+      "restore": {
+        "title": "恢复备份",
+        "description": "用备份覆盖当前的服务器文件"
+      }
+    },
+    "module": {
+      "install": {
+        "title": "安装模块",
+        "description": "从官方目录下载并安装"
+      }
+    },
+    "extension": {
+      "enable": {
+        "title": "启用扩展"
+      },
+      "disable": {
+        "title": "停用扩展"
+      }
+    },
+    "update": {
+      "check": {
+        "title": "检查更新"
+      },
+      "apply": {
+        "title": "应用更新",
+        "description": "安装已下载的更新并重启应用"
+      }
+    },
+    "field": {
+      "action": "操作",
+      "instance": "服务器",
+      "name": "名称",
+      "module_name": "模块",
+      "module_settings": "模块设置",
+      "schedule": "计划",
+      "backup_keep": "保留的备份数",
+      "module": "模块",
+      "extension": "扩展",
+      "backup": "备份",
+      "overwrites": "覆盖对象",
+      "overwrites_instance": "当前的服务器文件",
+      "source": "来源",
+      "trust": "信任",
+      "version": "要安装的版本",
+      "installed": "当前版本",
+      "official_catalog": "官方目录"
+    }
   }
 }

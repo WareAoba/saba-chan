@@ -1022,11 +1022,21 @@
       "module_unverified": "Créé avec un module ({{id}}) qui ne provient pas du catalogue officiel. Vérifiez que sa source est fiable.",
       "module_modified": "Le module ({{id}}) a été modifié après son installation. Réinstallez-le si vous ne l'avez pas modifié vous-même.",
       "extension_unverified": "Extension ({{id}}) activée alors qu'elle ne provient pas du catalogue officiel. Vérifiez que sa source est fiable.",
-      "extension_modified": "L'extension ({{id}}) a été modifiée après son installation. Réinstallez-la si vous ne l'avez pas modifiée vous-même."
+      "extension_modified": "L'extension ({{id}}) a été modifiée après son installation. Réinstallez-la si vous ne l'avez pas modifiée vous-même.",
+      "isolated": "Ce composant s'exécute dans un environnement isolé (dossiers autorisés uniquement)"
     },
     "start_blocked": {
       "malware_detected": "L'antivirus a signalé un fichier de ce composant non vérifié : {{file}}",
-      "launch_outside_instance": "Ce module non vérifié a tenté de lancer un programme hors du dossier du serveur : {{file}}"
+      "launch_outside_instance": "Ce module non vérifié a tenté de lancer un programme hors du dossier du serveur : {{file}}",
+      "unscannable_file": "Ce composant non vérifié contient des fichiers compilés sans leur source et ne peut pas être analysé : {{file}}",
+      "sandbox_unavailable": "Impossible de préparer un environnement isolé pour {{component}}, il n'a donc pas été lancé."
+    },
+    "sandbox": {
+      "title": "Exécuter sans isolation ?",
+      "message": "Impossible de préparer un environnement isolé pour {{component}}. {{detail}}\n\nSi vous lui faites confiance, vous pouvez l'exécuter sans isolation. Il pourra alors accéder à tous vos fichiers et au réseau avec les droits de votre compte. La question sera reposée si ses fichiers changent.",
+      "allow": "Exécuter sans isolation",
+      "allowed": "{{component}} s'exécutera sans isolation. La question sera reposée si ses fichiers changent.",
+      "allow_failed": "Impossible d'enregistrer le consentement : {{error}}"
     }
   },
   "patch_notes": {
@@ -1115,5 +1125,32 @@
     "console_title": "Console du démon",
     "console_empty": "Pas encore de journaux du démon.",
     "console_failed": "Impossible de charger les journaux du démon."
+  },
+  "palette": {
+    "title": "Palette de commandes",
+    "placeholder": "Rechercher des actions…",
+    "loading": "Chargement des actions…",
+    "empty": "Aucune action correspondante.",
+    "failed": "Impossible de charger ou d'exécuter l'action.",
+    "need_server": "Choisissez d'abord un serveur.",
+    "invalid_input": "Vérifiez {{field}} : {{reason}}",
+    "plan_expired": "La confirmation a expiré. Réessayez.",
+    "back": "Retour",
+    "next": "Suivant",
+    "confirm_title": "Exécuter {{action}} ?",
+    "confirm_run": "Exécuter",
+    "done": "Terminé : {{action}}",
+    "hint": "↑↓ déplacer · Entrée exécuter · Échap fermer"
+  },
+  "unisolated": {
+    "title": "Exécuter sans isolation",
+    "description": "Composants que vous avez accepté d'exécuter sans isolation faute d'environnement isolé. Ils peuvent accéder à tous vos fichiers et au réseau.",
+    "empty": "Aucun composant ne s'exécute sans isolation.",
+    "active": "Actif",
+    "stale": "Les fichiers ont changé depuis votre accord, il n'est donc pas utilisé. La question sera reposée.",
+    "revoke": "Retirer",
+    "revoke_named": "Retirer l'accord pour {{component}}",
+    "revoked": "Accord d'exécution sans isolation retiré pour {{component}}.",
+    "failed": "Impossible de charger ou de modifier la liste."
   }
 }

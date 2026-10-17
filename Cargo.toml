@@ -60,6 +60,8 @@ nix = { version = "0.27", features = ["signal"] }
 
 [dependencies.tower]
 version = "0.4"
+# 액션 카탈로그가 데몬 라우터를 안에서 부른다 (`ServiceExt::oneshot`)
+features = ["util"]
 
 [dependencies.tower-http]
 version = "0.5"
@@ -75,7 +77,6 @@ mock-relay = ["saba-chan-updater-lib/mock-relay"]
 [dev-dependencies]
 regex-lite = "0.1"
 saba-chan-updater-lib = { path = "updater", features = ["test-isolation"] }
-tower = { version = "0.4", features = ["util"] }
 
 [profile.release]
 opt-level = 3

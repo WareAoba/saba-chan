@@ -460,6 +460,51 @@ const impl = {
         Object.assign(mockChannels, patch);
         return ok({ guildId, ...mockChannels });
     },
+    // 데몬 액션 카탈로그 (P2: GET /api/actions, POST …/:id/plan·run)
+    actionsList: ({ instance } = {}) =>
+        ok({
+            actions: [
+                { id: 'instance.list', kind: 'query', risk: 'safe', scope: 'none', title: '서버 목록' },
+                { id: 'monitor.summary', kind: 'query', risk: 'safe', scope: 'none', title: '시스템 요약' },
+                { id: 'server.start', kind: 'command', risk: 'caution', scope: 'instance', title: '서버 시작' },
+                { id: 'server.stop', kind: 'command', risk: 'caution', scope: 'instance', title: '서버 정지' },
+                { id: 'server.restart', kind: 'command', risk: 'caution', scope: 'instance', title: '서버 재시작' },
+                ...(instance
+                    ? [
+                          {
+                              id: 'server.command:say',
+                              kind: 'command',
+                              risk: 'caution',
+                              scope: 'instance',
+                              title: '전체 메시지',
+                              input: {
+                                  type: 'object',
+                                  properties: { message: { type: 'string', title: '내용' } },
+                                  required: ['message'],
+                              },
+                          },
+                      ]
+                    : []),
+                { id: 'backup.create', kind: 'command', risk: 'caution', scope: 'instance', title: '백업 만들기' },
+                { id: 'instance.delete', kind: 'admin', risk: 'danger', scope: 'instance', title: '서버 삭제' },
+            ],
+        }),
+    actionsPlan: (id, { instance } = {}) =>
+        ok({
+            planId: `plan-${id}`,
+            actionId: id,
+            risk: id === 'instance.delete' ? 'danger' : 'caution',
+            needsConfirm: id === 'instance.delete',
+            summary: [
+                { labelKey: 'instance', label: '서버', value: instance || '-' },
+                { labelKey: 'effect', label: '하는 일', value: '서버 폴더와 설정을 지웁니다' },
+            ],
+        }),
+    actionsRun: (id) =>
+        ok({
+            success: true,
+            result: id === 'instance.list' ? { servers: ['야생 서버', '팰월드 친구들'] } : { message: 'ok' },
+        }),
     // 데몬 P1 권한 (GET/PATCH /api/permissions/:guildId, PUT/DELETE …/members/:id)
     permissionsGet: (guildId) => ok(mockPermissions(guildId)),
     permissionsUpdate: (guildId, patch) => {

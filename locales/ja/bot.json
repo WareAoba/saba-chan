@@ -131,5 +131,114 @@
   "schedule": {
     "restart_warning": "{{minutes}}分後にサーバーを再起動します。",
     "update_warning": "{{minutes}}分後にアップデートのためサーバーを再起動します。"
+  },
+  "actions": {
+    "instance": {
+      "list": {
+        "title": "サーバー一覧",
+        "description": "登録済みのサーバーと状態"
+      },
+      "events": {
+        "title": "起動・停止の記録",
+        "description": "いつ・なぜ起動または停止したか"
+      },
+      "create": {
+        "title": "サーバーを作成"
+      },
+      "settings": {
+        "set": {
+          "title": "サーバー設定を変更"
+        }
+      },
+      "schedule": {
+        "set": {
+          "title": "予約タスクを変更"
+        }
+      },
+      "delete": {
+        "title": "サーバーを削除"
+      }
+    },
+    "server": {
+      "status": {
+        "title": "サーバーの状態",
+        "description": "1つのサーバーの状態"
+      },
+      "start": {
+        "title": "サーバーを起動"
+      },
+      "stop": {
+        "title": "サーバーを停止"
+      },
+      "restart": {
+        "title": "サーバーを再起動"
+      },
+      "console": {
+        "tail": {
+          "title": "コンソールの末尾",
+          "description": "コンソールの最後の20行"
+        }
+      }
+    },
+    "monitor": {
+      "summary": {
+        "title": "リソース使用量",
+        "description": "CPU・メモリ・ディスク・ネットワーク"
+      }
+    },
+    "backup": {
+      "list": {
+        "title": "バックアップ一覧"
+      },
+      "create": {
+        "title": "バックアップを作成"
+      },
+      "restore": {
+        "title": "バックアップを復元",
+        "description": "現在のサーバーファイルをバックアップで上書きします"
+      }
+    },
+    "module": {
+      "install": {
+        "title": "モジュールをインストール",
+        "description": "公式カタログからダウンロードしてインストールします"
+      }
+    },
+    "extension": {
+      "enable": {
+        "title": "拡張機能を有効化"
+      },
+      "disable": {
+        "title": "拡張機能を無効化"
+      }
+    },
+    "update": {
+      "check": {
+        "title": "アップデートを確認"
+      },
+      "apply": {
+        "title": "アップデートを適用",
+        "description": "ダウンロードしたアップデートをインストールしてアプリを再起動します"
+      }
+    },
+    "field": {
+      "action": "操作",
+      "instance": "サーバー",
+      "name": "名前",
+      "module_name": "モジュール",
+      "module_settings": "モジュール設定",
+      "schedule": "予約",
+      "backup_keep": "保持するバックアップ数",
+      "module": "モジュール",
+      "extension": "拡張機能",
+      "backup": "バックアップ",
+      "overwrites": "上書き対象",
+      "overwrites_instance": "現在のサーバーファイル",
+      "source": "入手元",
+      "trust": "信頼",
+      "version": "インストールするバージョン",
+      "installed": "現在のバージョン",
+      "official_catalog": "公式カタログ"
+    }
   }
 }

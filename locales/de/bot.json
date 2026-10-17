@@ -131,5 +131,114 @@
   "schedule": {
     "restart_warning": "Der Server startet in {{minutes}} Min. neu.",
     "update_warning": "Der Server startet in {{minutes}} Min. für ein Update neu."
+  },
+  "actions": {
+    "instance": {
+      "list": {
+        "title": "Serverliste",
+        "description": "Registrierte Server und ihr Zustand"
+      },
+      "events": {
+        "title": "Start- und Stoppverlauf",
+        "description": "Wann und warum er gestartet oder gestoppt wurde"
+      },
+      "create": {
+        "title": "Server erstellen"
+      },
+      "settings": {
+        "set": {
+          "title": "Servereinstellungen ändern"
+        }
+      },
+      "schedule": {
+        "set": {
+          "title": "Geplante Aufgaben ändern"
+        }
+      },
+      "delete": {
+        "title": "Server löschen"
+      }
+    },
+    "server": {
+      "status": {
+        "title": "Serverstatus",
+        "description": "Der Zustand eines Servers"
+      },
+      "start": {
+        "title": "Server starten"
+      },
+      "stop": {
+        "title": "Server stoppen"
+      },
+      "restart": {
+        "title": "Server neu starten"
+      },
+      "console": {
+        "tail": {
+          "title": "Konsolenende",
+          "description": "Letzte 20 Konsolenzeilen"
+        }
+      }
+    },
+    "monitor": {
+      "summary": {
+        "title": "Ressourcennutzung",
+        "description": "CPU, Arbeitsspeicher, Datenträger und Netzwerk"
+      }
+    },
+    "backup": {
+      "list": {
+        "title": "Backups"
+      },
+      "create": {
+        "title": "Backup erstellen"
+      },
+      "restore": {
+        "title": "Backup wiederherstellen",
+        "description": "Überschreibt die aktuellen Serverdateien mit dem Backup"
+      }
+    },
+    "module": {
+      "install": {
+        "title": "Modul installieren",
+        "description": "Lädt es aus dem offiziellen Katalog herunter und installiert es"
+      }
+    },
+    "extension": {
+      "enable": {
+        "title": "Erweiterung aktivieren"
+      },
+      "disable": {
+        "title": "Erweiterung deaktivieren"
+      }
+    },
+    "update": {
+      "check": {
+        "title": "Nach Updates suchen"
+      },
+      "apply": {
+        "title": "Update anwenden",
+        "description": "Installiert das heruntergeladene Update und startet die App neu"
+      }
+    },
+    "field": {
+      "action": "Aktion",
+      "instance": "Server",
+      "name": "Name",
+      "module_name": "Modul",
+      "module_settings": "Moduleinstellungen",
+      "schedule": "Zeitplan",
+      "backup_keep": "Aufzubewahrende Backups",
+      "module": "Modul",
+      "extension": "Erweiterung",
+      "backup": "Backup",
+      "overwrites": "Überschreibt",
+      "overwrites_instance": "aktuelle Serverdateien",
+      "source": "Quelle",
+      "trust": "Vertrauen",
+      "version": "Zu installierende Version",
+      "installed": "Installierte Version",
+      "official_catalog": "offizieller Katalog"
+    }
   }
 }

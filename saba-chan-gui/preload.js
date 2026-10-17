@@ -122,6 +122,12 @@ contextBridge.exposeInMainWorld('api', {
     sandboxListUnisolated: () => ipcRenderer.invoke('sandbox:listUnisolated'),
     sandboxAllowUnisolated: (component) => ipcRenderer.invoke('sandbox:allowUnisolated', component),
     sandboxRevokeUnisolated: (component) => ipcRenderer.invoke('sandbox:revokeUnisolated', component),
+    // 액션 카탈로그 (P2): {actions:[{id, kind, risk, surfaces, scope, input, title, description?}], locale}
+    actionsList: (opts) => ipcRenderer.invoke('actions:list', opts),
+    // {input, instance} → {planId, summary:[{labelKey, label, value}], risk, needsConfirm, expiresAt}
+    actionsPlan: (id, body) => ipcRenderer.invoke('actions:plan', id, body),
+    // {input, instance} 또는 {planId} → {success, actionId, status, result}
+    actionsRun: (id, body) => ipcRenderer.invoke('actions:run', id, body),
     // 설정·서버 목록 내보내기/가져오기 (A9): {secrets} / {path?, dryRun, overwrite}. 취소하면 {canceled: true}
     dataExport: (opts) => ipcRenderer.invoke('dataTransfer:export', opts),
     dataImport: (opts) => ipcRenderer.invoke('dataTransfer:import', opts),

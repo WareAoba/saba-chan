@@ -20,5 +20,6 @@ pub mod commands;  // 게임 명령 해석 (/api/instance/:id/command)
 pub mod module_audit;  // 모듈 Python 코드 정적 검사 (M12)
 pub mod audit;
 pub mod sandbox;  // 확인되지 않은 모듈·익스텐션 실행 제한 (Windows)
+pub mod actions;  // 데몬 액션 카탈로그 (P2): 모든 표면이 읽는 기능 목록
 pub mod launch_args;  // 실행 인자 미리보기: 추가 인자 ↔ 설정 필드
 pub mod relay_agent;  // 클라우드 릴레이 ↔ 데몬 에이전트

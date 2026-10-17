@@ -569,7 +569,8 @@
       "perm.owner": "고정된 디스코드 서버 주인 바꾸기",
       "sandbox": "확인되지 않은 모듈·익스텐션의 격리 실행",
       "sandbox.allow": "격리를 준비할 수 없을 때 이 구성요소를 격리 없이 돌리기 (파일이 바뀌면 다시 물어요)",
-      "sandbox.revoke": "격리 없이 돌리기 동의 지우기"
+      "sandbox.revoke": "격리 없이 돌리기 동의 지우기",
+      "do": "데몬 액션을 id로 실행 (`saba do`만 치면 목록)"
     },
     "arg": {
       "json": "글 대신 기계가 읽는 JSON으로 출력",
@@ -762,6 +763,16 @@
   "sandbox": {
     "allowed": "{{component}}을(를) 격리 없이 돌리기로 했어요. 파일이 바뀌면 다시 물어요.",
     "revoked": "{{component}}의 격리 없이 돌리기 동의를 지웠어요."
+  },
+  "do": {
+    "bad_pair": "입력은 key=value 모양이어야 해요: {{pair}}",
+    "confirm": "{{action}}을(를) 실행할까요?",
+    "done": "{{action}} 완료",
+    "col": {
+      "id": "액션",
+      "title": "이름",
+      "risk": "위험도"
+    }
   },
   "perm": {
     "owner": "주인",

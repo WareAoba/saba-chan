@@ -158,6 +158,11 @@ impl NodePermissions {
         }
     }
 
+    /// 명령별 덮어쓰기 (`commandLevels[key]`)
+    pub fn override_level(&self, key: &str) -> Option<i64> {
+        self.command_levels.get(key).copied()
+    }
+
     /// 이 명령의 요구 레벨
     pub fn required(&self, instance_id: &str, command: &str, risk: &str) -> i64 {
         self.command_levels

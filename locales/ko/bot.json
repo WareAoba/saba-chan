@@ -131,5 +131,114 @@
   "schedule": {
     "restart_warning": "{{minutes}}분 뒤 서버가 다시 시작됩니다.",
     "update_warning": "{{minutes}}분 뒤 업데이트를 위해 서버가 다시 시작됩니다."
+  },
+  "actions": {
+    "instance": {
+      "list": {
+        "title": "서버 목록",
+        "description": "등록된 서버와 상태"
+      },
+      "events": {
+        "title": "시작·종료 기록",
+        "description": "언제 왜 켜지고 꺼졌는지"
+      },
+      "create": {
+        "title": "서버 만들기"
+      },
+      "settings": {
+        "set": {
+          "title": "서버 설정 바꾸기"
+        }
+      },
+      "schedule": {
+        "set": {
+          "title": "예약 작업 바꾸기"
+        }
+      },
+      "delete": {
+        "title": "서버 삭제"
+      }
+    },
+    "server": {
+      "status": {
+        "title": "서버 상태",
+        "description": "서버 하나의 상태"
+      },
+      "start": {
+        "title": "서버 시작"
+      },
+      "stop": {
+        "title": "서버 정지"
+      },
+      "restart": {
+        "title": "서버 재시작"
+      },
+      "console": {
+        "tail": {
+          "title": "콘솔 끝부분",
+          "description": "콘솔 마지막 20줄"
+        }
+      }
+    },
+    "monitor": {
+      "summary": {
+        "title": "자원 사용량",
+        "description": "CPU·메모리·디스크·네트워크"
+      }
+    },
+    "backup": {
+      "list": {
+        "title": "백업 목록"
+      },
+      "create": {
+        "title": "백업 만들기"
+      },
+      "restore": {
+        "title": "백업 복원",
+        "description": "지금 서버 파일을 백업으로 덮어써요"
+      }
+    },
+    "module": {
+      "install": {
+        "title": "모듈 설치",
+        "description": "공식 카탈로그에서 받아 설치해요"
+      }
+    },
+    "extension": {
+      "enable": {
+        "title": "익스텐션 켜기"
+      },
+      "disable": {
+        "title": "익스텐션 끄기"
+      }
+    },
+    "update": {
+      "check": {
+        "title": "업데이트 확인"
+      },
+      "apply": {
+        "title": "업데이트 적용",
+        "description": "받은 업데이트를 설치하고 앱을 다시 시작해요"
+      }
+    },
+    "field": {
+      "action": "작업",
+      "instance": "서버",
+      "name": "이름",
+      "module_name": "모듈",
+      "module_settings": "모듈 설정",
+      "schedule": "예약",
+      "backup_keep": "보관할 백업 수",
+      "module": "모듈",
+      "extension": "익스텐션",
+      "backup": "백업",
+      "overwrites": "덮어쓸 대상",
+      "overwrites_instance": "지금 서버 파일",
+      "source": "출처",
+      "trust": "신뢰",
+      "version": "받을 판",
+      "installed": "지금 판",
+      "official_catalog": "공식 카탈로그"
+    }
   }
 }

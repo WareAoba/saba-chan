@@ -446,7 +446,8 @@
       "perm.owner": "Change the pinned owner of this Discord server",
       "sandbox": "Isolated runs of unverified modules and extensions",
       "sandbox.allow": "Run this component without isolation when isolation cannot be prepared (asked again when its files change)",
-      "sandbox.revoke": "Remove the consent to run without isolation"
+      "sandbox.revoke": "Remove the consent to run without isolation",
+      "do": "Run any daemon action by id (`saba do` alone lists them)"
     },
     "arg": {
       "member": "Discord user ID",
@@ -575,6 +576,16 @@
   "sandbox": {
     "allowed": "{{component}} will run without isolation. You will be asked again if its files change.",
     "revoked": "Removed the consent to run {{component}} without isolation."
+  },
+  "do": {
+    "bad_pair": "Input must look like key=value: {{pair}}",
+    "confirm": "Run {{action}}?",
+    "done": "{{action}} done",
+    "col": {
+      "id": "Action",
+      "title": "Name",
+      "risk": "Risk"
+    }
   },
   "perm": {
     "owner": "Owner",

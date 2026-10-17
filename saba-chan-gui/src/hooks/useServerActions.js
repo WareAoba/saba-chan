@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createTranslateError, retryWithBackoff, safeShowToast } from '../utils/helpers';
-import { blockedText, showTrustWarnings } from '../utils/trustNotice';
+import { blockedText, canAskUnisolated, showTrustWarnings } from '../utils/trustNotice';
 
 /**
  * Manages server CRUD operations: fetch, start, stop, status, add, delete.
@@ -196,6 +196,40 @@ export function useServerActions({
         } finally {
             setLoading(false);
         }
+    };
+
+    // 격리 없이 돌리기 동의 (파일이 바뀌면 데몬이 다시 묻는다). 동의하면 retry를 다시 부른다
+    const askUnisolated = (result, retry) => {
+        const component = result.component;
+        setModal({
+            type: 'question',
+            title: t('trust.sandbox.title'),
+            message: t('trust.sandbox.message', { component, detail: result.detail || result.message || '' }),
+            buttons: [
+                {
+                    label: t('trust.sandbox.allow'),
+                    action: async () => {
+                        setModal(null);
+                        try {
+                            const res = await window.api.sandboxAllowUnisolated(component);
+                            if (!res || res.success === false || res.error) {
+                                safeShowToast(
+                                    t('trust.sandbox.allow_failed', { error: translateError(res?.error || '') }),
+                                    'error',
+                                    5000,
+                                );
+                                return;
+                            }
+                            safeShowToast(t('trust.sandbox.allowed', { component }), 'info', 5000);
+                            retry();
+                        } catch (err) {
+                            safeShowToast(t('trust.sandbox.allow_failed', { error: err.message }), 'error', 5000);
+                        }
+                    },
+                },
+                { label: t('modals.cancel'), action: () => setModal(null) },
+            ],
+        });
     };
 
     // ── handleStart ─────────────────────────────────────────
@@ -444,6 +478,13 @@ export function useServerActions({
                     title: t('errors.port_conflict', { defaultValue: 'Port Conflict' }),
                     message: translateError(result.message || '') + (conflictDetails ? '\n\n' + conflictDetails : ''),
                 });
+                return;
+            }
+
+            // ── action_required: 격리를 준비하지 못함 → 이 구성요소만 격리 없이 돌릴지 한 번 묻는다 ──
+            if (canAskUnisolated(result)) {
+                revertOptimistic(name);
+                askUnisolated(result, () => handleStart(name, module));
                 return;
             }
 

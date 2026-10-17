@@ -131,5 +131,114 @@
   "schedule": {
     "restart_warning": "El servidor se reiniciará en {{minutes}} min.",
     "update_warning": "El servidor se reiniciará para actualizarse en {{minutes}} min."
+  },
+  "actions": {
+    "instance": {
+      "list": {
+        "title": "Lista de servidores",
+        "description": "Servidores registrados y su estado"
+      },
+      "events": {
+        "title": "Historial de inicios y paradas",
+        "description": "Cuándo y por qué se inició o se detuvo"
+      },
+      "create": {
+        "title": "Crear servidor"
+      },
+      "settings": {
+        "set": {
+          "title": "Cambiar ajustes del servidor"
+        }
+      },
+      "schedule": {
+        "set": {
+          "title": "Cambiar tareas programadas"
+        }
+      },
+      "delete": {
+        "title": "Eliminar servidor"
+      }
+    },
+    "server": {
+      "status": {
+        "title": "Estado del servidor",
+        "description": "El estado de un servidor"
+      },
+      "start": {
+        "title": "Iniciar servidor"
+      },
+      "stop": {
+        "title": "Detener servidor"
+      },
+      "restart": {
+        "title": "Reiniciar servidor"
+      },
+      "console": {
+        "tail": {
+          "title": "Final de la consola",
+          "description": "Últimas 20 líneas de la consola"
+        }
+      }
+    },
+    "monitor": {
+      "summary": {
+        "title": "Uso de recursos",
+        "description": "CPU, memoria, disco y red"
+      }
+    },
+    "backup": {
+      "list": {
+        "title": "Copias de seguridad"
+      },
+      "create": {
+        "title": "Crear copia de seguridad"
+      },
+      "restore": {
+        "title": "Restaurar copia de seguridad",
+        "description": "Sobrescribe los archivos actuales del servidor con la copia"
+      }
+    },
+    "module": {
+      "install": {
+        "title": "Instalar módulo",
+        "description": "Lo descarga e instala desde el catálogo oficial"
+      }
+    },
+    "extension": {
+      "enable": {
+        "title": "Activar extensión"
+      },
+      "disable": {
+        "title": "Desactivar extensión"
+      }
+    },
+    "update": {
+      "check": {
+        "title": "Buscar actualizaciones"
+      },
+      "apply": {
+        "title": "Aplicar actualización",
+        "description": "Instala la actualización descargada y reinicia la aplicación"
+      }
+    },
+    "field": {
+      "action": "Acción",
+      "instance": "Servidor",
+      "name": "Nombre",
+      "module_name": "Módulo",
+      "module_settings": "Ajustes del módulo",
+      "schedule": "Programación",
+      "backup_keep": "Copias a conservar",
+      "module": "Módulo",
+      "extension": "Extensión",
+      "backup": "Copia de seguridad",
+      "overwrites": "Sobrescribe",
+      "overwrites_instance": "archivos actuales del servidor",
+      "source": "Origen",
+      "trust": "Confianza",
+      "version": "Versión a instalar",
+      "installed": "Versión instalada",
+      "official_catalog": "catálogo oficial"
+    }
   }
 }

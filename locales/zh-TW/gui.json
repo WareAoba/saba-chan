@@ -1022,11 +1022,21 @@
       "module_unverified": "已使用非官方目錄來源的模組（{{id}}）建立。請確認其來源可信。",
       "module_modified": "模組（{{id}}）的檔案在安裝後被變更。如果不是您自己修改的，請重新安裝。",
       "extension_unverified": "已啟用非官方目錄來源的擴充功能（{{id}}）。請確認其來源可信。",
-      "extension_modified": "擴充功能（{{id}}）的檔案在安裝後被變更。如果不是您自己修改的，請重新安裝。"
+      "extension_modified": "擴充功能（{{id}}）的檔案在安裝後被變更。如果不是您自己修改的，請重新安裝。",
+      "isolated": "此元件在隔離環境中執行（僅可存取允許的資料夾）"
     },
     "start_blocked": {
       "malware_detected": "防毒軟體將此未驗證元件的檔案標記為惡意：{{file}}",
-      "launch_outside_instance": "此未驗證模組試圖執行伺服器資料夾之外的程式：{{file}}"
+      "launch_outside_instance": "此未驗證模組試圖執行伺服器資料夾之外的程式：{{file}}",
+      "unscannable_file": "此未驗證元件含有沒有原始檔的編譯檔案，無法掃描：{{file}}",
+      "sandbox_unavailable": "無法為 {{component}} 準備隔離環境，因此未執行。"
+    },
+    "sandbox": {
+      "title": "不隔離直接執行？",
+      "message": "無法為 {{component}} 準備隔離環境。{{detail}}\n\n如果您信任它，可以不隔離直接執行。這樣它將能以您的帳戶權限存取所有檔案和網路。檔案變更後會再次詢問。",
+      "allow": "不隔離執行",
+      "allowed": "{{component}} 將不隔離執行。檔案變更後會再次詢問。",
+      "allow_failed": "無法儲存同意：{{error}}"
     }
   },
   "patch_notes": {
@@ -1115,5 +1125,32 @@
     "console_title": "常駐程式主控台",
     "console_empty": "目前沒有常駐程式日誌。",
     "console_failed": "無法載入常駐程式日誌。"
+  },
+  "palette": {
+    "title": "命令面板",
+    "placeholder": "搜尋動作…",
+    "loading": "正在載入動作…",
+    "empty": "沒有符合的動作。",
+    "failed": "無法載入或執行該動作。",
+    "need_server": "請先選擇伺服器。",
+    "invalid_input": "請檢查 {{field}}：{{reason}}",
+    "plan_expired": "確認已過期，請重試。",
+    "back": "返回",
+    "next": "下一步",
+    "confirm_title": "執行 {{action}}？",
+    "confirm_run": "執行",
+    "done": "完成：{{action}}",
+    "hint": "↑↓ 移動 · Enter 執行 · Esc 關閉"
+  },
+  "unisolated": {
+    "title": "不隔離執行",
+    "description": "因無法準備隔離環境而同意不隔離執行的元件。它們可以以您的帳戶權限存取所有檔案和網路。",
+    "empty": "沒有不隔離執行的元件。",
+    "active": "使用中",
+    "stale": "同意後檔案已變更，此同意不再使用。下次執行時會再次詢問。",
+    "revoke": "刪除",
+    "revoke_named": "刪除 {{component}} 的同意",
+    "revoked": "已刪除 {{component}} 不隔離執行的同意。",
+    "failed": "無法載入或變更同意清單。"
   }
 }
