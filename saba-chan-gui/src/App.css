@@ -102,7 +102,7 @@
     font-size: calc(36px * var(--font-scale));
     font-weight: bold;
     margin-bottom: 0;
-    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    text-shadow: 0 2px 10px color-mix(in srgb, var(--shadow-ink) 20%, transparent);
 }
 
 .loading-spinner {
@@ -192,7 +192,7 @@ span[style*="--icon-loader"] svg,
 /* ServerCard 프로비저닝 진행 래퍼 */
 .sc-provision-wrap {
     padding: 10px 16px 8px;
-    border-top: 1px solid var(--border-light, #333);
+    border-top: 1px solid var(--border-light);
 }
 
 /* Native Provision */
@@ -218,21 +218,21 @@ span[style*="--icon-loader"] svg,
 }
 
 .native-provision-icon.active {
-    color: var(--accent-primary, #4a9eff);
+    color: var(--accent-primary);
 }
 
 .native-provision-icon.done {
-    color: var(--success, #4caf50);
+    color: var(--success);
 }
 
 .native-provision-icon.error {
-    color: var(--danger, #f44336);
+    color: var(--danger);
 }
 
 .native-provision-title {
     font-size: calc(12px * var(--font-scale));
     font-weight: 600;
-    color: var(--text-primary, #eee);
+    color: var(--text-primary);
 }
 
 /* 프로비저닝 에러/해제  */
@@ -246,7 +246,7 @@ span[style*="--icon-loader"] svg,
 
 .as-provision-error {
     font-size: calc(11px * var(--font-scale));
-    color: var(--danger, #f44336);
+    color: var(--danger);
     margin: 0;
     text-align: center;
     word-break: break-word;
@@ -257,16 +257,16 @@ span[style*="--icon-loader"] svg,
     font-family: inherit;
     padding: 4px 12px;
     border-radius: 4px;
-    border: 1px solid var(--border-light, #444);
-    background: var(--bg-tertiary, #2a2a3a);
-    color: var(--text-secondary, #aaa);
+    border: 1px solid var(--border-light);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
     cursor: pointer;
     transition: all 0.15s;
 }
 
 .as-provision-dismiss:hover {
-    background: var(--bg-hover, #333);
-    color: var(--text-primary, #eee);
+    background: var(--bg-hover);
+    color: var(--text-primary);
 }
 
 /* Discord Bot Section */
@@ -362,7 +362,7 @@ span[style*="--icon-loader"] svg,
     transform: translateY(-1px);
 }
 .btn-updater-test-active {
-    background: #f5f3ff;
+    background: var(--accent-soft);
     border-color: var(--accent);
     color: var(--accent);
 }
@@ -381,8 +381,8 @@ span[style*="--icon-loader"] svg,
 }
 
 .status-offline {
-    background: #ed4245;
-    box-shadow: 0 0 0 2px rgba(237, 66, 69, 0.2);
+    background: var(--stop);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--stop) 20%, transparent);
 }
 
 .status-checking {
@@ -410,7 +410,7 @@ span[style*="--icon-loader"] svg,
 .btn-small {
     padding: 6px 12px;
     font-size: calc(12px * var(--font-scale));
-    background: #5865f2;
+    background: var(--discord);
     color: var(--text-on-primary);
     border: none;
     border-radius: 4px;
@@ -418,12 +418,12 @@ span[style*="--icon-loader"] svg,
 }
 
 .btn-small:hover {
-    background: #4752c4;
+    background: color-mix(in srgb, var(--discord) 85%, var(--shadow-ink));
 }
 
 .btn-save {
     background: var(--ok);
-    color: white;
+    color: var(--text-on-dark);
 }
 
 .btn-save:hover {
@@ -535,7 +535,7 @@ span[style*="--icon-loader"] svg,
 .as-game-card:hover {
     border-color: var(--brand-primary);
     background: var(--bg-surface-hover);
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 2px 10px color-mix(in srgb, var(--shadow-ink) 12%, transparent);
     transform: translateY(-1px);
 }
 
@@ -589,8 +589,8 @@ span[style*="--icon-loader"] svg,
     align-items: center;
     gap: 3px;
     font-size: calc(10px * var(--font-scale));
-    color: var(--text-success, #4ade80);
-    background: var(--bg-success-subtle, rgba(74, 222, 128, 0.1));
+    color: var(--text-success);
+    background: var(--bg-success-subtle);
     padding: 3px 7px;
     border-radius: 6px;
     font-weight: 600;
@@ -772,9 +772,9 @@ span[style*="--icon-loader"] svg,
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    background: white;
+    background: var(--knob);
     transition: transform 0.2s;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--shadow-ink) 15%, transparent);
 }
 
 .as-toggle-switch input:checked + .as-toggle-track {
@@ -834,9 +834,9 @@ span[style*="--icon-loader"] svg,
 .as-provision-progress {
     margin: 0 0 12px;
     padding: 12px;
-    background: var(--bg-secondary, #1e1e2e);
+    background: var(--bg-secondary);
     border-radius: 8px;
-    border: 1px solid var(--border-light, #333);
+    border: 1px solid var(--border-light);
 }
 
 .as-provision-steps {
@@ -866,48 +866,48 @@ span[style*="--icon-loader"] svg,
 }
 
 .as-step.pending .as-step-icon {
-    background: var(--bg-tertiary, #2a2a3a);
-    color: var(--text-muted, #888);
-    border: 2px solid var(--border-light, #444);
+    background: var(--bg-tertiary);
+    color: var(--text-muted);
+    border: 2px solid var(--border-light);
 }
 
 .as-step.active .as-step-icon {
-    background: var(--accent-primary, #4a9eff);
-    color: #fff;
-    border: 2px solid var(--accent-primary, #4a9eff);
-    box-shadow: 0 0 8px rgba(74, 158, 255, 0.4);
+    background: var(--accent-primary);
+    color: var(--text-on-primary);
+    border: 2px solid var(--accent-primary);
+    box-shadow: 0 0 8px color-mix(in srgb, var(--info) 40%, transparent);
 }
 
 .as-step.completed .as-step-icon {
-    background: var(--success, #4caf50);
-    color: #fff;
-    border: 2px solid var(--success, #4caf50);
+    background: var(--success);
+    color: var(--text-on-dark);
+    border: 2px solid var(--success);
 }
 
 .as-step.error .as-step-icon {
-    background: var(--danger, #f44336);
-    color: #fff;
-    border: 2px solid var(--danger, #f44336);
+    background: var(--danger);
+    color: var(--text-on-dark);
+    border: 2px solid var(--danger);
 }
 
 .as-step-label {
     font-size: calc(10px * var(--font-scale));
-    color: var(--text-muted, #888);
+    color: var(--text-muted);
     text-align: center;
     white-space: nowrap;
 }
 
 .as-step.active .as-step-label {
-    color: var(--accent-primary, #4a9eff);
+    color: var(--accent-primary);
     font-weight: 600;
 }
 
 .as-step.completed .as-step-label {
-    color: var(--success, #4caf50);
+    color: var(--success);
 }
 
 .as-step.error .as-step-label {
-    color: var(--danger, #f44336);
+    color: var(--danger);
 }
 
 .as-step-num {
@@ -917,7 +917,7 @@ span[style*="--icon-loader"] svg,
 /* 진행 바 */
 .as-provision-bar {
     height: 3px;
-    background: var(--bg-tertiary, #2a2a3a);
+    background: var(--bg-tertiary);
     border-radius: 2px;
     overflow: hidden;
     margin-bottom: 8px;
@@ -931,28 +931,28 @@ span[style*="--icon-loader"] svg,
 
 .as-provision-bar-fill.indeterminate {
     width: 40%;
-    background: var(--accent-primary, #4a9eff);
+    background: var(--accent-primary);
     animation: provision-slide 1.5s ease-in-out infinite;
 }
 
 .as-provision-bar-fill.done {
     width: 100%;
-    background: var(--success, #4caf50);
+    background: var(--success);
 }
 
 .as-provision-bar-fill.error {
     width: 100%;
-    background: var(--danger, #f44336);
+    background: var(--danger);
 }
 
 .as-provision-bar-fill.determinate {
-    background: var(--accent-primary, #4a9eff);
+    background: var(--accent-primary);
     transition: width 0.4s ease;
 }
 
 .as-provision-pct {
     font-weight: 600;
-    color: var(--accent-primary, #4a9eff);
+    color: var(--accent-primary);
 }
 
 @keyframes provision-slide {
@@ -966,7 +966,7 @@ span[style*="--icon-loader"] svg,
 
 .as-provision-message {
     font-size: calc(11px * var(--font-scale));
-    color: var(--text-secondary, #aaa);
+    color: var(--text-secondary);
     margin: 0;
     text-align: center;
     line-height: 1.3;
@@ -1233,7 +1233,7 @@ span[style*="--icon-loader"] svg,
     transform: translateX(-50%);
     width: 200px;
     height: 200px;
-    background: radial-gradient(circle, rgba(79, 192, 227, 0.08) 0%, transparent 70%);
+    background: radial-gradient(circle, color-mix(in srgb, var(--info) 8%, transparent) 0%, transparent 70%);
     border-radius: 50%;
     pointer-events: none;
 }
@@ -1289,7 +1289,7 @@ span[style*="--icon-loader"] svg,
 .ai-choice-card:hover {
     border-color: var(--brand-primary);
     background: var(--bg-surface-hover);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15), 0 0 0 1px var(--brand-primary);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--shadow-ink) 15%, transparent), 0 0 0 1px var(--brand-primary);
     transform: translateY(-2px);
 }
 
@@ -1339,12 +1339,12 @@ span[style*="--icon-loader"] svg,
 .ai-choice-icon--new {
     background: color-mix(in srgb, var(--info) 14%, transparent);
     color: var(--brand-primary);
-    border: 1px solid rgba(79, 192, 227, 0.3);
+    border: 1px solid color-mix(in srgb, var(--info) 30%, transparent);
 }
 
 .ai-choice-icon--migrate {
     background: color-mix(in srgb, var(--warn) 16%, transparent);
-    color: var(--warning, #f0a030);
+    color: var(--warning);
     border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
 }
 
@@ -1403,7 +1403,7 @@ span[style*="--icon-loader"] svg,
     align-items: center;
     gap: 6px;
     font-size: calc(12.5px * var(--font-scale));
-    color: var(--warning, #f0a030);
+    color: var(--warning);
     font-weight: 500;
     margin: 6px 2px 0;
     padding: 0;
@@ -1728,7 +1728,7 @@ span[style*="--icon-loader"] svg,
 
 .btn-browse {
     background-color: var(--bg-4);
-    color: white;
+    color: var(--text-1);
     border: none;
     padding: 10px 16px;
     border-radius: 6px;
@@ -2031,7 +2031,7 @@ span[style*="--icon-loader"] svg,
 }
 .number-spinner-btn:active:not(:disabled) {
     background: var(--brand-primary);
-    color: #fff;
+    color: var(--text-on-primary);
 }
 .number-spinner-btn:disabled {
     opacity: 0.3;
@@ -2064,7 +2064,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .refresh-btn:hover {
-    background-color: #218838;
+    background-color: color-mix(in srgb, var(--ok) 85%, var(--shadow-ink));
 }
 /* 모듈별 별명 관리 섹션 */
 
@@ -2166,7 +2166,7 @@ span[style*="--icon-loader"] svg,
 
 .cmd-help:hover {
     background: var(--tab-hover-bg);
-    border-color: #999;
+    border-color: var(--line-strong);
 }
 
 .cmd-tooltip {
@@ -2233,7 +2233,7 @@ span[style*="--icon-loader"] svg,
     transition:
         left 0.35s cubic-bezier(0.4, 0, 0.2, 1),
         width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--shadow-ink) 10%, transparent);
     z-index: 0;
     pointer-events: none;
 }
@@ -2267,7 +2267,7 @@ span[style*="--icon-loader"] svg,
 
 .settings-tabs .settings-tab.active {
     opacity: 1;
-    color: #ffffff;
+    color: var(--text-on-primary);
     font-weight: 600;
     transition: all 0.3s ease;
     border-bottom: none;
@@ -2361,7 +2361,7 @@ span[style*="--icon-loader"] svg,
 .waiting-image {
     width: 120px;
     height: auto;
-    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.2));
+    filter: drop-shadow(0 4px 12px color-mix(in srgb, var(--shadow-ink) 20%, transparent));
     animation: waiting-float 2s ease-in-out infinite;
 }
 
@@ -2397,8 +2397,8 @@ span[style*="--icon-loader"] svg,
     right: 0;
     z-index: 9999;
     background: var(--bg-surface);
-    border-top: 1px solid var(--border-light, rgba(0, 0, 0, 0.08));
-    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.08);
+    border-top: 1px solid var(--border-light);
+    box-shadow: 0 -2px 12px color-mix(in srgb, var(--shadow-ink) 8%, transparent);
     padding: 8px 16px 6px;
     animation: progress-slide-up 0.25s ease-out;
 }
@@ -2441,14 +2441,14 @@ span[style*="--icon-loader"] svg,
 .global-progress-track {
     width: 100%;
     height: 4px;
-    background: var(--bg-surface-tertiary, #e0e0e0);
+    background: var(--bg-surface-tertiary);
     border-radius: 2px;
     overflow: hidden;
 }
 
 .global-progress-fill {
     height: 100%;
-    background: var(--brand-gradient, linear-gradient(135deg, #667eea 0%, #764ba2 100%));
+    background: var(--brand-gradient);
     border-radius: 2px;
     transition: width 0.4s ease;
 }
@@ -2481,12 +2481,12 @@ span[style*="--icon-loader"] svg,
 .console-panel {
     display: flex;
     flex-direction: column;
-    background: var(--console-custom-bg, #1e1e2e);
+    background: var(--console-custom-bg);
     border-radius: 12px;
     margin-top: 16px;
     overflow: hidden;
     border: 1px solid color-mix(in srgb, var(--text-1) 6%, transparent);
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+    box-shadow: 0 4px 24px color-mix(in srgb, var(--shadow-ink) 25%, transparent);
     animation: console-slide-up 0.25s ease-out;
     height: 380px;
     min-height: 200px;
@@ -2519,12 +2519,12 @@ span[style*="--icon-loader"] svg,
     gap: 8px;
     font-size: calc(13px * var(--font-scale));
     font-weight: 600;
-    color: #cdd6f4;
+    color: var(--console-text);
 }
 
 .console-icon {
     font-family: "Cascadia Code", "Consolas", "Monaco", "Courier New", monospace;
-    color: #a6e3a1;
+    color: var(--ok);
     font-size: calc(14px * var(--font-scale));
     font-weight: 700;
 }
@@ -2532,7 +2532,7 @@ span[style*="--icon-loader"] svg,
 .console-close {
     background: none;
     border: none;
-    color: #6c7086;
+    color: color-mix(in srgb, var(--console-text) 55%, transparent);
     font-size: calc(20px * var(--font-scale));
     cursor: pointer;
     padding: 2px 6px;
@@ -2542,8 +2542,8 @@ span[style*="--icon-loader"] svg,
 }
 
 .console-close:hover {
-    color: #f38ba8;
-    background: rgba(243, 139, 168, 0.1);
+    color: var(--stop);
+    background: color-mix(in srgb, var(--stop) 10%, transparent);
 }
 
 .console-output {
@@ -2553,7 +2553,7 @@ span[style*="--icon-loader"] svg,
     font-family: "Cascadia Code", "Consolas", "Monaco", "Courier New", monospace;
     font-size: calc(12.5px * var(--console-font-scale));
     line-height: 1.6;
-    color: var(--console-custom-text, #cdd6f4);
+    color: var(--console-custom-text);
     scrollbar-width: thin;
     scrollbar-color: color-mix(in srgb, var(--text-1) 10%, transparent) transparent;
     -webkit-user-select: text;
@@ -2579,7 +2579,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .console-empty {
-    color: #6c7086;
+    color: color-mix(in srgb, var(--console-text) 55%, transparent);
     font-style: italic;
     padding: 20px 0;
     text-align: center;
@@ -2592,19 +2592,19 @@ span[style*="--icon-loader"] svg,
 }
 
 .console-content {
-    color: var(--console-custom-text, #cdd6f4);
+    color: var(--console-custom-text);
 }
 
 .console-stderr .console-content {
-    color: #f38ba8;
+    color: var(--stop);
 }
 
 .console-level-warn .console-content {
-    color: #f9e2af;
+    color: var(--warn);
 }
 
 .console-level-error .console-content {
-    color: #f38ba8;
+    color: var(--stop);
     font-weight: 600;
 }
 
@@ -2619,7 +2619,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .console-prompt {
-    color: #a6e3a1;
+    color: var(--ok);
     font-family: "Cascadia Code", "Consolas", "Monaco", "Courier New", monospace;
     font-weight: 700;
     font-size: calc(14px * var(--font-scale));
@@ -2632,7 +2632,7 @@ span[style*="--icon-loader"] svg,
     border: 1px solid color-mix(in srgb, var(--text-1) 8%, transparent);
     border-radius: 6px;
     padding: 6px 10px;
-    color: #cdd6f4;
+    color: var(--console-text);
     font-family: "Cascadia Code", "Consolas", "Monaco", "Courier New", monospace;
     font-size: calc(12.5px * var(--console-font-scale));
     outline: none;
@@ -2640,17 +2640,17 @@ span[style*="--icon-loader"] svg,
 }
 
 .console-input:focus {
-    border-color: rgba(166, 227, 161, 0.4);
+    border-color: color-mix(in srgb, var(--ok) 40%, transparent);
 }
 
 .console-input::placeholder {
-    color: #585b70;
+    color: color-mix(in srgb, var(--console-text) 55%, transparent);
 }
 
 .console-send {
-    background: var(--brand-gradient, linear-gradient(135deg, #667eea 0%, #764ba2 100%));
+    background: var(--brand-gradient);
     border: none;
-    color: white;
+    color: var(--text-on-primary);
     padding: 6px 14px;
     border-radius: 6px;
     font-size: calc(12px * var(--font-scale));
@@ -2681,21 +2681,21 @@ span[style*="--icon-loader"] svg,
 }
 
 .console-input-disabled .console-input {
-    border-color: #f9e2af;
+    border-color: var(--warn);
     padding-left: 30px;
     cursor: not-allowed;
     opacity: 0.7;
 }
 
 .console-input-disabled .console-input::placeholder {
-    color: #f9e2af;
+    color: var(--warn);
     opacity: 0.9;
 }
 
 .console-input-disabled > span {
     position: absolute;
     left: 8px;
-    color: #f9e2af;
+    color: var(--warn);
     z-index: 1;
     pointer-events: none;
     flex-shrink: 0;
@@ -2703,7 +2703,7 @@ span[style*="--icon-loader"] svg,
 
 /* Console toggle active state on server card */
 .action-icon.action-active {
-    color: var(--brand-primary, #667eea);
+    color: var(--brand-primary);
     background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
@@ -2726,14 +2726,14 @@ span[style*="--icon-loader"] svg,
 
 .settings-group-danger {
     margin-top: 20px;
-    border: 1px solid rgba(243, 139, 168, 0.25);
+    border: 1px solid color-mix(in srgb, var(--stop) 25%, transparent);
     border-radius: 10px;
     padding: 16px;
-    background: rgba(243, 139, 168, 0.04);
+    background: color-mix(in srgb, var(--stop) 4%, transparent);
 }
 
 .settings-danger-title {
-    color: #f38ba8 !important;
+    color: var(--stop) !important;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -2754,9 +2754,9 @@ span[style*="--icon-loader"] svg,
     justify-content: space-between;
     gap: 16px;
     padding: 10px 12px;
-    background: rgba(0, 0, 0, 0.15);
+    background: color-mix(in srgb, var(--shadow-ink) 15%, transparent);
     border-radius: 8px;
-    border: 1px solid rgba(243, 139, 168, 0.12);
+    border: 1px solid color-mix(in srgb, var(--stop) 12%, transparent);
 }
 
 .danger-zone-info {
@@ -2770,19 +2770,19 @@ span[style*="--icon-loader"] svg,
 .danger-zone-label {
     font-size: calc(13px * var(--font-scale));
     font-weight: 600;
-    color: #cdd6f4;
+    color: var(--text-1);
 }
 
 .danger-zone-desc {
     font-size: calc(11.5px * var(--font-scale));
-    color: #6c7086;
+    color: var(--text-3);
     line-height: 1.4;
 }
 
 .danger-zone-btn {
-    background: rgba(243, 139, 168, 0.15);
-    color: #f38ba8;
-    border: 1px solid rgba(243, 139, 168, 0.3);
+    background: color-mix(in srgb, var(--stop) 15%, transparent);
+    color: var(--stop);
+    border: 1px solid color-mix(in srgb, var(--stop) 30%, transparent);
     border-radius: 6px;
     padding: 6px 16px;
     font-size: calc(12px * var(--font-scale));
@@ -2794,8 +2794,8 @@ span[style*="--icon-loader"] svg,
 }
 
 .danger-zone-btn:hover {
-    background: rgba(243, 139, 168, 0.25);
-    border-color: rgba(243, 139, 168, 0.5);
+    background: color-mix(in srgb, var(--stop) 25%, transparent);
+    border-color: color-mix(in srgb, var(--stop) 50%, transparent);
 }
 
 .danger-zone-btn:disabled {
@@ -2812,7 +2812,7 @@ span[style*="--icon-loader"] svg,
     flex-direction: column;
     height: 100vh;
     padding-top: 0;
-    background: #1e1e2e;
+    background: var(--console-bg);
     overflow: hidden;
 }
 
@@ -2834,7 +2834,7 @@ span[style*="--icon-loader"] svg,
     gap: 8px;
     font-size: calc(13px * var(--font-scale));
     font-weight: 600;
-    color: #cdd6f4;
+    color: var(--console-text);
 }
 
 .console-popout-titlebar-controls {
@@ -2847,7 +2847,7 @@ span[style*="--icon-loader"] svg,
 .console-popout-titlebar-btn {
     background: none;
     border: none;
-    color: #6c7086;
+    color: color-mix(in srgb, var(--console-text) 55%, transparent);
     font-size: calc(16px * var(--font-scale));
     cursor: pointer;
     padding: 2px 8px;
@@ -2857,32 +2857,32 @@ span[style*="--icon-loader"] svg,
 }
 
 .console-popout-titlebar-btn:hover {
-    color: #cdd6f4;
+    color: var(--console-text);
     background: color-mix(in srgb, var(--text-1) 8%, transparent);
 }
 
 .console-popout-titlebar-close:hover {
-    color: #f38ba8;
-    background: rgba(243, 139, 168, 0.15);
+    color: var(--stop);
+    background: color-mix(in srgb, var(--stop) 15%, transparent);
 }
 
 .console-popout-titlebar-popin:hover {
-    color: #a6e3a1;
-    background: rgba(166, 227, 161, 0.1);
+    color: var(--ok);
+    background: color-mix(in srgb, var(--ok) 10%, transparent);
 }
 
 .console-popout-titlebar-pin:hover {
-    color: #89b4fa;
-    background: rgba(137, 180, 250, 0.1);
+    color: var(--info);
+    background: color-mix(in srgb, var(--info) 10%, transparent);
 }
 
 .console-popout-titlebar-pinned {
-    color: #89b4fa !important;
-    background: rgba(137, 180, 250, 0.15);
+    color: var(--info) !important;
+    background: color-mix(in srgb, var(--info) 15%, transparent);
 }
 
 .console-popout-titlebar-pinned:hover {
-    background: rgba(137, 180, 250, 0.25);
+    background: color-mix(in srgb, var(--info) 25%, transparent);
 }
 
 .console-popout-body {
@@ -2899,7 +2899,7 @@ span[style*="--icon-loader"] svg,
     font-family: "Cascadia Code", "Consolas", "Monaco", "Courier New", monospace;
     font-size: calc(12.5px * var(--console-font-scale));
     line-height: 1.6;
-    color: var(--console-custom-text, #cdd6f4);
+    color: var(--console-custom-text);
     scrollbar-width: thin;
     scrollbar-color: color-mix(in srgb, var(--text-1) 10%, transparent) transparent;
     -webkit-user-select: text;
@@ -3045,7 +3045,7 @@ span[style*="--icon-loader"] svg,
 
 .migration-form .btn-browse {
     background-color: var(--bg-4);
-    color: white;
+    color: var(--text-1);
     border: none;
     padding: 10px 16px;
     border-radius: 6px;
@@ -3311,7 +3311,7 @@ span[style*="--icon-loader"] svg,
     max-width: 480px;
     width: 100%;
     text-align: center;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 8px 32px color-mix(in srgb, var(--shadow-ink) 15%, transparent);
 }
 
 .error-fallback-content h2 {

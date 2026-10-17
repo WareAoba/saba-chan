@@ -137,7 +137,7 @@ button:disabled {
 
 .btn-danger {
     background: var(--stop);
-    color: #fff;
+    color: var(--text-on-dark);
     box-shadow: var(--shadow-raised);
 }
 .btn-danger:hover:not(:disabled) {
@@ -149,12 +149,12 @@ button:disabled {
 
 .btn-success {
     background: var(--ok);
-    color: #fff;
+    color: var(--text-on-dark);
 }
 
 .btn-info {
     background: var(--info);
-    color: #fff;
+    color: var(--text-on-dark);
     box-shadow: var(--shadow-raised);
 }
 
@@ -383,7 +383,7 @@ button:disabled {
     padding: 0 4px;
     border-radius: var(--r-pill);
     background: var(--stop);
-    color: #fff;
+    color: var(--text-on-dark);
     font-size: 10px;
     font-weight: 700;
     line-height: 16px;

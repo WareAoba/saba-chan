@@ -27,7 +27,7 @@
     width: 40px;
     height: 22px;
     border-radius: 11px;
-    background: var(--border-strong, #bbb);
+    background: var(--border-strong);
     transition:
         background 0.25s ease,
         box-shadow 0.25s ease;
@@ -42,14 +42,14 @@
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    background: #fff;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+    background: var(--knob);
+    box-shadow: 0 1px 4px color-mix(in srgb, var(--shadow-ink) 18%, transparent);
     transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* checked → brand */
 .saba-toggle input:checked + .saba-toggle-track {
-    background: var(--brand-primary, #667eea);
+    background: var(--brand-primary);
 }
 
 .saba-toggle input:checked + .saba-toggle-track::after {
@@ -58,17 +58,17 @@
 
 /* focus ring */
 .saba-toggle input:focus-visible + .saba-toggle-track {
-    box-shadow: 0 0 0 3px var(--brand-shadow-light, rgba(102, 126, 234, 0.25));
+    box-shadow: 0 0 0 3px var(--brand-shadow-light);
 }
 
 /* hover glow */
 .saba-toggle:hover .saba-toggle-track {
-    box-shadow: 0 0 0 3px var(--brand-shadow-subtle, rgba(102, 126, 234, 0.1));
+    box-shadow: 0 0 0 3px var(--brand-shadow-subtle);
 }
 
 .saba-toggle input:checked + .saba-toggle-track:hover,
 .saba-toggle:hover input:checked + .saba-toggle-track {
-    box-shadow: 0 0 0 4px var(--brand-shadow-light, rgba(102, 126, 234, 0.25));
+    box-shadow: 0 0 0 4px var(--brand-shadow-light);
 }
 
 /* disabled */
@@ -142,8 +142,8 @@
     width: 18px;
     height: 18px;
     border-radius: 5px;
-    border: 2px solid var(--border-medium, #ccc);
-    background: var(--bg-surface, #fff);
+    border: 2px solid var(--border-medium);
+    background: var(--bg-surface);
     transition: all 0.2s ease;
     flex-shrink: 0;
 }
@@ -167,23 +167,23 @@
 
 /* checked */
 .saba-checkbox input:checked + .saba-checkbox-box {
-    background: var(--brand-primary, #667eea);
-    border-color: var(--brand-primary, #667eea);
+    background: var(--brand-primary);
+    border-color: var(--brand-primary);
 }
 
 .saba-checkbox input:checked + .saba-checkbox-box::after {
-    border-color: #fff;
+    border-color: var(--text-on-primary);
     transform: rotate(45deg) scale(1);
 }
 
 /* focus ring */
 .saba-checkbox input:focus-visible + .saba-checkbox-box {
-    box-shadow: 0 0 0 3px var(--brand-shadow-light, rgba(102, 126, 234, 0.25));
+    box-shadow: 0 0 0 3px var(--brand-shadow-light);
 }
 
 /* hover */
 .saba-checkbox:hover .saba-checkbox-box {
-    border-color: var(--brand-primary, #667eea);
+    border-color: var(--brand-primary);
 }
 
 /* disabled */
@@ -217,8 +217,8 @@
 .saba-spinner {
     display: inline-block;
     border-style: solid;
-    border-color: var(--brand-shadow-light, rgba(102, 126, 234, 0.25));
-    border-top-color: var(--brand-primary, #667eea);
+    border-color: var(--brand-shadow-light);
+    border-top-color: var(--brand-primary);
     border-radius: 50%;
     animation: saba-spin 0.75s linear infinite;
     flex-shrink: 0;
@@ -262,7 +262,7 @@
 /* light variant — white track on dark bg */
 .saba-spinner.light {
     border-color: color-mix(in srgb, var(--text-1) 25%, transparent);
-    border-top-color: #fff;
+    border-top-color: var(--text-on-dark);
 }
 
 @keyframes saba-spin {

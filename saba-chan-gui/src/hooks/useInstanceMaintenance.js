@@ -26,7 +26,7 @@ export function useInstanceMaintenance(server, module) {
     const patch = useMaintenanceStore((s) => s.patch);
     const installMethod = extensionInstallMethod(server, module);
 
-    // 익스텐션 방식(예: steamcmd)으로 설치한 인스턴스의 게임 서버 업데이트 확인 (3시간 주기)
+    // 익스텐션 설치 방식으로 설치한 인스턴스의 게임 서버 업데이트 확인 (3시간 주기)
     useEffect(() => {
         if (server.provisioning) return;
         if (!installMethod) return;

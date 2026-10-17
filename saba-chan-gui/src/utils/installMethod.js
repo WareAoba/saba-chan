@@ -6,7 +6,7 @@
 export const BUILTIN_INSTALL_METHODS = ['manual', 'download'];
 
 /**
- * 이 인스턴스를 설치한 익스텐션 방식 이름 (예: 'steamcmd'), 없으면 null.
+ * 이 인스턴스를 설치한 익스텐션 방식 이름 (그 방식을 처리하는 익스텐션 id), 없으면 null.
  * 모듈이 정한 방식을 먼저 보고, 모듈 정보가 없으면 extension_data의 표시로 찾는다.
  */
 export function extensionInstallMethod(server, module) {
