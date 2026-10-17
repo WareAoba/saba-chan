@@ -2020,6 +2020,20 @@ impl Supervisor {
                 tracked_count += 1;
                 
                 if !process_monitor::is_running_in(process_snapshot, pid) {
+                    // 러너가 아직 서버를 돌리고 있으면(런처가 끝나고 진짜 서버가 남은 경우) 러너가 보는 PID로 옮긴다
+                    if matches!(self.managed_store.get(&instance.id).await, Some(p) if p.is_running()) {
+                        let dir = self.instance_store.instance_dir(&instance.id);
+                        match managed_process::runner_server_pid(&dir)
+                            .filter(|p| *p != pid && process_monitor::is_running_in(process_snapshot, *p))
+                        {
+                            Some(new_pid) => {
+                                tracing::info!("Instance '{}': launcher {} exited, following server PID {}", instance.name, pid, new_pid);
+                                let _ = self.tracker.track(&instance.id, new_pid);
+                            }
+                            None => tracing::debug!("Instance '{}': PID {} gone but saba-runner still runs it", instance.name, pid),
+                        }
+                        continue;
+                    }
                     tracing::warn!("Process {} for instance '{}' is no longer running, removing from tracker", pid, instance.name);
                     // tracker에서 제거하여 다음 사이클에서 다시 감지할 수 있도록 함
                     if let Err(e) = self.tracker.untrack(&instance.id) {

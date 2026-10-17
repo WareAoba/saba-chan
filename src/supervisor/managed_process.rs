@@ -18,6 +18,7 @@ use anyhow::Result;
 use regex::Regex;
 
 mod runner;
+pub use runner::runner_server_pid;
 pub use runner::RunnerLaunch;
 pub use runner::{latest_session_log, runner_binary, DEFAULT_LOG_SESSIONS};
 
