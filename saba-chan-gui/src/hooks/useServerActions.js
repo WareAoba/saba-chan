@@ -106,35 +106,21 @@ export function useServerActions({
                             // Crash / unexpected stop — genuinely important.
                             // This is the ONLY state transition that warrants
                             // a persistent notice.
-                            safeShowToast(
-                                t('servers.unexpected_stop_toast', { name: newServer.name }),
-                                'error',
-                                5000,
-                                { isNotice: true, source: newServer.name },
-                            );
+                            safeShowToast(t('servers.unexpected_stop_toast', { name: newServer.name }), 'error', 5000, {
+                                isNotice: true,
+                                source: newServer.name,
+                            });
                         } else if (wasRunning && nowStopped && !isGuiOp && isApiOp && !inBootGrace) {
                             // API-initiated stop (Discord bot command, etc.)
                             // Informational toast only — not notice-worthy.
-                            safeShowToast(
-                                t('servers.unexpected_stop_toast', { name: newServer.name }),
-                                'info',
-                                3000,
-                            );
+                            safeShowToast(t('servers.unexpected_stop_toast', { name: newServer.name }), 'info', 3000);
                         } else if (wasStopped && nowRunning && !isKnownOp) {
                             // External start — informational only, not alarming.
                             // Toast is enough; no persistent notice.
-                            safeShowToast(
-                                t('servers.external_start_toast', { name: newServer.name }),
-                                'info',
-                                3000,
-                            );
+                            safeShowToast(t('servers.external_start_toast', { name: newServer.name }), 'info', 3000);
                         } else if (wasStopped && nowRunning && !isGuiOp && isApiOp && !inBootGrace) {
                             // API-initiated start (Discord bot command, etc.)
-                            safeShowToast(
-                                t('servers.external_start_toast', { name: newServer.name }),
-                                'info',
-                                3000,
-                            );
+                            safeShowToast(t('servers.external_start_toast', { name: newServer.name }), 'info', 3000);
                         }
 
                         if (isGuiOp && (nowStopped || nowRunning) && existing.status !== newServer.status) {
@@ -190,11 +176,7 @@ export function useServerActions({
                 const translatedErr = translateError(data.error);
                 const now = Date.now();
                 if (translatedErr && !loading && now - lastErrorToastRef.current > 5000) {
-                    safeShowToast(
-                        t('servers.fetch_failed_toast', { error: translatedErr }),
-                        'warning',
-                        3000,
-                    );
+                    safeShowToast(t('servers.fetch_failed_toast', { error: translatedErr }), 'warning', 3000);
                     lastErrorToastRef.current = now;
                 }
             } else {
@@ -312,7 +294,9 @@ export function useServerActions({
                                     if (s && installResult.jar_path) {
                                         // working_dir만 설정 — 실행 파일은 모듈에서 자동 해석됨
                                         await window.api.instanceUpdateSettings(s.id, {
-                                            working_dir: installResult.install_path || installResult.jar_path.replace(/[/\\][^/\\]+$/, ''),
+                                            working_dir:
+                                                installResult.install_path ||
+                                                installResult.jar_path.replace(/[/\\][^/\\]+$/, ''),
                                         });
                                     }
 
@@ -371,6 +355,35 @@ export function useServerActions({
                         },
                     ],
                 });
+                return;
+            }
+
+            // ── error_code: module_dependency_unsatisfied — 모듈이 요구하는 사바쨩·익스텐션 버전이 안 맞음 ──
+            if (result.error_code === 'module_dependency_unsatisfied') {
+                revertOptimistic(name);
+                const missing = result.missing_dependencies || [];
+                const needsExtension = missing.some((d) => d.startsWith('ext-'));
+                const title = t('servers.dependency_unmet_title');
+                const message = `${t('servers.dependency_unmet_message', { name })}\n\n${missing.map((d) => `• ${d}`).join('\n')}`;
+                if (needsExtension && openSettingsToExtensions) {
+                    setModal({
+                        type: 'question',
+                        title,
+                        message,
+                        buttons: [
+                            {
+                                label: t('servers.extension_open_settings'),
+                                action: () => {
+                                    setModal(null);
+                                    openSettingsToExtensions();
+                                },
+                            },
+                            { label: t('modals.close'), action: () => setModal(null) },
+                        ],
+                    });
+                } else {
+                    setModal({ type: 'failure', title, message });
+                }
                 return;
             }
 
@@ -713,17 +726,16 @@ export function useServerActions({
                 setModal({
                     type: 'question',
                     title: t('servers.extension_required_title', { defaultValue: 'Extension Required' }),
-                    message:
-                        result.missing_extensions
-                            ? t('servers.extension_required_message_detail', {
-                                  name: serverName,
-                                  extensions: result.missing_extensions.join(', '),
-                                  defaultValue: `Server '${serverName}' requires the following extension(s): ${result.missing_extensions.join(', ')}. Enable them in Settings → Extensions first.`,
-                              })
-                            : t('servers.extension_required_message', {
-                                  name: serverName,
-                                  defaultValue: `Server '${serverName}' requires an extension that is not enabled.`,
-                              }),
+                    message: result.missing_extensions
+                        ? t('servers.extension_required_message_detail', {
+                              name: serverName,
+                              extensions: result.missing_extensions.join(', '),
+                              defaultValue: `Server '${serverName}' requires the following extension(s): ${result.missing_extensions.join(', ')}. Enable them in Settings → Extensions first.`,
+                          })
+                        : t('servers.extension_required_message', {
+                              name: serverName,
+                              defaultValue: `Server '${serverName}' requires an extension that is not enabled.`,
+                          }),
                     buttons: [
                         {
                             label: t('servers.extension_open_settings', { defaultValue: 'Open Extension Settings' }),

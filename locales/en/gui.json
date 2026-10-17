@@ -389,7 +389,9 @@
     "restart_failed_toast": "Couldn't restart: {{error}}",
     "rename_failed_toast": "Couldn't rename: {{error}}",
     "rename_name_taken": "'{{name}}' is already taken",
-    "rename_server_running": "Stop the server before renaming it"
+    "rename_server_running": "Stop the server before renaming it",
+    "dependency_unmet_title": "Missing requirements",
+    "dependency_unmet_message": "The module for '{{name}}' needs the versions below. Update, or install and enable the extension, then start again."
   },
   "settings": {
     "save_failed_title": "Settings save failed",
