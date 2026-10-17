@@ -42,7 +42,7 @@ pub(crate) fn resolve_relay_url(relay_url: Option<&str>) -> String {
     url.trim_end_matches('/').to_string()
 }
 
-/// 노드 토큰을 실어 보내는 요청의 릴레이 주소. 설정한 릴레이(없으면 기본)만 쓴다:
+/// 노드 토큰을 실어 보내거나 받는(페어링) 요청의 릴레이 주소. 설정한 릴레이(없으면 기본)만 쓴다:
 /// `?relayUrl=`로 아무 호스트나 넣어 토큰을 빼내지 못하게. 요청한 주소가 설정과 같거나
 /// 루프백(모의 릴레이 시험)일 때만 그것을 따른다
 pub(crate) fn signed_relay_url(configured: &str, requested: Option<&str>) -> String {
@@ -266,9 +266,9 @@ pub async fn list_node_members(
 
 pub async fn get_bot_invite(
     Query(params): Query<RelayQueryParams>,
-    State(_state): State<IPCServer>,
+    State(state): State<IPCServer>,
 ) -> Response {
-    bot_invite(&resolve_relay_url(params.relay_url.as_deref())).await
+    bot_invite(&signed_base(&state, params.relay_url.as_deref()).await).await
 }
 
 async fn bot_invite(base: &str) -> Response {
@@ -287,7 +287,7 @@ async fn bot_invite(base: &str) -> Response {
 
 pub async fn initiate_pairing(
     Query(params): Query<RelayQueryParams>,
-    State(_state): State<IPCServer>,
+    State(state): State<IPCServer>,
     Json(payload): Json<Value>,
 ) -> Response {
     let relay_url = payload
@@ -295,7 +295,8 @@ pub async fn initiate_pairing(
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
         .or(params.relay_url);
-    let base = resolve_relay_url(relay_url.as_deref());
+    // 페어링이 받은 노드 토큰은 그 릴레이 것이다: 설정한 릴레이(또는 모의 릴레이)와만 페어링한다
+    let base = signed_base(&state, relay_url.as_deref()).await;
     let client = match client() {
         Ok(c) => c,
         Err(r) => return r,
@@ -321,9 +322,9 @@ pub struct PairStatusQuery {
 pub async fn poll_pairing_status(
     Path(code): Path<String>,
     Query(params): Query<PairStatusQuery>,
-    State(_state): State<IPCServer>,
+    State(state): State<IPCServer>,
 ) -> Response {
-    let base = resolve_relay_url(params.relay_url.as_deref());
+    let base = signed_base(&state, params.relay_url.as_deref()).await;
     let client = match client() {
         Ok(c) => c,
         Err(r) => return r,
