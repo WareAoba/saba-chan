@@ -202,12 +202,21 @@ pub struct HighlightRule {
     pub pattern: String,
     /// CSS 색상값 (예: "#f38ba8", "#a6e3a1") 또는 시맨틱 토큰 ("error", "warn", "info", …)
     pub color: String,
+    /// 배경색 (CSS 색상값 또는 시맨틱 토큰)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background: Option<String>,
     /// 굵게 표시 여부
     #[serde(default)]
     pub bold: bool,
     /// 기울임 표시 여부
     #[serde(default)]
     pub italic: bool,
+    /// 밑줄 표시 여부
+    #[serde(default)]
+    pub underline: bool,
+    /// 겹칠 때 큰 값이 이긴다 (기본 0)
+    #[serde(default)]
+    pub priority: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -715,9 +724,35 @@ struct HighlightRuleToml {
     pattern: String,
     color: String,
     #[serde(default)]
+    background: Option<String>,
+    #[serde(default)]
     bold: bool,
     #[serde(default)]
     italic: bool,
+    #[serde(default)]
+    underline: bool,
+    #[serde(default)]
+    priority: i32,
+}
+
+/// 패턴은 GUI(브라우저 JS RegExp)에서 돈다. Python `re`에만 있는 문법은 로드할 때 경고한다.
+/// 규칙은 지우지 않는다: 최종 판단은 GUI 컴파일러가 한다
+fn lint_highlight_pattern(module: &str, rule: &str, pattern: &str) {
+    const PY_ONLY: [(&str, &str); 3] = [("(?P=", "backreference (?P=name); use \\k<name>"), ("(?(", "conditional group"), ("(?#", "inline comment")];
+    for (needle, what) in PY_ONLY {
+        if pattern.contains(needle) {
+            tracing::warn!("Module '{}' highlight rule '{}': Python-only {} does not work in the GUI", module, rule, what);
+        }
+    }
+    // JS는 (?i) 같은 패턴 안 단독 플래그를 모른다 ((?i:...)는 된다)
+    for (idx, _) in pattern.match_indices("(?") {
+        let mut rest = pattern[idx + 2..].chars();
+        if let (Some(flag), next) = (rest.next(), rest.next()) {
+            if "imsxauL".contains(flag) && next == Some(')') {
+                tracing::warn!("Module '{}' highlight rule '{}': inline flag (?{}) does not work in the GUI", module, rule, flag);
+            }
+        }
+    }
 }
 
 impl ModuleToml {
@@ -771,12 +806,19 @@ impl ModuleToml {
         };
 
         let syntax_highlight = if let Some(sh) = self.syntax_highlight {
-            let rules: Vec<HighlightRule> = sh.rules.into_iter().map(|r| HighlightRule {
-                name: r.name,
-                pattern: r.pattern,
-                color: r.color,
-                bold: r.bold,
-                italic: r.italic,
+            let module_name = self.module.name.clone();
+            let rules: Vec<HighlightRule> = sh.rules.into_iter().map(|r| {
+                lint_highlight_pattern(&module_name, &r.name, &r.pattern);
+                HighlightRule {
+                    name: r.name,
+                    pattern: r.pattern,
+                    color: r.color,
+                    background: r.background,
+                    bold: r.bold,
+                    italic: r.italic,
+                    underline: r.underline,
+                    priority: r.priority,
+                }
             }).collect();
             if rules.is_empty() { None } else { Some(SyntaxHighlight { rules }) }
         } else {
@@ -1127,6 +1169,20 @@ impl ModuleLoader {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn highlight_rules_carry_background_underline_priority() {
+        let meta = parse_module_toml(
+            "[module]\nname = \"m\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\nschema_version = 1\n\n\
+             [[syntax_highlight.rules]]\nname = \"a\"\npattern = \"x\"\ncolor = \"warn\"\n\n\
+             [[syntax_highlight.rules]]\nname = \"b\"\npattern = \"(?i)y\"\ncolor = \"#fff\"\n\
+             background = \"dim\"\nunderline = true\npriority = 5\n",
+        )
+        .unwrap();
+        let rules = &meta.syntax_highlight.unwrap().rules;
+        assert_eq!((rules[0].underline, rules[0].priority, rules[0].background.as_deref()), (false, 0, None));
+        assert_eq!((rules[1].underline, rules[1].priority, rules[1].background.as_deref()), (true, 5, Some("dim")));
+    }
 
     #[test]
     fn test_module_loader_creation() {

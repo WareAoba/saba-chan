@@ -212,6 +212,12 @@ async fn main() -> anyhow::Result<()> {
     // 서버(GitHub)에서 매니페스트를 가져와 설치된 컴포넌트의 SHA256을 검증.
     // 결과는 로그로만 남으므로 네트워크를 기다리며 기동을 막지 않는다.
     tokio::spawn(run_integrity_check_on_startup());
+    // Python을 첫 모듈 호출 전에 미리 준비한다 (GUI는 /api/runtime/preflight로 진행을 본다)
+    tokio::spawn(async {
+        if let Err(e) = python_env::get_python_path().await {
+            tracing::warn!("Python preflight failed: {:#}", e);
+        }
+    });
 
     // Initialize supervisor with module loader
     // 모듈 경로: %APPDATA%/saba-chan/modules (환경 변수 오버라이드 가능)

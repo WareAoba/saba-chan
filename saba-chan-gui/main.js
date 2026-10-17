@@ -2106,6 +2106,9 @@ ipcMain.handle('instance:commands', (_event, id) =>
 ipcMain.handle('instance:readLiveSettings', (_event, id) =>
     daemonCall('get', `/api/instance/${id}/settings/live`, undefined, 60000));
 
+// 부팅 직후 Python 준비 상태: {phase, percent, complete, error, components: {python}}
+ipcMain.handle('runtime:preflight', () => daemonCall('get', '/api/runtime/preflight', undefined, 5000));
+
 ipcMain.handle('config:defaults', (_event, kind) =>
     daemonCall('get', `/api/config/${kind}/defaults`));
 
