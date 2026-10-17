@@ -1980,6 +1980,22 @@ impl Supervisor {
         self.exit_events.get(instance_id).map(|e| e.iter().cloned().collect()).unwrap_or_default()
     }
 
+    /// 인스턴스 서버 파일이 있을 수 있는 폴더들 (작업 폴더, 실행 파일 폴더, 인스턴스 폴더)
+    fn instance_roots(&self, instance: &crate::instance::ServerInstance) -> Vec<String> {
+        let mut roots = Vec::new();
+        if let Some(dir) = instance.working_dir.as_deref().filter(|d| !d.is_empty()) {
+            roots.push(dir.to_string());
+        }
+        if let Some(parent) = instance.executable_path.as_deref().and_then(|p| std::path::Path::new(p).parent()) {
+            let parent = parent.to_string_lossy().to_string();
+            if !parent.is_empty() {
+                roots.push(parent);
+            }
+        }
+        roots.push(self.instance_store.instance_dir(&instance.id).to_string_lossy().to_string());
+        roots
+    }
+
     pub async fn monitor_processes(&mut self, process_snapshot: &[crate::process_monitor::RunningProcess]) -> Result<()> {
         use crate::process_monitor;
 
@@ -1996,6 +2012,7 @@ impl Supervisor {
         }
         
         let instances = self.instance_store.list().to_vec();
+        let all_instances_snapshot = instances.clone();
         let mut tracked_count = 0;
         let mut auto_detected_count = 0;
         
@@ -2056,7 +2073,21 @@ impl Supervisor {
                         process_monitor::find_by_name_and_cmd_in(process_snapshot, process_name, &cmd_patterns)
                     };
 
-                    if let Some(process) = processes.first() {
+                    // 같은 게임 인스턴스가 여럿이면 폴더로 주인을 가리고, 다른 인스턴스가 잡은 PID는 빼고 고른다
+                    let siblings: Vec<&crate::instance::ServerInstance> = all_instances_snapshot
+                        .iter()
+                        .filter(|i| i.module_name == instance.module_name && i.id != instance.id)
+                        .collect();
+                    let taken: std::collections::HashSet<u32> = all_instances_snapshot
+                        .iter()
+                        .filter(|i| i.id != instance.id)
+                        .filter_map(|i| self.tracker.get_pid(&i.id).ok())
+                        .collect();
+                    let own_roots = self.instance_roots(&instance);
+                    let other_roots: Vec<String> = siblings.iter().flat_map(|i| self.instance_roots(i)).collect();
+                    let picked = process_monitor::pick_owned_process(&processes, &taken, &own_roots, &other_roots, siblings.is_empty());
+
+                    if let Some(process) = picked {
                                 auto_detected_count += 1;
                                 tracing::info!(
                                     "Auto-detected process '{}' (PID: {}) for instance '{}'",
