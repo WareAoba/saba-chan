@@ -2,7 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ExtensionProvider, useExtensions } from '../contexts/ExtensionContext';
 import i18n from '../i18n';
-import { showTrustWarnings } from '../utils/trustNotice';
+import { blockedText, showTrustWarnings } from '../utils/trustNotice';
 
 const t = i18n.getFixedT('en', 'gui');
 
@@ -53,5 +53,16 @@ describe('신뢰 경고 알림', () => {
         const warned = window.showToast.mock.calls.filter((c) => c[1] === 'warning');
         expect(warned).toHaveLength(1);
         expect(warned[0][0]).toMatch(/extension \(music\) that did not come from the official catalog/);
+    });
+
+    it('시작이 막힌 이유는 두 코드만 문구로 바꾸고, 나머지는 원래 흐름에 맡긴다', () => {
+        expect(blockedText({ success: false, action_required: 'malware_detected', file: 'a.py' }, t)).toBe(
+            'Antivirus flagged a file of this unverified component: a.py',
+        );
+        expect(blockedText({ action_required: 'launch_outside_instance', file: 'C:/x.exe' }, t)).toMatch(
+            /outside the server folder: C:\/x\.exe/,
+        );
+        expect(blockedText({ action_required: 'extension_required' }, t)).toBeNull();
+        expect(blockedText({ success: false, message: 'x' }, t)).toBeNull();
     });
 });

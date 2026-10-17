@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { launchDraft } from '../components/servers/LaunchPreview';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
+import { blockedText } from '../utils/trustNotice';
 import { useModalClose } from './useModalClose';
 
 /**
@@ -510,7 +511,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                     setModal({
                         type: 'failure',
                         title: t('settings.save_failed_title'),
-                        message: translateError(result.error),
+                        message: blockedText(result, t) || translateError(result.error),
                     });
                 }
                 console.error('Error response:', result.error);

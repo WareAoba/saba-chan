@@ -12,3 +12,13 @@ export function showTrustWarnings(result, t) {
         safeShowToast(text, 'warning', 8000);
     }
 }
+
+/** 확인되지 않은 구성요소라서 데몬이 막은 이유 (action_required). 시작뿐 아니라 정지·설정 저장 등 모든 lifecycle 호출에서 올 수 있다 */
+const START_BLOCKED = ['malware_detected', 'launch_outside_instance'];
+
+/** 응답이 위 이유로 막혔으면 알릴 문구, 아니면 null (모르는 코드는 원래 흐름대로) */
+export function blockedText(result, t) {
+    const code = result?.action_required;
+    if (!START_BLOCKED.includes(code)) return null;
+    return t(`trust.start_blocked.${code}`, { file: result.file || '?', defaultValue: '' }) || null;
+}

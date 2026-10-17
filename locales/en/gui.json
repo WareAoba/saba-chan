@@ -1024,6 +1024,10 @@
       "module_modified": "The module ({{id}}) changed after it was installed. Reinstall it unless you edited it yourself.",
       "extension_unverified": "Enabled an extension ({{id}}) that did not come from the official catalog. Make sure you trust its source.",
       "extension_modified": "The extension ({{id}}) changed after it was installed. Reinstall it unless you edited it yourself."
+    },
+    "start_blocked": {
+      "malware_detected": "Antivirus flagged a file of this unverified component: {{file}}",
+      "launch_outside_instance": "This unverified module tried to run a program outside the server folder: {{file}}"
     }
   },
   "patch_notes": {

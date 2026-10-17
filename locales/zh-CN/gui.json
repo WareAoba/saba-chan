@@ -1023,6 +1023,10 @@
       "module_modified": "模块（{{id}}）的文件在安装后被更改。如果不是您自己修改的，请重新安装。",
       "extension_unverified": "已启用非官方目录来源的扩展（{{id}}）。请确认其来源可信。",
       "extension_modified": "扩展（{{id}}）的文件在安装后被更改。如果不是您自己修改的，请重新安装。"
+    },
+    "start_blocked": {
+      "malware_detected": "杀毒软件将此未验证组件的文件标记为恶意：{{file}}",
+      "launch_outside_instance": "此未验证模块试图运行服务器文件夹之外的程序：{{file}}"
     }
   },
   "patch_notes": {

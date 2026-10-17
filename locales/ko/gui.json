@@ -1024,6 +1024,10 @@
       "module_modified": "모듈({{id}})의 파일이 설치한 뒤 바뀌었어요. 직접 고친 것이 아니라면 다시 설치해 주세요.",
       "extension_unverified": "공식 카탈로그에서 받지 않은 익스텐션({{id}})을 켰어요. 믿을 수 있는 곳에서 받은 것인지 확인해 주세요.",
       "extension_modified": "익스텐션({{id}})의 파일이 설치한 뒤 바뀌었어요. 직접 고친 것이 아니라면 다시 설치해 주세요."
+    },
+    "start_blocked": {
+      "malware_detected": "확인되지 않은 구성요소의 파일을 백신이 악성으로 판정했어요: {{file}}",
+      "launch_outside_instance": "확인되지 않은 모듈이 서버 폴더 밖의 프로그램을 실행하려 했어요: {{file}}"
     }
   },
   "patch_notes": {
