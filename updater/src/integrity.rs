@@ -212,6 +212,10 @@ fn has_unrecorded_code(dir: &Path, recorded: &BTreeMap<String, String>) -> bool 
         entries.flatten().any(|entry| {
             let path = entry.path();
             let Ok(kind) = entry.file_type() else { return false };
+            // 설치 기록은 링크를 적지 않는다. 링크는 폴더 밖 코드를 끌어올 수 있으니 바뀐 것으로 본다
+            if kind.is_symlink() {
+                return true;
+            }
             if kind.is_dir() {
                 return entry.file_name() != "__pycache__" && walk(&path, recorded);
             }
@@ -387,6 +391,13 @@ mod tests {
         assert_eq!(trust("module-x"), Trust::Modified);
         std::fs::remove_dir_all(dir.join("lib")).unwrap();
         assert_eq!(trust("module-x"), Trust::Verified);
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(tmp.path(), dir.join("outside")).unwrap();
+            assert_eq!(trust("module-x"), Trust::Modified);
+            std::fs::remove_file(dir.join("outside")).unwrap();
+            assert_eq!(trust("module-x"), Trust::Verified);
+        }
 
         std::fs::write(&a, b"changed").unwrap();
         assert_eq!(trust("module-x"), Trust::Modified);
