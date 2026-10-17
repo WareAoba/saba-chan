@@ -1171,5 +1171,16 @@
     "confirm_run": "Run",
     "done": "Done: {{action}}",
     "hint": "↑↓ to move · Enter to run · Esc to close"
+  },
+  "unisolated": {
+    "title": "Run without isolation",
+    "description": "Components you agreed to run without isolation because an isolated environment couldn't be prepared. They can reach all your files and the network.",
+    "empty": "No components run without isolation.",
+    "active": "In use",
+    "stale": "Files changed since you agreed, so this consent isn't used. You'll be asked again.",
+    "revoke": "Remove",
+    "revoke_named": "Remove consent for {{component}}",
+    "revoked": "Removed the consent to run {{component}} without isolation.",
+    "failed": "Couldn't load or change the consent list."
   }
 }

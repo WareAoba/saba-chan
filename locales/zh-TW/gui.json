@@ -1141,5 +1141,16 @@
     "confirm_run": "執行",
     "done": "完成：{{action}}",
     "hint": "↑↓ 移動 · Enter 執行 · Esc 關閉"
+  },
+  "unisolated": {
+    "title": "不隔離執行",
+    "description": "因無法準備隔離環境而同意不隔離執行的元件。它們可以以您的帳戶權限存取所有檔案和網路。",
+    "empty": "沒有不隔離執行的元件。",
+    "active": "使用中",
+    "stale": "同意後檔案已變更，此同意不再使用。下次執行時會再次詢問。",
+    "revoke": "刪除",
+    "revoke_named": "刪除 {{component}} 的同意",
+    "revoked": "已刪除 {{component}} 不隔離執行的同意。",
+    "failed": "無法載入或變更同意清單。"
   }
 }

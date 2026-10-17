@@ -1141,5 +1141,16 @@
     "confirm_run": "执行",
     "done": "完成：{{action}}",
     "hint": "↑↓ 移动 · Enter 执行 · Esc 关闭"
+  },
+  "unisolated": {
+    "title": "不隔离运行",
+    "description": "因无法准备隔离环境而同意不隔离运行的组件。它们可以以您的账户权限访问所有文件和网络。",
+    "empty": "没有不隔离运行的组件。",
+    "active": "使用中",
+    "stale": "同意后文件已更改，此同意不再使用。下次运行时会再次询问。",
+    "revoke": "删除",
+    "revoke_named": "删除 {{component}} 的同意",
+    "revoked": "已删除 {{component}} 不隔离运行的同意。",
+    "failed": "无法加载或更改同意列表。"
   }
 }

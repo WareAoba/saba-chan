@@ -1141,5 +1141,16 @@
     "confirm_run": "Exécuter",
     "done": "Terminé : {{action}}",
     "hint": "↑↓ déplacer · Entrée exécuter · Échap fermer"
+  },
+  "unisolated": {
+    "title": "Exécuter sans isolation",
+    "description": "Composants que vous avez accepté d'exécuter sans isolation faute d'environnement isolé. Ils peuvent accéder à tous vos fichiers et au réseau.",
+    "empty": "Aucun composant ne s'exécute sans isolation.",
+    "active": "Actif",
+    "stale": "Les fichiers ont changé depuis votre accord, il n'est donc pas utilisé. La question sera reposée.",
+    "revoke": "Retirer",
+    "revoke_named": "Retirer l'accord pour {{component}}",
+    "revoked": "Accord d'exécution sans isolation retiré pour {{component}}.",
+    "failed": "Impossible de charger ou de modifier la liste."
   }
 }

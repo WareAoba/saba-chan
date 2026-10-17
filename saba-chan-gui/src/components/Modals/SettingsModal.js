@@ -22,6 +22,7 @@ import { safeShowToast } from '../../utils/helpers';
 import { SabaToggle } from '../ui/SabaUI';
 import { AuditLog, auditAvailable } from '../servers/AuditTab';
 import { DataTransferSection, dataTransferAvailable } from './DataTransferSection';
+import { UnisolatedSection, unisolatedAvailable } from './UnisolatedSection';
 import SabaStorage from './SabaStorage';
 
 function SettingsModal({
@@ -913,6 +914,8 @@ function SettingsModal({
                             </div>
 
                             {dataTransferAvailable() && <DataTransferSection />}
+
+                            {unisolatedAvailable() && <UnisolatedSection />}
 
                             {auditAvailable() && (
                                 <div className="settings-audit">

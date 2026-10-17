@@ -1141,5 +1141,16 @@
     "confirm_run": "Executar",
     "done": "Concluído: {{action}}",
     "hint": "↑↓ mover · Enter executar · Esc fechar"
+  },
+  "unisolated": {
+    "title": "Executar sem isolamento",
+    "description": "Componentes que você aceitou executar sem isolamento porque não foi possível preparar um ambiente isolado. Eles podem acessar todos os seus arquivos e a rede.",
+    "empty": "Nenhum componente roda sem isolamento.",
+    "active": "Em uso",
+    "stale": "Os arquivos mudaram desde que você aceitou, então este consentimento não é usado. Você será perguntado de novo.",
+    "revoke": "Remover",
+    "revoke_named": "Remover o consentimento de {{component}}",
+    "revoked": "Consentimento para executar {{component}} sem isolamento removido.",
+    "failed": "Não foi possível carregar ou alterar a lista."
   }
 }

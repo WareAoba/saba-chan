@@ -1141,5 +1141,16 @@
     "confirm_run": "Ausführen",
     "done": "Erledigt: {{action}}",
     "hint": "↑↓ bewegen · Enter ausführen · Esc schließen"
+  },
+  "unisolated": {
+    "title": "Ohne Isolation ausführen",
+    "description": "Komponenten, die du ohne Isolation ausführen lässt, weil keine isolierte Umgebung vorbereitet werden konnte. Sie können auf alle deine Dateien und das Netzwerk zugreifen.",
+    "empty": "Keine Komponente läuft ohne Isolation.",
+    "active": "Aktiv",
+    "stale": "Die Dateien haben sich seit deiner Zustimmung geändert, daher wird sie nicht verwendet. Du wirst erneut gefragt.",
+    "revoke": "Entfernen",
+    "revoke_named": "Zustimmung für {{component}} entfernen",
+    "revoked": "Zustimmung, {{component}} ohne Isolation auszuführen, entfernt.",
+    "failed": "Die Liste konnte nicht geladen oder geändert werden."
   }
 }
