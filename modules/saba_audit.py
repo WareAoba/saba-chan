@@ -129,6 +129,40 @@ def imported_names(path):
     return names
 
 
+# 소스 없이 Python이 불러오는 파일. 읽을 수 없으니 그대로 보고한다 (__pycache__ 밖에 있으면)
+NATIVE_SUFFIXES = (".so", ".pyd", ".dll", ".dylib")
+BYTECODE_SUFFIXES = (".pyc", ".pyo")
+
+
+def unchecked_bytecode(path):
+    """소스를 보지 않고 쓰이는 __pycache__ 바이트코드 (PEP 552 unchecked-hash: flags 비트0=1, 비트1=0)"""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(8)
+    except OSError:
+        return False
+    if len(head) < 8:
+        return False
+    flags = int.from_bytes(head[4:8], "little")
+    return flags & 0b11 == 0b01
+
+
+def opaque_findings(root):
+    out = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(root).as_posix()
+        suffix = path.suffix.lower()
+        cached = "__pycache__" in path.parts
+        if suffix in NATIVE_SUFFIXES or ".so." in path.name.lower():
+            out.append({"permission": "native_code", "file": rel, "line": 0, "detail": "native library"})
+        elif suffix in BYTECODE_SUFFIXES and (not cached or unchecked_bytecode(path)):
+            out.append({"permission": "opaque_code", "file": rel, "line": 0,
+                        "detail": "compiled Python without readable source"})
+    return out
+
+
 def scan(folder):
     root = Path(folder)
     files = {}
@@ -147,7 +181,7 @@ def scan(folder):
                    and (Path(rel).stem in names or rel.split("/", 1)[0] in names)}
         targets |= pending
 
-    findings = []
+    findings = opaque_findings(root)
     for rel in sorted(targets):
         findings.extend(scan_file(files[rel], rel))
     return findings

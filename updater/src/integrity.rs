@@ -4,10 +4,13 @@
 //! zip에서 푼 파일마다 해시를 `<데이터 폴더>/installed-files.json`에 적어 두고(`record_install`),
 //! 검사(`verify_installed`)는 그 기록만 본다. 네트워크를 쓰지 않는다.
 //! 업데이터가 설치하지 않은 컴포넌트(설치기로 처음 깐 것)는 기록이 없어 결과에 나오지 않는다.
+//!
+//! 신뢰 출처(M12): 서명된 릴리즈 카탈로그에서 받은 컴포넌트 키는 `<데이터 폴더>/official-components.json`에
+//! 따로 적는다(`set_official`). `trust_of`는 "카탈로그에서 받았고 그 뒤로 파일이 그대로인가"를 답한다.
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -133,6 +136,63 @@ pub fn record_dir(component_key: &str, dir: &Path) -> Result<(), String> {
     let mut files = Vec::new();
     walk(dir, &mut files).map_err(|e| e.to_string())?;
     record_install(component_key, &files)
+}
+
+/// 모듈·익스텐션이 어디서 왔고 그대로인지 (GUI·CLI에 보이는 신뢰 표시)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Trust {
+    /// 서명된 릴리즈 카탈로그에서 받았고 설치한 파일이 그대로다
+    Verified,
+    /// 카탈로그에서 받았지만 설치한 뒤 파일이 바뀌었거나 없어졌다
+    Modified,
+    /// 카탈로그에서 받은 것이 아니다 (직접 넣은 폴더·zip, 다른 주소에서 받은 것)
+    Unverified,
+}
+
+fn official_path() -> PathBuf {
+    crate::constants::resolve_data_dir().join("official-components.json")
+}
+
+fn load_official(path: &Path) -> BTreeSet<String> {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+/// 이 컴포넌트를 서명된 카탈로그에서 받았는지 적는다. 다른 곳에서 다시 깔면 false로 지운다
+pub fn set_official(component_key: &str, official: bool) -> Result<(), String> {
+    set_official_at(&official_path(), component_key, official)
+}
+
+fn set_official_at(path: &Path, component_key: &str, official: bool) -> Result<(), String> {
+    let mut keys = load_official(path);
+    let changed = if official { keys.insert(component_key.to_string()) } else { keys.remove(component_key) };
+    if !changed {
+        return Ok(());
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let json = serde_json::to_string_pretty(&keys).map_err(|e| e.to_string())?;
+    std::fs::write(path, json).map_err(|e| e.to_string())
+}
+
+/// 컴포넌트 키(`module-<id>`, `ext-<id>`)의 신뢰 표시
+pub fn trust_of(component_key: &str) -> Trust {
+    trust_at(&records_path(), &official_path(), component_key)
+}
+
+fn trust_at(records: &Path, official: &Path, component_key: &str) -> Trust {
+    if !load_official(official).contains(component_key) {
+        return Trust::Unverified;
+    }
+    match load_records(records).get(component_key) {
+        Some(files) if verify_component(component_key, files).status == IntegrityStatus::Verified => Trust::Verified,
+        Some(_) => Trust::Modified,
+        None => Trust::Unverified,
+    }
 }
 
 /// 기록된 모든 설치를 검사한다
@@ -264,6 +324,27 @@ mod tests {
             compute_sha256(&f).unwrap(),
             "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
         );
+    }
+
+    #[test]
+    fn only_untouched_catalog_installs_are_trusted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (records, official) = (tmp.path().join("installed-files.json"), tmp.path().join("official.json"));
+        let a = tmp.path().join("lifecycle.py");
+        std::fs::write(&a, b"one").unwrap();
+        record_install_at(&records, "module-x", std::slice::from_ref(&a)).unwrap();
+        // 기록은 있어도 카탈로그에서 받은 것이 아니면 검증되지 않은 것
+        assert_eq!(trust_at(&records, &official, "module-x"), Trust::Unverified);
+
+        set_official_at(&official, "module-x", true).unwrap();
+        assert_eq!(trust_at(&records, &official, "module-x"), Trust::Verified);
+        std::fs::write(&a, b"changed").unwrap();
+        assert_eq!(trust_at(&records, &official, "module-x"), Trust::Modified);
+
+        set_official_at(&official, "module-x", false).unwrap();
+        assert_eq!(trust_at(&records, &official, "module-x"), Trust::Unverified);
+        assert_eq!(trust_at(&records, &official, "ext-none"), Trust::Unverified);
+        assert_eq!(serde_json::to_value(Trust::Modified).unwrap(), "modified");
     }
 
     #[test]

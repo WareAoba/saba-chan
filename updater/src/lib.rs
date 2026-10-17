@@ -834,7 +834,10 @@ impl UpdateManager {
         if files.is_empty() {
             return;
         }
-        if let Err(e) = integrity::record_install(&component.manifest_key(), files) {
+        // 업데이터는 서명된 카탈로그의 것만 적용한다
+        if let Err(e) = integrity::record_install(&component.manifest_key(), files)
+            .and_then(|_| integrity::set_official(&component.manifest_key(), true))
+        {
             tracing::warn!("[Updater] Could not record installed files for {}: {}", component.display_name(), e);
         }
     }

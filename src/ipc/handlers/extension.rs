@@ -373,7 +373,7 @@ pub async fn install_extension(
             (explicit_url.clone().unwrap_or_default(), explicit_sha.clone())
         } else {
             match (&entry, &remote) {
-                (Some(e), _) => (e.download_url.clone(), explicit_sha.clone().filter(|_| id == ext_id).or(e.sha256.clone())),
+                (Some(e), _) => (e.download_url.clone(), e.sha256.clone()),
                 (None, Ok(_)) => {
                     return fail(format!("Extension '{}' not found in manifest", id), "not_in_manifest");
                 }
@@ -392,7 +392,9 @@ pub async fn install_extension(
         let refs: Vec<(&str, &std::collections::HashMap<String, serde_json::Value>)> =
             running.iter().map(|(n, d)| (n.as_str(), d)).collect();
         let mut mgr = state.extension_manager.write().await;
-        if let Err(e) = mgr.install_staged(&id, &staged, &refs) {
+        // 카탈로그의 주소와 해시로 받았을 때만 공식 설치다
+        let official = entry.as_ref().is_some_and(|e| e.download_url == url && e.sha256.is_some() && e.sha256 == sha);
+        if let Err(e) = mgr.install_staged(&id, &staged, &refs, official) {
             let (_, Json(body)) = extension_err_response(&e);
             if body.get("error_code").and_then(|c| c.as_str()) == Some("internal") {
                 return fail(e.to_string(), "install_failed");
@@ -444,7 +446,10 @@ pub async fn remove_extension(
 
     let mut mgr = state.extension_manager.write().await;
     match mgr.remove(&ext_id, &refs) {
-        Ok(()) => Ok(Json(serde_json::json!({ "success": true, "id": ext_id }))),
+        Ok(()) => {
+            let _ = saba_chan_updater_lib::integrity::set_official(&format!("ext-{}", ext_id), false);
+            Ok(Json(serde_json::json!({ "success": true, "id": ext_id })))
+        }
         Err(e) => Err(extension_err_response(&e)),
     }
 }
