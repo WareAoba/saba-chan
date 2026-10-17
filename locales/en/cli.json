@@ -570,7 +570,10 @@
     "idle": "Idle / free",
     "legend": "█ Servers (color) ·",
     "none_running": "No servers are running",
-    "network_note": "Network is whole-machine traffic, not split by server. Disk IO and network bars scale to the peak seen while watching.",
-    "watch_hint": "Press Ctrl+C to stop"
+    "network_note": "Disk IO and network are whole-machine values, not split by server. Bars scale to the peak seen while watching. Per-server IO requests include cache hits, so they exceed real disk IO.",
+    "watch_hint": "Press Ctrl+C to stop",
+    "io_requests": "IO requests (incl. cache)",
+    "disk_io_process_note": "Physical disk counters unavailable; showing the sum of process IO (includes cache hits).",
+    "whole": "Whole machine (not split)"
   }
 }

@@ -2,8 +2,9 @@
 //!
 //! 표본은 클라이언트가 `/api/system/metrics`를 부를 때만 뜬다(백그라운드 루프 없음).
 //! 인스턴스 몫은 추적 중인 PID와 그 자손 프로세스를 합친 값이다.
-//! - 디스크 IO: OS가 기계 전체 값을 따로 주지 않아 모든 프로세스의 IO 합을 전체로 쓴다.
-//!   Windows의 프로세스 IO 카운터는 디스크 밖 IO(파이프 등)도 센다.
+//! - 디스크 IO: 전체는 OS의 물리 디스크 카운터로 잰다(`physical_io`). 프로세스 IO 카운터는 캐시에서
+//!   읽은 것까지 세서 실제 디스크와 수십 배 어긋나므로 전체를 인스턴스별로 나누지 않는다.
+//!   인스턴스의 `disk_*_bps`는 그 프로세스들이 요청한 IO(캐시 포함)다.
 //! - 네트워크: 프로세스별 값을 싸게 얻을 길이 없어(Windows는 ETW·관리자 권한 필요) 기계 전체만 준다.
 //! - 디스크 용량의 인스턴스 몫은 폴더 크기를 따로 훑어 10분 동안 재사용한다. 요약만 보는 요청은 훑지 않는다.
 
@@ -13,6 +14,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use sysinfo::{Disks, Networks, Pid, ProcessRefreshKind, System};
+
+mod physical_io;
+use physical_io::PhysicalIo;
 
 /// 이보다 잦은 요청은 직전 표본을 그대로 준다 (여러 클라이언트가 함께 봐도 표본은 하나)
 const MIN_SAMPLE_INTERVAL: Duration = Duration::from_millis(900);
@@ -65,8 +69,10 @@ pub struct MemoryMetrics {
 pub struct DiskIoMetrics {
     pub read_bps: u64,
     pub write_bps: u64,
-    pub others_read_bps: u64,
-    pub others_write_bps: u64,
+    /// "physical": OS 물리 디스크 카운터. "process": 그걸 못 읽어 프로세스 IO 합(캐시 포함)을 대신 쓴 값
+    pub source: &'static str,
+    /// 전체를 인스턴스별로 나누지 않는다 (항상 false)
+    pub per_instance: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -104,6 +110,7 @@ pub struct InstanceMetrics {
     /// 기계 전체 기준 (0~100)
     pub cpu_percent: f32,
     pub memory_bytes: u64,
+    /// 프로세스가 요청한 IO (캐시에서 읽은 것 포함). 실제 디스크 IO의 몫이 아니다
     pub disk_read_bps: u64,
     pub disk_write_bps: u64,
 }
@@ -244,6 +251,9 @@ struct Sampler {
     disks_listed_at: Option<Instant>,
     last_refresh: Option<Instant>,
     last: Option<(Instant, MetricsSnapshot)>,
+    physical_io: PhysicalIo,
+    /// 마지막으로 잰 실제 디스크 (읽기, 쓰기) 초당 바이트
+    physical_rates: Option<(u64, u64)>,
 }
 
 #[derive(Default)]
@@ -285,6 +295,8 @@ impl SystemMonitor {
             networks: Networks::new_with_refreshed_list(),
             disks: Disks::new(),
             disks_listed_at: None,
+            physical_io: PhysicalIo::new(),
+            physical_rates: None,
             last_refresh: None,
             last: None,
         });
@@ -321,6 +333,7 @@ impl SystemMonitor {
             .system
             .refresh_processes_specifics(ProcessRefreshKind::new().with_cpu().with_memory().with_disk_usage());
         sampler.networks.refresh();
+        sampler.physical_rates = sampler.physical_io.refresh();
         sampler.last_refresh = Some(Instant::now());
     }
 
@@ -411,13 +424,15 @@ fn build_snapshot(
     let total_mem = sys.total_memory();
     let used_mem = total_mem.saturating_sub(sys.available_memory()).max(inst_mem.min(total_mem));
 
-    let others_read = per_sec(others.read, window);
-    let others_write = per_sec(others.written, window);
-    let disk_io = DiskIoMetrics {
-        read_bps: others_read + instances.iter().map(|i| i.disk_read_bps).sum::<u64>(),
-        write_bps: others_write + instances.iter().map(|i| i.disk_write_bps).sum::<u64>(),
-        others_read_bps: others_read,
-        others_write_bps: others_write,
+    let disk_io = match sampler.physical_rates {
+        Some((read, write)) => DiskIoMetrics { read_bps: read, write_bps: write, source: "physical", per_instance: false },
+        // 물리 카운터가 없는 OS: 프로세스 IO 합 (캐시 포함이라 실제보다 크다)
+        None => DiskIoMetrics {
+            read_bps: per_sec(others.read, window) + instances.iter().map(|i| i.disk_read_bps).sum::<u64>(),
+            write_bps: per_sec(others.written, window) + instances.iter().map(|i| i.disk_write_bps).sum::<u64>(),
+            source: "process",
+            per_instance: false,
+        },
     };
 
     let (mut rx, mut tx) = (0u64, 0u64);
@@ -572,6 +587,9 @@ mod tests {
         assert!(snap.memory.used_bytes >= snap.memory.others_bytes);
         assert!(snap.cpu.total_percent <= 100.0 && snap.cpu.total_percent >= snap.cpu.others_percent);
         assert!(snap.window_ms > 0);
+        // 리눅스는 /proc/diskstats로 실제 디스크를 잰다
+        #[cfg(target_os = "linux")]
+        assert_eq!(snap.disk_io.source, "physical");
         let inst = &snap.instances[0];
         assert!(inst.running && inst.memory_bytes > 0);
         // 바로 다시 부르면 같은 표본

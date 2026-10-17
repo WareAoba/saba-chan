@@ -70,11 +70,12 @@ fn num(v: &Value, path: &[&str]) -> f64 {
     path.iter().try_fold(v, |cur, k| cur.get(*k)).and_then(Value::as_f64).unwrap_or(0.0)
 }
 
-/// 막대 한 줄의 조각: 인스턴스 번호(색), 나머지, 유휴
+/// 막대 한 줄의 조각: 인스턴스 번호(색), 나머지, 나누지 않은 전체, 유휴
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Part {
     Instance(usize),
     Others,
+    Whole,
     Idle,
 }
 
@@ -104,6 +105,7 @@ fn bar(parts: &[(Part, f64)], total: f64) -> String {
             Part::Instance(i) if *i < COLORS.len() => style(run('█')).fg(COLORS[*i]).to_string(),
             Part::Instance(_) => style(run('█')).white().to_string(),
             Part::Others => style(run('▓')).dim().to_string(),
+            Part::Whole => style(run('▒')).to_string(),
             Part::Idle => style(run('░')).dim().to_string(),
         });
     }
@@ -145,7 +147,8 @@ fn print(v: &Value, peaks: &Peaks) {
     let mut parts = inst_parts(&|x| num(x, &["cpu_percent"]));
     parts.push((Part::Others, num(v, &["cpu", "others_percent"])));
     parts.push((Part::Idle, 100.0 - cpu_total));
-    rows.push((t!("monitor.cpu"), bar(&parts, 100.0), format!("{:.0}%", cpu_total)));
+    // -0.0은 "-0%"로 찍힌다
+    rows.push((t!("monitor.cpu"), bar(&parts, 100.0), format!("{:.0}%", cpu_total.max(0.0) + 0.0)));
 
     let (mem_total, mem_used) = (num(v, &["memory", "total_bytes"]), num(v, &["memory", "used_bytes"]));
     let mut parts = inst_parts(&|x| num(x, &["memory_bytes"]));
@@ -155,9 +158,8 @@ fn print(v: &Value, peaks: &Peaks) {
 
     let io_total = num(v, &["disk_io", "read_bps"]) + num(v, &["disk_io", "write_bps"]);
     let io_scale = peaks.disk_io.max(io_total).max(MIN_RATE_SCALE);
-    let mut parts = inst_parts(&|x| num(x, &["disk_read_bps"]) + num(x, &["disk_write_bps"]));
-    parts.push((Part::Others, num(v, &["disk_io", "others_read_bps"]) + num(v, &["disk_io", "others_write_bps"])));
-    parts.push((Part::Idle, io_scale - io_total));
+    // 실제 디스크 IO는 서버별로 나누지 않는다 (프로세스 IO는 캐시 읽기까지 센다): 전체 한 조각
+    let parts = [(Part::Whole, io_total), (Part::Idle, io_scale - io_total)];
     rows.push((
         t!("monitor.disk_io"),
         bar(&parts, io_scale),
@@ -189,7 +191,7 @@ fn print(v: &Value, peaks: &Peaks) {
     let (rx, tx) = (num(v, &["network", "rx_bps"]), num(v, &["network", "tx_bps"]));
     let net_scale = peaks.network.max(rx + tx).max(MIN_RATE_SCALE);
     // 네트워크는 인스턴스별로 못 잰다: 전체 한 조각
-    let parts = [(Part::Others, rx + tx), (Part::Idle, net_scale - rx - tx)];
+    let parts = [(Part::Whole, rx + tx), (Part::Idle, net_scale - rx - tx)];
     rows.push((t!("monitor.network"), bar(&parts, net_scale), t!("monitor.rx_tx", rx = rate(rx), tx = rate(tx))));
 
     let mut table = output::table(&[String::new(), String::new(), String::new()]);
@@ -208,7 +210,7 @@ fn print(v: &Value, peaks: &Peaks) {
     if running.is_empty() {
         println!("{}", output::dim(&t!("monitor.none_running")));
     } else {
-        let mut table = output::table(&[t!("col.name"), t!("monitor.cpu"), t!("monitor.memory"), t!("monitor.disk_io")]);
+        let mut table = output::table(&[t!("col.name"), t!("monitor.cpu"), t!("monitor.memory"), t!("monitor.io_requests")]);
         for (i, x) in running {
             let swatch = match COLORS.get(i) {
                 Some(c) => style("█").fg(*c).to_string(),
@@ -225,10 +227,17 @@ fn print(v: &Value, peaks: &Peaks) {
     }
     println!(
         "{}",
-        output::dim(&format!("{} ▓ {}  ░ {}", t!("monitor.legend"), t!("monitor.others"), t!("monitor.idle")))
+        output::dim(&format!(
+            "{} ▓ {}  ▒ {}  ░ {}",
+            t!("monitor.legend"),
+            t!("monitor.others"),
+            t!("monitor.whole"),
+            t!("monitor.idle")
+        ))
     );
-    if v.get("network").and_then(|n| n.get("per_instance")).and_then(Value::as_bool) != Some(true) {
-        println!("{}", output::dim(&t!("monitor.network_note")));
+    println!("{}", output::dim(&t!("monitor.network_note")));
+    if output::s(v.get("disk_io").unwrap_or(&Value::Null), "source") == "process" {
+        println!("{}", output::dim(&t!("monitor.disk_io_process_note")));
     }
 }
 

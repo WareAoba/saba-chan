@@ -247,12 +247,7 @@ const impl = {
             window_ms: 2000,
             cpu: { cores: 16, total_percent: instCpu + jitter(14, 6), others_percent: jitter(14, 6) },
             memory: { total_bytes: 32 * GB, used_bytes: 19.6 * GB, others_bytes: 19.6 * GB - 6.4 * GB },
-            disk_io: {
-                read_bps: 9 * MB,
-                write_bps: 4 * MB,
-                others_read_bps: jitter(5 * MB, 3 * MB),
-                others_write_bps: jitter(1 * MB, 1 * MB),
-            },
+            disk_io: { read_bps: jitter(0.3 * MB, 0.4 * MB), write_bps: jitter(0.2 * MB, 0.3 * MB), source: 'physical', per_instance: false },
             network: { rx_bps: jitter(3.2 * MB, 2 * MB), tx_bps: jitter(1.1 * MB, 1 * MB), per_instance: false },
             disks: [
                 {
