@@ -144,6 +144,18 @@ describe('챗봇 설정 변환', () => {
 describe('ChatbotView', () => {
     const nodes = [{ guildId: 'g1', guildName: 'My Guild' }];
 
+    it('릴레이 삭제가 남아 있으면 알린다', async () => {
+        window.api.chatbotGet = vi.fn().mockResolvedValue({
+            success: true,
+            settings: {},
+            guilds: {},
+            hasApiKey: false,
+            pendingRelayDelete: true,
+        });
+        render(<ChatbotView nodes={nodes} />);
+        expect(await screen.findByText(/retry on the next connection/)).toBeTruthy();
+    });
+
     it('노드 목록이 설정보다 늦게 와도 깨지지 않고, 그 전에 바꾼 값은 남는다', async () => {
         window.api.chatbotGet = vi.fn().mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
         window.api.chatbotSave = vi

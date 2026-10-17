@@ -925,6 +925,7 @@
     "tool_images": "Génération d'images",
     "tool_images_hint": "Dessine des images (10 par jour).",
     "tool_social_notes": "Notes sociales",
-    "tool_social_notes_hint": "Garde des notes privées sur l'ambiance et les gens. Jamais affichées dans l'app."
+    "tool_social_notes_hint": "Garde des notes privées sur l'ambiance et les gens. Jamais affichées dans l'app.",
+    "relay_delete_pending": "Les anciens réglages du chatbot n'ont pas encore été supprimés du relais. Nouvelle tentative à la prochaine connexion."
   }
 }

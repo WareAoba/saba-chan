@@ -141,6 +141,12 @@ export function ChatbotView({ nodes = [] }) {
             {!data && !loadError && <SabaSpinner />}
             {data && (
                 <>
+                    {data.pendingRelayDelete && (
+                        <div className="notice tone-info" role="status">
+                            <Icon name="cloudOff" size="sm" />
+                            <span>{t('chatbot.relay_delete_pending')}</span>
+                        </div>
+                    )}
                     <ApiKeyCard hasApiKey={!!data.hasApiKey} onChanged={(res) => setData(res)} nameOf={nameOf} />
                     <SettingsEditor data={data} nodes={nodes} nameOf={nameOf} onSaved={(res) => setData(res)} />
                 </>

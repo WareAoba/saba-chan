@@ -925,6 +925,7 @@
     "tool_images": "画像生成",
     "tool_images_hint": "絵を描きます（1日10枚）。",
     "tool_social_notes": "空気読みメモ",
-    "tool_social_notes_hint": "雰囲気や人について自分だけのメモを残します。アプリには表示されません。"
+    "tool_social_notes_hint": "雰囲気や人について自分だけのメモを残します。アプリには表示されません。",
+    "relay_delete_pending": "以前のチャットボット設定をまだリレーから削除できていません。次の接続時にもう一度削除します。"
   }
 }

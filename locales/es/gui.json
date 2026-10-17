@@ -925,6 +925,7 @@
     "tool_images": "Generación de imágenes",
     "tool_images_hint": "Dibuja imágenes (10 al día).",
     "tool_social_notes": "Notas sociales",
-    "tool_social_notes_hint": "Guarda notas privadas sobre el ambiente y las personas. Nunca se muestran en la app."
+    "tool_social_notes_hint": "Guarda notas privadas sobre el ambiente y las personas. Nunca se muestran en la app.",
+    "relay_delete_pending": "Los ajustes antiguos del chatbot aún no se han borrado del relay. Se reintentará en la próxima conexión."
   }
 }

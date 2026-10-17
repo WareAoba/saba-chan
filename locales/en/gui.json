@@ -925,6 +925,7 @@
     "tool_images": "Image generation",
     "tool_images_hint": "Draws pictures (10 per day).",
     "tool_social_notes": "Social notes",
-    "tool_social_notes_hint": "Keeps private notes about the mood and people. Never shown in the app."
+    "tool_social_notes_hint": "Keeps private notes about the mood and people. Never shown in the app.",
+    "relay_delete_pending": "The old chatbot settings haven't been removed from the relay yet. It will retry on the next connection."
   }
 }

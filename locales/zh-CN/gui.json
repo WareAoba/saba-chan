@@ -925,6 +925,7 @@
     "tool_images": "图片生成",
     "tool_images_hint": "画图（每天 10 张）。",
     "tool_social_notes": "察言观色备忘",
-    "tool_social_notes_hint": "记录关于氛围和成员的私人备忘，不会在应用中显示。"
+    "tool_social_notes_hint": "记录关于氛围和成员的私人备忘，不会在应用中显示。",
+    "relay_delete_pending": "旧的聊天机器人设置尚未从中继删除，下次连接时会再次删除。"
   }
 }
