@@ -90,7 +90,9 @@ pub async fn create_instance(
         let mut instance = crate::instance::ServerInstance::new(name, module);
 
         // 모듈 정보에서 process_name, default_port, install 설정 가져오기
+        let mut module_trust = None;
         let module_install = if let Ok(loaded_module) = supervisor.module_loader.get_module(module) {
+            module_trust = Some(super::server::module_trust(&loaded_module.path));
             instance.process_name = loaded_module.metadata.process_name.clone();
             if instance.port.is_none() {
                 instance.port = loaded_module.metadata.default_port;
@@ -234,6 +236,15 @@ pub async fn create_instance(
         }
 
         let id = instance.id.clone();
+        // 미검증·변경된 모듈로 만들면 알림만 싣는다 (`module_trust`, `warnings`)
+        let module_name_owned = instance.module_name.clone();
+        let created = move |mut body: Value| {
+            if let Some(trust) = module_trust {
+                body["module_trust"] = json!(trust);
+                body["warnings"] = json!(super::server::trust_warnings("module", &module_name_owned, trust));
+            }
+            (StatusCode::CREATED, Json(body)).into_response()
+        };
         let instance_name = instance.name.clone();
         let module_name_owned = module.to_string();
         let instance_dir = supervisor.instance_store.instance_dir(&id);
@@ -491,10 +502,9 @@ pub async fn create_instance(
                             "id": id,
                             "provisioning": true,
                         });
-                        (StatusCode::CREATED, Json(response)).into_response()
+                        created(response)
                     } else {
-                        let response = json!({ "success": true, "id": id });
-                        (StatusCode::CREATED, Json(response)).into_response()
+                        created(json!({ "success": true, "id": id }))
                     }
                 } else {
                     // 마이그레이션: 기존 디렉토리에 직접 연결, 추가 설치 없음
@@ -544,8 +554,7 @@ pub async fn create_instance(
                     }
                     // 마이그레이션 변경사항 저장 (executable_path, import된 설정 등)
                     let _ = state.supervisor.write().await.instance_store.update(&id, instance.clone());
-                    let response = json!({ "success": true, "id": id });
-                    (StatusCode::CREATED, Json(response)).into_response()
+                    created(json!({ "success": true, "id": id }))
                 }
             }
             Err(e) => {

@@ -207,7 +207,7 @@
 | GET | `/api/modules/schema` | `server.rs:366` | - | module.toml JSON Schema |
 | POST | `/api/modules/detect` | `server.rs:372` | `{path}` | `{matches:[{name, display_name}]}` (`dir_signatures`가 맞는 모듈) / 400 / 404 |
 | GET | `/api/modules/manifest` | `server.rs:429` | - | `{ok, manifest}` 또는 `{ok:false,error}`. 항상 200 |
-| POST | `/api/modules/manifest/:id/install` | `server.rs:452` | - | `{ok, module_id, version}` 또는 `{ok:false,error}`. 항상 200 |
+| POST | `/api/modules/manifest/:id/install` | `server.rs:452` | - | `{ok, module_id, version}` 또는 `{ok:false,error}`. 항상 200. 카탈로그 버전이 설치된 버전보다 낮으면 받지 않는다 |
 | DELETE | `/api/modules/:id` | `server.rs:508` | - | `{ok, id}`. 항상 200 |
 | GET | `/api/module/:name` | `server.rs:394` | - | `{name, version, description, path, metadata}` / 404 |
 | GET | `/api/module/:name/versions` | `managed.rs:242` | query `include_snapshots, page=1, per_page=25` | supervisor 결과 |
@@ -224,7 +224,7 @@
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
 | GET | `/api/instances` | `instance.rs:12` | - | `[ServerInstance]` (§4.1, REST 비밀번호 평문 포함) |
-| POST | `/api/instances` | `instance.rs:71` | `{name*, module_name*, executable_path?, working_dir?, migration_source?, port?}` | 201 `{success, id, provisioning?}`. 409 `working_dir_in_use`, 422 `extension_required`, 400/500 |
+| POST | `/api/instances` | `instance.rs:71` | `{name*, module_name*, executable_path?, working_dir?, migration_source?, port?}` | 201 `{success, id, provisioning?, module_trust, warnings[]}`. 모듈이 `verified`가 아니면 `warnings`에 `{code:"module_unverified"\|"module_modified", module}` 한 건(알림일 뿐 만들기는 막지 않는다). 409 `working_dir_in_use`, 422 `extension_required`, 400/500 |
 | PUT | `/api/instances/reorder` | `instance.rs:19` | `{order:[id]}` | `{success:true}` / 400 |
 | GET | `/api/instance/:id` | `instance.rs:49` | - | `ServerInstance` / 404 `{error, error_code}` |
 | DELETE | `/api/instance/:id` | `instance.rs:635` | - | `{success}` / 404 / 500 |
@@ -325,11 +325,11 @@
 | POST | `/api/extensions/rescan` | `extension.rs:170` | `{success, newly_found}` |
 | GET | `/api/extensions/manifest` | `extension.rs:313` | `{success, extensions, updates}` (원격) |
 | GET | `/api/extensions/updates` | `extension.rs:410` | `{success, updates, count}` |
-| POST | `/api/extensions/:id/enable` | `extension.rs:96` | `{success,id,startup_dispatched}`. `daemon.startup` 훅을 비동기 실행 |
+| POST | `/api/extensions/:id/enable` | `extension.rs:96` | `{success,id,startup_dispatched,trust,warnings[]}`. `warnings`는 `verified`가 아닐 때 `{code:"extension_unverified"\|"extension_modified", extension}`(막지 않는다). `daemon.startup` 훅을 비동기 실행 |
 | POST | `/api/extensions/:id/disable` | `extension.rs:150` | 실행 중인 managed 인스턴스 참조 검사 |
 | POST | `/api/extensions/:id/mount` | `extension.rs:187` | |
 | POST | `/api/extensions/:id/unmount` | `extension.rs:199` | |
-| POST | `/api/extensions/:id/install` | `extension.rs:352` | 선택 `{download_url, sha256}`. 없으면 manifest에서 찾는다. 빠진 의존성도 함께 설치, `{success, id, installed}` |
+| POST | `/api/extensions/:id/install` | `extension.rs:352` | 선택 `{download_url, sha256}`. 없으면 manifest에서 찾는다. 빠진 의존성도 함께 설치, `{success, id, installed}`. manifest 버전이 설치된 버전보다 낮으면 `older_than_installed` |
 | DELETE | `/api/extensions/:id` | `extension.rs:432` | |
 | GET/PUT | `/api/extensions/:id/config` | `extension.rs:491/504` | `{config}` / 객체 머지(null이면 키 삭제) |
 | GET | `/api/extensions/:id/gui` | `extension.rs:228` | UMD JS 번들 (application/javascript) |
@@ -392,7 +392,7 @@ Relay 서명 방식(`relay.rs:100-137`):
 - **검증**: 헤더 `X-Saba-Token` 값과 정확히 일치하는지 비교한다(`auth.rs:134`).
   - 상수 시간 비교다(`constant_time_eq`, `auth.rs:86-89`). 길이 차이는 숨기지 않는다(UUID 고정 길이).
   - 불일치하면 본문 없이 401을 돌려준다.
-  - 실패 로그는 30초에 한 번으로 제한하고, 토큰 앞 8자를 로그에 남긴다.
+  - 실패 로그는 30초에 한 번으로 제한하고, 토큰은 남기지 않는다(헤더가 없었는지 틀렸는지만).
 - **우회 경로**
   - `SABA_AUTH_DISABLED=1`이면 토큰 검사를 건너뛴다. **디버그 빌드에서만** 동작하며(`auth.rs:103-106`), 통합 테스트가 이 방식을 쓴다(`tests/daemon_integration.rs:111`).
   - 캐시도 없고 토큰 파일도 없으면 **거부한다**(fail-closed).
@@ -502,7 +502,7 @@ Relay 서명 방식(`relay.rs:100-137`):
 - `ureq`(동기)를 쓰고 timeout은 10초다. Basic Auth를 지원한다.
 - 연결이 EOF나 reset으로 끊기면 성공으로 간주한다. Palworld 대응 코드다(`rest.rs:100-119`).
 - `verify_connection`은 실제 연결 없이 host와 port 유효성만 본다(`rest.rs:42-48`).
-- Basic 토큰 앞 8자와 비밀번호 길이를 **info 레벨로 로그에 남긴다**(`rest.rs:86`).
+- 인증 로그에는 사용자 이름만 debug 레벨로 남긴다(`rest.rs:86`). 토큰·비밀번호 길이는 남기지 않는다.
 
 ### 5.3 ProtocolClient (`protocol/client.rs`)
 
@@ -639,7 +639,7 @@ Relay 서명 방식(`relay.rs:100-137`):
 5. ~~`/api/ext-process/:name/start`는 임의 명령을 실행~~(라우트 삭제). ~~`/api/fs/scan-dir`는 임의 디렉토리를 열람한다~~ → 해결: 지웠다. 마이그레이션은 게임 폴더 판정(`POST /api/modules/detect`)만 쓴다(D2).
 6. ~~**relay 토큰 유출 가능성**: `?relayUrl=`로 임의 호스트에 `Authorization: Bearer <node_token>`을 보낼 수 있다~~ → 해결: 서명 요청(host status·nodes·members)은 `signed_relay_url`로 설정한 릴레이(없으면 기본)만 쓰고, 요청 주소가 그와 같거나 루프백(모의 릴레이)일 때만 따른다(`relay.rs:45-67, 211-241`). 챗봇 동기화도 설정한 릴레이만 쓴다(`chatbot.rs:150-153`). ~~서명 없는 bot-invite·pair는 `relayUrl`을 그대로 따른다~~ → 해결: 페어링(시작·상태)과 bot-invite도 같은 규칙을 쓴다(`relay.rs:271, 299, 327`, 59a93b8).
 7. ~~**`POST /api/modules/manifest/:id/install`에 경로 검사가 없다**~~ → 해결: `..`, `/`, `\`를 거부한다(`server.rs:457-459`). `get_module_locales`는 여전히 이름을 그대로 `join`한다(`config.rs:201-203`).
-8. **비밀값이 평문으로 응답에 실린다.** `GET /api/instances`, `/api/servers`에는 REST 비밀번호가 들어 있다. ~~`/api/config/bot`의 Discord 토큰~~(BotConfig에서 `token` 삭제). REST Basic 토큰 앞부분과 비밀번호 길이는 로그에 남는다(`rest.rs:86`).
+8. **비밀값이 평문으로 응답에 실린다.** `GET /api/instances`, `/api/servers`에는 REST 비밀번호가 들어 있다. ~~`/api/config/bot`의 Discord 토큰~~(BotConfig에서 `token` 삭제).
 9. **익스텐션 설치에 사용자 지정 `download_url`을 허용하고 sha256은 선택**이다(`extension.rs:357-375`). ~~포터블 Python/Node 다운로드에 체크섬 검증이 없다~~ → 해결: Python은 고정 해시로 검사하고(§6.1), Node 다운로드는 지워졌다.
 10. ~~**프로비저닝 dismiss 롤백 경쟁**~~ → 해결: 롤백은 신규 생성으로 표시된 이름(`mark_creating`)일 때만 한다. 기존 인스턴스의 업데이트 실패는 진행 표시만 지운다(`instance.rs:565-603`, `ipc/mod.rs:379-410`).
 11. ~~**`/api/daemon/shutdown`과 `unregister?shutdown=true`는 토큰만 cancel한다**~~ → 해결: 둘 다 `stop_requested`를 cancel하고, main의 단일 종료 경로가 `daemon.shutdown` 훅과 클라이언트 정리를 거친다(`ipc/mod.rs:621-627`, `main.rs:533-599`).

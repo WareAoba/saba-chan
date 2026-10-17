@@ -464,9 +464,11 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 - **`POST /api/modules/manifest/:id/install`** (`server.rs:452-505`):
   1. `id`에 `..`, `/`, `\`가 있으면 거부한다.
   2. manifest의 `module-<id>`가 없으면 실패한다.
+  - 설치된 모듈 버전이 manifest 버전보다 높으면 받지 않는다(`version::is_downgrade`). 릴레이가 예전 서명 manifest를 다시 보내 옛 버전을 깔게 하는 것을 막는다.
   3. R2 URL에서 `<modules>/_tmp_module_<id>.zip`로 받으며 SHA-256을 확인한다(`download_verified`).
   4. `.staging-<id>`에 풀고 `module.toml`이 있을 때만 기존 `<modules>/<id>`를 지우고 바꾼다. 그래서 업데이트해도 지워진 파일이 남지 않는다.
   - 실패도 HTTP 200 `{ok:false, error}`로 돌려준다.
+- **신뢰 표시 알림**: 서명된 카탈로그에서 받지 않았거나(`unverified`) 받은 뒤 바뀐(`modified`) 모듈로 인스턴스를 만들면 `POST /api/instances` 응답에 `module_trust`와 `warnings[{code, module}]`가 실린다. 알림일 뿐 만들기·실행은 막지 않는다(`server.rs` `trust_warnings`). CLI는 경고 줄로 보인다.
 - **`DELETE /api/modules/:id`**: `..`·`/`·`\`가 든 `id`는 거부하고, `<modules>/<id>`를 `remove_dir_all`로 지운다. 여기서 `id`는 **디렉터리명**이다 (`server.rs:508-531`).
 
 ### 5.3 업데이터

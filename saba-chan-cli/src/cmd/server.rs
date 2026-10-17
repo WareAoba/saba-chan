@@ -433,6 +433,7 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     }
     let created = ctx.api.create_instance(body).await?;
     let id = s(&created, "id").to_string();
+    super::print_trust_warnings(ctx, &created);
 
     // 7) 설정 (--set, 익스텐션 칸)
     let mut patch = Map::new();

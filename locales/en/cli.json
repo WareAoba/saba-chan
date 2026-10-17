@@ -544,7 +544,13 @@
   "trust": {
     "verified": "verified",
     "modified": "modified",
-    "unverified": "unverified"
+    "unverified": "unverified",
+    "notice": {
+      "module_unverified": "Created from a module ({{id}}) that did not come from the official catalog. Make sure you trust its source.",
+      "module_modified": "The module ({{id}}) changed after it was installed. Reinstall it unless you edited it yourself.",
+      "extension_unverified": "Enabled an extension ({{id}}) that did not come from the official catalog. Make sure you trust its source.",
+      "extension_modified": "The extension ({{id}}) changed after it was installed. Reinstall it unless you edited it yourself."
+    }
   },
   "audit": {
     "empty": "Nothing recorded yet.",

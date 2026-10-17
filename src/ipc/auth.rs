@@ -48,12 +48,9 @@ pub fn generate_and_save_token() -> anyhow::Result<Arc<String>> {
         let had_previous = cached.is_some();
         *cached = Some(token.clone());
         if had_previous {
-            tracing::info!(
-                "IPC auth token regenerated and cached (token: {}…, previous overwritten)",
-                &token[..8]
-            );
+            tracing::info!("IPC auth token regenerated and cached (previous overwritten)");
         } else {
-            tracing::info!("IPC auth token generated and cached (token: {}…)", &token[..8]);
+            tracing::info!("IPC auth token generated and cached");
         }
     }
 
@@ -158,24 +155,15 @@ pub async fn auth_middleware(
         };
         if should_log {
             let suppressed = AUTH_FAIL_SUPPRESSED.swap(0, std::sync::atomic::Ordering::Relaxed);
-            let expected_hint = if expected.len() >= 8 { &expected[..8] } else { &expected };
-            let provided_hint = if provided.is_empty() {
-                "(empty)"
-            } else if provided.len() >= 8 {
-                &provided[..8]
-            } else {
-                provided
-            };
+            // 토큰은 일부라도 로그에 남기지 않는다: 보냈는지만
+            let provided_hint = if provided.is_empty() { "no token" } else { "wrong token" };
             if suppressed > 0 {
                 tracing::warn!(
-                    "IPC auth failed from {}: expected={}… got={}… (suppressed {} previous)",
-                    req.uri(), expected_hint, provided_hint, suppressed
+                    "IPC auth failed from {}: {} (suppressed {} previous)",
+                    req.uri(), provided_hint, suppressed
                 );
             } else {
-                tracing::warn!(
-                    "IPC auth failed from {}: expected={}… got={}…",
-                    req.uri(), expected_hint, provided_hint
-                );
+                tracing::warn!("IPC auth failed from {}: {}", req.uri(), provided_hint);
             }
         } else {
             AUTH_FAIL_SUPPRESSED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
