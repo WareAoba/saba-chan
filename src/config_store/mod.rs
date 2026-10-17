@@ -148,6 +148,33 @@ impl Default for BotConfig {
     }
 }
 
+// ── Chatbot (config.json `chatbot`) ──
+
+/// AI 챗봇 설정의 원본. 릴레이는 이것을 받아 쓴다 (`/api/nodes/:guildId/chatbot`).
+/// 설정 값의 뜻과 검증은 릴레이 몫이라 데몬은 객체 그대로 둔다 (필드가 늘어도 데몬은 그대로)
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ChatbotConfig {
+    /// 모델 API 키. 클라이언트에는 `hasApiKey`만 보인다
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+    /// 모든 길드에 쓰는 설정 (ChatbotSettings 일부)
+    pub settings: serde_json::Map<String, Value>,
+    /// 길드별로 덮어쓰는 설정 (예: channelIds)
+    pub guilds: HashMap<String, serde_json::Map<String, Value>>,
+}
+
+impl ChatbotConfig {
+    /// 한 길드에 보낼 설정 (공통 위에 길드 것)
+    pub fn effective(&self, guild_id: &str) -> serde_json::Map<String, Value> {
+        let mut out = self.settings.clone();
+        if let Some(over) = self.guilds.get(guild_id) {
+            out.extend(over.clone());
+        }
+        out
+    }
+}
+
 // ── ConfigStore ──
 
 /// 중앙 설정 저장소 — config.json의 타입 있는 네임스페이스 캐시
@@ -158,7 +185,7 @@ pub struct ConfigStore {
 }
 
 /// 클라이언트 네임스페이스로 쓸 수 없는 키 (각자 전용 API가 있다)
-const RESERVED_SECTIONS: &[&str] = &["schemaVersion", "gui", "relay", "updates", "boot", "extensions"];
+const RESERVED_SECTIONS: &[&str] = &["schemaVersion", "gui", "relay", "updates", "boot", "extensions", "chatbot"];
 
 impl ConfigStore {
     /// 새 ConfigStore 생성 (디스크에서 기존 설정 로드, 예전 파일은 이관)
@@ -173,6 +200,17 @@ impl ConfigStore {
             gui_settings: RwLock::new(gui),
             bot_config: RwLock::new(bot),
         }
+    }
+
+    // ── Chatbot ──
+
+    pub fn get_chatbot(&self) -> ChatbotConfig {
+        serde_json::from_value(self.file.section("chatbot")).unwrap_or_default()
+    }
+
+    pub fn set_chatbot(&self, config: &ChatbotConfig) -> Result<(), ConfigStoreError> {
+        self.file.set_section("chatbot", serde_json::to_value(config)?)?;
+        Ok(())
     }
 
     // ── GUI Settings ──

@@ -21,7 +21,7 @@ use super::super::IPCServer;
 type HmacSha256 = Hmac<Sha256>;
 
 /// Percent-encode a URL path segment (RFC 3986 unreserved chars only)
-fn encode_path_segment(s: &str) -> String {
+pub(crate) fn encode_path_segment(s: &str) -> String {
     use std::fmt::Write;
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
@@ -114,7 +114,7 @@ pub(crate) fn signed_headers(
 
 /// Apply signed headers to a RequestBuilder. If no node token is available,
 /// the request is sent without authentication.
-fn apply_signed_headers(
+pub(crate) fn apply_signed_headers(
     builder: reqwest::RequestBuilder,
     method: &str,
     url_path: &str,
@@ -145,13 +145,13 @@ fn error(code: StatusCode, message: String) -> Response {
 }
 
 #[allow(clippy::result_large_err)] // 오류 응답은 드문 경로다
-fn client() -> Result<reqwest::Client, Response> {
+pub(crate) fn client() -> Result<reqwest::Client, Response> {
     relay_client().map_err(|e| error(StatusCode::INTERNAL_SERVER_ERROR, format!("HTTP client error: {}", e)))
 }
 
 /// 요청을 보내고 (릴레이의 상태 코드, JSON 본문)을 돌려준다. 본문이 JSON이 아니면 None
 #[allow(clippy::result_large_err)]
-async fn send(req: reqwest::RequestBuilder) -> Result<(StatusCode, Option<Value>), Response> {
+pub(crate) async fn send(req: reqwest::RequestBuilder) -> Result<(StatusCode, Option<Value>), Response> {
     let resp = req
         .send()
         .await

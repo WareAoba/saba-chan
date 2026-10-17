@@ -751,6 +751,9 @@ impl IPCServer {
             .route("/api/relay/agent/stop", post(handlers::chat::agent_stop))
             // ── Chat command processor ──
             .route("/api/chat/command", post(handlers::chat::chat_command))
+            // AI 챗봇 설정 (원본은 데몬, 릴레이에 맞춘다)
+            .route("/api/chatbot", get(handlers::chatbot::get_chatbot).put(handlers::chatbot::put_chatbot).delete(handlers::chatbot::delete_chatbot))
+            .route("/api/chatbot/memory", delete(handlers::chatbot::delete_memory))
             .with_state(self.clone())
             .merge(updates::updates_router(self.update_state.clone()))
             // ── Auth middleware (token-based) — 업데이트 라우터까지 모든 라우트에 ──
