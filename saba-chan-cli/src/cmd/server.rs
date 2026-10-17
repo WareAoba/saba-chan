@@ -20,6 +20,7 @@ pub async fn run(ctx: &Ctx, cmd: ServerCmd) -> Result<()> {
         ServerCmd::Start(a) => start(ctx, a).await,
         ServerCmd::Stop(a) => stop(ctx, a).await,
         ServerCmd::Restart(a) => restart(ctx, a).await,
+        ServerCmd::Rename { server, name } => rename(ctx, Some(&server), &name).await,
         ServerCmd::Console(a) => crate::cmd::console::run(ctx, a).await,
         ServerCmd::Run(a) => run_command(ctx, a).await,
         ServerCmd::Commands { server } => commands(ctx, server.as_deref()).await,
@@ -92,6 +93,21 @@ pub async fn module_locales(ctx: &Ctx, name: &str) -> Option<Value> {
 pub async fn catalog_for(ctx: &Ctx, module: &str) -> Result<Catalog> {
     let (info, locales) = tokio::join!(module_info(ctx, module), module_locales(ctx, module));
     Ok(Catalog::from_module(&info?, locales.as_ref()))
+}
+
+/// 서버 하나의 명령: 모듈 명령(번역됨) + 그 서버에 켜진 익스텐션 명령
+pub async fn catalog_for_server(ctx: &Ctx, sv: &Server) -> Result<Catalog> {
+    let (cat, list) = tokio::join!(catalog_for(ctx, &sv.module), ctx.api.instance_commands(&sv.id));
+    let mut cat = cat?;
+    if let Some(list) = list
+        .ok()
+        .as_ref()
+        .and_then(|v| v.get("commands"))
+        .and_then(Value::as_array)
+    {
+        cat.add_extension_commands(list);
+    }
+    Ok(cat)
 }
 
 async fn slots(ctx: &Ctx) -> Slots {
@@ -597,7 +613,7 @@ async fn stop_server(ctx: &Ctx, sv: &Server, force: bool, no_wait: bool) -> Resu
         );
         return Ok(());
     }
-    let r = ctx.api.stop(&sv.name, force).await?;
+    let r = ctx.api.stop(&sv.id, force).await?;
     if no_wait {
         ctx.out.done(&t!("stop.requested", name = sv.name), &r);
         return Ok(());
@@ -622,23 +638,42 @@ async fn stop_server(ctx: &Ctx, sv: &Server, force: bool, no_wait: bool) -> Resu
 
 pub async fn restart(ctx: &Ctx, a: RestartArgs) -> Result<()> {
     let sv = resolve::server(ctx, a.server.as_deref()).await?;
-    // gap: 데몬에 restart 경로가 없어 정지 → 시작으로 한다
-    stop_server(ctx, &sv, a.force, false).await?;
-    start(
+    let spin = crate::progress::spinner(&t!("restart.waiting", name = sv.name));
+    let r = ctx.api.restart(&sv.id, a.force).await;
+    spin.finish_and_clear();
+    let r = r?;
+    let st = wait_status(
         ctx,
-        StartArgs {
-            server: Some(sv.id.clone()),
-            ..Default::default()
-        },
+        &sv,
+        &["running"],
+        Duration::from_secs(90),
+        &t!("start.waiting", name = sv.name),
     )
-    .await
+    .await?;
+    if st == "running" {
+        ctx.out.done(&t!("restart.done", name = sv.name), &r);
+        Ok(())
+    } else {
+        Err(failed(t!("start.not_yet", name = sv.name, status = st)))
+    }
+}
+
+pub async fn rename(ctx: &Ctx, query: Option<&str>, new_name: &str) -> Result<()> {
+    let sv = resolve::server(ctx, query).await?;
+    let new_name = new_name.trim();
+    if new_name.is_empty() {
+        return Err(usage(t!("add.name_empty")));
+    }
+    let r = ctx.api.rename(&sv.id, new_name).await?;
+    ctx.out.done(&t!("rename.done", old = sv.name, name = new_name), &r);
+    Ok(())
 }
 
 // ── 게임 명령 ──
 
 pub async fn run_command(ctx: &Ctx, a: RunArgs) -> Result<()> {
     let sv = resolve::server(ctx, a.server.as_deref()).await?;
-    let cat = catalog_for(ctx, &sv.module).await?;
+    let cat = catalog_for_server(ctx, &sv).await?;
     let name = match a.command {
         Some(c) => c,
         None => {
@@ -781,7 +816,7 @@ pub fn print_value(v: &Value) {
 
 async fn commands(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     let sv = resolve::server(ctx, query).await?;
-    let cat = catalog_for(ctx, &sv.module).await?;
+    let cat = catalog_for_server(ctx, &sv).await?;
     print_commands(ctx, &sv.module, &cat)
 }
 
@@ -792,7 +827,7 @@ pub fn print_commands(ctx: &Ctx, module: &str, cat: &Catalog) -> Result<()> {
         .map(|c| {
             json!({
                 "name": c.name, "label": c.label, "description": c.description, "risk": c.risk.key(),
-                "method": c.method, "aliases": c.aliases, "usage": c.usage(),
+                "method": c.method, "aliases": c.aliases, "usage": c.usage(), "extension": c.extension,
                 "inputs": c.inputs.iter().map(|i| json!({
                     "name": i.name, "label": i.label, "type": i.kind, "required": i.required,
                     "default": i.default, "options": i.options, "min": i.min, "max": i.max,
@@ -811,11 +846,14 @@ pub fn print_commands(ctx: &Ctx, module: &str, cat: &Catalog) -> Result<()> {
                 if c.risk == Risk::Danger {
                     usage.push_str(&console::style(" ⚠").red().to_string());
                 }
-                let what = if c.description.is_empty() || c.description == c.label {
+                let mut what = if c.description.is_empty() || c.description == c.label {
                     c.label.clone()
                 } else {
                     format!("{} — {}", c.label, c.description)
                 };
+                if let Some(ext) = &c.extension {
+                    what.push_str(&output::dim(&format!("  [{}]", ext)));
+                }
                 t.add_row(vec![usage, what, output::dim(&c.aliases.join(", "))]);
             }
             output::print_table(t);

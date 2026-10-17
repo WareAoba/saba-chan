@@ -86,10 +86,13 @@
     "yes": "예"
   },
   "config": {
-    "reset": "{{key}}를 비웠어요.",
+    "reset": "{{key}}를 기본값으로 되돌렸어요.",
     "reset_top_only": "최상위 키만 되돌릴 수 있어요.",
     "restart_needed": "데몬을 다시 시작해야 적용돼요.",
-    "saved": "저장했어요: {{keys}}"
+    "saved": "저장했어요: {{keys}}",
+    "confirm_reset_all": "모든 설정을 기본값으로 되돌릴까요?",
+    "confirm_reset": "{{keys}}를 기본값으로 되돌릴까요?",
+    "all": "모든 설정"
   },
   "console": {
     "attach_help": "{{name}} 콘솔에 붙었어요. 명령을 입력하세요. 도움말 :help, 나가기 :q (서버는 계속 돌아요).",
@@ -249,7 +252,7 @@
     "no_commands": "이 게임은 정해진 명령이 없어요. 콘솔에 직접 보내기: saba-chan-cli server send 이름 \"줄\"",
     "out_of_range": "{{label}}은(는) {{min}}에서 {{max}} 사이여야 해요.",
     "pick": "{{name}}에 보낼 명령",
-    "raw_ok": "콘솔에 보냈어요.",
+    "raw_ok": "목록에 없는 줄은 콘솔에 그대로 보내요.",
     "sent": "완료.",
     "too_many_args": "인자가 너무 많아요. 사용법: {{usage}}"
   },
@@ -459,11 +462,14 @@
       "config.show": "모든 설정",
       "config.get": "설정 하나",
       "config.set": "설정 바꾸기: 키=값 ... (CLI 전용은 `cli.키`)",
-      "config.reset": "값 비우기",
+      "config.reset": "기본값으로 되돌리기 (키가 없으면 전부)",
       "chat": "디스코드처럼 채팅 명령 보내기 (예: `chat 팰월드 시작`)",
       "version": "설치된 모든 부분의 버전",
       "shell": "대화형 셸 열기",
-      "completions": "셸 자동 완성 스크립트 출력"
+      "completions": "셸 자동 완성 스크립트 출력",
+      "server.rename": "서버 이름 바꾸기",
+      "bot.reset": "봇 설정을 기본값으로 (키가 없으면 전부)",
+      "config.defaults": "모든 설정의 기본값"
     },
     "arg": {
       "json": "글 대신 기계가 읽는 JSON으로 출력",
@@ -514,8 +520,17 @@
       "key": "설정 키",
       "text": "보낼 말",
       "shell": "bash, zsh, fish, powershell, elvish",
-      "game_port": "게임 포트"
+      "game_port": "게임 포트",
+      "keys": "설정 키",
+      "server.rename.name": "새 이름"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 실행하면 대화형 셸이 열려요.\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
+  },
+  "restart": {
+    "waiting": "{{name}} 다시 시작하는 중...",
+    "done": "{{name}}을(를) 다시 시작했어요."
+  },
+  "rename": {
+    "done": "{{old}}의 이름을 {{name}}(으)로 바꿨어요."
   }
 }

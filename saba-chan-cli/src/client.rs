@@ -168,10 +168,24 @@ impl Api {
         self.post_long(&format!("/api/instance/{}/start", seg(id)), json!({}))
             .await
     }
-    /// POST /api/server/:name/stop  (gap: id로 멈추는 경로가 없다)
-    pub async fn stop(&self, name: &str, force: bool) -> Result<Value> {
-        self.post_long(&format!("/api/server/{}/stop", seg(name)), json!({ "force": force }))
+    /// POST /api/instance/:id/stop
+    pub async fn stop(&self, id: &str, force: bool) -> Result<Value> {
+        self.post_long(&format!("/api/instance/{}/stop", seg(id)), json!({ "force": force }))
             .await
+    }
+    /// POST /api/instance/:id/restart — 멈추고(최대 2분) 다시 켠다. 꺼져 있었으면 켜기만. 응답은 시작 응답 + `stopped`
+    pub async fn restart(&self, id: &str, force: bool) -> Result<Value> {
+        self.post_long(&format!("/api/instance/{}/restart", seg(id)), json!({ "force": force }))
+            .await
+    }
+    /// POST /api/instance/:id/rename — 409 name_taken / server_running
+    pub async fn rename(&self, id: &str, name: &str) -> Result<Value> {
+        self.post(&format!("/api/instance/{}/rename", seg(id)), json!({ "name": name }))
+            .await
+    }
+    /// GET /api/instance/:id/commands — 모듈 + 켜진 익스텐션 명령
+    pub async fn instance_commands(&self, id: &str) -> Result<Value> {
+        self.get(&format!("/api/instance/{}/commands", seg(id))).await
     }
     /// GET /api/instance/:id/events — 종료 기록 (A1)
     pub async fn exit_events(&self, id: &str) -> Result<Value> {
@@ -426,6 +440,15 @@ impl Api {
         self.put("/api/config/client/cli", patch).await
     }
     /// GET/PUT /api/config/bot — 디스코드 연동 설정 (전체 저장)
+    /// GET /api/config/:kind/defaults (gui | bot)
+    pub async fn config_defaults(&self, kind: &str) -> Result<Value> {
+        self.get(&format!("/api/config/{}/defaults", seg(kind))).await
+    }
+    /// POST /api/config/:kind/reset — `keys`(최상위 키)만, 비우면 전부 기본값으로
+    pub async fn config_reset(&self, kind: &str, keys: &[String]) -> Result<Value> {
+        self.post(&format!("/api/config/{}/reset", seg(kind)), json!({ "keys": keys }))
+            .await
+    }
     pub async fn bot_config(&self) -> Result<Value> {
         self.get("/api/config/bot").await
     }

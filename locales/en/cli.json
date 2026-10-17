@@ -86,10 +86,13 @@
     "yes": "yes"
   },
   "config": {
-    "reset": "{{key}} cleared.",
+    "reset": "{{key}} reset to the default.",
     "reset_top_only": "Only top-level keys can be reset.",
     "restart_needed": "Restart the daemon for this to take effect.",
-    "saved": "Saved: {{keys}}"
+    "saved": "Saved: {{keys}}",
+    "confirm_reset_all": "Reset every setting to its default?",
+    "confirm_reset": "Reset {{keys}} to the default?",
+    "all": "all settings"
   },
   "console": {
     "attach_help": "Attached to {{name}}. Type a command, :help for help, :q to leave (the server keeps running).",
@@ -249,7 +252,7 @@
     "no_commands": "This game defines no commands. Send raw lines: saba-chan-cli server send NAME \"line\"",
     "out_of_range": "{{label}} must be between {{min}} and {{max}}.",
     "pick": "Command for {{name}}",
-    "raw_ok": "Sent to the console.",
+    "raw_ok": "Lines that are not in this list are sent to the console as they are.",
     "sent": "Done.",
     "too_many_args": "Too many arguments. Usage: {{usage}}"
   },
@@ -372,5 +375,12 @@
       "server": "Server name (a part is enough)"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments to open the interactive shell.\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
+  },
+  "restart": {
+    "waiting": "Restarting {{name}}...",
+    "done": "{{name}} restarted."
+  },
+  "rename": {
+    "done": "Renamed {{old}} to {{name}}."
   }
 }

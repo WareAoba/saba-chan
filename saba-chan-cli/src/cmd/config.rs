@@ -2,7 +2,7 @@
 //!
 //! 키는 데몬이 쓰는 그대로(camelCase)다. `cli.`로 시작하면 CLI 전용 칸으로 간다.
 //! 값의 형식은 지금 값의 형식을 따른다 (참거짓 칸에 "on"을 쓰면 true).
-//! 기본값으로 되돌리는 API가 없어서 `reset`은 값을 비운다 (gap: 기본값 조회/복원 엔드포인트).
+//! `reset`은 데몬이 기본값으로 되돌린다 (CLI 칸은 기본값이 없어 키를 지운다).
 
 use crate::cli::ConfigCmd;
 use crate::cmd::{flatten, get_path, guess, parse_bool, split_pairs, typed};
@@ -40,16 +40,56 @@ pub async fn run(ctx: &Ctx, cmd: ConfigCmd) -> Result<()> {
             Ok(())
         }
         ConfigCmd::Set { pairs } => set(ctx, &pairs).await,
-        ConfigCmd::Reset { key } => {
-            let (root, path) = split_key(&key);
-            if path.contains('.') {
-                return Err(usage(t!("config.reset_top_only")));
-            }
-            let r = save(ctx, root, json!({ path: Value::Null })).await?;
-            ctx.out.done(&t!("config.reset", key = key), &r);
+        ConfigCmd::Defaults => {
+            let r = ctx.api.config_defaults("gui").await?;
+            let d = r.get("defaults").cloned().unwrap_or(Value::Null);
+            ctx.out.data(&d, |d| {
+                let mut rows = Vec::new();
+                flatten(d, "", &mut rows);
+                output::print_kv(
+                    &rows
+                        .iter()
+                        .map(|(k, v)| (k.clone(), output::show(v)))
+                        .collect::<Vec<_>>(),
+                );
+            });
             Ok(())
         }
+        ConfigCmd::Reset { keys } => reset(ctx, &keys).await,
     }
+}
+
+async fn reset(ctx: &Ctx, keys: &[String]) -> Result<()> {
+    if keys.iter().any(|k| split_key(k).1.contains('.')) {
+        return Err(usage(t!("config.reset_top_only")));
+    }
+    let q = if keys.is_empty() {
+        t!("config.confirm_reset_all")
+    } else {
+        t!("config.confirm_reset", keys = keys.join(", "))
+    };
+    ctx.ask.ensure(&q)?;
+    let app: Vec<String> = keys.iter().filter(|k| split_key(k).0 == Root::App).cloned().collect();
+    let cli: Map<String, Value> = keys
+        .iter()
+        .filter(|k| split_key(k).0 == Root::Cli)
+        .map(|k| (split_key(k).1.to_string(), Value::Null))
+        .collect();
+    let mut done = Map::new();
+    // 키를 안 주면 앱 설정 전체 (CLI 칸은 그대로)
+    if keys.is_empty() || !app.is_empty() {
+        done.insert("app".into(), ctx.api.config_reset("gui", &app).await?);
+    }
+    if !cli.is_empty() {
+        done.insert("cli".into(), save(ctx, Root::Cli, Value::Object(cli)).await?);
+    }
+    let what = if keys.is_empty() {
+        t!("config.all")
+    } else {
+        keys.join(", ")
+    };
+    ctx.out.done(&t!("config.reset", key = what), &Value::Object(done));
+    Ok(())
 }
 
 #[derive(Clone, Copy, PartialEq)]

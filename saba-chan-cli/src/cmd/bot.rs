@@ -73,6 +73,17 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             ctx.out.data(&r, |r| print_list(r, "members"));
             Ok(())
         }
+        BotCmd::Reset { keys } => {
+            let q = if keys.is_empty() {
+                t!("config.confirm_reset_all")
+            } else {
+                t!("config.confirm_reset", keys = keys.join(", "))
+            };
+            ctx.ask.ensure(&q)?;
+            let r = ctx.api.config_reset("bot", &keys).await?;
+            ctx.out.done(&t!("bot.config_saved"), &r);
+            Ok(())
+        }
         BotCmd::Config { pairs } => config(ctx, &pairs).await,
     }
 }

@@ -199,6 +199,8 @@ pub enum ServerCmd {
     AcceptEula { server: Option<String> },
     /// Wipe the server files and start fresh
     Reset { server: Option<String> },
+    /// Rename a server
+    Rename { server: String, name: String },
     /// Change the list order: give server names in the order you want
     Reorder {
         #[arg(required = true)]
@@ -452,6 +454,8 @@ pub enum BotCmd {
     Nodes,
     /// Members of a paired Discord server
     Members { guild: String },
+    /// Bot settings back to their defaults (all when no key is named)
+    Reset { keys: Vec<String> },
     /// Show or change any bot setting: KEY=VALUE (dotted keys, JSON values)
     Config {
         #[arg(value_name = "KEY=VALUE")]
@@ -512,8 +516,10 @@ pub enum ConfigCmd {
         #[arg(required = true, value_name = "KEY=VALUE")]
         pairs: Vec<String>,
     },
-    /// Back to the default value
-    Reset { key: String },
+    /// Default value of every setting
+    Defaults,
+    /// Back to the default values (all settings when no key is named)
+    Reset { keys: Vec<String> },
 }
 
 /// 번역된 도움말을 끼운 clap 명령

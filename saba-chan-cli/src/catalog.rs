@@ -5,8 +5,8 @@
 //! 인자 검사와 기본값 채우기의 최종 판단은 데몬(`src/commands`)이 하고, 여기서는 빠진 값을 물어보려고
 //! 같은 규칙으로 미리 묶어 본다. 결과는 항상 이름 붙은 인자(`{"이름": 값}`)로 보낸다.
 //!
-//! gap(C7): 익스텐션이 선언한 명령은 아직 데몬 목록에 없다. 데몬이 인스턴스별 카탈로그
-//! (`GET /api/instance/:id/commands`)를 주면 `Catalog::from_module` 대신 그것을 읽으면 된다.
+//! 서버 하나에서 쓸 수 있는 명령은 `GET /api/instance/:id/commands`가 준다 (모듈 명령 + 켜진 익스텐션 명령).
+//! 모듈 명령은 모듈 문구로 번역된 것을 쓰고, 익스텐션 명령만 그 목록에서 더한다.
 
 use serde_json::{Map, Value};
 
@@ -58,6 +58,8 @@ pub struct Command {
     pub method: String,
     pub aliases: Vec<String>,
     pub inputs: Vec<Input>,
+    /// 익스텐션이 더한 명령이면 그 익스텐션 id
+    pub extension: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -72,6 +74,37 @@ fn str_of(v: &Value, key: &str) -> Option<String> {
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
+}
+
+/// 명령의 `inputs` 칸. `tr(입력 이름, "label"|"placeholder")`는 번역 문구
+fn parse_inputs(cmd: &Value, tr: impl Fn(&str, &str) -> Option<String>) -> Vec<Input> {
+    cmd.get("inputs")
+        .and_then(Value::as_array)
+        .map(|list| {
+            list.iter()
+                .filter_map(|i| {
+                    let iname = str_of(i, "name")?;
+                    Some(Input {
+                        label: tr(&iname, "label")
+                            .or_else(|| str_of(i, "label"))
+                            .unwrap_or_else(|| iname.clone()),
+                        placeholder: tr(&iname, "placeholder").or_else(|| str_of(i, "placeholder")),
+                        kind: str_of(i, "type").unwrap_or_else(|| "text".into()),
+                        required: i.get("required").and_then(Value::as_bool).unwrap_or(false),
+                        default: i.get("default").filter(|d| !d.is_null()).cloned(),
+                        min: i.get("min").and_then(Value::as_f64),
+                        max: i.get("max").and_then(Value::as_f64),
+                        options: i
+                            .get("options")
+                            .and_then(Value::as_array)
+                            .map(|o| o.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                            .unwrap_or_default(),
+                        name: iname,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 impl Catalog {
@@ -95,36 +128,7 @@ impl Catalog {
             .filter_map(|f| {
                 let name = str_of(f, "name")?;
                 let base = format!("/commands/{}", name);
-                let inputs = f
-                    .get("inputs")
-                    .and_then(Value::as_array)
-                    .map(|list| {
-                        list.iter()
-                            .filter_map(|i| {
-                                let iname = str_of(i, "name")?;
-                                let ib = format!("{}/inputs/{}", base, iname);
-                                Some(Input {
-                                    label: tr(&format!("{}/label", ib))
-                                        .or_else(|| str_of(i, "label"))
-                                        .unwrap_or_else(|| iname.clone()),
-                                    placeholder: tr(&format!("{}/placeholder", ib))
-                                        .or_else(|| str_of(i, "placeholder")),
-                                    kind: str_of(i, "type").unwrap_or_else(|| "text".into()),
-                                    required: i.get("required").and_then(Value::as_bool).unwrap_or(false),
-                                    default: i.get("default").filter(|d| !d.is_null()).cloned(),
-                                    min: i.get("min").and_then(Value::as_f64),
-                                    max: i.get("max").and_then(Value::as_f64),
-                                    options: i
-                                        .get("options")
-                                        .and_then(Value::as_array)
-                                        .map(|o| o.iter().filter_map(Value::as_str).map(str::to_string).collect())
-                                        .unwrap_or_default(),
-                                    name: iname,
-                                })
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default();
+                let inputs = parse_inputs(f, |iname, key| tr(&format!("{}/inputs/{}/{}", base, iname, key)));
                 let alias_info = aliases.and_then(|a| a.get(&name));
                 Some(Command {
                     label: tr(&format!("{}/label", base))
@@ -143,12 +147,40 @@ impl Catalog {
                         .unwrap_or_default(),
                     inputs,
                     name,
+                    extension: None,
                 })
             })
             .collect();
         Self {
             commands,
             interaction_mode: str_of(module, "interaction_mode"),
+        }
+    }
+
+    /// `GET /api/instance/:id/commands`에서 익스텐션 명령을 더한다 (같은 이름은 모듈 명령이 먼저)
+    pub fn add_extension_commands(&mut self, list: &[Value]) {
+        for c in list
+            .iter()
+            .filter(|c| c.get("source").and_then(Value::as_str) == Some("extension"))
+        {
+            let Some(name) = str_of(c, "name") else { continue };
+            if self.commands.iter().any(|x| x.name.eq_ignore_ascii_case(&name)) {
+                continue;
+            }
+            self.commands.push(Command {
+                label: str_of(c, "label").unwrap_or_else(|| name.clone()),
+                description: str_of(c, "description").unwrap_or_default(),
+                risk: Risk::parse(c.get("risk").and_then(Value::as_str)),
+                method: "extension".into(),
+                aliases: c
+                    .get("aliases")
+                    .and_then(Value::as_array)
+                    .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                    .unwrap_or_default(),
+                inputs: parse_inputs(c, |_, _| None),
+                extension: str_of(c, "extension"),
+                name,
+            });
         }
     }
 

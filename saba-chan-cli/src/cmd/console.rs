@@ -150,7 +150,7 @@ pub fn format_line(l: &Value) -> String {
 
 /// 보면서 입력하기. 새 줄은 입력 줄을 건드리지 않고 위에 찍힌다.
 async fn attach(ctx: &Ctx, sv: &Server, cur: Cursor) -> Result<()> {
-    let cat = crate::cmd::server::catalog_for(ctx, &sv.module)
+    let cat = crate::cmd::server::catalog_for_server(ctx, sv)
         .await
         .unwrap_or_default();
     let mut rl = crate::shell::editor(cat.names())?;
