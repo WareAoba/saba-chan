@@ -120,9 +120,22 @@ http.request = function _patchedRequest(urlOrOptions, optionsOrCallback, _maybeC
     return _origHttpRequest.apply(this, arguments);
 };
 
+/** 데몬으로 가는 요청인지 (토큰은 데몬에만 보낸다) */
+function isDaemonRequest(config) {
+    try {
+        const url = new URL(config.url || '', config.baseURL || undefined);
+        const ipcPort = parseInt((settings && settings.ipcPort) || IPC_PORT_DEFAULT, 10);
+        return (url.hostname === '127.0.0.1' || url.hostname === 'localhost') && parseInt(url.port, 10) === ipcPort;
+    } catch (_) {
+        return false;
+    }
+}
+
 // ── axios 인터셉터 (보조: http.request 패치가 주 메커니즘) ──
 axios.interceptors.request.use((config) => {
-    // http.request 패치가 토큰을 주입하므로 여기서는 보조적으로만 설정
+    // 데몬 요청에만 토큰을 붙이고, 리다이렉트는 따라가지 않는다 (토큰이 다른 곳으로 새지 않게)
+    if (!isDaemonRequest(config)) return config;
+    config.maxRedirects = 0;
     const token = getIpcToken();
     if (token && config.headers) {
         if (typeof config.headers.set === 'function') {
@@ -1106,6 +1119,43 @@ function stopUpdateChecker() {
     }
 }
 
+/** 모든 앱 창의 렌더러 설정: Node 없음, 격리, 샌드박스 */
+function rendererWebPreferences() {
+    return {
+        preload: path.join(__dirname, 'preload.js'),
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+    };
+}
+
+/** 바깥 브라우저로 열어도 되는 주소: http(s)만 (file:, 사용자 정의 프로토콜은 실행이 될 수 있다) */
+function isWebUrl(url) {
+    try {
+        const { protocol } = new URL(url);
+        return protocol === 'http:' || protocol === 'https:';
+    } catch (_) {
+        return false;
+    }
+}
+
+/** 창이 앱 화면 밖으로 이동하거나 새 창을 열지 못하게 한다. 웹 링크는 바깥 브라우저로 */
+function lockNavigation(win) {
+    const devOrigin = !app.isPackaged ? new URL(process.env.ELECTRON_START_URL || 'http://localhost:5173').origin : null;
+    const isAppUrl = (url) => url.startsWith('file://') || (devOrigin !== null && url.startsWith(`${devOrigin}/`));
+    const guard = (event, url) => {
+        if (isAppUrl(url)) return;
+        event.preventDefault();
+        if (isWebUrl(url)) shell.openExternal(url).catch(() => {});
+    };
+    win.webContents.on('will-navigate', guard);
+    win.webContents.on('will-redirect', guard);
+    win.webContents.setWindowOpenHandler(({ url }) => {
+        if (isWebUrl(url)) shell.openExternal(url).catch(() => {});
+        return { action: 'deny' };
+    });
+}
+
 function createWindow() {
     const settings = loadSettings();
     const { width, height, x, y } = settings.windowBounds || { width: 1200, height: 840 };
@@ -1120,12 +1170,10 @@ function createWindow() {
         backgroundColor: '#f0f0f2', // CSS 로드 전 흰 화면 방지 (라이트 모드 앱 배경 근사값)
         frame: false, // Windows 기본 프레임 제거
         icon: path.join(__dirname, 'build', 'icon.png'),
-        webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
-            nodeIntegration: false,
-            contextIsolation: true,
-        },
+        webPreferences: rendererWebPreferences(),
     });
+
+    lockNavigation(mainWindow);
 
     // 창 크기/위치 변경 시 설정 저장
     function saveWindowBounds() {
@@ -1665,14 +1713,11 @@ ipcMain.handle('console:popout', async (_event, instanceId, serverName) => {
         alwaysOnTop: true,
         title: `Console — ${serverName}`,
         icon: path.join(__dirname, 'build', 'icon.png'),
-        webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
-            nodeIntegration: false,
-            contextIsolation: true,
-        },
+        webPreferences: rendererWebPreferences(),
     });
 
     popout.removeMenu();
+    lockNavigation(popout);
 
     const isDev = !app.isPackaged;
     const isAfterUpdate = process.argv.includes('--after-update');
@@ -2812,6 +2857,9 @@ ipcMain.handle('logs:getPath', async () => {
 ipcMain.handle('shell:openExternal', async (_event, url) => {
     if (!url || typeof url !== 'string') {
         return { error: 'URL이 지정되지 않았습니다' };
+    }
+    if (!isWebUrl(url)) {
+        return { error: 'http(s) 주소만 열 수 있습니다' };
     }
     try {
         await shell.openExternal(url);
