@@ -720,6 +720,9 @@ async fn get_config(
     Json(json!({
         "ok": true,
         "config": config,
+        // 이 데몬이 모의 릴레이(scripts/mock-release-server.js)의 서명을 믿는 개발 빌드인가.
+        // 아니면 GUI는 MOCK 출처를 감추거나 막는다
+        "mock_relay": cfg!(feature = "mock-relay"),
     }))
 }
 

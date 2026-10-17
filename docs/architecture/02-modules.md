@@ -37,7 +37,7 @@
 - 로드에 실패한 모듈은 `warn` 로그만 남기고 조용히 건너뛴다.
 - `.py` 파일(`daemon_rcon.py`, `i18n.py`)이 같은 루트에 있어도 무시된다. 이 둘은 PYTHONPATH용 공용 라이브러리다 (§2.1).
 
-**진입점 파일**: `[module].entry`는 필수 필드로 파싱되지만 **실제로는 쓰이지 않는다**. 데몬의 모든 호출 지점이 `format!("{}/lifecycle.py", module.path)`로 파일명을 하드코딩한다. 예시 위치는 `D:src/supervisor/mod.rs:487, 700, 809, 893, 1189, 1389, 1419, 1457, 1474, 1503, 1522, 1541, 1638`, `D:src/ipc/handlers/instance.rs:649`, `command.rs:85`이다. `entry = "main.py"`로 바꿔도 동작하지 않는다.
+**진입점 파일**: `[module].entry`가 데몬이 실행하는 Python 파일이다(보통 `lifecycle.py`). `LoadedModule::entry_path()`가 `<모듈 폴더>/<entry>`를 만들고(`D:src/supervisor/module_loader.rs:301-303`), 데몬의 모든 lifecycle 호출이 이 경로를 쓴다(예: `D:src/supervisor/mod.rs:599, 753, 964, 1332`). 로드할 때 `check_loadable()`이 이 파일이 실제로 있는지 확인하고, 없으면 모듈을 로드하지 않는다(`module_loader.rs:306-309`). 검증 단계는 `entry`가 비었거나 절대 경로이거나 모듈 폴더 밖을 가리키면 거부한다(`:987-992`). (qcza9f 기준)
 
 ### 1.2 module.toml 스키마 (Rust 역직렬화 기준, 전체)
 
@@ -55,11 +55,11 @@
 |---|---|---|---|
 | `name` | String | ✔ | 모듈 ID. 인스턴스의 `module_name`과 매칭됨 |
 | `version` | String | ✔ | semver 형식 기대(검증 없음) |
-| `entry` | String | ✔ | **파싱만 하고 미사용** (위 1.1 참조) |
+| `entry` | String | ✔ | 실행할 Python 파일. 파일이 없으면 모듈 로드 실패 (위 1.1 참조) |
 | `description` | String | ○ | None |
 | `icon` | String | ○ | 모듈 폴더 기준 상대경로. `/api/modules`가 base64로 인코딩해 응답 (`D:src/ipc/handlers/server.rs:276-286`). MIME은 무조건 `image/png` |
 | `log_pattern` | String(regex) | ○ | `(?P<level>…)` 명명 그룹 필수. 콘솔 레벨 파싱에 쓰임 (§3.3) |
-| `dependencies` | Table<String,String> | ○ | `[module.dependencies]`. `check_dependencies()`는 `#[allow(dead_code)]`라 **호출하는 곳 없음** (`:135-161`) |
+| `dependencies` | Table<String,String> | ○ | `[module.dependencies]`, 값은 `">=x.y.z"`. 두 단계로 강제된다. ① 로드: `saba-core` 요구 버전이 데몬보다 높으면 모듈을 로드하지 않고 `GET /api/modules`의 `failed[]`에 `error_code: "module_dependency_unsatisfied"`, `missing_dependencies`와 함께 싣는다 (`module_loader.rs:306-320, 330-356`, `D:src/ipc/handlers/server.rs:342`). ② 시작: 인스턴스 시작 전에 `saba-core`와 켜진 익스텐션(`ext-<id>`) 요구를 다시 확인하고, 못 맞추면 `module_dependency_unsatisfied`와 `missing_dependencies`로 시작을 거부한다 (`D:src/supervisor/mod.rs:303-345, 389, 1156`). 다른 키(`gui`, `cli` 등)는 데몬이 알 수 없어 넘긴다 |
 | `game_name` | String | ○ | `_game_name`으로 받아서 버림. **메타데이터에 실리지 않음** |
 | `display_name` | String | ○ | `_display_name`으로 받아서 버림. 빌드 스크립트와 installer만 사용 |
 
@@ -508,7 +508,7 @@
 ## 6. 불일치, 죽은 코드, 미완성, 원칙 위반
 
 ### 6.1 로더와 모듈·문서 사이의 불일치
-1. `[module].entry`가 필수인데 사용되지 않고, `lifecycle.py`가 하드코딩돼 있다 (§1.1).
+1. ~~`[module].entry`가 쓰이지 않는다~~ 해결됨: 데몬이 `entry_path()`로 쓰고 로드 때 파일 존재를 확인한다 (§1.1).
 2. command `inputs`의 `options`, `min`, `max`가 버려진다. 문서는 지원한다고 한다 (`module_loader.rs:552-565` vs `docs:874-897`).
 3. `[detection.linux]` 전체, `install.beta_branch`, `detection.common_paths`, `config.*` 추가 키, `[errors]`(데몬 메타 기준), `game_name`, `display_name`이 무시된다.
 4. `CommandField.method` 주석은 `both`인데 실제 인터페이스 분기는 `dual`이다 (`module_loader.rs:201` vs `saba-chan-gui/main.js:2343`, `discord_bot/core/processor.js:585`). 현재 어떤 모듈도 `dual`을 쓰지 않는다.
@@ -522,7 +522,7 @@
 | `SupervisorError` 전체 | `error.rs:8,35` |
 | `ProcessTracker::get_status`, `mark_crashed`, `terminate`, `ProcessStatus::Crashed` | `process.rs:132-219` |
 | `Supervisor::monitor()` (로그만 찍는 stub), `run()` | `mod.rs:1866-1895` |
-| `ModuleMetadata::steam_app_id`, `has_extension_config`, `check_dependencies` | `module_loader.rs:119-161` |
+| `ModuleMetadata::steam_app_id`, `has_extension_config` (`check_dependencies`는 이제 로드·시작 검사에서 쓴다, 표 1.2 참조) | `module_loader.rs:119-161` |
 | `ModuleLoader.get_module`에 `#[allow(dead_code)]`가 붙어 있지만 실제로 광범위하게 사용됨 (주석 오류) | `module_loader.rs:888` |
 | `LoadedModule.is_zip` 미사용 | `:240` |
 | `plugin::run_extension*` `#[allow(dead_code)]` | `plugin/mod.rs:265-284` |
