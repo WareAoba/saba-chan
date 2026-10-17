@@ -663,7 +663,8 @@ impl Supervisor {
             let mut config_obj = serde_json::Map::new();
             s.insert_resolved_exe(&mut config_obj, &instance, module_name);
             Self::insert_instance_fields(&mut config_obj, &instance);
-            let tracked_pid = s.tracker.get_pid(server_name).or_else(|_| s.tracker.get_pid(&instance.id)).ok();
+            // 추적표는 id로만 찾는다 (다른 인스턴스 id와 이름이 같아도 섞이지 않게)
+            let tracked_pid = s.tracker.get_pid(&instance.id).ok();
             (module, config_obj, tracked_pid)
         };
         let module_path = module.entry_path();
@@ -764,11 +765,20 @@ impl Supervisor {
         }
 
         // ── Non-managed mode: Python lifecycle.py를 통한 정지 ──
+        // 데몬이 추적하는 PID가 없으면 멈출 것이 없다. 모듈 stop()을 PID 없이 부르면
+        // 이미지 이름으로 같은 게임의 다른 서버까지 끝낼 수 있다
+        let Some(pid) = tracked_pid else {
+            sup.write().await.stop_requested.remove(&instance.id);
+            return Ok(json!({
+                "success": true,
+                "server": server_name,
+                "was_running": false,
+                "message": format!("Server '{}' is not running", server_name)
+            }));
+        };
         let mut config_obj = stop_config;
         // Pass PID from tracker so the module can kill the actual process
-        if let Some(pid) = tracked_pid {
-            config_obj.insert("pid".to_string(), json!(pid));
-        }
+        config_obj.insert("pid".to_string(), json!(pid));
         // Pass RCON port for graceful shutdown (password is read from game config by Python)
         if let Some(rcon_port) = instance.rcon_port {
             config_obj.insert("rcon_port".to_string(), json!(rcon_port));
@@ -864,9 +874,7 @@ impl Supervisor {
             // Non-managed: module plugin으로 상태 확인
 
             // tracker에서 PID를 먼저 확인 — start_server()가 저장한 PID
-            let tracked_pid = s.tracker.get_pid(&instance.id)
-                .or_else(|_| s.tracker.get_pid(server_name))
-                .ok();
+            let tracked_pid = s.tracker.get_pid(&instance.id).ok();
 
             // Find module
             let module = s.module_loader.get_module(module_name)?;
@@ -1563,6 +1571,8 @@ impl Supervisor {
                 }
                 "reset" => "reset_properties",
                 "reset_server" => "reset_server",
+                // 실제 설정 파일을 saba-chan 키로 (설정 화면이 캐시 대신 실제 값을 보여 준다)
+                "import" => "import_settings",
                 _ => "read_properties",
             };
 
@@ -2001,14 +2011,15 @@ impl Supervisor {
                 
                 if !process_monitor::is_running_in(process_snapshot, pid) {
                     // 러너가 아직 서버를 돌리고 있으면(런처가 끝나고 진짜 서버가 남은 경우) 러너가 보는 PID로 옮긴다
-                    if matches!(self.managed_store.get(&instance.id).await, Some(p) if p.is_running()) {
+                    // 로그만 따라 읽는 익스텐션 follower는 서버 수명을 말해 주지 않는다: 러너일 때만
+                    if matches!(self.managed_store.get(&instance.id).await, Some(p) if p.is_running() && p.runner_pid.is_some()) {
                         let dir = self.instance_store.instance_dir(&instance.id);
                         match managed_process::runner_server_pid(&dir)
                             .filter(|p| *p != pid && process_monitor::is_running_in(process_snapshot, *p))
                         {
                             Some(new_pid) => {
                                 tracing::info!("Instance '{}': launcher {} exited, following server PID {}", instance.name, pid, new_pid);
-                                let _ = self.tracker.track(&instance.id, new_pid);
+                                let _ = self.tracker.replace_pid(&instance.id, new_pid);
                             }
                             None => tracing::debug!("Instance '{}': PID {} gone but saba-runner still runs it", instance.name, pid),
                         }
