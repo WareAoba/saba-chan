@@ -737,6 +737,7 @@ impl IPCServer {
             .route("/api/relay/host/:host_id/status", get(handlers::relay::check_host_status))
             .route("/api/relay/host/:host_id/nodes", get(handlers::relay::list_host_nodes))
             .route("/api/relay/node/:guild_id/members", get(handlers::relay::list_node_members))
+            .route("/api/relay/bot-invite", get(handlers::relay::get_bot_invite))
             .route("/api/relay/pair/initiate", post(handlers::relay::initiate_pairing))
             .route("/api/relay/pair/:code/status", get(handlers::relay::poll_pairing_status))
             // ── Relay agent (cloud Discord bot ↔ daemon) ──
