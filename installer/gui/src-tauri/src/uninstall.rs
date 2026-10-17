@@ -284,12 +284,13 @@ fn stop_saba_processes() {
             "saba-chan-updater",
         ];
         // 게임 서버는 데몬(직접 띄운 비관리 서버)이나 러너의 자식이고, 그 아래 손자가 있을 수 있다
-        // (PTY로 띄운 서버는 따로 세션·그룹을 연다). 데몬·러너의 자식 트리를 아래부터 통째로 끝낸다
+        // (PTY로 띄운 서버는 따로 세션·그룹을 연다). 자식 트리를 맨 아래부터 끝내고(kt: 자식을 먼저 훑은 뒤
+        // 부모를 죽여 손자가 고아가 되기 전에 잡는다), 남은 그룹을 정리한다
         let _ = std::process::Command::new("sh")
             .args([
                 "-c",
                 "kt() { for c in $(pgrep -P \"$1\"); do kt \"$c\"; done; kill -KILL \"$1\" 2>/dev/null; }; \
-                 for p in $(pgrep -x saba-runner) $(pgrep -x saba-core); do for c in $(pgrep -P \"$p\"); do kill -KILL -- -\"$c\" 2>/dev/null; kt \"$c\"; done; done",
+                 for p in $(pgrep -x saba-runner) $(pgrep -x saba-core); do for c in $(pgrep -P \"$p\"); do kt \"$c\"; kill -KILL -- -\"$c\" 2>/dev/null; done; done",
             ])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
