@@ -14,7 +14,7 @@ pub struct Ctx {
     pub ask: Prompt,
     /// 대화형 셸 안에서 실행 중
     pub in_shell: bool,
-    /// 콘솔에 붙어 있음 (새 줄이 이미 흐르므로 명령 답을 따로 보여 주지 않는다)
+    /// 콘솔에 붙어 있음 (콘솔로 온 답은 이미 흐르므로 다시 보여 주지 않는다)
     pub attached: bool,
 }
 

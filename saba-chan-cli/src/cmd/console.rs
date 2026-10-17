@@ -88,44 +88,6 @@ impl Cursor {
     }
 }
 
-/// 명령을 보내기 전 콘솔 위치. `echo_reply`와 짝.
-pub async fn mark(ctx: &Ctx, sv: &Server) -> Option<u64> {
-    if ctx.out.json || ctx.attached {
-        return None;
-    }
-    let resp = ctx.api.console(&sv.id, None, Some(1)).await.ok()?;
-    let cur = Cursor::from(&resp);
-    (cur.running && !cur.disk).then_some(cur.next.unwrap_or(0))
-}
-
-/// 명령 뒤에 서버가 콘솔에 찍은 답을 잠깐 모아 보여 준다 (stdin 명령은 응답이 콘솔로만 온다)
-pub async fn echo_reply(ctx: &Ctx, sv: &Server, from: Option<u64>) {
-    let Some(mut next) = from else { return };
-    let mut quiet = 0;
-    // 줄이 오다가 잠깐 멎으면 끝. 아무것도 안 오면 1.5초까지 기다린다.
-    for _ in 0..10 {
-        tokio::time::sleep(Duration::from_millis(150)).await;
-        let Ok(resp) = ctx.api.console(&sv.id, Some(next), None).await else {
-            return;
-        };
-        let lines: Vec<Value> = resp.get("lines").and_then(Value::as_array).cloned().unwrap_or_default();
-        if lines.is_empty() {
-            quiet += 1;
-            if quiet >= 2 && next > from.unwrap_or(0) {
-                return;
-            }
-            continue;
-        }
-        quiet = 0;
-        for l in &lines {
-            println!("  {}", format_line(l));
-        }
-        if let Some(c) = Cursor::from(&resp).next {
-            next = c;
-        }
-    }
-}
-
 /// 새 줄을 받아 `emit`으로 넘긴다. Ctrl+C로 끝.
 async fn follow_printing(ctx: &Ctx, sv: &Server, mut cur: Cursor, emit: impl Fn(String)) -> Result<()> {
     loop {

@@ -71,7 +71,7 @@ fn print_settings(m: &Map<String, Value>) {
         .iter()
         .map(|(k, v)| {
             let mut shown = output::mask(k, v);
-            // 긴 페르소나 같은 글은 앞부분만
+            // 긴 메모 같은 글은 앞부분만
             if shown.chars().count() > 80 {
                 shown = format!("{}…", shown.chars().take(80).collect::<String>().replace('\n', " "));
             }

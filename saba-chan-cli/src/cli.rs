@@ -160,7 +160,7 @@ pub enum ScheduleCmd {
 pub enum ChatbotCmd {
     /// Settings and whether an API key is saved
     Show,
-    /// Change settings: KEY=VALUE ... (empty value = default, [a,b] = list, @FILE = file text)
+    /// Change settings: KEY=VALUE ... (empty = default, [a,b] = list, @FILE = file text, e.g. memo=@notes.txt)
     Set {
         #[arg(value_name = "KEY=VALUE", required = true)]
         pairs: Vec<String>,
@@ -238,17 +238,6 @@ pub enum ServerCmd {
         server: Option<String>,
         #[command(subcommand)]
         action: Option<PropsCmd>,
-    },
-    /// Send a raw RCON command
-    Rcon {
-        server: String,
-        #[arg(
-            required = true,
-            trailing_var_arg = true,
-            allow_hyphen_values = true,
-            value_name = "LINE"
-        )]
-        line: Vec<String>,
     },
     /// Call the game's REST API directly
     Rest {

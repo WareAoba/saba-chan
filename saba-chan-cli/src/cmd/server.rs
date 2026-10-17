@@ -28,7 +28,6 @@ pub async fn run(ctx: &Ctx, cmd: ServerCmd) -> Result<()> {
         ServerCmd::Settings { server } => settings(ctx, server.as_deref()).await,
         ServerCmd::Set { server, pairs } => set(ctx, &server, &pairs).await,
         ServerCmd::Properties { server, action } => properties(ctx, server.as_deref(), action).await,
-        ServerCmd::Rcon { server, line } => rcon(ctx, &server, &line.join(" ")).await,
         ServerCmd::Rest {
             server,
             method,
@@ -805,9 +804,8 @@ pub async fn exec(ctx: &Ctx, sv: &Server, cat: &Catalog, name: &str, words: &[St
             .chain(words.iter().cloned())
             .collect::<Vec<_>>()
             .join(" ");
-        let at = crate::cmd::console::mark(ctx, sv).await;
         let r = ctx.api.command(&sv.id, &line, Value::Null).await?;
-        show_reply(ctx, sv, at, &r).await;
+        print_result(ctx, &r);
         return Ok(());
     };
     let (mut args, missing) = def.bind(words).map_err(usage)?;
@@ -819,22 +817,9 @@ pub async fn exec(ctx: &Ctx, sv: &Server, cat: &Catalog, name: &str, words: &[St
         ctx.ask
             .ensure(&t!("run.confirm_danger", label = def.label, name = sv.name))?;
     }
-    let at = crate::cmd::console::mark(ctx, sv).await;
     let r = ctx.api.command(&sv.id, &def.name, Value::Object(args)).await?;
-    show_reply(ctx, sv, at, &r).await;
+    print_result(ctx, &r);
     Ok(())
-}
-
-/// 데몬이 서버의 답(`data.response`)을 주면 그것을, 아니면 콘솔에 찍힌 답을 잠깐 모아 보여 준다
-async fn show_reply(ctx: &Ctx, sv: &Server, at: Option<u64>, r: &Value) {
-    print_result(ctx, r);
-    let answered = r
-        .pointer("/data/response")
-        .and_then(Value::as_str)
-        .is_some_and(|t| !t.trim().is_empty());
-    if !answered {
-        crate::cmd::console::echo_reply(ctx, sv, at).await;
-    }
 }
 
 /// API 오류의 `error_code`
@@ -865,6 +850,10 @@ fn ask_input(ctx: &Ctx, def: &Command, input: &Input) -> Result<Value> {
 
 /// 명령 응답을 사람이 읽게: 문자열 → 그대로, 객체 배열 → 표, 객체 → 이름: 값
 pub fn print_result(ctx: &Ctx, r: &Value) {
+    // 콘솔에 붙어 있으면 stdin 답은 콘솔 줄로 이미 보인다
+    if ctx.attached && !ctx.out.json && s(r, "protocol") == "stdin" {
+        return;
+    }
     ctx.out.data(r, |r| {
         let data = r.get("data").filter(|d| !d.is_null());
         let text = data
@@ -984,15 +973,7 @@ pub fn print_commands(ctx: &Ctx, module: &str, cat: &Catalog) -> Result<()> {
 
 async fn send(ctx: &Ctx, query: &str, line: &str) -> Result<()> {
     let sv = resolve::server(ctx, Some(query)).await?;
-    let at = crate::cmd::console::mark(ctx, &sv).await;
     let r = ctx.api.stdin(&sv.id, line).await?;
-    show_reply(ctx, &sv, at, &r).await;
-    Ok(())
-}
-
-async fn rcon(ctx: &Ctx, query: &str, line: &str) -> Result<()> {
-    let sv = resolve::server(ctx, Some(query)).await?;
-    let r = ctx.api.rcon(&sv.id, line).await?;
     print_result(ctx, &r);
     Ok(())
 }

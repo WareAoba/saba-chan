@@ -262,11 +262,6 @@ impl Api {
         )
         .await
     }
-    /// POST /api/instance/:id/rcon
-    pub async fn rcon(&self, id: &str, line: &str) -> Result<Value> {
-        self.post(&format!("/api/instance/{}/rcon", seg(id)), json!({ "command": line }))
-            .await
-    }
     /// POST /api/instance/:id/rest — `{endpoint, method, body?}`
     pub async fn rest(&self, id: &str, method: &str, endpoint: &str, body: Option<Value>) -> Result<Value> {
         let mut req = json!({ "endpoint": endpoint, "method": method });
@@ -394,7 +389,12 @@ impl Api {
     // ── 익스텐션 ──
 
     pub async fn extensions(&self) -> Result<Value> {
-        self.get("/api/extensions").await
+        // 설명은 CLI 표시 언어로 (데몬은 없으면 GUI 언어를 쓴다)
+        self.get(&with_query(
+            "/api/extensions",
+            &[("lang", Some(crate::i18n::lang().to_string()))],
+        ))
+        .await
     }
     pub async fn extension_init_status(&self) -> Result<Value> {
         self.get("/api/extensions/init-status").await
