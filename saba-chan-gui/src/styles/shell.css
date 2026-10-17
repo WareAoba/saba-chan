@@ -1012,8 +1012,8 @@
     background: var(--stop-soft);
 }
 .term-chip.risk-danger {
-    border-color: color-mix(in srgb, var(--stop) 45%, transparent);
-    color: color-mix(in srgb, var(--stop) 85%, var(--console-custom-text));
+    border-color: color-mix(in srgb, var(--console-error) 45%, transparent);
+    color: color-mix(in srgb, var(--console-error) 85%, var(--console-custom-text));
 }
 .notice.risk-confirm {
     align-items: center;

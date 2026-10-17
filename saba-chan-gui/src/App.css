@@ -2524,7 +2524,7 @@ span[style*="--icon-loader"] svg,
 
 .console-icon {
     font-family: "Cascadia Code", "Consolas", "Monaco", "Courier New", monospace;
-    color: var(--ok);
+    color: var(--console-ok);
     font-size: calc(14px * var(--font-scale));
     font-weight: 700;
 }
@@ -2542,8 +2542,8 @@ span[style*="--icon-loader"] svg,
 }
 
 .console-close:hover {
-    color: var(--stop);
-    background: color-mix(in srgb, var(--stop) 10%, transparent);
+    color: var(--console-error);
+    background: color-mix(in srgb, var(--console-error) 10%, transparent);
 }
 
 .console-output {
@@ -2596,15 +2596,15 @@ span[style*="--icon-loader"] svg,
 }
 
 .console-stderr .console-content {
-    color: var(--stop);
+    color: var(--console-error);
 }
 
 .console-level-warn .console-content {
-    color: var(--warn);
+    color: var(--console-warn);
 }
 
 .console-level-error .console-content {
-    color: var(--stop);
+    color: var(--console-error);
     font-weight: 600;
 }
 
@@ -2619,7 +2619,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .console-prompt {
-    color: var(--ok);
+    color: var(--console-ok);
     font-family: "Cascadia Code", "Consolas", "Monaco", "Courier New", monospace;
     font-weight: 700;
     font-size: calc(14px * var(--font-scale));
@@ -2640,7 +2640,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .console-input:focus {
-    border-color: color-mix(in srgb, var(--ok) 40%, transparent);
+    border-color: color-mix(in srgb, var(--console-ok) 40%, transparent);
 }
 
 .console-input::placeholder {
@@ -2681,21 +2681,21 @@ span[style*="--icon-loader"] svg,
 }
 
 .console-input-disabled .console-input {
-    border-color: var(--warn);
+    border-color: var(--console-warn);
     padding-left: 30px;
     cursor: not-allowed;
     opacity: 0.7;
 }
 
 .console-input-disabled .console-input::placeholder {
-    color: var(--warn);
+    color: var(--console-warn);
     opacity: 0.9;
 }
 
 .console-input-disabled > span {
     position: absolute;
     left: 8px;
-    color: var(--warn);
+    color: var(--console-warn);
     z-index: 1;
     pointer-events: none;
     flex-shrink: 0;
@@ -2862,27 +2862,27 @@ span[style*="--icon-loader"] svg,
 }
 
 .console-popout-titlebar-close:hover {
-    color: var(--stop);
-    background: color-mix(in srgb, var(--stop) 15%, transparent);
+    color: var(--console-error);
+    background: color-mix(in srgb, var(--console-error) 15%, transparent);
 }
 
 .console-popout-titlebar-popin:hover {
-    color: var(--ok);
-    background: color-mix(in srgb, var(--ok) 10%, transparent);
+    color: var(--console-ok);
+    background: color-mix(in srgb, var(--console-ok) 10%, transparent);
 }
 
 .console-popout-titlebar-pin:hover {
-    color: var(--info);
-    background: color-mix(in srgb, var(--info) 10%, transparent);
+    color: var(--console-info);
+    background: color-mix(in srgb, var(--console-info) 10%, transparent);
 }
 
 .console-popout-titlebar-pinned {
-    color: var(--info) !important;
-    background: color-mix(in srgb, var(--info) 15%, transparent);
+    color: var(--console-info) !important;
+    background: color-mix(in srgb, var(--console-info) 15%, transparent);
 }
 
 .console-popout-titlebar-pinned:hover {
-    background: color-mix(in srgb, var(--info) 25%, transparent);
+    background: color-mix(in srgb, var(--console-info) 25%, transparent);
 }
 
 .console-popout-body {

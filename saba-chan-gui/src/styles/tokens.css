@@ -163,6 +163,11 @@
     /* 토글 손잡이, 디스코드 브랜드색: 테마와 무관 */
     --knob: #ffffff;
     --discord: #5865f2;
+    /* 콘솔은 두 테마 모두 어두운 바탕이라 상태색을 따로 둔다 (utils/syntaxHighlight TOKEN_COLORS와 같은 값) */
+    --console-error: #f38ba8;
+    --console-warn: #f9e2af;
+    --console-ok: #a6e3a1;
+    --console-info: #89b4fa;
 
     /* 글자 */
     --font-sans: 'Pretendard', 'Pretendard Variable', 'Noto Sans KR', 'Noto Sans', 'Segoe UI', 'Apple SD Gothic Neo',
