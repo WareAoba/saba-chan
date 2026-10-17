@@ -180,7 +180,9 @@ async fn unknown_inputs() {
     let s = settings();
     let cat = Catalog::for_language("en");
     assert_eq!(run(&api, &s, "nothing").await, cat.t("errors.unknown_input", &[]));
-    assert_eq!(run(&api, &s, "mc dance").await, cat.t("errors.command_not_found", &[]));
+    let reply = run(&api, &s, "mc dance").await;
+    assert!(reply.starts_with(&cat.t("errors.command_not_found", &[])), "{}", reply);
+    assert!(reply.contains(&cat.t("modules.help_start", &[])), "{}", reply);
     assert!(run(&api, &s, "nothing start").await.contains("nothing"));
 }
 
