@@ -123,6 +123,40 @@ const impl = {
                 { at: now() - 600, kind: 'unknown_exit', exit_code: 1, note: 'restart_on_unknown_exit is off' },
             ],
         }),
+    instanceScheduleGet: () =>
+        ok({
+            success: true,
+            schedule: [
+                { action: 'backup', every_minutes: 120, enabled: true },
+                { action: 'restart', at: '04:00', warn_minutes: [10, 1], enabled: true },
+                { action: 'announce', every_minutes: 60, message: '디스코드에도 놀러 오세요!', enabled: false },
+            ],
+            backup_keep: 10,
+            backup_supported: true,
+            announce_supported: true,
+        }),
+    instanceScheduleSave: () => ok({ success: true }),
+    instanceBackups: () =>
+        ok({
+            success: true,
+            backups: [
+                { name: 'mock-scheduled.zip', kind: 'scheduled', created: now() - 1800, size: 184_320_000 },
+                { name: 'mock-pre-update.zip', kind: 'pre-update', created: now() - 86400, size: 180_100_000 },
+                { name: 'mock-manual.zip', kind: 'manual', created: now() - 3 * 86400, size: 95_000_000 },
+            ],
+        }),
+    instanceBackupCreate: () => ok({ success: true, backup: { name: 'new-manual.zip' } }),
+    instanceBackupDelete: () => ok({ success: true }),
+    instanceBackupRestore: () => ok({ success: true, restored: true }),
+    chatbotGet: () =>
+        ok({
+            success: true,
+            settings: { enabled: true, ambientSeconds: 0 },
+            guilds: { 'guild-1': { channelIds: ['1234567890'] } },
+            hasApiKey: true,
+        }),
+    chatbotSave: (patch) => ok({ success: true, settings: patch.settings || {}, guilds: {}, hasApiKey: true, sync: [] }),
+    chatbotClearMemory: () => ok({ success: true }),
     moduleDetect: () => ok({ matches: [{ name: 'minecraft', display_name: 'Minecraft: Java Edition' }] }),
     settingsLoad: () => ok(settings),
     settingsSave: (s) => {

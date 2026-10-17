@@ -1,0 +1,181 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+    ChatbotView,
+    relayErrorLines,
+    settingsDraft,
+    settingsPatch,
+    settingsProblems,
+} from '../components/discord/ChatbotView';
+import { draftProblems, formatBytes, fromDraft, MaintenanceTab, toDraft } from '../components/servers/MaintenanceTab';
+
+const t = (k) => k;
+const API_KEYS = [
+    'instanceScheduleGet',
+    'instanceScheduleSave',
+    'instanceBackups',
+    'instanceBackupCreate',
+    'instanceBackupDelete',
+    'instanceBackupRestore',
+    'chatbotGet',
+    'chatbotSave',
+    'chatbotClearMemory',
+];
+
+afterEach(() => {
+    for (const k of API_KEYS) delete window.api[k];
+});
+
+describe('예약 작업 초안 ↔ 데몬 형식', () => {
+    it('주기·시각·예고·공지를 데몬 ScheduledTask로 바꾼다', () => {
+        const restart = toDraft({ action: 'restart', at: '04:00', warn_minutes: [10, 1] });
+        expect(fromDraft(restart, { announce: true })).toEqual({
+            action: 'restart',
+            enabled: true,
+            at: '04:00',
+            warn_minutes: [10, 1],
+        });
+        // 공지 명령이 없는 모듈이면 예고를 보내지 않는다 (데몬이 거절한다)
+        expect(fromDraft(restart, { announce: false })).not.toHaveProperty('warn_minutes');
+        const backup = toDraft({ action: 'backup', every_minutes: 30, enabled: false });
+        expect(fromDraft(backup, { announce: true })).toEqual({ action: 'backup', enabled: false, every_minutes: 30 });
+    });
+
+    it('데몬 problems()와 같은 규칙으로 막는다', () => {
+        expect(draftProblems({ ...toDraft({ action: 'backup' }), every: '0' }, t)).toEqual(['maintenance.err_every']);
+        expect(draftProblems({ ...toDraft({ action: 'restart', at: '4pm' }) }, t)).toEqual(['maintenance.err_at']);
+        expect(draftProblems(toDraft({ action: 'announce', every_minutes: 60 }), t)).toEqual([
+            'maintenance.err_message',
+        ]);
+        expect(formatBytes(1536)).toBe('1.5 KB');
+    });
+});
+
+describe('MaintenanceTab', () => {
+    const stopped = { id: 'srv1', status: 'stopped' };
+
+    it('백업을 지원하지 않으면 백업 칸과 백업·공지 선택지를 숨긴다', async () => {
+        window.api.instanceScheduleGet = vi.fn().mockResolvedValue({
+            success: true,
+            schedule: [{ action: 'restart', every_minutes: 60 }],
+            backup_keep: 10,
+            backup_supported: false,
+            announce_supported: false,
+        });
+        window.api.instanceBackups = vi.fn();
+        render(<MaintenanceTab server={stopped} />);
+        await screen.findByRole('tablist', { name: 'Task 1 type' });
+        expect(screen.queryByText('Back up now')).toBeNull();
+        expect(window.api.instanceBackups).not.toHaveBeenCalled();
+        const tabs = screen.getAllByRole('tab').map((b) => b.textContent);
+        expect(tabs).toEqual(['Restart', 'Update']);
+        expect(screen.queryByText(/Warn players/)).toBeNull();
+    });
+
+    it('백업 목록·복원(두 번 누름)·저장 오류 표시', async () => {
+        window.api.instanceScheduleGet = vi.fn().mockResolvedValue({
+            success: true,
+            schedule: [],
+            backup_keep: 5,
+            backup_supported: true,
+            announce_supported: true,
+        });
+        window.api.instanceBackups = vi.fn().mockResolvedValue({
+            success: true,
+            backups: [{ name: '20261017-0400-scheduled.zip', kind: 'scheduled', created: 1760670000, size: 2048 }],
+        });
+        window.api.instanceBackupRestore = vi.fn().mockResolvedValue({ success: true, restored: true });
+        window.api.instanceScheduleSave = vi.fn().mockResolvedValue({
+            success: false,
+            error_code: 'validation_failed',
+            details: ['schedule[0]: announce needs a message'],
+        });
+        render(<MaintenanceTab server={stopped} />);
+        const restore = await screen.findByRole('button', { name: 'Restore' });
+        fireEvent.click(restore);
+        expect(window.api.instanceBackupRestore).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: 'Click to restore' }));
+        await waitFor(() =>
+            expect(window.api.instanceBackupRestore).toHaveBeenCalledWith('srv1', '20261017-0400-scheduled.zip'),
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: /Add task/ }));
+        fireEvent.click(screen.getByRole('button', { name: /Save/ }));
+        await screen.findByText('schedule[0]: announce needs a message');
+        expect(window.api.instanceScheduleSave).toHaveBeenCalledWith('srv1', {
+            schedule: [{ action: 'backup', enabled: true, every_minutes: 60 }],
+            backup_keep: 5,
+        });
+    });
+
+    it('켜져 있으면 복원 버튼이 잠긴다', async () => {
+        window.api.instanceScheduleGet = vi
+            .fn()
+            .mockResolvedValue({ success: true, schedule: [], backup_supported: true });
+        window.api.instanceBackups = vi.fn().mockResolvedValue({
+            backups: [{ name: 'a-manual.zip', kind: 'manual', created: 1, size: 1 }],
+        });
+        render(<MaintenanceTab server={{ id: 's', status: 'running' }} />);
+        expect(await screen.findByRole('button', { name: 'Restore' })).toBeDisabled();
+    });
+});
+
+describe('챗봇 설정 변환', () => {
+    it('기본값과 같은 값은 null로 보내 릴레이 기본을 따른다', () => {
+        const d = settingsDraft({ model: 'gpt-x', ambientSeconds: 30 });
+        expect(d.sessionSeconds).toBe('180');
+        const p = settingsPatch({ ...d, persona: '  ', enabled: true });
+        expect(p).toMatchObject({ model: 'gpt-x', ambientSeconds: 30, enabled: true, persona: null, memory: null });
+        expect(settingsProblems({ ...d, sessionSeconds: '601' }, t)).toEqual(['chatbot.err_sessionSeconds']);
+    });
+
+    it('릴레이 400을 읽을 수 있는 줄로', () => {
+        const lines = relayErrorLines(
+            { guildId: 'g1', status: 400, error: 'invalid_settings', details: [{ path: 'model', message: 'bad' }] },
+            () => 'My Guild',
+        );
+        expect(lines).toEqual(['My Guild: invalid_settings', 'model: bad']);
+    });
+});
+
+describe('ChatbotView', () => {
+    const nodes = [{ guildId: 'g1', guildName: 'My Guild' }];
+
+    it('API 키는 쓰기만 하고 등록 여부만 보인다, 삭제는 null', async () => {
+        window.api.chatbotGet = vi.fn().mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
+        window.api.chatbotSave = vi
+            .fn()
+            .mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: false });
+        render(<ChatbotView nodes={nodes} />);
+        expect(await screen.findByText('Set')).toBeTruthy();
+        expect(screen.getByLabelText('OpenAI API key').value).toBe('');
+        fireEvent.click(screen.getByRole('button', { name: 'Remove key' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Click to remove' }));
+        await waitFor(() => expect(window.api.chatbotSave).toHaveBeenCalledWith({ apiKey: null }));
+        expect(await screen.findByText('None')).toBeTruthy();
+    });
+
+    it('길드 설정을 바꿔 저장하고, 릴레이 400을 보여준다', async () => {
+        window.api.chatbotGet = vi
+            .fn()
+            .mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: false });
+        window.api.chatbotSave = vi.fn().mockResolvedValue({
+            success: false,
+            guildId: 'g1',
+            status: 400,
+            error: 'invalid_settings',
+            details: ['channelIds too long'],
+        });
+        window.api.chatbotClearMemory = vi.fn().mockResolvedValue({ success: true });
+        render(<ChatbotView nodes={nodes} />);
+        const sel = await screen.findByLabelText('Chatbot in My Guild');
+        fireEvent.change(sel, { target: { value: 'on' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        await screen.findByText(/channelIds too long/);
+        expect(window.api.chatbotSave).toHaveBeenCalledWith({ guilds: { g1: { enabled: true, channelIds: null } } });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Clear memory' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Click to clear' }));
+        await waitFor(() => expect(window.api.chatbotClearMemory).toHaveBeenCalledWith('g1'));
+    });
+});

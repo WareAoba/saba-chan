@@ -2011,3 +2011,165 @@ button.appbar-preflight {
 .dc-hero .dc-hero-hint {
     font-size: var(--fs-sm);
 }
+
+/* ── 백업·예약 탭 ── */
+.mt-tab {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+}
+.mt-pre {
+    flex: 1;
+    white-space: pre-line;
+}
+.mt-tasks {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+}
+.mt-task {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    padding: var(--sp-3) var(--sp-4);
+    border-radius: var(--r-md);
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    transition: opacity var(--dur-fast) var(--ease);
+}
+.mt-task.off .mt-task-fields {
+    opacity: 0.55;
+}
+.mt-task-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    flex-wrap: wrap;
+}
+.mt-task-head > * {
+    flex-shrink: 0;
+}
+.mt-task-head .segmented {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow-x: auto;
+    margin-right: auto;
+}
+.mt-task-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-3) var(--sp-4);
+}
+.mt-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: var(--fs-sm);
+}
+.mt-field > span:first-child {
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    color: var(--text-3);
+}
+.mt-field-wide {
+    flex: 1 1 260px;
+}
+.mt-when,
+.mt-inline {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+.mt-when > *,
+.mt-inline > * {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+.mt-field .input.mt-select,
+.mt-when select.input {
+    width: auto;
+}
+.mt-field .input.mt-num {
+    width: 96px;
+}
+.mt-field .input.mt-time {
+    width: 130px;
+}
+.mt-keep {
+    padding-top: var(--sp-3);
+    border-top: 1px solid var(--line);
+}
+
+/* ── AI 챗봇 설정 ── */
+.cb-key-row {
+    display: flex;
+    gap: var(--sp-2);
+    flex-wrap: wrap;
+}
+.cb-key-row .input {
+    flex: 1 1 240px;
+    font-family: var(--font-mono);
+}
+.cb-key-row .btn {
+    flex-shrink: 0;
+}
+.cb-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-3) var(--sp-4);
+}
+.cb-fields .mt-field:first-child {
+    flex: 1 1 200px;
+}
+.cb-persona {
+    height: auto;
+    min-height: 110px;
+    resize: vertical;
+    padding: var(--sp-2) var(--sp-3);
+    line-height: 1.5;
+}
+.cb-toggles {
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid var(--line);
+}
+.cb-toggle-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: 10px 0;
+}
+.cb-toggles .cb-toggle-row + .cb-toggle-row {
+    border-top: 1px solid var(--line);
+}
+.cb-toggle-row > label {
+    flex-shrink: 0;
+}
+.cb-hint {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+}
+.cb-guild {
+    display: flex;
+    flex-direction: column;
+}
+.cb-guild .dc-list-row > :not(.dc-list-text) {
+    flex-shrink: 0;
+}
+.cb-guild .input.cb-select {
+    width: auto;
+}
+.cb-guild-channels {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: 0 var(--sp-4) 12px;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+    font-weight: 600;
+}
+.cb-key-row .input:placeholder-shown {
+    font-family: inherit;
+}

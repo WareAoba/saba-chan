@@ -13,10 +13,11 @@ import { NativeProvision } from '../NativeProvision';
 import { ServerSettingsModal } from '../ServerSettingsModal';
 import { Segmented, StatusChip } from '../ui/StatusChip';
 import { ExitHistory } from './ExitHistory';
+import { MaintenanceTab, maintenanceAvailable } from './MaintenanceTab';
 import { ServerConsole } from './ServerConsole';
 
 /**
- * 오른쪽 서버 상세. 머리(이름·상태·켜기/끄기) + 탭(콘솔 · 명령 · 설정 · 정보).
+ * 오른쪽 서버 상세. 머리(이름·상태·켜기/끄기) + 탭(콘솔 · 명령 · 설정 · 백업·예약 · 정보).
  * 예전에는 콘솔·명령·설정이 각각 떠다니는 창/모달이었다.
  */
 export function ServerDetail({
@@ -61,6 +62,11 @@ export function ServerDetail({
             icon: <Icon name="command" size="sm" />,
         },
         { id: 'settings', label: t('shell.tab_settings'), icon: <Icon name="settings" size="sm" /> },
+        maintenanceAvailable() && {
+            id: 'maintenance',
+            label: t('shell.tab_maintenance'),
+            icon: <Icon name="clock" size="sm" />,
+        },
         { id: 'info', label: t('shell.tab_info'), icon: <Icon name="info" size="sm" /> },
     ].filter(Boolean);
 
@@ -279,6 +285,7 @@ export function ServerDetail({
                                 servers={servers}
                             />
                         )}
+                        {activeTab === 'maintenance' && <MaintenanceTab server={server} />}
                         {activeTab === 'info' && (
                             <InfoTab
                                 server={server}

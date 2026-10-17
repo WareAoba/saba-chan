@@ -6,6 +6,7 @@ import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { SINGLE_COLUMN_MAX_WIDTH } from '../servers/ServersPage';
 import { StatusChip } from '../ui/StatusChip';
+import { ChatbotView, chatbotAvailable } from './ChatbotView';
 import { ConnectionView } from './ConnectionView';
 import { Avatar, NodeView } from './NodeView';
 import * as P from './nodePermissions';
@@ -84,7 +85,7 @@ function BotSettingsView({ prefix, setPrefix, onSave, sampleModuleWord }) {
 
 /**
  * 디스코드 페이지 (V1): 왼쪽 메뉴 | 오른쪽 화면. 서버 페이지와 같은 목록-상세 구조.
- * 메뉴: 연결 · 디스코드 서버(노드) 목록 · 명령어 단어 · 기본 설정.
+ * 메뉴: 연결 · 디스코드 서버(노드) 목록 · 명령어 단어 · 기본 설정 · AI 챗봇.
  * 노드 권한은 바꾸는 즉시 저장(잠깐 모아서)하고, 단어 편집은 저장 버튼으로 확정한다.
  */
 export function DiscordPage({
@@ -453,6 +454,15 @@ export function DiscordPage({
                             t('discord.nav_settings'),
                             <span>{t('discord.nav_settings_sub', { prefix: discordPrefix || '—' })}</span>,
                         )}
+                        {chatbotAvailable() &&
+                            navItem(
+                                'chatbot',
+                                view.kind === 'chatbot',
+                                () => go({ kind: 'chatbot' }),
+                                <Icon name="messageSquare" size="sm" />,
+                                t('chatbot.nav'),
+                                <span>{t('chatbot.nav_sub')}</span>,
+                            )}
                     </div>
                 </aside>
             )}
@@ -524,6 +534,7 @@ export function DiscordPage({
                                 sampleModuleWord={sampleModuleWord}
                             />
                         )}
+                        {view.kind === 'chatbot' && chatbotAvailable() && <ChatbotView nodes={cloudNodes} />}
                     </div>
                 </main>
             )}
