@@ -389,6 +389,32 @@ impl Supervisor {
         Ok(out)
     }
 
+    /// 확인되지 않은 모듈의 실행 대상 검사 (Windows). 막으면 `action_required` 응답
+    async fn guard_launch(
+        sup: &tokio::sync::RwLock<Self>,
+        instance: &crate::instance::ServerInstance,
+        module_name: &str,
+        program: &str,
+    ) -> Option<Value> {
+        let (entry, roots) = {
+            let s = sup.read().await;
+            let entry = s.module_loader.get_module(module_name).ok()?.entry_path();
+            let mut dirs = vec![s.instance_store.instance_dir(&instance.id)];
+            // 사용자가 정한 서버 폴더 (모듈이 돌려준 working_dir은 믿지 않는다)
+            dirs.extend(instance.working_dir.iter().map(std::path::PathBuf::from));
+            // 사용자가 설정한 java 경로 (이름이 java일 때만 런타임으로 인정된다)
+            let runtimes = instance.module_settings.get("java_path").and_then(Value::as_str).map(std::path::PathBuf::from).into_iter().collect();
+            (entry, crate::sandbox::LaunchRoots { dirs, runtimes })
+        };
+        match crate::sandbox::guard_launch(&entry, program, roots).await {
+            Ok(()) => None,
+            Err(blocked) => {
+                tracing::warn!("Launch of '{}' blocked: {:?}", instance.name, blocked);
+                Some(blocked.to_json(crate::sandbox::message(&blocked)))
+            }
+        }
+    }
+
     /// 해석된 실행 파일 경로를 config map에 삽입합니다.
     fn insert_resolved_exe(&self, config: &mut serde_json::Map<String, Value>, instance: &crate::instance::ServerInstance, module_name: &str) {
         if let Some(exe_path) = self.resolve_executable(instance, module_name) {
@@ -741,6 +767,10 @@ impl Supervisor {
         let working_dir = launch_result.get("working_dir")
             .and_then(|w| w.as_str())
             .unwrap_or(".");
+
+        if let Some(blocked) = Self::guard_launch(sup, &instance, module_name, program).await {
+            return Ok(blocked);
+        }
 
         let env_vars: Vec<(String, String)> = launch_result.get("env_vars")
             .and_then(|e| e.as_object())
@@ -1468,6 +1498,10 @@ impl Supervisor {
         let working_dir = launch_result.get("working_dir")
             .and_then(|w| w.as_str())
             .unwrap_or(".");
+
+        if let Some(blocked) = Self::guard_launch(sup, &instance, module_name, program).await {
+            return Ok(blocked);
+        }
 
         let env_vars: Vec<(String, String)> = launch_result.get("env_vars")
             .and_then(|e| e.as_object())
