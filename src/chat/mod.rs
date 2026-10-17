@@ -16,6 +16,7 @@ pub mod aliases;
 pub mod api;
 pub mod format;
 pub mod i18n;
+pub mod permissions;
 
 use crate::config_store::BotConfig;
 use crate::ipc::internal::InternalResponse;
@@ -63,6 +64,10 @@ pub struct ChatRequest {
     pub user_name: Option<String>,
     #[serde(default, alias = "guildName")]
     pub guild_name: Option<String>,
+    /// 디스코드(릴레이)에서 온 요청이면 판정에 쓸 출처. None이면 로컬(GUI·CLI)이라 판정하지 않는다.
+    /// HTTP 본문으로는 채울 수 없다 (릴레이 경로만 채운다)
+    #[serde(skip)]
+    pub remote: Option<permissions::Requester>,
 }
 
 /// 최상위 명령 (모듈 이름보다 먼저 확인)
@@ -96,7 +101,7 @@ struct Ctx<'a, D: DaemonApi> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Reply {
     pub text: String,
-    /// `UNKNOWN_COMMAND` | `INSTANCE_NOT_FOUND`. None이면 처리된 응답(성공이든 실행 오류든)
+    /// `UNKNOWN_COMMAND` | `INSTANCE_NOT_FOUND` | `PERMISSION_DENIED`. None이면 처리된 응답(성공이든 실행 오류든)
     pub code: Option<&'static str>,
     pub args: Value,
 }
@@ -121,6 +126,10 @@ pub async fn process<D: DaemonApi>(api: &D, settings: &ChatSettings, cat: &Catal
 
     let text = strip_prefix(req.text.trim(), &settings.prefix);
     let args: Vec<&str> = text.split_whitespace().collect();
+
+    if let Err(denied) = ctx.permit(None) {
+        return ctx.permission_denied(denied);
+    }
 
     let Some(first) = args.first().copied() else {
         return ctx.help().await.into();
@@ -197,16 +206,20 @@ impl<D: DaemonApi> Ctx<'_, D> {
         Some(list.iter().filter_map(|v| v.as_str()).collect())
     }
 
-    /// 사용자가 이 인스턴스에서 막힌 명령인지
-    fn is_denied(&self, server_id: &str, command: &str) -> bool {
-        let Some(user) = self.req.user_id.as_deref() else { return false };
-        let Some(perms) = self.node_settings().and_then(|c| c.get("memberPermissions")).and_then(|p| p.get(user)) else {
-            return false;
-        };
-        perms
-            .get(server_id)
-            .and_then(|v| v.as_array())
-            .is_some_and(|denied| denied.iter().any(|c| c.as_str() == Some(command)))
+    /// 원격 요청의 권한 판정 (`command`가 None이면 help·list 같은 기본 요청: 금지만 막는다).
+    /// 로컬 요청은 PC 주인이므로 판정하지 않는다
+    fn permit(&self, command: Option<(&str, &str, &str)>) -> Result<(), permissions::Denied> {
+        let Some(who) = &self.req.remote else { return Ok(()) };
+        let perms = permissions::NodePermissions::from_node(self.node_settings());
+        match command {
+            None => perms.check_basic(who),
+            Some((instance, command, risk)) => perms.check(who, instance, command, risk),
+        }
+    }
+
+    fn permission_denied(&self, denied: permissions::Denied) -> Reply {
+        tracing::info!("[Chat] 권한 거부: user={:?} need={} level={}", self.req.user_id, denied.need, denied.level);
+        Reply::unrecognized("PERMISSION_DENIED", self.t("errors.permission_denied", &[]), json!(denied))
     }
 
     async fn servers(&self) -> Result<Vec<ServerView>, String> {
@@ -384,9 +397,14 @@ impl<D: DaemonApi> Ctx<'_, D> {
         };
         let command = aliases::resolve_command(Some(module), &self.settings.command_aliases, cmd_alias);
 
-        if self.is_denied(&server.id, &command) {
-            tracing::info!("[Chat] 권한 거부: user={:?} server={} command={}", self.req.user_id, server.id, command);
-            return self.t("errors.permission_denied", &[]).into();
+        // 내장 명령의 위험도: status는 safe, start·stop은 caution. 모듈 명령은 선언값 (없으면 caution)
+        let risk = match command.as_str() {
+            "status" => "safe",
+            "start" | "stop" => "caution",
+            _ => module.command(&command).and_then(|f| f.risk.as_deref()).unwrap_or("caution"),
+        };
+        if let Err(denied) = self.permit(Some((&server.id, &command, risk))) {
+            return self.permission_denied(denied);
         }
 
         match command.as_str() {

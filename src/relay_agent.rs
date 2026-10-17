@@ -325,6 +325,8 @@ impl Session {
         if let Some(allowed) = allowed_instances_by_guild(&bot.node_settings) {
             meta["allowedInstances"] = allowed;
         }
+        // 권한 원본은 데몬이다: 릴레이는 이 값으로 바깥 검사용 캐시를 맞춘다
+        meta["permissions"] = permissions_by_guild(&bot.node_settings);
         meta
     }
 
@@ -400,19 +402,68 @@ impl Session {
                 let name = |key: &str| {
                     payload.get(key).and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string)
                 };
+                let guild_id = cmd.get("guildId").and_then(|v| v.as_str()).map(str::to_string);
+                let user_id = cmd.get("requestedBy").and_then(|v| v.as_str()).map(str::to_string);
+                let remote = self.requester(cmd, &payload, guild_id.clone(), user_id.clone()).await;
                 let req = crate::chat::ChatRequest {
                     text: text.to_string(),
-                    guild_id: cmd.get("guildId").and_then(|v| v.as_str()).map(str::to_string),
-                    user_id: cmd.get("requestedBy").and_then(|v| v.as_str()).map(str::to_string),
+                    guild_id,
+                    user_id,
                     user_name: name("userName"),
                     guild_name: name("guildName"),
+                    remote: Some(remote),
                 };
                 // 감사 로그 (A10): 디스코드에서 누가 보냈는지 (이름은 릴레이가 payload에 실어 보낸 것)
                 let origin = crate::audit::Origin::new("discord").requested_by(&req);
                 let reply = crate::audit::with_origin(origin, crate::chat::api::run_with_daemon_settings(&self.server, &req)).await;
                 raw_command_result(reply)
             }
+            "permission" => {
+                let guild_id = cmd.get("guildId").and_then(|v| v.as_str()).map(str::to_string);
+                let user_id = cmd.get("requestedBy").and_then(|v| v.as_str()).map(str::to_string);
+                let who = self.requester(cmd, &payload, guild_id, user_id).await;
+                let origin = crate::audit::Origin::new("discord");
+                crate::audit::with_origin(origin, permission_action(&self.server, &who, &payload)).await
+            }
             other => json!({ "success": false, "data": { "error": format!("Unknown action: {}", other) } }),
+        }
+    }
+
+    /// 릴레이 명령의 요청자. 노드 주인은 처음 받은 값으로 고정하고(`nodeSettings[guild].ownerDiscordId`),
+    /// 다른 값이 오면 무시하고 경고를 남긴다
+    async fn requester(&self, cmd: &Value, payload: &Value, guild_id: Option<String>, user_id: Option<String>) -> crate::chat::permissions::Requester {
+        let reported = cmd.get("ownerDiscordId").and_then(Value::as_str);
+        let owner_id = match guild_id.as_deref() {
+            Some(guild) => {
+                let pinned = self
+                    .server
+                    .config_store
+                    .update_node_settings(guild, |node| {
+                        let (owner, changed, conflict) = crate::chat::permissions::pin_owner(node, reported);
+                        ((owner, conflict), changed)
+                    })
+                    .await;
+                match pinned {
+                    Ok((owner, conflict)) => {
+                        if let Some(conflict) = conflict {
+                            tracing::warn!("[RelayAgent] guild {}: relay reported a different owner ({}); keeping the pinned owner", guild, conflict);
+                        }
+                        owner
+                    }
+                    Err(e) => {
+                        // 고정할 수 없으면 주인을 가정하지 않는다
+                        tracing::warn!("[RelayAgent] could not read node settings for {}: {}", guild, e);
+                        None
+                    }
+                }
+            }
+            None => None,
+        };
+        crate::chat::permissions::Requester {
+            guild_id,
+            user_id,
+            owner_id,
+            via_chatbot: crate::chat::permissions::via_chatbot(payload.get("via").and_then(Value::as_str), reported.is_some()),
         }
     }
 
@@ -527,6 +578,61 @@ fn now_ms() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
+/// 디스코드 `/사바쨩 권한 부여·해제·기본`: 노드 주인만 바꿀 수 있다. 챗봇 경로는 받지 않는다
+async fn permission_action(server: &crate::ipc::IPCServer, who: &crate::chat::permissions::Requester, payload: &Value) -> Value {
+    use crate::chat::permissions::Change;
+    let fail = |code: &str| json!({ "success": false, "data": { "code": code } });
+    let Some(guild) = who.guild_id.as_deref() else { return fail("MISSING_GUILD") };
+    if who.via_chatbot || who.owner_id.is_none() || who.owner_id != who.user_id {
+        return fail("NOT_OWNER");
+    }
+    let discord_id = payload.get("discordId").and_then(Value::as_str).unwrap_or("").to_string();
+    let level = payload.get("level").and_then(Value::as_i64);
+    let change = match payload.get("op").and_then(Value::as_str) {
+        Some("grant") => match level {
+            Some(l) => Change::Member { discord_id, level: Some(l) },
+            None => return fail("INVALID_LEVEL"),
+        },
+        Some("revoke") => Change::Member { discord_id, level: None },
+        Some("default_level") => match level {
+            Some(l) => Change::DefaultLevel(l),
+            None => return fail("INVALID_LEVEL"),
+        },
+        _ => return fail("UNKNOWN_OP"),
+    };
+    let owner = who.owner_id.clone();
+    let result = server
+        .config_store
+        .update_node_settings(guild, |node| match crate::chat::permissions::apply(node, &change, owner.as_deref()) {
+            Ok(()) => (Ok(node.clone()), true),
+            Err(code) => (Err(code), false),
+        })
+        .await;
+    match result {
+        Ok(Ok(node)) => {
+            let p = crate::chat::permissions::NodePermissions::from_node(Some(&Value::Object(node)));
+            json!({ "success": true, "data": { "defaultLevel": p.default_level, "members": p.members } })
+        }
+        Ok(Err(code)) => fail(&code.to_uppercase()),
+        Err(e) => json!({ "success": false, "data": { "code": "SAVE_FAILED", "error": e.to_string() } }),
+    }
+}
+
+/// 길드별 `{defaultLevel, members}` (릴레이 바깥 검사 캐시용). `nodeSettings`에 있는 길드는 값이 없어도 늘 싣는다
+/// (부여값을 다 지운 길드도 릴레이가 데몬 행을 지우게). 릴레이에서만 부여한 행은 릴레이가 남긴다
+fn permissions_by_guild(node_settings: &Value) -> Value {
+    let map: serde_json::Map<String, Value> = node_settings
+        .as_object()
+        .into_iter()
+        .flatten()
+        .map(|(guild, node)| {
+            let p = crate::chat::permissions::NodePermissions::from_node(Some(node));
+            (guild.clone(), json!({ "defaultLevel": p.default_level, "members": p.members }))
+        })
+        .collect();
+    Value::Object(map)
+}
+
 /// `bot.node_settings[guild].allowedInstances` → `{ guild: [instance id, ...] }`. 하나도 없으면 None
 fn allowed_instances_by_guild(node_settings: &Value) -> Option<Value> {
     let map: serde_json::Map<String, Value> = node_settings
@@ -549,6 +655,23 @@ fn allowed_instances_by_guild(node_settings: &Value) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn heartbeat_carries_permissions_for_every_known_guild() {
+        let nodes = json!({
+            "g1": { "members": { "a": 2, "bad": 7 }, "ownerDiscordId": "o" },
+            "g2": { "ownerDiscordId": "o", "allowedInstances": ["x"] },
+            "g3": { "defaultLevel": -1 }
+        });
+        assert_eq!(
+            permissions_by_guild(&nodes),
+            json!({
+                "g1": { "defaultLevel": 1, "members": { "a": 2 } },
+                "g2": { "defaultLevel": 1, "members": {} },
+                "g3": { "defaultLevel": -1, "members": {} }
+            })
+        );
+    }
 
     #[test]
     fn a_half_emoji_does_not_drop_the_whole_poll_batch() {

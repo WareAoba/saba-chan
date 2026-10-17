@@ -101,6 +101,9 @@ pub enum Cmd {
         #[arg(long, default_value_t = 30)]
         limit: usize,
     },
+    /// Who may run which commands from Discord (levels per member, preset, overrides)
+    #[command(subcommand, visible_alias = "permissions")]
+    Perm(PermCmd),
     /// Versions of every installed part
     Version,
     /// Open the interactive shell
@@ -137,6 +140,26 @@ pub enum BackupCmd {
     Delete { server: String, backup: String },
     /// Put a backup back (the server must be stopped; asks to stop it)
     Restore { server: String, backup: String },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum PermCmd {
+    /// Levels, preset and overrides of one Discord server
+    Show { guild: String },
+    /// Give a member a level: admin, user, chatbot or banned
+    Grant { guild: String, member: String, level: String },
+    /// Take a member's own level away (they get the default level)
+    Revoke { guild: String, member: String },
+    /// Level for members without their own level
+    Default { guild: String, level: String },
+    /// Command level preset: loose, default or strict
+    Preset { guild: String, preset: String },
+    /// Highest level a request through the chatbot can use
+    Cap { guild: String, level: String },
+    /// Level one command needs (`<server id>/<command>`); leave the level out to go back to the preset
+    Command { guild: String, key: String, level: Option<String> },
+    /// Change the pinned owner of this Discord server
+    Owner { guild: String, member: String },
 }
 
 #[derive(Subcommand, Debug)]

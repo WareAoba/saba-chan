@@ -97,8 +97,12 @@ fn settings() -> ChatSettings {
     ChatSettings { prefix: "!saba".into(), ..Default::default() }
 }
 
+fn discord(user: &str) -> Option<permissions::Requester> {
+    Some(permissions::Requester { guild_id: Some("g1".into()), user_id: Some(user.into()), owner_id: Some("owner".into()), via_chatbot: false })
+}
+
 async fn run(api: &FakeDaemon, s: &ChatSettings, text: &str) -> String {
-    let req = ChatRequest { text: text.into(), guild_id: Some("g1".into()), user_id: Some("u1".into()), ..Default::default() };
+    let req = ChatRequest { text: text.into(), guild_id: Some("g1".into()), user_id: Some("u1".into()), remote: discord("u1"), ..Default::default() };
     process(api, s, &Catalog::for_language("en"), &req).await.text
 }
 
@@ -231,6 +235,37 @@ async fn node_settings_filter_instances_and_deny_commands() {
     assert_eq!(run(&api, &s, "팰월드 start").await, cat.t("errors.unknown_input", &[]));
     assert!(!run(&api, &s, "list").await.contains("pal1"));
     assert!(api.calls().is_empty());
+}
+
+/// 디스코드 요청은 레벨로 판정한다: 금지는 아무것도 못 하고, danger는 관리자부터, 챗봇 경로는 상한을 받는다.
+/// 로컬(GUI·CLI) 요청은 판정하지 않는다
+#[tokio::test]
+async fn discord_requests_are_judged_by_level_and_local_ones_are_not() {
+    let mut api = fixture();
+    api.modules[0].commands[0].risk = Some("danger".into()); // kick
+    let mut s = settings();
+    s.node_settings = json!({ "g1": { "members": { "banned": -1, "admin": 2 } } });
+    let cat = Catalog::for_language("en");
+    let reply = |text: &str, remote: Option<permissions::Requester>| {
+        let req = ChatRequest { text: text.into(), guild_id: Some("g1".into()), remote, ..Default::default() };
+        let (api, s, cat) = (&api, &s, &cat);
+        async move { process(api, s, cat, &req).await }
+    };
+
+    let r = reply("help", discord("banned")).await;
+    assert_eq!((r.code, r.args["need"].clone(), r.args["level"].clone()), (Some("PERMISSION_DENIED"), json!(0), json!(-1)));
+    let r = reply("mc kick steve", discord("someone")).await;
+    assert_eq!((r.code, r.args["need"].clone()), (Some("PERMISSION_DENIED"), json!(2)));
+    assert_eq!(reply("mc kick steve", discord("admin")).await.code, None);
+
+    let mut bot = discord("owner");
+    bot.as_mut().unwrap().via_chatbot = true;
+    let r = reply("mc stop", bot).await;
+    assert_eq!((r.code, r.args["via"].clone()), (Some("PERMISSION_DENIED"), json!("chatbot")));
+    assert_eq!(reply("mc status", discord("someone")).await.code, None);
+
+    assert_eq!(reply("mc kick steve", None).await.code, None);
+    assert_eq!(api.calls().len(), 2);
 }
 
 #[tokio::test]

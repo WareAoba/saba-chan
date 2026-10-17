@@ -557,7 +557,16 @@
       "config.import": "내보낸 zip에서 설정과 서버 가져오기",
       "bot.channels": "디스코드 서버의 챗봇 채널(여러 개)·음악 채널(하나). 옵션이 없으면 보기만",
       "monitor": "CPU·메모리·디스크·네트워크 사용량과 서버별 몫",
-      "audit": "누가 어디서(GUI·CLI·디스코드·예약) 서버를 켜고 끄고 명령을 보냈는지"
+      "audit": "누가 어디서(GUI·CLI·디스코드·예약) 서버를 켜고 끄고 명령을 보냈는지",
+      "perm": "디스코드에서 누가 어떤 명령을 쓸 수 있는지 (멤버 레벨, 프리셋, 명령별 레벨)",
+      "perm.show": "디스코드 서버 하나의 레벨·프리셋·덮어쓰기 보기",
+      "perm.grant": "멤버에게 레벨 주기: admin, user, chatbot, banned",
+      "perm.revoke": "멤버의 개별 레벨 지우기 (기본 레벨을 받아요)",
+      "perm.default": "개별 레벨이 없는 멤버의 레벨",
+      "perm.preset": "명령 레벨 프리셋: loose, default, strict",
+      "perm.cap": "챗봇을 거친 요청이 쓸 수 있는 가장 높은 레벨",
+      "perm.command": "명령 하나에 필요한 레벨 (`<서버 id>/<명령>`). 레벨을 비우면 프리셋으로 돌아가요",
+      "perm.owner": "고정된 디스코드 서버 주인 바꾸기"
     },
     "arg": {
       "json": "글 대신 기계가 읽는 JSON으로 출력",
@@ -604,6 +613,9 @@
       "value": "새 값",
       "alias": "별명",
       "guild": "디스코드 서버 id",
+      "member": "디스코드 사용자 ID",
+      "level": "레벨 (admin·user·chatbot·banned 또는 관리자·유저·챗봇·금지, 숫자 2..-1)",
+      "preset": "loose · default · strict",
       "components": "업데이트할 구성 요소",
       "clear": "결과 기록 지우기",
       "key": "설정 키",
@@ -741,6 +753,26 @@
       "module_modified": "모듈({{id}})의 파일이 설치한 뒤 바뀌었어요. 직접 고친 것이 아니라면 다시 설치해 주세요.",
       "extension_unverified": "공식 카탈로그에서 받지 않은 익스텐션({{id}})을 켰어요. 믿을 수 있는 곳에서 받은 것인지 확인해 주세요.",
       "extension_modified": "익스텐션({{id}})의 파일이 설치한 뒤 바뀌었어요. 직접 고친 것이 아니라면 다시 설치해 주세요."
+    }
+  },
+  "perm": {
+    "owner": "주인",
+    "no_owner": "아직 몰라요 (릴레이가 처음 알려 주면 고정돼요)",
+    "owner_conflict": "릴레이가 다른 주인({{id}})을 알려 왔어요. 고정된 주인을 계속 써요. 바꾸려면 `saba perm owner`를 쓰세요.",
+    "default": "기본 레벨",
+    "preset": "프리셋",
+    "cap": "챗봇 상한",
+    "member": "멤버",
+    "command": "명령",
+    "level_col": "레벨",
+    "saved": "{{guild}} 권한을 저장했어요",
+    "bad_level": "모르는 레벨이에요: {{level}} (admin, user, chatbot, banned)",
+    "level": {
+      "owner": "소유자",
+      "admin": "관리자",
+      "user": "유저",
+      "chatbot": "챗봇",
+      "banned": "금지"
     }
   },
   "audit": {

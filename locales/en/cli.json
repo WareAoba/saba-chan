@@ -434,9 +434,21 @@
       "config.import": "Bring in settings and servers from an export zip",
       "bot.channels": "Chatbot channels (several) and the music channel (one) of a paired Discord server. No options: show",
       "monitor": "CPU, memory, disk and network use, and each server's share",
-      "audit": "Who started, stopped or sent commands to servers, and from where (GUI, CLI, Discord, schedule)"
+      "audit": "Who started, stopped or sent commands to servers, and from where (GUI, CLI, Discord, schedule)",
+      "perm": "Who may run which commands from Discord (levels per member, preset, overrides)",
+      "perm.show": "Levels, preset and overrides of one Discord server",
+      "perm.grant": "Give a member a level: admin, user, chatbot or banned",
+      "perm.revoke": "Take a member's own level away (they get the default level)",
+      "perm.default": "Level for members without their own level",
+      "perm.preset": "Command level preset: loose, default or strict",
+      "perm.cap": "Highest level a request through the chatbot can use",
+      "perm.command": "Level one command needs (`<server id>/<command>`); leave the level out to go back to the preset",
+      "perm.owner": "Change the pinned owner of this Discord server"
     },
     "arg": {
+      "member": "Discord user ID",
+      "level": "Level (admin, user, chatbot, banned or a number 2..-1)",
+      "preset": "loose, default or strict",
       "server": "Server name (a part is enough)",
       "ids": "One or more extension ids",
       "file": "zip file path",
@@ -554,6 +566,26 @@
       "module_modified": "The module ({{id}}) changed after it was installed. Reinstall it unless you edited it yourself.",
       "extension_unverified": "Enabled an extension ({{id}}) that did not come from the official catalog. Make sure you trust its source.",
       "extension_modified": "The extension ({{id}}) changed after it was installed. Reinstall it unless you edited it yourself."
+    }
+  },
+  "perm": {
+    "owner": "Owner",
+    "no_owner": "Not known yet (pinned when the relay first reports it)",
+    "owner_conflict": "The relay reported a different owner ({{id}}). The pinned owner is kept; use `saba perm owner` to change it.",
+    "default": "Default level",
+    "preset": "Preset",
+    "cap": "Chatbot cap",
+    "member": "Member",
+    "command": "Command",
+    "level_col": "Level",
+    "saved": "Saved permissions for {{guild}}",
+    "bad_level": "Unknown level: {{level}} (admin, user, chatbot, banned)",
+    "level": {
+      "owner": "owner",
+      "admin": "admin",
+      "user": "user",
+      "chatbot": "chatbot",
+      "banned": "banned"
     }
   },
   "audit": {
