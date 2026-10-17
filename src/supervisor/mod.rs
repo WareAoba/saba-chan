@@ -653,6 +653,19 @@ impl Supervisor {
                     }
                 }
             }
+            // 정지를 맡을 수 있는 익스텐션이 실패했으면 "안 돌고 있음"으로 덮지 않고 실패를 돌려준다
+            let failed = results.iter().find_map(|(ext_id, result)| match result {
+                Err(e) => Some(format!("{}: {}", ext_id, e)),
+                Ok(val) if val.get("success").and_then(Value::as_bool) == Some(false) => Some(format!(
+                    "{}: {}",
+                    ext_id,
+                    val.get("error").or_else(|| val.get("message")).and_then(Value::as_str).unwrap_or("stop failed")
+                )),
+                Ok(_) => None,
+            });
+            if let Some(error) = failed {
+                return Ok(json!({ "success": false, "server": server_name, "error": error }));
+            }
         }
 
         // ── Native 모드 ──
