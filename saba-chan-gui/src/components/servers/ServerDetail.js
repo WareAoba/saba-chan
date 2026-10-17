@@ -196,7 +196,7 @@ export function ServerDetail({
                         detail={uptime}
                         pulse={status === 'starting' || status === 'stopping'}
                     />
-                    {status === 'running' && <OpenInTerminalButton server={server} />}
+                    {status !== 'missing' && <OpenInTerminalButton server={server} />}
                     {primaryButton}
                 </div>
             </header>
