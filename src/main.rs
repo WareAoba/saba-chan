@@ -16,6 +16,7 @@ mod daemon_log;
 mod instance_lock;
 mod chat;
 mod commands;
+mod module_audit;
 mod relay_agent;
 
 use std::sync::Arc;
@@ -31,6 +32,8 @@ const MONITOR_MAX_CONSECUTIVE_ERRORS: u32 = 10;
 
 /// `saba-core module schema` — module.toml JSON Schema 출력
 /// `saba-core module validate <모듈 폴더>...` — 데몬과 같은 규칙으로 검사 (실패하면 종료 코드 1)
+/// `saba-core module audit <모듈 폴더>...` — Python 코드가 `[permissions]`에 없는 능력을 쓰면 종료 코드 1
+/// (Python은 `SABA_PYTHON`, 없으면 PATH의 python3/python)
 fn module_tool(args: &[String]) -> i32 {
     use saba_core::supervisor::module_loader::{load_module_dir, module_json_schema};
     match args.first().map(String::as_str) {
@@ -56,8 +59,33 @@ fn module_tool(args: &[String]) -> i32 {
             }
             i32::from(failed > 0)
         }
+        Some("audit") if args.len() > 1 => {
+            let python = module_audit::tool_python();
+            let mut failed = 0;
+            for dir in &args[1..] {
+                let result = load_module_dir(std::path::Path::new(dir)).and_then(|m| {
+                    let found = saba_core::module_audit::scan_blocking(&python, std::path::Path::new(dir))?;
+                    Ok((saba_core::module_audit::undeclared(&m.metadata.permissions, &found), found.len()))
+                });
+                match result {
+                    Ok((missing, _)) if missing.is_empty() => println!("ok    {}", dir),
+                    Ok((missing, _)) => {
+                        println!("FAIL  {}: uses capabilities not declared in [permissions]", dir);
+                        for f in missing {
+                            println!("      {} {}:{} {}", f.permission, f.file, f.line, f.detail);
+                        }
+                        failed += 1;
+                    }
+                    Err(e) => {
+                        println!("FAIL  {}: {:#}", dir, e);
+                        failed += 1;
+                    }
+                }
+            }
+            i32::from(failed > 0)
+        }
         _ => {
-            eprintln!("usage: saba-core module schema | saba-core module validate <module dir>...");
+            eprintln!("usage: saba-core module schema | module validate <module dir>... | module audit <module dir>...");
             2
         }
     }
@@ -92,7 +120,7 @@ fn extension_tool(args: &[String]) -> i32 {
 }
 
 const DAEMON_USAGE: &str = "Usage: saba-core [--spawned]
-       saba-core module schema | module validate <dir>...
+       saba-core module schema | module validate <dir>... | module audit <dir>...
        saba-core extension validate <dir>...
        saba-core --version | --help
 

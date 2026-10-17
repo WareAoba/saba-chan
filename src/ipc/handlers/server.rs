@@ -391,6 +391,26 @@ pub async fn detect_module_dir(
 }
 
 /// GET /api/module/:name - 모듈 메타데이터 조회 (별명 포함)
+/// GET /api/module/:name/audit — 모듈 Python 코드 검사 (M12): `{declared, findings, undeclared}`.
+/// `undeclared`가 비어 있지 않으면 모듈이 선언하지 않은 능력을 쓴다 (사용자에게 보여 줄 것)
+pub async fn audit_module(Path(name): Path<String>, State(state): State<IPCServer>) -> impl IntoResponse {
+    let module = state.supervisor.read().await.module_loader.get_module(&name).ok();
+    let Some(module) = module else {
+        return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Module '{}' not found", name), "error_code": "not_found" }))).into_response();
+    };
+    let found = match crate::python_env::get_python_path().await {
+        Ok(python) => crate::module_audit::scan(&python, std::path::Path::new(&module.path)).await,
+        Err(e) => Err(e),
+    };
+    match found {
+        Ok(findings) => {
+            let undeclared = crate::module_audit::undeclared(&module.metadata.permissions, &findings);
+            Json(json!({ "success": true, "declared": module.metadata.permissions, "findings": findings, "undeclared": undeclared })).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("{:#}", e), "error_code": "audit_failed" }))).into_response(),
+    }
+}
+
 pub async fn get_module_metadata(
     Path(name): Path<String>,
     State(state): State<IPCServer>,

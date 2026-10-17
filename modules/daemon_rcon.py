@@ -1,28 +1,11 @@
 """
-saba-chan Daemon RCON Bridge
-==============================
-Lightweight helper for Python lifecycle modules to execute RCON commands
-via the Rust daemon's HTTP API rather than opening raw TCP sockets.
+saba-chan daemon helpers for Python lifecycle modules
+=====================================================
+Shared runtime helpers (every module may use them; the daemon ships this file).
+The file keeps its old name so existing ``from daemon_rcon import ...`` lines work;
+RCON itself is off on every server (security policy).
 
-RCON itself is off on every server (security policy). The daemon endpoint
-``/api/instance/:id/rcon`` keeps its name for compatibility and sends the
-command to the server console (stdin), returning the console output.
-
-Usage (one-shot, replaces extensions.rcon.rcon_command):
-    from daemon_rcon import daemon_rcon_command
-    response = daemon_rcon_command(instance_id, "list")
-
-Usage (session-like, replaces extensions.rcon.RconClient):
-    from daemon_rcon import DaemonRconClient
-    client = DaemonRconClient(instance_id)
-    response = client.command("save")
-    response2 = client.command("quit")
-
-Calling any other daemon endpoint (stdin, REST, ...):
-    from daemon_rcon import daemon_post
-    result = daemon_post(f"/api/instance/{instance_id}/stdin", {"command": "save"})
-
-Shared runtime helpers (every module may use them; the daemon ships this file):
+    daemon_post()                                call any daemon endpoint with the IPC token
     daemon_stdin_command()                       send a line to a managed server's stdin
     is_process_alive() / wait_for_exit() / force_kill()   PID-safe process checks and kills
     config_value()                               top level -> module_settings -> settings lookup
@@ -95,134 +78,6 @@ def daemon_post(path, payload, timeout=10):
         raise ConnectionError(f"Daemon request failed (HTTP {e.code}): {body}") from e
     except urllib.error.URLError as e:
         raise ConnectionError(f"Daemon unreachable at {url}: {e}") from e
-
-
-# ─── One-shot function ────────────────────────────────────────
-
-def daemon_rcon_command(instance_id, command, *, rcon_port=None, rcon_password=None, timeout=10):
-    """Execute a single RCON command via the daemon's HTTP API.
-
-    This replaces direct TCP RCON communication. The daemon handles
-    connection, authentication, retry, and error handling.
-
-    Args:
-        instance_id: The server instance ID.
-        command: RCON command string to execute.
-        rcon_port: Optional override for RCON port (daemon uses instance config if None).
-        rcon_password: Optional override for RCON password.
-        timeout: HTTP request timeout in seconds.
-
-    Returns:
-        str: Response text from the server.
-
-    Raises:
-        ConnectionError: If the daemon is unreachable or RCON fails.
-    """
-    payload = {"command": command}
-    if rcon_port is not None:
-        payload["rcon_port"] = int(rcon_port)
-    if rcon_password is not None:
-        payload["rcon_password"] = rcon_password
-
-    result = daemon_post(f"/api/instance/{instance_id}/rcon", payload, timeout=timeout)
-    if result.get("error"):
-        raise ConnectionError(f"RCON failed: {result['error']}")
-
-    # 데몬은 data.response 에 콘솔 출력을 담는다
-    response_data = result.get("data")
-    if isinstance(response_data, dict):
-        return str(response_data.get("response", response_data.get("data", "")))
-    if response_data is not None:
-        return str(response_data)
-    return result.get("message", "")
-
-
-# ─── Session-like class ──────────────────────────────────────
-
-class DaemonRconClient:
-    """RCON client that delegates all commands to the daemon's HTTP API.
-
-    Drop-in replacement for extensions.rcon.RconClient where lifecycle
-    modules used session-based RCON. Since each HTTP call is independent,
-    connect/disconnect are no-ops, but the API is preserved for compatibility.
-    """
-
-    def __init__(self, instance_id, host="127.0.0.1", port=25575, password=""):
-        """Initialize the daemon-delegating RCON client.
-
-        Args:
-            instance_id: The server instance ID (required for daemon API).
-            host: Ignored (daemon connects to the right host).
-            port: RCON port (passed to daemon as override).
-            password: RCON password (passed to daemon as override).
-        """
-        self.instance_id = instance_id
-        self.host = host
-        self.port = int(port)
-        self.password = password
-        self._connected = False
-
-    def connect(self):
-        """No-op — the daemon manages connections.
-
-        Returns:
-            bool: Always True (actual connection happens per-command).
-        """
-        self._connected = True
-        return True
-
-    def disconnect(self):
-        """No-op — the daemon manages connections."""
-        self._connected = False
-
-    def command(self, cmd):
-        """Send a command via the daemon RCON API.
-
-        Args:
-            cmd: Command string to execute.
-
-        Returns:
-            str or None: Response text, or None on failure.
-        """
-        try:
-            return daemon_rcon_command(
-                self.instance_id,
-                cmd,
-                rcon_port=self.port,
-                rcon_password=self.password,
-            )
-        except ConnectionError as e:
-            print(f"[RCON] Daemon bridge failed: {e}", file=sys.stderr)
-            return None
-
-    @property
-    def socket(self):
-        """Compatibility shim — returns a truthy value when 'connected'."""
-        return self._connected or None
-
-    def __enter__(self):
-        self.connect()
-        return self
-
-    def __exit__(self, *args):
-        self.disconnect()
-
-
-# ─── Legacy-compatible one-shot (signature matches extensions.rcon.rcon_command) ──
-
-def rcon_command(host, port, password, command, timeout=5, *, instance_id=None):
-    """Legacy-compatible one-shot command (signature matches extensions.rcon.rcon_command).
-
-    saba-chan keeps RCON off on every game server for security, so this never opens an RCON
-    socket. With instance_id the daemon sends the command to the server console (stdin);
-    without one there is no command path and ConnectionError is raised.
-
-    Raises:
-        ConnectionError: If communication fails.
-    """
-    if instance_id:
-        return daemon_rcon_command(instance_id, command, timeout=timeout)
-    raise ConnectionError("RCON is disabled in saba-chan; commands go to the server console through the daemon")
 
 
 def daemon_stdin_command(instance_id, command, *, timeout=10):
