@@ -19,7 +19,9 @@ export function UpdateResultBanner({ daemonReady }) {
         window.api
             .updaterLastResult({ clear: false })
             .then((r) => {
-                if (alive && r && r.timestamp && r.ok !== false) setResult(r);
+                // 데몬 응답은 { ok, result: {timestamp, …} | null } 봉투다
+                const res = r && r.ok !== false ? (r.result ?? (r.timestamp ? r : null)) : null;
+                if (alive && res?.timestamp) setResult(res);
             })
             .catch(() => {});
         return () => {

@@ -181,17 +181,19 @@ const impl = {
     relayCheckHostStatus: () => ok(mockBot === 'running' ? { online: true } : { error: 'offline' }),
     daemonStatus: () => ok({ running: mockDaemonUp }),
     updaterLastResult: ({ clear } = {}) =>
-        ok(
-            !mockUpdate || clear
-                ? null
-                : {
+        ok({
+            ok: true,
+            result:
+                !mockUpdate || clear
+                    ? null
+                    : {
                       timestamp: now(),
                       success: mockUpdate === 'ok',
                       updated_components: mockUpdate === 'ok' ? ['saba-core', 'saba-chan-gui'] : ['saba-chan-gui'],
                       failed: mockUpdate === 'ok' ? [] : ['saba-core'],
                       message: mockUpdate === 'ok' ? '' : '데몬 파일을 교체하지 못했어요 (사용 중)',
                   },
-        ),
+        }),
     extensionList: () => ok({ extensions: [] }),
     extensionInitStatus: () => ok({ initializing: false, in_progress: {} }),
     getAppVersion: () => ok('0.1.1'),

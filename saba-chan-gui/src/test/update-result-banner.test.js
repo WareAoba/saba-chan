@@ -21,12 +21,16 @@ describe('UpdateResultBanner', () => {
     });
 
     it('실패 결과를 보여주고, 닫으면 clear 한다', async () => {
+        // 데몬이 실제로 돌려주는 봉투 모양 그대로
         window.api.updaterLastResult = vi.fn().mockResolvedValue({
-            timestamp: 1,
-            success: false,
-            updated_components: ['saba-chan-gui'],
-            failed: ['saba-core'],
-            message: 'busy',
+            ok: true,
+            result: {
+                timestamp: 1,
+                success: false,
+                updated_components: ['saba-chan-gui'],
+                failed: ['saba-core'],
+                message: 'busy',
+            },
         });
         render(<UpdateResultBanner daemonReady />);
         await waitFor(() => expect(document.querySelector('.update-banner.tone-stop')).not.toBeNull());
