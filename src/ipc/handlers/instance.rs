@@ -495,8 +495,8 @@ pub async fn create_instance(
 
                     // ── 기존 INI 설정 import ──
                     // 모듈 호출은 데몬 락 밖에서 (C12). 필요한 값만 챙기고 락을 놓는다.
-                    let credential_map = supervisor.module_loader.get_module(&module_name_owned)
-                        .map(|m| m.metadata.credential_map.clone())
+                    let (credential_map, setting_types) = supervisor.module_loader.get_module(&module_name_owned)
+                        .map(|m| (m.metadata.credential_map.clone(), m.metadata.setting_types()))
                         .unwrap_or_default();
                     drop(supervisor);
                     if let Some((_, ref lifecycle_path, ref _server_exe)) = module_install {
@@ -507,7 +507,7 @@ pub async fn create_instance(
                             Ok(result) => {
                                 if result.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
                                     if let Some(settings) = result.get("settings").and_then(|v| v.as_object()) {
-                                        instance.apply_imported_settings(settings, &credential_map);
+                                        instance.apply_imported_settings(settings, &credential_map, &setting_types);
                                         tracing::info!("Migration import_settings: {} settings imported for '{}'", settings.len(), instance_name);
                                     }
                                 }

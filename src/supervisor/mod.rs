@@ -661,6 +661,25 @@ impl Supervisor {
     /// 데몬 락은 준비와 정리 때만 잡는다. 익스텐션 hook, 모듈 `stop()`, 종료 대기(최대
     /// `stop_timeout`초)는 락 밖에서 한다 (C12).
     pub async fn stop_server(sup: &tokio::sync::RwLock<Self>, server_name: &str, module_name: &str, force: bool) -> Result<Value> {
+        let result = Self::stop_server_inner(sup, server_name, module_name, force).await;
+        // 정지가 실패하면 정지 표시를 지운다: 남겨 두면 뒤에 오는 진짜 크래시를 "사용자가 멈춤"으로 판정한다
+        let failed = match &result {
+            Err(_) => true,
+            Ok(v) => v.get("success").and_then(Value::as_bool) == Some(false),
+        };
+        if failed {
+            let mut s = sup.write().await;
+            let id = s.instance_store.get(server_name)
+                .or_else(|| s.instance_store.list().iter().find(|i| i.name == server_name))
+                .map(|i| i.id.clone());
+            if let Some(id) = id {
+                s.stop_requested.remove(&id);
+            }
+        }
+        result
+    }
+
+    async fn stop_server_inner(sup: &tokio::sync::RwLock<Self>, server_name: &str, module_name: &str, force: bool) -> Result<Value> {
         tracing::info!("Stopping server '{}' (force: {})", server_name, force);
 
         // ── 1) 준비 (쓰기 락: 정지 표시를 남긴다) ──

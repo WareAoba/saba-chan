@@ -182,11 +182,11 @@ pub async fn read_live_settings_handler(
             if let (true, Some(settings)) = (ok, settings) {
                 let mut supervisor = state.supervisor.write().await;
                 if let Some(mut inst) = supervisor.instance_store.get(&id).cloned() {
-                    let credential_map = supervisor.module_loader.get_module(&inst.module_name)
-                        .map(|m| m.metadata.credential_map.clone())
+                    let (credential_map, types) = supervisor.module_loader.get_module(&inst.module_name)
+                        .map(|m| (m.metadata.credential_map.clone(), m.metadata.setting_types()))
                         .unwrap_or_default();
                     // 포트·비밀번호 같은 인스턴스 필드도 파일 값으로 맞춘다 (GUI는 그쪽을 먼저 읽는다)
-                    inst.apply_imported_settings(settings, &credential_map);
+                    inst.apply_imported_settings(settings, &credential_map, &types);
                     if let Err(e) = supervisor.instance_store.update(&id, inst) {
                         tracing::warn!("Live settings read: cache refresh failed for {}: {}", id, e);
                     }
