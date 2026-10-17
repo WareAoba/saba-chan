@@ -1181,5 +1181,12 @@
     "instance_exit": "{{name}} が停止しました（{{kind}}）。",
     "backup_done": "{{name}} のバックアップが完了しました（{{kind}}）。",
     "backup_failed": "{{name}} のバックアップに失敗しました。{{error}}"
+  },
+  "terminal": {
+    "open": "ターミナルで開く",
+    "err_unsupported_platform": "このOSではまだターミナルで開けません。",
+    "err_cli_not_found": "CLIの実行ファイルが見つからないため、ターミナルで開けません。",
+    "err_not_found": "デーモンでこのサーバーが見つかりませんでした。",
+    "err_generic": "ターミナルを開けませんでした。"
   }
 }
