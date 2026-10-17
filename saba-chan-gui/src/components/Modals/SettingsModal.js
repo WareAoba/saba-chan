@@ -21,6 +21,7 @@ import { Icon } from '../Icon';
 import { safeShowToast } from '../../utils/helpers';
 import { SabaToggle } from '../ui/SabaUI';
 import SabaStorage from './SabaStorage';
+import { TOKEN_COLORS } from '../../utils/syntaxHighlight';
 
 function SettingsModal({
     isOpen,
@@ -683,9 +684,9 @@ function SettingsModal({
                                 }}
                             >
                                 <div className="console-preview-line">[12:34:56] Server started on port 25565</div>
-                                <div className="console-preview-line" style={{ color: '#a6e3a1' }}>[12:34:57] Loading world "Overworld"...</div>
-                                <div className="console-preview-line" style={{ color: '#f9e2af' }}>[12:34:58] WARN: Low memory detected</div>
-                                <div className="console-preview-line" style={!customTheme.consoleSyntaxHighlight ? { color: customTheme.consoleTextColor } : { color: '#f38ba8' }}>[12:34:59] ERROR: Connection timeout</div>
+                                <div className="console-preview-line" style={{ color: TOKEN_COLORS.success }}>[12:34:57] Loading world "Overworld"...</div>
+                                <div className="console-preview-line" style={{ color: TOKEN_COLORS.warn }}>[12:34:58] WARN: Low memory detected</div>
+                                <div className="console-preview-line" style={!customTheme.consoleSyntaxHighlight ? { color: customTheme.consoleTextColor } : { color: TOKEN_COLORS.error }}>[12:34:59] ERROR: Connection timeout</div>
                             </div>
 
                             {/* ── 초기화 버튼 ── */}
@@ -1098,7 +1099,7 @@ function SettingsModal({
                                         {t('gui:settings_modal.uninstall_description')}
                                     </span>
                                 </label>
-                                <Icon name="chevronRight" size="sm" color="var(--color-danger, #e74c3c)" />
+                                <Icon name="chevronRight" size="sm" color="var(--stop)" />
                             </div>
                         </div>
                     )}

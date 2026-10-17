@@ -17,7 +17,7 @@
  */
 
 // ── Semantic tokens → CSS 색상 매핑 (Catppuccin Mocha 기반) ──
-const TOKEN_COLORS = {
+export const TOKEN_COLORS = {
     error: '#f38ba8',
     warn: '#f9e2af',
     warning: '#f9e2af',

@@ -4,7 +4,7 @@
  * 역할:
  * 1. window.api.extensionList() (Electron IPC) → 활성 익스텐션 목록
  * 2. 활성 익스텐션의 GUI 번들을 IPC를 통해 동적 로드
- * 3. 이름 규칙: window.SabaExt{Id} (예: window.SabaExtSteamcmd)
+ * 3. 이름 규칙: window.SabaExt{Id} (예: id가 my-ext면 window.SabaExtMyExt)
  * 4. 슬롯 레지스트리 관리: slotId → [Component, ...]
  * 5. i18n 로드 + 기존 i18n에 병합
  */
