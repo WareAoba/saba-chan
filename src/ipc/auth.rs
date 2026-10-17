@@ -83,6 +83,11 @@ fn host_is_loopback(req: &Request<Body>) -> bool {
     name.eq_ignore_ascii_case("localhost") || name == "127.0.0.1" || name == "::1"
 }
 
+/// 걸린 시간으로 토큰을 한 글자씩 맞혀 보지 못하게 끝까지 비교한다 (길이는 숨기지 않는다: UUID 고정)
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
 /// axum 미들웨어: `X-Saba-Token` 헤더 검증
 ///
 /// 개발 빌드에서 `SABA_AUTH_DISABLED=1`이면 토큰 검사를 건너뛴다 (Host 검사는 늘 한다).
@@ -119,14 +124,14 @@ pub async fn auth_middleware(
         }
     };
 
-    // 헤더에서 토큰 추출    
+    // 헤더에서 토큰 추출
     let provided = req
         .headers()
         .get("X-Saba-Token")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
-    if !expected.is_empty() && provided == expected {
+    if !expected.is_empty() && constant_time_eq(provided.as_bytes(), expected.as_bytes()) {
         Ok(next.run(req).await)
     } else {
         // Rate-limit: 30초당 최대 1번 경고 로그 출력, 억제된 횟수 함께 표시
@@ -170,6 +175,14 @@ pub async fn auth_middleware(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn token_comparison_checks_every_byte() {
+        assert!(constant_time_eq(b"abcd", b"abcd"));
+        assert!(!constant_time_eq(b"abcd", b"abce"));
+        assert!(!constant_time_eq(b"abc", b"abcd"));
+        assert!(constant_time_eq(b"", b""));
+    }
+
     use super::*;
 
     fn with_host(host: &str) -> Request<Body> {
