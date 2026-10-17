@@ -666,12 +666,7 @@ async fn run_integrity_check_on_startup() {
     };
     use saba_chan_updater_lib::UpdateManager;
 
-    // 업데이트 설정 로드 (github_owner 등 필요)
     let cfg = ipc::updates::load_updater_config();
-    if cfg.github_owner.is_empty() {
-        tracing::info!("[Integrity] GitHub owner가 설정되지 않아 무결성 검증을 건너뜁니다");
-        return;
-    }
 
     let modules_dir = plugin::resolve_modules_dir();
     let modules_str = modules_dir.to_string_lossy().to_string();

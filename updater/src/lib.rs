@@ -20,21 +20,6 @@
 //! 컴포넌트를 로컬에서 검색하고 버전을 판정하며,
 //! 다운로드/적용을 수행합니다. 디렉터리는 `install_root` 기준입니다.
 //!
-//! ## GitHub 릴리즈 연동
-//! 릴리즈에 `manifest.json` 파일이 포함되어야 합니다:
-//! ```json
-//! {
-//!   "release_version": "0.2.0",
-//!   "components": {
-//!     "saba-core": { "version": "0.2.0", "asset": "saba-core-windows-x64.zip", "install_dir": "." },
-//!     "cli":         { "version": "0.2.0", "asset": "saba-cli-windows-x64.zip", "install_dir": "." },
-//!     "gui":         { "version": "0.2.0", "asset": "saba-chan-gui-windows-x64.zip", "install_dir": "." },
-//!     "module-minecraft": { "version": "2.1.0", "asset": "module-minecraft.zip", "install_dir": "modules/minecraft" },
-//!     "module-palworld":  { "version": "1.0.1", "asset": "module-palworld.zip", "install_dir": "modules/palworld" }
-//!   }
-//! }
-//! ```
-
 // ══════════════════════════════════════════════════════╁E
 // 모듈
 // ══════════════════════════════════════════════════════╁E
@@ -46,7 +31,6 @@ pub mod python_pin;
 pub mod launch_ticket;
 pub mod error;
 pub mod foreground;
-pub mod github;
 pub mod integrity;
 pub mod ipc;
 pub mod queue;
@@ -63,7 +47,7 @@ mod tests;
 // Re-exports for convenience
 pub use error::{UpdaterError, RecoveryStrategy, NetworkChecker, ErrorContext};
 pub use foreground::{ForegroundApplier, SelfUpdater, ProcessChecker, ApplyPhase, ApplyProgress, ApplyPreparation};
-pub use github::{ResolvedComponent, ReleaseManifest, ComponentInfo, GitHubRelease};
+pub use relay::{ReleaseManifest, ManifestComponent};
 pub use integrity::{IntegrityChecker, IntegrityReport, IntegrityStatus, OverallIntegrity, ComponentIntegrity, ComponentHashInfo};
 pub use ipc::{DaemonIpcClient, StateFile, UpdateCompletionMarker, UpdateSummary, UpdaterCommand, UpdaterResponse};
 pub use queue::{DownloadQueue, DownloadRequest, DownloadResult, QueueStatus};
@@ -75,7 +59,6 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex};
 
-use github::{GitHubClient};
 use version::SemVer;
 
 // ══════════════════════════════════════════════════════
@@ -195,23 +178,6 @@ pub struct UpdateStatus {
     pub error: Option<String>,
 }
 
-/// 설치 진행 상태 추적
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InstallProgress {
-    /// 전체 설치가 완료되었는지 여부
-    pub complete: bool,
-    /// 현재 처리 중인 컴포넌트
-    pub current_component: Option<String>,
-    /// 총 컴포넌트 수
-    pub total: usize,
-    /// 설치 완료된 컴포넌트 수
-    pub done: usize,
-    /// 설치 완료된 컴포넌트 목록
-    pub installed_components: Vec<String>,
-    /// 에러 발생 내용
-    pub errors: Vec<String>,
-}
-
 /// 버전 의존성 확인 결과
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DependencyCheck {
@@ -234,30 +200,6 @@ pub struct DependencyIssue {
     pub installed_version: Option<String>,
     /// 사람이 읽을 수 있는 메시지
     pub message: String,
-}
-
-
-/// 전체 의존성 확인 결과 (초기 설치 시 활용)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InstallStatus {
-    /// 해당 컴포넌트의 설치 여부 (코어 데몬은 항상 설치됨)
-    pub is_fresh_install: bool,
-    /// 전체 필수 컴포넌트 목록
-    pub total_components: usize,
-    /// 설치 완료된 컴포넌트 목록
-    pub installed_components: usize,
-    /// 컴포넌트별 누락 이슈
-    pub components: Vec<ComponentInstallInfo>,
-    /// 현재 확인 대상 컴포넌트 설치 여부(기본값)
-    pub progress: Option<InstallProgress>,
-}
-
-/// 개별 컴포넌트의 의존성 이슈
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ComponentInstallInfo {
-    pub component: Component,
-    pub display_name: String,
-    pub installed: bool,
 }
 
 // ══════════════════════════════════════════════════════
@@ -314,35 +256,13 @@ pub struct UpdateConfig {
     pub auto_download: bool,
     /// 다운로드 완료 후 자동 적용 (모듈만 자동 적용, CoreDaemon/CLI/GUI는 재시작 필요로 별도 처리)
     pub auto_apply: bool,
-    /// GitHub 레포지토리 소유자
-    pub github_owner: String,
-    /// GitHub 레포지토리 이름
-    pub github_repo: String,
-    /// 프리릴리즈 버전을 포함할지 여부
-    pub include_prerelease: bool,
     /// 스테이징 디렉터리 (다운로드와 임시 파일 저장, 기본값: 실행파일 경로 기준)
     pub install_root: Option<String>,
-    /// API 리다이렉트 URL 오버라이드 (테스트용 로컬 서버 지원,
-    /// 예: "http://127.0.0.1:9876" 처럼 GitHub API 대신 사용할 URL 설정)
-    #[serde(default)]
-    pub api_base_url: Option<String>,
-    /// 업데이트 출처. `relay`(릴레이 + R2)가 목표 경로이고 `github`는 레거시(L3에서 삭제).
-    pub source: UpdateSource,
-    /// 릴레이 주소 (None이면 relay::DEFAULT_RELAY_URL)
+    /// 릴레이 주소 (None이면 relay::DEFAULT_RELAY_URL). 모의 릴레이 시험은 여기에
+    /// `scripts/mock-release-server.js` 주소를 넣는다
     pub relay_url: Option<String>,
     /// 릴레이 업데이트 채널 (stable | beta | nightly)
     pub channel: String,
-}
-
-/// 업데이트 출처 슬롯. 새 배포 경로가 생기면 변형을 추가하고 `check_for_updates`에서 분기한다.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum UpdateSource {
-    /// GitHub Releases (레거시)
-    #[default]
-    Github,
-    /// 릴레이 서명 manifest + Cloudflare R2 바이너리
-    Relay,
 }
 
 impl Default for UpdateConfig {
@@ -352,12 +272,7 @@ impl Default for UpdateConfig {
             check_interval_hours: 3,
             auto_download: false,
             auto_apply: false,
-            github_owner: crate::constants::GITHUB_OWNER.to_string(),
-            github_repo: crate::constants::GITHUB_REPO.to_string(),
-            include_prerelease: false,
             install_root: None,
-            api_base_url: None,
-            source: UpdateSource::default(),
             relay_url: None,
             channel: relay::DEFAULT_CHANNEL.to_string(),
         }
@@ -413,17 +328,8 @@ pub struct UpdateManager {
     staging_dir: PathBuf,
     /// 설치 루트 디렉터리 (다운로드/적용 기준)
     install_root: PathBuf,
-    /// 캐시된 최신 릴리즈 정보
-    cached_release: Option<GitHubRelease>,
-    /// 캐시된 최신 manifest
+    /// 마지막으로 받은 서명 검증된 manifest. 무결성·의존성 검사와 다운로드가 같이 쓴다
     cached_manifest: Option<ReleaseManifest>,
-    /// fetch한 전체 릴리즈 목록 (walk-back 탐색용)
-    cached_releases: Vec<GitHubRelease>,
-    /// 릴리즈 횡단 탐색 결과: 각 컴포넌트별 최적 다운로드 소스
-    /// key = manifest key ("saba-core", "cli", "gui", ...)
-    resolved_components: HashMap<String, ResolvedComponent>,
-    /// 설치 진행 상태
-    install_progress: Option<InstallProgress>,
     /// 다운로드 진행 상태 (Arc로 공유 — Manager 잠금 없이 폴링 가능)
     pub download_progress: Arc<StdMutex<DownloadProgress>>,
 }
@@ -467,11 +373,7 @@ impl UpdateManager {
             extensions_dir,
             staging_dir,
             install_root,
-            cached_release: None,
             cached_manifest: None,
-            cached_releases: Vec::new(),
-            resolved_components: HashMap::new(),
-            install_progress: None,
             download_progress: Arc::new(StdMutex::new(DownloadProgress::default())),
         }
     }
@@ -510,15 +412,6 @@ impl UpdateManager {
         self.status.clone()
     }
 
-    /// GitHub API 클라이언트를 생성 (api_base_url 오버라이드 지원)
-    fn create_client(&self) -> GitHubClient {
-        GitHubClient::with_base_url(
-            &self.config.github_owner,
-            &self.config.github_repo,
-            self.config.api_base_url.as_deref(),
-        )
-    }
-
     /// 현재 설정 반환
     pub fn get_config(&self) -> UpdateConfig {
         self.config.clone()
@@ -539,181 +432,46 @@ impl UpdateManager {
 
     // ─── 무결성 검증 ────────────────────────────────────────────────────────
 
-    /// 서버(GitHub)에서 매니페스트를 가져와 설치된 컴포넌트의 SHA256을 검증합니다.
-    ///
-    /// 각 리포의 최신 릴리즈에서 manifest.json을 fetch하여 기대 해시를 수집합니다:
-    /// - 코어 리포 (`saba-chan`): saba-core, cli, gui, updater
-    /// - 모듈 리포 (`saba-chan-modules`): module-minecraft, module-palworld, ...
-    /// - 익스텐션 리포 (`saba-chan-extensions`): ext-docker, ext-steamcmd, ...
-    ///
-    /// 로컬 매니페스트는 신뢰할 수 없으므로 사용하지 않습니다.
+    /// 릴레이의 서명된 manifest로 설치된 컴포넌트의 SHA256을 검증한다.
+    /// 로컬 매니페스트는 신뢰할 수 없으므로 쓰지 않는다.
     pub async fn verify_integrity(&mut self) -> Result<integrity::IntegrityReport> {
-        let mut expected_hashes = std::collections::HashMap::new();
-
-        // ── 1. 코어 리포 manifest.json (캐시 우선) ──
-        let core_manifest = if let Some(ref m) = self.cached_manifest {
-            m.clone()
-        } else {
-            tracing::info!("[Integrity] 코어 매니페스트를 서버에서 가져옵니다...");
-            let client = self.create_client();
-            let releases = client.fetch_releases(5).await?;
-            let latest = releases.iter()
-                .filter(|r| !r.draft)
-                .find(|r| self.config.include_prerelease || !r.prerelease)
-                .ok_or_else(|| anyhow::anyhow!("코어 릴리즈를 찾을 수 없습니다"))?
-                .clone();
-            let m = client.fetch_manifest(&latest).await?;
-            self.cached_manifest = Some(m.clone());
-            m
-        };
-        expected_hashes.extend(integrity::collect_hashes_from_server_manifest(&core_manifest));
-
-        // ── 2. 모듈 리포 manifest.json ──
-        match self.fetch_repo_manifest("saba-chan-modules").await {
-            Ok(json) => {
-                let module_hashes = integrity::collect_hashes_from_module_manifest(&json);
-                expected_hashes.extend(module_hashes);
-            }
-            Err(e) => {
-                tracing::warn!("[Integrity] 모듈 매니페스트 fetch 실패: {}", e);
-            }
-        }
-
-        // ── 3. 익스텐션 리포 manifest.json ──
-        match self.fetch_repo_manifest("saba-chan-extensions").await {
-            Ok(json) => {
-                let ext_hashes = integrity::collect_hashes_from_extension_manifest(&json);
-                expected_hashes.extend(ext_hashes);
-            }
-            Err(e) => {
-                tracing::warn!("[Integrity] 익스텐션 매니페스트 fetch 실패: {}", e);
-            }
-        }
-
-        // ── 4. 검증 실행 ──
+        let manifest = self.latest_manifest().await?;
+        let expected_hashes = integrity::collect_hashes_from_server_manifest(&manifest);
         let checker = integrity::IntegrityChecker::new(
             self.install_root.clone(),
             self.modules_dir.clone(),
             self.extensions_dir.clone(),
         );
-
         Ok(checker.verify_all(&expected_hashes))
     }
 
-    /// 지정된 리포의 최신 릴리즈에서 manifest.json 에셋을 raw JSON으로 다운로드합니다.
-    async fn fetch_repo_manifest(&self, repo_name: &str) -> Result<String> {
-        let client = GitHubClient::with_base_url(
-            &self.config.github_owner,
-            repo_name,
-            self.config.api_base_url.as_deref(),
-        );
-
-        let releases = client.fetch_releases(3).await?;
-        let latest = releases.iter()
-            .filter(|r| !r.draft)
-            .find(|r| self.config.include_prerelease || !r.prerelease)
-            .ok_or_else(|| anyhow::anyhow!("{} 릴리즈를 찾을 수 없습니다", repo_name))?;
-
-        client.fetch_manifest_raw(latest).await
+    fn relay_client(&self) -> relay::RelayClient {
+        relay::RelayClient::new(self.config.relay_url.as_deref().unwrap_or(relay::DEFAULT_RELAY_URL))
     }
 
+    /// 캐시된 manifest, 없으면 이 채널·플랫폼의 최신 릴리즈 manifest
+    async fn latest_manifest(&mut self) -> Result<ReleaseManifest> {
+        if let Some(m) = &self.cached_manifest {
+            return Ok(m.clone());
+        }
+        let release = self
+            .relay_client()
+            .fetch_verified_release(&self.config.channel, &relay::current_platform(), "", &relay::anon_client_id())
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("no published release for this platform"))?;
+        self.cached_manifest = Some(release.manifest.clone());
+        Ok(release.manifest)
+    }
 
     // ─── 업데이트 확인 ────────────────────────────────────────────────────────
 
-    /// GitHub에서 릴리즈 + 모듈 리포를 확인하여 컴포넌트별 업데이트 여부를 반환한다.
-    ///
-    /// ## 핵심 로직 (walk-back)
-    /// 릴리즈마다 모든 컴포넌트가 포함되지 않을 수 있으므로,
-    /// 여러 릴리즈를 거슬러 올라가며 필요한 에셋을 찾는다.
-    ///
-    /// 1. 최신 릴리즈의 manifest.json → 최신 버전 확인
-    /// 2. 에셋이 없는 컴포넌트 → 이전 릴리즈 순회하며 탐색
-    /// 3. 각 컴포넌트별로 실제 에셋이 존재하는 릴리즈 기록 (`resolved_components`)
+    /// 릴레이의 서명된 manifest 하나로 모든 컴포넌트의 최신 버전과 R2 URL을 얻는다.
     pub async fn check_for_updates(&mut self) -> Result<UpdateStatus> {
-        if self.config.source == UpdateSource::Relay {
-            return self.check_relay().await;
-        }
-        if self.config.github_owner.is_empty() || self.config.github_repo.is_empty() {
-            anyhow::bail!("GitHub owner/repo not configured");
-        }
-
         self.status.checking = true;
         self.status.error = None;
 
         let local_versions = self.collect_local_versions();
-        let mut components = Vec::new();
-
-        // ══ 1. 코어 리포 체크 (saba-core, cli, gui, updater) ══
-        let core_client = self.create_client();
-        match self.check_core_repo(&core_client, &local_versions).await {
-            Ok(core_components) => {
-                components.extend(core_components);
-            }
-            Err(e) => {
-                tracing::error!("[Updater] Core repo check failed: {}", e);
-                self.status.checking = false;
-                self.status.error = Some(format!("Core repo check failed: {}", e));
-                return Err(e);
-            }
-        }
-
-        // ══ 2. 모듈 리포 개별 체크 ══
-        let module_repos = self.discover_module_repos();
-        for (module_name, module_repo) in &module_repos {
-            let module_client = GitHubClient::with_base_url(
-                &self.config.github_owner,
-                module_repo,
-                self.config.api_base_url.as_deref(),
-            );
-            match self.check_module_repo(&module_client, module_name, &local_versions).await {
-                Ok(Some(cv)) => components.push(cv),
-                Ok(None) => {}
-                Err(e) => {
-                    tracing::warn!("[Updater] Module '{}' check failed: {}", module_name, e);
-                }
-            }
-        }
-
-        // ══ 3. 익스텐션 리포 개별 체크 ══
-        let ext_repos = self.discover_extension_repos();
-        for (ext_name, ext_repo) in &ext_repos {
-            let ext_client = GitHubClient::with_base_url(
-                &self.config.github_owner,
-                ext_repo,
-                self.config.api_base_url.as_deref(),
-            );
-            match self.check_extension_repo(&ext_client, ext_name, &local_versions).await {
-                Ok(Some(cv)) => components.push(cv),
-                Ok(None) => {}
-                Err(e) => {
-                    tracing::warn!("[Updater] Extension '{}' check failed: {}", ext_name, e);
-                }
-            }
-        }
-
-        // 타임스탬프 갱신
-        let now = chrono_now_iso();
-        let next = chrono_add_hours_iso(&now, self.config.check_interval_hours);
-
-        self.status = UpdateStatus {
-            last_check: Some(now),
-            next_check: Some(next),
-            components,
-            checking: false,
-            error: None,
-        };
-
-        Ok(self.status.clone())
-    }
-
-    /// 릴레이 경로: 서명된 manifest 하나로 모든 컴포넌트의 최신 버전과 R2 URL을 얻는다.
-    async fn check_relay(&mut self) -> Result<UpdateStatus> {
-        self.status.checking = true;
-        self.status.error = None;
-
-        let local_versions = self.collect_local_versions();
-        let relay_url = self.config.relay_url.clone().unwrap_or_else(|| relay::DEFAULT_RELAY_URL.to_string());
-        let client = relay::RelayClient::new(&relay_url);
+        let client = self.relay_client();
         let platform = relay::current_platform();
         let current = local_versions.get("saba-core").cloned().unwrap_or_default();
 
@@ -731,10 +489,8 @@ impl UpdateManager {
         };
 
         let mut components = Vec::new();
-        self.resolved_components.clear();
         if let Some(release) = release {
             let notes = release.latest.notes.as_ref().and_then(|n| n.get("ko").or_else(|| n.get("en")).cloned());
-            let mut legacy = ReleaseManifest { release_version: release.manifest.version.clone(), components: HashMap::new() };
             for (key, info) in &release.manifest.components {
                 let Some(component) = Component::try_from_manifest_key(key) else {
                     tracing::debug!("[Updater] Skipping unknown manifest key: {}", key);
@@ -746,30 +502,13 @@ impl UpdateManager {
                 if !installed && matches!(component, Component::Module(_) | Component::Extension(_)) {
                     continue;
                 }
-                // 설치돼 있는데 로컬 버전을 모르면 알림 대신 최신으로 기록 (GitHub 경로와 같은 규칙)
+                // 설치돼 있는데 로컬 버전을 모르면 알림 대신 최신으로 기록 
                 let update_available = if installed && current.is_empty() {
                     let _ = Self::update_installed_version(key, &info.version);
                     false
                 } else {
                     self.compare_versions(&info.version, &current)
                 };
-                self.resolved_components.insert(key.clone(), ResolvedComponent {
-                    latest_version: info.version.clone(),
-                    source_release_tag: format!("relay:{}", release.manifest.version),
-                    download_url: info.url.clone(),
-                    asset_name: info.filename.clone(),
-                    install_dir: info.install_dir.clone(),
-                    sha256: Some(info.sha256.clone()),
-                    requires: info.requires.clone(),
-                });
-                legacy.components.insert(key.clone(), github::ComponentInfo {
-                    version: info.version.clone(),
-                    asset: Some(info.filename.clone()),
-                    asset_linux: None,
-                    sha256: Some(info.sha256.clone()),
-                    install_dir: info.install_dir.clone(),
-                    requires: info.requires.clone(),
-                });
                 components.push(ComponentVersion {
                     component,
                     update_available,
@@ -785,8 +524,8 @@ impl UpdateManager {
                     installed,
                 });
             }
-            // 무결성 검사·의존성 검사·설치 상태가 같은 manifest를 보게 한다
-            self.cached_manifest = Some(legacy);
+            // 무결성 검사·의존성 검사·다운로드가 같은 manifest를 보게 한다
+            self.cached_manifest = Some(release.manifest);
         }
 
         let now = chrono_now_iso();
@@ -799,283 +538,6 @@ impl UpdateManager {
             error: None,
         };
         Ok(self.status.clone())
-    }
-
-    /// 코어 리포에서 릴리즈를 횡단 탐색하여 컴포넌트별 업데이트 정보를 반환한다.
-    ///
-    /// ## Walk-back 알고리즘
-    /// 1. 릴리즈 목록 fetch (30개)
-    /// 2. `resolve_components_across_releases`로 각 컴포넌트의 최적 다운로드 소스 결정
-    /// 3. 로컬 버전과 비교하여 `ComponentVersion` 목록 생성
-    async fn check_core_repo(
-        &mut self,
-        client: &GitHubClient,
-        local_versions: &HashMap<String, String>,
-    ) -> Result<Vec<ComponentVersion>> {
-        let releases = client.fetch_releases(30).await?;
-
-        // 핵심: 여러 릴리즈를 횡단하여 각 컴포넌트의 에셋 소스를 결정
-        let (manifest, resolved) = client.resolve_components_across_releases(
-            &releases,
-            self.config.include_prerelease,
-        ).await?;
-
-        // 캐시 갱신
-        let latest_release = releases.iter()
-            .filter(|r| !r.draft)
-            .find(|r| self.config.include_prerelease || !r.prerelease)
-            .cloned();
-        self.cached_release = latest_release;
-        self.cached_manifest = Some(manifest.clone());
-        self.cached_releases = releases;
-        self.resolved_components = resolved.clone();
-
-        // ComponentVersion 빌드
-        let mut components = Vec::new();
-        for (key, info) in &manifest.components {
-            // 모듈은 별도 리포에서 처리, 익스텐션은 코어 매니페스트에 미포함
-            if key.starts_with("module-") {
-                continue;
-            }
-
-            // 알 수 없는 키(installer 등 업데이트 대상이 아닌 항목)는 건너뛰기
-            let component = match Component::try_from_manifest_key(key) {
-                Some(c) => c,
-                None => {
-                    tracing::debug!("[Updater] Skipping unknown manifest key: {}", key);
-                    continue;
-                }
-            };
-            let current = local_versions.get(key).cloned().unwrap_or_default();
-            let installed = self.is_component_installed(&component);
-
-            // 설치된 컴포넌트인데 로컬 버전을 감지할 수 없으면 거짓 양성 방지
-            // (프로덕션 환경에서 Cargo.toml/package.json이 없고 installed-manifest도 없는 경우)
-            let update_available = if installed && current.is_empty() {
-                tracing::warn!(
-                    "[Updater] Cannot detect local version for installed component '{}' — \
-                     assuming up-to-date to avoid false notification. \
-                     Run updater apply to populate installed-manifest.",
-                    key
-                );
-                // 감지 불가 → 최신 버전을 로컬 매니페스트에 자동 기록 (다음 체크에서 정상 비교)
-                if let Some(ver) = Some(&info.version) {
-                    let _ = Self::update_installed_version(key, ver);
-                }
-                false
-            } else {
-                self.compare_versions(&info.version, &current)
-            };
-
-            // resolved_components에서 다운로드 URL 조회
-            // (최신 릴리즈에 에셋이 없으면 이전 릴리즈에서 찾은 URL이 들어있음)
-            let (download_url, asset_name) = if let Some(rc) = resolved.get(key) {
-                (Some(rc.download_url.clone()), Some(rc.asset_name.clone()))
-            } else {
-                (None, None)
-            };
-
-            let release_notes = self.cached_release.as_ref().and_then(|r| r.body.clone());
-            let published_at = self.cached_release.as_ref().and_then(|r| r.published_at.clone());
-
-            components.push(ComponentVersion {
-                component,
-                current_version: current,
-                latest_version: Some(info.version.clone()),
-                update_available,
-                download_url,
-                asset_name,
-                release_notes,
-                published_at,
-                downloaded: false,
-                downloaded_path: None,
-                staged_sha256: None,
-                installed,
-            });
-        }
-
-        Ok(components)
-    }
-
-    async fn check_module_repo(
-        &self,
-        client: &GitHubClient,
-        module_name: &str,
-        local_versions: &HashMap<String, String>,
-    ) -> Result<Option<ComponentVersion>> {
-        let releases = client.fetch_releases(5).await?;
-
-        let release = match releases.iter()
-            .filter(|r| !r.draft)
-            .find(|r| self.config.include_prerelease || !r.prerelease)
-        {
-            Some(r) => r,
-            None => return Ok(None),
-        };
-
-        let module_key = format!("module-{}", module_name);
-        let component = Component::Module(module_name.to_string());
-        let current = local_versions.get(&module_key).cloned().unwrap_or_default();
-
-        // 태그에서 버전 추출: "v1.2.0" → "1.2.0"
-        let latest_version = release.tag_name.trim_start_matches('v').to_string();
-        let installed = self.is_component_installed(&component);
-
-        // 설치된 모듈인데 버전 감지 실패 시 거짓 양성 방지
-        let update_available = if installed && current.is_empty() {
-            tracing::warn!(
-                "[Updater] Cannot detect local version for installed module '{}' — assuming up-to-date",
-                module_name
-            );
-            if let Ok(latest) = SemVer::parse(&latest_version).ok_or(()) {
-                let _ = latest; // SemVer 파싱 가능한 경우에만 매니페스트 기록
-                let _ = Self::update_installed_version(&module_key, &latest_version);
-            }
-            false
-        } else {
-            self.compare_versions(&latest_version, &current)
-        };
-
-        // 에셋 파일 탐색 (module-{name}.zip 또는 {name}.zip)
-        let asset = release.assets.iter()
-            .find(|a| a.name == format!("module-{}.zip", module_name)
-                    || a.name == format!("{}.zip", module_name));
-
-        let download_url = asset.map(|a| a.browser_download_url.clone());
-        let asset_name = asset.map(|a| a.name.clone());
-
-        // 체크 시에는 항상 downloaded=false 로 시작
-        Ok(Some(ComponentVersion {
-            component,
-            current_version: current,
-            latest_version: Some(latest_version),
-            update_available,
-            download_url,
-            asset_name,
-            release_notes: release.body.clone(),
-            published_at: release.published_at.clone(),
-            downloaded: false,
-            downloaded_path: None,
-            staged_sha256: None,
-            installed,
-        }))
-    }
-
-    /// module.toml의 [update] 섹션에서 리포 정보 추출
-    fn discover_module_repos(&self) -> Vec<(String, String)> {
-        let mut repos = Vec::new();
-        if let Ok(entries) = std::fs::read_dir(&self.modules_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    let module_toml = path.join("module.toml");
-                    if module_toml.exists() {
-                        if let Ok(content) = std::fs::read_to_string(&module_toml) {
-                            if let Ok(parsed) = content.parse::<toml::Value>() {
-                                let name = parsed.get("module")
-                                    .and_then(|m| m.get("name"))
-                                    .and_then(|v| v.as_str());
-                                let repo = parsed.get("update")
-                                    .and_then(|u| u.get("github_repo"))
-                                    .and_then(|v| v.as_str());
-                                if let (Some(name), Some(repo)) = (name, repo) {
-                                    repos.push((name.to_string(), repo.to_string()));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        repos
-    }
-
-    /// extensions/*/extension.toml의 [update] 섹션에서 리포 정보 수집
-    fn discover_extension_repos(&self) -> Vec<(String, String)> {
-        let mut repos = Vec::new();
-        let extensions_dir = &self.extensions_dir;
-        if let Ok(entries) = std::fs::read_dir(extensions_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    let ext_toml = path.join("extension.toml");
-                    if ext_toml.exists() {
-                        if let Ok(content) = std::fs::read_to_string(&ext_toml) {
-                            if let Ok(parsed) = content.parse::<toml::Value>() {
-                                let name = parsed.get("extension")
-                                    .and_then(|e| e.get("name"))
-                                    .and_then(|v| v.as_str());
-                                let repo = parsed.get("update")
-                                    .and_then(|u| u.get("github_repo"))
-                                    .and_then(|v| v.as_str());
-                                if let (Some(name), Some(repo)) = (name, repo) {
-                                    repos.push((name.to_string(), repo.to_string()));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        repos
-    }
-
-    /// 익스텐션 리포에서 업데이트 확인
-    async fn check_extension_repo(
-        &self,
-        client: &GitHubClient,
-        ext_name: &str,
-        local_versions: &HashMap<String, String>,
-    ) -> Result<Option<ComponentVersion>> {
-        let releases = client.fetch_releases(5).await?;
-
-        let release = match releases.iter()
-            .filter(|r| !r.draft)
-            .find(|r| self.config.include_prerelease || !r.prerelease)
-        {
-            Some(r) => r,
-            None => return Ok(None),
-        };
-
-        let ext_key = format!("ext-{}", ext_name);
-        let component = Component::Extension(ext_name.to_string());
-        let current = local_versions.get(&ext_key).cloned().unwrap_or_default();
-
-        let latest_version = release.tag_name.trim_start_matches('v').to_string();
-        let installed = self.is_component_installed(&component);
-
-        // 설치된 익스텐션인데 버전 감지 실패 시 거짓 양성 방지
-        let update_available = if installed && current.is_empty() {
-            tracing::warn!(
-                "[Updater] Cannot detect local version for installed extension '{}' — assuming up-to-date",
-                ext_name
-            );
-            false
-        } else {
-            self.compare_versions(&latest_version, &current)
-        };
-
-        let asset = release.assets.iter()
-            .find(|a| a.name == format!("ext-{}.zip", ext_name)
-                    || a.name == format!("{}.zip", ext_name));
-
-        let download_url = asset.map(|a| a.browser_download_url.clone());
-        let asset_name = asset.map(|a| a.name.clone());
-
-        Ok(Some(ComponentVersion {
-            component,
-            current_version: current,
-            latest_version: Some(latest_version),
-            update_available,
-            download_url,
-            asset_name,
-            release_notes: release.body.clone(),
-            published_at: release.published_at.clone(),
-            downloaded: false,
-            downloaded_path: None,
-            staged_sha256: None,
-            installed,
-        }))
     }
 
     fn compare_versions(&self, latest: &str, current: &str) -> bool {
@@ -1189,33 +651,28 @@ impl UpdateManager {
 
     // ─────── 다운로드 ────────────────────────────────────────────────────────────────────────
 
-    /// 업데이트 가능한 모든 컴포넌트를 스테이징 디렉터리에 다운로드
     /// 업데이트 가능한 모든 컴포넌트를 staging 디렉터리로 다운로드
-    ///
-    /// resolved_components를 활용하여 각 컴포넌트의 에셋이 실제로 존재하는
-    /// 릴리즈에서 다운로드한다 (최신 릴리즈에 없을 수 있음).
     pub async fn download_available_updates(&mut self) -> Result<Vec<String>> {
         std::fs::create_dir_all(&self.staging_dir)?;
 
         let mut downloaded = Vec::new();
 
         // 업데이트 가능하고 아직 다운로드하지 않은 컴포넌트 목록
-        let to_download: Vec<(String, ResolvedComponent)> = self.status.components.iter()
+        let to_download: Vec<(String, ManifestComponent)> = self.status.components.iter()
             .filter(|c| c.update_available && !c.downloaded)
             .filter_map(|c| {
                 let key = c.component.manifest_key();
-                // resolved_components에서 실제 다운로드 소스 조회
-                self.resolved_components.get(&key).map(|rc| (key, rc.clone()))
+                self.manifest_entry(&key).map(|rc| (key, rc.clone()))
             })
             .collect();
 
         let client = reqwest::Client::new();
         for (key, rc) in &to_download {
-            let dest = self.staging_dir.join(&rc.asset_name);
-            tracing::info!("[Updater] Downloading {} from resolved source", key);
-            download::download_verified(&client, &rc.download_url, &dest, rc.sha256.as_deref(), None).await?;
-            tracing::info!("[Updater] Downloaded {}", rc.asset_name);
-            downloaded.push(rc.asset_name.clone());
+            let dest = self.staging_dir.join(&rc.filename);
+            tracing::info!("[Updater] Downloading {}", key);
+            download::download_verified(&client, &rc.url, &dest, Some(&rc.sha256), None).await?;
+            tracing::info!("[Updater] Downloaded {}", rc.filename);
+            downloaded.push(rc.filename.clone());
         }
 
         // 상태 업데이트: downloaded 플래그 설정
@@ -1227,8 +684,8 @@ impl UpdateManager {
                         self.staging_dir.join(name).to_string_lossy().to_string()
                     );
                     comp.staged_sha256 = to_download.iter()
-                        .find(|(_, rc)| &rc.asset_name == name)
-                        .and_then(|(_, rc)| rc.sha256.clone());
+                        .find(|(_, rc)| &rc.filename == name)
+                        .map(|(_, rc)| rc.sha256.clone());
                 }
             }
         }
@@ -1237,9 +694,6 @@ impl UpdateManager {
     }
 
     /// 특정 컴포넌트만 다운로드
-    ///
-    /// resolved_components를 조회하여 에셋이 포함된 릴리즈에서 다운로드.
-    /// 최신 릴리즈에 에셋이 없어도 이전 릴리즈에서 자동으로 찾아온다.
     pub async fn download_component(&mut self, component: &Component) -> Result<String> {
         std::fs::create_dir_all(&self.staging_dir)?;
 
@@ -1252,18 +706,12 @@ impl UpdateManager {
         }
 
         let key = component.manifest_key();
-        let rc = self.resolved_components.get(&key)
-            .ok_or_else(|| anyhow::anyhow!(
-                "No resolved download source for {} — 에셋을 포함한 릴리즈를 찾지 못함",
-                component.display_name()
-            ))?;
+        let rc = self.manifest_entry(&key).cloned()
+            .ok_or_else(|| anyhow::anyhow!("{} is not in the release manifest", component.display_name()))?;
 
-        let dest = self.staging_dir.join(&rc.asset_name);
+        let dest = self.staging_dir.join(&rc.filename);
 
-        tracing::info!(
-            "[Updater] Downloading {} v{} from release {}",
-            key, rc.latest_version, rc.source_release_tag
-        );
+        tracing::info!("[Updater] Downloading {} v{}", key, rc.version);
 
         // 진행률 초기화
         {
@@ -1278,9 +726,9 @@ impl UpdateManager {
         let client = reqwest::Client::new();
         let result = download::download_verified(
             &client,
-            &rc.download_url,
+            &rc.url,
             &dest,
-            rc.sha256.as_deref(),
+            Some(&rc.sha256),
             Some(&self.download_progress),
         )
         .await;
@@ -1288,7 +736,7 @@ impl UpdateManager {
             if let Ok(mut prog) = self.download_progress.lock() {
                 prog.active = false;
             }
-            anyhow::bail!("Failed to download {}: {}", rc.asset_name, e);
+            anyhow::bail!("Failed to download {}: {}", rc.filename, e);
         }
 
         // 진행률 완료
@@ -1297,8 +745,8 @@ impl UpdateManager {
             prog.active = false;
         }
 
-        let asset_name = rc.asset_name.clone();
-        let sha256 = rc.sha256.clone();
+        let asset_name = rc.filename;
+        let sha256 = Some(rc.sha256);
 
         // 상태 업데이트
         if let Some(comp) = self.status.components.iter_mut().find(|c| &c.component == component) {
@@ -1309,6 +757,10 @@ impl UpdateManager {
 
         Ok(asset_name)
     }
+    fn manifest_entry(&self, key: &str) -> Option<&ManifestComponent> {
+        self.cached_manifest.as_ref()?.components.get(key)
+    }
+
     // ─────── 적용 ────────────────────────────────────────────────────────────────────────
 
     /// 다운로드 완료된 업데이트를 적용
@@ -2111,6 +1563,11 @@ impl UpdateManager {
             // 옮겨 둔 실행 파일을 기억해 두었다가, 풀다가 실패하면 되돌린다 (C13)
             let mut moved: Vec<(PathBuf, PathBuf)> = Vec::new();
             let result = extract_zip(staged, &exe_dir, |out_path| {
+                // 같은 경로가 zip에 두 번 있으면 두 번째는 덮어쓰기만 한다. 다시 비켜 두면
+                // 원래 백업이 새 파일로 바뀌어 되돌릴 수 없게 된다
+                if moved.iter().any(|(p, _)| p == out_path) {
+                    return Ok(());
+                }
                 let existed = out_path.exists();
                 Self::move_aside_binary(out_path)?;
                 if existed && !out_path.exists() {
@@ -2306,305 +1763,7 @@ impl UpdateManager {
         }
     }
 
-    /// 전체 컴포넌트의 설치 현황 반환
-    pub fn get_install_status(&self) -> InstallStatus {
-        let components: Vec<(Component, bool)> = vec![
-            (Component::CoreDaemon, self.is_component_installed(&Component::CoreDaemon)),
-            (Component::Cli, self.is_component_installed(&Component::Cli)),
-            (Component::Gui, self.is_component_installed(&Component::Gui)),
-            (Component::Updater, self.is_component_installed(&Component::Updater)),
-            (Component::Locales, self.is_component_installed(&Component::Locales)),
-        ];
-
-        // 동적 컴포넌트: 모듈은 manifest 또는 로컬 탐색, 익스텐션은 항상 로컬 탐색
-        let mut module_components = Vec::new();
-        let mut ext_components = Vec::new();
-        if let Some(ref manifest) = self.cached_manifest {
-            for key in manifest.components.keys() {
-                if key.starts_with("module-") {
-                    let comp = Component::from_manifest_key(key);
-                    let installed = self.is_component_installed(&comp);
-                    module_components.push((comp, installed));
-                }
-            }
-        } else {
-            // manifest 없으면 로컬 modules/ 스캔
-            if let Ok(entries) = std::fs::read_dir(&self.modules_dir) {
-                for entry in entries.flatten() {
-                    if entry.path().is_dir() {
-                        let name = entry.file_name().to_string_lossy().to_string();
-                        let comp = Component::Module(name.clone());
-                        let installed = self.is_component_installed(&comp);
-                        module_components.push((comp, installed));
-                    }
-                }
-            }
-        }
-
-        // 익스텐션: 개별 리포 관리이므로 항상 로컬 extensions/ 스캔
-        {
-            let extensions_dir = &self.extensions_dir;
-            if let Ok(entries) = std::fs::read_dir(extensions_dir) {
-                for entry in entries.flatten() {
-                    if entry.path().is_dir() {
-                        let name = entry.file_name().to_string_lossy().to_string();
-                        if name.starts_with('_') || name == "__pycache__" {
-                            continue;
-                        }
-                        let comp = Component::Extension(name.clone());
-                        let installed = self.is_component_installed(&comp);
-                        ext_components.push((comp, installed));
-                    }
-                }
-            }
-        }
-
-        let all: Vec<(Component, bool)> = components.into_iter()
-            .chain(module_components)
-            .chain(ext_components)
-            .collect();
-
-        let total = all.len();
-        let installed_count = all.iter().filter(|(_, i)| *i).count();
-        let is_fresh = installed_count <= 1; // 코어 데몬만 설치된 상태
-
-        InstallStatus {
-            is_fresh_install: is_fresh,
-            total_components: total,
-            installed_components: installed_count,
-            components: all.into_iter().map(|(c, i)| ComponentInstallInfo {
-                component: c.clone(),
-                display_name: c.display_name(),
-                installed: i,
-            }).collect(),
-            progress: self.install_progress.clone(),
-        }
-    }
-
-    /// 미설치된 컴포넌트를 일괄 설치하는 초기 설치 (릴리즈 횡단 탐색)
-    ///
-    /// 각 릴리즈의 manifest 에셋 정보를 기반으로 컴포넌트별 최신 에셋을 찾아 개별 다운로드합니다.
-    /// 미설치된 필수 컴포넌트를 설치하는 초기 설치 (릴리즈 횡단 탐색 지원)
-    ///
-    /// resolved_components를 활용하여 에셋이 포함된 릴리즈에서 개별 다운로드.
-    pub async fn fresh_install(&mut self, components_filter: Option<Vec<String>>) -> Result<InstallProgress> {
-        if self.config.github_owner.is_empty() || self.config.github_repo.is_empty() {
-            anyhow::bail!("GitHub owner/repo not configured — cannot install");
-        }
-
-        let client = self.create_client();
-
-        // 릴리즈 목록 fetch & 횡단 탐색
-        let releases = client.fetch_releases(30).await?;
-        let (manifest, resolved) = client.resolve_components_across_releases(
-            &releases,
-            self.config.include_prerelease,
-        ).await?;
-
-        let latest_release = releases.iter()
-            .filter(|r| !r.draft)
-            .find(|r| self.config.include_prerelease || !r.prerelease)
-            .cloned();
-        self.cached_release = latest_release;
-        self.cached_manifest = Some(manifest.clone());
-        self.cached_releases = releases;
-        self.resolved_components = resolved.clone();
-
-        // 설치 대상 필터
-        let targets: Vec<(String, github::ComponentInfo)> = manifest.components.iter()
-            .filter(|(key, _)| {
-                if let Some(ref filter) = components_filter {
-                    filter.iter().any(|f| f == *key)
-                } else {
-                    true
-                }
-            })
-            .filter(|(key, _)| {
-                let comp = Component::from_manifest_key(key);
-                if comp == Component::CoreDaemon {
-                    return false;
-                }
-                !self.is_component_installed(&comp)
-            })
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-
-        if targets.is_empty() {
-            let progress = InstallProgress {
-                complete: true,
-                current_component: None,
-                total: 0,
-                done: 0,
-                installed_components: vec![],
-                errors: vec![],
-            };
-            self.install_progress = Some(progress.clone());
-            return Ok(progress);
-        }
-
-        let total = targets.len();
-        let mut installed = Vec::new();
-        let mut errors = Vec::new();
-
-        self.install_progress = Some(InstallProgress {
-            complete: false,
-            current_component: None,
-            total,
-            done: 0,
-            installed_components: vec![],
-            errors: vec![],
-        });
-
-        std::fs::create_dir_all(&self.staging_dir)?;
-
-        for (idx, (key, info)) in targets.iter().enumerate() {
-            let component = Component::from_manifest_key(key);
-            let comp_label = component.display_name();
-
-            if let Some(ref mut prog) = self.install_progress {
-                prog.current_component = Some(comp_label.clone());
-                prog.done = idx;
-            }
-
-            tracing::info!("[Installer] ({}/{}) Installing {}...", idx + 1, total, comp_label);
-
-            // resolved_components에서 다운로드 소스 조회
-            let rc = match resolved.get(key) {
-                Some(rc) => rc,
-                None => {
-                    let err = format!("{}: 에셋을 포함한 릴리즈를 찾지 못함", comp_label);
-                    tracing::warn!("[Installer] {}", err);
-                    errors.push(err);
-                    continue;
-                }
-            };
-
-            let staged_path = self.staging_dir.join(&rc.asset_name);
-
-            // resolved URL에서 다운로드
-            tracing::info!(
-                "[Installer] {} v{} ← release {}",
-                key, rc.latest_version, rc.source_release_tag
-            );
-            let download_result: Result<()> = async {
-                let response = reqwest::get(&rc.download_url).await?;
-                if !response.status().is_success() {
-                    anyhow::bail!("HTTP {}", response.status());
-                }
-                let bytes = response.bytes().await?;
-                std::fs::write(&staged_path, &bytes)?;
-                Ok(())
-            }.await;
-
-            if let Err(e) = download_result {
-                let err = format!("Download failed for {}: {}", comp_label, e);
-                tracing::error!("[Installer] {}", err);
-                errors.push(err);
-                continue;
-            }
-
-            // 설치 디렉터리 결정 & 압축 해제
-            let install_dir = self.resolve_install_dir(&component, info.install_dir.as_deref());
-
-            if let Err(e) = self.extract_to_directory(&staged_path, &install_dir).await {
-                let err = format!("Extraction failed for {}: {}", comp_label, e);
-                tracing::error!("[Installer] {}", err);
-                errors.push(err);
-                continue;
-            }
-
-            std::fs::remove_file(&staged_path).ok();
-
-            installed.push(comp_label.clone());
-            let dir_path = install_dir.to_string_lossy();
-            tracing::info!("[Installer] {} installed to {}", comp_label, dir_path);
-        }
-
-        // 기본 config 파일 생성 (필요하면)
-        self.ensure_default_config().ok();
-
-        let progress = InstallProgress {
-            complete: true,
-            current_component: None,
-            total,
-            done: installed.len(),
-            installed_components: installed,
-            errors,
-        };
-        self.install_progress = Some(progress.clone());
-
-        Ok(progress)
-    }
-
-    /// 특정 컴포넌트를 단일 설치 (릴리즈 횡단 탐색 지원)
-    pub async fn install_component(&mut self, component: &Component) -> Result<String> {
-        if self.config.github_owner.is_empty() || self.config.github_repo.is_empty() {
-            anyhow::bail!("GitHub owner/repo not configured");
-        }
-
-        if self.is_component_installed(component) {
-            anyhow::bail!("{} is already installed", component.display_name());
-        }
-
-        let client = self.create_client();
-        let key = component.manifest_key();
-
-        // resolved_components가 있으면 그것을 사용, 없으면 릴리즈를 새로 fetch
-        if self.resolved_components.is_empty() {
-            let releases = client.fetch_releases(30).await?;
-            let (manifest, resolved) = client.resolve_components_across_releases(
-                &releases,
-                self.config.include_prerelease,
-            ).await?;
-            let latest_release = releases.iter()
-                .filter(|r| !r.draft)
-                .find(|r| self.config.include_prerelease || !r.prerelease)
-                .cloned();
-            self.cached_release = latest_release;
-            self.cached_manifest = Some(manifest);
-            self.cached_releases = releases;
-            self.resolved_components = resolved;
-        }
-
-        let rc = self.resolved_components.get(&key)
-            .ok_or_else(|| anyhow::anyhow!(
-                "Component '{}' 에 대한 에셋을 어떤 릴리즈에서도 찾지 못함", key
-            ))?;
-
-        let manifest = self.cached_manifest.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("No cached manifest"))?;
-        let info = manifest.components.get(&key)
-            .ok_or_else(|| anyhow::anyhow!("Component '{}' not found in manifest", key))?;
-
-        // resolved URL에서 직접 다운로드
-        std::fs::create_dir_all(&self.staging_dir)?;
-        let staged_path = self.staging_dir.join(&rc.asset_name);
-
-        tracing::info!(
-            "[Installer] Downloading {} v{} from release {}",
-            key, rc.latest_version, rc.source_release_tag
-        );
-
-        let response = reqwest::get(&rc.download_url).await?;
-        if !response.status().is_success() {
-            anyhow::bail!("Failed to download {}: {}", rc.asset_name, response.status());
-        }
-        let bytes = response.bytes().await?;
-        std::fs::write(&staged_path, &bytes)?;
-
-        let install_dir = self.resolve_install_dir(component, info.install_dir.as_deref());
-        self.extract_to_directory(&staged_path, &install_dir).await?;
-        std::fs::remove_file(&staged_path).ok();
-
-        tracing::info!("[Installer] {} installed to {}", component.display_name(), install_dir.display());
-        Ok(install_dir.to_string_lossy().to_string())
-    }
-    /// 설치 진행 상태 반환
-    pub fn get_install_progress(&self) -> Option<InstallProgress> {
-        self.install_progress.clone()
-    }
-
-    // ─────── 초기 설치 유틸리티 ────────────────────────────────────────────────────────────────────────
+    // ─────── 설치 위치 유틸리티 ────────────────────────────────────────────────────────────────────────
 
     /// 컴포넌트의 설치 디렉터리를 결정
     fn resolve_install_dir(&self, component: &Component, manifest_dir: Option<&str>) -> PathBuf {
@@ -2747,21 +1906,6 @@ impl UpdateManager {
             .and_then(|n| n.to_str())
             .map(|name| KNOWN_BINARIES.contains(&name))
             .unwrap_or(false)
-    }
-
-    /// 필수 디렉터리가 없으면 생성
-    fn ensure_default_config(&self) -> Result<()> {
-        // modules 디렉터리 생성 (%APPDATA%/saba-chan/modules)
-        std::fs::create_dir_all(&self.modules_dir)?;
-
-        // extensions 디렉터리 생성 (%APPDATA%/saba-chan/extensions)
-        std::fs::create_dir_all(&self.extensions_dir)?;
-
-        // locales 디렉터리 생성
-        let locales_dir = self.install_root.join("locales");
-        std::fs::create_dir_all(&locales_dir)?;
-
-        Ok(())
     }
 
     // ─────── 테스트 헬퍼 (pub) ────────────────────────────────────────────────────────────────────────

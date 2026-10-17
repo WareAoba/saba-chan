@@ -738,12 +738,6 @@ async fn set_config(
     if let Some(v) = body.get("enabled").and_then(|v| v.as_bool()) {
         cfg.enabled = v;
     }
-    if let Some(v) = body.get("github_owner").and_then(|v| v.as_str()) {
-        cfg.github_owner = v.to_string();
-    }
-    if let Some(v) = body.get("github_repo").and_then(|v| v.as_str()) {
-        cfg.github_repo = v.to_string();
-    }
     if let Some(v) = body.get("check_interval_hours").and_then(|v| v.as_u64()) {
         cfg.check_interval_hours = v.clamp(1, 8) as u32;
     }
@@ -753,26 +747,8 @@ async fn set_config(
     if let Some(v) = body.get("auto_apply").and_then(|v| v.as_bool()) {
         cfg.auto_apply = v;
     }
-    if let Some(v) = body.get("include_prerelease").and_then(|v| v.as_bool()) {
-        cfg.include_prerelease = v;
-    }
     if let Some(v) = body.get("install_root").and_then(|v| v.as_str()) {
         cfg.install_root = Some(v.to_string());
-    }
-    if let Some(v) = body.get("api_base_url").and_then(|v| v.as_str()) {
-        cfg.api_base_url = Some(v.to_string());
-    }
-    if let Some(v) = body.get("source") {
-        match serde_json::from_value::<saba_chan_updater_lib::UpdateSource>(v.clone()) {
-            Ok(src) => cfg.source = src,
-            Err(_) => {
-                return (
-                    axum::http::StatusCode::BAD_REQUEST,
-                    Json(json!({ "ok": false, "error": "source must be \"github\" or \"relay\"" })),
-                )
-                    .into_response();
-            }
-        }
     }
     if let Some(v) = body.get("relay_url").and_then(|v| v.as_str()) {
         cfg.relay_url = if v.is_empty() { None } else { Some(v.to_string()) };

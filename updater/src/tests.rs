@@ -10,61 +10,7 @@ use crate::{
     Component, UpdateConfig, UpdateManager,
     DownloadQueue, DownloadRequest,
     UpdaterError, RecoveryStrategy, NetworkChecker,
-    BackgroundWorker, WorkerEvent,
 };
-use std::sync::Arc;
-use tokio::sync::RwLock;
-
-/// 테스트용 설정 생성
-fn test_config(mock_url: &str) -> UpdateConfig {
-    UpdateConfig {
-        enabled: true,
-        check_interval_hours: 1,
-        auto_download: false,
-        auto_apply: false,
-        github_owner: "test-owner".to_string(),
-        github_repo: "saba-chan".to_string(),
-        include_prerelease: true,
-        install_root: Some("./test_install".to_string()),
-        api_base_url: Some(mock_url.to_string()),
-        ..Default::default()
-    }
-}
-
-// ═══════════════════════════════════════════════════════
-// 테스트 1: 버전 페치
-// ═══════════════════════════════════════════════════════
-
-#[tokio::test]
-#[ignore = "requires mock server"]
-async fn test_version_fetch() {
-    let mock_url = "http://127.0.0.1:9876";
-    let config = test_config(mock_url);
-    let mut manager = UpdateManager::new(config, "./modules");
-
-    let result = manager.check_for_updates().await;
-    
-    match result {
-        Ok(status) => {
-            println!("✓ 버전 체크 성공");
-            println!("  컴포넌트 수: {}", status.components.len());
-            for comp in &status.components {
-                println!(
-                    "  - {}: {} → {:?} (업데이트: {})",
-                    comp.component.display_name(),
-                    comp.current_version,
-                    comp.latest_version,
-                    comp.update_available
-                );
-            }
-            assert!(!status.components.is_empty(), "컴포넌트가 있어야 함");
-        }
-        Err(e) => {
-            println!("✗ 버전 체크 실패: {}", e);
-            panic!("버전 체크 실패");
-        }
-    }
-}
 
 // ═══════════════════════════════════════════════════════
 // 테스트 2: 큐 처리
@@ -484,44 +430,6 @@ fn test_download_interrupted_progress_data() {
 // 테스트 4: 백그라운드 워커
 // ═══════════════════════════════════════════════════════
 
-#[tokio::test]
-#[ignore = "requires mock server"]
-async fn test_background_worker() {
-    let mock_url = "http://127.0.0.1:9876";
-    let config = test_config(mock_url);
-    let manager = Arc::new(RwLock::new(UpdateManager::new(config, "./modules")));
-
-    let worker = BackgroundWorker::spawn(manager.clone());
-    let mut rx = worker.subscribe();
-
-    // 체크 요청
-    worker.check_now().await.expect("check should succeed");
-
-    // 이벤트 수신 (타임아웃 포함)
-    let event = tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        rx.recv()
-    ).await;
-
-    match event {
-        Ok(Ok(WorkerEvent::CheckStarted)) => {
-            println!("✓ 체크 시작 이벤트 수신");
-        }
-        Ok(Ok(WorkerEvent::CheckCompleted { updates_available, .. })) => {
-            println!("✓ 체크 완료 이벤트 수신: {} 업데이트", updates_available);
-        }
-        Ok(Ok(WorkerEvent::CheckFailed { error })) => {
-            println!("✗ 체크 실패: {}", error);
-        }
-        _ => {
-            println!("✗ 예상치 못한 이벤트 또는 타임아웃");
-        }
-    }
-
-    // 워커 종료
-    worker.shutdown().await.expect("shutdown should succeed");
-}
-
 // ═══════════════════════════════════════════════════════
 // 테스트 5: 유틸리티
 // ═══════════════════════════════════════════════════════
@@ -706,17 +614,19 @@ fn test_dependency_check_serde_roundtrip() {
 
 #[test]
 fn test_component_info_requires_field() {
-    use crate::github::ComponentInfo;
+    use crate::ManifestComponent;
 
     let json = r#"{
         "version": "0.3.0",
         "asset": "gui-windows-x64.zip",
+        "sha256": "00",
+        "url": "https://r2.example/gui.zip",
         "requires": {
             "saba-core": ">=0.3.0",
             "cli": ">=0.1.0"
         }
     }"#;
-    let info: ComponentInfo = serde_json::from_str(json).unwrap();
+    let info: ManifestComponent = serde_json::from_str(json).unwrap();
     assert_eq!(info.version, "0.3.0");
     let requires = info.requires.unwrap();
     assert_eq!(requires.len(), 2);
@@ -726,10 +636,10 @@ fn test_component_info_requires_field() {
 
 #[test]
 fn test_component_info_requires_empty_by_default() {
-    use crate::github::ComponentInfo;
+    use crate::ManifestComponent;
 
-    let json = r#"{"version": "0.1.0"}"#;
-    let info: ComponentInfo = serde_json::from_str(json).unwrap();
+    let json = r#"{"version": "0.1.0", "asset": "a.zip", "sha256": "00", "url": "https://r2.example/a.zip"}"#;
+    let info: ManifestComponent = serde_json::from_str(json).unwrap();
     assert!(info.requires.is_none());
 }
 
