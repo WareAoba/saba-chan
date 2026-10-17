@@ -136,7 +136,7 @@ Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `u
   - components 탭: updater check/download/progress/apply/launchApply.
   - modules 탭: 설치된 모듈과 `saba-chan-modules` 레지스트리(`moduleManifest`, `moduleInstallFromManifest`, `moduleRemove`).
   - extensions 탭: 확장 레지스트리.
-  - devMode에서는 Mock 릴리스 서버 토글(`handleToggleMock`, 194-219)을 제공한다. 이 토글은 L3에서 없어진 `api_base_url`/`github_owner`/`github_repo`를 보내므로 데몬이 무시하고 아무것도 바뀌지 않는다. 모의 릴레이로 바꾸려면 `relay_url`을 보내야 한다(01의 업데이트 설정).
+  - devMode의 Mock 릴리스 서버 토글(`handleToggleMock`): qcza9f의 옛 renderer는 L3에서 없어진 `api_base_url`/`github_*`를 보내 효과가 없다. GUI 리메이크(PR #5, fd26f4e)에서 고쳤다: `relay_url`만 보내고, `mock_relay`로 빌드한 개발판에서만 보인다.
 - **DiscordBotModal.js**(1851줄): local/cloud 모드, 토큰, prefix, module/command alias, 음악(활성화, 전용 채널 `discordGuildChannels`, UI 설정), 노드(길드)별 `allowedInstances`와 멤버별 차단 명령(`memberPermissions`, 멤버 목록은 local이면 `discordGuildMembers`, cloud면 `relayListNodeMembers`)을 다룬다. Cloud 페어링은 `relayInitiatePairing`으로 시작해 `relayPollPairingStatus`로 진행 상황을 확인하고 `saveNodeToken`으로 마무리한다. 기본 relay는 `https://saba-chan.online`(12)이다. side-panel 모드가 있다.
 - **BackgroundModal.js**: daemon 상태(`daemonStatus`)와 재시작(`daemonRestart`).
 - **NoticeModal.js**: 앱 내 공지와 알림 목록(localStorage). 업데이트 모달로 연결된다.
