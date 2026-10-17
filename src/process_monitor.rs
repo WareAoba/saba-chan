@@ -96,13 +96,22 @@ pub fn pick_owned_process<'a>(
     None
 }
 
-/// 프로세스가 다른 인스턴스 폴더에도 들어맞고 그쪽이 같거나 더 깊으면 이 인스턴스 것이 아니다
-/// (여러 인스턴스가 같은 실행 파일 폴더를 쓰면 그 폴더로는 주인을 가릴 수 없다)
+/// 프로세스가 다른 인스턴스 폴더에도 들어맞으면 이 인스턴스 것이 아니다.
+/// - 작업 폴더가 어느 인스턴스 폴더 안에 있으면 그것이 가장 강한 근거다: 가장 깊이 맞는 쪽이 주인
+/// - 아니면 다른 쪽 폴더에 맞는 순간 빠진다. 다만 다른 쪽 폴더가 이쪽의 더 깊은 폴더를 감싸면(겹친 폴더) 이쪽이 주인
 fn process_under_any_more_specific(process: &RunningProcess, own_roots: &[String], other_roots: &[String]) -> bool {
-    let deepest_own = own_roots.iter().filter(|r| process_under_any(process, std::slice::from_ref(*r))).map(|r| normalize_path(r).len()).max().unwrap_or(0);
-    other_roots
-        .iter()
-        .any(|r| process_under_any(process, std::slice::from_ref(r)) && normalize_path(r).len() >= deepest_own)
+    let deepest = |roots: &[String], path: &str| roots.iter().filter(|r| under(path, r)).map(|r| normalize_path(r).len()).max();
+    if let Some(cwd) = process.cwd.as_deref() {
+        match (deepest(own_roots, cwd), deepest(other_roots, cwd)) {
+            (Some(own), other) => return other.is_some_and(|o| o >= own),
+            (None, Some(_)) => return true,
+            (None, None) => {}
+        }
+    }
+    let own_hits: Vec<&String> = own_roots.iter().filter(|r| process_under_any(process, std::slice::from_ref(*r))).collect();
+    other_roots.iter().filter(|r| process_under_any(process, std::slice::from_ref(r))).any(|r| {
+        !own_hits.iter().any(|o| normalize_path(o).len() > normalize_path(r).len() && under(o, r))
+    })
 }
 // 프로세스 목록을 한 번 스캔한 후, 그 snapshot으로 여러 검색을 수행합니다.
 // RwLock write lock 밖에서 스캔하여 lock 점유 시간을 최소화합니다.
@@ -191,8 +200,10 @@ mod tests {
             cwd: Some(cwd.into()),
         };
         let (sa, sb) = (shared(40, r"C:\Saba\instances\a"), shared(50, r"C:\Saba\instances\b"));
-        let own_a = vec![r"C:\Games\bin".to_string(), r"C:\Saba\instances\a".to_string()];
-        let own_b = vec![r"C:\Games\bin".to_string(), r"C:\Saba\instances\b".to_string()];
+        let (own_a, own_b) = drop_shared_roots(
+            vec![r"C:\Games\bin".to_string(), r"C:\Saba\instances\a".to_string()],
+            vec![r"C:\Games\bin".to_string(), r"C:\Saba\instances\b".to_string()],
+        );
         assert_eq!(pick_owned_process(&[&sb, &sa], &none, &own_a, &own_b, false).map(|p| p.pid), Some(40));
         assert!(pick_owned_process(&[&sb], &none, &own_a, &own_b, false).is_none());
         // 작업 폴더가 공유 실행 폴더보다 짧아도, 공유 폴더를 빼면 각자 자기 서버를 찾는다
@@ -210,6 +221,23 @@ mod tests {
         assert_eq!(pick_owned_process(&[&pb, &pa], &none, &own, &other, false).map(|p| p.pid), Some(60));
         let (own_b, other_b) = drop_shared_roots(vec![bin.clone(), r"C:\B".into()], vec![bin, r"C:\A".into()]);
         assert_eq!(pick_owned_process(&[&pa, &pb], &none, &own_b, &other_b, false).map(|p| p.pid), Some(70));
+        // A의 실행 폴더에만 맞고 작업 폴더가 B 폴더면 A는 가져가지 않는다
+        let odd = RunningProcess {
+            pid: 80,
+            name: "server.exe".into(),
+            executable_path: Some(r"C:\shared\bin\server.exe".into()),
+            cmd: vec![],
+            cwd: Some(r"C:\b".into()),
+        };
+        let own_odd = vec![r"C:\shared\bin".to_string(), r"C:\a".to_string()];
+        let other_odd = vec![r"C:\b".to_string()];
+        assert!(pick_owned_process(&[&odd], &none, &own_odd, &other_odd, false).is_none());
+        assert_eq!(pick_owned_process(&[&odd], &none, &other_odd, &own_odd, false).map(|p| p.pid), Some(80));
+        // 인스턴스 폴더가 다른 인스턴스 폴더 안에 있으면 더 깊은 쪽이 주인이다
+        let nested = proc(90, r"C:\Saba\outer\inner");
+        let (outer, inner) = (vec![r"C:\Saba\outer".to_string()], vec![r"C:\Saba\outer\inner".to_string()]);
+        assert_eq!(pick_owned_process(&[&nested], &none, &inner, &outer, false).map(|p| p.pid), Some(90));
+        assert!(pick_owned_process(&[&nested], &none, &outer, &inner, false).is_none());
         // "a"가 "ab"의 접두어여도 섞이지 않는다
         let ab = proc(30, r"C:\Saba\instances\ab");
         assert!(pick_owned_process(&[&ab], &none, &roots_a, &[], false).is_none());

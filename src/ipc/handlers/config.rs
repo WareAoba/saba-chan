@@ -70,7 +70,8 @@ pub async fn reset_config(
         None
     } else {
         match serde_json::from_slice(&body) {
-            Ok(v) => Some(v),
+            Ok(v @ Value::Object(_)) => Some(v),
+            Ok(_) => return bad("body must be a JSON object"),
             Err(_) => return bad("body is not valid JSON"),
         }
     };
@@ -79,13 +80,7 @@ pub async fn reset_config(
         Some(Value::Null) => return bad("keys is null; omit keys to reset everything"),
         Some(k) => match serde_json::from_value(k) {
             Ok(keys) => Some(keys),
-            Err(_) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({ "ok": false, "error": "keys must be an array of setting names", "error_code": "invalid_request" })),
-                )
-                    .into_response()
-            }
+            Err(_) => return bad("keys must be an array of setting names"),
         },
     };
     match state.config_store.reset_to_defaults(&kind, keys.as_deref()).await {

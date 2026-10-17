@@ -834,9 +834,8 @@ pub async fn stop_instance(state: IPCServer, key: &str, force: bool) -> axum::re
                     // RCON 연결 풀에서 해당 인스턴스 연결 제거
                     state.rcon_pool.remove(&inst.id);
 
-                    // name과 id 둘 다로 untrack 시도
+                    // tracker는 id로만 찾는다: 이름이 다른 인스턴스의 id와 같아도 그쪽을 건드리지 않는다
                     let supervisor = state.supervisor.read().await;
-                    let _ = supervisor.tracker.untrack(&name);
                     if let Err(e) = supervisor.tracker.untrack(&inst.id) {
                         tracing::warn!("Failed to untrack stopped server '{}': {}", name, e);
                     } else {

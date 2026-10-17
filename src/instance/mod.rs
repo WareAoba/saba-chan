@@ -142,6 +142,43 @@ impl ServerInstance {
         changed
     }
 
+    /// 게임 설정 파일에서 읽어 온 값(`import_settings` 결과)을 반영한다: `module_settings`에 넣고,
+    /// 같은 값을 가리키는 인스턴스 필드(포트·RCON/REST 비밀번호)도 맞춘다. 안 그러면 인스턴스 필드가
+    /// 옛 값으로 남아 다음 저장에서 파일을 되돌린다.
+    /// `credential_map`: 데몬 키(`rcon_password` 등) → 게임 키(`AdminPassword` 등)
+    pub fn apply_imported_settings(
+        &mut self,
+        settings: &serde_json::Map<String, serde_json::Value>,
+        credential_map: &std::collections::HashMap<String, String>,
+    ) {
+        for (key, value) in settings {
+            self.module_settings.insert(key.clone(), value.clone());
+        }
+        let port = |key: &str| {
+            settings.get(key).and_then(|v| match v {
+                serde_json::Value::Number(n) => n.as_u64(),
+                serde_json::Value::String(s) => s.trim().parse().ok(),
+                _ => None,
+            }).and_then(|p| u16::try_from(p).ok())
+        };
+        if let Some(p) = port("port") { self.port = Some(p); }
+        if let Some(p) = port("rcon_port") { self.rcon_port = Some(p); }
+        if let Some(p) = port("rest_port") { self.rest_port = Some(p); }
+        for daemon_key in ["rcon_password", "rest_password"] {
+            let game_key = credential_map.get(daemon_key).map(String::as_str).unwrap_or(daemon_key);
+            let value = settings.iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case(game_key) || k.as_str() == daemon_key)
+                .and_then(|(_, v)| v.as_str());
+            // 파일이 비어 있으면 비어 있는 것이 사실이다: 옛 캐시 값을 남기지 않는다
+            if let Some(pwd) = value {
+                match daemon_key {
+                    "rcon_password" => self.rcon_password = Some(pwd.to_string()),
+                    _ => self.rest_password = Some(pwd.to_string()),
+                }
+            }
+        }
+    }
+
     /// RCON/REST 비밀번호가 비어있으면 랜덤 비밀번호로 채웁니다.
     /// 변경이 발생하면 true를 반환합니다.
     pub fn ensure_passwords(&mut self) -> bool {
@@ -398,6 +435,18 @@ mod tests {
             serde_json::json!("hard"),
         );
         inst
+    }
+
+    #[test]
+    fn imported_settings_refresh_instance_fields() {
+        let mut inst = ServerInstance::new("a", "palworld");
+        inst.port = Some(27015);
+        let settings = serde_json::json!({"port": "28015", "rcon_port": 25575, "AdminPassword": "pw", "Other": 1});
+        let map: std::collections::HashMap<String, String> = [("rest_password".to_string(), "adminpassword".to_string())].into();
+        inst.apply_imported_settings(settings.as_object().unwrap(), &map);
+        assert_eq!((inst.port, inst.rcon_port), (Some(28015), Some(25575)));
+        assert_eq!(inst.rest_password.as_deref(), Some("pw"));
+        assert_eq!(inst.module_settings.get("Other"), Some(&serde_json::json!(1)));
     }
 
     #[test]

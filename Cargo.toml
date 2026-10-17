@@ -67,6 +67,10 @@ features = ["trace"]
 [dependencies.hyper]
 version = "1"
 features = ["full"]
+[features]
+# `cargo build --features mock-relay`: scripts/mock-release-server.js로 업데이트 흐름을 시험하는 개발 빌드
+mock-relay = ["saba-chan-updater-lib/mock-relay"]
+
 [dev-dependencies]
 regex-lite = "0.1"
 saba-chan-updater-lib = { path = "updater", features = ["test-isolation"] }
