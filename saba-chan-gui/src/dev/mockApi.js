@@ -392,9 +392,11 @@ const impl = {
         }));
         return ok({ lines: since === undefined ? all : all.filter((l) => l.id >= since) });
     },
-    instanceLaunchPreview: (id, draft = {}, extra = '') => {
+    instanceLaunchPreview: (id, draft = {}, extra) => {
         if (id !== 'srv-2') return ok({ success: true, has_launch_args: false });
-        const args = String(extra).split(/\s+/).filter(Boolean);
+        // undefined·null이면 저장된 추가 인자로 계산한다 (데몬과 같다)
+        const text = extra ?? '-useperfthreads -NoAsyncLoadingThread';
+        const args = String(text).split(/\s+/).filter(Boolean);
         const portArg = args.find((a) => a.startsWith('-port='));
         const port = portArg ? portArg.slice(6) : draft.port;
         const bad = portArg && !/^\d+$/.test(port);
@@ -405,6 +407,7 @@ const impl = {
             command_line: ['PalServer.exe', `-port=${port ?? 8211}`, '-adminpassword=***', ...rest].join(' '),
             settings_from_args: portArg && !bad ? { port: Number(port) } : {},
             extra_args: rest,
+            extra_args_text: text,
             errors: bad ? [{ arg: portArg, field: 'port', expected: 'port', got: port }] : [],
         });
     },

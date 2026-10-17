@@ -421,6 +421,24 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         }
     }, [popoutParams, openConsole]);
 
+    // ── 메인 창이 새로고침돼도 이미 떠 있는 분리 창을 다시 기억한다 ──
+
+    useEffect(() => {
+        if (isPopoutMode || !window.api?.consolePopoutList) return;
+        let alive = true;
+        window.api.consolePopoutList().then(
+            (ids) => {
+                if (!alive || !Array.isArray(ids) || !ids.length) return;
+                setConsolePopoutIds((prev) => [...new Set([...prev, ...ids])]);
+                for (const id of ids) closeConsole(id);
+            },
+            () => {},
+        );
+        return () => {
+            alive = false;
+        };
+    }, [isPopoutMode, closeConsole]);
+
     // ── Popout open/close events ────────────────────────────
 
     useEffect(() => {
