@@ -2776,14 +2776,15 @@ ipcMain.handle('dialog:openFolder', async () => {
     return result.filePaths[0];
 });
 
-// ── Migration: 디렉토리 스캔 (파일 목록 반환) ──
+// ── Migration: 고른 폴더가 어느 게임 서버 폴더인지 (D2: 아무 폴더나 열람하던 /api/fs/scan-dir 대신
+// 데몬의 게임 폴더 판정만 쓴다. 파일 목록은 돌려주지 않는다) ──
 ipcMain.handle('migration:scanDir', async (_event, dirPath) => {
     try {
         if (!dirPath || typeof dirPath !== 'string') {
             return { error: 'Invalid directory path' };
         }
-        const response = await axios.post(`${IPC_BASE}/api/fs/scan-dir`, { path: dirPath });
-        return response.data;
+        const response = await axios.post(`${IPC_BASE}/api/modules/detect`, { path: dirPath });
+        return { ok: true, ...response.data };
     } catch (error) {
         const errData = error.response?.data;
         return { error: errData?.error || error.message };

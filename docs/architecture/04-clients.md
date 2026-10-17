@@ -90,7 +90,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | settingsSave (83) | settings:save | 2669 | GET /api/config/gui로 merge base를 읽고 PUT. 데몬이 응답하지 않을 때만 config.json `gui`에 직접 쓴다. 데몬이 오류 응답을 주면 저장 실패로 끝난다 | ✓ 700 |
 | settingsGetPath (84) | settings:getPath | 2687 | 로컬 경로 문자열(`<dataDir>/config.json`) | n/a |
 | openFileDialog / openFolderDialog (87-88) | dialog:* | 2709/2738 | Electron 네이티브 다이얼로그 | n/a |
-| migrationScanDir (90) | migration:scanDir | 2750 | POST /api/fs/scan-dir | ✓ 711 |
+| migrationScanDir (90) | migration:scanDir | 2780 | POST /api/modules/detect (`{ok, matches}`, 파일 목록 없음) | ✓ 711 |
 | discordBotStatus / Start / Stop (92-94) | discord:status/start/stop | 2764-2792 | GET /api/relay/agent, POST /api/relay/agent/start·stop. 노드 토큰이 없으면(`node_token_missing`) `cloud_token_not_found` | ✓ 747-749 |
 | botConfigLoad (96) | botConfig:load | 2794 | GET /api/config/bot | ✓ 698 |
 | botConfigSave (97) | botConfig:save | 2857 | PUT /api/config/bot(최상위 키 단위 병합). 릴레이 동기화는 에이전트 하트비트가 맡는다 | ✓ 698 |
@@ -139,7 +139,7 @@ Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `u
 - **ConsoleView / ConsoleDock / ConsoleWindow**(useConsole, useMultiConsole): managed 프로세스 콘솔. `managedConsole` 폴링, `managedStdin`, `executeCommand`를 쓰고, PiP 팝아웃과 always-on-top을 지원한다.
 - **AddInstanceModal**: 진입점이 둘이다.
   - `AddInstanceNewServer.js`: 게임 모듈 카드 그리드에서 모듈을 고른 뒤 이름과 옵션을 입력하고 `instanceCreate`를 호출한다.
-  - `AddInstanceMigration.js`: 폴더 선택 → `migrationScanDir`(daemon `/api/fs/scan-dir`) → 모듈 자동 감지(`dir_signatures`). 실패하면 `moduleManifest`에서 수동으로 고른다.
+  - `AddInstanceMigration.js`: 폴더 선택 → `migrationScanDir`(daemon `/api/modules/detect`, 파일 목록은 주지 않는다) → 모듈 자동 감지(`dir_signatures`). 실패하면 `moduleManifest`에서 수동으로 고른다.
 - **ServerSettingsModal.js + useServerSettings.js**: 모듈 `settings.fields` 스키마로 필드를 렌더링하고(`instanceUpdateSettings`), 버전 선택과 설치(`moduleListVersions`, `moduleInstallServer`, `instanceGetInstalledVersion`), 서버 리셋(`instanceResetServer`)을 제공한다. 인스턴스별 bot alias와 권한 편집도 여기서 하는데, bot-config을 직접 load/save한다(515-592).
 - **CommandModal.js**: 모듈 `commands.fields` 기반 명령 힌트, 자동완성, 입력 폼. `executeCommand`(82)로 실행한다.
 - **SettingsModal.js**: 탭은 `general / appearance / extensions / advanced`(335-353)이다. 버전과 컴포넌트 정보(`getComponentInfo`), 언어, 테마, IPC 포트, 언인스톨(`launchUninstaller`)이 있고, SabaStorage로 들어가는 진입점이 있다.

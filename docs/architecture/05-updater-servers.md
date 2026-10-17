@@ -315,7 +315,7 @@ zod 스키마는 `middleware/schemas.ts` 한 곳에 모여 있다.
 5. relay는 상태를 completed로 바꾸고 `resultWaiters.wake(id)`를 호출한다. bot은 `result.data.text`(최대 1950자)로 Discord에 reply한다.
 6. agent의 재시도 백오프는 3초에서 시작해 최대 60초다. sleeping 상태면 30초마다 확인한다(`relay_agent.rs:22-26, 417-420`).
 
-**(c) Heartbeat**: 60초마다 `POST /heartbeat`(`relay_agent.rs:211-260`). metadata = `{servers, modules, moduleDetails:{}, botConfig:{prefix, moduleAliases, commandAliases}}`이고, 서버 목록에서 `rcon_password`/`rest_password`는 뺀다(`relay_agent.rs:262-324`). 응답의 `sleeping`으로 폴링을 멈추거나 다시 시작한다. 시작할 때 `GET /info`로 `minAgentVersion`을 비교한다(`relay_agent.rs:191-`).
+**(c) Heartbeat**: 60초마다 `POST /heartbeat`(`relay_agent.rs:211-260`). metadata = `{servers, modules, moduleDetails:{}, botConfig:{prefix, moduleAliases, commandAliases}, allowedInstances?:{<guildId>:[instance id]}}`이고(`allowedInstances`는 `bot.node_settings[guild].allowedInstances` 목록이 있는 길드만, 없으면 제한 없음), 서버 목록에서 `rcon_password`/`rest_password`는 뺀다(`relay_agent.rs:262-324`). 응답의 `sleeping`으로 폴링을 멈추거나 다시 시작한다. 시작할 때 `GET /info`로 `minAgentVersion`을 비교한다(`relay_agent.rs:191-`).
 
 **(d) Sleep/Wake**: 슬래시 `/사바쨩 코코낸내`/`기상`이 메모리의 `_pausedHosts`/`_pausedGuilds` Set을 토글한다(`bot/index.ts:76-81,647-720`).
 

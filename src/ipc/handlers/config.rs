@@ -4,7 +4,6 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
@@ -256,54 +255,3 @@ pub async fn get_system_components(State(_state): State<IPCServer>) -> impl Into
 }
 
 // ── Directory Scan (migration) ──
-
-#[derive(Deserialize)]
-pub struct ScanDirRequest {
-    pub path: String,
-}
-
-/// POST /api/fs/scan-dir — 디렉토리 내용 스캔 (마이그레이션 등)
-pub async fn scan_directory(
-    State(_state): State<IPCServer>,
-    Json(req): Json<ScanDirRequest>,
-) -> impl IntoResponse {
-    let dir_path = std::path::Path::new(&req.path);
-
-    if !dir_path.exists() {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": "Directory not found" })),
-        )
-            .into_response();
-    }
-
-    match std::fs::read_dir(dir_path) {
-        Ok(entries) => {
-            let mut files = Vec::new();
-            let mut dirs = Vec::new();
-            for entry in entries.flatten() {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if let Ok(ft) = entry.file_type() {
-                    if ft.is_file() {
-                        files.push(name);
-                    } else if ft.is_dir() {
-                        dirs.push(name);
-                    }
-                }
-            }
-            (StatusCode::OK, Json(json!({ "ok": true, "files": files, "dirs": dirs }))).into_response()
-        }
-        Err(e) => {
-            let msg = if e.kind() == std::io::ErrorKind::PermissionDenied {
-                "Permission denied"
-            } else {
-                "Failed to read directory"
-            };
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": msg })),
-            )
-                .into_response()
-        }
-    }
-}

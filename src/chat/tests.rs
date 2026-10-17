@@ -243,3 +243,14 @@ async fn instance_aliases_pick_one_of_several_instances() {
     let cat = Catalog::for_language("en");
     assert_eq!(run(&api, &s, "cr start").await, cat.t("errors.multiple_instances", &[("module", "minecraft")]));
 }
+
+#[test]
+fn quoted_arguments_stay_together() {
+    use super::split_quoted;
+    assert_eq!(split_quoted(r#"give "Steve Jobs" diamond 3"#), vec!["give", "Steve Jobs", "diamond", "3"]);
+    assert_eq!(split_quoted(r#""one""#), vec!["one"]);
+    // 낱말 중간의 따옴표와 닫히지 않은 따옴표는 그대로
+    assert_eq!(split_quoted(r#"{"text":"a b"}"#), vec![r#"{"text":"a"#, r#"b"}"#]);
+    assert_eq!(split_quoted(r#""open ended"#), vec![r#""open"#, "ended"]);
+    assert_eq!(split_quoted("plain  words"), vec!["plain", "words"]);
+}
