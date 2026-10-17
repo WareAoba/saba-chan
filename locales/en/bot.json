@@ -131,5 +131,114 @@
   "schedule": {
     "restart_warning": "The server restarts in {{minutes}} min.",
     "update_warning": "The server restarts for an update in {{minutes}} min."
+  },
+  "actions": {
+    "instance": {
+      "list": {
+        "title": "Server list",
+        "description": "Registered servers and their state"
+      },
+      "events": {
+        "title": "Start and stop history",
+        "description": "When and why it started or stopped"
+      },
+      "create": {
+        "title": "Create server"
+      },
+      "settings": {
+        "set": {
+          "title": "Change server settings"
+        }
+      },
+      "schedule": {
+        "set": {
+          "title": "Change scheduled tasks"
+        }
+      },
+      "delete": {
+        "title": "Delete server"
+      }
+    },
+    "server": {
+      "status": {
+        "title": "Server status",
+        "description": "The state of one server"
+      },
+      "start": {
+        "title": "Start server"
+      },
+      "stop": {
+        "title": "Stop server"
+      },
+      "restart": {
+        "title": "Restart server"
+      },
+      "console": {
+        "tail": {
+          "title": "Console tail",
+          "description": "Last 20 console lines"
+        }
+      }
+    },
+    "monitor": {
+      "summary": {
+        "title": "Resource use",
+        "description": "CPU, memory, disk and network"
+      }
+    },
+    "backup": {
+      "list": {
+        "title": "Backups"
+      },
+      "create": {
+        "title": "Create backup"
+      },
+      "restore": {
+        "title": "Restore backup",
+        "description": "Overwrites the current server files with the backup"
+      }
+    },
+    "module": {
+      "install": {
+        "title": "Install module",
+        "description": "Downloads and installs it from the official catalog"
+      }
+    },
+    "extension": {
+      "enable": {
+        "title": "Enable extension"
+      },
+      "disable": {
+        "title": "Disable extension"
+      }
+    },
+    "update": {
+      "check": {
+        "title": "Check for updates"
+      },
+      "apply": {
+        "title": "Apply update",
+        "description": "Installs the downloaded update and restarts the app"
+      }
+    },
+    "field": {
+      "action": "Action",
+      "instance": "Server",
+      "name": "Name",
+      "module_name": "Module",
+      "module_settings": "Module settings",
+      "schedule": "Schedule",
+      "backup_keep": "Backups to keep",
+      "module": "Module",
+      "extension": "Extension",
+      "backup": "Backup",
+      "overwrites": "Overwrites",
+      "overwrites_instance": "current server files",
+      "source": "Source",
+      "trust": "Trust",
+      "version": "Version to install",
+      "installed": "Installed version",
+      "official_catalog": "official catalog"
+    }
   }
 }

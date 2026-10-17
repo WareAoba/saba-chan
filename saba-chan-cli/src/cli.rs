@@ -104,6 +104,20 @@ pub enum Cmd {
     /// Who may run which commands from Discord (levels per member, preset, overrides)
     #[command(subcommand, visible_alias = "permissions")]
     Perm(PermCmd),
+    /// Run any daemon action by id (`saba do` alone lists them)
+    Do {
+        /// Action id, e.g. server.restart or server.command:say
+        action: Option<String>,
+        /// Server the action works on
+        #[arg(long, short)]
+        server: Option<String>,
+        /// Only check the input and show what would happen
+        #[arg(long)]
+        plan: bool,
+        /// Input as key=value (values that read as JSON stay JSON)
+        #[arg(value_name = "KEY=VALUE")]
+        input: Vec<String>,
+    },
     /// Versions of every installed part
     Version,
     /// Open the interactive shell

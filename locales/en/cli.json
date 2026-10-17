@@ -443,7 +443,8 @@
       "perm.preset": "Command level preset: loose, default or strict",
       "perm.cap": "Highest level a request through the chatbot can use",
       "perm.command": "Level one command needs (`<server id>/<command>`); leave the level out to go back to the preset",
-      "perm.owner": "Change the pinned owner of this Discord server"
+      "perm.owner": "Change the pinned owner of this Discord server",
+      "do": "Run any daemon action by id (`saba do` alone lists them)"
     },
     "arg": {
       "member": "Discord user ID",
@@ -566,6 +567,16 @@
       "module_modified": "The module ({{id}}) changed after it was installed. Reinstall it unless you edited it yourself.",
       "extension_unverified": "Enabled an extension ({{id}}) that did not come from the official catalog. Make sure you trust its source.",
       "extension_modified": "The extension ({{id}}) changed after it was installed. Reinstall it unless you edited it yourself."
+    }
+  },
+  "do": {
+    "bad_pair": "Input must look like key=value: {{pair}}",
+    "confirm": "Run {{action}}?",
+    "done": "{{action}} done",
+    "col": {
+      "id": "Action",
+      "title": "Name",
+      "risk": "Risk"
     }
   },
   "perm": {

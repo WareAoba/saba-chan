@@ -7,6 +7,7 @@ pub mod chatbot;
 pub mod config;
 pub mod console;
 pub mod daemon;
+pub mod do_action;
 pub mod extension;
 pub mod module;
 pub mod monitor;
@@ -31,6 +32,7 @@ pub async fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
         Cmd::Monitor(a) => monitor::run(ctx, a).await,
         Cmd::Audit { server, limit } => audit::run(ctx, server.as_deref(), limit).await,
         Cmd::Perm(c) => perm::run(ctx, c).await,
+        Cmd::Do { action, server, plan, input } => do_action::run(ctx, action.as_deref(), server.as_deref(), plan, &input).await,
         Cmd::Server(c) => server::run(ctx, c).await,
         Cmd::Start(a) => server::start(ctx, a).await,
         Cmd::Stop(a) => server::stop(ctx, a).await,

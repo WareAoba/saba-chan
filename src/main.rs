@@ -20,6 +20,7 @@ mod commands;
 mod module_audit;
 mod audit;
 mod sandbox;
+mod actions;
 mod launch_args;
 mod relay_agent;
 

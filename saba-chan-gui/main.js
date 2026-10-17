@@ -2378,6 +2378,19 @@ ipcMain.handle('permissions:setMember', (_event, guildId, discordId, level) =>
 ipcMain.handle('permissions:removeMember', (_event, guildId, discordId) =>
     daemonCall('delete', permPath(guildId, discordId)));
 
+// 액션 카탈로그 (P2): 본문은 데몬 HTTP 본문 그대로. 실패하면 {success:false, error_code, error} 본문을 넘긴다
+ipcMain.handle('actions:list', (_event, opts) => {
+    const { surface = 'gui', instance, locale } = opts || {};
+    const params = new URLSearchParams({ surface });
+    if (instance) params.set('instance', String(instance));
+    if (locale) params.set('locale', String(locale));
+    return daemonCall('get', `/api/actions?${params}`);
+});
+ipcMain.handle('actions:plan', (_event, id, body) =>
+    daemonCall('post', `/api/actions/${encodeURIComponent(id)}/plan`, body || {}));
+ipcMain.handle('actions:run', (_event, id, body) =>
+    daemonCall('post', `/api/actions/${encodeURIComponent(id)}/run`, body || {}));
+
 ipcMain.handle('audit:list', (_event, opts) => {
     const { limit, instance } = opts || {};
     const params = new URLSearchParams();

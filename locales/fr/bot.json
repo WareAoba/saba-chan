@@ -131,5 +131,114 @@
   "schedule": {
     "restart_warning": "Le serveur redémarre dans {{minutes}} min.",
     "update_warning": "Le serveur redémarre pour une mise à jour dans {{minutes}} min."
+  },
+  "actions": {
+    "instance": {
+      "list": {
+        "title": "Liste des serveurs",
+        "description": "Serveurs enregistrés et leur état"
+      },
+      "events": {
+        "title": "Historique des démarrages et arrêts",
+        "description": "Quand et pourquoi il a démarré ou s'est arrêté"
+      },
+      "create": {
+        "title": "Créer un serveur"
+      },
+      "settings": {
+        "set": {
+          "title": "Modifier les paramètres du serveur"
+        }
+      },
+      "schedule": {
+        "set": {
+          "title": "Modifier les tâches planifiées"
+        }
+      },
+      "delete": {
+        "title": "Supprimer le serveur"
+      }
+    },
+    "server": {
+      "status": {
+        "title": "État du serveur",
+        "description": "L'état d'un serveur"
+      },
+      "start": {
+        "title": "Démarrer le serveur"
+      },
+      "stop": {
+        "title": "Arrêter le serveur"
+      },
+      "restart": {
+        "title": "Redémarrer le serveur"
+      },
+      "console": {
+        "tail": {
+          "title": "Fin de la console",
+          "description": "20 dernières lignes de la console"
+        }
+      }
+    },
+    "monitor": {
+      "summary": {
+        "title": "Utilisation des ressources",
+        "description": "Processeur, mémoire, disque et réseau"
+      }
+    },
+    "backup": {
+      "list": {
+        "title": "Sauvegardes"
+      },
+      "create": {
+        "title": "Créer une sauvegarde"
+      },
+      "restore": {
+        "title": "Restaurer une sauvegarde",
+        "description": "Remplace les fichiers actuels du serveur par la sauvegarde"
+      }
+    },
+    "module": {
+      "install": {
+        "title": "Installer un module",
+        "description": "Le télécharge et l'installe depuis le catalogue officiel"
+      }
+    },
+    "extension": {
+      "enable": {
+        "title": "Activer l'extension"
+      },
+      "disable": {
+        "title": "Désactiver l'extension"
+      }
+    },
+    "update": {
+      "check": {
+        "title": "Rechercher des mises à jour"
+      },
+      "apply": {
+        "title": "Appliquer la mise à jour",
+        "description": "Installe la mise à jour téléchargée et redémarre l'application"
+      }
+    },
+    "field": {
+      "action": "Action",
+      "instance": "Serveur",
+      "name": "Nom",
+      "module_name": "Module",
+      "module_settings": "Paramètres du module",
+      "schedule": "Planification",
+      "backup_keep": "Sauvegardes à conserver",
+      "module": "Module",
+      "extension": "Extension",
+      "backup": "Sauvegarde",
+      "overwrites": "Écrase",
+      "overwrites_instance": "fichiers actuels du serveur",
+      "source": "Source",
+      "trust": "Confiance",
+      "version": "Version à installer",
+      "installed": "Version installée",
+      "official_catalog": "catalogue officiel"
+    }
   }
 }

@@ -315,6 +315,9 @@
 | GET | `/api/permissions/:guildId` | `permissions.rs` `get_permissions` | - | `{guildId, ownerDiscordId, relayOwnerDiscordId, defaultLevel, preset, chatbotCap, members, commandLevels, presets}` |
 | PATCH | `/api/permissions/:guildId` | `permissions.rs` `update_permissions` | `{defaultLevel?, preset?, chatbotCap?, ownerDiscordId?, commandLevels?:{key: level\|null}}` | 바뀐 전체(GET과 같은 모양). 하나라도 틀리면 저장하지 않고 400 `invalid_level`·`invalid_preset`·`invalid_command`·`invalid_member`·`unknown_key`. `ownerDiscordId`는 고정된 주인을 바꾸는 유일한 길이다(CLI `saba perm owner`) |
 | PUT·DELETE | `/api/permissions/:guildId/members/:discordId` | `permissions.rs` `set_member`·`remove_member` | PUT `{level: -1..2}` | 바뀐 전체. 주인이면 400 `owner_fixed`. DELETE는 기본 레벨로 되돌린다 |
+| GET | `/api/actions` | `actions.rs` `list_actions` | query `surface?`(gui·cli·discord·chatbot), `instance?`, `locale?` | `{actions:[{id, kind, risk, surfaces, scope, input, titleKey, title, description?, route}], locale}`. `instance`를 주면 그 서버 명령이 `server.command:<이름>`으로 펼쳐진다. 선언은 `src/actions/mod.rs` `ACTIONS` 하나(P2) |
+| POST | `/api/actions/:id/plan` | `actions.rs` `plan_action` | `{input, instance?, locale?}` | `{success, planId, actionId, instance, summary:[{labelKey, label, value}], risk, needsConfirm, expiresAt}`. 부작용 없음. 400 `invalid_input {field, reason}`, 403 `action_not_allowed`·`PERMISSION_DENIED {args}`, 404 `unknown_action` |
+| POST | `/api/actions/:id/run` | `actions.rs` `run_action` | `{input, instance?}` 또는 `{planId}` | `{success, actionId, status, result}`(`result`는 밑 라우트 응답 그대로). 404 `plan_expired`, 403 `plan_not_yours`. 데몬 라우터를 안에서 부르므로 감사 기록은 원래 요청의 출처로 남는다 |
 | POST | `/api/client/:id/heartbeat` | `client.rs:51` | 본문은 무시 | `{ok}` / 404 |
 | DELETE | `/api/client/:id/unregister` | `client.rs:69` | query `shutdown=true\|false` | `{ok}` / 404 |
 | POST | `/api/daemon/shutdown` | `client.rs:12` | - | `{ok, message}`. 200ms 뒤 `stop_requested` cancel |
@@ -487,6 +490,7 @@ Relay 서명 방식(`relay.rs:100-137`):
 - `nodeSettings[guildId]`의 디스코드 명령 권한 (P1, `chat/permissions.rs`). 원본은 이것 하나다.
   - 키: `ownerDiscordId`(고정된 주인), `relayOwnerDiscordId`(릴레이가 알려 온 다른 주인, 경고용), `defaultLevel`(1), `members{discordId: -1..2}`, `preset`("default"·"loose"·"strict"), `commandLevels{"<instanceId>/<command>": 0..3}`, `chatbotCap`(0), 예전 금지 목록 `memberPermissions`(읽기만).
   - 레벨: 소유자 3, 관리자 2, 유저 1, 챗봇 0, 금지 -1. 요구 레벨은 `commandLevels` 덮어쓰기, 없으면 프리셋표[risk]다. default 프리셋은 safe 0, caution 1, danger 2이고, loose는 0/0/1, strict는 1/2/3이다. 내장 명령의 risk는 `status` safe, `start`·`stop` caution, 모듈 명령은 선언값(없으면 caution).
+  - 액션 카탈로그(P2): 서버 명령 액션은 위와 같은 키(`<instanceId>/<command>`), 그 밖의 액션은 `<action id>`·`<instanceId>/<action id>`로 덮어쓴다. 관리 액션(`kind=admin`)의 프리셋 값은 느슨 2, 기본 2, 엄격 3이다(`actions::admin_level`). 디스코드의 `update.apply`는 덮어쓰기와 상관없이 소유자다.
   - 판정: 릴레이에서 온 요청(`ChatRequest.remote`)만 판정한다. GUI·CLI 요청은 하지 않는다. 금지는 help·list도 못 쓴다. 챗봇 경로는 `min(작성자 레벨, chatbotCap)`이다. 거부는 `PERMISSION_DENIED {need, level, via?}`.
   - 설정이 없는 길드도 같은 기본값으로 판정한다(제한 없음이 아니다).
   - 이 키들은 권한 API로만 바뀐다. 봇 설정 저장(`PATCH /api/config/bot`)은 이 키들을 이전 값으로 되돌린다(`config_store::keep_permission_keys`).

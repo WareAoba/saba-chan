@@ -566,7 +566,8 @@
       "perm.preset": "명령 레벨 프리셋: loose, default, strict",
       "perm.cap": "챗봇을 거친 요청이 쓸 수 있는 가장 높은 레벨",
       "perm.command": "명령 하나에 필요한 레벨 (`<서버 id>/<명령>`). 레벨을 비우면 프리셋으로 돌아가요",
-      "perm.owner": "고정된 디스코드 서버 주인 바꾸기"
+      "perm.owner": "고정된 디스코드 서버 주인 바꾸기",
+      "do": "데몬 액션을 id로 실행 (`saba do`만 치면 목록)"
     },
     "arg": {
       "json": "글 대신 기계가 읽는 JSON으로 출력",
@@ -753,6 +754,16 @@
       "module_modified": "모듈({{id}})의 파일이 설치한 뒤 바뀌었어요. 직접 고친 것이 아니라면 다시 설치해 주세요.",
       "extension_unverified": "공식 카탈로그에서 받지 않은 익스텐션({{id}})을 켰어요. 믿을 수 있는 곳에서 받은 것인지 확인해 주세요.",
       "extension_modified": "익스텐션({{id}})의 파일이 설치한 뒤 바뀌었어요. 직접 고친 것이 아니라면 다시 설치해 주세요."
+    }
+  },
+  "do": {
+    "bad_pair": "입력은 key=value 모양이어야 해요: {{pair}}",
+    "confirm": "{{action}}을(를) 실행할까요?",
+    "done": "{{action}} 완료",
+    "col": {
+      "id": "액션",
+      "title": "이름",
+      "risk": "위험도"
     }
   },
   "perm": {
