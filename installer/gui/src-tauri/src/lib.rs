@@ -314,6 +314,9 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         }
     }
 
+    // 덮어쓰기 설치: 이 폴더의 데몬이 떠 있으면 먼저 끈다 (파일 잠금 방지)
+    uninstall::stop_daemon_before_install(&install_dir).await;
+
     // Step 2: 서명된 릴리즈 manifest (5-10%)
     emit("fetch", "Fetching release information...", 7);
     let manifest = match config.release.clone() {

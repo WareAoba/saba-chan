@@ -23,7 +23,7 @@ use crate::supervisor::module_loader::CommandField;
 use aliases::ModuleAliases;
 use api::{DaemonApi, ModuleView, ServerView};
 use i18n::Catalog;
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 
 /// 처리기가 쓰는 봇 설정 일부
@@ -86,8 +86,30 @@ struct Ctx<'a, D: DaemonApi> {
     aliases: ModuleAliases,
 }
 
-/// 텍스트 명령을 처리하고 응답 문자열을 돌려줍니다. 실패해도 항상 응답을 만듭니다.
-pub async fn process<D: DaemonApi>(api: &D, settings: &ChatSettings, cat: &Catalog, req: &ChatRequest) -> String {
+/// 처리 결과. `text`는 늘 사람이 읽을 문구다. 데몬이 입력을 알아보지 못했으면 `code`가 붙고,
+/// 릴레이는 이 코드를 보고 모델 해석기에 정확한 명령을 물을 수 있다
+#[derive(Debug, Clone, PartialEq)]
+pub struct Reply {
+    pub text: String,
+    /// `UNKNOWN_COMMAND` | `INSTANCE_NOT_FOUND`. None이면 처리된 응답(성공이든 실행 오류든)
+    pub code: Option<&'static str>,
+    pub args: Value,
+}
+
+impl Reply {
+    fn unrecognized(code: &'static str, text: String, args: Value) -> Self {
+        Self { text, code: Some(code), args }
+    }
+}
+
+impl From<String> for Reply {
+    fn from(text: String) -> Self {
+        Self { text, code: None, args: Value::Null }
+    }
+}
+
+/// 텍스트 명령을 처리하고 응답을 돌려줍니다. 실패해도 항상 응답을 만듭니다.
+pub async fn process<D: DaemonApi>(api: &D, settings: &ChatSettings, cat: &Catalog, req: &ChatRequest) -> Reply {
     let modules = api.modules().await;
     let aliases = ModuleAliases::build(&modules, &settings.module_aliases);
     let ctx = Ctx { api, settings, cat, req, modules, aliases };
@@ -96,11 +118,11 @@ pub async fn process<D: DaemonApi>(api: &D, settings: &ChatSettings, cat: &Catal
     let args: Vec<&str> = text.split_whitespace().collect();
 
     let Some(first) = args.first().copied() else {
-        return ctx.help().await;
+        return ctx.help().await.into();
     };
     match TopLevel::parse(first) {
-        Some(TopLevel::Help) => return ctx.help().await,
-        Some(TopLevel::List) => return ctx.list().await,
+        Some(TopLevel::Help) => return ctx.help().await.into(),
+        Some(TopLevel::List) => return ctx.list().await.into(),
         None => {}
     }
 
@@ -108,7 +130,7 @@ pub async fn process<D: DaemonApi>(api: &D, settings: &ChatSettings, cat: &Catal
         Ok(s) => s,
         Err(e) => {
             tracing::warn!("[Chat] 서버 목록 조회 실패: {}", e);
-            return format!("❌ {}", cat.t("messages.command_error", &[]));
+            return format!("❌ {}", cat.t("messages.command_error", &[])).into();
         }
     };
 
@@ -118,17 +140,28 @@ pub async fn process<D: DaemonApi>(api: &D, settings: &ChatSettings, cat: &Catal
         None => {
             // 모듈 별명이나 인스턴스 이름이 실제 서버로 있어야 명령어 안내
             if !mounted {
-                return cat.t("errors.unknown_input", &[]);
+                let command = text.trim();
+                return Reply::unrecognized("UNKNOWN_COMMAND", cat.t("errors.unknown_input", &[]), json!({ "command": command }));
             }
-            ctx.module_help(first, &servers)
+            ctx.module_help(first, &servers).into()
         }
         Some(cmd) => {
             if module_known && !mounted {
-                return cat.t("errors.unknown_input", &[]);
+                return Reply::unrecognized("INSTANCE_NOT_FOUND", cat.t("errors.unknown_input", &[]), json!({ "name": first }));
             }
-            ctx.module_command(first, cmd, &args[2..], &servers).await
+            ctx.module_command(first, cmd, skip_words(text, 2), &servers).await
         }
     }
+}
+
+/// 앞의 낱말 `n`개를 건너뛴 나머지 원문 (따옴표 안의 공백을 그대로 두려고 나누기 전 문자열을 쓴다)
+fn skip_words(text: &str, n: usize) -> &str {
+    let mut rest = text.trim_start();
+    for _ in 0..n {
+        let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+        rest = rest[end..].trim_start();
+    }
+    rest
 }
 
 /// 릴레이는 접두사 없이 보내지만, 사용자가 붙여 보낸 경우도 받아 준다
@@ -272,18 +305,22 @@ impl<D: DaemonApi> Ctx<'_, D> {
     }
 
     /// 별명/인스턴스 이름으로 대상 서버를 찾는다. 찾지 못하면 사용자에게 줄 응답을 Err로.
-    fn find_server<'s>(&self, alias: &str, servers: &'s [ServerView]) -> Result<&'s ServerView, String> {
+    fn find_server<'s>(&self, alias: &str, servers: &'s [ServerView]) -> Result<&'s ServerView, Reply> {
         match self.named_servers(alias, servers).as_slice() {
             [one] => return Ok(one),
-            [first, ..] => return Err(self.t("errors.multiple_instances", &[("module", &first.module)])),
+            [first, ..] => return Err(self.t("errors.multiple_instances", &[("module", &first.module)]).into()),
             [] => {}
         }
         let module = self.aliases.resolve(alias);
         let matched: Vec<&ServerView> = servers.iter().filter(|s| s.module == module || s.name.contains(&module)).collect();
         match matched.as_slice() {
             [one] => Ok(one),
-            [] => Err(self.t("server.not_found", &[("alias", alias), ("resolved", &module)])),
-            _ => Err(self.t("errors.multiple_instances", &[("module", &module)])),
+            [] => Err(Reply::unrecognized(
+                "INSTANCE_NOT_FOUND",
+                self.t("server.not_found", &[("alias", alias), ("resolved", &module)]),
+                json!({ "name": alias }),
+            )),
+            _ => Err(self.t("errors.multiple_instances", &[("module", &module)]).into()),
         }
     }
 
@@ -329,32 +366,40 @@ impl<D: DaemonApi> Ctx<'_, D> {
 
     // ── 모듈 + 명령어 ──
 
-    async fn module_command(&self, alias: &str, cmd_alias: &str, extra: &[&str], servers: &[ServerView]) -> String {
+    async fn module_command(&self, alias: &str, cmd_alias: &str, extra: &str, servers: &[ServerView]) -> Reply {
         if let Some(msg) = self.alias_conflict(alias) {
-            return msg;
+            return msg.into();
         }
         let server = match self.find_server(alias, servers) {
             Ok(s) => s,
-            Err(msg) => return msg,
+            Err(reply) => return reply,
         };
         let Some(module) = self.module(&server.module) else {
-            return self.t("server.module_missing", &[("module", &server.module)]);
+            return self.t("server.module_missing", &[("module", &server.module)]).into();
         };
         let command = aliases::resolve_command(Some(module), &self.settings.command_aliases, cmd_alias);
 
         if self.is_denied(&server.id, &command) {
             tracing::info!("[Chat] 권한 거부: user={:?} server={} command={}", self.req.user_id, server.id, command);
-            return self.t("errors.permission_denied", &[]);
+            return self.t("errors.permission_denied", &[]).into();
         }
 
         match command.as_str() {
-            "start" => self.start(server).await,
-            "stop" => self.stop(server).await,
-            "status" => self.status(server),
+            "start" => self.start(server).await.into(),
+            "stop" => self.stop(server).await.into(),
+            "status" => self.status(server).into(),
             _ => match module.command(&command) {
-                Some(field) => self.run_defined(server, module, field, alias, cmd_alias, extra).await,
+                Some(field) => self.run_defined(server, module, field, alias, cmd_alias, extra).await.into(),
                 // 없는 명령이면 이 모듈에서 쓸 수 있는 명령을 같이 보여준다
-                None => format!("{}\n\n{}", self.t("errors.command_not_found", &[]), self.module_help(alias, servers)),
+                // 릴레이는 해석에 실패하면 자기 문구 뒤에 `args.help`를 붙인다
+                None => {
+                    let help = self.module_help(alias, servers);
+                    Reply::unrecognized(
+                        "UNKNOWN_COMMAND",
+                        format!("{}\n\n{}", self.t("errors.command_not_found", &[]), help),
+                        json!({ "command": cmd_alias, "name": server.name, "help": help }),
+                    )
+                }
             },
         }
     }
@@ -395,8 +440,8 @@ impl<D: DaemonApi> Ctx<'_, D> {
     }
 
     /// 정의된 명령 실행 — 해석·검증·라우팅은 데몬 명령 경로(`crate::commands`)가 한다
-    async fn run_defined(&self, server: &ServerView, module: &ModuleView, field: &CommandField, alias: &str, cmd_alias: &str, extra: &[&str]) -> String {
-        let args = split_quoted(&extra.join(" "));
+    async fn run_defined(&self, server: &ServerView, module: &ModuleView, field: &CommandField, alias: &str, cmd_alias: &str, extra: &str) -> String {
+        let args = split_quoted(extra);
         let resp = self.api.command(&server.id, &field.name, args).await;
         self.render_result(server, module, field, alias, cmd_alias, resp)
     }
@@ -457,34 +502,29 @@ impl<D: DaemonApi> Ctx<'_, D> {
 /// 정의에 없는 명령은 원문 그대로 콘솔로 가므로 이 규칙을 쓰지 않는다
 pub fn split_quoted(text: &str) -> Vec<String> {
     let mut out = Vec::new();
-    let mut words = text.split_whitespace().peekable();
-    while let Some(word) = words.next() {
-        let Some(open) = word.strip_prefix('"') else {
-            out.push(word.to_string());
-            continue;
-        };
-        if let Some(inner) = open.strip_suffix('"') {
-            out.push(inner.to_string());
+    let mut rest = text.trim_start();
+    while !rest.is_empty() {
+        let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+        let word = &rest[..end];
+        // 따옴표로 시작한 낱말이면, 공백 앞에 오는 닫는 따옴표(또는 끝)까지를 원문 그대로 한 칸으로
+        if word.len() > 1 && word.starts_with('"') && word.ends_with('"') {
+            out.push(word[1..word.len() - 1].to_string());
+            rest = rest[end..].trim_start();
             continue;
         }
-        // 닫는 따옴표로 끝나는 낱말까지 모은다. 끝까지 없으면 따옴표째 낱말로 돌려놓는다
-        let mut group = vec![open];
-        let mut closed = false;
-        while let Some(next) = words.peek().copied() {
-            words.next();
-            if let Some(last) = next.strip_suffix('"') {
-                group.push(last);
-                closed = true;
-                break;
+        if word.starts_with('"') {
+            let body = &rest[1..];
+            let close = body.char_indices().find(|&(i, c)| {
+                c == '"' && body[i + 1..].chars().next().is_none_or(char::is_whitespace)
+            });
+            if let Some((i, _)) = close {
+                out.push(body[..i].to_string());
+                rest = body[i + 1..].trim_start();
+                continue;
             }
-            group.push(next);
         }
-        if closed {
-            out.push(group.join(" "));
-        } else {
-            out.push(word.to_string());
-            out.extend(group[1..].iter().map(|w| w.to_string()));
-        }
+        out.push(word.to_string());
+        rest = rest[end..].trim_start();
     }
     out
 }

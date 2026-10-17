@@ -266,10 +266,131 @@ fn stop_saba_processes(install_dir: &Path) {
         ("Saba-chan", false), // 0.1.1 Electron GUI
         ("saba-chan-updater", false),
     ];
-    for (pid, name) in processes_in(install_dir, &TARGETS.map(|(n, _)| n)) {
+    let found = processes_in(install_dir, &TARGETS.map(|(n, _)| n));
+    // 포터블 GUI(saba-chan-gui.exe)는 실행기일 뿐이고 실제 GUI는 임시 폴더에 풀려 그 자식으로 돈다.
+    // 실행기의 자손을 먼저 찾아 둔다 (실행기를 끝내면 부모 관계로 찾을 수 없다)
+    let launchers: Vec<u32> =
+        found.iter().filter(|(_, n)| n.eq_ignore_ascii_case("saba-chan-gui")).map(|(pid, _)| *pid).collect();
+    let unpacked = descendants_of(&launchers, install_dir);
+    for (pid, name) in found {
         let tree = TARGETS.iter().any(|(n, t)| *t && n.eq_ignore_ascii_case(&name));
         tracing::info!("[Uninstall] Stopping {} (PID {})", name, pid);
         kill_pid(pid, tree);
+    }
+    for pid in unpacked {
+        tracing::info!("[Uninstall] Stopping unpacked GUI process (PID {})", pid);
+        kill_pid(pid, false);
+    }
+}
+
+/// 포터블 실행기가 띄운 GUI 프로세스: `pid|ppid|name|exe` 줄들에서 `roots`의 자손 중 GUI 이름(Electron 도우미도
+/// 같은 이름)이고 실행 파일이 `places`(이 설치 폴더, 실행기가 풀어 놓는 임시 폴더) 아래인 것만 고른다.
+/// GUI가 띄운 브라우저 같은 남의 프로그램과 그 아래로는 내려가지 않는다. 제거기 자신(`me`)도 뺀다
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))] // 포터블 실행기는 Windows에만 있다
+fn descendants_in(listing: &str, roots: &[u32], me: u32, places: &[&Path]) -> Vec<u32> {
+    let norm = |p: &str| p.replace('\\', "/").trim_end_matches('/').to_lowercase();
+    let places: Vec<String> = places.iter().map(|p| norm(&p.to_string_lossy())).collect();
+    let ours = |name: &str, exe: &str| {
+        let name = name.strip_suffix(".exe").unwrap_or(name);
+        let exe = norm(exe);
+        saba_chan_updater_lib::GUI_EXE_NAMES
+            .iter()
+            .chain(["Saba-chan.exe"].iter())
+            .any(|g| g.trim_end_matches(".exe").eq_ignore_ascii_case(name))
+            && places.iter().any(|p| exe.strip_prefix(p.as_str()).is_some_and(|rest| rest.starts_with('/')))
+    };
+    let procs: Vec<(u32, u32, bool)> = listing
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.trim().splitn(4, '|');
+            let pid = parts.next()?.trim().parse().ok()?;
+            let ppid = parts.next()?.trim().parse().ok()?;
+            let name = parts.next()?.trim();
+            let exe = parts.next().unwrap_or("").trim();
+            Some((pid, ppid, ours(name, exe)))
+        })
+        .collect();
+    let mut found: Vec<u32> = Vec::new();
+    let mut frontier: Vec<u32> = roots.to_vec();
+    while let Some(parent) = frontier.pop() {
+        for &(pid, ppid, is_gui) in &procs {
+            if ppid == parent && is_gui && pid != me && pid != parent && !roots.contains(&pid) && !found.contains(&pid) {
+                found.push(pid);
+                frontier.push(pid);
+            }
+        }
+    }
+    found
+}
+
+#[cfg(target_os = "windows")]
+fn descendants_of(roots: &[u32], install_dir: &Path) -> Vec<u32> {
+    if roots.is_empty() {
+        return Vec::new();
+    }
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let script = "Get-CimInstance Win32_Process | ForEach-Object { \"$($_.ProcessId)|$($_.ParentProcessId)|$($_.Name)|$($_.ExecutablePath)\" }";
+    match std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+    {
+        Ok(o) => {
+            let temp = std::env::temp_dir();
+            descendants_in(&String::from_utf8_lossy(&o.stdout), roots, std::process::id(), &[install_dir, &temp])
+        }
+        Err(e) => {
+            tracing::warn!("[Uninstall] Cannot list child processes: {}", e);
+            Vec::new()
+        }
+    }
+}
+
+/// 포터블 실행기는 Windows에만 있다
+#[cfg(not(target_os = "windows"))]
+fn descendants_of(_roots: &[u32], _install_dir: &Path) -> Vec<u32> {
+    Vec::new()
+}
+
+/// 다시 설치·덮어쓰기 전에 이 설치 폴더의 데몬을 끈다. 데몬은 인터페이스가 없어도 남아 있으므로
+/// 파일이 잠겨 설치가 실패하지 않게 한다. 먼저 `/api/daemon/shutdown`으로 정상 종료를 부탁하고,
+/// 20초 안에 안 끝나면 그 PID만 강제 종료한다 (트리째가 아니다: 게임 서버는 러너가 쥐고 있다)
+pub async fn stop_daemon_before_install(install_dir: &Path) {
+    let running = || processes_in(install_dir, &["saba-core"]);
+    if running().is_empty() {
+        return;
+    }
+    tracing::info!("[Install] A daemon from this install is running; asking it to shut down");
+    let port = saba_chan_updater_lib::config_file::ConfigFile::default_location()
+        .section("gui")
+        .get("ipcPort")
+        .and_then(|v| v.as_u64())
+        .and_then(|p| u16::try_from(p).ok())
+        .unwrap_or(saba_chan_updater_lib::constants::DEFAULT_IPC_PORT);
+    let token = std::fs::read_to_string(saba_chan_updater_lib::constants::token_file_path()).unwrap_or_default();
+    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(3)).build();
+    if let Ok(client) = client {
+        let sent = client
+            .post(format!("http://127.0.0.1:{}/api/daemon/shutdown", port))
+            .header("X-Saba-Token", token.trim())
+            .json(&serde_json::json!({}))
+            .send()
+            .await;
+        if let Err(e) = sent {
+            tracing::warn!("[Install] Shutdown request failed: {}", e);
+        }
+    }
+    for _ in 0..40 {
+        if running().is_empty() {
+            tracing::info!("[Install] Daemon stopped");
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+    for (pid, name) in running() {
+        tracing::warn!("[Install] {} (PID {}) did not stop; killing it", name, pid);
+        kill_pid(pid, false);
     }
 }
 
@@ -581,6 +702,26 @@ fn schedule_self_delete(install_dir: Option<&PathBuf>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_unpacked_gui_under_the_portable_launcher_is_found_but_not_the_uninstaller() {
+        // 10 = 포터블 실행기, 20 = 임시 폴더의 GUI, 21·22 = GUI 도우미, 30 = 제거기(GUI가 띄움), 31 = 제거기의 자식,
+        // 50 = GUI가 링크로 띄운 브라우저, 51 = 그 자식, 60 = 다른 폴더에 풀린 같은 이름의 GUI(다른 설치본)
+        let listing = "10|1|saba-chan-gui.exe|C:\\Saba\\saba-chan-gui.exe\n\
+                       20|10|Saba-chan.exe|C:\\Temp\\2abc\\Saba-chan.exe\n\
+                       21|20|Saba-chan.exe|C:\\Temp\\2abc\\Saba-chan.exe\n\
+                       22|20|Saba-chan.exe|C:\\Temp\\2abc\\Saba-chan.exe\n\
+                       30|20|saba-chan-installer.exe|C:\\Saba\\saba-chan-installer.exe\n\
+                       31|30|Saba-chan.exe|C:\\Temp\\2abc\\Saba-chan.exe\n\
+                       50|20|chrome.exe|C:\\Program Files\\Google\\chrome.exe\n\
+                       51|50|Saba-chan.exe|C:\\Temp\\2abc\\Saba-chan.exe\n\
+                       60|10|Saba-chan.exe|D:\\Other\\Saba-chan.exe\n";
+        let places = [Path::new("C:\\Saba"), Path::new("C:\\Temp")];
+        let mut found = descendants_in(listing, &[10], 30, &places);
+        found.sort();
+        assert_eq!(found, vec![20, 21, 22]);
+        assert!(descendants_in(listing, &[], 30, &places).is_empty());
+    }
 
     #[test]
     fn only_a_folder_with_saba_binaries_counts_as_the_install_dir() {

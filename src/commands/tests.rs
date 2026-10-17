@@ -151,3 +151,11 @@ fn error_codes_come_from_the_body_or_the_status() {
     assert_eq!(error_code(503, &json!({})), "server_not_running");
     assert_eq!(error_code(500, &Value::Null), "internal_server_error");
 }
+
+#[test]
+fn a_line_break_inside_an_argument_cannot_add_a_second_console_command() {
+    for value in ["hi\nop attacker", "hi\rop attacker", "hi\0op attacker"] {
+        let err = plan_of("say", json!({ "message": value })).unwrap_err();
+        assert_eq!((err.code, err.field.as_deref()), ("invalid_argument", Some("message")), "{value:?}");
+    }
+}

@@ -54,7 +54,7 @@ function refreshIpcBase() {
 axios.defaults.timeout = 5000;
 
 // ── IPC 토큰 인증 ──────────────────────
-// 데몬이 시작 시 생성하는 .ipc_token 파일을 읽어서 모든 요청에 X-Saba-Token 헤더로 포함
+// 데몬이 시작 시 생성하는 .ipc_token 파일을 읽어서 데몬 요청에만 X-Saba-Token 헤더로 포함
 function getIpcTokenPath() {
     if (process.env.SABA_TOKEN_PATH) return process.env.SABA_TOKEN_PATH;
     return path.join(getSabaDataDir(), '.ipc_token');
@@ -89,44 +89,6 @@ function getIpcToken() {
     return _cachedIpcToken;
 }
 
-// ═══════════════════════════════════════════════════════════════
-// ── http.request 레벨 토큰 주입 (axios AxiosHeaders 우회) ──
-// axios 인터셉터/defaults.headers.common 경유로는 Electron 환경에서
-// 토큰이 실제 HTTP 요청에 도달하지 않는 문제가 확인됨.
-// Node.js http.request() 자체를 패치하여 127.0.0.1:IPC_PORT로 가는
-// 모든 요청에 X-Saba-Token 헤더를 강제 주입합니다.
-// ═══════════════════════════════════════════════════════════════
-const _origHttpRequest = http.request;
-http.request = function _patchedRequest(urlOrOptions, optionsOrCallback, _maybeCallback) {
-    // http.request(options[, callback]) — 가장 흔한 패턴 (axios 사용)
-    // http.request(url[, options][, callback])
-    let options;
-    if (typeof urlOrOptions === 'object' && !(urlOrOptions instanceof URL)) {
-        options = urlOrOptions;
-    } else if (typeof optionsOrCallback === 'object' && typeof optionsOrCallback !== 'function') {
-        options = optionsOrCallback;
-    }
-
-    if (options) {
-        const host = options.hostname || options.host || '';
-        const port = parseInt(options.port, 10) || 80;
-        const ipcPort = parseInt(
-            (typeof settings !== 'undefined' && settings && settings.ipcPort) || IPC_PORT_DEFAULT,
-            10,
-        );
-
-        if ((host === '127.0.0.1' || host === 'localhost') && port === ipcPort) {
-            const token = getIpcToken();
-            if (token) {
-                if (!options.headers) options.headers = {};
-                options.headers['X-Saba-Token'] = token;
-            }
-        }
-    }
-
-    return _origHttpRequest.apply(this, arguments);
-};
-
 /** 데몬으로 가는 요청인지 (토큰은 데몬에만 보낸다) */
 function isDaemonRequest(config) {
     try {
@@ -138,7 +100,7 @@ function isDaemonRequest(config) {
     }
 }
 
-// ── axios 인터셉터 (보조: http.request 패치가 주 메커니즘) ──
+// ── axios 인터셉터: 데몬 요청에만 토큰을 붙인다 (Node 전역 http는 건드리지 않는다) ──
 axios.interceptors.request.use((config) => {
     // 데몬 요청에만 토큰을 붙이고, 리다이렉트는 따라가지 않는다 (토큰이 다른 곳으로 새지 않게)
     if (!isDaemonRequest(config)) return config;
@@ -1346,13 +1308,15 @@ app.on('before-quit', () => {
     if (heartbeatClientId) {
         try {
             const currentPort = (settings && settings.ipcPort) || IPC_PORT_DEFAULT;
-            // http는 top-level에서 require하고 패치된 버전 사용 — 토큰 자동 주입됨
+            // 종료 중이라 axios를 기다릴 수 없어 http를 직접 쓴다 — 토큰은 여기서 붙인다
+            const token = getIpcToken();
             const req = http.request({
                 hostname: '127.0.0.1',
                 port: currentPort,
                 path: `/api/client/${heartbeatClientId}/unregister`,
                 method: 'DELETE',
                 timeout: 1000,
+                headers: token ? { 'X-Saba-Token': token } : {},
             });
             req.end();
         } catch (_e) {
@@ -1813,16 +1777,6 @@ ipcMain.handle('module:getLocales', async (_event, moduleName) => {
     } catch (error) {
         console.error(`Failed to load locales for module ${moduleName}:`, error.message);
         return {};
-    }
-});
-
-// 폴더가 어느 모듈의 게임 서버 폴더인지 데몬이 판정한다 (dir_signatures)
-ipcMain.handle('module:detect', async (_event, dirPath) => {
-    try {
-        const response = await axios.post(`${IPC_BASE}/api/modules/detect`, { path: dirPath });
-        return response.data;
-    } catch (error) {
-        return errorBody(error, { matches: [] });
     }
 });
 

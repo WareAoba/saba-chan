@@ -96,7 +96,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 |---|---|---|
 | `process_patterns` | Vec<String> | extension hook `server.status` 컨텍스트로만 전달 (`mod.rs:919-930`). 네이티브 auto-detect에는 **미사용** |
 | `cmd_patterns` | Vec<String> | auto-detect 때 커맨드라인 필터 (`mod.rs:2155-2164`) |
-| `dir_signatures` | Vec<String> | `/api/modules`로 노출. 데몬도 `POST /api/modules/detect`로 매칭한다(`server.rs:370-390`, 전부 있어야 함). GUI 마이그레이션 화면은 아직 직접 매칭한다 (`D:saba-chan-gui/src/components/Modals/AddInstanceMigration.js:74-82`) |
+| `dir_signatures` | Vec<String> | `/api/modules`로 노출. 데몬도 `POST /api/modules/detect`로 매칭한다(`server.rs:370-390`, 전부 있어야 함). GUI 마이그레이션 화면도 이 결과만 쓴다: `migration:scanDir`가 이 API를 부르고(`saba-chan-gui/main.js:2735-2745`), 화면은 돌아온 `matches`로 모듈을 고른다(`AddInstanceMigration.js:73-74`) |
 | `graceful_exit_patterns` | Vec<String> | 정상 종료 문구(정규식). 종료 판정에 쓴다 (§3.6) |
 | `crash_artifacts` | Vec<String> | 크래시 때 생기는 파일. 종료 판정에 쓴다 (§3.6) |
 
@@ -138,7 +138,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `method` | String | `console`(템플릿을 채워 콘솔 stdin으로. 예전 이름 `rcon`은 읽을 때 `console`로 바뀐다, `D:src/supervisor/module_loader.rs:836`) / `rest` / `module`(lifecycle `command()`, 예전 이름 `dual`·`both`도 받음) / 생략(=`module`). 해석은 데몬 `crate::commands`가 한다 (`D:src/commands/mod.rs:104-128`) |
 | `http_method` | String | REST 전용. 기본 `GET` |
 | `endpoint_template` | String | REST 전용. 없으면 `/<name>` |
-| `console_template` | String | 예: `"kick {player}"`. 예전 이름 `rcon_template`도 별칭으로 읽는다 (`D:src/supervisor/module_loader.rs:256-257, 730`) |
+| `console_template` | String | 예: `"kick {player}"`. 예전 이름 `rcon_template`도 별칭으로 읽는다 (`D:src/supervisor/module_loader.rs:256-257, 730`). 인자에 `\r`·`\n`·NUL이 있으면 400 `invalid_argument`로 거부하고, stdin 전송(`ManagedProcess::send_command`)도 여러 줄 명령을 거부한다. 값 하나가 콘솔 명령 두 줄이 되지 않게 한다 |
 | `risk` | String | `safe` / `caution` / `danger`, 없으면 caution |
 | `inputs` | Vec<CommandInput> | |
 
@@ -527,7 +527,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 |---|---|---|---|
 | 1 | ~~GUI·봇의 명령 실행 로직~~ | ~~`method` 분기, 템플릿 치환, 입력 검증을 인터페이스가 중복 구현~~ → 해결: `POST /api/instance/:id/command` 하나로 모이고 데몬 `crate::commands`가 해석한다. GUI는 그 경로만 부른다 (`D:src/commands/mod.rs:1-17`, `saba-chan-gui/main.js:2014-2020`). 로컬 Discord 봇은 지워졌다 | — |
 | 2 | ~~GUI·봇의 시작 경로 선택~~ | ~~인터페이스가 `/managed/start`와 `/server/:name/start`를 고른다~~ → 해결: `POST /api/instance/:id/start`에서 데몬이 고른다 (`server.rs:563-616`, `saba-chan-gui/main.js:1455`) | — |
-| 3 | `AddInstanceMigration.js:74-82` | `dir_signatures` 매칭, 즉 기존 서버 폴더 → 모듈 판정을 GUI 마이그레이션 화면이 아직 직접 한다. 데몬에는 `POST /api/modules/detect`(`server.rs:370-390`)가 생겼고 GUI 메인 프로세스에 연결돼 있다(`saba-chan-gui/main.js:1809-1812`) | 데몬 기능이어야 함 |
+| 3 | — | ~~`dir_signatures` 매칭을 GUI 마이그레이션 화면이 직접 한다~~ → 해결: `migration:scanDir`가 데몬 `POST /api/modules/detect`(`server.rs:370-390`)를 부르고 화면은 그 `matches`만 쓴다(`saba-chan-gui/main.js:2735-2745`, `AddInstanceMigration.js:73-74`) | |
 | 4 | ~~`saba-chan-cli/src/module_registry.rs`의 fs 폴백~~ | ~~CLI가 데몬 응답 실패 시 `module.toml`을 파일시스템에서 직접 파싱~~ → 해결: PR #6 CLI는 모듈 목록을 `GET /api/modules`로만 받는다(`saba-chan-cli/src/resolve.rs:184-193`, `cmd/module.rs:99-100`). 실패하면 오류로 끝나고 로컬 폴백이 없다 | — |
 | 5 | ~~raw TOML로 `[errors]` 읽기~~ | ~~봇이 `/api/module/:name`의 raw TOML 덤프를 읽는다~~ → 해결: `[errors]`는 메타데이터 필드이고 `/command`가 `error_message`로 붙인다. `/api/module/:name`은 메타데이터를 돌려준다 (`server.rs:394-414`) | — |
 | 6 | `D:src/ipc/handlers/instance.rs:991-1017` | 설정 동기화 제외 목록에 `java_path`, `ram`, `use_aikar_flags`(Minecraft 전용 키)와 `managed_start`, `graceful_stop`이 **데몬에 하드코딩**돼 있다. `rcon_port`·`rcon_password`·`enable_rcon`은 게임 파일로 넘기지 않으려고 뺀다. 주석·로그는 "server.properties"(Minecraft 파일명) | 게임별 지식이 데몬에 있음 (모듈 매뉴얼 소관) |

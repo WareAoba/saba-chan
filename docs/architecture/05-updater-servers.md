@@ -142,7 +142,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 5. **updater exe** (`updater/gui/src-tauri/src/lib.rs`)
    - 인자는 `--apply [--wait-pid <pid>] --launch-token <t> [--relaunch <exe> [extra…]]`다(`lib.rs:388-403`). 표가 없거나 맞지 않으면 적용하지 않고 끝낸다. 표를 모르는 옛 데몬(0.1.2 미만)이 띄운 경우만 표 없이 받는다(`lib.rs:407-428`). `--wait-pid`가 있으면 그 PID가 끝나기를 최대 30초 기다린다(`lib.rs:430-447`). install_root는 자기 exe 위치로 정한다(`lib.rs:451-457`).
    - `load_pending_manifest()` → `apply-targets.json`의 key를 차례로 `apply_single_component()` → 성공·실패 모두 `UpdateCompletionMarker`(`<data_dir>/update-complete.json`, 실패 목록 `failed` 포함)를 저장 → `clear_pending_manifest()`가 `pending.json`/`apply-targets.json`과 받아 둔 압축 파일(`.zip`, `.tar.gz`, `.part`, 실패한 것 포함)을 지움(updater-lib `state.rs:63-82`) → 2초 뒤 `--after-update`를 붙여 relaunch(`lib.rs:73-198`, 312-350). 진행 상황은 Tauri 이벤트 `apply:progress`로 알린다. 다음 데몬이 결과를 `GET /api/updates/last-result`로 보여 준다(`updates.rs:682-694`).
-   - relaunch는 Windows에서 `CREATE_BREAKAWAY_FROM_JOB`으로 띄우고, Job이 허용하지 않으면(os error 5) 그 플래그 없이 다시 띄운다(`lib.rs:326-342`). `--relaunch`가 없으면 설치 폴더의 GUI exe(`saba-chan-gui.exe`, 0.1.1 zip의 `Saba-chan.exe`)를 찾는다(`lib.rs:271-274`, updater-lib `lib.rs:272-278`).
+   - relaunch는 Windows에서 `CREATE_BREAKAWAY_FROM_JOB`으로 띄우고, Job이 허용하지 않으면(os error 5) 그 플래그 없이 다시 띄운다(`lib.rs:326-342`). `--relaunch`가 없으면 설치 폴더의 GUI exe(`saba-chan-gui.exe`, 0.1.1 zip의 `Saba-chan.exe`)를 찾는다(`lib.rs:271-274`, updater-lib `lib.rs:272-278`). GUI를 적용하면서 exe 이름이 바뀌면(0.1.1 `Saba-chan.exe` → `saba-chan-gui.exe`) 예전 exe는 `.exe.old`로 비켜 두고(다음 정리 때 지운다) 바탕화면·시작 메뉴 바로가기를 새 exe로 돌린다(`apply.rs` `retire_other_gui_exes`). 0.1.1 업데이터는 `saba-chan-gui.exe`만 찾으므로 0.1.1에서 올릴 때는 GUI가 첫 적용에서 빠지고, 새 데몬으로 한 번 더 적용해야 GUI까지 바뀐다(0.1.1 코드라 고칠 수 없다).
    - Tauri 커맨드: `get_apply_mode`, `start_apply`, `get_preferred_language`, `get_theme`, `check_after_update`.
 6. **바이너리 swap** (`apply_binary_update` `apply.rs:94-181`, gui 184-230)
    - 대상 프로세스가 끝나기를 최대 15초 기다린다. 시간이 지나도 "attempting update anyway"로 그냥 진행한다.
@@ -168,7 +168,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 | POST | `/api/updates/launch-updater` | body `{relaunch:[exe, …]}`. 데몬이 updater를 띄우고 스스로 종료한다(`updates.rs:581-639`) |
 | GET / DELETE | `/api/updates/last-result` | updater가 남긴 마지막 적용 결과. DELETE는 확인 처리(`updates.rs:682-694`) |
 | GET | `/api/updates/integrity` | 설치 때 기록한 파일 해시와 비교 |
-| GET / **PUT** | `/api/updates/config` | 설정 `{enabled, check_interval_hours(1-8), auto_download, install_root, relay_url, channel}`(`auto_apply`는 f498525에서 빠졌다). `config.json`의 `updates` 절에 저장한다. GET은 `mock_relay`(모의 릴레이를 믿는 개발 빌드인지)도 준다(`updates.rs:727-806`) |
+| GET / **PUT** | `/api/updates/config` | 설정 `{enabled, check_interval_hours(1-8), auto_download, install_root, relay_url, channel}`(`auto_apply`는 f498525에서 빠졌다). `config.json`의 `updates` 절에 저장한다. GET은 `mock_relay`(모의 릴레이를 믿는 개발 빌드인지)도 준다(`updates.rs:727-806`). 업데이트 출처(`relay_url`)는 앱에서 바꾸지 않는다: 릴리즈 빌드의 PUT은 비우기만 받고 다른 값은 403 `relay_url_not_settable`(D7). 0.1.1이 남긴 예전 키 `relay_base_url`도 `relay_url`로 읽고, 빈 값은 기본 릴레이다(`updater/src/lib.rs` `UpdateConfig`) |
 
 불일치:
 - ~~GUI의 `updater:setConfig`가 POST로 보내 405가 난다~~ → 해결: PUT으로 보낸다(`saba-chan-gui/main.js:2505-2507`).
@@ -210,7 +210,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 
 Tauri 커맨드(`lib.rs:108-730`): `get_installer_state`, `set_install_path`, `set_language`, `set_shortcut_options`, `set_selected_modules`, `get_available_modules`(같은 manifest의 `module-*`, 폴백 없음), `fetch_latest_release`, `start_install`, `start_uninstall`, `get_app_mode`, `launch_app`, `get_preferred_language`, `browse_folder`. GUI는 `--uninstall` 인자로 installer를 uninstall 모드로 실행한다(`saba-chan-gui/main.js:2653`).
 
-**제거** (`uninstall.rs`): 대상은 제거기 자신이 든 설치 폴더 하나다(`uninstall.rs:251-256`). 그 폴더에서 실행 중인 사바쨩 프로세스만 끝내고(`uninstall.rs:257-274`), 그 폴더의 레지스트리 항목만 지운다(`registry.rs:78-93`). `%APPDATA%/saba-chan`과 모듈 폴더는 설치본들이 함께 쓰므로 다른 설치본 항목이 남아 있으면 지우지 않는다(`uninstall.rs:79-84, 117-142`, `uninstall_entry.rs:42-48`). `keep_settings`이면 `config.json`·`instances`·이관 전 설정 파일만 남긴다(`uninstall.rs:407-449`).
+**제거** (`uninstall.rs`): 대상은 제거기 자신이 든 설치 폴더 하나다(`uninstall.rs:251-256`). 그 폴더에서 실행 중인 사바쨩 프로세스만 끝내고(`uninstall.rs` `stop_saba_processes`), 포터블 GUI 실행기가 임시 폴더에 풀어 띄운 실제 GUI(실행기의 자손, 제거기 자신은 뺀다)도 끝낸 뒤(`descendants_in`), 그 폴더의 레지스트리 항목만 지운다(`registry.rs:78-93`). `%APPDATA%/saba-chan`과 모듈 폴더는 설치본들이 함께 쓰므로 다른 설치본 항목이 남아 있으면 지우지 않는다(`uninstall.rs:79-84, 117-142`, `uninstall_entry.rs:42-48`). `keep_settings`이면 `config.json`·`instances`·이관 전 설정 파일만 남긴다(`uninstall.rs:407-449`).
 
 **문제점**
 - 기본 설치 경로가 `Program Files`(관리자 권한 필요)인데 레지스트리는 HKCU에 쓴다. 더 큰 문제는 updater exe와 daemon이 **권한 상승 없이** `install_root`에 쓴다는 점이다. 기본 경로에 설치하면 업데이트 적용이 권한 문제로 실패할 수 있다(추정, 매니페스트의 requestedExecutionLevel은 확인하지 않음).
@@ -311,7 +311,7 @@ zod 스키마는 `middleware/schemas.ts` 한 곳에 모여 있다.
 1. Discord 사용자가 `<prefix> <text>`를 입력한다. prefix는 길드별 캐시이고 기본값은 `BOT_PREFIX` env 또는 `'사바쨩'`이다(`bot/index.ts:230,238-281`).
 2. `forwardCommand`(`bot/index.ts:730-800`)가 requestId를 먼저 만들고 `resultWaiters.wait(id, 30s)`를 등록한 뒤 `POST /api/command`를 부른다. payload는 `{action:'raw_command', text}`다. `guildId`로 nodes를 조회해 hostId를 찾고, 큐에 INSERT한 뒤 `pollWaiters.wake(hostId)`를 호출한다.
 3. daemon의 relay agent(`src/relay_agent.rs:326-386`)가 `GET /poll`을 계속 돌리고 있다. 서버는 즉시 pending 최대 10건을 조회해 `delivered`로 표시하고 반환한다. 없으면 **25초 대기**(`poll.ts:6`, `pollWaiters.wait`) 후 다시 조회하고, 그래도 없으면 204를 준다. 클라이언트 연결이 끊기면 abort한다. host가 paused 상태면 `{sleeping:true}`를 준다.
-4. agent는 받은 `raw_command`마다 `crate::chat::api::run_with_daemon_settings`를 같은 프로세스에서 실행한다(`relay_agent.rs:388-404`). 접두사·별명·길드별 설정은 daemon의 bot config에서 읽는다(`chat/api.rs:117-122`). 답 텍스트를 `{success, data:{text}}`로 담아 `POST /result/:id`로 보낸다. 모르는 action은 `success:false`다.
+4. agent는 받은 `raw_command`마다 `crate::chat::api::run_with_daemon_settings`를 같은 프로세스에서 실행한다(`relay_agent.rs:388-404`). 접두사·별명·길드별 설정은 daemon의 bot config에서 읽는다(`chat/api.rs:117-122`). 답 텍스트를 `{success, data:{text}}`로 담아 `POST /result/:id`로 보낸다. 입력을 알아보지 못했으면(인스턴스를 못 찾음, 정의에 없는 명령, 모르는 낱말) `{success:false, data:{code:"INSTANCE_NOT_FOUND"|"UNKNOWN_COMMAND", error:<현지화 문구>, args:{name?, command?, help?}}}`로 보내고(정의에 없는 명령이면 `help`에 그 모듈의 명령 안내를 담아 릴레이가 덧붙인다), 릴레이는 이 코드를 보고 모델 해석기에 정확한 명령을 한 번 묻는다(`relay_agent.rs` `raw_command_result`, `chat::Reply`). 모듈 이름만 쓰면 실패가 아니라 명령 안내다. 모르는 action은 `success:false`다.
 5. relay는 상태를 completed로 바꾸고 `resultWaiters.wake(id)`를 호출한다. bot은 `result.data.text`(최대 1950자)로 Discord에 reply한다.
 6. agent의 재시도 백오프는 3초에서 시작해 최대 60초다. sleeping 상태면 30초마다 확인한다(`relay_agent.rs:22-26, 417-420`).
 

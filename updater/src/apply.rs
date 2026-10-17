@@ -194,6 +194,7 @@ impl UpdateManager {
                 Self::extract_tar_gz(staged, &self.install_root)?;
             }
             std::fs::remove_file(staged).ok();
+            self.retire_other_gui_exes(&files);
             tracing::info!("[Updater] GUI (portable exe) updated");
             return Ok(files);
         }
@@ -227,6 +228,38 @@ impl UpdateManager {
         std::fs::remove_file(staged).ok();
         tracing::info!("[Updater] GUI updated successfully");
         Ok(files)
+    }
+
+    /// 새 GUI exe 이름이 예전과 다르면(0.1.1의 `Saba-chan.exe` → `saba-chan-gui.exe`) 예전 exe를
+    /// `.exe.old`로 비켜 두고(`cleanup_old_files`가 나중에 지운다) 바로가기를 새 exe로 돌린다.
+    /// 그대로 두면 바로가기가 예전 GUI를 띄운다
+    pub(crate) fn retire_other_gui_exes(&self, written: &[PathBuf]) {
+        for (old, new_exe) in Self::retire_other_exes(&self.install_root, written, GUI_EXE_NAMES) {
+            retarget_shortcuts(&old, &new_exe);
+        }
+    }
+
+    /// `names` 중 이번에 쓰지 않은 exe를 비켜 두고 (예전 exe, 새 exe) 쌍을 돌려준다
+    pub(crate) fn retire_other_exes(root: &Path, written: &[PathBuf], names: &[&str]) -> Vec<(PathBuf, PathBuf)> {
+        let is_named = |f: &Path| names.iter().any(|n| f.file_name().is_some_and(|f| f.eq_ignore_ascii_case(n)));
+        let Some(new_exe) = written.iter().find(|f| f.parent().is_some_and(|d| same_path(d, root)) && is_named(f)) else {
+            return Vec::new();
+        };
+        let mut retired = Vec::new();
+        for name in names {
+            let old = root.join(name);
+            if same_path(&old, new_exe) || !old.is_file() {
+                continue;
+            }
+            match Self::move_aside_binary(&old) {
+                Ok(()) => {
+                    tracing::info!("[Updater] Retired old GUI exe {}", old.display());
+                    retired.push((old, new_exe.clone()));
+                }
+                Err(e) => tracing::warn!("[Updater] Could not retire old GUI exe {}: {}", old.display(), e),
+            }
+        }
+        retired
     }
 
     // ─────── 유틸리티 ────────────────────────────────────────────────────────────────────────
@@ -483,4 +516,36 @@ impl UpdateManager {
             .map(|name| KNOWN_BINARIES.contains(&name))
             .unwrap_or(false)
     }
+}
+
+/// 바탕화면·시작 메뉴에서 `old`를 가리키는 바로가기를 `new`로 돌린다 (Windows만, 실패해도 적용은 성공)
+fn retarget_shortcuts(old: &Path, new: &Path) {
+    #[cfg(windows)]
+    {
+        // 경로는 환경 변수로 넘긴다 (스크립트 문자열에 넣지 않는다)
+        const SCRIPT: &str = r#"$sh = New-Object -ComObject WScript.Shell
+foreach ($f in 'Desktop','Programs','CommonDesktopDirectory','CommonPrograms') {
+  $dir = [Environment]::GetFolderPath($f)
+  if (-not $dir) { continue }
+  Get-ChildItem -LiteralPath $dir -Filter *.lnk -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+    try {
+      $l = $sh.CreateShortcut($_.FullName)
+      if ($l.TargetPath -ieq $env:SABA_OLD_EXE) { $l.TargetPath = $env:SABA_NEW_EXE; $l.Save() }
+    } catch {}
+  }
+}"#;
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let out = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", SCRIPT])
+            .env("SABA_OLD_EXE", old)
+            .env("SABA_NEW_EXE", new)
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        if let Err(e) = out {
+            tracing::warn!("[Updater] Could not update shortcuts to {}: {}", new.display(), e);
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = (old, new);
 }

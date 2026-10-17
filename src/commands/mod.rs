@@ -208,6 +208,11 @@ fn check(input: &CommandInput, label: &str, value: Value) -> Result<Value, PlanE
         }
     };
 
+    // 값 안의 줄바꿈은 콘솔에서 두 번째 명령이 된다
+    if value.as_str().is_some_and(has_line_break) {
+        return Err(invalid(format!("'{}' must not contain line breaks", label)));
+    }
+
     if let Some(options) = &input.options {
         let text = value.as_str().map(str::to_string).unwrap_or_else(|| value.to_string());
         if !options.iter().any(|o| o == &text) {
@@ -219,6 +224,11 @@ fn check(input: &CommandInput, label: &str, value: Value) -> Result<Value, PlanE
 
 fn toml_to_json(v: &toml::Value) -> Option<Value> {
     serde_json::to_value(v).ok()
+}
+
+/// 콘솔 한 줄을 여러 줄로 쪼갤 수 있는 문자(`\r`, `\n`, NUL)가 있는지
+pub fn has_line_break(text: &str) -> bool {
+    text.contains(['\r', '\n', '\0'])
 }
 
 /// `{key}` 자리를 값으로 채우고, 남은 `{key}` 자리는 앞 공백과 함께 지운다.

@@ -8,7 +8,6 @@ contextBridge.exposeInMainWorld('api', {
     moduleList: () => ipcRenderer.invoke('module:list'),
     moduleRefresh: () => ipcRenderer.invoke('module:refresh'),
     moduleGetMetadata: (name) => ipcRenderer.invoke('module:getMetadata', name),
-    moduleDetect: (path) => ipcRenderer.invoke('module:detect', path),
     moduleAudit: (name) => ipcRenderer.invoke('module:audit', name),
     instanceEvents: (id) => ipcRenderer.invoke('instance:events', id),
     moduleGetLocales: (name) => ipcRenderer.invoke('module:getLocales', name),

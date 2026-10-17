@@ -17,7 +17,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | 책임 | 위치 | 설명 |
 |---|---|---|
 | userData 경로 고정 | main.js:32 | `app.setPath('userData', getSabaDataDir())`. Windows는 `%APPDATA%/saba-chan`, Unix는 `$HOME/.config/saba-chan`, `SABA_DATA_DIR`가 있으면 그 값을 쓴다 |
-| IPC 토큰 인증 | main.js:58-212 | `.ipc_token` 파일을 **직접 읽어** `X-Saba-Token` 헤더에 넣는다. `http.request`를 monkey-patch해서(main.js:99-128) 127.0.0.1:ipcPort로 가는 모든 요청에 주입하고, axios 인터셉터(142-155)는 보조 수단이다. 인터셉터는 데몬으로 가는 요청에만 토큰을 붙이고 리다이렉트를 따라가지 않는다(`isDaemonRequest` 131-139). 401을 받으면 토큰 파일을 다시 읽고 1회 재시도한다(162-212). 단 `/api/relay/` 요청은 재시도하지 않는다 |
+| IPC 토큰 인증 | main.js:58-212 | `.ipc_token` 파일을 **직접 읽어** `X-Saba-Token` 헤더에 넣는다. axios 인터셉터(104-117)가 데몬으로 가는 요청에만 토큰을 붙이고 리다이렉트를 따라가지 않는다(`isDaemonRequest` 93-101). Node 전역 `http.request`는 건드리지 않는다. 종료 시 unregister만 `http.request`를 직접 쓰며 토큰을 그 자리에서 붙인다. 401을 받으면 토큰 파일을 다시 읽고 1회 재시도한다(124-174). 단 `/api/relay/` 요청은 재시도하지 않는다 |
 | 렌더러 격리 | `rendererWebPreferences()` main.js:1038-1045, `lockNavigation()` 1058-1072 | 모든 창이 `nodeIntegration:false, contextIsolation:true, sandbox:true`로 뜬다. 앱 밖 주소로의 이동과 새 창은 막고, http(s) 링크만 바깥 브라우저로 연다 |
 | **Daemon spawn** | `startDaemon()` main.js:549-657 | dev 모드는 `target/release/saba-core(.exe)`, prod 모드는 `getInstallRoot()/saba-core(.exe)`를 `--spawned` 인자로 실행한다(608). env는 `RUST_LOG=info, SABA_LANG, SABA_IPC_PORT, SABA_INSTANCES_PATH=<userData>/instances, SABA_MODULES_PATH`. stdout/stderr는 GUI 로그로 넘긴다 |
 | Daemon 재사용/기동 판단 | `ensureDaemon()` main.js:772-851 | `GET /health`가 200이면 기존 daemon을 재사용한다. 401이면 토큰을 다시 읽으며 최대 3회 재시도한다. ECONNREFUSED/timeout이면 `startDaemon()`을 호출하고 500ms 간격으로 최대 8회 폴링한다 |
@@ -50,7 +50,6 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | moduleList (8) | module:list | 1723 | GET /api/modules | ✓ 652 |
 | moduleRefresh (9) | module:refresh | 1742 | POST /api/modules/refresh | ✓ 653 |
 | moduleGetMetadata (10) | module:getMetadata | 1829 | GET /api/module/:name | ✓ 660 |
-| moduleDetect (11) | module:detect | 1810 | POST /api/modules/detect {path} | ✓ 656 (미사용) |
 | instanceEvents (12) | instance:events | 1820 | GET /api/instance/:id/events (최근 종료 이력) | ✓ 648 (미사용) |
 | moduleGetLocales (13) | module:getLocales | 1799 | GET /api/module/:name/locales | ✓ 707 |
 | moduleListVersions (14) | module:listVersions | 1539 | GET /api/module/:name/versions?… | ✓ 693 |
@@ -114,7 +113,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 
 Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `updates:available`, `updates:completed`, `console:popoutOpened/Closed/popinRequest`, `app:closeRequest`.
 
-**renderer(src/, 테스트 제외)에서 쓰지 않는 preload API**: 위 표의 "미사용" 항목(`moduleDetect`, `instanceEvents`, `instanceStop/Restart/Rename/Commands`, `instanceReadLiveSettings`, `runtimePreflight`, `configDefaults/Reset`, `updaterLastResult`, `loadNodeToken`, `deleteNodeToken`, `relayBotInvite`, `instanceAcceptEula`, 백업·예약 6개, `chatbot*` 4개, `logsGetPath`, `logsOpenFolder`). 반대로 **main.js가 호출하지 않는 daemon 라우트**: `/api/server/:name/start`, GET `/api/instances`, GET `/api/instance/:id`, `/api/instance/:id/rcon`, `/rest`, `/managed/start`, `/validate`, `/properties`(GET/PUT), `/properties/reset`, `/diagnose`, `/api/module/:name/version/:version`, `/api/version`, `/api/modules/schema`, `/api/config/client/:kind`, `/api/extensions/:id/mount|unmount|config`, `/api/daemon/console`, `/api/chat/command`, `/api/updates/integrity`. 이 중 일부는 CLI만 사용한다(§3).
+**renderer(src/, 테스트 제외)에서 쓰지 않는 preload API**: 위 표의 "미사용" 항목(`instanceEvents`, `instanceStop/Restart/Rename/Commands`, `instanceReadLiveSettings`, `runtimePreflight`, `configDefaults/Reset`, `updaterLastResult`, `loadNodeToken`, `deleteNodeToken`, `relayBotInvite`, `instanceAcceptEula`, 백업·예약 6개, `chatbot*` 4개, `logsGetPath`, `logsOpenFolder`). 반대로 **main.js가 호출하지 않는 daemon 라우트**: `/api/server/:name/start`, GET `/api/instances`, GET `/api/instance/:id`, `/api/instance/:id/rcon`, `/rest`, `/managed/start`, `/validate`, `/properties`(GET/PUT), `/properties/reset`, `/diagnose`, `/api/module/:name/version/:version`, `/api/version`, `/api/modules/schema`, `/api/config/client/:kind`, `/api/extensions/:id/mount|unmount|config`, `/api/daemon/console`, `/api/chat/command`, `/api/updates/integrity`. 이 중 일부는 CLI만 사용한다(§3).
 
 ### 1.3 GUI가 읽고 쓰는 설정 파일
 
@@ -225,7 +224,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 
 ### 4.3 채팅 처리기 (`src/chat/`)
 
-- 디스코드 명령과 CLI `chat`, `POST /api/chat/command {text, guild_id?, user_id?} → {reply}`가 모두 같은 처리기를 쓴다(`handlers/chat.rs:9-13`).
+- 디스코드 명령과 CLI `chat`, `POST /api/chat/command {text, guild_id?, user_id?} → {reply, code, args}`가 모두 같은 처리기를 쓴다(`handlers/chat.rs:9-13`).
 - 대상 서버 찾기: 인스턴스 이름 → `instanceAliases`(인스턴스 ID → `"별명, 별명"`) → 모듈 별명(`moduleAliases`) 순이다. 같은 게임 서버가 여럿인데 하나로 좁혀지지 않으면 `errors.multiple_instances`로 답한다(`chat/mod.rs:257-288`).
 - 명령 별명은 `commandAliases`, 접두사는 `prefix`(기본 `!saba`)다. 응답 문구는 `locales/<lang>/bot.json`을 바이너리에 넣어 쓴다(`chat/i18n.rs`).
 - 노드(디스코드 서버)별 허용 인스턴스와 멤버별 명령 권한은 `nodeSettings`에 있다.
@@ -302,7 +301,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 | G17 | — | — | ~~relay `PATCH /api/hosts/:hostId/bot-config` 직접 호출~~ 없어짐: 봇 설정은 `PUT /api/config/bot`, 릴레이 동기화는 에이전트 하트비트 | |
 | G18 | 2816-2855 | OS | `shell.openExternal`(http(s)만), `shell.openPath`(로그 폴더, 인스턴스 폴더) | UI 성격 |
 | G19 | 2709-2747 | OS | 네이티브 파일/폴더 다이얼로그 | UI 성격(경로 선택만 하고, 실제 스캔은 daemon) |
-| G20 | 99-128 | — | `http.request` 전역 monkey-patch | 우회는 아니지만 모든 Node HTTP에 영향을 준다 |
+| G20 | — | — | ~~`http.request` 전역 monkey-patch~~ → 해결(D12): 토큰은 axios 인터셉터가 데몬 요청에만 붙인다 | |
 
 ### 7.2 GUI renderer (`saba-chan-gui/src`)
 | # | 위치 | 분류 | 내용 |
