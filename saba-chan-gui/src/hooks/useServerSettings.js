@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
 import { useModalClose } from './useModalClose';
@@ -23,13 +23,10 @@ const restartFlagsOf = (server) => ({
     restart_on_unknown_exit: asFlag(server?.module_settings?.restart_on_unknown_exit, false),
 });
 
-export function useServerSettings({
-    servers,
-    modules,
-    setModal,
-    setProgressBar,
-    fetchServers,
-}) {
+/** 문자열 칸 값으로 (없으면 null) */
+const fieldValue = (v) => (v === undefined || v === null ? null : String(v));
+
+export function useServerSettings({ servers, modules, setModal, setProgressBar, fetchServers }) {
     const { t } = useTranslation('gui');
     const translateError = createTranslateError(t);
 
@@ -43,6 +40,11 @@ export function useServerSettings({
     const [versionsLoading, setVersionsLoading] = useState(false);
     const [versionInstalling, setVersionInstalling] = useState(false);
     const [resettingServer, setResettingServer] = useState(false);
+    // 실제 설정을 못 읽어 module.toml 기본값으로 채운 칸. 사용자가 고치지 않으면 저장하지 않는다
+    // (기본값을 저장하면 게임 안이나 파일에서 바꾼 값을 덮어쓴다)
+    const defaultedFields = useRef(new Set());
+    const touchedFields = useRef(new Set());
+    const openRequest = useRef(0);
 
     // ── Close animation ─────────────────────────────────────
     const closeSettingsModal = useCallback(() => setShowSettingsModal(false), []);
@@ -58,31 +60,29 @@ export function useServerSettings({
                 const found = data.servers.find((s) => s.id === server.id);
                 if (found) {
                     latestServer = found;
-                    console.log('Loaded latest server data:', latestServer);
                 }
             }
         } catch (error) {
             console.warn('Failed to fetch latest server data:', error);
         }
 
+        const request = ++openRequest.current;
         setSettingsServer(latestServer);
+        defaultedFields.current = new Set();
+        touchedFields.current = new Set();
 
         // Initialize settings values from module schema
+        // 우선순위: 실제 설정(아래에서 비동기로 덮음) > module_settings > 최상위 필드 > 기본값.
+        // 최상위 port 등은 데몬이 module_settings와 맞추기 전까지 낡았을 수 있어 module_settings가 먼저다.
         const module = modules.find((m) => m.name === latestServer.module);
         if (module && module.settings && module.settings.fields) {
             const initial = {};
             module.settings.fields.forEach((field) => {
-                let value = '';
-                if (latestServer[field.name] !== undefined && latestServer[field.name] !== null) {
-                    value = String(latestServer[field.name]);
-                } else if (
-                    latestServer.module_settings &&
-                    latestServer.module_settings[field.name] !== undefined &&
-                    latestServer.module_settings[field.name] !== null
-                ) {
-                    value = String(latestServer.module_settings[field.name]);
-                } else if (field.default !== undefined && field.default !== null) {
-                    value = String(field.default);
+                let value =
+                    fieldValue(latestServer.module_settings?.[field.name]) ?? fieldValue(latestServer[field.name]);
+                if (value === null) {
+                    value = fieldValue(field.default) ?? '';
+                    defaultedFields.current.add(field.name);
                 }
                 initial[field.name] = value;
             });
@@ -141,6 +141,29 @@ export function useServerSettings({
         setAdvancedExpanded(false);
         setShowSettingsModal(true);
 
+        // 디스크의 실제 설정으로 덮는다. 그사이 사용자가 고친 칸과, 다른 서버로 바꿔 연 경우는 건드리지 않는다
+        if (latestServer.id && window.api.instanceReadLiveSettings && module?.settings?.fields) {
+            try {
+                const live = await window.api.instanceReadLiveSettings(latestServer.id);
+                if (request !== openRequest.current) return;
+                if (live?.success && live.settings && typeof live.settings === 'object') {
+                    const patch = {};
+                    for (const field of module.settings.fields) {
+                        const v = fieldValue(live.settings[field.name]);
+                        if (v === null || touchedFields.current.has(field.name)) continue;
+                        patch[field.name] = v;
+                        defaultedFields.current.delete(field.name);
+                    }
+                    setSettingsValues((prev) => ({ ...prev, ...patch }));
+                } else {
+                    console.warn('Live settings unavailable; defaults will not be saved:', live?.error);
+                }
+            } catch (err) {
+                if (request !== openRequest.current) return;
+                console.warn('Live settings unavailable; defaults will not be saved:', err);
+            }
+        }
+
         // Async load versions — only for download-based modules (extension install methods have no version list)
         const mod = modules.find((m) => m.name === latestServer.module);
         const installMethod = mod?.install?.method;
@@ -181,12 +204,8 @@ export function useServerSettings({
 
     // ── handleSettingChange ─────────────────────────────────
     const handleSettingChange = (fieldName, value) => {
-        console.log(`Setting ${fieldName} changed to:`, value);
-        setSettingsValues((prev) => {
-            const updated = { ...prev, [fieldName]: String(value) };
-            console.log('Updated settings values:', updated);
-            return updated;
-        });
+        touchedFields.current.add(fieldName);
+        setSettingsValues((prev) => ({ ...prev, [fieldName]: String(value) }));
     };
 
     // ── handleInstallVersion ────────────────────────────────
@@ -375,14 +394,13 @@ export function useServerSettings({
         if (!settingsServer) return;
 
         try {
-            console.log('Saving settings for', settingsServer.name, settingsValues);
-
             const module = modules.find((m) => m.name === settingsServer.module);
             const convertedSettings = {};
 
             if (module && module.settings && module.settings.fields) {
                 module.settings.fields.forEach((field) => {
                     const value = settingsValues[field.name];
+                    if (defaultedFields.current.has(field.name) && !touchedFields.current.has(field.name)) return;
 
                     if (field.field_type === 'boolean') {
                         convertedSettings[field.name] = value === true || value === 'true';
@@ -429,9 +447,10 @@ export function useServerSettings({
                 convertedSettings.extension_data = { ...settingsValues._extension_data };
             }
 
-            console.log('Converted settings:', convertedSettings);
+            const request = openRequest.current;
             const result = await window.api.instanceUpdateSettings(settingsServer.id, convertedSettings);
-            console.log('API Response:', result);
+            // 저장하는 사이 다른 서버 설정을 열었다면 그 창을 닫지 않는다
+            const stillOpen = request === openRequest.current;
 
             if (result.error) {
                 // validation_failed: 상세 에러 목록 포함
@@ -452,7 +471,7 @@ export function useServerSettings({
                     title: t('command_modal.success'),
                     message: t('server_actions.settings_saved', { name: settingsServer.name }),
                 });
-                setShowSettingsModal(false);
+                if (stillOpen) setShowSettingsModal(false);
                 fetchServers();
             }
         } catch (error) {

@@ -699,7 +699,7 @@ describe('설정 에러 핸들링', () => {
             botConfigSave: vi.fn().mockRejectedValue(new Error('EPERM')),
         });
 
-        await expect(useDiscordStore.getState().saveConfig()).resolves.toBeUndefined();
+        await expect(useDiscordStore.getState().saveConfig()).resolves.toBe(false);
     });
 
     it('botConfigSave 에러 응답 → 에러 토스트 (크래시 없음)', async () => {
@@ -707,6 +707,6 @@ describe('설정 에러 핸들링', () => {
             botConfigSave: vi.fn().mockResolvedValue({ error: 'write failed' }),
         });
 
-        await expect(useDiscordStore.getState().saveConfig()).resolves.toBeUndefined();
+        await expect(useDiscordStore.getState().saveConfig()).resolves.toBe(false);
     });
 });
