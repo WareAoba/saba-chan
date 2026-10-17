@@ -337,7 +337,16 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
     let access = instance_access(&key);
     for field in INSTANCE_DIR_FIELDS {
         if let Some(path) = config.get(field).and_then(Value::as_str).filter(|p| !p.is_empty()) {
-            add(Path::new(path), access);
+            let path = Path::new(path);
+            // 새로 설치할 폴더는 아직 없다: 권한은 있는 폴더에만 줄 수 있으므로 먼저 만든다
+            if access == Access::Write {
+                let _ = std::fs::create_dir_all(path);
+            }
+            add(path, access);
+            // `os.makedirs(dir, exist_ok=True)`는 바로 위 폴더가 있는지부터 본다: 그 폴더의 목록만 준다
+            if let Some(parent) = path.parent() {
+                add(parent, Access::List);
+            }
         }
     }
     let data = extension_data_dir(&raw_data_dir, &key);
