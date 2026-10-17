@@ -280,6 +280,25 @@ impl Supervisor {
         }
     }
 
+    /// 모듈 함수가 인스턴스를 알아보는 데 쓰는 값 (포트·비밀번호·모듈 설정·REST·데이터 폴더 등).
+    /// 시작·정지·설정·초기화 모두 같은 값을 받아야 같은 서버 파일을 다룬다. 이미 있는 키는 두다.
+    fn insert_instance_fields(cfg: &mut serde_json::Map<String, Value>, instance: &crate::instance::ServerInstance) {
+        let mut put = |key: &str, value: Value| {
+            cfg.entry(key.to_string()).or_insert(value);
+        };
+        if let Some(v) = instance.rcon_port { put("rcon_port", json!(v)); }
+        if let Some(v) = &instance.rcon_password { put("rcon_password", json!(v)); }
+        for (key, value) in &instance.module_settings {
+            put(key, value.clone());
+        }
+        if let Some(v) = &instance.rest_host { put("rest_host", json!(v)); }
+        if let Some(v) = instance.rest_port { put("rest_port", json!(v)); }
+        if let Some(v) = &instance.rest_username { put("rest_username", json!(v)); }
+        if let Some(v) = &instance.rest_password { put("rest_password", json!(v)); }
+        put("protocol_mode", json!(&instance.protocol_mode));
+        if let Some(v) = &instance.server_version { put("server_version", json!(v)); }
+    }
+
     /// Start a server by name (e.g., "my-server-1")
     /// Called by IPC API: POST /api/server/:name/start
     ///
@@ -519,31 +538,7 @@ impl Supervisor {
             if let Some(port) = instance.port {
                 cfg.insert("port".to_string(), json!(port));
             }
-            if let Some(rcon_port) = instance.rcon_port {
-                cfg.entry("rcon_port".to_string()).or_insert_with(|| json!(rcon_port));
-            }
-            if let Some(rcon_pw) = &instance.rcon_password {
-                cfg.entry("rcon_password".to_string()).or_insert_with(|| json!(rcon_pw));
-            }
-            for (key, value) in &instance.module_settings {
-                cfg.entry(key.clone()).or_insert_with(|| value.clone());
-            }
-            if let Some(rest_host) = &instance.rest_host {
-                cfg.entry("rest_host".to_string()).or_insert_with(|| json!(rest_host));
-            }
-            if let Some(rest_port) = instance.rest_port {
-                cfg.entry("rest_port".to_string()).or_insert_with(|| json!(rest_port));
-            }
-            if let Some(rest_user) = &instance.rest_username {
-                cfg.entry("rest_username".to_string()).or_insert_with(|| json!(rest_user));
-            }
-            if let Some(rest_pw) = &instance.rest_password {
-                cfg.entry("rest_password".to_string()).or_insert_with(|| json!(rest_pw));
-            }
-            cfg.entry("protocol_mode".to_string()).or_insert_with(|| json!(&instance.protocol_mode));
-            if let Some(ver) = &instance.server_version {
-                cfg.entry("server_version".to_string()).or_insert_with(|| json!(ver));
-            }
+            Self::insert_instance_fields(&mut cfg, &instance);
             // Non-managed → managed=false로 명시 (모듈이 RCON 정책 등을 구분)
             cfg.insert("managed".to_string(), json!(false));
             let final_config = Value::Object(cfg);
@@ -664,6 +659,7 @@ impl Supervisor {
             let module = s.module_loader.get_module(module_name)?;
             let mut config_obj = serde_json::Map::new();
             s.insert_resolved_exe(&mut config_obj, &instance, module_name);
+            Self::insert_instance_fields(&mut config_obj, &instance);
             let tracked_pid = s.tracker.get_pid(server_name).or_else(|_| s.tracker.get_pid(&instance.id)).ok();
             (module, config_obj, tracked_pid)
         };
@@ -1227,33 +1223,7 @@ impl Supervisor {
             if let Some(port) = instance.port {
                 cfg.insert("port".to_string(), json!(port));
             }
-            if let Some(rcon_port) = instance.rcon_port {
-                cfg.entry("rcon_port".to_string()).or_insert_with(|| json!(rcon_port));
-            }
-            if let Some(rcon_pw) = &instance.rcon_password {
-                cfg.entry("rcon_password".to_string()).or_insert_with(|| json!(rcon_pw));
-            }
-            // Merge module_settings (ram, cpu_threads, use_aikar_flags, etc.)
-            for (key, value) in &instance.module_settings {
-                cfg.entry(key.clone()).or_insert_with(|| value.clone());
-            }
-            // REST API fields for modules that use REST protocol
-            if let Some(rest_host) = &instance.rest_host {
-                cfg.entry("rest_host".to_string()).or_insert_with(|| json!(rest_host));
-            }
-            if let Some(rest_port) = instance.rest_port {
-                cfg.entry("rest_port".to_string()).or_insert_with(|| json!(rest_port));
-            }
-            if let Some(rest_user) = &instance.rest_username {
-                cfg.entry("rest_username".to_string()).or_insert_with(|| json!(rest_user));
-            }
-            if let Some(rest_pw) = &instance.rest_password {
-                cfg.entry("rest_password".to_string()).or_insert_with(|| json!(rest_pw));
-            }
-            cfg.entry("protocol_mode".to_string()).or_insert_with(|| json!(&instance.protocol_mode));
-            if let Some(ver) = &instance.server_version {
-                cfg.entry("server_version".to_string()).or_insert_with(|| json!(ver));
-            }
+            Self::insert_instance_fields(&mut cfg, &instance);
             // Managed mode indicator → Python module uses this to enforce RCON policy
             cfg.insert("managed".to_string(), json!(true));
             let final_config = Value::Object(cfg);
@@ -1575,6 +1545,11 @@ impl Supervisor {
             }
             // Extension 데이터 전달 — Python lifecycle 스크립트가 플랫폼 경로를 올바르게 판단하도록
             cfg.insert("extension_data".to_string(), json!(&instance.extension_data));
+            // 시작 때와 같은 인스턴스 값 (예: zomboid cache_dir — 다른 서버의 파일을 건드리지 않게)
+            Self::insert_instance_fields(&mut cfg, instance);
+            if let Some(port) = instance.port {
+                cfg.entry("port".to_string()).or_insert(json!(port));
+            }
 
             let function = match action {
                 "write" | "configure" => {
