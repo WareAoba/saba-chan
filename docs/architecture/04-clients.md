@@ -153,7 +153,6 @@ Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `u
 | 상수 | 값 | 사용처 |
 |---|---|---|
 | APP_NAME | `saba-chan` | dataDir 이름 |
-| GITHUB_OWNER/REPO/MODULES_REPO/EXTENSIONS_REPO | `WareAoba` / `saba-chan` / `saba-chan-modules` / `saba-chan-extensions` | JS 쪽에서는 거의 참조하지 않는다. SabaStorage.js:208-210이 `'WareAoba'`, `'saba-chan'`을 **리터럴로 중복 정의**한다 |
 | DEFAULT_IPC_PORT | `57474` | main.js:18-20, useSettingsStore, bot |
 | DEFAULT_DAEMON_URL | `http://127.0.0.1:57474` | |
 | SUPPORTED_LANGUAGES | en, ko, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr | main.js. **중복 정의 위치**: `saba-chan-gui/src/i18n.js:36`, `discord_bot/i18n.js:10`, `discord_bot/utils/constants.js:46` |
