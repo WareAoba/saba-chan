@@ -98,7 +98,7 @@ fn settings() -> ChatSettings {
 }
 
 async fn run(api: &FakeDaemon, s: &ChatSettings, text: &str) -> String {
-    let req = ChatRequest { text: text.into(), guild_id: Some("g1".into()), user_id: Some("u1".into()) };
+    let req = ChatRequest { text: text.into(), guild_id: Some("g1".into()), user_id: Some("u1".into()), ..Default::default() };
     process(api, s, &Catalog::for_language("en"), &req).await.text
 }
 
@@ -193,7 +193,7 @@ async fn unrecognized_input_carries_a_code_for_the_interpreter() {
     let s = settings();
     let cat = Catalog::for_language("en");
     let reply = |text: &str| {
-        let req = ChatRequest { text: text.into(), guild_id: Some("g1".into()), user_id: Some("u1".into()) };
+        let req = ChatRequest { text: text.into(), guild_id: Some("g1".into()), user_id: Some("u1".into()), ..Default::default() };
         let (api, s, cat) = (&api, &s, &cat);
         async move { process(api, s, cat, &req).await }
     };

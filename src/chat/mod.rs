@@ -58,6 +58,11 @@ pub struct ChatRequest {
     /// 요청한 사용자 ID — 멤버 권한 조회 키
     #[serde(default, alias = "userId")]
     pub user_id: Option<String>,
+    /// 감사 로그에 남길 표시 이름·서버 이름 (권한 판단에는 쓰지 않는다)
+    #[serde(default, alias = "userName")]
+    pub user_name: Option<String>,
+    #[serde(default, alias = "guildName")]
+    pub guild_name: Option<String>,
 }
 
 /// 최상위 명령 (모듈 이름보다 먼저 확인)
