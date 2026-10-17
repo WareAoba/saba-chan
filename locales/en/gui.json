@@ -684,7 +684,8 @@
     "preflight_short": "Preparing Python",
     "preflight_python": "Preparing the Python runtime servers need ({{percent}}%)",
     "preflight_failed_short": "Python setup failed",
-    "preflight_failed": "Preparing Python failed. It will retry on the next server action. ({{error}})"
+    "preflight_failed": "Preparing Python failed. It will retry on the next server action. ({{error}})",
+    "module_needs": "Requirements not met: {{deps}}"
   },
   "discord": {
     "nav_connection": "Connection",

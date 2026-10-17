@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useWindowSize } from '../../hooks/useWindowSize';
 import { useServerStore } from '../../stores/useServerStore';
 import { useUIStore } from '../../stores/useUIStore';
-import { failedModuleName } from '../../utils/failedModules';
+import { failedModuleName, failedModuleReason } from '../../utils/failedModules';
 import { Icon } from '../Icon';
 import { ServerDetail } from './ServerDetail';
 import { ServerRow } from './ServerRow';
@@ -106,7 +106,7 @@ export function ServersPage({
                                 {failedModules.map((f) => (
                                     <li key={f.path}>
                                         <strong>{failedModuleName(f)}</strong>
-                                        <span>{f.error}</span>
+                                        <span>{failedModuleReason(f, t)}</span>
                                     </li>
                                 ))}
                             </ul>

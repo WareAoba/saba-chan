@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { applyInstanceUpdate, dismissInstanceProvision, useMaintenanceOf } from '../../hooks/useInstanceMaintenance';
 import { useServerStore } from '../../stores/useServerStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
-import { failureForModule } from '../../utils/failedModules';
+import { failedModuleReason, failureForModule } from '../../utils/failedModules';
 import { useUIStore } from '../../stores/useUIStore';
 import { STATUS_TONE, initials, interactionOf, primaryAction, protocolLabel, viewStatus } from '../../utils/serverView';
 import ExtensionSlot from '../ExtensionSlot';
@@ -192,7 +192,7 @@ export function ServerDetail({
                         })}
                         {moduleFailure && (
                             <span className="notice-detail">
-                                {t('shell.module_load_error', { error: moduleFailure.error })}
+                                {t('shell.module_load_error', { error: failedModuleReason(moduleFailure, t) })}
                             </span>
                         )}
                     </span>

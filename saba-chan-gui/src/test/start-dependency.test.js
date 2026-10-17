@@ -58,3 +58,22 @@ describe('시작: 모듈 의존성이 안 맞을 때', () => {
         expect(modal.message).toContain('saba-core >=9.0.0');
     });
 });
+
+describe('불러오지 못한 모듈의 이유', () => {
+    it('의존성 버전이 안 맞으면 필요한 것을 나열하고, 아니면 데몬 문구를 쓴다', async () => {
+        const { failedModuleReason } = await import('../utils/failedModules');
+        const t = (k, o) => `${k}:${o?.deps}`;
+        expect(
+            failedModuleReason(
+                {
+                    path: 'modules/x',
+                    error: 'raw',
+                    error_code: 'module_dependency_unsatisfied',
+                    missing_dependencies: ['saba-core >=9.0.0 (installed 0.1.1)'],
+                },
+                t,
+            ),
+        ).toBe('shell.module_needs:saba-core >=9.0.0 (installed 0.1.1)');
+        expect(failedModuleReason({ path: 'modules/x', error: 'bad toml' }, t)).toBe('bad toml');
+    });
+});

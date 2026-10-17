@@ -684,7 +684,8 @@
     "preflight_short": "Python 준비 중",
     "preflight_python": "서버 실행에 필요한 Python을 준비하고 있어요 ({{percent}}%)",
     "preflight_failed_short": "Python 준비 실패",
-    "preflight_failed": "Python 준비에 실패했어요. 서버를 다룰 때 다시 시도합니다. ({{error}})"
+    "preflight_failed": "Python 준비에 실패했어요. 서버를 다룰 때 다시 시도합니다. ({{error}})",
+    "module_needs": "필요한 버전이 맞지 않아요: {{deps}}"
   },
   "discord": {
     "nav_connection": "연결",
