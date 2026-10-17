@@ -1,5 +1,6 @@
 import { act, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { HighlightedContent } from '../components/ConsoleView';
 import { RuntimePreflight } from '../components/shell/RuntimePreflight';
 import { getCachedRules, highlightLine } from '../utils/syntaxHighlight';
 
@@ -36,6 +37,15 @@ describe('콘솔 하이라이트 규칙 (C12)', () => {
     });
 });
 
+describe('콘솔 줄 그리기', () => {
+    it('한 줄 전체가 한 규칙에 걸려도 스타일을 입힌다', () => {
+        const rules = compile([{ name: 'all', pattern: 'ERROR here', color: 'error', underline: true }]);
+        render(<HighlightedContent text="ERROR here" compiledRules={rules} />);
+        const span = [...document.querySelectorAll('span')].find((e) => e.textContent === 'ERROR here');
+        expect(span.style.textDecoration).toBe('underline');
+    });
+});
+
 describe('실행 환경 준비 표시 (C5)', () => {
     beforeEach(() => vi.useFakeTimers());
     afterEach(() => vi.useRealTimers());
@@ -49,6 +59,7 @@ describe('실행 환경 준비 표시 (C5)', () => {
         await act(async () => render(<RuntimePreflight daemonStatus="running" />));
         const chip = document.querySelector('.appbar-preflight');
         expect(chip.getAttribute('data-tooltip')).toContain('40%');
+        expect(chip.textContent).toContain('40%');
         await act(async () => vi.advanceTimersByTimeAsync(1000));
         expect(document.querySelector('.appbar-preflight')).toBeNull();
         await act(async () => vi.advanceTimersByTimeAsync(10000));
@@ -64,6 +75,11 @@ describe('실행 환경 준비 표시 (C5)', () => {
         await act(async () => render(<RuntimePreflight daemonStatus="running" />));
         const chip = document.querySelector('.appbar-preflight.failed');
         expect(chip.getAttribute('data-tooltip')).toContain('pip timeout');
+        // 키보드로 닿고, 누르면 이유 전문을 알림으로 보여 준다
+        expect(chip.tagName).toBe('BUTTON');
+        window.showToast = vi.fn();
+        act(() => chip.click());
+        expect(window.showToast).toHaveBeenCalledWith(expect.stringContaining('pip timeout'), 'error', 8000, undefined);
         await act(async () => vi.advanceTimersByTimeAsync(5000));
         expect(document.querySelector('.appbar-preflight')).toBeNull();
     });

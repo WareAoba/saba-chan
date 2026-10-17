@@ -11,7 +11,8 @@ import { Icon } from './index';
 export function HighlightedContent({ text, compiledRules }) {
     const segments = useMemo(() => highlightLine(text, compiledRules), [text, compiledRules]);
 
-    if (!compiledRules || compiledRules.length === 0 || segments.length <= 1) {
+    // 한 줄 전체가 한 규칙에 걸리면 조각이 하나뿐이지만 스타일은 있다
+    if (!compiledRules || compiledRules.length === 0 || (segments.length <= 1 && !segments[0]?.style)) {
         return <>{text}</>;
     }
 
@@ -187,7 +188,11 @@ export function PopoutConsole({
                     <button
                         className={`console-popout-titlebar-btn console-popout-titlebar-pin${pinned ? ' console-popout-titlebar-pinned' : ''}`}
                         onClick={handleTogglePin}
-                        title={pinned ? t('console.unpin', { defaultValue: 'Unpin' }) : t('console.pin', { defaultValue: 'Pin on top' })}
+                        title={
+                            pinned
+                                ? t('console.unpin', { defaultValue: 'Unpin' })
+                                : t('console.pin', { defaultValue: 'Pin on top' })
+                        }
                     >
                         <Icon name="pin" size="sm" />
                     </button>

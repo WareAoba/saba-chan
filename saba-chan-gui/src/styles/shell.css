@@ -1993,3 +1993,12 @@
         transform: rotate(360deg);
     }
 }
+button.appbar-preflight {
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+}
+.appbar-preflight-pct {
+    font-variant-numeric: tabular-nums;
+    color: var(--text-3);
+}

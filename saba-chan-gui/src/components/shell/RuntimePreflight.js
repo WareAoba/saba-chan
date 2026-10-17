@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
 
 const POLL_MS = 1000;
@@ -49,29 +50,46 @@ export function RuntimePreflight({ daemonStatus }) {
     const r = 7;
     const c = 2 * Math.PI * r;
 
-    return (
-        <output className={clsx('appbar-preflight', { failed })} data-tooltip={label} aria-label={label}>
-            {failed ? (
+    const ring = (
+        <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true">
+            <circle className="preflight-track" cx="9" cy="9" r={r} fill="none" strokeWidth="2.5" />
+            <circle
+                className={clsx('preflight-fill', { indeterminate: percent === 0 })}
+                cx="9"
+                cy="9"
+                r={r}
+                fill="none"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeDasharray={c}
+                strokeDashoffset={percent === 0 ? c * 0.75 : c * (1 - percent / 100)}
+                transform="rotate(-90 9 9)"
+            />
+        </svg>
+    );
+
+    // 실패는 이유를 봐야 하므로 누를 수 있는 버튼 (키보드 포커스로도 말풍선이 뜨고, 누르면 알림으로 전문을 보여 준다)
+    if (failed) {
+        return (
+            <button
+                type="button"
+                className="appbar-preflight failed"
+                data-tooltip={label}
+                aria-label={label}
+                onClick={() => safeShowToast(label, 'error', 8000)}
+            >
                 <Icon name="alertTriangle" size="sm" />
-            ) : (
-                <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true">
-                    <circle className="preflight-track" cx="9" cy="9" r={r} fill="none" strokeWidth="2.5" />
-                    <circle
-                        className={clsx('preflight-fill', { indeterminate: percent === 0 })}
-                        cx="9"
-                        cy="9"
-                        r={r}
-                        fill="none"
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                        strokeDasharray={c}
-                        strokeDashoffset={percent === 0 ? c * 0.75 : c * (1 - percent / 100)}
-                        transform="rotate(-90 9 9)"
-                    />
-                </svg>
-            )}
+                <span className="appbar-preflight-text">{t('shell.preflight_failed_short')}</span>
+            </button>
+        );
+    }
+
+    // 진행 중엔 퍼센트를 글자로도 보여 준다 (말풍선에만 두지 않는다)
+    return (
+        <output className="appbar-preflight" data-tooltip={label} aria-label={label}>
+            {ring}
             <span className="appbar-preflight-text">
-                {failed ? t('shell.preflight_failed_short') : t('shell.preflight_short')}
+                {t('shell.preflight_short')} {percent > 0 && <span className="appbar-preflight-pct">{percent}%</span>}
             </span>
         </output>
     );
