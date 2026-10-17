@@ -197,11 +197,28 @@
     /* 토글 손잡이, 디스코드 브랜드색: 테마와 무관 */
     --knob: #ffffff;
     --discord: #5865f2;
-    /* 콘솔은 두 테마 모두 어두운 바탕이라 상태색을 따로 둔다 (utils/syntaxHighlight TOKEN_COLORS와 같은 값) */
+    /* 콘솔은 두 테마 모두 어두운 바탕이라 상태색을 따로 둔다 */
     --console-error: #f38ba8;
     --console-warn: #f9e2af;
     --console-ok: #a6e3a1;
     --console-info: #89b4fa;
+    /* 콘솔 조각 색 토큰 (데몬 spans·모듈 규칙의 토큰 이름). 어두운 콘솔 기본, 밝은 콘솔은 아래 data-console-tone */
+    --tok-error: #f38ba8;
+    --tok-warn: #f9e2af;
+    --tok-info: #89b4fa;
+    --tok-debug: #7f849c;
+    --tok-success: #a6e3a1;
+    --tok-string: #a6e3a1;
+    --tok-number: #fab387;
+    --tok-keyword: #cba6f7;
+    --tok-timestamp: #7f849c;
+    --tok-player: #89dceb;
+    --tok-command: #f5c2e7;
+    --tok-selector: #f9e2af;
+    --tok-ip: #74c7ec;
+    --tok-uuid: #74c7ec;
+    --tok-path: #94e2d5;
+    --tok-dim: #6c7086;
 
     /* 글자 */
     --font-sans: 'Pretendard', 'Pretendard Variable', 'Noto Sans KR', 'Noto Sans', 'Segoe UI', 'Apple SD Gothic Neo',
@@ -447,4 +464,24 @@
         animation-duration: 0.001ms !important;
         animation-iteration-count: 1 !important;
     }
+}
+
+/* 사용자가 콘솔 바탕을 밝게 고르면 (themeManager가 밝기로 정한다) 조각 색도 진하게 */
+:root[data-console-tone="light"] {
+    --tok-error: #c8102e;
+    --tok-warn: #a15c00;
+    --tok-info: #1d4ed8;
+    --tok-debug: #5c5f77;
+    --tok-success: #2f7d1e;
+    --tok-string: #2f7d1e;
+    --tok-number: #b43c07;
+    --tok-keyword: #7c2fd6;
+    --tok-timestamp: #5c5f77;
+    --tok-player: #0369a1;
+    --tok-command: #a3226e;
+    --tok-selector: #a15c00;
+    --tok-ip: #0e7490;
+    --tok-uuid: #0e7490;
+    --tok-path: #0f766e;
+    --tok-dim: #7c7f93;
 }

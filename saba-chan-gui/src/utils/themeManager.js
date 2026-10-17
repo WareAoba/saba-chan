@@ -200,6 +200,16 @@ function srgbToLinear(c) {
     return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
 }
 
+/** #rgb·#rrggbb·rgb(r, g, b) → #rrggbb (그 밖은 null) */
+function toHex6(color) {
+    const c = String(color || '').trim();
+    if (/^#[0-9a-f]{6}$/i.test(c)) return c;
+    if (/^#[0-9a-f]{3}$/i.test(c)) return `#${[...c.slice(1)].map((x) => x + x).join('')}`;
+    const m = c.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/i);
+    if (!m) return null;
+    return `#${m.slice(1, 4).map((x) => Math.min(255, Number(x)).toString(16).padStart(2, '0')).join('')}`;
+}
+
 /**
  * Compute relative luminance per WCAG 2.1
  */
@@ -320,6 +330,13 @@ export function applyCustomTheme(config) {
     // ── Console customization ──
     root.style.setProperty('--console-custom-bg', consoleBgColor);
     root.style.setProperty('--console-custom-text', consoleTextColor);
+    // 밝은 콘솔 바탕이면 조각 색 토큰을 진한 쪽으로 (tokens.css data-console-tone)
+    const bgHex = toHex6(consoleBgColor);
+    if (bgHex && relativeLuminance(bgHex) > 0.4) {
+        root.setAttribute('data-console-tone', 'light');
+    } else {
+        root.removeAttribute('data-console-tone');
+    }
     root.style.setProperty('--console-syntax-highlight', consoleSyntaxHighlight ? '1' : '0');
     root.style.setProperty('--console-font-scale', `${consoleFontScale / 100}`);
 }
