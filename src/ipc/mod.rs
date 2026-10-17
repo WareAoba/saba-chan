@@ -558,7 +558,6 @@ pub struct IPCServer {
     /// 익스텐션 초기화(daemon.startup) 진행 상태
     pub extension_init_tracker: ExtensionInitTracker,
     /// 인스턴스별 RCON 연결 풀 (연결 재사용)
-    pub rcon_pool: Arc<crate::protocol::rcon_pool::RconPool>,
     /// 인스턴스별 게임 접속 정보 캐시 (명령마다 Python get_credentials를 띄우지 않게)
     pub credentials: CredentialsCache,
     /// Graceful shutdown 토큰 — 정리가 끝난 뒤 취소되며, 취소 시 모든 태스크 종료
@@ -609,7 +608,6 @@ impl IPCServer {
             extension_manager,
             extension_status_cache: ExtensionStatusCache::new(30), // 30초 TTL
             extension_init_tracker: ExtensionInitTracker::new(),
-            rcon_pool: Arc::new(crate::protocol::rcon_pool::RconPool::new()),
             credentials: CredentialsCache::default(),
             shutdown_token: tokio_util::sync::CancellationToken::new(),
             stop_requested,
