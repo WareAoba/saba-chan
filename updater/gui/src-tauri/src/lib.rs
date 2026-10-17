@@ -396,15 +396,21 @@ pub fn run() {
 
     tracing::info!("[Apply] Relaunch: {:?} {:?}", relaunch_exe, relaunch_extra);
 
-    // 데몬이 끊어 준 실행 표가 있어야 적용한다 (한 번만 쓴다)
+    // 데몬이 끊어 준 실행 표가 있어야 적용한다 (한 번만 쓴다).
+    // 표를 모르는 옛 데몬이 띄웠으면(표 인자 자체가 없음) 전환 경로로 받아 준다
+    use saba_chan_updater_lib::launch_ticket;
     let token = after_apply
         .iter()
         .position(|a| a == "--launch-token")
         .filter(|&i| relaunch_pos.is_none_or(|r| i < r))
         .and_then(|i| after_apply.get(i + 1))
-        .cloned()
-        .unwrap_or_default();
-    if !saba_chan_updater_lib::launch_ticket::redeem(&saba_chan_updater_lib::constants::resolve_staging_dir(), &token) {
+        .cloned();
+    let installed = saba_chan_updater_lib::UpdateManager::load_installed_manifest();
+    let accepted = match token {
+        Some(t) => launch_ticket::redeem(&saba_chan_updater_lib::constants::resolve_staging_dir(), &t),
+        None => launch_ticket::core_predates_tickets(installed.get("saba-core").map(String::as_str)),
+    };
+    if !accepted {
         tracing::error!("[Apply] Missing or stale launch token; refusing to apply");
         eprintln!("이 업데이터는 사바쨩이 업데이트를 적용할 때만 실행됩니다.");
         std::process::exit(1);
