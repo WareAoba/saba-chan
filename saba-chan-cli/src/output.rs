@@ -1,11 +1,29 @@
 //! 출력 — 사람용(색·표)과 스크립트용(`--json`) 두 갈래
 //!
-//! 규칙: `--json`이면 stdout에는 JSON 하나만 나간다. 사람용 안내·진행 표시는 stderr로.
+//! 규칙: `--json`이면 stdout에는 JSON 문서 하나만 나간다. 사람용 안내·진행 표시는 stderr로.
+//! 여러 단계를 거치는 명령(데몬 재시작 등)도 마지막 결과(또는 오류) 하나만 낸다: 문서를 모아 두었다가
+//! 명령이 끝날 때 `flush()`가 찍는다.
 //! 사람 모드에서 결과는 stdout, 경고·오류는 stderr.
 
 use comfy_table::{presets, ContentArrangement, Table};
 use console::{style, StyledObject};
 use serde_json::Value;
+
+/// `--json`에서 아직 찍지 않은 마지막 문서
+static PENDING: std::sync::Mutex<Option<Value>> = std::sync::Mutex::new(None);
+
+fn emit(value: Value) {
+    if let Ok(mut p) = PENDING.lock() {
+        *p = Some(value);
+    }
+}
+
+/// 모아 둔 JSON 문서를 찍는다 (명령 하나가 끝날 때)
+pub fn flush() {
+    if let Some(v) = PENDING.lock().ok().and_then(|mut p| p.take()) {
+        println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+    }
+}
 
 #[derive(Clone, Copy)]
 pub struct Out {
@@ -22,7 +40,7 @@ impl Out {
     /// 결과 데이터. JSON 모드면 그대로, 아니면 `human`이 그린다.
     pub fn data(&self, value: &Value, human: impl FnOnce(&Value)) {
         if self.json {
-            println!("{}", serde_json::to_string_pretty(value).unwrap_or_default());
+            emit(value.clone());
         } else {
             human(value);
         }
@@ -31,7 +49,7 @@ impl Out {
     /// 동작 결과 한 줄 (✓). JSON 모드면 `value`를 낸다.
     pub fn done(&self, msg: &str, value: &Value) {
         if self.json {
-            println!("{}", serde_json::to_string_pretty(value).unwrap_or_default());
+            emit(value.clone());
         } else {
             println!("{} {}", style("✓").green().bold(), msg);
         }
@@ -54,7 +72,7 @@ impl Out {
 
     pub fn error(&self, err: &crate::error::CliError) {
         if self.json {
-            println!("{}", serde_json::to_string_pretty(&err.to_json()).unwrap_or_default());
+            emit(err.to_json());
             return;
         }
         eprintln!("{} {}", style("✗").red().bold(), err);

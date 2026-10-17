@@ -219,7 +219,19 @@ async fn one(ctx: &Ctx, words: &[String]) -> Result<()> {
     match cli.cmd {
         None => Ok(()),
         Some(crate::cli::Cmd::Shell) => Ok(()),
-        Some(cmd) => crate::cmd::dispatch(&ctx, cmd).await,
+        Some(cmd) => {
+            let r = crate::cmd::dispatch(&ctx, cmd).await;
+            // `--json` 줄은 오류도 JSON으로
+            let r = match r {
+                Err(e) if ctx.out.json => {
+                    ctx.out.error(&classify(&e));
+                    Ok(())
+                }
+                r => r,
+            };
+            crate::output::flush();
+            r
+        }
     }
 }
 

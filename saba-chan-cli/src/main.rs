@@ -51,9 +51,10 @@ async fn main() {
         Err(e) => e.exit(),
     };
     let g = parsed.global;
+    let port = g.port.unwrap_or_else(bootstrap::ipc_port);
     let color = !g.no_color && std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal();
     let ctx = ctx::Ctx {
-        api: client::Api::new(g.port.unwrap_or_else(bootstrap::ipc_port)),
+        api: client::Api::new(port),
         out: output::Out::new(g.json, color),
         ask: prompt::Prompt::new(g.json, g.yes),
         in_shell: false,
@@ -65,9 +66,12 @@ async fn main() {
         None if ctx.ask.enabled && std::io::stdout().is_terminal() => cli::Cmd::Shell,
         None => cli::Cmd::Status,
     };
-    if let Err(e) = cmd::dispatch(&ctx, cmd).await {
-        let err = error::classify(&e);
-        ctx.out.error(&err);
-        std::process::exit(err.exit_code());
+    let result = cmd::dispatch(&ctx, cmd).await;
+    if let Err(e) = &result {
+        ctx.out.error(&error::classify(e));
+    }
+    output::flush();
+    if let Err(e) = result {
+        std::process::exit(error::classify(&e).exit_code());
     }
 }

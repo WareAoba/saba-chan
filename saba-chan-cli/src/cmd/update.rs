@@ -227,6 +227,7 @@ async fn apply(ctx: &Ctx, components: &[String]) -> Result<()> {
     );
     ctx.out.hint(&t!("update.after_hint"));
     // 이 CLI 파일도 교체 대상일 수 있으니 셸 안에서도 여기서 끝낸다
+    output::flush();
     std::process::exit(0);
 }
 

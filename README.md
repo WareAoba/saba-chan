@@ -19,8 +19,8 @@
 └─────────────────┘                    └────────┬─────────┘
                                                 │
 ┌─────────────────┐     HTTP REST API           │
-│   CLI (TUI)     │ ◄─────────────────────────►│
-│  (Ratatui)      │                   ┌─────────┴──────────┐
+│   CLI           │ ◄─────────────────────────►│
+│  (명령줄·셸)     │                   ┌─────────┴──────────┐
 └─────────────────┘                   │                    │
                                 ┌─────▼──────┐     ┌──────▼──────┐
 ┌─────────────────┐             │   Modules  │     │  Instances  │
@@ -37,7 +37,7 @@
 |----------|-----------|------|
 | **Core Daemon** (`saba-core.exe`) | Rust, Axum | 모든 서버 관리 기능의 핵심. 백그라운드 상주 |
 | **GUI** (`Saba-chan.exe`) | Electron 28, React 18, Vite, Zustand | 데스크톱 GUI |
-| **CLI** (`saba-chan-cli.exe`) | Rust, Ratatui, Crossterm | 터미널 TUI |
+| **CLI** (`saba-chan-cli.exe`) | Rust, clap | 명령줄 도구 + 대화형 셸 |
 | **Discord Bot** | discord.js 14 | 디스코드 채팅 기반 제어 |
 | **Updater** (`saba-chan-updater.exe`) | Rust | 자동 업데이트 적용기 |
 
@@ -47,10 +47,10 @@
 
 ### 이중 인터페이스 (GUI + CLI)
 
-데스크톱 GUI와 터미널 TUI 두 가지 인터페이스를 모두 지원합니다. 두 클라이언트는 동일한 Core Daemon에 연결되어 동시에 사용할 수 있습니다.
+데스크톱 GUI와 명령줄 CLI 두 가지 인터페이스를 모두 지원합니다. 두 클라이언트는 동일한 Core Daemon에 연결되어 동시에 사용할 수 있습니다.
 
 - **GUI**: 서버 카드 대시보드, 설정 모달, 콘솔 도킹 패널·팝업 창, 익스텐션 뱃지
-- **CLI**: vim-like 키 바인딩(`j/k/Enter/Esc`), 레거시 커맨드 모드(`:명령어`), 20여 개의 TUI 화면
+- **CLI**: GUI로 하는 일을 모두 명령으로 (`saba-chan-cli start pal`), 인자 없이 실행하면 Tab 자동 완성이 되는 대화형 셸, 스크립트용 `--json` (자세히: [saba-chan-cli/README.md](saba-chan-cli/README.md))
 
 ### 인스턴스 관리
 
@@ -211,7 +211,7 @@ saba-chan/
 │   ├── extension/          # 익스텐션 Hook 디스패처
 │   ├── python_env/         # Python venv 자동 부트스트랩
 │   └── node_env/           # Node.js 포터블 환경 다운로더
-├── saba-chan-cli/          # CLI (Rust, Ratatui)
+├── saba-chan-cli/          # CLI (Rust, clap)
 ├── saba-chan-gui/          # GUI (Electron 28 + React 18 + Vite)
 ├── discord_bot/            # Discord Bot (discord.js 14)
 ├── updater/                # Updater (Rust)

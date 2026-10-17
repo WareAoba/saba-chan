@@ -65,11 +65,12 @@ pub fn daemon_binary() -> Option<PathBuf> {
 }
 
 /// 데몬을 분리 실행한다 (CLI가 끝나도 살아 있게)
-pub fn spawn_daemon() -> Result<PathBuf> {
+/// `port`는 CLI가 붙을 포트 (`--port`까지 반영된 값)
+pub fn spawn_daemon(port: u16) -> Result<PathBuf> {
     let binary = daemon_binary().ok_or_else(|| failed(t!("daemon.binary_not_found")))?;
     let mut cmd = Command::new(&binary);
     cmd.arg("--spawned")
-        .env("SABA_IPC_PORT", ipc_port().to_string())
+        .env("SABA_IPC_PORT", port.to_string())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());

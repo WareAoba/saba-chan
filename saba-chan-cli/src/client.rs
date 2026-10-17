@@ -20,6 +20,8 @@ const LONG: Duration = Duration::from_secs(30 * 60);
 pub struct Api {
     http: reqwest::Client,
     base: String,
+    /// 데몬 포트 (데몬을 띄울 때 그대로 넘긴다)
+    pub port: u16,
     token: Arc<RwLock<Option<String>>>,
 }
 
@@ -53,6 +55,7 @@ impl Api {
         Self {
             http,
             base: format!("http://127.0.0.1:{}", port),
+            port,
             token: Arc::new(RwLock::new(read_token())),
         }
     }

@@ -41,7 +41,7 @@ impl Ctx {
         if let Ok(h) = self.api.health().await {
             return Ok(h);
         }
-        bootstrap::spawn_daemon()?;
+        bootstrap::spawn_daemon(self.api.port)?;
         let spin = crate::progress::spinner(&t!("daemon.starting"));
         let deadline = Instant::now() + bootstrap::START_TIMEOUT;
         while Instant::now() < deadline {

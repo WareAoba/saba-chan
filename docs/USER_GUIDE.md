@@ -22,10 +22,6 @@
    - 6.3 [서버 콘솔](#63-서버-콘솔)
    - 6.4 [설정](#64-설정)
 7. [CLI 사용법](#7-cli-사용법)
-   - 7.1 [TUI 화면 구성](#71-tui-화면-구성)
-   - 7.2 [입력 모드](#72-입력-모드)
-   - 7.3 [레거시 커맨드 모드](#73-레거시-커맨드-모드)
-   - 7.4 [CLI 명령어 레퍼런스](#74-cli-명령어-레퍼런스)
 8. [인스턴스 관리](#8-인스턴스-관리)
    - 8.1 [인스턴스란?](#81-인스턴스란)
    - 8.2 [인스턴스 생성](#82-인스턴스-생성)
@@ -87,7 +83,7 @@
 - **다중 게임 지원** — Palworld, Minecraft, Project Zomboid 등 모듈로 무한 확장 가능
 - **자동 프로세스 감지** — 실행 중인 게임 서버를 자동으로 탐지
 - **모듈 시스템** — 새 게임 추가 시 Core 재컴파일 불필요
-- **이중 인터페이스** — Electron GUI 데스크톱 앱 + Rust TUI CLI
+- **이중 인터페이스** — Electron GUI 데스크톱 앱 + 명령줄 CLI
 - **안전한 설계** — Daemon 크래시가 게임 서버에 영향을 주지 않음
 - **자동 업데이트** — GitHub Releases 기반 자동 업데이트 시스템
 - **Discord 봇 통합** — 디스코드에서 서버를 직접 제어
@@ -201,8 +197,8 @@ GUI에서 **시작(▶)** 버튼을 클릭하거나, CLI에서 해당 서버를 
 └─────────────────┘                   └────────┬─────────┘
                                                │
 ┌─────────────────┐     HTTP API               │
-│   CLI (TUI)     │ ◄─────────────────────────►│
-│  (Ratatui)      │                            │
+│   CLI           │ ◄─────────────────────────►│
+│  (명령줄·셸)     │                            │
 └─────────────────┘                  ┌─────────┴──────────┐
                                      │                    │
 ┌─────────────────┐           ┌──────▼──────┐     ┌──────▼──────┐
@@ -334,170 +330,17 @@ GUI를 실행하면 로딩 화면이 표시되며 Core Daemon에 연결될 때�
 
 ## 7. CLI 사용법
 
-사바쨩 CLI(`saba-chan-cli.exe`)는 **Ratatui + Crossterm** 기반의 대화형 터미널 인터페이스(TUI)입니다.
+`saba-chan-cli`는 데몬을 다루는 명령줄 도구입니다. 인자 없이 터미널에서 실행하면 대화형 셸이 열리고,
+`saba-chan-cli <명령>`으로 바로 실행할 수도 있습니다. 명령 목록, 스크립트용 옵션(`--json`, `--yes`), 종료 코드,
+환경 변수는 [saba-chan-cli/README.md](../saba-chan-cli/README.md)와 `saba-chan-cli --help`에 있습니다.
 
-### 7.1 TUI 화면 구성
-
-CLI는 여러 화면(Screen) 간을 탐색하는 구조입니다:
-
-| 화면 | 설명 |
-|------|------|
-| **Dashboard** | 메인 대시보드 — 데몬/봇 상태, 서버 목록 요약 |
-| **Servers** | 인스턴스 목록 |
-| **ServerDetail** | 인스턴스 상세 — 상태, 시작/정지/재시작/삭제 |
-| **ServerConsole** | 서버 콘솔 — stdin/stdout 실시간 |
-| **ServerSettings** | 서버 설정 에디터 (vim-like) |
-| **ServerProperties** | 서버 프로퍼티 파일 편집 |
-| **Modules** | 설치된 모듈 목록 |
-| **ModuleDetail** | 모듈 상세 정보 |
-| **ModuleManifest** | 원격 모듈 매니페스트 (설치 가능한 모듈) |
-| **Bot** | Discord 봇 관리 |
-| **BotAliases** | 봇 별칭 편집 |
-| **Settings** | CLI/GUI 설정 |
-| **Updates** | 업데이트 관리 |
-| **Daemon** | Core Daemon 관리 |
-| **Extensions** | 익스텐션 관리 |
-| **ExtensionList** | 설치된 익스텐션 목록 |
-| **ExtensionDetail** | 익스텐션 상세 |
-| **ExtensionManifest** | 원격 익스텐션 매니페스트 |
-| **CreateInstanceStep1** | 인스턴스 생성 — 게임 선택 |
-| **CreateInstanceStep2** | 인스턴스 생성 — 설정 입력 |
-
-### 7.2 입력 모드
-
-| 모드 | 설명 | 진입/종료 |
-|------|------|----------|
-| **Normal** | 메뉴 탐색 | 기본 모드 |
-| **Command** | 레거시 명령어 입력 | `:` 키로 진입 |
-| **Editing** | vim-like 필드 편집 | 설정 화면에서 Enter |
-| **Console** | 서버 콘솔 stdin 입력 | 콘솔 화면에서 자동 |
-| **Confirm** | 확인 대화상자 | y/n |
-| **InlineInput** | 인라인 텍스트 입력 | 특정 동작 시 |
-| **InlineSelect** | 인라인 선택 | 특정 동작 시 |
-
-#### 기본 키 바인딩
-
-| 키 | 동작 |
-|----|------|
-| `↑` / `k` | 위로 이동 |
-| `↓` / `j` | 아래로 이동 |
-| `Enter` | 선택 / 확인 |
-| `Esc` | 뒤로 가기 / 취소 |
-| `:` | 커맨드 모드 진입 |
-| `q` | 종료 |
-
-### 7.3 레거시 커맨드 모드
-
-`:` 키를 누르면 레거시 커맨드 모드에 진입합니다. 텍스트 기반으로 명령어를 직접 입력할 수 있습니다.
-
+```sh
+saba-chan-cli status
+saba-chan-cli server add
+saba-chan-cli start pal
+saba-chan-cli console pal
+saba-chan-cli run pal kick Steve
 ```
-: <명령어> [서브커맨드] [인자...]
-```
-
-### 7.4 CLI 명령어 레퍼런스
-
-#### 인스턴스 관리
-
-| 명령어 | 설명 |
-|--------|------|
-| `instance list` | 인스턴스 목록 |
-| `instance create` | 새 인스턴스 생성 |
-| `instance delete <id>` | 인스턴스 삭제 |
-| `instance set <id> <key> <value>` | 설정 변경 |
-| `instance reset <id>` | 설정 초기화 |
-| `instance reorder` | 인스턴스 순서 변경 |
-
-#### 모듈 관리
-
-| 명령어 | 설명 |
-|--------|------|
-| `module list` | 설치된 모듈 목록 |
-| `module info <name>` | 모듈 상세 정보 |
-| `module refresh` | 모듈 새로고침 |
-| `module versions <name>` | 버전 목록 |
-| `module install <name>` | 서버 설치 |
-| `module manifest` | 원격 매니페스트 조회 |
-| `module install-manifest <id>` | 매니페스트에서 모듈 설치 |
-| `module remove <name>` | 모듈 삭제 |
-
-#### 익스텐션 관리
-
-| 명령어 | 설명 |
-|--------|------|
-| `extension list` / `ext list` | 익스텐션 목록 |
-| `extension enable <id>` | 활성화 |
-| `extension disable <id>` | 비활성화 |
-| `extension install <id>` | 설치 |
-| `extension remove <id>` | 삭제 |
-| `extension manifest` | 원격 매니페스트 조회 |
-| `extension rescan` | 재스캔 |
-
-#### 데몬 관리
-
-| 명령어 | 설명 |
-|--------|------|
-| `daemon start` | 데몬 시작 |
-| `daemon stop` | 데몬 정지 |
-| `daemon status` | 데몬 상태 |
-| `daemon restart` | 데몬 재시작 |
-
-#### Discord 봇 관리
-
-| 명령어 | 설명 |
-|--------|------|
-| `bot start` | 봇 시작 |
-| `bot stop` | 봇 정지 |
-| `bot status` | 봇 상태 |
-| `bot token <token>` | 봇 토큰 설정 |
-| `bot prefix <prefix>` | 봇 prefix 설정 |
-| `bot mode <local\|cloud>` | 동작 모드 변경 |
-| `bot relay <url>` | 릴레이 서버 URL 설정 |
-| `bot node-token <token>` | 릴레이 노드 토큰 설정 |
-
-#### 설정
-
-| 명령어 | 설명 |
-|--------|------|
-| `config show` | 현재 설정 표시 |
-| `config set <key> <value>` | CLI 설정 변경 |
-| `config get <key>` | 설정 값 조회 |
-| `config reset` | 설정 초기화 |
-| `config system-language` | 시스템 언어 감지 |
-
-##### GUI 설정 변경 (CLI에서)
-
-| 명령어 | 설명 |
-|--------|------|
-| `config gui language <lang>` | GUI 언어 |
-| `config gui token <token>` | Discord 토큰 |
-| `config gui discord_auto <bool>` | Discord 자동 시작 |
-| `config gui auto_refresh <bool>` | 자동 새로고침 |
-| `config gui refresh_interval <ms>` | 새로고침 간격 |
-| `config gui ipc_port <port>` | IPC 포트 |
-| `config gui console_buffer <n>` | 콘솔 버퍼 크기 |
-| `config gui auto_passwords <bool>` | 비밀번호 자동 생성 |
-| `config gui port_check <bool>` | 포트 충돌 검사 |
-
-#### 업데이트
-
-| 명령어 | 설명 |
-|--------|------|
-| `update check` | 업데이트 확인 |
-| `update status` | 업데이트 상태 |
-| `update download` | 업데이트 다운로드 |
-| `update apply` | 업데이트 적용 |
-| `update config` | 업데이터 설정 조회 |
-| `update set <key> <value>` | 업데이터 설정 변경 |
-
-#### 기타
-
-| 명령어 | 설명 |
-|--------|------|
-| `help` | 도움말 |
-| `menu` / `dashboard` | 대시보드로 이동 |
-| `back` | 이전 화면 |
-| `exit` / `quit` / `q` | 종료 (봇/데몬도 정지) |
-| `<모듈명> <명령어>` | 모듈 명령어 직접 실행 |
 
 ---
 
@@ -904,16 +747,10 @@ include_prerelease = false       # 프리릴리스 포함 여부
 | `autoGeneratePasswords` | bool | `true` | 빈 RCON/REST 비밀번호 자동 생성 |
 | `portConflictCheck` | bool | `true` | 포트 충돌 검사 활성화 |
 
-### 12.3 CLI 설정 (cli-settings.json)
+### 12.3 CLI 설정
 
-위치: `%APPDATA%/saba-chan/cli-settings.json`
-
-| 키 | 별칭 | 타입 | 기본값 | 설명 |
-|----|------|------|--------|------|
-| `language` | `lang` | string | `""` | 표시 언어 (비어있으면 GUI 설정 따름) |
-| `auto_start` | `autostart` | bool | `true` | TUI 시작 시 데몬/봇 자동 시작 |
-| `refresh_interval` | `refresh` | u64 | `2` | 상태 새로고침 간격 (초, 1~60) |
-| `bot_prefix` | `prefix` | string | `""` | Discord 봇 prefix 오버라이드 |
+CLI 전용 설정 파일은 없습니다. 모든 설정은 데몬의 단일 설정 파일(`config.json`)에 있고, CLI 전용 값은 그 안의 `cli` 칸에
+들어갑니다: `saba-chan-cli config set cli.<키>=<값>`. 표시 언어는 `--lang`, `SABA_LANG`, 앱 설정 `language` 순서로 정합니다.
 
 ### 12.4 봇 설정 (bot-config.json)
 
