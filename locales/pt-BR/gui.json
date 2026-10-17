@@ -1033,7 +1033,7 @@
     },
     "sandbox": {
       "title": "Executar sem isolamento?",
-      "message": "Não foi possível preparar um ambiente isolado para {{component}}. {{detail}}\n\nSe você confia nele, pode executá-lo sem isolamento. Você será perguntado de novo se os arquivos mudarem.",
+      "message": "Não foi possível preparar um ambiente isolado para {{component}}. {{detail}}\n\nSe você confia nele, pode executá-lo sem isolamento. Ele poderá então acessar todos os seus arquivos e a rede com as permissões da sua conta. Você será perguntado de novo se os arquivos mudarem.",
       "allow": "Executar sem isolamento",
       "allowed": "{{component}} vai rodar sem isolamento. Você será perguntado de novo se os arquivos mudarem.",
       "allow_failed": "Não foi possível salvar o consentimento: {{error}}"

@@ -1033,7 +1033,7 @@
     },
     "sandbox": {
       "title": "Ohne Isolation ausführen?",
-      "message": "Für {{component}} konnte keine isolierte Umgebung vorbereitet werden. {{detail}}\n\nWenn du ihr vertraust, kannst du sie ohne Isolation ausführen. Ändern sich ihre Dateien, wirst du erneut gefragt.",
+      "message": "Für {{component}} konnte keine isolierte Umgebung vorbereitet werden. {{detail}}\n\nWenn du ihr vertraust, kannst du sie ohne Isolation ausführen. Sie kann dann mit den Rechten deines Kontos auf alle deine Dateien und das Netzwerk zugreifen. Ändern sich ihre Dateien, wirst du erneut gefragt.",
       "allow": "Ohne Isolation ausführen",
       "allowed": "{{component}} läuft ohne Isolation. Ändern sich die Dateien, wirst du erneut gefragt.",
       "allow_failed": "Zustimmung konnte nicht gespeichert werden: {{error}}"

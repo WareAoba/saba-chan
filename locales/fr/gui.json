@@ -1033,7 +1033,7 @@
     },
     "sandbox": {
       "title": "Exécuter sans isolation ?",
-      "message": "Impossible de préparer un environnement isolé pour {{component}}. {{detail}}\n\nSi vous lui faites confiance, vous pouvez l'exécuter sans isolation. La question sera reposée si ses fichiers changent.",
+      "message": "Impossible de préparer un environnement isolé pour {{component}}. {{detail}}\n\nSi vous lui faites confiance, vous pouvez l'exécuter sans isolation. Il pourra alors accéder à tous vos fichiers et au réseau avec les droits de votre compte. La question sera reposée si ses fichiers changent.",
       "allow": "Exécuter sans isolation",
       "allowed": "{{component}} s'exécutera sans isolation. La question sera reposée si ses fichiers changent.",
       "allow_failed": "Impossible d'enregistrer le consentement : {{error}}"

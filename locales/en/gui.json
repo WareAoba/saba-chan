@@ -1034,7 +1034,7 @@
     },
     "sandbox": {
       "title": "Run without isolation?",
-      "message": "Couldn't prepare an isolated environment for {{component}}. {{detail}}\n\nIf you trust it, you can run it without isolation. You'll be asked again if its files change.",
+      "message": "Couldn't prepare an isolated environment for {{component}}. {{detail}}\n\nIf you trust it, you can run it without isolation. It will then be able to reach all your files and the network with your account's permissions. You'll be asked again if its files change.",
       "allow": "Run without isolation",
       "allowed": "{{component}} will run without isolation. You'll be asked again if its files change.",
       "allow_failed": "Couldn't save the consent: {{error}}"
