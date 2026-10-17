@@ -396,7 +396,7 @@ impl<D: DaemonApi> Ctx<'_, D> {
 
     /// 정의된 명령 실행 — 해석·검증·라우팅은 데몬 명령 경로(`crate::commands`)가 한다
     async fn run_defined(&self, server: &ServerView, module: &ModuleView, field: &CommandField, alias: &str, cmd_alias: &str, extra: &[&str]) -> String {
-        let args = extra.iter().map(|s| s.to_string()).collect();
+        let args = split_quoted(&extra.join(" "));
         let resp = self.api.command(&server.id, &field.name, args).await;
         self.render_result(server, module, field, alias, cmd_alias, resp)
     }
@@ -450,6 +450,43 @@ impl<D: DaemonApi> Ctx<'_, D> {
             }
         }
     }
+}
+
+/// 정의된 명령의 인자를 나눈다. 공백으로 나누되, 큰따옴표로 시작해 큰따옴표로 끝나는 덩어리는 한 칸이다
+/// (`give "Steve Jobs" diamond`). 낱말 중간의 따옴표(`{"text":"a"}`)는 그대로 둔다.
+/// 정의에 없는 명령은 원문 그대로 콘솔로 가므로 이 규칙을 쓰지 않는다
+pub fn split_quoted(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut words = text.split_whitespace().peekable();
+    while let Some(word) = words.next() {
+        let Some(open) = word.strip_prefix('"') else {
+            out.push(word.to_string());
+            continue;
+        };
+        if let Some(inner) = open.strip_suffix('"') {
+            out.push(inner.to_string());
+            continue;
+        }
+        // 닫는 따옴표로 끝나는 낱말까지 모은다. 끝까지 없으면 따옴표째 낱말로 돌려놓는다
+        let mut group = vec![open];
+        let mut closed = false;
+        while let Some(next) = words.peek().copied() {
+            words.next();
+            if let Some(last) = next.strip_suffix('"') {
+                group.push(last);
+                closed = true;
+                break;
+            }
+            group.push(next);
+        }
+        if closed {
+            out.push(group.join(" "));
+        } else {
+            out.push(word.to_string());
+            out.extend(group[1..].iter().map(|w| w.to_string()));
+        }
+    }
+    out
 }
 
 fn error_line(title: &str, detail: &str) -> String {

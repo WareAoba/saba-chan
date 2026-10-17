@@ -311,7 +311,7 @@ impl Session {
             })
             .collect();
 
-        json!({
+        let mut meta = json!({
             "servers": servers,
             "modules": modules,
             "moduleDetails": {},
@@ -320,7 +320,12 @@ impl Session {
                 "moduleAliases": bot.module_aliases,
                 "commandAliases": command_aliases,
             },
-        })
+        });
+        // 길드별 허용 인스턴스. 목록이 있는 길드만 싣는다 (없으면 릴레이는 제한 없음으로 본다)
+        if let Some(allowed) = allowed_instances_by_guild(&bot.node_settings) {
+            meta["allowedInstances"] = allowed;
+        }
+        meta
     }
 
     async fn poll_loop(&self) {
@@ -449,9 +454,43 @@ fn now_ms() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
+/// `bot.node_settings[guild].allowedInstances` → `{ guild: [instance id, ...] }`. 하나도 없으면 None
+fn allowed_instances_by_guild(node_settings: &Value) -> Option<Value> {
+    let map: serde_json::Map<String, Value> = node_settings
+        .as_object()?
+        .iter()
+        .filter_map(|(guild, cfg)| {
+            let ids: Vec<Value> = cfg
+                .get("allowedInstances")?
+                .as_array()?
+                .iter()
+                .filter(|v| v.is_string())
+                .cloned()
+                .collect();
+            Some((guild.clone(), Value::Array(ids)))
+        })
+        .collect();
+    (!map.is_empty()).then_some(Value::Object(map))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn allowed_instances_are_sent_only_for_guilds_that_list_them() {
+        let settings = json!({
+            "g1": { "allowedInstances": ["i-mc", 3, "i-pal"] },
+            "g2": { "memberPermissions": {} },
+            "g3": { "allowedInstances": [] },
+        });
+        assert_eq!(
+            allowed_instances_by_guild(&settings),
+            Some(json!({ "g1": ["i-mc", "i-pal"], "g3": [] }))
+        );
+        assert_eq!(allowed_instances_by_guild(&json!({ "g2": {} })), None);
+        assert_eq!(allowed_instances_by_guild(&json!(null)), None);
+    }
 
     #[test]
     fn finished_old_session_leaves_new_session_alone() {
