@@ -6,6 +6,9 @@
 >
 > 비밀값은 출력하지 않았다. 파일이 있다는 사실과 경로만 적는다.
 
+
+> **2026-10-17 L3 이후**: 업데이트·모듈 목록·익스텐션 목록은 모두 릴레이의 서명된 릴리즈 manifest 하나에서 나온다. GitHub 업데이트 경로(`github.rs`, `api_base_url`, `github_owner`/`github_repo`, `include_prerelease`, 익스텐션 `manifest_url`, module.toml `[update]`, modules·extensions 저장소의 릴리즈 워크플로)는 없다. 근거 커밋: saba-chan 65e1763·8b840f7·60768a7, modules a26bdeb, extensions 301ff2c.
+
 ---
 
 ## 0. 소유자 프레이밍과 전체 그림
@@ -79,57 +82,52 @@ POST /heartbeat (60s)                         │ mock Message → core/processo
 
 ### 1.3 Release manifest 형식
 
-GitHub Release asset `manifest.json`의 구조는 `github.rs`의 `ReleaseManifest`/`ComponentInfo`에 정의돼 있다.
+릴레이가 주는 서명된 manifest 하나가 유일한 출처다(`updater/src/relay.rs:51-88`). 형식:
 
 ```jsonc
 {
-  "release_version": "0.2.0",
-  "components": {
-    "saba-core": {
-      "version": "0.2.0",
-      "asset": "saba-core-windows-x64.zip",       // Option — 없으면 이번 릴리즈엔 바이너리 없음
-      "asset_linux": "saba-core-linux-x64.tar.gz",// Option — 비Windows에서 우선
-      "sha256": "…",                               // Option
-      "install_dir": ".",                          // Option, install_root 기준
-      "requires": { "saba-core": ">=0.3.0" }       // Option (의존성 체크용)
+  "manifest": {
+    "version": "0.1.1", "channel": "stable", "platform": "windows-x64",
+    "released_at": "...", "is_critical": false,
+    "components": {
+      "saba-core":        { "version": "0.1.1", "asset": "saba-core-windows-x64.zip", "size_bytes": 0, "sha256": "…", "url": "<R2 공개 URL>", "install_dir": "." },
+      "module-palworld":  { "version": "…", "asset": "module-palworld.zip", "sha256": "…", "url": "…", "install_dir": "modules/palworld", "meta": { "display_name": "…" } },
+      "ext-steamcmd":     { "version": "…", "asset": "ext-steamcmd.zip", "sha256": "…", "url": "…", "meta": { "name": "…", "min_app_version": "…" } }
     }
-  }
+  },
+  "keyId": "saba-updater-v1", "signature": "<Ed25519>"
 }
 ```
 
-- 템플릿은 `saba-chan/release-manifest.json:1-52`다. 버전 0.1.0, 모든 `sha256: null`, `asset_linux`가 있고 `installer`가 포함돼 있다.
-- **모듈 매니페스트**(saba-chan-modules 릴리즈 asset) 형식: `{ "schema_version":1, "modules": { "<name>": { "sha256":…, … } } }` (`integrity.rs:559-562`).
-- **익스텐션 매니페스트** 형식: `{ "schema_version":1, "extensions": { "<name>": {…} } }` (`integrity.rs:516-519`).
+- 컴포넌트 키는 `saba-core`, `cli`, `gui`, `updater`, `locales`, `module-<name>`, `ext-<id>`다. 업데이터가 모르는 키(예: `installer`)는 건너뛴다.
+- `requires`(다른 컴포넌트 최소 버전)와 `meta`(목록 화면용)는 선택이다.
+- 서명 검증 공개키는 바이너리에 들어 있다(`signature.rs:21`). 검증을 통과하지 못하거나, 플랫폼이 다르거나, 현재보다 낮은 버전이면 거부한다(`relay.rs:229-250`).
 
 ### 1.4 어디서 가져오는가
 
-| 용도 | URL | 근거 |
+| 용도 | 요청 | 근거 |
 |---|---|---|
-| Core 릴리즈 목록 | `GET https://api.github.com/repos/WareAoba/saba-chan/releases?per_page=30` | `github.rs:121-130`, `lib.rs:664` |
-| Core manifest | 릴리즈 asset `manifest.json`의 `browser_download_url` | `github.rs:167-186` |
-| 모듈 업데이트 확인 | `module.toml`의 `[update].github_repo`(모듈마다 별도 repo)에서 releases?per_page=5, tag `vX.Y.Z`, asset `module-{n}.zip`/`{n}.zip` | `lib.rs:745-835` |
-| 익스텐션 업데이트 확인 | `extension.toml`의 `[update].github_repo`, asset `ext-{n}.zip`/`{n}.zip` | `lib.rs:838-920` |
-| 무결성용 모듈 manifest | `WareAoba/saba-chan-modules` 최신 릴리즈 asset `manifest.json` | `lib.rs:512-521`, 542-556 |
-| 무결성용 익스텐션 manifest | `WareAoba/saba-chan-extensions` 최신 릴리즈 asset `manifest.json` | `lib.rs:523-532` |
-| (상수) 모듈 manifest | `https://github.com/WareAoba/saba-chan-modules/releases/latest/download/manifest.json` | `constants.rs:20-32` — daemon `src/ipc/handlers/server.rs:444,466`에서 사용 |
-| (상수) 익스텐션 manifest | `https://raw.githubusercontent.com/WareAoba/saba-chan-extensions/main/manifest.json` (**릴리즈가 아니라 main 브랜치**) | `constants.rs:34-39` |
+| 새 버전 확인 | `GET {relay_url}/v1/updates/check?channel&platform&current&client_id` | `relay.rs:158-174` |
+| manifest | `latest.manifestUrl` 또는 `GET /v1/updates/manifest/:version` | `relay.rs:176-184` |
+| 파일 | manifest 컴포넌트의 `url`(Cloudflare R2), `sha256` 확인 | `download.rs:40`, `lib.rs:673, 727` |
+| 진행 이벤트 | `POST /v1/updates/event` (익명, 실패해도 무시) | `relay.rs:186-192` |
+| 모듈·익스텐션 목록 | 같은 manifest의 `module-*`/`ext-*` (`relay::latest_catalog`) | `relay.rs:109-115` |
 
-`api_base_url`로 mock 서버를 지정할 수 있다(`lib.rs:318-321`, `github.rs:101-118`). GitHub 인증 토큰은 쓰지 않는다. 그래서 비인증 rate limit(60회/시간)을 받는데, 체크 한 번에 core 1회, manifest N회, 모듈/익스텐션 repo마다 1회를 호출한다.
-
-**Walk-back resolver**(`github.rs:265-400`): 최신 릴리즈 manifest로 목표 버전을 정한다. asset이 없는 컴포넌트는 이전 릴리즈들을 뒤져 **같은 버전**의 asset을 찾는다. Windows는 `asset`, 그 외 플랫폼은 `asset_linux ?? asset`을 쓴다(`github.rs:291-297`).
+- 기본 릴레이는 `https://saba-chan.online`, 채널은 `stable`이다(`relay.rs:21-23`). `relay_url`에 `scripts/mock-release-server.js` 주소를 넣으면 모의 릴레이로 시험할 수 있다(`lib.rs:261-263`).
+- 코어가 최신이어도 같은 릴리즈 manifest를 받아 컴포넌트별로 비교한다(GUI·CLI·모듈이 뒤처졌을 수 있으므로, `relay.rs:195-226`).
 
 ### 1.5 무결성 검증
 
-- `UpdateManager::verify_integrity` (`lib.rs:491-540`): 서버 manifest 3종(core/modules/extensions)에서 기대 해시를 모은 뒤 `IntegrityChecker::verify_all`로 검사한다. 결과 상태는 `Verified`, `Tampered`, `NoHash`, `FileNotFound`, `Error` 중 하나다(`integrity.rs:48-59`).
-- SHA-256은 **직접 구현**했다(`integrity.rs:321-455`, "순수 Rust SHA-256 구현"). sha2 크레이트를 쓰지 않는다. 테스트 벡터는 있다(`integrity.rs:797-830`).
-- 해시 대상 파일(`integrity.rs:246-296`): core/cli/updater는 `install_root/<exe>`, gui는 `install_root/<install_dir>/saba-chan-gui(.exe)`, discord_bot은 `…/discord_bot/index.js`.
-- ⚠️ **해시 의미 불일치(치명적)**: CI(`package-release.py:474-481`)가 manifest에 넣는 `sha256`은 **zip asset 파일의 해시**다. 반면 integrity checker가 해시하는 것은 **압축을 푼 exe나 index.js**다. 그래서 해시가 들어간 모든 컴포넌트가 항상 `Tampered`로 판정될 수밖에 없다.
-- ⚠️ **다운로드할 때는 해시를 검증하지 않는다**: `download_available_updates`(`lib.rs:1133-1182`)도 `download_component`(`lib.rs:1189-1279`)도 `ResolvedComponent.sha256`을 무시한다. 인스톨러도 같다.
-- daemon API는 `GET /api/updates/integrity`이다(`src/ipc/updates.rs:90,478`).
+- `UpdateManager::verify_integrity` (`lib.rs:437-446`): 위 manifest에서 기대 해시를 모아 `IntegrityChecker::verify_all`로 검사한다. 결과 상태는 `Verified`, `Tampered`, `NoHash`, `FileNotFound`, `Error` 중 하나다.
+- SHA-256은 `sha2` 크레이트를 쓴다.
+- 해시 대상 파일(`integrity.rs:247-286`): core/cli/updater는 `install_root/<exe>`, gui는 `install_root/<install_dir>/saba-chan-gui(.exe)`, 모듈은 `modules/<name>/lifecycle.py`, 익스텐션은 `extensions/<dir>/manifest.json`.
+- ⚠️ **해시 의미 불일치**: manifest의 `sha256`은 **zip 파일의 해시**인데 checker는 **압축을 푼 파일**을 해시한다. 그래서 해시가 있는 컴포넌트는 `Tampered`로 나온다.
+- 다운로드는 해시를 확인한다: `download_verified`가 받은 파일의 sha256을 manifest 값과 대조하고(`lib.rs:673, 727`), 적용 직전에 staging 파일을 다시 대조한다(`lib.rs:877-885`).
+- daemon API는 `GET /api/updates/integrity`이다(`src/ipc/updates.rs:106, 674`).
 
 ### 1.6 다운로드 → apply → swap → rollback 흐름
 
-1. **확인**: `POST /api/updates/check` → `check_for_updates()` (`updates.rs:142`, `lib.rs:573-645`). Locales 업데이트가 있으면 사용자에게 알리지 않고 백그라운드에서 다운로드·적용한다(`updates.rs:157-163`, `silent_apply_locales` 206).
+1. **확인**: `POST /api/updates/check` → `check_for_updates()` (`updates.rs:156`, `lib.rs:469-530`). 릴레이 manifest 하나로 모든 컴포넌트를 비교한다. Locales 업데이트가 있으면 사용자에게 알리지 않고 백그라운드에서 다운로드·적용한다(`updates.rs:157-163`, `silent_apply_locales` 206).
 2. **다운로드**: `POST /api/updates/download` → staging 디렉터리로 받는다.
    - Windows: `%APPDATA%/saba-chan/updates/`
    - Unix: `~/.cache/saba-chan/updates/` (`constants.rs:189-205`)
@@ -137,7 +135,7 @@ GitHub Release asset `manifest.json`의 구조는 `github.rs`의 `ReleaseManifes
 3. **apply 분기**: `POST /api/updates/apply {components:[…]}` (`updates.rs:353-475`)
    - 대상에 `Gui`, `Updater`, `CoreDaemon` 중 하나라도 있으면 **전부 updater exe에 맡긴다**(`updates.rs:392-400`). 이때 daemon은 `staging/pending.json`(`lib.rs:1477-1525`)과 `staging/apply-targets.json`(`lib.rs:1540-1565`)을 쓰고 `{requires_updater:true, needs_updater:[…]}`를 응답한다.
    - 그렇지 않으면 daemon이 직접 `apply_single_component`를 실행한다. 그 뒤 모듈은 `supervisor.refresh_modules()`, 익스텐션은 `extension_manager.rescan()`으로 hot-reload한다(`updates.rs:401-466`).
-4. **updater exe 실행**은 daemon이 아니라 **GUI가 spawn한다**: `ipcMain 'updater:launchApply'` → `saba-chan-updater --apply --relaunch <gui exe>` → GUI 종료(`saba-chan-gui/main.js:2744-2775`). CLI의 `launch-apply`도 직접 spawn한다(`saba-chan-cli/src/tui/commands.rs:1134-1160`).
+4. **updater exe 실행**은 데몬이 한다: `POST /api/updates/launch-updater {relaunch}` → 데몬이 `saba-chan-updater --apply --wait-pid <데몬 PID> --launch-token <일회용> [--relaunch …]`를 분리 실행하고 스스로 종료한다(`src/ipc/updates.rs:548-615`). GUI(`main.js:2457-2467`)와 CLI(`cmd/update.rs:223`)는 이 API만 부른다.
 5. **updater exe** (`updater/gui/src-tauri/src/lib.rs`)
    - 인자는 `--apply [--relaunch <exe> [extra…]]`만 파싱한다(`lib.rs:362-381`). install_root는 자기 exe 위치로 정한다(`lib.rs:390-396`).
    - `load_pending_manifest()` → `apply-targets.json`의 key를 차례로 `apply_single_component()` → `UpdateCompletionMarker` 저장(`%APPDATA%/saba-chan/update-complete.json`) → `pending.json`/`apply-targets.json` 삭제 → 2초 뒤 `--after-update`를 붙여 relaunch(`lib.rs:73-178`, 300-321). 진행 상황은 Tauri 이벤트 `apply:progress`로 알린다.
@@ -159,12 +157,12 @@ GitHub Release asset `manifest.json`의 구조는 `github.rs`의 `ReleaseManifes
 | Method | Path | 동작 |
 |---|---|---|
 | GET | `/api/updates/status` | 캐시된 상태. Locales는 숨긴다 |
-| POST | `/api/updates/check` | GitHub를 조회한다 |
+| POST | `/api/updates/check` | 릴레이를 조회한다 |
 | POST | `/api/updates/download` | 다운로드 |
 | GET | `/api/updates/download/progress` | 진행률 |
 | POST | `/api/updates/apply` | body `{components:[]}`. 직접 적용하거나 updater 위임을 판단한다 |
 | GET | `/api/updates/integrity` | SHA256 검증 |
-| GET / **PUT** | `/api/updates/config` | 설정. **메모리에만 저장**되고 재시작하면 `UpdateConfig::default()`로 돌아간다(`updates.rs:530-570`, 579) |
+| GET / **PUT** | `/api/updates/config` | 설정 `{enabled, check_interval_hours, auto_download, auto_apply, install_root, relay_url, channel}`. `config.json`의 `updates` 절에 저장한다(`updates.rs:730-797`) |
 
 불일치:
 - GUI의 `updater:setConfig`는 **POST**로 보낸다(`saba-chan-gui/main.js:2792`). 라우트는 PUT뿐이라 405가 난다. `syncInstallRoot`(`main.js:992`)는 PUT을 써서 정상이다.
@@ -177,7 +175,7 @@ GitHub Release asset `manifest.json`의 구조는 `github.rs`의 `ReleaseManifes
 
 ## 2. Installer (`saba-chan/installer/gui`, Tauri, v0.1.1)
 
-모듈 구성: `lib.rs`(1503줄), `github.rs`, `runtime_bootstrap.rs`, `registry.rs`, `shortcuts.rs`, `uninstall.rs`.
+모듈 구성: `lib.rs`, `release.rs`(릴리즈 받기, 업데이터와 같은 relay 경로), `runtime_bootstrap.rs`, `registry.rs`, `shortcuts.rs`, `uninstall.rs`.
 
 **설치 위치**
 - 기본 경로는 Windows `C:\Program Files\Saba-chan`, Unix `~/.local/share/saba-chan`(`installer/gui/src-tauri/src/lib.rs:1029-1046`).
@@ -189,11 +187,11 @@ GitHub Release asset `manifest.json`의 구조는 `github.rs`의 `ReleaseManifes
 | 단계 | 내용 |
 |---|---|
 | 1 (0-5%) | install dir 생성, 쓰기 probe, 필요하면 권한 상승 |
-| 2 (5-10%) | `GET api.github.com/repos/{owner}/{repo}/releases?per_page=20` → tag manifest (`github.rs:44-128`) |
+| 2 (5-10%) | 릴레이에서 서명된 최신 manifest를 받아 검증한다(`release.rs:17-30` `fetch_latest`) |
 | 2.5 | manifest의 `installer.version`이 현재 `CARGO_PKG_VERSION`보다 높으면 설치를 차단한다(`lib.rs:489-505`) |
-| 3 (10-45%) | `installer`를 뺀 core 컴포넌트 asset을 스트리밍으로 받아 `%TEMP%/saba-chan-installer`에 둔 뒤 `install_dir/<install_dir>`에 zip 해제. **sha256은 검증하지 않는다** |
+| 3 (10-45%) | `installer`를 뺀 core 컴포넌트를 R2에서 받아 SHA-256을 확인하고 `install_dir/<install_dir>`에 푼다(`release.rs`) |
 | 3.5 | 공유 모듈(`i18n.py`, `daemon_rcon.py`)을 `%APPDATA%/saba-chan/modules/`로 복사 |
-| 4 (45-55%) | **`saba-chan-modules` repo의 zipball(main 브랜치 소스 전체)**을 받아 선택된 모듈만 추출. `module.toml [install].requires_extensions`에 따라 익스텐션 manifest(raw main)에서 익스텐션을 설치(`lib.rs:621-700`, 1264-) |
+| 4 (45-55%) | 선택한 모듈을 manifest의 `module-<id>`에서, `requires_extensions`에 따른 익스텐션을 `ext-<id>`에서 R2로 받아 SHA-256을 확인하고 설치한다(`lib.rs:404, 874`) |
 | 5 (55-70%) | portable Python(`indygreg/python-build-standalone`)과 venv (`runtime_bootstrap.rs:321`). 실패해도 치명적으로 처리하지 않는다 |
 | 6 (70-85%) | portable Node(`nodejs.org/dist`, `runtime_bootstrap.rs:346`)와 `discord_bot` npm install |
 | 7-8 | `setup_config`, 언어 설정을 `settings.json`에 저장 |
@@ -201,15 +199,11 @@ GitHub Release asset `manifest.json`의 구조는 `github.rs`의 `ReleaseManifes
 | 10 | 바탕화면·시작 메뉴 바로가기(`shortcuts.rs`) |
 | 10.5 | `installed-manifest.json` 생성. updater 버전 판정의 1순위 소스다 |
 
-Tauri 커맨드(`lib.rs:109-1015`): `get_installer_state`, `set_install_path`, `set_language`, `set_shortcut_options`, `set_selected_modules`, `get_available_modules`(GitHub Contents API와 raw `module.toml`, 실패 시 하드코딩 폴백), `fetch_latest_release`, `start_install`, `start_uninstall`, `get_app_mode`, `launch_app`, `get_preferred_language`, `browse_folder`. GUI는 `--uninstall` 인자로 installer를 uninstall 모드로 실행한다(`saba-chan-gui/main.js:2945`).
+Tauri 커맨드(`lib.rs:109-1015`): `get_installer_state`, `set_install_path`, `set_language`, `set_shortcut_options`, `set_selected_modules`, `get_available_modules`(같은 manifest의 `module-*`, 폴백 없음), `fetch_latest_release`, `start_install`, `start_uninstall`, `get_app_mode`, `launch_app`, `get_preferred_language`, `browse_folder`. GUI는 `--uninstall` 인자로 installer를 uninstall 모드로 실행한다(`saba-chan-gui/main.js:2945`).
 
 **문제점**
 - 기본 설치 경로가 `Program Files`(관리자 권한 필요)인데 레지스트리는 HKCU에 쓴다. 더 큰 문제는 updater exe와 daemon이 **권한 상승 없이** `install_root`에 쓴다는 점이다. 기본 경로에 설치하면 업데이트 적용이 권한 문제로 실패할 수 있다(추정, 매니페스트의 requestedExecutionLevel은 확인하지 않음).
-- 모듈 소스의 출처가 네 갈래로 서로 다르다.
-  1. installer: modules repo **main zipball**
-  2. daemon `server.rs:444-466`: modules repo **releases/latest manifest와 asset**
-  3. updater 업데이트 확인: `module.toml`이 가리키는 **모듈별 repo**
-  4. 무결성 검사: modules repo **최신 릴리즈 manifest**
+- 모듈·익스텐션 소스는 하나다: 설치기, 데몬 목록, 업데이터, 무결성 검사가 모두 같은 릴리즈 manifest를 본다.
 - `installer/KNOWN_ISSUES.md`는 "2026-03-05 5건 모두 해결"이라고 적혀 있다. 해시 검증 미구현은 이 목록에 없다.
 
 ---
@@ -222,19 +216,16 @@ Tauri 커맨드(`lib.rs:109-1015`): `get_installer_state`, `set_install_path`, `
 |---|---|---|
 | `ci.yml` | push/PR to main, develop | Rust matrix(os): fixture 모듈 생성 → `cargo clippy --workspace -D warnings` → build → test. JS: GUI vitest, discord_bot test |
 | `test.yml` | push/PR to main, develop | `ci.yml`과 거의 중복(`cargo build --release`, `cargo test --workspace`, vitest, npm test, artifact 업로드) |
-| `release.yml` | `release: [published, edited]`, `workflow_dispatch(tag_name)` | **빌드는 하지 않는다.** 사람이 Draft Release에 직접 올린 raw exe/zip을 `gh release download` → `package-release.py`로 표준 zip 재패키징 → 빠진 컴포넌트는 이전 릴리즈에서 가져옴 → `locales.zip` 생성 → `manifest.json`(sha256 포함) 생성 → `--clobber` 업로드 → output에 없는 raw asset 삭제(`release.yml:43-147`) |
+| `release.yml` | `release: [published, edited]`, `workflow_dispatch(tag_name)` | **빌드는 하지 않는다.** 사람이 Draft Release에 올린 raw exe/zip을 `gh release download` → `package-release.py`로 표준 zip 재패키징 → `locales.zip`. 그다음 R2 단계: modules·extensions 저장소 `main`을 checkout → `scripts/versions.py manifest`가 모듈·익스텐션 zip까지 묶어 manifest 생성 → `release_signing` 예제로 `saba-updater-v1` 키 서명(번들 공개키로 검증까지) → R2 `releases/<version>/` 업로드 → 릴레이 `POST /admin/releases` 등록. 이미 R2에 있거나 등록된 버전이면 덮어쓰지 않고 실패한다(`release.yml:1-49, 120-232`) |
 
-- 실제 빌드는 로컬 Windows의 `scripts/build-windows.ps1`이 한다. 내용은 `cargo build --release --workspace`, GUI `npm run build`/`package`, discord_bot zip, locales 복사다(`build-windows.ps1:58-271`). `build-core.ps1`은 core를 GUI bin으로 복사하고, `build-docker-io.ps1`은 docker 익스텐션의 Go 바이너리 `saba-docker-io`를 빌드한다. `run-test.{ps1,sh}`는 형제 디렉터리 `../server-chan/relay-server`가 있으면 relay E2E까지 돌린다(`run-test.sh:46-50,123-141`).
-- `package-release.py`의 `COMPONENTS`(`:47-112`)는 **windows-x64 asset만** 만들고 `asset_linux`는 만들지 않는다. 템플릿(`release-manifest.json`)과 updater(`github.rs:291`)는 Linux asset을 전제로 하므로 맞지 않는다. Linux에서는 Windows zip으로 폴백하게 된다.
-- `.github/scripts/generate-manifest.py`는 어떤 workflow에서도 호출되지 않는다. `sha256: None`으로 고정하는(`:188`) 레거시 스크립트다. `release-manifest.json`의 `_comment`는 "버전은 CI 스크립트(generate-manifest.py)가 덮어쓴다"고 하지만 이 설명은 틀렸다.
-- `release.yml`은 `ref: main`으로 checkout한다(`:74`). 그래서 태그 시점이 아니라 main의 locales와 버전 파일이 manifest에 들어간다.
-- `.github/WORKFLOWS_GUIDE.md`는 "5개 워크플로우(coverage.yml 등)"라고 쓰지만 실제로는 3개다.
+- GitHub Release는 사람이 raw 파일을 올리는 **입력 칸**으로만 쓴다. 업데이터·설치기는 GitHub를 보지 않는다.
+- 실제 빌드는 로컬 Windows의 `scripts/build-windows.ps1`이 한다.
+- `package-release.py`는 **windows-x64 asset만** 만든다. manifest도 `--platform windows-x64`로 만든다.
 
-### 3.2 modules / extensions repo (소비자 쪽 기준 요약)
+### 3.2 modules / extensions repo
 
-- `saba-chan-modules`: GitHub Release `latest`에 `manifest.json`(`{schema_version, modules:{name:{sha256,…}}}`)과 `module-<name>.zip`을 올린다(`constants.rs:20-32`, `integrity.rs:559-600`). 모듈마다 `module.toml`에 `[update] github_repo`가 있으면 그 repo의 tag `vX.Y.Z` 릴리즈를 업데이트 소스로 쓴다.
-- `saba-chan-extensions`: updater integrity는 **릴리즈 asset** `manifest.json`을 보고, installer와 constants는 **raw main/manifest.json**을 본다. 둘 중 하나는 어긋나게 된다.
-- 두 repo의 CI 정의(`.github/workflows`, `build_modules.py`, `build_extensions.py`)는 [02-modules.md](02-modules.md) §5와 [03-extensions.md](03-extensions.md) §3.4에서 다룬다.
+- 두 저장소 모두 자체 릴리즈 워크플로가 없다. `saba-chan-modules`에는 검사용 `check-modules.yml`만 있고, `saba-chan-extensions`에는 워크플로가 없다.
+- 둘 다 코어 `release.yml`이 `main`을 checkout해서 같은 릴리즈 manifest에 싣는다(§3.1, [02-modules.md](02-modules.md) §5, [03-extensions.md](03-extensions.md) §3.4).
 
 ---
 
@@ -364,16 +355,16 @@ zod 스키마는 `middleware/schemas.ts` 한 곳에 모여 있다.
 | # | 내용 | 근거 |
 |---|---|---|
 | U1 | manifest `sha256`은 zip 해시이고 integrity는 압축을 푼 파일 해시라서 항상 `Tampered`가 된다 | `package-release.py:474-481` ↔ `integrity.rs:246-296` |
-| U2 | 다운로드와 설치 때 sha256을 검증하지 않는다(updater, installer 모두) | `lib.rs:1133-1279`, installer `lib.rs:512-560` |
+| U2 | ~~다운로드와 설치 때 sha256을 검증하지 않는다~~ 해결됨: 업데이터·설치기·데몬 모듈 설치 모두 `download_verified`로 확인한다 | `download.rs:40` |
 | U3 | **Zip-slip**: `entry.name()`을 그대로 `join`한다(`enclosed_name` 미사용) | updater `lib.rs:1976,2028,2166,2501,3004`; installer `lib.rs:1096` |
 | U4 | `saba-core` 버전 폴백이 updater-lib 버전이다 | `lib.rs:956` |
 | U5 | `prepare_daemon_update`는 사용되지 않는다. rollback 경로가 없고 `.old`는 적용 직후 삭제된다 | `lib.rs:2303`, 1428-1466 |
 | U6 | v2 모듈(worker/foreground/queue/scheduler/ipc 대부분)이 죽은 코드다. `cli.rs.removed`, `lib.rs.bak` 잔재 | `lib.rs:11-17,46-55` |
-| U7 | `/api/updates/config` 설정이 저장되지 않고 재시작하면 초기화된다. GUI는 POST를 쓰는데 라우트는 PUT이다 | `updates.rs:92,579`; `main.js:2792` |
+| U7 | ~~설정이 저장되지 않는다~~ 해결됨: `config.json` `updates` 절. GUI가 POST를 쓰는지는 GUI 리메이크 기준으로 다시 확인해야 한다 | `updates.rs:730-797` |
 | U8 | CLI의 `/api/install/*`은 daemon에 없다. CLI apply는 body 없는 POST다 | `saba-chan-cli/src/client.rs:371-400` |
 | U9 | CLI `launch-apply`가 넘기는 `--install-root`와 대상 인자를 updater가 무시한다 | `commands.rs:1147` ↔ updater gui `lib.rs:362-381` |
-| U10 | CI가 Linux asset을 만들지 않는다(`asset_linux` 없음) | `package-release.py:47-112` |
-| U11 | `generate-manifest.py`는 사용되지 않는다. `release-manifest.json`의 주석이 틀렸다. (삭제된) `WORKFLOWS_GUIDE.md`는 5개라고 했지만 실제로는 3개다 | `.github/` |
-| U12 | 모듈과 익스텐션 소스가 4갈래로 갈린다(main zipball / latest release / 모듈별 repo / raw main) | §2, §1.4 |
+| U10 | CI가 windows-x64 릴리즈만 만든다 | `package-release.py`, `release.yml` |
+| U11 | ~~`generate-manifest.py`, `release-manifest.json` 템플릿~~ 지워졌다 | `.github/` |
+| U12 | ~~모듈과 익스텐션 소스가 4갈래로 갈린다~~ 해결됨: 모두 같은 릴리즈 manifest | §1.4 |
 | U13 | `Program Files` 기본 설치에 권한 상승 없이 업데이트를 적용한다 | installer `lib.rs:1029-1033` |
-| U14 | GitHub API를 인증 없이 호출해 rate limit(60/h)에 걸릴 위험이 있다 | `github.rs:101-140` |
+| U14 | ~~GitHub API 비인증 rate limit~~ 해당 없음: GitHub를 조회하지 않는다 | §1.4 |

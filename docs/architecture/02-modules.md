@@ -15,6 +15,9 @@
 
 ---
 
+
+> **2026-10-17 L3 이후**: 업데이트·모듈 목록·익스텐션 목록은 모두 릴레이의 서명된 릴리즈 manifest 하나에서 나온다. GitHub 업데이트 경로(`github.rs`, `api_base_url`, `github_owner`/`github_repo`, `include_prerelease`, 익스텐션 `manifest_url`, module.toml `[update]`, modules·extensions 저장소의 릴리즈 워크플로)는 없다. 근거 커밋: saba-chan 65e1763·8b840f7·60768a7, modules a26bdeb, extensions 301ff2c.
+
 ## 1. 모듈 발견과 로딩
 
 ### 1.1 탐색 위치
@@ -45,7 +48,7 @@
 
 - `#[serde(deny_unknown_fields)]`가 없다. 그래서 **모르는 키나 섹션은 모두 조용히 무시**된다.
 - 반대로 **알고 있는 키의 타입이 틀리면 모듈 전체 로드가 실패**한다. 예를 들어 settings의 `options`에 숫자를 넣으면 `Vec<String>`이라 실패한다.
-- BOM: `palworld/module.toml`은 UTF-8 BOM으로 시작한다. `fs::read_to_string`은 BOM을 그대로 두며, toml 파서가 BOM을 허용하는지는 **검증하지 못했다**. 빌드 스크립트는 BOM을 명시적으로 제거한다 (`M:.github/scripts/build_modules.py:98-100`).
+- BOM: `palworld/module.toml`은 UTF-8 BOM으로 시작한다. `fs::read_to_string`은 BOM을 그대로 두며, toml 파서가 BOM을 허용하는지는 **검증하지 못했다**.
 
 표의 기호: ✔ = 필수(없으면 파싱 실패), ○ = 선택.
 
@@ -63,10 +66,8 @@
 | `game_name` | String | ○ | `_game_name`으로 받아서 버림. **메타데이터에 실리지 않음** |
 | `display_name` | String | ○ | `_display_name`으로 받아서 버림. 빌드 스크립트와 installer만 사용 |
 
-#### `[update]` (`UpdateSection` `:299-304`)
-| 키 | 타입 | 비고 |
-|---|---|---|
-| `github_repo` | String | 데몬 로더에서는 `_update`로 버림. **업데이터**(`D:updater/src/lib.rs:806-830`)가 별도로 raw toml을 읽어서 사용 |
+#### `[update]` (없어짐)
+L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름>` 항목으로 판정한다(§5). 옛 module.toml에 남아 있어도 모르는 섹션이라 조용히 무시된다.
 
 #### `[protocols]` (`ProtocolsSection` `:306-314`)
 | 키 | 타입 | 사용처 |
@@ -459,49 +460,28 @@
 
 ## 5. 패키징과 배포
 
-### 5.1 `build_modules.py` (`M:.github/scripts/build_modules.py`)
+### 5.1 릴리즈에 싣기 (`D:scripts/versions.py manifest`, `D:.github/workflows/release.yml`)
 
-- **탐색**: 리포 루트의 1단계 디렉터리 중 `module.toml`이 있고 이름이 `.`이나 `_`로 시작하지 않는 것 (`:83-90`). 그래서 `__example`은 제외된다.
-- **파싱**: `tomllib`(BOM 제거)을 쓰고, 없으면 `[module]` 섹션만 읽는 정규식 파서로 대체한다. 추출 항목은 `name`, `version`, `description`, `display_name`, `game_name`, `entry`다.
-- **zip**: `module-<name>.zip`. 모듈 디렉터리 기준 **평탄한 상대경로**로 묶는다(최상위 폴더 없음). `__pycache__`, `.pytest_cache`, `.git`, `*.pyc/.pyo`, `test_*`는 제외한다. `_sample_log.txt`, `.ini`, `.properties` 등은 포함된다.
-- **manifest.json** (`:303-320`):
-  ```json
-  { "schema_version": 1, "generated_at": "...",
-    "modules": { "<name>": { "version", "asset": "module-<name>.zip", "sha256": "<zip sha256>",
-                             "install_dir": "modules/<name>", "display_name", "description", "game_name" } } }
-  ```
-- **변경 감지**: 이전 릴리스의 manifest와 version과 sha256을 비교한다. 변경이 없으면 릴리스를 만들지 않는다. `FORCE_RELEASE`로 강제할 수 있다.
-- **태그**: `modules-YYYYMMDD-HHMMSS`.
+- 모듈 저장소에는 릴리즈 워크플로가 없다. 검사용 `M:.github/workflows/check-modules.yml`(스키마·적합성 검사)만 있다.
+- 코어 릴리즈 워크플로가 `saba-chan-modules`의 `main`을 checkout하고(`release.yml:164-171`), `versions.py manifest --modules-repo`가 모듈마다 `module-<name>.zip`을 만든다(`versions.py:216-244`). 버전은 각 `module.toml`의 `[module].version`, 목록 화면용 정보(`display_name`, `description`, `game_name`, `requires_extensions`, 아이콘 URL)는 `meta`에 들어간다.
+- 이 zip들은 코어·GUI·CLI와 **같은 릴리즈 manifest**(`components`의 `module-<name>` 키)에 실려 서명되고, R2 `releases/<version>/`에 올라간다. 그래서 모듈 목록과 버전은 릴리즈 단위로 고정된다.
 
-### 5.2 워크플로 (`M:.github/workflows/release-modules.yml`)
+### 5.2 데몬의 목록·설치
 
-- **트리거**: `main` push 중 `*/module.toml`, `*/lifecycle.py`, `*/i18n.py`, `*/locales/**`, `*/icon.png`, `**/*.ini`, `**/*.properties` 경로, 또는 수동 실행.
-  - 다른 파일(예: 추가 `.py` 헬퍼, `_sample_log.txt`)만 바꾸면 릴리스가 생기지 않는다.
-- **순서**: 이전 manifest를 받는다(`gh release download`) → 빌드한다 → **기존 릴리스를 모두 삭제한다**(`gh release list --limit 100 | gh release delete --cleanup-tag`) → 새 릴리스를 만든다(manifest.json과 *.zip).
-  - 그 결과 항상 **릴리스가 하나만** 존재한다. 롤백이나 과거 버전 고정은 불가능하다.
-
-### 5.3 데몬과 업데이터의 다운로드·설치
-
-- **URL**: owner는 `WareAoba`, repo는 `saba-chan-modules`다 (`D:updater/src/constants.rs:25-60`).
-  - manifest: `https://github.com/WareAoba/saba-chan-modules/releases/latest/download/manifest.json`
-  - 에셋: `https://github.com/WareAoba/saba-chan-modules/releases/latest/download/module-<id>.zip`
-- **`GET /api/modules/manifest`**: 위 manifest를 프록시해서 돌려준다 (`server.rs:443-457`).
-- **`POST /api/modules/manifest/:id/install`** (`server.rs:460-516`):
-  1. `module-<id>.zip`을 `<modules>/_tmp_module_<id>.zip`로 받는다.
-  2. `<modules>/<id>/`에 `archive.extract`로 푼다. zip이 평탄한 구조라서 결과가 맞게 나온다.
-  3. 임시 zip을 지우고 캐시를 새로고침한다.
-  - **manifest의 sha256을 검증하지 않는다.**
-  - `module_id`의 경로를 검증하지 않는다. `remove_module`(`:526`)에는 `..`, `/`, `\` 검사가 있지만 install에는 없다.
-  - 기존 디렉터리를 정리하지 않고 덮어써서 풀기 때문에, 업데이트하면 삭제된 파일이 남는다.
-  - HTTP 에러도 200 `{ok:false}`로 돌려준다.
+- **`GET /api/modules/manifest`**: `relay::latest_catalog`로 최신 릴리즈 manifest를 받아 `module-*` 항목을 `{modules:{<이름>:{version, sha256, size_bytes, ...meta}}}`로 돌려준다 (`D:src/ipc/handlers/server.rs:430-452`).
+- **`POST /api/modules/manifest/:id/install`** (`server.rs:455-516`):
+  1. `id`에 `..`, `/`, `\`가 있으면 거부한다.
+  2. manifest의 `module-<id>`가 없으면 실패한다.
+  3. R2 URL에서 `<modules>/_tmp_module_<id>.zip`로 받으며 SHA-256을 확인한다(`download_verified`).
+  4. `.staging-<id>`에 풀고 `module.toml`이 있을 때만 기존 `<modules>/<id>`를 지우고 바꾼다. 그래서 업데이트해도 지워진 파일이 남지 않는다.
+  - 실패도 HTTP 200 `{ok:false, error}`로 돌려준다.
 - **`DELETE /api/modules/:id`**: `<modules>/<id>`를 `remove_dir_all`로 지운다. 여기서 `id`는 **디렉터리명**이다.
-- **업데이터(코어 업데이트 흐름)** (`D:updater/src/lib.rs`):
-  - `discover_module_repos()`가 로컬 `module.toml`의 `[update].github_repo`를 읽는다(`:806-830`). 그 리포의 **최신 릴리스 태그**를 `trim_start_matches('v')`해서 latest_version으로 쓴다(`:742-803`).
-  - 그런데 모듈 리포의 태그는 `modules-20261016-...`라서 SemVer로 파싱되지 않는다. `compare_versions`는 `(None, _) => false`이므로(`:921-929`) **모듈 자동 업데이트는 영원히 "업데이트 없음"으로 판정될 가능성이 높다**. 모듈별 버전은 manifest에 있지만 이 경로는 manifest를 읽지 않는다.
-  - 3개 모듈이 모두 같은 `github_repo`를 가리키므로 같은 릴리스를 세 번 조회한다.
-  - lib.rs:32의 doc 예시 manifest 형식(`"module-minecraft": {...}` + `components`)은 실제 build_modules.py 출력(`modules.<name>`)과 다르다.
-  - 무결성 검사(`integrity::collect_hashes_from_module_manifest`, `D:updater/src/integrity.rs:562-603`)는 manifest의 sha256(**zip 파일의 해시**)을 쓴다. 그런데 비교 대상은 `modules/<name>/lifecycle.py` (`integrity.rs:274-275`)라서 **원리상 항상 불일치한다**. 구현을 직접 실행해 보지는 않았다.
-- **installer**: 원격 module.toml을 받아 표시 정보를 만든다. 원격 실패 시 minecraft, palworld, zomboid 하드코딩 목록으로 대체한다 (`installer/gui/src-tauri/src/lib.rs:169-195`).
+
+### 5.3 업데이터
+
+- `check_for_updates`가 같은 manifest에서 **설치된 모듈만** 골라 버전을 비교한다(`D:updater/src/lib.rs:469-530`). 새 모듈 설치는 목록 화면(§5.2)의 몫이다.
+- 무결성 검사(`integrity::collect_hashes_from_server_manifest`, `D:updater/src/integrity.rs:341`)는 manifest의 sha256(**zip 파일의 해시**)을 `modules/<name>/lifecycle.py`의 해시와 비교한다(`integrity.rs:268-272`). 비교 대상이 달라 원리상 일치하지 않는다(05 §1.5).
+- **installer**: 모듈 목록도 같은 manifest의 `module-*`에서 만든다(`installer/gui/src-tauri/src/lib.rs:159-182`, `release.rs`). 하드코딩 폴백은 없고, 받지 못하면 화면이 알린다.
 
 ---
 

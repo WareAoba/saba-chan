@@ -92,6 +92,9 @@ pub async fn do_uninstall(app: &AppHandle, keep_settings: bool) {
         }
     };
 
+    // 레지스트리 값이 엉뚱한 폴더를 가리켜도 지우지 않는다: 사바쨩 실행 파일이 있어야 설치 폴더다
+    let install_dir = install_dir.filter(|d| looks_like_install_dir(d));
+
     // Step 2: 프로세스 종료
     emit("stop", "Stopping saba-chan processes...", 10);
     stop_saba_processes();
@@ -198,19 +201,13 @@ pub async fn do_silent_uninstall() {
     let install_location = registry::get_install_location();
     #[cfg(not(target_os = "windows"))]
     let install_location: Option<String> = None;
-    if let Some(ref loc) = install_location {
-        let dir = PathBuf::from(loc);
-        if dir.exists() {
-            eprintln!("  Removing install directory: {}", loc);
-            let _ = remove_dir_robust(&dir);
-        }
-    } else {
-        let default = get_default_install_path();
-        let dir = PathBuf::from(&default);
-        if dir.exists() {
-            eprintln!("  Removing default install directory: {}", default);
-            let _ = remove_dir_robust(&dir);
-        }
+    // 사바쨩 실행 파일이 있는 폴더만 설치 폴더로 본다 (엉뚱한 레지스트리 값이면 아무것도 안 지운다)
+    #[allow(clippy::unnecessary_literal_unwrap)] // Windows 밖에서는 레지스트리 값이 늘 None
+    let install_dir = Some(PathBuf::from(install_location.unwrap_or_else(get_default_install_path)))
+        .filter(|d| looks_like_install_dir(d));
+    if let Some(dir) = &install_dir {
+        eprintln!("  Removing install directory: {}", dir.display());
+        let _ = remove_dir_robust(dir);
     }
 
     // 사용자 데이터
@@ -235,9 +232,7 @@ pub async fn do_silent_uninstall() {
     // 자기 자신 삭제
     eprintln!("  Scheduling self-deletion...");
     {
-        let install_location_ref = install_location.as_ref();
-        let dir = install_location_ref.map(PathBuf::from);
-        schedule_self_delete(dir.as_ref());
+        schedule_self_delete(install_dir.as_ref());
     }
 
     eprintln!("[OK] Saba-chan has been completely removed.");
@@ -303,6 +298,14 @@ fn stop_saba_processes() {
                 .status();
         }
     }
+}
+
+/// 사바쨩이 설치한 폴더인지: 바로 안에 데몬이나 GUI 실행 파일이 있어야 한다
+fn looks_like_install_dir(dir: &std::path::Path) -> bool {
+    let ext = if cfg!(windows) { ".exe" } else { "" };
+    ["saba-core", "saba-chan-gui"]
+        .iter()
+        .any(|name| dir.join(format!("{}{}", name, ext)).is_file())
 }
 
 /// 디렉토리 강제 삭제 (잠금 파일에 대한 재시도 포함)
@@ -544,4 +547,20 @@ fn get_default_install_path() -> String {
         }
     }
     "saba-chan".to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_a_folder_with_saba_binaries_counts_as_the_install_dir() {
+        let dir = std::env::temp_dir().join(format!("saba-uninstall-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(!looks_like_install_dir(&dir));
+        let ext = if cfg!(windows) { ".exe" } else { "" };
+        std::fs::write(dir.join(format!("saba-core{}", ext)), b"").unwrap();
+        assert!(looks_like_install_dir(&dir));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }

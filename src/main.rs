@@ -208,10 +208,8 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    // ── Integrity Check (무결성 검증) ──────────────────────────
-    // 서버(GitHub)에서 매니페스트를 가져와 설치된 컴포넌트의 SHA256을 검증.
-    // 결과는 로그로만 남으므로 네트워크를 기다리며 기동을 막지 않는다.
-    tokio::spawn(run_integrity_check_on_startup());
+    // 표를 끊는 데몬이라는 기록. 업데이터는 이게 없으면 옛 데몬으로 본다 (C13 전환 경로)
+    saba_chan_updater_lib::launch_ticket::record_core_version(env!("CARGO_PKG_VERSION"));
     // Python을 첫 모듈 호출 전에 미리 준비한다 (GUI는 /api/runtime/preflight로 진행을 본다)
     tokio::spawn(async {
         if let Err(e) = python_env::get_python_path().await {
@@ -658,82 +656,4 @@ async fn try_restart_renderer() -> bool {
 
     false
 }
-
-/// 시작 시 서버에서 매니페스트를 가져와 무결성 검증을 수행하고 결과를 터미널에 출력합니다.
-async fn run_integrity_check_on_startup() {
-    use saba_chan_updater_lib::integrity::{
-        IntegrityStatus, OverallIntegrity,
-    };
-    use saba_chan_updater_lib::UpdateManager;
-
-    let cfg = ipc::updates::load_updater_config();
-
-    let modules_dir = plugin::resolve_modules_dir();
-    let modules_str = modules_dir.to_string_lossy().to_string();
-    let mut manager = UpdateManager::new(cfg, &modules_str);
-
-    let report = match manager.verify_integrity().await {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::warn!("[Integrity] 서버 매니페스트 fetch 실패, 검증 건너뜀: {}", e);
-            return;
-        }
-    };
-
-    // ── 터미널 출력 ──
-    tracing::info!("══════════════════════════════════════════════════");
-    tracing::info!("  Component Integrity Check (server-verified)");
-    tracing::info!("══════════════════════════════════════════════════");
-
-    for c in &report.components {
-        let icon = match c.status {
-            IntegrityStatus::Verified    => "✅",
-            IntegrityStatus::Tampered    => "❌",
-            IntegrityStatus::NoHash      => "⚪",
-            IntegrityStatus::FileNotFound => "⬜",
-            IntegrityStatus::Error       => "⚠️",
-        };
-        let status_text = match c.status {
-            IntegrityStatus::Verified    => "Verified",
-            IntegrityStatus::Tampered    => "TAMPERED",
-            IntegrityStatus::NoHash      => "No Hash",
-            IntegrityStatus::FileNotFound => "Not Found",
-            IntegrityStatus::Error       => "Error",
-        };
-        tracing::info!(
-            "  {} {:<20} [{}] {}",
-            icon, c.display_name, status_text, c.message
-        );
-    }
-
-    tracing::info!("──────────────────────────────────────────────────");
-
-    match report.overall {
-        OverallIntegrity::AllVerified => {
-            tracing::info!(
-                "  ✅ All {} component(s) verified",
-                report.verified
-            );
-        }
-        OverallIntegrity::Partial => {
-            tracing::info!(
-                "  ⚪ {}/{} verified, {} skipped (no hash or not found)",
-                report.verified, report.total, report.skipped
-            );
-        }
-        OverallIntegrity::TamperDetected => {
-            tracing::warn!(
-                "  ❌ INTEGRITY FAILURE: {}/{} component(s) may be tampered!",
-                report.failed, report.total
-            );
-        }
-        OverallIntegrity::Empty => {
-            tracing::info!("  No components to verify");
-        }
-    }
-
-    tracing::info!("══════════════════════════════════════════════════");
-}
-
-
 

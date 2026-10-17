@@ -466,10 +466,10 @@ pub struct ExtensionListItem {
 //  원격 매니페스트 타입 정의
 // ═══════════════════════════════════════════════════════════════
 
-/// GitHub 원격 매니페스트에서 가져온 익스텐션 항목
+/// 릴리즈 manifest의 `ext-<id>` 컴포넌트에서 만든 익스텐션 항목 (`from_release`)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteExtensionInfo {
-    /// 익스텐션 ID (manifest.json에서는 맵의 키 — 역직렬화 후 주입)
+    /// 익스텐션 ID (manifest 키에서 `ext-`를 뗀 것, 역직렬화 후 주입)
     #[serde(default)]
     pub id: String,
     pub name: String,

@@ -76,7 +76,7 @@ pub async fn install_addon(info: &ManifestComponent, target: &Path) -> Result<()
             std::fs::remove_dir_all(target)?;
         }
         std::fs::create_dir_all(target)?;
-        saba_chan_updater_lib::extract_zip(&zip, target, |_| Ok(()))
+        saba_chan_updater_lib::extract_zip(&zip, target, |_| Ok(())).map(|_| ())
     })();
     let _ = std::fs::remove_file(&zip);
     result.map_err(|e| e.to_string())

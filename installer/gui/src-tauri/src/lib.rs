@@ -608,7 +608,13 @@ fn elevate_create_dir(dir: &Path) -> Result<(), String> {
 
     let verb = to_wide("runas");
     let file = to_wide(&self_exe.to_string_lossy());
-    let params = to_wide(&format!("--elevate-mkdir \"{}\"", dir.to_string_lossy()));
+    // 권한은 상승 전 사용자에게 준다 (상승된 쪽의 USERNAME은 관리자 계정일 수 있다)
+    let user = match (std::env::var("USERDOMAIN"), std::env::var("USERNAME")) {
+        (Ok(d), Ok(u)) => format!("{}\\{}", d, u),
+        (_, Ok(u)) => u,
+        _ => return Err("Cannot determine the current user".into()),
+    };
+    let params = to_wide(&format!("--elevate-mkdir \"{}\" --grant \"{}\"", dir.to_string_lossy(), user));
 
     let mut sei: SHELLEXECUTEINFOW = unsafe { zeroed() };
     sei.cbSize = size_of::<SHELLEXECUTEINFOW>() as u32;
@@ -642,6 +648,30 @@ fn elevate_create_dir(dir: &Path) -> Result<(), String> {
     }
 
     Err("Directory creation was cancelled or failed".into())
+}
+
+/// 관리자 권한으로 만들 폴더 검사: 절대 경로, `.`·`..` 없음, 드라이브 루트 아님, Windows 폴더 밖
+fn check_elevated_target(dir: &Path) -> Result<(), String> {
+    use std::path::Component;
+    if !dir.is_absolute() {
+        return Err("path must be absolute".into());
+    }
+    if dir.components().any(|c| matches!(c, Component::CurDir | Component::ParentDir)) {
+        return Err("path must not contain . or ..".into());
+    }
+    if dir.components().filter(|c| matches!(c, Component::Normal(_))).count() == 0 {
+        return Err("refusing a drive root".into());
+    }
+    let lower = dir.to_string_lossy().to_lowercase().replace('/', "\\");
+    for var in ["SystemRoot", "WINDIR"] {
+        if let Ok(sys) = std::env::var(var) {
+            let sys = sys.to_lowercase().trim_end_matches('\\').to_string();
+            if !sys.is_empty() && (lower == sys || lower.starts_with(&format!("{}\\", sys))) {
+                return Err("refusing a path inside the Windows folder".into());
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -754,7 +784,7 @@ fn normalize_language_tag(input: &str) -> Option<String> {
 
 fn extract_zip(zip_path: &Path, target_dir: &Path) -> anyhow::Result<()> {
     std::fs::create_dir_all(target_dir)?;
-    saba_chan_updater_lib::extract_zip(zip_path, target_dir, |_| Ok(()))
+    saba_chan_updater_lib::extract_zip(zip_path, target_dir, |_| Ok(())).map(|_| ())
 }
 
 /// core zip에 포함된 공유 Python 모듈(i18n.py, daemon_rcon.py)을
@@ -910,13 +940,20 @@ pub fn run() {
     if let Some(pos) = args.iter().position(|a| a == "--elevate-mkdir") {
         if let Some(dir_str) = args.get(pos + 1) {
             let dir = Path::new(dir_str);
+            if let Err(e) = check_elevated_target(dir) {
+                eprintln!("elevate-mkdir: {}", e);
+                std::process::exit(1);
+            }
             // 디렉토리 생성
             if let Err(e) = std::fs::create_dir_all(dir) {
                 eprintln!("elevate-mkdir: failed to create dir: {}", e);
                 std::process::exit(1);
             }
-            // 현재 사용자에게 전체 권한 부여
-            let username = std::env::var("USERNAME").unwrap_or_else(|_| "Users".into());
+            // 상승 전 사용자에게 전체 권한 부여
+            let Some(username) = args.iter().position(|a| a == "--grant").and_then(|i| args.get(i + 1)).cloned() else {
+                eprintln!("elevate-mkdir: missing --grant user");
+                std::process::exit(1);
+            };
             let icacls = std::process::Command::new("icacls")
                 .args([
                     dir_str.as_str(),

@@ -2,6 +2,9 @@
 
 > 이 폴더(`docs/architecture/`)는 **기존 README/docs를 버리고 코드를 직접 읽어서** 다시 만든 기준 문서다. 앞으로의 작업은 이 문서를 출발점으로 삼고, 코드가 바뀌면 이 문서도 같이 고친다(맨 아래 "문서 유지 규칙").
 
+
+> **2026-10-17 L3 이후**: 업데이트·모듈 목록·익스텐션 목록은 모두 릴레이의 서명된 릴리즈 manifest 하나에서 나온다. GitHub 업데이트 경로(`github.rs`, `api_base_url`, `github_owner`/`github_repo`, `include_prerelease`, 익스텐션 `manifest_url`, module.toml `[update]`, modules·extensions 저장소의 릴리즈 워크플로)는 없다. 근거 커밋: saba-chan 65e1763·8b840f7·60768a7, modules a26bdeb, extensions 301ff2c.
+
 ## 기준 스냅샷
 
 | 저장소 | 커밋 | 커밋 날짜 |
@@ -61,7 +64,7 @@
    │     │            └─ managed process(stdin/stdout), RCON, REST ─► 게임 서버
    │     ├─ ext-process 매니저 ─► discord_bot(Node) 실행        │
    │     ├─ /api/relay/* 프록시 ─────────────────────────────────┼─► server-chan relay
-   │     └─ /api/updates/* ─ updater lib ─► GitHub Releases     │
+   │     └─ /api/updates/* ─ updater lib ─► 릴레이 + R2         │
    └───────────────────────────────────────────────────────────┘
                          ▲ HTTP + X-Saba-Token
    discord_bot (Node) ───┘
@@ -79,11 +82,11 @@
 |---|---|---|
 | 인터페이스 → 데몬 | HTTP JSON, `X-Saba-Token`(데몬이 `.ipc_token` 파일에 기록, 클라이언트가 읽음). 토큰 파일이 없으면 인증 생략(fail-open) | 01 §2, §3 |
 | 데몬 → 모듈 | `python lifecycle.py <fn>`, stdin JSON(config) → stdout 마지막 JSON, stderr `PROGRESS:` 진행 보고, 기본 120초 타임아웃. 데몬이 부르는 함수 16종 | 02 §2 |
-| 모듈 정의 | `module.toml`: `[module]`(필수) `[update]` `[protocols]` `[config]` `[detection]` `[[settings.fields]]` `[[commands.fields]]` `[install]` `[docker]` 등. 모르는 키는 조용히 버려짐 | 02 §1.2 |
+| 모듈 정의 | `module.toml`: `[module]`(필수) `[protocols]` `[config]` `[detection]` `[[settings.fields]]` `[[commands.fields]]` `[install]` `[docker]` 등. 모르는 키는 조용히 버려짐 | 02 §1.2 |
 | 데몬 → 플러그인 | 같은 실행기로 hook 함수 호출. 실제 발화 hook 10종(`daemon.startup/shutdown`, `server.pre_start/post_stop/status/list_enrich/post_create/pre_delete/settings_changed/check_update`) | 03 §2 |
 | 플러그인 → GUI | GUI가 `/api/extensions/:id/gui` 번들을 로드, 전역 `window.SabaExt<Pascal>`의 `registerSlots()`로 slot에 컴포넌트 주입 | 03 §4 |
 | 데몬 ↔ relay | 페어링·호스트/노드 조회는 데몬 `/api/relay/*` 프록시. 봇 relay agent는 relay에 직접 HMAC 서명 요청 | 05 §4 |
-| 업데이트 | 데몬이 updater 라이브러리를 내장, GitHub Releases `manifest.json` 기준. GUI/코어/업데이터 자신은 `pending.json` 기록 후 인터페이스가 `saba-chan-updater --apply`를 실행 | 05 §1 |
+| 업데이트 | 데몬이 updater 라이브러리를 내장. 릴레이(`/v1/updates/check`, `/v1/updates/manifest/:version`)에서 Ed25519 서명 manifest를 받아 검증하고, 파일은 R2에서 SHA-256을 확인하며 받는다. 모듈(`module-*`)·익스텐션(`ext-*`)도 같은 manifest에 든다. GUI/코어/업데이터 자신은 `pending.json` 기록 후 데몬이 `saba-chan-updater --apply`를 띄운다(`POST /api/updates/launch-updater`) | 05 §1 |
 
 ## 4. 원칙 위반 종합 (오너 정의 기준)
 
