@@ -6,6 +6,7 @@
 //! GET  /api/extensions/:id/gui      → GUI 번들 서빙
 //! GET  /api/extensions/:id/gui/styles → CSS 서빙
 //! GET  /api/extensions/:id/icon     → 아이콘 (icon.png) 서빙
+//! GET  /api/extensions/:id/audit    → 코드가 쓰는 위험한 능력과 manifest `permissions` 비교
 //! GET  /api/extensions/:id/i18n/:locale → i18n JSON
 //! DELETE /api/extensions/:id         → 제거 (비활성화 + 디렉토리 삭제)
 
@@ -468,6 +469,28 @@ pub async fn serve_icon(
     };
 
     serve_static_file(&icon_path, "image/png").await
+}
+
+/// GET /api/extensions/:id/audit — `GET /api/module/:name/audit`와 같은 모양
+pub async fn audit_extension(State(state): State<IPCServer>, Path(ext_id): Path<String>) -> Response {
+    let found = {
+        let mgr = state.extension_manager.read().await;
+        mgr.discovered(&ext_id).map(|e| (e.dir.clone(), e.manifest.permissions.clone()))
+    };
+    let Some((dir, declared)) = found else {
+        return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Extension '{}' not found", ext_id), "error_code": "not_found" }))).into_response();
+    };
+    let scanned = match crate::python_env::get_python_path().await {
+        Ok(python) => crate::module_audit::scan(&python, &dir).await,
+        Err(e) => Err(e),
+    };
+    match scanned {
+        Ok(findings) => {
+            let undeclared = crate::module_audit::undeclared(&declared, &findings);
+            Json(json!({ "success": true, "declared": declared, "findings": findings, "undeclared": undeclared })).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("{:#}", e), "error_code": "audit_failed" }))).into_response(),
+    }
 }
 
 /// 파일을 읽어서 HTTP 응답으로 반환

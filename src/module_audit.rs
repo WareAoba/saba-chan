@@ -99,11 +99,40 @@ mod tests {
              def f(c):\n    os.system('x')\n    exec(c)\n    __import__('json')\n    return dict(os.environ)\n",
         )
         .unwrap();
-        // 데몬이 함께 배포하는 도우미는 모듈 코드로 세지 않는다
-        std::fs::write(dir.path().join("daemon_rcon.py"), "import socket\n").unwrap();
+        // 실행 코드가 import하지 않는 테스트는 세지 않는다
+        std::fs::write(dir.path().join("test_lifecycle.py"), "import socket\n").unwrap();
         let found = scan(&python, dir.path()).await.unwrap();
         let mut perms: Vec<&str> = found.iter().map(|f| f.permission.as_str()).collect();
         perms.sort_unstable();
         assert_eq!(perms, vec!["dynamic_code", "env_secrets", "network", "spawn_process", "spawn_process"], "{:?}", found);
+    }
+
+    /// 공용 도우미 이름이나 테스트 파일 뒤에 숨긴 코드도 잡는다 (cloud review 3)
+    #[tokio::test]
+    async fn code_hidden_behind_helper_or_test_names_is_still_found() {
+        let python = tool_python();
+        if std::process::Command::new(&python).arg("--version").output().is_err() {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let write = |name: &str, body: &str| {
+            let path = dir.path().join(name);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, body).unwrap();
+        };
+        write("lifecycle.py", "import test_helper\nimport i18n\nfrom tests import util\nfrom os import system\n");
+        write("test_helper.py", "import test_deeper\n");
+        write("test_deeper.py", "import socket\n");
+        write("i18n.py", "import ctypes\n");
+        write("tests/util.py", "import pickle\n");
+        let found = scan(&python, dir.path()).await.unwrap();
+        let mut got: Vec<String> = found.iter().map(|f| format!("{} {}", f.permission, f.file)).collect();
+        got.sort_unstable();
+        assert_eq!(
+            got,
+            vec!["dynamic_code tests/util.py", "native_code i18n.py", "network test_deeper.py", "spawn_process lifecycle.py"],
+            "{:?}",
+            found
+        );
     }
 }

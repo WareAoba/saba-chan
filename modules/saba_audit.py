@@ -35,8 +35,14 @@ CALLS = {
     "env_secrets": ("os.environ.items", "os.environ.copy", "os.environ.values"),
 }
 
-# 이 이름의 공용 도우미는 데몬이 함께 배포하는 것이라 모듈 코드로 세지 않는다
-SHARED_HELPERS = {"daemon_rcon.py", "i18n.py", "saba_audit.py"}
+# 테스트 코드는 실행 코드가 import할 때만 센다 (테스트는 subprocess 등을 마음껏 쓴다).
+# 공용 도우미(daemon_rcon.py, i18n.py)는 모듈 폴더 밖에 있으므로 폴더 안의 같은 이름 파일은 모듈 코드다.
+TEST_DIRS = ("conformance", "tests")
+
+
+def is_test_file(rel):
+    name = rel.rsplit("/", 1)[-1]
+    return name.startswith("test_") or name == "conftest.py" or rel.split("/", 1)[0] in TEST_DIRS
 
 
 def dotted(node):
@@ -79,6 +85,12 @@ def scan_file(path, rel):
             perm = permission_of_import(node.module)
             if perm:
                 add(perm, node, f"from {node.module} import ...")
+            # from os import system → os.system()와 같다
+            for a in node.names:
+                full = f"{node.module}.{a.name}"
+                for perm, calls in CALLS.items():
+                    if full in calls:
+                        add(perm, node, f"from {node.module} import {a.name}")
         elif isinstance(node, ast.Call):
             name = dotted(node.func)
             if not name:
@@ -97,16 +109,47 @@ def scan_file(path, rel):
     return out
 
 
+def imported_names(path):
+    """파일이 import하는 이름들 (`import a.b` → a, `from .c import d` → c, d, `__import__("e")` → e)"""
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"))
+    except (SyntaxError, UnicodeDecodeError, ValueError):
+        return set()
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.update(a.name.split(".")[0] for a in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            if node.module:
+                names.add(node.module.split(".")[0])
+            names.update(a.name for a in node.names)
+        elif (isinstance(node, ast.Call) and dotted(node.func) == "__import__" and node.args
+              and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)):
+            names.add(node.args[0].value.split(".")[0])
+    return names
+
+
 def scan(folder):
     root = Path(folder)
-    findings = []
+    files = {}
     for path in sorted(root.rglob("*.py")):
-        if path.name in SHARED_HELPERS or path.name.startswith("test_") or "__pycache__" in path.parts:
-            continue
-        rel = path.relative_to(root).as_posix()
-        if rel.startswith(("conformance/", "tests/")):
-            continue
-        findings.extend(scan_file(path, rel))
+        if "__pycache__" not in path.parts:
+            files[path.relative_to(root).as_posix()] = path
+
+    # 실행 코드에서 import로 닿는 테스트 파일까지 검사 대상에 넣는다 (닿는 것이 없을 때까지)
+    targets = {rel for rel in files if not is_test_file(rel)}
+    pending = set(targets)
+    while pending:
+        names = set()
+        for rel in pending:
+            names |= imported_names(files[rel])
+        pending = {rel for rel in files if rel not in targets
+                   and (Path(rel).stem in names or rel.split("/", 1)[0] in names)}
+        targets |= pending
+
+    findings = []
+    for rel in sorted(targets):
+        findings.extend(scan_file(files[rel], rel))
     return findings
 
 

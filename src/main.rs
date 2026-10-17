@@ -93,21 +93,47 @@ fn module_tool(args: &[String]) -> i32 {
 
 /// `saba-core extension validate <익스텐션 폴더>...` — manifest.json을 데몬과 같은 규칙으로 검사
 fn extension_tool(args: &[String]) -> i32 {
-    if args.first().map(String::as_str) != Some("validate") || args.len() < 2 {
-        eprintln!("usage: saba-core extension validate <extension dir>...");
-        return 2;
-    }
+    let audit = match args.first().map(String::as_str) {
+        Some("validate") if args.len() > 1 => false,
+        Some("audit") if args.len() > 1 => true,
+        _ => {
+            eprintln!("usage: saba-core extension validate <extension dir>... | extension audit <extension dir>...");
+            return 2;
+        }
+    };
+    let python = module_audit::tool_python();
     let mut failed = 0;
     for dir in &args[1..] {
         let path = std::path::Path::new(dir).join("manifest.json");
         let result = std::fs::read_to_string(&path)
             .map_err(anyhow::Error::from)
             .and_then(|c| saba_core::extension::parse_manifest(&c));
-        match result {
-            Ok((m, warnings)) => {
-                println!("ok    {} ({} v{})", dir, m.id, m.version);
-                for w in warnings {
-                    println!("      warning: {}", w);
+        let (m, warnings) = match result {
+            Ok(v) => v,
+            Err(e) => {
+                println!("FAIL  {}: {:#}", dir, e);
+                failed += 1;
+                continue;
+            }
+        };
+        if !audit {
+            println!("ok    {} ({} v{})", dir, m.id, m.version);
+            for w in warnings {
+                println!("      warning: {}", w);
+            }
+            continue;
+        }
+        match saba_core::module_audit::scan_blocking(&python, std::path::Path::new(dir)) {
+            Ok(found) => {
+                let missing = saba_core::module_audit::undeclared(&m.permissions, &found);
+                if missing.is_empty() {
+                    println!("ok    {}", dir);
+                } else {
+                    println!("FAIL  {}: uses capabilities not declared in \"permissions\"", dir);
+                    for f in missing {
+                        println!("      {} {}:{} {}", f.permission, f.file, f.line, f.detail);
+                    }
+                    failed += 1;
                 }
             }
             Err(e) => {
@@ -121,7 +147,7 @@ fn extension_tool(args: &[String]) -> i32 {
 
 const DAEMON_USAGE: &str = "Usage: saba-core [--spawned]
        saba-core module schema | module validate <dir>... | module audit <dir>...
-       saba-core extension validate <dir>...
+       saba-core extension validate <dir>... | extension audit <dir>...
        saba-core --version | --help
 
   --spawned   started by the GUI/CLI (skips the boot selector)";

@@ -2102,6 +2102,16 @@ ipcMain.handle('extension:list', async () => {
 });
 
 // 익스텐션 활성화
+// 익스텐션 코드가 쓰는 위험한 능력과 manifest permissions 비교 (데몬 응답 그대로)
+ipcMain.handle('extension:audit', async (_event, extId) => {
+    try {
+        const response = await axios.get(`${IPC_BASE}/api/extensions/${encodeURIComponent(extId)}/audit`);
+        return response.data;
+    } catch (error) {
+        return errorBody(error);
+    }
+});
+
 ipcMain.handle('extension:enable', async (_event, extId) => {
     try {
         const response = await axios.post(`${IPC_BASE}/api/extensions/${extId}/enable`);
