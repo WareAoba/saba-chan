@@ -1,6 +1,6 @@
 # 01. 데몬 코어 (saba-core) 분석
 
-> 범위: `src/main.rs`, `src/lib.rs`, `src/ipc/**`, `src/instance`, `src/config`, `src/config_store`, `src/plugin`, `src/python_env`, `src/node_env`, `src/validator`, `src/process_monitor.rs`, `src/boot_selector.rs`, `src/daemon_log.rs`, `src/utils.rs`, `src/protocol/**`, `tests/daemon_integration.rs`.
+> 범위: `src/main.rs`, `src/lib.rs`, `src/ipc/**`, `src/instance`, `src/config`, `src/config_store`, `src/plugin`, `src/python_env`, `src/validator`, `src/process_monitor.rs`, `src/boot_selector.rs`, `src/daemon_log.rs`, `src/utils.rs`, `src/protocol/**`, `tests/daemon_integration.rs`.
 > 모든 내용은 코드에서 도출했다. 경로/상수 대부분은 공유 크레이트 `updater/src/constants.rs`(`saba_chan_updater_lib::constants`)에서 온다.
 > Supervisor/module_loader, extension/mod.rs 내부는 다른 문서 담당이며, 여기서는 코어가 그것들을 어떻게 호출하는지만 적는다.
 
@@ -76,7 +76,7 @@
 |---|---|---|
 | `SABA_IPC_PORT` | `main.rs:136` | IPC 포트 (기본 57474) |
 | `RUST_LOG` | `main.rs:57` | tracing 필터 |
-| `SABA_DATA_DIR` | `constants.rs:89`, `python_env/mod.rs:448`, `node_env/mod.rs:425` | 데이터 루트 |
+| `SABA_DATA_DIR` | `constants.rs:89`, `python_env/mod.rs:448` | 데이터 루트 |
 | `SABA_TOKEN_PATH` | `constants.rs:113` | IPC 토큰 파일 경로 |
 | `SABA_MODULES_PATH` | `constants.rs:125` | 모듈 디렉토리 |
 | `SABA_EXTENSIONS_DIR` | `constants.rs:137` | 익스텐션 디렉토리 |
@@ -84,7 +84,6 @@
 | `SABA_DISCORD_BOT_DIR` | `constants.rs:172` | discord_bot 디렉토리 |
 | `SABA_AUTH_DISABLED=1` | `ipc/auth.rs:82` | 인증 미들웨어 비활성화 |
 | `SABA_PYTHON_URL` | `python_env/mod.rs:262` | 포터블 Python 다운로드 URL 오버라이드 |
-| `SABA_NODE_URL` | `node_env/mod.rs:189` | 포터블 Node 다운로드 URL 오버라이드 |
 | `APPDATA`, `HOME` | 경로 해석 | 플랫폼 기본 경로 |
 
 **데몬이 자식 프로세스에 넘기는 환경변수**
@@ -93,13 +92,14 @@
 - 봇: `IPC_BASE`, `BOT_CONFIG_PATH`, `SABA_EXTENSIONS_DIR`, `SABA_LANG`, 그리고 모드에 따라 `DISCORD_TOKEN` 또는 `RELAY_URL`+`RELAY_NODE_TOKEN`.
 - `SABA_LANG`는 GUI가 데몬에 넘기지만(`saba-chan-gui/main.js:559`) **데몬 코어는 이 값을 읽지 않는다.** 봇을 띄울 때는 `settings.json`의 `language`를 읽는다(`main.rs:797`).
 
-### 1.4 Discord 봇 자동 시작 (`main.rs:669-794`)
+### 1.4 디스코드 릴레이 연결 (`src/relay_agent.rs`)
 
-1. `bot-config.json`에서 `autoStart`, `mode`(`local`/`cloud`), `token`, `prefix`를 읽는다.
-2. `node_env::find_or_bootstrap()`으로 Node 경로를 얻는다.
-3. `constants::resolve_discord_bot_dir()/index.js`를 찾는다.
-4. 클라우드 모드면 relay URL을 정한다. 기본값은 `https://saba-chan.online`이고, 토큰은 `<data_dir>/.node_token`에서 읽는다.
-5. `ext_process::start_process_internal(.., "discord-bot", ..)`으로 이름 `discord-bot`의 ext-process를 띄운다.
+로컬 Discord 봇 실행 경로(`node_env`, `discord_bot` ext-process)는 L1(7b5102f)에서 지웠다. 디스코드 봇은 클라우드 릴레이에서만 돌고, 데몬은 릴레이 에이전트로 붙는다.
+
+1. IPC 서버가 뜬 뒤 `relay_agent::auto_start`를 띄운다(`ipc/mod.rs:783`). 수동 제어는 `/api/relay/agent{,/start,/stop}`.
+2. `GET /info`로 최소 에이전트 버전을 확인하고, 60초마다 `POST /heartbeat`로 서버·모듈·봇 설정 메타데이터를 올린다.
+3. `GET /poll`(롱폴링)로 디스코드 명령을 받아 채팅 처리기(`crate::chat`)로 실행하고 `POST /result/:id`로 돌려준다.
+4. 인증은 노드 토큰(`<data_dir>/.node_token`) HMAC 서명이다(`relay_agent.rs:1-10`).
 
 ### 1.5 파일/디렉토리 레이아웃 (`constants.rs`가 단일 진실 원천)
 
@@ -133,7 +133,7 @@
 ```
 
 - 업데이트 스테이징 디렉토리: Windows는 `<data_dir>/updates`, Unix는 `~/.cache/saba-chan/updates`(`constants.rs:191`).
-- Python 런타임과 Node 런타임은 **위의 `<data_dir>`와 다른 경로**를 쓴다(§6).
+- Python 런타임은 **위의 `<data_dir>`와 다른 경로**를 쓴다(§6).
 
 ### 1.6 단일 인스턴스 처리: 없음
 
@@ -328,17 +328,16 @@
 - `error_code`별 상태 코드: `not_found|not_mounted|manifest_not_found`는 404, 의존성 계열은 422, `has_dependents|in_use`는 409, `id_mismatch`는 400(`extension.rs:25-57`).
 - `/gui`, `/gui/styles`, `/icon` 라우트가 바로 **플러그인이 인터페이스에 컴포넌트를 주입하는 통로**다. GUI가 이 번들을 받아 렌더한다.
 
-#### Node 런타임과 Relay 프록시
+#### Relay 프록시
 
 | Method | Path | Handler | Auth | 비고 |
 |---|---|---|---|---|
-| GET | `/api/node-env/status` | `node_env.rs:5` | ✅ | §6 |
-| POST | `/api/node-env/setup` | `node_env.rs:11` | ✅ | `{success, node_path, message}` / `{success:false,error}` |
-| GET | `/api/relay/host/:host_id/status` | `relay.rs:143` | ✅ | query `relayUrl?`. relay `/api/hosts/:id` 프록시 (HMAC 서명) |
-| GET | `/api/relay/host/:host_id/nodes` | `relay.rs:188` | ✅ | `/api/hosts/:id/nodes` |
-| GET | `/api/relay/node/:guild_id/members` | `relay.rs:230` | ✅ | `/api/nodes/:id/discord-members`, 503이면 `/members`로 폴백 |
-| POST | `/api/relay/pair/initiate` | `relay.rs:291` | ✅ | 바디를 그대로 `/api/pair/initiate`에 전달 (서명 없음) |
-| GET | `/api/relay/pair/:code/status` | `relay.rs:345` | ✅ | `secret?, relayUrl?`. `status:"claimed"`이면 `nodeToken`을 `.node_token`에 자동 저장 |
+| GET | `/api/relay/host/:host_id/status` | `relay.rs:187` | ✅ | query `relayUrl?`. relay `/api/hosts/:id` 프록시 (HMAC 서명) |
+| GET | `/api/relay/host/:host_id/nodes` | `relay.rs:199` | ✅ | `/api/hosts/:id/nodes` |
+| GET | `/api/relay/node/:guild_id/members` | `relay.rs:212` | ✅ | `/api/nodes/:id/discord-members`, 503이면 `/members`로 폴백 |
+| GET | `/api/relay/bot-invite` | `relay.rs:240-259` | ✅ | query `relayUrl?`. relay `/api/bot-invite`(공개, 서명 없음)를 그대로 전달. 봇 초대 URL `{url}` |
+| POST | `/api/relay/pair/initiate` | `relay.rs:264` | ✅ | 바디를 그대로 `/api/pair/initiate`에 전달 (서명 없음) |
+| GET | `/api/relay/pair/:code/status` | `relay.rs:297` | ✅ | `secret?, relayUrl?`. `status:"claimed"`이면 `nodeToken`을 `.node_token`에 자동 저장 |
 
 Relay 서명 방식(`relay.rs:78-113`):
 
@@ -452,12 +451,11 @@ Relay 서명 방식(`relay.rs:78-113`):
 | 테마 | `accentColor`("#667eea"), `accentSecondary`("#764ba2"), `useGradient`(true), `fontScale`(100), `enableTransitions`(true), `consoleSyntaxHighlight`(true), `consoleBgColor`, `consoleTextColor`, `sidebarCompact`(false), `windowOpacity`(100) |
 | 창/언어 | `windowBounds?{width:1200,height:840,x?,y?}`, `language?` |
 
-**BotConfig** (camelCase, `:102-116`)
+**BotConfig** (camelCase, `config_store/mod.rs:115-128`). 로컬 봇용 필드(`token`, `autoStart`, `mode`, `music*`)는 지워졌고, 옛 파일에 남아 있어도 무시된다.
 
-- `prefix`("!saba"), `token`, `autoStart`(false), `mode`("local")
-- `cloud{relayUrl,hostId}`
+- `prefix`("!saba"), `cloud{relayUrl,hostId}`
 - `moduleAliases`, `commandAliases`
-- `musicEnabled`(true), `musicChannelId`, `musicUiSettings{queueLines:5,refreshInterval:4000,normalize?}`
+- `instanceAliases`: 인스턴스 ID → 그 서버를 부르는 별명 목록(`"크리, cr"`). 같은 게임 서버가 여럿일 때 하나를 고른다. 채팅 처리기는 인스턴스 이름 → 인스턴스 별명 → 모듈 별명 순으로 찾고, 여러 서버가 걸리면 `errors.multiple_instances`로 답한다(`src/chat/mod.rs:256-285`)
 - `nodeSettings`, `cloudNodes`, `cloudMembers`
 
 **데몬이 실제로 쓰는 설정값은 일부뿐이다.**
@@ -512,7 +510,7 @@ Relay 서명 방식(`relay.rs:78-113`):
 
 ---
 
-## 6. 내장 런타임: python_env / node_env
+## 6. 내장 런타임: python_env
 
 ### 6.1 Python (`src/python_env/mod.rs`)
 
@@ -528,13 +526,9 @@ Relay 서명 방식(`relay.rs:78-113`):
 - 결과적으로 Linux에서 데이터는 `~/.config/saba-chan`에, 런타임은 `~/.local/share/saba-chan` 또는 exe 옆에 흩어진다.
 - `status()`(`:184`) 응답 필드: `{available, venv_dir, venv_python, portable_python_installed, portable_python_path, python_version_bundled, python_version?, portable_download_url?, system_python}`. 다만 HTTP 라우트는 없다.
 
-### 6.2 Node (`src/node_env/mod.rs`)
+### 6.2 Node
 
-- 버전: **22.14.0**이다. 시스템 Node를 쓸 경우 18.0 이상이어야 한다(`:37-40`).
-- 탐색 순서: 포터블(`<root>/node-portable/node-v*/`), 시스템, `https://nodejs.org/dist/v{ver}/node-v{ver}-{os}-{arch}.{ext}` 다운로드 순이다(`find_or_bootstrap`, `:65`).
-- `<root>` 해석은 Python과 같은 방식이다(`:423-460`).
-- `NODE_EXE` OnceCell과 `get_node_path`는 dead code다. 실제 호출부는 매번 `find_or_bootstrap`을 부른다(`main.rs:711`, `handlers/node_env.rs:12`).
-- `/api/node-env/status` 응답 필드: `{available, portable_installed, portable_path, node_version_bundled, node_version?, portable_download_url?, system_node}`.
+데몬은 더 이상 Node를 받거나 찾지 않는다. `node_env`와 `/api/node-env/*`는 로컬 봇과 함께 L1(7b5102f)에서 지웠다. Node는 GUI 빌드에만 쓰며 `>=22.12`가 필요하다(`saba-chan-gui/package.json` `engines`, 04 §1).
 
 ---
 
@@ -662,7 +656,6 @@ Relay 서명 방식(`relay.rs:78-113`):
 
 - `src/config/mod.rs`의 `GlobalConfig`(`ipc.sock` 언급 포함)는 미사용이다(`main.rs:114-115`).
 - `handlers/python_env.rs`의 세 핸들러는 라우트가 없다. `python_env::pip_install`, `pip_install_requirements`도 `#[allow(dead_code)]`다.
-- `node_env::get_node_path`와 `NODE_EXE` OnceCell은 미사용이다.
 - `plugin::run_extension*`, `ProtocolClient::new_rcon/new_both/connect_all/connect_rcon`, `RestClient::with_basic_auth`, `ServerResponse::success/error`, `CommandResponse`, `BotConfig`(ipc/mod.rs:188), `ExtensionInitTracker::is_initializing`, `InstanceStore::save`, `ServerInstance::ext_f64/ext_str` 일부, `process_monitor::find_by_name*` 동기 버전은 모두 미사용이다.
 - 업데이트 설정의 `check_interval_hours`, `auto_download`, `auto_apply`는 저장만 되고 아무 동작이 없다. 설정도 재시작하면 사라진다.
 - `skip_port_check` 계열이 따로 논다.
@@ -672,7 +665,7 @@ Relay 서명 방식(`relay.rs:78-113`):
 - `GuiSettings.ipcPort`와 `autoGeneratePasswords`는 데몬에서 효과가 없다(§4.4).
 - 비 Windows 부트 선택기는 키 입력을 지원하지 않는데도 DEL 안내를 표시한다(`boot_selector.rs:253, 317`).
 - `ServerStartRequest.module`이 필수 필드다(`ipc/mod.rs:160-164`). 인스턴스에 이미 모듈 정보가 있는데도 클라이언트가 다시 보내야 하므로 중복이다.
-- `python_env`/`node_env`의 데이터 디렉토리가 `constants::resolve_data_dir()`와 어긋난다(§6). 같은 파일 상단 주석은 `<data_dir>`라고 적고 있다.
+- `python_env`의 데이터 디렉토리가 `constants::resolve_data_dir()`와 어긋난다(§6). 같은 파일 상단 주석은 `<data_dir>`라고 적고 있다.
 - `install_server` 진행 콜백은 `step/total`을 그대로 넘기지만, 완료될 때는 `step:0,total:1`로 덮어쓴다. 백그라운드 설치의 진행 단계 정보가 사라진다.
 - `CLAUDE`/문서 주장 검증: `src/ipc/updates.rs:10`의 doc-claim "업데이터 exe 스폰하여 적용"은 **코드와 다르다.** 응답 플래그만 돌려준다. 그 밖의 README/docs 내용은 이 문서에서 근거로 쓰지 않았다.
 

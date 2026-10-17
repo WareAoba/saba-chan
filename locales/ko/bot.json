@@ -127,5 +127,9 @@
     "scissors": "가위",
     "rock": "바위",
     "paper": "보"
+  },
+  "schedule": {
+    "restart_warning": "{{minutes}}분 뒤 서버가 다시 시작됩니다.",
+    "update_warning": "{{minutes}}분 뒤 업데이트를 위해 서버가 다시 시작됩니다."
   }
 }

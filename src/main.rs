@@ -4,6 +4,8 @@ mod protocol;
 mod ipc;
 mod config_store;
 mod instance;
+mod backup;
+mod scheduler;
 mod process_monitor;
 mod python_env;
 mod utils;
@@ -353,6 +355,8 @@ async fn main() -> anyhow::Result<()> {
 
     // 업데이트 주기 확인 — GUI가 꺼져 있어도 데몬이 확인한다 (U6)
     ipc::updates::spawn_update_scheduler(ipc_server.update_state.clone(), shutdown_token.clone());
+    // 인스턴스 예약 작업: 백업·재시작·공지·업데이트 (A3)
+    ipc::handlers::backup::spawn_scheduler(ipc_server.clone());
 
     // Heartbeat reaper 태스크 — 30초마다 만료 클라이언트 확인, 봇 프로세스 정리
     let registry_reaper = client_registry.clone();

@@ -127,5 +127,9 @@
     "acl_granted": "✅ {{user}} に権限レベル {{level}} を付与しました。",
     "acl_revoked": "✅ {{user}} の権限を解除しました。",
     "music_local_only": "🎵 音楽機能はローカルモードでのみ使用可能です。"
+  },
+  "schedule": {
+    "restart_warning": "{{minutes}}分後にサーバーを再起動します。",
+    "update_warning": "{{minutes}}分後にアップデートのためサーバーを再起動します。"
   }
 }

@@ -36,6 +36,12 @@ pub struct ModuleMetadata {
     /// 게임 서버마다 종료 시간이 다르므로 모듈별로 설정.
     #[serde(default)]
     pub stop_timeout: Option<u64>,  // config.stop_timeout
+    /// [config] announce_command — 게임 안 공지에 쓰는 `[commands.fields]` 이름 (`message` 입력 하나). 예약 재시작 예고·공지(A3)용
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub announce_command: Option<String>,
+    /// [backup] 월드·세이브 백업 선언 (A2). 없으면 이 모듈은 백업을 지원하지 않는다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backup: Option<ModuleBackup>,
     #[serde(default)]
     pub log_pattern: Option<String>,  // regex pattern for log level extraction (e.g. "/(?P<level>INFO|WARN|ERROR|DEBUG)/")
     #[serde(default)]
@@ -102,6 +108,23 @@ pub struct ModuleMetadata {
     /// 로드는 됐지만 고쳐야 할 점 (스키마 이전 모듈의 모르는 키 등)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
+}
+
+/// `[backup]` — 무엇을 백업할지
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct ModuleBackup {
+    /// 백업할 폴더·파일 (서버 작업 폴더 기준, 절대 경로 가능). `{설정 이름}`은 인스턴스 설정 값으로 바뀌고
+    /// 값이 비면 그 경로는 빠진다. 없는 경로도 빠진다. 예: ["{level_name}", "{level_name}_nether"]
+    #[serde(default)]
+    pub paths: Vec<String>,
+    /// 서버가 켜져 있을 때 묶기 전에 실행할 `[commands.fields]` 이름 (예: "save-all")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub save_command: Option<String>,
+    /// true면 lifecycle `backup_paths(config)`가 `{"success": true, "paths": [...]}`로 경로를 준다
+    /// (세이브 위치를 모듈 코드가 계산하는 게임용). `paths`에 더해진다
+    #[serde(default)]
+    pub hook: bool,
 }
 
 /// 명령어 별명 정보
@@ -427,6 +450,9 @@ struct ModuleToml {
     /// [aliases] 모듈 및 명령어 별명 (Discord/CLI 다국어 지원)
     #[serde(default)]
     aliases: Option<AliasesSection>,
+    /// [backup] 월드·세이브 백업 (A2)
+    #[serde(default)]
+    backup: Option<ModuleBackup>,
     /// [errors] 오류 코드 → 사용자 메시지 (채팅 명령 응답용)
     #[serde(default)]
     errors: std::collections::HashMap<String, String>,
@@ -527,6 +553,9 @@ struct ConfigSection {
     /// Graceful stop 타임아웃 (초). 예: Minecraft=30, ARK=120
     #[serde(default)]
     stop_timeout: Option<u64>,
+    /// 게임 안 공지에 쓰는 `[commands.fields]` 이름 (`message` 입력 하나)
+    #[serde(default)]
+    announce_command: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -868,6 +897,8 @@ impl ModuleToml {
             server_executable: self.config.as_ref().and_then(|c| c.server_executable.clone()),
             stop_command: self.config.as_ref().and_then(|c| c.stop_command.clone()),
             stop_timeout: self.config.as_ref().and_then(|c| c.stop_timeout),
+            announce_command: self.config.as_ref().and_then(|c| c.announce_command.clone()),
+            backup: self.backup,
             interaction_mode: self.protocols.as_ref().and_then(|p| p.interaction_mode.clone()),
             protocols_supported: self.protocols.as_ref().and_then(|p| p.supported.clone()),
             protocols_default: self.protocols.as_ref().and_then(|p| p.default.clone()),
@@ -989,6 +1020,17 @@ impl ModuleToml {
                         COMMAND_RISKS.join(", ")
                     ));
                 }
+            }
+        }
+        // 공지·저장 명령은 [commands.fields]의 이름을 가리킨다
+        let named = |name: &str| self.commands.iter().flat_map(|c| &c.fields).any(|f| f.name == name);
+        let refs = [
+            ("config.announce_command", self.config.as_ref().and_then(|c| c.announce_command.as_deref())),
+            ("backup.save_command", self.backup.as_ref().and_then(|b| b.save_command.as_deref())),
+        ];
+        for (key, name) in refs {
+            if let Some(name) = name.filter(|n| !named(n)) {
+                problems.push(format!("{} '{}' is not a [[commands.fields]] name", key, name));
             }
         }
         problems
@@ -1683,6 +1725,21 @@ entry = "lifecycle.py"
         assert_eq!(meta.graceful_exit_patterns, vec!["Stopping"]);
         assert_eq!(meta.crash_artifacts, vec!["crash-reports/*.txt"]);
         assert_eq!(meta.extensions["backup"]["paths"][0], "world");
+    }
+
+    #[test]
+    fn schema_v1_reads_backup_and_checks_command_refs() {
+        let toml = format!(
+            "{V1}\n[config]\nannounce_command = \"say\"\n\n[backup]\npaths = [\"{{level_name}}\"]\nsave_command = \"save-all\"\n\n[[commands.fields]]\nname = \"say\"\n\n[[commands.fields]]\nname = \"save-all\"\n"
+        );
+        let meta = parse_module_toml(&toml).unwrap();
+        let backup = meta.backup.unwrap();
+        assert_eq!(backup.paths, vec!["{level_name}"]);
+        assert_eq!(backup.save_command.as_deref(), Some("save-all"));
+        assert!(!backup.hook);
+        assert_eq!(meta.announce_command.as_deref(), Some("say"));
+        let typo = toml.replace("save_command = \"save-all\"", "save_command = \"save_all\"");
+        assert!(parse_module_toml(&typo).unwrap_err().to_string().contains("backup.save_command"));
     }
 
     #[test]

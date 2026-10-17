@@ -127,5 +127,9 @@
     "scissors": "Tesoura",
     "rock": "Pedra",
     "paper": "Papel"
+  },
+  "schedule": {
+    "restart_warning": "O servidor será reiniciado em {{minutes}} min.",
+    "update_warning": "O servidor será reiniciado para atualização em {{minutes}} min."
   }
 }
