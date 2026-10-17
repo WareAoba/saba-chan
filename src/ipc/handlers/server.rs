@@ -40,6 +40,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
         module_settings: std::collections::HashMap<String, serde_json::Value>,
         server_version: Option<String>,
         extension_data: std::collections::HashMap<String, serde_json::Value>,
+        extra_args: Vec<String>,
         instance_dir: String,
         process_patterns: Vec<String>,
         // Native 모드 데이터
@@ -78,6 +79,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
                 module_settings: instance.module_settings.clone(),
                 server_version: instance.server_version.clone(),
                 extension_data: instance.extension_data.clone(),
+                extra_args: instance.extra_args.clone(),
                 instance_dir: supervisor.instance_store.instance_dir(&instance.id).to_string_lossy().to_string(),
                 process_patterns,
                 managed: supervisor.uses_managed_start(instance),
@@ -169,6 +171,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
                     managed: instance.managed,
                     extension_status,
                     extension_data: instance.extension_data.clone(),
+                    extra_args: instance.extra_args.clone(),
                     port_conflicts: vec![],
                 });
                 ext_handled = true;
@@ -219,6 +222,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
             managed: instance.managed,
             extension_status: std::collections::HashMap::new(),
             extension_data: instance.extension_data.clone(),
+            extra_args: instance.extra_args.clone(),
             port_conflicts: vec![],
         });
     }

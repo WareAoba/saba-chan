@@ -421,6 +421,10 @@
     "blocked": "이 문제를 고쳐야 서버를 켤 수 있어요.",
     "ok": "{{name}}은(는) 켤 준비가 됐어요."
   },
+  "launch_preview": {
+    "no_args": "{{name}}의 모듈은 설정을 실행 인자로 쓰지 않아요.",
+    "invalid_format": "잘못된 형식입니다: {{arg}} ({{field}})"
+  },
   "help": {
     "cmd": {
       "_root": "사바쨩 데몬을 다루는 명령줄 도구",
@@ -450,6 +454,7 @@
       "server.history": "서버가 멈춘 이유 (크래시, 직접 정지 ...)",
       "server.validate": "켤 수 있는지 점검 (파일, 자바, 포트 ...)",
       "server.diagnose": "로그에서 알려진 문제 찾기",
+      "server.launch-preview": "데몬이 실제로 띄울 실행 줄 보기 (서버는 켜지 않아요)",
       "server.accept-eula": "게임 EULA에 동의",
       "server.reset": "서버 파일을 모두 지우고 새로 시작",
       "server.reorder": "목록 순서 바꾸기: 원하는 순서대로 서버 이름을 적어요",
@@ -561,6 +566,7 @@
       "lang": "메시지 언어 (en, ko ...)",
       "port": "데몬 포트 (기본: 설정 파일)",
       "server": "서버 이름 (일부만 적어도 돼요)",
+      "extra_args": "시험해 볼 추가 실행 인자 (따옴표로 묶기, 없으면 저장된 것)",
       "name": "새 서버 이름",
       "module": "게임 모듈 (이름 또는 별명)",
       "from": "설치 대신 기존 서버 폴더 쓰기",

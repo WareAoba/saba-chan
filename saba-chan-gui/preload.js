@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld('api', {
     instanceDelete: (id) => ipcRenderer.invoke('instance:delete', id),
     instanceReorder: (orderedIds) => ipcRenderer.invoke('instance:reorder', orderedIds),
     instanceUpdateSettings: (id, settings) => ipcRenderer.invoke('instance:updateSettings', id, settings),
+    // 실행 인자 미리보기: (id, 설정 초안 {필드: 값}, 추가 인자 문자열|배열?) →
+    // {success, has_launch_args, command_line, program, args, settings_from_args, extra_args, extra_args_text, errors}
+    instanceLaunchPreview: (id, settings, extraArgs) => ipcRenderer.invoke('instance:launchPreview', id, settings, extraArgs),
     instanceResetServer: (id) => ipcRenderer.invoke('instance:resetServer', id),
     executeCommand: (id, command) => ipcRenderer.invoke('instance:executeCommand', id, command),
     instanceStop: (id, opts) => ipcRenderer.invoke('instance:stop', id, opts),
@@ -54,10 +57,14 @@ contextBridge.exposeInMainWorld('api', {
     extensionRescan: () => ipcRenderer.invoke('extension:rescan'),
     extensionInitStatus: () => ipcRenderer.invoke('extension:initStatus'),
     // Managed Process API (console capture)
-    managedConsole: (instanceId, since, count) => ipcRenderer.invoke('managed:console', instanceId, since, count),
+    managedConsole: (instanceId, since, count, opts) => ipcRenderer.invoke('managed:console', instanceId, since, count, opts),
     managedStdin: (instanceId, command) => ipcRenderer.invoke('managed:stdin', instanceId, command),
     // Console Popout (PiP)
     consolePopout: (instanceId, serverName) => ipcRenderer.invoke('console:popout', instanceId, serverName),
+    // 지금 열린 콘솔 팝아웃의 instanceId 목록 (메인 창을 다시 불러온 뒤 상태를 맞출 때)
+    consolePopoutList: () => ipcRenderer.invoke('console:popoutList'),
+    // 데몬 자신의 로그 버퍼: {since?, count?} → {lines: [{id, timestamp, level, target, message}], count}
+    daemonConsole: (opts) => ipcRenderer.invoke('daemon:console', opts),
     consoleFocusPopout: (instanceId) => ipcRenderer.invoke('console:focusPopout', instanceId),
     consolePopin: (instanceId) => ipcRenderer.invoke('console:popin', instanceId),
     consoleToggleAlwaysOnTop: (instanceId, pinned) => ipcRenderer.invoke('console:toggleAlwaysOnTop', instanceId, pinned),
@@ -102,9 +109,10 @@ contextBridge.exposeInMainWorld('api', {
     saveNodeToken: (token) => ipcRenderer.invoke('nodeToken:save', token),
     loadNodeToken: () => ipcRenderer.invoke('nodeToken:load'),
     deleteNodeToken: () => ipcRenderer.invoke('nodeToken:delete'),
-    // 설정·서버 목록 내보내기/가져오기 (A9): {secrets} / {path?, dryRun, overwrite}. 취소하면 {canceled: true}
-    // 감사 로그 (A10): {limit?, instance?} → {entries: [{ts, source, user?, guild?, action, instanceId, instance?, command?, args?, ok, status}]}
+    // 감사 로그 (A10): {limit?, instance?} → {entries: [{ts, source, user?, userName?, guild?, guildName?, action, instanceId, instance?, command?, args?, ok, status}]}
+    // 비밀 인자·설정값은 "***"로 가려져 있다
     auditList: (opts) => ipcRenderer.invoke('audit:list', opts),
+    // 설정·서버 목록 내보내기/가져오기 (A9): {secrets} / {path?, dryRun, overwrite}. 취소하면 {canceled: true}
     dataExport: (opts) => ipcRenderer.invoke('dataTransfer:export', opts),
     dataImport: (opts) => ipcRenderer.invoke('dataTransfer:import', opts),
     // Relay server proxy (cloud mode) — all relay comms go through daemon

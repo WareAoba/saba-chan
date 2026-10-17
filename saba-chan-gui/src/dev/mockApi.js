@@ -110,6 +110,25 @@ const consoleLines = [
     "[12:05:12] [Server thread/WARN]: Can't keep up! Is the server overloaded?",
 ];
 
+const mockSpans = (text) => {
+    const found = [];
+    const add = (re, token, group = 0) => {
+        for (const m of text.matchAll(re)) {
+            const start = m.index + m[0].indexOf(m[group]);
+            found.push([start, start + m[group].length, token]);
+        }
+    };
+    add(/^\[\d{2}:\d{2}:\d{2}\]/g, 'timestamp');
+    add(/\[([^\]]+\/INFO)\]/g, 'dim', 1);
+    add(/\[([^\]]+\/WARN)\]/g, 'warn', 1);
+    add(/"[^"]*"/g, 'string');
+    add(/\d+(?:\.\d+)?s\b/g, 'number');
+    add(/Done/g, 'success');
+    add(/(\w+) joined the game/g, 'player', 1);
+    found.sort((a, b) => a[0] - b[0]);
+    return found.filter((s, i) => i === 0 || s[0] >= found[i - 1][1]);
+};
+
 const ok = (v = {}) => Promise.resolve(v);
 // 주소 뒤에 ?daemon=stopped&bot=running 처럼 붙이면 상태 표시를 바꿔 볼 수 있다
 const params = new URLSearchParams(globalThis.location?.search || '');
@@ -392,9 +411,11 @@ const impl = {
         }));
         return ok({ lines: since === undefined ? all : all.filter((l) => l.id >= since) });
     },
-    instanceLaunchPreview: (id, draft = {}, extra = '') => {
+    instanceLaunchPreview: (id, draft = {}, extra) => {
         if (id !== 'srv-2') return ok({ success: true, has_launch_args: false });
-        const args = String(extra).split(/\s+/).filter(Boolean);
+        // undefined·null이면 저장된 추가 인자로 계산한다 (데몬과 같다)
+        const text = extra ?? '-useperfthreads -NoAsyncLoadingThread';
+        const args = String(text).split(/\s+/).filter(Boolean);
         const portArg = args.find((a) => a.startsWith('-port='));
         const port = portArg ? portArg.slice(6) : draft.port;
         const bad = portArg && !/^\d+$/.test(port);
@@ -405,6 +426,7 @@ const impl = {
             command_line: ['PalServer.exe', `-port=${port ?? 8211}`, '-adminpassword=***', ...rest].join(' '),
             settings_from_args: portArg && !bad ? { port: Number(port) } : {},
             extra_args: rest,
+            extra_args_text: text,
             errors: bad ? [{ arg: portArg, field: 'port', expected: 'port', got: port }] : [],
         });
     },
@@ -450,10 +472,17 @@ const impl = {
     extensionList: () => ok({ extensions: [] }),
     extensionInitStatus: () => ok({ initializing: false, in_progress: {} }),
     getAppVersion: () => ok('0.1.1'),
-    managedConsole: (_id, since = 0) =>
+    // spans를 달라고 하면(하이라이트 켬) 데몬처럼 조각 토큰을 붙인다: 시각·스레드/레벨·따옴표·숫자·플레이어
+    managedConsole: (_id, since = 0, _count, opts) =>
         ok({
             lines: consoleLines
-                .map((content, i) => ({ id: i + 1, content, source: 'stdout' }))
+                .map((content, i) => ({
+                    id: i + 1,
+                    content,
+                    source: 'stdout',
+                    level: content.includes('/WARN]') ? 'warn' : 'info',
+                    ...(opts?.spans ? { spans: mockSpans(content) } : {}),
+                }))
                 .filter((l) => l.id >= since),
             stdin_available: true,
         }),

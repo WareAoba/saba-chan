@@ -421,6 +421,10 @@
     "blocked": "The server can't start until these are fixed.",
     "ok": "{{name}} looks ready to start."
   },
+  "launch_preview": {
+    "no_args": "{{name}}'s module does not turn settings into launch arguments.",
+    "invalid_format": "Invalid format: {{arg}} ({{field}})"
+  },
   "help": {
     "cmd": {
       "bot.alias.list": "List aliases",

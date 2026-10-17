@@ -27,13 +27,16 @@ pub(crate) async fn audited(
     if crate::audit::is_quiet() {
         return resp;
     }
-    let (id, name) = {
+    let (id, name, command, args) = {
         let sup = state.supervisor.read().await;
-        sup.instance_store
-            .get(key)
-            .or_else(|| sup.instance_store.list().iter().find(|i| i.name == key))
-            .map(|i| (i.id.clone(), Some(i.name.clone())))
-            .unwrap_or_else(|| (key.to_string(), None))
+        let instance = sup.instance_store.get(key).or_else(|| sup.instance_store.list().iter().find(|i| i.name == key));
+        let module = instance.and_then(|i| sup.module_loader.get_module(&i.module_name).ok()).map(|m| m.metadata);
+        // 비밀 인자·설정값은 가려서 남긴다
+        let (command, args) = crate::audit::redact(module.as_ref(), instance, command, args);
+        match instance {
+            Some(i) => (i.id.clone(), Some(i.name.clone()), command, args),
+            None => (key.to_string(), None, command, args),
+        }
     };
     let (parts, body) = resp.into_parts();
     let bytes = axum::body::to_bytes(body, usize::MAX).await.unwrap_or_default();
@@ -45,8 +48,8 @@ pub(crate) async fn audited(
         action,
         instance_id: &id,
         instance: name.as_deref(),
-        command,
-        args,
+        command: command.as_deref(),
+        args: args.as_ref(),
         ok: parts.status.is_success() && !declined,
         status: parts.status.as_u16(),
     });

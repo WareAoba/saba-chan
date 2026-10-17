@@ -1,14 +1,18 @@
 import { useMemo } from 'react';
-import { highlightLine } from '../utils/syntaxHighlight';
+import { highlightLine, spanSegments } from '../utils/syntaxHighlight';
 
 /**
- * 단일 콘솔 라인의 content를 하이라이팅하여 렌더링
+ * 단일 콘솔 라인의 content를 하이라이팅하여 렌더링.
+ * 데몬이 준 spans가 있으면 그것을, 없으면 모듈 규칙(compiledRules)을 쓴다. 색은 tok-<토큰> 클래스로 테마가 정한다.
  */
-export function HighlightedContent({ text, compiledRules }) {
-    const segments = useMemo(() => highlightLine(text, compiledRules), [text, compiledRules]);
+export function HighlightedContent({ text, spans, compiledRules }) {
+    const segments = useMemo(
+        () => (Array.isArray(spans) ? spanSegments(text, spans) : highlightLine(text, compiledRules)),
+        [text, spans, compiledRules],
+    );
 
-    // 한 줄 전체가 한 규칙에 걸리면 조각이 하나뿐이지만 스타일은 있다
-    if (!compiledRules || compiledRules.length === 0 || (segments.length <= 1 && !segments[0]?.style)) {
+    // 칠할 조각이 없으면 글자 그대로 (한 줄 전체가 한 조각이어도 토큰·스타일이 있으면 칠한다)
+    if (!segments.some((seg) => seg.token || seg.style)) {
         return <>{text}</>;
     }
 
@@ -19,8 +23,12 @@ export function HighlightedContent({ text, compiledRules }) {
             {segments.map((seg) => {
                 const at = offset;
                 offset += seg.text.length;
-                return seg.style ? (
-                    <span key={at} style={seg.style}>
+                return seg.token || seg.style ? (
+                    <span
+                        key={at}
+                        className={seg.token ? `tok-${seg.token}` : undefined}
+                        style={seg.style || undefined}
+                    >
                         {seg.text}
                     </span>
                 ) : (

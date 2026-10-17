@@ -59,6 +59,10 @@ pub struct ServerInstance {
     /// 자동 백업(예약·업데이트 전·복원 전)을 몇 개 남길지. 수동 백업은 세지 않는다. 기본 10
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub backup_keep: Option<u32>,
+    /// 설정 필드에 없는 추가 실행 인자. 모듈에 `extra_args`로 넘기고, 모듈이 넣지 않았으면
+    /// (`extra_args_placed`가 없으면) 데몬이 실행 인자 끝에 붙인다
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extra_args: Vec<String>,
 }
 
 fn default_protocol_mode() -> String {
@@ -95,6 +99,7 @@ impl ServerInstance {
             required_extensions: Vec::new(),
             schedule: Vec::new(),
             backup_keep: None,
+            extra_args: Vec::new(),
         }
     }
 

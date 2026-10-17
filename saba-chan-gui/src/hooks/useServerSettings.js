@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { joinArgs, launchDraft } from '../components/servers/LaunchPreview';
+import { launchDraft } from '../components/servers/LaunchPreview';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
 import { useModalClose } from './useModalClose';
 
@@ -150,7 +150,6 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
             }
 
             Object.assign(initial, restartFlagsOf(latestServer));
-            initial._launch_extra_args = joinArgs(latestServer.extra_args);
             setSettingsValues(initial);
         } else {
             const protocols = module?.protocols || {};
@@ -168,7 +167,6 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                       }
                     : {}),
                 ...restartFlagsOf(latestServer),
-                _launch_extra_args: joinArgs(latestServer.extra_args),
             });
         }
 
@@ -500,7 +498,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
             // 저장하는 사이 다른 서버 설정을 열었다면 그 창을 닫지 않는다
             const stillOpen = request === openRequest.current;
 
-            if (result.error && (result.status === 400 || result.error_code === 'invalid_format')) {
+            if (result.error && result.error_code === 'invalid_format') {
                 // 형식이 틀린 값: 칸마다 따로 알리지 않고 토스트 하나로 (미리보기와 같은 문구)
                 safeShowToast(t('launch_preview.invalid_format'), 'warning', 4000);
             } else if (result.error) {
@@ -568,7 +566,8 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
 export async function settleLaunchArgs(id, fields, values) {
     if (!window.api?.instanceLaunchPreview) return null;
     try {
-        const res = await window.api.instanceLaunchPreview(id, launchDraft(fields, values), values._launch_extra_args || '');
+        // 입력칸을 아직 받지 못했으면(undefined) 데몬이 저장된 추가 인자로 나눈다
+        const res = await window.api.instanceLaunchPreview(id, launchDraft(fields, values), values._launch_extra_args);
         if (!res?.has_launch_args || !Array.isArray(res.extra_args)) return null;
         const settings = {};
         for (const [k, v] of Object.entries(res.settings_from_args || {})) settings[k] = String(v);

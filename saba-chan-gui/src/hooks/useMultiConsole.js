@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TITLEBAR_HEIGHT } from '../constants/layout';
 import { useServerStore } from '../stores/useServerStore';
+import { useSettingsStore } from '../stores/useSettingsStore';
 import { commandReplyLines, isNoCommandPath } from '../utils/commandReply';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
 
@@ -118,7 +119,9 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                     if (polling) { schedulePoll(); return; }
                     polling = true;
                     try {
-                        const data = await window.api.managedConsole(instanceId, sinceId, 200);
+                        // 하이라이트가 켜져 있으면 데몬에게 조각 토큰(spans)도 달라고 한다
+                        const opts = useSettingsStore.getState().consoleSyntaxHighlight ? { spans: true } : undefined;
+                        const data = await window.api.managedConsole(instanceId, sinceId, 200, opts);
                         // disk fallback은 since_id를 무시하고 매번 같은 로그를 반환하므로
                         // 이미 한 번 로드했으면 다시 append하지 않음
                         if (data?.source === 'disk') {
@@ -420,6 +423,24 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
             openConsole(popoutParams.instanceId, popoutParams.name);
         }
     }, [popoutParams, openConsole]);
+
+    // ── 메인 창이 새로고침돼도 이미 떠 있는 분리 창을 다시 기억한다 ──
+
+    useEffect(() => {
+        if (isPopoutMode || !window.api?.consolePopoutList) return;
+        let alive = true;
+        window.api.consolePopoutList().then(
+            (ids) => {
+                if (!alive || !Array.isArray(ids) || !ids.length) return;
+                setConsolePopoutIds((prev) => [...new Set([...prev, ...ids])]);
+                for (const id of ids) closeConsole(id);
+            },
+            () => {},
+        );
+        return () => {
+            alive = false;
+        };
+    }, [isPopoutMode, closeConsole]);
 
     // ── Popout open/close events ────────────────────────────
 

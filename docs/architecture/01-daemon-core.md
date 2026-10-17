@@ -171,7 +171,7 @@
 |---|---|---|---|---|
 | GET | `/health` | `server.rs:19` `health_check` | - | `{ok:true, version, pid, token}`. 토큰 없이 부를 수 있다. `token`은 보낸 `X-Saba-Token`이 `valid`·`invalid`·`missing` 중 무엇인지(값은 드러내지 않는다) |
 | GET | `/api/diagnostics` | `diagnostics.rs:20` | - | A6, 인증 필요. `{ok, version, pid, uptime_secs, listen_addr, data_dir, token_file:{path, exists}, audit_log, extensions:{enabled, enabled_but_missing}, modules:{count}\|{error}, recent_problems:[최근 경고·오류 20개, 오래된 순]}` |
-| GET | `/api/audit` | `diagnostics.rs` `audit` | `?limit=`(기본 100, 최대 1000)`&instance=<id>` | A10 감사 로그, 최신이 먼저: `{entries:[{ts, source, user?, guild?, action, instanceId, instance?, command?, args?, ok, status}]}`. `action`은 `start`·`stop`·`restart`·`command`·`stdin` |
+| GET | `/api/audit` | `diagnostics.rs` `audit` | `?limit=`(기본 100, 최대 1000)`&instance=<id>` | A10 감사 로그, 최신이 먼저: `{entries:[{ts, source, user?, userName?, guild?, guildName?, action, instanceId, instance?, command?, args?, ok, status}]}`. 비밀은 `***`로 가린다(아래 `audit.rs`). `action`은 `start`·`stop`·`restart`·`command`·`stdin` |
 | GET | `/api/version` | `server.rs:279` | - | `{version, components:{saba-core, module-<이름>, ext-<id>, ...}}` |
 | GET | `/api/servers` | `server.rs:24` `list_servers` | - | `{servers:[ServerInfo], port_conflict_stops?:[...]}` (아래 설명) |
 | GET | `/api/server/:name/status` | `server.rs:534` | - | supervisor 결과 JSON 그대로. 404 시 `{error, error_code:"instance_not_found"}` |
@@ -228,7 +228,8 @@
 | PUT | `/api/instances/reorder` | `instance.rs:19` | `{order:[id]}` | `{success:true}` / 400 |
 | GET | `/api/instance/:id` | `instance.rs:49` | - | `ServerInstance` / 404 `{error, error_code}` |
 | DELETE | `/api/instance/:id` | `instance.rs:635` | - | `{success}` / 404 / 500 |
-| PATCH | `/api/instance/:id` | `instance.rs:758` | 임의 키-값 객체 | `{success:true}` / 400 `validation_failed{details, fields}` / 404 / 500 |
+| PATCH | `/api/instance/:id` | `instance.rs` `update_instance_settings` | 임의 키-값 객체. `extra_args`(문자열은 `chat::split_quoted`로 나눔, 또는 문자열 배열, null은 비우기)는 인스턴스의 추가 실행 인자로 | `{success:true}` / 400 `validation_failed`·`invalid_format`(모듈 `format`·`pattern`과 다름)`{details, fields}` / 404 / 500 |
+| POST | `/api/instance/:id/launch-preview` | `instance.rs` `launch_preview` → `Supervisor::launch_preview` | `{settings?:{필드:값}, extra_args?: string\|string[]}` (extra_args가 없으면 저장된 것) | 실행 인자 미리보기. 서버를 띄우지 않고 익스텐션 hook도 부르지 않는다. 저장된 설정 위에 초안, 그 위에 추가 인자를 필드 `arg` 모양으로 읽은 값을 얹어 `get_launch_command`(`preview:true`)를 부른다. 필드에 `arg`를 선언하지 않은 모듈이면 모듈을 부르지 않고 `{success:true, has_launch_args:false, ...}`(command_line 없음)를 돌려준다. 성공 `{success:true, has_launch_args, command_line, program, args[], settings_from_args{}, extra_args[], extra_args_text(큰따옴표가 든 인자가 있으면 null: 배열로 저장), errors[{arg\|null, field, expected, got}]}`. password 필드 값과 인스턴스 `rest_password`는 `***`. 모듈 실패 `{success:false, error:"launch_command_failed"\|action_required, message?, ...같은 키}` / 404 / 500 `preview_failed`. `expected`는 `validator::expected_of` 코드(`memory_size`·`port`·`integer`·`path`·`pattern`·`number`·`boolean`·`enum`·`text`) |
 | POST | `/api/instance/:id/rename` | `instance.rs:724` | `{name}` | `{success, id, name, previous}` / 409 `name_taken`·`server_running` / 404 |
 | GET | `/api/provision-progress/:name` | `instance.rs:606` | - | `{active:false}` 또는 `{active:true, step,total,label,message,done,error,percent?,steps?}` |
 | DELETE | `/api/provision-progress/:name` | `instance.rs:565` | - | `{success, rolled_back}`. **신규 생성**의 프로비저닝이 실패한 상태였을 때만 인스턴스를 삭제한다 |
@@ -308,7 +309,8 @@
 
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
-| POST | `/api/client/register` | `client.rs:21` | `{kind:"gui"\|"cli"}` | `{client_id, kind, heartbeat_interval_ms:30000, timeout_ms:90000}` |
+| POST | `/api/client/register` | `client.rs:21` | `{kind:"gui"\|"cli", pid?, installRoot?}` | `{client_id, kind, heartbeat_interval_ms:30000, timeout_ms:90000}` |
+| GET | `/api/clients` | `client.rs` `client_list` | - | `{clients:[{id, kind, pid, installRoot}]}`. 인스톨러·제거기가 데몬을 끄기 전에 이 설치(`installRoot`)의 GUI PID를 받아, 임시 폴더에 풀린 포터블 GUI까지 끈다 |
 | POST | `/api/client/:id/heartbeat` | `client.rs:51` | 본문은 무시 | `{ok}` / 404 |
 | DELETE | `/api/client/:id/unregister` | `client.rs:69` | query `shutdown=true\|false` | `{ok}` / 404 |
 | POST | `/api/daemon/shutdown` | `client.rs:12` | - | `{ok, message}`. 200ms 뒤 `stop_requested` cancel |
@@ -588,7 +590,7 @@ Relay 서명 방식(`relay.rs:100-137`):
 
 - `process_monitor.rs`는 `sysinfo` 0.30으로 전체 프로세스 스냅샷(`pid,name,exe,cmd`)을 만든다. `spawn_blocking`으로 감싼 async 버전도 있다.
 - `daemon_log.rs`는 tracing Layer와 링 버퍼(10k)를 제공하고, `get_since(since,count=200)`로 조회한다.
-- `audit.rs`(A10): 서버 시작·정지·재시작(`/api/instance/:id/*`, `/api/server/:name/*`), 게임 명령(`execute_command`), 콘솔 입력(`/stdin`)을 `<data_dir>/audit.log`에 한 줄 JSON으로 남긴다(1 MiB에서 `audit.log.1`로 넘김, 인자·줄은 300자까지). 출처는 task-local `Origin`: HTTP 요청은 미들웨어가 `X-Saba-Client`(GUI `gui`, CLI `cli`, 없으면 `api`)로, 릴레이 에이전트는 `discord`+요청자·길드 id로, 예약 작업은 `schedule`로 정한다. 재시작 안의 정지·시작은 `quietly`로 따로 남기지 않는다. 로컬 클라이언트는 같은 토큰을 쓰므로 출처는 기록용이지 보안 경계가 아니다.
+- `audit.rs`(A10): 서버 시작·정지·재시작(`/api/instance/:id/*`, `/api/server/:name/*`), 게임 명령(`execute_command`), 콘솔 입력(`/stdin`)을 `<data_dir>/audit.log`에 한 줄 JSON으로 남긴다(1 MiB에서 `audit.log.1`로 넘김, 인자·줄은 300자까지). 출처는 task-local `Origin`: HTTP 요청은 미들웨어가 `X-Saba-Client`(GUI `gui`, CLI `cli`, 없으면 `api`)로, 릴레이 에이전트는 `discord`+요청자·길드 id(릴레이가 `payload.userName`·`payload.guildName`을 보내면 그 이름도)로, 예약 작업은 `schedule`로 정한다. `discord`·`schedule`·`daemon`은 헤더로 받지 않고 `api`로 본다. 기록 전에 `audit::redact`가 비밀을 가린다: 모듈이 `password`로 선언했거나 이름에 pass·pwd·token·secret·apikey가 든 명령 인자, 그런 인자를 받는 명령의 콘솔 줄(첫 낱말이 이름·별명·`console_template` 첫 낱말과 같거나 이름부터 비밀스러운 줄)은 첫 낱말 뒤 전체, 인스턴스의 `password` 설정값·REST 비밀번호(4자 이상)는 어디에 나오든. 넘기기(rename)에 실패해도 기록은 이어서 남긴다. 재시작 안의 정지·시작은 `quietly`로 따로 남기지 않는다. 로컬 클라이언트는 같은 토큰을 쓰므로 출처는 기록용이지 보안 경계가 아니다.
 - 콘솔 프로그램을 부를 때는 창을 숨긴다: 데몬은 `utils::apply_creation_flags`(tokio), 업데이터·인스톨러와 std `Command`는 `saba_chan_updater_lib::process::hide_console`. 분리 실행(`DETACHED_PROCESS`)된 데몬이나 GUI 프로그램(인스톨러·업데이터)이 콘솔 프로그램을 플래그 없이 부르면 부를 때마다 검은 창이 뜬다.
 - `utils.rs`는 Windows `CREATE_NO_WINDOW` 플래그와 경로 한 칸 이름 검사(`is_single_path_component`)를 다룬다(`utils.rs:8-20`).
 

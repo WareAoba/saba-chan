@@ -303,6 +303,14 @@ impl Api {
         self.post(&format!("/api/instance/{}/diagnose", seg(id)), json!({}))
             .await
     }
+    /// POST /api/instance/:id/launch-preview — 실행 줄 미리보기. extra가 없으면 저장된 추가 인자
+    pub async fn launch_preview(&self, id: &str, extra: Option<&str>) -> Result<Value> {
+        let mut body = json!({ "settings": {} });
+        if let Some(extra) = extra {
+            body["extra_args"] = json!(extra);
+        }
+        self.post(&format!("/api/instance/{}/launch-preview", seg(id)), body).await
+    }
     pub async fn accept_eula(&self, id: &str) -> Result<Value> {
         self.post(&format!("/api/instance/{}/accept-eula", seg(id)), json!({}))
             .await
