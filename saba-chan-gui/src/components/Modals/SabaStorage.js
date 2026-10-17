@@ -200,13 +200,13 @@ function ComponentsTab({ devMode }) {
         setMessage(null);
         try {
             if (toMock) {
-                // 데몬은 relay_url만 본다 (src/ipc/updates.rs set_config). GitHub 경로는 레거시
-                await window.api?.updaterSetConfig?.({ source: 'relay', relay_url: MOCK_RELAY_URL });
+                // 업데이트는 릴레이 전용이다. 데몬은 relay_url만 본다 (src/ipc/updates.rs set_config)
+                await window.api?.updaterSetConfig?.({ relay_url: MOCK_RELAY_URL });
                 setMockMode(true);
                 setMessage(t('saba_storage.switch_to_mock'));
             } else {
                 // 빈 문자열이면 데몬이 기본 릴레이로 돌아간다
-                await window.api?.updaterSetConfig?.({ source: 'relay', relay_url: '' });
+                await window.api?.updaterSetConfig?.({ relay_url: '' });
                 setMockMode(false);
                 setMessage(t('saba_storage.switch_to_real'));
             }
