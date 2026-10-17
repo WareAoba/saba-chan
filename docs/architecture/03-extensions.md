@@ -118,7 +118,8 @@
   - `SABA_ENABLED_EXTENSIONS=<콤마 목록>`: ~~`%APPDATA%`나 cwd의 `extensions_state.json`을 읽어 Linux/macOS에서 대개 설정되지 않는다.~~ → 해결: `config.json`의 `extensions.enabled`에서 읽고, 목록이 없으면 빈 값으로 항상 설정한다(`plg/:200-205`).
   - import 가드: 데이터 폴더의 `python-guard/sitecustomize.py`(`plg/:84-96`, `src/plugin/sitecustomize.py`)가 `SABA_ENABLED_EXTENSIONS`에 없는 `extensions.<이름>` import를 `ModuleNotFoundError`로 막는다(`-`와 `_`는 같게 본다).
   - 공용 모듈 `i18n.py`, `daemon_rcon.py`를 modules 디렉토리에 내장본과 같게 맞춘다(`plg/:98-116,217-224`).
-- **확인되지 않은 익스텐션 (Windows)**: 신뢰 표시가 `verified`가 아니면 hook을 실행하기 전에 그 폴더의 스크립트를 AMSI로 검사한다. 찾으면 hook 결과가 `{success:false, action_required:"malware_detected", file}`가 된다. 모듈과 같은 규칙이다(02 문서 §2.1).
+- **확인되지 않은 익스텐션 (Windows)**: 신뢰 표시가 `verified`가 아니면 모듈과 같은 규칙을 따른다(02 문서 §2.1). hook 전에 폴더를 검사하고(`malware_detected`·`unscannable_file`), Python은 AppContainer 안에서 돈다(준비하지 못하면 `sandbox_unavailable`과 `component`).
+  - `server.pre_start`가 돌려준 `log_follower.program`도 모듈의 실행 대상과 같이 검사한다(인스턴스 폴더·사용자가 정한 서버 폴더 안, 셸 거부, `env_vars`의 `PATH`·`PATHEXT` 버림). 막히면 시작 결과가 `launch_outside_instance`다.
 - **타임아웃**: 기본 `DEFAULT_PLUGIN_TIMEOUT_SECS = 120`(`plg/:119`). 초과하면 `child.kill()` 후 Err(`plg/:307-315`).
 
 ### 2.2 디스패처 (`ext/:1213-1256`, `ext/:1557-1628`)

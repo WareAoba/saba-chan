@@ -104,6 +104,9 @@ pub enum Cmd {
     /// Who may run which commands from Discord (levels per member, preset, overrides)
     #[command(subcommand, visible_alias = "permissions")]
     Perm(PermCmd),
+    /// Isolated runs of unverified modules and extensions
+    #[command(subcommand)]
+    Sandbox(SandboxCmd),
     /// Versions of every installed part
     Version,
     /// Open the interactive shell
@@ -160,6 +163,14 @@ pub enum PermCmd {
     Command { guild: String, key: String, level: Option<String> },
     /// Change the pinned owner of this Discord server
     Owner { guild: String, member: String },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SandboxCmd {
+    /// Run this component without isolation when isolation cannot be prepared (asked again when its files change)
+    Allow { component: String },
+    /// Remove the consent to run without isolation
+    Revoke { component: String },
 }
 
 #[derive(Subcommand, Debug)]

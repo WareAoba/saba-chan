@@ -715,6 +715,11 @@ impl IPCServer {
                 "/api/permissions/:guild_id/members/:discord_id",
                 axum::routing::put(handlers::permissions::set_member).delete(handlers::permissions::remove_member),
             )
+            // ── 확인되지 않은 구성요소를 격리 없이 돌리기 동의 ──
+            .route(
+                "/api/sandbox/unisolated/:component",
+                post(handlers::sandbox::allow_unisolated).delete(handlers::sandbox::revoke_unisolated),
+            )
             .route("/api/client/:id/heartbeat", post(handlers::client::client_heartbeat))
             .route("/api/client/:id/unregister", delete(handlers::client::client_unregister))
             // ── Daemon lifecycle ──

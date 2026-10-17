@@ -15,6 +15,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+pub mod appcontainer;
 pub mod scan;
 
 /// 이 플랫폼에서 제한을 거는가
@@ -127,6 +128,8 @@ pub fn message(blocked: &Blocked) -> String {
     match blocked.code {
         "malware_detected" => format!("Antivirus flagged a file of this unverified component: {}", file),
         "launch_outside_instance" => format!("This unverified module tried to run a program outside the server folder: {}", file),
+        "unscannable_file" => format!("This unverified component contains compiled code without source that cannot be scanned: {}", file),
+        "sandbox_unavailable" => format!("Could not prepare the isolated environment for this unverified component: {}", blocked.detail.as_deref().unwrap_or("")),
         other => other.to_string(),
     }
 }
@@ -188,10 +191,30 @@ pub async fn guard_entry(entry: &str) -> Result<(), Blocked> {
 }
 
 /// 서버 실행 전: 확인되지 않은 모듈이면 실행 대상 위치를 보고 실행 파일을 검사한다
-pub async fn guard_launch(entry: &str, program: &str, roots: LaunchRoots) -> Result<(), Blocked> {
-    if !restricted(trust_of_entry(Path::new(entry))) {
+pub async fn guard_launch(entry: &str, program: &str, roots: LaunchRoots, env: &mut Vec<(String, String)>) -> Result<(), Blocked> {
+    guard_launch_for(trust_of_entry(Path::new(entry)), program, roots, env).await
+}
+
+/// 익스텐션 설치 기록의 신뢰 표시 (`extensions/<id>`)
+pub fn extension_trust(ext_id: &str) -> Trust {
+    let key = format!("{}{}", saba_chan_updater_lib::relay::EXTENSION_PREFIX, ext_id);
+    saba_chan_updater_lib::integrity::trust_of(&key, &crate::plugin::resolve_extensions_dir().join(ext_id))
+}
+
+/// 실행 대상을 찾을 때 쓰는 변수. 확인되지 않은 구성요소가 준 값은 버린다
+/// (경로 없는 `java`가 그 폴더에서 찾아지지 않게)
+const SEARCH_PATH_VARS: &[&str] = &["PATH", "PATHEXT"];
+
+pub fn strip_search_path(env: &mut Vec<(String, String)>) {
+    env.retain(|(k, _)| !SEARCH_PATH_VARS.iter().any(|v| k.eq_ignore_ascii_case(v)));
+}
+
+/// `guard_launch`의 신뢰 표시를 받는 형태 (익스텐션이 띄우는 프로그램에도 쓴다)
+pub async fn guard_launch_for(trust: Trust, program: &str, roots: LaunchRoots, env: &mut Vec<(String, String)>) -> Result<(), Blocked> {
+    if !restricted(trust) {
         return Ok(());
     }
+    strip_search_path(env);
     if let Err(code) = check_launch(program, &roots) {
         return Err(Blocked { code, file: Some(program.to_string()), detail: None });
     }
@@ -207,6 +230,190 @@ pub async fn guard_launch(entry: &str, program: &str, roots: LaunchRoots) -> Res
     })
     .await
     .unwrap_or(Ok(()))
+}
+
+/// 격리해서 돌릴 Python 실행 하나
+#[derive(Debug, Clone)]
+pub struct Isolation {
+    /// 설치 기록 키 (`module-<이름>`·`ext-<이름>`). 모듈·익스텐션 폴더 밖이면 그 폴더 경로
+    pub key: String,
+    pub dir: PathBuf,
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub grants: appcontainer::Grants,
+    pub pycache: PathBuf,
+    pub temp: PathBuf,
+}
+
+/// 확인되지 않은 구성요소의 Python 실행이면 격리 계획을 만든다. `config`의 `instance_dir`·`working_dir`에
+/// 쓰기를 준다 (데몬이 넣는 값. 데이터 폴더 자체와 그 위는 `Grants::push`가 버린다)
+pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<Isolation> {
+    use appcontainer::Access;
+    if !restricted(trust_of_entry(entry)) {
+        return None;
+    }
+    let (key, dir) = component_of(entry).unwrap_or_else(|| {
+        let dir = entry.parent().map(Path::to_path_buf).unwrap_or_default();
+        (dir.to_string_lossy().into_owned(), dir)
+    });
+    let raw_data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
+    // 비교는 실제 경로로, Python에 넘기는 경로는 원래 모양으로 (`\\?\` 접두어 없이)
+    let data_dir = std::fs::canonicalize(&raw_data_dir).unwrap_or_else(|_| raw_data_dir.clone());
+    let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).and_then(|h| std::fs::canonicalize(h).ok());
+    let home = home.as_deref();
+    let pycache = raw_data_dir.join("pycache-sandbox");
+    let temp = raw_data_dir.join("sandbox-temp");
+    for d in [&pycache, &temp] {
+        let _ = std::fs::create_dir_all(d);
+    }
+    let mut grants = appcontainer::Grants::default();
+    let mut add = |path: &Path, access| grants.push(path, access, &data_dir, home);
+    // Python: venv와 그 기반 설치
+    if let Some(venv) = python_exe.parent().and_then(Path::parent) {
+        add(venv, Access::Read);
+    }
+    if let Some(base) = appcontainer::venv_home(python_exe) {
+        add(&base, Access::Read);
+    }
+    add(&dir, Access::Read);
+    let modules = crate::plugin::resolve_modules_dir();
+    let extensions = crate::plugin::resolve_extensions_dir();
+    add(&modules, Access::Read);
+    add(&extensions, Access::Read);
+    // PYTHONPATH의 익스텐션 상위 폴더: `import extensions.x`에 목록만 필요하다
+    if let Some(parent) = extensions.parent() {
+        add(parent, Access::List);
+    }
+    add(&data_dir.join("python-guard"), Access::Read);
+    add(&pycache, Access::Write);
+    add(&temp, Access::Write);
+    for field in ["instance_dir", "working_dir"] {
+        if let Some(path) = config.get(field).and_then(Value::as_str) {
+            add(Path::new(path), Access::Write);
+        }
+    }
+    Some(Isolation { key, dir, grants, pycache, temp })
+}
+
+/// 격리 실행을 띄운 결과
+pub enum Spawned {
+    #[cfg(windows)]
+    Contained(appcontainer::Contained),
+    /// 사용자가 이 구성요소를 격리 없이 돌리기로 했다
+    Unisolated,
+}
+
+/// 격리해서 띄운다. 준비가 실패하면 사용자가 동의한 경우만 격리 없이 돌리고, 아니면 `sandbox_unavailable`
+pub async fn spawn_isolated(cmd: &std::process::Command, iso: &Isolation) -> Result<Spawned, Blocked> {
+    #[cfg(windows)]
+    let error = {
+        let program = cmd.get_program().to_os_string();
+        let args: Vec<std::ffi::OsString> = cmd.get_args().map(|a| a.to_os_string()).collect();
+        let cwd = cmd.get_current_dir().map(Path::to_path_buf);
+        let changes = cmd.get_envs().map(|(k, v)| (k.to_os_string(), v.map(|v| v.to_os_string()))).collect();
+        let env = appcontainer::merge_env(std::env::vars_os().collect(), changes);
+        let grants = iso.grants.clone();
+        let started = tokio::task::spawn_blocking(move || appcontainer::spawn(&program, &args, cwd.as_deref(), &env, &grants))
+            .await
+            .unwrap_or_else(|e| Err(e.to_string()));
+        match started {
+            Ok(child) => return Ok(Spawned::Contained(child)),
+            Err(e) => e,
+        }
+    };
+    #[cfg(not(windows))]
+    let error = {
+        let _ = cmd;
+        "AppContainer is only available on Windows".to_string()
+    };
+    if unisolated_allowed(&iso.key, &iso.dir) {
+        tracing::warn!("[Sandbox] {} runs without isolation by the user's choice ({})", iso.key, error);
+        return Ok(Spawned::Unisolated);
+    }
+    tracing::warn!("[Sandbox] cannot isolate {}: {}", iso.key, error);
+    Err(Blocked { code: "sandbox_unavailable", file: None, detail: Some(error) })
+}
+
+// ── 격리 없이 돌리기 동의 (`config.json` `sandbox.unisolated`: 키 → 파일 지문) ──
+// 파일이 하나라도 바뀌면 지문이 달라져 다시 묻는다
+
+const CONSENT_SECTION: &str = "sandbox";
+const CONSENT_KEY: &str = "unisolated";
+
+/// 구성요소 폴더의 지문: 상대 경로와 내용 sha256을 정렬해 묶은 sha256 (`__pycache__` 제외)
+pub fn fingerprint(dir: &Path) -> String {
+    fn walk(base: &Path, dir: &Path, out: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(kind) = entry.file_type() else { continue };
+            if kind.is_dir() {
+                if entry.file_name() != "__pycache__" {
+                    walk(base, &path, out);
+                }
+            } else if kind.is_file() {
+                let rel = path.strip_prefix(base).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+                let sha = std::fs::read(&path).map(|b| sha256_of(&b)).unwrap_or_default();
+                out.push(format!("{}\t{}", rel, sha));
+            }
+        }
+    }
+    let mut lines = Vec::new();
+    walk(dir, dir, &mut lines);
+    lines.sort();
+    sha256_of(lines.join("\n").as_bytes())
+}
+
+fn consent_file() -> saba_chan_updater_lib::config_file::ConfigFile {
+    saba_chan_updater_lib::config_file::ConfigFile::default_location()
+}
+
+pub fn unisolated_allowed(key: &str, dir: &Path) -> bool {
+    let section = consent_file().section(CONSENT_SECTION);
+    section.get(CONSENT_KEY).and_then(|m| m.get(key)).and_then(Value::as_str).is_some_and(|fp| fp == fingerprint(dir))
+}
+
+/// 설치 기록 키의 폴더 (`module-<이름>` → modules/<이름>). 이름에 경로 문자가 있으면 None
+pub fn component_dir(key: &str) -> Option<PathBuf> {
+    let (root, name) = if let Some(name) = key.strip_prefix(saba_chan_updater_lib::relay::MODULE_PREFIX) {
+        (crate::plugin::resolve_modules_dir(), name)
+    } else {
+        (crate::plugin::resolve_extensions_dir(), key.strip_prefix(saba_chan_updater_lib::relay::EXTENSION_PREFIX)?)
+    };
+    if name.is_empty() || name.contains(['/', '\\', ':']) || name.starts_with('.') {
+        return None;
+    }
+    Some(root.join(name)).filter(|d| d.is_dir())
+}
+
+/// 동의를 기록하거나 지운다. 기록하면 지금 파일의 지문을 돌려준다
+pub fn set_unisolated(key: &str, allow: bool) -> std::io::Result<Option<String>> {
+    let fp = if allow {
+        let dir = component_dir(key).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "unknown component"))?;
+        Some(fingerprint(&dir))
+    } else {
+        None
+    };
+    consent_file().update(|cfg| {
+        let section = cfg.entry(CONSENT_SECTION).or_insert_with(|| serde_json::json!({}));
+        if !section.is_object() {
+            *section = serde_json::json!({});
+        }
+        let map = section.as_object_mut().expect("object");
+        let entries = map.entry(CONSENT_KEY).or_insert_with(|| serde_json::json!({}));
+        if !entries.is_object() {
+            *entries = serde_json::json!({});
+        }
+        let entries = entries.as_object_mut().expect("object");
+        match &fp {
+            Some(fp) => {
+                entries.insert(key.to_string(), Value::String(fp.clone()));
+            }
+            None => {
+                entries.remove(key);
+            }
+        }
+    })?;
+    Ok(fp)
 }
 
 pub fn sha256_of(bytes: &[u8]) -> String {
@@ -264,6 +471,32 @@ mod tests {
         std::os::unix::fs::symlink(&evil, inst.join("server")).unwrap();
         let roots = LaunchRoots { dirs: vec![inst.clone()], runtimes: vec![] };
         assert_eq!(check_launch(&inst.join("server").to_string_lossy(), &roots), Err("launch_outside_instance"));
+    }
+
+    #[test]
+    fn fingerprint_changes_with_any_file_but_not_bytecode_cache() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("lifecycle.py"), b"a").unwrap();
+        let first = fingerprint(tmp.path());
+        std::fs::create_dir_all(tmp.path().join("__pycache__")).unwrap();
+        std::fs::write(tmp.path().join("__pycache__").join("x.pyc"), b"c").unwrap();
+        assert_eq!(fingerprint(tmp.path()), first);
+        std::fs::write(tmp.path().join("data.json"), b"{}").unwrap();
+        assert_ne!(fingerprint(tmp.path()), first);
+    }
+
+    #[test]
+    fn component_keys_resolve_only_to_plain_names() {
+        for key in ["module-", "module-../x", "module-a/b", "ext-.hidden", "other-x", "module-C:x"] {
+            assert_eq!(component_dir(key), None, "{}", key);
+        }
+    }
+
+    #[test]
+    fn search_path_from_the_component_is_dropped() {
+        let mut env = vec![("Path".to_string(), "C:\\evil".to_string()), ("pathext".into(), ".X".into()), ("JAVA_OPTS".into(), "-Xmx1G".into())];
+        strip_search_path(&mut env);
+        assert_eq!(env, vec![("JAVA_OPTS".to_string(), "-Xmx1G".to_string())]);
     }
 
     #[test]

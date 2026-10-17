@@ -195,6 +195,73 @@ where
     run_plugin_inner(module_path, function, config, Some(Box::new(on_progress)), timeout_secs).await
 }
 
+type Writer = Box<dyn tokio::io::AsyncWrite + Unpin + Send>;
+type Reader = Box<dyn tokio::io::AsyncRead + Unpin + Send>;
+
+/// 띄운 Python: 평소대로 띄운 것과 AppContainer 안에서 띄운 것 (실행마다 하나라 크기는 상관없다)
+#[allow(clippy::large_enum_variant)]
+enum Process {
+    Plain(tokio::process::Child),
+    #[cfg(windows)]
+    Contained(crate::sandbox::appcontainer::Contained),
+}
+
+impl Process {
+    fn pipes(&mut self) -> (Option<Writer>, Option<Reader>, Option<Reader>) {
+        match self {
+            Process::Plain(child) => (
+                child.stdin.take().map(|p| Box::new(p) as Writer),
+                child.stdout.take().map(|p| Box::new(p) as Reader),
+                child.stderr.take().map(|p| Box::new(p) as Reader),
+            ),
+            #[cfg(windows)]
+            Process::Contained(c) => (
+                c.stdin.take().map(|f| Box::new(tokio::fs::File::from_std(f)) as Writer),
+                c.stdout.take().map(|f| Box::new(tokio::fs::File::from_std(f)) as Reader),
+                c.stderr.take().map(|f| Box::new(tokio::fs::File::from_std(f)) as Reader),
+            ),
+        }
+    }
+
+    async fn wait(&mut self) -> std::io::Result<std::process::ExitStatus> {
+        match self {
+            Process::Plain(child) => child.wait().await,
+            #[cfg(windows)]
+            Process::Contained(c) => {
+                use std::os::windows::process::ExitStatusExt;
+                let handle = c.wait_handle();
+                let code = tokio::task::spawn_blocking(move || crate::sandbox::appcontainer::wait(handle))
+                    .await
+                    .map_err(std::io::Error::other)??;
+                Ok(std::process::ExitStatus::from_raw(code))
+            }
+        }
+    }
+
+    /// 그것이 띄운 프로세스까지 끝낸다
+    async fn kill(&mut self) {
+        match self {
+            Process::Plain(child) => {
+                if let Some(pid) = child.id() {
+                    kill_tree(pid);
+                }
+                let _ = child.kill().await;
+            }
+            #[cfg(windows)]
+            Process::Contained(c) => {
+                c.kill();
+                // 핸들을 닫기 전에 끝난 것을 확인한다
+                let handle = c.wait_handle();
+                let _ = tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    tokio::task::spawn_blocking(move || crate::sandbox::appcontainer::wait(handle)),
+                )
+                .await;
+            }
+        }
+    }
+}
+
 async fn run_plugin_inner(
     module_path: &str,
     function: &str,
@@ -281,17 +348,38 @@ async fn run_plugin_inner(
         cmd.env("PYTHONPATH", paths.join(&PYPATH_SEP.to_string()));
     }
 
+    // 확인되지 않은 구성요소: AppContainer 안에서 돌린다 (Windows). 토큰 파일 경로는 주지 않는다
+    let isolation = crate::sandbox::isolation_for(std::path::Path::new(module_path), &config, &python_exe);
+    if let Some(iso) = &isolation {
+        cmd.env("PYTHONPYCACHEPREFIX", &iso.pycache)
+            .env("TEMP", &iso.temp)
+            .env("TMP", &iso.temp)
+            .env_remove("SABA_TOKEN_PATH");
+    }
+
     apply_creation_flags(&mut cmd);
 
-    let mut child = cmd.spawn()?;
+    let mut child = match &isolation {
+        None => Process::Plain(cmd.spawn()?),
+        Some(iso) => match crate::sandbox::spawn_isolated(cmd.as_std(), iso).await {
+            Ok(crate::sandbox::Spawned::Unisolated) => Process::Plain(cmd.spawn()?),
+            #[cfg(windows)]
+            Ok(crate::sandbox::Spawned::Contained(contained)) => Process::Contained(contained),
+            Err(blocked) => {
+                let mut value = blocked.to_json(crate::sandbox::message(&blocked));
+                value["component"] = Value::String(iso.key.clone());
+                return Ok(value);
+            }
+        },
+    };
+    let (stdin_pipe, stdout_pipe, stderr_pipe) = child.pipes();
 
-    if let Some(mut stdin) = child.stdin.take() {
+    if let Some(mut stdin) = stdin_pipe {
         stdin.write_all(config_json.as_bytes()).await?;
         stdin.shutdown().await?;
     }
 
     // Stream stderr line-by-line to capture PROGRESS: events in real-time
-    let stderr_pipe = child.stderr.take();
     let stderr_handle = tokio::spawn(async move {
         let mut log_lines = Vec::new();
         if let Some(pipe) = stderr_pipe {
@@ -313,7 +401,6 @@ async fn run_plugin_inner(
     });
 
     // Read all of stdout (final JSON result)
-    let stdout_pipe = child.stdout.take();
     let stdout_handle = tokio::spawn(async move {
         let mut buf = Vec::new();
         if let Some(pipe) = stdout_pipe {
@@ -359,10 +446,7 @@ async fn run_plugin_inner(
                 "Plugin timed out after {}s: {} -> {} — killing process",
                 timeout_secs, module_path, function
             );
-            if let Some(pid) = child.id() {
-                kill_tree(pid);
-            }
-            let _ = child.kill().await;
+            child.kill().await;
             Err(anyhow::anyhow!("Plugin timed out after {}s", timeout_secs))
         }
     }

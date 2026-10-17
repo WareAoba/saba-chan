@@ -306,7 +306,8 @@ pub(crate) fn trust_warnings(kind: &str, id: &str, trust: saba_chan_updater_lib:
         Trust::Modified => format!("{}_modified", kind),
         Trust::Unverified => format!("{}_unverified", kind),
     };
-    vec![json!({ "code": code, kind: id })]
+    // isolated: 이 플랫폼에서 격리된 환경(허용된 폴더만)에서 돈다
+    vec![json!({ "code": code, kind: id, "isolated": crate::sandbox::ENFORCED })]
 }
 
 fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std::collections::BTreeMap<String, String>) -> ExtensionInfo {
@@ -998,8 +999,8 @@ mod tests {
     fn only_unofficial_or_changed_components_get_a_notice() {
         use saba_chan_updater_lib::integrity::Trust;
         assert!(trust_warnings("module", "m", Trust::Verified).is_empty());
-        assert_eq!(trust_warnings("module", "m", Trust::Unverified), [json!({"code": "module_unverified", "module": "m"})]);
-        assert_eq!(trust_warnings("extension", "e", Trust::Modified), [json!({"code": "extension_modified", "extension": "e"})]);
+        assert_eq!(trust_warnings("module", "m", Trust::Unverified), [json!({"code": "module_unverified", "module": "m", "isolated": cfg!(windows)})]);
+        assert_eq!(trust_warnings("extension", "e", Trust::Modified), [json!({"code": "extension_modified", "extension": "e", "isolated": cfg!(windows)})]);
     }
 
     #[tokio::test]

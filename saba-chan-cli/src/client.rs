@@ -497,6 +497,15 @@ impl Api {
             None => self.delete(&path).await,
         }
     }
+    /// POST/DELETE /api/sandbox/unisolated/:component (격리 없이 돌리기 동의)
+    pub async fn set_unisolated(&self, component: &str, allow: bool) -> Result<Value> {
+        let path = format!("/api/sandbox/unisolated/{}", seg(component));
+        if allow {
+            self.post(&path, json!({})).await
+        } else {
+            self.delete(&path).await
+        }
+    }
     /// POST /api/migration/export — 데몬이 `path`에 zip을 쓴다
     pub async fn export_config(&self, path: &str, secrets: bool) -> Result<Value> {
         self.post_long("/api/migration/export", json!({ "path": path, "secrets": secrets }))
