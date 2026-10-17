@@ -605,6 +605,14 @@ pub async fn start_instance_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> axum::response::Response {
+    let resp = start_instance(Path(id.clone()), State(state.clone())).await;
+    super::audited(&state, "start", &id, None, None, resp).await
+}
+
+async fn start_instance(
+    Path(id): Path<String>,
+    State(state): State<IPCServer>,
+) -> axum::response::Response {
     let picked = {
         let supervisor = state.supervisor.read().await;
         supervisor
@@ -725,6 +733,16 @@ pub async fn restart_instance_handler(
     State(state): State<IPCServer>,
     body: Option<Json<ServerStopRequest>>,
 ) -> axum::response::Response {
+    // 안에서 부르는 정지·시작은 따로 남기지 않는다
+    let resp = crate::audit::quietly(restart_instance(Path(id.clone()), State(state.clone()), body)).await;
+    super::audited(&state, "restart", &id, None, None, resp).await
+}
+
+async fn restart_instance(
+    Path(id): Path<String>,
+    State(state): State<IPCServer>,
+    body: Option<Json<ServerStopRequest>>,
+) -> axum::response::Response {
     let picked = {
         let supervisor = state.supervisor.read().await;
         supervisor
@@ -828,7 +846,7 @@ pub async fn start_server_handler(
         }
     }
 
-    match crate::supervisor::Supervisor::start_server(&state.supervisor, &name, &payload.module, payload.config)
+    let resp = match crate::supervisor::Supervisor::start_server(&state.supervisor, &name, &payload.module, payload.config)
         .await
     {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
@@ -847,7 +865,8 @@ pub async fn start_server_handler(
             });
             (code, Json(error)).into_response()
         }
-    }
+    };
+    super::audited(&state, "start", &name, None, None, resp).await
 }
 
 /// POST /api/server/:name/stop - 서버 중지
@@ -872,6 +891,11 @@ pub async fn stop_server_handler(
 
 /// 인스턴스 하나를 id로 정지한다. 이름은 겹칠 수 있으니 정지 경로는 모두 id를 쓴다
 pub async fn stop_instance(state: IPCServer, key: &str, force: bool) -> axum::response::Response {
+    let resp = stop_instance_unrecorded(state.clone(), key, force).await;
+    super::audited(&state, "stop", key, None, None, resp).await
+}
+
+async fn stop_instance_unrecorded(state: IPCServer, key: &str, force: bool) -> axum::response::Response {
     let payload = ServerStopRequest { force };
     let Some((id, name)) = instance_key_of(&state, key).await else {
         return instance_not_found(key);

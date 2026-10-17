@@ -18,6 +18,7 @@ mod instance_lock;
 mod chat;
 mod commands;
 mod module_audit;
+mod audit;
 mod relay_agent;
 
 use std::sync::Arc;

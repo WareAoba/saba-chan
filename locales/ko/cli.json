@@ -551,7 +551,8 @@
       "config.export": "설정과 서버 목록을 zip으로 저장 (다른 PC로 옮길 때, 게임 파일은 빠짐)",
       "config.import": "내보낸 zip에서 설정과 서버 가져오기",
       "bot.channels": "디스코드 서버의 챗봇 채널(여러 개)·음악 채널(하나). 옵션이 없으면 보기만",
-      "monitor": "CPU·메모리·디스크·네트워크 사용량과 서버별 몫"
+      "monitor": "CPU·메모리·디스크·네트워크 사용량과 서버별 몫",
+      "audit": "누가 어디서(GUI·CLI·디스코드·예약) 서버를 켜고 끄고 명령을 보냈는지"
     },
     "arg": {
       "json": "글 대신 기계가 읽는 JSON으로 출력",
@@ -628,7 +629,8 @@
       "bot.channels.music": "음악 플레이어 채널, 이름 또는 id. 그 채널의 일반 메시지는 지워짐",
       "bot.channels.no_music": "음악 채널 해제",
       "monitor.watch": "Ctrl+C까지 계속 새로 고침",
-      "monitor.interval": "--watch 새로 고침 간격 (초)"
+      "monitor.interval": "--watch 새로 고침 간격 (초)",
+      "audit.limit": "보여 줄 기록 수"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 실행하면 대화형 셸이 열려요.\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },
@@ -730,17 +732,11 @@
     "unverified": "확인 안 됨"
   },
   "audit": {
-    "scanning": "{{name}} 코드 검사하는 중...",
-    "declared": "선언한 권한",
-    "none_declared": "(없음)",
-    "no_findings": "검사하는 능력은 코드에서 하나도 쓰지 않아요.",
-    "clean": "코드가 쓰는 능력은 모두 선언돼 있어요.",
-    "undeclared": "선언하지 않은 사용 {{count}}곳: {{permissions}}. 출처를 믿을 수 있을 때만 쓰세요.",
-    "col": {
-      "permission": "능력",
-      "where": "위치",
-      "what": "코드"
-    }
+    "empty": "아직 기록이 없어요.",
+    "when": "언제",
+    "from": "어디서",
+    "what": "한 일",
+    "result": "결과"
   },
   "monitor": {
     "cpu": "CPU",

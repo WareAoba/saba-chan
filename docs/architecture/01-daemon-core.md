@@ -170,7 +170,8 @@
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
 | GET | `/health` | `server.rs:19` `health_check` | - | `{ok:true, version, pid, token}`. 토큰 없이 부를 수 있다. `token`은 보낸 `X-Saba-Token`이 `valid`·`invalid`·`missing` 중 무엇인지(값은 드러내지 않는다) |
-| GET | `/api/diagnostics` | `diagnostics.rs:20` | - | A6, 인증 필요. `{ok, version, pid, uptime_secs, listen_addr, data_dir, token_file:{path, exists}, extensions:{enabled, enabled_but_missing}, modules:{count}\|{error}, recent_problems:[최근 경고·오류 20개, 오래된 순]}` |
+| GET | `/api/diagnostics` | `diagnostics.rs:20` | - | A6, 인증 필요. `{ok, version, pid, uptime_secs, listen_addr, data_dir, token_file:{path, exists}, audit_log, extensions:{enabled, enabled_but_missing}, modules:{count}\|{error}, recent_problems:[최근 경고·오류 20개, 오래된 순]}` |
+| GET | `/api/audit` | `diagnostics.rs` `audit` | `?limit=`(기본 100, 최대 1000)`&instance=<id>` | A10 감사 로그, 최신이 먼저: `{entries:[{ts, source, user?, guild?, action, instanceId, instance?, command?, args?, ok, status}]}`. `action`은 `start`·`stop`·`restart`·`command`·`stdin` |
 | GET | `/api/version` | `server.rs:279` | - | `{version, components:{saba-core, module-<이름>, ext-<id>, ...}}` |
 | GET | `/api/servers` | `server.rs:24` `list_servers` | - | `{servers:[ServerInfo], port_conflict_stops?:[...]}` (아래 설명) |
 | GET | `/api/server/:name/status` | `server.rs:534` | - | supervisor 결과 JSON 그대로. 404 시 `{error, error_code:"instance_not_found"}` |
@@ -298,7 +299,7 @@
 | PUT | `/api/config/node-token` | `config.rs:145` | `{token}` | `{ok}` |
 | DELETE | `/api/config/node-token` | `config.rs:173` | - | `{ok}`. 먼저 릴레이 에이전트를 멈춘다 |
 | POST | `/api/migration/export` | `migration.rs:173` | `{path(절대 경로), secrets?}` | `{success, path, secrets, instances:[{id,name}], config:[네임스페이스]}` / 400 `INVALID_PATH` / 500 `WRITE_FAILED`. A9: 데몬이 `path`에 zip(`saba-export.json`, `config.json`, `instances.json`, `secrets`면 `node_token`)을 쓴다. `updates`·`boot`·`extensions`·`schemaVersion`은 이 PC 것이라 뺀다. `secrets`가 아니면 챗봇 API 키, REST 비밀번호, 모듈이 `password`로 선언한 설정을 뺀다. 게임 서버 파일은 넣지 않는다 |
-| POST | `/api/migration/import` | `migration.rs:246` | `{path, dryRun?, overwrite?}` | `{success, dryRun, appVersion, secrets, instances:{added, replaced, skipped:[{id,name,reason}]}, missingModules, config:[네임스페이스], nodeToken:"imported"\|"kept"\|null}` / 400 `INVALID_PATH`·`INVALID_ARCHIVE`·`INVALID_CONFIG`. 인스턴스는 같은 id가 있으면 `exists`(`overwrite`면 덮어씀, 켜져 있으면 `running`), 다른 인스턴스와 폴더가 같으면 `working_dir_in_use`로 건너뛴다. 설정은 지금 값 위에 최상위 키 머지(파일에 없는 API 키는 남는다). 노드 토큰은 이 PC에 없을 때만 쓰고, 토큰을 실제로 가져올 때만 `relay.cloud`(relayUrl·hostId)·`cloudNodes`·`cloudMembers`도 바꾼다(아니면 이 PC 값 유지). `added`·`replaced` 항목에는 `working_dir`·`executable_path`가 붙는다 |
+| POST | `/api/migration/import` | `migration.rs:246` | `{path, dryRun?, overwrite?}` | `{success, dryRun, appVersion, secrets, instances:{added, replaced, skipped:[{id,name,reason}]}, missingModules, config:[네임스페이스], nodeToken:"imported"\|"kept"\|null}` / 400 `INVALID_PATH`·`INVALID_ARCHIVE`·`INVALID_CONFIG`. 인스턴스는 같은 id가 있으면 `exists`(`overwrite`면 덮어씀, 켜져 있으면 `running`), 다른 인스턴스와 폴더가 같으면 `working_dir_in_use`로 건너뛴다. 설정은 지금 값 위에 최상위 키 머지(파일에 없는 API 키는 남는다). 설정은 다른 것을 바꾸기 전에 먼저 검사한다(`check_sections`, 잘못되면 아무것도 바꾸지 않고 `INVALID_CONFIG`). 노드 토큰은 이 PC에 없을 때만 쓰고, 토큰을 실제로 가져올 때만 `relay.cloud`(relayUrl·hostId)·`cloudNodes`·`cloudMembers`도 바꾼다(아니면 이 PC 값 유지). `added`·`replaced` 항목에는 `working_dir`·`executable_path`가 붙는다 |
 | GET | `/api/system/components` | `config.rs:233` | - | `{version, components:{key:ver}, lastUpdated}` (`installed-manifest.json` + 번들 `versions.toml`) |
 | GET | `/api/system/metrics` | `system.rs:30` | `?sizes=false` | 시스템 모니터 표본 `{sampled_at_ms, window_ms, cpu:{cores,total_percent,others_percent}, memory:{total_bytes,used_bytes,others_bytes}, disk_io:{read_bps,write_bps,others_read_bps,others_write_bps}, network:{rx_bps,tx_bps,per_instance:false}, disks:[{mount,total_bytes,available_bytes,others_bytes,instances:[{id,bytes}],sizes_at_ms}], instances:[{id,name,running,process_count,cpu_percent,memory_bytes,disk_read_bps,disk_write_bps}]}` (§10) |
 | GET | `/api/runtime/preflight` | `ipc/mod.rs:696` | - | `{phase, percent, complete, error, components:{python}}` |
@@ -587,6 +588,7 @@ Relay 서명 방식(`relay.rs:100-137`):
 
 - `process_monitor.rs`는 `sysinfo` 0.30으로 전체 프로세스 스냅샷(`pid,name,exe,cmd`)을 만든다. `spawn_blocking`으로 감싼 async 버전도 있다.
 - `daemon_log.rs`는 tracing Layer와 링 버퍼(10k)를 제공하고, `get_since(since,count=200)`로 조회한다.
+- `audit.rs`(A10): 서버 시작·정지·재시작(`/api/instance/:id/*`, `/api/server/:name/*`), 게임 명령(`execute_command`), 콘솔 입력(`/stdin`)을 `<data_dir>/audit.log`에 한 줄 JSON으로 남긴다(1 MiB에서 `audit.log.1`로 넘김, 인자·줄은 300자까지). 출처는 task-local `Origin`: HTTP 요청은 미들웨어가 `X-Saba-Client`(GUI `gui`, CLI `cli`, 없으면 `api`)로, 릴레이 에이전트는 `discord`+요청자·길드 id로, 예약 작업은 `schedule`로 정한다. 재시작 안의 정지·시작은 `quietly`로 따로 남기지 않는다. 로컬 클라이언트는 같은 토큰을 쓰므로 출처는 기록용이지 보안 경계가 아니다.
 - 콘솔 프로그램을 부를 때는 창을 숨긴다: 데몬은 `utils::apply_creation_flags`(tokio), 업데이터·인스톨러와 std `Command`는 `saba_chan_updater_lib::process::hide_console`. 분리 실행(`DETACHED_PROCESS`)된 데몬이나 GUI 프로그램(인스톨러·업데이터)이 콘솔 프로그램을 플래그 없이 부르면 부를 때마다 검은 창이 뜬다.
 - `utils.rs`는 Windows `CREATE_NO_WINDOW` 플래그와 경로 한 칸 이름 검사(`is_single_path_component`)를 다룬다(`utils.rs:8-20`).
 

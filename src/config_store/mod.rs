@@ -370,6 +370,29 @@ impl ConfigStore {
         doc
     }
 
+    /// `import_sections`가 받을 수 있는지만 본다 (아무것도 쓰지 않는다). 가져오기가 다른 것을 바꾸기 전에 부른다
+    pub async fn check_sections(&self, sections: &serde_json::Map<String, Value>) -> Result<(), ConfigStoreError> {
+        for (key, value) in sections.iter().filter(|(_, v)| v.is_object()) {
+            let invalid = |what: &str, e: serde_json::Error| ConfigStoreError::InvalidData(format!("Invalid {}: {}", what, e));
+            match key.as_str() {
+                "gui" => {
+                    let merged = merge_json(self.get_gui_settings_json().await, value.clone());
+                    serde_json::from_value::<GuiSettings>(merged).map_err(|e| invalid("GUI settings", e))?;
+                }
+                "relay" => {
+                    let merged = merge_json(self.get_bot_config_json().await, value.clone());
+                    serde_json::from_value::<BotConfig>(merged).map_err(|e| invalid("bot config", e))?;
+                }
+                "chatbot" => {
+                    let merged = merge_json(serde_json::to_value(self.get_chatbot())?, value.clone());
+                    serde_json::from_value::<ChatbotConfig>(merged).map_err(|e| invalid("chatbot config", e))?;
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
     /// 내보낸 설정을 지금 설정 위에 머지한다(없는 키는 그대로 둔다). 반영한 네임스페이스 이름을 돌려준다.
     pub async fn import_sections(&self, sections: serde_json::Map<String, Value>) -> Result<Vec<String>, ConfigStoreError> {
         let mut applied = Vec::new();
@@ -515,6 +538,12 @@ mod tests {
         assert_eq!(chatbot.settings["model"], "n");
         assert_eq!(store.get_gui_settings().await.language.as_deref(), Some("ja"));
         assert_eq!(store.file.section("updates")["channel"], "beta");
+
+        // 잘못된 설정은 쓰기 전에 걸러진다
+        let mut bad = serde_json::Map::new();
+        bad.insert("gui".into(), serde_json::json!({"fontScale": "big"}));
+        assert!(store.check_sections(&bad).await.is_err());
+        assert_eq!(store.get_gui_settings().await.font_scale, 100);
     }
 
     #[test]
