@@ -7,6 +7,7 @@ import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { QuestionModal } from './Modals';
 import { localizedDescription } from '../../utils/localizedText';
 import { ExtensionAuditNotice } from '../servers/ModuleAuditNotice';
+import { TrustBadge } from '../ui/TrustBadge';
 
 // ─────────────────────────────────────────────────────────────
 // 사바 스토리지 (구 업데이트 센터)
@@ -827,6 +828,7 @@ function ModulesTab() {
                                     <span className="ss-card-name">
                                         {m.name}
                                         {m.version && <span className="ss-card-version">v{m.version}</span>}
+                                        <TrustBadge trust={m.trust} />
                                     </span>
                                     {m.description && <span className="ss-card-desc">{m.description}</span>}
                                 </div>
@@ -1074,6 +1076,7 @@ function ExtensionsTab() {
                                     <span className="ss-card-name">
                                         {ext.name}
                                         {ext.version && <span className="ss-card-version">v{ext.version}</span>}
+                                        <TrustBadge trust={ext.trust} />
                                         {updateInfo && (
                                             <span className="ss-update-badge">v{updateInfo.latest_version}</span>
                                         )}

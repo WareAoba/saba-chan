@@ -942,5 +942,13 @@
     "perm_unparsable": "無法檢查的程式碼",
     "ext_title": "擴充功能 '{{name}}' 使用了未宣告的功能。",
     "ext_summary": "程式碼使用了{{perms}}，但 manifest.json 的 permissions 中沒有列出。請確認你信任此擴充功能。"
+  },
+  "trust": {
+    "verified": "已驗證",
+    "modified": "已修改",
+    "unverified": "未驗證",
+    "verified_tip": "來自簽署目錄，安裝後未被變更。",
+    "modified_tip": "從目錄安裝後檔案已被變更。如果不是你自己改的，請重新安裝。",
+    "unverified_tip": "不是從簽署目錄安裝的。請確認你信任其來源。"
   }
 }

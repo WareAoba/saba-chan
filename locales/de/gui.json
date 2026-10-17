@@ -942,5 +942,13 @@
     "perm_unparsable": "nicht prüfbarer Code",
     "ext_title": "Die Erweiterung '{{name}}' nutzt Funktionen, die sie nicht angibt.",
     "ext_summary": "Ihr Code nutzt {{perms}}, aber die permissions in manifest.json führen das nicht auf. Stelle sicher, dass du dieser Erweiterung vertraust."
+  },
+  "trust": {
+    "verified": "Geprüft",
+    "modified": "Geändert",
+    "unverified": "Nicht geprüft",
+    "verified_tip": "Aus dem signierten Katalog und seitdem unverändert.",
+    "modified_tip": "Dateien wurden nach der Installation aus dem Katalog geändert. Neu installieren, falls du sie nicht selbst bearbeitet hast.",
+    "unverified_tip": "Nicht aus dem signierten Katalog installiert. Stelle sicher, dass du der Quelle vertraust."
   }
 }

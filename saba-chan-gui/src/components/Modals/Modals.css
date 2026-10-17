@@ -3699,3 +3699,28 @@
     -webkit-user-select: text;
     user-select: text;
 }
+
+/* 신뢰 배지: 확인됨은 조용히, 변경됨·확인 안 됨은 눈에 띄게 */
+.trust-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.6rem;
+    font-weight: 600;
+    padding: 1px 5px;
+    border-radius: 4px;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+.trust-verified {
+    color: var(--text-tertiary);
+    font-weight: 500;
+}
+.trust-modified {
+    color: var(--warn);
+    background: var(--warn-soft);
+}
+.trust-unverified {
+    color: var(--warn);
+    box-shadow: inset 0 0 0 1px var(--warn-soft);
+}

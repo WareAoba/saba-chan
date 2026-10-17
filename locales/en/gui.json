@@ -942,5 +942,13 @@
     "perm_unparsable": "code that couldn't be checked",
     "ext_title": "Extension '{{name}}' uses capabilities it doesn't declare.",
     "ext_summary": "Its code uses {{perms}}, which the permissions in manifest.json don't list. Make sure you trust this extension."
+  },
+  "trust": {
+    "verified": "Verified",
+    "modified": "Modified",
+    "unverified": "Unverified",
+    "verified_tip": "From the signed catalog and unchanged since.",
+    "modified_tip": "Files changed after installing from the catalog. Reinstall unless you edited them.",
+    "unverified_tip": "Not installed from the signed catalog. Make sure you trust its source."
   }
 }

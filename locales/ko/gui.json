@@ -942,5 +942,13 @@
     "perm_unparsable": "검사할 수 없는 코드",
     "ext_title": "'{{name}}' 익스텐션이 선언하지 않은 기능을 써요.",
     "ext_summary": "코드에서 {{perms}}을(를) 쓰는데 manifest.json의 permissions에는 없어요. 믿을 수 있는 익스텐션인지 확인해 주세요."
+  },
+  "trust": {
+    "verified": "확인됨",
+    "modified": "변경됨",
+    "unverified": "확인 안 됨",
+    "verified_tip": "공식 카탈로그에서 받았고 그 뒤로 바뀌지 않았어요.",
+    "modified_tip": "공식 카탈로그에서 받은 뒤 파일이 바뀌었어요. 직접 고친 게 아니면 다시 설치해 주세요.",
+    "unverified_tip": "공식 카탈로그에서 받지 않았어요. 믿을 수 있는 출처인지 확인해 주세요."
   }
 }

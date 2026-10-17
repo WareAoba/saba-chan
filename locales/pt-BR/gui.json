@@ -942,5 +942,13 @@
     "perm_unparsable": "código que não pôde ser verificado",
     "ext_title": "A extensão '{{name}}' usa recursos que não declara.",
     "ext_summary": "O código usa {{perms}}, mas as permissions do manifest.json não listam isso. Confirme se você confia nesta extensão."
+  },
+  "trust": {
+    "verified": "Verificado",
+    "modified": "Modificado",
+    "unverified": "Não verificado",
+    "verified_tip": "Do catálogo assinado e sem alterações desde então.",
+    "modified_tip": "Arquivos mudaram depois da instalação pelo catálogo. Reinstale se você não os editou.",
+    "unverified_tip": "Não foi instalado pelo catálogo assinado. Confirme se você confia na origem."
   }
 }
