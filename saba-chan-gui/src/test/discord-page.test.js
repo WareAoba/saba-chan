@@ -179,4 +179,19 @@ describe('DiscordPage', () => {
             }),
         );
     });
+
+    it('연결 해제는 에이전트를 멈추고 노드 토큰을 지운다', async () => {
+        window.api.discordBotStop = vi.fn().mockResolvedValue({ ok: true });
+        window.api.deleteNodeToken = vi.fn().mockResolvedValue({ ok: true });
+        await act(async () => render(<Harness save={vi.fn().mockResolvedValue()} />));
+        const btn = await waitFor(() => {
+            const b = document.querySelector('.dc-danger-zone .btn');
+            expect(b).not.toBeNull();
+            return b;
+        });
+        await act(async () => fireEvent.click(btn));
+        await act(async () => fireEvent.click(btn));
+        expect(window.api.discordBotStop).toHaveBeenCalled();
+        expect(window.api.deleteNodeToken).toHaveBeenCalled();
+    });
 });
