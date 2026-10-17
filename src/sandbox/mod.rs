@@ -191,8 +191,8 @@ pub async fn guard_entry(entry: &str) -> Result<(), Blocked> {
 }
 
 /// 서버 실행 전: 확인되지 않은 모듈이면 실행 대상 위치를 보고 실행 파일을 검사한다
-pub async fn guard_launch(entry: &str, program: &str, roots: LaunchRoots, env: &mut Vec<(String, String)>) -> Result<(), Blocked> {
-    guard_launch_for(trust_of_entry(Path::new(entry)), program, roots, env).await
+pub async fn guard_launch(entry: &str, program: &str, args: &[String], cwd: &Path, roots: LaunchRoots, env: &mut Vec<(String, String)>) -> Result<(), Blocked> {
+    guard_launch_for(trust_of_entry(Path::new(entry)), program, args, cwd, roots, env).await
 }
 
 /// 익스텐션 설치 기록의 신뢰 표시 (`extensions/<id>`)
@@ -210,7 +210,7 @@ pub fn strip_search_path(env: &mut Vec<(String, String)>) {
 }
 
 /// `guard_launch`의 신뢰 표시를 받는 형태 (익스텐션이 띄우는 프로그램에도 쓴다)
-pub async fn guard_launch_for(trust: Trust, program: &str, roots: LaunchRoots, env: &mut Vec<(String, String)>) -> Result<(), Blocked> {
+pub async fn guard_launch_for(trust: Trust, program: &str, args: &[String], cwd: &Path, roots: LaunchRoots, env: &mut Vec<(String, String)>) -> Result<(), Blocked> {
     if !restricted(trust) {
         return Ok(());
     }
@@ -218,18 +218,36 @@ pub async fn guard_launch_for(trust: Trust, program: &str, roots: LaunchRoots, e
     if let Err(code) = check_launch(program, &roots) {
         return Err(Blocked { code, file: Some(program.to_string()), detail: None });
     }
-    let path = PathBuf::from(program);
-    if !path.is_absolute() {
-        return Ok(()); // PATH의 java
-    }
+    // 실행 파일(경로 없는 java는 PATH의 런타임이라 빼고)과 인자로 넘기는 파일(`-jar x.jar`, `@args.txt` 등)
+    let mut files: Vec<PathBuf> = Some(PathBuf::from(program)).filter(|p| p.is_absolute()).into_iter().collect();
+    files.extend(argument_files(args, cwd));
     tokio::task::spawn_blocking(move || {
         let mut cache = VerdictCache::load();
-        let result = scan::scan_executable(&path, &scan::SystemScanner, &mut cache);
+        let result = files.iter().try_for_each(|f| scan::scan_executable(f, &scan::SystemScanner, &mut cache));
         cache.save();
         result
     })
     .await
     .unwrap_or(Ok(()))
+}
+
+/// 실행 인자 중 있는 파일을 가리키는 것: 인자 그대로, `@파일`, `-옵션=파일`·`-옵션:파일` (상대 경로는 `cwd` 기준)
+fn argument_files(args: &[String], cwd: &Path) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    for arg in args {
+        let mut candidates = vec![arg.as_str(), arg.trim_start_matches('@')];
+        if arg.starts_with('-') {
+            candidates.extend(arg.split_once('=').map(|(_, v)| v));
+            candidates.extend(arg.split_once(':').map(|(_, v)| v));
+        }
+        for c in candidates.into_iter().filter(|c| !c.is_empty()) {
+            let path = cwd.join(c);
+            if path.is_file() && !out.contains(&path) {
+                out.push(path);
+            }
+        }
+    }
+    out
 }
 
 /// 격리해서 돌릴 Python 실행 하나
@@ -246,7 +264,10 @@ pub struct Isolation {
     pub data: Option<PathBuf>,
 }
 
-/// 격리 실행이 config의 `instance_dir`·`working_dir`에 받는 권한: 모듈은 쓰기, 그 밖(익스텐션 등)은 읽기
+/// 데몬이 lifecycle 호출에 넣는 인스턴스 폴더 키 (설치·업데이트 호출은 `install_dir`만 넣는다)
+const INSTANCE_DIR_FIELDS: [&str; 3] = ["instance_dir", "working_dir", "install_dir"];
+
+/// 격리 실행이 config의 인스턴스 폴더(`INSTANCE_DIR_FIELDS`)에 받는 권한: 모듈은 쓰기, 그 밖(익스텐션 등)은 읽기
 fn instance_access(key: &str) -> appcontainer::Access {
     if key.starts_with(saba_chan_updater_lib::relay::MODULE_PREFIX) {
         appcontainer::Access::Write
@@ -309,8 +330,8 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
     // 인스턴스 폴더 쓰기는 그 인스턴스의 모듈에게만. 익스텐션 hook은 확인된 모듈의 인스턴스에도 불리므로
     // 읽기만 주고, 쓸 곳은 익스텐션 전용 데이터 폴더다
     let access = instance_access(&key);
-    for field in ["instance_dir", "working_dir"] {
-        if let Some(path) = config.get(field).and_then(Value::as_str) {
+    for field in INSTANCE_DIR_FIELDS {
+        if let Some(path) = config.get(field).and_then(Value::as_str).filter(|p| !p.is_empty()) {
             add(Path::new(path), access);
         }
     }
@@ -524,6 +545,21 @@ mod tests {
         assert_eq!(fingerprint(tmp.path()), first);
         std::fs::write(tmp.path().join("data.json"), b"{}").unwrap();
         assert_ne!(fingerprint(tmp.path()), first);
+    }
+
+    #[test]
+    fn files_named_by_launch_arguments_are_found_for_scanning() {
+        let tmp = tempfile::tempdir().unwrap();
+        for f in ["server.jar", "agent.jar", "args.txt", "extra.jar"] {
+            std::fs::write(tmp.path().join(f), b"x").unwrap();
+        }
+        let args: Vec<String> = ["-Xmx4G", "-javaagent:agent.jar", "@args.txt", "-cp=extra.jar", "-jar", "server.jar", "nogui", "missing.jar"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let found = argument_files(&args, tmp.path());
+        let names: Vec<_> = found.iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect();
+        assert_eq!(names, ["agent.jar", "args.txt", "extra.jar", "server.jar"]);
     }
 
     /// 익스텐션 hook은 확인된 모듈의 인스턴스에도 불린다: 인스턴스 폴더는 읽기만, 쓰기는 전용 폴더에만

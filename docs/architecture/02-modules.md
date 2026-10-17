@@ -212,7 +212,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
   - 검사기가 없으면 그 검사를 건너뛰고 로그만 남긴다.
   - 검사를 통과하면 Python을 AppContainer `saba-chan.untrusted`(능력 `internetClient`만) 안에서 Job Object에 넣어 띄운다(`sandbox/appcontainer.rs`).
     - 안에서는 포트를 열 수 없고 LAN·루프백(데몬 API, 로컬 게임 서버 REST)에 닿지 않는다.
-    - 폴더 권한: 읽기는 venv와 그 기반 Python, 그 구성요소 폴더, `modules_dir`, `extensions_dir`, `python-guard`. 읽기/쓰기는 `<data_dir>/pycache-sandbox`, `<data_dir>/sandbox-temp`, 그리고 모듈이면 config의 `instance_dir`·`working_dir`(익스텐션은 이 둘을 읽기만 하고 `<data_dir>/extension-data/<이름>`에 쓴다, 03 문서). `extensions_dir`의 부모에는 목록만 준다. 데이터 폴더 자체와 그 위, 드라이브 루트, 사용자 폴더 루트에는 주지 않는다. 권한은 폴더 ACL에 남는다(한 번 주면 다시 쓰지 않는다).
+    - 폴더 권한: 읽기는 venv와 그 기반 Python, 그 구성요소 폴더, `modules_dir`, `extensions_dir`, `python-guard`. 읽기/쓰기는 `<data_dir>/pycache-sandbox`, `<data_dir>/sandbox-temp`, 그리고 모듈이면 config의 `instance_dir`·`working_dir`·`install_dir`(익스텐션은 이것들을 읽기만 하고 `<data_dir>/extension-data/<이름>`에 쓴다, 03 문서). `extensions_dir`의 부모에는 목록만 준다. 데이터 폴더 자체와 그 위, 드라이브 루트, 사용자 폴더 루트에는 주지 않는다. 권한은 폴더 ACL에 남는다(한 번 주면 다시 쓰지 않는다).
     - 환경: `SABA_TOKEN_PATH`를 뺀다. `PYTHONPYCACHEPREFIX`는 `pycache-sandbox`, `TEMP`·`TMP`는 `sandbox-temp`.
     - 시간 초과면 Job째 끝낸다.
   - 격리를 준비하지 못하면(오래된 Windows, ACL 오류 등) 격리 없이 돌리지 않고 `{success:false, action_required:"sandbox_unavailable", message, detail, component}`를 돌려준다. 사용자가 `POST /api/sandbox/unisolated/:component`로 동의하면 그 구성요소는 격리 없이 돈다. 동의는 `config.json` `sandbox.unisolated`에 파일 지문(상대 경로와 sha256)으로 남아, 파일이 하나라도 바뀌면 다시 묻는다.
@@ -355,7 +355,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
   - 모듈이 돌려준 `env_vars`의 `PATH`·`PATHEXT`(대소문자 무시)는 버린다. 경로 없는 `java`는 데몬의 PATH로 찾는다.
   - 거부: 셸·스크립트 호스트(`cmd`, `powershell`, `wscript`, `mshta`, `rundll32`, `regsvr32` 등)와 `.bat`·`.cmd`·`.ps1`·`.vbs` 같은 스크립트는 어디 있든 거부한다.
   - 거부하면 `{success:false, action_required:"launch_outside_instance", message, file}`를 돌려준다.
-  - 통과한 절대 경로 실행 파일은 처음 띄우기 전과 바뀐 뒤에 Defender `MpCmdRun -Scan -ScanType 3`으로 검사한다. 찾으면 `malware_detected`로 막는다. 결과는 sha256으로 남기고, MpCmdRun이 없으면 건너뛴다.
+  - 통과한 절대 경로 실행 파일과, 실행 인자가 가리키는 있는 파일(인자 그대로, `@파일`, `-옵션=파일`·`-옵션:파일`, 상대 경로는 작업 폴더 기준. 예: `-jar server.jar`)은 처음 띄우기 전과 바뀐 뒤에 Defender `MpCmdRun -Scan -ScanType 3`으로 검사한다. 찾으면 `malware_detected`로 막는다. 결과는 sha256으로 남기고, MpCmdRun이 없으면 건너뛴다.
 
 **잠금**: `start_managed_handler`는 비밀번호 자동 생성 때만 write lock을 잡고, `start_managed_server`는 검사·준비·등록 때만 락을 짧게 잡는다. 익스텐션 hook, `get_launch_command`, 프로세스 띄우기는 락 밖에서 한다 (`D:src/ipc/handlers/managed.rs:19-58`, `mod.rs:1093-1101`, C12).
 
