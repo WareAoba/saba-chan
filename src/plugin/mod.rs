@@ -36,6 +36,34 @@ fn daemon_env() -> Vec<(&'static str, String)> {
     env
 }
 
+/// 데몬 환경에서 물려받지 않는 변수 이름 (M12 실행 시 제한): 이름에 이 말이 든 것.
+/// 모듈·익스텐션 코드는 데몬이 넣어 주는 값(`daemon_env`)과 평범한 시스템 변수만 본다
+const SECRET_ENV_MARKERS: &[&str] = &["TOKEN", "SECRET", "PASSWORD", "PASSWD", "API_KEY", "APIKEY", "PRIVATE_KEY", "CREDENTIAL", "ACCESS_KEY"];
+
+fn is_secret_env(name: &str) -> bool {
+    let upper = name.to_ascii_uppercase();
+    upper != "SABA_TOKEN_PATH" && SECRET_ENV_MARKERS.iter().any(|m| upper.contains(m))
+}
+
+/// 시간 초과한 Python과 그것이 띄운 프로세스를 함께 끝낸다.
+/// Unix는 자기 프로세스 그룹으로 띄우므로 그룹째, Windows는 `taskkill /T`
+fn kill_tree(pid: u32) {
+    #[cfg(unix)]
+    unsafe {
+        nix::libc::kill(-(pid as i32), nix::libc::SIGKILL);
+    }
+    #[cfg(windows)]
+    {
+        let mut cmd = std::process::Command::new("taskkill");
+        cmd.args(["/T", "/F", "/PID", &pid.to_string()]);
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        }
+        let _ = cmd.output();
+    }
+}
+
 /// Progress info emitted by Python extensions via stderr "PROGRESS:{json}" lines
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct ExtensionProgress {
@@ -181,6 +209,19 @@ async fn run_plugin_inner(
     tracing::debug!("Using Python: {}", python_exe.display());
 
     let mut cmd = Command::new(&python_exe);
+    // 실행 시 제한 (M12): 비밀값처럼 보이는 변수는 물려주지 않고, 작업 폴더는 모듈·익스텐션 폴더로 고정
+    for (name, _) in std::env::vars_os() {
+        if name.to_str().is_some_and(is_secret_env) {
+            cmd.env_remove(&name);
+        }
+    }
+    if let Some(dir) = std::path::Path::new(module_path).parent().filter(|d| d.is_dir()) {
+        cmd.current_dir(dir);
+    }
+    #[cfg(unix)]
+    cmd.process_group(0);
+    // 바이트코드 캐시는 데이터 폴더에만: 모듈 폴더의 __pycache__에 넣어 둔 .pyc가 소스 대신 실행되지 않게
+    cmd.env("PYTHONPYCACHEPREFIX", saba_chan_updater_lib::constants::resolve_data_dir().join("pycache"));
     cmd.arg(module_path)
         .arg(function)
         .stdin(std::process::Stdio::piped())
@@ -312,6 +353,9 @@ async fn run_plugin_inner(
                 "Plugin timed out after {}s: {} -> {} — killing process",
                 timeout_secs, module_path, function
             );
+            if let Some(pid) = child.id() {
+                kill_tree(pid);
+            }
             let _ = child.kill().await;
             Err(anyhow::anyhow!("Plugin timed out after {}s", timeout_secs))
         }
@@ -337,6 +381,47 @@ fn parse_plugin_output(stdout: &str) -> serde_json::Result<Value> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn secret_looking_variables_are_not_passed_to_python() {
+        for name in ["DISCORD_TOKEN", "openai_api_key", "AWS_SECRET_ACCESS_KEY", "DB_PASSWORD", "GH_APIKEY", "GOOGLE_CREDENTIALS"] {
+            assert!(is_secret_env(name), "{name}");
+        }
+        for name in ["SABA_TOKEN_PATH", "PATH", "APPDATA", "JAVA_HOME", "SYSTEMROOT", "KEYBOARD_LAYOUT"] {
+            assert!(!is_secret_env(name), "{name}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_timed_out_tree_is_killed_with_its_children() {
+        let dir = tempfile::tempdir().unwrap();
+        let pidfile = dir.path().join("child.pid");
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c").arg(format!("sleep 30 & echo $! > {}; wait", pidfile.display())).process_group(0);
+        let mut child = cmd.spawn().unwrap();
+        let mut grandchild = None;
+        for _ in 0..50 {
+            if let Some(pid) = std::fs::read_to_string(&pidfile).ok().and_then(|s| s.trim().parse::<u32>().ok()) {
+                grandchild = Some(pid);
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        let grandchild = grandchild.expect("child started");
+        kill_tree(child.id().unwrap());
+        let _ = child.wait().await;
+        for _ in 0..50 {
+            // 거둘 부모가 없으면 좀비로 남으니 상태도 본다
+            let zombie = std::fs::read_to_string(format!("/proc/{grandchild}/stat"))
+                .is_ok_and(|s| s.rsplit(')').next().is_some_and(|r| r.trim_start().starts_with('Z')));
+            if zombie || !crate::supervisor::process::is_process_alive(grandchild) {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        panic!("grandchild {grandchild} survived");
+    }
 
     #[test]
     fn shared_modules_are_written_and_refreshed() {
