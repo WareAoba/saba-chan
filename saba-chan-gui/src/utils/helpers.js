@@ -92,7 +92,7 @@ export function createTranslateError(t) {
             return t('errors.daemon_connection_refused');
         }
         if (msg.includes('ETIMEDOUT') || msg.includes('timeout') && msg.includes('exceeded')) {
-            return null;  // suppress noisy timeout toasts (provisioning, Docker, etc.)
+            return null;  // suppress noisy timeout toasts (provisioning, etc.)
         }
         if (msg.includes('ENOTFOUND')) {
             return t('errors.server_not_found');

@@ -38,7 +38,7 @@ pub struct ServerInfo {
     pub name: String,
     pub module: String,
     pub status: String,
-    /// 인스턴스별 익스텐션 데이터 (e.g. docker_enabled, docker_cpu_limit)
+    /// 인스턴스별 익스텐션 데이터 (e.g. install_method_steamcmd)
     /// GUI의 server.extension_data에 대응
     pub extension_data: HashMap<String, Value>,
 }

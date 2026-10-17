@@ -73,8 +73,7 @@ pub async fn execute_command(
         }
     };
 
-    // 익스텐션(컨테이너 등)이 관리하는 인스턴스는 PID 추적 대상이 아니므로 건너뛴다
-    if !running && !stdin_route && !instance.ext_enabled("docker_enabled") {
+    if !running && !stdin_route {
         return command_reply(
             InternalResponse {
                 status: StatusCode::CONFLICT,

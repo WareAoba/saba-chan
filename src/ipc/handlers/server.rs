@@ -734,16 +734,13 @@ pub async fn stop_server_handler(
                     // RCON 연결 풀에서 해당 인스턴스 연결 제거
                     state.rcon_pool.remove(&inst.id);
 
-                    // 익스텐션이 외부 프로세스 관리(예: 컨테이너)를 사용하면 ProcessTracker skip
-                    if inst.extension_data.is_empty() || !inst.ext_enabled("docker_enabled") {
-                        // name과 id 둘 다로 untrack 시도
-                        let supervisor = state.supervisor.read().await;
-                        let _ = supervisor.tracker.untrack(&name);
-                        if let Err(e) = supervisor.tracker.untrack(&inst.id) {
-                            tracing::warn!("Failed to untrack stopped server '{}': {}", name, e);
-                        } else {
-                            tracing::info!("Server '{}' untracked from process tracker", name);
-                        }
+                    // name과 id 둘 다로 untrack 시도
+                    let supervisor = state.supervisor.read().await;
+                    let _ = supervisor.tracker.untrack(&name);
+                    if let Err(e) = supervisor.tracker.untrack(&inst.id) {
+                        tracing::warn!("Failed to untrack stopped server '{}': {}", name, e);
+                    } else {
+                        tracing::info!("Server '{}' untracked from process tracker", name);
                     }
                 }
                 (StatusCode::OK, Json(result)).into_response()

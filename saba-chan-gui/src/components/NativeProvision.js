@@ -1,5 +1,5 @@
 /**
- * NativeProvision — 네이티브(비-Docker) 프로비저닝 진행 상태 UI
+ * NativeProvision — 네이티브 프로비저닝 진행 상태 UI
  * SteamCMD / download 방식으로 서버 바이너리 설치 시 진행률 표시
  *
  * Props:
@@ -58,8 +58,6 @@ const ALERT_ICON = (
 );
 
 export function NativeProvision({ server, provisionProgress, onDismiss, t }) {
-    // Docker 인스턴스는 DockerProvision이 처리하므로 무시
-    if (server?.extension_data?.docker_enabled) return null;
     if (!server.provisioning) return null;
 
     const translate = t || ((key, opts) => opts?.defaultValue || key);

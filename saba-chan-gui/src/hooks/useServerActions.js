@@ -595,7 +595,7 @@ export function useServerActions({
 
     // ── handleAddServer ─────────────────────────────────────
     const handleAddServer = async (payload) => {
-        // payload = { name, module_name, accept_eula?, use_container?, migration_source? }
+        // payload = { name, module_name, accept_eula?, migration_source? }
         const serverName = typeof payload === 'string' ? payload : payload?.name;
         const moduleName = typeof payload === 'string' ? arguments[1] : payload?.module_name;
 
@@ -623,7 +623,6 @@ export function useServerActions({
                 name: serverName.trim(),
                 module_name: moduleName,
                 // executable_path는 모듈의 server_executable + working_dir에서 자동 해석됨
-                use_container: payload?.use_container || false, // 백엔드가 extension_data로 변환
             };
 
             // 마이그레이션: 기존 서버 디렉토리 직접 연결

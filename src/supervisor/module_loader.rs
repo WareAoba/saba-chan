@@ -344,9 +344,6 @@ struct ModuleToml {
     syntax_highlight: Option<SyntaxHighlightSection>,
     #[serde(default)]
     install: Option<InstallSectionToml>,
-    /// [docker] 익스텐션 설정 섹션 (컨테이너 격리용)
-    #[serde(default, rename = "docker")]
-    container: Option<ContainerSectionToml>,
     /// [launch] 실행 관련 선언 (C8b)
     #[serde(default)]
     launch: Option<LaunchSection>,
@@ -552,38 +549,6 @@ struct InstallSectionToml {
     requires_extensions: Vec<String>,
 }
 
-/// module.toml [docker] 섹션 — 컨테이너 격리 익스텐션 설정
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-#[schemars(deny_unknown_fields)]
-struct ContainerSectionToml {
-    #[serde(default)]
-    image: Option<String>,
-    #[serde(default)]
-    working_dir: Option<String>,
-    #[serde(default)]
-    restart: Option<String>,
-    #[serde(default)]
-    command: Option<String>,
-    #[serde(default)]
-    entrypoint: Option<String>,
-    #[serde(default)]
-    user: Option<String>,
-    #[serde(default)]
-    ports: Vec<String>,
-    #[serde(default)]
-    volumes: Vec<String>,
-    #[serde(default)]
-    environment: std::collections::HashMap<String, String>,
-    #[serde(default)]
-    dockerfile: Option<String>,
-    /// CPU 제한 (코어 수, 예: 2.0)
-    #[serde(default)]
-    cpu_limit: Option<f64>,
-    /// 메모리 제한 (예: "4g", "512m")
-    #[serde(default)]
-    memory_limit: Option<String>,
-}
-
 /// ModuleMetadata에서 사용하는 공개 설치 설정
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModuleInstallConfig {
@@ -627,52 +592,6 @@ struct CommandAliasSectionToml {
     #[serde(default)]
     description: Option<String>,
 }
-
-/// Container isolation extension configuration for modules.
-/// Parsed from module.toml [docker] section and stored in ModuleMetadata.extensions.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ContainerExtensionConfig {
-    /// Container image (e.g. "cm2network/steamcmd:latest")
-    pub image: String,
-    /// Working directory inside the container
-    #[serde(default)]
-    pub working_dir: Option<String>,
-    /// Restart policy (default: "unless-stopped")
-    #[serde(default = "default_restart_policy")]
-    pub restart: String,
-    /// Container command (supports template variables like {port})
-    #[serde(default)]
-    pub command: Option<String>,
-    /// Container entrypoint override
-    #[serde(default)]
-    pub entrypoint: Option<String>,
-    /// User to run the container as (e.g. "1000:1000")
-    #[serde(default)]
-    pub user: Option<String>,
-    /// Port mappings: "{host_port}:{container_port}/protocol" with template variables
-    #[serde(default)]
-    pub ports: Vec<String>,
-    /// Volume mounts: "host_path:container_path"
-    #[serde(default)]
-    pub volumes: Vec<String>,
-    /// Environment variables (supports template variables)
-    #[serde(default)]
-    pub environment: std::collections::HashMap<String, String>,
-    /// Optional Dockerfile path (relative to module directory) for custom builds
-    #[serde(default)]
-    pub dockerfile: Option<String>,
-    /// Optional: additional compose service options as raw YAML
-    #[serde(default)]
-    pub extra_options: std::collections::HashMap<String, String>,
-    /// CPU limit (number of cores, e.g. 2.0)
-    #[serde(default)]
-    pub cpu_limit: Option<f64>,
-    /// Memory limit (e.g. "4g", "512m")
-    #[serde(default)]
-    pub memory_limit: Option<String>,
-}
-
-fn default_restart_policy() -> String { "unless-stopped".to_string() }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[schemars(deny_unknown_fields)]
@@ -846,32 +765,10 @@ impl ModuleToml {
                 requires_extensions: i.requires_extensions,
             }),
             extensions: {
-                let mut ext_map: std::collections::HashMap<String, serde_json::Value> = self.extensions
+                let ext_map: std::collections::HashMap<String, serde_json::Value> = self.extensions
                     .into_iter()
                     .filter_map(|(id, v)| Some((id, serde_json::to_value(v).ok()?)))
                     .collect();
-                if let Some(d) = self.container {
-                    if let Some(img) = d.image {
-                        let cfg = ContainerExtensionConfig {
-                            image: img,
-                            working_dir: d.working_dir,
-                            restart: d.restart.unwrap_or_else(|| "unless-stopped".to_string()),
-                            command: d.command,
-                            entrypoint: d.entrypoint,
-                            user: d.user,
-                            ports: d.ports,
-                            volumes: d.volumes,
-                            environment: d.environment,
-                            dockerfile: d.dockerfile,
-                            extra_options: std::collections::HashMap::new(),
-                            cpu_limit: d.cpu_limit,
-                            memory_limit: d.memory_limit,
-                        };
-                        if let Ok(val) = serde_json::to_value(cfg) {
-                            ext_map.insert("docker".to_string(), val);
-                        }
-                    }
-                }
                 ext_map
             },
             process_patterns: self.detection.as_ref()

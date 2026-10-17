@@ -24,16 +24,7 @@ export function AddInstanceNewServer({
     const [selectedExtension, setSelectedExtension] = useState('');
     const [newServerName, setNewServerName] = useState('');
     const [submitting, setSubmitting] = useState(false);
-    const [useContainerIsolation, setUseContainerIsolation] = useState(false);
     const nameInputRef = useRef(null);
-
-    // 모듈별 네이티브(비-도커) 인스턴스 존재 여부 맵
-    const nativeInstanceMap = {};
-    for (const srv of servers) {
-        if (!srv.extension_data?.docker_enabled) {
-            nativeInstanceMap[srv.module] = srv.name;
-        }
-    }
 
     // 게임 카드를 눌렀을 때
     const handleGameSelect = (extName) => {
@@ -65,7 +56,6 @@ export function AddInstanceNewServer({
         setStep('select-game');
         setSelectedExtension('');
         setNewServerName('');
-        setUseContainerIsolation(false);
     };
 
     const handleSubmit = async () => {
@@ -78,7 +68,6 @@ export function AddInstanceNewServer({
                 name: newServerName.trim(),
                 module_name: selectedExtension,
                 accept_eula: true,
-                use_container: useContainerIsolation,
             });
         } finally {
             setSubmitting(false);
@@ -87,12 +76,10 @@ export function AddInstanceNewServer({
         // 폼 초기화
         setNewServerName('');
         setSelectedExtension('');
-        setUseContainerIsolation(false);
         setStep('select-game');
     };
 
-    const canSubmit = newServerName.trim() && selectedExtension && !submitting
-        && !(nativeInstanceMap[selectedExtension] && !useContainerIsolation);
+    const canSubmit = newServerName.trim() && selectedExtension && !submitting;
 
     // ──────────────────────────────────────────
     //  Step 1: 게임 선택 (아이콘 카드 그리드)
@@ -126,11 +113,10 @@ export function AddInstanceNewServer({
                                         const displayName = t(`mod_${m.name}:module.display_name`, {
                                             defaultValue: m.game_name || m.name,
                                         });
-                                        const hasNative = !!nativeInstanceMap[m.name];
                                         return (
                                             <button
                                                 key={m.name}
-                                                className={`as-game-card${hasNative ? ' as-game-card--has-native' : ''}`}
+                                                className="as-game-card"
                                                 type="button"
                                                 onClick={() => handleGameSelect(m.name)}
                                             >
@@ -145,11 +131,6 @@ export function AddInstanceNewServer({
                                                 </div>
                                                 <span className="as-game-card-name">{displayName}</span>
                                                 <span className="as-game-card-version">v{m.version}</span>
-                                                {hasNative && (
-                                                    <span className="as-game-card-badge">
-                                                        <Icon name="check" size="xs" /> {t('add_server_modal.native_exists')}
-                                                    </span>
-                                                )}
                                             </button>
                                         );
                                     })}
@@ -243,26 +224,8 @@ export function AddInstanceNewServer({
                         />
                     </div>
 
-                    {/* 익스텐션 슬롯 — 컨테이너 격리 토글 등 */}
-                    <ExtensionSlot
-                        slotId="AddServer.options"
-                        options={{ use_container: useContainerIsolation }}
-                        onOptionsChange={(opts) => {
-                            if (opts.use_container !== undefined) setUseContainerIsolation(opts.use_container);
-                        }}
-                        t={t}
-                    />
-
-                    {/* 네이티브 인스턴스 중복 경고 */}
-                    {nativeInstanceMap[selectedExtension] && !useContainerIsolation && (
-                        <p className="as-native-limit-warning">
-                            <Icon name="alertTriangle" size="sm" />
-                            {t('add_server_modal.native_limit_warning', {
-                                existing: nativeInstanceMap[selectedExtension],
-                                defaultValue: `A native instance '{{existing}}' already exists for this module. Enable container isolation to create another instance.`,
-                            })}
-                        </p>
-                    )}
+                    {/* 익스텐션 슬롯 — 서버 생성 옵션 */}
+                    <ExtensionSlot slotId="AddServer.options" t={t} />
 
                     {/* 프로비저닝 안내 */}
                     <p className="as-provision-hint">
