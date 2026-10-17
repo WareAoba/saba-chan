@@ -965,7 +965,13 @@
     "unverified": "未验证",
     "verified_tip": "来自签名目录，安装后未被更改。",
     "modified_tip": "从目录安装后文件已被更改。如果不是你自己改的，请重新安装。",
-    "unverified_tip": "不是从签名目录安装的。请确认你信任其来源。"
+    "unverified_tip": "不是从签名目录安装的。请确认你信任其来源。",
+    "notice": {
+      "module_unverified": "已使用非官方目录来源的模块（{{id}}）创建。请确认其来源可信。",
+      "module_modified": "模块（{{id}}）的文件在安装后被更改。如果不是您自己修改的，请重新安装。",
+      "extension_unverified": "已启用非官方目录来源的扩展（{{id}}）。请确认其来源可信。",
+      "extension_modified": "扩展（{{id}}）的文件在安装后被更改。如果不是您自己修改的，请重新安装。"
+    }
   },
   "patch_notes": {
     "title": "更新说明",
