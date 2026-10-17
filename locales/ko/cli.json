@@ -322,7 +322,9 @@
     "stopping": "끄는 중",
     "up_to_date": "최신",
     "updates": "업데이트",
-    "updates_ready": "{{count}}개 있음"
+    "updates_ready": "{{count}}개 있음",
+    "preflight_running": "게임 모듈이 쓸 실행 환경을 준비하고 있어요 ({{percent}}%). 끝날 때까지 서버 작업이 잠시 기다릴 수 있어요.",
+    "preflight_failed": "게임 모듈 실행 환경 준비에 실패했어요: {{error}}. 다음 서버 작업 때 다시 시도해요."
   },
   "stop": {
     "already": "{{name}}은(는) 이미 꺼져 있어요.",

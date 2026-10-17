@@ -25,13 +25,15 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
         Err(e) => return Err(e),
     };
 
-    let (servers, modules, agent, updates, exts) = tokio::join!(
+    let (servers, modules, agent, updates, exts, preflight) = tokio::join!(
         ctx.api.servers(),
         ctx.api.modules(),
         ctx.api.agent(),
         ctx.api.update_status(),
-        ctx.api.extensions()
+        ctx.api.extensions(),
+        ctx.api.preflight()
     );
+    let preflight = preflight.ok();
     let servers = servers?;
     let modules = modules.unwrap_or(Value::Null);
     let slots = exts
@@ -47,6 +49,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
         "modules_failed": modules.get("failed"),
         "discord": agent.as_ref().ok(),
         "updates": updates.as_ref().ok(),
+        "preflight": preflight,
     });
     ctx.out.data(&v, |_| {
         println!(
@@ -90,6 +93,17 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
         if failed > 0 {
             ctx.out.warn(&t!("status.modules_failed", count = failed));
             ctx.out.hint("saba-chan-cli module list");
+        }
+        // 부팅 준비 (게임 모듈이 쓰는 Python 등). 끝나고 문제없으면 말하지 않는다.
+        if let Some(p) = &preflight {
+            if let Some(err) = p.get("error").and_then(Value::as_str).filter(|e| !e.is_empty()) {
+                ctx.out.warn(&t!("status.preflight_failed", error = err));
+            } else if p.get("complete").and_then(Value::as_bool) == Some(false) && s(p, "phase") != "preflight-idle" {
+                ctx.out.note(&t!(
+                    "status.preflight_running",
+                    percent = p.get("percent").and_then(Value::as_u64).unwrap_or(0)
+                ));
+            }
         }
         println!();
         if let Ok(a) = &agent {

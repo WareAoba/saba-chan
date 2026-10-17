@@ -1002,9 +1002,18 @@ fn insert_patch(patch: &mut Map<String, Value>, key: &str, value: Value) {
 
 async fn settings(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     let sv = resolve::server(ctx, query).await?;
-    let (module, locales) = tokio::join!(module_info(ctx, &sv.module), module_locales(ctx, &sv.module));
+    let (module, locales, live) = tokio::join!(
+        module_info(ctx, &sv.module),
+        module_locales(ctx, &sv.module),
+        ctx.api.live_settings(&sv.id)
+    );
     let module = module.unwrap_or(Value::Null);
     let fields = setting_fields(&module);
+    // 실제 설정 파일 값이 우선. 못 읽으면 (설치 전, 모듈이 지원 안 함) 저장된 값으로.
+    let live = live
+        .ok()
+        .and_then(|r| r.get("settings").cloned())
+        .filter(|v| v.as_object().is_some_and(|o| !o.is_empty()));
     let label = |f: &Value| {
         locales
             .as_ref()
@@ -1021,9 +1030,10 @@ async fn settings(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     };
     let ms = sv.raw.get("module_settings").cloned().unwrap_or(json!({}));
     let current = |name: &str| {
-        sv.raw
-            .get(name)
+        live.as_ref()
+            .and_then(|l| l.get(name))
             .filter(|v| !v.is_null())
+            .or_else(|| sv.raw.get(name).filter(|v| !v.is_null()))
             .or_else(|| ms.get(name))
             .cloned()
             .unwrap_or(Value::Null)
@@ -1037,7 +1047,7 @@ async fn settings(ctx: &Ctx, query: Option<&str>) -> Result<()> {
             "value": current(name), "default": f.get("default"), "options": f.get("options"),
         }));
     }
-    let v = json!({ "server": sv.name, "fields": out_fields, "instance": sv.raw });
+    let v = json!({ "server": sv.name, "live": live.is_some(), "fields": out_fields, "instance": sv.raw });
     ctx.out.data(&v, |_| {
         let mut groups: Vec<(String, Vec<(String, String)>)> = Vec::new();
         let mut push = |group: &str, k: String, v: String| match groups.iter_mut().find(|(g, _)| g == group) {

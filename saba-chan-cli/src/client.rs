@@ -308,6 +308,14 @@ impl Api {
         self.post_long(&format!("/api/instance/{}/server/reset", seg(id)), json!({}))
             .await
     }
+    /// GET /api/instance/:id/settings/live — 실제 설정 파일에서 읽는다 (캐시도 갱신) `{success, settings}`
+    pub async fn live_settings(&self, id: &str) -> Result<Value> {
+        self.get_slow(&format!("/api/instance/{}/settings/live", seg(id))).await
+    }
+    /// GET /api/runtime/preflight — 부팅 준비(Python 등) `{phase, percent, complete, error, components}`
+    pub async fn preflight(&self) -> Result<Value> {
+        self.get("/api/runtime/preflight").await
+    }
     /// GET /api/instance/:id/properties — 게임 설정 파일
     pub async fn properties(&self, id: &str) -> Result<Value> {
         self.get_slow(&format!("/api/instance/{}/properties", seg(id))).await
