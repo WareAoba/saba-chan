@@ -1,8 +1,10 @@
 #!/usr/bin/env pwsh
 # saba-core 릴리스 빌드 후 GUI bin 폴더로 복사
+#   -MockRelay : scripts/mock-release-server.js의 모의 서명 키를 믿는 개발 빌드 (GUI MOCK 업데이트 시험용, 배포 금지)
 param(
     [switch]$Debug,
-    [switch]$Check
+    [switch]$Check,
+    [switch]$MockRelay
 )
 
 $ErrorActionPreference = 'Stop'
@@ -19,14 +21,12 @@ try {
     }
 
     $profile = if ($Debug) { 'debug' } else { 'release' }
+    $cargoArgs = @('build', '-p', 'saba-core', '-p', 'saba-runner')
+    if (-not $Debug) { $cargoArgs += '--release' }
+    if ($MockRelay) { $cargoArgs += @('--features', 'saba-core/mock-relay') }
 
-    if ($Debug) {
-        Write-Host "[1/2] cargo build ..." -ForegroundColor Cyan
-        cargo build -p saba-core -p saba-runner
-    } else {
-        Write-Host "[1/2] cargo build --release ..." -ForegroundColor Cyan
-        cargo build --release -p saba-core -p saba-runner
-    }
+    Write-Host "[1/2] cargo $($cargoArgs -join ' ') ..." -ForegroundColor Cyan
+    & cargo @cargoArgs
     if ($LASTEXITCODE -ne 0) { throw "cargo build failed (exit $LASTEXITCODE)" }
 
     $src = Join-Path $root "target\$profile\saba-core.exe"
