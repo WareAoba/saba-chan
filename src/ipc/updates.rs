@@ -870,4 +870,26 @@ mod tests {
         assert_eq!(loaded.check_interval_hours, 6);
         assert!(loaded.auto_download);
     }
+
+    /// 0.1.1이 남긴 `updates` 설정: 채널과 릴레이 주소가 업데이트 뒤에도 남아야 한다
+    #[test]
+    fn settings_written_by_0_1_1_keep_their_channel_and_relay() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(dir.path());
+        file.set_section(
+            "updates",
+            json!({
+                "enabled": true, "check_interval_hours": 3, "auto_download": false, "auto_apply": false,
+                "install_root": null, "relay_base_url": "http://127.0.0.1:9876", "channel": "beta",
+                "platform": "windows-x64", "client_id": "abcdefgh12345678"
+            }),
+        )
+        .unwrap();
+        let loaded = load_updater_config_from(&file);
+        assert_eq!(loaded.channel, "beta");
+        assert_eq!(loaded.relay_url.as_deref(), Some("http://127.0.0.1:9876"));
+
+        file.set_section("updates", json!({ "relay_base_url": "", "channel": "beta" })).unwrap();
+        assert_eq!(load_updater_config_from(&file).relay_url, None, "blank means the default relay");
+    }
 }

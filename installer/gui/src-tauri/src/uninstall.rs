@@ -266,11 +266,72 @@ fn stop_saba_processes(install_dir: &Path) {
         ("Saba-chan", false), // 0.1.1 Electron GUI
         ("saba-chan-updater", false),
     ];
-    for (pid, name) in processes_in(install_dir, &TARGETS.map(|(n, _)| n)) {
+    let found = processes_in(install_dir, &TARGETS.map(|(n, _)| n));
+    // 포터블 GUI(saba-chan-gui.exe)는 실행기일 뿐이고 실제 GUI는 임시 폴더에 풀려 그 자식으로 돈다.
+    // 실행기의 자손을 먼저 찾아 둔다 (실행기를 끝내면 부모 관계로 찾을 수 없다)
+    let launchers: Vec<u32> =
+        found.iter().filter(|(_, n)| n.eq_ignore_ascii_case("saba-chan-gui")).map(|(pid, _)| *pid).collect();
+    let unpacked = descendants_of(&launchers);
+    for (pid, name) in found {
         let tree = TARGETS.iter().any(|(n, t)| *t && n.eq_ignore_ascii_case(&name));
         tracing::info!("[Uninstall] Stopping {} (PID {})", name, pid);
         kill_pid(pid, tree);
     }
+    for pid in unpacked {
+        tracing::info!("[Uninstall] Stopping unpacked GUI process (PID {})", pid);
+        kill_pid(pid, false);
+    }
+}
+
+/// `pid|ppid` 줄들에서 `roots`의 자손을 고른다. 제거기 자신(`me`)과 그 아래는 뺀다:
+/// 제거기는 GUI가 띄우므로 GUI의 자손이다
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))] // 포터블 실행기는 Windows에만 있다
+fn descendants_in(listing: &str, roots: &[u32], me: u32) -> Vec<u32> {
+    let pairs: Vec<(u32, u32)> = listing
+        .lines()
+        .filter_map(|line| {
+            let (pid, ppid) = line.trim().split_once('|')?;
+            Some((pid.trim().parse().ok()?, ppid.trim().parse().ok()?))
+        })
+        .collect();
+    let mut found: Vec<u32> = Vec::new();
+    let mut frontier: Vec<u32> = roots.to_vec();
+    while let Some(parent) = frontier.pop() {
+        for &(pid, ppid) in &pairs {
+            if ppid == parent && pid != me && pid != parent && !roots.contains(&pid) && !found.contains(&pid) {
+                found.push(pid);
+                frontier.push(pid);
+            }
+        }
+    }
+    found
+}
+
+#[cfg(target_os = "windows")]
+fn descendants_of(roots: &[u32]) -> Vec<u32> {
+    if roots.is_empty() {
+        return Vec::new();
+    }
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let script = "Get-CimInstance Win32_Process | ForEach-Object { \"$($_.ProcessId)|$($_.ParentProcessId)\" }";
+    match std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+    {
+        Ok(o) => descendants_in(&String::from_utf8_lossy(&o.stdout), roots, std::process::id()),
+        Err(e) => {
+            tracing::warn!("[Uninstall] Cannot list child processes: {}", e);
+            Vec::new()
+        }
+    }
+}
+
+/// 포터블 실행기는 Windows에만 있다
+#[cfg(not(target_os = "windows"))]
+fn descendants_of(_roots: &[u32]) -> Vec<u32> {
+    Vec::new()
 }
 
 /// 다시 설치·덮어쓰기 전에 이 설치 폴더의 데몬을 끈다. 데몬은 인터페이스가 없어도 남아 있으므로
@@ -622,6 +683,16 @@ fn schedule_self_delete(install_dir: Option<&PathBuf>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_unpacked_gui_under_the_portable_launcher_is_found_but_not_the_uninstaller() {
+        // 10 = 포터블 실행기, 20 = 임시 폴더의 GUI, 21·22 = GUI 도우미, 30 = 제거기(GUI가 띄움), 31 = 제거기의 자식
+        let listing = "10|1\n20|10\n21|20\n22|20\n30|20\n31|30\n40|1\n41|40\n";
+        let mut found = descendants_in(listing, &[10], 30);
+        found.sort();
+        assert_eq!(found, vec![20, 21, 22]);
+        assert!(descendants_in(listing, &[], 30).is_empty());
+    }
 
     #[test]
     fn only_a_folder_with_saba_binaries_counts_as_the_install_dir() {

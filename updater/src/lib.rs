@@ -244,10 +244,17 @@ pub struct UpdateConfig {
     /// 스테이징 디렉터리 (다운로드와 임시 파일 저장, 기본값: 실행파일 경로 기준)
     pub install_root: Option<String>,
     /// 릴레이 주소 (None이면 relay::DEFAULT_RELAY_URL). 모의 릴레이 시험은 여기에
-    /// `scripts/mock-release-server.js` 주소를 넣는다
+    /// `scripts/mock-release-server.js` 주소를 넣는다. 0.1.1은 `relay_base_url`로 저장했다
+    #[serde(alias = "relay_base_url", deserialize_with = "blank_as_none")]
     pub relay_url: Option<String>,
     /// 릴레이 업데이트 채널 (stable | beta | nightly)
     pub channel: String,
+}
+
+/// 빈 주소는 "설정 안 함" (0.1.1은 비워 두면 `""`로 저장했다)
+fn blank_as_none<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    let v: Option<String> = Option::deserialize(d)?;
+    Ok(v.filter(|s| !s.trim().is_empty()))
 }
 
 impl Default for UpdateConfig {

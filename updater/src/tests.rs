@@ -775,3 +775,23 @@ fn finished_update_leaves_no_staged_archives_or_old_binaries() {
     left.sort();
     assert_eq!(left, vec!["notepad.exe.old", "saba-core.exe"]);
 }
+
+// GUI exe 이름이 바뀐 업데이트(0.1.1 `Saba-chan.exe` → `saba-chan-gui.exe`)는 예전 exe를 남기지 않는다
+#[test]
+fn a_renamed_gui_exe_retires_the_old_one() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    for f in ["Saba-chan.exe", "saba-chan-gui.exe", "saba-core.exe"] {
+        std::fs::write(root.join(f), b"x").unwrap();
+    }
+    let names = ["saba-chan-gui.exe", "Saba-chan.exe"];
+    let written = vec![root.join("saba-chan-gui.exe"), root.join("resources.pak")];
+
+    let retired = UpdateManager::retire_other_exes(root, &written, &names);
+
+    assert_eq!(retired, vec![(root.join("Saba-chan.exe"), root.join("saba-chan-gui.exe"))]);
+    assert!(root.join("Saba-chan.exe.old").is_file() && !root.join("Saba-chan.exe").exists());
+    assert!(root.join("saba-chan-gui.exe").is_file() && root.join("saba-core.exe").is_file());
+    // GUI exe를 쓰지 않은 적용(디렉터리 모드 등)은 아무것도 건드리지 않는다
+    assert!(UpdateManager::retire_other_exes(root, &[root.join("x.dll")], &names).is_empty());
+}
