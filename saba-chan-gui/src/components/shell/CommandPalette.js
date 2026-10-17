@@ -206,7 +206,7 @@ function Palette({ onClose }) {
             setBusy(false);
             if (failed(res)) {
                 setError(errorText(res, t));
-            } else if (res.needsConfirm) {
+            } else if (res.needsConfirm || action.kind === 'admin' || action.risk === 'danger') {
                 setPlan(res);
                 setStep('confirm');
             } else {
@@ -219,7 +219,7 @@ function Palette({ onClose }) {
     };
 
     const choose = (action) => {
-        if (!action) return;
+        if (!action || busy) return;
         if (action.scope === 'instance' && !server) {
             setError(t('palette.need_server'));
             return;
@@ -369,8 +369,8 @@ function Palette({ onClose }) {
                     <div className="palette-step">
                         <h3>{t('palette.confirm_title', { action: actionTitle(chosen) })}</h3>
                         <dl className="palette-summary">
-                            {(plan.summary || []).map((s) => (
-                                <div key={s.labelKey || s.label}>
+                            {(plan.summary || []).map((s, i) => (
+                                <div key={`${s.labelKey || s.label}-${i}`}>
                                     <dt>{s.label || s.labelKey}</dt>
                                     <dd>{String(s.value ?? '')}</dd>
                                 </div>
