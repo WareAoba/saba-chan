@@ -684,7 +684,8 @@
     "preflight_failed_short": "Python setup failed",
     "preflight_failed": "Preparing Python failed. It will retry on the next server action. ({{error}})",
     "module_needs": "Requirements not met: {{deps}}",
-    "tab_maintenance": "Backups"
+    "tab_maintenance": "Backups",
+    "tab_audit": "Log"
   },
   "discord": {
     "nav_connection": "Connection",
@@ -1042,5 +1043,27 @@
     "all_disk_io": "All disk IO",
     "disk_io_note": "Whole-machine physical disk IO, not split by instance · relative to the 2-minute peak",
     "disk_io_process_note": "Physical disk counters unavailable; showing the sum of process IO (includes cache hits)"
+  },
+  "audit": {
+    "title": "Activity log",
+    "desc_server": "Who did what to this server, when, and from where. Newest first.",
+    "desc_all": "Who did what to every server, when, and from where. Newest first.",
+    "refresh": "Refresh",
+    "empty": "No activity yet.",
+    "load_failed": "Couldn't load the activity log.",
+    "more": "Show more",
+    "ok": "Succeeded",
+    "failed": "Failed ({{status}})",
+    "action_start": "Start",
+    "action_stop": "Stop",
+    "action_restart": "Restart",
+    "action_command": "Command",
+    "action_stdin": "Console input",
+    "source_gui": "App",
+    "source_cli": "CLI",
+    "source_api": "API",
+    "source_discord": "Discord",
+    "source_schedule": "Schedule",
+    "source_daemon": "Daemon"
   }
 }

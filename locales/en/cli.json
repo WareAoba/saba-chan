@@ -429,7 +429,8 @@
       "config.export": "Save settings and the server list to a zip, to move to another PC (game files not included)",
       "config.import": "Bring in settings and servers from an export zip",
       "bot.channels": "Chatbot channels (several) and the music channel (one) of a paired Discord server. No options: show",
-      "monitor": "CPU, memory, disk and network use, and each server's share"
+      "monitor": "CPU, memory, disk and network use, and each server's share",
+      "audit": "Who started, stopped or sent commands to servers, and from where (GUI, CLI, Discord, schedule)"
     },
     "arg": {
       "server": "Server name (a part is enough)",
@@ -443,7 +444,8 @@
       "bot.channels.music": "The music player channel, by name or id. Other messages in it get deleted",
       "bot.channels.no_music": "Unassign the music channel",
       "monitor.watch": "Keep refreshing until Ctrl+C",
-      "monitor.interval": "Seconds between refreshes with --watch"
+      "monitor.interval": "Seconds between refreshes with --watch",
+      "audit.limit": "How many entries"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments to open the interactive shell.\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },
@@ -545,17 +547,11 @@
     "unverified": "unverified"
   },
   "audit": {
-    "scanning": "Checking the code of {{name}}...",
-    "declared": "Declared",
-    "none_declared": "(nothing)",
-    "no_findings": "The code uses none of the checked abilities.",
-    "clean": "Everything the code uses is declared.",
-    "undeclared": "{{count}} use(s) not declared: {{permissions}}. Only keep it if you trust where it came from.",
-    "col": {
-      "permission": "Ability",
-      "where": "Where",
-      "what": "Code"
-    }
+    "empty": "Nothing recorded yet.",
+    "when": "When",
+    "from": "From",
+    "what": "What",
+    "result": "Result"
   },
   "monitor": {
     "cpu": "CPU",

@@ -400,6 +400,11 @@ async fn count_down(
 }
 
 async fn run_task(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chrono::NaiveDateTime, key: &str) {
+    // 감사 로그 (A10): 예약 작업이 한 일은 출처 schedule
+    crate::audit::with_origin(crate::audit::Origin::new("schedule"), run_task_now(state, id, task, fire, key)).await
+}
+
+async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chrono::NaiveDateTime, key: &str) {
     let running = is_running(state, id).await;
     match task.action {
         TaskAction::Backup if running => {

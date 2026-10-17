@@ -684,7 +684,8 @@
     "preflight_failed_short": "Ошибка подготовки Python",
     "preflight_failed": "Не удалось подготовить Python. Повторим при следующем действии с сервером. ({{error}})",
     "module_needs": "Требования не выполнены: {{deps}}",
-    "tab_maintenance": "Бэкапы"
+    "tab_maintenance": "Бэкапы",
+    "tab_audit": "Журнал"
   },
   "discord": {
     "nav_connection": "Подключение",
@@ -1013,5 +1014,27 @@
     "err_write_failed": "Не удалось записать файл. Проверьте папку и права доступа.",
     "err_generic": "Что-то пошло не так. Попробуйте ещё раз.",
     "restart_hint": "Импортированные настройки приложения вступят в силу после перезапуска Saba-chan."
+  },
+  "audit": {
+    "title": "Журнал действий",
+    "desc_server": "Кто, когда и откуда управлял этим сервером. Сначала новые.",
+    "desc_all": "Кто, когда и откуда управлял всеми серверами. Сначала новые.",
+    "refresh": "Обновить",
+    "empty": "Пока нет записей.",
+    "load_failed": "Не удалось загрузить журнал действий.",
+    "more": "Показать ещё",
+    "ok": "Успешно",
+    "failed": "Ошибка ({{status}})",
+    "action_start": "Запуск",
+    "action_stop": "Остановка",
+    "action_restart": "Перезапуск",
+    "action_command": "Команда",
+    "action_stdin": "Ввод в консоль",
+    "source_gui": "Приложение",
+    "source_cli": "CLI",
+    "source_api": "API",
+    "source_discord": "Discord",
+    "source_schedule": "Расписание",
+    "source_daemon": "Демон"
   }
 }

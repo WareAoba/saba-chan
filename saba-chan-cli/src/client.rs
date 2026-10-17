@@ -78,6 +78,8 @@ impl Api {
         if let Some(t) = self.token.read().ok().and_then(|t| t.clone()) {
             req = req.header("X-Saba-Token", t);
         }
+        // 감사 로그의 출처 (A10)
+        req = req.header("X-Saba-Client", "cli");
         if let Some(b) = body {
             req = req.json(b);
         }
@@ -461,6 +463,14 @@ impl Api {
     }
     pub async fn save_app_config(&self, full: Value) -> Result<Value> {
         self.put("/api/config/gui", full).await
+    }
+    /// GET /api/audit — `{entries: [{ts, source, user?, guild?, action, instanceId, instance?, command?, args?, ok, status}]}` 최신이 먼저
+    pub async fn audit(&self, instance: Option<&str>, limit: usize) -> Result<Value> {
+        self.get(&with_query(
+            "/api/audit",
+            &[("limit", Some(limit.to_string())), ("instance", instance.map(str::to_string))],
+        ))
+        .await
     }
     /// POST /api/migration/export — 데몬이 `path`에 zip을 쓴다
     pub async fn export_config(&self, path: &str, secrets: bool) -> Result<Value> {

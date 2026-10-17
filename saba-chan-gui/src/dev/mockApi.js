@@ -169,10 +169,10 @@ const impl = {
             guilds: { 'guild-1': { memo: '' } },
             hasApiKey: true,
         }),
-    chatbotSave: (patch) => ok({ success: true, settings: patch.settings || {}, guilds: {}, hasApiKey: true, sync: [] }),
+    chatbotSave: (patch) =>
+        ok({ success: true, settings: patch.settings || {}, guilds: {}, hasApiKey: true, sync: [] }),
     chatbotClearMemory: () => ok({ success: true }),
-    migrationScanDir: () =>
-        ok({ ok: true, matches: [{ name: 'minecraft', display_name: 'Minecraft: Java Edition' }] }),
+    migrationScanDir: () => ok({ ok: true, matches: [{ name: 'minecraft', display_name: 'Minecraft: Java Edition' }] }),
     settingsLoad: () => ok(settings),
     settingsSave: (s) => {
         Object.assign(settings, s);
@@ -325,6 +325,51 @@ const impl = {
             config: ['gui', 'chatbot'],
             nodeToken: 'kept',
             path: path || 'C:\\Users\\me\\saba-chan-export.zip',
+        }),
+    auditList: ({ instance } = {}) =>
+        ok({
+            entries: [
+                {
+                    ts: now() - 30,
+                    source: 'discord',
+                    user: '284019384710293847',
+                    guild: '1029384756102938475',
+                    action: 'command',
+                    instanceId: 'mc-1',
+                    instance: '마크 서버',
+                    command: 'say',
+                    args: '["안녕"]',
+                    ok: true,
+                    status: 200,
+                },
+                {
+                    ts: now() - 600,
+                    source: 'gui',
+                    action: 'restart',
+                    instanceId: 'mc-1',
+                    instance: '마크 서버',
+                    ok: true,
+                    status: 200,
+                },
+                {
+                    ts: now() - 3600,
+                    source: 'schedule',
+                    action: 'stop',
+                    instanceId: 'pal-1',
+                    instance: '팰월드',
+                    ok: false,
+                    status: 500,
+                },
+                {
+                    ts: now() - 7200,
+                    source: 'cli',
+                    action: 'start',
+                    instanceId: 'mc-1',
+                    instance: '마크 서버',
+                    ok: true,
+                    status: 200,
+                },
+            ].filter((e) => !instance || e.instanceId === instance),
         }),
     relayNodeChannels: (guildId) => ok({ guildId, ...mockChannels }),
     relayNodeChannelsSave: (guildId, patch) => {

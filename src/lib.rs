@@ -18,4 +18,5 @@ pub mod instance_lock;  // 데몬 단일 인스턴스 잠금
 pub mod chat;  // 채팅 명령 처리기 (릴레이 에이전트, /api/chat/command)
 pub mod commands;  // 게임 명령 해석 (/api/instance/:id/command)
 pub mod module_audit;  // 모듈 Python 코드 정적 검사 (M12)
+pub mod audit;  // 감사 로그 (A10): 누가 어떤 명령을 실행했는지
 pub mod relay_agent;  // 클라우드 릴레이 ↔ 데몬 에이전트

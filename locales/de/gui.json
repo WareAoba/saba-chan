@@ -684,7 +684,8 @@
     "preflight_failed_short": "Python-Einrichtung fehlgeschlagen",
     "preflight_failed": "Vorbereitung von Python fehlgeschlagen. Beim nächsten Serveraufruf wird es erneut versucht. ({{error}})",
     "module_needs": "Voraussetzungen nicht erfüllt: {{deps}}",
-    "tab_maintenance": "Backups"
+    "tab_maintenance": "Backups",
+    "tab_audit": "Protokoll"
   },
   "discord": {
     "nav_connection": "Verbindung",
@@ -1013,5 +1014,27 @@
     "err_write_failed": "Datei konnte nicht geschrieben werden. Prüfe Speicherort und Berechtigungen.",
     "err_generic": "Etwas ist schiefgelaufen. Bitte versuche es erneut.",
     "restart_hint": "Importierte App-Einstellungen gelten nach einem Neustart von Saba-chan."
+  },
+  "audit": {
+    "title": "Aktivitätsprotokoll",
+    "desc_server": "Wer wann und von wo etwas an diesem Server getan hat. Neueste zuerst.",
+    "desc_all": "Wer wann und von wo etwas an allen Servern getan hat. Neueste zuerst.",
+    "refresh": "Aktualisieren",
+    "empty": "Noch keine Aktivität.",
+    "load_failed": "Das Aktivitätsprotokoll konnte nicht geladen werden.",
+    "more": "Mehr anzeigen",
+    "ok": "Erfolgreich",
+    "failed": "Fehlgeschlagen ({{status}})",
+    "action_start": "Starten",
+    "action_stop": "Stoppen",
+    "action_restart": "Neustart",
+    "action_command": "Befehl",
+    "action_stdin": "Konsoleneingabe",
+    "source_gui": "App",
+    "source_cli": "CLI",
+    "source_api": "API",
+    "source_discord": "Discord",
+    "source_schedule": "Zeitplan",
+    "source_daemon": "Daemon"
   }
 }

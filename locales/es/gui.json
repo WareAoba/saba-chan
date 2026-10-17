@@ -684,7 +684,8 @@
     "preflight_failed_short": "Falló la configuración de Python",
     "preflight_failed": "No se pudo preparar Python. Se reintentará en la próxima acción del servidor. ({{error}})",
     "module_needs": "Requisitos no cumplidos: {{deps}}",
-    "tab_maintenance": "Copias"
+    "tab_maintenance": "Copias",
+    "tab_audit": "Registro"
   },
   "discord": {
     "nav_connection": "Conexión",
@@ -1013,5 +1014,27 @@
     "err_write_failed": "No se pudo escribir el archivo. Revisa la ubicación y los permisos.",
     "err_generic": "Algo salió mal. Inténtalo de nuevo.",
     "restart_hint": "Los ajustes de la app importados se aplican al reiniciar Saba-chan."
+  },
+  "audit": {
+    "title": "Registro de actividad",
+    "desc_server": "Quién hizo qué en este servidor, cuándo y desde dónde. Lo más reciente primero.",
+    "desc_all": "Quién hizo qué en todos los servidores, cuándo y desde dónde. Lo más reciente primero.",
+    "refresh": "Actualizar",
+    "empty": "Aún no hay actividad.",
+    "load_failed": "No se pudo cargar el registro de actividad.",
+    "more": "Mostrar más",
+    "ok": "Correcto",
+    "failed": "Falló ({{status}})",
+    "action_start": "Iniciar",
+    "action_stop": "Detener",
+    "action_restart": "Reiniciar",
+    "action_command": "Comando",
+    "action_stdin": "Entrada de consola",
+    "source_gui": "App",
+    "source_cli": "CLI",
+    "source_api": "API",
+    "source_discord": "Discord",
+    "source_schedule": "Programación",
+    "source_daemon": "Daemon"
   }
 }
