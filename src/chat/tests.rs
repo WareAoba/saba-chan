@@ -99,7 +99,7 @@ fn settings() -> ChatSettings {
 
 async fn run(api: &FakeDaemon, s: &ChatSettings, text: &str) -> String {
     let req = ChatRequest { text: text.into(), guild_id: Some("g1".into()), user_id: Some("u1".into()) };
-    process(api, s, &Catalog::for_language("en"), &req).await
+    process(api, s, &Catalog::for_language("en"), &req).await.text
 }
 
 #[tokio::test]
@@ -184,6 +184,29 @@ async fn unknown_inputs() {
     assert!(reply.starts_with(&cat.t("errors.command_not_found", &[])), "{}", reply);
     assert!(reply.contains(&cat.t("modules.help_start", &[])), "{}", reply);
     assert!(run(&api, &s, "nothing start").await.contains("nothing"));
+}
+
+/// 알아보지 못한 입력은 코드가 붙는다: 릴레이가 이 코드로 모델 해석기에 묻는다. 처리한 응답에는 없다
+#[tokio::test]
+async fn unrecognized_input_carries_a_code_for_the_interpreter() {
+    let api = fixture();
+    let s = settings();
+    let cat = Catalog::for_language("en");
+    let reply = |text: &str| {
+        let req = ChatRequest { text: text.into(), guild_id: Some("g1".into()), user_id: Some("u1".into()) };
+        let (api, s, cat) = (&api, &s, &cat);
+        async move { process(api, s, cat, &req).await }
+    };
+    let r = reply("서버 켜줘").await;
+    assert_eq!((r.code, r.args["name"].as_str()), (Some("INSTANCE_NOT_FOUND"), Some("서버")));
+    let r = reply("nothing").await;
+    assert_eq!((r.code, r.args["command"].as_str()), (Some("UNKNOWN_COMMAND"), Some("nothing")));
+    let r = reply("mc dance").await;
+    assert_eq!((r.code, r.args["command"].as_str()), (Some("UNKNOWN_COMMAND"), Some("dance")));
+    assert!(r.text.starts_with(&cat.t("errors.command_not_found", &[])), "{}", r.text);
+    // 모듈 이름만 쓰면 명령 안내, 권한 거부도 처리한 응답이다
+    assert_eq!(reply("survival").await.code, None);
+    assert_eq!(reply("help").await.code, None);
 }
 
 #[tokio::test]

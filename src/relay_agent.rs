@@ -402,7 +402,7 @@ impl Session {
                     user_id: cmd.get("requestedBy").and_then(|v| v.as_str()).map(str::to_string),
                 };
                 let reply = crate::chat::api::run_with_daemon_settings(&self.server, &req).await;
-                json!({ "success": true, "data": { "text": reply } })
+                raw_command_result(reply)
             }
             other => json!({ "success": false, "data": { "error": format!("Unknown action: {}", other) } }),
         }
@@ -416,6 +416,14 @@ impl Session {
             Ok(r) => tracing::warn!("[RelayAgent] result {} rejected: {}", id, r.status()),
             Err(e) => tracing::warn!("[RelayAgent] result {} failed: {}", id, e),
         }
+    }
+}
+
+/// 알아보지 못한 입력은 실패와 코드로 돌려준다: 릴레이는 그 코드를 보고 모델 해석기에 정확한 명령을 묻는다
+fn raw_command_result(reply: crate::chat::Reply) -> Value {
+    match reply.code {
+        Some(code) => json!({ "success": false, "data": { "code": code, "error": reply.text, "args": reply.args } }),
+        None => json!({ "success": true, "data": { "text": reply.text } }),
     }
 }
 
@@ -505,6 +513,21 @@ mod tests {
         assert!(agent.lock().cancel.is_some() && agent.lock().status.running);
         agent.finish(2, None);
         assert!(agent.lock().cancel.is_none() && !agent.lock().status.running);
+    }
+
+    /// 릴레이는 실패 + `data.code`(UNKNOWN_COMMAND 등)를 보고 해석기를 부른다. 문구는 `data.error`
+    #[test]
+    fn unrecognized_raw_commands_fail_with_a_code() {
+        let unknown = crate::chat::Reply {
+            text: "Unknown command".into(),
+            code: Some("UNKNOWN_COMMAND"),
+            args: json!({ "command": "dance" }),
+        };
+        assert_eq!(
+            raw_command_result(unknown),
+            json!({ "success": false, "data": { "code": "UNKNOWN_COMMAND", "error": "Unknown command", "args": { "command": "dance" } } })
+        );
+        assert_eq!(raw_command_result("done".to_string().into()), json!({ "success": true, "data": { "text": "done" } }));
     }
 
     #[test]

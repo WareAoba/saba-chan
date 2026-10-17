@@ -349,7 +349,7 @@
 | GET | `/api/relay/pair/:code/status` | `relay.rs:321` | `secret?, relayUrl?`. `status:"claimed"`이면 `nodeToken`을 `.node_token`에 자동 저장 |
 | GET | `/api/relay/agent` | `chat.rs:16` | 에이전트 상태 `{running, sleeping, relayUrl, hasToken, ...}` |
 | POST | `/api/relay/agent/start`, `/stop` | `chat.rs:21/33` | 토큰이 없으면 409 `node_token_missing` |
-| POST | `/api/chat/command` | `chat.rs:10` | `{text, guild_id?, user_id?}` → `{reply}` |
+| POST | `/api/chat/command` | `chat.rs:10` | `{text, guild_id?, user_id?}` → `{reply, code, args}`. `code`는 입력을 알아보지 못했을 때만(`UNKNOWN_COMMAND`·`INSTANCE_NOT_FOUND`), 아니면 null |
 | GET/PUT/DELETE | `/api/chatbot` | `chatbot.rs:70/245/267` | AI 챗봇 설정 (`config.json`의 `chatbot`). 바뀔 때마다 릴레이에 동기화, 클라이언트에는 `hasApiKey`·`pendingRelayDelete`만. PUT은 릴레이 기본값 위에 전체 설정을 얹어 보낸다(`chatbot.rs:33-59`). DELETE가 릴레이에 닿지 못하면 `pendingRelayDelete:true`로 남기고 다음 연결 때 다시 지운다(`:199-243`) |
 | DELETE | `/api/chatbot/memory` | `chatbot.rs:283` | query `guildId?` |
 

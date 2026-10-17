@@ -23,7 +23,7 @@ use crate::supervisor::module_loader::CommandField;
 use aliases::ModuleAliases;
 use api::{DaemonApi, ModuleView, ServerView};
 use i18n::Catalog;
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 
 /// 처리기가 쓰는 봇 설정 일부
@@ -86,8 +86,30 @@ struct Ctx<'a, D: DaemonApi> {
     aliases: ModuleAliases,
 }
 
-/// 텍스트 명령을 처리하고 응답 문자열을 돌려줍니다. 실패해도 항상 응답을 만듭니다.
-pub async fn process<D: DaemonApi>(api: &D, settings: &ChatSettings, cat: &Catalog, req: &ChatRequest) -> String {
+/// 처리 결과. `text`는 늘 사람이 읽을 문구다. 데몬이 입력을 알아보지 못했으면 `code`가 붙고,
+/// 릴레이는 이 코드를 보고 모델 해석기에 정확한 명령을 물을 수 있다
+#[derive(Debug, Clone, PartialEq)]
+pub struct Reply {
+    pub text: String,
+    /// `UNKNOWN_COMMAND` | `INSTANCE_NOT_FOUND`. None이면 처리된 응답(성공이든 실행 오류든)
+    pub code: Option<&'static str>,
+    pub args: Value,
+}
+
+impl Reply {
+    fn unrecognized(code: &'static str, text: String, args: Value) -> Self {
+        Self { text, code: Some(code), args }
+    }
+}
+
+impl From<String> for Reply {
+    fn from(text: String) -> Self {
+        Self { text, code: None, args: Value::Null }
+    }
+}
+
+/// 텍스트 명령을 처리하고 응답을 돌려줍니다. 실패해도 항상 응답을 만듭니다.
+pub async fn process<D: DaemonApi>(api: &D, settings: &ChatSettings, cat: &Catalog, req: &ChatRequest) -> Reply {
     let modules = api.modules().await;
     let aliases = ModuleAliases::build(&modules, &settings.module_aliases);
     let ctx = Ctx { api, settings, cat, req, modules, aliases };
@@ -96,11 +118,11 @@ pub async fn process<D: DaemonApi>(api: &D, settings: &ChatSettings, cat: &Catal
     let args: Vec<&str> = text.split_whitespace().collect();
 
     let Some(first) = args.first().copied() else {
-        return ctx.help().await;
+        return ctx.help().await.into();
     };
     match TopLevel::parse(first) {
-        Some(TopLevel::Help) => return ctx.help().await,
-        Some(TopLevel::List) => return ctx.list().await,
+        Some(TopLevel::Help) => return ctx.help().await.into(),
+        Some(TopLevel::List) => return ctx.list().await.into(),
         None => {}
     }
 
@@ -108,7 +130,7 @@ pub async fn process<D: DaemonApi>(api: &D, settings: &ChatSettings, cat: &Catal
         Ok(s) => s,
         Err(e) => {
             tracing::warn!("[Chat] 서버 목록 조회 실패: {}", e);
-            return format!("❌ {}", cat.t("messages.command_error", &[]));
+            return format!("❌ {}", cat.t("messages.command_error", &[])).into();
         }
     };
 
@@ -118,13 +140,14 @@ pub async fn process<D: DaemonApi>(api: &D, settings: &ChatSettings, cat: &Catal
         None => {
             // 모듈 별명이나 인스턴스 이름이 실제 서버로 있어야 명령어 안내
             if !mounted {
-                return cat.t("errors.unknown_input", &[]);
+                let command = text.trim();
+                return Reply::unrecognized("UNKNOWN_COMMAND", cat.t("errors.unknown_input", &[]), json!({ "command": command }));
             }
-            ctx.module_help(first, &servers)
+            ctx.module_help(first, &servers).into()
         }
         Some(cmd) => {
             if module_known && !mounted {
-                return cat.t("errors.unknown_input", &[]);
+                return Reply::unrecognized("INSTANCE_NOT_FOUND", cat.t("errors.unknown_input", &[]), json!({ "name": first }));
             }
             ctx.module_command(first, cmd, skip_words(text, 2), &servers).await
         }
@@ -282,18 +305,22 @@ impl<D: DaemonApi> Ctx<'_, D> {
     }
 
     /// 별명/인스턴스 이름으로 대상 서버를 찾는다. 찾지 못하면 사용자에게 줄 응답을 Err로.
-    fn find_server<'s>(&self, alias: &str, servers: &'s [ServerView]) -> Result<&'s ServerView, String> {
+    fn find_server<'s>(&self, alias: &str, servers: &'s [ServerView]) -> Result<&'s ServerView, Reply> {
         match self.named_servers(alias, servers).as_slice() {
             [one] => return Ok(one),
-            [first, ..] => return Err(self.t("errors.multiple_instances", &[("module", &first.module)])),
+            [first, ..] => return Err(self.t("errors.multiple_instances", &[("module", &first.module)]).into()),
             [] => {}
         }
         let module = self.aliases.resolve(alias);
         let matched: Vec<&ServerView> = servers.iter().filter(|s| s.module == module || s.name.contains(&module)).collect();
         match matched.as_slice() {
             [one] => Ok(one),
-            [] => Err(self.t("server.not_found", &[("alias", alias), ("resolved", &module)])),
-            _ => Err(self.t("errors.multiple_instances", &[("module", &module)])),
+            [] => Err(Reply::unrecognized(
+                "INSTANCE_NOT_FOUND",
+                self.t("server.not_found", &[("alias", alias), ("resolved", &module)]),
+                json!({ "name": alias }),
+            )),
+            _ => Err(self.t("errors.multiple_instances", &[("module", &module)]).into()),
         }
     }
 
@@ -339,32 +366,36 @@ impl<D: DaemonApi> Ctx<'_, D> {
 
     // ── 모듈 + 명령어 ──
 
-    async fn module_command(&self, alias: &str, cmd_alias: &str, extra: &str, servers: &[ServerView]) -> String {
+    async fn module_command(&self, alias: &str, cmd_alias: &str, extra: &str, servers: &[ServerView]) -> Reply {
         if let Some(msg) = self.alias_conflict(alias) {
-            return msg;
+            return msg.into();
         }
         let server = match self.find_server(alias, servers) {
             Ok(s) => s,
-            Err(msg) => return msg,
+            Err(reply) => return reply,
         };
         let Some(module) = self.module(&server.module) else {
-            return self.t("server.module_missing", &[("module", &server.module)]);
+            return self.t("server.module_missing", &[("module", &server.module)]).into();
         };
         let command = aliases::resolve_command(Some(module), &self.settings.command_aliases, cmd_alias);
 
         if self.is_denied(&server.id, &command) {
             tracing::info!("[Chat] 권한 거부: user={:?} server={} command={}", self.req.user_id, server.id, command);
-            return self.t("errors.permission_denied", &[]);
+            return self.t("errors.permission_denied", &[]).into();
         }
 
         match command.as_str() {
-            "start" => self.start(server).await,
-            "stop" => self.stop(server).await,
-            "status" => self.status(server),
+            "start" => self.start(server).await.into(),
+            "stop" => self.stop(server).await.into(),
+            "status" => self.status(server).into(),
             _ => match module.command(&command) {
-                Some(field) => self.run_defined(server, module, field, alias, cmd_alias, extra).await,
+                Some(field) => self.run_defined(server, module, field, alias, cmd_alias, extra).await.into(),
                 // 없는 명령이면 이 모듈에서 쓸 수 있는 명령을 같이 보여준다
-                None => format!("{}\n\n{}", self.t("errors.command_not_found", &[]), self.module_help(alias, servers)),
+                None => Reply::unrecognized(
+                    "UNKNOWN_COMMAND",
+                    format!("{}\n\n{}", self.t("errors.command_not_found", &[]), self.module_help(alias, servers)),
+                    json!({ "command": cmd_alias, "name": server.name }),
+                ),
             },
         }
     }
