@@ -364,7 +364,8 @@
     "ready": "설치 준비됨",
     "up_to_date": "최신",
     "updater_launched": "업데이터를 띄웠어요. 업데이트를 위해 데몬이 꺼져요.",
-    "verifying": "파일 확인 중..."
+    "verifying": "파일 확인 중...",
+    "unknown_key": "{{key}}는 업데이트 설정이 아니에요. 설정 목록: {{keys}}"
   },
   "validate": {
     "blocked": "이 문제를 고쳐야 서버를 켤 수 있어요.",

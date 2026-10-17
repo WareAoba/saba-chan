@@ -364,7 +364,8 @@
     "ready": "ready to install",
     "up_to_date": "up to date",
     "updater_launched": "Updater started. The daemon is shutting down to update.",
-    "verifying": "Verifying files..."
+    "verifying": "Verifying files...",
+    "unknown_key": "{{key}} is not an update setting. Settings: {{keys}}"
   },
   "validate": {
     "blocked": "The server can't start until these are fixed.",

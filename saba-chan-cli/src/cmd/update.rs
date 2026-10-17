@@ -247,13 +247,30 @@ async fn config(ctx: &Ctx, pairs: &[String]) -> Result<()> {
         });
         return Ok(());
     }
+    // 데몬이 모르는 키(예전 GitHub 설정 등)는 조용히 무시되니 저장 전에 막는다
+    let current = ctx
+        .api
+        .update_config()
+        .await
+        .ok()
+        .and_then(|r| r.get("config").cloned());
     let mut patch = Map::new();
     for (k, raw) in split_pairs(pairs)? {
+        if let Some(known) = current
+            .as_ref()
+            .and_then(Value::as_object)
+            .filter(|c| !c.contains_key(&k))
+        {
+            let keys: Vec<&str> = known.keys().map(String::as_str).collect();
+            return Err(crate::error::usage(t!(
+                "update.unknown_key",
+                key = k,
+                keys = keys.join(", ")
+            )));
+        }
         // 문자열 칸은 숫자처럼 보여도 문자열로 (channel 등)
         let v = match k.as_str() {
-            "github_owner" | "github_repo" | "install_root" | "api_base_url" | "source" | "relay_url" | "channel" => {
-                Value::String(raw)
-            }
+            "install_root" | "source" | "relay_url" | "channel" => Value::String(raw),
             _ => guess(&raw),
         };
         patch.insert(k, v);
