@@ -98,6 +98,10 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | botConfigSave (97) | botConfig:save | 2857 | PUT /api/config/bot(최상위 키 단위 병합). 릴레이 동기화는 에이전트 하트비트가 맡는다 | ✓ 698 |
 | saveNodeToken / loadNodeToken / deleteNodeToken (100-102) | nodeToken:* | 2799/2803/2808 | PUT/GET/DELETE /api/config/node-token. DELETE는 데몬이 에이전트를 멈추고 토큰을 지운다 | ✓ 705 |
 | auditList (107) | audit:list | 2336 | GET /api/audit?limit&instance (A10). `{entries}` 최신이 먼저 | ✓ (A10) |
+| permissionsGet | permissions:get | - | GET /api/permissions/:guildId (P1) | - |
+| permissionsUpdate | permissions:update | - | PATCH /api/permissions/:guildId `{defaultLevel?, preset?, chatbotCap?, ownerDiscordId?, commandLevels?}` | - |
+| permissionsSetMember | permissions:setMember | - | PUT /api/permissions/:guildId/members/:discordId `{level}` | - |
+| permissionsRemoveMember | permissions:removeMember | - | DELETE /api/permissions/:guildId/members/:discordId | - |
 | dataExport / dataImport (105-106) | dataTransfer:export/import | 2800/2809 | 저장·열기 다이얼로그로 경로를 고른 뒤 POST /api/migration/export `{path, secrets}` · /api/migration/import `{path, dryRun, overwrite}`. 취소하면 `{canceled:true}`. 가져오기 결과에는 `path`를 붙여 미리보기(`dryRun`) 뒤 같은 파일로 다시 부를 수 있다 | ✓ (A9) |
 | relayCheckHostStatus… relayBotInvite (104-107) | relay:* | 2296-2344 | GET /api/relay/host/:id/status, /nodes, GET /api/relay/node/:guild/members, GET /api/relay/bot-invite | ✓ 740-743 |
 | relayNodeChannels / relayNodeChannelsSave (113-114) | relay:nodeChannels/nodeChannelsSave | 2320/2323 | GET/PUT /api/relay/node/:guild/channels. 실패하면 데몬 본문(`{error, channelId?}`)을 그대로 돌려준다 | ✓ |

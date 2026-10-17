@@ -207,6 +207,38 @@ const LOCAL_SECTIONS: &[&str] = &["schemaVersion", "updates", "boot", "extension
 /// 클라이언트 네임스페이스로 쓸 수 없는 키 (각자 전용 API가 있다)
 const RESERVED_SECTIONS: &[&str] = &["schemaVersion", "gui", "relay", "updates", "boot", "extensions", "chatbot"];
 
+/// `nodeSettings[guild]`에서 권한 API만 바꾸는 키
+pub const PERMISSION_KEYS: &[&str] =
+    &["ownerDiscordId", "relayOwnerDiscordId", "defaultLevel", "members", "preset", "commandLevels", "chatbotCap", "memberPermissions"];
+
+/// `merged.nodeSettings`의 권한 키를 `current` 값으로 되돌린다 (없던 키는 지운다)
+fn keep_permission_keys(merged: &mut Value, current: &Value) {
+    let Some(merged) = merged.as_object_mut() else { return };
+    let nodes = merged.entry("nodeSettings").or_insert_with(|| Value::Object(serde_json::Map::new()));
+    if !nodes.is_object() {
+        *nodes = Value::Object(serde_json::Map::new());
+    }
+    let nodes = nodes.as_object_mut().expect("object");
+    // 새 값에서 빠진 길드도 권한은 남긴다
+    for guild in current.get("nodeSettings").and_then(Value::as_object).into_iter().flatten().map(|(g, _)| g) {
+        nodes.entry(guild.clone()).or_insert_with(|| Value::Object(serde_json::Map::new()));
+    }
+    for (guild, node) in nodes.iter_mut() {
+        let Some(node) = node.as_object_mut() else { continue };
+        let before = current.get("nodeSettings").and_then(|n| n.get(guild));
+        for key in PERMISSION_KEYS {
+            match before.and_then(|b| b.get(*key)) {
+                Some(v) => {
+                    node.insert(key.to_string(), v.clone());
+                }
+                None => {
+                    node.remove(*key);
+                }
+            }
+        }
+    }
+}
+
 impl ConfigStore {
     /// 새 ConfigStore 생성 (디스크에서 기존 설정 로드, 예전 파일은 이관)
     pub fn new(data_dir: &Path) -> Self {
@@ -283,7 +315,9 @@ impl ConfigStore {
         let current = self.bot_config.read().await.clone();
         let current_json = serde_json::to_value(&current).unwrap_or_default();
 
-        let merged = merge_json(current_json, json);
+        let mut merged = merge_json(current_json.clone(), json);
+        // 권한 키는 권한 API(`update_node_settings`)로만 바꾼다: 봇 설정 저장이 고정된 주인·부여값을 덮지 않게
+        keep_permission_keys(&mut merged, &current_json);
 
         let config: BotConfig = serde_json::from_value(merged)
             .map_err(|e| ConfigStoreError::InvalidData(format!("Invalid bot config: {}", e)))?;
@@ -292,6 +326,30 @@ impl ConfigStore {
         Ok(config)
     }
 
+
+    /// `nodeSettings[guild]` 객체를 고친다 (권한 API·릴레이 주인 고정). `f`가 true를 돌려주면 저장한다
+    pub async fn update_node_settings<R>(
+        &self,
+        guild_id: &str,
+        f: impl FnOnce(&mut serde_json::Map<String, Value>) -> (R, bool),
+    ) -> Result<R, ConfigStoreError> {
+        let mut config = self.bot_config.write().await;
+        let mut next = config.clone();
+        if !next.node_settings.is_object() {
+            next.node_settings = Value::Object(serde_json::Map::new());
+        }
+        let nodes = next.node_settings.as_object_mut().expect("object");
+        let node = nodes.entry(guild_id.to_string()).or_insert_with(|| Value::Object(serde_json::Map::new()));
+        if !node.is_object() {
+            *node = Value::Object(serde_json::Map::new());
+        }
+        let (out, changed) = f(node.as_object_mut().expect("object"));
+        if changed {
+            self.file.set_section("relay", serde_json::to_value(&next)?)?;
+            *config = next;
+        }
+        Ok(out)
+    }
 
     // ── 기본값 ──
 
@@ -918,6 +976,22 @@ mod tests {
         // GUI 섹션은 클라이언트 섹션 쓰기에 영향받지 않는다
         store.set_gui_settings_from_json(serde_json::json!({ "language": "ja" })).await.unwrap();
         assert_eq!(ConfigStore::new(tmp.path()).get_client_section("cli").unwrap()["language"], "ko");
+    }
+
+    #[test]
+    fn saving_the_bot_config_keeps_permission_keys() {
+        let current = serde_json::json!({ "nodeSettings": {
+            "g": { "ownerDiscordId": "own", "members": { "a": 2 }, "allowedInstances": ["x"] },
+            "h": { "defaultLevel": -1 }
+        } });
+        let mut merged = merge_json(current.clone(), serde_json::json!({ "nodeSettings": {
+            "g": { "ownerDiscordId": "evil", "members": { "evil": 2 }, "allowedInstances": ["y"], "preset": "loose" }
+        } }));
+        keep_permission_keys(&mut merged, &current);
+        assert_eq!(merged["nodeSettings"], serde_json::json!({
+            "g": { "ownerDiscordId": "own", "members": { "a": 2 }, "allowedInstances": ["y"] },
+            "h": { "defaultLevel": -1 }
+        }));
     }
 
     #[test]

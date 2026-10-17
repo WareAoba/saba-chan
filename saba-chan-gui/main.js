@@ -2368,6 +2368,16 @@ ipcMain.handle('relay:listNodeMembers', async (_event, guildId, relayUrl) => {
 });
 
 // 감사 로그 (A10): {limit?, instance?} → {entries: [...]} 최신이 먼저
+// 디스코드 명령 권한 (P1): 원본은 데몬 config.json. 실패하면 {error, error_code} 본문을 그대로 넘긴다
+const permPath = (guildId, discordId) =>
+    `/api/permissions/${encodeURIComponent(guildId)}${discordId === undefined ? '' : `/members/${encodeURIComponent(discordId)}`}`;
+ipcMain.handle('permissions:get', (_event, guildId) => daemonCall('get', permPath(guildId)));
+ipcMain.handle('permissions:update', (_event, guildId, patch) => daemonCall('patch', permPath(guildId), patch || {}));
+ipcMain.handle('permissions:setMember', (_event, guildId, discordId, level) =>
+    daemonCall('put', permPath(guildId, discordId), { level }));
+ipcMain.handle('permissions:removeMember', (_event, guildId, discordId) =>
+    daemonCall('delete', permPath(guildId, discordId)));
+
 ipcMain.handle('audit:list', (_event, opts) => {
     const { limit, instance } = opts || {};
     const params = new URLSearchParams();

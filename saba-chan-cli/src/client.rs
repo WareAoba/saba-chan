@@ -481,6 +481,22 @@ impl Api {
         ))
         .await
     }
+    /// GET /api/permissions/:guildId
+    pub async fn permissions(&self, guild: &str) -> Result<Value> {
+        self.get(&format!("/api/permissions/{}", seg(guild))).await
+    }
+    /// PATCH /api/permissions/:guildId `{defaultLevel?, preset?, chatbotCap?, ownerDiscordId?, commandLevels?}`
+    pub async fn update_permissions(&self, guild: &str, patch: Value) -> Result<Value> {
+        self.patch(&format!("/api/permissions/{}", seg(guild)), patch).await
+    }
+    /// PUT/DELETE /api/permissions/:guildId/members/:discordId (None이면 기본 레벨로)
+    pub async fn set_member_level(&self, guild: &str, member: &str, level: Option<i64>) -> Result<Value> {
+        let path = format!("/api/permissions/{}/members/{}", seg(guild), seg(member));
+        match level {
+            Some(level) => self.put(&path, json!({ "level": level })).await,
+            None => self.delete(&path).await,
+        }
+    }
     /// POST /api/migration/export — 데몬이 `path`에 zip을 쓴다
     pub async fn export_config(&self, path: &str, secrets: bool) -> Result<Value> {
         self.post_long("/api/migration/export", json!({ "path": path, "secrets": secrets }))

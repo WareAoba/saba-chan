@@ -293,8 +293,8 @@ zod 스키마는 `middleware/schemas.ts` 한 곳에 모여 있다.
 |---|---|
 | `users` | `discord_id` PK, username, display_name, is_banned, created_at, last_seen |
 | `hosts` | `id` PK(nanoid12), `owner_discord_id` **UNIQUE**(사용자 1명당 host 1개) → users, name, `token_hash`(argon2id), status(online/offline), last_heartbeat, agent_version, `metadata` jsonb(heartbeat 캐시와 botConfig), timestamps |
-| `nodes` | `guild_id` PK, `host_id` → hosts (cascade), owner_discord_id, guild_name, locale(default 'en') |
-| `node_permissions` | PK(guild_id, discord_id), level(1=USER, 2=ADMIN), granted_by |
+| `nodes` | `guild_id` PK, `host_id` → hosts (cascade), owner_discord_id, guild_name, locale(default 'en'), `default_level`(1, 개별 레벨이 없는 멤버의 레벨. 데몬 값의 캐시) |
+| `node_permissions` | PK(guild_id, discord_id), level(-1=금지, 0=챗봇, 1=유저, 2=관리자), granted_by. 데몬 `nodeSettings[guild].members`의 캐시(릴레이 바깥 검사용) |
 | `command_queue` | id PK, host_id, guild_id, payload jsonb, requested_by, channel_id, interaction_token, status(pending→delivered→completed / timeout), created/delivered/completed/expires_at(+60s), result jsonb |
 | `pairing_codes` | code PK, expires_at(+5분), status, attempts, relay_url, claimed_by, host_id, **node_token(평문, 수령 즉시 NULL)**, claimed_at, poll_secret_hash |
 | `audit_logs` | serial id, timestamp, user_discord_id, host_id, guild_id, action, detail, result |
@@ -311,13 +311,14 @@ zod 스키마는 `middleware/schemas.ts` 한 곳에 모여 있다.
 
 **(b) 명령 실행** (cloud 모드)
 1. Discord 사용자가 `<prefix> <text>`를 입력한다. prefix는 길드별 캐시이고 기본값은 `BOT_PREFIX` env 또는 `'사바쨩'`이다(`bot/index.ts:230,238-281`).
-2. `forwardCommand`(`bot/index.ts:730-800`)가 requestId를 먼저 만들고 `resultWaiters.wait(id, 30s)`를 등록한 뒤 `POST /api/command`를 부른다. payload는 `{action:'raw_command', text, voiceChannelId?, userName?, guildName?}`다. 두 이름은 감사 로그에 남길 디스코드 표시 이름·서버 이름(한 줄, 100자까지)이고, 권한 판단에는 쓰지 않는다(권한은 `requestedBy`·`guildId` id로만). `guildId`로 nodes를 조회해 hostId를 찾고, 큐에 INSERT한 뒤 `pollWaiters.wake(hostId)`를 호출한다.
+2. `forwardCommand`(`bot/index.ts:730-800`)가 requestId를 먼저 만들고 `resultWaiters.wait(id, 30s)`를 등록한 뒤 `POST /api/command`를 부른다. payload는 `{action:'raw_command', text, via:'direct'|'chatbot', voiceChannelId?, userName?, guildName?}`이고, 큐 항목에는 노드 주인 `ownerDiscordId`도 실린다(P1). 데몬은 처음 받은 주인을 고정하고, 다른 값은 무시한다(`relay_agent.rs` `requester`, `chat::permissions::pin_owner`). `ownerDiscordId`가 있는데 `via`가 없으면 챗봇으로 본다. 두 이름은 감사 로그에 남길 디스코드 표시 이름·서버 이름(한 줄, 100자까지)이고, 권한 판단에는 쓰지 않는다(권한은 `requestedBy`·`guildId` id로만). `guildId`로 nodes를 조회해 hostId를 찾고, 큐에 INSERT한 뒤 `pollWaiters.wake(hostId)`를 호출한다.
 3. daemon의 relay agent(`src/relay_agent.rs:326-386`)가 `GET /poll`을 계속 돌리고 있다. 서버는 즉시 pending 최대 10건을 조회해 `delivered`로 표시하고 반환한다. 없으면 **25초 대기**(`poll.ts:6`, `pollWaiters.wait`) 후 다시 조회하고, 그래도 없으면 204를 준다. 클라이언트 연결이 끊기면 abort한다. host가 paused 상태면 `{sleeping:true}`를 준다.
-4. agent는 받은 `raw_command`마다 `crate::chat::api::run_with_daemon_settings`를 같은 프로세스에서 실행한다(`relay_agent.rs:388-404`). 접두사·별명·길드별 설정은 daemon의 bot config에서 읽는다(`chat/api.rs:117-122`). 답 텍스트를 `{success, data:{text}}`로 담아 `POST /result/:id`로 보낸다. 입력을 알아보지 못했으면(인스턴스를 못 찾음, 정의에 없는 명령, 모르는 낱말) `{success:false, data:{code:"INSTANCE_NOT_FOUND"|"UNKNOWN_COMMAND", error:<현지화 문구>, args:{name?, command?, help?}}}`로 보내고(정의에 없는 명령이면 `help`에 그 모듈의 명령 안내를 담아 릴레이가 덧붙인다), 릴레이는 이 코드를 보고 모델 해석기에 정확한 명령을 한 번 묻는다(`relay_agent.rs` `raw_command_result`, `chat::Reply`). 모듈 이름만 쓰면 실패가 아니라 명령 안내다. 모르는 action은 `success:false`다.
+4. agent는 받은 `raw_command`마다 `crate::chat::api::run_with_daemon_settings`를 같은 프로세스에서 실행한다(`relay_agent.rs:388-404`). 접두사·별명·길드별 설정은 daemon의 bot config에서 읽는다(`chat/api.rs:117-122`). 답 텍스트를 `{success, data:{text}}`로 담아 `POST /result/:id`로 보낸다. 입력을 알아보지 못했으면(인스턴스를 못 찾음, 정의에 없는 명령, 모르는 낱말) `{success:false, data:{code:"INSTANCE_NOT_FOUND"|"UNKNOWN_COMMAND", error:<현지화 문구>, args:{name?, command?, help?}}}`로 보내고(정의에 없는 명령이면 `help`에 그 모듈의 명령 안내를 담아 릴레이가 덧붙인다), 릴레이는 이 코드를 보고 모델 해석기에 정확한 명령을 한 번 묻는다(`relay_agent.rs` `raw_command_result`, `chat::Reply`). 모듈 이름만 쓰면 실패가 아니라 명령 안내다. 권한이 모자라면 `code:"PERMISSION_DENIED"`, `args:{need, level, via?}`다. 모르는 action은 `{success:false, data:{error:"Unknown action: <action>"}}`다(릴레이가 이 문구로 옛 데몬을 알아본다).
+   - `{action:'permission', op:'grant'|'revoke'|'default_level', discordId?, level?, via}`: 디스코드 `/사바쨩 권한` 명령. 고정된 주인이 직접(`via:'direct'`) 보낸 것만 받아 `nodeSettings`에 쓰고 `{success:true, data:{defaultLevel, members}}`를 돌려준다. 아니면 `data.code` `NOT_OWNER`·`OWNER_FIXED`·`INVALID_LEVEL`·`UNKNOWN_OP`·`MISSING_GUILD`.
 5. relay는 상태를 completed로 바꾸고 `resultWaiters.wake(id)`를 호출한다. bot은 `result.data.text`(최대 1950자)로 Discord에 reply한다.
 6. agent의 재시도 백오프는 3초에서 시작해 최대 60초다. sleeping 상태면 30초마다 확인한다(`relay_agent.rs:22-26, 417-420`).
 
-**(c) Heartbeat**: 60초마다 `POST /heartbeat`(`relay_agent.rs:211-260`). metadata = `{servers, modules, moduleDetails:{}, botConfig:{prefix, moduleAliases, commandAliases}, allowedInstances?:{<guildId>:[instance id]}}`이고(`allowedInstances`는 `bot.node_settings[guild].allowedInstances` 목록이 있는 길드만, 없으면 제한 없음), 서버 목록에서 `rcon_password`/`rest_password`는 뺀다(`relay_agent.rs:262-324`). 응답의 `sleeping`으로 폴링을 멈추거나 다시 시작한다. 시작할 때 `GET /info`로 `minAgentVersion`을 비교한다(`relay_agent.rs:191-`).
+**(c) Heartbeat**: 60초마다 `POST /heartbeat`(`relay_agent.rs:211-260`). metadata = `{servers, modules, moduleDetails:{}, botConfig:{prefix, moduleAliases, commandAliases}, allowedInstances?:{<guildId>:[instance id]}, permissions:{<guildId>:{defaultLevel, members}}}`이고(`allowedInstances`는 `bot.node_settings[guild].allowedInstances` 목록이 있는 길드만, 없으면 제한 없음. `permissions`는 데몬이 부여값을 가진 길드만이고, 릴레이는 이 값으로 자기 캐시의 데몬 행을 맞춘다), 서버 목록에서 `rcon_password`/`rest_password`는 뺀다(`relay_agent.rs:262-324`). 응답의 `sleeping`으로 폴링을 멈추거나 다시 시작한다. 시작할 때 `GET /info`로 `minAgentVersion`을 비교한다(`relay_agent.rs:191-`).
 
 **(d) Sleep/Wake**: 슬래시 `/사바쨩 코코낸내`/`기상`이 메모리의 `_pausedHosts`/`_pausedGuilds` Set을 토글한다(`bot/index.ts:76-81,647-720`).
 
@@ -338,7 +339,7 @@ zod 스키마는 `middleware/schemas.ts` 한 곳에 모여 있다.
 - `/poll`, `/heartbeat`, `/result`는 daemon 안의 relay agent가 부른다. 릴레이 주소는 bot config의 `cloud.relayUrl`, 토큰은 `<data_dir>/.node_token`에서 읽는다(`relay_agent.rs:72-80`).
 - ~~relay의 `PATCH /api/hosts/:id/bot-config`를 GUI가 직접 호출해 항상 실패하고, 길드별 prefix가 언제나 기본값이다~~ → 해결: GUI는 bot config를 daemon에만 저장하고(`main.js:2857-2867`), agent heartbeat가 `botConfig`를 보낸다(`relay_agent.rs:313-321`). relay는 heartbeat metadata를 `hosts.metadata`에 저장하고 bot이 거기서 prefix를 읽는다(`heartbeat.ts:51-54`, `bot/index.ts:237-271`).
 - `result.ts:54-80`의 Discord interaction followup은 `interactionToken`이 있을 때만 동작한다. 그런데 `forwardCommand`가 이 값을 넣지 않으므로 죽은 경로다. 또 `data.message/status`를 읽는 반면 agent는 `data.text`를 보내서 필드도 맞지 않는다(`relay_agent.rs:399`).
-- `node_permissions`(`/사바쨩 권한부여/권한해제`, `bot/index.ts:531-645`)는 relay에서 **목록 조회에만 쓰인다**. 권한을 실제로 강제하는 곳은 daemon 채팅 처리기의 길드별 설정(bot config `nodeSettings`의 `allowedInstances`, `memberPermissions`)뿐이고, 설정이 없으면 제한이 없다(`src/chat/mod.rs:149-178, 345-348`). relay 쪽에서 부여한 권한은 실행 권한에 아무 영향이 없다.
+- 권한 판정의 주체는 데몬이다(`chat/permissions.rs`, 01 문서 BotConfig 절). 설정이 없는 길드도 기본 레벨(유저)로 판정한다. relay의 `node_permissions`·`nodes.default_level`은 데몬 값의 캐시이고 relay 바깥 검사(`commandAccess.ts`)에 쓴다. `/사바쨩 권한` 명령은 `permission` action으로 데몬에 보낸다.
 
 ---
 

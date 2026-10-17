@@ -706,6 +706,15 @@ impl IPCServer {
             // ── Client heartbeat ──
             .route("/api/client/register", post(handlers::client::client_register))
             .route("/api/clients", get(handlers::client::client_list))
+            // ── 디스코드 명령 권한 (P1) ──
+            .route(
+                "/api/permissions/:guild_id",
+                get(handlers::permissions::get_permissions).patch(handlers::permissions::update_permissions),
+            )
+            .route(
+                "/api/permissions/:guild_id/members/:discord_id",
+                axum::routing::put(handlers::permissions::set_member).delete(handlers::permissions::remove_member),
+            )
             .route("/api/client/:id/heartbeat", post(handlers::client::client_heartbeat))
             .route("/api/client/:id/unregister", delete(handlers::client::client_unregister))
             // ── Daemon lifecycle ──
