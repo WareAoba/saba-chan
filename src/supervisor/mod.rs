@@ -2,6 +2,7 @@ pub mod process;
 pub mod module_loader;
 pub mod managed_process;
 pub mod crash;
+pub mod highlight;
 
 use anyhow::Result;
 use process::ProcessTracker;
@@ -1577,6 +1578,32 @@ impl Supervisor {
         Ok(json!({ "success": true, "lines": [], "running": false, "source": "none" }))
     }
 
+    /// `get_console_output`에 줄마다 `spans`(의미 토큰 구간, UTF-16 오프셋)를 붙인다 (`?spans=1`)
+    pub async fn get_console_output_with_spans(
+        &self,
+        instance_id: &str,
+        since_id: Option<u64>,
+        count: Option<usize>,
+    ) -> Result<Value> {
+        let mut result = self.get_console_output(instance_id, since_id, count).await?;
+        let module = self.instance_store.get(instance_id).map(|i| i.module_name.clone()).unwrap_or_default();
+        let loaded = self.module_loader.get_module(&module).ok();
+        let hl = highlight::for_module(&module, loaded.as_ref().and_then(|m| m.metadata.syntax_highlight.as_ref()));
+        if let Some(lines) = result.get_mut("lines").and_then(Value::as_array_mut) {
+            for line in lines {
+                let spans: Vec<Value> = line
+                    .get("content")
+                    .and_then(Value::as_str)
+                    .map(|c| hl.spans(c).into_iter().map(|(s, e, t)| json!([s, e, t])).collect())
+                    .unwrap_or_default();
+                if let Some(obj) = line.as_object_mut() {
+                    obj.insert("spans".to_string(), Value::Array(spans));
+                }
+            }
+        }
+        Ok(result)
+    }
+
     /// Run validation on an instance (via module's validate function)
     pub async fn validate_instance(sup: &tokio::sync::RwLock<Self>, instance_id: &str) -> Result<Value> {
         let call = {
@@ -2604,6 +2631,39 @@ mod tests {
         assert_eq!(result["success"], true, "{}", result);
         assert_eq!(std::fs::read_to_string(&got).unwrap(), "quit-now", "the stop command went over stdin");
         assert!(started.elapsed() < std::time::Duration::from_secs(10), "it exited on its own, not after the kill timeout");
+    }
+
+    /// `?spans=1`: 디스크 로그 줄에도 모듈 규칙의 토큰 구간이 붙고, 없는 요청에는 안 붙는다
+    #[tokio::test]
+    async fn console_spans_use_module_rules() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules_dir = tmp.path().join("modules");
+        let dir = modules_dir.join("hl-game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nname = \"hl-game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[syntax_highlight.rules]]\nname = \"join\"\npattern = '(?P<hl>\\w+) joined'\ncolor = \"player\"\n",
+        )
+        .unwrap();
+        let supervisor = Supervisor::new_with_instances_dir(
+            modules_dir.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let mut inst = crate::instance::ServerInstance::new("srv", "hl-game");
+        inst.id = "srv".into();
+        let mut supervisor = supervisor;
+        supervisor.instance_store.add(inst).unwrap();
+        let log = managed_process::console_log_path(&supervisor.instance_store.instance_dir("srv"));
+        std::fs::create_dir_all(log.parent().unwrap()).unwrap();
+        std::fs::write(&log, "[2026-10-17 10:00:00] [STDOUT/INFO] Steve joined the game\n").unwrap();
+
+        let with = supervisor.get_console_output_with_spans("srv", None, Some(10)).await.unwrap();
+        assert_eq!(with["source"], "disk");
+        assert_eq!(with["lines"][0]["spans"], json!([[0, 5, "player"]]));
+        let without = supervisor.get_console_output("srv", None, Some(10)).await.unwrap();
+        assert!(without["lines"][0].get("spans").is_none());
     }
 
     /// start_managed_server()가 이미 실행 중인 managed 프로세스를 감지하여

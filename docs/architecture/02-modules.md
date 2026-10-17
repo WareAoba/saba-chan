@@ -147,7 +147,12 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 `[[commands.fields.inputs]]` (`CommandInputToml` `:738-757`)의 허용 키: `name`✔, `label`, `type`, `required`, `placeholder`, `default`, `min`, `max`, `options`. 데몬이 입력을 묶고 검사할 때 이 값을 쓴다 (`commands/mod.rs:133-`).
 
 #### `[[syntax_highlight.rules]]` (`HighlightRuleToml` `:768-784`)
-`name`✔, `pattern`✔(regex, `(?P<hl>…)` 선택), `color`✔(CSS 색 또는 시맨틱 토큰), `background`, `bold`=false, `italic`=false, `underline`=false, `priority`=0. GUI에 그대로 전달되고 데몬은 Python 전용 정규식 문법에 경고만 남긴다 (`:786-804`).
+`name`✔, `pattern`✔(regex, `(?P<hl>…)` 선택), `color`✔(시맨틱 토큰), `background`, `bold`=false, `italic`=false, `underline`=false, `priority`=0. `/api/modules`로 GUI에 그대로 전달되고, 데몬은 Python 전용 정규식 문법에 경고만 남긴다 (`:786-804`).
+- 데몬 토큰화(`src/supervisor/highlight.rs`): `GET /api/instance/:id/console?spans=1`이면 줄마다 `spans: [[start, end, token]]`를 붙인다. 오프셋은 `content`의 UTF-16 코드 단위, 오름차순·겹침 없음, 칠할 곳만 들어 있다. 디스크 폴백 줄에도 붙고, 4096바이트를 넘는 줄은 앞부분만 본다.
+  - 토큰은 16개로 고정: `error, warn, info, debug, success, string, number, keyword, timestamp, player, command, selector, ip, uuid, path, dim` (`TOKENS`). `warning`→`warn`, `trace`→`debug`, `comment`→`dim`으로 바꾸고, 색 값(`#hex`)이나 모르는 이름의 규칙은 경고를 남기고 뺀다. `bold`·`italic`·`background`·`underline`은 spans에 싣지 않는다(굵기·색은 클라이언트 테마가 토큰별로 정한다).
+  - 엔진은 Rust `regex`(선형 시간). lookaround(`(?=`, `(?!`, `(?<=`, `(?<!`)는 컴파일되지 않아 그 규칙은 빠진다. 모듈 적합성 검사가 이를 막는다(saba-chan-modules `conformance`).
+  - 겹치면 priority가 큰 규칙, 같으면 먼저 선언된 규칙이 이긴다. 모듈 규칙 뒤에 공통 규칙(스택 프레임·`... N more`→dim, `Caused by:`→error, IPv4[:포트]→ip, UUID→uuid, 따옴표 문자열→string, 퍼센트→number)이 남은 칸만 칠한다.
+  - 컴파일 결과는 모듈 이름별로 캐시하고, 규칙 지문이 바뀌면(모듈 업데이트) 다시 만든다.
 
 #### `[install]` (`InstallSectionToml` `:618-640` → `ModuleInstallConfig` `:643-661`)
 | 키 | 타입 | 기본값 |
@@ -403,7 +408,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 | 설정 | `ServerPropertiesManager`가 `server.properties`를 읽고 쓴다. 모듈 폴더에 동봉된 `server.properties`를 기본값으로 쓴다 (`_load_default_properties` `:507`). settings 66개(saba-chan 5 / advanced 40 / basic 21) |
 | 명령 | 17개, 전부 `method="console"`(콘솔 stdin): say, give, save-all, list, weather, difficulty, gamemode, time, tp, kick, ban, pardon, op, deop, whitelist, seed, stop |
 | 정지 | managed는 데몬이 stdin으로 `stop`을 보낸다. 모듈 `stop()`은 force가 아니면 콘솔 `stop`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고 30초 기다린 뒤에만 `force_kill`한다 (`:1266-1318`). ~~RCON `stop` 시도 후 실패하면 바로 강제 종료~~ → 해결. `command()`도 `daemon_stdin_command`로 콘솔에 보낸다 (`:1425-`) |
-| 기타 | `EulaManager`(accept_eula), `ErrorDetector`(diagnose_log), `MinecraftPing`(SLP 기반 status), `get_installed_version`(jar 내부 `version.json` 파싱), syntax_highlight 규칙 36개. 색은 모두 GUI 팔레트 토큰이다(`saba-chan-gui/src/utils/syntaxHighlight.js:16-36`). ~~팔레트에 없는 `notice`·`critical`을 써서 색이 안 나왔다~~ → 해결: `info`·`error`로 바꿨다 (zomboid의 `duration`도 `number`로) |
+| 기타 | `EulaManager`(accept_eula), `ErrorDetector`(diagnose_log), `MinecraftPing`(SLP 기반 status), `get_installed_version`(jar 내부 `version.json` 파싱), syntax_highlight 규칙 40개(Vanilla·Forge `[시각] [스레드/레벨]`과 Paper 콘솔 `[시각 레벨]`을 모두 받는다). 색은 모두 GUI 팔레트 토큰이다(`saba-chan-gui/src/utils/syntaxHighlight.js:16-36`). ~~팔레트에 없는 `notice`·`critical`을 써서 색이 안 나왔다~~ → 해결: `info`·`error`로 바꿨다 (zomboid의 `duration`도 `number`로) |
 | 미등록 | `get_credentials`만 없다(RCON 값만 돌려주던 것이라 지웠다). `import_settings`, `reset_properties`, `reset_server`는 등록됨 |
 | 동봉 파일 | `_sample_log.txt`, `test_lifecycle.py`가 리포에 있고 zip에도 들어간다. 패키저는 `__pycache__`·`tests` 폴더와 `.pyc`만 뺀다 (`D:scripts/versions.py:195-207`) |
 

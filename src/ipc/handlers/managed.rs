@@ -65,7 +65,8 @@ pub async fn start_managed_handler(
     }
 }
 
-/// GET /api/instance/:id/console?since=0&count=100 — Get console output
+/// GET /api/instance/:id/console?since=0&count=100&spans=1 — Get console output
+/// (`spans=1`이면 줄마다 하이라이팅 토큰 구간을 붙인다)
 pub async fn get_console_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
@@ -76,7 +77,12 @@ pub async fn get_console_handler(
     let since_id = params.get("since").and_then(|s| s.parse::<u64>().ok());
     let count = params.get("count").and_then(|c| c.parse::<usize>().ok());
 
-    match supervisor.get_console_output(&id, since_id, count).await {
+    let result = if params.get("spans").is_some_and(|v| v == "1" || v == "true") {
+        supervisor.get_console_output_with_spans(&id, since_id, count).await
+    } else {
+        supervisor.get_console_output(&id, since_id, count).await
+    };
+    match result {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::NOT_FOUND,
