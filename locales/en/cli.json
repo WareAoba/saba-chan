@@ -354,7 +354,7 @@
     "current": "Installed",
     "downloaded": "{{n}} update(s) downloaded.",
     "downloading": "Downloading",
-    "integrity_summary": "{{verified}} verified · {{failed}} failed · {{skipped}} skipped",
+    "integrity_summary": "{{verified}} intact · {{failed}} changed or unreadable · {{skipped}} with missing files",
     "last_check": "Last checked: {{at}}",
     "last_cleared": "Cleared.",
     "latest": "Latest",
@@ -365,7 +365,12 @@
     "up_to_date": "up to date",
     "updater_launched": "Updater started. The daemon is shutting down to update.",
     "verifying": "Verifying files...",
-    "unknown_key": "{{key}} is not an update setting. Settings: {{keys}}"
+    "unknown_key": "{{key}} is not an update setting. Settings: {{keys}}",
+    "integrity_empty": "No files recorded yet. Only parts installed by the updater are checked.",
+    "int_verified": "intact",
+    "int_missing": "file missing",
+    "int_changed": "changed",
+    "int_error": "unreadable"
   },
   "validate": {
     "blocked": "The server can't start until these are fixed.",

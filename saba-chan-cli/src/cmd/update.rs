@@ -61,19 +61,40 @@ pub async fn run(ctx: &Ctx, cmd: UpdateCmd) -> Result<()> {
             spin.finish_and_clear();
             let r = r?;
             ctx.out.data(&r, |r| {
+                let comps = r
+                    .get("components")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default();
+                // 업데이터가 설치한 컴포넌트만 기록이 있다 (설치기로 처음 깐 것은 빠진다)
+                if comps.is_empty() {
+                    println!("{}", output::dim(&t!("update.integrity_empty")));
+                    return;
+                }
                 let mut t = output::table(&[t!("col.name"), t!("col.state"), t!("col.what")]);
-                for c in r.get("components").and_then(Value::as_array).into_iter().flatten() {
+                for c in &comps {
                     let st = s(c, "status");
-                    let mark = match st.to_ascii_lowercase().as_str() {
-                        "ok" | "verified" | "valid" => console::style(st).green().to_string(),
-                        "skipped" | "unknown" => output::dim(st),
-                        _ => console::style(st).red().to_string(),
+                    let mark = match st {
+                        "Verified" => console::style(t!("update.int_verified")).green().to_string(),
+                        "FileNotFound" => console::style(t!("update.int_missing")).yellow().to_string(),
+                        "Tampered" => console::style(t!("update.int_changed")).red().to_string(),
+                        "Error" => console::style(t!("update.int_error")).red().to_string(),
+                        other => output::dim(other),
                     };
-                    t.add_row(vec![
-                        s(c, "display_name").to_string(),
-                        mark,
-                        s(c, "message").to_string(),
-                    ]);
+                    let mut what = s(c, "message").to_string();
+                    if let Some(f) = c
+                        .get("file_path")
+                        .and_then(Value::as_str)
+                        .filter(|f| !f.is_empty() && !what.contains(*f))
+                    {
+                        what = format!("{} ({})", what, f);
+                    }
+                    let name = if s(c, "display_name").is_empty() {
+                        s(c, "component")
+                    } else {
+                        s(c, "display_name")
+                    };
+                    t.add_row(vec![name.to_string(), mark, what]);
                 }
                 output::print_table(t);
                 println!();

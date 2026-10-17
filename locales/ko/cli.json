@@ -354,7 +354,7 @@
     "current": "설치됨",
     "downloaded": "업데이트 {{n}}개를 받았어요.",
     "downloading": "받는 중",
-    "integrity_summary": "확인 {{verified}} · 실패 {{failed}} · 건너뜀 {{skipped}}",
+    "integrity_summary": "정상 {{verified}} · 바뀜/읽기 실패 {{failed}} · 파일 없음 {{skipped}}",
     "last_check": "마지막 확인: {{at}}",
     "last_cleared": "지웠어요.",
     "latest": "최신",
@@ -365,7 +365,12 @@
     "up_to_date": "최신",
     "updater_launched": "업데이터를 띄웠어요. 업데이트를 위해 데몬이 꺼져요.",
     "verifying": "파일 확인 중...",
-    "unknown_key": "{{key}}는 업데이트 설정이 아니에요. 설정 목록: {{keys}}"
+    "unknown_key": "{{key}}는 업데이트 설정이 아니에요. 설정 목록: {{keys}}",
+    "integrity_empty": "아직 기록된 파일이 없어요. 업데이터가 설치한 구성요소만 검사해요.",
+    "int_verified": "정상",
+    "int_missing": "파일 없음",
+    "int_changed": "바뀜",
+    "int_error": "읽기 실패"
   },
   "validate": {
     "blocked": "이 문제를 고쳐야 서버를 켤 수 있어요.",
