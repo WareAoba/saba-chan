@@ -138,7 +138,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `method` | String | `console`(템플릿을 채워 콘솔 stdin으로. 예전 이름 `rcon`은 읽을 때 `console`로 바뀐다, `D:src/supervisor/module_loader.rs:836`) / `rest` / `module`(lifecycle `command()`, 예전 이름 `dual`·`both`도 받음) / 생략(=`module`). 해석은 데몬 `crate::commands`가 한다 (`D:src/commands/mod.rs:104-128`) |
 | `http_method` | String | REST 전용. 기본 `GET` |
 | `endpoint_template` | String | REST 전용. 없으면 `/<name>` |
-| `console_template` | String | 예: `"kick {player}"`. 예전 이름 `rcon_template`도 별칭으로 읽는다 (`D:src/supervisor/module_loader.rs:256-257, 730`) |
+| `console_template` | String | 예: `"kick {player}"`. 예전 이름 `rcon_template`도 별칭으로 읽는다 (`D:src/supervisor/module_loader.rs:256-257, 730`). 인자에 `\r`·`\n`·NUL이 있으면 400 `invalid_argument`로 거부하고, stdin 전송(`ManagedProcess::send_command`)도 여러 줄 명령을 거부한다. 값 하나가 콘솔 명령 두 줄이 되지 않게 한다 |
 | `risk` | String | `safe` / `caution` / `danger`, 없으면 caution |
 | `inputs` | Vec<CommandInput> | |
 

@@ -397,7 +397,14 @@ impl ManagedProcess {
     }
 
     /// Send a command string to the process's stdin.
+    ///
+    /// 한 번에 한 줄만 보낸다. 끝의 줄바꿈은 떼고, 안에 줄바꿈이 있으면 거부한다
+    /// (그대로 보내면 서버가 두 번째 명령으로 읽는다).
     pub async fn send_command(&self, command: &str) -> Result<()> {
+        let command = command.trim_end_matches(['\r', '\n']);
+        if crate::commands::has_line_break(command) {
+            anyhow::bail!("command must be a single line");
+        }
         self.stdin_tx.send(command.to_string()).await
             .map_err(|e| anyhow::anyhow!("stdin channel closed: {}", e))
     }
