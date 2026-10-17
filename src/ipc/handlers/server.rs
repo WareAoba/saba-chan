@@ -43,6 +43,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
         // Native 모드 데이터
         pid: Option<u32>,
         start_time: Option<u64>,
+        managed: bool,
     }
 
     let (snapshots, all_instances, module_protocols): (Vec<InstanceSnapshot>, Vec<_>, _) = {
@@ -77,6 +78,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
                 extension_data: instance.extension_data.clone(),
                 instance_dir: supervisor.instance_store.instance_dir(&instance.id).to_string_lossy().to_string(),
                 process_patterns,
+                managed: supervisor.uses_managed_start(instance),
                 pid,
                 start_time,
             }
@@ -162,6 +164,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
                     server_version: instance.server_version.clone(),
                     last_api_action: last_api,
                     provisioning,
+                    managed: instance.managed,
                     extension_status,
                     extension_data: instance.extension_data.clone(),
                     port_conflicts: vec![],
@@ -211,6 +214,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
             server_version: instance.server_version.clone(),
             last_api_action: last_api,
             provisioning,
+            managed: instance.managed,
             extension_status: std::collections::HashMap::new(),
             extension_data: instance.extension_data.clone(),
             port_conflicts: vec![],
@@ -899,3 +903,37 @@ pub async fn stop_instance(state: IPCServer, key: &str, force: bool) -> axum::re
 }
 
 // NOTE: sync_gui_config は config::save_gui_config に統合されました (portConflictCheck 同期含む)
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    #[tokio::test]
+    async fn server_list_says_which_servers_the_runner_manages() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("plain");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let default = crate::instance::ServerInstance::new("default", "plain");
+        let mut direct = crate::instance::ServerInstance::new("direct", "plain");
+        direct.module_settings.insert("managed_start".into(), json!(false));
+        sup.instance_store.add(default).unwrap();
+        sup.instance_store.add(direct).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+
+        let body = crate::ipc::internal::into_internal(list_servers(State(state)).await).await.body;
+        let managed = |name: &str| {
+            body["servers"].as_array().unwrap().iter().find(|s| s["name"] == name).unwrap()["managed"].clone()
+        };
+        assert_eq!(managed("default"), json!(true), "managed is the default (C8b)");
+        assert_eq!(managed("direct"), json!(false));
+    }
+}

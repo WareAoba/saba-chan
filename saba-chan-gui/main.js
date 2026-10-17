@@ -2009,7 +2009,7 @@ ipcMain.handle('instance:updateSettings', async (_event, id, settings) => {
 // ── 모듈-독립적 입력값 검증 헬퍼 ──────────────────────────────
 // module.toml의 inputs 스키마에 따라 args를 검증하고 정규화합니다.
 // 모듈 이름을 전혀 참조하지 않으므로 어떤 게임 모듈에도 동일하게 동작합니다.
-// 게임 명령 — 해석(명령 정의·별명·인자 검증)과 라우팅(RCON·REST·stdin·모듈)은 데몬이 한다.
+// 게임 명령 — 해석(명령 정의·별명·인자 검증)과 라우팅(stdin·REST·모듈)은 데몬이 한다.
 // command는 "say hello"처럼 한 줄이어도 되고, 이름 + args(이름별 객체)여도 된다.
 ipcMain.handle('instance:executeCommand', async (_event, id, command) => {
     const payload = {

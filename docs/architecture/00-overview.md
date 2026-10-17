@@ -7,25 +7,26 @@
 
 ## 기준 스냅샷
 
-| 저장소 | 커밋 | 커밋 날짜 |
+| 저장소 | 브랜치 · 커밋 | 커밋 날짜 |
 |---|---|---|
-| WareAoba/saba-chan | `77acaee` 정리14 | 2026-04-14 |
-| WareAoba/saba-chan-modules | `0ab6035` 정리6 | 2026-03-07 |
-| WareAoba/saba-chan-extensions | `e5df73f` | 2026-04-14 |
-| WareAoba/server-chan | `4c423e8` 정리6 | 2026-04-14 |
+| WareAoba/saba-chan | `claude/project-thread-qcza9f` `096e4aa` (CLI 절은 `claude/cli-remake-b1wszk`) | 2026-10-17 |
+| WareAoba/saba-chan-modules | `claude/project-thread-qcza9f` `e508555` | 2026-10-17 |
+| WareAoba/saba-chan-extensions | `claude/project-thread-qcza9f` `359741f` | 2026-10-17 |
+| WareAoba/server-chan | `main` `4c423e8` (릴레이 쪽은 다시 만드는 중이라 갱신하지 않았다) | 2026-04-14 |
 
-- 모든 근거는 위 커밋의 GitHub `main`이다. 이후 커밋이 쌓이면 해당 절의 file:line을 다시 확인해야 한다.
+- 근거는 위 커밋이다. 이후 커밋이 쌓이면 해당 절의 file:line을 다시 확인해야 한다.
 - 읽기만 했고 실행·테스트는 하지 않았다. "버그"로 적힌 항목은 코드 판독에 근거한 판단이며, 고치기 전에 재현부터 하는 게 맞다.
+- 고친 문제는 지우지 않고 `~~예전 내용~~ → 해결: 지금 동작 (file:line)`으로 남긴다.
 
 ## 문서 구성
 
 | 파일 | 다루는 것 |
 |---|---|
-| [01-daemon-core.md](01-daemon-core.md) | 데몬 기동, **IPC HTTP API 전체 라우트 표(약 95개)**, 인증, 인스턴스 모델·영속화, 전역 설정, 명령 경로(stdin/REST), 내장 Python/Node, plugin 실행기 |
+| [01-daemon-core.md](01-daemon-core.md) | 데몬 기동, **IPC HTTP API 전체 라우트 표(약 95개)**, 인증, 인스턴스 모델·영속화, 전역 설정(`config.json`), 명령 경로(stdin/REST), 내장 Python, plugin 실행기 |
 | [02-modules.md](02-modules.md) | `module.toml` 전체 스키마(Rust 역직렬화 기준), `lifecycle.py` 호출 프로토콜과 함수 매트릭스, managed process, 게임별 기능, 모듈 배포 |
 | [03-extensions.md](03-extensions.md) | 플러그인(코드상 extension) `manifest.json` 스키마, hook 전수 목록과 hook×익스텐션 매트릭스, 설치·활성화 수명주기, GUI 컴포넌트 주입(UMD/slot) 계약 |
-| [04-clients.md](04-clients.md) | GUI(Electron) preload 채널 전수표, CLI(하위 명령·대화형 셸·`--json`), Discord 봇, 공유 상수·로케일, **인터페이스가 데몬을 우회하는 지점 전수 목록(§7)** |
-| [05-updater-servers.md](05-updater-servers.md) | 업데이터·인스톨러·CI, server-chan relay API·DB·프로토콜 (운영 결함·비밀 파일은 server-chan 비공개 문서) |
+| [04-clients.md](04-clients.md) | GUI(Electron) preload 채널 전수표, CLI(하위 명령·대화형 셸·`--json`), 디스코드 연동(데몬 쪽), 공유 상수·로케일, **인터페이스가 데몬을 우회하는 지점 전수 목록(§7)** |
+| [05-updater-servers.md](05-updater-servers.md) | 업데이터·인스톨러·언인스톨러·CI, server-chan relay API·DB·프로토콜 (운영 결함·비밀 파일은 server-chan 비공개 문서) |
 
 ---
 
@@ -75,57 +76,52 @@
 
 | 계약 | 형식 | 상세 |
 |---|---|---|
-| 인터페이스 → 데몬 | HTTP JSON, `X-Saba-Token`(데몬이 `.ipc_token` 파일에 기록, 클라이언트가 읽음). 토큰 파일이 없으면 인증 생략(fail-open) | 01 §2, §3 |
-| 데몬 → 모듈 | `python lifecycle.py <fn>`, stdin JSON(config) → stdout 마지막 JSON, stderr `PROGRESS:` 진행 보고, 기본 120초 타임아웃. 데몬이 부르는 함수 16종 | 02 §2 |
-| 모듈 정의 | `module.toml`: `[module]`(필수) `[protocols]` `[config]` `[detection]` `[[settings.fields]]` `[[commands.fields]]` `[install]` `[docker]` 등. 모르는 키는 조용히 버려짐 | 02 §1.2 |
-| 데몬 → 플러그인 | 같은 실행기로 hook 함수 호출. 실제 발화 hook 10종(`daemon.startup/shutdown`, `server.pre_start/post_stop/status/list_enrich/post_create/pre_delete/settings_changed/check_update`) | 03 §2 |
+| 인터페이스 → 데몬 | HTTP JSON, `X-Saba-Token`(데몬이 `.ipc_token` 파일에 기록, 클라이언트가 읽음). `/api/updates/*`를 포함한 모든 라우트가 토큰을 요구하고, 토큰이 없으면 거부한다. loopback이 아닌 Host는 403. 데몬은 `daemon.lock`으로 한 개만 뜬다 | 01 §1.6, §2, §3 |
+| 설정 | 사용자 설정은 `<data_dir>/config.json` 하나(네임스페이스 `gui`, `relay`, `updates`, `boot`, `extensions`, `chatbot`, 클라이언트별 영역). 원자적 저장과 `.bak` 복구, 예전 개별 파일은 한 번 이관하고 `.migrated` 사본을 남긴다 | 01 §4.4 |
+| 데몬 → 모듈 | `python lifecycle.py <fn>`, stdin JSON(config) → stdout JSON(전체 또는 마지막 줄), stderr `PROGRESS:` 진행 보고. 데몬이 부르는 함수 17종. 환경변수 `SABA_IPC_URL`, `SABA_TOKEN_PATH`, `SABA_LANG`, `SABA_ENABLED_EXTENSIONS` | 02 §2 |
+| 모듈 정의 | `module.toml`: `[module]`(필수) `[protocols]` `[config]` `[detection]` `[launch]` `[backup]` `[errors]` `[extensions.<id>]` `[[settings.fields]]` `[[commands.fields]]` `[install]`. `schema_version = 1`이면 모르는 키와 잘못된 값에서 로드가 실패하고, 같은 구조체에서 JSON Schema를 내보낸다 | 02 §1.2 |
+| 게임 명령 | 모두 stdin(서버 콘솔). `/api/instance/:id/rcon`은 이름만 남은 호환 경로로 콘솔 출력을 잠깐 모아 돌려준다. 콘솔 없는 서버는 409 `no_command_path`. REST(palworld)는 `/rest` | 01 §5.4, 02 RCON 정책 |
+| 데몬 → 플러그인 | 같은 실행기로 hook 함수 호출. `FIRED_HOOKS` 목록(`daemon.startup/shutdown`, `server.pre_start/stop/status/list_enrich/pre_delete/settings_changed/check_update`, 익스텐션 명령 `command.<name>`). 순서는 `priority`, id 순 | 03 §2 |
 | 플러그인 → GUI | GUI가 `/api/extensions/:id/gui` 번들을 로드, 전역 `window.SabaExt<Pascal>`의 `registerSlots()`로 slot에 컴포넌트 주입 | 03 §4 |
-| 데몬 ↔ relay | 페어링·호스트/노드 조회는 데몬 `/api/relay/*` 프록시. 봇 relay agent는 relay에 직접 HMAC 서명 요청 | 05 §4 |
-| 업데이트 | 데몬이 updater 라이브러리를 내장. 릴레이(`/v1/updates/check`, `/v1/updates/manifest/:version`)에서 Ed25519 서명 manifest를 받아 검증하고, 파일은 R2에서 SHA-256을 확인하며 받는다. 모듈(`module-*`)·익스텐션(`ext-*`)도 같은 manifest에 든다. GUI/코어/업데이터 자신은 `pending.json` 기록 후 데몬이 `saba-chan-updater --apply`를 띄운다(`POST /api/updates/launch-updater`) | 05 §1 |
+| 데몬 ↔ relay | 데몬 안의 relay_agent가 바깥으로 롱폴링하고 HMAC 서명으로 요청한다. 페어링·봇 초대·노드 조회는 데몬 `/api/relay/*` 프록시 | 04 §4, 05 §4 |
+| 업데이트 | 데몬이 updater 라이브러리를 내장. 릴레이에서 Ed25519 서명 manifest를 받아 검증하고, 파일은 R2에서 SHA-256을 확인하며 받는다. 모듈(`module-*`)·익스텐션(`ext-*`)도 같은 manifest에 든다. 확인 주기는 데몬 스케줄러가 돈다. GUI/코어/업데이터 자신은 데몬이 `saba-chan-updater --apply`를 일회용 티켓과 함께 띄운다(`POST /api/updates/launch-updater`). 설치 후 무결성은 적용 때 기록한 파일별 해시로 비교한다 | 05 §1 |
 
 ## 4. 원칙 위반 종합 (오너 정의 기준)
 
 ### 4.1 인터페이스가 데몬을 우회 ("인터페이스는 혼자 아무것도 못한다" 위반)
 
-1. GUI가 `settings.json`을 직접 읽고 쓴다. 분기 기준이 "데몬이 살아 있나"가 아니라 "이 GUI가 데몬을 spawn했나"라서 데몬이 떠 있어도 직접 쓰는 경우가 생긴다(04 §7 G2–G4).
-2. GUI가 relay에 bot-config를 직접 PATCH한다. 데몬 `relay.rs` 주석의 "GUI/CLI는 relay에 직접 접근 금지"와 정면 충돌하고, 실제로 항상 실패한다(04 G17).
-3. 게임 명령 해석(rcon/rest 분기, 템플릿 치환, 기본 endpoint)을 GUI와 봇이 **각각** 구현한다. 데몬은 raw `/rcon`, `/rest`만 제공한다(02 §6.5 #1).
-4. managed/native 시작 경로 선택, 기존 폴더→모듈 판정을 인터페이스가 한다(02 §6.5 #2, #3).
-5. ~~디스코드 봇 실행 명령을 GUI와 데몬이 따로 조립한다~~ 없어짐: 로컬 봇이 L1에서 지워졌다.
-6. ~~CLI 로컬 fs 폴백·자체 설정 파일~~ CLI 리메이크(PR #6)에서 해결됨. 남은 것은 부트스트랩뿐이다(04 §7.3).
-7. 업데이트 3시간 타이머를 GUI가 돌리고, 업데이터 exe를 GUI가 직접 실행한다(CLI는 리메이크 뒤 데몬 API로 요청)(05 §6.1).
-8. ~~봇이 설정 파일을 직접 읽고 music 기능이 외부 프로그램을 직접 실행한다~~ 없어짐: 로컬 봇이 L1에서 지워졌다.
+1. GUI가 데몬 상태와 상관없이 `config.json`의 `gui`를 직접 읽는다. 쓰기는 데몬이 응답하지 않을 때(부트스트랩)만 한다(04 §7 G2–G4).
+2. ~~GUI가 relay에 bot-config를 직접 PATCH한다~~ → 해결: 없어졌다(04 §7).
+3. 기존 서버 폴더 → 모듈 판정을 GUI 마이그레이션 화면이 아직 직접 한다. 게임 명령 해석은 데몬(`/api/instance/:id/command`, `src/commands`)으로 옮겨졌다(02 §6.5).
+4. ~~디스코드 봇 실행 명령을 GUI와 데몬이 따로 조립한다~~ 없어짐: 로컬 봇이 L1에서 지워졌다.
+5. ~~CLI 로컬 fs 폴백·자체 설정 파일~~ CLI 리메이크(PR #6)에서 해결됨. 남은 것은 부트스트랩뿐이다(04 §7.3).
+6. ~~업데이트 타이머와 업데이터 실행을 GUI가 한다~~ → 해결: 확인은 데몬 스케줄러가, 업데이터 실행은 데몬이 한다(05 §1.7).
+7. 데몬 재기동과 언인스톨러 실행은 데몬 API가 없어 GUI가 직접 한다(04 §7.5).
 
-부트스트랩상 불가피한 것(토큰 파일 읽기, 최초 데몬 spawn)은 예외다. 데몬 **종료**는 `/api/daemon/shutdown`이 있으므로 OS kill 대신 API로 바꿀 수 있다.
+부트스트랩상 불가피한 것(토큰 파일 읽기, 최초 데몬 spawn)은 예외다. GUI는 데몬을 끌 때 `/api/daemon/shutdown`을 먼저 쓰고, 강제 종료는 자기가 띄운 PID에만 한다.
 
 ### 4.2 데몬이 게임·플러그인 지식을 하드코딩 ("모듈=설명서, 플러그인=자유 교체" 위반)
 
-- 플러그인 이름 하드코딩: `docker`, `docker_enabled`, `steamcmd_*`, `music`가 supervisor·instance·module_loader(`[docker]` 섹션)에 박혀 있다. docker UI 문자열도 호스트 `locales/*/gui.json`에 있다(03 §7.3, 01 §9.A-8).
-- 게임 지식 하드코딩: `java_path`, `ram`, `server.jar`, `server.properties`, `accept_eula`(Minecraft) 등이 데몬 공용 API에 있다. GUI도 `module === 'palworld'`로 분기한다(02 §6.5 #6–#8).
-- 모듈이 플러그인을 `from extensions.x import`로 직접 import하고, 모듈이 데몬 HTTP를 역호출한다(인증 없이, 포트 하드코딩). 플러그인 비활성화로 막을 수 없다(02 §6.5 #9, #10).
+- ~~플러그인 이름 하드코딩(`docker`, `steamcmd_*`, `music`)~~ → 해결: docker·music은 지워졌고, 설치 방식 필드는 `install_method_<방식>`, `<방식>_<이름>` 범용 규칙이 됐다(03 §7.3).
+- 게임 지식 하드코딩: `java_path`, `ram`, `server.jar`, `accept_eula`(Minecraft) 등이 데몬 공용 코드에 남아 있다. GUI도 `module === 'palworld'`로 분기한다(02 §6.5 #6–#8).
+- 모듈이 플러그인을 `from extensions.x import`로 직접 import한다. 비활성 익스텐션 import는 실행기의 import 가드가 막는다. 모듈→데몬 역호출은 이제 토큰을 보낸다(02 §6.5 #9, #10).
 
-## 5. 우선순위 높은 문제 (판독 기준, 재현 전)
+## 5. 남은 문제 (판독 기준, 재현 전)
 
 ### 보안
-- 데몬 `/api/updates/*`가 인증 미들웨어 바깥에 붙어 있다(`src/ipc/mod.rs:667-669`). 세부는 01 §9.B.
+- `/health`도 토큰을 요구하고, 토큰 비교가 상수 시간이 아니다. `?relayUrl=`로 노드 토큰을 임의 호스트에 보낼 수 있고, `/api/fs/scan-dir`는 아무 디렉터리나 나열한다(01 §9.B).
 - 운영 서버(server-chan)와 비밀 파일 관련 항목은 공개 저장소에 두지 않고 server-chan 비공개 문서에서 관리한다.
 
-### 기능이 깨져 있을 가능성이 큰 것
-- 업데이터 무결성 검사: CI는 zip 해시를 넣는데 검사기는 압축 해제된 파일을 해시한다. 해시가 있는 모든 컴포넌트가 "Tampered"로 나온다(05 §1.5). 모듈 업데이트는 릴리즈 태그를 버전으로 비교해 감지되지 않을 가능성이 크다(02 §5).
-- GUI `updater:setConfig`가 `/api/updates/config`에 POST를 보내는데 데몬은 GET/PUT만 받는다 → 405(04 §6.1). CLI 쪽 같은 문제는 리메이크에서 사라졌다.
-- 모듈 → 데몬 역호출(`daemon_rcon` 등)이 토큰을 안 보내서 인증이 켜진 환경에서 401. Zomboid stdin 호출은 페이로드 키도 틀림(`input` vs `command`)(02 §5 요약).
-- minecraft `import_settings`/`reset_properties`, palworld `import_settings`가 정의만 되고 `FUNCTIONS` 디스패치 표에 없어 항상 "Unknown function"(02 §2.4).
-- Linux/macOS에서 `SABA_ENABLED_EXTENSIONS` 경로가 틀려 플러그인 활성 여부를 모듈이 못 읽는다(`src/plugin/mod.rs:140`).
-- 크래시 감지·자동 재시작 없음(상태 머신이 사실상 dead code). ~~managed 모드에서 Minecraft·Zomboid는 RCON을 끄는데 명령은 RCON으로 보낸다~~ → 해결: 명령은 모두 stdin으로 간다(02 RCON 정책).
-- 업데이트 실패 직후 5초 안에 진행 표시를 닫으면 기존 인스턴스가 삭제될 수 있다(01 §9.B-10).
-- GUI 종료 시 봇 정지 요청이 스코프 오류로 전송되지 않는다(`main.js:1536/1559`).
+### 기능
+- ~~업데이터 무결성 검사가 항상 "Tampered"~~, ~~GUI `updater:setConfig` 405~~, ~~모듈 역호출 401~~, ~~`FUNCTIONS` 표 누락~~, ~~`SABA_ENABLED_EXTENSIONS` 경로~~, ~~크래시 감지 없음~~, ~~명령이 꺼진 RCON으로 감~~, ~~업데이트 직후 인스턴스 삭제 위험~~, ~~GUI 종료 시 봇 정지 오류~~ → 모두 해결(각 문서의 해결 표시 참고).
+- `server.post_create`는 `FIRED_HOOKS`에 있지만 발화하는 코드가 없다(03 §2.3).
+- `auto_apply` 업데이트 설정은 저장만 되고 동작하지 않는다(05 §1.7).
+- GUI는 `interaction_mode = "console"`이고 `managed_start`가 없을 때만 관리 모드로 보는데, 데몬은 모든 모듈을 기본으로 관리 모드로 띄운다(02 §1.2).
+- CLI의 본문 없는 `POST /api/updates/apply`·`/download`가 거부될 수 있다(05 §6.2 U8, 미확인).
 
 ### 구조 정리 대상
-- 단일 인스턴스 보장 없음 → 두 번째 데몬이 `.ipc_token`을 덮어써 기존 데몬이 모든 요청에 401(01 §1.6).
-- 긴 Python 호출 동안 supervisor/익스텐션 락을 잡아 다른 요청이 막힌다(01 §9.B-13, 03 §7.2).
-- hook 실행 순서가 HashMap 순서라 비결정적이고, `handled`가 체인을 끊는다(03 §7.2).
-- manifest에 선언됐지만 발화되지 않는 hook 7종, 읽히지 않는 manifest 필드(`async`, `min_app_version`, `gui.slots` 등), 무시되는 `module.toml` 키(`entry`, `[detection.linux]`, 명령 입력 `options/min/max`)(02 §1.2, 03 §1.3).
-- 릴리즈 CI가 매번 이전 릴리즈를 전부 삭제하고, 런타임 파일(`dockerd.pid`, `.deps-resolved.json`)이 배포 zip에 섞인다(03 §7.2).
+- ~~단일 인스턴스 보장 없음~~, ~~긴 Python 호출 동안 락 점유~~, ~~hook 순서 비결정~~, ~~발화되지 않는 hook·읽히지 않는 manifest 필드 대부분~~, ~~릴리즈 CI가 이전 릴리즈 삭제~~ → 해결.
+- manifest의 `module_config_section`은 여전히 읽히지 않는다(03 §7.1). `server.list_enrich`는 인스턴스마다 순차로 돈다(03 §7.2).
 
 ## 6. 문서 유지 규칙
 

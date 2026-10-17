@@ -590,7 +590,7 @@ impl Supervisor {
                 cfg.insert("port".to_string(), json!(port));
             }
             Self::insert_instance_fields(&mut cfg, &instance);
-            // Non-managed → managed=false로 명시 (모듈이 RCON 정책 등을 구분)
+            // Non-managed → managed=false로 명시 (모듈이 실행 방식을 구분)
             cfg.insert("managed".to_string(), json!(false));
             let final_config = Value::Object(cfg);
 
@@ -1319,7 +1319,7 @@ impl Supervisor {
                 cfg.insert("port".to_string(), json!(port));
             }
             Self::insert_instance_fields(&mut cfg, &instance);
-            // Managed mode indicator → Python module uses this to enforce RCON policy
+            // Managed mode indicator → 모듈이 실행 방식을 구분
             cfg.insert("managed".to_string(), json!(true));
             let final_config = Value::Object(cfg);
 
@@ -1482,14 +1482,14 @@ impl Supervisor {
             Some(Value::String(s)) if s == "true" => true,
             Some(Value::String(s)) if s == "false" => false,
             // C8b: 모든 서버가 기본 managed (saba-runner가 PID·로그·종료 코드를 쥔다).
-            // stdin이 없는 게임은 명령을 RCON/REST로, 정지를 모듈 stop()으로 처리한다.
+            // stdin이 없는 게임은 명령을 REST로, 정지를 모듈 stop()으로 처리한다.
             _ => true,
         }
     }
 
     /// 콘솔 명령을 stdin으로 보내야 하는가.
-    /// managed 모드는 RCON을 끄고 stdin으로 제어하므로, 모듈이 `stdin`을 지원하고
-    /// stdin이 열린 managed 프로세스가 돌고 있으면 RCON 대신 stdin을 쓴다.
+    /// 모듈이 `stdin`을 지원하고 stdin이 열린 managed 프로세스가 돌고 있으면 stdin을 쓴다
+    /// (RCON은 보안상 늘 꺼져 있다).
     pub async fn routes_commands_to_stdin(&self, instance_id: &str) -> bool {
         let Some(instance) = self.instance_store.get(instance_id) else { return false };
         let module_has_stdin = self

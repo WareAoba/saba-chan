@@ -1629,6 +1629,25 @@ pub async fn run_hook_to(
 
 #[cfg(test)]
 mod tests {
+    /// FIRED_HOOKS의 이름마다 데몬 코드(이 파일 밖) 어딘가에서 그 이름으로 hook을 부른다
+    #[test]
+    fn every_listed_hook_is_fired_somewhere() {
+        fn sources(dir: &std::path::Path, out: &mut String) {
+            for e in std::fs::read_dir(dir).unwrap().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    sources(&p, out);
+                } else if p.extension().is_some_and(|x| x == "rs") && !p.ends_with("extension/mod.rs") {
+                    out.push_str(&std::fs::read_to_string(&p).unwrap());
+                }
+            }
+        }
+        let mut code = String::new();
+        sources(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut code);
+        let unfired: Vec<&&str> = FIRED_HOOKS.iter().filter(|h| !code.contains(&format!("\"{}\"", h))).collect();
+        assert!(unfired.is_empty(), "listed in FIRED_HOOKS but never fired: {:?}", unfired);
+    }
+
     use super::*;
     use serde_json::json;
 

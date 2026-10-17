@@ -24,7 +24,7 @@ fn field(name: &str, method: &str, inputs: Vec<CommandInput>) -> CommandField {
         method: Some(method.into()),
         http_method: None,
         endpoint_template: None,
-        rcon_template: None,
+        console_template: None,
         risk: None,
         inputs,
     }
@@ -38,21 +38,21 @@ fn module() -> ModuleMetadata {
         amount.max = Some(64.0);
         amount
     }]);
-    give.rcon_template = Some("give {player} {item} {amount}".into());
+    give.console_template = Some("give {player} {item} {amount}".into());
 
-    let mut say = field("say", "rcon", vec![input("message", "text", true)]);
-    say.rcon_template = Some("say {message}".into());
+    let mut say = field("say", "console", vec![input("message", "text", true)]);
+    say.console_template = Some("say {message}".into());
 
     let mut announce = field("announce", "rest", vec![input("message", "text", true)]);
     announce.http_method = Some("post".into());
     announce.endpoint_template = Some("/v1/api/announce".into());
 
-    let mut weather = field("weather", "rcon", vec![{
+    let mut weather = field("weather", "console", vec![{
         let mut kind = input("type", "text", true);
         kind.options = Some(vec!["clear".into(), "rain".into()]);
         kind
     }]);
-    weather.rcon_template = Some("weather {type}".into());
+    weather.console_template = Some("weather {type}".into());
 
     let mut meta = crate::supervisor::module_loader::parse_module_toml(
         "[module]\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n",
@@ -76,7 +76,7 @@ fn plan_of(command: &str, args: Value) -> Result<Plan, PlanError> {
 fn one_line_input_fills_inputs_in_order_and_defaults_the_rest() {
     assert_eq!(
         plan_of("give Steve diamond", Value::Null),
-        Ok(Plan::Rcon { line: "give Steve diamond 1".into() })
+        Ok(Plan::Console { line: "give Steve diamond 1".into() })
     );
 }
 
@@ -84,7 +84,7 @@ fn one_line_input_fills_inputs_in_order_and_defaults_the_rest() {
 fn last_input_takes_the_remaining_words() {
     assert_eq!(
         plan_of("say hello there world", Value::Null),
-        Ok(Plan::Rcon { line: "say hello there world".into() })
+        Ok(Plan::Console { line: "say hello there world".into() })
     );
 }
 
@@ -93,13 +93,13 @@ fn named_and_positional_args_give_the_same_plan() {
     let named = plan_of("give", json!({ "player": "Steve", "item": "stone", "amount": "3" }));
     let positional = plan_of("give", json!(["Steve", "stone", "3"]));
     assert_eq!(named, positional);
-    assert_eq!(named, Ok(Plan::Rcon { line: "give Steve stone 3".into() }));
+    assert_eq!(named, Ok(Plan::Console { line: "give Steve stone 3".into() }));
 }
 
 #[test]
 fn aliases_and_case_find_the_command() {
-    assert_eq!(plan_of("말 안녕", Value::Null), Ok(Plan::Rcon { line: "say 안녕".into() }));
-    assert_eq!(plan_of("SAY hi", Value::Null), Ok(Plan::Rcon { line: "say hi".into() }));
+    assert_eq!(plan_of("말 안녕", Value::Null), Ok(Plan::Console { line: "say 안녕".into() }));
+    assert_eq!(plan_of("SAY hi", Value::Null), Ok(Plan::Console { line: "say hi".into() }));
 }
 
 #[test]
@@ -139,7 +139,7 @@ fn invalid_input_is_rejected_with_the_field() {
 
     let not_an_option = plan_of("weather snow", Value::Null).unwrap_err();
     assert_eq!((not_an_option.code, not_an_option.field.as_deref()), ("invalid_argument", Some("type")));
-    assert_eq!(plan_of("weather rain", Value::Null), Ok(Plan::Rcon { line: "weather rain".into() }));
+    assert_eq!(plan_of("weather rain", Value::Null), Ok(Plan::Console { line: "weather rain".into() }));
 
     assert_eq!(plan_of("odd", Value::Null).unwrap_err().code, "unsupported_method");
 }

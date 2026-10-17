@@ -29,20 +29,19 @@
     │  bot → POST /api/command (x-internal-secret, SELF_URL 루프백)
     │  PostgreSQL command_queue 에 적재 → pollWaiters.wake(hostId)
     ▼
-GET /poll (long-poll 25s, HMAC 서명)  ◄──── [saba-chan discord_bot 프로세스 = relayAgent]
+GET /poll (long-poll 25s, HMAC 서명)  ◄──── [saba-core 안의 relay agent (src/relay_agent.rs)]
 POST /result/:id                     ────►   (Discord에 로그인하지 않음)
-POST /heartbeat (60s)                         │ mock Message → core/processor.js
+POST /heartbeat (60s)                         │ raw_command → crate::chat (같은 프로세스)
                                               ▼
-                                       daemon IPC http://127.0.0.1:57474 (X-Saba-Token)
-                                              ▲
-                     daemon이 discord_bot을 ext-process "discord-bot"으로 spawn
-                     (src/main.rs:669 auto_start_discord_bot) — GUI도 같은 일을 한다(§6.1)
+                                       daemon 핸들러를 직접 호출 (IPC 경유 없음)
+                     노드 토큰이 있으면 daemon 기동 때 자동 시작
+                     (relay_agent.rs:155-160, ipc/mod.rs:785-787), /api/relay/agent/start·stop
 
 [GUI/CLI] ──► daemon /api/relay/* (pairing·host/node 조회 proxy, relay.rs) ──► relay /api/pair/*, /api/hosts/*, /api/nodes/*
 ```
 
-- **local 모드**에서는 `discord_bot`이 사용자 본인의 `DISCORD_TOKEN`으로 Discord에 직접 로그인한다(`saba-chan/discord_bot/index.js:156-330`). server-chan은 관여하지 않는다.
-- **cloud 모드**에서는 Discord를 향하는 bot이 server-chan 쪽의 중앙 bot이다(`server-chan(git)/relay-server/src/bot/index.ts`). saba-chan의 `discord_bot`은 명령을 실제로 실행하는 "relay agent" 역할만 한다(`discord_bot/core/relayAgent.js`).
+- 로컬 Discord bot(`discord_bot/`, local 모드)은 없어졌다. Discord bot은 server-chan 쪽 중앙 bot 하나뿐이다(`server-chan(git)/relay-server/src/bot/index.ts`).
+- saba-chan 쪽 실행기는 daemon 안의 relay agent다. 받은 `raw_command`를 `crate::chat::api::run_with_daemon_settings`로 처리해 답한다(`relay_agent.rs:388-404`).
 - 운영 쪽 부가 구성요소(music-server, chatbot-server)는 server-chan 비공개 문서에서 다룬다(§5).
 
 ---
@@ -53,36 +52,39 @@ POST /heartbeat (60s)                         │ mock Message → core/processo
 
 | 크레이트 | 경로 | 버전 | 역할 |
 |---|---|---|---|
-| `saba-chan-updater-lib` | `saba-chan/updater/` (`Cargo.toml` v0.1.1) | 0.1.1 | 실제 로직(`UpdateManager`). daemon이 **in-process로 링크**하고 updater exe도 쓴다 |
-| `saba-chan-updater` (bin, Tauri) | `saba-chan/updater/gui/src-tauri/` | 0.1.1 (`tauri.conf.json:3`) | **apply 전용** GUI exe. `--apply` 없이 실행하면 종료한다 |
-| 루트 workspace | `saba-chan/Cargo.toml:12` | — | members = `.`, `updater`, `updater/gui/src-tauri`, `installer/gui/src-tauri`, `saba-chan-cli` |
+| `saba-chan-updater-lib` | `saba-chan/updater/` (`Cargo.toml` v0.1.2) | 0.1.2 | 실제 로직(`UpdateManager`). daemon이 **in-process로 링크**하고 updater exe·installer도 쓴다 |
+| `saba-chan-updater` (bin, Tauri) | `saba-chan/updater/gui/src-tauri/` | 0.1.2 (`tauri.conf.json:3`) | **apply 전용** GUI exe. `--apply` 없이 실행하면 종료한다 |
+| 루트 workspace | `saba-chan/Cargo.toml:12` | — | members = `.`, `runner`, `updater`, `updater/gui/src-tauri`, `installer/gui/src-tauri`, `saba-chan-cli` |
 
-`updater/src/constants.rs`는 "모든 크레이트가 공유하는 SSOT"라고 스스로 설명한다(`constants.rs:1-4`). daemon도 `saba_chan_updater_lib::constants::*`로 data dir, 토큰 경로, IPC 포트(57474, `constants.rs:16-18`)를 가져다 쓴다. 즉 경로/상수 SSOT가 updater 라이브러리 안에 들어 있다.
+버전의 원천은 저장소 루트 `versions.toml` 하나다. `scripts/versions.py sync`가 각 파일에 써 넣고 `check`가 CI에서 어긋남을 잡는다(`versions.toml:1-14`). updater-lib는 이 파일을 컴파일 때 그대로 묶는다(`updater/src/versions.rs:1-9`).
 
-**죽은 코드**: lib.rs 헤더(`lib.rs:11-17`)는 "v2 아키텍처: worker.rs / foreground.rs / queue.rs / scheduler.rs / ipc.rs"를 설명한다. 하지만 `BackgroundWorker`, `AutoCheckScheduler`, `ForegroundApplier`, `SelfUpdater`, `DownloadQueue`, `DaemonIpcClient`를 쓰는 곳은 workspace 어디에도 없다(grep으로 확인, 사용처 0건). 실제로 쓰이는 것은 `UpdateManager`와 `UpdateCompletionMarker`뿐이다. `updater/gui/src-tauri/src/cli.rs.removed`, `lib.rs.bak` 같은 잔재 파일도 남아 있다.
+`updater/src/constants.rs`는 "모든 크레이트가 공유하는 SSOT"라고 스스로 설명한다(`constants.rs:1-4`). daemon도 `saba_chan_updater_lib::constants::*`로 data dir, 토큰 경로, IPC 포트(57474, `constants.rs:31-35`)를 가져다 쓴다. 즉 경로/상수 SSOT가 updater 라이브러리 안에 들어 있다.
+
+~~**죽은 코드**: v2 모듈(worker/foreground/queue/scheduler/ipc)과 `cli.rs.removed`, `lib.rs.bak` 잔재~~ → 해결: 모듈과 잔재 파일은 지워졌다(e023a75, `lib.rs:27-40`의 `pub mod` 목록). lib.rs 헤더 주석(`lib.rs:11-17`)만 아직 "v2 아키텍처"를 설명한다.
 
 ### 1.2 컴포넌트 모델
 
-`enum Component` (`updater/src/lib.rs:98-107`)와 manifest key의 대응(`lib.rs:111-141`):
+`enum Component` (`updater/src/lib.rs:84-92`)와 manifest key의 대응(`lib.rs:96-129`):
 
-| Component | manifest key | 적용 방식 | 적용 우선순위 (`lib.rs:1400-1414`) |
+| Component | manifest key | 적용 방식 | 적용 우선순위 (`lib.rs:875-888`) |
 |---|---|---|---|
 | `Updater` | `updater` | `apply_binary_update("saba-chan-updater")` | 0 |
-| `Module(name)` | `module-{name}` | `modules_dir/{name}`에 zip 해제. 백업은 `staging/{name}_backup` (`lib.rs:1947-1999`) | 1 |
-| `Extension(name)` | `ext-{name}` | `extensions_dir`에 해제. 하이픈은 언더스코어로 변환(`lib.rs:425-444`, 2001-) | 1 |
-| `Locales` | `locales` | `install_root/locales`에 해제 | 1 |
-| `DiscordBot` | `discord_bot` | `discord_bot/` 교체. `node_modules`는 백업에서 복구(`lib.rs:2464-2580`) | 2 |
+| `Module(name)` | `module-{name}` | `modules_dir/{name}`을 zip 내용으로 교체. 백업은 `staging/{name}_backup` (`lib.rs:1305-1311`, `replace_dir` 1322-1360) | 1 |
+| `Extension(name)` | `ext-{name}` | `extensions_dir`에 교체. 하이픈은 언더스코어로 변환(`lib.rs:423-439`, 1314-1320). 백업은 `{name}_ext_backup` | 1 |
+| `Locales` | `locales` | `install_root/locales`에 해제(`lib.rs:837-840`) | 1 |
 | `CoreDaemon` | `saba-core` | `apply_binary_update("saba-core")` | 3 |
 | `Gui` / `Cli` | `gui` / `cli` | 프로세스가 돌고 있으면 5, 아니면 4 | 4/5 |
 
-- 알 수 없는 key(예: `installer`)는 업데이트 대상에서 빠진다(`lib.rs:690-697`). `from_manifest_key`는 모르는 key를 `Module`로 폴백한다(`lib.rs:144-146`).
-- **로컬 버전 판정 순서**(`lib.rs:946-1010`): 먼저 `installed-manifest.json`(`%APPDATA%/saba-chan/installed-manifest.json`)을 본다. 거기 없으면 Cargo.toml/package.json/module.toml/extension.toml을 읽는다.
-  - ⚠️ **버그**: `saba-core`의 폴백이 `env!("CARGO_PKG_VERSION")`이다(`lib.rs:956`). 이 매크로가 평가되는 곳은 **updater-lib 크레이트**라서 결과는 updater-lib 버전이지 core 버전이 아니다. 지금은 둘 다 0.1.1이라 문제가 드러나지 않았을 뿐이다.
-  - "설치돼 있는데 버전을 모르면 최신으로 간주하고 installed-manifest에 기록"하는 로직이 있다(`lib.rs:702-715`). 거짓 양성을 막으려는 것이지만, 실제로 구버전이어도 영구히 최신으로 표시될 수 있다.
+- `DiscordBot` 컴포넌트는 로컬 bot과 함께 없어졌다. 우선순위 2는 비어 있다.
+- 알 수 없는 key(예: `installer`)는 업데이트 대상에서 빠진다(`lib.rs:505-508`). `from_manifest_key`는 모르는 key를 `Module`로 폴백한다(`lib.rs:127-129`).
+- 설치하지 않은 모듈·익스텐션은 업데이트 목록에 넣지 않는다. 새로 받는 것은 목록 화면의 몫이다(`lib.rs:511-514`).
+- **로컬 버전 판정 순서**(`collect_local_versions`, `lib.rs:567-606`): 먼저 `installed-manifest.json`(`<data_dir>/installed-manifest.json`)을 본다. 앱 컴포넌트가 거기 없으면 빌드에 묶인 `versions.toml` 버전을 쓰고, 모듈은 `module.toml`, 익스텐션은 `manifest.json`의 id·version을 읽는다.
+  - ~~`saba-core` 폴백이 updater-lib의 `CARGO_PKG_VERSION`이다~~ → 해결: 폴백은 `versions.toml`의 컴포넌트별 버전이다(`lib.rs:571-574`, `versions.rs`). daemon은 기동할 때 자기 버전을 installed-manifest에 적는다(`launch_ticket.rs:28-30` `record_core_version`).
+  - "설치돼 있는데 버전을 모르면 최신으로 간주하고 installed-manifest에 기록"하는 로직이 있다(`lib.rs:515-519`). 거짓 양성을 막으려는 것이지만, 실제로 구버전이어도 영구히 최신으로 표시될 수 있다.
 
 ### 1.3 Release manifest 형식
 
-릴레이가 주는 서명된 manifest 하나가 유일한 출처다(`updater/src/relay.rs:51-88`). 형식:
+릴레이가 주는 서명된 manifest 하나가 유일한 출처다(`updater/src/relay.rs:52-88`). 형식:
 
 ```jsonc
 {
@@ -101,58 +103,58 @@ POST /heartbeat (60s)                         │ mock Message → core/processo
 
 - 컴포넌트 키는 `saba-core`, `cli`, `gui`, `updater`, `locales`, `module-<name>`, `ext-<id>`다. 업데이터가 모르는 키(예: `installer`)는 건너뛴다.
 - `requires`(다른 컴포넌트 최소 버전)와 `meta`(목록 화면용)는 선택이다.
-- 서명 검증 공개키는 바이너리에 들어 있다(`signature.rs:21`). 검증을 통과하지 못하거나, 플랫폼이 다르거나, 현재보다 낮은 버전이면 거부한다(`relay.rs:229-250`).
+- 서명 검증 공개키는 바이너리에 들어 있다(`signature.rs:21`). 검증을 통과하지 못하거나, 플랫폼이 다르거나, 현재보다 낮은 버전이면 거부한다(`relay.rs:233-251`).
 
 ### 1.4 어디서 가져오는가
 
 | 용도 | 요청 | 근거 |
 |---|---|---|
-| 새 버전 확인 | `GET {relay_url}/v1/updates/check?channel&platform&current&client_id` | `relay.rs:158-174` |
-| manifest | `latest.manifestUrl` 또는 `GET /v1/updates/manifest/:version` | `relay.rs:176-184` |
-| 파일 | manifest 컴포넌트의 `url`(Cloudflare R2), `sha256` 확인 | `download.rs:40`, `lib.rs:673, 727` |
-| 진행 이벤트 | `POST /v1/updates/event` (익명, 실패해도 무시) | `relay.rs:186-192` |
+| 새 버전 확인 | `GET {relay_url}/v1/updates/check?channel&platform&current&client_id`. 아무것도 설치되지 않았으면(설치기, 목록) `current=0.0.0`을 보낸다 | `relay.rs:117-120, 163-179` |
+| manifest | `latest.manifestUrl` 또는 `GET /v1/updates/manifest/:version` | `relay.rs:181-188` |
+| 파일 | manifest 컴포넌트의 `url`(Cloudflare R2), `sha256` 확인 | `download.rs:40`, `lib.rs:655, 709` |
+| 진행 이벤트 | `POST /v1/updates/event` (익명, 실패해도 무시) | `relay.rs:191-196` |
 | 모듈·익스텐션 목록 | 같은 manifest의 `module-*`/`ext-*` (`relay::latest_catalog`) | `relay.rs:109-115` |
 
-- 기본 릴레이는 `https://saba-chan.online`, 채널은 `stable`이다(`relay.rs:21-23`). `relay_url`에 `scripts/mock-release-server.js` 주소를 넣으면 모의 릴레이로 시험할 수 있다(`lib.rs:261-263`).
-- 코어가 최신이어도 같은 릴리즈 manifest를 받아 컴포넌트별로 비교한다(GUI·CLI·모듈이 뒤처졌을 수 있으므로, `relay.rs:195-226`).
+- 기본 릴레이 주소는 `relay::DEFAULT_RELAY_URL`, 채널은 `stable`이다(`relay.rs:21-23`). `relay_url`에 `scripts/mock-release-server.js` 주소를 넣으면 모의 릴레이로 시험할 수 있다(`lib.rs:257-259`). 다만 모의 릴레이 서명 키는 `mock-relay` 기능으로 빌드한 개발용 바이너리만 믿는다(`signature.rs:26-28`, `updater/Cargo.toml` `[features]`).
+- 코어가 최신이어도 같은 릴리즈 manifest를 받아 컴포넌트별로 비교한다(GUI·CLI·모듈이 뒤처졌을 수 있으므로, `relay.rs:198-223`).
 
 ### 1.5 무결성 검증
 
-- `UpdateManager::verify_integrity` (`lib.rs:437-446`): 위 manifest에서 기대 해시를 모아 `IntegrityChecker::verify_all`로 검사한다. 결과 상태는 `Verified`, `Tampered`, `NoHash`, `FileNotFound`, `Error` 중 하나다.
-- SHA-256은 `sha2` 크레이트를 쓴다.
-- 해시 대상 파일(`integrity.rs:247-286`): core/cli/updater는 `install_root/<exe>`, gui는 `install_root/<install_dir>/saba-chan-gui(.exe)`, 모듈은 `modules/<name>/lifecycle.py`, 익스텐션은 `extensions/<dir>/manifest.json`.
-- ⚠️ **해시 의미 불일치**: manifest의 `sha256`은 **zip 파일의 해시**인데 checker는 **압축을 푼 파일**을 해시한다. 그래서 해시가 있는 컴포넌트는 `Tampered`로 나온다.
-- 다운로드는 해시를 확인한다: `download_verified`가 받은 파일의 sha256을 manifest 값과 대조하고(`lib.rs:673, 727`), 적용 직전에 staging 파일을 다시 대조한다(`lib.rs:877-885`).
-- daemon API는 `GET /api/updates/integrity`이다(`src/ipc/updates.rs:106, 674`).
+- `UpdateManager::verify_integrity` (`lib.rs:466-470`)는 `integrity::verify_installed`를 부른다. 업데이터가 적용할 때 zip에서 푼 파일마다 SHA-256을 `<data_dir>/installed-files.json`에 적어 두고(`record_install`, `integrity.rs:100-117`), 검사는 그 기록과 지금 파일만 비교한다. 네트워크를 쓰지 않는다(`integrity.rs:1-6`).
+- 결과 상태는 `Verified`, `Tampered`, `FileNotFound`, `Error` 중 하나다(`integrity.rs:41-51`). 설치기로 처음 깐 컴포넌트는 기록이 없어 결과에 나오지 않는다.
+- ~~**해시 의미 불일치**: manifest의 zip 해시를 압축을 푼 파일과 비교해 항상 `Tampered`가 된다~~ → 해결: manifest 해시는 다운로드 검증에만 쓰고, 무결성 검사는 설치 때 기록한 파일 해시를 본다(`integrity.rs:1-6`).
+- 다운로드는 해시를 확인한다: `download_verified`가 받은 파일의 sha256을 manifest 값과 대조하고(`lib.rs:655, 709`), 적용 직전에 staging 파일을 다시 대조한다(`lib.rs:855-865`).
+- daemon API는 `GET /api/updates/integrity`이다(`src/ipc/updates.rs:106, 675`).
 
 ### 1.6 다운로드 → apply → swap → rollback 흐름
 
-1. **확인**: `POST /api/updates/check` → `check_for_updates()` (`updates.rs:156`, `lib.rs:469-530`). 릴레이 manifest 하나로 모든 컴포넌트를 비교한다. Locales 업데이트가 있으면 사용자에게 알리지 않고 백그라운드에서 다운로드·적용한다(`updates.rs:157-163`, `silent_apply_locales` 206).
+1. **확인**: `POST /api/updates/check`와 daemon의 주기 확인이 같은 `check_and_follow_up`을 거친다(`updates.rs:160, 208-243`) → `check_for_updates()` (`lib.rs:479-551`). 릴레이 manifest 하나로 모든 컴포넌트를 비교한다. Locales 업데이트가 있으면 사용자에게 알리지 않고 백그라운드에서 다운로드·적용한다(`updates.rs:215-221`, `silent_apply_locales` 278). `auto_download`이면 나머지 업데이트도 미리 받아 두고 pending manifest를 저장한다(`updates.rs:224-240`).
 2. **다운로드**: `POST /api/updates/download` → staging 디렉터리로 받는다.
    - Windows: `%APPDATA%/saba-chan/updates/`
-   - Unix: `~/.cache/saba-chan/updates/` (`constants.rs:189-205`)
-   - 진행률은 `GET /api/updates/download/progress`로 본다(`updates.rs:332`).
-3. **apply 분기**: `POST /api/updates/apply {components:[…]}` (`updates.rs:353-475`)
-   - 대상에 `Gui`, `Updater`, `CoreDaemon` 중 하나라도 있으면 **전부 updater exe에 맡긴다**(`updates.rs:392-400`). 이때 daemon은 `staging/pending.json`(`lib.rs:1477-1525`)과 `staging/apply-targets.json`(`lib.rs:1540-1565`)을 쓰고 `{requires_updater:true, needs_updater:[…]}`를 응답한다.
-   - 그렇지 않으면 daemon이 직접 `apply_single_component`를 실행한다. 그 뒤 모듈은 `supervisor.refresh_modules()`, 익스텐션은 `extension_manager.rescan()`으로 hot-reload한다(`updates.rs:401-466`).
-4. **updater exe 실행**은 데몬이 한다: `POST /api/updates/launch-updater {relaunch}` → 데몬이 `saba-chan-updater --apply --wait-pid <데몬 PID> --launch-token <일회용> [--relaunch …]`를 분리 실행하고 스스로 종료한다(`src/ipc/updates.rs:548-615`). GUI(`main.js:2457-2467`)와 CLI(`cmd/update.rs:223`)는 이 API만 부른다.
+   - Unix: `~/.cache/saba-chan/updates/` (`constants.rs:148-167`)
+   - 진행률은 `GET /api/updates/download/progress`로 본다(`updates.rs:404`).
+3. **apply 분기**: `POST /api/updates/apply {components:[…]}` (`updates.rs:429-546`)
+   - 대상에 `Gui`, `Updater`, `CoreDaemon` 중 하나라도 있으면 **전부 updater exe에 맡긴다**(`updates.rs:461-470`). 이때 daemon은 `staging/pending.json`(`lib.rs:925-940`)과 `staging/apply-targets.json`(`lib.rs:997-1004`)을 쓰고 `{requires_updater:true, needs_updater:[…]}`를 응답한다.
+   - 그렇지 않으면 daemon이 직접 `apply_single_component`를 실행한다. 그 뒤 모듈은 `supervisor.refresh_modules()`, 익스텐션은 `extension_manager.rescan()`으로 hot-reload한다(`updates.rs:509-537`).
+4. **updater exe 실행**은 데몬이 한다: `POST /api/updates/launch-updater {relaunch}` → 데몬이 일회용 실행 표를 끊고(`launch_ticket.rs:1-5`) `saba-chan-updater --apply --wait-pid <데몬 PID> --launch-token <표> [--relaunch …]`를 분리 실행한 뒤 스스로 종료한다(`src/ipc/updates.rs:559-617`). GUI(`main.js:2458-2471`)와 CLI(`saba-chan-cli/src/tui/commands.rs:1045`, `client.rs:329-332`)는 이 API만 부른다.
 5. **updater exe** (`updater/gui/src-tauri/src/lib.rs`)
-   - 인자는 `--apply [--relaunch <exe> [extra…]]`만 파싱한다(`lib.rs:362-381`). install_root는 자기 exe 위치로 정한다(`lib.rs:390-396`).
-   - `load_pending_manifest()` → `apply-targets.json`의 key를 차례로 `apply_single_component()` → `UpdateCompletionMarker` 저장(`%APPDATA%/saba-chan/update-complete.json`) → `pending.json`/`apply-targets.json` 삭제 → 2초 뒤 `--after-update`를 붙여 relaunch(`lib.rs:73-178`, 300-321). 진행 상황은 Tauri 이벤트 `apply:progress`로 알린다.
+   - 인자는 `--apply [--wait-pid <pid>] --launch-token <t> [--relaunch <exe> [extra…]]`다(`lib.rs:388-403`). 표가 없거나 맞지 않으면 적용하지 않고 끝낸다. 표를 모르는 옛 데몬(0.1.2 미만)이 띄운 경우만 표 없이 받는다(`lib.rs:407-428`). `--wait-pid`가 있으면 그 PID가 끝나기를 최대 30초 기다린다(`lib.rs:430-447`). install_root는 자기 exe 위치로 정한다(`lib.rs:451-457`).
+   - `load_pending_manifest()` → `apply-targets.json`의 key를 차례로 `apply_single_component()` → 성공·실패 모두 `UpdateCompletionMarker`(`<data_dir>/update-complete.json`, 실패 목록 `failed` 포함)를 저장 → `clear_pending_manifest()`가 `pending.json`/`apply-targets.json`과 받아 둔 압축 파일(`.zip`, `.tar.gz`, `.part`, 실패한 것 포함)을 지움(`lib.rs:973-992`) → 2초 뒤 `--after-update`를 붙여 relaunch(`lib.rs:73-198`, 312-350). 진행 상황은 Tauri 이벤트 `apply:progress`로 알린다. 다음 데몬이 결과를 `GET /api/updates/last-result`로 보여 준다(`updates.rs:660-672`).
+   - relaunch는 Windows에서 `CREATE_BREAKAWAY_FROM_JOB`으로 띄우고, Job이 허용하지 않으면(os error 5) 그 플래그 없이 다시 띄운다(`lib.rs:326-342`). `--relaunch`가 없으면 설치 폴더의 GUI exe(`saba-chan-gui.exe`, 0.1.1 zip의 `Saba-chan.exe`)를 찾는다(`lib.rs:271-274`, updater-lib `lib.rs:284-290`).
    - Tauri 커맨드: `get_apply_mode`, `start_apply`, `get_preferred_language`, `get_theme`, `check_after_update`.
-6. **바이너리 swap** (`lib.rs:2113-2204`, gui 2206-2300)
+6. **바이너리 swap** (`apply_binary_update` `lib.rs:1392-1479`, gui 1482-1528)
    - 대상 프로세스가 끝나기를 최대 15초 기다린다. 시간이 지나도 "attempting update anyway"로 그냥 진행한다.
-   - Windows는 실행 중인 `X.exe`를 `X.exe.old`로 rename하고(재시도 5회, `lib.rs:2083-2111`) zip에서 새 파일을 쓴다. Linux는 `X.old`로 rename한다.
-   - 적용이 끝나면 `cleanup_old_files()`가 install_root의 `*.old`를 지운다(`lib.rs:1428-1466`).
+   - Windows는 실행 중인 `X.exe`를 `X.exe.old`로 rename하고(재시도 5회, `lib.rs:1362-1390`, 1664-1680) zip에서 새 파일을 쓴다. Linux는 알려진 바이너리만 `X.old`로 rename한다.
+   - `cleanup_old_files()`는 install_root 바로 안의 사바쨩 실행 파일 `*.exe.old`만 지운다. 적용 직후에 한 번, 아직 잡혀 있어 못 지운 것은 다음 `UpdateManager` 생성 때 지운다(`lib.rs:407-408, 819-822, 898-914`).
 7. **rollback**
-   - 모듈, 익스텐션, discord_bot은 staging에 `*_backup` 디렉터리 복사본을 남긴다. 하지만 **자동 복구 경로는 없다**. 예외는 discord_bot의 `node_modules` 복원 하나뿐이다(`lib.rs:2554-2575`).
-   - 바이너리는 `.old`를 만들지만 적용 직후 `cleanup_old_files`가 지우므로 rollback 수단이 남지 않는다.
-   - `prepare_daemon_update`(`lib.rs:2303-2405`)는 `_update_daemon.ps1`/`.sh`를 생성하는 함수인데 **호출하는 곳이 없다**(죽은 코드). 테스트 `test_daemon_update_script_content`만 이 함수를 참조한다.
-8. **설치 버전 기록**: `update_installed_versions_batch` → `installed-manifest.json`. Windows는 레지스트리 `DisplayVersion`도 갱신한다(`lib.rs:1366-1381`, 1633).
+   - 모듈·익스텐션은 staging에 `*_backup` 복사본을 만들고, 교체 도중 실패하면 그 백업으로 되돌린다. 성공하면 백업을 지운다(`replace_dir`, `lib.rs:1322-1360`).
+   - 바이너리는 압축 해제 도중 실패하면 비켜 둔 `.old`를 원래 이름으로 되돌린다(`lib.rs:1440-1469`). 적용이 끝난 뒤에 이전 판으로 돌아가는 경로는 없다.
+   - ~~`prepare_daemon_update`는 호출하는 곳이 없다(죽은 코드)~~ → 해결: 함수가 지워졌다(grep 0건).
+8. **설치 버전 기록**: `update_installed_versions_batch` → `installed-manifest.json`(`lib.rs:1061-1081`). 코어가 바뀌면 Windows "설치된 앱" `DisplayVersion`도 갱신하는데, 이 설치 폴더의 항목만 고친다(`lib.rs:1087-1095`, `uninstall_entry.rs:76-85`).
 
 ### 1.7 daemon, GUI, CLI가 updater를 부르는 방식
 
-**daemon HTTP API** (`saba-chan/src/ipc/updates.rs:83-94`, `ipc/mod.rs:669`에서 merge):
+**daemon HTTP API** (`saba-chan/src/ipc/updates.rs:97-109`, `ipc/mod.rs:754`에서 merge):
 
 | Method | Path | 동작 |
 |---|---|---|
@@ -161,50 +163,57 @@ POST /heartbeat (60s)                         │ mock Message → core/processo
 | POST | `/api/updates/download` | 다운로드 |
 | GET | `/api/updates/download/progress` | 진행률 |
 | POST | `/api/updates/apply` | body `{components:[]}`. 직접 적용하거나 updater 위임을 판단한다 |
-| GET | `/api/updates/integrity` | SHA256 검증 |
-| GET / **PUT** | `/api/updates/config` | 설정 `{enabled, check_interval_hours, auto_download, auto_apply, install_root, relay_url, channel}`. `config.json`의 `updates` 절에 저장한다(`updates.rs:730-797`) |
+| POST | `/api/updates/launch-updater` | body `{relaunch:[exe, …]}`. 데몬이 updater를 띄우고 스스로 종료한다(`updates.rs:559-617`) |
+| GET / DELETE | `/api/updates/last-result` | updater가 남긴 마지막 적용 결과. DELETE는 확인 처리(`updates.rs:660-672`) |
+| GET | `/api/updates/integrity` | 설치 때 기록한 파일 해시와 비교 |
+| GET / **PUT** | `/api/updates/config` | 설정 `{enabled, check_interval_hours(1-8), auto_download, auto_apply, install_root, relay_url, channel}`. `config.json`의 `updates` 절에 저장한다. GET은 `mock_relay`(모의 릴레이를 믿는 개발 빌드인지)도 준다(`updates.rs:705-787`) |
 
 불일치:
-- GUI의 `updater:setConfig`는 **POST**로 보낸다(`saba-chan-gui/main.js:2792`). 라우트는 PUT뿐이라 405가 난다. `syncInstallRoot`(`main.js:992`)는 PUT을 써서 정상이다.
-- CLI의 `apply_updates`는 body 없이 POST한다(`saba-chan-cli/src/client.rs:371-373`, `post_empty`). axum의 `Json<ApplyRequest>` extractor는 Content-Type이 없으면 415로 거부할 가능성이 높다(미실행, 추정).
-- CLI는 `/api/install/status`, `/api/install/run`, `/api/install/component/{key}`를 호출한다(`client.rs:382-400`). daemon에는 `/api/install*` 라우트가 **없다**(grep 0건). CLI의 `install` 계열은 동작하지 않는다.
-- CLI `launch-apply`가 넘기는 `--install-root <root>`와 대상 인자(`commands.rs:1147`)를 updater exe는 **무시한다**(`--apply`/`--relaunch`만 파싱). 후보 경로도 `.exe`로 고정돼 있어 Windows 전용이다.
-- 자동 확인 주기(`check_interval_hours=3`)를 실제로 돌리는 것은 daemon이 아니라 **GUI의 `setInterval`**이다(`main.js:1153` `UPDATE_CHECK_INTERVAL_MS`, 1250-1262). `auto_download`/`auto_apply` 설정은 daemon 어디에서도 쓰이지 않는다.
+- ~~GUI의 `updater:setConfig`가 POST로 보내 405가 난다~~ → 해결: PUT으로 보낸다(`saba-chan-gui/main.js:2505-2507`).
+- CLI의 `apply_updates`와 `download_updates`는 body 없이 POST한다(`saba-chan-cli/src/client.rs:319-327`, `post_empty`). axum의 `Json<ApplyRequest>`/`Json<DownloadRequest>` extractor는 Content-Type이 없으면 415로 거부할 가능성이 높다(미실행, 추정).
+- ~~CLI가 daemon에 없는 `/api/install*`을 호출한다~~ → 해결: CLI에 그 호출이 없다(grep 0건).
+- ~~CLI `launch-apply`가 넘기는 `--install-root`와 대상 인자를 updater가 무시한다~~ → 해결: `launch-apply`는 `POST /api/updates/launch-updater`만 부른다(`commands.rs:1045-1049`).
+- ~~자동 확인 주기를 GUI의 `setInterval`이 돌린다~~ → 해결: daemon이 `spawn_update_scheduler`로 기동 30초 뒤부터 `check_interval_hours`마다 확인한다(`updates.rs:246-273`, `src/main.rs:401`). GUI는 10분마다 캐시된 `GET /api/updates/status`만 읽어 알린다(`main.js:940-1028`). `auto_download`은 쓰이지만 `auto_apply`는 아직 어디에서도 쓰이지 않는다(`updates.rs:204-206`).
 
 ---
 
-## 2. Installer (`saba-chan/installer/gui`, Tauri, v0.1.1)
+## 2. Installer (`saba-chan/installer/gui`, Tauri, v0.1.2)
 
 모듈 구성: `lib.rs`, `release.rs`(릴리즈 받기, 업데이터와 같은 relay 경로), `runtime_bootstrap.rs`, `registry.rs`, `shortcuts.rs`, `uninstall.rs`.
 
 **설치 위치**
-- 기본 경로는 Windows `C:\Program Files\Saba-chan`, Unix `~/.local/share/saba-chan`(`installer/gui/src-tauri/src/lib.rs:1029-1046`).
-- 쓰기에 실패하면 UAC로 권한을 올려 디렉터리를 만든다(`elevate_create_dir`, `lib.rs:919-980`).
+- 기본 경로는 Windows `C:\Program Files\Saba-chan`, Unix `~/.local/share/saba-chan`(`installer/gui/src-tauri/src/lib.rs:752-769`).
+- 쓰기에 실패하면 UAC로 권한을 올려 디렉터리를 만든다(`elevate_create_dir`, `lib.rs:607-700`).
 - 데이터는 `%APPDATA%/saba-chan`에 둔다(updater constants와 같다).
+- 로그는 `%TEMP%/saba-chan-installer.log`에 남는다(`lib.rs:954-969`).
 
-**`do_install` 단계** (`lib.rs:384-875`)
+**`do_install` 단계** (`lib.rs:245-550`)
 
 | 단계 | 내용 |
 |---|---|
 | 1 (0-5%) | install dir 생성, 쓰기 probe, 필요하면 권한 상승 |
-| 2 (5-10%) | 릴레이에서 서명된 최신 manifest를 받아 검증한다(`release.rs:17-30` `fetch_latest`) |
-| 2.5 | manifest의 `installer.version`이 현재 `CARGO_PKG_VERSION`보다 높으면 설치를 차단한다(`lib.rs:489-505`) |
-| 3 (10-45%) | `installer`를 뺀 core 컴포넌트를 R2에서 받아 SHA-256을 확인하고 `install_dir/<install_dir>`에 푼다(`release.rs`) |
-| 3.5 | 공유 모듈(`i18n.py`, `daemon_rcon.py`)을 `%APPDATA%/saba-chan/modules/`로 복사 |
-| 4 (45-55%) | 선택한 모듈을 manifest의 `module-<id>`에서, `requires_extensions`에 따른 익스텐션을 `ext-<id>`에서 R2로 받아 SHA-256을 확인하고 설치한다(`lib.rs:404, 874`) |
-| 5 (55-70%) | portable Python(`indygreg/python-build-standalone`)과 venv (`runtime_bootstrap.rs:321`). 실패해도 치명적으로 처리하지 않는다 |
-| 6 (70-85%) | portable Node(`nodejs.org/dist`, `runtime_bootstrap.rs:346`)와 `discord_bot` npm install |
-| 7-8 | `setup_config`, 언어 설정을 `settings.json`에 저장 |
-| 9 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Saba-chan` 등록(`registry.rs:3,11,22`) |
-| 10 | 바탕화면·시작 메뉴 바로가기(`shortcuts.rs`) |
-| 10.5 | `installed-manifest.json` 생성. updater 버전 판정의 1순위 소스다 |
+| 2 (5-10%) | 릴레이에서 서명된 최신 manifest를 받아 검증한다(`release.rs:16-28` `fetch_latest`) |
+| 2.5 | manifest의 `installer.version`이 현재 `CARGO_PKG_VERSION`보다 높으면 설치를 차단한다(`lib.rs:330-345`) |
+| 3 (10-45%) | 업데이터가 아는 키 중 모듈·익스텐션을 뺀 컴포넌트(`installer` 제외)를 R2에서 받아 SHA-256을 확인하고 `install_dir/<install_dir>`에 푼다(`release.rs:35-45`, `lib.rs:347-401`). 하나라도 실패하면 설치를 멈춘다 |
+| 3.5 | 공유 모듈(`i18n.py`, `daemon_rcon.py`)을 `%APPDATA%/saba-chan/modules/`로 복사(`lib.rs:810-838`) |
+| 4 (45-55%) | 선택한 모듈을 manifest의 `module-<id>`에서, `requires_extensions`에 따른 익스텐션을 `ext-<id>`에서 R2로 받아 SHA-256을 확인하고 설치한다(`lib.rs:407-450`, 915-948). 실패는 경고로 남긴다 |
+| 5 (55-70%) | portable Python(python-build-standalone, 판과 SHA-256은 `updater/src/python_pin.rs`에 고정)과 venv (`runtime_bootstrap.rs:42-51`). 실패해도 치명적으로 처리하지 않는다 |
+| 6 | 없음: 로컬 Discord bot이 없어져 portable Node·npm install 단계도 지워졌다 |
+| 7-8 | `setup_config`, 언어 설정을 `config.json`의 `gui.language`에 저장(`lib.rs:840-865`) |
+| 9 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Saba-chan*` 등록. 키는 설치 폴더마다 따로다: 첫 설치본은 `Saba-chan`, 다른 폴더는 `Saba-chan-<폴더 해시 8자>`(`registry.rs:15-77`, `updater/src/uninstall_entry.rs:12-31`) |
+| 10 | 바탕화면·시작 메뉴 바로가기. 대상은 설치 폴더의 GUI exe(`saba-chan-gui.exe` 또는 0.1.1의 `Saba-chan.exe`)다(`lib.rs:486-515`) |
+| 10.5 | `installed-manifest.json` 생성. updater 버전 판정의 1순위 소스다(`lib.rs:517-521`) |
 
-Tauri 커맨드(`lib.rs:109-1015`): `get_installer_state`, `set_install_path`, `set_language`, `set_shortcut_options`, `set_selected_modules`, `get_available_modules`(같은 manifest의 `module-*`, 폴백 없음), `fetch_latest_release`, `start_install`, `start_uninstall`, `get_app_mode`, `launch_app`, `get_preferred_language`, `browse_folder`. GUI는 `--uninstall` 인자로 installer를 uninstall 모드로 실행한다(`saba-chan-gui/main.js:2945`).
+레지스트리·바로가기처럼 실패해도 계속하는 단계는 완료 화면에 실패 목록과 로그 경로로 보여 준다(`lib.rs:277-284, 523-546`).
+
+Tauri 커맨드(`lib.rs:108-730`): `get_installer_state`, `set_install_path`, `set_language`, `set_shortcut_options`, `set_selected_modules`, `get_available_modules`(같은 manifest의 `module-*`, 폴백 없음), `fetch_latest_release`, `start_install`, `start_uninstall`, `get_app_mode`, `launch_app`, `get_preferred_language`, `browse_folder`. GUI는 `--uninstall` 인자로 installer를 uninstall 모드로 실행한다(`saba-chan-gui/main.js:2653`).
+
+**제거** (`uninstall.rs`): 대상은 제거기 자신이 든 설치 폴더 하나다(`uninstall.rs:251-256`). 그 폴더에서 실행 중인 사바쨩 프로세스만 끝내고(`uninstall.rs:257-274`), 그 폴더의 레지스트리 항목만 지운다(`registry.rs:78-93`). `%APPDATA%/saba-chan`과 모듈 폴더는 설치본들이 함께 쓰므로 다른 설치본 항목이 남아 있으면 지우지 않는다(`uninstall.rs:79-84, 117-142`, `uninstall_entry.rs:42-48`). `keep_settings`이면 `config.json`·`instances`·이관 전 설정 파일만 남긴다(`uninstall.rs:407-449`).
 
 **문제점**
 - 기본 설치 경로가 `Program Files`(관리자 권한 필요)인데 레지스트리는 HKCU에 쓴다. 더 큰 문제는 updater exe와 daemon이 **권한 상승 없이** `install_root`에 쓴다는 점이다. 기본 경로에 설치하면 업데이트 적용이 권한 문제로 실패할 수 있다(추정, 매니페스트의 requestedExecutionLevel은 확인하지 않음).
-- 모듈·익스텐션 소스는 하나다: 설치기, 데몬 목록, 업데이터, 무결성 검사가 모두 같은 릴리즈 manifest를 본다.
-- `installer/KNOWN_ISSUES.md`는 "2026-03-05 5건 모두 해결"이라고 적혀 있다. 해시 검증 미구현은 이 목록에 없다.
+- 모듈·익스텐션 소스는 하나다: 설치기, 데몬 목록, 업데이터가 모두 같은 릴리즈 manifest를 본다.
+- `installer/KNOWN_ISSUES.md`는 "2026-03-05 5건 모두 해결"이라고 적혀 있다. 본문은 지금 없는 `release-manifest.json`과 GitHub Contents API 기준이라 오래됐다.
 
 ---
 
@@ -215,15 +224,16 @@ Tauri 커맨드(`lib.rs:109-1015`): `get_installer_state`, `set_install_path`, `
 | 파일 | 트리거 | 내용 |
 |---|---|---|
 | `ci.yml` | push/PR to main, develop, tag `v*` | 하나뿐인 검사 워크플로(옛 `test.yml`은 중복이라 b0b5631에서 지웠다). Rust matrix(os): `versions.py check` → fixture 모듈 생성 → `cargo clippy --workspace -D warnings` → build → test. JS(Node 22): GUI `npm ci` → vitest → `vite build`, 그리고 main/preload/updater/installer 스크립트 `node --check` |
-| `release.yml` | `release: [published, edited]`, `workflow_dispatch(tag_name)` | **빌드는 하지 않는다.** 사람이 Draft Release에 올린 raw exe/zip을 `gh release download` → `package-release.py`로 표준 zip 재패키징 → `locales.zip`. 그다음 R2 단계: modules·extensions 저장소 `main`을 checkout → `scripts/versions.py manifest`가 모듈·익스텐션 zip까지 묶어 manifest 생성 → `release_signing` 예제로 `saba-updater-v1` 키 서명(번들 공개키로 검증까지) → R2 `releases/<version>/` 업로드 → 릴레이 `POST /admin/releases` 등록. 이미 R2에 있거나 등록된 버전이면 덮어쓰지 않고 실패한다(`release.yml:1-49, 120-232`) |
+| `release.yml` | `release: [published, edited]`, `workflow_dispatch(tag_name)` | **빌드는 하지 않는다.** 사람이 Draft Release에 올린 raw exe/zip을 `gh release download` → `package-release.py`로 표준 zip 재패키징 → `locales.zip`. 그다음 R2 단계: 태그가 `versions.toml`의 release 버전과 다르면 실패 → 릴레이와 R2에 같은 버전이 있으면(확인 실패 포함) 실패 → modules·extensions 저장소 `main`을 checkout → `scripts/versions.py manifest`가 모듈·익스텐션 zip까지 묶어 manifest 생성 → `release_signing` 예제로 `saba-updater-v1` 키 서명(번들 공개키로 검증까지) → R2 `releases/<version>/` 업로드 → 릴레이 `POST /admin/releases` 등록. 마지막에 `scripts/changelog.py`로 만든 릴리즈 노트를 붙인다(`release.yml:1-48, 120-233, 272-282`) |
 
 - GitHub Release는 사람이 raw 파일을 올리는 **입력 칸**으로만 쓴다. 업데이터·설치기는 GitHub를 보지 않는다.
-- 실제 빌드는 로컬 Windows의 `scripts/build-windows.ps1`이 한다.
+- 실제 빌드는 로컬 Windows의 `scripts/build-windows.ps1`이 한다. 버전은 `versions.toml`에서 읽는다(`build-windows.ps1:27-28`).
 - `package-release.py`는 **windows-x64 asset만** 만든다. manifest도 `--platform windows-x64`로 만든다.
+- `package-release.py`는 zip을 표준 형태로 다시 담는다: 경로 구분자를 `/`로 바꾸고, GUI zip 루트의 앱 exe(Electron의 `Saba-chan.exe`)를 `saba-chan-gui.exe`로 바꾸며, 다른 컴포넌트의 exe는 뺀다(`package-release.py:145-175`). saba-core zip에는 `saba-runner.exe`와 공유 모듈(`i18n.py`, `daemon_rcon.py`)이 같이 들어간다(`package-release.py:48-58`).
 
 ### 3.2 modules / extensions repo
 
-- 두 저장소 모두 자체 릴리즈 워크플로가 없다. `saba-chan-modules`에는 검사용 `check-modules.yml`만 있고, `saba-chan-extensions`에는 워크플로가 없다.
+- 두 저장소 모두 자체 릴리즈 워크플로가 없다. `saba-chan-modules`에는 검사용 `check-modules.yml`, `saba-chan-extensions`에는 pytest·ruff 검사용 `ci.yml`만 있다.
 - 둘 다 코어 `release.yml`이 `main`을 checkout해서 같은 릴리즈 manifest에 싣는다(§3.1, [02-modules.md](02-modules.md) §5, [03-extensions.md](03-extensions.md) §3.4).
 
 ---
@@ -291,39 +301,41 @@ zod 스키마는 `middleware/schemas.ts` 한 곳에 모여 있다.
 ### 4.4 프로토콜 흐름
 
 **(a) 페어링** (GUI → daemon proxy → relay → Discord 슬래시 → relay)
-1. GUI `relay:initiatePairing` → daemon `POST /api/relay/pair/initiate` (`src/ipc/handlers/relay.rs:300-336`) → relay `POST /api/pair/initiate`. 응답은 `{code, pollSecret}`이다.
+1. GUI `relay:initiatePairing` → daemon `POST /api/relay/pair/initiate` (`src/ipc/handlers/relay.rs:264-286`) → relay `POST /api/pair/initiate`. 응답은 `{code, pollSecret}`이다.
 2. 사용자가 Discord에서 `/사바쨩 연결 코드:<code>`를 실행한다 → relay 내장 bot `handlePair`가 `SELF_URL/api/pair/:code/claim`을 x-internal-secret으로 루프백 호출한다(`bot/index.ts:479-529`). users upsert, hosts 생성 또는 토큰 재발급, guild가 있으면 nodes 자동 생성, `pairing_codes.node_token`에 평문 저장.
-3. GUI가 daemon `GET /api/relay/pair/:code/status?secret=…`를 폴링한다(`relay.rs:349-404`). relay가 `claimed`와 함께 nodeToken을 1회 돌려주면 **daemon이 `%APPDATA%/saba-chan/.node_token`에 자동 저장**한다(`relay.rs:374-387`).
-4. daemon `GET/PUT/DELETE /api/config/node-token`(`ipc/mod.rs:619`, `handlers/config.rs:47-`)은 토큰 원문을 IPC로 그대로 반환한다.
+3. GUI가 daemon `GET /api/relay/pair/:code/status?secret=…`를 폴링한다(`relay.rs:297-335`). relay가 `claimed`와 함께 nodeToken을 1회 돌려주면 **daemon이 `%APPDATA%/saba-chan/.node_token`에 자동 저장**한다(`relay.rs:317-331`).
+4. daemon `GET/PUT/DELETE /api/config/node-token`(`ipc/mod.rs:703`, `handlers/config.rs:135-`)은 토큰 원문을 IPC로 그대로 반환한다.
 
 **(b) 명령 실행** (cloud 모드)
 1. Discord 사용자가 `<prefix> <text>`를 입력한다. prefix는 길드별 캐시이고 기본값은 `BOT_PREFIX` env 또는 `'사바쨩'`이다(`bot/index.ts:230,238-281`).
 2. `forwardCommand`(`bot/index.ts:730-800`)가 requestId를 먼저 만들고 `resultWaiters.wait(id, 30s)`를 등록한 뒤 `POST /api/command`를 부른다. payload는 `{action:'raw_command', text}`다. `guildId`로 nodes를 조회해 hostId를 찾고, 큐에 INSERT한 뒤 `pollWaiters.wake(hostId)`를 호출한다.
-3. agent(`discord_bot/core/relayAgent.js:257-345`)가 `GET /poll`을 계속 돌리고 있다. 서버는 즉시 pending 최대 10건을 조회해 `delivered`로 표시하고 반환한다. 없으면 **25초 대기**(`poll.ts:6`, `pollWaiters.wait`) 후 다시 조회하고, 그래도 없으면 204를 준다. 클라이언트 연결이 끊기면 abort한다. host가 paused 상태면 `{sleeping:true}`를 준다.
-4. agent는 받은 명령마다 `processRelayCommand`를 실행한다. mock `Message`를 만들고(content = 로컬 bot-config의 prefix + text, `author.id=requestedBy`) 로컬 `core/processor.js`로 처리한다. processor는 daemon IPC(`IPC_BASE`, `X-Saba-Token` 헤더, `core/ipc.js:25,60-66`)를 호출한다. 마지막 reply 텍스트를 `{success, data:{text}}`로 담아 `POST /result/:id`로 보낸다.
+3. daemon의 relay agent(`src/relay_agent.rs:326-386`)가 `GET /poll`을 계속 돌리고 있다. 서버는 즉시 pending 최대 10건을 조회해 `delivered`로 표시하고 반환한다. 없으면 **25초 대기**(`poll.ts:6`, `pollWaiters.wait`) 후 다시 조회하고, 그래도 없으면 204를 준다. 클라이언트 연결이 끊기면 abort한다. host가 paused 상태면 `{sleeping:true}`를 준다.
+4. agent는 받은 `raw_command`마다 `crate::chat::api::run_with_daemon_settings`를 같은 프로세스에서 실행한다(`relay_agent.rs:388-404`). 접두사·별명·길드별 설정은 daemon의 bot config에서 읽는다(`chat/api.rs:117-122`). 답 텍스트를 `{success, data:{text}}`로 담아 `POST /result/:id`로 보낸다. 모르는 action은 `success:false`다.
 5. relay는 상태를 completed로 바꾸고 `resultWaiters.wake(id)`를 호출한다. bot은 `result.data.text`(최대 1950자)로 Discord에 reply한다.
-6. agent의 재시도 백오프는 3초에서 시작해 최대 60초다. sleeping 상태면 30초마다 확인한다.
+6. agent의 재시도 백오프는 3초에서 시작해 최대 60초다. sleeping 상태면 30초마다 확인한다(`relay_agent.rs:22-26, 417-420`).
 
-**(c) Heartbeat**: 60초마다 `POST /heartbeat`(`relayAgent.js:136-180`). metadata = `{servers: ipc.getServers(), modules: ipc.getModules(), moduleDetails:{}}`. 응답의 `sleeping`으로 폴링을 멈추거나 다시 시작한다. 시작할 때 `GET /info`로 `minAgentVersion`을 비교한다.
+**(c) Heartbeat**: 60초마다 `POST /heartbeat`(`relay_agent.rs:211-260`). metadata = `{servers, modules, moduleDetails:{}, botConfig:{prefix, moduleAliases, commandAliases}}`이고, 서버 목록에서 `rcon_password`/`rest_password`는 뺀다(`relay_agent.rs:262-324`). 응답의 `sleeping`으로 폴링을 멈추거나 다시 시작한다. 시작할 때 `GET /info`로 `minAgentVersion`을 비교한다(`relay_agent.rs:191-`).
 
 **(d) Sleep/Wake**: 슬래시 `/사바쨩 코코낸내`/`기상`이 메모리의 `_pausedHosts`/`_pausedGuilds` Set을 토글한다(`bot/index.ts:76-81,647-720`).
 
 ### 4.5 daemon 쪽 호출과 relay 서버 비교 (검증 결과)
 
-| daemon 라우트 (`ipc/mod.rs:660-665`) | relay 호출 | 서명 | 일치 |
+| daemon 라우트 (`ipc/mod.rs:738-747`) | relay 호출 | 서명 | 일치 |
 |---|---|---|---|
-| GET `/api/relay/host/:id/status` | GET `/api/hosts/:id` | HMAC(Bearer, ts, nonce, sig) | ✓ (`relay.rs:155-197`) |
+| GET `/api/relay/host/:id/status` | GET `/api/hosts/:id` | HMAC(Bearer, ts, nonce, sig) | ✓ (`relay.rs:164-196`) |
 | GET `/api/relay/host/:id/nodes` | GET `/api/hosts/:id/nodes` | HMAC | ✓ |
 | GET `/api/relay/node/:guild/members` | GET `/api/nodes/:g/discord-members`, 503이면 `/api/nodes/:g/members` | HMAC | ✓ (discord-members는 rate limit 5/min) |
 | POST `/api/relay/pair/initiate` | POST `/api/pair/initiate` | 없음 | ✓ |
 | GET `/api/relay/pair/:code/status` | GET `/api/pair/:code/status?secret=` | 없음 | ✓. 하위호환 query 방식이라 pollSecret이 nginx access log에 남는다. 헤더 방식으로 바꾸는 편이 낫다 |
+| GET `/api/relay/bot-invite` | GET `/api/bot-invite` | 없음 | ✗ git HEAD의 relay에는 이 라우트가 없다(`relay.rs:241-260`) |
+| GET `/api/relay/agent`, POST `.../agent/start`·`stop` | — (daemon 안의 relay agent 상태·제어) | — | — |
 
-- 서명 payload 형식(`METHOD\npath\nts\nnonce\nbody`)은 Rust(`relay.rs:78-112`), JS(`relayAgent.js:58-74`), 서버(`auth.ts:139-148`)가 같다. 서버는 `req.url`(query 포함)로 서명을 확인한다. daemon은 query 없이 서명하는데, 실제로 서명하는 요청에 query를 붙이지 않으므로 현재는 문제가 없다.
-- daemon proxy의 `relayUrl` query/body override(`relay.rs:36-42`, `RelayQueryParams`)는 **임의의 URL로 Bearer node token과 HMAC 헤더를 보낼 수 있게 한다**. 로컬 IPC 호출자라면 누구든 node token을 외부로 유출시킬 수 있는 경로다.
-- `/poll`, `/heartbeat`, `/result`는 daemon이 아니라 **discord_bot 프로세스**가 부른다. daemon은 bot을 spawn할 때 `RELAY_URL`과 `RELAY_NODE_TOKEN`을 env로 주입한다(`src/main.rs:748-769`).
-- relay의 `PATCH /api/hosts/:id/bot-config`(internal 전용)를 daemon은 호출하지 않는다. **GUI가 relay로 직접** 호출한다(§6). `X-Saba-Client`와 internal secret이 없으므로 relay hook에서 444가 나 **항상 실패**한다. 결과적으로 relay bot의 길드별 prefix는 언제나 기본값이다. agent heartbeat도 `botConfig`를 보내지 않는다(`relayAgent.js:139-143`).
-- `result.ts:54-80`의 Discord interaction followup은 `interactionToken`이 있을 때만 동작한다. 그런데 `forwardCommand`가 이 값을 넣지 않으므로 죽은 경로다. 또 `data.message/status`를 읽는 반면 agent는 `data.text`를 보내서 필드도 맞지 않는다.
-- `node_permissions`(`/사바쨩 권한부여/권한해제`, `bot/index.ts:531-645`)는 relay에서 **목록 조회에만 쓰인다**. 권한을 실제로 강제하는 곳은 로컬 processor의 차단 목록(`discord_bot/core/processor.js:363-372`)뿐이고 이 목록은 기본 허용이다. relay 쪽에서 부여한 권한은 실행 권한에 아무 영향이 없다.
+- 서명 payload 형식(`METHOD\npath\nts\nnonce\nbody`)은 Rust(`relay.rs:78-114`, relay agent도 같은 `signed_headers`를 쓴다, `relay_agent.rs:179-189`)와 서버(`auth.ts:139-148`)가 같다. 서버는 `req.url`(query 포함)로 서명을 확인한다. daemon은 query 없이 서명하는데, 실제로 서명하는 요청에 query를 붙이지 않으므로 현재는 문제가 없다.
+- daemon proxy의 `relayUrl` query/body override(`relay.rs:37-44`, `RelayQueryParams` 134-139)는 **임의의 URL로 Bearer node token과 HMAC 헤더를 보낼 수 있게 한다**. 로컬 IPC 호출자라면 누구든 node token을 외부로 유출시킬 수 있는 경로다.
+- `/poll`, `/heartbeat`, `/result`는 daemon 안의 relay agent가 부른다. 릴레이 주소는 bot config의 `cloud.relayUrl`, 토큰은 `<data_dir>/.node_token`에서 읽는다(`relay_agent.rs:72-80`).
+- ~~relay의 `PATCH /api/hosts/:id/bot-config`를 GUI가 직접 호출해 항상 실패하고, 길드별 prefix가 언제나 기본값이다~~ → 해결: GUI는 bot config를 daemon에만 저장하고(`main.js:2857-2867`), agent heartbeat가 `botConfig`를 보낸다(`relay_agent.rs:313-321`). relay는 heartbeat metadata를 `hosts.metadata`에 저장하고 bot이 거기서 prefix를 읽는다(`heartbeat.ts:51-54`, `bot/index.ts:237-271`).
+- `result.ts:54-80`의 Discord interaction followup은 `interactionToken`이 있을 때만 동작한다. 그런데 `forwardCommand`가 이 값을 넣지 않으므로 죽은 경로다. 또 `data.message/status`를 읽는 반면 agent는 `data.text`를 보내서 필드도 맞지 않는다(`relay_agent.rs:399`).
+- `node_permissions`(`/사바쨩 권한부여/권한해제`, `bot/index.ts:531-645`)는 relay에서 **목록 조회에만 쓰인다**. 권한을 실제로 강제하는 곳은 daemon 채팅 처리기의 길드별 설정(bot config `nodeSettings`의 `allowedInstances`, `memberPermissions`)뿐이고, 설정이 없으면 제한이 없다(`src/chat/mod.rs:149-178, 345-348`). relay 쪽에서 부여한 권한은 실행 권한에 아무 영향이 없다.
 
 ---
 
@@ -337,33 +349,33 @@ zod 스키마는 `middleware/schemas.ts` 한 곳에 모여 있다.
 
 ### 6.1 소유자 프레이밍("daemon이 주인, 인터페이스는 무력") 위반
 
-1. **GUI가 업데이트 주기를 직접 돌린다**: `setInterval(checkForUpdates, 3h)` (`saba-chan-gui/main.js:1153,1250-1262`). daemon 쪽 scheduler/worker(`updater/src/scheduler.rs`, `worker.rs`)는 죽은 코드다.
-2. **GUI와 CLI가 updater exe를 직접 spawn한다**: `main.js:2744-2775`, `saba-chan-cli/src/tui/commands.rs:1134-1160`. daemon은 파일(`pending.json`/`apply-targets.json`)만 남긴다.
-3. **GUI가 relay를 직접 호출한다**: `axios.patch(${relayUrl}/api/hosts/${hostId}/bot-config)` (`main.js:3216`). `relay.rs:3-4`의 "GUI/CLI must not access the relay server directly"와 정면으로 충돌하고, internal 전용 엔드포인트라 항상 실패한다.
-4. **GUI가 Discord bot 실행 명령을 조립한다**: `.node_token`을 직접 읽고(`main.js:377`, 3247) node 경로와 botDir을 정한 뒤 `DISCORD_TOKEN`/`RELAY_NODE_TOKEN`을 env에 넣어 범용 `/api/ext-process/discord-bot/start`에 보낸다(`main.js:3227-3266`). daemon에도 같은 역할의 `auto_start_discord_bot`(`src/main.rs:669-790`)이 있어 **실행 경로가 두 개**다.
-5. GUI가 daemon을 spawn하고(`main.js:570`) installer를 `--uninstall`로 실행한다(`main.js:2945`). 인터페이스가 프로세스 감독 역할을 맡고 있다.
-6. **extensions 용어 충돌**: daemon의 extensions는 Python 플러그인(`%APPDATA%/saba-chan/extensions`, `extension.toml`)인데, `discord_bot/extensions/{music,rps,easter_eggs}.js`는 bot 안의 JS 모듈이다. `music.js`는 Python 익스텐션(`SABA_EXTENSIONS_DIR/music/music_deps.py`)을 직접 spawn한다(`music.js:37-92`). bot이 daemon을 거치지 않고 Python 익스텐션을 실행하는 셈이다.
+1. ~~**GUI가 업데이트 주기를 직접 돌린다**~~ → 해결: daemon이 주기 확인을 한다(`src/ipc/updates.rs:246-273`). GUI는 캐시된 상태만 10분마다 읽는다(`saba-chan-gui/main.js:940-1028`).
+2. ~~**GUI와 CLI가 updater exe를 직접 spawn한다**~~ → 해결: 둘 다 `POST /api/updates/launch-updater`만 부르고 updater는 daemon이 띄운다(`updates.rs:559-617`, `main.js:2458-2471`, `saba-chan-cli/src/tui/commands.rs:1045`).
+3. ~~**GUI가 relay를 직접 호출한다**(`PATCH /api/hosts/:id/bot-config`)~~ → 해결: GUI는 bot config를 daemon에 저장하고, relay 동기화는 agent heartbeat가 맡는다(`main.js:2857-2867`, `relay_agent.rs:313-321`).
+4. ~~**GUI가 Discord bot 실행 명령을 조립한다**, 실행 경로가 두 개~~ → 해결: 로컬 Discord bot이 없어졌다. relay agent는 daemon 안에서 노드 토큰이 있으면 기동 때 자동으로 시작한다(`relay_agent.rs:155-160`, `ipc/mod.rs:785-787`).
+5. GUI가 daemon을 `--spawned`로 spawn하고(`main.js:608`) installer를 `--uninstall`로 실행한다(`main.js:2653`). 인터페이스가 프로세스 감독 역할을 맡고 있다.
+6. ~~**extensions 용어 충돌**(`discord_bot/extensions/*.js`, `music.js`가 Python 익스텐션을 직접 spawn)~~ → 해결: `discord_bot/`이 저장소에서 없어졌다.
 7. **server-chan과 프레이밍의 관계**
-   - relay는 프레이밍에 맞는다. 다만 cloud 모드에서는 Discord를 향하는 bot이 server-chan 쪽이고, saba-chan `discord_bot`은 실행기로만 동작한다. "server-chan이 bot에 추가 기능을 준다"기보다는 **cloud 모드에서는 server-chan이 bot 그 자체**다.
+   - relay는 프레이밍에 맞는다. Discord를 향하는 bot은 server-chan 쪽 하나뿐이고, saba-chan은 daemon 안의 relay agent로 실행기 역할만 한다. "server-chan이 bot에 추가 기능을 준다"기보다는 **server-chan이 bot 그 자체**다.
    - music-server는 relay bot의 부가 기능이지만 소스가 없다.
    - chatbot-server는 daemon과도 relay와도 연결이 없는 **별개의 bot**이라 프레이밍을 벗어난다.
-   - updater 청사진은 relay를 업데이트 SSOT로 삼으려 한다. 그렇게 되면 server-chan이 bot 지원을 넘어 배포 인프라까지 맡게 된다.
+   - 업데이트도 relay가 SSOT다(§1.3-1.4). server-chan은 bot 지원을 넘어 배포 인프라(서명된 릴리즈 manifest 제공)까지 맡는다.
 
 ### 6.2 updater, installer, CI 불일치와 버그
 
 | # | 내용 | 근거 |
 |---|---|---|
-| U1 | manifest `sha256`은 zip 해시이고 integrity는 압축을 푼 파일 해시라서 항상 `Tampered`가 된다 | `package-release.py:474-481` ↔ `integrity.rs:246-296` |
+| U1 | ~~manifest `sha256`은 zip 해시이고 integrity는 압축을 푼 파일 해시라서 항상 `Tampered`가 된다~~ → 해결: 적용 때 푼 파일 해시를 `installed-files.json`에 기록하고 그 기록과 비교한다 | `integrity.rs:1-6, 100-117` |
 | U2 | ~~다운로드와 설치 때 sha256을 검증하지 않는다~~ 해결됨: 업데이터·설치기·데몬 모듈 설치 모두 `download_verified`로 확인한다 | `download.rs:40` |
-| U3 | **Zip-slip**: `entry.name()`을 그대로 `join`한다(`enclosed_name` 미사용) | updater `lib.rs:1976,2028,2166,2501,3004`; installer `lib.rs:1096` |
-| U4 | `saba-core` 버전 폴백이 updater-lib 버전이다 | `lib.rs:956` |
-| U5 | `prepare_daemon_update`는 사용되지 않는다. rollback 경로가 없고 `.old`는 적용 직후 삭제된다 | `lib.rs:2303`, 1428-1466 |
-| U6 | v2 모듈(worker/foreground/queue/scheduler/ipc 대부분)이 죽은 코드다. `cli.rs.removed`, `lib.rs.bak` 잔재 | `lib.rs:11-17,46-55` |
-| U7 | ~~설정이 저장되지 않는다~~ 해결됨: `config.json` `updates` 절. GUI가 POST를 쓰는지는 GUI 리메이크 기준으로 다시 확인해야 한다 | `updates.rs:730-797` |
-| U8 | CLI의 `/api/install/*`은 daemon에 없다. CLI apply는 body 없는 POST다 | `saba-chan-cli/src/client.rs:371-400` |
-| U9 | CLI `launch-apply`가 넘기는 `--install-root`와 대상 인자를 updater가 무시한다 | `commands.rs:1147` ↔ updater gui `lib.rs:362-381` |
+| U3 | ~~**Zip-slip**: `entry.name()`을 그대로 `join`한다~~ → 해결: 모든 zip 해제가 `enclosed_name()`으로 검사하는 `extract_zip` 하나를 거치고, tar.gz는 `..`·절대 경로 엔트리를 건너뛴다 | updater `lib.rs:307-340, 1721-1732`; installer `lib.rs:805-808` |
+| U4 | ~~`saba-core` 버전 폴백이 updater-lib 버전이다~~ → 해결: 폴백은 빌드에 묶인 `versions.toml` 버전이다 | `lib.rs:571-574`, `versions.rs` |
+| U5 | ~~`prepare_daemon_update`는 사용되지 않는다. rollback 경로가 없다~~ → 해결: 함수는 지워졌고, 적용 도중 실패하면 백업·`.old`로 되돌린다. 적용이 끝난 뒤 이전 판으로 돌아가는 경로는 여전히 없다 | `lib.rs:1322-1360, 1440-1469` |
+| U6 | ~~v2 모듈(worker/foreground/queue/scheduler/ipc)이 죽은 코드다. `cli.rs.removed`, `lib.rs.bak` 잔재~~ → 해결: 지워졌다(e023a75). 헤더 주석만 남았다 | `lib.rs:11-17` |
+| U7 | ~~설정이 저장되지 않는다, GUI가 POST를 쓴다~~ → 해결: `config.json` `updates` 절, GUI도 PUT | `updates.rs:705-787`, `main.js:2505-2507` |
+| U8 | ~~CLI의 `/api/install/*`은 daemon에 없다~~(호출이 지워졌다). CLI apply·download는 여전히 body 없는 POST다 | `saba-chan-cli/src/client.rs:319-327` |
+| U9 | ~~CLI `launch-apply`가 넘기는 `--install-root`와 대상 인자를 updater가 무시한다~~ → 해결: `launch-apply`는 daemon의 `launch-updater`만 부른다 | `commands.rs:1045-1049` |
 | U10 | CI가 windows-x64 릴리즈만 만든다 | `package-release.py`, `release.yml` |
 | U11 | ~~`generate-manifest.py`, `release-manifest.json` 템플릿~~ 지워졌다 | `.github/` |
 | U12 | ~~모듈과 익스텐션 소스가 4갈래로 갈린다~~ 해결됨: 모두 같은 릴리즈 manifest | §1.4 |
-| U13 | `Program Files` 기본 설치에 권한 상승 없이 업데이트를 적용한다 | installer `lib.rs:1029-1033` |
+| U13 | `Program Files` 기본 설치에 권한 상승 없이 업데이트를 적용한다 | installer `lib.rs:752-756` |
 | U14 | ~~GitHub API 비인증 rate limit~~ 해당 없음: GitHub를 조회하지 않는다 | §1.4 |
