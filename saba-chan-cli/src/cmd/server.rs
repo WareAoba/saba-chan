@@ -629,14 +629,13 @@ pub async fn start(ctx: &Ctx, a: StartArgs) -> Result<()> {
         }
         "provisioning" => return Err(failed(t!("start.provisioning", name = sv.name))),
         _ => {
-            // 켜기 전에 점검한다 (약관 미동의 등). 막히는 문제면 보여 주고 멈춘다.
-            if let Err(e) = ctx.api.validate(&sv.id).await {
-                let blocked = matches!(e.downcast_ref::<CliError>(), Some(CliError::Api { body, .. }) if body.get("issues").is_some());
-                if blocked {
+            // 데몬이 켜기 전에 점검한다 (약관 미동의 등). 막히면 409 `preflight_failed`와 문제 목록·해결법.
+            let r = match ctx.api.start(&sv.id).await {
+                Err(e) if api_code(&e) == Some("preflight_failed") => {
                     return checkup(ctx, Err(e), "", &sv.name).await;
                 }
-            }
-            let r = ctx.api.start(&sv.id).await?;
+                r => r?,
+            };
             if a.no_wait {
                 ctx.out.done(&t!("start.requested", name = sv.name), &r);
             } else {
@@ -808,8 +807,7 @@ pub async fn exec(ctx: &Ctx, sv: &Server, cat: &Catalog, name: &str, words: &[St
             .join(" ");
         let at = crate::cmd::console::mark(ctx, sv).await;
         let r = ctx.api.command(&sv.id, &line, Value::Null).await?;
-        print_result(ctx, &r);
-        crate::cmd::console::echo_reply(ctx, sv, at).await;
+        show_reply(ctx, sv, at, &r).await;
         return Ok(());
     };
     let (mut args, missing) = def.bind(words).map_err(usage)?;
@@ -823,9 +821,28 @@ pub async fn exec(ctx: &Ctx, sv: &Server, cat: &Catalog, name: &str, words: &[St
     }
     let at = crate::cmd::console::mark(ctx, sv).await;
     let r = ctx.api.command(&sv.id, &def.name, Value::Object(args)).await?;
-    print_result(ctx, &r);
-    crate::cmd::console::echo_reply(ctx, sv, at).await;
+    show_reply(ctx, sv, at, &r).await;
     Ok(())
+}
+
+/// 데몬이 서버의 답(`data.response`)을 주면 그것을, 아니면 콘솔에 찍힌 답을 잠깐 모아 보여 준다
+async fn show_reply(ctx: &Ctx, sv: &Server, at: Option<u64>, r: &Value) {
+    print_result(ctx, r);
+    let answered = r
+        .pointer("/data/response")
+        .and_then(Value::as_str)
+        .is_some_and(|t| !t.trim().is_empty());
+    if !answered {
+        crate::cmd::console::echo_reply(ctx, sv, at).await;
+    }
+}
+
+/// API 오류의 `error_code`
+fn api_code(e: &anyhow::Error) -> Option<&str> {
+    match e.downcast_ref::<CliError>() {
+        Some(CliError::Api { body, .. }) => body.get("error_code").and_then(Value::as_str),
+        _ => None,
+    }
 }
 
 fn ask_input(ctx: &Ctx, def: &Command, input: &Input) -> Result<Value> {
@@ -859,7 +876,12 @@ pub fn print_result(ctx: &Ctx, r: &Value) {
             println!("{}", t.trim_end());
             return;
         }
-        match data {
+        // 빈 답(`{response: "", executed}`)은 보낸 것만 알린다
+        let empty_reply = data.is_some_and(|d| {
+            d.get("response")
+                .is_some_and(|x| x.as_str().is_some_and(|s| s.trim().is_empty()))
+        });
+        match data.filter(|_| !empty_reply) {
             Some(d) => print_value(d),
             None => println!("{} {}", console::style("✓").green().bold(), t!("run.sent")),
         }
@@ -964,8 +986,7 @@ async fn send(ctx: &Ctx, query: &str, line: &str) -> Result<()> {
     let sv = resolve::server(ctx, Some(query)).await?;
     let at = crate::cmd::console::mark(ctx, &sv).await;
     let r = ctx.api.stdin(&sv.id, line).await?;
-    print_result(ctx, &r);
-    crate::cmd::console::echo_reply(ctx, &sv, at).await;
+    show_reply(ctx, &sv, at, &r).await;
     Ok(())
 }
 
@@ -1386,7 +1407,8 @@ async fn checkup(ctx: &Ctx, r: Result<Value>, ok_msg: &str, server: &str) -> Res
     let (value, failed_flag) = match r {
         Ok(v) => (v, false),
         Err(e) => match e.downcast_ref::<CliError>() {
-            Some(CliError::Api { body, .. }) if body.get("issues").is_some() => (body.clone(), true),
+            // JSON이면 데몬 오류를 그대로 (error_code·issues·solution이 다 들어 있다)
+            Some(CliError::Api { body, .. }) if body.get("issues").is_some() && !ctx.out.json => (body.clone(), true),
             _ => return Err(e),
         },
     };

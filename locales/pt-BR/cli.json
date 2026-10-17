@@ -1,1 +1,499 @@
-{}
+{
+  "add": {
+    "ask_folder": "Pasta do servidor",
+    "ask_name": "Nome do servidor",
+    "ask_source": "Como você quer configurar?",
+    "created_installing": "{{name}} criado. Instalando os arquivos do servidor...",
+    "folder_other_game": "{{dir}} parece ser de outro jogo ({{games}}).",
+    "folder_unrecognized": "Nenhum servidor reconhecido em {{dir}}.",
+    "fresh_install": "Instalar do zero",
+    "install_failed": "Falha na instalação: {{error}}",
+    "install_failed_removed": "A instalação falhou e o novo servidor foi removido: {{error}}",
+    "installing": "Instalando",
+    "module_required": "Escolha um jogo com --module ou informe uma pasta de servidor existente com --from.",
+    "name_empty": "O nome não pode ficar vazio.",
+    "name_taken": "Já existe um servidor chamado {{name}}.",
+    "needs_extensions": "Este jogo precisa destas extensões: {{ids}}. Instalar e ativar agora?",
+    "no_installer": "{{game}} não consegue instalar os arquivos do servidor sozinho. Use uma pasta existente com --from.",
+    "no_modules": "Nenhum módulo de jogo instalado ainda.",
+    "ready": "{{name}} ({{game}}) está pronto.",
+    "settings_failed": "Algumas configurações não foram salvas: {{error}}",
+    "still_installing": "{{name}} ainda está sendo instalado em segundo plano.",
+    "use_anyway": "Usar mesmo assim?",
+    "use_existing": "Usar uma pasta de servidor existente",
+    "folder_is": "{{dir}} parece um servidor de {{game}}.",
+    "pick_game": "Escolha o jogo com --module.",
+    "folder_in_use": "{{dir}} já está sendo usada por {{name}}. Dois servidores na mesma pasta sobrescreveriam um ao outro."
+  },
+  "bot": {
+    "alias": "Apelido",
+    "alias_added": "{{alias}} agora significa {{module}}.",
+    "alias_removed": "Apelido {{alias}} removido.",
+    "aliases": "Apelidos",
+    "ask_token": "Token do nó",
+    "config_saved": "Configurações do bot salvas.",
+    "confirm_unpair": "Desconectar este PC do bot do Discord e esquecer o pareamento?",
+    "connection": "Conexão",
+    "last_error": "Último erro",
+    "last_heartbeat": "Último sinal",
+    "list_empty": "Nada ainda.",
+    "no_aliases": "Nenhum apelido ainda. Adicione um: saba-chan-cli bot alias add NAME MODULE",
+    "not_paired": "Este PC ainda não está pareado. Execute: saba-chan-cli bot pair",
+    "offer_start": "Conectar ao bot agora?",
+    "pair_enter": "Digite este código no Discord com o comando de pareamento do bot Saba-chan:",
+    "pair_expired": "O código de pareamento expirou. Execute bot pair novamente.",
+    "pair_no_code": "O relay não retornou um código de pareamento.",
+    "pair_polling": "Aguardando o Discord...",
+    "pair_waiting": "Pressione Ctrl+C para cancelar.",
+    "paired": "Pareado com o Discord.",
+    "prefix": "Prefixo",
+    "prefix_set": "O prefixo do chat agora é {{prefix}}.",
+    "relay": "Relay",
+    "started": "Conectado ao relay do bot do Discord.",
+    "stopped": "Desconectado do relay.",
+    "token_required": "É necessário um token.",
+    "token_saved": "Token do nó salvo.",
+    "unpaired": "Pareamento removido.",
+    "invite": "Convide o bot para o seu servidor do Discord com este link:",
+    "no_server_aliases": "Nenhum nome de servidor definido. Exemplo: saba-chan-cli bot server-alias NAME 크리",
+    "server_alias_set": "No chat, {{name}} agora pode ser chamado de: {{aliases}}",
+    "server_alias_cleared": "Os nomes de chat de {{name}} foram removidos."
+  },
+  "col": {
+    "aliases": "Apelidos",
+    "code": "Código",
+    "command": "Comando",
+    "commands": "Comandos",
+    "folder": "Pasta",
+    "game": "Jogo",
+    "id": "ID",
+    "install": "Instalação",
+    "kind": "Tipo",
+    "last_exit": "Última saída",
+    "name": "Nome",
+    "port": "Porta",
+    "protocols": "Protocolos",
+    "started": "Iniciado",
+    "state": "Estado",
+    "uptime": "Tempo ativo",
+    "version": "Versão",
+    "what": "Descrição",
+    "when": "Quando",
+    "why": "Motivo",
+    "rcon_port": "Porta RCON",
+    "rest_port": "Porta REST",
+    "author": "Autor",
+    "mode": "Modo"
+  },
+  "common": {
+    "fetching": "Buscando...",
+    "installed": "instalado",
+    "no": "não",
+    "update_available": "atualização disponível",
+    "yes": "sim"
+  },
+  "config": {
+    "reset": "{{key}} redefinido para o padrão.",
+    "reset_top_only": "Só as chaves de nível superior podem ser redefinidas.",
+    "restart_needed": "Reinicie o daemon para aplicar.",
+    "saved": "Salvo: {{keys}}",
+    "confirm_reset_all": "Redefinir todas as configurações para o padrão?",
+    "confirm_reset": "Redefinir {{keys}} para o padrão?",
+    "all": "todas as configurações"
+  },
+  "console": {
+    "attach_help": "Conectado a {{name}}. Digite um comando, :help para ajuda, :q para sair (o servidor continua rodando).",
+    "empty": "(ainda sem saída no console)",
+    "following": "Acompanhando {{name}}. Ctrl+C para parar.",
+    "meta_help": ":q sair · :commands listar comandos do jogo · :start / :stop o servidor · qualquer outra coisa é enviada como comando do jogo",
+    "not_running": "{{name}} não está rodando. Mostrando o último log; novas linhas aparecem quando ele iniciar.",
+    "started": "── servidor iniciado ──",
+    "stopped": "── servidor parado ──",
+    "unknown_meta": ":{{cmd}} desconhecido. Tente :help."
+  },
+  "daemon": {
+    "already": "O daemon já está rodando (v{{version}}).",
+    "binary_not_found": "Não foi possível encontrar o programa do daemon (saba-core). Defina SABA_CORE_PATH ou reinstale.",
+    "confirm_kill": "O daemon não parou a tempo. Forçar o encerramento (PID {{pid}})?",
+    "killed": "Daemon encerrado à força (PID {{pid}}).",
+    "not_running": "O daemon não está rodando.",
+    "offer_start": "O daemon do Saba-chan não está rodando. Iniciar?",
+    "spawn_failed": "Não foi possível iniciar o daemon: {{error}}",
+    "start_timeout": "O daemon não respondeu a tempo. Verifique: saba-chan-cli daemon logs",
+    "started": "Daemon iniciado (v{{version}}).",
+    "starting": "Iniciando o daemon...",
+    "stop_no_pid": "O daemon não informou o PID, então não dá para encerrá-lo daqui.",
+    "stop_timeout": "O daemon não parou a tempo.",
+    "stopped": "Daemon parado.",
+    "stopping": "Parando o daemon..."
+  },
+  "diagnose": {
+    "ok": "Nenhum problema conhecido encontrado nos logs de {{name}}."
+  },
+  "err": {
+    "ambiguous": "Mais de um {{what}} corresponde a \"{{query}}\".",
+    "ambiguous_hint": "Seja mais específico: {{names}}",
+    "bad_json": "JSON inválido: {{error}}",
+    "cancelled": "Cancelado.",
+    "daemon_down": "Não foi possível acessar o daemon do Saba-chan em {{url}}.",
+    "daemon_down_hint": "Inicie com: saba-chan-cli daemon start",
+    "did_you_mean": "Você quis dizer: {{names}}?",
+    "hint": {
+      "executable_missing": "Faltam arquivos do servidor. Verifique a pasta ou reinstale: saba-chan-cli server update",
+      "extension_required": "Instale as extensões necessárias: saba-chan-cli extension install {{ids}}",
+      "node_token_missing": "Primeiro pareie este PC: saba-chan-cli bot pair",
+      "server_not_running": "Primeiro inicie o servidor: saba-chan-cli start NAME",
+      "server_running": "Primeiro pare o servidor: saba-chan-cli stop NAME",
+      "update_unsupported": "Este servidor não pode ser atualizado pelo Saba-chan. Atualize os arquivos você mesmo.",
+      "dependency_outdated": "Atualize para versões mais novas: saba-chan-cli update check",
+      "port_conflict": "Dê outras portas a um deles: saba-chan-cli server set NAME port=PORT",
+      "backup_unsupported": "O módulo deste jogo não informa o que deve ser salvo no backup. Um módulo mais novo pode informar: saba-chan-cli update check",
+      "nothing_to_back_up": "O mundo ainda não existe. Inicie o servidor uma vez para criá-lo.",
+      "backup_busy": "Já há um backup ou restauração deste servidor em andamento. Tente de novo quando terminar."
+    },
+    "not_a_bool": "\"{{value}}\" não é sim/não (use true ou false).",
+    "not_a_number": "\"{{value}}\" não é um número.",
+    "not_found": "Nenhum {{what}} chamado \"{{query}}\".",
+    "pair_expected": "Esperado KEY=VALUE, recebido \"{{got}}\".",
+    "timeout": "O daemon demorou demais para responder ({{path}})."
+  },
+  "eula": {
+    "confirm": "Aceitar o EULA de {{name}}? Você concorda com os termos de licença do jogo.",
+    "done": "EULA aceito para {{name}}."
+  },
+  "exit": {
+    "crash": "travou",
+    "in_game_stop": "parado de dentro do jogo",
+    "restarting_in": "reiniciando em {{secs}}s",
+    "unknown_exit": "encerrado (fechado ou finalizado)",
+    "user_stop": "parado por você"
+  },
+  "ext": {
+    "author": "Autor",
+    "config": "Configurações",
+    "config_saved": "Configurações de {{id}} salvas.",
+    "confirm_remove": "Excluir a extensão {{id}}?",
+    "confirm_update": "Instalar {{n}} atualização(ões)?",
+    "dependencies": "Requer",
+    "disabled": "{{id}} desativada.",
+    "enabled": "{{id}} ativada.",
+    "hooks": "Hooks",
+    "incompatible": "incompatível",
+    "installed": "{{id}} instalada.",
+    "installed_with": "{{id}} instalada (com {{all}}).",
+    "installing": "Instalando {{id}}...",
+    "load_failed": "Não foi possível carregar {{what}}",
+    "mounted": "{{id}} carregada.",
+    "none": "Nenhuma extensão instalada. Veja: saba-chan-cli extension available",
+    "off": "desativada",
+    "on": "ativada",
+    "removed": "{{id}} excluída.",
+    "rescanned": "Pastas de extensões verificadas novamente.",
+    "skip_incompatible": "Pulando {{id}}: {{why}}",
+    "status_idle": "Nada está iniciando.",
+    "unmounted": "{{id}} descarregada.",
+    "up_to_date": "Todas as extensões estão atualizadas.",
+    "updated": "{{id}} atualizada para {{version}}.",
+    "url_one_id": "--url e --sha256 funcionam com um ID de extensão por vez.",
+    "no_config": "{{id}} não tem configurações.",
+    "status_busy": "Iniciando: {{list}}",
+    "status_done": "Prontas: {{list}}"
+  },
+  "history": {
+    "none": "Nenhuma parada registrada ainda."
+  },
+  "module": {
+    "confirm_remove": "Excluir o módulo {{id}}?",
+    "confirm_remove_used": "Excluir o módulo {{id}}? Estes servidores o usam: {{servers}}",
+    "detect_none": "Nenhum jogo conhecido encontrado em {{dir}}.",
+    "downloading_files": "Baixando os arquivos do servidor...",
+    "failed": "Falha ao carregar {{path}}: {{error}}",
+    "fetching_versions": "Buscando versões...",
+    "files_installed": "Arquivos do servidor instalados em {{dir}}.",
+    "installed": "Módulo {{id}} instalado.",
+    "installing": "Instalando o módulo {{id}}...",
+    "latest": "mais recente",
+    "needs": "Requer extensões: {{ids}}",
+    "none": "Nenhum módulo de jogo instalado. Veja: saba-chan-cli module available",
+    "refreshed": "Módulos recarregados.",
+    "removed": "Módulo {{id}} excluído.",
+    "unmet": "Requer {{component}} {{required}} (instalado: {{installed}})"
+  },
+  "noun": {
+    "command": "comando",
+    "extension": "extensão",
+    "game": "jogo",
+    "module": "módulo",
+    "server": "servidor",
+    "setting": "configuração",
+    "backup": "backup"
+  },
+  "progress": {
+    "dismissed": "Progresso de {{name}} limpo.",
+    "finished": "{{name}} terminou de instalar.",
+    "none": "{{name}} não tem instalação em andamento.",
+    "rolled_back": "{{name}} falhou ao instalar e foi removido."
+  },
+  "prompt": {
+    "needs_yes": "Não é possível perguntar \"{{question}}\" aqui. Adicione --yes para confirmar."
+  },
+  "props": {
+    "confirm_reset": "Restaurar a configuração do jogo de {{name}} para os padrões do módulo?",
+    "defaults_shown": "(o arquivo ainda não existe; mostrando os padrões)",
+    "reset_done": "Configuração do jogo de {{name}} restaurada para os padrões.",
+    "saved": "Configuração do jogo de {{name}} salva."
+  },
+  "remove": {
+    "confirm": "Excluir o servidor {{name}}?",
+    "confirm_running": "{{name}} está rodando. Parar e excluir?",
+    "done": "{{name}} excluído."
+  },
+  "reorder": {
+    "done": "Ordem salva."
+  },
+  "reset": {
+    "confirm": "Apagar todos os arquivos de {{name}} e começar do zero? Isso não pode ser desfeito.",
+    "done": "{{name}} foi redefinido."
+  },
+  "resolve": {
+    "name_required": "Informe um {{what}}.",
+    "none_exist": "Ainda não há nenhum {{what}}.",
+    "pick": "Qual {{what}}?",
+    "which": "Qual {{what}} você quis dizer com \"{{query}}\"?"
+  },
+  "run": {
+    "confirm_danger": "{{label}} em {{name}} não pode ser desfeito. Executar?",
+    "missing_arg": "Falta {{label}}. Uso: {{usage}}",
+    "must_be_number": "{{label}} precisa ser um número.",
+    "must_be_one_of": "{{label}} precisa ser um destes: {{options}}",
+    "no_commands": "Este jogo não define comandos. Envie linhas brutas: saba-chan-cli server send NAME \"line\"",
+    "out_of_range": "{{label}} precisa estar entre {{min}} e {{max}}.",
+    "pick": "Comando para {{name}}",
+    "raw_ok": "Linhas que não estão nesta lista são enviadas ao console como estão.",
+    "sent": "Pronto.",
+    "too_many_args": "Argumentos demais. Uso: {{usage}}"
+  },
+  "server": {
+    "checking_update": "Verificando atualizações de {{name}}...",
+    "confirm_update": "Atualizar os arquivos do servidor de {{name}} agora?",
+    "none_yet": "Nenhum servidor ainda. Adicione um: saba-chan-cli server add",
+    "port_conflict": "porta em uso",
+    "port_conflict_with": "A porta {{port}} também é usada por {{name}}.",
+    "update_available": "Há uma atualização disponível para {{name}}.",
+    "update_none": "{{name}} está atualizado.",
+    "update_reason": {
+      "no_extension_data": "(nenhum método de instalação registrado)",
+      "no_hook_handled": "(nenhuma extensão cuida das atualizações dele)"
+    },
+    "updated": "{{name}} atualizado.",
+    "updating": "Atualizando {{name}}...",
+    "version_unknown": "desconhecida"
+  },
+  "set": {
+    "default": "padrão",
+    "done": "{{count}} configuração(ões) de {{name}} salva(s).",
+    "group": {
+      "advanced": "Avançado",
+      "basic": "Básico",
+      "extension": "Dados de extensões",
+      "network": "Rede",
+      "other": "Outros",
+      "saba-chan": "Saba-chan"
+    },
+    "must_be_one_of": "{{key}} precisa ser um destes: {{options}}",
+    "restart_hint": "Reinicie {{name}} para aplicar: saba-chan-cli restart {{name}}",
+    "unknown_key": "{{key}} é uma chave nova."
+  },
+  "shell": {
+    "bad_quotes": "Aspas não fechadas.",
+    "bye": "Tchau. O daemon e os servidores continuam rodando.",
+    "ctrl_c": "(pressione Ctrl+C de novo ou digite exit para sair)",
+    "help_line": "Digite um comando (help, Tab para completar) ou fale como no Discord (ex.: \"palworld start\"). exit para sair.",
+    "welcome": "Saba-chan CLI {{version}}"
+  },
+  "start": {
+    "already": "{{name}} já está rodando.",
+    "done": "{{name}} está rodando.",
+    "not_yet": "{{name}} ainda não está rodando ({{status}}). Verifique: saba-chan-cli console {{name}}",
+    "provisioning": "{{name}} ainda está sendo instalado.",
+    "requested": "Início solicitado para {{name}}.",
+    "waiting": "Iniciando {{name}}...",
+    "exited": "{{name}} encerrou logo após iniciar. Veja as últimas linhas acima."
+  },
+  "status": {
+    "commands_handled": "{{count}} comandos processados",
+    "connected": "conectado",
+    "crashed": "travou",
+    "daemon": "Daemon",
+    "daemon_off": "não está rodando",
+    "disconnected": "desconectado",
+    "discord": "Discord",
+    "modules_failed": "{{count}} módulo(s) falharam ao carregar",
+    "not_paired": "não pareado",
+    "port_conflict_stop": "{{name}} foi parado: a porta {{port}} é usada por {{other}}.",
+    "provisioning": "instalando",
+    "running": "rodando",
+    "sleeping": "em repouso",
+    "starting": "iniciando",
+    "stopped": "parado",
+    "stopping": "parando",
+    "up_to_date": "atualizado",
+    "updates": "Atualizações",
+    "updates_ready": "{{count}} disponíveis",
+    "preflight_running": "Preparando o ambiente de execução dos módulos de jogo ({{percent}}%). As ações do servidor podem aguardar até terminar.",
+    "preflight_failed": "Falha ao preparar o ambiente de execução dos módulos de jogo: {{error}}. Será tentado de novo na próxima ação do servidor."
+  },
+  "stop": {
+    "already": "{{name}} não está rodando.",
+    "done": "{{name}} parado.",
+    "not_yet": "{{name}} ainda não parou. Force: saba-chan-cli stop --force {{name}}",
+    "requested": "Parada solicitada para {{name}}.",
+    "waiting": "Parando {{name}}..."
+  },
+  "time": {
+    "day_ago": "há {{n}}d",
+    "hm": "{{h}}h {{m}}min",
+    "hour_ago": "há {{n}}h",
+    "min_ago": "há {{n}}min",
+    "ms": "{{m}}min {{s}}s",
+    "s": "{{s}}s",
+    "sec_ago": "há {{n}}s"
+  },
+  "update": {
+    "after_hint": "O Saba-chan vai reiniciar após a atualização. Depois verifique: saba-chan-cli update last",
+    "applied": "Aplicado: {{list}}",
+    "applying": "Aplicando atualizações...",
+    "checking": "Verificando atualizações...",
+    "config_saved": "Configurações de atualização salvas.",
+    "confirm_restart": "Instalar {{list}} reinicia o Saba-chan. Continuar?",
+    "current": "Instalada",
+    "downloaded": "{{n}} atualização(ões) baixada(s).",
+    "downloading": "Baixando",
+    "integrity_summary": "{{verified}} íntegros · {{failed}} alterados ou ilegíveis · {{skipped}} com arquivos faltando",
+    "last_check": "Última verificação: {{at}}",
+    "last_cleared": "Limpo.",
+    "latest": "Mais recente",
+    "no_last": "Nenhum resultado de atualização registrado.",
+    "not_installed": "não instalado",
+    "nothing_to_apply": "Nada para aplicar. Baixe primeiro: saba-chan-cli update download",
+    "ready": "pronto para instalar",
+    "up_to_date": "atualizado",
+    "updater_launched": "Atualizador iniciado. O daemon está sendo encerrado para atualizar.",
+    "verifying": "Verificando arquivos...",
+    "unknown_key": "{{key}} não é uma configuração de atualização. Configurações: {{keys}}",
+    "integrity_empty": "Nenhum arquivo registrado ainda. Só as partes instaladas pelo atualizador são verificadas.",
+    "int_verified": "íntegro",
+    "int_missing": "arquivo ausente",
+    "int_changed": "alterado",
+    "int_error": "ilegível",
+    "not_checked": "Ainda sem informações de atualização. Verifique agora: saba-chan-cli update check"
+  },
+  "validate": {
+    "blocked": "O servidor não pode iniciar até que estes itens sejam corrigidos.",
+    "ok": "{{name}} parece pronto para iniciar."
+  },
+  "help": {
+    "cmd": {
+      "bot.alias.list": "Listar apelidos",
+      "bot.alias.add": "Adicionar um apelido",
+      "bot.alias.remove": "Remover um apelido"
+    },
+    "arg": {
+      "server": "Nome do servidor (uma parte basta)",
+      "ids": "Um ou mais IDs de extensão"
+    },
+    "after": "Os nomes podem ser parciais (ex.: start pal). Sem argumentos, abre o shell interativo.\nEm scripts, use --json e --yes. Códigos de saída: 0 ok · 1 falha · 2 uso · 3 daemon inacessível · 4 não encontrado · 130 cancelado"
+  },
+  "restart": {
+    "waiting": "Reiniciando {{name}}...",
+    "done": "{{name}} reiniciado."
+  },
+  "rename": {
+    "done": "{{old}} renomeado para {{name}}."
+  },
+  "version": {
+    "release": "Versão",
+    "last_updated": "Última atualização"
+  },
+  "backup": {
+    "col": {
+      "name": "Backup",
+      "kind": "Tipo",
+      "when": "Quando",
+      "size": "Tamanho"
+    },
+    "kind": {
+      "manual": "manual",
+      "scheduled": "agendado",
+      "pre-update": "antes da atualização",
+      "pre-restore": "antes da restauração"
+    },
+    "none": "{{name}} ainda não tem backups.",
+    "creating": "Fazendo backup de {{name}}...",
+    "created": "Backup {{backup}} criado.",
+    "confirm_delete": "Excluir o backup {{backup}} de {{name}}? Isso não pode ser desfeito.",
+    "deleted": "Backup {{backup}} excluído.",
+    "confirm_restore": "Voltar {{name}} para o backup {{backup}}? O mundo atual será salvo como backup antes.",
+    "confirm_restore_running": "{{name}} está rodando. Parar e voltar para o backup {{backup}}? O mundo atual será salvo como backup antes.",
+    "restoring": "Restaurando {{backup}}...",
+    "restored": "{{name}} voltou para {{backup}}.",
+    "pre_restore": "O mundo anterior foi mantido como backup {{backup}}.",
+    "start_again": "Iniciar {{name}} novamente?"
+  },
+  "schedule": {
+    "col": {
+      "task": "Tarefa",
+      "when": "Quando",
+      "on": "Ativa"
+    },
+    "action": {
+      "backup": "Fazer backup",
+      "restart": "Reiniciar",
+      "announce": "Anunciar",
+      "update": "Atualizar"
+    },
+    "none": "{{name}} não tem tarefas agendadas.",
+    "warns": "avisa {{minutes}} min antes",
+    "every_minutes": "a cada {{n}} min",
+    "every_hours": "a cada {{n}} h",
+    "daily_at": "todo dia às {{at}}",
+    "keep": "Backups agendados mantidos: {{count}}",
+    "no_backup": "Este jogo não suporta backups.",
+    "no_announce": "Este jogo não tem comando de anúncio, então anúncios e avisos não estão disponíveis.",
+    "added": "Agendada: {{task}}",
+    "removed": "Removida: {{task}}",
+    "enabled": "Ativada: {{task}}",
+    "disabled": "Desativada: {{task}}",
+    "no_such": "Não existe a tarefa {{number}} (há {{count}}).",
+    "keep_zero": "Mantenha pelo menos 1 backup.",
+    "keep_set": "Mantendo os últimos {{count}} backups agendados.",
+    "confirm_clear": "Remover todas as tarefas agendadas de {{name}}?",
+    "cleared": "{{name}} não tem mais tarefas agendadas.",
+    "bad_action": "\"{{got}}\" não é uma tarefa. Use uma destas: {{actions}}.",
+    "warn_only_restart": "--warn só funciona com restart e update.",
+    "message_required": "Um anúncio precisa de --message.",
+    "every_or_at": "Informe --every (ex.: 30m, 2h) ou --at (ex.: 04:00), não os dois.",
+    "bad_every": "\"{{got}}\" não é um tempo válido. Use minutos ou unidades, ex.: 30, 30m, 2h, 1h30m.",
+    "bad_at": "\"{{got}}\" não é um horário. Use HH:MM, ex.: 04:00."
+  },
+  "chatbot": {
+    "api_key": "Chave de API salva",
+    "common": "Configurações para todos os servidores do Discord",
+    "guild": "Servidor do Discord {{guild}}",
+    "defaults": "(padrões)",
+    "saved": "Configurações do chatbot salvas.",
+    "ask_key": "Chave de API (oculta)",
+    "key_required": "Nenhuma chave de API informada. Digite-a no prompt ou envie por pipe: cat key.txt | saba-chan-cli chatbot key",
+    "key_saved": "Chave de API salva. Ela nunca mais será exibida.",
+    "confirm_delete_key": "Excluir a chave de API salva? O chatbot para de responder até que uma nova chave seja salva.",
+    "key_deleted": "Chave de API excluída.",
+    "confirm_clear": "Excluir todas as configurações do chatbot e a chave de API?",
+    "cleared": "Configurações e chave do chatbot excluídas.",
+    "confirm_forget": "Fazer o chatbot esquecer o que lembra em todos os servidores do Discord?",
+    "confirm_forget_guild": "Fazer o chatbot esquecer o que lembra no servidor do Discord {{guild}}?",
+    "forgot": "A memória do chatbot foi apagada.",
+    "not_synced": "Salvo neste PC. Chega ao Discord assim que o bot estiver conectado (saba-chan-cli bot status).",
+    "sync_failed": "O servidor do Discord {{guild}} não recebeu a alteração: {{error}}",
+    "read_failed": "Não foi possível ler {{path}}: {{error}}"
+  }
+}

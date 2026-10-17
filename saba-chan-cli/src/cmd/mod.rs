@@ -66,8 +66,14 @@ fn needs_daemon(cmd: &Cmd) -> bool {
 /// POST /api/chat/command — 디스코드와 같은 처리기
 pub async fn chat(ctx: &Ctx, text: &str) -> Result<()> {
     let r = ctx.api.chat(text).await?;
-    ctx.out.data(&r, |r| println!("{}", crate::output::s(r, "reply")));
+    // 답은 디스코드용 마크다운이다: 터미널에서는 강조 기호만 뗀다
+    ctx.out
+        .data(&r, |r| println!("{}", plain(crate::output::s(r, "reply"))));
     Ok(())
+}
+
+fn plain(md: &str) -> String {
+    md.replace("**", "").replace('`', "")
 }
 
 // ── KEY=VALUE 도우미 ──

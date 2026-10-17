@@ -1,1 +1,499 @@
-{}
+{
+  "add": {
+    "ask_folder": "Папка сервера",
+    "ask_name": "Имя сервера",
+    "ask_source": "Как вы хотите его настроить?",
+    "created_installing": "{{name}} создан. Устанавливаются файлы сервера...",
+    "folder_other_game": "Похоже, {{dir}} относится к другой игре ({{games}}).",
+    "folder_unrecognized": "В {{dir}} не удалось распознать сервер.",
+    "fresh_install": "Установить заново",
+    "install_failed": "Ошибка установки: {{error}}",
+    "install_failed_removed": "Установка не удалась, новый сервер удалён: {{error}}",
+    "installing": "Установка",
+    "module_required": "Выберите игру через --module или укажите существующую папку сервера через --from.",
+    "name_empty": "Имя не может быть пустым.",
+    "name_taken": "Сервер с именем {{name}} уже существует.",
+    "needs_extensions": "Этой игре нужны расширения: {{ids}}. Установить и включить их сейчас?",
+    "no_installer": "{{game}} не умеет сам устанавливать файлы сервера. Используйте существующую папку через --from.",
+    "no_modules": "Игровые модули ещё не установлены.",
+    "ready": "{{name}} ({{game}}) готов.",
+    "settings_failed": "Некоторые настройки не сохранены: {{error}}",
+    "still_installing": "{{name}} всё ещё устанавливается в фоне.",
+    "use_anyway": "Всё равно использовать?",
+    "use_existing": "Использовать существующую папку сервера",
+    "folder_is": "Похоже, {{dir}} — это сервер {{game}}.",
+    "pick_game": "Выберите игру через --module.",
+    "folder_in_use": "{{dir}} уже используется сервером {{name}}. Два сервера в одной папке перезапишут друг друга."
+  },
+  "bot": {
+    "alias": "Псевдоним",
+    "alias_added": "Теперь {{alias}} означает {{module}}.",
+    "alias_removed": "Псевдоним {{alias}} удалён.",
+    "aliases": "Псевдонимы",
+    "ask_token": "Токен узла",
+    "config_saved": "Настройки бота сохранены.",
+    "confirm_unpair": "Отключить этот ПК от Discord-бота и забыть привязку?",
+    "connection": "Подключение",
+    "last_error": "Последняя ошибка",
+    "last_heartbeat": "Последний сигнал",
+    "list_empty": "Пока ничего.",
+    "no_aliases": "Псевдонимов пока нет. Добавьте: saba-chan-cli bot alias add NAME MODULE",
+    "not_paired": "Этот ПК ещё не привязан. Выполните: saba-chan-cli bot pair",
+    "offer_start": "Подключиться к боту сейчас?",
+    "pair_enter": "Введите этот код в Discord с командой привязки бота Saba-chan:",
+    "pair_expired": "Срок действия кода привязки истёк. Снова выполните bot pair.",
+    "pair_no_code": "Ретранслятор не вернул код привязки.",
+    "pair_polling": "Ожидание Discord...",
+    "pair_waiting": "Нажмите Ctrl+C для отмены.",
+    "paired": "Привязано к Discord.",
+    "prefix": "Префикс",
+    "prefix_set": "Префикс чата теперь {{prefix}}.",
+    "relay": "Ретранслятор",
+    "started": "Подключено к ретранслятору Discord-бота.",
+    "stopped": "Отключено от ретранслятора.",
+    "token_required": "Нужен токен.",
+    "token_saved": "Токен узла сохранён.",
+    "unpaired": "Привязка удалена.",
+    "invite": "Пригласите бота на свой сервер Discord по этой ссылке:",
+    "no_server_aliases": "Имена серверов не заданы. Пример: saba-chan-cli bot server-alias NAME 크리",
+    "server_alias_set": "Теперь в чате {{name}} можно называть: {{aliases}}",
+    "server_alias_cleared": "Имена {{name}} для чата удалены."
+  },
+  "col": {
+    "aliases": "Псевдонимы",
+    "code": "Код",
+    "command": "Команда",
+    "commands": "Команды",
+    "folder": "Папка",
+    "game": "Игра",
+    "id": "ID",
+    "install": "Установка",
+    "kind": "Тип",
+    "last_exit": "Последний выход",
+    "name": "Имя",
+    "port": "Порт",
+    "protocols": "Протоколы",
+    "started": "Запущен",
+    "state": "Состояние",
+    "uptime": "Время работы",
+    "version": "Версия",
+    "what": "Описание",
+    "when": "Когда",
+    "why": "Причина",
+    "rcon_port": "Порт RCON",
+    "rest_port": "Порт REST",
+    "author": "Автор",
+    "mode": "Режим"
+  },
+  "common": {
+    "fetching": "Получение...",
+    "installed": "установлено",
+    "no": "нет",
+    "update_available": "доступно обновление",
+    "yes": "да"
+  },
+  "config": {
+    "reset": "{{key}} сброшен к значению по умолчанию.",
+    "reset_top_only": "Сбросить можно только ключи верхнего уровня.",
+    "restart_needed": "Перезапустите демон, чтобы изменения вступили в силу.",
+    "saved": "Сохранено: {{keys}}",
+    "confirm_reset_all": "Сбросить все настройки к значениям по умолчанию?",
+    "confirm_reset": "Сбросить {{keys}} к значению по умолчанию?",
+    "all": "все настройки"
+  },
+  "console": {
+    "attach_help": "Подключено к {{name}}. Введите команду, :help — справка, :q — выход (сервер продолжит работать).",
+    "empty": "(вывода консоли пока нет)",
+    "following": "Отслеживание {{name}}. Ctrl+C — остановить.",
+    "meta_help": ":q выход · :commands список игровых команд · :start / :stop сервер · всё остальное отправляется как игровая команда",
+    "not_running": "{{name}} не запущен. Показан последний лог; новые строки появятся после запуска.",
+    "started": "── сервер запущен ──",
+    "stopped": "── сервер остановлен ──",
+    "unknown_meta": "Неизвестно: :{{cmd}}. Попробуйте :help."
+  },
+  "daemon": {
+    "already": "Демон уже запущен (v{{version}}).",
+    "binary_not_found": "Не найдена программа демона (saba-core). Задайте SABA_CORE_PATH или переустановите.",
+    "confirm_kill": "Демон не остановился вовремя. Завершить принудительно (PID {{pid}})?",
+    "killed": "Демон принудительно завершён (PID {{pid}}).",
+    "not_running": "Демон не запущен.",
+    "offer_start": "Демон Saba-chan не запущен. Запустить?",
+    "spawn_failed": "Не удалось запустить демон: {{error}}",
+    "start_timeout": "Демон не ответил вовремя. Проверьте: saba-chan-cli daemon logs",
+    "started": "Демон запущен (v{{version}}).",
+    "starting": "Запуск демона...",
+    "stop_no_pid": "Демон не сообщил свой PID, поэтому завершить его отсюда нельзя.",
+    "stop_timeout": "Демон не остановился вовремя.",
+    "stopped": "Демон остановлен.",
+    "stopping": "Остановка демона..."
+  },
+  "diagnose": {
+    "ok": "В логах {{name}} известных проблем не найдено."
+  },
+  "err": {
+    "ambiguous": "Под «{{query}}» подходит несколько: {{what}}.",
+    "ambiguous_hint": "Уточните: {{names}}",
+    "bad_json": "Неверный JSON: {{error}}",
+    "cancelled": "Отменено.",
+    "daemon_down": "Не удаётся связаться с демоном Saba-chan по адресу {{url}}.",
+    "daemon_down_hint": "Запустите его: saba-chan-cli daemon start",
+    "did_you_mean": "Возможно, вы имели в виду: {{names}}?",
+    "hint": {
+      "executable_missing": "Отсутствуют файлы сервера. Проверьте папку или переустановите: saba-chan-cli server update",
+      "extension_required": "Установите нужные расширения: saba-chan-cli extension install {{ids}}",
+      "node_token_missing": "Сначала привяжите этот ПК: saba-chan-cli bot pair",
+      "server_not_running": "Сначала запустите сервер: saba-chan-cli start NAME",
+      "server_running": "Сначала остановите сервер: saba-chan-cli stop NAME",
+      "update_unsupported": "Этот сервер нельзя обновить через Saba-chan. Обновите его файлы вручную.",
+      "dependency_outdated": "Обновите до новых версий: saba-chan-cli update check",
+      "port_conflict": "Назначьте одному из них другие порты: saba-chan-cli server set NAME port=PORT",
+      "backup_unsupported": "Модуль этой игры не указывает, что нужно сохранять в резервную копию. Возможно, более новый модуль это умеет: saba-chan-cli update check",
+      "nothing_to_back_up": "Мир ещё не создан. Запустите сервер один раз, чтобы создать его.",
+      "backup_busy": "Резервное копирование или восстановление этого сервера уже выполняется. Попробуйте снова, когда оно завершится."
+    },
+    "not_a_bool": "«{{value}}» — не да/нет (используйте true или false).",
+    "not_a_number": "«{{value}}» — не число.",
+    "not_found": "Не найдено ({{what}}): «{{query}}».",
+    "pair_expected": "Ожидалось KEY=VALUE, получено «{{got}}».",
+    "timeout": "Демон слишком долго не отвечал ({{path}})."
+  },
+  "eula": {
+    "confirm": "Принять EULA для {{name}}? Вы соглашаетесь с лицензионными условиями игры.",
+    "done": "EULA для {{name}} принято."
+  },
+  "exit": {
+    "crash": "сбой",
+    "in_game_stop": "остановлен из игры",
+    "restarting_in": "перезапуск через {{secs}} с",
+    "unknown_exit": "завершён (закрыт или убит)",
+    "user_stop": "остановлен вами"
+  },
+  "ext": {
+    "author": "Автор",
+    "config": "Настройки",
+    "config_saved": "Настройки {{id}} сохранены.",
+    "confirm_remove": "Удалить расширение {{id}}?",
+    "confirm_update": "Установить обновления ({{n}})?",
+    "dependencies": "Требует",
+    "disabled": "{{id}} выключено.",
+    "enabled": "{{id}} включено.",
+    "hooks": "Хуки",
+    "incompatible": "несовместимо",
+    "installed": "{{id}} установлено.",
+    "installed_with": "{{id}} установлено (вместе с {{all}}).",
+    "installing": "Установка {{id}}...",
+    "load_failed": "Не удалось загрузить: {{what}}",
+    "mounted": "{{id}} загружено.",
+    "none": "Расширения не установлены. См.: saba-chan-cli extension available",
+    "off": "выкл",
+    "on": "вкл",
+    "removed": "{{id}} удалено.",
+    "rescanned": "Папки расширений просканированы заново.",
+    "skip_incompatible": "Пропуск {{id}}: {{why}}",
+    "status_idle": "Сейчас ничего не запускается.",
+    "unmounted": "{{id}} выгружено.",
+    "up_to_date": "Все расширения актуальны.",
+    "updated": "{{id}} обновлено до {{version}}.",
+    "url_one_id": "--url и --sha256 работают только с одним ID расширения за раз.",
+    "no_config": "У {{id}} нет настроек.",
+    "status_busy": "Запускаются: {{list}}",
+    "status_done": "Готовы: {{list}}"
+  },
+  "history": {
+    "none": "Остановок пока не зафиксировано."
+  },
+  "module": {
+    "confirm_remove": "Удалить модуль {{id}}?",
+    "confirm_remove_used": "Удалить модуль {{id}}? Его используют серверы: {{servers}}",
+    "detect_none": "В {{dir}} не найдено известных игр.",
+    "downloading_files": "Загрузка файлов сервера...",
+    "failed": "Не удалось загрузить {{path}}: {{error}}",
+    "fetching_versions": "Получение версий...",
+    "files_installed": "Файлы сервера установлены в {{dir}}.",
+    "installed": "Модуль {{id}} установлен.",
+    "installing": "Установка модуля {{id}}...",
+    "latest": "последняя",
+    "needs": "Требует расширения: {{ids}}",
+    "none": "Игровые модули не установлены. См.: saba-chan-cli module available",
+    "refreshed": "Модули перезагружены.",
+    "removed": "Модуль {{id}} удалён.",
+    "unmet": "Требуется {{component}} {{required}} (установлено: {{installed}})"
+  },
+  "noun": {
+    "command": "команда",
+    "extension": "расширение",
+    "game": "игра",
+    "module": "модуль",
+    "server": "сервер",
+    "setting": "настройка",
+    "backup": "резервная копия"
+  },
+  "progress": {
+    "dismissed": "Прогресс {{name}} очищен.",
+    "finished": "Установка {{name}} завершена.",
+    "none": "У {{name}} нет текущей установки.",
+    "rolled_back": "Не удалось установить {{name}}, он удалён."
+  },
+  "prompt": {
+    "needs_yes": "Здесь нельзя спросить «{{question}}». Добавьте --yes для подтверждения."
+  },
+  "props": {
+    "confirm_reset": "Вернуть игровую конфигурацию {{name}} к значениям модуля по умолчанию?",
+    "defaults_shown": "(файла ещё нет; показаны значения по умолчанию)",
+    "reset_done": "Игровая конфигурация {{name}} сброшена к значениям по умолчанию.",
+    "saved": "Игровая конфигурация {{name}} сохранена."
+  },
+  "remove": {
+    "confirm": "Удалить сервер {{name}}?",
+    "confirm_running": "{{name}} запущен. Остановить и удалить?",
+    "done": "{{name}} удалён."
+  },
+  "reorder": {
+    "done": "Порядок сохранён."
+  },
+  "reset": {
+    "confirm": "Стереть все файлы {{name}} и начать заново? Это нельзя отменить.",
+    "done": "{{name}} сброшен."
+  },
+  "resolve": {
+    "name_required": "Укажите: {{what}}.",
+    "none_exist": "Пока нет ни одного: {{what}}.",
+    "pick": "Какой {{what}}?",
+    "which": "Какой {{what}} вы имели в виду под «{{query}}»?"
+  },
+  "run": {
+    "confirm_danger": "{{label}} на {{name}} нельзя отменить. Выполнить?",
+    "missing_arg": "Не указано: {{label}}. Использование: {{usage}}",
+    "must_be_number": "{{label}} должно быть числом.",
+    "must_be_one_of": "{{label}} должно быть одним из: {{options}}",
+    "no_commands": "В этой игре нет команд. Отправляйте строки как есть: saba-chan-cli server send NAME \"line\"",
+    "out_of_range": "{{label}} должно быть от {{min}} до {{max}}.",
+    "pick": "Команда для {{name}}",
+    "raw_ok": "Строки, которых нет в этом списке, отправляются в консоль как есть.",
+    "sent": "Готово.",
+    "too_many_args": "Слишком много аргументов. Использование: {{usage}}"
+  },
+  "server": {
+    "checking_update": "Проверка обновлений для {{name}}...",
+    "confirm_update": "Обновить файлы сервера {{name}} сейчас?",
+    "none_yet": "Серверов пока нет. Добавьте: saba-chan-cli server add",
+    "port_conflict": "порт занят",
+    "port_conflict_with": "Порт {{port}} также использует {{name}}.",
+    "update_available": "Для {{name}} доступно обновление.",
+    "update_none": "{{name}} актуален.",
+    "update_reason": {
+      "no_extension_data": "(способ установки не записан)",
+      "no_hook_handled": "(ни одно расширение не обрабатывает его обновления)"
+    },
+    "updated": "{{name}} обновлён.",
+    "updating": "Обновление {{name}}...",
+    "version_unknown": "неизвестно"
+  },
+  "set": {
+    "default": "по умолчанию",
+    "done": "Сохранено настроек для {{name}}: {{count}}.",
+    "group": {
+      "advanced": "Дополнительно",
+      "basic": "Основное",
+      "extension": "Данные расширений",
+      "network": "Сеть",
+      "other": "Прочее",
+      "saba-chan": "Saba-chan"
+    },
+    "must_be_one_of": "{{key}} должно быть одним из: {{options}}",
+    "restart_hint": "Перезапустите {{name}}, чтобы применить: saba-chan-cli restart {{name}}",
+    "unknown_key": "{{key}} — новый ключ."
+  },
+  "shell": {
+    "bad_quotes": "Незакрытая кавычка.",
+    "bye": "Пока! Демон и серверы продолжают работать.",
+    "ctrl_c": "(нажмите Ctrl+C ещё раз или введите exit для выхода)",
+    "help_line": "Введите команду (help, Tab — автодополнение) или пишите как в Discord (напр. \"palworld start\"). exit — выход.",
+    "welcome": "Saba-chan CLI {{version}}"
+  },
+  "start": {
+    "already": "{{name}} уже запущен.",
+    "done": "{{name}} запущен.",
+    "not_yet": "{{name}} ещё не запущен ({{status}}). Проверьте: saba-chan-cli console {{name}}",
+    "provisioning": "{{name}} всё ещё устанавливается.",
+    "requested": "Запрошен запуск {{name}}.",
+    "waiting": "Запуск {{name}}...",
+    "exited": "{{name}} завершился сразу после запуска. Последние строки выше."
+  },
+  "status": {
+    "commands_handled": "Обработано команд: {{count}}",
+    "connected": "подключено",
+    "crashed": "сбой",
+    "daemon": "Демон",
+    "daemon_off": "не запущен",
+    "disconnected": "отключено",
+    "discord": "Discord",
+    "modules_failed": "Не удалось загрузить модулей: {{count}}",
+    "not_paired": "не привязан",
+    "port_conflict_stop": "{{name}} остановлен: порт {{port}} занят {{other}}.",
+    "provisioning": "установка",
+    "running": "работает",
+    "sleeping": "спит",
+    "starting": "запускается",
+    "stopped": "остановлен",
+    "stopping": "останавливается",
+    "up_to_date": "актуально",
+    "updates": "Обновления",
+    "updates_ready": "доступно: {{count}}",
+    "preflight_running": "Подготовка среды выполнения для игровых модулей ({{percent}}%). Действия с серверами могут подождать до завершения.",
+    "preflight_failed": "Не удалось подготовить среду выполнения для игровых модулей: {{error}}. Повторная попытка — при следующем действии с сервером."
+  },
+  "stop": {
+    "already": "{{name}} не запущен.",
+    "done": "{{name}} остановлен.",
+    "not_yet": "{{name}} ещё не остановился. Принудительно: saba-chan-cli stop --force {{name}}",
+    "requested": "Запрошена остановка {{name}}.",
+    "waiting": "Остановка {{name}}..."
+  },
+  "time": {
+    "day_ago": "{{n}} д назад",
+    "hm": "{{h}} ч {{m}} мин",
+    "hour_ago": "{{n}} ч назад",
+    "min_ago": "{{n}} мин назад",
+    "ms": "{{m}} мин {{s}} с",
+    "s": "{{s}} с",
+    "sec_ago": "{{n}} с назад"
+  },
+  "update": {
+    "after_hint": "После обновления Saba-chan перезапустится. Затем проверьте: saba-chan-cli update last",
+    "applied": "Применено: {{list}}",
+    "applying": "Применение обновлений...",
+    "checking": "Проверка обновлений...",
+    "config_saved": "Настройки обновлений сохранены.",
+    "confirm_restart": "Установка {{list}} перезапустит Saba-chan. Продолжить?",
+    "current": "Установлено",
+    "downloaded": "Загружено обновлений: {{n}}.",
+    "downloading": "Загрузка",
+    "integrity_summary": "{{verified}} в порядке · {{failed}} изменено или не читается · {{skipped}} с отсутствующими файлами",
+    "last_check": "Последняя проверка: {{at}}",
+    "last_cleared": "Очищено.",
+    "latest": "Последняя",
+    "no_last": "Результатов обновления нет.",
+    "not_installed": "не установлено",
+    "nothing_to_apply": "Нечего применять. Сначала загрузите: saba-chan-cli update download",
+    "ready": "готово к установке",
+    "up_to_date": "актуально",
+    "updater_launched": "Программа обновления запущена. Демон завершается для обновления.",
+    "verifying": "Проверка файлов...",
+    "unknown_key": "{{key}} — не настройка обновлений. Настройки: {{keys}}",
+    "integrity_empty": "Файлы ещё не записаны. Проверяются только части, установленные программой обновления.",
+    "int_verified": "в порядке",
+    "int_missing": "файл отсутствует",
+    "int_changed": "изменён",
+    "int_error": "не читается",
+    "not_checked": "Информации об обновлениях пока нет. Проверьте сейчас: saba-chan-cli update check"
+  },
+  "validate": {
+    "blocked": "Сервер не сможет запуститься, пока это не исправлено.",
+    "ok": "{{name}}, похоже, готов к запуску."
+  },
+  "help": {
+    "cmd": {
+      "bot.alias.list": "Список псевдонимов",
+      "bot.alias.add": "Добавить псевдоним",
+      "bot.alias.remove": "Удалить псевдоним"
+    },
+    "arg": {
+      "server": "Имя сервера (достаточно части)",
+      "ids": "Один или несколько ID расширений"
+    },
+    "after": "Имена можно сокращать (напр. start pal). Без аргументов открывается интерактивная оболочка.\nВ скриптах используйте --json и --yes. Коды выхода: 0 успех · 1 ошибка · 2 неверное использование · 3 демон недоступен · 4 не найдено · 130 отменено"
+  },
+  "restart": {
+    "waiting": "Перезапуск {{name}}...",
+    "done": "{{name}} перезапущен."
+  },
+  "rename": {
+    "done": "{{old}} переименован в {{name}}."
+  },
+  "version": {
+    "release": "Релиз",
+    "last_updated": "Последнее обновление"
+  },
+  "backup": {
+    "col": {
+      "name": "Резервная копия",
+      "kind": "Тип",
+      "when": "Когда",
+      "size": "Размер"
+    },
+    "kind": {
+      "manual": "вручную",
+      "scheduled": "по расписанию",
+      "pre-update": "перед обновлением",
+      "pre-restore": "перед восстановлением"
+    },
+    "none": "У {{name}} пока нет резервных копий.",
+    "creating": "Резервное копирование {{name}}...",
+    "created": "Резервная копия {{backup}} создана.",
+    "confirm_delete": "Удалить резервную копию {{backup}} сервера {{name}}? Это нельзя отменить.",
+    "deleted": "Резервная копия {{backup}} удалена.",
+    "confirm_restore": "Вернуть {{name}} к резервной копии {{backup}}? Текущий мир сначала будет сохранён в резервную копию.",
+    "confirm_restore_running": "{{name}} запущен. Остановить и вернуть к резервной копии {{backup}}? Текущий мир сначала будет сохранён в резервную копию.",
+    "restoring": "Восстановление {{backup}}...",
+    "restored": "{{name}} возвращён к {{backup}}.",
+    "pre_restore": "Прежний мир сохранён как резервная копия {{backup}}.",
+    "start_again": "Снова запустить {{name}}?"
+  },
+  "schedule": {
+    "col": {
+      "task": "Задача",
+      "when": "Когда",
+      "on": "Вкл."
+    },
+    "action": {
+      "backup": "Резервная копия",
+      "restart": "Перезапуск",
+      "announce": "Объявление",
+      "update": "Обновление"
+    },
+    "none": "У {{name}} нет запланированных задач.",
+    "warns": "предупреждает за {{minutes}} мин",
+    "every_minutes": "каждые {{n}} мин",
+    "every_hours": "каждые {{n}} ч",
+    "daily_at": "ежедневно в {{at}}",
+    "keep": "Хранится резервных копий по расписанию: {{count}}",
+    "no_backup": "Эта игра не поддерживает резервные копии.",
+    "no_announce": "В этой игре нет команды объявлений, поэтому объявления и предупреждения недоступны.",
+    "added": "Запланировано: {{task}}",
+    "removed": "Удалено: {{task}}",
+    "enabled": "Включено: {{task}}",
+    "disabled": "Выключено: {{task}}",
+    "no_such": "Задачи {{number}} нет (всего задач: {{count}}).",
+    "keep_zero": "Храните хотя бы 1 резервную копию.",
+    "keep_set": "Хранятся последние резервные копии по расписанию: {{count}}.",
+    "confirm_clear": "Удалить все запланированные задачи {{name}}?",
+    "cleared": "У {{name}} больше нет запланированных задач.",
+    "bad_action": "«{{got}}» — не задача. Используйте одну из: {{actions}}.",
+    "warn_only_restart": "--warn работает только с restart и update.",
+    "message_required": "Для объявления нужен --message.",
+    "every_or_at": "Укажите либо --every (напр. 30m, 2h), либо --at (напр. 04:00), но не оба.",
+    "bad_every": "«{{got}}» — не интервал времени. Укажите минуты или единицы, напр. 30, 30m, 2h, 1h30m.",
+    "bad_at": "«{{got}}» — не время суток. Используйте HH:MM, напр. 04:00."
+  },
+  "chatbot": {
+    "api_key": "API-ключ сохранён",
+    "common": "Настройки для всех серверов Discord",
+    "guild": "Сервер Discord {{guild}}",
+    "defaults": "(по умолчанию)",
+    "saved": "Настройки чат-бота сохранены.",
+    "ask_key": "API-ключ (скрыт)",
+    "key_required": "API-ключ не указан. Введите его в запросе или передайте через конвейер: cat key.txt | saba-chan-cli chatbot key",
+    "key_saved": "API-ключ сохранён. Он больше никогда не будет показан.",
+    "confirm_delete_key": "Удалить сохранённый API-ключ? Чат-бот перестанет отвечать, пока не будет сохранён новый ключ.",
+    "key_deleted": "API-ключ удалён.",
+    "confirm_clear": "Удалить все настройки чат-бота и API-ключ?",
+    "cleared": "Настройки и ключ чат-бота удалены.",
+    "confirm_forget": "Заставить чат-бота забыть всё, что он запомнил на всех серверах Discord?",
+    "confirm_forget_guild": "Заставить чат-бота забыть всё, что он запомнил на сервере Discord {{guild}}?",
+    "forgot": "Память чат-бота очищена.",
+    "not_synced": "Сохранено на этом ПК. Изменения попадут в Discord, когда бот подключится (saba-chan-cli bot status).",
+    "sync_failed": "Сервер Discord {{guild}} не получил изменение: {{error}}",
+    "read_failed": "Не удалось прочитать {{path}}: {{error}}"
+  }
+}

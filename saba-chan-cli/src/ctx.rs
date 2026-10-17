@@ -24,13 +24,16 @@ impl Ctx {
         match self.api.health().await {
             Ok(_) => Ok(()),
             Err(e) if matches!(e.downcast_ref::<CliError>(), Some(CliError::DaemonDown { .. })) => {
-                if self.ask.enabled && !self.ask.yes && bootstrap::daemon_binary().is_some()
-                    && self.ask.confirm(&t!("daemon.offer_start"), true)? {
-                        let h = self.start_daemon().await?;
-                        self.out
-                            .note(&t!("daemon.started", version = crate::output::s(&h, "version")));
-                        return Ok(());
-                    }
+                if self.ask.enabled
+                    && !self.ask.yes
+                    && bootstrap::daemon_binary().is_some()
+                    && self.ask.confirm(&t!("daemon.offer_start"), true)?
+                {
+                    let h = self.start_daemon().await?;
+                    self.out
+                        .note(&t!("daemon.started", version = crate::output::s(&h, "version")));
+                    return Ok(());
+                }
                 Err(e)
             }
             Err(e) => Err(e),

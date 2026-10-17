@@ -1,1 +1,499 @@
-{}
+{
+  "add": {
+    "ask_folder": "Serverordner",
+    "ask_name": "Servername",
+    "ask_source": "Wie möchtest du ihn einrichten?",
+    "created_installing": "{{name}} erstellt. Serverdateien werden installiert...",
+    "folder_other_game": "{{dir}} sieht nach einem anderen Spiel aus ({{games}}).",
+    "folder_unrecognized": "In {{dir}} wurde kein Server erkannt.",
+    "fresh_install": "Neu installieren",
+    "install_failed": "Installation fehlgeschlagen: {{error}}",
+    "install_failed_removed": "Installation fehlgeschlagen, der neue Server wurde entfernt: {{error}}",
+    "installing": "Wird installiert",
+    "module_required": "Wähle ein Spiel mit --module oder gib mit --from einen vorhandenen Serverordner an.",
+    "name_empty": "Der Name darf nicht leer sein.",
+    "name_taken": "Ein Server namens {{name}} existiert bereits.",
+    "needs_extensions": "Dieses Spiel braucht folgende Erweiterungen: {{ids}}. Jetzt installieren und aktivieren?",
+    "no_installer": "{{game}} kann Serverdateien nicht selbst installieren. Nutze einen vorhandenen Ordner mit --from.",
+    "no_modules": "Es sind noch keine Spielmodule installiert.",
+    "ready": "{{name}} ({{game}}) ist bereit.",
+    "settings_failed": "Einige Einstellungen wurden nicht gespeichert: {{error}}",
+    "still_installing": "{{name}} wird noch im Hintergrund installiert.",
+    "use_anyway": "Trotzdem verwenden?",
+    "use_existing": "Vorhandenen Serverordner verwenden",
+    "folder_is": "{{dir}} sieht nach einem {{game}}-Server aus.",
+    "pick_game": "Wähle das Spiel mit --module.",
+    "folder_in_use": "{{dir}} wird bereits von {{name}} verwendet. Zwei Server in einem Ordner würden sich gegenseitig überschreiben."
+  },
+  "bot": {
+    "alias": "Alias",
+    "alias_added": "{{alias}} steht jetzt für {{module}}.",
+    "alias_removed": "Alias {{alias}} entfernt.",
+    "aliases": "Aliase",
+    "ask_token": "Node-Token",
+    "config_saved": "Bot-Einstellungen gespeichert.",
+    "confirm_unpair": "Diesen PC vom Discord-Bot trennen und die Kopplung vergessen?",
+    "connection": "Verbindung",
+    "last_error": "Letzter Fehler",
+    "last_heartbeat": "Letzter Heartbeat",
+    "list_empty": "Noch nichts vorhanden.",
+    "no_aliases": "Noch keine Aliase. Füge einen hinzu: saba-chan-cli bot alias add NAME MODULE",
+    "not_paired": "Dieser PC ist noch nicht gekoppelt. Führe aus: saba-chan-cli bot pair",
+    "offer_start": "Jetzt mit dem Bot verbinden?",
+    "pair_enter": "Gib diesen Code in Discord mit dem Kopplungsbefehl des Saba-chan-Bots ein:",
+    "pair_expired": "Der Kopplungscode ist abgelaufen. Führe bot pair erneut aus.",
+    "pair_no_code": "Das Relay hat keinen Kopplungscode zurückgegeben.",
+    "pair_polling": "Warte auf Discord...",
+    "pair_waiting": "Drücke Strg+C zum Abbrechen.",
+    "paired": "Mit Discord gekoppelt.",
+    "prefix": "Präfix",
+    "prefix_set": "Das Chat-Präfix ist jetzt {{prefix}}.",
+    "relay": "Relay",
+    "started": "Mit dem Discord-Bot-Relay verbunden.",
+    "stopped": "Vom Relay getrennt.",
+    "token_required": "Ein Token ist erforderlich.",
+    "token_saved": "Node-Token gespeichert.",
+    "unpaired": "Kopplung entfernt.",
+    "invite": "Lade den Bot mit diesem Link auf deinen Discord-Server ein:",
+    "no_server_aliases": "Keine Servernamen festgelegt. Beispiel: saba-chan-cli bot server-alias NAME 크리",
+    "server_alias_set": "Im Chat kann {{name}} jetzt so genannt werden: {{aliases}}",
+    "server_alias_cleared": "Die Chat-Namen von {{name}} wurden entfernt."
+  },
+  "col": {
+    "aliases": "Aliase",
+    "code": "Code",
+    "command": "Befehl",
+    "commands": "Befehle",
+    "folder": "Ordner",
+    "game": "Spiel",
+    "id": "ID",
+    "install": "Installation",
+    "kind": "Art",
+    "last_exit": "Letztes Ende",
+    "name": "Name",
+    "port": "Port",
+    "protocols": "Protokolle",
+    "started": "Gestartet",
+    "state": "Status",
+    "uptime": "Laufzeit",
+    "version": "Version",
+    "what": "Beschreibung",
+    "when": "Wann",
+    "why": "Grund",
+    "rcon_port": "RCON-Port",
+    "rest_port": "REST-Port",
+    "author": "Autor",
+    "mode": "Modus"
+  },
+  "common": {
+    "fetching": "Wird abgerufen...",
+    "installed": "installiert",
+    "no": "nein",
+    "update_available": "Update verfügbar",
+    "yes": "ja"
+  },
+  "config": {
+    "reset": "{{key}} auf den Standard zurückgesetzt.",
+    "reset_top_only": "Nur Schlüssel der obersten Ebene können zurückgesetzt werden.",
+    "restart_needed": "Starte den Daemon neu, damit dies wirksam wird.",
+    "saved": "Gespeichert: {{keys}}",
+    "confirm_reset_all": "Alle Einstellungen auf den Standard zurücksetzen?",
+    "confirm_reset": "{{keys}} auf den Standard zurücksetzen?",
+    "all": "alle Einstellungen"
+  },
+  "console": {
+    "attach_help": "Mit {{name}} verbunden. Gib einen Befehl ein, :help für Hilfe, :q zum Verlassen (der Server läuft weiter).",
+    "empty": "(noch keine Konsolenausgabe)",
+    "following": "Verfolge {{name}}. Strg+C zum Beenden.",
+    "meta_help": ":q verlassen · :commands Spielbefehle anzeigen · :start / :stop den Server · alles andere wird als Spielbefehl gesendet",
+    "not_running": "{{name}} läuft nicht. Das letzte Log wird angezeigt; neue Zeilen erscheinen, sobald er startet.",
+    "started": "── Server gestartet ──",
+    "stopped": "── Server gestoppt ──",
+    "unknown_meta": "Unbekannt: :{{cmd}}. Versuche :help."
+  },
+  "daemon": {
+    "already": "Der Daemon läuft bereits (v{{version}}).",
+    "binary_not_found": "Das Daemon-Programm (saba-core) wurde nicht gefunden. Setze SABA_CORE_PATH oder installiere neu.",
+    "confirm_kill": "Der Daemon hat nicht rechtzeitig gestoppt. Beenden erzwingen (PID {{pid}})?",
+    "killed": "Daemon zwangsweise beendet (PID {{pid}}).",
+    "not_running": "Der Daemon läuft nicht.",
+    "offer_start": "Der Saba-chan-Daemon läuft nicht. Starten?",
+    "spawn_failed": "Der Daemon konnte nicht gestartet werden: {{error}}",
+    "start_timeout": "Der Daemon hat nicht rechtzeitig geantwortet. Prüfe: saba-chan-cli daemon logs",
+    "started": "Daemon gestartet (v{{version}}).",
+    "starting": "Daemon wird gestartet...",
+    "stop_no_pid": "Der Daemon hat seine PID nicht gemeldet und kann daher nicht von hier beendet werden.",
+    "stop_timeout": "Der Daemon hat nicht rechtzeitig gestoppt.",
+    "stopped": "Daemon gestoppt.",
+    "stopping": "Daemon wird gestoppt..."
+  },
+  "diagnose": {
+    "ok": "In den Logs von {{name}} wurden keine bekannten Probleme gefunden."
+  },
+  "err": {
+    "ambiguous": "Mehr als ein {{what}} passt zu „{{query}}“.",
+    "ambiguous_hint": "Sei genauer: {{names}}",
+    "bad_json": "Ungültiges JSON: {{error}}",
+    "cancelled": "Abgebrochen.",
+    "daemon_down": "Der Saba-chan-Daemon unter {{url}} ist nicht erreichbar.",
+    "daemon_down_hint": "Starte ihn mit: saba-chan-cli daemon start",
+    "did_you_mean": "Meintest du: {{names}}?",
+    "hint": {
+      "executable_missing": "Serverdateien fehlen. Prüfe den Ordner oder installiere neu: saba-chan-cli server update",
+      "extension_required": "Installiere die benötigten Erweiterungen: saba-chan-cli extension install {{ids}}",
+      "node_token_missing": "Kopple diesen PC zuerst: saba-chan-cli bot pair",
+      "server_not_running": "Starte zuerst den Server: saba-chan-cli start NAME",
+      "server_running": "Stoppe zuerst den Server: saba-chan-cli stop NAME",
+      "update_unsupported": "Dieser Server kann nicht über Saba-chan aktualisiert werden. Aktualisiere seine Dateien selbst.",
+      "dependency_outdated": "Auf neuere Versionen aktualisieren: saba-chan-cli update check",
+      "port_conflict": "Gib einem davon andere Ports: saba-chan-cli server set NAME port=PORT",
+      "backup_unsupported": "Das Modul dieses Spiels gibt nicht an, was gesichert werden soll. Ein neueres Modul kann es vielleicht: saba-chan-cli update check",
+      "nothing_to_back_up": "Die Welt existiert noch nicht. Starte den Server einmal, um sie zu erstellen.",
+      "backup_busy": "Für diesen Server läuft bereits ein Backup oder eine Wiederherstellung. Versuche es erneut, wenn es fertig ist."
+    },
+    "not_a_bool": "„{{value}}“ ist kein Ja/Nein (verwende true oder false).",
+    "not_a_number": "„{{value}}“ ist keine Zahl.",
+    "not_found": "Kein {{what}} namens „{{query}}“.",
+    "pair_expected": "KEY=VALUE erwartet, erhalten: „{{got}}“.",
+    "timeout": "Der Daemon hat zu lange für die Antwort gebraucht ({{path}})."
+  },
+  "eula": {
+    "confirm": "Die EULA für {{name}} akzeptieren? Du stimmst den Lizenzbedingungen des Spiels zu.",
+    "done": "EULA für {{name}} akzeptiert."
+  },
+  "exit": {
+    "crash": "abgestürzt",
+    "in_game_stop": "im Spiel gestoppt",
+    "restarting_in": "Neustart in {{secs}} s",
+    "unknown_exit": "beendet (geschlossen oder abgebrochen)",
+    "user_stop": "von dir gestoppt"
+  },
+  "ext": {
+    "author": "Autor",
+    "config": "Einstellungen",
+    "config_saved": "Einstellungen für {{id}} gespeichert.",
+    "confirm_remove": "Erweiterung {{id}} löschen?",
+    "confirm_update": "{{n}} Update(s) installieren?",
+    "dependencies": "Benötigt",
+    "disabled": "{{id}} ausgeschaltet.",
+    "enabled": "{{id}} eingeschaltet.",
+    "hooks": "Hooks",
+    "incompatible": "inkompatibel",
+    "installed": "{{id}} installiert.",
+    "installed_with": "{{id}} installiert (mit {{all}}).",
+    "installing": "{{id}} wird installiert...",
+    "load_failed": "{{what}} konnte nicht geladen werden",
+    "mounted": "{{id}} geladen.",
+    "none": "Keine Erweiterungen installiert. Siehe: saba-chan-cli extension available",
+    "off": "aus",
+    "on": "an",
+    "removed": "{{id}} gelöscht.",
+    "rescanned": "Erweiterungsordner neu eingelesen.",
+    "skip_incompatible": "{{id}} wird übersprungen: {{why}}",
+    "status_idle": "Es startet gerade nichts.",
+    "unmounted": "{{id}} entladen.",
+    "up_to_date": "Alle Erweiterungen sind aktuell.",
+    "updated": "{{id}} auf {{version}} aktualisiert.",
+    "url_one_id": "--url und --sha256 funktionieren nur mit einer Erweiterungs-ID auf einmal.",
+    "no_config": "{{id}} hat keine Einstellungen.",
+    "status_busy": "Startet: {{list}}",
+    "status_done": "Bereit: {{list}}"
+  },
+  "history": {
+    "none": "Noch keine Stopps aufgezeichnet."
+  },
+  "module": {
+    "confirm_remove": "Modul {{id}} löschen?",
+    "confirm_remove_used": "Modul {{id}} löschen? Diese Server verwenden es: {{servers}}",
+    "detect_none": "In {{dir}} wurde kein bekanntes Spiel gefunden.",
+    "downloading_files": "Serverdateien werden heruntergeladen...",
+    "failed": "{{path}} konnte nicht geladen werden: {{error}}",
+    "fetching_versions": "Versionen werden abgerufen...",
+    "files_installed": "Serverdateien in {{dir}} installiert.",
+    "installed": "Modul {{id}} installiert.",
+    "installing": "Modul {{id}} wird installiert...",
+    "latest": "neueste",
+    "needs": "Benötigt Erweiterungen: {{ids}}",
+    "none": "Keine Spielmodule installiert. Siehe: saba-chan-cli module available",
+    "refreshed": "Module neu geladen.",
+    "removed": "Modul {{id}} gelöscht.",
+    "unmet": "Benötigt {{component}} {{required}} (installiert: {{installed}})"
+  },
+  "noun": {
+    "command": "Befehl",
+    "extension": "Erweiterung",
+    "game": "Spiel",
+    "module": "Modul",
+    "server": "Server",
+    "setting": "Einstellung",
+    "backup": "Backup"
+  },
+  "progress": {
+    "dismissed": "Fortschritt von {{name}} gelöscht.",
+    "finished": "{{name}} ist fertig installiert.",
+    "none": "Für {{name}} läuft keine Installation.",
+    "rolled_back": "{{name}} konnte nicht installiert werden und wurde entfernt."
+  },
+  "prompt": {
+    "needs_yes": "„{{question}}“ kann hier nicht gefragt werden. Füge --yes zur Bestätigung hinzu."
+  },
+  "props": {
+    "confirm_reset": "Die Spielkonfiguration von {{name}} auf die Modul-Standards zurücksetzen?",
+    "defaults_shown": "(die Datei existiert noch nicht; Standardwerte werden angezeigt)",
+    "reset_done": "Spielkonfiguration von {{name}} auf Standard zurückgesetzt.",
+    "saved": "Spielkonfiguration von {{name}} gespeichert."
+  },
+  "remove": {
+    "confirm": "Server {{name}} löschen?",
+    "confirm_running": "{{name}} läuft. Stoppen und löschen?",
+    "done": "{{name}} gelöscht."
+  },
+  "reorder": {
+    "done": "Reihenfolge gespeichert."
+  },
+  "reset": {
+    "confirm": "Alle Dateien von {{name}} löschen und neu beginnen? Das kann nicht rückgängig gemacht werden.",
+    "done": "{{name}} wurde zurückgesetzt."
+  },
+  "resolve": {
+    "name_required": "Gib einen {{what}} an.",
+    "none_exist": "Es gibt noch keinen {{what}}.",
+    "pick": "Welcher {{what}}?",
+    "which": "Welchen {{what}} meintest du mit „{{query}}“?"
+  },
+  "run": {
+    "confirm_danger": "{{label}} auf {{name}} kann nicht rückgängig gemacht werden. Ausführen?",
+    "missing_arg": "{{label}} fehlt. Verwendung: {{usage}}",
+    "must_be_number": "{{label}} muss eine Zahl sein.",
+    "must_be_one_of": "{{label}} muss eines davon sein: {{options}}",
+    "no_commands": "Dieses Spiel definiert keine Befehle. Sende rohe Zeilen: saba-chan-cli server send NAME \"line\"",
+    "out_of_range": "{{label}} muss zwischen {{min}} und {{max}} liegen.",
+    "pick": "Befehl für {{name}}",
+    "raw_ok": "Zeilen, die nicht in dieser Liste stehen, werden unverändert an die Konsole gesendet.",
+    "sent": "Erledigt.",
+    "too_many_args": "Zu viele Argumente. Verwendung: {{usage}}"
+  },
+  "server": {
+    "checking_update": "Suche nach Updates für {{name}}...",
+    "confirm_update": "Die Serverdateien von {{name}} jetzt aktualisieren?",
+    "none_yet": "Noch keine Server. Füge einen hinzu: saba-chan-cli server add",
+    "port_conflict": "Port belegt",
+    "port_conflict_with": "Port {{port}} wird auch von {{name}} verwendet.",
+    "update_available": "Für {{name}} ist ein Update verfügbar.",
+    "update_none": "{{name}} ist aktuell.",
+    "update_reason": {
+      "no_extension_data": "(keine Installationsmethode gespeichert)",
+      "no_hook_handled": "(keine Erweiterung übernimmt Updates dafür)"
+    },
+    "updated": "{{name}} aktualisiert.",
+    "updating": "{{name}} wird aktualisiert...",
+    "version_unknown": "unbekannt"
+  },
+  "set": {
+    "default": "Standard",
+    "done": "{{count}} Einstellung(en) für {{name}} gespeichert.",
+    "group": {
+      "advanced": "Erweitert",
+      "basic": "Grundlegend",
+      "extension": "Erweiterungsdaten",
+      "network": "Netzwerk",
+      "other": "Sonstiges",
+      "saba-chan": "Saba-chan"
+    },
+    "must_be_one_of": "{{key}} muss eines davon sein: {{options}}",
+    "restart_hint": "Starte {{name}} neu, um es zu übernehmen: saba-chan-cli restart {{name}}",
+    "unknown_key": "{{key}} ist ein neuer Schlüssel."
+  },
+  "shell": {
+    "bad_quotes": "Nicht geschlossenes Anführungszeichen.",
+    "bye": "Tschüss. Daemon und Server laufen weiter.",
+    "ctrl_c": "(drücke erneut Strg+C oder gib exit ein, um zu beenden)",
+    "help_line": "Gib einen Befehl ein (help, Tab zum Vervollständigen) oder schreib wie in Discord (z. B. \"palworld start\"). exit zum Beenden.",
+    "welcome": "Saba-chan CLI {{version}}"
+  },
+  "start": {
+    "already": "{{name}} läuft bereits.",
+    "done": "{{name}} läuft.",
+    "not_yet": "{{name}} läuft noch nicht ({{status}}). Prüfe: saba-chan-cli console {{name}}",
+    "provisioning": "{{name}} wird noch installiert.",
+    "requested": "Start für {{name}} angefordert.",
+    "waiting": "{{name}} wird gestartet...",
+    "exited": "{{name}} hat sich direkt nach dem Start beendet. Letzte Zeilen siehe oben."
+  },
+  "status": {
+    "commands_handled": "{{count}} Befehle verarbeitet",
+    "connected": "verbunden",
+    "crashed": "abgestürzt",
+    "daemon": "Daemon",
+    "daemon_off": "läuft nicht",
+    "disconnected": "getrennt",
+    "discord": "Discord",
+    "modules_failed": "{{count}} Modul(e) konnten nicht geladen werden",
+    "not_paired": "nicht gekoppelt",
+    "port_conflict_stop": "{{name}} wurde gestoppt: Port {{port}} wird von {{other}} verwendet.",
+    "provisioning": "wird installiert",
+    "running": "läuft",
+    "sleeping": "schläft",
+    "starting": "startet",
+    "stopped": "gestoppt",
+    "stopping": "stoppt",
+    "up_to_date": "aktuell",
+    "updates": "Updates",
+    "updates_ready": "{{count}} verfügbar",
+    "preflight_running": "Laufzeitumgebung für Spielmodule wird vorbereitet ({{percent}}%). Serveraktionen warten ggf., bis dies abgeschlossen ist.",
+    "preflight_failed": "Einrichtung der Laufzeitumgebung für Spielmodule fehlgeschlagen: {{error}}. Wird bei der nächsten Serveraktion erneut versucht."
+  },
+  "stop": {
+    "already": "{{name}} läuft nicht.",
+    "done": "{{name}} gestoppt.",
+    "not_yet": "{{name}} wurde noch nicht gestoppt. Erzwingen: saba-chan-cli stop --force {{name}}",
+    "requested": "Stopp für {{name}} angefordert.",
+    "waiting": "{{name}} wird gestoppt..."
+  },
+  "time": {
+    "day_ago": "vor {{n}} T",
+    "hm": "{{h}} Std. {{m}} Min.",
+    "hour_ago": "vor {{n}} Std.",
+    "min_ago": "vor {{n}} Min.",
+    "ms": "{{m}} Min. {{s}} s",
+    "s": "{{s}} s",
+    "sec_ago": "vor {{n}} s"
+  },
+  "update": {
+    "after_hint": "Saba-chan startet nach dem Update neu. Prüfe dann: saba-chan-cli update last",
+    "applied": "Angewendet: {{list}}",
+    "applying": "Updates werden angewendet...",
+    "checking": "Suche nach Updates...",
+    "config_saved": "Update-Einstellungen gespeichert.",
+    "confirm_restart": "Die Installation von {{list}} startet Saba-chan neu. Fortfahren?",
+    "current": "Installiert",
+    "downloaded": "{{n}} Update(s) heruntergeladen.",
+    "downloading": "Wird heruntergeladen",
+    "integrity_summary": "{{verified}} intakt · {{failed}} geändert oder unlesbar · {{skipped}} mit fehlenden Dateien",
+    "last_check": "Zuletzt geprüft: {{at}}",
+    "last_cleared": "Gelöscht.",
+    "latest": "Neueste",
+    "no_last": "Kein Update-Ergebnis gespeichert.",
+    "not_installed": "nicht installiert",
+    "nothing_to_apply": "Nichts anzuwenden. Zuerst herunterladen: saba-chan-cli update download",
+    "ready": "bereit zur Installation",
+    "up_to_date": "aktuell",
+    "updater_launched": "Updater gestartet. Der Daemon wird für das Update beendet.",
+    "verifying": "Dateien werden geprüft...",
+    "unknown_key": "{{key}} ist keine Update-Einstellung. Einstellungen: {{keys}}",
+    "integrity_empty": "Noch keine Dateien erfasst. Nur vom Updater installierte Teile werden geprüft.",
+    "int_verified": "intakt",
+    "int_missing": "Datei fehlt",
+    "int_changed": "geändert",
+    "int_error": "unlesbar",
+    "not_checked": "Noch keine Update-Informationen. Jetzt prüfen: saba-chan-cli update check"
+  },
+  "validate": {
+    "blocked": "Der Server kann erst starten, wenn diese Punkte behoben sind.",
+    "ok": "{{name}} sieht startbereit aus."
+  },
+  "help": {
+    "cmd": {
+      "bot.alias.list": "Aliase auflisten",
+      "bot.alias.add": "Alias hinzufügen",
+      "bot.alias.remove": "Alias entfernen"
+    },
+    "arg": {
+      "server": "Servername (ein Teil genügt)",
+      "ids": "Eine oder mehrere Erweiterungs-IDs"
+    },
+    "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente startet die interaktive Shell.\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 ok · 1 fehlgeschlagen · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
+  },
+  "restart": {
+    "waiting": "{{name}} wird neu gestartet...",
+    "done": "{{name}} neu gestartet."
+  },
+  "rename": {
+    "done": "{{old}} in {{name}} umbenannt."
+  },
+  "version": {
+    "release": "Release",
+    "last_updated": "Zuletzt aktualisiert"
+  },
+  "backup": {
+    "col": {
+      "name": "Backup",
+      "kind": "Art",
+      "when": "Wann",
+      "size": "Größe"
+    },
+    "kind": {
+      "manual": "manuell",
+      "scheduled": "geplant",
+      "pre-update": "vor Update",
+      "pre-restore": "vor Wiederherstellung"
+    },
+    "none": "{{name}} hat noch keine Backups.",
+    "creating": "{{name}} wird gesichert...",
+    "created": "Backup {{backup}} erstellt.",
+    "confirm_delete": "Backup {{backup}} von {{name}} löschen? Das kann nicht rückgängig gemacht werden.",
+    "deleted": "Backup {{backup}} gelöscht.",
+    "confirm_restore": "{{name}} auf Backup {{backup}} zurücksetzen? Die aktuelle Welt wird vorher als Backup gesichert.",
+    "confirm_restore_running": "{{name}} läuft. Stoppen und auf Backup {{backup}} zurücksetzen? Die aktuelle Welt wird vorher als Backup gesichert.",
+    "restoring": "{{backup}} wird wiederhergestellt...",
+    "restored": "{{name}} ist wieder auf dem Stand von {{backup}}.",
+    "pre_restore": "Die vorherige Welt bleibt als Backup {{backup}} erhalten.",
+    "start_again": "{{name}} wieder starten?"
+  },
+  "schedule": {
+    "col": {
+      "task": "Aufgabe",
+      "when": "Wann",
+      "on": "An"
+    },
+    "action": {
+      "backup": "Sichern",
+      "restart": "Neustart",
+      "announce": "Ankündigen",
+      "update": "Aktualisieren"
+    },
+    "none": "{{name}} hat keine geplanten Aufgaben.",
+    "warns": "warnt {{minutes}} Min. vorher",
+    "every_minutes": "alle {{n}} Min.",
+    "every_hours": "alle {{n}} Std.",
+    "daily_at": "täglich um {{at}}",
+    "keep": "Aufbewahrte geplante Backups: {{count}}",
+    "no_backup": "Dieses Spiel unterstützt keine Backups.",
+    "no_announce": "Dieses Spiel hat keinen Ankündigungsbefehl, daher sind Ankündigungen und Warnungen nicht verfügbar.",
+    "added": "Geplant: {{task}}",
+    "removed": "Entfernt: {{task}}",
+    "enabled": "Eingeschaltet: {{task}}",
+    "disabled": "Ausgeschaltet: {{task}}",
+    "no_such": "Es gibt keine Aufgabe {{number}} (es gibt {{count}}).",
+    "keep_zero": "Behalte mindestens 1 Backup.",
+    "keep_set": "Die letzten {{count}} geplanten Backups werden behalten.",
+    "confirm_clear": "Alle geplanten Aufgaben von {{name}} entfernen?",
+    "cleared": "{{name}} hat jetzt keine geplanten Aufgaben mehr.",
+    "bad_action": "„{{got}}“ ist keine Aufgabe. Verwende eine davon: {{actions}}.",
+    "warn_only_restart": "--warn funktioniert nur mit restart und update.",
+    "message_required": "Eine Ankündigung braucht --message.",
+    "every_or_at": "Gib entweder --every (z. B. 30m, 2h) oder --at (z. B. 04:00) an, nicht beides.",
+    "bad_every": "„{{got}}“ ist keine Zeitangabe. Verwende Minuten oder Einheiten, z. B. 30, 30m, 2h, 1h30m.",
+    "bad_at": "„{{got}}“ ist keine Uhrzeit. Verwende HH:MM, z. B. 04:00."
+  },
+  "chatbot": {
+    "api_key": "API-Schlüssel gespeichert",
+    "common": "Einstellungen für alle Discord-Server",
+    "guild": "Discord-Server {{guild}}",
+    "defaults": "(Standardwerte)",
+    "saved": "Chatbot-Einstellungen gespeichert.",
+    "ask_key": "API-Schlüssel (verborgen)",
+    "key_required": "Kein API-Schlüssel angegeben. Gib ihn bei der Abfrage ein oder leite ihn weiter: cat key.txt | saba-chan-cli chatbot key",
+    "key_saved": "API-Schlüssel gespeichert. Er wird nie wieder angezeigt.",
+    "confirm_delete_key": "Den gespeicherten API-Schlüssel löschen? Der Chatbot antwortet nicht mehr, bis ein neuer Schlüssel gespeichert ist.",
+    "key_deleted": "API-Schlüssel gelöscht.",
+    "confirm_clear": "Alle Chatbot-Einstellungen und den API-Schlüssel löschen?",
+    "cleared": "Chatbot-Einstellungen und Schlüssel gelöscht.",
+    "confirm_forget": "Soll der Chatbot vergessen, was er sich auf allen Discord-Servern gemerkt hat?",
+    "confirm_forget_guild": "Soll der Chatbot vergessen, was er sich auf dem Discord-Server {{guild}} gemerkt hat?",
+    "forgot": "Das Gedächtnis des Chatbots wurde gelöscht.",
+    "not_synced": "Auf diesem PC gespeichert. Es erreicht Discord, sobald der Bot verbunden ist (saba-chan-cli bot status).",
+    "sync_failed": "Discord-Server {{guild}} hat die Änderung nicht erhalten: {{error}}",
+    "read_failed": "{{path}} konnte nicht gelesen werden: {{error}}"
+  }
+}
