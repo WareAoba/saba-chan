@@ -64,6 +64,9 @@ pub async fn get_instance(
     }
 }
 
+/// 모듈 설정 기본값에서 인스턴스 폴더로 바뀌는 자리표시자
+pub const INSTANCE_DIR_PLACEHOLDER: &str = "{instance_dir}";
+
 /// POST /api/instances - 새 인스턴스 생성
 pub async fn create_instance(
     State(state): State<IPCServer>,
@@ -107,6 +110,16 @@ pub async fn create_instance(
                     if !instance.module_settings.contains_key(&field.name) {
                         if let Some(ref default_val) = field.default {
                             let json_val = match default_val {
+                                // `{instance_dir}`: 이 인스턴스 폴더 (예: 인스턴스마다 따로 두는 게임 데이터 폴더).
+                                // 기존 서버를 가져오는 경우엔 그 서버가 쓰던 위치를 모듈이 고르게 비워 둔다
+                                toml::Value::String(s) if s.contains(INSTANCE_DIR_PLACEHOLDER) => {
+                                    if payload.get("migration_source").is_some() {
+                                        serde_json::json!("")
+                                    } else {
+                                        let dir = supervisor.instance_store.instance_dir(&instance.id);
+                                        serde_json::json!(s.replace(INSTANCE_DIR_PLACEHOLDER, &dir.to_string_lossy()))
+                                    }
+                                }
                                 toml::Value::String(s) => serde_json::json!(s),
                                 toml::Value::Integer(n) => serde_json::json!(n),
                                 toml::Value::Float(f) => serde_json::json!(f),
@@ -188,6 +201,24 @@ pub async fn create_instance(
         };
         if let Some(port) = payload.get("port").and_then(|v| v.as_u64()) {
             instance.port = Some(port as u16);
+        } else if !migration_mode {
+            // 같은 게임을 여러 개 만들면 기본 포트가 겹친다: 다른 인스턴스와 겹치지 않게 옮긴다
+            let port_fields_of = |module: &str| -> Vec<String> {
+                supervisor.module_loader.get_module(module).ok()
+                    .and_then(|m| m.metadata.settings.as_ref().map(|s| s.port_fields().into_iter().map(str::to_string).collect()))
+                    .unwrap_or_default()
+            };
+            let mut taken = std::collections::HashSet::new();
+            for other in supervisor.instance_store.list() {
+                let fields = port_fields_of(&other.module_name);
+                let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
+                taken.extend(crate::validator::instance_ports(other, &fields).into_iter().map(|(_, p)| p));
+            }
+            let fields = port_fields_of(module);
+            let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
+            if let Some(delta) = crate::validator::shift_ports_clear_of(&mut instance, &fields, &taken) {
+                tracing::info!("Instance '{}': ports moved by +{} to stay clear of other instances", instance.name, delta);
+            }
         }
 
         let id = instance.id.clone();
