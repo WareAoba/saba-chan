@@ -1781,6 +1781,63 @@ button.activity-line:hover {
 .dc-perm-card .dc-card-head {
     flex-wrap: wrap;
 }
+/* 권한 레벨 (P1) */
+.dc-field-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-4);
+    flex-wrap: wrap;
+}
+.dc-field-label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1 1 220px;
+}
+.dc-field-label small {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+}
+.dc-level-select.input {
+    flex: none;
+    width: auto;
+    min-width: 128px;
+}
+.dc-owner {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+.dc-owner .input {
+    width: 200px;
+}
+.dc-level-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+}
+.dc-level-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    color: var(--text-2);
+}
+.dc-level-title.level-owner {
+    color: var(--info);
+}
+.dc-level-title.level-admin {
+    color: var(--ok);
+}
+.dc-level-title.level-banned {
+    color: var(--stop);
+}
+.dc-overridden .dc-level-select {
+    border-color: var(--accent);
+}
 .dc-mini-actions {
     display: flex;
     gap: 4px;

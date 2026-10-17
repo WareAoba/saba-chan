@@ -6,6 +6,7 @@ import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { Segmented } from '../ui/StatusChip';
 import { ChannelsTab, channelsAvailable } from './ChannelsTab';
 import * as P from './nodePermissions';
+import { PermissionPanel, permissionsAvailable } from './PermissionsTab';
 
 export const initialOf = (name) => (name || '?').trim().charAt(0).toUpperCase() || '?';
 
@@ -333,7 +334,8 @@ export function NodeView({
     const mode = P.instanceMode(settings, node.guildId);
     const visibleCount = visibleServers(settings, node.guildId, servers).length;
     const restrictedCount = Object.keys(P.nodeConfig(settings, node.guildId).memberPermissions || {}).length;
-    const activeTab = member ? 'members' : tab;
+    const levels = permissionsAvailable(); // 데몬 P1 권한 레벨 (없으면 예전 명령별 차단)
+    const activeTab = member && !levels ? 'members' : tab;
 
     return (
         <div className="dc-view">
@@ -348,8 +350,12 @@ export function NodeView({
                             {mode === 'all'
                                 ? t('discord.node_sub_all')
                                 : t('discord.node_sub_pick', { count: visibleCount })}
-                            {' · '}
-                            {t('discord.node_sub_members', { count: restrictedCount })}
+                            {!levels && (
+                                <>
+                                    {' · '}
+                                    {t('discord.node_sub_members', { count: restrictedCount })}
+                                </>
+                            )}
                         </span>
                     </div>
                 </div>
@@ -370,6 +376,15 @@ export function NodeView({
                 items={[
                     { id: 'instances', label: t('discord.tab_instances'), icon: <Icon name="server" size="sm" /> },
                     { id: 'members', label: t('discord.tab_members'), icon: <Icon name="user" size="sm" /> },
+                    ...(levels
+                        ? [
+                              {
+                                  id: 'commands',
+                                  label: t('discord.tab_commands'),
+                                  icon: <Icon name="terminal" size="sm" />,
+                              },
+                          ]
+                        : []),
                     ...(channelsAvailable()
                         ? [{ id: 'channels', label: t('discord.tab_channels'), icon: <Icon name="hash" size="sm" /> }]
                         : []),
@@ -380,7 +395,20 @@ export function NodeView({
                 <InstancesTab node={node} nodes={nodes} servers={servers} settings={settings} update={update} />
             )}
             {activeTab === 'channels' && <ChannelsTab key={node.guildId} node={node} />}
-            {activeTab === 'members' && !member && (
+            {levels && (activeTab === 'members' || activeTab === 'commands') && (
+                <PermissionPanel
+                    key={node.guildId}
+                    tab={activeTab}
+                    node={node}
+                    servers={visibleServers(settings, node.guildId, servers)}
+                    members={members}
+                    membersLoading={membersLoading}
+                    onRefreshMembers={onRefreshMembers}
+                    commandsFor={commandsFor}
+                    riskOf={riskOf}
+                />
+            )}
+            {!levels && activeTab === 'members' && !member && (
                 <MembersTab
                     node={node}
                     members={members}
@@ -390,7 +418,7 @@ export function NodeView({
                     onOpenMember={onOpenMember}
                 />
             )}
-            {activeTab === 'members' && member && (
+            {!levels && activeTab === 'members' && member && (
                 <MemberDetail
                     node={node}
                     member={member}
