@@ -299,6 +299,47 @@ impl Supervisor {
         if let Some(v) = &instance.server_version { put("server_version", json!(v)); }
     }
 
+    /// 모듈 `[module.dependencies]`를 못 맞추면 시작을 막는 응답. 다 맞으면 None
+    async fn unmet_dependencies_response(&self, module_name: &str, instance_name: &str) -> Option<Value> {
+        let unmet = self.unmet_module_dependencies(module_name).await?;
+        tracing::warn!("Module '{}' dependencies unmet for '{}': {}", module_name, instance_name, unmet.join(", "));
+        Some(json!({
+            "success": false,
+            "error": "module_dependency_unsatisfied",
+            "error_code": "module_dependency_unsatisfied",
+            "message": format!("Cannot start '{}': module '{}' needs {}", instance_name, module_name, unmet.join(", ")),
+            "missing_dependencies": unmet,
+        }))
+    }
+
+    /// 모듈 `[module.dependencies]` 중 못 맞춘 것 (`"ext-steamcmd >=1.0.0 (installed 0.9.0)"` 꼴). 다 맞으면 None.
+    /// 데몬(`saba-core`)과 설치·활성화된 익스텐션(`ext-<id>`)만 본다. 다른 키(gui, cli 등)는 데몬이 알 수 없어 넘긴다
+    async fn unmet_module_dependencies(&self, module_name: &str) -> Option<Vec<String>> {
+        let module = self.module_loader.get_module(module_name).ok()?;
+        if module.metadata.dependencies.is_empty() {
+            return None;
+        }
+        let mut installed = std::collections::HashMap::from([("saba-core".to_string(), env!("CARGO_PKG_VERSION").to_string())]);
+        if let Some(ext_mgr) = &self.extension_manager {
+            let mgr = ext_mgr.read().await;
+            let ready = mgr.installed_and_enabled_set();
+            for ext in mgr.list().into_iter().filter(|e| ready.contains(&e.id)) {
+                installed.insert(format!("ext-{}", ext.id), ext.version);
+            }
+        }
+        let unmet: Vec<String> = module
+            .metadata
+            .check_dependencies(&installed)
+            .into_iter()
+            .filter(|(key, _, _)| key == "saba-core" || key.starts_with("ext-"))
+            .map(|(key, req, got)| match got {
+                Some(v) => format!("{} {} (installed {})", key, req, v),
+                None => format!("{} {} (not installed)", key, req),
+            })
+            .collect();
+        (!unmet.is_empty()).then_some(unmet)
+    }
+
     /// Start a server by name (e.g., "my-server-1")
     /// Called by IPC API: POST /api/server/:name/start
     ///
@@ -337,6 +378,11 @@ impl Supervisor {
                         "conflicts": details,
                     }));
                 }
+            }
+
+            // ── 모듈 의존성 버전 검사 ([module.dependencies]의 saba-core, ext-<id>) ──
+            if let Some(blocked) = s.unmet_dependencies_response(module_name, &instance.name).await {
+                return Ok(blocked);
             }
 
             // ── 인스턴스 필수 익스텐션 검증 ──
@@ -615,6 +661,25 @@ impl Supervisor {
     /// 데몬 락은 준비와 정리 때만 잡는다. 익스텐션 hook, 모듈 `stop()`, 종료 대기(최대
     /// `stop_timeout`초)는 락 밖에서 한다 (C12).
     pub async fn stop_server(sup: &tokio::sync::RwLock<Self>, server_name: &str, module_name: &str, force: bool) -> Result<Value> {
+        let result = Self::stop_server_inner(sup, server_name, module_name, force).await;
+        // 정지가 실패하면 정지 표시를 지운다: 남겨 두면 뒤에 오는 진짜 크래시를 "사용자가 멈춤"으로 판정한다
+        let failed = match &result {
+            Err(_) => true,
+            Ok(v) => v.get("success").and_then(Value::as_bool) == Some(false),
+        };
+        if failed {
+            let mut s = sup.write().await;
+            let id = s.instance_store.get(server_name)
+                .or_else(|| s.instance_store.list().iter().find(|i| i.name == server_name))
+                .map(|i| i.id.clone());
+            if let Some(id) = id {
+                s.stop_requested.remove(&id);
+            }
+        }
+        result
+    }
+
+    async fn stop_server_inner(sup: &tokio::sync::RwLock<Self>, server_name: &str, module_name: &str, force: bool) -> Result<Value> {
         tracing::info!("Stopping server '{}' (force: {})", server_name, force);
 
         // ── 1) 준비 (쓰기 락: 정지 표시를 남긴다) ──
@@ -1081,6 +1146,10 @@ impl Supervisor {
                     tracing::info!("Cleaning stale tracker entry for '{}' (PID {} no longer alive)", instance.name, existing_pid);
                     let _ = s.tracker.untrack(instance_id);
                 }
+            }
+
+            if let Some(blocked) = s.unmet_dependencies_response(module_name, &instance.name).await {
+                return Ok(blocked);
             }
 
             // ── 포트 충돌 검사 (모듈별 프로토콜 인지) ──
@@ -2275,6 +2344,43 @@ mod tests {
         // 쿨다운이 30초 내이면 auto_detect를 건너뛰어야 함
         let stopped_at = supervisor.stop_cooldowns.get("test-instance-id").unwrap();
         assert!(stopped_at.elapsed().as_secs() < STOP_COOLDOWN_SECS);
+    }
+
+    /// [module.dependencies]: 익스텐션이 없거나 낮으면 막고, 맞으면 통과. 데몬이 모르는 키(gui)는 넘긴다
+    #[tokio::test]
+    async fn module_dependencies_check_extension_versions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules").join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[module.dependencies]\next-foo = \">=0.2.0\"\ngui = \">=99.0.0\"\n",
+        )
+        .unwrap();
+        let ext_root = tmp.path().join("extensions");
+        let write_ext = |version: &str| {
+            std::fs::create_dir_all(ext_root.join("foo")).unwrap();
+            std::fs::write(ext_root.join("foo").join("manifest.json"), format!(r#"{{"id":"foo","name":"Foo","version":"{version}"}}"#)).unwrap();
+        };
+        let mut supervisor = Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        supervisor.module_loader.discover_modules().unwrap();
+        let unmet = supervisor.unmet_module_dependencies("game").await.unwrap();
+        assert_eq!(unmet, vec!["ext-foo >=0.2.0 (not installed)".to_string()]);
+
+        write_ext("0.1.0");
+        let mut mgr = crate::extension::ExtensionManager::new_isolated(ext_root.to_str().unwrap());
+        mgr.discover().unwrap();
+        mgr.enable("foo").unwrap();
+        supervisor.extension_manager = Some(std::sync::Arc::new(tokio::sync::RwLock::new(mgr)));
+        assert_eq!(supervisor.unmet_module_dependencies("game").await.unwrap(), vec!["ext-foo >=0.2.0 (installed 0.1.0)".to_string()]);
+
+        write_ext("0.2.0");
+        supervisor.extension_manager.as_ref().unwrap().write().await.discover().unwrap();
+        assert!(supervisor.unmet_module_dependencies("game").await.is_none());
     }
 
     /// 시작 경로 정책 (C8): 인스턴스 설정 > 모듈이 콘솔 없음을 밝혔는지 > managed 기본

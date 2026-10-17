@@ -147,6 +147,11 @@ impl ModuleMetadata {
     }
 
 
+    /// 설정 이름 → 필드 타입 (`number`, `text`, `password`…). 파일에서 읽은 값을 타입대로 저장할 때 쓴다
+    pub fn setting_types(&self) -> std::collections::HashMap<String, String> {
+        self.settings.iter().flat_map(|s| &s.fields).map(|f| (f.name.clone(), f.field_type.clone())).collect()
+    }
+
     /// 컴포넌트 버전 의존성을 확인합니다.
     /// `installed_versions`: 컴포넌트 키 → 설치된 버전 (예: "saba-core" → "0.3.0")
     /// 미충족 의존성 목록을 (컴포넌트키, 요구버전, 설치버전Option) 튜플로 반환합니다.

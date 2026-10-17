@@ -22,6 +22,13 @@ Calling any other daemon endpoint (stdin, REST, ...):
     from daemon_rcon import daemon_post
     result = daemon_post(f"/api/instance/{instance_id}/stdin", {"command": "save"})
 
+Shared runtime helpers (every module may use them; the daemon ships this file):
+    daemon_stdin_command()                       send a line to a managed server's stdin
+    is_process_alive() / wait_for_exit() / force_kill()   PID-safe process checks and kills
+    config_value()                               top level -> module_settings -> settings lookup
+    load_setting_types() / coerce_setting()      cast file values by module.toml field type
+    run_lifecycle()                              the `python lifecycle.py <function>` entry point
+
 Environment (the daemon sets these for every Python run):
     SABA_IPC_URL     — base URL of the daemon (DAEMON_API_URL still overrides it)
     SABA_TOKEN_PATH  — file holding the X-Saba-Token value
@@ -29,7 +36,11 @@ Environment (the daemon sets these for every Python run):
 
 import json
 import os
+from pathlib import Path
+import re
+import subprocess
 import sys
+import time
 import urllib.request
 import urllib.error
 
@@ -278,3 +289,196 @@ def rcon_command(host, port, password, command, timeout=5, *, instance_id=None):
         return pkt[2].decode("utf-8", errors="replace")
     finally:
         sock.close()
+
+
+def daemon_stdin_command(instance_id, command, *, timeout=10):
+    """Send a line to a managed server's stdin via ``/api/instance/:id/stdin``."""
+    return daemon_post(f"/api/instance/{instance_id}/stdin", {"command": command}, timeout=timeout)
+
+
+# ─── Processes ────────────────────────────────────────────────
+
+_WIN_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+_WIN_STILL_ACTIVE = 259
+_WIN_NO_WINDOW = 0x08000000
+
+
+def is_process_alive(pid):
+    """PID 프로세스가 살아 있는지 확인한다.
+
+    Windows에서 `os.kill(pid, 0)`은 TerminateProcess를 호출해 프로세스를
+    종료시키므로 OpenProcess/GetExitCodeProcess로만 확인한다.
+    """
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if pid <= 0:
+        return False
+
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        kernel32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        handle = kernel32.OpenProcess(_WIN_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            # 접근 거부(5)는 프로세스가 존재함을 뜻한다.
+            return ctypes.get_last_error() == 5
+        try:
+            code = wintypes.DWORD()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return False
+            return code.value == _WIN_STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def wait_for_exit(pid, timeout=30, interval=1.0):
+    """프로세스가 종료될 때까지 최대 timeout초 기다린다. 종료되면 True."""
+    deadline = time.monotonic() + timeout
+    while is_process_alive(pid):
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(interval)
+    return True
+
+
+def force_kill(pid, *, tree=True):
+    """프로세스를 강제 종료한다. 반환: (성공 여부, 오류 메시지 또는 None)."""
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return False, f"invalid pid: {pid!r}"
+    if not is_process_alive(pid):
+        return True, None
+    try:
+        if os.name == "nt":
+            args = ["taskkill", "/F", "/PID", str(pid)]
+            if tree:
+                args.insert(2, "/T")
+            result = subprocess.run(args, capture_output=True, text=True,
+                                    timeout=15, creationflags=_WIN_NO_WINDOW)
+            if result.returncode != 0 and is_process_alive(pid):
+                return False, (result.stderr or result.stdout).strip()
+        else:
+            import signal
+            os.kill(pid, signal.SIGKILL)
+    except (OSError, subprocess.SubprocessError) as e:
+        if is_process_alive(pid):
+            return False, str(e)
+    return True, None
+
+
+# ─── 설정 ─────────────────────────────────────────────────────
+
+def config_value(config, key, default=None):
+    """설정 값을 최상위 → module_settings → settings 순서로 찾는다.
+
+    데몬은 함수별로 module_settings를 평탄화해 보내거나 보내지 않으므로
+    모듈은 이 함수로 세 위치를 모두 확인한다. 빈 문자열/None은 없는 값이다.
+    """
+    sources = [config]
+    for nested in ("module_settings", "settings"):
+        value = config.get(nested) if isinstance(config, dict) else None
+        if isinstance(value, dict):
+            sources.append(value)
+    for source in sources:
+        value = source.get(key) if isinstance(source, dict) else None
+        if value is not None and value != "":
+            return value
+    return default
+
+
+def load_setting_types(module_dir):
+    """module.toml `[[settings.fields]]`에서 {name: type} 맵을 읽는다.
+
+    type이 없으면 데몬과 같게 "text"로 본다. 파일이 없거나 파싱할 수 없으면 {}.
+    """
+    try:
+        import tomllib
+        raw = (Path(module_dir) / "module.toml").read_bytes()
+        data = tomllib.loads(raw.decode("utf-8-sig"))
+    except (ImportError, OSError, UnicodeError, ValueError):
+        return {}
+    fields = data.get("settings", {}).get("fields", [])
+    return {f["name"]: f.get("type", "text") for f in fields if isinstance(f, dict) and "name" in f}
+
+
+_INT_RE = re.compile(r"^[+-]?\d+$")
+
+
+def coerce_setting(value, field_type):
+    """설정 파일의 문자열 값을 module.toml 필드 타입에 맞게 변환한다.
+
+    number → int/float, boolean → bool. 그 외(text/password/select/미선언)는
+    문자열을 유지한다 — 큰 숫자 시드나 숫자 비밀번호가 손상되지 않게 한다.
+    """
+    text = str(value).strip()
+    if field_type == "boolean":
+        lowered = text.lower()
+        if lowered in ("true", "false"):
+            return lowered == "true"
+        return text
+    if field_type == "number":
+        if _INT_RE.match(text):
+            return int(text)
+        try:
+            number = float(text)
+        except ValueError:
+            return text
+        return int(number) if number.is_integer() and "." not in text and "e" not in text.lower() else number
+    return text
+
+
+# ─── CLI 진입점 ───────────────────────────────────────────────
+
+def run_lifecycle(functions):
+    """`python lifecycle.py <function>` 진입점.
+
+    stdin의 JSON config를 함수에 넘기고 결과 JSON 한 개를 stdout에 출력한다.
+    알 수 없는 함수나 예외도 JSON으로 응답하고 종료 코드 0을 유지한다
+    (데몬은 0이 아닌 종료 코드를 HTTP 500으로 바꾼다).
+    """
+    def emit(result):
+        sys.stdout.write(json.dumps(result, ensure_ascii=False) + "\n")
+        sys.stdout.flush()
+
+    if len(sys.argv) < 2:
+        emit({"success": False, "message": "Usage: lifecycle.py <function>"})
+        return
+
+    name = sys.argv[1]
+    fn = functions.get(name)
+    if fn is None:
+        emit({"success": False, "message": f"Unknown function: {name}", "available": list(functions)})
+        return
+
+    try:
+        raw = sys.stdin.read()
+        config = json.loads(raw) if raw.strip() else {}
+    except json.JSONDecodeError as e:
+        emit({"success": False, "message": f"Invalid JSON config on stdin: {e}"})
+        return
+
+    try:
+        result = fn(config)
+    except Exception as e:  # 모듈 함수 오류도 JSON으로 돌려준다
+        import traceback
+        print(traceback.format_exc(), file=sys.stderr)
+        result = {"success": False, "message": f"Error in {name}: {e}"}
+    emit(result)
