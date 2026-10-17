@@ -18,7 +18,7 @@
 //! - `PUT  /api/updates/config`              — 업데이트 설정 변경
 
 use axum::{
-    extract::State,
+    extract::{Query, State},
     response::IntoResponse,
     routing::{get, post, put},
     Json, Router,
@@ -680,9 +680,21 @@ fn spawn_detached(program: &std::path::Path, args: &[String]) -> std::io::Result
 }
 
 /// GET /api/updates/last-result — 마지막 적용 결과 (업데이터가 남긴 완료 마커). 없으면 `result: null`.
-async fn get_last_result() -> impl IntoResponse {
+/// `?lang=ko`면 그 언어의 패치노트를 `notes`에 고른다 (없으면 영어·한국어 순). 언어별 원문은 `result.release.notes`
+async fn get_last_result(Query(q): Query<LastResultQuery>) -> impl IntoResponse {
     let marker = saba_chan_updater_lib::UpdateCompletionMarker::load();
-    Json(json!({ "ok": true, "result": marker }))
+    Json(last_result_body(marker, q.lang.as_deref().unwrap_or("en")))
+}
+
+#[derive(Deserialize, Default)]
+struct LastResultQuery {
+    lang: Option<String>,
+}
+
+fn last_result_body(marker: Option<saba_chan_updater_lib::UpdateCompletionMarker>, lang: &str) -> Value {
+    let notes = marker.as_ref().and_then(|m| m.release.as_ref()).and_then(|r| r.notes_for(lang)).map(str::to_string);
+    let version = marker.as_ref().and_then(|m| m.release.as_ref()).map(|r| r.version.clone());
+    json!({ "ok": true, "result": marker, "version": version, "notes": notes })
 }
 
 /// DELETE /api/updates/last-result — 사용자가 결과를 확인했다
@@ -854,6 +866,27 @@ mod tests {
             .into_response();
         assert_eq!(resp.status(), axum::http::StatusCode::FORBIDDEN);
         assert_eq!(state.manager.read().await.get_config().relay_url, before);
+    }
+
+    /// A5: 적용 결과에 릴리즈 버전과 고른 언어의 패치노트가 붙는다. 예전 마커(릴리즈 없음)는 null
+    #[test]
+    fn last_result_carries_the_version_and_notes_in_the_asked_language() {
+        use saba_chan_updater_lib::marker::ReleaseSummary;
+        let mut marker = saba_chan_updater_lib::UpdateCompletionMarker::success(vec!["saba-core".into()]);
+        marker.release = Some(ReleaseSummary {
+            version: "0.1.3".into(),
+            released_at: None,
+            notes: [("ko".to_string(), "고침".to_string()), ("en".to_string(), "Fixes".to_string())].into(),
+        });
+        let body = last_result_body(Some(marker.clone()), "ko");
+        assert_eq!((body["version"].as_str(), body["notes"].as_str()), (Some("0.1.3"), Some("고침")));
+        assert_eq!(last_result_body(Some(marker.clone()), "ja")["notes"], "Fixes");
+        assert_eq!(body["result"]["release"]["notes"]["en"], "Fixes");
+
+        marker.release = None;
+        let old = last_result_body(Some(marker), "ko");
+        assert!(old["notes"].is_null() && old["version"].is_null());
+        assert!(last_result_body(None, "ko")["result"].is_null());
     }
 
     #[test]

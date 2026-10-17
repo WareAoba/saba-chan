@@ -353,6 +353,8 @@ pub struct UpdateManager {
     install_root: PathBuf,
     /// 마지막으로 받은 서명 검증된 manifest. 무결성·의존성 검사와 다운로드가 같이 쓴다
     cached_manifest: Option<ReleaseManifest>,
+    /// 마지막으로 확인한 릴리즈 (버전·패치노트). 받아 둘 때 적용 결과에 실으려고 남긴다 (A5)
+    latest_release: Option<relay::LatestRelease>,
     /// 다운로드 진행 상태 (Arc로 공유 — Manager 잠금 없이 폴링 가능)
     pub download_progress: Arc<StdMutex<DownloadProgress>>,
 }
@@ -397,6 +399,7 @@ impl UpdateManager {
             staging_dir,
             install_root,
             cached_manifest: None,
+            latest_release: None,
             download_progress: Arc::new(StdMutex::new(DownloadProgress::default())),
         };
         // 지난 업데이트가 남긴 .exe.old: 적용 직후엔 옛 프로세스가 쥐고 있어 못 지운 것을 다음 실행 때 지운다
@@ -531,6 +534,7 @@ impl UpdateManager {
             }
             // 무결성 검사·의존성 검사·다운로드가 같은 manifest를 보게 한다
             self.cached_manifest = Some(release.manifest);
+            self.latest_release = Some(release.latest);
         }
 
         let now = time::now_iso();

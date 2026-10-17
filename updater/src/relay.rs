@@ -32,7 +32,7 @@ pub struct CheckResponse {
     pub latest: Option<LatestRelease>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LatestRelease {
     pub version: String,

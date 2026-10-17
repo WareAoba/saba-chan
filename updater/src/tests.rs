@@ -795,3 +795,39 @@ fn a_renamed_gui_exe_retires_the_old_one() {
     // GUI exe를 쓰지 않은 적용(디렉터리 모드 등)은 아무것도 건드리지 않는다
     assert!(UpdateManager::retire_other_exes(root, &[root.join("x.dll")], &names).is_empty());
 }
+
+// A5: 받아 둔 릴리즈의 버전·패치노트가 staging에 남아 업데이터가 완료 마커에 싣고, 정리하면 지워진다
+#[test]
+fn downloaded_release_notes_reach_the_completion_marker() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+    let file = tmp.path().join("locales.zip");
+    std::fs::write(&file, b"x").unwrap();
+    manager.status.components.push(crate::ComponentVersion {
+        component: Component::Locales,
+        current_version: "0.1.2".into(),
+        latest_version: Some("0.1.3".into()),
+        update_available: true,
+        download_url: None,
+        asset_name: None,
+        release_notes: None,
+        published_at: None,
+        downloaded: true,
+        downloaded_path: Some(file.to_string_lossy().to_string()),
+        staged_sha256: None,
+        installed: true,
+    });
+    manager.latest_release = Some(crate::relay::LatestRelease {
+        version: "0.1.3".into(),
+        notes: Some([("ko".to_string(), "고침".to_string())].into()),
+        ..Default::default()
+    });
+
+    manager.save_pending_manifest().unwrap();
+    let release = manager.pending_release().expect("release summary saved with the pending manifest");
+    assert_eq!((release.version.as_str(), release.notes_for("ko")), ("0.1.3", Some("고침")));
+
+    manager.clear_pending_manifest();
+    assert!(manager.pending_release().is_none());
+}
