@@ -331,6 +331,15 @@ const impl = {
             nodeToken: 'kept',
             path: path || 'C:\\Users\\me\\saba-chan-export.zip',
         }),
+    auditList: ({ instance } = {}) =>
+        ok({
+            entries: [
+                { ts: now() - 30, source: 'discord', user: 'wareaoba', guild: '사바 마을', action: 'command', instanceId: 'mc-1', instance: '마크 서버', command: 'say', args: '["안녕"]', ok: true, status: 200 },
+                { ts: now() - 600, source: 'gui', action: 'restart', instanceId: 'mc-1', instance: '마크 서버', ok: true, status: 200 },
+                { ts: now() - 3600, source: 'schedule', action: 'stop', instanceId: 'pal-1', instance: '팰월드', ok: false, status: 500 },
+                { ts: now() - 7200, source: 'cli', action: 'start', instanceId: 'mc-1', instance: '마크 서버', ok: true, status: 200 },
+            ].filter((e) => !instance || e.instanceId === instance),
+        }),
     relayNodeChannels: (guildId) => ok({ guildId, ...mockChannels }),
     relayNodeChannelsSave: (guildId, patch) => {
         Object.assign(mockChannels, patch);

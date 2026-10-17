@@ -21,6 +21,7 @@ import { NativeProvision } from '../NativeProvision';
 import { ServerSettingsModal } from '../ServerSettingsModal';
 import { Segmented, StatusChip } from '../ui/StatusChip';
 import { ExitHistory } from './ExitHistory';
+import { AuditLog, auditAvailable } from './AuditTab';
 import { MaintenanceTab, maintenanceAvailable } from './MaintenanceTab';
 import { ModuleAuditNotice } from './ModuleAuditNotice';
 import { ServerConsole } from './ServerConsole';
@@ -76,6 +77,7 @@ export function ServerDetail({
             label: t('shell.tab_maintenance'),
             icon: <Icon name="clock" size="sm" />,
         },
+        auditAvailable() && { id: 'audit', label: t('shell.tab_audit'), icon: <Icon name="file" size="sm" /> },
         { id: 'info', label: t('shell.tab_info'), icon: <Icon name="info" size="sm" /> },
     ].filter(Boolean);
 
@@ -295,6 +297,7 @@ export function ServerDetail({
                             />
                         )}
                         {activeTab === 'maintenance' && <MaintenanceTab server={server} />}
+                        {activeTab === 'audit' && <AuditLog instanceId={server.id} />}
                         {activeTab === 'info' && (
                             <InfoTab
                                 server={server}
