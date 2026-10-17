@@ -199,6 +199,21 @@ pub async fn create_instance(
         } else {
             false
         };
+        // 한 폴더에 서버 둘이면 서로의 월드·설정을 덮어쓴다
+        if let Some(dir) = instance.working_dir.as_deref() {
+            let taken = supervisor.instance_store.list().iter().find(|o| {
+                o.working_dir.as_deref().is_some_and(|d| saba_chan_updater_lib::same_path(std::path::Path::new(d), std::path::Path::new(dir)))
+            });
+            if let Some(other) = taken {
+                let error = json!({
+                    "success": false,
+                    "error": format!("Server '{}' already uses this folder", other.name),
+                    "error_code": "working_dir_in_use",
+                    "instance": other.name,
+                });
+                return (StatusCode::CONFLICT, Json(error)).into_response();
+            }
+        }
         if let Some(port) = payload.get("port").and_then(|v| v.as_u64()) {
             instance.port = Some(port as u16);
         } else if !migration_mode {

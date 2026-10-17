@@ -2425,20 +2425,35 @@ ipcMain.handle('relay:botInvite', async (_event, relayUrl) => {
     }
 });
 
-// AI 챗봇 설정: 키는 데몬에만 있고 응답에는 hasApiKey만 온다
-async function chatbotCall(method, path, data) {
+// 데몬 JSON 호출. 4xx·5xx도 데몬이 준 본문을 그대로 돌려준다 (error_code, details)
+async function daemonJson(method, path, data, timeout = 15000) {
     try {
-        const resp = await axios({ method, url: `${IPC_BASE}${path}`, data, timeout: 15000 });
+        const resp = await axios({ method, url: `${IPC_BASE}${path}`, data, timeout });
         return resp.data;
     } catch (err) {
         return err.response?.data || { success: false, error: err.message };
     }
 }
-ipcMain.handle('chatbot:get', () => chatbotCall('get', '/api/chatbot'));
-ipcMain.handle('chatbot:save', (_event, patch) => chatbotCall('put', '/api/chatbot', patch));
-ipcMain.handle('chatbot:clear', () => chatbotCall('delete', '/api/chatbot'));
+// 백업 (A2)·예약 작업 (A3)
+// 큰 월드는 묶고 푸는 데 몇 분 걸린다
+const BACKUP_TIMEOUT = 10 * 60 * 1000;
+const instancePath = (id, rest = '') => `/api/instance/${encodeURIComponent(id)}${rest}`;
+ipcMain.handle('instance:backups', (_e, id) => daemonJson('get', instancePath(id, '/backups')));
+ipcMain.handle('instance:backupCreate', (_e, id) => daemonJson('post', instancePath(id, '/backups'), undefined, BACKUP_TIMEOUT));
+ipcMain.handle('instance:backupDelete', (_e, id, name) =>
+    daemonJson('delete', instancePath(id, `/backups/${encodeURIComponent(name)}`)),
+);
+ipcMain.handle('instance:backupRestore', (_e, id, name) =>
+    daemonJson('post', instancePath(id, `/backups/${encodeURIComponent(name)}/restore`), undefined, BACKUP_TIMEOUT),
+);
+ipcMain.handle('instance:scheduleGet', (_e, id) => daemonJson('get', instancePath(id, '/schedule')));
+ipcMain.handle('instance:scheduleSave', (_e, id, body) => daemonJson('put', instancePath(id, '/schedule'), body));
+// AI 챗봇 설정: 키는 데몬에만 있고 응답에는 hasApiKey만 온다
+ipcMain.handle('chatbot:get', () => daemonJson('get', '/api/chatbot'));
+ipcMain.handle('chatbot:save', (_event, patch) => daemonJson('put', '/api/chatbot', patch));
+ipcMain.handle('chatbot:clear', () => daemonJson('delete', '/api/chatbot'));
 ipcMain.handle('chatbot:clearMemory', (_event, guildId) =>
-    chatbotCall('delete', `/api/chatbot/memory${guildId ? `?guildId=${encodeURIComponent(guildId)}` : ''}`),
+    daemonJson('delete', `/api/chatbot/memory${guildId ? `?guildId=${encodeURIComponent(guildId)}` : ''}`),
 );
 
 ipcMain.handle('relay:initiatePairing', async (_event, payload) => {

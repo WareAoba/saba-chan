@@ -281,25 +281,18 @@ pub async fn execute_rcon_command(
         }
     };
 
-    // managed 모드(RCON 꺼짐, stdin 제어)면 같은 명령을 stdin으로 보낸다.
-    // GUI·디스코드·모듈 역호출이 모두 이 엔드포인트를 쓰므로 여기서 한 번에 라우팅한다.
-    if supervisor.routes_commands_to_stdin(&id).await {
-        let Some(command) = payload.get("command").and_then(|v| v.as_str()) else {
-            return (StatusCode::BAD_REQUEST, Json(json!({ "error": "Missing 'command' field" })))
-                .into_response();
-        };
-        return match supervisor.send_stdin_command(&id, command).await {
-            Ok(message) => (
-                StatusCode::OK,
-                Json(json!({ "success": true, "message": message, "data": null, "protocol": "stdin" })),
-            )
-                .into_response(),
-            Err(e) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": format!("stdin command failed: {}", e) })),
-            )
-                .into_response(),
-        };
+    // 관리 모드면 stdin으로도 보낼 수 있다. RCON을 지원하는 게임은 RCON을 먼저 쓴다 (서버의 답이 돌아온다).
+    // RCON이 안 되면 (아직 켜지는 중 등) stdin으로 보낸다. GUI·디스코드·모듈 역호출이 모두 이 엔드포인트를 쓴다.
+    let stdin_ok = supervisor.routes_commands_to_stdin(&id).await;
+    let rcon_supported = supervisor
+        .module_loader
+        .get_module(&instance.module_name)
+        .ok()
+        .and_then(|m| m.metadata.protocols_supported)
+        .is_some_and(|p| p.iter().any(|s| s == "rcon"));
+    if stdin_ok && !rcon_supported {
+        drop(supervisor);
+        return via_stdin(&state, &id, &payload).await;
     }
 
     // 모듈에서 기본값 가져오기
@@ -351,6 +344,7 @@ pub async fn execute_rcon_command(
         .and_then(|c| c.get("rcon_password"))
         .and_then(|v| v.as_str()) {
         Some(pass) => pass.to_string(),
+        None if stdin_ok => return via_stdin(&state, &id, &payload).await,
         None => {
             return (
                 StatusCode::BAD_REQUEST,
@@ -401,6 +395,10 @@ pub async fn execute_rcon_command(
         Ok(Err(e)) => {
             // 비밀번호·포트가 바뀌었을 수 있다 — 다음 명령은 설정 파일을 다시 읽는다
             state.credentials.invalidate(&id);
+            if stdin_ok {
+                tracing::debug!("RCON failed for '{}' ({}), sending via stdin", id, e);
+                return via_stdin(&state, &id, &payload).await;
+            }
             let error_msg = format!("RCON execution failed: {}", e);
             tracing::warn!("{}", error_msg);
             (
@@ -419,6 +417,61 @@ pub async fn execute_rcon_command(
                 .into_response()
         }
     }
+}
+
+/// 관리 프로세스의 stdin으로 보낸다. 서버의 답은 콘솔로만 나오므로, 보낸 뒤 잠깐 새로 찍힌 줄을
+/// 모아 `data.response`로 돌려준다 (채팅·CLI가 결과를 보여 줄 수 있게)
+async fn via_stdin(state: &IPCServer, id: &str, payload: &serde_json::Value) -> axum::response::Response {
+    use crate::supervisor::managed_process::LogSource;
+    let Some(command) = payload.get("command").and_then(|v| v.as_str()) else {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "Missing 'command' field" }))).into_response();
+    };
+    let proc = state.supervisor.read().await.managed_store.get(id).await;
+    let before = match &proc {
+        Some(p) => p.get_recent_console(1).await.last().map(|l| l.id).unwrap_or(0),
+        None => 0,
+    };
+    let sent = state.supervisor.read().await.send_stdin_command(id, command).await;
+    let message = match sent {
+        Ok(m) => m,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("stdin command failed: {}", e) })),
+            )
+                .into_response()
+        }
+    };
+    let mut lines: Vec<String> = Vec::new();
+    if let Some(p) = proc {
+        // 최대 1.5초. 답이 오기 시작한 뒤 0.4초 동안 더 없으면 끝
+        let mut quiet = 0;
+        for _ in 0..15 {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            let new: Vec<String> = p
+                .get_console_since(before)
+                .await
+                .into_iter()
+                .filter(|l| l.source != LogSource::System && l.content.trim() != command.trim())
+                .map(|l| l.content)
+                .collect();
+            if new.len() > lines.len() {
+                lines = new;
+                quiet = 0;
+            } else if !lines.is_empty() {
+                quiet += 1;
+                if quiet >= 4 {
+                    break;
+                }
+            }
+        }
+    }
+    let data = if lines.is_empty() { Value::Null } else { json!({ "response": lines.join("\n"), "executed": command }) };
+    (
+        StatusCode::OK,
+        Json(json!({ "success": true, "message": message, "data": data, "protocol": "stdin" })),
+    )
+        .into_response()
 }
 
 /// POST /api/instance/:id/rest - REST API 명령어 실행

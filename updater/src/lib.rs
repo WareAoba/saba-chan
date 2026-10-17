@@ -281,7 +281,7 @@ impl Default for UpdateConfig {
 
 /// 같은 파일을 가리키는 경로인지. 구성 요소로 비교해 `./`는 무시하고,
 /// Windows 파일 이름은 대소문자를 가리지 않는다
-fn same_path(a: &Path, b: &Path) -> bool {
+pub fn same_path(a: &Path, b: &Path) -> bool {
     let parts = |p: &Path| -> Vec<String> {
         p.components()
             .filter(|c| !matches!(c, std::path::Component::CurDir))
