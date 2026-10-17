@@ -32,6 +32,7 @@ pub struct ChatSettings {
     pub prefix: String,
     pub module_aliases: HashMap<String, String>,
     pub command_aliases: HashMap<String, Value>,
+    pub instance_aliases: HashMap<String, String>,
     pub node_settings: Value,
 }
 
@@ -41,6 +42,7 @@ impl From<&BotConfig> for ChatSettings {
             prefix: cfg.prefix.clone(),
             module_aliases: cfg.module_aliases.clone(),
             command_aliases: cfg.command_aliases.clone(),
+            instance_aliases: cfg.instance_aliases.clone(),
             node_settings: cfg.node_settings.clone(),
         }
     }
@@ -252,10 +254,29 @@ impl<D: DaemonApi> Ctx<'_, D> {
         Some(self.t("errors.alias_conflict", &[("alias", alias), ("modules", &modules)]))
     }
 
+    /// 인스턴스 이름이나 인스턴스 별명으로 부른 서버들
+    fn named_servers<'s>(&self, alias: &str, servers: &'s [ServerView]) -> Vec<&'s ServerView> {
+        let by_name: Vec<&ServerView> = servers.iter().filter(|s| s.name.to_lowercase() == alias.to_lowercase()).collect();
+        if !by_name.is_empty() {
+            return by_name;
+        }
+        servers
+            .iter()
+            .filter(|s| {
+                self.settings
+                    .instance_aliases
+                    .get(&s.id)
+                    .is_some_and(|list| aliases::alias_listed(list, alias))
+            })
+            .collect()
+    }
+
     /// 별명/인스턴스 이름으로 대상 서버를 찾는다. 찾지 못하면 사용자에게 줄 응답을 Err로.
     fn find_server<'s>(&self, alias: &str, servers: &'s [ServerView]) -> Result<&'s ServerView, String> {
-        if let Some(s) = servers.iter().find(|s| s.name.to_lowercase() == alias.to_lowercase()) {
-            return Ok(s);
+        match self.named_servers(alias, servers).as_slice() {
+            [one] => return Ok(one),
+            [first, ..] => return Err(self.t("errors.multiple_instances", &[("module", &first.module)])),
+            [] => {}
         }
         let module = self.aliases.resolve(alias);
         let matched: Vec<&ServerView> = servers.iter().filter(|s| s.module == module || s.name.contains(&module)).collect();
@@ -272,11 +293,8 @@ impl<D: DaemonApi> Ctx<'_, D> {
         }
         let prefix = &self.settings.prefix;
         // 인스턴스 이름으로 불렀으면 그 인스턴스의 모듈을 안내한다
-        let module_name = servers
-            .iter()
-            .find(|s| s.name.to_lowercase() == alias.to_lowercase())
-            .map(|s| s.module.clone())
-            .unwrap_or_else(|| self.aliases.resolve(alias));
+        let named = self.named_servers(alias, servers);
+        let module_name = named.first().map(|s| s.module.clone()).unwrap_or_else(|| self.aliases.resolve(alias));
 
         let mut out = format!(
             "{}\n\n{}\n",
@@ -302,7 +320,7 @@ impl<D: DaemonApi> Ctx<'_, D> {
             }
         }
         let same_module = servers.iter().filter(|s| s.module == module_name).count();
-        if same_module > 1 && servers.iter().all(|s| s.name.to_lowercase() != alias.to_lowercase()) {
+        if same_module > 1 && named.len() != 1 {
             out.push_str("\n\n");
             out.push_str(&self.t("errors.multiple_instances", &[("module", &module_name)]));
         }
