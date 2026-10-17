@@ -28,6 +28,7 @@ import { setDiscordI18n, useDiscordStore } from './stores/useDiscordStore';
 import { setServerI18n, useServerStore } from './stores/useServerStore';
 import { useSettingsStore } from './stores/useSettingsStore';
 import { useUIStore } from './stores/useUIStore';
+import { isManaged } from './utils/serverView';
 // 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
 import { UpdateResultBanner } from './components/shell/UpdateResultBanner';
 import './styles/shell.css';
@@ -458,15 +459,7 @@ function App() {
             window.api.onCloseRequest(() => {
                 // managed 모드로 실행 중인 인스턴스 검출
                 const currentServers = useServerStore.getState().servers;
-                const currentModules = useServerStore.getState().modules;
-                const runningManaged = currentServers.filter((srv) => {
-                    if (srv.status !== 'running') return false;
-                    const mod = currentModules.find((m) => m.name === srv.module);
-                    const instanceManaged = srv.module_settings?.managed_start;
-                    if (instanceManaged === true) return true;
-                    if (instanceManaged === false) return false;
-                    return (mod?.interaction_mode || 'console') === 'console';
-                });
+                const runningManaged = currentServers.filter((srv) => srv.status === 'running' && isManaged(srv));
 
                 const doQuit = () => {
                     window.api.closeResponse('quit');

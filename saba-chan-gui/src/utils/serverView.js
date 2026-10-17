@@ -31,16 +31,22 @@ export function primaryAction(status) {
 }
 
 /**
- * 이 서버에 콘솔(stdin)과 명령 목록 중 무엇을 보여줄지.
- * 시작 방식은 데몬이 정하지만(C8), 화면은 같은 입력(인스턴스 설정 → 모듈 기본값)으로 미리 판단한다.
+ * 데몬이 이 서버를 managed(saba-runner가 stdin/stdout을 쥔)로 켜는가.
+ * 데몬이 알려 주는 `managed`가 있으면 그것을, 없으면 데몬 규칙(Supervisor::uses_managed_start)을 따른다:
+ * 인스턴스 설정 `managed_start`가 우선, 없으면 managed가 기본.
  */
+export function isManaged(server) {
+    if (typeof server?.managed === 'boolean') return server.managed;
+    const v = server?.module_settings?.managed_start;
+    if (v === false || v === 'false') return false;
+    return true;
+}
+
+/** 이 서버에 콘솔(stdin)과 명령 목록 중 무엇을 보여줄지 */
 export function interactionOf(server, moduleData) {
-    const moduleMode = moduleData?.interaction_mode || 'console';
-    const instanceManaged = server.module_settings?.managed_start;
-    const managed = instanceManaged === true || (instanceManaged == null && moduleMode === 'console');
     const supported = moduleData?.protocols?.supported || [];
     const hasCommands = (moduleData?.commands?.fields || []).length > 0;
-    const hasConsole = managed && supported.includes('stdin');
+    const hasConsole = isManaged(server) && supported.includes('stdin');
     return { console: hasConsole, commands: hasCommands || !hasConsole };
 }
 
