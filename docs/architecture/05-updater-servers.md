@@ -215,7 +215,6 @@ Tauri 커맨드(`lib.rs:108-730`): `get_installer_state`, `set_install_path`, `s
 **문제점**
 - 기본 설치 경로가 `Program Files`(관리자 권한 필요)인데 레지스트리는 HKCU에 쓴다. 더 큰 문제는 updater exe와 daemon이 **권한 상승 없이** `install_root`에 쓴다는 점이다. 기본 경로에 설치하면 업데이트 적용이 권한 문제로 실패할 수 있다(추정, 매니페스트의 requestedExecutionLevel은 확인하지 않음).
 - 모듈·익스텐션 소스는 하나다: 설치기, 데몬 목록, 업데이터가 모두 같은 릴리즈 manifest를 본다.
-- `installer/KNOWN_ISSUES.md`는 "2026-03-05 5건 모두 해결"이라고 적혀 있다. 본문은 지금 없는 `release-manifest.json`과 GitHub Contents API 기준이라 오래됐다.
 
 ---
 

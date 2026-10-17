@@ -2,7 +2,7 @@
 
 이 파일은 Claude Code와 Codex가 함께 따르는 저장소 지침이다. 사용자 대화와 진행 보고는 한국어로 쓴다. 공통 사용자 지침은 `C:/Users/jace5/.codex/AGENTS.md`에 있다.
 
-이 저장소는 데몬(`src`, 바이너리 `saba-core`), 인터페이스(`saba-chan-gui`, `saba-chan-cli`), 업데이터, 디스코드 봇을 담는다. 모듈·플러그인은 별도 저장소(`saba-chan-modules`, `saba-chan-extensions`)다.
+이 저장소는 데몬(`src`, 바이너리 `saba-core`), 인터페이스(`saba-chan-gui`, `saba-chan-cli`), 업데이터, 인스톨러, 러너(`runner`)를 담는다. 디스코드 봇은 server-chan의 중앙 relay 봇이다. 모듈·플러그인은 별도 저장소(`saba-chan-modules`, `saba-chan-extensions`)다.
 
 ## 기준 문서
 
