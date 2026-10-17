@@ -165,6 +165,15 @@ pub struct ChatbotConfig {
 }
 
 impl ChatbotConfig {
+    /// 예전 키를 지금 계약으로 (2026-10-17: `persona` → `memo`)
+    fn migrate(&mut self) {
+        for map in std::iter::once(&mut self.settings).chain(self.guilds.values_mut()) {
+            if let Some(persona) = map.remove("persona") {
+                map.entry("memo").or_insert(persona);
+            }
+        }
+    }
+
     /// 한 길드에 보낼 설정 (공통 위에 길드 것)
     pub fn effective(&self, guild_id: &str) -> serde_json::Map<String, Value> {
         let mut out = self.settings.clone();
@@ -205,7 +214,9 @@ impl ConfigStore {
     // ── Chatbot ──
 
     pub fn get_chatbot(&self) -> ChatbotConfig {
-        serde_json::from_value(self.file.section("chatbot")).unwrap_or_default()
+        let mut cfg: ChatbotConfig = serde_json::from_value(self.file.section("chatbot")).unwrap_or_default();
+        cfg.migrate();
+        cfg
     }
 
     pub fn set_chatbot(&self, config: &ChatbotConfig) -> Result<(), ConfigStoreError> {
@@ -421,6 +432,17 @@ mod tests {
     use tempfile::TempDir;
 
     // ── GuiSettings 직렬화/역직렬화 ──
+
+    #[test]
+    fn chatbot_persona_moves_to_memo() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConfigStore::new(dir.path());
+        store.file.set_section("chatbot", serde_json::json!({"settings": {"persona": "hi"}, "guilds": {"g": {"persona": "x", "memo": "keep"}}})).unwrap();
+        let cfg = store.get_chatbot();
+        assert_eq!(cfg.settings.get("memo"), Some(&serde_json::json!("hi")));
+        assert!(!cfg.settings.contains_key("persona"));
+        assert_eq!(cfg.guilds["g"].get("memo"), Some(&serde_json::json!("keep")));
+    }
 
     #[test]
     fn gui_settings_default_roundtrip() {

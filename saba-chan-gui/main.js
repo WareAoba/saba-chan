@@ -698,91 +698,6 @@ function forceKillDaemon(proc) {
     }
 }
 
-// ── Mock Release Server 프로세스 관리 ──────────────────────
-let mockServerProcess = null;
-
-ipcMain.handle('mockServer:start', async (_event, options = {}) => {
-    if (mockServerProcess && !mockServerProcess.killed) {
-        return { ok: true, message: 'Mock server already running', port: 9876 };
-    }
-    const port = options.port || 9876;
-    const version = options.version || '0.2.0';
-    const _isDev = !app.isPackaged;
-    const rootDir = getInstallRoot();
-    const scriptPath = path.join(rootDir, 'scripts', 'mock-release-server.js');
-
-    if (!fs.existsSync(scriptPath)) {
-        return { ok: false, error: `Mock server script not found: ${scriptPath}` };
-    }
-
-    return new Promise((resolve) => {
-        mockServerProcess = spawn('node', [scriptPath, '--port', String(port), '--version', version], {
-            cwd: rootDir,
-            stdio: ['ignore', 'pipe', 'pipe'],
-            detached: false,
-        });
-
-        let started = false;
-        const timeout = setTimeout(() => {
-            if (!started) {
-                started = true;
-                resolve({ ok: true, message: 'Mock server started (timeout, assumed ready)', port });
-            }
-        }, 3000);
-
-        mockServerProcess.stdout.on('data', (data) => {
-            const line = data.toString();
-            console.log('[MockServer]', line.trim());
-            // 서버가 listening 시작하면 즉시 resolve
-            if (!started && (line.includes('Listening') || line.includes('listen') || line.includes(String(port)))) {
-                started = true;
-                clearTimeout(timeout);
-                resolve({ ok: true, message: `Mock server started on port ${port}`, port });
-            }
-        });
-
-        mockServerProcess.stderr.on('data', (data) => {
-            console.error('[MockServer]', data.toString().trim());
-        });
-
-        mockServerProcess.on('error', (err) => {
-            console.error('[MockServer] spawn error:', err.message);
-            mockServerProcess = null;
-            if (!started) {
-                started = true;
-                clearTimeout(timeout);
-                resolve({ ok: false, error: err.message });
-            }
-        });
-
-        mockServerProcess.on('exit', (code) => {
-            console.log('[MockServer] exited with code', code);
-            mockServerProcess = null;
-        });
-    });
-});
-
-ipcMain.handle('mockServer:stop', async () => {
-    if (!mockServerProcess || mockServerProcess.killed) {
-        mockServerProcess = null;
-        return { ok: true, message: 'Mock server not running' };
-    }
-    mockServerProcess.kill('SIGTERM');
-    // Windows에서는 SIGTERM이 작동하지 않을 수 있으므로 fallback
-    setTimeout(() => {
-        if (mockServerProcess && !mockServerProcess.killed) {
-            mockServerProcess.kill('SIGKILL');
-        }
-    }, 1000);
-    mockServerProcess = null;
-    return { ok: true, message: 'Mock server stopped' };
-});
-
-ipcMain.handle('mockServer:status', async () => {
-    const running = mockServerProcess != null && !mockServerProcess.killed;
-    return { running };
-});
-
 // 안전한 종료 함수
 /**
  * 인터페이스만 종료 — GUI 프로세스를 완전히 종료하되 데몬은 그대로 유지한다.
@@ -825,13 +740,6 @@ async function cleanQuit() {
         // 0. 데몬에서 클라이언트 해제 + 데몬에 종료 요청 (shutdown=true)
         // → 데몬이 종료되면서 관리 중인 봇 프로세스도 함께 정리됨
         await unregisterFromDaemon({ shutdown: true });
-
-        // 1.5. Mock 서버 종료
-        if (mockServerProcess && !mockServerProcess.killed) {
-            console.log('Stopping mock server process...');
-            mockServerProcess.kill();
-            mockServerProcess = null;
-        }
 
         // 2. 데몬 종료 (정상 종료를 기다리고, 안 되면 자기가 띄운 PID만 강제 종료)
         await stopDaemon();

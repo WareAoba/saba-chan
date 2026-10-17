@@ -873,9 +873,6 @@ pub async fn stop_instance(state: IPCServer, key: &str, force: bool) -> axum::re
                     .and_then(|s| s.as_bool())
                     .unwrap_or(false);
                 if success {
-                    // RCON 연결 풀에서 해당 인스턴스 연결 제거
-                    state.rcon_pool.remove(&inst.id);
-
                     // tracker는 id로만 찾는다: 이름이 다른 인스턴스의 id와 같아도 그쪽을 건드리지 않는다
                     let supervisor = state.supervisor.read().await;
                     if let Err(e) = supervisor.tracker.untrack(&inst.id) {
