@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { joinArgs, launchDraft } from '../components/servers/LaunchPreview';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
 import { useModalClose } from './useModalClose';
 
@@ -62,6 +63,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [settingsServer, setSettingsServer] = useState(null);
     const [settingsValues, setSettingsValues] = useState({});
+
     const [settingsActiveTab, setSettingsActiveTab] = useState('general');
     const [advancedExpanded, setAdvancedExpanded] = useState(false);
     const [availableVersions, setAvailableVersions] = useState([]);
@@ -148,6 +150,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
             }
 
             Object.assign(initial, restartFlagsOf(latestServer));
+            initial._launch_extra_args = joinArgs(latestServer.extra_args);
             setSettingsValues(initial);
         } else {
             const protocols = module?.protocols || {};
@@ -165,6 +168,7 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                       }
                     : {}),
                 ...restartFlagsOf(latestServer),
+                _launch_extra_args: joinArgs(latestServer.extra_args),
             });
         }
 
@@ -439,10 +443,13 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
         try {
             const module = modules.find((m) => m.name === settingsServer.module);
             const convertedSettings = {};
+            // 저장 직전의 추가 인자로 한 번 더 물어 남는 인자를 정한다 (미리보기 응답은 400ms 늦을 수 있다)
+            const launch = await settleLaunchArgs(settingsServer.id, module?.settings?.fields, settingsValues);
+            const values = launch ? { ...settingsValues, ...launch.settings } : settingsValues;
 
             if (module && module.settings && module.settings.fields) {
                 module.settings.fields.forEach((field) => {
-                    const value = settingsValues[field.name];
+                    const value = values[field.name];
                     if (unconfirmedFields.current.has(field.name) && !touchedFields.current.has(field.name)) return;
 
                     if (field.field_type === 'boolean') {
@@ -481,6 +488,8 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
                 convertedSettings.protocol_mode = settingsValues.protocol_mode || 'auto';
             }
 
+            if (launch?.extra_args) convertedSettings.extra_args = launch.extra_args;
+
             // 익스텐션 데이터 패스스루 — 익스텐션 탭 컴포넌트가 변경한 값을 그대로 전달
             if (settingsValues._extension_data) {
                 convertedSettings.extension_data = { ...settingsValues._extension_data };
@@ -491,7 +500,10 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
             // 저장하는 사이 다른 서버 설정을 열었다면 그 창을 닫지 않는다
             const stillOpen = request === openRequest.current;
 
-            if (result.error) {
+            if (result.error && (result.status === 400 || result.error_code === 'invalid_format')) {
+                // 형식이 틀린 값: 칸마다 따로 알리지 않고 토스트 하나로 (미리보기와 같은 문구)
+                safeShowToast(t('launch_preview.invalid_format'), 'warning', 4000);
+            } else if (result.error) {
                 // validation_failed: 상세 에러 목록 포함
                 if (result.error_code === 'validation_failed' && result.details) {
                     const detailStr = result.details.join('\n');
@@ -547,4 +559,21 @@ export function useServerSettings({ servers, modules, setModal, setProgressBar, 
         handleResetServer,
         handleSaveSettings,
     };
+}
+
+/**
+ * 저장할 때 추가 인자를 데몬으로 한 번 더 나눈다: 설정에 해당하는 값과 남는 인자.
+ * 미리보기 IPC가 없거나 실행 인자를 쓰지 않거나 실패하면 null (추가 인자를 보내지 않는다).
+ */
+export async function settleLaunchArgs(id, fields, values) {
+    if (!window.api?.instanceLaunchPreview) return null;
+    try {
+        const res = await window.api.instanceLaunchPreview(id, launchDraft(fields, values), values._launch_extra_args || '');
+        if (!res?.has_launch_args || !Array.isArray(res.extra_args)) return null;
+        const settings = {};
+        for (const [k, v] of Object.entries(res.settings_from_args || {})) settings[k] = String(v);
+        return { extra_args: res.extra_args, settings };
+    } catch {
+        return null;
+    }
 }

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { checkPortConflicts, validateAllSettings } from '../utils/validation';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { CustomDropdown, ExtensionSlot, Icon, SabaToggle } from './index';
+import { LaunchPreview, launchPreviewAvailable } from './servers/LaunchPreview';
 
 /**
  * SettingsField — Renders a single settings field based on field_type.
@@ -508,6 +509,19 @@ export function ServerSettingsModal({
             </div>
 
             <div className="modal-body">
+                {settingsActiveTab === 'general' && launchPreviewAvailable() && (
+                    <LaunchPreview
+                        key={settingsServer.id}
+                        serverId={settingsServer.id}
+                        fields={module?.settings?.fields}
+                        values={settingsValues}
+                        extraArgs={settingsValues._launch_extra_args || ''}
+                        onExtraArgsChange={(v) => handleSettingChange('_launch_extra_args', v)}
+                        onSettingsFromArgs={(found) => {
+                            for (const [k, v] of Object.entries(found)) handleSettingChange(k, v);
+                        }}
+                    />
+                )}
                 {settingsSource === 'stored' && (
                     <div className="notice tone-warn">
                         <Icon name="alertTriangle" size="sm" />

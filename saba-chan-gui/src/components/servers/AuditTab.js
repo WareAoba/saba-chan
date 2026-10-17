@@ -31,7 +31,7 @@ export function auditWhat(e, t) {
 /** 한 건 → "누가·어디서" 한 줄 */
 export function auditWho(e, t) {
     const source = SOURCES.includes(e.source) ? t(`audit.source_${e.source}`) : e.source;
-    return [source, e.user, e.guild].filter(Boolean).join(' · ');
+    return [source, e.userName || e.user, e.guildName || e.guild].filter(Boolean).join(' · ');
 }
 
 /**

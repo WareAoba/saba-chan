@@ -1036,5 +1036,14 @@
     "source_discord": "Discord",
     "source_schedule": "Planification",
     "source_daemon": "Démon"
+  },
+  "launch_preview": {
+    "title": "Aperçu des arguments de lancement",
+    "action_required": "À régler avant le lancement : {{reason}}",
+    "failed": "Impossible de calculer l'aperçu.",
+    "extra_label": "Arguments supplémentaires",
+    "extra_placeholder": "ex. -players=16 -useperfthreads",
+    "unknown_args": "Les arguments sans paramètre correspondant sont transmis tels quels : {{args}}",
+    "invalid_format": "Format invalide."
   }
 }

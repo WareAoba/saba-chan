@@ -1036,5 +1036,14 @@
     "source_discord": "Discord",
     "source_schedule": "スケジュール",
     "source_daemon": "デーモン"
+  },
+  "launch_preview": {
+    "title": "起動引数のプレビュー",
+    "action_required": "起動前に対応が必要です: {{reason}}",
+    "failed": "プレビューを計算できませんでした。",
+    "extra_label": "追加の引数",
+    "extra_placeholder": "例: -players=16 -useperfthreads",
+    "unknown_args": "設定にない引数はそのまま渡します: {{args}}",
+    "invalid_format": "形式が正しくありません。"
   }
 }

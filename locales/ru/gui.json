@@ -1036,5 +1036,14 @@
     "source_discord": "Discord",
     "source_schedule": "Расписание",
     "source_daemon": "Демон"
+  },
+  "launch_preview": {
+    "title": "Предпросмотр аргументов запуска",
+    "action_required": "Перед запуском нужно решить: {{reason}}",
+    "failed": "Не удалось рассчитать предпросмотр.",
+    "extra_label": "Дополнительные аргументы",
+    "extra_placeholder": "напр. -players=16 -useperfthreads",
+    "unknown_args": "Аргументы без соответствующей настройки передаются как есть: {{args}}",
+    "invalid_format": "Неверный формат."
   }
 }

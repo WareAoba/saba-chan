@@ -2254,3 +2254,52 @@ button.appbar-preflight {
 .settings-audit {
     margin-top: 20px;
 }
+
+/* 서버 설정 맨 위: 최종 실행 인자 미리보기 (읽기 전용) */
+.launch-preview {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    border-radius: var(--r-md);
+    background: var(--inset);
+    box-shadow: var(--shadow-inset);
+    border: 1px solid var(--line);
+}
+.launch-preview-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--text-2);
+}
+.launch-preview-line {
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+    color: var(--text-1);
+    white-space: pre-wrap;
+    word-break: break-all;
+    user-select: text;
+}
+.launch-preview-problem {
+    margin: 0;
+    font-size: var(--fs-sm);
+    color: var(--warn);
+}
+.launch-preview-extra {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+}
+.launch-preview-input {
+    font-family: var(--font-mono);
+}
+.launch-preview-note {
+    margin: 0;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+}
