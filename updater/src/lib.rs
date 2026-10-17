@@ -239,10 +239,8 @@ pub struct UpdateConfig {
     pub enabled: bool,
     /// 확인 주기 (시간 단위, 기본값 3, 최소 1시간에서 최대 8시간)
     pub check_interval_hours: u32,
-    /// 다운로드 후 자동 적용 여부
+    /// 확인 뒤 새 버전을 미리 내려받아 둘지 (적용은 언제나 사용자가 고른다)
     pub auto_download: bool,
-    /// 다운로드 완료 후 자동 적용 (모듈만 자동 적용, CoreDaemon/CLI/GUI는 재시작 필요로 별도 처리)
-    pub auto_apply: bool,
     /// 스테이징 디렉터리 (다운로드와 임시 파일 저장, 기본값: 실행파일 경로 기준)
     pub install_root: Option<String>,
     /// 릴레이 주소 (None이면 relay::DEFAULT_RELAY_URL). 모의 릴레이 시험은 여기에
@@ -258,7 +256,6 @@ impl Default for UpdateConfig {
             enabled: true,
             check_interval_hours: 3,
             auto_download: false,
-            auto_apply: false,
             install_root: None,
             relay_url: None,
             channel: relay::DEFAULT_CHANNEL.to_string(),
