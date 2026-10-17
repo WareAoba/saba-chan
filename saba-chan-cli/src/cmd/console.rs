@@ -139,12 +139,109 @@ async fn poll_once(ctx: &Ctx, sv: &Server, cur: Cursor, emit: &impl Fn(String)) 
 
 pub fn format_line(l: &Value) -> String {
     let text = s(l, "content");
-    match (s(l, "source"), s(l, "level")) {
-        ("system", _) => style(format!("» {}", text)).cyan().to_string(),
-        (_, "error") => style(text).red().to_string(),
-        (_, "warn") => style(text).yellow().to_string(),
-        (_, "debug") => style(text).dim().to_string(),
-        _ => text.to_string(),
+    let base = |t: &str| match (s(l, "source"), s(l, "level")) {
+        ("system", _) => style(t).cyan().to_string(),
+        (_, "error") => style(t).red().to_string(),
+        (_, "warn") => style(t).yellow().to_string(),
+        (_, "debug") => style(t).dim().to_string(),
+        _ => t.to_string(),
+    };
+    let prefix = if s(l, "source") == "system" {
+        base("» ")
+    } else {
+        String::new()
+    };
+    let spans = span_ranges(text, l.get("spans"));
+    if spans.is_empty() {
+        return format!("{}{}", prefix, base(text));
+    }
+    // 토큰 구간은 토큰 색, 나머지는 줄 레벨 색
+    let mut out = prefix;
+    let mut at = 0;
+    for (start, end, token) in spans {
+        out.push_str(&base(&text[at..start]));
+        out.push_str(&token_style(token, &text[start..end]));
+        at = end;
+    }
+    out.push_str(&base(&text[at..]));
+    out
+}
+
+/// 데몬 `spans`(UTF-16 오프셋) → 바이트 구간. 어긋난 구간은 버린다
+fn span_ranges<'a>(text: &str, spans: Option<&'a Value>) -> Vec<(usize, usize, &'a str)> {
+    let Some(spans) = spans.and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    // UTF-16 오프셋 → 바이트 오프셋 표 (마지막 원소는 끝)
+    let mut bytes = Vec::with_capacity(text.len() + 1);
+    for (b, ch) in text.char_indices() {
+        for _ in 0..ch.len_utf16() {
+            bytes.push(b);
+        }
+    }
+    bytes.push(text.len());
+    let byte_at = |u: u64| bytes.get(usize::try_from(u).ok()?).copied();
+    let mut out: Vec<(usize, usize, &str)> = Vec::new();
+    for sp in spans {
+        let (Some(st), Some(en), Some(tok)) = (
+            sp.get(0).and_then(Value::as_u64).and_then(byte_at),
+            sp.get(1).and_then(Value::as_u64).and_then(byte_at),
+            sp.get(2).and_then(Value::as_str),
+        ) else {
+            continue;
+        };
+        if st < en && out.last().is_none_or(|last| last.1 <= st) {
+            out.push((st, en, tok));
+        }
+    }
+    out
+}
+
+/// 토큰 → 터미널 스타일 (GUI 테마와 같은 이름)
+fn token_style(token: &str, t: &str) -> String {
+    let st = style(t);
+    match token {
+        "error" => st.red().bold(),
+        "warn" => st.yellow().bold(),
+        "info" => st.blue(),
+        "debug" | "dim" | "timestamp" => st.dim(),
+        "success" => st.green().bold(),
+        "string" => st.green(),
+        "number" => st.color256(215),
+        "keyword" | "command" => st.magenta(),
+        "player" => st.cyan().bold(),
+        "selector" => st.yellow(),
+        "ip" | "uuid" => st.cyan(),
+        "path" => st.color256(116),
+        _ => st,
+    }
+    .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn spans_convert_utf16_offsets_to_byte_ranges() {
+        let text = "안녕 😀 <철수>";
+        let spans = json!([[7, 9, "player"], [100, 101, "error"], [8, 9, "warn"]]);
+        let got = span_ranges(text, Some(&spans));
+        assert_eq!(got.len(), 1, "out-of-range and overlapping spans are dropped");
+        let (st, en, tok) = got[0];
+        assert_eq!((&text[st..en], tok), ("철수", "player"));
+    }
+
+    #[test]
+    fn format_line_keeps_text_and_colors_spans() {
+        console::set_colors_enabled(true);
+        let line = json!({"content": "Steve joined", "source": "stdout", "level": "info", "spans": [[0, 5, "player"]]});
+        let out = format_line(&line);
+        assert!(out.starts_with("\u{1b}["), "the player token is styled: {:?}", out);
+        assert_eq!(console::strip_ansi_codes(&out), "Steve joined");
+        let plain = json!({"content": "x", "source": "system", "level": "info"});
+        assert_eq!(console::strip_ansi_codes(&format_line(&plain)), "» x");
     }
 }
 

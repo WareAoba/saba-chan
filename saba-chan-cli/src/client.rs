@@ -281,13 +281,14 @@ impl Api {
         self.post(&format!("/api/instance/{}/stdin", seg(id)), json!({ "command": line }))
             .await
     }
-    /// GET /api/instance/:id/console?since=&count=
+    /// GET /api/instance/:id/console?since=&count=&spans=1 (색을 쓸 때만 하이라이팅 구간을 받는다)
     pub async fn console(&self, id: &str, since: Option<u64>, count: Option<usize>) -> Result<Value> {
         self.get(&with_query(
             &format!("/api/instance/{}/console", seg(id)),
             &[
                 ("since", since.map(|v| v.to_string())),
                 ("count", count.map(|v| v.to_string())),
+                ("spans", console::colors_enabled().then(|| "1".to_string())),
             ],
         ))
         .await
