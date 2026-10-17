@@ -46,9 +46,14 @@ pub struct Grants {
 
 /// 권한을 줄 수 없는 위치인가: 데이터 폴더와 그 위, 드라이브 루트, 사용자 폴더와 그 위
 fn forbidden(path: &Path, data_dir: &Path, home: Option<&Path>) -> bool {
+    root_or_home(path, home) || data_dir.starts_with(path)
+}
+
+/// 드라이브 루트이거나 사용자 폴더와 그 위인가 (목록 권한도 주지 않는다)
+fn root_or_home(path: &Path, home: Option<&Path>) -> bool {
     use std::path::Component;
     let normal = path.components().filter(|c| matches!(c, Component::Normal(_))).count();
-    normal == 0 || data_dir.starts_with(path) || home.is_some_and(|h| h.starts_with(path))
+    normal == 0 || home.is_some_and(|h| h.starts_with(path))
 }
 
 impl Grants {
@@ -59,7 +64,8 @@ impl Grants {
             return;
         }
         // List는 목록만이라 데이터 폴더 자신에도 줄 수 있다 (안의 파일은 상속받지 않는다)
-        if access != Access::List && forbidden(&real, data_dir, home) {
+        let blocked = if access == Access::List { root_or_home(&real, home) } else { forbidden(&real, data_dir, home) };
+        if blocked {
             tracing::warn!("[Sandbox] not granting {:?} on {}", access, real.display());
             return;
         }
@@ -319,6 +325,10 @@ mod imp {
     }
 
     fn apply(profile: &str, grants: &Grants) -> Result<PSID, String> {
+        // ACL 고치기는 읽고-바꾸고-쓰기라, 두 실행이 같은 폴더(Python 설치 등)에 동시에 주면 한쪽 ACE가 사라진다.
+        // 프로필이 구성요소마다 달라 겹칠 수 있으므로 데몬 안에서 한 번에 하나씩
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let sid = container_sid(profile)?;
         let everyone = all_app_packages()?;
         for (path, access) in &grants.entries {
@@ -574,6 +584,9 @@ mod tests {
         g.push(Path::new("/"), Access::Read, &data, Some(&home));
         g.push(&data.join("missing"), Access::Read, &data, Some(&home));
         g.push(&data, Access::List, &data, Some(&home));
+        // 목록도 드라이브 루트·사용자 폴더와 그 위에는 주지 않는다
+        g.push(&home, Access::List, &data, Some(&home));
+        g.push(Path::new("/"), Access::List, &data, Some(&home));
         g.push(&inst, Access::Write, &data, Some(&home));
         assert_eq!(g.entries, vec![(inst.clone(), Access::Write), (modules.clone(), Access::Read), (data.clone(), Access::List)]);
     }
