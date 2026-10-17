@@ -83,6 +83,34 @@ describe('ActivityBar', () => {
         expect(window.api.daemonConsole).toHaveBeenNthCalledWith(2, { since: 8 });
     });
 
+    it('데몬이 다시 켜져 id가 처음부터 시작하면 처음부터 다시 받는다', async () => {
+        window.api.auditList = vi.fn().mockResolvedValue({ entries: [] });
+        const line = (id, message) => ({ id, timestamp: Date.now(), level: 'info', target: 'x', message });
+        window.api.daemonConsole = vi.fn(async (opts) => {
+            if (opts.since !== undefined) return { lines: [] };
+            if (opts.count === 1) return { lines: [line(3, 'new 3')] };
+            return window.api.daemonConsole.mock.calls.length === 1
+                ? { lines: [line(50, 'old 50')] }
+                : { lines: [line(1, 'new 1'), line(3, 'new 3')] };
+        });
+        render(<ActivityBar />);
+        await flush();
+        fireEvent.click(screen.getByRole('button'));
+        await flush();
+        expect(screen.getByText('old 50')).toBeInTheDocument();
+
+        for (let i = 0; i < 5; i++) {
+            await act(async () => {
+                vi.advanceTimersByTime(1000);
+            });
+            await flush();
+        }
+        expect(window.api.daemonConsole).toHaveBeenCalledWith({ since: 51 });
+        expect(window.api.daemonConsole).toHaveBeenCalledWith({ count: 1 });
+        expect(screen.queryByText('old 50')).toBeNull();
+        expect(screen.getByText('new 1')).toBeInTheDocument();
+    });
+
     it('ago는 초·분·시간 단위로 쓴다', () => {
         const now = 1_000_000_000;
         expect(ago(now / 1000 - 5, now, 'en')).toBe('5 seconds ago');
