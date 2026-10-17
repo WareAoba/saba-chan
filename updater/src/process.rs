@@ -8,7 +8,7 @@ impl ProcessChecker {
     #[cfg(target_os = "windows")]
     pub fn is_running(process_name: &str) -> bool {
         use std::process::Command;
-        
+
         let output = Command::new("tasklist")
             .args(["/FI", &format!("IMAGENAME eq {}", process_name)])
             .output();
@@ -25,7 +25,7 @@ impl ProcessChecker {
     #[cfg(not(target_os = "windows"))]
     pub fn is_running(process_name: &str) -> bool {
         use std::process::Command;
-        
+
         let output = Command::new("pgrep")
             .arg("-x")
             .arg(process_name)
