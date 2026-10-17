@@ -26,7 +26,7 @@ function mockApi(overrides = {}) {
             daemonStatus: vi.fn().mockResolvedValue({ running: true }),
             moduleList: vi.fn().mockResolvedValue({ modules: [] }),
             moduleGetLocales: vi.fn().mockResolvedValue({}),
-            moduleGetMetadata: vi.fn().mockResolvedValue({ toml: {} }),
+            moduleGetMetadata: vi.fn().mockResolvedValue({ metadata: {} }),
             ...overrides,
         },
         {
@@ -55,6 +55,25 @@ beforeEach(() => {
 // ═════════════════════════════════════════════════════════════
 
 describe('useSettingsStore', () => {
+    it('GUI 설정 초기화 뒤에는 예전 브라우저 테마 대신 auto', async () => {
+        localStorage.setItem('saba-chan-theme', 'light');
+        window.api.configReset = vi.fn().mockResolvedValue({ ok: true, config: {} });
+        window.api.settingsLoad = vi.fn().mockResolvedValue({ autoRefresh: true });
+        window.api.settingsGetPath = vi.fn().mockResolvedValue('x');
+        expect(await useSettingsStore.getState().resetToDefaults()).toBe(true);
+        expect(window.api.configReset).toHaveBeenCalledWith('gui');
+        expect(useSettingsStore.getState().theme).toBe('auto');
+    });
+
+    it.each(['light', 'auto'])('업그레이드: 데몬에 theme이 없으면 예전 브라우저 값(%s)을 지킨다', async (old) => {
+        localStorage.setItem('saba-chan-theme', old);
+        window.api.settingsLoad = vi.fn().mockResolvedValue({ autoRefresh: true });
+        window.api.settingsGetPath = vi.fn().mockResolvedValue('x');
+        await useSettingsStore.getState().load();
+        expect(useSettingsStore.getState().theme).toBe(old);
+        localStorage.removeItem('saba-chan-theme');
+    });
+
     it('초기 상태가 올바른 기본값을 가져야 한다', () => {
         const state = useSettingsStore.getState();
         expect(state.autoRefresh).toBe(true);
@@ -175,7 +194,7 @@ describe('useSettingsStore', () => {
         const state = useSettingsStore.getState();
         expect(state.accentColor).toBe('#667eea');
         expect(state.accentSecondary).toBe('#764ba2');
-        expect(state.useGradient).toBe(true);
+        expect(state.useGradient).toBe(false);
         expect(state.fontScale).toBe(100);
         expect(state.enableTransitions).toBe(true);
         expect(state.consoleSyntaxHighlight).toBe(true);
@@ -205,7 +224,7 @@ describe('useSettingsStore', () => {
         const state = useSettingsStore.getState();
         expect(state.accentColor).toBe('#ff5500');
         expect(state.fontScale).toBe(120);
-        expect(state.useGradient).toBe(true); // 변경 안 됨
+        expect(state.useGradient).toBe(false); // 변경 안 됨
     });
 
     it('load() — 테마 설정이 서버 응답에 포함되면 반영되어야 한다', async () => {
@@ -266,7 +285,7 @@ describe('useSettingsStore', () => {
         const callArgs = window.api.settingsSave.mock.calls[0][0];
         expect(callArgs.accentColor).toBe('#eb3349');
         expect(callArgs.fontScale).toBe(150);
-        expect(callArgs.useGradient).toBe(true);
+        expect(callArgs.useGradient).toBe(false);
         expect(callArgs.consoleSyntaxHighlight).toBe(true);
         expect(callArgs.consoleBgColor).toBe('#1e1e2e');
         expect(callArgs.consoleTextColor).toBe('#cdd6f4');
@@ -617,5 +636,25 @@ describe('에지 케이스', () => {
         useUIStore.getState().setActiveTab('settings');
         useUIStore.getState().setActiveTab('settings');
         expect(useUIStore.getState().activeTab).toBe('settings');
+    });
+});
+
+describe('useServerStore 모듈 별명 (파싱된 메타데이터)', () => {
+    it('metadata의 module_aliases·command_aliases·commands로 별명 표를 만든다', async () => {
+        mockApi({
+            moduleList: vi.fn().mockResolvedValue({ modules: [{ name: 'palworld' }] }),
+            moduleGetMetadata: vi.fn().mockResolvedValue({
+                metadata: {
+                    module_aliases: ['팰월드', 'pw'],
+                    command_aliases: { players: { aliases: ['접속자'], description: '접속자 목록' } },
+                    commands: { fields: [{ name: 'players', label: '접속자' }, { name: 'save', label: '저장' }] },
+                },
+            }),
+        });
+        await useServerStore.getState().fetchModules();
+        const map = useServerStore.getState().moduleAliasesPerModule.palworld;
+        expect(map.module_aliases).toEqual(['팰월드', 'pw']);
+        expect(map.commands.players).toEqual({ aliases: ['접속자'], description: '접속자 목록', label: '접속자' });
+        expect(map.commands.save.label).toBe('저장');
     });
 });

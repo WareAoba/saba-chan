@@ -1,0 +1,404 @@
+/* ════════════════════════════════════════════════════════════════
+ * 사바쨩 GUI 디자인 토큰 — 색·입체·간격·글자의 단일 원천
+ * 근거 문서: design/gui-design-reference.md (A=Applio, N=뉴모피즘, L=레이아웃)
+ *
+ * 규칙: 이 파일 밖의 CSS는 색을 직접 쓰지 않고 여기 변수만 쓴다.
+ * 테마 슬롯: [data-theme="dark" | "light" | "auto"]. 새 테마는 아래 블록을
+ * 하나 더 만들고 같은 이름의 변수만 채우면 된다.
+ * 강조색(--accent*, --brand-*)은 themeManager.applyCustomTheme()이 사용자
+ * 설정으로 덮어쓴다.
+ * ════════════════════════════════════════════════════════════════ */
+
+/* ── 다크 (기본) ── */
+:root,
+[data-theme="dark"] {
+    color-scheme: dark;
+    /* 회색 계단 (A1): 깊을수록 어둡다 */
+    --bg-0: #0d0e10;
+    --bg-1: #141518;
+    --bg-2: #1b1c20;
+    --bg-3: #24262b;
+    --bg-4: #2e3036;
+    --inset: #0a0b0d;
+    /* 면은 단색이 기본이다. 그라데이션 변수 이름은 슬롯으로 남겨 둔다 */
+    --surface-gradient: #191a1e;
+    --surface-gradient-hover: #1f2025;
+    --panel-gradient: #141518;
+    --appbar-gradient: #111214;
+    --sheen: linear-gradient(transparent, transparent);
+
+    /* 선 (A2) */
+    --line: rgba(255, 255, 255, 0.07);
+    --line-strong: rgba(255, 255, 255, 0.13);
+
+    /* 글씨 */
+    --text-1: #ececf1;
+    --text-2: #a1a3ad;
+    --text-3: #6c6f7a;
+    --text-inverse: #0d0e10;
+
+    /* 상태 */
+    --ok: #3ecf8e;
+    --stop: #f2555a;
+    --warn: #f5a524;
+    --info: #4ea1ff;
+    --ok-soft: rgba(62, 207, 142, 0.12);
+    --stop-soft: rgba(242, 85, 90, 0.12);
+    --warn-soft: rgba(245, 165, 36, 0.12);
+    --info-soft: rgba(78, 161, 255, 0.12);
+
+    /* 입체 (N1·N2) */
+    --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --shadow-raised-hover: 0 2px 6px rgba(0, 0, 0, 0.4);
+    --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.45);
+    --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.35);
+    --scrim: rgba(5, 6, 8, 0.66);
+
+    --console-bg: #0a0b0d;
+    --console-text: #d6d8e0;
+}
+
+/* ── 라이트 ── */
+[data-theme="light"] {
+    color-scheme: light;
+    --bg-0: #e6e8ed;
+    --bg-1: #eef0f4;
+    --bg-2: #f7f8fa;
+    --bg-3: #ffffff;
+    --bg-4: #ffffff;
+    --inset: #e2e5eb;
+    --surface-gradient: #ffffff;
+    --surface-gradient-hover: #fafbfc;
+    --panel-gradient: #f3f4f7;
+    --appbar-gradient: #eef0f3;
+    --sheen: linear-gradient(transparent, transparent);
+
+    --line: rgba(20, 24, 36, 0.08);
+    --line-strong: rgba(20, 24, 36, 0.16);
+
+    --text-1: #1b1d23;
+    --text-2: #4f5360;
+    --text-3: #6b7080;
+    --text-inverse: #ffffff;
+
+    --ok: #12a26a;
+    --stop: #d93b41;
+    --warn: #b86e00;
+    --info: #1f6fd6;
+    --ok-soft: rgba(18, 162, 106, 0.12);
+    --stop-soft: rgba(217, 59, 65, 0.1);
+    --warn-soft: rgba(184, 110, 0, 0.12);
+    --info-soft: rgba(31, 111, 214, 0.1);
+
+    --shadow-raised: 0 1px 2px rgba(20, 24, 36, 0.06);
+    --shadow-raised-hover: 0 2px 6px rgba(20, 24, 36, 0.09);
+    --shadow-inset: inset 0 1px 2px rgba(20, 24, 36, 0.07);
+    --shadow-float: 0 12px 32px rgba(20, 24, 36, 0.14), 0 1px 3px rgba(20, 24, 36, 0.08);
+    --scrim: rgba(30, 34, 44, 0.35);
+
+    --console-bg: #15161a;
+    --console-text: #d6d8e0;
+}
+
+/* ── 시스템 따라가기: 라이트일 때만 라이트 값으로 덮는다 ── */
+@media (prefers-color-scheme: light) {
+    [data-theme="auto"] {
+        color-scheme: light;
+        --bg-0: #e6e8ed;
+        --bg-1: #eef0f4;
+        --bg-2: #f7f8fa;
+        --bg-3: #ffffff;
+        --bg-4: #ffffff;
+        --inset: #e2e5eb;
+        --surface-gradient: #ffffff;
+        --surface-gradient-hover: #fafbfc;
+        --panel-gradient: #f3f4f7;
+        --appbar-gradient: #eef0f3;
+        --sheen: linear-gradient(transparent, transparent);
+        --line: rgba(20, 24, 36, 0.08);
+        --line-strong: rgba(20, 24, 36, 0.16);
+        --text-1: #1b1d23;
+        --text-2: #4f5360;
+        --text-3: #6b7080;
+        --text-inverse: #ffffff;
+        --ok: #12a26a;
+        --stop: #d93b41;
+        --warn: #b86e00;
+        --info: #1f6fd6;
+        --ok-soft: rgba(18, 162, 106, 0.12);
+        --stop-soft: rgba(217, 59, 65, 0.1);
+        --warn-soft: rgba(184, 110, 0, 0.12);
+        --info-soft: rgba(31, 111, 214, 0.1);
+        --shadow-raised: 0 1px 2px rgba(20, 24, 36, 0.06);
+        --shadow-raised-hover: 0 2px 6px rgba(20, 24, 36, 0.09);
+        --shadow-inset: inset 0 1px 2px rgba(20, 24, 36, 0.07);
+        --shadow-float: 0 12px 32px rgba(20, 24, 36, 0.14), 0 1px 3px rgba(20, 24, 36, 0.08);
+        --scrim: rgba(30, 34, 44, 0.35);
+        --console-bg: #15161a;
+        --console-text: #d6d8e0;
+    }
+}
+
+/* ── 테마와 무관한 토큰 ── */
+:root {
+    /* 강조색: 사용자 설정이 덮어쓴다 (themeManager) */
+    --brand-primary: #7d8ee8;
+    --brand-secondary: #906abf;
+    --brand-hover: #6c7dd8;
+    --brand-text: #ffffff;
+    --brand-gradient: #7d8ee8;
+    --brand-shadow: rgba(125, 142, 232, 0.3);
+    --brand-shadow-light: rgba(125, 142, 232, 0.18);
+    --brand-shadow-subtle: rgba(125, 142, 232, 0.08);
+    --brand-shadow-medium: rgba(125, 142, 232, 0.22);
+    --brand-shadow-strong: rgba(125, 142, 232, 0.35);
+    --brand-primary-rgb: 125, 142, 232;
+    --accent: var(--brand-primary);
+    --accent-soft: var(--brand-shadow-subtle);
+    --accent-ring: 0 0 0 3px var(--brand-shadow-light);
+
+    /* 글자 */
+    --font-sans: 'Pretendard', 'Pretendard Variable', 'Noto Sans KR', 'Noto Sans', 'Segoe UI', 'Apple SD Gothic Neo',
+        'Malgun Gothic', system-ui, sans-serif;
+    --font-mono: 'Cascadia Code', 'JetBrains Mono', Consolas, 'D2Coding', monospace;
+    --fs-xs: calc(12px * var(--font-scale, 1));
+    --fs-sm: calc(13px * var(--font-scale, 1));
+    --fs-md: calc(14px * var(--font-scale, 1));
+    --fs-lg: calc(16px * var(--font-scale, 1));
+    --fs-xl: calc(20px * var(--font-scale, 1));
+    --fs-2xl: calc(24px * var(--font-scale, 1));
+
+    /* 간격 (4px 단위) */
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --sp-5: 20px;
+    --sp-6: 24px;
+    --sp-8: 32px;
+
+    /* 모서리 */
+    --r-xs: 6px;
+    --r-sm: 10px;
+    --r-md: 14px;
+    --r-lg: 18px;
+    --r-pill: 999px;
+
+    /* 모션 */
+    --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+    --dur-fast: 160ms;
+    --dur: 240ms;
+
+    --appbar-h: 48px;
+    --list-w: 300px;
+}
+
+/* ════════════════════════════════════════════════════════════════
+ * 옛 변수 이름 → 새 토큰 (기존 화면 CSS가 그대로 새 테마를 따르게)
+ * 새 CSS에서는 위의 새 이름만 쓴다.
+ * ════════════════════════════════════════════════════════════════ */
+:root,
+[data-theme] {
+    --bg-app: var(--bg-0);
+    --bg-surface: var(--bg-2);
+    --bg-surface-hover: var(--bg-3);
+    --bg-surface-alt: var(--bg-2);
+    --bg-surface-secondary: var(--bg-1);
+    --bg-surface-tertiary: var(--bg-3);
+    --bg-surface-input: var(--inset);
+    --bg-surface-input-focus: var(--inset);
+    --bg-overlay: var(--scrim);
+    --bg-initializing-overlay: var(--scrim);
+
+    --loading-bg: var(--bg-0);
+    --loading-text: var(--text-1);
+    --loading-logo-filter: none;
+    --loading-bar-bg: var(--inset);
+
+    --text-primary: var(--text-1);
+    --text-secondary: var(--text-2);
+    --text-tertiary: var(--text-2);
+    --text-muted: var(--text-3);
+    --text-disabled: var(--text-3);
+    --text-on-primary: var(--brand-text);
+    --text-on-dark: #ffffff;
+    --text-dark: var(--text-1);
+
+    --border-light: var(--line);
+    --border-default: var(--line);
+    --border-medium: var(--line-strong);
+    --border-strong: var(--line-strong);
+    --border-hover: var(--line-strong);
+    --border-input: var(--line);
+    --border-separator: var(--line);
+
+    --shadow-xs: rgba(0, 0, 0, 0.15);
+    --shadow-sm: rgba(0, 0, 0, 0.2);
+    --shadow-md: rgba(0, 0, 0, 0.28);
+    --shadow-lg: rgba(0, 0, 0, 0.36);
+    --shadow-xl: rgba(0, 0, 0, 0.45);
+    --shadow-overlay: var(--scrim);
+
+    --brand-bg-light: var(--accent-soft);
+    --brand-bg-subtle: var(--accent-soft);
+    --brand-bg-muted: var(--brand-shadow-light);
+    --brand-bg-info: var(--accent-soft);
+    --brand-border-light: var(--brand-shadow-medium);
+
+    --btn-secondary-bg: var(--bg-2);
+    --btn-secondary-text: var(--text-1);
+    --btn-secondary-border: var(--line-strong);
+    --btn-secondary-hover-bg: var(--bg-3);
+    --btn-secondary-hover-border: var(--line-strong);
+
+    --card-bg: var(--bg-2);
+    --card-shadow: var(--shadow-raised);
+    --card-hover-shadow: var(--shadow-raised-hover);
+    --card-expanded-bg: var(--bg-2);
+
+    --scrollbar-thumb: var(--bg-4);
+    --scrollbar-thumb-hover: var(--text-3);
+    --scrollbar-thumb-active: var(--text-2);
+    --scrollbar-track: transparent;
+
+    --info-bg: var(--info-soft);
+    --info-border: var(--info);
+    --info-title: var(--info);
+    --info-bg-alt: var(--info-soft);
+    --info-bg-gradient: var(--info-soft);
+
+    --tab-bg: var(--inset);
+    --tab-text: var(--text-2);
+    --tab-hover-bg: var(--bg-3);
+    --tab-active-bg: var(--bg-3);
+    --tab-active-text: var(--text-1);
+    --tab-active-border: var(--brand-primary);
+
+    --badge-primary-bg: var(--brand-primary);
+    --badge-primary-text: var(--brand-text);
+    --badge-subtle-bg: var(--accent-soft);
+    --badge-subtle-text: var(--brand-primary);
+    --badge-default-bg: var(--bg-3);
+    --badge-default-text: var(--text-2);
+
+    --tooltip-bg: var(--bg-4);
+    --tooltip-text: var(--text-1);
+
+    --icon-default: var(--text-3);
+    --icon-secondary: var(--text-2);
+    --icon-hover: var(--text-1);
+
+    --protocol-section-bg: var(--bg-1);
+    --protocol-section-border: var(--line);
+    --protocol-info-bg: var(--bg-2);
+    --protocol-info-border: var(--line);
+
+    --settings-tab-bg: var(--inset);
+    --settings-tab-active-bg: var(--bg-3);
+    --settings-item-bg: var(--bg-2);
+
+    --input-bg: var(--inset);
+    --input-border: var(--line);
+    --input-focus-border: var(--brand-primary);
+    --input-focus-shadow: var(--brand-shadow-light);
+
+    --empty-bg: var(--bg-1);
+    --toast-shadow: rgba(0, 0, 0, 0.4);
+
+    --cli-bg: var(--console-bg);
+    --cli-border: var(--line);
+    --cli-suggestion-bg: var(--bg-2);
+    --cli-suggestion-border: var(--line);
+    --cli-suggestion-hover: var(--bg-3);
+    --cli-text: var(--ok);
+
+    --success-badge-bg: var(--ok-soft);
+    --success-badge-icon: var(--ok);
+    --failure-badge-bg: var(--stop-soft);
+    --failure-badge-icon: var(--stop);
+    --notification-badge-bg: var(--info-soft);
+    --notification-badge-icon: var(--info);
+    --question-badge-bg: var(--warn-soft);
+    --question-badge-icon: var(--warn);
+
+    --status-running-badge-bg: var(--ok-soft);
+    --status-running-badge-text: var(--ok);
+    --status-stopped-badge-bg: var(--stop-soft);
+    --status-stopped-badge-text: var(--stop);
+    --status-error-badge-bg: var(--warn-soft);
+    --status-error-badge-text: var(--warn);
+
+    --command-inputs-bg: var(--inset);
+    --command-info-bg: var(--bg-1);
+    --command-info-border: var(--brand-primary);
+    --command-disabled-bg: var(--bg-3);
+
+    --modal-footer-bg: var(--bg-1);
+    --modal-detail-bg: var(--bg-1);
+
+    --bg-modal-info-bg: var(--info-soft);
+    --bg-modal-info-border: var(--brand-primary);
+    --bg-modal-info-row-bg: var(--bg-2);
+
+    --img-brightness: none;
+    --img-logo-brightness: none;
+
+    /* 옛 화면이 정의 없이 쓰던 이름들 (그동안 투명·기본값으로 깨져 보이던 곳) */
+    --accent-color: var(--brand-primary);
+    --accent-primary: var(--brand-primary);
+    --accent-blue: var(--info);
+    --brand-primary-faded: var(--brand-shadow-light);
+    --bg-primary: var(--bg-1);
+    --bg-secondary: var(--bg-2);
+    --bg-tertiary: var(--bg-3);
+    --bg-hover: var(--bg-3);
+    --hover-bg: var(--bg-3);
+    --bg-input: var(--inset);
+    --bg-success-subtle: var(--ok-soft);
+    --bg-warning-subtle: var(--warn-soft);
+    --border-color: var(--line);
+    --border-primary: var(--line);
+    --border-active: var(--brand-primary);
+    --border-success: var(--ok);
+    --border-warning: var(--warn);
+    --text-quaternary: var(--text-3);
+    --text-success: var(--ok);
+    --text-warning: var(--warn);
+    --warning-text: var(--warn);
+    --success: var(--ok);
+    --success-color: var(--ok);
+    --warning: var(--warn);
+    --danger: var(--stop);
+    --danger-color: var(--stop);
+    --color-danger: var(--stop);
+    --failure-color: var(--stop);
+    --status-error: var(--stop);
+    --danger-bg: var(--stop-soft);
+}
+
+/* ── 사용자 설정 / 접근성 ── */
+:root {
+    --console-custom-bg: var(--console-bg);
+    --console-custom-text: var(--console-text);
+    --console-syntax-highlight: 1;
+    --font-scale: 1;
+    --console-font-scale: 1;
+}
+
+[data-no-transitions="true"],
+[data-no-transitions="true"] *,
+[data-no-transitions="true"] *::before,
+[data-no-transitions="true"] *::after {
+    transition: none !important;
+    animation-duration: 0.001ms !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        transition: none !important;
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+    }
+}

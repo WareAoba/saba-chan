@@ -106,35 +106,21 @@ export function useServerActions({
                             // Crash / unexpected stop — genuinely important.
                             // This is the ONLY state transition that warrants
                             // a persistent notice.
-                            safeShowToast(
-                                t('servers.unexpected_stop_toast', { name: newServer.name }),
-                                'error',
-                                5000,
-                                { isNotice: true, source: newServer.name },
-                            );
+                            safeShowToast(t('servers.unexpected_stop_toast', { name: newServer.name }), 'error', 5000, {
+                                isNotice: true,
+                                source: newServer.name,
+                            });
                         } else if (wasRunning && nowStopped && !isGuiOp && isApiOp && !inBootGrace) {
                             // API-initiated stop (Discord bot command, etc.)
                             // Informational toast only — not notice-worthy.
-                            safeShowToast(
-                                t('servers.unexpected_stop_toast', { name: newServer.name }),
-                                'info',
-                                3000,
-                            );
+                            safeShowToast(t('servers.unexpected_stop_toast', { name: newServer.name }), 'info', 3000);
                         } else if (wasStopped && nowRunning && !isKnownOp) {
                             // External start — informational only, not alarming.
                             // Toast is enough; no persistent notice.
-                            safeShowToast(
-                                t('servers.external_start_toast', { name: newServer.name }),
-                                'info',
-                                3000,
-                            );
+                            safeShowToast(t('servers.external_start_toast', { name: newServer.name }), 'info', 3000);
                         } else if (wasStopped && nowRunning && !isGuiOp && isApiOp && !inBootGrace) {
                             // API-initiated start (Discord bot command, etc.)
-                            safeShowToast(
-                                t('servers.external_start_toast', { name: newServer.name }),
-                                'info',
-                                3000,
-                            );
+                            safeShowToast(t('servers.external_start_toast', { name: newServer.name }), 'info', 3000);
                         }
 
                         if (isGuiOp && (nowStopped || nowRunning) && existing.status !== newServer.status) {
@@ -190,11 +176,7 @@ export function useServerActions({
                 const translatedErr = translateError(data.error);
                 const now = Date.now();
                 if (translatedErr && !loading && now - lastErrorToastRef.current > 5000) {
-                    safeShowToast(
-                        t('servers.fetch_failed_toast', { error: translatedErr }),
-                        'warning',
-                        3000,
-                    );
+                    safeShowToast(t('servers.fetch_failed_toast', { error: translatedErr }), 'warning', 3000);
                     lastErrorToastRef.current = now;
                 }
             } else {
@@ -312,7 +294,9 @@ export function useServerActions({
                                     if (s && installResult.jar_path) {
                                         // working_dir만 설정 — 실행 파일은 모듈에서 자동 해석됨
                                         await window.api.instanceUpdateSettings(s.id, {
-                                            working_dir: installResult.install_path || installResult.jar_path.replace(/[/\\][^/\\]+$/, ''),
+                                            working_dir:
+                                                installResult.install_path ||
+                                                installResult.jar_path.replace(/[/\\][^/\\]+$/, ''),
                                         });
                                     }
 
@@ -371,6 +355,82 @@ export function useServerActions({
                         },
                     ],
                 });
+                return;
+            }
+
+            // ── error_code: module_dependency_unsatisfied — 모듈이 요구하는 사바쨩·익스텐션 버전이 안 맞음 ──
+            if (result.error_code === 'module_dependency_unsatisfied') {
+                revertOptimistic(name);
+                const missing = result.missing_dependencies || [];
+                const needsExtension = missing.some((d) => d.startsWith('ext-'));
+                const title = t('servers.dependency_unmet_title');
+                const message = `${t('servers.dependency_unmet_message', { name })}\n\n${missing.map((d) => `• ${d}`).join('\n')}`;
+                if (needsExtension && openSettingsToExtensions) {
+                    setModal({
+                        type: 'question',
+                        title,
+                        message,
+                        buttons: [
+                            {
+                                label: t('servers.extension_open_settings'),
+                                action: () => {
+                                    setModal(null);
+                                    openSettingsToExtensions();
+                                },
+                            },
+                            { label: t('modals.close'), action: () => setModal(null) },
+                        ],
+                    });
+                } else {
+                    setModal({ type: 'failure', title, message });
+                }
+                return;
+            }
+
+            // ── error_code: preflight_failed — 켜기 전 점검(모듈 validate)이 critical 문제를 냈다 ──
+            if (result.error_code === 'preflight_failed') {
+                revertOptimistic(name);
+                const issues = Array.isArray(result.issues) ? result.issues : [];
+                const others = issues.slice(1).map((i) => `• ${i.message || i.code}`);
+                const message = [result.error, result.solution, others.length ? others.join('\n') : null]
+                    .filter(Boolean)
+                    .join('\n\n');
+                const title = t('servers.preflight_failed_title', { name });
+                if (result.issue_code === 'EULA_NOT_ACCEPTED' && window.api.instanceAcceptEula) {
+                    setModal({
+                        type: 'question',
+                        title,
+                        message: `${message}\n\n${t('servers.eula_notice')}`,
+                        buttons: [
+                            {
+                                label: t('servers.eula_accept_and_start'),
+                                action: async () => {
+                                    setModal(null);
+                                    const accepted = await window.api.instanceAcceptEula(srv.id);
+                                    if (accepted?.success === false || accepted?.error) {
+                                        safeShowToast(
+                                            translateError(accepted.error || accepted.message || ''),
+                                            'error',
+                                            5000,
+                                        );
+                                        return;
+                                    }
+                                    handleStart(name, module);
+                                },
+                            },
+                            { label: t('modals.cancel'), action: () => setModal(null) },
+                        ],
+                    });
+                } else {
+                    setModal({ type: 'failure', title, message });
+                }
+                return;
+            }
+
+            // ── error_code: start_in_progress — 같은 서버를 이미 켜는 중 (다른 창·봇·더블클릭) ──
+            if (result.error_code === 'start_in_progress') {
+                // 실제로 켜지는 중이므로 '켜는 중' 표시는 그대로 두고 알려만 준다
+                safeShowToast(t('servers.start_in_progress', { name }), 'info', 3000);
                 return;
             }
 
@@ -480,7 +540,11 @@ export function useServerActions({
                     const useGraceful = srv?.module_settings?.graceful_stop;
                     const forceStop = useGraceful === false;
 
-                    const result = await window.api.serverStop(name, { force: forceStop });
+                    // id로 정지 (이름이 바뀌어도 안전). 옛 데몬·IPC면 이름으로
+                    const result =
+                        srv?.id && window.api.instanceStop
+                            ? await window.api.instanceStop(srv.id, { force: forceStop })
+                            : await window.api.serverStop(name, { force: forceStop });
 
                     // ── extension_required 처리 ──
                     if (result.action_required === 'extension_required') {
@@ -575,6 +639,70 @@ export function useServerActions({
         });
     };
 
+    // ── handleRestart: 데몬이 프로세스가 끝나길 기다렸다가 다시 켠다 ──
+    const handleRestart = async (name) => {
+        const srv = servers.find((s) => s.name === name);
+        if (!srv?.id || !window.api.instanceRestart) return;
+        setModal({
+            type: 'question',
+            title: t('servers.restart_confirm_title'),
+            message: t('servers.restart_confirm_message', { name }),
+            onConfirm: async () => {
+                setModal(null);
+                optimisticStatusRef.current.set(name, { status: 'stopping', timestamp: Date.now() });
+                setServers((prev) => prev.map((s) => (s.name === name ? { ...s, status: 'stopping' } : s)));
+                guiInitiatedOpsRef.current.add(name);
+                setProgressBar({ message: t('servers.restarting_toast', { name }), indeterminate: true });
+                try {
+                    const force = srv.module_settings?.graceful_stop === false;
+                    const result = await window.api.instanceRestart(srv.id, { force });
+                    if (result?.error || result?.success === false) {
+                        revertOptimistic(name);
+                        const msg = translateError(result.error || result.message || '');
+                        safeShowToast(t('servers.restart_failed_toast', { error: msg }), 'error', 4000);
+                    } else {
+                        safeShowToast(t('servers.restart_completed_toast', { name }), 'success', 3000);
+                    }
+                } catch (error) {
+                    revertOptimistic(name);
+                    safeShowToast(
+                        t('servers.restart_failed_toast', { error: translateError(error.message) }),
+                        'error',
+                        4000,
+                    );
+                } finally {
+                    setProgressBar(null);
+                    fetchServers();
+                }
+            },
+            onCancel: () => setModal(null),
+        });
+    };
+
+    // ── handleRename: 꺼져 있을 때만 (데몬이 server_running으로 거절) ──
+    const handleRename = async (id, newName) => {
+        const name = (newName || '').trim();
+        const srv = servers.find((s) => s.id === id);
+        if (!srv || !name || name === srv.name || !window.api.instanceRename) return false;
+        try {
+            const result = await window.api.instanceRename(id, name);
+            if (result?.success) {
+                setServers((prev) => prev.map((s) => (s.id === id ? { ...s, name: result.name || name } : s)));
+                fetchServers();
+                return true;
+            }
+            const code = result?.error_code;
+            const msg =
+                code === 'name_taken' || code === 'server_running'
+                    ? t(`servers.rename_${code}`, { name })
+                    : translateError(result?.error || '');
+            safeShowToast(t('servers.rename_failed_toast', { error: msg }), 'error', 4000);
+        } catch (error) {
+            safeShowToast(t('servers.rename_failed_toast', { error: translateError(error.message) }), 'error', 4000);
+        }
+        return false;
+    };
+
     // ── handleStatus ────────────────────────────────────────
     const handleStatus = async (name) => {
         try {
@@ -638,17 +766,16 @@ export function useServerActions({
                 setModal({
                     type: 'question',
                     title: t('servers.extension_required_title', { defaultValue: 'Extension Required' }),
-                    message:
-                        result.missing_extensions
-                            ? t('servers.extension_required_message_detail', {
-                                  name: serverName,
-                                  extensions: result.missing_extensions.join(', '),
-                                  defaultValue: `Server '${serverName}' requires the following extension(s): ${result.missing_extensions.join(', ')}. Enable them in Settings → Extensions first.`,
-                              })
-                            : t('servers.extension_required_message', {
-                                  name: serverName,
-                                  defaultValue: `Server '${serverName}' requires an extension that is not enabled.`,
-                              }),
+                    message: result.missing_extensions
+                        ? t('servers.extension_required_message_detail', {
+                              name: serverName,
+                              extensions: result.missing_extensions.join(', '),
+                              defaultValue: `Server '${serverName}' requires the following extension(s): ${result.missing_extensions.join(', ')}. Enable them in Settings → Extensions first.`,
+                          })
+                        : t('servers.extension_required_message', {
+                              name: serverName,
+                              defaultValue: `Server '${serverName}' requires an extension that is not enabled.`,
+                          }),
                     buttons: [
                         {
                             label: t('servers.extension_open_settings', { defaultValue: 'Open Extension Settings' }),
@@ -664,6 +791,15 @@ export function useServerActions({
                             action: () => setModal(null),
                         },
                     ],
+                });
+                return;
+            }
+
+            if (result.error_code === 'working_dir_in_use') {
+                setModal({
+                    type: 'failure',
+                    title: t('servers.add_failed_title'),
+                    message: t('servers.working_dir_in_use', { instance: result.instance || '?' }),
                 });
                 return;
             }
@@ -728,6 +864,8 @@ export function useServerActions({
         fetchServers,
         handleStart,
         handleStop,
+        handleRestart,
+        handleRename,
         handleStatus,
         handleAddServer,
         handleDeleteServer,

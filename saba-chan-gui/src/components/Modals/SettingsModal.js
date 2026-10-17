@@ -18,6 +18,7 @@ import {
 } from '../../utils/themeManager';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
+import { safeShowToast } from '../../utils/helpers';
 import { SabaToggle } from '../ui/SabaUI';
 import SabaStorage from './SabaStorage';
 
@@ -37,6 +38,7 @@ function SettingsModal({
     initialView,
     discordCloudRelayUrl,
     onDiscordCloudRelayUrlChange,
+    variant = 'modal',
 }) {
     const { t, i18n } = useTranslation(['gui', 'common']);
     const [activeTab, setActiveTab] = useState('general');
@@ -127,7 +129,7 @@ function SettingsModal({
     useEffect(() => {
         if (isOpen) {
             if (window.api?.getAppVersion) {
-                window.api.getAppVersion().then((v) => v && setAppVersion(v)).catch(() => {});
+                window.api.getAppVersion().then((v) => typeof v === 'string' && setAppVersion(v)).catch(() => {});
             }
             if (window.api?.getComponentInfo) {
                 window.api.getComponentInfo().then((info) => info && setComponentInfo(info)).catch(() => {});
@@ -255,6 +257,7 @@ function SettingsModal({
     const handleThemeChange = (theme) => {
         setSelectedTheme(theme);
         saveTheme(theme);
+        useSettingsStore.getState().update({ theme });
         // Re-apply custom theme after base theme change (accent colors adapt to light/dark)
         setTimeout(() => applyCustomTheme(customTheme), 50);
     };
@@ -312,8 +315,13 @@ function SettingsModal({
         return null;
     }
 
+    const isPage = variant === 'page';
+
     return (
-        <div className={clsx('settings-modal-overlay', { closing: isClosing })} onClick={requestClose}>
+        <div
+            className={clsx(isPage ? 'settings-page' : 'settings-modal-overlay', { closing: isClosing && !isPage })}
+            onClick={isPage ? undefined : requestClose}
+        >
             <div className="settings-modal-container" onClick={(e) => e.stopPropagation()}>
                 {!showUpdatePanel && (
                     <>
@@ -778,7 +786,7 @@ function SettingsModal({
                                         {t('gui:settings_modal.auto_generate_passwords_label', 'Auto-generate Passwords')}
                                     </span>
                                     <span className="setting-description">
-                                        {t('gui:settings_modal.auto_generate_passwords_description', 'Automatically generate random RCON/REST passwords on every server launch for security.')}
+                                        {t('gui:settings_modal.auto_generate_passwords_description', 'Automatically generate random REST passwords on every server launch for security.')}
                                     </span>
                                 </label>
                                 <SabaToggle
@@ -1077,6 +1085,9 @@ function SettingsModal({
                                 </div>
                             )}
 
+                            {/* GUI 설정 기본값으로 (데몬 /api/config/gui/reset) */}
+                            {window.api?.configReset && <ResetGuiSettings />}
+
                             {/* 사바쨩 삭제 */}
                             <div className="setting-item setting-item-danger" onClick={handleUninstall}>
                                 <label className="setting-label" style={{ cursor: 'pointer' }}>
@@ -1183,7 +1194,7 @@ function SettingsModal({
                     </div>
                 </div>
 
-                {!showUpdatePanel && (
+                {!showUpdatePanel && !isPage && (
                     <div className="settings-modal-footer">
                         <button className="settings-btn-cancel" onClick={requestClose}>
                             {t('gui:modals.cancel')}
@@ -1196,3 +1207,43 @@ function SettingsModal({
 }
 
 export default SettingsModal;
+
+/** 두 번 눌러야 실행되는 "GUI 설정 기본값으로" 줄 */
+function ResetGuiSettings() {
+    const { t } = useTranslation(['gui']);
+    const [armed, setArmed] = useState(false);
+    const [busy, setBusy] = useState(false);
+    return (
+        <div className="setting-item">
+            <label className="setting-label">
+                <span className="setting-title">
+                    <Icon name="refresh" size="sm" /> {t('gui:settings_modal.reset_gui_label')}
+                </span>
+                <span className="setting-description">{t('gui:settings_modal.reset_gui_description')}</span>
+            </label>
+            <button
+                type="button"
+                className={clsx('btn', armed ? 'btn-danger' : 'btn-secondary')}
+                disabled={busy}
+                onBlur={() => setArmed(false)}
+                onClick={async () => {
+                    if (!armed) {
+                        setArmed(true);
+                        return;
+                    }
+                    setBusy(true);
+                    const ok = await useSettingsStore.getState().resetToDefaults();
+                    setBusy(false);
+                    setArmed(false);
+                    safeShowToast(
+                        t(ok ? 'gui:settings_modal.reset_gui_done' : 'gui:settings_modal.reset_gui_failed'),
+                        ok ? 'success' : 'error',
+                        3000,
+                    );
+                }}
+            >
+                {armed ? t('gui:settings_modal.reset_gui_confirm') : t('gui:settings_modal.reset_gui_button')}
+            </button>
+        </div>
+    );
+}

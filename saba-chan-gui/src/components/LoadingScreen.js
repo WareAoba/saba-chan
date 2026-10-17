@@ -1,6 +1,7 @@
 
 import { useTranslation } from 'react-i18next';
-import { Icon, TitleBar } from './index';
+import { Icon } from './Icon';
+import { WindowControls } from './shell/AppBar';
 
 /**
  * LoadingScreen — displayed while daemon is initializing.
@@ -10,7 +11,10 @@ export function LoadingScreen({ logoSrc, initStatus, initProgress }) {
 
     return (
         <div className="loading-screen">
-            <TitleBar />
+            <div className="appbar appbar-bare">
+                <div className="appbar-spacer" />
+                <WindowControls />
+            </div>
             <div className="loading-content">
                 <div className="loading-logo-container">
                     <i className="glow-blur"></i>

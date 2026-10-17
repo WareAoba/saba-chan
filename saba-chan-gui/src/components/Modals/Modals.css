@@ -97,6 +97,7 @@
     color: var(--text-tertiary);
     margin: 0 0 16px 0;
     line-height: 1.5;
+    white-space: pre-line;
     word-wrap: break-word;
 }
 
@@ -127,7 +128,7 @@
 }
 
 .failure-button {
-    background-color: #dc3545;
+    background-color: var(--stop);
     color: white;
 }
 
@@ -152,7 +153,7 @@
 }
 
 .question-confirm {
-    background-color: #28a745;
+    background-color: var(--ok);
     color: white;
     flex: 1;
 }
@@ -162,13 +163,13 @@
 }
 
 .question-cancel {
-    background-color: #6c757d;
+    background-color: var(--bg-4);
     color: white;
     flex: 1;
 }
 
 .question-cancel:hover {
-    background-color: #5a6268;
+    background-color: var(--bg-4);
 }
 
 /* ===== Prompt Modal Input ===== */
@@ -234,7 +235,7 @@
     background: var(--bg-surface-hover);
 }
 .context-menu-item.danger {
-    color: #dc3545;
+    color: var(--stop);
 }
 .context-menu-item.danger:hover {
     background: #dc354510;
@@ -415,11 +416,11 @@
 }
 
 .cmd-history-item.cmd-history-success {
-    border-left-color: #22c55e;
+    border-left-color: var(--ok);
 }
 
 .cmd-history-item.cmd-history-failure {
-    border-left-color: #ef4444;
+    border-left-color: var(--stop);
 }
 
 .cmd-history-top {
@@ -436,11 +437,11 @@
 }
 
 .cmd-history-dot.dot-success {
-    background-color: #22c55e;
+    background-color: var(--ok);
 }
 
 .cmd-history-dot.dot-failure {
-    background-color: #ef4444;
+    background-color: var(--stop);
 }
 
 .cmd-history-cmd {
@@ -485,13 +486,13 @@
 }
 
 .cmd-history-status-label.status-success {
-    color: #22c55e;
-    background: rgba(34, 197, 94, 0.1);
+    color: var(--ok);
+    background: color-mix(in srgb, var(--ok) 10%, transparent);
 }
 
 .cmd-history-status-label.status-failure {
-    color: #ef4444;
-    background: rgba(239, 68, 68, 0.1);
+    color: var(--stop);
+    background: color-mix(in srgb, var(--stop) 10%, transparent);
 }
 
 .cmd-history-detail {
@@ -563,7 +564,7 @@
 }
 
 .cli-input-wrapper:focus-within {
-    border-color: #5568d3;
+    border-color: var(--accent);
     box-shadow: 0 0 8px var(--brand-shadow-medium);
 }
 
@@ -629,11 +630,11 @@
 }
 
 .cmd-hl-valid {
-    color: #22c55e;
+    color: var(--ok);
 }
 
 .cmd-hl-partial {
-    color: #f59e0b;
+    color: var(--warn);
 }
 
 .cmd-hl-unknown {
@@ -875,7 +876,7 @@
 }
 
 .required {
-    color: #dc3545;
+    color: var(--stop);
     margin-left: 4px;
 }
 
@@ -904,7 +905,7 @@
 }
 
 .command-execute:hover:not(:disabled) {
-    background-color: #5568d3;
+    background-color: var(--accent);
 }
 
 .command-execute:disabled {
@@ -913,13 +914,13 @@
 }
 
 .command-cancel {
-    background-color: #6c757d;
+    background-color: var(--bg-4);
     color: white;
     flex: 1;
 }
 
 .command-cancel:hover {
-    background-color: #5a6268;
+    background-color: var(--bg-4);
 }
 
 /* ===== Settings Modal 스타일 ===== */
@@ -1152,7 +1153,7 @@
 .setting-select:focus {
     outline: none;
     border-color: var(--input-focus-border);
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .settings-modal-footer {
@@ -1232,67 +1233,10 @@
 }
 
 /* ===== Discord Bot Modal ===== */
-.discord-modal-container {
-    position: absolute;
-    top: calc(100% + 12px);
-    right: 0;
-    background: var(--bg-surface);
-    border-radius: 12px;
-    box-shadow: 0 8px 32px var(--shadow-lg);
-    width: 480px;
-    max-height: min(600px, calc(100vh - 160px));
-    display: flex;
-    flex-direction: column;
-    animation: dropdownSlide 0.3s ease-out;
-    border: 1px solid var(--border-separator);
-    z-index: 2000;
-}
 
 /* 말풍선 화살표 - Discord 버튼 중앙 바로 아래 */
-.discord-modal-container::before {
-    content: "";
-    position: absolute;
-    top: -8px;
-    right: 65px;
-    width: 16px;
-    height: 16px;
-    background: var(--bg-surface);
-    border-left: 1px solid var(--border-separator);
-    border-top: 1px solid var(--border-separator);
-    transform: rotate(45deg);
-}
 
 /* ===== Discord Bot Side Panel Mode ===== */
-.discord-modal-container.side-panel {
-    position: relative;
-    top: auto;
-    right: auto;
-    width: 520px;
-    min-width: 520px;
-    max-height: none;
-    height: 100%;
-    border-radius: 0;
-    border: none;
-    border-left: 1px solid var(--border-separator);
-    box-shadow: -4px 0 24px var(--shadow-lg);
-    animation: sideSlideIn 0.3s ease-out;
-    z-index: 1;
-    flex-shrink: 0;
-    overflow: hidden;
-}
-
-.discord-modal-container.side-panel::before {
-    display: none;
-}
-
-.discord-modal-container.side-panel .discord-modal-content {
-    max-height: none;
-    flex: 1;
-}
-
-.discord-modal-container.side-panel .discord-modal-footer {
-    border-radius: 0;
-}
 
 @keyframes sideSlideIn {
     from {
@@ -1303,10 +1247,6 @@
         opacity: 1;
         transform: translateX(0);
     }
-}
-
-.discord-modal-container.side-panel.closing {
-    animation: sideSlideOut 0.22s ease-in forwards;
 }
 
 @keyframes sideSlideOut {
@@ -1331,449 +1271,21 @@
     }
 }
 
-.discord-modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 24px;
-    border-bottom: 1px solid var(--border-light);
-}
-
-.discord-modal-title {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.discord-modal-title h2 {
-    margin: 0;
-    font-size: calc(20px * var(--font-scale));
-    font-weight: 700;
-    color: var(--text-primary);
-}
-
-.discord-modal-close {
-    background: none;
-    border: none;
-    font-size: calc(24px * var(--font-scale));
-    color: var(--text-disabled);
-    cursor: pointer;
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 6px;
-    transition: all 0.2s;
-}
-
-.discord-modal-close:hover {
-    background: var(--modal-detail-bg);
-    color: var(--text-primary);
-}
-
-.discord-modal-content {
-    flex: 1;
-    overflow-y: auto;
-    padding: 24px;
-}
-
-.discord-status-section {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 16px;
-    background: var(--settings-item-bg);
-    border-radius: 8px;
-    margin-bottom: 24px;
-}
-
-.discord-status-rows {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.discord-status-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.discord-status-section .status-label {
-    font-weight: 600;
-    color: var(--text-tertiary);
-}
-
-.discord-status-section .status-value {
-    font-weight: 700;
-    padding: 4px 12px;
-    border-radius: 12px;
-    font-size: calc(14px * var(--font-scale));
-}
-
-.discord-status-section .status-running {
-    background: var(--status-running-badge-bg);
-    color: var(--status-running-badge-text);
-}
-
-.discord-status-section .status-stopped {
-    background: var(--status-stopped-badge-bg);
-    color: var(--status-stopped-badge-text);
-}
-
-.discord-status-section .status-error {
-    background: var(--status-error-badge-bg);
-    color: var(--status-error-badge-text);
-}
-
-.discord-status-section .status-connecting {
-    background: var(--status-error-badge-bg);
-    color: var(--status-error-badge-text);
-}
-
-.discord-status-section .status-needs-setup {
-    background: var(--badge-default-bg);
-    color: var(--badge-default-text);
-}
-
-.discord-config-section {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-    margin-bottom: 24px;
-}
-
-.discord-config-section h4 {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--text-primary);
-}
-
-.discord-form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.discord-form-group label {
-    font-weight: 600;
-    font-size: calc(14px * var(--font-scale));
-    color: var(--text-primary);
-}
-
-.discord-form-group small {
-    font-size: calc(12px * var(--font-scale));
-    color: var(--text-tertiary);
-}
-
-.discord-form-group .warning-text {
-    color: #dc3545;
-    font-weight: 600;
-}
-
-.discord-input {
-    padding: 12px;
-    border: 1px solid var(--input-border);
-    border-radius: 8px;
-    font-size: calc(14px * var(--font-scale));
-    transition: all 0.2s;
-    background-color: var(--input-bg);
-    color: var(--text-primary);
-}
-
-.discord-input:focus {
-    outline: none;
-    border-color: var(--input-focus-border);
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-}
-
-.discord-checkbox-label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-    padding: 8px 0;
-}
-
-.discord-checkbox-label input[type="checkbox"] {
-    width: 18px;
-    height: 18px;
-    cursor: pointer;
-}
-
-.discord-info-box {
-    background: var(--bg-modal-info-bg);
-    border-left: 4px solid var(--brand-primary);
-    padding: 16px;
-    border-radius: 8px;
-}
-
-.discord-info-box h4 {
-    margin: 0 0 8px 0;
-    font-size: calc(14px * var(--font-scale));
-    color: var(--text-primary);
-}
-
-.discord-info-box p {
-    margin: 8px 0;
-    font-size: calc(13px * var(--font-scale));
-    color: var(--text-secondary);
-}
-
-.discord-info-box code {
-    display: block;
-    background: var(--bg-surface-secondary);
-    padding: 12px;
-    border-radius: 6px;
-    font-family: "Courier New", monospace;
-    margin: 12px 0;
-    color: var(--brand-primary);
-    font-weight: 600;
-}
-
-.discord-info-box .info-note {
-    font-size: calc(12px * var(--font-scale));
-    color: var(--text-tertiary);
-    margin-top: 12px;
-}
-
 /* Music Bot Toggle Card */
-.discord-music-toggle-card {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px;
-    margin-top: 20px;
-    background: var(--bg-surface-secondary);
-    border: 1px solid var(--border-light);
-    border-radius: 12px;
-    transition: border-color 0.2s;
-}
-
-.discord-music-toggle-card:hover {
-    border-color: var(--brand-primary);
-}
-
-.discord-music-toggle-info {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.discord-music-toggle-icon {
-    font-size: calc(24px * var(--font-scale));
-    line-height: 1;
-}
-
-.discord-music-toggle-text {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.discord-music-toggle-label {
-    font-weight: 600;
-    font-size: calc(14px * var(--font-scale));
-    color: var(--text-primary);
-}
-
-.discord-music-toggle-desc {
-    font-size: calc(12px * var(--font-scale));
-    color: var(--text-tertiary);
-}
 
 /* ── 음악 카드 비활성 스타일 ── */
-.discord-music-toggle-card.disabled {
-    opacity: 0.5;
-}
-
-.discord-music-toggle-card.disabled .discord-music-toggle-icon {
-    filter: grayscale(1);
-}
 
 /* ── 음악 카드 클릭 가능 스타일 ── */
-.discord-music-toggle-card.clickable {
-    cursor: pointer;
-}
-.discord-music-toggle-card.clickable:hover {
-    border-color: var(--brand-primary);
-    background: var(--bg-surface-hover, var(--bg-surface-secondary));
-}
+
 /* ── 음악 설정 패널 ── */
-.discord-music-settings-panel {
-    margin-top: 20px;
-    border: 1px solid var(--border-light);
-    border-radius: 12px;
-    overflow: hidden;
-    animation: fadeSlideIn 0.2s ease;
-}
+
 @keyframes fadeSlideIn {
     from { opacity: 0; transform: translateY(-8px); }
     to { opacity: 1; transform: translateY(0); }
 }
-.discord-music-settings-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 14px 16px;
-    background: var(--bg-surface-secondary);
-    border-bottom: 1px solid var(--border-light);
-}
-.discord-music-settings-title {
-    font-weight: 600;
-    font-size: calc(14px * var(--font-scale));
-    color: var(--text-primary);
-}
-.discord-music-settings-body {
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-}
-.discord-music-alias-section h4 {
-    margin: 0 0 4px 0;
-    font-size: calc(13px * var(--font-scale));
-    font-weight: 600;
-    color: var(--text-primary);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-.discord-music-alias-section small {
-    display: block;
-    font-size: calc(11px * var(--font-scale));
-    color: var(--text-tertiary);
-    margin-bottom: 8px;
-}
-.discord-music-alias-section .default-hint {
-    font-size: calc(11px * var(--font-scale));
-    color: var(--text-quaternary, var(--text-tertiary));
-    margin-top: 4px;
-}
-.discord-music-module-alias-input {
-    width: 100%;
-    padding: 8px 12px;
-    border: 1px solid var(--border-light);
-    border-radius: 8px;
-    background: var(--input-bg);
-    color: var(--text-primary);
-    font-size: calc(13px * var(--font-scale));
-    box-sizing: border-box;
-}
-.discord-music-module-alias-input:focus {
-    outline: none;
-    border-color: var(--brand-primary);
-}
-.discord-music-cmd-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-.discord-music-cmd-row {
-    display: grid;
-    grid-template-columns: 100px 1fr;
-    align-items: center;
-    gap: 10px;
-}
-.discord-music-cmd-info {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-}
-.discord-music-cmd-name {
-    font-size: calc(13px * var(--font-scale));
-    font-weight: 600;
-    color: var(--text-primary);
-}
-.discord-music-cmd-desc {
-    font-size: calc(11px * var(--font-scale));
-    color: var(--text-tertiary);
-}
-.discord-music-cmd-input {
-    width: 100%;
-    padding: 6px 10px;
-    border: 1px solid var(--border-light);
-    border-radius: 6px;
-    background: var(--input-bg);
-    color: var(--text-primary);
-    font-size: calc(12px * var(--font-scale));
-    box-sizing: border-box;
-}
-.discord-music-cmd-input:focus {
-    outline: none;
-    border-color: var(--brand-primary);
-}
-.discord-music-cmd-input::placeholder {
-    color: var(--text-tertiary);
-}
-.discord-music-alias-badges {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin-top: 4px;
-}
-.discord-music-alias-badge {
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: calc(11px * var(--font-scale));
-    background: var(--brand-primary-faded, rgba(88, 101, 242, 0.12));
-    color: var(--brand-primary, #5865f2);
-    font-weight: 500;
-}
-.discord-music-alias-badge.default {
-    background: var(--bg-surface-secondary);
-    color: var(--text-tertiary);
-}
-.discord-music-settings-actions {
-    display: flex;
-    gap: 8px;
-    padding-top: 4px;
-}
-.discord-music-settings-actions .btn {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 6px 14px;
-    border-radius: 8px;
-    font-size: calc(12px * var(--font-scale));
-    font-weight: 500;
-    cursor: pointer;
-    border: 1px solid var(--border-light);
-    transition: all 0.15s;
-}
-.discord-music-settings-actions .btn-save {
-    background: var(--brand-primary);
-    color: var(--brand-text);
-    border-color: var(--brand-primary);
-}
-.discord-music-settings-actions .btn-save:hover {
-    filter: brightness(1.1);
-}
-.discord-music-settings-actions .btn-reset {
-    background: transparent;
-    color: var(--text-secondary);
-}
-.discord-music-settings-actions .btn-reset:hover {
-    background: var(--bg-surface-hover, var(--bg-surface-secondary));
-}
 
 /* ── 전용 음악 채널 설정 ── */
-.discord-music-channel-section {
-    margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px solid var(--border-color, rgba(255,255,255,0.08));
-}
-.discord-music-channel-select-row {
-    display: flex;
-    gap: 6px;
-    margin-top: 8px;
-    align-items: center;
-}
-.discord-music-channel-select-row > select {
-    flex: 1;
-}
+
 .btn-refresh-channels {
     display: flex;
     align-items: center;
@@ -1790,1133 +1302,51 @@
     background: var(--bg-surface-hover, var(--bg-surface-secondary));
     color: var(--text-primary);
 }
-.discord-music-channel-offline,
-.discord-music-channel-loading {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 8px;
-    padding: 8px 12px;
-    border-radius: 6px;
-    background: var(--bg-surface-secondary, rgba(255,255,255,0.04));
-    color: var(--text-secondary);
-    font-size: calc(13px * var(--font-scale));
-}
-.discord-music-channel-options {
-    display: flex;
-    gap: 12px;
-    margin-top: 8px;
-}
-.discord-music-channel-option {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    flex: 1;
-}
-.discord-music-channel-option label {
-    font-size: calc(12px * var(--font-scale));
-    color: var(--text-secondary);
-}
-.discord-music-channel-number-input {
-    width: 100%;
-    padding: 6px 10px;
-    border: 1px solid var(--border-color, rgba(255,255,255,0.12));
-    border-radius: 6px;
-    background: var(--bg-input, var(--bg-surface));
-    color: var(--text-primary);
-    font-size: calc(13px * var(--font-scale));
-}
-.discord-music-channel-select {
-    width: 100%;
-    padding: 6px 10px;
-    border: 1px solid var(--border-color, rgba(255,255,255,0.12));
-    border-radius: 6px;
-    background: var(--bg-input, var(--bg-surface));
-    color: var(--text-primary);
-    font-size: calc(13px * var(--font-scale));
-}
 
 /* ── 모드 배지 ── */
-.discord-mode-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    margin-left: auto;
-    padding: 3px 10px;
-    border-radius: 12px;
-    font-size: calc(12px * var(--font-scale));
-    font-weight: 600;
-    white-space: nowrap;
-}
-.discord-mode-badge.local {
-    background: var(--status-running-badge-bg);
-    color: var(--status-running-badge-text);
-}
-.discord-mode-badge.cloud {
-    background: var(--notification-badge-bg);
-    color: var(--notification-badge-icon);
-}
 
 /* ── 모드 전환 카드 ── */
-.discord-mode-toggle-card {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px;
-    margin-bottom: 20px;
-    background: var(--bg-surface-secondary);
-    border: 1px solid var(--border-light);
-    border-radius: 12px;
-    transition: border-color 0.2s;
-}
-.discord-mode-toggle-card:hover {
-    border-color: var(--brand-primary);
-}
-.discord-mode-toggle-info {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-.discord-mode-toggle-icon {
-    font-size: calc(24px * var(--font-scale));
-    line-height: 1;
-    color: var(--text-primary);
-}
-.discord-mode-toggle-text {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-.discord-mode-toggle-label {
-    font-weight: 600;
-    font-size: calc(14px * var(--font-scale));
-    color: var(--text-primary);
-}
-.discord-mode-toggle-desc {
-    font-size: calc(12px * var(--font-scale));
-    color: var(--text-tertiary);
-}
 
 /* ── 클라우드 설정 섹션 ── */
-.discord-cloud-section {
-    margin-bottom: 20px;
-    border: 1px solid var(--border-light);
-    border-radius: 10px;
-    overflow: hidden;
-    padding: 16px;
-}
-.discord-cloud-toggle-btn {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    padding: 12px 16px;
-    background: var(--settings-item-bg);
-    border: none;
-    color: var(--text-primary);
-    font-weight: 600;
-    font-size: calc(13px * var(--font-scale));
-    cursor: pointer;
-    transition: background 0.2s;
-}
-.discord-cloud-toggle-btn:hover {
-    background: var(--bg-surface-secondary);
-}
-.discord-cloud-fields {
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    border-top: 1px solid var(--border-light);
-    animation: fadeIn 0.2s ease-out;
-}
-.discord-cloud-warning {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 14px;
-    background: #fff3cd;
-    color: #856404;
-    border-radius: 8px;
-    font-size: calc(12px * var(--font-scale));
-    font-weight: 500;
-}
 
 /* ── 클라우드 모드 음악 비활성화 안내 ── */
-.discord-cloud-music-notice {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 12px 16px;
-    margin-top: 20px;
-    background: var(--settings-item-bg);
-    border-radius: 10px;
-    font-size: calc(13px * var(--font-scale));
-    color: var(--text-tertiary);
-}
 
 /* ── 디바이스 페어링 ── */
-.discord-pair-section {
-    margin-top: 20px;
-    padding: 16px;
-    background: var(--settings-item-bg);
-    border-radius: 12px;
-    border: 1px solid var(--border-light);
-}
-
-.discord-pair-section h4 {
-    margin: 0 0 6px 0;
-    font-size: calc(14px * var(--font-scale));
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.discord-pair-section > p {
-    margin: 0 0 14px 0;
-    font-size: calc(12px * var(--font-scale));
-    color: var(--text-tertiary);
-    line-height: 1.5;
-}
-
-.discord-pair-start-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
-    border: none;
-    border-radius: 8px;
-    background: var(--accent-color);
-    color: var(--brand-text);
-    font-size: calc(13px * var(--font-scale));
-    font-weight: 600;
-    cursor: pointer;
-    transition: opacity 0.15s;
-}
-
-.discord-pair-start-btn:hover {
-    opacity: 0.85;
-}
-
-.discord-pair-start-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
 
 /* 버튼 변형 */
-.discord-pair-start-btn.discord-btn-danger {
-    background: #d9534f;
-}
-.discord-pair-start-btn.discord-btn-danger:hover {
-    background: #c9302c;
-    opacity: 1;
-}
-.discord-pair-start-btn.discord-btn-secondary {
-    background: var(--bg-tertiary, #4a4a5a);
-    color: var(--text-secondary, #b1b1b7);
-}
-.discord-pair-start-btn.discord-btn-secondary:hover {
-    background: var(--bg-secondary, #555566);
-    opacity: 1;
-}
 
 /* 연결 실패 에러 카드 */
-.discord-cloud-error-card {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding: 14px;
-    background: rgba(217, 83, 79, 0.08);
-    border: 1px solid rgba(217, 83, 79, 0.3);
-    border-radius: 10px;
-    margin-bottom: 8px;
-}
-.discord-cloud-error-icon {
-    font-size: calc(20px * var(--font-scale));
-}
-.discord-cloud-error-body strong {
-    display: block;
-    color: #e74c3c;
-    font-size: calc(13px * var(--font-scale));
-    margin-bottom: 4px;
-}
-.discord-cloud-error-body p {
-    font-size: calc(12px * var(--font-scale));
-    color: var(--text-secondary);
-    margin: 0;
-}
-.discord-cloud-error-hint {
-    display: block;
-    font-size: calc(11px * var(--font-scale));
-    color: var(--text-tertiary, #888);
-    font-family: monospace;
-    margin-top: 4px;
-}
-.discord-cloud-error-actions {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-.discord-cloud-error-actions .discord-pair-start-btn {
-    font-size: calc(12px * var(--font-scale));
-    padding: 6px 12px;
-}
 
 /* 릴레이 URL 인라인 입력 */
-.discord-relay-url-inline {
-    margin-bottom: 10px;
-    padding: 10px;
-    background: var(--bg-surface);
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-}
-.discord-relay-url-label {
-    display: block;
-    font-size: calc(11px * var(--font-scale));
-    font-weight: 600;
-    color: var(--text-secondary);
-    margin-bottom: 6px;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-}
-.discord-relay-url-hint {
-    display: block;
-    font-size: calc(11px * var(--font-scale));
-    color: var(--text-tertiary, #888);
-    margin-top: 4px;
-}
 
 /* 페어링 코드 표시 영역 */
-.discord-pair-code-area {
-    margin-top: 14px;
-    padding: 14px;
-    background: var(--bg-surface);
-    border-radius: 10px;
-    border: 1px dashed var(--border-active);
-}
-
-.discord-pair-code-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 10px;
-}
-
-.discord-pair-code-label {
-    font-size: calc(11px * var(--font-scale));
-    color: var(--text-tertiary);
-    text-transform: uppercase;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-}
-
-.discord-pair-code-value {
-    flex: 1;
-    padding: 8px 12px;
-    background: var(--input-bg);
-    border: 1px solid var(--border-light);
-    border-radius: 6px;
-    font-family: "Consolas", "Monaco", monospace;
-    font-size: calc(13px * var(--font-scale));
-    color: var(--text-primary);
-    word-break: break-all;
-    user-select: all;
-}
-
-.discord-pair-copy-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 8px 14px;
-    border: 1px solid var(--border-light);
-    border-radius: 6px;
-    background: var(--settings-item-bg);
-    color: var(--text-secondary);
-    font-size: calc(12px * var(--font-scale));
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s;
-    white-space: nowrap;
-}
-
-.discord-pair-copy-btn:hover {
-    background: var(--bg-hover);
-    border-color: var(--border-active);
-}
-
-.discord-pair-copy-btn.copied {
-    color: var(--success-color, #22c55e);
-    border-color: var(--success-color, #22c55e);
-}
-
-.discord-pair-instruction {
-    font-size: calc(12px * var(--font-scale));
-    color: var(--text-tertiary);
-    margin: 8px 0 4px 0;
-}
-
-.discord-pair-command {
-    display: block;
-    margin: 6px 0 12px 0;
-    padding: 8px 12px;
-    background: var(--bg-surface-alt, #f8f9fa);
-    border: 1px solid var(--border-light, #eeeeee);
-    border-radius: 6px;
-    font-family: "Consolas", "Monaco", monospace;
-    font-size: calc(13px * var(--font-scale));
-    color: var(--text-primary, #333333);
-    user-select: all;
-}
 
 /* 대기 상태 */
-.discord-pair-waiting {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 0 0 0;
-    font-size: calc(13px * var(--font-scale));
-    color: var(--text-secondary);
-}
 
-/* discord-pair-spinner — replaced by SabaSpinner */
-
-.discord-pair-timer {
-    margin-left: auto;
-    font-size: calc(12px * var(--font-scale));
-    color: var(--text-tertiary);
-    font-variant-numeric: tabular-nums;
-}
 
 /* 결과 메시지 */
-.discord-pair-result {
-    margin-top: 12px;
-    padding: 10px 14px;
-    border-radius: 8px;
-    font-size: calc(13px * var(--font-scale));
-    font-weight: 500;
-}
-
-.discord-pair-result.success {
-    background: var(--success-badge-bg, rgba(34, 197, 94, 0.1));
-    color: var(--success-color, #22c55e);
-}
-
-.discord-pair-result.error {
-    background: var(--failure-badge-bg, rgba(239, 68, 68, 0.1));
-    color: var(--failure-color, #ef4444);
-}
 
 /* ── 클라우드 연결 상태 배너 ── */
-.discord-cloud-connecting {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 12px 16px;
-    background: var(--settings-item-bg);
-    border-radius: 8px;
-    font-size: calc(13px * var(--font-scale));
-    color: var(--text-secondary);
-    margin-bottom: 12px;
-}
-
-.discord-cloud-connected-banner {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 12px 16px;
-    background: var(--success-badge-bg, rgba(34, 197, 94, 0.08));
-    border: 1px solid var(--success-color, #22c55e);
-    border-radius: 10px;
-    margin-bottom: 16px;
-}
-
-.discord-cloud-connected-banner strong {
-    font-size: calc(13px * var(--font-scale));
-    color: var(--text-primary);
-}
-
-.discord-cloud-connected-icon {
-    font-size: calc(18px * var(--font-scale));
-}
-
-.discord-cloud-host-id {
-    display: block;
-    font-size: calc(11px * var(--font-scale));
-    color: var(--text-tertiary);
-    font-family: "Consolas", "Monaco", monospace;
-}
 
 /* ── 클라우드 셋업 카드 ── */
-.discord-cloud-setup-card {
-    padding: 20px;
-    background: var(--settings-item-bg);
-    border-radius: 12px;
-    border: 1px solid var(--border-light);
-    margin-bottom: 12px;
-}
-
-.discord-cloud-setup-card h4 {
-    margin: 8px 0;
-    font-size: calc(15px * var(--font-scale));
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.discord-cloud-setup-card > p {
-    margin: 0 0 16px 0;
-    font-size: calc(12px * var(--font-scale));
-    color: var(--text-tertiary);
-    line-height: 1.5;
-}
-
-.discord-cloud-setup-icon {
-    font-size: calc(28px * var(--font-scale));
-    text-align: center;
-}
-
-.discord-cloud-setup-method {
-    display: flex;
-    gap: 12px;
-    align-items: flex-start;
-    padding: 12px;
-    margin-top: 12px;
-    background: var(--bg-surface);
-    border-radius: 10px;
-    border: 1px solid var(--border-light);
-}
-
-.discord-cloud-setup-method strong {
-    display: block;
-    font-size: calc(13px * var(--font-scale));
-    margin-bottom: 4px;
-    color: var(--text-primary);
-}
-
-.discord-cloud-setup-method p {
-    margin: 0 0 8px 0;
-    font-size: calc(12px * var(--font-scale));
-    color: var(--text-tertiary);
-    line-height: 1.4;
-}
-
-.discord-cloud-setup-method code {
-    display: inline-block;
-    padding: 4px 10px;
-    background: var(--input-bg);
-    border-radius: 6px;
-    font-family: "Consolas", "Monaco", monospace;
-    font-size: calc(12px * var(--font-scale));
-    color: var(--brand-primary);
-}
-
-.discord-cloud-setup-badge {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    background: var(--accent-color);
-    color: var(--brand-text);
-    font-weight: 700;
-    font-size: calc(12px * var(--font-scale));
-    flex-shrink: 0;
-}
 
 /* ── 노드 카드 목록 ── */
-.discord-node-list {
-    margin-top: 12px;
-}
-
-.discord-node-list > h4 {
-    margin: 0 0 10px 0;
-    font-size: calc(14px * var(--font-scale));
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.discord-node-card {
-    border: 1px solid var(--border-light);
-    border-radius: 10px;
-    margin-bottom: 8px;
-    overflow: hidden;
-    background: var(--settings-item-bg);
-    transition: border-color 0.15s;
-}
-
-.discord-node-card.expanded {
-    border-color: var(--accent-color);
-}
-
-.discord-node-card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 16px;
-    cursor: pointer;
-    transition: background 0.15s;
-}
-
-.discord-node-card-header:hover {
-    background: var(--bg-hover);
-}
-
-.discord-node-card-info {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.discord-node-guild-name {
-    font-size: calc(14px * var(--font-scale));
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.discord-node-guild-id {
-    font-size: calc(11px * var(--font-scale));
-    color: var(--text-tertiary);
-    font-family: "Consolas", "Monaco", monospace;
-}
-
-.discord-node-card-body {
-    padding: 0 16px 16px;
-    border-top: 1px solid var(--border-light);
-    animation: fadeIn 0.2s ease-out;
-}
-
-.discord-node-section {
-    margin-top: 12px;
-}
-
-.discord-node-section h5 {
-    margin: 0 0 8px 0;
-    font-size: calc(13px * var(--font-scale));
-    font-weight: 600;
-    color: var(--text-secondary);
-}
-
-.discord-node-empty {
-    font-size: calc(12px * var(--font-scale));
-    color: var(--text-tertiary);
-    font-style: italic;
-    margin: 4px 0;
-}
-
-.discord-node-member-list,
-.discord-node-instance-list {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.discord-node-member-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    background: var(--bg-surface);
-    border-radius: 6px;
-    font-size: calc(12px * var(--font-scale));
-}
-
-.discord-node-member-id {
-    font-family: "Consolas", "Monaco", monospace;
-    color: var(--text-primary);
-}
-
-.discord-node-member-cmds {
-    color: var(--text-tertiary);
-    font-size: calc(11px * var(--font-scale));
-}
-
-.discord-node-instance-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    background: var(--bg-surface);
-    border-radius: 6px;
-    font-size: calc(12px * var(--font-scale));
-}
-
-.discord-node-instance-type {
-    font-weight: 500;
-    color: var(--text-primary);
-}
-
-.discord-node-instance-status.enabled {
-    color: var(--success-color, #22c55e);
-}
-
-.discord-node-instance-status.disabled {
-    color: var(--text-tertiary);
-}
 
 /* ── 인스턴스 선택 (클라이언트 측) ── */
-.discord-instance-select-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 4px;
-}
-
-.discord-instance-select-header h4 {
-    margin: 0;
-    font-size: calc(13px * var(--font-scale));
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.discord-instance-select-actions {
-    display: flex;
-    gap: 6px;
-}
-
-.discord-instance-select-btn {
-    font-size: calc(11px * var(--font-scale));
-    padding: 2px 8px;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    background: var(--bg-surface);
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all 0.15s ease;
-}
-
-.discord-instance-select-btn:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-}
-
-.discord-instance-select-desc {
-    display: block;
-    font-size: calc(11px * var(--font-scale));
-    color: var(--text-tertiary);
-    margin-bottom: 8px;
-}
-
-.discord-instance-select-list {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.discord-instance-select-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 12px;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-color);
-    border-left: 3px solid transparent;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    opacity: 0.55;
-}
-
-.discord-instance-select-item:hover {
-    background: var(--bg-hover);
-    opacity: 0.75;
-}
-
-.discord-instance-select-item.selected {
-    border-color: var(--accent-color, #5865f2);
-    border-left: 3px solid var(--accent-color, #5865f2);
-    background: color-mix(in srgb, var(--accent-color, #5865f2) 10%, var(--bg-surface));
-    opacity: 1;
-}
-
-.discord-instance-select-item.disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-    pointer-events: none;
-}
-
-.discord-instance-other-node {
-    color: var(--text-muted, #888);
-    font-size: calc(10px * var(--font-scale));
-    font-style: italic;
-}
-
-.discord-instance-badge {
-    font-size: calc(10px * var(--font-scale));
-    font-weight: 700;
-    padding: 2px 7px;
-    border-radius: 4px;
-    flex-shrink: 0;
-    letter-spacing: 0.5px;
-    user-select: none;
-}
-
-.discord-instance-badge.on {
-    background: color-mix(in srgb, #43b581 20%, transparent);
-    color: #43b581;
-}
-
-.discord-instance-badge.off {
-    background: color-mix(in srgb, #f04747 12%, transparent);
-    color: #888;
-}
-
-.discord-instance-select-item input[type="checkbox"] {
-    accent-color: var(--accent-color, #5865f2);
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-}
-
-.discord-instance-select-info {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    flex: 1;
-    min-width: 0;
-}
-
-.discord-instance-select-name {
-    font-size: calc(13px * var(--font-scale));
-    font-weight: 500;
-    color: var(--text-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.discord-instance-select-module {
-    font-size: calc(11px * var(--font-scale));
-    color: var(--text-tertiary);
-}
-
-.discord-instance-select-status {
-    font-size: calc(14px * var(--font-scale));
-    flex-shrink: 0;
-}
-
-.discord-instance-select-status.online {
-    color: var(--success-color, #22c55e);
-}
-
-.discord-instance-select-status.offline {
-    color: var(--text-tertiary);
-}
 
 /* ── 노드 설정 탭 ── */
-.discord-node-settings-body {
-    margin-top: 8px;
-}
-
-.discord-node-tabs {
-    display: flex;
-    gap: 4px;
-    margin-bottom: 12px;
-    border-bottom: 1px solid var(--border-light);
-    padding-bottom: 0;
-}
-
-.discord-node-tab {
-    padding: 6px 14px;
-    font-size: calc(12px * var(--font-scale));
-    font-weight: 500;
-    border: none;
-    background: none;
-    color: var(--text-tertiary);
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    transition: all 0.15s;
-}
-
-.discord-node-tab:hover {
-    color: var(--text-primary);
-}
-
-.discord-node-tab.active {
-    color: var(--accent-color, #5865f2);
-    border-bottom-color: var(--accent-color, #5865f2);
-    font-weight: 600;
-}
-
-.discord-node-tab-content {
-    animation: fadeIn 0.15s ease-out;
-}
 
 /* ── 멤버 추가 행 ── */
-.discord-member-add-row {
-    display: flex;
-    gap: 6px;
-    margin-bottom: 10px;
-}
-
-.discord-member-add-input {
-    flex: 1;
-    padding: 6px 10px;
-    font-size: calc(12px * var(--font-scale));
-    border: 1px solid var(--border-light);
-    border-radius: 6px;
-    background: var(--input-bg);
-    color: var(--text-primary);
-    font-family: "Consolas", "Monaco", monospace;
-    outline: none;
-    transition: border-color 0.15s;
-}
-
-.discord-member-add-input:focus {
-    border-color: var(--accent-color);
-}
-
-.discord-member-add-input::placeholder {
-    color: var(--text-tertiary);
-    font-family: inherit;
-}
-
-.discord-member-add-btn {
-    padding: 6px 14px;
-    font-size: calc(12px * var(--font-scale));
-    font-weight: 500;
-    border: 1px solid var(--accent-color, #5865f2);
-    border-radius: 6px;
-    background: var(--accent-color, #5865f2);
-    color: #fff;
-    cursor: pointer;
-    transition: opacity 0.15s;
-    white-space: nowrap;
-}
-
-.discord-member-add-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-}
-
-.discord-member-add-btn:hover:not(:disabled) {
-    opacity: 0.85;
-}
 
 /* ── 멤버 권한 카드 목록 ── */
-.discord-member-perm-list {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.discord-member-perm-card {
-    border: 1px solid var(--border-light);
-    border-radius: 8px;
-    overflow: hidden;
-    background: var(--settings-item-bg);
-    transition: border-color 0.15s;
-}
-
-.discord-member-perm-card.expanded {
-    border-color: var(--accent-color);
-}
-
-.discord-member-perm-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    transition: background 0.15s;
-}
-
-.discord-member-perm-header:hover {
-    background: var(--bg-hover);
-}
 
 /* ── 멤버 활성화 체크 + 이름/ID 그룹 ── */
-.discord-member-enable-label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex: 1;
-    min-width: 0;
-    cursor: pointer;
-}
-
-.discord-member-enable-label input[type="checkbox"] {
-    accent-color: var(--accent-color, #5865f2);
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-}
-
-.discord-member-perm-id-group {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    min-width: 0;
-}
-
-.discord-member-perm-name {
-    font-size: calc(13px * var(--font-scale));
-    font-weight: 500;
-    color: var(--text-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.discord-member-perm-id {
-    font-family: "Consolas", "Monaco", monospace;
-    font-size: calc(11px * var(--font-scale));
-    color: var(--text-tertiary);
-}
-
-.discord-member-expand-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border: none;
-    background: none;
-    color: var(--text-tertiary);
-    cursor: pointer;
-    border-radius: 4px;
-    flex-shrink: 0;
-    transition: all 0.15s;
-}
-
-.discord-member-expand-btn:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-}
-
-.discord-member-perm-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.discord-member-remove-btn {
-    width: 20px;
-    height: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: none;
-    background: none;
-    color: var(--text-tertiary);
-    cursor: pointer;
-    border-radius: 4px;
-    font-size: calc(12px * var(--font-scale));
-    transition: all 0.15s;
-}
-
-.discord-member-remove-btn:hover {
-    background: var(--danger-bg, rgba(239, 68, 68, 0.1));
-    color: var(--danger-color, #ef4444);
-}
-
-.discord-member-perm-body {
-    padding: 8px 12px 12px;
-    border-top: 1px solid var(--border-light);
-    animation: fadeIn 0.15s ease-out;
-}
 
 /* ── 멤버별 인스턴스 블록 ── */
-.discord-member-instance-block {
-    margin-bottom: 10px;
-    padding: 8px;
-    background: var(--bg-surface);
-    border-radius: 6px;
-}
-
-.discord-member-instance-block:last-child {
-    margin-bottom: 0;
-}
-
-.discord-member-instance-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 6px;
-    flex-wrap: wrap;
-}
-
-.discord-member-instance-name {
-    font-size: calc(12px * var(--font-scale));
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.discord-member-instance-module {
-    font-size: calc(11px * var(--font-scale));
-    color: var(--text-tertiary);
-    padding: 1px 6px;
-    background: var(--input-bg);
-    border-radius: 4px;
-}
 
 /* ── 명령어 체크박스 그리드 ── */
-.discord-cmd-check-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 4px;
-}
-
-.discord-cmd-check-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 6px;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background 0.1s;
-    font-size: calc(12px * var(--font-scale));
-}
-
-.discord-cmd-check-item:hover {
-    background: var(--bg-hover);
-}
-
-.discord-cmd-check-item input[type="checkbox"] {
-    accent-color: var(--accent-color, #5865f2);
-    width: 14px;
-    height: 14px;
-    flex-shrink: 0;
-}
-
-.discord-cmd-check-label {
-    color: var(--text-primary);
-    font-size: calc(12px * var(--font-scale));
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.discord-cmd-empty {
-    font-size: calc(11px * var(--font-scale));
-    color: var(--text-tertiary);
-    font-style: italic;
-    margin: 4px 0;
-}
-
-.discord-cmd-hint {
-    font-size: calc(11px * var(--font-scale));
-    color: var(--text-tertiary);
-    margin-top: 8px;
-    padding-top: 6px;
-    border-top: 1px solid var(--border-light);
-}
 
 /* ── 노드 없음 ── */
-.discord-cloud-empty-nodes {
-    text-align: center;
-    padding: 20px;
-    color: var(--text-tertiary);
-}
-
-.discord-cloud-empty-nodes p {
-    margin: 0 0 4px 0;
-    font-size: calc(13px * var(--font-scale));
-}
-
-.discord-cloud-empty-nodes small {
-    display: block;
-    margin-bottom: 8px;
-    font-size: calc(12px * var(--font-scale));
-}
 
 /* ── 고급 설정 릴레이 URL 입력 ── */
 .setting-input-text {
@@ -2939,62 +1369,6 @@
 .setting-input-text::placeholder {
     color: var(--text-tertiary);
     font-family: inherit;
-}
-
-.discord-modal-footer {
-    display: flex;
-    gap: 12px;
-    padding: 20px 24px;
-    border-top: 1px solid var(--border-light);
-    background: var(--modal-footer-bg);
-    border-radius: 0 0 16px 16px;
-}
-
-.discord-btn {
-    flex: 1;
-    padding: 0 20px;
-    border: none;
-    height: 44px;
-    border-radius: 8px;
-    font-weight: 600;
-    font-size: calc(14px * var(--font-scale));
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.discord-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-.discord-btn-start {
-    background: linear-gradient(135deg, #3ba55d 0%, #2d8049 100%);
-    color: white;
-}
-
-.discord-btn-start:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(59, 165, 93, 0.3);
-}
-
-.discord-btn-stop {
-    background: linear-gradient(135deg, #ed4245 0%, #c03537 100%);
-    color: white;
-}
-
-.discord-btn-stop:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(237, 66, 69, 0.3);
-}
-
-.discord-btn-save {
-    background: var(--brand-gradient);
-    color: var(--brand-text);
-}
-
-.discord-btn-save:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
 /* ===== Background Modal ===== */
@@ -3128,12 +1502,12 @@
     font-weight: 600;
     cursor: pointer;
     transition: all 0.3s ease;
-    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .background-restart-btn:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 .background-restart-btn:active:not(:disabled) {
@@ -3201,26 +1575,6 @@
 }
 
 /* 작은 화면 대응 */
-@media (max-width: 768px) {
-    .discord-modal-container {
-        right: 10px;
-        left: 10px;
-        width: auto;
-        max-width: none;
-        transform: none;
-    }
-
-    .discord-modal-container::before {
-        left: auto;
-        right: 80px;
-    }
-}
-
-@media (max-width: 600px) {
-    .discord-modal-container {
-        max-height: min(500px, calc(100vh - 120px));
-    }
-}
 
 /* ===== 모달 닫기 트랜지션 ===== */
 @keyframes fadeOut {
@@ -3275,9 +1629,6 @@
 }
 
 /* 드롭다운 모달(Discord / Background) 닫기 */
-.discord-modal-container.closing {
-    animation: dropdownSlideOut 0.22s ease-in forwards;
-}
 
 .background-modal-container.closing {
     animation: dropdownSlideOut 0.22s ease-in forwards;
@@ -3499,18 +1850,18 @@
 
 /* 업데이트 알림 카드 — 특별 그라데이션 배경 */
 .notice-card.notice-update-card {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
-    border-color: rgba(99, 102, 241, 0.3);
+    background: color-mix(in srgb, var(--info) 10%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .notice-card.notice-update-card.notice-unread {
-    border-left-color: #6366f1;
+    border-left-color: var(--accent);
 }
 
 .notice-card.notice-update-card:hover {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.18) 0%, rgba(139, 92, 246, 0.18) 100%);
-    border-color: rgba(99, 102, 241, 0.5);
-    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.15);
+    background: color-mix(in srgb, var(--info) 18%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
 .notice-action-hint {
@@ -3606,7 +1957,7 @@
     right: 2px;
     width: 18px;
     height: 18px;
-    background: #ef4444;
+    background: var(--stop);
     color: #fff;
     font-size: calc(10px * var(--font-scale));
     font-weight: 700;
@@ -3615,7 +1966,7 @@
     align-items: center;
     justify-content: center;
     pointer-events: none;
-    box-shadow: 0 1px 3px rgba(239, 68, 68, 0.4);
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--stop) 40%, transparent);
     animation: noticeBadgePop 0.3s ease-out;
 }
 
@@ -3692,8 +2043,8 @@
     margin-bottom: 16px;
     font-size: calc(13px * var(--font-scale));
     color: var(--warning-text, #f59e0b);
-    background: rgba(245, 158, 11, 0.08);
-    border: 1px solid rgba(245, 158, 11, 0.25);
+    background: color-mix(in srgb, var(--warn) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--warn) 25%, transparent);
     border-radius: 8px;
 }
 
@@ -3797,44 +2148,44 @@
 }
 
 .gui-test-success:hover {
-    border-color: #22c55e;
-    color: #22c55e;
+    border-color: var(--ok);
+    color: var(--ok);
 }
 .gui-test-failure:hover {
-    border-color: #ef4444;
-    color: #ef4444;
+    border-color: var(--stop);
+    color: var(--stop);
 }
 .gui-test-notification:hover {
-    border-color: #3b82f6;
-    color: #3b82f6;
+    border-color: var(--info);
+    color: var(--info);
 }
 .gui-test-question:hover {
-    border-color: #f59e0b;
-    color: #f59e0b;
+    border-color: var(--warn);
+    color: var(--warn);
 }
 .gui-test-toast-info:hover {
-    border-color: #6366f1;
-    color: #6366f1;
+    border-color: var(--accent);
+    color: var(--accent);
 }
 .gui-test-toast-success:hover {
-    border-color: #22c55e;
-    color: #22c55e;
+    border-color: var(--ok);
+    color: var(--ok);
 }
 .gui-test-toast-warning:hover {
-    border-color: #f59e0b;
-    color: #f59e0b;
+    border-color: var(--warn);
+    color: var(--warn);
 }
 .gui-test-toast-error:hover {
-    border-color: #ef4444;
-    color: #ef4444;
+    border-color: var(--stop);
+    color: var(--stop);
 }
 .gui-test-progress:hover {
-    border-color: #8b5cf6;
-    color: #8b5cf6;
+    border-color: var(--accent);
+    color: var(--accent);
 }
 .gui-test-progress-ind:hover {
-    border-color: #8b5cf6;
-    color: #8b5cf6;
+    border-color: var(--accent);
+    color: var(--accent);
 }
 .gui-test-loading:hover {
     border-color: #06b6d4;
@@ -3925,13 +2276,13 @@
 }
 
 .update-mock-label.mock {
-    color: #f59e0b;
-    background: rgba(245, 158, 11, 0.12);
+    color: var(--warn);
+    background: color-mix(in srgb, var(--warn) 12%, transparent);
 }
 
 .update-mock-label.real {
-    color: #10b981;
-    background: rgba(16, 185, 129, 0.12);
+    color: var(--ok);
+    background: color-mix(in srgb, var(--ok) 12%, transparent);
 }
 
 /* update-mock-slider — replaced by SabaToggle */
@@ -3949,13 +2300,13 @@
 }
 
 .update-modal-status-bar.error {
-    color: #ef4444;
-    background: rgba(239, 68, 68, 0.06);
+    color: var(--stop);
+    background: color-mix(in srgb, var(--stop) 6%, transparent);
 }
 
 .update-modal-status-bar.success {
-    color: #10b981;
-    background: rgba(16, 185, 129, 0.06);
+    color: var(--ok);
+    background: color-mix(in srgb, var(--ok) 6%, transparent);
 }
 
 /* 다운로드 프로그레스 */
@@ -4014,15 +2365,15 @@
 /* update-spinner — replaced by SabaSpinner */
 
 .update-modal-comp.available {
-    background: rgba(102, 126, 234, 0.08);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .update-modal-comp.downloaded {
-    background: rgba(139, 92, 246, 0.08);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .update-modal-comp.applied {
-    background: rgba(16, 185, 129, 0.08);
+    background: color-mix(in srgb, var(--ok) 8%, transparent);
 }
 
 .update-modal-comp-info {
@@ -4057,23 +2408,23 @@
 }
 
 .update-modal-badge.available {
-    background: rgba(102, 126, 234, 0.15);
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
     color: var(--brand-primary);
 }
 
 .update-modal-badge.downloaded {
-    background: rgba(139, 92, 246, 0.15);
-    color: #8b5cf6;
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    color: var(--accent);
 }
 
 .update-modal-badge.applied {
-    background: rgba(16, 185, 129, 0.15);
-    color: #10b981;
+    background: color-mix(in srgb, var(--ok) 15%, transparent);
+    color: var(--ok);
 }
 
 .update-modal-badge.self-update {
-    background: rgba(245, 158, 11, 0.15);
-    color: #f59e0b;
+    background: color-mix(in srgb, var(--warn) 15%, transparent);
+    color: var(--warn);
 }
 
 .update-modal-badge.latest {
@@ -4124,7 +2475,7 @@
 }
 
 .update-modal-btn.warning {
-    background: #f59e0b;
+    background: var(--warn);
     color: white;
 }
 
@@ -4133,7 +2484,7 @@
 }
 
 .update-modal-btn.success {
-    background: #10b981;
+    background: var(--ok);
     color: white;
 }
 
@@ -4166,7 +2517,7 @@
 }
 
 .update-modal-status.success {
-    color: #10b981;
+    color: var(--ok);
 }
 
 /* ── 개별 컴포넌트 행 내 액션 버튼 ── */
@@ -4204,11 +2555,11 @@
 }
 
 .update-comp-btn.apply:hover:not(:disabled) {
-    color: #10b981;
+    color: var(--ok);
 }
 
 .update-comp-btn.apply.warning:hover:not(:disabled) {
-    color: #f59e0b;
+    color: var(--warn);
 }
 
 .update-comp-btn:disabled {
@@ -4236,7 +2587,7 @@
 }
 
 .confirm-modal-icon {
-    color: #f59e0b;
+    color: var(--warn);
 }
 
 .confirm-modal-title {
@@ -4558,7 +2909,7 @@
 }
 
 .ss-icon-btn.warning:hover:not(:disabled) {
-    color: #f59e0b;
+    color: var(--warn);
 }
 
 .ss-icon-btn:disabled {
@@ -4572,7 +2923,7 @@
     justify-content: center;
     width: 28px;
     height: 28px;
-    color: #10b981;
+    color: var(--ok);
 }
 
 .ss-status-err {
@@ -4901,7 +3252,7 @@
     align-items: center;
     gap: 20px;
     padding: 24px 20px;
-    background: linear-gradient(135deg, var(--brand-primary, #667eea) 0%, var(--brand-secondary, #764ba2) 100%);
+    background: var(--brand-primary, #667eea);
     color: white;
     position: relative;
     overflow: hidden;
@@ -4915,7 +3266,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="rgba(255,255,255,0.1)"/><circle cx="75" cy="75" r="1" fill="rgba(255,255,255,0.1)"/><circle cx="50" cy="10" r="0.5" fill="rgba(255,255,255,0.05)"/><circle cx="10" cy="50" r="0.5" fill="rgba(255,255,255,0.05)"/><circle cx="90" cy="50" r="0.5" fill="rgba(255,255,255,0.05)"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+    background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="color-mix(in srgb, var(--text-1) 10%, transparent)"/><circle cx="75" cy="75" r="1" fill="color-mix(in srgb, var(--text-1) 10%, transparent)"/><circle cx="50" cy="10" r="0.5" fill="color-mix(in srgb, var(--text-1) 5%, transparent)"/><circle cx="10" cy="50" r="0.5" fill="color-mix(in srgb, var(--text-1) 5%, transparent)"/><circle cx="90" cy="50" r="0.5" fill="color-mix(in srgb, var(--text-1) 5%, transparent)"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
     opacity: 0.3;
     pointer-events: none;
 }
@@ -4925,12 +3276,12 @@
     height: 120px;
     min-height: 120px;
     flex-shrink: 0;
-    background: rgba(255, 255, 255, 0.2);
+    background: color-mix(in srgb, var(--text-1) 20%, transparent);
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 4px solid rgba(255, 255, 255, 0.3);
+    border: 4px solid color-mix(in srgb, var(--text-1) 30%, transparent);
     backdrop-filter: blur(10px);
     position: relative;
     z-index: 1;
@@ -4984,9 +3335,9 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    background: rgba(255, 255, 255, 0.2);
+    background: color-mix(in srgb, var(--text-1) 20%, transparent);
     backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    border: 1px solid color-mix(in srgb, var(--text-1) 30%, transparent);
     color: white;
     font-size: calc(12px * var(--font-scale));
     font-weight: 600;
@@ -5000,7 +3351,7 @@
 }
 
 .about-dev-github-btn:hover {
-    background: rgba(255, 255, 255, 0.3);
+    background: color-mix(in srgb, var(--text-1) 30%, transparent);
     transform: translateY(-1px);
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
 }
@@ -5037,7 +3388,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain-app" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="rgba(255,255,255,0.1)"/><circle cx="75" cy="75" r="1" fill="rgba(255,255,255,0.1)"/><circle cx="50" cy="10" r="0.5" fill="rgba(255,255,255,0.05)"/><circle cx="10" cy="50" r="0.5" fill="rgba(255,255,255,0.05)"/><circle cx="90" cy="50" r="0.5" fill="rgba(255,255,255,0.05)"/></pattern></defs><rect width="100" height="100" fill="url(%23grain-app)"/></svg>');
+    background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain-app" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="color-mix(in srgb, var(--text-1) 10%, transparent)"/><circle cx="75" cy="75" r="1" fill="color-mix(in srgb, var(--text-1) 10%, transparent)"/><circle cx="50" cy="10" r="0.5" fill="color-mix(in srgb, var(--text-1) 5%, transparent)"/><circle cx="10" cy="50" r="0.5" fill="color-mix(in srgb, var(--text-1) 5%, transparent)"/><circle cx="90" cy="50" r="0.5" fill="color-mix(in srgb, var(--text-1) 5%, transparent)"/></pattern></defs><rect width="100" height="100" fill="url(%23grain-app)"/></svg>');
     opacity: 0.3;
     pointer-events: none;
 }
@@ -5047,12 +3398,12 @@
     height: 110px;
     min-height: 110px;
     flex-shrink: 0;
-    background: rgba(255, 255, 255, 0.2);
+    background: color-mix(in srgb, var(--text-1) 20%, transparent);
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 4px solid rgba(255, 255, 255, 0.3);
+    border: 4px solid color-mix(in srgb, var(--text-1) 30%, transparent);
     backdrop-filter: blur(10px);
     position: relative;
     z-index: 1;
@@ -5076,7 +3427,7 @@
     padding: 4px 10px;
     border-radius: 12px;
     border: none;
-    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 40%, transparent);
     z-index: 2;
 }
 
@@ -5104,9 +3455,9 @@
     gap: 0;
     border-radius: 8px;
     overflow: hidden;
-    background: rgba(255, 255, 255, 0.1);
+    background: color-mix(in srgb, var(--text-1) 10%, transparent);
     backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid color-mix(in srgb, var(--text-1) 20%, transparent);
 }
 
 .about-component-item {
@@ -5118,7 +3469,7 @@
 }
 
 .about-component-item:not(:last-child) {
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid color-mix(in srgb, var(--text-1) 10%, transparent);
 }
 
 .about-component-label {
@@ -5326,7 +3677,7 @@
     font-family: "Cascadia Code", "Consolas", "Monaco", "Courier New", monospace;
     font-size: calc(12px * var(--font-scale));
     line-height: 1.6;
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    border: 1px solid color-mix(in srgb, var(--text-1) 6%, transparent);
     margin-top: 4px;
 }
 
@@ -5335,3 +3686,41 @@
     padding: 1px 0;
 }
 
+
+.cmd-history-reply {
+    margin: 4px 0 0 12px;
+    max-height: 7.5em;
+    overflow: auto;
+    font-family: var(--font-mono);
+    font-size: calc(11px * var(--font-scale));
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+/* 신뢰 배지: 확인됨은 조용히, 변경됨·확인 안 됨은 눈에 띄게 */
+.trust-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.6rem;
+    font-weight: 600;
+    padding: 1px 5px;
+    border-radius: 4px;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+.trust-verified {
+    color: var(--text-tertiary);
+    font-weight: 500;
+}
+.trust-modified {
+    color: var(--warn);
+    background: var(--warn-soft);
+}
+.trust-unverified {
+    color: var(--warn);
+    box-shadow: inset 0 0 0 1px var(--warn-soft);
+}

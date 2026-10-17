@@ -1,4 +1,4 @@
 /** Shared layout constants for z-index layering and geometry. */
 
-/** TitleBar (Electron window chrome) fixed height in pixels. */
-export const TITLEBAR_HEIGHT = 40;
+/** 상단바(AppBar) 높이(px). tokens.css의 --appbar-h와 같아야 한다. */
+export const TITLEBAR_HEIGHT = 48;

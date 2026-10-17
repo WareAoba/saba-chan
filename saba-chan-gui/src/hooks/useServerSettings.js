@@ -1,39 +1,60 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
 import { useModalClose } from './useModalClose';
 
 /**
- * Manages server settings modal: open, save, install version, reset,
- * and alias editing for Discord bot integration.
+ * Manages server settings modal: open, save, install version, reset.
+ * (Discord command words moved to the Discord page — components/discord/WordsView.js)
  *
  * @param {Object} params
  * @param {Array} params.servers - Current server list
  * @param {Array} params.modules - Current module list
  * @param {Function} params.setModal - Modal state setter
  * @param {Function} params.setProgressBar - Progress bar state setter
- * @param {Object} params.moduleAliasesPerModule - Per-module alias definitions from module.toml
- * @param {Object} params.discordModuleAliases - Saved user module aliases
- * @param {Object} params.discordCommandAliases - Saved user command aliases
- * @param {Function} params.setDiscordModuleAliases - Module aliases state setter
- * @param {Function} params.setDiscordCommandAliases - Command aliases state setter
- * @param {string} params.discordPrefix - Bot command prefix
  * @param {Function} params.fetchServers - Server list refresh function
  * @returns {Object} Settings modal state and handlers
  */
-export function useServerSettings({
-    servers,
-    modules,
-    setModal,
-    setProgressBar,
-    moduleAliasesPerModule,
-    discordModuleAliases,
-    discordCommandAliases,
-    setDiscordModuleAliases,
-    setDiscordCommandAliases,
-    discordPrefix,
-    fetchServers,
-}) {
+
+/** 크래시 자동 재시작 설정 (module_settings 에 저장, 기본값은 데몬과 같다: 켜짐 / 원인 모를 종료는 꺼짐) */
+const asFlag = (v, dflt) => (v === true || v === 'true' ? true : v === false || v === 'false' ? false : dflt);
+const restartFlagsOf = (server) => ({
+    auto_restart: asFlag(server?.module_settings?.auto_restart, true),
+    restart_on_unknown_exit: asFlag(server?.module_settings?.restart_on_unknown_exit, false),
+});
+
+/** 문자열 칸 값으로 (없으면 null) */
+const fieldValue = (v) => (v === undefined || v === null ? null : String(v));
+
+/** 데몬이 인스턴스 최상위에 저장하는 공통 필드 (src/ipc/handlers/instance.rs known_fields). 이 값들은 module_settings가 낡았을 수 있다 */
+const TOP_LEVEL_FIELDS = new Set([
+    'port',
+    'rest_host',
+    'rest_port',
+    'rest_username',
+    'rest_password',
+    'executable_path',
+    'protocol_mode',
+    'server_version',
+]);
+
+/** 저장된 값: 공통 필드는 최상위가, 나머지는 module_settings가 진짜다 */
+const savedValue = (server, name) => {
+    const top = fieldValue(server[name]);
+    const cached = fieldValue(server.module_settings?.[name]);
+    return TOP_LEVEL_FIELDS.has(name) ? (top ?? cached) : (cached ?? top);
+};
+
+/**
+ * 실제 설정 값을 칸 값으로. 문자열 칸에 숫자가 오면 (모듈이 "000123"을 123으로 바꾼 경우)
+ * 저장된 문자열이 같은 수를 뜻할 때 그 문자열을 지킨다.
+ */
+const liveFieldValue = (field, v, saved) => {
+    if (typeof v === 'number' && field.field_type !== 'number' && saved !== null && Number(saved) === v) return saved;
+    return fieldValue(v);
+};
+
+export function useServerSettings({ servers, modules, setModal, setProgressBar, fetchServers }) {
     const { t } = useTranslation('gui');
     const translateError = createTranslateError(t);
 
@@ -47,10 +68,13 @@ export function useServerSettings({
     const [versionsLoading, setVersionsLoading] = useState(false);
     const [versionInstalling, setVersionInstalling] = useState(false);
     const [resettingServer, setResettingServer] = useState(false);
-
-    // ── Alias editing state ─────────────────────────────────
-    const [editingModuleAliases, setEditingModuleAliases] = useState([]);
-    const [editingCommandAliases, setEditingCommandAliases] = useState({});
+    // 실제 설정으로 확인하지 못한 칸 (저장된 캐시나 module.toml 기본값). 사용자가 고치지 않으면 저장하지 않는다
+    // (그대로 저장하면 게임 안이나 파일에서 바꾼 값을 덮어쓴다)
+    const unconfirmedFields = useRef(new Set());
+    // 'loading' 실제 설정 읽는 중 / 'live' 실제 설정 / 'stored' 못 읽어 저장된 값을 보여 주는 중
+    const [settingsSource, setSettingsSource] = useState('loading');
+    const touchedFields = useRef(new Set());
+    const openRequest = useRef(0);
 
     // ── Close animation ─────────────────────────────────────
     const closeSettingsModal = useCallback(() => setShowSettingsModal(false), []);
@@ -66,32 +90,31 @@ export function useServerSettings({
                 const found = data.servers.find((s) => s.id === server.id);
                 if (found) {
                     latestServer = found;
-                    console.log('Loaded latest server data:', latestServer);
                 }
             }
         } catch (error) {
             console.warn('Failed to fetch latest server data:', error);
         }
 
+        const request = ++openRequest.current;
         setSettingsServer(latestServer);
+        unconfirmedFields.current = new Set();
+        touchedFields.current = new Set();
+        setSettingsSource('loading');
+        const defaulted = new Set();
 
         // Initialize settings values from module schema
+        // 우선순위: 실제 설정(아래에서 비동기로 덮음) > 저장된 값(savedValue) > 기본값.
         const module = modules.find((m) => m.name === latestServer.module);
         if (module && module.settings && module.settings.fields) {
             const initial = {};
             module.settings.fields.forEach((field) => {
-                let value = '';
-                if (latestServer[field.name] !== undefined && latestServer[field.name] !== null) {
-                    value = String(latestServer[field.name]);
-                } else if (
-                    latestServer.module_settings &&
-                    latestServer.module_settings[field.name] !== undefined &&
-                    latestServer.module_settings[field.name] !== null
-                ) {
-                    value = String(latestServer.module_settings[field.name]);
-                } else if (field.default !== undefined && field.default !== null) {
-                    value = String(field.default);
+                let value = savedValue(latestServer, field.name);
+                if (value === null) {
+                    value = fieldValue(field.default) ?? '';
+                    defaulted.add(field.name);
                 }
+                unconfirmedFields.current.add(field.name);
                 initial[field.name] = value;
             });
 
@@ -119,12 +142,12 @@ export function useServerSettings({
             }
 
             // server_version initialization — read from saved module_settings
-            const savedVersion =
-                latestServer.module_settings?.server_version || latestServer.server_version;
+            const savedVersion = latestServer.module_settings?.server_version || latestServer.server_version;
             if (savedVersion) {
                 initial.server_version = String(savedVersion);
             }
 
+            Object.assign(initial, restartFlagsOf(latestServer));
             setSettingsValues(initial);
         } else {
             const protocols = module?.protocols || {};
@@ -141,57 +164,50 @@ export function useServerSettings({
                           _extension_data: { ...latestServer.extension_data },
                       }
                     : {}),
+                ...restartFlagsOf(latestServer),
             });
-        }
-
-        // Load aliases
-        const moduleName = latestServer.module;
-        if (moduleAliasesPerModule[moduleName]) {
-            const aliases = moduleAliasesPerModule[moduleName];
-
-            if (moduleName in discordModuleAliases) {
-                const saved = discordModuleAliases[moduleName] || '';
-                const parsed = saved
-                    .split(',')
-                    .map((a) => a.trim())
-                    .filter((a) => a.length > 0);
-                setEditingModuleAliases(parsed);
-            } else {
-                setEditingModuleAliases(aliases.module_aliases || []);
-            }
-
-            const cmdAliases = aliases.commands || {};
-            const normalized = {};
-            for (const [cmd, data] of Object.entries(cmdAliases)) {
-                let baseAliases = [];
-                if (Array.isArray(data)) {
-                    baseAliases = data;
-                } else if (data.aliases) {
-                    baseAliases = data.aliases;
-                }
-
-                const hasSavedCmd = discordCommandAliases[moduleName] && cmd in discordCommandAliases[moduleName];
-                const merged = hasSavedCmd
-                    ? (discordCommandAliases[moduleName][cmd] || '')
-                          .split(',')
-                          .map((a) => a.trim())
-                          .filter((a) => a.length > 0)
-                    : baseAliases;
-
-                normalized[cmd] = {
-                    aliases: merged,
-                    description: (data && data.description) || '',
-                    label: (data && data.label) || cmd,
-                };
-            }
-            setEditingCommandAliases(normalized);
         }
 
         setSettingsActiveTab('general');
         setAdvancedExpanded(false);
         setShowSettingsModal(true);
 
-        // Async load versions — only for download-based modules (skip SteamCMD modules)
+        // 디스크의 실제 설정으로 덮는다. 그사이 사용자가 고친 칸과, 다른 서버로 바꿔 연 경우는 건드리지 않는다
+        if (!module?.settings?.fields) {
+            setSettingsSource('live');
+        } else if (!latestServer.id || !window.api.instanceReadLiveSettings) {
+            setSettingsSource('stored');
+        } else {
+            try {
+                const live = await window.api.instanceReadLiveSettings(latestServer.id);
+                if (request !== openRequest.current) return;
+                if (live?.success && live.settings && typeof live.settings === 'object') {
+                    const patch = {};
+                    for (const field of module.settings.fields) {
+                        const v = liveFieldValue(
+                            field,
+                            live.settings[field.name],
+                            savedValue(latestServer, field.name),
+                        );
+                        // 읽기에 성공하면 데몬이 캐시도 맞춘다: 실제 값이 없는 칸은 캐시가 확인된 값이다 (기본값만 아니면)
+                        if (v !== null || !defaulted.has(field.name)) unconfirmedFields.current.delete(field.name);
+                        if (v === null || touchedFields.current.has(field.name)) continue;
+                        patch[field.name] = v;
+                    }
+                    setSettingsValues((prev) => ({ ...prev, ...patch }));
+                    setSettingsSource('live');
+                } else {
+                    console.warn('Live settings unavailable; only edited fields will be saved:', live?.error);
+                    setSettingsSource('stored');
+                }
+            } catch (err) {
+                if (request !== openRequest.current) return;
+                console.warn('Live settings unavailable; only edited fields will be saved:', err);
+                setSettingsSource('stored');
+            }
+        }
+
+        // Async load versions — only for download-based modules (extension install methods have no version list)
         const mod = modules.find((m) => m.name === latestServer.module);
         const installMethod = mod?.install?.method;
         setAvailableVersions([]);
@@ -209,8 +225,7 @@ export function useServerSettings({
             }
 
             // Detect installed version from server binary if not already saved
-            const hasSavedVersion =
-                latestServer.module_settings?.server_version || latestServer.server_version;
+            const hasSavedVersion = latestServer.module_settings?.server_version || latestServer.server_version;
             if (!hasSavedVersion && latestServer.id) {
                 try {
                     const detected = await window.api.instanceGetInstalledVersion(latestServer.id);
@@ -232,12 +247,8 @@ export function useServerSettings({
 
     // ── handleSettingChange ─────────────────────────────────
     const handleSettingChange = (fieldName, value) => {
-        console.log(`Setting ${fieldName} changed to:`, value);
-        setSettingsValues((prev) => {
-            const updated = { ...prev, [fieldName]: String(value) };
-            console.log('Updated settings values:', updated);
-            return updated;
-        });
+        touchedFields.current.add(fieldName);
+        setSettingsValues((prev) => ({ ...prev, [fieldName]: String(value) }));
     };
 
     // ── handleInstallVersion ────────────────────────────────
@@ -264,10 +275,7 @@ export function useServerSettings({
                         setProgressBar({ message: t('servers.progress_downloading', { version }), percent: 0 });
                         try {
                             const srv = servers.find((s) => s.id === settingsServer.id);
-                            const workDir =
-                                srv?.module_settings?.working_dir ||
-                                srv?.working_dir ||
-                                null;
+                            const workDir = srv?.module_settings?.working_dir || srv?.working_dir || null;
 
                             let targetDir;
                             if (!workDir) {
@@ -306,14 +314,19 @@ export function useServerSettings({
 
                             if (installResult.error || installResult.success === false) {
                                 setProgressBar(null);
-                                safeShowToast(translateError(installResult.error || installResult.message), 'error', 4000);
+                                safeShowToast(
+                                    translateError(installResult.error || installResult.message),
+                                    'error',
+                                    4000,
+                                );
                                 setVersionInstalling(false);
                                 return;
                             }
 
                             if (installResult.jar_path) {
                                 // working_dir 설정 — 실행 파일 경로는 모듈에서 자동 해석됨
-                                const installDir = installResult.install_path || installResult.jar_path.replace(/[/\\][^/\\]+$/, '');
+                                const installDir =
+                                    installResult.install_path || installResult.jar_path.replace(/[/\\][^/\\]+$/, '');
                                 await window.api.instanceUpdateSettings(settingsServer.id, {
                                     working_dir: installDir,
                                     server_version: version,
@@ -424,14 +437,13 @@ export function useServerSettings({
         if (!settingsServer) return;
 
         try {
-            console.log('Saving settings for', settingsServer.name, settingsValues);
-
             const module = modules.find((m) => m.name === settingsServer.module);
             const convertedSettings = {};
 
             if (module && module.settings && module.settings.fields) {
                 module.settings.fields.forEach((field) => {
                     const value = settingsValues[field.name];
+                    if (unconfirmedFields.current.has(field.name) && !touchedFields.current.has(field.name)) return;
 
                     if (field.field_type === 'boolean') {
                         convertedSettings[field.name] = value === true || value === 'true';
@@ -454,16 +466,17 @@ export function useServerSettings({
                 convertedSettings.server_version = settingsValues.server_version;
             }
 
+            // 크래시 자동 재시작 (데몬이 module_settings 에서 읽는다)
+            for (const key of ['auto_restart', 'restart_on_unknown_exit']) {
+                if (typeof settingsValues[key] === 'boolean') convertedSettings[key] = settingsValues[key];
+            }
+
             const protocols = module?.protocols || {};
             const supportedProtocols = protocols.supported || [];
 
+            // 모듈이 정한 프로토콜만 쓴다 (RCON은 데몬에서 빠졌다: 예전에 저장된 'rcon'도 여기서 바뀐다)
             if (supportedProtocols.length > 0) {
-                if (supportedProtocols.includes('rest') && supportedProtocols.includes('rcon')) {
-                    convertedSettings.protocol_mode =
-                        settingsValues.protocol_mode || protocols.default || supportedProtocols[0];
-                } else {
-                    convertedSettings.protocol_mode = protocols.default || supportedProtocols[0];
-                }
+                convertedSettings.protocol_mode = protocols.default || supportedProtocols[0];
             } else {
                 convertedSettings.protocol_mode = settingsValues.protocol_mode || 'auto';
             }
@@ -473,9 +486,10 @@ export function useServerSettings({
                 convertedSettings.extension_data = { ...settingsValues._extension_data };
             }
 
-            console.log('Converted settings:', convertedSettings);
+            const request = openRequest.current;
             const result = await window.api.instanceUpdateSettings(settingsServer.id, convertedSettings);
-            console.log('API Response:', result);
+            // 저장하는 사이 다른 서버 설정을 열었다면 그 창을 닫지 않는다
+            const stillOpen = request === openRequest.current;
 
             if (result.error) {
                 // validation_failed: 상세 에러 목록 포함
@@ -496,7 +510,7 @@ export function useServerSettings({
                     title: t('command_modal.success'),
                     message: t('server_actions.settings_saved', { name: settingsServer.name }),
                 });
-                setShowSettingsModal(false);
+                if (stillOpen) setShowSettingsModal(false);
                 fetchServers();
             }
         } catch (error) {
@@ -509,110 +523,12 @@ export function useServerSettings({
         }
     };
 
-    // ── Alias save/reset for settings modal ─────────────────
-    const handleSaveAliasesForModule = async (moduleName) => {
-        try {
-            const current = await window.api.botConfigLoad();
-            const moduleAliases = { ...(current.moduleAliases || {}) };
-            const commandAliases = { ...(current.commandAliases || {}) };
-
-            moduleAliases[moduleName] = (editingModuleAliases || []).join(',');
-
-            const cmdMap = {};
-            Object.entries(editingCommandAliases || {}).forEach(([cmd, data]) => {
-                cmdMap[cmd] = (data.aliases || []).join(',');
-            });
-            commandAliases[moduleName] = cmdMap;
-
-            const payload = {
-                prefix: current.prefix || discordPrefix || '!saba',
-                moduleAliases,
-                commandAliases,
-            };
-
-            const res = await window.api.botConfigSave(payload);
-            if (res.error) {
-                setModal({
-                    type: 'failure',
-                    title: t('settings.aliases_save_failed_title'),
-                    message: translateError(res.error),
-                });
-            } else {
-                const saved = await window.api.botConfigLoad();
-                setDiscordModuleAliases(saved.moduleAliases || {});
-                setDiscordCommandAliases(saved.commandAliases || {});
-                setModal({
-                    type: 'success',
-                    title: t('server_actions.aliases_saved'),
-                    message: t('server_actions.aliases_saved'),
-                });
-            }
-        } catch (error) {
-            console.error('Failed to save aliases:', error);
-            setModal({
-                type: 'failure',
-                title: t('settings.aliases_save_error_title'),
-                message: translateError(error.message),
-            });
-        }
-    };
-
-    const handleResetAliasesForModule = async (moduleName) => {
-        try {
-            setEditingModuleAliases([]);
-            const clearedCmds = {};
-            const defaults = moduleAliasesPerModule[moduleName];
-            if (defaults && defaults.commands) {
-                for (const [cmd, data] of Object.entries(defaults.commands)) {
-                    clearedCmds[cmd] = { aliases: [], description: data.description || '', label: data.label || cmd };
-                }
-            }
-            setEditingCommandAliases(clearedCmds);
-
-            const current = await window.api.botConfigLoad();
-            const moduleAliases = { ...(current.moduleAliases || {}) };
-            const commandAliases = { ...(current.commandAliases || {}) };
-            delete moduleAliases[moduleName];
-            delete commandAliases[moduleName];
-
-            const payload = {
-                prefix: current.prefix || discordPrefix || '!saba',
-                moduleAliases,
-                commandAliases,
-            };
-
-            const res = await window.api.botConfigSave(payload);
-            if (res.error) {
-                setModal({
-                    type: 'failure',
-                    title: t('settings.aliases_reset_failed_title'),
-                    message: translateError(res.error),
-                });
-            } else {
-                const saved = await window.api.botConfigLoad();
-                setDiscordModuleAliases(saved.moduleAliases || {});
-                setDiscordCommandAliases(saved.commandAliases || {});
-                setModal({
-                    type: 'success',
-                    title: t('settings.aliases_reset_completed_title'),
-                    message: t('settings.aliases_reset_message'),
-                });
-            }
-        } catch (error) {
-            console.error('Failed to reset aliases:', error);
-            setModal({
-                type: 'failure',
-                title: t('settings.aliases_reset_failed_title'),
-                message: translateError(error.message),
-            });
-        }
-    };
-
     return {
         // Settings modal state
         showSettingsModal,
         settingsServer,
         settingsValues,
+        settingsSource,
         settingsActiveTab,
         setSettingsActiveTab,
         advancedExpanded,
@@ -621,11 +537,6 @@ export function useServerSettings({
         versionsLoading,
         versionInstalling,
         resettingServer,
-        // Alias editing state
-        editingModuleAliases,
-        setEditingModuleAliases,
-        editingCommandAliases,
-        setEditingCommandAliases,
         // Close animation
         isSettingsClosing,
         requestSettingsClose,
@@ -635,7 +546,5 @@ export function useServerSettings({
         handleInstallVersion,
         handleResetServer,
         handleSaveSettings,
-        handleSaveAliasesForModule,
-        handleResetAliasesForModule,
     };
 }

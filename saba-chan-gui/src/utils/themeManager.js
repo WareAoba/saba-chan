@@ -5,6 +5,7 @@
  *   console background/text color/syntax highlight toggle
  */
 
+// localStorage는 첫 화면 캐시일 뿐이다. 원천은 config.json(gui.theme 등, useSettingsStore).
 const THEME_KEY = 'saba-chan-theme';
 const CUSTOM_THEME_KEY = 'saba-chan-theme-custom';
 
@@ -16,7 +17,7 @@ const DEFAULT_ACCENT_SECONDARY = '#764ba2';
 export const THEME_DEFAULTS = {
     accentColor: DEFAULT_ACCENT,
     accentSecondary: DEFAULT_ACCENT_SECONDARY,
-    useGradient: true,
+    useGradient: false,
     fontScale: 100,
     enableTransitions: true,
     consoleSyntaxHighlight: true,
@@ -125,6 +126,15 @@ export function setCustomTheme(partial) {
 /**
  * Reset custom theme to defaults
  */
+/** 브라우저에 남은 테마 모드 캐시를 지운다 (초기화 뒤 예전 값이 되살아나지 않게) */
+export function clearStoredTheme() {
+    try {
+        localStorage.removeItem(THEME_KEY);
+    } catch {
+        /* 저장소를 못 쓰면 지울 것도 없다 */
+    }
+}
+
 export function resetCustomTheme() {
     localStorage.removeItem(CUSTOM_THEME_KEY);
     applyCustomTheme(THEME_DEFAULTS);
@@ -242,6 +252,7 @@ export function applyCustomTheme(config) {
 
     // Brand primary / secondary
     root.style.setProperty('--brand-primary', accentColor);
+    root.style.setProperty('--brand-primary-rgb', `${r}, ${g}, ${b}`);
     root.style.setProperty('--brand-secondary', accentSecondary);
     root.style.setProperty('--brand-hover', hover);
 
@@ -274,16 +285,11 @@ export function applyCustomTheme(config) {
         root.style.setProperty('--brand-bg-info', lightenHex(softAccent, 0.90));
         root.style.setProperty('--brand-border-light', lightenHex(softAccent, 0.86));
         root.style.setProperty('--input-focus-shadow', `rgba(${r}, ${g}, ${b}, 0.1)`);
-        // Light mode app background: heavily desaturated + light pastel gradient
-        const bgPrimary = lightenHex(desaturateHex(accentColor, 0.45), 0.78);
-        const bgSecondary = lightenHex(desaturateHex(accentSecondary, 0.45), 0.78);
-        root.style.setProperty('--bg-app', useGradient
-            ? `linear-gradient(135deg, ${bgPrimary} 0%, ${bgSecondary} 100%)`
-            : bgPrimary);
     } else {
         const darkAccent = lightenHex(accentColor, 0.15);
         const { r: dr, g: dg, b: db } = hexToRgb(darkAccent);
         root.style.setProperty('--brand-primary', darkAccent);
+        root.style.setProperty('--brand-primary-rgb', `${dr}, ${dg}, ${db}`);
         root.style.setProperty('--brand-hover', darkenHex(darkAccent, 0.08));
         // Recompute brand text for the lightened dark-mode accent
         root.style.setProperty('--brand-text', getContrastColor(darkAccent));
@@ -299,12 +305,6 @@ export function applyCustomTheme(config) {
         } else {
             root.style.setProperty('--brand-gradient', darkAccent);
         }
-        // Dark mode app background: dark gray with subtle accent tint
-        const bgDarkPrimary = darkenHex(desaturateHex(accentColor, 0.45), 0.78);
-        const bgDarkSecondary = darkenHex(desaturateHex(accentSecondary, 0.45), 0.78);
-        root.style.setProperty('--bg-app', useGradient
-            ? `linear-gradient(135deg, ${bgDarkPrimary} 0%, ${bgDarkSecondary} 100%)`
-            : bgDarkPrimary);
     }
 
     // ── Font scale ──

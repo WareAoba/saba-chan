@@ -5,12 +5,15 @@
  *
  * ## 규칙 형식 (module.toml → API → 여기)
  * ```json
- * { "name": "timestamp", "pattern": "^\\[\\d{2}:\\d{2}:\\d{2}\\]", "color": "#6c7086", "bold": false, "italic": false }
+ * { "name": "timestamp", "pattern": "^\\[\\d{2}:\\d{2}:\\d{2}\\]", "color": "#6c7086", "bold": false, "italic": false,
+ *   "background": "warn", "underline": false, "priority": 0 }
  * ```
  *
  * - pattern에 `(?P<hl>...)` 또는 `(?<hl>...)` 캡처가 있으면 해당 부분만 하이라이팅
  * - 없으면 전체 매치를 하이라이팅
- * - 규칙은 선언 순서대로 적용되며, 이미 하이라이팅된 범위는 덮어쓰지 않음
+ * - 겹치면 priority가 큰 규칙이 이기고, 같으면 먼저 선언된 규칙이 이긴다 (이미 칠한 범위는 덮지 않음)
+ * - 맨 앞의 `(?i)` 같은 단독 플래그는 JS 플래그로 바꾼다 (JS RegExp는 패턴 안 단독 플래그를 모른다)
+ * - background가 시맨틱 토큰이면 글자가 읽히도록 옅게 깐다
  */
 
 // ── Semantic tokens → CSS 색상 매핑 (Catppuccin Mocha 기반) ──
@@ -45,6 +48,21 @@ function resolveColor(color) {
     return TOKEN_COLORS[color.toLowerCase()] || null;
 }
 
+/** 배경: 직접 준 색은 그대로, 토큰은 20% 정도로 옅게 (#rrggbb + alpha) */
+function resolveBackground(bg) {
+    if (!bg) return undefined;
+    const token = TOKEN_COLORS[bg.toLowerCase()];
+    if (token) return `${token}33`;
+    return resolveColor(bg) || bg;
+}
+
+/** 맨 앞의 단독 플래그 `(?i)`, `(?is)` → JS 플래그 (지원하는 i·s·m만) */
+function splitInlineFlags(src) {
+    const m = src.match(/^\(\?([a-zA-Z]+)\)/);
+    if (!m || /[^ism]/.test(m[1])) return { src, flags: '' };
+    return { src: src.slice(m[0].length), flags: m[1] };
+}
+
 /**
  * 모듈 규칙 배열을 사전 컴파일합니다.
  * 반환값을 캐싱하여 매 렌더마다 re-compile하지 않도록 합니다.
@@ -58,15 +76,18 @@ function compileRules(rules) {
         .map((rule) => {
             try {
                 // Named group (?P<hl>...) → JS 형식 (?<hl>...) 변환
-                const src = rule.pattern.replace(/\(\?P</g, '(?<');
-                const regex = new RegExp(src, 'g');
+                const { src, flags } = splitInlineFlags(rule.pattern.replace(/\(\?P</g, '(?<'));
+                const regex = new RegExp(src, `g${flags}`);
                 const hasHlGroup = /\(\?<hl>/.test(src);
                 return {
                     name: rule.name,
                     regex,
                     color: resolveColor(rule.color) || rule.color,
+                    background: resolveBackground(rule.background),
                     bold: !!rule.bold,
                     italic: !!rule.italic,
+                    underline: !!rule.underline,
+                    priority: Number.isFinite(rule.priority) ? rule.priority : 0,
                     hasHlGroup,
                 };
             } catch (e) {
@@ -74,7 +95,8 @@ function compileRules(rules) {
                 return null;
             }
         })
-        .filter(Boolean);
+        .filter(Boolean)
+        .sort((a, b) => b.priority - a.priority); // 안정 정렬: 같은 priority는 선언 순서 유지
 }
 
 /**
@@ -113,9 +135,12 @@ export function highlightLine(text, compiledRules) {
                 color: rule.color,
                 fontWeight: rule.bold ? 600 : undefined,
                 fontStyle: rule.italic ? 'italic' : undefined,
+                textDecoration: rule.underline ? 'underline' : undefined,
+                backgroundColor: rule.background,
+                borderRadius: rule.background ? 2 : undefined,
             };
 
-            // 이미 칠해진 범위는 건너뜀 (선언 순서 우선)
+            // 이미 칠해진 범위는 건너뜀 (priority 큰 규칙, 같으면 먼저 선언된 규칙이 먼저 칠한다)
             for (let i = start; i < end && i < len; i++) {
                 if (styleMap[i] === null) {
                     styleMap[i] = style;

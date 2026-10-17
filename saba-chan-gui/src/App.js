@@ -1,27 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import './App.css';
 import {
     AddInstanceModal,
-    BackgroundModal,
-    CommandModal,
-    ConsoleDock,
-    DiscordBotModal,
     FailureModal,
     Icon,
     LoadingScreen,
-    NoticeModal,
     NotificationModal,
     PopoutConsole,
     QuestionModal,
-    ServerCard,
-    ServerSettingsModal,
     SettingsModal,
     SuccessModal,
-    TitleBar,
     Toast,
-    ConsoleWindow,
 } from './components';
+import { DiscordPage } from './components/discord/DiscordPage';
+import { AppBar } from './components/shell/AppBar';
+import { ServersPage } from './components/servers/ServersPage';
+import { TooltipProvider } from './components/ui/Tooltip';
 import { ExtensionProvider } from './contexts/ExtensionContext';
 import { useMultiConsole } from './hooks/useMultiConsole';
 import { useDragReorder } from './hooks/useDragReorder';
@@ -29,11 +24,14 @@ import useExtensionInitStatus from './hooks/useExtensionInitStatus';
 import { useModalClose } from './hooks/useModalClose';
 import { useServerActions } from './hooks/useServerActions';
 import { useServerSettings } from './hooks/useServerSettings';
-import { useWindowSize, SIDE_PANEL_MIN_WIDTH, SIDE_PANEL_MIN_HEIGHT } from './hooks/useWindowSize';
 import { setDiscordI18n, useDiscordStore } from './stores/useDiscordStore';
 import { setServerI18n, useServerStore } from './stores/useServerStore';
 import { useSettingsStore } from './stores/useSettingsStore';
 import { useUIStore } from './stores/useUIStore';
+import { isManaged } from './utils/serverView';
+// 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
+import { UpdateResultBanner } from './components/shell/UpdateResultBanner';
+import './styles/shell.css';
 function App() {
     const { t, i18n } = useTranslation('gui');
 
@@ -55,10 +53,6 @@ function App() {
         return './logo-en.png';
     }, [i18n.language]);
 
-    // ── 윈도우 크기 → 사이드 패널 모드 판정 ──
-    const windowSize = useWindowSize();
-    const discordSideMode = windowSize.width >= SIDE_PANEL_MIN_WIDTH && windowSize.height >= SIDE_PANEL_MIN_HEIGHT;
-
     // ── Server Store (Zustand) ─────────────────────────────
     const servers = useServerStore((s) => s.servers);
     const setServers = useServerStore((s) => s.setServers);
@@ -73,7 +67,8 @@ function App() {
     const setInitProgress = useServerStore((s) => s.setInitProgress);
     const serversInitializing = useServerStore((s) => s.serversInitializing);
     const setServersInitializing = useServerStore((s) => s.setServersInitializing);
-    const nowEpoch = useServerStore((s) => s.nowEpoch);
+    // 1초마다 바뀌는 값을 구독해 가동 시간 표시를 다시 그린다
+    const _nowEpoch = useServerStore((s) => s.nowEpoch);
     const formatUptime = useServerStore((s) => s.formatUptime);
 
     // ── UI Store (Zustand) ─────────────────────────────────
@@ -83,16 +78,13 @@ function App() {
     const setProgressBar = useUIStore((s) => s.setProgressBar);
     const showModuleManager = useUIStore((s) => s.showModuleManager);
     const setShowModuleManager = useUIStore((s) => s.setShowModuleManager);
-    const showGuiSettingsModal = useUIStore((s) => s.showGuiSettingsModal);
+    const page = useUIStore((s) => s.activeTab);
+    const setPage = useUIStore((s) => s.setActiveTab);
+    // 다른 화면에서 디스코드 페이지의 특정 메뉴로 보낼 때 (예: 서버 설정 → 명령어 단어)
+    const [discordView, setDiscordView] = useState(null);
     const settingsInitialView = useUIStore((s) => s.settingsInitialView);
-    const showCommandModal = useUIStore((s) => s.showCommandModal);
-    const setShowCommandModal = useUIStore((s) => s.setShowCommandModal);
-    const commandServer = useUIStore((s) => s.commandServer);
-    const setCommandServer = useUIStore((s) => s.setCommandServer);
     const contextMenu = useUIStore((s) => s.contextMenu);
     const setContextMenu = useUIStore((s) => s.setContextMenu);
-    const showDiscordSection = useUIStore((s) => s.showDiscordSection);
-    const setShowDiscordSection = useUIStore((s) => s.setShowDiscordSection);
     const showBackgroundSection = useUIStore((s) => s.showBackgroundSection);
     const setShowBackgroundSection = useUIStore((s) => s.setShowBackgroundSection);
     const showNoticeSection = useUIStore((s) => s.showNoticeSection);
@@ -131,21 +123,13 @@ function App() {
 
     const {
         consoles,
-        consoleServer,
         consolePopoutInstanceId,
         setConsolePopoutInstanceId,
         openConsole,
         closeConsole,
-        minimizeConsole,
-        restoreConsole,
-        focusConsole,
-        togglePin,
         popinConsole,
-        updatePosition,
-        updateSize,
         setConsoleInput,
         sendConsoleCommand,
-        isConsoleOpen,
     } = useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef });
 
     const { draggedName, cardRefs, skipNextClick, handleCardPointerDown } = useDragReorder(servers, setServers);
@@ -157,7 +141,7 @@ function App() {
     const handleStartDiscordBot = useDiscordStore((s) => s.startBot);
     const handleStopDiscordBot = useDiscordStore((s) => s.stopBot);
 
-    const { fetchServers, handleStart, handleStop, handleAddServer, handleDeleteServer } =
+    const { fetchServers, handleStart, handleStop, handleRestart, handleRename, handleAddServer, handleDeleteServer } =
         useServerActions({
             servers,
             setServers,
@@ -182,6 +166,7 @@ function App() {
         showSettingsModal,
         settingsServer,
         settingsValues,
+        settingsSource,
         settingsActiveTab,
         setSettingsActiveTab,
         advancedExpanded,
@@ -190,37 +175,21 @@ function App() {
         versionsLoading,
         versionInstalling,
         resettingServer,
-        editingModuleAliases,
-        setEditingModuleAliases,
-        editingCommandAliases,
-        setEditingCommandAliases,
         isSettingsClosing,
-        requestSettingsClose,
         handleOpenSettings,
         handleSettingChange,
         handleInstallVersion,
         handleResetServer,
         handleSaveSettings,
-        handleSaveAliasesForModule,
-        handleResetAliasesForModule,
     } = useServerSettings({
         servers,
         modules,
         setModal,
         setProgressBar,
-        moduleAliasesPerModule,
-        discordModuleAliases,
-        discordCommandAliases,
-        setDiscordModuleAliases: (val) => useDiscordStore.getState().update({ discordModuleAliases: val }),
-        setDiscordCommandAliases: (val) => useDiscordStore.getState().update({ discordCommandAliases: val }),
-        discordPrefix,
         fetchServers,
     });
 
     // ── Modal Close Animations ─────────────────────────────
-    // biome-ignore lint/correctness/useExhaustiveDependencies: useState setters are stable
-    const closeDiscordSection = useCallback(() => setShowDiscordSection(false), []);
-    const { isClosing: isDiscordClosing, requestClose: requestDiscordClose } = useModalClose(closeDiscordSection);
     // biome-ignore lint/correctness/useExhaustiveDependencies: useState setters are stable
     const closeBackgroundSection = useCallback(() => setShowBackgroundSection(false), []);
     const { isClosing: isBackgroundClosing, requestClose: requestBackgroundClose } =
@@ -490,15 +459,7 @@ function App() {
             window.api.onCloseRequest(() => {
                 // managed 모드로 실행 중인 인스턴스 검출
                 const currentServers = useServerStore.getState().servers;
-                const currentModules = useServerStore.getState().modules;
-                const runningManaged = currentServers.filter((srv) => {
-                    if (srv.status !== 'running') return false;
-                    const mod = currentModules.find((m) => m.name === srv.module);
-                    const instanceManaged = srv.module_settings?.managed_start;
-                    if (instanceManaged === true) return true;
-                    if (instanceManaged === false) return false;
-                    return (mod?.interaction_mode || 'console') === 'console';
-                });
+                const runningManaged = currentServers.filter((srv) => srv.status === 'running' && isManaged(srv));
 
                 const doQuit = () => {
                     window.api.closeResponse('quit');
@@ -528,7 +489,10 @@ function App() {
                                         setModal({
                                             type: 'warning',
                                             title: t('app_exit.managed_warning_title'),
-                                            message: t('app_exit.managed_warning_message', { names, count: runningManaged.length }),
+                                            message: t('app_exit.managed_warning_message', {
+                                                names,
+                                                count: runningManaged.length,
+                                            }),
                                             detail: t('app_exit.managed_warning_detail'),
                                             buttons: [
                                                 {
@@ -607,16 +571,12 @@ function App() {
         );
     }
 
-    // ── Discord 모달 공통 props (팝업/사이드 패널 공용) ──
-    const discordModalProps = {
-        isOpen: showDiscordSection,
-        onClose: requestDiscordClose,
-        isClosing: isDiscordClosing,
+    // ── 디스코드 페이지 props ──
+    const discordPageProps = {
         discordBotStatus,
         discordPrefix,
         setDiscordPrefix: (val) => useDiscordStore.getState().update({ discordPrefix: val }),
         discordCloudRelayUrl,
-        setDiscordCloudRelayUrl: (val) => useDiscordStore.getState().update({ discordCloudRelayUrl: val }),
         discordCloudHostId,
         setDiscordCloudHostId: (val) => useDiscordStore.getState().update({ discordCloudHostId: val }),
         relayConnected,
@@ -627,6 +587,10 @@ function App() {
         servers,
         modules,
         moduleAliasesPerModule,
+        discordModuleAliases,
+        discordCommandAliases,
+        setDiscordModuleAliases: (val) => useDiscordStore.getState().update({ discordModuleAliases: val }),
+        setDiscordCommandAliases: (val) => useDiscordStore.getState().update({ discordCommandAliases: val }),
         nodeSettings,
         setNodeSettings: (valOrFn) => {
             const prev = useDiscordStore.getState().nodeSettings;
@@ -643,413 +607,277 @@ function App() {
         },
     };
 
+    // 설정 → 개발자 도구의 "로딩 화면 시험"
+    const runLoadingScreenTest = () => {
+        setPage('servers');
+        setDaemonReady(false);
+        setServersInitializing(true);
+        setInitStatus('Loading test...');
+        setInitProgress(0);
+        let p = 0;
+        const iv = setInterval(() => {
+            p += Math.random() * 20 + 10;
+            if (p >= 100) {
+                setInitStatus('Ready!');
+                setInitProgress(100);
+                clearInterval(iv);
+                setTimeout(() => {
+                    setDaemonReady(true);
+                    setServersInitializing(false);
+                }, 600);
+            } else {
+                setInitStatus(`Loading test... ${Math.round(p)}%`);
+                setInitProgress(p);
+            }
+        }, 500);
+    };
+
+    // ── 서버 페이지에 넘기는 묶음 ──
+    const consoleProps = {
+        consoles,
+        openConsole,
+        setConsoleInput,
+        sendConsoleCommand,
+        consolePopoutInstanceId,
+        setConsolePopoutInstanceId,
+        popinConsole,
+    };
+    const settingsProps = {
+        showSettingsModal,
+        settingsServer,
+        handleOpenSettings,
+        settingsValues,
+        settingsSource,
+        settingsActiveTab,
+        setSettingsActiveTab,
+        advancedExpanded,
+        setAdvancedExpanded,
+        availableVersions,
+        versionsLoading,
+        versionInstalling,
+        handleSettingChange,
+        handleInstallVersion,
+        handleSaveSettings,
+        handleResetServer,
+        resettingServer,
+        isClosing: isSettingsClosing,
+        onOpenDiscordWords: (module) => {
+            setDiscordView({ kind: 'words', module });
+            setPage('discord');
+        },
+    };
+
+    const anyPopoverOpen = showBackgroundSection || showNoticeSection;
+
     return (
         <ExtensionProvider>
-            <div className="App">
-                {/* Discord overlay backdrop (팝업 모드에서만) */}
-                {showDiscordSection && !discordSideMode && <div className="discord-backdrop" onClick={requestDiscordClose} />}
-                {/* Background overlay backdrop */}
-                {showBackgroundSection && <div className="discord-backdrop" onClick={requestBackgroundClose} />}
-                {/* Notice overlay backdrop */}
-                {showNoticeSection && <div className="discord-backdrop" onClick={requestNoticeClose} />}
-                <TitleBar />
-                <Toast />
-                <header className="app-header">
-                    {/* 첫 번째 줄: 타이틀과 설정 */}
-                    <div className="header-row header-row-title">
-                        <div className="app-title-section">
-                            <img src="./icon.png" alt="" className="app-logo-icon" />
-                            <img src={logoSrc} alt={t('common:app_name')} className="app-logo-text" />
-                        </div>
-                        <div className="header-actions">
-                            {/* 익스텐션 초기화 스피너 */}
-                            {extInitializing && (
-                                <div
-                                    className="ext-init-spinner-wrapper"
-                                    title={Object.values(extInitInProgress).join(', ') || t('common:initializing', { defaultValue: 'Initializing extensions…' })}
-                                >
-                                    <span className="ext-init-spinner" />
-                                </div>
-                            )}
-                            <div className="notice-button-wrapper">
-                                <button
-                                    className="btn-settings-icon-solo"
-                                    onClick={() =>
-                                        showNoticeSection ? requestNoticeClose() : setShowNoticeSection(true)
-                                    }
-                                    title={t('notice_modal.tooltip')}
-                                >
-                                    <Icon name="bell" size="lg" />
-                                </button>
-                                {unreadNoticeCount > 0 && (
-                                    <span className="notice-badge-dot">
-                                        {unreadNoticeCount > 9 ? '9+' : unreadNoticeCount}
-                                    </span>
-                                )}
-                                <NoticeModal
-                                    isOpen={showNoticeSection}
-                                    onClose={requestNoticeClose}
-                                    isClosing={isNoticeClosing}
-                                    onOpenUpdateModal={() => {
-                                        useUIStore.getState().openSettings('update');
-                                    }}
-                                />
-                            </div>
-                            <button
-                                className="btn-settings-icon-solo"
-                                onClick={() => useUIStore.getState().openSettings()}
-                                title={t('settings.gui_settings_tooltip')}
-                            >
-                                <Icon name="cog" size="lg" />
-                            </button>
-                        </div>
-                    </div>
+            <TooltipProvider>
+                <div className="App">
+                    {anyPopoverOpen && (
+                        <div
+                            className="popover-backdrop"
+                            onClick={() => {
+                                if (showBackgroundSection) requestBackgroundClose();
+                                if (showNoticeSection) requestNoticeClose();
+                            }}
+                        />
+                    )}
+                    <Toast />
+                    <AppBar
+                        page={page}
+                        onNavigate={(p) => {
+                            setDiscordView(null);
+                            setPage(p);
+                        }}
+                        daemonStatus={backgroundDaemonStatus}
+                        discordStatus={discordBotStatus}
+                        unreadCount={unreadNoticeCount}
+                        extInitializing={extInitializing}
+                        extInitLabel={
+                            Object.values(extInitInProgress).join(', ') ||
+                            t('common:initializing', { defaultValue: 'Initializing extensions…' })
+                        }
+                        showNotice={showNoticeSection}
+                        onToggleNotice={() => (showNoticeSection ? requestNoticeClose() : setShowNoticeSection(true))}
+                        noticeProps={{
+                            onClose: requestNoticeClose,
+                            isClosing: isNoticeClosing,
+                            onOpenUpdateModal: () => useUIStore.getState().openSettings('update'),
+                        }}
+                        showDaemon={showBackgroundSection}
+                        onToggleDaemon={() =>
+                            showBackgroundSection ? requestBackgroundClose() : setShowBackgroundSection(true)
+                        }
+                        daemonProps={{ onClose: requestBackgroundClose, isClosing: isBackgroundClosing, ipcPort }}
+                    />
+                    <UpdateResultBanner daemonReady={backgroundDaemonStatus === 'running'} />
 
-                    {/* 두 번째 줄: 기능 버튼들 */}
-                    <div className="header-row header-row-controls">
-                        <button className="btn btn-add" onClick={() => setShowModuleManager(!showModuleManager)}>
-                            <Icon name="plus" size="sm" /> Add Server
-                        </button>
-                        <div className="header-spacer"></div>
-                        <div className="discord-button-wrapper">
-                            <button
-                                className={`btn btn-discord ${discordBotStatus === 'running' ? 'btn-discord-active' : ''}`}
-                                onClick={() =>
-                                    showDiscordSection ? requestDiscordClose() : setShowDiscordSection(true)
-                                }
-                            >
-                                <span
-                                    className={`status-indicator ${discordBotStatus === 'running' ? 'status-online' : discordBotStatus === 'connecting' ? 'status-connecting' : 'status-offline'}`}
-                                ></span>
-                                Discord Bot
-                            </button>
-                            {!discordSideMode && (
-                                <DiscordBotModal
-                                    {...discordModalProps}
-                                    displayMode="popup"
-                                />
-                            )}
-                        </div>
-                        <div className="background-button-wrapper">
-                            <button
-                                className={`btn btn-background ${backgroundDaemonStatus === 'running' ? 'btn-background-active' : ''}`}
-                                onClick={() =>
-                                    showBackgroundSection ? requestBackgroundClose() : setShowBackgroundSection(true)
-                                }
-                            >
-                                <span
-                                    className={`status-indicator ${
-                                        backgroundDaemonStatus === 'running'
-                                            ? 'status-online'
-                                            : backgroundDaemonStatus === 'checking'
-                                              ? 'status-checking'
-                                              : 'status-offline'
-                                    }`}
-                                ></span>
-                                Background
-                            </button>
-                            <BackgroundModal
-                                isOpen={showBackgroundSection}
-                                onClose={requestBackgroundClose}
-                                isClosing={isBackgroundClosing}
-                                ipcPort={ipcPort}
+                    {/* AddInstanceModal — 새 서버 / 마이그레이션 선택 */}
+                    <AddInstanceModal
+                        isOpen={showModuleManager}
+                        onClose={() => setShowModuleManager(false)}
+                        extensions={modules}
+                        servers={servers}
+                        onRefreshextensions={fetchModules}
+                        onAddServer={handleAddServer}
+                    />
+
+                    <div className="app-body" data-page={page}>
+                        {page === 'servers' && (
+                            <ServersPage
+                                servers={servers}
+                                setServers={setServers}
+                                modules={modules}
+                                formatUptime={formatUptime}
+                                onAddServer={() => setShowModuleManager(true)}
+                                onStart={handleStart}
+                                onStop={handleStop}
+                                onRestart={handleRestart}
+                                onRename={handleRename}
+                                onDelete={handleDeleteServer}
+                                setModal={setModal}
+                                drag={{ draggedName, cardRefs, skipNextClick, handleCardPointerDown }}
+                                consoleProps={consoleProps}
+                                settingsProps={settingsProps}
                             />
-                        </div>
-                    </div>
-                </header>
-
-                {/* AddInstanceModal — 새 서버 / 마이그레이션 선택 */}
-                <AddInstanceModal
-                    isOpen={showModuleManager}
-                    onClose={() => setShowModuleManager(false)}
-                    extensions={modules}
-                    servers={servers}
-                    onRefreshextensions={fetchModules}
-                    onAddServer={handleAddServer}
-                />
-
-                <div className="app-body">
-                <main className={`app-main${Object.keys(consoles).length > 0 ? ' app-main-dock-active' : ''}`}>
-                    <div className="server-list">
-                        {servers.length === 0 ? (
-                            <div className="no-servers">
-                                <p>{t('servers.no_servers_configured', { defaultValue: 'No servers configured' })}</p>
-                            </div>
-                        ) : (
-                            servers.map((server, index) => (
-                                <ServerCard
-                                    key={server.name}
-                                    server={server}
-                                    index={index}
-                                    modules={modules}
-                                    servers={servers}
-                                    cardRefs={cardRefs}
-                                    draggedName={draggedName}
-                                    skipNextClick={skipNextClick}
-                                    consoleServer={consoleServer}
-                                    isConsoleOpen={isConsoleOpen}
-                                    consolePopoutInstanceId={consolePopoutInstanceId}
-                                    handleCardPointerDown={handleCardPointerDown}
-                                    handleStart={handleStart}
-                                    handleStop={handleStop}
-                                    handleOpenSettings={handleOpenSettings}
-                                    handleDeleteServer={handleDeleteServer}
-                                    openConsole={openConsole}
-                                    closeConsole={closeConsole}
-                                    setCommandServer={setCommandServer}
-                                    setShowCommandModal={setShowCommandModal}
-                                    setServers={setServers}
-                                    formatUptime={formatUptime}
-                                    onContextMenu={(e) => {
-                                        e.preventDefault();
-                                        setContextMenu({ x: e.clientX, y: e.clientY, server });
+                        )}
+                        {page === 'discord' && <DiscordPage {...discordPageProps} initialView={discordView} />}
+                        {page === 'settings' && (
+                            <div className="page page-scroll">
+                                <SettingsModal
+                                    variant="page"
+                                    isOpen
+                                    onClose={() => setPage('servers')}
+                                    refreshInterval={refreshInterval}
+                                    onRefreshIntervalChange={(val) =>
+                                        useSettingsStore.getState().update({ refreshInterval: val })
+                                    }
+                                    ipcPort={ipcPort}
+                                    onIpcPortChange={(val) => useSettingsStore.getState().update({ ipcPort: val })}
+                                    consoleBufferSize={consoleBufferSize}
+                                    onConsoleBufferSizeChange={(val) => {
+                                        useSettingsStore.getState().update({ consoleBufferSize: val });
+                                        consoleBufferRef.current = val;
                                     }}
+                                    discordCloudRelayUrl={discordCloudRelayUrl}
+                                    onDiscordCloudRelayUrlChange={(val) =>
+                                        useDiscordStore.getState().update({ discordCloudRelayUrl: val })
+                                    }
+                                    onTestModal={setModal}
+                                    onTestProgressBar={setProgressBar}
+                                    initialView={settingsInitialView}
+                                    onTestWaitingImage={() => {
+                                        setShowWaitingImage(true);
+                                        setTimeout(() => setShowWaitingImage(false), 4000);
+                                    }}
+                                    onTestLoadingScreen={runLoadingScreenTest}
                                 />
-                            ))
+                            </div>
                         )}
                     </div>
 
-                    {/* 플로팅 콘솔 윈도우들 */}
-                    {Object.entries(consoles).map(([instanceId, state]) => {
-                        if (consolePopoutInstanceId === instanceId) return null;
-                        const srv = servers.find((s) => s.id === instanceId);
-                        const mod = srv && modules.find((m) => m.name === srv.module);
-                        const highlightRules = mod?.syntax_highlight?.rules || null;
-                        return (
-                            <ConsoleWindow
-                                key={instanceId}
-                                instanceId={instanceId}
-                                state={state}
-                                focusConsole={focusConsole}
-                                minimizeConsole={minimizeConsole}
-                                closeConsole={closeConsole}
-                                togglePin={togglePin}
-                                updatePosition={updatePosition}
-                                updateSize={updateSize}
-                                setConsoleInput={setConsoleInput}
-                                sendConsoleCommand={sendConsoleCommand}
-                                setConsolePopoutInstanceId={setConsolePopoutInstanceId}
-                                highlightRules={highlightRules}
-                                servers={servers}
+                    {/* Context Menu */}
+                    {contextMenu && (
+                        <>
+                            <div
+                                className="context-menu-overlay"
+                                onClick={() => setContextMenu(null)}
+                                onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    setContextMenu(null);
+                                }}
                             />
-                        );
-                    })}
+                            <div className="context-menu" style={{ top: contextMenu.y, left: contextMenu.x }}>
+                                <div
+                                    className="context-menu-item"
+                                    onClick={() => {
+                                        useUIStore.getState().showServerTab(contextMenu.server.id, 'settings');
+                                        setContextMenu(null);
+                                    }}
+                                >
+                                    <Icon name="settings" size="sm" />
+                                    {t('context_menu.settings', { defaultValue: 'Settings' })}
+                                </div>
+                                <div
+                                    className="context-menu-item"
+                                    onClick={() => {
+                                        const srv = contextMenu.server;
+                                        const dir = srv?.module_settings?.working_dir || srv?.working_dir || null;
+                                        if (dir) {
+                                            window.api
+                                                ?.shellOpenPath?.(dir)
+                                                ?.catch?.((err) =>
+                                                    console.error('[App] shellOpenPath failed:', err.message),
+                                                );
+                                        }
+                                        setContextMenu(null);
+                                    }}
+                                >
+                                    <Icon name="folder" size="sm" />
+                                    {t('context_menu.open_folder', { defaultValue: 'Open in File Explorer' })}
+                                </div>
+                                <div className="context-menu-separator" />
+                                <div
+                                    className="context-menu-item danger"
+                                    onClick={() => {
+                                        handleDeleteServer(contextMenu.server);
+                                        setContextMenu(null);
+                                    }}
+                                >
+                                    <Icon name="trash" size="sm" />
+                                    {t('context_menu.delete', { defaultValue: 'Delete' })}
+                                </div>
+                            </div>
+                        </>
+                    )}
 
-                    {/* 콘솔 독 (하단 작업 표시줄) */}
-                    <ConsoleDock
-                        consoles={consoles}
-                        restoreConsole={restoreConsole}
-                        focusConsole={focusConsole}
-                        closeConsole={closeConsole}
-                        popinConsole={popinConsole}
-                        consolePopoutInstanceId={consolePopoutInstanceId}
-                        servers={servers}
-                        hasProgressBar={!!progressBar}
-                    />
-                </main>
-
-                {/* 사이드 패널 모드 디스코드 봇 (app-main 우측 서랍) */}
-                {discordSideMode && (
-                    <DiscordBotModal
-                        {...discordModalProps}
-                        displayMode="side"
-                    />
-                )}
-                </div>{/* /app-body */}
-
-                {showSettingsModal && settingsServer && (
-                    <ServerSettingsModal
-                        settingsServer={settingsServer}
-                        settingsValues={settingsValues}
-                        settingsActiveTab={settingsActiveTab}
-                        setSettingsActiveTab={setSettingsActiveTab}
-                        modules={modules}
-                        advancedExpanded={advancedExpanded}
-                        setAdvancedExpanded={setAdvancedExpanded}
-                        availableVersions={availableVersions}
-                        versionsLoading={versionsLoading}
-                        versionInstalling={versionInstalling}
-                        handleSettingChange={handleSettingChange}
-                        handleInstallVersion={handleInstallVersion}
-                        handleSaveSettings={handleSaveSettings}
-                        handleResetServer={handleResetServer}
-                        resettingServer={resettingServer}
-                        editingModuleAliases={editingModuleAliases}
-                        setEditingModuleAliases={setEditingModuleAliases}
-                        editingCommandAliases={editingCommandAliases}
-                        setEditingCommandAliases={setEditingCommandAliases}
-                        handleSaveAliasesForModule={handleSaveAliasesForModule}
-                        handleResetAliasesForModule={handleResetAliasesForModule}
-                        isClosing={isSettingsClosing}
-                        onClose={requestSettingsClose}
-                        servers={servers}
-                        moduleAliasesPerModule={moduleAliasesPerModule}
-                        discordModuleAliases={discordModuleAliases}
-                    />
-                )}
-
-                {/* Context Menu */}
-                {contextMenu && (
-                    <>
-                        <div
-                            className="context-menu-overlay"
-                            onClick={() => setContextMenu(null)}
-                            onContextMenu={(e) => {
-                                e.preventDefault();
-                                setContextMenu(null);
-                            }}
+                    {/* 모달 렌더링 */}
+                    {modal && modal.type === 'success' && (
+                        <SuccessModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
+                    )}
+                    {modal && modal.type === 'failure' && (
+                        <FailureModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
+                    )}
+                    {modal && modal.type === 'notification' && (
+                        <NotificationModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
+                    )}
+                    {modal && (modal.type === 'question' || modal.type === 'warning') && (
+                        <QuestionModal
+                            title={modal.title}
+                            message={modal.message}
+                            detail={modal.detail}
+                            buttons={modal.buttons}
+                            onConfirm={modal.onConfirm}
+                            onCancel={() => setModal(null)}
                         />
-                        <div className="context-menu" style={{ top: contextMenu.y, left: contextMenu.x }}>
-                            <div
-                                className="context-menu-item"
-                                onClick={() => {
-                                    handleOpenSettings(contextMenu.server);
-                                    setContextMenu(null);
-                                }}
-                            >
-                                <Icon name="settings" size="sm" />
-                                {t('context_menu.settings', { defaultValue: 'Settings' })}
+                    )}
+
+                    {/* waiting.png (느린 진행 감지) */}
+                    {showWaitingImage && (
+                        <div className="waiting-image-overlay" onClick={() => setShowWaitingImage(false)}>
+                            <img src="./waiting.png" alt="waiting" className="waiting-image" />
+                        </div>
+                    )}
+
+                    {/* 글로벌 프로그레스바 */}
+                    {progressBar && (
+                        <div className="global-progress-bar">
+                            <div className="global-progress-content">
+                                <span className="global-progress-message">{progressBar.message}</span>
+                                {progressBar.percent != null && !progressBar.indeterminate && (
+                                    <span className="global-progress-percent">{Math.round(progressBar.percent)}%</span>
+                                )}
                             </div>
-                            <div
-                                className="context-menu-item"
-                                onClick={() => {
-                                    const srv = contextMenu.server;
-                                    const dir = srv?.module_settings?.working_dir ||
-                                        srv?.working_dir ||
-                                        null;
-                                    if (dir) {
-                                        window.api?.shellOpenPath?.(dir)?.catch?.((err) =>
-                                            console.error('[App] shellOpenPath failed:', err.message));
-                                    }
-                                    setContextMenu(null);
-                                }}
-                            >
-                                <Icon name="folder" size="sm" />
-                                {t('context_menu.open_folder', { defaultValue: 'Open in File Explorer' })}
-                            </div>
-                            <div className="context-menu-separator" />
-                            <div
-                                className="context-menu-item danger"
-                                onClick={() => {
-                                    handleDeleteServer(contextMenu.server);
-                                    setContextMenu(null);
-                                }}
-                            >
-                                <Icon name="trash" size="sm" />
-                                {t('context_menu.delete', { defaultValue: 'Delete' })}
+                            <div className="global-progress-track">
+                                <div
+                                    className={`global-progress-fill ${progressBar.indeterminate ? 'indeterminate' : ''} ${progressBar.percent === 100 ? 'complete' : ''}`}
+                                    style={progressBar.indeterminate ? {} : { width: `${progressBar.percent || 0}%` }}
+                                />
                             </div>
                         </div>
-                    </>
-                )}
-
-                {/* 모달 렌더링 */}
-                {modal && modal.type === 'success' && (
-                    <SuccessModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
-                )}
-                {modal && modal.type === 'failure' && (
-                    <FailureModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
-                )}
-                {modal && modal.type === 'notification' && (
-                    <NotificationModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
-                )}
-                {modal && (modal.type === 'question' || modal.type === 'warning') && (
-                    <QuestionModal
-                        title={modal.title}
-                        message={modal.message}
-                        detail={modal.detail}
-                        buttons={modal.buttons}
-                        onConfirm={modal.onConfirm}
-                        onCancel={() => setModal(null)}
-                    />
-                )}
-
-                {/* SettingsModal 렌더링 */}
-                <SettingsModal
-                    isOpen={showGuiSettingsModal}
-                    onClose={() => {
-                        useUIStore.getState().closeSettings();
-                    }}
-                    refreshInterval={refreshInterval}
-                    onRefreshIntervalChange={(val) => useSettingsStore.getState().update({ refreshInterval: val })}
-                    ipcPort={ipcPort}
-                    onIpcPortChange={(val) => useSettingsStore.getState().update({ ipcPort: val })}
-                    consoleBufferSize={consoleBufferSize}
-                    onConsoleBufferSizeChange={(val) => {
-                        useSettingsStore.getState().update({ consoleBufferSize: val });
-                        consoleBufferRef.current = val;
-                    }}
-                    discordCloudRelayUrl={discordCloudRelayUrl}
-                    onDiscordCloudRelayUrlChange={(val) =>
-                        useDiscordStore.getState().update({ discordCloudRelayUrl: val })
-                    }
-                    onTestModal={setModal}
-                    onTestProgressBar={setProgressBar}
-                    initialView={settingsInitialView}
-                    onTestWaitingImage={() => {
-                        setShowWaitingImage(true);
-                        setTimeout(() => setShowWaitingImage(false), 4000);
-                    }}
-                    onTestLoadingScreen={() => {
-                        useUIStore.getState().closeSettings();
-                        setDaemonReady(false);
-                        setServersInitializing(true);
-                        setInitStatus('Loading test...');
-                        setInitProgress(0);
-                        let p = 0;
-                        const iv = setInterval(() => {
-                            p += Math.random() * 20 + 10;
-                            if (p >= 100) {
-                                p = 100;
-                                setInitStatus('Ready!');
-                                setInitProgress(100);
-                                clearInterval(iv);
-                                setTimeout(() => {
-                                    setDaemonReady(true);
-                                    setServersInitializing(false);
-                                }, 600);
-                            } else {
-                                setInitStatus(`Loading test... ${Math.round(p)}%`);
-                                setInitProgress(p);
-                            }
-                        }, 500);
-                    }}
-                />
-
-                {/* CommandModal 렌더링 */}
-                {showCommandModal && commandServer && (
-                    <CommandModal
-                        server={commandServer}
-                        modules={modules}
-                        onClose={() => setShowCommandModal(false)}
-                        onExecute={setModal}
-                    />
-                )}
-
-                {/* waiting.png (느린 진행 감지) */}
-                {showWaitingImage && (
-                    <div className="waiting-image-overlay" onClick={() => setShowWaitingImage(false)}>
-                        <img src="./waiting.png" alt="waiting" className="waiting-image" />
-                    </div>
-                )}
-
-                {/* 글로벌 프로그레스바 */}
-                {progressBar && (
-                    <div className="global-progress-bar">
-                        <div className="global-progress-content">
-                            <span className="global-progress-message">{progressBar.message}</span>
-                            {progressBar.percent != null && !progressBar.indeterminate && (
-                                <span className="global-progress-percent">{Math.round(progressBar.percent)}%</span>
-                            )}
-                        </div>
-                        <div className="global-progress-track">
-                            <div
-                                className={`global-progress-fill ${progressBar.indeterminate ? 'indeterminate' : ''} ${progressBar.percent === 100 ? 'complete' : ''}`}
-                                style={progressBar.indeterminate ? {} : { width: `${progressBar.percent || 0}%` }}
-                            />
-                        </div>
-                    </div>
-                )}
-            </div>
+                    )}
+                </div>
+            </TooltipProvider>
         </ExtensionProvider>
     );
 }

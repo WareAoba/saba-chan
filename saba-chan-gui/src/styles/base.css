@@ -1,0 +1,392 @@
+/* ════════════════════════════════════════════════════════════════
+ * 기본 요소 + 공통 컴포넌트 (gui-design-reference §6~§8)
+ * 색은 tokens.css 변수만 쓴다.
+ * ════════════════════════════════════════════════════════════════ */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: var(--font-sans);
+    -webkit-user-select: none;
+    user-select: none;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+input,
+textarea,
+[contenteditable="true"],
+.selectable {
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+html,
+body {
+    background: var(--bg-0);
+}
+
+body {
+    color: var(--text-1);
+    font-size: var(--fs-md);
+    line-height: 1.55;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow: hidden;
+}
+
+code,
+pre,
+kbd {
+    font-family: var(--font-mono);
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: var(--r-pill);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover);
+}
+
+:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* ── 버튼 기본 (옛 화면도 이 값을 따른다) ── */
+:root {
+    --btn-height: 36px;
+    --btn-radius: var(--r-sm);
+    --btn-font-size: var(--fs-md);
+    --btn-font-weight: 600;
+    --btn-padding: 0 16px;
+}
+
+button {
+    font-size: var(--btn-font-size);
+    font-weight: var(--btn-font-weight);
+    height: var(--btn-height);
+    border-radius: var(--btn-radius);
+    padding: var(--btn-padding);
+    border: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    white-space: nowrap;
+    color: inherit;
+    background: none;
+    transition:
+        background var(--dur-fast) var(--ease),
+        box-shadow var(--dur-fast) var(--ease),
+        border-color var(--dur-fast) var(--ease),
+        color var(--dur-fast) var(--ease),
+        transform var(--dur-fast) var(--ease),
+        opacity var(--dur-fast) var(--ease);
+}
+
+button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* 주 버튼: 강조 그라데이션 + 입체 (A3, N1) */
+.btn-primary {
+    background: var(--brand-gradient);
+    color: var(--brand-text);
+    box-shadow: var(--shadow-raised);
+}
+.btn-primary:hover:not(:disabled) {
+    filter: brightness(1.08);
+    box-shadow: var(--shadow-raised-hover);
+}
+.btn-primary:active:not(:disabled) {
+    transform: translateY(1px);
+    box-shadow: var(--shadow-inset);
+}
+
+/* 보조 버튼: 투명 + 테두리, 호버 시 면이 생김 (A4) */
+.btn-ghost,
+.btn-secondary {
+    background: transparent;
+    color: var(--text-1);
+    border: 1px solid var(--line-strong);
+}
+.btn-ghost:hover:not(:disabled),
+.btn-secondary:hover:not(:disabled) {
+    background: var(--surface-gradient-hover);
+    box-shadow: var(--shadow-raised);
+}
+.btn-ghost:active:not(:disabled),
+.btn-secondary:active:not(:disabled) {
+    box-shadow: var(--shadow-inset);
+}
+
+.btn-danger {
+    background: var(--stop);
+    color: #fff;
+    box-shadow: var(--shadow-raised);
+}
+.btn-danger:hover:not(:disabled) {
+    filter: brightness(1.08);
+}
+.btn-danger:active:not(:disabled) {
+    transform: translateY(1px);
+}
+
+.btn-success {
+    background: var(--ok);
+    color: #fff;
+}
+
+.btn-info {
+    background: var(--info);
+    color: #fff;
+    box-shadow: var(--shadow-raised);
+}
+
+.btn-danger-text {
+    color: var(--stop);
+}
+.btn-danger-text:hover:not(:disabled) {
+    background: var(--stop-soft);
+    border-color: var(--stop);
+}
+
+.btn-sm {
+    --btn-height: 30px;
+    --btn-font-size: var(--fs-sm);
+    --btn-padding: 0 12px;
+}
+.btn-lg {
+    --btn-height: 40px;
+    --btn-padding: 0 20px;
+}
+.btn-block {
+    width: 100%;
+}
+
+/* 아이콘 버튼: 작은 입체 사각 (N1) */
+.icon-btn {
+    --btn-height: 32px;
+    width: 32px;
+    padding: 0;
+    position: relative;
+    color: var(--text-2);
+    background: transparent;
+    border: 1px solid transparent;
+}
+.icon-btn:hover:not(:disabled) {
+    color: var(--text-1);
+    background: var(--surface-gradient-hover);
+    border-color: var(--line);
+    box-shadow: var(--shadow-raised);
+}
+.icon-btn:active:not(:disabled) {
+    box-shadow: var(--shadow-inset);
+}
+
+/* 입력 (N2 + A5 포커스) */
+.input {
+    height: 36px;
+    width: 100%;
+    padding: 0 12px;
+    border-radius: var(--r-sm);
+    border: 1px solid var(--line);
+    background: var(--inset);
+    box-shadow: var(--shadow-inset);
+    color: var(--text-1);
+    font-size: var(--fs-md);
+    outline: none;
+}
+.input::placeholder {
+    color: var(--text-3);
+}
+.input:focus {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-inset), var(--accent-ring);
+}
+
+/* 카드 (N1 + N3 + A2) */
+.card {
+    background: var(--surface-gradient);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-raised);
+}
+
+/* 상태 칩 (N4: 점 + 글자 + 색) */
+.status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 28px;
+    padding: 0 12px;
+    border-radius: var(--r-pill);
+    background: var(--inset);
+    box-shadow: var(--shadow-inset);
+    border: 1px solid var(--line);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--chip-color, var(--text-2));
+    font-variant-numeric: tabular-nums;
+}
+.status-chip.bare {
+    height: auto;
+    padding: 0;
+    background: none;
+    box-shadow: none;
+    border: none;
+    font-weight: 500;
+}
+.status-chip-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--chip-color, var(--text-3));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--chip-color, transparent) 18%, transparent);
+    flex: none;
+}
+.status-chip-detail {
+    color: var(--text-2);
+    font-weight: 500;
+}
+.status-chip-detail::before {
+    content: '·';
+    margin-right: 6px;
+    color: var(--text-3);
+}
+.tone-ok {
+    --chip-color: var(--ok);
+}
+.tone-stop {
+    --chip-color: var(--stop);
+}
+.tone-warn {
+    --chip-color: var(--warn);
+}
+.tone-info {
+    --chip-color: var(--info);
+}
+.tone-idle {
+    --chip-color: var(--text-3);
+}
+.status-chip.pulse .status-chip-dot {
+    animation: chip-pulse 1.2s var(--ease) infinite;
+}
+@keyframes chip-pulse {
+    50% {
+        opacity: 0.35;
+    }
+}
+
+/* 세그먼트 탭: 눌린 홈 안에서 고른 칸만 튀어나옴 (N2 → N1) */
+.segmented {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    border-radius: var(--r-md);
+    background: var(--inset);
+    box-shadow: var(--shadow-inset);
+    border: 1px solid var(--line);
+}
+.segmented-item {
+    --btn-height: 32px;
+    --btn-padding: 0 14px;
+    --btn-font-size: var(--fs-sm);
+    color: var(--text-2);
+    border: 1px solid transparent;
+}
+.segmented-item:hover:not(.active) {
+    color: var(--text-1);
+}
+.segmented-item.active {
+    color: var(--text-1);
+    background: var(--surface-gradient);
+    border-color: var(--line);
+    box-shadow: var(--shadow-raised);
+}
+
+/* 알림 띠 */
+.notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: var(--r-sm);
+    border: 1px solid color-mix(in srgb, var(--chip-color) 35%, transparent);
+    background: color-mix(in srgb, var(--chip-color) 10%, transparent);
+    color: var(--text-1);
+    font-size: var(--fs-sm);
+}
+.notice svg {
+    color: var(--chip-color);
+    flex: none;
+    margin-top: 2px;
+}
+
+.tag {
+    display: inline-flex;
+    align-items: center;
+    height: 20px;
+    padding: 0 7px;
+    border-radius: var(--r-xs);
+    background: var(--inset);
+    border: 1px solid var(--line);
+    font-size: var(--fs-xs);
+    font-family: var(--font-mono);
+    color: var(--text-2);
+}
+
+.muted {
+    color: var(--text-3);
+}
+.pad {
+    padding: var(--sp-4);
+}
+
+.spinner {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid var(--line-strong);
+    border-top-color: var(--accent);
+    animation: spin 0.8s linear infinite;
+    display: inline-block;
+    flex: none;
+}
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.badge-count {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: var(--r-pill);
+    background: var(--stop);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+    box-shadow: 0 0 0 2px var(--bg-1);
+}
