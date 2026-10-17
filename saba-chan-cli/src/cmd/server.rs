@@ -5,7 +5,7 @@ use crate::cli::{AddArgs, PropsCmd, RestartArgs, RunArgs, ServerCmd, StartArgs, 
 use crate::cmd::{split_pairs, typed};
 use crate::ctx::Ctx;
 use crate::error::{failed, usage, CliError, Result};
-use crate::output::{self, s, show};
+use crate::output::{self, dim, s, show};
 use crate::resolve::{self, Server};
 use crate::slots::Slots;
 use serde_json::{json, Map, Value};
@@ -40,6 +40,7 @@ pub async fn run(ctx: &Ctx, cmd: ServerCmd) -> Result<()> {
         ServerCmd::History { server } => history(ctx, server.as_deref()).await,
         ServerCmd::Validate { server } => validate(ctx, server.as_deref()).await,
         ServerCmd::Diagnose { server } => diagnose(ctx, server.as_deref()).await,
+        ServerCmd::LaunchPreview { server, extra_args } => launch_preview(ctx, server.as_deref(), extra_args.as_deref()).await,
         ServerCmd::AcceptEula { server } => accept_eula(ctx, server.as_deref()).await,
         ServerCmd::Reset { server } => reset(ctx, server.as_deref()).await,
         ServerCmd::Reorder { servers } => reorder(ctx, &servers).await,
@@ -1418,6 +1419,26 @@ async fn diagnose(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     let sv = resolve::server(ctx, query).await?;
     let r = ctx.api.diagnose(&sv.id).await;
     checkup(ctx, r, &t!("diagnose.ok", name = sv.name), &sv.name).await
+}
+
+/// 데몬이 실제로 띄울 줄 (서버는 켜지 않는다). 형식이 틀린 인자는 경고로
+async fn launch_preview(ctx: &Ctx, query: Option<&str>, extra: Option<&str>) -> Result<()> {
+    let sv = resolve::server(ctx, query).await?;
+    let r = ctx.api.launch_preview(&sv.id, extra).await?;
+    ctx.out.data(&r, |r| {
+        if r.get("has_launch_args").and_then(Value::as_bool) == Some(false) {
+            println!("{}", dim(&t!("launch_preview.no_args", name = sv.name)));
+        }
+        match r.get("command_line").and_then(Value::as_str) {
+            Some(line) if r.get("success").and_then(Value::as_bool) == Some(true) => println!("{}", line),
+            _ => println!("{} {}", console::style("✗").red(), s(r, "message")),
+        }
+        for e in r.get("errors").and_then(Value::as_array).into_iter().flatten() {
+            let what = e.get("arg").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| show(&e["got"]));
+            println!("{} {}", console::style("!").yellow(), t!("launch_preview.invalid_format", arg = what, field = s(e, "field")));
+        }
+    });
+    Ok(())
 }
 
 async fn accept_eula(ctx: &Ctx, query: Option<&str>) -> Result<()> {

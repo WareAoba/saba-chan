@@ -56,4 +56,14 @@ describe('useMultiConsole 따로 띄운 창', () => {
         act(() => closed('a'));
         expect(result.current.consolePopoutIds).toEqual(['b']);
     });
+
+    it('메인 창이 새로고침되면 이미 떠 있는 분리 창 목록을 받아 온다', async () => {
+        window.api.consolePopoutList = vi.fn().mockResolvedValue(['c']);
+        const { result } = renderHook(() =>
+            useMultiConsole({ isPopoutMode: false, popoutParams: null, consoleBufferRef: { current: 2000 } }),
+        );
+        await act(async () => {});
+        expect(result.current.consolePopoutIds).toEqual(['c']);
+        delete window.api.consolePopoutList;
+    });
 });

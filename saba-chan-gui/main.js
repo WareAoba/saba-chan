@@ -855,7 +855,12 @@ let heartbeatTimer = null;
 
 async function registerWithDaemon() {
     try {
-        const res = await axios.post(`${IPC_BASE}/api/client/register`, { kind: 'gui' }, { timeout: 3000 });
+        // PID·설치 폴더: 인스톨러가 임시 폴더에 풀린 포터블 GUI도 이 설치의 것으로 찾아 끈다
+        const res = await axios.post(
+            `${IPC_BASE}/api/client/register`,
+            { kind: 'gui', pid: process.pid, installRoot: getInstallRoot() },
+            { timeout: 3000 },
+        );
         heartbeatClientId = res.data.client_id;
         console.log(`[Heartbeat] Registered with daemon as client: ${heartbeatClientId}`);
         return true;
@@ -1569,11 +1574,12 @@ ipcMain.handle('instance:resetServer', async (_event, instanceId) => {
 
 // ── Managed Process API (stdin/stdout capture) ───────────────
 
-ipcMain.handle('managed:console', async (_event, instanceId, since = 0, count = 200) => {
+// opts.spans: 데몬이 나눈 하이라이트 조각도 받는다 (모르는 데몬은 무시)
+ipcMain.handle('managed:console', async (_event, instanceId, since = 0, count = 200, opts = {}) => {
     try {
-        const response = await axios.get(`${IPC_BASE}/api/instance/${instanceId}/console`, {
-            params: { since, count },
-        });
+        const params = { since, count };
+        if (opts?.spans) params.spans = 1;
+        const response = await axios.get(`${IPC_BASE}/api/instance/${instanceId}/console`, { params });
         return response.data;
     } catch (error) {
         return errorBody(error);
@@ -1591,6 +1597,21 @@ ipcMain.handle('managed:stdin', async (_event, instanceId, command) => {
 
 // ── Console Popout (PiP) Window ──────────────────────────────
 const consolePopoutWindows = new Map(); // instanceId → BrowserWindow
+
+// 데몬 로그 버퍼 (GET /api/daemon/console): 하단 활동 줄·데몬 콘솔 창용
+ipcMain.handle('daemon:console', (_event, opts) => {
+    const { since, count } = opts || {};
+    const params = new URLSearchParams();
+    if (since !== undefined && since !== null) params.set('since', String(since));
+    if (count) params.set('count', String(count));
+    const qs = params.toString();
+    return daemonCall('get', `/api/daemon/console${qs ? `?${qs}` : ''}`, undefined, 10000);
+});
+
+// 열린 팝아웃 목록: 메인 창을 다시 불러오면 renderer가 이것으로 상태를 맞춘다
+ipcMain.handle('console:popoutList', () =>
+    [...consolePopoutWindows.entries()].filter(([, win]) => win && !win.isDestroyed()).map(([id]) => id),
+);
 
 ipcMain.handle('console:popout', async (_event, instanceId, serverName) => {
     // 이미 열려 있으면 포커스
@@ -1955,6 +1976,14 @@ ipcMain.handle('instance:reorder', async (_event, orderedIds) => {
     }
 });
 
+// 실행 인자 미리보기: 저장된 설정 위에 초안·추가 인자를 얹어 데몬이 실행 줄을 계산한다 (서버는 띄우지 않는다).
+// extraArgs를 넘기지 않으면 저장된 추가 인자로 본다
+ipcMain.handle('instance:launchPreview', (_event, id, settings, extraArgs) => {
+    const body = { settings: settings || {} };
+    if (extraArgs !== undefined && extraArgs !== null) body.extra_args = extraArgs;
+    return daemonCall('post', `/api/instance/${encodeURIComponent(id)}/launch-preview`, body, 15000);
+});
+
 ipcMain.handle('instance:updateSettings', async (_event, id, settings) => {
     try {
         console.log(`[Main] Updating settings for instance ${id}:`, settings);
@@ -1972,7 +2001,14 @@ ipcMain.handle('instance:updateSettings', async (_event, id, settings) => {
 
             switch (status) {
                 case 400:
-                    return { error: `잘못된 설정값: ${data.error || '입력값을 확인해주세요'}` };
+                    // 데몬의 검증 결과를 그대로: error_code가 invalid_format이면 renderer가 "잘못된 형식입니다"를 띄운다
+                    return {
+                        status,
+                        error: `잘못된 설정값: ${data.message || data.error || '입력값을 확인해주세요'}`,
+                        error_code: data.error_code,
+                        details: data.details,
+                        fields: data.fields,
+                    };
                 case 404:
                     return { error: `인스턴스를 찾을 수 없습니다` };
                 case 500:

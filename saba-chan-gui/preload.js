@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld('api', {
     instanceDelete: (id) => ipcRenderer.invoke('instance:delete', id),
     instanceReorder: (orderedIds) => ipcRenderer.invoke('instance:reorder', orderedIds),
     instanceUpdateSettings: (id, settings) => ipcRenderer.invoke('instance:updateSettings', id, settings),
+    // 실행 인자 미리보기: (id, 설정 초안 {필드: 값}, 추가 인자 문자열|배열?) →
+    // {success, has_launch_args, command_line, program, args, settings_from_args, extra_args, extra_args_text, errors}
+    instanceLaunchPreview: (id, settings, extraArgs) => ipcRenderer.invoke('instance:launchPreview', id, settings, extraArgs),
     instanceResetServer: (id) => ipcRenderer.invoke('instance:resetServer', id),
     executeCommand: (id, command) => ipcRenderer.invoke('instance:executeCommand', id, command),
     instanceStop: (id, opts) => ipcRenderer.invoke('instance:stop', id, opts),
@@ -54,10 +57,14 @@ contextBridge.exposeInMainWorld('api', {
     extensionRescan: () => ipcRenderer.invoke('extension:rescan'),
     extensionInitStatus: () => ipcRenderer.invoke('extension:initStatus'),
     // Managed Process API (console capture)
-    managedConsole: (instanceId, since, count) => ipcRenderer.invoke('managed:console', instanceId, since, count),
+    managedConsole: (instanceId, since, count, opts) => ipcRenderer.invoke('managed:console', instanceId, since, count, opts),
     managedStdin: (instanceId, command) => ipcRenderer.invoke('managed:stdin', instanceId, command),
     // Console Popout (PiP)
     consolePopout: (instanceId, serverName) => ipcRenderer.invoke('console:popout', instanceId, serverName),
+    // 지금 열린 콘솔 팝아웃의 instanceId 목록 (메인 창을 다시 불러온 뒤 상태를 맞출 때)
+    consolePopoutList: () => ipcRenderer.invoke('console:popoutList'),
+    // 데몬 자신의 로그 버퍼: {since?, count?} → {lines: [{id, timestamp, level, target, message}], count}
+    daemonConsole: (opts) => ipcRenderer.invoke('daemon:console', opts),
     consoleFocusPopout: (instanceId) => ipcRenderer.invoke('console:focusPopout', instanceId),
     consolePopin: (instanceId) => ipcRenderer.invoke('console:popin', instanceId),
     consoleToggleAlwaysOnTop: (instanceId, pinned) => ipcRenderer.invoke('console:toggleAlwaysOnTop', instanceId, pinned),

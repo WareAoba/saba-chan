@@ -648,6 +648,69 @@
     color: var(--text-2);
 }
 
+/* ── 콘솔 색 토큰: 줄 전체 색은 데몬이 매긴 level, 조각 색은 spans(또는 모듈 규칙)의 토큰 ── */
+.console-line.console-level-error {
+    color: var(--tok-error);
+}
+.console-line.console-level-warn {
+    color: var(--tok-warn);
+}
+.console-line.console-level-debug {
+    color: var(--tok-debug);
+}
+.tok-error {
+    color: var(--tok-error);
+    font-weight: 600;
+}
+.tok-warn {
+    color: var(--tok-warn);
+}
+.tok-info {
+    color: var(--tok-info);
+}
+.tok-debug {
+    color: var(--tok-debug);
+}
+.tok-success {
+    color: var(--tok-success);
+    font-weight: 600;
+}
+.tok-string {
+    color: var(--tok-string);
+}
+.tok-number {
+    color: var(--tok-number);
+}
+.tok-keyword {
+    color: var(--tok-keyword);
+}
+.tok-timestamp {
+    color: var(--tok-timestamp);
+}
+.tok-player {
+    color: var(--tok-player);
+    font-weight: 600;
+}
+.tok-command {
+    color: var(--tok-command);
+}
+.tok-selector {
+    color: var(--tok-selector);
+}
+.tok-ip {
+    color: var(--tok-ip);
+}
+.tok-uuid {
+    color: var(--tok-uuid);
+}
+.tok-path {
+    color: var(--tok-path);
+    font-style: italic;
+}
+.tok-dim {
+    color: var(--tok-dim);
+}
+
 /* ── 따로 띄운 콘솔 창 (PiP): 제목줄 + 상세 화면 콘솔. 콘솔은 테마와 상관없이 어두우므로 색은 콘솔 색에서 파생한다 ── */
 .App.console-popout-app {
     display: flex;

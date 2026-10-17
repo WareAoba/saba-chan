@@ -31,7 +31,14 @@ pub async fn client_register(
         _ => ClientKind::Gui,
     };
 
-    let client_id = state.client_registry.register(kind.clone()).await;
+    let pid = payload.get("pid").and_then(|v| v.as_u64()).and_then(|p| u32::try_from(p).ok());
+    let install_root = payload
+        .get("installRoot")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+    let client_id = state.client_registry.register(kind.clone(), pid, install_root).await;
     let count = state.client_registry.count().await;
     tracing::info!("[Heartbeat] Active clients: {}", count);
 
@@ -45,6 +52,18 @@ pub async fn client_register(
         })),
     )
         .into_response()
+}
+
+/// GET /api/clients — 지금 등록된 클라이언트. 인스톨러가 이 설치의 GUI(임시 폴더에 풀린 포터블 GUI 포함)를 찾는다
+pub async fn client_list(State(state): State<IPCServer>) -> impl IntoResponse {
+    let clients: Vec<_> = state
+        .client_registry
+        .list()
+        .await
+        .into_iter()
+        .map(|(id, c)| json!({"id": id, "kind": c.kind, "pid": c.pid, "installRoot": c.install_root}))
+        .collect();
+    Json(json!({"clients": clients}))
 }
 
 /// POST /api/client/:id/heartbeat — TTL 갱신 (본문은 무시)

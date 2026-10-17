@@ -106,7 +106,11 @@ export function ServerConsole({
                             `console-level-${line.level?.toLowerCase() || 'info'}`,
                         )}
                     >
-                        <HighlightedContent text={line.content} compiledRules={compiledRules} />
+                        <HighlightedContent
+                            text={line.content}
+                            spans={syntaxEnabled ? line.spans : undefined}
+                            compiledRules={compiledRules}
+                        />
                     </div>
                 ))}
             </div>

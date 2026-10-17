@@ -21,7 +21,7 @@ export function launchDraft(fields, values) {
     return out;
 }
 
-/** 저장된 추가 인자 배열 → 입력칸 글자 (공백이 든 인자는 따옴표로) */
+/** 남는 인자 배열 → 안내 글자 (공백이 든 인자는 따옴표로) */
 export const joinArgs = (args) =>
     Array.isArray(args) ? args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ') : '';
 
@@ -35,11 +35,20 @@ export function previewLine(res) {
 
 /**
  * 서버 설정 맨 위: 데몬이 계산한 최종 실행 인자 (읽기 전용) + 직접 덧붙일 인자.
+ * extraArgs가 undefined면 저장된 추가 인자로 계산하고, 응답의 extra_args_text로 입력칸을 채운다(onExtraArgsLoaded).
  * 설정이나 추가 인자를 바꾸면 잠깐 뒤 저장하지 않은 값으로 다시 묻는다. 비밀번호는 데몬이 가려서 준다.
  * 추가 인자 중 설정에 해당하는 것은 그 칸에 바로 반영한다(onSettingsFromArgs). 남는 인자는 저장할 때 다시 나눈다.
  * 형식이 틀리면 칸마다 따로 알리지 않고 "잘못된 형식" 토스트 하나로 알린다 (모듈마다 형식이 달라서).
  */
-export function LaunchPreview({ serverId, fields, values, extraArgs = '', onExtraArgsChange, onSettingsFromArgs }) {
+export function LaunchPreview({
+    serverId,
+    fields,
+    values,
+    extraArgs,
+    onExtraArgsChange,
+    onExtraArgsLoaded,
+    onSettingsFromArgs,
+}) {
     const { t } = useTranslation('gui');
     const draft = useMemo(() => launchDraft(fields, values), [fields, values]);
     const key = JSON.stringify([draft, extraArgs]);
@@ -65,7 +74,13 @@ export function LaunchPreview({ serverId, fields, values, extraArgs = '', onExtr
             if (mine !== seq.current) return;
             setRes(next);
             setLoading(false);
-            if (extraArgs !== appliedExtra.current) {
+            if (extraArgs === undefined) {
+                // 저장된 추가 인자를 데몬이 글자로 돌려준다: 입력칸만 채우고 설정 칸은 이미 같은 값이다
+                if (typeof next?.extra_args_text === 'string') {
+                    appliedExtra.current = next.extra_args_text;
+                    onExtraArgsLoaded?.(next.extra_args_text);
+                }
+            } else if (extraArgs !== appliedExtra.current) {
                 appliedExtra.current = extraArgs;
                 const found = next?.settings_from_args;
                 if (found && Object.keys(found).length) onSettingsFromArgs?.(found);
@@ -113,7 +128,7 @@ export function LaunchPreview({ serverId, fields, values, extraArgs = '', onExtr
                     <input
                         type="text"
                         className="setting-input-text launch-preview-input"
-                        value={extraArgs}
+                        value={extraArgs ?? ''}
                         spellCheck={false}
                         placeholder={t('launch_preview.extra_placeholder')}
                         onChange={(e) => onExtraArgsChange(e.target.value)}
