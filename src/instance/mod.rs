@@ -146,16 +146,19 @@ impl ServerInstance {
     /// 같은 값을 가리키는 인스턴스 필드(포트·RCON/REST 비밀번호)도 맞춘다. 안 그러면 인스턴스 필드가
     /// 옛 값으로 남아 다음 저장에서 파일을 되돌린다.
     /// `credential_map`: 데몬 키(`rcon_password` 등) → 게임 키(`AdminPassword` 등)
+    /// `types`: 설정 이름 → module.toml 필드 타입. 값은 그 타입으로 저장한다(문자열 필드는 문자열 그대로)
     pub fn apply_imported_settings(
         &mut self,
         settings: &serde_json::Map<String, serde_json::Value>,
         credential_map: &std::collections::HashMap<String, String>,
+        types: &std::collections::HashMap<String, String>,
     ) {
         for (key, value) in settings {
-            self.module_settings.insert(key.clone(), value.clone());
+            let typed = coerce_setting_value(value, types.get(key).map(String::as_str));
+            self.module_settings.insert(key.clone(), typed);
         }
         let port = |key: &str| {
-            settings.get(key).and_then(|v| match v {
+            self.module_settings.get(key).and_then(|v| match v {
                 serde_json::Value::Number(n) => n.as_u64(),
                 serde_json::Value::String(s) => s.trim().parse().ok(),
                 _ => None,
@@ -166,14 +169,15 @@ impl ServerInstance {
         if let Some(p) = port("rest_port") { self.rest_port = Some(p); }
         for daemon_key in ["rcon_password", "rest_password"] {
             let game_key = credential_map.get(daemon_key).map(String::as_str).unwrap_or(daemon_key);
-            let value = settings.iter()
-                .find(|(k, _)| k.eq_ignore_ascii_case(game_key) || k.as_str() == daemon_key)
-                .and_then(|(_, v)| v.as_str());
+            let value = self.module_settings.iter()
+                .find(|(k, _)| settings.contains_key(k.as_str()) && (k.eq_ignore_ascii_case(game_key) || k.as_str() == daemon_key))
+                .and_then(|(_, v)| v.as_str())
+                .map(str::to_string);
             // 파일이 비어 있으면 비어 있는 것이 사실이다: 옛 캐시 값을 남기지 않는다
             if let Some(pwd) = value {
                 match daemon_key {
-                    "rcon_password" => self.rcon_password = Some(pwd.to_string()),
-                    _ => self.rest_password = Some(pwd.to_string()),
+                    "rcon_password" => self.rcon_password = Some(pwd),
+                    _ => self.rest_password = Some(pwd),
                 }
             }
         }
@@ -422,6 +426,29 @@ impl InstanceStore {
 //  Tests
 // ═══════════════════════════════════════════════════════════════
 
+/// 설정 파일에서 읽은 값을 module.toml 필드 타입에 맞춘다.
+/// number·boolean은 문자열이면 바꾸고, 그 밖의 알려진 타입(text, password, select…)은 문자열로 둔다
+/// ("000123" 같은 비밀번호가 숫자로 바뀌지 않게). 스키마에 없는 키는 그대로 둔다
+pub fn coerce_setting_value(value: &serde_json::Value, field_type: Option<&str>) -> serde_json::Value {
+    use serde_json::Value;
+    match (field_type, value) {
+        (None, v) => v.clone(),
+        (Some("number"), Value::String(s)) => {
+            let t = s.trim();
+            t.parse::<i64>().map(Value::from)
+                .or_else(|_| t.parse::<f64>().map_err(|_| ()).and_then(|f| serde_json::Number::from_f64(f).map(Value::Number).ok_or(())))
+                .unwrap_or_else(|_| value.clone())
+        }
+        (Some("boolean"), Value::String(s)) if s.eq_ignore_ascii_case("true") || s.eq_ignore_ascii_case("false") => {
+            Value::Bool(s.eq_ignore_ascii_case("true"))
+        }
+        (Some("number" | "boolean"), v) => v.clone(),
+        (Some(_), Value::Number(n)) => Value::String(n.to_string()),
+        (Some(_), Value::Bool(b)) => Value::String(b.to_string()),
+        (Some(_), v) => v.clone(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -443,7 +470,14 @@ mod tests {
         inst.port = Some(27015);
         let settings = serde_json::json!({"port": "28015", "rcon_port": 25575, "AdminPassword": "pw", "Other": 1});
         let map: std::collections::HashMap<String, String> = [("rest_password".to_string(), "adminpassword".to_string())].into();
-        inst.apply_imported_settings(settings.as_object().unwrap(), &map);
+        let types: std::collections::HashMap<String, String> =
+            [("port", "number"), ("AdminPassword", "password")].map(|(k, t)| (k.to_string(), t.to_string())).into();
+        inst.apply_imported_settings(settings.as_object().unwrap(), &map, &types);
+        let raw = serde_json::json!({"AdminPassword": "000123"});
+        inst.apply_imported_settings(raw.as_object().unwrap(), &map, &types);
+        assert_eq!(inst.module_settings.get("AdminPassword"), Some(&serde_json::json!("000123")));
+        assert_eq!(inst.rest_password.as_deref(), Some("000123"));
+        inst.apply_imported_settings(serde_json::json!({"AdminPassword": "pw"}).as_object().unwrap(), &map, &types);
         assert_eq!((inst.port, inst.rcon_port), (Some(28015), Some(25575)));
         assert_eq!(inst.rest_password.as_deref(), Some("pw"));
         assert_eq!(inst.module_settings.get("Other"), Some(&serde_json::json!(1)));

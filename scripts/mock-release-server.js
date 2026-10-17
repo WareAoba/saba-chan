@@ -9,7 +9,8 @@
  *   GET  /download/:file                 ← R2 공개 URL 대신
  *
  * manifest는 공개된 고정 모의 키(keyId "saba-updater-mock")로 서명한다. 이 키는
- * `cargo build --features mock-relay`로 만든 개발용 바이너리만 믿는다 (signature::MOCK_RELAY_KEY).
+ * mock-relay 기능으로 만든 개발용 데몬만 믿는다 (signature::MOCK_RELAY_KEY):
+ *   pwsh scripts/build-core.ps1 -Debug -MockRelay   (또는 cargo build -p saba-core --features mock-relay)
  *
  * ## 사용법
  *   node scripts/mock-release-server.js [--port 9876] [--version 0.2.0]
