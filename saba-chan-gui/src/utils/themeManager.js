@@ -126,6 +126,15 @@ export function setCustomTheme(partial) {
 /**
  * Reset custom theme to defaults
  */
+/** 브라우저에 남은 테마 모드 캐시를 지운다 (초기화 뒤 예전 값이 되살아나지 않게) */
+export function clearStoredTheme() {
+    try {
+        localStorage.removeItem(THEME_KEY);
+    } catch {
+        /* 저장소를 못 쓰면 지울 것도 없다 */
+    }
+}
+
 export function resetCustomTheme() {
     localStorage.removeItem(CUSTOM_THEME_KEY);
     applyCustomTheme(THEME_DEFAULTS);

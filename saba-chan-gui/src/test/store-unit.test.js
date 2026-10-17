@@ -55,6 +55,16 @@ beforeEach(() => {
 // ═════════════════════════════════════════════════════════════
 
 describe('useSettingsStore', () => {
+    it('GUI 설정 초기화 뒤에는 예전 브라우저 테마 대신 auto', async () => {
+        localStorage.setItem('saba-chan-theme', 'light');
+        window.api.configReset = vi.fn().mockResolvedValue({ ok: true, config: {} });
+        window.api.settingsLoad = vi.fn().mockResolvedValue({ autoRefresh: true });
+        window.api.settingsGetPath = vi.fn().mockResolvedValue('x');
+        expect(await useSettingsStore.getState().resetToDefaults()).toBe(true);
+        expect(window.api.configReset).toHaveBeenCalledWith('gui');
+        expect(useSettingsStore.getState().theme).toBe('auto');
+    });
+
     it.each(['light', 'auto'])('업그레이드: 데몬에 theme이 없으면 예전 브라우저 값(%s)을 지킨다', async (old) => {
         localStorage.setItem('saba-chan-theme', old);
         window.api.settingsLoad = vi.fn().mockResolvedValue({ autoRefresh: true });

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { THEME_DEFAULTS, getTheme, setCustomTheme, setTheme } from '../utils/themeManager';
+import { THEME_DEFAULTS, clearStoredTheme, getTheme, resetCustomTheme, setCustomTheme, setTheme } from '../utils/themeManager';
 
 export const DEFAULT_IPC_PORT = 57474; // shared/constants.js와 동일 — renderer는 CJS require 불가하므로 상수 선언
 
@@ -96,6 +96,9 @@ export const useSettingsStore = create((set, get) => ({
         try {
             const res = await window.api.configReset('gui');
             if (res?.ok === false) return false;
+            // 데몬 기본값에는 theme이 없다 → 브라우저 캐시를 지워야 load()가 예전 값 대신 'auto'를 쓴다
+            clearStoredTheme();
+            resetCustomTheme();
             await get().load();
             return true;
         } catch (error) {
