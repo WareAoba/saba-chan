@@ -234,16 +234,22 @@ impl RconClient {
         match &self.stream {
             None => false,
             Some(stream) => {
-                // peek으로 소켓 상태 확인 (짧은 타임아웃)
-                let _ = stream.set_read_timeout(Some(Duration::from_millis(50)));
+                let original_timeout = match stream.read_timeout() {
+                    Ok(timeout) => timeout,
+                    Err(_) => return false,
+                };
+                if stream.set_read_timeout(Some(Duration::from_millis(50))).is_err() {
+                    return false;
+                }
                 let mut peek_buf = [0u8; 1];
-                match stream.peek(&mut peek_buf) {
+                let connected = match stream.peek(&mut peek_buf) {
                     Ok(0) => false, // 서버가 연결을 닫음
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock
                         || e.kind() == std::io::ErrorKind::TimedOut => true, // 데이터 없이 타임아웃 = 정상
                     Err(_) => false, // 기타 에러 = 연결 끊김
                     Ok(_) => true,   // 데이터 있음 = 연결 살아있음
-                }
+                };
+                stream.set_read_timeout(original_timeout).is_ok() && connected
             }
         }
     }
@@ -269,6 +275,20 @@ impl Drop for RconClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recovery_rcon_connection_probe_preserves_command_timeout() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let stream = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (_peer, _) = listener.accept().unwrap();
+        let timeout = Some(Duration::from_secs(3));
+        stream.set_read_timeout(timeout).unwrap();
+        let mut client = RconClient::new("127.0.0.1".into(), 1, "fake-password".into());
+        client.stream = Some(stream);
+
+        assert!(client.is_connected());
+        assert_eq!(client.stream.as_ref().unwrap().read_timeout().unwrap(), timeout);
+    }
 
     #[test]
     fn test_rcon_client_creation() {

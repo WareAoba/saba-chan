@@ -63,23 +63,102 @@ pub fn render(app: &App, frame: &mut Frame) {
         frame.render_widget(Clear, popup);
         render_inline_select(prompt, options, selected, frame, popup);
     }
+
+    // Stage 3: 검색 오버레이 (Ctrl+F) — 하단 한 줄 고정
+    if let Some(super::overlay::Overlay::Search(ref s)) = app.overlay {
+        let title = app.i18n.t("overlay.search_title");
+        render_search_overlay(&s.query, s.cursor, &title, frame, area);
+    }
+
+    // Stage 4: 슬래시 명령 입력 — 하단 한 줄 오버레이
+    if let Some(ref buf) = app.slash_buffer {
+        let title = app.i18n.t("overlay.slash_title");
+        render_slash_input(buf, app.slash_cursor, app.ghost_suffix.as_deref(), &title, frame, area);
+    }
+}
+
+/// 하단 슬래시 명령 입력 — `/`로 열리는 단일 행 입력창 (ghost-text 포함).
+pub fn render_slash_input(
+    buf: &str,
+    cursor: usize,
+    ghost: Option<&str>,
+    title: &str,
+    frame: &mut Frame,
+    area: Rect,
+) {
+    let h = 3u16;
+    let w = area.width.saturating_sub(4);
+    let x = area.x + 2;
+    let y = area.y + area.height.saturating_sub(h + 1);
+    let rect = Rect::new(x, y, w, h);
+    frame.render_widget(Clear, rect);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title.to_string())
+        .style(Style::default().fg(Color::Cyan));
+    frame.render_widget(block, rect);
+
+    let inner = Rect::new(rect.x + 1, rect.y + 1, rect.width.saturating_sub(2), 1);
+    let prefix = "/ ";
+    let mut spans = vec![
+        Span::styled(prefix, Style::default().fg(Color::Cyan)),
+        Span::raw(buf),
+    ];
+    if let Some(g) = ghost {
+        spans.push(Span::styled(g.to_string(), Style::default().fg(Color::DarkGray)));
+    }
+    frame.render_widget(Paragraph::new(Line::from(spans)), inner);
+
+    let cursor_x = inner.x
+        + prefix.chars().count() as u16
+        + buf.chars().take(cursor).map(|c| if c.is_ascii() { 1 } else { 2 }).sum::<u16>();
+    frame.set_cursor_position((cursor_x.min(inner.x + inner.width - 1), inner.y));
+}
+
+/// 하단 검색 오버레이 — Ctrl+F로 열리는 단일 행 쿼리 입력창.
+pub fn render_search_overlay(query: &str, cursor: usize, title: &str, frame: &mut Frame, area: Rect) {
+    let h = 3u16;
+    let w = area.width.saturating_sub(4);
+    let x = area.x + 2;
+    let y = area.y + area.height.saturating_sub(h + 1);
+    let rect = Rect::new(x, y, w, h);
+    frame.render_widget(Clear, rect);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title.to_string())
+        .style(Style::default().fg(Color::Yellow));
+    frame.render_widget(block, rect);
+
+    let inner = Rect::new(
+        rect.x + 1,
+        rect.y + 1,
+        rect.width.saturating_sub(2),
+        1,
+    );
+
+    let prefix = "› ";
+    let line = Line::from(vec![
+        Span::styled(prefix, Style::default().fg(Color::DarkGray)),
+        Span::raw(query),
+    ]);
+    frame.render_widget(Paragraph::new(line), inner);
+
+    // 커서
+    let cursor_x = inner.x
+        + prefix.chars().count() as u16
+        + query.chars().take(cursor).map(|c| c.to_string().chars().count() as u16).sum::<u16>();
+    frame.set_cursor_position((cursor_x.min(inner.x + inner.width - 1), inner.y));
 }
 
 // ═══════════════════════════════════════════════════════
-// 상태바 (최상단 — 데몬/봇/서버 상태)
+// 상태바 (최상단 — 데몬/서버 상태)
 // ═══════════════════════════════════════════════════════
 
 pub fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
     let d = if app.daemon_on {
         Span::styled("● RUNNING", Theme::running())
-    } else {
-        Span::styled("○ OFFLINE", Theme::stopped())
-    };
-
-    let b = if app.bot_on {
-        Span::styled("● RUNNING", Theme::running())
-    } else if !app.token_ok {
-        Span::styled("○ NO TOKEN", Theme::warning())
     } else {
         Span::styled("○ OFFLINE", Theme::stopped())
     };
@@ -103,9 +182,6 @@ pub fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
     let status_line = Line::from(vec![
         Span::styled("Saba-Core ", Theme::label_daemon()),
         d,
-        Span::raw("  "),
-        Span::styled("Bot ", Theme::label_bot()),
-        b,
         Span::raw("  "),
         Span::styled(
             format!("Instances {}/{}", running, app.servers.len()),
@@ -146,89 +222,110 @@ pub fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
 // ═══════════════════════════════════════════════════════
 
 pub fn render_hint_bar(app: &App, frame: &mut Frame, area: Rect) {
-    let hints = match &app.input_mode {
+    // i18n 키 단축 클로저
+    let t = |k: &str| app.i18n.t(k);
+    let nav = t("menu.navigate");
+    let select = t("menu.select");
+    let back = t("menu.back");
+    let command = t("menu.command");
+    let help = t("menu.help");
+    let quit = t("menu.quit");
+    let run = t("menu.run");
+    let autocomplete = t("menu.autocomplete");
+    let history = t("menu.history");
+    let scroll = t("menu.scroll");
+    let menu_key = t("menu.menu_key");
+    let stdin_send = t("menu.stdin_send");
+    let send = t("menu.send");
+    let cursor = t("menu.cursor");
+    let confirm = t("menu.confirm");
+    let cancel = t("menu.cancel");
+    let yes = t("menu.yes");
+    let no_cancel = t("menu.no_cancel");
+
+    let hints: Vec<(&str, &str)> = match &app.input_mode {
         InputMode::Normal => {
             match &app.screen {
                 super::app::Screen::Dashboard => {
                     vec![
-                        ("↑↓/jk", "이동"),
-                        ("Enter", "선택"),
-                        (":", "명령"),
-                        ("?", "도움말"),
-                        ("q", "종료"),
+                        ("↑↓/jk", nav.as_str()),
+                        ("Enter", select.as_str()),
+                        (":", command.as_str()),
+                        ("?", help.as_str()),
+                        ("q", quit.as_str()),
                     ]
                 }
                 super::app::Screen::CommandMode => {
                     vec![
-                        ("Enter", "실행"),
-                        ("Tab", "자동완성"),
-                        ("↑↓", "히스토리"),
-                        ("PgUp/Dn/Wheel", "스크롤"),
-                        ("F2", "메뉴"),
+                        ("Enter", run.as_str()),
+                        ("Tab", autocomplete.as_str()),
+                        ("↑↓", history.as_str()),
+                        ("PgUp/Dn/Wheel", scroll.as_str()),
+                        ("F2", menu_key.as_str()),
                     ]
                 }
                 super::app::Screen::ServerConsole { .. } => {
                     vec![
-                        ("Esc", "뒤로"),
-                        ("Enter", "stdin 전송"),
-                        ("PgUp/Dn/Wheel", "스크롤"),
+                        ("Esc", back.as_str()),
+                        ("Enter", stdin_send.as_str()),
+                        ("PgUp/Dn/Wheel", scroll.as_str()),
                     ]
                 }
                 _ => {
                     vec![
-                        ("↑↓/jk", "이동"),
-                        ("Enter", "선택"),
-                        ("Esc", "뒤로"),
-                        (":", "명령"),
+                        ("↑↓/jk", nav.as_str()),
+                        ("Enter", select.as_str()),
+                        ("Esc", back.as_str()),
+                        (":", command.as_str()),
                     ]
                 }
             }
         }
         InputMode::Editing => {
             vec![
-                ("Enter", "확정"),
-                ("Esc", "취소"),
-                ("←→", "커서"),
+                ("Enter", confirm.as_str()),
+                ("Esc", cancel.as_str()),
+                ("←→", cursor.as_str()),
             ]
         }
         InputMode::Command => {
             let has_stack = !app.screen_stack.is_empty();
             let mut h = vec![
-                ("Enter", "실행"),
-                ("Tab", "자동완성"),
-                ("↑↓", "히스토리"),
-                ("PgUp/Dn", "스크롤"),
-                ("F2", "메뉴"),
+                ("Enter", run.as_str()),
+                ("Tab", autocomplete.as_str()),
+                ("↑↓", history.as_str()),
+                ("PgUp/Dn", scroll.as_str()),
+                ("F2", menu_key.as_str()),
             ];
             if has_stack {
-                h.insert(0, ("Esc", "뒤로"));
+                h.insert(0, ("Esc", back.as_str()));
             }
             h
         }
         InputMode::Console => {
             vec![
-                ("Esc", "뒤로"),
-                ("Enter", "전송"),
+                ("Esc", back.as_str()),
+                ("Enter", send.as_str()),
             ]
         }
         InputMode::Confirm { .. } => {
             vec![
-                ("y", "확인"),
-                ("n/Esc", "취소"),
+                ("y", yes.as_str()),
+                ("n/Esc", no_cancel.as_str()),
             ]
         }
         InputMode::InlineInput { .. } => {
             vec![
-                ("Enter", "확인"),
-                ("Esc", "취소"),
-                ("←→", "커서"),
+                ("Enter", confirm.as_str()),
+                ("Esc", cancel.as_str()),
+                ("←→", cursor.as_str()),
             ]
         }
         InputMode::InlineSelect { .. } => {
             vec![
-                ("↑↓/jk", "이동"),
-                ("Enter", "선택"),
-                ("Esc", "취소"),
+                ("↑↓/jk", nav.as_str()),
+                ("Enter", select.as_str()),
+                ("Esc", cancel.as_str()),
             ]
         }
     };
@@ -488,12 +585,15 @@ pub fn render_command_input(app: &App, frame: &mut Frame, area: Rect) {
     frame.render_widget(block, area);
 
     let prompt = "saba> ";
-    let line = Line::from(vec![
+    // Stage 4: ghost-text는 입력 뒤에 dimmed로 덧붙임
+    let mut spans = vec![
         Span::styled(prompt, Theme::prompt()),
         Span::raw(app.input.clone()),
-    ]);
-
-    frame.render_widget(Paragraph::new(line), inner);
+    ];
+    if let Some(ref ghost) = app.ghost_suffix {
+        spans.push(Span::styled(ghost.clone(), Style::default().fg(Color::DarkGray)));
+    }
+    frame.render_widget(Paragraph::new(Line::from(spans)), inner);
 
     // 커서
     let display_width: usize = app.input.chars().take(app.cursor)
@@ -544,49 +644,99 @@ pub fn render_edit_cursor(app: &App, frame: &mut Frame, area: Rect) {
 // ═══════════════════════════════════════════════════════
 
 pub fn render_console(app: &App, frame: &mut Frame, area: Rect) {
+    // 상단: 탭 바 (2+ 탭이 있으면), 본문: 로그 + stdin
+    let has_tab_bar = app.tabs.tabs.len() >= 2;
+    let constraints: &[Constraint] = if has_tab_bar {
+        &[Constraint::Length(1), Constraint::Min(3), Constraint::Length(3)]
+    } else {
+        &[Constraint::Length(0), Constraint::Min(3), Constraint::Length(3)]
+    };
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(3), Constraint::Length(3)])
+        .constraints(constraints)
         .split(area);
 
-    // 콘솔 출력
+    // --- 탭 바 ---
+    if has_tab_bar {
+        let mut spans: Vec<Span> = Vec::new();
+        for (i, t) in app.tabs.tabs.iter().enumerate() {
+            let is_active = Some(t.id) == app.tabs.active;
+            let prefix = if i == 0 { "" } else { " │ " };
+            if !prefix.is_empty() {
+                spans.push(Span::styled(prefix, Theme::border()));
+            }
+            let marker = if t.dirty && !is_active { "●" } else { " " };
+            let label = format!("{}{}", marker, t.title);
+            let style = if is_active {
+                Theme::console_input()
+            } else if t.dirty {
+                Style::default().fg(Color::Yellow)
+            } else {
+                Theme::console_text()
+            };
+            spans.push(Span::styled(label, style));
+        }
+        frame.render_widget(Paragraph::new(Line::from(spans)), chunks[0]);
+    }
+
+    // --- 콘솔 출력 ---
+    let active = app.tabs.active_tab();
+    let title = match active {
+        Some(t) => format!(" Console: {} ", t.title),
+        None => " Console ".into(),
+    };
     let block = Block::default()
-        .title(" Console ")
+        .title(title)
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Theme::border());
 
-    let inner = block.inner(chunks[0]);
-    frame.render_widget(block, chunks[0]);
+    let inner = block.inner(chunks[1]);
+    frame.render_widget(block, chunks[1]);
 
-    let lines: Vec<Line> = app.console_lines.iter()
-        .map(|l| Line::from(Span::styled(l.clone(), Theme::console_text())))
-        .collect();
+    let empty_vec: Vec<&crate::tui::tabs::LogLine> = Vec::new();
+    let lines_src: Vec<&crate::tui::tabs::LogLine> = active
+        .map(|t| t.visible_lines())
+        .unwrap_or(empty_vec);
+
+    let lines: Vec<Line> = lines_src.iter().map(|l| {
+        use crate::tui::tabs::LogLevel;
+        let style = match l.level {
+            LogLevel::Error => Style::default().fg(Color::Red),
+            LogLevel::Warn => Style::default().fg(Color::Yellow),
+            LogLevel::Stdin => Style::default().fg(Color::Cyan),
+            LogLevel::Info => Theme::console_text(),
+        };
+        Line::from(Span::styled(l.text.clone(), style))
+    }).collect();
 
     let total = lines.len();
     let visible = inner.height as usize;
     let max_up = total.saturating_sub(visible);
-    let eff_up = app.console_scroll.min(max_up);
+    let scroll = active.map(|t| t.scroll).unwrap_or(0);
+    let eff_up = scroll.min(max_up);
     let y = max_up.saturating_sub(eff_up);
 
     frame.render_widget(Paragraph::new(lines).scroll((y as u16, 0)), inner);
 
-    // stdin 입력
+    // --- stdin 입력 ---
     let input_block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Theme::border_active());
-    let input_inner = input_block.inner(chunks[1]);
-    frame.render_widget(input_block, chunks[1]);
+    let input_inner = input_block.inner(chunks[2]);
+    frame.render_widget(input_block, chunks[2]);
 
+    let stdin_text = active.map(|t| t.stdin.clone()).unwrap_or_default();
     let line = Line::from(vec![
         Span::styled("> ", Theme::console_input()),
-        Span::raw(app.console_input.clone()),
+        Span::raw(stdin_text.clone()),
     ]);
     frame.render_widget(Paragraph::new(line), input_inner);
 
     if app.input_mode == InputMode::Console {
-        let cursor_x = input_inner.x + 2 + app.console_input.chars().count() as u16;
+        let cursor_chars = active.map(|t| t.stdin_cursor).unwrap_or(0);
+        let cursor_x = input_inner.x + 2 + cursor_chars as u16;
         frame.set_cursor_position(Position::new(cursor_x, input_inner.y));
     }
 }

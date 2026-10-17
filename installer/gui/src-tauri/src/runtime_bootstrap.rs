@@ -2,6 +2,7 @@
 //!
 //! 인스톨러가 설치 과정에서 **엔드유저가 Python/Node.js를 별도로 설치할 필요 없이**
 //! 포터블 런타임을 자동으로 다운로드하고 환경을 구성합니다.
+//! 기존 런타임이 검증에 실패하면 삭제 후 다시 받는다.
 //!
 //! ## Python
 //! - `python-build-standalone` 포터블 배포판 다운로드 (~20 MB)
@@ -9,20 +10,15 @@
 //!
 //! ## Node.js
 //! - nodejs.org 포터블 배포판 다운로드 (~30 MB)
-//! - Discord Bot `npm install` 실행
 
+use crate::runtime_pins::{RuntimePin, NODE_VERSION, PYTHON_VERSION};
 use saba_chan_updater_lib::constants;
+use saba_chan_updater_lib::integrity::{download_verified, FileHash};
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
 
-// ── Python 버전 (메인 앱과 동일) ────────────────────────────────
-const PYTHON_VERSION: &str = "3.12.8";
-const PYTHON_RELEASE_TAG: &str = "20250106";
 const PORTABLE_PYTHON_DIR: &str = "python-standalone";
 const VENV_DIR_NAME: &str = "python-env";
-
-// ── Node.js 버전 (메인 앱과 동일) ───────────────────────────────
-const NODE_VERSION: &str = "22.14.0";
 const PORTABLE_NODE_DIR: &str = "node-portable";
 
 // ═══════════════════════════════════════════════════════════════
@@ -39,54 +35,33 @@ pub async fn setup_python(data_dir: &Path) -> Result<PathBuf, String> {
     let venv_dir = data_dir.join(VENV_DIR_NAME);
     let portable_exe = portable_python_exe(data_dir);
 
-    // ── 1) 포터블 Python 다운로드 (없을 때만) ──
-    if !portable_exe.exists() || !verify_python(&portable_exe).await {
+    // ── 1) 포터블 Python 다운로드 (없거나 손상됐을 때만) ──
+    if verify_python(&portable_exe).await {
+        tracing::info!("포터블 Python 이미 존재: {}", portable_exe.display());
+    } else {
         tracing::info!("포터블 Python {} 다운로드 시작", PYTHON_VERSION);
+        let pin = current_pin()?;
+        download_and_extract(
+            &pin.python_url(),
+            pin.python_sha256,
+            &data_dir.join("_python_download.tar.gz"),
+            &portable_dir,
+        )
+        .await
+        .map_err(|e| format!("Python 설치 실패: {}", e))?;
 
-        // 기존 실패분 정리
-        if portable_dir.exists() {
-            let _ = std::fs::remove_dir_all(&portable_dir);
-        }
-
-        let url = python_download_url()
-            .map_err(|e| format!("Python 다운로드 URL 생성 실패: {}", e))?;
-
-        let tmp_archive = data_dir.join("_python_download.tar.gz");
-
-        download_file(&url, &tmp_archive)
-            .await
-            .map_err(|e| format!("Python 다운로드 실패: {}", e))?;
-
-        std::fs::create_dir_all(&portable_dir)
-            .map_err(|e| format!("디렉토리 생성 실패: {}", e))?;
-
-        extract_tar_gz(&tmp_archive, &portable_dir)
-            .await
-            .map_err(|e| format!("Python 추출 실패: {}", e))?;
-
-        let _ = std::fs::remove_file(&tmp_archive);
-
-        if !portable_exe.exists() {
+        if !verify_python(&portable_exe).await {
             return Err(format!(
-                "포터블 Python 추출 후 실행 파일을 찾을 수 없습니다: {}",
+                "다운로드된 포터블 Python이 정상 동작하지 않습니다: {}",
                 portable_exe.display()
             ));
         }
-
-        if !verify_python(&portable_exe).await {
-            return Err("다운로드된 포터블 Python이 정상 동작하지 않습니다".into());
-        }
-
         tracing::info!("포터블 Python 설치 완료: {}", portable_exe.display());
-    } else {
-        tracing::info!("포터블 Python 이미 존재: {}", portable_exe.display());
     }
 
     // ── 2) venv 생성 ──
     let venv_python = venv_python_exe(&venv_dir);
-
-    // 기존 venv가 유효하면 건너뜀
-    if venv_python.exists() && verify_python(&venv_python).await {
+    if verify_python(&venv_python).await {
         tracing::info!("Python venv 이미 유효: {}", venv_python.display());
         return Ok(venv_python);
     }
@@ -97,25 +72,17 @@ pub async fn setup_python(data_dir: &Path) -> Result<PathBuf, String> {
     }
 
     tracing::info!("Python venv 생성 중: {}", venv_dir.display());
-
     let mut cmd = Command::new(&portable_exe);
-    cmd.args(["-m", "venv", &venv_dir.to_string_lossy()]);
-    apply_creation_flags(&mut cmd);
-
-    let output = cmd
-        .output()
-        .await
-        .map_err(|e| format!("venv 생성 명령 실행 실패: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("venv 생성 실패: {}", stderr));
-    }
+    cmd.arg("-m").arg("venv").arg(&venv_dir);
+    run_checked(cmd, "venv 생성").await?;
 
     // pip 업그레이드 (실패해도 치명적이지 않음)
-    let _ = run_pip(&venv_python, &["install", "--upgrade", "--quiet", "pip"]).await;
+    let mut pip = Command::new(&venv_python);
+    pip.args(["-m", "pip", "install", "--upgrade", "--quiet", "pip"]);
+    if let Err(e) = run_checked(pip, "pip 업그레이드").await {
+        tracing::warn!("{}", e);
+    }
 
-    // 검증
     if !verify_python(&venv_python).await {
         return Err("venv 생성 후 검증 실패".into());
     }
@@ -124,87 +91,32 @@ pub async fn setup_python(data_dir: &Path) -> Result<PathBuf, String> {
     Ok(venv_python)
 }
 
-/// Fix 5: 기존 런타임이 손상되었으면 강제 삭제 후 재설치하는 Python 설치
-///
-/// 기존 `setup_python`은 포터블 Python이 존재하면 스킵했지만,
-/// 이 함수는 검증에 실패하면 기존 디렉토리를 삭제하고 재다운로드한다.
-pub async fn setup_python_with_repair(data_dir: &Path) -> Result<PathBuf, String> {
-    let portable_dir = data_dir.join(PORTABLE_PYTHON_DIR);
-    let venv_dir = data_dir.join(VENV_DIR_NAME);
-    let portable_exe = portable_python_exe(data_dir);
-
-    // 포터블 Python이 존재하지만 검증 실패 → 삭제 후 재설치
-    if portable_exe.exists() && !verify_python(&portable_exe).await {
-        tracing::warn!(
-            "기존 포터블 Python이 손상됨, 삭제 후 재설치: {}",
-            portable_dir.display()
-        );
-        let _ = std::fs::remove_dir_all(&portable_dir);
-    }
-
-    // venv가 존재하지만 검증 실패 → 삭제
-    let venv_python = venv_python_exe(&venv_dir);
-    if venv_dir.exists() && (!venv_python.exists() || !verify_python(&venv_python).await) {
-        tracing::warn!(
-            "기존 Python venv가 손상됨, 삭제 후 재생성: {}",
-            venv_dir.display()
-        );
-        let _ = std::fs::remove_dir_all(&venv_dir);
-    }
-
-    setup_python(data_dir).await
-}
-
 /// 포터블 Node.js 다운로드
 ///
 /// `data_dir`: 런타임을 설치할 루트 디렉토리 (`%APPDATA%/saba-chan`)
 ///
 /// 반환: node 실행 파일 경로
 pub async fn setup_node(data_dir: &Path) -> Result<PathBuf, String> {
-    // 기존 포터블 Node.js 확인
     if let Some(exe) = find_portable_node_exe(data_dir) {
         if verify_node(&exe).await {
             tracing::info!("포터블 Node.js 이미 존재: {}", exe.display());
             return Ok(exe);
         }
+        tracing::warn!("기존 포터블 Node.js가 손상됨, 재설치: {}", exe.display());
     }
-
-    let portable_dir = data_dir.join(PORTABLE_NODE_DIR);
 
     tracing::info!("포터블 Node.js v{} 다운로드 시작", NODE_VERSION);
+    let pin = current_pin()?;
+    let portable_dir = data_dir.join(PORTABLE_NODE_DIR);
+    download_and_extract(
+        &pin.node_url(),
+        pin.node_sha256,
+        &data_dir.join(format!("_node_download.{}", pin.node_ext)),
+        &portable_dir,
+    )
+    .await
+    .map_err(|e| format!("Node.js 설치 실패: {}", e))?;
 
-    // 기존 실패분 정리
-    if portable_dir.exists() {
-        let _ = std::fs::remove_dir_all(&portable_dir);
-    }
-
-    let url = node_download_url()
-        .map_err(|e| format!("Node.js 다운로드 URL 생성 실패: {}", e))?;
-
-    let is_zip = url.ends_with(".zip");
-    let tmp_ext = if is_zip { "zip" } else { "tar.gz" };
-    let tmp_archive = data_dir.join(format!("_node_download.{}", tmp_ext));
-
-    download_file(&url, &tmp_archive)
-        .await
-        .map_err(|e| format!("Node.js 다운로드 실패: {}", e))?;
-
-    std::fs::create_dir_all(&portable_dir)
-        .map_err(|e| format!("디렉토리 생성 실패: {}", e))?;
-
-    if is_zip {
-        extract_zip_archive(&tmp_archive, &portable_dir)
-            .await
-            .map_err(|e| format!("Node.js zip 추출 실패: {}", e))?;
-    } else {
-        extract_tar_gz(&tmp_archive, &portable_dir)
-            .await
-            .map_err(|e| format!("Node.js tar.gz 추출 실패: {}", e))?;
-    }
-
-    let _ = std::fs::remove_file(&tmp_archive);
-
-    // 실행 파일 찾기
     let exe = find_portable_node_exe(data_dir).ok_or_else(|| {
         format!(
             "포터블 Node.js 추출 후 실행 파일을 찾을 수 없습니다. 디렉토리: {}",
@@ -216,9 +128,7 @@ pub async fn setup_node(data_dir: &Path) -> Result<PathBuf, String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        if exe.exists() {
-            let _ = std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755));
-        }
+        let _ = std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755));
     }
 
     if !verify_node(&exe).await {
@@ -229,263 +139,73 @@ pub async fn setup_node(data_dir: &Path) -> Result<PathBuf, String> {
     Ok(exe)
 }
 
-/// Fix 5: 기존 Node.js 런타임이 손상되었으면 강제 삭제 후 재설치
-pub async fn setup_node_with_repair(data_dir: &Path) -> Result<PathBuf, String> {
-    let portable_dir = data_dir.join(PORTABLE_NODE_DIR);
+// ═══════════════════════════════════════════════════════════════
+//  다운로드 & 추출
+// ═══════════════════════════════════════════════════════════════
 
-    // 기존 Node.js가 존재하지만 검증 실패 → 삭제 후 재설치
-    if let Some(exe) = find_portable_node_exe(data_dir) {
-        if !verify_node(&exe).await {
-            tracing::warn!(
-                "기존 포터블 Node.js가 손상됨, 삭제 후 재설치: {}",
-                portable_dir.display()
-            );
-            let _ = std::fs::remove_dir_all(&portable_dir);
-        }
-    }
-
-    setup_node(data_dir).await
+fn current_pin() -> Result<&'static RuntimePin, String> {
+    RuntimePin::current().ok_or_else(|| {
+        format!(
+            "이 플랫폼({}-{})에서는 포터블 런타임 자동 설치를 지원하지 않습니다",
+            std::env::consts::OS,
+            std::env::consts::ARCH
+        )
+    })
 }
 
-/// Discord Bot의 npm install 실행
+/// 기존 `dest_dir` 를 비우고, 아카이브를 받아 SHA-256 검증 후 추출한다.
+async fn download_and_extract(
+    url: &str,
+    sha256_hex: &str,
+    archive: &Path,
+    dest_dir: &Path,
+) -> Result<(), String> {
+    if dest_dir.exists() {
+        let _ = std::fs::remove_dir_all(dest_dir);
+    }
+    download_file_verified(url, archive, sha256_hex).await?;
+    let result = extract_archive(archive, dest_dir).await;
+    let _ = std::fs::remove_file(archive);
+    result
+}
+
+/// 파일을 다운로드하고 SHA-256 해시를 검증합니다.
 ///
-/// `node_exe`: node 실행 파일 경로
-/// `bot_dir`: discord_bot 디렉토리 (install_dir/discord_bot)
-pub async fn npm_install(node_exe: &Path, bot_dir: &Path) -> Result<(), String> {
-    if !bot_dir.join("package.json").exists() {
-        tracing::info!("Discord Bot package.json 없음, npm install 건너뜀");
-        return Ok(());
-    }
-
-    // npm 경로: node.exe 옆의 npm.cmd (Windows) 또는 bin/npm (Unix)
-    let npm_path = find_npm_path(node_exe)?;
-
-    tracing::info!(
-        "npm install 실행 중: {} (npm: {})",
-        bot_dir.display(),
-        npm_path.display()
-    );
-
-    let mut cmd = Command::new(&npm_path);
-    cmd.args(["install", "--production", "--no-optional"]);
-    cmd.current_dir(bot_dir);
-
-    // node.exe가 있는 디렉토리를 PATH에 추가
-    if let Some(node_dir) = node_exe.parent() {
-        let current_path = std::env::var("PATH").unwrap_or_default();
-        let sep = if cfg!(target_os = "windows") { ";" } else { ":" };
-        let new_path = format!("{}{}{}", node_dir.to_string_lossy(), sep, current_path);
-        cmd.env("PATH", &new_path);
-    }
-
-    apply_creation_flags(&mut cmd);
-
-    let output = cmd
-        .output()
+/// 해시 불일치는 **치명적** — 파일 삭제, 재시도 없음.
+/// 셸을 거치지 않으므로 경로에 따옴표·특수문자가 있어도 안전하다.
+async fn download_file_verified(url: &str, dest: &Path, sha256_hex: &str) -> Result<(), String> {
+    let expected = FileHash::parse_hex(sha256_hex)
+        .map_err(|e| format!("고정 체크섬 형식이 잘못됨: {} ({})", sha256_hex, e))?;
+    let client = reqwest::Client::new();
+    download_verified(&client, url, dest, Some(&expected), None)
         .await
-        .map_err(|e| format!("npm install 실행 실패: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        return Err(format!(
-            "npm install 실패:\nstdout: {}\nstderr: {}",
-            stdout, stderr
-        ));
-    }
-
-    tracing::info!("npm install 완료: {}", bot_dir.display());
+        .map_err(|e| format!("다운로드/무결성 검증 실패 ({}): {}", url, e))?;
+    tracing::info!("포터블 런타임 다운로드 + 해시 검증 완료: {}", dest.display());
     Ok(())
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  URL 생성
-// ═══════════════════════════════════════════════════════════════
-
-fn python_download_url() -> Result<String, String> {
-    let triple = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
-        "x86_64-pc-windows-msvc"
-    } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-        "x86_64-unknown-linux-gnu"
-    } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
-        "aarch64-unknown-linux-gnu"
-    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
-        "x86_64-apple-darwin"
-    } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-        "aarch64-apple-darwin"
-    } else {
-        return Err("이 플랫폼에서는 포터블 Python 자동 설치를 지원하지 않습니다".into());
-    };
-
-    Ok(format!(
-        "https://github.com/indygreg/python-build-standalone/releases/download/{tag}/cpython-{ver}+{tag}-{triple}-install_only_stripped.tar.gz",
-        tag = PYTHON_RELEASE_TAG,
-        ver = PYTHON_VERSION,
-        triple = triple,
-    ))
-}
-
-fn node_download_url() -> Result<String, String> {
-    let (os, arch, ext) = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
-        ("win", "x64", "zip")
-    } else if cfg!(all(target_os = "windows", target_arch = "aarch64")) {
-        ("win", "arm64", "zip")
-    } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-        ("linux", "x64", "tar.gz")
-    } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
-        ("linux", "arm64", "tar.gz")
-    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
-        ("darwin", "x64", "tar.gz")
-    } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-        ("darwin", "arm64", "tar.gz")
-    } else {
-        return Err("이 플랫폼에서는 포터블 Node.js 자동 설치를 지원하지 않습니다".into());
-    };
-
-    Ok(format!(
-        "https://nodejs.org/dist/v{ver}/node-v{ver}-{os}-{arch}.{ext}",
-        ver = NODE_VERSION,
-        os = os,
-        arch = arch,
-        ext = ext,
-    ))
-}
-
-// ═══════════════════════════════════════════════════════════════
-//  다운로드 & 추출 (OS 네이티브 도구)
-// ═══════════════════════════════════════════════════════════════
-
-async fn download_file(url: &str, dest: &Path) -> Result<(), String> {
-    if let Some(parent) = dest.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("디렉토리 생성 실패: {}", e))?;
-    }
-
-    let output = {
-        #[cfg(target_os = "windows")]
-        {
-            let script = format!(
-                "$ProgressPreference = 'SilentlyContinue'; \
-                 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; \
-                 Invoke-WebRequest -Uri '{}' -OutFile '{}' -UseBasicParsing",
-                url,
-                dest.to_string_lossy()
-            );
-            let mut cmd = Command::new("powershell");
-            cmd.args(["-NoProfile", "-NonInteractive", "-Command", &script]);
-            apply_creation_flags(&mut cmd);
-            cmd.output()
-                .await
-                .map_err(|e| format!("PowerShell 실행 실패: {}", e))?
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            let mut cmd = Command::new("curl");
-            cmd.args([
-                "-fSL",
-                "--retry",
-                "3",
-                "-o",
-                &dest.to_string_lossy(),
-                url,
-            ]);
-            apply_creation_flags(&mut cmd);
-            cmd.output()
-                .await
-                .map_err(|e| format!("curl 실행 실패: {}", e))?
-        }
-    };
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("다운로드 실패: {}", stderr));
-    }
-
-    // 최소 크기 검증
-    let meta = std::fs::metadata(dest)
-        .map_err(|_| "다운로드된 파일을 찾을 수 없습니다".to_string())?;
-    if meta.len() < 1_000_000 {
-        let _ = std::fs::remove_file(dest);
-        return Err(format!(
-            "다운로드된 파일이 너무 작습니다 ({} bytes)",
-            meta.len()
-        ));
-    }
-
-    tracing::info!(
-        "다운로드 완료: {} ({:.1} MB)",
-        dest.display(),
-        meta.len() as f64 / 1_048_576.0
-    );
-    Ok(())
-}
-
-async fn extract_tar_gz(archive: &Path, dest: &Path) -> Result<(), String> {
+/// `tar -xf` 로 tar.gz / zip 을 추출한다.
+/// Windows 10+ 의 tar(bsdtar)는 zip 도 처리한다.
+async fn extract_archive(archive: &Path, dest: &Path) -> Result<(), String> {
     std::fs::create_dir_all(dest).map_err(|e| format!("디렉토리 생성 실패: {}", e))?;
-
     let mut cmd = Command::new("tar");
-    cmd.args([
-        "-xzf",
-        &archive.to_string_lossy(),
-        "-C",
-        &dest.to_string_lossy(),
-    ]);
-    apply_creation_flags(&mut cmd);
+    cmd.arg("-xf").arg(archive).arg("-C").arg(dest);
+    run_checked(cmd, "아카이브 추출").await
+}
 
+/// 명령을 실행하고 실패하면 stderr 를 담은 에러를 반환한다.
+async fn run_checked(mut cmd: Command, what: &str) -> Result<(), String> {
+    apply_creation_flags(&mut cmd);
     let output = cmd
         .output()
         .await
-        .map_err(|e| format!("tar 실행 실패: {}", e))?;
-
+        .map_err(|e| format!("{} 실행 실패: {}", what, e))?;
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("tar 추출 실패: {}", stderr));
-    }
-    Ok(())
-}
-
-async fn extract_zip_archive(archive: &Path, dest: &Path) -> Result<(), String> {
-    std::fs::create_dir_all(dest).map_err(|e| format!("디렉토리 생성 실패: {}", e))?;
-
-    #[cfg(target_os = "windows")]
-    {
-        let script = format!(
-            "Expand-Archive -Path '{}' -DestinationPath '{}' -Force",
-            archive.to_string_lossy(),
-            dest.to_string_lossy()
-        );
-        let mut cmd = Command::new("powershell");
-        cmd.args(["-NoProfile", "-NonInteractive", "-Command", &script]);
-        apply_creation_flags(&mut cmd);
-
-        let output = cmd
-            .output()
-            .await
-            .map_err(|e| format!("PowerShell 실행 실패: {}", e))?;
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("zip 추출 실패: {}", stderr));
-        }
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let mut cmd = Command::new("unzip");
-        cmd.args([
-            "-o",
-            &archive.to_string_lossy(),
-            "-d",
-            &dest.to_string_lossy(),
-        ]);
-        apply_creation_flags(&mut cmd);
-
-        let output = cmd
-            .output()
-            .await
-            .map_err(|e| format!("unzip 실행 실패: {}", e))?;
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("zip 추출 실패: {}", stderr));
-        }
+        return Err(format!(
+            "{} 실패: {}",
+            what,
+            String::from_utf8_lossy(&output.stderr)
+        ));
     }
     Ok(())
 }
@@ -564,43 +284,6 @@ fn node_exe_in(dir: &Path) -> PathBuf {
     }
 }
 
-/// npm 경로 찾기: node.exe가 있는 디렉토리에서 npm.cmd (Win) 또는 bin/npm (Unix) 탐색
-fn find_npm_path(node_exe: &Path) -> Result<PathBuf, String> {
-    let node_dir = node_exe
-        .parent()
-        .ok_or("node 실행 파일의 부모 디렉토리를 찾을 수 없습니다")?;
-
-    #[cfg(target_os = "windows")]
-    {
-        // npm.cmd 는 node.exe 와 같은 디렉토리에 있음
-        let npm = node_dir.join("npm.cmd");
-        if npm.exists() {
-            return Ok(npm);
-        }
-        // 혹시 npm.exe 가 있을 수도 있음
-        let npm_exe = node_dir.join("npm.exe");
-        if npm_exe.exists() {
-            return Ok(npm_exe);
-        }
-        Err(format!(
-            "npm을 찾을 수 없습니다. 탐색 경로: {}",
-            node_dir.display()
-        ))
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        // Unix: node 가 bin/ 안에 있으면 npm 도 같은 bin/ 에 있음
-        let npm = node_dir.join("npm");
-        if npm.exists() {
-            return Ok(npm);
-        }
-        Err(format!(
-            "npm을 찾을 수 없습니다. 탐색 경로: {}",
-            node_dir.display()
-        ))
-    }
-}
-
 /// Python 실행 파일이 정상 동작하는지 확인
 async fn verify_python(exe: &Path) -> bool {
     if !exe.exists() {
@@ -632,26 +315,6 @@ async fn verify_node(exe: &Path) -> bool {
         }
         Err(_) => false,
     }
-}
-
-/// pip 명령 실행
-async fn run_pip(python_exe: &Path, args: &[&str]) -> Result<(), String> {
-    let mut cmd = Command::new(python_exe);
-    cmd.arg("-m").arg("pip");
-    for arg in args {
-        cmd.arg(arg);
-    }
-    apply_creation_flags(&mut cmd);
-
-    let output = cmd
-        .output()
-        .await
-        .map_err(|e| format!("pip 실행 실패: {}", e))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("pip 실행 실패: {}", stderr));
-    }
-    Ok(())
 }
 
 /// 런타임 데이터 디렉토리 결정 (메인 앱과 동일한 로직)

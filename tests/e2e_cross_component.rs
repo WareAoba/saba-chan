@@ -496,8 +496,6 @@ async fn e2e_config_roundtrip() {
         "consoleBufferSize": 1000,
         "autoGeneratePasswords": true,
         "portConflictCheck": false,
-        "discordToken": "test-token-e2e",
-        "discordAutoStart": true,
     });
     let save_resp = client
         .put(format!("{}/api/config/gui", base_url))
@@ -519,7 +517,6 @@ async fn e2e_config_roundtrip() {
     // ── Bot 설정 저장
     let bot_config = json!({
         "prefix": "!test",
-        "mode": "local",
         "moduleAliases": {"e2e-mock": "mock"},
         "commandAliases": {},
         "musicEnabled": false,
@@ -742,7 +739,7 @@ async fn e2e_python_lifecycle_direct_call() {
     let output = child.wait_with_output().await.expect("wait validate");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let parsed: Value = serde_json::from_str(&stdout)
-        .expect(&format!("validate should return valid JSON, got: {}", stdout));
+        .unwrap_or_else(|_| panic!("validate should return valid JSON, got: {}", stdout));
     assert!(parsed.get("success").is_some(), "validate must return 'success' field");
     assert!(parsed.get("issues").is_some(), "validate must return 'issues' field");
 
@@ -765,7 +762,7 @@ async fn e2e_python_lifecycle_direct_call() {
         if let Ok(output) = child.wait_with_output().await {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let parsed: Value = serde_json::from_str(&stdout)
-                .expect(&format!("get_launch_command should return JSON, got: {}", stdout));
+                .unwrap_or_else(|_| panic!("get_launch_command should return JSON, got: {}", stdout));
             assert!(
                 parsed.get("command").is_some(),
                 "get_launch_command must return 'command' field"
@@ -796,7 +793,7 @@ async fn e2e_python_lifecycle_direct_call() {
         if let Ok(output) = child.wait_with_output().await {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let parsed: Value = serde_json::from_str(&stdout)
-                .expect(&format!("stop should return JSON, got: {}", stdout));
+                .unwrap_or_else(|_| panic!("stop should return JSON, got: {}", stdout));
             assert_eq!(parsed["success"].as_bool(), Some(true));
         }
     }
@@ -820,7 +817,7 @@ async fn e2e_python_lifecycle_direct_call() {
         if let Ok(output) = child.wait_with_output().await {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let parsed: Value = serde_json::from_str(&stdout)
-                .expect(&format!("command should return JSON, got: {}", stdout));
+                .unwrap_or_else(|_| panic!("command should return JSON, got: {}", stdout));
             assert_eq!(parsed["success"].as_bool(), Some(true));
             assert!(
                 parsed["result"].as_str().unwrap_or("").contains("backup"),
@@ -907,7 +904,7 @@ async fn e2e_version_auto_detect_and_persist() {
 
     let work_dir = inst_data.get("working_dir")
         .and_then(|v| v.as_str())
-        .map(|s| std::path::PathBuf::from(s));
+        .map(std::path::PathBuf::from);
 
     // working_dir가 없으면 직접 생성
     let work_dir = if let Some(wd) = work_dir {
@@ -1028,7 +1025,7 @@ async fn e2e_version_backfill_on_startup() {
 
     let work_dir = inst_data.get("working_dir")
         .and_then(|v| v.as_str())
-        .map(|s| std::path::PathBuf::from(s));
+        .map(std::path::PathBuf::from);
 
     let work_dir = if let Some(wd) = work_dir {
         fs::create_dir_all(&wd).unwrap();

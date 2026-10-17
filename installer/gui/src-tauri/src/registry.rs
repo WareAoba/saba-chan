@@ -3,15 +3,12 @@
 //! `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Saba-chan` 키에
 //! 인스톨러 정보를 등록하여 [설정 > 앱 > 설치된 앱] 목록에 표시합니다.
 
-#[cfg(target_os = "windows")]
 use std::path::Path;
 
-#[cfg(target_os = "windows")]
 const UNINSTALL_KEY: &str =
     r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Saba-chan";
 
 /// 프로그램 추가/제거 레지스트리 등록
-#[cfg(target_os = "windows")]
 pub fn register_uninstall_entry(
     install_dir: &Path,
     version: &str,
@@ -68,7 +65,6 @@ pub fn register_uninstall_entry(
 }
 
 /// 레지스트리에서 설치 경로 읽기
-#[cfg(target_os = "windows")]
 pub fn get_install_location() -> Option<String> {
     use winreg::enums::*;
     use winreg::RegKey;
@@ -78,19 +74,7 @@ pub fn get_install_location() -> Option<String> {
     key.get_value::<String, _>("InstallLocation").ok()
 }
 
-/// 레지스트리에서 표시 버전 읽기
-#[cfg(target_os = "windows")]
-pub fn get_installed_version() -> Option<String> {
-    use winreg::enums::*;
-    use winreg::RegKey;
-
-    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let key = hkcu.open_subkey(UNINSTALL_KEY).ok()?;
-    key.get_value::<String, _>("DisplayVersion").ok()
-}
-
 /// 프로그램 추가/제거 레지스트리 삭제
-#[cfg(target_os = "windows")]
 pub fn remove_uninstall_entry() -> anyhow::Result<()> {
     use winreg::enums::*;
     use winreg::RegKey;
@@ -114,7 +98,6 @@ pub fn remove_uninstall_entry() -> anyhow::Result<()> {
 }
 
 /// 인스톨러를 설치 디렉토리에 복사 (언인스톨 시 사용)
-#[cfg(target_os = "windows")]
 fn copy_installer_to_install_dir(install_dir: &Path) {
     if let Ok(exe) = std::env::current_exe() {
         let dest = install_dir.join("saba-chan-installer.exe");
@@ -125,7 +108,6 @@ fn copy_installer_to_install_dir(install_dir: &Path) {
 }
 
 /// 디렉토리 크기 추정 (바이트)
-#[cfg(target_os = "windows")]
 fn estimate_dir_size(dir: &Path) -> anyhow::Result<u64> {
     let mut total: u64 = 0;
     if dir.is_dir() {
@@ -142,26 +124,3 @@ fn estimate_dir_size(dir: &Path) -> anyhow::Result<u64> {
     Ok(total)
 }
 
-// Non-Windows stubs
-#[cfg(not(target_os = "windows"))]
-pub fn register_uninstall_entry(
-    _install_dir: &std::path::Path,
-    _version: &str,
-) -> anyhow::Result<()> {
-    Ok(())
-}
-
-#[cfg(not(target_os = "windows"))]
-pub fn get_install_location() -> Option<String> {
-    None
-}
-
-#[cfg(not(target_os = "windows"))]
-pub fn get_installed_version() -> Option<String> {
-    None
-}
-
-#[cfg(not(target_os = "windows"))]
-pub fn remove_uninstall_entry() -> anyhow::Result<()> {
-    Ok(())
-}

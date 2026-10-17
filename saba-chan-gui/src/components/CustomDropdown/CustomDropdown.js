@@ -1,3 +1,4 @@
+
 import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
@@ -8,7 +9,7 @@ import './CustomDropdown.css';
  * 커스텀 드롭다운 컴포넌트 (네이티브 select 대체)
  * Portal을 사용하여 메뉴가 모달 DOM을 벗어나서도 렌더링됨
  */
-function CustomDropdown({ value, onChange, options = [], placeholder, className, disabled }) {
+function CustomDropdown({ value, onChange, options = [], placeholder, className, disabled, ...props }) {
     const [isOpen, setIsOpen] = useState(false);
     const [menuStyle, setMenuStyle] = useState({});
     const triggerRef = useRef(null);
@@ -88,7 +89,7 @@ function CustomDropdown({ value, onChange, options = [], placeholder, className,
                       {options.map((option) => {
                           const isSelected = String(option.value) === String(value);
                           return (
-                              <div
+                              <button type="button"
                                   key={option.value}
                                   className={clsx('custom-dropdown-item', { selected: isSelected })}
                                   onClick={() => handleSelect(option.value)}
@@ -102,7 +103,7 @@ function CustomDropdown({ value, onChange, options = [], placeholder, className,
                                           <Icon name="check" size="sm" />
                                       </span>
                                   )}
-                              </div>
+                              </button>
                           );
                       })}
                   </div>
@@ -114,6 +115,7 @@ function CustomDropdown({ value, onChange, options = [], placeholder, className,
     return (
         <div className={clsx('custom-dropdown', className, { open: isOpen, disabled })}>
             <button
+                {...props}
                 className="custom-dropdown-trigger"
                 onClick={handleToggle}
                 ref={triggerRef}

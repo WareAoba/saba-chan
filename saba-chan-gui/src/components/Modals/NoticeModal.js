@@ -1,3 +1,4 @@
+
 import clsx from 'clsx';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -104,6 +105,7 @@ function NoticeCard({ notice, onDismiss, onAction, t }) {
     const { icon, colorClass } = typeConfig[notice.type] || typeConfig.info;
     const clickable = !!notice.action;
     const isUpdateCard = notice.action === 'openUpdateModal';
+    const Action = clickable ? 'button' : 'div';
 
     const timeStr = formatTime(notice.timestamp, t);
 
@@ -112,36 +114,35 @@ function NoticeCard({ notice, onDismiss, onAction, t }) {
     };
 
     return (
-        <div
+        <article
             className={clsx('notice-card', colorClass, {
                 'notice-unread': !notice.read,
                 'notice-clickable': clickable,
                 'notice-update-card': isUpdateCard,
             })}
-            onClick={handleClick}
             style={clickable ? { cursor: 'pointer' } : undefined}
         >
             <div className="notice-card-icon">
                 <Icon name={icon} size="sm" />
             </div>
-            <div className="notice-card-body">
+            <Action className="notice-card-body" type={clickable ? 'button' : undefined} onClick={clickable ? handleClick : undefined}>
                 <p className="notice-card-message">{notice.message}</p>
                 <span className="notice-card-time">
                     {timeStr}
                     {clickable && <span className="notice-action-hint"> {t('notice_modal.click_to_open')}</span>}
                 </span>
-            </div>
-            <button
+            </Action>
+            <button type="button"
                 className="notice-card-dismiss"
                 onClick={(e) => {
                     e.stopPropagation();
                     onDismiss(notice.id);
                 }}
-                title={t('notice_modal.dismiss')}
+                data-tooltip={t('notice_modal.dismiss')}
             >
                 <Icon name="close" size="xs" />
             </button>
-        </div>
+        </article>
     );
 }
 
@@ -221,7 +222,9 @@ function NoticeModal({ isOpen, onClose, isClosing, onOpenUpdateModal }) {
     };
 
     return (
-        <div className={clsx('notice-modal-container', { closing: isClosing })} onClick={(e) => e.stopPropagation()}>
+        <>
+        <button aria-label={t('modals.close')} type="button"  className="discord-backdrop" onClick={(event) => { if (event.target === event.currentTarget) (onClose)(event); }} />
+        <div className={clsx('notice-modal-container', { closing: isClosing })} >
             <div className="notice-modal-header">
                 <div className="notice-modal-title">
                     <h2>{t('notice_modal.title')}</h2>
@@ -229,16 +232,16 @@ function NoticeModal({ isOpen, onClose, isClosing, onOpenUpdateModal }) {
                 </div>
                 <div className="notice-modal-actions">
                     {notices.length > 0 && (
-                        <button
+                        <button type="button"
                             className="notice-clear-all-btn"
                             onClick={handleClearAll}
-                            title={t('notice_modal.clear_all')}
+                            data-tooltip={t('notice_modal.clear_all')}
                         >
                             <Icon name="trash" size="xs" />
                             <span>{t('notice_modal.clear_all')}</span>
                         </button>
                     )}
-                    <button className="notice-modal-close" onClick={onClose}>
+                    <button type="button" className="notice-modal-close" onClick={onClose}>
                         <Icon name="close" size="sm" />
                     </button>
                 </div>
@@ -276,6 +279,7 @@ function NoticeModal({ isOpen, onClose, isClosing, onOpenUpdateModal }) {
                 )}
             </div>
         </div>
+        </>
     );
 }
 

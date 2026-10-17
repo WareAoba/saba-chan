@@ -29,6 +29,11 @@ pub struct ServerInstance {
     pub working_dir: Option<String>,
     pub auto_detect: bool,
     pub process_name: Option<String>,
+    /// 마지막으로 추적에 성공한 실제 프로세스의 exe 경로.
+    /// auto-detect가 같은 process_name의 다중 인스턴스를 정확히 구분하는 데 사용된다.
+    /// (java.exe처럼 인스턴스 간 공유되는 바이너리는 매칭에서 제외됨 — supervisor 참조)
+    #[serde(default)]
+    pub tracked_process_path: Option<String>,
     pub port: Option<u16>,
     pub rcon_port: Option<u16>,
     pub rcon_password: Option<String>,
@@ -55,6 +60,11 @@ pub struct ServerInstance {
     /// 여기에 선언된 익스텐션이 활성화되어 있지 않으면 시작이 차단됩니다.
     #[serde(default)]
     pub required_extensions: Vec<String>,
+    /// 마이그레이션 등록 시 실제 게임 설정 파일 임포트에 실패했음을 표시.
+    /// true인 동안 module_settings 캐시는 스키마 기본값일 수 있어 신뢰할 수 없다.
+    /// 이후 live 임포트(read_live_settings)가 성공하면 캐시 갱신과 함께 해제된다.
+    #[serde(default)]
+    pub settings_import_pending: bool,
 }
 
 fn default_protocol_mode() -> String {
@@ -71,6 +81,7 @@ impl ServerInstance {
             working_dir: None,
             auto_detect: true,
             process_name: None,
+            tracked_process_path: None,
             port: None,
             rcon_port: None,
             rcon_password: None,
@@ -83,6 +94,7 @@ impl ServerInstance {
             server_version: None,
             extension_data: HashMap::new(),
             required_extensions: Vec::new(),
+            settings_import_pending: false,
         }
     }
 
@@ -94,14 +106,7 @@ impl ServerInstance {
             .unwrap_or(false)
     }
 
-    /// extension_data에서 f64 값을 읽습니다.
-    #[allow(dead_code)]
-    pub fn ext_f64(&self, key: &str) -> Option<f64> {
-        self.extension_data.get(key).and_then(|v| v.as_f64())
-    }
-
     /// extension_data에서 문자열 값을 읽습니다.
-    #[allow(dead_code)]
     pub fn ext_str(&self, key: &str) -> Option<&str> {
         self.extension_data.get(key).and_then(|v| v.as_str())
     }
@@ -259,7 +264,7 @@ impl InstanceStore {
         if let Ok(entries) = fs::read_dir(&self.root_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if !path.is_dir() {
+                if !entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
                     continue;
                 }
                 let instance_json = path.join("instance.json");
@@ -312,6 +317,7 @@ impl InstanceStore {
     }
 
     pub fn add(&mut self, instance: ServerInstance) -> Result<()> {
+        anyhow::ensure!(self.get(&instance.id).is_none(), "Instance already exists: {}", instance.id);
         self.save_instance(&instance)?;
         self.order.push(instance.id.clone());
         self.save_order()?;
@@ -321,7 +327,7 @@ impl InstanceStore {
 
     pub fn remove(&mut self, id: &str) -> Result<()> {
         // 디렉토리 삭제
-        let dir = self.root_dir.join(id);
+        let dir = self.checked_instance_dir(id)?;
         if dir.exists() {
             fs::remove_dir_all(&dir)
                 .with_context(|| format!("인스턴스 디렉토리 삭제 실패: {}", dir.display()))?;
@@ -333,6 +339,7 @@ impl InstanceStore {
     }
 
     pub fn update(&mut self, id: &str, instance: ServerInstance) -> Result<()> {
+        anyhow::ensure!(instance.id == id, "Instance ID cannot change: {}", id);
         let pos = self
             .instances
             .iter()
@@ -345,13 +352,17 @@ impl InstanceStore {
 
     pub fn reorder(&mut self, ordered_ids: &[String]) -> Result<()> {
         let mut reordered = Vec::with_capacity(self.instances.len());
+        let mut included = std::collections::HashSet::new();
         for id in ordered_ids {
+            if !included.insert(id.as_str()) {
+                continue;
+            }
             if let Some(pos) = self.instances.iter().position(|i| i.id == *id) {
                 reordered.push(self.instances[pos].clone());
             }
         }
         for inst in &self.instances {
-            if !ordered_ids.contains(&inst.id) {
+            if !included.contains(inst.id.as_str()) {
                 reordered.push(inst.clone());
             }
         }
@@ -361,27 +372,28 @@ impl InstanceStore {
         Ok(())
     }
 
-    // ── 하위 호환: 전체 저장 ──
-    // 기존 코드에서 save()를 호출하는 곳이 있을 수 있으므로 유지
-    #[allow(dead_code)]
-    pub fn save(&self) -> Result<()> {
-        for inst in &self.instances {
-            self.save_instance(inst)?;
-        }
-        self.save_order()?;
-        Ok(())
-    }
-
     /// 인스턴스 디렉토리의 절대 경로를 반환합니다.
     pub fn instance_dir(&self, id: &str) -> PathBuf {
         self.root_dir.join(id)
+    }
+
+    fn checked_instance_dir(&self, id: &str) -> Result<PathBuf> {
+        anyhow::ensure!(
+            crate::utils::is_single_path_component(id),
+            "Invalid instance ID"
+        );
+        let dir = self.instance_dir(id);
+        if let Ok(metadata) = fs::symlink_metadata(&dir) {
+            anyhow::ensure!(!metadata.file_type().is_symlink(), "Instance directory cannot be a symbolic link");
+        }
+        Ok(dir)
     }
 
     // ── Internal: 디렉토리 I/O ──────────────────────────────
 
     /// 단일 인스턴스를 디렉토리에 저장
     fn save_instance(&self, instance: &ServerInstance) -> Result<()> {
-        let dir = self.root_dir.join(&instance.id);
+        let dir = self.checked_instance_dir(&instance.id)?;
         fs::create_dir_all(&dir)?;
 
         // instance.json — 메타데이터 (module_settings 제외)
@@ -412,6 +424,11 @@ impl InstanceStore {
             .with_context(|| format!("instance.json 읽기 실패: {}", instance_path.display()))?;
 
         let mut instance: ServerInstance = serde_json::from_str(&content)?;
+        self.checked_instance_dir(&instance.id)?;
+        anyhow::ensure!(
+            dir.file_name().and_then(|name| name.to_str()) == Some(instance.id.as_str()),
+            "Instance ID does not match its directory"
+        );
 
         // settings.json이 있으면 module_settings 머지
         let settings_path = dir.join("settings.json");
@@ -450,6 +467,133 @@ mod tests {
             serde_json::json!("hard"),
         );
         inst
+    }
+
+    #[test]
+    fn recovery_remove_rejects_paths_outside_instance_root() {
+        let tmp = TempDir::new().unwrap();
+        let instances_dir = tmp.path().join("instances");
+        let outside = tmp.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("keep.txt"), "keep").unwrap();
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
+        store.load().unwrap();
+
+        assert!(store.remove("../outside").is_err());
+        assert!(outside.join("keep.txt").exists());
+    }
+
+    #[test]
+    fn recovery_add_rejects_duplicate_and_unsafe_ids() {
+        let tmp = TempDir::new().unwrap();
+        let mut store = InstanceStore::new(tmp.path().to_str().unwrap());
+        store.load().unwrap();
+        let instance = make_test_instance("original", "minecraft");
+        store.add(instance.clone()).unwrap();
+        assert!(store.add(instance).is_err());
+
+        for id in ["", ".", "..", "../outside", "..\\outside", "C:\\outside", "name:stream"] {
+            let mut unsafe_instance = make_test_instance("unsafe", "minecraft");
+            unsafe_instance.id = id.to_string();
+            assert!(store.add(unsafe_instance).is_err(), "accepted ID: {id:?}");
+        }
+        assert_eq!(store.list().len(), 1);
+    }
+
+    #[test]
+    fn recovery_update_cannot_change_instance_identity() {
+        let tmp = TempDir::new().unwrap();
+        let mut store = InstanceStore::new(tmp.path().to_str().unwrap());
+        store.load().unwrap();
+        let original = make_test_instance("original", "minecraft");
+        let id = original.id.clone();
+        store.add(original.clone()).unwrap();
+        let replacement = make_test_instance("replacement", "minecraft");
+
+        assert!(store.update(&id, replacement.clone()).is_err());
+        assert_eq!(store.get(&id).unwrap().name, original.name);
+        assert!(!store.instance_dir(&replacement.id).exists());
+    }
+
+    #[test]
+    fn recovery_reorder_keeps_each_instance_once() {
+        let tmp = TempDir::new().unwrap();
+        let mut store = InstanceStore::new(tmp.path().to_str().unwrap());
+        store.load().unwrap();
+        let first = make_test_instance("first", "minecraft");
+        let second = make_test_instance("second", "palworld");
+        let first_id = first.id.clone();
+        let second_id = second.id.clone();
+        store.add(first).unwrap();
+        store.add(second).unwrap();
+
+        store.reorder(&[second_id.clone(), second_id.clone()]).unwrap();
+        assert_eq!(store.list().iter().map(|i| &i.id).collect::<Vec<_>>(), vec![&second_id, &first_id]);
+    }
+
+    #[test]
+    fn recovery_load_skips_mismatched_directory_identity() {
+        let tmp = TempDir::new().unwrap();
+        let mut store = InstanceStore::new(tmp.path().to_str().unwrap());
+        store.load().unwrap();
+        let original = make_test_instance("original", "minecraft");
+        let id = original.id.clone();
+        store.add(original.clone()).unwrap();
+        let mut invalid = original;
+        invalid.id = "../outside".to_string();
+        fs::write(store.instance_dir(&id).join("instance.json"), serde_json::to_vec(&invalid).unwrap()).unwrap();
+
+        store.load().unwrap();
+        assert!(store.list().is_empty());
+    }
+
+    #[test]
+    fn test_settings_import_pending_defaults_false_for_legacy_json() {
+        // 구버전 instance.json(필드 부재)을 로드해도 역직렬화가 실패하지 않고
+        // settings_import_pending이 false여야 한다 (하위 호환).
+        let legacy = r#"{
+            "id": "legacy-id",
+            "name": "legacy",
+            "module_name": "minecraft",
+            "executable_path": null,
+            "working_dir": null,
+            "auto_detect": true,
+            "process_name": null,
+            "port": null,
+            "rcon_port": null,
+            "rcon_password": null,
+            "protocol_mode": "auto"
+        }"#;
+        let inst: ServerInstance = serde_json::from_str(legacy).unwrap();
+        assert!(!inst.settings_import_pending);
+    }
+
+    #[test]
+    fn test_settings_import_pending_roundtrip() {
+        // 플래그 true로 저장 → 리로드 후에도 유지되어야 한다.
+        let tmp = TempDir::new().unwrap();
+        let instances_dir = tmp.path().join("instances");
+
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
+        store.load().unwrap();
+
+        let mut inst = make_test_instance("import-pending", "palworld");
+        inst.settings_import_pending = true;
+        let id = inst.id.clone();
+        store.add(inst).unwrap();
+
+        let mut store2 = InstanceStore::new(instances_dir.to_str().unwrap());
+        store2.load().unwrap();
+        assert!(store2.get(&id).unwrap().settings_import_pending);
+
+        // false로 갱신(해제) → 리로드 후에도 false
+        let mut cleared = store2.get(&id).unwrap().clone();
+        cleared.settings_import_pending = false;
+        store2.update(&id, cleared).unwrap();
+
+        let mut store3 = InstanceStore::new(instances_dir.to_str().unwrap());
+        store3.load().unwrap();
+        assert!(!store3.get(&id).unwrap().settings_import_pending);
     }
 
     #[test]
@@ -657,6 +801,27 @@ mod tests {
         }"#;
         let inst: ServerInstance = serde_json::from_str(json).unwrap();
         assert!(inst.required_extensions.is_empty(), "Should default to empty");
+    }
+
+    /// 구버전 instance.json(tracked_process_path 필드 없음)도 로드되어야 하고,
+    /// 저장 시에는 기록된 경로가 왕복(직렬화→역직렬화) 보존되어야 한다.
+    #[test]
+    fn test_tracked_process_path_roundtrip_and_default() {
+        // 구버전 JSON → 기본값 None
+        let json = r#"{
+            "id": "test-id", "name": "test", "module_name": "minecraft",
+            "auto_detect": true, "protocol_mode": "auto"
+        }"#;
+        let inst: ServerInstance = serde_json::from_str(json).unwrap();
+        assert!(inst.tracked_process_path.is_none(), "Should default to None");
+
+        // 기록 후 왕복 보존
+        let mut inst = ServerInstance::new("test-pw", "palworld");
+        inst.tracked_process_path =
+            Some(r"D:\Servers\B\Pal\Binaries\Win64\PalServer-Win64-Shipping-Cmd.exe".to_string());
+        let serialized = serde_json::to_string(&inst).unwrap();
+        let restored: ServerInstance = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(restored.tracked_process_path, inst.tracked_process_path);
     }
 
     // ── SteamCMD extension_data 자동 주입 테스트 ──

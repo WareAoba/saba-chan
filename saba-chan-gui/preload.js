@@ -1,153 +1,125 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+const invoke = (channel) => (...args) => ipcRenderer.invoke(channel, ...args);
+
+// main → renderer 이벤트 구독. 반환값을 호출하면 그 리스너만 해제한다
+// (removeAllListeners로 다른 구독자까지 지우지 않도록). IPC event 객체는 렌더러에 넘기지 않는다.
+const subscribe = (channel) => (callback) => {
+    const handler = (_event, ...args) => callback(...args);
+    ipcRenderer.on(channel, handler);
+    return () => ipcRenderer.removeListener(channel, handler);
+};
+
 contextBridge.exposeInMainWorld('api', {
-    serverList: () => ipcRenderer.invoke('server:list'),
+    // Servers
+    serverList: invoke('server:list'),
     serverStart: (name, options = {}) => ipcRenderer.invoke('server:start', name, options),
     serverStop: (name, options = {}) => ipcRenderer.invoke('server:stop', name, options),
-    serverStatus: (name) => ipcRenderer.invoke('server:status', name),
-    moduleList: () => ipcRenderer.invoke('module:list'),
-    moduleRefresh: () => ipcRenderer.invoke('module:refresh'),
-    moduleGetMetadata: (name) => ipcRenderer.invoke('module:getMetadata', name),
-    moduleGetLocales: (name) => ipcRenderer.invoke('module:getLocales', name),
-    moduleListVersions: (name, options) => ipcRenderer.invoke('module:listVersions', name, options),
-    moduleInstallServer: (name, config) => ipcRenderer.invoke('module:installServer', name, config),
-    instanceGetInstalledVersion: (instanceId) => ipcRenderer.invoke('instance:getInstalledVersion', instanceId),
-    // Module Manifest (사바 스토리지 — 모듈 탭)
-    moduleManifest: () => ipcRenderer.invoke('module:manifest'),
-    moduleInstallFromManifest: (moduleId) => ipcRenderer.invoke('module:installFromManifest', moduleId),
-    moduleRemove: (moduleId) => ipcRenderer.invoke('module:remove', moduleId),
-    instanceCreate: (data) => ipcRenderer.invoke('instance:create', data),
-    instanceProvisionProgress: (name) => ipcRenderer.invoke('instance:provisionProgress', name),
-    instanceDismissProvision: (name) => ipcRenderer.invoke('instance:dismissProvision', name),
-    instanceCheckUpdate: (id) => ipcRenderer.invoke('instance:checkUpdate', id),
-    instanceApplyUpdate: (id) => ipcRenderer.invoke('instance:applyUpdate', id),
-    instanceDelete: (id) => ipcRenderer.invoke('instance:delete', id),
-    instanceReorder: (orderedIds) => ipcRenderer.invoke('instance:reorder', orderedIds),
-    instanceUpdateSettings: (id, settings) => ipcRenderer.invoke('instance:updateSettings', id, settings),
-    instanceResetProperties: (id) => ipcRenderer.invoke('instance:resetProperties', id),
-    instanceResetServer: (id) => ipcRenderer.invoke('instance:resetServer', id),
-    executeCommand: (id, command) => ipcRenderer.invoke('instance:executeCommand', id, command),
-    // Extension API
-    extensionList: () => ipcRenderer.invoke('extension:list'),
-    extensionEnable: (extId) => ipcRenderer.invoke('extension:enable', extId),
-    extensionDisable: (extId) => ipcRenderer.invoke('extension:disable', extId),
-    extensionI18n: (extId, locale) => ipcRenderer.invoke('extension:i18n', extId, locale),
-    extensionGuiBundle: (extId) => ipcRenderer.invoke('extension:guiBundle', extId),
-    extensionGuiStyles: (extId) => ipcRenderer.invoke('extension:guiStyles', extId),
-    extensionIcon: (extId) => ipcRenderer.invoke('extension:icon', extId),
-    // Extension Manifest & Version Management API
-    extensionFetchManifest: () => ipcRenderer.invoke('extension:fetchManifest'),
-    extensionInstall: (extId, opts) => ipcRenderer.invoke('extension:install', extId, opts),
-    extensionRemove: (extId) => ipcRenderer.invoke('extension:remove', extId),
-    extensionCheckUpdates: () => ipcRenderer.invoke('extension:checkUpdates'),
-    extensionRescan: () => ipcRenderer.invoke('extension:rescan'),
-    extensionInitStatus: () => ipcRenderer.invoke('extension:initStatus'),
+    serverStatus: invoke('server:status'),
+    // Modules
+    moduleList: invoke('module:list'),
+    moduleRefresh: invoke('module:refresh'),
+    moduleGetMetadata: invoke('module:getMetadata'),
+    moduleGetLocales: invoke('module:getLocales'),
+    moduleListVersions: invoke('module:listVersions'),
+    moduleInstallServer: invoke('module:installServer'),
+    moduleManifest: invoke('module:manifest'),
+    moduleInstallFromManifest: invoke('module:installFromManifest'),
+    moduleRemove: invoke('module:remove'),
+    // Instances
+    instanceCreate: invoke('instance:create'),
+    instanceProvisionProgress: invoke('instance:provisionProgress'),
+    instanceDismissProvision: invoke('instance:dismissProvision'),
+    instanceCheckUpdate: invoke('instance:checkUpdate'),
+    instanceApplyUpdate: invoke('instance:applyUpdate'),
+    instanceDelete: invoke('instance:delete'),
+    instanceReorder: invoke('instance:reorder'),
+    instanceUpdateSettings: invoke('instance:updateSettings'),
+    instanceReadLiveSettings: invoke('instance:readLiveSettings'),
+    instanceResetServer: invoke('instance:resetServer'),
+    instanceGetInstalledVersion: invoke('instance:getInstalledVersion'),
+    instanceOpenFolder: invoke('instance:openFolder'),
+    executeCommand: invoke('instance:executeCommand'),
+    // Extensions
+    extensionList: invoke('extension:list'),
+    extensionEnable: invoke('extension:enable'),
+    extensionDisable: invoke('extension:disable'),
+    extensionI18n: invoke('extension:i18n'),
+    extensionGuiBundle: invoke('extension:guiBundle'),
+    extensionGuiStyles: invoke('extension:guiStyles'),
+    extensionIcon: invoke('extension:icon'),
+    extensionFetchManifest: invoke('extension:fetchManifest'),
+    extensionInstall: invoke('extension:install'),
+    extensionRemove: invoke('extension:remove'),
+    extensionCheckUpdates: invoke('extension:checkUpdates'),
+    extensionRescan: invoke('extension:rescan'),
+    extensionInitStatus: invoke('extension:initStatus'),
     // Managed Process API (console capture)
     managedStart: (instanceId, options = {}) => ipcRenderer.invoke('managed:start', instanceId, options),
-    managedConsole: (instanceId, since, count) => ipcRenderer.invoke('managed:console', instanceId, since, count),
-    managedStdin: (instanceId, command) => ipcRenderer.invoke('managed:stdin', instanceId, command),
+    managedConsole: invoke('managed:console'),
+    managedStdin: invoke('managed:stdin'),
     // Console Popout (PiP)
-    consolePopout: (instanceId, serverName) => ipcRenderer.invoke('console:popout', instanceId, serverName),
-    consoleFocusPopout: (instanceId) => ipcRenderer.invoke('console:focusPopout', instanceId),
-    consolePopin: (instanceId) => ipcRenderer.invoke('console:popin', instanceId),
-    consoleToggleAlwaysOnTop: (instanceId, pinned) => ipcRenderer.invoke('console:toggleAlwaysOnTop', instanceId, pinned),
-    onConsolePopoutOpened: (callback) => ipcRenderer.on('console:popoutOpened', (event, instanceId) => callback(instanceId)),
-    offConsolePopoutOpened: () => ipcRenderer.removeAllListeners('console:popoutOpened'),
-    onConsolePopoutClosed: (callback) => ipcRenderer.on('console:popoutClosed', (event, instanceId) => callback(instanceId)),
-    offConsolePopoutClosed: () => ipcRenderer.removeAllListeners('console:popoutClosed'),
-    onConsolePopinRequest: (callback) => ipcRenderer.on('console:popinRequest', (event, instanceId, serverName) => callback(instanceId, serverName)),
-    offConsolePopinRequest: () => ipcRenderer.removeAllListeners('console:popinRequest'),
+    consolePopout: invoke('console:popout'),
+    consoleFocusPopout: invoke('console:focusPopout'),
+    consolePopin: invoke('console:popin'),
+    consoleToggleAlwaysOnTop: invoke('console:toggleAlwaysOnTop'),
+    onConsolePopoutOpened: subscribe('console:popoutOpened'),
+    onConsolePopoutClosed: subscribe('console:popoutClosed'),
+    onConsolePopinRequest: subscribe('console:popinRequest'),
     // Updater — 데몬 HTTP API를 통한 업데이트 관리
-    updaterCheck: () => ipcRenderer.invoke('updater:check'),
-    updaterStatus: () => ipcRenderer.invoke('updater:status'),
-    updaterDownload: (components) => ipcRenderer.invoke('updater:download', components),
-    updaterDownloadProgress: () => ipcRenderer.invoke('updater:downloadProgress'),
-    updaterApply: (components) => ipcRenderer.invoke('updater:apply', components),
-    updaterLaunchApply: (targets) => ipcRenderer.invoke('updater:launchApply', targets),
-    updaterGetConfig: () => ipcRenderer.invoke('updater:getConfig'),
-    updaterSetConfig: (config) => ipcRenderer.invoke('updater:setConfig', config),
-    // Mock Server (테스트용)
-    mockServerStart: (options) => ipcRenderer.invoke('mockServer:start', options),
-    mockServerStop: () => ipcRenderer.invoke('mockServer:stop'),
-    mockServerStatus: () => ipcRenderer.invoke('mockServer:status'),
-    // Updater events (from main process background checker)
-    onUpdatesAvailable: (callback) => ipcRenderer.on('updates:available', (event, data) => callback(data)),
-    offUpdatesAvailable: () => ipcRenderer.removeAllListeners('updates:available'),
-    onUpdateCompleted: (callback) => ipcRenderer.on('updates:completed', (event, data) => callback(data)),
-    offUpdateCompleted: () => ipcRenderer.removeAllListeners('updates:completed'),
-    // Settings API
-    settingsLoad: () => ipcRenderer.invoke('settings:load'),
-    settingsSave: (settings) => ipcRenderer.invoke('settings:save', settings),
-    settingsGetPath: () => ipcRenderer.invoke('settings:getPath'),
-    // Fixed Paths API
-    getFixedPaths: () => ipcRenderer.invoke('paths:getFixed'),
-    // Dialog API
-    openFileDialog: (options) => ipcRenderer.invoke('dialog:openFile', options),
-    openFolderDialog: () => ipcRenderer.invoke('dialog:openFolder'),
-    // Migration API
-    migrationScanDir: (dirPath) => ipcRenderer.invoke('migration:scanDir', dirPath),
-    // Discord Bot API
-    discordBotStatus: () => ipcRenderer.invoke('discord:status'),
-    discordBotStart: (config) => ipcRenderer.invoke('discord:start', config),
-    discordBotStop: () => ipcRenderer.invoke('discord:stop'),
-    discordGuildMembers: () => ipcRenderer.invoke('discord:guildMembers'),
-    discordGuildChannels: () => ipcRenderer.invoke('discord:guildChannels'),
-    // Bot error events (from main process)
-    onBotError: (callback) => ipcRenderer.on('bot:error', (event, data) => callback(data)),
-    offBotError: () => ipcRenderer.removeAllListeners('bot:error'),
-    // Bot Config API
-    botConfigLoad: () => ipcRenderer.invoke('botConfig:load'),
-    botConfigSave: (config) => ipcRenderer.invoke('botConfig:save', config),
-    // GUI Config sync to daemon
-    syncGuiConfig: (config) => ipcRenderer.invoke('guiConfig:sync', config),
-    // Node Token API (cloud pairing)
-    saveNodeToken: (token) => ipcRenderer.invoke('nodeToken:save', token),
-    loadNodeToken: () => ipcRenderer.invoke('nodeToken:load'),
+    updaterCheck: invoke('updater:check'),
+    updaterStatus: invoke('updater:status'),
+    updaterDownload: invoke('updater:download'),
+    updaterDownloadProgress: invoke('updater:downloadProgress'),
+    updaterApply: invoke('updater:apply'),
+    updaterLaunchApply: invoke('updater:launchApply'),
+    updaterGetConfig: invoke('updater:getConfig'),
+    updaterSetConfig: invoke('updater:setConfig'),
+    onUpdatesAvailable: subscribe('updates:available'),
+    onUpdateCompleted: subscribe('updates:completed'),
+    // Settings
+    settingsLoad: invoke('settings:load'),
+    settingsSave: invoke('settings:save'),
+    // Dialogs
+    openFileDialog: invoke('dialog:openFile'),
+    openFolderDialog: invoke('dialog:openFolder'),
+    migrationScanDir: invoke('migration:scanDir'),
+    // Bot Config (릴레이 봇 설정)
+    botConfigLoad: invoke('botConfig:load'),
+    botConfigSave: invoke('botConfig:save'),
+    // Node Token (cloud pairing)
+    saveNodeToken: invoke('nodeToken:save'),
+    deleteNodeToken: invoke('nodeToken:delete'),
     // Relay server proxy (cloud mode) — all relay comms go through daemon
-    relayCheckHostStatus: (hostId, relayUrl) => ipcRenderer.invoke('relay:checkHostStatus', hostId, relayUrl),
-    relayListHostNodes: (hostId, relayUrl) => ipcRenderer.invoke('relay:listHostNodes', hostId, relayUrl),
-    relayListNodeMembers: (guildId, relayUrl) => ipcRenderer.invoke('relay:listNodeMembers', guildId, relayUrl),
-    relayInitiatePairing: (payload) => ipcRenderer.invoke('relay:initiatePairing', payload),
-    relayPollPairingStatus: (code, secret, relayUrl) => ipcRenderer.invoke('relay:pollPairingStatus', code, secret, relayUrl),
-    // Shell API
-    shellOpenPath: (folderPath) => ipcRenderer.invoke('shell:openPath', folderPath),
-    // Logs API
-    logsGetPath: () => ipcRenderer.invoke('logs:getPath'),
-    logsOpenFolder: () => ipcRenderer.invoke('logs:openFolder'),
-    // Uninstall
-    launchUninstaller: () => ipcRenderer.invoke('app:launchUninstaller'),
-    getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
-    getComponentInfo: () => ipcRenderer.invoke('app:getComponentInfo'),
-    // App Lifecycle
-    onCloseRequest: (callback) => ipcRenderer.on('app:closeRequest', callback),
-    offCloseRequest: () => ipcRenderer.removeAllListeners('app:closeRequest'),
+    relayCheckHostStatus: invoke('relay:checkHostStatus'),
+    relayListHostNodes: invoke('relay:listHostNodes'),
+    relayListNodeMembers: invoke('relay:listNodeMembers'),
+    relayGetNodeSettings: invoke('relay:getNodeSettings'),
+    relayUpdateNodeSettings: invoke('relay:updateNodeSettings'),
+    relayInitiatePairing: invoke('relay:initiatePairing'),
+    relayPollPairingStatus: invoke('relay:pollPairingStatus'),
+    // App
+    launchUninstaller: invoke('app:launchUninstaller'),
+    getAppVersion: invoke('app:getVersion'),
+    getComponentInfo: invoke('app:getComponentInfo'),
+    onCloseRequest: subscribe('app:closeRequest'),
     closeResponse: (choice) => ipcRenderer.send('app:closeResponse', choice),
-    // Bot Relaunch (when language changes)
-    onBotRelaunch: (callback) => ipcRenderer.on('bot:relaunch', (event, config) => callback(config)),
-    offBotRelaunch: () => ipcRenderer.removeAllListeners('bot:relaunch'),
-    // Status Update Events
-    onStatusUpdate: (callback) => ipcRenderer.on('status:update', (event, data) => callback(data)),
-    offStatusUpdate: () => ipcRenderer.removeAllListeners('status:update'),
-    // Daemon Status
-    daemonStatus: () => ipcRenderer.invoke('daemon:status'),
-    daemonRestart: () => ipcRenderer.invoke('daemon:restart'),
+    onStatusUpdate: subscribe('status:update'),
+    // Daemon
+    daemonStatus: invoke('daemon:status'),
+    daemonRestart: invoke('daemon:restart'),
+});
+
+contextBridge.exposeInMainWorld('electron', {
     // Window Controls (Title Bar)
     minimizeWindow: () => ipcRenderer.send('window:minimize'),
     maximizeWindow: () => ipcRenderer.send('window:maximize'),
-    closeWindow: () => ipcRenderer.send('window:close')
-});
-
-// window.electron 객체로도 노출
-contextBridge.exposeInMainWorld('electron', {
-    minimizeWindow: () => ipcRenderer.send('window:minimize'),
-    maximizeWindow: () => ipcRenderer.send('window:maximize'),
     closeWindow: () => ipcRenderer.send('window:close'),
-    // Language settings
-    getLanguage: () => ipcRenderer.invoke('language:get'),
-    setLanguage: (language) => ipcRenderer.invoke('language:set', language),
-    getSystemLanguage: () => ipcRenderer.invoke('language:getSystem'),
+    // Language
+    getLanguage: invoke('language:get'),
+    setLanguage: invoke('language:set'),
     // Shell
     shell: {
-        openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url)
-    }
+        openExternal: invoke('shell:openExternal'),
+    },
 });

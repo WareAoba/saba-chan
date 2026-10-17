@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>사바쨩 — 모듈형 게임 서버 관리 플랫폼</title>
+<meta name="description" content="Palworld · Minecraft · Project Zomboid 등 여러 게임 서버를 하나의 데스크톱/CLI/디스코드 봇에서 통합 관리. 모듈 시스템 · 익스텐션 · 자동 업데이트 · 클라우드 릴레이 내장." />
+<meta property="og:title" content="사바쨩 (サバちゃん)" />
+<meta property="og:description" content="모듈형 게임 서버 관리 플랫폼 — Rust 데몬 + Electron GUI + Rust TUI + 클라우드 릴레이 Discord Bot" />
+<meta property="og:type" content="website" />
+<link rel="icon" type="image/png" href="../saba-chan-gui/public/favicon.png" />
+<link rel="stylesheet" href="./assets/styles.css" />
+</head>
+<body>
+<nav class="site-nav">
+    <div class="site-nav-inner">
+        <a class="brand" href="./index.html">
+            <span class="brand-logo" aria-hidden="true">🐟</span>
+            <span>사바쨩</span>
+        </a>
+        <div class="nav-links">
+            <a class="nav-link active" href="./index.html">홈</a>
+            <a class="nav-link" href="./guide.html">사용자 가이드</a>
+            <a class="nav-link" href="https://github.com/WareAoba/saba-chan" target="_blank" rel="noopener">GitHub</a>
+            <button class="theme-toggle" data-theme-toggle aria-label="테마 전환">
+                <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32 1.41-1.41"/></svg>
+                <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            </button>
+        </div>
+    </div>
+</nav>
+
+<main class="page">
+    <section class="hero">
+        <div class="hero-inner">
+            <span class="hero-kicker">🐟 Saba-chan · サバちゃん · 사바쨩</span>
+            <h1>모듈형 게임 서버 관리 플랫폼</h1>
+            <p>Palworld · Minecraft · Project Zomboid 등 여러 게임 서버를 하나의 데스크톱 GUI, 터미널 TUI, 디스코드 봇에서 통합 관리합니다. 모듈 시스템으로 새 게임을 코드 변경 없이 추가하고, 익스텐션으로 Docker 격리부터 음성 채널 음악 재생까지 자유롭게 확장하세요.</p>
+            <div class="hero-cta">
+                <a class="btn btn-primary" href="./guide.html">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                    사용자 가이드 열기
+                </a>
+                <a class="btn btn-ghost" href="https://github.com/WareAoba/saba-chan/releases" target="_blank" rel="noopener">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    최신 인스톨러 다운로드
+                </a>
+                <a class="btn btn-ghost" href="https://github.com/WareAoba/saba-chan" target="_blank" rel="noopener">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.38 7.86 10.9.58.1.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.87-1.54-3.87-1.54-.52-1.32-1.28-1.67-1.28-1.67-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.03 1.76 2.7 1.25 3.35.96.1-.75.4-1.25.73-1.54-2.56-.29-5.25-1.28-5.25-5.71 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.04 0 0 .97-.31 3.18 1.18.92-.26 1.91-.39 2.89-.39.98 0 1.97.13 2.89.39 2.2-1.49 3.17-1.18 3.17-1.18.63 1.58.23 2.75.12 3.04.74.81 1.18 1.84 1.18 3.1 0 4.44-2.69 5.42-5.26 5.7.41.36.78 1.06.78 2.13 0 1.54-.01 2.78-.01 3.16 0 .31.21.67.8.56A11.5 11.5 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>
+                    GitHub 저장소
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <section class="stat-row" aria-label="프로젝트 통계">
+        <div class="stat"><div class="stat-num">3+</div><div class="stat-label">공식 지원 게임</div></div>
+        <div class="stat"><div class="stat-num">10</div><div class="stat-label">지원 언어</div></div>
+        <div class="stat"><div class="stat-num">4</div><div class="stat-label">내장 익스텐션</div></div>
+        <div class="stat"><div class="stat-num">3</div><div class="stat-label">인터페이스 (GUI · CLI · Discord)</div></div>
+    </section>
+
+    <div class="section-heading">
+        <h2>핵심 기능</h2>
+        <p>하나의 데몬, 세 가지 인터페이스, 무한한 확장.</p>
+    </div>
+
+    <div class="feature-grid">
+        <article class="feature-card">
+            <div class="feature-icon">🎛️</div>
+            <h3>이중 인터페이스 (GUI + CLI)</h3>
+            <p>Electron 28 · React 18 기반 데스크톱과 Ratatui 기반 터미널 TUI가 동일한 Core Daemon에 연결됩니다. 상황에 맞게 선택하거나 동시에 사용할 수 있습니다.</p>
+        </article>
+
+        <article class="feature-card">
+            <div class="feature-icon">🧩</div>
+            <h3>모듈 시스템</h3>
+            <p>Python 스크립트 + TOML 설정만으로 새 게임을 추가합니다. Core 재컴파일 없이 원격 매니페스트에서 커뮤니티 모듈을 바로 설치할 수 있습니다.</p>
+        </article>
+
+        <article class="feature-card">
+            <div class="feature-icon">🧪</div>
+            <h3>익스텐션 시스템</h3>
+            <p>Docker 격리, SteamCMD 자동 설치, 음악 봇, UE4 INI 파서 등 게임 비종속 확장 기능. Hook으로 서버 라이프사이클에 자유롭게 개입합니다.</p>
+        </article>
+
+        <article class="feature-card">
+            <div class="feature-icon">💬</div>
+            <h3>Discord 봇 통합</h3>
+            <p><code>사바쨩</code> prefix로 디스코드에서 서버를 직접 제어합니다. 한국어 별칭 시스템과 길드별 인스턴스 필터링을 지원합니다.</p>
+        </article>
+
+        <article class="feature-card">
+            <div class="feature-icon">☁️</div>
+            <h3>클라우드 릴레이 (server-chan)</h3>
+            <p>NAT 뒤에서 포트 포워딩이 불가능해도 릴레이 서버로 Discord 제어가 가능합니다. argon2id + HMAC-SHA256 기반의 보안 프로토콜.</p>
+        </article>
+
+        <article class="feature-card">
+            <div class="feature-icon">🎵</div>
+            <h3>클라우드 뮤직 서버</h3>
+            <p>음악 재생을 릴레이의 전용 music-server로 위임합니다. 쿠키 오프로드로 데이터센터 IP 차단 문제를 우회하며, Discord 내 UI 채널까지 지원합니다.</p>
+        </article>
+
+        <article class="feature-card">
+            <div class="feature-icon">🛰️</div>
+            <h3>자동 업데이트 시스템</h3>
+            <p>GitHub Releases에서 Core · GUI · CLI · Updater · 봇 · 모듈 · 익스텐션을 개별 컴포넌트 단위로 배포. SHA256 해시로 무결성을 검증합니다.</p>
+        </article>
+
+        <article class="feature-card">
+            <div class="feature-icon">🛡️</div>
+            <h3>크래시 저항 설계</h3>
+            <p>게임 서버는 항상 독립 프로세스로 실행됩니다. 데몬이 죽더라도 서버는 계속 돌아가며, 재시작 시 실행 중인 서버를 자동 재감지합니다.</p>
+        </article>
+
+        <article class="feature-card">
+            <div class="feature-icon">🌏</div>
+            <h3>10개 언어 i18n</h3>
+            <p>한국어 · 영어 · 일본어 · 독일어 · 스페인어 · 프랑스어 · 포르투갈어(BR) · 러시아어 · 간체/번체 중국어를 내장.</p>
+        </article>
+    </div>
+
+    <div class="section-heading">
+        <h2>아키텍처 한눈에 보기</h2>
+        <p>Core Daemon이 중심에 있고, 모든 클라이언트가 HTTP REST API로 연결됩니다.</p>
+    </div>
+
+    <pre class="diagram">┌───────────────────┐        HTTP REST        ┌────────────────────────┐
+│  Electron GUI     │ ─────────────────────▶ │                        │
+│  React 18 · Vite  │ ◀──────────────────── │                        │
+└───────────────────┘                        │                        │
+                                             │     Core Daemon        │
+┌───────────────────┐        HTTP REST       │     saba-core.exe      │
+│  CLI · TUI        │ ─────────────────────▶ │     (Rust · Axum)      │
+│  Ratatui          │ ◀──────────────────── │     127.0.0.1:57474    │
+└───────────────────┘                        │                        │
+                                             │  ┌──────────────────┐  │
+                                             │  │ supervisor       │  │
+                                             │  │ instance · ipc   │  │
+                                             │  │ extension · rcon │  │
+                                             │  │ python_env 등    │  │
+                                             │  └──────────────────┘  │
+                                             └──────────┬─────────────┘
+                                                        │ 웹훅 / 롱 폴링
+                                                        ▼
+  ┌─────────────────┐                          ┌────────────────┐
+  │  server-chan    │ ◀─ 클라우드 Discord Bot ─▶│  Modules       │
+  │  Fastify 5 +    │                          │  Extensions    │
+  │  PostgreSQL 17  │                          │  (Python/JS)   │
+  └─────────────────┘                          └────────────────┘</pre>
+
+    <div class="section-heading">
+        <h2>빠른 시작</h2>
+        <p>인스톨러로 5분 안에, 또는 소스에서 직접 빌드.</p>
+    </div>
+
+    <div class="feature-grid" style="grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));">
+        <article class="feature-card">
+            <div class="feature-icon">📦</div>
+            <h3>1 · 인스톨러 사용 (권장)</h3>
+            <p>GitHub Releases에서 Tauri 기반 독립형 인스톨러를 내려받고 실행합니다. Python / Node.js는 사바쨩이 포터블로 자동 부트스트랩합니다.</p>
+            <a class="btn btn-outline" href="https://github.com/WareAoba/saba-chan/releases" target="_blank" rel="noopener" style="margin-top: 14px;">최신 릴리스로 이동</a>
+        </article>
+
+        <article class="feature-card">
+            <div class="feature-icon">🛠️</div>
+            <h3>2 · 소스에서 빌드</h3>
+            <p>Windows에서 한 번의 PowerShell 스크립트로 Rust 워크스페이스 · Electron GUI를 병렬 빌드합니다.</p>
+            <pre style="margin-top: 14px;"><code>git clone https://github.com/WareAoba/saba-chan.git
+cd saba-chan
+.\scripts\build-windows.ps1</code></pre>
+        </article>
+
+        <article class="feature-card">
+            <div class="feature-icon">🚀</div>
+            <h3>3 · 서버 추가 &amp; 실행</h3>
+            <p>GUI에서 <strong>+ 서버 추가</strong> 버튼으로 게임을 선택하고 설정을 입력하면 끝. CLI에서는 <code>:instance create</code> 를 입력하면 Step 위저드가 시작됩니다.</p>
+        </article>
+    </div>
+
+    <div class="callout" style="margin-top: 40px;">
+        <div class="callout-title">ℹ️ 자세한 사용법은 사용자 가이드에서</div>
+        <p>GUI / CLI 화면 구성, 모듈 · 익스텐션 관리, REST API 레퍼런스, 디스코드 봇 명령어, 설정 파일, 문제 해결까지 모든 내용을 <a href="./guide.html">공식 사용자 가이드</a>에 담았습니다.</p>
+    </div>
+
+    <div class="section-heading">
+        <h2>기술 스택</h2>
+        <p>각 컴포넌트에 알맞은 도구를 선택해 조합했습니다.</p>
+    </div>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>컴포넌트</th>
+                    <th>실행 파일</th>
+                    <th>언어 / 런타임</th>
+                    <th>프레임워크 / 주요 의존성</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Core Daemon</strong></td>
+                    <td><code>saba-core.exe</code></td>
+                    <td>Rust (2021)</td>
+                    <td>Tokio · Axum · Serde · tracing</td>
+                </tr>
+                <tr>
+                    <td><strong>Desktop GUI</strong></td>
+                    <td><code>Saba-chan.exe</code></td>
+                    <td>Node.js 18+</td>
+                    <td>Electron 28 · React 18 · Vite · Zustand · i18next</td>
+                </tr>
+                <tr>
+                    <td><strong>Terminal CLI</strong></td>
+                    <td><code>saba-chan-cli.exe</code></td>
+                    <td>Rust</td>
+                    <td>Ratatui · Crossterm</td>
+                </tr>
+                <tr>
+                    <td><strong>Updater</strong></td>
+                    <td><code>saba-chan-updater.exe</code></td>
+                    <td>Rust</td>
+                    <td>Tauri GUI · sha2</td>
+                </tr>
+                <tr>
+                    <td><strong>Installer</strong></td>
+                    <td><code>saba-chan-installer.exe</code></td>
+                    <td>Rust</td>
+                    <td>Tauri 2</td>
+                </tr>
+                <tr>
+                    <td><strong>Python Runtime</strong></td>
+                    <td><code>python-env/</code></td>
+                    <td>Python 3.x</td>
+                    <td>모듈 lifecycle 실행 · ffmpeg / yt-dlp 부트스트랩</td>
+                </tr>
+                <tr>
+                    <td><strong>Relay (server-chan)</strong></td>
+                    <td>별도 배포</td>
+                    <td>Node.js</td>
+                    <td>Fastify 5 · PostgreSQL 17 · argon2id · HMAC-SHA256</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</main>
+
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <div>🐟 <strong>사바쨩</strong> — Made with love and fish.</div>
+        <div class="site-footer-links">
+            <a href="./guide.html">사용자 가이드</a>
+            <a href="https://github.com/WareAoba/saba-chan" target="_blank" rel="noopener">GitHub</a>
+            <a href="https://github.com/WareAoba/saba-chan/issues" target="_blank" rel="noopener">이슈 트래커</a>
+            <a href="https://github.com/WareAoba/saba-chan/releases" target="_blank" rel="noopener">릴리스</a>
+            <a href="https://github.com/WareAoba/saba-chan/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+        </div>
+        <div style="margin-top: 10px; font-size: 0.8rem;">© <span data-year></span> WareAoba · Korean documentation</div>
+    </div>
+</footer>
+
+<script src="./assets/script.js"></script>
+</body>
+</html>

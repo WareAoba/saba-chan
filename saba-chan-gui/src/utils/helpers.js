@@ -20,10 +20,9 @@ export const safeShowToast = (message, type, duration, options) => {
     if (!message) return null;
     if (typeof window.showToast === 'function') {
         return window.showToast(message, type, duration, options);
-    } else {
-        console.warn('[Toast] window.showToast not ready, message:', message);
-        return null;
     }
+    console.warn('[Toast] window.showToast not ready, message:', message);
+    return null;
 };
 
 /**
@@ -52,10 +51,7 @@ export const waitForDaemon = async (timeout = 10000) => {
     while (Date.now() - start < timeout) {
         try {
             const status = await window.api.daemonStatus();
-            if (status.running) {
-                console.log('✓ Daemon is ready');
-                return true;
-            }
+            if (status.running) return true;
         } catch (_err) {
             // ignore
         }
@@ -64,98 +60,40 @@ export const waitForDaemon = async (timeout = 10000) => {
     throw new Error('Daemon startup timeout');
 };
 
+/** 지정한 조건이 될 때까지 fn을 반복 호출한다. 조건을 만족한 결과를, 시간 초과 시 null을 반환한다. */
+export const pollUntil = async (fn, isDone, { intervalMs = 500, maxAttempts = 20 } = {}) => {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        try {
+            const result = await fn();
+            if (isDone(result)) return result;
+        } catch (_err) {
+            // 일시 오류 — 계속 폴링
+        }
+    }
+    return null;
+};
+
+const TIMEOUT_PATTERN = /ETIMEDOUT|timeout of \d+ms exceeded/i;
+
+/** axios/네트워크 타임아웃 메시지인지 — 반복 폴링에서 소음성 토스트를 거를 때 사용 */
+export const isTimeoutError = (errorMessage) => TIMEOUT_PATTERN.test(String(errorMessage || ''));
+
 /**
- * Creates an error translator function bound to the given i18n `t` function.
- * Maps common backend error messages to user-friendly i18n translations.
+ * 오류 메시지를 사용자에게 보여줄 문자열로 바꾸는 함수를 만든다.
+ * 데몬·main이 준 메시지는 그대로 보여준다. 원시 시스템 오류 코드(ECONNREFUSED 등)와
+ * 빈 메시지만 번역 문구로 바꾼다. 반환값은 항상 비어 있지 않은 문자열이다.
  * @param {Function} t - i18next translation function
- * @returns {Function} translateError(errorMessage) => translated string
  */
 export function createTranslateError(t) {
     return (errorMessage) => {
-        if (!errorMessage) return t('errors.unknown_error');
-
-        const msg = String(errorMessage);
-
-        // File path errors
-        if (msg.includes('Executable not found') || msg.includes('executable not found')) {
-            return t('errors.executable_not_found');
-        }
-        if (msg.includes('No such file or directory')) {
-            return t('errors.file_not_found');
-        }
-        if (msg.includes('Permission denied')) {
-            return t('errors.permission_denied');
-        }
-
-        // Network errors
-        if (msg.includes('ECONNREFUSED')) {
-            return t('errors.daemon_connection_refused');
-        }
-        if (msg.includes('ETIMEDOUT') || msg.includes('timeout') && msg.includes('exceeded')) {
-            return null;  // suppress noisy timeout toasts (provisioning, Docker, etc.)
-        }
-        if (msg.includes('ENOTFOUND')) {
-            return t('errors.server_not_found');
-        }
-        if (msg.includes('Network Error') || msg.includes('network error')) {
-            return t('errors.network_error');
-        }
-
-        // Server start/stop errors
-        if (msg.includes('Module failed to start')) {
-            return t('errors.module_failed_to_start');
-        }
-        if (msg.includes('Failed to stop')) {
-            return t('errors.failed_to_stop');
-        }
-        if (msg.includes('Already running')) {
-            return t('errors.already_running');
-        }
-        if (msg.includes('Not running')) {
-            return t('errors.not_running');
-        }
-
-        // Process errors
-        if (msg.includes('Process not found')) {
-            return t('errors.process_not_found');
-        }
-        if (msg.includes('Process crashed')) {
-            return t('errors.process_crashed');
-        }
-
-        // Config errors
-        if (msg.includes('Invalid configuration') || msg.includes('invalid config')) {
-            return t('errors.invalid_configuration');
-        }
-        if (msg.includes('Missing required field')) {
-            return t('errors.missing_required_field');
-        }
-
-        // Module errors
-        if (msg.includes('Module not found')) {
-            return t('errors.module_not_found');
-        }
-        if (msg.includes('Failed to load module')) {
-            return t('errors.failed_to_load_module');
-        }
-
-        // Discord errors
-        if (msg.includes('Invalid token') || msg.includes('invalid token')) {
-            return t('errors.invalid_token');
-        }
-        if (msg.includes('Bot connection failed')) {
-            return t('errors.network_error');
-        }
-        if (msg.includes('cloud_token_not_found')) {
-            return t('errors.cloud_token_not_found');
-        }
-        // Bot process exit — translate to user-friendly crash message
-        if (msg.includes('Bot process exited with code') || msg.includes('exited with code')) {
-            return t('errors.process_crashed');
-        }
-
-        // Fallback: log the original for debugging, return generic message
-        console.warn('[translateError] Unmatched error message:', msg);
-        return t('errors.generic_error', { defaultValue: 'An unexpected error occurred.' });
+        const msg = errorMessage == null ? '' : String(errorMessage).trim();
+        if (!msg || msg === 'null' || msg === 'undefined') return t('errors.unknown_error');
+        if (msg.includes('ECONNREFUSED')) return t('errors.daemon_connection_refused');
+        if (TIMEOUT_PATTERN.test(msg)) return t('errors.request_timeout');
+        if (msg.includes('ENOTFOUND')) return t('errors.server_not_found');
+        if (msg === 'Network Error') return t('errors.network_error');
+        if (msg.includes('cloud_token_not_found')) return t('errors.cloud_token_not_found');
+        return msg;
     };
 }

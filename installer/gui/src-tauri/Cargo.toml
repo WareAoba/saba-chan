@@ -1,8 +1,8 @@
 [package]
 name = "saba-chan-installer"
-version = "0.1.1"
-edition = "2021"
-authors = ["WareAoba"]
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
 description = "Standalone installer/uninstaller GUI for Saba-chan (Tauri)"
 
 [lib]
@@ -22,12 +22,9 @@ tokio = { version = "1", features = ["full"] }
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
-reqwest = { version = "0.11", features = ["json", "stream"] }
-zip = "0.6"
 sys-locale = "0.3"
 saba-chan-updater-lib = { path = "../../../updater" }
-futures-util = "0.3"
-toml = "0.8"
+reqwest = "0.12"
 dirs = "5"
 
 [target.'cfg(windows)'.dependencies]
@@ -39,5 +36,10 @@ windows-sys = { version = "0.59", features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
     "Win32_System_Com",
+    "Win32_Security",
+    "Win32_Security_Authorization",
 ] }
 winreg = "0.52"
+
+[dev-dependencies]
+tempfile = "3"

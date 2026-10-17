@@ -110,19 +110,40 @@ export function ExtensionProvider({ children }) {
     /** 현재 설치 진행 중인 익스텐션 ID 집합 */
     const [installingIds, setInstallingIds] = useState(new Set());
 
-    // 익스텐션 목록 가져오기
+    // 익스텐션 목록 가져오기 — 성공 여부 반환
     const fetchExtensions = useCallback(async () => {
         try {
             const data = await window.api.extensionList();
+            // 명시적 에러 응답이면 실패로 처리 (빈 목록으로 위장하지 않음)
+            if (data?.error) throw new Error(data.error);
             setExtensions(data.extensions || []);
+            return true;
         } catch (e) {
             console.warn('[Extension] Failed to fetch extensions:', e);
+            return false;
         }
     }, []);
 
-    // 초기 로드
+    // 초기 로드 — 콜드부트 시 데몬 IPC 준비가 수 초 늦을 수 있어
+    // 성공할 때까지 재시도한다 (botConfigLoad의 재시도와 같은 이유)
     useEffect(() => {
-        fetchExtensions();
+        let cancelled = false;
+        (async () => {
+            const maxAttempts = 15;
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                if (await fetchExtensions()) return;
+                if (cancelled) return;
+                if (attempt < maxAttempts) {
+                    console.warn(`[Extension] Extension list unavailable, retrying (${attempt}/${maxAttempts})...`);
+                    await new Promise((r) => setTimeout(r, 1000));
+                }
+                if (cancelled) return;
+            }
+            console.error('[Extension] Failed to load extension list after retries');
+        })();
+        return () => {
+            cancelled = true;
+        };
     }, [fetchExtensions]);
 
     // 활성 익스텐션 변경 시 GUI 번들 로드 & 슬롯 등록
@@ -151,7 +172,7 @@ export function ExtensionProvider({ children }) {
                     delete window[globalName];
                     loadedRef.current.delete(ext.id);
                     // 기존 <style> 태그 제거
-                    document.querySelectorAll(`style[data-extension="${ext.id}"]`).forEach((el) => el.remove());
+                    document.querySelectorAll(`style[data-extension="${ext.id}"]`).forEach((el) => { el.remove(); });
                     console.info(`[Extension] Bundle invalidated for '${ext.id}' (${prevVersion} → ${ext.version})`);
                 }
 

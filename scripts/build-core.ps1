@@ -10,6 +10,13 @@ $root = Split-Path $PSScriptRoot -Parent
 
 Push-Location $root
 try {
+    # ── 0/N: \ubc84\uc804 \ub3d9\uae30\ud654 \uac80\uc99d (Cargo workspace SoT \u2194 GUI npm) ──
+    Write-Host "[0/N] sync-versions check ..." -ForegroundColor Cyan
+    & (Join-Path $PSScriptRoot 'sync-versions.ps1') -Check
+    if ($LASTEXITCODE -ne 0) {
+        throw "Version mismatch detected. Run: scripts/sync-versions.ps1"
+    }
+
     if ($Check) {
         Write-Host "[1/1] cargo check ..." -ForegroundColor Cyan
         cargo check

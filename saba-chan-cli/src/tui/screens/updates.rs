@@ -123,7 +123,8 @@ pub(super) fn handle_updates_select(app: &mut App, sel: usize) {
                     Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
                 }
             });
-            app.flash("업데이트 확인 중...");
+            let msg = app.i18n.t("flash.checking_update");
+            app.flash(&msg);
         }
         Some('s') => { // Status
             tokio::spawn(async move {
@@ -162,7 +163,8 @@ pub(super) fn handle_updates_select(app: &mut App, sel: usize) {
                     Err(e) => push_out(&buf, vec![Out::Err(format!("✗ Download: {}", e))]),
                 }
             });
-            app.flash("다운로드 & 적용 중...");
+            let msg = app.i18n.t("flash.downloading_applying");
+            app.flash(&msg);
         }
         Some('d') => { // Download
             tokio::spawn(async move {
@@ -174,7 +176,8 @@ pub(super) fn handle_updates_select(app: &mut App, sel: usize) {
                     Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
                 }
             });
-            app.flash("다운로드 중...");
+            let msg = app.i18n.t("flash.downloading");
+            app.flash(&msg);
         }
         Some('a') => { // Apply
             tokio::spawn(async move {
@@ -186,9 +189,11 @@ pub(super) fn handle_updates_select(app: &mut App, sel: usize) {
                     Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
                 }
             });
-            app.flash("업데이트 적용 중...");
+            let msg = app.i18n.t("flash.applying_update");
+            app.flash(&msg);
         }
         Some('C') => { // Config
+            let config_hint = app.i18n.t("misc.set_config_hint");
             tokio::spawn(async move {
                 match client.get_update_config().await {
                     Ok(v) => {
@@ -199,24 +204,27 @@ pub(super) fn handle_updates_select(app: &mut App, sel: usize) {
                             }
                         }
                         lines.push(Out::Blank);
-                        lines.push(Out::Info("메뉴에서 'Set Config'으로 변경 가능".into()));
+                        lines.push(Out::Info(config_hint));
                         push_out(&buf, lines);
                     }
                     Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
                 }
             });
-            app.flash("설정 조회 중...");
+            let msg = app.i18n.t("flash.loading_config");
+            app.flash(&msg);
         }
         Some('I') => { // Integrity Check
+            let ok_msg = app.i18n.t("misc.integrity_ok");
+            let bad_msg = app.i18n.t("misc.integrity_bad");
             tokio::spawn(async move {
                 match client.check_update_integrity().await {
                     Ok(v) => {
                         let mut lines = vec![Out::Ok("Integrity Check Result:".into())];
                         let ok = v["ok"].as_bool().unwrap_or(false);
                         if ok {
-                            lines.push(Out::Ok("  ✓ 모든 파일이 정상입니다.".into()));
+                            lines.push(Out::Ok(ok_msg));
                         } else {
-                            lines.push(Out::Err("  ✗ 무결성 문제가 발견되었습니다.".into()));
+                            lines.push(Out::Err(bad_msg));
                             if let Some(issues) = v["issues"].as_array() {
                                 for issue in issues {
                                     let file = issue["file"].as_str().unwrap_or("?");
@@ -233,11 +241,12 @@ pub(super) fn handle_updates_select(app: &mut App, sel: usize) {
                     Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
                 }
             });
-            app.flash("무결성 검사 중...");
+            let msg = app.i18n.t("flash.integrity_check");
+            app.flash(&msg);
         }
         Some('S') => { // Set Config → 인라인 Input
             app.input_mode = InputMode::InlineInput {
-                prompt: "업데이터 설정 (key=value)".into(),
+                prompt: app.i18n.t("prompt.updater_config"),
                 value: String::new(),
                 cursor: 0,
                 on_submit: InlineAction::UpdateSet,

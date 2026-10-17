@@ -13,10 +13,9 @@ pub(super) fn build_dashboard_menu(app: &App) -> Vec<MenuItem> {
         MenuItem::new(&t("menu.servers"), Some('1'), &t("screen.server_console")),
         MenuItem::new(&t("menu.modules"), Some('2'), &t("screen.module_info")),
         MenuItem::new("Extensions", Some('3'), &t("screen.ext_installed")),
-        MenuItem::new(&t("menu.bot"), Some('4'), &t("screen.bot_token")),
-        MenuItem::new(&t("menu.settings"), Some('5'), &t("screen.settings_language")),
-        MenuItem::new(&t("menu.updates"), Some('6'), &t("screen.update_check")),
-        MenuItem::new(&t("menu.daemon"), Some('7'), &t("screen.daemon_status")),
+        MenuItem::new(&t("menu.settings"), Some('4'), &t("screen.settings_language")),
+        MenuItem::new(&t("menu.updates"), Some('5'), &t("screen.update_check")),
+        MenuItem::new(&t("menu.daemon"), Some('6'), &t("screen.daemon_status")),
         MenuItem::new(&t("menu.command_mode"), Some(':'), &t("screen.server_execute")),
     ]
 }
@@ -50,11 +49,10 @@ pub(super) fn handle_dashboard_select(app: &mut App, sel: usize) {
         }
         1 => app.push_screen(Screen::Modules),
         2 => app.push_screen(Screen::Extensions),
-        3 => app.push_screen(Screen::Bot),
-        4 => app.push_screen(Screen::Settings),
-        5 => app.push_screen(Screen::Updates),
-        6 => app.push_screen(Screen::Daemon),
-        7 => {
+        3 => app.push_screen(Screen::Settings),
+        4 => app.push_screen(Screen::Updates),
+        5 => app.push_screen(Screen::Daemon),
+        6 => {
             // Console mode
             app.push_screen(Screen::CommandMode);
             app.input_mode = InputMode::Command;

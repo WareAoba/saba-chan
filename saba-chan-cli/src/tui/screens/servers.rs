@@ -49,7 +49,7 @@ pub(super) fn build_servers_menu(app: &App) -> Vec<MenuItem> {
         items.push(MenuItem::new("(No instances configured)", None, "").with_enabled(false));
     }
 
-    items.push(MenuItem::new("+ New Instance", Some('n'), "새 인스턴스 생성"));
+    items.push(MenuItem::new("+ New Instance", Some('n'), &app.i18n.t("misc.new_instance_desc")));
     items
 }
 

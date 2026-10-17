@@ -26,9 +26,14 @@ pub(super) fn build_server_detail_menu(app: &App, name: &str) -> Vec<MenuItem> {
         MenuItem::new(&format!("⚙ {}", t("screen.server_settings")), Some('e'), &t("screen.server_settings")),
     ]);
 
-    items.push(MenuItem::new(&format!("💻 {}", t("screen.server_execute")), Some('x'), &t("screen.server_execute")));
+    // server.properties 편집기 (Minecraft 등 .properties 파일 기반 모듈)
+    items.push(MenuItem::new(
+        "📝 Edit server.properties",
+        Some('p'),
+        &t("misc.edit_properties_desc"),
+    ));
 
-    // ── RCON 명령어 (모듈의 commands에 rcon method가 있는 경우만) ──
+    items.push(MenuItem::new(&format!("💻 {}", t("screen.server_execute")), Some('x'), &t("screen.server_execute")));    // ── RCON 명령어 (모듈의 commands에 rcon method가 있는 경우만) ──
     let module_name = server.map(|s| s.module.as_str()).unwrap_or("");
     let has_rcon = app.registry.get_module(module_name)
         .map(|m| m.has_rcon_commands())
@@ -108,10 +113,10 @@ pub(super) fn build_server_detail_menu(app: &App, name: &str) -> Vec<MenuItem> {
         }
     }
 
-    items.push(MenuItem::new("🔍 Diagnose", Some('d'), "서버 진단"));
+    items.push(MenuItem::new("🔍 Diagnose", Some('d'), &t("misc.diagnose_desc")));
 
-    items.push(MenuItem::new("⚠ Reset Instance", Some('W'), "인스턴스 리셋 (월드/설정 삭제)"));
-    items.push(MenuItem::new("🗑 Delete Instance", Some('D'), "인스턴스 삭제"));
+    items.push(MenuItem::new("⚠ Reset Instance", Some('W'), &t("misc.reset_desc")));
+    items.push(MenuItem::new("🗑 Delete Instance", Some('D'), &t("misc.delete_desc")));
     items
 }
 
@@ -149,7 +154,8 @@ pub(super) fn handle_server_detail_select(
                     }
                 });
             }
-            app.flash("명령 실행 중...");
+            let msg = app.i18n.t("flash.running_command");
+            app.flash(&msg);
         }
         Some('r') => { // Restart (only shown when running)
             tokio::spawn(async move {
@@ -163,44 +169,22 @@ pub(super) fn handle_server_detail_select(
                     Err(e) => push_out(&buf, vec![Out::Err(format!("✗ Start: {}", e))]),
                 }
             });
-            app.flash("재시작 중...");
+            let msg = app.i18n.t("flash.restarting");
+            app.flash(&msg);
         }
-        Some('c') => { // Console
-            let console_name = name.clone();
-            let console_id = id.clone();
-            app.console_lines.clear();
-            app.console_input.clear();
-            app.console_scroll = 0;
+        Some('c') => { // Console — 탭으로 연다 (동일 서버 탭이 있으면 재사용)
+            let tab_source = super::super::tabs::TabSource::Server {
+                id: id.clone(),
+                name: name.clone(),
+                module: module_name.clone(),
+            };
+            let tid = app.tabs.open(tab_source, app.client.clone(), app.tab_tx.clone());
+            app.focus = Focus::Tab(tid);
             app.push_screen(Screen::ServerConsole {
-                name: console_name.clone(),
-                id: console_id.clone(),
+                name: name.clone(),
+                id: id.clone(),
             });
             app.input_mode = InputMode::Console;
-
-            // 콘솔 데이터 비동기 로드
-            let buf2 = app.async_out.clone();
-            let client2 = app.client.clone();
-            tokio::spawn(async move {
-                let iid = find_instance_id(&client2, &console_name).await;
-                if let Some(iid) = iid {
-                    match client2.get_console(&iid).await {
-                        Ok(data) => {
-                            let mut lines_out = vec![];
-                            if let Some(lines) = data.get("lines").and_then(|v| v.as_array()) {
-                                for line in lines.iter().rev().take(200).collect::<Vec<_>>().into_iter().rev() {
-                                    lines_out.push(Out::Text(line.as_str().unwrap_or("").into()));
-                                }
-                            } else if let Some(output) = data.get("output").and_then(|v| v.as_str()) {
-                                for line in output.lines().rev().take(200).collect::<Vec<_>>().into_iter().rev() {
-                                    lines_out.push(Out::Text(line.into()));
-                                }
-                            }
-                            push_out(&buf2, lines_out);
-                        }
-                        Err(e) => push_out(&buf2, vec![Out::Err(format!("✗ Console: {}", e))]),
-                    }
-                }
-            });
         }
         Some('e') => { // Settings
             app.editor_fields.clear();
@@ -221,10 +205,28 @@ pub(super) fn handle_server_detail_select(
                 super::load_instance_settings(&client2, &inst_name, &mod_name, &buf2).await;
             });
         }
+        Some('p') => { // Edit server.properties
+            app.editor_fields.clear();
+            app.editor_selected = 0;
+            app.editor_changes.clear();
+            app.push_screen(Screen::ServerProperties {
+                name: name.clone(),
+                id: id.clone(),
+            });
+
+            // 비동기로 properties 파일 로드
+            let buf2 = app.async_out.clone();
+            let client2 = app.client.clone();
+            let inst_name = name.clone();
+            let inst_id = id.clone();
+            tokio::spawn(async move {
+                super::load_server_properties(&client2, &inst_name, &inst_id, &buf2).await;
+            });
+        }
         Some('x') => { // Execute Command → 인라인 Input
             let iid = if id.is_empty() { name.to_string() } else { id.to_string() };
             app.input_mode = InputMode::InlineInput {
-                prompt: format!("서버 명령어 ({})", name),
+                prompt: app.i18n.t_with("prompt.server_command", &[("name", &name)]),
                 value: String::new(),
                 cursor: 0,
                 on_submit: InlineAction::ExecuteCommand { instance_id: iid },
@@ -233,7 +235,7 @@ pub(super) fn handle_server_detail_select(
         Some('R') => { // RCON Command → 인라인 Input
             let srv_name = name.clone();
             app.input_mode = InputMode::InlineInput {
-                prompt: format!("RCON 명령어 ({})", name),
+                prompt: app.i18n.t_with("prompt.rcon_command", &[("name", &name)]),
                 value: String::new(),
                 cursor: 0,
                 on_submit: InlineAction::RconCommand { instance_name: srv_name },
@@ -260,7 +262,8 @@ pub(super) fn handle_server_detail_select(
                     push_out(&buf, vec![Out::Err(format!("✗ Instance '{}' not found", name))]);
                 }
             });
-            app.flash("버전 조회 중...");
+            let msg = app.i18n.t("flash.checking_version");
+            app.flash(&msg);
         }
         Some('u') => { // Check Update
             tokio::spawn(async move {
@@ -288,7 +291,8 @@ pub(super) fn handle_server_detail_select(
                     push_out(&buf, vec![Out::Err(format!("✗ Instance '{}' not found", name))]);
                 }
             });
-            app.flash("업데이트 확인 중...");
+            let msg = app.i18n.t("flash.checking_update");
+            app.flash(&msg);
         }
         Some('E') => { // Accept EULA (Minecraft)
             tokio::spawn(async move {
@@ -302,7 +306,8 @@ pub(super) fn handle_server_detail_select(
                     push_out(&buf, vec![Out::Err(format!("✗ Instance '{}' not found", name))]);
                 }
             });
-            app.flash("EULA 수락 중...");
+            let msg = app.i18n.t("flash.eula_accepting");
+            app.flash(&msg);
         }
         Some('V') => { // Validate
             tokio::spawn(async move {
@@ -334,7 +339,8 @@ pub(super) fn handle_server_detail_select(
                     push_out(&buf, vec![Out::Err(format!("✗ Instance '{}' not found", name))]);
                 }
             });
-            app.flash("검증 중...");
+            let msg = app.i18n.t("flash.validating");
+            app.flash(&msg);
         }
         Some('d') => { // Diagnose
             tokio::spawn(async move {
@@ -358,11 +364,12 @@ pub(super) fn handle_server_detail_select(
                     }
                 }
             });
-            app.flash("진단 중...");
+            let msg = app.i18n.t("flash.diagnosing");
+            app.flash(&msg);
         }
         Some('W') => { // Reset Instance
             app.input_mode = InputMode::Confirm {
-                prompt: format!("Reset instance '{}'? This will DELETE world data, configs, and logs!", name),
+                prompt: app.i18n.t_with("flash.reset_instance_confirm", &[("name", &name)]),
                 action: ConfirmAction::ResetServer(id.to_string()),
             };
         }

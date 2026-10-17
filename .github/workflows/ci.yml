@@ -1,13 +1,12 @@
 # ═══════════════════════════════════════════════════════════
-# 통합 CI — Lint · Test · Build
+# 통합 CI — Lint · Test
 # ═══════════════════════════════════════════════════════════
 #
 # 구조:
-#   1) rust      — Clippy + build + test  (Windows / Ubuntu)
-#   2) js-tests  — Electron GUI (Vitest) + Discord Bot
-#   3) build     — Release 빌드 + 아티팩트 업로드 (main push / tag 시)
+#   1) rust      — Clippy(-D warnings) + build + test  (Windows / Ubuntu)
+#                  + Python 설치(e2e_cross_component에서 lifecycle.py 실행용)
+#   2) js-tests  — Electron GUI (Vitest)
 #
-# quick-test.yml: feature branch에서 JS 파일만 변경 시 경량 테스트
 # release.yml:   릴리즈 패키징 & manifest 생성
 # ═══════════════════════════════════════════════════════════
 
@@ -23,6 +22,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTC_WRAPPER: ''
 
 jobs:
   # ─────────────────────────────────────────
@@ -49,6 +49,20 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Setup Python (for lifecycle.py e2e)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Verify Python is discoverable
+        shell: bash
+        run: |
+          python --version
+          python3 --version || true
+
+      - name: Python bridge and test runner
+        run: python -m unittest discover -s tests -p "test_*.py"
 
       - name: Cargo cache
         uses: actions/cache@v4
@@ -84,7 +98,7 @@ jobs:
           sed -i 's/^[[:space:]]*//' modules/test-module/lifecycle.py
 
       - name: Clippy
-        run: cargo clippy --workspace -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Build
         run: cargo build --workspace
@@ -93,7 +107,7 @@ jobs:
         run: cargo test --workspace
 
   # ─────────────────────────────────────────
-  # 2. JavaScript — GUI + Discord Bot
+  # 2. JavaScript — GUI
   # ─────────────────────────────────────────
   js-tests:
     name: JS Tests
@@ -105,20 +119,29 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: |
             saba-chan-gui/package-lock.json
-            discord_bot/package-lock.json
+            saba-chan-mcp/package-lock.json
 
       - name: Install & Test — Electron GUI
         working-directory: saba-chan-gui
         run: |
           npm ci
           npx vitest run
+          npm run lint
+          npm run build
 
-      - name: Install & Test — Discord Bot
-        working-directory: discord_bot
+      - name: Install, test and build MCP
+        working-directory: saba-chan-mcp
         run: |
           npm ci
           npm test
+          npm run build
+
+      - name: Installer and updater scripts
+        run: |
+          node --check installer/gui/src/installer.js
+          node --check updater/gui/src/updater.js
+          node --test updater/gui/tests/apply-listener.test.cjs

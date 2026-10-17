@@ -39,6 +39,15 @@ type ManagerState = Arc<RwLock<UpdateManager>>;
 struct ApplyConfig {
     relaunch_exe: Option<String>,
     relaunch_extra: Vec<String>,
+    spawned_by: String,
+}
+
+#[derive(Debug, Clone)]
+struct LaunchArgs {
+    relaunch_exe: Option<String>,
+    relaunch_extra: Vec<String>,
+    spawned_by: String,
+    launch_token: String,
 }
 
 /// Apply 진행 이벤트 페이로드
@@ -62,6 +71,7 @@ async fn get_apply_mode(config: tauri::State<'_, ApplyConfig>) -> Result<serde_j
         "enabled": true,
         "components": [],
         "relaunch": config.relaunch_exe.is_some(),
+        "spawned_by": config.spawned_by,
     }))
 }
 
@@ -90,49 +100,45 @@ async fn start_apply(
 
     // 2. apply-targets.json에서 적용 대상 결정
     let mut mgr = manager.write().await;
-    let target_keys: Vec<String> = mgr
-        .load_updater_apply_targets()
-        .unwrap_or_default();
+    // 데몬이 `save_updater_apply_targets(&needs_updater)`로 기록한 정확한 목록을 로드.
+    // 파일이 없거나 읽기 실패 시 **전체 pending 적용으로 폴백하지 않는다** — 오동작의 근원.
+    // 데몬과의 계약을 지키지 못한 상태이므로 즉시 오류 반환.
+    let target_keys: Vec<String> = match mgr.load_updater_apply_targets() {
+        Ok(keys) if !keys.is_empty() => keys,
+        Ok(_) => {
+            let msg = "apply-targets.json is empty — daemon did not specify any components to apply".to_string();
+            emit_progress(&app, "error", &msg, 0, &[]);
+            return Err(msg);
+        }
+        Err(e) => {
+            let msg = format!("Failed to load apply-targets.json (daemon may have failed to persist it): {}", e);
+            emit_progress(&app, "error", &msg, 0, &[]);
+            return Err(msg);
+        }
+    };
 
     tracing::info!("[Apply] Targets: {:?}", target_keys);
 
-    // 3. 적용
+    // 3. 적용 — 개별 컴포넌트 순차 적용 (진행률 이벤트 발행)
     let mut applied = Vec::new();
+    let total = target_keys.len();
+    for (i, key) in target_keys.iter().enumerate() {
+        let pct = 30 + ((i as i32) * 60 / std::cmp::max(total as i32, 1));
+        emit_progress(&app, "applying",
+            &format!("Applying {} ({}/{})...", key, i + 1, total), pct, &applied);
 
-    if target_keys.is_empty() {
-        // apply-targets.json이 없거나 비어있으면 전체 적용
-        let total = mgr.get_pending_components().len();
-        emit_progress(&app, "applying", &format!("Applying {} components...", total), 50, &[]);
-
-        match mgr.apply_updates().await {
-            Ok(a) => applied = a,
-            Err(e) => {
-                let msg = format!("Apply failed: {}", e);
-                emit_progress(&app, "error", &msg, 0, &[]);
-                return Err(msg);
+        match mgr.apply_single_component(
+            &saba_chan_updater_lib::Component::from_manifest_key(key),
+        ).await {
+            Ok(result) if result.success => {
+                tracing::info!("[Apply] {} ✓", key);
+                applied.push(key.clone());
             }
-        }
-    } else {
-        // 개별 컴포넌트 순차 적용 (진행률 이벤트 발행)
-        let total = target_keys.len();
-        for (i, key) in target_keys.iter().enumerate() {
-            let pct = 30 + ((i as i32) * 60 / std::cmp::max(total as i32, 1));
-            emit_progress(&app, "applying",
-                &format!("Applying {} ({}/{})...", key, i + 1, total), pct, &applied);
-
-            match mgr.apply_single_component(
-                &saba_chan_updater_lib::Component::from_manifest_key(key),
-            ).await {
-                Ok(result) if result.success => {
-                    tracing::info!("[Apply] {} ✓", key);
-                    applied.push(key.clone());
-                }
-                Ok(result) => {
-                    tracing::warn!("[Apply] {} failed: {}", key, result.message);
-                }
-                Err(e) => {
-                    tracing::error!("[Apply] {} error: {}", key, e);
-                }
+            Ok(result) => {
+                tracing::warn!("[Apply] {} failed: {}", key, result.message);
+            }
+            Err(e) => {
+                tracing::error!("[Apply] {} error: {}", key, e);
             }
         }
     }
@@ -250,6 +256,84 @@ fn normalize_tag(input: &str) -> Option<String> {
     Some(constants::resolve_locale(input))
 }
 
+fn parse_launch_args(args: &[String]) -> Result<LaunchArgs, String> {
+    // --apply 필수
+    if !args.iter().any(|a| a == "--apply") {
+        return Err("missing --apply".to_string());
+    }
+
+    // --spawned-by <gui|cli|daemon> 필수
+    let spawned_by = if let Some(pos) = args.iter().position(|a| a == "--spawned-by") {
+        args.get(pos + 1)
+            .cloned()
+            .ok_or_else(|| "missing value for --spawned-by".to_string())?
+    } else {
+        return Err("missing --spawned-by".to_string());
+    };
+
+    if !matches!(spawned_by.as_str(), "gui" | "cli" | "daemon") {
+        return Err(format!("invalid --spawned-by: {}", spawned_by));
+    }
+
+    // --launch-token <token> 필수 — 데몬이 발급한 단일 사용 티켓
+    let launch_token = if let Some(pos) = args.iter().position(|a| a == "--launch-token") {
+        args.get(pos + 1)
+            .cloned()
+            .ok_or_else(|| "missing value for --launch-token".to_string())?
+    } else {
+        return Err("missing --launch-token".to_string());
+    };
+
+    if launch_token.trim().is_empty() {
+        return Err("empty --launch-token".to_string());
+    }
+
+    // 인자 파싱: --apply [--relaunch <exe> [extra...]]
+    let apply_pos = args
+        .iter()
+        .position(|a| a == "--apply")
+        .ok_or_else(|| "missing --apply".to_string())?;
+    let after_apply = &args[apply_pos + 1..];
+
+    let relaunch_pos = after_apply.iter().position(|a| a == "--relaunch");
+    let (relaunch_exe, relaunch_extra) = match relaunch_pos {
+        Some(pos) => {
+            let rest = &after_apply[pos + 1..];
+            if rest.is_empty() {
+                (None, Vec::new())
+            } else {
+                // --relaunch 이후에 다른 알려진 플래그(--spawned-by, --launch-token)가
+                // 오면 extra_args로 포함되지 않도록 필터링한다.
+                let exe = rest[0].clone();
+                let tail = &rest[1..];
+                let mut extra = Vec::new();
+                let mut i = 0;
+                while i < tail.len() {
+                    match tail[i].as_str() {
+                        "--spawned-by" | "--launch-token" => {
+                            // 플래그 + 값 건너뛰기
+                            i += 2;
+                        }
+                        _ => {
+                            extra.push(tail[i].clone());
+                            i += 1;
+                        }
+                    }
+                }
+                (Some(exe), extra)
+            }
+        }
+        None => (None, Vec::new()),
+    };
+
+    Ok(LaunchArgs {
+        relaunch_exe,
+        relaunch_extra,
+        spawned_by,
+        launch_token,
+    })
+}
+
 /// install_root를 exe 자신의 경로에서 추론
 fn resolve_install_root_from_exe() -> Option<PathBuf> {
     std::env::current_exe().ok()?.parent().map(|p| p.to_path_buf())
@@ -333,14 +417,28 @@ fn spawn_detached(cmd: &str, extra_args: &[String]) -> Result<(), String> {
 pub fn run() {
     let args: Vec<String> = std::env::args().collect();
 
-    // --apply 필수 — 이 바이너리는 apply 전용
-    if !args.iter().any(|a| a == "--apply") {
+    let launch_args = match parse_launch_args(&args) {
+        Ok(v) => v,
+        Err(e) => {
         eprintln!("사바쨩 업데이터 — 업데이트 적용 전용");
         eprintln!();
-        eprintln!("사용법: saba-chan-updater --apply [--relaunch <exe> [extra...]]");
+            eprintln!("사용법: saba-chan-updater --apply --spawned-by <gui|cli|daemon> --launch-token <token> [--relaunch <exe> [extra...]]");
         eprintln!();
-        eprintln!("이 프로그램은 메인 GUI에서 자동으로 실행됩니다.");
-        eprintln!("직접 실행할 필요가 없습니다.");
+            eprintln!("이 프로그램은 메인 GUI/CLI/데몬에서 자동으로 실행됩니다.");
+            eprintln!("직접 실행하지 마세요. ({})", e);
+        std::process::exit(1);
+        }
+    };
+
+    // 스폰 인증 티켓 검증 — 데몬이 발급하지 않은 실행은 거부
+    if let Err(e) = saba_chan_updater_lib::launch_ticket::consume(
+        &launch_args.launch_token,
+        &launch_args.spawned_by,
+    ) {
+        eprintln!("사바쨩 업데이터 — 인증 실패");
+        eprintln!();
+        eprintln!("이 프로그램은 메인 GUI/CLI/데몬에서 자동으로 실행됩니다.");
+        eprintln!("직접 실행하지 마세요. ({})", e);
         std::process::exit(1);
     }
 
@@ -364,29 +462,25 @@ pub fn run() {
         .with_ansi(false)
         .init();
 
-    // 인자 파싱: --apply [--relaunch <exe> [extra...]]
-    let apply_pos = args.iter().position(|a| a == "--apply").unwrap();
-    let after_apply = &args[apply_pos + 1..];
+    let relaunch_exe = launch_args.relaunch_exe;
+    let relaunch_extra = launch_args.relaunch_extra;
+    let spawned_by = launch_args.spawned_by;
 
-    let relaunch_pos = after_apply.iter().position(|a| a == "--relaunch");
-    let (relaunch_exe, relaunch_extra) = match relaunch_pos {
-        Some(pos) => {
-            let rest = &after_apply[pos + 1..];
-            if rest.is_empty() {
-                (None, Vec::new())
-            } else {
-                (Some(rest[0].clone()), rest[1..].to_vec())
-            }
-        }
-        None => (None, Vec::new()),
-    };
-
-    tracing::info!("[Apply] Relaunch: {:?} {:?}", relaunch_exe, relaunch_extra);
+    tracing::info!(
+        "[Apply] Spawned by: {}, relaunch: {:?} {:?}",
+        spawned_by,
+        relaunch_exe,
+        relaunch_extra
+    );
 
     // GUI 프로세스 종료 대기
     std::thread::sleep(std::time::Duration::from_millis(500));
 
-    let apply_config = ApplyConfig { relaunch_exe, relaunch_extra };
+    let apply_config = ApplyConfig {
+        relaunch_exe,
+        relaunch_extra,
+        spawned_by,
+    };
 
     // install_root: exe 위치에서 자동 추론
     let mut cfg = config::load_config_for_gui();
@@ -442,4 +536,102 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_launch_args;
+
+    #[test]
+    fn parse_launch_args_requires_apply() {
+        let args = vec!["saba-chan-updater".to_string()];
+        let err = parse_launch_args(&args).unwrap_err();
+        assert!(err.contains("missing --apply"));
+    }
+
+    #[test]
+    fn parse_launch_args_requires_spawned_by() {
+        let args = vec!["saba-chan-updater".to_string(), "--apply".to_string()];
+        let err = parse_launch_args(&args).unwrap_err();
+        assert!(err.contains("missing --spawned-by"));
+    }
+
+    #[test]
+    fn parse_launch_args_rejects_invalid_spawned_by() {
+        let args = vec![
+            "saba-chan-updater".to_string(),
+            "--apply".to_string(),
+            "--spawned-by".to_string(),
+            "manual".to_string(),
+            "--launch-token".to_string(),
+            "tok".to_string(),
+        ];
+        let err = parse_launch_args(&args).unwrap_err();
+        assert!(err.contains("invalid --spawned-by"));
+    }
+
+    #[test]
+    fn parse_launch_args_requires_launch_token() {
+        let args = vec![
+            "saba-chan-updater".to_string(),
+            "--apply".to_string(),
+            "--spawned-by".to_string(),
+            "gui".to_string(),
+        ];
+        let err = parse_launch_args(&args).unwrap_err();
+        assert!(err.contains("missing --launch-token"));
+    }
+
+    #[test]
+    fn parse_launch_args_rejects_empty_launch_token() {
+        let args = vec![
+            "saba-chan-updater".to_string(),
+            "--apply".to_string(),
+            "--spawned-by".to_string(),
+            "gui".to_string(),
+            "--launch-token".to_string(),
+            "".to_string(),
+        ];
+        let err = parse_launch_args(&args).unwrap_err();
+        assert!(err.contains("empty --launch-token"));
+    }
+
+    #[test]
+    fn parse_launch_args_parses_relaunch_and_extra() {
+        let args = vec![
+            "saba-chan-updater".to_string(),
+            "--apply".to_string(),
+            "--spawned-by".to_string(),
+            "gui".to_string(),
+            "--launch-token".to_string(),
+            "abc-123".to_string(),
+            "--relaunch".to_string(),
+            "C:/Saba/saba-chan-gui.exe".to_string(),
+            "C:/Saba".to_string(),
+        ];
+
+        let parsed = parse_launch_args(&args).expect("parse should succeed");
+        assert_eq!(parsed.spawned_by, "gui");
+        assert_eq!(parsed.launch_token, "abc-123");
+        assert_eq!(parsed.relaunch_exe.as_deref(), Some("C:/Saba/saba-chan-gui.exe"));
+        assert_eq!(parsed.relaunch_extra, vec!["C:/Saba".to_string()]);
+    }
+
+    #[test]
+    fn parse_launch_args_filters_known_flags_from_relaunch_extra() {
+        // --relaunch <exe> 뒤에 --spawned-by/--launch-token이 와도 extra에 섞이지 않아야 한다.
+        let args = vec![
+            "saba-chan-updater".to_string(),
+            "--apply".to_string(),
+            "--relaunch".to_string(),
+            "gui.exe".to_string(),
+            "--spawned-by".to_string(),
+            "gui".to_string(),
+            "--launch-token".to_string(),
+            "tok".to_string(),
+        ];
+        let parsed = parse_launch_args(&args).expect("parse should succeed");
+        assert_eq!(parsed.relaunch_exe.as_deref(), Some("gui.exe"));
+        assert!(parsed.relaunch_extra.is_empty());
+    }
 }

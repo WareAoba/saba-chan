@@ -1,0 +1,60 @@
+# git-cliff 설정 — saba-chan
+# Conventional Commits 기반 CHANGELOG 자동 생성
+# https://git-cliff.org/docs/configuration
+
+[changelog]
+# Keep a Changelog 형식 호환
+header = """
+# Changelog
+
+이 프로젝트의 모든 주목할 만한 변경사항이 이 문서에 기록됩니다.
+
+포맷은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)을 따르며,
+버전 관리는 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다.
+
+"""
+body = """
+{% if version %}\
+## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## [Unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+{% for commit in commits %}
+- {% if commit.scope %}**{{ commit.scope }}**: {% endif %}{{ commit.message | upper_first }}\
+{% endfor %}
+{% endfor %}\n
+"""
+trim = true
+footer = ""
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+
+# 커밋 메시지 → 그룹(섹션) 매핑 (Keep a Changelog 표준 섹션명 사용)
+commit_parsers = [
+    { message = "^feat", group = "Added" },
+    { message = "^fix", group = "Fixed" },
+    { message = "^perf", group = "Changed" },
+    { message = "^refactor", group = "Changed" },
+    { message = "^revert", group = "Changed" },
+    { message = "^docs", group = "Documentation" },
+    { message = "^test", group = "Tests" },
+    { message = "^chore\\(release\\):", skip = true },
+    { message = "^chore\\(deps\\)", group = "Changed" },
+    { message = "^chore", skip = true },
+    { message = "^ci", skip = true },
+    { message = "^build", skip = true },
+    { body = ".*BREAKING CHANGE", group = "Removed" },
+    { message = "^style", skip = true },
+]
+
+filter_commits = false
+tag_pattern = "v[0-9].*"
+skip_tags = ""
+ignore_tags = ""
+topo_order = false
+sort_commits = "newest"

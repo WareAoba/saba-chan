@@ -4,15 +4,10 @@
   "status": {
     "daemon_running": "运行中",
     "daemon_offline": "离线",
-    "bot_running": "运行中",
-    "bot_offline": "离线",
-    "bot_no_token": "无 Token",
     "servers": "服务器"
   },
   "auto_start": {
     "daemon": "正在自动启动守护进程...",
-    "bot": "正在自动启动 Discord 机器人...",
-    "bot_skipped": "跳过机器人 — 未配置 Discord Token。",
     "daemon_timeout": "守护进程在 10 秒内未响应"
   },
   "help": {
@@ -22,7 +17,6 @@
     "instance": "instance [list|show|create|delete|settings|set] <名称>",
     "module": "module  [list|info|refresh|versions|install]",
     "daemon": "daemon  [start|stop|status|restart]",
-    "bot": "bot     [start|stop|status|token|prefix|alias]",
     "config": "config  [show|set|get|reset] <键> <值>",
     "config_gui": "config  gui [language|token] <值>",
     "exec": "exec    <id> [cmd|rcon|rest] <命令>",
@@ -43,12 +37,6 @@
     "reset_ok": "已将 '{{key}}' 重置为默认值",
     "available_keys": "可用的配置键：",
     "saved": "设置已保存。"
-  },
-  "token_cmd": {
-    "current": "当前 Token：{{token}}",
-    "set_ok": "Discord Token 已更新。",
-    "cleared": "Discord Token 已清除。",
-    "not_set": "未设置 Discord Token。使用：bot token set <TOKEN>"
   },
   "server_cmd": {
     "no_servers": "未配置任何服务器。",
@@ -90,11 +78,6 @@
     "modules_label": "模块",
     "instances_label": "实例"
   },
-  "bot_cmd": {
-    "already_running": "Discord 机器人已在运行",
-    "started": "Discord 机器人已启动 (前缀：{{prefix}})",
-    "stopped": "Discord 机器人已停止"
-  },
   "update_cmd": {
     "updates_available": "有可用更新：",
     "all_up_to_date": "所有组件均为最新。",
@@ -122,20 +105,10 @@
     "settings_header": "'{{name}}' 的设置结构 (模块：{{module}})：",
     "no_settings_schema": "没有可用的设置结构。"
   },
-  "bot_alias_cmd": {
-    "header": "Discord 机器人别名：",
-    "module_aliases": "模块别名：",
-    "command_aliases": "命令别名：",
-    "none": "(无)",
-    "module_alias_set": "已设置模块别名：{{module}} → {{aliases}}",
-    "command_alias_set": "已设置命令别名：{{module}}.{{command}} → {{aliases}}",
-    "all_reset": "所有别名已重置为默认值。"
-  },
   "menu": {
     "dashboard": "仪表盘",
     "servers": "服务器",
     "modules": "模块",
-    "bot": "Discord 机器人",
     "settings": "设置",
     "updates": "更新",
     "daemon": "守护程序",
@@ -165,12 +138,6 @@
     "server_eula": "接受 EULA",
     "server_delete": "删除实例",
     "server_new": "新服务器",
-    "bot_start": "启动机器人",
-    "bot_stop": "停止机器人",
-    "bot_token": "令牌",
-    "bot_prefix": "前缀",
-    "bot_aliases": "别名",
-    "bot_autostart": "自动启动",
     "module_info": "信息",
     "module_versions": "版本",
     "module_install": "安装",
@@ -186,7 +153,6 @@
     "settings_language": "语言",
     "settings_autostart": "自动启动",
     "settings_refresh": "刷新间隔",
-    "settings_prefix": "机器人前缀",
     "settings_gui_lang": "GUI 语言",
     "no_changes": "没有更改要保存",
     "saving": "保存中...",

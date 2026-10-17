@@ -9,7 +9,6 @@ Saba-chan Windows Release Build (Parallel)
   saba-chan-gui.exe           - Electron GUI
   saba-chan-updater.exe       - 업데이터 (GUI + CLI 모드)
   saba-chan-installer.exe     - 인스톨러/언인스톨러 (Tauri)
-  discord_bot/               - Node.js Discord 봇
   locales/                   - 다국어 리소스
 
 .EXAMPLE
@@ -25,7 +24,23 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Split-Path -Parent $ScriptDir
 $ReleaseDir = Join-Path $ProjectRoot $OutputDir
-$DistDir = Join-Path $ReleaseDir "saba-chan-v0.1.1"
+
+# 단일 SoT: [workspace.package].version 에서 버전 추출 (sync-versions.ps1과 동일 로직)
+function Get-WorkspaceVersion {
+    param([string]$RepoRoot)
+    $cargoToml = Join-Path $RepoRoot "Cargo.toml"
+    $content = Get-Content $cargoToml -Raw
+    $inWsPkg = $false
+    foreach ($line in ($content -split "`n")) {
+        $stripped = $line.Trim()
+        if ($stripped -eq "[workspace.package]") { $inWsPkg = $true; continue }
+        if ($stripped -match '^\[' -and $stripped -ne "[workspace.package]") { $inWsPkg = $false; continue }
+        if ($inWsPkg -and $stripped -match '^version\s*=\s*"([^"]+)"') { return $matches[1] }
+    }
+    throw "Cannot read [workspace.package].version from Cargo.toml"
+}
+$WorkspaceVersion = Get-WorkspaceVersion -RepoRoot $ProjectRoot
+$DistDir = Join-Path $ReleaseDir "saba-chan-v$WorkspaceVersion"
 
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
@@ -51,7 +66,7 @@ Write-Host "  [OK]" -ForegroundColor Green
 
 # --- 2. Parallel Builds ---
 Write-Host "[2/5] Starting parallel builds..." -ForegroundColor Yellow
-Write-Host "  Rust (daemon+cli+updater) | GUI (vite+electron) | Discord Bot" -ForegroundColor DarkGray
+Write-Host "  Rust (daemon+cli+updater) | GUI (vite+electron)" -ForegroundColor DarkGray
 Write-Host ""
 
 # 2a. Rust workspace build (all 3 binaries at once)
@@ -72,29 +87,57 @@ $jobRust = Start-Job -Name "Rust" -ScriptBlock {
 
     # ErrorActionPreference=Continue so stderr warnings don't become terminating errors
     $ErrorActionPreference = "Continue"
-    $maxAttempts = 3
+    $maxAttempts = 5
     $output = $null
     $ec = 1
+    # Cargo가 release 산출물을 덮어쓸 때 Windows Defender(또는 Explorer)가 잠금을
+    # 잡고 있어 "failed to remove file ... os error 5/32" 형태로 실패하는 경우가 잦다.
+    # saba-core / saba-chan-installer가 특히 큰 바이너리라 가장 자주 부딪힌다.
+    # 근본 해결은 Defender 제외 경로 등록(`Add-MpPreference -ExclusionPath`)이며,
+    # 그 외 환경에서는 잠긴 파일을 .old로 옆으로 치우고(rename은 핸들 보유 중에도
+    # 보통 성공) 재시도해 우회한다.
+    $lockableTargets = @(
+        "target\release\saba-core.exe",
+        "target\release\saba-chan-cli.exe",
+        "target\release\saba-chan-updater.exe",
+        "target\release\saba-chan-installer.exe"
+    )
+
+    function Clear-LockedTargets {
+        param([string]$Root, [string[]]$Rels)
+        foreach ($rel in $Rels) {
+            $p = Join-Path $Root $rel
+            if (-not (Test-Path $p)) { continue }
+            try { Remove-Item $p -Force -ErrorAction Stop; continue } catch {}
+            try {
+                $stash = "$p.lock-$([Guid]::NewGuid().ToString('N').Substring(0,8)).old"
+                Move-Item $p $stash -Force -ErrorAction Stop
+            } catch { Start-Sleep -Milliseconds 1500 }
+        }
+    }
+
+    # cargo 시작 전 잠긴 산출물을 미리 제거/우회 (이전 빌드의 Defender 잠금 잔재 처리)
+    Clear-LockedTargets -Root $root -Rels $lockableTargets
+
     for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
         $output = & cargo build --release --workspace 2>&1
         $ec = $LASTEXITCODE
         if ($ec -eq 0) { break }
 
         $outText = ($output | Out-String)
-        $isAccessDeniedLock = $outText -match "failed to remove file" -and $outText -match "saba-core\.exe" -and ($outText -match "os error 5" -or $outText -match "拠蜷ｦ" -or $outText -match "access")
+        $isAccessDeniedLock = $outText -match "failed to remove file" -and `
+            ($outText -match "saba-core\.exe|saba-chan-installer\.exe|saba-chan-updater\.exe|saba-chan-cli\.exe") -and `
+            ($outText -match "os error (5|32)" -or $outText -match "access" -or $outText -match "蜷ｦ" -or $outText -match "・ｴ增")
         if (-not $isAccessDeniedLock -or $attempt -eq $maxAttempts) {
             break
         }
 
-        Write-Host "[Rust] Detected locked saba-core.exe. Stopping related processes and retrying... ($attempt/$maxAttempts)"
+        Write-Host "[Rust] Detected locked output binary. Releasing and retrying... ($attempt/$maxAttempts)"
         Stop-BuildLockProcesses
-        try {
-            $lockedExe = Join-Path $root "target\release\saba-core.exe"
-            if (Test-Path $lockedExe) {
-                Remove-Item $lockedExe -Force -ErrorAction SilentlyContinue
-            }
-        } catch {}
-        Start-Sleep -Milliseconds 600
+        Clear-LockedTargets -Root $root -Rels $lockableTargets
+        # Defender 스캔이 풀리는 시간을 충분히 준다 (지수 백오프 1.5s → 6s)
+        $delay = [Math]::Min(1500 * [Math]::Pow(1.5, $attempt - 1), 6000)
+        Start-Sleep -Milliseconds $delay
     }
     $ErrorActionPreference = "Stop"
     if ($ec -ne 0) { throw "Cargo build failed (exit $ec):`n$($output | Out-String)" }
@@ -151,40 +194,11 @@ $jobGUI = Start-Job -Name "GUI" -ScriptBlock {
     return @{ Path = $exe.FullName; Info = "saba-chan-gui.exe ($mb MB)" }
 } -ArgumentList $ProjectRoot
 
-# 2c. Discord Bot (npm install --production)
-$jobBot = Start-Job -Name "Bot" -ScriptBlock {
-    param($root)
-    $botDir = Join-Path $root "discord_bot"
-    Set-Location $botDir
-
-    if (Test-Path "node_modules") {
-        Remove-Item "node_modules" -Recurse -Force -ErrorAction SilentlyContinue
-        # Wait for Windows file handles to fully release after deletion
-        Start-Sleep -Seconds 2
-    }
-    $ErrorActionPreference = "Continue"
-    $maxAttempts = 3
-    $ec = 1
-    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-        & npm install --omit=dev --quiet --no-save 2>&1 | Out-Null
-        $ec = $LASTEXITCODE
-        if ($ec -eq 0) { break }
-        if ($attempt -lt $maxAttempts) {
-            Write-Host "[Bot] npm install failed (exit $ec), retrying... ($attempt/$maxAttempts)"
-            Start-Sleep -Seconds 3
-        }
-    }
-    $ErrorActionPreference = "Stop"
-    if ($ec -ne 0) { throw "npm install failed (exit $ec)" }
-    return @{ Path = $botDir }
-} -ArgumentList $ProjectRoot
-
 # Wait for all jobs
-$allJobs = @($jobRust, $jobGUI, $jobBot)
+$allJobs = @($jobRust, $jobGUI)
 $failedJobs = @()
 $rustResult = $null
 $guiResult = $null
-$botResult = $null
 
 foreach ($job in $allJobs) {
     $result = $null
@@ -206,10 +220,6 @@ foreach ($job in $allJobs) {
         "GUI" {
             $guiResult = $result
             Write-Host "  [GUI] $($result.Info)" -ForegroundColor Green
-        }
-        "Bot" {
-            $botResult = $result
-            Write-Host "  [Bot] OK" -ForegroundColor Green
         }
     }
     Remove-Job $job -Force
@@ -236,21 +246,6 @@ foreach ($t in $rustResult.Targets) {
 }
 
 Copy-Item -Path $guiResult.Path -Destination (Join-Path $DistDir "saba-chan-gui.exe") -Force
-
-$botDest = Join-Path $DistDir "discord_bot"
-Copy-Item -Path $botResult.Path -Destination $botDest -Recurse -Force -ErrorAction SilentlyContinue
-$testDir = Join-Path $botDest "test"
-if (Test-Path $testDir) { Remove-Item $testDir -Recurse -Force -ErrorAction SilentlyContinue }
-$botNodeModules = Join-Path $botDest "node_modules"
-if (Test-Path $botNodeModules) { Remove-Item $botNodeModules -Recurse -Force -ErrorAction SilentlyContinue }
-
-# Zip discord_bot directory contents (not the folder itself, to avoid double-nesting)
-$botZip = Join-Path $DistDir "discord_bot.zip"
-if (Test-Path $botZip) { Remove-Item $botZip -Force }
-Compress-Archive -Path (Join-Path $botDest "*") -DestinationPath $botZip -CompressionLevel Optimal
-Remove-Item $botDest -Recurse -Force -ErrorAction SilentlyContinue
-$zipMB = [Math]::Round((Get-Item $botZip).Length / 1MB, 2)
-Write-Host "  [Bot] discord_bot.zip ($zipMB MB)" -ForegroundColor Green
 
 Write-Host "  [OK]" -ForegroundColor Green
 

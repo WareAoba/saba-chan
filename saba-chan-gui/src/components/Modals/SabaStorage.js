@@ -41,7 +41,7 @@ function SabaStorage({ onBack, isExiting, devMode }) {
         <div className={clsx('update-panel', { exiting: isExiting })}>
             {/* 헤더 */}
             <div className="update-panel-header">
-                <button className="update-panel-back" onClick={onBack} title={t('saba_storage.back')} disabled={isExiting}>
+                <button type="button" className="update-panel-back" onClick={onBack} data-tooltip={t('saba_storage.back')} disabled={isExiting}>
                     <Icon name="chevronLeft" size="sm" />
                 </button>
                 <h2 className="update-panel-title">{t('saba_storage.title', '사바 스토리지')}</h2>
@@ -51,7 +51,7 @@ function SabaStorage({ onBack, isExiting, devMode }) {
             <div className="saba-storage-tabs" ref={tabsRef}>
                 <div className="saba-storage-tab-indicator" ref={indicatorRef} />
                 {['components', 'modules', 'extensions'].map((tab) => (
-                    <button
+                    <button type="button"
                         key={tab}
                         className={clsx('saba-storage-tab', { active: activeTab === tab })}
                         onClick={() => setActiveTab(tab)}
@@ -96,11 +96,9 @@ const parseComponents = (comps) =>
                       ? 'monitor'
                       : key === 'cli'
                         ? 'terminal'
-                        : key === 'discord_bot'
-                          ? 'discord'
-                          : key === 'updater'
-                            ? 'refresh'
-                            : 'server',
+                        : key === 'updater'
+                          ? 'refresh'
+                          : 'server',
                 current_version: c.current_version || '—',
                 latest_version: c.latest_version || null,
                 update_available: !!c.update_available,
@@ -120,8 +118,8 @@ function DownloadRing({ percent }) {
     const indeterminate = percent < 0;
     const offset = indeterminate ? circumference * 0.75 : circumference * (1 - percent / 100);
     return (
-        <div className="download-ring-wrapper" title={indeterminate ? '...' : `${percent}%`}>
-            <svg className="download-ring-svg" viewBox="0 0 32 32" width="28" height="28">
+        <div className="download-ring-wrapper" data-tooltip={indeterminate ? '...' : `${percent}%`}>
+            <svg aria-hidden="true" className="download-ring-svg" viewBox="0 0 32 32" width="28" height="28">
                 <circle className="download-ring-bg" cx="16" cy="16" r={r}
                     fill="none" strokeWidth="3" />
                 <circle
@@ -199,17 +197,14 @@ function ComponentsTab({ devMode }) {
         try {
             if (toMock) {
                 await window.api?.updaterSetConfig?.({
-                    api_base_url: 'http://127.0.0.1:9876',
-                    github_owner: 'test-owner',
-                    github_repo: 'saba-chan',
+                    relay_base_url: 'http://127.0.0.1:9876',
                 });
                 setMockMode(true);
                 setMessage(t('saba_storage.switch_to_mock'));
             } else {
+                // 빈 문자열 = 데몬이 기본 Relay URL(updater::DEFAULT_RELAY_BASE_URL)을 사용
                 await window.api?.updaterSetConfig?.({
-                    api_base_url: '',
-                    github_owner: 'WareAoba',
-                    github_repo: 'saba-chan',
+                    relay_base_url: '',
                 });
                 setMockMode(false);
                 setMessage(t('saba_storage.switch_to_real'));
@@ -218,7 +213,7 @@ function ComponentsTab({ devMode }) {
         } catch (e) {
             setError(t('saba_storage.switch_failed', { error: e.message }));
         }
-    }, []);
+    }, [t]);
 
     const refreshStatus = useCallback(async () => {
         try {
@@ -289,52 +284,6 @@ function ComponentsTab({ devMode }) {
                 setConfirmRestart(true);
                 return;
             }
-            if (key === 'discord_bot') {
-                markBusy(key);
-                setError(null);
-                setMessage(null);
-                try {
-                    const botStatus = await window.api?.discordBotStatus?.();
-                    const wasBotRunning = botStatus === 'running';
-                    if (wasBotRunning) {
-                        setMessage(t('saba_storage.bot_stopping'));
-                        await window.api?.discordBotStop?.();
-                        await new Promise((r) => setTimeout(r, 2000));
-                    }
-                    setMessage(t('saba_storage.bot_replacing'));
-                    const res = await window.api?.updaterApply?.([key]);
-                    if (res?.ok === false) {
-                        setError(
-                            `${key}: ${res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || t('saba_storage.apply_failed')}`,
-                        );
-                    } else if (res?.applied?.length > 0) {
-                        setMessage(t('saba_storage.apply_completed', { names: res.applied.join(', ') }));
-                        if (wasBotRunning) {
-                            setMessage(t('saba_storage.bot_restarting'));
-                            const settings = await window.api?.settingsLoad?.();
-                            const botConfig = await window.api?.botConfigLoad?.();
-                            const token = settings?.discordToken;
-                            if (token) {
-                                const startRes = await window.api?.discordBotStart?.({
-                                    token,
-                                    prefix: botConfig?.prefix || '!saba',
-                                    moduleAliases: botConfig?.moduleAliases || {},
-                                    commandAliases: botConfig?.commandAliases || {},
-                                });
-                                if (startRes?.error) setError(t('saba_storage.bot_restart_failed', { error: startRes.error }));
-                                else setMessage(t('saba_storage.bot_restarted'));
-                            } else {
-                                setMessage(t('saba_storage.bot_no_token'));
-                            }
-                        }
-                    }
-                    await refreshStatus();
-                } catch (e) {
-                    setError(`${key}: ${e.message}`);
-                }
-                clearBusy(key);
-                return;
-            }
             markBusy(key);
             setError(null);
             setMessage(null);
@@ -359,7 +308,7 @@ function ComponentsTab({ devMode }) {
             }
             clearBusy(key);
         },
-        [refreshStatus, markBusy, clearBusy],
+        [refreshStatus, markBusy, clearBusy, t],
     );
 
     const executeUpdateAll = useCallback(async () => {
@@ -370,18 +319,6 @@ function ComponentsTab({ devMode }) {
         setError(null);
         setMessage(null);
         const allKeys = updatable.map((c) => c.key);
-        const hasDiscordBot = allKeys.includes('discord_bot');
-        let wasBotRunning = false;
-        if (hasDiscordBot) {
-            try {
-                const s = await window.api?.discordBotStatus?.();
-                wasBotRunning = s === 'running';
-                if (wasBotRunning) {
-                    await window.api?.discordBotStop?.();
-                    await new Promise((r) => setTimeout(r, 2000));
-                }
-            } catch (_) {}
-        }
         for (const key of allKeys) markBusy(key);
         startProgressPolling();
         for (const key of allKeys) {
@@ -389,11 +326,11 @@ function ComponentsTab({ devMode }) {
                 const res = await window.api?.updaterDownload?.([key]);
                 if (!res?.ok) {
                     hadError = true;
-                    setError((prev) => (prev ? prev + '\n' : '') + `${key}: ${res?.error}`);
+                    setError((prev) => `${prev ? `${prev}\n` : ''}${key}: ${res?.error}`);
                 }
             } catch (e) {
                 hadError = true;
-                setError((prev) => (prev ? prev + '\n' : '') + `${key}: ${e.message}`);
+                setError((prev) => `${prev ? `${prev}\n` : ''}${key}: ${e.message}`);
             }
             clearBusy(key);
         }
@@ -411,7 +348,7 @@ function ComponentsTab({ devMode }) {
                 hadError = true;
                 setError(
                     (prev) =>
-                        (prev ? prev + '\n' : '') +
+                        (prev ? `${prev}\n` : '') +
                         (res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || t('saba_storage.apply_failed')),
                 );
             } else {
@@ -422,7 +359,7 @@ function ComponentsTab({ devMode }) {
                 const launchRes = await window.api?.updaterLaunchApply?.(res.needs_updater);
                 if (launchRes?.ok === false) {
                     hadError = true;
-                    setError((prev) => (prev ? prev + '\n' : '') + (launchRes?.error || t('saba_storage.updater_launch_failed')));
+                    setError((prev) => (prev ? `${prev}\n` : '') + (launchRes?.error || t('saba_storage.updater_launch_failed')));
                 } else {
                     // 업데이터 실행 → GUI가 곧 종료되므로 더 이상 진행하지 않음
                     // (데몬도 자식 프로세스로 함께 종료됨 — 이후 API 호출 불가)
@@ -433,37 +370,14 @@ function ComponentsTab({ devMode }) {
             }
         } catch (e) {
             hadError = true;
-            setError((prev) => (prev ? prev + '\n' : '') + e.message);
+            setError((prev) => (prev ? `${prev}\n` : '') + e.message);
         }
         for (const key of allKeys) clearBusy(key);
         await refreshStatus();
-        // 업데이터 미사용 (데몬 직접 적용) 시에만 봇 재시작
-        if (hasDiscordBot && wasBotRunning) {
-            try {
-                const settings = await window.api?.settingsLoad?.();
-                const botConfig = await window.api?.botConfigLoad?.();
-                const token = settings?.discordToken;
-                if (token) {
-                    const s = await window.api?.discordBotStart?.({
-                        token,
-                        prefix: botConfig?.prefix || '!saba',
-                        moduleAliases: botConfig?.moduleAliases || {},
-                        commandAliases: botConfig?.commandAliases || {},
-                    });
-                    if (s?.error) {
-                        hadError = true;
-                        setError((prev) => (prev ? prev + '\n' : '') + t('saba_storage.bot_restart_failed', { error: s.error }));
-                    }
-                }
-            } catch (e) {
-                hadError = true;
-                setError((prev) => (prev ? prev + '\n' : '') + t('saba_storage.bot_restart_failed', { error: e.message }));
-            }
-        }
         if (daemonApplied.length > 0) setMessage(t('saba_storage.apply_completed', { names: daemonApplied.join(', ') }));
         else if (!hadError) setMessage(t('saba_storage.update_done'));
         setBusyAll(false);
-    }, [components, refreshStatus, markBusy, clearBusy, startProgressPolling, stopProgressPolling]);
+    }, [components, refreshStatus, markBusy, clearBusy, startProgressPolling, stopProgressPolling, t]);
 
     const handleUpdateAll = useCallback(() => {
         const updatable = components.filter((c) => c.update_available);
@@ -501,7 +415,7 @@ function ComponentsTab({ devMode }) {
             try {
                 const cfgRes = await window.api?.updaterGetConfig?.();
                 const cfg = cfgRes?.config || cfgRes;
-                const isMock = !!(cfg?.api_base_url && cfg.api_base_url.includes('127.0.0.1'));
+                const isMock = !!(cfg?.relay_base_url?.includes('127.0.0.1'));
                 if (mountedRef.current) {
                     setMockMode(isMock);
                     setAutoCheckEnabled(cfg?.enabled !== false);
@@ -544,7 +458,6 @@ function ComponentsTab({ devMode }) {
             clearInterval(pollRef.current);
             if (progressPollRef.current) clearInterval(progressPollRef.current);
         };
-        // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only initialization — async tasks use refs for mount guard
     }, []);
 
     const updatable = components.filter((c) => c.update_available);
@@ -558,7 +471,7 @@ function ComponentsTab({ devMode }) {
                     <div className="update-panel-header" style={{ paddingTop: 0, paddingBottom: '8px' }}>
                         <label
                             className="update-mock-toggle"
-                            title={mockMode ? t('saba_storage.mock_server_label') : t('saba_storage.real_api_label')}
+                            data-tooltip={mockMode ? t('saba_storage.mock_server_label') : t('saba_storage.real_api_label')}
                         >
                             <span className={clsx('update-mock-label', mockMode ? 'mock' : 'real')}>
                                 {mockMode ? 'MOCK' : 'REAL'}
@@ -595,20 +508,20 @@ function ComponentsTab({ devMode }) {
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                         {updatable.length > 0 && (
-                            <button
+                            <button type="button"
                                 className="ss-icon-btn accent"
                                 disabled={anyBusy}
                                 onClick={handleUpdateAll}
-                                title={t('saba_storage.update_all', '모두 업데이트')}
+                                data-tooltip={t('saba_storage.update_all', '모두 업데이트')}
                             >
                                 <Icon name="download" size="sm" />
                             </button>
                         )}
-                        <button
+                        <button type="button"
                             className="ss-icon-btn"
                             disabled={anyBusy}
                             onClick={handleCheck}
-                            title={t('saba_storage.refresh', '새로고침')}
+                            data-tooltip={t('saba_storage.refresh', '새로고침')}
                         >
                             <Icon name={checking ? 'loader' : 'refresh'} size="sm" />
                         </button>
@@ -636,27 +549,25 @@ function ComponentsTab({ devMode }) {
                                 </div>
                                 <div className="ss-card-actions">
                                     {c.update_available && !c.downloaded && (
-                                        <>
-                                            {isDownloading ? (
+                                        isDownloading ? (
                                                 <DownloadRing percent={pct} />
                                             ) : (
-                                                <button
+                                                <button type="button"
                                                     className="ss-icon-btn accent"
                                                     disabled={isBusy}
                                                     onClick={() => handleDownloadOne(c.key)}
-                                                    title={t('saba_storage.download')}
+                                                    data-tooltip={t('saba_storage.download')}
                                                 >
                                                     {isBusy ? <SabaSpinner size="xs" /> : <Icon name="download" size="sm" />}
                                                 </button>
-                                            )}
-                                        </>
+                                            )
                                     )}
                                     {c.update_available && c.downloaded && (
-                                        <button
+                                        <button type="button"
                                             className={clsx('ss-icon-btn', c.needsUpdater ? 'warning' : 'accent')}
                                             disabled={isBusy}
                                             onClick={() => handleApplyOne(c.key)}
-                                            title={t(c.needsUpdater ? 'saba_storage.apply_needs_restart' : 'saba_storage.apply')}
+                                            data-tooltip={t(c.needsUpdater ? 'saba_storage.apply_needs_restart' : 'saba_storage.apply')}
                                         >
                                             {isBusy ? (
                                                 <SabaSpinner size="xs" />
@@ -885,11 +796,11 @@ function ModulesTab() {
                 <div className="ss-section-label" style={{ margin: 0 }}>
                     {t('saba_storage.installed_modules', '설치된 모듈')}
                 </div>
-                <button
+                <button type="button"
                     className="ss-icon-btn"
                     disabled={refreshingModules}
                     onClick={handleRefreshModules}
-                    title={t('saba_storage.refresh_modules', '모듈 새로고침')}
+                    data-tooltip={t('saba_storage.refresh_modules', '모듈 새로고침')}
                 >
                     <Icon name={refreshingModules ? 'loader' : 'refresh'} size="sm" />
                 </button>
@@ -912,11 +823,11 @@ function ModulesTab() {
                                     {m.description && <span className="ss-card-desc">{m.description}</span>}
                                 </div>
                                 <div className="ss-card-actions">
-                                    <button
+                                    <button type="button"
                                         className="ss-icon-btn danger"
                                         disabled={isRemoving}
                                         onClick={() => setConfirmRemoveId(moduleId)}
-                                        title={t('saba_storage.remove', '제거')}
+                                        data-tooltip={t('saba_storage.remove', '제거')}
                                     >
                                         {isRemoving ? <SabaSpinner size="xs" /> : <Icon name="trash" size="sm" />}
                                     </button>
@@ -933,19 +844,19 @@ function ModulesTab() {
                     {t('saba_storage.available_modules', '사용 가능한 모듈')}
                 </div>
                 {showManifest ? (
-                    <button
+                    <button type="button"
                         className="ss-icon-btn"
                         disabled={manifestLoading}
                         onClick={handleRefreshManifest}
-                        title={t('saba_storage.refresh_manifest', '매니페스트 새로고침')}
+                        data-tooltip={t('saba_storage.refresh_manifest', '매니페스트 새로고침')}
                     >
                         <Icon name={manifestLoading ? 'loader' : 'refresh'} size="sm" />
                     </button>
                 ) : (
-                    <button
+                    <button type="button"
                         className="ss-icon-btn"
                         onClick={handleShowManifest}
-                        title={t('saba_storage.show_more_modules', '더 많은 모듈 표시')}
+                        data-tooltip={t('saba_storage.show_more_modules', '더 많은 모듈 표시')}
                     >
                         <Icon name="chevronDown" size="sm" />
                     </button>
@@ -993,11 +904,11 @@ function ModulesTab() {
                                                 <Icon name="xCircle" size="sm" />
                                             </span>
                                         ) : (
-                                            <button
+                                            <button type="button"
                                                 className="ss-icon-btn accent"
                                                 disabled={isInstalling}
                                                 onClick={() => handleInstallModule(m.id)}
-                                                title={t('saba_storage.install_btn', '설치')}
+                                                data-tooltip={t('saba_storage.install_btn', '설치')}
                                             >
                                                 {isInstalling ? (
                                                     <SabaSpinner size="xs" />
@@ -1072,7 +983,7 @@ function ExtensionsTab() {
             }
         })();
         return () => { cancelled = true; };
-    }, [extensions]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [extensions, iconUrls]);
 
     // 익스텐션 디렉토리 재스캔 + 목록 갱신
     const handleRescan = useCallback(async () => {
@@ -1117,11 +1028,11 @@ function ExtensionsTab() {
                 <div className="ss-section-label" style={{ margin: 0 }}>
                     {t('extensions.installed_section', '설치됨')}
                 </div>
-                <button
+                <button type="button"
                     className="ss-icon-btn"
                     disabled={rescanning}
                     onClick={handleRescan}
-                    title={t('extensions.rescan', '익스텐션 재스캔')}
+                    data-tooltip={t('extensions.rescan', '익스텐션 재스캔')}
                 >
                     <Icon name={rescanning ? 'loader' : 'refresh'} size="sm" />
                 </button>
@@ -1157,13 +1068,13 @@ function ExtensionsTab() {
                                 </div>
                                 <div className="ss-card-actions">
                                     {updateInfo && (
-                                        <button
+                                        <button type="button"
                                             className="ss-icon-btn accent"
                                             disabled={isBusy}
                                             onClick={() =>
                                                 installExtension(ext.id, { download_url: updateInfo.download_url })
                                             }
-                                            title={t('extensions.update_to', {
+                                            data-tooltip={t('extensions.update_to', {
                                                 version: updateInfo.latest_version,
                                                 defaultValue: `v${updateInfo.latest_version}으로 업데이트`,
                                             })}
@@ -1175,11 +1086,11 @@ function ExtensionsTab() {
                                             )}
                                         </button>
                                     )}
-                                    <button
+                                    <button type="button"
                                         className="ss-icon-btn danger"
                                         disabled={isBusy}
                                         onClick={() => setConfirmRemoveId(ext.id)}
-                                        title={t('saba_storage.remove', '제거')}
+                                        data-tooltip={t('saba_storage.remove', '제거')}
                                     >
                                         {isRemoving ? <SabaSpinner size="xs" /> : <Icon name="trash" size="sm" />}
                                     </button>
@@ -1196,19 +1107,19 @@ function ExtensionsTab() {
                     {t('extensions.store_section', '스토어')}
                 </div>
                 {showStore ? (
-                    <button
+                    <button type="button"
                         className="ss-icon-btn"
                         disabled={manifestLoading}
                         onClick={fetchManifest}
-                        title={t('extensions.refresh_manifest', '매니페스트 새로고침')}
+                        data-tooltip={t('extensions.refresh_manifest', '매니페스트 새로고침')}
                     >
                         <Icon name={manifestLoading ? 'loader' : 'refresh'} size="sm" />
                     </button>
                 ) : (
-                    <button
+                    <button type="button"
                         className="ss-icon-btn"
                         onClick={handleShowStore}
-                        title={t('extensions.show_more', '더 많은 익스텐션 표시')}
+                        data-tooltip={t('extensions.show_more', '더 많은 익스텐션 표시')}
                     >
                         <Icon name="chevronDown" size="sm" />
                     </button>
@@ -1216,8 +1127,7 @@ function ExtensionsTab() {
             </div>
 
             {showStore && (
-                <>
-                    {manifestLoading ? (
+                manifestLoading ? (
                         <p className="ss-empty">{t('extensions.manifest_loading', '매니페스트를 가져오는 중...')}</p>
                     ) : uninstalled.length === 0 ? (
                         <p className="ss-empty">
@@ -1243,11 +1153,11 @@ function ExtensionsTab() {
                                 )}
                             </div>
                             <div className="ss-card-actions">
-                                <button
+                                <button type="button"
                                     className="ss-icon-btn accent"
                                     disabled={installingIds.has(ext.id)}
                                     onClick={() => installExtension(ext.id, { download_url: ext.download_url })}
-                                    title={t('extensions.install_btn', '설치')}
+                                    data-tooltip={t('extensions.install_btn', '설치')}
                                 >
                                     {installingIds.has(ext.id) ? (
                                         <SabaSpinner size="xs" />
@@ -1259,8 +1169,7 @@ function ExtensionsTab() {
                         </div>
                     ))}
                 </div>
-            )}
-                </>
+            )
             )}
 
             {confirmRemoveId && (

@@ -15,7 +15,6 @@ name: Release — Package & Manifest
 #      - saba-chan-gui.exe / saba-chan-gui-*.zip
 #      - saba-chan-updater.exe / saba-chan-updater-*.zip
 #      - saba-chan-installer.exe / saba-chan-installer-*.zip
-#      - discord-bot.zip
 #      (전부 올릴 필요 없음 — 빠진 것은 이전 릴리즈에서 가져옴)
 #   3. Release 발행 → 이 액션이 자동 수행:
 #      a) raw exe → 표준 이름의 zip으로 리패키징
@@ -30,7 +29,6 @@ name: Release — Package & Manifest
 #   saba-chan-gui-windows-x64.zip
 #   saba-chan-updater-windows-x64.zip
 #   saba-chan-installer-windows-x64.zip
-#   discord-bot.zip
 #   locales.zip
 #   manifest.json
 #
@@ -73,6 +71,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main  # 태그가 아닌 main의 최신 스크립트·소스를 사용
+          fetch-depth: 0  # git-cliff가 태그 히스토리를 읽기 위해 전체 클론 필요
 
       - name: Verify release exists
         env:
@@ -88,6 +87,31 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      # ── 단일 SoT 검증 ──
+      # [workspace.package].version과 GUI package.json이 일치하는지 확인.
+      # 일치하지 않으면 잘못된 매니페스트가 생성되므로 빠르게 실패시킨다.
+      - name: Verify version sync (workspace ↔ npm)
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, sys, tomllib, pathlib
+          root = pathlib.Path("Cargo.toml")
+          with open(root, "rb") as f:
+              data = tomllib.load(f)
+          ws_ver = (data.get("workspace") or {}).get("package", {}).get("version")
+          if not ws_ver:
+              print("ERROR: [workspace.package].version not found in Cargo.toml")
+              sys.exit(1)
+          gui_pkg = pathlib.Path("saba-chan-gui/package.json")
+          gui_ver = json.loads(gui_pkg.read_text(encoding="utf-8")).get("version")
+          print(f"workspace.package.version = {ws_ver}")
+          print(f"saba-chan-gui/package.json version = {gui_ver}")
+          if ws_ver != gui_ver:
+              print(f"ERROR: version mismatch — run scripts/sync-versions.ps1 (or update package.json) before tagging.")
+              sys.exit(1)
+          print("OK: versions are in sync.")
+          PY
 
       - name: Download existing release assets
         env:
@@ -108,6 +132,17 @@ jobs:
           RELEASE_ID: ${{ github.event.release.id || '' }}
           REPO_FULL_NAME: ${{ github.repository }}
         run: python .github/scripts/package-release.py
+
+      # ── CHANGELOG.md 자동 생성 (Conventional Commits → Keep a Changelog) ──
+      # cliff.toml 설정을 기반으로 CHANGELOG를 빌드하여 릴리즈 노트/자산으로 활용한다.
+      # 저장소에 커밋하지는 않는다(release-only artifact).
+      - name: Generate CHANGELOG with git-cliff
+        uses: orhun/git-cliff-action@v3
+        with:
+          config: cliff.toml
+          args: --tag ${{ env.TARGET_TAG }} --output output/CHANGELOG.md
+        env:
+          OUTPUT: output/CHANGELOG.md
 
       - name: Upload packaged assets to release
         env:

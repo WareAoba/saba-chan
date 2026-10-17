@@ -4,7 +4,26 @@ import path from 'path';
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), {
+    name: 'production-csp',
+    apply: 'build',
+    transformIndexHtml: () => [{
+      tag: 'meta',
+      attrs: {
+        'http-equiv': 'Content-Security-Policy',
+        content: [
+          "default-src 'self'",
+          "script-src 'self' blob:",
+          "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+          "font-src 'self' data: https://fonts.gstatic.com",
+          "img-src 'self' data: blob: http: https:",
+          "connect-src 'self' http: https: ws: wss:",
+          "object-src 'none'",
+          "base-uri 'none'",
+        ].join('; '),
+      },
+    }],
+  }],
   base: './',
   build: {
     outDir: 'build',

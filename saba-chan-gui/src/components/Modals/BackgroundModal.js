@@ -18,7 +18,7 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
         // 데몬 상태 확인 함수
         const checkDaemonStatus = async () => {
             try {
-                if (window.api && window.api.daemonStatus) {
+                if (window.api?.daemonStatus) {
                     const status = await window.api.daemonStatus();
                     setDaemonStatus(status.running ? 'running' : 'stopped');
                     if (status.running) {
@@ -92,16 +92,18 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
     };
 
     return (
+        <>
+        <button aria-label={t('modals.close')} type="button"  className="discord-backdrop" onClick={(event) => { if (event.target === event.currentTarget) (onClose)(event); }} />
         <div
             className={clsx('background-modal-container', { closing: isClosing })}
-            onClick={(e) => e.stopPropagation()}
+
         >
             <div className="background-modal-header">
                 <div className="background-modal-title">
                     <span className={clsx('status-indicator', getStatusClass())}></span>
                     <h2>{t('background_modal.title')}</h2>
                 </div>
-                <button className="background-modal-close" onClick={onClose}>
+                <button type="button" className="background-modal-close" onClick={onClose}>
                     <Icon name="close" size="sm" />
                 </button>
             </div>
@@ -148,7 +150,7 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
 
                 {(daemonStatus === 'stopped' || daemonStatus === 'error') && (
                     <div className="background-restart-section">
-                        <button className="background-restart-btn" onClick={handleRestartDaemon} disabled={restarting}>
+                        <button type="button" className="background-restart-btn" onClick={handleRestartDaemon} disabled={restarting}>
                             {restarting ? (
                                 t('background_modal.restarting_button')
                             ) : (
@@ -170,6 +172,7 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }) {
                 </div>
             </div>
         </div>
+        </>
     );
 }
 

@@ -4,15 +4,10 @@
   "status": {
     "daemon_running": "EN COURS",
     "daemon_offline": "HORS LIGNE",
-    "bot_running": "EN COURS",
-    "bot_offline": "HORS LIGNE",
-    "bot_no_token": "PAS DE TOKEN",
     "servers": "Serveurs"
   },
   "auto_start": {
     "daemon": "Démarrage automatique du daemon...",
-    "bot": "Démarrage automatique du bot Discord...",
-    "bot_skipped": "Bot ignoré — aucun token Discord configuré.",
     "daemon_timeout": "Le daemon n'a pas répondu en 10s"
   },
   "help": {
@@ -22,7 +17,6 @@
     "instance": "instance [list|show|create|delete|settings|set] <name>",
     "module": "module  [list|info|refresh|versions|install]",
     "daemon": "daemon  [start|stop|status|restart]",
-    "bot": "bot     [start|stop|status|token|prefix|alias]",
     "config": "config  [show|set|get|reset] <key> <value>",
     "config_gui": "config  gui [language|token] <value>",
     "exec": "exec    <id> [cmd|rcon|rest] <command>",
@@ -43,12 +37,6 @@
     "reset_ok": "Réinitialiser '{{key}}' à la valeur par défaut",
     "available_keys": "Clés de configuration disponibles:",
     "saved": "Paramètres sauvegardés."
-  },
-  "token_cmd": {
-    "current": "Jeton actuel: {{token}}",
-    "set_ok": "Jeton Discord mis à jour.",
-    "cleared": "Jeton Discord effacé.",
-    "not_set": "Aucun jeton Discord défini. Utilisez: bot token set <TOKEN>"
   },
   "server_cmd": {
     "no_servers": "Aucun serveur configuré.",
@@ -90,11 +78,6 @@
     "modules_label": "modules",
     "instances_label": "instances"
   },
-  "bot_cmd": {
-    "already_running": "Le bot Discord est déjà en cours d'exécution",
-    "started": "Bot Discord démarré (préfixe: {{prefix}})",
-    "stopped": "Bot Discord arrêté"
-  },
   "update_cmd": {
     "updates_available": "Mises à jour disponibles:",
     "all_up_to_date": "Tous les composants sont à jour.",
@@ -122,20 +105,10 @@
     "settings_header": "Schéma de paramètres pour '{{name}}' (module: {{module}}):",
     "no_settings_schema": "Aucun schéma de paramètres disponible."
   },
-  "bot_alias_cmd": {
-    "header": "Alias du bot Discord:",
-    "module_aliases": "Alias de module:",
-    "command_aliases": "Alias de commande:",
-    "none": "(aucun)",
-    "module_alias_set": "Alias de module défini: {{module}} → {{aliases}}",
-    "command_alias_set": "Alias de commande défini: {{module}}.{{command}} → {{aliases}}",
-    "all_reset": "Tous les alias ont été réinitialisés aux valeurs par défaut."
-  },
   "menu": {
     "dashboard": "Tableau de bord",
     "servers": "Serveurs",
     "modules": "Modules",
-    "bot": "Bot Discord",
     "settings": "Paramètres",
     "updates": "Mises à jour",
     "daemon": "Démon",
@@ -165,12 +138,6 @@
     "server_eula": "Accepter EULA",
     "server_delete": "Supprimer l'instance",
     "server_new": "Nouveau serveur",
-    "bot_start": "Démarrer le bot",
-    "bot_stop": "Arrêter le bot",
-    "bot_token": "Jeton",
-    "bot_prefix": "Préfixe",
-    "bot_aliases": "Alias",
-    "bot_autostart": "Démarrage auto",
     "module_info": "Info",
     "module_versions": "Versions",
     "module_install": "Installer",
@@ -186,7 +153,6 @@
     "settings_language": "Langue",
     "settings_autostart": "Démarrage auto",
     "settings_refresh": "Intervalle de rafraîchissement",
-    "settings_prefix": "Préfixe du bot",
     "settings_gui_lang": "Langue de l'interface",
     "no_changes": "Aucune modification à enregistrer",
     "saving": "Enregistrement...",

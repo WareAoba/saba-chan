@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, } from 'react';
+
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import './App.css';
 import {
@@ -6,6 +7,7 @@ import {
     BackgroundModal,
     CommandModal,
     ConsoleDock,
+    ConsoleWindow,
     DiscordBotModal,
     FailureModal,
     Icon,
@@ -20,20 +22,20 @@ import {
     SuccessModal,
     TitleBar,
     Toast,
-    ConsoleWindow,
 } from './components';
 import { ExtensionProvider } from './contexts/ExtensionContext';
-import { useMultiConsole } from './hooks/useMultiConsole';
 import { useDragReorder } from './hooks/useDragReorder';
 import useExtensionInitStatus from './hooks/useExtensionInitStatus';
 import { useModalClose } from './hooks/useModalClose';
+import { useMultiConsole } from './hooks/useMultiConsole';
 import { useServerActions } from './hooks/useServerActions';
 import { useServerSettings } from './hooks/useServerSettings';
-import { useWindowSize, SIDE_PANEL_MIN_WIDTH, SIDE_PANEL_MIN_HEIGHT } from './hooks/useWindowSize';
+import { SIDE_PANEL_MIN_HEIGHT, SIDE_PANEL_MIN_WIDTH, useWindowSize } from './hooks/useWindowSize';
 import { setDiscordI18n, useDiscordStore } from './stores/useDiscordStore';
 import { setServerI18n, useServerStore } from './stores/useServerStore';
 import { useSettingsStore } from './stores/useSettingsStore';
 import { useUIStore } from './stores/useUIStore';
+
 function App() {
     const { t, i18n } = useTranslation('gui');
 
@@ -73,7 +75,7 @@ function App() {
     const setInitProgress = useServerStore((s) => s.setInitProgress);
     const serversInitializing = useServerStore((s) => s.serversInitializing);
     const setServersInitializing = useServerStore((s) => s.setServersInitializing);
-    const nowEpoch = useServerStore((s) => s.nowEpoch);
+    useServerStore((s) => s.nowEpoch);
     const formatUptime = useServerStore((s) => s.formatUptime);
 
     // ── UI Store (Zustand) ─────────────────────────────────
@@ -113,23 +115,17 @@ function App() {
     const _settingsReady = useSettingsStore((s) => s.settingsReady);
 
     // ── Discord Store (Zustand) ──────────────────────────────
-    const discordToken = useDiscordStore((s) => s.discordToken);
+    // 로컬 봇이 제거되어 클라우드 전용. token/autoStart/mode/status 필드는 모두 제거됨.
     const discordPrefix = useDiscordStore((s) => s.discordPrefix);
-    const discordAutoStart = useDiscordStore((s) => s.discordAutoStart);
-    const discordModuleAliases = useDiscordStore((s) => s.discordModuleAliases);
-    const discordCommandAliases = useDiscordStore((s) => s.discordCommandAliases);
-    const discordMusicEnabled = useDiscordStore((s) => s.discordMusicEnabled);
-    const discordMusicChannelId = useDiscordStore((s) => s.discordMusicChannelId);
-    const discordMusicUISettings = useDiscordStore((s) => s.discordMusicUISettings);
-    const discordBotMode = useDiscordStore((s) => s.discordBotMode);
     const discordCloudRelayUrl = useDiscordStore((s) => s.discordCloudRelayUrl);
     const discordCloudHostId = useDiscordStore((s) => s.discordCloudHostId);
     const nodeSettings = useDiscordStore((s) => s.nodeSettings);
+    const instanceSettings = useDiscordStore((s) => s.instanceSettings);
     const cloudNodes = useDiscordStore((s) => s.cloudNodes);
     const cloudMembers = useDiscordStore((s) => s.cloudMembers);
-    const discordBotStatus = useDiscordStore((s) => s.discordBotStatus);
     const relayConnected = useDiscordStore((s) => s.relayConnected);
     const relayConnecting = useDiscordStore((s) => s.relayConnecting);
+    const relayStatusChecked = useDiscordStore((s) => s.relayStatusChecked);
 
     // ══════════════════════════════════════════════════════════
     // ── Custom Hooks ─────────────────────────────────────────
@@ -160,26 +156,24 @@ function App() {
     const { initializing: extInitializing, inProgress: extInitInProgress } = useExtensionInitStatus();
 
     // Discord store action aliases
-    const handleStartDiscordBot = useDiscordStore((s) => s.startBot);
-    const handleStopDiscordBot = useDiscordStore((s) => s.stopBot);
+    // 로컬 봇이 제거되어 startBot/stopBot은 더 이상 존재하지 않음.
 
-    const { fetchServers, handleStart, handleStop, handleAddServer, handleDeleteServer } =
-        useServerActions({
-            servers,
-            setServers,
-            modules,
-            loading,
-            setLoading: (val) => useServerStore.setState({ loading: val }),
-            setModal,
-            setProgressBar,
-            openConsole,
-            closeConsole,
-            setShowModuleManager,
-            formatUptime,
-            openSettingsToExtensions: () => {
-                useUIStore.getState().openSettings('extensions');
-            },
-        });
+    const { fetchServers, handleStart, handleStop, handleAddServer, handleDeleteServer } = useServerActions({
+        servers,
+        setServers,
+        modules,
+        loading,
+        setLoading: (val) => useServerStore.setState({ loading: val }),
+        setModal,
+        setProgressBar,
+        openConsole,
+        closeConsole,
+        setShowModuleManager,
+        formatUptime,
+        openSettingsToExtensions: () => {
+            useUIStore.getState().openSettings('extensions');
+        },
+    });
 
     // Store-based fetchModules
     const fetchModules = useServerStore((s) => s.fetchModules);
@@ -192,14 +186,13 @@ function App() {
         setSettingsActiveTab,
         advancedExpanded,
         setAdvancedExpanded,
+        communicationExpanded,
+        setCommunicationExpanded,
         availableVersions,
         versionsLoading,
         versionInstalling,
         resettingServer,
-        editingModuleAliases,
-        setEditingModuleAliases,
-        editingCommandAliases,
-        setEditingCommandAliases,
+        liveSettingsStatus,
         isSettingsClosing,
         requestSettingsClose,
         handleOpenSettings,
@@ -207,19 +200,11 @@ function App() {
         handleInstallVersion,
         handleResetServer,
         handleSaveSettings,
-        handleSaveAliasesForModule,
-        handleResetAliasesForModule,
     } = useServerSettings({
         servers,
         modules,
         setModal,
         setProgressBar,
-        moduleAliasesPerModule,
-        discordModuleAliases,
-        discordCommandAliases,
-        setDiscordModuleAliases: (val) => useDiscordStore.getState().update({ discordModuleAliases: val }),
-        setDiscordCommandAliases: (val) => useDiscordStore.getState().update({ discordCommandAliases: val }),
-        discordPrefix,
         fetchServers,
     });
 
@@ -301,11 +286,11 @@ function App() {
         // { running: false } and we fall through to the onStatusUpdate listener.
         // On HMR or Vite full-reload the daemon is already alive, so we skip
         // the loading screen immediately.
-        if (window.api && window.api.daemonStatus) {
+        if (window.api?.daemonStatus) {
             window.api
                 .daemonStatus()
                 .then((status) => {
-                    if (status && status.running) {
+                    if (status?.running) {
                         console.log('[HMR] Daemon already running, skipping loading screen');
                         window.__sabaReadyReceived = true;
                         setInitStatus('Ready!');
@@ -318,11 +303,11 @@ function App() {
         }
 
         // Remove any previously stacked listeners (prevents duplicates on Fast Refresh)
-        if (window.api && window.api.offStatusUpdate) {
+        if (window.api?.offStatusUpdate) {
             window.api.offStatusUpdate();
         }
 
-        if (window.api && window.api.onStatusUpdate) {
+        if (window.api?.onStatusUpdate) {
             window.api.onStatusUpdate((data) => {
                 console.log('[Init Status]', data.step, ':', data.message);
 
@@ -330,6 +315,14 @@ function App() {
                     init: 'Initialize...',
                     ui: 'UI loaded',
                     daemon: 'Daemon preparing...',
+                    // ★ Preflight steps — 데몬이 자체 의존성(Node/Python)을
+                    //   검사·자동 복구하는 동안 표시. data.message 가 더 구체적인
+                    //   문자열을 담고 있으면 그걸 우선 사용한다(아래 fallback).
+                    'preflight-idle': 'Checking runtime...',
+                    'preflight-node': 'Preparing Node.js runtime...',
+                    'preflight-python': 'Preparing Python environment...',
+                    'preflight-done': 'Runtime ready',
+                    'preflight-failed': 'Runtime preparation failed',
                     modules: 'Loading modules...',
                     instances: 'Loading instances...',
                     ready: 'Checking servers...',
@@ -338,13 +331,29 @@ function App() {
                     init: 10,
                     ui: 20,
                     daemon: 50,
+                    'preflight-idle': 50,
+                    'preflight-node': 52,
+                    'preflight-python': 56,
+                    'preflight-done': 65,
+                    'preflight-failed': 50,
                     modules: 70,
                     instances: 85,
                     ready: 90,
                 };
 
-                setInitStatus(statusMessages[data.step] || data.message);
-                setInitProgress((prev) => Math.max(prev, progressValues[data.step] || prev));
+                // ★ data.message 가 비어있지 않고 statusMessages 에 step 매핑이 있으면
+                //   매핑값을 우선; 그 외엔 message; 그 외엔 step 자체를 표시.
+                const labelFromMap = statusMessages[data.step];
+                const label = labelFromMap || data.message || data.step;
+                setInitStatus(label);
+                // ★ data.percent (main.js 가 데몬 percent 를 50-65 구간으로 스케일)
+                //   가 있으면 그것을, 아니면 progressValues 매핑을 사용.
+                const explicit = typeof data.percent === 'number' ? data.percent : null;
+                const fromMap = progressValues[data.step];
+                const target = explicit ?? fromMap;
+                if (typeof target === 'number') {
+                    setInitProgress((prev) => Math.max(prev, target));
+                }
 
                 if (data.step === 'ready') {
                     window.__sabaReadyReceived = true;
@@ -355,7 +364,7 @@ function App() {
         }
 
         // Update notifications
-        if (window.api && window.api.onUpdatesAvailable) {
+        if (window.api?.onUpdatesAvailable) {
             window.api.onUpdatesAvailable((data) => {
                 console.log('[Updater] Updates available notification:', data);
                 const count = data.count || data.updates_available || 0;
@@ -373,7 +382,7 @@ function App() {
         }
 
         // Post-update completion notification
-        if (window.api && window.api.onUpdateCompleted) {
+        if (window.api?.onUpdateCompleted) {
             window.api.onUpdateCompleted((data) => {
                 console.log('[Updater] Update completed notification:', data);
                 setTimeout(() => {
@@ -396,7 +405,7 @@ function App() {
 
         return () => {
             // Cleanup IPC listeners on unmount / Fast Refresh re-run
-            if (window.api && window.api.offStatusUpdate) {
+            if (window.api?.offStatusUpdate) {
                 window.api.offStatusUpdate();
             }
         };
@@ -404,7 +413,6 @@ function App() {
     }, []);
 
     // Settings load
-    // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only initialization — store.getState() is stable
     useEffect(() => {
         // Start uptime clock
         useServerStore.getState().startUptimeClock();
@@ -415,28 +423,8 @@ function App() {
                 consoleBufferRef.current = settings.consoleBufferSize ?? 2000;
             }
 
-            // Load bot config into discord store (token/autoStart는 bot-config이 SSOT)
+            // Load bot config into discord store
             await useDiscordStore.getState().loadConfig();
-
-            // ── 마이그레이션: settings.json → bot-config.json ──
-            // 기존 settings.json에 discordToken/discordAutoStart가 있고
-            // bot-config에는 아직 없으면 이전
-            if (settings) {
-                const discordState = useDiscordStore.getState();
-                const needsMigration =
-                    (settings.discordToken && !discordState.discordToken) ||
-                    (settings.discordAutoStart && !discordState.discordAutoStart);
-                if (needsMigration) {
-                    console.log('[Migration] Migrating discordToken/autoStart from settings to bot-config');
-                    useDiscordStore.getState().update({
-                        discordToken: settings.discordToken || discordState.discordToken || '',
-                        _discordTokenRef: settings.discordToken || discordState._discordTokenRef || '',
-                        discordAutoStart: settings.discordAutoStart ?? discordState.discordAutoStart ?? false,
-                    });
-                    // 즉시 bot-config에 저장
-                    await useDiscordStore.getState().saveConfig();
-                }
-            }
 
             useDiscordStore.getState().update({ _settingsReady: true });
 
@@ -458,19 +446,8 @@ function App() {
         setServerI18n(t, i18n);
     }, [t, i18n]);
 
-    // Discord auto-start: monitor botStatusReady (Zustand v5 single-listener)
-    // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only Zustand subscribe
-    useEffect(() => {
-        const unsub = useDiscordStore.subscribe((state, prevState) => {
-            if (
-                state.botStatusReady !== prevState.botStatusReady ||
-                state._settingsReady !== prevState._settingsReady
-            ) {
-                useDiscordStore.getState().tryAutoStart();
-            }
-        });
-        return unsub;
-    }, []);
+    // Discord 자동 시작 로직은 로컬 봇 제거로 폐기됨.
+    // 클라우드 모드에서는 릴레이 서버가 봇을 호스팅하므로 클라이언트 측 자동 시작이 불필요.
 
     // Finalize loading screen when server initialization completes
     // biome-ignore lint/correctness/useExhaustiveDependencies: setters are stable
@@ -482,12 +459,15 @@ function App() {
     }, [serversInitializing, daemonReady]);
 
     // Background Daemon status polling
+    //
+    // ⚠ daemonReady 게이트를 걸지 않는다. 데몬이 아직 준비 중이거나 다운되어
+    // 있는 시점에도 배지가 실제 상태를 반영해야 한다. 그렇지 않으면 초기
+    // 연결 실패나 인증 실패가 사용자 눈에 보이지 않는다.
     // biome-ignore lint/correctness/useExhaustiveDependencies: setter is stable
     useEffect(() => {
-        if (!daemonReady) return;
         const checkDaemonStatus = async () => {
             try {
-                if (window.api && window.api.daemonStatus) {
+                if (window.api?.daemonStatus) {
                     const status = await window.api.daemonStatus();
                     setBackgroundDaemonStatus(status.running ? 'running' : 'stopped');
                 } else {
@@ -501,20 +481,49 @@ function App() {
         checkDaemonStatus();
         const interval = setInterval(checkDaemonStatus, 5000);
         return () => clearInterval(interval);
-    }, [daemonReady]);
+    }, []);
 
     // ── Settings Save Functions ─────────────────────────────
 
-    const saveCurrentSettings = async () => {
+    const saveCurrentSettings = useCallback(async () => {
         try {
             await Promise.all([useSettingsStore.getState().save(), useDiscordStore.getState().saveConfig()]);
         } catch (err) {
             console.error('[App] Failed to save settings:', err.message);
         }
-    };
+    }, []);
+
+    // ── Discord 스토어 setter (참조 안정화) ──────────────────
+    // 인라인 화살표로 넘기면 매 렌더마다 참조가 바뀌어 DiscordBotModal의
+    // 노드 로드 effect가 렌더마다 재발화 → 릴레이 서버에 노드 목록을 무한
+    // 재요청하는 루프가 생긴다. 반드시 useCallback으로 참조를 고정할 것.
+    const setDiscordPrefixStable = useCallback((val) => useDiscordStore.getState().update({ discordPrefix: val }), []);
+    const setDiscordCloudRelayUrlStable = useCallback(
+        (val) => useDiscordStore.getState().update({ discordCloudRelayUrl: val }),
+        [],
+    );
+    const setDiscordCloudHostIdStable = useCallback(
+        (val) => useDiscordStore.getState().update({ discordCloudHostId: val }),
+        [],
+    );
+    const setNodeSettingsStable = useCallback((valOrFn) => {
+        const prev = useDiscordStore.getState().nodeSettings;
+        const next = typeof valOrFn === 'function' ? valOrFn(prev) : valOrFn;
+        useDiscordStore.getState().update({ nodeSettings: next });
+    }, []);
+    const setCloudNodesStable = useCallback((val) => useDiscordStore.getState().update({ cloudNodes: val }), []);
+    const setCloudMembersStable = useCallback((valOrFn) => {
+        const prev = useDiscordStore.getState().cloudMembers;
+        const next = typeof valOrFn === 'function' ? valOrFn(prev) : valOrFn;
+        useDiscordStore.getState().update({ cloudMembers: next });
+    }, []);
+    const setInstanceSettingsStable = useCallback((valOrFn) => {
+        const prev = useDiscordStore.getState().instanceSettings;
+        const next = typeof valOrFn === 'function' ? valOrFn(prev) : valOrFn;
+        useDiscordStore.getState().update({ instanceSettings: next });
+    }, []);
 
     // ── One-time module fetch (mount only) ──────────────────
-    // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only — store.getState() is stable
     useEffect(() => {
         useServerStore.getState().fetchModules();
     }, []);
@@ -569,7 +578,10 @@ function App() {
                                         setModal({
                                             type: 'warning',
                                             title: t('app_exit.managed_warning_title'),
-                                            message: t('app_exit.managed_warning_message', { names, count: runningManaged.length }),
+                                            message: t('app_exit.managed_warning_message', {
+                                                names,
+                                                count: runningManaged.length,
+                                            }),
                                             detail: t('app_exit.managed_warning_detail'),
                                             buttons: [
                                                 {
@@ -653,58 +665,35 @@ function App() {
         isOpen: showDiscordSection,
         onClose: requestDiscordClose,
         isClosing: isDiscordClosing,
-        discordBotStatus,
-        discordToken,
-        setDiscordToken: (val) => useDiscordStore.getState().setDiscordToken(val),
         discordPrefix,
-        setDiscordPrefix: (val) => useDiscordStore.getState().update({ discordPrefix: val }),
-        discordAutoStart,
-        setDiscordAutoStart: (val) => useDiscordStore.getState().update({ discordAutoStart: val }),
-        discordMusicEnabled,
-        setDiscordMusicEnabled: (val) => useDiscordStore.getState().update({ discordMusicEnabled: val }),
-        discordMusicChannelId,
-        setDiscordMusicChannelId: (val) => useDiscordStore.getState().update({ discordMusicChannelId: val }),
-        discordMusicUISettings,
-        setDiscordMusicUISettings: (val) => useDiscordStore.getState().update({ discordMusicUISettings: val }),
-        discordBotMode,
-        setDiscordBotMode: (val) => useDiscordStore.getState().switchMode(val),
+        setDiscordPrefix: setDiscordPrefixStable,
         discordCloudRelayUrl,
-        setDiscordCloudRelayUrl: (val) => useDiscordStore.getState().update({ discordCloudRelayUrl: val }),
+        setDiscordCloudRelayUrl: setDiscordCloudRelayUrlStable,
         discordCloudHostId,
-        setDiscordCloudHostId: (val) => useDiscordStore.getState().update({ discordCloudHostId: val }),
+        setDiscordCloudHostId: setDiscordCloudHostIdStable,
         relayConnected,
         relayConnecting,
-        handleStartDiscordBot,
-        handleStopDiscordBot,
+        relayStatusChecked,
         saveCurrentSettings,
         servers,
         modules,
         moduleAliasesPerModule,
         nodeSettings,
-        setNodeSettings: (valOrFn) => {
-            const prev = useDiscordStore.getState().nodeSettings;
-            const next = typeof valOrFn === 'function' ? valOrFn(prev) : valOrFn;
-            useDiscordStore.getState().update({ nodeSettings: next });
-        },
+        setNodeSettings: setNodeSettingsStable,
+        instanceSettings,
+        setInstanceSettings: setInstanceSettingsStable,
         cloudNodes,
-        setCloudNodes: (val) => useDiscordStore.getState().update({ cloudNodes: val }),
+        setCloudNodes: setCloudNodesStable,
         cloudMembers,
-        setCloudMembers: (valOrFn) => {
-            const prev = useDiscordStore.getState().cloudMembers;
-            const next = typeof valOrFn === 'function' ? valOrFn(prev) : valOrFn;
-            useDiscordStore.getState().update({ cloudMembers: next });
-        },
+        setCloudMembers: setCloudMembersStable,
     };
 
     return (
         <ExtensionProvider>
             <div className="App">
-                {/* Discord overlay backdrop (팝업 모드에서만) */}
-                {showDiscordSection && !discordSideMode && <div className="discord-backdrop" onClick={requestDiscordClose} />}
-                {/* Background overlay backdrop */}
-                {showBackgroundSection && <div className="discord-backdrop" onClick={requestBackgroundClose} />}
-                {/* Notice overlay backdrop */}
-                {showNoticeSection && <div className="discord-backdrop" onClick={requestNoticeClose} />}
+                {/* ⚠ 백드롭을 App 직속(z-index 1999)으로 깔면 헤더 스태킹 컨텍스트(z-index 10)
+                    내부의 팝업 모달(z-index 2000)을 덮어 스크롤/클릭이 전부 차단된다.
+                    각 백드롭은 모달 컴포넌트 내부(헤더 안, 모달의 형제)에서 렌더링할 것. */}
                 <TitleBar />
                 <Toast />
                 <header className="app-header">
@@ -719,18 +708,21 @@ function App() {
                             {extInitializing && (
                                 <div
                                     className="ext-init-spinner-wrapper"
-                                    title={Object.values(extInitInProgress).join(', ') || t('common:initializing', { defaultValue: 'Initializing extensions…' })}
+                                    data-tooltip={
+                                        Object.values(extInitInProgress).join(', ') ||
+                                        t('common:initializing', { defaultValue: 'Initializing extensions…' })
+                                    }
                                 >
                                     <span className="ext-init-spinner" />
                                 </div>
                             )}
                             <div className="notice-button-wrapper">
-                                <button
+                                <button type="button"
                                     className="btn-settings-icon-solo"
                                     onClick={() =>
                                         showNoticeSection ? requestNoticeClose() : setShowNoticeSection(true)
                                     }
-                                    title={t('notice_modal.tooltip')}
+                                    data-tooltip={t('notice_modal.tooltip')}
                                 >
                                     <Icon name="bell" size="lg" />
                                 </button>
@@ -748,10 +740,10 @@ function App() {
                                     }}
                                 />
                             </div>
-                            <button
+                            <button type="button"
                                 className="btn-settings-icon-solo"
                                 onClick={() => useUIStore.getState().openSettings()}
-                                title={t('settings.gui_settings_tooltip')}
+                                data-tooltip={t('settings.gui_settings_tooltip')}
                             >
                                 <Icon name="cog" size="lg" />
                             </button>
@@ -760,31 +752,26 @@ function App() {
 
                     {/* 두 번째 줄: 기능 버튼들 */}
                     <div className="header-row header-row-controls">
-                        <button className="btn btn-add" onClick={() => setShowModuleManager(!showModuleManager)}>
-                            <Icon name="plus" size="sm" /> Add Server
+                        <button type="button" className="btn btn-add" onClick={() => setShowModuleManager(!showModuleManager)}>
+                            <Icon name="plus" size="sm" /> {t('buttons.add_server')}
                         </button>
                         <div className="header-spacer"></div>
                         <div className="discord-button-wrapper">
-                            <button
-                                className={`btn btn-discord ${discordBotStatus === 'running' ? 'btn-discord-active' : ''}`}
+                            <button type="button"
+                                className={`btn btn-discord ${relayConnected ? 'btn-discord-active' : ''}`}
                                 onClick={() =>
                                     showDiscordSection ? requestDiscordClose() : setShowDiscordSection(true)
                                 }
                             >
                                 <span
-                                    className={`status-indicator ${discordBotStatus === 'running' ? 'status-online' : discordBotStatus === 'connecting' ? 'status-connecting' : 'status-offline'}`}
+                                    className={`status-indicator ${relayConnected ? 'status-online' : relayConnecting && !relayStatusChecked ? 'status-connecting' : 'status-offline'}`}
                                 ></span>
                                 Discord Bot
                             </button>
-                            {!discordSideMode && (
-                                <DiscordBotModal
-                                    {...discordModalProps}
-                                    displayMode="popup"
-                                />
-                            )}
+                            {!discordSideMode && <DiscordBotModal {...discordModalProps} displayMode="popup" />}
                         </div>
                         <div className="background-button-wrapper">
-                            <button
+                            <button type="button"
                                 className={`btn btn-background ${backgroundDaemonStatus === 'running' ? 'btn-background-active' : ''}`}
                                 onClick={() =>
                                     showBackgroundSection ? requestBackgroundClose() : setShowBackgroundSection(true)
@@ -822,93 +809,91 @@ function App() {
                 />
 
                 <div className="app-body">
-                <main className={`app-main${Object.keys(consoles).length > 0 ? ' app-main-dock-active' : ''}`}>
-                    <div className="server-list">
-                        {servers.length === 0 ? (
-                            <div className="no-servers">
-                                <p>{t('servers.no_servers_configured', { defaultValue: 'No servers configured' })}</p>
-                            </div>
-                        ) : (
-                            servers.map((server, index) => (
-                                <ServerCard
-                                    key={server.name}
-                                    server={server}
-                                    index={index}
-                                    modules={modules}
-                                    servers={servers}
-                                    cardRefs={cardRefs}
-                                    draggedName={draggedName}
-                                    skipNextClick={skipNextClick}
-                                    consoleServer={consoleServer}
-                                    isConsoleOpen={isConsoleOpen}
-                                    consolePopoutInstanceId={consolePopoutInstanceId}
-                                    handleCardPointerDown={handleCardPointerDown}
-                                    handleStart={handleStart}
-                                    handleStop={handleStop}
-                                    handleOpenSettings={handleOpenSettings}
-                                    handleDeleteServer={handleDeleteServer}
-                                    openConsole={openConsole}
+                    <main className={`app-main${Object.keys(consoles).length > 0 ? ' app-main-dock-active' : ''}`}>
+                        <div className="server-list">
+                            {servers.length === 0 ? (
+                                <div className="no-servers">
+                                    <p>
+                                        {t('servers.no_servers_configured', { defaultValue: 'No servers configured' })}
+                                    </p>
+                                </div>
+                            ) : (
+                                servers.map((server, index) => (
+                                    <ServerCard
+                                        key={server.name}
+                                        server={server}
+                                        index={index}
+                                        modules={modules}
+                                        servers={servers}
+                                        cardRefs={cardRefs}
+                                        draggedName={draggedName}
+                                        skipNextClick={skipNextClick}
+                                        consoleServer={consoleServer}
+                                        isConsoleOpen={isConsoleOpen}
+                                        consolePopoutInstanceId={consolePopoutInstanceId}
+                                        handleCardPointerDown={handleCardPointerDown}
+                                        handleStart={handleStart}
+                                        handleStop={handleStop}
+                                        handleOpenSettings={handleOpenSettings}
+                                        handleDeleteServer={handleDeleteServer}
+                                        openConsole={openConsole}
+                                        closeConsole={closeConsole}
+                                        setCommandServer={setCommandServer}
+                                        setShowCommandModal={setShowCommandModal}
+                                        setServers={setServers}
+                                        formatUptime={formatUptime}
+                                        onContextMenu={(e) => {
+                                            e.preventDefault();
+                                            setContextMenu({ x: e.clientX, y: e.clientY, server });
+                                        }}
+                                    />
+                                ))
+                            )}
+                        </div>
+
+                        {/* 플로팅 콘솔 윈도우들 */}
+                        {Object.entries(consoles).map(([instanceId, state]) => {
+                            if (consolePopoutInstanceId === instanceId) return null;
+                            const srv = servers.find((s) => s.id === instanceId);
+                            const mod = srv && modules.find((m) => m.name === srv.module);
+                            const highlightRules = mod?.syntax_highlight?.rules || null;
+                            return (
+                                <ConsoleWindow
+                                    key={instanceId}
+                                    instanceId={instanceId}
+                                    state={state}
+                                    focusConsole={focusConsole}
+                                    minimizeConsole={minimizeConsole}
                                     closeConsole={closeConsole}
-                                    setCommandServer={setCommandServer}
-                                    setShowCommandModal={setShowCommandModal}
-                                    setServers={setServers}
-                                    formatUptime={formatUptime}
-                                    onContextMenu={(e) => {
-                                        e.preventDefault();
-                                        setContextMenu({ x: e.clientX, y: e.clientY, server });
-                                    }}
+                                    togglePin={togglePin}
+                                    updatePosition={updatePosition}
+                                    updateSize={updateSize}
+                                    setConsoleInput={setConsoleInput}
+                                    sendConsoleCommand={sendConsoleCommand}
+                                    setConsolePopoutInstanceId={setConsolePopoutInstanceId}
+                                    highlightRules={highlightRules}
+                                    servers={servers}
                                 />
-                            ))
-                        )}
-                    </div>
+                            );
+                        })}
 
-                    {/* 플로팅 콘솔 윈도우들 */}
-                    {Object.entries(consoles).map(([instanceId, state]) => {
-                        if (consolePopoutInstanceId === instanceId) return null;
-                        const srv = servers.find((s) => s.id === instanceId);
-                        const mod = srv && modules.find((m) => m.name === srv.module);
-                        const highlightRules = mod?.syntax_highlight?.rules || null;
-                        return (
-                            <ConsoleWindow
-                                key={instanceId}
-                                instanceId={instanceId}
-                                state={state}
-                                focusConsole={focusConsole}
-                                minimizeConsole={minimizeConsole}
-                                closeConsole={closeConsole}
-                                togglePin={togglePin}
-                                updatePosition={updatePosition}
-                                updateSize={updateSize}
-                                setConsoleInput={setConsoleInput}
-                                sendConsoleCommand={sendConsoleCommand}
-                                setConsolePopoutInstanceId={setConsolePopoutInstanceId}
-                                highlightRules={highlightRules}
-                                servers={servers}
-                            />
-                        );
-                    })}
+                        {/* 콘솔 독 (하단 작업 표시줄) */}
+                        <ConsoleDock
+                            consoles={consoles}
+                            restoreConsole={restoreConsole}
+                            focusConsole={focusConsole}
+                            closeConsole={closeConsole}
+                            popinConsole={popinConsole}
+                            consolePopoutInstanceId={consolePopoutInstanceId}
+                            servers={servers}
+                            hasProgressBar={!!progressBar}
+                        />
+                    </main>
 
-                    {/* 콘솔 독 (하단 작업 표시줄) */}
-                    <ConsoleDock
-                        consoles={consoles}
-                        restoreConsole={restoreConsole}
-                        focusConsole={focusConsole}
-                        closeConsole={closeConsole}
-                        popinConsole={popinConsole}
-                        consolePopoutInstanceId={consolePopoutInstanceId}
-                        servers={servers}
-                        hasProgressBar={!!progressBar}
-                    />
-                </main>
-
-                {/* 사이드 패널 모드 디스코드 봇 (app-main 우측 서랍) */}
-                {discordSideMode && (
-                    <DiscordBotModal
-                        {...discordModalProps}
-                        displayMode="side"
-                    />
-                )}
-                </div>{/* /app-body */}
+                    {/* 사이드 패널 모드 디스코드 봇 (app-main 우측 서랍) */}
+                    {discordSideMode && <DiscordBotModal {...discordModalProps} displayMode="side" />}
+                </div>
+                {/* /app-body */}
 
                 {showSettingsModal && settingsServer && (
                     <ServerSettingsModal
@@ -919,6 +904,8 @@ function App() {
                         modules={modules}
                         advancedExpanded={advancedExpanded}
                         setAdvancedExpanded={setAdvancedExpanded}
+                        communicationExpanded={communicationExpanded}
+                        setCommunicationExpanded={setCommunicationExpanded}
                         availableVersions={availableVersions}
                         versionsLoading={versionsLoading}
                         versionInstalling={versionInstalling}
@@ -927,33 +914,26 @@ function App() {
                         handleSaveSettings={handleSaveSettings}
                         handleResetServer={handleResetServer}
                         resettingServer={resettingServer}
-                        editingModuleAliases={editingModuleAliases}
-                        setEditingModuleAliases={setEditingModuleAliases}
-                        editingCommandAliases={editingCommandAliases}
-                        setEditingCommandAliases={setEditingCommandAliases}
-                        handleSaveAliasesForModule={handleSaveAliasesForModule}
-                        handleResetAliasesForModule={handleResetAliasesForModule}
+                        liveSettingsStatus={liveSettingsStatus}
                         isClosing={isSettingsClosing}
                         onClose={requestSettingsClose}
                         servers={servers}
-                        moduleAliasesPerModule={moduleAliasesPerModule}
-                        discordModuleAliases={discordModuleAliases}
                     />
                 )}
 
                 {/* Context Menu */}
                 {contextMenu && (
                     <>
-                        <div
+                        <button aria-label={t('modals.close')} type="button"
                             className="context-menu-overlay"
-                            onClick={() => setContextMenu(null)}
+                            onClick={(event) => { if (event.target === event.currentTarget) (() => setContextMenu(null))(event); }}
                             onContextMenu={(e) => {
                                 e.preventDefault();
                                 setContextMenu(null);
                             }}
                         />
                         <div className="context-menu" style={{ top: contextMenu.y, left: contextMenu.x }}>
-                            <div
+                            <button type="button"
                                 className="context-menu-item"
                                 onClick={() => {
                                     handleOpenSettings(contextMenu.server);
@@ -962,26 +942,27 @@ function App() {
                             >
                                 <Icon name="settings" size="sm" />
                                 {t('context_menu.settings', { defaultValue: 'Settings' })}
-                            </div>
-                            <div
+                            </button>
+                            <button type="button"
                                 className="context-menu-item"
                                 onClick={() => {
                                     const srv = contextMenu.server;
-                                    const dir = srv?.module_settings?.working_dir ||
-                                        srv?.working_dir ||
-                                        null;
+                                    const dir = srv?.module_settings?.working_dir || srv?.working_dir || null;
                                     if (dir) {
-                                        window.api?.shellOpenPath?.(dir)?.catch?.((err) =>
-                                            console.error('[App] shellOpenPath failed:', err.message));
+                                        window.api
+                                            ?.shellOpenPath?.(dir)
+                                            ?.catch?.((err) =>
+                                                console.error('[App] shellOpenPath failed:', err.message),
+                                            );
                                     }
                                     setContextMenu(null);
                                 }}
                             >
                                 <Icon name="folder" size="sm" />
                                 {t('context_menu.open_folder', { defaultValue: 'Open in File Explorer' })}
-                            </div>
+                            </button>
                             <div className="context-menu-separator" />
-                            <div
+                            <button type="button"
                                 className="context-menu-item danger"
                                 onClick={() => {
                                     handleDeleteServer(contextMenu.server);
@@ -990,7 +971,7 @@ function App() {
                             >
                                 <Icon name="trash" size="sm" />
                                 {t('context_menu.delete', { defaultValue: 'Delete' })}
-                            </div>
+                            </button>
                         </div>
                     </>
                 )}
@@ -1080,9 +1061,9 @@ function App() {
 
                 {/* waiting.png (느린 진행 감지) */}
                 {showWaitingImage && (
-                    <div className="waiting-image-overlay" onClick={() => setShowWaitingImage(false)}>
+                    <button type="button"    className="waiting-image-overlay" onClick={() => setShowWaitingImage(false)}>
                         <img src="./waiting.png" alt="waiting" className="waiting-image" />
-                    </div>
+                    </button>
                 )}
 
                 {/* 글로벌 프로그레스바 */}

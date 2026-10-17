@@ -157,6 +157,53 @@ pub async fn read_properties_handler(
     }
 }
 
+/// GET /api/instance/:id/settings/live — 실제 설정 파일을 다시 읽어 saba-chan 키 포맷으로 반환
+///
+/// 인스턴스 설정 모달을 열 때 사용한다. `module_settings`는 마지막으로 saba-chan을 통해
+/// 저장(또는 마이그레이션 임포트)된 시점의 캐시일 뿐이라, 사용자가 게임 내 설정이나
+/// 설정 파일을 직접 수정하면 실제 값과 어긋난다. 이 엔드포인트는 모듈의 `import_settings`를
+/// 호출해 디스크의 실제 값을 saba-chan 키로 변환해 반환하므로, 프론트엔드가 이 값을
+/// module_settings 캐시 위에 덮어써서 화면에 "실제" 값을 보여줄 수 있다.
+pub async fn read_live_settings_handler(
+    Path(id): Path<String>,
+    State(state): State<IPCServer>,
+) -> impl IntoResponse {
+    let mut supervisor = state.supervisor.write().await;
+
+    match supervisor.manage_properties(&id, "import", None).await {
+        Ok(result) => {
+            // 임포트 성공 시 module_settings 캐시를 실제 값으로 갱신하고
+            // settings_import_pending 플래그를 해제한다.
+            // (설정 플래그의 set은 마이그레이션 생성 시 임포트 실패 — create.rs 참조)
+            let ok = result.get("success").and_then(|v| v.as_bool()).unwrap_or(false);
+            let settings = result.get("settings").and_then(|v| v.as_object()).cloned();
+            if ok {
+                if let Some(settings) = settings.filter(|s| !s.is_empty()) {
+                    if let Some(inst) = supervisor.instance_store.get(&id) {
+                        let mut updated = inst.clone();
+                        for (key, value) in &settings {
+                            updated.module_settings.insert(key.clone(), value.clone());
+                        }
+                        updated.settings_import_pending = false;
+                        if let Err(e) = supervisor.instance_store.update(&id, updated) {
+                            tracing::warn!(
+                                "Live settings read: cache refresh failed for instance {}: {}",
+                                id, e
+                            );
+                        }
+                    }
+                }
+            }
+            (StatusCode::OK, Json(result)).into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
 /// PUT /api/instance/:id/properties — Update server.properties
 pub async fn write_properties_handler(
     Path(id): Path<String>,

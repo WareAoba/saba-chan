@@ -5,11 +5,14 @@
 //!
 //! ## 엔드포인트
 //! - `GET  /api/updates/status`              — 캐시된 업데이트 상태 조회
-//! - `POST /api/updates/check`               — 업데이트 확인 (GitHub API 호출)
+//! - `POST /api/updates/check`               — 업데이트 확인 (Relay `/v1/updates/check`)
 //! - `POST /api/updates/download`            — 선택 컴포넌트 다운로드
 //! - `POST /api/updates/apply`               — 업데이터 exe 스폰하여 적용
 //! - `GET  /api/updates/config`              — 업데이트 설정 조회
 //! - `PUT  /api/updates/config`              — 업데이트 설정 변경
+//!
+//! 모든 라우트는 다른 `/api/*`와 같이 IPC 토큰 인증을 거친다
+//! (`routes::build_router`가 인증 레이어를 이 라우터까지 덮도록 머지한다).
 
 use axum::{
     extract::State,
@@ -87,7 +90,6 @@ pub fn updates_router(state: UpdateState) -> Router {
         .route("/api/updates/download", post(download_components))
         .route("/api/updates/download/progress", get(get_download_progress))
         .route("/api/updates/apply", post(apply_updates))
-        .route("/api/updates/integrity", get(check_integrity))
         .route("/api/updates/config", get(get_config))
         .route("/api/updates/config", put(set_config))
         .with_state(state)
@@ -97,7 +99,7 @@ pub fn updates_router(state: UpdateState) -> Router {
 // 핸들러
 // ═══════════════════════════════════════════════════════
 
-/// GET /api/updates/status — 캐시된 상태 반환 (GitHub API 호출 없음)
+/// GET /api/updates/status — 캐시된 상태 반환 (Relay 호출 없음)
 ///
 /// Locales 컴포넌트는 사용자에게 비표시 — 백그라운드 자동 다운로드/적용 대상이므로
 /// 응답의 `components`, `updates_available` 에서 제외합니다.
@@ -137,7 +139,7 @@ async fn get_status(
     }))
 }
 
-/// POST /api/updates/check — GitHub API를 호출하여 최신 릴리스 확인
+/// POST /api/updates/check — 릴레이를 호출하여 최신 릴리스 확인
 ///
 /// Locales 컴포넌트는 응답에서 제외하고, 업데이트가 있으면
 /// 백그라운드에서 자동 다운로드+적용합니다 (사용자 비표시).
@@ -332,7 +334,11 @@ async fn download_components(
 async fn get_download_progress(
     State(state): State<UpdateState>,
 ) -> impl IntoResponse {
-    let prog = state.download_progress.lock().unwrap().clone();
+    let prog = state
+        .download_progress
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
     Json(json!({
         "ok": true,
         "component": prog.component,
@@ -372,11 +378,10 @@ async fn apply_updates(
     };
 
     // 적용 우선순위에 따라 정렬:
-    // Updater → 모듈/익스텐션/Locales → DiscordBot → CoreDaemon → 인터페이스
+    // Updater → 모듈/익스텐션/Locales → CoreDaemon → 인터페이스
     targets.sort_by_key(|comp| match comp {
         Component::Updater => 0u8,
         Component::Module(_) | Component::Extension(_) | Component::Locales => 1,
-        Component::DiscordBot => 2,
         Component::CoreDaemon => 3,
         Component::Gui => 4,
         Component::Cli => 4,
@@ -422,20 +427,47 @@ async fn apply_updates(
     // 1) pending manifest 재저장 (데몬이 적용한 것들은 downloaded=false로 제외됨)
     // 2) apply-targets.json에 업데이터가 적용해야 할 정확한 컴포넌트 목록 저장
     //    (GUI가 CLI 인자로 일부만 전달해도 업데이터가 정확한 목록을 알 수 있도록)
+    //
+    // 영속화에 **둘 중 하나라도 실패하면** 업데이터 위임을 포기한다.
+    // 부분 기록 상태에서 업데이터가 실행되면 잘못된 컴포넌트가 적용되거나
+    // manifest를 로드하지 못해 no-op 종료하는 침묵 오동작이 발생한다.
+    let mut persistence_ok = true;
     if !needs_updater.is_empty() {
         if let Err(e) = mgr.save_pending_manifest() {
-            tracing::warn!("[Updates] Failed to save pending manifest for updater: {}", e);
+            tracing::error!("[Updates] Failed to save pending manifest for updater: {}", e);
+            errors.push(format!("save pending manifest: {}", e));
+            persistence_ok = false;
         }
         if let Err(e) = mgr.save_updater_apply_targets(&needs_updater) {
-            tracing::warn!("[Updates] Failed to save apply targets for updater: {}", e);
+            tracing::error!("[Updates] Failed to save apply targets for updater: {}", e);
+            errors.push(format!("save apply targets: {}", e));
+            persistence_ok = false;
         }
     }
 
     // UpdateManager lock 해제 (supervisor/extension_manager lock과 교차 잠금 방지)
     drop(mgr);
 
+    // 업데이터가 필요하면 스폰 인증 티켓 발급 — 클라이언트만 토큰을 받아 업데이터를 실행할 수 있다.
+    // 영속화 실패 시에는 티켓 발급도 생략한다.
+    let launch_token: Option<String> = if !needs_updater.is_empty() && persistence_ok {
+        match saba_chan_updater_lib::launch_ticket::issue(&["gui", "cli"]) {
+            Ok(tok) => Some(tok),
+            Err(e) => {
+                tracing::error!("[Updates] Failed to issue launch ticket: {}", e);
+                errors.push(format!("launch ticket: {}", e));
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // 업데이터 위임 실패 여부 — 토큰이 없거나 영속화 실패면 클라이언트가 스폰하지 못하도록 false.
+    let requires_updater = !needs_updater.is_empty() && persistence_ok && launch_token.is_some();
+
     // 데몬이 직접 적용한 경우에만 핫로드 (업데이터 위임 시에는 불필요)
-    if needs_updater.is_empty() {
+    if !requires_updater {
         if has_module_updates {
             if let Some(ref sup) = state.supervisor {
                 let sup = sup.read().await;
@@ -469,48 +501,9 @@ async fn apply_updates(
         "ok": errors.is_empty(),
         "applied": applied,
         "needs_updater": needs_updater,
-        "requires_updater": !needs_updater.is_empty(),
+        "requires_updater": requires_updater,
+        "launch_token": launch_token,
         "errors": errors,
-    }))
-}
-
-/// GET /api/updates/integrity — 서버에서 매니페스트를 가져와 SHA256 무결성 검증
-async fn check_integrity(
-    State(state): State<UpdateState>,
-) -> impl IntoResponse {
-    let mut mgr = state.manager.write().await;
-
-    let report = match mgr.verify_integrity().await {
-        Ok(r) => r,
-        Err(e) => {
-            return Json(json!({
-                "ok": false,
-                "error": format!("Integrity check failed: {}", e),
-            }));
-        }
-    };
-
-    let components: Vec<Value> = report.components.iter().map(|c| {
-        json!({
-            "component": c.component,
-            "display_name": c.display_name,
-            "status": format!("{:?}", c.status),
-            "expected_hash": c.expected_hash,
-            "actual_hash": c.actual_hash,
-            "file_path": c.file_path,
-            "message": c.message,
-        })
-    }).collect();
-
-    Json(json!({
-        "ok": true,
-        "checked_at": report.checked_at,
-        "overall": format!("{:?}", report.overall),
-        "total": report.total,
-        "verified": report.verified,
-        "failed": report.failed,
-        "skipped": report.skipped,
-        "components": components,
     }))
 }
 
@@ -531,6 +524,21 @@ async fn set_config(
     State(state): State<UpdateState>,
     Json(body): Json<Value>,
 ) -> impl IntoResponse {
+    // 범위를 벗어난 값은 조용히 잘라 저장하지 않고 거부한다.
+    let check_interval = match body.get("check_interval_hours") {
+        None | Some(Value::Null) => None,
+        Some(v) => match v.as_u64().and_then(|n| u32::try_from(n).ok()) {
+            Some(n) => Some(n),
+            None => {
+                return (
+                    axum::http::StatusCode::BAD_REQUEST,
+                    Json(json!({ "ok": false, "error": "check_interval_hours must be an integer between 0 and 4294967295" })),
+                )
+                    .into_response();
+            }
+        },
+    };
+
     let mut mgr = state.manager.write().await;
     let mut cfg = mgr.get_config();
 
@@ -538,14 +546,20 @@ async fn set_config(
     if let Some(v) = body.get("enabled").and_then(|v| v.as_bool()) {
         cfg.enabled = v;
     }
-    if let Some(v) = body.get("github_owner").and_then(|v| v.as_str()) {
-        cfg.github_owner = v.to_string();
+    if let Some(v) = body.get("relay_base_url").and_then(|v| v.as_str()) {
+        cfg.relay_base_url = v.to_string();
     }
-    if let Some(v) = body.get("github_repo").and_then(|v| v.as_str()) {
-        cfg.github_repo = v.to_string();
+    if let Some(v) = body.get("channel").and_then(|v| v.as_str()) {
+        cfg.channel = v.to_string();
     }
-    if let Some(v) = body.get("check_interval_hours").and_then(|v| v.as_u64()) {
-        cfg.check_interval_hours = v as u32;
+    if let Some(v) = body.get("platform").and_then(|v| v.as_str()) {
+        cfg.platform = v.to_string();
+    }
+    if let Some(v) = body.get("client_id").and_then(|v| v.as_str()) {
+        cfg.client_id = v.to_string();
+    }
+    if let Some(v) = check_interval {
+        cfg.check_interval_hours = v;
     }
     if let Some(v) = body.get("auto_download").and_then(|v| v.as_bool()) {
         cfg.auto_download = v;
@@ -553,14 +567,8 @@ async fn set_config(
     if let Some(v) = body.get("auto_apply").and_then(|v| v.as_bool()) {
         cfg.auto_apply = v;
     }
-    if let Some(v) = body.get("include_prerelease").and_then(|v| v.as_bool()) {
-        cfg.include_prerelease = v;
-    }
     if let Some(v) = body.get("install_root").and_then(|v| v.as_str()) {
         cfg.install_root = Some(v.to_string());
-    }
-    if let Some(v) = body.get("api_base_url").and_then(|v| v.as_str()) {
-        cfg.api_base_url = Some(v.to_string());
     }
 
     mgr.update_config(cfg.clone());
@@ -569,6 +577,7 @@ async fn set_config(
         "ok": true,
         "config": cfg,
     }))
+    .into_response()
 }
 
 // ═══════════════════════════════════════════════════════

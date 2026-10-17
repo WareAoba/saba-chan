@@ -54,72 +54,83 @@ pub fn resolve_modules_dir() -> std::path::PathBuf {
 /// 기본 플러그인 타임아웃 (초)
 pub const DEFAULT_PLUGIN_TIMEOUT_SECS: u64 = 120;
 
-/// extensions/<name>.py 의 절대경로를 해석합니다.
-/// 익스텐션 디렉토리에서 파일 존재 여부를 검사합니다.
-fn resolve_extension_path(extension_name: &str) -> anyhow::Result<std::path::PathBuf> {
-    let extensions_dir = resolve_extensions_dir();
-    let ext_path = extensions_dir.join(format!("{}.py", extension_name));
-    if !ext_path.exists() {
-        return Err(anyhow::anyhow!(
-            "Extension not found: {} (searched {})",
-            extension_name,
-            ext_path.display()
-        ));
+/// 설치·프로비저닝 등 장시간 작업용 타임아웃 (초) — SteamCMD/다운로드 허용
+pub const LONG_PLUGIN_TIMEOUT_SECS: u64 = 1800;
+
+/// `PROGRESS:{json}` 이벤트 콜백. 여러 훅/호출에서 공유할 수 있도록 `Arc`로 둔다.
+pub type ProgressCallback = std::sync::Arc<dyn Fn(ExtensionProgress) + Send + Sync>;
+
+/// 모듈/익스텐션 프로세스에 주입할 앱 언어 (`SABA_LANG`).
+///
+/// 데몬이 GUI 없이 단독 기동되면 프로세스 env에 `SABA_LANG`이 없어
+/// 모듈 i18n이 전부 영어로 폴백된다. 데몬 부팅 시(그리고 GUI 설정 저장 시)
+/// settings.json의 language로 이 전역을 갱신해, 이후 스폰되는 모든
+/// 플러그인 프로세스가 앱 언어를 물려받게 한다.
+static PLUGIN_LANG: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
+
+/// 플러그인 프로세스에 주입할 데몬 IPC 기본 URL (`DAEMON_API_URL`).
+/// 모듈이 `/api/instance/:id/rcon` 등으로 콜백할 때 실제 바인드된 포트를 쓰도록 한다.
+static DAEMON_API_URL: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
+
+/// 플러그인 프로세스에 주입할 언어를 설정한다 (`None`이면 주입 안 함 → env 상속).
+pub fn set_plugin_lang(lang: Option<String>) {
+    let normalized = lang.filter(|l| !l.trim().is_empty());
+    if let Ok(mut slot) = PLUGIN_LANG.write() {
+        *slot = normalized;
     }
-    Ok(ext_path)
 }
 
-/// Plugin runner executes Python modules (short-lived)
-/// Returns JSON output from stdout only
-/// Called by Supervisor for module lifecycle management
-/// Plugin runner executes Python modules (short-lived)
-/// Returns JSON output from stdout only
+/// 현재 설정된 플러그인 언어를 반환한다.
+pub fn plugin_lang() -> Option<String> {
+    PLUGIN_LANG.read().ok().and_then(|s| s.clone())
+}
+
+/// IPC 서버가 바인드된 뒤 호출한다 (예: `http://127.0.0.1:57474`).
+pub fn set_daemon_api_url(url: &str) {
+    if let Ok(mut slot) = DAEMON_API_URL.write() {
+        *slot = Some(url.trim_end_matches('/').to_string());
+    }
+}
+
+/// 플러그인에 전달할 데몬 IPC 기본 URL.
+pub fn daemon_api_url() -> Option<String> {
+    DAEMON_API_URL.read().ok().and_then(|s| s.clone())
+}
+
+/// Python 모듈 함수를 실행하고 stdout의 JSON 결과를 반환한다 (기본 타임아웃).
 pub async fn run_plugin(module_path: &str, function: &str, config: Value) -> Result<Value> {
     run_plugin_inner(module_path, function, config, None, DEFAULT_PLUGIN_TIMEOUT_SECS).await
 }
 
-/// Like `run_plugin` but with a custom timeout (seconds).
+/// `run_plugin`과 같지만 타임아웃(초)을 지정한다.
 pub async fn run_plugin_with_timeout(module_path: &str, function: &str, config: Value, timeout_secs: u64) -> Result<Value> {
     run_plugin_inner(module_path, function, config, None, timeout_secs).await
 }
 
-/// Like `run_plugin` but invokes a callback for each `PROGRESS:{json}` line
-/// emitted on stderr by the Python extension.
-pub async fn run_plugin_with_progress<F>(
+/// stderr의 `PROGRESS:{json}` 줄마다 콜백을 호출하는 장시간 실행용 러너.
+pub async fn run_plugin_with_progress(
     module_path: &str,
     function: &str,
     config: Value,
-    on_progress: F,
-) -> Result<Value>
-where
-    F: Fn(ExtensionProgress) + Send + 'static,
-{
-    run_plugin_inner(module_path, function, config, Some(Box::new(on_progress)), DEFAULT_PLUGIN_TIMEOUT_SECS).await
-}
-
-/// Like `run_plugin_with_progress` but with a custom timeout.
-/// SteamCMD 다운로드 등 장시간 작업에 사용합니다.
-pub async fn run_plugin_with_progress_and_timeout<F>(
-    module_path: &str,
-    function: &str,
-    config: Value,
-    on_progress: F,
+    on_progress: ProgressCallback,
     timeout_secs: u64,
-) -> Result<Value>
-where
-    F: Fn(ExtensionProgress) + Send + 'static,
-{
-    run_plugin_inner(module_path, function, config, Some(Box::new(on_progress)), timeout_secs).await
+) -> Result<Value> {
+    run_plugin_inner(module_path, function, config, Some(on_progress), timeout_secs).await
 }
 
 async fn run_plugin_inner(
     module_path: &str,
     function: &str,
     config: Value,
-    on_progress: Option<Box<dyn Fn(ExtensionProgress) + Send>>,
+    on_progress: Option<ProgressCallback>,
     timeout_secs: u64,
 ) -> Result<Value> {
     tracing::debug!("Executing plugin: {} -> {}", module_path, function);
+
+    // 존재하지 않는 스크립트는 Python 부트스트랩(다운로드)까지 가지 않고 즉시 실패한다.
+    if !std::path::Path::new(module_path).is_file() {
+        return Err(anyhow::anyhow!("Plugin script not found: {}", module_path));
+    }
 
     let config_json = serde_json::to_string(&config)?;
     let python_exe = crate::python_env::get_python_path().await?;
@@ -134,21 +145,26 @@ async fn run_plugin_inner(
         .env("PYTHONIOENCODING", "utf-8")
         .env("PYTHONUNBUFFERED", "1");
 
-    // 활성화된 익스텐션 목록을 Python에 전달 (비활성 익스텐션 import 방지용)
+    // 앱 언어 주입 — 모듈 i18n(SABA_LANG 기반)이 데몬 기동 방식과 무관하게
+    // settings.json의 언어를 따르도록 한다. 미설정이면 데몬 env 상속.
+    if let Some(lang) = plugin_lang() {
+        cmd.env("SABA_LANG", lang);
+    }
+    if let Some(url) = daemon_api_url() {
+        cmd.env("DAEMON_API_URL", url);
+    }
+
+    // 활성화된 익스텐션 목록을 Python에 전달 (비활성 익스텐션 import 방지용).
+    // 상태 파일은 데몬 공통 데이터 디렉토리(SABA_DATA_DIR 존중)에서 읽는다.
+    let state_path = saba_chan_updater_lib::constants::resolve_extensions_state_path();
+    if let Ok(content) = std::fs::read_to_string(&state_path) {
+        if let Ok(enabled_list) = serde_json::from_str::<Vec<String>>(&content) {
+            cmd.env("SABA_ENABLED_EXTENSIONS", enabled_list.join(","));
+        }
+    }
+
     let extensions_dir = resolve_extensions_dir();
     if extensions_dir.is_dir() {
-        let state_path = if let Ok(appdata) = std::env::var("APPDATA") {
-            std::path::PathBuf::from(&appdata)
-                .join("saba-chan")
-                .join("extensions_state.json")
-        } else {
-            std::path::PathBuf::from("./extensions_state.json")
-        };
-        if let Ok(content) = std::fs::read_to_string(&state_path) {
-            if let Ok(enabled_list) = serde_json::from_str::<Vec<String>>(&content) {
-                cmd.env("SABA_ENABLED_EXTENSIONS", enabled_list.join(","));
-            }
-        }
 
         let mut pypath = extensions_dir.parent()
             .unwrap_or(&extensions_dir)
@@ -257,46 +273,23 @@ async fn run_plugin_inner(
     }
 }
 
-// detect_python_command()는 python_env::get_python_path()로 대체됨.
-// 시스템 Python 탐지는 python_env 모듈에서 venv 부트스트랩 시 수행합니다.
-
-/// Extension runner – extensions/<name>.py 를 plugin 프로토콜로 실행합니다.
-/// run_plugin과 동일한 프로토콜이지만, 경로를 extensions/ 디렉토리에서 자동으로 해석합니다.
-#[allow(dead_code)]
-pub async fn run_extension(extension_name: &str, function: &str, config: Value) -> Result<Value> {
-    let ext_path = resolve_extension_path(extension_name)?;
-    run_plugin(ext_path.to_string_lossy().as_ref(), function, config).await
-}
-
-/// Like `run_extension` but with real-time progress callback.
-#[allow(dead_code)]
-pub async fn run_extension_with_progress<F>(
-    extension_name: &str,
-    function: &str,
-    config: Value,
-    on_progress: F,
-) -> Result<Value>
-where
-    F: Fn(ExtensionProgress) + Send + 'static,
-{
-    let ext_path = resolve_extension_path(extension_name)?;
-    run_plugin_with_progress(ext_path.to_string_lossy().as_ref(), function, config, on_progress).await
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
 
+    /// 없는 스크립트는 Python 부트스트랩(네트워크) 없이 즉시 실패해야 한다.
     #[tokio::test]
-    async fn test_run_plugin_with_invalid_path() {
-        // venv가 없는 환경에서는 get_python_path부터 실패할 수 있음
-        let result = run_plugin(
-            "nonexistent/module.py",
-            "test_function",
-            json!({"test": "data"})
-        ).await;
+    async fn run_plugin_missing_script_fails_without_bootstrap() {
+        let err = run_plugin("nonexistent/module.py", "test_function", json!({"test": "data"}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("not found"), "{}", err);
+    }
 
-        assert!(result.is_err());
+    #[test]
+    fn daemon_api_url_is_trimmed() {
+        set_daemon_api_url("http://127.0.0.1:1234/");
+        assert_eq!(daemon_api_url().as_deref(), Some("http://127.0.0.1:1234"));
     }
 }

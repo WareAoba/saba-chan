@@ -8,11 +8,15 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+
 use crate::cli_config::CliSettings;
 use crate::client::DaemonClient;
 use crate::config;
 use crate::i18n::I18n;
 use crate::module_registry::ModuleRegistry;
+
+use super::tabs::{TabEvent, TabSet};
 
 // ═══════════════════════════════════════════════════════
 // 출력 타입 (커맨드 모드 호환)
@@ -46,10 +50,11 @@ pub struct ServerInfo {
 /// 백그라운드 상태 스냅샷 (모니터 태스크 → App)
 pub struct Snapshot {
     pub daemon: bool,
-    pub bot: bool,
-    pub token: bool,
-    pub prefix: String,
     pub servers: Vec<ServerInfo>,
+    /// bot-config.json 전체 (데몬 API 경유). `None`이면 데몬 오프라인/오류.
+    pub bot_config: Option<serde_json::Value>,
+    /// settings.json 전체 (데몬 API 경유). `None`이면 데몬 오프라인/오류.
+    pub settings_config: Option<serde_json::Value>,
 }
 
 // ═══════════════════════════════════════════════════════
@@ -60,7 +65,8 @@ pub type OutputBuf = Arc<Mutex<Vec<Out>>>;
 pub type SharedClientId = Arc<Mutex<Option<String>>>;
 
 pub fn push_out(buf: &OutputBuf, lines: Vec<Out>) {
-    let mut b = buf.lock().unwrap();
+    // mutex poisoning 시에도 TUI 패닉이 발생하지 않도록 `into_inner()`로 복구.
+    let mut b = buf.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     b.extend(lines);
     b.push(Out::Blank);
 }
@@ -81,8 +87,6 @@ pub enum Screen {
     Modules,
     ModuleDetail  { name: String },
     ModuleManifest,
-    Bot,
-    BotAliases,
     Settings,
     Updates,
     Daemon,
@@ -109,8 +113,6 @@ impl Screen {
             Self::Modules        => vec!["saba-chan", "Modules"],
             Self::ModuleDetail { .. } => vec!["saba-chan", "Modules", "Detail"],
             Self::ModuleManifest => vec!["saba-chan", "Modules", "Manifest"],
-            Self::Bot            => vec!["saba-chan", "Discord Bot"],
-            Self::BotAliases     => vec!["saba-chan", "Discord Bot", "Aliases"],
             Self::Settings       => vec!["saba-chan", "Settings"],
             Self::Updates        => vec!["saba-chan", "Updates"],
             Self::Daemon         => vec!["saba-chan", "Saba-Core"],
@@ -118,7 +120,7 @@ impl Screen {
             Self::ExtensionList  => vec!["saba-chan", "Extensions", "Installed"],
             Self::ExtensionDetail { .. } => vec!["saba-chan", "Extensions", "Detail"],
             Self::ExtensionManifest => vec!["saba-chan", "Extensions", "Manifest"],
-            Self::CommandMode    => vec!["saba-chan", "콘솔"],
+            Self::CommandMode    => vec!["saba-chan", "Console"],
             // ★ 인스턴스 생성 위자드 (신규)
             Self::CreateInstanceStep1 => vec!["saba-chan", "Instances", "New", "Select Game"],
             Self::CreateInstanceStep2 { .. } => vec!["saba-chan", "Instances", "New", "Configure"],
@@ -130,6 +132,36 @@ impl Screen {
 // ═══════════════════════════════════════════════════════
 // 입력 모드
 // ═══════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════
+// Focus — 키 이벤트 디스패치 상위 레이어
+// ═══════════════════════════════════════════════════════
+
+/// 이벤트 루프가 어느 컨테이너로 키를 보낼지 결정하는 상위 포커스 상태.
+///
+/// **Stage 0**: `Menu`만 실제로 사용되며 `InputMode` 분기를 그대로 태운다.
+/// 이후 단계에서 다음과 같이 확장된다:
+/// - `Tab(id)` — 탭 콘솔 (Stage 1~2)
+/// - `Slash` — `/...` 슬래시 명령 오버레이 (Stage 4)
+/// - `Overlay` — 확인/검색/파일 브라우저 등 모달 오버레이 (Stage 3~)
+///
+/// 의도적으로 `#[derive(Default)]`로 `Menu`를 기본값으로 지정해, Stage 0 도입 시
+/// 기존 동작에 변화가 없도록 보장한다.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum Focus {
+    /// 기존 InputMode 기반 메뉴/커맨드/편집 경로
+    #[default]
+    Menu,
+    /// 탭 컨테이너 (Stage 1에서 활성화). usize는 `TabSet` 인덱스.
+    #[allow(dead_code)]
+    Tab(usize),
+    /// 슬래시 명령 입력 오버레이 (Stage 4)
+    #[allow(dead_code)]
+    Slash,
+    /// 확인/검색/파일 브라우저 등 모달 (Stage 3)
+    #[allow(dead_code)]
+    Overlay,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum InputMode {
@@ -164,13 +196,6 @@ pub enum InputMode {
 pub enum InlineAction {
     SetCliSetting { key: String },
     SetGuiSetting { key: String },
-    SetBotToken,
-    SetBotPrefix,
-    SetBotMode,
-    SetBotMusic,
-    SetBotRelayUrl,
-    SetBotRelayHostId,
-    SetBotNodeToken,
     CreateInstance { module_name: String },
     ExecuteCommand { instance_id: String },
     RconCommand { instance_name: String },
@@ -403,9 +428,6 @@ pub struct App {
 
     // ── 실시간 상태 ──
     pub daemon_on: bool,
-    pub bot_on: bool,
-    pub token_ok: bool,
-    pub bot_prefix: String,
     pub servers: Vec<ServerInfo>,
 
     // ── 설정 · i18n ──
@@ -420,6 +442,10 @@ pub struct App {
     pub screen: Screen,
     pub screen_stack: Vec<Screen>,
     pub input_mode: InputMode,
+    /// 키 라우팅 상위 레이어. Stage 0에서는 항상 `Menu`.
+    pub focus: Focus,
+    /// 전역 오버레이 (검색, 파일 브라우저 등). 활성 상태에서 키 이벤트 우선 소비.
+    pub overlay: Option<super::overlay::Overlay>,
 
     // ── 메뉴 상태 ──
     pub menu_items: Vec<MenuItem>,
@@ -441,16 +467,27 @@ pub struct App {
     pub scroll_up: usize,
     pub output_height: usize,
 
-    // ── 콘솔 모드 ──
-    pub console_lines: Vec<String>,
-    pub console_input: String,
-    pub console_scroll: usize,
-    pub last_console_refresh: Option<std::time::Instant>,
+    // ── 멀티 콘솔 탭 (Stage 1) ──
+    pub tabs: TabSet,
+    /// 탭 폴러가 새 라인을 보낼 때 사용하는 송신자. `DaemonClient`와 함께 poll 태스크로 이동.
+    pub tab_tx: UnboundedSender<TabEvent>,
+    /// 이벤트 루프 시작 시 `take()`로 회수하는 일회성 수신자.
+    /// `App`이 `new()`에서 생성해 event loop에 넘긴다.
+    pub tab_rx: Option<UnboundedReceiver<TabEvent>>,
 
     // ── 자동완성 상태 ──
     pub autocomplete_candidates: Vec<String>,
     pub autocomplete_selected: usize,
     pub autocomplete_visible: bool,
+    /// 입력 끝에 회색으로 렌더되는 ghost-text (Stage 4). Tab으로 수락.
+    pub ghost_suffix: Option<String>,
+    /// 슬래시 명령 입력 버퍼 (Stage 4). `None` = 슬래시 모드 아님.
+    pub slash_buffer: Option<String>,
+    pub slash_cursor: usize,
+    /// 슬래시 명령 입력 히스토리 (Stage 5). `/`로 입력된 명령이 최신 뒤쪽으로 쌓임.
+    pub slash_history: Vec<String>,
+    /// 슬래시 히스토리 탐색 인덱스. `None` = 현재 입력 중.
+    pub slash_hist_idx: Option<usize>,
 
     // ── 캐시 데이터 ──
     pub cached_instances: Vec<Value>,
@@ -461,6 +498,12 @@ pub struct App {
     pub cached_extensions: Vec<ExtensionInfo>,
     pub cached_manifest_extensions: Vec<ManifestItem>,
     pub cached_manifest_modules: Vec<ManifestItem>,
+    /// 봇 설정 캐시 (상태 모니터가 주기적으로 갱신). `None` = 아직 로드되지 않음.
+    /// 렌더/메뉴 스레드는 반드시 이 캐시만 참조한다. 직접 `config::load_bot_config()`
+    /// 호출 금지 — 데몬이 다운되면 3초 타임아웃이 매 프레임 발생.
+    pub cached_bot_config: Option<Value>,
+    /// GUI 설정(`settings.json`) 캐시. 상동.
+    pub cached_settings: Option<Value>,
 
     // ── 익스텐션 슬롯 레지스트리 (GUI의 ExtensionContext에 대응) ──
     pub ext_slots: ExtensionSlotRegistry,
@@ -476,6 +519,17 @@ pub struct App {
     // ── 제어 ──
     pub quit: bool,
     pub async_out: OutputBuf,
+
+    /// TUI 종료 시 자동으로 데몬도 정지할지 여부.
+    ///
+    /// **이 세션이 직접 시작한 경우에만 true** — 외부에서 이미 떠 있던 데몬은
+    /// 보호한다. 사용자가 단순 상태확인 목적으로 TUI를 띄웠다 빠져나갈 때
+    /// 운영 중인 게임 서버가 함께 종료되는 사고를 방지하기 위한 플래그.
+    pub stop_daemon_on_exit: Arc<std::sync::atomic::AtomicBool>,
+
+    // ── 세션 영속화 (Stage 5) ──
+    /// 시작 시 로드, 종료 시 저장. `None`이면 세션 기능 비활성.
+    pub session: Option<super::session::Session>,
 }
 
 impl App {
@@ -484,23 +538,15 @@ impl App {
         let lang = settings.effective_language();
         let i18n = Arc::new(I18n::load(&lang));
 
-        let token_ok = config::get_discord_token().ok().flatten().is_some();
-        let bot_prefix = if settings.bot_prefix.is_empty() {
-            config::get_bot_prefix().unwrap_or_else(|_| "!saba".into())
-        } else {
-            settings.bot_prefix.clone()
-        };
-
         let modules_path = config::get_modules_path().unwrap_or_default();
         let registry = Arc::new(ModuleRegistry::load(&modules_path));
         let welcome = i18n.t("welcome");
 
+        let (tab_tx, tab_rx) = tokio::sync::mpsc::unbounded_channel::<TabEvent>();
+
         Self {
             client,
             daemon_on: false,
-            bot_on: false,
-            token_ok,
-            bot_prefix,
             servers: vec![],
             registry,
             settings,
@@ -510,6 +556,8 @@ impl App {
             screen: Screen::Dashboard,
             screen_stack: vec![],
             input_mode: InputMode::Normal,
+            focus: Focus::default(),
+            overlay: None,
 
             menu_items: vec![],
             menu_selected: 0,
@@ -527,15 +575,19 @@ impl App {
             autocomplete_candidates: vec![],
             autocomplete_selected: 0,
             autocomplete_visible: false,
+            ghost_suffix: None,
+            slash_buffer: None,
+            slash_cursor: 0,
+            slash_history: vec![],
+            slash_hist_idx: None,
             history: vec![],
             hist_idx: None,
             scroll_up: 0,
             output_height: 20,
 
-            console_lines: vec![],
-            console_input: String::new(),
-            console_scroll: 0,
-            last_console_refresh: None,
+            tabs: TabSet::default(),
+            tab_tx,
+            tab_rx: Some(tab_rx),
 
             cached_instances: vec![],
             cached_modules: vec![],
@@ -545,6 +597,8 @@ impl App {
             cached_extensions: vec![],
             cached_manifest_extensions: vec![],
             cached_manifest_modules: vec![],
+            cached_bot_config: None,
+            cached_settings: None,
 
             ext_slots: ExtensionSlotRegistry::default(),
 
@@ -556,6 +610,8 @@ impl App {
 
             quit: false,
             async_out: Arc::new(Mutex::new(Vec::new())),
+            stop_daemon_on_exit: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            session: None,
         }
     }
 
@@ -601,10 +657,14 @@ impl App {
 
     pub fn apply_status(&mut self, snap: Snapshot) {
         self.daemon_on = snap.daemon;
-        self.bot_on = snap.bot;
-        self.token_ok = snap.token;
-        self.bot_prefix = snap.prefix;
         self.servers = snap.servers;
+        // 캐시는 데몬 응답이 있을 때만 갱신(오프라인 시 직전 값 유지).
+        if snap.bot_config.is_some() {
+            self.cached_bot_config = snap.bot_config;
+        }
+        if snap.settings_config.is_some() {
+            self.cached_settings = snap.settings_config;
+        }
     }
 
     #[allow(dead_code)]
@@ -747,6 +807,80 @@ impl App {
         }
     }
 
+    // ── 슬래시 히스토리 (Stage 5) ──
+
+    /// 슬래시 명령 제출 시 히스토리에 기록. 공백·연속 중복 무시, 최대 길이 캡.
+    pub fn push_slash_history(&mut self, cmd: String) {        const CAP: usize = 200;
+        if cmd.trim().is_empty() { return; }
+        if self.slash_history.last() == Some(&cmd) {
+            self.slash_hist_idx = None;
+            return;
+        }
+        self.slash_history.push(cmd);
+        if self.slash_history.len() > CAP {
+            let drop = self.slash_history.len() - CAP;
+            self.slash_history.drain(..drop);
+        }
+        self.slash_hist_idx = None;
+    }
+
+    /// 슬래시 버퍼에서 ↑ — 이전 히스토리 항목으로 이동.
+    pub fn slash_history_prev(&mut self) {
+        if self.slash_history.is_empty() { return; }
+        let idx = match self.slash_hist_idx {
+            Some(i) => i.saturating_sub(1),
+            None => self.slash_history.len() - 1,
+        };
+        self.slash_hist_idx = Some(idx);
+        let v = self.slash_history[idx].clone();
+        self.slash_cursor = v.chars().count();
+        self.slash_buffer = Some(v);
+    }
+
+    /// 슬래시 버퍼에서 ↓ — 다음 히스토리 또는 빈 버퍼로 복귀.
+    pub fn slash_history_next(&mut self) {
+        if let Some(idx) = self.slash_hist_idx {
+            if idx + 1 < self.slash_history.len() {
+                self.slash_hist_idx = Some(idx + 1);
+                let v = self.slash_history[idx + 1].clone();
+                self.slash_cursor = v.chars().count();
+                self.slash_buffer = Some(v);
+            } else {
+                self.slash_hist_idx = None;
+                self.slash_buffer = Some(String::new());
+                self.slash_cursor = 0;
+            }
+        }
+    }
+
+    // ── 최근 탭 복원 (Stage 6) ──
+
+    /// 세션에 저장된 `recent_tabs`로부터 탭을 재개설한다.
+    ///
+    /// - 현재 열린 탭이 없을 때만 동작(사용자 수동 조작을 덮지 않기 위함).
+    /// - `valid_server_ids`가 `Some`이면 목록에 없는 서버 탭은 건너뛴다.
+    ///   `None`이면(= 데몬 오프라인 등 목록 조회 불가) 서버 탭도 그대로 복원한다.
+    /// - 복원 직후에는 `active = None` 으로 맞춰 포커스는 대시보드에 둔다.
+    /// - 반환값: 실제로 (재)개설된 탭 수.
+    pub fn restore_recent_tabs(&mut self, valid_server_ids: Option<&std::collections::HashSet<String>>) -> usize {
+        if !self.tabs.tabs.is_empty() {
+            return 0;
+        }
+        let recent = match self.session.as_ref() {
+            Some(s) if !s.recent_tabs.is_empty() => s.recent_tabs.clone(),
+            _ => return 0,
+        };
+        let count = super::tabs::restore_tabs_into(
+            &mut self.tabs,
+            &self.client,
+            &self.tab_tx,
+            &recent,
+            valid_server_ids,
+        );        // 자동 복원된 탭을 활성 상태로 두면 `/tab list` 등에서 혼란을 주므로 해제.
+        self.tabs.active = None;
+        count
+    }
+
     /// 일시적 상태 메시지 표시
     pub fn flash(&mut self, msg: &str) {
         self.status_message = Some((msg.to_string(), std::time::Instant::now()));
@@ -789,5 +923,106 @@ pub fn format_uptime(start_time: Option<u64>) -> String {
             format!("{:02}:{:02}:{:02}", h, m, s)
         }
         None => "-".into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::client::DaemonClient;
+
+    fn fresh_app() -> App {
+        App::new(DaemonClient::new(None).unwrap())
+    }
+
+    #[test]
+    fn push_slash_history_dedups_consecutive() {
+        let mut app = fresh_app();
+        app.push_slash_history("theme dark".into());
+        app.push_slash_history("theme dark".into());
+        app.push_slash_history("help".into());
+        assert_eq!(
+            app.slash_history,
+            vec!["theme dark".to_string(), "help".to_string()]
+        );
+    }
+
+    #[test]
+    fn push_slash_history_ignores_empty() {
+        let mut app = fresh_app();
+        app.push_slash_history("".into());
+        app.push_slash_history("   ".into());
+        assert!(app.slash_history.is_empty());
+    }
+
+    #[test]
+    fn push_slash_history_caps_length() {
+        let mut app = fresh_app();
+        for i in 0..250 {
+            app.push_slash_history(format!("cmd{}", i));
+        }
+        assert_eq!(app.slash_history.len(), 200);
+        assert_eq!(app.slash_history.first().unwrap(), "cmd50");
+    }
+
+    #[test]
+    fn slash_history_prev_next_cycles() {
+        let mut app = fresh_app();
+        app.push_slash_history("a".into());
+        app.push_slash_history("b".into());
+        app.push_slash_history("c".into());
+
+        // 최신(c)부터 과거로
+        app.slash_history_prev();
+        assert_eq!(app.slash_buffer.as_deref(), Some("c"));
+        app.slash_history_prev();
+        assert_eq!(app.slash_buffer.as_deref(), Some("b"));
+        app.slash_history_prev();
+        assert_eq!(app.slash_buffer.as_deref(), Some("a"));
+        // 경계: 더 이상 이전 없음 — 여전히 a
+        app.slash_history_prev();
+        assert_eq!(app.slash_buffer.as_deref(), Some("a"));
+
+        // 다시 앞으로
+        app.slash_history_next();
+        assert_eq!(app.slash_buffer.as_deref(), Some("b"));
+        app.slash_history_next();
+        assert_eq!(app.slash_buffer.as_deref(), Some("c"));
+        // 경계: 빈 버퍼로 복귀
+        app.slash_history_next();
+        assert_eq!(app.slash_buffer.as_deref(), Some(""));
+        assert!(app.slash_hist_idx.is_none());
+    }
+
+    #[test]
+    fn slash_history_prev_on_empty_is_noop() {
+        let mut app = fresh_app();
+        app.slash_history_prev();
+        assert!(app.slash_buffer.is_none());
+        assert!(app.slash_hist_idx.is_none());
+    }
+
+    // ── Stage 6: 최근 탭 복원 ──
+    //
+    // `App` 생성은 `reqwest::blocking::Client`를 내부적으로 drop할 수 있어
+    // tokio 런타임 컨텍스트 내에서 drop하면 패닉한다. 따라서 복원 로직의
+    // 상세 단위 테스트는 `tabs::restore_tabs_into`에서 커버하고, 여기서는
+    // `App` 래퍼의 가드(빈 탭/빈 세션) 만 검증한다.
+
+    #[test]
+    fn restore_recent_tabs_empty_session_returns_zero() {
+        let mut app = fresh_app();
+        app.session = Some(super::super::session::Session::default());
+        let n = app.restore_recent_tabs(None);
+        assert_eq!(n, 0);
+        assert!(app.tabs.tabs.is_empty());
+    }
+
+    #[test]
+    fn restore_recent_tabs_no_session_returns_zero() {
+        let mut app = fresh_app();
+        app.session = None;
+        let n = app.restore_recent_tabs(None);
+        assert_eq!(n, 0);
     }
 }

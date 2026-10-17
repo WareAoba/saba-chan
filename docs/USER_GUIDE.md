@@ -2,6 +2,8 @@
 
 > **모듈형 게임 서버 관리 플랫폼** — 여러 게임 서버를 하나의 GUI/CLI에서 통합 관리
 
+> 💡 **더 읽기 편한 HTML 버전**: [guide.html](./guide.html) · [랜딩 페이지](./index.html)
+
 ---
 
 ## 목차
@@ -42,13 +44,13 @@
     - 10.1 [익스텐션이란?](#101-익스텐션이란)
     - 10.2 [내장 익스텐션](#102-내장-익스텐션)
     - 10.3 [익스텐션 관리](#103-익스텐션-관리)
-11. [Discord 봇](#11-discord-봇)
+11. [Discord 봇 (클라우드 릴레이)](#11-discord-봇-클라우드-릴레이)
     - 11.1 [개요](#111-개요)
-    - 11.2 [봇 설정](#112-봇-설정)
-    - 11.3 [동작 모드](#113-동작-모드)
-    - 11.4 [봇 명령어](#114-봇-명령어)
+    - 11.2 [페어링](#112-페어링)
+    - 11.3 [봇 슬래시 명령](#113-봇-슬래시-명령)
+    - 11.4 [채팅 명령 (prefix)](#114-채팅-명령-prefix)
     - 11.5 [별칭 시스템](#115-별칭-시스템)
-    - 11.6 [봇 익스텐션](#116-봇-익스텐션)
+    - 11.6 [음악](#116-음악)
 12. [설정 레퍼런스](#12-설정-레퍼런스)
     - 12.1 [전역 설정 (global.toml)](#121-전역-설정-globaltoml)
     - 12.2 [GUI 설정 (settings.json)](#122-gui-설정-settingsjson)
@@ -102,7 +104,7 @@
 |------|---------|
 | **OS** | Windows 10 / 11 |
 | **Rust** | 최신 stable (소스 빌드 시) |
-| **Node.js** | 18.0 이상 (GUI 및 Discord 봇) |
+| **Node.js** | 18.0 이상 (GUI 빌드 시) |
 | **Python** | 3.x (모듈 lifecycle 실행용) |
 | **디스크** | 최소 500MB (게임 서버 제외) |
 | **네트워크** | 게임 서버 포트 개방 필요 |
@@ -136,13 +138,12 @@ cd saba-chan
 .\scripts\build-windows.ps1
 ```
 
-이 스크립트는 3개의 빌드 작업을 **병렬**로 실행합니다:
+이 스크립트는 빌드 작업을 **병렬**로 실행합니다:
 
 1. **Rust workspace** — `cargo build --release --workspace`
    - 출력: `saba-core.exe`, `saba-chan-cli.exe`, `saba-chan-updater.exe`, `saba-chan-installer.exe`
 2. **Electron GUI** — `npm run build` (Vite) → `npm run package` (electron-builder)
    - 출력: `Saba-chan.exe`
-3. **Discord Bot** — `npm install --omit=dev` → 디렉토리 복사
 
 #### 개별 빌드
 
@@ -186,7 +187,7 @@ GUI에서 **시작(▶)** 버튼을 클릭하거나, CLI에서 해당 서버를 
 
 - 실시간 서버 상태 확인
 - 콘솔 출력 확인 및 명령어 입력
-- Discord 봇을 통한 원격 제어 (선택)
+- 클라우드 릴레이 페어링 후 디스코드에서 원격 제어 (선택)
 
 ---
 
@@ -205,13 +206,13 @@ GUI에서 **시작(▶)** 버튼을 클릭하거나, CLI에서 해당 서버를 
 │  (Ratatui)      │                            │
 └─────────────────┘                  ┌─────────┴──────────┐
                                      │                    │
-┌─────────────────┐           ┌──────▼──────┐     ┌──────▼──────┐
-│  Discord Bot    │           │   Modules   │     │  Instances  │
-│  (discord.js)   │           │  (게임별)    │     │ (서버 설정)  │
-└────────┬────────┘           └─────────────┘     └─────────────┘
-         │                           │
-         │ IPC                ┌──────▼──────┐
-         └──────────────────► │ Extensions  │
+┌─────────────────┐ long-poll ┌──────▼──────┐     ┌──────▼──────┐
+│  Relay Server   │◄─────────►│   Modules   │     │  Instances  │
+│ (Discord 봇)    │   HTTPS   │  (게임별)    │     │ (서버 설정)  │
+└─────────────────┘           └─────────────┘     └─────────────┘
+                                     │
+                              ┌──────▼──────┐
+                              │ Extensions  │
                               │ (Docker 등) │
                               └─────────────┘
 ```
@@ -342,7 +343,7 @@ CLI는 여러 화면(Screen) 간을 탐색하는 구조입니다:
 
 | 화면 | 설명 |
 |------|------|
-| **Dashboard** | 메인 대시보드 — 데몬/봇 상태, 서버 목록 요약 |
+| **Dashboard** | 메인 대시보드 — 데몬/페어링 상태, 서버 목록 요약 |
 | **Servers** | 인스턴스 목록 |
 | **ServerDetail** | 인스턴스 상세 — 상태, 시작/정지/재시작/삭제 |
 | **ServerConsole** | 서버 콘솔 — stdin/stdout 실시간 |
@@ -351,8 +352,8 @@ CLI는 여러 화면(Screen) 간을 탐색하는 구조입니다:
 | **Modules** | 설치된 모듈 목록 |
 | **ModuleDetail** | 모듈 상세 정보 |
 | **ModuleManifest** | 원격 모듈 매니페스트 (설치 가능한 모듈) |
-| **Bot** | Discord 봇 관리 |
-| **BotAliases** | 봇 별칭 편집 |
+| **Bot** | 페어링 상태 + 봇 메타데이터 |
+| **BotAliases** | 봇 별칭 편집 (저장 시 릴레이에 동기화) |
 | **Settings** | CLI/GUI 설정 |
 | **Updates** | 업데이트 관리 |
 | **Daemon** | Core Daemon 관리 |
@@ -441,18 +442,14 @@ CLI는 여러 화면(Screen) 간을 탐색하는 구조입니다:
 | `daemon status` | 데몬 상태 |
 | `daemon restart` | 데몬 재시작 |
 
-#### Discord 봇 관리
+#### Discord 봇 (클라우드 릴레이)
+
+봇은 릴레이 서버에서 운영되므로 사용자가 봇 프로세스를 시작/정지하지 않습니다. CLI 는 페어링 상태와 메타데이터만 다룹니다.
 
 | 명령어 | 설명 |
 |--------|------|
-| `bot start` | 봇 시작 |
-| `bot stop` | 봇 정지 |
-| `bot status` | 봇 상태 |
-| `bot token <token>` | 봇 토큰 설정 |
-| `bot prefix <prefix>` | 봇 prefix 설정 |
-| `bot mode <local\|cloud>` | 동작 모드 변경 |
-| `bot relay <url>` | 릴레이 서버 URL 설정 |
-| `bot node-token <token>` | 릴레이 노드 토큰 설정 |
+| `bot status` | 페어링 상태 + 봇 메타데이터 |
+| `bot prefix <prefix>` | 봇 prefix 설정 (저장 시 릴레이에 동기화) |
 
 #### 설정
 
@@ -469,8 +466,6 @@ CLI는 여러 화면(Screen) 간을 탐색하는 구조입니다:
 | 명령어 | 설명 |
 |--------|------|
 | `config gui language <lang>` | GUI 언어 |
-| `config gui token <token>` | Discord 토큰 |
-| `config gui discord_auto <bool>` | Discord 자동 시작 |
 | `config gui auto_refresh <bool>` | 자동 새로고침 |
 | `config gui refresh_interval <ms>` | 새로고침 간격 |
 | `config gui ipc_port <port>` | IPC 포트 |
@@ -496,7 +491,7 @@ CLI는 여러 화면(Screen) 간을 탐색하는 구조입니다:
 | `help` | 도움말 |
 | `menu` / `dashboard` | 대시보드로 이동 |
 | `back` | 이전 화면 |
-| `exit` / `quit` / `q` | 종료 (봇/데몬도 정지) |
+| `exit` / `quit` / `q` | 종료 |
 | `<모듈명> <명령어>` | 모듈 명령어 직접 실행 |
 
 ---
@@ -758,42 +753,33 @@ GUI 설정 → 익스텐션 탭에서 토글하거나, CLI에서:
 
 ---
 
-## 11. Discord 봇
+## 11. Discord 봇 (클라우드 릴레이)
 
 ### 11.1 개요
 
-사바쨩에는 Discord 봇이 내장되어 있어, 디스코드 채팅에서 직접 게임 서버를 제어할 수 있습니다. **discord.js 14** 기반으로 구현되어 있습니다.
+디스코드 봇은 사바쨩 공식 릴레이 서버(`server-chan`) 안에서 운영됩니다. 사용자 PC 에 봇이 설치되지 않으며, GUI 에서 한 번 페어링해 두면 데몬이 outbound HTTPS long-polling 으로 릴레이에 붙어 디스코드 명령을 받아 처리합니다. NAT / 포트 포워딩이 막힌 환경에서도 그대로 동작합니다.
 
-### 11.2 봇 설정
+### 11.2 페어링
 
-#### Discord 봇 토큰 설정
+1. GUI 의 **클라우드 모드** 화면에서 **코드 발급** → 32자 코드 표시.
+2. 자기 디스코드 길드에 공식 사바쨩 봇을 초대합니다(GUI 가 안내).
+3. 디스코드에서 봇에게 `/사바쨩 연결 <code>` 슬래시 명령 전달.
+4. GUI 가 폴링으로 토큰을 받아 `.node_token` 으로 저장. 페어링 완료.
 
-1. [Discord Developer Portal](https://discord.com/developers/applications)에서 봇을 생성합니다.
-2. 봇 토큰을 복사합니다.
-3. GUI 설정 또는 CLI에서 토큰을 등록합니다:
-   - GUI: 설정 → Discord 봇 → 토큰 입력
-   - CLI: `:bot token <YOUR_TOKEN>`
+이후 데몬이 자동으로 릴레이에 long-poll 연결을 유지합니다. 봇 시작/정지 같은 사용자 측 조작은 없습니다.
 
-#### 봇 초대
+페어링 코드 만료(TTL 5분), 토큰 1회 원자 swap 등 보안 모델은 [디스코드 봇 & 클라우드 릴레이](https://github.com/WareAoba/server-chan/tree/main/website/content/ko/docs) 문서를 참고하세요.
 
-Discord 봇을 서버에 초대하려면 적절한 권한(메시지 읽기/쓰기)을 가진 OAuth2 URL을 생성하여 초대합니다.
+### 11.3 봇 슬래시 명령
 
-#### 봇 시작/정지
+| 명령 | 동작 |
+|------|------|
+| `/사바쨩 연결 <code>` | 페어링 코드 등록 |
+| `/사바쨩 상태` | 현재 길드 ↔ 호스트 매핑 + 인스턴스 상태 표시 |
+| `/사바쨩 권한부여 <user>` | 디스코드 사용자에게 봇 명령 사용 권한 부여 |
+| `/사바쨩 권한해제 <user>` | 권한 회수 |
 
-- GUI: 타이틀바의 봇 아이콘 클릭
-- CLI: `:bot start` / `:bot stop`
-- 자동 시작: 설정에서 `discordAutoStart: true`로 설정
-
-### 11.3 동작 모드
-
-| 모드 | 설명 | 조건 |
-|------|------|------|
-| **로컬 (local)** | Discord에 직접 로그인하여 메시지를 처리하고, 로컬 데몬 IPC로 명령 실행 | 기본 모드 |
-| **클라우드 (cloud)** | 릴레이 서버를 통해 중계. Discord 로그인 없이 릴레이 서버 폴링 | `RELAY_URL` + `RELAY_NODE_TOKEN` 설정 시 |
-
-**클라우드 모드**는 포트 포워딩이 불가능한 환경(NAT 뒤)에서도 Discord 봇을 사용할 수 있게 해줍니다.
-
-### 11.4 봇 명령어
+### 11.4 채팅 명령 (prefix)
 
 명령어 형식:
 
@@ -801,7 +787,7 @@ Discord 봇을 서버에 초대하려면 적절한 권한(메시지 읽기/쓰�
 <prefix> <모듈명> <명령어> [인자...]
 ```
 
-기본 prefix는 `사바쨩`입니다.
+기본 prefix는 `사바쨩` 입니다 (GUI 의 봇 설정에서 변경 가능, 저장 시 릴레이에 즉시 동기화).
 
 #### 내장 명령어
 
@@ -853,19 +839,41 @@ Discord 봇을 서버에 초대하려면 적절한 권한(메시지 읽기/쓰�
 사바쨩 마크 꺼       → 사바쨩 minecraft stop
 ```
 
-별칭 설정 파일이 변경되면 **핫 리로드**됩니다 (봇 재시작 불필요).
+별칭이 변경되면 데몬이 릴레이 서버에 PATCH 동기화하여 즉시 반영됩니다.
 
 #### 길드(노드)별 설정
 
 `bot-config.json`의 `nodeSettings`로 Discord 길드별 인스턴스를 필터링할 수 있습니다.
 
-### 11.6 봇 익스텐션
+### 11.6 음악
 
-| 익스텐션 | 설명 |
-|----------|------|
-| **music.js** | 음악 재생 (로컬 모드 전용, yt-dlp + ffmpeg 필요) |
-| **easter_eggs.js** | 이스터 에그 |
-| **rps.js** | 가위바위보 미니게임 |
+음악 재생은 릴레이 서버 옆에서 함께 운영되는 **공식 음악 서버(music-server)** 가 처리합니다. 사용자 PC 에서 ffmpeg/yt-dlp 를 직접 돌리지 않습니다.
+
+#### 지원 명령어
+
+| 명령어 | 설명 |
+|--------|------|
+| `play <검색어\|URL>` / `재생` | 곡 재생 또는 대기열에 추가 |
+| `skip` / `다음` | 다음 곡으로 스킵 |
+| `previous` / `이전` | 이전 곡으로 되돌리기 |
+| `stop` / `정지` | 재생 중지 및 대기열 초기화 |
+| `pause` / `일시정지` | 일시정지 |
+| `resume` / `재개` | 일시정지 해제 |
+| `shuffle` / `셔플` | 대기열 셔플 토글 |
+| `loop` / `반복` | 현재 곡/대기열 반복 |
+| `loopoff` / `반복해제` | 반복 해제 |
+| `radio` / `라디오` | 유튜브 믹스 기반 자동 추천 재생 |
+| `normalize` / `음량정규화` | 음량 자동 정규화 토글 |
+| `volume <0~200>` / `볼륨` | 볼륨 조절 (상대값 `+10` / `-10`도 지원) |
+| `queue` / `대기열` | 현재 대기열 확인 |
+| `np` / `현재곡` | 현재 재생 중인 곡 정보 |
+| `help` / `도움말` | 음악 명령어 도움말 |
+
+#### 음악 채널 UI
+
+`musicChannelId`를 `bot-config.json`에 지정하면 해당 텍스트 채널에 **실시간 임베드 UI**가 표시됩니다. 현재 재생 곡, 대기열, 볼륨, 반복/셔플/라디오 상태가 자동으로 갱신됩니다.
+
+`musicUISettings`로 임베드에 표시할 대기열 줄 수(`queueLines`)와 갱신 간격(`refreshInterval`, 초)을 조절할 수 있습니다.
 
 ---
 
@@ -884,9 +892,9 @@ enabled = true
 check_interval_hours = 3         # 업데이트 확인 간격 (시간 단위)
 auto_download = false            # 새 버전 발견 시 자동 다운로드
 auto_apply = false               # 다운로드 완료 시 자동 교체
-github_owner = "WareAoba"
-github_repo = "saba-chan"
-include_prerelease = false       # 프리릴리스 포함 여부
+relay_base_url = "https://saba-chan.online"   # Relay 서버 주소
+channel = "stable"               # "stable" | "beta" | "nightly"
+platform = "windows-x64"         # 자동 감지(수동 오버라이드 가능)
 # install_root = "."             # 설치 루트 디렉터리
 ```
 
@@ -897,8 +905,6 @@ include_prerelease = false       # 프리릴리스 포함 여부
 | 키 | 타입 | 기본값 | 설명 |
 |----|------|--------|------|
 | `language` | string | `"en"` | 표시 언어 |
-| `discordToken` | string | `""` | Discord 봇 토큰 |
-| `discordAutoStart` | bool | `false` | Discord 봇 자동 시작 |
 | `autoRefresh` | bool | `true` | 상태 자동 새로고침 |
 | `refreshInterval` | number | `2000` | 새로고침 간격 (ms) |
 | `ipcPort` | number | `57474` | IPC 포트 번호 (1024~65535) |
@@ -913,7 +919,7 @@ include_prerelease = false       # 프리릴리스 포함 여부
 | 키 | 별칭 | 타입 | 기본값 | 설명 |
 |----|------|------|--------|------|
 | `language` | `lang` | string | `""` | 표시 언어 (비어있으면 GUI 설정 따름) |
-| `auto_start` | `autostart` | bool | `true` | TUI 시작 시 데몬/봇 자동 시작 |
+| `auto_start` | `autostart` | bool | `true` | TUI 시작 시 데몬 자동 시작 |
 | `refresh_interval` | `refresh` | u64 | `2` | 상태 새로고침 간격 (초, 1~60) |
 | `bot_prefix` | `prefix` | string | `""` | Discord 봇 prefix 오버라이드 |
 
@@ -927,9 +933,13 @@ include_prerelease = false       # 프리릴리스 포함 여부
   "moduleAliases": {},
   "commandAliases": {},
   "musicEnabled": true,
-  "mode": "local",
+  "musicChannelId": "",
+  "musicUISettings": {
+    "queueLines": 10,
+    "refreshInterval": 5
+  },
   "cloud": {
-    "relayUrl": "",
+    "relayUrl": "https://saba-chan.online",
     "hostId": ""
   },
   "nodeSettings": {}
@@ -938,32 +948,40 @@ include_prerelease = false       # 프리릴리스 포함 여부
 
 | 키 | 타입 | 설명 |
 |----|------|------|
-| `prefix` | string | 봇 명령어 접두어 |
+| `prefix` | string | 봇 명령어 접두어 (기본 `"사바쨩"`) |
 | `moduleAliases` | object | 모듈 별칭 매핑 (`{ "팔": "palworld" }`) |
 | `commandAliases` | object | 명령어 별칭 매핑 (`{ "켜": "start" }`) |
-| `musicEnabled` | bool | 음악 익스텐션 활성화 |
-| `mode` | string | 동작 모드 (`"local"` / `"cloud"`) |
-| `cloud.relayUrl` | string | 릴레이 서버 URL |
-| `cloud.hostId` | string | 호스트 ID |
-| `nodeSettings` | object | 길드별 설정 |
+| `musicEnabled` | bool | 음악 명령 허용 여부 |
+| `musicChannelId` | string | 음악 채널 UI를 표시할 텍스트 채널 ID (비어있으면 UI 비활성화) |
+| `musicUISettings.queueLines` | number | 임베드에 표시할 대기열 줄 수 |
+| `musicUISettings.refreshInterval` | number | 임베드 갱신 간격 (초) |
+| `cloud.relayUrl` | string | 릴레이 서버 URL (기본 `https://saba-chan.online`) |
+| `cloud.hostId` | string | 릴레이에 등록된 호스트 ID (페어링 시 자동 채워짐) |
+| `nodeSettings` | object | Discord 길드별 인스턴스 필터 및 설정 |
+
+> 위 값들은 GUI 의 봇 설정 화면 또는 CLI `bot config …` 로 편집합니다. 저장되면 데몬이 릴레이 서버에 PATCH 동기화하여 봇이 즉시 반영합니다.
 
 ### 12.5 환경 변수
 
 다음 환경 변수로 설정을 오버라이드할 수 있습니다:
 
+#### 사바쨩 코어
+
 | 변수 | 설명 |
 |------|------|
 | `SABA_IPC_PORT` | IPC 포트 오버라이드 |
+| `SABA_DATA_DIR` | 사바쨩 데이터 루트 디렉토리 (기본: `%APPDATA%\saba-chan`) |
 | `SABA_MODULES_PATH` | 모듈 디렉토리 경로 |
 | `SABA_INSTANCES_PATH` | 인스턴스 저장소 경로 |
-| `SABA_LANG` | 표시 언어 |
-| `SABA_TOKEN_PATH` | IPC 토큰 파일 경로 |
 | `SABA_EXTENSIONS_DIR` | 익스텐션 디렉토리 경로 |
-| `DISCORD_TOKEN` | Discord 봇 토큰 |
-| `IPC_BASE` | IPC base URL |
-| `BOT_CONFIG_PATH` | bot-config.json 경로 |
-| `RELAY_URL` | 릴레이 서버 URL (클라우드 모드 활성화) |
-| `RELAY_NODE_TOKEN` | 릴레이 노드 토큰 |
+| `SABA_TOKEN_PATH` | IPC 토큰 파일 경로 |
+| `SABA_LANG` | 표시 언어 |
+
+#### 클라우드 릴레이 (데몬)
+
+| 변수 | 설명 |
+|------|------|
+| `RELAY_URL` | 릴레이 서버 URL 오버라이드 (기본 `https://saba-chan.online`) |
 
 ---
 
@@ -1001,17 +1019,16 @@ GUI의 **업데이트** 탭 또는 CLI에서:
 | `cli` | CLI |
 | `gui` | GUI |
 | `updater` | Updater 자체 |
-| `discord_bot` | Discord Bot |
 | `locales` | 다국어 파일 |
 | `module-{name}` | 개별 모듈 |
 | `ext-{name}` | 개별 익스텐션 |
 
 ### 업데이트 흐름
 
-1. GitHub Releases에서 최신 버전 정보 조회
-2. `release-manifest.json`에서 각 컴포넌트의 버전/해시/URL 파싱
-3. 로컬 설치 버전과 비교
-4. 업데이트가 있으면 다운로드 (자동 또는 수동)
+1. 릴레이 서버(`/v1/updates/check`)에서 최신 서명된 매니페스트 조회
+2. 릴레이 매니페스트에서 각 컴포넌트의 버전/해시/URL 파싱
+3. 로컬 설치 매니페스트(`installed-manifest.json`)과 비교
+4. 업데이트가 있으면 R2에서 다운로드 (자동 또는 수동)
 5. 적용 (모듈/익스텐션은 즉시 교체, 코어/CLI/GUI는 재시작 필요)
 
 ### 13.3 무결성 검증
@@ -1030,42 +1047,81 @@ GUI의 **업데이트** 탭 또는 CLI에서:
 
 ## 14. 릴레이 서버 (클라우드 모드)
 
-릴레이 서버(server-chan)는 **NAT 뒤에 있는 사바쨩 노드**와 **Discord 봇** 간의 통신을 중계하는 클라우드 서비스입니다.
+릴레이 서버(`server-chan`)는 **NAT 뒤에 있는 사바쨩 데몬**과 **디스코드** 사이를 중계하는 클라우드 서비스이자, **공식 디스코드 봇과 음악 서버를 호스팅**하는 호스트입니다. 공식 인스턴스는 `https://saba-chan.online`에서 운영됩니다.
 
 ### 아키텍처
 
 ```
-Discord 사용자
+디스코드 사용자
     │
     ▼
 릴레이 서버 (server-chan)    ← Fastify 5 + PostgreSQL 17
+ ├─ 디스코드 봇 (서버 프로세스 내부)
+ └─ 음악 서버 (음성 채널 재생)
     │
     ▼ (Long Poll)
-로컬 사바쨩 노드              ← 봇 (릴레이 에이전트 모드)
+로컬 사바쨩 데몬              ← 릴레이에 outbound HTTPS 로 붙음
     │
     ▼ (IPC)
-로컬 Core Daemon
+로컬 Core Daemon API → 모듈/인스턴스 처리
     │
     ▼
-결과 → 릴레이 서버 → Discord 응답
+결과 → 릴레이 서버 → 디스코드 응답
 ```
 
 ### 주요 원칙
 
-- **중앙 서버는 payload를 해석하지 않음** (택배 기사 역할)
-- **Pull 모델**: 노드가 릴레이 서버에 접속 (포트 포워딩 불필요)
+- **봇은 릴레이 서버 안에서 실행**: 사용자 PC 에는 봇이 설치되지 않습니다.
+- **Pull 모델**: 데몬이 릴레이에 long-polling 으로 접속 (포트 포워딩 불필요)
+- **중앙 서버는 payload 를 해석하지 않음** (택배 기사 역할)
 - **IP 정보 미저장**: 프라이버시 보호
 - **보안**: argon2id 토큰 해싱, HMAC-SHA256 요청 서명
 
-### 클라우드 모드 설정
+### 토큰 형식
 
-1. 릴레이 서버 URL과 인증 정보를 봇 설정에 등록:
-   ```
-   :bot mode cloud
-   :bot relay https://relay.example.com
-   :bot node-token <YOUR_NODE_TOKEN>
-   ```
-2. 봇을 시작하면 릴레이 에이전트 모드로 동작합니다.
+페어링이 끝나면 데몬이 다음 형식의 호스트 토큰을 받습니다.
+
+```
+sbn_<hostId>.<secret>
+```
+
+- `sbn_` 프리픽스와 마침표(`.`)가 반드시 포함되어야 합니다.
+- `hostId` 부분은 릴레이 서버에서 호스트를 식별하는 공개 ID입니다.
+- `secret` 부분은 HMAC-SHA256 서명에 사용되는 공유 비밀입니다.
+- 토큰은 `%APPDATA%/saba-chan/.node_token` 에 저장되며, 페어링 시 1회만 발급됩니다.
+
+### HMAC-SHA256 요청 서명
+
+데몬이 릴레이 서버로 보내는 모든 요청은 다음 서명 문자열로 HMAC-SHA256 서명됩니다:
+
+```
+<METHOD>\n<URL>\n<타임스탬프>\n<nonce>\n<바디>
+```
+
+헤더 구성:
+- `Authorization: Bearer sbn_<hostId>.<secret>`
+- `X-Request-Timestamp`: 유닉스 타임스탬프
+- `X-Request-Nonce`: 1회용 랜덤 값 (UUID)
+- `X-Request-Signature`: 위 서명값
+
+### 치명적 인증 오류 (FATAL_AUTH_ERRORS)
+
+다음 오류가 발생하면 데몬이 재시도하지 않고 즉시 페어링을 무효화합니다:
+
+| 오류 | 의미 |
+|------|------|
+| `HOST_NOT_FOUND` | 릴레이 서버에 등록되지 않은 호스트 ID |
+| `INVALID_TOKEN` | 토큰의 secret 부분이 일치하지 않음 |
+| `INVALID_TOKEN_FORMAT` | `sbn_<id>.<secret>` 형식이 아님 |
+| `MISSING_TOKEN` | 토큰이 비어 있음 |
+| `INVALID_SIGNATURE` | HMAC 서명 불일치 (위변조 또는 타임스탬프 드리프트) |
+
+### 페어링 절차
+
+1. GUI 의 **클라우드 모드** 화면에서 **코드 발급** 버튼 클릭 → 32자 페어링 코드 표시.
+2. 자기 디스코드 길드에 공식 사바쨩 봇 초대(GUI 가 안내).
+3. 디스코드에서 `/사바쨩 연결 <code>` 슬래시 명령 입력.
+4. GUI 가 폴링으로 토큰을 받아 `.node_token` 으로 저장. 데몬이 자동으로 long-poll 연결을 유지합니다.
 
 ---
 
@@ -1156,7 +1212,7 @@ X-Saba-Token: <.ipc_token 파일의 내용>
 | `POST` | `/api/updates/download` | 업데이트 다운로드 |
 | `POST` | `/api/updates/apply` | 업데이트 적용 |
 | `GET` | `/api/updates/config` | 업데이터 설정 조회 |
-| `POST` | `/api/updates/config` | 업데이터 설정 변경 |
+| `PUT` | `/api/updates/config` | 업데이터 설정 변경 |
 | `GET` | `/api/install/status` | 설치 상태 |
 | `POST` | `/api/install/run` | 최초 설치 |
 | `POST` | `/api/install/component/{key}` | 특정 컴포넌트 설치 |
@@ -1211,12 +1267,10 @@ locales/
 ├── en/
 │   ├── gui.json         ← GUI 번역
 │   ├── cli.json         ← CLI 번역
-│   ├── bot.json         ← Discord 봇 번역
 │   └── common.json      ← 공통 번역
 ├── ko/
 │   ├── gui.json
 │   ├── cli.json
-│   ├── bot.json
 │   └── common.json
 └── ...
 ```
@@ -1236,7 +1290,9 @@ locales/
 
 ## 17. 파일 시스템 경로
 
-Windows 기준:
+Windows 기준 (`SABA_DATA_DIR` 환경 변수로 루트를 변경할 수 있음):
+
+### 설정 / 데이터
 
 | 경로 | 용도 |
 |------|------|
@@ -1248,7 +1304,15 @@ Windows 기준:
 | `%APPDATA%\saba-chan\instances\` | 인스턴스 저장소 (디렉토리 기반) |
 | `%APPDATA%\saba-chan\modules\` | 모듈 디렉토리 |
 | `%APPDATA%\saba-chan\extensions\` | 익스텐션 디렉토리 |
+| `%APPDATA%\saba-chan\logs\daemon.log` | Core Daemon 로그 |
 | `config\global.toml` | 전역 설정 (앱 디렉토리 내) |
+
+### 음악 / 기타
+
+| 경로 | 용도 |
+|------|------|
+| `~\.saba-cookies\cookies.txt` | 음악 봇 YouTube 쿠키 (사용자 홈 디렉토리) |
+| `%TEMP%\saba-chan\` | 다운로드 / 교체용 임시 파일 |
 
 ---
 
@@ -1287,11 +1351,11 @@ Windows 기준:
 ### Discord 봇이 응답하지 않음
 
 **해결 방법**:
-1. 봇 토큰이 올바르게 설정되어 있는지 확인
-2. 봇이 실행 중인지 확인 (`:bot status`)
-3. 봇이 해당 Discord 서버에 초대되어 있는지 확인
-4. 봇에 메시지 읽기/쓰기 권한이 있는지 확인
-5. prefix가 올바른지 확인
+1. 페어링이 완료되어 `.node_token` 이 발급된 상태인지 확인 (`:bot status`)
+2. 공식 사바쨩 봇이 해당 길드에 초대되어 있고 메시지 읽기/쓰기 권한이 있는지 확인
+3. prefix(기본 `사바쨩` + 공백)가 올바른지 확인
+4. 데몬 로그(`%APPDATA%\saba-chan\logs\daemon-*.log`)에서 릴레이 long-poll 연결 에러 여부 확인
+5. 시스템 시계 오차가 30초 이하인지 확인 (NTP 동기화)
 
 ### 업데이트 실패
 
@@ -1300,6 +1364,27 @@ Windows 기준:
 2. GitHub API 접근 가능 여부 확인
 3. `:update status`로 현재 상태 확인
 4. 수동으로 다시 시도: `:update check` → `:update download` → `:update apply`
+
+### 음악이 재생되지 않음
+
+**증상**: `사바쨩 재생 <URL>`을 입력해도 응답이 없거나 오류 메시지만 표시됨
+
+**해결 방법**:
+1. 명령을 친 사람이 디스코드 음성 채널에 먼저 들어가 있는지 확인.
+2. 공식 봇이 해당 음성 채널에 접속/말하기 권한을 가지고 있는지 확인.
+3. `bot-config.json` 의 `musicEnabled: true` 확인.
+4. `musicChannelId` 가 지정된 경우 그 텍스트 채널에서만 동작.
+5. 음악 재생은 릴레이 서버 옆의 공식 음악 서버가 처리합니다. 사용자 PC 에 ffmpeg/yt-dlp 가 없어도 됩니다 — 재생 실패가 계속되면 릴레이 서비스 상태를 확인하세요.
+
+### 클라우드(릴레이) 페어링 실패
+
+**증상**: 데몬 로그에 `INVALID_TOKEN`, `INVALID_TOKEN_FORMAT`, `HOST_NOT_FOUND`, `INVALID_SIGNATURE` 중 하나가 반복적으로 출력됨
+
+**해결 방법**:
+1. `.node_token` 의 토큰이 `sbn_<hostId>.<secret>` 형식인지 확인.
+2. 릴레이 서버에서 호스트가 무효화된 경우 GUI 에서 **연결 해제** 후 재페어링.
+3. `INVALID_SIGNATURE` 의 경우 시스템 시계가 30초 이상 어긋나 있지 않은지 확인 (NTP 동기화).
+4. `RELAY_URL` (`settings.json.cloud.relayUrl`) 이 올바른 주소를 가리키는지 확인 (공식: `https://saba-chan.online`).
 
 ---
 
@@ -1323,7 +1408,7 @@ Windows 기준:
 
 ### Q: 원격에서 서버를 관리할 수 있나요?
 
-**A:** Discord 봇을 통해 디스코드 채팅에서 원격으로 서버를 제어할 수 있습니다. NAT 뒤에 있어 포트 포워딩이 불가능한 경우에도 클라우드 모드(릴레이 서버)를 사용하면 원격 제어가 가능합니다.
+**A:** 클라우드 릴레이로 페어링하면 디스코드 채팅에서 원격으로 서버를 제어할 수 있습니다. 봇은 공식 릴레이 서버에서 운영되므로 포트 포워딩이 불가능한 NAT 환경에서도 outbound HTTPS 만으로 동작합니다.
 
 ### Q: Docker로 게임 서버를 격리하여 실행할 수 있나요?
 

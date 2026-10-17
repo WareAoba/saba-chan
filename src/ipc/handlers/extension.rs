@@ -20,6 +20,27 @@ use serde_json::json;
 use crate::extension::ExtensionError;
 use crate::ipc::IPCServer;
 
+/// 실행 중인 인스턴스의 extension_data를 수집하여 참조 벡터로 반환.
+/// disable / remove 에서 사용 중인 익스텐션 검사에 공통으로 사용.
+async fn collect_active_ext_data(
+    state: &IPCServer,
+) -> Vec<(String, std::collections::HashMap<String, serde_json::Value>)> {
+    let sup = state.supervisor.read().await;
+    let running_ids = sup.managed_store.running_instance_ids().await;
+    sup.instance_store
+        .list()
+        .iter()
+        .filter(|inst| running_ids.contains(&inst.id))
+        .map(|inst| (inst.name.clone(), inst.extension_data.clone()))
+        .collect()
+}
+
+fn active_ext_refs(
+    data: &[(String, std::collections::HashMap<String, serde_json::Value>)],
+) -> Vec<(&str, &std::collections::HashMap<String, serde_json::Value>)> {
+    data.iter().map(|(n, d)| (n.as_str(), d)).collect()
+}
+
 /// anyhow::Error 에서 ExtensionError를 추출하여 구조화된 응답을 반환.
 /// ExtensionError가 아닌 경우 일반 500 INTERNAL_SERVER_ERROR.
 fn extension_err_response(
@@ -80,50 +101,56 @@ pub async fn enable_extension(
         }
     }
 
-    // 활성화 성공 → daemon.startup 훅이 있으면 비동기 디스패치 (npm install 등)
-    let has_startup_hook = {
-        let mgr = state.extension_manager.read().await;
-        mgr.hooks_for("daemon.startup")
-            .iter()
-            .any(|(ext, _)| ext.manifest.id == ext_id)
-    };
+    // 활성화 성공 → 이 익스텐션의 daemon.startup 훅만 비동기 디스패치 (락 밖에서 실행)
+    let plan = state
+        .extension_manager
+        .read()
+        .await
+        .hook_plan("daemon.startup")
+        .only(&ext_id);
+    let has_startup_hook = !plan.is_empty();
 
     if has_startup_hook {
-        let ext_mgr = state.extension_manager.clone();
         let init_tracker = state.extension_init_tracker.clone();
-        let ext_id_clone = ext_id.clone();
         tokio::spawn(async move {
-            init_tracker.mark_started(&ext_id_clone, "Initializing...").await;
-            let ctx = serde_json::json!({});
-            let mgr = ext_mgr.read().await;
-            let results = mgr.dispatch_hook("daemon.startup", ctx).await;
-            // 방금 활성화한 익스텐션의 결과만 처리
-            for (rid, result) in results {
-                if rid != ext_id_clone {
-                    continue;
-                }
-                match result {
-                    Ok(val) => {
-                        let success = val.get("success").and_then(|s| s.as_bool()).unwrap_or(true);
-                        let msg = val.get("message").and_then(|m| m.as_str()).unwrap_or("OK");
-                        if success {
-                            tracing::info!("Extension '{}' post-enable startup complete: {}", rid, msg);
-                        } else {
-                            let err = val.get("error").and_then(|e| e.as_str()).unwrap_or("unknown");
-                            tracing::warn!("Extension '{}' post-enable startup failed: {}", rid, err);
-                        }
-                        init_tracker.mark_finished(&rid, success, msg).await;
-                    }
-                    Err(e) => {
-                        tracing::error!("Extension '{}' post-enable startup error: {}", rid, e);
-                        init_tracker.mark_finished(&rid, false, &e.to_string()).await;
-                    }
-                }
-            }
+            run_startup_hooks(plan, init_tracker).await;
         });
     }
 
     Ok(Json(json!({ "success": true, "id": ext_id, "startup_dispatched": has_startup_hook })))
+}
+
+/// `daemon.startup` 훅 계획을 실행하고 결과를 초기화 추적기에 기록한다.
+/// 데몬 기동 시와 익스텐션 활성화 직후에 공통으로 사용한다.
+pub async fn run_startup_hooks(
+    plan: crate::extension::HookPlan,
+    init_tracker: crate::ipc::ExtensionInitTracker,
+) {
+    if plan.is_empty() {
+        return;
+    }
+    for ext_id in plan.ext_ids() {
+        init_tracker.mark_started(&ext_id, "Initializing...").await;
+    }
+    for (ext_id, result) in plan.dispatch(json!({})).await {
+        match result {
+            Ok(val) => {
+                let success = val.get("success").and_then(|s| s.as_bool()).unwrap_or(true);
+                let msg = val.get("message").and_then(|m| m.as_str()).unwrap_or("OK");
+                if success {
+                    tracing::info!("Extension '{}' startup complete: {}", ext_id, msg);
+                } else {
+                    let err = val.get("error").and_then(|e| e.as_str()).unwrap_or("unknown");
+                    tracing::warn!("Extension '{}' startup failed: {}", ext_id, err);
+                }
+                init_tracker.mark_finished(&ext_id, success, msg).await;
+            }
+            Err(e) => {
+                tracing::error!("Extension '{}' startup error: {}", ext_id, e);
+                init_tracker.mark_finished(&ext_id, false, &e.to_string()).await;
+            }
+        }
+    }
 }
 
 /// POST /api/extensions/:id/disable — 익스텐션 비활성화
@@ -132,21 +159,8 @@ pub async fn disable_extension(
     Path(ext_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     // 실행 중인 인스턴스만 검사 (정지된 인스턴스는 비활성화를 차단하지 않음)
-    let active_ext_data = {
-        let sup = state.supervisor.read().await;
-        let running_ids = sup.managed_store.running_instance_ids().await;
-        sup.instance_store
-            .list()
-            .iter()
-            .filter(|inst| running_ids.contains(&inst.id))
-            .map(|inst| (inst.name.clone(), inst.extension_data.clone()))
-            .collect::<Vec<_>>()
-    };
-    let refs: Vec<(&str, &std::collections::HashMap<String, serde_json::Value>)> =
-        active_ext_data
-            .iter()
-            .map(|(n, d)| (n.as_str(), d))
-            .collect();
+    let active_ext_data = collect_active_ext_data(&state).await;
+    let refs = active_ext_refs(&active_ext_data);
 
     let mut mgr = state.extension_manager.write().await;
     match mgr.disable(&ext_id, &refs) {
@@ -169,47 +183,6 @@ pub async fn rescan_extensions(
             "success": false,
             "error": e.to_string(),
         })),
-    }
-}
-
-/// POST /api/extensions/:id/mount — 익스텐션 핫 마운트
-pub async fn mount_extension(
-    State(state): State<IPCServer>,
-    Path(ext_id): Path<String>,
-) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let mut mgr = state.extension_manager.write().await;
-    match mgr.mount(&ext_id) {
-        Ok(()) => Ok(Json(json!({ "success": true, "id": ext_id }))),
-        Err(e) => Err(extension_err_response(&e)),
-    }
-}
-
-/// POST /api/extensions/:id/unmount — 익스텐션 핫 언마운트
-pub async fn unmount_extension(
-    State(state): State<IPCServer>,
-    Path(ext_id): Path<String>,
-) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    // 실행 중인 인스턴스만 검사
-    let active_ext_data = {
-        let sup = state.supervisor.read().await;
-        let running_ids = sup.managed_store.running_instance_ids().await;
-        sup.instance_store
-            .list()
-            .iter()
-            .filter(|inst| running_ids.contains(&inst.id))
-            .map(|inst| (inst.name.clone(), inst.extension_data.clone()))
-            .collect::<Vec<_>>()
-    };
-    let refs: Vec<(&str, &std::collections::HashMap<String, serde_json::Value>)> =
-        active_ext_data
-            .iter()
-            .map(|(n, d)| (n.as_str(), d))
-            .collect();
-
-    let mut mgr = state.extension_manager.write().await;
-    match mgr.unmount(&ext_id, &refs) {
-        Ok(()) => Ok(Json(json!({ "success": true, "id": ext_id }))),
-        Err(e) => Err(extension_err_response(&e)),
     }
 }
 
@@ -302,12 +275,21 @@ pub async fn serve_i18n(
 pub async fn fetch_manifest(
     State(state): State<IPCServer>,
 ) -> Json<serde_json::Value> {
-    let mgr = state.extension_manager.read().await;
+    use saba_chan_updater_lib::{UpdateConfig, UpdateManager};
 
-    match mgr.fetch_manifest().await {
-        Ok(remote) => {
-            // 설치된 익스텐션 중 업데이트 가능한 항목 계산
-            let updates = mgr.check_updates_against(&remote);
+    // ① Relay 서명 매니페스트에서 ext-* 키 수집 (Ed25519 검증 포함)
+    let cfg = UpdateConfig::default();
+    let modules_dir = saba_chan_updater_lib::constants::resolve_modules_dir();
+    let mut mgr = UpdateManager::new(cfg, &modules_dir.to_string_lossy());
+
+    match mgr.fetch_remote_manifest().await {
+        Ok(manifest) => {
+            let remote = remote_extension_entries(&manifest);
+            // ② 설치된 익스텐션 대비 업데이트 가능 목록 계산 (ExtensionManager 로컬 상태 재사용)
+            let ext_mgr = state.extension_manager.read().await;
+            // serde_json::Value[] 를 Vec<RemoteExtensionInfo> 로 역직렬화
+            let remote_typed = typed_remote_entries(&remote);
+            let updates = ext_mgr.check_updates_against(&remote_typed);
             Json(json!({
                 "success": true,
                 "extensions": remote,
@@ -323,6 +305,36 @@ pub async fn fetch_manifest(
     }
 }
 
+/// 서명 매니페스트의 `ext-*` 컴포넌트를 GUI가 쓰는 익스텐션 항목 JSON으로 변환한다.
+fn remote_extension_entries(manifest: &saba_chan_updater_lib::ReleaseManifest) -> Vec<serde_json::Value> {
+    manifest
+        .components
+        .iter()
+        .filter_map(|(key, info)| {
+            let id = key.strip_prefix("ext-")?;
+            Some(json!({
+                "id": id,
+                "name": info.display_name.clone().unwrap_or_else(|| id.to_string()),
+                "version": info.version,
+                "description": info.description.clone().unwrap_or_default(),
+                "download_url": info.url.clone().unwrap_or_default(),
+                "sha256": info.sha256.clone(),
+                "asset": info.asset.clone(),
+                "install_dir": info.install_dir.clone(),
+                "dependencies": info.dependencies.clone().unwrap_or_default(),
+                "min_app_version": info.min_app_version.clone().unwrap_or_default(),
+            }))
+        })
+        .collect()
+}
+
+fn typed_remote_entries(entries: &[serde_json::Value]) -> Vec<crate::extension::RemoteExtensionInfo> {
+    entries
+        .iter()
+        .filter_map(|e| serde_json::from_value(e.clone()).ok())
+        .collect()
+}
+
 /// POST /api/extensions/:id/install — 매니페스트에서 익스텐션 다운로드 & 설치
 ///
 /// Request body (optional):
@@ -333,58 +345,33 @@ pub async fn fetch_manifest(
 pub async fn install_extension(
     State(state): State<IPCServer>,
     Path(ext_id): Path<String>,
-    body: Option<Json<serde_json::Value>>,
+    _body: Option<Json<serde_json::Value>>,
 ) -> Json<serde_json::Value> {
-    // body 또는 매니페스트에서 download_url 결정
-    let (download_url, sha256) = if let Some(Json(b)) = body {
-        let url = b.get("download_url")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        let sha = b.get("sha256")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        (url, sha)
-    } else {
-        (None, None)
-    };
+    use saba_chan_updater_lib::{Component, UpdateConfig, UpdateManager};
 
-    let download_url = match download_url {
-        Some(u) => u,
-        None => {
-            // 매니페스트에서 해당 익스텐션 URL 조회
-            let mgr = state.extension_manager.read().await;
-            match mgr.fetch_manifest().await {
-                Ok(remote) => {
-                    match remote.iter().find(|r| r.id == ext_id) {
-                        Some(entry) => entry.download_url.clone(),
-                        None => return Json(json!({
-                            "success": false,
-                            "error": format!("Extension '{}' not found in manifest", ext_id),
-                            "error_code": "not_in_manifest",
-                        })),
-                    }
-                }
-                Err(e) => return Json(json!({
-                    "success": false,
-                    "error": format!("Manifest fetch failed: {}", e),
-                    "error_code": "manifest_fetch_failed",
-                })),
-            }
-        }
-    };
+    // 경로 탐색 방지
+    if !crate::utils::is_single_path_component(&ext_id) {
+        return Json(json!({
+            "success": false,
+            "error": "Invalid extension ID",
+            "error_code": "invalid_id",
+        }));
+    }
 
-    let mgr = state.extension_manager.write().await;
-    match mgr.install_from_url(&ext_id, &download_url, sha256.as_deref()).await {
-        Ok(()) => {
-            // 설치 완료 후 마운트 (write lock 재획득)
-            drop(mgr);
-            let mut mgr = state.extension_manager.write().await;
-            if let Err(e) = mgr.mount(&ext_id) {
-                tracing::warn!("Extension '{}' installed but mount failed: {} — try rescan", ext_id, e);
-                // mount 실패 시 rescan으로 폴백
-                if let Err(e2) = mgr.rescan() {
-                    tracing::error!("Extension '{}' rescan also failed: {}", ext_id, e2);
-                }
+    let cfg = UpdateConfig::default();
+    let modules_dir = saba_chan_updater_lib::constants::resolve_modules_dir();
+    let mut mgr = UpdateManager::new(cfg, &modules_dir.to_string_lossy());
+
+    // Relay 서명 매니페스트 → R2 다운로드 + SHA256 검증 + 압축 해제
+    match mgr
+        .install_component(&Component::Extension(ext_id.clone()))
+        .await
+    {
+        Ok(_install_path) => {
+            // 설치 후 디스크 재스캔으로 새 매니페스트 등록/갱신
+            let mut ext_mgr = state.extension_manager.write().await;
+            if let Err(e) = ext_mgr.rescan() {
+                tracing::warn!("Extension '{}' installed but rescan failed: {}", ext_id, e);
             }
             Json(json!({ "success": true, "id": ext_id }))
         }
@@ -396,15 +383,22 @@ pub async fn install_extension(
     }
 }
 
-/// GET /api/extensions/updates — 설치된 익스텐션 업데이트 체크 (매니페스트 비교)
+/// GET /api/extensions/updates — 설치된 익스텐션 업데이트 체크 (Relay 서명 매니페스트 기반)
 pub async fn check_extension_updates(
     State(state): State<IPCServer>,
 ) -> Json<serde_json::Value> {
-    let mgr = state.extension_manager.read().await;
+    use saba_chan_updater_lib::{UpdateConfig, UpdateManager};
 
-    match mgr.fetch_manifest().await {
-        Ok(remote) => {
-            let updates = mgr.check_updates_against(&remote);
+    let cfg = UpdateConfig::default();
+    let modules_dir = saba_chan_updater_lib::constants::resolve_modules_dir();
+    let mut mgr = UpdateManager::new(cfg, &modules_dir.to_string_lossy());
+
+    match mgr.fetch_remote_manifest().await {
+        Ok(manifest) => {
+            let remote = typed_remote_entries(&remote_extension_entries(&manifest));
+            let ext_mgr = state.extension_manager.read().await;
+            let updates = ext_mgr.check_updates_against(&remote);            let ext_mgr = state.extension_manager.read().await;
+            let updates = ext_mgr.check_updates_against(&remote);
             Json(json!({
                 "success": true,
                 "updates": updates,
@@ -426,21 +420,8 @@ pub async fn remove_extension(
     Path(ext_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     // 실행 중인 인스턴스만 검사
-    let active_ext_data = {
-        let sup = state.supervisor.read().await;
-        let running_ids = sup.managed_store.running_instance_ids().await;
-        sup.instance_store
-            .list()
-            .iter()
-            .filter(|inst| running_ids.contains(&inst.id))
-            .map(|inst| (inst.name.clone(), inst.extension_data.clone()))
-            .collect::<Vec<_>>()
-    };
-    let refs: Vec<(&str, &std::collections::HashMap<String, serde_json::Value>)> =
-        active_ext_data
-            .iter()
-            .map(|(n, d)| (n.as_str(), d))
-            .collect();
+    let active_ext_data = collect_active_ext_data(&state).await;
+    let refs = active_ext_refs(&active_ext_data);
 
     let mut mgr = state.extension_manager.write().await;
     match mgr.remove(&ext_id, &refs) {

@@ -7,11 +7,10 @@
  * 3. getContrastColor()가 WCAG AA 기준을 충족하는 텍스트 색상을 반환
  * 4. applyCustomTheme()가 --brand-text CSS 변수를 올바르게 설정
  */
-import { describe, expect, it, beforeEach, vi } from 'vitest';
+import { describe, expect, it, } from 'vitest';
 import {
     ACCENT_PRESETS,
     getContrastColor,
-    THEME_DEFAULTS,
 } from '../utils/themeManager';
 
 // ── 1. ACCENT_PRESETS 중복/유효성 ──────────────────────────
@@ -55,7 +54,7 @@ describe('ACCENT_PRESETS 팔레트', () => {
  */
 function srgbToLinear(c) {
     const s = c / 255;
-    return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
 }
 
 /**

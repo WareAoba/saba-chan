@@ -20,9 +20,6 @@ function mockApi(overrides = {}) {
             settingsGetPath: vi.fn().mockResolvedValue('/mock/settings.json'),
             botConfigLoad: vi.fn().mockResolvedValue({}),
             botConfigSave: vi.fn().mockResolvedValue({ success: true }),
-            discordBotStatus: vi.fn().mockResolvedValue('stopped'),
-            discordBotStart: vi.fn().mockResolvedValue({ success: true }),
-            discordBotStop: vi.fn().mockResolvedValue({ success: true }),
             daemonStatus: vi.fn().mockResolvedValue({ running: true }),
             moduleList: vi.fn().mockResolvedValue({ modules: [] }),
             moduleGetLocales: vi.fn().mockResolvedValue({}),
@@ -158,14 +155,6 @@ describe('useSettingsStore', () => {
         expect(payload.ipcPort).toBe(9999);
         expect(payload.consoleBufferSize).toBe(100);
         expect(payload.modulesPath).toBeUndefined();
-    });
-
-    it('_setDiscordFields() — discord 토큰과 autoStart 저장', () => {
-        useSettingsStore.getState()._setDiscordFields('my-token-123', true);
-
-        const state = useSettingsStore.getState();
-        expect(state._discordToken).toBe('my-token-123');
-        expect(state._discordAutoStart).toBe(true);
     });
 
     it('update() — 부분 업데이트 적용', () => {
@@ -455,48 +444,34 @@ describe('useServerStore', () => {
 });
 
 // ═════════════════════════════════════════════════════════════
-// 4. useDiscordStore
+// 4. useDiscordStore (클라우드 전용)
 // ═════════════════════════════════════════════════════════════
 
 describe('useDiscordStore', () => {
     it('초기 상태 검증', () => {
         const state = useDiscordStore.getState();
-        expect(state.discordToken).toBe('');
         expect(state.discordPrefix).toBe('!saba');
-        expect(state.discordAutoStart).toBe(false);
-        expect(state.discordMusicEnabled).toBe(true);
-        expect(state.discordBotStatus).toBe('stopped');
-        expect(state.discordBotMode).toBe('local');
-        expect(state.botStatusReady).toBe(false);
-    });
-
-    it('setDiscordToken() — 토큰 설정 + ref 동기화', () => {
-        useDiscordStore.getState().setDiscordToken('tok-secret-123');
-        const state = useDiscordStore.getState();
-        expect(state.discordToken).toBe('tok-secret-123');
-        expect(state._discordTokenRef).toBe('tok-secret-123');
+        expect(state.discordCloudRelayUrl).toBe('');
+        expect(state.discordCloudHostId).toBe('');
+        expect(state.relayConnected).toBe(false);
+        expect(state.relayStatusChecked).toBe(false);
     });
 
     it('update() — 부분 업데이트', () => {
         useDiscordStore.getState().update({
             discordPrefix: '!s',
-            discordMusicEnabled: false,
         });
         const state = useDiscordStore.getState();
         expect(state.discordPrefix).toBe('!s');
-        expect(state.discordMusicEnabled).toBe(false);
-        expect(state.discordAutoStart).toBe(false); // 미변경
     });
 
     it('loadConfig() — bot-config에서 모든 필드 로드', async () => {
         mockApi({
             botConfigLoad: vi.fn().mockResolvedValue({
                 prefix: '!bot',
-                mode: 'cloud',
                 cloud: { relayUrl: 'https://relay.example.com', hostId: 'h123' },
                 moduleAliases: { palworld: 'pw' },
                 commandAliases: { palworld: { start: '시작' } },
-                musicEnabled: false,
                 nodeSettings: { guild1: { defaultHostId: 'h1' } },
             }),
         });
@@ -505,13 +480,56 @@ describe('useDiscordStore', () => {
 
         const state = useDiscordStore.getState();
         expect(state.discordPrefix).toBe('!bot');
-        expect(state.discordBotMode).toBe('cloud');
         expect(state.discordCloudRelayUrl).toBe('https://relay.example.com');
         expect(state.discordCloudHostId).toBe('h123');
         expect(state.discordModuleAliases).toEqual({ palworld: 'pw' });
         expect(state.discordCommandAliases).toEqual({ palworld: { start: '시작' } });
-        expect(state.discordMusicEnabled).toBe(false);
         expect(state.nodeSettings).toEqual({ guild1: { defaultHostId: 'h1' } });
+    });
+
+    it('syncNodeMusicSettings() — relay node settings를 store에 병합', async () => {
+        mockApi({
+            relayGetNodeSettings: vi.fn().mockResolvedValue({
+                guildId: 'guild-1',
+                musicEnabled: false,
+                musicUIEnabled: true,
+                musicSettings: { queueLines: 7, refreshInterval: 5000, normalize: false },
+            }),
+        });
+        useDiscordStore.setState({
+            discordCloudRelayUrl: 'https://relay.example.com',
+            nodeSettings: { 'guild-1': { allowedInstances: ['srv-1'] } },
+        });
+
+        await useDiscordStore.getState().syncNodeMusicSettings('guild-1');
+
+        expect(window.api.relayGetNodeSettings).toHaveBeenCalledWith('guild-1', 'https://relay.example.com');
+        expect(useDiscordStore.getState().nodeSettings['guild-1']).toEqual({
+            allowedInstances: ['srv-1'],
+            musicEnabled: false,
+            musicUIEnabled: true,
+            musicSettings: { queueLines: 7, refreshInterval: 5000, normalize: false },
+        });
+    });
+
+    it('updateNodeMusicSettings() — relay에 PATCH 후 store를 갱신', async () => {
+        mockApi({
+            relayUpdateNodeSettings: vi.fn().mockResolvedValue({ success: true }),
+        });
+        useDiscordStore.setState({
+            discordCloudRelayUrl: 'https://relay.example.com',
+            nodeSettings: { 'guild-1': { allowedInstances: [] } },
+        });
+
+        const result = await useDiscordStore.getState().updateNodeMusicSettings('guild-1', { musicEnabled: false });
+
+        expect(result.success).toBe(true);
+        expect(window.api.relayUpdateNodeSettings).toHaveBeenCalledWith(
+            'guild-1',
+            { musicEnabled: false },
+            'https://relay.example.com',
+        );
+        expect(useDiscordStore.getState().nodeSettings['guild-1'].musicEnabled).toBe(false);
     });
 
     it('loadConfig() — 빈 설정이면 기본값 유지', async () => {
@@ -523,8 +541,6 @@ describe('useDiscordStore', () => {
 
         const state = useDiscordStore.getState();
         expect(state.discordPrefix).toBe('!saba');
-        expect(state.discordBotMode).toBe('local');
-        expect(state.discordMusicEnabled).toBe(true);
     });
 
     it('loadConfig() — 실패 시 에러 모달 없이 조용히 실패', async () => {
@@ -540,61 +556,231 @@ describe('useDiscordStore', () => {
 
     it('_resetForTest() — 완전 리셋', () => {
         useDiscordStore.setState({
-            discordToken: 'xxx',
             discordPrefix: '!!',
-            discordBotStatus: 'running',
-            botStatusReady: true,
+            discordCloudHostId: 'h-set',
+            relayConnected: true,
         });
 
         useDiscordStore.getState()._resetForTest();
 
         const state = useDiscordStore.getState();
-        expect(state.discordToken).toBe('');
         expect(state.discordPrefix).toBe('!saba');
-        expect(state.discordBotStatus).toBe('stopped');
-        expect(state.botStatusReady).toBe(false);
-    });
-});
-
-// ═════════════════════════════════════════════════════════════
-// 5. 크로스 스토어 동기화
-// ═════════════════════════════════════════════════════════════
-
-describe('token/autoStart 아키텍처 검증', () => {
-    it('settings save 시 token/autoStart가 payload에 포함되지 않아야 한다', async () => {
-        useSettingsStore.setState({ settingsPath: '/mock/settings.json' });
-        // _setDiscordFields로 값을 설정해도 save payload에는 포함되지 않음
-        useSettingsStore.getState()._setDiscordFields('tok-cross-test', true);
-
-        await useSettingsStore.getState().save();
-
-        const payload = window.api.settingsSave.mock.calls[0][0];
-        expect(payload.discordToken).toBeUndefined();
-        expect(payload.discordAutoStart).toBeUndefined();
+        expect(state.discordCloudHostId).toBe('');
+        expect(state.relayConnected).toBe(false);
     });
 
-    it('token/autoStart는 bot-config save 시 payload에 포함되어야 한다', async () => {
+    it('checkStatus() — hostId 없으면 relayConnected=false', async () => {
         useDiscordStore.setState({
-            discordToken: 'tok-cross-test',
-            discordAutoStart: true,
+            discordCloudHostId: '',
+            _settingsReady: true,
+            _botConfigLoaded: true,
         });
 
-        await useDiscordStore.getState().saveConfig();
+        await useDiscordStore.getState().checkStatus();
 
-        const payload = window.api.botConfigSave.mock.calls[0][0];
-        expect(payload.token).toBe('tok-cross-test');
-        expect(payload.autoStart).toBe(true);
+        expect(useDiscordStore.getState().relayConnected).toBe(false);
     });
 
-    it('settings 리셋은 discord 내부 필드도 초기화해야 한다', () => {
-        useSettingsStore.getState()._setDiscordFields('tok-xxx', true);
-        expect(useSettingsStore.getState()._discordToken).toBe('tok-xxx');
+    it('checkStatus() — hostId 있으면 relay 핑 후 결과 반영', async () => {
+        mockApi({
+            relayCheckHostStatus: vi.fn().mockResolvedValue({ id: 'host', online: true }),
+        });
+        useDiscordStore.setState({
+            discordCloudHostId: 'activeHost789',
+            _settingsReady: true,
+            _botConfigLoaded: true,
+        });
 
-        useSettingsStore.getState()._resetForTest();
-        expect(useSettingsStore.getState()._discordToken).toBe('');
-        expect(useSettingsStore.getState()._discordAutoStart).toBe(false);
+        await useDiscordStore.getState().checkStatus();
+
+        expect(useDiscordStore.getState().relayConnected).toBe(true);
+    });
+
+    it('checkStatus() — 연결 실패 시 relayConnected=false', async () => {
+        mockApi({
+            relayCheckHostStatus: vi.fn().mockResolvedValue({ error: 'connection failed' }),
+        });
+        useDiscordStore.setState({
+            discordCloudHostId: 'h',
+            _settingsReady: true,
+            _botConfigLoaded: true,
+        });
+
+        await useDiscordStore.getState().checkStatus();
+
+        expect(useDiscordStore.getState().relayConnected).toBe(false);
+    });
+
+    // ── 히스테리시스: 일시적 실패(429/타임아웃)로 UI가 깜빡이지 않아야 함 ──
+
+    it('checkStatus() 히스테리시스 — 연결 중 1회 일시 실패 시 relayConnected 유지', async () => {
+        mockApi({
+            relayCheckHostStatus: vi.fn().mockResolvedValue({ error: 'rate limited' }),
+        });
+        useDiscordStore.setState({
+            discordCloudHostId: 'h',
+            relayConnected: true,
+            _statusFailStreak: 0,
+        });
+
+        await useDiscordStore.getState().checkStatus();
+
+        expect(useDiscordStore.getState().relayConnected).toBe(true);
+    });
+
+    it('checkStatus() 히스테리시스 — 연속 3회 실패 시에만 relayConnected=false', async () => {
+        mockApi({
+            relayCheckHostStatus: vi.fn().mockResolvedValue({ error: 'down' }),
+        });
+        useDiscordStore.setState({
+            discordCloudHostId: 'h',
+            relayConnected: true,
+            _statusFailStreak: 0,
+        });
+
+        await useDiscordStore.getState().checkStatus(); // 1회
+        expect(useDiscordStore.getState().relayConnected).toBe(true);
+        await useDiscordStore.getState().checkStatus(); // 2회
+        expect(useDiscordStore.getState().relayConnected).toBe(true);
+        await useDiscordStore.getState().checkStatus(); // 3회
+        expect(useDiscordStore.getState().relayConnected).toBe(false);
+    });
+
+    it('checkStatus() 히스테리시스 — 실패 후 성공하면 스트릭 리셋', async () => {
+        const mock = vi.fn()
+            .mockResolvedValueOnce({ error: 'blip' })
+            .mockResolvedValueOnce({ id: 'h', online: true })
+            .mockResolvedValueOnce({ error: 'blip' })
+            .mockResolvedValueOnce({ error: 'blip' });
+        mockApi({ relayCheckHostStatus: mock });
+        useDiscordStore.setState({
+            discordCloudHostId: 'h',
+            relayConnected: true,
+            _statusFailStreak: 0,
+        });
+
+        await useDiscordStore.getState().checkStatus(); // 실패 1
+        await useDiscordStore.getState().checkStatus(); // 성공 → 리셋
+        await useDiscordStore.getState().checkStatus(); // 실패 1
+        await useDiscordStore.getState().checkStatus(); // 실패 2 — 아직 유지
+        expect(useDiscordStore.getState().relayConnected).toBe(true);
+        expect(useDiscordStore.getState()._statusFailStreak).toBe(2);
+    });
+
+    it('checkStatus() — hostId 없으면 히스테리시스 없이 즉시 false', async () => {
+        useDiscordStore.setState({
+            discordCloudHostId: '',
+            relayConnected: true,
+            _statusFailStreak: 0,
+        });
+
+        await useDiscordStore.getState().checkStatus();
+
+        expect(useDiscordStore.getState().relayConnected).toBe(false);
+    });
+
+    // ── relayStatusChecked: 첫 상태 확인 완료 여부 (무한 "연결 중" 스피너 방지) ──
+
+    it('checkStatus() — 성공 시 relayStatusChecked=true', async () => {
+        mockApi({
+            relayCheckHostStatus: vi.fn().mockResolvedValue({ id: 'h', online: true }),
+        });
+        useDiscordStore.setState({ discordCloudHostId: 'h' });
+
+        await useDiscordStore.getState().checkStatus();
+
+        expect(useDiscordStore.getState().relayStatusChecked).toBe(true);
+    });
+
+    it('checkStatus() — 실패 시에도 relayStatusChecked=true (히스테리시스 유지 중 포함)', async () => {
+        mockApi({
+            relayCheckHostStatus: vi.fn().mockResolvedValue({ error: 'down' }),
+        });
+        useDiscordStore.setState({
+            discordCloudHostId: 'h',
+            relayConnected: true, // 히스테리시스로 연결 유지되는 첫 실패
+            _statusFailStreak: 0,
+        });
+
+        await useDiscordStore.getState().checkStatus();
+
+        expect(useDiscordStore.getState().relayStatusChecked).toBe(true);
+        expect(useDiscordStore.getState().relayConnected).toBe(true); // 히스테리시스 유지
+    });
+
+    it('checkStatus() — hostId 없어도 relayStatusChecked=true (확인 완료로 간주)', async () => {
+        useDiscordStore.setState({ discordCloudHostId: '' });
+
+        await useDiscordStore.getState().checkStatus();
+
+        expect(useDiscordStore.getState().relayStatusChecked).toBe(true);
+    });
+
+    it('_resetForTest() — relayStatusChecked도 초기화', async () => {
+        useDiscordStore.setState({ relayStatusChecked: true });
+
+        useDiscordStore.getState()._resetForTest();
+
+        expect(useDiscordStore.getState().relayStatusChecked).toBe(false);
+    });
+
+    it('update() — hostId 변경 시 stale 연결 상태 리셋 후 즉시 재확인', async () => {
+        const mock = vi.fn().mockResolvedValue({ id: 'newHost', online: true });
+        mockApi({ relayCheckHostStatus: mock });
+        useDiscordStore.setState({
+            discordCloudHostId: 'oldHost',
+            relayConnected: false,
+            relayStatusChecked: true, // 이전 호스트 기준의 확인 결과 (stale)
+            _statusFailStreak: 2,
+        });
+
+        useDiscordStore.getState().update({ discordCloudHostId: 'newHost' });
+
+        // 동기적으로 stale 상태가 리셋되어 UI가 "연결 끊김"을 잘못 표시하지 않음
+        expect(useDiscordStore.getState().relayStatusChecked).toBe(false);
+        expect(useDiscordStore.getState()._statusFailStreak).toBe(0);
+
+        // 폴링을 기다리지 않고 즉시 재확인이 수행됨
+        await vi.waitFor(() => {
+            expect(useDiscordStore.getState().relayStatusChecked).toBe(true);
+        });
+        expect(useDiscordStore.getState().relayConnected).toBe(true);
+        expect(mock).toHaveBeenCalledTimes(1);
+    });
+
+    it('update() — hostId 제거(연결 해제) 시 재확인 없이 리셋만 수행', () => {
+        const mock = vi.fn().mockResolvedValue({ id: 'h', online: true });
+        mockApi({ relayCheckHostStatus: mock });
+        useDiscordStore.setState({
+            discordCloudHostId: 'h',
+            relayConnected: true,
+            relayStatusChecked: true,
+        });
+
+        useDiscordStore.getState().update({ discordCloudHostId: '' });
+
+        expect(useDiscordStore.getState().relayConnected).toBe(false);
+        expect(mock).not.toHaveBeenCalled();
+    });
+
+    it('update() — hostId 외 필드 변경은 연결 상태에 영향 없음', () => {
+        useDiscordStore.setState({
+            discordCloudHostId: 'h',
+            relayConnected: true,
+            relayStatusChecked: true,
+        });
+
+        useDiscordStore.getState().update({ discordPrefix: '!x' });
+
+        expect(useDiscordStore.getState().relayConnected).toBe(true);
+        expect(useDiscordStore.getState().relayStatusChecked).toBe(true);
     });
 });
+
+// ═════════════════════════════════════════════════════════════
+// 5. (구) 크로스 스토어 동기화 — 로컬 봇 제거로 폐기됨
+// ═════════════════════════════════════════════════════════════
+// token/autoStart 필드는 로컬 봇과 함께 제거되어 더 이상 cross-store sync가 없음.
 
 // ═════════════════════════════════════════════════════════════
 // 6. 에지 케이스
@@ -604,12 +790,12 @@ describe('에지 케이스', () => {
     it('여러 스토어 동시 리셋 후 서로 독립적이어야 한다', () => {
         useSettingsStore.setState({ ipcPort: 1111 });
         useServerStore.setState({ daemonReady: true });
-        useDiscordStore.setState({ discordBotStatus: 'running' });
+        useDiscordStore.setState({ discordPrefix: '!sentinel' });
 
         useSettingsStore.getState()._resetForTest();
         // 다른 스토어의 상태는 변경되지 않아야 함
         expect(useServerStore.getState().daemonReady).toBe(true);
-        expect(useDiscordStore.getState().discordBotStatus).toBe('running');
+        expect(useDiscordStore.getState().discordPrefix).toBe('!sentinel');
     });
 
     it('settings load() → save() 왕복 — 저장된 값이 로드된 값과 동일', async () => {

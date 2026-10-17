@@ -5,11 +5,22 @@ use crate::config;
 
 pub(super) fn build_settings_menu(app: &App) -> Vec<MenuItem> {
     let t = |k| app.i18n.t(k);
-    let ipc_port = config::get_ipc_port();
-    let console_buf = config::get_console_buffer_size().unwrap_or(2000);
-    let auto_pwd = config::get_auto_generate_passwords().unwrap_or(true);
-    let port_check = config::get_port_conflict_check().unwrap_or(true);
-    let discord_auto = config::get_discord_auto_start().unwrap_or(false);
+    // 캐시만 참조 — blocking reqwest를 렌더/메뉴 스레드에서 호출하면 데몬 다운 시
+    // 항목 5개 × 3s = 매 프레임 최대 15s hang. 캐시는 상태 모니터가 갱신.
+    let settings = app.cached_settings.as_ref();
+    let ipc_port = settings
+        .and_then(|s| s.get("ipcPort").and_then(|v| v.as_u64()))
+        .map(|p| p as u16)
+        .unwrap_or(saba_chan_updater_lib::constants::DEFAULT_IPC_PORT);
+    let console_buf = settings
+        .and_then(|s| s.get("consoleBufferSize").and_then(|v| v.as_u64()))
+        .unwrap_or(2000);
+    let auto_pwd = settings
+        .and_then(|s| s.get("autoGeneratePasswords").and_then(|v| v.as_bool()))
+        .unwrap_or(true);
+    let port_check = settings
+        .and_then(|s| s.get("portConflictCheck").and_then(|v| v.as_bool()))
+        .unwrap_or(true);
 
     vec![
         // CLI 설정
@@ -28,17 +39,7 @@ pub(super) fn build_settings_menu(app: &App) -> Vec<MenuItem> {
             t("screen.settings_refresh"),
             app.settings.refresh_interval,
         )),
-        MenuItem::new(&t("screen.settings_prefix"), Some('p'), &format!(
-            "{}: {}",
-            t("screen.settings_prefix"),
-            app.bot_prefix,
-        )),
         // 공용 설정 (데몬/서버에 영향)
-        MenuItem::new(&t("screen.settings_discord_auto"), Some('d'), &format!(
-            "{}: {}",
-            t("screen.settings_discord_auto"),
-            if discord_auto { "ON" } else { "OFF" },
-        )),
         MenuItem::new(&t("screen.settings_ipc_port"), Some('P'), &format!(
             "{}: {}",
             t("screen.settings_ipc_port"),
@@ -84,49 +85,36 @@ pub(super) fn handle_settings_select(app: &mut App, sel: usize) {
         }
         2 => { // Refresh interval (CLI) → 인라인 Input
             app.input_mode = InputMode::InlineInput {
-                prompt: "CLI 상태 갱신 주기 (초)".into(),
+                prompt: app.i18n.t("prompt.cli_refresh"),
                 value: app.settings.refresh_interval.to_string(),
                 cursor: app.settings.refresh_interval.to_string().chars().count(),
                 on_submit: InlineAction::SetCliSetting { key: "refresh_interval".into() },
             };
         }
-        3 => { // Bot prefix → 인라인 Input
-            app.input_mode = InputMode::InlineInput {
-                prompt: "봇 명령어 프리픽스".into(),
-                value: app.bot_prefix.clone(),
-                cursor: app.bot_prefix.chars().count(),
-                on_submit: InlineAction::SetBotPrefix,
-            };
-        }
-        4 => { // Discord auto-start toggle
-            let current = config::get_discord_auto_start().unwrap_or(false);
-            let _ = config::set_discord_auto_start(!current);
-            app.flash(&format!("Discord Auto-start: {}", if !current { "ON" } else { "OFF" }));
-        }
-        5 => { // IPC Port → 인라인 Input
+        3 => { // IPC Port → 인라인 Input
             let current = config::get_ipc_port();
             app.input_mode = InputMode::InlineInput {
-                prompt: "데몬 IPC 포트 (1024+)".into(),
+                prompt: app.i18n.t("prompt.ipc_port"),
                 value: current.to_string(),
                 cursor: current.to_string().chars().count(),
                 on_submit: InlineAction::SetGuiSetting { key: "ipc_port".into() },
             };
         }
-        6 => { // Console buffer → 인라인 Input
+        4 => { // Console buffer → 인라인 Input
             let current = config::get_console_buffer_size().unwrap_or(2000);
             app.input_mode = InputMode::InlineInput {
-                prompt: "콘솔 버퍼 크기 (100-50000)".into(),
+                prompt: app.i18n.t("prompt.console_buffer"),
                 value: current.to_string(),
                 cursor: current.to_string().chars().count(),
                 on_submit: InlineAction::SetGuiSetting { key: "console_buffer".into() },
             };
         }
-        7 => { // Auto Passwords toggle
+        5 => { // Auto Passwords toggle
             let current = config::get_auto_generate_passwords().unwrap_or(true);
             let _ = config::set_auto_generate_passwords(!current);
             app.flash(&format!("Auto Passwords: {}", if !current { "ON" } else { "OFF" }));
         }
-        8 => { // Port Conflict Check toggle
+        6 => { // Port Conflict Check toggle
             let current = config::get_port_conflict_check().unwrap_or(true);
             let _ = config::set_port_conflict_check(!current);
             app.flash(&format!("Port Conflict Check: {}", if !current { "ON" } else { "OFF" }));

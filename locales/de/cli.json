@@ -4,15 +4,10 @@
   "status": {
     "daemon_running": "LÄUFT",
     "daemon_offline": "OFFLINE",
-    "bot_running": "LÄUFT",
-    "bot_offline": "OFFLINE",
-    "bot_no_token": "KEIN TOKEN",
     "servers": "Server"
   },
   "auto_start": {
     "daemon": "Starte Daemon automatisch...",
-    "bot": "Starte Discord-Bot automatisch...",
-    "bot_skipped": "Bot übersprungen — kein Discord-Token konfiguriert.",
     "daemon_timeout": "Daemon hat in 10s nicht geantwortet"
   },
   "help": {
@@ -22,7 +17,6 @@
     "instance": "instance [list|show|create|delete|settings|set] <name>",
     "module": "module  [list|info|refresh|versions|install]",
     "daemon": "daemon  [start|stop|status|restart]",
-    "bot": "bot     [start|stop|status|token|prefix|alias]",
     "config": "config  [show|set|get|reset] <key> <value>",
     "config_gui": "config  gui [language|token] <value>",
     "exec": "exec    <id> [cmd|rcon|rest] <command>",
@@ -43,12 +37,6 @@
     "reset_ok": "Setze '{{key}}' auf Standard zurück",
     "available_keys": "Verfügbare Konfigurationsschlüssel:",
     "saved": "Einstellungen gespeichert."
-  },
-  "token_cmd": {
-    "current": "Aktuelles Token: {{token}}",
-    "set_ok": "Discord-Token aktualisiert.",
-    "cleared": "Discord-Token entfernt.",
-    "not_set": "Kein Discord-Token gesetzt. Verwende: bot token set <TOKEN>"
   },
   "server_cmd": {
     "no_servers": "Keine Server konfiguriert.",
@@ -90,11 +78,6 @@
     "modules_label": "Module",
     "instances_label": "Instanzen"
   },
-  "bot_cmd": {
-    "already_running": "Discord-Bot läuft bereits",
-    "started": "Discord-Bot gestartet (Präfix: {{prefix}})",
-    "stopped": "Discord-Bot gestoppt"
-  },
   "update_cmd": {
     "updates_available": "Updates verfügbar:",
     "all_up_to_date": "Alle Komponenten sind aktuell.",
@@ -122,20 +105,10 @@
     "settings_header": "Einstellungsschema für '{{name}}' (Modul: {{module}}):",
     "no_settings_schema": "Kein Einstellungsschema verfügbar."
   },
-  "bot_alias_cmd": {
-    "header": "Discord-Bot Aliase:",
-    "module_aliases": "Modul-Aliase:",
-    "command_aliases": "Befehls-Aliase:",
-    "none": "(keine)",
-    "module_alias_set": "Modul-Alias gesetzt: {{module}} → {{aliases}}",
-    "command_alias_set": "Befehls-Alias gesetzt: {{module}}.{{command}} → {{aliases}}",
-    "all_reset": "Alle Aliase auf Standard zurückgesetzt."
-  },
   "menu": {
     "dashboard": "Dashboard",
     "servers": "Server",
     "modules": "Module",
-    "bot": "Discord Bot",
     "settings": "Einstellungen",
     "updates": "Updates",
     "daemon": "Daemon",
@@ -165,12 +138,6 @@
     "server_eula": "EULA akzeptieren",
     "server_delete": "Instanz löschen",
     "server_new": "Neuer Server",
-    "bot_start": "Bot starten",
-    "bot_stop": "Bot stoppen",
-    "bot_token": "Token",
-    "bot_prefix": "Präfix",
-    "bot_aliases": "Aliasse",
-    "bot_autostart": "Automatischer Start",
     "module_info": "Info",
     "module_versions": "Versionen",
     "module_install": "Installieren",
@@ -186,7 +153,6 @@
     "settings_language": "Sprache",
     "settings_autostart": "Automatischer Start",
     "settings_refresh": "Aktualisierungsintervall",
-    "settings_prefix": "Bot-Präfix",
     "settings_gui_lang": "GUI-Sprache",
     "no_changes": "Keine Änderungen zum Speichern",
     "saving": "Speichern...",

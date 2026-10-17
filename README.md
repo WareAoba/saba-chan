@@ -23,12 +23,12 @@
 │  (Ratatui)      │                   ┌─────────┴──────────┐
 └─────────────────┘                   │                    │
                                 ┌─────▼──────┐     ┌──────▼──────┐
-┌─────────────────┐             │   Modules  │     │  Instances  │
-│  Discord Bot    │             │  (게임별)   │     │ (서버 설정)  │
-│  (discord.js)   │             └────────────┘     └─────────────┘
-└────────┬────────┘                    │
-         │ IPC                  ┌──────▼──────┐
-         └────────────────────► │ Extensions  │
+┌─────────────────┐ long-poll   │   Modules  │     │  Instances  │
+│  Relay Server   │◄───────────►│  (게임별)   │     │ (서버 설정)  │
+│  (Discord 봇)   │   HTTPS     └────────────┘     └─────────────┘
+└─────────────────┘                    │
+                                ┌──────▼──────┐
+                                │ Extensions  │
                                 │ (Docker 등) │
                                 └─────────────┘
 ```
@@ -36,9 +36,9 @@
 | 컴포넌트 | 기술 스택 | 역할 |
 |----------|-----------|------|
 | **Core Daemon** (`saba-core.exe`) | Rust, Axum | 모든 서버 관리 기능의 핵심. 백그라운드 상주 |
-| **GUI** (`Saba-chan.exe`) | Electron 28, React 18, Vite, Zustand | 데스크톱 GUI |
+| **GUI** (`Saba-chan.exe`) | Electron 44, React 18, Vite, Zustand | 데스크톱 GUI |
 | **CLI** (`saba-chan-cli.exe`) | Rust, Ratatui, Crossterm | 터미널 TUI |
-| **Discord Bot** | discord.js 14 | 디스코드 채팅 기반 제어 |
+| **Relay Server** (`server-chan`) | Fastify 5, PostgreSQL | 클라우드 호스팅되는 Discord 봇 + 명령 릴레이 |
 | **Updater** (`saba-chan-updater.exe`) | Rust | 자동 업데이트 적용기 |
 
 ---
@@ -98,23 +98,23 @@
 
 익스텐션은 GUI 설정 탭 또는 CLI `:ext enable/disable/install` 명령으로 관리합니다.
 
-### Discord 봇
+### Discord 봇 (클라우드 릴레이)
 
-discord.js 14 기반으로 디스코드 채팅에서 게임 서버를 직접 제어합니다.
+디스코드 봇은 `server-chan` 릴레이 서버 안에서 운영됩니다. 사용자 PC 에는 봇이 설치되지 않으며, GUI 에서 한 번 페어링해 두면 데몬이 outbound HTTPS long-polling 으로 릴레이에 붙습니다. NAT / 포트 포워딩이 막힌 환경에서도 그대로 동작합니다.
 
-- **로컬 모드**: 봇이 Discord에 직접 로그인하여 IPC로 로컬 데몬에 명령 전달
-- **클라우드 모드**: NAT / 포트 포워딩 없는 환경에서도 릴레이 서버를 통해 동작
+- **페어링**: GUI 에서 코드 발급 → 디스코드에서 `/사바쨩 연결 <code>` 슬래시 명령 → 호스트 토큰 발급
 - **별칭 시스템**: 모듈명과 명령어에 한국어 별칭 지정 가능 (`팔 켜` → `palworld start`)
-- **별칭 핫 리로드**: `bot-config.json` 변경 시 봇 재시작 없이 즉시 반영
-- **봇 익스텐션**: 음악 재생(`music.js`), 이스터 에그(`easter_eggs.js`), 가위바위보(`rps.js`)
+- **별칭 동기화**: GUI 에서 별칭을 저장하면 즉시 릴레이 서버에 반영
+- **노드 권한**: 길드별 인스턴스 화이트리스트 (`nodeSettings.allowedInstances`)
+- **음악**: 음악 서버(`music-server`)가 디스코드 음성 채널 재생을 처리
 
 ```
-!saba palworld status   → Palworld 서버 상태 확인
-!saba minecraft stop    → Minecraft 서버 정지
-!saba 팔 켜             → 별칭으로 Palworld 시작
+사바쨩 status palworld   → Palworld 서버 상태 확인
+사바쨩 stop minecraft    → Minecraft 서버 정지
+사바쨩 팔 켜              → 별칭으로 Palworld 시작
 ```
 
-기본 prefix는 `!saba`이며, `bot-config.json`에서 변경할 수 있습니다.
+기본 prefix는 `사바쨩`이며, `bot-config.json` 또는 GUI 의 봇 설정 화면에서 변경할 수 있습니다.
 
 ### 릴레이 서버 (클라우드 모드)
 
@@ -131,7 +131,7 @@ GitHub Releases 기반의 업데이트 시스템이 내장되어 있습니다.
 
 - 3시간 간격으로 자동 업데이트 확인 (설정 변경 가능)
 - 다운로드 파일의 **SHA256** 해시 무결성 검증
-- 업데이트 대상: Core Daemon, CLI, GUI, Discord Bot, Updater, 다국어 파일, 모듈/익스텐션 단독 업데이트
+- 업데이트 대상: Core Daemon, CLI, GUI, Updater, 다국어 파일, 모듈/익스텐션 단독 업데이트
 - GUI/CLI의 업데이트 탭 또는 `:update check` / `:update download` / `:update apply` 명령으로 수동 제어
 
 ### 다국어 지원
@@ -142,7 +142,7 @@ GitHub Releases 기반의 업데이트 시스템이 내장되어 있습니다.
 
 Core Daemon은 `http://127.0.0.1:57474`에서 REST API를 제공합니다. 모든 요청에는 `X-Saba-Token` 헤더(`.ipc_token` 파일 기반)가 필요합니다.
 
-주요 엔드포인트: 서버 시작/정지/상태, 인스턴스 CRUD, 콘솔 I/O, 모듈/익스텐션/업데이트 관리, 봇 제어.
+주요 엔드포인트: 서버 시작/정지/상태, 인스턴스 CRUD, 콘솔 I/O, 모듈/익스텐션/업데이트 관리, 봇 메타데이터.
 
 ```powershell
 # 예시: 서버 목록 조회
@@ -177,7 +177,7 @@ Invoke-RestMethod -Uri "http://127.0.0.1:57474/api/servers" -Headers @{ "X-Saba-
 .\scripts\build-windows.ps1
 ```
 
-Core Daemon (Rust workspace), GUI (Vite + electron-builder), Discord Bot (npm)을 병렬로 빌드합니다.
+Core Daemon (Rust workspace) 와 GUI (Vite + electron-builder) 를 병렬로 빌드합니다.
 
 출력 바이너리: `saba-core.exe`, `saba-chan-cli.exe`, `saba-chan-updater.exe`, `Saba-chan.exe`
 
@@ -192,9 +192,6 @@ cd saba-chan-gui; npm install; npm start
 
 # CLI
 cargo build --release -p saba-chan-cli
-
-# Discord Bot
-cd discord_bot; npm install; npm start
 ```
 
 ---
@@ -214,7 +211,6 @@ saba-chan/
 │   └── node_env/           # Node.js 포터블 환경 다운로더
 ├── saba-chan-cli/          # CLI (Rust, Ratatui)
 ├── saba-chan-gui/          # GUI (Electron 28 + React 18 + Vite)
-├── discord_bot/            # Discord Bot (discord.js 14)
 ├── updater/                # Updater (Rust)
 ├── installer/              # 인스톨러 (Tauri)
 ├── modules/                # 게임 모듈 (saba-chan-modules 참조)

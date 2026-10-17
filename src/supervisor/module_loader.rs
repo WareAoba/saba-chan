@@ -132,7 +132,6 @@ impl ModuleMetadata {
     /// 컴포넌트 버전 의존성을 확인합니다.
     /// `installed_versions`: 컴포넌트 키 → 설치된 버전 (예: "saba-core" → "0.3.0")
     /// 미충족 의존성 목록을 (컴포넌트키, 요구버전, 설치버전Option) 튜플로 반환합니다.
-    #[allow(dead_code)]
     pub fn check_dependencies(
         &self,
         installed_versions: &std::collections::HashMap<String, String>,
@@ -185,12 +184,21 @@ pub struct HighlightRule {
     pub pattern: String,
     /// CSS 색상값 (예: "#f38ba8", "#a6e3a1") 또는 시맨틱 토큰 ("error", "warn", "info", …)
     pub color: String,
+    /// 배경색 (optional, CSS 색상값 또는 시맨틱 토큰)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background: Option<String>,
     /// 굵게 표시 여부
     #[serde(default)]
     pub bold: bool,
     /// 기울임 표시 여부
     #[serde(default)]
     pub italic: bool,
+    /// 밑줄 표시 여부
+    #[serde(default)]
+    pub underline: bool,
+    /// 우선순위 (기본 0, 큰 값이 먼저 적용됨)
+    #[serde(default)]
+    pub priority: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -576,68 +584,115 @@ struct HighlightRuleToml {
     pattern: String,
     color: String,
     #[serde(default)]
+    background: Option<String>,
+    #[serde(default)]
     bold: bool,
     #[serde(default)]
     italic: bool,
+    #[serde(default)]
+    underline: bool,
+    #[serde(default)]
+    priority: i32,
+}
+
+/// [settings] 섹션 → 공개 `ModuleSettings`. 필드가 없으면 None.
+fn convert_settings(section: Option<SettingsSection>) -> Option<ModuleSettings> {
+    let s = section?;
+    let fields: Vec<SettingField> = s.fields.into_iter().map(|f| SettingField {
+        name: f.name.clone(),
+        field_type: f.field_type,
+        label: f.label.unwrap_or(f.name),
+        description: f.description,
+        required: f.required,
+        default: f.default,
+        min: f.min,
+        max: f.max,
+        step: f.step,
+        options: f.options,
+        group: f.group,
+    }).collect();
+    if fields.is_empty() { None } else { Some(ModuleSettings { fields }) }
+}
+
+/// [commands] 섹션 → 공개 `ModuleCommands`. 필드가 없으면 None.
+fn convert_commands(section: Option<CommandsSection>) -> Option<ModuleCommands> {
+    let c = section?;
+    let fields: Vec<CommandField> = c.fields.into_iter().map(|f| CommandField {
+        name: f.name.clone(),
+        label: f.label.unwrap_or(f.name),
+        description: f.description,
+        method: f.method,
+        http_method: f.http_method,
+        endpoint_template: f.endpoint_template,
+        rcon_template: f.rcon_template.or(f.command_template),
+        inputs: f.inputs.into_iter().map(|i| CommandInput {
+            name: i.name,
+            label: i.label,
+            input_type: i.input_type,
+            required: i.required,
+            placeholder: i.placeholder,
+            default: i.default,
+        }).collect(),
+    }).collect();
+    if fields.is_empty() { None } else { Some(ModuleCommands { fields }) }
+}
+
+/// [syntax_highlight] 섹션 → 공개 `SyntaxHighlight`. 규칙이 없으면 None.
+fn convert_syntax_highlight(section: Option<SyntaxHighlightSection>) -> Option<SyntaxHighlight> {
+    let sh = section?;
+    let rules: Vec<HighlightRule> = sh.rules.into_iter().map(|r| {
+        // JS 호환성 린트: 런타임에 실패할 패턴을 사전 경고.
+        lint_highlight_pattern(&r.name, &r.pattern);
+        HighlightRule {
+            name: r.name,
+            pattern: r.pattern,
+            color: r.color,
+            background: r.background,
+            bold: r.bold,
+            italic: r.italic,
+            underline: r.underline,
+            priority: r.priority,
+        }
+    }).collect();
+    if rules.is_empty() { None } else { Some(SyntaxHighlight { rules }) }
+}
+
+/// [docker] 섹션 → `extensions` 맵 (image가 있을 때만 "docker" 키 삽입).
+fn convert_container_extensions(
+    container: Option<ContainerSectionToml>,
+) -> std::collections::HashMap<String, serde_json::Value> {
+    let mut ext_map = std::collections::HashMap::new();
+    if let Some(d) = container {
+        if let Some(img) = d.image {
+            let cfg = ContainerExtensionConfig {
+                image: img,
+                working_dir: d.working_dir,
+                restart: d.restart.unwrap_or_else(|| "unless-stopped".to_string()),
+                command: d.command,
+                entrypoint: d.entrypoint,
+                user: d.user,
+                ports: d.ports,
+                volumes: d.volumes,
+                environment: d.environment,
+                dockerfile: d.dockerfile,
+                extra_options: std::collections::HashMap::new(),
+                cpu_limit: d.cpu_limit,
+                memory_limit: d.memory_limit,
+            };
+            if let Ok(val) = serde_json::to_value(cfg) {
+                ext_map.insert("docker".to_string(), val);
+            }
+        }
+    }
+    ext_map
 }
 
 impl ModuleToml {
     /// ModuleToml → ModuleMetadata 변환
     fn into_metadata(self) -> ModuleMetadata {
-        let settings = if let Some(s) = self.settings {
-            let fields: Vec<SettingField> = s.fields.into_iter().map(|f| SettingField {
-                name: f.name.clone(),
-                field_type: f.field_type,
-                label: f.label.unwrap_or(f.name),
-                description: f.description,
-                required: f.required,
-                default: f.default,
-                min: f.min,
-                max: f.max,
-                step: f.step,
-                options: f.options,
-                group: f.group,
-            }).collect();
-            if fields.is_empty() { None } else { Some(ModuleSettings { fields }) }
-        } else {
-            None
-        };
-
-        let commands = if let Some(c) = self.commands {
-            let fields: Vec<CommandField> = c.fields.into_iter().map(|f| CommandField {
-                name: f.name.clone(),
-                label: f.label.unwrap_or(f.name),
-                description: f.description,
-                method: f.method,
-                http_method: f.http_method,
-                endpoint_template: f.endpoint_template,
-                rcon_template: f.rcon_template.or(f.command_template),
-                inputs: f.inputs.into_iter().map(|i| CommandInput {
-                    name: i.name,
-                    label: i.label,
-                    input_type: i.input_type,
-                    required: i.required,
-                    placeholder: i.placeholder,
-                    default: i.default,
-                }).collect(),
-            }).collect();
-            if fields.is_empty() { None } else { Some(ModuleCommands { fields }) }
-        } else {
-            None
-        };
-
-        let syntax_highlight = if let Some(sh) = self.syntax_highlight {
-            let rules: Vec<HighlightRule> = sh.rules.into_iter().map(|r| HighlightRule {
-                name: r.name,
-                pattern: r.pattern,
-                color: r.color,
-                bold: r.bold,
-                italic: r.italic,
-            }).collect();
-            if rules.is_empty() { None } else { Some(SyntaxHighlight { rules }) }
-        } else {
-            None
-        };
+        let settings = convert_settings(self.settings);
+        let commands = convert_commands(self.commands);
+        let syntax_highlight = convert_syntax_highlight(self.syntax_highlight);
 
         ModuleMetadata {
             name: self.module.name,
@@ -670,32 +725,7 @@ impl ModuleToml {
                 beta: i.beta,
                 requires_extensions: i.requires_extensions,
             }),
-            extensions: {
-                let mut ext_map = std::collections::HashMap::new();
-                if let Some(d) = self.container {
-                    if let Some(img) = d.image {
-                        let cfg = ContainerExtensionConfig {
-                            image: img,
-                            working_dir: d.working_dir,
-                            restart: d.restart.unwrap_or_else(|| "unless-stopped".to_string()),
-                            command: d.command,
-                            entrypoint: d.entrypoint,
-                            user: d.user,
-                            ports: d.ports,
-                            volumes: d.volumes,
-                            environment: d.environment,
-                            dockerfile: d.dockerfile,
-                            extra_options: std::collections::HashMap::new(),
-                            cpu_limit: d.cpu_limit,
-                            memory_limit: d.memory_limit,
-                        };
-                        if let Ok(val) = serde_json::to_value(cfg) {
-                            ext_map.insert("docker".to_string(), val);
-                        }
-                    }
-                }
-                ext_map
-            },
+            extensions: convert_container_extensions(self.container),
             process_patterns: self._detection.as_ref()
                 .and_then(|d| d.process_patterns.clone())
                 .unwrap_or_default(),
@@ -854,6 +884,10 @@ impl ModuleLoader {
 
         // 강타입 TOML 파싱
         let metadata = parse_module_toml(&toml_content)?;
+        anyhow::ensure!(
+            crate::utils::is_single_path_component(&metadata.name),
+            "Invalid ZIP module name"
+        );
 
         // 임시 디렉토리에 압축 해제
         let temp_dir = tempfile::tempdir()?;
@@ -865,15 +899,20 @@ impl ModuleLoader {
 
         // 임시 디렉토리 경로를 영구적으로 유지 (tempdir는 Drop시 삭제되므로)
         // 대신 modules/.extracted/ 디렉토리 사용
-        let extracted_dir = PathBuf::from(&self.modules_dir)
-            .join(".extracted")
-            .join(&metadata.name);
+        let extraction_root = PathBuf::from(&self.modules_dir).join(".extracted");
+        if let Ok(metadata) = fs::symlink_metadata(&extraction_root) {
+            anyhow::ensure!(!metadata.file_type().is_symlink(), "Module extraction root cannot be a symbolic link");
+        }
+        let extracted_dir = extraction_root.join(&metadata.name);
+        if let Ok(metadata) = fs::symlink_metadata(&extracted_dir) {
+            anyhow::ensure!(!metadata.file_type().is_symlink(), "Module extraction directory cannot be a symbolic link");
+        }
         
         if extracted_dir.exists() {
             fs::remove_dir_all(&extracted_dir)?;
         }
         fs::create_dir_all(&extracted_dir)?;
-        
+
         // temp_dir에서 extracted_dir로 복사
         copy_dir_all(&extract_path, &extracted_dir)?;
 
@@ -896,9 +935,138 @@ impl ModuleLoader {
     }
 }
 
+/// 디렉토리 전체 복사 헬퍼 함수
+fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        if ty.is_dir() {
+            copy_dir_all(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    Ok(())
+}
+
+// ───────────────────────────────────────────────────────────
+// syntax_highlight 정규식 호환성 린트
+// ───────────────────────────────────────────────────────────
+//
+// 모듈 저자는 Python `re` 기준으로 패턴을 작성하는 경우가 많지만, 실제 적용은
+// 브라우저 JS RegExp 에서 이루어진다. 런타임 실패를 사전에 개발자에게 알리기
+// 위해 명백히 JS 에서 실패하는 문법을 로드 시점에 stderr 로 경고한다.
+//
+// ⚠️ 경고만 출력하고 규칙을 제거하지는 않는다 — GUI 의 compileRules 가 최종
+// 권한을 가지며, 진단도 그쪽에서 수집된다. 여기는 모듈 저자용 조기 경보다.
+fn lint_highlight_pattern(rule_name: &str, pattern: &str) {
+    // 1. Python 전용 문법 — JS 미지원
+    let js_incompatible: &[(&str, &str)] = &[
+        ("(?P=", "Python backreference (?P=name); use \\k<name> for JS compat"),
+        ("(?(",  "Python conditional (?(id)yes|no); unsupported in JS"),
+        ("(?#",  "Python comment (?#...); unsupported in JS"),
+    ];
+    for (needle, msg) in js_incompatible {
+        if pattern.contains(needle) {
+            eprintln!(
+                "[module_loader] syntax_highlight rule '{}': JS-incompatible pattern — {}",
+                rule_name, msg
+            );
+        }
+    }
+
+    // 2. 인라인 플래그 (?i), (?s), (?m), (?x) — JS 는 (?i:...) / (?ims:...) 같은
+    //    범위 플래그만 ES2018+ 에서 제한 지원. 단독 (?flags) 는 미지원.
+    //    `(?<` (named group), `(?:` (non-capturing), `(?=`/`(?!` (lookahead),
+    //    `(?<=`/`(?<!` (lookbehind) 는 정상이므로 제외.
+    if let Some(idx) = pattern.find("(?") {
+        let rest = &pattern[idx + 2..];
+        let first = rest.chars().next();
+        if let Some(c) = first {
+            if matches!(c, 'i' | 's' | 'm' | 'x' | 'a' | 'L' | 'u') {
+                // (?i:...) 같은 범위형은 허용, (?i) 단독 또는 (?i)... 은 JS에서 에러
+                let second = rest.chars().nth(1);
+                if second != Some(':') && !matches!(second, Some('a'..='z') | Some('A'..='Z')) {
+                    eprintln!(
+                        "[module_loader] syntax_highlight rule '{}': bare inline flag (?{}...) \
+                         is unsupported in JS; use RegExp flags or (?{}:...)",
+                        rule_name, c, c
+                    );
+                }
+            }
+        }
+    }
+
+    // 3. 길이 상한 — GUI 의 MAX_PATTERN_LENGTH 와 맞춤
+    const MAX_PATTERN_LENGTH: usize = 4000;
+    if pattern.len() > MAX_PATTERN_LENGTH {
+        eprintln!(
+            "[module_loader] syntax_highlight rule '{}': pattern length {} exceeds {} and will be rejected by GUI",
+            rule_name, pattern.len(), MAX_PATTERN_LENGTH
+        );
+    }
+
+    // 4. 중첩 수량자 — ReDoS 위험. GUI 가 거부하므로 경고.
+    let bytes = pattern.as_bytes();
+    let mut i = 0;
+    while i + 2 < bytes.len() {
+        if bytes[i] == b')' && (bytes[i + 1] == b'+' || bytes[i + 1] == b'*') {
+            // 그룹 내부에 수량자가 있는지 역방향 검사
+            let mut depth = 1;
+            let mut j = i;
+            while j > 0 && depth > 0 {
+                j -= 1;
+                match bytes[j] {
+                    b')' => depth += 1,
+                    b'(' => depth -= 1,
+                    b'+' | b'*' if depth == 1 => {
+                        eprintln!(
+                            "[module_loader] syntax_highlight rule '{}': nested quantifier detected \
+                             (catastrophic backtracking risk); GUI will reject this pattern",
+                            rule_name
+                        );
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        i += 1;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recovery_zip_module_name_cannot_escape_extraction_root() {
+        use std::io::Write;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules_dir = tmp.path().join("modules");
+        let outside = tmp.path().join("outside");
+        fs::create_dir_all(modules_dir.join(".extracted")).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("keep.txt"), "keep").unwrap();
+        let zip_path = modules_dir.join("unsafe.zip");
+        let mut archive = zip::ZipWriter::new(fs::File::create(&zip_path).unwrap());
+        archive.start_file("module.toml", zip::write::FileOptions::default()).unwrap();
+        archive.write_all(br#"[module]
+name = "../../outside"
+version = "1.0.0"
+description = "Test"
+entry = "lifecycle.py"
+"#).unwrap();
+        archive.finish().unwrap();
+        let loader = ModuleLoader::new(modules_dir.to_str().unwrap());
+
+        assert!(loader.load_module_from_zip(&zip_path).is_err());
+        assert!(outside.join("keep.txt").exists());
+    }
 
     #[test]
     fn test_module_loader_creation() {
@@ -1315,14 +1483,14 @@ entry = "lifecycle.py"
 "saba-core" = ">=0.3.0"
 "gui" = ">=0.2.0"
 "ext-steamcmd" = ">=1.0.0"
-"discord_bot" = ">=0.1.0"
+"ext-music" = ">=0.1.0"
 "#;
         let meta = parse_module_toml(toml).unwrap();
         let mut installed = std::collections::HashMap::new();
         installed.insert("saba-core".to_string(), "0.5.0".to_string());
         installed.insert("gui".to_string(), "0.3.0".to_string());
         installed.insert("ext-steamcmd".to_string(), "1.0.0".to_string());
-        installed.insert("discord_bot".to_string(), "0.1.0".to_string());
+        installed.insert("ext-music".to_string(), "0.1.0".to_string());
 
         let issues = meta.check_dependencies(&installed);
         assert!(issues.is_empty(), "All cross-type dependencies should be satisfied");
@@ -1332,28 +1500,101 @@ entry = "lifecycle.py"
         partial.insert("saba-core".to_string(), "0.5.0".to_string());
         partial.insert("gui".to_string(), "0.1.0".to_string()); // too low
         partial.insert("ext-steamcmd".to_string(), "1.0.0".to_string());
-        // discord_bot missing entirely
+        // ext-music missing entirely
 
         let issues = meta.check_dependencies(&partial);
-        assert_eq!(issues.len(), 2, "gui too low + discord_bot missing");
+        assert_eq!(issues.len(), 2, "gui too low + ext-music missing");
     }
-}
 
-/// \ub514\ub809\ud1a0\ub9ac \uc804\uccb4 \ubcf5\uc0ac \ud5ec\ud37c \ud568\uc218
-fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
-    fs::create_dir_all(dst)?;
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let ty = entry.file_type()?;
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-        
-        if ty.is_dir() {
-            copy_dir_all(&src_path, &dst_path)?;
-        } else {
-            fs::copy(&src_path, &dst_path)?;
-        }
+    // ── syntax_highlight 스키마 테스트 ──
+
+    #[test]
+    fn test_parse_syntax_highlight_basic_rule() {
+        let toml = r#"
+[module]
+name = "test"
+version = "1.0.0"
+entry = "lifecycle.py"
+
+[[syntax_highlight.rules]]
+name = "error"
+pattern = "ERROR"
+color = "error"
+bold = true
+"#;
+        let meta = parse_module_toml(toml).unwrap();
+        let sh = meta.syntax_highlight.expect("syntax_highlight missing");
+        assert_eq!(sh.rules.len(), 1);
+        let r = &sh.rules[0];
+        assert_eq!(r.name, "error");
+        assert_eq!(r.pattern, "ERROR");
+        assert_eq!(r.color, "error");
+        assert!(r.bold);
+        assert!(!r.italic);
+        assert!(!r.underline);
+        assert_eq!(r.priority, 0);
+        assert!(r.background.is_none());
     }
-    Ok(())
+
+    #[test]
+    fn test_parse_syntax_highlight_extended_fields() {
+        let toml = r##"
+[module]
+name = "test"
+version = "1.0.0"
+entry = "lifecycle.py"
+
+[[syntax_highlight.rules]]
+name = "critical"
+pattern = "CRITICAL"
+color = "#f38ba8"
+background = "#1a1a2e"
+bold = true
+italic = true
+underline = true
+priority = 100
+"##;
+        let meta = parse_module_toml(toml).unwrap();
+        let sh = meta.syntax_highlight.unwrap();
+        let r = &sh.rules[0];
+        assert_eq!(r.background.as_deref(), Some("#1a1a2e"));
+        assert!(r.bold && r.italic && r.underline);
+        assert_eq!(r.priority, 100);
+    }
+
+    #[test]
+    fn test_syntax_highlight_serializes_to_json_with_new_fields() {
+        let toml = r##"
+[module]
+name = "test"
+version = "1.0.0"
+entry = "lifecycle.py"
+
+[[syntax_highlight.rules]]
+name = "x"
+pattern = "x"
+color = "#fff"
+underline = true
+priority = 5
+background = "dim"
+"##;
+        let meta = parse_module_toml(toml).unwrap();
+        let json = serde_json::to_value(meta.syntax_highlight.unwrap()).unwrap();
+        let rules = json.get("rules").unwrap().as_array().unwrap();
+        let rule = &rules[0];
+        assert_eq!(rule.get("underline").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(rule.get("priority").and_then(|v| v.as_i64()), Some(5));
+        assert_eq!(rule.get("background").and_then(|v| v.as_str()), Some("dim"));
+    }
+
+    #[test]
+    fn test_lint_highlight_pattern_does_not_panic() {
+        // 린트 함수는 stderr 경고만 출력하고 패닉하지 않아야 한다.
+        lint_highlight_pattern("ok", "^\\[\\d{2}:\\d{2}:\\d{2}\\]");
+        lint_highlight_pattern("redos", "(a+)+b");
+        lint_highlight_pattern("py_backref", "(?P<hl>\\w+)(?P=hl)");
+        lint_highlight_pattern("inline_flag", "(?i)hello");
+        lint_highlight_pattern("long", &"x".repeat(5000));
+    }
 }
 

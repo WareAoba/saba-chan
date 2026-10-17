@@ -1,3 +1,4 @@
+import { ModalOverlay } from './Modals';
 import clsx from 'clsx';
 import { useState, useCallback, useRef, useLayoutEffect, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -48,7 +49,7 @@ export function AddInstanceModal({
         if (isOpen && onRefreshextensions) {
             onRefreshextensions();
         }
-    }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [isOpen, onRefreshextensions]);
 
     // ── 높이 애니메이션 ──
     const contentRef = useRef(null);
@@ -94,13 +95,13 @@ export function AddInstanceModal({
         // 트랜지션 끄고, 이전 높이로 즉시 설정
         animatingRef.current = true;
         el.style.transition = 'none';
-        el.style.height = prevHeight + 'px';
+        el.style.height = `${prevHeight}px`;
         // 강제 레이아웃 — 브라우저가 이전 높이를 인식
         void el.offsetWidth;
 
         // 트랜지션 켜고, 새 높이로 전환
         el.style.transition = 'height 0.28s cubic-bezier(0.4, 0, 0.2, 1)';
-        el.style.height = newHeight + 'px';
+        el.style.height = `${newHeight}px`;
 
         const cleanup = () => {
             el.style.transition = '';
@@ -133,14 +134,14 @@ export function AddInstanceModal({
     if (!isOpen) return null;
 
     return (
-        <div className={clsx('modal-overlay', { closing: isClosing })} onClick={requestClose}>
+        <ModalOverlay  className={clsx('modal-overlay', { closing: isClosing })} onClose={requestClose}>
             <div
                 ref={contentRef}
                 className={clsx('modal-content', 'add-instance-modal', {
                     'add-instance-modal--chooser': mode === null,
                     'add-instance-modal--flow': mode !== null,
                 })}
-                onClick={(e) => e.stopPropagation()}
+
             >
                 <div className="add-instance-progress-wrap" aria-hidden="true">
                     <div className="add-instance-progress-track">
@@ -187,7 +188,7 @@ export function AddInstanceModal({
                     />
                 )}
             </div>
-        </div>
+        </ModalOverlay>
     );
 }
 
@@ -212,7 +213,7 @@ function InstanceChooser({ t, hasModules, onSelectNew, onSelectMigrate, onClose 
 
             {/* Body — 두 개의 선택 카드 */}
             <div className="modal-body add-instance-chooser-body">
-                <div className="add-instance-chooser-grid" role="group" aria-label={t('add_instance_modal.title')}>
+                <fieldset className="add-instance-chooser-grid" aria-label={t('add_instance_modal.title')}>
                 {/* 새 서버 */}
                 <div className="ai-choice-col">
                     <button
@@ -266,12 +267,12 @@ function InstanceChooser({ t, hasModules, onSelectNew, onSelectMigrate, onClose 
                     </div>
                 </button>
                 </div>
-                </div>
+                </fieldset>
             </div>
 
             {/* Footer */}
             <div className="modal-footer add-instance-footer">
-                <button className="btn btn-cancel ai-cancel-btn" onClick={onClose}>
+                <button type="button" className="btn btn-cancel ai-cancel-btn" onClick={onClose}>
                     {t('modals.cancel')}
                 </button>
             </div>

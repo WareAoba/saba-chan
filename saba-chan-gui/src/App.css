@@ -35,6 +35,20 @@ button:disabled {
     cursor: not-allowed;
 }
 
+button:where(.context-menu-item, .context-menu-overlay, .custom-dropdown-item, .cmd-hint-chip, .cmd-history-item,
+    .discord-node-card-header, .instance-settings-command-header, .setting-item, .toast, .waiting-image-overlay,
+    .discord-backdrop, .notice-card-body, .gui-test-title, .settings-group-collapsible) {
+    height: auto;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+    display: block;
+    font: inherit;
+    text-align: inherit;
+    white-space: normal;
+}
+
 /* 기본 버튼 (Primary) */
 .btn-primary {
     background: var(--brand-gradient);
@@ -693,6 +707,18 @@ span[style*="--icon-loader"] svg,
     gap: 10px;
     margin-bottom: 0;
     position: relative;
+}
+
+.server-card-disclosure {
+    flex: 1;
+    min-width: 0;
+    height: auto;
+    padding: 0;
+    gap: 10px;
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
 }
 
 /* 게임 아이콘 */
@@ -1821,9 +1847,9 @@ span[style*="--icon-loader"] svg,
     max-height: 90vh;
 }
 
-.add-server-header {
+.modal-header.add-server-header {
     flex-direction: column;
-    align-items: flex-start !important;
+    align-items: flex-start;
     gap: 6px;
 }
 
@@ -2556,9 +2582,9 @@ span[style*="--icon-loader"] svg,
     transition: width 0.24s ease;
 }
 
-.add-instance-header {
+.modal-header.add-instance-header {
     flex-direction: column;
-    align-items: flex-start !important;
+    align-items: flex-start;
     gap: 8px;
 }
 
@@ -2638,6 +2664,9 @@ span[style*="--icon-loader"] svg,
 }
 
 .add-instance-chooser-grid {
+    border: 0;
+    padding: 0;
+    min-width: 0;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
@@ -3310,6 +3339,10 @@ span[style*="--icon-loader"] svg,
     border-style: dashed;
 }
 
+.settings-group-communication {
+    border-style: dotted;
+}
+
 .version-loading {
     display: flex;
     align-items: center;
@@ -3380,9 +3413,9 @@ span[style*="--icon-loader"] svg,
     display: flex;
     align-items: stretch;
 }
-.number-spinner-input {
+input.number-spinner-input {
     flex: 1;
-    padding-right: 32px !important;
+    padding-right: 32px;
     -moz-appearance: textfield;
 }
 .number-spinner-input::-webkit-inner-spin-button,
@@ -4144,7 +4177,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .global-progress-fill.indeterminate {
-    width: 30% !important;
+    width: 30%;
     animation: progress-indeterminate 1.4s ease-in-out infinite;
 }
 
@@ -4419,7 +4452,7 @@ span[style*="--icon-loader"] svg,
 }
 
 .settings-danger-title {
-    color: #f38ba8 !important;
+    color: #f38ba8;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -4590,8 +4623,8 @@ span[style*="--icon-loader"] svg,
     background: rgba(137, 180, 250, 0.1);
 }
 
-.console-popout-titlebar-pinned {
-    color: #89b4fa !important;
+.console-popout-titlebar-pin.console-popout-titlebar-pinned {
+    color: #89b4fa;
     background: rgba(137, 180, 250, 0.15);
 }
 
@@ -4884,8 +4917,8 @@ span[style*="--icon-loader"] svg,
     background: rgba(137, 180, 250, 0.1);
 }
 
-.cw-btn-pinned {
-    color: #89b4fa !important;
+.cw-btn.cw-btn-pinned {
+    color: #89b4fa;
     background: rgba(137, 180, 250, 0.15);
 }
 

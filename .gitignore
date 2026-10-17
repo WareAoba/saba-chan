@@ -21,17 +21,18 @@ saba-chan-gui/build/
 saba-chan-gui/dist/
 saba-chan-gui/electron-dist/
 saba-chan-gui/extensions/*.py
-discord_bot/node_modules/
 
 # CLI
-saba-chan-cli/target/
 saba-chan-cli/.rustc_info.json
 
 # Environment files
 .env
 .env.local
 .env.*.local
-discord_bot/.env
+.release.env
+.tmp/
+.wrangler/
+saba-chan-mcp/dist/
 
 # Relay-Server
 server-chan/
@@ -45,8 +46,6 @@ server-chan/
 resources/
 
 target/
-scripts/
-!.github/scripts/
 
 # OS
 .DS_Store
@@ -71,8 +70,6 @@ __pycache__/
 
 # Build outputs
 *.exe
-!run-daemon.bat
-!start-all.bat
 /release-build/
 
 # Test coverage
@@ -80,7 +77,6 @@ coverage/
 *.profraw
 *.profdata
 saba-chan-gui/coverage/
-discord_bot/coverage/
 
 # GitHub Actions
 .github/cache/

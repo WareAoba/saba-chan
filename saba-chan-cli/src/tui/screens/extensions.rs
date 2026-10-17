@@ -57,7 +57,8 @@ pub(super) fn handle_extensions_select(app: &mut App, sel: usize) {
                     Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
                 }
             });
-            app.flash("익스텐션 목록 로드 중...");
+            let msg = app.i18n.t("flash.loading_modules");
+            app.flash(&msg);
         }
         1 => { // Extension Manifest
             app.push_screen(Screen::ExtensionManifest);
@@ -90,7 +91,8 @@ pub(super) fn handle_extensions_select(app: &mut App, sel: usize) {
                     Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
                 }
             });
-            app.flash("매니페스트 조회 중...");
+            let msg = app.i18n.t("flash.loading_manifest");
+            app.flash(&msg);
         }
         2 => { // Check Updates
             tokio::spawn(async move {
@@ -118,7 +120,8 @@ pub(super) fn handle_extensions_select(app: &mut App, sel: usize) {
                     Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
                 }
             });
-            app.flash("업데이트 확인 중...");
+            let msg = app.i18n.t("flash.checking_update");
+            app.flash(&msg);
         }
         3 => { // Rescan
             tokio::spawn(async move {
@@ -127,7 +130,8 @@ pub(super) fn handle_extensions_select(app: &mut App, sel: usize) {
                     Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
                 }
             });
-            app.flash("재스캔 중...");
+            let msg = app.i18n.t("flash.rescanning");
+            app.flash(&msg);
         }
         _ => {}
     }
@@ -152,7 +156,7 @@ pub(super) fn build_extension_list_menu(app: &App) -> Vec<MenuItem> {
         items.push(MenuItem::new("(No extensions installed)", None, "").with_enabled(false));
     }
 
-    items.push(MenuItem::new("↻ Refresh", Some('r'), "익스텐션 목록 새로고침"));
+    items.push(MenuItem::new("↻ Refresh", Some('r'), &app.i18n.t("misc.ext_refresh_desc")));
     items
 }
 
@@ -186,7 +190,8 @@ pub(super) fn handle_extension_list_select(app: &mut App, sel: usize) {
                 Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
             }
         });
-        app.flash("새로고침 중...");
+        let msg = app.i18n.t("flash.refreshing");
+        app.flash(&msg);
     }
 }
 
@@ -242,7 +247,8 @@ pub(super) fn handle_extension_detail_select(app: &mut App, sel: usize, ext_id: 
                 if let Some(ext) = app.cached_extensions.iter_mut().find(|e| e.id == ext_id) {
                     ext.enabled = false;
                 }
-                app.flash("비활성화 중...");
+                let msg = app.i18n.t("flash.disabling");
+                app.flash(&msg);
             } else {
                 let buf2 = buf.clone();
                 tokio::spawn(async move {
@@ -258,7 +264,8 @@ pub(super) fn handle_extension_detail_select(app: &mut App, sel: usize, ext_id: 
                 if let Some(ext) = app.cached_extensions.iter_mut().find(|e| e.id == ext_id) {
                     ext.enabled = true;
                 }
-                app.flash("활성화 중...");
+                let msg = app.i18n.t("flash.enabling");
+                app.flash(&msg);
             }
         }
         1 => { // Config → 조회 후 편집 InlineInput
@@ -288,7 +295,7 @@ pub(super) fn handle_extension_detail_select(app: &mut App, sel: usize, ext_id: 
             });
             // 키=값 편집용 InlineInput
             app.input_mode = InputMode::InlineInput {
-                prompt: format!("{} config (key=value, 빈 값은 조회만)", ext_id_edit),
+                prompt: format!("{} config (key=value)", ext_id_edit),
                 value: String::new(),
                 cursor: 0,
                 on_submit: InlineAction::Custom(format!("EXT_CONFIG:{}", ext_id)),
@@ -321,7 +328,7 @@ pub(super) fn build_extension_manifest_menu(app: &App) -> Vec<MenuItem> {
         items.push(MenuItem::new("(Loading or empty manifest...)", None, "").with_enabled(false));
     }
 
-    items.push(MenuItem::new("↻ Refresh Manifest", Some('r'), "매니페스트 새로고침"));
+    items.push(MenuItem::new("↻ Refresh Manifest", Some('r'), &app.i18n.t("misc.manifest_refresh_desc")));
     items
 }
 
@@ -361,7 +368,8 @@ pub(super) fn handle_extension_manifest_select(app: &mut App, sel: usize) {
                 Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
             }
         });
-        app.flash("매니페스트 새로고침 중...");
+        let msg = app.i18n.t("flash.refreshing_manifest");
+        app.flash(&msg);
     }
 }
 
@@ -382,7 +390,7 @@ pub(super) fn build_module_manifest_menu(app: &App) -> Vec<MenuItem> {
         items.push(MenuItem::new("(Loading or empty manifest...)", None, "").with_enabled(false));
     }
 
-    items.push(MenuItem::new("↻ Refresh Manifest", Some('r'), "매니페스트 새로고침"));
+    items.push(MenuItem::new("↻ Refresh Manifest", Some('r'), &app.i18n.t("misc.manifest_refresh_desc")));
     items
 }
 
@@ -422,6 +430,7 @@ pub(super) fn handle_module_manifest_select(app: &mut App, sel: usize) {
                 Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
             }
         });
-        app.flash("모듈 매니페스트 새로고침 중...");
+        let msg = app.i18n.t("flash.refreshing_module_manifest");
+        app.flash(&msg);
     }
 }

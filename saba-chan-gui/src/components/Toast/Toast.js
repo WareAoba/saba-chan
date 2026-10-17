@@ -1,3 +1,4 @@
+
 import clsx from 'clsx';
 import { useCallback, useEffect, useState } from 'react';
 import './Toast.css';
@@ -68,7 +69,7 @@ function Toast() {
         };
 
         // StatusBar의 상태 업데이트 신호를 받아 로그만 출력
-        if (window.api && window.api.onStatusUpdate) {
+        if (window.api?.onStatusUpdate) {
             window.api.onStatusUpdate((data) => {
                 console.log('[Status Update]', data.step, ':', data.message);
             });
@@ -84,14 +85,14 @@ function Toast() {
     return (
         <div className="toast-container">
             {toasts.map((toast) => (
-                <div
+                <button type="button"
                     key={toast.id}
                     className={clsx('toast', `toast-${toast.type}`, { 'toast-removing': removingToasts.has(toast.id) })}
                     onClick={() => removeToast(toast.id)}
                 >
                     {toast.icon && <span className="toast-icon">{toast.icon}</span>}
                     <span className="toast-message">{toast.message}</span>
-                </div>
+                </button>
             ))}
         </div>
     );

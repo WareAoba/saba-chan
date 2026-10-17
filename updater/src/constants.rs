@@ -21,17 +21,8 @@ use std::path::PathBuf;
 /// 앱 이름 — 경로 구성, 레지스트리 등에서 사용
 pub const APP_NAME: &str = "saba-chan";
 
-/// GitHub 저장소 소유자
+/// GitHub 저장소 소유자 — 인스톨러가 레지스트리 Publisher 값으로 사용
 pub const GITHUB_OWNER: &str = "WareAoba";
-
-/// GitHub 메인 저장소 이름
-pub const GITHUB_REPO: &str = "saba-chan";
-
-/// GitHub 모듈 저장소 이름
-pub const GITHUB_MODULES_REPO: &str = "saba-chan-modules";
-
-/// GitHub 익스텐션 저장소 이름
-pub const GITHUB_EXTENSIONS_REPO: &str = "saba-chan-extensions";
 
 // ══════════════════════════════════════════════════════
 //  네트워크 상수
@@ -43,27 +34,25 @@ pub const DEFAULT_IPC_PORT: u16 = 57474;
 /// 기본 Daemon API URL
 pub const DEFAULT_DAEMON_URL: &str = "http://127.0.0.1:57474";
 
-/// 원격 모듈 매니페스트 URL
-pub fn modules_manifest_url() -> String {
-    format!(
-        "https://github.com/{}/{}/releases/latest/download/manifest.json",
-        GITHUB_OWNER, GITHUB_MODULES_REPO
-    )
-}
+/// 기본 릴레이 서버 베이스 URL. 프로덕션 릴레이 URL 로 설정.
+///
+/// 모듈·익스텐션·코어 매니페스트는 모두 Relay 의 서명된 매니페스트에서 내려오며,
+/// 실제 에셋은 그 매니페스트의 `url` 필드(R2 공개 URL)에서 다운로드한다.
+/// 구 GitHub release/raw URL 은 `installer/`(최초 설치용)에서만 사용된다.
+pub const DEFAULT_RELAY_BASE_URL: &str = "https://saba-chan.online";
 
-/// 원격 모듈 에셋 다운로드 URL
-pub fn module_asset_url(asset_name: &str) -> String {
-    format!(
-        "https://github.com/{}/{}/releases/latest/download/{}",
-        GITHUB_OWNER, GITHUB_MODULES_REPO, asset_name
-    )
-}
+/// R2 공개 베이스 URL — 릴레이 매니페스트에 `icon_url` 이 없을 때
+/// 인스톨러 GUI 가 모듈 아이콘 폴백 URL 을 구성할 때 사용한다.
+///
+/// 아이콘은 릴리즈 자산과 달리 버전이 따로 없으며, 다음 고정 경로로 업로드된다:
+/// `<R2_PUBLIC_BASE>/assets/icons/modules/<module_id>.png`
+pub const DEFAULT_R2_PUBLIC_BASE: &str = "https://pub-7193a1c92bf24fd992506560aa6d2a5d.r2.dev";
 
-/// 원격 익스텐션 매니페스트 URL
-pub fn extensions_manifest_url() -> String {
+/// R2 상의 모듈 아이콘 기본 URL (R2 공개 버킷의 `assets/icons/modules/<id>.png`).
+pub fn default_module_icon_url(module_id: &str) -> String {
     format!(
-        "https://raw.githubusercontent.com/{}/{}/main/manifest.json",
-        GITHUB_OWNER, GITHUB_EXTENSIONS_REPO
+        "{}/assets/icons/modules/{}.png",
+        DEFAULT_R2_PUBLIC_BASE, module_id
     )
 }
 
@@ -159,34 +148,6 @@ pub fn resolve_settings_path() -> PathBuf {
     resolve_data_dir().join("settings.json")
 }
 
-/// 봇 설정 파일 경로 (`bot-config.json`)
-pub fn resolve_bot_config_path() -> PathBuf {
-    resolve_data_dir().join("bot-config.json")
-}
-
-/// Discord 봇 디렉토리 경로 (`discord_bot/`)
-///
-/// `SABA_DISCORD_BOT_DIR` 환경 변수로 오버라이드 가능.
-/// 기본값: 실행 파일과 같은 디렉토리의 `discord_bot/`
-pub fn resolve_discord_bot_dir() -> PathBuf {
-    if let Ok(p) = std::env::var("SABA_DISCORD_BOT_DIR") {
-        if !p.is_empty() {
-            return PathBuf::from(p);
-        }
-    }
-    // 프로덕션: exe와 같은 디렉토리의 discord_bot/
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(parent) = exe.parent() {
-            let bot_dir = parent.join("discord_bot");
-            if bot_dir.exists() {
-                return bot_dir;
-            }
-        }
-    }
-    // 개발 모드 폴백: cwd 기준
-    PathBuf::from("discord_bot")
-}
-
 /// 스테이징 디렉터리 (업데이트 다운로드 임시 파일)
 pub fn resolve_staging_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
@@ -203,11 +164,6 @@ pub fn resolve_staging_dir() -> PathBuf {
         }
         PathBuf::from("./updates")
     }
-}
-
-/// 업데이터 상태 파일 경로 (`updater-state.json`)
-pub fn resolve_updater_state_path() -> PathBuf {
-    resolve_data_dir().join("updater-state.json")
 }
 
 /// 업데이트 완료 마커 경로 (`update-complete.json`)
@@ -346,13 +302,6 @@ mod tests {
         let pw1 = generate_random_password();
         let pw2 = generate_random_password();
         assert_ne!(pw1, pw2);
-    }
-
-    #[test]
-    fn test_modules_manifest_url() {
-        let url = modules_manifest_url();
-        assert!(url.contains(GITHUB_OWNER));
-        assert!(url.contains(GITHUB_MODULES_REPO));
     }
 
     #[test]

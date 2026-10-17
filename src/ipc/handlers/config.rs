@@ -33,7 +33,12 @@ pub async fn save_gui_config(
     }
 
     match state.config_store.set_gui_settings_from_json(settings).await {
-        Ok(_) => (StatusCode::OK, Json(json!({ "ok": true }))).into_response(),
+        Ok(_) => {
+            // 언어 변경을 플러그인 러너에 즉시 반영 (모듈 i18n SABA_LANG)
+            let lang = state.config_store.get_gui_settings().await.language;
+            crate::plugin::set_plugin_lang(lang);
+            (StatusCode::OK, Json(json!({ "ok": true }))).into_response()
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": format!("{}", e) })),
@@ -55,7 +60,7 @@ pub async fn get_node_token(State(_state): State<IPCServer>) -> impl IntoRespons
 
 /// PUT /api/config/node-token
 pub async fn save_node_token(
-    State(_state): State<IPCServer>,
+    State(state): State<IPCServer>,
     Json(payload): Json<Value>,
 ) -> impl IntoResponse {
     let token = payload
@@ -70,7 +75,12 @@ pub async fn save_node_token(
     }
 
     match std::fs::write(&token_path, token) {
-        Ok(_) => (StatusCode::OK, Json(json!({ "ok": true }))).into_response(),
+        Ok(_) => {
+            // 페어링 직후 데몬 재시작 없이 하트비트/폴링이 시작되도록 핫 리로드
+            let started = state.cloud_agent.restart_from_file().await;
+            tracing::info!("[Config] node token 저장 — cloud agent 핫 리로드 (running={})", started);
+            (StatusCode::OK, Json(json!({ "ok": true }))).into_response()
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": format!("Failed to write node token: {}", e) })),
@@ -80,7 +90,7 @@ pub async fn save_node_token(
 }
 
 /// DELETE /api/config/node-token
-pub async fn delete_node_token(State(_state): State<IPCServer>) -> impl IntoResponse {
+pub async fn delete_node_token(State(state): State<IPCServer>) -> impl IntoResponse {
     let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
     let token_path = data_dir.join(".node_token");
 
@@ -93,6 +103,9 @@ pub async fn delete_node_token(State(_state): State<IPCServer>) -> impl IntoResp
                 .into_response();
         }
     }
+    // 토큰 삭제 = 클라우드 연결 해제 — 실행 중인 에이전트 정지
+    state.cloud_agent.stop().await;
+    tracing::info!("[Config] node token 삭제 — cloud agent 정지");
     (StatusCode::OK, Json(json!({ "ok": true }))).into_response()
 }
 
@@ -135,60 +148,46 @@ pub async fn get_module_locales(
 
 // ── System Components ──
 
-/// GET /api/system/components — 릴리스 매니페스트 정보
+/// GET /api/system/components — 설치된 컴포넌트 버전 일람
+///
+/// 단일 SoT는 `%APPDATA%/Roaming/saba-chan/installed-manifest.json`이다.
+/// 핵심 코어 컴포넌트(saba-core/cli/gui/updater/installer)가 매니페스트에
+/// 누락된 경우(예: 인스톨러 없이 개발 빌드를 실행한 경우)에는 데몬 자신의
+/// `CARGO_PKG_VERSION`을 fallback으로 사용한다. workspace.package.version이
+/// 단일 SoT이므로 5개 코어 컴포넌트는 동일 버전을 갖는다.
 pub async fn get_system_components(State(_state): State<IPCServer>) -> impl IntoResponse {
-    // install root = 실행 파일의 부모 디렉토리
-    let install_root = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let manifest_path = saba_chan_updater_lib::constants::resolve_installed_manifest_path();
+    let installed = saba_chan_updater_lib::UpdateManager::load_installed_manifest();
+    let core_version = env!("CARGO_PKG_VERSION");
 
-    let manifest_path = install_root.join("release-manifest.json");
-
-    if manifest_path.exists() {
-        if let Ok(raw) = std::fs::read_to_string(&manifest_path) {
-            if let Ok(manifest) = serde_json::from_str::<Value>(&raw) {
-                let mut components = json!({});
-                if let Some(comps) = manifest.get("components").and_then(|c| c.as_object()) {
-                    for (key, val) in comps {
-                        let ver = val
-                            .get("version")
-                            .or_else(|| manifest.get("release_version"))
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("0.1.0");
-                        components[key] = json!(ver);
-                    }
-                }
-                let last_updated = std::fs::metadata(&manifest_path)
-                    .ok()
-                    .and_then(|m| m.modified().ok())
-                    .map(|t| {
-                        // SystemTime → RFC3339-ish string without chrono
-                        let dur = t
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default();
-                        format!("{}", dur.as_secs())
-                    });
-
-                return (
-                    StatusCode::OK,
-                    Json(json!({
-                        "version": manifest.get("release_version").and_then(|v| v.as_str()).unwrap_or("0.1.0"),
-                        "components": components,
-                        "lastUpdated": last_updated
-                    })),
-                )
-                    .into_response();
-            }
+    // 핵심 코어 컴포넌트는 데몬 자신의 버전으로 채워둔다(설치본이 없을 때 fallback)
+    let mut components = serde_json::Map::new();
+    for key in ["saba-core", "cli", "gui", "updater", "installer"] {
+        let ver = installed.get(key).map(String::as_str).unwrap_or(core_version);
+        components.insert(key.to_string(), json!(ver));
+    }
+    // 모듈/익스텐션 등 추가 컴포넌트는 매니페스트에 기록된 그대로 노출
+    for (k, v) in &installed {
+        if !components.contains_key(k) {
+            components.insert(k.clone(), json!(v));
         }
     }
+
+    // lastUpdated는 epoch milliseconds(JS Date에서 직접 파싱 가능). manifest 파일이
+    // 없을 때(=인스톨러 없이 개발 빌드를 직접 실행한 경우)는 null로 두어 GUI가
+    // "마지막 업데이트" 라벨을 숨기도록 한다.
+    let last_updated_ms: Option<u64> = std::fs::metadata(&manifest_path)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as u64);
 
     (
         StatusCode::OK,
         Json(json!({
-            "version": env!("CARGO_PKG_VERSION"),
-            "components": {},
-            "lastUpdated": null
+            "version": core_version,
+            "components": components,
+            "lastUpdated": last_updated_ms,
         })),
     )
         .into_response()

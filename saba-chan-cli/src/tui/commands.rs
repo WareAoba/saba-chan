@@ -28,6 +28,11 @@ pub fn submit(app: &mut App) {
     app.hist_idx = None;
 
     // exit / quit
+    //
+    // 봇·데몬은 **이 세션이 직접 시작한 경우에만** 정리한다 (auto-start 또는
+    // 사용자가 TUI 안에서 `daemon start` / `bot start`를 친 경우). 외부에서
+    // 이미 떠 있던 데몬을 함께 죽여서 운영 중인 게임 서버를 종료시키는 사고
+    // 를 방지한다.
     if matches!(cmd.to_lowercase().as_str(), "exit" | "quit" | "q") {
         app.output.push(Out::Cmd(cmd.clone()));
         app.output.push(Out::Info("Shutting down...".into()));
@@ -35,27 +40,22 @@ pub fn submit(app: &mut App) {
         let buf = app.async_out.clone();
         let exit_client = app.client.clone();
         let exit_client_id = app.client_id.clone();
+        let stop_daemon_flag = app.stop_daemon_on_exit.clone();
         tokio::spawn(async move {
+            use std::sync::atomic::Ordering;
             let mut lines = Vec::new();
-            let maybe_id = exit_client_id.lock().unwrap().take();
+            let maybe_id = exit_client_id.lock().ok().and_then(|mut g| g.take());
             if let Some(id) = maybe_id {
                 let _ = exit_client.unregister_client(&id).await;
             }
-            if process::check_bot_running() {
-                match tokio::task::spawn_blocking(process::stop_bot).await {
-                    Ok(Ok(msg)) => lines.push(Out::Ok(msg)),
-                    Ok(Err(e)) => lines.push(Out::Err(format!("Bot stop failed: {}", e))),
-                    Err(e) => lines.push(Out::Err(format!("Bot stop failed: {}", e))),
-                }
-            }
-            if process::check_daemon_running() {
+            if stop_daemon_flag.load(Ordering::SeqCst) && process::check_daemon_running() {
                 match tokio::task::spawn_blocking(process::stop_daemon).await {
                     Ok(Ok(msg)) => lines.push(Out::Ok(msg)),
                     Ok(Err(e)) => lines.push(Out::Err(format!("Saba-Core stop failed: {}", e))),
                     Err(e) => lines.push(Out::Err(format!("Saba-Core stop failed: {}", e))),
                 }
             }
-            if lines.is_empty() { lines.push(Out::Info("Nothing to stop.".into())); }
+            if lines.is_empty() { lines.push(Out::Info("Goodbye.".into())); }
             push_out(&buf, lines);
         });
         app.quit = true;
@@ -101,6 +101,7 @@ pub fn submit(app: &mut App) {
     let registry = app.registry.clone();
     let lower_owned = lower_cmd.clone();
     let orig_owned = cmd.clone();
+    let stop_daemon_flag = app.stop_daemon_on_exit.clone();
 
     tokio::spawn(async move {
         let lower_parts: Vec<&str> = lower_owned.split_whitespace().collect();
@@ -109,8 +110,7 @@ pub fn submit(app: &mut App) {
             Some("instance") => exec_instance(&client, &lower_parts[1..], &orig_parts[1..], &registry).await,
             Some("module") => exec_module(&client, &lower_parts[1..]).await,
             Some("extension") | Some("ext") => exec_extension(&client, &lower_parts[1..]).await,
-            Some("daemon") => exec_daemon(&lower_parts[1..]).await,
-            Some("bot") => exec_bot(&lower_parts[1..]).await,
+            Some("daemon") => exec_daemon(&lower_parts[1..], &stop_daemon_flag).await,
             Some("update") => exec_update(&client, &lower_parts[1..]).await,
             Some(word) => {
                 if let Some(module_name) = registry.resolve_module_name(word) {
@@ -131,14 +131,15 @@ pub fn submit(app: &mut App) {
 // 자동완성 (Tab)
 // ═══════════════════════════════════════════════════════
 
-/// 서브커맨드 목록 반환 (자동완성용)
+/// 서브커맨드 목록 반환 (자동완성용).
+/// Stage 4 이후 `autocomplete::refresh`가 자체 사본을 씀. 여기는 레거시 호출 경로용으로 유지.
+#[allow(dead_code)]
 fn get_subcommands_for(first: &str) -> Vec<&'static str> {
     match first {
         "instance" => vec!["list", "create", "delete", "set", "reset", "reorder"],
         "module" => vec!["list", "info", "refresh", "versions", "install", "manifest", "remove", "install-manifest"],
         "extension" | "ext" => vec!["list", "enable", "disable", "install", "remove", "manifest", "rescan"],
         "daemon" => vec!["start", "stop", "status", "restart"],
-        "bot" => vec!["start", "stop", "status", "token", "prefix", "mode", "relay", "node-token"],
         "config" => vec!["show", "set", "get", "reset", "gui", "system-language"],
         "update" => vec!["check", "status", "download", "apply", "config", "set", "install", "launch-apply"],
         "migration" => vec!["scan"],
@@ -146,51 +147,10 @@ fn get_subcommands_for(first: &str) -> Vec<&'static str> {
     }
 }
 
-/// 실시간 자동완성 미리보기 갱신 (입력할 때마다 호출)
+/// 실시간 자동완성 미리보기 갱신 (입력할 때마다 호출).
+/// Stage 4 이후 `autocomplete::refresh`의 얇은 래퍼. ghost-text까지 계산한다.
 pub fn update_autocomplete_preview(app: &mut App) {
-    let input = app.input.trim().to_string();
-    if input.is_empty() {
-        app.autocomplete_candidates.clear();
-        app.autocomplete_visible = false;
-        return;
-    }
-
-    let parts: Vec<&str> = input.split_whitespace().collect();
-    let mut candidates = Vec::new();
-
-    if parts.len() == 1 && !app.input.ends_with(' ') {
-        // 1단계 명령어 후보
-        let top_cmds = [
-            "instance", "module", "extension",
-            "daemon", "bot", "config", "update", "help",
-            "exit", "back", "menu", "migration",
-        ];
-        for cmd in &top_cmds {
-            if cmd.starts_with(&parts[0].to_lowercase()) && *cmd != parts[0] {
-                candidates.push(cmd.to_string());
-            }
-        }
-        // 모듈 이름도 추가
-        for name in app.registry.module_names() {
-            if name.to_lowercase().starts_with(&parts[0].to_lowercase()) && name != parts[0] {
-                candidates.push(name.to_string());
-            }
-        }
-    } else if parts.len() == 2 || (parts.len() == 1 && app.input.ends_with(' ')) {
-        // 2단계 서브커맨드 후보
-        let first = parts[0];
-        let partial = if parts.len() > 1 && !app.input.ends_with(' ') { parts[1] } else { "" };
-        let sub_cmds = get_subcommands_for(first);
-        for sub in &sub_cmds {
-            if sub.starts_with(&partial.to_lowercase()) && (partial.is_empty() || *sub != partial) {
-                candidates.push(format!("{} {}", first, sub));
-            }
-        }
-    }
-
-    app.autocomplete_candidates = candidates;
-    app.autocomplete_selected = 0;
-    app.autocomplete_visible = !app.autocomplete_candidates.is_empty();
+    super::autocomplete::refresh(app);
 }
 
 pub fn autocomplete(app: &mut App) {
@@ -212,7 +172,7 @@ pub fn autocomplete(app: &mut App) {
     if parts.len() == 1 && !app.input.ends_with(' ') {
         let mut candidates: Vec<String> = vec![
             "instance".into(), "module".into(), "extension".into(),
-            "daemon".into(), "bot".into(),
+            "daemon".into(),
             "exec".into(), "config".into(), "help".into(), "exit".into(), "update".into(),
             "back".into(), "menu".into(), "migration".into(),
         ];
@@ -251,8 +211,6 @@ pub fn autocomplete(app: &mut App) {
                 "extension list", "extension enable", "extension disable",
                 "extension install", "extension remove", "extension manifest", "extension rescan",
                 "daemon start", "daemon stop", "daemon status", "daemon restart",
-                "bot start", "bot stop", "bot status", "bot token", "bot prefix",
-                "bot mode", "bot relay", "bot node-token",
                 "config show", "config set", "config get", "config reset", "config system-language",
                 "update check", "update status", "update download", "update apply",
                 "update launch-apply",
@@ -295,18 +253,9 @@ fn dispatch_sync(app: &mut App, lower: &[&str], orig: &[&str]) -> Option<Vec<Out
         Some("daemon") if lower.len() == 1 => Some(vec![
             Out::Text("  daemon start|stop|status|restart".into()),
         ]),
-        Some("bot") if lower.len() == 1 => Some(vec![
-            Out::Text("  bot start|stop|status|token|prefix|mode|relay|node-token".into()),
-        ]),
         Some("migration") if lower.len() == 1 => Some(vec![
             Out::Text("  migration scan <directory>".into()),
         ]),
-        Some("bot") if lower.len() >= 2 && lower[1] == "token" => Some(cmd_bot_token(&orig[2..])),
-        Some("bot") if lower.len() >= 2 && lower[1] == "prefix" => Some(cmd_bot_prefix(&orig[2..])),
-        Some("bot") if lower.len() >= 2 && lower[1] == "status" => Some(cmd_bot_status()),
-        Some("bot") if lower.len() >= 2 && lower[1] == "mode" => Some(cmd_bot_mode(&lower[2..], &orig[2..])),
-        Some("bot") if lower.len() >= 2 && lower[1] == "relay" => Some(cmd_bot_relay(&lower[2..], &orig[2..])),
-        Some("bot") if lower.len() >= 2 && lower[1] == "node-token" => Some(cmd_bot_node_token(&lower[2..], &orig[2..])),
         Some("migration") if lower.len() >= 2 && lower[1] == "scan" => Some(cmd_migration_scan(&orig[2..])),
         _ => {
             if lower.len() == 1 && lower[0] == "sabachan" {
@@ -329,12 +278,9 @@ fn dispatch_sync(app: &mut App, lower: &[&str], orig: &[&str]) -> Option<Vec<Out
 fn cmd_config(app: &mut App, args: &[&str]) -> Vec<Out> {
     match args.first().copied() {
         None | Some("show") => {
-            let token = config::get_discord_token().ok().flatten();
             let modules_path = config::get_modules_path().unwrap_or_default();
             let extensions_path = config::get_extensions_path().unwrap_or_default();
-            let prefix = config::get_bot_prefix().unwrap_or_else(|_| "!saba".into());
             let gui_lang = config::get_language().unwrap_or_else(|_| "en".into());
-            let auto_start_gui = config::get_discord_auto_start().unwrap_or(false);
             let auto_refresh = config::get_auto_refresh().unwrap_or(true);
             let refresh_ms = config::get_refresh_interval().unwrap_or(2000);
             let ipc_port = config::get_ipc_port();
@@ -346,15 +292,11 @@ fn cmd_config(app: &mut App, args: &[&str]) -> Vec<Out> {
                 Out::Text(format!("  language         {}", app.settings.get_value("language").unwrap_or_else(|| "(auto)".into()))),
                 Out::Text(format!("  auto_start       {}", app.settings.auto_start)),
                 Out::Text(format!("  refresh_interval {}", app.settings.refresh_interval)),
-                Out::Text(format!("  bot_prefix       {}", app.settings.bot_prefix)),
                 Out::Blank,
                 Out::Info("GUI Settings (settings.json):".into()),
-                Out::Text(format!("  token              {}", if token.is_some() { "✓ set" } else { "✗ not set" })),
-                Out::Text(format!("  prefix             {}", prefix)),
                 Out::Text(format!("  modules_path       {} (fixed)", modules_path)),
                 Out::Text(format!("  extensions_path    {} (fixed)", extensions_path)),
                 Out::Text(format!("  language           {}", gui_lang)),
-                Out::Text(format!("  discord_auto       {}", auto_start_gui)),
                 Out::Text(format!("  auto_refresh       {}", auto_refresh)),
                 Out::Text(format!("  refresh_interval   {}ms", refresh_ms)),
                 Out::Text(format!("  ipc_port           {}", ipc_port)),
@@ -365,7 +307,7 @@ fn cmd_config(app: &mut App, args: &[&str]) -> Vec<Out> {
             lines.push(Out::Blank);
             lines.push(Out::Info("CLI: config set|get|reset <key> <value>".into()));
             lines.push(Out::Info("GUI: config gui <key> <value>".into()));
-            lines.push(Out::Text("  GUI keys: language, token, discord_auto, auto_refresh,".into()));
+            lines.push(Out::Text("  GUI keys: language, auto_refresh,".into()));
             lines.push(Out::Text("            refresh_interval, ipc_port, console_buffer, auto_passwords, port_check".into()));
             lines.push(Out::Text(format!("  CLI keys: {}", CliSettings::available_keys().iter().map(|(k,_)| *k).collect::<Vec<_>>().join(", "))));
             lines
@@ -423,40 +365,6 @@ fn cmd_config_gui(args: &[&str]) -> Vec<Out> {
             match config::set_language(args[1]) {
                 Ok(()) => vec![Out::Ok(format!("✓ GUI language set to: {}", args[1]))],
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
-            }
-        }
-        Some("token") => {
-            if args.len() < 2 {
-                match config::get_discord_token() {
-                    Ok(Some(t)) => {
-                        let masked = if t.len() > 8 { format!("{}...{}", &t[..4], &t[t.len()-4..]) } else { "****".into() };
-                        vec![Out::Ok(format!("Token: {}", masked))]
-                    }
-                    _ => vec![Out::Text("Token: not set".into())],
-                }
-            } else if args[1] == "clear" {
-                match config::clear_discord_token() {
-                    Ok(()) => vec![Out::Ok("✓ Discord token cleared.".into())],
-                    Err(e) => vec![Out::Err(format!("✗ {}", e))],
-                }
-            } else {
-                match config::set_discord_token(args[1]) {
-                    Ok(()) => vec![Out::Ok("✓ Discord token saved.".into())],
-                    Err(e) => vec![Out::Err(format!("✗ {}", e))],
-                }
-            }
-        }
-        Some("discord_auto") | Some("discord_auto_start") => {
-            if args.len() < 2 {
-                let cur = config::get_discord_auto_start().unwrap_or(false);
-                return vec![Out::Ok(format!("Discord auto-start: {}", cur))];
-            }
-            match args[1].parse::<bool>() {
-                Ok(v) => match config::set_discord_auto_start(v) {
-                    Ok(()) => vec![Out::Ok(format!("✓ Discord auto-start set to: {}", v))],
-                    Err(e) => vec![Out::Err(format!("✗ {}", e))],
-                },
-                Err(_) => vec![Out::Err("Expected true/false".into())],
             }
         }
         Some("auto_refresh") => {
@@ -544,126 +452,6 @@ fn cmd_config_gui(args: &[&str]) -> Vec<Out> {
     }
 }
 
-fn cmd_bot_token(args: &[&str]) -> Vec<Out> {
-    match args.first().copied() {
-        None | Some("show") => {
-            match config::get_discord_token() {
-                Ok(Some(t)) => {
-                    let masked = if t.len() > 8 { format!("{}...{}", &t[..4], &t[t.len()-4..]) } else { "****".into() };
-                    vec![Out::Ok(format!("Token: {}", masked))]
-                }
-                Ok(None) => vec![Out::Text("Token: not set".into())],
-                Err(e) => vec![Out::Err(format!("Error: {}", e))],
-            }
-        }
-        Some("set") => {
-            if args.len() < 2 { return vec![Out::Err("Usage: bot token set <TOKEN>".into())]; }
-            match config::set_discord_token(args[1]) {
-                Ok(()) => vec![Out::Ok("Discord token saved.".into())],
-                Err(e) => vec![Out::Err(format!("Failed: {}", e))],
-            }
-        }
-        Some("clear") => {
-            match config::clear_discord_token() {
-                Ok(()) => vec![Out::Ok("Discord token cleared.".into())],
-                Err(e) => vec![Out::Err(format!("Failed: {}", e))],
-            }
-        }
-        Some(sub) => vec![Out::Err(format!("Unknown: bot token {}. Try: show, set, clear", sub))],
-    }
-}
-
-fn cmd_bot_prefix(args: &[&str]) -> Vec<Out> {
-    match args.first().copied() {
-        None | Some("show") => {
-            let prefix = config::get_bot_prefix().unwrap_or_else(|_| "!saba".into());
-            vec![Out::Ok(format!("Bot prefix: {}", prefix))]
-        }
-        Some("set") => {
-            if args.len() < 2 { return vec![Out::Err("Usage: bot prefix set <PREFIX>".into())]; }
-            match config::set_bot_prefix(args[1]) {
-                Ok(()) => vec![Out::Ok(format!("Bot prefix set to: {}", args[1]))],
-                Err(e) => vec![Out::Err(format!("Failed: {}", e))],
-            }
-        }
-        Some(sub) => vec![Out::Err(format!("Unknown: bot prefix {}. Try: show, set", sub))],
-    }
-}
-
-fn cmd_bot_status() -> Vec<Out> {
-    let running = process::check_bot_running();
-    let token = config::get_discord_token().ok().flatten();
-    let prefix = config::get_bot_prefix().unwrap_or_else(|_| "!saba".into());
-    let auto = config::get_discord_auto_start().unwrap_or(false);
-    let status_str = if running { "● RUNNING" } else if token.is_none() { "○ NO TOKEN" } else { "○ OFFLINE" };
-    vec![
-        Out::Ok(format!("Discord Bot: {}", status_str)),
-        Out::Text(format!("  Token:      {}", if token.is_some() { "✓ set" } else { "✗ not set" })),
-        Out::Text(format!("  Prefix:     {}", prefix)),
-        Out::Text(format!("  Auto-start: {}", auto)),
-    ]
-}
-
-fn cmd_bot_mode(lower: &[&str], _orig: &[&str]) -> Vec<Out> {
-    let config = config::load_bot_config().unwrap_or_default();
-    let current = config.get("mode").and_then(|v| v.as_str()).unwrap_or("local");
-
-    match lower.first().copied() {
-        None | Some("show") => {
-            let mut lines = vec![Out::Ok(format!("Bot mode: {}", current))];
-            lines.push(Out::Text("  Available: local, cloud".into()));
-            lines.push(Out::Text("  bot mode set <local|cloud>".into()));
-            lines
-        }
-        Some("set") if lower.len() > 1 => {
-            let mode = lower[1];
-            if mode != "local" && mode != "cloud" {
-                return vec![Out::Err("Mode must be 'local' or 'cloud'".into())];
-            }
-            let mut config = config::load_bot_config().unwrap_or_default();
-            config["mode"] = serde_json::Value::String(mode.to_string());
-            match config::save_bot_config(&config) {
-                Ok(()) => vec![Out::Ok(format!("✓ Bot mode set to: {}", mode))],
-                Err(e) => vec![Out::Err(format!("✗ {}", e))],
-            }
-        }
-        _ => vec![Out::Err("Usage: bot mode [show|set <local|cloud>]".into())],
-    }
-}
-
-fn cmd_bot_node_token(lower: &[&str], orig: &[&str]) -> Vec<Out> {
-    match lower.first().copied() {
-        None | Some("show") => {
-            match config::load_node_token() {
-                Ok(token) if token.is_empty() => vec![Out::Text("Node token: (not set)".into())],
-                Ok(token) => {
-                    let masked = if token.len() > 12 {
-                        format!("{}...{}", &token[..6], &token[token.len()-4..])
-                    } else {
-                        "****".into()
-                    };
-                    vec![Out::Ok(format!("Node token: {}", masked))]
-                }
-                Err(e) => vec![Out::Err(format!("✗ {}", e))],
-            }
-        }
-        Some("set") if orig.len() > 1 => {
-            let token = orig[1..].join(" ");
-            match config::save_node_token(token.trim()) {
-                Ok(()) => vec![Out::Ok("✓ Node token saved.".into())],
-                Err(e) => vec![Out::Err(format!("✗ {}", e))],
-            }
-        }
-        Some("clear") => {
-            match config::clear_node_token() {
-                Ok(()) => vec![Out::Ok("✓ Node token cleared.".into())],
-                Err(e) => vec![Out::Err(format!("✗ {}", e))],
-            }
-        }
-        _ => vec![Out::Err("Usage: bot node-token [show|set <token>|clear]".into())],
-    }
-}
-
 fn cmd_migration_scan(args: &[&str]) -> Vec<Out> {
     if args.is_empty() {
         return vec![Out::Err("Usage: migration scan <directory>".into())];
@@ -693,47 +481,6 @@ fn cmd_migration_scan(args: &[&str]) -> Vec<Out> {
     }
 }
 
-fn cmd_bot_relay(lower: &[&str], orig: &[&str]) -> Vec<Out> {
-    let config = config::load_bot_config().unwrap_or_default();
-    let cloud = config.get("cloud").cloned().unwrap_or(serde_json::json!({}));
-    let relay_url = cloud.get("relayUrl").and_then(|v| v.as_str()).unwrap_or("");
-    let host_id = cloud.get("hostId").and_then(|v| v.as_str()).unwrap_or("");
-
-    match lower.first().copied() {
-        None | Some("show") => {
-            vec![
-                Out::Ok("Cloud Relay Config:".into()),
-                Out::Text(format!("  relayUrl: {}", if relay_url.is_empty() { "(not set)" } else { relay_url })),
-                Out::Text(format!("  hostId:   {}", if host_id.is_empty() { "(not set)" } else { host_id })),
-                Out::Blank,
-                Out::Text("  bot relay url <URL>".into()),
-                Out::Text("  bot relay hostid <ID>".into()),
-            ]
-        }
-        Some("url") if orig.len() > 1 => {
-            let url = orig[1..].join(" ");
-            let mut config = config::load_bot_config().unwrap_or_default();
-            if config.get("cloud").is_none() { config["cloud"] = serde_json::json!({}); }
-            config["cloud"]["relayUrl"] = serde_json::Value::String(url.clone());
-            match config::save_bot_config(&config) {
-                Ok(()) => vec![Out::Ok(format!("✓ Relay URL set to: {}", url))],
-                Err(e) => vec![Out::Err(format!("✗ {}", e))],
-            }
-        }
-        Some("hostid") if orig.len() > 1 => {
-            let id = orig[1];
-            let mut config = config::load_bot_config().unwrap_or_default();
-            if config.get("cloud").is_none() { config["cloud"] = serde_json::json!({}); }
-            config["cloud"]["hostId"] = serde_json::Value::String(id.to_string());
-            match config::save_bot_config(&config) {
-                Ok(()) => vec![Out::Ok(format!("✓ Host ID set to: {}", id))],
-                Err(e) => vec![Out::Err(format!("✗ {}", e))],
-            }
-        }
-        _ => vec![Out::Err("Usage: bot relay [show|url <URL>|hostid <ID>]".into())],
-    }
-}
-
 fn cmd_help(app: &App) -> Vec<Out> {
     let mut lines = vec![
         Out::Info("─── Commands ───".into()),
@@ -741,7 +488,6 @@ fn cmd_help(app: &App) -> Vec<Out> {
         Out::Text("  module    [list|info|refresh|versions|install|registry|remove|install-registry]".into()),
         Out::Text("  extension [list|enable|disable|install|remove|registry|rescan]".into()),
         Out::Text("  daemon    [start|stop|status|restart]".into()),
-        Out::Text("  bot       [start|stop|status|token|prefix|mode|relay|node-token]".into()),
         Out::Text("  update    [check|status|download|apply|config|install|launch-apply]".into()),
         Out::Text("  config    [show|set|get|reset|gui|system-language]".into()),
         Out::Text("  migration [scan] <directory>".into()),
@@ -1016,15 +762,27 @@ async fn exec_extension(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
     }
 }
 
-async fn exec_daemon(args: &[&str]) -> Vec<Out> {
+async fn exec_daemon(
+    args: &[&str],
+    stop_on_exit: &std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> Vec<Out> {
+    use std::sync::atomic::Ordering;
     match args.first().copied() {
         Some("start") => match tokio::task::spawn_blocking(process::start_daemon).await {
-            Ok(Ok(msg)) => msg.lines().map(|l| Out::Ok(l.into())).collect(),
+            Ok(Ok(msg)) => {
+                // TUI 안에서 직접 시작했으므로 세션 종료 시 정리해도 안전.
+                stop_on_exit.store(true, Ordering::SeqCst);
+                msg.lines().map(|l| Out::Ok(l.into())).collect()
+            }
             Ok(Err(e)) => vec![Out::Err(format!("✗ {}", e))],
             Err(e) => vec![Out::Err(format!("✗ {}", e))],
         },
         Some("stop") => match tokio::task::spawn_blocking(process::stop_daemon).await {
-            Ok(Ok(msg)) => vec![Out::Ok(msg)],
+            Ok(Ok(msg)) => {
+                // 사용자가 명시적으로 정지했으므로 자동정지 플래그도 해제.
+                stop_on_exit.store(false, Ordering::SeqCst);
+                vec![Out::Ok(msg)]
+            }
             Ok(Err(e)) => vec![Out::Err(format!("✗ {}", e))],
             Err(e) => vec![Out::Err(format!("✗ {}", e))],
         },
@@ -1036,28 +794,15 @@ async fn exec_daemon(args: &[&str]) -> Vec<Out> {
             let _ = tokio::task::spawn_blocking(process::stop_daemon).await;
             tokio::time::sleep(Duration::from_secs(1)).await;
             match tokio::task::spawn_blocking(process::start_daemon).await {
-                Ok(Ok(msg)) => msg.lines().map(|l| Out::Ok(l.into())).collect(),
+                Ok(Ok(msg)) => {
+                    stop_on_exit.store(true, Ordering::SeqCst);
+                    msg.lines().map(|l| Out::Ok(l.into())).collect()
+                }
                 Ok(Err(e)) => vec![Out::Err(format!("✗ {}", e))],
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
             }
         }
         _ => vec![Out::Err("Usage: daemon [start|stop|status|restart]".into())],
-    }
-}
-
-async fn exec_bot(args: &[&str]) -> Vec<Out> {
-    match args.first().copied() {
-        Some("start") => match tokio::task::spawn_blocking(process::start_bot).await {
-            Ok(Ok(msg)) => vec![Out::Ok(msg)],
-            Ok(Err(e)) => vec![Out::Err(format!("✗ {}", e))],
-            Err(e) => vec![Out::Err(format!("✗ {}", e))],
-        },
-        Some("stop") => match tokio::task::spawn_blocking(process::stop_bot).await {
-            Ok(Ok(msg)) => vec![Out::Ok(msg)],
-            Ok(Err(e)) => vec![Out::Err(format!("✗ {}", e))],
-            Err(e) => vec![Out::Err(format!("✗ {}", e))],
-        },
-        _ => vec![Out::Err("Usage: bot [start|stop] (token/prefix/mode/relay는 TUI Bot 메뉴 이용)".into())],
     }
 }
 
@@ -1096,7 +841,20 @@ async fn exec_update(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
             Err(e) => vec![Out::Err(format!("✗ {}", e))],
         },
         Some("apply") => match client.apply_updates().await {
-            Ok(v) => vec![Out::Ok(format!("✓ {}", v.get("message").and_then(|m| m.as_str()).unwrap_or("Applied")))],
+            Ok(v) => {
+                let mut out = vec![Out::Ok(format!("✓ {}", v.get("message").and_then(|m| m.as_str()).unwrap_or("Applied")))];
+                let requires_updater = v.get("requires_updater").and_then(|b| b.as_bool()).unwrap_or(false);
+                let needs: Vec<String> = v.get("needs_updater")
+                    .and_then(|x| x.as_array())
+                    .map(|arr| arr.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+                    .unwrap_or_default();
+                if requires_updater && !needs.is_empty() {
+                    let token = v.get("launch_token").and_then(|t| t.as_str()).map(String::from);
+                    out.push(Out::Info(format!("Updater required for: {}. Launching updater...", needs.join(", "))));
+                    out.extend(spawn_updater_exe(token.as_deref()));
+                }
+                out
+            }
             Err(e) => vec![Out::Err(format!("✗ {}", e))],
         },
         Some("config") => match client.get_update_config().await {
@@ -1121,49 +879,95 @@ async fn exec_update(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
             }
         }
-        Some("install") if args.len() >= 2 => {
-            match client.install_component(args[1]).await {
-                Ok(v) => vec![Out::Ok(format!("✓ {}", v.get("message").and_then(|m| m.as_str()).unwrap_or("Installed")))],
+        Some("install") => vec![Out::Err(
+            "`update install` is no longer available — installer flows live in saba-chan-installer and are not exposed via the daemon.".into()
+        )],
+        Some("launch-apply") => {
+            // `apply`와 동일 플로우: 데몬 API에서 토큰을 받아 업데이터를 스폰한다.
+            // 토큰은 데몬이 발급하므로 수동 스폰은 불가능하다.
+            match client.apply_updates().await {
+                Ok(v) => {
+                    let requires_updater = v.get("requires_updater").and_then(|b| b.as_bool()).unwrap_or(false);
+                    let needs: Vec<String> = v.get("needs_updater")
+                        .and_then(|x| x.as_array())
+                        .map(|arr| arr.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+                        .unwrap_or_default();
+                    if requires_updater && !needs.is_empty() {
+                        let token = v.get("launch_token").and_then(|t| t.as_str()).map(String::from);
+                        let mut out = vec![Out::Info(format!("Launching updater for: {}", needs.join(", ")))];
+                        out.extend(spawn_updater_exe(token.as_deref()));
+                        out
+                    } else {
+                        vec![Out::Info("No components require updater. Use `update apply` for direct apply.".into())]
+                    }
+                }
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
             }
         }
-        Some("install") => match client.run_install(None).await {
-            Ok(v) => vec![Out::Ok(format!("✓ {}", v.get("message").and_then(|m| m.as_str()).unwrap_or("Install initiated")))],
-            Err(e) => vec![Out::Err(format!("✗ {}", e))],
-        },
-        Some("launch-apply") => {
-            // updater exe 찾기
-            let root = process::find_project_root().unwrap_or_else(|_| std::env::current_dir().unwrap_or_default());
-            let candidates = [
-                root.join("target").join("release").join("saba-chan-updater.exe"),
-                root.join("target").join("debug").join("saba-chan-updater.exe"),
-                root.join("saba-chan-updater.exe"),
-                root.join("updater").join("gui").join("src-tauri").join("target").join("release").join("saba-chan-updater.exe"),
+        _ => vec![Out::Text("  update check|status|download|apply|config|set|install|launch-apply".into())],
+    }
+}
+
+/// 업데이터 실행 파일을 찾아 `--spawned-by cli` + `--launch-token <token>` + `--relaunch <current_exe>` 인자로 실행한다.
+/// GUI 자동 체이닝과 동일한 경로를 CLI에서도 보장한다.
+fn spawn_updater_exe(launch_token: Option<&str>) -> Vec<Out> {
+    let token = match launch_token {
+        Some(t) if !t.is_empty() => t,
+        _ => return vec![Out::Err("✗ Launch token missing — daemon did not issue one.".into())],
+    };
+
+    let root = process::find_project_root().unwrap_or_else(|_| std::env::current_dir().unwrap_or_default());
+    // 현재 실행 파일의 디렉토리 (프로덕션 포터블 빌드에서 가장 신뢰할 수 있는 경로)
+    let exe_parent: Option<std::path::PathBuf> =
+        std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf()));
+    let portable_env: Option<std::path::PathBuf> =
+        std::env::var_os("PORTABLE_EXECUTABLE_DIR").map(std::path::PathBuf::from);
+
+    // 우선순위: PORTABLE_EXECUTABLE_DIR → 현재 exe parent → project root(설치 루트 또는 repo root) → dev target/
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+    if let Some(dir) = portable_env.as_ref() {
+        candidates.push(dir.join("saba-chan-updater.exe"));
+    }
+    if let Some(dir) = exe_parent.as_ref() {
+        candidates.push(dir.join("saba-chan-updater.exe"));
+    }
+    candidates.push(root.join("saba-chan-updater.exe"));
+    candidates.push(root.join("target").join("release").join("saba-chan-updater.exe"));
+    candidates.push(root.join("target").join("debug").join("saba-chan-updater.exe"));
+    candidates.push(root.join("updater").join("gui").join("src-tauri").join("target").join("release").join("saba-chan-updater.exe"));
+
+    let updater_exe = candidates.iter().find(|p| p.exists());
+    match updater_exe {
+        Some(exe) => {
+            let mut cmd_args = vec![
+                "--apply".to_string(),
+                "--spawned-by".to_string(),
+                "cli".to_string(),
+                "--launch-token".to_string(),
+                token.to_string(),
             ];
-            let updater_exe = candidates.iter().find(|p| p.exists());
-            match updater_exe {
-                Some(exe) => {
-                    let install_root = root.to_string_lossy().to_string();
-                    let mut cmd_args = vec!["--apply".to_string(), "--install-root".to_string(), install_root];
-                    // targets 추가
-                    if args.len() > 1 {
-                        cmd_args.extend(args[1..].iter().map(|s| s.to_string()));
-                    }
-                    match std::process::Command::new(exe)
-                        .args(&cmd_args)
-                        .stdin(std::process::Stdio::null())
-                        .stdout(std::process::Stdio::null())
-                        .stderr(std::process::Stdio::null())
-                        .spawn()
-                    {
-                        Ok(_) => vec![Out::Ok(format!("✓ Updater launched: {}", exe.display()))],
-                        Err(e) => vec![Out::Err(format!("✗ Failed to launch updater: {}", e))],
-                    }
-                }
-                None => vec![Out::Err("✗ Updater executable not found. Searched in target/release and target/debug.".into())],
+            if let Ok(current_exe) = std::env::current_exe() {
+                cmd_args.push("--relaunch".to_string());
+                cmd_args.push(current_exe.to_string_lossy().to_string());
+            }
+            match std::process::Command::new(exe)
+                .args(&cmd_args)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+            {
+                Ok(_) => vec![Out::Ok(format!("✓ Updater launched: {}", exe.display()))],
+                Err(e) => vec![Out::Err(format!("✗ Failed to launch updater: {}", e))],
             }
         }
-        _ => vec![Out::Text("  update check|status|download|apply|config|set|install|launch-apply [targets...]".into())],
+        None => {
+            let tried: Vec<String> = candidates.iter().map(|p| p.display().to_string()).collect();
+            vec![Out::Err(format!(
+                "✗ Updater executable not found. Searched: {}",
+                tried.join(" | ")
+            ))]
+        }
     }
 }
 
@@ -1210,7 +1014,10 @@ async fn exec_module_cmd(client: &DaemonClient, registry: &ModuleRegistry, modul
         }
     } else {
         let arg_value = if let Some(cmd_def) = registry.get_command_def(module_name, &cmd_name) {
-            build_args_map(&cmd_def.inputs, &args[1..])
+            match build_args_map(&cmd_def.inputs, &args[1..]) {
+                Ok(v) => v,
+                Err(e) => return vec![Out::Err(format!("✗ {}", e))],
+            }
         } else {
             let mut map = serde_json::Map::new();
             if args.len() > 1 { map.insert("args".into(), serde_json::Value::String(args[1..].join(" "))); }
@@ -1223,20 +1030,186 @@ async fn exec_module_cmd(client: &DaemonClient, registry: &ModuleRegistry, modul
     }
 }
 
-fn build_args_map(inputs: &[crate::module_registry::CommandInput], args: &[&str]) -> serde_json::Value {
+fn build_args_map(inputs: &[crate::module_registry::CommandInput], args: &[&str]) -> Result<serde_json::Value, String> {
     let mut map = serde_json::Map::new();
-    for (arg_idx, (i, input)) in inputs.iter().enumerate().enumerate() {
-        if arg_idx >= args.len() { break; }
-        if i == inputs.len() - 1 && input.input_type == "text" {
-            map.insert(input.name.clone(), serde_json::Value::String(args[arg_idx..].join(" ")));
-            break;
-        }
-        if input.input_type == "number" {
-            if let Ok(n) = args[arg_idx].parse::<i64>() { map.insert(input.name.clone(), serde_json::json!(n)); }
-            else { map.insert(input.name.clone(), serde_json::Value::String(args[arg_idx].to_string())); }
+    for (i, input) in inputs.iter().enumerate() {
+        if i < args.len() {
+            // 인자가 제공된 경우
+            if i == inputs.len() - 1 && input.input_type == "text" {
+                // 마지막 text 인풋: 나머지 args를 전부 합침
+                map.insert(input.name.clone(), serde_json::Value::String(args[i..].join(" ")));
+                break;
+            }
+            if input.input_type == "number" {
+                match args[i].parse::<f64>() {
+                    Ok(n) => {
+                        // 정수면 정수로, 소수면 f64로
+                        if n.fract() == 0.0 && n.abs() < (i64::MAX as f64) {
+                            map.insert(input.name.clone(), serde_json::json!(n as i64));
+                        } else {
+                            map.insert(input.name.clone(), serde_json::json!(n));
+                        }
+                    }
+                    Err(_) => return Err(format!("'{}' 필드에 유효한 숫자가 필요합니다: '{}'", input.name, args[i])),
+                }
+            } else {
+                map.insert(input.name.clone(), serde_json::Value::String(args[i].to_string()));
+            }
         } else {
-            map.insert(input.name.clone(), serde_json::Value::String(args[arg_idx].to_string()));
+            // 인자가 제공되지 않은 경우
+            if let Some(ref def) = input.default {
+                map.insert(input.name.clone(), def.clone());
+            } else if input.required {
+                return Err(format!("필수 필드 '{}'이(가) 누락되었습니다", input.name));
+            }
+            // optional + no default → 무시
         }
     }
-    serde_json::Value::Object(map)
+    Ok(serde_json::Value::Object(map))
+}
+
+// ═══════════════════════════════════════════════════════
+// Tests
+// ═══════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::module_registry::CommandInput;
+
+    fn input(name: &str, input_type: &str, required: bool, default: Option<serde_json::Value>) -> CommandInput {
+        CommandInput { name: name.to_string(), input_type: input_type.to_string(), required, default }
+    }
+
+    // ── number 타입: 정수 ──
+    #[test]
+    fn number_integer_parsed_as_number() {
+        let inputs = vec![input("count", "number", false, None)];
+        let result = build_args_map(&inputs, &["42"]).unwrap();
+        assert_eq!(result["count"], serde_json::json!(42));
+        assert!(result["count"].is_number());
+    }
+
+    // ── number 타입: 부동소수점 ──
+    #[test]
+    fn number_float_parsed_as_number() {
+        let inputs = vec![input("rate", "number", false, None)];
+        let result = build_args_map(&inputs, &["1.5"]).unwrap();
+        assert_eq!(result["rate"], serde_json::json!(1.5));
+        assert!(result["rate"].is_f64());
+    }
+
+    // ── number 타입: 파싱 실패 시 에러 ──
+    #[test]
+    fn number_invalid_returns_error() {
+        let inputs = vec![input("count", "number", false, None)];
+        let result = build_args_map(&inputs, &["abc"]);
+        assert!(result.is_err());
+    }
+
+    // ── text 타입: 문자열 그대로 ──
+    #[test]
+    fn text_stored_as_string() {
+        let inputs = vec![input("name", "text", false, None)];
+        let result = build_args_map(&inputs, &["hello"]).unwrap();
+        assert_eq!(result["name"], serde_json::json!("hello"));
+    }
+
+    // ── 마지막 text 인풋: 나머지 args 합치기 ──
+    #[test]
+    fn last_text_joins_remaining_args() {
+        let inputs = vec![
+            input("target", "text", false, None),
+            input("message", "text", false, None),
+        ];
+        let result = build_args_map(&inputs, &["player1", "hello", "world", "!"]).unwrap();
+        assert_eq!(result["target"], serde_json::json!("player1"));
+        assert_eq!(result["message"], serde_json::json!("hello world !"));
+    }
+
+    // ── required 필드 누락 시 에러 ──
+    #[test]
+    fn required_field_missing_returns_error() {
+        let inputs = vec![
+            input("target", "text", true, None),
+            input("amount", "number", true, None),
+        ];
+        let result = build_args_map(&inputs, &["player1"]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("amount"));
+    }
+
+    // ── required 필드가 있지만 default로 대체 ──
+    #[test]
+    fn required_with_default_uses_default() {
+        let inputs = vec![
+            input("target", "text", true, None),
+            input("amount", "number", true, Some(serde_json::json!(1))),
+        ];
+        let result = build_args_map(&inputs, &["player1"]).unwrap();
+        assert_eq!(result["target"], serde_json::json!("player1"));
+        assert_eq!(result["amount"], serde_json::json!(1));
+    }
+
+    // ── 선택적 필드 누락 시 무시 ──
+    #[test]
+    fn optional_missing_is_skipped() {
+        let inputs = vec![
+            input("target", "text", true, None),
+            input("note", "text", false, None),
+        ];
+        let result = build_args_map(&inputs, &["player1"]).unwrap();
+        assert_eq!(result["target"], serde_json::json!("player1"));
+        assert!(result.get("note").is_none());
+    }
+
+    // ── 선택적 필드에 default 있으면 적용 ──
+    #[test]
+    fn optional_with_default_uses_default() {
+        let inputs = vec![
+            input("target", "text", true, None),
+            input("amount", "number", false, Some(serde_json::json!(10))),
+        ];
+        let result = build_args_map(&inputs, &["player1"]).unwrap();
+        assert_eq!(result["amount"], serde_json::json!(10));
+    }
+
+    // ── args 없이 required 없으면 빈 맵 ──
+    #[test]
+    fn empty_args_no_required_returns_empty() {
+        let inputs = vec![input("note", "text", false, None)];
+        let result = build_args_map(&inputs, &[]).unwrap();
+        assert_eq!(result, serde_json::json!({}));
+    }
+
+    // ── args 없이 required 있으면 에러 ──
+    #[test]
+    fn empty_args_with_required_returns_error() {
+        let inputs = vec![input("name", "text", true, None)];
+        let result = build_args_map(&inputs, &[]);
+        assert!(result.is_err());
+    }
+
+    // ── 인풋 정의 없으면 빈 맵 ──
+    #[test]
+    fn no_inputs_returns_empty() {
+        let result = build_args_map(&[], &["extra", "args"]).unwrap();
+        assert_eq!(result, serde_json::json!({}));
+    }
+
+    // ── 음수 정수 ──
+    #[test]
+    fn negative_integer() {
+        let inputs = vec![input("offset", "number", false, None)];
+        let result = build_args_map(&inputs, &["-5"]).unwrap();
+        assert_eq!(result["offset"], serde_json::json!(-5));
+    }
+
+    // ── 0은 유효한 숫자 ──
+    #[test]
+    fn zero_is_valid_number() {
+        let inputs = vec![input("count", "number", false, None)];
+        let result = build_args_map(&inputs, &["0"]).unwrap();
+        assert_eq!(result["count"], serde_json::json!(0));
+    }
 }

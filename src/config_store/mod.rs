@@ -35,6 +35,7 @@ pub struct GuiSettings {
     pub font_scale: u32,
     pub enable_transitions: bool,
     pub console_syntax_highlight: bool,
+    pub console_font_scale: u32,
     pub console_bg_color: String,
     pub console_text_color: String,
     pub sidebar_compact: bool,
@@ -84,6 +85,7 @@ impl Default for GuiSettings {
             font_scale: 100,
             enable_transitions: true,
             console_syntax_highlight: true,
+            console_font_scale: 100,
             console_bg_color: "#1e1e2e".to_string(),
             console_text_color: "#cdd6f4".to_string(),
             sidebar_compact: false,
@@ -97,75 +99,67 @@ impl Default for GuiSettings {
 // ── Bot Config (bot-config.json) ──
 
 /// Discord 봇 설정 — bot-config.json에 저장되는 모든 필드
+///
+/// 로컬 디스코드 봇 기능은 폐기되었으므로 token / auto_start / mode 같은
+/// 로컬용 필드는 존재하지 않는다. 레거시 파일에 남아있더라도
+/// `#[serde(default)]` 덕분에 이하 구조로 로드 시 솤워이 삭제된다.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct BotConfig {
     pub prefix: String,
-    pub token: String,
-    pub auto_start: bool,
-    pub mode: String,
     pub cloud: CloudConfig,
     pub module_aliases: HashMap<String, String>,
     pub command_aliases: HashMap<String, Value>,
-    pub music_enabled: bool,
-    pub music_channel_id: String,
-    pub music_ui_settings: MusicUiSettings,
     pub node_settings: Value,
     pub cloud_nodes: Vec<Value>,
     pub cloud_members: HashMap<String, Value>,
+    /// 인스턴스별 디스코드 설정 (인스턴스 ID → 설정).
+    /// 데몬 로컬 전용 — 릴레이로 전송하지 않으며, 판정은 클라우드 디스패처가 수행한다.
+    pub instance_settings: HashMap<String, InstanceDiscordSettings>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+/// 인스턴스별 디스코드 설정 — 호출명/명령어 별명 오버라이드 + 노드/유저 권한.
+///
+/// 기본값 의미론:
+/// - `aliases: None` → module.toml의 `module_aliases` 기본 별명 사용
+/// - `command_aliases`에 없는 명령어 → module.toml `[aliases.commands]` 기본 사용
+/// - `allowed_nodes: None` → 모든 디스코드 노드에서 사용 가능 (기존 동작 호환)
+/// - `blocked_users`에 없는 명령어/유저 → 전원 허용 (블랙리스트 방식)
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct InstanceDiscordSettings {
+    /// 인스턴스 호출명 별명. `None` = module.toml 기본 별명 사용.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aliases: Option<Vec<String>>,
+    /// 명령어별 별명 오버라이드 (canonical 명령 → 별명 목록).
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    pub command_aliases: HashMap<String, Vec<String>>,
+    /// 사용 가능한 노드(길드 ID) 목록. `None` = 모든 노드 허용.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub allowed_nodes: Option<Vec<String>>,
+    /// 명령어별 차단 유저 목록 (canonical 명령 → Discord 유저 ID 목록).
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    pub blocked_users: HashMap<String, Vec<String>>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct CloudConfig {
     pub relay_url: String,
     pub host_id: String,
 }
 
-impl Default for CloudConfig {
-    fn default() -> Self {
-        Self {
-            relay_url: String::new(),
-            host_id: String::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase", default)]
-pub struct MusicUiSettings {
-    pub queue_lines: u32,
-    pub refresh_interval: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub normalize: Option<bool>,
-}
-
-impl Default for MusicUiSettings {
-    fn default() -> Self {
-        Self {
-            queue_lines: 5,
-            refresh_interval: 4000,
-            normalize: None,
-        }
-    }
-}
-
 impl Default for BotConfig {
     fn default() -> Self {
         Self {
             prefix: "!saba".to_string(),
-            token: String::new(),
-            auto_start: false,
-            mode: "local".to_string(),
             cloud: CloudConfig::default(),
             module_aliases: HashMap::new(),
             command_aliases: HashMap::new(),
-            music_enabled: true,
-            music_channel_id: String::new(),
-            music_ui_settings: MusicUiSettings::default(),
             node_settings: Value::Object(serde_json::Map::new()),
             cloud_nodes: Vec::new(),
             cloud_members: HashMap::new(),
+            instance_settings: HashMap::new(),
         }
     }
 }
@@ -294,7 +288,19 @@ fn load_from_file<T: for<'de> Deserialize<'de> + Default>(path: &Path) -> T {
         Ok(content) => {
             // BOM 제거
             let content = content.strip_prefix('\u{feff}').unwrap_or(&content);
-            serde_json::from_str(content).unwrap_or_default()
+            match serde_json::from_str(content) {
+                Ok(v) => v,
+                Err(e) => {
+                    // 조용히 기본값으로 대체하면 사용자 설정(페어링·별명 등)이
+                    // 다음 저장 시 유실된다. 최소한 원인을 로그로 남긴다.
+                    tracing::warn!(
+                        "설정 파일 파싱 실패 — 기본값 사용: {} ({})",
+                        path.display(),
+                        e
+                    );
+                    T::default()
+                }
+            }
         }
         Err(_) => T::default(),
     }
@@ -353,6 +359,7 @@ mod tests {
         assert!(value.get("portConflictCheck").is_some());
         assert!(value.get("windowOpacity").is_some());
         assert!(value.get("sidebarCompact").is_some());
+        assert!(value.get("consoleFontScale").is_some());
         // snake_case가 아니어야 함
         assert!(value.get("auto_refresh").is_none());
         assert!(value.get("ipc_port").is_none());
@@ -422,15 +429,18 @@ mod tests {
         let config = BotConfig::default();
         let value = serde_json::to_value(&config).unwrap();
         assert!(value.get("prefix").is_some());
-        assert!(value.get("autoStart").is_some());
         assert!(value.get("moduleAliases").is_some());
         assert!(value.get("commandAliases").is_some());
-        assert!(value.get("musicEnabled").is_some());
-        assert!(value.get("musicChannelId").is_some());
-        assert!(value.get("musicUiSettings").is_some());
         assert!(value.get("nodeSettings").is_some());
         assert!(value.get("cloudNodes").is_some());
         assert!(value.get("cloudMembers").is_some());
+        // 로컬 봇 필드는 제거됨
+        assert!(value.get("token").is_none());
+        assert!(value.get("autoStart").is_none());
+        assert!(value.get("mode").is_none());
+        assert!(value.get("musicEnabled").is_none());
+        assert!(value.get("musicChannelId").is_none());
+        assert!(value.get("musicUiSettings").is_none());
     }
 
     #[test]
@@ -441,12 +451,11 @@ mod tests {
 
     #[test]
     fn bot_config_partial_json() {
+        // 레거시 token 필드는 조용히 무시되고 다른 필드는 default로 채워진다.
         let json = r#"{"prefix": "!test", "token": "tok-123"}"#;
         let loaded: BotConfig = serde_json::from_str(json).unwrap();
         assert_eq!(loaded.prefix, "!test");
-        assert_eq!(loaded.token, "tok-123");
-        assert!(!loaded.auto_start); // default
-        assert_eq!(loaded.mode, "local"); // default
+        assert_eq!(loaded.node_settings, Value::Object(serde_json::Map::new()));
     }
 
     #[test]
@@ -469,14 +478,69 @@ mod tests {
         }"#;
         let loaded: BotConfig = serde_json::from_str(json).unwrap();
         assert_eq!(loaded.prefix, "!saba");
-        assert_eq!(loaded.token, "my-token");
-        assert!(loaded.auto_start);
-        assert_eq!(loaded.mode, "cloud");
         assert_eq!(loaded.cloud.relay_url, "https://relay.test");
         assert_eq!(loaded.cloud.host_id, "host-1");
         assert_eq!(loaded.module_aliases.get("mc").map(|s| s.as_str()), Some("minecraft"));
-        assert!(!loaded.music_enabled);
-        assert_eq!(loaded.music_channel_id, "ch-123");
+        assert_eq!(loaded.node_settings["local"]["allowedInstances"][0], "a");
+    }
+
+    #[test]
+    fn bot_config_instance_settings_roundtrip() {
+        // GUI가 저장하는 형태의 instanceSettings JSON을 camelCase로 파싱/직렬화
+        let json = r#"{
+            "prefix": "!saba",
+            "instanceSettings": {
+                "inst-1": {
+                    "aliases": ["팰월드", "pw"],
+                    "commandAliases": { "start": ["실행", "켜기"] },
+                    "allowedNodes": ["guild-a", "guild-b"],
+                    "blockedUsers": { "stop": ["user-1"] }
+                },
+                "inst-2": {}
+            }
+        }"#;
+        let loaded: BotConfig = serde_json::from_str(json).unwrap();
+        let s1 = loaded.instance_settings.get("inst-1").unwrap();
+        assert_eq!(s1.aliases.as_deref(), Some(&["팰월드".to_string(), "pw".to_string()][..]));
+        assert_eq!(s1.command_aliases.get("start").map(Vec::len), Some(2));
+        assert_eq!(s1.allowed_nodes.as_deref(), Some(&["guild-a".to_string(), "guild-b".to_string()][..]));
+        assert_eq!(s1.blocked_users.get("stop").map(Vec::len), Some(1));
+
+        // 빈 설정 → 모든 필드 기본값 (None/빈 맵 = 전부 기본 동작)
+        let s2 = loaded.instance_settings.get("inst-2").unwrap();
+        assert!(s2.aliases.is_none());
+        assert!(s2.allowed_nodes.is_none());
+        assert!(s2.command_aliases.is_empty());
+        assert!(s2.blocked_users.is_empty());
+
+        // 직렬화 시 camelCase 키로 나가고 미설정 필드는 생략된다
+        let value = serde_json::to_value(&loaded).unwrap();
+        assert!(value["instanceSettings"]["inst-1"].get("allowedNodes").is_some());
+        assert!(value["instanceSettings"]["inst-1"].get("blockedUsers").is_some());
+        assert!(value["instanceSettings"]["inst-2"].get("aliases").is_none());
+        assert!(value["instanceSettings"]["inst-2"].get("allowedNodes").is_none());
+
+        // 라운드트립 동등성
+        let reloaded: BotConfig = serde_json::from_value(value).unwrap();
+        assert_eq!(loaded, reloaded);
+    }
+
+    #[test]
+    fn bot_config_instance_settings_missing_defaults_empty() {
+        // instanceSettings가 없는 레거시 파일 → 빈 맵
+        let loaded: BotConfig = serde_json::from_str(r#"{"prefix": "!saba"}"#).unwrap();
+        assert!(loaded.instance_settings.is_empty());
+    }
+
+    #[test]
+    fn bot_config_instance_settings_empty_allowed_nodes_is_deny_all() {
+        // allowedNodes: [] (전부 체크 해제)는 None(모두 허용)과 구분되어야 한다
+        let json = r#"{
+            "instanceSettings": { "inst-1": { "allowedNodes": [] } }
+        }"#;
+        let loaded: BotConfig = serde_json::from_str(json).unwrap();
+        let s = loaded.instance_settings.get("inst-1").unwrap();
+        assert_eq!(s.allowed_nodes.as_deref(), Some(&[][..]));
     }
 
     #[test]
@@ -510,17 +574,19 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let store = ConfigStore::new(tmp.path());
 
-        let mut settings = GuiSettings::default();
-        settings.auto_refresh = false;
-        settings.ipc_port = 12345;
-        settings.accent_color = "#ff0000".to_string();
-        settings.font_scale = 150;
+        let settings = GuiSettings {
+            auto_refresh: false,
+            ipc_port: 12345,
+            accent_color: "#ff0000".to_string(),
+            font_scale: 150,
+            ..Default::default()
+        };
 
         store.set_gui_settings(settings.clone()).await.unwrap();
 
         // 인메모리 확인
         let loaded = store.get_gui_settings().await;
-        assert_eq!(loaded.auto_refresh, false);
+        assert!(!loaded.auto_refresh);
         assert_eq!(loaded.ipc_port, 12345);
         assert_eq!(loaded.accent_color, "#ff0000");
         assert_eq!(loaded.font_scale, 150);
@@ -536,11 +602,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let store = ConfigStore::new(tmp.path());
 
-        let mut config = BotConfig::default();
-        config.prefix = "!test".to_string();
-        config.token = "secret-token".to_string();
-        config.auto_start = true;
-        config.mode = "cloud".to_string();
+        let mut config = BotConfig { prefix: "!test".to_string(), ..Default::default() };
         config.cloud.relay_url = "https://relay.test".to_string();
         config.module_aliases.insert("mc".to_string(), "minecraft".to_string());
 
@@ -549,8 +611,6 @@ mod tests {
         // 인메모리 확인
         let loaded = store.get_bot_config().await;
         assert_eq!(loaded.prefix, "!test");
-        assert_eq!(loaded.token, "secret-token");
-        assert!(loaded.auto_start);
         assert_eq!(loaded.cloud.relay_url, "https://relay.test");
 
         // 디스크에서 새로 로드
@@ -579,7 +639,7 @@ mod tests {
 
         // JSON Value로 읽기 (API 응답 시뮬레이션)
         let json = store.get_gui_settings_json().await;
-        assert_eq!(json.get("autoRefresh").unwrap().as_bool().unwrap(), false);
+        assert!(!json.get("autoRefresh").unwrap().as_bool().unwrap());
         assert_eq!(json.get("ipcPort").unwrap().as_u64().unwrap(), 33333);
     }
 
@@ -591,27 +651,22 @@ mod tests {
         // 완전한 설정 저장
         let full = serde_json::json!({
             "prefix": "!saba",
-            "token": "tok-1",
-            "autoStart": true,
-            "musicEnabled": true,
-            "musicChannelId": "ch-1"
+            "cloud": { "hostId": "host-1" },
+            "moduleAliases": { "mc": "minecraft" }
         });
         store.set_bot_config_from_json(full).await.unwrap();
 
         // 일부만 업데이트
         let partial = serde_json::json!({
-            "prefix": "!new",
-            "token": "tok-2"
+            "prefix": "!new"
         });
         let result = store.set_bot_config_from_json(partial).await.unwrap();
 
         // 업데이트된 필드
         assert_eq!(result.prefix, "!new");
-        assert_eq!(result.token, "tok-2");
         // 기존 값 유지
-        assert!(result.auto_start);
-        assert!(result.music_enabled);
-        assert_eq!(result.music_channel_id, "ch-1");
+        assert_eq!(result.cloud.host_id, "host-1");
+        assert_eq!(result.module_aliases.get("mc").map(|s| s.as_str()), Some("minecraft"));
     }
 
     #[tokio::test]
@@ -625,7 +680,8 @@ mod tests {
             "ipcPort": 57474,
             "consoleBufferSize": 3000,
             "accentColor": "#ff00ff",
-            "windowOpacity": 80
+            "windowOpacity": 80,
+            "consoleFontScale": 85
         });
         std::fs::write(
             tmp.path().join("settings.json"),
@@ -639,6 +695,7 @@ mod tests {
         assert_eq!(gui.console_buffer_size, 3000);
         assert_eq!(gui.accent_color, "#ff00ff");
         assert_eq!(gui.window_opacity, 80);
+        assert_eq!(gui.console_font_scale, 85);
         // 파일에 없는 필드는 기본값
         assert!(gui.port_conflict_check);
         assert!(gui.enable_transitions);

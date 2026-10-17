@@ -125,7 +125,7 @@ export const useServerStore = create((set, get) => ({
             const data = await retryWithBackoff(() => window.api.moduleList(), 3, 800);
             console.log('Module data received:', data);
 
-            if (data && data.modules) {
+            if (data?.modules) {
                 console.log('Setting modules:', data.modules.length, 'modules');
                 set({ modules: data.modules });
 
@@ -153,7 +153,7 @@ export const useServerStore = create((set, get) => ({
                 for (const mod of data.modules) {
                     try {
                         const metadata = await window.api.moduleGetMetadata(mod.name);
-                        if (metadata && metadata.toml) {
+                        if (metadata?.toml) {
                             const aliases = metadata.toml.aliases || {};
                             const aliasCommands = aliases.commands || {};
                             const commandFields = metadata.toml.commands?.fields || [];
@@ -188,7 +188,7 @@ export const useServerStore = create((set, get) => ({
                 }
                 set({ moduleAliasesPerModule: aliasesMap });
                 console.log('Module aliases loaded:', aliasesMap);
-            } else if (data && data.error) {
+            } else if (data?.error) {
                 console.error('Module fetch error:', data.error);
                 const errMsg = _translateError(data.error);
                 if (errMsg) safeShowToast(_t('modules.load_failed_toast', { error: errMsg }), 'error', 4000);

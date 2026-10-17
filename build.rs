@@ -1,4 +1,8 @@
 fn main() {
+    // CARGO_PKG_VERSION은 workspace.package.version에서 상속되는 단일 SoT
+    let pkg_version = env!("CARGO_PKG_VERSION");
+    println!("cargo:rerun-if-env-changed=CARGO_PKG_VERSION");
+
     #[cfg(windows)]
     {
         use std::env;
@@ -15,6 +19,9 @@ fn main() {
         if ico_path.exists() {
             println!("cargo:warning=Embedding icon from: {}", ico_path.display());
 
+            // Cargo 버전(`x.y.z`) → RC 형식 `x,y,z,0`
+            let rc_version_quad = version_to_rc_quad(pkg_version);
+
             // 1) .rc 파일 생성 (버전 정보 + 아이콘)
             let rc_path = out_dir.join("saba-core.rc");
             let ico_escaped = ico_path.to_str().unwrap().replace('\\', "\\\\");
@@ -24,8 +31,8 @@ fn main() {
 FILETYPE 0x1
 FILEFLAGSMASK 0x3f
 FILEFLAGS 0x0
-PRODUCTVERSION 0,1,1,0
-FILEVERSION 0,1,1,0
+PRODUCTVERSION {ver_quad}
+FILEVERSION {ver_quad}
 FILEOS 0x40004
 FILESUBTYPE 0x0
 {{
@@ -35,8 +42,8 @@ BLOCK "000004b0"
 {{
 VALUE "ProductName", "Saba-chan Core Daemon"
 VALUE "CompanyName", "Saba-chan"
-VALUE "FileVersion", "0.1.1"
-VALUE "ProductVersion", "0.1.1"
+VALUE "FileVersion", "{ver}"
+VALUE "ProductVersion", "{ver}"
 VALUE "FileDescription", "Saba-chan Game Server Management Core"
 VALUE "LegalCopyright", "Copyright (c) 2025 Saba-chan Contributors"
 }}
@@ -47,6 +54,8 @@ VALUE "Translation", 0x0, 0x04b0
 }}
 1 ICON "{ico}"
 "#,
+                ver = pkg_version,
+                ver_quad = rc_version_quad,
                 ico = ico_escaped
             );
             std::fs::write(&rc_path, &rc_content).expect("Failed to write .rc file");
@@ -138,16 +147,29 @@ fn find_rc_exe() -> Option<std::path::PathBuf> {
 /// winres crate fallback (rc.exe 없는 환경용)
 #[cfg(windows)]
 fn compile_with_winres(ico_path: &std::path::Path) {
+    let pkg_version = env!("CARGO_PKG_VERSION");
     let mut res = winres::WindowsResource::new();
     res.set_icon(ico_path.to_str().unwrap());
     res.set("ProductName", "Saba-chan Core Daemon");
     res.set("CompanyName", "Saba-chan");
-    res.set("FileVersion", "0.1.1");
-    res.set("ProductVersion", "0.1.1");
+    res.set("FileVersion", pkg_version);
+    res.set("ProductVersion", pkg_version);
     res.set("FileDescription", "Saba-chan Game Server Management Core");
     res.set("LegalCopyright", "Copyright (c) 2025 Saba-chan Contributors");
     match res.compile() {
         Ok(_) => println!("cargo:warning=winres fallback: resources embedded"),
         Err(e) => println!("cargo:warning=winres fallback failed: {}", e),
     }
+}
+
+/// `0.1.1` / `0.1.1-rc.1` 결의 SemVer를 Windows RC 버전 쿠아드(`MAJOR,MINOR,PATCH,0`)로 변환.
+/// 잘못된 형식이면 0,0,0,0을 반환해 빌드는 계속 진행한다.
+#[cfg(windows)]
+fn version_to_rc_quad(version: &str) -> String {
+    let core = version.split('-').next().unwrap_or(version);
+    let parts: Vec<&str> = core.split('.').collect();
+    let major = parts.first().and_then(|s| s.parse::<u16>().ok()).unwrap_or(0);
+    let minor = parts.get(1).and_then(|s| s.parse::<u16>().ok()).unwrap_or(0);
+    let patch = parts.get(2).and_then(|s| s.parse::<u16>().ok()).unwrap_or(0);
+    format!("{},{},{},0", major, minor, patch)
 }

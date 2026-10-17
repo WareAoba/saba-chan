@@ -4,15 +4,10 @@
   "status": {
     "daemon_running": "運行中",
     "daemon_offline": "離線",
-    "bot_running": "運行中",
-    "bot_offline": "離線",
-    "bot_no_token": "無 Token",
     "servers": "伺服器"
   },
   "auto_start": {
     "daemon": "正在自動啟動守護程序...",
-    "bot": "正在自動啟動 Discord 機器人...",
-    "bot_skipped": "已跳過機器人 — 未設定 Discord Token。",
     "daemon_timeout": "守護程序在 10 秒內未回應"
   },
   "help": {
@@ -22,7 +17,6 @@
     "instance": "instance [list|show|create|delete|settings|set] <名稱>",
     "module": "module  [list|info|refresh|versions|install]",
     "daemon": "daemon  [start|stop|status|restart]",
-    "bot": "bot     [start|stop|status|token|prefix|alias]",
     "config": "config  [show|set|get|reset] <鍵> <值>",
     "config_gui": "config  gui [language|token] <值>",
     "exec": "exec    <id> [cmd|rcon|rest] <命令>",
@@ -43,12 +37,6 @@
     "reset_ok": "已將 '{{key}}' 重設為預設值",
     "available_keys": "可用的設定鍵：",
     "saved": "設定已儲存。"
-  },
-  "token_cmd": {
-    "current": "目前的 Token：{{token}}",
-    "set_ok": "Discord Token 已更新。",
-    "cleared": "Discord Token 已清除。",
-    "not_set": "尚未設定 Discord Token。請使用：bot token set <TOKEN>"
   },
   "server_cmd": {
     "no_servers": "尚未設定任何伺服器。",
@@ -90,11 +78,6 @@
     "modules_label": "模組",
     "instances_label": "實例"
   },
-  "bot_cmd": {
-    "already_running": "Discord 機器人已在執行",
-    "started": "Discord 機器人已啟動 (前綴：{{prefix}})",
-    "stopped": "Discord 機器人已停止"
-  },
   "update_cmd": {
     "updates_available": "有可用更新：",
     "all_up_to_date": "所有元件皆為最新。",
@@ -122,20 +105,10 @@
     "settings_header": "'{{name}}' 的設定 Schema (模組：{{module}})：",
     "no_settings_schema": "無可用的設定 Schema。"
   },
-  "bot_alias_cmd": {
-    "header": "Discord 機器人別名：",
-    "module_aliases": "模組別名：",
-    "command_aliases": "指令別名：",
-    "none": "(無)",
-    "module_alias_set": "已設定模組別名：{{module}} → {{aliases}}",
-    "command_alias_set": "已設定指令別名：{{module}}.{{command}} → {{aliases}}",
-    "all_reset": "所有別名已重設為預設值。"
-  },
   "menu": {
     "dashboard": "儀表板",
     "servers": "伺服器",
     "modules": "模組",
-    "bot": "Discord 機器人",
     "settings": "設定",
     "updates": "更新",
     "daemon": "守護程序",
@@ -165,12 +138,6 @@
     "server_eula": "接受 EULA",
     "server_delete": "刪除實例",
     "server_new": "新伺服器",
-    "bot_start": "啟動機器人",
-    "bot_stop": "停止機器人",
-    "bot_token": "令牌",
-    "bot_prefix": "前綴",
-    "bot_aliases": "別名",
-    "bot_autostart": "自動啟動",
     "module_info": "資訊",
     "module_versions": "版本",
     "module_install": "安裝",
@@ -186,7 +153,6 @@
     "settings_language": "語言",
     "settings_autostart": "自動啟動",
     "settings_refresh": "重新整理間隔",
-    "settings_prefix": "機器人前綴",
     "settings_gui_lang": "GUI 語言",
     "no_changes": "沒有要儲存的變更",
     "saving": "保存中...",

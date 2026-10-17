@@ -11,11 +11,21 @@ use super::super::{
     ServerStartRequest, ServerStopRequest,
 };
 
-/// GET /health - 데몬 활성 확인용 경량 ping
+/// GET /health - 데몬 활성 확인용 경량 ping (인증 없음)
 ///
-/// supervisor lock이나 디스크 I/O 없이 즉시 응답합니다.
-/// `daemon:status` 폴링 및 데몬 ready 체크에 사용됩니다.
+/// supervisor lock이나 디스크 I/O 없이 즉시 응답합니다. 버전 외의 정보는 노출하지 않는다.
+/// 데몬 listen 확인용. 인증을 거치지 않으므로 토큰 mismatch 상황도 200을 반환한다
+/// (실제 호출 가능 여부는 `/api/ping`으로 판정).
 pub async fn health_check() -> impl IntoResponse {
+    let version = env!("CARGO_PKG_VERSION");
+    (StatusCode::OK, Json(json!({ "ok": true, "version": version })))
+}
+
+/// GET /api/ping - 인증된 경량 ping
+///
+/// `/health` 와 달리 auth_middleware 를 통과하므로 IPC 토큰 mismatch 시 401 을 반환합니다.
+/// GUI 의 Background 배지가 "실제로 호출 가능한 상태" 인지를 판정하는 용도로 사용됩니다.
+pub async fn auth_ping() -> impl IntoResponse {
     let version = env!("CARGO_PKG_VERSION");
     (StatusCode::OK, Json(json!({ "ok": true, "version": version })))
 }
@@ -439,79 +449,113 @@ pub async fn get_module_metadata(
     }
 }
 
-/// GET /api/modules/manifest - saba-chan-modules 최신 릴리스 manifest 가져오기
+/// GET /api/modules/manifest - Relay 서명 매니페스트에서 설치 가능한 모듈 목록 반환
+///
+/// 흐름: RelayClient `/v1/updates/check` + `/v1/updates/manifest/:version` (Ed25519 검증)
+/// → `components` 중 `module-*` 키만 추출 → GUI 호환 스키마 `{ manifest: { modules: { id: info } } }` 로 변환.
 pub async fn fetch_module_manifest() -> impl IntoResponse {
-    let url = saba_chan_updater_lib::constants::modules_manifest_url();
-    match reqwest::get(url).await {
-        Ok(resp) if resp.status().is_success() => {
-            match resp.json::<serde_json::Value>().await {
-                Ok(data) => (StatusCode::OK, Json(json!({ "ok": true, "manifest": data }))).into_response(),
-                Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": e.to_string() }))).into_response(),
+    use saba_chan_updater_lib::{UpdateConfig, UpdateManager};
+
+    let cfg = UpdateConfig::default();
+    let modules_dir = saba_chan_updater_lib::constants::resolve_modules_dir();
+    let modules_dir_str = modules_dir.to_string_lossy().to_string();
+    let mut mgr = UpdateManager::new(cfg, &modules_dir_str);
+
+    match mgr.fetch_remote_manifest().await {
+        Ok(manifest) => {
+            let mut modules = serde_json::Map::new();
+            for (key, info) in &manifest.components {
+                let Some(id) = key.strip_prefix("module-") else {
+                    continue;
+                };
+                let mut entry = serde_json::Map::new();
+                entry.insert("version".into(), json!(info.version));
+                if let Some(asset) = &info.asset {
+                    entry.insert("asset".into(), json!(asset));
+                }
+                if let Some(url) = &info.url {
+                    entry.insert("url".into(), json!(url));
+                }
+                if let Some(sha) = &info.sha256 {
+                    entry.insert("sha256".into(), json!(sha));
+                }
+                if let Some(size) = info.size_bytes {
+                    entry.insert("size_bytes".into(), json!(size));
+                }
+                if let Some(dir) = &info.install_dir {
+                    entry.insert("install_dir".into(), json!(dir));
+                }
+                // GUI 호환: display_name/description 은 매니페스트에 없으면 id 그대로
+                entry.insert("display_name".into(), json!(id));
+                modules.insert(id.to_string(), serde_json::Value::Object(entry));
             }
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "ok": true,
+                    "manifest": {
+                        "release_version": manifest.version,
+                        "modules": modules,
+                    }
+                })),
+            )
+                .into_response()
         }
-        Ok(resp) => {
-            (StatusCode::OK, Json(json!({ "ok": false, "error": format!("HTTP {}", resp.status()) }))).into_response()
-        }
-        Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": e.to_string() }))).into_response(),
+        Err(e) => (
+            StatusCode::OK,
+            Json(json!({ "ok": false, "error": e.to_string() })),
+        )
+            .into_response(),
     }
 }
 
-/// POST /api/modules/manifest/:id/install - 모듈 매니페스트에서 모듈 설치
+/// POST /api/modules/manifest/:id/install - Relay 서명 매니페스트로부터 모듈 설치
+///
+/// 흐름: UpdateManager::install_component(Module(id)) 위임
+/// → Relay 매니페스트 fetch + Ed25519 검증 → R2 다운로드 + SHA256 검증 → 압축 해제.
 pub async fn install_module_from_manifest(
     Path(module_id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    // 레지스트리에서 다운로드 URL 구성
-    let asset_name = format!("module-{}.zip", module_id);
-    let download_url = saba_chan_updater_lib::constants::module_asset_url(&asset_name);
+    use saba_chan_updater_lib::{Component, UpdateConfig, UpdateManager};
 
-    // 설치 디렉토리 결정
+    // 경로 탐색 방지
+    if module_id.contains("..") || module_id.contains('/') || module_id.contains('\\') {
+        return (
+            StatusCode::OK,
+            Json(json!({ "ok": false, "error": "Invalid module ID" })),
+        )
+            .into_response();
+    }
+
+    let cfg = UpdateConfig::default();
     let modules_dir = {
         let supervisor = state.supervisor.read().await;
         std::path::PathBuf::from(supervisor.module_loader.modules_dir())
     };
+    let modules_dir_str = modules_dir.to_string_lossy().to_string();
+    let mut mgr = UpdateManager::new(cfg, &modules_dir_str);
 
-    let target_dir = modules_dir.join(&module_id);
-
-    // 임시 zip 다운로드
-    let zip_path = modules_dir.join(format!("_tmp_module_{}.zip", module_id));
-
-    match reqwest::get(&download_url).await {
-        Ok(resp) if resp.status().is_success() => {
-            match resp.bytes().await {
-                Ok(bytes) => {
-                    if let Err(e) = std::fs::write(&zip_path, &bytes) {
-                        return (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Failed to write zip: {}", e) }))).into_response();
-                    }
-                    // zip 압축 해제
-                    match std::fs::File::open(&zip_path) {
-                        Ok(file) => {
-                            match zip::ZipArchive::new(std::io::BufReader::new(file)) {
-                                Ok(mut archive) => {
-                                    if let Err(e) = archive.extract(&target_dir) {
-                                        let _ = std::fs::remove_file(&zip_path);
-                                        return (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Failed to extract: {}", e) }))).into_response();
-                                    }
-                                    let _ = std::fs::remove_file(&zip_path);
-                                    // 모듈 캐시 새로고침
-                                    let supervisor = state.supervisor.read().await;
-                                    let _ = supervisor.refresh_modules();
-                                    (StatusCode::OK, Json(json!({ "ok": true, "module_id": module_id }))).into_response()
-                                }
-                                Err(e) => {
-                                    let _ = std::fs::remove_file(&zip_path);
-                                    (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Invalid zip: {}", e) }))).into_response()
-                                }
-                            }
-                        }
-                        Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Failed to open zip: {}", e) }))).into_response(),
-                    }
-                }
-                Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Failed to read response: {}", e) }))).into_response(),
-            }
+    let component = Component::Module(module_id.clone());
+    match mgr.install_component(&component).await {
+        Ok(install_path) => {
+            let supervisor = state.supervisor.read().await;
+            let _ = supervisor.refresh_modules();
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "ok": true,
+                    "module_id": module_id,
+                    "install_path": install_path,
+                })),
+            )
+                .into_response()
         }
-        Ok(resp) => (StatusCode::OK, Json(json!({ "ok": false, "error": format!("HTTP {}", resp.status()) }))).into_response(),
-        Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": e.to_string() }))).into_response(),
+        Err(e) => (
+            StatusCode::OK,
+            Json(json!({ "ok": false, "error": e.to_string() })),
+        )
+            .into_response(),
     }
 }
 

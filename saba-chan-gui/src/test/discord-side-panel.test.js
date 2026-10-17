@@ -5,7 +5,7 @@
  * - 작으면 기존 팝업 모드 유지
  */
 
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
 import { SIDE_PANEL_MIN_HEIGHT, SIDE_PANEL_MIN_WIDTH } from '../hooks/useWindowSize';
@@ -22,23 +22,16 @@ function createApiMock(overrides = {}) {
             refreshInterval: 2000,
             ipcPort: 57474,
             consoleBufferSize: 2000,
-            discordToken: '',
-            discordAutoStart: false,
         }),
         settingsSave: vi.fn().mockResolvedValue({ success: true }),
         settingsGetPath: vi.fn().mockResolvedValue('C:\\test\\settings.json'),
         botConfigLoad: vi.fn().mockResolvedValue({
             prefix: '!saba',
-            mode: 'local',
             cloud: { relayUrl: '', hostId: '' },
             moduleAliases: {},
             commandAliases: {},
-            musicEnabled: false,
         }),
         botConfigSave: vi.fn().mockResolvedValue({ success: true }),
-        discordBotStatus: vi.fn().mockResolvedValue('stopped'),
-        discordBotStart: vi.fn().mockResolvedValue({ success: true }),
-        discordBotStop: vi.fn().mockResolvedValue({ success: true }),
         daemonStatus: vi.fn().mockResolvedValue({ running: true }),
         moduleList: vi.fn().mockResolvedValue({ modules: [] }),
         moduleGetLocales: vi.fn().mockResolvedValue({}),
@@ -49,8 +42,6 @@ function createApiMock(overrides = {}) {
         onUpdateCompleted: vi.fn(),
         onCloseRequest: vi.fn(),
         offCloseRequest: vi.fn(),
-        onBotRelaunch: vi.fn(),
-        offBotRelaunch: vi.fn(),
         onConsolePopoutOpened: vi.fn(),
         onConsolePopoutClosed: vi.fn(),
         offConsolePopoutOpened: vi.fn(),

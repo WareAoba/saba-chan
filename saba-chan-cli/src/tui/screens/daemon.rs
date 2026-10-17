@@ -17,14 +17,17 @@ pub(super) fn build_daemon_menu(app: &App) -> Vec<MenuItem> {
         MenuItem::new(&format!("↻ {}", t("screen.daemon_restart")), Some('r'), &t("screen.daemon_restart")),
         MenuItem::new(&format!("ℹ {}", t("screen.daemon_status")), Some('i'), &t("screen.daemon_status")),
         MenuItem::new(&format!("📊 {}", t("screen.daemon_components")), Some('c'), &t("screen.daemon_components")),
+        MenuItem::new(&t("misc.daemon_log_menu"), Some('l'), &t("misc.daemon_log_desc")),
     ];
 
     items
 }
 
 pub(super) fn handle_daemon_select(app: &mut App, sel: usize) {
+    use std::sync::atomic::Ordering;
     let buf = app.async_out.clone();
     let client = app.client.clone();
+    let stop_flag = app.stop_daemon_on_exit.clone();
 
     let shortcut = app.menu_items.get(sel).and_then(|item| item.shortcut);
 
@@ -33,7 +36,10 @@ pub(super) fn handle_daemon_select(app: &mut App, sel: usize) {
             if app.daemon_on {
                 tokio::spawn(async move {
                     match tokio::task::spawn_blocking(process::stop_daemon).await {
-                        Ok(Ok(msg)) => push_out(&buf, vec![Out::Ok(msg)]),
+                        Ok(Ok(msg)) => {
+                            stop_flag.store(false, Ordering::SeqCst);
+                            push_out(&buf, vec![Out::Ok(msg)]);
+                        }
                         Ok(Err(e)) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
                         Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
                     }
@@ -42,6 +48,7 @@ pub(super) fn handle_daemon_select(app: &mut App, sel: usize) {
                 tokio::spawn(async move {
                     match tokio::task::spawn_blocking(process::start_daemon).await {
                         Ok(Ok(msg)) => {
+                            stop_flag.store(true, Ordering::SeqCst);
                             let lines: Vec<Out> = msg.lines().map(|l| Out::Ok(l.into())).collect();
                             push_out(&buf, lines);
                         }
@@ -50,7 +57,8 @@ pub(super) fn handle_daemon_select(app: &mut App, sel: usize) {
                     }
                 });
             }
-            app.flash(if app.daemon_on { "Saba-Core 정지 중..." } else { "Saba-Core 시작 중..." });
+            let msg = if app.daemon_on { app.i18n.t("flash.daemon_stopping") } else { app.i18n.t("flash.daemon_starting") };
+            app.flash(&msg);
         }
         Some('r') => { // Restart
             tokio::spawn(async move {
@@ -61,6 +69,7 @@ pub(super) fn handle_daemon_select(app: &mut App, sel: usize) {
                         tokio::time::sleep(Duration::from_secs(1)).await;
                         match tokio::task::spawn_blocking(process::start_daemon).await {
                             Ok(Ok(msg2)) => {
+                                stop_flag.store(true, Ordering::SeqCst);
                                 for l in msg2.lines() { lines.push(Out::Ok(l.into())); }
                             }
                             Ok(Err(e)) => lines.push(Out::Err(format!("✗ Start: {}", e))),
@@ -72,7 +81,8 @@ pub(super) fn handle_daemon_select(app: &mut App, sel: usize) {
                     Err(e) => push_out(&buf, vec![Out::Err(format!("✗ Stop: {}", e))]),
                 }
             });
-            app.flash("Saba-Core 재시작 중...");
+            let msg = app.i18n.t("flash.daemon_restarting");
+            app.flash(&msg);
         }
         Some('i') => { // Status
             tokio::spawn(async move {
@@ -111,7 +121,8 @@ pub(super) fn handle_daemon_select(app: &mut App, sel: usize) {
         }
         Some('c') => { // Components
             if !app.daemon_on {
-                app.flash("⚠ Saba-Core가 오프라인입니다");
+                let msg = app.i18n.t("flash.daemon_offline_warning");
+                app.flash(&msg);
                 return;
             }
             tokio::spawn(async move {
@@ -147,7 +158,23 @@ pub(super) fn handle_daemon_select(app: &mut App, sel: usize) {
                     Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
                 }
             });
-            app.flash("컴포넌트 정보 조회 중...");
+            let msg = app.i18n.t("flash.component_info");
+            app.flash(&msg);
+        }
+        Some('l') => { // Daemon log tab
+            if !app.daemon_on {
+                let msg = app.i18n.t("flash.daemon_offline_warning");
+                app.flash(&msg);
+                return;
+            }
+            let tab_source = crate::tui::tabs::TabSource::Daemon;
+            let tid = app.tabs.open(tab_source, app.client.clone(), app.tab_tx.clone());
+            app.focus = Focus::Tab(tid);
+            app.push_screen(Screen::ServerConsole {
+                name: app.i18n.t("misc.daemon_log"),
+                id: String::new(),
+            });
+            app.input_mode = InputMode::Console;
         }
         _ => {}
     }

@@ -3,37 +3,15 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TITLEBAR_HEIGHT } from '../constants/layout';
 import { useSettingsStore } from '../stores/useSettingsStore';
-import { getCachedRules, highlightLine } from '../utils/syntaxHighlight';
+import { getCachedRules } from '../utils/syntaxHighlight';
 import { Icon } from './index';
-
-/**
- * Inline highlighted content renderer (shared with ConsoleView).
- */
-function HighlightedContent({ text, compiledRules }) {
-    const segments = useMemo(() => highlightLine(text, compiledRules), [text, compiledRules]);
-
-    if (!compiledRules || compiledRules.length === 0 || segments.length <= 1) {
-        return <>{text}</>;
-    }
-
-    return (
-        <>
-            {segments.map((seg, i) =>
-                seg.style ? (
-                    <span key={i} style={seg.style}>
-                        {seg.text}
-                    </span>
-                ) : (
-                    seg.text
-                ),
-            )}
-        </>
-    );
-}
+import { HighlightedContent } from './HighlightedContent';
 
 // Minimum window dimensions
 const MIN_WIDTH = 360;
 const MIN_HEIGHT = 200;
+const RESIZE_EDGES = { n: 'top', s: 'bottom', e: 'right', w: 'left',
+    ne: 'top right', nw: 'top left', se: 'bottom right', sw: 'bottom left' };
 
 /**
  * ConsoleWindow — A floating, draggable, resizable console window that lives
@@ -52,13 +30,10 @@ export function ConsoleWindow({
     sendConsoleCommand,
     setConsolePopoutInstanceId,
     highlightRules,
-    servers,
 }) {
     const { t } = useTranslation('gui');
-    const windowRef = useRef(null);
     const consoleEndRef = useRef(null);
-    const dragRef = useRef(null);
-    const resizeRef = useRef(null);
+    const interactionCleanup = useRef(null);
     const syntaxEnabled = useSettingsStore((s) => s.consoleSyntaxHighlight);
 
     const compiledRules = useMemo(
@@ -66,114 +41,62 @@ export function ConsoleWindow({
         [highlightRules, state.server?.name, syntaxEnabled],
     );
 
-    // Auto-scroll on new lines
     useEffect(() => {
-        if (consoleEndRef.current && !state.minimized) {
-            consoleEndRef.current.scrollIntoView({ behavior: 'smooth' });
-        }
+        if (!state.minimized && state.lines.length) consoleEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [state.lines, state.minimized]);
+    useEffect(() => () => interactionCleanup.current?.(), []);
 
-    // ── Drag handling ───────────────────────────────────────
+    const changeWindow = useCallback((dx, dy, direction = '', position = state.position, size = state.size) => {
+        if (!direction) {
+            updatePosition(instanceId, { x: position.x + dx, y: Math.max(TITLEBAR_HEIGHT, position.y + dy) });
+            return;
+        }
+        const west = direction.includes('w');
+        const north = direction.includes('n');
+        const width = /[ew]/.test(direction) ? Math.max(MIN_WIDTH, size.width + (west ? -dx : dx)) : size.width;
+        let height = /[ns]/.test(direction) ? Math.max(MIN_HEIGHT, size.height + (north ? -dy : dy)) : size.height;
+        const x = position.x + (west ? size.width - width : 0);
+        const y = north ? Math.max(TITLEBAR_HEIGHT, position.y + size.height - height) : position.y;
+        if (north) height = size.height + position.y - y;
+        updateSize(instanceId, { width, height });
+        updatePosition(instanceId, { x, y });
+    }, [instanceId, state.position, state.size, updatePosition, updateSize]);
 
-    const handleDragStart = useCallback(
-        (e) => {
-            // Only left mouse button
-            if (e.button !== 0) return;
-            e.preventDefault();
-            focusConsole(instanceId);
+    const startInteraction = useCallback((event, direction = '') => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        focusConsole(instanceId);
+        interactionCleanup.current?.();
+        const move = (next) => changeWindow(
+            Math.max(0, Math.min(next.clientX, window.innerWidth)) - event.clientX,
+            Math.max(0, Math.min(next.clientY, window.innerHeight)) - event.clientY,
+            direction, state.position, state.size,
+        );
+        const end = () => {
+            document.removeEventListener('mousemove', move);
+            document.removeEventListener('mouseup', end);
+            interactionCleanup.current = null;
+        };
+        interactionCleanup.current = end;
+        document.addEventListener('mousemove', move);
+        document.addEventListener('mouseup', end);
+    }, [changeWindow, focusConsole, instanceId, state.position, state.size]);
 
-            const startX = e.clientX;
-            const startY = e.clientY;
-            const startPos = { ...state.position };
-
-            const handleDragMove = (moveEvent) => {
-                const mx = Math.max(0, Math.min(moveEvent.clientX, window.innerWidth));
-                const my = Math.max(0, Math.min(moveEvent.clientY, window.innerHeight));
-                const dx = mx - startX;
-                const dy = my - startY;
-                updatePosition(instanceId, {
-                    x: startPos.x + dx,
-                    y: Math.max(TITLEBAR_HEIGHT, startPos.y + dy),
-                });
-            };
-
-            const handleDragEnd = () => {
-                document.removeEventListener('mousemove', handleDragMove);
-                document.removeEventListener('mouseup', handleDragEnd);
-            };
-
-            document.addEventListener('mousemove', handleDragMove);
-            document.addEventListener('mouseup', handleDragEnd);
-        },
-        [instanceId, state.position, focusConsole, updatePosition],
-    );
-
-    // ── Resize handling ─────────────────────────────────────
-
-    const handleResizeStart = useCallback(
-        (e, direction) => {
-            if (e.button !== 0) return;
-            e.preventDefault();
-            e.stopPropagation();
-            focusConsole(instanceId);
-
-            const startX = e.clientX;
-            const startY = e.clientY;
-            const startSize = { ...state.size };
-            const startPos = { ...state.position };
-
-            const handleResizeMove = (moveEvent) => {
-                const mx = Math.max(0, Math.min(moveEvent.clientX, window.innerWidth));
-                const my = Math.max(0, Math.min(moveEvent.clientY, window.innerHeight));
-                const dx = mx - startX;
-                const dy = my - startY;
-
-                let newWidth = startSize.width;
-                let newHeight = startSize.height;
-                let newX = startPos.x;
-                let newY = startPos.y;
-
-                if (direction.includes('e')) {
-                    newWidth = Math.max(MIN_WIDTH, startSize.width + dx);
-                }
-                if (direction.includes('w')) {
-                    const proposedWidth = startSize.width - dx;
-                    if (proposedWidth >= MIN_WIDTH) {
-                        newWidth = proposedWidth;
-                        newX = startPos.x + dx;
-                    }
-                }
-                if (direction.includes('s')) {
-                    newHeight = Math.max(MIN_HEIGHT, startSize.height + dy);
-                }
-                if (direction.includes('n')) {
-                    const proposedHeight = startSize.height - dy;
-                    if (proposedHeight >= MIN_HEIGHT) {
-                        newHeight = proposedHeight;
-                        newY = Math.max(TITLEBAR_HEIGHT, startPos.y + dy);
-                    }
-                }
-
-                updateSize(instanceId, { width: newWidth, height: newHeight });
-                updatePosition(instanceId, { x: newX, y: newY });
-            };
-
-            const handleResizeEnd = () => {
-                document.removeEventListener('mousemove', handleResizeMove);
-                document.removeEventListener('mouseup', handleResizeEnd);
-            };
-
-            document.addEventListener('mousemove', handleResizeMove);
-            document.addEventListener('mouseup', handleResizeEnd);
-        },
-        [instanceId, state.size, state.position, focusConsole, updateSize, updatePosition],
-    );
+    function handleArrow(event, direction) {
+        const delta = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
+        if (!delta) return;
+        event.preventDefault();
+        event.stopPropagation();
+        focusConsole(instanceId);
+        const step = event.shiftKey ? 50 : 10;
+        changeWindow(delta[0] * step, delta[1] * step, direction);
+    }
 
     if (state.minimized) return null;
 
     return (
-        <div
-            ref={windowRef}
+        <section aria-label={state.server.name}
             className={`console-window${state.pinned ? ' cw-pinned' : ''}`}
             style={{
                 left: state.position.x,
@@ -183,46 +106,49 @@ export function ConsoleWindow({
                 zIndex: state.zIndex,
             }}
             onMouseDown={() => focusConsole(instanceId)}
+            onFocusCapture={() => focusConsole(instanceId)}
         >
-            {/* Resize handles */}
-            <div className="cw-resize cw-resize-n" onMouseDown={(e) => handleResizeStart(e, 'n')} />
-            <div className="cw-resize cw-resize-s" onMouseDown={(e) => handleResizeStart(e, 's')} />
-            <div className="cw-resize cw-resize-e" onMouseDown={(e) => handleResizeStart(e, 'e')} />
-            <div className="cw-resize cw-resize-w" onMouseDown={(e) => handleResizeStart(e, 'w')} />
-            <div className="cw-resize cw-resize-ne" onMouseDown={(e) => handleResizeStart(e, 'ne')} />
-            <div className="cw-resize cw-resize-nw" onMouseDown={(e) => handleResizeStart(e, 'nw')} />
-            <div className="cw-resize cw-resize-se" onMouseDown={(e) => handleResizeStart(e, 'se')} />
-            <div className="cw-resize cw-resize-sw" onMouseDown={(e) => handleResizeStart(e, 'sw')} />
-
-            {/* Title bar — draggable */}
-            <div className="cw-titlebar" onMouseDown={handleDragStart}>
-                <span className="cw-title">
+            {Object.entries(RESIZE_EDGES).map(([direction, edge]) => (
+                <button type="button" key={direction} className={`cw-resize cw-resize-${direction}`}
+                    style={{ border: 0, padding: 0, background: 'transparent' }}
+                    aria-label={t('console.resize', { defaultValue: 'Resize {{edge}} (arrow keys)', edge })}
+                    onMouseDown={(event) => startInteraction(event, direction)}
+                    onKeyDown={(event) => handleArrow(event, direction)} />
+            ))}
+            <div className="cw-titlebar">
+                <button type="button" className="cw-title"
+                    style={{ border: 0, padding: 0, background: 'transparent', cursor: 'inherit', flex: 1 }}
+                    aria-label={t('console.move', { defaultValue: 'Move {{name}} (arrow keys)', name: state.server.name })}
+                    onMouseDown={startInteraction} onKeyDown={(event) => handleArrow(event)}>
                     <span className="console-icon">{'>'}_</span>
                     {state.server.name}
-                </span>
+                </button>
                 <div className="cw-controls">
-                    <button
+                    <button type="button"
                         className={`cw-btn cw-btn-pin${state.pinned ? ' cw-btn-pinned' : ''}`}
+                        aria-label={state.pinned ? t('console.unpin') : t('console.pin')}
                         onClick={(e) => {
                             e.stopPropagation();
                             togglePin(instanceId);
                         }}
-                        title={state.pinned ? t('console.unpin', { defaultValue: 'Unpin' }) : t('console.pin', { defaultValue: 'Pin on top' })}
+                        data-tooltip={state.pinned ? t('console.unpin', { defaultValue: 'Unpin' }) : t('console.pin', { defaultValue: 'Pin on top' })}
                     >
                         <Icon name="pin" size="sm" />
                     </button>
-                    <button
+                    <button type="button"
                         className="cw-btn cw-btn-minimize"
+                        aria-label={t('console.minimize')}
                         onClick={(e) => {
                             e.stopPropagation();
                             minimizeConsole(instanceId);
                         }}
-                        title={t('console.minimize', { defaultValue: 'Minimize to dock' })}
+                        data-tooltip={t('console.minimize', { defaultValue: 'Minimize to dock' })}
                     >
                         <Icon name="minus" size="sm" />
                     </button>
-                    <button
+                    <button type="button"
                         className="cw-btn cw-btn-popout"
+                        aria-label={t('console.popout')}
                         onClick={async (e) => {
                             e.stopPropagation();
                             try {
@@ -233,17 +159,18 @@ export function ConsoleWindow({
                                 console.error('Popout failed:', err);
                             }
                         }}
-                        title={t('console.popout', { defaultValue: 'Pop out to separate window' })}
+                        data-tooltip={t('console.popout', { defaultValue: 'Pop out to separate window' })}
                     >
                         <Icon name="external-link" size="sm" />
                     </button>
-                    <button
+                    <button type="button"
                         className="cw-btn cw-btn-close"
+                        aria-label={t('modals.close')}
                         onClick={(e) => {
                             e.stopPropagation();
                             closeConsole(instanceId);
                         }}
-                        title={t('modals.close')}
+                        data-tooltip={t('modals.close')}
                     >
                         &times;
                     </button>
@@ -287,10 +214,10 @@ export function ConsoleWindow({
                         disabled={state.stdinDisabled}
                     />
                 </div>
-                <button className="console-send" onClick={() => sendConsoleCommand(instanceId)} disabled={state.stdinDisabled}>
+                <button type="button" className="console-send" onClick={() => sendConsoleCommand(instanceId)} disabled={state.stdinDisabled}>
                     {t('console.send')}
                 </button>
             </div>
-        </div>
+        </section>
     );
 }

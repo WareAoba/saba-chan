@@ -4,6 +4,16 @@ import { useTranslation } from 'react-i18next';
 import './Modals.css';
 import { useModalClose } from '../../hooks/useModalClose';
 
+export function ModalOverlay({ className, onClose, children }) {
+    const { t } = useTranslation('gui');
+    return (
+        <div className={className}>
+            <button type="button" className="modal-backdrop" onClick={onClose} aria-label={t('modals.close')} />
+            {children}
+        </div>
+    );
+}
+
 // Success Modal - 자동으로 2초 후 닫힘
 export function SuccessModal({ title, message, onClose }) {
     const { isClosing, requestClose } = useModalClose(onClose);
@@ -14,13 +24,13 @@ export function SuccessModal({ title, message, onClose }) {
     }, [requestClose]);
 
     return (
-        <div className={clsx('modal-overlay', { closing: isClosing })} onClick={requestClose}>
-            <div className="modal success-modal" onClick={(e) => e.stopPropagation()}>
+        <ModalOverlay  className={clsx('modal-overlay', { closing: isClosing })} onClose={requestClose}>
+            <div className="modal success-modal" >
                 <img src="./success.png" alt="" className="modal-illustration" />
                 <h2 className="modal-title">{title}</h2>
                 <p className="modal-message">{message}</p>
             </div>
-        </div>
+        </ModalOverlay>
     );
 }
 
@@ -30,16 +40,16 @@ export function FailureModal({ title, message, onClose }) {
     const { isClosing, requestClose } = useModalClose(onClose);
 
     return (
-        <div className={clsx('modal-overlay', { closing: isClosing })} onClick={requestClose}>
-            <div className="modal failure-modal" onClick={(e) => e.stopPropagation()}>
+        <ModalOverlay  className={clsx('modal-overlay', { closing: isClosing })} onClose={requestClose}>
+            <div className="modal failure-modal" >
                 <img src="./panic.png" alt="" className="modal-illustration" />
                 <h2 className="modal-title">{title}</h2>
                 <p className="modal-message">{message}</p>
-                <button className="modal-button failure-button" onClick={requestClose}>
+                <button type="button" className="modal-button failure-button" onClick={requestClose}>
                     {t('modals.close')}
                 </button>
             </div>
-        </div>
+        </ModalOverlay>
     );
 }
 
@@ -49,16 +59,16 @@ export function NotificationModal({ title, message, onClose }) {
     const { isClosing, requestClose } = useModalClose(onClose);
 
     return (
-        <div className={clsx('modal-overlay', { closing: isClosing })} onClick={requestClose}>
-            <div className="modal notification-modal" onClick={(e) => e.stopPropagation()}>
+        <ModalOverlay  className={clsx('modal-overlay', { closing: isClosing })} onClose={requestClose}>
+            <div className="modal notification-modal" >
                 <img src="./notice.png" alt="" className="modal-illustration" />
                 <h2 className="modal-title">{title}</h2>
                 <p className="modal-message">{message}</p>
-                <button className="modal-button notification-button" onClick={requestClose}>
+                <button type="button" className="modal-button notification-button" onClick={requestClose}>
                     {t('modals.confirm')}
                 </button>
             </div>
-        </div>
+        </ModalOverlay>
     );
 }
 
@@ -68,8 +78,8 @@ export function QuestionModal({ title, message, detail, onConfirm, onCancel, but
     const { isClosing, requestClose } = useModalClose(onCancel);
 
     return (
-        <div className={clsx('modal-overlay', { closing: isClosing })} onClick={requestClose}>
-            <div className="modal question-modal" onClick={(e) => e.stopPropagation()}>
+        <ModalOverlay  className={clsx('modal-overlay', { closing: isClosing })} onClose={requestClose}>
+            <div className="modal question-modal" >
                 <img src="./question.png" alt="" className="modal-illustration" />
                 <h2 className="modal-title">{title}</h2>
                 <p className="modal-message">{message}</p>
@@ -78,8 +88,8 @@ export function QuestionModal({ title, message, detail, onConfirm, onCancel, but
                     {buttons ? (
                         // 커스텀 버튼 배열
                         buttons.map((btn, idx) => (
-                            <button
-                                key={idx}
+                            <button type="button"
+                                key={btn.label}
                                 className={clsx('modal-button', idx === 0 ? 'question-confirm' : 'question-cancel')}
                                 onClick={btn.action}
                             >
@@ -89,16 +99,16 @@ export function QuestionModal({ title, message, detail, onConfirm, onCancel, but
                     ) : (
                         // 기본 확인/취소 버튼
                         <>
-                            <button className="modal-button question-confirm" onClick={onConfirm}>
+                            <button type="button" className="modal-button question-confirm" onClick={onConfirm}>
                                 {t('modals.confirm')}
                             </button>
-                            <button className="modal-button question-cancel" onClick={requestClose}>
+                            <button type="button" className="modal-button question-cancel" onClick={requestClose}>
                                 {t('modals.cancel')}
                             </button>
                         </>
                     )}
                 </div>
             </div>
-        </div>
+        </ModalOverlay>
     );
 }

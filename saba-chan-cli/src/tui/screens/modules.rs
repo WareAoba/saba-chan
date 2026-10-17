@@ -69,7 +69,8 @@ pub(super) fn handle_modules_select(app: &mut App, sel: usize) {
                 Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
             }
         });
-        app.flash("새로고침 중...");
+        let msg = app.i18n.t("flash.refreshing");
+        app.flash(&msg);
     } else if sel == module_count + 1 {
         // Module Manifest
         app.push_screen(Screen::ModuleManifest);
@@ -140,6 +141,8 @@ pub(super) fn handle_module_detail_select(app: &mut App, sel: usize, name: &str)
             let mod_name = name.to_string();
             let buf2 = app.async_out.clone();
             let client2 = app.client.clone();
+            let no_versions = app.i18n.t("errors.no_versions");
+            let parse_failed = app.i18n.t("errors.version_parse_failed");
             tokio::spawn(async move {
                 match client2.list_versions(&mod_name).await {
                     Ok(data) => {
@@ -148,24 +151,25 @@ pub(super) fn handle_module_detail_select(app: &mut App, sel: usize, name: &str)
                                 .filter_map(|v| v.as_str().or_else(|| v["id"].as_str()).map(|s| s.to_string()))
                                 .collect();
                             if version_ids.is_empty() {
-                                push_out(&buf2, vec![Out::Err("사용 가능한 버전이 없습니다".into())]);
+                                push_out(&buf2, vec![Out::Err(no_versions)]);
                             } else {
                                 // VERSION_SELECT 프로토콜로 전달
                                 let encoded = version_ids.join("|");
                                 push_out(&buf2, vec![Out::Text(format!("VERSION_SELECT:{}:{}", mod_name, encoded))]);
                             }
                         } else {
-                            push_out(&buf2, vec![Out::Err("버전 목록을 파싱할 수 없습니다".into())]);
+                            push_out(&buf2, vec![Out::Err(parse_failed)]);
                         }
                     }
                     Err(e) => push_out(&buf2, vec![Out::Err(format!("✗ {}", e))]),
                 }
             });
-            app.flash("버전 목록 조회 중...");
+            let msg = app.i18n.t("flash.version_list");
+            app.flash(&msg);
         }
         3 => { // Remove Module
             app.input_mode = InputMode::Confirm {
-                prompt: format!("모듈 '{}' 을(를) 삭제하시겠습니까? (y/n)", name),
+                prompt: app.i18n.t_with("prompt.delete_module_confirm", &[("name", &name)]),
                 action: ConfirmAction::RemoveModule(name.to_string()),
             };
         }

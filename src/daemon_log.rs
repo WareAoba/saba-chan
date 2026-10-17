@@ -3,7 +3,6 @@
 //! Provides:
 //! - `DaemonLogBuffer`: Thread-safe ring buffer of daemon log entries
 //! - `DaemonLogLayer`: tracing Layer that pipes events into the buffer
-//! - `daemon_terminal_loop`: daemon-only mode console output loop
 
 use std::collections::VecDeque;
 use std::fmt;
@@ -110,6 +109,17 @@ impl DaemonLogBuffer {
     pub fn len(&self) -> usize {
         self.inner.lock().unwrap_or_else(|e| e.into_inner()).len()
     }
+
+    #[allow(dead_code)]
+    pub fn is_empty(&self) -> bool {
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).is_empty()
+    }
+}
+
+impl Default for DaemonLogBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─── Tracing Layer ───────────────────────────────────────────
@@ -181,74 +191,19 @@ impl<S: Subscriber> Layer<S> for DaemonLogLayer {
 }
 
 // ─── Daemon-Only Terminal Loop ───────────────────────────────
-
-/// Runs a polling loop that prints process console logs to stderr.
-/// Intended for daemon-only mode where no GUI/CLI is attached.
-///
-/// 데몬 자체 tracing 로그는 이미 stderr로 출력되므로 여기서는
-/// 관리형 프로세스 콘솔 로그만 표시합니다.
-/// 데몬 로그 버퍼는 커서 동기화용으로만 보관합니다 (API용).
-pub async fn daemon_terminal_loop(
-    _daemon_buf: DaemonLogBuffer,
-    supervisor: Arc<tokio::sync::RwLock<crate::supervisor::Supervisor>>,
-    shutdown: tokio_util::sync::CancellationToken,
-) {
-    use std::io::Write;
-
-    // instance_id → last seen log id
-    let mut process_cursors: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
-
-    loop {
-        tokio::select! {
-            _ = shutdown.cancelled() => {
-                eprintln!("\n[DaemonOnly] Terminal loop shutting down");
-                break;
-            }
-            _ = tokio::time::sleep(tokio::time::Duration::from_millis(500)) => {}
-        }
-
-        // ── Collect process console logs (async 구간) ──
-        // stderr lock은 Send가 아니므로 await 경계를 넘기지 않는다.
-        let mut output_lines: Vec<String> = Vec::new();
-
-        let sup = supervisor.read().await;
-        let instances = sup.instance_store.list();
-        for inst in instances {
-            let cursor = process_cursors.get(&inst.id).copied();
-            if let Ok(result) = sup.get_console_output(&inst.id, cursor, Some(200)).await {
-                if let Some(lines) = result.get("lines").and_then(|v| v.as_array()) {
-                    for line in lines {
-                        let id = line.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
-                        let content = line.get("content").and_then(|v| v.as_str()).unwrap_or("");
-                        let level = line.get("level").and_then(|v| v.as_str()).unwrap_or("info");
-                        let level_tag = match level {
-                            "error" => "\x1b[31mERROR\x1b[0m",
-                            "warn" => "\x1b[33m WARN\x1b[0m",
-                            _ => " INFO",
-                        };
-                        output_lines.push(format!(
-                            " {} \x1b[35m[{}]\x1b[0m {}",
-                            level_tag,
-                            inst.name,
-                            content
-                        ));
-                        process_cursors.insert(inst.id.clone(), id + 1);
-                    }
-                }
-            }
-        }
-        drop(sup); // RwLock 해제
-
-        // ── Write to stderr (sync 구간) ──
-        if !output_lines.is_empty() {
-            let stderr = std::io::stderr();
-            let mut out = stderr.lock();
-            for line in &output_lines {
-                let _ = writeln!(out, "{}", line);
-            }
-        }
-    }
-}
+//
+// 데몬 온리 모드에서는 데몬 자체의 tracing 로그가 이미 stderr로 출력되므로
+// 별도의 터미널 폴링 루프가 필요 없다. 인스턴스(관리형 프로세스/컨테이너)의
+// 콘솔 로그를 보고 싶다면 GUI/CLI를 띄워 IPC API(`/api/instance/:id/console`)를
+// 통해 조회한다.
+//
+// 과거에는 여기서 `daemon_terminal_loop`을 띄워 모든 인스턴스의 콘솔 로그를
+// stderr로 끌어올렸으나, 다음 이유로 제거했다:
+//   1. 종료된 인스턴스의 디스크 콘솔 로그가 디스크 폴백 경로에서 since_id를
+//      무시하기 때문에(`Supervisor::get_console_output` 참고), 무한 재출력 루프가
+//      발생했다.
+//   2. 데몬 온리 모드는 헤드리스 운영용이며, 인스턴스 콘솔이 필요한 사용자는
+//      UI를 기동시킨다.
 
 // ─── Tests ───────────────────────────────────────────────────
 

@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom/client';
 import { ErrorBoundary } from 'react-error-boundary';
 import App from './App';
 import { ErrorFallback } from './components/ErrorFallback';
+import { TooltipProvider } from './components/ui/Tooltip';
 import './i18n'; // Initialize i18n
 import './theme.css'; // Theme CSS variables (must load before App.css)
 import { initTheme } from './utils/themeManager';
@@ -23,6 +24,8 @@ const handleGlobalError = (error, info) => {
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
     <ErrorBoundary FallbackComponent={ErrorFallback} onError={handleGlobalError}>
-        <App />
+        <TooltipProvider>
+            <App />
+        </TooltipProvider>
     </ErrorBoundary>,
 );

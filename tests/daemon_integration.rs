@@ -25,8 +25,6 @@ use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
 use std::fs;
 use serde_json::Value;
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
 
 // ═══════════════════════════════════════════════════════
 // 테스트 유틸리티
@@ -103,6 +101,10 @@ entry = "lifecycle.py"
         fs::write(module_dir.join("lifecycle.py"), "# minimal test lifecycle\n")
             .expect("failed to write lifecycle.py");
     }
+    // import 픽스처 모듈도 여기서 함께 보장 — 병렬 실행 중 다른 테스트가
+    // ./modules를 스캔하는 도중에 모듈이 새로 나타나 목록 일관성 테스트가
+    // 깨지는 경합을 막는다 (모든 테스트가 셋업 시점에 동일한 모듈 집합을 봄).
+    ensure_import_test_module();
 }
 
 /// 테스트용 IPC 서버 + Supervisor 를 부팅하여 (base_url, abort_handle)을 반환
@@ -488,7 +490,7 @@ async fn test_ipc_module_metadata_contains_required_fields() {
         if let Some(cmds) = module.get("commands") {
             if !cmds.is_null() {
                 let fields = cmds.get("fields").and_then(|v| v.as_array())
-                    .expect(&format!("Module '{}' commands must have 'fields' array", name));
+                    .unwrap_or_else(|| panic!("Module '{}' commands must have 'fields' array", name));
                 for cmd in fields {
                     assert!(
                         cmd.get("name").and_then(|v| v.as_str()).is_some(),
@@ -684,165 +686,309 @@ async fn test_check_update_no_extension_data() {
 }
 
 // ═══════════════════════════════════════════════════════
-// 8. 클라이언트 등록/해제 — 봇 프로세스 관리
+// 9. 에이전트 통합 명령 진입점 (/api/agent/command)
 // ═══════════════════════════════════════════════════════
 
-/// 더미 프로세스를 시작하여 PID를 반환. 테스트 후 자동 정리 가능.
-fn spawn_dummy_process() -> std::process::Child {
-    #[cfg(target_os = "windows")]
-    {
-        // CREATE_NO_WINDOW (0x0800_0000) — 창 표시 없이 백그라운드에서 실행
-        std::process::Command::new("cmd")
-            .args(["/C", "ping -n 300 127.0.0.1 > NUL"])
-            .creation_flags(0x0800_0000)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .expect("failed to spawn dummy process")
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        std::process::Command::new("sleep")
-            .arg("300")
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .expect("failed to spawn dummy process")
-    }
-}
-
-/// 프로세스가 살아있는지 확인
-fn is_process_alive(pid: u32) -> bool {
-    #[cfg(target_os = "windows")]
-    {
-        let output = std::process::Command::new("tasklist")
-            .args(["/FI", &format!("PID eq {}", pid), "/NH", "/FO", "CSV"])
-            .output()
-            .expect("failed to run tasklist");
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        stdout.contains(&pid.to_string())
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let output = std::process::Command::new("kill")
-            .args(["-0", &pid.to_string()])
-            .status()
-            .expect("failed to check process");
-        output.success()
-    }
-}
-
-/// shutdown=false로 unregister하면 봇 프로세스가 살아있어야 한다.
-/// (인터페이스만 종료 시나리오)
+/// 이름(대소문자 무시)으로 인스턴스를 해석하여 status 동작이 동작하는지 검증.
+/// 데몬 측 단일 진입점이 MCP/AI 에이전트가 보내는 자연어 의도를 올바른
+/// 인스턴스로 라우팅하는지 확인한다.
 #[tokio::test]
-async fn test_client_unregister_interface_only_keeps_bot_alive() {
-    let (base_url, _supervisor, server_task) = boot_ipc().await;
+async fn test_agent_command_resolves_target_by_name() {
+    let (base_url, _sup, server_task) = boot_ipc().await;
     let client = reqwest::Client::new();
 
-    // 1. 클라이언트 등록
-    let reg_resp = client
-        .post(format!("{}/api/client/register", base_url))
-        .json(&serde_json::json!({"kind": "gui"}))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(reg_resp.status(), reqwest::StatusCode::OK);
-    let reg_body: Value = reg_resp.json().await.unwrap();
-    let client_id = reg_body["client_id"].as_str().unwrap();
+    let first_module = {
+        let modules: Value = client
+            .get(format!("{}/api/modules", base_url))
+            .send().await.unwrap()
+            .json().await.unwrap();
+        modules["modules"][0]["name"].as_str().unwrap().to_string()
+    };
 
-    // 2. 더미 프로세스를 봇 대역으로 시작
-    let mut dummy = spawn_dummy_process();
-    let dummy_pid = dummy.id();
-    assert!(is_process_alive(dummy_pid), "Dummy process should be alive initially");
+    // 인스턴스 생성 (대문자 포함 이름으로 대소문자 무시 매칭 검증)
+    let test_name = format!("Test-Agent-{}", pick_free_port());
+    let created: Value = client
+        .post(format!("{}/api/instances", base_url))
+        .json(&serde_json::json!({
+            "name": test_name,
+            "module_name": first_module,
+            "executable_path": "C:/tmp/test-server.exe"
+        }))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    let instance_id = created["id"].as_str().unwrap().to_string();
 
-    // 3. heartbeat로 bot_pid 전달
-    let hb_resp = client
-        .post(format!("{}/api/client/{}/heartbeat", base_url, client_id))
-        .json(&serde_json::json!({"bot_pid": dummy_pid}))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(hb_resp.status(), reqwest::StatusCode::OK);
-
-    // 4. shutdown=false로 unregister (인터페이스만 종료)
-    let unreg_resp = client
-        .delete(format!(
-            "{}/api/client/{}/unregister?shutdown=false",
-            base_url, client_id
-        ))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(unreg_resp.status(), reqwest::StatusCode::OK);
-
-    // 5. 봇(더미 프로세스)이 여전히 살아있어야 한다
-    sleep(Duration::from_millis(500)).await;
-    assert!(
-        is_process_alive(dummy_pid),
-        "Bot process should remain alive when shutdown=false (interface-only quit)"
+    // 소문자로 이름을 보내도 해석되어야 함 → status는 not-found가 아니어야 함
+    let resp = client
+        .post(format!("{}/api/agent/command", base_url))
+        .json(&serde_json::json!({
+            "target": test_name.to_lowercase(),
+            "action": "status"
+        }))
+        .send().await.unwrap();
+    assert_ne!(
+        resp.status(),
+        reqwest::StatusCode::NOT_FOUND,
+        "Agent endpoint must resolve instance name case-insensitively"
     );
 
-    // 정리
-    let _ = dummy.kill();
-    let _ = dummy.wait();
+    // ── 정리
+    let _ = client
+        .delete(format!("{}/api/instance/{}", base_url, instance_id))
+        .send().await;
     server_task.abort();
     cleanup_test_instances();
 }
 
-/// shutdown=true로 unregister하면 봇 프로세스가 종료되어야 한다.
-/// (완전 종료 시나리오)
+/// 존재하지 않는 대상 → 404 + instance_not_found error_code.
 #[tokio::test]
-async fn test_client_unregister_full_shutdown_kills_bot() {
-    let (base_url, _supervisor, server_task) = boot_ipc().await;
+async fn test_agent_command_unknown_target_returns_not_found() {
+    let (base_url, _sup, server_task) = boot_ipc().await;
     let client = reqwest::Client::new();
 
-    // 1. 클라이언트 등록
-    let reg_resp = client
-        .post(format!("{}/api/client/register", base_url))
-        .json(&serde_json::json!({"kind": "gui"}))
+    let resp = client
+        .post(format!("{}/api/agent/command", base_url))
+        .json(&serde_json::json!({
+            "target": "no-such-server-xyz",
+            "action": "start"
+        }))
+        .send().await.unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::NOT_FOUND);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["error_code"].as_str(), Some("instance_not_found"));
+
+    server_task.abort();
+    cleanup_test_instances();
+}
+
+/// command 동작인데 command 필드가 비면 400.
+#[tokio::test]
+async fn test_agent_command_missing_command_field_returns_bad_request() {
+    let (base_url, _sup, server_task) = boot_ipc().await;
+    let client = reqwest::Client::new();
+
+    let first_module = {
+        let modules: Value = client
+            .get(format!("{}/api/modules", base_url))
+            .send().await.unwrap()
+            .json().await.unwrap();
+        modules["modules"][0]["name"].as_str().unwrap().to_string()
+    };
+    let test_name = format!("test-agent-cmd-{}", pick_free_port());
+    let created: Value = client
+        .post(format!("{}/api/instances", base_url))
+        .json(&serde_json::json!({
+            "name": test_name,
+            "module_name": first_module,
+            "executable_path": "C:/tmp/test-server.exe"
+        }))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    let instance_id = created["id"].as_str().unwrap().to_string();
+
+    let resp = client
+        .post(format!("{}/api/agent/command", base_url))
+        .json(&serde_json::json!({
+            "target": test_name,
+            "action": "command"
+        }))
+        .send().await.unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::BAD_REQUEST);
+
+    let _ = client
+        .delete(format!("{}/api/instance/{}", base_url, instance_id))
+        .send().await;
+    server_task.abort();
+    cleanup_test_instances();
+}
+
+// ═══════════════════════════════════════════════════════
+// 10. 마이그레이션 설정 임포트 플래그 (settings_import_pending)
+// ═══════════════════════════════════════════════════════
+//
+// 사고 배경: 마이그레이션 등록 시 기존 게임 설정 파일 임포트가 조용히 실패하면
+// module_settings 캐시가 스키마 기본값으로 남고, GUI가 그 기본값을 실제 값처럼
+// 표시/저장해 게임 설정 파일을 기본값으로 덮어쓰는 사고가 발생했다.
+// 임포트 실패는 인스턴스에 settings_import_pending 플래그로 기록되어야 하고,
+// 이후 라이브 읽기(import)가 성공하면 캐시 갱신과 함께 해제되어야 한다.
+
+/// import_settings가 정상 동작하는 테스트 모듈 픽스처를 생성한다.
+/// 멱등 + module.toml은 rename으로 원자적으로 배치 — 병렬 테스트가
+/// ./modules 스캔 도중 반쯤 쓰인 module.toml을 읽는 경합을 방지한다.
+fn ensure_import_test_module() {
+    let module_dir = std::path::Path::new("./modules/test-module-import");
+    let toml_path = module_dir.join("module.toml");
+    if toml_path.exists() {
+        return;
+    }
+    fs::create_dir_all(module_dir).expect("failed to create test-module-import dir");
+    fs::write(
+        module_dir.join("lifecycle.py"),
+        r#"import sys, json
+fn = sys.argv[1] if len(sys.argv) > 1 else ""
+try:
+    cfg = json.loads(sys.stdin.read() or "{}")
+except Exception:
+    cfg = {}
+if fn == "import_settings":
+    print(json.dumps({"success": True, "settings": {"exp_rate": 2, "server_name": "ImportedName"}}))
+else:
+    print(json.dumps({"success": True, "message": "noop:" + fn}))
+"#,
+    )
+    .expect("failed to write lifecycle.py");
+    let tmp_path = module_dir.join("module.toml.tmp");
+    fs::write(
+        &tmp_path,
+        r#"[module]
+name = "test-module-import"
+version = "0.0.1"
+description = "Integration test fixture (import_settings ok)"
+author = "ci"
+game_name = "TestGame"
+display_name = "Test Module Import"
+entry = "lifecycle.py"
+"#,
+    )
+    .expect("failed to write module.toml.tmp");
+    // 동시 생성 경합 시 어느 한쪽만 성공하면 됨 (내용 동일)
+    let _ = fs::rename(&tmp_path, &toml_path);
+}
+
+/// 마이그레이션 임포트 실패(모듈 lifecycle에 import_settings 없음) 시
+/// settings_import_pending 플래그가 true로 저장되는지 검증.
+#[tokio::test]
+async fn test_migration_import_failure_sets_pending_flag() {
+    let (base_url, _sup, server_task) = boot_ipc().await;
+    let client = reqwest::Client::new();
+
+    let tmp = std::env::temp_dir().join(format!("saba-test-import-fail-{}", pick_free_port()));
+    let _ = fs::create_dir_all(&tmp);
+
+    let create_resp = client
+        .post(format!("{}/api/instances", base_url))
+        .json(&serde_json::json!({
+            "name": format!("test-import-fail-{}", pick_free_port()),
+            "module_name": "test-module",
+            "migration_source": tmp.to_string_lossy(),
+        }))
         .send()
         .await
         .unwrap();
-    assert_eq!(reg_resp.status(), reqwest::StatusCode::OK);
-    let reg_body: Value = reg_resp.json().await.unwrap();
-    let client_id = reg_body["client_id"].as_str().unwrap();
+    assert!(create_resp.status().is_success(), "create failed: {}", create_resp.status());
+    let created: Value = create_resp.json().await.unwrap();
+    let id = created["id"].as_str().unwrap().to_string();
 
-    // 2. 더미 프로세스를 봇 대역으로 시작
-    let mut dummy = spawn_dummy_process();
-    let dummy_pid = dummy.id();
-
-    // 3. heartbeat로 bot_pid 전달
-    let hb_resp = client
-        .post(format!("{}/api/client/{}/heartbeat", base_url, client_id))
-        .json(&serde_json::json!({"bot_pid": dummy_pid}))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(hb_resp.status(), reqwest::StatusCode::OK);
-
-    // 4. shutdown=true로 unregister (완전 종료)
-    let unreg_resp = client
-        .delete(format!(
-            "{}/api/client/{}/unregister?shutdown=true",
-            base_url, client_id
-        ))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(unreg_resp.status(), reqwest::StatusCode::OK);
-
-    // 5. 봇(더미 프로세스)이 종료되어야 한다
-    sleep(Duration::from_millis(1000)).await;
-    assert!(
-        !is_process_alive(dummy_pid),
-        "Bot process should be killed when shutdown=true (full shutdown)"
+    let list: Vec<Value> = client
+        .get(format!("{}/api/instances", base_url))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    let inst = list.iter().find(|i| i["id"] == id.as_str()).expect("instance not in list");
+    assert_eq!(
+        inst["settings_import_pending"], true,
+        "import 실패 시 settings_import_pending=true여야 함, got: {:?}",
+        inst.get("settings_import_pending")
     );
 
-    // 정리
-    let _ = dummy.kill();
-    let _ = dummy.wait();
+    let _ = client.delete(format!("{}/api/instance/{}", base_url, id)).send().await;
+    server_task.abort();
+    cleanup_test_instances();
+}
+
+/// 마이그레이션 임포트 성공 시 플래그가 false이고 캐시에 임포트 값이 반영되는지 검증.
+#[tokio::test]
+async fn test_migration_import_success_keeps_flag_clear() {
+    ensure_import_test_module();
+    let (base_url, _sup, server_task) = boot_ipc().await;
+    let client = reqwest::Client::new();
+
+    let tmp = std::env::temp_dir().join(format!("saba-test-import-ok-{}", pick_free_port()));
+    let _ = fs::create_dir_all(&tmp);
+
+    let create_resp = client
+        .post(format!("{}/api/instances", base_url))
+        .json(&serde_json::json!({
+            "name": format!("test-import-ok-{}", pick_free_port()),
+            "module_name": "test-module-import",
+            "migration_source": tmp.to_string_lossy(),
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert!(create_resp.status().is_success(), "create failed: {}", create_resp.status());
+    let created: Value = create_resp.json().await.unwrap();
+    let id = created["id"].as_str().unwrap().to_string();
+
+    let list: Vec<Value> = client
+        .get(format!("{}/api/instances", base_url))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    let inst = list.iter().find(|i| i["id"] == id.as_str()).expect("instance not in list");
+    assert_eq!(inst["settings_import_pending"], false);
+    assert_eq!(
+        inst["module_settings"]["exp_rate"], 2,
+        "임포트된 값이 module_settings 캐시에 반영되어야 함"
+    );
+
+    let _ = client.delete(format!("{}/api/instance/{}", base_url, id)).send().await;
+    server_task.abort();
+    cleanup_test_instances();
+}
+
+/// GET /settings/live 성공 시 module_settings 캐시가 실제 값으로 갱신되고
+/// settings_import_pending 플래그가 해제되는지 검증.
+#[tokio::test]
+async fn test_read_live_settings_refreshes_cache_and_clears_flag() {
+    ensure_import_test_module();
+    let (base_url, sup, server_task) = boot_ipc().await;
+    let client = reqwest::Client::new();
+
+    let tmp = std::env::temp_dir().join(format!("saba-test-live-refresh-{}", pick_free_port()));
+    let _ = fs::create_dir_all(&tmp);
+
+    let create_resp = client
+        .post(format!("{}/api/instances", base_url))
+        .json(&serde_json::json!({
+            "name": format!("test-live-refresh-{}", pick_free_port()),
+            "module_name": "test-module-import",
+            "migration_source": tmp.to_string_lossy(),
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert!(create_resp.status().is_success());
+    let created: Value = create_resp.json().await.unwrap();
+    let id = created["id"].as_str().unwrap().to_string();
+
+    // 사고 상황 재현: 플래그 true + 캐시에 오염된(기본값) 설정 주입
+    {
+        let mut supervisor = sup.write().await;
+        let mut inst = supervisor.instance_store.get(&id).unwrap().clone();
+        inst.settings_import_pending = true;
+        inst.module_settings.insert("exp_rate".to_string(), serde_json::json!(999));
+        supervisor.instance_store.update(&id, inst).unwrap();
+    }
+
+    let live: Value = client
+        .get(format!("{}/api/instance/{}/settings/live", base_url, id))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    assert_eq!(live["success"], true, "live read should succeed: {:?}", live);
+    assert_eq!(live["settings"]["exp_rate"], 2);
+
+    // 캐시가 실제 값으로 갱신되고 플래그가 해제되어야 한다
+    {
+        let supervisor = sup.read().await;
+        let inst = supervisor.instance_store.get(&id).unwrap();
+        assert!(!inst.settings_import_pending, "live read 성공 후 플래그 해제되어야 함");
+        assert_eq!(
+            inst.module_settings.get("exp_rate"),
+            Some(&serde_json::json!(2)),
+            "live read 성공 시 module_settings 캐시가 실제 값으로 갱신되어야 함"
+        );
+    }
+
+    let _ = client.delete(format!("{}/api/instance/{}", base_url, id)).send().await;
     server_task.abort();
     cleanup_test_instances();
 }

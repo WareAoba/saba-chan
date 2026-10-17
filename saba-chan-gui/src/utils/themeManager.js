@@ -187,7 +187,7 @@ function desaturateHex(hex, factor) {
  */
 function srgbToLinear(c) {
     const s = c / 255;
-    return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
 }
 
 /**
@@ -322,4 +322,82 @@ export function applyCustomTheme(config) {
     root.style.setProperty('--console-custom-text', consoleTextColor);
     root.style.setProperty('--console-syntax-highlight', consoleSyntaxHighlight ? '1' : '0');
     root.style.setProperty('--console-font-scale', `${consoleFontScale / 100}`);
+
+    // ── Syntax highlight palette (light/dark 분기) ──
+    // syntaxHighlight.js 의 시맨틱 토큰(`var(--syn-<name>, <fallback>)`)에 대응.
+    // 콘솔 배경의 명도에 따라 팔레트를 선택하여 가독성을 확보한다.
+    applySyntaxPalette(root, consoleBgColor);
+}
+
+// ───────────────────────────────────────────────────────────
+// Syntax highlight 팔레트 (콘솔 배경 명도 기준)
+// ───────────────────────────────────────────────────────────
+// Catppuccin Mocha(어두운 콘솔용)
+const SYN_PALETTE_DARK = {
+    error:     '#f38ba8',
+    critical:  '#eba0ac',
+    fatal:     '#eba0ac',
+    warn:      '#f9e2af',
+    warning:   '#f9e2af',
+    notice:    '#fab387',
+    info:      '#89b4fa',
+    debug:     '#6c7086',
+    trace:     '#6c7086',
+    success:   '#a6e3a1',
+    string:    '#a6e3a1',
+    number:    '#fab387',
+    keyword:   '#cba6f7',
+    comment:   '#6c7086',
+    timestamp: '#7f849c',
+    player:    '#89dceb',
+    command:   '#f5c2e7',
+    selector:  '#f9e2af',
+    ip:        '#74c7ec',
+    uuid:      '#74c7ec',
+    hostname:  '#74c7ec',
+    port:      '#fab387',
+    duration:  '#94e2d5',
+    bytes:     '#94e2d5',
+    path:      '#94e2d5',
+    url:       '#89dceb',
+    dim:       '#6c7086',
+};
+
+// Catppuccin Latte(밝은 콘솔용) — 동일 시맨틱에 대해 대비를 확보한 값.
+const SYN_PALETTE_LIGHT = {
+    error:     '#d20f39',
+    critical:  '#e64553',
+    fatal:     '#d20f39',
+    warn:      '#df8e1d',
+    warning:   '#df8e1d',
+    notice:    '#fe640b',
+    info:      '#1e66f5',
+    debug:     '#6c6f85',
+    trace:     '#6c6f85',
+    success:   '#40a02b',
+    string:    '#40a02b',
+    number:    '#fe640b',
+    keyword:   '#8839ef',
+    comment:   '#9ca0b0',
+    timestamp: '#7c7f93',
+    player:    '#04a5e5',
+    command:   '#ea76cb',
+    selector:  '#df8e1d',
+    ip:        '#209fb5',
+    uuid:      '#209fb5',
+    hostname:  '#209fb5',
+    port:      '#fe640b',
+    duration:  '#179299',
+    bytes:     '#179299',
+    path:      '#179299',
+    url:       '#1e66f5',
+    dim:       '#9ca0b0',
+};
+
+function applySyntaxPalette(root, consoleBgColor) {
+    const lum = relativeLuminance(consoleBgColor || '#1e1e2e');
+    const palette = lum > 0.5 ? SYN_PALETTE_LIGHT : SYN_PALETTE_DARK;
+    for (const [token, color] of Object.entries(palette)) {
+        root.style.setProperty(`--syn-${token}`, color);
+    }
 }

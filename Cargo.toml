@@ -1,15 +1,26 @@
 [package]
 name = "saba-core"
-version = "0.1.1"
-edition = "2021"
-authors = ["WareAoba"]
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
 description = "Modular game server management platform"
-repository = "https://github.com/WareAoba/saba-chan"
-license = "MIT"
 keywords = ["game-server", "palworld", "minecraft", "management"]
 
 [workspace]
 members = [".", "updater", "updater/gui/src-tauri", "installer/gui/src-tauri", "saba-chan-cli"]
+
+# ── Workspace 단일 버전 SoT ───────────────────────────────────────
+# 모든 Rust 컴포넌트(saba-core, cli, updater-lib, updater-gui, installer-gui)는
+# 이 한 곳의 version을 공유한다. 개별 Cargo.toml에서는 `version.workspace = true` 사용.
+# GUI(npm)와 build.rs도 이 값을 참조해 동기화된다.
+[workspace.package]
+version = "0.1.1"
+edition = "2021"
+authors = ["WareAoba"]
+repository = "https://github.com/WareAoba/saba-chan"
+license = "MIT"
 
 [[bin]]
 name = "saba-core"
@@ -34,9 +45,9 @@ axum = "0.7"
 zip = "0.6"
 tempfile = "3.8"
 uuid = { version = "1.0", features = ["v4", "serde"] }
-glob = "0.3"
 regex = "1"
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.12", features = ["json"] }
+urlencoding = "2"
 byteorder = "1.5"
 ureq = { version = "2.9", default-features = true, features = ["json", "tls"] }
 base64 = "0.21"
@@ -49,7 +60,7 @@ hex = "0.4"
 saba-chan-updater-lib = { path = "updater" }
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["processthreadsapi", "winnt", "handleapi"] }
+winapi = { version = "0.3", features = ["processthreadsapi", "winnt", "handleapi", "wincon"] }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.27", features = ["signal"] }
@@ -57,19 +68,45 @@ nix = { version = "0.27", features = ["signal"] }
 [dependencies.tower]
 version = "0.4"
 
-[dependencies.tower-http]
-version = "0.5"
-features = ["trace"]
-
-[dependencies.hyper]
-version = "1"
-features = ["full"]
 [dev-dependencies]
 regex-lite = "0.1"
 tower = { version = "0.4", features = ["util"] }
+ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
+
+# --- 빌드 속도 최적화 프로파일 ---
+# 릴리스 프로파일은 최종 결과물 동일성을 위해 건드리지 않는다.
+# dev/test 빌드만 속도 튜닝한다.
+
+[profile.dev]
+opt-level = 0
+debug = 1          # 풀 디버그(2) -> 라인 정보만. 링크/디스크 I/O 대폭 감소
+incremental = true
+# 워크스페이스 자체 코드는 빠르게 컴파일, 의존성만 최적화해 런타임 속도 확보
+
+[profile.dev.package."*"]
+opt-level = 3
+debug = false      # 외부 의존성은 디버그 심볼 제거 -> 링크 속도 ↑
+
+[profile.test]
+opt-level = 0
+debug = 1
+incremental = true
+
+[profile.test.package."*"]
+opt-level = 3
+debug = false
 
 [profile.release]
 opt-level = 3
+lto = "thin"       # fat LTO -> thin LTO. 링크 시간 절반 이하, 런타임 성능 차이 ~1%
+codegen-units = 16 # 병렬 코드젠 활성. 런타임 성능 영향 미미
+strip = true
+incremental = false
+
+# 최종 배포용 프로파일: 기존 fat LTO 세팅 그대로 유지 (필요 시 `cargo build --profile dist`)
+[profile.dist]
+inherits = "release"
 lto = true
 codegen-units = 1
 strip = true
+incremental = false

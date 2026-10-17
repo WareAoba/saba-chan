@@ -20,6 +20,11 @@ function useStateRef(state) {
     return ref;
 }
 
+function stopPolling(poll) {
+    poll.active = false;
+    clearTimeout(poll.timer);
+}
+
 /**
  * Manages multiple simultaneous console instances with individual state.
  *
@@ -47,11 +52,6 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
     const [consolePopoutInstanceId, setConsolePopoutInstanceId] = useState(null);
 
     // ── Helpers ─────────────────────────────────────────────
-
-    const getNextZ = useCallback(() => {
-        zCounterRef.current += 1;
-        return zCounterRef.current;
-    }, []);
 
     const getDefaultPosition = useCallback((existingCount) => {
         const offset = existingCount * 30;
@@ -106,18 +106,19 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         if (!pollingRefs.current[instanceId]) {
             let sinceId = 0;
             let diskLoaded = false;
-            let polling = false;
+            const poll = { active: true, timer: null };
+            const isCurrentPoll = () => poll.active && pollingRefs.current[instanceId] === poll;
             const schedulePoll = () => {
-                if (!pollingRefs.current[instanceId]?.active) return;
+                if (!isCurrentPoll()) return;
                 const servers = useServerStore.getState().servers;
                 const server = servers.find((s) => s.id === instanceId);
                 const isRunning = server && server.pid > 0;
                 const interval = isRunning ? POLL_ACTIVE_MS : POLL_IDLE_MS;
-                pollingRefs.current[instanceId].timer = setTimeout(async () => {
-                    if (polling) { schedulePoll(); return; }
-                    polling = true;
+                poll.timer = setTimeout(async () => {
+                    if (!isCurrentPoll()) return;
                     try {
                         const data = await window.api.managedConsole(instanceId, sinceId, 200);
+                        if (!isCurrentPoll()) return;
                         // disk fallback은 since_id를 무시하고 매번 같은 로그를 반환하므로
                         // 이미 한 번 로드했으면 다시 append하지 않음
                         if (data?.source === 'disk') {
@@ -169,13 +170,11 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                         }
                     } catch (_err) {
                         // silent — server might not be ready yet
-                    } finally {
-                        polling = false;
                     }
                     schedulePoll();
                 }, interval);
             };
-            pollingRefs.current[instanceId] = { active: true, timer: null };
+            pollingRefs.current[instanceId] = poll;
             schedulePoll();
         }
     }, [consoleBufferRef, getDefaultPosition, getDefaultSize]);
@@ -185,28 +184,14 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
     const closeConsole = useCallback((instanceId) => {
         // If called without id (legacy compat) close all
         if (!instanceId) {
-            for (const id of Object.keys(pollingRefs.current)) {
-                const ref = pollingRefs.current[id];
-                if (ref && typeof ref === 'object') {
-                    ref.active = false;
-                    clearTimeout(ref.timer);
-                } else {
-                    clearInterval(ref);
-                }
-            }
+            Object.values(pollingRefs.current).forEach(stopPolling);
             pollingRefs.current = {};
             setConsoles({});
             return;
         }
 
         if (pollingRefs.current[instanceId]) {
-            const ref = pollingRefs.current[instanceId];
-            if (ref && typeof ref === 'object') {
-                ref.active = false;
-                clearTimeout(ref.timer);
-            } else {
-                clearInterval(ref);
-            }
+            stopPolling(pollingRefs.current[instanceId]);
             delete pollingRefs.current[instanceId];
         }
         setConsoles((prev) => {
@@ -370,7 +355,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         } catch (err) {
             safeShowToast(translateError(err.message), 'error', 3000);
         }
-    }, [setConsoleInput, translateError]);
+    }, [consolesRef, setConsoleInput, translateError]);
 
     // ── Derived: for ServerCard backward compat ─────────────
 
@@ -399,15 +384,8 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
 
     useEffect(() => {
         return () => {
-            for (const id of Object.keys(pollingRefs.current)) {
-                const ref = pollingRefs.current[id];
-                if (ref && typeof ref === 'object') {
-                    ref.active = false;
-                    clearTimeout(ref.timer);
-                } else {
-                    clearInterval(ref);
-                }
-            }
+            Object.values(pollingRefs.current).forEach(stopPolling);
+            pollingRefs.current = {};
         };
     }, []);
 

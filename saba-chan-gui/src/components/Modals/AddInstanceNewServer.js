@@ -13,7 +13,6 @@ import Icon from '../Icon';
 export function AddInstanceNewServer({
     extensions,
     servers,
-    onRefreshextensions,
     onAddServer,
     onStepChange,
     onBack,
@@ -160,7 +159,7 @@ export function AddInstanceNewServer({
                 </div>
 
                 <div className="modal-footer add-server-footer">
-                    <button className="btn btn-cancel" onClick={onClose}>
+                    <button type="button" className="btn btn-cancel" onClick={onClose}>
                         {t('modals.cancel')}
                     </button>
                 </div>
@@ -225,11 +224,11 @@ export function AddInstanceNewServer({
 
                     {/* 인스턴스 이름 */}
                     <div className="as-section as-section-card">
-                        <label className="as-label">
+                        <label htmlFor="addinstancenewserver-228" className="as-label">
                             <Icon name="server" size="sm" />
                             {t('add_server_modal.server_name')}
                         </label>
-                        <input
+                        <input id="addinstancenewserver-228"
                             ref={nameInputRef}
                             className="as-input"
                             type="text"
@@ -274,10 +273,10 @@ export function AddInstanceNewServer({
 
             {/* ── Footer ── */}
             <div className="modal-footer add-server-footer">
-                <button className="btn btn-cancel" onClick={onClose} disabled={submitting}>
+                <button type="button" className="btn btn-cancel" onClick={onClose} disabled={submitting}>
                     {t('modals.cancel')}
                 </button>
-                <button className="btn btn-confirm" onClick={handleSubmit} disabled={!canSubmit}>
+                <button type="button" className="btn btn-confirm" onClick={handleSubmit} disabled={!canSubmit}>
                     {submitting ? (
                         <>
                             <Icon name="refresh" size="sm" className="spin" /> {t('add_server_modal.provisioning')}

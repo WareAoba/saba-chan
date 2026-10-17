@@ -1,7 +1,5 @@
 import { create } from 'zustand';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
-import { useSettingsStore } from './useSettingsStore';
-import { useUIStore } from './useUIStore';
 
 // i18n translate function — set after store creation
 let _t = (key, fallback) => fallback || key;
@@ -13,111 +11,117 @@ export const setDiscordI18n = (t) => {
 };
 
 const RELAY_URL_FALLBACK = 'https://saba-chan.online';
+const DEFAULT_NODE_MUSIC_SETTINGS = { queueLines: 5, refreshInterval: 4000, normalize: true };
+let statusRequestId = 0;
 
+function mergeNodeMusicState(prevNode, patch) {
+    const next = { ...(prevNode || {}) };
+    if ('musicEnabled' in patch) next.musicEnabled = patch.musicEnabled;
+    if ('musicUIEnabled' in patch) next.musicUIEnabled = patch.musicUIEnabled;
+    if ('musicSettings' in patch) {
+        next.musicSettings = {
+            ...(next.musicSettings || DEFAULT_NODE_MUSIC_SETTINGS),
+            ...(patch.musicSettings || {}),
+        };
+    }
+    return next;
+}
+
+// 클라우드 전용 Discord Bot 설정 store.
+// 로컬 봇 기능은 제거되었음. 봇은 릴레이 서버에서 호스팅되며,
+// 이 호스트는 prefix/aliases/nodeSettings 동기화 + 릴레이 페어링만 담당한다.
 export const useDiscordStore = create((set, get) => ({
-    // ── Bot config ──
-    discordToken: '',
+    // ── Bot config (릴레이 서버에 동기화되는 호스트별 설정) ──
     discordPrefix: '!saba',
-    discordAutoStart: false,
-    discordMusicEnabled: true,
-    discordMusicChannelId: '',
-    discordMusicUISettings: { queueLines: 5, refreshInterval: 4000 },
     discordModuleAliases: {},
     discordCommandAliases: {},
 
-    // ── Bot mode ──
-    discordBotMode: 'local',
+    // ── Cloud relay pairing ──
     discordCloudRelayUrl: '',
     discordCloudHostId: '',
 
     // ── Node & cloud ──
+    // nodeSettings는 노드(길드) 단위 음악 설정 전용.
+    // 인스턴스 권한/별명은 instanceSettings(인스턴스 단위)가 담당한다.
     nodeSettings: {},
     cloudNodes: [],
     cloudMembers: {},
 
+    // ── 인스턴스별 디스코드 설정 (서버별 설정 팝업) ──
+    // { [instanceId]: { aliases?, commandAliases?, allowedNodes?, blockedUsers? } }
+    // 릴레이로 전송하지 않음 — bot-config.json에 저장되고 데몬 디스패처가 판정한다.
+    instanceSettings: {},
+
     // ── Runtime status ──
-    discordBotStatus: 'stopped',
-    botStatusReady: false,
     relayConnected: false,
     relayConnecting: false,
+    /// 최소 1회 상태 확인이 완료되었는지 — 완료 전에는 UI가 "연결 중"으로,
+    /// 완료 후 미연결이면 "연결 끊김"으로 구분해 표시할 수 있다.
+    relayStatusChecked: false,
+    /// 연속 상태확인 실패 횟수 — 히스테리시스용 (일시적 429/타임아웃 깜박임 방지)
+    _statusFailStreak: 0,
 
     // ── Internal ──
     _settingsReady: false,
     _botConfigLoaded: false,
-    _autoStartDone: false,
     _statusInterval: null,
-    _autoStartTimer: null,
-    _autoStartRetryTimer: null,
-    _discordTokenRef: '',
+    _statusTimeout: null,
 
     // ── Actions ──
-
-    setDiscordToken: (val) => {
-        set({ discordToken: val, _discordTokenRef: val });
-    },
-
-    update: (partial) => set(partial),
-
-    // ── 모드 전환 (디바운스 + 자동 재시작) ──
-    _modeSwitchTimer: null,
-    switchMode: (newMode) => {
+    update: (partial) => {
+        // hostId가 바뀌면 이전 상태 확인 결과는 무효 — 리셋 후 즉시 재확인해서
+        // 다음 5초 폴링까지 stale 상태(끊김/연결됨)가 표시되는 것을 방지한다.
         const state = get();
-        const prevMode = state.discordBotMode;
-        if (newMode === prevMode) return;
-
-        // 즉시 모드 반영 (UI 업데이트)
-        set({ discordBotMode: newMode });
-
-        // 기존 디바운스 타이머 취소
-        if (state._modeSwitchTimer) {
-            clearTimeout(state._modeSwitchTimer);
+        const targetChanged = ['discordCloudHostId', 'discordCloudRelayUrl'].some(
+            (key) => key in partial && partial[key] !== state[key],
+        );
+        if (targetChanged) {
+            statusRequestId += 1;
+            set({
+                ...partial,
+                relayConnected: false,
+                relayConnecting: false,
+                relayStatusChecked: false,
+                _statusFailStreak: 0,
+            });
+            if (get().discordCloudHostId) get().checkStatus();
+            return;
         }
-
-        // 디바운스: 빠른 토글 시 마지막 전환만 실행
-        const timer = setTimeout(async () => {
-            const s = get();
-
-            // 1. 실행 중인 봇 정지
-            if (s.discordBotStatus === 'running' || s.discordBotStatus === 'connecting') {
-                try {
-                    await window.api.discordBotStop();
-                    set({ discordBotStatus: 'stopped' });
-                } catch (_) { /* ignore */ }
-                // 프로세스 정리 대기
-                await new Promise((r) => setTimeout(r, 500));
-            }
-
-            // 2. 새 모드로 봇 자동 시작 (조건 충족 시)
-            const cur = get();
-            const isCloud = cur.discordBotMode === 'cloud';
-            const canStart = isCloud
-                ? !!(cur.discordCloudHostId && cur.discordPrefix)
-                : !!(cur.discordToken && cur.discordPrefix);
-
-            if (canStart) {
-                await cur.startBot();
-            }
-        }, 800);
-
-        set({ _modeSwitchTimer: timer });
+        set(partial);
     },
 
     loadConfig: async () => {
         const isTest = process.env.NODE_ENV === 'test' || typeof jest !== 'undefined';
-        const maxAttempts = isTest ? 1 : 5;
-        const retryDelay = 800;
+        // 데몬은 무결성 검증·프리플라이트 등으로 IPC 준비가 수 초 늦어질 수 있다.
+        // 로드 실패 시 _botConfigLoaded=false로 남아 저장이 차단되므로, 충분히 재시도한다.
+        const maxAttempts = isTest ? 1 : 15;
+        const retryDelay = 1000;
 
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
+                // botConfigLoad는 데몬 미응답 시 null을 반환한다 (가짜 기본값 아님)
                 const botCfg = await window.api.botConfigLoad();
-                if (!botCfg) continue;
+                if (!botCfg) {
+                    if (attempt < maxAttempts) {
+                        if (!isTest)
+                            console.warn(`[Settings] Bot config unavailable, retrying (${attempt}/${maxAttempts})...`);
+                        await new Promise((r) => setTimeout(r, retryDelay));
+                        continue;
+                    }
+                    console.error('[Settings] Bot config could not be loaded — keeping defaults, auto-save disabled');
+                    return;
+                }
 
-                // 데몬이 파일을 읽지 못한 경우 기본값(prefix, moduleAliases, commandAliases만 존재)을 반환함
-                // 이 경우 musicChannelId 등이 누락되어 스토어를 덮어쓰면 기존 설정이 손실됨
-                const isFullConfig = 'musicChannelId' in botCfg || 'mode' in botCfg || 'musicEnabled' in botCfg;
+                const isFullConfig =
+                    'prefix' in botCfg ||
+                    'cloud' in botCfg ||
+                    'moduleAliases' in botCfg ||
+                    'commandAliases' in botCfg ||
+                    'nodeSettings' in botCfg;
 
                 if (!isFullConfig && attempt < maxAttempts) {
-                    if (!isTest) console.log(`[Settings] Got partial bot config, retrying (${attempt}/${maxAttempts})...`);
+                    if (!isTest)
+                        console.log(`[Settings] Got partial bot config, retrying (${attempt}/${maxAttempts})...`);
                     await new Promise((r) => setTimeout(r, retryDelay));
                     continue;
                 }
@@ -126,36 +130,35 @@ export const useDiscordStore = create((set, get) => ({
                     discordPrefix: botCfg.prefix || '!saba',
                     discordModuleAliases: botCfg.moduleAliases || {},
                     discordCommandAliases: botCfg.commandAliases || {},
-                    discordMusicEnabled: botCfg.musicEnabled !== false,
-                    discordMusicChannelId: botCfg.musicChannelId ?? '',
-                    discordMusicUISettings: botCfg.musicUISettings || { queueLines: 5, refreshInterval: 4000, normalize: true },
-                    discordBotMode: botCfg.mode || 'local',
                     discordCloudRelayUrl: botCfg.cloud?.relayUrl || '',
                     discordCloudHostId: botCfg.cloud?.hostId || '',
                     _botConfigLoaded: isFullConfig,
                 };
 
-                // token과 autoStart는 bot-config.json이 SSOT
-                if ('token' in botCfg) {
-                    patch.discordToken = botCfg.token || '';
-                    patch._discordTokenRef = botCfg.token || '';
-                }
-                if ('autoStart' in botCfg) {
-                    patch.discordAutoStart = botCfg.autoStart ?? false;
-                }
-
                 if (botCfg.nodeSettings && typeof botCfg.nodeSettings === 'object') {
                     patch.nodeSettings = botCfg.nodeSettings;
-                } else if (Array.isArray(botCfg.allowedInstances)) {
-                    patch.nodeSettings = {
-                        local: { allowedInstances: botCfg.allowedInstances, memberPermissions: {} },
-                    };
+                }
+                if (botCfg.instanceSettings && typeof botCfg.instanceSettings === 'object') {
+                    patch.instanceSettings = botCfg.instanceSettings;
                 }
                 if (Array.isArray(botCfg.cloudNodes)) patch.cloudNodes = botCfg.cloudNodes;
                 if (botCfg.cloudMembers && typeof botCfg.cloudMembers === 'object')
                     patch.cloudMembers = botCfg.cloudMembers;
 
                 set(patch);
+
+                // ★ 로드 직후 자가치유 재저장 — 과거 버전의 저장 버그(예: main.js가
+                //   instanceSettings를 저장 화이트리스트에서 누락)로 디스크에 반영되지
+                //   못한 필드가 있어도, 사용자가 설정 화면에서 값을 다시 건드리지 않아도
+                //   다음 실행부터 고쳐진 저장 경로로 자동 복구되게 한다. 실패해도 로드
+                //   자체는 이미 완료된 상태이므로 조용히 무시한다.
+                if (isFullConfig) {
+                    get()
+                        .saveConfig()
+                        .catch((err) => {
+                            if (!isTest) console.warn('[Settings] Self-heal resave failed:', err);
+                        });
+                }
                 return;
             } catch (err) {
                 if (attempt === maxAttempts) {
@@ -171,40 +174,59 @@ export const useDiscordStore = create((set, get) => ({
     saveConfig: async (newPrefix) => {
         const state = get();
         try {
-            // 기존 파일 내용을 읽어서 병합 — 로드 실패 시 설정 손실 방지
             let base = {};
             if (!state._botConfigLoaded) {
-                try {
-                    const current = await window.api.botConfigLoad();
-                    if (current) base = current;
-                } catch (_) { /* 데몬 미응답 — 빈 base 사용 */ }
+                base = await window.api.botConfigLoad();
+                if (!base) throw new Error('Bot config is unavailable; saving defaults would overwrite existing settings');
+            }
+
+            const {
+                token: _legacyToken,
+                autoStart: _legacyAutoStart,
+                mode: _legacyMode,
+                musicEnabled: _legacyMusicEnabled,
+                musicChannelId: _legacyMusicChannelId,
+                musicUISettings: _legacyMusicUISettings,
+                musicUiSettings: _legacyMusicUiSettings,
+                ...baseClean
+            } = base || {};
+
+            // 설정 로드에 성공한 적 없으면(_botConfigLoaded=false) 스토어의 초기값
+            // (빈 문자열/빈 객체)이 디스크의 hostId·별명을 덮어쓰지 않도록,
+            // 비어있는 state 값 대신 데몬에서 읽은 base 값을 우선한다.
+            const loaded = state._botConfigLoaded;
+            const pickStr = (stateVal, baseVal) => (loaded ? (stateVal ?? baseVal ?? '') : stateVal || baseVal || '');
+            const pickObj = (stateVal, baseVal) => {
+                if (loaded) return stateVal ?? baseVal ?? {};
+                if (stateVal && Object.keys(stateVal).length > 0) return stateVal;
+                return baseVal ?? {};
+            };
+            const pickArr = (stateVal, baseVal) => {
+                if (loaded) return stateVal ?? baseVal ?? [];
+                if (Array.isArray(stateVal) && stateVal.length > 0) return stateVal;
+                return baseVal ?? [];
+            };
+            let prefix = newPrefix || state.discordPrefix;
+            if (!newPrefix && !loaded && state.discordPrefix === '!saba') {
+                prefix = baseClean.prefix || prefix;
             }
 
             const payload = {
-                ...base,
-                prefix: newPrefix || state.discordPrefix || '!saba',
-                token: state.discordToken || base.token || '',
-                autoStart: state.discordAutoStart ?? base.autoStart ?? false,
-                mode: state.discordBotMode || base.mode || 'local',
+                ...baseClean,
+                prefix: prefix || '!saba',
                 cloud: {
-                    relayUrl: state.discordCloudRelayUrl ?? base.cloud?.relayUrl ?? '',
-                    hostId: state.discordCloudHostId ?? base.cloud?.hostId ?? '',
+                    relayUrl: pickStr(state.discordCloudRelayUrl, baseClean.cloud?.relayUrl),
+                    hostId: pickStr(state.discordCloudHostId, baseClean.cloud?.hostId),
                 },
-                moduleAliases: state.discordModuleAliases ?? base.moduleAliases ?? {},
-                commandAliases: state.discordCommandAliases ?? base.commandAliases ?? {},
-                musicEnabled: state.discordMusicEnabled,
-                // _botConfigLoaded가 true면 스토어 값이 정확 → 직접 사용
-                // false면 로드 실패로 스토어가 빈값일 수 있음 → 파일 값 우선
-                musicChannelId: state._botConfigLoaded
-                    ? state.discordMusicChannelId
-                    : (state.discordMusicChannelId || base.musicChannelId || ''),
-                musicUISettings: state.discordMusicUISettings ?? base.musicUISettings ?? { queueLines: 5, refreshInterval: 4000, normalize: true },
-                nodeSettings: state.nodeSettings ?? base.nodeSettings ?? {},
-                cloudNodes: state.cloudNodes ?? base.cloudNodes ?? [],
-                cloudMembers: state.cloudMembers ?? base.cloudMembers ?? {},
+                moduleAliases: pickObj(state.discordModuleAliases, baseClean.moduleAliases),
+                commandAliases: pickObj(state.discordCommandAliases, baseClean.commandAliases),
+                nodeSettings: pickObj(state.nodeSettings, baseClean.nodeSettings),
+                instanceSettings: pickObj(state.instanceSettings, baseClean.instanceSettings),
+                cloudNodes: pickArr(state.cloudNodes, baseClean.cloudNodes),
+                cloudMembers: pickObj(state.cloudMembers, baseClean.cloudMembers),
             };
             const res = await window.api.botConfigSave(payload);
-            if (res.error) {
+            if (res?.error) {
                 console.error('[Settings] Failed to save bot config:', res.error);
                 safeShowToast(_t('settings.save_error'), 'error');
             } else {
@@ -212,290 +234,152 @@ export const useDiscordStore = create((set, get) => ({
             }
         } catch (error) {
             console.error('[Settings] Failed to save bot config:', error);
-                safeShowToast(_t('settings.save_error'), 'error');
+            safeShowToast(_t('settings.save_error'), 'error');
         }
     },
 
-    startBot: async () => {
-        const state = get();
-        const isCloud = state.discordBotMode === 'cloud';
-
-        if (isCloud && !state.discordCloudHostId) {
-            return;
-        }
-        if (!isCloud && !state.discordToken) {
-            useUIStore.getState().openModal({
-                type: 'failure',
-                title: _t('discord_bot.token_missing_title'),
-                message: _t('discord_bot.token_missing_message'),
-            });
-            return;
-        }
-        if (!state.discordPrefix) {
-            useUIStore.getState().openModal({
-                type: 'failure',
-                title: _t('discord_bot.prefix_missing_title'),
-                message: _t('discord_bot.prefix_missing_message'),
-            });
-            return;
-        }
-        try {
-            const botConfig = {
-                token: state.discordToken,
-                prefix: state.discordPrefix,
-                moduleAliases: state.discordModuleAliases,
-                commandAliases: state.discordCommandAliases,
-                musicEnabled: state.discordMusicEnabled,
-                musicChannelId: state.discordMusicChannelId,
-                musicUISettings: state.discordMusicUISettings,
-                mode: state.discordBotMode || 'local',
-                cloud: {
-                    relayUrl: state.discordCloudRelayUrl || '',
-                    hostId: state.discordCloudHostId || '',
-                },
-                nodeSettings: state.nodeSettings || {},
-            };
-            const result = await window.api.discordBotStart(botConfig);
-            if (result.error) {
-                safeShowToast(
-                    _t('discord_bot.start_failed_toast', { error: _translateError(result.error) }),
-                    'error',
-                    4000,
-                );
-            } else {
-                set({ discordBotStatus: 'running' });
-                safeShowToast(_t('discord_bot.started_toast'), 'discord', 3000);
-            }
-        } catch (e) {
-            safeShowToast(_t('discord_bot.start_error_toast', { error: _translateError(e.message) }), 'error', 4000);
-        }
-    },
-
-    stopBot: async () => {
-        try {
-            const result = await window.api.discordBotStop();
-            if (result.error) {
-                safeShowToast(
-                    _t('discord_bot.stop_failed_toast', { error: _translateError(result.error) }),
-                    'error',
-                    4000,
-                );
-            } else {
-                set({ discordBotStatus: 'stopped' });
-                safeShowToast(_t('discord_bot.stopped_toast'), 'discord', 3000);
-            }
-        } catch (e) {
-            safeShowToast(_t('discord_bot.stop_error_toast', { error: _translateError(e.message) }), 'error', 4000);
-        }
-    },
-
+    // ── 릴레이 연결 상태 확인 ──
+    // 일시적 실패(레이트리밋·타임아웃)로 UI가 "연결 끊김"으로 깜박이지 않도록
+    // 연속 3회 실패한 경우에만 연결 끊김으로 판정한다 (5s 폴링 기준 ≈15s).
     checkStatus: async () => {
+        const STATUS_FAIL_THRESHOLD = 3;
         const state = get();
-        if (state.discordBotMode === 'cloud') {
-            let agentRunning = false;
-            try {
-                const status = await window.api.discordBotStatus();
-                agentRunning = status === 'running';
-            } catch {
-                /* stopped */
-            }
+        if (state.relayConnecting) return;
+        const requestId = ++statusRequestId;
+        if (!state.discordCloudHostId) {
+            set({ relayConnected: false, relayStatusChecked: true, _statusFailStreak: 0 });
+            return;
+        }
+        const relayUrl = state.discordCloudRelayUrl || RELAY_URL_FALLBACK;
+        let ok = false;
+        try {
+            set({ relayConnecting: true });
+            const result = await window.api.relayCheckHostStatus(state.discordCloudHostId, relayUrl);
+            ok = !!(result && !result.error);
+        } catch {
+            ok = false;
+        }
+        if (requestId !== statusRequestId) return;
+        set({ relayConnecting: false });
 
-            let relayOk = false;
-            if (state.discordCloudHostId) {
-                const relayUrl = state.discordCloudRelayUrl || RELAY_URL_FALLBACK;
-                try {
-                    set({ relayConnecting: true });
-                    const result = await window.api.relayCheckHostStatus(state.discordCloudHostId, relayUrl);
-                    relayOk = result && !result.error;
-                } catch {
-                    /* disconnected */
-                }
-                set({ relayConnecting: false });
-            }
-
-            set({
-                relayConnected: relayOk,
-                discordBotStatus: agentRunning && relayOk ? 'running' : agentRunning ? 'connecting' : 'stopped',
-            });
+        if (ok) {
+            set({ relayConnected: true, relayStatusChecked: true, _statusFailStreak: 0 });
         } else {
-            try {
-                const status = await window.api.discordBotStatus();
-                set({ discordBotStatus: status === 'running' ? 'running' : 'stopped' });
-            } catch {
-                set({ discordBotStatus: 'stopped' });
+            const streak = get()._statusFailStreak + 1;
+            if (!get().relayConnected || streak >= STATUS_FAIL_THRESHOLD) {
+                set({ relayConnected: false, relayStatusChecked: true, _statusFailStreak: streak });
+            } else {
+                set({ relayStatusChecked: true, _statusFailStreak: streak });
             }
         }
+    },
+
+    syncNodeMusicSettings: async (guildId, relayUrlOverride) => {
+        const state = get();
+        const relayUrl = relayUrlOverride || state.discordCloudRelayUrl || RELAY_URL_FALLBACK;
+        const data = await window.api.relayGetNodeSettings(guildId, relayUrl);
+        if (!data || data.error) {
+            throw new Error(data?.error || 'Failed to load node music settings');
+        }
+
+        const musicPatch = {
+            musicEnabled: data.musicEnabled !== false,
+            musicUIEnabled: data.musicUIEnabled !== false,
+            musicSettings: data.musicSettings || DEFAULT_NODE_MUSIC_SETTINGS,
+        };
+        set((prev) => ({
+            nodeSettings: {
+                ...prev.nodeSettings,
+                [guildId]: mergeNodeMusicState(prev.nodeSettings[guildId], musicPatch),
+            },
+        }));
+        return data;
+    },
+
+    updateNodeMusicSettings: async (guildId, patch, relayUrlOverride) => {
+        const state = get();
+        const relayUrl = relayUrlOverride || state.discordCloudRelayUrl || RELAY_URL_FALLBACK;
+        const data = await window.api.relayUpdateNodeSettings(guildId, patch, relayUrl);
+        if (!data || data.error) {
+            return { success: false, error: data?.error || 'Failed to update node music settings' };
+        }
+
+        set((prev) => ({
+            nodeSettings: {
+                ...prev.nodeSettings,
+                [guildId]: mergeNodeMusicState(prev.nodeSettings[guildId], patch),
+            },
+        }));
+        return data;
     },
 
     startStatusPolling: () => {
         const state = get();
         if (state._statusInterval) return;
-
-        // Initial check
-        const init = async () => {
-            await new Promise((resolve) => setTimeout(resolve, 200));
-            await get().checkStatus();
-            set({ botStatusReady: true });
-            console.log('[Init] BotStatusReady flag set to true, mode:', get().discordBotMode);
-        };
-        init();
-
+        const timeout = setTimeout(() => {
+            set({ _statusTimeout: null });
+            get().checkStatus();
+        }, 200);
         const interval = setInterval(() => get().checkStatus(), 5000);
-        set({ _statusInterval: interval });
+        set({ _statusInterval: interval, _statusTimeout: timeout });
     },
 
     stopStatusPolling: () => {
         const state = get();
-        if (state._statusInterval) {
-            clearInterval(state._statusInterval);
-            set({ _statusInterval: null });
-        }
+        clearInterval(state._statusInterval);
+        clearTimeout(state._statusTimeout);
+        statusRequestId += 1;
+        set({ _statusInterval: null, _statusTimeout: null, relayConnecting: false });
     },
 
-    // Initialize listeners (call once in App mount)
-    initListeners: () => {
-        // Bot error listener
-        if (window.api?.onBotError) {
-            const handler = (data) => {
-                console.error('[Bot Error Event]', data);
-                if (data.type === 'exit' || data.type === 'spawn_error') {
-                    set({ discordBotStatus: 'stopped' });
-                }
-
-                // 정상 종료(code 0) 또는 사용자 중지 시에는 토스트 표시 안 함
-                if (data.type === 'exit' && (!data.code || data.code === 0)) return;
-
-                const msg = data.message || '';
-                // 빈 메시지 또는 의미 없는 exit 코드만 있는 메시지는 무시
-                if (!msg || !msg.trim()) return;
-
-                safeShowToast(_translateError(msg), 'error', 6000);
-            };
-            window.api.onBotError(handler);
-        }
-
-        // Bot relaunch listener
-        if (window.api?.onBotRelaunch) {
-            const handler = (botConfig) => {
-                console.log('[Bot Relaunch] Received signal to relaunch bot with new language settings');
-                setTimeout(async () => {
-                    try {
-                        const state = get();
-                        const configWithToken = { ...botConfig, token: state._discordTokenRef || state.discordToken };
-                        const result = await window.api.discordBotStart(configWithToken);
-                        if (result.error) {
-                            console.error('[Bot Relaunch] Failed to relaunch bot:', result.error);
-                        } else {
-                            console.log('[Bot Relaunch] Bot relaunched successfully');
-                            set({ discordBotStatus: 'running' });
-                            safeShowToast(_t('discord_bot.relaunched_toast'), 'discord', 3000);
-                        }
-                    } catch (err) {
-                        console.error('[Bot Relaunch] Unhandled error:', err.message);
-                    }
-                }, 1000);
-            };
-            window.api.onBotRelaunch(handler);
-        }
-    },
+    // 로컬 봇이 제거되었으므로 별도의 process listener 초기화는 없음.
+    initListeners: () => {},
 
     // Test-only: reset to initial state
     _resetForTest: () => {
         const state = get();
         if (state._statusInterval) clearInterval(state._statusInterval);
-        if (state._modeSwitchTimer) clearTimeout(state._modeSwitchTimer);
-        if (state._autoStartTimer) clearTimeout(state._autoStartTimer);
-        if (state._autoStartRetryTimer) clearTimeout(state._autoStartRetryTimer);
+        clearTimeout(state._statusTimeout);
+        statusRequestId += 1;
         set({
-            discordToken: '',
             discordPrefix: '!saba',
-            discordAutoStart: false,
-            discordMusicEnabled: true,
-            discordMusicChannelId: '',
-            discordMusicUISettings: { queueLines: 5, refreshInterval: 4000, normalize: true },
             discordModuleAliases: {},
             discordCommandAliases: {},
-            discordBotMode: 'local',
             discordCloudRelayUrl: '',
             discordCloudHostId: '',
             nodeSettings: {},
+            instanceSettings: {},
             cloudNodes: [],
             cloudMembers: {},
-            discordBotStatus: 'stopped',
-            botStatusReady: false,
             relayConnected: false,
             relayConnecting: false,
+            relayStatusChecked: false,
+            _statusFailStreak: 0,
             _settingsReady: false,
             _botConfigLoaded: false,
-            _autoStartDone: false,
             _statusInterval: null,
-            _modeSwitchTimer: null,
-            _autoStartTimer: null,
-            _autoStartRetryTimer: null,
-            _discordTokenRef: '',
+            _statusTimeout: null,
         });
-    },
-
-    // Auto-start check (call after settings and status ready)
-    tryAutoStart: () => {
-        const state = get();
-        if (state._autoStartDone) return;
-        if (!state.botStatusReady || !state._settingsReady) return;
-
-        set({ _autoStartDone: true });
-        const isTest = process.env.NODE_ENV === 'test' || typeof jest !== 'undefined';
-
-        const shouldStart = state.discordBotMode === 'cloud'
-            ? (state.discordCloudHostId && state.discordPrefix && state.discordBotStatus === 'stopped')
-            : (state.discordAutoStart && state.discordToken && state.discordPrefix && state.discordBotStatus === 'stopped');
-
-        if (!shouldStart) return;
-
-        if (!isTest) console.log('[Auto-start] Starting Discord bot automatically...');
-        // 약간 지연 — 데몬 ext-process API 초기화 대기
-        const timerId = setTimeout(async () => {
-            const cur = get();
-            if (cur.discordBotStatus !== 'stopped') return; // 이미 시작됨
-            await cur.startBot();
-            // startBot()은 내부에서 에러를 catch하므로 throw하지 않음
-            // 3초 후 상태 확인하여 실패 시 재시도
-            const retryId = setTimeout(async () => {
-                await get().checkStatus();
-                const retry = get();
-                if (retry.discordBotStatus === 'stopped') {
-                    if (!isTest) console.warn('[Auto-start] First attempt failed, retrying...');
-                    await retry.startBot();
-                }
-            }, 3000);
-            set({ _autoStartRetryTimer: retryId });
-        }, 1500);
-        set({ _autoStartTimer: timerId });
     },
 }));
 
-// ── Auto-save subscription (Zustand v5 single-listener) ──
+// ── Auto-save subscription ──
 let botConfigSaveTimer = null;
 const _discordSaveKeys = [
     'discordPrefix',
-    'discordBotMode',
     'discordCloudRelayUrl',
     'discordCloudHostId',
     'nodeSettings',
+    'instanceSettings',
     'cloudNodes',
     'cloudMembers',
     'discordModuleAliases',
     'discordCommandAliases',
-    'discordMusicEnabled',
-    'discordMusicChannelId',
-    'discordMusicUISettings',
-    'discordToken',
-    'discordAutoStart',
 ];
 useDiscordStore.subscribe((state, prevState) => {
     if (!state._settingsReady) return;
     const changed = _discordSaveKeys.some((k) => state[k] !== prevState[k]);
     if (!changed) return;
-    // _botConfigLoaded가 false면 로드 실패 상태 — 자동 저장 시 파일 값 덮어쓰기 방지
     if (!state._botConfigLoaded) {
         console.warn('[Settings] Discord config changed but bot config not loaded — skipping auto-save');
         return;
@@ -507,31 +391,22 @@ useDiscordStore.subscribe((state, prevState) => {
     }, 500);
 });
 
-// ── Cross-store sync: token/autoStart 변경 시 bot-config 저장 (이제 settings store 대신 bot-config이 SSOT) ──
-// token/autoStart는 _discordSaveKeys에 포함되어 위 auto-save subscription에서 처리됨
-
 // ── Vite HMR: preserve store state across hot module replacement ──
 if (import.meta.hot) {
     import.meta.hot.dispose((data) => {
         const s = useDiscordStore.getState();
         data.prevState = {
-            discordToken: s.discordToken,
             discordPrefix: s.discordPrefix,
-            discordAutoStart: s.discordAutoStart,
             discordModuleAliases: s.discordModuleAliases,
             discordCommandAliases: s.discordCommandAliases,
-            discordMusicEnabled: s.discordMusicEnabled,
-            discordMusicChannelId: s.discordMusicChannelId,
-            discordMusicUISettings: s.discordMusicUISettings,
-            discordBotMode: s.discordBotMode,
             discordCloudRelayUrl: s.discordCloudRelayUrl,
             discordCloudHostId: s.discordCloudHostId,
             nodeSettings: s.nodeSettings,
+            instanceSettings: s.instanceSettings,
             cloudNodes: s.cloudNodes,
             cloudMembers: s.cloudMembers,
-            discordBotStatus: s.discordBotStatus,
             relayConnected: s.relayConnected,
-            botStatusReady: s.botStatusReady,
+            relayStatusChecked: s.relayStatusChecked,
             _settingsReady: s._settingsReady,
             _botConfigLoaded: s._botConfigLoaded,
         };

@@ -1,16 +1,16 @@
-//! 화면별 렌더링 · 키 처리 — 대시보드, 서버, 모듈, 봇, 설정, 업데이트, 데몬
+//! 화면별 렌더링 · 키 처리 — 대시보드, 서버, 모듈, 설정, 업데이트, 데몬
 //!
 //! 각 화면은 세 가지를 제공합니다:
 //! 1. `build_menu_*()` — 메뉴 아이템 생성
 //! 2. `render_*()` — ratatui 렌더링
 //! 3. `handle_*_select()` — Enter 키 처리 (화면 전환/액션)
 
-mod bot;
 mod create_instance;
 mod daemon;
 mod dashboard;
 mod extensions;
 mod modules;
+mod properties;
 mod server_detail;
 mod servers;
 mod settings;
@@ -23,7 +23,6 @@ use super::app::*;
 use super::theme::Theme;
 use super::render;
 use crate::client::DaemonClient;
-use crate::config;
 
 // ═══════════════════════════════════════════════════════
 // 메뉴 빌더 (화면별)
@@ -40,8 +39,6 @@ pub fn build_menu(app: &App) -> Vec<MenuItem> {
         Screen::Modules        => modules::build_modules_menu(app),
         Screen::ModuleDetail { name } => modules::build_module_detail_menu(app, name),
         Screen::ModuleManifest => extensions::build_module_manifest_menu(app),
-        Screen::Bot            => bot::build_bot_menu(app),
-        Screen::BotAliases     => bot::build_bot_aliases_menu(app),
         Screen::Settings       => settings::build_settings_menu(app),
         Screen::Updates        => updates::build_updates_menu(app),
         Screen::Daemon         => daemon::build_daemon_menu(app),
@@ -78,8 +75,6 @@ pub fn render_screen(app: &App, frame: &mut Frame, area: Rect) {
             &app.menu_items, app.menu_selected, frame, area,
         ),
         Screen::ModuleManifest => render_list_screen("Module Manifest", &app.menu_items, app.menu_selected, frame, area),
-        Screen::Bot => render_detail_screen("Discord Bot", &app.menu_items, app.menu_selected, frame, area),
-        Screen::BotAliases => bot::render_bot_aliases(app, frame, area),
         Screen::Settings => render_detail_screen("Settings", &app.menu_items, app.menu_selected, frame, area),
         Screen::Updates => updates::render_updates_screen(app, frame, area),
         Screen::Daemon => render_detail_screen("Saba-Core", &app.menu_items, app.menu_selected, frame, area),
@@ -99,7 +94,9 @@ pub fn render_screen(app: &App, frame: &mut Frame, area: Rect) {
         }
         Screen::CommandMode => render_command_mode(app, frame, area),
         // ServerProperties는 더 이상 사용하지 않지만 enum 호환성을 위해 남겨둠
-        Screen::ServerProperties { .. } => {}
+        Screen::ServerProperties { name, .. } => render_editor_screen(
+            &format!("Properties: {}", name), app, frame, area,
+        ),
     }
 }
 
@@ -214,7 +211,7 @@ pub fn handle_screen_key(app: &mut App, key: &crossterm::event::KeyEvent) -> boo
     match &app.screen {
         // 에디터 화면: ↑↓ 로 필드 내비게이션
         // ★ editor_fields가 비어있으면(로딩 중/실패) 키를 소비하지 않음
-        Screen::ServerSettings { .. } => {
+        Screen::ServerSettings { .. } | Screen::ServerProperties { .. } => {
             if app.input_mode == InputMode::Normal && !app.editor_fields.is_empty() {
                 match key.code {
                     KeyCode::Up | KeyCode::Char('k') => {
@@ -262,8 +259,6 @@ pub fn handle_menu_select(app: &mut App) {
             modules::handle_module_detail_select(app, sel, &name);
         }
         Screen::ModuleManifest => extensions::handle_module_manifest_select(app, sel),
-        Screen::Bot => bot::handle_bot_select(app, sel),
-        Screen::BotAliases => bot::handle_bot_aliases_select(app, sel),
         Screen::Settings => settings::handle_settings_select(app, sel),
         Screen::Updates => updates::handle_updates_select(app, sel),
         Screen::Daemon => daemon::handle_daemon_select(app, sel),
@@ -297,7 +292,8 @@ pub fn execute_confirm(app: &mut App, action: ConfirmAction) {
                 }
             });
             app.pop_screen(); // 인스턴스 목록으로 복귀
-            app.flash("삭제 완료");
+            let msg = app.i18n.t("flash.deleted");
+            app.flash(&msg);
         }
         ConfirmAction::StopServer(name) => {
             tokio::spawn(async move {
@@ -316,7 +312,8 @@ pub fn execute_confirm(app: &mut App, action: ConfirmAction) {
                     Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
                 }
             });
-            app.flash("인스턴스 리셋 중...");
+            let msg = app.i18n.t("flash.resetting_instance");
+            app.flash(&msg);
         }
         ConfirmAction::RemoveExtension(ext_id) => {
             let ext_id2 = ext_id.clone();
@@ -328,7 +325,8 @@ pub fn execute_confirm(app: &mut App, action: ConfirmAction) {
             });
             app.cached_extensions.retain(|e| e.id != ext_id);
             app.pop_screen();
-            app.flash("익스텐션 삭제됨");
+            let msg = app.i18n.t("flash.extension_deleted");
+            app.flash(&msg);
         }
         ConfirmAction::InstallExtension(ext_id) => {
             tokio::spawn(async move {
@@ -337,7 +335,8 @@ pub fn execute_confirm(app: &mut App, action: ConfirmAction) {
                     Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
                 }
             });
-            app.flash("익스텐션 설치 중...");
+            let msg = app.i18n.t("flash.installing_extension");
+            app.flash(&msg);
         }
         ConfirmAction::RemoveModule(module_id) => {
             tokio::spawn(async move {
@@ -346,7 +345,8 @@ pub fn execute_confirm(app: &mut App, action: ConfirmAction) {
                     Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
                 }
             });
-            app.flash("모듈 삭제됨");
+            let msg = app.i18n.t("flash.module_deleted");
+            app.flash(&msg);
         }
         ConfirmAction::InstallModuleFromManifest(module_id) => {
             tokio::spawn(async move {
@@ -355,7 +355,8 @@ pub fn execute_confirm(app: &mut App, action: ConfirmAction) {
                     Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
                 }
             });
-            app.flash("모듈 설치 중...");
+            let msg = app.i18n.t("flash.installing_module");
+            app.flash(&msg);
         }
         ConfirmAction::ApplyInstanceUpdate(instance_name) => {
             tokio::spawn(async move {
@@ -372,16 +373,11 @@ pub fn execute_confirm(app: &mut App, action: ConfirmAction) {
                     push_out(&buf, vec![Out::Err(format!("✗ Instance '{}' not found", instance_name))]);
                 }
             });
-            app.flash("업데이트 적용 중...");
+            let msg = app.i18n.t("flash.applying_update");
+            app.flash(&msg);
         }
-        ConfirmAction::Custom(tag) => {
-            if tag == "BOT_ALIAS_RESET" {
-                let mut config = config::load_bot_config().unwrap_or_default();
-                config["moduleAliases"] = serde_json::json!({});
-                config["commandAliases"] = serde_json::json!({});
-                let _ = config::save_bot_config(&config);
-                app.flash("✓ 모든 별명 초기화됨");
-            }
+        ConfirmAction::Custom(_tag) => {
+            // 현재 사용 중인 Custom 확인 액션 없음 (BOT_ALIAS_RESET 제거됨)
         }
     }
     app.input_mode = InputMode::Normal;
@@ -448,6 +444,29 @@ pub fn save_editor_changes(app: &mut App) {
                     }
                 }
             });
+    } else if let Screen::ServerProperties { name, id } = screen {
+        // server.properties 저장: write_properties API 호출
+        // 데몬은 body로 {"settings": {...}} 형태를 기대한다.
+        let inst_name = name.clone();
+        let inst_id = id.clone();
+        tokio::spawn(async move {
+            let settings = properties::editor_changes_to_properties_json(&changes);
+            let payload = serde_json::json!({ "settings": settings });
+            match client.write_properties(&inst_id, payload).await {
+                Ok(result) => {
+                    let success = result.get("success").and_then(|v| v.as_bool()).unwrap_or(false);
+                    if success {
+                        push_out(&buf, vec![Out::Ok(format!(
+                            "✓ {} propert(y/ies) saved for '{}'", changes.len(), inst_name
+                        ))]);
+                    } else {
+                        let msg = result.get("message").and_then(|v| v.as_str()).unwrap_or("write failed");
+                        push_out(&buf, vec![Out::Err(format!("✗ {}: {}", inst_name, msg))]);
+                    }
+                }
+                Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
+            }
+        });
     }
 
     app.editor_changes.clear();
@@ -455,7 +474,8 @@ pub fn save_editor_changes(app: &mut App) {
     for field in &mut app.editor_fields {
         field.original_value = field.value.clone();
     }
-    app.flash("저장 완료!");
+    let msg = app.i18n.t("screen.saved");
+    app.flash(&msg);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -603,5 +623,58 @@ pub(crate) async fn load_instance_settings(
         return;
     }
 
+    push_out(buf, lines);
+}
+
+/// `read_properties` API로 서버의 properties 파일을 불러와 에디터 필드로 변환.
+///
+/// 데몬은 `{"success": bool, "properties": {...}, "exists": bool, ...}` 구조를 반환한다.
+/// - 성공 시: `.properties` 맵을 `properties_to_editor_lines`로 인코딩하여 전송.
+/// - 실패(`success=false`) 또는 호출 실패 시: `EDITOR_LOAD_FAIL:` 라인 송신.
+pub(crate) async fn load_server_properties(
+    client: &DaemonClient, name: &str, id: &str, buf: &OutputBuf,
+) {
+    let data = match client.read_properties(id).await {
+        Ok(d) => d,
+        Err(e) => {
+            push_out(buf, vec![Out::Text(format!(
+                "EDITOR_LOAD_FAIL:{} properties 읽기 실패: {}", name, e
+            ))]);
+            return;
+        }
+    };
+
+    // 데몬은 {"success": bool, "properties": {...}} 래퍼를 반환한다.
+    let success = data.get("success").and_then(|v| v.as_bool()).unwrap_or(false);
+    if !success {
+        let msg = data.get("message").and_then(|v| v.as_str()).unwrap_or("properties 읽기 실패");
+        push_out(buf, vec![Out::Text(format!(
+            "EDITOR_LOAD_FAIL:{}: {}", name, msg
+        ))]);
+        return;
+    }
+
+    let props = match data.get("properties") {
+        Some(p) => p,
+        None => {
+            push_out(buf, vec![Out::Text(format!(
+                "EDITOR_LOAD_FAIL:'{}' 응답에 properties 필드가 없습니다", name
+            ))]);
+            return;
+        }
+    };
+
+    let encoded = properties::properties_to_editor_lines(props);
+    if encoded.is_empty() {
+        push_out(buf, vec![Out::Text(format!(
+            "EDITOR_LOAD_FAIL:'{}'에 편집 가능한 properties가 없습니다", name
+        ))]);
+        return;
+    }
+
+    let lines: Vec<Out> = encoded
+        .into_iter()
+        .map(|raw| Out::Text(format!("EDITOR_FIELD:{}", raw)))
+        .collect();
     push_out(buf, lines);
 }

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
  * 모달 닫기 트랜지션 훅.
@@ -21,6 +21,13 @@ export function useModalClose(onClose, duration = 220) {
             onClose();
         }, duration);
     }, [onClose, duration]);
+
+    // 언마운트 시 타이머 정리 — 메모리 누수 방지
+    useEffect(() => {
+        return () => {
+            if (timerRef.current) clearTimeout(timerRef.current);
+        };
+    }, []);
 
     return { isClosing, requestClose };
 }

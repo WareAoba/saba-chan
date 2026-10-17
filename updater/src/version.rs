@@ -38,11 +38,6 @@ impl SemVer {
     pub fn is_newer_than(&self, other: &SemVer) -> bool {
         self > other
     }
-
-    /// 프리릴리스 여부
-    pub fn is_prerelease(&self) -> bool {
-        self.prerelease.is_some()
-    }
 }
 
 impl fmt::Display for SemVer {
@@ -108,7 +103,6 @@ mod tests {
     #[test]
     fn parse_prerelease() {
         let v = SemVer::parse("1.0.0-beta.1").unwrap();
-        assert!(v.is_prerelease());
         assert_eq!(v.prerelease, Some("beta.1".to_string()));
     }
 

@@ -181,6 +181,57 @@ impl Drop for ManagedProcess {
     }
 }
 
+/// Compile an optional log-level regex, warning (not failing) on an invalid pattern.
+fn compile_log_regex(log_pattern: Option<&str>) -> Option<Arc<Regex>> {
+    log_pattern.and_then(|pat| match Regex::new(pat) {
+        Ok(re) => Some(Arc::new(re)),
+        Err(e) => {
+            tracing::warn!("Invalid log_pattern '{}': {}, falling back to default", pat, e);
+            None
+        }
+    })
+}
+
+/// Create a shared `LogBuffer`, attaching a disk writer when `instance_dir` is set.
+fn make_log_buffer(instance_dir: Option<&Path>) -> Arc<Mutex<LogBuffer>> {
+    let mut buf = LogBuffer::new();
+    if let Some(dir) = instance_dir {
+        buf.file_tx = Some(spawn_disk_writer(console_log_path(dir)));
+    }
+    Arc::new(Mutex::new(buf))
+}
+
+/// Push a System-level message into the buffer and broadcast it.
+async fn emit_system_log(
+    log_buffer: &Arc<Mutex<LogBuffer>>,
+    log_tx: &broadcast::Sender<LogLine>,
+    msg: String,
+) {
+    let log_line = log_buffer.lock().await.push(LogSource::System, msg, LogLevel::Info);
+    let _ = log_tx.send(log_line);
+}
+
+/// Spawn the background task that waits for `child` to exit, logs the outcome,
+/// and flips the running flag to false. `label` prefixes the exit message.
+fn spawn_exit_waiter(
+    mut child: tokio::process::Child,
+    running_tx: Arc<watch::Sender<bool>>,
+    log_buffer: Arc<Mutex<LogBuffer>>,
+    log_tx: broadcast::Sender<LogLine>,
+    label: String,
+) {
+    tokio::spawn(async move {
+        let exit_msg = match child.wait().await {
+            Ok(status) => format!("{} exited with {}", label, status),
+            Err(e) => format!("{} wait failed: {}", label, e),
+        };
+        tracing::info!("{}", exit_msg);
+        let log_line = log_buffer.lock().await.push(LogSource::System, exit_msg, LogLevel::Info);
+        let _ = log_tx.send(log_line);
+        let _ = running_tx.send(false);
+    });
+}
+
 impl ManagedProcess {
     /// Spawn a new managed process.
     ///
@@ -228,25 +279,11 @@ impl ManagedProcess {
         let (log_tx, _) = broadcast::channel::<LogLine>(2048);
         let (running_tx, running_rx) = watch::channel(true);
 
-        let mut buf = LogBuffer::new();
-        // Attach disk writer if instance_dir is provided
-        if let Some(dir) = instance_dir {
-            let log_path = console_log_path(dir);
-            buf.file_tx = Some(spawn_disk_writer(log_path));
-        }
-        let log_buffer = Arc::new(Mutex::new(buf));
+        let log_buffer = make_log_buffer(instance_dir);
         let running_tx = Arc::new(running_tx);
 
         // Compile log pattern regex (shared across stdout/stderr readers)
-        let log_regex = log_pattern.and_then(|pat| {
-            match Regex::new(pat) {
-                Ok(re) => Some(Arc::new(re)),
-                Err(e) => {
-                    tracing::warn!("Invalid log_pattern '{}': {}, falling back to default", pat, e);
-                    None
-                }
-            }
-        });
+        let log_regex = compile_log_regex(log_pattern);
 
         // Take ownership of stdio handles
         let stdout = child.stdout.take();
@@ -304,28 +341,9 @@ impl ManagedProcess {
         }
 
         // ── process waiter ───────────────────────────────────
-        {
-            let running = running_tx.clone();
-            let buf = log_buffer.clone();
-            let bc = log_tx.clone();
-            tokio::spawn(async move {
-                let exit_msg = match child.wait().await {
-                    Ok(status) => format!("Process exited with {}", status),
-                    Err(e) => format!("Failed to wait for process: {}", e),
-                };
-                tracing::info!("{}", exit_msg);
-                let log_line = buf.lock().await.push(LogSource::System, exit_msg, LogLevel::Info);
-                let _ = bc.send(log_line);
-                let _ = running.send(false);
-            });
-        }
+        spawn_exit_waiter(child, running_tx.clone(), log_buffer.clone(), log_tx.clone(), "Process".to_string());
 
-        // System log entry
-        {
-            let msg = format!("Process started with PID {}", pid);
-            let log_line = log_buffer.lock().await.push(LogSource::System, msg, LogLevel::Info);
-            let _ = log_tx.send(log_line);
-        }
+        emit_system_log(&log_buffer, &log_tx, format!("Process started with PID {}", pid)).await;
 
         Ok(Self {
             stdin_tx,
@@ -395,23 +413,10 @@ impl ManagedProcess {
         let (log_tx, _) = broadcast::channel::<LogLine>(2048);
         let (running_tx, running_rx) = watch::channel(true);
 
-        let mut buf = LogBuffer::new();
-        if let Some(dir) = instance_dir {
-            let log_path = console_log_path(dir);
-            buf.file_tx = Some(spawn_disk_writer(log_path));
-        }
-        let log_buffer = Arc::new(Mutex::new(buf));
+        let log_buffer = make_log_buffer(instance_dir);
         let running_tx = Arc::new(running_tx);
 
-        let log_regex = log_pattern.and_then(|pat| {
-            match regex::Regex::new(pat) {
-                Ok(re) => Some(Arc::new(re)),
-                Err(e) => {
-                    tracing::warn!("Invalid log_pattern '{}': {}", pat, e);
-                    None
-                }
-            }
-        });
+        let log_regex = compile_log_regex(log_pattern);
 
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
@@ -470,30 +475,21 @@ impl ManagedProcess {
         }
 
         // ── process waiter ──
-        {
-            let running = running_tx.clone();
-            let buf = log_buffer.clone();
-            let bc = log_tx.clone();
-            let desc = description_owned.clone();
-            tokio::spawn(async move {
-                let exit_msg = match child.wait().await {
-                    Ok(status) => format!("Log follower '{}' exited with {}", desc, status),
-                    Err(e) => format!("Log follower '{}' error: {}", desc, e),
-                };
-                tracing::info!("{}", exit_msg);
-                let log_line = buf.lock().await.push(LogSource::System, exit_msg, LogLevel::Info);
-                let _ = bc.send(log_line);
-                let _ = running.send(false);
-            });
-        }
+        spawn_exit_waiter(
+            child,
+            running_tx.clone(),
+            log_buffer.clone(),
+            log_tx.clone(),
+            format!("Log follower '{}'", description_owned),
+        );
 
         // System log
-        {
-            let msg = format!("Log streaming started: '{}'", description_owned);
-            tracing::info!("{}", msg);
-            let log_line = log_buffer.lock().await.push(LogSource::System, msg, LogLevel::Info);
-            let _ = log_tx.send(log_line);
-        }
+        emit_system_log(
+            &log_buffer,
+            &log_tx,
+            format!("Log streaming started: '{}'", description_owned),
+        )
+        .await;
 
         Ok(Self {
             stdin_tx,
@@ -770,23 +766,37 @@ fn format_unix_timestamp(ts: u64) -> String {
 
 /// Parse `YYYY-MM-DD HH:MM:SS` back to Unix timestamp.
 fn parse_datetime_to_unix(s: &str) -> Option<u64> {
-    // Expected: "2026-03-05 12:34:56"
-    if s.len() < 19 { return None; }
+    if s.len() != 19 || !s.is_ascii()
+        || &s[4..5] != "-" || &s[7..8] != "-" || &s[10..11] != " "
+        || &s[13..14] != ":" || &s[16..17] != ":"
+    {
+        return None;
+    }
     let y: i64 = s[0..4].parse().ok()?;
-    let m: u64 = s[5..7].parse().ok()?;
-    let d: u64 = s[8..10].parse().ok()?;
+    let m: i64 = s[5..7].parse().ok()?;
+    let d: i64 = s[8..10].parse().ok()?;
     let hh: u64 = s[11..13].parse().ok()?;
     let mm: u64 = s[14..16].parse().ok()?;
     let ss: u64 = s[17..19].parse().ok()?;
+    let days_in_month = match m {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) => 29,
+        2 => 28,
+        _ => return None,
+    };
+    if !(1..=days_in_month).contains(&d) || hh > 23 || mm > 59 || ss > 59 {
+        return None;
+    }
 
     // Inverse of civil date → days since epoch
     let y_adj = if m <= 2 { y - 1 } else { y };
     let m_adj = if m > 2 { m - 3 } else { m + 9 };
     let era = if y_adj >= 0 { y_adj } else { y_adj - 399 } / 400;
-    let yoe = (y_adj - era * 400) as u64;
+    let yoe = y_adj - era * 400;
     let doy = (153 * m_adj + 2) / 5 + d - 1;
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    let days = era as u64 * 146097 + doe - 719468;
+    let days = u64::try_from(era * 146097 + doe - 719468).ok()?;
 
     Some(days * 86400 + hh * 3600 + mm * 60 + ss)
 }
@@ -916,8 +926,16 @@ fn parse_disk_log_line(id: u64, raw: &str) -> LogLine {
 
 /// Parse `[datetime] [SOURCE/LEVEL] content`
 fn parse_structured_disk_line(raw: &str) -> (u64, LogSource, LogLevel, String) {
-    // Find first `]` for datetime
-    let dt_end = raw.find(']').unwrap_or(0);
+    let fallback = || (current_timestamp(), LogSource::Stdout, LogLevel::Info, raw.to_string());
+    if !raw.starts_with('[') {
+        return fallback();
+    }
+    let Some(dt_end) = raw.find(']') else {
+        return fallback();
+    };
+    let Some(timestamp) = parse_datetime_to_unix(&raw[1..dt_end]) else {
+        return fallback();
+    };
     let after_dt = &raw[dt_end + 1..];
 
     // Find `[SOURCE/LEVEL]`
@@ -944,16 +962,11 @@ fn parse_structured_disk_line(raw: &str) -> (u64, LogSource, LogLevel, String) {
                 (LogSource::Stdout, LogLevel::Info)
             };
 
-            // Try parsing timestamp
-            let dt_str = &raw[1..dt_end];
-            let timestamp = parse_datetime_to_unix(dt_str)
-                .unwrap_or_else(current_timestamp);
-
             return (timestamp, source, level, content);
         }
     }
 
-    (current_timestamp(), LogSource::Stdout, LogLevel::Info, raw.to_string())
+    fallback()
 }
 
 // ─── Tests ───────────────────────────────────────────────────
@@ -961,6 +974,36 @@ fn parse_structured_disk_line(raw: &str) -> (u64, LogSource, LogLevel, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recovery_datetime_parser_rejects_invalid_or_unicode_input() {
+        for value in [
+            "2026-00-05 12:34:56", "2026-13-05 12:34:56",
+            "2026-03-00 12:34:56", "2026-02-29 12:34:56",
+            "2026-04-31 12:34:56", "2026-03-05 24:34:56",
+            "2026-03-05 12:60:56", "2026-03-05 12:34:60",
+            "1969-12-31 23:59:59", "0000-01-01 00:00:00",
+            "2026/03/05 12:34:56", "2026-03-05 12:34:56 trailing",
+            "한글이 포함된 잘못된 날짜입니다",
+        ] {
+            assert_eq!(parse_datetime_to_unix(value), None, "accepted: {value}");
+        }
+    }
+
+    #[test]
+    fn recovery_datetime_parser_roundtrips_epoch_and_leap_days() {
+        for value in [0, 951_782_400, 1_772_713_496, 4_102_444_799] {
+            assert_eq!(parse_datetime_to_unix(&format_unix_timestamp(value)), Some(value));
+        }
+    }
+
+    #[test]
+    fn recovery_structured_log_parser_preserves_malformed_lines() {
+        for value in ["[malformed [STDOUT/INFO] keep", "[한글이 포함된 잘못된 날짜입니다] [STDOUT/INFO] keep"] {
+            let (_, _, _, content) = parse_structured_disk_line(value);
+            assert_eq!(content, value);
+        }
+    }
 
     // ═══════════════════════════════════════════════════════
     // LogBuffer 단위 테스트

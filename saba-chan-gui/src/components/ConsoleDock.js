@@ -27,7 +27,7 @@ export function ConsoleDock({
         <div className={`console-dock${hasProgressBar ? ' console-dock-above-progress' : ''}`}>
             <div className="console-dock-inner">
                 {entries.map(([instanceId, state]) => (
-                    <button
+                    <button type="button"
                         key={instanceId}
                         className={`console-dock-item ${state.minimized ? 'console-dock-minimized' : 'console-dock-active'}${state.pinned ? ' console-dock-pinned' : ''}`}
                         onClick={() => {
@@ -44,7 +44,7 @@ export function ConsoleDock({
                                 closeConsole(instanceId);
                             }
                         }}
-                        title={
+                        data-tooltip={
                             state.minimized
                                 ? t('console.dock_restore', { name: state.server.name, defaultValue: `Restore: ${state.server.name}` })
                                 : t('console.dock_focus', { name: state.server.name, defaultValue: `Focus: ${state.server.name}` })
@@ -60,11 +60,11 @@ export function ConsoleDock({
                 ))}
                 {/* Popout instance — clicking brings it back */}
                 {hasPopout && popoutServer && (
-                    <button
+                    <button type="button"
                         key="popout"
                         className="console-dock-item console-dock-popout"
                         onClick={() => popinConsole(consolePopoutInstanceId)}
-                        title={t('console.popin', { name: popoutServer.name, defaultValue: `Bring back: ${popoutServer.name}` })}
+                        data-tooltip={t('console.popin', { name: popoutServer.name, defaultValue: `Bring back: ${popoutServer.name}` })}
                     >
                         <span className="console-dock-icon">
                             <Icon name="external-link-in" size="sm" />

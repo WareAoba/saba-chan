@@ -1,3 +1,4 @@
+import { ModalOverlay } from './Modals';
 import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -13,7 +14,6 @@ import {
     setCustomTheme,
     resetCustomTheme,
     ACCENT_PRESETS,
-    THEME_DEFAULTS,
     applyCustomTheme,
 } from '../../utils/themeManager';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
@@ -54,8 +54,11 @@ function SettingsModal({
     const [localConsoleBuffer, setLocalConsoleBuffer] = useState(consoleBufferSize || 2000);
     const [showAboutPage, setShowAboutPage] = useState(false);
     const [aboutExiting, setAboutExiting] = useState(false);
-    const [appVersion, setAppVersion] = useState('0.1.0');
+    const [appVersion, setAppVersion] = useState('');
     const [componentInfo, setComponentInfo] = useState(null);
+    // 무결성(해시) 검증 결과 — null=미조회/실패, 객체=조회 성공
+    // overall === 'TamperDetected'일 때만 경고 아이콘 표시
+    const [integrityStatus, setIntegrityStatus] = useState(null);
     const aboutBtnRef = useRef(null);
     const [aboutRevealOrigin, setAboutRevealOrigin] = useState({ x: '100%', y: '0%' });
     const tabOrder = ['general', 'appearance', 'extensions', 'advanced'];
@@ -131,6 +134,13 @@ function SettingsModal({
             }
             if (window.api?.getComponentInfo) {
                 window.api.getComponentInfo().then((info) => info && setComponentInfo(info)).catch(() => {});
+            }
+            // 무결성 검증 결과 — 모달이 열릴 때마다 최신 상태 조회
+            // (네트워크 의존이므로 비동기, 실패 시 null 유지하여 경고 미표시)
+            if (window.api?.getIntegrityStatus) {
+                window.api.getIntegrityStatus()
+                    .then((status) => status && setIntegrityStatus(status))
+                    .catch(() => {});
             }
         }
     }, [isOpen]);
@@ -289,7 +299,7 @@ function SettingsModal({
     const handleIpcPortChange = (value) => {
         const port = parseInt(value, 10);
         setLocalIpcPort(value);
-        if (isNaN(port) || port < 1024 || port > 65535) {
+        if (Number.isNaN(port) || port < 1024 || port > 65535) {
             setIpcPortError(t('gui:settings_modal.ipc_port_invalid'));
             return;
         }
@@ -313,43 +323,54 @@ function SettingsModal({
     }
 
     return (
-        <div className={clsx('settings-modal-overlay', { closing: isClosing })} onClick={requestClose}>
-            <div className="settings-modal-container" onClick={(e) => e.stopPropagation()}>
+        <ModalOverlay  className={clsx('settings-modal-overlay', { closing: isClosing })} onClose={requestClose}>
+            <div className="settings-modal-container" >
                 {!showUpdatePanel && (
                     <>
                         <div className="settings-modal-header">
                             <h2 style={{ fontSize: '1.3rem' }}>{t('gui:settings_modal.title')}</h2>
-                            <button
-                                className="settings-about-btn"
+                            <button type="button"
+                                className={clsx('settings-about-btn', {
+                                    'has-integrity-warning': integrityStatus?.ok === true && integrityStatus?.overall === 'TamperDetected',
+                                })}
                                 ref={aboutBtnRef}
                                 onClick={handleAboutOpen}
-                                title={t('gui:settings_modal.about_title')}
+                                title={
+                                    integrityStatus?.overall === 'TamperDetected'
+                                        ? t('gui:settings_modal.integrity_tampered_tooltip', '컴포넌트 변조 감지됨 — 정보에서 확인')
+                                        : t('gui:settings_modal.about_title')
+                                }
                             >
                                 <Icon name="info" size="sm" />
+                                {integrityStatus?.ok === true && integrityStatus?.overall === 'TamperDetected' && (
+                                                <output className="settings-about-warning-badge" aria-label="integrity warning">
+                                        <Icon name="alertTriangle" size="xs" />
+                                                </output>
+                                )}
                             </button>
                         </div>
 
                         <div className="settings-modal-tabs" ref={tabsRef}>
                             <div className="settings-tab-indicator" ref={indicatorRef} />
-                            <button
+                            <button type="button"
                                 className={clsx('settings-tab', { active: activeTab === 'general' })}
                                 onClick={() => handleTabChange('general')}
                             >
                                 {t('gui:settings_modal.general')}
                             </button>
-                            <button
+                            <button type="button"
                                 className={clsx('settings-tab', { active: activeTab === 'appearance' })}
                                 onClick={() => handleTabChange('appearance')}
                             >
                                 {t('gui:settings_modal.appearance')}
                             </button>
-                            <button
+                            <button type="button"
                                 className={clsx('settings-tab', { active: activeTab === 'extensions' })}
                                 onClick={() => handleTabChange('extensions')}
                             >
                                 {t('gui:settings_modal.extensions_tab', 'Extensions')}
                             </button>
-                            <button
+                            <button type="button"
                                 className={clsx('settings-tab', { active: activeTab === 'advanced' })}
                                 onClick={() => handleTabChange('advanced')}
                             >
@@ -370,7 +391,7 @@ function SettingsModal({
                             <h3>{t('gui:settings_modal.general')}</h3>
 
                             <div className="setting-item">
-                                <label className="setting-label">
+                                <label htmlFor="settingsmodal-394" className="setting-label">
                                     <span className="setting-title">
                                         <Icon name="globe" size="sm" /> {t('gui:settings_modal.language_label')}
                                     </span>
@@ -378,7 +399,7 @@ function SettingsModal({
                                         {t('gui:settings_modal.language_description')}
                                     </span>
                                 </label>
-                                <CustomDropdown
+                                <CustomDropdown id="settingsmodal-394"
                                     className="setting-select"
                                     value={selectedLanguage}
                                     onChange={(val) => handleLanguageChange(val)}
@@ -398,7 +419,7 @@ function SettingsModal({
                             </div>
 
                             <div className="setting-item">
-                                <label className="setting-label">
+                                <label htmlFor="settingsmodal-422" className="setting-label">
                                     <span className="setting-title">
                                         <Icon name="refresh" size="sm" />{' '}
                                         {t('gui:settings_modal.refresh_interval_label')}
@@ -407,7 +428,7 @@ function SettingsModal({
                                         {t('gui:settings_modal.refresh_interval_description')}
                                     </span>
                                 </label>
-                                <CustomDropdown
+                                <CustomDropdown id="settingsmodal-422"
                                     className="setting-select"
                                     value={localRefreshInterval}
                                     onChange={(val) => handleRefreshIntervalChange(Number(val))}
@@ -422,20 +443,20 @@ function SettingsModal({
                             </div>
 
                             {/* 사바 스토리지 — 클릭하면 SabaStorage로 전환 */}
-                            <div
+                            <button type="button"
                                 className="setting-item setting-item-clickable"
                                 onClick={() => setShowUpdatePanel(true)}
                             >
-                                <label className="setting-label">
+                                <span className="setting-label">
                                     <span className="setting-title">
                                         <Icon name="package" size="sm" /> {t('saba_storage.title', '사바 스토리지')}
                                     </span>
                                     <span className="setting-description">
                                         {t('saba_storage.setting_description', '업데이트, 모듈, 익스텐션 관리')}
                                     </span>
-                                </label>
+                                </span>
                                 <Icon name="chevronRight" size="sm" color="var(--brand-primary)" />
-                            </div>
+                            </button>
                         </div>
                     )}
 
@@ -459,7 +480,7 @@ function SettingsModal({
 
                             {/* ── 1. 라이트/다크 테마 ── */}
                             <div className="setting-item">
-                                <label className="setting-label">
+                                <label htmlFor="settingsmodal-483" className="setting-label">
                                     <span className="setting-title">
                                         <Icon name="palette" size="sm" /> {t('gui:settings_modal.theme_label')}
                                     </span>
@@ -467,7 +488,7 @@ function SettingsModal({
                                         {t('gui:settings_modal.theme_description')}
                                     </span>
                                 </label>
-                                <CustomDropdown
+                                <CustomDropdown id="settingsmodal-483"
                                     className="setting-select"
                                     value={selectedTheme}
                                     onChange={(val) => handleThemeChange(val)}
@@ -481,7 +502,7 @@ function SettingsModal({
 
                             {/* ── 2. 강조색 프리셋 ── */}
                             <div className="setting-item setting-item-vertical">
-                                <label className="setting-label">
+                                <label htmlFor="settingsmodal-505" className="setting-label">
                                     <span className="setting-title">
                                         <Icon name="palette" size="sm" /> {t('gui:settings_modal.accent_color_label', 'Accent Color')}
                                     </span>
@@ -491,7 +512,7 @@ function SettingsModal({
                                 </label>
                                 <div className="accent-preset-grid">
                                     {ACCENT_PRESETS.map((preset) => (
-                                        <button
+                                        <button type="button"
                                             key={preset.name}
                                             className={clsx('accent-preset-btn', {
                                                 active: customTheme.accentColor === preset.primary,
@@ -509,7 +530,7 @@ function SettingsModal({
                                         />
                                     ))}
                                     <label className="accent-preset-btn accent-preset-custom" title={t('gui:settings_modal.accent_custom', 'Custom')}>
-                                        <input
+                                        <input id="settingsmodal-505"
                                             type="color"
                                             value={customTheme.accentColor}
                                             onChange={(e) =>
@@ -526,7 +547,7 @@ function SettingsModal({
 
                             {/* ── 2-1. 그라데이션 토글 ── */}
                             <div className="setting-item">
-                                <label className="setting-label">
+                                <label htmlFor="settingsmodal-550" className="setting-label">
                                     <span className="setting-title">
                                         <Icon name="palette" size="sm" /> {t('gui:settings_modal.gradient_label', 'Gradient Effect')}
                                     </span>
@@ -534,7 +555,7 @@ function SettingsModal({
                                         {t('gui:settings_modal.gradient_description', 'Apply gradient effect to buttons and app background')}
                                     </span>
                                 </label>
-                                <SabaToggle
+                                <SabaToggle id="settingsmodal-550"
                                     checked={customTheme.useGradient}
                                     onChange={(checked) => handleCustomThemeChange({ useGradient: checked })}
                                 />
@@ -542,7 +563,7 @@ function SettingsModal({
 
                             {/* ── 3. 문자 크기 배율 ── */}
                             <div className="setting-item setting-item-vertical">
-                                <label className="setting-label">
+                                <label htmlFor="settingsmodal-566" className="setting-label">
                                     <span className="setting-title">
                                         <Icon name="settings" size="sm" /> {t('gui:settings_modal.font_scale_label', 'Font Size')}
                                     </span>
@@ -551,7 +572,7 @@ function SettingsModal({
                                     </span>
                                 </label>
                                 <div className="font-scale-row">
-                                    <input
+                                    <input id="settingsmodal-566"
                                         type="range"
                                         className="font-scale-slider"
                                         min={50}
@@ -566,7 +587,7 @@ function SettingsModal({
 
                             {/* ── 4. 트랜지션 토글 ── */}
                             <div className="setting-item">
-                                <label className="setting-label">
+                                <label htmlFor="settingsmodal-590" className="setting-label">
                                     <span className="setting-title">
                                         <Icon name="settings" size="sm" /> {t('gui:settings_modal.transitions_label', 'Animations')}
                                     </span>
@@ -574,7 +595,7 @@ function SettingsModal({
                                         {t('gui:settings_modal.transitions_description', 'Enable or disable UI transition animations')}
                                     </span>
                                 </label>
-                                <SabaToggle
+                                <SabaToggle id="settingsmodal-590"
                                     checked={customTheme.enableTransitions}
                                     onChange={(checked) => handleCustomThemeChange({ enableTransitions: checked })}
                                 />
@@ -585,7 +606,7 @@ function SettingsModal({
 
                             {/* ── 5-1. 콘솔 구문강조 토글 ── */}
                             <div className="setting-item">
-                                <label className="setting-label">
+                                <label htmlFor="settingsmodal-609" className="setting-label">
                                     <span className="setting-title">
                                         <Icon name="terminal" size="sm" /> {t('gui:settings_modal.console_syntax_label', 'Syntax Highlighting')}
                                     </span>
@@ -593,7 +614,7 @@ function SettingsModal({
                                         {t('gui:settings_modal.console_syntax_description', 'Color-code log output in the server console')}
                                     </span>
                                 </label>
-                                <SabaToggle
+                                <SabaToggle id="settingsmodal-609"
                                     checked={customTheme.consoleSyntaxHighlight}
                                     onChange={(checked) => handleCustomThemeChange({ consoleSyntaxHighlight: checked })}
                                 />
@@ -601,7 +622,7 @@ function SettingsModal({
 
                             {/* ── 5-2. 콘솔 뒷배경색 ── */}
                             <div className="setting-item">
-                                <label className="setting-label">
+                                <label htmlFor="settingsmodal-625" className="setting-label">
                                     <span className="setting-title">
                                         <Icon name="terminal" size="sm" /> {t('gui:settings_modal.console_bg_label', 'Console Background')}
                                     </span>
@@ -610,7 +631,7 @@ function SettingsModal({
                                     </span>
                                 </label>
                                 <label className="color-input-wrapper">
-                                    <input
+                                    <input id="settingsmodal-625"
                                         type="color"
                                         value={customTheme.consoleBgColor}
                                         onChange={(e) => handleCustomThemeChange({ consoleBgColor: e.target.value })}
@@ -622,7 +643,7 @@ function SettingsModal({
 
                             {/* ── 5-3. 콘솔 기본 폰트 컬러 ── */}
                             <div className="setting-item">
-                                <label className="setting-label">
+                                <label htmlFor="settingsmodal-646" className="setting-label">
                                     <span className="setting-title">
                                         <Icon name="terminal" size="sm" /> {t('gui:settings_modal.console_text_label', 'Console Text Color')}
                                     </span>
@@ -631,7 +652,7 @@ function SettingsModal({
                                     </span>
                                 </label>
                                 <label className="color-input-wrapper">
-                                    <input
+                                    <input id="settingsmodal-646"
                                         type="color"
                                         value={customTheme.consoleTextColor}
                                         onChange={(e) => handleCustomThemeChange({ consoleTextColor: e.target.value })}
@@ -643,7 +664,7 @@ function SettingsModal({
 
                             {/* ── 5-4. 콘솔 텍스트 크기 ── */}
                             <div className="setting-item setting-item-vertical">
-                                <label className="setting-label">
+                                <label htmlFor="settingsmodal-667" className="setting-label">
                                     <span className="setting-title">
                                         <Icon name="terminal" size="sm" /> {t('gui:settings_modal.console_font_scale_label', 'Console Text Size')}
                                     </span>
@@ -652,7 +673,7 @@ function SettingsModal({
                                     </span>
                                 </label>
                                 <div className="font-scale-row">
-                                    <input
+                                    <input id="settingsmodal-667"
                                         type="range"
                                         className="font-scale-slider"
                                         min={50}
@@ -681,16 +702,16 @@ function SettingsModal({
                             </div>
 
                             {/* ── 초기화 버튼 ── */}
-                            <div className="setting-item setting-item-clickable" onClick={handleResetTheme} style={{ marginTop: 8 }}>
-                                <label className="setting-label" style={{ cursor: 'pointer' }}>
+                            <button type="button"    className="setting-item setting-item-clickable" onClick={handleResetTheme} style={{ marginTop: 8 }}>
+                                <span className="setting-label" style={{ cursor: 'pointer' }}>
                                     <span className="setting-title">
                                         <Icon name="refresh" size="sm" /> {t('gui:settings_modal.reset_theme_label', 'Reset to Default')}
                                     </span>
                                     <span className="setting-description">
                                         {t('gui:settings_modal.reset_theme_description', 'Restore all appearance settings to defaults')}
                                     </span>
-                                </label>
-                            </div>
+                                </span>
+                            </button>
                         </div>
                     )}
 
@@ -741,7 +762,7 @@ function SettingsModal({
                                 ))
                             )}
 
-                            <div
+                            <button type="button"
                                 className="setting-item setting-item-clickable"
                                 style={{ marginTop: 8 }}
                                 onClick={() => {
@@ -749,16 +770,16 @@ function SettingsModal({
                                     setTimeout(() => setShowUpdatePanel(true), 50);
                                 }}
                             >
-                                <label className="setting-label" style={{ cursor: 'pointer' }}>
+                                <span className="setting-label" style={{ cursor: 'pointer' }}>
                                     <span className="setting-title">
                                         <Icon name="package" size="sm" /> {t('saba_storage.title', '사바 스토리지')}
                                     </span>
                                     <span className="setting-description">
                                         {t('gui:settings_modal.extensions_store_hint', '설치·삭제·업데이트')}
                                     </span>
-                                </label>
+                                </span>
                                 <Icon name="chevronRight" size="sm" color="var(--brand-primary)" />
-                            </div>
+                            </button>
                         </div>
                     )}
 
@@ -772,7 +793,7 @@ function SettingsModal({
 
                             {/* 비밀번호 자동 생성 설정 */}
                             <div className="setting-item">
-                                <label className="setting-label">
+                                <label htmlFor="settingsmodal-796" className="setting-label">
                                     <span className="setting-title">
                                         <Icon name="key" size="sm" />{' '}
                                         {t('gui:settings_modal.auto_generate_passwords_label', 'Auto-generate Passwords')}
@@ -781,7 +802,7 @@ function SettingsModal({
                                         {t('gui:settings_modal.auto_generate_passwords_description', 'Automatically generate random RCON/REST passwords on every server launch for security.')}
                                     </span>
                                 </label>
-                                <SabaToggle
+                                <SabaToggle id="settingsmodal-796"
                                     checked={autoGeneratePasswords}
                                     onChange={(checked) => useSettingsStore.getState().update({ autoGeneratePasswords: checked })}
                                 />
@@ -789,7 +810,7 @@ function SettingsModal({
 
                             {/* 포트 충돌 검사 설정 */}
                             <div className="setting-item">
-                                <label className="setting-label">
+                                <label htmlFor="settingsmodal-813" className="setting-label">
                                     <span className="setting-title">
                                         <Icon name="alertCircle" size="sm" />{' '}
                                         {t('gui:settings_modal.port_conflict_check_label', 'Port Conflict Detection')}
@@ -798,7 +819,7 @@ function SettingsModal({
                                         {t('gui:settings_modal.port_conflict_check_description', 'Show warnings when multiple server instances use the same port.')}
                                     </span>
                                 </label>
-                                <SabaToggle
+                                <SabaToggle id="settingsmodal-813"
                                     checked={portConflictCheck}
                                     onChange={(checked) => useSettingsStore.getState().update({ portConflictCheck: checked })}
                                 />
@@ -806,7 +827,7 @@ function SettingsModal({
 
                             {/* IPC 포트 설정 */}
                             <div className="setting-item">
-                                <label className="setting-label">
+                                <label htmlFor="settingsmodal-830" className="setting-label">
                                     <span className="setting-title">
                                         <Icon name="hash" size="sm" /> {t('gui:settings_modal.ipc_port_label')}
                                     </span>
@@ -814,7 +835,7 @@ function SettingsModal({
                                         {t('gui:settings_modal.ipc_port_description')}
                                     </span>
                                 </label>
-                                <input
+                                <input id="settingsmodal-830"
                                     type="number"
                                     className={clsx('setting-input-number', { 'setting-input-error': ipcPortError })}
                                     value={localIpcPort}
@@ -837,7 +858,7 @@ function SettingsModal({
 
                             {/* 커스텀 릴레이 서버 URL */}
                             <div className="setting-item">
-                                <label className="setting-label">
+                                <label htmlFor="settingsmodal-861" className="setting-label">
                                     <span className="setting-title">
                                         <Icon name="globe" size="sm" />{' '}
                                         {t('gui:settings_modal.relay_url_label', '릴레이 서버 URL')}
@@ -849,12 +870,12 @@ function SettingsModal({
                                         )}
                                     </span>
                                 </label>
-                                <input
+                                <input id="settingsmodal-861"
                                     type="text"
                                     className="setting-input-text"
                                     value={discordCloudRelayUrl || ''}
                                     onChange={(e) =>
-                                        onDiscordCloudRelayUrlChange && onDiscordCloudRelayUrlChange(e.target.value)
+                                        onDiscordCloudRelayUrlChange?.(e.target.value)
                                     }
                                     placeholder="https://relay.saba-chan.app"
                                 />
@@ -862,7 +883,7 @@ function SettingsModal({
 
                             {/* 콘솔 버퍼 크기 설정 */}
                             <div className="setting-item">
-                                <label className="setting-label">
+                                <label htmlFor="settingsmodal-886" className="setting-label">
                                     <span className="setting-title">
                                         <Icon name="terminal" size="sm" />{' '}
                                         {t('gui:settings_modal.console_buffer_label')}
@@ -871,7 +892,7 @@ function SettingsModal({
                                         {t('gui:settings_modal.console_buffer_description')}
                                     </span>
                                 </label>
-                                <CustomDropdown
+                                <CustomDropdown id="settingsmodal-886"
                                     className="setting-select"
                                     value={localConsoleBuffer}
                                     onChange={(val) => handleConsoleBufferChange(Number(val))}
@@ -888,20 +909,19 @@ function SettingsModal({
                             {/* GUI 컴포넌트 테스트 섹션 (개발자 모드 전용) */}
                             {devMode && (
                                 <div className={clsx('gui-test-section', { open: guiTestOpen })}>
-                                    <h4 className="gui-test-title" onClick={() => setGuiTestOpen(!guiTestOpen)}>
+                                    <button type="button" className="gui-test-title" aria-expanded={guiTestOpen} onClick={() => setGuiTestOpen(!guiTestOpen)}>
                                         <Icon name="tool" size="sm" /> GUI Test
                                         <Icon
                                             name={guiTestOpen ? 'chevronUp' : 'chevronDown'}
                                             size="sm"
                                             className="gui-test-chevron"
                                         />
-                                    </h4>
+                                    </button>
                                     <div className="gui-test-grid">
-                                        <button
+                                        <button type="button"
                                             className="gui-test-btn gui-test-success"
                                             onClick={() => {
-                                                onTestModal &&
-                                                    onTestModal({
+                                                onTestModal?.({
                                                         type: 'success',
                                                         title: 'Success!',
                                                         message: '작업이 성공적으로 완료되었습니다.',
@@ -910,11 +930,10 @@ function SettingsModal({
                                         >
                                             <Icon name="check" size="sm" /> Success
                                         </button>
-                                        <button
+                                        <button type="button"
                                             className="gui-test-btn gui-test-failure"
                                             onClick={() => {
-                                                onTestModal &&
-                                                    onTestModal({
+                                                onTestModal?.({
                                                         type: 'failure',
                                                         title: 'Error!',
                                                         message: '예기치 못한 오류가 발생했습니다.',
@@ -923,11 +942,10 @@ function SettingsModal({
                                         >
                                             <Icon name="x" size="sm" /> Failure
                                         </button>
-                                        <button
+                                        <button type="button"
                                             className="gui-test-btn gui-test-notification"
                                             onClick={() => {
-                                                onTestModal &&
-                                                    onTestModal({
+                                                onTestModal?.({
                                                         type: 'notification',
                                                         title: 'Notice',
                                                         message: '새로운 업데이트가 있습니다.',
@@ -936,11 +954,10 @@ function SettingsModal({
                                         >
                                             <Icon name="info" size="sm" /> Notification
                                         </button>
-                                        <button
+                                        <button type="button"
                                             className="gui-test-btn gui-test-question"
                                             onClick={() => {
-                                                onTestModal &&
-                                                    onTestModal({
+                                                onTestModal?.({
                                                         type: 'question',
                                                         title: 'Confirm?',
                                                         message: '이 작업을 진행하시겠습니까?',
@@ -951,43 +968,39 @@ function SettingsModal({
                                         >
                                             <Icon name="alertCircle" size="sm" /> Question
                                         </button>
-                                        <button
+                                        <button type="button"
                                             className="gui-test-btn gui-test-toast-info"
                                             onClick={() => {
-                                                window.showToast &&
-                                                    window.showToast('ℹ️ 정보 토스트 메시지입니다.', 'info', 3000);
+                                                window.showToast?.('ℹ️ 정보 토스트 메시지입니다.', 'info', 3000);
                                             }}
                                         >
                                             <Icon name="info" size="sm" /> Toast (Info)
                                         </button>
-                                        <button
+                                        <button type="button"
                                             className="gui-test-btn gui-test-toast-success"
                                             onClick={() => {
-                                                window.showToast &&
-                                                    window.showToast('✅ 성공 토스트 메시지입니다.', 'success', 3000);
+                                                window.showToast?.('✅ 성공 토스트 메시지입니다.', 'success', 3000);
                                             }}
                                         >
                                             <Icon name="check" size="sm" /> Toast (Success)
                                         </button>
-                                        <button
+                                        <button type="button"
                                             className="gui-test-btn gui-test-toast-warning"
                                             onClick={() => {
-                                                window.showToast &&
-                                                    window.showToast('⚠️ 경고 토스트 메시지입니다.', 'warning', 3000);
+                                                window.showToast?.('⚠️ 경고 토스트 메시지입니다.', 'warning', 3000);
                                             }}
                                         >
                                             <Icon name="alertCircle" size="sm" /> Toast (Warning)
                                         </button>
-                                        <button
+                                        <button type="button"
                                             className="gui-test-btn gui-test-toast-error"
                                             onClick={() => {
-                                                window.showToast &&
-                                                    window.showToast('❌ 에러 토스트 메시지입니다.', 'error', 4000);
+                                                window.showToast?.('❌ 에러 토스트 메시지입니다.', 'error', 4000);
                                             }}
                                         >
                                             <Icon name="x" size="sm" /> Toast (Error)
                                         </button>
-                                        <button
+                                        <button type="button"
                                             className="gui-test-btn gui-test-progress"
                                             onClick={() => {
                                                 if (!onTestProgressBar) return;
@@ -1011,7 +1024,7 @@ function SettingsModal({
                                         >
                                             <Icon name="loader" size="sm" /> Progress Bar
                                         </button>
-                                        <button
+                                        <button type="button"
                                             className="gui-test-btn gui-test-progress-ind"
                                             onClick={() => {
                                                 if (!onTestProgressBar) return;
@@ -1021,27 +1034,26 @@ function SettingsModal({
                                         >
                                             <Icon name="loader" size="sm" /> Indeterminate
                                         </button>
-                                        <button
+                                        <button type="button"
                                             className="gui-test-btn gui-test-waiting"
                                             onClick={() => {
-                                                onTestWaitingImage && onTestWaitingImage();
+                                                onTestWaitingImage?.();
                                             }}
                                         >
                                             <Icon name="clock" size="sm" /> Waiting Image
                                         </button>
-                                        <button
+                                        <button type="button"
                                             className="gui-test-btn gui-test-loading"
                                             onClick={() => {
-                                                onTestLoadingScreen && onTestLoadingScreen();
+                                                onTestLoadingScreen?.();
                                             }}
                                         >
                                             <Icon name="monitor" size="sm" /> Loading Screen
                                         </button>
-                                        <button
+                                        <button type="button"
                                             className="gui-test-btn gui-test-notice-info"
                                             onClick={() => {
-                                                window.showToast &&
-                                                    window.showToast('ℹ️ 정보 알림 테스트', 'info', 3000, {
+                                                window.showToast?.('ℹ️ 정보 알림 테스트', 'info', 3000, {
                                                         isNotice: true,
                                                         source: 'GUI Test',
                                                     });
@@ -1049,11 +1061,10 @@ function SettingsModal({
                                         >
                                             <Icon name="bell" size="sm" /> Notice (Info)
                                         </button>
-                                        <button
+                                        <button type="button"
                                             className="gui-test-btn gui-test-notice-success"
                                             onClick={() => {
-                                                window.showToast &&
-                                                    window.showToast('✅ 성공 알림 테스트', 'success', 3000, {
+                                                window.showToast?.('✅ 성공 알림 테스트', 'success', 3000, {
                                                         isNotice: true,
                                                         source: 'GUI Test',
                                                     });
@@ -1061,11 +1072,10 @@ function SettingsModal({
                                         >
                                             <Icon name="bell" size="sm" /> Notice (Success)
                                         </button>
-                                        <button
+                                        <button type="button"
                                             className="gui-test-btn gui-test-notice-error"
                                             onClick={() => {
-                                                window.showToast &&
-                                                    window.showToast('❌ 에러 알림 테스트', 'error', 4000, {
+                                                window.showToast?.('❌ 에러 알림 테스트', 'error', 4000, {
                                                         isNotice: true,
                                                         source: 'GUI Test',
                                                     });
@@ -1078,17 +1088,17 @@ function SettingsModal({
                             )}
 
                             {/* 사바쨩 삭제 */}
-                            <div className="setting-item setting-item-danger" onClick={handleUninstall}>
-                                <label className="setting-label" style={{ cursor: 'pointer' }}>
+                            <button type="button"    className="setting-item setting-item-danger" onClick={handleUninstall}>
+                                <span className="setting-label" style={{ cursor: 'pointer' }}>
                                     <span className="setting-title setting-title-danger">
                                         <Icon name="trash" size="sm" /> {t('gui:settings_modal.uninstall_label')}
                                     </span>
                                     <span className="setting-description">
                                         {t('gui:settings_modal.uninstall_description')}
                                     </span>
-                                </label>
+                                </span>
                                 <Icon name="chevronRight" size="sm" color="var(--color-danger, #e74c3c)" />
-                            </div>
+                            </button>
                         </div>
                     )}
                 </div>
@@ -1103,7 +1113,7 @@ function SettingsModal({
                 >
                     <div className="about-header">
                         <h2 className="about-page-title">{t('gui:settings_modal.about_title')}</h2>
-                        <button className="about-close-btn" onClick={handleAboutBack}>
+                        <button type="button" className="about-close-btn" onClick={handleAboutBack}>
                             <Icon name="x" size="sm" />
                         </button>
                     </div>
@@ -1125,7 +1135,7 @@ function SettingsModal({
                                 <span className="about-dev-bio">인공지능 조련사</span>
                             </div>
                             <span className="about-made-by">{t('gui:settings_modal.made_by')}</span>
-                            <button
+                            <button type="button"
                                 className="about-dev-github-btn"
                                 onClick={() => {
                                     if (window.electron?.shell?.openExternal) {
@@ -1162,12 +1172,12 @@ function SettingsModal({
                                         <span className="about-component-ver">v{componentInfo?.components?.cli || appVersion}</span>
                                     </div>
                                     <div className="about-component-item">
-                                        <span className="about-component-label"><Icon name="discord" size="xs" /> Discord Bot</span>
-                                        <span className="about-component-ver">v{componentInfo?.components?.discord_bot || appVersion}</span>
-                                    </div>
-                                    <div className="about-component-item">
                                         <span className="about-component-label"><Icon name="refresh" size="xs" /> Updater</span>
                                         <span className="about-component-ver">v{componentInfo?.components?.updater || appVersion}</span>
+                                    </div>
+                                    <div className="about-component-item">
+                                        <span className="about-component-label"><Icon name="download" size="xs" /> Installer</span>
+                                        <span className="about-component-ver">v{componentInfo?.components?.installer || appVersion}</span>
                                     </div>
                                 </div>
 
@@ -1184,18 +1194,109 @@ function SettingsModal({
                                 </div>
                             </div>
                         </div>
+
+                        {/* ── 무결성 검증 결과 카드 ──
+                            서버 매니페스트와 로컬 컴포넌트의 SHA256 해시 대조 결과.
+                            ★ 일단 검증 동작 확인 목적이므로 모든 상태(ok/tampered/error)를 노출.
+                            추후 일반 사용자 노출 정책에 따라 TamperDetected만 표시하도록 좁힐 수 있음. */}
+                        {integrityStatus && (
+                            <div
+                                className={clsx('about-card', 'about-integrity-card', {
+                                    'integrity-tampered': integrityStatus.ok && integrityStatus.overall === 'TamperDetected',
+                                    'integrity-error': !integrityStatus.ok,
+                                    'integrity-ok': integrityStatus.ok && integrityStatus.overall === 'AllVerified',
+                                })}
+                            >
+                                <div className="about-integrity-header">
+                                    {integrityStatus.ok && integrityStatus.overall === 'TamperDetected' && (
+                                        <>
+                                            <Icon name="alertTriangle" size="sm" />
+                                            <span className="about-integrity-title">
+                                                {t('gui:settings_modal.integrity_tampered_title', '컴포넌트 변조 감지')}
+                                            </span>
+                                        </>
+                                    )}
+                                    {integrityStatus.ok && integrityStatus.overall === 'AllVerified' && (
+                                        <>
+                                            <Icon name="check" size="sm" />
+                                            <span className="about-integrity-title">
+                                                {t('gui:settings_modal.integrity_verified_title', '무결성 검증 완료')}
+                                            </span>
+                                        </>
+                                    )}
+                                    {integrityStatus.ok && integrityStatus.overall === 'Partial' && (
+                                        <>
+                                            <Icon name="info" size="sm" />
+                                            <span className="about-integrity-title">
+                                                {t('gui:settings_modal.integrity_partial_title', '무결성 부분 검증')}
+                                            </span>
+                                        </>
+                                    )}
+                                    {!integrityStatus.ok && (
+                                        <>
+                                            <Icon name="alertCircle" size="sm" />
+                                            <span className="about-integrity-title">
+                                                {t('gui:settings_modal.integrity_unavailable_title', '무결성 검증 실패')}
+                                            </span>
+                                        </>
+                                    )}
+                                </div>
+
+                                {integrityStatus.ok ? (
+                                    <>
+                                        <div className="about-integrity-summary">
+                                            {t('gui:settings_modal.integrity_summary', '검증 {{verified}}/{{total}} · 변조 {{failed}} · 건너뜀 {{skipped}}', {
+                                                verified: integrityStatus.verified ?? 0,
+                                                total: integrityStatus.total ?? 0,
+                                                failed: integrityStatus.failed ?? 0,
+                                                skipped: integrityStatus.skipped ?? 0,
+                                            })}
+                                        </div>
+                                        {Array.isArray(integrityStatus.components) && integrityStatus.components.length > 0 && (
+                                            <ul className="about-integrity-list">
+                                                {integrityStatus.components.map((c) => (
+                                                    <li
+                                                        key={c.component}
+                                                        className={clsx('about-integrity-item', {
+                                                            'item-tampered': c.status === 'Tampered',
+                                                            'item-verified': c.status === 'Verified',
+                                                            'item-skipped': c.status === 'NoHash' || c.status === 'FileNotFound',
+                                                            'item-error': c.status === 'Error',
+                                                        })}
+                                                    >
+                                                        <span className="about-integrity-name">
+                                                            {c.status === 'Tampered' && <Icon name="alertTriangle" size="xs" />}
+                                                            {c.status === 'Verified' && <Icon name="check" size="xs" />}
+                                                            {(c.status === 'NoHash' || c.status === 'FileNotFound') && <Icon name="info" size="xs" />}
+                                                            {c.status === 'Error' && <Icon name="alertCircle" size="xs" />}
+                                                            {' '}
+                                                            {c.display_name || c.component}
+                                                        </span>
+                                                        <span className="about-integrity-status">{c.status}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </>
+                                ) : (
+                                    <div className="about-integrity-summary">
+                                        {integrityStatus.error || 'unknown error'}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
 
                 {!showUpdatePanel && (
                     <div className="settings-modal-footer">
-                        <button className="settings-btn-cancel" onClick={requestClose}>
+                        <button type="button" className="settings-btn-cancel" onClick={requestClose}>
                             {t('gui:modals.cancel')}
                         </button>
                     </div>
                 )}
             </div>
-        </div>
+        </ModalOverlay>
     );
 }
 

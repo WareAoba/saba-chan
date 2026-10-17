@@ -84,15 +84,6 @@ COMPONENTS = [
         "exe_name": "saba-chan-updater.exe",
     },
     {
-        "key": "discord_bot",
-        "version_file": "discord_bot/package.json",
-        "version_type": "npm",
-        "raw_patterns": [r"discord.?bot.*\.zip$"],
-        "output_name": "discord-bot.zip",
-        "install_dir": "discord_bot",
-        "exe_name": None,  # zip 그대로 사용
-    },
-    {
         "key": "locales",
         "version_file": "Cargo.toml",  # 루트 버전 사용
         "version_type": "cargo",
@@ -139,22 +130,36 @@ def parse_semver(version_str: str) -> tuple[int, int, int]:
 
 
 def read_cargo_version(file_path: str) -> str | None:
-    """Cargo.toml에서 [package] version 추출"""
+    """Cargo.toml에서 [package] version 추출.
+
+    Cargo workspace inheritance(`version.workspace = true`)를 지원하며,
+    그 경우 워크스페이스 루트 `Cargo.toml`의 [workspace.package].version을 읽는다.
+    """
     try:
-        content = Path(file_path).read_text(encoding="utf-8")
-        in_package = False
-        for line in content.splitlines():
-            stripped = line.strip()
-            if stripped == "[package]":
-                in_package = True
-                continue
-            if stripped.startswith("[") and stripped != "[package]":
-                in_package = False
-                continue
-            if in_package and stripped.startswith("version"):
-                return stripped.split("=", 1)[1].strip().strip('"').strip("'")
+        import tomllib  # Python 3.11+
+        with open(file_path, "rb") as f:
+            data = tomllib.load(f)
+        pkg = data.get("package") or {}
+        ver = pkg.get("version")
+        if isinstance(ver, str):
+            return ver
+        # workspace inheritance: { workspace = true }
+        if isinstance(ver, dict) and ver.get("workspace") is True:
+            # 워크스페이스 루트 = 현재 체크아웃 루트 (Path.cwd 기준)
+            root_toml = Path("Cargo.toml")
+            if root_toml.exists():
+                with open(root_toml, "rb") as f:
+                    root_data = tomllib.load(f)
+                ws_pkg = (root_data.get("workspace") or {}).get("package") or {}
+                ws_ver = ws_pkg.get("version")
+                if isinstance(ws_ver, str):
+                    return ws_ver
+            print(f"  ⚠ {file_path}: workspace inheritance 설정이지만 루트 [workspace.package].version을 찾을 수 없음")
+            return None
     except FileNotFoundError:
         print(f"  ⚠ {file_path} not found")
+    except Exception as e:
+        print(f"  ⚠ {file_path} parse error: {e}")
     return None
 
 
@@ -218,8 +223,8 @@ def copy_or_repackage(raw_file: Path, output_zip: Path, exe_name: str | None,
 def create_locales_zip(output_zip: Path):
     """소스의 locales/ 디렉터리를 zip으로 패키징
 
-    zip 내부 구조: en/bot.json, ko/cli.json, ... (locales/ 접두사 없음)
-    → install_root/locales/ 에 압축 해제하면 install_root/locales/en/bot.json 이 됨
+    zip 내부 구조: en/gui.json, ko/cli.json, ... (locales/ 접두사 없음)
+    → install_root/locales/ 에 압축 해제하면 install_root/locales/en/gui.json 이 됨
     """
     locales_dir = Path("locales")
     if not locales_dir.exists():
@@ -230,7 +235,7 @@ def create_locales_zip(output_zip: Path):
         for root, dirs, files in os.walk(locales_dir):
             for f in sorted(files):
                 file_path = Path(root) / f
-                # locales/en/bot.json → en/bot.json (locales/ 접두사 제거)
+                # locales/en/gui.json → en/gui.json (locales/ 접두사 제거)
                 arcname = file_path.relative_to(locales_dir)
                 zf.write(file_path, arcname)
 

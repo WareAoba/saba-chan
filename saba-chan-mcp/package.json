@@ -1,0 +1,30 @@
+{
+  "name": "saba-chan-mcp",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "saba-chan 데몬을 AI 에이전트가 자연어로 제어하도록 하는 MCP(Model Context Protocol) 래퍼",
+  "license": "MIT",
+  "bin": {
+    "saba-chan-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^5.0.4"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

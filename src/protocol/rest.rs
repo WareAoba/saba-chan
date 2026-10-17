@@ -26,8 +26,8 @@ impl RestClient {
         }
     }
 
-    /// Basic Auth 설정 (빌더 패턴)
-    #[allow(dead_code)] // 공개 API — 빌더 패턴 일부
+    /// Basic Auth 설정 (빌더 패턴). ipc::handlers::command에서 사용.
+    #[allow(dead_code)]
     pub fn with_basic_auth(mut self, username: String, password: String) -> Self {
         self.username = Some(username);
         self.password = Some(password);
@@ -91,7 +91,6 @@ impl RestClient {
 
         if let (Some(user), Some(pass)) = (&self.username, &self.password) {
             let token = BASE64.encode(format!("{}:{}", user, pass));
-            tracing::info!("REST auth: user={}, pass_len={}, token_prefix={}...", user, pass.len(), &token[..8.min(token.len())]);
             req = req.set("Authorization", &format!("Basic {}", token));
         }
 

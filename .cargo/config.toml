@@ -1,0 +1,15 @@
+# 빌드 속도 최적화 설정
+# - Windows MSVC 타겟에서 링커를 rust-lld.exe 로 교체하면 링크 단계가 2~5배 빨라진다.
+# - rust-lld 는 rustup 의 기본 MSVC 툴체인에 번들되어 있다.
+# - 최종 바이너리는 기능적으로 동일(기호/섹션 순서만 약간 다를 수 있음).
+# - Tauri/winres 링킹에 문제가 생기면 이 섹션을 주석 처리할 것.
+
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld.exe"
+
+[build]
+# 모든 CPU 코어 사용 (기본값이 이미 all cores 이지만 명시)
+# jobs = 0  # 0 = 자동(논리 코어 수)
+
+# sccache: 전역 컴파일 캐시. 의존성 재컴파일을 거의 0초로 만든다.
+rustc-wrapper = "sccache"

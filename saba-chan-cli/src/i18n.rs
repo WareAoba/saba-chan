@@ -1,7 +1,7 @@
 //! CLI 다국어 지원 — locales/{lang}/cli.json 로드 + 템플릿 치환
 //!
 //! 사용법:
-//! ```
+//! ```ignore
 //! let i18n = I18n::load("ko");
 //! let msg = i18n.t("server_cmd.started");
 //! let msg = i18n.t_with("server_cmd.not_found", &[("name", "mc-1")]);

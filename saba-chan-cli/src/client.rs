@@ -1,22 +1,8 @@
+use crate::ipc::read_token_from_file;
 use serde_json::Value;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use saba_chan_updater_lib::constants;
-
-/// IPC 토큰 파일 경로 (데몬과 동일한 로직 — constants 모듈 위임)
-fn ipc_token_path() -> String {
-    constants::token_file_path()
-        .to_string_lossy()
-        .to_string()
-}
-
-/// IPC 토큰 파일에서 토큰 읽기
-fn read_ipc_token() -> Option<String> {
-    std::fs::read_to_string(ipc_token_path())
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-}
 
 #[derive(Debug, Clone)]
 pub struct DaemonClient {
@@ -28,9 +14,8 @@ pub struct DaemonClient {
     token: Arc<RwLock<Option<String>>>,
 }
 
-#[allow(dead_code)]
 impl DaemonClient {
-    pub fn new(base_url: Option<&str>) -> Self {
+    pub fn new(base_url: Option<&str>) -> anyhow::Result<Self> {
         let base_url = base_url
             .unwrap_or(constants::DEFAULT_DAEMON_URL)
             .to_string();
@@ -38,16 +23,27 @@ impl DaemonClient {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(5))
             .build()
-            .expect("Failed to create HTTP client");
+            .map_err(|e| anyhow::anyhow!("Failed to create HTTP client: {}", e))?;
 
         let long_client = reqwest::Client::builder()
             .timeout(Duration::from_secs(120))
             .build()
-            .expect("Failed to create long-timeout HTTP client");
+            .map_err(|e| anyhow::anyhow!("Failed to create long-timeout HTTP client: {}", e))?;
 
-        let token = read_ipc_token();
+        let token = read_token_from_file();
 
-        Self { client, long_client, base_url, token: Arc::new(RwLock::new(token)) }
+        Ok(Self { client, long_client, base_url, token: Arc::new(RwLock::new(token)) })
+    }
+
+    /// 이 클라이언트가 접속하는 데몬 base URL (`--daemon` 반영)
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
+    /// 데몬이 HTTP 응답을 돌려주는지 확인 (`GET /health`, 인증 불필요).
+    /// 상태 코드와 관계없이 응답이 오면 온라인으로 본다.
+    pub async fn is_reachable(&self) -> bool {
+        self.client.get(format!("{}/health", self.base_url)).send().await.is_ok()
     }
 
     // ─── 토큰 관리 ───
@@ -58,7 +54,7 @@ impl DaemonClient {
 
     /// 토큰 파일을 다시 읽어 캐시 갱신 (데몬 재시작 시 토큰이 바뀜)
     fn refresh_token(&self) -> Option<String> {
-        let new_token = read_ipc_token();
+        let new_token = read_token_from_file();
         if let Ok(mut t) = self.token.write() {
             *t = new_token.clone();
         }
@@ -133,12 +129,17 @@ impl DaemonClient {
         self.request(reqwest::Method::DELETE, path, None, false).await
     }
 
-    async fn patch_json(&self, path: &str, body: &Value) -> anyhow::Result<Value> {
-        self.request(reqwest::Method::PATCH, path, Some(body), false).await
+    /// 장시간 작업용 PATCH (예: 인스턴스 설정 변경 — hook dispatch 가능).
+    async fn patch_json_long(&self, path: &str, body: &Value) -> anyhow::Result<Value> {
+        self.request(reqwest::Method::PATCH, path, Some(body), true).await
     }
 
     async fn put_json(&self, path: &str, body: &Value) -> anyhow::Result<Value> {
         self.request(reqwest::Method::PUT, path, Some(body), false).await
+    }
+
+    async fn put_json_long(&self, path: &str, body: &Value) -> anyhow::Result<Value> {
+        self.request(reqwest::Method::PUT, path, Some(body), true).await
     }
 
     // ============ Servers (런타임) ============
@@ -194,13 +195,17 @@ impl DaemonClient {
     }
 
     /// PATCH /api/instance/{id} — 인스턴스 설정 업데이트
+    ///
+    /// 데몬 측에서 `server.settings_changed` 훅 디스패치를 동기로 수행할 수 있어
+    /// 짧은(5초) 클라이언트로는 timeout이 발생한다. 장시간 클라이언트로 보낸다.
     pub async fn update_instance(&self, id: &str, settings: Value) -> anyhow::Result<Value> {
-        self.patch_json(&format!("/api/instance/{}", id), &settings).await
+        self.patch_json_long(&format!("/api/instance/{}", id), &settings).await
     }
 
     /// PUT /api/instances/reorder — 인스턴스 순서 변경
-    pub async fn reorder_instances(&self, order: Value) -> anyhow::Result<Value> {
-        self.put_json("/api/instances/reorder", &order).await
+    /// 본문은 `{"order": [ids]}` (데몬 `reorder_instances` 계약).
+    pub async fn reorder_instances(&self, ids: &[String]) -> anyhow::Result<Value> {
+        self.put_json("/api/instances/reorder", &serde_json::json!({ "order": ids })).await
     }
 
     // ============ Commands ============
@@ -221,29 +226,35 @@ impl DaemonClient {
     }
 
     /// POST /api/instance/{id}/rest
-    pub async fn execute_rest_command(&self, id: &str, command: &str) -> anyhow::Result<Value> {
-        let body = serde_json::json!({ "command": command });
-        self.post_json(&format!("/api/instance/{}/rest", id), &body).await
+    pub async fn execute_rest_command(
+        &self,
+        id: &str,
+        endpoint: &str,
+        method: &str,
+        body: Option<Value>,
+    ) -> anyhow::Result<Value> {
+        let mut payload = serde_json::json!({
+            "endpoint": endpoint,
+            "method": method,
+        });
+        if let Some(b) = body {
+            payload["body"] = b;
+        }
+        self.post_json(&format!("/api/instance/{}/rest", id), &payload).await
     }
 
-    // ============ Managed Process ============
-
-    /// POST /api/instance/{id}/managed/start — 관리형 서버 시작
-    pub async fn start_managed(&self, id: &str) -> anyhow::Result<Value> {
-        self.post_json_long(
-            &format!("/api/instance/{}/managed/start", id),
-            &serde_json::json!({}),
-        ).await
-    }
-
-    /// GET /api/instance/{id}/console — 콘솔 출력 가져오기
-    pub async fn get_console(&self, id: &str) -> anyhow::Result<Value> {
-        self.get_json(&format!("/api/instance/{}/console", id)).await
+    /// GET /api/instance/{id}/console?since=&count= — 콘솔 출력 가져오기
+    ///
+    /// `since`가 있으면 `id >= since`인 라인, 없으면 최근 `count`(데몬 기본 100)줄.
+    pub async fn get_console(&self, id: &str, since: Option<u64>, count: Option<usize>) -> anyhow::Result<Value> {
+        self.get_json(&with_cursor(&format!("/api/instance/{}/console", id), since, count)).await
     }
 
     /// POST /api/instance/{id}/stdin — stdin으로 텍스트 전송
+    ///
+    /// 본문 키는 `command`. 데몬 핸들러(`send_stdin_handler`)와 GUI가 같은 키를 쓴다.
     pub async fn send_stdin(&self, id: &str, input: &str) -> anyhow::Result<Value> {
-        let body = serde_json::json!({ "input": input });
+        let body = serde_json::json!({ "command": input });
         self.post_json(&format!("/api/instance/{}/stdin", id), &body).await
     }
 
@@ -260,8 +271,10 @@ impl DaemonClient {
     }
 
     /// PUT /api/instance/{id}/properties — 서버 속성 파일 쓰기
+    ///
+    /// hook 디스패치가 동반될 수 있어 long-client로 전송한다.
     pub async fn write_properties(&self, id: &str, data: Value) -> anyhow::Result<Value> {
-        self.put_json(&format!("/api/instance/{}/properties", id), &data).await
+        self.put_json_long(&format!("/api/instance/{}/properties", id), &data).await
     }
 
     /// POST /api/instance/{id}/accept-eula — EULA 수락
@@ -301,11 +314,6 @@ impl DaemonClient {
         self.get_json(&format!("/api/module/{}/versions", module)).await
     }
 
-    /// GET /api/module/{name}/version/{version} — 버전 상세 정보
-    pub async fn get_version_details(&self, module: &str, version: &str) -> anyhow::Result<Value> {
-        self.get_json(&format!("/api/module/{}/version/{}", module, version)).await
-    }
-
     /// POST /api/module/{name}/install — 서버 설치
     pub async fn install_server(&self, module: &str, data: Value) -> anyhow::Result<Value> {
         self.post_json_long(&format!("/api/module/{}/install", module), &data).await
@@ -336,11 +344,8 @@ impl DaemonClient {
     }
 
     /// POST /api/client/{id}/heartbeat — 생존 신호 전송
-    pub async fn send_heartbeat(&self, client_id: &str, bot_pid: Option<u32>) -> anyhow::Result<()> {
-        let body = match bot_pid {
-            Some(pid) => serde_json::json!({ "bot_pid": pid }),
-            None => serde_json::json!({}),
-        };
+    pub async fn send_heartbeat(&self, client_id: &str) -> anyhow::Result<()> {
+        let body = serde_json::json!({});
         self.post_json(&format!("/api/client/{}/heartbeat", client_id), &body).await?;
         Ok(())
     }
@@ -363,48 +368,20 @@ impl DaemonClient {
         self.get_json("/api/updates/status").await
     }
 
-    /// POST /api/updates/download — 업데이트 전체 다운로드
+    /// POST /api/updates/download — 업데이트 전체 다운로드.
+    /// 데몬은 `Json` 추출기를 쓰므로 빈 객체라도 JSON 본문이 필요하다 (없으면 415).
     pub async fn download_updates(&self) -> anyhow::Result<Value> {
-        self.post_empty("/api/updates/download").await
+        self.post_json("/api/updates/download", &serde_json::json!({})).await
     }
 
-    /// POST /api/updates/apply — 업데이트 적용
+    /// POST /api/updates/apply — 업데이트 적용 (`{}` = 대기 중인 전체 컴포넌트)
     pub async fn apply_updates(&self) -> anyhow::Result<Value> {
-        self.post_empty("/api/updates/apply").await
+        self.post_json("/api/updates/apply", &serde_json::json!({})).await
     }
 
     /// GET /api/updates/config — 업데이트 설정 조회
     pub async fn get_update_config(&self) -> anyhow::Result<Value> {
         self.get_json("/api/updates/config").await
-    }
-
-    // ============ Installer ============
-
-    /// GET /api/install/status — 설치 상태 확인
-    pub async fn get_install_status(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/install/status").await
-    }
-
-    /// POST /api/install/run — 최초 설치 실행
-    pub async fn run_install(&self, components: Option<Vec<String>>) -> anyhow::Result<Value> {
-        let body = match components {
-            Some(comps) => serde_json::json!({ "components": comps }),
-            None => serde_json::json!({}),
-        };
-        self.post_json_long("/api/install/run", &body).await
-    }
-
-    /// POST /api/install/component/{key} — 특정 컴포넌트 설치
-    pub async fn install_component(&self, key: &str) -> anyhow::Result<Value> {
-        self.post_json_long(
-            &format!("/api/install/component/{}", key),
-            &serde_json::json!({}),
-        ).await
-    }
-
-    /// GET /api/install/progress — 설치 진행 상태 조회
-    pub async fn get_install_progress(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/install/progress").await
     }
 
     // ============ Extensions ============
@@ -437,9 +414,8 @@ impl DaemonClient {
     }
 
     /// POST /api/extensions/{id}/install — 익스텐션 설치
-    pub async fn install_extension(&self, ext_id: &str, opts: Option<Value>) -> anyhow::Result<Value> {
-        let body = opts.unwrap_or_else(|| serde_json::json!({}));
-        self.post_json_long(&format!("/api/extensions/{}/install", ext_id), &body).await
+    pub async fn install_extension(&self, ext_id: &str) -> anyhow::Result<Value> {
+        self.post_json_long(&format!("/api/extensions/{}/install", ext_id), &serde_json::json!({})).await
     }
 
     /// DELETE /api/extensions/{id} — 익스텐션 삭제
@@ -489,28 +465,11 @@ impl DaemonClient {
         self.post_empty(&format!("/api/instance/{}/properties/reset", id)).await
     }
 
-    /// GET /api/provision-progress/{name} — 프로비저닝 진행 상태
-    pub async fn get_provision_progress(&self, name: &str) -> anyhow::Result<Value> {
-        self.get_json(&format!("/api/provision-progress/{}", name)).await
-    }
-
-    /// DELETE /api/provision-progress/{name} — 프로비저닝 상태 해제
-    pub async fn dismiss_provision(&self, name: &str) -> anyhow::Result<Value> {
-        self.delete_json(&format!("/api/provision-progress/{}", name)).await
-    }
-
     // ============ Updater Extended ============
 
-    /// POST /api/updates/config — 업데이터 설정 변경
+    /// PUT /api/updates/config — 업데이터 설정 변경
     pub async fn set_update_config(&self, config: Value) -> anyhow::Result<Value> {
-        self.post_json("/api/updates/config", &config).await
-    }
-
-    // ============ Extension Init Status ============
-
-    /// GET /api/extensions/init-status — 익스텐션 초기화 상태
-    pub async fn get_extension_init_status(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/extensions/init-status").await
+        self.put_json("/api/updates/config", &config).await
     }
 
     // ============ Instance Version & Updates ============
@@ -533,39 +492,6 @@ impl DaemonClient {
         ).await
     }
 
-    // ============ External Processes ============
-
-    /// GET /api/ext-processes — 실행 중인 외부 프로세스 목록
-    pub async fn list_ext_processes(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/ext-processes").await
-    }
-
-    /// POST /api/ext-process/{name}/start — 외부 프로세스 시작
-    pub async fn start_ext_process(&self, name: &str, body: Value) -> anyhow::Result<Value> {
-        self.post_json(&format!("/api/ext-process/{}/start", name), &body).await
-    }
-
-    /// POST /api/ext-process/{name}/stop — 외부 프로세스 정지
-    pub async fn stop_ext_process(&self, name: &str) -> anyhow::Result<Value> {
-        self.post_json(&format!("/api/ext-process/{}/stop", name), &serde_json::json!({})).await
-    }
-
-    /// GET /api/ext-process/{name}/status — 외부 프로세스 상태 조회
-    pub async fn get_ext_process_status(&self, name: &str) -> anyhow::Result<Value> {
-        self.get_json(&format!("/api/ext-process/{}/status", name)).await
-    }
-
-    /// GET /api/ext-process/{name}/console — 외부 프로세스 콘솔 로그
-    pub async fn get_ext_process_console(&self, name: &str) -> anyhow::Result<Value> {
-        self.get_json(&format!("/api/ext-process/{}/console", name)).await
-    }
-
-    /// POST /api/ext-process/{name}/stdin — 외부 프로세스 stdin 전송
-    pub async fn send_ext_process_stdin(&self, name: &str, input: &str) -> anyhow::Result<Value> {
-        let body = serde_json::json!({ "input": input });
-        self.post_json(&format!("/api/ext-process/{}/stdin", name), &body).await
-    }
-
     // ============ System ============
 
     /// GET /api/system/components — 시스템 컴포넌트 정보 (daemon, GUI, locale 버전)
@@ -580,29 +506,7 @@ impl DaemonClient {
 
     /// GET /api/daemon/console — 데몬 트레이싱 로그 조회
     pub async fn get_daemon_console(&self, since: Option<u64>, count: Option<usize>) -> anyhow::Result<Value> {
-        let mut path = "/api/daemon/console".to_string();
-        let mut params = Vec::new();
-        if let Some(s) = since { params.push(format!("since={}", s)); }
-        if let Some(c) = count { params.push(format!("count={}", c)); }
-        if !params.is_empty() {
-            path = format!("{}?{}", path, params.join("&"));
-        }
-        self.get_json(&path).await
-    }
-
-    /// GET /api/node-env/status — Node.js 포터블 환경 상태
-    pub async fn get_node_env_status(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/node-env/status").await
-    }
-
-    /// POST /api/node-env/setup — Node.js 부트스트랩
-    pub async fn setup_node_env(&self) -> anyhow::Result<Value> {
-        self.post_json_long("/api/node-env/setup", &serde_json::json!({})).await
-    }
-
-    /// GET /api/updates/integrity — 업데이트 무결성 검사
-    pub async fn check_update_integrity(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/updates/integrity").await
+        self.get_json(&with_cursor("/api/daemon/console", since, count)).await
     }
 
     /// GET /api/updates/download/progress — 다운로드 진행률
@@ -633,53 +537,33 @@ impl DaemonClient {
     pub async fn save_gui_config(&self, config: Value) -> anyhow::Result<Value> {
         self.put_json("/api/config/gui", &config).await
     }
+}
 
-    /// GET /api/config/node-token — 클라우드 연동 토큰 조회
-    pub async fn get_node_token(&self) -> anyhow::Result<Value> {
-        self.get_json("/api/config/node-token").await
+/// `path?since=&count=` 쿼리 조립 (값이 없는 키는 생략)
+fn with_cursor(path: &str, since: Option<u64>, count: Option<usize>) -> String {
+    let mut params = Vec::new();
+    if let Some(s) = since {
+        params.push(format!("since={}", s));
     }
-
-    /// PUT /api/config/node-token — 토큰 저장
-    pub async fn save_node_token_api(&self, token: &str) -> anyhow::Result<Value> {
-        self.put_json("/api/config/node-token", &serde_json::json!({ "token": token })).await
+    if let Some(c) = count {
+        params.push(format!("count={}", c));
     }
-
-    /// DELETE /api/config/node-token — 토큰 삭제
-    pub async fn delete_node_token(&self) -> anyhow::Result<Value> {
-        self.delete_json("/api/config/node-token").await
+    if params.is_empty() {
+        path.to_string()
+    } else {
+        format!("{}?{}", path, params.join("&"))
     }
+}
 
-    // ============ Discord REST API ============
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    /// Discord REST API로 봇이 참여한 길드 목록 조회
-    pub async fn discord_guild_list(&self, token: &str) -> anyhow::Result<Vec<Value>> {
-        let url = "https://discord.com/api/v10/users/@me/guilds";
-        let response = self.client
-            .get(url)
-            .header("Authorization", format!("Bot {}", token))
-            .send()
-            .await?;
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            anyhow::bail!("Discord API returned {}: {}", status, body);
-        }
-        Ok(response.json().await?)
-    }
-
-    /// Discord REST API로 특정 길드의 멤버 목록 조회 (최대 1000명)
-    pub async fn discord_guild_members(&self, token: &str, guild_id: &str) -> anyhow::Result<Vec<Value>> {
-        let url = format!("https://discord.com/api/v10/guilds/{}/members?limit=1000", guild_id);
-        let response = self.client
-            .get(&url)
-            .header("Authorization", format!("Bot {}", token))
-            .send()
-            .await?;
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            anyhow::bail!("Discord API returned {}: {}", status, body);
-        }
-        Ok(response.json().await?)
+    #[test]
+    fn with_cursor_builds_query() {
+        assert_eq!(with_cursor("/c", None, None), "/c");
+        assert_eq!(with_cursor("/c", Some(5), None), "/c?since=5");
+        assert_eq!(with_cursor("/c", Some(5), Some(500)), "/c?since=5&count=500");
+        assert_eq!(with_cursor("/c", None, Some(500)), "/c?count=500");
     }
 }

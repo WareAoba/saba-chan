@@ -66,7 +66,7 @@ where
 #[derive(Debug, Clone, Serialize)]
 pub struct ExtensionError {
     /// 머신 판별용 코드 (예: "not_found", "dependency_missing", "dependency_not_enabled",
-    /// "has_dependents", "in_use", "not_mounted", "id_mismatch", "manifest_not_found")
+    /// "has_dependents", "in_use")
     pub error_code: String,
     /// 사람이 읽을 수 있는 메시지
     pub message: String,
@@ -120,7 +120,7 @@ impl ExtensionError {
         Self {
             error_code: "has_dependents".to_string(),
             message: format!(
-                "Cannot disable/unmount '{}': depended on by active extension(s): {}",
+                "Cannot disable/remove '{}': depended on by active extension(s): {}",
                 ext_id,
                 dependents.join(", ")
             ),
@@ -131,35 +131,11 @@ impl ExtensionError {
         Self {
             error_code: "in_use".to_string(),
             message: format!(
-                "Cannot disable/unmount '{}': in use by instance(s): {}",
+                "Cannot disable/remove '{}': in use by instance(s): {}",
                 ext_id,
                 instances.join(", ")
             ),
             related: instances.to_vec(),
-        }
-    }
-    fn not_mounted(ext_id: &str) -> Self {
-        Self {
-            error_code: "not_mounted".to_string(),
-            message: format!("Extension '{}' is not mounted", ext_id),
-            related: vec![ext_id.to_string()],
-        }
-    }
-    fn manifest_not_found(path: &str) -> Self {
-        Self {
-            error_code: "manifest_not_found".to_string(),
-            message: format!("Extension directory or manifest not found: {}", path),
-            related: vec![],
-        }
-    }
-    fn id_mismatch(manifest_id: &str, dir_name: &str) -> Self {
-        Self {
-            error_code: "id_mismatch".to_string(),
-            message: format!(
-                "Manifest id '{}' does not match directory name '{}'",
-                manifest_id, dir_name
-            ),
-            related: vec![manifest_id.to_string(), dir_name.to_string()],
         }
     }
 }
@@ -330,42 +306,6 @@ pub struct RemoteExtensionInfo {
     pub homepage: Option<String>,
 }
 
-/// 원격 매니페스트 응답 전체 형식
-///
-/// manifest.json 예시:
-/// ```json
-/// {
-///   "schema_version": 1,
-///   "generated_at": "2026-02-28T22:35:01Z",
-///   "extensions": {
-///     "docker": { "name": "Docker Isolation", ... },
-///     "steamcmd": { ... }
-///   }
-/// }
-/// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExtensionManifestResponse {
-    #[serde(default)]
-    pub schema_version: u32,
-    #[serde(default)]
-    pub generated_at: Option<String>,
-    /// ID → 익스텐션 정보 맵
-    pub extensions: HashMap<String, RemoteExtensionInfo>,
-}
-
-impl ExtensionManifestResponse {
-    /// 맵 형식의 응답을 Vec으로 변환 (각 항목에 id 주입)
-    pub fn into_list(self) -> Vec<RemoteExtensionInfo> {
-        self.extensions
-            .into_iter()
-            .map(|(id, mut info)| {
-                info.id = id;
-                info
-            })
-            .collect()
-    }
-}
-
 /// 업데이트 가용 정보 (로컬 버전 vs 원격 버전 비교 결과)
 ///
 /// 업데이터의 `ComponentVersion`과 구조를 맞추어 향후 통합을 용이하게 함.
@@ -385,12 +325,6 @@ pub struct ExtensionUpdateInfo {
 //  ExtensionManager
 // ═══════════════════════════════════════════════════════════════
 
-/// 원격 매니페스트 기본 URL — constants 모듈의 함수를 사용하되,
-/// const 문맥에서는 호출 불가하므로 초기화 시점에 lazy 적용
-const DEFAULT_MANIFEST_URL: &str =
-    "https://raw.githubusercontent.com/WareAoba/saba-chan-extensions/main/manifest.json";
-// NOTE: 향후 ExtensionManager::new()에서 constants::extensions_manifest_url() 사용 권장
-
 pub struct ExtensionManager {
     extensions_dir: PathBuf,
     discovered: HashMap<String, DiscoveredExtension>,
@@ -400,11 +334,8 @@ pub struct ExtensionManager {
     /// 구조: ext_id → { key → value }
     extension_config: HashMap<String, HashMap<String, Value>>,
     config_path: PathBuf,
-    /// 원격 매니페스트 URL (커스텀 오버라이드 가능)
-    pub manifest_url: String,
 }
 
-#[allow(dead_code)]
 impl ExtensionManager {
     /// 새 ExtensionManager 생성. `extensions_dir`은 `extensions/` 디렉토리 경로.
     pub fn new(extensions_dir: &str) -> Self {
@@ -440,7 +371,6 @@ impl ExtensionManager {
             state_path,
             extension_config: HashMap::new(),
             config_path,
-            manifest_url: DEFAULT_MANIFEST_URL.to_string(),
         };
         mgr.load_state();
         mgr.load_extension_config();
@@ -494,104 +424,81 @@ impl ExtensionManager {
     /// extensions/ 디렉토리를 스캔하여 익스텐션 발견.
     ///
     /// 지원 형식:
-    /// - **폴더형**: `<id>/manifest.json` (현재 방식)
+    /// - **폴더형**: `<id>/manifest.json`
     /// - **단일 파일형**: `<id>.zip` → 자동 압축 해제 후 폴더형으로 등록
+    ///
+    /// 이미 등록된 id는 건너뛴다 (중복 id 경고).
     pub fn discover(&mut self) -> Result<Vec<String>> {
-        let mut found = Vec::new();
+        let found = self.scan(false)?;
+        tracing::info!("Extension discovery complete: {} found", found.len());
+        Ok(found)
+    }
 
+    /// 런타임 중 재스캔 — 새 익스텐션을 등록하고 기존 익스텐션의 매니페스트를 리로드한다.
+    /// 디스크에서 사라진 익스텐션은 목록에 유지한다 (제거는 `remove`로만).
+    pub fn rescan(&mut self) -> Result<Vec<String>> {
+        let found = self.scan(true)?;
+        tracing::info!("Rescan complete: {} new extension(s)", found.len());
+        Ok(found)
+    }
+
+    /// 공통 스캔: zip 압축 해제 → 폴더별 manifest.json 로드 → `discovered` 갱신.
+    /// 새로 등록된 id 목록을 반환한다.
+    fn scan(&mut self, reload_existing: bool) -> Result<Vec<String>> {
+        let mut found = Vec::new();
         if !self.extensions_dir.is_dir() {
-            tracing::warn!(
-                "Extensions directory does not exist: {}",
-                self.extensions_dir.display()
-            );
+            tracing::warn!("Extensions directory does not exist: {}", self.extensions_dir.display());
             return Ok(found);
         }
 
-
-
-        let entries = std::fs::read_dir(&self.extensions_dir)
-            .with_context(|| {
-                format!(
-                    "Failed to read extensions directory: {}",
-                    self.extensions_dir.display()
-                )
-            })?;
-
-        for entry in entries {
-            let entry = match entry {
-                Ok(e) => e,
-                Err(e) => {
-                    tracing::warn!("Failed to read directory entry: {}", e);
-                    continue;
-                }
-            };
-
-            let path = entry.path();
-
-            // ── 단일 파일형: .zip 자동 압축 해제 ──────────────────────
-            if path.is_file() {
-                if path.extension().and_then(|e| e.to_str()) == Some("zip") {
-                    match self.extract_zip_extension(&path) {
-                        Ok(Some(ext_id)) => {
-                            tracing::info!("Auto-extracted zip extension: {}", ext_id);
-                        }
-                        Ok(None) => {} // 이미 폴더가 존재하는 경우 스킵
-                        Err(e) => {
-                            tracing::warn!(
-                                "Failed to extract zip extension {}: {}",
-                                path.display(), e
-                            );
-                        }
-                    }
-                }
-                // .zip 이외의 단일 파일은 무시
-                continue;
-            }
-
-            if !path.is_dir() {
-                continue;
-            }
-
-            // ── 폴더형: manifest.json 탐색 ──────────────────────────
-            let manifest_path = path.join("manifest.json");
-            if !manifest_path.exists() {
-                continue;
-            }
-
-            match self.load_manifest(&manifest_path) {
-                Ok(manifest) => {
-                    let id = manifest.id.clone();
-                    tracing::info!(
-                        "Discovered extension: {} v{} ({})",
-                        manifest.name,
-                        manifest.version,
-                        id
-                    );
-                    self.discovered.insert(
-                        id.clone(),
-                        DiscoveredExtension {
-                            manifest,
-                            dir: path,
-                        },
-                    );
-                    found.push(id);
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        "Failed to load manifest from {}: {}",
-                        manifest_path.display(),
-                        e
-                    );
+        // 1) 단일 파일형 .zip 자동 압축 해제
+        for path in self.read_extensions_dir()? {
+            if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("zip") {
+                match self.extract_zip_extension(&path) {
+                    Ok(Some(ext_id)) => tracing::info!("Auto-extracted zip extension: {}", ext_id),
+                    Ok(None) => {}
+                    Err(e) => tracing::warn!("Failed to extract zip extension {}: {}", path.display(), e),
                 }
             }
         }
 
-        // zip에서 새로 추출된 익스텐션을 재스캔하여 등록
-        let newly_extracted = self.rescan_extracted()?;
-        found.extend(newly_extracted);
+        // 2) 폴더형 manifest.json
+        for path in self.read_extensions_dir()? {
+            let manifest_path = path.join("manifest.json");
+            if !path.is_dir() || !manifest_path.exists() {
+                continue;
+            }
+            let manifest = match self.load_manifest(&manifest_path) {
+                Ok(m) => m,
+                Err(e) => {
+                    tracing::warn!("Failed to load manifest from {}: {}", manifest_path.display(), e);
+                    continue;
+                }
+            };
+            let id = manifest.id.clone();
+            let is_new = !self.discovered.contains_key(&id);
+            if !is_new && !reload_existing {
+                tracing::warn!(
+                    "Duplicate extension id '{}' found in {}, skipping (already registered)",
+                    id, path.display()
+                );
+                continue;
+            }
+            if is_new {
+                tracing::info!("Discovered extension: {} v{} ({})", manifest.name, manifest.version, id);
+                found.push(id.clone());
+            }
+            self.discovered.insert(id, DiscoveredExtension { manifest, dir: path });
+        }
 
-        tracing::info!("Extension discovery complete: {} found", found.len());
         Ok(found)
+    }
+
+    fn read_extensions_dir(&self) -> Result<Vec<PathBuf>> {
+        let entries = std::fs::read_dir(&self.extensions_dir).with_context(|| {
+            format!("Failed to read extensions directory: {}", self.extensions_dir.display())
+        })?;
+        Ok(entries.filter_map(|e| e.ok().map(|e| e.path())).collect())
     }
 
     /// `.zip` 파일을 같은 이름의 폴더로 압축 해제.
@@ -645,160 +552,12 @@ impl ExtensionManager {
         Ok(Some(stem.to_string()))
     }
 
-    /// 방금 추출된 폴더들의 manifest를 로드하여 discovered에 추가 (내부용)
-    fn rescan_extracted(&mut self) -> Result<Vec<String>> {
-        let mut newly_found = Vec::new();
-        if !self.extensions_dir.is_dir() {
-            return Ok(newly_found);
-        }
-        let entries = std::fs::read_dir(&self.extensions_dir)
-            .with_context(|| format!("Failed to read extensions directory: {}", self.extensions_dir.display()))?;
-        for entry in entries {
-            let entry = match entry {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-            let path = entry.path();
-            if !path.is_dir() { continue; }
-            let manifest_path = path.join("manifest.json");
-            if !manifest_path.exists() { continue; }
-            match self.load_manifest(&manifest_path) {
-                Ok(manifest) => {
-                    let id = manifest.id.clone();
-                    if !self.discovered.contains_key(&id) {
-                        self.discovered.insert(id.clone(), DiscoveredExtension { manifest, dir: path });
-                        newly_found.push(id);
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to load manifest {}: {}", manifest_path.display(), e);
-                }
-            }
-        }
-        Ok(newly_found)
-    }
-
     fn load_manifest(&self, path: &std::path::Path) -> Result<ExtensionManifest> {
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("Failed to read {}", path.display()))?;
         let manifest: ExtensionManifest = serde_json::from_str(&content)
             .with_context(|| format!("Failed to parse {}", path.display()))?;
         Ok(manifest)
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    //  동적 마운트/언마운트 (재시작 불필요)
-    // ═══════════════════════════════════════════════════════════════
-
-    /// 런타임 중 extensions/ 디렉토리를 재스캔하여 새로 추가된 익스텐션 발견.
-    /// 기존에 이미 발견된 익스텐션은 매니페스트를 리로드(갱신),
-    /// 디스크에서 제거된 (unmount 아닌) 익스텐션은 유지.
-    pub fn rescan(&mut self) -> Result<Vec<String>> {
-        let mut newly_found = Vec::new();
-
-        if !self.extensions_dir.is_dir() {
-            return Ok(newly_found);
-        }
-
-        let entries = std::fs::read_dir(&self.extensions_dir)
-            .with_context(|| format!("Failed to read extensions directory: {}", self.extensions_dir.display()))?;
-
-        for entry in entries {
-            let entry = match entry {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-
-            let manifest_path = path.join("manifest.json");
-            if !manifest_path.exists() {
-                continue;
-            }
-
-            match self.load_manifest(&manifest_path) {
-                Ok(manifest) => {
-                    let id = manifest.id.clone();
-                    let is_new = !self.discovered.contains_key(&id);
-                    self.discovered.insert(
-                        id.clone(),
-                        DiscoveredExtension { manifest, dir: path },
-                    );
-                    if is_new {
-                        tracing::info!("Rescan: newly discovered extension '{}'", id);
-                        newly_found.push(id);
-                    } else {
-                        tracing::debug!("Rescan: reloaded manifest for '{}'", id);
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to load manifest {}: {}", manifest_path.display(), e);
-                }
-            }
-        }
-
-        tracing::info!("Rescan complete: {} new extension(s)", newly_found.len());
-        Ok(newly_found)
-    }
-
-    /// 단일 익스텐션을 핫 마운트 (디스크에서 로드 → discovered에 추가).
-    /// 이미 존재하면 매니페스트를 리로드.
-    pub fn mount(&mut self, ext_id: &str) -> Result<()> {
-        let ext_path = self.ext_dir_on_disk(ext_id);
-        let manifest_path = ext_path.join("manifest.json");
-
-        if !manifest_path.exists() {
-            return Err(ExtensionError::manifest_not_found(
-                &manifest_path.display().to_string(),
-            ).into());
-        }
-
-        let manifest = self.load_manifest(&manifest_path)?;
-        if manifest.id != ext_id {
-            return Err(ExtensionError::id_mismatch(&manifest.id, ext_id).into());
-        }
-
-        tracing::info!("Mounted extension: {} v{}", manifest.name, manifest.version);
-        self.discovered.insert(
-            ext_id.to_string(),
-            DiscoveredExtension { manifest, dir: ext_path },
-        );
-        Ok(())
-    }
-
-    /// 익스텐션 언마운트 (discovered + enabled에서 제거).
-    /// 다른 활성 익스텐션이 이 익스텐션에 의존하면 실패.
-    /// `active_ext_data`는 현재 존재하는 인스턴스들의 extension_data 목록 —
-    /// 인스턴스가 이 익스텐션을 사용 중이면 실패.
-    pub fn unmount(
-        &mut self,
-        ext_id: &str,
-        active_ext_data: &[(&str, &HashMap<String, Value>)],
-    ) -> Result<()> {
-        if !self.discovered.contains_key(ext_id) {
-            return Err(ExtensionError::not_mounted(ext_id).into());
-        }
-
-        // 역의존성 검사: 다른 활성 익스텐션이 이 익스텐션을 dependency로 선언했는지
-        let dependents = self.dependents_of(ext_id);
-        if !dependents.is_empty() {
-            return Err(ExtensionError::has_dependents(ext_id, &dependents).into());
-        }
-
-        // 인스턴스 사용 여부 검사
-        let using = self.instances_using_ext(ext_id, active_ext_data);
-        if !using.is_empty() {
-            return Err(ExtensionError::in_use(ext_id, &using).into());
-        }
-
-        self.enabled.remove(ext_id);
-        self.discovered.remove(ext_id);
-        self.save_state();
-        tracing::info!("Unmounted extension: {}", ext_id);
-        Ok(())
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -958,12 +717,6 @@ impl ExtensionManager {
         Ok(())
     }
 
-    /// 강제 비활성화 (인스턴스/의존성 무시) — 내부 마이그레이션/관리용
-    pub fn force_disable(&mut self, ext_id: &str) {
-        self.enabled.remove(ext_id);
-        self.save_state();
-        tracing::warn!("Extension force-disabled: {}", ext_id);
-    }
 
     /// 익스텐션 제거 — 비활성화 후 디렉토리 삭제
     pub fn remove(
@@ -979,14 +732,13 @@ impl ExtensionManager {
         if self.enabled.contains(ext_id) {
             self.disable(ext_id, active_ext_data)?;
         }
-        // 발견 목록에서 제거
-        self.discovered.remove(ext_id);
         // 디렉토리 삭제
         let ext_path = self.ext_dir_on_disk(ext_id);
         if ext_path.exists() {
             std::fs::remove_dir_all(&ext_path)
                 .with_context(|| format!("Failed to remove extension directory: {}", ext_path.display()))?;
         }
+        self.discovered.remove(ext_id);
         // extensionConfig에서 해당 익스텐션의 설정 제거
         if self.extension_config.remove(ext_id).is_some() {
             self.save_extension_config();
@@ -1001,13 +753,9 @@ impl ExtensionManager {
         self.enabled.contains(ext_id)
     }
 
-    /// 현재 활성화된 익스텐션 ID 집합의 복제본을 반환합니다.
-    pub fn enabled_set(&self) -> HashSet<String> {
-        self.enabled.clone()
-    }
 
     /// 활성화되어 있고 **디스크에 실제로 설치된** 익스텐션 ID 집합을 반환합니다.
-    /// `enabled_set()`과 달리, `discover()`로 발견된 익스텐션만 포함합니다.
+    /// `discover()`로 발견된 익스텐션만 포함합니다.
     /// 모듈 필수 익스텐션 검증 시 이 메서드를 사용하세요.
     pub fn installed_and_enabled_set(&self) -> HashSet<String> {
         self.enabled
@@ -1053,17 +801,39 @@ impl ExtensionManager {
     }
 
     /// 지정된 hook에 바인딩된 활성 익스텐션 목록
-    pub fn hooks_for(&self, hook_name: &str) -> Vec<(&DiscoveredExtension, &HookBinding)> {
-        let mut result = Vec::new();
-        for ext in self.discovered.values() {
-            if !self.enabled.contains(&ext.manifest.id) {
-                continue;
-            }
-            if let Some(binding) = ext.manifest.hooks.get(hook_name) {
-                result.push((ext, binding));
-            }
+    fn hooks_for(&self, hook_name: &str) -> Vec<(&DiscoveredExtension, &HookBinding)> {
+        self.discovered
+            .values()
+            .filter(|ext| self.enabled.contains(&ext.manifest.id))
+            .filter_map(|ext| ext.manifest.hooks.get(hook_name).map(|b| (ext, b)))
+            .collect()
+    }
+
+    /// 훅 실행 계획을 스냅샷한다. 반환값은 매니저 락과 무관하게 실행할 수 있다.
+    ///
+    /// 훅은 Python 프로세스를 띄워 수 초~수십 분 걸릴 수 있으므로, 호출자는
+    /// 락을 잡은 채 실행하지 말고 계획만 만든 뒤 락을 풀고 `HookPlan::dispatch*`를 호출한다.
+    pub fn hook_plan(&self, hook_name: &str) -> HookPlan {
+        let targets = self
+            .hooks_for(hook_name)
+            .into_iter()
+            .map(|(ext, binding)| HookTarget {
+                ext_id: ext.manifest.id.clone(),
+                module_path: ext
+                    .manifest
+                    .python_modules
+                    .get(&binding.module)
+                    .map(|rel| ext.dir.join(rel)),
+                module_name: binding.module.clone(),
+                function: binding.function.clone(),
+                condition: binding.condition.clone(),
+            })
+            .collect();
+        HookPlan {
+            hook_name: hook_name.to_string(),
+            targets,
+            extension_config: self.extension_config_as_value(),
         }
-        result
     }
 
     /// 조건 문자열 평가: "instance.ext_data.<key>" → ext_data[key] == true
@@ -1085,246 +855,7 @@ impl ExtensionManager {
         }
     }
 
-    /// hook context에 extension_config를 주입합니다.
-    /// 이미 존재하지 않는 경우에만 추가합니다.
-    fn inject_extension_config(&self, mut context: Value) -> Value {
-        if let Some(obj) = context.as_object_mut() {
-            if !obj.contains_key("extension_config") {
-                obj.insert(
-                    "extension_config".to_string(),
-                    self.extension_config_as_value(),
-                );
-            }
-        }
-        context
-    }
 
-    /// Hook 디스패치: 조건 평가 → run_plugin 호출 → handled 체크
-    ///
-    /// 반환: Vec<(ext_id, Result<Value>)>
-    /// handled=true가 나오면 이후 익스텐션은 스킵 (chain-of-responsibility)
-    pub async fn dispatch_hook(
-        &self,
-        hook_name: &str,
-        context: Value,
-    ) -> Vec<(String, Result<Value>)> {
-        self.dispatch_hook_timed(hook_name, context, crate::plugin::DEFAULT_PLUGIN_TIMEOUT_SECS).await
-    }
-
-    /// 타임아웃 지정 가능한 hook 디스패치 (server.list_enrich 등 빠른 반환이 필요한 hook용)
-    pub async fn dispatch_hook_timed(
-        &self,
-        hook_name: &str,
-        context: Value,
-        timeout_secs: u64,
-    ) -> Vec<(String, Result<Value>)> {
-        let hooks = self.hooks_for(hook_name);
-        if hooks.is_empty() {
-            return Vec::new();
-        }
-
-        // extension_config를 context에 자동 주입
-        let context = self.inject_extension_config(context);
-
-        let ext_data: HashMap<String, Value> = context
-            .get("extension_data")
-            .and_then(|v| serde_json::from_value(v.clone()).ok())
-            .unwrap_or_default();
-
-        let mut results = Vec::new();
-
-        for (ext, binding) in hooks {
-            // 조건 평가
-            if let Some(ref cond) = binding.condition {
-                if !Self::evaluate_condition(cond, &ext_data) {
-                    continue;
-                }
-            }
-
-            // Python 모듈 절대 경로 해석
-            let module_file = match ext.manifest.python_modules.get(&binding.module) {
-                Some(rel_path) => ext.dir.join(rel_path),
-                None => {
-                    tracing::error!(
-                        "Extension '{}' hook '{}' references unknown module '{}'",
-                        ext.manifest.id,
-                        hook_name,
-                        binding.module
-                    );
-                    results.push((
-                        ext.manifest.id.clone(),
-                        Err(anyhow::anyhow!(
-                            "Unknown python module: {}",
-                            binding.module
-                        )),
-                    ));
-                    continue;
-                }
-            };
-
-            let module_path = module_file.to_string_lossy().to_string();
-            tracing::debug!(
-                "Dispatching hook '{}' → ext '{}' → {}::{}",
-                hook_name,
-                ext.manifest.id,
-                binding.module,
-                binding.function
-            );
-
-            let result = crate::plugin::run_plugin_with_timeout(
-                &module_path,
-                &binding.function,
-                context.clone(),
-                timeout_secs,
-            )
-            .await;
-
-            match &result {
-                Ok(val) => {
-                    tracing::debug!(
-                        "Hook '{}' ext '{}' returned: {}",
-                        hook_name,
-                        ext.manifest.id,
-                        serde_json::to_string(val).unwrap_or_default()
-                    );
-                    results.push((ext.manifest.id.clone(), Ok(val.clone())));
-
-                    // handled=true → chain 종료
-                    if val
-                        .get("handled")
-                        .and_then(|h| h.as_bool())
-                        == Some(true)
-                    {
-                        tracing::debug!(
-                            "Hook '{}' handled by extension '{}', skipping remaining",
-                            hook_name,
-                            ext.manifest.id
-                        );
-                        break;
-                    }
-                }
-                Err(e) => {
-                    tracing::error!(
-                        "Hook '{}' ext '{}' failed: {}",
-                        hook_name,
-                        ext.manifest.id,
-                        e
-                    );
-                    results.push((
-                        ext.manifest.id.clone(),
-                        Err(anyhow::anyhow!("Hook dispatch failed: {}", e)),
-                    ));
-                    // 에러 시 graceful degradation — 기본 동작 진행을 위해 계속
-                }
-            }
-        }
-
-        results
-    }
-
-    /// Hook 디스패치 + 진행률 콜백 (server.post_create 등 장시간 hook용)
-    pub async fn dispatch_hook_with_progress<F>(
-        &self,
-        hook_name: &str,
-        context: Value,
-        on_progress: F,
-    ) -> Vec<(String, Result<Value>)>
-    where
-        F: Fn(crate::plugin::ExtensionProgress) + Send + 'static,
-    {
-        let hooks = self.hooks_for(hook_name);
-        if hooks.is_empty() {
-            tracing::warn!("dispatch_hook_with_progress('{}') — no hooks registered (enabled: {:?})", hook_name, self.enabled);
-            return Vec::new();
-        }
-
-        // extension_config를 context에 자동 주입
-        let context = self.inject_extension_config(context);
-
-        let ext_data: HashMap<String, Value> = context
-            .get("extension_data")
-            .and_then(|v| serde_json::from_value(v.clone()).ok())
-            .unwrap_or_default();
-
-        tracing::info!("dispatch_hook_with_progress('{}') — {} hook(s), ext_data keys: {:?}", hook_name, hooks.len(), ext_data.keys().collect::<Vec<_>>());
-
-        let mut results = Vec::new();
-
-        for (ext, binding) in hooks {
-            if let Some(ref cond) = binding.condition {
-                if !Self::evaluate_condition(cond, &ext_data) {
-                    tracing::warn!("Hook '{}' from '{}' skipped: condition '{}' evaluated to false (ext_data: {:?})", hook_name, ext.manifest.id, cond, ext_data);
-                    continue;
-                }
-            }
-
-            let module_file = match ext.manifest.python_modules.get(&binding.module) {
-                Some(rel_path) => ext.dir.join(rel_path),
-                None => {
-                    results.push((
-                        ext.manifest.id.clone(),
-                        Err(anyhow::anyhow!(
-                            "Unknown python module: {}",
-                            binding.module
-                        )),
-                    ));
-                    continue;
-                }
-            };
-
-            let module_path = module_file.to_string_lossy().to_string();
-
-            let result = crate::plugin::run_plugin_with_progress_and_timeout(
-                &module_path,
-                &binding.function,
-                context.clone(),
-                on_progress,
-                1800, // 30분 — SteamCMD/다운로드 등 장시간 프로비저닝 허용
-            )
-            .await;
-
-            match &result {
-                Ok(val) => {
-                    results.push((ext.manifest.id.clone(), Ok(val.clone())));
-                    if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
-                        break;
-                    }
-                }
-                Err(e) => {
-                    results.push((
-                        ext.manifest.id.clone(),
-                        Err(anyhow::anyhow!("Hook dispatch failed: {}", e)),
-                    ));
-                }
-            }
-
-            // progress 콜백은 한 번만 소비 가능하므로 첫 번째 익스텐션만 progress 지원
-            break;
-        }
-
-        results
-    }
-
-    /// 해당 config 섹션명을 관할하는 활성 익스텐션이 있는지
-    pub fn should_parse_config_section(&self, section: &str) -> bool {
-        self.discovered.values().any(|ext| {
-            self.enabled.contains(&ext.manifest.id)
-                && ext.manifest.module_config_section.as_deref() == Some(section)
-        })
-    }
-
-    /// 활성 익스텐션의 instance_fields를 합산
-    pub fn all_instance_fields(&self) -> HashMap<String, FieldDef> {
-        let mut fields = HashMap::new();
-        for ext in self.discovered.values() {
-            if self.enabled.contains(&ext.manifest.id) {
-                for (k, v) in &ext.manifest.instance_fields {
-                    fields.insert(k.clone(), v.clone());
-                }
-            }
-        }
-        fields
-    }
 
     /// 활성 익스텐션의 GUI 매니페스트 목록
     pub fn gui_manifests(&self) -> Vec<(&str, &GuiManifest)> {
@@ -1348,38 +879,6 @@ impl ExtensionManager {
     // ═══════════════════════════════════════════════════════════════
     //  원격 매니페스트 & 버전 관리
     // ═══════════════════════════════════════════════════════════════
-
-    /// 원격 매니페스트 URL을 커스텀 주소로 오버라이드
-    pub fn set_manifest_url(&mut self, url: &str) {
-        self.manifest_url = url.to_string();
-    }
-
-    /// 원격 매니페스트에서 가용 익스텐션 목록을 페치합니다.
-    ///
-    /// `manifest_url`(GitHub raw URL)에서 JSON을 가져와 `Vec<RemoteExtensionInfo>`로 반환합니다.
-    pub async fn fetch_manifest(&self) -> Result<Vec<RemoteExtensionInfo>> {
-        tracing::debug!("Fetching extension manifest from: {}", self.manifest_url);
-
-        let response = reqwest::get(&self.manifest_url)
-            .await
-            .with_context(|| format!("Failed to fetch manifest from {}", self.manifest_url))?;
-
-        if !response.status().is_success() {
-            return Err(anyhow::anyhow!(
-                "Manifest fetch failed: HTTP {}",
-                response.status()
-            ));
-        }
-
-        let manifest_resp: ExtensionManifestResponse = response
-            .json()
-            .await
-            .context("Failed to parse manifest response")?;
-
-        let list = manifest_resp.into_list();
-        tracing::info!("Fetched {} extension(s) from manifest", list.len());
-        Ok(list)
-    }
 
     /// 설치된 익스텐션 중 원격 버전보다 낮은 것의 업데이트 정보를 반환합니다.
     pub fn check_updates_against(
@@ -1414,91 +913,13 @@ impl ExtensionManager {
         updates
     }
 
-    /// 버전 문자열 비교 (updater 크레이트의 SemVer를 사용, 폴백 포함)
-    ///
-    /// 기존 업데이터와 동일한 `SemVer` 타입을 사용하여 동작을 보장합니다.
-    pub fn is_newer_version(candidate: &str, current: &str) -> bool {
-        match (SemVer::parse(candidate), SemVer::parse(current)) {
-            (Some(c), Some(cur)) => c.is_newer_than(&cur),
-            _ => candidate > current,
-        }
-    }
-
-    /// 원격에서 zip을 다운로드하여 extensions/ 폴더에 설치합니다.
-    ///
-    /// `download_url`에서 zip 파일을 받아 `extensions/{ext_id}/`에 압축을 풉니다.
-    /// `expected_sha256`가 주어지면 다운로드 후 무결성을 검증합니다 (미구현, v0.2 예정).
-    pub async fn install_from_url(
-        &self,
-        ext_id: &str,
-        download_url: &str,
-        _expected_sha256: Option<&str>,
-    ) -> Result<()> {
-        tracing::info!("Installing extension '{}' from {}", ext_id, download_url);
-
-        // sha256 검증은 v0.2에서 sha2 크레이트 도입 후 구현 예정
-        // 다운로드
-        let response = reqwest::get(download_url)
-            .await
-            .with_context(|| format!("Failed to download extension from {}", download_url))?;
-
-        if !response.status().is_success() {
-            return Err(anyhow::anyhow!(
-                "Download failed: HTTP {}",
-                response.status()
-            ));
-        }
-
-        let bytes = response
-            .bytes()
-            .await
-            .context("Failed to read download response body")?;
-
-        // 임시 zip 파일로 저장
-        let zip_path = self.extensions_dir.join(format!("{}.zip", ext_id));
-        std::fs::write(&zip_path, &bytes)
-            .with_context(|| format!("Failed to write download to {}", zip_path.display()))?;
-
-        // 압축 해제: Python import와 호환되는 디렉토리명 사용 (하이픈→언더스코어)
-        // 기존 폴더가 있으면 먼저 제거 (하이픈/언더스코어 버전 모두 확인)
-        let dir_name = Self::python_safe_dir_name(ext_id);
-        let dest = self.extensions_dir.join(&dir_name);
-        if dest.is_dir() {
-            std::fs::remove_dir_all(&dest)
-                .with_context(|| format!("Failed to remove existing extension dir: {}", dest.display()))?;
-        }
-
-
-        let file = std::fs::File::open(&zip_path)?;
-        let mut archive = zip::ZipArchive::new(file)
-            .context("Failed to read downloaded zip archive")?;
-
-        for i in 0..archive.len() {
-            let mut zip_file = archive.by_index(i)?;
-            let outpath = match zip_file.enclosed_name() {
-                Some(p) => dest.join(p),
-                None => continue,
-            };
-            if zip_file.is_dir() {
-                std::fs::create_dir_all(&outpath)?;
-            } else {
-                if let Some(parent) = outpath.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                let mut outfile = std::fs::File::create(&outpath)?;
-                std::io::copy(&mut zip_file, &mut outfile)?;
-            }
-        }
-
-        // 임시 zip 삭제
-        let _ = std::fs::remove_file(&zip_path);
-
-        tracing::info!("Extension '{}' installed successfully", ext_id);
-        Ok(())
-    }
 
     /// i18n JSON 로드
+    /// `locale`은 URL 경로에서 오므로 단일 경로 요소만 허용한다 (경로 탈출 방지).
     pub fn load_i18n(&self, ext_id: &str, locale: &str) -> Option<Value> {
+        if !crate::utils::is_single_path_component(locale) {
+            return None;
+        }
         let ext = self.discovered.get(ext_id)?;
         let i18n_dir = ext.manifest.i18n_dir.as_deref()?;
         let path = ext.dir.join(i18n_dir).join(format!("{}.json", locale));
@@ -1522,7 +943,7 @@ impl ExtensionManager {
     }
 
     /// 전체 익스텐션 설정 맵을 serde_json::Value로 반환합니다 (hook context 주입용).
-    pub fn extension_config_as_value(&self) -> Value {
+    fn extension_config_as_value(&self) -> Value {
         serde_json::to_value(&self.extension_config).unwrap_or_default()
     }
 
@@ -1531,18 +952,13 @@ impl ExtensionManager {
     pub fn set_extension_config(&mut self, ext_id: &str, values: HashMap<String, Value>) {
         let entry = self.extension_config
             .entry(ext_id.to_string())
-            .or_insert_with(HashMap::new);
+            .or_default();
         for (k, v) in values {
             entry.insert(k, v);
         }
         self.save_extension_config();
     }
 
-    /// 특정 익스텐션의 글로벌 설정을 통째로 교체합니다.
-    pub fn replace_extension_config(&mut self, ext_id: &str, values: HashMap<String, Value>) {
-        self.extension_config.insert(ext_id.to_string(), values);
-        self.save_extension_config();
-    }
 
     /// extensionConfig.json 영속화
     fn save_extension_config(&self) {
@@ -1554,13 +970,7 @@ impl ExtensionManager {
             }
         };
 
-        if let Some(parent) = self.config_path.parent() {
-            if !parent.exists() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-        }
-
-        if let Err(e) = std::fs::write(&self.config_path, &json) {
+        if let Err(e) = crate::utils::write_atomic(&self.config_path, json.as_bytes()) {
             tracing::error!(
                 "Failed to save extension config to {}: {}",
                 self.config_path.display(),
@@ -1614,13 +1024,7 @@ impl ExtensionManager {
             }
         };
 
-        if let Some(parent) = self.state_path.parent() {
-            if !parent.exists() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-        }
-
-        if let Err(e) = std::fs::write(&self.state_path, json) {
+        if let Err(e) = crate::utils::write_atomic(&self.state_path, json.as_bytes()) {
             tracing::error!(
                 "Failed to save extension state to {}: {}",
                 self.state_path.display(),
@@ -1662,6 +1066,170 @@ impl ExtensionManager {
             }
         }
     }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Hook 실행 계획 (락 밖에서 실행)
+// ═══════════════════════════════════════════════════════════════
+
+/// 데몬 전역에서 공유하는 익스텐션 매니저 핸들
+pub type SharedExtensionManager = std::sync::Arc<tokio::sync::RwLock<ExtensionManager>>;
+
+#[derive(Debug, Clone)]
+struct HookTarget {
+    ext_id: String,
+    /// `python_modules`에서 해석한 스크립트 경로 (`None` = 매니페스트에 없는 모듈)
+    module_path: Option<PathBuf>,
+    module_name: String,
+    function: String,
+    condition: Option<String>,
+}
+
+/// [`ExtensionManager::hook_plan`]이 만든 훅 실행 계획.
+///
+/// 매니저 락 없이 실행된다. 체인 규칙: 조건이 맞는 익스텐션을 순서대로 실행하고,
+/// `handled=true`를 반환한 익스텐션에서 멈춘다. 개별 실패는 결과에 담고 계속 진행한다.
+#[derive(Debug, Clone)]
+pub struct HookPlan {
+    hook_name: String,
+    targets: Vec<HookTarget>,
+    extension_config: Value,
+}
+
+impl HookPlan {
+    pub fn is_empty(&self) -> bool {
+        self.targets.is_empty()
+    }
+
+    /// 이 훅에 바인딩된 익스텐션 id 목록 (조건 평가 전)
+    pub fn ext_ids(&self) -> Vec<String> {
+        self.targets.iter().map(|t| t.ext_id.clone()).collect()
+    }
+
+    /// 지정한 익스텐션만 남긴 계획 (활성화 직후 그 익스텐션의 startup 훅만 실행할 때)
+    pub fn only(mut self, ext_id: &str) -> Self {
+        self.targets.retain(|t| t.ext_id == ext_id);
+        self
+    }
+
+    /// 기본 타임아웃으로 디스패치
+    pub async fn dispatch(&self, context: Value) -> Vec<(String, Result<Value>)> {
+        self.run(context, crate::plugin::DEFAULT_PLUGIN_TIMEOUT_SECS, None).await
+    }
+
+    /// 타임아웃 지정 디스패치 (server.list_enrich 등 빠른 반환이 필요한 hook용)
+    pub async fn dispatch_timed(&self, context: Value, timeout_secs: u64) -> Vec<(String, Result<Value>)> {
+        self.run(context, timeout_secs, None).await
+    }
+
+    /// 장시간 훅용 디스패치 — 모든 익스텐션의 `PROGRESS:` 이벤트를 콜백으로 전달한다.
+    pub async fn dispatch_with_progress(
+        &self,
+        context: Value,
+        on_progress: crate::plugin::ProgressCallback,
+    ) -> Vec<(String, Result<Value>)> {
+        self.run(context, crate::plugin::LONG_PLUGIN_TIMEOUT_SECS, Some(on_progress)).await
+    }
+
+    async fn run(
+        &self,
+        mut context: Value,
+        timeout_secs: u64,
+        on_progress: Option<crate::plugin::ProgressCallback>,
+    ) -> Vec<(String, Result<Value>)> {
+        let mut results = Vec::new();
+        if self.targets.is_empty() {
+            return results;
+        }
+        // extension_config를 context에 자동 주입 (이미 있으면 유지)
+        if let Some(obj) = context.as_object_mut() {
+            obj.entry("extension_config".to_string())
+                .or_insert_with(|| self.extension_config.clone());
+        }
+        let ext_data: HashMap<String, Value> = context
+            .get("extension_data")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
+
+        for target in &self.targets {
+            if let Some(cond) = &target.condition {
+                if !ExtensionManager::evaluate_condition(cond, &ext_data) {
+                    tracing::debug!(
+                        "Hook '{}' from '{}' skipped: condition '{}' is false",
+                        self.hook_name, target.ext_id, cond
+                    );
+                    continue;
+                }
+            }
+            let Some(module_path) = &target.module_path else {
+                tracing::error!(
+                    "Extension '{}' hook '{}' references unknown module '{}'",
+                    target.ext_id, self.hook_name, target.module_name
+                );
+                results.push((
+                    target.ext_id.clone(),
+                    Err(anyhow::anyhow!("Unknown python module: {}", target.module_name)),
+                ));
+                continue;
+            };
+            let module_path = module_path.to_string_lossy();
+            tracing::debug!(
+                "Dispatching hook '{}' → ext '{}' → {}::{}",
+                self.hook_name, target.ext_id, target.module_name, target.function
+            );
+            let result = match &on_progress {
+                Some(cb) => {
+                    crate::plugin::run_plugin_with_progress(
+                        &module_path, &target.function, context.clone(), cb.clone(), timeout_secs,
+                    )
+                    .await
+                }
+                None => {
+                    crate::plugin::run_plugin_with_timeout(
+                        &module_path, &target.function, context.clone(), timeout_secs,
+                    )
+                    .await
+                }
+            };
+            match result {
+                Ok(val) => {
+                    let handled = val.get("handled").and_then(|h| h.as_bool()) == Some(true);
+                    results.push((target.ext_id.clone(), Ok(val)));
+                    if handled {
+                        tracing::debug!(
+                            "Hook '{}' handled by extension '{}', skipping remaining",
+                            self.hook_name, target.ext_id
+                        );
+                        break;
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Hook '{}' ext '{}' failed: {}", self.hook_name, target.ext_id, e);
+                    results.push((target.ext_id.clone(), Err(anyhow::anyhow!("Hook dispatch failed: {}", e))));
+                }
+            }
+        }
+        results
+    }
+}
+
+/// 매니저 락을 짧게 잡아 계획만 만들고, 락을 푼 뒤 훅을 실행한다.
+pub async fn dispatch_hook(
+    mgr: &SharedExtensionManager,
+    hook_name: &str,
+    context: Value,
+) -> Vec<(String, Result<Value>)> {
+    let plan = mgr.read().await.hook_plan(hook_name);
+    plan.dispatch(context).await
+}
+
+/// 결과 중 `handled=true`인 첫 응답
+pub fn first_handled(results: &[(String, Result<Value>)]) -> Option<&Value> {
+    results.iter().find_map(|(_, r)| {
+        r.as_ref()
+            .ok()
+            .filter(|v| v.get("handled").and_then(|h| h.as_bool()) == Some(true))
+    })
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1803,48 +1371,7 @@ mod tests {
 
     // ── 동적 마운트/언마운트 테스트 ──
 
-    #[test]
-    fn test_mount_unmount() {
-        let tmp = tempfile::tempdir().unwrap();
-        let ext_dir = tmp.path().join("my_ext");
-        std::fs::create_dir_all(&ext_dir).unwrap();
-        std::fs::write(
-            ext_dir.join("manifest.json"),
-            r#"{"id":"my_ext","name":"My Extension","version":"0.1.0"}"#,
-        )
-        .unwrap();
 
-        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
-        // 아직 discover 안 했으므로 비어 있음
-        assert!(mgr.list().is_empty());
-
-        // 핫 마운트
-        mgr.mount("my_ext").unwrap();
-        assert_eq!(mgr.list().len(), 1);
-
-        // 핫 언마운트
-        let no_instances: Vec<(&str, &HashMap<String, Value>)> = vec![];
-        mgr.unmount("my_ext", &no_instances).unwrap();
-        assert!(mgr.list().is_empty());
-    }
-
-    #[test]
-    fn test_mount_bad_id_mismatch() {
-        let tmp = tempfile::tempdir().unwrap();
-        // 디렉토리 이름은 "wrong_dir"이지만 manifest id는 "correct_id"
-        let ext_dir = tmp.path().join("wrong_dir");
-        std::fs::create_dir_all(&ext_dir).unwrap();
-        std::fs::write(
-            ext_dir.join("manifest.json"),
-            r#"{"id":"correct_id","name":"Test","version":"0.1.0"}"#,
-        )
-        .unwrap();
-
-        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
-        let result = mgr.mount("wrong_dir");
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("does not match"));
-    }
 
     #[test]
     fn test_rescan_finds_new_extensions() {
@@ -1980,56 +1507,7 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("my_server"));
     }
 
-    #[test]
-    fn test_unmount_blocked_by_dependent() {
-        let tmp = tempfile::tempdir().unwrap();
 
-        let parent_dir = tmp.path().join("parent_ext");
-        std::fs::create_dir_all(&parent_dir).unwrap();
-        std::fs::write(
-            parent_dir.join("manifest.json"),
-            r#"{"id":"parent_ext","name":"Parent","version":"0.1.0"}"#,
-        )
-        .unwrap();
-
-        let child_dir = tmp.path().join("child_ext");
-        std::fs::create_dir_all(&child_dir).unwrap();
-        std::fs::write(
-            child_dir.join("manifest.json"),
-            r#"{"id":"child_ext","name":"Child","version":"0.1.0","dependencies":["parent_ext"]}"#,
-        )
-        .unwrap();
-
-        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
-        mgr.discover().unwrap();
-        mgr.enable("parent_ext").unwrap();
-        mgr.enable("child_ext").unwrap();
-
-        let no_instances: Vec<(&str, &HashMap<String, Value>)> = vec![];
-        let result = mgr.unmount("parent_ext", &no_instances);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("child_ext"));
-    }
-
-    #[test]
-    fn test_force_disable() {
-        let tmp = tempfile::tempdir().unwrap();
-        let ext_dir = tmp.path().join("test_ext");
-        std::fs::create_dir_all(&ext_dir).unwrap();
-        std::fs::write(
-            ext_dir.join("manifest.json"),
-            r#"{"id":"test_ext","name":"Test","version":"0.1.0"}"#,
-        )
-        .unwrap();
-
-        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
-        mgr.discover().unwrap();
-        mgr.enable("test_ext").unwrap();
-        assert!(mgr.is_enabled("test_ext"));
-
-        mgr.force_disable("test_ext");
-        assert!(!mgr.is_enabled("test_ext"));
-    }
 
     // ═══════════════════════════════════════════════════════════════
     //  추가 심층 테스트
@@ -2196,6 +1674,41 @@ mod tests {
         assert!(!ext_dir.exists(), "Extension directory should be deleted");
     }
 
+    #[test]
+    fn recovery_extension_remove_uses_discovered_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ext_dir = tmp.path().join("bundle-folder");
+        std::fs::create_dir_all(&ext_dir).unwrap();
+        std::fs::write(ext_dir.join("manifest.json"),
+            r#"{"id":"different-id","name":"Test","version":"1.0.0"}"#).unwrap();
+        let mut manager = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+        manager.discover().unwrap();
+
+        manager.remove("different-id", &[]).unwrap();
+        assert!(!ext_dir.exists());
+        manager.discover().unwrap();
+        assert!(manager.list().is_empty());
+    }
+
+    #[test]
+    fn recovery_extension_remove_cannot_escape_via_manifest_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let extensions = tmp.path().join("extensions");
+        let ext_dir = extensions.join("bundle-folder");
+        let outside = tmp.path().join("outside");
+        std::fs::create_dir_all(&ext_dir).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("keep.txt"), "keep").unwrap();
+        std::fs::write(ext_dir.join("manifest.json"),
+            r#"{"id":"../outside","name":"Test","version":"1.0.0"}"#).unwrap();
+        let mut manager = ExtensionManager::new_isolated(extensions.to_str().unwrap());
+        manager.discover().unwrap();
+
+        manager.remove("../outside", &[]).unwrap();
+        assert!(outside.join("keep.txt").exists());
+        assert!(!ext_dir.exists());
+    }
+
     /// 삭제 — 의존하는 익스텐션이 있으면 실패
     #[test]
     fn test_remove_blocked_by_active_dependent() {
@@ -2282,64 +1795,8 @@ mod tests {
         assert!(mgr.hooks_for("nonexistent.hook").is_empty());
     }
 
-    /// should_parse_config_section — module_config_section 매칭
-    #[test]
-    fn test_should_parse_config_section() {
-        let tmp = tempfile::tempdir().unwrap();
-        let ext_dir = tmp.path().join("docker");
-        std::fs::create_dir_all(&ext_dir).unwrap();
-        std::fs::write(ext_dir.join("manifest.json"), json!({
-            "id": "docker", "name": "Docker", "version": "1.0.0",
-            "module_config_section": "docker"
-        }).to_string()).unwrap();
 
-        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
-        mgr.discover().unwrap();
 
-        // 비활성 → false
-        assert!(!mgr.should_parse_config_section("docker"));
-
-        mgr.enable("docker").unwrap();
-        assert!(mgr.should_parse_config_section("docker"));
-        assert!(!mgr.should_parse_config_section("other_section"));
-    }
-
-    /// all_instance_fields — 여러 익스텐션의 필드 합산
-    #[test]
-    fn test_all_instance_fields_merges_across_extensions() {
-        let tmp = tempfile::tempdir().unwrap();
-
-        let make_ext = |id: &str, field: &str| {
-            let dir = tmp.path().join(id);
-            std::fs::create_dir_all(&dir).unwrap();
-            std::fs::write(dir.join("manifest.json"), json!({
-                "id": id, "name": id, "version": "0.1.0",
-                "instance_fields": { field: { "type": "boolean", "default": false } }
-            }).to_string()).unwrap();
-        };
-
-        make_ext("ext_a", "field_a");
-        make_ext("ext_b", "field_b");
-
-        let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
-        mgr.discover().unwrap();
-        mgr.enable("ext_a").unwrap();
-        mgr.enable("ext_b").unwrap();
-
-        let fields = mgr.all_instance_fields();
-        assert!(fields.contains_key("field_a"));
-        assert!(fields.contains_key("field_b"));
-        assert_eq!(fields.len(), 2);
-    }
-
-    /// is_newer_version 유틸리티
-    #[test]
-    fn test_is_newer_version() {
-        assert!(ExtensionManager::is_newer_version("1.1.0", "1.0.0"));
-        assert!(ExtensionManager::is_newer_version("2.0.0", "1.9.9"));
-        assert!(!ExtensionManager::is_newer_version("1.0.0", "1.0.0"));
-        assert!(!ExtensionManager::is_newer_version("0.9.0", "1.0.0"));
-    }
 
     /// check_updates_against — 로컬 < 원격이면 업데이트 정보 반환
     #[test]
@@ -2570,8 +2027,7 @@ mod tests {
             "version": "1.0.0",
             "dependencies": {
                 "saba-core": ">=0.3.0",
-                "gui": ">=0.2.0",
-                "discord_bot": ">=0.1.0"
+                "gui": ">=0.2.0"
             }
         }).to_string()).unwrap();
 
@@ -2581,7 +2037,6 @@ mod tests {
         let mut versions = HashMap::new();
         versions.insert("saba-core".to_string(), "0.5.0".to_string());
         versions.insert("gui".to_string(), "0.3.0".to_string());
-        versions.insert("discord_bot".to_string(), "0.1.0".to_string());
 
         let result = mgr.enable_with_versions("advanced_ext", &versions);
         assert!(result.is_ok(), "All cross-type component deps satisfied");
@@ -2735,20 +2190,6 @@ mod tests {
               "has_gui": true,
               "has_i18n": true
             },
-            "music": {
-              "name": "Music Bot",
-              "version": "0.1.0",
-              "description": "Discord 음성 채널 음악 재생",
-              "author": "saba-chan",
-              "min_app_version": "0.1.0",
-              "dependencies": [],
-              "asset": "extension-music.zip",
-              "sha256": "a2c102839c3ea070b92381d9a214b628f0090bfe5bf77c286eea086c51821d01",
-              "install_dir": "extensions/music",
-              "download_url": "https://github.com/WareAoba/saba-chan-extensions/releases/latest/download/extension-music.zip",
-              "has_gui": false,
-              "has_i18n": false
-            },
             "steamcmd": {
               "name": "SteamCMD",
               "version": "0.1.0",
@@ -2767,7 +2208,7 @@ mod tests {
         let resp: ExtensionManifestResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.schema_version, 1);
         assert!(resp.generated_at.is_some());
-        assert_eq!(resp.extensions.len(), 4);
+        assert_eq!(resp.extensions.len(), 3);
 
         // docker 항목 검증
         let docker = &resp.extensions["docker"];
@@ -2779,14 +2220,9 @@ mod tests {
         assert!(docker.sha256.is_some());
         assert!(docker.asset.as_deref() == Some("extension-docker.zip"));
 
-        // music 항목 — dependencies가 빈 배열
-        let music = &resp.extensions["music"];
-        assert!(music.dependencies.is_empty());
-        assert!(!music.has_gui);
-
         // into_list() 변환 후 id 주입 검증
         let list = resp.into_list();
-        assert_eq!(list.len(), 4);
+        assert_eq!(list.len(), 3);
         for item in &list {
             assert!(!item.id.is_empty(), "id must be injected from map key");
         }
@@ -2913,29 +2349,8 @@ mod tests {
         assert_eq!(manifest.i18n_dir.as_deref(), Some("i18n/"));
     }
 
-    /// music manifest — gui.builtin, dependencies: [], i18n_dir: null
-    #[test]
-    fn test_parse_music_manifest() {
-        let json = r#"{
-          "id": "music",
-          "name": "Music Bot",
-          "version": "0.1.0",
-          "dependencies": [],
-          "python_modules": { "music_deps": "music_deps.py" },
-          "hooks": {
-            "daemon.startup": { "module": "music_deps", "function": "check_dependencies", "condition": null }
-          },
-          "gui": { "builtin": true, "slots": {} },
-          "instance_fields": {},
-          "i18n_dir": null
-        }"#;
-
-        let manifest: ExtensionManifest = serde_json::from_str(json).unwrap();
-        assert_eq!(manifest.id, "music");
-        assert!(manifest.dependencies.is_empty()); // [] → empty HashMap
-        let gui = manifest.gui.unwrap();
-        assert_eq!(gui.builtin, Some(true));
-        assert!(gui.slots.is_empty());
-        assert!(manifest.i18n_dir.is_none()); // null → None
-    }
+    // ═══════════════════════════════════════════════════════════════
+    //  install_from_url 무결성 검증 테스트는 Relay 경유 E2E
+    //  (`tests/extensions_install_relay.rs`) 로 대체됨.
+    // ═══════════════════════════════════════════════════════════════
 }

@@ -1,8 +1,4 @@
 ﻿use anyhow::Result;
-use axum::{
-    routing::{delete, get, post, put},
-    Router,
-};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -11,11 +7,12 @@ use std::time::Instant;
 use tokio::sync::RwLock;
 
 pub mod handlers;
+pub mod routes;
 pub mod updates;
 pub mod auth;
 use updates::UpdateState;
 
-pub use handlers::client::{kill_bot_pid, reap_expired_clients};
+pub use handlers::client::reap_expired_clients;
 
 // ── Client Heartbeat Registry ──────────────────────────────
 
@@ -32,8 +29,6 @@ pub enum ClientKind {
 pub struct RegisteredClient {
     pub kind: ClientKind,
     pub last_heartbeat: std::time::Instant,
-    /// 이 클라이언트가 시작한 Discord 봇 프로세스의 PID (있을 경우)
-    pub bot_pid: Option<u32>,
 }
 
 /// 클라이언트 레지스트리 — 여러 GUI/CLI 인스턴스의 생존 여부를 추적
@@ -69,7 +64,6 @@ impl ClientRegistry {
         map.insert(id.clone(), RegisteredClient {
             kind,
             last_heartbeat: std::time::Instant::now(),
-            bot_pid: None,
         });
         // 클라이언트가 등록되면 "한 번이라도 연결됨" 플래그 세팅, lost 타임스탬프 해제
         *self.had_clients_ever.write().await = true;
@@ -77,14 +71,11 @@ impl ClientRegistry {
         id
     }
 
-    /// Heartbeat 수신 — TTL 갱신, 선택적으로 bot_pid 업데이트
-    pub async fn heartbeat(&self, client_id: &str, bot_pid: Option<u32>) -> bool {
+    /// Heartbeat 수신 — TTL 갱신
+    pub async fn heartbeat(&self, client_id: &str) -> bool {
         let mut map = self.inner.write().await;
         if let Some(client) = map.get_mut(client_id) {
             client.last_heartbeat = std::time::Instant::now();
-            if let Some(pid) = bot_pid {
-                client.bot_pid = Some(pid);
-            }
             true
         } else {
             false
@@ -516,12 +507,14 @@ pub struct IPCServer {
     pub rcon_pool: Arc<crate::protocol::rcon_pool::RconPool>,
     /// Graceful shutdown 토큰 — 취소 시 데몬 전체 종료
     pub shutdown_token: tokio_util::sync::CancellationToken,
-    /// 범용 익스텐션 프로세스 매니저 (이름 기반 다중 프로세스 관리)
-    pub ext_process_manager: handlers::ext_process::SharedExtProcessManager,
     /// 중앙 설정 저장소 (타입 안전 JSON 관리)
     pub config_store: Arc<crate::config_store::ConfigStore>,
     /// 데몬 자체 로그 버퍼 (tracing 이벤트 캡처)
     pub daemon_log_buffer: crate::daemon_log::DaemonLogBuffer,
+    /// Runtime preflight 진행 상태 — 봇/Node/Python 의존성 자동 검사·복구
+    pub preflight_tracker: crate::runtime_preflight::PreflightTracker,
+    /// 클라우드 에이전트 런타임 — 페어링/토큰 변경 시 핫 리로드
+    pub cloud_agent: Arc<crate::cloud_agent::CloudAgentRuntime>,
 }
 
 impl IPCServer {
@@ -545,6 +538,16 @@ impl IPCServer {
         let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
         let config_store = Arc::new(crate::config_store::ConfigStore::new(&data_dir));
 
+        // 클라우드 에이전트 런타임 — 데몬 종료 토큰의 child로 에이전트 관리
+        let shutdown_token = tokio_util::sync::CancellationToken::new();
+        let cloud_agent = Arc::new(crate::cloud_agent::CloudAgentRuntime::new(
+            crate::cloud_agent::CloudAgentConfig::from_env(),
+            supervisor.clone(),
+            config_store.clone(),
+            data_dir,
+            shutdown_token.clone(),
+        ));
+
         Self {
             supervisor: supervisor.clone(),
             listen_addr: listen_addr.to_string(),
@@ -559,114 +562,25 @@ impl IPCServer {
             extension_status_cache: ExtensionStatusCache::new(30), // 30초 TTL (Docker/WSL 지연 대비)
             extension_init_tracker: ExtensionInitTracker::new(),
             rcon_pool: Arc::new(crate::protocol::rcon_pool::RconPool::new()),
-            shutdown_token: tokio_util::sync::CancellationToken::new(),
-            ext_process_manager: handlers::ext_process::new_ext_process_manager(),
+            shutdown_token,
             config_store,
             daemon_log_buffer,
+            preflight_tracker: crate::runtime_preflight::PreflightTracker::new(),
+            cloud_agent,
         }
     }
 
     pub async fn start(self) -> Result<()> {
         tracing::info!("IPC HTTP server starting on {}", self.listen_addr);
 
-        let router = Router::new()
-            // ── 경량 ping (lock / 디스크 I/O 없음) ──
-            .route("/health", get(handlers::server::health_check))
-            // ── Server query/control ──
-            .route("/api/servers", get(handlers::server::list_servers))
-            .route("/api/server/:name/status", get(handlers::server::get_server_status))
-            .route("/api/server/:name/start", post(handlers::server::start_server_handler))
-            .route("/api/server/:name/stop", post(handlers::server::stop_server_handler))
-            .route("/api/modules", get(handlers::server::list_modules))
-            .route("/api/modules/refresh", post(handlers::server::refresh_modules))
-            .route("/api/modules/manifest", get(handlers::server::fetch_module_manifest))
-            .route("/api/modules/manifest/:id/install", post(handlers::server::install_module_from_manifest))
-            .route("/api/modules/:id", delete(handlers::server::remove_module))
-            .route("/api/module/:name", get(handlers::server::get_module_metadata))
-            // ── Instance CRUD ──
-            .route("/api/instances", get(handlers::instance::list_instances).post(handlers::instance::create_instance))
-            .route("/api/instances/reorder", put(handlers::instance::reorder_instances))
-            .route("/api/instance/:id", get(handlers::instance::get_instance).delete(handlers::instance::delete_instance).patch(handlers::instance::update_instance_settings))
-            // ── Provision progress ──
-            .route("/api/provision-progress/:name", get(handlers::instance::get_provision_progress).delete(handlers::instance::dismiss_provision_progress))
-            // ── Command execution ──
-            .route("/api/instance/:id/check-update", get(handlers::instance::check_server_update))
-            .route("/api/instance/:id/apply-update", post(handlers::instance::apply_server_update))
-            // ── Command execution ──
-            .route("/api/instance/:id/command", post(handlers::command::execute_command))
-            .route("/api/instance/:id/rcon", post(handlers::command::execute_rcon_command))
-            .route("/api/instance/:id/rest", post(handlers::command::execute_rest_command))
-            // ── Managed-process & module-feature endpoints ──
-            .route("/api/instance/:id/managed/start", post(handlers::managed::start_managed_handler))
-            .route("/api/instance/:id/console", get(handlers::managed::get_console_handler))
-            .route("/api/instance/:id/stdin", post(handlers::managed::send_stdin_handler))
-            .route("/api/instance/:id/validate", post(handlers::managed::validate_instance_handler))
-            .route("/api/instance/:id/properties", get(handlers::managed::read_properties_handler).put(handlers::managed::write_properties_handler))
-            .route("/api/instance/:id/properties/reset", post(handlers::managed::reset_properties_handler))
-            .route("/api/instance/:id/server/reset", post(handlers::managed::reset_server_handler))
-            .route("/api/instance/:id/accept-eula", post(handlers::managed::accept_eula_handler))
-            .route("/api/instance/:id/diagnose", post(handlers::managed::diagnose_handler))
-            // ── Server installation endpoints ──
-            .route("/api/module/:name/versions", get(handlers::managed::list_versions_handler))
-            .route("/api/module/:name/version/:version", get(handlers::managed::get_version_details_handler))
-            .route("/api/module/:name/install", post(handlers::managed::install_server_handler))
-            .route("/api/instance/:id/installed-version", get(handlers::managed::get_installed_version_handler))
-            // ── Bot config ──
-            .route("/api/config/bot", get(handlers::bot::get_bot_config).put(handlers::bot::save_bot_config))
-            // ── GUI config (settings.json) ──
-            .route("/api/config/gui", get(handlers::config::get_gui_config).put(handlers::config::save_gui_config))
-            // ── Node token (cloud relay auth) ──
-            .route("/api/config/node-token", get(handlers::config::get_node_token).put(handlers::config::save_node_token).delete(handlers::config::delete_node_token))
-            // ── Module locales ──
-            .route("/api/module/:name/locales", get(handlers::config::get_module_locales))
-            // ── System components (release manifest) ──
-            .route("/api/system/components", get(handlers::config::get_system_components))
-            // ── Directory scan (migration etc.) ──
-            .route("/api/fs/scan-dir", post(handlers::config::scan_directory))
-            // ── Extension process management (범용) ──
-            .route("/api/ext-processes", get(handlers::ext_process::list_processes))
-            .route("/api/ext-process/:name/start", post(handlers::ext_process::start_process))
-            .route("/api/ext-process/:name/stop", post(handlers::ext_process::stop_process))
-            .route("/api/ext-process/:name/status", get(handlers::ext_process::get_process_status))
-            .route("/api/ext-process/:name/console", get(handlers::ext_process::get_process_console))
-            .route("/api/ext-process/:name/stdin", post(handlers::ext_process::send_process_stdin))
-            // ── Client heartbeat ──
-            .route("/api/client/register", post(handlers::client::client_register))
-            .route("/api/client/:id/heartbeat", post(handlers::client::client_heartbeat))
-            .route("/api/client/:id/unregister", delete(handlers::client::client_unregister))
-            // ── Daemon lifecycle ──
-            .route("/api/daemon/shutdown", post(handlers::client::daemon_shutdown))
-            .route("/api/daemon/console", get(handlers::client::daemon_console))
-            // ── Extension management ──
-            .route("/api/extensions", get(handlers::extension::list_extensions))
-            .route("/api/extensions/init-status", get(handlers::extension::extension_init_status))
-            .route("/api/extensions/rescan", post(handlers::extension::rescan_extensions))
-            .route("/api/extensions/manifest", get(handlers::extension::fetch_manifest))
-            .route("/api/extensions/updates", get(handlers::extension::check_extension_updates))
-            .route("/api/extensions/:id/enable", post(handlers::extension::enable_extension))
-            .route("/api/extensions/:id/disable", post(handlers::extension::disable_extension))
-            .route("/api/extensions/:id/mount", post(handlers::extension::mount_extension))
-            .route("/api/extensions/:id/unmount", post(handlers::extension::unmount_extension))
-            .route("/api/extensions/:id/install", post(handlers::extension::install_extension))
-            .route("/api/extensions/:id", delete(handlers::extension::remove_extension))
-            .route("/api/extensions/:id/config", get(handlers::extension::get_extension_config).put(handlers::extension::save_extension_config))
-            .route("/api/extensions/:id/gui", get(handlers::extension::serve_gui_bundle))
-            .route("/api/extensions/:id/gui/styles", get(handlers::extension::serve_gui_styles))
-            .route("/api/extensions/:id/icon", get(handlers::extension::serve_icon))
-            .route("/api/extensions/:id/i18n/:locale", get(handlers::extension::serve_i18n))
-            // ── Node.js portable environment ──
-            .route("/api/node-env/status", get(handlers::node_env::node_env_status))
-            .route("/api/node-env/setup", post(handlers::node_env::node_env_setup))
-            // ── Relay server proxy (cloud mode) ──
-            .route("/api/relay/host/:host_id/status", get(handlers::relay::check_host_status))
-            .route("/api/relay/host/:host_id/nodes", get(handlers::relay::list_host_nodes))
-            .route("/api/relay/node/:guild_id/members", get(handlers::relay::list_node_members))
-            .route("/api/relay/pair/initiate", post(handlers::relay::initiate_pairing))
-            .route("/api/relay/pair/:code/status", get(handlers::relay::poll_pairing_status))
-            // ── Auth middleware (token-based) ──
-            .layer(axum::middleware::from_fn(auth::auth_middleware))
-            .with_state(self.clone())
-            .merge(updates::updates_router(self.update_state.clone()));
+        // 앱 언어를 플러그인 러너에 반영 — 이후 스폰되는 모듈/익스텐션
+        // 프로세스가 SABA_LANG을 물려받아 i18n 메시지를 현지화한다.
+        let lang = self.config_store.get_gui_settings().await.language;
+        crate::plugin::set_plugin_lang(lang);
+
+        // 라우트 정의는 토픽별로 분리되어 [`crate::ipc::routes`] 에 있다.
+        // 신규 엔드포인트 추가 시 이 함수가 아니라 routes.rs 의 토픽 함수를 수정한다.
+        let router = routes::build_router(self.clone());
 
         // TCP 리스너 (SO_REUSEADDR + 바인딩 재시도)
         let addr: std::net::SocketAddr = self.listen_addr.parse()
@@ -871,7 +785,7 @@ mod tests {
         let announce_inputs = fields[1].get("inputs").unwrap().as_array().unwrap();
         assert_eq!(announce_inputs.len(), 1);
         assert_eq!(announce_inputs[0].get("name").unwrap().as_str().unwrap(), "message");
-        assert_eq!(announce_inputs[0].get("required").unwrap().as_bool().unwrap(), true);
+        assert!(announce_inputs[0].get("required").unwrap().as_bool().unwrap());
     }
 
     #[test]
@@ -913,7 +827,7 @@ mod tests {
         assert_eq!(json.get("name").unwrap().as_str().unwrap(), "user_id");
         assert_eq!(json.get("label").unwrap().as_str().unwrap(), "유저 ID");
         assert_eq!(json.get("type").unwrap().as_str().unwrap(), "string");
-        assert_eq!(json.get("required").unwrap().as_bool().unwrap(), true);
+        assert!(json.get("required").unwrap().as_bool().unwrap());
         assert_eq!(json.get("placeholder").unwrap().as_str().unwrap(), "steam_xxxxxxxxx");
     }
 }

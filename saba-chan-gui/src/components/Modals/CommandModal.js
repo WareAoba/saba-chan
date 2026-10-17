@@ -1,3 +1,4 @@
+import { ModalOverlay } from './Modals';
 import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -7,7 +8,7 @@ import { createTranslateError } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { useUIStore } from '../../stores/useUIStore';
 
-function CommandModal({ server, modules, onClose, onExecute }) {
+function CommandModal({ server, modules, onClose }) {
     const { t } = useTranslation('gui');
     const translateError = createTranslateError(t);
     const { isClosing, requestClose } = useModalClose(onClose);
@@ -19,6 +20,9 @@ function CommandModal({ server, modules, onClose, onExecute }) {
     const [expandedId, setExpandedId] = useState(null);
     const inputRef = useRef(null);
     const historyEndRef = useRef(null);
+    const lastHistoryId = history.at(-1)?.id;
+
+    useEffect(() => { inputRef.current?.focus(); }, []);
 
     // 모듈 명령어 목록
     const currentModule = modules.find((m) => m.name === server.module);
@@ -31,8 +35,8 @@ function CommandModal({ server, modules, onClose, onExecute }) {
 
     // 히스토리 추가 시 자동 스크롤
     useEffect(() => {
-        historyEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [history]);
+        if (lastHistoryId !== undefined) historyEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [lastHistoryId]);
 
     // Tab 자동완성 & 방향키 힌트 탐색
     const handleKeyDown = (e) => {
@@ -40,7 +44,7 @@ function CommandModal({ server, modules, onClose, onExecute }) {
             e.preventDefault();
             if (filteredHints.length > 0) {
                 const idx = highlightIdx >= 0 && highlightIdx < filteredHints.length ? highlightIdx : 0;
-                setCommandInput(filteredHints[idx].name + ' ');
+                setCommandInput(`${filteredHints[idx].name} `);
                 setHighlightIdx(-1);
             }
         } else if (e.key === 'ArrowDown') {
@@ -166,7 +170,7 @@ function CommandModal({ server, modules, onClose, onExecute }) {
                         : String(responseObj);
                     detailParts.push(`Response: ${respStr}`);
                 }
-                if (responseText && responseText.trim()) {
+                if (responseText?.trim()) {
                     detailParts.push(`Raw: ${responseText}`);
                 }
                 if (detailParts.length > 0) detail = detailParts.join('\n');
@@ -202,10 +206,10 @@ function CommandModal({ server, modules, onClose, onExecute }) {
     };
 
     return (
-        <div className={clsx('modal-overlay', { closing: isClosing })} onClick={requestClose}>
-            <div className="modal command-modal-fixed" onClick={(e) => e.stopPropagation()}>
+        <ModalOverlay  className={clsx('modal-overlay', { closing: isClosing })} onClose={requestClose}>
+            <div className="modal command-modal-fixed" >
                 {/* 닫기 버튼 (우상단) */}
-                <button className="cmd-modal-close" onClick={requestClose} title={t('modals.close')}>
+                <button type="button" className="cmd-modal-close" onClick={requestClose} data-tooltip={t('modals.close')}>
                     &times;
                 </button>
 
@@ -217,18 +221,18 @@ function CommandModal({ server, modules, onClose, onExecute }) {
                     <div className="cmd-hints-inline">
                         {filteredHints.length > 0 ? (
                             filteredHints.map((cmd, idx) => (
-                                <div
+                                <button type="button"
                                     key={cmd.name}
                                     className={clsx('cmd-hint-chip', { 'cmd-hint-active': idx === highlightIdx })}
                                     onClick={() => {
-                                        setCommandInput(cmd.name + ' ');
+                                        setCommandInput(`${cmd.name} `);
                                         inputRef.current?.focus();
                                     }}
-                                    title={cmd.description}
+                                    data-tooltip={cmd.description}
                                 >
                                     <span className="cmd-hint-name">{cmd.name}</span>
                                     {cmd.description && <span className="cmd-hint-desc">{cmd.description}</span>}
-                                </div>
+                                </button>
                             ))
                         ) : (
                             <span className="cmd-hints-empty">
@@ -251,14 +255,13 @@ function CommandModal({ server, modules, onClose, onExecute }) {
                                 onChange={(e) => setCommandInput(e.target.value)}
                                 onKeyDown={handleKeyDown}
                                 placeholder={t('command_modal.command_placeholder')}
-                                autoFocus
                                 disabled={loading}
                             />
-                            <button
+                            <button type="button"
                                 className="console-send"
                                 onClick={handleExecuteCommand}
                                 disabled={!commandInput.trim() || loading}
-                                title={t('command_modal.execute')}
+                                data-tooltip={t('command_modal.execute')}
                             >
                                 {loading ? '…' : t('console.send')}
                             </button>
@@ -282,7 +285,7 @@ function CommandModal({ server, modules, onClose, onExecute }) {
                             </div>
                         )}
                         {history.map((entry) => (
-                            <div
+                            <button type="button"
                                 key={entry.id}
                                 className={clsx('cmd-history-item', `cmd-history-${entry.status}`, {
                                     'cmd-history-expanded': expandedId === entry.id,
@@ -290,7 +293,7 @@ function CommandModal({ server, modules, onClose, onExecute }) {
                                 onClick={() => {
                                     setExpandedId((prev) => (prev === entry.id ? null : entry.id));
                                 }}
-                                title={t('command_modal.click_to_expand', { defaultValue: 'Click to view details' })}
+                                data-tooltip={t('command_modal.click_to_expand', { defaultValue: 'Click to view details' })}
                             >
                                 <div className="cmd-history-top">
                                     <span className={clsx('cmd-history-dot', `dot-${entry.status}`)} />
@@ -303,15 +306,15 @@ function CommandModal({ server, modules, onClose, onExecute }) {
                                     <span className="cmd-history-time">{entry.time}</span>
                                 </div>
                                 {expandedId === entry.id && (entry.message || entry.detail) && (
-                                    <pre className="cmd-history-detail" onClick={(e) => e.stopPropagation()}>{entry.detail || entry.message}</pre>
+                                        <pre className="cmd-history-detail">{entry.detail || entry.message}</pre>
                                 )}
-                            </div>
+                            </button>
                         ))}
                         <div ref={historyEndRef} />
                     </div>
                 </div>
             </div>
-        </div>
+        </ModalOverlay>
     );
 }
 

@@ -1,3 +1,4 @@
+
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -99,7 +100,7 @@ export function ServerCard({
                 try {
                     const result = await window.api.instanceProvisionProgress(server.name);
                     if (cancelled) break;
-                    if (result && result.active) {
+                    if (result?.active) {
                         setProvisionProgress(result);
                         if (result.done) break; // done이면 폴링 중단 (UI는 유지)
                     }
@@ -136,7 +137,7 @@ export function ServerCard({
     const gameIcon = moduleData?.icon || null;
 
     return (
-        <div
+        <article aria-label={server.name}
             ref={(el) => {
                 cardRefs.current[server.name] = el;
             }}
@@ -144,16 +145,14 @@ export function ServerCard({
             onPointerDown={(e) => handleCardPointerDown(e, index)}
             onContextMenu={onContextMenu}
         >
-            <div
-                className="server-card-header"
-                onClick={(e) => {
+            <div className="server-card-header">
+                <button type="button" className="server-card-disclosure" aria-expanded={!!server.expanded}
+                onClick={() => {
                     if (skipNextClick.current) return;
-                    if (e.target.closest('button')) return;
                     setServers((prev) =>
                         prev.map((s) => (s.name === server.name ? { ...s, expanded: !s.expanded } : s)),
                     );
                 }}
-                style={{ cursor: 'pointer' }}
             >
                 <div className="game-icon-container">
                     {gameIcon ? (
@@ -167,7 +166,7 @@ export function ServerCard({
                     {updateInfo && (
                         <span
                             className="server-update-badge"
-                            title={t('server_status.update_available', {
+                            data-tooltip={t('server_status.update_available', {
                                 local: updateInfo.local_buildid,
                                 remote: updateInfo.remote_buildid,
                                 defaultValue: `Update available (${updateInfo.local_buildid} → ${updateInfo.remote_buildid})`,
@@ -179,7 +178,7 @@ export function ServerCard({
                     {portConflictCheck && server.port_conflicts && server.port_conflicts.length > 0 && (
                         <span
                             className="port-conflict-badge"
-                            title={
+                            data-tooltip={
                                 t('errors.port_conflict') +
                                 ': ' +
                                 server.port_conflicts
@@ -200,7 +199,7 @@ export function ServerCard({
                         return (
                             <span
                                 className="alias-conflict-badge"
-                                title={t('errors.alias_ambiguity_card', {
+                                data-tooltip={t('errors.alias_ambiguity_card', {
                                     module: server.module,
                                     count: sameModuleOthers.length + 1,
                                     defaultValue: `Module '${server.module}' has ${sameModuleOthers.length + 1} instances — Discord alias is ambiguous`,
@@ -218,18 +217,19 @@ export function ServerCard({
                         {gameName}
                         {server.server_version && <span className="server-version-badge">{server.server_version}</span>}
                         {server.id && (
-                            <span className="instance-id-badge" title={server.id}>
+                            <span className="instance-id-badge" data-tooltip={server.id}>
                                 {server.id.slice(0, 8)}
                             </span>
                         )}
                     </p>
                 </div>
+                </button>
 
                 {/* 익스텐션 제공 헤더 게이지 (예: Docker 메모리) */}
                 <ExtensionSlot slotId="ServerCard.headerGauge" server={server} />
 
                 {moduleMissing ? (
-                    <span className="status-button status-module-missing" title={t('server_status.module_missing', { defaultValue: 'Module not found' })}>
+                    <span className="status-button status-module-missing" data-tooltip={t('server_status.module_missing', { defaultValue: 'Module not found' })}>
                         <span className="status-label">
                             <Icon name="alertCircle" size="sm" />{' '}
                             {t('server_status.module_missing', { defaultValue: 'Module not found' })}
@@ -237,7 +237,7 @@ export function ServerCard({
                         <span className="status-dot"></span>
                     </span>
                 ) : server.provisioning ? (
-                    <span className="status-button status-provisioning" title={t('server_status.provisioning', { defaultValue: 'Provisioning' })}>
+                    <span className="status-button status-provisioning" data-tooltip={t('server_status.provisioning', { defaultValue: 'Provisioning' })}>
                         <span className="status-label">
                             <Icon name="refresh" size="sm" className="spin" />{' '}
                             {t('server_status.provisioning', { defaultValue: 'Provisioning' })}
@@ -245,11 +245,11 @@ export function ServerCard({
                         <span className="status-dot"></span>
                     </span>
                 ) : updateInfo && server.status !== 'running' ? (
-                    <button
+                    <button type="button"
                         className="status-button status-update-available"
                         onClick={handleApplyUpdate}
                         disabled={updatingServer}
-                        title={t('server_status.update_available', {
+                        data-tooltip={t('server_status.update_available', {
                             local: updateInfo.local_buildid,
                             remote: updateInfo.remote_buildid,
                             defaultValue: `Update available (${updateInfo.local_buildid} → ${updateInfo.remote_buildid})`,
@@ -262,7 +262,7 @@ export function ServerCard({
                         <span className="status-dot"></span>
                     </button>
                 ) : (
-                    <button
+                    <button type="button"
                         className={clsx('status-button', `status-${server.status}`)}
                         onClick={() => {
                             if (server.status === 'starting' || server.status === 'stopping') return;
@@ -270,7 +270,7 @@ export function ServerCard({
                             else handleStart(server.name, server.module);
                         }}
                         disabled={server.status === 'starting' || server.status === 'stopping'}
-                        title={
+                        data-tooltip={
                             server.status === 'running' || server.status === 'starting'
                                 ? t('server_actions.click_to_stop')
                                 : t('server_actions.click_to_start')
@@ -341,8 +341,8 @@ export function ServerCard({
                                     <Icon name="alertCircle" size="sm" />
                                     <div className="port-conflict-banner-content">
                                         <strong>{t('errors.port_conflict')}</strong>
-                                        {server.port_conflicts.map((c, i) => (
-                                            <div key={i} className="port-conflict-banner-detail">
+                                        {server.port_conflicts.map((c) => (
+                                            <div key={`${c.port}:${c.conflict_name}:${c.field || ''}`} className="port-conflict-banner-detail">
                                                 {t('errors.port_conflict_detail', {
                                                     port: c.port,
                                                     name: c.conflict_name,
@@ -408,12 +408,11 @@ export function ServerCard({
                         </div>
 
                         <div className="server-actions">
-                            <button className="action-icon" onClick={() => handleOpenSettings(server)} title={t('context_menu.settings')} disabled={moduleMissing}>
+                            <button type="button" className="action-icon" onClick={() => handleOpenSettings(server)} data-tooltip={t('context_menu.settings')} disabled={moduleMissing}>
                                 <Icon name="settings" size="md" />
                             </button>
                             {server.status === 'running' ? (
-                                <>
-                                    {(() => {
+                                (() => {
                                         const mod = modules.find((m) => m.name === server.module);
                                         const moduleMode = mod?.interaction_mode || 'console';
                                         const instanceManaged = server.module_settings?.managed_start;
@@ -431,7 +430,7 @@ export function ServerCard({
                                                     const isPopoutActive = consolePopoutInstanceId === server.id;
                                                     const isOpen = isConsoleOpen ? isConsoleOpen(server.id) : (consoleServer?.id === server.id);
                                                     return (
-                                                        <button
+                                                        <button type="button"
                                                             className={clsx('action-icon', {
                                                                 'action-active':
                                                                     isOpen || isPopoutActive,
@@ -448,34 +447,33 @@ export function ServerCard({
                                                                 if (isOpen) closeConsole(server.id);
                                                                 else openConsole(server.id, server.name);
                                                             }}
-                                                            title={t('server_actions.console')}
+                                                            data-tooltip={t('server_actions.console')}
                                                         >
                                                             <Icon name="terminal" size="md" />
                                                         </button>
                                                     );
                                                 })()}
                                                 {showCommand && (
-                                                    <button
+                                                    <button type="button"
                                                         className="action-icon"
                                                         onClick={() => {
                                                             setCommandServer(server);
                                                             setShowCommandModal(true);
                                                         }}
-                                                        title={t('server_actions.command')}
+                                                        data-tooltip={t('server_actions.command')}
                                                     >
                                                         <Icon name="command" size="md" />
                                                     </button>
                                                 )}
                                             </>
                                         );
-                                    })()}
-                                </>
+                                    })()
                             ) : (
-                                <button
+                                <button type="button"
                                     className="action-icon action-delete"
                                     onClick={() => handleDeleteServer(server)}
                                     disabled={server.status === 'starting' || server.status === 'stopping'}
-                                    title={t('context_menu.delete')}
+                                    data-tooltip={t('context_menu.delete')}
                                 >
                                     <Icon name="trash" size="md" />
                                 </button>
@@ -484,6 +482,6 @@ export function ServerCard({
                     </>
                 )}
             </div>
-        </div>
+        </article>
     );
 }

@@ -49,7 +49,7 @@ function validateNumber(field, value) {
     const name = field.name || 'unknown';
     const num = Number(value);
 
-    if (isNaN(num)) {
+    if (Number.isNaN(num)) {
         return {
             valid: false,
             error: `type_mismatch_number`,
@@ -206,7 +206,7 @@ function buildActivePortEntries(ports, supported) {
     if (!supported || supported.includes('rest')) {
         entries.push({ value: ports.rest_port, type: 'rest_port' });
     }
-    return entries.filter((e) => e.value != null && e.value !== '' && !isNaN(Number(e.value)));
+    return entries.filter((e) => e.value != null && e.value !== '' && !Number.isNaN(Number(e.value)));
 }
 
 /**

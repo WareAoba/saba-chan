@@ -854,7 +854,7 @@ async function checkAfterUpdate() {
     try {
         const applyMode = await invoke('get_apply_mode');
         if (applyMode.enabled) {
-            enterApplyMode(applyMode);
+            await enterApplyMode(applyMode);
             return;
         }
     } catch (e) {
@@ -896,7 +896,7 @@ async function checkAfterUpdate() {
 // Apply Mode — --apply 실행 시 기존 GUI UI를 재활용
 // ═══════════════════════════════════════════════════════
 
-function enterApplyMode(mode) {
+async function enterApplyMode(mode) {
     const { listen } = window.__TAURI__.event;
 
     // 프로그레스 링: 초기 "준비 중"
@@ -906,7 +906,7 @@ function enterApplyMode(mode) {
     showProgress(tr('applyLoadingManifest'), 0);
 
     // 진행 이벤트 리스닝 — 프로그레스 링 + 프로그레스 바 + 토스트 활용
-    listen('apply:progress', (event) => {
+    await listen('apply:progress', (event) => {
         const { step, message, percent, applied } = event.payload;
 
         let localizedMessage = message;

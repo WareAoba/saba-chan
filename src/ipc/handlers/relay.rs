@@ -20,6 +20,9 @@ use super::super::IPCServer;
 
 type HmacSha256 = Hmac<Sha256>;
 
+/// 릴레이 서버 기본 URL (SSOT)
+pub const DEFAULT_RELAY_URL: &str = "https://saba-chan.online";
+
 /// Percent-encode a URL path segment (RFC 3986 unreserved chars only)
 fn encode_path_segment(s: &str) -> String {
     use std::fmt::Write;
@@ -38,7 +41,7 @@ fn encode_path_segment(s: &str) -> String {
 fn resolve_relay_url(relay_url: Option<&str>) -> String {
     let url = relay_url
         .filter(|u| !u.is_empty())
-        .unwrap_or("https://saba-chan.online");
+        .unwrap_or(DEFAULT_RELAY_URL);
     url.trim_end_matches('/').to_string()
 }
 
@@ -138,7 +141,133 @@ pub struct RelayQueryParams {
     relay_url: Option<String>,
 }
 
-// ── GET /api/relay/host/:host_id/status ──
+/// bot-config → 릴레이 PATCH 페이로드(prefix/moduleAliases/commandAliases)를 만든다.
+/// 네트워크 없는 순수 함수라 단위 테스트로 검증 가능하다.
+fn build_bot_config_payload(config: &crate::config_store::BotConfig) -> Value {
+    json!({
+        "prefix": config.prefix,
+        "moduleAliases": config.module_aliases,
+        "commandAliases": config.command_aliases,
+    })
+}
+
+/// module.toml의 기본 별명(`module_aliases`/`[aliases.commands]`)과 사용자가
+/// GUI에서 저장한 별명(`BotConfig.module_aliases`/`command_aliases`)을 병합한다.
+///
+/// 사용자가 명시적으로 저장한 값이 있으면 그것을 우선하고, 없으면 module.toml
+/// 기본값(CSV로 join)을 채운다. 이렇게 하지 않으면 "Discord 별명 설정 화면을 한
+/// 번도 연 적 없는" 사용자는 module.toml에 정의된 기본 별명(예: 시작/실행/켜기)이
+/// 릴레이 봇에 전혀 반영되지 않아 영어 명령(`start`) 외에는 전부 실패한다.
+fn merge_aliases_with_defaults(
+    supervisor: &crate::supervisor::Supervisor,
+    config: &crate::config_store::BotConfig,
+) -> (
+    std::collections::HashMap<String, String>,
+    std::collections::HashMap<String, Value>,
+) {
+    let modules = supervisor
+        .module_loader
+        .discover_modules()
+        .unwrap_or_default();
+
+    let mut module_aliases = config.module_aliases.clone();
+    let mut command_aliases = config.command_aliases.clone();
+
+    for m in &modules {
+        let name = &m.metadata.name;
+
+        // module_aliases: 사용자가 저장하지 않은 모듈만 기본값으로 채운다.
+        module_aliases
+            .entry(name.clone())
+            .or_insert_with(|| m.metadata.module_aliases.join(","));
+
+        // command_aliases: 커맨드 단위로 병합 (사용자 저장값 우선, 없으면 기본값).
+        let user_cmds = command_aliases
+            .get(name)
+            .and_then(|v| v.as_object())
+            .cloned()
+            .unwrap_or_default();
+
+        let mut merged_cmds = user_cmds.clone();
+        for (cmd, info) in &m.metadata.command_aliases {
+            if !merged_cmds.contains_key(cmd) {
+                merged_cmds.insert(cmd.clone(), Value::String(info.aliases.join(",")));
+            }
+        }
+
+        if !merged_cmds.is_empty() {
+            command_aliases.insert(name.clone(), Value::Object(merged_cmds));
+        }
+    }
+
+    (module_aliases, command_aliases)
+}
+
+/// 데몬 내부용: bot-config 저장 후 릴레이 서버로 prefix/별명을 전파한다.
+///
+/// 인터페이스(GUI/CLI)는 저장만 요청하고, 릴레이 전파는 데몬이 책임진다.
+/// hostId는 노드 토큰에서 도출하며, 노드 토큰이 없으면(클라우드 미연결)
+/// 아무 것도 하지 않는다. best-effort 이므로 실패는 stderr 로그만 남긴다.
+pub async fn push_bot_config_to_relay(
+    config: &crate::config_store::BotConfig,
+    supervisor: &std::sync::Arc<tokio::sync::RwLock<crate::supervisor::Supervisor>>,
+) {
+    let token = match load_node_token() {
+        Some(t) => t,
+        None => return, // 클라우드 미연결 — 전파 대상 없음
+    };
+    let host_id = match parse_node_token(&token) {
+        Some((id, _)) => id.to_string(),
+        None => {
+            eprintln!("[Relay] push_bot_config: invalid node token format");
+            return;
+        }
+    };
+
+    let base = resolve_relay_url(Some(config.cloud.relay_url.as_str()));
+    let encoded = encode_path_segment(&host_id);
+    let api_path = format!("/api/hosts/{}/bot-config", encoded);
+    let url = format!("{}{}", base, api_path);
+
+    // module.toml 기본 별명과 사용자 저장값을 병합 (lock은 await 이전에 해제).
+    let (module_aliases, command_aliases) = {
+        let guard = supervisor.read().await;
+        merge_aliases_with_defaults(&guard, config)
+    };
+    let mut merged_config = config.clone();
+    merged_config.module_aliases = module_aliases;
+    merged_config.command_aliases = command_aliases;
+
+    let payload = build_bot_config_payload(&merged_config);
+
+    let client = match relay_client() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[Relay] push_bot_config: HTTP client error: {}", e);
+            return;
+        }
+    };
+
+    let body_str = serde_json::to_string(&payload).unwrap_or_default();
+    let req = apply_signed_headers(
+        client.patch(&url).json(&payload),
+        "PATCH",
+        &api_path,
+        Some(&body_str),
+    );
+
+    match req.send().await {
+        Ok(resp) => {
+            let status = resp.status();
+            if !status.is_success() {
+                eprintln!("[Relay] push_bot_config failed: {}", status);
+            }
+        }
+        Err(e) => {
+            eprintln!("[Relay] push_bot_config connection failed: {}", e);
+        }
+    }
+}// ── GET /api/relay/host/:host_id/status ──
 
 pub async fn check_host_status(
     Path(host_id): Path<String>,
@@ -286,6 +415,97 @@ pub async fn list_node_members(
     }
 }
 
+// ── GET /api/relay/node/:guild_id/settings ──
+// GUI → daemon proxy → relay server: 노드별 음악 설정 조회
+
+pub async fn get_node_settings(
+    Path(guild_id): Path<String>,
+    Query(params): Query<RelayQueryParams>,
+    State(_state): State<IPCServer>,
+) -> impl IntoResponse {
+    let base = resolve_relay_url(params.relay_url.as_deref());
+    let encoded = encode_path_segment(&guild_id);
+    let api_path = format!("/api/nodes/{}/settings", encoded);
+    let url = format!("{}{}", base, api_path);
+
+    let client = match relay_client() {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("HTTP client error: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    let req = apply_signed_headers(client.get(&url), "GET", &api_path, None);
+    match req.send().await {
+        Ok(resp) => {
+            let status = resp.status();
+            let code = StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+            match resp.json::<Value>().await {
+                Ok(data) => (code, Json(data)).into_response(),
+                Err(_) => (code, Json(json!({ "ok": status.is_success() }))).into_response(),
+            }
+        }
+        Err(e) => (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": format!("Relay connection failed: {}", e) })),
+        )
+            .into_response(),
+    }
+}
+
+// ── PATCH /api/relay/node/:guild_id/settings ──
+// GUI → daemon proxy → relay server: 노드별 음악 설정 업데이트
+
+pub async fn update_node_settings(
+    Path(guild_id): Path<String>,
+    Query(params): Query<RelayQueryParams>,
+    State(_state): State<IPCServer>,
+    Json(payload): Json<Value>,
+) -> impl IntoResponse {
+    let base = resolve_relay_url(params.relay_url.as_deref());
+    let encoded = encode_path_segment(&guild_id);
+    let api_path = format!("/api/nodes/{}/settings", encoded);
+    let url = format!("{}{}", base, api_path);
+
+    let client = match relay_client() {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("HTTP client error: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    let body_str = serde_json::to_string(&payload).unwrap_or_default();
+    let req = apply_signed_headers(
+        client.patch(&url).json(&payload),
+        "PATCH",
+        &api_path,
+        Some(&body_str),
+    );
+    match req.send().await {
+        Ok(resp) => {
+            let status = resp.status();
+            let code = StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+            match resp.json::<Value>().await {
+                Ok(data) => (code, Json(data)).into_response(),
+                Err(_) => (code, Json(json!({ "ok": status.is_success() }))).into_response(),
+            }
+        }
+        Err(e) => (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": format!("Relay connection failed: {}", e) })),
+        )
+            .into_response(),
+    }
+}
+
 // ── POST /api/relay/pair/initiate ──
 
 pub async fn initiate_pairing(
@@ -345,7 +565,7 @@ pub struct PairStatusQuery {
 pub async fn poll_pairing_status(
     Path(code): Path<String>,
     Query(params): Query<PairStatusQuery>,
-    State(_state): State<IPCServer>,
+    State(state): State<IPCServer>,
 ) -> impl IntoResponse {
     let base = resolve_relay_url(params.relay_url.as_deref());
     let client = match relay_client() {
@@ -359,12 +579,13 @@ pub async fn poll_pairing_status(
         }
     };
 
-    let mut url = format!("{}/api/pair/{}/status", base, encode_path_segment(&code));
+    let url = format!("{}/api/pair/{}/status", base, encode_path_segment(&code));
+    let mut req = client.get(&url);
     if let Some(ref secret) = params.secret {
-        url = format!("{}?secret={}", url, encode_path_segment(secret));
+        req = req.header("X-Poll-Secret", secret.as_str());
     }
 
-    match client.get(&url).send().await {
+    match req.send().await {
         Ok(resp) => {
             let status = resp.status();
             let code_status =
@@ -383,6 +604,12 @@ pub async fn poll_pairing_status(
                                 tracing::warn!("Failed to auto-save node token: {}", e);
                             } else {
                                 tracing::info!("Node token saved via pairing completion");
+                                // 페어링 직후 데몬 재시작 없이 하트비트/폴링 시작
+                                let started = state.cloud_agent.restart_from_file().await;
+                                tracing::info!(
+                                    "[Relay] 페어링 완료 — cloud agent 핫 리로드 (running={})",
+                                    started
+                                );
                             }
                         }
                     }
@@ -400,5 +627,191 @@ pub async fn poll_pairing_status(
             Json(json!({ "error": format!("Relay connection failed: {}", e) })),
         )
             .into_response(),
+    }
+}
+
+// ── PATCH /api/relay/host/:host_id/bot-config ──
+// GUI → daemon proxy → relay server: 봇 설정 동기화
+
+pub async fn sync_bot_config(
+    Path(host_id): Path<String>,
+    Query(params): Query<RelayQueryParams>,
+    State(_state): State<IPCServer>,
+    Json(payload): Json<Value>,
+) -> impl IntoResponse {
+    let base = resolve_relay_url(params.relay_url.as_deref());
+    let encoded = encode_path_segment(&host_id);
+    let api_path = format!("/api/hosts/{}/bot-config", encoded);
+    let url = format!("{}{}", base, api_path);
+
+    let client = match relay_client() {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("HTTP client error: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    let body_str = serde_json::to_string(&payload).unwrap_or_default();
+    let req = apply_signed_headers(
+        client.patch(&url).json(&payload),
+        "PATCH",
+        &api_path,
+        Some(&body_str),
+    );
+    match req.send().await {
+        Ok(resp) => {
+            let status = resp.status();
+            let code = StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+            match resp.json::<Value>().await {
+                Ok(data) => (code, Json(data)).into_response(),
+                Err(_) => (code, Json(json!({ "ok": status.is_success() }))).into_response(),
+            }
+        }
+        Err(e) => (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": format!("Relay connection failed: {}", e) })),
+        )
+            .into_response(),
+    }
+}
+
+// ── GET /api/relay/bot-invite ──
+// GUI → daemon proxy → relay server: 봇 초대 URL 조회
+
+pub async fn get_bot_invite(
+    Query(params): Query<RelayQueryParams>,
+    State(_state): State<IPCServer>,
+) -> impl IntoResponse {
+    let base = resolve_relay_url(params.relay_url.as_deref());
+    let url = format!("{}/api/bot-invite", base);
+
+    let client = match relay_client() {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("HTTP client error: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    match client.get(&url).send().await {
+        Ok(resp) => {
+            let status = resp.status();
+            let code = StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+            match resp.json::<Value>().await {
+                Ok(data) => (code, Json(data)).into_response(),
+                Err(_) => (code, Json(json!({ "ok": status.is_success() }))).into_response(),
+            }
+        }
+        Err(e) => (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": format!("Relay connection failed: {}", e) })),
+        )
+            .into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config_store::BotConfig;
+    use std::collections::HashMap;
+
+    #[test]
+    fn build_payload_contains_prefix_and_aliases_only() {
+        let mut config = BotConfig {
+            prefix: "!mybot".to_string(),
+            module_aliases: HashMap::from([("mc".to_string(), "minecraft".to_string())]),
+            command_aliases: HashMap::from([("mc".to_string(), json!({ "start": "go" }))]),
+            node_settings: json!({ "local": { "ids": ["a"] } }),
+            ..Default::default()
+        };
+        // cloud/nodeSettings 등은 릴레이로 전파되지 않아야 한다.
+        config.cloud.host_id = "host-xyz".to_string();
+
+        let payload = build_bot_config_payload(&config);
+
+        assert_eq!(payload["prefix"], "!mybot");
+        assert_eq!(payload["moduleAliases"]["mc"], "minecraft");
+        assert_eq!(payload["commandAliases"]["mc"]["start"], "go");
+        // 릴레이 bot-config 스키마 외 필드는 포함되지 않는다.
+        assert!(payload.get("cloud").is_none());
+        assert!(payload.get("nodeSettings").is_none());
+        let obj = payload.as_object().unwrap();
+        assert_eq!(obj.len(), 3);
+    }
+
+    #[test]
+    fn parse_node_token_extracts_host_id() {
+        let parsed = parse_node_token("sbn_hostABC.secretXYZ");
+        assert_eq!(parsed, Some(("hostABC", "secretXYZ")));
+        assert!(parse_node_token("invalid").is_none());
+        assert!(parse_node_token("sbn_nodot").is_none());
+    }
+
+    /// 임시 모듈 디렉토리에 module.toml 하나를 만들고 그 위에 Supervisor를 올린다.
+    fn supervisor_with_fixture_module(module_toml: &str) -> (tempfile::TempDir, crate::supervisor::Supervisor) {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mod_dir = tmp.path().join("palworld");
+        std::fs::create_dir_all(&mod_dir).expect("mkdir");
+        std::fs::write(mod_dir.join("module.toml"), module_toml).expect("write module.toml");
+        let supervisor = crate::supervisor::Supervisor::new(tmp.path().to_str().unwrap());
+        (tmp, supervisor)
+    }
+
+    const FIXTURE_MODULE_TOML: &str = r#"
+[module]
+name = "palworld"
+version = "1.0.0"
+entry = "lifecycle.py"
+
+[aliases]
+module_aliases = ["팰월드", "pw"]
+
+[aliases.commands]
+start = { aliases = ["시작", "실행", "켜기"], description = "Start the server" }
+stop = { aliases = ["정지", "끄기"], description = "Stop the server" }
+"#;
+
+    #[test]
+    fn merge_aliases_fills_defaults_when_user_never_saved_anything() {
+        // 사용자가 Discord 별명 설정 화면을 한 번도 저장하지 않은 상태(빈 BotConfig)에서도
+        // module.toml의 기본 별명(팰월드/시작/실행/켜기 등)이 릴레이로 나가야 한다.
+        // 이 테스트가 실패하면 "실행" 같은 기본 별명이 Discord에서 전혀 동작하지 않는다.
+        let (_tmp, supervisor) = supervisor_with_fixture_module(FIXTURE_MODULE_TOML);
+        let config = BotConfig::default();
+
+        let (module_aliases, command_aliases) = merge_aliases_with_defaults(&supervisor, &config);
+
+        assert_eq!(module_aliases.get("palworld").map(|s| s.as_str()), Some("팰월드,pw"));
+        let start = command_aliases["palworld"]["start"].as_str().unwrap();
+        assert_eq!(start, "시작,실행,켜기");
+        let stop = command_aliases["palworld"]["stop"].as_str().unwrap();
+        assert_eq!(stop, "정지,끄기");
+    }
+
+    #[test]
+    fn merge_aliases_prefers_user_saved_value_over_default() {
+        // 사용자가 GUI에서 특정 명령의 별명을 커스텀으로 저장했다면 그 값이 우선해야 한다.
+        let (_tmp, supervisor) = supervisor_with_fixture_module(FIXTURE_MODULE_TOML);
+        let config = BotConfig {
+            module_aliases: HashMap::from([("palworld".to_string(), "팜서버".to_string())]),
+            command_aliases: HashMap::from([("palworld".to_string(), json!({ "start": "go" }))]),
+            ..Default::default()
+        };
+
+        let (module_aliases, command_aliases) = merge_aliases_with_defaults(&supervisor, &config);
+
+        // module_aliases: 사용자가 저장한 값이 그대로 유지된다.
+        assert_eq!(module_aliases.get("palworld").map(|s| s.as_str()), Some("팜서버"));
+        // command_aliases: "start"는 사용자 값 유지, "stop"은 저장 안 했으므로 기본값이 채워진다.
+        assert_eq!(command_aliases["palworld"]["start"].as_str().unwrap(), "go");
+        assert_eq!(command_aliases["palworld"]["stop"].as_str().unwrap(), "정지,끄기");
     }
 }

@@ -56,7 +56,7 @@ export function useServerActions({
     const fetchServers = async () => {
         try {
             const data = await retryWithBackoff(() => window.api.serverList(), 3, 800);
-            if (data && data.servers) {
+            if (data?.servers) {
                 setServers((prev) => {
                     if (!firstFetchDoneRef.current) {
                         firstFetchDoneRef.current = true;
@@ -186,7 +186,7 @@ export function useServerActions({
                         );
                     }
                 }
-            } else if (data && data.error) {
+            } else if (data?.error) {
                 console.error('Server list error:', data.error);
                 const translatedErr = translateError(data.error);
                 const now = Date.now();
@@ -402,7 +402,7 @@ export function useServerActions({
                 setModal({
                     type: 'failure',
                     title: t('errors.port_conflict', { defaultValue: 'Port Conflict' }),
-                    message: translateError(result.message || '') + (conflictDetails ? '\n\n' + conflictDetails : ''),
+                    message: translateError(result.message || '') + (conflictDetails ? `\n\n${conflictDetails}` : ''),
                 });
                 return;
             }
@@ -615,10 +615,10 @@ export function useServerActions({
     };
 
     // ── handleAddServer ─────────────────────────────────────
-    const handleAddServer = async (payload) => {
+    const handleAddServer = async (payload, legacyModuleName) => {
         // payload = { name, module_name, accept_eula?, use_container?, migration_source? }
         const serverName = typeof payload === 'string' ? payload : payload?.name;
-        const moduleName = typeof payload === 'string' ? arguments[1] : payload?.module_name;
+        const moduleName = typeof payload === 'string' ? legacyModuleName : payload?.module_name;
 
         if (!serverName || !serverName.trim()) {
             setModal({
@@ -638,8 +638,6 @@ export function useServerActions({
         }
 
         try {
-            const selectedModuleData = modules.find((m) => m.name === moduleName);
-
             const instanceData = {
                 name: serverName.trim(),
                 module_name: moduleName,

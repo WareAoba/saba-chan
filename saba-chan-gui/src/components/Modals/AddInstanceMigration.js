@@ -44,14 +44,14 @@ export function AddInstanceMigration({
     const nameInputRef = useRef(null);
 
     // ─── 디렉토리 선택 ───
-    const handleBrowse = useCallback(async () => {
+    const handleBrowse = async () => {
         const selected = await window.api?.openFolderDialog?.();
         if (selected) {
             setDirPath(selected);
             // 선택하면 자동 스캔
             performScan(selected);
         }
-    }, [extensions]); // eslint-disable-line react-hooks/exhaustive-deps
+    };
 
     // ─── 디렉토리 스캔 + 모듈 감지 ───
     const performScan = useCallback(async (path) => {
@@ -210,12 +210,12 @@ export function AddInstanceMigration({
                     <div className="as-body-stack">
                         {/* 디렉토리 선택 */}
                         <div className="as-section as-section-card">
-                            <label className="as-label">
+                            <label htmlFor="addinstancemigration-213" className="as-label">
                                 <Icon name="folder" size="sm" />
                                 {t('migration_modal.source_directory')}
                             </label>
                             <div className="as-path-row">
-                                <input
+                                <input id="addinstancemigration-213"
                                     className="as-input as-input-mono"
                                     type="text"
                                     value={dirPath}
@@ -223,11 +223,11 @@ export function AddInstanceMigration({
                                     placeholder={t('migration_modal.source_placeholder')}
                                     disabled={scanning}
                                 />
-                                <button
+                                <button type="button"
                                     className="as-btn-icon"
                                     onClick={handleBrowse}
                                     disabled={scanning}
-                                    title={t('migration_modal.browse')}
+                                    data-tooltip={t('migration_modal.browse')}
                                 >
                                     <Icon name="folder" size="sm" />
                                 </button>
@@ -300,10 +300,10 @@ export function AddInstanceMigration({
                                     {t('migration_modal.no_auto_detect')}
                                 </p>
 
-                                <label className="as-label">
+                                <span className="as-label">
                                     <Icon name="download" size="sm" />
                                     {t('migration_modal.select_module_manually')}
-                                </label>
+                                </span>
 
                                 {manifestLoading && (
                                     <div className="mg-status mg-status--scanning">
@@ -362,7 +362,7 @@ export function AddInstanceMigration({
 
                 {/* Footer */}
                 <div className="modal-footer add-server-footer">
-                    <button className="btn btn-cancel" onClick={onClose}>
+                    <button type="button" className="btn btn-cancel" onClick={onClose}>
                         {t('modals.cancel')}
                     </button>
                     {noMatch && manualModule && (
@@ -428,11 +428,11 @@ export function AddInstanceMigration({
 
                     {/* 인스턴스 이름 */}
                     <div className="as-section as-section-card">
-                        <label className="as-label">
+                        <label htmlFor="addinstancemigration-431" className="as-label">
                             <Icon name="server" size="sm" />
                             {t('migration_modal.instance_name')}
                         </label>
-                        <input
+                        <input id="addinstancemigration-431"
                             ref={nameInputRef}
                             className="as-input"
                             type="text"
@@ -466,10 +466,10 @@ export function AddInstanceMigration({
             </div>
 
             <div className="modal-footer add-server-footer">
-                <button className="btn btn-cancel" onClick={onClose} disabled={submitting}>
+                <button type="button" className="btn btn-cancel" onClick={onClose} disabled={submitting}>
                     {t('modals.cancel')}
                 </button>
-                <button className="btn btn-confirm" onClick={handleSubmit} disabled={!canSubmit}>
+                <button type="button" className="btn btn-confirm" onClick={handleSubmit} disabled={!canSubmit}>
                     {submitting ? (
                         <>
                             <SabaSpinner size={14} /> {t('migration_modal.executing')}

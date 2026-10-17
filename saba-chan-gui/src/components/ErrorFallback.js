@@ -13,7 +13,7 @@ export function ErrorFallback({ error, resetErrorBoundary }) {
             <div className="error-fallback-content">
                 <h2>{t('errors.unexpected_crash', 'Something went wrong')}</h2>
                 <pre className="error-fallback-details">{error.message}</pre>
-                <button className="btn btn-primary" onClick={resetErrorBoundary}>
+                <button type="button" className="btn btn-primary" onClick={resetErrorBoundary}>
                     {t('errors.retry', 'Try Again')}
                 </button>
             </div>

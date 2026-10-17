@@ -1,17 +1,7 @@
-/**
- * NativeProvision — 네이티브(비-Docker) 프로비저닝 진행 상태 UI
- * SteamCMD / download 방식으로 서버 바이너리 설치 시 진행률 표시
- *
- * Props:
- *   server: 서버 인스턴스
- *   provisionProgress: 프로비저닝 상태 객체 (done, error, message, percent)
- *   onDismiss: 프로비저닝 해제 핸들러
- *   t: i18n 번역 함수
- */
-import React from 'react';
+
 
 const SPINNER_ICON = (
-    <svg
+    <svg aria-hidden="true"
         viewBox="0 0 24 24"
         width="14"
         height="14"
@@ -26,7 +16,7 @@ const SPINNER_ICON = (
 );
 
 const CHECK_ICON = (
-    <svg
+    <svg aria-hidden="true"
         viewBox="0 0 24 24"
         width="14"
         height="14"
@@ -41,7 +31,7 @@ const CHECK_ICON = (
 );
 
 const ALERT_ICON = (
-    <svg
+    <svg aria-hidden="true"
         viewBox="0 0 24 24"
         width="14"
         height="14"
@@ -113,7 +103,7 @@ export function NativeProvision({ server, provisionProgress, onDismiss, t }) {
                 {isError && (
                     <div className="as-provision-error-row">
                         <p className="as-provision-error">{provisionProgress.error}</p>
-                        <button className="as-provision-dismiss" onClick={onDismiss}>
+                        <button type="button" className="as-provision-dismiss" onClick={onDismiss}>
                             {translate('common.dismiss', { defaultValue: 'Dismiss' })}
                         </button>
                     </div>

@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use sysinfo::{System, Pid};
+use sysinfo::System;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunningProcess {
@@ -30,49 +30,6 @@ pub fn get_running_processes() -> Vec<RunningProcess> {
 
     tracing::debug!("Found {} running processes", processes.len());
     processes
-}
-
-/// 특정 프로세스 이름으로 검색
-#[allow(dead_code)]
-pub fn find_by_name(name: &str) -> Vec<RunningProcess> {
-    let name_lower = name.to_lowercase();
-    get_running_processes()
-        .into_iter()
-        .filter(|p| p.name.to_lowercase().contains(&name_lower))
-        .collect()
-}
-
-/// 프로세스 이름 + 커맨드라인 패턴으로 검색
-///
-/// `cmd_patterns`가 비어 있으면 `find_by_name`과 동일하게 동작.
-/// 비어 있지 않으면 커맨드라인 전체 문자열에 패턴 중 하나 이상이 포함된 프로세스만 반환.
-/// 이를 통해 같은 java.exe를 쓰는 Minecraft와 Zomboid를 구분할 수 있다.
-pub fn find_by_name_and_cmd(name: &str, cmd_patterns: &[String]) -> Vec<RunningProcess> {
-    let name_lower = name.to_lowercase();
-
-    get_running_processes()
-        .into_iter()
-        .filter(|p| {
-            // 1단계: 프로세스 이름 매칭
-            if !p.name.to_lowercase().contains(&name_lower) {
-                return false;
-            }
-            // 2단계: cmd_patterns가 있으면 커맨드라인도 매칭
-            if cmd_patterns.is_empty() {
-                return true;
-            }
-            let cmdline = p.cmd.join(" ").to_lowercase();
-            cmd_patterns.iter().any(|pat| cmdline.contains(&pat.to_lowercase()))
-        })
-        .collect()
-}
-
-/// 특정 PID가 실행 중인지 확인 (크로스 플랫폼)
-#[allow(dead_code)]
-pub fn is_running(pid: u32) -> bool {
-    let mut sys = System::new();
-    sys.refresh_processes();
-    sys.process(Pid::from_u32(pid)).is_some()
 }
 
 // ── Snapshot-based lookups ──────────────────────────────────
@@ -118,33 +75,6 @@ pub fn find_by_name_and_cmd_in<'a>(processes: &'a [RunningProcess], name: &str, 
 /// write lock 밖에서 한 번 호출하여 snapshot을 만들고, lock 안에서 snapshot 기반 검색을 사용합니다.
 pub async fn get_running_processes_async() -> Vec<RunningProcess> {
     tokio::task::spawn_blocking(get_running_processes)
-        .await
-        .unwrap_or_default()
-}
-
-/// `is_running`의 비동기 래퍼.
-#[allow(dead_code)]
-pub async fn is_running_async(pid: u32) -> bool {
-    tokio::task::spawn_blocking(move || is_running(pid))
-        .await
-        .unwrap_or(false)
-}
-
-/// `find_by_name`의 비동기 래퍼.
-#[allow(dead_code)]
-pub async fn find_by_name_async(name: &str) -> Vec<RunningProcess> {
-    let name = name.to_string();
-    tokio::task::spawn_blocking(move || find_by_name(&name))
-        .await
-        .unwrap_or_default()
-}
-
-/// `find_by_name_and_cmd`의 비동기 래퍼.
-#[allow(dead_code)]
-pub async fn find_by_name_and_cmd_async(name: &str, cmd_patterns: &[String]) -> Vec<RunningProcess> {
-    let name = name.to_string();
-    let patterns = cmd_patterns.to_vec();
-    tokio::task::spawn_blocking(move || find_by_name_and_cmd(&name, &patterns))
         .await
         .unwrap_or_default()
 }
