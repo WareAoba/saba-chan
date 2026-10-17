@@ -24,6 +24,7 @@ import SabaStorage from '../components/Modals/SabaStorage';
 
 const setConfigSpy = vi.fn().mockResolvedValue({ ok: true });
 const getConfigSpy = vi.fn().mockResolvedValue({
+    mock_relay: true,
     config: {
         enabled: true,
         relay_url: 'https://saba-chan.online',
@@ -134,5 +135,16 @@ describe('SabaStorage MOCK/REAL toggle (Relay refactor)', () => {
         expect(payload).not.toHaveProperty('api_base_url');
         expect(payload).not.toHaveProperty('github_owner');
         expect(payload).not.toHaveProperty('github_repo');
+    });
+
+    it('일반 빌드(mock_relay=false)에선 MOCK 전환을 감춘다', async () => {
+        getConfigSpy.mockResolvedValueOnce({
+            mock_relay: false,
+            config: { enabled: true, relay_url: null, channel: 'stable' },
+        });
+        render(<SabaStorage onBack={() => {}} isExiting={false} devMode />);
+        await waitFor(() => expect(getConfigSpy).toHaveBeenCalled());
+        await act(async () => {});
+        expect(document.querySelector('.update-mock-toggle')).toBeNull();
     });
 });

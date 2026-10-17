@@ -153,6 +153,8 @@ function ComponentsTab({ devMode }) {
     const [confirmRestart, setConfirmRestart] = useState(false);
     const [pendingRestartAction, setPendingRestartAction] = useState(null);
     const [mockMode, setMockMode] = useState(null);
+    // 데몬이 모의 릴레이 서명을 믿는 개발 빌드(--features mock-relay)인가. 아니면 MOCK으로 바꿔도 검증에서 막힌다
+    const [mockRelayBuild, setMockRelayBuild] = useState(false);
     const [autoCheckEnabled, setAutoCheckEnabled] = useState(true);
     const [downloadProgress, setDownloadProgress] = useState({ component: null, percent: 0, active: false });
     const pollRef = useRef(null);
@@ -417,6 +419,7 @@ function ComponentsTab({ devMode }) {
                 const isMock = !!cfg?.relay_url?.includes('127.0.0.1');
                 if (mountedRef.current) {
                     setMockMode(isMock);
+                    setMockRelayBuild(cfgRes?.mock_relay === true);
                     setAutoCheckEnabled(cfg?.enabled !== false);
                 }
             } catch (_) {
@@ -467,7 +470,8 @@ function ComponentsTab({ devMode }) {
     return (
         <>
             <div className="saba-storage-tab-content">
-                {devMode && (
+                {/* 모의 릴레이 빌드에서만 보인다. 일반 빌드인데 이미 MOCK이면 REAL로 되돌릴 수 있게 남긴다 */}
+                {devMode && (mockRelayBuild || mockMode) && (
                     <div className="update-panel-header" style={{ paddingTop: 0, paddingBottom: '8px' }}>
                         <label
                             className="update-mock-toggle"
