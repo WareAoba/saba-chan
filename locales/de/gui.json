@@ -1125,5 +1125,21 @@
     "console_title": "Daemon-Konsole",
     "console_empty": "Noch keine Daemon-Logs.",
     "console_failed": "Daemon-Logs konnten nicht geladen werden."
+  },
+  "palette": {
+    "title": "Befehlspalette",
+    "placeholder": "Aktionen suchen…",
+    "loading": "Aktionen werden geladen…",
+    "empty": "Keine passenden Aktionen.",
+    "failed": "Die Aktion konnte nicht geladen oder ausgeführt werden.",
+    "need_server": "Wähle zuerst einen Server.",
+    "invalid_input": "Prüfe {{field}}: {{reason}}",
+    "plan_expired": "Die Bestätigung ist abgelaufen. Versuche es erneut.",
+    "back": "Zurück",
+    "next": "Weiter",
+    "confirm_title": "{{action}} ausführen?",
+    "confirm_run": "Ausführen",
+    "done": "Erledigt: {{action}}",
+    "hint": "↑↓ bewegen · Enter ausführen · Esc schließen"
   }
 }

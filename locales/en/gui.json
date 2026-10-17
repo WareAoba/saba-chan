@@ -1155,5 +1155,21 @@
     "console_title": "Daemon console",
     "console_empty": "No daemon logs yet.",
     "console_failed": "Couldn't load daemon logs."
+  },
+  "palette": {
+    "title": "Command palette",
+    "placeholder": "Search actions…",
+    "loading": "Loading actions…",
+    "empty": "No matching actions.",
+    "failed": "Couldn't load or run the action.",
+    "need_server": "Pick a server first.",
+    "invalid_input": "Check {{field}}: {{reason}}",
+    "plan_expired": "The confirmation expired. Try again.",
+    "back": "Back",
+    "next": "Next",
+    "confirm_title": "Run {{action}}?",
+    "confirm_run": "Run",
+    "done": "Done: {{action}}",
+    "hint": "↑↓ to move · Enter to run · Esc to close"
   }
 }

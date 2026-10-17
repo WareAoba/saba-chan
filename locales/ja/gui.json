@@ -1125,5 +1125,21 @@
     "console_title": "デーモンコンソール",
     "console_empty": "デーモンのログはまだありません。",
     "console_failed": "デーモンのログを読み込めませんでした。"
+  },
+  "palette": {
+    "title": "コマンドパレット",
+    "placeholder": "アクションを検索…",
+    "loading": "アクションを読み込み中…",
+    "empty": "一致するアクションがありません。",
+    "failed": "アクションを読み込めないか実行できませんでした。",
+    "need_server": "先にサーバーを選んでください。",
+    "invalid_input": "{{field}} を確認してください: {{reason}}",
+    "plan_expired": "確認の有効期限が切れました。もう一度試してください。",
+    "back": "戻る",
+    "next": "次へ",
+    "confirm_title": "{{action}} を実行しますか？",
+    "confirm_run": "実行",
+    "done": "完了: {{action}}",
+    "hint": "↑↓ 移動 · Enter 実行 · Esc 閉じる"
   }
 }

@@ -1125,5 +1125,21 @@
     "console_title": "常駐程式主控台",
     "console_empty": "目前沒有常駐程式日誌。",
     "console_failed": "無法載入常駐程式日誌。"
+  },
+  "palette": {
+    "title": "命令面板",
+    "placeholder": "搜尋動作…",
+    "loading": "正在載入動作…",
+    "empty": "沒有符合的動作。",
+    "failed": "無法載入或執行該動作。",
+    "need_server": "請先選擇伺服器。",
+    "invalid_input": "請檢查 {{field}}：{{reason}}",
+    "plan_expired": "確認已過期，請重試。",
+    "back": "返回",
+    "next": "下一步",
+    "confirm_title": "執行 {{action}}？",
+    "confirm_run": "執行",
+    "done": "完成：{{action}}",
+    "hint": "↑↓ 移動 · Enter 執行 · Esc 關閉"
   }
 }

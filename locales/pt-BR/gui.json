@@ -1125,5 +1125,21 @@
     "console_title": "Console do daemon",
     "console_empty": "Ainda não há logs do daemon.",
     "console_failed": "Não foi possível carregar os logs do daemon."
+  },
+  "palette": {
+    "title": "Paleta de comandos",
+    "placeholder": "Buscar ações…",
+    "loading": "Carregando ações…",
+    "empty": "Nenhuma ação correspondente.",
+    "failed": "Não foi possível carregar ou executar a ação.",
+    "need_server": "Escolha um servidor primeiro.",
+    "invalid_input": "Verifique {{field}}: {{reason}}",
+    "plan_expired": "A confirmação expirou. Tente de novo.",
+    "back": "Voltar",
+    "next": "Avançar",
+    "confirm_title": "Executar {{action}}?",
+    "confirm_run": "Executar",
+    "done": "Concluído: {{action}}",
+    "hint": "↑↓ mover · Enter executar · Esc fechar"
   }
 }

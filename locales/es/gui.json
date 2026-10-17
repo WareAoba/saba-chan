@@ -1125,5 +1125,21 @@
     "console_title": "Consola del daemon",
     "console_empty": "Aún no hay registros del daemon.",
     "console_failed": "No se pudieron cargar los registros del daemon."
+  },
+  "palette": {
+    "title": "Paleta de comandos",
+    "placeholder": "Buscar acciones…",
+    "loading": "Cargando acciones…",
+    "empty": "No hay acciones que coincidan.",
+    "failed": "No se pudo cargar o ejecutar la acción.",
+    "need_server": "Elige primero un servidor.",
+    "invalid_input": "Revisa {{field}}: {{reason}}",
+    "plan_expired": "La confirmación caducó. Inténtalo de nuevo.",
+    "back": "Atrás",
+    "next": "Siguiente",
+    "confirm_title": "¿Ejecutar {{action}}?",
+    "confirm_run": "Ejecutar",
+    "done": "Hecho: {{action}}",
+    "hint": "↑↓ mover · Enter ejecutar · Esc cerrar"
   }
 }
