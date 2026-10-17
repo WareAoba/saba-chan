@@ -605,11 +605,15 @@ function startDaemon() {
     console.log('[Daemon] SABA_INSTANCES_PATH:', daemonEnv.SABA_INSTANCES_PATH);
     console.log('[Daemon] SABA_MODULES_PATH:', daemonEnv.SABA_MODULES_PATH);
 
+    // detached: Windows에서 Electron은 분리하지 않은 자식을 kill-on-close 잡에 넣어 GUI와 함께 죽인다 (C14).
+    // 분리해 두고 데몬은 정상 종료 경로(cleanQuit·will-quit)에서만 끈다. 인터페이스만 종료하면 그대로 둔다.
+    // 로그는 GUI가 살아 있는 동안 파이프로 받고, 그 뒤에는 데몬 버퍼(/api/daemon/console)에 남는다.
     daemonProcess = spawn(daemonPath, ['--spawned'], {
         cwd: rootDir,
         env: daemonEnv,
         stdio: ['ignore', 'pipe', 'pipe'],
-        detached: false,
+        detached: true,
+        windowsHide: true,
     });
 
     console.log('[Daemon] spawned with PID:', daemonProcess.pid);
@@ -724,6 +728,12 @@ async function interfaceOnlyQuit() {
             mainWindow = null;
         }
 
+        // 데몬 파이프를 놓아 GUI가 기다리지 않고 끝나게 한다 (데몬 쪽 쓰기 실패는 tracing이 무시한다)
+        if (daemonProcess) {
+            daemonProcess.stdout?.destroy();
+            daemonProcess.stderr?.destroy();
+            daemonProcess.unref();
+        }
         console.log('Interface-only quit sequence completed (daemon kept alive)');
         closeLogger();
         app.quit();
@@ -1375,8 +1385,8 @@ app.on('before-quit', () => {
 // 앱이 완전히 종료되기 전 최후의 보루
 process.on('exit', () => {
     console.log('Process exiting');
-    // 혹시 남아있을 데몬 프로세스 강제 종료
-    if (daemonProcess && !daemonProcess.killed) {
+    // 혹시 남아있을 데몬 프로세스 강제 종료 (인터페이스만 종료한 경우는 남긴다)
+    if (!keepDaemonAlive && daemonProcess && !daemonProcess.killed) {
         try {
             console.log('Force killing daemon process at exit');
             daemonProcess.kill('SIGKILL');
