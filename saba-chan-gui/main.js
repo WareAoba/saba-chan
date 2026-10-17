@@ -740,6 +740,26 @@ async function cleanQuit() {
     }
 }
 
+// 토큰 재로드 후 검증 재시도 (최대 3회, 500ms 간격). 3회 실패해도 일단 진행 (이후 자동 복구에 맡김)
+async function reloadTokenUntilValid() {
+    for (let retry = 0; retry < 3; retry++) {
+        loadIpcToken();
+        try {
+            const verifyResp = await axios.get(`${IPC_BASE}/health`, { timeout: 1000 });
+            // 예전 데몬은 token 칸 없이 200 (토큰이 맞을 때만)
+            if (verifyResp.status === 200 && (verifyResp.data?.token ?? 'valid') === 'valid') {
+                console.log('✓ Token refreshed and verified');
+                return true;
+            }
+        } catch (verifyErr) {
+            console.warn(`[Auth] Token verify attempt ${retry + 1} failed:`, verifyErr.message);
+        }
+        await wait(500);
+    }
+    console.warn('[Auth] Token verification failed after 3 retries, proceeding anyway');
+    return false;
+}
+
 // 이미 떠 있는 데몬이 있으면 재실행하지 않고 재사용
 async function ensureDaemon() {
     try {
@@ -748,6 +768,14 @@ async function ensureDaemon() {
         // /health 엔드포인트로 체크 (lock / 디스크 I/O 없이 즉시 응답)
         sendStatus('daemon', t('daemon.checking'));
         const response = await axios.get(`${IPC_BASE}/health`, { timeout: 1000 });
+        // /health는 토큰 없이 답하고 보낸 토큰 상태(token)를 알려 준다 (A6). 예전 데몬은 401을 준다(아래 catch)
+        if (response.status === 200 && response.data?.token && response.data.token !== 'valid') {
+            console.log('Existing daemon detected (stale token). Reloading token...');
+            await reloadTokenUntilValid();
+            sendStatus('daemon', t('daemon.existing_running'));
+            await syncInstallRoot();
+            return;
+        }
         if (response.status === 200) {
             console.log('Existing daemon detected on IPC port. Skipping launch.');
             sendStatus('daemon', t('daemon.existing_running'));
@@ -758,24 +786,7 @@ async function ensureDaemon() {
         // 401 = 데몬은 떠있지만 토큰이 맞지 않음 (이전 세션 토큰)
         if (err.response && err.response.status === 401) {
             console.log('Existing daemon detected (auth failed — stale token). Reloading token...');
-            // 토큰 재로드 후 검증 재시도 (최대 3회, 500ms 간격)
-            for (let retry = 0; retry < 3; retry++) {
-                loadIpcToken();
-                try {
-                    const verifyResp = await axios.get(`${IPC_BASE}/health`, { timeout: 1000 });
-                    if (verifyResp.status === 200) {
-                        console.log('✓ Token refreshed and verified');
-                        sendStatus('daemon', t('daemon.existing_running'));
-                        await syncInstallRoot();
-                        return;
-                    }
-                } catch (verifyErr) {
-                    console.warn(`[Auth] Token verify attempt ${retry + 1} failed:`, verifyErr.message);
-                }
-                await wait(500);
-            }
-            // 3회 실패해도 일단 진행 (GUI는 표시하고 이후 자동 복구에 맡김)
-            console.warn('[Auth] Token verification failed after 3 retries, proceeding anyway');
+            await reloadTokenUntilValid();
             sendStatus('daemon', t('daemon.existing_running'));
             await syncInstallRoot();
             return;

@@ -11,3 +11,4 @@ pub mod chat;
 pub mod backup;
 pub mod chatbot;
 pub mod migration;
+pub mod diagnostics;

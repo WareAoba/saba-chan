@@ -150,8 +150,7 @@
 - **라우터 정의 위치**: `src/ipc/mod.rs:640-758` (axum 0.7), 업데이트 라우트는 `src/ipc/updates.rs:98-109`.
 - **경로 파라미터 표기**: axum 0.7의 `:param` 문법을 쓴다.
 - **인증 적용 범위**: `.layer(auth_middleware)`는 업데이트 라우터를 `.merge()`한 **뒤에** 달린다(`ipc/mod.rs:756-758`).
-  - 따라서 **`/health`와 `/api/updates/*`를 포함한 모든 라우트에 토큰이 필요하다.**
-  - `/health`의 "경량 ping" 주석(`ipc/mod.rs:641`, `server.rs:14-17`)과 달리 토큰 없이는 401이다.
+  - 따라서 `/api/updates/*`를 포함한 모든 라우트에 토큰이 필요하다. **`/health`만 예외**다(A6): 루프백 검사는 거치지만 토큰 없이 답한다. 토큰이 어긋나도 클라이언트가 데몬이 떠 있는지 알 수 있게 하려는 것이다.
   - 미들웨어는 토큰보다 먼저 `Host` 헤더가 루프백(`127.0.0.1`, `localhost`, `::1`)인지 보고, 아니면 본문 없는 403을 돌려준다(`auth.rs:74-101`). DNS 리바인딩 방어다.
 - **에러 형식이 통일돼 있지 않다.** 다음 형식들이 섞여 있다.
   - `{"error": "..."}` (+ 선택적으로 `"error_code"`)
@@ -170,7 +169,8 @@
 
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
-| GET | `/health` | `server.rs:18` `health_check` | - | `{ok:true, version, pid}` |
+| GET | `/health` | `server.rs:19` `health_check` | - | `{ok:true, version, pid, token}`. 토큰 없이 부를 수 있다. `token`은 보낸 `X-Saba-Token`이 `valid`·`invalid`·`missing` 중 무엇인지(값은 드러내지 않는다) |
+| GET | `/api/diagnostics` | `diagnostics.rs:20` | - | A6, 인증 필요. `{ok, version, pid, uptime_secs, listen_addr, data_dir, token_file:{path, exists}, extensions:{enabled, enabled_but_missing}, modules:{count}\|{error}, recent_problems:[최근 경고·오류 20개, 오래된 순]}` |
 | GET | `/api/version` | `server.rs:279` | - | `{version, components:{saba-core, module-<이름>, ext-<id>, ...}}` |
 | GET | `/api/servers` | `server.rs:24` `list_servers` | - | `{servers:[ServerInfo], port_conflict_stops?:[...]}` (아래 설명) |
 | GET | `/api/server/:name/status` | `server.rs:534` | - | supervisor 결과 JSON 그대로. 404 시 `{error, error_code:"instance_not_found"}` |
@@ -393,7 +393,8 @@ Relay 서명 방식(`relay.rs:100-137`):
   - 실패 로그는 30초에 한 번으로 제한하고, 토큰 앞 8자를 로그에 남긴다.
 - **우회 경로**
   - `SABA_AUTH_DISABLED=1`이면 토큰 검사를 건너뛴다. **디버그 빌드에서만** 동작하며(`auth.rs:103-106`), 통합 테스트가 이 방식을 쓴다(`tests/daemon_integration.rs:111`).
-  - 캐시도 없고 토큰 파일도 없으면 **거부한다**(fail-closed, `auth.rs:115-124`).
+  - 캐시도 없고 토큰 파일도 없으면 **거부한다**(fail-closed).
+  - `/health`는 루프백 검사 뒤 토큰 검사 없이 통과한다(A6).
 - **토큰을 쓰는 클라이언트**: GUI(`saba-chan-gui/main.js:69,180`, 파일 재읽기 포함), CLI(`saba-chan-cli/src/client.rs:28-33`, 401이면 파일을 다시 읽고 한 번 재시도 `:97-103`. PR #6 기준), Python 모듈(`modules/daemon_rcon.py:65-71`, `SABA_TOKEN_PATH`). 모두 토큰 파일을 직접 읽어 헤더에 넣는다.
 - **CORS 레이어가 없다.** 브라우저에서 오는 교차 출처 요청은 사전 요청(preflight)에서 막히고, 단순 요청도 토큰이 없으면 401이다. 모든 라우트가 인증을 거치므로 바디 없는 POST를 CSRF로 부를 수 있던 예전 `/api/updates/*` 경로도 막혔다.
 
@@ -628,7 +629,7 @@ Relay 서명 방식(`relay.rs:100-137`):
 ### 9.B 보안과 정합성
 
 1. ~~`/api/updates/*`에 인증이 없다~~ 해결됨: 업데이트 라우터도 인증 미들웨어 안에 있다(`ipc/mod.rs:756-758`). 업데이트 출처 설정은 `relay_url`뿐이고, 서명되지 않은 manifest는 받지 않는다.
-2. **`/health`는 인증이 필요하다.** 주석이 말하는 "경량 ping"과 다르다(`ipc/mod.rs:641`). 클라이언트의 ready 체크가 토큰을 읽기 전에 실행되면 401을 받는다.
+2. ~~**`/health`는 인증이 필요하다.**~~ → 해결(A6): `/health`는 토큰 없이 답하고 보낸 토큰의 상태(`token`)만 알려 준다. 자세한 진단은 인증이 필요한 `/api/diagnostics`.
 3. ~~**토큰이 없으면 fail-open이다**~~ → 해결: 캐시도 파일도 없으면 401로 거부한다(`auth.rs:115-124`). ~~비교가 상수 시간이 아니다~~ → 해결: `constant_time_eq`로 끝까지 비교한다(`auth.rs:86-89, 134`).
 4. ~~**단일 인스턴스 보장이 없다.**~~ → 해결: `daemon.lock` 배타 잠금을 토큰 생성 전에 잡고(`main.rs:240-255`), Windows에서는 `SO_REUSEADDR`를 켜지 않는다(`ipc/mod.rs:772-775`). §1.6.
 5. ~~`/api/ext-process/:name/start`는 임의 명령을 실행~~(라우트 삭제). ~~`/api/fs/scan-dir`는 임의 디렉토리를 열람한다~~ → 해결: 지웠다. 마이그레이션은 게임 폴더 판정(`POST /api/modules/detect`)만 쓴다(D2).

@@ -105,6 +105,13 @@ impl DaemonLogBuffer {
         }
     }
 
+    /// `keep`을 만족하는 최근 항목을 최대 `count`개, 오래된 것부터
+    pub fn recent_where(&self, count: usize, keep: impl Fn(&DaemonLogEntry) -> bool) -> Vec<DaemonLogEntry> {
+        let buf = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut found: Vec<DaemonLogEntry> = buf.iter().rev().filter(|e| keep(e)).take(count).cloned().collect();
+        found.reverse();
+        found
+    }
 }
 
 impl Default for DaemonLogBuffer {
@@ -270,6 +277,16 @@ mod tests {
         assert_eq!(entries[0].message, "hello world");
         assert_eq!(entries[1].id, 2);
         assert_eq!(entries[1].level, "warn");
+    }
+
+    #[test]
+    fn recent_where_keeps_the_latest_matches_oldest_first() {
+        let buf = DaemonLogBuffer::new();
+        for (level, msg) in [("warn", "a"), ("info", "b"), ("error", "c"), ("warn", "d")] {
+            buf.push(level.into(), "t".into(), msg.into());
+        }
+        let got: Vec<_> = buf.recent_where(2, |e| e.level != "info").into_iter().map(|e| e.message).collect();
+        assert_eq!(got, vec!["c", "d"]);
     }
 
     #[test]

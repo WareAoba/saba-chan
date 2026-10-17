@@ -606,9 +606,11 @@ impl IPCServer {
             .skip_port_check
             .store(!check_ports, std::sync::atomic::Ordering::Relaxed);
 
+        handlers::diagnostics::mark_started();
         let router = Router::new()
             // ── 경량 ping (lock / 디스크 I/O 없음) ──
             .route("/health", get(handlers::server::health_check))
+            .route("/api/diagnostics", get(handlers::diagnostics::diagnostics))
             // ── Server query/control ──
             .route("/api/servers", get(handlers::server::list_servers))
             .route("/api/server/:name/status", get(handlers::server::get_server_status))
