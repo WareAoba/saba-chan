@@ -61,8 +61,16 @@ fn extension_err_response(
 pub async fn list_extensions(
     State(state): State<IPCServer>,
 ) -> Json<serde_json::Value> {
+    let language = state.config_store.get_gui_settings().await.language.unwrap_or_default();
     let mgr = state.extension_manager.read().await;
-    let list = mgr.list();
+    let mut list = mgr.list();
+    // 설명은 GUI 언어로 (없으면 "ko-KR" → "ko", 그래도 없으면 manifest의 영어 description)
+    let base = language.split(['-', '_']).next().unwrap_or("").to_string();
+    for item in &mut list {
+        if let Some(text) = item.descriptions.get(&language).or_else(|| item.descriptions.get(&base)) {
+            item.description = text.clone();
+        }
+    }
     let failed = mgr.load_errors();
     if failed.is_empty() {
         Json(json!({ "extensions": list }))

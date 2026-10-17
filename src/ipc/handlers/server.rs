@@ -593,6 +593,10 @@ pub async fn start_instance_handler(
             .into_response();
     };
 
+    if let Some(blocked) = preflight(&state, &instance.id).await {
+        return blocked;
+    }
+
     let resp = if managed {
         crate::ipc::internal::into_internal(
             super::managed::start_managed_handler(Path(instance.id.clone()), State(state.clone()), None).await,
@@ -614,6 +618,44 @@ pub async fn start_instance_handler(
     };
     body.insert("managed".into(), json!(managed));
     (resp.status, Json(Value::Object(body))).into_response()
+}
+
+/// 켜기 전 점검: 모듈 validate가 critical 문제(EULA 미동의, 서버 파일 없음 등)를 내면 켜지 않는다.
+/// 이미 켜져 있거나, 모듈에 validate가 없거나, 점검 자체가 실패하면 막지 않는다
+async fn preflight(state: &IPCServer, id: &str) -> Option<axum::response::Response> {
+    {
+        let supervisor = state.supervisor.read().await;
+        if supervisor.tracker.get_pid(id).is_ok() || supervisor.managed_store.running_instance_ids().await.contains(&id.to_string()) {
+            return None;
+        }
+    }
+    let result = match crate::supervisor::Supervisor::validate_instance(&state.supervisor, id).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!("Pre-start check for '{}' failed to run: {}", id, e);
+            return None;
+        }
+    };
+    let issues = result.get("issues").and_then(Value::as_array)?;
+    let critical: Vec<&Value> = issues.iter().filter(|i| i.get("severity").and_then(Value::as_str) == Some("critical")).collect();
+    let first = critical.first()?;
+    let code = first.get("code").and_then(Value::as_str).unwrap_or("preflight_failed");
+    let message = first.get("message").and_then(Value::as_str).unwrap_or("Pre-start check failed");
+    tracing::info!("Start of '{}' blocked by pre-start check: {}", id, code);
+    Some(
+        (
+            StatusCode::CONFLICT,
+            Json(json!({
+                "success": false,
+                "error": message,
+                "error_code": "preflight_failed",
+                "issue_code": code,
+                "solution": first.get("solution"),
+                "issues": critical,
+            })),
+        )
+            .into_response(),
+    )
 }
 
 /// id(또는 고유한 이름)로 인스턴스를 찾아 (id, 이름)을 돌려준다

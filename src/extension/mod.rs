@@ -226,8 +226,12 @@ pub struct ExtensionManifest {
     pub id: String,
     pub name: String,
     pub version: String,
+    /// 영어 설명 (번역이 없는 언어에 쓴다)
     #[serde(default)]
     pub description: String,
+    /// 언어별 설명 (예: { "ko": "..." }). 목록 API가 GUI 언어에 맞는 것을 고른다
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub descriptions: HashMap<String, String>,
     #[serde(default)]
     pub author: String,
     #[serde(default)]
@@ -439,6 +443,8 @@ pub struct ExtensionListItem {
     pub name: String,
     pub version: String,
     pub description: String,
+    #[serde(skip)]
+    pub descriptions: HashMap<String, String>,
     pub author: String,
     pub enabled: bool,
     pub hooks: Vec<String>,
@@ -1087,6 +1093,7 @@ impl ExtensionManager {
                     name: m.name.clone(),
                     version: m.version.clone(),
                     description: m.description.clone(),
+                    descriptions: m.descriptions.clone(),
                     author: m.author.clone(),
                     enabled: self.enabled.contains(&m.id),
                     hooks: m.hooks.keys().cloned().collect(),
