@@ -22,7 +22,7 @@ export function botSettingsErrorText(res, t) {
 }
 
 /** 숫자 칸: 범위 안의 정수만 저장하고, 벗어나면 그 자리에 알린다 */
-function NumberField({ label, unit, value, range, onCommit }) {
+function NumberField({ label, unit, value, range, disabled, onCommit }) {
     const { t } = useTranslation('gui');
     const [draft, setDraft] = useState(String(value));
     useEffect(() => setDraft(String(value)), [value]);
@@ -41,6 +41,7 @@ function NumberField({ label, unit, value, range, onCommit }) {
                     min={range.min}
                     max={range.max}
                     value={draft}
+                    disabled={disabled}
                     onChange={(e) => setDraft(e.target.value)}
                     onBlur={commit}
                     onKeyDown={(e) => e.key === 'Enter' && commit()}
@@ -189,6 +190,7 @@ export function BotSettingsTab({ node }) {
                         unit={t('discord.bot_settings.lines')}
                         value={music.queueLines ?? 10}
                         range={QUEUE_LINES}
+                        disabled={saving}
                         onCommit={(queueLines) => save({ music: { queueLines } })}
                     />
                     <NumberField
@@ -196,6 +198,7 @@ export function BotSettingsTab({ node }) {
                         unit={t('chatbot.seconds')}
                         value={Math.round((music.refreshInterval ?? 5000) / 1000)}
                         range={REFRESH_SECONDS}
+                        disabled={saving}
                         onCommit={(s) => save({ music: { refreshInterval: s * 1000 } })}
                     />
                 </div>
