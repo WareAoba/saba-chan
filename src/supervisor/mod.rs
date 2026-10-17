@@ -2001,14 +2001,15 @@ impl Supervisor {
                 
                 if !process_monitor::is_running_in(process_snapshot, pid) {
                     // 러너가 아직 서버를 돌리고 있으면(런처가 끝나고 진짜 서버가 남은 경우) 러너가 보는 PID로 옮긴다
-                    if matches!(self.managed_store.get(&instance.id).await, Some(p) if p.is_running()) {
+                    // 로그만 따라 읽는 익스텐션 follower는 서버 수명을 말해 주지 않는다: 러너일 때만
+                    if matches!(self.managed_store.get(&instance.id).await, Some(p) if p.is_running() && p.runner_pid.is_some()) {
                         let dir = self.instance_store.instance_dir(&instance.id);
                         match managed_process::runner_server_pid(&dir)
                             .filter(|p| *p != pid && process_monitor::is_running_in(process_snapshot, *p))
                         {
                             Some(new_pid) => {
                                 tracing::info!("Instance '{}': launcher {} exited, following server PID {}", instance.name, pid, new_pid);
-                                let _ = self.tracker.track(&instance.id, new_pid);
+                                let _ = self.tracker.replace_pid(&instance.id, new_pid);
                             }
                             None => tracing::debug!("Instance '{}': PID {} gone but saba-runner still runs it", instance.name, pid),
                         }
