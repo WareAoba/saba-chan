@@ -235,7 +235,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 | 함수 | 호출 지점 | 데몬이 넣는 config 키 |
 |---|---|---|
 | `get_launch_command` | managed 시작 `mod.rs:1310-1330`, non-managed 시작 `mod.rs:580-599` | (요청 payload.config) + `server_executable`, `server_jar`(없을 때), `working_dir`, `port`, **`module_settings`를 최상위로 펼침**, `rest_host`, `rest_port`, `rest_username`, `rest_password`, `protocol_mode`, `server_version`, `managed: true/false` (`insert_instance_fields` `mod.rs:286-299`). **`instance_id`는 없음** |
-| `stop` | non-managed 정지 `mod.rs:868-881`, stdin을 쓸 수 없는 managed 서버의 정지 `mod.rs:775-788` | `server_executable`, `server_jar`, `working_dir`, `module_settings`(펼침), `rest_*`, `protocol_mode`, `server_version`, `pid`, `force`, `managed`. **`instance_id` 없음**. 추적 중인 PID가 없으면 non-managed에서는 부르지 않는다 (`mod.rs:860-872`). minecraft·zomboid·__example의 `stop()`은 `instance_id`로 콘솔 정지를 먼저 시도하지만 이 값이 오지 않는다 (§6.3 #8) |
+| `stop` | non-managed 정지 `mod.rs:874-883`, stdin을 쓸 수 없는 managed 서버(REST 전용, stdin 없는 재부착)의 정지 `mod.rs:778-789` | `server_executable`, `server_jar`, `working_dir`, `module_settings`(펼침), `rest_*`, `protocol_mode`, `server_version`, `instance_id`(`insert_instance_fields`, `mod.rs:286-297`), `pid`, `force`, `managed`. 추적 중인 PID가 없으면 non-managed에서는 부르지 않는다 (`mod.rs:863-872`). 콘솔이 있는 managed 서버는 이 함수를 부르지 않고 데몬이 `stop_command`를 stdin으로 보낸 뒤 기다린다 (`mod.rs:756-776`) |
 | `status` | non-managed 상태 조회 `mod.rs:964-982` | `server_executable`, `server_jar`, `working_dir`, `pid`, `module_settings`(펼침) |
 | `command` | `POST /api/instance/:id/command`에서 명령의 `method`가 `module`일 때 → `mod.rs:1024-1083` | `command`, `args`, `protocol_mode`, `working_dir`, `rest_host`, `rest_port`, `pid`, `instance_id` |
 | `get_credentials` | `/rest` 요청 시. 결과를 캐시하므로 캐시가 있으면 Python을 띄우지 않는다 (`command.rs:531-558`) | `working_dir` |
@@ -255,11 +255,11 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 
 모듈의 `start` 함수는 모든 모듈에서 지워졌다(FUNCTIONS에 없음). non-managed 모드도 `get_launch_command`로 데몬이 직접 spawn한다 (`mod.rs:580-652`).
 
-**예전 개발 가이드의 "호출 순서"와 다른 점** (가이드는 a8b6c29에서 현재 데몬 기준으로 다시 쓰였다. 아래는 `__example__lifecycle.py:36-50` 주석에 남은 차이다):
+**예전 개발 가이드의 "호출 순서"와 다른 점** (가이드는 a8b6c29에서 현재 데몬 기준으로 다시 쓰였다. 아래는 `__example__lifecycle.py:36-46` 주석과의 차이다):
 - "시작 시 `validate → configure → get_launch_command`"라고 되어 있다. 실제로는 `POST /api/instance/:id/start`가 `validate`를 시작 전 점검으로 부르고(critical 문제만 막고, 점검이 실패하면 막지 않는다) 이어서 `get_launch_command`를 부른다. `configure`는 시작 때 부르지 않는다. `/managed/start`와 `/server/:name/start`를 직접 부르면 점검도 없다.
 - "status 주기적 호출"이라고 되어 있지만, 실제로는 non-managed 인스턴스의 status API 요청 때만 호출된다. 모니터 루프는 PID 스냅샷만 본다.
-- ~~"rcon_template이 있으면 데몬이 직접 RCON을 보낸다"~~ → 해결: 개발 가이드가 다시 쓰여 `method = "console"` + `console_template`을 콘솔(stdin)로 보낸다고 적는다(`M:docs/module-development-guide.md:182-200`, `D:src/commands/mod.rs:111-112`). 다만 `__example__lifecycle.py` 주석은 아직 `method="stdin"` + `input_template`이라고 적는데(`:44, 355-356`), 데몬은 `stdin` method를 `unsupported_method`로 거부하고(`D:src/commands/mod.rs:125`) `input_template`은 schema v1에서 모르는 키다. 같은 폴더의 toml은 맞게 `method = "console"` + `console_template`을 쓴다.
-- "config에 `instance_id`, `settings{}` 항상 포함"이라고 되어 있지만, `instance_id`는 `command`에만 들어가고 `settings{}`는 `configure`에만 들어간다. 그 외 함수에서는 `module_settings`가 **최상위로 펼쳐져** 들어간다.
+- ~~"rcon_template이 있으면 데몬이 직접 RCON을 보낸다"~~ → 해결: 개발 가이드가 다시 쓰여 `method = "console"` + `console_template`을 콘솔(stdin)로 보낸다고 적는다(`M:docs/module-development-guide.md:182-200`, `D:src/commands/mod.rs:111-112`). `__example__lifecycle.py` 주석도 `method="console"`로 고쳐졌다(`:44`, e1d7743).
+- ~~"config에 `instance_id`, `settings{}` 항상 포함"~~ → 부분 해결: `instance_id`는 인스턴스 필드를 넣는 호출(`insert_instance_fields`, `D:src/supervisor/mod.rs:286-297`)에 들어간다. `settings{}`는 여전히 `configure`에만 들어가고, 그 외 함수에서는 `module_settings`가 **최상위로 펼쳐져** 들어간다(템플릿 주석 `:58-63`은 아직 `settings`가 항상 온다고 적는다).
 
 ### 2.4 함수 구현 매트릭스 (FUNCTIONS 딕셔너리 기준)
 
@@ -361,7 +361,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
   5. 시간이 지나면 강제 종료하고 2초 더 기다린다.
   6. `managed_store`에서 제거하고 종료를 판정·기록하고, `managed.pid`를 삭제하고, 30초짜리 stop cooldown(`STOP_COOLDOWN_SECS`)을 등록한다.
   - palworld는 stdin이 없어 3번 경로로 간다. 모듈 `stop()`이 REST로 저장·종료를 요청한다 (`M:palworld/lifecycle.py:399-426`).
-- **non-managed stop**: 추적 중인 PID가 있을 때만 Python `stop()`에 `pid`와 `force`를 넘긴다. 모듈이 REST나 kill을 직접 처리한다. `success=false`이면 Err가 된다 (`mod.rs:860-903`). minecraft·zomboid는 일반 정지에서 바로 죽이지 않고 콘솔 정지(실제로는 오지 않음, §6.3 #8) → POSIX면 SIGTERM → 30초 대기 → 강제 종료 순서를 밟는다. Windows에는 보낼 정상 종료 신호가 없어 바로 강제 종료한다.
+- **non-managed stop**: 추적 중인 PID가 있을 때만 Python `stop()`에 `pid`와 `force`를 넘긴다. 모듈이 REST나 kill을 직접 처리한다. `success=false`이면 Err가 된다 (`mod.rs:860-903`). minecraft·zomboid는 일반 정지에서 바로 죽이지 않고 콘솔 정지(콘솔이 없을 때 불리므로 보통 실패, §6.3 #8) → POSIX면 SIGTERM → 30초 대기 → 강제 종료 순서를 밟는다. Windows에는 보낼 정상 종료 신호가 없어 바로 강제 종료한다.
 - **extension 위임**: `server.stop` hook은 정지 전에 불린다. `handled`를 돌려주면 그대로 반환하고, 정지를 맡을 익스텐션이 실패하면 실패를 돌려준다 (`mod.rs:713-738`).
 
 ### 3.5 명령 경로 (stdin/REST)
@@ -438,7 +438,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 - 파일명이 `__example__module.toml`, `__example__lifecycle.py`다. 로더는 `module.toml`과 `entry`(여기서는 `lifecycle.py`)를 요구하므로 **이름을 바꿔야** 동작한다. 폴더명도 `_`로 시작해 빌드에서 제외된다(의도된 것).
 - `name = "mygame"`인데 폴더명은 `__example`이다. toml 주석은 "폴더명과 동일"을 요구한다(예시 값).
 - 템플릿 주석에 있는 "데몬 호출 시점" 설명(`:36-50`)과 config 키 설명(`:56-75`)은 §2.3과 같은 이유로 **사실과 다르다**(예: `instance_id`·`settings` 항상 포함). `rcon_port`·`rcon_password` 예시는 지워졌다.
-- RCON 대신 stdin을 가르친다: `protocols.supported = ["stdin"]`, RCON 설정·자격증명 예시 삭제, 공용 `daemon_stdin_command`·`wait_for_exit`·`force_kill`을 쓰고 대기 후에만 강제 종료한다 (`__example__lifecycle.py:92-97, 236-256`, `__example__module.toml:58-60`). 다만 `stop()`은 데몬이 넘기지 않는 `instance_id`로 콘솔 명령을 보내므로 늘 실패하고, 30초를 그냥 기다린 뒤 강제 종료한다(§6.3 #8). 주석의 `method="stdin"`·`input_template`도 데몬이 받지 않는 값이다(§2.3).
+- RCON 대신 stdin을 가르친다: `protocols.supported = ["stdin"]`, RCON 설정·자격증명 예시 삭제, 공용 `daemon_stdin_command`·`wait_for_exit`·`force_kill`을 쓰고 대기 후에만 강제 종료한다 (`__example__lifecycle.py:92-97, 236-256`, `__example__module.toml:58-60`). 진입점은 공용 `run_lifecycle()`이고, 주석의 명령 방식도 `method="console"`로 맞췄다(e1d7743). `stop()`의 콘솔 정지는 콘솔이 없을 때 불리므로 보통 실패하고 대기 후 강제 종료로 넘어간다(§6.3 #8).
 - `install_server`는 실제 모듈처럼 `extensions.steamcmd.SteamCMD` 클래스를 쓴다 (`:394-395`).
 - `get_credentials`, `read_properties`가 없다. 명령은 stdin으로 가므로 콘솔 모듈에는 지장이 없지만, REST 모듈을 만들면 `get_credentials`를 직접 추가해야 한다.
 - settings에 `managed_start`와 `graceful_stop`이 있다. `managed_start`는 데몬이 시작 경로를 고르는 데 쓴다(§3.1). `graceful_stop`은 데몬도 예시 `stop()`도 읽지 않고(설정 동기화에서 빼기만 한다, `instance.rs:1007`), GUI만 정지 방식을 고를 때 읽는다 (`saba-chan-gui/src/hooks/useServerActions.js:480`).
@@ -508,7 +508,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 5. ~~palworld가 최상위에서 `extensions.ue4_ini`를 import해서 익스텐션에 하드 의존한다~~ → 해결: `try`로 불러오고 없으면 해당 함수만 `extension_required`를 돌려준다 (`M:palworld/lifecycle.py:33-36, 742-757`).
 6. ~~`__example`의 `install_server`가 쓰는 steamcmd API(`install_game`)가 실제 모듈과 다르다~~ → 해결: `SteamCMD` 클래스를 쓴다 (`M:__example/__example__lifecycle.py:394-395`).
 7. `get_installed_version`의 `jar_name` 기본값이 `"server.jar"`다. 데몬 코드 안의 Minecraft 전용 가정이다 (`mod.rs:1890-1893`).
-8. minecraft·zomboid·__example의 `stop()`은 `instance_id`로 콘솔 정지(`daemon_stdin_command`)를 먼저 시도하는데, 데몬의 `stop` config에는 `instance_id`가 없다 (`D:src/supervisor/mod.rs:742-751, 778-782, 872-876`). 데몬이 `stop()`을 부르는 때는 콘솔이 없을 때(non-managed, stdin 없는 스텁)라 넣어도 409가 날 것이므로, 실제 동작은 minecraft·zomboid가 POSIX에서 SIGTERM, Windows에서 바로 강제 종료이고, __example은 30초를 기다린 뒤 강제 종료다 (`M:minecraft/lifecycle.py:1269-1279, 1305-1313`, `M:zomboid/lifecycle.py:1052-1092`, `M:__example/__example__lifecycle.py:236-256`).
+8. ~~데몬의 `stop` config에 `instance_id`가 없어 모듈 `stop()`의 콘솔 정지가 실행되지 않는다~~ → 해결: 모듈 호출에 `instance_id`가 들어간다(`D:src/supervisor/mod.rs:296-297`, 59a93b8). 정지 경로는 이렇다. 콘솔이 있는 managed 서버는 데몬이 `stop_command`를 stdin으로 보내고 끝나기를 기다린다(`mod.rs:756-776`, 테스트 `normal_stop_asks_the_console_and_waits`). 모듈 `stop()`은 콘솔이 없을 때(non-managed, REST 전용, stdin 없는 재부착)만 불리므로, 그 안의 콘솔 정지 시도는 보통 실패하고 SIGTERM(POSIX)이나 대기 후 강제 종료로 넘어간다.
 
 ### 6.4 데몬 프로토콜과 운영 문제
 1. ~~`SABA_ENABLED_EXTENSIONS`의 상태 파일 경로가 `ExtensionManager`와 다르다~~ → 해결: 둘 다 `<data_dir>/config.json`의 `extensions.enabled`를 읽는다 (`plugin/mod.rs:198-205`).
