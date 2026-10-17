@@ -327,6 +327,12 @@ impl Session {
         }
         // 권한 원본은 데몬이다: 릴레이는 이 값으로 바깥 검사용 캐시를 맞춘다
         meta["permissions"] = permissions_by_guild(&bot.node_settings);
+        // 디스코드·챗봇에서 쓸 수 있는 액션 (P2). 상한을 넘으면 잘라 표시한다
+        let (actions, truncated) = crate::actions::heartbeat_actions(&crate::chat::i18n::languages());
+        meta["actions"] = Value::Array(actions);
+        if truncated {
+            meta["actionsTruncated"] = Value::Bool(true);
+        }
         meta
     }
 
@@ -424,6 +430,26 @@ impl Session {
                 let who = self.requester(cmd, &payload, guild_id, user_id).await;
                 let origin = crate::audit::Origin::new("discord");
                 crate::audit::with_origin(origin, permission_action(&self.server, &who, &payload)).await
+            }
+            // 액션 카탈로그 (P2·P3): 계획·확인한 계획 실행·읽기 전용 조회
+            "plan" | "run_plan" | "query" => {
+                let guild_id = cmd.get("guildId").and_then(|v| v.as_str()).map(str::to_string);
+                let user_id = cmd.get("requestedBy").and_then(|v| v.as_str()).map(str::to_string);
+                let who = self.requester(cmd, &payload, guild_id.clone(), user_id.clone()).await;
+                let text = |key: &str| payload.get(key).and_then(Value::as_str).map(str::to_string);
+                let mut origin = crate::audit::Origin::new("discord");
+                origin.user = user_id;
+                origin.guild = guild_id;
+                origin.user_name = text("userName");
+                origin.guild_name = text("guildName");
+                let caller = crate::actions::Caller {
+                    surface: if who.via_chatbot { crate::actions::Surface::Chatbot } else { crate::actions::Surface::Discord },
+                    remote: Some(who),
+                    origin: origin.clone(),
+                    locale: text("locale").unwrap_or_else(|| "en".into()),
+                };
+                let result = crate::audit::with_origin(origin, action_request(&self.server, action, &payload, &caller)).await;
+                action_result(result)
             }
             other => json!({ "success": false, "data": { "error": format!("Unknown action: {}", other) } }),
         }
@@ -534,6 +560,37 @@ fn replace_lone_surrogates(text: &str) -> String {
     }
     out.push_str(&text[last..]);
     out
+}
+
+/// 릴레이의 액션 요청 한 건
+async fn action_request(server: &crate::ipc::IPCServer, action: &str, payload: &Value, caller: &crate::actions::Caller) -> Result<Value, crate::actions::ActionError> {
+    let id = payload.get("id").and_then(Value::as_str).unwrap_or_default();
+    let instance = payload.get("instance").and_then(Value::as_str);
+    let input = payload.get("input").cloned().unwrap_or(Value::Null);
+    match action {
+        "plan" => crate::actions::plan(server, id, instance, &input, caller).await,
+        "run_plan" => {
+            let plan_id = payload.get("planId").and_then(Value::as_str).unwrap_or_default();
+            crate::actions::run(server, id, instance, &input, Some(plan_id), caller).await
+        }
+        _ => crate::actions::query(server, id, instance, &input, caller).await,
+    }
+}
+
+/// 릴레이 결과 모양: 성공 `{success:true, data}`, 실패 `{success:false, data:{code, error, args?, field?, reason?}}`
+fn action_result(result: Result<Value, crate::actions::ActionError>) -> Value {
+    match result {
+        Ok(v) => json!({ "success": v.get("success").and_then(Value::as_bool).unwrap_or(true), "data": v }),
+        Err(e) => {
+            let mut data = json!({ "code": e.code, "error": e.message });
+            if let Value::Object(extra) = &e.data {
+                for (k, v) in extra {
+                    data[k] = v.clone();
+                }
+            }
+            json!({ "success": false, "data": data })
+        }
+    }
 }
 
 fn raw_command_result(reply: crate::chat::Reply) -> Value {

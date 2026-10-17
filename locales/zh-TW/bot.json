@@ -131,5 +131,114 @@
   "schedule": {
     "restart_warning": "伺服器將在 {{minutes}} 分鐘後重新啟動。",
     "update_warning": "伺服器將在 {{minutes}} 分鐘後重新啟動以進行更新。"
+  },
+  "actions": {
+    "instance": {
+      "list": {
+        "title": "伺服器列表",
+        "description": "已登錄的伺服器及其狀態"
+      },
+      "events": {
+        "title": "啟動與停止紀錄",
+        "description": "何時以及為何啟動或停止"
+      },
+      "create": {
+        "title": "建立伺服器"
+      },
+      "settings": {
+        "set": {
+          "title": "變更伺服器設定"
+        }
+      },
+      "schedule": {
+        "set": {
+          "title": "變更排程工作"
+        }
+      },
+      "delete": {
+        "title": "刪除伺服器"
+      }
+    },
+    "server": {
+      "status": {
+        "title": "伺服器狀態",
+        "description": "單一伺服器的狀態"
+      },
+      "start": {
+        "title": "啟動伺服器"
+      },
+      "stop": {
+        "title": "停止伺服器"
+      },
+      "restart": {
+        "title": "重新啟動伺服器"
+      },
+      "console": {
+        "tail": {
+          "title": "主控台末尾",
+          "description": "主控台最後 20 行"
+        }
+      }
+    },
+    "monitor": {
+      "summary": {
+        "title": "資源使用情況",
+        "description": "CPU、記憶體、磁碟與網路"
+      }
+    },
+    "backup": {
+      "list": {
+        "title": "備份列表"
+      },
+      "create": {
+        "title": "建立備份"
+      },
+      "restore": {
+        "title": "還原備份",
+        "description": "以備份覆寫目前的伺服器檔案"
+      }
+    },
+    "module": {
+      "install": {
+        "title": "安裝模組",
+        "description": "從官方目錄下載並安裝"
+      }
+    },
+    "extension": {
+      "enable": {
+        "title": "啟用擴充功能"
+      },
+      "disable": {
+        "title": "停用擴充功能"
+      }
+    },
+    "update": {
+      "check": {
+        "title": "檢查更新"
+      },
+      "apply": {
+        "title": "套用更新",
+        "description": "安裝已下載的更新並重新啟動應用程式"
+      }
+    },
+    "field": {
+      "action": "操作",
+      "instance": "伺服器",
+      "name": "名稱",
+      "module_name": "模組",
+      "module_settings": "模組設定",
+      "schedule": "排程",
+      "backup_keep": "保留的備份數",
+      "module": "模組",
+      "extension": "擴充功能",
+      "backup": "備份",
+      "overwrites": "覆寫對象",
+      "overwrites_instance": "目前的伺服器檔案",
+      "source": "來源",
+      "trust": "信任",
+      "version": "要安裝的版本",
+      "installed": "目前版本",
+      "official_catalog": "官方目錄"
+    }
   }
 }

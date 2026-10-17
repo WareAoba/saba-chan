@@ -497,6 +497,19 @@ impl Api {
             None => self.delete(&path).await,
         }
     }
+    /// GET /api/actions?surface=cli&instance&locale (P2)
+    pub async fn actions(&self, instance: Option<&str>) -> Result<Value> {
+        let mut path = "/api/actions?surface=cli".to_string();
+        if let Some(i) = instance {
+            path.push_str(&format!("&instance={}", seg(i)));
+        }
+        path.push_str(&format!("&locale={}", seg(crate::i18n::lang())));
+        self.get(&path).await
+    }
+    /// POST /api/actions/:id/plan·run `{input, instance?}` 또는 `{planId}`
+    pub async fn action(&self, id: &str, step: &str, body: Value) -> Result<Value> {
+        self.post_long(&format!("/api/actions/{}/{}", seg(id), step), body).await
+    }
     /// POST /api/migration/export — 데몬이 `path`에 zip을 쓴다
     pub async fn export_config(&self, path: &str, secrets: bool) -> Result<Value> {
         self.post_long("/api/migration/export", json!({ "path": path, "secrets": secrets }))

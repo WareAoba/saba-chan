@@ -102,6 +102,9 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | permissionsUpdate | permissions:update | - | PATCH /api/permissions/:guildId `{defaultLevel?, preset?, chatbotCap?, ownerDiscordId?, commandLevels?}` | - |
 | permissionsSetMember | permissions:setMember | - | PUT /api/permissions/:guildId/members/:discordId `{level}` | - |
 | permissionsRemoveMember | permissions:removeMember | - | DELETE /api/permissions/:guildId/members/:discordId | - |
+| actionsList | actions:list | - | GET /api/actions?surface=gui&instance?&locale? (P2) | - |
+| actionsPlan | actions:plan | - | POST /api/actions/:id/plan `{input, instance?}` | - |
+| actionsRun | actions:run | - | POST /api/actions/:id/run `{input, instance?}` 또는 `{planId}` | - |
 | dataExport / dataImport (105-106) | dataTransfer:export/import | 2800/2809 | 저장·열기 다이얼로그로 경로를 고른 뒤 POST /api/migration/export `{path, secrets}` · /api/migration/import `{path, dryRun, overwrite}`. 취소하면 `{canceled:true}`. 가져오기 결과에는 `path`를 붙여 미리보기(`dryRun`) 뒤 같은 파일로 다시 부를 수 있다 | ✓ (A9) |
 | relayCheckHostStatus… relayBotInvite (104-107) | relay:* | 2296-2344 | GET /api/relay/host/:id/status, /nodes, GET /api/relay/node/:guild/members, GET /api/relay/bot-invite | ✓ 740-743 |
 | relayNodeChannels / relayNodeChannelsSave (113-114) | relay:nodeChannels/nodeChannelsSave | 2320/2323 | GET/PUT /api/relay/node/:guild/channels. 실패하면 데몬 본문(`{error, channelId?}`)을 그대로 돌려준다 | ✓ |
@@ -207,6 +210,7 @@ Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `u
 - `bot channels GUILD [--chatbot 이름,…] [--no-chatbot] [--music 이름] [--no-music]`: 채널 이름이나 id를 GET 응답의 `channels`로 id로 바꿔 PUT한다. 음악 채널을 새로 정할 때는 메시지가 지워진다고 확인을 받는다.
 - `server launch-preview [SERVER] [--args "..."]`: `POST /api/instance/:id/launch-preview`의 `command_line`을 보여 주고, 형식이 틀린 인자는 "잘못된 형식입니다"로 알린다. `--args`가 없으면 저장된 추가 인자로 본다.
 - `audit [SERVER] [--limit N]`(A10): `GET /api/audit`를 표로 보여 준다. CLI 요청에는 `X-Saba-Client: cli`가 붙는다.
+- `do [ACTION] [--server S] [--plan] [KEY=VALUE…]`(P2): 액션 카탈로그. 액션 없이 부르면 `GET /api/actions?surface=cli` 표. 있으면 `plan`을 부르고, `needsConfirm`이면 요약을 보이고 묻은 뒤 `planId`로 `run`한다. `--plan`은 요약만. 값이 JSON으로 읽히면(숫자·참거짓·배열·객체) 그대로 보낸다.
 - `config export FILE [--secrets]`·`config import FILE [--dry-run] [--overwrite]`(A9): 경로를 절대 경로로 바꿔 `/api/migration/*`에 넘긴다. 파일은 데몬이 읽고 쓴다.
 
 사용자 안내서는 `saba-chan-cli/README.md`에 있다.

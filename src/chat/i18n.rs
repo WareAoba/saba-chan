@@ -23,6 +23,11 @@ const EMBEDDED: &[(&str, &str)] = &[
 
 pub const FALLBACK_LANGUAGE: &str = "en";
 
+/// 지원 언어 코드 (내장 사본이 있는 것)
+pub fn languages() -> Vec<&'static str> {
+    EMBEDDED.iter().map(|(c, _)| *c).collect()
+}
+
 #[derive(Debug, Clone)]
 pub struct Catalog {
     primary: Value,

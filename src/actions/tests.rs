@@ -1,0 +1,149 @@
+use super::*;
+use crate::chat::permissions::Requester;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+const MODULE: &str = "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[[settings.fields]]\nname = \"admin_pass\"\ntype = \"password\"\nlabel = \"pw\"\n";
+
+async fn server() -> (IPCServer, String, tempfile::TempDir) {
+    // 토큰은 한 번만 (병렬 테스트가 서로의 토큰을 바꾸지 않게)
+    static TOKEN: std::sync::Once = std::sync::Once::new();
+    TOKEN.call_once(|| {
+        crate::ipc::auth::generate_and_save_token().unwrap();
+    });
+    let tmp = tempfile::tempdir().unwrap();
+    let modules = tmp.path().join("modules");
+    let dir = modules.join("plain");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("module.toml"), MODULE).unwrap();
+    std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+    let instances = tmp.path().join("instances");
+    let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), instances.to_str().unwrap());
+    sup.initialize().await.unwrap();
+    let inst = crate::instance::ServerInstance::new("srv", "plain");
+    let id = inst.id.clone();
+    sup.instance_store.add(inst).unwrap();
+    let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+    (state, id, tmp)
+}
+
+fn relay(user: &str, chatbot: bool) -> Caller {
+    let who = Requester { guild_id: Some("g".into()), user_id: Some(user.into()), owner_id: Some("owner".into()), via_chatbot: chatbot };
+    Caller { surface: if chatbot { Chatbot } else { Discord }, remote: Some(who), origin: crate::audit::Origin::new("discord"), locale: "ko".into() }
+}
+
+fn gui() -> Caller {
+    Caller::local(crate::audit::Origin::new("gui"), "en".into())
+}
+
+async fn set_node(state: &IPCServer, node: Value) {
+    state
+        .config_store
+        .update_node_settings("g", |n| {
+            *n = node.as_object().cloned().unwrap();
+            ((), true)
+        })
+        .await
+        .unwrap();
+}
+
+/// 이 길드는 무엇이든 열어 둔다 (느슨, 챗봇 상한 소유자, 명령별 덮어쓰기 0)
+async fn open_everything(state: &IPCServer) {
+    set_node(state, json!({ "ownerDiscordId": "owner", "preset": "loose", "chatbotCap": 3, "defaultLevel": 2, "commandLevels": { "update.apply": 0 } })).await;
+}
+
+#[tokio::test]
+async fn the_chatbot_cannot_reach_forbidden_actions_whatever_the_levels() {
+    let (state, id, _tmp) = server().await;
+    open_everything(&state).await;
+    let owner_bot = relay("owner", true);
+    for (action, instance) in [("instance.delete", Some(id.as_str())), ("update.apply", None), ("extension.enable", None)] {
+        let input = if action == "extension.enable" { json!({ "extension": "x" }) } else { json!({}) };
+        let err = plan(&state, action, instance, &input, &owner_bot).await.unwrap_err();
+        assert_eq!(err.code, "action_not_allowed", "{}", action);
+    }
+    // 비밀값은 챗봇이 바꾸지 못한다 (모듈의 password 필드와 알려진 이름)
+    for key in ["admin_pass", "rest_password"] {
+        let err = plan(&state, "instance.settings.set", Some(&id), &json!({ key: "x" }), &owner_bot).await.unwrap_err();
+        assert_eq!((err.code, err.data["field"].as_str()), ("invalid_input", Some(key)), "{:?}", err);
+    }
+    assert!(plan(&state, "instance.settings.set", Some(&id), &json!({ "admin_pass": "x" }), &gui()).await.is_ok());
+}
+
+#[tokio::test]
+async fn update_apply_from_discord_needs_the_owner_even_with_an_override() {
+    let (state, _id, _tmp) = server().await;
+    open_everything(&state).await;
+    let err = plan(&state, "update.apply", None, &json!({}), &relay("admin", false)).await.unwrap_err();
+    assert_eq!(err.code, "PERMISSION_DENIED");
+    assert_eq!(err.data["args"]["need"], 3);
+    assert!(plan(&state, "update.apply", None, &json!({}), &relay("owner", false)).await.is_ok());
+}
+
+#[tokio::test]
+async fn plans_belong_to_their_requester_and_keep_the_chatbot_cap() {
+    let (state, id, _tmp) = server().await;
+    set_node(&state, json!({ "ownerDiscordId": "owner", "chatbotCap": 2, "members": { "admin": 2 } })).await;
+
+    // 관리 액션은 릴레이에서 계획 없이 실행하지 않는다
+    let err = run(&state, "backup.restore", Some(&id), &json!({ "name": "b" }), None, &relay("admin", true)).await.unwrap_err();
+    assert_eq!(err.code, "confirm_required");
+    // 복원은 디스코드 명령으로는 열려 있지 않다
+    let err = plan(&state, "backup.restore", Some(&id), &json!({ "name": "b" }), &relay("admin", false)).await.unwrap_err();
+    assert_eq!(err.code, "action_not_allowed");
+
+    let made = plan(&state, "backup.restore", Some(&id), &json!({ "name": "b" }), &relay("admin", true)).await.unwrap();
+    assert_eq!(made["needsConfirm"], true);
+    let plan_id = made["planId"].as_str().unwrap().to_string();
+    let err = run(&state, "", None, &Value::Null, Some(&plan_id), &relay("someone", false)).await.unwrap_err();
+    assert_eq!(err.code, "plan_not_yours");
+
+    // 챗봇이 만든 계획: 사람이 확인 버튼을 눌러도 챗봇 상한을 쓴다
+    set_node(&state, json!({ "ownerDiscordId": "owner", "chatbotCap": 0, "members": { "admin": 2 } })).await;
+    let err = run(&state, "", None, &Value::Null, Some(&plan_id), &relay("admin", false)).await.unwrap_err();
+    assert_eq!(err.code, "PERMISSION_DENIED");
+    assert_eq!(err.data["args"]["via"], "chatbot");
+}
+
+#[tokio::test]
+async fn inputs_are_checked_and_actions_run_through_the_real_routes() {
+    let (state, id, _tmp) = server().await;
+    let err = plan(&state, "backup.restore", Some(&id), &json!({ "nme": "b" }), &gui()).await.unwrap_err();
+    assert_eq!((err.code, err.data["field"].as_str()), ("invalid_input", Some("nme")));
+    let err = plan(&state, "server.start", None, &json!({}), &gui()).await.unwrap_err();
+    assert_eq!(err.data["field"], "instance");
+
+    let listed = run(&state, "instance.list", None, &json!({}), None, &gui()).await.unwrap();
+    assert_eq!(listed["success"], true);
+    assert_eq!(listed["result"]["servers"][0]["name"], "srv");
+    let status = run(&state, "server.status", Some(&id), &json!({}), None, &gui()).await.unwrap();
+    assert_eq!(status["status"], 200, "{}", status);
+
+    // 읽기 전용 조회는 query로만
+    assert_eq!(query(&state, "server.start", Some(&id), &json!({}), &relay("owner", false)).await.unwrap_err().code, "not_a_query");
+}
+
+#[test]
+fn heartbeat_actions_stay_within_the_limits_and_titles_are_localized() {
+    let (actions, truncated) = heartbeat_actions(&crate::chat::i18n::languages());
+    assert!(!truncated);
+    assert!(actions.len() <= HEARTBEAT_MAX_ACTIONS);
+    assert!(serde_json::to_vec(&actions).unwrap().len() <= HEARTBEAT_MAX_BYTES);
+    let start = actions.iter().find(|a| a["id"] == "server.start").unwrap();
+    assert_eq!(start["title"]["ko"], "서버 시작");
+    assert_eq!(start["title"]["en"], "Start server");
+    // 디스코드·챗봇에 없는 액션은 싣지 않는다
+    assert!(actions.iter().all(|a| a["id"] != "instance.delete" && a["id"] != "extension.enable"));
+    let restore = actions.iter().find(|a| a["id"] == "backup.restore").unwrap();
+    assert_eq!(restore["surfaces"], json!(["chatbot"]));
+}
+
+#[test]
+fn chatbot_never_lists_deletion_shutdown_update_or_permissions() {
+    for d in ACTIONS.iter().filter(|d| d.surfaces.contains(&Chatbot)) {
+        for word in ["delete", "shutdown", "update", "permission", "extension"] {
+            assert!(!d.id.contains(word), "{} must not be open to the chatbot", d.id);
+        }
+    }
+    assert!(command_view(&json!({ "name": "wipe", "risk": "danger" })).unwrap()["surfaces"].as_array().unwrap().iter().all(|s| s != "chatbot"));
+}
