@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createTranslateError, retryWithBackoff, safeShowToast } from '../utils/helpers';
+import { showTrustWarnings } from '../utils/trustNotice';
 
 /**
  * Manages server CRUD operations: fetch, start, stop, status, add, delete.
@@ -808,6 +809,7 @@ export function useServerActions({
                 const errorMsg = translateError(result.error);
                 setModal({ type: 'failure', title: t('servers.add_failed_title'), message: errorMsg });
             } else {
+                showTrustWarnings(result, t);
                 if (result.provisioning) {
                     // 프로비저닝 시작 (컨테이너 또는 네이티브 설치) — 모달 닫고 서버 리스트에서 진행률 표시
                     setShowModuleManager(false);

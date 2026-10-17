@@ -965,7 +965,13 @@
     "unverified": "未驗證",
     "verified_tip": "來自簽署目錄，安裝後未被變更。",
     "modified_tip": "從目錄安裝後檔案已被變更。如果不是你自己改的，請重新安裝。",
-    "unverified_tip": "不是從簽署目錄安裝的。請確認你信任其來源。"
+    "unverified_tip": "不是從簽署目錄安裝的。請確認你信任其來源。",
+    "notice": {
+      "module_unverified": "已使用非官方目錄來源的模組（{{id}}）建立。請確認其來源可信。",
+      "module_modified": "模組（{{id}}）的檔案在安裝後被變更。如果不是您自己修改的，請重新安裝。",
+      "extension_unverified": "已啟用非官方目錄來源的擴充功能（{{id}}）。請確認其來源可信。",
+      "extension_modified": "擴充功能（{{id}}）的檔案在安裝後被變更。如果不是您自己修改的，請重新安裝。"
+    }
   },
   "patch_notes": {
     "title": "更新說明",

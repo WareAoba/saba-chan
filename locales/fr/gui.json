@@ -965,7 +965,13 @@
     "unverified": "Non vérifié",
     "verified_tip": "Issu du catalogue signé et inchangé depuis.",
     "modified_tip": "Des fichiers ont changé après l'installation depuis le catalogue. Réinstallez-le si vous ne les avez pas modifiés.",
-    "unverified_tip": "Non installé depuis le catalogue signé. Vérifiez que vous faites confiance à sa source."
+    "unverified_tip": "Non installé depuis le catalogue signé. Vérifiez que vous faites confiance à sa source.",
+    "notice": {
+      "module_unverified": "Créé avec un module ({{id}}) qui ne provient pas du catalogue officiel. Vérifiez que sa source est fiable.",
+      "module_modified": "Le module ({{id}}) a été modifié après son installation. Réinstallez-le si vous ne l'avez pas modifié vous-même.",
+      "extension_unverified": "Extension ({{id}}) activée alors qu'elle ne provient pas du catalogue officiel. Vérifiez que sa source est fiable.",
+      "extension_modified": "L'extension ({{id}}) a été modifiée après son installation. Réinstallez-la si vous ne l'avez pas modifiée vous-même."
+    }
   },
   "patch_notes": {
     "title": "Notes de mise à jour",

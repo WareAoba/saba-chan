@@ -965,7 +965,13 @@
     "unverified": "Unverified",
     "verified_tip": "From the signed catalog and unchanged since.",
     "modified_tip": "Files changed after installing from the catalog. Reinstall unless you edited them.",
-    "unverified_tip": "Not installed from the signed catalog. Make sure you trust its source."
+    "unverified_tip": "Not installed from the signed catalog. Make sure you trust its source.",
+    "notice": {
+      "module_unverified": "Created from a module ({{id}}) that did not come from the official catalog. Make sure you trust its source.",
+      "module_modified": "The module ({{id}}) changed after it was installed. Reinstall it unless you edited it yourself.",
+      "extension_unverified": "Enabled an extension ({{id}}) that did not come from the official catalog. Make sure you trust its source.",
+      "extension_modified": "The extension ({{id}}) changed after it was installed. Reinstall it unless you edited it yourself."
+    }
   },
   "patch_notes": {
     "title": "Patch notes",
