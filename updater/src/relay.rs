@@ -32,7 +32,7 @@ pub struct CheckResponse {
     pub latest: Option<LatestRelease>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LatestRelease {
     pub version: String,
@@ -191,7 +191,7 @@ impl RelayClient {
     }
 
     /// check → manifest → 서명·대상·다운그레이드 검증까지 한 번에.
-    /// 최신이면 `Ok(None)`.
+    /// 코어가 최신이면 현재 릴리즈 manifest를 돌려준다 (컴포넌트별 비교용). 받을 manifest가 없으면 `Ok(None)`.
     pub async fn fetch_verified_release(
         &self,
         channel: &str,
@@ -200,11 +200,19 @@ impl RelayClient {
         client_id: &str,
     ) -> Result<Option<VerifiedRelease>, RelayError> {
         let check = self.check(channel, platform, current, client_id).await?;
+        // 코어가 최신이어도 같은 릴리즈의 다른 컴포넌트(GUI·CLI·모듈...)는 뒤처져 있을 수 있다:
+        // 그 릴리즈 manifest를 받아 컴포넌트별로 비교하게 한다
         let latest = match (check.up_to_date, check.latest) {
-            (false, Some(latest)) => latest,
+            (_, Some(latest)) => latest,
+            (true, None) if !current.is_empty() => LatestRelease { version: current.to_string(), ..Default::default() },
             _ => return Ok(None),
         };
-        let signed = self.fetch_manifest(&latest).await?;
+        let signed = match self.fetch_manifest(&latest).await {
+            Ok(signed) => signed,
+            // 최신인데 그 버전 manifest가 릴레이에 없으면(옛 릴리즈) 받을 것이 없다
+            Err(RelayError::Status(404)) if check.up_to_date => return Ok(None),
+            Err(e) => return Err(e),
+        };
         let manifest = verify_release(&signed, platform, current)?;
         Ok(Some(VerifiedRelease { latest, manifest }))
     }

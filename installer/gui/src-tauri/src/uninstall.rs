@@ -250,15 +250,17 @@ pub async fn do_silent_uninstall() {
 fn stop_saba_processes() {
     #[cfg(target_os = "windows")]
     {
+        // saba-runner가 게임 서버를 잡(Job Object)에 묶고 있다: 러너를 트리째(/T) 끝내면 서버도 끝난다
         let targets = [
             "saba-core",
+            "saba-runner",
             "saba-chan-cli",
             "Saba-chan",        // Electron GUI
             "saba-chan-updater",
         ];
         for name in &targets {
             let _ = std::process::Command::new("taskkill")
-                .args(["/IM", &format!("{}.exe", name), "/F"])
+                .args(["/IM", &format!("{}.exe", name), "/T", "/F"])
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
                 .status();
@@ -269,6 +271,7 @@ fn stop_saba_processes() {
     {
         let targets = [
             "saba-core",
+            "saba-runner",
             "saba-chan-cli",
             "saba-chan",
             "saba-chan-updater",

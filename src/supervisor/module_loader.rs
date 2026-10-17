@@ -338,6 +338,23 @@ pub const CORE_COMPONENT: &str = "saba-core";
 pub const DAEMON_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const COMMAND_RISKS: [&str; 3] = ["safe", "caution", "danger"];
 
+/// JSON 스키마에서도 로더와 같은 값만 받게 한다 (적합성 검사가 데몬과 어긋나지 않게)
+fn schema_version_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+    serde_json::from_value(serde_json::json!({
+        "description": "이 파일이 따르는 스키마 버전. 지금은 1",
+        "enum": [MODULE_SCHEMA_VERSION, null]
+    }))
+    .expect("static schema")
+}
+
+fn risk_schema(_: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+    serde_json::from_value(serde_json::json!({
+        "description": "\"safe\" | \"caution\" | \"danger\" (없으면 caution)",
+        "enum": [COMMAND_RISKS[0], COMMAND_RISKS[1], COMMAND_RISKS[2], null]
+    }))
+    .expect("static schema")
+}
+
 /// module.toml 최상위 구조
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[schemars(deny_unknown_fields, title = "saba-chan module.toml (schema v1)")]
@@ -385,6 +402,7 @@ struct ModuleToml {
 struct ModuleSection {
     /// 이 파일이 따르는 스키마 버전. 지금은 1
     #[serde(default)]
+    #[schemars(schema_with = "schema_version_schema")]
     schema_version: Option<u32>,
     /// 모듈 id (폴더 이름과 같게)
     name: String,
@@ -654,6 +672,7 @@ struct CommandFieldToml {
     rcon_template: Option<String>,
     /// "safe" | "caution" | "danger" (없으면 caution)
     #[serde(default)]
+    #[schemars(schema_with = "risk_schema")]
     risk: Option<String>,
     #[serde(default)]
     inputs: Vec<CommandInputToml>,
