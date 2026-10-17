@@ -2,20 +2,19 @@
 //! 컴포넌트 간 완전형 E2E 테스트
 //! ═══════════════════════════════════════════════════════════════════
 //!
-//! 데몬 ↔ 모듈(Python lifecycle) ↔ ext-process(봇/익스텐션) ↔ API 전체를
+//! 데몬 ↔ 모듈(Python lifecycle) ↔ API 전체를
 //! 하나의 파이프라인으로 검증합니다.
 //!
 //! ## 테스트 범위
 //! 1. 데몬 부팅 → 모듈 발견 → 모듈 메타데이터 스키마 계약
 //! 2. 인스턴스 생성 → 설정 적용 (Python configure) → validate 호출
-//! 3. ext-process 생명주기: start → console 캡처 → stdin 명령 → stop
 //! 4. 설정 CRUD: GUI 설정 저장/로드, 봇 설정 저장/로드
 //! 5. 클라이언트 등록/하트비트 프로토콜
-//! 6. 크로스 컴포넌트: 모듈 + ext-process 동시 운영 + 상태 조회 일관성
+//! 6. 크로스 컴포넌트: 인스턴스 운영 중 상태 조회 일관성
 //!
 //! ## 필수 조건
 //! - Python 3.x 시스템에 설치 (또는 saba-chan venv 존재)
-//! - 테스트 fixture: tests/fixtures/e2e-mock-module/, tests/fixtures/mock_ext_process.py
+//! - 테스트 fixture: tests/fixtures/e2e-mock-module/
 
 use saba_core::supervisor::Supervisor;
 use saba_core::ipc::IPCServer;
@@ -79,6 +78,21 @@ author = "ci"
 game_name = "TestGame"
 display_name = "Test Module"
 entry = "lifecycle.py"
+
+[commands]
+
+[[commands.fields]]
+name = "say"
+label = "Say"
+method = "console"
+console_template = "say {message}"
+inputs = [{ name = "message", type = "text", label = "Message", required = true }]
+
+[aliases.commands.say]
+aliases = ["말"]
+
+[errors]
+server_not_running = "The test server is off"
 "#,
     )
     .expect("write test module.toml");
@@ -99,11 +113,19 @@ async fn boot_e2e_ipc() -> (
 ) {
     std::env::set_var("SABA_AUTH_DISABLED", "1");
 
-    // 테스트용 데이터 디렉토리 격리 — 실제 AppData 오염 방지
-    let data_dir = std::env::temp_dir()
-        .join(format!("saba-e2e-data-{}", pick_free_port()));
-    fs::create_dir_all(&data_dir).expect("create data dir");
-    std::env::set_var("SABA_DATA_DIR", data_dir.to_str().unwrap());
+    // 테스트용 데이터 디렉토리 격리 — 실제 AppData 오염 방지.
+    // SABA_DATA_DIR은 프로세스 전역이라 테스트마다 바꾸면 병렬 테스트끼리 서로의
+    // 폴더를 가리키고 지운다. 프로세스당 하나만 만들고 지우지 않는다.
+    static DATA_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    let data_dir = DATA_DIR
+        .get_or_init(|| {
+            let dir = std::env::temp_dir()
+                .join(format!("saba-e2e-data-{}", std::process::id()));
+            fs::create_dir_all(&dir).expect("create data dir");
+            std::env::set_var("SABA_DATA_DIR", dir.to_str().unwrap());
+            dir
+        })
+        .clone();
 
     let modules_dir = setup_e2e_modules_dir();
     let instances_dir = std::env::temp_dir()
@@ -140,7 +162,26 @@ async fn boot_e2e_ipc() -> (
 fn cleanup_dirs(modules_dir: &std::path::Path, instances_dir: &std::path::Path, data_dir: &std::path::Path) {
     let _ = fs::remove_dir_all(modules_dir);
     let _ = fs::remove_dir_all(instances_dir);
-    let _ = fs::remove_dir_all(data_dir);
+    // data_dir는 프로세스 내 모든 테스트가 공유하므로 지우지 않는다 (boot_e2e_ipc 참고)
+    let _ = data_dir;
+}
+
+/// 인스턴스 생성 시 비동기 프로비저닝(mock 모듈은 최신 2.0.0 설치)이 같은
+/// working_dir에 version.txt를 쓴다. 테스트가 직접 파일을 쓰기 전에 끝날 때까지 기다린다.
+/// Windows 러너에서 다른 테스트와 함께 돌면 Python 기동이 느려 30초를 넘길 때가 있다: 넉넉히 2분
+async fn wait_for_provision(base_url: &str, client: &reqwest::Client, name: &str) {
+    let mut last = Value::Null;
+    for _ in 0..1200 {
+        last = client
+            .get(format!("{}/api/provision-progress/{}", base_url, name))
+            .send().await.unwrap()
+            .json().await.unwrap();
+        if !last["active"].as_bool().unwrap_or(false) || last["done"].as_bool().unwrap_or(false) {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    panic!("provisioning of {} did not finish: {}", name, last);
 }
 
 /// Python 실행 파일 경로를 찾습니다 (시스템 Python 또는 saba-chan venv)
@@ -329,157 +370,6 @@ async fn e2e_instance_lifecycle_with_python_module() {
 }
 
 // ═══════════════════════════════════════════════════════
-// 3. ext-process 생명주기: start → console → stdin → stop
-// ═══════════════════════════════════════════════════════
-
-#[tokio::test]
-async fn e2e_ext_process_full_lifecycle() {
-    let python = match find_python() {
-        Some(p) => p,
-        None => {
-            eprintln!("SKIP: Python not found, skipping ext-process E2E test");
-            return;
-        }
-    };
-
-    let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
-    let client = reqwest::Client::new();
-
-    let mock_script = std::path::Path::new("./tests/fixtures/mock_ext_process.py")
-        .canonicalize()
-        .expect("mock script must exist");
-
-    // ── 1) Start ext-process
-    let start_resp = client
-        .post(format!("{}/api/ext-process/e2e-test-bot/start", base_url))
-        .json(&json!({
-            "command": python,
-            "args": [mock_script.to_string_lossy()],
-            "env": {"E2E_TEST": "1"},
-            "meta": {"type": "test-bot", "version": "1.0.0"}
-        }))
-        .send().await.unwrap();
-    assert_eq!(
-        start_resp.status(),
-        reqwest::StatusCode::OK,
-        "ext-process start should succeed"
-    );
-    let start_json: Value = start_resp.json().await.unwrap();
-    assert!(start_json["ok"].as_bool().unwrap_or(false));
-    assert!(start_json["pid"].as_u64().is_some(), "Must have PID");
-
-    // 프로세스 시작 대기
-    sleep(Duration::from_millis(1500)).await;
-
-    // ── 2) Status 확인
-    let status_resp = client
-        .get(format!("{}/api/ext-process/e2e-test-bot/status", base_url))
-        .send().await.unwrap();
-    assert_eq!(status_resp.status(), reqwest::StatusCode::OK);
-    let status_json: Value = status_resp.json().await.unwrap();
-    assert_eq!(
-        status_json["status"].as_str(),
-        Some("running"),
-        "Process should be running"
-    );
-
-    // ── 3) Console 읽기 — READY 메시지 확인
-    let console_resp = client
-        .get(format!(
-            "{}/api/ext-process/e2e-test-bot/console?since=0&count=50",
-            base_url
-        ))
-        .send().await.unwrap();
-    assert_eq!(console_resp.status(), reqwest::StatusCode::OK);
-    let console_json: Value = console_resp.json().await.unwrap();
-    let lines = console_json["lines"]
-        .as_array()
-        .expect("console must have lines array");
-    let all_text: String = lines
-        .iter()
-        .filter_map(|l| l["line"].as_str().or_else(|| l.as_str()))
-        .collect::<Vec<&str>>()
-        .join("\n");
-    assert!(
-        all_text.contains("E2E_MOCK_EXT_STARTED") || all_text.contains("READY"),
-        "Console should contain startup messages, got: {}",
-        all_text
-    );
-
-    // ── 4) stdin으로 ping 명령 전송
-    let stdin_resp = client
-        .post(format!("{}/api/ext-process/e2e-test-bot/stdin", base_url))
-        .json(&json!({ "message": "{\"type\": \"ping\"}" }))
-        .send().await.unwrap();
-    assert!(
-        stdin_resp.status().is_success(),
-        "stdin send should succeed"
-    );
-
-    // 명령 처리 대기
-    sleep(Duration::from_millis(1000)).await;
-
-    // ── 5) Console에서 pong 응답 확인
-    let console_resp2 = client
-        .get(format!(
-            "{}/api/ext-process/e2e-test-bot/console?since=0&count=100",
-            base_url
-        ))
-        .send().await.unwrap();
-    let console_json2: Value = console_resp2.json().await.unwrap();
-    let lines2 = console_json2["lines"]
-        .as_array()
-        .expect("console lines");
-    let all_text2: String = lines2
-        .iter()
-        .filter_map(|l| l["line"].as_str().or_else(|| l.as_str()))
-        .collect::<Vec<&str>>()
-        .join("\n");
-    assert!(
-        all_text2.contains("pong"),
-        "Console should contain pong response after ping, got: {}",
-        all_text2
-    );
-
-    // ── 6) Duplicate start → conflict
-    let dup_resp = client
-        .post(format!("{}/api/ext-process/e2e-test-bot/start", base_url))
-        .json(&json!({
-            "command": python,
-            "args": [mock_script.to_string_lossy()],
-        }))
-        .send().await.unwrap();
-    assert_eq!(
-        dup_resp.status(),
-        reqwest::StatusCode::CONFLICT,
-        "Duplicate start should return 409 CONFLICT"
-    );
-
-    // ── 7) Stop (graceful)
-    let stop_resp = client
-        .post(format!("{}/api/ext-process/e2e-test-bot/stop", base_url))
-        .send().await.unwrap();
-    assert!(stop_resp.status().is_success());
-
-    // 종료 대기
-    sleep(Duration::from_millis(2500)).await;
-
-    // ── 8) 종료 후 status → stopped
-    let final_status = client
-        .get(format!("{}/api/ext-process/e2e-test-bot/status", base_url))
-        .send().await.unwrap();
-    let final_json: Value = final_status.json().await.unwrap();
-    assert_eq!(
-        final_json["status"].as_str(),
-        Some("stopped"),
-        "Process should be stopped after stop"
-    );
-
-    task.abort();
-    cleanup_dirs(&m_dir, &i_dir, &d_dir);
-}
-
-// ═══════════════════════════════════════════════════════
 // 4. 설정 API 라운드트립 (GUI config + Bot config)
 // ═══════════════════════════════════════════════════════
 
@@ -591,19 +481,11 @@ async fn e2e_client_registration_heartbeat() {
 }
 
 // ═══════════════════════════════════════════════════════
-// 6. 크로스 컴포넌트: 모듈 + ext-process 동시 운영
+// 6. 크로스 컴포넌트: 인스턴스 운영 중 상태 조회
 // ═══════════════════════════════════════════════════════
 
 #[tokio::test]
 async fn e2e_cross_component_simultaneous_operation() {
-    let python = match find_python() {
-        Some(p) => p,
-        None => {
-            eprintln!("SKIP: Python not found");
-            return;
-        }
-    };
-
     let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
     let client = reqwest::Client::new();
 
@@ -620,23 +502,7 @@ async fn e2e_cross_component_simultaneous_operation() {
     let inst_json: Value = create_resp.json().await.unwrap();
     let instance_id = inst_json["id"].as_str().unwrap();
 
-    // ── B) ext-process 시작 (봇 사이드)
-    let mock_script = std::path::Path::new("./tests/fixtures/mock_ext_process.py")
-        .canonicalize()
-        .unwrap();
-    let start_resp = client
-        .post(format!("{}/api/ext-process/e2e-cross-bot/start", base_url))
-        .json(&json!({
-            "command": python,
-            "args": [mock_script.to_string_lossy()],
-            "env": {"E2E_TEST": "1"},
-        }))
-        .send().await.unwrap();
-    assert_eq!(start_resp.status(), reqwest::StatusCode::OK);
-
-    sleep(Duration::from_millis(1500)).await;
-
-    // ── C) 동시에 양쪽 상태 조회 — 둘 다 정상이어야 함
+    // ── C) 상태 조회
 
     // 모듈 사이드: 서버 목록에 인스턴스 존재
     let servers = client
@@ -653,29 +519,13 @@ async fn e2e_cross_component_simultaneous_operation() {
         });
     assert!(has_instance, "Instance should be in server list");
 
-    // ext-process 사이드: 프로세스 running
-    let ext_status = client
-        .get(format!("{}/api/ext-process/e2e-cross-bot/status", base_url))
-        .send().await.unwrap();
-    let ext_json: Value = ext_status.json().await.unwrap();
-    assert_eq!(ext_json["status"].as_str(), Some("running"));
-
-    // ext-process 목록에도 존재
-    let ext_list = client
-        .get(format!("{}/api/ext-processes", base_url))
-        .send().await.unwrap();
-    assert!(ext_list.status().is_success());
-
     // health 엔드포인트도 정상
     let health = client
         .get(format!("{}/health", base_url))
         .send().await.unwrap();
     assert_eq!(health.status(), reqwest::StatusCode::OK);
 
-    // ── D) 정리: 양쪽 모두 중지
-    let _ = client
-        .post(format!("{}/api/ext-process/e2e-cross-bot/stop", base_url))
-        .send().await;
+    // ── D) 정리
     let _ = client
         .delete(format!("{}/api/instance/{}", base_url, instance_id))
         .send().await;
@@ -843,7 +693,6 @@ async fn e2e_api_error_schema_consistency() {
 
     let error_cases = vec![
         ("GET", "/api/instance/nonexistent-id"),
-        ("GET", "/api/ext-process/nonexistent/status"),
     ];
 
     for (method, path) in error_cases {
@@ -897,6 +746,7 @@ async fn e2e_version_auto_detect_and_persist() {
     assert!(create_resp.status().is_success());
     let created: Value = create_resp.json().await.unwrap();
     let instance_id = created["id"].as_str().unwrap().to_string();
+    wait_for_provision(&base_url, &client, "VersionTest").await;
 
     // 2. 인스턴스의 working_dir 경로를 확인하여 version.txt 작성
     // (인스턴스 생성 시 working_dir가 자동 설정될 수 있으므로 실제 경로에 맞춤)
@@ -1019,6 +869,7 @@ async fn e2e_version_backfill_on_startup() {
         .send().await.unwrap();
     let created: Value = create_resp.json().await.unwrap();
     let instance_id = created["id"].as_str().unwrap().to_string();
+    wait_for_provision(&base_url, &client, "BackfillTest").await;
 
     // 자동 설정된 working_dir에 version.txt 작성
     let inst_resp = client
@@ -1045,10 +896,7 @@ async fn e2e_version_backfill_on_startup() {
     fs::write(work_dir.join("version.txt"), "1.20.4").unwrap();
 
     // backfill 실행
-    {
-        let mut supervisor = sup.write().await;
-        supervisor.backfill_server_versions().await;
-    }
+    saba_core::supervisor::Supervisor::backfill_server_versions(sup.clone()).await;
 
     // 서버 리스트에서 버전 확인
     let list_resp = client
@@ -1067,4 +915,50 @@ async fn e2e_version_backfill_on_startup() {
     let _ = fs::remove_dir_all(&work_dir);
     task.abort();
     cleanup_dirs(&m_dir, &i_dir, &d_dir);
+}
+
+// ═══════════════════════════════════════════════════════
+// 게임 명령 단일 경로 (C7)
+// ═══════════════════════════════════════════════════════
+
+/// `/api/instance/:id/command`가 module.toml 정의로 명령을 해석·검증하고,
+/// 실패하면 오류 코드와 모듈 `[errors]` 문구를 돌려준다.
+#[tokio::test]
+async fn command_endpoint_validates_and_maps_module_errors() {
+    let (base_url, supervisor, server_task, modules_dir, instances_dir, data_dir) = boot_e2e_ipc().await;
+    let client = reqwest::Client::new();
+
+    let mut inst = saba_core::instance::ServerInstance::new("cmd-test", "test-module");
+    inst.id = "cmd-test-id".to_string();
+    supervisor.write().await.instance_store.add(inst).unwrap();
+    let url = format!("{}/api/instance/cmd-test-id/command", base_url);
+
+    // 필수 인자 누락 → 400, 어느 칸인지 알려준다 (별명으로 불러도 같은 명령)
+    let resp = client.post(&url).json(&json!({ "command": "말" })).send().await.unwrap();
+    assert_eq!(resp.status().as_u16(), 400);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["error_code"], "missing_argument");
+    assert_eq!(body["field"], "message");
+    assert_eq!(body["command"], "say");
+
+    // 꺼진 서버 → 409 + 모듈 문구
+    for request in [json!({ "command": "say hello" }), json!({ "command": "say", "args": ["hello"] }), json!({ "command": "tp a b" })] {
+        let resp = client.post(&url).json(&request).send().await.unwrap();
+        assert_eq!(resp.status().as_u16(), 409, "{}", request);
+        let body: Value = resp.json().await.unwrap();
+        assert_eq!(body["error_code"], "server_not_running");
+        assert_eq!(body["error_message"], "The test server is off");
+    }
+
+    // 없는 인스턴스 → 404
+    let resp = client
+        .post(format!("{}/api/instance/nope/command", base_url))
+        .json(&json!({ "command": "say hi" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 404);
+
+    server_task.abort();
+    cleanup_dirs(&modules_dir, &instances_dir, &data_dir);
 }

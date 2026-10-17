@@ -35,7 +35,7 @@ pub fn build_menu(app: &App) -> Vec<MenuItem> {
         Screen::Dashboard      => dashboard::build_dashboard_menu(app),
         Screen::Servers        => servers::build_servers_menu(app),
         Screen::ServerDetail { name, .. } => server_detail::build_server_detail_menu(app, name),
-        Screen::ServerSettings { .. } | Screen::ServerProperties { .. } => vec![], // 에디터 사용
+        Screen::ServerSettings { .. } => vec![], // 에디터 사용
         Screen::ServerConsole { .. } => vec![], // 콘솔 사용
         Screen::Modules        => modules::build_modules_menu(app),
         Screen::ModuleDetail { name } => modules::build_module_detail_menu(app, name),
@@ -98,8 +98,6 @@ pub fn render_screen(app: &App, frame: &mut Frame, area: Rect) {
             create_instance::render_create_step2(app, &mn, frame, area);
         }
         Screen::CommandMode => render_command_mode(app, frame, area),
-        // ServerProperties는 더 이상 사용하지 않지만 enum 호환성을 위해 남겨둠
-        Screen::ServerProperties { .. } => {}
     }
 }
 
@@ -299,16 +297,6 @@ pub fn execute_confirm(app: &mut App, action: ConfirmAction) {
             app.pop_screen(); // 인스턴스 목록으로 복귀
             app.flash("삭제 완료");
         }
-        ConfirmAction::StopServer(name) => {
-            tokio::spawn(async move {
-                match client.stop_server(&name, true).await {
-                    Ok(r) => push_out(&buf, vec![Out::Ok(format!(
-                        "✓ {}", r.get("message").and_then(|v| v.as_str()).unwrap_or("Stopped")
-                    ))]),
-                    Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
-                }
-            });
-        }
         ConfirmAction::ResetServer(id) => {
             tokio::spawn(async move {
                 match client.reset_server(&id).await {
@@ -356,23 +344,6 @@ pub fn execute_confirm(app: &mut App, action: ConfirmAction) {
                 }
             });
             app.flash("모듈 설치 중...");
-        }
-        ConfirmAction::ApplyInstanceUpdate(instance_name) => {
-            tokio::spawn(async move {
-                let iid = find_instance_id(&client, &instance_name).await;
-                if let Some(iid) = iid {
-                    match client.apply_instance_update(&iid).await {
-                        Ok(r) => {
-                            let msg = r.get("message").and_then(|v| v.as_str()).unwrap_or("Update applied");
-                            push_out(&buf, vec![Out::Ok(format!("✓ {}: {}", instance_name, msg))]);
-                        }
-                        Err(e) => push_out(&buf, vec![Out::Err(format!("✗ {}", e))]),
-                    }
-                } else {
-                    push_out(&buf, vec![Out::Err(format!("✗ Instance '{}' not found", instance_name))]);
-                }
-            });
-            app.flash("업데이트 적용 중...");
         }
         ConfirmAction::Custom(tag) => {
             if tag == "BOT_ALIAS_RESET" {

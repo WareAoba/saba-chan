@@ -237,7 +237,7 @@ function SettingsModal({
     // 언어 변경 핸들러
     const handleLanguageChange = async (lng) => {
         setSelectedLanguage(lng);
-        // 1. Electron settings.json에 먼저 확실히 저장 (봇·데몬 공유 원천)
+        // 1. config.json의 gui에 먼저 확실히 저장 (데몬과 공유하는 원천)
         if (window.electron) {
             try {
                 await window.electron.setLanguage(lng);
@@ -1160,10 +1160,6 @@ function SettingsModal({
                                     <div className="about-component-item">
                                         <span className="about-component-label"><Icon name="terminal" size="xs" /> CLI</span>
                                         <span className="about-component-ver">v{componentInfo?.components?.cli || appVersion}</span>
-                                    </div>
-                                    <div className="about-component-item">
-                                        <span className="about-component-label"><Icon name="discord" size="xs" /> Discord Bot</span>
-                                        <span className="about-component-ver">v{componentInfo?.components?.discord_bot || appVersion}</span>
                                     </div>
                                     <div className="about-component-item">
                                         <span className="about-component-label"><Icon name="refresh" size="xs" /> Updater</span>

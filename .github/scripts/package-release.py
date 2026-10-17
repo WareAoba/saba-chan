@@ -30,6 +30,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import subprocess
 import zipfile
 from pathlib import Path
@@ -37,8 +38,7 @@ from pathlib import Path
 # ─── 컴포넌트 정의 ──────────────────────────────────────
 # 각 컴포넌트의 정보
 #   key           — manifest.json의 키
-#   version_file  — 버전을 읽을 파일 (현재 체크아웃 기준)
-#   version_type  — "cargo" 또는 "npm"
+#   버전은 저장소 루트 versions.toml의 [components.<key>]에서 읽는다
 #   raw_patterns  — staging/에서 찾을 원본 파일 패턴 (exe, zip 등)
 #   output_name   — 최종 zip 파일 이름 (이전 릴리즈 탐색 기준)
 #   install_dir   — 인스톨러가 설치할 디렉터리
@@ -47,19 +47,19 @@ from pathlib import Path
 COMPONENTS = [
     {
         "key": "saba-core",
-        "version_file": "Cargo.toml",
-        "version_type": "cargo",
         "raw_patterns": [r"saba-core\.exe$", r"saba-core.*\.zip$"],
         "output_name": "saba-core-windows-x64.zip",
         "install_dir": ".",
         "exe_name": "saba-core.exe",
         # 공유 모듈 유틸리티 — %APPDATA%/saba-chan/modules/ 에 설치됨
         "extra_files": ["modules/i18n.py", "modules/daemon_rcon.py"],
+        # 데몬 옆에 함께 설치되는 실행 파일 (staging/에서 찾는다). saba-runner: 서버 콘솔 감시 (C8b)
+        "extra_staged": [r"saba-runner\.exe$"],
+        # 이 컴포넌트 zip에 함께 든 다른 exe: 재포장할 때 빼지 않는다 (staging에 따로 없을 때 대비)
+        "bundles": ["saba-runner.exe"],
     },
     {
         "key": "cli",
-        "version_file": "saba-chan-cli/Cargo.toml",
-        "version_type": "cargo",
         "raw_patterns": [r"saba-chan-cli\.exe$", r"saba-chan-cli.*\.zip$"],
         "output_name": "saba-chan-cli-windows-x64.zip",
         "install_dir": ".",
@@ -67,8 +67,6 @@ COMPONENTS = [
     },
     {
         "key": "gui",
-        "version_file": "saba-chan-gui/package.json",
-        "version_type": "npm",
         "raw_patterns": [r"saba-chan-gui\.exe$", r"[Ss]aba.*[Cc]han\.exe$", r"saba-chan-gui.*\.zip$"],
         "output_name": "saba-chan-gui-windows-x64.zip",
         "install_dir": ".",
@@ -76,26 +74,13 @@ COMPONENTS = [
     },
     {
         "key": "updater",
-        "version_file": "updater/Cargo.toml",
-        "version_type": "cargo",
         "raw_patterns": [r"saba-chan-updater\.exe$", r"saba-chan-updater.*\.zip$"],
         "output_name": "saba-chan-updater-windows-x64.zip",
         "install_dir": ".",
         "exe_name": "saba-chan-updater.exe",
     },
     {
-        "key": "discord_bot",
-        "version_file": "discord_bot/package.json",
-        "version_type": "npm",
-        "raw_patterns": [r"discord.?bot.*\.zip$"],
-        "output_name": "discord-bot.zip",
-        "install_dir": "discord_bot",
-        "exe_name": None,  # zip 그대로 사용
-    },
-    {
         "key": "locales",
-        "version_file": "Cargo.toml",  # 루트 버전 사용
-        "version_type": "cargo",
         "raw_patterns": [],  # 소스에서 직접 생성
         "output_name": "locales.zip",
         "install_dir": "locales",
@@ -103,8 +88,6 @@ COMPONENTS = [
     },
     {
         "key": "installer",
-        "version_file": "installer/gui/src-tauri/Cargo.toml",
-        "version_type": "cargo",
         "raw_patterns": [r"saba-chan-installer\.exe$", r"saba-chan-installer.*\.zip$"],
         "output_name": "saba-chan-installer-windows-x64.zip",
         "install_dir": ".",
@@ -127,45 +110,11 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def parse_semver(version_str: str) -> tuple[int, int, int]:
-    """시맨틱 버전 → (major, minor, patch) 튜플"""
-    v = version_str.lstrip("v").split("-")[0]
-    parts = v.split(".")
-    return (
-        int(parts[0]) if len(parts) > 0 else 0,
-        int(parts[1]) if len(parts) > 1 else 0,
-        int(parts[2]) if len(parts) > 2 else 0,
-    )
-
-
-def read_cargo_version(file_path: str) -> str | None:
-    """Cargo.toml에서 [package] version 추출"""
-    try:
-        content = Path(file_path).read_text(encoding="utf-8")
-        in_package = False
-        for line in content.splitlines():
-            stripped = line.strip()
-            if stripped == "[package]":
-                in_package = True
-                continue
-            if stripped.startswith("[") and stripped != "[package]":
-                in_package = False
-                continue
-            if in_package and stripped.startswith("version"):
-                return stripped.split("=", 1)[1].strip().strip('"').strip("'")
-    except FileNotFoundError:
-        print(f"  ⚠ {file_path} not found")
-    return None
-
-
-def read_npm_version(file_path: str) -> str | None:
-    """package.json에서 version 필드 추출"""
-    try:
-        data = json.loads(Path(file_path).read_text(encoding="utf-8"))
-        return data.get("version")
-    except (FileNotFoundError, json.JSONDecodeError):
-        print(f"  ⚠ {file_path} not found or invalid")
-    return None
+def read_bundled_version(key: str) -> str | None:
+    """versions.toml의 [components.<key>] version"""
+    import tomllib
+    data = tomllib.loads(Path("versions.toml").read_text(encoding="utf-8"))
+    return data.get("components", {}).get(key, {}).get("version")
 
 
 def find_raw_file(patterns: list[str]) -> Path | None:
@@ -194,20 +143,51 @@ def create_exe_zip(exe_path: Path, output_zip: Path, inner_name: str,
     print(f"    → {output_zip.name} ({output_zip.stat().st_size / 1024 / 1024:.2f} MB)")
 
 
+# 다른 컴포넌트가 따로 배포하는 실행 파일: GUI zip 등에 섞여 있으면 뺀다 (GUI만 업데이트해도 데몬이 옛 판으로 덮이지 않게)
+OTHER_COMPONENT_EXES = {"saba-core.exe", "saba-runner.exe", "saba-chan-updater.exe", "saba-chan-cli.exe"}
+
+
+def repack_zip(raw_file: Path, output_zip: Path, exe_name: str | None,
+               extra_files: list[str] | None = None, bundles: list[str] | None = None):
+    """zip을 표준 형태로 다시 담는다: 경로 구분자 `/`, 루트의 앱 exe(예: Electron의 Saba-chan.exe)는
+    `exe_name`으로, 다른 컴포넌트의 exe는 뺀다 (`bundles`에 적은 것은 남긴다).
+    `extra_files`와 이름이 같은 항목은 extra 쪽(이번 빌드)으로 바꾼다."""
+    keep = {b.lower() for b in (bundles or [])}
+    replaced = {Path(rel).name.lower() for rel in (extra_files or []) if Path(rel).exists()}
+    with zipfile.ZipFile(raw_file) as src, zipfile.ZipFile(output_zip, "w", zipfile.ZIP_DEFLATED) as dst:
+        root_exes = [i.filename.replace("\\", "/") for i in src.infolist()
+                     if i.filename.lower().endswith(".exe") and "/" not in i.filename.replace("\\", "/")]
+        app_exes = [n for n in root_exes if n.lower() not in OTHER_COMPONENT_EXES]
+        has_exe = exe_name and exe_name.lower() in {n.lower() for n in root_exes}
+        rename = app_exes[0] if exe_name and not has_exe and len(app_exes) == 1 else None
+        for info in src.infolist():
+            name = info.filename.replace("\\", "/")
+            if name.lower() in replaced:
+                continue
+            if (name.lower() in OTHER_COMPONENT_EXES and exe_name and name.lower() != exe_name.lower()
+                    and name.lower() not in keep):
+                print(f"    - {name} (shipped by its own component)")
+                continue
+            if name == rename:
+                print(f"    ~ {name} -> {exe_name}")
+                name = exe_name
+            entry = zipfile.ZipInfo(name, info.date_time)
+            entry.external_attr = info.external_attr
+            entry.compress_type = zipfile.ZIP_DEFLATED
+            dst.writestr(entry, src.read(info))
+        for rel in (extra_files or []):
+            extra = Path(rel)
+            if extra.exists():
+                dst.write(extra, extra.name)
+                print(f"    + {extra.name} (shared module)")
+    print(f"    → {output_zip.name} (repacked from {raw_file.name})")
+
+
 def copy_or_repackage(raw_file: Path, output_zip: Path, exe_name: str | None,
-                      extra_files: list[str] | None = None):
-    """raw 파일이 exe면 zip으로 감싸고, 이미 zip이면 표준 이름으로 복사"""
+                      extra_files: list[str] | None = None, bundles: list[str] | None = None):
+    """raw 파일이 exe면 zip으로 감싸고, 이미 zip이면 표준 형태로 다시 담는다"""
     if raw_file.suffix.lower() == ".zip":
-        # 기존 zip에 extra_files 추가
-        shutil.copy2(raw_file, output_zip)
-        if extra_files:
-            with zipfile.ZipFile(output_zip, "a", zipfile.ZIP_DEFLATED) as zf:
-                for rel in extra_files:
-                    src = Path(rel)
-                    if src.exists():
-                        zf.write(src, src.name)
-                        print(f"    + {src.name} (shared module)")
-        print(f"    → {output_zip.name} (copied from {raw_file.name})")
+        repack_zip(raw_file, output_zip, exe_name, extra_files, bundles)
     elif raw_file.suffix.lower() == ".exe" and exe_name:
         create_exe_zip(raw_file, output_zip, exe_name, extra_files)
     else:
@@ -270,10 +250,11 @@ def download_from_previous_release(
     asset_name: str,
     current_tag: str,
     releases: list[dict],
-) -> Path | None:
+) -> tuple[Path, str] | None:
     """이전 릴리즈에서 에셋을 찾아 output/ 에 직접 다운로드
 
-    최신 릴리즈부터 순회하며 해당 에셋이 포함된 첫 번째 릴리즈에서 다운로드.
+    최신 릴리즈부터 순회하며 manifest.json도 함께 실린 첫 번째 릴리즈에서 받는다.
+    (파일, 그 릴리즈 태그)를 돌려준다: 버전은 반드시 같은 태그의 manifest에서 읽는다.
     """
     repo = os.environ.get("REPO_FULL_NAME", "")
     if not repo:
@@ -284,7 +265,7 @@ def download_from_previous_release(
         if tag == current_tag:
             continue
 
-        if asset_name not in release.get("assets", []):
+        if asset_name not in release.get("assets", []) or "manifest.json" not in release.get("assets", []):
             continue
 
         print(f"    ← {tag} 에서 발견, 다운로드 중...")
@@ -305,7 +286,7 @@ def download_from_previous_release(
                         print(f"    → {asset_name} ({size / 1024 / 1024:.2f} MB, from {tag})")
                     else:
                         print(f"    → {asset_name} ({size / 1024:.1f} KB, from {tag})")
-                    return dest
+                    return dest, tag
             else:
                 print(f"    ⚠ download failed: {result.stderr.strip()}")
         except subprocess.TimeoutExpired:
@@ -315,12 +296,10 @@ def download_from_previous_release(
 
 
 def read_version_from_previous_manifest(
-    asset_name: str,
     comp_key: str,
-    current_tag: str,
-    releases: list[dict],
-) -> str | None:
-    """이전 릴리즈의 manifest.json에서 해당 컴포넌트의 버전을 읽어옴.
+    tag: str,
+) -> tuple[str, str | None] | None:
+    """에셋을 받아 온 바로 그 릴리즈(tag)의 manifest.json에서 (버전, sha256)을 읽는다.
 
     이전 릴리즈의 바이너리를 가져올 때, 현재 소스의 버전이 아니라
     해당 빌드 시점의 manifest에 기록된 버전을 사용해야 정확하다.
@@ -329,48 +308,26 @@ def read_version_from_previous_manifest(
     if not repo:
         return None
 
-    for release in releases:
-        tag = release["tag"]
-        if tag == current_tag:
-            continue
-        if asset_name not in release.get("assets", []):
-            continue
-        if "manifest.json" not in release.get("assets", []):
-            continue
-
-        # 이전 릴리즈의 manifest.json 다운로드
-        try:
-            result = subprocess.run(
-                ["gh", "api",
-                 f"repos/{repo}/releases/tags/{tag}",
-                 "--jq",
-                 '.assets[] | select(.name == "manifest.json") | .url'],
-                capture_output=True, text=True, timeout=15,
-            )
-            if result.returncode != 0:
-                continue
-
-            asset_url = result.stdout.strip()
-            if not asset_url:
-                continue
-
-            manifest_result = subprocess.run(
-                ["gh", "api", asset_url,
-                 "-H", "Accept: application/octet-stream"],
-                capture_output=True, text=True, timeout=15,
-            )
-            if manifest_result.returncode != 0:
-                continue
-
-            manifest = json.loads(manifest_result.stdout)
-            comp_info = manifest.get("components", {}).get(comp_key, {})
-            version = comp_info.get("version")
-            if version:
-                return version
-        except (subprocess.TimeoutExpired, json.JSONDecodeError):
-            continue
-
-    return None
+    try:
+        result = subprocess.run(
+            ["gh", "api", f"repos/{repo}/releases/tags/{tag}",
+             "--jq", '.assets[] | select(.name == "manifest.json") | .url'],
+            capture_output=True, text=True, timeout=15,
+        )
+        asset_url = result.stdout.strip() if result.returncode == 0 else ""
+        if not asset_url:
+            return None
+        manifest_result = subprocess.run(
+            ["gh", "api", asset_url, "-H", "Accept: application/octet-stream"],
+            capture_output=True, text=True, timeout=15,
+        )
+        if manifest_result.returncode != 0:
+            return None
+        comp_info = json.loads(manifest_result.stdout).get("components", {}).get(comp_key, {})
+    except (subprocess.TimeoutExpired, json.JSONDecodeError):
+        return None
+    version = comp_info.get("version")
+    return (version, comp_info.get("sha256")) if version else None
 
 
 # ─── 메인 ────────────────────────────────────────────────
@@ -396,7 +353,6 @@ def main():
 
     # 각 컴포넌트 처리
     manifest_components = {}
-    all_versions = []
     from_current = []   # 이번 릴리즈에서 패키징된 컴포넌트
     from_previous = []  # 이전 릴리즈에서 가져온 컴포넌트
     skipped = []        # 에셋을 찾지 못한 컴포넌트
@@ -406,10 +362,7 @@ def main():
         print(f"[{key}]")
 
         # 1. 버전 읽기 (현재 소스 기준 — 이전 릴리즈에서 가져올 경우 덮어씌움)
-        if comp["version_type"] == "cargo":
-            version = read_cargo_version(comp["version_file"])
-        else:
-            version = read_npm_version(comp["version_file"])
+        version = read_bundled_version(key)
 
         if not version:
             print(f"  version: (not found, skipping)")
@@ -433,8 +386,14 @@ def main():
             raw_file = find_raw_file(comp["raw_patterns"])
             if raw_file:
                 print(f"  raw: {raw_file.name}")
-                copy_or_repackage(raw_file, output_path, comp.get("exe_name"),
-                                  comp.get("extra_files"))
+                extra = list(comp.get("extra_files", []))
+                for pattern in comp.get("extra_staged", []):
+                    staged = find_raw_file([pattern])
+                    if staged:
+                        extra.append(str(staged))
+                    else:
+                        print(f"    ⚠ {pattern} not in staging — component ships without it")
+                copy_or_repackage(raw_file, output_path, comp.get("exe_name"), extra, comp.get("bundles"))
                 asset_source = "current"
             else:
                 # 이번 릴리즈에 없음 → 이전 릴리즈에서 가져오기
@@ -443,7 +402,17 @@ def main():
                     comp["output_name"], release_tag, previous_releases,
                 )
                 if downloaded:
+                    downloaded, prev_tag = downloaded
                     asset_source = "previous"
+                    # 버전과 sha는 이 파일을 받아 온 바로 그 릴리즈의 manifest에서만 읽는다
+                    prev = read_version_from_previous_manifest(key, prev_tag)
+                    if not prev:
+                        # 실제 버전을 모르는 바이너리를 소스 버전으로 서명하면 안 된다
+                        sys.exit(f"  ✗ {key}: reused {comp['output_name']} from {prev_tag} but its version is unknown "
+                                 f"(manifest unreadable); build it in this release instead")
+                    prev_version, prev_sha = prev
+                    if prev_sha and sha256_file(downloaded) != prev_sha:
+                        sys.exit(f"  ✗ {key}: {comp['output_name']} from {prev_tag} does not match that release's manifest sha256")
 
                     # 이전 릴리즈 zip에도 공유 모듈 주입
                     extra = comp.get("extra_files")
@@ -456,12 +425,7 @@ def main():
                                     zf.write(src, src.name)
                                     print(f"    + {src.name} (shared module injected)")
 
-                    # 이전 릴리즈의 manifest에서 정확한 버전 가져오기
-                    # (현재 소스의 버전과 실제 바이너리 버전이 다를 수 있음)
-                    prev_version = read_version_from_previous_manifest(
-                        comp["output_name"], key, release_tag, previous_releases,
-                    )
-                    if prev_version and prev_version != version:
+                    if prev_version != version:
                         print(f"  version: {prev_version} (from previous manifest, overrides source {version})")
                         version = prev_version
                 else:
@@ -469,7 +433,6 @@ def main():
                     skipped.append(key)
                     continue
 
-        all_versions.append(version)
 
         # 3. SHA256 계산
         sha = sha256_file(output_path)
@@ -491,11 +454,9 @@ def main():
 
         print()
 
-    # release_version = 컴포넌트 중 가장 높은 버전
-    if all_versions:
-        release_version = max(all_versions, key=parse_semver)
-    else:
-        release_version = release_tag.lstrip("v") if release_tag else "0.0.0"
+    # release_version = versions.toml의 [release] version
+    import tomllib
+    release_version = tomllib.loads(Path("versions.toml").read_text(encoding="utf-8"))["release"]["version"]
 
     # manifest.json 생성
     manifest = {

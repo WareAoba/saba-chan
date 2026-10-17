@@ -3,11 +3,17 @@
 //! 업데이트 확인(check)과 다운로드(download)를 데몬 프로세스 내에서 수행합니다.
 //! 파일 적용(apply)은 별도 업데이터 프로세스에서 처리합니다.
 //!
+//! 주기 확인은 데몬이 한다(U6, `spawn_update_scheduler`): `check_interval_hours`마다 확인하고,
+//! `auto_download`이면 내려받아 둔다. GUI·CLI는 `/api/updates/status`를 읽어 표시만 한다.
+//!
 //! ## 엔드포인트
 //! - `GET  /api/updates/status`              — 캐시된 업데이트 상태 조회
-//! - `POST /api/updates/check`               — 업데이트 확인 (GitHub API 호출)
-//! - `POST /api/updates/download`            — 선택 컴포넌트 다운로드
-//! - `POST /api/updates/apply`               — 업데이터 exe 스폰하여 적용
+//! - `POST /api/updates/check`               — 업데이트 확인 (릴레이의 서명된 manifest)
+//! - `POST /api/updates/download`            — 선택 컴포넌트 다운로드 (본문 없으면 전부)
+//! - `POST /api/updates/apply`               — 모듈 등은 데몬이 바로 적용, 재시작이 필요한 것은
+//!   `requires_updater`로 돌려주고 실제 적용은 `launch-updater`가 한다 (본문 없으면 전부)
+//! - `POST /api/updates/launch-updater`      — 데몬이 업데이터를 띄우고 스스로 종료 (U7)
+//! - `GET  /api/updates/last-result`         — 마지막 업데이트 적용 결과 (DELETE로 확인 처리)
 //! - `GET  /api/updates/config`              — 업데이트 설정 조회
 //! - `PUT  /api/updates/config`              — 업데이트 설정 변경
 
@@ -19,6 +25,7 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
+use saba_chan_updater_lib::config_file::ConfigFile;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -39,6 +46,8 @@ pub struct UpdateState {
     /// 모듈/익스텐션 업데이트 적용 후 핫로드를 위한 참조
     pub supervisor: Option<Arc<RwLock<crate::supervisor::Supervisor>>>,
     pub extension_manager: Option<Arc<RwLock<crate::extension::ExtensionManager>>>,
+    /// 업데이터를 띄운 뒤 데몬을 끝내는 신호 (IPCServer::stop_requested)
+    pub stop_requested: Option<tokio_util::sync::CancellationToken>,
 }
 
 impl UpdateState {
@@ -54,6 +63,7 @@ impl UpdateState {
             download_progress: progress,
             supervisor: None,
             extension_manager: None,
+            stop_requested: None,
         }
     }
 
@@ -65,6 +75,11 @@ impl UpdateState {
     ) -> Self {
         self.supervisor = Some(supervisor);
         self.extension_manager = Some(extension_manager);
+        self
+    }
+
+    pub fn with_stop_signal(mut self, stop_requested: tokio_util::sync::CancellationToken) -> Self {
+        self.stop_requested = Some(stop_requested);
         self
     }
 }
@@ -87,6 +102,8 @@ pub fn updates_router(state: UpdateState) -> Router {
         .route("/api/updates/download", post(download_components))
         .route("/api/updates/download/progress", get(get_download_progress))
         .route("/api/updates/apply", post(apply_updates))
+        .route("/api/updates/launch-updater", post(launch_updater))
+        .route("/api/updates/last-result", get(get_last_result).delete(clear_last_result))
         .route("/api/updates/integrity", get(check_integrity))
         .route("/api/updates/config", get(get_config))
         .route("/api/updates/config", put(set_config))
@@ -97,7 +114,7 @@ pub fn updates_router(state: UpdateState) -> Router {
 // 핸들러
 // ═══════════════════════════════════════════════════════
 
-/// GET /api/updates/status — 캐시된 상태 반환 (GitHub API 호출 없음)
+/// GET /api/updates/status — 캐시된 상태 반환 (네트워크 없음)
 ///
 /// Locales 컴포넌트는 사용자에게 비표시 — 백그라운드 자동 다운로드/적용 대상이므로
 /// 응답의 `components`, `updates_available` 에서 제외합니다.
@@ -137,30 +154,15 @@ async fn get_status(
     }))
 }
 
-/// POST /api/updates/check — GitHub API를 호출하여 최신 릴리스 확인
+/// POST /api/updates/check — 릴레이에서 최신 릴리즈 확인
 ///
 /// Locales 컴포넌트는 응답에서 제외하고, 업데이트가 있으면
 /// 백그라운드에서 자동 다운로드+적용합니다 (사용자 비표시).
 async fn check_updates(
     State(state): State<UpdateState>,
 ) -> impl IntoResponse {
-    let result = {
-        let mut mgr = state.manager.write().await;
-        mgr.check_for_updates().await
-    };
-
-    match result {
+    match check_and_follow_up(&state).await {
         Ok(status) => {
-            // ── Locales 자동 적용: 사용자 비표시 ──
-            // Locales는 작고 재시작이 불필요하므로, 체크 직후 백그라운드에서 자동 다운로드+적용
-            let has_locale_update = status.components.iter()
-                .any(|c| matches!(c.component, Component::Locales) && c.update_available);
-            if has_locale_update {
-                let mgr_clone = state.manager.clone();
-                tokio::spawn(async move {
-                    silent_apply_locales(&mgr_clone).await;
-                });
-            }
 
             // Locales를 제외한 "사용자에게 보이는" 컴포넌트 목록
             let components: Vec<Value> = status.components.iter()
@@ -198,6 +200,77 @@ async fn check_updates(
             }))
         }
     }
+}
+
+/// 확인 한 번과 그 뒤처리. 수동 확인(`POST /check`)과 주기 확인이 같은 길을 쓴다.
+/// - Locales 업데이트는 사용자에게 보이지 않게 바로 적용
+/// - `auto_download`이면 나머지 업데이트를 내려받아 두고 pending manifest 저장
+///   (적용은 언제나 사용자가 고른다)
+async fn check_and_follow_up(state: &UpdateState) -> anyhow::Result<saba_chan_updater_lib::UpdateStatus> {
+    let (status, auto_download) = {
+        let mut mgr = state.manager.write().await;
+        let status = mgr.check_for_updates().await?;
+        (status, mgr.get_config().auto_download)
+    };
+
+    let has_locale_update = status.components.iter()
+        .any(|c| matches!(c.component, Component::Locales) && c.update_available);
+    if has_locale_update {
+        let mgr_clone = state.manager.clone();
+        tokio::spawn(async move {
+            silent_apply_locales(&mgr_clone).await;
+        });
+    }
+
+    let has_visible_update = status.components.iter()
+        .any(|c| c.update_available && !c.downloaded && !matches!(c.component, Component::Locales));
+    if auto_download && has_visible_update {
+        let manager = state.manager.clone();
+        tokio::spawn(async move {
+            let mut mgr = manager.write().await;
+            match mgr.download_available_updates().await {
+                Ok(downloaded) => {
+                    tracing::info!("[Updates] Auto-downloaded {} update(s)", downloaded.len());
+                    if let Err(e) = mgr.save_pending_manifest() {
+                        tracing::warn!("[Updates] Failed to save pending manifest: {}", e);
+                    }
+                }
+                Err(e) => tracing::warn!("[Updates] Auto-download failed: {}", e),
+            }
+        });
+    }
+    Ok(status)
+}
+
+/// 데몬 기동 후 업데이트를 주기적으로 확인한다 (U6).
+/// 설정은 매 회 다시 읽는다. 꺼져 있으면(`enabled=false`) 확인하지 않고 설정만 다시 본다.
+pub fn spawn_update_scheduler(state: UpdateState, shutdown: tokio_util::sync::CancellationToken) {
+    /// 기동 직후에는 다른 초기화가 먼저 끝나도록 잠깐 기다린다
+    const FIRST_CHECK_DELAY: std::time::Duration = std::time::Duration::from_secs(30);
+    /// 꺼져 있거나 실패했을 때 다시 볼 간격
+    const RETRY: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+
+    tokio::spawn(async move {
+        let mut wait = FIRST_CHECK_DELAY;
+        loop {
+            tokio::select! {
+                _ = shutdown.cancelled() => break,
+                _ = tokio::time::sleep(wait) => {}
+            }
+            let cfg = state.manager.read().await.get_config();
+            if !cfg.enabled {
+                wait = RETRY;
+                continue;
+            }
+            wait = match check_and_follow_up(&state).await {
+                Ok(_) => std::time::Duration::from_secs(u64::from(cfg.check_interval_hours.max(1)) * 3600),
+                Err(e) => {
+                    tracing::warn!("[Updates] Scheduled check failed: {}", e);
+                    RETRY
+                }
+            };
+        }
+    });
 }
 
 /// Locales 컴포넌트를 사용자 비표시로 다운로드+적용합니다.
@@ -242,17 +315,34 @@ async fn silent_apply_locales(manager: &Arc<RwLock<UpdateManager>>) {
 ///
 /// Body: `{ "components": ["gui", "cli", "module-minecraft"] }`
 /// 비어있으면 업데이트 가능한 전체를 다운로드
-#[derive(Deserialize)]
+/// 본문이 없거나 비면 기본값 (CLI는 본문 없이 POST한다). 있는데 깨졌으면 400:
+/// 잘못된 본문을 "전부"로 읽어 모든 컴포넌트를 건드리지 않게
+fn body_or_default<T: serde::de::DeserializeOwned + Default>(bytes: &[u8]) -> Result<T, String> {
+    if bytes.iter().all(u8::is_ascii_whitespace) {
+        return Ok(T::default());
+    }
+    serde_json::from_slice(bytes).map_err(|e| format!("invalid JSON body: {}", e))
+}
+
+fn bad_body(error: String) -> axum::response::Response {
+    (axum::http::StatusCode::BAD_REQUEST, Json(json!({ "ok": false, "error": error, "error_code": "invalid_body" }))).into_response()
+}
+
+#[derive(Deserialize, Default)]
 struct DownloadRequest {
     /// 다운로드할 컴포넌트 키 목록. 비어있으면 전체.
     #[serde(default)]
     components: Vec<String>,
 }
 
-async fn download_components(
-    State(state): State<UpdateState>,
-    Json(body): Json<DownloadRequest>,
-) -> impl IntoResponse {
+async fn download_components(State(state): State<UpdateState>, raw: axum::body::Bytes) -> axum::response::Response {
+    match body_or_default::<DownloadRequest>(&raw) {
+        Ok(body) => download_components_with(state, body).await.into_response(),
+        Err(e) => bad_body(e),
+    }
+}
+
+async fn download_components_with(state: UpdateState, body: DownloadRequest) -> impl IntoResponse {
     let mut mgr = state.manager.write().await;
 
     // 아직 체크하지 않았으면 먼저 체크
@@ -345,19 +435,23 @@ async fn get_download_progress(
 /// POST /api/updates/apply — 다운로드된 업데이트 적용
 ///
 /// - 모듈: 데몬이 직접 적용 (파일 교체)
-/// - 데몬/GUI/CLI: 업데이터 exe를 스폰하여 적용 (응답에 requires_updater: true)
+/// - 데몬/GUI/CLI·업데이터: 적용하지 않고 `requires_updater: true`로 돌려준다. 실제 적용은 `POST /api/updates/launch-updater`
 ///
 /// Body: `{ "components": ["module-minecraft", "saba-core"] }` (선택 적용, 비어있으면 전체)
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 struct ApplyRequest {
     #[serde(default)]
     components: Vec<String>,
 }
 
-async fn apply_updates(
-    State(state): State<UpdateState>,
-    Json(body): Json<ApplyRequest>,
-) -> impl IntoResponse {
+async fn apply_updates(State(state): State<UpdateState>, raw: axum::body::Bytes) -> axum::response::Response {
+    match body_or_default::<ApplyRequest>(&raw) {
+        Ok(body) => apply_updates_with(state, body).await.into_response(),
+        Err(e) => bad_body(e),
+    }
+}
+
+async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl IntoResponse {
     let mut mgr = state.manager.write().await;
 
     // 적용 대상 분류
@@ -372,11 +466,10 @@ async fn apply_updates(
     };
 
     // 적용 우선순위에 따라 정렬:
-    // Updater → 모듈/익스텐션/Locales → DiscordBot → CoreDaemon → 인터페이스
+    // Updater → 모듈/익스텐션/Locales → CoreDaemon → 인터페이스
     targets.sort_by_key(|comp| match comp {
         Component::Updater => 0u8,
         Component::Module(_) | Component::Extension(_) | Component::Locales => 1,
-        Component::DiscordBot => 2,
         Component::CoreDaemon => 3,
         Component::Gui => 4,
         Component::Cli => 4,
@@ -474,21 +567,137 @@ async fn apply_updates(
     }))
 }
 
-/// GET /api/updates/integrity — 서버에서 매니페스트를 가져와 SHA256 무결성 검증
+/// POST /api/updates/launch-updater — 데몬이 업데이터를 띄우고 스스로 종료한다 (U7)
+///
+/// `apply`가 `requires_updater: true`를 돌려준 뒤 부른다. 어느 클라이언트가 떠 있든
+/// 적용 경로가 하나가 되도록 업데이터 실행은 데몬만 한다.
+/// Body: `{ "relaunch": ["<exe>", "추가 인자"...] }` — 적용 후 다시 띄울 프로그램(생략하면 업데이터가 GUI를 찾는다)
+#[derive(Deserialize, Default)]
+struct LaunchUpdaterRequest {
+    #[serde(default)]
+    relaunch: Vec<String>,
+}
+
+async fn launch_updater(
+    State(state): State<UpdateState>,
+    body: Option<Json<LaunchUpdaterRequest>>,
+) -> axum::response::Response {
+    let body = body.map(|Json(b)| b).unwrap_or_default();
+    let Some(updater) = updater_binary() else {
+        return (
+            axum::http::StatusCode::NOT_FOUND,
+            Json(json!({ "ok": false, "error": "saba-chan-updater not found next to the daemon" })),
+        )
+            .into_response();
+    };
+    if state.manager.read().await.get_pending_components().is_empty() {
+        return (
+            axum::http::StatusCode::CONFLICT,
+            Json(json!({ "ok": false, "error": "No downloaded updates to apply" })),
+        )
+            .into_response();
+    }
+
+    // 이번 적용에만 쓰는 실행 표 (업데이터는 표 없이 --apply를 거절한다)
+    let ticket = match saba_chan_updater_lib::launch_ticket::issue(&saba_chan_updater_lib::constants::resolve_staging_dir()) {
+        Ok(t) => t,
+        Err(e) => {
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "ok": false, "error": format!("Failed to prepare updater launch: {}", e) })),
+            )
+                .into_response()
+        }
+    };
+    let mut args = vec![
+        "--apply".to_string(),
+        "--wait-pid".to_string(),
+        std::process::id().to_string(),
+        "--launch-token".to_string(),
+        ticket,
+    ];
+    if !body.relaunch.is_empty() {
+        args.push("--relaunch".to_string());
+        args.extend(body.relaunch);
+    }
+    if let Err(e) = spawn_detached(&updater, &args) {
+        return (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "ok": false, "error": format!("Failed to start updater: {}", e) })),
+        )
+            .into_response();
+    }
+    tracing::info!("[Updates] Launched updater {} {:?}; daemon is shutting down", updater.display(), args);
+
+    if let Some(stop) = state.stop_requested.clone() {
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await; // 응답이 나가도록
+            stop.cancel();
+        });
+    }
+    Json(json!({ "ok": true, "updater_launched": true, "daemon_stopping": true })).into_response()
+}
+
+/// 업데이터 실행 파일. `SABA_UPDATER_PATH`가 있으면 그것, 없으면 데몬 실행 파일 옆(또는 한 단계 위).
+fn updater_binary() -> Option<std::path::PathBuf> {
+    if let Some(path) = std::env::var_os("SABA_UPDATER_PATH").map(std::path::PathBuf::from) {
+        return path.is_file().then_some(path);
+    }
+    let exe = std::env::current_exe().ok()?;
+    let name = format!("saba-chan-updater{}", std::env::consts::EXE_SUFFIX);
+    exe.ancestors().skip(1).take(2).map(|dir| dir.join(&name)).find(|p| p.is_file())
+}
+
+/// 데몬이 끝나도 살아남게 띄운다
+fn spawn_detached(program: &std::path::Path, args: &[String]) -> std::io::Result<()> {
+    let mut cmd = std::process::Command::new(program);
+    cmd.args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+        // 데몬을 띄운 쪽의 Job Object가 닫혀도 업데이터가 살아남게 빠져나온다. 허용되지 않으면 그냥 띄운다.
+        cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB);
+        match cmd.spawn() {
+            Err(e) if e.raw_os_error() == Some(5) => {
+                cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+                cmd.spawn().map(|_| ())
+            }
+            other => other.map(|_| ()),
+        }
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+        cmd.spawn().map(|_| ())
+    }
+}
+
+/// GET /api/updates/last-result — 마지막 적용 결과 (업데이터가 남긴 완료 마커). 없으면 `result: null`.
+async fn get_last_result() -> impl IntoResponse {
+    let marker = saba_chan_updater_lib::UpdateCompletionMarker::load();
+    Json(json!({ "ok": true, "result": marker }))
+}
+
+/// DELETE /api/updates/last-result — 사용자가 결과를 확인했다
+async fn clear_last_result() -> impl IntoResponse {
+    match saba_chan_updater_lib::UpdateCompletionMarker::clear() {
+        Ok(()) => Json(json!({ "ok": true })),
+        Err(e) => Json(json!({ "ok": false, "error": e })),
+    }
+}
+
+/// GET /api/updates/integrity — 업데이터가 설치하며 기록한 파일 해시와 지금 파일을 비교
 async fn check_integrity(
     State(state): State<UpdateState>,
 ) -> impl IntoResponse {
-    let mut mgr = state.manager.write().await;
-
-    let report = match mgr.verify_integrity().await {
-        Ok(r) => r,
-        Err(e) => {
-            return Json(json!({
-                "ok": false,
-                "error": format!("Integrity check failed: {}", e),
-            }));
-        }
-    };
+    let report = state.manager.read().await.verify_integrity();
 
     let components: Vec<Value> = report.components.iter().map(|c| {
         json!({
@@ -523,6 +732,9 @@ async fn get_config(
     Json(json!({
         "ok": true,
         "config": config,
+        // 이 데몬이 모의 릴레이(scripts/mock-release-server.js)의 서명을 믿는 개발 빌드인가.
+        // 아니면 GUI는 MOCK 출처를 감추거나 막는다
+        "mock_relay": cfg!(feature = "mock-relay"),
     }))
 }
 
@@ -538,46 +750,59 @@ async fn set_config(
     if let Some(v) = body.get("enabled").and_then(|v| v.as_bool()) {
         cfg.enabled = v;
     }
-    if let Some(v) = body.get("github_owner").and_then(|v| v.as_str()) {
-        cfg.github_owner = v.to_string();
-    }
-    if let Some(v) = body.get("github_repo").and_then(|v| v.as_str()) {
-        cfg.github_repo = v.to_string();
-    }
     if let Some(v) = body.get("check_interval_hours").and_then(|v| v.as_u64()) {
-        cfg.check_interval_hours = v as u32;
+        cfg.check_interval_hours = v.clamp(1, 8) as u32;
     }
     if let Some(v) = body.get("auto_download").and_then(|v| v.as_bool()) {
         cfg.auto_download = v;
     }
-    if let Some(v) = body.get("auto_apply").and_then(|v| v.as_bool()) {
-        cfg.auto_apply = v;
-    }
-    if let Some(v) = body.get("include_prerelease").and_then(|v| v.as_bool()) {
-        cfg.include_prerelease = v;
-    }
     if let Some(v) = body.get("install_root").and_then(|v| v.as_str()) {
         cfg.install_root = Some(v.to_string());
     }
-    if let Some(v) = body.get("api_base_url").and_then(|v| v.as_str()) {
-        cfg.api_base_url = Some(v.to_string());
+    if let Some(v) = body.get("relay_url").and_then(|v| v.as_str()) {
+        cfg.relay_url = if v.is_empty() { None } else { Some(v.to_string()) };
+    }
+    if let Some(v) = body.get("channel").and_then(|v| v.as_str()) {
+        cfg.channel = v.to_string();
     }
 
     mgr.update_config(cfg.clone());
+    if let Err(e) = save_updater_config(&cfg) {
+        tracing::warn!("[Updates] Failed to persist update config: {}", e);
+    }
 
     Json(json!({
         "ok": true,
         "config": cfg,
     }))
+    .into_response()
 }
 
 // ═══════════════════════════════════════════════════════
 // 설정 유틸리티
 // ═══════════════════════════════════════════════════════
 
-/// 업데이터 설정 로드 — 하드코딩 기본값 사용
-fn load_updater_config() -> UpdateConfig {
-    UpdateConfig::default()
+/// 저장된 업데이트 설정 (`config.json`의 `updates`). 없거나 깨졌으면 기본값.
+pub(crate) fn load_updater_config() -> UpdateConfig {
+    load_updater_config_from(&ConfigFile::default_location())
+}
+
+fn load_updater_config_from(file: &ConfigFile) -> UpdateConfig {
+    match file.section("updates") {
+        serde_json::Value::Null => UpdateConfig::default(),
+        v => serde_json::from_value(v).unwrap_or_else(|e| {
+            tracing::warn!("[Updates] Ignoring invalid 'updates' config: {}", e);
+            UpdateConfig::default()
+        }),
+    }
+}
+
+fn save_updater_config(cfg: &UpdateConfig) -> std::io::Result<()> {
+    save_updater_config_to(&ConfigFile::default_location(), cfg)
+}
+
+fn save_updater_config_to(file: &ConfigFile, cfg: &UpdateConfig) -> std::io::Result<()> {
+    file.set_section("updates", serde_json::to_value(cfg).map_err(std::io::Error::other)?)
 }
 
 fn resolve_modules_dir() -> String {
@@ -589,3 +814,34 @@ fn resolve_modules_dir() -> String {
 }
 
 
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn apply_and_download_accept_a_missing_body_but_not_a_broken_one() {
+        let empty: super::ApplyRequest = super::body_or_default(b"").ok().unwrap();
+        assert!(empty.components.is_empty());
+        let blank: super::DownloadRequest = super::body_or_default(b" \n").ok().unwrap();
+        assert!(blank.components.is_empty());
+        let some: super::ApplyRequest = super::body_or_default(br#"{"components":["gui"]}"#).ok().unwrap();
+        assert_eq!(some.components, vec!["gui".to_string()]);
+        assert!(super::body_or_default::<super::ApplyRequest>(b"{oops").is_err(), "a broken body must not mean 'everything'");
+    }
+
+    use super::*;
+
+    #[test]
+    fn updater_config_survives_restart() {
+        let mut cfg = UpdateConfig::default();
+        cfg.enabled = false;
+        cfg.check_interval_hours = 6;
+        cfg.auto_download = true;
+        let dir = tempfile::tempdir().unwrap();
+        save_updater_config_to(&ConfigFile::at(dir.path()), &cfg).unwrap();
+
+        let loaded = load_updater_config_from(&ConfigFile::at(dir.path()));
+        assert!(!loaded.enabled);
+        assert_eq!(loaded.check_interval_hours, 6);
+        assert!(loaded.auto_download);
+    }
+}

@@ -68,6 +68,7 @@ pub const LIFECYCLE_COMMANDS: &[&str] = &["start", "stop", "restart", "status"];
 impl ModuleRegistry {
     /// 데몬 API에서 모듈 목록을 가져와 레지스트리 구성 (aliases 포함)
     /// 실패 시 None 반환 → load()에서 파일시스템 폴백 사용
+    #[cfg_attr(test, allow(dead_code))]
     fn try_load_from_daemon() -> Option<Self> {
         let base = format!(
             "http://127.0.0.1:{}",
@@ -448,16 +449,6 @@ impl ModuleRegistry {
         self.cmd_aliases.get(module_name)?.get(&key).cloned()
     }
 
-    /// 모듈 명령어 정의 가져오기
-    pub fn get_command_def(&self, module_name: &str, cmd_name: &str) -> Option<&ModuleCommand> {
-        self.modules
-            .iter()
-            .find(|m| m.name == module_name)?
-            .commands
-            .iter()
-            .find(|c| c.name == cmd_name)
-    }
-
     /// 등록된 모든 모듈 canonical name
     pub fn module_names(&self) -> Vec<&str> {
         self.modules.iter().map(|m| m.name.as_str()).collect()
@@ -616,15 +607,6 @@ method = "rcon"
         assert_eq!(m.name, "test_game");
         assert_eq!(m.commands.len(), 2);
         assert!(reg.get_module("nonexistent").is_none());
-    }
-
-    #[test]
-    fn test_get_command_def() {
-        let (_tmp, reg) = create_test_registry();
-        let cmd = reg.get_command_def("test_game", "say").unwrap();
-        assert_eq!(cmd.method, "rcon");
-        assert_eq!(cmd.description, "Send a message");
-        assert!(reg.get_command_def("test_game", "nosuch").is_none());
     }
 
     #[test]

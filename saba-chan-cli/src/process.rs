@@ -218,7 +218,8 @@ pub fn start_daemon() -> anyhow::Result<String> {
        .env("RUST_LOG", "info")
        .env("SABA_MODULES_PATH", &modules)
        .env("SABA_INSTANCES_PATH", &instances)
-       .env("SABA_LANG", &lang);
+       .env("SABA_LANG", &lang)
+       .env("SABA_IPC_PORT", config::get_ipc_port().to_string());
 
     spawn_detached(&mut cmd)?;
 
@@ -236,44 +237,52 @@ pub fn stop_daemon() -> anyhow::Result<String> {
         return Ok("ℹ Saba-Core is not running".into());
     }
 
-    // 1차: 데몬 API를 통한 graceful shutdown
+    // 강제 종료가 필요할 때를 위해 PID를 먼저 받아 둔다 (이름 기반 kill은 다른 사용자의 데몬까지 죽인다)
     let base = config::get_ipc_base_url();
     let token_ipc = load_ipc_token();
     let client = build_daemon_client(3)?;
+    let pid = with_token(client.get(format!("{}/health", base)), &token_ipc)
+        .send()
+        .ok()
+        .and_then(|r| r.json::<serde_json::Value>().ok())
+        .and_then(|v| v.get("pid").and_then(|p| p.as_u64()));
 
+    // 1차: 데몬 API를 통한 graceful shutdown
     let api_ok = with_token(
         client.post(format!("{}/api/daemon/shutdown", base)).json(&serde_json::json!({})),
         &token_ipc,
     ).send().map(|r| r.status().is_success()).unwrap_or(false);
 
     if api_ok {
-        std::thread::sleep(Duration::from_secs(2));
-        if !check_daemon_running() {
-            return Ok("✓ Saba-Core stopped (graceful)".into());
+        for _ in 0..15 {
+            std::thread::sleep(Duration::from_secs(1));
+            if !check_daemon_running() {
+                return Ok("✓ Saba-Core stopped (graceful)".into());
+            }
         }
     }
 
-    // 2차: graceful 실패 → OS 강제 종료
-    force_kill_daemon()?;
+    // 2차: graceful 실패 → 그 데몬의 PID만 강제 종료
+    let Some(pid) = pid else {
+        anyhow::bail!("Saba-Core did not stop and its PID is unknown; stop it manually");
+    };
+    force_kill_daemon(pid)?;
     std::thread::sleep(Duration::from_secs(1));
     Ok("✓ Saba-Core stopped (forced)".into())
 }
 
-/// OS 수준에서 데몬 프로세스를 강제 종료.
-///
-/// ⚠️ [에이전트 주의] 프로세스 **이름** 기반으로 kill하므로,
-///   동일 이름의 프로세스가 여러 개이면 전부 종료된다.
-///   PID 기반 종료가 필요하면 데몬 API에서 PID를 반환받아야 한다.
-fn force_kill_daemon() -> anyhow::Result<()> {
+/// OS 수준에서 데몬 프로세스를 PID로 강제 종료.
+fn force_kill_daemon(pid: u64) -> anyhow::Result<()> {
+    let pid = pid.to_string();
     if cfg!(target_os = "windows") {
         let mut cmd = Command::new("taskkill");
-        cmd.args(["/IM", "saba-core.exe", "/F"])
+        cmd.args(["/PID", &pid, "/F"]) // /T 없이: 서버는 saba-runner가 쥐고 있다
             .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
         no_window(&mut cmd);
         cmd.status()?;
     } else {
-        Command::new("pkill")
-            .args(["-f", "saba-core"])
+        Command::new("kill")
+            .args(["-KILL", &pid])
             .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null())
             .status()?;
     }
@@ -314,140 +323,53 @@ fn with_token(req: reqwest::blocking::RequestBuilder, token: &Option<String>) ->
 }
 
 // ═══════════════════════════════════════════════════
-//  §5. Discord Bot 생명주기
+//  §5. Discord 릴레이 에이전트 (클라우드 봇 연결)
 // ═══════════════════════════════════════════════════
+//
+// Discord 봇 자체는 클라우드(Oracle)에서 돌고, 로컬에서는 데몬 내장
+// 릴레이 에이전트가 명령을 받아 처리한다. CLI는 에이전트를 켜고 끌 뿐이다.
 
-/// 봇 시작에 필요한 설정(Discord 토큰, 모드, 언어) 로드.
-fn load_bot_startup_config() -> anyhow::Result<(String, String, String, serde_json::Value)> {
-    let settings = config::load_settings().unwrap_or_default();
-    let bot_config = config::load_bot_config().unwrap_or_default();
-
-    let discord_token = settings.get("discordToken")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| anyhow::anyhow!("Discord token not set — configure it in GUI"))?
-        .to_string();
-    let mode = bot_config.get("mode").and_then(|v| v.as_str()).unwrap_or("local").to_string();
-    let lang = settings.get("language").and_then(|v| v.as_str()).unwrap_or("en").to_string();
-
-    Ok((discord_token, mode, lang, bot_config))
+fn agent_request(method: reqwest::Method, path: &str, timeout_secs: u64) -> anyhow::Result<reqwest::blocking::Response> {
+    let base = config::get_ipc_base_url();
+    let client = build_daemon_client(timeout_secs)?;
+    let req = with_token(client.request(method, format!("{}{}", base, path)), &load_ipc_token());
+    Ok(req.send()?)
 }
 
-/// 데몬에서 포터블 Node.js 경로를 요청합니다.
-fn request_node_path(client: &reqwest::blocking::Client, base: &str, token: &Option<String>) -> anyhow::Result<String> {
-    let req = with_token(
-        client.post(format!("{}/api/node-env/setup", base)).json(&serde_json::json!({})),
-        token,
-    );
-    let resp = req.send()?.json::<serde_json::Value>()?;
-    Ok(resp.get("node_path").and_then(|v| v.as_str()).unwrap_or("node").to_string())
-}
-
-/// 봇 프로세스의 환경변수를 구성합니다.
-fn build_bot_env(base: &str, lang: &str, discord_token: &str) -> serde_json::Map<String, serde_json::Value> {
-    let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
-    let bot_config_path = data_dir.join("bot-config.json");
-    let extensions_dir = saba_chan_updater_lib::constants::resolve_extensions_dir();
-
-    let mut env_vars = serde_json::Map::new();
-    env_vars.insert("IPC_BASE".into(), serde_json::json!(base));
-    env_vars.insert("SABA_LANG".into(), serde_json::json!(lang));
-    env_vars.insert("BOT_CONFIG_PATH".into(), serde_json::json!(bot_config_path.to_string_lossy()));
-    env_vars.insert("SABA_EXTENSIONS_DIR".into(), serde_json::json!(extensions_dir.to_string_lossy()));
-    env_vars.insert("DISCORD_TOKEN".into(), serde_json::json!(discord_token));
-    env_vars
-}
-
-/// 봇 디렉토리와 index.js 경로를 탐색.
-fn find_bot_paths() -> anyhow::Result<(PathBuf, PathBuf)> {
-    let install_root = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-        .unwrap_or_else(|| PathBuf::from("."));
-    let bot_dir = install_root.join("discord_bot");
-    let index_path = bot_dir.join("index.js");
-    if !index_path.exists() {
-        anyhow::bail!("discord_bot/index.js not found at {}", index_path.display());
+fn agent_error(action: &str, resp: reqwest::blocking::Response) -> anyhow::Error {
+    let status = resp.status();
+    let body: serde_json::Value = resp.json().unwrap_or_default();
+    if body.get("error_code").and_then(|v| v.as_str()) == Some("node_token_missing") {
+        return anyhow::anyhow!("Node token not set — run `bot node-token set <token>` first");
     }
-    Ok((bot_dir, index_path))
+    let msg = body.get("error").and_then(|v| v.as_str()).unwrap_or("");
+    anyhow::anyhow!("Failed to {} relay agent: {} {}", action, status, msg)
 }
 
-/// Discord Bot 시작 — 데몬의 ext-process API 경유.
-///
-/// ⚠️ [에이전트 주의] 봇은 데몬이 관리하는 자식 프로세스다.
-///   이 함수에서 직접 spawn하지 않고, 데몬 API에 실행 명령을 위임한다.
-///   데몬이 미실행이면 이 호출도 실패한다.
+/// 릴레이 에이전트 시작 (POST /api/relay/agent/start)
 pub fn start_bot() -> anyhow::Result<String> {
-    let base = config::get_ipc_base_url();
-    let token_ipc = load_ipc_token();
-
-    let (discord_token, mode, lang, bot_config) = load_bot_startup_config()?;
-    let client = build_daemon_client(30)?;
-    let node_path = request_node_path(&client, &base, &token_ipc)?;
-    let (bot_dir, index_path) = find_bot_paths()?;
-    let env_vars = build_bot_env(&base, &lang, &discord_token);
-
-    let body = serde_json::json!({
-        "command": node_path,
-        "args": [index_path.to_string_lossy()],
-        "cwd": bot_dir.to_string_lossy(),
-        "env": serde_json::Value::Object(env_vars),
-        "meta": { "mode": mode },
-    });
-
-    let req = with_token(
-        client.post(format!("{}/api/ext-process/discord-bot/start", base)).json(&body),
-        &token_ipc,
-    );
-    let resp = req.send()?;
-
+    let resp = agent_request(reqwest::Method::POST, "/api/relay/agent/start", 10)?;
     if resp.status().is_success() {
-        let prefix = bot_config.get("prefix").and_then(|v| v.as_str()).unwrap_or("!saba");
-        Ok(format!("✓ Discord bot started (prefix: {})", prefix))
+        Ok("✓ Relay agent started".into())
     } else {
-        let status = resp.status();
-        let body_text = resp.text().unwrap_or_default();
-        anyhow::bail!("Failed to start bot: {} {}", status, body_text)
+        Err(agent_error("start", resp))
     }
 }
 
-/// Discord Bot 종료 — 데몬 API 경유 (POST /api/ext-process/discord-bot/stop)
+/// 릴레이 에이전트 중지 (POST /api/relay/agent/stop)
 pub fn stop_bot() -> anyhow::Result<String> {
-    let base = config::get_ipc_base_url();
-    let token_ipc = load_ipc_token();
-
-    let client = build_daemon_client(5)?;
-
-    let req = with_token(
-        client.post(format!("{}/api/ext-process/discord-bot/stop", base)).json(&serde_json::json!({})),
-        &token_ipc,
-    );
-    let resp = req.send()?;
-
+    let resp = agent_request(reqwest::Method::POST, "/api/relay/agent/stop", 5)?;
     if resp.status().is_success() {
-        Ok("✓ Discord bot stopped".into())
+        Ok("✓ Relay agent stopped".into())
     } else {
-        let status = resp.status();
-        let body_text = resp.text().unwrap_or_default();
-        anyhow::bail!("Failed to stop bot: {} {}", status, body_text)
+        Err(agent_error("stop", resp))
     }
 }
 
-/// Discord Bot 실행 상태 확인 — 데몬 API 경유 (GET /api/ext-process/discord-bot/status)
-pub fn check_bot_running() -> bool {
-    let base = config::get_ipc_base_url();
-    let token_ipc = load_ipc_token();
-
-    let client = match build_daemon_client(2) {
-        Ok(c) => c,
-        Err(_) => return false,
-    };
-
-    with_token(client.get(format!("{}/api/ext-process/discord-bot/status", base)), &token_ipc)
-        .send()
+/// 릴레이 에이전트 상태 (GET /api/relay/agent). 데몬 미실행이면 None.
+pub fn bot_agent_status() -> Option<serde_json::Value> {
+    agent_request(reqwest::Method::GET, "/api/relay/agent", 2)
         .ok()
         .filter(|r| r.status().is_success())
         .and_then(|r| r.json::<serde_json::Value>().ok())
-        .and_then(|v| v.get("status").and_then(|s| s.as_str().map(|s| s == "running")))
-        .unwrap_or(false)
 }

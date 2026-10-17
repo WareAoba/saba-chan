@@ -113,15 +113,9 @@ function App() {
     const _settingsReady = useSettingsStore((s) => s.settingsReady);
 
     // ── Discord Store (Zustand) ──────────────────────────────
-    const discordToken = useDiscordStore((s) => s.discordToken);
     const discordPrefix = useDiscordStore((s) => s.discordPrefix);
-    const discordAutoStart = useDiscordStore((s) => s.discordAutoStart);
     const discordModuleAliases = useDiscordStore((s) => s.discordModuleAliases);
     const discordCommandAliases = useDiscordStore((s) => s.discordCommandAliases);
-    const discordMusicEnabled = useDiscordStore((s) => s.discordMusicEnabled);
-    const discordMusicChannelId = useDiscordStore((s) => s.discordMusicChannelId);
-    const discordMusicUISettings = useDiscordStore((s) => s.discordMusicUISettings);
-    const discordBotMode = useDiscordStore((s) => s.discordBotMode);
     const discordCloudRelayUrl = useDiscordStore((s) => s.discordCloudRelayUrl);
     const discordCloudHostId = useDiscordStore((s) => s.discordCloudHostId);
     const nodeSettings = useDiscordStore((s) => s.nodeSettings);
@@ -415,34 +409,13 @@ function App() {
                 consoleBufferRef.current = settings.consoleBufferSize ?? 2000;
             }
 
-            // Load bot config into discord store (token/autoStart는 bot-config이 SSOT)
+            // Load bot config into discord store
             await useDiscordStore.getState().loadConfig();
-
-            // ── 마이그레이션: settings.json → bot-config.json ──
-            // 기존 settings.json에 discordToken/discordAutoStart가 있고
-            // bot-config에는 아직 없으면 이전
-            if (settings) {
-                const discordState = useDiscordStore.getState();
-                const needsMigration =
-                    (settings.discordToken && !discordState.discordToken) ||
-                    (settings.discordAutoStart && !discordState.discordAutoStart);
-                if (needsMigration) {
-                    console.log('[Migration] Migrating discordToken/autoStart from settings to bot-config');
-                    useDiscordStore.getState().update({
-                        discordToken: settings.discordToken || discordState.discordToken || '',
-                        _discordTokenRef: settings.discordToken || discordState._discordTokenRef || '',
-                        discordAutoStart: settings.discordAutoStart ?? discordState.discordAutoStart ?? false,
-                    });
-                    // 즉시 bot-config에 저장
-                    await useDiscordStore.getState().saveConfig();
-                }
-            }
 
             useDiscordStore.getState().update({ _settingsReady: true });
 
-            // Start status polling and listeners
+            // Start relay agent status polling
             useDiscordStore.getState().startStatusPolling();
-            useDiscordStore.getState().initListeners();
         };
         loadSettings();
 
@@ -457,20 +430,6 @@ function App() {
         setDiscordI18n(t);
         setServerI18n(t, i18n);
     }, [t, i18n]);
-
-    // Discord auto-start: monitor botStatusReady (Zustand v5 single-listener)
-    // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only Zustand subscribe
-    useEffect(() => {
-        const unsub = useDiscordStore.subscribe((state, prevState) => {
-            if (
-                state.botStatusReady !== prevState.botStatusReady ||
-                state._settingsReady !== prevState._settingsReady
-            ) {
-                useDiscordStore.getState().tryAutoStart();
-            }
-        });
-        return unsub;
-    }, []);
 
     // Finalize loading screen when server initialization completes
     // biome-ignore lint/correctness/useExhaustiveDependencies: setters are stable
@@ -654,20 +613,8 @@ function App() {
         onClose: requestDiscordClose,
         isClosing: isDiscordClosing,
         discordBotStatus,
-        discordToken,
-        setDiscordToken: (val) => useDiscordStore.getState().setDiscordToken(val),
         discordPrefix,
         setDiscordPrefix: (val) => useDiscordStore.getState().update({ discordPrefix: val }),
-        discordAutoStart,
-        setDiscordAutoStart: (val) => useDiscordStore.getState().update({ discordAutoStart: val }),
-        discordMusicEnabled,
-        setDiscordMusicEnabled: (val) => useDiscordStore.getState().update({ discordMusicEnabled: val }),
-        discordMusicChannelId,
-        setDiscordMusicChannelId: (val) => useDiscordStore.getState().update({ discordMusicChannelId: val }),
-        discordMusicUISettings,
-        setDiscordMusicUISettings: (val) => useDiscordStore.getState().update({ discordMusicUISettings: val }),
-        discordBotMode,
-        setDiscordBotMode: (val) => useDiscordStore.getState().switchMode(val),
         discordCloudRelayUrl,
         setDiscordCloudRelayUrl: (val) => useDiscordStore.getState().update({ discordCloudRelayUrl: val }),
         discordCloudHostId,

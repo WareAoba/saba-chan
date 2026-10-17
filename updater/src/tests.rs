@@ -2,137 +2,12 @@
 //!
 //! ## 테스트 시나리오
 //! 1. 버전 페치: Mock 서버에서 릴리스 정보 가져오기
-//! 2. 큐 처리: 다수 다운로드 순차 처리
-//! 3. 에러 복구: 네트워크 끊김 시 재시도
-//! 4. 포그라운드 적용: 파일 교체 플로우
+//! 2. 에러 복구: 네트워크 끊김 시 재시도
 
 use crate::{
     Component, UpdateConfig, UpdateManager,
-    DownloadQueue, DownloadRequest,
     UpdaterError, RecoveryStrategy, NetworkChecker,
-    BackgroundWorker, WorkerEvent,
 };
-use std::sync::Arc;
-use tokio::sync::RwLock;
-
-/// 테스트용 설정 생성
-fn test_config(mock_url: &str) -> UpdateConfig {
-    UpdateConfig {
-        enabled: true,
-        check_interval_hours: 1,
-        auto_download: false,
-        auto_apply: false,
-        github_owner: "test-owner".to_string(),
-        github_repo: "saba-chan".to_string(),
-        include_prerelease: true,
-        install_root: Some("./test_install".to_string()),
-        api_base_url: Some(mock_url.to_string()),
-    }
-}
-
-// ═══════════════════════════════════════════════════════
-// 테스트 1: 버전 페치
-// ═══════════════════════════════════════════════════════
-
-#[tokio::test]
-#[ignore = "requires mock server"]
-async fn test_version_fetch() {
-    let mock_url = "http://127.0.0.1:9876";
-    let config = test_config(mock_url);
-    let mut manager = UpdateManager::new(config, "./modules");
-
-    let result = manager.check_for_updates().await;
-    
-    match result {
-        Ok(status) => {
-            println!("✓ 버전 체크 성공");
-            println!("  컴포넌트 수: {}", status.components.len());
-            for comp in &status.components {
-                println!(
-                    "  - {}: {} → {:?} (업데이트: {})",
-                    comp.component.display_name(),
-                    comp.current_version,
-                    comp.latest_version,
-                    comp.update_available
-                );
-            }
-            assert!(!status.components.is_empty(), "컴포넌트가 있어야 함");
-        }
-        Err(e) => {
-            println!("✗ 버전 체크 실패: {}", e);
-            panic!("버전 체크 실패");
-        }
-    }
-}
-
-// ═══════════════════════════════════════════════════════
-// 테스트 2: 큐 처리
-// ═══════════════════════════════════════════════════════
-
-#[tokio::test]
-async fn test_queue_priority_ordering() {
-    let queue = DownloadQueue::new();
-
-    // 낮은 우선순위 먼저 추가
-    queue.enqueue(DownloadRequest::new(Component::Module("low1".into()))).await;
-    queue.enqueue(DownloadRequest::new(Component::Module("low2".into()))).await;
-    
-    // 높은 우선순위 추가 (앞으로 가야 함)
-    queue.enqueue(
-        DownloadRequest::new(Component::Module("high".into()))
-            .with_priority(10)
-    ).await;
-
-    // 중간 우선순위 추가
-    queue.enqueue(
-        DownloadRequest::new(Component::Module("medium".into()))
-            .with_priority(5)
-    ).await;
-
-    let status = queue.get_status().await;
-    assert_eq!(status.pending, 4);
-    
-    println!("✓ 큐 우선순위 정렬 테스트 통과");
-}
-
-#[tokio::test]
-async fn test_queue_batch_enqueue() {
-    let queue = DownloadQueue::new();
-
-    let requests = vec![
-        DownloadRequest::new(Component::Cli),
-        DownloadRequest::new(Component::Gui),
-        DownloadRequest::new(Component::Module("minecraft".into())),
-        DownloadRequest::new(Component::Module("palworld".into())),
-    ];
-
-    queue.enqueue_batch(requests).await;
-    
-    let status = queue.get_status().await;
-    assert_eq!(status.pending, 4);
-    
-    println!("✓ 큐 배치 추가 테스트 통과");
-}
-
-#[tokio::test]
-async fn test_queue_pause_resume() {
-    let queue = DownloadQueue::new();
-    
-    // 큐에 항목 추가
-    queue.enqueue(DownloadRequest::new(Component::Cli)).await;
-    
-    // 일시정지
-    queue.pause().await;
-    let status = queue.get_status().await;
-    assert!(status.paused);
-    
-    // 재개
-    queue.resume().await;
-    let status = queue.get_status().await;
-    assert!(!status.paused);
-    
-    println!("✓ 큐 일시정지/재개 테스트 통과");
-}
 
 // ═══════════════════════════════════════════════════════
 // 테스트 3: 에러 복구
@@ -483,44 +358,6 @@ fn test_download_interrupted_progress_data() {
 // 테스트 4: 백그라운드 워커
 // ═══════════════════════════════════════════════════════
 
-#[tokio::test]
-#[ignore = "requires mock server"]
-async fn test_background_worker() {
-    let mock_url = "http://127.0.0.1:9876";
-    let config = test_config(mock_url);
-    let manager = Arc::new(RwLock::new(UpdateManager::new(config, "./modules")));
-
-    let worker = BackgroundWorker::spawn(manager.clone());
-    let mut rx = worker.subscribe();
-
-    // 체크 요청
-    worker.check_now().await.expect("check should succeed");
-
-    // 이벤트 수신 (타임아웃 포함)
-    let event = tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        rx.recv()
-    ).await;
-
-    match event {
-        Ok(Ok(WorkerEvent::CheckStarted)) => {
-            println!("✓ 체크 시작 이벤트 수신");
-        }
-        Ok(Ok(WorkerEvent::CheckCompleted { updates_available, .. })) => {
-            println!("✓ 체크 완료 이벤트 수신: {} 업데이트", updates_available);
-        }
-        Ok(Ok(WorkerEvent::CheckFailed { error })) => {
-            println!("✗ 체크 실패: {}", error);
-        }
-        _ => {
-            println!("✗ 예상치 못한 이벤트 또는 타임아웃");
-        }
-    }
-
-    // 워커 종료
-    worker.shutdown().await.expect("shutdown should succeed");
-}
-
 // ═══════════════════════════════════════════════════════
 // 테스트 5: 유틸리티
 // ═══════════════════════════════════════════════════════
@@ -577,50 +414,6 @@ async fn test_network_checker_default_has_endpoints() {
 }
 
 // ═══════════════════════════════════════════════════════
-// 테스트 7: 큐 심층 테스트
-// ═══════════════════════════════════════════════════════
-
-#[tokio::test]
-async fn test_queue_clear() {
-    let queue = DownloadQueue::new();
-    queue.enqueue(DownloadRequest::new(Component::Cli)).await;
-    queue.enqueue(DownloadRequest::new(Component::Gui)).await;
-    queue.enqueue(DownloadRequest::new(Component::Module("mc".into()))).await;
-
-    let status = queue.get_status().await;
-    assert_eq!(status.pending, 3);
-
-    queue.clear().await;
-    let status = queue.get_status().await;
-    assert_eq!(status.pending, 0, "clear should empty the queue");
-}
-
-#[tokio::test]
-async fn test_queue_with_callback() {
-    let queue = DownloadQueue::new();
-    let req = DownloadRequest::new(Component::Cli)
-        .with_callback("cb-123".to_string());
-    assert_eq!(req.callback_id.as_deref(), Some("cb-123"));
-    queue.enqueue(req).await;
-
-    let status = queue.get_status().await;
-    assert_eq!(status.pending, 1);
-}
-
-#[tokio::test]
-async fn test_queue_empty_status() {
-    let queue = DownloadQueue::new();
-    let status = queue.get_status().await;
-    assert_eq!(status.pending, 0);
-    assert!(!status.paused);
-    assert!(status.current.is_none());
-}
-
-// ═══════════════════════════════════════════════════════
-// 메인 — 모든 테스트 실행
-// ═══════════════════════════════════════════════════════
-
-// ═══════════════════════════════════════════════════════
 // 테스트 8: 의존성 구조체 및 검증
 // ═══════════════════════════════════════════════════════
 
@@ -662,10 +455,10 @@ fn test_dependency_issue_not_installed() {
     use crate::DependencyIssue;
 
     let issue = DependencyIssue {
-        required_component: "discord_bot".to_string(),
+        required_component: "gui".to_string(),
         required_version: ">=0.1.0".to_string(),
         installed_version: None,
-        message: "cli requires discord_bot >=0.1.0 but not installed is installed".to_string(),
+        message: "cli requires gui >=0.1.0 but not installed is installed".to_string(),
     };
     assert!(issue.installed_version.is_none());
 }
@@ -704,32 +497,33 @@ fn test_dependency_check_serde_roundtrip() {
 }
 
 #[test]
-#[test]
 fn test_component_info_requires_field() {
-    use crate::github::ComponentInfo;
+    use crate::ManifestComponent;
 
     let json = r#"{
         "version": "0.3.0",
         "asset": "gui-windows-x64.zip",
+        "sha256": "00",
+        "url": "https://r2.example/gui.zip",
         "requires": {
             "saba-core": ">=0.3.0",
-            "discord_bot": ">=0.1.0"
+            "cli": ">=0.1.0"
         }
     }"#;
-    let info: ComponentInfo = serde_json::from_str(json).unwrap();
+    let info: ManifestComponent = serde_json::from_str(json).unwrap();
     assert_eq!(info.version, "0.3.0");
     let requires = info.requires.unwrap();
     assert_eq!(requires.len(), 2);
     assert_eq!(requires.get("saba-core").unwrap(), ">=0.3.0");
-    assert_eq!(requires.get("discord_bot").unwrap(), ">=0.1.0");
+    assert_eq!(requires.get("cli").unwrap(), ">=0.1.0");
 }
 
 #[test]
 fn test_component_info_requires_empty_by_default() {
-    use crate::github::ComponentInfo;
+    use crate::ManifestComponent;
 
-    let json = r#"{"version": "0.1.0"}"#;
-    let info: ComponentInfo = serde_json::from_str(json).unwrap();
+    let json = r#"{"version": "0.1.0", "asset": "a.zip", "sha256": "00", "url": "https://r2.example/a.zip"}"#;
+    let info: ManifestComponent = serde_json::from_str(json).unwrap();
     assert!(info.requires.is_none());
 }
 
@@ -782,7 +576,6 @@ fn test_component_apply_priority_categories() {
     let module = Component::Module("minecraft".to_string());
     let extension = Component::Extension("docker".to_string());
     let locales = Component::Locales;
-    let discord_bot = Component::DiscordBot;
     let core_daemon = Component::CoreDaemon;
     let updater = Component::Updater;
 
@@ -805,18 +598,11 @@ fn test_component_apply_priority_categories() {
         "Updater가 모듈보다 먼저 적용"
     );
 
-    // 모듈/익스텐션은 DiscordBot보다 먼저
+    // 모듈/익스텐션은 CoreDaemon보다 먼저
     assert!(
         UpdateManager::component_apply_priority_for_test(&module) <
-        UpdateManager::component_apply_priority_for_test(&discord_bot),
-        "모듈은 DiscordBot보다 먼저 적용"
-    );
-
-    // CoreDaemon은 DiscordBot보다 후순위
-    assert!(
-        UpdateManager::component_apply_priority_for_test(&discord_bot) <
         UpdateManager::component_apply_priority_for_test(&core_daemon),
-        "DiscordBot은 CoreDaemon보다 먼저 적용"
+        "모듈은 CoreDaemon보다 먼저 적용"
     );
 
     println!("✓ 컴포넌트 적용 우선순위 카테고리 테스트 통과");
@@ -858,4 +644,134 @@ mod run_all {
         println!("✓ 모든 유닛 테스트 통과!");
         println!("═══════════════════════════════════════\n");
     }
+}
+
+#[test]
+fn test_extract_zip_rejects_paths_outside_target() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let zip_path = tmp.path().join("evil.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+        let opts = zip::write::FileOptions::default();
+        zw.start_file("ok/inner.txt", opts).unwrap();
+        zw.write_all(b"fine").unwrap();
+        zw.start_file("../escaped.txt", opts).unwrap();
+        zw.write_all(b"bad").unwrap();
+        zw.finish().unwrap();
+    }
+    let target = tmp.path().join("out");
+    std::fs::create_dir_all(&target).unwrap();
+
+    let result = crate::extract_zip(&zip_path, &target, |_| Ok(()));
+    assert!(result.is_err(), "archive with ../ entry must be rejected");
+    assert!(!tmp.path().join("escaped.txt").exists());
+}
+
+#[test]
+fn test_extract_zip_writes_nested_files() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let zip_path = tmp.path().join("ok.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+        let opts = zip::write::FileOptions::default();
+        zw.add_directory("a/", opts).unwrap();
+        zw.start_file("a/b/c.txt", opts).unwrap();
+        zw.write_all(b"hello").unwrap();
+        zw.finish().unwrap();
+    }
+    let target = tmp.path().join("out");
+    let mut seen = Vec::new();
+    crate::extract_zip(&zip_path, &target, |p| {
+        seen.push(p.to_path_buf());
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(std::fs::read_to_string(target.join("a/b/c.txt")).unwrap(), "hello");
+    assert_eq!(seen, vec![target.join("a/b/c.txt")]);
+}
+
+// C13: 모듈 폴더 교체가 실패하면 원래 내용으로 되돌린다
+#[test]
+fn replace_dir_restores_backup_when_extract_fails() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+    std::fs::create_dir_all(&manager.staging_dir).unwrap();
+    let target = tmp.path().join("modules").join("game");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::write(target.join("module.toml"), "old").unwrap();
+    let bad = manager.staging_dir.join("module-game.zip");
+    std::fs::write(&bad, b"not a zip").unwrap();
+
+    assert!(manager.replace_dir(&target, &bad, "game_backup").is_err());
+    assert_eq!(std::fs::read_to_string(target.join("module.toml")).unwrap(), "old");
+}
+
+// C13: 받은 뒤 바뀐 파일은 적용하지 않는다
+#[test]
+fn staged_file_is_rechecked_before_apply() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("a.zip");
+    std::fs::write(&file, b"abc").unwrap();
+    let mut comp = crate::ComponentVersion {
+        component: Component::Locales,
+        current_version: "0.1.0".into(),
+        latest_version: Some("0.2.0".into()),
+        update_available: true,
+        download_url: None,
+        asset_name: None,
+        release_notes: None,
+        published_at: None,
+        downloaded: true,
+        downloaded_path: Some(file.to_string_lossy().to_string()),
+        staged_sha256: Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into()),
+        installed: true,
+    };
+    assert!(UpdateManager::verified_staged_path(&comp).is_ok());
+    comp.staged_sha256 = Some("0".repeat(64));
+    assert!(UpdateManager::verified_staged_path(&comp).is_err());
+}
+
+#[test]
+fn same_path_ignores_dot_components() {
+    let dir = std::path::Path::new("/opt/saba");
+    assert!(super::same_path(&dir.join("saba-core.exe"), &dir.join("./saba-core.exe")));
+    assert!(!super::same_path(&dir.join("a.exe"), &dir.join("b.exe")));
+}
+
+#[test]
+fn extension_versions_come_from_manifest_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let ext = dir.path().join("ue4_ini");
+    std::fs::create_dir_all(&ext).unwrap();
+    std::fs::write(ext.join("manifest.json"), r#"{"id": "ue4-ini", "version": "0.2.0"}"#).unwrap();
+    assert_eq!(super::read_extension_version(&ext.join("manifest.json")), Some(("ue4-ini".into(), "0.2.0".into())));
+}
+
+// 업데이트가 끝나면 (실패한 것까지) 받아 둔 압축 파일과 .exe.old 백업이 남지 않는다
+#[test]
+fn finished_update_leaves_no_staged_archives_or_old_binaries() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.staging_dir).unwrap();
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    for f in ["pending.json", "saba-chan-gui-windows-x64.zip", "locales.zip.part"] {
+        std::fs::write(manager.staging_dir.join(f), b"x").unwrap();
+    }
+    for f in ["saba-core.exe.old", "saba-chan-gui.exe.old", "notepad.exe.old", "saba-core.exe"] {
+        std::fs::write(manager.install_root.join(f), b"x").unwrap();
+    }
+
+    manager.clear_pending_manifest();
+    manager.cleanup_old_files();
+
+    assert_eq!(std::fs::read_dir(&manager.staging_dir).unwrap().count(), 0);
+    let mut left: Vec<_> = std::fs::read_dir(&manager.install_root).unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    left.sort();
+    assert_eq!(left, vec!["notepad.exe.old", "saba-core.exe"]);
 }

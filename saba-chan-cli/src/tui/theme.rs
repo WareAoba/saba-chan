@@ -5,7 +5,6 @@ use ratatui::style::{Color, Modifier, Style};
 /// 모든 TUI 스타일을 중앙 관리하는 네임스페이스
 pub struct Theme;
 
-#[allow(dead_code)]
 impl Theme {
     // ─── 상태 표시 ───
     pub fn running()  -> Style { Style::default().fg(Color::Green).add_modifier(Modifier::BOLD) }
@@ -55,10 +54,6 @@ impl Theme {
     pub fn console_input() -> Style { Style::default().fg(Color::Yellow) }
 
     // ─── 자동완성 팝업 ───
-    pub fn autocomplete_selected() -> Style { Style::default().bg(Color::DarkGray).fg(Color::Cyan).add_modifier(Modifier::BOLD) }
-    pub fn autocomplete_normal()   -> Style { Style::default().fg(Color::White) }
 
     // ─── 인라인 입력/선택 ───
-    pub fn inline_border()  -> Style { Style::default().fg(Color::Cyan) }
-    pub fn inline_prompt()  -> Style { Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD) }
 }

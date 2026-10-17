@@ -5,8 +5,12 @@
 //!
 //! ## 실행
 //! ```text
-//! saba-chan-updater --apply [--relaunch <exe> [extra...]]
+//! saba-chan-updater --apply [--wait-pid <pid>] --launch-token <t> [--relaunch <exe> [extra...]]
 //! ```
+//!
+//! 보통 데몬이 띄운다(`POST /api/updates/launch-updater`, U7). `--wait-pid`는 데몬 PID로,
+//! 데몬이 끝날 때까지(최대 30초) 기다린 뒤 적용한다. 결과는 성공·실패 모두
+//! 완료 마커(`update-complete.json`)에 남고, 다음 데몬이 `/api/updates/last-result`로 보여준다.
 //!
 //! ## 데이터 소스
 //! - `%APPDATA%/saba-chan/updates/apply-targets.json` — 적용 대상 컴포넌트
@@ -81,6 +85,7 @@ async fn start_apply(
             .map_err(|e| {
                 let msg = format!("Failed to load manifest: {}", e);
                 emit_progress(&app, "error", &msg, 0, &[]);
+                UpdateCompletionMarker::failure(msg.clone()).save().ok();
                 msg
             })?
     };
@@ -98,6 +103,7 @@ async fn start_apply(
 
     // 3. 적용
     let mut applied = Vec::new();
+    let mut failed: Vec<String> = Vec::new();
 
     if target_keys.is_empty() {
         // apply-targets.json이 없거나 비어있으면 전체 적용
@@ -109,6 +115,7 @@ async fn start_apply(
             Err(e) => {
                 let msg = format!("Apply failed: {}", e);
                 emit_progress(&app, "error", &msg, 0, &[]);
+                UpdateCompletionMarker::failure(msg.clone()).save().ok();
                 return Err(msg);
             }
         }
@@ -129,23 +136,28 @@ async fn start_apply(
                 }
                 Ok(result) => {
                     tracing::warn!("[Apply] {} failed: {}", key, result.message);
+                    failed.push(format!("{}: {}", key, result.message));
                 }
                 Err(e) => {
                     tracing::error!("[Apply] {} error: {}", key, e);
+                    failed.push(format!("{}: {}", key, e));
                 }
             }
         }
     }
 
-    // 4. 완료 마커 저장
-    if !applied.is_empty() {
-        let marker = UpdateCompletionMarker::success(applied.clone());
-        let marker = UpdateCompletionMarker {
-            message: Some(format!("{} updates applied: {}", applied.len(), applied.join(", "))),
-            ..marker
-        };
-        marker.save().ok();
-    }
+    // 4. 완료 마커 저장 — 성공·실패 모두 남겨 "됐는지 안 됐는지" 볼 수 있게 한다
+    let marker = UpdateCompletionMarker {
+        message: Some(if failed.is_empty() {
+            format!("{} updates applied: {}", applied.len(), applied.join(", "))
+        } else {
+            format!("{} applied, {} failed", applied.len(), failed.len())
+        }),
+        success: failed.is_empty(),
+        failed: failed.clone(),
+        ..UpdateCompletionMarker::success(applied.clone())
+    };
+    marker.save().ok();
     mgr.clear_pending_manifest();
 
     emit_progress(&app, "complete", &{
@@ -212,8 +224,8 @@ async fn get_theme() -> Result<String, String> {
 /// 업데이트 완료 마커 확인 (프론트엔드 호환용)
 #[tauri::command]
 async fn check_after_update() -> Result<serde_json::Value, String> {
+    // 지우지 않는다: 다음 데몬이 /api/updates/last-result로 보여 주고, 클라이언트가 확인하면 지운다
     if let Some(marker) = UpdateCompletionMarker::load() {
-        UpdateCompletionMarker::clear().ok();
         Ok(serde_json::json!({
             "updated": marker.success,
             "components": marker.updated_components,
@@ -237,12 +249,13 @@ fn emit_progress(app: &AppHandle, step: &str, message: &str, percent: i32, appli
     }).ok();
 }
 
-/// settings.json에서 키 값 읽기
+/// GUI 설정(`config.json`의 `gui`)에서 키 값 읽기
 fn load_setting(key: &str) -> Option<String> {
-    let path = constants::resolve_settings_path();
-    let content = std::fs::read_to_string(path).ok()?;
-    let value: serde_json::Value = serde_json::from_str(&content).ok()?;
-    value.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
+    saba_chan_updater_lib::config_file::ConfigFile::default_location()
+        .section("gui")
+        .get(key)
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
 }
 
 fn normalize_tag(input: &str) -> Option<String> {
@@ -255,12 +268,9 @@ fn resolve_install_root_from_exe() -> Option<PathBuf> {
     std::env::current_exe().ok()?.parent().map(|p| p.to_path_buf())
 }
 
-/// GUI exe 경로 추론 (install_root/saba-chan-gui.exe)
+/// GUI exe 경로 추론 (install_root 바로 안)
 fn resolve_gui_exe() -> Option<PathBuf> {
-    let root = resolve_install_root_from_exe()?;
-    let name = if cfg!(windows) { "saba-chan-gui.exe" } else { "saba-chan-gui" };
-    let path = root.join(name);
-    if path.exists() { Some(path) } else { None }
+    saba_chan_updater_lib::find_gui_exe(&resolve_install_root_from_exe()?)
 }
 
 fn resolve_modules_dir() -> String {
@@ -308,21 +318,32 @@ fn spawn_detached(cmd: &str, extra_args: &[String]) -> Result<(), String> {
     }
     command.arg("--after-update");
 
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        // DETACHED_PROCESS | CREATE_BREAKAWAY_FROM_JOB | CREATE_NEW_PROCESS_GROUP
-        command.creation_flags(0x00000008 | 0x01000000 | 0x00000200);
-    }
-
     command
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| format!("Failed to spawn: {}", e))?;
+        .stderr(std::process::Stdio::null());
 
-    Ok(())
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+        // 업데이터를 띄운 쪽의 Job Object에서 빠져나온다. 탈출을 허용하지 않는 Job이면 (os error 5) 그냥 띄운다
+        command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB);
+        match command.spawn() {
+            Err(e) if e.raw_os_error() == Some(5) => {
+                tracing::warn!("[Apply] Job breakaway denied; spawning inside the job");
+                command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+                command.spawn().map(|_| ()).map_err(|e| format!("Failed to spawn: {}", e))
+            }
+            other => other.map(|_| ()).map_err(|e| format!("Failed to spawn: {}", e)),
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        command.spawn().map(|_| ()).map_err(|e| format!("Failed to spawn: {}", e))
+    }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -383,8 +404,47 @@ pub fn run() {
 
     tracing::info!("[Apply] Relaunch: {:?} {:?}", relaunch_exe, relaunch_extra);
 
-    // GUI 프로세스 종료 대기
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    // 데몬이 끊어 준 실행 표가 있어야 적용한다 (한 번만 쓴다).
+    // 표를 모르는 옛 데몬이 띄웠으면(표 인자 자체가 없음) 전환 경로로 받아 준다
+    use saba_chan_updater_lib::launch_ticket;
+    let token = after_apply
+        .iter()
+        .position(|a| a == "--launch-token")
+        .filter(|&i| relaunch_pos.is_none_or(|r| i < r))
+        .and_then(|i| after_apply.get(i + 1))
+        .cloned();
+    let installed = saba_chan_updater_lib::UpdateManager::load_installed_manifest();
+    let accepted = match token {
+        Some(t) => launch_ticket::redeem(&saba_chan_updater_lib::constants::resolve_staging_dir(), &t),
+        None => {
+            launch_ticket::core_predates_tickets(installed.get("saba-core").map(String::as_str))
+                && launch_ticket::claim_legacy_apply(&saba_chan_updater_lib::constants::resolve_staging_dir())
+        }
+    };
+    if !accepted {
+        tracing::error!("[Apply] Missing or stale launch token; refusing to apply");
+        eprintln!("이 업데이터는 사바쨩이 업데이트를 적용할 때만 실행됩니다.");
+        std::process::exit(1);
+    }
+
+    // 띄운 쪽(데몬) 종료 대기. PID를 모르면 예전처럼 잠깐만 기다린다.
+    let wait_pid = after_apply
+        .iter()
+        .position(|a| a == "--wait-pid")
+        .and_then(|i| after_apply.get(i + 1))
+        .and_then(|p| p.parse::<u32>().ok());
+    match wait_pid {
+        Some(pid) => {
+            for _ in 0..60 {
+                if !saba_chan_updater_lib::ProcessChecker::is_pid_running(pid) {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+            tracing::info!("[Apply] Waited for PID {} to exit", pid);
+        }
+        None => std::thread::sleep(std::time::Duration::from_millis(500)),
+    }
 
     let apply_config = ApplyConfig { relaunch_exe, relaunch_extra };
 

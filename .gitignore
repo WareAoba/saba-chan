@@ -21,7 +21,6 @@ saba-chan-gui/build/
 saba-chan-gui/dist/
 saba-chan-gui/electron-dist/
 saba-chan-gui/extensions/*.py
-discord_bot/node_modules/
 
 # CLI
 saba-chan-cli/target/
@@ -31,7 +30,6 @@ saba-chan-cli/.rustc_info.json
 .env
 .env.local
 .env.*.local
-discord_bot/.env
 
 # Relay-Server
 server-chan/
@@ -45,8 +43,6 @@ server-chan/
 resources/
 
 target/
-scripts/
-!.github/scripts/
 
 # OS
 .DS_Store
@@ -80,7 +76,13 @@ coverage/
 *.profraw
 *.profdata
 saba-chan-gui/coverage/
-discord_bot/coverage/
 
 # GitHub Actions
 .github/cache/
+# Tauri가 Linux 빌드 때 생성하는 스키마
+**/src-tauri/gen/schemas/linux-schema.json
+
+# 테스트 실행 산출물
+vitest-result.txt
+test_config.json
+scripts/.mock-assets/

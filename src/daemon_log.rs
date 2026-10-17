@@ -105,10 +105,11 @@ impl DaemonLogBuffer {
         }
     }
 
-    /// Number of entries currently in the buffer.
-    #[allow(dead_code)]
-    pub fn len(&self) -> usize {
-        self.inner.lock().unwrap_or_else(|e| e.into_inner()).len()
+}
+
+impl Default for DaemonLogBuffer {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -290,8 +291,8 @@ mod tests {
             buf.push("info".into(), "test".into(), format!("line {}", i));
         }
 
-        assert_eq!(buf.len(), 5);
         let entries = buf.get_since(None, None);
+        assert_eq!(entries.len(), 5);
         // IDs 6-10 remain (oldest evicted)
         assert_eq!(entries[0].id, 6);
         assert_eq!(entries[4].id, 10);

@@ -8,7 +8,7 @@
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     Json,
 };
 use hmac::{Hmac, Mac};
@@ -21,7 +21,7 @@ use super::super::IPCServer;
 type HmacSha256 = Hmac<Sha256>;
 
 /// Percent-encode a URL path segment (RFC 3986 unreserved chars only)
-fn encode_path_segment(s: &str) -> String {
+pub(crate) fn encode_path_segment(s: &str) -> String {
     use std::fmt::Write;
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
@@ -35,11 +35,35 @@ fn encode_path_segment(s: &str) -> String {
 }
 
 /// Resolve relay server URL (override via query param, fallback to default)
-fn resolve_relay_url(relay_url: Option<&str>) -> String {
+pub(crate) fn resolve_relay_url(relay_url: Option<&str>) -> String {
     let url = relay_url
         .filter(|u| !u.is_empty())
         .unwrap_or("https://saba-chan.online");
     url.trim_end_matches('/').to_string()
+}
+
+/// 노드 토큰을 실어 보내거나 받는(페어링) 요청의 릴레이 주소. 설정한 릴레이(없으면 기본)만 쓴다:
+/// `?relayUrl=`로 아무 호스트나 넣어 토큰을 빼내지 못하게. 요청한 주소가 설정과 같거나
+/// 루프백(모의 릴레이 시험)일 때만 그것을 따른다
+pub(crate) fn signed_relay_url(configured: &str, requested: Option<&str>) -> String {
+    let configured = resolve_relay_url(Some(configured.trim()));
+    let Some(requested) = requested.map(str::trim).filter(|u| !u.is_empty()) else { return configured };
+    let requested = resolve_relay_url(Some(requested));
+    let loopback = reqwest::Url::parse(&requested)
+        .ok()
+        .and_then(|u| u.host_str().map(|h| matches!(h, "localhost" | "127.0.0.1" | "[::1]")))
+        .unwrap_or(false);
+    if requested == configured || loopback {
+        requested
+    } else {
+        tracing::warn!("Ignoring relayUrl {} for a signed request; using the configured relay", requested);
+        configured
+    }
+}
+
+async fn signed_base(state: &IPCServer, requested: Option<&str>) -> String {
+    let configured = state.config_store.get_bot_config().await.cloud.relay_url;
+    signed_relay_url(&configured, requested)
 }
 
 /// Create an HTTP client with 5s timeout for relay requests.
@@ -57,14 +81,14 @@ fn relay_client() -> Result<reqwest::Client, reqwest::Error> {
 }
 
 /// Parse a node token (sbn_{nodeId}.{secret}) into (nodeId, secret).
-fn parse_node_token(token: &str) -> Option<(&str, &str)> {
+pub(crate) fn parse_node_token(token: &str) -> Option<(&str, &str)> {
     let rest = token.strip_prefix("sbn_")?;
     let dot = rest.find('.')?;
     Some((&rest[..dot], &rest[dot + 1..]))
 }
 
 /// Load node token from the data directory file (.node_token).
-fn load_node_token() -> Option<String> {
+pub(crate) fn load_node_token() -> Option<String> {
     let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
     let token_path = data_dir.join(".node_token");
     std::fs::read_to_string(&token_path)
@@ -75,7 +99,7 @@ fn load_node_token() -> Option<String> {
 
 /// Generate HMAC-SHA256 signed headers for relay server authentication.
 /// Returns None if no valid node token is available.
-fn signed_headers(
+pub(crate) fn signed_headers(
     method: &str,
     url_path: &str,
     body: Option<&str>,
@@ -114,7 +138,7 @@ fn signed_headers(
 
 /// Apply signed headers to a RequestBuilder. If no node token is available,
 /// the request is sent without authentication.
-fn apply_signed_headers(
+pub(crate) fn apply_signed_headers(
     builder: reqwest::RequestBuilder,
     method: &str,
     url_path: &str,
@@ -138,49 +162,60 @@ pub struct RelayQueryParams {
     relay_url: Option<String>,
 }
 
+// ── 공통: 릴레이로 보내고 답을 그대로 돌려준다 ──
+
+fn error(code: StatusCode, message: String) -> Response {
+    (code, Json(json!({ "error": message }))).into_response()
+}
+
+#[allow(clippy::result_large_err)] // 오류 응답은 드문 경로다
+pub(crate) fn client() -> Result<reqwest::Client, Response> {
+    relay_client().map_err(|e| error(StatusCode::INTERNAL_SERVER_ERROR, format!("HTTP client error: {}", e)))
+}
+
+/// 요청을 보내고 (릴레이의 상태 코드, JSON 본문)을 돌려준다. 본문이 JSON이 아니면 None
+#[allow(clippy::result_large_err)]
+pub(crate) async fn send(req: reqwest::RequestBuilder) -> Result<(StatusCode, Option<Value>), Response> {
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| error(StatusCode::BAD_GATEWAY, format!("Relay connection failed: {}", e)))?;
+    let code = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+    Ok((code, resp.json::<Value>().await.ok()))
+}
+
+/// 서명한 GET을 보내고 답을 전달한다. 본문이 JSON이 아니면 `fallback(상태)`
+async fn signed_get(base: &str, api_path: &str, fallback: impl FnOnce(StatusCode) -> Response) -> Response {
+    let client = match client() {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
+    let url = format!("{}{}", base, api_path);
+    match send(apply_signed_headers(client.get(&url), "GET", api_path, None)).await {
+        Ok((code, Some(data))) => (code, Json(data)).into_response(),
+        Ok((code, None)) => fallback(code),
+        Err(r) => r,
+    }
+}
+
+fn empty_list(_: StatusCode) -> Response {
+    (StatusCode::BAD_GATEWAY, Json(json!([]))).into_response()
+}
+
+fn invalid_response(_: StatusCode) -> Response {
+    error(StatusCode::BAD_GATEWAY, "Invalid relay response".into())
+}
+
 // ── GET /api/relay/host/:host_id/status ──
 
 pub async fn check_host_status(
     Path(host_id): Path<String>,
     Query(params): Query<RelayQueryParams>,
-    State(_state): State<IPCServer>,
-) -> impl IntoResponse {
-    let base = resolve_relay_url(params.relay_url.as_deref());
-    let encoded = encode_path_segment(&host_id);
-    let api_path = format!("/api/hosts/{}", encoded);
-    let url = format!("{}{}", base, api_path);
-
-    let client = match relay_client() {
-        Ok(c) => c,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": format!("HTTP client error: {}", e) })),
-            )
-                .into_response();
-        }
-    };
-
-    let req = apply_signed_headers(client.get(&url), "GET", &api_path, None);
-    match req.send().await {
-        Ok(resp) => {
-            let status = resp.status();
-            let code = StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
-            match resp.text().await {
-                Ok(body) => {
-                    let parsed: Value =
-                        serde_json::from_str(&body).unwrap_or(json!({ "ok": status.is_success() }));
-                    (code, Json(parsed)).into_response()
-                }
-                Err(_) => (code, Json(json!({ "ok": status.is_success() }))).into_response(),
-            }
-        }
-        Err(e) => (
-            StatusCode::BAD_GATEWAY,
-            Json(json!({ "error": format!("Relay connection failed: {}", e) })),
-        )
-            .into_response(),
-    }
+    State(state): State<IPCServer>,
+) -> Response {
+    let base = signed_base(&state, params.relay_url.as_deref()).await;
+    let path = format!("/api/hosts/{}", encode_path_segment(&host_id));
+    signed_get(&base, &path, |code| (code, Json(json!({ "ok": code.is_success() }))).into_response()).await
 }
 
 // ── GET /api/relay/host/:host_id/nodes ──
@@ -188,40 +223,11 @@ pub async fn check_host_status(
 pub async fn list_host_nodes(
     Path(host_id): Path<String>,
     Query(params): Query<RelayQueryParams>,
-    State(_state): State<IPCServer>,
-) -> impl IntoResponse {
-    let base = resolve_relay_url(params.relay_url.as_deref());
-    let encoded = encode_path_segment(&host_id);
-    let api_path = format!("/api/hosts/{}/nodes", encoded);
-    let url = format!("{}{}", base, api_path);
-
-    let client = match relay_client() {
-        Ok(c) => c,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": format!("HTTP client error: {}", e) })),
-            )
-                .into_response();
-        }
-    };
-
-    let req = apply_signed_headers(client.get(&url), "GET", &api_path, None);
-    match req.send().await {
-        Ok(resp) => {
-            let status = resp.status();
-            let code = StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
-            match resp.json::<Value>().await {
-                Ok(data) => (code, Json(data)).into_response(),
-                Err(_) => (StatusCode::BAD_GATEWAY, Json(json!([]))).into_response(),
-            }
-        }
-        Err(e) => (
-            StatusCode::BAD_GATEWAY,
-            Json(json!({ "error": format!("Relay connection failed: {}", e) })),
-        )
-            .into_response(),
-    }
+    State(state): State<IPCServer>,
+) -> Response {
+    let base = signed_base(&state, params.relay_url.as_deref()).await;
+    let path = format!("/api/hosts/{}/nodes", encode_path_segment(&host_id));
+    signed_get(&base, &path, empty_list).await
 }
 
 // ── GET /api/relay/node/:guild_id/members ──
@@ -230,59 +236,50 @@ pub async fn list_host_nodes(
 pub async fn list_node_members(
     Path(guild_id): Path<String>,
     Query(params): Query<RelayQueryParams>,
-    State(_state): State<IPCServer>,
-) -> impl IntoResponse {
-    let base = resolve_relay_url(params.relay_url.as_deref());
-    let client = match relay_client() {
+    State(state): State<IPCServer>,
+) -> Response {
+    let base = signed_base(&state, params.relay_url.as_deref()).await;
+    let client = match client() {
         Ok(c) => c,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": format!("HTTP client error: {}", e) })),
-            )
-                .into_response();
-        }
+        Err(r) => return r,
     };
-
     let encoded = encode_path_segment(&guild_id);
 
     // Primary: real-time discord members
     let discord_path = format!("/api/nodes/{}/discord-members", encoded);
     let discord_url = format!("{}{}", base, discord_path);
-    let req = apply_signed_headers(client.get(&discord_url), "GET", &discord_path, None);
-    match req.send().await {
-        Ok(resp) if resp.status().is_success() => {
-            if let Ok(data) = resp.json::<Value>().await {
-                return (StatusCode::OK, Json(data)).into_response();
-            }
-        }
-        Ok(resp) if resp.status() == reqwest::StatusCode::SERVICE_UNAVAILABLE => {
-            tracing::debug!(
-                "Discord bot unavailable for guild {}, falling back to permission-based members",
-                guild_id
-            );
-        }
+    match send(apply_signed_headers(client.get(&discord_url), "GET", &discord_path, None)).await {
+        Ok((code, Some(data))) if code.is_success() => return (StatusCode::OK, Json(data)).into_response(),
+        Ok((StatusCode::SERVICE_UNAVAILABLE, _)) => tracing::debug!(
+            "Discord bot unavailable for guild {}, falling back to permission-based members",
+            guild_id
+        ),
         _ => {}
     }
 
     // Fallback: permission-based members
-    let fallback_path = format!("/api/nodes/{}/members", encoded);
-    let fallback_url = format!("{}{}", base, fallback_path);
-    let req = apply_signed_headers(client.get(&fallback_url), "GET", &fallback_path, None);
-    match req.send().await {
-        Ok(resp) => {
-            let status = resp.status();
-            let code = StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
-            match resp.json::<Value>().await {
-                Ok(data) => (code, Json(data)).into_response(),
-                Err(_) => (StatusCode::BAD_GATEWAY, Json(json!([]))).into_response(),
-            }
-        }
-        Err(e) => (
-            StatusCode::BAD_GATEWAY,
-            Json(json!({ "error": format!("Relay connection failed: {}", e) })),
-        )
-            .into_response(),
+    signed_get(&base, &format!("/api/nodes/{}/members", encoded), empty_list).await
+}
+
+// ── GET /api/relay/bot-invite ──
+// 봇 초대 URL (공개 엔드포인트라 서명하지 않는다)
+
+pub async fn get_bot_invite(
+    Query(params): Query<RelayQueryParams>,
+    State(state): State<IPCServer>,
+) -> Response {
+    bot_invite(&signed_base(&state, params.relay_url.as_deref()).await).await
+}
+
+async fn bot_invite(base: &str) -> Response {
+    let client = match client() {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
+    match send(client.get(format!("{}/api/bot-invite", base))).await {
+        Ok((code, Some(data))) => (code, Json(data)).into_response(),
+        Ok((code, None)) => invalid_response(code),
+        Err(r) => r,
     }
 }
 
@@ -290,45 +287,25 @@ pub async fn list_node_members(
 
 pub async fn initiate_pairing(
     Query(params): Query<RelayQueryParams>,
-    State(_state): State<IPCServer>,
+    State(state): State<IPCServer>,
     Json(payload): Json<Value>,
-) -> impl IntoResponse {
+) -> Response {
     let relay_url = payload
         .get("relayUrl")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
         .or(params.relay_url);
-    let base = resolve_relay_url(relay_url.as_deref());
-
-    let client = match relay_client() {
+    // 페어링이 받은 노드 토큰은 그 릴레이 것이다: 설정한 릴레이(또는 모의 릴레이)와만 페어링한다
+    let base = signed_base(&state, relay_url.as_deref()).await;
+    let client = match client() {
         Ok(c) => c,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": format!("HTTP client error: {}", e) })),
-            )
-                .into_response();
-        }
+        Err(r) => return r,
     };
-
     let url = format!("{}/api/pair/initiate", base);
-    match client.post(&url).json(&payload).send().await {
-        Ok(resp) => {
-            let status = resp.status();
-            let code = StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
-            match resp.json::<Value>().await {
-                Ok(data) => (code, Json(data)).into_response(),
-                Err(_) => {
-                    (StatusCode::BAD_GATEWAY, Json(json!({ "error": "Invalid relay response" })))
-                        .into_response()
-                }
-            }
-        }
-        Err(e) => (
-            StatusCode::BAD_GATEWAY,
-            Json(json!({ "error": format!("Relay connection failed: {}", e) })),
-        )
-            .into_response(),
+    match send(client.post(&url).json(&payload)).await {
+        Ok((code, Some(data))) => (code, Json(data)).into_response(),
+        Ok((code, None)) => invalid_response(code),
+        Err(r) => r,
     }
 }
 
@@ -345,18 +322,12 @@ pub struct PairStatusQuery {
 pub async fn poll_pairing_status(
     Path(code): Path<String>,
     Query(params): Query<PairStatusQuery>,
-    State(_state): State<IPCServer>,
-) -> impl IntoResponse {
-    let base = resolve_relay_url(params.relay_url.as_deref());
-    let client = match relay_client() {
+    State(state): State<IPCServer>,
+) -> Response {
+    let base = signed_base(&state, params.relay_url.as_deref()).await;
+    let client = match client() {
         Ok(c) => c,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": format!("HTTP client error: {}", e) })),
-            )
-                .into_response();
-        }
+        Err(r) => return r,
     };
 
     let mut url = format!("{}/api/pair/{}/status", base, encode_path_segment(&code));
@@ -364,41 +335,75 @@ pub async fn poll_pairing_status(
         url = format!("{}?secret={}", url, encode_path_segment(secret));
     }
 
-    match client.get(&url).send().await {
-        Ok(resp) => {
-            let status = resp.status();
-            let code_status =
-                StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
-            match resp.json::<Value>().await {
-                Ok(data) => {
-                    // Auto-save node token on successful pairing
-                    if let Some("claimed") = data.get("status").and_then(|s| s.as_str()) {
-                        if let Some(token) = data.get("nodeToken").and_then(|t| t.as_str()) {
-                            let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
-                            let token_path = data_dir.join(".node_token");
-                            if let Some(parent) = token_path.parent() {
-                                let _ = std::fs::create_dir_all(parent);
-                            }
-                            if let Err(e) = std::fs::write(&token_path, token) {
-                                tracing::warn!("Failed to auto-save node token: {}", e);
-                            } else {
-                                tracing::info!("Node token saved via pairing completion");
-                            }
-                        }
-                    }
-                    (code_status, Json(data)).into_response()
-                }
-                Err(_) => (
-                    StatusCode::BAD_GATEWAY,
-                    Json(json!({ "error": "Invalid relay response" })),
-                )
-                    .into_response(),
+    let (code_status, data) = match send(client.get(&url)).await {
+        Ok((code, Some(data))) => (code, data),
+        Ok((code, None)) => return invalid_response(code),
+        Err(r) => return r,
+    };
+    // Auto-save node token on successful pairing
+    if let Some("claimed") = data.get("status").and_then(|s| s.as_str()) {
+        if let Some(token) = data.get("nodeToken").and_then(|t| t.as_str()) {
+            let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
+            let token_path = data_dir.join(".node_token");
+            if let Some(parent) = token_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if let Err(e) = std::fs::write(&token_path, token) {
+                tracing::warn!("Failed to auto-save node token: {}", e);
+            } else {
+                tracing::info!("Node token saved via pairing completion");
             }
         }
-        Err(e) => (
-            StatusCode::BAD_GATEWAY,
-            Json(json!({ "error": format!("Relay connection failed: {}", e) })),
-        )
-            .into_response(),
+    }
+    (code_status, Json(data)).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn signed_requests_never_follow_an_arbitrary_relay_url() {
+        let cfg = "https://saba-chan.online/";
+        assert_eq!(signed_relay_url(cfg, None), "https://saba-chan.online");
+        assert_eq!(signed_relay_url(cfg, Some("https://evil.example")), "https://saba-chan.online");
+        assert_eq!(signed_relay_url("", Some("https://evil.example")), "https://saba-chan.online");
+        assert_eq!(signed_relay_url(cfg, Some("https://saba-chan.online")), "https://saba-chan.online");
+        assert_eq!(signed_relay_url(cfg, Some("http://127.0.0.1:9000/")), "http://127.0.0.1:9000", "mock relay");
+        assert_eq!(signed_relay_url("https://my.relay", None), "https://my.relay");
+    }
+
+    use super::*;
+    use axum::{routing::get, Router};
+
+    async fn mock_relay() -> String {
+        let app = Router::new()
+            .route("/api/hosts/h1", get(|| async { Json(json!({ "online": true })) }))
+            .route("/api/hosts/h2", get(|| async { (StatusCode::NOT_FOUND, "nope") }))
+            .route("/api/bot-invite", get(|| async { Json(json!({ "url": "https://discord.com/x" })) }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        format!("http://{}", addr)
+    }
+
+    async fn body(resp: Response) -> (StatusCode, Value) {
+        let code = resp.status();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        (code, serde_json::from_slice(&bytes).unwrap())
+    }
+
+    #[tokio::test]
+    async fn proxied_json_passes_through_and_non_json_uses_the_fallback() {
+        let base = mock_relay().await;
+        let fallback = |code: StatusCode| (code, Json(json!({ "ok": code.is_success() }))).into_response();
+        assert_eq!(body(signed_get(&base, "/api/hosts/h1", fallback).await).await, (StatusCode::OK, json!({ "online": true })));
+        assert_eq!(body(signed_get(&base, "/api/hosts/h2", fallback).await).await, (StatusCode::NOT_FOUND, json!({ "ok": false })));
+        assert_eq!(body(bot_invite(&base).await).await.1["url"], "https://discord.com/x");
+    }
+
+    #[tokio::test]
+    async fn an_unreachable_relay_is_a_bad_gateway() {
+        let (code, data) = body(signed_get("http://127.0.0.1:9", "/api/hosts/x", empty_list).await).await;
+        assert_eq!(code, StatusCode::BAD_GATEWAY);
+        assert!(data["error"].as_str().unwrap().starts_with("Relay connection failed"));
     }
 }

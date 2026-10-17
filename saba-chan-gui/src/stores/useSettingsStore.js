@@ -94,7 +94,6 @@ export const useSettingsStore = create((set, get) => ({
                 consoleTextColor: state.consoleTextColor,
                 sidebarCompact: state.sidebarCompact,
                 consoleFontScale: state.consoleFontScale,
-                // discordToken/discordAutoStart는 bot-config.json으로 이전됨
             });
             console.log('[Settings] GUI settings saved');
         } catch (error) {
@@ -107,12 +106,6 @@ export const useSettingsStore = create((set, get) => ({
         // Debounced save is handled by subscription below
     },
 
-    // Internal: discord fields that are saved alongside GUI settings
-    // These are set by useDiscordStore but saved via settings file
-    _discordToken: '',
-    _discordAutoStart: false,
-    _setDiscordFields: (token, autoStart) => set({ _discordToken: token, _discordAutoStart: autoStart }),
-
     // Test-only: reset to initial state
     _resetForTest: () =>
         set({
@@ -124,8 +117,6 @@ export const useSettingsStore = create((set, get) => ({
             portConflictCheck: true,
             settingsPath: '',
             settingsReady: false,
-            _discordToken: '',
-            _discordAutoStart: false,
             accentColor: THEME_DEFAULTS.accentColor,
             accentSecondary: THEME_DEFAULTS.accentSecondary,
             useGradient: THEME_DEFAULTS.useGradient,
@@ -159,8 +150,6 @@ const _settingsKeys = [
     'consoleTextColor',
     'sidebarCompact',
     'consoleFontScale',
-    // _discordToken, _discordAutoStart는 bot-config.json으로 이전됨 (v0.2+)
-    // 하위 호환: save() 시에는 포함하지 않지만, load() 시 마이그레이션용으로 읽음
 ];
 useSettingsStore.subscribe((state, prevState) => {
     if (!state.settingsReady || !state.settingsPath) return;
@@ -186,8 +175,6 @@ if (import.meta.hot) {
             portConflictCheck: s.portConflictCheck,
             settingsPath: s.settingsPath,
             settingsReady: s.settingsReady,
-            _discordToken: s._discordToken,
-            _discordAutoStart: s._discordAutoStart,
             accentColor: s.accentColor,
             accentSecondary: s.accentSecondary,
             useGradient: s.useGradient,

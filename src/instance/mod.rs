@@ -30,8 +30,6 @@ pub struct ServerInstance {
     pub auto_detect: bool,
     pub process_name: Option<String>,
     pub port: Option<u16>,
-    pub rcon_port: Option<u16>,
-    pub rcon_password: Option<String>,
     #[serde(default)]
     pub rest_host: Option<String>,
     #[serde(default)]
@@ -55,10 +53,24 @@ pub struct ServerInstance {
     /// 여기에 선언된 익스텐션이 활성화되어 있지 않으면 시작이 차단됩니다.
     #[serde(default)]
     pub required_extensions: Vec<String>,
+    /// 예약 작업 (A3): 백업·재시작·공지·업데이트
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub schedule: Vec<crate::scheduler::ScheduledTask>,
+    /// 자동 백업(예약·업데이트 전·복원 전)을 몇 개 남길지. 수동 백업은 세지 않는다. 기본 10
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backup_keep: Option<u32>,
 }
 
 fn default_protocol_mode() -> String {
     "auto".to_string()
+}
+
+/// 데몬이 직접 처리하는 설치 방식. 그 밖의 방식은 같은 이름의 익스텐션이 맡는다
+pub const BUILTIN_INSTALL_METHODS: &[&str] = &["manual", "download"];
+
+/// 이 인스턴스가 `method` 익스텐션으로 설치됐다는 extension_data 키
+pub fn install_method_key(method: &str) -> String {
+    format!("install_method_{}", method)
 }
 
 impl ServerInstance {
@@ -72,8 +84,6 @@ impl ServerInstance {
             auto_detect: true,
             process_name: None,
             port: None,
-            rcon_port: None,
-            rcon_password: None,
             rest_host: None,
             rest_port: None,
             rest_username: None,
@@ -83,6 +93,8 @@ impl ServerInstance {
             server_version: None,
             extension_data: HashMap::new(),
             required_extensions: Vec::new(),
+            schedule: Vec::new(),
+            backup_keep: None,
         }
     }
 
@@ -94,14 +106,8 @@ impl ServerInstance {
             .unwrap_or(false)
     }
 
-    /// extension_data에서 f64 값을 읽습니다.
-    #[allow(dead_code)]
-    pub fn ext_f64(&self, key: &str) -> Option<f64> {
-        self.extension_data.get(key).and_then(|v| v.as_f64())
-    }
-
     /// extension_data에서 문자열 값을 읽습니다.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn ext_str(&self, key: &str) -> Option<&str> {
         self.extension_data.get(key).and_then(|v| v.as_str())
     }
@@ -115,85 +121,74 @@ impl ServerInstance {
             .collect()
     }
 
-    /// 모듈의 install 설정(method=steamcmd 등)을 extension_data에 주입합니다.
-    /// 마이그레이션 및 신규 생성 시 호출되어, 이후 SteamCMD 훅이 올바르게 트리거되도록 합니다.
-    /// 반환: 변경이 발생했으면 true
-    pub fn apply_install_extension_data(
-        &mut self,
-        method: &str,
-        app_id: Option<u32>,
-        anonymous: bool,
-        beta: Option<&str>,
-        platform: Option<&str>,
-    ) -> bool {
-        if method != "steamcmd" {
+    /// 모듈 `[install]` 설정을 설치 방식 익스텐션이 읽는 extension_data로 옮긴다.
+    ///
+    /// `manual`·`download`(데몬이 직접 처리) 밖의 방식은 같은 이름의 익스텐션이 맡는다.
+    /// 키 규칙: `install_method_<방식>` = true, 설정 값마다 `<방식>_<이름>`
+    /// (예: steamcmd → `install_method_steamcmd`, `steamcmd_app_id`). 익스텐션 manifest의
+    /// `instance_fields`와 hook `condition`이 이 이름을 쓴다.
+    /// 반환: 바뀐 것이 있으면 true
+    pub fn apply_install_extension_data(&mut self, method: &str, fields: &[(&str, serde_json::Value)]) -> bool {
+        if BUILTIN_INSTALL_METHODS.contains(&method) || method.is_empty() {
             return false;
         }
         let mut changed = false;
-        // install_method_steamcmd 플래그
-        if !self.ext_enabled("install_method_steamcmd") {
-            self.extension_data.insert(
-                "install_method_steamcmd".to_string(),
-                serde_json::json!(true),
-            );
-            changed = true;
-        }
-        // steamcmd_app_id
-        if let Some(id) = app_id {
-            if self.extension_data.get("steamcmd_app_id")
-                .and_then(|v| v.as_u64())
-                .map(|v| v as u32) != Some(id)
-            {
-                self.extension_data.insert(
-                    "steamcmd_app_id".to_string(),
-                    serde_json::json!(id),
-                );
+        let mut set = |key: String, value: serde_json::Value| {
+            if self.extension_data.get(&key) != Some(&value) {
+                self.extension_data.insert(key, value);
                 changed = true;
             }
-        }
-        // steamcmd_anonymous
-        if self.extension_data.get("steamcmd_anonymous")
-            .and_then(|v| v.as_bool()) != Some(anonymous)
-        {
-            self.extension_data.insert(
-                "steamcmd_anonymous".to_string(),
-                serde_json::json!(anonymous),
-            );
-            changed = true;
-        }
-        // steamcmd_beta (optional)
-        if let Some(b) = beta {
-            if self.ext_str("steamcmd_beta") != Some(b) {
-                self.extension_data.insert(
-                    "steamcmd_beta".to_string(),
-                    serde_json::json!(b),
-                );
-                changed = true;
-            }
-        }
-        // steamcmd_platform (optional)
-        if let Some(p) = platform {
-            if self.ext_str("steamcmd_platform") != Some(p) {
-                self.extension_data.insert(
-                    "steamcmd_platform".to_string(),
-                    serde_json::json!(p),
-                );
-                changed = true;
-            }
+        };
+        set(install_method_key(method), serde_json::json!(true));
+        for (name, value) in fields {
+            set(format!("{}_{}", method, name), value.clone());
         }
         changed
     }
 
-    /// RCON/REST 비밀번호가 비어있으면 랜덤 비밀번호로 채웁니다.
+    /// 게임 설정 파일에서 읽어 온 값(`import_settings` 결과)을 반영한다: `module_settings`에 넣고,
+    /// 같은 값을 가리키는 인스턴스 필드(포트·REST 비밀번호)도 맞춘다. 안 그러면 인스턴스 필드가
+    /// 옛 값으로 남아 다음 저장에서 파일을 되돌린다.
+    /// `credential_map`: 데몬 키(`rest_password` 등) → 게임 키(`AdminPassword` 등)
+    /// `types`: 설정 이름 → module.toml 필드 타입. 값은 그 타입으로 저장한다(문자열 필드는 문자열 그대로)
+    pub fn apply_imported_settings(
+        &mut self,
+        settings: &serde_json::Map<String, serde_json::Value>,
+        credential_map: &std::collections::HashMap<String, String>,
+        types: &std::collections::HashMap<String, String>,
+    ) {
+        for (key, value) in settings {
+            let typed = coerce_setting_value(value, types.get(key).map(String::as_str));
+            self.module_settings.insert(key.clone(), typed);
+        }
+        // 인스턴스 필드는 이번에 읽은 키로만 맞춘다 (캐시에 남은 옛 값으로 되돌리지 않는다)
+        let port = |key: &str| {
+            settings.get(key).and(self.module_settings.get(key)).and_then(|v| match v {
+                serde_json::Value::Number(n) => n.as_u64(),
+                serde_json::Value::String(s) => s.trim().parse().ok(),
+                _ => None,
+            }).and_then(|p| u16::try_from(p).ok())
+        };
+        if let Some(p) = port("port") { self.port = Some(p); }
+        if let Some(p) = port("rest_port") { self.rest_port = Some(p); }
+        {
+            let daemon_key = "rest_password";
+            let game_key = credential_map.get(daemon_key).map(String::as_str).unwrap_or(daemon_key);
+            let value = self.module_settings.iter()
+                .find(|(k, _)| settings.contains_key(k.as_str()) && (k.eq_ignore_ascii_case(game_key) || k.as_str() == daemon_key))
+                .and_then(|(_, v)| v.as_str())
+                .map(str::to_string);
+            // 파일이 비어 있으면 비어 있는 것이 사실이다: 옛 캐시 값을 남기지 않는다
+            if let Some(pwd) = value {
+                self.rest_password = Some(pwd);
+            }
+        }
+    }
+
+    /// REST 비밀번호가 비어있으면 랜덤 비밀번호로 채웁니다.
     /// 변경이 발생하면 true를 반환합니다.
     pub fn ensure_passwords(&mut self) -> bool {
         let mut changed = false;
-        if self.rcon_password.as_deref().unwrap_or("").is_empty() {
-            let pw = generate_random_password();
-            tracing::info!("Auto-generated RCON password for instance {}", self.id);
-            self.rcon_password = Some(pw);
-            changed = true;
-        }
         if self.rest_password.as_deref().unwrap_or("").is_empty() {
             let pw = generate_random_password();
             tracing::info!("Auto-generated REST password for instance {}", self.id);
@@ -267,7 +262,13 @@ impl InstanceStore {
                     continue;
                 }
                 match self.load_instance_from_dir(&path) {
-                    Ok(inst) => loaded.push(inst),
+                    // 폴더 이름과 id가 다르면 저장·삭제가 다른 폴더를 건드린다: 건너뛴다
+                    Ok(inst) if path.file_name().is_some_and(|n| n == inst.id.as_str()) => loaded.push(inst),
+                    Ok(inst) => tracing::warn!(
+                        "인스턴스 건너뜀: 폴더 이름 {} 과 id {} 가 다름",
+                        path.display(),
+                        inst.id
+                    ),
                     Err(e) => {
                         tracing::warn!(
                             "인스턴스 로드 실패 ({}): {}",
@@ -321,7 +322,7 @@ impl InstanceStore {
 
     pub fn remove(&mut self, id: &str) -> Result<()> {
         // 디렉토리 삭제
-        let dir = self.root_dir.join(id);
+        let dir = self.checked_dir(id)?;
         if dir.exists() {
             fs::remove_dir_all(&dir)
                 .with_context(|| format!("인스턴스 디렉토리 삭제 실패: {}", dir.display()))?;
@@ -338,14 +339,21 @@ impl InstanceStore {
             .iter()
             .position(|i| i.id == id)
             .ok_or_else(|| anyhow::anyhow!("Instance not found: {}", id))?;
+        if instance.id != id {
+            anyhow::bail!("instance id cannot change ({} -> {})", id, instance.id);
+        }
         self.save_instance(&instance)?;
         self.instances[pos] = instance;
         Ok(())
     }
 
     pub fn reorder(&mut self, ordered_ids: &[String]) -> Result<()> {
-        let mut reordered = Vec::with_capacity(self.instances.len());
+        let mut reordered: Vec<ServerInstance> = Vec::with_capacity(self.instances.len());
         for id in ordered_ids {
+            // 같은 id가 두 번 와도 인스턴스는 한 번만
+            if reordered.iter().any(|i| i.id == *id) {
+                continue;
+            }
             if let Some(pos) = self.instances.iter().position(|i| i.id == *id) {
                 reordered.push(self.instances[pos].clone());
             }
@@ -361,43 +369,45 @@ impl InstanceStore {
         Ok(())
     }
 
-    // ── 하위 호환: 전체 저장 ──
-    // 기존 코드에서 save()를 호출하는 곳이 있을 수 있으므로 유지
-    #[allow(dead_code)]
-    pub fn save(&self) -> Result<()> {
-        for inst in &self.instances {
-            self.save_instance(inst)?;
-        }
-        self.save_order()?;
-        Ok(())
-    }
 
     /// 인스턴스 디렉토리의 절대 경로를 반환합니다.
     pub fn instance_dir(&self, id: &str) -> PathBuf {
         self.root_dir.join(id)
     }
 
+    /// 쓰거나 지울 인스턴스 폴더: id가 경로 한 칸이고, 폴더가 심볼릭 링크가 아니어야 한다
+    fn checked_dir(&self, id: &str) -> Result<PathBuf> {
+        if !crate::utils::is_single_path_component(id) {
+            anyhow::bail!("invalid instance id: {:?}", id);
+        }
+        let dir = self.root_dir.join(id);
+        if fs::symlink_metadata(&dir).is_ok_and(|m| m.file_type().is_symlink()) {
+            anyhow::bail!("instance directory is a symlink: {}", dir.display());
+        }
+        Ok(dir)
+    }
+
     // ── Internal: 디렉토리 I/O ──────────────────────────────
 
     /// 단일 인스턴스를 디렉토리에 저장
     fn save_instance(&self, instance: &ServerInstance) -> Result<()> {
-        let dir = self.root_dir.join(&instance.id);
+        let dir = self.checked_dir(&instance.id)?;
         fs::create_dir_all(&dir)?;
 
         // instance.json — 메타데이터 (module_settings 제외)
         let mut meta = instance.clone();
         let settings = std::mem::take(&mut meta.module_settings);
         let instance_json = serde_json::to_string_pretty(&meta)?;
-        fs::write(dir.join("instance.json"), &instance_json)?;
+        write_atomic(&dir.join("instance.json"), &instance_json)?;
 
         // settings.json — 모듈별 동적 설정 (비어있어도 저장)
         let settings_json = serde_json::to_string_pretty(&settings)?;
-        fs::write(dir.join("settings.json"), &settings_json)?;
+        write_atomic(&dir.join("settings.json"), &settings_json)?;
 
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            // instance.json에 민감 데이터(RCON 비밀번호 등) 포함 가능
+            // instance.json·settings.json에 비밀번호가 들어 있을 수 있다
             let _ = fs::set_permissions(dir.join("instance.json"), fs::Permissions::from_mode(0o600));
             let _ = fs::set_permissions(dir.join("settings.json"), fs::Permissions::from_mode(0o600));
         }
@@ -412,14 +422,27 @@ impl InstanceStore {
             .with_context(|| format!("instance.json 읽기 실패: {}", instance_path.display()))?;
 
         let mut instance: ServerInstance = serde_json::from_str(&content)?;
+        let mut stale = serde_json::from_str::<serde_json::Value>(&content)
+            .ok()
+            .and_then(|v| v.as_object().map(|o| LEGACY_RCON_KEYS.iter().any(|k| o.contains_key(*k))))
+            .unwrap_or(false);
 
         // settings.json이 있으면 module_settings 머지
         let settings_path = dir.join("settings.json");
         if settings_path.exists() {
             let settings_content = fs::read_to_string(&settings_path)?;
-            let settings: HashMap<String, serde_json::Value> =
+            let mut settings: HashMap<String, serde_json::Value> =
                 serde_json::from_str(&settings_content).unwrap_or_default();
+            stale |= drop_legacy_rcon_keys(&mut settings);
             instance.module_settings = settings;
+        }
+
+        // RCON을 없애기 전에 만든 인스턴스: 남은 RCON 키를 한 번 지우고 다시 쓴다
+        if stale {
+            match self.save_instance(&instance) {
+                Ok(()) => tracing::info!("Removed leftover RCON settings from instance '{}'", instance.name),
+                Err(e) => tracing::warn!("Could not clean RCON settings of '{}': {}", instance.name, e),
+            }
         }
 
         Ok(instance)
@@ -437,6 +460,61 @@ impl InstanceStore {
 //  Tests
 // ═══════════════════════════════════════════════════════════════
 
+/// RCON은 보안상 쓰지 않는다 (2026-10-17). 그 전에 만든 인스턴스 파일에 남은 키
+const LEGACY_RCON_KEYS: &[&str] = &[
+    "rcon_port",
+    "rcon_password",
+    "enable_rcon",
+    "broadcast_rcon_to_ops",
+    "rcon.port",
+    "rcon.password",
+    "enable-rcon",
+    "broadcast-rcon-to-ops",
+];
+
+/// 남은 RCON 키를 지운다. 하나라도 지웠으면 true
+fn drop_legacy_rcon_keys(settings: &mut HashMap<String, serde_json::Value>) -> bool {
+    let before = settings.len();
+    settings.retain(|k, _| !LEGACY_RCON_KEYS.contains(&k.as_str()));
+    settings.len() != before
+}
+
+/// 임시 파일에 쓰고 rename: 쓰는 도중 꺼져도 예전 파일이나 새 파일 중 하나가 온전히 남는다
+fn write_atomic(path: &Path, content: &str) -> Result<()> {
+    use std::io::Write;
+    let tmp = path.with_extension("json.tmp");
+    {
+        let mut f = fs::File::create(&tmp)?;
+        f.write_all(content.as_bytes())?;
+        f.sync_all()?;
+    }
+    fs::rename(&tmp, path)?;
+    Ok(())
+}
+
+/// 설정 파일에서 읽은 값을 module.toml 필드 타입에 맞춘다.
+/// number·boolean은 문자열이면 바꾸고, 그 밖의 알려진 타입(text, password, select…)은 문자열로 둔다
+/// ("000123" 같은 비밀번호가 숫자로 바뀌지 않게). 스키마에 없는 키는 그대로 둔다
+pub fn coerce_setting_value(value: &serde_json::Value, field_type: Option<&str>) -> serde_json::Value {
+    use serde_json::Value;
+    match (field_type, value) {
+        (None, v) => v.clone(),
+        (Some("number"), Value::String(s)) => {
+            let t = s.trim();
+            t.parse::<i64>().map(Value::from)
+                .or_else(|_| t.parse::<f64>().map_err(|_| ()).and_then(|f| serde_json::Number::from_f64(f).map(Value::Number).ok_or(())))
+                .unwrap_or_else(|_| value.clone())
+        }
+        (Some("boolean"), Value::String(s)) if s.eq_ignore_ascii_case("true") || s.eq_ignore_ascii_case("false") => {
+            Value::Bool(s.eq_ignore_ascii_case("true"))
+        }
+        (Some("number" | "boolean"), v) => v.clone(),
+        (Some(_), Value::Number(n)) => Value::String(n.to_string()),
+        (Some(_), Value::Bool(b)) => Value::String(b.to_string()),
+        (Some(_), v) => v.clone(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -450,6 +528,28 @@ mod tests {
             serde_json::json!("hard"),
         );
         inst
+    }
+
+    #[test]
+    fn imported_settings_refresh_instance_fields() {
+        let mut inst = ServerInstance::new("a", "palworld");
+        inst.port = Some(27015);
+        let settings = serde_json::json!({"port": "28015", "AdminPassword": "pw", "Other": 1});
+        let map: std::collections::HashMap<String, String> = [("rest_password".to_string(), "adminpassword".to_string())].into();
+        let types: std::collections::HashMap<String, String> =
+            [("port", "number"), ("AdminPassword", "password")].map(|(k, t)| (k.to_string(), t.to_string())).into();
+        inst.apply_imported_settings(settings.as_object().unwrap(), &map, &types);
+        let raw = serde_json::json!({"AdminPassword": "000123"});
+        inst.port = Some(30000); // 사용자가 포트만 바꾼 뒤
+        inst.apply_imported_settings(raw.as_object().unwrap(), &map, &types);
+        assert_eq!(inst.port, Some(30000), "a password-only import must not revert the port");
+        inst.port = Some(28015);
+        assert_eq!(inst.module_settings.get("AdminPassword"), Some(&serde_json::json!("000123")));
+        assert_eq!(inst.rest_password.as_deref(), Some("000123"));
+        inst.apply_imported_settings(serde_json::json!({"AdminPassword": "pw"}).as_object().unwrap(), &map, &types);
+        assert_eq!(inst.port, Some(28015));
+        assert_eq!(inst.rest_password.as_deref(), Some("pw"));
+        assert_eq!(inst.module_settings.get("Other"), Some(&serde_json::json!(1)));
     }
 
     #[test]
@@ -552,6 +652,39 @@ mod tests {
     }
 
     #[test]
+    fn leftover_rcon_keys_are_removed_once_on_load() {
+        let tmp = TempDir::new().unwrap();
+        let instances_dir = tmp.path().join("instances");
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
+        store.load().unwrap();
+        let inst = make_test_instance("old", "minecraft");
+        let id = inst.id.clone();
+        store.add(inst).unwrap();
+
+        // RCON을 없애기 전의 파일처럼 만든다
+        let dir = store.instance_dir(&id);
+        let mut meta: serde_json::Value = serde_json::from_str(&fs::read_to_string(dir.join("instance.json")).unwrap()).unwrap();
+        meta["rcon_port"] = serde_json::json!(25575);
+        meta["rcon_password"] = serde_json::json!("pw");
+        fs::write(dir.join("instance.json"), meta.to_string()).unwrap();
+        fs::write(
+            dir.join("settings.json"),
+            r#"{"rcon_port":25575,"rcon.port":"25575","rcon.password":"pw","enable-rcon":"false","motd":"hi"}"#,
+        )
+        .unwrap();
+
+        let mut store = InstanceStore::new(instances_dir.to_str().unwrap());
+        store.load().unwrap();
+        let loaded = store.get(&id).unwrap();
+        assert_eq!(loaded.module_settings.keys().collect::<Vec<_>>(), vec!["motd"]);
+        let settings: serde_json::Value = serde_json::from_str(&fs::read_to_string(dir.join("settings.json")).unwrap()).unwrap();
+        assert_eq!(settings, serde_json::json!({ "motd": "hi" }));
+        let meta: serde_json::Value = serde_json::from_str(&fs::read_to_string(dir.join("instance.json")).unwrap()).unwrap();
+        assert!(meta.get("rcon_port").is_none() && meta.get("rcon_password").is_none());
+        assert!(!dir.join("settings.json.tmp").exists());
+    }
+
+    #[test]
     fn test_directory_structure() {
         let tmp = TempDir::new().unwrap();
         let instances_dir = tmp.path().join("instances");
@@ -561,7 +694,7 @@ mod tests {
 
         let mut inst = make_test_instance("struct-test", "minecraft");
         inst.module_settings.insert("ram".to_string(), serde_json::json!(4));
-        inst.rcon_password = Some("secret123".to_string());
+        inst.rest_password = Some("secret123".to_string());
         let id = inst.id.clone();
         store.add(inst).unwrap();
 
@@ -659,16 +792,28 @@ mod tests {
         assert!(inst.required_extensions.is_empty(), "Should default to empty");
     }
 
-    // ── SteamCMD extension_data 자동 주입 테스트 ──
+    // ── 설치 방식 extension_data 자동 주입 테스트 ──
+
+    fn steam(app_id: Option<u32>, beta: Option<&str>, platform: Option<&str>) -> Vec<(&'static str, serde_json::Value)> {
+        let mut f = vec![("anonymous", serde_json::json!(true))];
+        if let Some(id) = app_id {
+            f.push(("app_id", serde_json::json!(id)));
+        }
+        if let Some(b) = beta {
+            f.push(("beta", serde_json::json!(b)));
+        }
+        if let Some(p) = platform {
+            f.push(("platform", serde_json::json!(p)));
+        }
+        f
+    }
 
     #[test]
     fn test_apply_install_extension_data_steamcmd() {
         let mut inst = ServerInstance::new("test-pw", "palworld");
         assert!(inst.extension_data.is_empty());
 
-        let changed = inst.apply_install_extension_data(
-            "steamcmd", Some(2394010), true, None, Some("windows"),
-        );
+        let changed = inst.apply_install_extension_data("steamcmd", &steam(Some(2394010), None, Some("windows")));
         assert!(changed, "Should report changes");
         assert!(inst.ext_enabled("install_method_steamcmd"));
         assert_eq!(
@@ -686,9 +831,7 @@ mod tests {
     #[test]
     fn test_apply_install_extension_data_steamcmd_with_beta() {
         let mut inst = ServerInstance::new("test-zb", "zomboid");
-        let changed = inst.apply_install_extension_data(
-            "steamcmd", Some(380870), true, Some("unstable"), None,
-        );
+        let changed = inst.apply_install_extension_data("steamcmd", &steam(Some(380870), Some("unstable"), None));
         assert!(changed);
         assert!(inst.ext_enabled("install_method_steamcmd"));
         assert_eq!(inst.ext_str("steamcmd_beta"), Some("unstable"));
@@ -697,9 +840,7 @@ mod tests {
     #[test]
     fn test_apply_install_extension_data_non_steamcmd_noop() {
         let mut inst = ServerInstance::new("test-mc", "minecraft");
-        let changed = inst.apply_install_extension_data(
-            "download", None, true, None, None,
-        );
+        let changed = inst.apply_install_extension_data("download", &steam(None, None, None));
         assert!(!changed, "Non-steamcmd method should not change anything");
         assert!(inst.extension_data.is_empty());
     }
@@ -707,38 +848,29 @@ mod tests {
     #[test]
     fn test_apply_install_extension_data_idempotent() {
         let mut inst = ServerInstance::new("test-pw", "palworld");
-        inst.apply_install_extension_data(
-            "steamcmd", Some(2394010), true, None, Some("windows"),
-        );
+        inst.apply_install_extension_data("steamcmd", &steam(Some(2394010), None, Some("windows")));
 
         // 같은 값으로 다시 호출 → 변경 없음
-        let changed = inst.apply_install_extension_data(
-            "steamcmd", Some(2394010), true, None, Some("windows"),
-        );
+        let changed = inst.apply_install_extension_data("steamcmd", &steam(Some(2394010), None, Some("windows")));
         assert!(!changed, "Calling with same values should be idempotent");
     }
 
     #[test]
     fn test_apply_install_extension_data_preserves_existing() {
         let mut inst = ServerInstance::new("test-pw", "palworld");
-        // 기존 extension_data에 docker_enabled 같은 다른 플래그가 있을 수 있음
-        inst.extension_data.insert("docker_enabled".to_string(), serde_json::json!(true));
+        // 다른 익스텐션의 값은 그대로 둔다
+        inst.extension_data.insert("other_flag".to_string(), serde_json::json!(true));
 
-        inst.apply_install_extension_data(
-            "steamcmd", Some(2394010), true, None, None,
-        );
+        inst.apply_install_extension_data("steamcmd", &steam(Some(2394010), None, None));
 
-        // docker_enabled가 보존되어야 함
-        assert!(inst.ext_enabled("docker_enabled"));
+        assert!(inst.ext_enabled("other_flag"));
         assert!(inst.ext_enabled("install_method_steamcmd"));
     }
 
     #[test]
     fn test_apply_install_extension_data_serialization_roundtrip() {
         let mut inst = ServerInstance::new("test-pw", "palworld");
-        inst.apply_install_extension_data(
-            "steamcmd", Some(2394010), true, Some("beta-branch"), Some("windows"),
-        );
+        inst.apply_install_extension_data("steamcmd", &steam(Some(2394010), Some("beta-branch"), Some("windows")));
 
         let json = serde_json::to_string(&inst).unwrap();
         let deserialized: ServerInstance = serde_json::from_str(&json).unwrap();

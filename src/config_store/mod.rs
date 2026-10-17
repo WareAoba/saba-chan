@@ -1,8 +1,10 @@
 //! 중앙 설정 저장소 (ConfigStore)
 //!
-//! 모든 JSON 설정 파일의 저장/로드를 타입 안전하게 처리한다.
-//! - settings.json (GUI 설정)
-//! - bot-config.json (Discord 봇 설정)
+//! 설정 파일은 `<data_dir>/config.json` 하나다(`saba_chan_updater_lib::config_file`).
+//! 이 저장소는 그중 타입이 정해진 네임스페이스를 캐시하고 검증한다.
+//! - `gui` (GUI 설정)
+//! - `relay` (릴레이·디스코드 연동 설정)
+//! - 그 밖의 클라이언트 네임스페이스(`cli` 등)는 JSON 그대로 (`/api/config/client/:kind`)
 //!
 //! 설계 원칙:
 //! - `serde(default)` + 강타입으로 필드 누락/오타를 컴파일 타임에 방지
@@ -12,7 +14,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use saba_chan_updater_lib::config_file::ConfigFile;
+use std::path::Path;
 use tokio::sync::RwLock;
 
 // ── GUI Settings (settings.json) ──
@@ -29,6 +32,9 @@ pub struct GuiSettings {
     pub port_conflict_check: bool,
 
     // Theme customization
+    /// "dark" | "light" | "auto". 없으면 GUI가 정한다(예전 브라우저 저장값 이전, 기본 auto)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
     pub accent_color: String,
     pub accent_secondary: String,
     pub use_gradient: bool,
@@ -39,6 +45,8 @@ pub struct GuiSettings {
     pub console_text_color: String,
     pub sidebar_compact: bool,
     pub window_opacity: u32,
+    /// 콘솔 글꼴 배율 (%)
+    pub console_font_scale: u32,
 
     // Window state (GUI가 저장하지만 데몬이 중개)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -78,6 +86,7 @@ impl Default for GuiSettings {
             console_buffer_size: 2000,
             auto_generate_passwords: true,
             port_conflict_check: true,
+            theme: None,
             accent_color: "#667eea".to_string(),
             accent_secondary: "#764ba2".to_string(),
             use_gradient: true,
@@ -88,6 +97,7 @@ impl Default for GuiSettings {
             console_text_color: "#cdd6f4".to_string(),
             sidebar_compact: false,
             window_opacity: 100,
+            console_font_scale: 100,
             window_bounds: None,
             language: None,
         }
@@ -97,19 +107,18 @@ impl Default for GuiSettings {
 // ── Bot Config (bot-config.json) ──
 
 /// Discord 봇 설정 — bot-config.json에 저장되는 모든 필드
+///
+/// 디스코드 봇은 클라우드 릴레이에서만 돈다. 로컬 봇용 필드(token, autoStart,
+/// mode, music*)는 제거됐고, 예전 파일에 남아 있어도 읽을 때 무시된다.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct BotConfig {
     pub prefix: String,
-    pub token: String,
-    pub auto_start: bool,
-    pub mode: String,
     pub cloud: CloudConfig,
     pub module_aliases: HashMap<String, String>,
     pub command_aliases: HashMap<String, Value>,
-    pub music_enabled: bool,
-    pub music_channel_id: String,
-    pub music_ui_settings: MusicUiSettings,
+    /// 인스턴스 ID → 그 인스턴스를 부르는 별명 ("a, b"). 같은 게임 서버가 여럿일 때 쓴다
+    pub instance_aliases: HashMap<String, String>,
     pub node_settings: Value,
     pub cloud_nodes: Vec<Value>,
     pub cloud_members: HashMap<String, Value>,
@@ -117,52 +126,21 @@ pub struct BotConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
+#[derive(Default)]
 pub struct CloudConfig {
     pub relay_url: String,
     pub host_id: String,
 }
 
-impl Default for CloudConfig {
-    fn default() -> Self {
-        Self {
-            relay_url: String::new(),
-            host_id: String::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase", default)]
-pub struct MusicUiSettings {
-    pub queue_lines: u32,
-    pub refresh_interval: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub normalize: Option<bool>,
-}
-
-impl Default for MusicUiSettings {
-    fn default() -> Self {
-        Self {
-            queue_lines: 5,
-            refresh_interval: 4000,
-            normalize: None,
-        }
-    }
-}
 
 impl Default for BotConfig {
     fn default() -> Self {
         Self {
             prefix: "!saba".to_string(),
-            token: String::new(),
-            auto_start: false,
-            mode: "local".to_string(),
             cloud: CloudConfig::default(),
             module_aliases: HashMap::new(),
             command_aliases: HashMap::new(),
-            music_enabled: true,
-            music_channel_id: String::new(),
-            music_ui_settings: MusicUiSettings::default(),
+            instance_aliases: HashMap::new(),
             node_settings: Value::Object(serde_json::Map::new()),
             cloud_nodes: Vec::new(),
             cloud_members: HashMap::new(),
@@ -170,27 +148,83 @@ impl Default for BotConfig {
     }
 }
 
+// ── Chatbot (config.json `chatbot`) ──
+
+/// AI 챗봇 설정의 원본. 릴레이는 이것을 받아 쓴다 (`/api/nodes/:guildId/chatbot`).
+/// 설정 값의 뜻과 검증은 릴레이 몫이라 데몬은 객체 그대로 둔다 (필드가 늘어도 데몬은 그대로)
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ChatbotConfig {
+    /// 모델 API 키. 클라이언트에는 `hasApiKey`만 보인다
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+    /// 모든 길드에 쓰는 설정 (ChatbotSettings 일부)
+    pub settings: serde_json::Map<String, Value>,
+    /// 길드별로 덮어쓰는 설정 (예: channelIds)
+    pub guilds: HashMap<String, serde_json::Map<String, Value>>,
+    /// 사용자가 지웠는데 릴레이 삭제를 아직 확인 못 함. 다음 연결 때 다시 지운다
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub pending_relay_delete: bool,
+}
+
+impl ChatbotConfig {
+    /// 예전 키를 지금 계약으로 (2026-10-17: `persona` → `memo`)
+    fn migrate(&mut self) {
+        for map in std::iter::once(&mut self.settings).chain(self.guilds.values_mut()) {
+            if let Some(persona) = map.remove("persona") {
+                map.entry("memo").or_insert(persona);
+            }
+        }
+    }
+
+    /// 한 길드에 보낼 설정 (공통 위에 길드 것)
+    pub fn effective(&self, guild_id: &str) -> serde_json::Map<String, Value> {
+        let mut out = self.settings.clone();
+        if let Some(over) = self.guilds.get(guild_id) {
+            out.extend(over.clone());
+        }
+        out
+    }
+}
+
 // ── ConfigStore ──
 
-/// 중앙 설정 저장소 — 모든 JSON 설정의 인메모리 캐시 + 파일 I/O
+/// 중앙 설정 저장소 — config.json의 타입 있는 네임스페이스 캐시
 pub struct ConfigStore {
-    data_dir: PathBuf,
+    file: ConfigFile,
     gui_settings: RwLock<GuiSettings>,
     bot_config: RwLock<BotConfig>,
 }
 
-#[allow(dead_code)]
+/// 클라이언트 네임스페이스로 쓸 수 없는 키 (각자 전용 API가 있다)
+const RESERVED_SECTIONS: &[&str] = &["schemaVersion", "gui", "relay", "updates", "boot", "extensions", "chatbot"];
+
 impl ConfigStore {
-    /// 새 ConfigStore 생성 (디스크에서 기존 설정 로드)
+    /// 새 ConfigStore 생성 (디스크에서 기존 설정 로드, 예전 파일은 이관)
     pub fn new(data_dir: &Path) -> Self {
-        let gui = load_from_file::<GuiSettings>(&data_dir.join("settings.json"));
-        let bot = load_from_file::<BotConfig>(&data_dir.join("bot-config.json"));
+        let file = ConfigFile::at(data_dir);
+        let doc = file.load();
+        let gui = section_or_default::<GuiSettings>(&doc, "gui");
+        let bot = section_or_default::<BotConfig>(&doc, "relay");
 
         Self {
-            data_dir: data_dir.to_path_buf(),
+            file,
             gui_settings: RwLock::new(gui),
             bot_config: RwLock::new(bot),
         }
+    }
+
+    // ── Chatbot ──
+
+    pub fn get_chatbot(&self) -> ChatbotConfig {
+        let mut cfg: ChatbotConfig = serde_json::from_value(self.file.section("chatbot")).unwrap_or_default();
+        cfg.migrate();
+        cfg
+    }
+
+    pub fn set_chatbot(&self, config: &ChatbotConfig) -> Result<(), ConfigStoreError> {
+        self.file.set_section("chatbot", serde_json::to_value(config)?)?;
+        Ok(())
     }
 
     // ── GUI Settings ──
@@ -198,14 +232,6 @@ impl ConfigStore {
     /// GUI 설정 읽기 (인메모리 캐시에서 반환)
     pub async fn get_gui_settings(&self) -> GuiSettings {
         self.gui_settings.read().await.clone()
-    }
-
-    /// GUI 설정 전체 교체 (인메모리 + 디스크)
-    pub async fn set_gui_settings(&self, settings: GuiSettings) -> Result<(), ConfigStoreError> {
-        let path = self.data_dir.join("settings.json");
-        save_to_file(&path, &settings)?;
-        *self.gui_settings.write().await = settings;
-        Ok(())
     }
 
     /// GUI 설정을 JSON Value로 반환 (API 응답용)
@@ -225,8 +251,7 @@ impl ConfigStore {
 
         let settings: GuiSettings = serde_json::from_value(merged)
             .map_err(|e| ConfigStoreError::InvalidData(format!("Invalid GUI settings: {}", e)))?;
-        let path = self.data_dir.join("settings.json");
-        save_to_file(&path, &settings)?;
+        self.file.set_section("gui", serde_json::to_value(&settings)?)?;
         *self.gui_settings.write().await = settings.clone();
         Ok(settings)
     }
@@ -236,14 +261,6 @@ impl ConfigStore {
     /// 봇 설정 읽기 (인메모리 캐시에서 반환)
     pub async fn get_bot_config(&self) -> BotConfig {
         self.bot_config.read().await.clone()
-    }
-
-    /// 봇 설정 전체 교체 (인메모리 + 디스크)
-    pub async fn set_bot_config(&self, config: BotConfig) -> Result<(), ConfigStoreError> {
-        let path = self.data_dir.join("bot-config.json");
-        save_to_file(&path, &config)?;
-        *self.bot_config.write().await = config;
-        Ok(())
     }
 
     /// 봇 설정을 JSON Value로 반환 (API 응답용)
@@ -262,15 +279,110 @@ impl ConfigStore {
 
         let config: BotConfig = serde_json::from_value(merged)
             .map_err(|e| ConfigStoreError::InvalidData(format!("Invalid bot config: {}", e)))?;
-        let path = self.data_dir.join("bot-config.json");
-        save_to_file(&path, &config)?;
+        self.file.set_section("relay", serde_json::to_value(&config)?)?;
         *self.bot_config.write().await = config.clone();
         Ok(config)
     }
 
-    /// data_dir 경로 반환 (테스트/디버그용)
-    pub fn data_dir(&self) -> &Path {
-        &self.data_dir
+
+    // ── 기본값 ──
+
+    /// `gui` | `bot` 설정의 기본값 (JSON)
+    pub fn defaults_json(kind: &str) -> Option<Value> {
+        match kind {
+            "gui" => serde_json::to_value(GuiSettings::default()).ok(),
+            "bot" => serde_json::to_value(BotConfig::default()).ok(),
+            _ => None,
+        }
+    }
+
+    /// 기본값이 "없음"이라 기본값 JSON에 나오지 않는 키 (초기화하면 지운다)
+    fn optional_keys(kind: &str) -> &'static [&'static str] {
+        match kind {
+            "gui" => &["windowBounds", "language", "theme"],
+            _ => &[],
+        }
+    }
+
+    /// `keys`(None이면 전부)를 기본값으로 되돌리고 바뀐 설정 전체를 돌려준다.
+    /// 키는 최상위 이름이다 (예: `language`, `portConflictCheck`). 빈 목록·모르는 키는 오류.
+    pub async fn reset_to_defaults(&self, kind: &str, keys: Option<&[String]>) -> Result<Value, ConfigStoreError> {
+        let defaults = Self::defaults_json(kind)
+            .and_then(|d| d.as_object().cloned())
+            .ok_or_else(|| ConfigStoreError::InvalidData(format!("Unknown config: {}", kind)))?;
+        let full = match keys {
+            None => defaults,
+            Some([]) => {
+                return Err(ConfigStoreError::InvalidData("keys is empty; omit keys to reset everything".into()))
+            }
+            Some(keys) => {
+                let current = if kind == "gui" { self.get_gui_settings_json().await } else { self.get_bot_config_json().await };
+                let mut current = current.as_object().cloned().unwrap_or_default();
+                for key in keys {
+                    if let Some(value) = defaults.get(key) {
+                        current.insert(key.clone(), value.clone());
+                    } else if Self::optional_keys(kind).contains(&key.as_str()) {
+                        current.remove(key);
+                    } else {
+                        return Err(ConfigStoreError::InvalidData(format!("Unknown {} setting: {}", kind, key)));
+                    }
+                }
+                current
+            }
+        };
+        // 머지하지 않고 통째로 바꾼다 (지운 키가 되살아나지 않게)
+        if kind == "gui" {
+            let settings: GuiSettings = serde_json::from_value(Value::Object(full))
+                .map_err(|e| ConfigStoreError::InvalidData(format!("Invalid GUI settings: {}", e)))?;
+            self.file.set_section("gui", serde_json::to_value(&settings)?)?;
+            *self.gui_settings.write().await = settings;
+            Ok(self.get_gui_settings_json().await)
+        } else {
+            let config: BotConfig = serde_json::from_value(Value::Object(full))
+                .map_err(|e| ConfigStoreError::InvalidData(format!("Invalid bot config: {}", e)))?;
+            self.file.set_section("relay", serde_json::to_value(&config)?)?;
+            *self.bot_config.write().await = config;
+            Ok(self.get_bot_config_json().await)
+        }
+    }
+
+    // ── Client namespaces ──
+
+    /// 클라이언트 네임스페이스 이름 검사: 소문자로 시작, 소문자·숫자·`-`, 32자 이하, 예약어 제외
+    pub fn is_client_section(kind: &str) -> bool {
+        let mut chars = kind.chars();
+        matches!(chars.next(), Some(c) if c.is_ascii_lowercase())
+            && kind.len() <= 32
+            && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+            && !RESERVED_SECTIONS.contains(&kind)
+    }
+
+    /// 클라이언트 네임스페이스 읽기 (없으면 빈 객체)
+    pub fn get_client_section(&self, kind: &str) -> Result<Value, ConfigStoreError> {
+        if !Self::is_client_section(kind) {
+            return Err(ConfigStoreError::InvalidData(format!("Invalid config section: {}", kind)));
+        }
+        Ok(match self.file.section(kind) {
+            Value::Null => Value::Object(serde_json::Map::new()),
+            v => v,
+        })
+    }
+
+    /// 클라이언트 네임스페이스에 부분 업데이트(최상위 키 머지). 결과를 돌려준다.
+    pub fn merge_client_section(&self, kind: &str, patch: Value) -> Result<Value, ConfigStoreError> {
+        if !Self::is_client_section(kind) {
+            return Err(ConfigStoreError::InvalidData(format!("Invalid config section: {}", kind)));
+        }
+        if !patch.is_object() {
+            return Err(ConfigStoreError::InvalidData("Config section must be a JSON object".into()));
+        }
+        let mut merged = Value::Null;
+        self.file.update(|doc| {
+            let current = doc.remove(kind).filter(Value::is_object).unwrap_or_else(|| Value::Object(Default::default()));
+            merged = merge_json(current, patch);
+            doc.insert(kind.to_string(), merged.clone());
+        })?;
+        Ok(merged)
     }
 }
 
@@ -288,26 +400,18 @@ pub enum ConfigStoreError {
 
 // ── File helpers ──
 
-/// 파일에서 타입 T를 로드. 실패 시 Default 반환.
-fn load_from_file<T: for<'de> Deserialize<'de> + Default>(path: &Path) -> T {
-    match std::fs::read_to_string(path) {
-        Ok(content) => {
-            // BOM 제거
-            let content = content.strip_prefix('\u{feff}').unwrap_or(&content);
-            serde_json::from_str(content).unwrap_or_default()
-        }
-        Err(_) => T::default(),
+/// 문서의 네임스페이스를 타입 T로. 없거나 형식이 틀리면 Default (틀린 경우 경고).
+fn section_or_default<T: for<'de> Deserialize<'de> + Default>(
+    doc: &serde_json::Map<String, Value>,
+    key: &str,
+) -> T {
+    match doc.get(key) {
+        None | Some(Value::Null) => T::default(),
+        Some(v) => serde_json::from_value(v.clone()).unwrap_or_else(|e| {
+            tracing::warn!("[Config] Section '{}' is invalid, using defaults: {}", key, e);
+            T::default()
+        }),
     }
-}
-
-/// 타입 T를 파일에 저장 (pretty print).
-fn save_to_file<T: Serialize>(path: &Path, value: &T) -> Result<(), ConfigStoreError> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let json_str = serde_json::to_string_pretty(value)?;
-    std::fs::write(path, json_str)?;
-    Ok(())
 }
 
 /// 두 JSON Value를 머지 (base에 overlay를 덮어씌움)
@@ -331,6 +435,17 @@ mod tests {
     use tempfile::TempDir;
 
     // ── GuiSettings 직렬화/역직렬화 ──
+
+    #[test]
+    fn chatbot_persona_moves_to_memo() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConfigStore::new(dir.path());
+        store.file.set_section("chatbot", serde_json::json!({"settings": {"persona": "hi"}, "guilds": {"g": {"persona": "x", "memo": "keep"}}})).unwrap();
+        let cfg = store.get_chatbot();
+        assert_eq!(cfg.settings.get("memo"), Some(&serde_json::json!("hi")));
+        assert!(!cfg.settings.contains_key("persona"));
+        assert_eq!(cfg.guilds["g"].get("memo"), Some(&serde_json::json!("keep")));
+    }
 
     #[test]
     fn gui_settings_default_roundtrip() {
@@ -422,12 +537,11 @@ mod tests {
         let config = BotConfig::default();
         let value = serde_json::to_value(&config).unwrap();
         assert!(value.get("prefix").is_some());
-        assert!(value.get("autoStart").is_some());
+        assert!(value.get("autoStart").is_none());
         assert!(value.get("moduleAliases").is_some());
         assert!(value.get("commandAliases").is_some());
-        assert!(value.get("musicEnabled").is_some());
-        assert!(value.get("musicChannelId").is_some());
-        assert!(value.get("musicUiSettings").is_some());
+        assert!(value.get("token").is_none());
+        assert!(value.get("musicEnabled").is_none());
         assert!(value.get("nodeSettings").is_some());
         assert!(value.get("cloudNodes").is_some());
         assert!(value.get("cloudMembers").is_some());
@@ -441,12 +555,11 @@ mod tests {
 
     #[test]
     fn bot_config_partial_json() {
-        let json = r#"{"prefix": "!test", "token": "tok-123"}"#;
+        let json = r#"{"prefix": "!test", "cloud": {"hostId": "h1"}}"#;
         let loaded: BotConfig = serde_json::from_str(json).unwrap();
         assert_eq!(loaded.prefix, "!test");
-        assert_eq!(loaded.token, "tok-123");
-        assert!(!loaded.auto_start); // default
-        assert_eq!(loaded.mode, "local"); // default
+        assert_eq!(loaded.cloud.host_id, "h1");
+        assert!(loaded.module_aliases.is_empty()); // default
     }
 
     #[test]
@@ -468,15 +581,12 @@ mod tests {
             "cloudMembers": { "u1": "admin" }
         }"#;
         let loaded: BotConfig = serde_json::from_str(json).unwrap();
+        // 예전 로컬 봇 필드(token, autoStart, mode, music*)는 무시된다
         assert_eq!(loaded.prefix, "!saba");
-        assert_eq!(loaded.token, "my-token");
-        assert!(loaded.auto_start);
-        assert_eq!(loaded.mode, "cloud");
         assert_eq!(loaded.cloud.relay_url, "https://relay.test");
         assert_eq!(loaded.cloud.host_id, "host-1");
         assert_eq!(loaded.module_aliases.get("mc").map(|s| s.as_str()), Some("minecraft"));
-        assert!(!loaded.music_enabled);
-        assert_eq!(loaded.music_channel_id, "ch-123");
+        assert!(serde_json::to_value(&loaded).unwrap().get("token").is_none());
     }
 
     #[test]
@@ -506,6 +616,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn reset_clears_optional_keys_and_rejects_empty_or_unknown() {
+        let tmp = TempDir::new().unwrap();
+        let store = ConfigStore::new(tmp.path());
+        store.set_gui_settings_from_json(serde_json::json!({"language": "ko", "fontScale": 150})).await.unwrap();
+
+        let out = store.reset_to_defaults("gui", Some(&["language".to_string()])).await.unwrap();
+        assert!(out.get("language").is_none());
+        assert_eq!(out["fontScale"], 150);
+        assert!(store.reset_to_defaults("gui", Some(&[])).await.is_err());
+        assert!(store.reset_to_defaults("gui", Some(&["nope".to_string()])).await.is_err());
+        let out = store.reset_to_defaults("gui", None).await.unwrap();
+        assert_eq!(out["fontScale"], 100);
+    }
+
+    #[tokio::test]
     async fn config_store_gui_save_load_roundtrip() {
         let tmp = TempDir::new().unwrap();
         let store = ConfigStore::new(tmp.path());
@@ -516,7 +641,7 @@ mod tests {
         settings.accent_color = "#ff0000".to_string();
         settings.font_scale = 150;
 
-        store.set_gui_settings(settings.clone()).await.unwrap();
+        store.set_gui_settings_from_json(serde_json::to_value(&settings).unwrap()).await.unwrap();
 
         // 인메모리 확인
         let loaded = store.get_gui_settings().await;
@@ -538,19 +663,14 @@ mod tests {
 
         let mut config = BotConfig::default();
         config.prefix = "!test".to_string();
-        config.token = "secret-token".to_string();
-        config.auto_start = true;
-        config.mode = "cloud".to_string();
         config.cloud.relay_url = "https://relay.test".to_string();
         config.module_aliases.insert("mc".to_string(), "minecraft".to_string());
 
-        store.set_bot_config(config.clone()).await.unwrap();
+        store.set_bot_config_from_json(serde_json::to_value(&config).unwrap()).await.unwrap();
 
         // 인메모리 확인
         let loaded = store.get_bot_config().await;
         assert_eq!(loaded.prefix, "!test");
-        assert_eq!(loaded.token, "secret-token");
-        assert!(loaded.auto_start);
         assert_eq!(loaded.cloud.relay_url, "https://relay.test");
 
         // 디스크에서 새로 로드
@@ -591,27 +711,23 @@ mod tests {
         // 완전한 설정 저장
         let full = serde_json::json!({
             "prefix": "!saba",
-            "token": "tok-1",
-            "autoStart": true,
-            "musicEnabled": true,
-            "musicChannelId": "ch-1"
+            "cloud": { "relayUrl": "https://relay.test", "hostId": "h1" },
+            "moduleAliases": { "minecraft": "mc" }
         });
         store.set_bot_config_from_json(full).await.unwrap();
 
         // 일부만 업데이트
         let partial = serde_json::json!({
-            "prefix": "!new",
-            "token": "tok-2"
+            "prefix": "!new"
         });
         let result = store.set_bot_config_from_json(partial).await.unwrap();
 
         // 업데이트된 필드
         assert_eq!(result.prefix, "!new");
-        assert_eq!(result.token, "tok-2");
-        // 기존 값 유지
-        assert!(result.auto_start);
-        assert!(result.music_enabled);
-        assert_eq!(result.music_channel_id, "ch-1");
+        // 기존 값 유지 (최상위 키 단위 병합)
+        assert_eq!(result.cloud.host_id, "h1");
+        assert_eq!(result.cloud.relay_url, "https://relay.test");
+        assert_eq!(result.module_aliases.get("minecraft").map(|s| s.as_str()), Some("mc"));
     }
 
     #[tokio::test]
@@ -660,6 +776,24 @@ mod tests {
     }
 
     // ── merge_json ──
+
+    #[tokio::test]
+    async fn client_sections_merge_and_reject_reserved_names() {
+        let tmp = TempDir::new().unwrap();
+        let store = ConfigStore::new(tmp.path());
+        store.merge_client_section("cli", serde_json::json!({ "auto_start": false })).unwrap();
+        store.merge_client_section("cli", serde_json::json!({ "language": "ko" })).unwrap();
+        let cli = ConfigStore::new(tmp.path()).get_client_section("cli").unwrap();
+        assert_eq!(cli["auto_start"], false);
+        assert_eq!(cli["language"], "ko");
+
+        for bad in ["gui", "updates", "extensions", "Cli", "../x", ""] {
+            assert!(store.get_client_section(bad).is_err(), "{} must be rejected", bad);
+        }
+        // GUI 섹션은 클라이언트 섹션 쓰기에 영향받지 않는다
+        store.set_gui_settings_from_json(serde_json::json!({ "language": "ja" })).await.unwrap();
+        assert_eq!(ConfigStore::new(tmp.path()).get_client_section("cli").unwrap()["language"], "ko");
+    }
 
     #[test]
     fn merge_json_overlay_wins() {

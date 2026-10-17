@@ -1,5 +1,3 @@
-pub mod rcon;
-pub mod rcon_pool;
 pub mod rest;
 pub mod client;
 
@@ -8,39 +6,22 @@ use serde::{Deserialize, Serialize};
 
 /// 프로토콜 통신 오류 타입
 #[derive(Error, Debug)]
-#[allow(dead_code)] // 공개 API — 프로토콜 에러 변형 전체 노출 필요
 pub enum ProtocolError {
     #[error("Connection failed: {0}")]
     ConnectionError(String),
-
-    #[error("Authentication failed: {0}")]
-    AuthError(String),
-
-    #[error("Timeout: {0}")]
-    TimeoutError(String),
 
     #[error("Command error: {0}")]
     CommandError(String),
 
     #[error("Protocol-specific error: {0}")]
     Protocol(String),
-
-    #[error("Invalid configuration: {0}")]
-    ConfigError(String),
-
-    #[error("Unknown error: {0}")]
-    Unknown(String),
 }
 
 /// 통신 타입
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CommandType {
-    #[serde(rename = "rcon")]
-    Rcon,
     #[serde(rename = "rest")]
     Rest,
-    #[serde(rename = "both")]
-    Both,
 }
 
 /// HTTP 메서드
@@ -71,7 +52,7 @@ impl std::fmt::Display for HttpMethod {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerCommand {
     pub command_type: CommandType,
-    /// RCON 명령어 (예: "say hello")
+    /// 콘솔 명령어 (예: "say hello")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
     /// REST API 엔드포인트 (예: "/api/info")
@@ -99,23 +80,7 @@ pub struct ServerResponse {
 }
 
 impl ServerResponse {
-    #[allow(dead_code)]
-    pub fn success(data: serde_json::Value) -> Self {
-        Self {
-            success: true,
-            data: Some(data),
-            error: None,
-        }
-    }
 
-    #[allow(dead_code)]
-    pub fn error(error: String) -> Self {
-        Self {
-            success: false,
-            data: None,
-            error: Some(error),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -124,15 +89,15 @@ mod tests {
 
     #[test]
     fn test_command_type_serde() {
-        let cmd_type = CommandType::Rcon;
+        let cmd_type = CommandType::Rest;
         let json = serde_json::to_string(&cmd_type).unwrap();
-        assert_eq!(json, "\"rcon\"");
+        assert_eq!(json, "\"rest\"");
     }
 
     #[test]
     fn test_server_command_serialization() {
         let cmd = ServerCommand {
-            command_type: CommandType::Rcon,
+            command_type: CommandType::Rest,
             command: Some("say hello".to_string()),
             endpoint: None,
             method: None,
@@ -140,15 +105,8 @@ mod tests {
             timeout_secs: Some(5),
         };
         let json = serde_json::to_string(&cmd).unwrap();
-        assert!(json.contains("rcon"));
+        assert!(json.contains("rest"));
         assert!(json.contains("say hello"));
     }
 
-    #[test]
-    fn test_server_response() {
-        let resp = ServerResponse::success(serde_json::json!({"result": "ok"}));
-        assert!(resp.success);
-        assert!(resp.data.is_some());
-        assert!(resp.error.is_none());
-    }
 }

@@ -41,13 +41,6 @@ pub fn submit(app: &mut App) {
             if let Some(id) = maybe_id {
                 let _ = exit_client.unregister_client(&id).await;
             }
-            if process::check_bot_running() {
-                match tokio::task::spawn_blocking(process::stop_bot).await {
-                    Ok(Ok(msg)) => lines.push(Out::Ok(msg)),
-                    Ok(Err(e)) => lines.push(Out::Err(format!("Bot stop failed: {}", e))),
-                    Err(e) => lines.push(Out::Err(format!("Bot stop failed: {}", e))),
-                }
-            }
             if process::check_daemon_running() {
                 match tokio::task::spawn_blocking(process::stop_daemon).await {
                     Ok(Ok(msg)) => lines.push(Out::Ok(msg)),
@@ -138,9 +131,9 @@ fn get_subcommands_for(first: &str) -> Vec<&'static str> {
         "module" => vec!["list", "info", "refresh", "versions", "install", "manifest", "remove", "install-manifest"],
         "extension" | "ext" => vec!["list", "enable", "disable", "install", "remove", "manifest", "rescan"],
         "daemon" => vec!["start", "stop", "status", "restart"],
-        "bot" => vec!["start", "stop", "status", "token", "prefix", "mode", "relay", "node-token"],
+        "bot" => vec!["start", "stop", "status", "prefix", "relay", "node-token"],
         "config" => vec!["show", "set", "get", "reset", "gui", "system-language"],
-        "update" => vec!["check", "status", "download", "apply", "config", "set", "install", "launch-apply"],
+        "update" => vec!["check", "status", "download", "apply", "config", "set", "launch-apply"],
         "migration" => vec!["scan"],
         _ => vec![],
     }
@@ -251,8 +244,8 @@ pub fn autocomplete(app: &mut App) {
                 "extension list", "extension enable", "extension disable",
                 "extension install", "extension remove", "extension manifest", "extension rescan",
                 "daemon start", "daemon stop", "daemon status", "daemon restart",
-                "bot start", "bot stop", "bot status", "bot token", "bot prefix",
-                "bot mode", "bot relay", "bot node-token",
+                "bot start", "bot stop", "bot status", "bot prefix",
+                "bot relay", "bot node-token",
                 "config show", "config set", "config get", "config reset", "config system-language",
                 "update check", "update status", "update download", "update apply",
                 "update launch-apply",
@@ -296,15 +289,13 @@ fn dispatch_sync(app: &mut App, lower: &[&str], orig: &[&str]) -> Option<Vec<Out
             Out::Text("  daemon start|stop|status|restart".into()),
         ]),
         Some("bot") if lower.len() == 1 => Some(vec![
-            Out::Text("  bot start|stop|status|token|prefix|mode|relay|node-token".into()),
+            Out::Text("  bot start|stop|status|prefix|relay|node-token".into()),
         ]),
         Some("migration") if lower.len() == 1 => Some(vec![
             Out::Text("  migration scan <directory>".into()),
         ]),
-        Some("bot") if lower.len() >= 2 && lower[1] == "token" => Some(cmd_bot_token(&orig[2..])),
         Some("bot") if lower.len() >= 2 && lower[1] == "prefix" => Some(cmd_bot_prefix(&orig[2..])),
         Some("bot") if lower.len() >= 2 && lower[1] == "status" => Some(cmd_bot_status()),
-        Some("bot") if lower.len() >= 2 && lower[1] == "mode" => Some(cmd_bot_mode(&lower[2..], &orig[2..])),
         Some("bot") if lower.len() >= 2 && lower[1] == "relay" => Some(cmd_bot_relay(&lower[2..], &orig[2..])),
         Some("bot") if lower.len() >= 2 && lower[1] == "node-token" => Some(cmd_bot_node_token(&lower[2..], &orig[2..])),
         Some("migration") if lower.len() >= 2 && lower[1] == "scan" => Some(cmd_migration_scan(&orig[2..])),
@@ -329,12 +320,10 @@ fn dispatch_sync(app: &mut App, lower: &[&str], orig: &[&str]) -> Option<Vec<Out
 fn cmd_config(app: &mut App, args: &[&str]) -> Vec<Out> {
     match args.first().copied() {
         None | Some("show") => {
-            let token = config::get_discord_token().ok().flatten();
             let modules_path = config::get_modules_path().unwrap_or_default();
             let extensions_path = config::get_extensions_path().unwrap_or_default();
             let prefix = config::get_bot_prefix().unwrap_or_else(|_| "!saba".into());
             let gui_lang = config::get_language().unwrap_or_else(|_| "en".into());
-            let auto_start_gui = config::get_discord_auto_start().unwrap_or(false);
             let auto_refresh = config::get_auto_refresh().unwrap_or(true);
             let refresh_ms = config::get_refresh_interval().unwrap_or(2000);
             let ipc_port = config::get_ipc_port();
@@ -349,12 +338,10 @@ fn cmd_config(app: &mut App, args: &[&str]) -> Vec<Out> {
                 Out::Text(format!("  bot_prefix       {}", app.settings.bot_prefix)),
                 Out::Blank,
                 Out::Info("GUI Settings (settings.json):".into()),
-                Out::Text(format!("  token              {}", if token.is_some() { "✓ set" } else { "✗ not set" })),
                 Out::Text(format!("  prefix             {}", prefix)),
                 Out::Text(format!("  modules_path       {} (fixed)", modules_path)),
                 Out::Text(format!("  extensions_path    {} (fixed)", extensions_path)),
                 Out::Text(format!("  language           {}", gui_lang)),
-                Out::Text(format!("  discord_auto       {}", auto_start_gui)),
                 Out::Text(format!("  auto_refresh       {}", auto_refresh)),
                 Out::Text(format!("  refresh_interval   {}ms", refresh_ms)),
                 Out::Text(format!("  ipc_port           {}", ipc_port)),
@@ -365,7 +352,7 @@ fn cmd_config(app: &mut App, args: &[&str]) -> Vec<Out> {
             lines.push(Out::Blank);
             lines.push(Out::Info("CLI: config set|get|reset <key> <value>".into()));
             lines.push(Out::Info("GUI: config gui <key> <value>".into()));
-            lines.push(Out::Text("  GUI keys: language, token, discord_auto, auto_refresh,".into()));
+            lines.push(Out::Text("  GUI keys: language, auto_refresh,".into()));
             lines.push(Out::Text("            refresh_interval, ipc_port, console_buffer, auto_passwords, port_check".into()));
             lines.push(Out::Text(format!("  CLI keys: {}", CliSettings::available_keys().iter().map(|(k,_)| *k).collect::<Vec<_>>().join(", "))));
             lines
@@ -423,40 +410,6 @@ fn cmd_config_gui(args: &[&str]) -> Vec<Out> {
             match config::set_language(args[1]) {
                 Ok(()) => vec![Out::Ok(format!("✓ GUI language set to: {}", args[1]))],
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
-            }
-        }
-        Some("token") => {
-            if args.len() < 2 {
-                match config::get_discord_token() {
-                    Ok(Some(t)) => {
-                        let masked = if t.len() > 8 { format!("{}...{}", &t[..4], &t[t.len()-4..]) } else { "****".into() };
-                        vec![Out::Ok(format!("Token: {}", masked))]
-                    }
-                    _ => vec![Out::Text("Token: not set".into())],
-                }
-            } else if args[1] == "clear" {
-                match config::clear_discord_token() {
-                    Ok(()) => vec![Out::Ok("✓ Discord token cleared.".into())],
-                    Err(e) => vec![Out::Err(format!("✗ {}", e))],
-                }
-            } else {
-                match config::set_discord_token(args[1]) {
-                    Ok(()) => vec![Out::Ok("✓ Discord token saved.".into())],
-                    Err(e) => vec![Out::Err(format!("✗ {}", e))],
-                }
-            }
-        }
-        Some("discord_auto") | Some("discord_auto_start") => {
-            if args.len() < 2 {
-                let cur = config::get_discord_auto_start().unwrap_or(false);
-                return vec![Out::Ok(format!("Discord auto-start: {}", cur))];
-            }
-            match args[1].parse::<bool>() {
-                Ok(v) => match config::set_discord_auto_start(v) {
-                    Ok(()) => vec![Out::Ok(format!("✓ Discord auto-start set to: {}", v))],
-                    Err(e) => vec![Out::Err(format!("✗ {}", e))],
-                },
-                Err(_) => vec![Out::Err("Expected true/false".into())],
             }
         }
         Some("auto_refresh") => {
@@ -540,36 +493,7 @@ fn cmd_config_gui(args: &[&str]) -> Vec<Out> {
                 Err(_) => vec![Out::Err("Expected true/false".into())],
             }
         }
-        _ => vec![Out::Err("Usage: config gui [language|token|discord_auto|auto_refresh|refresh_interval|ipc_port|console_buffer|auto_passwords|port_check] <value>".into())],
-    }
-}
-
-fn cmd_bot_token(args: &[&str]) -> Vec<Out> {
-    match args.first().copied() {
-        None | Some("show") => {
-            match config::get_discord_token() {
-                Ok(Some(t)) => {
-                    let masked = if t.len() > 8 { format!("{}...{}", &t[..4], &t[t.len()-4..]) } else { "****".into() };
-                    vec![Out::Ok(format!("Token: {}", masked))]
-                }
-                Ok(None) => vec![Out::Text("Token: not set".into())],
-                Err(e) => vec![Out::Err(format!("Error: {}", e))],
-            }
-        }
-        Some("set") => {
-            if args.len() < 2 { return vec![Out::Err("Usage: bot token set <TOKEN>".into())]; }
-            match config::set_discord_token(args[1]) {
-                Ok(()) => vec![Out::Ok("Discord token saved.".into())],
-                Err(e) => vec![Out::Err(format!("Failed: {}", e))],
-            }
-        }
-        Some("clear") => {
-            match config::clear_discord_token() {
-                Ok(()) => vec![Out::Ok("Discord token cleared.".into())],
-                Err(e) => vec![Out::Err(format!("Failed: {}", e))],
-            }
-        }
-        Some(sub) => vec![Out::Err(format!("Unknown: bot token {}. Try: show, set, clear", sub))],
+        _ => vec![Out::Err("Usage: config gui [language|auto_refresh|refresh_interval|ipc_port|console_buffer|auto_passwords|port_check] <value>".into())],
     }
 }
 
@@ -591,44 +515,30 @@ fn cmd_bot_prefix(args: &[&str]) -> Vec<Out> {
 }
 
 fn cmd_bot_status() -> Vec<Out> {
-    let running = process::check_bot_running();
-    let token = config::get_discord_token().ok().flatten();
+    let Some(agent) = process::bot_agent_status() else {
+        return vec![Out::Err("Relay agent: daemon not reachable".into())];
+    };
+    let flag = |k: &str| agent.get(k).and_then(|v| v.as_bool()).unwrap_or(false);
+    let text = |k: &str| agent.get(k).and_then(|v| v.as_str()).unwrap_or("-").to_string();
+    let status_str = if flag("running") {
+        if flag("sleeping") { "● RUNNING (relay sleeping)" } else { "● RUNNING" }
+    } else if !flag("hasToken") {
+        "○ NO NODE TOKEN"
+    } else {
+        "○ OFFLINE"
+    };
     let prefix = config::get_bot_prefix().unwrap_or_else(|_| "!saba".into());
-    let auto = config::get_discord_auto_start().unwrap_or(false);
-    let status_str = if running { "● RUNNING" } else if token.is_none() { "○ NO TOKEN" } else { "○ OFFLINE" };
-    vec![
-        Out::Ok(format!("Discord Bot: {}", status_str)),
-        Out::Text(format!("  Token:      {}", if token.is_some() { "✓ set" } else { "✗ not set" })),
+    let mut lines = vec![
+        Out::Ok(format!("Relay agent: {}", status_str)),
+        Out::Text(format!("  Relay:      {}", text("relayUrl"))),
         Out::Text(format!("  Prefix:     {}", prefix)),
-        Out::Text(format!("  Auto-start: {}", auto)),
-    ]
-}
-
-fn cmd_bot_mode(lower: &[&str], _orig: &[&str]) -> Vec<Out> {
-    let config = config::load_bot_config().unwrap_or_default();
-    let current = config.get("mode").and_then(|v| v.as_str()).unwrap_or("local");
-
-    match lower.first().copied() {
-        None | Some("show") => {
-            let mut lines = vec![Out::Ok(format!("Bot mode: {}", current))];
-            lines.push(Out::Text("  Available: local, cloud".into()));
-            lines.push(Out::Text("  bot mode set <local|cloud>".into()));
-            lines
-        }
-        Some("set") if lower.len() > 1 => {
-            let mode = lower[1];
-            if mode != "local" && mode != "cloud" {
-                return vec![Out::Err("Mode must be 'local' or 'cloud'".into())];
-            }
-            let mut config = config::load_bot_config().unwrap_or_default();
-            config["mode"] = serde_json::Value::String(mode.to_string());
-            match config::save_bot_config(&config) {
-                Ok(()) => vec![Out::Ok(format!("✓ Bot mode set to: {}", mode))],
-                Err(e) => vec![Out::Err(format!("✗ {}", e))],
-            }
-        }
-        _ => vec![Out::Err("Usage: bot mode [show|set <local|cloud>]".into())],
+        Out::Text(format!("  Handled:    {}", agent.get("commandsHandled").and_then(|v| v.as_u64()).unwrap_or(0))),
+        Out::Text(format!("  Heartbeat:  {}", text("lastHeartbeatAt"))),
+    ];
+    if let Some(err) = agent.get("lastError").and_then(|v| v.as_str()) {
+        lines.push(Out::Err(format!("  Last error: {}", err)));
     }
+    lines
 }
 
 fn cmd_bot_node_token(lower: &[&str], orig: &[&str]) -> Vec<Out> {
@@ -741,8 +651,8 @@ fn cmd_help(app: &App) -> Vec<Out> {
         Out::Text("  module    [list|info|refresh|versions|install|registry|remove|install-registry]".into()),
         Out::Text("  extension [list|enable|disable|install|remove|registry|rescan]".into()),
         Out::Text("  daemon    [start|stop|status|restart]".into()),
-        Out::Text("  bot       [start|stop|status|token|prefix|mode|relay|node-token]".into()),
-        Out::Text("  update    [check|status|download|apply|config|install|launch-apply]".into()),
+        Out::Text("  bot       [start|stop|status|prefix|relay|node-token]".into()),
+        Out::Text("  update    [check|status|download|apply|config|set|launch-apply]".into()),
         Out::Text("  config    [show|set|get|reset|gui|system-language]".into()),
         Out::Text("  migration [scan] <directory>".into()),
         Out::Text("  menu     — Interactive menu mode (F2)".into()),
@@ -1057,7 +967,7 @@ async fn exec_bot(args: &[&str]) -> Vec<Out> {
             Ok(Err(e)) => vec![Out::Err(format!("✗ {}", e))],
             Err(e) => vec![Out::Err(format!("✗ {}", e))],
         },
-        _ => vec![Out::Err("Usage: bot [start|stop] (token/prefix/mode/relay는 TUI Bot 메뉴 이용)".into())],
+        _ => vec![Out::Err("Usage: bot [start|stop] (prefix/relay/node-token은 TUI Bot 메뉴 이용)".into())],
     }
 }
 
@@ -1086,6 +996,17 @@ async fn exec_update(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
                 let mut lines = vec![Out::Ok("Update Status:".into())];
                 if let Some(comps) = v["components"].as_array() {
                     for c in comps { lines.push(Out::Text(format!("  {:<20} v{}", c["component"].as_str().unwrap_or("?"), c["current_version"].as_str().unwrap_or("?")))); }
+                }
+                if let Ok(last) = client.last_update_result().await {
+                    let r = &last["result"];
+                    if !r.is_null() {
+                        let ok = r["success"].as_bool().unwrap_or(false);
+                        let msg = r["message"].as_str().unwrap_or("");
+                        lines.push(Out::Text(format!("  Last apply ({}): {} {}", r["timestamp"].as_str().unwrap_or("?"), if ok { "✓" } else { "✗" }, msg)));
+                        for f in r["failed"].as_array().into_iter().flatten() {
+                            lines.push(Out::Text(format!("    ✗ {}", f.as_str().unwrap_or("?"))));
+                        }
+                    }
                 }
                 lines
             }
@@ -1121,48 +1042,11 @@ async fn exec_update(client: &DaemonClient, args: &[&str]) -> Vec<Out> {
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
             }
         }
-        Some("install") if args.len() >= 2 => {
-            match client.install_component(args[1]).await {
-                Ok(v) => vec![Out::Ok(format!("✓ {}", v.get("message").and_then(|m| m.as_str()).unwrap_or("Installed")))],
-                Err(e) => vec![Out::Err(format!("✗ {}", e))],
-            }
-        }
-        Some("install") => match client.run_install(None).await {
-            Ok(v) => vec![Out::Ok(format!("✓ {}", v.get("message").and_then(|m| m.as_str()).unwrap_or("Install initiated")))],
+        Some("launch-apply") => match client.launch_updater().await {
+            // 업데이터 실행은 데몬이 한다. 데몬은 업데이터를 띄운 뒤 스스로 종료한다.
+            Ok(_) => vec![Out::Ok("✓ Updater launched by the daemon; the daemon is shutting down to apply".into())],
             Err(e) => vec![Out::Err(format!("✗ {}", e))],
         },
-        Some("launch-apply") => {
-            // updater exe 찾기
-            let root = process::find_project_root().unwrap_or_else(|_| std::env::current_dir().unwrap_or_default());
-            let candidates = [
-                root.join("target").join("release").join("saba-chan-updater.exe"),
-                root.join("target").join("debug").join("saba-chan-updater.exe"),
-                root.join("saba-chan-updater.exe"),
-                root.join("updater").join("gui").join("src-tauri").join("target").join("release").join("saba-chan-updater.exe"),
-            ];
-            let updater_exe = candidates.iter().find(|p| p.exists());
-            match updater_exe {
-                Some(exe) => {
-                    let install_root = root.to_string_lossy().to_string();
-                    let mut cmd_args = vec!["--apply".to_string(), "--install-root".to_string(), install_root];
-                    // targets 추가
-                    if args.len() > 1 {
-                        cmd_args.extend(args[1..].iter().map(|s| s.to_string()));
-                    }
-                    match std::process::Command::new(exe)
-                        .args(&cmd_args)
-                        .stdin(std::process::Stdio::null())
-                        .stdout(std::process::Stdio::null())
-                        .stderr(std::process::Stdio::null())
-                        .spawn()
-                    {
-                        Ok(_) => vec![Out::Ok(format!("✓ Updater launched: {}", exe.display()))],
-                        Err(e) => vec![Out::Err(format!("✗ Failed to launch updater: {}", e))],
-                    }
-                }
-                None => vec![Out::Err("✗ Updater executable not found. Searched in target/release and target/debug.".into())],
-            }
-        }
         _ => vec![Out::Text("  update check|status|download|apply|config|set|install|launch-apply [targets...]".into())],
     }
 }
@@ -1186,7 +1070,7 @@ async fn exec_module_cmd(client: &DaemonClient, registry: &ModuleRegistry, modul
 
     if LIFECYCLE_COMMANDS.contains(&cmd_name.as_str()) {
         match cmd_name.as_str() {
-            "start" => match client.start_server(&instance_name, module_name).await {
+            "start" => match client.start_instance(&instance_id).await {
                 Ok(r) => vec![Out::Ok(format!("✓ {} — {}", instance_name, r.get("message").and_then(|v| v.as_str()).unwrap_or("Started")))],
                 Err(e) => vec![Out::Err(format!("✗ {}", e))],
             },
@@ -1197,7 +1081,7 @@ async fn exec_module_cmd(client: &DaemonClient, registry: &ModuleRegistry, modul
             "restart" => {
                 if let Err(e) = client.stop_server(&instance_name, false).await { return vec![Out::Err(format!("✗ {}", e))]; }
                 tokio::time::sleep(Duration::from_secs(1)).await;
-                match client.start_server(&instance_name, module_name).await {
+                match client.start_instance(&instance_id).await {
                     Ok(_) => vec![Out::Ok(format!("✓ {} — Restarted", instance_name))],
                     Err(e) => vec![Out::Err(format!("✗ {}", e))],
                 }
@@ -1209,13 +1093,8 @@ async fn exec_module_cmd(client: &DaemonClient, registry: &ModuleRegistry, modul
             _ => vec![],
         }
     } else {
-        let arg_value = if let Some(cmd_def) = registry.get_command_def(module_name, &cmd_name) {
-            build_args_map(&cmd_def.inputs, &args[1..])
-        } else {
-            let mut map = serde_json::Map::new();
-            if args.len() > 1 { map.insert("args".into(), serde_json::Value::String(args[1..].join(" "))); }
-            serde_json::Value::Object(map)
-        };
+        // 인자는 순서대로 넘긴다 — 명령 정의·별명·검증·라우팅은 데몬이 한다
+        let arg_value = serde_json::json!(args[1..]);
         match client.execute_command(&instance_id, &cmd_name, Some(arg_value)).await {
             Ok(r) => vec![Out::Ok(format!("✓ {} — {}", instance_name, r.get("message").or(r.get("result")).and_then(|v| v.as_str()).unwrap_or("OK")))],
             Err(e) => vec![Out::Err(format!("✗ {}", e))],
@@ -1223,20 +1102,3 @@ async fn exec_module_cmd(client: &DaemonClient, registry: &ModuleRegistry, modul
     }
 }
 
-fn build_args_map(inputs: &[crate::module_registry::CommandInput], args: &[&str]) -> serde_json::Value {
-    let mut map = serde_json::Map::new();
-    for (arg_idx, (i, input)) in inputs.iter().enumerate().enumerate() {
-        if arg_idx >= args.len() { break; }
-        if i == inputs.len() - 1 && input.input_type == "text" {
-            map.insert(input.name.clone(), serde_json::Value::String(args[arg_idx..].join(" ")));
-            break;
-        }
-        if input.input_type == "number" {
-            if let Ok(n) = args[arg_idx].parse::<i64>() { map.insert(input.name.clone(), serde_json::json!(n)); }
-            else { map.insert(input.name.clone(), serde_json::Value::String(args[arg_idx].to_string())); }
-        } else {
-            map.insert(input.name.clone(), serde_json::Value::String(args[arg_idx].to_string()));
-        }
-    }
-    serde_json::Value::Object(map)
-}

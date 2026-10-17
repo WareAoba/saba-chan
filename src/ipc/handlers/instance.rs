@@ -64,6 +64,9 @@ pub async fn get_instance(
     }
 }
 
+/// 모듈 설정 기본값에서 인스턴스 폴더로 바뀌는 자리표시자
+pub const INSTANCE_DIR_PLACEHOLDER: &str = "{instance_dir}";
+
 /// POST /api/instances - 새 인스턴스 생성
 pub async fn create_instance(
     State(state): State<IPCServer>,
@@ -86,74 +89,34 @@ pub async fn create_instance(
     if let (Ok(name), Ok(module)) = (name, module_name) {
         let mut instance = crate::instance::ServerInstance::new(name, module);
 
-        // 익스텐션 모드 플래그 (예: 컨테이너 격리)
-        let use_container_ext = payload
-            .get("use_container")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
-        // 컨테이너 격리 요청 시 해당 익스텐션이 활성화되어 있는지 검증
-        if use_container_ext {
-            let ext_mgr = state.extension_manager.read().await;
-            if !ext_mgr.is_enabled("docker") {
-                let error = json!({
-                    "error": "Cannot create instance: the required extension is not enabled. Enable it in Settings → Extensions first.",
-                    "error_code": "extension_required",
-                    "extension_id": "docker",
-                });
-                return (StatusCode::UNPROCESSABLE_ENTITY, Json(error)).into_response();
-            }
-            drop(ext_mgr);
-        }
-
-        // extension_data 설정 (컨테이너 격리 플래그 → extension_data에 저장)
-        if use_container_ext {
-            instance.extension_data.insert(
-                "docker_enabled".to_string(),
-                serde_json::json!(true),
-            );
-        }
-
-        // ── 네이티브(비-컨테이너) 인스턴스는 모듈당 1개 제한 ──
-        if !use_container_ext {
-            let existing = supervisor.instance_store.list()
-                .iter()
-                .find(|i| i.module_name == module && !i.ext_enabled("docker_enabled"));
-            if let Some(existing_inst) = existing {
-                let error = json!({
-                    "error": format!(
-                        "A native instance for module '{}' already exists: '{}'. Only one native instance per module is allowed. Use container isolation to run multiple instances.",
-                        module, existing_inst.name
-                    ),
-                    "error_code": "duplicate_native_instance",
-                    "existing_instance": existing_inst.name,
-                });
-                return (StatusCode::CONFLICT, Json(error)).into_response();
-            }
-        }
-
-        // 모듈 정보에서 process_name, default_port, install/container config 가져오기
+        // 모듈 정보에서 process_name, default_port, install 설정 가져오기
         let module_install = if let Ok(loaded_module) = supervisor.module_loader.get_module(module) {
             instance.process_name = loaded_module.metadata.process_name.clone();
             if instance.port.is_none() {
                 instance.port = loaded_module.metadata.default_port;
             }
-            // rcon_port / rest_port 기본값을 모듈이 해당 프로토콜을 지원할 때만 설정
+            // rest_port 기본값은 모듈이 REST를 지원할 때만 설정
             let supported = loaded_module.metadata.protocols_supported.as_deref().unwrap_or(&[]);
-            if instance.rcon_port.is_none() && supported.iter().any(|s| s == "rcon") {
-                instance.rcon_port = Some(loaded_module.metadata.default_rcon_port());
-            }
             if instance.rest_port.is_none() && supported.iter().any(|s| s == "rest") {
                 instance.rest_port = Some(loaded_module.metadata.default_rest_port());
             }
 
             // settings.fields의 default 값을 module_settings에 자동 채우기
-            // (docker command 템플릿의 {ram} 등이 해결되려면 이 값이 필요)
             if let Some(ref settings) = loaded_module.metadata.settings {
                 for field in &settings.fields {
                     if !instance.module_settings.contains_key(&field.name) {
                         if let Some(ref default_val) = field.default {
                             let json_val = match default_val {
+                                // `{instance_dir}`: 이 인스턴스 폴더 (예: 인스턴스마다 따로 두는 게임 데이터 폴더).
+                                // 기존 서버를 가져오는 경우엔 그 서버가 쓰던 위치를 모듈이 고르게 비워 둔다
+                                toml::Value::String(s) if s.contains(INSTANCE_DIR_PLACEHOLDER) => {
+                                    if payload.get("migration_source").is_some() {
+                                        serde_json::json!("")
+                                    } else {
+                                        let dir = supervisor.instance_store.instance_dir(&instance.id);
+                                        serde_json::json!(s.replace(INSTANCE_DIR_PLACEHOLDER, &dir.to_string_lossy()))
+                                    }
+                                }
                                 toml::Value::String(s) => serde_json::json!(s),
                                 toml::Value::Integer(n) => serde_json::json!(n),
                                 toml::Value::Float(f) => serde_json::json!(f),
@@ -168,8 +131,7 @@ pub async fn create_instance(
 
             Some((
                 loaded_module.metadata.install.clone(),
-                loaded_module.metadata.extensions.get("docker").cloned(),  // 컨테이너 익스텐션 설정
-                loaded_module.path.clone(),  // 모듈 디렉토리 경로 (마이그레이션 설정 import 시 사용)
+                loaded_module.entry_path(),  // 모듈 진입 파일 (마이그레이션 설정 import 시 사용)
                 loaded_module.metadata.server_executable.clone(),  // 바이너리 파일명 (마이그레이션 시 executable_path 자동 계산)
             ))
         } else {
@@ -177,7 +139,7 @@ pub async fn create_instance(
         };
 
         // ── 모듈의 install.requires_extensions → 인스턴스 required_extensions 자동 채우기 ──
-        if let Some((Some(ref install), _, _, _)) = module_install {
+        if let Some((Some(ref install), _, _)) = module_install {
             for ext_id in &install.requires_extensions {
                 if !instance.required_extensions.contains(ext_id) {
                     instance.required_extensions.push(ext_id.clone());
@@ -185,9 +147,8 @@ pub async fn create_instance(
             }
         }
 
-        // ── 네이티브 인스턴스: 필수 익스텐션 활성화 검증 ──
-        // (컨테이너 모드는 컨테이너 내부에서 처리하므로 스킵)
-        if !use_container_ext && !instance.required_extensions.is_empty() {
+        // ── 필수 익스텐션 활성화 검증 ──
+        if !instance.required_extensions.is_empty() {
             let ext_mgr = state.extension_manager.read().await;
             let ready = ext_mgr.installed_and_enabled_set();
             let enabled_not_installed = ext_mgr.enabled_but_not_installed();
@@ -235,160 +196,79 @@ pub async fn create_instance(
         } else {
             false
         };
+        // 한 폴더에 서버 둘이면 서로의 월드·설정을 덮어쓴다
+        if let Some(dir) = instance.working_dir.as_deref() {
+            let taken = supervisor.instance_store.list().iter().find(|o| {
+                o.working_dir.as_deref().is_some_and(|d| saba_chan_updater_lib::same_path(std::path::Path::new(d), std::path::Path::new(dir)))
+            });
+            if let Some(other) = taken {
+                let error = json!({
+                    "success": false,
+                    "error": format!("Server '{}' already uses this folder", other.name),
+                    "error_code": "working_dir_in_use",
+                    "instance": other.name,
+                });
+                return (StatusCode::CONFLICT, Json(error)).into_response();
+            }
+        }
         if let Some(port) = payload.get("port").and_then(|v| v.as_u64()) {
             instance.port = Some(port as u16);
+        } else if !migration_mode {
+            // 같은 게임을 여러 개 만들면 기본 포트가 겹친다: 다른 인스턴스와 겹치지 않게 옮긴다
+            let port_fields_of = |module: &str| -> Vec<String> {
+                supervisor.module_loader.get_module(module).ok()
+                    .and_then(|m| m.metadata.settings.as_ref().map(|s| s.port_fields().into_iter().map(str::to_string).collect()))
+                    .unwrap_or_default()
+            };
+            let mut taken = std::collections::HashSet::new();
+            for other in supervisor.instance_store.list() {
+                let fields = port_fields_of(&other.module_name);
+                let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
+                taken.extend(crate::validator::instance_ports(other, &fields).into_iter().map(|(_, p)| p));
+            }
+            let fields = port_fields_of(module);
+            let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
+            if let Some(delta) = crate::validator::shift_ports_clear_of(&mut instance, &fields, &taken) {
+                tracing::info!("Instance '{}': ports moved by +{} to stay clear of other instances", instance.name, delta);
+            }
         }
 
         let id = instance.id.clone();
         let instance_name = instance.name.clone();
         let module_name_owned = module.to_string();
-
-        // 컨테이너 모드일 때: working_dir를 인스턴스 디렉토리의 server/ 하위 경로로 설정
         let instance_dir = supervisor.instance_store.instance_dir(&id);
-        if use_container_ext {
-            let server_dir = instance_dir.join("server");
-            instance.working_dir = Some(server_dir.to_string_lossy().to_string());
-        }
 
         // 인스턴스 저장 (프로비저닝은 비동기로 수행)
         match supervisor.instance_store.add(instance.clone()) {
             Ok(_) => {
-                // ── Extension hook: server.post_create ──
-                if use_container_ext {
+                // ── Extension hook: server.post_create (결과를 기다리지 않는다) ──
+                {
                     let ext_mgr = state.extension_manager.clone();
-                    let tracker = state.provision_tracker.clone();
                     let ctx = serde_json::json!({
                         "instance_id": &id,
-                        "instance_name": &instance_name,
-                        "module": &module_name_owned,
-                        "use_container": use_container_ext,
                         "instance_dir": instance_dir.to_string_lossy(),
-                        "extension_data": &instance.extension_data,
                         "instance": serde_json::to_value(&instance).unwrap_or_default(),
-                        "module_install": module_install.as_ref().map(|(install, ext_container, _, _)| {
-                            serde_json::json!({
-                                "install": install,
-                                "container": ext_container,
-                            })
-                        }),
+                        "module": &module_name_owned,
+                        "migration": migration_mode,
                     });
-                    let inst_clone = instance.clone();
-
-                    // 초기 프로비저닝 상태 등록 (범용 — 스텝 정보는 extension이 제공)
-                    tracker.update(&inst_clone.name, crate::ipc::ProvisionProgress {
-                        step: 0,
-                        total: 1,
-                        label: "initializing".to_string(),
-                        message: "Initializing...".to_string(),
-                        done: false,
-                        error: None,
-                        percent: Some(0),
-                        steps: None,
-                    });
-
-                    let tracker_cb = tracker.clone();
-                    let name_cb = inst_clone.name.clone();
-                    let steps_store = std::sync::Arc::new(std::sync::Mutex::new(None::<Vec<String>>));
-                    let steps_write = steps_store.clone();
-                    let steps_final = steps_store.clone();
-                    let on_progress = move |prog: crate::plugin::ExtensionProgress| {
-                        let pct = prog.percent.unwrap_or(0);
-                        let msg = prog.message.clone().unwrap_or_default();
-                        // extension이 steps 목록을 보내면 저장
-                        if let Some(ref new_steps) = prog.steps {
-                            if let Ok(mut s) = steps_write.lock() {
-                                *s = Some(new_steps.clone());
-                            }
-                        }
-                        let stored_steps = steps_store.lock().ok().and_then(|s| s.clone());
-                        tracker_cb.update(&name_cb, crate::ipc::ProvisionProgress {
-                            step: prog.step.unwrap_or(0),
-                            total: prog.total.unwrap_or(1),
-                            label: prog.label.unwrap_or_default(),
-                            message: msg,
-                            done: false,  // progress 콜백에서는 절대 done 설정하지 않음
-                            error: None,
-                            percent: Some(pct),
-                            steps: stored_steps,
-                        });
-                    };
-
-                    let tracker_done = tracker.clone();
-                    let name_done = inst_clone.name.clone();
                     tokio::spawn(async move {
-                        let mgr = ext_mgr.read().await;
-                        let results = mgr.dispatch_hook_with_progress(
-                            "server.post_create", ctx, on_progress,
-                        ).await;
-                        // 완료 또는 에러 상태 기록 (Err variant + Python success:false 모두 체크)
-                        let err = results.iter().find_map(|(_, r)| match r {
-                            Err(e) => Some(e.to_string()),
-                            Ok(val) => {
-                                if val.get("success").and_then(|s| s.as_bool()) == Some(false) {
-                                    val.get("error")
-                                        .and_then(|e| e.as_str())
-                                        .map(|s| s.to_string())
-                                        .or_else(|| Some("Extension reported failure".to_string()))
-                                } else {
-                                    None
-                                }
-                            }
-                        });
-                        let final_steps = steps_final.lock().ok().and_then(|s| s.clone());
-                        if let Some(ref e) = err {
-                            tracing::warn!("Provisioning failed for '{}': {}", inst_clone.name, e);
-                        }
-                        let has_error = err.is_some();
-                        tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
-                            step: 0,
-                            total: 1,
-                            label: "done".to_string(),
-                            message: if has_error { "Provisioning failed".to_string() } else { "Provisioning complete".to_string() },
-                            done: true,
-                            error: err,
-                            percent: Some(100),
-                            steps: final_steps,
-                        });
-                        tracing::info!("Extension post_create dispatched for '{}' (error={})", inst_clone.name, has_error);
-
-                        // 성공 시 5초 후 tracker 자동 정리 → provisioning UI 자연스럽게 사라짐
-                        // 에러 시에는 유지 → 사용자가 dismiss할 때까지 UI 표시
-                        if !has_error {
-                            let tracker_cleanup = tracker_done.clone();
-                            let name_cleanup = name_done.clone();
-                            tokio::spawn(async move {
-                                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                                tracker_cleanup.remove(&name_cleanup);
-                            });
-                        }
+                        let _ = crate::extension::run_hook(&ext_mgr, "server.post_create", ctx).await;
                     });
-
-                    let response = json!({
-                        "success": true,
-                        "id": id,
-                        "provisioning": true,
-                    });
-                    (StatusCode::CREATED, Json(response)).into_response()
-                } else if !migration_mode {
+                }
+                if !migration_mode {
                     // ── Native provisioning: 서버 바이너리 설치 ──
-                    // install 설정이 있는 모듈만 프로비저닝 (steamcmd / download)
+                    // install 설정이 있는 모듈만 프로비저닝 (download / 익스텐션 방식)
                     let has_install = module_install.as_ref()
-                        .and_then(|(install, _, _, _)| install.as_ref())
+                        .and_then(|(install, _, _)| install.as_ref())
                         .is_some();
 
                     if has_install {
                         let install_config = module_install.as_ref()
-                            .and_then(|(install, _, _, _)| install.clone())
+                            .and_then(|(install, _, _)| install.clone())
                             .unwrap();
 
-                        // ── SteamCMD extension_data 자동 주입 (신규 생성) ──
-                        instance.apply_install_extension_data(
-                            &install_config.method,
-                            install_config.app_id,
-                            install_config.anonymous,
-                            install_config.beta.as_deref(),
-                            install_config.platform.as_deref(),
-                        );
+                        // ── 설치 방식 익스텐션이 읽을 extension_data (신규 생성) ──
+                        instance.apply_install_extension_data(&install_config.method, &install_config.extension_fields());
                         // 인스턴스 재저장 (extension_data 업데이트)
                         let _ = supervisor.instance_store.update(&id, instance.clone());
 
@@ -410,13 +290,14 @@ pub async fn create_instance(
 
                         // 초기 프로비저닝 상태 등록
                         let provision_label = match install_config.method.as_str() {
-                            "steamcmd" => "steamcmd",
-                            _ => "download",
+                            "manual" | "download" => "download".to_string(),
+                            other => other.to_string(),
                         };
+                        tracker.mark_creating(&instance_name);
                         tracker.update(&instance_name, crate::ipc::ProvisionProgress {
                             step: 0,
                             total: 1,
-                            label: provision_label.to_string(),
+                            label: provision_label.clone(),
                             message: "Installing server...".to_string(),
                             done: false,
                             error: None,
@@ -436,7 +317,7 @@ pub async fn create_instance(
                             let module_path = {
                                 let sup = supervisor_arc.read().await;
                                 match sup.module_loader.get_module(&module_name_owned) {
-                                    Ok(m) => format!("{}/lifecycle.py", m.path),
+                                    Ok(m) => m.entry_path(),
                                     Err(e) => {
                                         tracker_done.update(&name_done, crate::ipc::ProvisionProgress {
                                             step: 0, total: 1,
@@ -479,7 +360,7 @@ pub async fn create_instance(
                                         }
                                     }
                                 } else {
-                                    None // steamcmd 방식은 version 불필요
+                                    None // 익스텐션 방식은 version 불필요
                                 };
 
                                 // download 방식인데 버전을 파악하지 못한 경우 에러
@@ -512,7 +393,7 @@ pub async fn create_instance(
                                     tracker_progress.update(&name_progress, crate::ipc::ProvisionProgress {
                                         step: prog.step.unwrap_or(0),
                                         total: prog.total.unwrap_or(1),
-                                        label: prog.label.unwrap_or_else(|| provision_label.to_string()),
+                                        label: prog.label.unwrap_or_else(|| provision_label.clone()),
                                         message: msg,
                                         done: false,
                                         error: None,
@@ -523,7 +404,7 @@ pub async fn create_instance(
 
                                 crate::plugin::run_plugin_with_progress_and_timeout(
                                     &module_path, "install_server", config, on_progress,
-                                    1800, // 30분 — SteamCMD 대용량 다운로드 허용
+                                    1800, // 30분 — 대용량 다운로드 허용
                                 ).await
                             };
 
@@ -618,23 +499,16 @@ pub async fn create_instance(
                 } else {
                     // 마이그레이션: 기존 디렉토리에 직접 연결, 추가 설치 없음
 
-                    // ── SteamCMD extension_data 자동 주입 (마이그레이션) ──
-                    // 모듈이 steamcmd 방식일 경우, hook 조건이 올바르게 동작하도록
-                    // install_method_steamcmd, steamcmd_app_id 등을 extension_data에 설정
-                    if let Some((Some(ref install), _, _, _)) = module_install {
-                        instance.apply_install_extension_data(
-                            &install.method,
-                            install.app_id,
-                            install.anonymous,
-                            install.beta.as_deref(),
-                            install.platform.as_deref(),
-                        );
+                    // ── 설치 방식 익스텐션이 읽을 extension_data (마이그레이션) ──
+                    // hook 조건(`instance.ext_data.install_method_<방식>`)이 맞게 동작하도록
+                    if let Some((Some(ref install), _, _)) = module_install {
+                        instance.apply_install_extension_data(&install.method, &install.extension_fields());
                     }
 
                     // ── executable_path 자동 계산 ──
                     // migration_source(=working_dir)와 server_executable(바이너리 파일명)을 결합
                     // 프론트엔드가 모듈 기본값을 보낼 수 있으므로, migration에서는 항상 재계산
-                    if let (Some(ref work_dir), Some((_, _, _, Some(ref exe_name)))) = (&instance.working_dir, &module_install) {
+                    if let (Some(ref work_dir), Some((_, _, Some(ref exe_name)))) = (&instance.working_dir, &module_install) {
                         let resolved = std::path::Path::new(work_dir).join(exe_name);
                         if resolved.exists() {
                             instance.executable_path = Some(resolved.to_string_lossy().to_string());
@@ -645,41 +519,20 @@ pub async fn create_instance(
                     }
 
                     // ── 기존 INI 설정 import ──
-                    if let Some((_, _, ref module_path, ref _server_exe)) = module_install {
-                        let lifecycle_path = format!("{}/lifecycle.py", module_path);
+                    // 모듈 호출은 데몬 락 밖에서 (C12). 필요한 값만 챙기고 락을 놓는다.
+                    let (credential_map, setting_types) = supervisor.module_loader.get_module(&module_name_owned)
+                        .map(|m| (m.metadata.credential_map.clone(), m.metadata.setting_types()))
+                        .unwrap_or_default();
+                    drop(supervisor);
+                    if let Some((_, ref lifecycle_path, ref _server_exe)) = module_install {
                         let import_config = json!({
                             "working_dir": instance.working_dir,
                         });
-                        match crate::plugin::run_plugin(&lifecycle_path, "import_settings", import_config).await {
+                        match crate::plugin::run_plugin(lifecycle_path, "import_settings", import_config).await {
                             Ok(result) => {
                                 if result.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
                                     if let Some(settings) = result.get("settings").and_then(|v| v.as_object()) {
-                                        for (key, value) in settings {
-                                            instance.module_settings.insert(key.clone(), value.clone());
-                                        }
-                                        // port 등 core 필드 동기화
-                                        if let Some(port) = settings.get("port").and_then(|v| v.as_u64()) {
-                                            instance.port = Some(port as u16);
-                                        }
-                                        // credential_map 역매핑: import된 설정에서 daemon first-class 필드로 동기화
-                                        // 예: Palworld의 credential_map { rest_password = "AdminPassword" }
-                                        //   → settings에 "AdminPassword" 값이 있으면 instance.rest_password에 설정
-                                        if let Ok(module) = supervisor.module_loader.get_module(&module_name_owned) {
-                                            for (daemon_key, game_key) in &module.metadata.credential_map {
-                                                // game_key(예: "AdminPassword")를 case-insensitive로 settings에서 탐색
-                                                let game_key_lower = game_key.to_lowercase();
-                                                let value = settings.iter()
-                                                    .find(|(k, _)| k.to_lowercase() == game_key_lower || k.as_str() == game_key.as_str())
-                                                    .and_then(|(_, v)| v.as_str());
-                                                if let Some(pwd) = value {
-                                                    match daemon_key.as_str() {
-                                                        "rest_password" => instance.rest_password = Some(pwd.to_string()),
-                                                        "rcon_password" => instance.rcon_password = Some(pwd.to_string()),
-                                                        _ => {}
-                                                    }
-                                                }
-                                            }
-                                        }
+                                        instance.apply_imported_settings(settings, &credential_map, &setting_types);
                                         tracing::info!("Migration import_settings: {} settings imported for '{}'", settings.len(), instance_name);
                                     }
                                 }
@@ -690,7 +543,7 @@ pub async fn create_instance(
                         }
                     }
                     // 마이그레이션 변경사항 저장 (executable_path, import된 설정 등)
-                    let _ = supervisor.instance_store.update(&id, instance.clone());
+                    let _ = state.supervisor.write().await.instance_store.update(&id, instance.clone());
                     let response = json!({ "success": true, "id": id });
                     (StatusCode::CREATED, Json(response)).into_response()
                 }
@@ -707,7 +560,8 @@ pub async fn create_instance(
 }
 
 /// DELETE /api/provision-progress/:name - 프로비저닝 상태 클리어 (에러 dismiss용)
-/// 프로비저닝 실패 상태였으면 인스턴스도 자동 롤백(삭제)
+/// 신규 생성 프로비저닝이 실패한 상태였으면 인스턴스도 롤백(삭제)한다.
+/// 기존 인스턴스의 업데이트 실패는 진행 표시만 지운다.
 pub async fn dismiss_provision_progress(
     Path(name): Path<String>,
     State(state): State<IPCServer>,
@@ -718,11 +572,13 @@ pub async fn dismiss_provision_progress(
         .get(&name)
         .map(|p| p.error.is_some())
         .unwrap_or(false);
+    let was_creating = state.provision_tracker.take_creating(&name);
 
     state.provision_tracker.remove(&name);
 
-    // 프로비저닝 실패 시: 자동 롤백 — 인스턴스 삭제
-    if had_error {
+    // 신규 생성이 실패했을 때만 롤백 — 인스턴스 삭제
+    let rolled_back = had_error && was_creating;
+    if rolled_back {
         let mut supervisor = state.supervisor.write().await;
         if let Some(id) = supervisor
             .instance_store
@@ -743,7 +599,7 @@ pub async fn dismiss_provision_progress(
         }
     }
 
-    (StatusCode::OK, Json(json!({ "success": true, "rolled_back": had_error }))).into_response()
+    (StatusCode::OK, Json(json!({ "success": true, "rolled_back": rolled_back }))).into_response()
 }
 
 /// GET /api/provision-progress/:name - 프로비저닝 진행 상태 (서버 이름 기준)
@@ -780,7 +636,7 @@ pub async fn delete_instance(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    let mut supervisor = state.supervisor.write().await;
+    let supervisor = state.supervisor.write().await;
 
     // ── 인스턴스 존재 확인 ──
     let instance = match supervisor.instance_store.get(&id) {
@@ -792,27 +648,25 @@ pub async fn delete_instance(
     };
 
     // ── 실행 중이면 먼저 정지 ──
-    let is_running = supervisor.tracker.get_pid(&id).is_ok();
-    if is_running {
+    // 저장소에서 떼어 내는 것만 락 안에서, 강제 종료 대기는 락 밖에서 (C12)
+    let running_pid = supervisor.tracker.get_pid(&id).ok();
+    let managed = supervisor.managed_store.remove(&id).await;
+    let _ = supervisor.tracker.untrack(&id);
+    drop(supervisor);
+    if let Some(pid) = running_pid {
         tracing::info!("Instance '{}' is running, force-stopping before delete...", instance.name);
-
-        // Managed process가 있으면 force kill
-        if let Some(managed) = supervisor.managed_store.remove(&id).await {
-            if managed.is_running() {
-                if let Ok(pid) = supervisor.tracker.get_pid(&id) {
-                    let _ = crate::supervisor::process::force_kill_pid(pid);
-                }
-                // 프로세스 종료 대기
-                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-            }
-        } else {
-            // Managed가 아니면 PID로 직접 kill
-            if let Ok(pid) = supervisor.tracker.get_pid(&id) {
+        // Managed process가 있으면 그 PID, 아니면 추적하던 PID를 강제 종료
+        match managed.as_ref() {
+            Some(m) if m.is_running() => m.force_kill(),
+            Some(_) => {}
+            None => {
                 let _ = crate::supervisor::process::force_kill_pid(pid);
-                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             }
         }
-        let _ = supervisor.tracker.untrack(&id);
+        if managed.as_ref().is_none_or(|m| m.is_running()) {
+            // 프로세스 종료 대기
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
     }
 
     // ── Extension hook: server.pre_delete ──
@@ -824,8 +678,7 @@ pub async fn delete_instance(
             "module": &instance.module_name,
             "extension_data": &instance.extension_data,
         });
-        let mgr = ext_mgr.read().await;
-        let results = mgr.dispatch_hook("server.pre_delete", ctx).await;
+        let results = crate::extension::run_hook(&ext_mgr, "server.pre_delete", ctx).await;
         let handled = results.iter().any(|(_id, r)| {
             r.as_ref()
                 .map(|v| v.get("handled").and_then(|h| h.as_bool()) == Some(true))
@@ -833,7 +686,7 @@ pub async fn delete_instance(
         });
         if handled {
             tracing::info!("Extension handled pre_delete cleanup for '{}'", instance.name);
-            // Docker compose down 후 파일 잠금 해제 대기
+            // 익스텐션 정리 후 파일 잠금 해제 대기
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         }
     }
@@ -841,7 +694,8 @@ pub async fn delete_instance(
     // ── 디렉토리 삭제 (Windows 파일 잠금 대비 재시도) ──
     let mut last_err = None;
     for attempt in 0..3 {
-        match supervisor.instance_store.remove(&id) {
+        let removed = state.supervisor.write().await.instance_store.remove(&id);
+        match removed {
             Ok(_) => {
                 let response = json!({ "success": true });
                 return (StatusCode::OK, Json(response)).into_response();
@@ -865,6 +719,41 @@ pub async fn delete_instance(
     (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
 }
 
+/// POST /api/instance/:id/rename — 이름 바꾸기 (`{name}`). 실행 중이면 409 `server_running`,
+/// 같은 이름이 있으면 409 `name_taken`. 응답 `{success, id, name, previous}`
+pub async fn rename_instance(
+    State(state): State<IPCServer>,
+    Path(id): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let fail = |status: StatusCode, error: String, code: &str| {
+        (status, Json(json!({ "success": false, "error": error, "error_code": code }))).into_response()
+    };
+    let Some(new_name) = body.get("name").and_then(|v| v.as_str()).map(str::trim).filter(|n| !n.is_empty()) else {
+        return fail(StatusCode::BAD_REQUEST, "Missing 'name'".into(), "invalid_request");
+    };
+    let mut supervisor = state.supervisor.write().await;
+    let Some(mut instance) = supervisor.instance_store.get(&id).cloned() else {
+        return fail(StatusCode::NOT_FOUND, format!("Instance not found: {}", id), "not_found");
+    };
+    if instance.name == new_name {
+        return Json(json!({ "success": true, "id": id, "name": new_name, "previous": new_name })).into_response();
+    }
+    if supervisor.instance_store.list().iter().any(|i| i.id != id && i.name == new_name) {
+        return fail(StatusCode::CONFLICT, format!("An instance named '{}' already exists", new_name), "name_taken");
+    }
+    // 실행 중인 서버는 이름으로도 추적되므로 꺼진 뒤에만 바꾼다
+    let running = supervisor.tracker.get_pid(&id).is_ok() || supervisor.managed_store.running_instance_ids().await.contains(&id);
+    if running {
+        return fail(StatusCode::CONFLICT, "Stop the server before renaming it".into(), "server_running");
+    }
+    let previous = std::mem::replace(&mut instance.name, new_name.to_string());
+    if let Err(e) = supervisor.instance_store.update(&id, instance) {
+        return fail(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), "internal");
+    }
+    Json(json!({ "success": true, "id": id, "name": new_name, "previous": previous })).into_response()
+}
+
 /// PATCH /api/instance/:id - 인스턴스 설정 업데이트
 pub async fn update_instance_settings(
     State(state): State<IPCServer>,
@@ -886,12 +775,17 @@ pub async fn update_instance_settings(
     if let Some(settings_obj) = settings.as_object() {
         if let Ok(module) = supervisor.module_loader.get_module(&instance.module_name) {
             if let Some(ref settings_meta) = module.metadata.settings {
-                let errors = crate::validator::validate_all_settings(
+                // 부분 변경이므로 보낸 필드만 검증한다
+                let errors = crate::validator::validate_settings_patch(
                     &settings_meta.fields,
                     settings_obj,
                 );
                 if !errors.is_empty() {
                     let error_details: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
+                    let fields: Vec<Value> = errors
+                        .iter()
+                        .map(|e| json!({ "field": e.field, "type": e.error_type, "message": e.message }))
+                        .collect();
                     tracing::warn!(
                         "Settings validation failed for instance {}: {:?}",
                         id, error_details
@@ -901,6 +795,7 @@ pub async fn update_instance_settings(
                         "error_code": "validation_failed",
                         "message": "Settings validation failed",
                         "details": error_details,
+                        "fields": fields,
                     });
                     return (StatusCode::BAD_REQUEST, Json(error)).into_response();
                 }
@@ -927,8 +822,10 @@ pub async fn update_instance_settings(
     // 하드코딩된 공통 필드 목록
     let known_fields: std::collections::HashSet<&str> = [
         "port",
+        // RCON은 보안상 쓰지 않는다: 예전 GUI·설정이 보내도 모듈 설정이나 게임 파일로 넘기지 않는다
         "rcon_port",
         "rcon_password",
+        "enable_rcon",
         "rest_host",
         "rest_port",
         "rest_username",
@@ -960,49 +857,7 @@ pub async fn update_instance_settings(
         }
     }
 
-    // rcon_port: 숫자 또는 문자열 수용
-    if let Some(rcon_port_value) = settings.get("rcon_port") {
-        match rcon_port_value {
-            serde_json::Value::Number(n) => {
-                if let Some(rcon_port) = n.as_u64() {
-                    updated.rcon_port = Some(rcon_port as u16);
-                }
-            }
-            serde_json::Value::String(s) => {
-                if let Ok(rcon_port) = s.parse::<u16>() {
-                    updated.rcon_port = Some(rcon_port);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    if let Some(rcon_password) = settings.get("rcon_password").and_then(|v| v.as_str()) {
-        updated.rcon_password = Some(rcon_password.to_string());
-    }
-
-    // managed_start ↔ RCON 연동:
-    //   managed=true  → enable_rcon=false (stdin으로 제어, RCON 불필요)
-    //   managed=false → enable_rcon=true  (RCON이 유일한 제어 수단)
-    let managed_start = settings.get("managed_start").and_then(|v| match v {
-        serde_json::Value::Bool(b) => Some(*b),
-        serde_json::Value::String(s) => Some(s == "true"),
-        _ => None,
-    });
-    let enable_rcon = match managed_start {
-        Some(true) => Some(false),  // managed → RCON 비활성화
-        Some(false) => Some(true),  // native → RCON 강제 활성화
-        None => {
-            // managed_start가 전송되지 않은 경우: 기존 enable_rcon 값 유지
-            settings.get("enable_rcon").and_then(|v| match v {
-                serde_json::Value::Bool(b) => Some(*b),
-                serde_json::Value::String(s) => Some(s == "true"),
-                _ => None,
-            })
-        }
-    };
-
-    // NOTE: RCON/REST 비밀번호 자동 생성은 인스턴스 실행 시점에 supervisor에서 처리합니다.
+    // NOTE: REST 비밀번호 자동 생성은 인스턴스 실행 시점에 supervisor에서 처리합니다.
 
     if let Some(rest_host) = settings.get("rest_host").and_then(|v| v.as_str()) {
         updated.rest_host = Some(rest_host.to_string());
@@ -1052,9 +907,6 @@ pub async fn update_instance_settings(
                     match daemon_key.as_str() {
                         "rest_password" if updated.rest_password.as_deref().unwrap_or("").is_empty() => {
                             updated.rest_password = Some(pwd.to_string());
-                        }
-                        "rcon_password" if updated.rcon_password.as_deref().unwrap_or("").is_empty() => {
-                            updated.rcon_password = Some(pwd.to_string());
                         }
                         _ => {}
                     }
@@ -1128,10 +980,9 @@ pub async fn update_instance_settings(
     }
 
     tracing::info!(
-        "Updating instance {} with settings: port={:?}, rcon_port={:?}, executable_path={:?}, protocol_mode={}, module_settings_count={}",
+        "Updating instance {} with settings: port={:?}, executable_path={:?}, protocol_mode={}, module_settings_count={}",
         id,
         updated.port,
-        updated.rcon_port,
         updated.executable_path,
         updated.protocol_mode,
         updated.module_settings.len()
@@ -1155,21 +1006,13 @@ pub async fn update_instance_settings(
                 || key == "managed_start"
                 || key == "graceful_stop"
                 || key == "extension_data"
+                || key == "rcon_port"
+                || key == "rcon_password"
+                || key == "enable_rcon"
             {
                 continue;
             }
             props_sync.insert(key.clone(), value.clone());
-        }
-    }
-
-    // managed_start ↔ RCON: enable_rcon을 props_sync에 주입
-    if let Some(rcon_on) = enable_rcon {
-        props_sync.insert("enable_rcon".to_string(), json!(rcon_on));
-    }
-    // 인스턴스에 저장된 RCON 비밀번호가 있으면 props_sync에도 반영
-    if let Some(pwd) = &updated.rcon_password {
-        if !props_sync.contains_key("rcon_password") {
-            props_sync.insert("rcon_password".to_string(), json!(pwd));
         }
     }
 
@@ -1180,6 +1023,15 @@ pub async fn update_instance_settings(
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response();
     }
 
+    // 익스텐션 hook에 넘길 값을 챙기고 락을 놓는다. 아래 모듈·익스텐션 호출은 락 밖에서 (C12)
+    let instance_dir = supervisor.instance_store.instance_dir(&id);
+    // 모듈의 모든 익스텐션 설정을 범용으로 전달 (특정 익스텐션 이름 참조 없음)
+    let module_extensions = supervisor.module_loader.get_module(&updated_clone.module_name)
+        .ok()
+        .map(|m| serde_json::to_value(&m.metadata.extensions).unwrap_or_default())
+        .unwrap_or_else(|| serde_json::json!({}));
+    drop(supervisor);
+
     // server.properties 동기화 (변경된 항목이 있을 때만)
     if !props_sync.is_empty() {
         tracing::info!(
@@ -1188,10 +1040,7 @@ pub async fn update_instance_settings(
             props_sync
         );
         let props_value = Value::Object(props_sync);
-        match supervisor
-            .manage_properties(&id, "write", Some(props_value))
-            .await
-        {
+        match crate::supervisor::Supervisor::manage_properties(&state.supervisor, &id, "write", Some(props_value)).await {
             Ok(_) => tracing::info!("server.properties synced successfully for instance {}", id),
             Err(e) => tracing::warn!(
                 "Failed to sync server.properties for instance {}: {}",
@@ -1205,14 +1054,6 @@ pub async fn update_instance_settings(
     // instance_dir + 모듈 익스텐션 설정을 범용으로 전달 → 각 extension이 자체 판단
     if !updated_clone.extension_data.is_empty() {
         let ext_mgr = state.extension_manager.clone();
-        let instance_dir = supervisor.instance_store.instance_dir(&id);
-
-        // 모듈의 모든 익스텐션 설정을 범용으로 전달 (특정 익스텐션 이름 참조 없음)
-        let module_extensions = supervisor.module_loader.get_module(&updated_clone.module_name)
-            .ok()
-            .map(|m| serde_json::to_value(&m.metadata.extensions).unwrap_or_default())
-            .unwrap_or_else(|| serde_json::json!({}));
-
         let ctx = serde_json::json!({
             "instance_id": &id,
             "instance_dir": instance_dir.to_string_lossy(),
@@ -1221,16 +1062,17 @@ pub async fn update_instance_settings(
             "extension_data": &updated_clone.extension_data,
             "settings": &settings,
         });
-        let mgr = ext_mgr.read().await;
-        let _results = mgr.dispatch_hook("server.settings_changed", ctx).await;
+        let _results = crate::extension::run_hook(&ext_mgr, "server.settings_changed", ctx).await;
     }
 
+    // 게임 설정 파일의 비밀번호·포트가 바뀌었을 수 있다
+    state.credentials.invalidate(&id);
     (StatusCode::OK, Json(json!({ "success": true }))).into_response()
 }
 
 /// GET /api/instance/:id/check-update - 게임 서버 업데이트 확인
 ///
-/// extension_data에 install_method_steamcmd 가 있는 인스턴스에 대해
+/// 설치 방식 익스텐션(`install_method_<방식>`)으로 설치된 인스턴스에 대해
 /// server.check_update hook을 디스패치하여 buildid 비교 결과를 반환합니다.
 pub async fn check_server_update(
     Path(id): Path<String>,
@@ -1281,10 +1123,10 @@ pub async fn check_server_update(
     let install_dir = instance_dir.join(&install_subdir);
     let install_dir_str = install_dir.to_string_lossy().to_string();
 
-    // app_id: extension_data에서 우선, 없으면 module config에서
-    let app_id = instance
-        .extension_data
-        .get("steamcmd_app_id")
+    // app_id: extension_data(`<방식>_app_id`)에서 우선, 없으면 module config에서
+    let app_id = install_config
+        .as_ref()
+        .and_then(|cfg| instance.extension_data.get(&format!("{}_app_id", cfg.method)))
         .and_then(|v| v.as_u64())
         .or_else(|| install_config.as_ref().and_then(|cfg| cfg.app_id.map(|id| id as u64)));
 
@@ -1301,8 +1143,7 @@ pub async fn check_server_update(
         "extension_data": &instance.extension_data,
     });
 
-    let mgr = state.extension_manager.read().await;
-    let results = mgr.dispatch_hook("server.check_update", ctx).await;
+    let results = crate::extension::run_hook(&state.extension_manager, "server.check_update", ctx).await;
 
     // 첫 번째 성공 결과를 클라이언트로 전달
     for (_ext_id, result) in &results {
@@ -1330,49 +1171,49 @@ pub async fn apply_server_update(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
+    match begin_server_update(&state, &id).await {
+        Ok(_) => (
+            StatusCode::OK,
+            Json(json!({
+                "success": true,
+                "id": id,
+                "provisioning": true,
+            })),
+        )
+            .into_response(),
+        Err(r) => r,
+    }
+}
+
+/// 업데이트를 백그라운드로 시작한다. 작업은 성공 여부를 돌려준다 (예약 업데이트가 기다린다)
+#[allow(clippy::result_large_err)]
+pub async fn begin_server_update(state: &IPCServer, id: &str) -> Result<tokio::task::JoinHandle<bool>, axum::response::Response> {
     let supervisor = state.supervisor.read().await;
 
-    let instance = match supervisor.instance_store.get(&id) {
+    let instance = match supervisor.instance_store.get(id) {
         Some(inst) => inst.clone(),
         None => {
-            return (
+            return Err((
                 StatusCode::NOT_FOUND,
                 Json(json!({
                     "error": format!("Instance not found: {}", id),
                     "error_code": "instance_not_found",
                 })),
             )
-                .into_response();
+                .into_response());
         }
     };
 
     // 실행 중이면 업데이트 불가
-    if supervisor.tracker.get_pid(&id).is_ok() {
-        return (
+    if supervisor.tracker.get_pid(id).is_ok() {
+        return Err((
             StatusCode::CONFLICT,
             Json(json!({
                 "error": "Cannot update while server is running. Stop the server first.",
                 "error_code": "server_running",
             })),
         )
-            .into_response();
-    }
-
-    // SteamCMD 인스턴스인지 확인
-    let is_steamcmd = instance
-        .extension_data
-        .get("install_method_steamcmd")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    if !is_steamcmd {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": "Only SteamCMD-installed instances can be updated this way.",
-                "error_code": "not_steamcmd",
-            })),
-        )
-            .into_response();
+            .into_response());
     }
 
     // 모듈에서 install config 가져오기
@@ -1385,18 +1226,33 @@ pub async fn apply_server_update(
     let (install_config, _module_path) = match module_info {
         Some((Some(cfg), path)) => (cfg, path),
         _ => {
-            return (
+            return Err((
                 StatusCode::BAD_REQUEST,
                 Json(json!({
                     "error": "Module install configuration not found.",
                     "error_code": "no_install_config",
                 })),
             )
-                .into_response();
+                .into_response());
         }
     };
 
-    let instance_dir = supervisor.instance_store.instance_dir(&id);
+    // 익스텐션이 설치한 인스턴스만 이 경로로 업데이트한다 (설치 방식 슬롯)
+    let method = install_config.method.clone();
+    let by_extension = !crate::instance::BUILTIN_INSTALL_METHODS.contains(&method.as_str())
+        && instance.ext_enabled(&crate::instance::install_method_key(&method));
+    if !by_extension {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Only instances installed by an install-method extension can be updated this way.",
+                "error_code": "update_unsupported",
+            })),
+        )
+            .into_response());
+    }
+
+    let instance_dir = supervisor.instance_store.instance_dir(id);
     let install_subdir = install_config
         .install_subdir
         .clone()
@@ -1409,13 +1265,14 @@ pub async fn apply_server_update(
     let instance_name = instance.name.clone();
     let module_name_owned = instance.module_name.clone();
 
-    // 프로비저닝 상태 등록
+    // 프로비저닝 상태 등록 (기존 인스턴스 업데이트 — 실패해도 롤백 대상이 아니다)
+    tracker.take_creating(&instance_name);
     tracker.update(
         &instance_name,
         crate::ipc::ProvisionProgress {
             step: 0,
             total: 1,
-            label: "steamcmd".to_string(),
+            label: method.clone(),
             message: "Updating server...".to_string(),
             done: false,
             error: None,
@@ -1430,12 +1287,34 @@ pub async fn apply_server_update(
     let tracker_done = tracker.clone();
     let name_done = instance_name.clone();
 
-    tokio::spawn(async move {
+    let backup_state = state.clone();
+    let backup_id = id.to_string();
+    Ok(tokio::spawn(async move {
+        // ── Phase 0: 업데이트 전 백업 (A2). 백업할 것이 없으면 그냥 진행, 실패하면 업데이트하지 않는다 ──
+        if let Err(r) = super::backup::take_backup(&backup_state, &backup_id, crate::backup::BackupKind::PreUpdate).await {
+            let reason = crate::ipc::internal::into_internal(r).await.body["error"].as_str().unwrap_or("backup failed").to_string();
+            tracing::error!("Pre-update backup failed for '{}': {}", name_done, reason);
+            tracker_done.update(
+                &name_done,
+                crate::ipc::ProvisionProgress {
+                    step: 0,
+                    total: 1,
+                    label: "done".to_string(),
+                    message: "Update failed".to_string(),
+                    done: true,
+                    error: Some(format!("Pre-update backup failed: {}", reason)),
+                    percent: Some(100),
+                    steps: None,
+                },
+            );
+            return false;
+        }
+
         // ── Phase 1: supervisor lock을 최소 시간만 잡고 모듈 경로 복사 ──
         let lifecycle_path = {
             let sup = supervisor_arc.read().await;
             match sup.module_loader.get_module(&module_name_owned) {
-                Ok(m) => format!("{}/lifecycle.py", m.path),
+                Ok(m) => m.entry_path(),
                 Err(e) => {
                     tracker_done.update(
                         &name_done,
@@ -1450,7 +1329,7 @@ pub async fn apply_server_update(
                             steps: None,
                         },
                     );
-                    return;
+                    return false;
                 }
             }
         };
@@ -1473,7 +1352,7 @@ pub async fn apply_server_update(
                     crate::ipc::ProvisionProgress {
                         step: prog.step.unwrap_or(0),
                         total: prog.total.unwrap_or(1),
-                        label: prog.label.unwrap_or_else(|| "steamcmd".to_string()),
+                        label: prog.label.unwrap_or_else(|| method.clone()),
                         message: msg,
                         done: false,
                         error: None,
@@ -1488,12 +1367,12 @@ pub async fn apply_server_update(
                 "install_server",
                 config,
                 on_progress,
-                1800, // 30분 — SteamCMD 대용량 다운로드 허용
+                1800, // 30분 — 대용량 다운로드 허용
             )
             .await
         };
 
-        match result {
+        let updated = match result {
             Ok(val) => {
                 let success = val
                     .get("success")
@@ -1536,6 +1415,7 @@ pub async fn apply_server_update(
                         },
                     );
                 }
+                success
             }
             Err(e) => {
                 tracing::error!("Server update error for '{}': {}", name_done, e);
@@ -1552,8 +1432,9 @@ pub async fn apply_server_update(
                         steps: None,
                     },
                 );
+                false
             }
-        }
+        };
 
         // 5초 후 프로비저닝 tracker 자동 정리
         let tracker_cleanup = tracker_done.clone();
@@ -1562,15 +1443,7 @@ pub async fn apply_server_update(
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             tracker_cleanup.remove(&name_cleanup);
         });
-    });
+        updated
+    }))
 
-    (
-        StatusCode::OK,
-        Json(json!({
-            "success": true,
-            "id": id,
-            "provisioning": true,
-        })),
-    )
-        .into_response()
 }

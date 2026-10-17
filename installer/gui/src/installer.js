@@ -26,6 +26,7 @@ const T = {
         installSub: 'Please wait...',
         preparing: 'Preparing...',
         fetchingRelease: 'Checking for the latest release...',
+        modulesUnavailable: 'Could not load the game module list. You can add modules in the app after installing.',
         completeTitle: 'Installation Complete!',
         completeSub: 'Saba-chan is ready.',
         btnClose: 'Close',
@@ -55,7 +56,6 @@ const T = {
         progressModulesDownload: 'Downloading game modules...',
         progressModulesExtract: 'Extracting game modules...',
         progressRuntimePython: 'Preparing Python runtime...',
-        progressRuntimeNode: 'Preparing Discord bot environment...',
         progressConfig: 'Setting up configuration...',
         progressConfigLang: 'Saving language settings...',
         progressRegistry: 'Registering application...',
@@ -89,6 +89,7 @@ const T = {
         installSub: '잠시만 기다려 주세요...!',
         preparing: '준비 중...',
         fetchingRelease: '최신 릴리즈 확인 중...',
+        modulesUnavailable: '게임 모듈 목록을 불러오지 못했습니다. 설치한 뒤 앱에서 모듈을 추가할 수 있습니다.',
         completeTitle: '설치 완료!',
         completeSub: '사바쨩이 준비되었습니다.',
         btnClose: '닫기',
@@ -118,7 +119,6 @@ const T = {
         progressModulesDownload: '게임 모듈 다운로드 중...',
         progressModulesExtract: '게임 모듈 압축 해제 중...',
         progressRuntimePython: 'Python 런타임 준비 중...',
-        progressRuntimeNode: 'Discord 봇 환경 준비 중...',
         progressConfig: '설정 구성 중...',
         progressConfigLang: '언어 설정 저장 중...',
         progressRegistry: '앱 등록 중...',
@@ -181,7 +181,6 @@ const T = {
         progressModulesDownload: 'ゲームモジュールをダウンロード中...',
         progressModulesExtract: 'ゲームモジュールを展開中...',
         progressRuntimePython: 'Pythonランタイムを準備中...',
-        progressRuntimeNode: 'Discordボット環境を準備中...',
         progressConfig: '設定を構成中...',
         progressConfigLang: '言語設定を保存中...',
         progressRegistry: 'アプリケーションを登録中...',
@@ -244,7 +243,6 @@ const T = {
         progressModulesDownload: '正在下载游戏模块...',
         progressModulesExtract: '正在解压游戏模块...',
         progressRuntimePython: '正在准备 Python 运行时...',
-        progressRuntimeNode: '正在准备 Discord 机器人环境...',
         progressConfig: '正在配置设置...',
         progressConfigLang: '正在保存语言设置...',
         progressRegistry: '正在注册应用程序...',
@@ -307,7 +305,6 @@ const T = {
         progressModulesDownload: '正在下載遊戲模組...',
         progressModulesExtract: '正在解壓縮遊戲模組...',
         progressRuntimePython: '正在準備 Python 執行環境...',
-        progressRuntimeNode: '正在準備 Discord 機器人環境...',
         progressConfig: '正在設定組態...',
         progressConfigLang: '正在儲存語言設定...',
         progressRegistry: '正在登錄應用程式...',
@@ -370,7 +367,6 @@ const T = {
         progressModulesDownload: 'Descargando módulos de juego...',
         progressModulesExtract: 'Extrayendo módulos de juego...',
         progressRuntimePython: 'Preparando entorno de Python...',
-        progressRuntimeNode: 'Preparando entorno del bot de Discord...',
         progressConfig: 'Configurando ajustes...',
         progressConfigLang: 'Guardando configuración de idioma...',
         progressRegistry: 'Registrando la aplicación...',
@@ -433,7 +429,6 @@ const T = {
         progressModulesDownload: 'Baixando módulos de jogo...',
         progressModulesExtract: 'Extraindo módulos de jogo...',
         progressRuntimePython: 'Preparando ambiente Python...',
-        progressRuntimeNode: 'Preparando ambiente do bot Discord...',
         progressConfig: 'Configurando definições...',
         progressConfigLang: 'Salvando configuração de idioma...',
         progressRegistry: 'Registrando o aplicativo...',
@@ -496,7 +491,6 @@ const T = {
         progressModulesDownload: 'Загрузка игровых модулей...',
         progressModulesExtract: 'Извлечение игровых модулей...',
         progressRuntimePython: 'Подготовка среды Python...',
-        progressRuntimeNode: 'Подготовка среды Discord-бота...',
         progressConfig: 'Настройка конфигурации...',
         progressConfigLang: 'Сохранение языковых настроек...',
         progressRegistry: 'Регистрация приложения...',
@@ -559,7 +553,6 @@ const T = {
         progressModulesDownload: 'Spielmodule werden heruntergeladen...',
         progressModulesExtract: 'Spielmodule werden entpackt...',
         progressRuntimePython: 'Python-Laufzeitumgebung wird vorbereitet...',
-        progressRuntimeNode: 'Discord-Bot-Umgebung wird vorbereitet...',
         progressConfig: 'Konfiguration wird eingerichtet...',
         progressConfigLang: 'Spracheinstellungen werden gespeichert...',
         progressRegistry: 'Anwendung wird registriert...',
@@ -622,7 +615,6 @@ const T = {
         progressModulesDownload: 'Téléchargement des modules de jeu...',
         progressModulesExtract: 'Extraction des modules de jeu...',
         progressRuntimePython: 'Préparation de l\'environnement Python...',
-        progressRuntimeNode: 'Préparation de l\'environnement du bot Discord...',
         progressConfig: 'Configuration des paramètres...',
         progressConfigLang: 'Enregistrement des paramètres de langue...',
         progressRegistry: 'Enregistrement de l\'application...',
@@ -664,7 +656,6 @@ const INSTALL_STEP_KEYS = {
     'modules-extract': 'progressModulesExtract',
     'extensions': 'progressExtensions',
     'runtime-python': 'progressRuntimePython',
-    'runtime-node': 'progressRuntimeNode',
     'config': 'progressConfig',
     'config-lang': 'progressConfigLang',
     'registry': 'progressRegistry',
@@ -900,7 +891,13 @@ async function loadModules() {
             card.querySelector('.mod-chk').addEventListener('change', (e) => toggleMod(m.id, e.target.checked));
             $list.appendChild(card);
         }
-    } catch (_) {}
+    } catch (_) {
+        $list.innerHTML = '';
+        const note = document.createElement('div');
+        note.className = 'module-desc';
+        note.textContent = tr('modulesUnavailable');
+        $list.appendChild(note);
+    }
 }
 
 function toggleMod(id, on) {

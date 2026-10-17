@@ -71,15 +71,37 @@ pub fn read_token_from_file() -> Option<String> {
 static AUTH_FAIL_LAST_LOG: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
 static AUTH_FAIL_SUPPRESSED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/// `Host` 헤더가 루프백(127.0.0.1, localhost, ::1)을 가리키는지. 헤더가 없으면(HTTP/1.0 도구) 허용
+fn host_is_loopback(req: &Request<Body>) -> bool {
+    let Some(host) = req.headers().get(axum::http::header::HOST).and_then(|v| v.to_str().ok()) else {
+        return true;
+    };
+    let name = match host.strip_prefix('[') {
+        Some(rest) => rest.split(']').next().unwrap_or(""),
+        None => host.rsplit_once(':').map_or(host, |(h, _)| h),
+    };
+    name.eq_ignore_ascii_case("localhost") || name == "127.0.0.1" || name == "::1"
+}
+
+/// 걸린 시간으로 토큰을 한 글자씩 맞혀 보지 못하게 끝까지 비교한다 (길이는 숨기지 않는다: UUID 고정)
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
 /// axum 미들웨어: `X-Saba-Token` 헤더 검증
 ///
-/// 인증 비활성화 시 (SABA_AUTH_DISABLED=1), 모든 요청을 허용합니다.
+/// 개발 빌드에서 `SABA_AUTH_DISABLED=1`이면 토큰 검사를 건너뛴다 (Host 검사는 늘 한다).
 pub async fn auth_middleware(
     req: Request<Body>,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    // 환경 변수로 인증 비활성화 가능 (개발/테스트용)
-    if std::env::var("SABA_AUTH_DISABLED").unwrap_or_default() == "1" {
+    // 브라우저 페이지가 DNS 리바인딩으로 들어오는 것을 막는다: 데몬은 루프백에만 묶인다
+    if !host_is_loopback(&req) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    // 개발·테스트 빌드에서만 환경 변수로 인증을 끌 수 있다
+    if cfg!(debug_assertions) && std::env::var("SABA_AUTH_DISABLED").unwrap_or_default() == "1" {
         return Ok(next.run(req).await);
     }
 
@@ -95,21 +117,21 @@ pub async fn auth_middleware(
         None => match read_token_from_file() {
             Some(t) => t,
             None => {
-                // 토큰 파일이 없으면 인증 없이 통과 (하위 호환성)
-                tracing::warn!("No IPC token file found at {} — skipping auth", token_file_path());
-                return Ok(next.run(req).await);
+                // 토큰이 없으면 아무도 통과시키지 않는다 (데몬은 기동할 때 늘 만든다)
+                tracing::warn!("No IPC token at {} — rejecting request", token_file_path());
+                return Err(StatusCode::UNAUTHORIZED);
             }
         }
     };
 
-    // 헤더에서 토큰 추출    
+    // 헤더에서 토큰 추출
     let provided = req
         .headers()
         .get("X-Saba-Token")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
-    if provided == expected {
+    if !expected.is_empty() && constant_time_eq(provided.as_bytes(), expected.as_bytes()) {
         Ok(next.run(req).await)
     } else {
         // Rate-limit: 30초당 최대 1번 경고 로그 출력, 억제된 횟수 함께 표시
@@ -148,5 +170,32 @@ pub async fn auth_middleware(
             AUTH_FAIL_SUPPRESSED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
         Err(StatusCode::UNAUTHORIZED)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn token_comparison_checks_every_byte() {
+        assert!(constant_time_eq(b"abcd", b"abcd"));
+        assert!(!constant_time_eq(b"abcd", b"abce"));
+        assert!(!constant_time_eq(b"abc", b"abcd"));
+        assert!(constant_time_eq(b"", b""));
+    }
+
+    use super::*;
+
+    fn with_host(host: &str) -> Request<Body> {
+        Request::builder().uri("/api/servers").header("host", host).body(Body::empty()).unwrap()
+    }
+
+    #[test]
+    fn only_loopback_hosts_pass() {
+        for ok in ["127.0.0.1:57474", "localhost:57474", "LOCALHOST", "[::1]:57474", "127.0.0.1"] {
+            assert!(host_is_loopback(&with_host(ok)), "{ok}");
+        }
+        for bad in ["evil.example:57474", "127.0.0.1.evil.example", "192.168.0.2:57474", "[::2]:1"] {
+            assert!(!host_is_loopback(&with_host(bad)), "{bad}");
+        }
     }
 }

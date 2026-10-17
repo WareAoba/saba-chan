@@ -2,12 +2,15 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
     serverList: () => ipcRenderer.invoke('server:list'),
-    serverStart: (name, options = {}) => ipcRenderer.invoke('server:start', name, options),
+    instanceStart: (instanceId) => ipcRenderer.invoke('instance:start', instanceId),
     serverStop: (name, options = {}) => ipcRenderer.invoke('server:stop', name, options),
     serverStatus: (name) => ipcRenderer.invoke('server:status', name),
     moduleList: () => ipcRenderer.invoke('module:list'),
     moduleRefresh: () => ipcRenderer.invoke('module:refresh'),
     moduleGetMetadata: (name) => ipcRenderer.invoke('module:getMetadata', name),
+    moduleDetect: (path) => ipcRenderer.invoke('module:detect', path),
+    moduleAudit: (name) => ipcRenderer.invoke('module:audit', name),
+    instanceEvents: (id) => ipcRenderer.invoke('instance:events', id),
     moduleGetLocales: (name) => ipcRenderer.invoke('module:getLocales', name),
     moduleListVersions: (name, options) => ipcRenderer.invoke('module:listVersions', name, options),
     moduleInstallServer: (name, config) => ipcRenderer.invoke('module:installServer', name, config),
@@ -24,13 +27,21 @@ contextBridge.exposeInMainWorld('api', {
     instanceDelete: (id) => ipcRenderer.invoke('instance:delete', id),
     instanceReorder: (orderedIds) => ipcRenderer.invoke('instance:reorder', orderedIds),
     instanceUpdateSettings: (id, settings) => ipcRenderer.invoke('instance:updateSettings', id, settings),
-    instanceResetProperties: (id) => ipcRenderer.invoke('instance:resetProperties', id),
     instanceResetServer: (id) => ipcRenderer.invoke('instance:resetServer', id),
     executeCommand: (id, command) => ipcRenderer.invoke('instance:executeCommand', id, command),
+    instanceStop: (id, opts) => ipcRenderer.invoke('instance:stop', id, opts),
+    instanceRestart: (id, opts) => ipcRenderer.invoke('instance:restart', id, opts),
+    instanceRename: (id, name) => ipcRenderer.invoke('instance:rename', id, name),
+    instanceCommands: (id) => ipcRenderer.invoke('instance:commands', id),
+    instanceReadLiveSettings: (id) => ipcRenderer.invoke('instance:readLiveSettings', id),
+    runtimePreflight: () => ipcRenderer.invoke('runtime:preflight'),
+    configDefaults: (kind) => ipcRenderer.invoke('config:defaults', kind),
+    configReset: (kind, keys) => ipcRenderer.invoke('config:reset', kind, keys),
     // Extension API
     extensionList: () => ipcRenderer.invoke('extension:list'),
     extensionEnable: (extId) => ipcRenderer.invoke('extension:enable', extId),
     extensionDisable: (extId) => ipcRenderer.invoke('extension:disable', extId),
+    extensionAudit: (extId) => ipcRenderer.invoke('extension:audit', extId),
     extensionI18n: (extId, locale) => ipcRenderer.invoke('extension:i18n', extId, locale),
     extensionGuiBundle: (extId) => ipcRenderer.invoke('extension:guiBundle', extId),
     extensionGuiStyles: (extId) => ipcRenderer.invoke('extension:guiStyles', extId),
@@ -43,7 +54,6 @@ contextBridge.exposeInMainWorld('api', {
     extensionRescan: () => ipcRenderer.invoke('extension:rescan'),
     extensionInitStatus: () => ipcRenderer.invoke('extension:initStatus'),
     // Managed Process API (console capture)
-    managedStart: (instanceId, options = {}) => ipcRenderer.invoke('managed:start', instanceId, options),
     managedConsole: (instanceId, since, count) => ipcRenderer.invoke('managed:console', instanceId, since, count),
     managedStdin: (instanceId, command) => ipcRenderer.invoke('managed:stdin', instanceId, command),
     // Console Popout (PiP)
@@ -64,49 +74,50 @@ contextBridge.exposeInMainWorld('api', {
     updaterDownloadProgress: () => ipcRenderer.invoke('updater:downloadProgress'),
     updaterApply: (components) => ipcRenderer.invoke('updater:apply', components),
     updaterLaunchApply: (targets) => ipcRenderer.invoke('updater:launchApply', targets),
+    updaterLastResult: (opts) => ipcRenderer.invoke('updater:lastResult', opts),
     updaterGetConfig: () => ipcRenderer.invoke('updater:getConfig'),
     updaterSetConfig: (config) => ipcRenderer.invoke('updater:setConfig', config),
-    // Mock Server (테스트용)
-    mockServerStart: (options) => ipcRenderer.invoke('mockServer:start', options),
-    mockServerStop: () => ipcRenderer.invoke('mockServer:stop'),
-    mockServerStatus: () => ipcRenderer.invoke('mockServer:status'),
     // Updater events (from main process background checker)
     onUpdatesAvailable: (callback) => ipcRenderer.on('updates:available', (event, data) => callback(data)),
-    offUpdatesAvailable: () => ipcRenderer.removeAllListeners('updates:available'),
     onUpdateCompleted: (callback) => ipcRenderer.on('updates:completed', (event, data) => callback(data)),
-    offUpdateCompleted: () => ipcRenderer.removeAllListeners('updates:completed'),
     // Settings API
     settingsLoad: () => ipcRenderer.invoke('settings:load'),
     settingsSave: (settings) => ipcRenderer.invoke('settings:save', settings),
     settingsGetPath: () => ipcRenderer.invoke('settings:getPath'),
     // Fixed Paths API
-    getFixedPaths: () => ipcRenderer.invoke('paths:getFixed'),
     // Dialog API
     openFileDialog: (options) => ipcRenderer.invoke('dialog:openFile', options),
     openFolderDialog: () => ipcRenderer.invoke('dialog:openFolder'),
     // Migration API
     migrationScanDir: (dirPath) => ipcRenderer.invoke('migration:scanDir', dirPath),
-    // Discord Bot API
+    // Discord 릴레이 에이전트 API (데몬 내장)
     discordBotStatus: () => ipcRenderer.invoke('discord:status'),
-    discordBotStart: (config) => ipcRenderer.invoke('discord:start', config),
+    discordBotStart: () => ipcRenderer.invoke('discord:start'),
     discordBotStop: () => ipcRenderer.invoke('discord:stop'),
-    discordGuildMembers: () => ipcRenderer.invoke('discord:guildMembers'),
-    discordGuildChannels: () => ipcRenderer.invoke('discord:guildChannels'),
-    // Bot error events (from main process)
-    onBotError: (callback) => ipcRenderer.on('bot:error', (event, data) => callback(data)),
-    offBotError: () => ipcRenderer.removeAllListeners('bot:error'),
     // Bot Config API
     botConfigLoad: () => ipcRenderer.invoke('botConfig:load'),
     botConfigSave: (config) => ipcRenderer.invoke('botConfig:save', config),
     // GUI Config sync to daemon
-    syncGuiConfig: (config) => ipcRenderer.invoke('guiConfig:sync', config),
     // Node Token API (cloud pairing)
     saveNodeToken: (token) => ipcRenderer.invoke('nodeToken:save', token),
     loadNodeToken: () => ipcRenderer.invoke('nodeToken:load'),
+    deleteNodeToken: () => ipcRenderer.invoke('nodeToken:delete'),
     // Relay server proxy (cloud mode) — all relay comms go through daemon
     relayCheckHostStatus: (hostId, relayUrl) => ipcRenderer.invoke('relay:checkHostStatus', hostId, relayUrl),
     relayListHostNodes: (hostId, relayUrl) => ipcRenderer.invoke('relay:listHostNodes', hostId, relayUrl),
     relayListNodeMembers: (guildId, relayUrl) => ipcRenderer.invoke('relay:listNodeMembers', guildId, relayUrl),
+    relayBotInvite: (relayUrl) => ipcRenderer.invoke('relay:botInvite', relayUrl),
+    instanceAcceptEula: (id) => ipcRenderer.invoke('instance:acceptEula', id),
+    instanceBackups: (id) => ipcRenderer.invoke('instance:backups', id),
+    instanceBackupCreate: (id) => ipcRenderer.invoke('instance:backupCreate', id),
+    instanceBackupDelete: (id, name) => ipcRenderer.invoke('instance:backupDelete', id, name),
+    instanceBackupRestore: (id, name) => ipcRenderer.invoke('instance:backupRestore', id, name),
+    instanceScheduleGet: (id) => ipcRenderer.invoke('instance:scheduleGet', id),
+    instanceScheduleSave: (id, body) => ipcRenderer.invoke('instance:scheduleSave', id, body),
+    chatbotGet: () => ipcRenderer.invoke('chatbot:get'),
+    chatbotSave: (patch) => ipcRenderer.invoke('chatbot:save', patch),
+    chatbotClear: () => ipcRenderer.invoke('chatbot:clear'),
+    chatbotClearMemory: (guildId) => ipcRenderer.invoke('chatbot:clearMemory', guildId),
     relayInitiatePairing: (payload) => ipcRenderer.invoke('relay:initiatePairing', payload),
     relayPollPairingStatus: (code, secret, relayUrl) => ipcRenderer.invoke('relay:pollPairingStatus', code, secret, relayUrl),
     // Shell API
@@ -122,9 +133,6 @@ contextBridge.exposeInMainWorld('api', {
     onCloseRequest: (callback) => ipcRenderer.on('app:closeRequest', callback),
     offCloseRequest: () => ipcRenderer.removeAllListeners('app:closeRequest'),
     closeResponse: (choice) => ipcRenderer.send('app:closeResponse', choice),
-    // Bot Relaunch (when language changes)
-    onBotRelaunch: (callback) => ipcRenderer.on('bot:relaunch', (event, config) => callback(config)),
-    offBotRelaunch: () => ipcRenderer.removeAllListeners('bot:relaunch'),
     // Status Update Events
     onStatusUpdate: (callback) => ipcRenderer.on('status:update', (event, data) => callback(data)),
     offStatusUpdate: () => ipcRenderer.removeAllListeners('status:update'),
@@ -145,7 +153,6 @@ contextBridge.exposeInMainWorld('electron', {
     // Language settings
     getLanguage: () => ipcRenderer.invoke('language:get'),
     setLanguage: (language) => ipcRenderer.invoke('language:set', language),
-    getSystemLanguage: () => ipcRenderer.invoke('language:getSystem'),
     // Shell
     shell: {
         openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url)

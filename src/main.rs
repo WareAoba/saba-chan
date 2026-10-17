@@ -2,17 +2,22 @@ mod supervisor;
 mod plugin;
 mod protocol;
 mod ipc;
-mod config;
 mod config_store;
 mod instance;
+mod backup;
+mod scheduler;
 mod process_monitor;
 mod python_env;
-mod node_env;
 mod utils;
 mod extension;
 mod validator;
 mod boot_selector;
 mod daemon_log;
+mod instance_lock;
+mod chat;
+mod commands;
+mod module_audit;
+mod relay_agent;
 
 use std::sync::Arc;
 use std::io::IsTerminal;
@@ -25,12 +30,177 @@ const HEARTBEAT_REAPER_INTERVAL_SECS: u64 = 30;
 /// 모니터 연속 실패 허용 횟수
 const MONITOR_MAX_CONSECUTIVE_ERRORS: u32 = 10;
 
+/// `saba-core module schema` — module.toml JSON Schema 출력
+/// `saba-core module validate <모듈 폴더>...` — 데몬과 같은 규칙으로 검사 (실패하면 종료 코드 1)
+/// `saba-core module audit <모듈 폴더>...` — Python 코드가 `[permissions]`에 없는 능력을 쓰면 종료 코드 1
+/// (Python은 `SABA_PYTHON`, 없으면 PATH의 python3/python)
+fn module_tool(args: &[String]) -> i32 {
+    use saba_core::supervisor::module_loader::{load_module_dir, module_json_schema};
+    match args.first().map(String::as_str) {
+        Some("schema") => {
+            println!("{}", serde_json::to_string_pretty(&module_json_schema()).unwrap_or_default());
+            0
+        }
+        Some("validate") if args.len() > 1 => {
+            let mut failed = 0;
+            for dir in &args[1..] {
+                match load_module_dir(std::path::Path::new(dir)) {
+                    Ok(m) => {
+                        println!("ok    {} ({} v{})", dir, m.metadata.name, m.metadata.version);
+                        for w in &m.metadata.warnings {
+                            println!("      warning: {}", w);
+                        }
+                    }
+                    Err(e) => {
+                        println!("FAIL  {}: {}", dir, e);
+                        failed += 1;
+                    }
+                }
+            }
+            i32::from(failed > 0)
+        }
+        Some("audit") if args.len() > 1 => {
+            let python = module_audit::tool_python();
+            let mut failed = 0;
+            for dir in &args[1..] {
+                let result = load_module_dir(std::path::Path::new(dir)).and_then(|m| {
+                    let found = saba_core::module_audit::scan_blocking(&python, std::path::Path::new(dir))?;
+                    Ok((saba_core::module_audit::undeclared(&m.metadata.permissions, &found), found.len()))
+                });
+                match result {
+                    Ok((missing, _)) if missing.is_empty() => println!("ok    {}", dir),
+                    Ok((missing, _)) => {
+                        println!("FAIL  {}: uses capabilities not declared in [permissions]", dir);
+                        for f in missing {
+                            println!("      {} {}:{} {}", f.permission, f.file, f.line, f.detail);
+                        }
+                        failed += 1;
+                    }
+                    Err(e) => {
+                        println!("FAIL  {}: {:#}", dir, e);
+                        failed += 1;
+                    }
+                }
+            }
+            i32::from(failed > 0)
+        }
+        _ => {
+            eprintln!("usage: saba-core module schema | module validate <module dir>... | module audit <module dir>...");
+            2
+        }
+    }
+}
+
+/// `saba-core extension validate <익스텐션 폴더>...` — manifest.json을 데몬과 같은 규칙으로 검사
+fn extension_tool(args: &[String]) -> i32 {
+    let audit = match args.first().map(String::as_str) {
+        Some("validate") if args.len() > 1 => false,
+        Some("audit") if args.len() > 1 => true,
+        _ => {
+            eprintln!("usage: saba-core extension validate <extension dir>... | extension audit <extension dir>...");
+            return 2;
+        }
+    };
+    let python = module_audit::tool_python();
+    let mut failed = 0;
+    for dir in &args[1..] {
+        let path = std::path::Path::new(dir).join("manifest.json");
+        let result = std::fs::read_to_string(&path)
+            .map_err(anyhow::Error::from)
+            .and_then(|c| saba_core::extension::parse_manifest(&c));
+        let (m, warnings) = match result {
+            Ok(v) => v,
+            Err(e) => {
+                println!("FAIL  {}: {:#}", dir, e);
+                failed += 1;
+                continue;
+            }
+        };
+        if !audit {
+            println!("ok    {} ({} v{})", dir, m.id, m.version);
+            for w in warnings {
+                println!("      warning: {}", w);
+            }
+            continue;
+        }
+        match saba_core::module_audit::scan_blocking(&python, std::path::Path::new(dir)) {
+            Ok(found) => {
+                let missing = saba_core::module_audit::undeclared(&m.permissions, &found);
+                if missing.is_empty() {
+                    println!("ok    {}", dir);
+                } else {
+                    println!("FAIL  {}: uses capabilities not declared in \"permissions\"", dir);
+                    for f in missing {
+                        println!("      {} {}:{} {}", f.permission, f.file, f.line, f.detail);
+                    }
+                    failed += 1;
+                }
+            }
+            Err(e) => {
+                println!("FAIL  {}: {:#}", dir, e);
+                failed += 1;
+            }
+        }
+    }
+    i32::from(failed > 0)
+}
+
+const DAEMON_USAGE: &str = "Usage: saba-core [--spawned]
+       saba-core module schema | module validate <dir>... | module audit <dir>...
+       saba-core extension validate <dir>... | extension audit <dir>...
+       saba-core --version | --help
+
+  --spawned   started by the GUI/CLI (skips the boot selector)";
+
+enum DaemonArgs {
+    Run,
+    Version,
+    Help,
+}
+
+/// 데몬 실행 인자. 알 수 있는 것만 받고, 나머지는 그 인자를 돌려준다
+fn daemon_args(args: &[String]) -> Result<DaemonArgs, String> {
+    let mut mode = DaemonArgs::Run;
+    for arg in args {
+        match arg.as_str() {
+            "--version" | "-V" => return Ok(DaemonArgs::Version),
+            "--help" | "-h" => mode = DaemonArgs::Help,
+            // --after-update: 업데이터가 다시 띄울 때 붙인다
+            "--spawned" | "--after-update" => {}
+            other => return Err(other.to_string()),
+        }
+    }
+    Ok(mode)
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // ── Boot Mode Determination ────────────────────────────────
     // GUI/CLI가 데몬을 스폰할 때는 --spawned 플래그를 전달하거나
     // stdin이 터미널이 아닌 경우(파이프/null) 부트 선택기를 건너뜀
     let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("module") {
+        std::process::exit(module_tool(&args[2..]));
+    }
+    if args.get(1).map(String::as_str) == Some("extension") {
+        std::process::exit(extension_tool(&args[2..]));
+    }
+    // 데이터 폴더를 건드리기 전에 인자를 본다: 모르는 인자로 데몬이 떠서 설정을 이관하면 안 된다
+    match daemon_args(&args[1..]) {
+        Ok(DaemonArgs::Run) => {}
+        Ok(DaemonArgs::Version) => {
+            println!("saba-core {}", env!("CARGO_PKG_VERSION"));
+            return Ok(());
+        }
+        Ok(DaemonArgs::Help) => {
+            println!("{}", DAEMON_USAGE);
+            return Ok(());
+        }
+        Err(bad) => {
+            eprintln!("saba-core: unknown argument '{}'\n\n{}", bad, DAEMON_USAGE);
+            std::process::exit(2);
+        }
+    }
     let spawned = args.iter().any(|a| a == "--spawned");
     let interactive =
         std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
@@ -106,13 +276,46 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("[Boot] Mode: {}", mode);
     }
 
-    // ── Integrity Check (무결성 검증) ──────────────────────────
-    // 서버(GitHub)에서 매니페스트를 가져와 설치된 컴포넌트의 SHA256을 검증
-    run_integrity_check_on_startup().await;
+    // 포트: SABA_IPC_PORT > config.json의 gui.ipcPort > 기본값 (GUI·CLI가 같은 값을 읽는다)
+    let ipc_port = std::env::var("SABA_IPC_PORT")
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok())
+        .or_else(|| {
+            saba_chan_updater_lib::config_file::ConfigFile::default_location()
+                .section("gui")
+                .get("ipcPort")
+                .and_then(|v| v.as_u64())
+                .and_then(|p| u16::try_from(p).ok())
+        })
+        .unwrap_or(constants::DEFAULT_IPC_PORT);
+    let ipc_addr = format!("127.0.0.1:{}", ipc_port);
+    plugin::set_ipc_port(ipc_port);
 
-    // Load config
-    let cfg = config::GlobalConfig::load().ok();
-    let _ = &cfg; // 향후 설정 참조를 위해 유지
+    // ── Single Instance ───────────────────────────────────────
+    // 토큰 생성·Supervisor 초기화보다 먼저 잠근다. 두 번째 데몬이 .ipc_token을
+    // 덮어써 실행 중인 데몬이 401을 내는 문제를 막는다.
+    let _instance_lock = match instance_lock::acquire_default(&ipc_addr) {
+        Ok(lock) => Some(lock),
+        Err(e @ instance_lock::AcquireError::AlreadyRunning(_)) => {
+            tracing::error!("{}", e);
+            eprintln!("{}", e);
+            std::process::exit(2);
+        }
+        Err(e) => {
+            // 잠금 파일을 못 여는 환경(읽기 전용 등)에서는 기존 동작대로 계속한다.
+            tracing::warn!("{} — continuing without single-instance guard", e);
+            None
+        }
+    };
+
+    // 표를 끊는 데몬이라는 기록. 업데이터는 이게 없으면 옛 데몬으로 본다 (C13 전환 경로)
+    saba_chan_updater_lib::launch_ticket::record_core_version(env!("CARGO_PKG_VERSION"));
+    // Python을 첫 모듈 호출 전에 미리 준비한다 (GUI는 /api/runtime/preflight로 진행을 본다)
+    tokio::spawn(async {
+        if let Err(e) = python_env::get_python_path().await {
+            tracing::warn!("Python preflight failed: {:#}", e);
+        }
+    });
 
     // Initialize supervisor with module loader
     // 모듈 경로: %APPDATA%/saba-chan/modules (환경 변수 오버라이드 가능)
@@ -125,6 +328,8 @@ async fn main() -> anyhow::Result<()> {
             tracing::warn!("Failed to initialize supervisor: {}", e);
         }
     }
+    // server_version이 비어 있는 인스턴스의 버전 감지 (모듈 Python 호출이라 기동을 막지 않게 뒤에서)
+    tokio::spawn(supervisor::Supervisor::backfill_server_versions(supervisor.clone()));
 
     // Generate IPC auth token
     match ipc::auth::generate_and_save_token() {
@@ -133,11 +338,6 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Start IPC HTTP server
-    let ipc_port = std::env::var("SABA_IPC_PORT")
-        .ok()
-        .and_then(|p| p.parse::<u16>().ok())
-        .unwrap_or(constants::DEFAULT_IPC_PORT);
-    let ipc_addr = format!("127.0.0.1:{}", ipc_port);
     let ipc_server = ipc::IPCServer::new(supervisor.clone(), &ipc_addr, daemon_log_buffer.clone());
 
     // Supervisor에 ExtensionManager 연결
@@ -174,8 +374,7 @@ async fn main() -> anyhow::Result<()> {
             }
 
             let ctx = serde_json::json!({});
-            let mgr = ext_mgr.read().await;
-            let results = mgr.dispatch_hook("daemon.startup", ctx).await;
+            let results = extension::run_hook(&ext_mgr, "daemon.startup", ctx).await;
 
             for (ext_id, result) in results {
                 match result {
@@ -199,25 +398,14 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    // ── Discord Bot auto-start (데몬 기동 시 자동 실행) ──────────
-    // bot-config.json의 autoStart 플래그가 true이면 데몬이 직접 봇을 시작합니다.
-    // GUI 없이 데몬만 실행해도 봇이 동작하도록 보장합니다.
-    {
-        let ext_mgr = ipc_server.ext_process_manager.clone();
-        let ipc_port_for_bot = ipc_port;
-        tokio::spawn(async move {
-            if let Err(e) = auto_start_discord_bot(ext_mgr, ipc_port_for_bot).await {
-                tracing::warn!("[Bot AutoStart] {}", e);
-            }
-        });
-    }
-
     // ── CancellationToken: 모든 백그라운드 태스크에 graceful shutdown 전파 ──
     let shutdown_token = ipc_server.shutdown_token.clone();
+    let stop_requested_token = ipc_server.stop_requested.clone();
 
     // 백그라운드 모니터링 태스크 시작
     let supervisor_monitor = supervisor.clone();
     let monitor_cancel = shutdown_token.clone();
+    let restart_ipc = ipc_server.clone();
     tokio::spawn(async move {
         let mut error_count = 0;
         
@@ -254,8 +442,19 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             }
+            // 크래시로 끝난 서버 다시 띄우기 (A1). 대기는 락 밖에서.
+            let restarts = sup.take_pending_restarts();
+            drop(sup);
+            for (instance_id, delay) in restarts {
+                tokio::spawn(ipc::handlers::server::auto_restart(restart_ipc.clone(), instance_id, delay));
+            }
         }
     });
+
+    // 업데이트 주기 확인 — GUI가 꺼져 있어도 데몬이 확인한다 (U6)
+    ipc::updates::spawn_update_scheduler(ipc_server.update_state.clone(), shutdown_token.clone());
+    // 인스턴스 예약 작업: 백업·재시작·공지·업데이트 (A3)
+    ipc::handlers::backup::spawn_scheduler(ipc_server.clone());
 
     // Heartbeat reaper 태스크 — 30초마다 만료 클라이언트 확인, 봇 프로세스 정리
     let registry_reaper = client_registry.clone();
@@ -298,6 +497,7 @@ async fn main() -> anyhow::Result<()> {
     } else {
     let registry_watchdog = client_registry.clone();
     let watchdog_cancel = shutdown_token.clone();
+    let watchdog_stop = stop_requested_token.clone();
     tokio::spawn(async move {
         const CHECK_INTERVAL_SECS: u64 = 5;
         const GRACE_PERIOD_SECS: u64 = 15;
@@ -349,16 +549,8 @@ async fn main() -> anyhow::Result<()> {
                     restart_attempts
                 );
                 tracing::error!("[Watchdog] Core daemon is terminating itself (self-destruct).");
-                // 봇 프로세스 등 정리
-                let timeout = std::time::Duration::from_secs(0);
-                let all = registry_watchdog.reap_expired(timeout).await;
-                for (id, client) in &all {
-                    tracing::info!("[Watchdog] Cleanup client {} ({:?})", id, client.kind);
-                    if let Some(pid) = client.bot_pid {
-                        ipc::kill_bot_pid(pid);
-                    }
-                }
-                watchdog_cancel.cancel();
+                // 정리는 종료 경로 하나(아래 Graceful shutdown 태스크)가 맡는다
+                watchdog_stop.cancel();
                 break;
             }
 
@@ -395,11 +587,14 @@ async fn main() -> anyhow::Result<()> {
     // Graceful shutdown: Ctrl+C / SIGTERM 시 정리
     let registry_shutdown = client_registry.clone();
     let supervisor_shutdown = supervisor.clone();
-    let ext_process_shutdown = ipc_server.ext_process_manager.clone();
     let ctrl_c_cancel = shutdown_token.clone();
+    let stop_requested = stop_requested_token.clone();
     tokio::spawn(async move {
-        tokio::signal::ctrl_c().await.ok();
-        tracing::info!("Shutdown signal received, cleaning up...");
+        // 종료 경로는 하나: Ctrl+C/SIGTERM, API(/api/daemon/shutdown, unregister), 워치독 모두 여기로
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => tracing::info!("Shutdown signal received, cleaning up..."),
+            _ = stop_requested.cancelled() => tracing::info!("Shutdown requested, cleaning up..."),
+        }
 
         // 1. 익스텐션 정리 (컨테이너 종료 등은 extension hook으로 위임)
         {
@@ -421,8 +616,19 @@ async fn main() -> anyhow::Result<()> {
                         })
                     }).collect::<Vec<_>>(),
                 });
-                let mgr = ext_mgr.read().await;
-                let results = mgr.dispatch_hook("daemon.shutdown", ctx).await;
+                // 익스텐션이 멈춰도 종료는 진행되게 상한을 둔다
+                let results = match tokio::time::timeout(
+                    std::time::Duration::from_secs(30),
+                    extension::run_hook(ext_mgr, "daemon.shutdown", ctx),
+                )
+                .await
+                {
+                    Ok(results) => results,
+                    Err(_) => {
+                        tracing::warn!("[Shutdown] daemon.shutdown hooks timed out after 30s");
+                        Vec::new()
+                    }
+                };
                 let handled = results.iter().any(|(_id, r)| {
                     r.as_ref()
                         .map(|v| v.get("handled").and_then(|h| h.as_bool()) == Some(true))
@@ -434,22 +640,11 @@ async fn main() -> anyhow::Result<()> {
             }
         }
 
-        // 2. 등록된 모든 클라이언트의 봇 프로세스를 종료
+        // 2. 등록된 클라이언트 정리
         let timeout = std::time::Duration::from_secs(0); // 즉시 모든 클라이언트 만료 처리
         let all = registry_shutdown.reap_expired(timeout).await;
         for (id, client) in &all {
             tracing::info!("[Shutdown] Cleaning client {} ({:?})", id, client.kind);
-            if let Some(pid) = client.bot_pid {
-                ipc::kill_bot_pid(pid);
-            }
-        }
-
-        // 3. ExtProcessManager의 모든 실행 중 프로세스 정리
-        //    daemon-only 모드에서는 클라이언트가 없어 2번이 무효하므로,
-        //    ExtProcessManager를 통해 직접 시작된 봇 등을 반드시 정리
-        {
-            let mut mgr = ext_process_shutdown.lock().await;
-            mgr.shutdown_all().await;
         }
 
         tracing::info!("Cleanup complete, signaling shutdown");
@@ -534,18 +729,9 @@ async fn try_restart_renderer() -> bool {
         Err(_) => std::path::PathBuf::from("."),
     };
 
-    // GUI를 먼저 시도, 실패하면 CLI 시도
-    let candidates: Vec<(&str, std::path::PathBuf)> = if cfg!(windows) {
-        vec![
-            ("GUI", exe_dir.join("saba-chan-gui.exe")),
-            ("CLI", exe_dir.join("saba-chan-cli.exe")),
-        ]
-    } else {
-        vec![
-            ("GUI", exe_dir.join("saba-chan-gui")),
-            ("CLI", exe_dir.join("saba-chan-cli")),
-        ]
-    };
+    // GUI만 다시 띄운다. CLI는 터미널 없이 띄워 봐야 쓸 수 없고, heartbeat 클라이언트도 아니다
+    let candidates: Vec<(&str, std::path::PathBuf)> =
+        vec![("GUI", exe_dir.join(format!("saba-chan-gui{}", std::env::consts::EXE_SUFFIX)))];
 
     for (label, path) in &candidates {
         if !path.exists() {
@@ -573,233 +759,22 @@ async fn try_restart_renderer() -> bool {
     false
 }
 
-/// 시작 시 서버에서 매니페스트를 가져와 무결성 검증을 수행하고 결과를 터미널에 출력합니다.
-async fn run_integrity_check_on_startup() {
-    use saba_chan_updater_lib::integrity::{
-        IntegrityStatus, OverallIntegrity,
-    };
-    use saba_chan_updater_lib::UpdateManager;
 
-    // 업데이트 설정 로드 (github_owner 등 필요)
-    let cfg = load_updater_config_for_integrity();
-    if cfg.github_owner.is_empty() {
-        tracing::info!("[Integrity] GitHub owner가 설정되지 않아 무결성 검증을 건너뜁니다");
-        return;
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(args: &[&str]) -> Result<DaemonArgs, String> {
+        daemon_args(&args.iter().map(|a| a.to_string()).collect::<Vec<_>>())
     }
 
-    let modules_dir = plugin::resolve_modules_dir();
-    let modules_str = modules_dir.to_string_lossy().to_string();
-    let mut manager = UpdateManager::new(cfg, &modules_str);
-
-    let report = match manager.verify_integrity().await {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::warn!("[Integrity] 서버 매니페스트 fetch 실패, 검증 건너뜀: {}", e);
-            return;
-        }
-    };
-
-    // ── 터미널 출력 ──
-    tracing::info!("══════════════════════════════════════════════════");
-    tracing::info!("  Component Integrity Check (server-verified)");
-    tracing::info!("══════════════════════════════════════════════════");
-
-    for c in &report.components {
-        let icon = match c.status {
-            IntegrityStatus::Verified    => "✅",
-            IntegrityStatus::Tampered    => "❌",
-            IntegrityStatus::NoHash      => "⚪",
-            IntegrityStatus::FileNotFound => "⬜",
-            IntegrityStatus::Error       => "⚠️",
-        };
-        let status_text = match c.status {
-            IntegrityStatus::Verified    => "Verified",
-            IntegrityStatus::Tampered    => "TAMPERED",
-            IntegrityStatus::NoHash      => "No Hash",
-            IntegrityStatus::FileNotFound => "Not Found",
-            IntegrityStatus::Error       => "Error",
-        };
-        tracing::info!(
-            "  {} {:<20} [{}] {}",
-            icon, c.display_name, status_text, c.message
-        );
-    }
-
-    tracing::info!("──────────────────────────────────────────────────");
-
-    match report.overall {
-        OverallIntegrity::AllVerified => {
-            tracing::info!(
-                "  ✅ All {} component(s) verified",
-                report.verified
-            );
-        }
-        OverallIntegrity::Partial => {
-            tracing::info!(
-                "  ⚪ {}/{} verified, {} skipped (no hash or not found)",
-                report.verified, report.total, report.skipped
-            );
-        }
-        OverallIntegrity::TamperDetected => {
-            tracing::warn!(
-                "  ❌ INTEGRITY FAILURE: {}/{} component(s) may be tampered!",
-                report.failed, report.total
-            );
-        }
-        OverallIntegrity::Empty => {
-            tracing::info!("  No components to verify");
-        }
-    }
-
-    tracing::info!("══════════════════════════════════════════════════");
-}
-
-/// 무결성 검증용 업데이터 설정 로드 (하드코딩 기본값)
-fn load_updater_config_for_integrity() -> saba_chan_updater_lib::UpdateConfig {
-    saba_chan_updater_lib::UpdateConfig::default()
-}
-
-/// 데몬 기동 시 Discord 봇 자동 시작
-///
-/// bot-config.json에서 `autoStart: true`인 경우:
-/// 1. Node.js 경로 해석 (포터블 → 시스템 폴백)
-/// 2. 봇 디렉토리 확인
-/// 3. 환경변수 구성 (IPC_BASE, DISCORD_TOKEN 등)
-/// 4. ext-process 매니저를 통해 프로세스 시작
-async fn auto_start_discord_bot(
-    ext_mgr: ipc::handlers::ext_process::SharedExtProcessManager,
-    ipc_port: u16,
-) -> anyhow::Result<()> {
-    use saba_chan_updater_lib::constants;
-    use std::collections::HashMap;
-
-    // 1. bot-config.json 읽기
-    let bot_config_path = constants::resolve_bot_config_path();
-    let bot_config: serde_json::Value = match std::fs::read_to_string(&bot_config_path) {
-        Ok(content) => serde_json::from_str(&content)
-            .map_err(|e| anyhow::anyhow!("Failed to parse bot-config.json: {}", e))?,
-        Err(_) => {
-            tracing::debug!("[Bot AutoStart] bot-config.json not found, skipping");
-            return Ok(());
-        }
-    };
-
-    // 2. autoStart 플래그 확인
-    let auto_start = bot_config.get("autoStart").and_then(|v| v.as_bool()).unwrap_or(false);
-    if !auto_start {
-        tracing::debug!("[Bot AutoStart] autoStart is false, skipping");
-        return Ok(());
-    }
-
-    let mode = bot_config.get("mode").and_then(|v| v.as_str()).unwrap_or("local");
-
-    // 3. 토큰 확인 (로컬 모드만)
-    let token = bot_config.get("token").and_then(|v| v.as_str()).unwrap_or("");
-    if mode == "local" && token.is_empty() {
-        tracing::debug!("[Bot AutoStart] Local mode but no token in bot-config, skipping");
-        return Ok(());
-    }
-
-    // 4. prefix 확인
-    let prefix = bot_config.get("prefix").and_then(|v| v.as_str()).unwrap_or("!saba");
-    if prefix.is_empty() {
-        tracing::debug!("[Bot AutoStart] No prefix set, skipping");
-        return Ok(());
-    }
-
-    // 5. Node.js 경로 해석
-    let node_path = match node_env::find_or_bootstrap().await {
-        Ok(p) => p,
-        Err(e) => {
-            return Err(anyhow::anyhow!("Failed to resolve Node.js: {}", e));
-        }
-    };
-
-    // 6. 봇 디렉토리 확인 — 상대 경로를 절대 경로로 변환
-    let bot_dir = {
-        let raw = constants::resolve_discord_bot_dir();
-        if raw.is_relative() {
-            std::env::current_dir().unwrap_or_default().join(&raw)
-        } else {
-            raw
-        }
-    };
-    let index_js = bot_dir.join("index.js");
-    if !index_js.exists() {
-        return Err(anyhow::anyhow!(
-            "discord_bot/index.js not found at {}",
-            index_js.display()
-        ));
-    }
-
-    // 7. 환경변수 구성
-    let ipc_base = format!("http://127.0.0.1:{}", ipc_port);
-    let mut env_vars: HashMap<String, String> = HashMap::new();
-    env_vars.insert("IPC_BASE".into(), ipc_base);
-    env_vars.insert("BOT_CONFIG_PATH".into(),
-        bot_config_path.to_string_lossy().to_string());
-    env_vars.insert("SABA_EXTENSIONS_DIR".into(),
-        constants::resolve_extensions_dir().to_string_lossy().to_string());
-
-    // 언어 설정: settings.json에서 language 읽기
-    let lang = read_language_from_settings().unwrap_or_else(|| "en".into());
-    env_vars.insert("SABA_LANG".into(), lang);
-
-    if mode == "cloud" {
-        // 클라우드 모드: relay URL + node token
-        let relay_url = bot_config
-            .get("cloud")
-            .and_then(|c| c.get("relayUrl"))
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-            .unwrap_or("https://saba-chan.online")
-            .trim_end_matches('/');
-        env_vars.insert("RELAY_URL".into(), relay_url.to_string());
-
-        // node token 읽기
-        let data_dir = constants::resolve_data_dir();
-        let node_token_path = data_dir.join(".node_token");
-        let node_token = std::fs::read_to_string(&node_token_path)
-            .map(|t| t.trim().to_string())
-            .unwrap_or_default();
-        if node_token.is_empty() {
-            return Err(anyhow::anyhow!("Cloud mode but no node token found"));
-        }
-        env_vars.insert("RELAY_NODE_TOKEN".into(), node_token);
-    } else {
-        env_vars.insert("DISCORD_TOKEN".into(), token.to_string());
-    }
-
-    // 8. ext-process 시작 요청 구성
-    let start_req = ipc::handlers::ext_process::StartProcessRequest {
-        command: node_path.to_string_lossy().to_string(),
-        args: vec![index_js.to_string_lossy().to_string()],
-        cwd: Some(bot_dir.to_string_lossy().to_string()),
-        env: env_vars,
-        meta: serde_json::json!({ "mode": mode, "autoStarted": true }),
-    };
-
-    tracing::info!("[Bot AutoStart] Starting Discord bot (mode: {})", mode);
-    match ipc::handlers::ext_process::start_process_internal(
-        &ext_mgr,
-        "discord-bot".into(),
-        start_req,
-    ).await {
-        Ok(pid) => {
-            tracing::info!("[Bot AutoStart] Discord bot started (PID: {})", pid);
-            Ok(())
-        }
-        Err(e) => Err(anyhow::anyhow!("Failed to start Discord bot: {}", e)),
+    #[test]
+    fn unknown_arguments_never_start_the_daemon() {
+        assert!(matches!(parse(&[]), Ok(DaemonArgs::Run)));
+        assert!(matches!(parse(&["--spawned"]), Ok(DaemonArgs::Run)));
+        assert!(matches!(parse(&["--version"]), Ok(DaemonArgs::Version)));
+        assert!(matches!(parse(&["--spawned", "--help"]), Ok(DaemonArgs::Help)));
+        assert_eq!(parse(&["--verison"]).err().as_deref(), Some("--verison"));
+        assert_eq!(parse(&["serve"]).err().as_deref(), Some("serve"));
     }
 }
-
-/// settings.json에서 language 필드를 읽어옵니다.
-fn read_language_from_settings() -> Option<String> {
-    let path = saba_chan_updater_lib::constants::resolve_settings_path();
-    let content = std::fs::read_to_string(&path).ok()?;
-    let content = content.strip_prefix('\u{feff}').unwrap_or(&content);
-    let val: serde_json::Value = serde_json::from_str(content).ok()?;
-    val.get("language").and_then(|v| v.as_str()).map(|s| s.to_string())
-}
-
-

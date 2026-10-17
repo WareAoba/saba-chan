@@ -21,17 +21,8 @@ use std::path::PathBuf;
 /// 앱 이름 — 경로 구성, 레지스트리 등에서 사용
 pub const APP_NAME: &str = "saba-chan";
 
-/// GitHub 저장소 소유자
-pub const GITHUB_OWNER: &str = "WareAoba";
-
-/// GitHub 메인 저장소 이름
-pub const GITHUB_REPO: &str = "saba-chan";
-
-/// GitHub 모듈 저장소 이름
-pub const GITHUB_MODULES_REPO: &str = "saba-chan-modules";
-
-/// GitHub 익스텐션 저장소 이름
-pub const GITHUB_EXTENSIONS_REPO: &str = "saba-chan-extensions";
+/// 배포자 이름 (설치 레지스트리 Publisher)
+pub const PUBLISHER: &str = "WareAoba";
 
 // ══════════════════════════════════════════════════════
 //  네트워크 상수
@@ -42,30 +33,6 @@ pub const DEFAULT_IPC_PORT: u16 = 57474;
 
 /// 기본 Daemon API URL
 pub const DEFAULT_DAEMON_URL: &str = "http://127.0.0.1:57474";
-
-/// 원격 모듈 매니페스트 URL
-pub fn modules_manifest_url() -> String {
-    format!(
-        "https://github.com/{}/{}/releases/latest/download/manifest.json",
-        GITHUB_OWNER, GITHUB_MODULES_REPO
-    )
-}
-
-/// 원격 모듈 에셋 다운로드 URL
-pub fn module_asset_url(asset_name: &str) -> String {
-    format!(
-        "https://github.com/{}/{}/releases/latest/download/{}",
-        GITHUB_OWNER, GITHUB_MODULES_REPO, asset_name
-    )
-}
-
-/// 원격 익스텐션 매니페스트 URL
-pub fn extensions_manifest_url() -> String {
-    format!(
-        "https://raw.githubusercontent.com/{}/{}/main/manifest.json",
-        GITHUB_OWNER, GITHUB_EXTENSIONS_REPO
-    )
-}
 
 // ══════════════════════════════════════════════════════
 //  지원 언어
@@ -90,6 +57,9 @@ pub fn resolve_data_dir() -> PathBuf {
         if !dir.is_empty() {
             return PathBuf::from(dir);
         }
+    }
+    if let Some(dir) = test_isolated_root() {
+        return dir;
     }
     #[cfg(target_os = "windows")]
     {
@@ -154,41 +124,32 @@ pub fn resolve_instances_dir() -> PathBuf {
     resolve_data_dir().join("instances")
 }
 
-/// 설정 파일 경로 (`settings.json`)
-pub fn resolve_settings_path() -> PathBuf {
-    resolve_data_dir().join("settings.json")
-}
-
-/// 봇 설정 파일 경로 (`bot-config.json`)
-pub fn resolve_bot_config_path() -> PathBuf {
-    resolve_data_dir().join("bot-config.json")
-}
-
-/// Discord 봇 디렉토리 경로 (`discord_bot/`)
+/// 테스트 빌드에서 사용자 데이터 폴더 대신 쓰는 프로세스별 임시 루트.
 ///
-/// `SABA_DISCORD_BOT_DIR` 환경 변수로 오버라이드 가능.
-/// 기본값: 실행 파일과 같은 디렉토리의 `discord_bot/`
-pub fn resolve_discord_bot_dir() -> PathBuf {
-    if let Ok(p) = std::env::var("SABA_DISCORD_BOT_DIR") {
-        if !p.is_empty() {
-            return PathBuf::from(p);
-        }
-    }
-    // 프로덕션: exe와 같은 디렉토리의 discord_bot/
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(parent) = exe.parent() {
-            let bot_dir = parent.join("discord_bot");
-            if bot_dir.exists() {
-                return bot_dir;
-            }
-        }
-    }
-    // 개발 모드 폴백: cwd 기준
-    PathBuf::from("discord_bot")
+/// `test-isolation` 기능은 saba-core의 dev-dependency에서만 켜지므로
+/// 일반 빌드에는 영향이 없다. 테스트가 실제 `%APPDATA%`/`~/.config`를
+/// 건드리지 않게 한다.
+#[cfg(any(test, feature = "test-isolation"))]
+fn test_isolated_root() -> Option<PathBuf> {
+    static ROOT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    Some(
+        ROOT.get_or_init(|| {
+            std::env::temp_dir().join(format!("{}-test-{}", APP_NAME, std::process::id()))
+        })
+        .clone(),
+    )
+}
+
+#[cfg(not(any(test, feature = "test-isolation")))]
+fn test_isolated_root() -> Option<PathBuf> {
+    None
 }
 
 /// 스테이징 디렉터리 (업데이트 다운로드 임시 파일)
 pub fn resolve_staging_dir() -> PathBuf {
+    if let Some(dir) = test_isolated_root() {
+        return dir.join("updates");
+    }
     #[cfg(target_os = "windows")]
     {
         resolve_data_dir().join("updates")
@@ -213,19 +174,6 @@ pub fn resolve_updater_state_path() -> PathBuf {
 /// 업데이트 완료 마커 경로 (`update-complete.json`)
 pub fn resolve_update_complete_path() -> PathBuf {
     resolve_data_dir().join("update-complete.json")
-}
-
-/// 익스텐션 상태 파일 경로 (`extensions_state.json`)
-pub fn resolve_extensions_state_path() -> PathBuf {
-    resolve_data_dir().join("extensions_state.json")
-}
-
-/// 익스텐션 설정 파일 경로 (`extensionConfig.json`)
-///
-/// 각 익스텐션의 글로벌(인스턴스 독립) 설정을 저장합니다.
-/// 구조: `{ "<ext_id>": { "<key>": <value>, ... }, ... }`
-pub fn resolve_extension_config_path() -> PathBuf {
-    resolve_data_dir().join("extensionConfig.json")
 }
 
 /// 설치 매니페스트 경로 (`installed-manifest.json`)
@@ -346,13 +294,6 @@ mod tests {
         let pw1 = generate_random_password();
         let pw2 = generate_random_password();
         assert_ne!(pw1, pw2);
-    }
-
-    #[test]
-    fn test_modules_manifest_url() {
-        let url = modules_manifest_url();
-        assert!(url.contains(GITHUB_OWNER));
-        assert!(url.contains(GITHUB_MODULES_REPO));
     }
 
     #[test]

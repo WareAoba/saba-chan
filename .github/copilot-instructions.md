@@ -46,7 +46,6 @@
 - 코드를 수정한 뒤에는 반드시 관련 테스트를 실행하여 회귀가 없는지 확인한다.
 - **GUI (saba-chan-gui)**: `cd saba-chan-gui && npx vitest run` — 108개 전체 통과 확인.
 - **Rust (daemon/CLI/updater)**: `cargo test --workspace` — 전체 통과 확인.
-- **Discord Bot**: `cd discord_bot && npm test` — 전체 통과 확인.
 - 테스트가 깨진 상태로 커밋하지 않는다. 테스트 실패 시 원인을 파악하고 수정한다.
 - 새로운 기능을 추가할 때는 가능하면 테스트도 함께 작성한다.
 - 수정 범위가 여러 프로젝트에 걸칠 경우, 각 프로젝트의 테스트를 모두 실행한다.

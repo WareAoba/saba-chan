@@ -39,8 +39,7 @@ use crate::utils::apply_creation_flags;
 // python-build-standalone: https://github.com/indygreg/python-build-standalone
 // `install_only_stripped` 변형: pip/venv 포함, 디버그 심볼 제거 (~20 MB)
 
-const PYTHON_VERSION: &str = "3.12.8";
-const PYTHON_RELEASE_TAG: &str = "20250106";
+use saba_chan_updater_lib::python_pin::PYTHON_VERSION;
 
 /// 시스템 Python 사용 시 최소 요구 버전
 const MIN_PYTHON_VERSION: (u32, u32) = (3, 10);
@@ -53,12 +52,57 @@ const PORTABLE_DIR_NAME: &str = "python-standalone";
 static VENV_PYTHON: OnceCell<PathBuf> = OnceCell::const_new();
 
 /// 관리 venv의 Python 인터프리터 경로를 반환합니다.
-/// 최초 호출 시 전체 부트스트랩(다운로드 포함)을 자동 수행합니다.
+/// 최초 호출 시 전체 부트스트랩(다운로드 포함)을 자동 수행합니다. 실패는 캐시하지 않는다(다음 호출이 다시 시도)
 pub async fn get_python_path() -> Result<PathBuf> {
-    VENV_PYTHON
-        .get_or_try_init(ensure_venv)
-        .await
-        .cloned()
+    if let Some(path) = VENV_PYTHON.get() {
+        return Ok(path.clone());
+    }
+    set_preflight(Preflight::Running);
+    let result = VENV_PYTHON.get_or_try_init(ensure_venv).await.cloned();
+    set_preflight(match &result {
+        Ok(_) => Preflight::Ready,
+        Err(e) => Preflight::Failed(format!("{:#}", e)),
+    });
+    result
+}
+
+// ── 부팅 사전 점검 (GET /api/runtime/preflight) ──────────────────
+
+/// Python 준비 상태. 데몬이 부팅하자마자 준비를 시작하고, GUI는 끝날 때까지 이것을 본다
+#[derive(Debug, Clone, PartialEq)]
+pub enum Preflight {
+    Idle,
+    Running,
+    Ready,
+    Failed(String),
+}
+
+static PREFLIGHT: std::sync::Mutex<Preflight> = std::sync::Mutex::new(Preflight::Idle);
+
+fn set_preflight(state: Preflight) {
+    *PREFLIGHT.lock().unwrap_or_else(|e| e.into_inner()) = state;
+}
+
+/// `{phase, percent, complete, error, components: {python}}`. complete는 성공·실패 모두 끝난 상태
+pub fn preflight_snapshot() -> serde_json::Value {
+    let state = PREFLIGHT.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let (phase, percent, python) = match &state {
+        Preflight::Idle => ("preflight-idle", 0, "pending"),
+        Preflight::Running => ("preflight-python", 55, "running"),
+        Preflight::Ready => ("preflight-done", 100, "ok"),
+        Preflight::Failed(_) => ("preflight-failed", 0, "failed"),
+    };
+    let error = match state {
+        Preflight::Failed(e) => Some(e),
+        _ => None,
+    };
+    serde_json::json!({
+        "phase": phase,
+        "percent": percent,
+        "complete": matches!(python, "ok" | "failed"),
+        "error": error,
+        "components": { "python": python },
+    })
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -121,28 +165,6 @@ pub async fn ensure_venv() -> Result<PathBuf> {
     Ok(python_exe)
 }
 
-/// pip 패키지를 관리 venv에 설치합니다.
-#[allow(dead_code)]
-pub async fn pip_install(packages: &[&str]) -> Result<()> {
-    let python_exe = get_python_path().await?;
-    tracing::info!("pip install: {:?}", packages);
-    let mut args = vec!["install", "--upgrade"];
-    args.extend(packages);
-    run_pip(&python_exe, &args).await
-}
-
-/// requirements.txt로부터 의존성을 설치합니다.
-#[allow(dead_code)]
-pub async fn pip_install_requirements(requirements_path: &Path) -> Result<()> {
-    let python_exe = get_python_path().await?;
-    tracing::info!("requirements 설치: {}", requirements_path.display());
-    run_pip(
-        &python_exe,
-        &["install", "-r", &requirements_path.to_string_lossy()],
-    )
-    .await
-}
-
 /// 시스템에서 Python ≥ 3.10 을 탐지합니다.
 pub async fn detect_system_python() -> Result<String> {
     let candidates = ["python", "python3", "py"];
@@ -179,55 +201,6 @@ pub async fn detect_system_python() -> Result<String> {
     ))
 }
 
-/// 진단 정보를 JSON으로 반환합니다. (IPC 엔드포인트용)
-#[allow(dead_code)]
-pub async fn status() -> serde_json::Value {
-    let data_dir = match resolve_data_dir() {
-        Ok(d) => d,
-        Err(e) => {
-            return serde_json::json!({
-                "available": false,
-                "error": e.to_string(),
-            })
-        }
-    };
-
-    let venv_dir = data_dir.join(VENV_DIR_NAME);
-    let python_exe = venv_python_exe(&venv_dir);
-    let portable_exe = portable_python_exe(&data_dir);
-    let venv_ok = python_exe.exists() && verify_python(&python_exe).await;
-
-    let mut info = serde_json::json!({
-        "available": venv_ok,
-        "venv_dir": venv_dir.to_string_lossy(),
-        "venv_python": python_exe.to_string_lossy(),
-        "portable_python_installed": portable_exe.exists(),
-        "portable_python_path": portable_exe.to_string_lossy(),
-        "python_version_bundled": PYTHON_VERSION,
-    });
-
-    if venv_ok {
-        if let Ok(ver) = get_version(&python_exe).await {
-            info["python_version"] = serde_json::json!(ver);
-        }
-    }
-
-    if let Ok(url) = python_download_url() {
-        info["portable_download_url"] = serde_json::json!(url);
-    }
-
-    match detect_system_python().await {
-        Ok(cmd) => {
-            info["system_python"] = serde_json::json!(cmd);
-        }
-        Err(_) => {
-            info["system_python"] = serde_json::json!(null);
-        }
-    }
-
-    info
-}
-
 // ═══════════════════════════════════════════════════════════════
 //  Internal: Python 탐색 & 포터블 다운로드
 // ═══════════════════════════════════════════════════════════════
@@ -256,43 +229,14 @@ async fn find_base_python(data_dir: &Path) -> Result<String> {
     Ok(exe.to_string_lossy().into_owned())
 }
 
-/// python-build-standalone 다운로드 URL 생성
-fn python_download_url() -> Result<String> {
-    // 환경변수 오버라이드 (미러, 사내망 등)
-    if let Ok(custom_url) = std::env::var("SABA_PYTHON_URL") {
-        return Ok(custom_url);
-    }
-
-    let triple = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
-        "x86_64-pc-windows-msvc"
-    } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-        "x86_64-unknown-linux-gnu"
-    } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
-        "aarch64-unknown-linux-gnu"
-    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
-        "x86_64-apple-darwin"
-    } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-        "aarch64-apple-darwin"
-    } else {
-        return Err(anyhow::anyhow!(
-            "이 플랫폼에서는 포터블 Python 자동 설치를 지원하지 않습니다. \
-             Python {}.{} 이상을 수동으로 설치해 주세요.",
-            MIN_PYTHON_VERSION.0,
-            MIN_PYTHON_VERSION.1
-        ));
-    };
-
-    Ok(format!(
-        "https://github.com/indygreg/python-build-standalone/releases/download/{tag}/cpython-{ver}+{tag}-{triple}-install_only_stripped.tar.gz",
-        tag = PYTHON_RELEASE_TAG,
-        ver = PYTHON_VERSION,
-        triple = triple,
-    ))
-}
-
 /// 포터블 Python 다운로드 → 추출 → 검증
 async fn download_portable_python(data_dir: &Path) -> Result<PathBuf> {
-    let url = python_download_url()?;
+    let (url, sha256) = saba_chan_updater_lib::python_pin::download().ok_or_else(|| anyhow::anyhow!(
+        "이 플랫폼에서는 포터블 Python 자동 설치를 지원하지 않습니다. \
+         Python {}.{} 이상을 수동으로 설치해 주세요.",
+        MIN_PYTHON_VERSION.0,
+        MIN_PYTHON_VERSION.1
+    ))?;
     let portable_dir = data_dir.join(PORTABLE_DIR_NAME);
     let tmp_archive = data_dir.join("_python_download.tar.gz");
 
@@ -309,6 +253,12 @@ async fn download_portable_python(data_dir: &Path) -> Result<PathBuf> {
             "Python 다운로드 실패. \
              인터넷 연결을 확인하거나, Python 3.10 이상을 수동 설치해 주세요.",
         )?;
+
+    // 고정 해시와 다르면 풀지 않는다 (C6)
+    if let Err(e) = saba_chan_updater_lib::python_pin::verify(&tmp_archive, sha256.as_deref()) {
+        let _ = std::fs::remove_file(&tmp_archive);
+        return Err(anyhow::anyhow!(e));
+    }
 
     // ── 추출 ──
     tracing::info!("포터블 Python 추출 중...");
@@ -530,16 +480,6 @@ async fn verify_python(exe: &Path) -> bool {
     matches!(cmd.output().await, Ok(o) if o.status.success())
 }
 
-/// Python --version 문자열 반환
-#[allow(dead_code)]
-async fn get_version(exe: &Path) -> Result<String> {
-    let mut cmd = Command::new(exe);
-    cmd.arg("--version");
-    apply_creation_flags(&mut cmd);
-    let output = cmd.output().await?;
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
 /// pip 명령 실행
 async fn run_pip(python_exe: &Path, args: &[&str]) -> Result<()> {
     let mut cmd = Command::new(python_exe);
@@ -613,7 +553,8 @@ mod tests {
 
     #[test]
     fn test_python_download_url_format() {
-        let url = python_download_url().unwrap();
+        let (url, sha) = saba_chan_updater_lib::python_pin::download().unwrap();
+        assert!(sha.is_some_and(|s| s.len() == 64) || std::env::var("SABA_PYTHON_URL").is_ok());
         assert!(url.contains("python-build-standalone"));
         assert!(url.contains(PYTHON_VERSION));
         assert!(url.ends_with(".tar.gz"));
@@ -658,13 +599,5 @@ mod tests {
             Ok(cmd) => println!("시스템 Python: {}", cmd),
             Err(e) => println!("시스템 Python 없음 (정상): {}", e),
         }
-    }
-
-    #[tokio::test]
-    async fn test_status_returns_json() {
-        let s = status().await;
-        assert!(s.get("available").is_some());
-        assert!(s.get("venv_dir").is_some());
-        assert!(s.get("portable_python_installed").is_some());
     }
 }

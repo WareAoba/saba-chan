@@ -8,6 +8,7 @@ use serde_json::json;
 use std::collections::HashMap;
 
 use super::super::IPCServer;
+use crate::supervisor::Supervisor;
 
 /// POST /api/instance/:id/managed/start — Start with managed process (stdin/stdout capture)
 pub async fn start_managed_handler(
@@ -53,13 +54,8 @@ pub async fn start_managed_handler(
         (module_name, config)
     };
 
-    // write lock: start_managed_server가 REST 자격증명을 동기화할 수 있도록
-    let mut supervisor = state.supervisor.write().await;
-
-    match supervisor
-        .start_managed_server(&id, &module_name, config)
-        .await
-    {
+    // 락은 start_managed_server가 단계마다 짧게 잡는다 (C12)
+    match Supervisor::start_managed_server(&state.supervisor, &id, &module_name, config).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -84,7 +80,7 @@ pub async fn get_console_handler(
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::NOT_FOUND,
-            Json(json!({"error": e.to_string()})),
+            Json(json!({"error": e.to_string(), "error_code": "not_found"})),
         )
             .into_response(),
     }
@@ -96,31 +92,8 @@ pub async fn send_stdin_handler(
     State(state): State<IPCServer>,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
-
-    let command = match payload.get("command").and_then(|v| v.as_str()) {
-        Some(cmd) => cmd,
-        None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Missing 'command' field"})),
-            )
-                .into_response()
-        }
-    };
-
-    match supervisor.send_stdin_command(&id, command).await {
-        Ok(msg) => (
-            StatusCode::OK,
-            Json(json!({"success": true, "message": msg})),
-        )
-            .into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": e.to_string()})),
-        )
-            .into_response(),
-    }
+    // 명령 경로와 같은 응답: 보낸 뒤 찍힌 콘솔 줄을 data.response로
+    super::command::via_stdin(&state, &id, &payload).await
 }
 
 /// POST /api/instance/:id/validate — Validate prerequisites
@@ -128,9 +101,7 @@ pub async fn validate_instance_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
-
-    match supervisor.validate_instance(&id).await {
+    match Supervisor::validate_instance(&state.supervisor, &id).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -145,9 +116,7 @@ pub async fn read_properties_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
-
-    match supervisor.manage_properties(&id, "read", None).await {
+    match Supervisor::manage_properties(&state.supervisor, &id, "read", None).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -163,13 +132,8 @@ pub async fn write_properties_handler(
     State(state): State<IPCServer>,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
-
     let settings = payload.get("settings").cloned();
-    match supervisor
-        .manage_properties(&id, "write", settings)
-        .await
-    {
+    match Supervisor::manage_properties(&state.supervisor, &id, "write", settings).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -179,14 +143,44 @@ pub async fn write_properties_handler(
     }
 }
 
+/// GET /api/instance/:id/settings/live — 디스크의 실제 설정을 모듈 `import_settings`로 읽어 돌려준다.
+///
+/// `module_settings`는 마지막으로 saba-chan이 저장한 값의 캐시라 게임 안이나 파일에서 바꾼 값과
+/// 어긋날 수 있다. 읽기에 성공하면 캐시도 실제 값으로 맞춘다. 실패하면 `success: false`를 그대로
+/// 돌려주므로, 인터페이스는 그때 기본값으로 덮어쓰지 말아야 한다. Python은 락 밖에서 돈다.
+pub async fn read_live_settings_handler(
+    Path(id): Path<String>,
+    State(state): State<IPCServer>,
+) -> impl IntoResponse {
+    match Supervisor::manage_properties(&state.supervisor, &id, "import", None).await {
+        Ok(result) => {
+            let ok = result.get("success").and_then(|v| v.as_bool()) == Some(true);
+            let settings = result.get("settings").and_then(|v| v.as_object()).filter(|s| !s.is_empty());
+            if let (true, Some(settings)) = (ok, settings) {
+                let mut supervisor = state.supervisor.write().await;
+                if let Some(mut inst) = supervisor.instance_store.get(&id).cloned() {
+                    let (credential_map, types) = supervisor.module_loader.get_module(&inst.module_name)
+                        .map(|m| (m.metadata.credential_map.clone(), m.metadata.setting_types()))
+                        .unwrap_or_default();
+                    // 포트·비밀번호 같은 인스턴스 필드도 파일 값으로 맞춘다 (GUI는 그쪽을 먼저 읽는다)
+                    inst.apply_imported_settings(settings, &credential_map, &types);
+                    if let Err(e) = supervisor.instance_store.update(&id, inst) {
+                        tracing::warn!("Live settings read: cache refresh failed for {}: {}", id, e);
+                    }
+                }
+            }
+            (StatusCode::OK, Json(result)).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string() }))).into_response(),
+    }
+}
+
 /// POST /api/instance/:id/properties/reset — Reset server.properties to defaults
 pub async fn reset_properties_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
-
-    match supervisor.manage_properties(&id, "reset", None).await {
+    match Supervisor::manage_properties(&state.supervisor, &id, "reset", None).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -201,12 +195,7 @@ pub async fn reset_server_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
-
-    match supervisor
-        .manage_properties(&id, "reset_server", None)
-        .await
-    {
+    match Supervisor::manage_properties(&state.supervisor, &id, "reset_server", None).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -221,9 +210,7 @@ pub async fn accept_eula_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
-
-    match supervisor.accept_eula(&id).await {
+    match Supervisor::accept_eula(&state.supervisor, &id).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -238,9 +225,7 @@ pub async fn diagnose_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
-
-    match supervisor.diagnose_instance(&id).await {
+    match Supervisor::diagnose_instance(&state.supervisor, &id).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -259,8 +244,6 @@ pub async fn list_versions_handler(
     State(state): State<IPCServer>,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
-
     let include_snapshots = params
         .get("include_snapshots")
         .map(|v| v == "true" || v == "1")
@@ -274,10 +257,7 @@ pub async fn list_versions_handler(
         .and_then(|v| v.parse::<u32>().ok())
         .unwrap_or(25);
 
-    match supervisor
-        .list_versions(&module_name, include_snapshots, page, per_page)
-        .await
-    {
+    match Supervisor::list_versions(&state.supervisor, &module_name, include_snapshots, page, per_page).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -292,12 +272,7 @@ pub async fn get_version_details_handler(
     Path((module_name, version)): Path<(String, String)>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
-
-    match supervisor
-        .get_version_details(&module_name, &version)
-        .await
-    {
+    match Supervisor::get_version_details(&state.supervisor, &module_name, &version).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -313,11 +288,10 @@ pub async fn get_installed_version_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    // Phase 1: read lock으로 감지 수행
+    // Phase 1: 감지 (모듈 호출은 락 밖에서)
     let (_module_name, result) = {
-        let supervisor = state.supervisor.read().await;
-
-        let instance = match supervisor.instance_store.list().iter().find(|i| i.id == id).cloned() {
+        let found = state.supervisor.read().await.instance_store.list().iter().find(|i| i.id == id).cloned();
+        let instance = match found {
             Some(i) => i,
             None => {
                 return (
@@ -329,7 +303,7 @@ pub async fn get_installed_version_handler(
         };
 
         let module_name = instance.module_name.clone();
-        let res = supervisor.get_installed_version(&module_name, &id).await;
+        let res = Supervisor::get_installed_version(&state.supervisor, &module_name, &id).await;
         (module_name, res)
     };
 
@@ -370,8 +344,6 @@ pub async fn install_server_handler(
     State(state): State<IPCServer>,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
-
     let version = match payload.get("version").and_then(|v| v.as_str()) {
         Some(v) => v.to_string(),
         None => {
@@ -403,7 +375,8 @@ pub async fn install_server_handler(
 
     // ── 필수 익스텐션 의존성 검증 ──
     {
-        let module = match supervisor.module_loader.get_module(&module_name) {
+        let found = state.supervisor.read().await.module_loader.get_module(&module_name);
+        let module = match found {
             Ok(m) => m,
             Err(e) => {
                 return (
@@ -458,8 +431,8 @@ pub async fn install_server_handler(
         }
     }
 
-    match supervisor
-        .install_server(
+    match Supervisor::install_server(
+            &state.supervisor,
             &module_name,
             &version,
             &install_dir,

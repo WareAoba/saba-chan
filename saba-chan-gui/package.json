@@ -1,9 +1,12 @@
 {
   "name": "saba-chan-gui",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Saba-chan - Modular Game Server Management GUI",
   "author": "WareAoba",
   "main": "main.js",
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -36,15 +39,15 @@
     "@testing-library/react": "^14.3.1",
     "@testing-library/user-event": "^14.6.1",
     "@vitejs/plugin-react": "^4.3.4",
-    "@vitest/ui": "^2.1.8",
+    "@vitest/ui": "^5.0.5",
     "concurrently": "^8.2.0",
     "cross-env": "^7.0.3",
-    "electron": "^28.0.0",
-    "electron-builder": "^24.0.0",
+    "electron": "^44.8.0",
+    "electron-builder": "^26.15.3",
     "jsdom": "^25.0.1",
     "terser": "^5.46.0",
-    "vite": "^6.0.7",
-    "vitest": "^2.1.8",
+    "vite": "^6.4.4",
+    "vitest": "^5.0.5",
     "wait-on": "^7.2.0"
   },
   "browserslist": {
@@ -87,26 +90,6 @@
       {
         "from": "../locales",
         "to": "locales"
-      },
-      {
-        "from": "../discord_bot",
-        "to": "discord_bot",
-        "filter": [
-          "**/*",
-          "!node_modules/**/{*.map,*.d.ts,*.ts,test,tests,coverage,CHANGELOG.md,README.md,LICENSE,AUTHORS}",
-          "!node_modules/**/{package.json.orig,npm-shrinkwrap.json,yarn.lock}",
-          "!node_modules/.bin/**",
-          "!node_modules/.package-lock.json",
-          "!.git",
-          "!.github",
-          "!.eslintrc*",
-          "!.prettierrc*",
-          "!.env",
-          "!.env.example",
-          "!test/**",
-          "!*.test.js",
-          "!*.spec.js"
-        ]
       }
     ],
     "extraResources": [
@@ -130,19 +113,7 @@
           ]
         }
       ],
-      "icon": "build/icon.png",
-      "certificateFile": null,
-      "certificatePassword": null,
-      "extraFiles": [
-        {
-          "from": "../target/release/saba-core.exe",
-          "to": "."
-        },
-        {
-          "from": "../target/release/saba-chan-updater.exe",
-          "to": "."
-        }
-      ]
+      "icon": "build/icon.png"
     },
     "linux": {
       "target": [
@@ -151,20 +122,10 @@
       ],
       "icon": "build/icon.png",
       "category": "Game",
-      "artifactName": "${productName}-${version}-linux-${arch}.${ext}",
-      "extraFiles": [
-        {
-          "from": "../target/release/saba-core",
-          "to": "."
-        },
-        {
-          "from": "../target/release/saba-chan-updater",
-          "to": "."
-        }
-      ]
+      "artifactName": "${productName}-${version}-linux-${arch}.${ext}"
     },
     "portable": {
-      "artifactName": "${productName}.exe"
+      "artifactName": "saba-chan-gui.exe"
     },
     "nsis": {
       "oneClick": false,

@@ -632,7 +632,6 @@ pub fn render_confirm_dialog(prompt: &str, frame: &mut Frame, area: Rect) {
 // 로딩 표시
 // ═══════════════════════════════════════════════════════
 
-#[allow(dead_code)]
 pub fn render_loading(msg: &str, frame: &mut Frame, area: Rect) {
     let spinner_chars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
     let idx = (std::time::SystemTime::now()

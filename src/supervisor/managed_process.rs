@@ -12,10 +12,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::path::{Path, PathBuf};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command as TokioCommand;
-use tokio::sync::{broadcast, mpsc, Mutex, watch};
+use tokio::sync::{mpsc, Mutex, watch};
 use serde::{Serialize, Deserialize};
 use anyhow::Result;
 use regex::Regex;
+
+mod runner;
+pub use runner::runner_server_pid;
+pub use runner::RunnerLaunch;
+pub use runner::{latest_session_log, runner_binary, DEFAULT_LOG_SESSIONS};
 
 /// Console log file name within the instance's logs directory.
 const CONSOLE_LOG_FILENAME: &str = "console.log";
@@ -130,6 +135,11 @@ impl LogBuffer {
         line
     }
 
+    /// 다음 줄이 받을 id. `get_since(cursor())`는 지금 이후에 나온 줄만 준다
+    fn cursor(&self) -> u64 {
+        self.next_id
+    }
+
     /// Get all lines with id >= `since_id` (for polling).
     fn get_since(&self, since_id: u64) -> Vec<LogLine> {
         self.lines.iter()
@@ -151,26 +161,60 @@ impl LogBuffer {
 /// Provides:
 /// - Async stdin command injection via `send_command()`
 /// - Buffered console output via `get_console_since()` / `get_recent_console()`
-/// - Real-time log broadcast via `subscribe()`
 /// - Running state monitoring via `is_running()`
 pub struct ManagedProcess {
     /// Channel to send commands to stdin
     stdin_tx: mpsc::Sender<String>,
     /// Log buffer for recent console output
     log_buffer: Arc<Mutex<LogBuffer>>,
-    /// Broadcast channel for real-time log events
-    #[allow(dead_code)]
-    log_broadcast: broadcast::Sender<LogLine>,
     /// Process PID
     pub pid: u32,
     /// Watch channel for running state
-    #[allow(dead_code)]
-    running_tx: Arc<watch::Sender<bool>>,
     running_rx: watch::Receiver<bool>,
     /// Abort handle for the background poller task (reattached stubs only)
     poller_handle: Option<tokio::task::AbortHandle>,
     /// Whether stdin is available (false for reattached stubs)
     stdin_available: bool,
+    /// 끝난 방식. 끝나기 전엔 None, 알 수 없게 끝나도 None (크래시 판정 A1)
+    exit: Arc<std::sync::Mutex<Option<ProcessExit>>>,
+    /// 시작 시각 (unix 초). 이보다 새 크래시 파일만 이번 실행의 것으로 본다
+    pub started_at: u64,
+    /// 서버 작업 폴더. 모르면 None
+    pub working_dir: Option<PathBuf>,
+    /// 로그만 따라 읽는 프로세스(서버 자체가 아님). 이것이 끝나도 서버 종료로 보지 않는다
+    pub log_follower: bool,
+    /// saba-runner가 띄웠으면 러너 PID. 러너를 죽이면 러너의 Job Object가 서버 트리 전체를 끝낸다
+    pub runner_pid: Option<u32>,
+}
+
+/// 서버 프로세스가 끝난 방식
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ProcessExit {
+    pub code: Option<i32>,
+    /// unix 시그널 번호
+    pub signal: Option<i32>,
+}
+
+impl From<&saba_runner::ExitInfo> for ProcessExit {
+    fn from(e: &saba_runner::ExitInfo) -> Self {
+        Self { code: e.code, signal: e.signal }
+    }
+}
+
+impl From<&std::process::ExitStatus> for ProcessExit {
+    fn from(status: &std::process::ExitStatus) -> Self {
+        (&saba_runner::ExitInfo::from_status(status)).into()
+    }
+}
+
+async fn futures_join(handles: Vec<tokio::task::JoinHandle<()>>) {
+    for h in handles {
+        let _ = h.await;
+    }
+}
+
+fn unix_now() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
 }
 
 impl Drop for ManagedProcess {
@@ -182,6 +226,14 @@ impl Drop for ManagedProcess {
 }
 
 impl ManagedProcess {
+    /// 강제 종료. 러너가 있으면 러너도 죽여, 런처가 띄운 손자 프로세스까지 Job Object로 끝낸다.
+    pub fn force_kill(&self) {
+        let _ = super::process::force_kill_pid(self.pid);
+        if let Some(runner) = self.runner_pid {
+            let _ = super::process::force_kill_pid(runner);
+        }
+    }
+
     /// Spawn a new managed process.
     ///
     /// # Arguments
@@ -202,6 +254,8 @@ impl ManagedProcess {
         log_pattern: Option<&str>,
         instance_dir: Option<&Path>,
     ) -> Result<Self> {
+        let exit: Arc<std::sync::Mutex<Option<ProcessExit>>> = Default::default();
+        let started_at = unix_now();
         let mut cmd = TokioCommand::new(program);
         cmd.args(args)
             .current_dir(working_dir)
@@ -225,7 +279,6 @@ impl ManagedProcess {
 
         // Channels
         let (stdin_tx, stdin_rx) = mpsc::channel::<String>(256);
-        let (log_tx, _) = broadcast::channel::<LogLine>(2048);
         let (running_tx, running_rx) = watch::channel(true);
 
         let mut buf = LogBuffer::new();
@@ -254,37 +307,34 @@ impl ManagedProcess {
         let stdin = child.stdin.take();
 
         // ── stdout reader ────────────────────────────────────
+        let mut readers = Vec::new();
         if let Some(stdout) = stdout {
             let buf = log_buffer.clone();
-            let bc = log_tx.clone();
             let re = log_regex.clone();
-            tokio::spawn(async move {
+            readers.push(tokio::spawn(async move {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
                     let level = parse_log_level(&line, re.as_deref());
-                    let log_line = buf.lock().await.push(LogSource::Stdout, line, level);
-                    let _ = bc.send(log_line);
+                    buf.lock().await.push(LogSource::Stdout, line, level);
                 }
-            });
+            }));
         }
 
         // ── stderr reader ────────────────────────────────────
         if let Some(stderr) = stderr {
             let buf = log_buffer.clone();
-            let bc = log_tx.clone();
             let re = log_regex.clone();
-            tokio::spawn(async move {
+            readers.push(tokio::spawn(async move {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
                     let level = parse_log_level(&line, re.as_deref());
                     // stderr lines default to at least Warn
                     let effective = if level == LogLevel::Info { LogLevel::Warn } else { level };
-                    let log_line = buf.lock().await.push(LogSource::Stderr, line, effective);
-                    let _ = bc.send(log_line);
+                    buf.lock().await.push(LogSource::Stderr, line, effective);
                 }
-            });
+            }));
         }
 
         // ── stdin writer ─────────────────────────────────────
@@ -307,15 +357,20 @@ impl ManagedProcess {
         {
             let running = running_tx.clone();
             let buf = log_buffer.clone();
-            let bc = log_tx.clone();
+            let exit = exit.clone();
             tokio::spawn(async move {
                 let exit_msg = match child.wait().await {
-                    Ok(status) => format!("Process exited with {}", status),
+                    Ok(status) => {
+                        *exit.lock().unwrap_or_else(|e| e.into_inner()) = Some((&status).into());
+                        format!("Process exited with {}", status)
+                    }
                     Err(e) => format!("Failed to wait for process: {}", e),
                 };
+                // 마지막 출력까지 버퍼에 넣은 뒤 끝났다고 알린다 (종료 판정이 콘솔 끝을 읽는다).
+                // 손자 프로세스가 파이프를 쥐고 있으면 오래 기다리지 않는다.
+                let _ = tokio::time::timeout(std::time::Duration::from_secs(2), futures_join(readers)).await;
                 tracing::info!("{}", exit_msg);
-                let log_line = buf.lock().await.push(LogSource::System, exit_msg, LogLevel::Info);
-                let _ = bc.send(log_line);
+                buf.lock().await.push(LogSource::System, exit_msg, LogLevel::Info);
                 let _ = running.send(false);
             });
         }
@@ -323,19 +378,21 @@ impl ManagedProcess {
         // System log entry
         {
             let msg = format!("Process started with PID {}", pid);
-            let log_line = log_buffer.lock().await.push(LogSource::System, msg, LogLevel::Info);
-            let _ = log_tx.send(log_line);
+            log_buffer.lock().await.push(LogSource::System, msg, LogLevel::Info);
         }
 
         Ok(Self {
             stdin_tx,
             log_buffer,
-            log_broadcast: log_tx,
             pid,
-            running_tx,
             running_rx,
             poller_handle: None,
             stdin_available: true,
+            exit,
+            started_at,
+            working_dir: Some(PathBuf::from(working_dir)),
+            log_follower: false,
+            runner_pid: None,
         })
     }
 
@@ -346,7 +403,7 @@ impl ManagedProcess {
     }
 
     /// Spawn a log follower that streams an extension-provided command's output
-    /// into the standard LogBuffer/broadcast infrastructure.
+    /// into the standard LogBuffer infrastructure.
     ///
     /// This allows extension-managed processes (e.g. containers) to share
     /// the same console API (`GET /api/instance/:id/console?since=N`) as native
@@ -392,7 +449,6 @@ impl ManagedProcess {
         // Channels — stdin is not used for container log followers, but we keep the
         // interface compatible with ManagedProcess.
         let (stdin_tx, _stdin_rx) = mpsc::channel::<String>(1);
-        let (log_tx, _) = broadcast::channel::<LogLine>(2048);
         let (running_tx, running_rx) = watch::channel(true);
 
         let mut buf = LogBuffer::new();
@@ -419,7 +475,6 @@ impl ManagedProcess {
         // ── stdout reader ──
         if let Some(stdout) = stdout {
             let buf = log_buffer.clone();
-            let bc = log_tx.clone();
             let re = log_regex.clone();
             let prefix = strip_prefix.map(String::from);
             tokio::spawn(async move {
@@ -436,8 +491,7 @@ impl ManagedProcess {
                         line
                     };
                     let level = parse_log_level(&content, re.as_deref());
-                    let log_line = buf.lock().await.push(LogSource::Stdout, content, level);
-                    let _ = bc.send(log_line);
+                    buf.lock().await.push(LogSource::Stdout, content, level);
                 }
             });
         }
@@ -445,7 +499,6 @@ impl ManagedProcess {
         // ── stderr reader ──
         if let Some(stderr) = stderr {
             let buf = log_buffer.clone();
-            let bc = log_tx.clone();
             let re = log_regex;
             let prefix = strip_prefix.map(String::from);
             tokio::spawn(async move {
@@ -463,8 +516,7 @@ impl ManagedProcess {
                     };
                     let level = parse_log_level(&content, re.as_deref());
                     let effective = if level == LogLevel::Info { LogLevel::Warn } else { level };
-                    let log_line = buf.lock().await.push(LogSource::Stderr, content, effective);
-                    let _ = bc.send(log_line);
+                    buf.lock().await.push(LogSource::Stderr, content, effective);
                 }
             });
         }
@@ -473,7 +525,6 @@ impl ManagedProcess {
         {
             let running = running_tx.clone();
             let buf = log_buffer.clone();
-            let bc = log_tx.clone();
             let desc = description_owned.clone();
             tokio::spawn(async move {
                 let exit_msg = match child.wait().await {
@@ -481,8 +532,7 @@ impl ManagedProcess {
                     Err(e) => format!("Log follower '{}' error: {}", desc, e),
                 };
                 tracing::info!("{}", exit_msg);
-                let log_line = buf.lock().await.push(LogSource::System, exit_msg, LogLevel::Info);
-                let _ = bc.send(log_line);
+                buf.lock().await.push(LogSource::System, exit_msg, LogLevel::Info);
                 let _ = running.send(false);
             });
         }
@@ -491,19 +541,21 @@ impl ManagedProcess {
         {
             let msg = format!("Log streaming started: '{}'", description_owned);
             tracing::info!("{}", msg);
-            let log_line = log_buffer.lock().await.push(LogSource::System, msg, LogLevel::Info);
-            let _ = log_tx.send(log_line);
+            log_buffer.lock().await.push(LogSource::System, msg, LogLevel::Info);
         }
 
         Ok(Self {
             stdin_tx,
             log_buffer,
-            log_broadcast: log_tx,
             pid,
-            running_tx,
             running_rx,
             poller_handle: None,
             stdin_available: false, // log follower has no stdin
+            exit: Default::default(),
+            started_at: unix_now(),
+            working_dir: Some(working_dir.to_path_buf()),
+            log_follower: true,
+            runner_pid: None,
         })
     }
 
@@ -512,15 +564,14 @@ impl ManagedProcess {
         self.log_buffer.lock().await.get_since(since_id)
     }
 
+    /// 지금 이후의 콘솔 줄만 보려면 이 값으로 `get_console_since`를 부른다
+    pub async fn console_cursor(&self) -> u64 {
+        self.log_buffer.lock().await.cursor()
+    }
+
     /// Get the most recent `count` log lines.
     pub async fn get_recent_console(&self, count: usize) -> Vec<LogLine> {
         self.log_buffer.lock().await.get_recent(count)
-    }
-
-    /// Subscribe to real-time log events.
-    #[allow(dead_code)]
-    pub fn subscribe(&self) -> broadcast::Receiver<LogLine> {
-        self.log_broadcast.subscribe()
     }
 
     /// Whether the process is still running.
@@ -528,19 +579,19 @@ impl ManagedProcess {
         *self.running_rx.borrow()
     }
 
+    /// 데몬이 남기는 안내 한 줄 (콘솔과 디스크 로그에 같이 남는다)
+    pub async fn push_system_line(&self, content: String, level: LogLevel) {
+        self.log_buffer.lock().await.push(LogSource::System, content, level);
+    }
+
+    /// 끝난 방식. 아직 돌고 있거나 알 수 없게 끝났으면 None.
+    pub fn exit(&self) -> Option<ProcessExit> {
+        *self.exit.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     /// Whether stdin commands can be sent to this process.
     pub fn is_stdin_available(&self) -> bool {
         self.stdin_available
-    }
-
-    /// Wait until the process exits.
-    #[allow(dead_code)]
-    pub async fn wait_for_exit(&mut self) {
-        while self.is_running() {
-            if self.running_rx.changed().await.is_err() {
-                break;
-            }
-        }
     }
 
     /// Create a stub ManagedProcess for an orphaned server process.
@@ -556,7 +607,6 @@ impl ManagedProcess {
         instance_dir: &Path,
     ) -> Self {
         let (stdin_tx, _stdin_rx) = mpsc::channel::<String>(1);
-        let (log_tx, _) = broadcast::channel::<LogLine>(2048);
         let (running_tx, running_rx) = watch::channel(true);
         let running_tx = Arc::new(running_tx);
 
@@ -591,17 +641,13 @@ impl ManagedProcess {
         let poller_handle = {
             let running = running_tx.clone();
             let buf = log_buffer.clone();
-            let bc = log_tx.clone();
             let handle = tokio::spawn(async move {
                 loop {
                     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                     if !super::process::is_process_alive(pid) {
                         let exit_msg = format!("Process (PID {}) exited", pid);
                         tracing::info!("{}", exit_msg);
-                        let log_line = buf.lock().await.push(
-                            LogSource::System, exit_msg, LogLevel::Info
-                        );
-                        let _ = bc.send(log_line);
+                        buf.lock().await.push(LogSource::System, exit_msg, LogLevel::Info);
                         let _ = running.send(false);
                         break;
                     }
@@ -613,12 +659,15 @@ impl ManagedProcess {
         Self {
             stdin_tx,
             log_buffer,
-            log_broadcast: log_tx,
             pid,
-            running_tx,
             running_rx,
             poller_handle: Some(poller_handle),
             stdin_available: false, // reattached stub — stdio pipes lost
+            exit: Default::default(),
+            started_at: unix_now(),
+            working_dir: None,
+            log_follower: false,
+            runner_pid: None,
         }
     }
 }
@@ -650,7 +699,6 @@ impl ManagedProcessStore {
     }
 
     /// Remove a managed process (e.g., after it exits).
-    #[allow(dead_code)]
     pub async fn remove(&self, instance_id: &str) -> Option<Arc<ManagedProcess>> {
         let mut map = self.processes.lock().await;
         map.remove(instance_id)
@@ -666,20 +714,16 @@ impl ManagedProcessStore {
     }
 
     /// Clean up processes that are no longer running.
-    /// Returns the list of instance IDs that were removed.
-    pub async fn cleanup_dead(&self) -> Vec<String> {
+    /// Returns the removed processes so the caller can judge how they ended.
+    pub async fn cleanup_dead(&self) -> Vec<(String, Arc<ManagedProcess>)> {
         let mut map = self.processes.lock().await;
-        let mut removed = Vec::new();
-        map.retain(|id, proc| {
-            if !proc.is_running() {
+        let dead: Vec<String> = map.iter().filter(|(_, p)| !p.is_running()).map(|(id, _)| id.clone()).collect();
+        dead.into_iter()
+            .filter_map(|id| {
                 tracing::info!("Cleaning up dead managed process for instance '{}'", id);
-                removed.push(id.clone());
-                false
-            } else {
-                true
-            }
-        });
-        removed
+                map.remove(&id).map(|p| (id, p))
+            })
+            .collect()
     }
 }
 
@@ -770,14 +814,22 @@ fn format_unix_timestamp(ts: u64) -> String {
 
 /// Parse `YYYY-MM-DD HH:MM:SS` back to Unix timestamp.
 fn parse_datetime_to_unix(s: &str) -> Option<u64> {
-    // Expected: "2026-03-05 12:34:56"
-    if s.len() < 19 { return None; }
+    // Expected: "2026-03-05 12:34:56" — 정확히 ASCII 19자 (바이트로 자르므로 비 ASCII면 패닉할 수 있었다)
+    let b = s.as_bytes();
+    if b.len() != 19 || !s.is_ascii() || b[4] != b'-' || b[7] != b'-' || b[10] != b' ' || b[13] != b':' || b[16] != b':' {
+        return None;
+    }
     let y: i64 = s[0..4].parse().ok()?;
     let m: u64 = s[5..7].parse().ok()?;
     let d: u64 = s[8..10].parse().ok()?;
     let hh: u64 = s[11..13].parse().ok()?;
     let mm: u64 = s[14..16].parse().ok()?;
     let ss: u64 = s[17..19].parse().ok()?;
+    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let month_days = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    if !(1970..=9999).contains(&y) || !(1..=12).contains(&m) || d == 0 || d > month_days[(m - 1) as usize] || hh > 23 || mm > 59 || ss > 60 {
+        return None;
+    }
 
     // Inverse of civil date → days since epoch
     let y_adj = if m <= 2 { y - 1 } else { y };
@@ -795,6 +847,16 @@ fn parse_datetime_to_unix(s: &str) -> Option<u64> {
 /// `{instance_dir}/logs/console.log`
 pub fn console_log_path(instance_dir: &Path) -> PathBuf {
     instance_dir.join("logs").join(CONSOLE_LOG_FILENAME)
+}
+
+/// 가장 최근 콘솔 기록 파일: saba-runner 세션 로그와 직접 실행 때의 `console.log` 중 더 최근 것.
+pub fn latest_console_log(instance_dir: &Path) -> PathBuf {
+    let direct = console_log_path(instance_dir);
+    let modified = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    match latest_session_log(instance_dir) {
+        Some(session) if modified(&session) >= modified(&direct) => session,
+        _ => direct,
+    }
 }
 
 /// Spawn a background task that writes log lines to a file.
@@ -885,7 +947,7 @@ async fn rotate_log_files(log_path: &Path) {
 /// Read the most recent `count` lines from the console log on disk.
 /// Used to restore console history when the daemon restarts.
 pub fn read_console_log_from_disk(instance_dir: &Path, count: usize) -> Vec<LogLine> {
-    let log_path = console_log_path(instance_dir);
+    let log_path = latest_console_log(instance_dir);
     let content = match std::fs::read_to_string(&log_path) {
         Ok(c) => c,
         Err(_) => return Vec::new(),
@@ -945,7 +1007,7 @@ fn parse_structured_disk_line(raw: &str) -> (u64, LogSource, LogLevel, String) {
             };
 
             // Try parsing timestamp
-            let dt_str = &raw[1..dt_end];
+            let dt_str = raw.get(1..dt_end).unwrap_or("");
             let timestamp = parse_datetime_to_unix(dt_str)
                 .unwrap_or_else(current_timestamp);
 
@@ -962,9 +1024,34 @@ fn parse_structured_disk_line(raw: &str) -> (u64, LogSource, LogLevel, String) {
 mod tests {
     use super::*;
 
+    #[test]
+    fn log_timestamp_parser_rejects_bad_input_without_panicking() {
+        assert_eq!(parse_datetime_to_unix("1970-01-01 00:00:10"), Some(10));
+        assert!(parse_datetime_to_unix("2024-02-29 12:00:00").is_some());
+        for bad in ["2023-02-29 12:00:00", "2026-13-01 00:00:00", "2026-01-01T00:00:00", "가나다라마바사아자차카타파하가나다라마", "short", ""] {
+            assert_eq!(parse_datetime_to_unix(bad), None, "{}", bad);
+        }
+        // ']'가 맨 앞이거나 날짜 자리에 다국어가 와도 패닉하지 않는다
+        let _ = parse_disk_log_line(0, "]x [STDOUT/INFO] hi");
+        let line = parse_disk_log_line(0, "[가나다] [STDERR/WARN] 경고");
+        assert_eq!(line.content, "경고");
+    }
+
     // ═══════════════════════════════════════════════════════
     // LogBuffer 단위 테스트
     // ═══════════════════════════════════════════════════════
+
+    /// 명령 직전 커서로 읽으면 명령 뒤의 줄만 온다 (직전 줄이 답에 섞이지 않는다)
+    #[test]
+    fn cursor_reads_only_lines_after_it() {
+        let mut buffer = LogBuffer::new();
+        assert!(buffer.get_since(buffer.cursor()).is_empty());
+        buffer.push(LogSource::Stdout, "Done (0.512s)!".into(), LogLevel::Info);
+        let before = buffer.cursor();
+        buffer.push(LogSource::Stdout, "There are 0 of 20 players online".into(), LogLevel::Info);
+        let after: Vec<_> = buffer.get_since(before).into_iter().map(|l| l.content).collect();
+        assert_eq!(after, vec!["There are 0 of 20 players online"]);
+    }
 
     #[test]
     fn test_log_buffer_push_and_query() {

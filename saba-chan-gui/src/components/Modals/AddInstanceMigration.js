@@ -180,13 +180,7 @@ export function AddInstanceMigration({
         ? (activeModule.displayName || activeModule.display_name || activeModule.name || activeModule.id)
         : '';
 
-    // 모듈별 네이티브 인스턴스 존재 여부
-    const activeModuleId = activeModule?.name || activeModule?.id;
-    const existingNative = activeModuleId
-        ? servers.find((s) => s.module === activeModuleId && !s.extension_data?.docker_enabled)
-        : null;
-
-    const canSubmit = instanceName.trim() && activeModule && !submitting && !existingNative;
+    const canSubmit = instanceName.trim() && activeModule && !submitting;
 
     // ══════════════════════════════════════════
     //  Step 1: 디렉토리 선택 + 스캔
@@ -445,17 +439,6 @@ export function AddInstanceMigration({
                             }}
                         />
                     </div>
-
-                    {/* 네이티브 인스턴스 중복 경고 */}
-                    {existingNative && (
-                        <p className="as-native-limit-warning">
-                            <Icon name="alertTriangle" size="sm" />
-                            {t('add_server_modal.native_limit_warning', {
-                                existing: existingNative.name,
-                                defaultValue: `A native instance '{{existing}}' already exists for this module. Enable container isolation to create another instance.`,
-                            })}
-                        </p>
-                    )}
 
                     {/* 마이그레이션 안내 */}
                     <p className="as-provision-hint">

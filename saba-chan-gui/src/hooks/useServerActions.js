@@ -1,7 +1,6 @@
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createTranslateError, retryWithBackoff, safeShowToast } from '../utils/helpers';
-import { useSettingsStore } from '../stores/useSettingsStore';
 
 /**
  * Manages server CRUD operations: fetch, start, stop, status, add, delete.
@@ -225,32 +224,12 @@ export function useServerActions({
                 return;
             }
 
-            // Determine start mode
-            const mod = modules.find((m) => m.name === module);
-            const instanceManagedStart = srv.module_settings?.managed_start;
-            let interactionMode;
-            if (instanceManagedStart === true) {
-                interactionMode = 'console';
-            } else if (instanceManagedStart === false) {
-                interactionMode = 'commands';
-            } else {
-                interactionMode = mod?.interaction_mode || 'console';
-            }
-
             // Optimistic update: 즉시 'starting' 상태 표시
             optimisticStatusRef.current.set(name, { status: 'starting', timestamp: Date.now() });
             setServers((prev) => prev.map((s) => (s.name === name ? { ...s, status: 'starting' } : s)));
 
-            // portConflictCheck가 비활성화되어 있으면 데몬에 skip_port_check 전달
-            const skipPortCheck = !useSettingsStore.getState().portConflictCheck;
-            const startConfig = skipPortCheck ? { skip_port_check: true } : {};
-
-            let result;
-            if (interactionMode === 'console') {
-                result = await window.api.managedStart(srv.id, { config: startConfig });
-            } else {
-                result = await window.api.serverStart(name, { module, config: startConfig });
-            }
+            // 시작 방식(managed 여부)과 포트 충돌 검사는 데몬이 인스턴스·전역 설정으로 정한다
+            const result = await window.api.instanceStart(srv.id);
 
             // ── action_required: server jar not found ──
             if (result.action_required === 'server_jar_not_found') {
@@ -422,7 +401,7 @@ export function useServerActions({
             } else {
                 guiInitiatedOpsRef.current.add(name);
                 setProgressBar({ message: t('servers.starting_toast', { name }), indeterminate: true });
-                if (interactionMode === 'console') {
+                if (result.managed) {
                     openConsole(srv.id, name);
                 }
 
@@ -616,7 +595,7 @@ export function useServerActions({
 
     // ── handleAddServer ─────────────────────────────────────
     const handleAddServer = async (payload) => {
-        // payload = { name, module_name, accept_eula?, use_container?, migration_source? }
+        // payload = { name, module_name, accept_eula?, migration_source? }
         const serverName = typeof payload === 'string' ? payload : payload?.name;
         const moduleName = typeof payload === 'string' ? arguments[1] : payload?.module_name;
 
@@ -644,7 +623,6 @@ export function useServerActions({
                 name: serverName.trim(),
                 module_name: moduleName,
                 // executable_path는 모듈의 server_executable + working_dir에서 자동 해석됨
-                use_container: payload?.use_container || false, // 백엔드가 extension_data로 변환
             };
 
             // 마이그레이션: 기존 서버 디렉토리 직접 연결

@@ -7,7 +7,6 @@
 #   2. Rust 업데이터 통합 테스트
 #   3. 릴레이 서버 E2E (Vitest + PostgreSQL)
 #   4. GUI E2E (Vitest + jsdom)
-#   5. Discord 봇 통합 (Jest)
 #
 # 사용법:
 #   ./run-test.ps1                  # 전체
@@ -18,7 +17,7 @@
 param(
     [switch]$NoInstall,
     [switch]$Verbose,
-    [ValidateSet('all','rust','relay','gui','discord')]
+    [ValidateSet('all','rust','relay','gui')]
     [string]$Suite = 'all'
 )
 
@@ -94,7 +93,6 @@ Write-Host "NoInstall   : $NoInstall" -ForegroundColor Gray
 # ── 의존성 설치 ─────────────────────────────────────────────
 try {
     if ($Suite -in 'all','gui')     { Ensure-Npm (Join-Path $RepoRoot "saba-chan-gui") "GUI" }
-    if ($Suite -in 'all','discord') { Ensure-Npm (Join-Path $RepoRoot "discord_bot") "Discord" }
     if ($Suite -in 'all','relay')   {
         if ($RelayServerDir) { Ensure-Npm $RelayServerDir "Relay" }
     }
@@ -126,10 +124,6 @@ if ($Suite -in 'all','gui') {
     Run-Step "GUI-E2E" (Join-Path $RepoRoot "saba-chan-gui") "npx vitest run"
 }
 
-# 4) Discord Bot Integration
-if ($Suite -in 'all','discord') {
-    Run-Step "Discord-Integration" (Join-Path $RepoRoot "discord_bot") "npm test"
-}
 
 # ── 요약 ────────────────────────────────────────────────────
 Write-Section "Summary"

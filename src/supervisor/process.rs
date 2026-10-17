@@ -11,9 +11,6 @@ use nix::libc;
 pub enum ProcessError {
     #[error("process {pid} not found")]
     NotFound { pid: u32 },
-    #[allow(dead_code)] // terminate() 내부에서 사용 예정
-    #[error("failed to terminate process: {reason}")]
-    TerminationFailed { reason: String },
     #[error("lock poisoned")]
     LockPoisoned,
 }
@@ -63,21 +60,10 @@ pub fn force_kill_pid(pid: u32) -> Result<()> {
     Ok(())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)] // 공개 API — 서버 상태 전이에 필요
-pub enum ProcessStatus {
-    Running,
-    Stopped,
-    Crashed,
-}
-
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // 공개 API — 프로세스 메타데이터 전체 필드 노출 필요
 pub struct ProcessInfo {
     pub pid: u32,
-    pub status: ProcessStatus,
     pub start_time: u64,
-    pub last_check: u64,
 }
 
 pub struct ProcessTracker {
@@ -116,27 +102,28 @@ impl ProcessTracker {
 
     /// Track a server process by name
     pub fn track(&self, server_name: &str, pid: u32) -> Result<()> {
-        let now = current_timestamp();
-        let info = ProcessInfo {
-            pid,
-            status: ProcessStatus::Running,
-            start_time: now,
-            last_check: now,
-        };
+        self.track_since(server_name, pid, current_timestamp())
+    }
+
+    /// 이미 돌던 서버를 다시 붙일 때: 실제로 시작한 시각(유닉스 초)을 그대로 쓴다
+    pub fn track_since(&self, server_name: &str, pid: u32, start_time: u64) -> Result<()> {
+        let info = ProcessInfo { pid, start_time };
         let mut processes = self.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
         processes.insert(server_name.to_string(), info);
         tracing::info!("Now tracking server '{}' with pid: {}", server_name, pid);
         Ok(())
     }
 
-    /// Get server status by name
-    #[allow(dead_code)] // 공개 API — 외부 호출자용
-    pub fn get_status(&self, server_name: &str) -> Result<ProcessStatus, ProcessError> {
-        let processes = self.lock()?;
-        processes
-            .get(server_name)
-            .map(|p| p.status)
-            .ok_or(ProcessError::NotFound { pid: 0 })
+    /// 같은 서버의 PID만 바꾼다 (런처가 끝나고 진짜 서버로 넘어갈 때). 시작 시각은 그대로
+    pub fn replace_pid(&self, server_name: &str, pid: u32) -> Result<()> {
+        let mut processes = self.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
+        match processes.get_mut(server_name) {
+            Some(info) => info.pid = pid,
+            None => {
+                processes.insert(server_name.to_string(), ProcessInfo { pid, start_time: current_timestamp() });
+            }
+        }
+        Ok(())
     }
 
     /// Get PID by server name
@@ -146,75 +133,6 @@ impl ProcessTracker {
             .get(server_name)
             .map(|p| p.pid)
             .ok_or(ProcessError::NotFound { pid: 0 })
-    }
-
-    /// Mark server as crashed by name
-    #[allow(dead_code)] // 공개 API — 크래시 감지 시 사용 예정
-    pub fn mark_crashed(&self, server_name: &str) -> Result<(), ProcessError> {
-        let mut processes = self.lock()?;
-        if let Some(info) = processes.get_mut(server_name) {
-            info.status = ProcessStatus::Crashed;
-            tracing::warn!("Server '{}' marked as crashed", server_name);
-        }
-        Ok(())
-    }
-
-    /// Terminate server process by name (크로스 플랫폼)
-    #[allow(dead_code)] // 공개 API — 프로세스 종료 기능
-    pub fn terminate(&self, server_name: &str, force: bool) -> Result<(), ProcessError> {
-        let mut processes = self.lock()?;
-        let pid = processes
-            .get(server_name)
-            .map(|p| p.pid)
-            .ok_or(ProcessError::NotFound { pid: 0 })?;
-
-        let signal_name = if force { "KILL" } else { "TERM" };
-        tracing::info!("Sending {} signal to server '{}' (pid: {})", signal_name, server_name, pid);
-
-        // 크로스 플랫폼 프로세스 종료
-        #[cfg(target_os = "windows")]
-        {
-            use winapi::um::processthreadsapi::{OpenProcess, TerminateProcess};
-            use winapi::um::winnt::PROCESS_TERMINATE;
-            use winapi::um::handleapi::CloseHandle;
-
-            unsafe {
-                let handle = OpenProcess(PROCESS_TERMINATE, 0, pid);
-                if handle.is_null() {
-                    return Err(ProcessError::TerminationFailed {
-                        reason: format!("Failed to open process {}", pid),
-                    });
-                }
-                
-                let exit_code = if force { 1 } else { 0 };
-                let result = TerminateProcess(handle, exit_code);
-                CloseHandle(handle);
-                
-                if result == 0 {
-                    return Err(ProcessError::TerminationFailed {
-                        reason: "TerminateProcess failed".to_string(),
-                    });
-                }
-            }
-        }
-
-        #[cfg(not(target_os = "windows"))]
-        {
-            use nix::sys::signal::{self, Signal};
-            use nix::unistd::Pid;
-
-            let signal = if force { Signal::SIGKILL } else { Signal::SIGTERM };
-            if let Err(e) = signal::kill(Pid::from_raw(pid as i32), signal) {
-                return Err(ProcessError::TerminationFailed {
-                    reason: format!("Failed to send signal: {}", e),
-                });
-            }
-        }
-
-        if let Some(info) = processes.get_mut(server_name) {
-            info.status = ProcessStatus::Stopped;
-        }
-        Ok(())
     }
 
     /// Stop tracking a server by name
@@ -240,13 +158,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_track_and_get_status() {
-        let tracker = ProcessTracker::new();
-        tracker.track("minecraft", 1234).unwrap();
-        assert_eq!(tracker.get_status("minecraft").unwrap(), ProcessStatus::Running);
-    }
-
-    #[test]
     fn test_get_pid() {
         let tracker = ProcessTracker::new();
         tracker.track("palworld", 5678).unwrap();
@@ -254,25 +165,8 @@ mod tests {
     }
 
     #[test]
-    fn test_mark_crashed() {
-        let tracker = ProcessTracker::new();
-        tracker.track("minecraft", 5678).unwrap();
-        tracker.mark_crashed("minecraft").unwrap();
-        assert_eq!(tracker.get_status("minecraft").unwrap(), ProcessStatus::Crashed);
-    }
-
-    #[test]
-    fn test_terminate() {
-        let tracker = ProcessTracker::new();
-        tracker.track("palworld", 99999).unwrap();
-        let result = tracker.terminate("palworld", false);
-        assert!(result.is_err() || tracker.get_status("palworld").is_ok());
-    }
-
-    #[test]
     fn test_not_found() {
         let tracker = ProcessTracker::new();
-        assert!(tracker.get_status("nonexistent").is_err());
         assert!(tracker.get_pid("nonexistent").is_err());
     }
 
@@ -281,7 +175,7 @@ mod tests {
         let tracker = ProcessTracker::new();
         tracker.track("minecraft", 1234).unwrap();
         tracker.untrack("minecraft").unwrap();
-        assert!(tracker.get_status("minecraft").is_err());
+        assert!(tracker.get_pid("minecraft").is_err());
     }
 
     // ── 추가 심층 테스트 ──
@@ -292,6 +186,13 @@ mod tests {
         tracker.track("srv", 1234).unwrap();
         let start_time = tracker.get_start_time("srv").unwrap();
         assert!(start_time > 0, "Start time should be a valid Unix timestamp, got: {}", start_time);
+    }
+
+    #[test]
+    fn reattached_server_keeps_its_real_start_time() {
+        let tracker = ProcessTracker::new();
+        tracker.track_since("srv", 1234, 1_000).unwrap();
+        assert_eq!(tracker.get_start_time("srv").unwrap(), 1_000);
     }
 
     #[test]
@@ -309,15 +210,6 @@ mod tests {
         // 같은 이름으로 재등록 → 새 PID로 업데이트
         tracker.track("srv", 2000).unwrap();
         assert_eq!(tracker.get_pid("srv").unwrap(), 2000);
-        assert_eq!(tracker.get_status("srv").unwrap(), ProcessStatus::Running);
-    }
-
-    #[test]
-    fn test_mark_crashed_nonexistent_is_silent() {
-        let tracker = ProcessTracker::new();
-        // 존재하지 않는 서버를 crash 처리해도 에러가 아닌 no-op
-        let result = tracker.mark_crashed("nonexistent");
-        assert!(result.is_ok(), "mark_crashed on unknown server should not error");
     }
 
     #[test]
@@ -338,31 +230,10 @@ mod tests {
         assert_eq!(tracker.get_pid("pw").unwrap(), 200);
         assert_eq!(tracker.get_pid("zomboid").unwrap(), 300);
 
-        // 하나만 크래시 → 나머지 영향 없음
-        tracker.mark_crashed("pw").unwrap();
-        assert_eq!(tracker.get_status("mc").unwrap(), ProcessStatus::Running);
-        assert_eq!(tracker.get_status("pw").unwrap(), ProcessStatus::Crashed);
-        assert_eq!(tracker.get_status("zomboid").unwrap(), ProcessStatus::Running);
-
         // 하나만 삭제 → 나머지 존재
         tracker.untrack("mc").unwrap();
         assert!(tracker.get_pid("mc").is_err());
         assert_eq!(tracker.get_pid("zomboid").unwrap(), 300);
-    }
-
-    #[test]
-    fn test_track_crash_retrack_lifecycle() {
-        let tracker = ProcessTracker::new();
-        // 시작
-        tracker.track("srv", 100).unwrap();
-        assert_eq!(tracker.get_status("srv").unwrap(), ProcessStatus::Running);
-        // 크래시
-        tracker.mark_crashed("srv").unwrap();
-        assert_eq!(tracker.get_status("srv").unwrap(), ProcessStatus::Crashed);
-        // 재시작 (새 PID)
-        tracker.track("srv", 200).unwrap();
-        assert_eq!(tracker.get_status("srv").unwrap(), ProcessStatus::Running);
-        assert_eq!(tracker.get_pid("srv").unwrap(), 200);
     }
 
     /// 동일 PID를 다른 서버 이름으로 등록 — 허용되어야 함 (추적 기반이 이름이므로)

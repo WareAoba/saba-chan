@@ -15,7 +15,6 @@ name: Release — Package & Manifest
 #      - saba-chan-gui.exe / saba-chan-gui-*.zip
 #      - saba-chan-updater.exe / saba-chan-updater-*.zip
 #      - saba-chan-installer.exe / saba-chan-installer-*.zip
-#      - discord-bot.zip
 #      (전부 올릴 필요 없음 — 빠진 것은 이전 릴리즈에서 가져옴)
 #   3. Release 발행 → 이 액션이 자동 수행:
 #      a) raw exe → 표준 이름의 zip으로 리패키징
@@ -30,7 +29,6 @@ name: Release — Package & Manifest
 #   saba-chan-gui-windows-x64.zip
 #   saba-chan-updater-windows-x64.zip
 #   saba-chan-installer-windows-x64.zip
-#   discord-bot.zip
 #   locales.zip
 #   manifest.json
 #
@@ -38,6 +36,15 @@ name: Release — Package & Manifest
 #   - published: 드래프트→발행, 또는 새 릴리즈 생성 시
 #   - edited: 기존 릴리즈의 태그/에셋 수정 시 (에셋만 변경해도 재처리)
 #   - workflow_dispatch: Actions 탭에서 수동 실행 (태그 입력 필요)
+#
+# R2 배포 (업데이터가 실제로 받는 경로):
+#   패키징 뒤 같은 zip으로 manifest를 만들고(scripts/versions.py) 기존 키로 서명해
+#   R2 releases/<version>/ 에 올리고 릴레이 POST /admin/releases 로 등록한다.
+#   이미 R2에 있거나 릴레이에 등록된 버전이면 아무것도 덮어쓰지 않고 실패한다.
+#   필요한 설정 (없으면 R2 단계는 건너뜀):
+#     secrets:   UPDATER_SIGNING_KEY (64자리 hex seed), R2_ACCESS_KEY_ID,
+#                R2_SECRET_ACCESS_KEY, RELAY_INTERNAL_SECRET
+#     variables: R2_ENDPOINT, R2_BUCKET, R2_PUBLIC_BASE, RELAY_URL
 # ─────────────────────────────────────────────────────────
 
 on:
@@ -62,7 +69,7 @@ jobs:
   package-and-manifest:
     name: Package assets & generate manifest
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 40
 
     env:
       # release 이벤트와 workflow_dispatch 모두 지원
@@ -73,6 +80,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main  # 태그가 아닌 main의 최신 스크립트·소스를 사용
+          fetch-depth: 0  # 릴리즈 노트가 이전 태그부터의 커밋을 읽는다
 
       - name: Verify release exists
         env:
@@ -108,6 +116,131 @@ jobs:
           RELEASE_ID: ${{ github.event.release.id || '' }}
           REPO_FULL_NAME: ${{ github.repository }}
         run: python .github/scripts/package-release.py
+
+      # ── R2 배포 ─────────────────────────────────────────
+      - name: Check R2 publish settings
+        id: r2
+        env:
+          HAS_KEY: ${{ secrets.UPDATER_SIGNING_KEY != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.RELAY_INTERNAL_SECRET != '' }}
+          HAS_VARS: ${{ vars.R2_ENDPOINT != '' && vars.R2_BUCKET != '' && vars.R2_PUBLIC_BASE != '' && vars.RELAY_URL != '' }}
+        run: |
+          if [ "$HAS_KEY" = "true" ] && [ "$HAS_VARS" = "true" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::R2 secrets/variables are not set; skipping R2 publish"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+          VERSION=$(python -c "import tomllib;print(tomllib.load(open('versions.toml','rb'))['release']['version'])")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ "${TARGET_TAG#v}" != "$VERSION" ]; then
+            echo "::error::Tag $TARGET_TAG does not match versions.toml release $VERSION"
+            exit 1
+          fi
+
+      - name: Refuse to overwrite an existing release
+        if: steps.r2.outputs.enabled == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          VERSION: ${{ steps.r2.outputs.version }}
+        run: |
+          # 확인하지 못하면 "없다"로 치지 않고 멈춘다 (덮어쓰기 방지)
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H 'X-Saba-Client: 1' \
+            "${{ vars.RELAY_URL }}/v1/updates/manifest/$VERSION")
+          case "$code" in
+            404) ;;
+            200) echo "::error::Relay already has $VERSION; bump versions.toml"; exit 1 ;;
+            *) echo "::error::Relay check for $VERSION returned HTTP $code; cannot confirm it is new"; exit 1 ;;
+          esac
+          count=$(aws s3api list-objects-v2 --bucket "${{ vars.R2_BUCKET }}" \
+            --prefix "releases/$VERSION/" --max-keys 1 --query 'KeyCount' --output text \
+            --endpoint-url "${{ vars.R2_ENDPOINT }}")
+          if [ "$count" != "0" ]; then
+            echo "::error::R2 releases/$VERSION/ already has objects (KeyCount=$count)"
+            exit 1
+          fi
+
+      # 모듈·익스텐션도 같은 릴리즈에 싣는다 (U9e). 둘 다 공개 저장소, main 기준
+      - name: Checkout modules
+        if: steps.r2.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: WareAoba/saba-chan-modules
+          ref: main
+          path: addons/modules
+
+      - name: Checkout extensions
+        if: steps.r2.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: WareAoba/saba-chan-extensions
+          ref: main
+          path: addons/extensions
+
+      - name: Install Rust toolchain
+        if: steps.r2.outputs.enabled == 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      # 선언하지 않은 능력을 쓰는 모듈·익스텐션은 싣지 않는다 (M12)
+      - name: Audit modules and extensions
+        if: steps.r2.outputs.enabled == 'true'
+        run: |
+          mods=$(for d in addons/modules/*/; do [ -f "$d/module.toml" ] && echo "$d"; done)
+          exts=$(for d in addons/extensions/*/; do [ -f "$d/manifest.json" ] && echo "$d"; done)
+          cargo build --quiet --bin saba-core
+          ./target/debug/saba-core module audit $mods
+          ./target/debug/saba-core extension audit $exts
+
+      - name: Build and sign manifest
+        if: steps.r2.outputs.enabled == 'true'
+        env:
+          UPDATER_SIGNING_KEY: ${{ secrets.UPDATER_SIGNING_KEY }}
+        run: |
+          python scripts/versions.py manifest --assets output \
+            --base-url "${{ vars.R2_PUBLIC_BASE }}" --platform windows-x64 \
+            --modules-repo addons/modules --extensions-repo addons/extensions \
+            --addons-ref "$(git -C addons/modules rev-parse HEAD)" \
+            --out release-manifest.unsigned.json
+          # 번들된 공개키로 검증까지 통과해야 출력된다
+          cargo run --quiet -p saba-chan-updater-lib --example release_signing -- \
+            sign release-manifest.unsigned.json saba-updater-v1 > release-manifest.signed.json
+          python scripts/versions.py registration --signed release-manifest.signed.json \
+            --out release-registration.json
+          cat release-manifest.unsigned.json
+
+      - name: Upload assets to R2
+        if: steps.r2.outputs.enabled == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          python - <<'PY' > r2-uploads.txt
+          import json
+          m = json.load(open("release-registration.json"))
+          for a in m["assets"]:
+              print(a["filename"], a["r2Key"])
+          PY
+          while read -r file key; do
+            echo "  $file -> $key"
+            aws s3 cp "output/$file" "s3://${{ vars.R2_BUCKET }}/$key" \
+              --endpoint-url "${{ vars.R2_ENDPOINT }}" --no-progress
+          done < r2-uploads.txt
+
+      - name: Register release with relay
+        if: steps.r2.outputs.enabled == 'true'
+        env:
+          RELAY_INTERNAL_SECRET: ${{ secrets.RELAY_INTERNAL_SECRET }}
+        run: |
+          curl -fsS -X POST "${{ vars.RELAY_URL }}/admin/releases" \
+            -H "x-internal-secret: $RELAY_INTERNAL_SECRET" \
+            -H "Content-Type: application/json; charset=utf-8" \
+            --data-binary @release-registration.json
+          echo
+          curl -fsS -H 'X-Saba-Client: 1' \
+            "${{ vars.RELAY_URL }}/v1/updates/manifest/${{ steps.r2.outputs.version }}" > /dev/null
+          echo "✓ Registered ${{ steps.r2.outputs.version }}"
 
       - name: Upload packaged assets to release
         env:
@@ -145,3 +278,15 @@ jobs:
             fi
           done
           echo "✓ Cleanup complete"
+
+      # 정리 단계가 output/에 없는 에셋을 지우므로 맨 마지막에 붙인다
+      - name: Attach release notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p notes
+          python scripts/changelog.py --until "${{ env.TARGET_TAG }}" \
+            --version "${TARGET_TAG#v}" --output notes/CHANGELOG.md
+          cat notes/CHANGELOG.md >> "$GITHUB_STEP_SUMMARY"
+          gh release upload "${{ env.TARGET_TAG }}" notes/CHANGELOG.md \
+            --repo "${{ github.repository }}" --clobber

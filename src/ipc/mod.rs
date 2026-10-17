@@ -13,9 +13,10 @@ use tokio::sync::RwLock;
 pub mod handlers;
 pub mod updates;
 pub mod auth;
+pub mod internal;
 use updates::UpdateState;
 
-pub use handlers::client::{kill_bot_pid, reap_expired_clients};
+pub use handlers::client::reap_expired_clients;
 
 // ── Client Heartbeat Registry ──────────────────────────────
 
@@ -32,8 +33,6 @@ pub enum ClientKind {
 pub struct RegisteredClient {
     pub kind: ClientKind,
     pub last_heartbeat: std::time::Instant,
-    /// 이 클라이언트가 시작한 Discord 봇 프로세스의 PID (있을 경우)
-    pub bot_pid: Option<u32>,
 }
 
 /// 클라이언트 레지스트리 — 여러 GUI/CLI 인스턴스의 생존 여부를 추적
@@ -69,7 +68,6 @@ impl ClientRegistry {
         map.insert(id.clone(), RegisteredClient {
             kind,
             last_heartbeat: std::time::Instant::now(),
-            bot_pid: None,
         });
         // 클라이언트가 등록되면 "한 번이라도 연결됨" 플래그 세팅, lost 타임스탬프 해제
         *self.had_clients_ever.write().await = true;
@@ -77,14 +75,11 @@ impl ClientRegistry {
         id
     }
 
-    /// Heartbeat 수신 — TTL 갱신, 선택적으로 bot_pid 업데이트
-    pub async fn heartbeat(&self, client_id: &str, bot_pid: Option<u32>) -> bool {
+    /// Heartbeat 수신 — TTL 갱신
+    pub async fn heartbeat(&self, client_id: &str) -> bool {
         let mut map = self.inner.write().await;
         if let Some(client) = map.get_mut(client_id) {
             client.last_heartbeat = std::time::Instant::now();
-            if let Some(pid) = bot_pid {
-                client.bot_pid = Some(pid);
-            }
             true
         } else {
             false
@@ -177,25 +172,6 @@ pub struct CommandRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)]
-pub struct CommandResponse {
-    pub success: bool,
-    pub message: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)]
-pub struct BotConfig {
-    pub prefix: String,
-    #[serde(default)]
-    #[serde(rename = "moduleAliases")]
-    pub module_aliases: HashMap<String, String>,
-    #[serde(default)]
-    #[serde(rename = "commandAliases")]
-    pub command_aliases: HashMap<String, HashMap<String, String>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerListResponse {
     pub servers: Vec<ServerInfo>,
     /// 포트 충돌로 인한 강제 정지 이벤트 (drain — 한 번 읽으면 비워짐)
@@ -215,8 +191,6 @@ pub struct ServerInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub working_dir: Option<String>,
     pub port: Option<u16>,
-    pub rcon_port: Option<u16>,
-    pub rcon_password: Option<String>,
     pub rest_host: Option<String>,
     pub rest_port: Option<u16>,
     pub rest_username: Option<String>,
@@ -231,6 +205,9 @@ pub struct ServerInfo {
     /// 익스텐션이 프로비저닝 중인지 여부
     #[serde(default)]
     pub provisioning: bool,
+    /// saba-runner가 맡아 실행하는지 (`Supervisor::uses_managed_start`, 판정은 데몬만 한다)
+    #[serde(default)]
+    pub managed: bool,
     /// 익스텐션 런타임 상태 (확장별 데이터, 예: {"<ext_id>": {"memory_percent": 25.5, ...}})
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub extension_status: std::collections::HashMap<String, serde_json::Value>,
@@ -258,11 +235,37 @@ pub struct ProtocolsInfo {
     pub default: Option<String>,
 }
 
+/// 맞지 않는 컴포넌트 의존성 하나
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnmetDependency {
+    pub component: String,
+    pub required: String,
+    /// 설치돼 있지 않으면 None
+    pub installed: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtensionInfo {
     pub name: String,
     pub version: String,
+    /// 신뢰 표시: verified(서명된 카탈로그에서 받았고 그대로) · modified · unverified (M12)
+    pub trust: saba_chan_updater_lib::integrity::Trust,
     pub description: Option<String>,
+    /// module.toml schema_version (0 = 스키마 이전 모듈)
+    #[serde(default)]
+    pub schema_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub game_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    /// 로드는 됐지만 모듈 작성자가 고쳐야 할 점
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+    /// `[module.dependencies]` 중 지금 설치된 버전이 못 맞추는 것 (M9). saba-core 미달은 아예 로드하지 않는다
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unmet_dependencies: Vec<UnmetDependency>,
     pub path: String,
     pub executable_path: Option<String>,
     pub icon: Option<String>,
@@ -288,9 +291,42 @@ pub struct ExtensionInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtensionListResponse {
     pub modules: Vec<ExtensionInfo>,
+    /// 로드하지 못한 모듈과 이유
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failed: Vec<crate::supervisor::module_loader::ModuleLoadError>,
 }
 
 // ── API Action Tracker ──────────────────────────────────────
+
+/// 게임 설정 파일에서 읽은 접속 정보(`get_credentials`) 캐시.
+/// 명령마다 Python을 띄우지 않도록 인스턴스별로 잠깐 보관한다. 설정을 바꾸거나
+/// 접속이 실패하면 지워서 다음 명령이 다시 읽게 한다.
+#[derive(Clone, Default)]
+pub struct CredentialsCache {
+    inner: Arc<std::sync::Mutex<HashMap<String, (std::time::Instant, Value)>>>,
+}
+
+impl CredentialsCache {
+    const TTL: std::time::Duration = std::time::Duration::from_secs(60);
+
+    pub fn get(&self, instance_id: &str) -> Option<Value> {
+        let map = self.inner.lock().ok()?;
+        let (at, creds) = map.get(instance_id)?;
+        (at.elapsed() < Self::TTL).then(|| creds.clone())
+    }
+
+    pub fn put(&self, instance_id: &str, creds: Value) {
+        if let Ok(mut map) = self.inner.lock() {
+            map.insert(instance_id.to_string(), (std::time::Instant::now(), creds));
+        }
+    }
+
+    pub fn invalidate(&self, instance_id: &str) {
+        if let Ok(mut map) = self.inner.lock() {
+            map.remove(instance_id);
+        }
+    }
+}
 
 /// API(CLI/Discord 등)를 통한 서버 시작/정지 시점을 기록하여
 /// GUI가 "예기치 않은" 상태 변경과 "API 경유" 상태 변경을 구분할 수 있게 함
@@ -344,6 +380,9 @@ pub struct ProvisionProgress {
 #[derive(Debug, Clone)]
 pub struct ProvisionTracker {
     inner: Arc<std::sync::Mutex<HashMap<String, ProvisionProgress>>>,
+    /// 새로 만드는 중인 인스턴스 이름. 실패 후 dismiss할 때 롤백(삭제)해도 되는 것은
+    /// 이 목록에 있는 것뿐이다. 기존 인스턴스의 업데이트 실패는 롤백하지 않는다.
+    creating: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
 }
 
 impl Default for ProvisionTracker {
@@ -354,7 +393,22 @@ impl Default for ProvisionTracker {
 
 impl ProvisionTracker {
     pub fn new() -> Self {
-        Self { inner: Arc::new(std::sync::Mutex::new(HashMap::new())) }
+        Self {
+            inner: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            creating: Arc::new(std::sync::Mutex::new(Default::default())),
+        }
+    }
+
+    /// 신규 생성 프로비저닝 시작을 기록한다.
+    pub fn mark_creating(&self, name: &str) {
+        if let Ok(mut set) = self.creating.lock() {
+            set.insert(name.to_string());
+        }
+    }
+
+    /// 신규 생성 표시를 지우고, 표시가 있었는지 돌려준다.
+    pub fn take_creating(&self, name: &str) -> bool {
+        self.creating.lock().map(|mut set| set.remove(name)).unwrap_or(false)
     }
 
     pub fn update(&self, instance_id: &str, progress: ProvisionProgress) {
@@ -476,12 +530,6 @@ impl ExtensionInitTracker {
         });
     }
 
-    #[allow(dead_code)]
-    pub async fn is_initializing(&self) -> bool {
-        let state = self.inner.read().await;
-        !state.in_progress.is_empty()
-    }
-
     pub async fn snapshot(&self) -> serde_json::Value {
         let state = self.inner.read().await;
         serde_json::json!({
@@ -512,16 +560,20 @@ pub struct IPCServer {
     pub extension_status_cache: ExtensionStatusCache,
     /// 익스텐션 초기화(daemon.startup) 진행 상태
     pub extension_init_tracker: ExtensionInitTracker,
-    /// 인스턴스별 RCON 연결 풀 (연결 재사용)
-    pub rcon_pool: Arc<crate::protocol::rcon_pool::RconPool>,
-    /// Graceful shutdown 토큰 — 취소 시 데몬 전체 종료
+    /// 인스턴스별 게임 접속 정보 캐시 (명령마다 Python get_credentials를 띄우지 않게)
+    pub credentials: CredentialsCache,
+    /// Graceful shutdown 토큰 — 정리가 끝난 뒤 취소되며, 취소 시 모든 태스크 종료
     pub shutdown_token: tokio_util::sync::CancellationToken,
+    /// 종료 요청 — API·워치독 등은 이것만 취소한다. main의 정리 태스크가 받아서
+    /// Ctrl+C와 같은 정리(익스텐션 daemon.shutdown 훅 등)를 거친 뒤 `shutdown_token`을 취소한다.
+    pub stop_requested: tokio_util::sync::CancellationToken,
     /// 범용 익스텐션 프로세스 매니저 (이름 기반 다중 프로세스 관리)
-    pub ext_process_manager: handlers::ext_process::SharedExtProcessManager,
     /// 중앙 설정 저장소 (타입 안전 JSON 관리)
     pub config_store: Arc<crate::config_store::ConfigStore>,
     /// 데몬 자체 로그 버퍼 (tracing 이벤트 캡처)
     pub daemon_log_buffer: crate::daemon_log::DaemonLogBuffer,
+    /// 클라우드 릴레이 에이전트 (디스코드 명령 수신)
+    pub relay_agent: crate::relay_agent::RelayAgent,
 }
 
 impl IPCServer {
@@ -545,29 +597,47 @@ impl IPCServer {
         let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
         let config_store = Arc::new(crate::config_store::ConfigStore::new(&data_dir));
 
+        let stop_requested = tokio_util::sync::CancellationToken::new();
         Self {
             supervisor: supervisor.clone(),
             listen_addr: listen_addr.to_string(),
             client_registry: ClientRegistry::new(),
-            update_state: UpdateState::new().with_hot_reload(
-                supervisor,
-                extension_manager.clone(),
-            ),
+            update_state: UpdateState::new()
+                .with_hot_reload(supervisor, extension_manager.clone())
+                .with_stop_signal(stop_requested.clone()),
             api_actions: ApiActionTracker::new(),
             provision_tracker: ProvisionTracker::new(),
             extension_manager,
-            extension_status_cache: ExtensionStatusCache::new(30), // 30초 TTL (Docker/WSL 지연 대비)
+            extension_status_cache: ExtensionStatusCache::new(30), // 30초 TTL
             extension_init_tracker: ExtensionInitTracker::new(),
-            rcon_pool: Arc::new(crate::protocol::rcon_pool::RconPool::new()),
+            credentials: CredentialsCache::default(),
             shutdown_token: tokio_util::sync::CancellationToken::new(),
-            ext_process_manager: handlers::ext_process::new_ext_process_manager(),
+            stop_requested,
             config_store,
             daemon_log_buffer,
+            relay_agent: crate::relay_agent::RelayAgent::new(),
         }
+    }
+
+    /// 응답을 먼저 보낼 수 있게 잠깐 뒤에 종료를 요청한다 (정리 경로는 main이 처리).
+    pub fn request_shutdown(&self) {
+        let stop = self.stop_requested.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+            stop.cancel();
+        });
     }
 
     pub async fn start(self) -> Result<()> {
         tracing::info!("IPC HTTP server starting on {}", self.listen_addr);
+
+        // 포트 충돌 검사 여부는 전역 설정 하나(gui.portConflictCheck). 저장 시에도 갱신된다.
+        let check_ports = self.config_store.get_gui_settings().await.port_conflict_check;
+        self.supervisor
+            .read()
+            .await
+            .skip_port_check
+            .store(!check_ports, std::sync::atomic::Ordering::Relaxed);
 
         let router = Router::new()
             // ── 경량 ping (lock / 디스크 I/O 없음) ──
@@ -576,16 +646,25 @@ impl IPCServer {
             .route("/api/servers", get(handlers::server::list_servers))
             .route("/api/server/:name/status", get(handlers::server::get_server_status))
             .route("/api/server/:name/start", post(handlers::server::start_server_handler))
+            .route("/api/instance/:id/start", post(handlers::server::start_instance_handler))
+            .route("/api/instance/:id/events", get(handlers::server::instance_events_handler))
+            .route("/api/instance/:id/stop", post(handlers::server::stop_instance_handler))
+            .route("/api/instance/:id/restart", post(handlers::server::restart_instance_handler))
             .route("/api/server/:name/stop", post(handlers::server::stop_server_handler))
             .route("/api/modules", get(handlers::server::list_modules))
             .route("/api/modules/refresh", post(handlers::server::refresh_modules))
+            .route("/api/version", get(handlers::server::version_handler))
+            .route("/api/modules/schema", get(handlers::server::module_schema))
+            .route("/api/modules/detect", post(handlers::server::detect_module_dir))
             .route("/api/modules/manifest", get(handlers::server::fetch_module_manifest))
             .route("/api/modules/manifest/:id/install", post(handlers::server::install_module_from_manifest))
             .route("/api/modules/:id", delete(handlers::server::remove_module))
             .route("/api/module/:name", get(handlers::server::get_module_metadata))
+            .route("/api/module/:name/audit", get(handlers::server::audit_module))
             // ── Instance CRUD ──
             .route("/api/instances", get(handlers::instance::list_instances).post(handlers::instance::create_instance))
             .route("/api/instances/reorder", put(handlers::instance::reorder_instances))
+            .route("/api/instance/:id/rename", post(handlers::instance::rename_instance))
             .route("/api/instance/:id", get(handlers::instance::get_instance).delete(handlers::instance::delete_instance).patch(handlers::instance::update_instance_settings))
             // ── Provision progress ──
             .route("/api/provision-progress/:name", get(handlers::instance::get_provision_progress).delete(handlers::instance::dismiss_provision_progress))
@@ -594,6 +673,7 @@ impl IPCServer {
             .route("/api/instance/:id/apply-update", post(handlers::instance::apply_server_update))
             // ── Command execution ──
             .route("/api/instance/:id/command", post(handlers::command::execute_command))
+            .route("/api/instance/:id/commands", get(handlers::command::list_instance_commands))
             .route("/api/instance/:id/rcon", post(handlers::command::execute_rcon_command))
             .route("/api/instance/:id/rest", post(handlers::command::execute_rest_command))
             // ── Managed-process & module-feature endpoints ──
@@ -603,9 +683,15 @@ impl IPCServer {
             .route("/api/instance/:id/validate", post(handlers::managed::validate_instance_handler))
             .route("/api/instance/:id/properties", get(handlers::managed::read_properties_handler).put(handlers::managed::write_properties_handler))
             .route("/api/instance/:id/properties/reset", post(handlers::managed::reset_properties_handler))
+            .route("/api/instance/:id/settings/live", get(handlers::managed::read_live_settings_handler))
             .route("/api/instance/:id/server/reset", post(handlers::managed::reset_server_handler))
             .route("/api/instance/:id/accept-eula", post(handlers::managed::accept_eula_handler))
             .route("/api/instance/:id/diagnose", post(handlers::managed::diagnose_handler))
+            // 백업 (A2)·예약 작업 (A3)
+            .route("/api/instance/:id/backups", get(handlers::backup::list_backups).post(handlers::backup::create_backup))
+            .route("/api/instance/:id/backups/:name", delete(handlers::backup::delete_backup))
+            .route("/api/instance/:id/backups/:name/restore", post(handlers::backup::restore_backup))
+            .route("/api/instance/:id/schedule", get(handlers::backup::get_schedule).put(handlers::backup::put_schedule))
             // ── Server installation endpoints ──
             .route("/api/module/:name/versions", get(handlers::managed::list_versions_handler))
             .route("/api/module/:name/version/:version", get(handlers::managed::get_version_details_handler))
@@ -615,6 +701,9 @@ impl IPCServer {
             .route("/api/config/bot", get(handlers::bot::get_bot_config).put(handlers::bot::save_bot_config))
             // ── GUI config (settings.json) ──
             .route("/api/config/gui", get(handlers::config::get_gui_config).put(handlers::config::save_gui_config))
+            .route("/api/config/client/:kind", get(handlers::config::get_client_config).put(handlers::config::save_client_config))
+            .route("/api/config/:kind/defaults", get(handlers::config::get_config_defaults))
+            .route("/api/config/:kind/reset", post(handlers::config::reset_config))
             // ── Node token (cloud relay auth) ──
             .route("/api/config/node-token", get(handlers::config::get_node_token).put(handlers::config::save_node_token).delete(handlers::config::delete_node_token))
             // ── Module locales ──
@@ -624,12 +713,6 @@ impl IPCServer {
             // ── Directory scan (migration etc.) ──
             .route("/api/fs/scan-dir", post(handlers::config::scan_directory))
             // ── Extension process management (범용) ──
-            .route("/api/ext-processes", get(handlers::ext_process::list_processes))
-            .route("/api/ext-process/:name/start", post(handlers::ext_process::start_process))
-            .route("/api/ext-process/:name/stop", post(handlers::ext_process::stop_process))
-            .route("/api/ext-process/:name/status", get(handlers::ext_process::get_process_status))
-            .route("/api/ext-process/:name/console", get(handlers::ext_process::get_process_console))
-            .route("/api/ext-process/:name/stdin", post(handlers::ext_process::send_process_stdin))
             // ── Client heartbeat ──
             .route("/api/client/register", post(handlers::client::client_register))
             .route("/api/client/:id/heartbeat", post(handlers::client::client_heartbeat))
@@ -640,6 +723,7 @@ impl IPCServer {
             // ── Extension management ──
             .route("/api/extensions", get(handlers::extension::list_extensions))
             .route("/api/extensions/init-status", get(handlers::extension::extension_init_status))
+            .route("/api/runtime/preflight", get(|| async { axum::Json(crate::python_env::preflight_snapshot()) }))
             .route("/api/extensions/rescan", post(handlers::extension::rescan_extensions))
             .route("/api/extensions/manifest", get(handlers::extension::fetch_manifest))
             .route("/api/extensions/updates", get(handlers::extension::check_extension_updates))
@@ -653,20 +737,29 @@ impl IPCServer {
             .route("/api/extensions/:id/gui", get(handlers::extension::serve_gui_bundle))
             .route("/api/extensions/:id/gui/styles", get(handlers::extension::serve_gui_styles))
             .route("/api/extensions/:id/icon", get(handlers::extension::serve_icon))
+            .route("/api/extensions/:id/audit", get(handlers::extension::audit_extension))
             .route("/api/extensions/:id/i18n/:locale", get(handlers::extension::serve_i18n))
             // ── Node.js portable environment ──
-            .route("/api/node-env/status", get(handlers::node_env::node_env_status))
-            .route("/api/node-env/setup", post(handlers::node_env::node_env_setup))
             // ── Relay server proxy (cloud mode) ──
             .route("/api/relay/host/:host_id/status", get(handlers::relay::check_host_status))
             .route("/api/relay/host/:host_id/nodes", get(handlers::relay::list_host_nodes))
             .route("/api/relay/node/:guild_id/members", get(handlers::relay::list_node_members))
+            .route("/api/relay/bot-invite", get(handlers::relay::get_bot_invite))
             .route("/api/relay/pair/initiate", post(handlers::relay::initiate_pairing))
             .route("/api/relay/pair/:code/status", get(handlers::relay::poll_pairing_status))
-            // ── Auth middleware (token-based) ──
-            .layer(axum::middleware::from_fn(auth::auth_middleware))
+            // ── Relay agent (cloud Discord bot ↔ daemon) ──
+            .route("/api/relay/agent", get(handlers::chat::agent_status))
+            .route("/api/relay/agent/start", post(handlers::chat::agent_start))
+            .route("/api/relay/agent/stop", post(handlers::chat::agent_stop))
+            // ── Chat command processor ──
+            .route("/api/chat/command", post(handlers::chat::chat_command))
+            // AI 챗봇 설정 (원본은 데몬, 릴레이에 맞춘다)
+            .route("/api/chatbot", get(handlers::chatbot::get_chatbot).put(handlers::chatbot::put_chatbot).delete(handlers::chatbot::delete_chatbot))
+            .route("/api/chatbot/memory", delete(handlers::chatbot::delete_memory))
             .with_state(self.clone())
-            .merge(updates::updates_router(self.update_state.clone()));
+            .merge(updates::updates_router(self.update_state.clone()))
+            // ── Auth middleware (token-based) — 업데이트 라우터까지 모든 라우트에 ──
+            .layer(axum::middleware::from_fn(auth::auth_middleware));
 
         // TCP 리스너 (SO_REUSEADDR + 바인딩 재시도)
         let addr: std::net::SocketAddr = self.listen_addr.parse()
@@ -680,6 +773,9 @@ impl IPCServer {
                 socket2::Type::STREAM,
                 Some(socket2::Protocol::TCP),
             )?;
+            // Unix에서는 TIME_WAIT 포트 재사용만 허용한다. Windows의 SO_REUSEADDR는
+            // 이미 리슨 중인 포트에도 바인드를 허용하므로 켜지 않는다.
+            #[cfg(not(windows))]
             socket.set_reuse_address(true)?;
             socket.set_nonblocking(true)?;
             match socket.bind(&addr.into()) {
@@ -691,6 +787,10 @@ impl IPCServer {
                         tracing::info!("IPC bind succeeded on attempt {}", attempt);
                     }
                     tracing::info!("IPC listening on http://{}", self.listen_addr);
+
+                    // 릴레이 에이전트 자동 시작 (노드 토큰 + autoStart일 때)
+                    let agent_server = self.clone();
+                    tokio::spawn(async move { crate::relay_agent::auto_start(&agent_server).await });
 
                     let shutdown_signal = self.shutdown_token.clone();
                     axum::serve(listener, router)
@@ -723,6 +823,27 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    #[test]
+    fn credentials_cache_keeps_until_invalidated() {
+        let cache = CredentialsCache::default();
+        assert!(cache.get("a").is_none());
+        cache.put("a", json!({ "rcon_password": "x" }));
+        assert_eq!(cache.get("a").unwrap()["rcon_password"], "x");
+        assert!(cache.get("b").is_none());
+        cache.invalidate("a");
+        assert!(cache.get("a").is_none());
+    }
+
+    #[test]
+    fn only_new_instances_are_marked_for_rollback() {
+        let tracker = ProvisionTracker::new();
+        tracker.mark_creating("fresh");
+        assert!(tracker.take_creating("fresh"));
+        // 한 번 꺼내면 끝 — 이후 업데이트 실패를 dismiss해도 롤백하지 않는다
+        assert!(!tracker.take_creating("fresh"));
+        assert!(!tracker.take_creating("existing"));
+    }
+
     #[tokio::test]
     async fn test_ipc_handle_request() {
         // HTTP 엔드포인트 테스트는 integration test로 이동
@@ -736,9 +857,16 @@ mod tests {
     #[test]
     fn test_module_info_serialization_with_commands() {
         let module_info = ExtensionInfo {
+            trust: saba_chan_updater_lib::integrity::Trust::Unverified,
             name: "palworld".to_string(),
             version: "1.0.0".to_string(),
             description: Some("Palworld 서버 관리".to_string()),
+            schema_version: 1,
+            display_name: None,
+            game_name: None,
+            author: None,
+            warnings: Vec::new(),
+            unmet_dependencies: Vec::new(),
             path: "/modules/palworld".to_string(),
             executable_path: Some("PalServer.exe".to_string()),
             icon: None,
@@ -759,7 +887,8 @@ mod tests {
                         method: Some("rest".to_string()),
                         http_method: Some("GET".to_string()),
                         endpoint_template: Some("/v1/api/players".to_string()),
-                        rcon_template: None,
+                        console_template: None,
+                        risk: None,
                         inputs: vec![],
                     },
                 ],
@@ -779,9 +908,16 @@ mod tests {
     #[test]
     fn test_module_info_without_commands() {
         let module_info = ExtensionInfo {
+            trust: saba_chan_updater_lib::integrity::Trust::Unverified,
             name: "test".to_string(),
             version: "1.0.0".to_string(),
             description: None,
+            schema_version: 1,
+            display_name: None,
+            game_name: None,
+            author: None,
+            warnings: Vec::new(),
+            unmet_dependencies: Vec::new(),
             path: "/modules/test".to_string(),
             executable_path: None,
             icon: None,
@@ -804,11 +940,19 @@ mod tests {
     #[test]
     fn test_module_list_response_includes_commands() {
         let response = ExtensionListResponse {
+            failed: Vec::new(),
             modules: vec![
                 ExtensionInfo {
+                    trust: saba_chan_updater_lib::integrity::Trust::Unverified,
                     name: "palworld".to_string(),
                     version: "1.0.0".to_string(),
                     description: Some("Palworld".to_string()),
+                    schema_version: 1,
+                    display_name: None,
+                    game_name: None,
+                    author: None,
+                    warnings: Vec::new(),
+                    unmet_dependencies: Vec::new(),
                     path: "/modules/palworld".to_string(),
                     executable_path: None,
                     icon: None,
@@ -829,7 +973,8 @@ mod tests {
                                 method: Some("rest".to_string()),
                                 http_method: Some("GET".to_string()),
                                 endpoint_template: Some("/v1/api/info".to_string()),
-                                rcon_template: None,
+                                console_template: None,
+                                risk: None,
                                 inputs: vec![],
                             },
                             crate::supervisor::module_loader::CommandField {
@@ -839,7 +984,8 @@ mod tests {
                                 method: Some("rest".to_string()),
                                 http_method: Some("POST".to_string()),
                                 endpoint_template: Some("/v1/api/announce".to_string()),
-                                rcon_template: None,
+                                console_template: None,
+                                risk: None,
                                 inputs: vec![
                                     crate::supervisor::module_loader::CommandInput {
                                         name: "message".to_string(),
@@ -848,6 +994,9 @@ mod tests {
                                         required: Some(true),
                                         placeholder: Some("공지 내용".to_string()),
                                         default: None,
+                                        min: None,
+                                        max: None,
+                                        options: None,
                                     },
                                 ],
                             },
@@ -907,6 +1056,9 @@ mod tests {
             required: Some(true),
             placeholder: Some("steam_xxxxxxxxx".to_string()),
             default: None,
+            min: None,
+            max: None,
+            options: None,
         };
 
         let json = serde_json::to_value(&input).unwrap();

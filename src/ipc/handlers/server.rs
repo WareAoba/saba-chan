@@ -4,7 +4,7 @@
     response::IntoResponse,
     Json,
 };
-use serde_json::json;
+use serde_json::{json, Value};
 
 use super::super::{
     IPCServer, ExtensionInfo, ExtensionListResponse, PortConflictInfo, ProtocolsInfo, ServerInfo, ServerListResponse,
@@ -17,7 +17,7 @@ use super::super::{
 /// `daemon:status` 폴링 및 데몬 ready 체크에 사용됩니다.
 pub async fn health_check() -> impl IntoResponse {
     let version = env!("CARGO_PKG_VERSION");
-    (StatusCode::OK, Json(json!({ "ok": true, "version": version })))
+    (StatusCode::OK, Json(json!({ "ok": true, "version": version, "pid": std::process::id() })))
 }
 
 /// GET /api/servers - 모든 서버 목록 (인스턴스 기반)
@@ -30,8 +30,6 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
         executable_path: Option<String>,
         working_dir: Option<String>,
         port: Option<u16>,
-        rcon_port: Option<u16>,
-        rcon_password: Option<String>,
         rest_host: Option<String>,
         rest_port: Option<u16>,
         rest_username: Option<String>,
@@ -45,12 +43,15 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
         // Native 모드 데이터
         pid: Option<u32>,
         start_time: Option<u64>,
+        managed: bool,
     }
 
-    let snapshots: Vec<InstanceSnapshot> = {
+    let (snapshots, all_instances, module_protocols): (Vec<InstanceSnapshot>, Vec<_>, _) = {
         let supervisor = state.supervisor.read().await;
         let instances = supervisor.instance_store.list();
-        instances.iter().map(|instance| {
+        let all_instances = instances.to_vec();
+        let module_protocols = supervisor.build_module_protocols_map();
+        let snapshots =         instances.iter().map(|instance| {
             let pid = supervisor.tracker.get_pid(&instance.id).ok();
             let start_time = if pid.is_some() {
                 supervisor.tracker.get_start_time(&instance.id).ok()
@@ -67,8 +68,6 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
                 executable_path: instance.executable_path.clone(),
                 working_dir: instance.working_dir.clone(),
                 port: instance.port,
-                rcon_port: instance.rcon_port,
-                rcon_password: instance.rcon_password.clone(),
                 rest_host: instance.rest_host.clone(),
                 rest_port: instance.rest_port,
                 rest_username: instance.rest_username.clone(),
@@ -79,10 +78,12 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
                 extension_data: instance.extension_data.clone(),
                 instance_dir: supervisor.instance_store.instance_dir(&instance.id).to_string_lossy().to_string(),
                 process_patterns,
+                managed: supervisor.uses_managed_start(instance),
                 pid,
                 start_time,
             }
-        }).collect()
+        }).collect();
+        (snapshots, all_instances, module_protocols)
     };
     // supervisor read lock 해제됨 — 이후 extension dispatch에 의해 블로킹되어도
     // 다른 API 핸들러가 supervisor write lock을 획득할 수 있음
@@ -109,14 +110,15 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
                     "instance_dir": &instance.instance_dir,
                     "process_patterns": &instance.process_patterns,
                 });
-                let mgr = ext_mgr.read().await;
-                let results = mgr.dispatch_hook_timed("server.list_enrich", ctx, 10).await;
-                // 첫 번째 성공 응답을 캐시 (handled 여부 무관)
-                let result = results.into_iter()
-                    .find_map(|(_id, r)| r.ok())
-                    .unwrap_or_else(|| json!({"handled": false}));
-                state.extension_status_cache.set(&instance.id, result.clone());
-                result
+                let results = crate::extension::run_hook_timed(&ext_mgr, "server.list_enrich", ctx, 10).await;
+                // 첫 번째 성공 응답만 캐시한다 (실패는 다음 목록 요청에서 다시 시도)
+                match results.into_iter().find_map(|(_id, r)| r.ok()) {
+                    Some(result) => {
+                        state.extension_status_cache.set(&instance.id, result.clone());
+                        result
+                    }
+                    None => json!({"handled": false}),
+                }
             };
 
             // handled: true인 경우만 Extension이 서버 정보를 제공
@@ -153,8 +155,6 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
                     executable_path: instance.executable_path.clone(),
                     working_dir: instance.working_dir.clone(),
                     port: instance.port,
-                    rcon_port: instance.rcon_port,
-                    rcon_password: instance.rcon_password.clone(),
                     rest_host: instance.rest_host.clone(),
                     rest_port: instance.rest_port,
                     rest_username: instance.rest_username.clone(),
@@ -164,6 +164,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
                     server_version: instance.server_version.clone(),
                     last_api_action: last_api,
                     provisioning,
+                    managed: instance.managed,
                     extension_status,
                     extension_data: instance.extension_data.clone(),
                     port_conflicts: vec![],
@@ -204,8 +205,6 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
             executable_path: instance.executable_path.clone(),
             working_dir: instance.working_dir.clone(),
             port: instance.port,
-            rcon_port: instance.rcon_port,
-            rcon_password: instance.rcon_password.clone(),
             rest_host: instance.rest_host.clone(),
             rest_port: instance.rest_port,
             rest_username: instance.rest_username.clone(),
@@ -215,44 +214,36 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
             server_version: instance.server_version.clone(),
             last_api_action: last_api,
             provisioning,
+            managed: instance.managed,
             extension_status: std::collections::HashMap::new(),
             extension_data: instance.extension_data.clone(),
             port_conflicts: vec![],
         });
     }
 
-    // ── 포트 충돌 계산: 모든 서버 간 포트 겹침을 검사하여 per-server 정보 채움 ──
+    // ── 포트 충돌 계산: 시작 시 검사(check_port_conflicts)와 같은 기준 ──
+    // 모듈이 지원하지 않는 프로토콜의 포트는 제외한다. 목록은 "켜면 부딪힐" 서버를
+    // 미리 보여주는 용도라 정지된 서버끼리도 비교한다(시작 시에는 실행 중인 것만).
     {
-        // 포트 → (server_index, port_type) 매핑
-        let mut port_map: std::collections::HashMap<u16, Vec<(usize, &str)>> = std::collections::HashMap::new();
-        for (idx, srv) in servers.iter().enumerate() {
-            for (p, pt) in [
-                (srv.port, "port"),
-                (srv.rcon_port, "rcon_port"),
-                (srv.rest_port, "rest_port"),
-            ] {
-                if let Some(port) = p {
-                    port_map.entry(port).or_default().push((idx, pt));
-                }
-            }
-        }
-        // 2개 이상 겹치는 포트에 대해 충돌 정보 추가
-        for (&port, entries) in &port_map {
-            if entries.len() < 2 { continue; }
-            for &(idx, pt) in entries {
-                let mut conflicts_for_this: Vec<PortConflictInfo> = Vec::new();
-                for &(other_idx, other_pt) in entries {
-                    if other_idx == idx { continue; }
-                    conflicts_for_this.push(PortConflictInfo {
-                        port,
-                        port_type: pt.to_string(),
-                        conflict_name: servers[other_idx].name.clone(),
-                        conflict_id: servers[other_idx].id.clone(),
-                        conflict_port_type: other_pt.to_string(),
-                    });
-                }
-                servers[idx].port_conflicts.extend(conflicts_for_this);
-            }
+        let every_id: std::collections::HashSet<String> =
+            all_instances.iter().map(|i| i.id.clone()).collect();
+        for srv in servers.iter_mut() {
+            let Some(target) = all_instances.iter().find(|i| i.id == srv.id) else { continue };
+            srv.port_conflicts = crate::validator::check_port_conflicts(
+                target,
+                &all_instances,
+                &every_id,
+                Some(&module_protocols),
+            )
+            .into_iter()
+            .map(|c| PortConflictInfo {
+                port: c.port,
+                port_type: c.port_type,
+                conflict_name: c.conflicting_instance_name,
+                conflict_id: c.conflicting_instance_id,
+                conflict_port_type: c.conflicting_port_type,
+            })
+            .collect();
         }
     }
 
@@ -266,51 +257,92 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
 }
 
 /// GET /api/modules - 모든 모듈 목록
-pub async fn list_modules(State(state): State<IPCServer>) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
+/// 모듈 하나를 API 응답 모양으로 (아이콘은 base64 data URL로)
+/// 지금 설치된 컴포넌트 버전 (`versions.toml`과 같은 키: saba-core, module-<이름>, ext-<id>, gui, cli ...).
+/// 업데이터가 기록한 installed-manifest를 바탕으로, 데몬이 직접 아는 값(코어, 로드된 모듈, 발견된 익스텐션)으로 덮는다 (U11, M9).
+pub async fn component_versions(state: &IPCServer) -> std::collections::BTreeMap<String, String> {
+    let mut versions: std::collections::BTreeMap<String, String> =
+        saba_chan_updater_lib::UpdateManager::load_installed_manifest().into_iter().collect();
+    versions.insert(crate::supervisor::module_loader::CORE_COMPONENT.to_string(), crate::supervisor::module_loader::DAEMON_VERSION.to_string());
+    if let Ok(modules) = state.supervisor.read().await.list_modules() {
+        for m in modules {
+            versions.insert(format!("module-{}", m.metadata.name), m.metadata.version);
+        }
+    }
+    for ext in state.extension_manager.read().await.list() {
+        versions.insert(format!("ext-{}", ext.id), ext.version);
+    }
+    versions
+}
 
-    match supervisor.list_modules() {
+/// GET /api/version — 코어·모듈·익스텐션·인터페이스 버전을 한 번에
+pub async fn version_handler(State(state): State<IPCServer>) -> impl IntoResponse {
+    Json(json!({
+        "version": crate::supervisor::module_loader::DAEMON_VERSION,
+        "components": component_versions(&state).await,
+    }))
+}
+
+fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std::collections::BTreeMap<String, String>) -> ExtensionInfo {
+    let installed: std::collections::HashMap<String, String> = versions.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let unmet_dependencies = m
+        .metadata
+        .check_dependencies(&installed)
+        .into_iter()
+        .map(|(component, required, installed)| crate::ipc::UnmetDependency { component, required, installed })
+        .collect();
+    let icon_base64 = m.metadata.icon.as_ref().and_then(|icon_file| {
+        let icon_path = std::path::Path::new(&m.path).join(icon_file);
+        std::fs::read(&icon_path).ok().map(|data| {
+            use base64::{engine::general_purpose, Engine as _};
+            format!("data:image/png;base64,{}", general_purpose::STANDARD.encode(&data))
+        })
+    });
+    let folder = std::path::Path::new(&m.path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let trust = saba_chan_updater_lib::integrity::trust_of(
+        &format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, folder),
+        std::path::Path::new(&m.path),
+    );
+    let meta = m.metadata;
+    ExtensionInfo {
+        name: meta.name,
+        version: meta.version,
+        trust,
+        description: meta.description,
+        schema_version: meta.schema_version,
+        display_name: meta.display_name,
+        game_name: meta.game_name,
+        author: meta.author,
+        warnings: meta.warnings,
+        unmet_dependencies,
+        path: m.path,
+        executable_path: meta.executable_path,
+        icon: icon_base64,
+        interaction_mode: meta.interaction_mode,
+        protocols: meta.protocols_supported.map(|supported| ProtocolsInfo {
+            supported,
+            default: meta.protocols_default,
+        }),
+        settings: meta.settings,
+        commands: meta.commands,
+        syntax_highlight: meta.syntax_highlight,
+        dir_signatures: meta.dir_signatures,
+        install: meta.install,
+        module_aliases: meta.module_aliases,
+        command_aliases: meta.command_aliases,
+    }
+}
+
+fn module_list_response(
+    supervisor: &crate::supervisor::Supervisor,
+    modules: anyhow::Result<Vec<crate::supervisor::module_loader::LoadedModule>>,
+    versions: &std::collections::BTreeMap<String, String>,
+) -> axum::response::Response {
+    match modules {
         Ok(modules) => {
-            let module_infos: Vec<ExtensionInfo> = modules
-                .into_iter()
-                .map(|m| {
-                    // 아이콘 파일을 base64로 인코딩
-                    let icon_base64 = m.metadata.icon.as_ref().and_then(|icon_file| {
-                        let icon_path = std::path::Path::new(&m.path).join(icon_file);
-                        std::fs::read(&icon_path).ok().map(|data| {
-                            use base64::{engine::general_purpose, Engine as _};
-                            format!(
-                                "data:image/png;base64,{}",
-                                general_purpose::STANDARD.encode(&data)
-                            )
-                        })
-                    });
-
-                    ExtensionInfo {
-                        name: m.metadata.name,
-                        version: m.metadata.version,
-                        description: m.metadata.description,
-                        path: m.path,
-                        executable_path: m.metadata.executable_path,
-                        icon: icon_base64,
-                        interaction_mode: m.metadata.interaction_mode,
-                        protocols: m.metadata.protocols_supported.map(|supported| {
-                            ProtocolsInfo {
-                                supported,
-                                default: m.metadata.protocols_default,
-                            }
-                        }),
-                        settings: m.metadata.settings,
-                        commands: m.metadata.commands,
-                        syntax_highlight: m.metadata.syntax_highlight,
-                        dir_signatures: m.metadata.dir_signatures,
-                        install: m.metadata.install,
-                        module_aliases: m.metadata.module_aliases,
-                        command_aliases: m.metadata.command_aliases,
-                    }
-                })
-                .collect();
-            (StatusCode::OK, Json(ExtensionListResponse { modules: module_infos })).into_response()
+            let modules = modules.into_iter().map(|m| module_info(m, versions)).collect();
+            let failed = supervisor.module_loader.load_errors();
+            (StatusCode::OK, Json(ExtensionListResponse { modules, failed })).into_response()
         }
         Err(e) => {
             let error = json!({ "error": format!("Failed to list modules: {}", e) });
@@ -319,200 +351,190 @@ pub async fn list_modules(State(state): State<IPCServer>) -> impl IntoResponse {
     }
 }
 
+pub async fn list_modules(State(state): State<IPCServer>) -> impl IntoResponse {
+    let versions = component_versions(&state).await;
+    let supervisor = state.supervisor.read().await;
+    module_list_response(&supervisor, supervisor.list_modules(), &versions)
+}
+
 /// POST /api/modules/refresh - 모듈 캐시를 새로고침하고 다시 발견
 pub async fn refresh_modules(State(state): State<IPCServer>) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
-
-    match supervisor.refresh_modules() {
-        Ok(modules) => {
-            let module_infos: Vec<ExtensionInfo> = modules
-                .into_iter()
-                .map(|m| {
-                    // 아이콘 파일을 base64로 인코딩
-                    let icon_base64 = m.metadata.icon.as_ref().and_then(|icon_file| {
-                        let icon_path = std::path::Path::new(&m.path).join(icon_file);
-                        std::fs::read(&icon_path).ok().map(|data| {
-                            use base64::{engine::general_purpose, Engine as _};
-                            format!(
-                                "data:image/png;base64,{}",
-                                general_purpose::STANDARD.encode(&data)
-                            )
-                        })
-                    });
-
-                    ExtensionInfo {
-                        name: m.metadata.name,
-                        version: m.metadata.version,
-                        description: m.metadata.description,
-                        path: m.path,
-                        executable_path: m.metadata.executable_path,
-                        icon: icon_base64,
-                        interaction_mode: m.metadata.interaction_mode,
-                        protocols: m.metadata.protocols_supported.map(|supported| {
-                            ProtocolsInfo {
-                                supported,
-                                default: m.metadata.protocols_default,
-                            }
-                        }),
-                        settings: m.metadata.settings,
-                        commands: m.metadata.commands,
-                        syntax_highlight: m.metadata.syntax_highlight,
-                        dir_signatures: m.metadata.dir_signatures,
-                        install: m.metadata.install,
-                        module_aliases: m.metadata.module_aliases,
-                        command_aliases: m.metadata.command_aliases,
-                    }
-                })
-                .collect();
-            tracing::info!(
-                "Module cache refreshed. Found {} modules",
-                module_infos.len()
-            );
-            (StatusCode::OK, Json(ExtensionListResponse { modules: module_infos })).into_response()
-        }
-        Err(e) => {
-            let error = json!({ "error": format!("Failed to refresh modules: {}", e) });
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
-        }
+    let modules = state.supervisor.read().await.refresh_modules();
+    if let Ok(m) = &modules {
+        tracing::info!("Module cache refreshed. Found {} modules", m.len());
     }
+    let versions = component_versions(&state).await;
+    let supervisor = state.supervisor.read().await;
+    module_list_response(&supervisor, modules, &versions)
+}
+
+/// GET /api/modules/schema - module.toml 스키마 v1 (JSON Schema)
+pub async fn module_schema() -> impl IntoResponse {
+    Json(crate::supervisor::module_loader::module_json_schema())
+}
+
+/// POST /api/modules/detect `{path}` - 이 폴더가 어느 모듈의 게임 서버 폴더인지
+/// (`[detection] dir_signatures`가 전부 있는 모듈). 기존 서버 가져오기에서 쓴다.
+pub async fn detect_module_dir(
+    State(state): State<IPCServer>,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let Some(path) = body.get("path").and_then(|v| v.as_str()) else {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "path is required" }))).into_response();
+    };
+    let dir = std::path::Path::new(path);
+    if !dir.is_dir() {
+        return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("not a folder: {}", path) }))).into_response();
+    }
+    let supervisor = state.supervisor.read().await;
+    let modules = supervisor.list_modules().unwrap_or_default();
+    let matches: Vec<_> = modules
+        .iter()
+        .filter(|m| m.matches_dir(dir))
+        .map(|m| json!({ "name": m.metadata.name, "display_name": m.metadata.display_name }))
+        .collect();
+    (StatusCode::OK, Json(json!({ "matches": matches }))).into_response()
 }
 
 /// GET /api/module/:name - 모듈 메타데이터 조회 (별명 포함)
+/// GET /api/module/:name/audit — 모듈 Python 코드 검사 (M12): `{declared, findings, undeclared}`.
+/// `undeclared`가 비어 있지 않으면 모듈이 선언하지 않은 능력을 쓴다 (사용자에게 보여 줄 것)
+pub async fn audit_module(Path(name): Path<String>, State(state): State<IPCServer>) -> impl IntoResponse {
+    let module = state.supervisor.read().await.module_loader.get_module(&name).ok();
+    let Some(module) = module else {
+        return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Module '{}' not found", name), "error_code": "not_found" }))).into_response();
+    };
+    let found = match crate::python_env::get_python_path().await {
+        Ok(python) => crate::module_audit::scan(&python, std::path::Path::new(&module.path)).await,
+        Err(e) => Err(e),
+    };
+    match found {
+        Ok(findings) => {
+            let undeclared = crate::module_audit::undeclared(&module.metadata.permissions, &findings);
+            Json(json!({ "success": true, "declared": module.metadata.permissions, "findings": findings, "undeclared": undeclared })).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("{:#}", e), "error_code": "audit_failed" }))).into_response(),
+    }
+}
+
 pub async fn get_module_metadata(
     Path(name): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
     let supervisor = state.supervisor.read().await;
-
     match supervisor.list_modules() {
-        Ok(modules) => {
-            if let Some(module) = modules.iter().find(|m| m.metadata.name == name) {
-                // TOML에서 aliases 섹션 읽기 시도
-                let module_path = format!("{}/module.toml", module.path);
-                match std::fs::read_to_string(&module_path) {
-                    Ok(content) => match toml::from_str::<serde_json::Value>(&content) {
-                        Ok(parsed) => (
-                            StatusCode::OK,
-                            Json(json!({
-                                "name": &module.metadata.name,
-                                "version": &module.metadata.version,
-                                "description": &module.metadata.description,
-                                "path": &module.path,
-                                "metadata": &module.metadata,
-                                "toml": parsed,
-                            })),
-                        )
-                            .into_response(),
-                        Err(_) => (
-                            StatusCode::OK,
-                            Json(json!({
-                                "name": &module.metadata.name,
-                                "version": &module.metadata.version,
-                                "description": &module.metadata.description,
-                                "path": &module.path,
-                                "metadata": &module.metadata,
-                            })),
-                        )
-                            .into_response(),
-                    },
-                    Err(_) => (
-                        StatusCode::OK,
-                        Json(json!({
-                            "name": &module.metadata.name,
-                            "version": &module.metadata.version,
-                            "description": &module.metadata.description,
-                            "path": &module.path,
-                            "metadata": &module.metadata,
-                        })),
-                    )
-                        .into_response(),
-                }
-            } else {
-                let error = json!({ "error": format!("Module '{}' not found", name) });
-                (StatusCode::NOT_FOUND, Json(error)).into_response()
-            }
-        }
-        Err(e) => {
-            let error = json!({ "error": format!("Failed to list modules: {}", e) });
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
-        }
+        Ok(modules) => match modules.iter().find(|m| m.metadata.name == name) {
+            Some(module) => (
+                StatusCode::OK,
+                Json(json!({
+                    "name": &module.metadata.name,
+                    "version": &module.metadata.version,
+                    "description": &module.metadata.description,
+                    "path": &module.path,
+                    "metadata": &module.metadata,
+                })),
+            )
+                .into_response(),
+            None => (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Module '{}' not found", name) })),
+            )
+                .into_response(),
+        },
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to list modules: {}", e) })),
+        )
+            .into_response(),
     }
 }
 
-/// GET /api/modules/manifest - saba-chan-modules 최신 릴리스 manifest 가져오기
+/// GET /api/modules/manifest - 설치할 수 있는 모듈 목록 (최신 릴리즈의 서명된 manifest, U9e)
+///
+/// `{ok, manifest: {modules: {<이름>: {version, display_name, description, ...}}}}`
 pub async fn fetch_module_manifest() -> impl IntoResponse {
-    let url = saba_chan_updater_lib::constants::modules_manifest_url();
-    match reqwest::get(url).await {
-        Ok(resp) if resp.status().is_success() => {
-            match resp.json::<serde_json::Value>().await {
-                Ok(data) => (StatusCode::OK, Json(json!({ "ok": true, "manifest": data }))).into_response(),
-                Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": e.to_string() }))).into_response(),
+    match saba_chan_updater_lib::relay::latest_catalog(None).await {
+        Ok(catalog) => {
+            let mut modules = serde_json::Map::new();
+            if let Some(manifest) = &catalog {
+                for (name, comp) in manifest.addons(saba_chan_updater_lib::relay::MODULE_PREFIX) {
+                    let mut info = match &comp.meta {
+                        Some(serde_json::Value::Object(meta)) => meta.clone(),
+                        _ => serde_json::Map::new(),
+                    };
+                    info.insert("version".into(), json!(comp.version));
+                    info.insert("sha256".into(), json!(comp.sha256));
+                    info.insert("size_bytes".into(), json!(comp.size_bytes));
+                    modules.insert(name.to_string(), serde_json::Value::Object(info));
+                }
             }
-        }
-        Ok(resp) => {
-            (StatusCode::OK, Json(json!({ "ok": false, "error": format!("HTTP {}", resp.status()) }))).into_response()
+            (StatusCode::OK, Json(json!({ "ok": true, "manifest": { "modules": modules } }))).into_response()
         }
         Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": e.to_string() }))).into_response(),
     }
 }
 
-/// POST /api/modules/manifest/:id/install - 모듈 매니페스트에서 모듈 설치
+/// POST /api/modules/manifest/:id/install - 최신 릴리즈에서 모듈을 받아 설치한다 (SHA-256 검증)
 pub async fn install_module_from_manifest(
     Path(module_id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    // 레지스트리에서 다운로드 URL 구성
-    let asset_name = format!("module-{}.zip", module_id);
-    let download_url = saba_chan_updater_lib::constants::module_asset_url(&asset_name);
+    let fail = |error: String| (StatusCode::OK, Json(json!({ "ok": false, "error": error }))).into_response();
+    if module_id.contains("..") || module_id.contains('/') || module_id.contains('\\') {
+        return fail("Invalid module ID".into());
+    }
+    let catalog = match saba_chan_updater_lib::relay::latest_catalog(None).await {
+        Ok(Some(m)) => m,
+        Ok(None) => return fail("No release is published".into()),
+        Err(e) => return fail(e.to_string()),
+    };
+    let Some(comp) = catalog
+        .components
+        .get(&format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, module_id))
+        .cloned()
+    else {
+        return fail(format!("Module '{}' is not in the latest release", module_id));
+    };
 
-    // 설치 디렉토리 결정
     let modules_dir = {
         let supervisor = state.supervisor.read().await;
         std::path::PathBuf::from(supervisor.module_loader.modules_dir())
     };
-
+    let zip_path = modules_dir.join(format!("_tmp_module_{}.zip", module_id));
+    let staging = modules_dir.join(format!(".staging-{}", module_id));
     let target_dir = modules_dir.join(&module_id);
 
-    // 임시 zip 다운로드
-    let zip_path = modules_dir.join(format!("_tmp_module_{}.zip", module_id));
-
-    match reqwest::get(&download_url).await {
-        Ok(resp) if resp.status().is_success() => {
-            match resp.bytes().await {
-                Ok(bytes) => {
-                    if let Err(e) = std::fs::write(&zip_path, &bytes) {
-                        return (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Failed to write zip: {}", e) }))).into_response();
-                    }
-                    // zip 압축 해제
-                    match std::fs::File::open(&zip_path) {
-                        Ok(file) => {
-                            match zip::ZipArchive::new(std::io::BufReader::new(file)) {
-                                Ok(mut archive) => {
-                                    if let Err(e) = archive.extract(&target_dir) {
-                                        let _ = std::fs::remove_file(&zip_path);
-                                        return (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Failed to extract: {}", e) }))).into_response();
-                                    }
-                                    let _ = std::fs::remove_file(&zip_path);
-                                    // 모듈 캐시 새로고침
-                                    let supervisor = state.supervisor.read().await;
-                                    let _ = supervisor.refresh_modules();
-                                    (StatusCode::OK, Json(json!({ "ok": true, "module_id": module_id }))).into_response()
-                                }
-                                Err(e) => {
-                                    let _ = std::fs::remove_file(&zip_path);
-                                    (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Invalid zip: {}", e) }))).into_response()
-                                }
-                            }
-                        }
-                        Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Failed to open zip: {}", e) }))).into_response(),
-                    }
-                }
-                Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": format!("Failed to read response: {}", e) }))).into_response(),
-            }
+    let result: anyhow::Result<()> = async {
+        let http = reqwest::Client::new();
+        saba_chan_updater_lib::download::download_verified(&http, &comp.url, &zip_path, Some(&comp.sha256), None).await?;
+        let _ = std::fs::remove_dir_all(&staging);
+        saba_chan_updater_lib::extract_zip(&zip_path, &staging, |_| Ok(()))?;
+        if !staging.join("module.toml").is_file() {
+            anyhow::bail!("package has no module.toml");
         }
-        Ok(resp) => (StatusCode::OK, Json(json!({ "ok": false, "error": format!("HTTP {}", resp.status()) }))).into_response(),
-        Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": e.to_string() }))).into_response(),
+        // 다 받은 뒤에만 기존 폴더를 바꾼다
+        if target_dir.exists() {
+            std::fs::remove_dir_all(&target_dir)?;
+        }
+        std::fs::rename(&staging, &target_dir)?;
+        // 서명된 카탈로그에서 받은 것: 신뢰 표시가 "verified"가 된다 (파일이 그대로인 동안)
+        let key = format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, module_id);
+        if let Err(e) = saba_chan_updater_lib::integrity::record_dir(&key, &target_dir)
+            .and_then(|_| saba_chan_updater_lib::integrity::set_official(&key, true))
+        {
+            tracing::warn!("Could not record installed files for module '{}': {}", module_id, e);
+        }
+        Ok(())
     }
+    .await;
+    let _ = std::fs::remove_file(&zip_path);
+    let _ = std::fs::remove_dir_all(&staging);
+    if let Err(e) = result {
+        return fail(format!("{:#}", e));
+    }
+    let supervisor = state.supervisor.read().await;
+    let _ = supervisor.refresh_modules();
+    (StatusCode::OK, Json(json!({ "ok": true, "module_id": module_id, "version": comp.version }))).into_response()
 }
 
 /// DELETE /api/modules/:id — 모듈 제거 (디렉토리 삭제 + 캐시 갱신)
@@ -535,6 +557,7 @@ pub async fn remove_module(
     if let Err(e) = std::fs::remove_dir_all(&module_path) {
         return (StatusCode::OK, Json(json!({ "ok": false, "error": e.to_string() }))).into_response();
     }
+    let _ = saba_chan_updater_lib::integrity::set_official(&format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, module_id), false);
     // 캐시 갱신 (write lock)
     let supervisor = state.supervisor.write().await;
     let _ = supervisor.refresh_modules();
@@ -546,20 +569,16 @@ pub async fn get_server_status(
     Path(name): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
-
     // instance에서 모듈명 조회
-    let instance = supervisor
+    let module_name = state.supervisor.read().await
         .instance_store
         .list()
         .iter()
-        .find(|i| i.name == name);
+        .find(|i| i.name == name)
+        .map(|i| i.module_name.clone());
 
-    if let Some(inst) = instance {
-        match supervisor
-            .get_server_status(&name, &inst.module_name)
-            .await
-        {
+    if let Some(module_name) = module_name {
+        match crate::supervisor::Supervisor::get_server_status(&state.supervisor, &name, &module_name).await {
             Ok(result) => (StatusCode::OK, Json(result)).into_response(),
             Err(e) => {
                 let error = json!({ "error": format!("Failed to get status: {}", e) });
@@ -575,6 +594,204 @@ pub async fn get_server_status(
     }
 }
 
+/// POST /api/instance/:id/start — 서버 시작. 경로(managed / non-managed)는 데몬이 고른다.
+///
+/// `:id`는 인스턴스 ID, 없으면 이름으로 찾는다(CLI·채팅처럼 이름만 아는 쪽용).
+/// 정책은 `Supervisor::uses_managed_start`, 포트 충돌 검사는 전역 설정 하나다.
+/// 응답은 고른 경로의 응답 그대로에 `managed`를 더한 것이다.
+pub async fn start_instance_handler(
+    Path(id): Path<String>,
+    State(state): State<IPCServer>,
+) -> axum::response::Response {
+    let picked = {
+        let supervisor = state.supervisor.read().await;
+        supervisor
+            .instance_store
+            .get(&id)
+            .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == id))
+            .cloned()
+            .map(|inst| {
+                let managed = supervisor.uses_managed_start(&inst);
+                (inst, managed)
+            })
+    };
+    let Some((instance, managed)) = picked else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" })),
+        )
+            .into_response();
+    };
+
+    if let Some(blocked) = preflight(&state, &instance.id).await {
+        return blocked;
+    }
+
+    let resp = if managed {
+        crate::ipc::internal::into_internal(
+            super::managed::start_managed_handler(Path(instance.id.clone()), State(state.clone()), None).await,
+        )
+        .await
+    } else {
+        let req = ServerStartRequest { module: instance.module_name.clone(), config: json!({}) };
+        // id로 넘긴다 (이름은 겹칠 수 있다)
+        crate::ipc::internal::into_internal(start_server_handler(Path(instance.id.clone()), State(state.clone()), Json(req)).await)
+            .await
+    };
+    let mut body = match resp.body {
+        Value::Object(map) => map,
+        other => {
+            let mut map = serde_json::Map::new();
+            map.insert("data".into(), other);
+            map
+        }
+    };
+    body.insert("managed".into(), json!(managed));
+    (resp.status, Json(Value::Object(body))).into_response()
+}
+
+/// 켜기 전 점검: 모듈 validate가 critical 문제(EULA 미동의, 서버 파일 없음 등)를 내면 켜지 않는다.
+/// 이미 켜져 있거나, 모듈에 validate가 없거나, 점검 자체가 실패하면 막지 않는다
+async fn preflight(state: &IPCServer, id: &str) -> Option<axum::response::Response> {
+    {
+        let supervisor = state.supervisor.read().await;
+        if supervisor.tracker.get_pid(id).is_ok() || supervisor.managed_store.running_instance_ids().await.contains(&id.to_string()) {
+            return None;
+        }
+    }
+    let result = match crate::supervisor::Supervisor::validate_instance(&state.supervisor, id).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!("Pre-start check for '{}' failed to run: {}", id, e);
+            return None;
+        }
+    };
+    let issues = result.get("issues").and_then(Value::as_array)?;
+    let critical: Vec<&Value> = issues.iter().filter(|i| i.get("severity").and_then(Value::as_str) == Some("critical")).collect();
+    let first = critical.first()?;
+    let code = first.get("code").and_then(Value::as_str).unwrap_or("preflight_failed");
+    let message = first.get("message").and_then(Value::as_str).unwrap_or("Pre-start check failed");
+    tracing::info!("Start of '{}' blocked by pre-start check: {}", id, code);
+    Some(
+        (
+            StatusCode::CONFLICT,
+            Json(json!({
+                "success": false,
+                "error": message,
+                "error_code": "preflight_failed",
+                "issue_code": code,
+                "solution": first.get("solution"),
+                "issues": critical,
+            })),
+        )
+            .into_response(),
+    )
+}
+
+/// id(또는 고유한 이름)로 인스턴스를 찾아 (id, 이름)을 돌려준다
+async fn instance_key_of(state: &IPCServer, key: &str) -> Option<(String, String)> {
+    let supervisor = state.supervisor.read().await;
+    supervisor
+        .instance_store
+        .get(key)
+        .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == key))
+        .map(|i| (i.id.clone(), i.name.clone()))
+}
+
+fn instance_not_found(id: &str) -> axum::response::Response {
+    (
+        StatusCode::NOT_FOUND,
+        Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" })),
+    )
+        .into_response()
+}
+
+/// POST /api/instance/:id/stop — id로 정지 (`{force?}`). 응답은 `/api/server/:name/stop`과 같다
+pub async fn stop_instance_handler(
+    Path(id): Path<String>,
+    State(state): State<IPCServer>,
+    body: Option<Json<ServerStopRequest>>,
+) -> axum::response::Response {
+    let force = body.map(|Json(b)| b.force).unwrap_or(false);
+    stop_instance(state, &id, force).await
+}
+
+/// POST /api/instance/:id/restart — 정지(`{force?}`) 뒤 시작. 꺼져 있으면 시작만 한다.
+/// 응답은 시작 응답에 `stopped`(정지했는가)를 더한 것. 정지가 실패하면 그 응답을 그대로 준다
+pub async fn restart_instance_handler(
+    Path(id): Path<String>,
+    State(state): State<IPCServer>,
+    body: Option<Json<ServerStopRequest>>,
+) -> axum::response::Response {
+    let picked = {
+        let supervisor = state.supervisor.read().await;
+        supervisor
+            .instance_store
+            .get(&id)
+            .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == id))
+            .map(|i| i.id.clone())
+    };
+    let Some(inst_id) = picked else {
+        return instance_not_found(&id);
+    };
+    let force = body.map(|Json(b)| b.force).unwrap_or(false);
+    let running;
+    {
+        // 데몬이 추적하지 않아도 익스텐션이 맡은 서버일 수 있다: 정지를 먼저 맡긴다
+        let stop = crate::ipc::internal::into_internal(stop_instance(state.clone(), &inst_id, force).await).await;
+        // 꺼져 있던 일반 인스턴스는 정지가 아무것도 하지 않고 was_running=false를 준다
+        let ok = stop.status.is_success() && stop.body.get("success").and_then(Value::as_bool) != Some(false);
+        if !ok {
+            return (stop.status, Json(stop.body)).into_response();
+        }
+        running = stop.body.get("was_running").and_then(Value::as_bool) != Some(false);
+        // 정지 응답이 프로세스가 끝나기 전에 올 수 있다: 끝날 때까지 기다린다 (최대 2분)
+        for _ in 0..240 {
+            let alive = {
+                let supervisor = state.supervisor.read().await;
+                supervisor.tracker.get_pid(&inst_id).is_ok() || supervisor.managed_store.running_instance_ids().await.contains(&inst_id)
+            };
+            if !alive {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+    }
+    let start = crate::ipc::internal::into_internal(start_instance_handler(Path(inst_id), State(state)).await).await;
+    let mut body = match start.body {
+        Value::Object(map) => map,
+        other => serde_json::Map::from_iter([("data".to_string(), other)]),
+    };
+    body.insert("stopped".into(), json!(running));
+    (start.status, Json(Value::Object(body))).into_response()
+}
+
+/// 크래시 뒤 자동 재시작 (A1). 대기하는 동안 사용자가 정지·시작했으면 그만둔다.
+pub async fn auto_restart(state: IPCServer, instance_id: String, delay: std::time::Duration) {
+    tokio::time::sleep(delay).await;
+    if !state.supervisor.read().await.restart_still_wanted(&instance_id).await {
+        tracing::info!("Auto restart of '{}' skipped: stopped or started meanwhile", instance_id);
+        return;
+    }
+    tracing::info!("Auto restarting '{}' after a crash", instance_id);
+    let resp = crate::ipc::internal::into_internal(start_instance_handler(Path(instance_id.clone()), State(state.clone())).await).await;
+    let ok = resp.status.is_success() && resp.body.get("success").and_then(Value::as_bool) != Some(false);
+    if !ok {
+        let reason = resp.body.get("error").or_else(|| resp.body.get("message")).and_then(Value::as_str).unwrap_or("start failed").to_string();
+        tracing::warn!("Auto restart of '{}' failed: {}", instance_id, reason);
+        state.supervisor.write().await.record_restart_failure(&instance_id, reason);
+    }
+}
+
+/// GET /api/instance/:id/events — 최근 종료 이력 (사용자 정지, 게임 안 정지, 크래시, 원인 모를 종료)
+pub async fn instance_events_handler(Path(id): Path<String>, State(state): State<IPCServer>) -> impl IntoResponse {
+    let supervisor = state.supervisor.read().await;
+    if supervisor.instance_store.get(&id).is_none() {
+        return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response();
+    }
+    Json(json!({ "events": supervisor.exit_events(&id) })).into_response()
+}
+
 /// POST /api/server/:name/start - 서버 시작
 pub async fn start_server_handler(
     Path(name): Path<String>,
@@ -586,7 +803,7 @@ pub async fn start_server_handler(
     // 익스텐션 상태 캐시 무효화 — 시작 직후 fresh 상태 반영
     {
         let sup = state.supervisor.read().await;
-        if let Some(inst) = sup.instance_store.list().iter().find(|i| i.name == name) {
+        if let Some(inst) = sup.instance_store.get(&name).or_else(|| sup.instance_store.list().iter().find(|i| i.name == name)) {
             state.extension_status_cache.invalidate(&inst.id);
         }
     }
@@ -594,8 +811,8 @@ pub async fn start_server_handler(
     // ── 실행 전 비밀번호 자동 생성 (비어있으면 채움) ──
     {
         let mut supervisor = state.supervisor.write().await;
-        let inst_opt = supervisor.instance_store.list().iter()
-            .find(|i| i.name == name)
+        let inst_opt = supervisor.instance_store.get(&name)
+            .or_else(|| supervisor.instance_store.list().iter().find(|i| i.name == name))
             .cloned();
         if let Some(mut inst) = inst_opt {
             let changed = inst.ensure_passwords();
@@ -609,10 +826,7 @@ pub async fn start_server_handler(
         }
     }
 
-    let supervisor = state.supervisor.read().await;
-
-    match supervisor
-        .start_server(&name, &payload.module, payload.config)
+    match crate::supervisor::Supervisor::start_server(&state.supervisor, &name, &payload.module, payload.config)
         .await
     {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
@@ -639,36 +853,49 @@ pub async fn stop_server_handler(
     Path(name): Path<String>,
     State(state): State<IPCServer>,
     Json(payload): Json<ServerStopRequest>,
-) -> impl IntoResponse {
+) -> axum::response::Response {
+    let id = {
+        let supervisor = state.supervisor.read().await;
+        supervisor.instance_store.list().iter().find(|i| i.name == name).map(|i| i.id.clone())
+    };
+    match id {
+        Some(id) => stop_instance(state, &id, payload.force).await,
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": format!("Server '{}' not found", name), "error_code": "instance_not_found" })),
+        )
+            .into_response(),
+    }
+}
+
+/// 인스턴스 하나를 id로 정지한다. 이름은 겹칠 수 있으니 정지 경로는 모두 id를 쓴다
+pub async fn stop_instance(state: IPCServer, key: &str, force: bool) -> axum::response::Response {
+    let payload = ServerStopRequest { force };
+    let Some((id, name)) = instance_key_of(&state, key).await else {
+        return instance_not_found(key);
+    };
+    let id = id.as_str();
     // API 경유 정지 기록 (GUI 외부 정지 감지용)
     state.api_actions.record(&name);
     // 익스텐션 상태 캐시 무효화 — 정지 직후 fresh 상태 반영
     {
         let sup = state.supervisor.read().await;
-        if let Some(inst) = sup.instance_store.list().iter().find(|i| i.name == name) {
-            state.extension_status_cache.invalidate(&inst.id);
+        if sup.instance_store.get(id).is_some() {
+            state.extension_status_cache.invalidate(id);
         }
     }
 
     // instance에서 모듈명과 ID 조회 (read lock으로 조회 후 즉시 해제)
     let instance = {
         let supervisor = state.supervisor.read().await;
-        supervisor
-            .instance_store
-            .list()
-            .iter()
-            .find(|i| i.name == name)
-            .cloned()
+        supervisor.instance_store.get(id).cloned()
     };
 
     if let Some(inst) = instance {
         // instance id로도 API 액션 기록
         state.api_actions.record(&inst.id);
-        let mut supervisor = state.supervisor.write().await;
-        match supervisor
-            .stop_server(&name, &inst.module_name, payload.force)
-            .await
-        {
+        // 락은 stop_server가 단계마다 짧게 잡는다 (C12)
+        match crate::supervisor::Supervisor::stop_server(&state.supervisor, &inst.id, &inst.module_name, payload.force).await {
             Ok(result) => {
                 // 실제 종료 성공 시에만 tracker에서 제거
                 let success = result
@@ -676,18 +903,12 @@ pub async fn stop_server_handler(
                     .and_then(|s| s.as_bool())
                     .unwrap_or(false);
                 if success {
-                    // RCON 연결 풀에서 해당 인스턴스 연결 제거
-                    state.rcon_pool.remove(&inst.id);
-
-                    // 익스텐션이 외부 프로세스 관리(예: 컨테이너)를 사용하면 ProcessTracker skip
-                    if inst.extension_data.is_empty() || !inst.ext_enabled("docker_enabled") {
-                        // name과 id 둘 다로 untrack 시도
-                        let _ = supervisor.tracker.untrack(&name);
-                        if let Err(e) = supervisor.tracker.untrack(&inst.id) {
-                            tracing::warn!("Failed to untrack stopped server '{}': {}", name, e);
-                        } else {
-                            tracing::info!("Server '{}' untracked from process tracker", name);
-                        }
+                    // tracker는 id로만 찾는다: 이름이 다른 인스턴스의 id와 같아도 그쪽을 건드리지 않는다
+                    let supervisor = state.supervisor.read().await;
+                    if let Err(e) = supervisor.tracker.untrack(&inst.id) {
+                        tracing::warn!("Failed to untrack stopped server '{}': {}", name, e);
+                    } else {
+                        tracing::info!("Server '{}' untracked from process tracker", name);
                     }
                 }
                 (StatusCode::OK, Json(result)).into_response()
@@ -716,3 +937,37 @@ pub async fn stop_server_handler(
 }
 
 // NOTE: sync_gui_config は config::save_gui_config に統合されました (portConflictCheck 同期含む)
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    #[tokio::test]
+    async fn server_list_says_which_servers_the_runner_manages() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("plain");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            modules.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let default = crate::instance::ServerInstance::new("default", "plain");
+        let mut direct = crate::instance::ServerInstance::new("direct", "plain");
+        direct.module_settings.insert("managed_start".into(), json!(false));
+        sup.instance_store.add(default).unwrap();
+        sup.instance_store.add(direct).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+
+        let body = crate::ipc::internal::into_internal(list_servers(State(state)).await).await.body;
+        let managed = |name: &str| {
+            body["servers"].as_array().unwrap().iter().find(|s| s["name"] == name).unwrap()["managed"].clone()
+        };
+        assert_eq!(managed("default"), json!(true), "managed is the default (C8b)");
+        assert_eq!(managed("direct"), json!(false));
+    }
+}

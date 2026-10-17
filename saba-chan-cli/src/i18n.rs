@@ -33,16 +33,6 @@ impl I18n {
         self.resolve(key).unwrap_or_else(|| key.to_string())
     }
 
-    /// 템플릿 변수 치환 ({{key}} → value)
-    #[allow(dead_code)]
-    pub fn t_with(&self, key: &str, vars: &[(&str, &str)]) -> String {
-        let mut s = self.t(key);
-        for (k, v) in vars {
-            s = s.replace(&format!("{{{{{}}}}}", k), v);
-        }
-        s
-    }
-
     fn resolve(&self, key: &str) -> Option<String> {
         // 우선: 현재 로케일
         if let Some(v) = resolve_dotted(&self.data, key) {
@@ -106,20 +96,6 @@ mod tests {
         assert_eq!(resolve_dotted(&data, "status.daemon_off"), Some("Stopped".into()));
         assert_eq!(resolve_dotted(&data, "nonexistent"), None);
         assert_eq!(resolve_dotted(&data, "status.unknown"), None);
-    }
-
-    #[test]
-    fn test_i18n_t_with_template() {
-        // I18n에 직접 데이터를 주입하여 테스트
-        let data: Value = serde_json::json!({
-            "greeting": "안녕 {{name}}님, {{count}}개의 서버가 있습니다."
-        });
-        let i18n = I18n {
-            data: data.clone(),
-            fallback: data,
-        };
-        let result = i18n.t_with("greeting", &[("name", "사바"), ("count", "3")]);
-        assert_eq!(result, "안녕 사바님, 3개의 서버가 있습니다.");
     }
 
     #[test]

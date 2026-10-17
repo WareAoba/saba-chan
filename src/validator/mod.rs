@@ -2,8 +2,9 @@
 //!
 //! - `validate_setting_value`: module.toml의 SettingField 스키마를 기반으로
 //!   개별 설정값의 타입·범위·필수여부를 검증합니다.
-//! - `validate_all_settings`: 모듈의 모든 설정 필드를 한 번에 검증합니다.
+//! - `validate_settings_patch`: 부분 변경 요청에 들어 있는 설정 필드만 검증합니다.
 //! - `check_port_conflicts`: 실행 중인 인스턴스와 포트 충돌을 검사합니다.
+//! - `shift_ports_clear_of`: 새 인스턴스의 포트를 다른 인스턴스와 겹치지 않게 옮깁니다.
 
 use crate::instance::ServerInstance;
 use crate::supervisor::module_loader::SettingField;
@@ -14,11 +15,11 @@ use serde_json::Value;
 pub struct ValidationError {
     pub field: String,
     pub message: String,
-    #[allow(dead_code)] // 공개 API — 에러 종류 구분용
     pub error_type: ValidationErrorType,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ValidationErrorType {
     Required,
     TypeMismatch,
@@ -37,12 +38,11 @@ impl std::fmt::Display for ValidationError {
 pub struct PortConflict {
     /// 충돌하는 포트 번호
     pub port: u16,
-    /// 포트 종류 ("port", "rcon_port", "rest_port")
+    /// 포트 종류 ("port", "rest_port", 모듈 포트 설정 이름)
     pub port_type: String,
     /// 충돌하는 상대 인스턴스 이름
     pub conflicting_instance_name: String,
     /// 충돌하는 상대 인스턴스 ID
-    #[allow(dead_code)] // 공개 API — 충돌 진단 정보
     pub conflicting_instance_id: String,
     /// 상대 인스턴스의 포트 종류
     pub conflicting_port_type: String,
@@ -219,28 +219,20 @@ fn validate_string(field: &SettingField, value: &Value) -> Result<(), Validation
     }
 }
 
-/// 모듈의 전체 설정 필드를 한꺼번에 검증합니다.
-///
-/// # Arguments
-/// * `fields` - module.toml의 settings.fields 목록
-/// * `settings` - 사용자가 입력한 전체 설정값 (JSON 오브젝트)
-///
-/// # Returns
-/// 검증 오류 목록 (비어있으면 모두 유효)
-pub fn validate_all_settings(
+/// 부분 변경(PATCH) 검증: 요청에 들어 있는 필드만 검사한다.
+/// 보내지 않은 필수 필드는 기존 값을 유지하므로 오류가 아니다.
+/// 필수 필드를 `null`·빈 문자열로 지우려는 요청은 여전히 오류다.
+pub fn validate_settings_patch(
     fields: &[SettingField],
     settings: &serde_json::Map<String, Value>,
 ) -> Vec<ValidationError> {
-    let mut errors = Vec::new();
-
-    for field in fields {
-        let value = settings.get(&field.name);
-        if let Err(e) = validate_setting_value(field, value) {
-            errors.push(e);
-        }
-    }
-
-    errors
+    fields
+        .iter()
+        .filter_map(|field| {
+            let value = settings.get(&field.name)?;
+            validate_setting_value(field, Some(value)).err()
+        })
+        .collect()
 }
 
 /// 인스턴스의 포트가 다른 실행 중인 인스턴스와 충돌하는지 검사합니다.
@@ -305,11 +297,62 @@ pub fn check_port_conflicts(
     conflicts
 }
 
+/// 인스턴스가 쓰는 포트 `(설정 이름, 값)`: 인스턴스 필드(`port`, `rest_port`)와
+/// 모듈 설정 중 `port = true`로 표시된 값
+pub fn instance_ports(instance: &ServerInstance, port_fields: &[&str]) -> Vec<(String, u16)> {
+    let mut ports: Vec<(String, u16)> = [("port", instance.port), ("rest_port", instance.rest_port)]
+        .into_iter()
+        .filter_map(|(name, port)| port.map(|p| (name.to_string(), p)))
+        .collect();
+    for name in port_fields {
+        if crate::supervisor::module_loader::CORE_PORT_FIELDS.contains(name) {
+            continue;
+        }
+        let value = instance.module_settings.get(*name).and_then(|v| match v {
+            Value::Number(n) => n.as_u64(),
+            Value::String(s) => s.parse().ok(),
+            _ => None,
+        });
+        if let Some(port) = value.and_then(|p| u16::try_from(p).ok()) {
+            ports.push((name.to_string(), port));
+        }
+    }
+    ports
+}
+
+/// 포트를 옮기는 폭의 단위. 게임이 몰래 쓰는 옆 포트(예: 좀보이드 port+1)와도 겹치지 않게 넉넉히 둔다
+pub const PORT_SHIFT_STEP: u16 = 10;
+
+/// `taken`과 겹치는 포트가 있으면 인스턴스의 모든 포트를 같은 폭(`PORT_SHIFT_STEP`의 배수)만큼 옮긴다.
+/// 같은 게임의 포트 묶음이 함께 움직이므로 서로의 간격이 유지된다. 옮긴 폭을 돌려준다(안 옮겼으면 None).
+pub fn shift_ports_clear_of(instance: &mut ServerInstance, port_fields: &[&str], taken: &std::collections::HashSet<u16>) -> Option<u16> {
+    let ports = instance_ports(instance, port_fields);
+    let delta = (0..=u16::MAX / PORT_SHIFT_STEP).map(|k| k * PORT_SHIFT_STEP).find(|&delta| {
+        ports.iter().all(|(_, p)| p.checked_add(delta).is_some_and(|q| !taken.contains(&q)))
+    })?;
+    if delta == 0 {
+        return None;
+    }
+    for (name, port) in ports {
+        let moved = port + delta;
+        match name.as_str() {
+            "port" => instance.port = Some(moved),
+            "rest_port" => instance.rest_port = Some(moved),
+            _ => {}
+        }
+        // 인스턴스 필드는 같은 이름의 모듈 설정이 있을 때만 그것도 맞춘다
+        let core = crate::supervisor::module_loader::CORE_PORT_FIELDS.contains(&name.as_str());
+        if !core || instance.module_settings.contains_key(&name) {
+            instance.module_settings.insert(name, serde_json::json!(moved));
+        }
+    }
+    Some(delta)
+}
+
 /// 인스턴스에서 모듈이 실제 사용하는 포트만 수집합니다.
 ///
 /// `module_protocols`가 제공되면 해당 모듈의 `protocols_supported`를 참조하여
 /// - game port: 항상 포함
-/// - rcon_port: 모듈이 "rcon"을 지원할 때만 포함
 /// - rest_port: 모듈이 "rest"를 지원할 때만 포함
 fn collect_active_ports<'a>(
     instance: &'a ServerInstance,
@@ -317,17 +360,11 @@ fn collect_active_ports<'a>(
 ) -> Vec<(u16, &'a str)> {
     let protocols = module_protocols.and_then(|mp| mp.get(&instance.module_name));
     // 프로토콜 정보가 없으면 (하위 호환) 모든 포트를 포함
-    let supports_rcon = protocols.is_none_or(|p| p.iter().any(|s| s == "rcon"));
     let supports_rest = protocols.is_none_or(|p| p.iter().any(|s| s == "rest"));
 
     let mut ports = Vec::new();
     if let Some(port) = instance.port {
         ports.push((port, "port"));
-    }
-    if supports_rcon {
-        if let Some(rcon_port) = instance.rcon_port {
-            ports.push((rcon_port, "rcon_port"));
-        }
     }
     if supports_rest {
         if let Some(rest_port) = instance.rest_port {
@@ -354,6 +391,7 @@ mod tests {
             step: None,
             options: None,
             group: None,
+            port: false,
         }
     }
 
@@ -412,17 +450,36 @@ mod tests {
     }
 
     #[test]
+    fn new_instance_ports_move_together_past_taken_ones() {
+        let mut inst = ServerInstance::new("b", "zomboid");
+        inst.port = Some(16261);
+        inst.rest_port = Some(27015);
+        inst.module_settings.insert("port".into(), serde_json::json!(16261));
+        inst.module_settings.insert("steam_port1".into(), serde_json::json!(8766));
+        let fields = ["port", "steam_port1"];
+
+        let free: std::collections::HashSet<u16> = [25565].into();
+        assert_eq!(shift_ports_clear_of(&mut inst, &fields, &free), None, "nothing taken, nothing moves");
+
+        let taken: std::collections::HashSet<u16> = [16261, 8766, 27025].into();
+        assert_eq!(shift_ports_clear_of(&mut inst, &fields, &taken), Some(20), "+10 would hit rest 27025");
+        assert_eq!(inst.port, Some(16281));
+        assert_eq!(inst.rest_port, Some(27035));
+        assert_eq!(inst.module_settings["port"], serde_json::json!(16281));
+        assert_eq!(inst.module_settings["steam_port1"], serde_json::json!(8786));
+        assert!(!inst.module_settings.contains_key("rest_port"), "no module setting is invented for core fields");
+    }
+
+    #[test]
     fn test_port_conflict_detection() {
         let instance_a = ServerInstance::new("server-a", "minecraft");
         let mut instance_a = instance_a;
         instance_a.id = "aaa".to_string();
         instance_a.port = Some(25565);
-        instance_a.rcon_port = Some(25575);
 
         let mut instance_b = ServerInstance::new("server-b", "minecraft");
         instance_b.id = "bbb".to_string();
         instance_b.port = Some(25565); // 같은 포트!
-        instance_b.rcon_port = Some(25576);
 
         let running: std::collections::HashSet<String> = ["bbb".to_string()].into();
         let all = vec![instance_a.clone(), instance_b];
@@ -456,21 +513,19 @@ mod tests {
         let mut instance_a = ServerInstance::new("zomboid-1", "zomboid");
         instance_a.id = "aaa".to_string();
         instance_a.port = Some(16261);
-        instance_a.rcon_port = Some(27015);
         instance_a.rest_port = Some(8212);  // 잘못 설정된 기본값
 
         let mut instance_b = ServerInstance::new("zomboid-2", "zomboid");
         instance_b.id = "bbb".to_string();
         instance_b.port = Some(16262);
-        instance_b.rcon_port = Some(27016);
         instance_b.rest_port = Some(8212);  // 같은 rest_port (그러나 미사용)
 
         let running: std::collections::HashSet<String> = ["bbb".to_string()].into();
         let all = vec![instance_a.clone(), instance_b];
 
-        // 프로토콜 맵: zomboid는 rcon+stdin만 지원 (rest 없음)
+        // 프로토콜 맵: zomboid는 stdin만 지원 (rest 없음)
         let mut module_protocols = std::collections::HashMap::new();
-        module_protocols.insert("zomboid".to_string(), vec!["rcon".to_string(), "stdin".to_string()]);
+        module_protocols.insert("zomboid".to_string(), vec!["stdin".to_string()]);
 
         // rest_port 충돌이 무시되어야 함
         let conflicts = check_port_conflicts(&instance_a, &all, &running, Some(&module_protocols));
@@ -508,7 +563,6 @@ mod tests {
         let mut zomboid = ServerInstance::new("zomboid-1", "zomboid");
         zomboid.id = "aaa".to_string();
         zomboid.port = Some(16261);
-        zomboid.rcon_port = Some(27015);
         zomboid.rest_port = Some(8212);  // 잘못 설정된 기본값
 
         let mut palworld = ServerInstance::new("palworld-1", "palworld");
@@ -520,7 +574,7 @@ mod tests {
         let all = vec![zomboid.clone(), palworld];
 
         let mut module_protocols = std::collections::HashMap::new();
-        module_protocols.insert("zomboid".to_string(), vec!["rcon".to_string(), "stdin".to_string()]);
+        module_protocols.insert("zomboid".to_string(), vec!["stdin".to_string()]);
         module_protocols.insert("palworld".to_string(), vec!["rest".to_string()]);
 
         // zomboid가 대상: rest_port를 사용하지 않으므로 충돌 없어야 함
@@ -667,56 +721,34 @@ mod tests {
         assert!(validate_setting_value(&field, Some(&val)).is_ok());
     }
 
-    /// validate_all_settings — 복합 스키마 일괄 검증
     #[test]
-    fn test_validate_all_settings_batch() {
-        let mut port_field = make_field("port", "number");
-        port_field.required = Some(true);
-        port_field.min = Some(1024.0);
-        port_field.max = Some(65535.0);
-
-        let mut name_field = make_field("name", "text");
-        name_field.required = Some(true);
-
-        let mut mode_field = make_field("mode", "select");
-        mode_field.options = Some(vec!["survival".into(), "creative".into()]);
-
-        let optional_field = make_field("motd", "text");
-
-        let fields = vec![port_field, name_field, mode_field, optional_field];
-
-        // 올바른 설정
-        let mut settings = serde_json::Map::new();
-        settings.insert("port".into(), Value::Number(serde_json::Number::from(25565)));
-        settings.insert("name".into(), Value::String("My Server".into()));
-        settings.insert("mode".into(), Value::String("survival".into()));
-
-        let errors = validate_all_settings(&fields, &settings);
-        assert!(errors.is_empty(), "Valid settings should have no errors: {:?}", errors);
-
-        // port 누락 + mode 잘못됨
-        let mut bad_settings = serde_json::Map::new();
-        bad_settings.insert("name".into(), Value::String("Test".into()));
-        bad_settings.insert("mode".into(), Value::String("hardcore".into()));
-
-        let errors = validate_all_settings(&fields, &bad_settings);
-        assert_eq!(errors.len(), 2, "Should find 2 errors: {:?}", errors);
-        let error_fields: Vec<&str> = errors.iter().map(|e| e.field.as_str()).collect();
-        assert!(error_fields.contains(&"port"));
-        assert!(error_fields.contains(&"mode"));
+    fn patch_validation_only_checks_sent_fields() {
+        let mut players = make_field("max_players", "number");
+        players.required = Some(true);
+        players.min = Some(1.0);
+        players.max = Some(100.0);
+        let mut motd = make_field("motd", "text");
+        motd.required = Some(true);
+        let fields = vec![players, motd];
+        // 필수 필드 motd를 보내지 않아도 통과 (기존 값 유지)
+        let patch = serde_json::json!({ "max_players": 10 });
+        assert!(validate_settings_patch(&fields, patch.as_object().unwrap()).is_empty());
+        // 보낸 값은 여전히 검사하고, 필수 값을 지우려는 것도 막는다
+        let bad = serde_json::json!({ "max_players": 500, "motd": "" });
+        assert_eq!(validate_settings_patch(&fields, bad.as_object().unwrap()).len(), 2);
     }
 
-    /// 포트 충돌 — 같은 game port와 rcon_port 간 크로스 충돌
+    /// 포트 충돌 — 같은 game port와 rest_port 간 크로스 충돌
     #[test]
     fn test_port_conflict_cross_type() {
         let mut instance_a = ServerInstance::new("server-a", "minecraft");
         instance_a.id = "aaa".to_string();
-        instance_a.port = Some(25575); // game port가 다른 서버의 rcon port와 같음
+        instance_a.port = Some(25575); // game port가 다른 서버의 rest port와 같음
 
         let mut instance_b = ServerInstance::new("server-b", "minecraft");
         instance_b.id = "bbb".to_string();
         instance_b.port = Some(25565);
-        instance_b.rcon_port = Some(25575); // rcon_port가 A의 game port와 같음
+        instance_b.rest_port = Some(25575); // rest_port가 A의 game port와 같음
 
         let running: std::collections::HashSet<String> = ["bbb".to_string()].into();
         let all = vec![instance_a.clone(), instance_b];
@@ -725,7 +757,7 @@ mod tests {
         assert_eq!(conflicts.len(), 1);
         assert_eq!(conflicts[0].port, 25575);
         assert_eq!(conflicts[0].port_type, "port");
-        assert_eq!(conflicts[0].conflicting_port_type, "rcon_port");
+        assert_eq!(conflicts[0].conflicting_port_type, "rest_port");
     }
 
     /// 포트 충돌 — 3개 인스턴스와 다중 충돌
@@ -785,13 +817,11 @@ mod tests {
         let mut instance_a = ServerInstance::new("srv-a", "unknown_module");
         instance_a.id = "aaa".to_string();
         instance_a.port = Some(8000);
-        instance_a.rcon_port = Some(8001);
         instance_a.rest_port = Some(8002);
 
         let mut instance_b = ServerInstance::new("srv-b", "unknown_module");
         instance_b.id = "bbb".to_string();
         instance_b.port = Some(9000);
-        instance_b.rcon_port = Some(9001);
         instance_b.rest_port = Some(8002); // rest_port 충돌
 
         let running: std::collections::HashSet<String> = ["bbb".into()].into();

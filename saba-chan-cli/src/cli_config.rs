@@ -1,12 +1,11 @@
-//! CLI 전역 설정 — %APPDATA%/saba-chan/cli-settings.json
+//! CLI 전역 설정 — `config.json`의 `cli` 네임스페이스
 //!
-//! GUI 설정과 분리된 CLI 전용 설정 파일.
 //! language, autoStart, refreshInterval 등 CLI 고유 옵션을 관리합니다.
+//! 데몬보다 먼저 필요하므로(자동 시작 여부) 읽기는 파일에서 하고, 쓰기는 데몬
+//! `/api/config/client/cli`를 거친다. 데몬이 없을 때만 파일에 직접 쓴다.
 
-use saba_chan_updater_lib::constants;
+use saba_chan_updater_lib::config_file::ConfigFile;
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::PathBuf;
 
 /// CLI 전역 설정
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,28 +42,22 @@ impl Default for CliSettings {
 }
 
 impl CliSettings {
-    /// 설정 파일 경로
-    fn path() -> anyhow::Result<PathBuf> {
-        Ok(constants::resolve_data_dir().join("cli-settings.json"))
-    }
-
     /// 로드 (없으면 기본값)
     pub fn load() -> Self {
-        Self::path()
-            .ok()
-            .and_then(|p| fs::read_to_string(p).ok())
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
+        serde_json::from_value(ConfigFile::default_location().section("cli")).unwrap_or_default()
     }
 
-    /// 저장
+    /// 저장 — 데몬 API 우선, 데몬이 없으면 파일에 직접
     pub fn save(&self) -> anyhow::Result<()> {
-        let path = Self::path()?;
-        if let Some(dir) = path.parent() {
-            fs::create_dir_all(dir)?;
+        let value = serde_json::to_value(self)?;
+        let body = value.clone();
+        // blocking HTTP는 tokio 런타임 밖 스레드에서
+        let via_daemon = std::thread::spawn(move || crate::config::put_client_section("cli", &body))
+            .join()
+            .map_err(|_| anyhow::anyhow!("config save thread panicked"))?;
+        if via_daemon.is_err() {
+            ConfigFile::default_location().set_section("cli", value)?;
         }
-        let json = serde_json::to_string_pretty(self)?;
-        fs::write(path, json)?;
         Ok(())
     }
 
