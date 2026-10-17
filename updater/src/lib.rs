@@ -2021,39 +2021,6 @@ impl UpdateManager {
         Ok(())
     }
 
-    /// Windows에서 실행 중인 .exe를 rename하기 위한 재시도 로직
-    /// 프로세스가 파일을 해제할 때까지 지수 백오프로 최대 max_retries번 재시도
-    /// core zip에 포함된 공유 Python 모듈(i18n.py, daemon_rcon.py)을
-    /// %APPDATA%/saba-chan/modules/ 로 복사한다.
-    fn install_shared_modules(&self) {
-        const SHARED_MODULES: &[&str] = &["i18n.py", "daemon_rcon.py"];
-
-        let data_dir = Self::resolve_data_dir();
-        let modules_dir = data_dir.join("modules");
-        let _ = std::fs::create_dir_all(&modules_dir);
-
-        for name in SHARED_MODULES {
-            let src = self.install_root.join(name);
-            let dst = modules_dir.join(name);
-            if src.exists() {
-                match std::fs::copy(&src, &dst) {
-                    Ok(_) => {
-                        tracing::info!("[Updater] Shared module installed: {}", name);
-                        let _ = std::fs::remove_file(&src);
-                    }
-                    Err(e) => {
-                        tracing::warn!("[Updater] Failed to install shared module {}: {}", name, e);
-                    }
-                }
-            }
-        }
-    }
-
-    /// 데이터 디렉토리 경로 (설정·모듈·확장 등) — constants 모듈에 위임
-    fn resolve_data_dir() -> PathBuf {
-        crate::constants::resolve_data_dir()
-    }
-
     fn rename_with_retry(from: &Path, to: &Path, max_retries: u32) -> Result<()> {
         // 기존 백업 파일이 있으면 먼저 삭제 시도
         if to.exists() {
@@ -2138,11 +2105,7 @@ impl UpdateManager {
 
         std::fs::remove_file(staged).ok();
         tracing::info!("[Updater] Binary '{}' updated", binary_name);
-
-        // core 업데이트 시 공유 모듈(i18n.py, daemon_rcon.py)도 APPDATA로 설치
-        if binary_name.contains("core") {
-            self.install_shared_modules();
-        }
+        // 공유 모듈(i18n.py, daemon_rcon.py)은 새 데몬이 자기 안에 든 판으로 맞춘다 (plugin::ensure_shared_modules)
 
         Ok(())
     }

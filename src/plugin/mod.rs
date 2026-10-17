@@ -95,6 +95,26 @@ fn import_guard_dir() -> Option<std::path::PathBuf> {
     Some(dir)
 }
 
+/// 데몬에 넣어 둔 공용 Python 유틸리티. 모듈 폴더에 이것과 다른 판이 있으면 덮어쓴다.
+/// 설치·업데이트 경로와 상관없이(개발 빌드를 복사만 해도) 모듈이 데몬과 같은 판을 쓴다 (C7)
+const SHARED_MODULES: [(&str, &str); 2] = [
+    ("i18n.py", include_str!("../../modules/i18n.py")),
+    ("daemon_rcon.py", include_str!("../../modules/daemon_rcon.py")),
+];
+
+/// 공용 유틸리티를 `dir`에 맞춰 둔다. 내용이 같으면 쓰지 않는다
+pub fn ensure_shared_modules(dir: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    for (name, content) in SHARED_MODULES {
+        let file = dir.join(name);
+        if std::fs::read_to_string(&file).ok().as_deref() != Some(content) {
+            std::fs::write(&file, content)?;
+            tracing::info!("Shared module refreshed: {}", file.display());
+        }
+    }
+    Ok(())
+}
+
 /// 기본 플러그인 타임아웃 (초)
 pub const DEFAULT_PLUGIN_TIMEOUT_SECS: u64 = 120;
 
@@ -168,6 +188,12 @@ async fn run_plugin_inner(
         .env("PYTHONUNBUFFERED", "1")
         .envs(daemon_env());
 
+    // PYTHONPATH 경로 리스트 구분자 (Windows: ';', Unix: ':')
+    #[cfg(windows)]
+    const PYPATH_SEP: char = ';';
+    #[cfg(not(windows))]
+    const PYPATH_SEP: char = ':';
+    let mut paths: Vec<String> = Vec::new();
     // 활성화된 익스텐션 목록을 Python에 전달 (비활성 익스텐션 import 방지용)
     let extensions_dir = resolve_extensions_dir();
     if extensions_dir.is_dir() {
@@ -175,12 +201,6 @@ async fn run_plugin_inner(
             .section("extensions")
             .get("enabled")
             .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok());
-        // PYTHONPATH 경로 리스트 구분자 (Windows: ';', Unix: ':')
-        #[cfg(windows)]
-        const PYPATH_SEP: char = ';';
-        #[cfg(not(windows))]
-        const PYPATH_SEP: char = ':';
-
         // 목록이 없으면 활성 익스텐션도 없다 (ExtensionManager와 같은 규칙)
         cmd.env("SABA_ENABLED_EXTENSIONS", enabled.unwrap_or_default().join(","));
 
@@ -192,17 +212,24 @@ async fn run_plugin_inner(
         if let Some(guard) = import_guard_dir() {
             pypath = format!("{}{}{}", guard.display(), PYPATH_SEP, pypath);
         }
-
-        // 공용 모듈 유틸리티 경로 (daemon_rcon.py, i18n.py 등)
-        let modules_lib_dir = resolve_modules_dir();
-        if modules_lib_dir.is_dir() {
-            pypath = format!("{}{}{}", pypath, PYPATH_SEP, modules_lib_dir.display());
+        paths.push(pypath);
+    }
+    // 공용 모듈 유틸리티 경로 (daemon_rcon.py, i18n.py 등). 익스텐션 폴더가 없어도 필요하다
+    static SHARED: std::sync::Once = std::sync::Once::new();
+    let modules_lib_dir = resolve_modules_dir();
+    SHARED.call_once(|| {
+        if let Err(e) = ensure_shared_modules(&modules_lib_dir) {
+            tracing::warn!("Cannot write shared Python modules to {}: {}", modules_lib_dir.display(), e);
         }
-
+    });
+    if modules_lib_dir.is_dir() {
+        paths.push(modules_lib_dir.display().to_string());
+    }
+    if !paths.is_empty() {
         if let Ok(existing) = std::env::var("PYTHONPATH") {
-            pypath = format!("{}{}{}", pypath, PYPATH_SEP, existing);
+            paths.push(existing);
         }
-        cmd.env("PYTHONPATH", &pypath);
+        cmd.env("PYTHONPATH", paths.join(&PYPATH_SEP.to_string()));
     }
 
     apply_creation_flags(&mut cmd);
@@ -308,6 +335,18 @@ fn parse_plugin_output(stdout: &str) -> serde_json::Result<Value> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn shared_modules_are_written_and_refreshed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("modules");
+        ensure_shared_modules(&dir).unwrap();
+        std::fs::write(dir.join("i18n.py"), "old").unwrap();
+        ensure_shared_modules(&dir).unwrap();
+        for (name, content) in SHARED_MODULES {
+            assert_eq!(std::fs::read_to_string(dir.join(name)).unwrap(), content);
+        }
+    }
 
     /// 가드는 활성 목록에 없는 `extensions.<이름>` import만 막는다 (`-`와 `_`는 같다)
     #[test]
