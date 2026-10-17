@@ -4,9 +4,9 @@ saba-chan Daemon RCON Bridge
 Lightweight helper for Python lifecycle modules to execute RCON commands
 via the Rust daemon's HTTP API rather than opening raw TCP sockets.
 
-The Rust daemon at ``/api/instance/:id/rcon`` already has a robust RCON
-client with retry logic, connection pooling, and proper error handling.
-This module delegates to it.
+RCON itself is off on every server (security policy). The daemon endpoint
+``/api/instance/:id/rcon`` keeps its name for compatibility and sends the
+command to the server console (stdin), returning the console output.
 
 Usage (one-shot, replaces extensions.rcon.rcon_command):
     from daemon_rcon import daemon_rcon_command
@@ -128,10 +128,10 @@ def daemon_rcon_command(instance_id, command, *, rcon_port=None, rcon_password=N
     if result.get("error"):
         raise ConnectionError(f"RCON failed: {result['error']}")
 
-    # Extract response text from data.data or data itself
+    # 데몬은 data.response 에 콘솔 출력을 담는다
     response_data = result.get("data")
     if isinstance(response_data, dict):
-        return response_data.get("data", str(response_data))
+        return str(response_data.get("response", response_data.get("data", "")))
     if response_data is not None:
         return str(response_data)
     return result.get("message", "")
@@ -211,85 +211,18 @@ class DaemonRconClient:
 # ─── Legacy-compatible one-shot (signature matches extensions.rcon.rcon_command) ──
 
 def rcon_command(host, port, password, command, timeout=5, *, instance_id=None):
-    """Legacy-compatible one-shot RCON via daemon.
+    """Legacy-compatible one-shot command (signature matches extensions.rcon.rcon_command).
 
-    If instance_id is not provided, falls back to a direct RCON connection
-    as a last resort (for backward compatibility during transition).
-    When instance_id is available, delegates to the daemon.
-
-    Args:
-        host: RCON server host (ignored when using daemon).
-        port: RCON server port.
-        password: RCON password.
-        command: Command string to execute.
-        timeout: Timeout in seconds.
-        instance_id: Server instance ID for daemon delegation.
-
-    Returns:
-        str: Response text.
+    saba-chan keeps RCON off on every game server for security, so this never opens an RCON
+    socket. With instance_id the daemon sends the command to the server console (stdin);
+    without one there is no command path and ConnectionError is raised.
 
     Raises:
         ConnectionError: If communication fails.
     """
     if instance_id:
-        return daemon_rcon_command(
-            instance_id, command,
-            rcon_port=port, rcon_password=password, timeout=timeout,
-        )
-
-    # Fallback: direct socket RCON (same implementation as old rcon.py)
-    # This path is only used when instance_id is not available
-    import socket as _socket
-    import struct as _struct
-    import random as _random
-
-    SERVERDATA_AUTH = 3
-    SERVERDATA_EXECCOMMAND = 2
-
-    def _make_packet(req_id, pkt_type, payload):
-        body = _struct.pack("<ii", req_id, pkt_type) + payload + b"\x00\x00"
-        return _struct.pack("<i", len(body)) + body
-
-    def _read_packet(sock):
-        raw_size = b""
-        while len(raw_size) < 4:
-            chunk = sock.recv(4 - len(raw_size))
-            if not chunk:
-                return None
-            raw_size += chunk
-        size = _struct.unpack("<i", raw_size)[0]
-        data = b""
-        while len(data) < size:
-            chunk = sock.recv(size - len(data))
-            if not chunk:
-                return None
-            data += chunk
-        req_id = _struct.unpack("<i", data[:4])[0]
-        pkt_type = _struct.unpack("<i", data[4:8])[0]
-        payload = data[8:-2] if len(data) > 10 else b""
-        return (req_id, pkt_type, payload)
-
-    sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
-    sock.settimeout(timeout)
-    try:
-        sock.connect((host, int(port)))
-
-        # Auth
-        req_id = _random.randint(1, 2147483647)
-        sock.sendall(_make_packet(req_id, SERVERDATA_AUTH, password.encode("utf-8")))
-        pkt = _read_packet(sock)
-        if pkt is None or pkt[0] == -1:
-            raise ConnectionError("RCON authentication failed")
-
-        # Command
-        req_id = _random.randint(1, 2147483647)
-        sock.sendall(_make_packet(req_id, SERVERDATA_EXECCOMMAND, command.encode("utf-8")))
-        pkt = _read_packet(sock)
-        if pkt is None:
-            raise ConnectionError("RCON command returned no response")
-        return pkt[2].decode("utf-8", errors="replace")
-    finally:
-        sock.close()
+        return daemon_rcon_command(instance_id, command, timeout=timeout)
+    raise ConnectionError("RCON is disabled in saba-chan; commands go to the server console through the daemon")
 
 
 def daemon_stdin_command(instance_id, command, *, timeout=10):

@@ -281,143 +281,21 @@ pub async fn execute_rcon_command(
         }
     };
 
-    // 관리 모드면 stdin으로도 보낼 수 있다. RCON을 지원하는 게임은 RCON을 먼저 쓴다 (서버의 답이 돌아온다).
-    // RCON이 안 되면 (아직 켜지는 중 등) stdin으로 보낸다. GUI·디스코드·모듈 역호출이 모두 이 엔드포인트를 쓴다.
+    // 명령은 언제나 stdin으로 보낸다 (콘솔 출력을 잠깐 모아 답으로 돌려준다). RCON은 보안상 쓰지 않는다.
+    // GUI·디스코드·모듈 역호출이 모두 이 엔드포인트를 쓴다. 경로 이름(`/rcon`)은 예전 호출자와의 호환용이다.
     let stdin_ok = supervisor.routes_commands_to_stdin(&id).await;
-    let rcon_supported = supervisor
-        .module_loader
-        .get_module(&instance.module_name)
-        .ok()
-        .and_then(|m| m.metadata.protocols_supported)
-        .is_some_and(|p| p.iter().any(|s| s == "rcon"));
-    if stdin_ok && !rcon_supported {
-        drop(supervisor);
+    drop(supervisor);
+    if stdin_ok {
         return via_stdin(&state, &id, &payload).await;
     }
-
-    // 모듈에서 기본값 가져오기
-    let (default_rcon_port, _default_rest_port, module_path) =
-        match supervisor.module_loader.get_module(&instance.module_name) {
-            Ok(module) => (
-                module.metadata.default_rcon_port(),
-                module.metadata.default_rest_port(),
-                Some(module.entry_path()),
-            ),
-            Err(_) => (25575, 8212, None),
-        };
-
-    // 게임 설정 파일에서 실제 credential을 읽어옴
-    let instance_dir = supervisor.instance_store.instance_dir(&id);
-    let working_dir = instance.working_dir.clone()
-        .unwrap_or_else(|| instance_dir.join("server").to_string_lossy().to_string());
-
-    // supervisor lock 해제 — run_plugin 전에 release
-    drop(supervisor);
-
-    let file_credentials = instance_credentials(&state, &id, module_path.as_deref(), &working_dir).await;
-
-    // RCON 커맨드 추출
-    let command = match payload.get("command").and_then(|v| v.as_str()) {
-        Some(cmd) => cmd,
-        None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "error": "Missing 'command' field"
-                })),
-            )
-                .into_response();
-        }
-    };
-
-    // RCON 정보 — 게임 설정 파일에서만 읽음
-    let rcon_host = "127.0.0.1".to_string();
-
-    let rcon_port = file_credentials.as_ref()
-        .and_then(|c| c.get("rcon_port"))
-        .and_then(|v| v.as_u64())
-        .map(|p| p as u16)
-        .or(instance.rcon_port)
-        .unwrap_or(default_rcon_port);
-
-    let rcon_password = match file_credentials.as_ref()
-        .and_then(|c| c.get("rcon_password"))
-        .and_then(|v| v.as_str()) {
-        Some(pass) => pass.to_string(),
-        None if stdin_ok => return via_stdin(&state, &id, &payload).await,
-        None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "error": "RCON password not configured (not found in game config file)"
-                })),
-            )
-                .into_response();
-        }
-    };
-
-    // RCON 풀을 통해 명령어 실행 (연결 재사용, 실패 시 자동 재연결)
-    let rcon_timeout = std::time::Duration::from_secs(5);
-    let rcon_pool = state.rcon_pool.clone();
-    let instance_id = id.clone();
-    let command_owned = command.to_string();
-
-    // RCON은 동기 I/O이므로 spawn_blocking으로 실행
-    let result = tokio::task::spawn_blocking(move || {
-        rcon_pool.execute(
-            &instance_id,
-            &rcon_host,
-            rcon_port,
-            &rcon_password,
-            &command_owned,
-            rcon_timeout,
-        )
-    })
-    .await;
-
-    match result {
-        Ok(Ok(response_text)) => {
-            let cmd_str = payload.get("command").and_then(|v| v.as_str()).unwrap_or("");
-            (
-                StatusCode::OK,
-                Json(json!({
-                    "success": true,
-                    "data": { "response": response_text, "executed": cmd_str },
-                    "error": null,
-                    "command": cmd_str,
-                    "host": "127.0.0.1",
-                    "port": rcon_port,
-                    "protocol": "rcon"
-                })),
-            )
-                .into_response()
-        }
-        Ok(Err(e)) => {
-            // 비밀번호·포트가 바뀌었을 수 있다 — 다음 명령은 설정 파일을 다시 읽는다
-            state.credentials.invalidate(&id);
-            // 보내지도 못했을 때만 stdin으로 (이미 간 명령을 또 보내면 두 번 실행된다)
-            if stdin_ok && !matches!(e, crate::protocol::ProtocolError::CommandError(_)) {
-                tracing::debug!("RCON failed for '{}' ({}), sending via stdin", id, e);
-                return via_stdin(&state, &id, &payload).await;
-            }
-            let error_msg = format!("RCON execution failed: {}", e);
-            tracing::warn!("{}", error_msg);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": error_msg })),
-            )
-                .into_response()
-        }
-        Err(e) => {
-            let error_msg = format!("RCON task failed: {}", e);
-            tracing::error!("{}", error_msg);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": error_msg })),
-            )
-                .into_response()
-        }
-    }
+    (
+        StatusCode::CONFLICT,
+        Json(json!({
+            "error": "no_command_path",
+            "message": format!("'{}' has no console to send commands to: start it from saba-chan (managed) to run commands", instance.name),
+        })),
+    )
+        .into_response()
 }
 
 /// 관리 프로세스의 stdin으로 보낸다. 서버의 답은 콘솔로만 나오므로, 보낸 뒤 잠깐 새로 찍힌 줄을

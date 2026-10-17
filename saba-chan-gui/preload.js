@@ -75,10 +75,6 @@ contextBridge.exposeInMainWorld('api', {
     updaterLastResult: (opts) => ipcRenderer.invoke('updater:lastResult', opts),
     updaterGetConfig: () => ipcRenderer.invoke('updater:getConfig'),
     updaterSetConfig: (config) => ipcRenderer.invoke('updater:setConfig', config),
-    // Mock Server (테스트용)
-    mockServerStart: (options) => ipcRenderer.invoke('mockServer:start', options),
-    mockServerStop: () => ipcRenderer.invoke('mockServer:stop'),
-    mockServerStatus: () => ipcRenderer.invoke('mockServer:status'),
     // Updater events (from main process background checker)
     onUpdatesAvailable: (callback) => ipcRenderer.on('updates:available', (event, data) => callback(data)),
     onUpdateCompleted: (callback) => ipcRenderer.on('updates:completed', (event, data) => callback(data)),

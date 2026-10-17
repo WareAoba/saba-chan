@@ -1,14 +1,11 @@
 use super::{CommandType, HttpMethod, ProtocolError, ServerCommand, ServerResponse};
-use crate::protocol::rcon::RconClient;
 use crate::protocol::rest::RestClient;
 use std::time::Duration;
-use serde_json::json;
 
 /// 통합 프로토콜 클라이언트
-/// RCON과 REST API를 모두 지원하며, CommandType에 따라 선택적으로 사용
+/// REST API (RCON은 보안상 쓰지 않는다)
 #[derive(Debug)]
 pub struct ProtocolClient {
-    rcon: Option<RconClient>,
     rest: Option<RestClient>,
     command_type: CommandType,
 }
@@ -18,7 +15,6 @@ impl ProtocolClient {
     /// REST 클라이언트만 생성
     pub fn new_rest(rest_host: String, rest_port: u16, use_https: bool) -> Self {
         Self {
-            rcon: None,
             rest: Some(RestClient::new(rest_host, rest_port, use_https)),
             command_type: CommandType::Rest,
         }
@@ -40,39 +36,11 @@ impl ProtocolClient {
         Ok(())
     }
 
-    /// 명령어 실행 (설정된 프로토콜에 따라 자동 선택)
+    /// 명령어 실행
     pub fn execute(&mut self, cmd: ServerCommand) -> Result<ServerResponse, ProtocolError> {
         match self.command_type {
-            CommandType::Rcon => self.execute_rcon(cmd),
             CommandType::Rest => self.execute_rest(cmd),
-            CommandType::Both => {
-                // RCON 먼저 시도
-                match self.execute_rcon(cmd.clone()) {
-                    Ok(response) => Ok(response),
-                    Err(e) => {
-                        tracing::warn!("RCON failed, attempting REST: {}", e);
-                        // RCON 실패 시 REST로 폴백
-                        self.execute_rest(cmd)
-                    }
-                }
-            }
         }
-    }
-
-    /// RCON으로 명령어 실행
-    fn execute_rcon(&mut self, cmd: ServerCommand) -> Result<ServerResponse, ProtocolError> {
-        if let Some(rcon) = &mut self.rcon {
-            if let Some(command) = cmd.command {
-                let response_text = rcon.execute_command(&command)?;
-                return Ok(ServerResponse {
-                    success: true,
-                    data: Some(json!({ "response": response_text, "executed": command })),
-                    error: None,
-                });
-            }
-        }
-
-        Err(ProtocolError::CommandError("No command provided for RCON".to_string()))
     }
 
     /// REST API로 명령어 실행

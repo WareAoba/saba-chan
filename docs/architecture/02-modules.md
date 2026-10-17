@@ -76,6 +76,8 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `default` | String | GUI로 전달만 함 (`ProtocolsInfo`) |
 | `interaction_mode` | String | `console` 또는 `commands`. GUI와 봇이 시작 방식·UI 결정에 사용 (데몬은 해석하지 않음) |
 
+> **RCON 정책**: 게임 명령은 stdin으로 보낸다. 기본인 관리 모드(saba-runner)에서는 RCON을 끈다(`enable_rcon=false`, `D:src/ipc/handlers/instance.rs:869-880`; 데몬이 시작 설정에 `managed: true`를 넣고 모듈이 그에 맞춘다, `D:src/supervisor/mod.rs:1336`). `method = "rcon"`인 명령도 관리 모드면 stdin으로 간다(`D:src/commands/mod.rs:13`, `D:src/ipc/handlers/command.rs:284-293, 400`). RCON은 관리하지 않는 모드(옵션)에서만 쓰는 예비 경로다.
+
 #### `[config]` (`ConfigSection` `:316-334`, `#[serde(flatten)] _extra`로 나머지 키 흡수)
 | 키 | 타입 | 사용처 |
 |---|---|---|
@@ -380,7 +382,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 - **managed와 RCON 정책 충돌**:
   - minecraft는 managed 모드에서 `enable-rcon=false`를 강제한다 (`M:minecraft/lifecycle.py:971-1010`, `:1096-1097`).
   - zomboid도 managed 모드에서는 RCON을 선택 사항(기본 비활성)으로 둔다 (`M:zomboid/lifecycle.py:784-830`).
-  - 그런데 두 모듈의 `[[commands.fields]]`는 전부 `method = "rcon"`이다. 그래서 GUI 명령 버튼은 `/rcon`을 호출하고, managed 모드에서 실패한다.
+  - 두 모듈의 `[[commands.fields]]`는 `method = "rcon"`이지만, 관리 모드에서는 데몬 명령 경로가 stdin으로 보낸다(위 RCON 정책). 그래서 더 이상 실패하지 않는다.
 - `SupervisorError`(`error.rs`)는 HTTP 상태 코드 매핑을 갖추고 있지만 `#[allow(dead_code)]`이고 **쓰이지 않는다**. 모든 핸들러가 `anyhow` + 수동 JSON을 쓴다.
 
 ### 3.6 크래시 감지와 자동 재시작
