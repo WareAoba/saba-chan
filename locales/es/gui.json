@@ -1045,5 +1045,13 @@
     "extra_placeholder": "p. ej. -players=16 -useperfthreads",
     "unknown_args": "Los argumentos sin ajuste correspondiente se pasan tal cual: {{args}}",
     "invalid_format": "Formato no válido."
+  },
+  "activity": {
+    "empty": "Todavía no se ha ejecutado ningún comando de servidor.",
+    "expand": "Mostrar consola del daemon",
+    "collapse": "Ocultar consola del daemon",
+    "console_title": "Consola del daemon",
+    "console_empty": "Aún no hay registros del daemon.",
+    "console_failed": "No se pudieron cargar los registros del daemon."
   }
 }

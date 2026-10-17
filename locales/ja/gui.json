@@ -1045,5 +1045,13 @@
     "extra_placeholder": "例: -players=16 -useperfthreads",
     "unknown_args": "設定にない引数はそのまま渡します: {{args}}",
     "invalid_format": "形式が正しくありません。"
+  },
+  "activity": {
+    "empty": "まだ実行されたサーバーコマンドはありません。",
+    "expand": "デーモンコンソールを開く",
+    "collapse": "デーモンコンソールを閉じる",
+    "console_title": "デーモンコンソール",
+    "console_empty": "デーモンのログはまだありません。",
+    "console_failed": "デーモンのログを読み込めませんでした。"
   }
 }

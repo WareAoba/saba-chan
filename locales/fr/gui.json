@@ -1045,5 +1045,13 @@
     "extra_placeholder": "ex. -players=16 -useperfthreads",
     "unknown_args": "Les arguments sans paramètre correspondant sont transmis tels quels : {{args}}",
     "invalid_format": "Format invalide."
+  },
+  "activity": {
+    "empty": "Aucune commande serveur n'a encore été exécutée.",
+    "expand": "Afficher la console du démon",
+    "collapse": "Masquer la console du démon",
+    "console_title": "Console du démon",
+    "console_empty": "Pas encore de journaux du démon.",
+    "console_failed": "Impossible de charger les journaux du démon."
   }
 }

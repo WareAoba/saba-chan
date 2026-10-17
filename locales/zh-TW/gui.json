@@ -1045,5 +1045,13 @@
     "extra_placeholder": "例如：-players=16 -useperfthreads",
     "unknown_args": "沒有對應設定的參數將原樣傳遞：{{args}}",
     "invalid_format": "格式無效。"
+  },
+  "activity": {
+    "empty": "尚未執行任何伺服器指令。",
+    "expand": "展開常駐程式主控台",
+    "collapse": "收合常駐程式主控台",
+    "console_title": "常駐程式主控台",
+    "console_empty": "目前沒有常駐程式日誌。",
+    "console_failed": "無法載入常駐程式日誌。"
   }
 }

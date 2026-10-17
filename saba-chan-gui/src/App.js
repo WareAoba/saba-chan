@@ -14,6 +14,7 @@ import {
     Toast,
 } from './components';
 import { DiscordPage } from './components/discord/DiscordPage';
+import { ActivityBar, activityAvailable } from './components/shell/ActivityBar';
 import { AppBar } from './components/shell/AppBar';
 import { ServersPage } from './components/servers/ServersPage';
 import { TooltipProvider } from './components/ui/Tooltip';
@@ -777,6 +778,8 @@ function App() {
                             </div>
                         )}
                     </div>
+
+                    {activityAvailable() && <ActivityBar />}
 
                     {/* Context Menu */}
                     {contextMenu && (

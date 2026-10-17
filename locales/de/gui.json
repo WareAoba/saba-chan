@@ -1045,5 +1045,13 @@
     "extra_placeholder": "z. B. -players=16 -useperfthreads",
     "unknown_args": "Argumente ohne passende Einstellung werden unverändert übergeben: {{args}}",
     "invalid_format": "Ungültiges Format."
+  },
+  "activity": {
+    "empty": "Es wurden noch keine Serverbefehle ausgeführt.",
+    "expand": "Daemon-Konsole anzeigen",
+    "collapse": "Daemon-Konsole ausblenden",
+    "console_title": "Daemon-Konsole",
+    "console_empty": "Noch keine Daemon-Logs.",
+    "console_failed": "Daemon-Logs konnten nicht geladen werden."
   }
 }

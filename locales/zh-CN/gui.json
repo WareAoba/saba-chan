@@ -1045,5 +1045,13 @@
     "extra_placeholder": "例如：-players=16 -useperfthreads",
     "unknown_args": "没有对应设置的参数将原样传递：{{args}}",
     "invalid_format": "格式无效。"
+  },
+  "activity": {
+    "empty": "还没有执行过服务器命令。",
+    "expand": "展开守护进程控制台",
+    "collapse": "收起守护进程控制台",
+    "console_title": "守护进程控制台",
+    "console_empty": "暂无守护进程日志。",
+    "console_failed": "无法加载守护进程日志。"
   }
 }

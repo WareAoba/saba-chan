@@ -1074,5 +1074,13 @@
     "extra_placeholder": "예: -players=16 -useperfthreads",
     "unknown_args": "설정에 없는 인자는 그대로 넘겨요: {{args}}",
     "invalid_format": "잘못된 형식입니다."
+  },
+  "activity": {
+    "empty": "아직 실행된 서버 명령이 없어요.",
+    "expand": "데몬 콘솔 펼치기",
+    "collapse": "데몬 콘솔 접기",
+    "console_title": "데몬 콘솔",
+    "console_empty": "데몬 로그가 아직 없어요.",
+    "console_failed": "데몬 로그를 불러오지 못했어요."
   }
 }
