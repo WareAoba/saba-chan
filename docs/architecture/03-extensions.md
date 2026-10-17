@@ -1,6 +1,6 @@
 # 03. 익스텐션(= 플러그인) 시스템 — 코드 기준 분석
 
-> 기준: saba-chan 저장소 (daemon, GUI, CLI, discord_bot) + saba-chan-extensions 저장소 (docker, steamcmd, music, ue4_ini).
+> 기준: saba-chan 저장소 (daemon, GUI, CLI) + saba-chan-extensions 저장소 (steamcmd, ue4_ini).
 > 모든 내용은 코드에서 직접 추출했다. README / docs / copilot-instructions는 참고하지 않았다(오래된 문서로 간주).
 > 경로 약어: `ext/` = `saba-chan/src/extension/mod.rs`, `plg/` = `saba-chan/src/plugin/mod.rs`, `EXT/` = `saba-chan-extensions/`.
 
@@ -8,6 +8,8 @@
 
 
 > **2026-10-17 L3 이후**: 업데이트·모듈 목록·익스텐션 목록은 모두 릴레이의 서명된 릴리즈 manifest 하나에서 나온다. GitHub 업데이트 경로(`github.rs`, `api_base_url`, `github_owner`/`github_repo`, `include_prerelease`, 익스텐션 `manifest_url`, module.toml `[update]`, modules·extensions 저장소의 릴리즈 워크플로)는 없다. 근거 커밋: saba-chan 65e1763·8b840f7·60768a7, modules a26bdeb, extensions 301ff2c.
+>
+> **현재 코드 기준 요약**: 로컬 Discord 봇(`discord_bot/`), docker·music 익스텐션, `ext_process` API는 모두 없어졌다. 익스텐션 저장소에는 `steamcmd`, `ue4_ini` 두 개만 있다. 활성 목록과 익스텐션 글로벌 설정은 `<data_dir>/config.json`의 `extensions.enabled`, `extensions.settings`에 저장된다.
 
 ## 0. 용어 정리: "plugin" vs "extension" (프로젝트 오너 프레이밍 대비)
 
@@ -23,166 +25,154 @@
 
 | 코드상 이름 | 실제 의미 | 근거 |
 |---|---|---|
-| `crate::plugin` (`src/plugin/mod.rs`) | **개념이 아니라 실행기**다. "Python 파일 하나를 `python <file> <function>`로 띄우고 stdin JSON → stdout JSON을 주고받는 러너"일 뿐이다. **module의 `lifecycle.py`와 extension hook이 둘 다** 이 러너를 쓴다. | `plg/:77-258`. module 호출 예: `supervisor/mod.rs:489,717,830…`. extension 호출: `ext/:1174,1277` |
-| `crate::extension` (`src/extension/mod.rs`) | 오너가 말하는 "plugin". manifest 기반이고, hook, GUI/CLI 슬롯, instance_fields, config_fields를 가진다. | `ext/:172-209` |
-| `ipc::ExtensionInfo` / `ExtensionListResponse { modules }` | 이름은 extension이지만 **실제로는 module 정보**다(명명 혼동). | `src/ipc/mod.rs:261-290`, `handlers/server.rs:10,274` |
-| GUI `selectedExtension` | AddServer 모달에서 **module 이름**을 담는 상태다. | `saba-chan-gui/src/components/Modals/AddInstanceNewServer.js:24,79` |
-| `discord_bot/extensions/*.js` | Discord 봇 내부 기능 파일(music.js, rps.js 등)이다. daemon extension 시스템과 **별개인 제3의 "extension" 개념**이다. | `saba-chan/discord_bot/extensions/` |
-| updater의 extension 업데이트 | 릴리즈 manifest의 `ext-<id>` 항목. 데몬의 익스텐션 목록(`fetch_remote`)과 같은 manifest를 본다. | `updater/src/lib.rs:469-530`, `src/extension/mod.rs:1268` |
+| `crate::plugin` (`src/plugin/mod.rs`) | **개념이 아니라 실행기**다. "Python 파일 하나를 `python <file> <function>`로 띄우고 stdin JSON → stdout JSON을 주고받는 러너"일 뿐이다. **module의 `lifecycle.py`와 extension hook이 둘 다** 이 러너를 쓴다. | `plg/:168-317`. module 호출 예: `supervisor/mod.rs:598,881,982…`. extension 호출: `ext/:1583` |
+| `crate::extension` (`src/extension/mod.rs`) | 오너가 말하는 "plugin". manifest 기반이고, hook, 명령, GUI/CLI 슬롯, instance_fields, config_fields를 가진다. | `ext/:221-271` |
+| `ipc::ExtensionInfo` / `ExtensionListResponse { modules }` | 이름은 extension이지만 **실제로는 module 정보**다(명명 혼동). | `src/ipc/mod.rs:244-292`, `handlers/server.rs:10,282-335` |
+| GUI `selectedExtension` | AddServer 모달에서 **module 이름**을 담는 상태다. | `saba-chan-gui/src/components/Modals/AddInstanceNewServer.js:24,69` |
+| ~~`discord_bot/extensions/*.js`~~ | → 해결: 로컬 Discord 봇이 저장소에서 빠져 제3의 "extension" 개념도 없다. | — |
+| updater의 extension 업데이트 | 릴리즈 manifest의 `ext-<id>` 항목. 로컬 버전은 `extensions/*/manifest.json`의 id·version으로 읽는다. 데몬의 익스텐션 목록(`fetch_remote`)과 같은 manifest를 본다. | `updater/src/lib.rs:279-282,589-601`, `src/extension/mod.rs:1283` |
 
-**결론**: 코드에서 "plugin"과 "extension"은 서로 다른 계층이다. `plugin`은 Python 프로세스 실행 프로토콜이고, `extension`은 그 위의 확장 시스템이다. 오너가 말하는 "plugin"은 코드의 `extension`에 해당하고, 코드의 `plugin` 모듈은 module과 extension이 공유하는 하위 런타임이다. `plg/:263-284`의 `run_extension`/`run_extension_with_progress`는 `extensions/<name>.py` 단일 파일이라는 옛 레이아웃을 가정한 `#[allow(dead_code)]` 잔재다.
+**결론**: 코드에서 "plugin"과 "extension"은 서로 다른 계층이다. `plugin`은 Python 프로세스 실행 프로토콜이고, `extension`은 그 위의 확장 시스템이다. 오너가 말하는 "plugin"은 코드의 `extension`에 해당하고, 코드의 `plugin` 모듈은 module과 extension이 공유하는 하위 런타임이다. 옛 레이아웃용 `run_extension`/`run_extension_with_progress`는 삭제되었다.
 
 ---
 
 ## 1. Extension manifest.json 스키마 (Rust 역직렬화 기준)
 
-### 1.1 `ExtensionManifest` (`ext/:172-209`)
+### 1.1 `ExtensionManifest` (`ext/:221-271`)
 
 | key | Rust 타입 | 필수/기본값 | 코드에서 실제 사용 여부 |
 |---|---|---|---|
-| `id` | `String` | **필수** | 사용. discovered 맵의 키. `mount()`는 `manifest.id == ext_id`를 검사한다(`ext/:760`). `discover()`/`rescan()`은 디렉토리명과 비교하지 않는다. |
+| `schema_version` | `u32` | `0` | `parse_manifest()`(`ext/:374-421`): `1`이면 모르는 키·발화되지 않는 hook·없는 python_modules 참조가 오류, `0`이면 같은 문제를 경고로만 남기고, 더 큰 값은 거부한다. 현재 두 manifest 모두 `1`이다. |
+| `id` | `String` | **필수** | discovered 맵의 키. 영문·숫자·`-`·`_`만 허용한다(`ext/:359-368`). 스캔 시 폴더 이름이 id이거나 하이픈을 밑줄로 바꾼 이름이어야 한다(`ext/:763-769`). `mount()`는 `manifest.id == ext_id`를 검사한다(`ext/:811`). |
 | `name` | `String` | **필수** | 목록과 로그 |
-| `version` | `String` | **필수** | 업데이트 비교(SemVer, 파싱 실패 시 문자열 비교 `ext/:1399`), 익스텐션 간 의존성 버전 검사 |
-| `description` | `String` | `""` | 목록 |
+| `version` | `String` | **필수** | 업데이트 비교(SemVer, 파싱 실패 시 문자열 비교 `ext/:1335-1342`), 익스텐션 간 의존성 버전 검사 |
+| `description` / `descriptions` | `String` / `HashMap` | `""` / `{}` | 목록. `GET /api/extensions?lang=`이 GUI 언어에 맞는 `descriptions` 항목으로 바꿔 준다(`handlers/extension.rs:67-90`). |
 | `author` | `String` | `""` | 목록 |
-| `min_app_version` | `Option<String>` | `None` | **역직렬화만 하고 아무 데도 쓰지 않는다** (grep 결과 0건) |
-| `dependencies` | `HashMap<String,String>` | `{}` | 커스텀 디시리얼라이저 `deserialize_dependencies` (`ext/:17-58`): 배열 `["a"]` → `{"a":"*"}`, 맵은 그대로 받는다. enable/disable/unmount 검증에 쓰인다(아래 3.3). |
-| `python_modules` | `HashMap<String,String>` | `{}` | 모듈 키 → 익스텐션 디렉토리 기준 상대경로. hook 바인딩이 참조한다(`ext/:1145`). |
-| `hooks` | `HashMap<String, HookBinding>` | `{}` | hook 이름 → 바인딩 |
-| `gui` | `Option<GuiManifest>` | `None` | 번들/스타일 서빙에 쓰인다(`handlers/extension.rs:217-275`). |
+| `min_app_version` | `Option<String>` | `None` | enable(`ext/:929-933`), 패키지 설치(`ext/:1405`)에서 강제하고, 목록·원격 목록에 `incompatible`로 표시한다(`ext/:1108,1289`). |
+| `dependencies` | `HashMap<String,String>` | `{}` | 커스텀 디시리얼라이저 `deserialize_dependencies` (`ext/:56-97`): 배열 `["a"]` → `{"a":"*"}`, 맵은 그대로 받는다. enable/disable/unmount 검증에 쓰인다(아래 3.3). |
+| `python_modules` | `HashMap<String,String>` | `{}` | 모듈 키 → 익스텐션 디렉토리 기준 상대경로. hook 바인딩과 명령이 참조한다(`ext/:1165,1240`). |
+| `hooks` | `HashMap<String, HookBinding>` | `{}` | hook 이름 → 바인딩. 옛 이름 `server.post_stop`은 `server.stop`으로 바꿔 읽는다(`ext/:15-17,40-51`). |
+| `gui` | `Option<GuiManifest>` | `None` | 번들/스타일 서빙에 쓰인다(`handlers/extension.rs:228-286`). |
 | `cli` | `Option<CliManifest>` | `None` | `/api/extensions` 응답에 그대로 실린다. CLI TUI가 해석한다. |
-| `module_config_section` | `Option<String>` | `None` | `should_parse_config_section()` (`ext/:1309`)만 읽는데, **이 함수 호출처가 0건이다(dead)**. module.toml의 `[docker]` 섹션은 module_loader가 하드코딩으로 파싱한다(`supervisor/module_loader.rs:267,693`). |
-| `instance_fields` | `HashMap<String, FieldDef>` | `{}` | (a) disable/unmount 시 "사용 중" 판정(`ext/:822-853`), (b) 목록 응답 → CLI가 자동 설정 슬롯을 만든다. `all_instance_fields()` (`ext/:1317`)는 호출처 0건이다. **default 값을 인스턴스에 주입하는 코드는 없다.** |
-| `config_fields` | `HashMap<String, FieldDef>` | `{}` | 목록 응답에만 실린다. 값 저장은 `extensionConfig.json`. 스키마 검증은 없다. |
-| `i18n_dir` | `Option<String>` | `None` | `load_i18n()` → `<dir>/<i18n_dir>/<locale>.json` (`ext/:1501-1510`) |
+| `module_config_section` | `Option<String>` | `None` | **읽는 코드가 없다(dead 필드)**. module.toml의 익스텐션별 설정은 범용 `[extensions.<id>]` 섹션으로 받아 그대로 넘긴다(`supervisor/module_loader.rs:454-458,913-918`). |
+| `instance_fields` | `HashMap<String, FieldDef>` | `{}` | (a) disable/remove/unmount/install 시 "사용 중" 판정(`ext/:873-902`), (b) 목록 응답 → CLI가 자동 설정 슬롯을 만든다. **default 값을 인스턴스에 주입하는 코드는 없다.** |
+| `config_fields` | `HashMap<String, FieldDef>` | `{}` | 목록 응답에만 실린다. 값 저장은 `config.json`의 `extensions.settings.<id>`. 스키마 검증은 없다. |
+| `i18n_dir` | `Option<String>` | `None` | `load_i18n()` → `<dir>/<i18n_dir>/<locale>.json`. locale은 한 단계 경로 이름이어야 한다(`ext/:1457-1469`). |
+| `priority` | `i32` | `100` | 같은 hook·명령을 여러 익스텐션이 가질 때의 순서. 작을수록 먼저, 같으면 id 순(`ext/:265-267,1116-1127`). |
+| `commands` | `Vec<ExtensionCommand>` | `[]` | 인스턴스 명령 카탈로그에 더하는 명령(`ext/:273-293`). `GET /api/instance/:id/commands`에 실리고(모듈 명령이 우선, `handlers/command.rs:200-204`), `POST /api/instance/:id/command`가 `plan_command`로 실행한다(`handlers/command.rs:68-80`, `ext/:1143-1176`). |
 
 ### 1.2 하위 구조체
 
-- **`HookBinding`** (`ext/:211-219`): `module: String`(필수, `python_modules`의 키), `function: String`(필수), `condition: Option<String>`, `async`(→`is_async: Option<bool>`).
-  - **`async`는 읽는 코드가 0건이다.** 주석에는 "true면 tokio::spawn"이라고 되어 있지만 구현되지 않았다. post_create가 비동기로 도는 이유는 `handlers/instance.rs:318`이 직접 `tokio::spawn`하기 때문이다.
-- **`GuiManifest`** (`ext/:221-231`): `bundle`, `styles`, `builtin: Option<bool>`, `slots: HashMap<String,String>`.
+- **`HookBinding`** (`ext/:299-305`): `module: String`(필수, `python_modules`의 키), `function: String`(필수), `condition: Option<String>`.
+  - ~~`async`(→`is_async`)는 읽는 코드가 0건이다.~~ → 해결: 필드가 없어졌다. schema v1 manifest에 `async`를 쓰면 모르는 키 오류다.
+- **`GuiManifest`** (`ext/:307-317`): `bundle`, `styles`, `builtin: Option<bool>`, `slots: HashMap<String,String>`.
   - `builtin`은 daemon에서 읽지 않는다.
   - `slots`도 **GUI에서 읽지 않는다.** GUI는 번들의 `registerSlots()` 반환값만 쓴다(4절).
-- **`CliManifest`** (`ext/:234-240`): `slots: HashMap<String, Value>`. 형태가 자유로운 JSON이다.
-- **`FieldDef`** (`ext/:242-250`): `type`(필수), `default: Option<Value>`, `optional: Option<bool>`.
+- **`CliManifest`** (`ext/:320-326`): `slots: HashMap<String, Value>`. 형태가 자유로운 JSON이다.
+- **`FieldDef`** (`ext/:328-336`): `type`(필수), `default: Option<Value>`, `optional: Option<bool>`.
+- **`ExtensionCommand`** (`ext/:275-293`): `name`, `label?`, `description?`, `risk?`(safe/caution/danger), `inputs[]`(모듈 명령과 같은 `CommandInput`), `module`, `function`, `condition?`.
 
-알 수 없는 키는 serde 기본 동작대로 조용히 무시된다(`deny_unknown_fields` 없음).
+알 수 없는 키는 `serde_ignored`로 모아 schema v1이면 오류, v0이면 경고(`warnings`, 목록 응답에 실림)로 처리한다(`ext/:374-421`).
 
 ### 1.3 실제 manifest에는 있는데 코드가 무시하는 것
 
 | 키 / 값 | 위치 | 상태 |
 |---|---|---|
-| `min_app_version: "0.1.0"` | 4개 manifest 전부 | 강제하지 않음 |
-| `"async": true` | `EXT/docker/manifest.json` server.post_create | 무시됨 |
-| `gui.slots` (docker 6개) | docker | GUI가 무시함(번들 `registerSlots()`와 내용이 같아 중복 정의) |
-| `gui.builtin: true`, `gui.slots: {}` | music | daemon/GUI 모두 의미 없음. `gui`가 `Some`이라 `/api/extensions/music/gui`는 bundle이 없어 404를 반환한다. GUI `loadExtensionBundle`은 `ext.gui`가 truthy이면 요청을 보낸다(`ExtensionContext.js:32-38`). |
-| `module_config_section: "docker"` | docker | dead 함수만 참조 |
-| `config_fields.discord_token`, `default_volume` | music | 저장 API는 있지만 GUI에 IPC 바인딩이 없다. 봇은 `bot-config.json`을 쓴다. 사실상 미사용. |
-| `"i18n_dir": null` | music | OK(None) |
-| `condition: null` | docker/music daemon.* | OK(None) |
-| hook 이름 `server.pre_create`, `server.stats`, `server.logs`, `server.install`, `server.update`, `module.parse_settings`, `module.write_settings` | docker/steamcmd/ue4-ini | **daemon이 발화하지 않는다**(2.3절) |
+| `min_app_version: "0.1.0"` | 2개 manifest 전부 | ~~강제하지 않음~~ → 해결: enable·설치에서 강제한다(`ext/:929-933,1405`). |
+| `instance_fields.ue4_ini_enabled`, `ue4_ini_section` | `EXT/ue4_ini/manifest.json` | 이 값을 설정하는 코드가 어디에도 없다. "사용 중" 판정에만 쓰이므로 사실상 항상 미사용이다. |
+| ~~docker의 `"async": true`, `gui.slots`, `module_config_section: "docker"`, music의 `gui.builtin`, `config_fields.discord_token` 등~~ | — | → 해결: docker·music 익스텐션이 저장소에서 제거되었다. |
+| ~~발화되지 않는 hook 이름(`server.pre_create`, `server.stats`, `server.logs`, `server.install`, `server.update`, `module.parse_settings`, `module.write_settings`)~~ | — | → 해결: 현재 manifest에는 없다. 이런 이름을 쓰면 `parse_manifest`가 schema v1에서 거부한다(`ext/:387-390`). |
 
 ### 1.4 코드는 지원하는데 실제 manifest에서 안 쓰는 것
 
-- `gui.styles`: CSS 서빙 경로(`handlers/extension.rs:249`)가 있지만 docker에 styles 항목이 없다.
-- `dependencies`의 비-익스텐션 컴포넌트 키(`saba-core`, `gui` 등, `ext/:899-923`): 실제 manifest에서는 쓰지 않는다. 게다가 HTTP enable 경로는 `enable()` → `enable_with_versions(&HashMap::new())`(`ext/:856-858`)를 부르므로, **컴포넌트 의존성을 선언하면 HTTP로는 절대 활성화할 수 없다**(테스트 `ext/:2543-2560`이 이 동작을 확인한다). `enable_with_versions`를 버전 맵과 함께 부르는 프로덕션 호출처는 0건이다.
-- `condition` 패턴은 `instance.ext_data.<key>` 하나뿐이다(`ext/:1070-1086`). 그 외 패턴은 warn을 남기고 false로 처리한다.
+- `gui` 전체: 현재 두 익스텐션 모두 `gui`가 없다. CSS 서빙 경로(`handlers/extension.rs:260-286`)와 번들 경로가 있지만 쓰는 익스텐션이 없다.
+- `commands`, `priority`, `i18n_dir`, `config_fields`, `cli`: 현재 manifest에서 쓰지 않는다.
+- `dependencies`의 비-익스텐션 컴포넌트 키: HTTP enable은 `enable()`이 `{"saba-core": APP_VERSION}`을 넘기므로(`ext/:905-908`) `saba-core` 버전 요구는 검사된다. 그 밖의 컴포넌트 키(`gui` 등)에 버전을 쓰면 설치 버전을 모르므로 활성화할 수 없다(`ext/:960-984`).
+- `condition` 패턴은 `instance.ext_data.<key>` 하나뿐이다(`ext/:1179-1195`). 그 외 패턴은 warn을 남기고 false로 처리한다.
 
-### 1.5 원격 레지스트리 스키마 (`RemoteExtensionInfo`, `ext/:292-354`)
+### 1.5 원격 목록 항목 (`RemoteExtensionInfo`, `ext/:476-518`)
 
 ```
-{ "schema_version": u32(default 0), "generated_at": Option<String>,
-  "extensions": { "<id>": { name*, version*, description, author, download_url, sha256?,
-                            min_app_version?, asset?, install_dir?, dependencies(배열|맵),
-                            has_gui, has_i18n, tags[], homepage? } } }
+릴리즈 manifest 컴포넌트 "ext-<id>": { version, url, sha256, filename, install_dir?,
+  meta: { name, description, author, min_app_version?, dependencies(배열|맵), has_gui, has_i18n } }
+→ RemoteExtensionInfo { id, name, version, description, author, download_url(=url), sha256, asset(=filename),
+                        install_dir?, min_app_version?, incompatible?, dependencies, has_gui, has_i18n, tags[], homepage? }
 ```
 
-`id`는 맵 키에서 주입된다(`into_list`, `ext/:358-366`). 실제 `EXT/manifest.json`은 `build_extensions.py`가 생성하며 `tags`/`homepage`는 없다. `install_dir: "extensions/ue4-ini"`이지만 실제 설치 디렉토리는 `ue4_ini`다(하이픈→언더스코어, `ext/:462,1464`). `install_dir`과 `asset`은 daemon이 읽지 않는다.
+`from_release`(`ext/:1295-1324`)가 `meta`를 바탕으로 `version`·`download_url`·`sha256`·`asset`·`install_dir`을 덮어쓰고, id는 컴포넌트 키에서 `ext-`를 뗀 값이다. `meta`는 코어 릴리즈 워크플로의 `versions.py`가 익스텐션 manifest에서 만든다(`D:scripts/versions.py:245-266`). `tags`/`homepage`는 넣지 않는다. `install_dir`은 폴더 이름을 쓰므로 `extensions/ue4_ini`다. `install_dir`과 `asset`은 daemon이 읽지 않는다(설치 폴더는 `ext_dir_on_disk`가 정한다, `ext/:596-616`).
 
 ---
 
 ## 2. Hook 시스템
 
-### 2.1 Python 호출 프로토콜 (`plg/:115-258`)
+### 2.1 Python 호출 프로토콜 (`plg/:168-332`)
 
-- **명령**: `<venv python> <절대경로 module.py> <function>`. Python 경로는 `python_env::get_python_path()`(`plg/:125`)에서 얻는다. 매 호출마다 새 프로세스를 띄우는 short-lived 방식이다.
-- **stdin**: context JSON 한 덩어리. 쓴 다음 바로 닫는다(`plg/:180-183`).
-- **stdout**: 전체를 하나의 JSON으로 파싱한다. 파싱에 실패하면 Err(`plg/:233-241`). 종료 코드가 0이 아니어도 Err(`plg/:228-231`).
-- **stderr**: 줄 단위로 스트리밍한다. `PROGRESS:{json}` 줄은 `ExtensionProgress{percent,message,step,total,label,steps}`(`plg/:9-20`)로 파싱해 콜백을 호출한다. 나머지 줄은 debug 로그로 남긴다.
+- **명령**: `<venv python> <절대경로 module.py> <function>`. Python 경로는 `python_env::get_python_path()`(`plg/:178`)에서 얻는다. 매 호출마다 새 프로세스를 띄우는 short-lived 방식이다.
+- **stdin**: context JSON 한 덩어리. 쓴 다음 바로 닫는다(`plg/:239-242`).
+- **stdout**: 전체를 하나의 JSON으로 파싱하고, 실패하면 비어 있지 않은 마지막 줄을 JSON으로 파싱한다(앞에 찍힌 print 무시, `plg/:322-332`). 둘 다 실패하면 Err. 종료 코드가 0이 아니어도 Err(`plg/:287-290`).
+- **stderr**: 줄 단위로 스트리밍한다. `PROGRESS:{json}` 줄은 `ExtensionProgress{percent,message,step,total,label}`(`plg/:39-50`)로 파싱해 콜백을 호출한다. 나머지 줄은 debug 로그로 남긴다.
 - **env**:
   - `PYTHONIOENCODING=utf-8`, `PYTHONUNBUFFERED=1`
-  - `PYTHONPATH = <extensions_dir의 부모>:<modules_dir>:<기존 PYTHONPATH>` (`plg/:153-173`). extensions 디렉토리의 **부모**를 넣으므로 `import extensions.steamcmd`가 동작한다. 단, 디렉토리명이 실제로 `extensions`일 때만 그렇다. `SABA_EXTENSIONS_DIR`을 다른 이름으로 지정하면 import가 깨진다.
-  - `SABA_ENABLED_EXTENSIONS=<콤마 목록>`: **버그가 있다.** `APPDATA`가 있으면 `%APPDATA%/saba-chan/extensions_state.json`, 없으면 **cwd 기준 `./extensions_state.json`**을 읽는다(`plg/:140-151`). 실제 상태 파일 위치는 `constants::resolve_extensions_state_path()` = `resolve_data_dir()/extensions_state.json`(`updater/src/constants.rs:219`)이고, Linux에서는 `~/.config/saba-chan/`이다. 결과적으로 **Linux/macOS에서는 이 env가 대개 설정되지 않는다.** `SABA_DATA_DIR` 오버라이드도 무시된다. palworld/zomboid `lifecycle.py`가 이 env로 steamcmd 활성 여부를 판단하므로(`saba-chan-modules/palworld/lifecycle.py:1244`, `zomboid/lifecycle.py:1525`) Linux에서는 설치가 "extension_not_enabled"로 실패할 수 있다.
-- **타임아웃**: 기본 `DEFAULT_PLUGIN_TIMEOUT_SECS = 120`(`plg/:55`). 초과하면 `child.kill()` 후 Err.
+  - 데몬 연결 정보 `SABA_IPC_PORT`, `SABA_IPC_URL`, `SABA_TOKEN_PATH`(토큰 파일 경로, 토큰 자체는 넣지 않음), `SABA_LANG`(config.json `gui.language`) (`plg/:14-37`).
+  - `PYTHONPATH = <import 가드 폴더>:<extensions_dir의 부모>:<modules_dir>:<기존 PYTHONPATH>` (`plg/:191-233`). extensions 디렉토리의 **부모**를 넣으므로 `import extensions.steamcmd`가 동작한다. 단, 디렉토리명이 실제로 `extensions`일 때만 그렇다. `SABA_EXTENSIONS_DIR`을 다른 이름으로 지정하면 import가 깨진다.
+  - `SABA_ENABLED_EXTENSIONS=<콤마 목록>`: ~~`%APPDATA%`나 cwd의 `extensions_state.json`을 읽어 Linux/macOS에서 대개 설정되지 않는다.~~ → 해결: `config.json`의 `extensions.enabled`에서 읽고, 목록이 없으면 빈 값으로 항상 설정한다(`plg/:200-205`).
+  - import 가드: 데이터 폴더의 `python-guard/sitecustomize.py`(`plg/:84-96`, `src/plugin/sitecustomize.py`)가 `SABA_ENABLED_EXTENSIONS`에 없는 `extensions.<이름>` import를 `ModuleNotFoundError`로 막는다(`-`와 `_`는 같게 본다).
+  - 공용 모듈 `i18n.py`, `daemon_rcon.py`를 modules 디렉토리에 내장본과 같게 맞춘다(`plg/:98-116,217-224`).
+- **타임아웃**: 기본 `DEFAULT_PLUGIN_TIMEOUT_SECS = 120`(`plg/:119`). 초과하면 `child.kill()` 후 Err(`plg/:307-315`).
 
-### 2.2 디스패처 (`ext/:1055-1306`)
+### 2.2 디스패처 (`ext/:1213-1256`, `ext/:1557-1628`)
 
-- `hooks_for(name)`(`ext/:1056`): **enabled**이면서 해당 hook을 가진 익스텐션 목록. `discovered`가 `HashMap`이라 **실행 순서가 비결정적**이다. chain-of-responsibility의 우선순위를 정할 수 없다.
-- 공통 처리:
-  1. context에 `extension_config`(전체 `extensionConfig.json` 맵, 모든 익스텐션 것)를 주입한다(`ext/:1090-1100`). 다른 익스텐션의 설정(예: music의 `discord_token`)까지 모든 hook 프로세스에 노출된다.
+- `hooks_for(name)`(`ext/:1116-1127`): **enabled**이면서 해당 hook을 가진 익스텐션 목록. ~~`HashMap`이라 실행 순서가 비결정적이다.~~ → 해결: `priority`, 그다음 id 순으로 정렬한다.
+- `plan_hook(name, ctx, only)`(`ext/:1213-1256`): 매니저 락 안에서 실행 목록만 정한다.
+  1. context에 `extension_config`(`extensions.settings` 전체 맵, 모든 익스텐션 것)를 주입한다(`ext/:1199-1209`). 다른 익스텐션의 설정까지 모든 hook 프로세스에 노출된다.
   2. `context.extension_data`로 `condition`을 평가한다(bool, 0이 아닌 숫자, 비어 있지 않은 문자열이면 true).
-  3. `python_modules[binding.module]` 경로로 실행한다.
-  4. 결과에 `handled == true`가 있으면 **나머지 익스텐션을 건너뛴다**(`ext/:1193-1204`). 에러가 나면 계속 진행한다(graceful).
-- `dispatch_hook` = `dispatch_hook_timed(…, 120)`(`ext/:1106-1112`).
-- `dispatch_hook_with_progress`(`ext/:1226-1306`): 타임아웃 1800초. **첫 번째로 조건을 통과한 익스텐션 하나만 실행하고 무조건 `break`한다**(`ext/:1302`). 주석은 "progress 콜백이 1회 소비"라고 설명하지만, 실제로는 hook 자체가 1개만 실행된다.
+  3. `python_modules[binding.module]` 경로를 정한다. 없는 모듈이면 그 호출은 Err 결과가 된다.
+- `HookPlan::run(timeout)`(`ext/:1572-1600`): **락 밖에서** 순서대로 실행한다. 결과에 `handled == true`가 있으면 **나머지 익스텐션을 건너뛴다**. 에러가 나면 기록하고 계속 진행한다(graceful).
+- `run_hook` = `run_hook_timed(…, 120)`(`ext/:1605-1617`). `run_hook_to(ext_id, …)`(`ext/:1620-1628`)는 익스텐션 하나에만 보낸다.
+- ~~`dispatch_hook_with_progress`는 첫 익스텐션 하나만 실행하고 `break`한다.~~ → 해결: progress 디스패처가 없어졌다. hook 경로에는 progress 콜백이 없다.
 - 결과 병합: 디스패처는 병합하지 않고 `Vec<(ext_id, Result<Value>)>`를 반환한다. 해석은 호출부마다 다르다(아래 표).
-- 모든 호출부가 `extension_manager.read()` 락을 **Python 실행이 끝날 때까지** 쥐고 있다. 특히 `daemon.startup`(npm install, Docker 엔진 설치)과 post_create(최대 30분) 동안 write 락이 필요한 enable/disable/install/rescan이 블록된다.
+- ~~모든 호출부가 `extension_manager.read()` 락을 Python 실행이 끝날 때까지 쥐고 있다.~~ → 해결: 락은 `plan_hook` 동안만 잡고 Python은 락 밖에서 실행한다(`ext/:1603-1617`). 긴 hook 동안에도 enable/disable/install/rescan이 막히지 않는다.
 
 ### 2.3 daemon이 발화하는 hook 전수 목록
 
+`FIRED_HOOKS`(`ext/:23-34`)가 이 목록을 코드로 갖고 있고, manifest 검증이 이 목록을 기준으로 한다.
+
 | hook | 발화 위치 | 트리거 / 경로 | 동기성 · 타임아웃 | context 키 | 결과 사용 |
 |---|---|---|---|---|---|
-| `daemon.startup` | `src/main.rs:162-178` | daemon 기동 직후 | `tokio::spawn` 백그라운드, 120s | `{}` (+extension_config) | 결과마다 `success`(기본 true), `message`, `error` → `ExtensionInitTracker`(`/api/extensions/init-status`) |
-| `daemon.startup` (재발화) | `handlers/extension.rs:84-123` | `POST /api/extensions/:id/enable` 성공 후 | spawn, 120s | `{}` | **활성화된 모든 익스텐션의 startup hook을 다시 실행한 뒤** 결과만 해당 id로 필터링한다(`:101`). 다른 익스텐션의 startup이 중복 실행된다. |
-| `daemon.shutdown` | `src/main.rs:425` | Ctrl-C 시그널 핸들러 | 동기(await), 120s | `instances[] {id,name,module,extension_data,instance_dir}` | `handled` 여부를 로그로만 남긴다 |
-| `server.pre_start` | `supervisor/mod.rs:324` (non-managed start), `:1032` (managed start) | 서버 시작 | 동기, 120s | `instance_id, instance_dir, module, extension_data` (+managed 쪽에 `instance, config, managed:true`) | `handled:true` + `success!=true` → 에러를 반환한다. `success:true`이면 `log_follower{program,args,working_dir,description,interactive,strip_prefix,env_vars}`로 `ManagedProcess::spawn`(interactive) 또는 `spawn_log_follower`를 실행한다(`:353-420`, `:1066-1124`). 그 결과를 그대로 반환하고 기본 시작 로직을 건너뛴다. |
-| `server.post_stop` | `supervisor/mod.rs:566` | `stop_server` **진입 직후**(이름은 post지만 실제로는 정지를 **대행**한다) | 동기, 120s | 위와 동일 | `handled:true`이면 cooldown을 기록하고 그대로 반환한다 |
-| `server.status` | `supervisor/mod.rs:759` | `GET /api/server/:name/status` | 동기, 120s | + `process_patterns` | `handled:true`이면 그대로 반환한다 |
-| `server.list_enrich` | `handlers/server.rs:113` | `GET /api/servers`, `extension_data`가 비어 있지 않은 인스턴스마다 **순차** 실행 | 동기, **10s**, 결과를 30s TTL 캐시(`ipc/mod.rs:559`) | `instance_id, instance_name, module, extension_data, instance_dir, process_patterns` | `handled`와 무관하게 첫 번째 Ok를 캐시한다. `handled:true`이면 `status`와 `extension_status[<res.extension_id or "default">]`를 채운다 |
-| `server.post_create` | `handlers/instance.rs:320` | 인스턴스 생성, **`use_container==true`일 때만**(`:255`) | spawn, progress, **1800s** | `instance_id, instance_name, module, use_container, instance_dir, extension_data, instance, module_install{install, container}` | `PROGRESS` → `ProvisionTracker`. `Err`이거나 `success:false`이면 error로 기록한다 |
-| `server.pre_delete` | `handlers/instance.rs:828` | 인스턴스 삭제 | 동기, 120s | `instance_id, instance_name, module, extension_data` | `handled`이면 2초 대기한다(파일 잠금 해제용) |
-| `server.settings_changed` | `handlers/instance.rs:1225` | 인스턴스 설정 PATCH, `extension_data`가 비어 있지 않을 때 | 동기, 120s | `instance_id, instance_dir, instance, module_extensions, extension_data, settings` | 결과를 버린다(`_results`) |
-| `server.check_update` | `handlers/instance.rs:1305` | `GET /api/instance/:id/check-update` | 동기, 120s | `instance_id, instance_name, module, instance_dir, install_dir, app_id, extension_data` | 첫 번째 Ok를 그대로 응답한다. 없으면 `{update_available:false, reason:"no_hook_handled"}` |
+| `daemon.startup` | `src/main.rs:300-345` | daemon 기동 직후 | `tokio::spawn` 백그라운드, 120s | `{}` (+extension_config) | 결과마다 `success`(기본 true), `message`, `error` → `ExtensionInitTracker`(`/api/extensions/init-status`) |
+| `daemon.startup` (재발화) | `handlers/extension.rs:107-144` | `POST /api/extensions/:id/enable` 성공 후 | spawn, 120s | `{}` | ~~모든 익스텐션의 startup을 다시 실행~~ → 해결: `run_hook_to`로 **방금 켠 익스텐션에만** 보낸다(`:121-122`). |
+| `daemon.shutdown` | `src/main.rs:546-588` | 종료 경로(Ctrl-C/SIGTERM, 종료 API, 워치독) | 동기(await), hook 120s, 전체 30s 상한(`:566-575`) | `instances[] {id,name,module,extension_data,instance_dir}` | `handled` 여부를 로그로만 남긴다 |
+| `server.pre_start` | `supervisor/mod.rs:463-480` (non-managed start), `:1191-1210` (managed start) | 서버 시작 | 동기, 120s | `instance_id, instance_dir, module, extension_data` (+managed 쪽에 `instance, config, managed:true`) | `handled:true` + `success!=true` → 에러를 반환한다. `success:true`이면 `log_follower{program,args,working_dir,description,interactive,strip_prefix,env_vars}`로 `ManagedProcess::spawn`(interactive) 또는 `spawn_log_follower`를 실행한다(`:502-560`, `:1232-1290`). 그 결과를 그대로 반환하고 기본 시작 로직을 건너뛴다. |
+| `server.stop` (옛 이름 `server.post_stop`) | `supervisor/mod.rs:713-737` | `stop_server` 진입 직후, 정지 전 | 동기, 120s | 위와 동일 | `handled:true`이면 cooldown을 기록하고 그대로 반환한다. 익스텐션이 Err이거나 `success:false`이면 실패를 반환한다 |
+| `server.status` | `supervisor/mod.rs:935-946` | `GET /api/server/:name/status` | 동기, 120s | + `process_patterns` | `handled:true`이면 그대로 반환한다 |
+| `server.list_enrich` | `handlers/server.rs:92-145` | `GET /api/servers`, `extension_data`가 비어 있지 않은 인스턴스마다 **순차** 실행 | 동기, **10s**, 결과를 30s TTL 캐시(`ipc/mod.rs:607`) | `instance_id, instance_name, module, extension_data, instance_dir, process_patterns` | `handled`와 무관하게 첫 번째 Ok를 캐시한다(실패는 캐시하지 않음). `handled:true`이면 `status`와 `extension_status[<res.extension_id or "default">]`를 채운다 |
+| `server.post_create` | **발화 위치 없음** | — | — | — | `FIRED_HOOKS`에는 있지만(`ext/:30`) 호출하는 코드가 없다. `handlers/instance.rs:244`에는 주석만 남아 있고 바로 네이티브 프로비저닝으로 넘어간다. |
+| `server.pre_delete` | `handlers/instance.rs:659-679` | 인스턴스 삭제 | 동기, 120s | `instance_id, instance_name, module, extension_data` | `handled`이면 2초 대기한다(파일 잠금 해제용) |
+| `server.settings_changed` | `handlers/instance.rs:1039-1053` | 인스턴스 설정 PATCH, `extension_data`가 비어 있지 않을 때 | 동기, 120s | `instance_id, instance_dir, instance, module_extensions(module.toml [extensions.*] 전체), extension_data, settings` | 결과를 버린다(`_results`) |
+| `server.check_update` | `handlers/instance.rs:1064-1150` | `GET /api/instance/:id/check-update` | 동기, 120s | `instance_id, instance_name, module, instance_dir, install_dir, app_id, extension_data` | 첫 번째 Ok를 그대로 응답한다. 없으면 `{update_available:false, reason:"no_hook_handled"}`. `app_id`는 `extension_data["<방식>_app_id"]`, 없으면 module.toml `[install].app_id`(`:1113-1117`) |
+| `command.<name>` (익스텐션 명령) | `handlers/command.rs:68-80` | `POST /api/instance/:id/command`에서 모듈에 없는 명령 | 동기, 120s | `instance_id, instance_name, module, extension_data, running, args` | 결과를 명령 응답으로 돌려준다 |
 
-**manifest에 선언됐지만 daemon이 발화하지 않는 hook**: `server.pre_create`(docker), `server.stats`(docker), `server.logs`(docker), `server.install`/`server.update`(steamcmd), `module.parse_settings`/`module.write_settings`(ue4-ini). grep 결과 문자열 자체가 daemon 코드에 없다.
+~~**manifest에 선언됐지만 daemon이 발화하지 않는 hook** 7종~~ → 해결: 현재 manifest에는 없고, 새로 선언하면 `parse_manifest`가 v1에서 거부, v0에서 경고한다(`ext/:387-390`).
 
-- 업데이트 적용(`POST /api/instance/:id/apply-update`, `handlers/instance.rs:1329-1500`)과 네이티브 프로비저닝(`:440-560`)은 hook을 거치지 않는다. **module의 `lifecycle.py install_server`를 직접 호출**하고, module이 `from extensions.steamcmd import SteamCMD`로 익스텐션을 Python 라이브러리처럼 import한다.
+- 업데이트 적용(`POST /api/instance/:id/apply-update`, `handlers/instance.rs:1157-1436`)과 네이티브 프로비저닝(`:244-420`)은 hook을 거치지 않는다. **module의 `lifecycle.py install_server`를 직접 호출**하고, module이 `from extensions.steamcmd import SteamCMD`로 익스텐션을 Python 라이브러리처럼 import한다. apply-update는 `install_method_<방식>`이 켜진 인스턴스만 받는다(`:1227-1240`).
 
 ### 2.4 hook × extension 매트릭스
 
-● = 선언했고 daemon이 발화함, ○ = 선언했지만 **발화되지 않음**, 빈칸 = 미선언
+● = 선언했고 daemon이 발화함, 빈칸 = 미선언
 
-| hook | docker | steamcmd | music | ue4-ini |
-|---|---|---|---|---|
-| daemon.startup | ● `docker_engine.ensure` | | ● `music_deps.check_dependencies` | |
-| daemon.shutdown | ● `compose_manager.shutdown_all` | | | |
-| server.pre_create | ○ `pre_create` (no-op, `handled:false`, `compose_manager.py:736-745`) | | | |
-| server.post_create | ● `provision` (`async:true`는 무시됨) | | | |
-| server.pre_start | ● `start` | | | |
-| server.post_stop | ● `stop` | | | |
-| server.status | ● `status` | | | |
-| server.stats | ○ `container_stats` | | | |
-| server.pre_delete | ● `cleanup` | | | |
-| server.settings_changed | ● `regenerate_compose` | | | |
-| server.list_enrich | ● `enrich_server_info` | | | |
-| server.logs | ○ `get_logs` | | | |
-| server.install | | ○ `install` | | |
-| server.update | | ○ `install` | | |
-| server.check_update | | ● `check_update` | | |
-| module.parse_settings | | | | ○ `parse_option_settings` |
-| module.write_settings | | | | ○ `write_option_settings` |
+| hook | steamcmd | ue4-ini |
+|---|---|---|
+| server.check_update | ● `check_update` | |
 
-모든 docker 서버 hook의 condition은 `instance.ext_data.docker_enabled`, steamcmd는 `install_method_steamcmd`, ue4-ini는 `ue4_ini_enabled`다. `ue4_ini_enabled`를 설정하는 코드는 어디에도 없다.
+ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ext_data.install_method_steamcmd`다. docker·music 열은 익스텐션 제거로 없어졌다.
 
 ### 2.5 Python 쪽 엔트리포인트 호환성
 
 | 파일 | `__main__` 디스패치 | daemon context와 맞는지 |
 |---|---|---|
-| `EXT/docker/compose_manager.py:1160-1204` | `_FUNCTIONS[argv[1]](config)`. `config.wsl2_mode`가 있으면 WSL2 모드를 오버라이드한다 | 맞음 |
-| `EXT/docker/docker_engine.py:962-993` | `FUNCTIONS = ensure,start_daemon,stop_daemon,status,info`. 예외는 `{success:false,message}`로 바꾼다. BOM을 제거한다 | daemon.startup ctx가 `{}`라서 기본 설정으로 동작한다. **엔진 다운로드가 120초를 넘으면 daemon이 kill한다**(provision 경로에서 직접 부를 때는 timeout 300을 넘기지만 hook 경로에는 없다) |
-| `EXT/steamcmd/steamcmd.py:741-833` | `FUNCTIONS = ensure,install,update,status,check_update` | `check_update`는 `app_id, install_dir, branch`를 읽는다. daemon은 `app_id, install_dir`을 준다. OK |
-| `EXT/music/music_deps.py:375-400` | `func(**config)` (kwargs 전개) | ctx `{}`+`extension_config` → `check_dependencies(**_kwargs)`. 반환값에 `success`/`message`가 없어서 daemon은 항상 성공 "OK"로 기록하고 `status:"degraded"`를 무시한다(`main.rs:182-183`) |
-| `EXT/ue4_ini/ue4_ini.py` | **`__main__`가 없다.** 함수 시그니처도 `(ini_path, …)`라 hook 프로토콜과 맞지 않는다 | hook으로 실행하면 stdout이 비어 JSON 파싱 에러가 난다. 실제로는 module이 `from extensions.ue4_ini import …`로 쓰는 **순수 라이브러리**다 |
+| ~~`EXT/docker/*.py`, `EXT/music/music_deps.py`~~ | — | → 해결: 익스텐션이 제거되었다 |
+| `EXT/steamcmd/steamcmd.py:879-915` | `FUNCTIONS = check_update, ensure, status`. `_run_cli`는 실패도 `{success:false,error,message}`로 출력하고 0으로 종료한다. BOM을 제거한다(`:891-912`) | `check_update`는 `app_id, install_dir`, 브랜치는 `branch` → `extension_data.steamcmd_beta` → `"public"` 순으로 읽는다(`:846-876`). daemon은 `app_id, install_dir, extension_data`를 준다. OK |
+| `EXT/ue4_ini/ue4_ini.py` | **`__main__`가 없다.** 함수 시그니처도 `(ini_path, …)`라 hook 프로토콜과 맞지 않는다 | hook을 선언하지 않으므로 문제없다. module이 `from extensions.ue4_ini import …`로 쓰는 **순수 라이브러리**다 |
 
 ---
 
@@ -190,45 +180,45 @@
 
 ### 3.1 저장 위치
 
-- 익스텐션 디렉토리: `resolve_extensions_dir()` = `$SABA_EXTENSIONS_DIR` 또는 `resolve_data_dir()/extensions` (`updater/src/constants.rs:136-143`). data_dir은 `$SABA_DATA_DIR`, Windows는 `%APPDATA%/saba-chan`, Unix는 `~/.config/saba-chan`이다(`:89-108`).
-- 활성 상태: `<data_dir>/extensions_state.json`. 형식은 enabled id 배열이다(`ext/:1607-1664`).
-- 익스텐션 글로벌 설정: `<data_dir>/extensionConfig.json`. 형식은 `{ext_id:{k:v}}`(`ext/:1547-1604`).
-- 테스트 생성자 `new_isolated`는 위 두 파일을 extensions 디렉토리 안에 둔다(`ext/:420-424`).
+- 익스텐션 디렉토리: `resolve_extensions_dir()` = `$SABA_EXTENSIONS_DIR` 또는 `resolve_data_dir()/extensions` (`updater/src/constants.rs:106-113`). data_dir은 `$SABA_DATA_DIR`, Windows는 `%APPDATA%/saba-chan`, Unix는 `~/.config/saba-chan`이다(`:55-77`).
+- 활성 상태: `<data_dir>/config.json`의 `extensions.enabled`. 형식은 정렬된 enabled id 배열이다(`ext/:1500-1521`).
+- 익스텐션 글로벌 설정: 같은 파일의 `extensions.settings`. 형식은 `{ext_id:{k:v}}`(`ext/:1523-1549`). 옛 `extensions_state.json`, `extensionConfig.json`은 한 번 이 두 키로 옮겨진다(`updater/src/config_file.rs:43-44`).
+- 테스트 생성자 `new_isolated`는 config.json을 extensions 디렉토리 안에 둔다(`ext/:557-560`).
 
 ### 3.2 발견 (discover / rescan / mount)
 
-- `discover()`(`ext/:499-595`): 하위 디렉토리 중 `manifest.json`이 있는 것을 등록한다. 루트에 있는 `*.zip`은 `python_safe_dir_name(stem)` 폴더로 풀고 zip을 삭제한다(`ext/:599-646`). 폴더가 이미 있으면 **zip만 삭제하고 덮어쓰지 않는다**. **manifest.id와 디렉토리명의 일치는 검사하지 않는다.**
-- `rescan()`(`ext/:696-745`): 기존 항목의 manifest를 다시 읽고 새 항목을 추가한다. 디스크에서 사라진 항목은 그대로 남긴다.
-- `mount(id)`(`ext/:749-770`): `ext_dir_on_disk`(id → id 그대로 → 하이픈을 언더스코어로 바꾼 이름)로 디렉토리를 찾고, `manifest.id == id`를 검사한다.
-- `IPCServer::new`(`src/ipc/mod.rs:534-542`)에서 discover를 한 번 실행한다. 상태 파일에 enabled로 되어 있지만 디스크에 없는 익스텐션은 `enabled_but_not_installed()`로 구분한다(`ext/:1021`).
+- `discover()`(`ext/:623-648`): 루트에 있는 `*.zip`을 먼저 푼 뒤 `scan()`을 실행한다. zip은 `.staging-<id>`에 풀어 manifest를 검사하고, 기존 폴더가 있으면 **새 내용으로 바꿔 끼운 뒤** zip을 삭제한다(`ext/:652-721`).
+- `scan()`(`ext/:737-783`): 하위 디렉토리 중 `manifest.json`이 있는 것(`.`으로 시작하는 임시 폴더 제외)을 등록한다. **폴더 이름이 manifest.id(또는 하이픈→밑줄)와 다르면 건너뛰고**, 로드 실패와 함께 `load_errors`에 남긴다. 이 목록은 `GET /api/extensions`의 `failed`로 나간다(`handlers/extension.rs:84-89`).
+- `rescan()`(`ext/:792-796`): `scan()`과 같다. 기존 항목의 manifest를 다시 읽고 새 항목을 추가한다. 디스크에서 사라진 항목은 그대로 남긴다.
+- `mount(id)`(`ext/:800-821`): `ext_dir_on_disk`(discovered → id 그대로 → 하이픈을 언더스코어로 바꾼 이름)로 디렉토리를 찾고, `manifest.id == id`를 검사한다.
+- `IPCServer::new`(`src/ipc/mod.rs:582-590`)에서 discover를 한 번 실행한다. 상태에 enabled로 되어 있지만 디스크에 없는 익스텐션은 `enabled_but_not_installed()`로 구분한다(`ext/:1076`).
 
 ### 3.3 enable / disable / remove / unmount
 
 | 작업 | API | 동작 |
 |---|---|---|
-| enable | `POST /api/extensions/:id/enable` (`handlers/extension.rs:72`) | `enable_with_versions(id, {})`(`ext/:865-930`). dependencies 맵의 각 키를 확인한다. (a) discovered에 있는 익스텐션이면 **enabled 상태여야 하고**, `">=x"`이면 SemVer를 비교한다(`>=`만 지원, `^`/`~` 미지원). (b) 없으면 컴포넌트로 간주하는데, `"*"`이면 `dependency_missing`, 아니면 installed_versions가 비어 있으므로 실패한다. **의존성을 자동으로 활성화하지 않는다.** 성공하면 상태를 저장하고 `daemon.startup`을 재발화한다. |
-| disable | `POST …/disable` | **실행 중인 인스턴스만** 검사한다(`handlers/extension.rs:134-144`). 역의존성(활성 익스텐션 중 이 id를 dependencies에 둔 것)이 있으면 409 `has_dependents`. 인스턴스의 `extension_data`에서 이 익스텐션의 instance_fields 키 중 하나라도 "truthy"(Bool(true)이거나 String/Number/Object/Array는 **값과 무관하게** 모두)이면 409 `in_use`(`ext/:822-853`). 숫자 0이나 빈 문자열도 "사용 중"으로 판정된다. |
-| remove | `DELETE /api/extensions/:id` | 활성 상태면 disable 검사를 거친 뒤 discovered에서 제거하고, 디렉토리를 `remove_dir_all`하고, extensionConfig 항목을 삭제한다(`ext/:969-997`) |
-| mount / unmount | `POST …/mount`, `…/unmount` | 디스크를 건드리지 않고 메모리에서만 등록/해제한다. unmount는 enabled에서도 제거한다 |
+| enable | `POST /api/extensions/:id/enable` (`handlers/extension.rs:96-147`) | `enable()` → `enable_with_versions(id, {"saba-core": APP_VERSION})`(`ext/:905-991`). `min_app_version`을 먼저 확인한다. dependencies 맵의 각 키를 확인한다. (a) discovered에 있는 익스텐션이면 **enabled 상태여야 하고**, `">=x"`이면 SemVer를 비교한다(`>=`만 지원, `^`/`~` 미지원). (b) 없으면 컴포넌트로 간주하는데, `"*"`이면 `dependency_missing`, 아니면 설치 버전(`saba-core`만 앎)과 비교한다. **의존성을 자동으로 활성화하지 않는다.** 성공하면 상태를 저장하고 그 익스텐션의 `daemon.startup`만 발화한다. |
+| disable | `POST …/disable` | **실행 중인 인스턴스만** 검사한다(`handlers/extension.rs:154-155`). 역의존성(활성 익스텐션 중 이 id를 dependencies에 둔 것)이 있으면 409 `has_dependents`. 인스턴스의 `extension_data`에서 이 익스텐션의 instance_fields 키 중 하나라도 값이 있으면(true, 비어 있지 않은 문자열·배열·객체, 0이 아닌 숫자) 409 `in_use`(`ext/:873-902`). |
+| remove | `DELETE /api/extensions/:id` | **정지된 인스턴스까지** 사용 여부를 검사하고(`handlers/extension.rs:436-437`), 활성 상태면 disable 검사를 거친 뒤 discovered에서 제거하고, 디렉토리를 `remove_dir_all`하고, `extensions.settings` 항목을 삭제한다(`ext/:1023-1056`) |
+| mount / unmount | `POST …/mount`, `…/unmount` | 디스크를 건드리지 않고 메모리에서만 등록/해제한다. unmount는 실행 중인 인스턴스만 검사하고 enabled에서도 제거한다 |
 | rescan | `POST /api/extensions/rescan` | 위 3.2 |
-| force_disable | (없음) | `ext/:962`. 호출처 0건 |
+| ~~force_disable~~ | — | → 해결: 함수가 삭제되었다 |
 
-에러 코드 → HTTP 매핑: `handlers/extension.rs:25-57`. not_found/not_mounted/manifest_not_found는 404, dependency_*와 component_version_unsatisfied는 422, has_dependents/in_use는 409, id_mismatch는 400.
+에러 코드 → HTTP 매핑: `handlers/extension.rs:25-58`. not_found/not_mounted/manifest_not_found는 404, dependency_*·component_version_unsatisfied·app_version_unsatisfied는 422, has_dependents/in_use는 409, id_mismatch는 400.
 
 ### 3.4 원격 목록 · 설치 · 업데이트
 
-- **출처**: 최신 릴리즈의 서명된 manifest에 든 `ext-<id>` 컴포넌트다. `ExtensionManager::fetch_remote()`가 `relay::latest_catalog`를 부르고 `from_release`가 `meta`(이름·설명·작성자·`min_app_version`·의존성)와 `version`, `download_url`(R2), `sha256`, `asset`을 목록 항목으로 만든다(`ext/:1266-1300`). `manifest_url`, `set_manifest_url`, raw `main/manifest.json`은 없다. 앱보다 새 버전을 요구하면 `incompatible`로 표시한다.
-- `GET /api/extensions/manifest`: 원격 목록과 `check_updates_against` 결과를 돌려준다(`handlers/extension.rs:290-330`).
-- `GET /api/extensions/updates`: 업데이트 목록만 돌려준다(`handlers/extension.rs:391-410`).
-- `POST /api/extensions/:id/install` (body `{download_url?, sha256?}`): body가 없으면 원격 목록에서 URL과 sha256을 찾는다. 빠진 익스텐션 의존성도 차례로 함께 설치한다(`handlers/extension.rs:335-388`). `install_from_url`은 sha256(있으면), manifest 스키마, id, `min_app_version`을 확인한다(`ext/:1359-1372`).
-- 업데이터의 일괄 업데이트(`/api/updates/*`)는 설치된 `ext-*`만 비교하고, 적용 뒤 `rescan()`으로 다시 읽는다.
-- 배포: 익스텐션 저장소에는 릴리즈 워크플로도 생성된 `manifest.json`도 없다. 코어 릴리즈 워크플로가 `saba-chan-extensions`의 `main`을 checkout하고 `versions.py manifest --extensions-repo`가 `ext-<id>.zip`을 만들어 같은 릴리즈 manifest에 싣는다(`D:.github/workflows/release.yml:173-193`, `D:scripts/versions.py:246-265`). 지금 저장소에는 `steamcmd`, `ue4_ini` 두 개만 있다.
+- **출처**: 최신 릴리즈의 서명된 manifest에 든 `ext-<id>` 컴포넌트다. `ExtensionManager::fetch_remote()`가 `relay::latest_catalog`를 부르고 `from_release`가 `meta`(이름·설명·작성자·`min_app_version`·의존성)와 `version`, `download_url`(R2), `sha256`, `asset`을 목록 항목으로 만든다(`ext/:1283-1324`). `manifest_url`, `set_manifest_url`, raw `main/manifest.json`은 없다. 앱보다 새 버전을 요구하면 `incompatible`로 표시한다.
+- `GET /api/extensions/manifest`: 원격 목록과 `check_updates_against` 결과를 돌려준다(`handlers/extension.rs:313-334`).
+- `GET /api/extensions/updates`: 업데이트 목록만 돌려준다(`handlers/extension.rs:410-429`).
+- `POST /api/extensions/:id/install` (body `{download_url?, sha256?}`): body가 없으면 원격 목록에서 URL과 sha256을 찾는다. 받기·검사·압축 해제는 락 없이 `stage_package`로 하고(sha256(있으면), manifest 스키마, id, `min_app_version` 확인, `ext/:1376-1415`), 폴더 교체만 write 락 안에서 `install_staged`로 한다. 실행 중인 인스턴스가 쓰는 익스텐션이면 `in_use`로 거부하고, 옛 폴더는 새 폴더가 자리 잡은 뒤에 지우며 실패하면 되돌린다(`ext/:695-721,1419-1440`). 빠진 익스텐션 의존성도 차례로 함께 설치한다(`handlers/extension.rs:352-407`).
+- 업데이터의 일괄 업데이트(`/api/updates/*`)는 설치된 `ext-*`만 비교하고, 적용 뒤 `rescan()`으로 다시 읽는다(`src/ipc/updates.rs:525-527`).
+- 배포: 익스텐션 저장소에는 릴리즈 워크플로도 생성된 `manifest.json`도 없다(CI는 pytest·ruff만, `E:.github/workflows/ci.yml`). 코어 릴리즈 워크플로가 `saba-chan-extensions`의 `main`을 checkout하고 `versions.py manifest --extensions-repo`가 `ext-<id>.zip`을 만들어 같은 릴리즈 manifest에 싣는다(`D:.github/workflows/release.yml:173-193`, `D:scripts/versions.py:245-266`). 지금 저장소에는 `steamcmd`, `ue4_ini` 두 개만 있다.
 
-### 3.5 의존성 처리 (music 의존성, node)
+### 3.5 의존성 처리
 
-- 익스텐션 간 의존성: docker는 `{"steamcmd": ">=0.1.0"}`을 가진다. 그래서 steamcmd를 먼저 enable해야 docker를 enable할 수 있고, docker가 enabled인 동안 steamcmd를 disable할 수 없다. 런타임에서는 `compose_manager.provision`이 `../steamcmd/steamcmd.py`를 `importlib`로 **파일 경로로 직접 로드**한다(`compose_manager.py:808-825`).
-- music: `daemon.startup` → `music_deps.check_dependencies`가 npm 패키지(`EXT/music/package.json`)를 `npm install`하고 ffmpeg/yt-dlp/opus를 확인한 뒤 결과를 `.deps-resolved.json`에 기록한다(`music_deps.py:91-160`). portable npm/ffmpeg는 data_dir 아래에서 탐색한다(`:40-90`).
-  - 실제 음악 기능 코드는 이 익스텐션 패키지에 **없고**, `saba-chan/discord_bot/extensions/music.js`에 있다. music.js는 `.deps-resolved.json`을 읽거나, 없으면 **Node 봇이 Python `music_deps.py`를 직접 spawn한다**(`discord_bot/extensions/music.js:33-100`). daemon을 우회하는 경로다. 또 `../../../saba-chan-extensions/music/music_deps.py`라는 개발 리포 경로까지 후보로 둔다(`:40`).
+- 익스텐션 간 의존성: 현재 두 manifest 모두 `dependencies: []`다. ~~docker → steamcmd 의존성과 `compose_manager`의 파일 경로 import~~ → 해결: docker 익스텐션 제거.
+- ~~music: `daemon.startup`에서 npm install, 실제 기능은 `discord_bot/extensions/music.js`~~ → 해결: music 익스텐션과 로컬 Discord 봇이 제거되었다.
 - node: 데몬에는 Node 런타임 관리가 없다(L1에서 `node_env` 삭제). 익스텐션 manifest에도 node 의존성을 선언할 방법이 없다.
 - Python 의존성: 익스텐션별 requirements 선언이 없다. 공용 venv를 쓴다.
 
@@ -238,94 +228,78 @@
 
 ### 4.1 로딩 경로 (Electron)
 
-1. Renderer `window.api.extensionList()` → main.js `ipcMain.handle('extension:list')` → `GET /api/extensions`(`saba-chan-gui/main.js:2408`, `preload.js:31-44`). 모든 호출은 main 프로세스가 axios로 대행한다(토큰 인증 포함).
+1. Renderer `window.api.extensionList()` → main.js `ipcMain.handle('extension:list')` → `GET /api/extensions`(`saba-chan-gui/main.js:2084`, `preload.js:39-53`). 모든 호출은 main 프로세스가 axios로 대행한다(토큰 인증 포함).
 2. `ExtensionProvider`(`src/contexts/ExtensionContext.js:93-189`)가 enabled 익스텐션마다:
-   - `window.api.extensionGuiBundle(id)` → `GET /api/extensions/:id/gui`로 JS 소스 문자열을 받는다. **Blob URL `<script>`**로 실행한다(`:23-57`).
-   - 전역 이름 규칙: `window["SabaExt" + PascalCase(id)]`. `-`와 `_` 구분자를 제거하고 다음 글자를 대문자로 바꾼다(`:75-77`). docker → `SabaExtDocker`. 번들이 정확히 이 전역을 만들어야 한다(`docker.umd.js`의 첫 줄이 `var SabaExtDocker = (() => {…`).
-   - 스타일: `GET …/gui/styles`가 있으면 `<style data-extension=id>`로 넣는다.
+   - `window.api.extensionGuiBundle(id)` → `GET /api/extensions/:id/gui`로 JS 소스 문자열을 받는다. **Blob URL `<script>`**로 실행한다(`:23-57`). `ext.gui`가 없으면 요청하지 않는다(`:32-34`).
+   - 전역 이름 규칙: `window["SabaExt" + PascalCase(id)]`. `-`와 `_` 구분자를 제거하고 다음 글자를 대문자로 바꾼다(`:75-77`). steamcmd → `SabaExtSteamcmd`. 번들이 정확히 이 전역을 만들어야 한다.
+   - 스타일: `GET …/gui/styles`가 있으면 `<style data-extension=id>`로 넣는다(`:59-66`).
    - 모듈의 **`registerSlots(): { [slotId]: Component | Component[] }`**를 호출해 슬롯 레지스트리에 병합한다. manifest의 `gui.slots`는 쓰지 않는다.
-   - 버전이 바뀌면 전역을 삭제하고 style 태그를 제거한 뒤 다시 로드한다(핫로드, `:146-156`).
+   - 버전이 바뀌면 전역을 삭제하고 style 태그를 제거한 뒤 다시 로드한다(핫로드, `:149-156`).
 3. React 공유: 호스트가 `window.React`와 `window.ReactDOM`을 전역으로 노출하고(`src/index.js:11-13`), 번들은 `window.React`를 참조한다(external 처리). 그 밖의 호스트 API(토스트, 데몬 API, 스토어 등)는 노출하지 않는다. 확장 컴포넌트는 props만으로 동작해야 한다.
-4. 보안: 번들은 렌더러 컨텍스트에서 **그대로 eval**되므로 `window.api`(preload가 노출한 모든 IPC)에 접근할 수 있다. 무결성 검증(sha256)도 없다.
+4. 보안: 번들은 렌더러 컨텍스트에서 **그대로 eval**되므로 `window.api`(preload가 노출한 모든 IPC)에 접근할 수 있다. 패키지 설치 때는 sha256을 확인하지만, 번들을 로드할 때는 검증하지 않는다.
+
+현재 `gui`를 가진 익스텐션은 없으므로 이 경로는 실제로 쓰이지 않는다.
 
 ### 4.2 슬롯과 props (호스트 `<ExtensionSlot slotId … {...props}>`, `components/ExtensionSlot.js`)
 
-| slotId | 호스트 위치 | 전달 props | docker 컴포넌트 |
+| slotId | 호스트 위치 | 전달 props | 구현 익스텐션 |
 |---|---|---|---|
-| `ServerCard.badge` | `ServerCard.js:166` | `server` | DockerBadge |
-| `ServerCard.headerGauge` | `ServerCard.js:229` | `server` | DockerMiniGauge |
-| `ServerCard.provision` | `ServerCard.js:306` (`server.provisioning`일 때) | `server, provisionProgress, onDismiss, t` | DockerProvision |
-| `ServerCard.expandedStats` | `ServerCard.js:337` | `server, t` | DockerStatsRow |
-| `ServerSettings.tab` | `ServerSettingsModal.js:710` | `server, activeTab, setActiveTab, settings, onSettingsChange, t` | DockerTab |
-| `AddServer.options` | `AddInstanceNewServer.js:247` | `options{use_container}, onOptionsChange, t` | DockerToggle |
+| `ServerCard.badge` | `ServerCard.js:166` | `server` | 없음 |
+| `ServerCard.headerGauge` | `ServerCard.js:229` | `server` | 없음 |
+| `ServerCard.provision` | `ServerCard.js:306` (`server.provisioning`일 때) | `server, provisionProgress, onDismiss, t` | 없음 |
+| `ServerCard.expandedStats` | `ServerCard.js:337` | `server, t` | 없음 |
+| `ServerSettings.tab` | `ServerSettingsModal.js:710` | `server, activeTab, setActiveTab, settings, onSettingsChange, t` | 없음 |
+| `AddServer.options` | `AddInstanceNewServer.js:228` | `t` | 없음 |
 
 - `server` 객체는 `/api/servers`의 `ServerInfo`다. 여기서 `extension_data`와 `extension_status[<extension_id>]`(list_enrich 결과)를 컴포넌트가 읽는다.
-- 슬롯 이름은 호스트에 하드코딩되어 있고, 슬롯 목록을 문서화하거나 검증하는 장치가 없다. CLI 쪽 대응표는 `saba-chan-cli/src/tui/app.rs:276-290`에 주석으로만 있다.
-- `AddServer.options`의 `use_container` 의미는 호스트 상태(`useContainerIsolation`)와 daemon(`create_instance`의 `use_container` → `docker_enabled`, `handlers/instance.rs:88-114`)에 하드코딩되어 있다. 범용 슬롯 계약이 아니라 docker 전용 계약이다.
+- 슬롯 이름은 호스트에 하드코딩되어 있고, 슬롯 목록을 문서화하거나 검증하는 장치가 없다. CLI 쪽 대응표는 `saba-chan-cli/src/tui/app.rs:270-279`에 주석으로만 있다.
+- ~~`AddServer.options`의 `use_container` 의미가 호스트와 daemon에 하드코딩된 docker 전용 계약이다.~~ → 해결: 슬롯은 `t`만 받고, daemon `create_instance`에 `use_container`가 없다.
 
 ### 4.3 i18n
 
-- 로더: `window.api.extensionI18n(id, lang)` → `GET /api/extensions/:id/i18n/:locale` → `i18n.addResourceBundle(lang, "ext_<id>", …)`(`ExtensionContext.js:82-91`). 현재 언어와 `en`을 로드한다. **언어가 바뀌어도 다시 로드하지 않는다**(effect 의존성이 `[extensions]`뿐).
-- 실제로는 docker 컴포넌트가 호스트에서 받은 `t`로 `add_server_modal.docker_isolation`, `server_settings.docker_*` 같은 **호스트 `gui` 네임스페이스 키**를 쓴다. 이 키들은 `saba-chan/locales/*/gui.json`(10개 언어)에 정의되어 있다. 익스텐션 자체 `EXT/docker/i18n/{en,ja,ko}.json`의 `ext_docker` 네임스페이스는 사실상 쓰이지 않는다. → **플러그인 전용 문자열이 호스트에 하드코딩된 위반 사례**다.
+- 로더: `window.api.extensionI18n(id, lang)` → `GET /api/extensions/:id/i18n/:locale` → `i18n.addResourceBundle(lang, "ext_<id>", …)`(`ExtensionContext.js:82-91`). 현재 언어와 `en`을 로드한다. **언어가 바뀌어도 다시 로드하지 않는다**(effect 의존성이 `[extensions]`뿐, `:189`).
+- ~~docker 컴포넌트가 호스트 `gui` 네임스페이스의 `server_settings.docker_*` 키를 쓰는 위반 사례~~ → 해결: docker 익스텐션이 제거되었고 `locales/*/gui.json`에 docker 키가 없다.
 
 ### 4.4 GUI에서 노출되지 않는 API
 
-- `GET/PUT /api/extensions/:id/config`(글로벌 설정, `config_fields`)에 대한 preload/main IPC 바인딩이 **없다**. CLI `client.rs:615-622`에만 있다.
-- `extension:icon` → SabaStorage(`SabaStorage.js:1065`), `extension:initStatus` → `hooks/useExtensionInitStatus.js`.
+- `GET/PUT /api/extensions/:id/config`(글로벌 설정, `config_fields`)에 대한 preload/main IPC 바인딩이 **없다**. CLI `client.rs:466-474`에만 있다.
+- `extension:icon` → SabaStorage(`SabaStorage.js:982`), `extension:initStatus` → `hooks/useExtensionInitStatus.js`.
 
 ---
 
 ## 5. 익스텐션별 기능 요약 · module과의 연결
 
-### 5.1 docker (v0.1.0, 의존성 steamcmd>=0.1.0)
+### 5.1 docker
 
-- **docker_engine.py**(993줄): 포터블 Docker Engine을 관리한다. Windows는 WSL2 안에 `/opt/saba-chan/docker`를 설치하고, 그 외는 로컬 `base_dir`를 쓴다. `ensure`(설치 + 데몬 기동, `daemon_ready`/`wsl_mode`를 반환), `start_daemon`, `stop_daemon`, `status`, `info`. 진행률은 `PROGRESS:`로 보낸다.
-- **compose_manager.py**(1204줄):
-  - `provision`(post_create): 3단계 `docker_engine → steamcmd(또는 download) → compose`. module.toml `[docker]` 섹션(`module_install.container`)을 템플릿 치환해 `docker-compose.yml`을 생성한다(`_generate_compose_yaml`, `:1034`). SteamCMD 진행률은 40~66% 구간으로 리매핑한다.
-  - `start`: `compose up`을 실행하고 `log_follower`를 반환한다. 우선 `saba-docker-io` 브리지(interactive, Go 바이너리 `saba-docker-io/main.go`: `docker logs --tail 200` 후 `docker attach`)를 쓰고, 없으면 `compose logs --follow`를 쓴다.
-  - `stop`(compose stop), `cleanup`(compose down), `status`(docker top과 process_patterns로 판정), `enrich_server_info`(`extension_id:"docker"`, status, memory/cpu), `shutdown_all`(daemon 종료 시 모든 인스턴스), `regenerate_compose`(설정 변경).
-  - 발화되지 않는 함수: `container_stats`, `get_logs`, `pre_create`(no-op).
-- **GUI**: 6개 슬롯 컴포넌트와 `MemoryGauge`.
-- **CLI 슬롯**: `InstanceList.badge`(🐳), `InstanceDetail.menu`(open_ext_settings), `InstanceDetail.status`(value_from `container_status`), `CreateInstance.options`(docker_enabled).
-- **instance_fields**: `docker_enabled`, `docker_cpu_limit`, `docker_memory_limit`.
+~~포터블 Docker Engine, compose 기반 컨테이너 격리, 6개 GUI 슬롯, CLI 슬롯~~ → 해결: docker 익스텐션은 저장소에서 제거되었고, core의 docker 전용 코드도 함께 없어졌다.
 
 ### 5.2 steamcmd (v0.1.0)
 
-- `SteamCMD` 클래스(`steamcmd.py:141-640`): 포터블 SteamCMD 탐색/설치, `install(app_id, install_dir, anonymous, beta, platform, validate)`, buildid 비교로 `check_update`.
-- daemon hook으로 실제로 쓰이는 것은 `server.check_update` 하나뿐이다. 설치는 module의 `lifecycle.py install_server`가 `from extensions.steamcmd import SteamCMD`로 직접 수행한다(`saba-chan-modules/palworld/lifecycle.py:1254`, `zomboid/lifecycle.py:1535`). docker는 파일 경로로 import한다.
-- instance_fields `install_method_steamcmd`, `steamcmd_app_id` 등은 daemon이 module의 `[install] method="steamcmd"`를 보고 **하드코딩으로 주입**한다(`src/instance/mod.rs:126-170` `apply_install_extension_data`).
+- `SteamCMD` 클래스(`steamcmd.py:151-622`): 포터블 SteamCMD 탐색/설치, `install(...)`, `update`, buildid·브랜치 비교로 `check_update`. 압축 해제는 경로 탈출을 막는다(`:799-827`).
+- daemon hook으로 실제로 쓰이는 것은 `server.check_update` 하나뿐이다. 설치는 module의 `lifecycle.py install_server`가 `from extensions.steamcmd import SteamCMD`로 직접 수행한다(`M:palworld/lifecycle.py:1175`, `M:zomboid/lifecycle.py:1457`).
+- instance_fields `install_method_steamcmd`, `steamcmd_app_id` 등은 daemon이 module의 `[install] method`를 보고 **범용 규칙**(`install_method_<방식>`, `<방식>_<이름>`)으로 채운다(`src/instance/mod.rs:124-148` `apply_install_extension_data`). core에 steamcmd 이름은 없다.
 
-### 5.3 music (v0.1.0)
+### 5.3 music
 
-- 내용물은 `music_deps.py`(의존성 검사/설치)와 `package.json`(Node 패키지 목록)뿐이다. 재생 로직은 `saba-chan/discord_bot/extensions/music.js`와 `musicChannelUI.js`에 있다.
-- GUI는 `extensions.some(e => e.id==='music' && e.enabled)`로 Discord 모달의 음악 설정을 켜고 끈다(`DiscordBotModal.js:70-72`). 음악 설정 UI는 호스트에 하드코딩되어 있다(`gui.builtin:true`의 실질적 의미).
+~~`music_deps.py`와 `package.json`, 재생 로직은 `discord_bot/extensions/music.js`~~ → 해결: music 익스텐션과 로컬 Discord 봇이 제거되었다.
 
 ### 5.4 ue4-ini (v0.1.0, 디렉토리명 `ue4_ini`)
 
-- `parse_option_settings(ini_path)`와 `write_option_settings(ini_path, props, section)`를 제공하는 **순수 Python 라이브러리**다. hook 선언은 dead다(2.5절).
-- palworld가 `requires_extensions = ["steamcmd", "ue4-ini"]`로 요구하고, `lifecycle.py:27`에서 **모듈 최상위에서 무조건 import**한다. ue4-ini가 설치되지 않았으면 palworld lifecycle 전체(status/stop 포함)가 ImportError로 실패한다. `SABA_ENABLED_EXTENSIONS` 검사보다 앞서 import하므로 disable해도 import는 계속 동작한다(디스크에 있는 한). 즉 "disable"이 Python import를 막지 못한다.
+- `parse_option_settings(ini_path)`와 `write_option_settings(ini_path, props, section)`를 제공하는 **순수 Python 라이브러리**다(`ue4_ini.py:23,163`). hook은 선언하지 않는다.
+- palworld가 `requires_extensions = ["steamcmd", "ue4-ini"]`로 요구한다(`M:palworld/module.toml:51`). ~~최상위에서 무조건 import해서 ue4-ini가 없으면 lifecycle 전체가 ImportError로 실패하고, disable해도 import가 막히지 않는다.~~ → 해결: palworld는 `try/except ImportError`로 import하고 INI를 건드리는 함수만 `extension_required`를 돌려준다(`M:palworld/lifecycle.py:32-37`). disable하면 import 가드가 import를 막는다(2.1).
 
 ### 5.5 module → extension 참조 방식
 
-1. `module.toml [install] requires_extensions = [...]`. 인스턴스 생성 시 `instance.required_extensions`에 복사된다(`handlers/instance.rs:178-185`). 네이티브 인스턴스만 생성 시점에 검증하고(`:187-221`), 시작 시점에는 다시 검증한다(`supervisor/mod.rs:259-317`, `installed_and_enabled_set`). module 기능 엔드포인트에서도 검사한다(`handlers/managed.rs:416-430`).
-2. `module.toml [docker]` 섹션은 `metadata.extensions["docker"]`로 파싱된다(module_loader가 하드코딩). post_create와 settings_changed context로 전달된다.
-3. Python 레벨: `from extensions.<pkg> import …`. PYTHONPATH 주입에 의존하고, `SABA_ENABLED_EXTENSIONS`로 자체 검사한다.
-4. `saba-chan-modules/__example/__example__lifecycle.py:408`의 `from extensions.steamcmd import install_game`은 **존재하지 않는 함수**다(예제가 오래됨).
+1. `module.toml [install] requires_extensions = [...]`. 인스턴스 생성 시 `instance.required_extensions`에 복사된다(`handlers/instance.rs:141-148`). 생성 시점에 검증하고(`:150-180`), 시작 시점에 다시 검증한다(`supervisor/mod.rs:392-450`, `installed_and_enabled_set`). module 기능 엔드포인트에서도 검사한다(`handlers/managed.rs:390-425`). `[module.dependencies]`의 `ext-<id>` 버전 요구도 시작 시 검사한다(`supervisor/mod.rs:320-340`).
+2. `module.toml [extensions.<id>]` 섹션은 `metadata.extensions["<id>"]`로 그대로 파싱된다(`supervisor/module_loader.rs:454-458`). settings_changed context의 `module_extensions`로 전달된다.
+3. Python 레벨: `from extensions.<pkg> import …`. PYTHONPATH 주입과 import 가드에 의존하고, module은 `SABA_ENABLED_EXTENSIONS`로 자체 검사도 한다(`M:palworld/lifecycle.py:1165`, `M:zomboid/lifecycle.py:1447`).
+4. ~~`__example__lifecycle.py`의 `from extensions.steamcmd import install_game`은 존재하지 않는 함수다.~~ → 해결: 예제는 `from extensions.steamcmd import SteamCMD`를 쓴다(`M:__example/__example__lifecycle.py:405`).
 
 ---
 
-## 6. ext_process: 장기 실행 외부 프로세스 계약 (`src/ipc/handlers/ext_process.rs`)
+## 6. ext_process: 장기 실행 외부 프로세스 계약
 
-- 목적: 이름 기반 범용 프로세스 매니저. 실제 사용자는 **Discord 봇(`discord-bot`) 하나뿐**이다. 익스텐션 manifest와 **아무 연관이 없다**(manifest에 프로세스 선언 필드가 없음).
-- API(`src/ipc/mod.rs:627-632`):
-  - `GET /api/ext-processes` → `{processes:[{name,status,pid,meta}]}`
-  - `POST /api/ext-process/:name/start` body `StartProcessRequest{command, args[], cwd?, env{}, meta}`(`:144-158`) → `{ok,pid,name}`. 이미 실행 중이면 에러.
-  - `POST …/stop`: stdin에 `{"type":"shutdown"}` 줄을 쓰고, 1초 뒤 PID가 같으면 `kill -9` / `taskkill /F /T`(`:336-377`).
-  - `GET …/status` → `{name,status,pid,meta}`
-  - `GET …/console?since=<id>&count=<n=200>` → `{name, lines:[{id,line}], running}`. 링버퍼는 100,000줄이다(`:58-68`). 각 줄 앞에 `[stdout]`, `[stderr]`, `[system]`을 붙인다.
-  - `POST …/stdin`: 한 줄을 전송한다(`\n`을 자동으로 붙임).
-- 프로토콜 관례: stdout에서 `__IPC__:` 접두 줄은 daemon 터미널 echo에서만 숨기고 버퍼에는 저장한다(`:229-231`). 종료하면 pid=None과 `[system] Process exited`를 기록한다. daemon이 종료될 때 `shutdown_all`(`:89-130`, `main.rs:446-449`)을 호출한다.
-- **보안/설계 지적**: 인증된 클라이언트라면 **임의의 command/args/env로 프로세스를 실행**할 수 있다(auth 미들웨어 `ipc/mod.rs:667`만 있음). 실행할 명령은 interface(GUI `main.js:3226-3269`)가 조립한다. daemon에도 같은 조립 로직이 중복되어 있다(`main.rs` `auto_start_discord_bot` `:669-760`, node 경로·env 구성). "interface는 스스로 아무것도 못 한다 / daemon이 주인"이라는 원칙에서 보면, 봇의 실행 사양을 GUI가 결정한다는 점에서 경계가 흐리다.
+~~`src/ipc/handlers/ext_process.rs`, `/api/ext-process/*`: Discord 봇 실행용 범용 프로세스 매니저~~ → 해결: 로컬 Discord 봇 제거와 함께 `ext_process` 핸들러와 라우트가 없어졌다(`src/ipc/mod.rs` 라우트 목록에 없음). Discord 연동은 `relay_agent.rs`가 릴레이와 통신한다.
 
 ---
 
@@ -333,37 +307,38 @@
 
 ### 7.1 Dead code / 미구현
 
-1. `HookBinding.is_async`(`ext/:217-218`): 읽는 곳이 없다.
-2. `min_app_version`(`ext/:182,311`): 강제하지 않는다.
-3. `should_parse_config_section`(`ext/:1309`), `all_instance_fields`(`:1317`), `force_disable`(`:962`), `enabled_set`(`:1005`), `is_newer_version`(`:1420`), `replace_extension_config`(`:1542`), `enable_with_versions`(외부 호출 0건): `impl` 전체에 `#[allow(dead_code)]`가 걸려 있다(`ext/:407`).
-4. `install_from_url`의 sha256 검증: 스텁이다(`ext/:1435,1439`).
-5. `ExtensionUpdateInfo.downloaded/installed`: 항상 false다(`ext/:378-381,1408-1409`).
-6. `plugin::run_extension*`(`plg/:263-284`): 옛 레이아웃이다.
-7. updater의 `extension.toml` 기반 익스텐션 업데이트(`updater/src/lib.rs:835-1115`): 실제 익스텐션과 형식이 맞지 않는다.
-8. 발화되지 않는 hook 7종(2.3절)과 그 Python 함수들(`pre_create`는 no-op 스텁).
+1. ~~`HookBinding.is_async`: 읽는 곳이 없다.~~ → 해결: 필드 삭제 (`ext/:299-305`).
+2. ~~`min_app_version`: 강제하지 않는다.~~ → 해결: enable·설치에서 강제하고 목록에 `incompatible`로 표시한다(`ext/:929-933,1405,1108`).
+3. ~~`should_parse_config_section`, `all_instance_fields`, `force_disable`, `enabled_set`, `is_newer_version`, `replace_extension_config`와 `impl` 전체 `#[allow(dead_code)]`~~ → 해결: 함수들이 삭제되었다. 남은 dead는 읽는 코드가 없는 `module_config_section` 필드(`ext/:254-256`)다.
+4. ~~`install_from_url`의 sha256 검증: 스텁이다.~~ → 해결: `stage_package`가 sha256을 비교한다(`ext/:1383-1389`).
+5. ~~`ExtensionUpdateInfo.downloaded/installed`: 항상 false다.~~ → 해결: 필드 삭제, 대신 `incompatible`(`ext/:524-531`).
+6. ~~`plugin::run_extension*`: 옛 레이아웃이다.~~ → 해결: 삭제.
+7. ~~updater의 `extension.toml` 기반 익스텐션 업데이트~~ → 해결: `manifest.json`의 id·version을 읽는다(`updater/src/lib.rs:279-282,589-601`).
+8. ~~발화되지 않는 hook 7종과 그 Python 함수들~~ → 해결: manifest에서 빠졌고 검증이 막는다. 대신 `server.post_create`는 `FIRED_HOOKS`에 있지만 발화하는 코드가 없다(`ext/:30`, `handlers/instance.rs:244`).
 9. `ue4_ini_enabled` instance_field: 설정하는 경로가 없다.
 
 ### 7.2 버그 · 위험
 
-1. `SABA_ENABLED_EXTENSIONS` 상태 파일 경로 불일치(`plg/:140-151` vs `constants.rs:219`). Linux에서 module의 steamcmd 검사가 실패할 수 있다.
-2. hook 실행 순서가 HashMap에 의존해 비결정적이다(`ext/:1058`). 그런데 `handled`가 체인을 끊는다.
-3. `dispatch_hook_with_progress`는 익스텐션 1개만 실행한다(`ext/:1302`).
-4. enable할 때 모든 익스텐션의 `daemon.startup`이 재실행된다(`handlers/extension.rs:99`). npm install이나 엔진 체크가 중복된다.
-5. 긴 hook 동안 `extension_manager` read 락을 유지한다. post_create(30분) 동안 enable/disable/install/rescan(write)이 블록된다(`handlers/instance.rs:319`, `main.rs:177`).
-6. `daemon.startup` 120초 타임아웃이 Docker 엔진 다운로드나 npm install에 비해 짧을 수 있다.
-7. `server.post_stop`이라는 이름과 실제 의미(정지 대행, pre)가 다르다(`supervisor/mod.rs:566`).
-8. `server.list_enrich`는 인스턴스마다 순차로 Python을 실행한다(10초 × N). TTL 30초 캐시에 `handled:false`도 캐싱한다.
-9. `instances_using_ext`는 숫자 0, 빈 문자열, `false`가 아닌 모든 Object/Array를 "사용 중"으로 판정한다(`ext/:841-848`). disable은 **실행 중인** 인스턴스만 보므로 정지된 docker 인스턴스가 있어도 docker를 disable하거나 **remove**할 수 있다. 이후 시작하면 extension_required 에러가 난다.
-10. `save_extension_config` 주석은 "null을 전달하면 키 제거"라고 하지만, 실제로는 null 값을 저장한다(`handlers/extension.rs:504` vs `ext/:1531-1539`).
-11. 컴포넌트 의존성(`saba-core` 등)을 선언하면 HTTP enable이 불가능하다(`ext/:856-858`).
-12. install/update가 실행 중이거나 enabled인 익스텐션 디렉토리를 검사 없이 삭제한다(`ext/:1466-1469`). 무결성 검증이 없고, 의존성을 자동 설치하지 않는다.
-13. `discover()`/`rescan()`이 manifest.id와 디렉토리명의 일치를 검사하지 않는다(mount만 검사, `ext/:760`). zip 추출은 기존 폴더가 있으면 새 zip을 **버린다**(`ext/:607-613`).
-14. 모든 hook context에 전체 `extensionConfig.json`(타 익스텐션 비밀값 포함)이 주입된다(`ext/:1090-1100`).
+1. ~~`SABA_ENABLED_EXTENSIONS` 상태 파일 경로 불일치~~ → 해결: config.json `extensions.enabled`에서 읽는다(`plg/:200-205`).
+2. ~~hook 실행 순서가 HashMap에 의존해 비결정적이다.~~ → 해결: `priority`, id 순(`ext/:1116-1127`).
+3. ~~`dispatch_hook_with_progress`는 익스텐션 1개만 실행한다.~~ → 해결: 함수 삭제.
+4. ~~enable할 때 모든 익스텐션의 `daemon.startup`이 재실행된다.~~ → 해결: `run_hook_to`로 해당 익스텐션만(`handlers/extension.rs:121-122`).
+5. ~~긴 hook 동안 `extension_manager` read 락을 유지한다.~~ → 해결: 계획만 락 안에서, 실행은 락 밖에서(`ext/:1603-1617`).
+6. `daemon.startup` 120초 타임아웃(`main.rs:323` → `run_hook`)이 긴 설치 작업에는 짧을 수 있다.
+7. ~~`server.post_stop`이라는 이름과 실제 의미가 다르다.~~ → 해결: `server.stop`으로 바꾸고 옛 이름은 별칭으로 읽는다(`ext/:15-17`, `supervisor/mod.rs:713-716`).
+8. `server.list_enrich`는 인스턴스마다 순차로 Python을 실행한다(10초 × N). TTL 30초 캐시에 `handled:false`도 캐싱한다(`handlers/server.rs:111-120`).
+9. ~~`instances_using_ext`가 숫자 0, 빈 문자열도 "사용 중"으로 판정하고, 정지된 인스턴스가 있어도 remove할 수 있다.~~ → 해결: 빈 값은 미사용으로 보고(`ext/:891-898`), remove는 정지된 인스턴스까지 검사한다(`handlers/extension.rs:436-437`). disable은 여전히 실행 중인 인스턴스만 보므로, 정지된 인스턴스가 쓰는 익스텐션을 끈 뒤 시작하면 `extension_required` 에러가 난다.
+10. `save_extension_config` 주석은 "null을 전달하면 키 제거"라고 하지만, 실제로는 null 값을 저장한다(`handlers/extension.rs:503` vs `ext/:1490-1498`). 같은 핸들러 주석은 아직 `extensionConfig.json`이라고 적혀 있다(`:490`).
+11. ~~컴포넌트 의존성(`saba-core` 등)을 선언하면 HTTP enable이 불가능하다.~~ → 해결: `saba-core`는 데몬 버전으로 검사한다(`ext/:905-908`). 다른 컴포넌트 키는 여전히 버전을 쓰면 켤 수 없다.
+12. ~~install/update가 실행 중이거나 enabled인 익스텐션 디렉토리를 검사 없이 삭제한다. 무결성 검증·의존성 자동 설치가 없다.~~ → 해결: 실행 중 사용이면 거부, staging 후 교체·롤백, sha256 확인, 빠진 의존성 자동 설치(`ext/:1376-1440`, `handlers/extension.rs:402-404`).
+13. ~~`discover()`/`rescan()`이 manifest.id와 디렉토리명의 일치를 검사하지 않고, zip 추출은 기존 폴더가 있으면 새 zip을 버린다.~~ → 해결: 스캔이 이름을 검사하고(`ext/:763-769`), zip은 기존 폴더를 바꿔 끼운다(`ext/:652-683`).
+14. 모든 hook context에 전체 `extensions.settings`(타 익스텐션 비밀값 포함)가 주입된다(`ext/:1199-1209`).
 15. GUI 번들을 Blob script로 무검증 실행하고, `window.api`에 전체 접근할 수 있다.
 16. GUI i18n이 언어 변경 시 다시 로드되지 않는다(`ExtensionContext.js:189`).
-17. 리포에 런타임 산출물이 커밋되어 배포 zip에 들어간다: `docker/docker/dockerd.pid`, `music/.deps-resolved.json`, Go 바이너리. GUI 번들 빌드 설정이 없다.
-18. 릴리즈 워크플로가 기존 릴리즈를 모두 삭제한다. 버전 고정이나 롤백이 불가능하다.
-19. CLI 도움말은 `extension [...|registry|...]`라고 하지만 실제 서브커맨드는 `manifest`다(`saba-chan-cli/src/tui/commands.rs:742` vs `:139,996`).
+17. ~~리포에 런타임 산출물(`dockerd.pid`, `.deps-resolved.json`, Go 바이너리)이 커밋되어 있다.~~ → 해결: 해당 익스텐션이 제거되었고, 저장소에는 소스·테스트·`icon.png`만 있다.
+18. ~~릴리즈 워크플로가 기존 릴리즈를 모두 삭제한다.~~ → 해결: 익스텐션 저장소의 릴리즈 워크플로가 없어졌다(extensions 301ff2c). 배포는 코어 릴리즈가 맡는다(3.4).
+19. CLI 도움말은 `extension [...|registry|...]`라고 하지만 실제 서브커맨드는 `manifest`다(`saba-chan-cli/src/tui/commands.rs:652` vs `:132,906`).
+20. `server.post_create`가 `FIRED_HOOKS`에 있어 manifest 검증을 통과하지만 실제로는 발화되지 않는다(7.1-8).
 
 ### 7.3 "daemon이 주인 / 플러그인은 자유롭게 커스터마이즈" 원칙 위반 (하드코딩된 플러그인 지식)
 
@@ -371,26 +346,26 @@ Core(daemon/GUI/CLI)가 특정 익스텐션을 이름으로 아는 곳들이다.
 
 | 위치 | 하드코딩 내용 |
 |---|---|
-| `supervisor/mod.rs:429,584,777,884,1131` | `instance.ext_enabled("docker_enabled")`. hook이 처리하지 않으면 에러나 최소 응답을 반환한다 |
-| `handlers/server.rs:683` | stop 후 `docker_enabled`이면 ProcessTracker untrack을 생략한다 |
-| `handlers/instance.rs:88-114` | `use_container` → `is_enabled("docker")` 검사, `docker_enabled=true` 주입, "네이티브는 모듈당 1개" 규칙 |
-| `handlers/instance.rs:171` | `metadata.extensions.get("docker")` |
-| `supervisor/module_loader.rs:267,693` | module.toml `[docker]` 섹션 전용 구조체(`ContainerSectionToml`)와 `"docker"` 키. manifest의 `module_config_section`을 무시한다 |
-| `src/instance/mod.rs:126-170` | `install_method_steamcmd`, `steamcmd_app_id` 등 steamcmd instance_field 이름을 core가 직접 쓴다 |
-| `handlers/instance.rs:1290-1294` | check_update에서 `extension_data.steamcmd_app_id` 읽기 |
-| GUI `DiscordBotModal.js:70-72` | `e.id==='music'` |
-| GUI `AddInstanceNewServer.js:247-252` | `options.use_container` 계약 |
-| 호스트 `locales/*/gui.json` | docker UI 문자열(`server_settings.docker_*`, `add_server_modal.docker_*`) |
-| `discord_bot/extensions/music.js` | music 기능 본체가 core 리포(봇)에 있다. 봇이 Python `music_deps.py`를 daemon 없이 직접 실행한다(`:33-100`) |
-| 익스텐션 → 익스텐션 | docker `provision`이 `../steamcmd/steamcmd.py`를 파일 경로로 직접 import한다(`compose_manager.py:808-825`). daemon의 dependency 메커니즘을 거치지 않는다 |
-| module → extension | module이 `from extensions.x import`로 직접 의존한다. disable해도 import는 막히지 않는다(palworld ue4_ini 최상위 import) |
+| ~~`supervisor/mod.rs` `ext_enabled("docker_enabled")`~~ | → 해결: 삭제 |
+| ~~`handlers/server.rs` stop 후 `docker_enabled` untrack 생략~~ | → 해결: 삭제 |
+| ~~`handlers/instance.rs` `use_container` → `docker_enabled` 주입~~ | → 해결: 삭제 |
+| ~~`handlers/instance.rs` `metadata.extensions.get("docker")`~~ | → 해결: 모듈의 `[extensions.*]` 전체를 `module_extensions`로 넘긴다(`handlers/instance.rs:1014-1019`) |
+| ~~`supervisor/module_loader.rs` `[docker]` 전용 구조체~~ | → 해결: 범용 `[extensions.<id>]`(`module_loader.rs:454-458`) |
+| ~~`src/instance/mod.rs` steamcmd instance_field 이름~~ | → 해결: `install_method_<방식>`, `<방식>_<이름>` 범용 규칙(`src/instance/mod.rs:124-148`) |
+| ~~`handlers/instance.rs` check_update에서 `steamcmd_app_id` 읽기~~ | → 해결: `<방식>_app_id`(`handlers/instance.rs:1113-1117`) |
+| ~~GUI `DiscordBotModal.js` `e.id==='music'`~~ | → 해결: 삭제 |
+| ~~GUI `AddInstanceNewServer.js` `options.use_container` 계약~~ | → 해결: 슬롯이 `t`만 받는다(`AddInstanceNewServer.js:228`) |
+| ~~호스트 `locales/*/gui.json` docker UI 문자열~~ | → 해결: 삭제 |
+| ~~`discord_bot/extensions/music.js`~~ | → 해결: 봇 제거 |
+| ~~익스텐션 → 익스텐션 파일 경로 import (docker → steamcmd)~~ | → 해결: docker 제거 |
+| module → extension | module이 `from extensions.x import`로 직접 의존한다. ~~disable해도 import는 막히지 않는다~~ → 해결: import 가드가 비활성 익스텐션 import를 막는다(`plg/:84-96,211-214`) |
 
 daemon을 우회하는 interface 동작:
-- GUI(`main.js:3226-3269`)가 봇 실행 command와 env를 조립해 `/api/ext-process/discord-bot/start`로 보낸다. daemon의 `auto_start_discord_bot`(`main.rs:669+`)과 로직이 중복된다.
-- CLI는 `get_extensions_path()`(`saba-chan-cli/src/config.rs:345`)로 익스텐션 경로를 자체 해석한다(표시 용도).
+- ~~GUI가 봇 실행 command와 env를 조립해 `/api/ext-process/discord-bot/start`로 보낸다.~~ → 해결: ext_process와 로컬 봇이 없어졌다.
+- CLI는 `get_extensions_path()`(`saba-chan-cli/src/config.rs:289-300`)로 익스텐션 경로를 자체 해석한다(`config show` 표시 용도, `tui/commands.rs:324`).
 
 ### 7.4 GUI/CLI 슬롯 체계 비대칭
 
 - GUI: 번들의 `registerSlots()`가 기준이고 manifest의 `gui.slots`는 무시한다.
-- CLI: manifest의 `cli.slots`(데이터 기반)가 기준이다(`saba-chan-cli/src/tui/mod.rs:1129-1150`, `tui/app.rs:323-385`). instance_fields가 있으면 `InstanceSettings.fields` 슬롯을 자동 파생한다. CLI는 `/api/extensions` 결과를 내부 출력 버퍼의 `EXT_SLOTS_INIT:<json>` 라인 프로토콜로 전달해 슬롯을 만든다(`tui/mod.rs:155-158,1038`).
-- CLI badge의 `condition` 평가는 CLI 쪽 `evaluate_badge_condition`이 따로 구현한다(`tui/screens/servers.rs:31-35`). daemon의 `evaluate_condition`과 중복 구현이다.
+- CLI: manifest의 `cli.slots`(데이터 기반)가 기준이다(`saba-chan-cli/src/tui/mod.rs:1087-1110`, `tui/app.rs:302-364`). instance_fields가 있으면 `InstanceSettings.fields` 슬롯을 자동 파생한다. CLI는 `/api/extensions` 결과를 내부 출력 버퍼의 `EXT_SLOTS_INIT:<json>` 라인 프로토콜로 전달해 슬롯을 만든다(`tui/mod.rs:147-151,996`, `tui/screens/extensions.rs:11`).
+- CLI badge의 `condition` 평가는 CLI 쪽 `evaluate_badge_condition`이 따로 구현한다(`tui/screens/servers.rs:7-15`). daemon의 `evaluate_condition`과 중복 구현이고, CLI 쪽은 bool만 참으로 보며 모르는 패턴은 표시한다(daemon은 숫자·문자열도 보고, 모르는 패턴은 false).
