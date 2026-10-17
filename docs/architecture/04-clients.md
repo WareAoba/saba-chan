@@ -108,6 +108,8 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | actionsList | actions:list | - | GET /api/actions?surface=gui&instance?&locale? (P2) | - |
 | actionsPlan | actions:plan | - | POST /api/actions/:id/plan `{input, instance?}` | - |
 | actionsRun | actions:run | - | POST /api/actions/:id/run `{input, instance?}` 또는 `{planId}` | - |
+| discordSettingsGet | discord:settings:get | - | GET /api/discord/:guild/settings (I2) | - |
+| discordSettingsSet | discord:settings:set | - | PATCH /api/discord/:guild/settings `{locale?, sleeping?, music?}` | - |
 | dataExport / dataImport (105-106) | dataTransfer:export/import | 2800/2809 | 저장·열기 다이얼로그로 경로를 고른 뒤 POST /api/migration/export `{path, secrets}` · /api/migration/import `{path, dryRun, overwrite}`. 취소하면 `{canceled:true}`. 가져오기 결과에는 `path`를 붙여 미리보기(`dryRun`) 뒤 같은 파일로 다시 부를 수 있다 | ✓ (A9) |
 | relayCheckHostStatus… relayBotInvite (104-107) | relay:* | 2296-2344 | GET /api/relay/host/:id/status, /nodes, GET /api/relay/node/:guild/members, GET /api/relay/bot-invite | ✓ 740-743 |
 | relayNodeChannels / relayNodeChannelsSave (113-114) | relay:nodeChannels/nodeChannelsSave | 2320/2323 | GET/PUT /api/relay/node/:guild/channels. 실패하면 데몬 본문(`{error, channelId?}`)을 그대로 돌려준다 | ✓ |
@@ -211,6 +213,7 @@ Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `u
 - 콘솔 색: 터미널이 색을 쓸 때만 `?spans=1`을 붙여(`client.rs` `console`) 데몬이 준 토큰 구간을 토큰별 ANSI 스타일로 칠하고, 나머지는 줄 `level` 색을 쓴다(`cmd/console.rs` `format_line`, `token_style`). 토큰은 02 §`HighlightRuleToml`.
 
 - `bot channels GUILD [--chatbot 이름,…] [--no-chatbot] [--music 이름] [--no-music]`: 채널 이름이나 id를 GET 응답의 `channels`로 id로 바꿔 PUT한다. 음악 채널을 새로 정할 때는 메시지가 지워진다고 확인을 받는다.
+- `bot lang GUILD [auto|코드]`, `bot sleep GUILD`, `bot wake GUILD`, `bot music GUILD [--on|--off] [--ui on|off] [--queue-lines N] [--refresh MS] [--normalize on|off]`: 디스코드 길드 설정(I2) `GET/PATCH /api/discord/:guild/settings`. 값이 없으면 보기만 한다. 봇에 닿지 않아 `sync.ok:false`면 다음 연결 때 보낸다고 알린다.
 - `server launch-preview [SERVER] [--args "..."]`: `POST /api/instance/:id/launch-preview`의 `command_line`을 보여 주고, 형식이 틀린 인자는 "잘못된 형식입니다"로 알린다. `--args`가 없으면 저장된 추가 인자로 본다.
 - `audit [SERVER] [--limit N]`(A10): `GET /api/audit`를 표로 보여 준다. CLI 요청에는 `X-Saba-Client: cli`가 붙는다.
 - `do [ACTION] [--server S] [--plan] [KEY=VALUE…]`(P2): 액션 카탈로그. 액션 없이 부르면 `GET /api/actions?surface=cli` 표. 있으면 `plan`을 부르고, `needsConfirm`이면 요약을 보이고 묻은 뒤 `planId`로 `run`한다. `--plan`은 요약만. 값이 JSON으로 읽히면(숫자·참거짓·배열·객체) 그대로 보낸다.
@@ -237,13 +240,13 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 | 단계 | 요청 | 내용 |
 |---|---|---|
 | 버전 확인 | `GET /info` | 릴레이가 요구하는 최소 에이전트 버전 확인 |
-| 하트비트 | `POST /heartbeat` (60초) | `agentVersion`, `os`, `metadata`(서버·모듈·봇 설정). 릴레이가 `UPDATE_REQUIRED`를 주면 경고 로그, `sleeping`이면 폴링을 쉰다(`relay_agent.rs:221-258`). 게임 서버 비밀번호(`rcon_password`, `rest_password`)는 메타데이터에서 뺀다(273-276) |
+| 하트비트 | `POST /heartbeat` (60초) | `agentVersion`, `os`, `metadata`(서버·모듈·봇 설정). 릴레이가 `UPDATE_REQUIRED`를 주면 경고 로그를 남긴다(`relay_agent.rs:221-258`). 잠자기는 길드 설정(I2)이라 폴링은 쉬지 않는다. 게임 서버 비밀번호(`rcon_password`, `rest_password`)는 메타데이터에서 뺀다(273-276) |
 | 명령 받기 | `GET /poll` (롱폴링) | 디스코드에서 온 명령. 현재 `payload.action`은 `raw_command` 하나다 |
 | 결과 보내기 | `POST /result/:id` | 채팅 처리기의 응답 `{success, data:{text}}` (`:388-403`) |
 
 - 모든 요청은 노드 토큰으로 HMAC 서명하고 `X-Saba-Client: 1` 헤더를 붙인다(`relay_agent.rs:162-166, 179-189`, `handlers/relay.rs:102` `signed_headers`). 노드 토큰을 싣는 프록시 요청(`/api/relay/host/*`, `/node/*`)은 `?relayUrl=`이 설정된 릴레이와 같거나 루프백일 때만 따르고, 아니면 설정된 릴레이로 보낸다(`handlers/relay.rs:45-67`).
 - 데몬이 뜨면 `auto_start`가 에이전트를 켠다(토큰이 없으면 info 로그만 남기고 건너뜀, `ipc/mod.rs:787-789`, `relay_agent.rs:155-160`). 에이전트가 연결되면 AI 챗봇 설정도 릴레이에 맞춘다(`relay_agent.rs:111`).
-- 상태 `GET /api/relay/agent`: `{running, sleeping, relay_url, has_token, agent_version, last_heartbeat_at, last_error, commands_handled}` (`relay_agent.rs:31-42`). 켜고 끄기는 `POST /api/relay/agent/start`, `/stop`.
+- 상태 `GET /api/relay/agent`: `{running, relay_url, has_token, agent_version, last_heartbeat_at, last_error, commands_handled}` (`relay_agent.rs:31-42`). 켜고 끄기는 `POST /api/relay/agent/start`, `/stop`.
 - 새 명령 종류는 `handle_payload`의 action 분기에 더한다.
 
 ### 4.3 채팅 처리기 (`src/chat/`)

@@ -221,6 +221,18 @@
         "description": "Instala a atualização baixada e reinicia o aplicativo"
       }
     },
+    "discord": {
+      "settings": {
+        "get": {
+          "title": "Configurações do Discord",
+          "description": "Idioma, repouso e música"
+        },
+        "set": {
+          "title": "Alterar configurações do Discord",
+          "description": "Idioma, repouso e música"
+        }
+      }
+    },
     "field": {
       "action": "Ação",
       "instance": "Servidor",
@@ -238,7 +250,11 @@
       "trust": "Confiança",
       "version": "Versão a instalar",
       "installed": "Versão instalada",
-      "official_catalog": "catálogo oficial"
+      "official_catalog": "catálogo oficial",
+      "guild": "Servidor do Discord",
+      "locale": "Idioma",
+      "sleeping": "Repouso",
+      "music": "Música"
     }
   }
 }

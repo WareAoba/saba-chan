@@ -131,28 +131,38 @@ fn apply(cfg: &mut ChatbotConfig, patch: ChatbotPatch) -> Result<(), String> {
 /// 둘째 값은 릴레이 목록을 받았는지 (호스트가 없으면 받을 것도 없으니 true)
 async fn guild_ids(state: &IPCServer, base: &str, cfg: &ChatbotConfig) -> (BTreeSet<String>, bool) {
     let mut ids: BTreeSet<String> = cfg.guilds.keys().cloned().collect();
-    let host = state.config_store.get_bot_config().await.cloud.host_id;
-    if host.trim().is_empty() {
-        return (ids, true);
-    }
-    let Ok(http) = client() else { return (ids, false) };
-    let path = format!("/api/hosts/{}/nodes", encode_path_segment(host.trim()));
-    match send(apply_signed_headers(http.get(format!("{}{}", base, path)), "GET", &path, None)).await {
-        Ok((code, Some(Value::Array(nodes)))) if code.is_success() => {
-            ids.extend(nodes.iter().filter_map(|n| n.get("guildId").and_then(Value::as_str).map(str::to_string)));
+    match host_guilds(state, base).await {
+        Some(hosted) => {
+            ids.extend(hosted);
             (ids, true)
         }
-        _ => (ids, false),
+        None => (ids, false),
     }
 }
 
-async fn relay_base(state: &IPCServer) -> String {
+/// 릴레이에 등록된 이 호스트의 길드. 못 받으면 None (호스트가 없으면 빈 목록)
+pub(super) async fn host_guilds(state: &IPCServer, base: &str) -> Option<Vec<String>> {
+    let host = state.config_store.get_bot_config().await.cloud.host_id;
+    if host.trim().is_empty() {
+        return Some(Vec::new());
+    }
+    let http = client().ok()?;
+    let path = format!("/api/hosts/{}/nodes", encode_path_segment(host.trim()));
+    match send(apply_signed_headers(http.get(format!("{}{}", base, path)), "GET", &path, None)).await {
+        Ok((code, Some(Value::Array(nodes)))) if code.is_success() => {
+            Some(nodes.iter().filter_map(|n| n.get("guildId").and_then(Value::as_str).map(str::to_string)).collect())
+        }
+        _ => None,
+    }
+}
+
+pub(super) async fn relay_base(state: &IPCServer) -> String {
     let url = state.config_store.get_bot_config().await.cloud.relay_url;
     resolve_relay_url(Some(url.trim()))
 }
 
 /// 길드 하나에 서명한 요청. (상태, 본문)
-async fn call(base: &str, method: reqwest::Method, path: &str, body: Option<String>) -> Result<(StatusCode, Value), String> {
+pub(super) async fn call(base: &str, method: reqwest::Method, path: &str, body: Option<String>) -> Result<(StatusCode, Value), String> {
     let http = client().map_err(|_| "http client".to_string())?;
     let mut req = apply_signed_headers(http.request(method.clone(), format!("{}{}", base, path)), method.as_str(), path, body.as_deref());
     if let Some(b) = body {
@@ -164,7 +174,7 @@ async fn call(base: &str, method: reqwest::Method, path: &str, body: Option<Stri
     }
 }
 
-fn result_row(guild: &str, outcome: &Result<(StatusCode, Value), String>) -> Value {
+pub(super) fn result_row(guild: &str, outcome: &Result<(StatusCode, Value), String>) -> Value {
     match outcome {
         Ok((code, _)) if code.is_success() => json!({ "guildId": guild, "ok": true }),
         Ok((code, body)) => json!({

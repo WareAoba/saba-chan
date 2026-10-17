@@ -2395,6 +2395,10 @@ ipcMain.handle('actions:plan', (_event, id, body) =>
     daemonCall('post', `/api/actions/${encodeURIComponent(id)}/plan`, body || {}));
 ipcMain.handle('actions:run', (_event, id, body) =>
     daemonCall('post', `/api/actions/${encodeURIComponent(id)}/run`, body || {}));
+// 디스코드 길드 설정 (I2): 원본은 데몬. 언어·잠자기·음악
+const discordSettingsPath = (guild) => `/api/discord/${encodeURIComponent(guild)}/settings`;
+ipcMain.handle('discord:settings:get', (_event, guild) => daemonCall('get', discordSettingsPath(guild)));
+ipcMain.handle('discord:settings:set', (_event, guild, patch) => daemonCall('patch', discordSettingsPath(guild), patch || {}));
 
 ipcMain.handle('audit:list', (_event, opts) => {
     const { limit, instance } = opts || {};

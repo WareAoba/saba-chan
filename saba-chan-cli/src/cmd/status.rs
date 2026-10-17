@@ -129,9 +129,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
 
 pub fn discord_line(a: &Value) -> String {
     let flag = |k: &str| a.get(k).and_then(Value::as_bool).unwrap_or(false);
-    if flag("running") && flag("sleeping") {
-        output::status_badge("sleeping")
-    } else if flag("running") {
+    if flag("running") {
         let mut line = output::status_badge("connected");
         if let Some(n) = a.get("commandsHandled").and_then(Value::as_u64).filter(|n| *n > 0) {
             line.push_str(&output::dim(&format!("  {}", t!("status.commands_handled", count = n))));

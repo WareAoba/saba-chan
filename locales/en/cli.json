@@ -65,7 +65,19 @@
     "music_channel": "Music channel",
     "confirm_music_channel": "Making #{{name}} the music channel deletes ordinary messages in it. Continue?",
     "channels_saved": "Channel assignment changed.",
-    "channels_bot_missing": "The bot is not in this Discord server, so its channels can't be listed. Invite it: saba-chan-cli bot invite"
+    "channels_bot_missing": "The bot is not in this Discord server, so its channels can't be listed. Invite it: saba-chan-cli bot invite",
+    "discord_saved": "Saved the Discord settings.",
+    "discord_not_synced": "Saved here, but the bot could not be reached. It will be sent when the bot reconnects.",
+    "on": "on",
+    "off": "off",
+    "locale": "Language",
+    "locale_auto": "auto (this PC's language)",
+    "sleeping": "Sleeping",
+    "music": "Music",
+    "music_ui": "Player panel",
+    "music_queue_lines": "Queue lines",
+    "music_refresh": "Panel refresh",
+    "music_normalize": "Even loudness"
   },
   "col": {
     "aliases": "Aliases",
@@ -447,7 +459,11 @@
       "sandbox": "Isolated runs of unverified modules and extensions",
       "sandbox.allow": "Run this component without isolation when isolation cannot be prepared (asked again when its files change)",
       "sandbox.revoke": "Remove the consent to run without isolation",
-      "do": "Run any daemon action by id (`saba do` alone lists them)"
+      "do": "Run any daemon action by id (`saba do` alone lists them)",
+      "bot.lang": "The language the bot answers in on a Discord server (`auto` follows this PC's language). No value: show",
+      "bot.sleep": "Put the bot to sleep on a Discord server (it ignores commands until woken)",
+      "bot.wake": "Wake the bot on a Discord server",
+      "bot.music": "Music player settings of a Discord server. No options: show"
     },
     "arg": {
       "member": "Discord user ID",
@@ -465,7 +481,14 @@
       "bot.channels.no_music": "Unassign the music channel",
       "monitor.watch": "Keep refreshing until Ctrl+C",
       "monitor.interval": "Seconds between refreshes with --watch",
-      "audit.limit": "How many entries"
+      "audit.limit": "How many entries",
+      "bot.lang.value": "auto or a language code (ko, en, ja, zh-CN, zh-TW, es, pt-BR, ru, de, fr)",
+      "bot.music.on": "Turn music on",
+      "bot.music.off": "Turn music off",
+      "bot.music.ui": "Show the player panel (on or off)",
+      "bot.music.queue_lines": "Queue lines in the player panel (1-20)",
+      "bot.music.refresh": "Player panel refresh in milliseconds (2000-10000)",
+      "bot.music.normalize": "Even out loudness between tracks (on or off)"
     },
     "after": "Names can be partial (e.g. start pal). Run with no arguments to open the interactive shell.\nIn scripts use --json and --yes. Exit codes: 0 ok · 1 failed · 2 usage · 3 daemon unreachable · 4 not found · 130 cancelled"
   },

@@ -23,15 +23,12 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(60);
 const POLL_TIMEOUT: Duration = Duration::from_secs(40); // 릴레이 롱폴 25초 + 여유
 const RETRY_BASE: Duration = Duration::from_secs(3);
 const RETRY_MAX: Duration = Duration::from_secs(60);
-const SLEEP_CHECK_INTERVAL: Duration = Duration::from_secs(30);
 
 /// 에이전트 상태 (GET /api/relay/agent)
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentStatus {
     pub running: bool,
-    /// 릴레이가 이 호스트를 수면 상태로 둠 (폴링 일시정지)
-    pub sleeping: bool,
     pub relay_url: Option<String>,
     pub has_token: bool,
     pub agent_version: &'static str,
@@ -108,7 +105,11 @@ impl RelayAgent {
             tracing::info!("[RelayAgent] started (relay={})", session.base);
             // 챗봇 설정은 데몬이 원본: 연결될 때마다 릴레이에 맞춘다
             let sync_server = session.server.clone();
-            tokio::spawn(async move { crate::ipc::handlers::chatbot::sync_on_connect(&sync_server).await });
+            tokio::spawn(async move {
+                crate::ipc::handlers::chatbot::sync_on_connect(&sync_server).await;
+                // 디스코드 길드 설정도 데몬이 원본 (I2)
+                crate::ipc::handlers::discord::sync_on_connect(&sync_server).await;
+            });
             tokio::join!(session.heartbeat_loop(), session.poll_loop());
             agent.finish(generation, None);
             tracing::info!("[RelayAgent] stopped");
@@ -122,7 +123,6 @@ impl RelayAgent {
             cancel.cancel();
         }
         inner.status.running = false;
-        inner.status.sleeping = false;
     }
 
     /// 세션이 끝났을 때. 그 사이 새 세션이 시작됐으면(세대가 다르면) 아무것도 건드리지 않는다
@@ -133,7 +133,6 @@ impl RelayAgent {
         }
         inner.cancel = None;
         inner.status.running = false;
-        inner.status.sleeping = false;
         if error.is_some() {
             inner.status.last_error = error;
         }
@@ -241,12 +240,7 @@ impl Session {
                 if data.get("warning").and_then(|v| v.as_str()) == Some("UPDATE_REQUIRED") {
                     tracing::warn!("[RelayAgent] relay asks for agent update (min {})", data.get("minVersion").and_then(|v| v.as_str()).unwrap_or("?"));
                 }
-                let sleeping = data.get("sleeping").and_then(|v| v.as_bool()).unwrap_or(false);
                 self.agent.update(self.generation, |s| {
-                    if s.sleeping != sleeping {
-                        tracing::info!("[RelayAgent] relay {}", if sleeping { "sleeping — polling paused" } else { "awake — polling resumed" });
-                    }
-                    s.sleeping = sleeping;
                     s.last_heartbeat_at = Some(now_ms());
                     s.last_error = None;
                 });
@@ -327,6 +321,11 @@ impl Session {
         }
         // 권한 원본은 데몬이다: 릴레이는 이 값으로 바깥 검사용 캐시를 맞춘다
         meta["permissions"] = permissions_by_guild(&bot.node_settings);
+        // 언어가 `auto`인 길드는 이 언어로 답한다 (I2)
+        // (릴레이 스키마는 10자까지. 넘으면 heartbeat 전체가 거절되므로 싣지 않는다)
+        if let Some(language) = self.server.config_store.get_gui_settings().await.language.filter(|l| l.len() <= 10) {
+            meta["language"] = Value::String(language);
+        }
         // 디스코드·챗봇에서 쓸 수 있는 액션 (P2). 상한을 넘으면 잘라 표시한다
         let (actions, truncated) = crate::actions::heartbeat_actions(&crate::chat::i18n::languages());
         meta["actions"] = Value::Array(actions);
@@ -339,10 +338,6 @@ impl Session {
     async fn poll_loop(&self) {
         let mut failures: u32 = 0;
         while !self.cancel.is_cancelled() {
-            if self.agent.status().sleeping {
-                self.pause(SLEEP_CHECK_INTERVAL).await;
-                continue;
-            }
             match self.poll_once().await {
                 Ok(()) => failures = 0,
                 Err(e) => {
@@ -380,10 +375,6 @@ impl Session {
         let body = decode_poll(&text);
         if !status.is_success() {
             return Err(format!("poll {}: {}", status, body.get("error").and_then(|v| v.as_str()).unwrap_or("")));
-        }
-        if body.get("sleeping").and_then(|v| v.as_bool()) == Some(true) {
-            self.agent.update(self.generation, |s| s.sleeping = true);
-            return Ok(());
         }
         let commands = body.get("commands").and_then(|v| v.as_array()).cloned().unwrap_or_default();
         for cmd in commands {

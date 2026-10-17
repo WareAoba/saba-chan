@@ -569,7 +569,7 @@ impl Api {
 
     // ── 디스코드 릴레이 ──
 
-    /// GET /api/relay/agent — `{running, sleeping, relayUrl, hasToken, lastHeartbeatAt, lastError, commandsHandled}`
+    /// GET /api/relay/agent — `{running, relayUrl, hasToken, lastHeartbeatAt, lastError, commandsHandled}`
     pub async fn agent(&self) -> Result<Value> {
         self.get("/api/relay/agent").await
     }
@@ -630,6 +630,14 @@ impl Api {
             body,
         )
         .await
+    }
+    /// GET /api/discord/:guild/settings — `{guildId, locale, sleeping, music}` (I2)
+    pub async fn discord_settings(&self, guild_id: &str) -> Result<Value> {
+        self.get(&format!("/api/discord/{}/settings", seg(guild_id))).await
+    }
+    /// PATCH /api/discord/:guild/settings — 바꿀 키만 → `{success, settings, sync}`
+    pub async fn set_discord_settings(&self, guild_id: &str, patch: Value) -> Result<Value> {
+        self.patch(&format!("/api/discord/{}/settings", seg(guild_id)), patch).await
     }
     // ── 백업·예약 ──
 

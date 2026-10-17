@@ -206,3 +206,23 @@ async fn guilds_only_reach_their_allowed_instances() {
     let listed = query(&state, "instance.list", None, &json!({}), &owner).await.unwrap();
     assert_eq!(listed["result"]["servers"].as_array().unwrap().len(), 1);
 }
+
+#[tokio::test]
+async fn discord_settings_stay_in_the_guild_that_asked_and_need_its_owner() {
+    let (state, _id, _tmp) = server().await;
+    open_everything(&state).await;
+    let owner = relay("owner", false);
+    let input = json!({ "locale": "ko" });
+    // 길드를 주지 않으면 요청이 온 길드로
+    let planned = plan(&state, "discord.settings.set", None, &input, &owner).await.unwrap();
+    assert_eq!(planned["actionId"], json!("discord.settings.set"));
+    let other = json!({ "guild": "other", "locale": "ko" });
+    assert_eq!(plan(&state, "discord.settings.set", None, &other, &owner).await.unwrap_err().code, "invalid_input");
+    // 관리자 레벨이어도 주인만
+    assert_eq!(plan(&state, "discord.settings.set", None, &input, &relay("admin", false)).await.unwrap_err().code, "PERMISSION_DENIED");
+    // 챗봇에는 열지 않는다
+    assert_eq!(plan(&state, "discord.settings.set", None, &input, &relay("owner", true)).await.unwrap_err().code, "action_not_allowed");
+    // GUI·CLI는 길드를 직접 고른다
+    assert_eq!(plan(&state, "discord.settings.set", None, &input, &gui()).await.unwrap_err().code, "invalid_input");
+    assert!(plan(&state, "discord.settings.set", None, &other, &gui()).await.is_ok());
+}

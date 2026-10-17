@@ -363,7 +363,8 @@
 | GET | `/api/relay/bot-invite` | `relay.rs:267-286` | query `relayUrl?`. relay `/api/bot-invite`(공개, 서명 없음)를 그대로 전달. 주소는 서명 요청과 같은 규칙(설정한 릴레이 또는 루프백)으로 정한다. 봇 초대 URL `{url}` |
 | POST | `/api/relay/pair/initiate` | `relay.rs:288` | 바디를 그대로 `/api/pair/initiate`에 전달 (서명 없음) |
 | GET | `/api/relay/pair/:code/status` | `relay.rs:321` | `secret?, relayUrl?`. `status:"claimed"`이면 `nodeToken`을 `.node_token`에 자동 저장 |
-| GET | `/api/relay/agent` | `chat.rs:16` | 에이전트 상태 `{running, sleeping, relayUrl, hasToken, ...}` |
+| GET | `/api/relay/agent` | `chat.rs:16` | 에이전트 상태 `{running, relayUrl, hasToken, ...}` |
+| GET·PATCH | `/api/discord/:guild_id/settings` | `discord.rs` `get_settings`·`patch_settings` | 디스코드 길드 설정(I2) `{guildId, locale, sleeping, music}`. PATCH는 바꿀 키만(`music` 안도 부분) → `{success, settings, sync:{guildId, ok, status?, error?}}`. 틀린 값 400 `invalid_input {field, reason}`, 페어링이 없으면 409 `not_paired`. 저장 전에 릴레이 `PATCH /api/nodes/:g/settings`로 보내고, 릴레이 값과 다른 키만 보낸다(같으면 보내지 않는다). 자동 언어로 바꿀 때는 지금 GUI 언어 `language`도 싣는다. 릴레이가 400이면 저장하지 않고, 닿지 않으면 저장한 뒤 `sync.ok:false`. 에이전트가 연결되면 길드마다 같은 방식으로 맞추고, 블록이 없는 길드는 릴레이 값을 한 번 가져와 원본으로 삼는다(`discord::sync_on_connect`). 그 전에 온 GET·PATCH도 블록이 없으면 릴레이 값에서 출발한다(못 읽으면 기본값). 읽고-바꾸고-저장하기는 한 번에 하나씩 한다. 액션 `discord.settings.get`(safe)·`discord.settings.set`(admin, 디스코드는 소유자, 챗봇 없음). 원격 요청은 자기 길드만 다룬다(`guild`를 그 길드로 고정, 다르면 `invalid_input`) |
 | POST | `/api/relay/agent/start`, `/stop` | `chat.rs:21/33` | 토큰이 없으면 409 `node_token_missing` |
 | POST | `/api/chat/command` | `chat.rs:10` | `{text, guild_id?, user_id?}` → `{reply, code, args}`. `code`는 입력을 알아보지 못했을 때만(`UNKNOWN_COMMAND`·`INSTANCE_NOT_FOUND`), 아니면 null |
 | GET/PUT/DELETE | `/api/chatbot` | `chatbot.rs:70/245/267` | AI 챗봇 설정 (`config.json`의 `chatbot`). 바뀔 때마다 릴레이에 동기화, 클라이언트에는 `hasApiKey`·`pendingRelayDelete`만. PUT은 릴레이 기본값 위에 전체 설정을 얹어 보낸다(`chatbot.rs:33-59`). DELETE가 릴레이에 닿지 못하면 `pendingRelayDelete:true`로 남기고 다음 연결 때 다시 지운다(`:199-243`) |
@@ -497,6 +498,9 @@ Relay 서명 방식(`relay.rs:100-137`):
   - 판정: 릴레이에서 온 요청(`ChatRequest.remote`)만 판정한다. GUI·CLI 요청은 하지 않는다. 금지는 help·list도 못 쓴다. 챗봇 경로는 `min(작성자 레벨, chatbotCap)`이다. 거부는 `PERMISSION_DENIED {need, level, via?}`.
   - 설정이 없는 길드도 같은 기본값으로 판정한다(제한 없음이 아니다).
   - 이 키들은 권한 API로만 바뀐다. 봇 설정 저장(`PATCH /api/config/bot`)은 이 키들을 이전 값으로 되돌린다(`config_store::keep_permission_keys`).
+- `nodeSettings[guildId].discord`: 디스코드 길드 설정(I2, `ipc/handlers/discord.rs`). 원본은 이것 하나고 릴레이 값은 사본이다.
+  - `{locale: "auto"|언어 코드, sleeping, music: {enabled, ui, queueLines 1-20, refreshInterval 2000-10000, normalize}}`. 기본값은 `auto`, false, `{true, true, 5, 4000, true}`(릴레이 기본값과 같다).
+  - `/api/discord/:guild/settings`로만 바뀐다. 봇 설정 저장은 이 블록도 되돌린다(`PERMISSION_KEYS`).
 
 **데몬이 실제로 쓰는 설정값은 일부뿐이다.**
 

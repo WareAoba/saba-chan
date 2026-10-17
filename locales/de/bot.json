@@ -221,6 +221,18 @@
         "description": "Installiert das heruntergeladene Update und startet die App neu"
       }
     },
+    "discord": {
+      "settings": {
+        "get": {
+          "title": "Discord-Einstellungen",
+          "description": "Sprache, Ruhemodus und Musik"
+        },
+        "set": {
+          "title": "Discord-Einstellungen ändern",
+          "description": "Sprache, Ruhemodus und Musik"
+        }
+      }
+    },
     "field": {
       "action": "Aktion",
       "instance": "Server",
@@ -238,7 +250,11 @@
       "trust": "Vertrauen",
       "version": "Zu installierende Version",
       "installed": "Installierte Version",
-      "official_catalog": "offizieller Katalog"
+      "official_catalog": "offizieller Katalog",
+      "guild": "Discord-Server",
+      "locale": "Sprache",
+      "sleeping": "Ruhemodus",
+      "music": "Musik"
     }
   }
 }

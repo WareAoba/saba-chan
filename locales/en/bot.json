@@ -221,6 +221,18 @@
         "description": "Installs the downloaded update and restarts the app"
       }
     },
+    "discord": {
+      "settings": {
+        "get": {
+          "title": "Discord settings",
+          "description": "Language, sleep and music"
+        },
+        "set": {
+          "title": "Change Discord settings",
+          "description": "Language, sleep and music"
+        }
+      }
+    },
     "field": {
       "action": "Action",
       "instance": "Server",
@@ -238,7 +250,11 @@
       "trust": "Trust",
       "version": "Version to install",
       "installed": "Installed version",
-      "official_catalog": "official catalog"
+      "official_catalog": "official catalog",
+      "guild": "Discord server",
+      "locale": "Language",
+      "sleeping": "Sleep",
+      "music": "Music"
     }
   }
 }

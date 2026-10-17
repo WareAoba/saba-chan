@@ -129,9 +129,19 @@ pub static ACTIONS: &[Def] = &[
     Def { fields: &[path_field("module")], ..def("module.install", Kind::Admin, "caution", LOCAL_AND_CHATBOT, false, "POST", "/api/modules/manifest/:module/install") },
     Def { fields: &[path_field("extension")], ..def("extension.enable", Kind::Admin, "caution", LOCAL, false, "POST", "/api/extensions/:extension/enable") },
     Def { fields: &[path_field("extension")], ..def("extension.disable", Kind::Admin, "caution", LOCAL, false, "POST", "/api/extensions/:extension/disable") },
+    // 디스코드 길드 설정 (I2). 원격에서는 요청이 온 길드만 (`guild`를 그 길드로 고정한다)
+    Def { fields: &[path_field("guild")], ..def("discord.settings.get", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "GET", "/api/discord/:guild/settings") },
+    Def {
+        fields: &[path_field("guild"), field("locale", "string", false), field("sleeping", "boolean", false), field("music", "object", false)],
+        discord_level: Some(crate::chat::permissions::OWNER),
+        ..def("discord.settings.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, false, "PATCH", "/api/discord/:guild/settings")
+    },
     def("update.check", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "GET", "/api/updates/check"),
     Def { discord_level: Some(crate::chat::permissions::OWNER), ..def("update.apply", Kind::Admin, "danger", LOCAL_AND_DISCORD, false, "POST", "/api/updates/apply") },
 ];
+
+/// 길드를 받는 액션의 경로 필드 (원격이면 요청이 온 길드로 고정)
+const GUILD_FIELD: &str = "guild";
 
 /// 모듈·익스텐션 명령 액션의 접두어 (`server.command:<이름>`)
 pub const COMMAND_PREFIX: &str = "server.command:";
@@ -454,7 +464,7 @@ fn type_ok(ty: &str, v: &Value) -> bool {
 
 /// 선언과 입력으로 부를 라우트를 만든다 (검증만, 부작용 없음)
 async fn resolve(server: &IPCServer, id: &str, instance: Option<&str>, input: &Value, caller: &Caller) -> Result<Resolved, ActionError> {
-    let input = match input {
+    let mut input = match input {
         Value::Null => Map::new(),
         Value::Object(m) => m.clone(),
         _ => return Err(bad_input("input", "must be an object")),
@@ -489,6 +499,18 @@ async fn resolve(server: &IPCServer, id: &str, instance: Option<&str>, input: &V
         (true, Some(i)) => Some(i.to_string()),
         (false, _) => None,
     };
+    // 원격 요청이 다루는 길드는 그 요청이 온 길드뿐이다
+    if let Some(who) = &caller.remote {
+        if def.fields.iter().any(|f| f.in_path && f.name == GUILD_FIELD) {
+            let Some(own) = who.guild_id.clone() else { return Err(bad_input(GUILD_FIELD, "required")) };
+            match input.get(GUILD_FIELD) {
+                Some(g) if g.as_str() != Some(own.as_str()) => return Err(bad_input(GUILD_FIELD, "only this server's settings")),
+                _ => {
+                    input.insert(GUILD_FIELD.into(), Value::String(own));
+                }
+            }
+        }
+    }
     let mut body = input.clone();
     if !def.open_input {
         for key in input.keys() {

@@ -221,6 +221,18 @@
         "description": "받은 업데이트를 설치하고 앱을 다시 시작해요"
       }
     },
+    "discord": {
+      "settings": {
+        "get": {
+          "title": "디스코드 설정 보기",
+          "description": "언어·잠자기·음악 기능"
+        },
+        "set": {
+          "title": "디스코드 설정 바꾸기",
+          "description": "언어·잠자기·음악 기능"
+        }
+      }
+    },
     "field": {
       "action": "작업",
       "instance": "서버",
@@ -238,7 +250,11 @@
       "trust": "신뢰",
       "version": "받을 판",
       "installed": "지금 판",
-      "official_catalog": "공식 카탈로그"
+      "official_catalog": "공식 카탈로그",
+      "guild": "디스코드 서버",
+      "locale": "언어",
+      "sleeping": "잠자기",
+      "music": "음악"
     }
   }
 }

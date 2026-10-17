@@ -221,6 +221,18 @@
         "description": "安裝已下載的更新並重新啟動應用程式"
       }
     },
+    "discord": {
+      "settings": {
+        "get": {
+          "title": "查看 Discord 設定",
+          "description": "語言、睡眠與音樂功能"
+        },
+        "set": {
+          "title": "變更 Discord 設定",
+          "description": "語言、睡眠與音樂功能"
+        }
+      }
+    },
     "field": {
       "action": "操作",
       "instance": "伺服器",
@@ -238,7 +250,11 @@
       "trust": "信任",
       "version": "要安裝的版本",
       "installed": "目前版本",
-      "official_catalog": "官方目錄"
+      "official_catalog": "官方目錄",
+      "guild": "Discord 伺服器",
+      "locale": "語言",
+      "sleeping": "睡眠",
+      "music": "音樂"
     }
   }
 }

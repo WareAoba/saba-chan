@@ -76,6 +76,25 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
         BotCmd::Channels { guild, chatbot, no_chatbot, music, no_music } => {
             channels(ctx, &guild, ChannelChange { chatbot, no_chatbot, music, no_music }).await
         }
+        BotCmd::Lang { guild, value } => {
+            let patch = value.map(|v| json!({ "locale": v }));
+            discord_settings(ctx, &guild, patch).await
+        }
+        BotCmd::Sleep { guild } => discord_settings(ctx, &guild, Some(json!({ "sleeping": true }))).await,
+        BotCmd::Wake { guild } => discord_settings(ctx, &guild, Some(json!({ "sleeping": false }))).await,
+        BotCmd::Music { guild, on, off, ui, queue_lines, refresh, normalize } => {
+            let mut music = Map::new();
+            if on || off {
+                music.insert("enabled".into(), json!(on));
+            }
+            for (key, v) in [("ui", ui.map(Value::from)), ("queueLines", queue_lines.map(Value::from)), ("refreshInterval", refresh.map(Value::from)), ("normalize", normalize.map(Value::from))] {
+                if let Some(v) = v {
+                    music.insert(key.into(), v);
+                }
+            }
+            let patch = (!music.is_empty()).then(|| json!({ "music": music }));
+            discord_settings(ctx, &guild, patch).await
+        }
         BotCmd::Invite => {
             let cfg = ctx.api.bot_config().await?;
             let r = ctx.api.bot_invite(relay_of(&cfg)).await?;
@@ -387,6 +406,40 @@ async fn channels(ctx: &Ctx, guild: &str, change: ChannelChange) -> Result<()> {
     };
     ctx.out.data(&r, print_channels);
     Ok(())
+}
+
+/// 길드 설정 보기·바꾸기 (I2). 원본은 데몬이고 데몬이 릴레이에 맞춘다
+async fn discord_settings(ctx: &Ctx, guild: &str, patch: Option<Value>) -> Result<()> {
+    let r = match patch {
+        None => ctx.api.discord_settings(guild).await?,
+        Some(p) => {
+            let r = ctx.api.set_discord_settings(guild, p).await?;
+            if !ctx.out.json {
+                println!("{} {}", console::style("✓").green().bold(), t!("bot.discord_saved"));
+                if r.pointer("/sync/ok").and_then(Value::as_bool) == Some(false) {
+                    eprintln!("{} {}", console::style("!").yellow().bold(), t!("bot.discord_not_synced"));
+                }
+            }
+            r.get("settings").cloned().unwrap_or(r)
+        }
+    };
+    ctx.out.data(&r, print_discord_settings);
+    Ok(())
+}
+
+fn print_discord_settings(r: &Value) {
+    let on_off = |v: Option<bool>| if v == Some(true) { t!("bot.on") } else { t!("bot.off") };
+    let locale = s(r, "locale");
+    let music = |k: &str| r.get("music").and_then(|m| m.get(k));
+    output::print_kv(&[
+        (t!("bot.locale"), if locale == "auto" { t!("bot.locale_auto") } else { locale.to_string() }),
+        (t!("bot.sleeping"), on_off(r.get("sleeping").and_then(Value::as_bool))),
+        (t!("bot.music"), on_off(music("enabled").and_then(Value::as_bool))),
+        (t!("bot.music_ui"), on_off(music("ui").and_then(Value::as_bool))),
+        (t!("bot.music_queue_lines"), music("queueLines").map(|v| v.to_string()).unwrap_or_default()),
+        (t!("bot.music_refresh"), music("refreshInterval").map(|v| format!("{} ms", v)).unwrap_or_default()),
+        (t!("bot.music_normalize"), on_off(music("normalize").and_then(Value::as_bool))),
+    ]);
 }
 
 fn print_channels(r: &Value) {

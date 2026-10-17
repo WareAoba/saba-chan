@@ -628,6 +628,34 @@ pub enum BotCmd {
         #[arg(long)]
         no_music: bool,
     },
+    /// The language the bot answers in on a Discord server (`auto` follows this PC's language). No value: show
+    Lang { guild: String, value: Option<String> },
+    /// Put the bot to sleep on a Discord server (it ignores commands until woken)
+    Sleep { guild: String },
+    /// Wake the bot on a Discord server
+    Wake { guild: String },
+    /// Music player settings of a Discord server. No options: show
+    Music {
+        guild: String,
+        /// Turn music on
+        #[arg(long, conflicts_with = "off")]
+        on: bool,
+        /// Turn music off
+        #[arg(long)]
+        off: bool,
+        /// Show the player panel
+        #[arg(long, value_name = "on|off", value_parser = on_off)]
+        ui: Option<bool>,
+        /// Queue lines in the player panel (1-20)
+        #[arg(long, value_name = "N")]
+        queue_lines: Option<i64>,
+        /// Player panel refresh in milliseconds (2000-10000)
+        #[arg(long, value_name = "MS")]
+        refresh: Option<i64>,
+        /// Even out loudness between tracks
+        #[arg(long, value_name = "on|off", value_parser = on_off)]
+        normalize: Option<bool>,
+    },
     /// Link to invite the Saba-chan bot to a Discord server
     Invite,
     /// Chat names for one server (e.g. "크리" for a second Minecraft server). No names: show
@@ -647,6 +675,15 @@ pub enum BotCmd {
         #[arg(value_name = "KEY=VALUE")]
         pairs: Vec<String>,
     },
+}
+
+/// `on`·`off` (그리고 true·false)
+fn on_off(s: &str) -> Result<bool, String> {
+    match s.to_ascii_lowercase().as_str() {
+        "on" | "true" => Ok(true),
+        "off" | "false" => Ok(false),
+        _ => Err("on or off".into()),
+    }
 }
 
 #[derive(Subcommand, Debug)]

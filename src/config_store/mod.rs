@@ -207,9 +207,18 @@ const LOCAL_SECTIONS: &[&str] = &["schemaVersion", "updates", "boot", "extension
 /// 클라이언트 네임스페이스로 쓸 수 없는 키 (각자 전용 API가 있다)
 const RESERVED_SECTIONS: &[&str] = &["schemaVersion", "gui", "relay", "updates", "boot", "extensions", "chatbot"];
 
-/// `nodeSettings[guild]`에서 권한 API만 바꾸는 키
-pub const PERMISSION_KEYS: &[&str] =
-    &["ownerDiscordId", "relayOwnerDiscordId", "defaultLevel", "members", "preset", "commandLevels", "chatbotCap", "memberPermissions"];
+/// `nodeSettings[guild]`에서 전용 API만 바꾸는 키: 권한 API(P1)와 디스코드 설정 API(I2, `discord`)
+pub const PERMISSION_KEYS: &[&str] = &[
+    "ownerDiscordId",
+    "relayOwnerDiscordId",
+    "defaultLevel",
+    "members",
+    "preset",
+    "commandLevels",
+    "chatbotCap",
+    "memberPermissions",
+    "discord",
+];
 
 /// `merged.nodeSettings`의 권한 키를 `current` 값으로 되돌린다 (없던 키는 지운다)
 fn keep_permission_keys(merged: &mut Value, current: &Value) {

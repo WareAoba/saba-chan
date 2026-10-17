@@ -128,6 +128,10 @@ contextBridge.exposeInMainWorld('api', {
     actionsPlan: (id, body) => ipcRenderer.invoke('actions:plan', id, body),
     // {input, instance} 또는 {planId} → {success, actionId, status, result}
     actionsRun: (id, body) => ipcRenderer.invoke('actions:run', id, body),
+    // 디스코드 길드 설정 (I2): {guildId, locale, sleeping, music:{enabled, ui, queueLines, refreshInterval, normalize}}
+    discordSettingsGet: (guild) => ipcRenderer.invoke('discord:settings:get', guild),
+    // 바꿀 키만 → {success, settings, sync:{guildId, ok, status?, error?}}
+    discordSettingsSet: (guild, patch) => ipcRenderer.invoke('discord:settings:set', guild, patch),
     // 설정·서버 목록 내보내기/가져오기 (A9): {secrets} / {path?, dryRun, overwrite}. 취소하면 {canceled: true}
     dataExport: (opts) => ipcRenderer.invoke('dataTransfer:export', opts),
     dataImport: (opts) => ipcRenderer.invoke('dataTransfer:import', opts),
