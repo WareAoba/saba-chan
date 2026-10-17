@@ -878,7 +878,7 @@
     "perm_owner_save": "Save",
     "perm_owner_mismatch": "The relay reported a different owner ({{relay}}). The owner here stays {{owner}}. If the relay is right, change the owner.",
     "perm_owner_use_relay": "Use this owner",
-    "perm_owner_use_relay_confirm": "Really change the owner",
+    "perm_owner_use_relay_confirm": "Really make {{name}} ({{id}}) the owner",
     "perm_commands_help_hint": "help and list are open to every level except banned, and can't be changed."
   },
   "maintenance": {

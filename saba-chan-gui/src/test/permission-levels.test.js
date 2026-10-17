@@ -135,7 +135,7 @@ describe('권한 화면', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Use this owner' }));
         await flush();
         expect(window.api.permissionsUpdate).not.toHaveBeenCalled(); // 한 번 더 눌러야 바꾼다
-        fireEvent.click(screen.getByRole('button', { name: 'Really change the owner' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Really make Mint (1002) the owner' }));
         await flush();
         expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', { ownerDiscordId: '1002' });
 

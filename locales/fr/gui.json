@@ -878,7 +878,7 @@
     "perm_owner_save": "Enregistrer",
     "perm_owner_mismatch": "Le relais a signalé un autre propriétaire ({{relay}}). Ici, le propriétaire reste {{owner}}. Si le relais a raison, changez le propriétaire.",
     "perm_owner_use_relay": "Utiliser ce propriétaire",
-    "perm_owner_use_relay_confirm": "Vraiment changer le propriétaire",
+    "perm_owner_use_relay_confirm": "Vraiment faire de {{name}} ({{id}}) le propriétaire",
     "perm_commands_help_hint": "help et list sont ouverts à tous les niveaux sauf banni et ne peuvent pas être modifiés."
   },
   "maintenance": {

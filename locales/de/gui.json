@@ -878,7 +878,7 @@
     "perm_owner_save": "Speichern",
     "perm_owner_mismatch": "Das Relay meldet einen anderen Besitzer ({{relay}}). Hier bleibt {{owner}} Besitzer. Wenn das Relay recht hat, ändere den Besitzer.",
     "perm_owner_use_relay": "Diesen Besitzer verwenden",
-    "perm_owner_use_relay_confirm": "Besitzer wirklich ändern",
+    "perm_owner_use_relay_confirm": "{{name}} ({{id}}) wirklich zum Besitzer machen",
     "perm_commands_help_hint": "help und list stehen allen Stufen außer Gesperrt offen und lassen sich nicht ändern."
   },
   "maintenance": {

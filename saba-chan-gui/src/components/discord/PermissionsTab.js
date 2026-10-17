@@ -184,7 +184,9 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
                             await saveOwner(relayOwner);
                         }}
                     >
-                        {ownerArmed ? t('discord.perm_owner_use_relay_confirm') : t('discord.perm_owner_use_relay')}
+                        {ownerArmed
+                            ? t('discord.perm_owner_use_relay_confirm', { name: nameOf(relayOwner), id: relayOwner })
+                            : t('discord.perm_owner_use_relay')}
                     </button>
                 </div>
             )}

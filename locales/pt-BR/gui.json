@@ -878,7 +878,7 @@
     "perm_owner_save": "Salvar",
     "perm_owner_mismatch": "O relay informou outro dono ({{relay}}). Aqui o dono continua sendo {{owner}}. Se o relay estiver certo, altere o dono.",
     "perm_owner_use_relay": "Usar este dono",
-    "perm_owner_use_relay_confirm": "Alterar o dono mesmo",
+    "perm_owner_use_relay_confirm": "Tornar {{name}} ({{id}}) dono mesmo",
     "perm_commands_help_hint": "help e list ficam abertos a todos os níveis exceto banido e não podem ser alterados."
   },
   "maintenance": {
