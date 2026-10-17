@@ -271,7 +271,7 @@ fn stop_saba_processes(install_dir: &Path) {
     // 실행기의 자손을 먼저 찾아 둔다 (실행기를 끝내면 부모 관계로 찾을 수 없다)
     let launchers: Vec<u32> =
         found.iter().filter(|(_, n)| n.eq_ignore_ascii_case("saba-chan-gui")).map(|(pid, _)| *pid).collect();
-    let unpacked = descendants_of(&launchers);
+    let unpacked = descendants_of(&launchers, install_dir);
     for (pid, name) in found {
         let tree = TARGETS.iter().any(|(n, t)| *t && n.eq_ignore_ascii_case(&name));
         tracing::info!("[Uninstall] Stopping {} (PID {})", name, pid);
@@ -283,22 +283,38 @@ fn stop_saba_processes(install_dir: &Path) {
     }
 }
 
-/// `pid|ppid` 줄들에서 `roots`의 자손을 고른다. 제거기 자신(`me`)과 그 아래는 뺀다:
-/// 제거기는 GUI가 띄우므로 GUI의 자손이다
+/// 포터블 실행기가 띄운 GUI 프로세스: `pid|ppid|name|exe` 줄들에서 `roots`의 자손 중 GUI 이름(Electron 도우미도
+/// 같은 이름)이고 실행 파일이 `places`(이 설치 폴더, 실행기가 풀어 놓는 임시 폴더) 아래인 것만 고른다.
+/// GUI가 띄운 브라우저 같은 남의 프로그램과 그 아래로는 내려가지 않는다. 제거기 자신(`me`)도 뺀다
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))] // 포터블 실행기는 Windows에만 있다
-fn descendants_in(listing: &str, roots: &[u32], me: u32) -> Vec<u32> {
-    let pairs: Vec<(u32, u32)> = listing
+fn descendants_in(listing: &str, roots: &[u32], me: u32, places: &[&Path]) -> Vec<u32> {
+    let norm = |p: &str| p.replace('\\', "/").trim_end_matches('/').to_lowercase();
+    let places: Vec<String> = places.iter().map(|p| norm(&p.to_string_lossy())).collect();
+    let ours = |name: &str, exe: &str| {
+        let name = name.strip_suffix(".exe").unwrap_or(name);
+        let exe = norm(exe);
+        saba_chan_updater_lib::GUI_EXE_NAMES
+            .iter()
+            .chain(["Saba-chan.exe"].iter())
+            .any(|g| g.trim_end_matches(".exe").eq_ignore_ascii_case(name))
+            && places.iter().any(|p| exe.strip_prefix(p.as_str()).is_some_and(|rest| rest.starts_with('/')))
+    };
+    let procs: Vec<(u32, u32, bool)> = listing
         .lines()
         .filter_map(|line| {
-            let (pid, ppid) = line.trim().split_once('|')?;
-            Some((pid.trim().parse().ok()?, ppid.trim().parse().ok()?))
+            let mut parts = line.trim().splitn(4, '|');
+            let pid = parts.next()?.trim().parse().ok()?;
+            let ppid = parts.next()?.trim().parse().ok()?;
+            let name = parts.next()?.trim();
+            let exe = parts.next().unwrap_or("").trim();
+            Some((pid, ppid, ours(name, exe)))
         })
         .collect();
     let mut found: Vec<u32> = Vec::new();
     let mut frontier: Vec<u32> = roots.to_vec();
     while let Some(parent) = frontier.pop() {
-        for &(pid, ppid) in &pairs {
-            if ppid == parent && pid != me && pid != parent && !roots.contains(&pid) && !found.contains(&pid) {
+        for &(pid, ppid, is_gui) in &procs {
+            if ppid == parent && is_gui && pid != me && pid != parent && !roots.contains(&pid) && !found.contains(&pid) {
                 found.push(pid);
                 frontier.push(pid);
             }
@@ -308,19 +324,22 @@ fn descendants_in(listing: &str, roots: &[u32], me: u32) -> Vec<u32> {
 }
 
 #[cfg(target_os = "windows")]
-fn descendants_of(roots: &[u32]) -> Vec<u32> {
+fn descendants_of(roots: &[u32], install_dir: &Path) -> Vec<u32> {
     if roots.is_empty() {
         return Vec::new();
     }
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    let script = "Get-CimInstance Win32_Process | ForEach-Object { \"$($_.ProcessId)|$($_.ParentProcessId)\" }";
+    let script = "Get-CimInstance Win32_Process | ForEach-Object { \"$($_.ProcessId)|$($_.ParentProcessId)|$($_.Name)|$($_.ExecutablePath)\" }";
     match std::process::Command::new("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", script])
         .creation_flags(CREATE_NO_WINDOW)
         .output()
     {
-        Ok(o) => descendants_in(&String::from_utf8_lossy(&o.stdout), roots, std::process::id()),
+        Ok(o) => {
+            let temp = std::env::temp_dir();
+            descendants_in(&String::from_utf8_lossy(&o.stdout), roots, std::process::id(), &[install_dir, &temp])
+        }
         Err(e) => {
             tracing::warn!("[Uninstall] Cannot list child processes: {}", e);
             Vec::new()
@@ -330,7 +349,7 @@ fn descendants_of(roots: &[u32]) -> Vec<u32> {
 
 /// 포터블 실행기는 Windows에만 있다
 #[cfg(not(target_os = "windows"))]
-fn descendants_of(_roots: &[u32]) -> Vec<u32> {
+fn descendants_of(_roots: &[u32], _install_dir: &Path) -> Vec<u32> {
     Vec::new()
 }
 
@@ -686,12 +705,22 @@ mod tests {
 
     #[test]
     fn the_unpacked_gui_under_the_portable_launcher_is_found_but_not_the_uninstaller() {
-        // 10 = 포터블 실행기, 20 = 임시 폴더의 GUI, 21·22 = GUI 도우미, 30 = 제거기(GUI가 띄움), 31 = 제거기의 자식
-        let listing = "10|1\n20|10\n21|20\n22|20\n30|20\n31|30\n40|1\n41|40\n";
-        let mut found = descendants_in(listing, &[10], 30);
+        // 10 = 포터블 실행기, 20 = 임시 폴더의 GUI, 21·22 = GUI 도우미, 30 = 제거기(GUI가 띄움), 31 = 제거기의 자식,
+        // 50 = GUI가 링크로 띄운 브라우저, 51 = 그 자식, 60 = 다른 폴더에 풀린 같은 이름의 GUI(다른 설치본)
+        let listing = "10|1|saba-chan-gui.exe|C:\\Saba\\saba-chan-gui.exe\n\
+                       20|10|Saba-chan.exe|C:\\Temp\\2abc\\Saba-chan.exe\n\
+                       21|20|Saba-chan.exe|C:\\Temp\\2abc\\Saba-chan.exe\n\
+                       22|20|Saba-chan.exe|C:\\Temp\\2abc\\Saba-chan.exe\n\
+                       30|20|saba-chan-installer.exe|C:\\Saba\\saba-chan-installer.exe\n\
+                       31|30|Saba-chan.exe|C:\\Temp\\2abc\\Saba-chan.exe\n\
+                       50|20|chrome.exe|C:\\Program Files\\Google\\chrome.exe\n\
+                       51|50|Saba-chan.exe|C:\\Temp\\2abc\\Saba-chan.exe\n\
+                       60|10|Saba-chan.exe|D:\\Other\\Saba-chan.exe\n";
+        let places = [Path::new("C:\\Saba"), Path::new("C:\\Temp")];
+        let mut found = descendants_in(listing, &[10], 30, &places);
         found.sort();
         assert_eq!(found, vec![20, 21, 22]);
-        assert!(descendants_in(listing, &[], 30).is_empty());
+        assert!(descendants_in(listing, &[], 30, &places).is_empty());
     }
 
     #[test]
