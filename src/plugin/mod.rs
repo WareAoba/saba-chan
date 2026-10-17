@@ -333,7 +333,7 @@ mod tests {
             eprintln!("SKIP: python not found");
             return;
         };
-        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "steamcmd blocked\nue4_ini ok");
+        assert_eq!(String::from_utf8_lossy(&out.stdout).replace("\r\n", "\n").trim(), "steamcmd blocked\nue4_ini ok");
     }
 
     #[test]

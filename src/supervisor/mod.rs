@@ -614,8 +614,7 @@ impl Supervisor {
         }))
     }
 
-    /// Stop a server by name
-    /// Called by IPC API: POST /api/server/:name/stop
+    /// 서버 정지. `server_name`은 인스턴스 id (이름은 겹칠 수 있다); 예전 호출을 위해 이름도 받는다
     ///
     /// 데몬 락은 준비와 정리 때만 잡는다. 익스텐션 hook, 모듈 `stop()`, 종료 대기(최대
     /// `stop_timeout`초)는 락 밖에서 한다 (C12).
@@ -625,9 +624,8 @@ impl Supervisor {
         // ── 1) 준비 (쓰기 락: 정지 표시를 남긴다) ──
         let (instance, hook, managed) = {
             let mut s = sup.write().await;
-            let instance = s.instance_store.list()
-                .iter()
-                .find(|i| i.name == server_name)
+            let instance = s.instance_store.get(server_name)
+                .or_else(|| s.instance_store.list().iter().find(|i| i.name == server_name))
                 .cloned()
                 .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", server_name))?;
             s.stop_requested.insert(instance.id.clone());

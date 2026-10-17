@@ -351,10 +351,6 @@ pub struct ExtensionLoadError {
     pub error: String,
 }
 
-/// manifest.json을 읽는다.
-/// - `schema_version = 1`: 모르는 키, 데몬이 부르지 않는 hook, 없는 python_modules 참조는 오류
-/// - 없음(0): 같은 문제를 경고로만 돌려준다
-/// - 그보다 새 버전: 거부
 /// 익스텐션 id는 폴더 이름이 되므로 한 단계 이름이어야 한다: 영문·숫자·`-`·`_`만.
 pub fn is_valid_extension_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
@@ -367,6 +363,10 @@ fn ensure_valid_extension_id(id: &str) -> Result<()> {
     Ok(())
 }
 
+/// manifest.json을 읽는다.
+/// - `schema_version = 1`: 모르는 키, 데몬이 부르지 않는 hook, 없는 python_modules 참조는 오류
+/// - 없음(0): 같은 문제를 경고로만 돌려준다
+/// - 그보다 새 버전: 거부
 pub fn parse_manifest(content: &str) -> Result<(ExtensionManifest, Vec<String>)> {
     let mut unknown = Vec::new();
     let mut de = serde_json::Deserializer::from_str(content.trim_start_matches('\u{feff}'));
@@ -1167,7 +1167,14 @@ impl ExtensionManager {
 
     /// 익스텐션 명령 `name`을 부를 계획. 이 인스턴스에서 그 명령을 가진 익스텐션이 없으면 None.
     /// `context`에는 extension_data가 들어 있어야 한다
-    pub fn plan_command(&self, name: &str, context: Value) -> Option<HookPlan> {
+    /// 익스텐션 명령 실행 계획. 인자는 명령의 `inputs`로 검사해 `context.args`(이름 → 값)에 넣는다.
+    /// 그런 명령이 없으면 None, 인자가 틀리면 Some(Err).
+    pub fn plan_command(
+        &self,
+        name: &str,
+        args: &crate::commands::Args,
+        mut context: Value,
+    ) -> Option<Result<HookPlan, crate::commands::PlanError>> {
         let ext_data: HashMap<String, Value> = context
             .get("extension_data")
             .and_then(|v| serde_json::from_value(v.clone()).ok())
@@ -1177,17 +1184,24 @@ impl ExtensionManager {
             .into_iter()
             .find(|(_, c)| c.name.eq_ignore_ascii_case(name))?;
         let ext = self.discovered.get(ext_id)?;
+        let bound = match crate::commands::bind(&cmd.inputs, args) {
+            Ok(bound) => bound,
+            Err(e) => return Some(Err(e)),
+        };
+        if let Some(obj) = context.as_object_mut() {
+            obj.insert("args".into(), Value::Object(bound));
+        }
         let target = ext
             .manifest
             .python_modules
             .get(&cmd.module)
             .map(|rel| (ext.dir.join(rel).to_string_lossy().to_string(), cmd.function.clone()))
             .ok_or_else(|| format!("Unknown python module: {}", cmd.module));
-        Some(HookPlan {
+        Some(Ok(HookPlan {
             hook: format!("command.{}", cmd.name),
             context: self.inject_extension_config(context),
             calls: vec![HookCall { ext_id: ext_id.to_string(), target }],
-        })
+        }))
     }
 
     /// 조건 문자열 평가: "instance.ext_data.<key>" → ext_data[key] == true

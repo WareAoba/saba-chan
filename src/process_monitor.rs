@@ -60,6 +60,7 @@ pub fn process_under_any(process: &RunningProcess, roots: &[String]) -> bool {
 /// 자동 감지 후보 중 이 인스턴스의 프로세스를 고른다.
 /// - `taken`: 다른 인스턴스가 이미 추적하는 PID — 절대 고르지 않는다
 /// - `own_roots`: 이 인스턴스의 폴더들, `other_roots`: 같은 모듈의 다른 인스턴스 폴더들
+///
 /// 같은 모듈 인스턴스가 이것뿐이면 폴더가 안 맞아도 첫 후보를 쓴다(예전 동작).
 /// 여럿이면 이 인스턴스 폴더 아래의 프로세스만, 다른 인스턴스 폴더 아래의 것은 빼고 고른다.
 pub fn pick_owned_process<'a>(

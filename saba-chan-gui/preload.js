@@ -101,6 +101,7 @@ contextBridge.exposeInMainWorld('api', {
     // Node Token API (cloud pairing)
     saveNodeToken: (token) => ipcRenderer.invoke('nodeToken:save', token),
     loadNodeToken: () => ipcRenderer.invoke('nodeToken:load'),
+    deleteNodeToken: () => ipcRenderer.invoke('nodeToken:delete'),
     // Relay server proxy (cloud mode) — all relay comms go through daemon
     relayCheckHostStatus: (hostId, relayUrl) => ipcRenderer.invoke('relay:checkHostStatus', hostId, relayUrl),
     relayListHostNodes: (hostId, relayUrl) => ipcRenderer.invoke('relay:listHostNodes', hostId, relayUrl),

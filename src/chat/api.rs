@@ -4,7 +4,7 @@
 //! 맡습니다. 테스트에서는 가짜 구현을 꽂아 처리기만 따로 검증합니다.
 
 use crate::ipc::internal::{into_internal, InternalResponse};
-use crate::ipc::{CommandRequest, IPCServer, ServerStopRequest};
+use crate::ipc::{CommandRequest, IPCServer};
 use crate::supervisor::module_loader::CommandField;
 use axum::extract::{Path, State};
 use axum::Json;
@@ -104,8 +104,7 @@ impl DaemonApi for IPCServer {
     }
 
     async fn stop(&self, server: &ServerView) -> InternalResponse {
-        let req = ServerStopRequest { force: false };
-        into_internal(crate::ipc::handlers::server::stop_server_handler(Path(server.name.clone()), State(self.clone()), Json(req)).await).await
+        into_internal(crate::ipc::handlers::server::stop_instance(self.clone(), &server.id, false).await).await
     }
 
     async fn command(&self, instance_id: &str, command: &str, args: Vec<String>) -> InternalResponse {
