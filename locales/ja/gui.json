@@ -684,7 +684,8 @@
     "preflight_failed_short": "Pythonの準備に失敗",
     "preflight_failed": "Pythonの準備に失敗しました。次にサーバーを操作するときに再試行します。（{{error}}）",
     "module_needs": "必要なバージョンを満たしていません: {{deps}}",
-    "tab_maintenance": "バックアップ・予約"
+    "tab_maintenance": "バックアップ・予約",
+    "tab_audit": "履歴"
   },
   "discord": {
     "nav_connection": "接続",
@@ -1013,5 +1014,27 @@
     "err_write_failed": "ファイルを書き込めませんでした。保存先と権限を確認してください。",
     "err_generic": "処理できませんでした。しばらくしてからもう一度お試しください。",
     "restart_hint": "インポートした画面設定はサバちゃんを再起動すると反映されます。"
+  },
+  "audit": {
+    "title": "操作履歴",
+    "desc_server": "このサーバーを誰がいつどこから操作したかを表示します。新しい順です。",
+    "desc_all": "すべてのサーバーを誰がいつどこから操作したかを表示します。新しい順です。",
+    "refresh": "更新",
+    "empty": "まだ履歴がありません。",
+    "load_failed": "履歴を読み込めませんでした。",
+    "more": "もっと見る",
+    "ok": "成功",
+    "failed": "失敗（{{status}}）",
+    "action_start": "起動",
+    "action_stop": "停止",
+    "action_restart": "再起動",
+    "action_command": "コマンド",
+    "action_stdin": "コンソール入力",
+    "source_gui": "アプリ",
+    "source_cli": "CLI",
+    "source_api": "API",
+    "source_discord": "Discord",
+    "source_schedule": "スケジュール",
+    "source_daemon": "デーモン"
   }
 }

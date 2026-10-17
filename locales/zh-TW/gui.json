@@ -684,7 +684,8 @@
     "preflight_failed_short": "Python 準備失敗",
     "preflight_failed": "Python 準備失敗，將在下次操作伺服器時重試。（{{error}}）",
     "module_needs": "未符合版本需求：{{deps}}",
-    "tab_maintenance": "備份與排程"
+    "tab_maintenance": "備份與排程",
+    "tab_audit": "紀錄"
   },
   "discord": {
     "nav_connection": "連線",
@@ -1013,5 +1014,27 @@
     "err_write_failed": "無法寫入檔案。請檢查儲存位置和權限。",
     "err_generic": "處理失敗，請稍後再試。",
     "restart_hint": "匯入的介面設定將在重新啟動 Saba-chan 後生效。"
+  },
+  "audit": {
+    "title": "操作紀錄",
+    "desc_server": "顯示誰在何時從何處操作了此伺服器。最新的在前。",
+    "desc_all": "顯示誰在何時從何處操作了所有伺服器。最新的在前。",
+    "refresh": "重新整理",
+    "empty": "尚無紀錄。",
+    "load_failed": "無法載入操作紀錄。",
+    "more": "顯示更多",
+    "ok": "成功",
+    "failed": "失敗（{{status}}）",
+    "action_start": "啟動",
+    "action_stop": "停止",
+    "action_restart": "重新啟動",
+    "action_command": "指令",
+    "action_stdin": "主控台輸入",
+    "source_gui": "應用程式",
+    "source_cli": "CLI",
+    "source_api": "API",
+    "source_discord": "Discord",
+    "source_schedule": "排程工作",
+    "source_daemon": "背景服務"
   }
 }

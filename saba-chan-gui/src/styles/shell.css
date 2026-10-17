@@ -2239,3 +2239,18 @@ button.appbar-preflight {
 .dc-channel-row.disabled {
     opacity: 0.55;
 }
+
+/* 감사 로그 (A10): 서버별 기록 탭과 설정 > 고급의 전체 기록 */
+.audit-time {
+    flex: none;
+    min-width: 9.5em;
+    color: var(--text-3);
+    font-size: var(--fs-sm);
+    font-variant-numeric: tabular-nums;
+}
+.audit-more {
+    align-self: center;
+}
+.settings-audit {
+    margin-top: 20px;
+}
