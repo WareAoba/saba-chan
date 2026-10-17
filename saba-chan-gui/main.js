@@ -1780,16 +1780,6 @@ ipcMain.handle('module:getLocales', async (_event, moduleName) => {
     }
 });
 
-// 폴더가 어느 모듈의 게임 서버 폴더인지 데몬이 판정한다 (dir_signatures)
-ipcMain.handle('module:detect', async (_event, dirPath) => {
-    try {
-        const response = await axios.post(`${IPC_BASE}/api/modules/detect`, { path: dirPath });
-        return response.data;
-    } catch (error) {
-        return errorBody(error, { matches: [] });
-    }
-});
-
 // 모듈 코드가 쓰는 위험한 능력과 module.toml [permissions] 선언 비교 (데몬 응답 그대로)
 ipcMain.handle('module:audit', async (_event, moduleName) => {
     try {

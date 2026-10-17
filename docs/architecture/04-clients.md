@@ -50,7 +50,6 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | moduleList (8) | module:list | 1723 | GET /api/modules | ✓ 652 |
 | moduleRefresh (9) | module:refresh | 1742 | POST /api/modules/refresh | ✓ 653 |
 | moduleGetMetadata (10) | module:getMetadata | 1829 | GET /api/module/:name | ✓ 660 |
-| moduleDetect (11) | module:detect | 1810 | POST /api/modules/detect {path} | ✓ 656 (미사용) |
 | instanceEvents (12) | instance:events | 1820 | GET /api/instance/:id/events (최근 종료 이력) | ✓ 648 (미사용) |
 | moduleGetLocales (13) | module:getLocales | 1799 | GET /api/module/:name/locales | ✓ 707 |
 | moduleListVersions (14) | module:listVersions | 1539 | GET /api/module/:name/versions?… | ✓ 693 |
@@ -114,7 +113,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 
 Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `updates:available`, `updates:completed`, `console:popoutOpened/Closed/popinRequest`, `app:closeRequest`.
 
-**renderer(src/, 테스트 제외)에서 쓰지 않는 preload API**: 위 표의 "미사용" 항목(`moduleDetect`, `instanceEvents`, `instanceStop/Restart/Rename/Commands`, `instanceReadLiveSettings`, `runtimePreflight`, `configDefaults/Reset`, `updaterLastResult`, `loadNodeToken`, `deleteNodeToken`, `relayBotInvite`, `instanceAcceptEula`, 백업·예약 6개, `chatbot*` 4개, `logsGetPath`, `logsOpenFolder`). 반대로 **main.js가 호출하지 않는 daemon 라우트**: `/api/server/:name/start`, GET `/api/instances`, GET `/api/instance/:id`, `/api/instance/:id/rcon`, `/rest`, `/managed/start`, `/validate`, `/properties`(GET/PUT), `/properties/reset`, `/diagnose`, `/api/module/:name/version/:version`, `/api/version`, `/api/modules/schema`, `/api/config/client/:kind`, `/api/extensions/:id/mount|unmount|config`, `/api/daemon/console`, `/api/chat/command`, `/api/updates/integrity`. 이 중 일부는 CLI만 사용한다(§3).
+**renderer(src/, 테스트 제외)에서 쓰지 않는 preload API**: 위 표의 "미사용" 항목(`instanceEvents`, `instanceStop/Restart/Rename/Commands`, `instanceReadLiveSettings`, `runtimePreflight`, `configDefaults/Reset`, `updaterLastResult`, `loadNodeToken`, `deleteNodeToken`, `relayBotInvite`, `instanceAcceptEula`, 백업·예약 6개, `chatbot*` 4개, `logsGetPath`, `logsOpenFolder`). 반대로 **main.js가 호출하지 않는 daemon 라우트**: `/api/server/:name/start`, GET `/api/instances`, GET `/api/instance/:id`, `/api/instance/:id/rcon`, `/rest`, `/managed/start`, `/validate`, `/properties`(GET/PUT), `/properties/reset`, `/diagnose`, `/api/module/:name/version/:version`, `/api/version`, `/api/modules/schema`, `/api/config/client/:kind`, `/api/extensions/:id/mount|unmount|config`, `/api/daemon/console`, `/api/chat/command`, `/api/updates/integrity`. 이 중 일부는 CLI만 사용한다(§3).
 
 ### 1.3 GUI가 읽고 쓰는 설정 파일
 
@@ -225,7 +224,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 
 ### 4.3 채팅 처리기 (`src/chat/`)
 
-- 디스코드 명령과 CLI `chat`, `POST /api/chat/command {text, guild_id?, user_id?} → {reply}`가 모두 같은 처리기를 쓴다(`handlers/chat.rs:9-13`).
+- 디스코드 명령과 CLI `chat`, `POST /api/chat/command {text, guild_id?, user_id?} → {reply, code, args}`가 모두 같은 처리기를 쓴다(`handlers/chat.rs:9-13`).
 - 대상 서버 찾기: 인스턴스 이름 → `instanceAliases`(인스턴스 ID → `"별명, 별명"`) → 모듈 별명(`moduleAliases`) 순이다. 같은 게임 서버가 여럿인데 하나로 좁혀지지 않으면 `errors.multiple_instances`로 답한다(`chat/mod.rs:257-288`).
 - 명령 별명은 `commandAliases`, 접두사는 `prefix`(기본 `!saba`)다. 응답 문구는 `locales/<lang>/bot.json`을 바이너리에 넣어 쓴다(`chat/i18n.rs`).
 - 노드(디스코드 서버)별 허용 인스턴스와 멤버별 명령 권한은 `nodeSettings`에 있다.
