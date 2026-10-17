@@ -109,6 +109,7 @@ contextBridge.exposeInMainWorld('api', {
     relayListHostNodes: (hostId, relayUrl) => ipcRenderer.invoke('relay:listHostNodes', hostId, relayUrl),
     relayListNodeMembers: (guildId, relayUrl) => ipcRenderer.invoke('relay:listNodeMembers', guildId, relayUrl),
     relayBotInvite: (relayUrl) => ipcRenderer.invoke('relay:botInvite', relayUrl),
+    instanceAcceptEula: (id) => ipcRenderer.invoke('instance:acceptEula', id),
     instanceBackups: (id) => ipcRenderer.invoke('instance:backups', id),
     instanceBackupCreate: (id) => ipcRenderer.invoke('instance:backupCreate', id),
     instanceBackupDelete: (id, name) => ipcRenderer.invoke('instance:backupDelete', id, name),
