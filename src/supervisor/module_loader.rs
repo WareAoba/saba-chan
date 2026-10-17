@@ -420,9 +420,6 @@ struct ModuleToml {
     /// [launch] 실행 관련 선언 (C8b)
     #[serde(default)]
     launch: Option<LaunchSection>,
-    /// [update] 예전 GitHub 업데이트 경로가 읽는 키 (데몬은 안 읽는다). L3에서 GitHub 경로와 함께 지운다
-    #[serde(default, rename = "update")]
-    _update: Option<LegacyUpdateSection>,
     /// [credential_map] 데몬 표준 키 ↔ 게임별 설정 키 매핑
     /// 예: rest_password = "AdminPassword" → 데몬의 rest_password가 게임 INI의 AdminPassword에 대응
     #[serde(default)]
@@ -468,15 +465,6 @@ struct ModuleSection {
     /// 예: { "saba-core" = ">=0.3.0", "ext-steamcmd" = ">=1.0.0" }
     #[serde(default)]
     dependencies: std::collections::HashMap<String, String>,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-#[schemars(deny_unknown_fields)]
-struct LegacyUpdateSection {
-    /// 업데이터가 GitHub에서 이 모듈을 찾을 저장소 이름 (예전 경로)
-    #[serde(default)]
-    #[serde(rename = "github_repo")]
-    _github_repo: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]

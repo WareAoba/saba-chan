@@ -4,6 +4,9 @@
 > 모든 내용은 코드에서 도출했다. 경로/상수 대부분은 공유 크레이트 `updater/src/constants.rs`(`saba_chan_updater_lib::constants`)에서 온다.
 > Supervisor/module_loader, extension/mod.rs 내부는 다른 문서 담당이며, 여기서는 코어가 그것들을 어떻게 호출하는지만 적는다.
 
+
+> **2026-10-17 L3 이후**: 업데이트·모듈 목록·익스텐션 목록은 모두 릴레이의 서명된 릴리즈 manifest 하나에서 나온다. GitHub 업데이트 경로(`github.rs`, `api_base_url`, `github_owner`/`github_repo`, `include_prerelease`, 익스텐션 `manifest_url`, module.toml `[update]`, modules·extensions 저장소의 릴리즈 워크플로)는 없다. 근거 커밋: saba-chan 65e1763·8b840f7·60768a7, modules a26bdeb, extensions 301ff2c.
+
 ## 0. 프로젝트 오너의 설계 원칙 (비교 기준)
 
 오너가 밝힌 설계 의도는 아래와 같다.
@@ -31,9 +34,9 @@
    - 필터는 `RUST_LOG`이며 기본값은 `info`다.
    - CLI 모드는 TUI가 터미널을 차지하므로 로그를 `<data_dir>/daemon.log` 파일로 보낸다(truncate, `main.rs:63`). 나머지 모드는 stderr로 보낸다.
 3. **무결성 검사** `run_integrity_check_on_startup()` (`main.rs:111, 577-655`)
-   - `UpdateManager::verify_integrity()`가 GitHub API로 코어, `saba-chan-modules`, `saba-chan-extensions` 세 리포의 최신 릴리스 `manifest.json`을 받아 SHA256을 비교한다.
+   - `UpdateManager::verify_integrity()`가 릴레이에서 이 채널·플랫폼 최신 릴리즈의 서명된 manifest를 받아(`updater/src/lib.rs:437-463`) 설치된 컴포넌트의 SHA256을 비교한다. 백그라운드 task라 기동을 막지 않는다(`main.rs:214, 663`).
    - 결과는 로그로만 남긴다. 변조가 감지돼도 경고만 하고 기동은 계속된다(`main.rs:643-647`).
-   - 건너뛰는 조건은 `github_owner`가 비었을 때뿐인데, 기본값이 `"WareAoba"`로 하드코딩돼 있다(`updater/src/lib.rs:331`). 따라서 **기동할 때마다 항상 네트워크 호출을 한다.**
+   - 릴레이에 닿지 않거나 게시된 릴리즈가 없으면 경고만 남기고 건너뛴다. 기동할 때마다 릴레이에 한 번 요청한다.
 4. **`GlobalConfig::load()`** (`main.rs:114`): 하드코딩 기본값만 돌려준다. 실제로 쓰이지 않는 데드 코드다(§9).
 5. **Supervisor 생성과 초기화** (`main.rs:119-127`)
    - `plugin::resolve_modules_dir()`로 모듈 경로를 정하고 `Supervisor::new()`, `initialize()` 순으로 호출한다.
@@ -208,8 +211,8 @@
 | GET | `/api/module/:name/locales` | `config.rs:102` | ✅ | - | `{<lang>: <json>}` |
 
 - `ExtensionInfo`(이름과 달리 모듈 정보다) 필드: `name, version, description, path, executable_path, icon(base64 data URL), interaction_mode, protocols{supported,default}, settings, commands, syntax_highlight, dir_signatures?, install?, module_aliases?, command_aliases?`
-- `/api/modules/manifest`는 `github.com/WareAoba/saba-chan-modules/releases/latest/download/manifest.json`을 가져온다.
-- `/api/modules/manifest/:id/install`은 `module-<id>.zip`을 같은 릴리스에서 받아 `modules/<id>`에 풀고 refresh한다.
+- `/api/modules/manifest`는 최신 릴리즈 서명 manifest의 `module-*` 컴포넌트를 `{ok, manifest:{modules:{<이름>:{version, sha256, size_bytes, display_name, ...}}}}`로 돌려준다(`relay::latest_catalog`, `handlers/server.rs:430-452`).
+- `/api/modules/manifest/:id/install`은 같은 manifest의 `module-<id>`를 R2에서 받아 SHA-256을 확인하고(`download_verified`), staging에 푼 뒤 `module.toml`이 있을 때만 `modules/<id>`와 바꾸고 refresh한다(`:455-516`). `id`의 `..`, `/`, `\`는 거부한다.
 
 #### 인스턴스 (handlers/instance.rs)
 
@@ -354,7 +357,7 @@ Relay 서명 방식(`relay.rs:78-113`):
 | POST | `/api/updates/apply` | `updates.rs:357` | `{components?:[key]}` | `{ok,applied,needs_updater,requires_updater,errors}` |
 | GET | `/api/updates/integrity` | `updates.rs:478` | - | `{ok,checked_at,overall,total,verified,failed,skipped,components[...]}` |
 | GET | `/api/updates/config` | `updates.rs:518` | - | `{ok, config}` |
-| PUT | `/api/updates/config` | `updates.rs:530` | 부분 `{enabled,github_owner,github_repo,check_interval_hours,auto_download,auto_apply,include_prerelease,install_root,api_base_url}` | `{ok, config}` |
+| PUT | `/api/updates/config` | `updates.rs:730` | 부분 `{enabled,check_interval_hours(1-8),auto_download,auto_apply,install_root,relay_url,channel}` | `{ok, config}`. `config.json`의 `updates` 절에 저장한다(`:761, 791-797`) |
 
 `python_env` 핸들러(`handlers/python_env.rs`의 `/api/python-env/status|setup|pip-install`)는 **함수만 있고 라우터에 등록되지 않았다**(`#[allow(dead_code)]`, §9).
 
@@ -586,22 +589,21 @@ Relay 서명 방식(`relay.rs:78-113`):
 
 ## 8. updates.rs: 업데이트 엔드포인트와 외부 URL
 
-- `UpdateState`가 `UpdateManager`(updater 크레이트)를 `Arc<RwLock>`으로 감싼다. 설정은 **`UpdateConfig::default()`로 하드코딩**한다(`updates.rs:579`).
-  - 기본값: `enabled`, 3시간 주기, auto off, owner `WareAoba`, repo `saba-chan`.
-- `PUT /api/updates/config`는 **메모리만** 바꾼다(`updater/src/lib.rs:469`). 재시작하면 원래대로 돌아간다.
-- `check_interval_hours`, `auto_download`, `auto_apply`를 실제로 쓰는 스케줄러가 데몬 안에 **없다.** `src/` 전체를 검색해도 사용처가 없다.
+- `UpdateState`가 `UpdateManager`(updater 크레이트)를 `Arc<RwLock>`으로 감싼다. 설정은 `config.json`의 `updates` 절에서 읽고(`load_updater_config`, `updates.rs:777-789`), 없거나 깨졌으면 `UpdateConfig::default()`를 쓴다.
+  - 필드(`updater/src/lib.rs:251-266`): `enabled`(기본 true), `check_interval_hours`(3), `auto_download`(false), `auto_apply`(false), `install_root`, `relay_url`(None이면 `https://saba-chan.online`), `channel`(`stable`).
+- `PUT /api/updates/config`는 바꾼 설정을 `config.json`에 저장한다(`updates.rs:761`).
+- 주기 확인은 데몬의 `spawn_update_scheduler`가 한다(`updates.rs:246`). `check_interval_hours`마다 확인하고 `auto_download`이면 받아 둔다.
 - **접속하는 외부 URL**
-  - GitHub REST: `{api_base_url|https://api.github.com}/repos/{owner}/{repo}/releases?per_page=N`, `/releases/latest`(`updater/src/github.rs:119-160`).
-  - 위 릴리스의 `manifest.json` 에셋(`browser_download_url`)과 컴포넌트 에셋.
-  - 대상 리포: 코어 `WareAoba/saba-chan`, 모듈 `saba-chan-modules`(설치된 모듈별 리포도 탐색), 익스텐션 `saba-chan-extensions`(`lib.rs:512-530, 573-640`).
-  - 그 밖에 `constants.rs`에 정의된 URL:
-    - `https://github.com/WareAoba/saba-chan-modules/releases/latest/download/manifest.json` 및 `module-<id>.zip` (`/api/modules/manifest*`)
-    - `https://raw.githubusercontent.com/WareAoba/saba-chan-extensions/main/manifest.json` (익스텐션 매니페스트)
+  - 릴레이: `GET {relay_url}/v1/updates/check?channel&platform&current&client_id`, `GET /v1/updates/manifest/:version`, `POST /v1/updates/event`(익명 진행 이벤트). 모든 요청에 `X-Saba-Client: 1` 헤더(`updater/src/relay.rs:1-25, 158-192`).
+  - manifest의 각 컴포넌트 `url`(R2 공개 주소). 받을 때 `sha256`을 확인한다(`updater/src/download.rs:40`).
+  - manifest는 번들된 공개키로 Ed25519 서명을 검증하고, 플랫폼이 다르거나 현재보다 낮은 버전이면 거부한다(`relay.rs:229-250`, `signature.rs`).
+  - `/api/modules/manifest*`, 익스텐션 목록(`ExtensionManager::fetch_remote`), 설치기는 같은 함수 `relay::latest_catalog`를 쓴다(`relay.rs:109-115`). 이 함수는 기본 릴레이와 `stable` 채널을 쓰며 `relay_url` 설정을 보지 않는다.
+  - Python 런타임만 예외로 `github.com/indygreg/python-build-standalone` 릴리즈에서 받는다(`python_env`).
 - **apply 규칙**(`updates.rs:357-475`)
   - 대상에 GUI, Updater, CoreDaemon 중 하나라도 있으면 **전부** 업데이터 exe에 맡긴다. 이때 `needs_updater`를 채우고 `save_pending_manifest`, `save_updater_apply_targets`를 호출한다.
   - 그렇지 않으면 데몬이 직접 적용하고, 모듈은 refresh, 익스텐션은 rescan으로 핫 리로드한다.
   - 파일 상단 주석에는 "업데이터 exe 스폰"이라고 돼 있지만, **데몬은 업데이터를 스폰하지 않는다.** `requires_updater:true`를 돌려줄 뿐이고, 실행은 클라이언트 몫이다.
-- `api_base_url`과 `github_owner`를 **인증 없이** 바꿀 수 있다. 이렇게 하면 이후 다운로드와 무결성 검사의 출처를 공격자 서버로 돌릴 수 있다(§9 B-1).
+- `/api/updates/*`도 다른 라우트처럼 토큰 인증을 거친다(`ipc/mod.rs:749-751`). `relay_url`을 바꿔도 manifest 서명 검증은 그대로라 다른 서버가 파일을 바꿔 끼울 수는 없다.
 
 ---
 
@@ -633,7 +635,7 @@ Relay 서명 방식(`relay.rs:78-113`):
 
 ### 9.B 보안과 정합성
 
-1. **`/api/updates/*`에 인증이 없다**(`ipc/mod.rs:667-669`). 로컬의 아무 프로세스나 `PUT /api/updates/config {api_base_url, github_owner}`로 업데이트 출처를 바꾼 뒤 download/apply를 부를 수 있다.
+1. ~~`/api/updates/*`에 인증이 없다~~ 해결됨: 업데이트 라우터도 인증 미들웨어 안에 있다(`ipc/mod.rs:749-751`). 업데이트 출처 설정은 `relay_url`뿐이고, 서명되지 않은 manifest는 받지 않는다.
 2. **`/health`는 인증이 필요하다.** 문서와 주석이 말하는 "경량 ping"과 다르다. 클라이언트의 ready 체크가 토큰을 읽기 전에 실행되면 401을 받는다.
 3. **토큰이 없으면 fail-open이다**(`auth.rs:95-101`). 비교도 상수 시간이 아니다.
 4. **단일 인스턴스 보장이 없다.** 그 결과 토큰 덮어쓰기와 Windows `SO_REUSEADDR` 이중 바인드가 생긴다(§1.6).

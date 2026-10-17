@@ -8,7 +8,7 @@
 //!
 //! ## 엔드포인트
 //! - `GET  /api/updates/status`              — 캐시된 업데이트 상태 조회
-//! - `POST /api/updates/check`               — 업데이트 확인 (GitHub API 호출)
+//! - `POST /api/updates/check`               — 업데이트 확인 (릴레이의 서명된 manifest)
 //! - `POST /api/updates/download`            — 선택 컴포넌트 다운로드
 //! - `POST /api/updates/apply`               — 업데이터 exe 스폰하여 적용
 //! - `POST /api/updates/launch-updater`      — 데몬이 업데이터를 띄우고 스스로 종료 (U7)
@@ -113,7 +113,7 @@ pub fn updates_router(state: UpdateState) -> Router {
 // 핸들러
 // ═══════════════════════════════════════════════════════
 
-/// GET /api/updates/status — 캐시된 상태 반환 (GitHub API 호출 없음)
+/// GET /api/updates/status — 캐시된 상태 반환 (네트워크 없음)
 ///
 /// Locales 컴포넌트는 사용자에게 비표시 — 백그라운드 자동 다운로드/적용 대상이므로
 /// 응답의 `components`, `updates_available` 에서 제외합니다.
@@ -153,7 +153,7 @@ async fn get_status(
     }))
 }
 
-/// POST /api/updates/check — GitHub API를 호출하여 최신 릴리스 확인
+/// POST /api/updates/check — 릴레이에서 최신 릴리즈 확인
 ///
 /// Locales 컴포넌트는 응답에서 제외하고, 업데이트가 있으면
 /// 백그라운드에서 자동 다운로드+적용합니다 (사용자 비표시).
@@ -671,21 +671,11 @@ async fn clear_last_result() -> impl IntoResponse {
     }
 }
 
-/// GET /api/updates/integrity — 서버에서 매니페스트를 가져와 SHA256 무결성 검증
+/// GET /api/updates/integrity — 업데이터가 설치하며 기록한 파일 해시와 지금 파일을 비교
 async fn check_integrity(
     State(state): State<UpdateState>,
 ) -> impl IntoResponse {
-    let mut mgr = state.manager.write().await;
-
-    let report = match mgr.verify_integrity().await {
-        Ok(r) => r,
-        Err(e) => {
-            return Json(json!({
-                "ok": false,
-                "error": format!("Integrity check failed: {}", e),
-            }));
-        }
-    };
+    let report = state.manager.read().await.verify_integrity();
 
     let components: Vec<Value> = report.components.iter().map(|c| {
         json!({
