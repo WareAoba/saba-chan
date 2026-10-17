@@ -2045,6 +2045,9 @@ ipcMain.handle('instance:readLiveSettings', (_event, id) =>
 // 부팅 직후 Python 준비 상태: {phase, percent, complete, error, components: {python}}
 ipcMain.handle('runtime:preflight', () => daemonCall('get', '/api/runtime/preflight', undefined, 5000));
 
+// 시스템 모니터: 데몬이 표본을 뜬다. 처음 한 번은 두 번 떠서 조금 걸린다
+ipcMain.handle('system:metrics', () => daemonCall('get', '/api/system/metrics', undefined, 5000));
+
 ipcMain.handle('config:defaults', (_event, kind) =>
     daemonCall('get', `/api/config/${kind}/defaults`));
 

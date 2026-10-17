@@ -1013,5 +1013,31 @@
     "err_write_failed": "Couldn't write the file. Check the location and permissions.",
     "err_generic": "Something went wrong. Please try again.",
     "restart_hint": "Imported app settings take effect after restarting Saba-chan."
+  },
+  "monitor": {
+    "title": "System monitor",
+    "expand": "Expand monitor",
+    "collapse": "Collapse monitor",
+    "loading": "Loading…",
+    "unavailable": "No data from the daemon",
+    "cpu": "CPU",
+    "memory": "Memory",
+    "disk_io": "Disk IO",
+    "disk": "Disk space",
+    "network": "Network",
+    "cores": "{{count}} cores",
+    "read_write": "Read {{read}} · Write {{write}}",
+    "disk_free": "{{mount}} · {{free}} free",
+    "rx_tx": "In {{rx}} · Out {{tx}}",
+    "others": "Other processes",
+    "idle": "Idle",
+    "free": "Free",
+    "idle_legend": "Idle / free",
+    "more_instances": "Other instances",
+    "all_traffic": "All traffic",
+    "scale_note": "Relative to the 2-minute peak",
+    "network_note": "Whole-machine traffic, not split by instance · relative to the 2-minute peak",
+    "sizes_pending": "Measuring instance folders",
+    "footnote": "Disk IO and network are relative to the 2-minute peak. Network is whole-machine traffic, not split by instance."
   }
 }

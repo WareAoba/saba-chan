@@ -7,6 +7,7 @@ mod instance;
 mod backup;
 mod scheduler;
 mod process_monitor;
+mod system_monitor;
 mod python_env;
 mod utils;
 mod extension;
