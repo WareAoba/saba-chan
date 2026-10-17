@@ -69,8 +69,13 @@ impl RconPool {
                             );
                             return Ok(response);
                         }
+                        Err(e) if client.delivered() => {
+                            // 명령은 이미 갔다: 다시 보내면 두 번 실행된다 (save-all 두 번 등)
+                            conns.remove(instance_id);
+                            return Err(ProtocolError::CommandError(format!("sent, but no reply: {}", e)));
+                        }
                         Err(e) => {
-                            // 명령 실행 중 에러 → 연결 제거하고 아래에서 재연결 시도
+                            // 보내기 전에 끊긴 연결 → 연결 제거하고 아래에서 재연결 시도
                             tracing::warn!(
                                 "RCON pool: command failed on existing connection for '{}': {}, will reconnect",
                                 instance_id,
@@ -94,7 +99,13 @@ impl RconPool {
         let mut client = RconClient::new(host.to_string(), port, password.to_string());
         client.connect(timeout)?;
 
-        let response = client.execute_command(command)?;
+        let response = client.execute_command(command).map_err(|e| {
+            if client.delivered() {
+                ProtocolError::CommandError(format!("sent, but no reply: {}", e))
+            } else {
+                e
+            }
+        })?;
         tracing::info!(
             "RCON pool: new connection established for '{}', command='{}'",
             instance_id,
@@ -124,6 +135,54 @@ impl RconPool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 명령이 서버까지 갔는데 답이 없으면 다시 보내지 않는다 (save-all 두 번 실행 회귀)
+    #[test]
+    fn delivered_command_is_not_resent_on_timeout() {
+        use std::io::{Read, Write};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let commands = Arc::new(AtomicUsize::new(0));
+        let seen = commands.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let mut s = stream.unwrap();
+                let mut read_packet = |s: &mut std::net::TcpStream| -> Option<(i32, i32)> {
+                    let mut len = [0u8; 4];
+                    s.read_exact(&mut len).ok()?;
+                    let mut body = vec![0u8; i32::from_le_bytes(len) as usize];
+                    s.read_exact(&mut body).ok()?;
+                    Some((i32::from_le_bytes(body[0..4].try_into().unwrap()), i32::from_le_bytes(body[4..8].try_into().unwrap())))
+                };
+                let Some((id, _)) = read_packet(&mut s) else { continue };
+                let mut reply = Vec::new();
+                reply.extend_from_slice(&10i32.to_le_bytes());
+                reply.extend_from_slice(&id.to_le_bytes());
+                reply.extend_from_slice(&2i32.to_le_bytes());
+                reply.extend_from_slice(&[0, 0]);
+                s.write_all(&reply).unwrap();
+                // 첫 명령에만 답한다 (연결이 풀에 남게). 그 뒤 명령은 받기만 한다
+                while let Some((id, kind)) = read_packet(&mut s) {
+                    if kind == 2 && seen.fetch_add(1, Ordering::SeqCst) == 0 {
+                        let mut ok = Vec::new();
+                        ok.extend_from_slice(&10i32.to_le_bytes());
+                        ok.extend_from_slice(&id.to_le_bytes());
+                        ok.extend_from_slice(&0i32.to_le_bytes());
+                        ok.extend_from_slice(&[0, 0]);
+                        s.write_all(&ok).unwrap();
+                    }
+                }
+            }
+        });
+        let pool = RconPool::new();
+        pool.execute("i", "127.0.0.1", port, "pw", "list", Duration::from_millis(300)).unwrap();
+        let err = pool.execute("i", "127.0.0.1", port, "pw", "save-all", Duration::from_millis(300)).unwrap_err();
+        assert!(matches!(err, ProtocolError::CommandError(_)), "{:?}", err);
+        std::thread::sleep(Duration::from_millis(200));
+        assert_eq!(commands.load(Ordering::SeqCst), 2, "save-all must reach the server once");
+    }
 
     #[test]
     fn test_pool_creation() {

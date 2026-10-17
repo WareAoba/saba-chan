@@ -395,7 +395,8 @@ pub async fn execute_rcon_command(
         Ok(Err(e)) => {
             // 비밀번호·포트가 바뀌었을 수 있다 — 다음 명령은 설정 파일을 다시 읽는다
             state.credentials.invalidate(&id);
-            if stdin_ok {
+            // 보내지도 못했을 때만 stdin으로 (이미 간 명령을 또 보내면 두 번 실행된다)
+            if stdin_ok && !matches!(e, crate::protocol::ProtocolError::CommandError(_)) {
                 tracing::debug!("RCON failed for '{}' ({}), sending via stdin", id, e);
                 return via_stdin(&state, &id, &payload).await;
             }
@@ -421,7 +422,7 @@ pub async fn execute_rcon_command(
 
 /// 관리 프로세스의 stdin으로 보낸다. 서버의 답은 콘솔로만 나오므로, 보낸 뒤 잠깐 새로 찍힌 줄을
 /// 모아 `data.response`로 돌려준다 (채팅·CLI가 결과를 보여 줄 수 있게)
-async fn via_stdin(state: &IPCServer, id: &str, payload: &serde_json::Value) -> axum::response::Response {
+pub(crate) async fn via_stdin(state: &IPCServer, id: &str, payload: &serde_json::Value) -> axum::response::Response {
     use crate::supervisor::managed_process::LogSource;
     let Some(command) = payload.get("command").and_then(|v| v.as_str()) else {
         return (StatusCode::BAD_REQUEST, Json(json!({ "error": "Missing 'command' field" }))).into_response();
