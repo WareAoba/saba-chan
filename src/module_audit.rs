@@ -107,6 +107,36 @@ mod tests {
         assert_eq!(perms, vec!["dynamic_code", "env_secrets", "network", "spawn_process", "spawn_process"], "{:?}", found);
     }
 
+    /// 소스 없는 바이트코드와 네이티브 라이브러리도 보고한다 (cloud review 4)
+    #[tokio::test]
+    async fn sourceless_bytecode_and_native_libraries_are_reported() {
+        let python = tool_python();
+        if std::process::Command::new(&python).arg("--version").output().is_err() {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+        std::fs::write(p.join("lifecycle.py"), "import helper\nimport fast\n").unwrap();
+        std::fs::write(p.join("helper.pyc"), b"\x00\x00\x00\x00\x00\x00\x00\x00").unwrap();
+        std::fs::write(p.join("fast.pyd"), b"MZ").unwrap();
+        std::fs::create_dir(p.join("__pycache__")).unwrap();
+        // 소스 확인을 거치는 보통 캐시는 괜찮고, unchecked-hash 캐시는 보고한다
+        std::fs::write(p.join("__pycache__/lifecycle.cpython-312.pyc"), b"\x00\x00\x00\x00\x00\x00\x00\x00").unwrap();
+        std::fs::write(p.join("__pycache__/other.cpython-312.pyc"), b"\x00\x00\x00\x00\x01\x00\x00\x00").unwrap();
+        let found = scan(&python, p).await.unwrap();
+        let mut got: Vec<String> = found.iter().map(|f| format!("{} {}", f.permission, f.file)).collect();
+        got.sort_unstable();
+        assert_eq!(
+            got,
+            vec!["native_code fast.pyd", "opaque_code __pycache__/other.cpython-312.pyc", "opaque_code helper.pyc"],
+            "{:?}",
+            found
+        );
+        // opaque_code는 선언할 수 없는 권한이라 늘 남는다
+        let all = ModulePermissions { native_code: true, ..Default::default() };
+        assert_eq!(undeclared(&all, &found).len(), 2);
+    }
+
     /// 공용 도우미 이름이나 테스트 파일 뒤에 숨긴 코드도 잡는다 (cloud review 3)
     #[tokio::test]
     async fn code_hidden_behind_helper_or_test_names_is_still_found() {
