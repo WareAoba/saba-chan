@@ -21,3 +21,18 @@ describe('managed 판단 (데몬 Supervisor::uses_managed_start와 같다)', () 
         expect(interactionOf({}, { protocols: { supported: ['rest'] } }).console).toBe(false);
     });
 });
+
+describe('콘솔 빠른 명령', () => {
+    it('console(예전 rcon) 명령 중 템플릿이 이름으로 시작하는 것만', async () => {
+        const { consoleQuickCommands } = await import('../utils/serverView');
+        const fields = [
+            { name: 'say', method: 'console', console_template: 'say {message}' },
+            { name: 'save-all', method: 'rcon', rcon_template: 'save-all' },
+            { name: 'kickall', method: 'console', console_template: 'kick @a' },
+            { name: 'players', method: 'rest' },
+            { name: 'backup' },
+        ];
+        expect(consoleQuickCommands(fields).map((c) => c.name)).toEqual(['say', 'save-all']);
+        expect(consoleQuickCommands(undefined)).toEqual([]);
+    });
+});

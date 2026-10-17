@@ -5,7 +5,15 @@ import { useServerStore } from '../../stores/useServerStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { failedModuleReason, failureForModule } from '../../utils/failedModules';
 import { useUIStore } from '../../stores/useUIStore';
-import { STATUS_TONE, initials, interactionOf, primaryAction, protocolLabel, viewStatus } from '../../utils/serverView';
+import {
+    STATUS_TONE,
+    consoleQuickCommands,
+    initials,
+    interactionOf,
+    primaryAction,
+    protocolLabel,
+    viewStatus,
+} from '../../utils/serverView';
 import ExtensionSlot from '../ExtensionSlot';
 import { Icon } from '../Icon';
 import CommandModal from '../Modals/CommandModal';
@@ -244,9 +252,7 @@ export function ServerDetail({
                                 server={server}
                                 state={consoleProps.consoles[server.id]}
                                 highlightRules={moduleData?.syntax_highlight?.rules || null}
-                                quickCommands={(moduleData?.commands?.fields || []).filter(
-                                    (c) => (c.method || 'stdin') === 'stdin',
-                                )}
+                                quickCommands={consoleQuickCommands(moduleData?.commands?.fields)}
                                 openConsole={consoleProps.openConsole}
                                 setConsoleInput={consoleProps.setConsoleInput}
                                 sendConsoleCommand={consoleProps.sendConsoleCommand}

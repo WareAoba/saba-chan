@@ -50,6 +50,20 @@ export function interactionOf(server, moduleData) {
     return { console: hasConsole, commands: hasCommands || !hasConsole };
 }
 
+/**
+ * 콘솔에 그대로 쳐도 되는 명령만 (콘솔 빠른 명령 칩).
+ * 데몬 method "console"(예전 이름 "rcon")이고 console_template이 명령 이름으로 시작할 때만:
+ * 칩은 이름을 입력칸에 채울 뿐이라, 템플릿이 다른 말로 바뀌는 명령이나 "module"/"rest" 명령은 콘솔에서 안 통한다.
+ */
+export function consoleQuickCommands(fields = []) {
+    return (fields || []).filter((c) => {
+        const method = c.method === 'rcon' || c.method === 'stdin' ? 'console' : c.method;
+        if (method !== 'console') return false;
+        const template = c.console_template ?? c.rcon_template;
+        return !template || template.trim().split(/\s+/)[0].toLowerCase() === String(c.name).toLowerCase();
+    });
+}
+
 /** 이름 첫 글자로 만든 아이콘 대체 글자 */
 export function initials(name = '') {
     const trimmed = String(name).trim();
