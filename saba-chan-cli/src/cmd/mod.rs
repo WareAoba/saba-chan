@@ -8,6 +8,7 @@ pub mod console;
 pub mod daemon;
 pub mod extension;
 pub mod module;
+pub mod monitor;
 pub mod schedule;
 pub mod server;
 pub mod status;
@@ -25,6 +26,7 @@ pub async fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
     match cmd {
         Cmd::Status => status::run(ctx).await,
         Cmd::Version => status::version(ctx).await,
+        Cmd::Monitor(a) => monitor::run(ctx, a).await,
         Cmd::Server(c) => server::run(ctx, c).await,
         Cmd::Start(a) => server::start(ctx, a).await,
         Cmd::Stop(a) => server::stop(ctx, a).await,

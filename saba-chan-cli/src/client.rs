@@ -151,6 +151,10 @@ impl Api {
     pub async fn system_components(&self) -> Result<Value> {
         self.get("/api/system/components").await
     }
+    /// GET /api/system/metrics — 시스템 모니터 표본
+    pub async fn system_metrics(&self) -> Result<Value> {
+        self.get("/api/system/metrics").await
+    }
     /// POST /api/daemon/shutdown
     pub async fn shutdown(&self) -> Result<Value> {
         self.post("/api/daemon/shutdown", json!({})).await

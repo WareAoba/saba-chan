@@ -2,6 +2,17 @@
  * 개발용 가짜 window.api — Electron 없이 `npm run dev`로 브라우저에서 화면을 볼 때만 쓴다.
  * index.js가 DEV 빌드이고 window.api가 없을 때만 설치한다. 프로덕션 번들에는 들어가지 않는다.
  */
+const mockChannels = {
+    chatbot: ['111'],
+    music: null,
+    botAvailable: true,
+    channels: [
+        { id: '111', name: '잡담', category: '채팅' },
+        { id: '112', name: '질문', category: '채팅' },
+        { id: '221', name: '음악', category: '놀이' },
+        { id: '222', name: '공지', category: '' },
+    ],
+};
 const now = () => Math.floor(Date.now() / 1000);
 
 const modules = [
@@ -155,7 +166,7 @@ const impl = {
         ok({
             success: true,
             settings: { enabled: true, ambientSeconds: 0 },
-            guilds: { 'guild-1': { channelIds: ['1234567890'] } },
+            guilds: { 'guild-1': { memo: '' } },
             hasApiKey: true,
         }),
     chatbotSave: (patch) => ok({ success: true, settings: patch.settings || {}, guilds: {}, hasApiKey: true, sync: [] }),
@@ -211,6 +222,56 @@ const impl = {
         servers = servers.map((s) => (s.id === id ? { ...s, name } : s));
         return ok({ success: true, id, name });
     },
+    // 시스템 모니터: 데몬 /api/system/metrics 모양 (값은 조금씩 흔들린다)
+    systemMetrics: () => {
+        const jitter = (base, spread) => Math.max(0, base + (Math.random() - 0.5) * spread);
+        const GB = 1024 ** 3;
+        const MB = 1024 ** 2;
+        const running = servers.filter((s) => s.status === 'running' || s.status === 'starting');
+        const instances = servers.map((s, i) => {
+            const on = running.includes(s);
+            return {
+                id: s.id,
+                name: s.name,
+                running: on,
+                process_count: on ? 2 : 0,
+                cpu_percent: on ? jitter(18 - i * 6, 6) : 0,
+                memory_bytes: on ? (4.2 - i) * GB : 0,
+                disk_read_bps: on ? jitter(2 * MB, 2 * MB) : 0,
+                disk_write_bps: on ? jitter(1.5 * MB, 2 * MB) : 0,
+            };
+        });
+        const instCpu = instances.reduce((a, i) => a + i.cpu_percent, 0);
+        return ok({
+            sampled_at_ms: Date.now(),
+            window_ms: 2000,
+            cpu: { cores: 16, total_percent: instCpu + jitter(14, 6), others_percent: jitter(14, 6) },
+            memory: { total_bytes: 32 * GB, used_bytes: 19.6 * GB, others_bytes: 19.6 * GB - 6.4 * GB },
+            disk_io: {
+                read_bps: 9 * MB,
+                write_bps: 4 * MB,
+                others_read_bps: jitter(5 * MB, 3 * MB),
+                others_write_bps: jitter(1 * MB, 1 * MB),
+            },
+            network: { rx_bps: jitter(3.2 * MB, 2 * MB), tx_bps: jitter(1.1 * MB, 1 * MB), per_instance: false },
+            disks: [
+                {
+                    mount: 'C:\\',
+                    total_bytes: 931 * GB,
+                    available_bytes: 312 * GB,
+                    others_bytes: 931 * GB - 312 * GB - 48 * GB,
+                    instances: [
+                        { id: 'srv-1', bytes: 21 * GB },
+                        { id: 'srv-2', bytes: 9 * GB },
+                        { id: 'srv-3', bytes: 14 * GB },
+                        { id: 'srv-4', bytes: 4 * GB },
+                    ],
+                    sizes_at_ms: Date.now() - 30000,
+                },
+            ],
+            instances,
+        });
+    },
     // 부팅 뒤 몇 초 동안 Python 준비 진행을 흉내 낸다
     runtimePreflight: () => {
         const started = (globalThis.__mockPreflightStart ??= Date.now());
@@ -246,6 +307,35 @@ const impl = {
             { guildId: 'guild-1', guildName: '사바 마을' },
             { guildId: 'guild-2', guildName: '주말 게임방' },
         ]),
+    dataExport: ({ secrets } = {}) =>
+        ok({
+            success: true,
+            path: 'C:\\Users\\me\\saba-chan-export.zip',
+            secrets: !!secrets,
+            instances: [{ id: 'mc-1', name: '마크 서버' }],
+            config: ['gui', 'chatbot'],
+        }),
+    dataImport: ({ path, dryRun, overwrite } = {}) =>
+        ok({
+            success: true,
+            dryRun: !!dryRun,
+            appVersion: '0.1.3',
+            secrets: true,
+            instances: {
+                added: [{ id: 'pal-1', name: '팰월드' }],
+                replaced: overwrite ? [{ id: 'mc-1', name: '마크 서버' }] : [],
+                skipped: overwrite ? [] : [{ id: 'mc-1', name: '마크 서버', reason: 'exists' }],
+            },
+            missingModules: ['zomboid'],
+            config: ['gui', 'chatbot'],
+            nodeToken: 'kept',
+            path: path || 'C:\\Users\\me\\saba-chan-export.zip',
+        }),
+    relayNodeChannels: (guildId) => ok({ guildId, ...mockChannels }),
+    relayNodeChannelsSave: (guildId, patch) => {
+        Object.assign(mockChannels, patch);
+        return ok({ guildId, ...mockChannels });
+    },
     relayListNodeMembers: (guildId) =>
         ok(
             guildId === 'guild-1'
@@ -267,6 +357,8 @@ const impl = {
     updaterLastResult: ({ clear } = {}) =>
         ok({
             ok: true,
+            version: '0.1.3',
+            notes: '- 디스코드 서버별 챗봇·음악 채널 배정\n- 업데이트 결과 알림과 패치노트',
             result:
                 !mockUpdate || clear
                     ? null

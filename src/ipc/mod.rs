@@ -541,6 +541,8 @@ pub struct IPCServer {
     pub daemon_log_buffer: crate::daemon_log::DaemonLogBuffer,
     /// 클라우드 릴레이 에이전트 (디스코드 명령 수신)
     pub relay_agent: crate::relay_agent::RelayAgent,
+    /// 시스템 모니터 (요청이 올 때만 표본을 뜬다)
+    pub system_monitor: crate::system_monitor::SystemMonitor,
 }
 
 impl IPCServer {
@@ -583,6 +585,7 @@ impl IPCServer {
             config_store,
             daemon_log_buffer,
             relay_agent: crate::relay_agent::RelayAgent::new(),
+            system_monitor: crate::system_monitor::SystemMonitor::new(),
         }
     }
 
@@ -682,6 +685,7 @@ impl IPCServer {
             .route("/api/module/:name/locales", get(handlers::config::get_module_locales))
             // ── System components (release manifest) ──
             .route("/api/system/components", get(handlers::config::get_system_components))
+            .route("/api/system/metrics", get(handlers::system::get_metrics))
             // ── Directory scan (migration etc.) ──
             // ── Extension process management (범용) ──
             // ── Client heartbeat ──

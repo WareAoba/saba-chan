@@ -47,6 +47,8 @@ pub struct GuiSettings {
     pub window_opacity: u32,
     /// 콘솔 글꼴 배율 (%)
     pub console_font_scale: u32,
+    /// 서버 페이지의 시스템 모니터 펼침 여부
+    pub system_monitor_open: bool,
 
     // Window state (GUI가 저장하지만 데몬이 중개)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -98,6 +100,7 @@ impl Default for GuiSettings {
             sidebar_compact: false,
             window_opacity: 100,
             console_font_scale: 100,
+            system_monitor_open: true,
             window_bounds: None,
             language: None,
         }

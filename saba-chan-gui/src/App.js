@@ -30,7 +30,7 @@ import { useSettingsStore } from './stores/useSettingsStore';
 import { useUIStore } from './stores/useUIStore';
 import { isManaged } from './utils/serverView';
 // 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
-import { UpdateResultBanner } from './components/shell/UpdateResultBanner';
+import { announceLastUpdateResult, PatchNotesModal } from './components/Modals/PatchNotesModal';
 import './styles/shell.css';
 function App() {
     const { t, i18n } = useTranslation('gui');
@@ -92,6 +92,13 @@ function App() {
     const unreadNoticeCount = useUIStore((s) => s.unreadNoticeCount);
     const setUnreadNoticeCount = useUIStore((s) => s.setUnreadNoticeCount);
     const backgroundDaemonStatus = useUIStore((s) => s.backgroundDaemonStatus);
+    const [patchNotes, setPatchNotes] = useState(null);
+    const daemonRunning = backgroundDaemonStatus === 'running';
+
+    // 마지막 업데이트 결과 (데몬 last-result): 데몬이 뜨면 한 번 묻고 알림을 남긴다. 알림을 누르면 패치노트
+    useEffect(() => {
+        if (daemonRunning) announceLastUpdateResult(t);
+    }, [daemonRunning]); // eslint-disable-line react-hooks/exhaustive-deps
     const setBackgroundDaemonStatus = useUIStore((s) => s.setBackgroundDaemonStatus);
     const showWaitingImage = useUIStore((s) => s.showWaitingImage);
     const setShowWaitingImage = useUIStore((s) => s.setShowWaitingImage);
@@ -703,6 +710,7 @@ function App() {
                             onClose: requestNoticeClose,
                             isClosing: isNoticeClosing,
                             onOpenUpdateModal: () => useUIStore.getState().openSettings('update'),
+                            onOpenPatchNotes: setPatchNotes,
                         }}
                         showDaemon={showBackgroundSection}
                         onToggleDaemon={() =>
@@ -710,7 +718,6 @@ function App() {
                         }
                         daemonProps={{ onClose: requestBackgroundClose, isClosing: isBackgroundClosing, ipcPort }}
                     />
-                    <UpdateResultBanner daemonReady={backgroundDaemonStatus === 'running'} />
 
                     {/* AddInstanceModal — 새 서버 / 마이그레이션 선택 */}
                     <AddInstanceModal
@@ -832,6 +839,7 @@ function App() {
                     )}
 
                     {/* 모달 렌더링 */}
+                    {patchNotes && <PatchNotesModal data={patchNotes} onClose={() => setPatchNotes(null)} />}
                     {modal && modal.type === 'success' && (
                         <SuccessModal title={modal.title} message={modal.message} onClose={() => setModal(null)} />
                     )}

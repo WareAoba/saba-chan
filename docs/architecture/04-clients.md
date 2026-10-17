@@ -106,6 +106,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | launchUninstaller (127) | app:launchUninstaller | 2599 | installer 직접 spawn | n/a |
 | getAppVersion (128) | app:getVersion | 2580 | `app.getVersion()` | n/a |
 | getComponentInfo (129) | app:getComponentInfo | 2584 | GET /api/system/components | ✓ 709 |
+| systemMetrics (37) | system:metrics | 2049 | GET /api/system/metrics | ✓ 683 (`SystemMonitor`) |
 | closeResponse (133) | app:closeResponse (send) | 1154 | 종료 플로우 | n/a |
 | daemonStatus (138) | daemon:status | 2515 | GET /health | ✓ 642 |
 | daemonRestart (139) | daemon:restart | 2525 | `stopDaemon()`(API 종료, 안 되면 자기 PID만 kill) 후 `/health`가 멎을 때까지 기다렸다가 **`startDaemon()`으로 직접 spawn** | 부분 |
@@ -181,7 +182,7 @@ Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `u
 > 이 절은 CLI 리메이크(PR #6, 브랜치 `claude/cli-remake-b1wszk`) 기준이다. 예전 TUI(`tui/`, `process.rs`, `config.rs`, `gui_config.rs`, `cli_config.rs`, `module_registry.rs`)는 이 리메이크에서 모두 지워졌다.
 
 ### 3.1 쓰는 방법 세 가지
-- **한 번 실행하는 하위 명령**: clap 기반(`cli.rs`). `status`, `start|stop|restart <서버>`, `console`, `run <서버> <게임 명령>`, `server …`(list, info, add, remove, commands, send, settings, set, properties, rest, update, history, validate, diagnose, accept-eula, reset, rename, reorder 등), `daemon …`, `module …`, `extension …`, `bot …`, `backup …`, `schedule …`, `chatbot …`, `update …`, `config …`, `chat <문장>`, `version`, `shell`, `completions <셸>` (`cli.rs:41-105`). 콘솔에 한 줄을 그대로 보내는 명령은 `server send`다(`rcon` 하위 명령은 없다).
+- **한 번 실행하는 하위 명령**: clap 기반(`cli.rs`). `status`, `start|stop|restart <서버>`, `console`, `run <서버> <게임 명령>`, `server …`(list, info, add, remove, commands, send, settings, set, properties, rest, update, history, validate, diagnose, accept-eula, reset, rename, reorder 등), `daemon …`, `module …`, `extension …`, `bot …`, `backup …`, `schedule …`, `chatbot …`, `update …`, `config …`, `chat <문장>`, `monitor [--watch] [--interval 초]`, `version`, `shell`, `completions <셸>` (`cli.rs:41-105`). 콘솔에 한 줄을 그대로 보내는 명령은 `server send`다(`rcon` 하위 명령은 없다).
 - **대화형 셸**: 인자 없이 터미널에서 실행하면 열린다(`main.rs:67`, `shell.rs`). 한 줄이 명령 하나이고 Tab으로 명령·서버 이름·게임 명령을 채운다(게임 명령은 `catalog`에서, `shell.rs:109`). 첫 단어가 명령이 아니면 디스코드와 같은 채팅 처리기로 보낸다(`shell.rs:1-5, 187`). 셸을 닫아도 데몬과 서버는 계속 돈다.
 - **스크립트용 `--json`**: stdout에는 JSON 문서 하나만 나가고, 안내와 진행 표시는 stderr로 간다(`output.rs:1-6`). 종료 코드: 0 성공, 1 실패, 2 사용법·모호함, 3 데몬 응답 없음, 4 대상 없음, 130 취소(`error.rs:39-47`). 전역 옵션은 `--json`, `--yes`, `--lang`, `--port`, `--no-color`.
 

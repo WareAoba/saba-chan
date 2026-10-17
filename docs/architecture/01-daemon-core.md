@@ -300,7 +300,8 @@
 | POST | `/api/migration/export` | `migration.rs:173` | `{path(절대 경로), secrets?}` | `{success, path, secrets, instances:[{id,name}], config:[네임스페이스]}` / 400 `INVALID_PATH` / 500 `WRITE_FAILED`. A9: 데몬이 `path`에 zip(`saba-export.json`, `config.json`, `instances.json`, `secrets`면 `node_token`)을 쓴다. `updates`·`boot`·`extensions`·`schemaVersion`은 이 PC 것이라 뺀다. `secrets`가 아니면 챗봇 API 키, REST 비밀번호, 모듈이 `password`로 선언한 설정을 뺀다. 게임 서버 파일은 넣지 않는다 |
 | POST | `/api/migration/import` | `migration.rs:246` | `{path, dryRun?, overwrite?}` | `{success, dryRun, appVersion, secrets, instances:{added, replaced, skipped:[{id,name,reason}]}, missingModules, config:[네임스페이스], nodeToken:"imported"\|"kept"\|null}` / 400 `INVALID_PATH`·`INVALID_ARCHIVE`·`INVALID_CONFIG`. 인스턴스는 같은 id가 있으면 `exists`(`overwrite`면 덮어씀, 켜져 있으면 `running`), 다른 인스턴스와 폴더가 같으면 `working_dir_in_use`로 건너뛴다. 설정은 지금 값 위에 최상위 키 머지(파일에 없는 API 키는 남는다). 노드 토큰은 이 PC에 없을 때만 쓰고, 토큰을 실제로 가져올 때만 `relay.cloud`(relayUrl·hostId)·`cloudNodes`·`cloudMembers`도 바꾼다(아니면 이 PC 값 유지). `added`·`replaced` 항목에는 `working_dir`·`executable_path`가 붙는다 |
 | GET | `/api/system/components` | `config.rs:233` | - | `{version, components:{key:ver}, lastUpdated}` (`installed-manifest.json` + 번들 `versions.toml`) |
-| GET | `/api/runtime/preflight` | `ipc/mod.rs:723` | - | `{phase, percent, complete, error, components:{python}}` |
+| GET | `/api/system/metrics` | `system.rs:30` | `?sizes=false` | 시스템 모니터 표본 `{sampled_at_ms, window_ms, cpu:{cores,total_percent,others_percent}, memory:{total_bytes,used_bytes,others_bytes}, disk_io:{read_bps,write_bps,others_read_bps,others_write_bps}, network:{rx_bps,tx_bps,per_instance:false}, disks:[{mount,total_bytes,available_bytes,others_bytes,instances:[{id,bytes}],sizes_at_ms}], instances:[{id,name,running,process_count,cpu_percent,memory_bytes,disk_read_bps,disk_write_bps}]}` (§10) |
+| GET | `/api/runtime/preflight` | `ipc/mod.rs:696` | - | `{phase, percent, complete, error, components:{python}}` |
 
 #### 클라이언트와 데몬 수명 (handlers/client.rs)
 
@@ -467,7 +468,7 @@ Relay 서명 방식(`relay.rs:100-137`):
 | 그룹 | 필드 (기본값) |
 |---|---|
 | 동작 | `autoRefresh`(true), `refreshInterval`(2000), `ipcPort`(57474), `consoleBufferSize`(2000), `autoGeneratePasswords`(true), `portConflictCheck`(true) |
-| 테마 | `theme?`, `accentColor`("#667eea"), `accentSecondary`("#764ba2"), `useGradient`(true), `fontScale`(100), `enableTransitions`(true), `consoleSyntaxHighlight`(true), `consoleBgColor`, `consoleTextColor`, `sidebarCompact`(false), `windowOpacity`(100), `consoleFontScale`(100) |
+| 테마 | `theme?`, `accentColor`("#667eea"), `accentSecondary`("#764ba2"), `useGradient`(true), `fontScale`(100), `enableTransitions`(true), `consoleSyntaxHighlight`(true), `consoleBgColor`, `consoleTextColor`, `sidebarCompact`(false), `windowOpacity`(100), `consoleFontScale`(100), `systemMonitorOpen`(true, 서버 페이지 시스템 모니터 펼침) |
 | 창/언어 | `windowBounds?{width:1200,height:840,x?,y?}`, `language?` |
 
 **BotConfig** (camelCase, `config.json`의 `relay`, `config_store/mod.rs:115-125`). 로컬 봇용 필드(`token`, `autoStart`, `mode`, `music*`)는 지워졌고, 옛 파일에 남아 있어도 무시된다.
@@ -668,3 +669,12 @@ Relay 서명 방식(`relay.rs:100-137`):
   - 삭제한 뒤 GET하면 404여야 한다.
   - `check-update`: 없는 인스턴스는 404, `extension_data`가 비어 있으면 `update_available:false`.
 - 인증은 `tests/api_contract.rs`가 실제 서버로 모든 라우트가 토큰 없이 401인지 확인한다. 단일 인스턴스는 `tests/single_instance.rs`, 릴레이 에이전트 왕복은 `tests/relay_agent_e2e.rs`가 본다.
+
+## 10. 시스템 모니터 (`system_monitor.rs`)
+
+- `GET /api/system/metrics`(`ipc/handlers/system.rs`)가 부를 때만 표본을 뜬다. 백그라운드 루프는 없고, 아무 클라이언트도 보지 않으면 비용이 없다. 0.9초 안의 재요청은 직전 표본을 준다(`MIN_SAMPLE_INTERVAL`). 직전 표본이 10초보다 오래됐으면 짧은 간격으로 두 번 떠서 비율을 만든다(`STALE_AFTER`).
+- 인스턴스 몫 = `tracker.get_pid`의 PID와 그 자손 프로세스의 합(`attribute`). saba-runner 자체는 인스턴스 몫이 아니다. `cpu_percent`는 기계 전체 기준(코어 수로 나눔).
+- CPU·메모리: 인스턴스 - 나머지(`others_*`) - 유휴(전체 - 사용). 전체 값은 인스턴스 합보다 작아지지 않게 맞춘다.
+- 디스크 IO: OS가 기계 전체 값을 따로 주지 않아 모든 프로세스 IO의 합을 전체로 쓴다. Windows의 프로세스 IO 카운터는 디스크 밖 IO도 센다. 유휴 몫은 클라이언트가 최근 최대값을 눈금으로 정한다.
+- 네트워크: 인터페이스 합(루프백 제외)만 준다. 프로세스별 값은 싸게 얻을 길이 없다(Windows는 ETW·관리자 권한). `per_instance`는 항상 false.
+- 디스크 용량: 데이터 폴더나 인스턴스 폴더(인스턴스 폴더 + `working_dir`)가 있는 디스크만, 데이터 폴더 디스크가 먼저. 인스턴스 몫은 폴더 크기를 별도 스레드에서 재고 10분 재사용한다(`DIR_SIZE_TTL`). `?sizes=false` 요청(GUI의 접힌 요약)은 새로 재지 않고 마지막 값을 쓴다. 아직 못 쟀으면 `sizes_at_ms`가 null.

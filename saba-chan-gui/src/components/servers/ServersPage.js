@@ -3,14 +3,18 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useWindowSize } from '../../hooks/useWindowSize';
 import { useServerStore } from '../../stores/useServerStore';
+import { useSettingsStore } from '../../stores/useSettingsStore';
 import { useUIStore } from '../../stores/useUIStore';
 import { failedModuleName, failedModuleReason } from '../../utils/failedModules';
 import { Icon } from '../Icon';
+import { SystemMonitor, systemMonitorAvailable } from '../monitor/SystemMonitor';
 import { ServerDetail } from './ServerDetail';
 import { ServerRow } from './ServerRow';
 
 /** 이 너비보다 좁으면 목록/상세를 한 열로 (gui-design-reference §3) */
 export const SINGLE_COLUMN_MAX_WIDTH = 900;
+/** 이 너비 이상이면 시스템 모니터를 상세 오른쪽 열로, 아니면 상세 위에 둔다 */
+export const MONITOR_SIDE_MIN_WIDTH = 1500;
 const SEARCH_MIN_SERVERS = 6;
 
 /**
@@ -36,6 +40,8 @@ export function ServersPage({
     const failedModules = useServerStore((st) => st.failedModules) || [];
     const { width } = useWindowSize();
     const singleColumn = width < SINGLE_COLUMN_MAX_WIDTH;
+    const monitorOpen = useSettingsStore((s) => s.systemMonitorOpen);
+    const monitorSide = monitorOpen && width >= MONITOR_SIDE_MIN_WIDTH;
     const selectedId = useUIStore((s) => s.activeServerId);
     const setSelectedId = useUIStore((s) => s.setActiveServerId);
     const setContextMenu = useUIStore((s) => s.setContextMenu);
@@ -144,6 +150,11 @@ export function ServersPage({
             )}
             {!detailHidden && selected && (
                 <main className="server-detail-pane">
+                    {!monitorSide && systemMonitorAvailable() && (
+                        <div className="monitor-top-slot">
+                            <SystemMonitor layout="top" servers={servers} />
+                        </div>
+                    )}
                     <ServerDetail
                         server={selected}
                         moduleData={moduleOf(selected.module)}
@@ -162,6 +173,11 @@ export function ServersPage({
                         settingsProps={settingsProps}
                     />
                 </main>
+            )}
+            {!detailHidden && selected && monitorSide && (
+                <aside className="monitor-pane">
+                    <SystemMonitor layout="side" servers={servers} />
+                </aside>
             )}
         </div>
     );
