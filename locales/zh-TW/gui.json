@@ -893,8 +893,6 @@
     "seconds": "秒",
     "ambient_hint": "秒（0 為關閉）",
     "triggers": "呼叫詞",
-    "persona": "個性與語氣",
-    "persona_placeholder": "留空則使用薩巴醬的預設個性",
     "confirm_commands": "執行指令前確認",
     "confirm_commands_hint": "AI 選擇的指令需在 Discord 上確認後才會執行。",
     "memory": "長期記憶",
@@ -916,8 +914,19 @@
     "memory_cleared": "已清除 {{name}} 的記憶。",
     "err_ambientSeconds": "主動發言間隔須介於 {{min}}–{{max}} 秒。",
     "err_sessionSeconds": "對話維持時間須介於 {{min}}–{{max}} 秒。",
-    "err_persona": "個性描述最多 {{max}} 個字元。",
     "err_triggers": "呼叫詞最多 {{max}} 個。",
-    "err_channels": "每個伺服器最多 {{max}} 個頻道。"
+    "err_channels": "每個伺服器最多 {{max}} 個頻道。",
+    "memo": "節點備忘",
+    "memo_aria": "{{name}} 的節點備忘",
+    "memo_placeholder": "薩巴醬需要了解的這個伺服器的情況：語氣、稱呼、氣氛、興趣等。附加在預設指令之後。",
+    "err_memo": "節點備忘最多 {{max}} 個字元。",
+    "tool_research": "生活資訊",
+    "tool_research_hint": "查詢網頁、天氣、匯率和股票。",
+    "tool_lol": "LoL 戰績",
+    "tool_lol_hint": "查詢英雄聯盟戰績。",
+    "tool_images": "圖片生成",
+    "tool_images_hint": "畫圖（每天 10 張）。",
+    "tool_social_notes": "察言觀色備忘",
+    "tool_social_notes_hint": "記錄關於氣氛和成員的私人備忘，不會在應用程式中顯示。"
   }
 }

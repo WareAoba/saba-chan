@@ -893,8 +893,6 @@
     "seconds": "secondes",
     "ambient_hint": "secondes (0 = désactivé)",
     "triggers": "Mots déclencheurs",
-    "persona": "Personnalité",
-    "persona_placeholder": "Laissez vide pour la personnalité par défaut de Saba-chan",
     "confirm_commands": "Confirmer avant d'exécuter des commandes",
     "confirm_commands_hint": "Les commandes choisies par l'IA ne s'exécutent qu'après confirmation sur Discord.",
     "memory": "Mémoire à long terme",
@@ -916,8 +914,19 @@
     "memory_cleared": "Mémoire effacée pour {{name}}.",
     "err_ambientSeconds": "L'intervalle d'intervention doit être compris entre {{min}} et {{max}} secondes.",
     "err_sessionSeconds": "La durée de conversation doit être comprise entre {{min}} et {{max}} secondes.",
-    "err_persona": "La personnalité peut contenir jusqu'à {{max}} caractères.",
     "err_triggers": "Jusqu'à {{max}} mots déclencheurs.",
-    "err_channels": "Jusqu'à {{max}} salons par serveur."
+    "err_channels": "Jusqu'à {{max}} salons par serveur.",
+    "memo": "Note du nœud",
+    "memo_aria": "Note du nœud pour {{name}}",
+    "memo_placeholder": "Ce que Saba-chan doit savoir de ce serveur : ton, façon d'appeler les gens, ambiance, centres d'intérêt. Ajouté après les instructions par défaut.",
+    "err_memo": "La note du nœud peut contenir jusqu'à {{max}} caractères.",
+    "tool_research": "Infos pratiques",
+    "tool_research_hint": "Cherche des pages web, la météo, les taux de change et la bourse.",
+    "tool_lol": "Stats LoL",
+    "tool_lol_hint": "Cherche l'historique de parties League of Legends.",
+    "tool_images": "Génération d'images",
+    "tool_images_hint": "Dessine des images (10 par jour).",
+    "tool_social_notes": "Notes sociales",
+    "tool_social_notes_hint": "Garde des notes privées sur l'ambiance et les gens. Jamais affichées dans l'app."
   }
 }

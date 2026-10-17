@@ -12,16 +12,18 @@ import { TagInput } from './TagInput';
 export const CHATBOT_DEFAULTS = {
     enabled: false,
     model: 'gpt-6-luna',
-    persona: '',
     triggerWords: ['사바쨩', '사바'],
     confirmCommands: true,
     ambientSeconds: 0,
     sessionSeconds: 180,
     memory: true,
     webSearch: true,
+    disabledTools: [],
 };
+/** 끌 수 있는 도구 묶음 (계약 disabledTools) */
+export const CHATBOT_TOOLS = ['research', 'lol', 'images', 'social_notes'];
 const LIMITS = { ambientSeconds: [0, 86400], sessionSeconds: [0, 600] };
-const PERSONA_MAX = 40000;
+export const MEMO_MAX = 8000;
 const TRIGGER_MAX = 10;
 const CHANNEL_MAX = 20;
 
@@ -41,10 +43,13 @@ export function settingsPatch(draft) {
     for (const [k, def] of Object.entries(CHATBOT_DEFAULTS)) {
         let v = draft[k];
         if (k in LIMITS) v = Number(v);
-        if (k === 'persona' || k === 'model') v = String(v ?? '').trim();
+        if (k === 'model') v = String(v ?? '').trim();
+        if (k === 'disabledTools') v = CHATBOT_TOOLS.filter((x) => (v || []).includes(x));
         if (k === 'model' && !v) v = def;
         out[k] = same(v, def) ? null : v;
     }
+    // 예전 계약의 persona는 memo(길드별)로 바뀌었다: 남아 있으면 지운다
+    out.persona = null;
     return out;
 }
 
@@ -56,7 +61,6 @@ export function settingsProblems(draft, t) {
             out.push(t(`chatbot.err_${k}`, { min, max }));
         }
     }
-    if ((draft.persona || '').length > PERSONA_MAX) out.push(t('chatbot.err_persona', { max: PERSONA_MAX }));
     if ((draft.triggerWords || []).length > TRIGGER_MAX) out.push(t('chatbot.err_triggers', { max: TRIGGER_MAX }));
     return out;
 }
@@ -64,11 +68,13 @@ export function settingsProblems(draft, t) {
 const guildDraft = (g = {}) => ({
     enabled: typeof g.enabled === 'boolean' ? (g.enabled ? 'on' : 'off') : 'inherit',
     channelIds: Array.isArray(g.channelIds) ? g.channelIds.map(String) : [],
+    memo: typeof g.memo === 'string' ? g.memo : '',
 });
 
 const guildPatch = (d) => ({
     enabled: d.enabled === 'inherit' ? null : d.enabled === 'on',
     channelIds: d.channelIds.length ? d.channelIds : null,
+    memo: d.memo.trim() ? d.memo : null,
 });
 
 /** 릴레이 400 {guildId, status, error, details} → 읽을 수 있는 줄 */
@@ -249,6 +255,7 @@ function SettingsEditor({ data, nodes, nameOf, onSaved }) {
 
     const problems = settingsProblems(s, t);
     const badChannels = Object.values(draft.guilds).some((g) => g.channelIds.length > CHANNEL_MAX);
+    const badMemo = Object.values(draft.guilds).some((g) => g.memo.length > MEMO_MAX);
     const dirty = !same(base, draft);
 
     const save = async () => {
@@ -256,7 +263,9 @@ function SettingsEditor({ data, nodes, nameOf, onSaved }) {
         setErrors([]);
         try {
             const patch = {};
-            if (!same(base.settings, draft.settings)) patch.settings = settingsPatch(draft.settings);
+            if (!same(base.settings, draft.settings) || data.settings?.persona !== undefined) {
+                patch.settings = settingsPatch(draft.settings);
+            }
             const guilds = {};
             for (const id of guildIds) {
                 if (!same(base.guilds[id], draft.guilds[id])) guilds[id] = guildPatch(draft.guilds[id]);
@@ -357,20 +366,34 @@ function SettingsEditor({ data, nodes, nameOf, onSaved }) {
                         ariaLabel={t('chatbot.triggers')}
                     />
                 </div>
-                <label className="mt-field">
-                    <span>{t('chatbot.persona')}</span>
-                    <textarea
-                        className="input cb-persona"
-                        rows={5}
-                        value={s.persona}
-                        placeholder={t('chatbot.persona_placeholder')}
-                        onChange={(e) => set('persona', e.target.value)}
-                    />
-                </label>
                 <div className="cb-toggles">
                     {toggleRow('confirmCommands', t('chatbot.confirm_commands'), t('chatbot.confirm_commands_hint'))}
                     {toggleRow('memory', t('chatbot.memory'), t('chatbot.memory_hint'))}
                     {toggleRow('webSearch', t('chatbot.web_search'), t('chatbot.web_search_hint'))}
+                    {CHATBOT_TOOLS.map((tool) => {
+                        const label = t(`chatbot.tool_${tool}`);
+                        const off = (s.disabledTools || []).includes(tool);
+                        return (
+                            <div className="cb-toggle-row" key={tool}>
+                                <span className="dc-list-text">
+                                    <span className="dc-list-name">{label}</span>
+                                    <span className="cb-hint">{t(`chatbot.tool_${tool}_hint`)}</span>
+                                </span>
+                                <SabaToggle
+                                    checked={!off}
+                                    aria-label={label}
+                                    onChange={(on) =>
+                                        set(
+                                            'disabledTools',
+                                            on
+                                                ? (s.disabledTools || []).filter((x) => x !== tool)
+                                                : [...(s.disabledTools || []), tool],
+                                        )
+                                    }
+                                />
+                            </div>
+                        );
+                    })}
                 </div>
                 {problems.length > 0 && (
                     <p className="dc-field-error">
@@ -439,6 +462,22 @@ function SettingsEditor({ data, nodes, nameOf, onSaved }) {
                                             ariaLabel={t('chatbot.channels_aria', { name })}
                                         />
                                     </div>
+                                    <label className="cb-guild-memo">
+                                        <span className="cb-memo-head">
+                                            <span>{t('chatbot.memo')}</span>
+                                            <span className={clsx('cb-counter', { over: g.memo.length > MEMO_MAX })}>
+                                                {g.memo.length.toLocaleString()} / {MEMO_MAX.toLocaleString()}
+                                            </span>
+                                        </span>
+                                        <textarea
+                                            className="input cb-persona"
+                                            rows={4}
+                                            value={g.memo}
+                                            aria-label={t('chatbot.memo_aria', { name })}
+                                            placeholder={t('chatbot.memo_placeholder')}
+                                            onChange={(e) => setGuild(id, { memo: e.target.value })}
+                                        />
+                                    </label>
                                 </li>
                             );
                         })}
@@ -447,6 +486,11 @@ function SettingsEditor({ data, nodes, nameOf, onSaved }) {
                 {badChannels && (
                     <p className="dc-field-error">
                         <Icon name="alertTriangle" size="xs" /> {t('chatbot.err_channels', { max: CHANNEL_MAX })}
+                    </p>
+                )}
+                {badMemo && (
+                    <p className="dc-field-error">
+                        <Icon name="alertTriangle" size="xs" /> {t('chatbot.err_memo', { max: MEMO_MAX })}
                     </p>
                 )}
             </section>
@@ -482,7 +526,7 @@ function SettingsEditor({ data, nodes, nameOf, onSaved }) {
                 <button
                     type="button"
                     className="btn btn-primary"
-                    disabled={!dirty || saving || problems.length > 0 || badChannels}
+                    disabled={!dirty || saving || problems.length > 0 || badChannels || badMemo}
                     onClick={save}
                 >
                     <Icon name="save" size="sm" /> {t('discord.save')}

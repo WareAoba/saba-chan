@@ -893,8 +893,6 @@
     "seconds": "seconds",
     "ambient_hint": "seconds (0 = off)",
     "triggers": "Trigger words",
-    "persona": "Persona",
-    "persona_placeholder": "Leave empty for the default Saba-chan persona",
     "confirm_commands": "Confirm before running commands",
     "confirm_commands_hint": "Commands the AI picks run only after confirmation on Discord.",
     "memory": "Long-term memory",
@@ -916,8 +914,19 @@
     "memory_cleared": "Cleared memory for {{name}}.",
     "err_ambientSeconds": "Chime-in interval must be {{min}}–{{max}} seconds.",
     "err_sessionSeconds": "Conversation window must be {{min}}–{{max}} seconds.",
-    "err_persona": "Persona can be up to {{max}} characters.",
     "err_triggers": "Up to {{max}} trigger words.",
-    "err_channels": "Up to {{max}} channels per server."
+    "err_channels": "Up to {{max}} channels per server.",
+    "memo": "Node memo",
+    "memo_aria": "Node memo for {{name}}",
+    "memo_placeholder": "What Saba-chan should know about this server: tone, how to address people, mood, interests. Added after the default instructions.",
+    "err_memo": "The node memo can be up to {{max}} characters.",
+    "tool_research": "Everyday info",
+    "tool_research_hint": "Looks up web pages, weather, exchange rates and stocks.",
+    "tool_lol": "LoL stats",
+    "tool_lol_hint": "Looks up League of Legends match history.",
+    "tool_images": "Image generation",
+    "tool_images_hint": "Draws pictures (10 per day).",
+    "tool_social_notes": "Social notes",
+    "tool_social_notes_hint": "Keeps private notes about the mood and people. Never shown in the app."
   }
 }

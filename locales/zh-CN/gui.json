@@ -893,8 +893,6 @@
     "seconds": "秒",
     "ambient_hint": "秒（0 为关闭）",
     "triggers": "呼叫词",
-    "persona": "性格与语气",
-    "persona_placeholder": "留空则使用萨巴酱的默认性格",
     "confirm_commands": "执行命令前确认",
     "confirm_commands_hint": "AI 选择的命令需在 Discord 上确认后才会执行。",
     "memory": "长期记忆",
@@ -916,8 +914,19 @@
     "memory_cleared": "已清除 {{name}} 的记忆。",
     "err_ambientSeconds": "主动发言间隔须在 {{min}}–{{max}} 秒之间。",
     "err_sessionSeconds": "对话保持时间须在 {{min}}–{{max}} 秒之间。",
-    "err_persona": "性格描述最多 {{max}} 个字符。",
     "err_triggers": "呼叫词最多 {{max}} 个。",
-    "err_channels": "每个服务器最多 {{max}} 个频道。"
+    "err_channels": "每个服务器最多 {{max}} 个频道。",
+    "memo": "节点备忘",
+    "memo_aria": "{{name}} 的节点备忘",
+    "memo_placeholder": "萨巴酱需要了解的这个服务器的情况：语气、称呼、氛围、兴趣等。附加在默认指令之后。",
+    "err_memo": "节点备忘最多 {{max}} 个字符。",
+    "tool_research": "生活信息",
+    "tool_research_hint": "查找网页、天气、汇率和股票。",
+    "tool_lol": "LoL 战绩",
+    "tool_lol_hint": "查询英雄联盟战绩。",
+    "tool_images": "图片生成",
+    "tool_images_hint": "画图（每天 10 张）。",
+    "tool_social_notes": "察言观色备忘",
+    "tool_social_notes_hint": "记录关于氛围和成员的私人备忘，不会在应用中显示。"
   }
 }

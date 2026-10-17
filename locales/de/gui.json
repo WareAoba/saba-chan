@@ -893,8 +893,6 @@
     "seconds": "Sekunden",
     "ambient_hint": "Sekunden (0 = aus)",
     "triggers": "Auslösewörter",
-    "persona": "Persönlichkeit",
-    "persona_placeholder": "Leer lassen für die Standard-Persönlichkeit von Saba-chan",
     "confirm_commands": "Vor dem Ausführen von Befehlen bestätigen",
     "confirm_commands_hint": "Von der KI gewählte Befehle werden erst nach Bestätigung auf Discord ausgeführt.",
     "memory": "Langzeitgedächtnis",
@@ -916,8 +914,19 @@
     "memory_cleared": "Gedächtnis für {{name}} gelöscht.",
     "err_ambientSeconds": "Das Intervall für Einwürfe muss {{min}}–{{max}} Sekunden betragen.",
     "err_sessionSeconds": "Das Gesprächsfenster muss {{min}}–{{max}} Sekunden betragen.",
-    "err_persona": "Die Persönlichkeit darf bis zu {{max}} Zeichen lang sein.",
     "err_triggers": "Bis zu {{max}} Auslösewörter.",
-    "err_channels": "Bis zu {{max}} Kanäle pro Server."
+    "err_channels": "Bis zu {{max}} Kanäle pro Server.",
+    "memo": "Knotennotiz",
+    "memo_aria": "Knotennotiz für {{name}}",
+    "memo_placeholder": "Was Saba-chan über diesen Server wissen soll: Tonfall, Anrede, Stimmung, Interessen. Wird nach den Standardanweisungen angehängt.",
+    "err_memo": "Die Knotennotiz darf höchstens {{max}} Zeichen lang sein.",
+    "tool_research": "Alltagsinfos",
+    "tool_research_hint": "Sucht Webseiten, Wetter, Wechselkurse und Aktien.",
+    "tool_lol": "LoL-Statistiken",
+    "tool_lol_hint": "Sucht den League-of-Legends-Spielverlauf.",
+    "tool_images": "Bilderzeugung",
+    "tool_images_hint": "Zeichnet Bilder (10 pro Tag).",
+    "tool_social_notes": "Soziale Notizen",
+    "tool_social_notes_hint": "Führt private Notizen über Stimmung und Leute. Werden in der App nie angezeigt."
   }
 }

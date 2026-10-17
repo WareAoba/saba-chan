@@ -893,8 +893,6 @@
     "seconds": "초",
     "ambient_hint": "초 (0이면 끔)",
     "triggers": "부르는 말",
-    "persona": "성격과 말투",
-    "persona_placeholder": "비워 두면 기본 사바쨩 성격을 씁니다",
     "confirm_commands": "명령 실행 전에 확인",
     "confirm_commands_hint": "AI가 고른 명령은 디스코드에서 확인을 받은 뒤 실행해요.",
     "memory": "장기 기억",
@@ -916,8 +914,19 @@
     "memory_cleared": "{{name}}의 기억을 지웠어요.",
     "err_ambientSeconds": "자발적 대화 간격은 {{min}}~{{max}}초 사이여야 해요.",
     "err_sessionSeconds": "대화 유지 시간은 {{min}}~{{max}}초 사이여야 해요.",
-    "err_persona": "성격 설명은 {{max}}자까지 쓸 수 있어요.",
     "err_triggers": "부르는 말은 {{max}}개까지예요.",
-    "err_channels": "채널은 서버마다 {{max}}개까지예요."
+    "err_channels": "채널은 서버마다 {{max}}개까지예요.",
+    "memo": "노드 메모",
+    "memo_aria": "{{name}} 노드 메모",
+    "memo_placeholder": "이 서버에서 사바쨩이 알아 둘 것: 말투, 호칭, 방 분위기, 관심사 등. 사바쨩 기본 지침 뒤에 붙어요.",
+    "err_memo": "노드 메모는 {{max}}자까지 쓸 수 있어요.",
+    "tool_research": "생활 정보",
+    "tool_research_hint": "웹 문서, 날씨, 환율, 주식을 찾아봐요.",
+    "tool_lol": "롤 전적",
+    "tool_lol_hint": "리그 오브 레전드 전적을 찾아봐요.",
+    "tool_images": "이미지 생성",
+    "tool_images_hint": "그림을 그려 줘요 (하루 10장).",
+    "tool_social_notes": "눈치 메모",
+    "tool_social_notes_hint": "분위기와 사람들에 대해 혼자만 보는 메모를 남겨요. 내용은 앱에 보이지 않아요."
   }
 }

@@ -893,8 +893,6 @@
     "seconds": "segundos",
     "ambient_hint": "segundos (0 = desligado)",
     "triggers": "Palavras de chamada",
-    "persona": "Personalidade",
-    "persona_placeholder": "Deixe vazio para usar a personalidade padrão da Saba-chan",
     "confirm_commands": "Confirmar antes de executar comandos",
     "confirm_commands_hint": "Os comandos escolhidos pela IA só são executados após confirmação no Discord.",
     "memory": "Memória de longo prazo",
@@ -916,8 +914,19 @@
     "memory_cleared": "Memória de {{name}} limpa.",
     "err_ambientSeconds": "O intervalo de participação espontânea deve ser de {{min}}–{{max}} segundos.",
     "err_sessionSeconds": "A duração da conversa deve ser de {{min}}–{{max}} segundos.",
-    "err_persona": "A personalidade pode ter até {{max}} caracteres.",
     "err_triggers": "Até {{max}} palavras de chamada.",
-    "err_channels": "Até {{max}} canais por servidor."
+    "err_channels": "Até {{max}} canais por servidor.",
+    "memo": "Nota do nó",
+    "memo_aria": "Nota do nó de {{name}}",
+    "memo_placeholder": "O que a Saba-chan deve saber sobre este servidor: tom, como chamar as pessoas, clima, interesses. Adicionado após as instruções padrão.",
+    "err_memo": "A nota do nó pode ter até {{max}} caracteres.",
+    "tool_research": "Informações do dia a dia",
+    "tool_research_hint": "Procura páginas web, clima, câmbio e ações.",
+    "tool_lol": "Estatísticas de LoL",
+    "tool_lol_hint": "Procura o histórico de partidas de League of Legends.",
+    "tool_images": "Geração de imagens",
+    "tool_images_hint": "Desenha imagens (10 por dia).",
+    "tool_social_notes": "Notas sociais",
+    "tool_social_notes_hint": "Guarda notas privadas sobre o clima e as pessoas. Nunca aparecem no app."
   }
 }

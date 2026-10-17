@@ -893,8 +893,6 @@
     "seconds": "秒",
     "ambient_hint": "秒（0でオフ）",
     "triggers": "呼びかけの言葉",
-    "persona": "性格と口調",
-    "persona_placeholder": "空欄にすると標準のサバちゃんの性格を使います",
     "confirm_commands": "コマンド実行前に確認",
     "confirm_commands_hint": "AIが選んだコマンドは、Discordで確認を受けてから実行します。",
     "memory": "長期記憶",
@@ -916,8 +914,19 @@
     "memory_cleared": "{{name}} の記憶を消去しました。",
     "err_ambientSeconds": "自発的な発言の間隔は{{min}}〜{{max}}秒にしてください。",
     "err_sessionSeconds": "会話の継続時間は{{min}}〜{{max}}秒にしてください。",
-    "err_persona": "性格の説明は{{max}}文字まで入力できます。",
     "err_triggers": "呼びかけの言葉は{{max}}個までです。",
-    "err_channels": "チャンネルはサーバーごとに{{max}}個までです。"
+    "err_channels": "チャンネルはサーバーごとに{{max}}個までです。",
+    "memo": "ノードメモ",
+    "memo_aria": "{{name}} のノードメモ",
+    "memo_placeholder": "このサーバーについてサバちゃんが知っておくこと：口調、呼び方、雰囲気、興味など。基本の指示の後ろに付きます。",
+    "err_memo": "ノードメモは {{max}} 文字までです。",
+    "tool_research": "生活情報",
+    "tool_research_hint": "Webページ、天気、為替、株価を調べます。",
+    "tool_lol": "LoL 戦績",
+    "tool_lol_hint": "League of Legends の戦績を調べます。",
+    "tool_images": "画像生成",
+    "tool_images_hint": "絵を描きます（1日10枚）。",
+    "tool_social_notes": "空気読みメモ",
+    "tool_social_notes_hint": "雰囲気や人について自分だけのメモを残します。アプリには表示されません。"
   }
 }

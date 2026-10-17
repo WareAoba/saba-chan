@@ -124,8 +124,11 @@ describe('챗봇 설정 변환', () => {
     it('기본값과 같은 값은 null로 보내 릴레이 기본을 따른다', () => {
         const d = settingsDraft({ model: 'gpt-x', ambientSeconds: 30 });
         expect(d.sessionSeconds).toBe('180');
-        const p = settingsPatch({ ...d, persona: '  ', enabled: true });
+        const p = settingsPatch({ ...d, enabled: true, disabledTools: ['images', 'lol'] });
         expect(p).toMatchObject({ model: 'gpt-x', ambientSeconds: 30, enabled: true, persona: null, memory: null });
+        // 계약 순서로 정리, 비면 null
+        expect(p.disabledTools).toEqual(['lol', 'images']);
+        expect(settingsPatch(d).disabledTools).toBeNull();
         expect(settingsProblems({ ...d, sessionSeconds: '601' }, t)).toEqual(['chatbot.err_sessionSeconds']);
     });
 
@@ -140,6 +143,32 @@ describe('챗봇 설정 변환', () => {
 
 describe('ChatbotView', () => {
     const nodes = [{ guildId: 'g1', guildName: 'My Guild' }];
+
+    it('노드 메모는 길드별로, 글자 수를 세고 넘으면 저장을 막는다; 도구 끄기는 disabledTools', async () => {
+        window.api.chatbotGet = vi.fn().mockResolvedValue({
+            success: true,
+            settings: { persona: 'old' },
+            guilds: { g1: { memo: '안녕' } },
+            hasApiKey: true,
+        });
+        window.api.chatbotSave = vi
+            .fn()
+            .mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
+        render(<ChatbotView nodes={nodes} />);
+        const memo = await screen.findByLabelText('Node memo for My Guild');
+        expect(memo.value).toBe('안녕');
+        expect(screen.getByText('2 / 8,000')).toBeTruthy();
+        fireEvent.change(memo, { target: { value: 'x'.repeat(8001) } });
+        expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+        fireEvent.change(memo, { target: { value: '반말로 대답해' } });
+        fireEvent.click(screen.getByLabelText('Image generation'));
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        await waitFor(() => expect(window.api.chatbotSave).toHaveBeenCalled());
+        const patch = window.api.chatbotSave.mock.calls[0][0];
+        expect(patch.guilds.g1.memo).toBe('반말로 대답해');
+        expect(patch.settings.disabledTools).toEqual(['images']);
+        expect(patch.settings.persona).toBeNull();
+    });
 
     it('API 키는 쓰기만 하고 등록 여부만 보인다, 삭제는 null', async () => {
         window.api.chatbotGet = vi.fn().mockResolvedValue({ success: true, settings: {}, guilds: {}, hasApiKey: true });
@@ -172,7 +201,9 @@ describe('ChatbotView', () => {
         fireEvent.change(sel, { target: { value: 'on' } });
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await screen.findByText(/channelIds too long/);
-        expect(window.api.chatbotSave).toHaveBeenCalledWith({ guilds: { g1: { enabled: true, channelIds: null } } });
+        expect(window.api.chatbotSave).toHaveBeenCalledWith({
+            guilds: { g1: { enabled: true, channelIds: null, memo: null } },
+        });
 
         fireEvent.click(screen.getByRole('button', { name: 'Clear memory' }));
         fireEvent.click(screen.getByRole('button', { name: 'Click to clear' }));
