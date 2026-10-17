@@ -212,7 +212,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
   - 검사기가 없으면 그 검사를 건너뛰고 로그만 남긴다.
   - 검사를 통과하면 Python을 AppContainer `saba-chan.untrusted`(능력 `internetClient`만) 안에서 Job Object에 넣어 띄운다(`sandbox/appcontainer.rs`).
     - 안에서는 포트를 열 수 없고 LAN·루프백(데몬 API, 로컬 게임 서버 REST)에 닿지 않는다.
-    - 폴더 권한: 읽기는 venv와 그 기반 Python, 그 구성요소 폴더, `modules_dir`, `extensions_dir`, `python-guard`. 읽기/쓰기는 config의 `instance_dir`·`working_dir`, `<data_dir>/pycache-sandbox`, `<data_dir>/sandbox-temp`. `extensions_dir`의 부모에는 목록만 준다. 데이터 폴더 자체와 그 위, 드라이브 루트, 사용자 폴더 루트에는 주지 않는다. 권한은 폴더 ACL에 남는다(한 번 주면 다시 쓰지 않는다).
+    - 폴더 권한: 읽기는 venv와 그 기반 Python, 그 구성요소 폴더, `modules_dir`, `extensions_dir`, `python-guard`. 읽기/쓰기는 `<data_dir>/pycache-sandbox`, `<data_dir>/sandbox-temp`, 그리고 모듈이면 config의 `instance_dir`·`working_dir`(익스텐션은 이 둘을 읽기만 하고 `<data_dir>/extension-data/<이름>`에 쓴다, 03 문서). `extensions_dir`의 부모에는 목록만 준다. 데이터 폴더 자체와 그 위, 드라이브 루트, 사용자 폴더 루트에는 주지 않는다. 권한은 폴더 ACL에 남는다(한 번 주면 다시 쓰지 않는다).
     - 환경: `SABA_TOKEN_PATH`를 뺀다. `PYTHONPYCACHEPREFIX`는 `pycache-sandbox`, `TEMP`·`TMP`는 `sandbox-temp`.
     - 시간 초과면 Job째 끝낸다.
   - 격리를 준비하지 못하면(오래된 Windows, ACL 오류 등) 격리 없이 돌리지 않고 `{success:false, action_required:"sandbox_unavailable", message, detail, component}`를 돌려준다. 사용자가 `POST /api/sandbox/unisolated/:component`로 동의하면 그 구성요소는 격리 없이 돈다. 동의는 `config.json` `sandbox.unisolated`에 파일 지문(상대 경로와 sha256)으로 남아, 파일이 하나라도 바뀌면 다시 묻는다.

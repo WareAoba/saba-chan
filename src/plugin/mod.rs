@@ -355,6 +355,9 @@ async fn run_plugin_inner(
             .env("TEMP", &iso.temp)
             .env("TMP", &iso.temp)
             .env_remove("SABA_TOKEN_PATH");
+        if let Some(data) = &iso.data {
+            cmd.env("SABA_EXTENSION_DATA_DIR", data);
+        }
     }
 
     apply_creation_flags(&mut cmd);

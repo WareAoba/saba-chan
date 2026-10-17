@@ -242,6 +242,26 @@ pub struct Isolation {
     pub grants: appcontainer::Grants,
     pub pycache: PathBuf,
     pub temp: PathBuf,
+    /// 익스텐션이 쓸 수 있는 전용 폴더 (`<data>/extension-data/<이름>`, 환경 변수 `SABA_EXTENSION_DATA_DIR`)
+    pub data: Option<PathBuf>,
+}
+
+/// 격리 실행이 config의 `instance_dir`·`working_dir`에 받는 권한: 모듈은 쓰기, 그 밖(익스텐션 등)은 읽기
+fn instance_access(key: &str) -> appcontainer::Access {
+    if key.starts_with(saba_chan_updater_lib::relay::MODULE_PREFIX) {
+        appcontainer::Access::Write
+    } else {
+        appcontainer::Access::Read
+    }
+}
+
+/// 익스텐션 키면 그 익스텐션 전용 데이터 폴더
+fn extension_data_dir(data_dir: &Path, key: &str) -> Option<PathBuf> {
+    let name = key.strip_prefix(saba_chan_updater_lib::relay::EXTENSION_PREFIX)?;
+    if name.is_empty() || name.contains(['/', '\\', ':']) || name.starts_with('.') {
+        return None;
+    }
+    Some(data_dir.join("extension-data").join(name))
 }
 
 /// 확인되지 않은 구성요소의 Python 실행이면 격리 계획을 만든다. `config`의 `instance_dir`·`working_dir`에
@@ -286,12 +306,20 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
     add(&data_dir.join("python-guard"), Access::Read);
     add(&pycache, Access::Write);
     add(&temp, Access::Write);
+    // 인스턴스 폴더 쓰기는 그 인스턴스의 모듈에게만. 익스텐션 hook은 확인된 모듈의 인스턴스에도 불리므로
+    // 읽기만 주고, 쓸 곳은 익스텐션 전용 데이터 폴더다
+    let access = instance_access(&key);
     for field in ["instance_dir", "working_dir"] {
         if let Some(path) = config.get(field).and_then(Value::as_str) {
-            add(Path::new(path), Access::Write);
+            add(Path::new(path), access);
         }
     }
-    Some(Isolation { key, dir, grants, pycache, temp })
+    let data = extension_data_dir(&raw_data_dir, &key);
+    if let Some(d) = &data {
+        let _ = std::fs::create_dir_all(d);
+        add(d, Access::Write);
+    }
+    Some(Isolation { key, dir, grants, pycache, temp, data })
 }
 
 /// 격리 실행을 띄운 결과
@@ -496,6 +524,20 @@ mod tests {
         assert_eq!(fingerprint(tmp.path()), first);
         std::fs::write(tmp.path().join("data.json"), b"{}").unwrap();
         assert_ne!(fingerprint(tmp.path()), first);
+    }
+
+    /// 익스텐션 hook은 확인된 모듈의 인스턴스에도 불린다: 인스턴스 폴더는 읽기만, 쓰기는 전용 폴더에만
+    #[test]
+    fn only_the_instance_module_may_write_its_folder() {
+        use appcontainer::Access;
+        assert_eq!(instance_access("module-minecraft"), Access::Write);
+        assert_eq!(instance_access("ext-steamcmd"), Access::Read);
+        assert_eq!(instance_access("/somewhere/else"), Access::Read);
+        let data = Path::new("data");
+        assert_eq!(extension_data_dir(data, "ext-steamcmd"), Some(data.join("extension-data").join("steamcmd")));
+        for key in ["module-minecraft", "ext-", "ext-../x", "ext-.hidden", "ext-a/b", "/somewhere/else"] {
+            assert_eq!(extension_data_dir(data, key), None, "{key}");
+        }
     }
 
     #[test]
