@@ -1,81 +1,115 @@
-//! CLI 다국어 지원 — locales/{lang}/cli.json 로드 + 템플릿 치환
+//! CLI 문구 — `locales/<lang>/cli.json`
 //!
-//! 사용법:
-//! ```
-//! let i18n = I18n::load("ko");
-//! let msg = i18n.t("server_cmd.started");
-//! let msg = i18n.t_with("server_cmd.not_found", &[("name", "mc-1")]);
-//! ```
+//! en·ko는 실행 파일에 묶어 둔다. 설치된 `locales/<lang>/cli.json`(업데이터가 갱신)이
+//! 있으면 그쪽이 먼저다. 언어 파일에 없는 키는 영어, 영어에도 없으면 키 그대로 보인다.
+//! 새 언어는 `locales/<lang>/cli.json` 하나만 두면 된다.
 
 use serde_json::Value;
-use std::fs;
-use std::path::PathBuf;
+use std::sync::OnceLock;
 
-pub struct I18n {
-    data: Value,
+const EMBEDDED: &[(&str, &str)] = &[
+    ("en", include_str!("../../locales/en/cli.json")),
+    ("ko", include_str!("../../locales/ko/cli.json")),
+];
+
+struct Catalog {
+    lang: String,
+    primary: Value,
     fallback: Value,
 }
 
-impl I18n {
-    /// 로케일 로드 (폴백: en)
-    pub fn load(lang: &str) -> Self {
-        let data = load_locale(lang).unwrap_or_else(|| Value::Object(Default::default()));
-        let fallback = if lang == "en" {
-            data.clone()
-        } else {
-            load_locale("en").unwrap_or_else(|| Value::Object(Default::default()))
-        };
-        Self { data, fallback }
-    }
+static CATALOG: OnceLock<Catalog> = OnceLock::new();
 
-    /// 도트 표기법 키로 문자열 조회 (예: "server_cmd.started")
-    pub fn t(&self, key: &str) -> String {
-        self.resolve(key).unwrap_or_else(|| key.to_string())
-    }
-
-    fn resolve(&self, key: &str) -> Option<String> {
-        // 우선: 현재 로케일
-        if let Some(v) = resolve_dotted(&self.data, key) {
-            return Some(v);
-        }
-        // 폴백: en
-        resolve_dotted(&self.fallback, key)
+/// "ko-KR", "ko_KR.UTF-8" → "ko". 지역이 의미 있는 언어(zh-CN, pt-BR)는 그대로 둔다.
+pub fn normalize(lang: &str) -> String {
+    let base = lang.split('.').next().unwrap_or("").replace('_', "-");
+    let lower = base.to_ascii_lowercase();
+    match lower.as_str() {
+        "" | "c" | "posix" => "en".into(),
+        "zh-cn" | "zh-sg" | "zh-hans" => "zh-CN".into(),
+        "zh-tw" | "zh-hk" | "zh-hant" => "zh-TW".into(),
+        "pt-br" => "pt-BR".into(),
+        _ => lower.split('-').next().unwrap_or("en").to_string(),
     }
 }
 
-fn resolve_dotted(root: &Value, key: &str) -> Option<String> {
-    let mut current = root;
-    for part in key.split('.') {
-        current = current.get(part)?;
-    }
-    current.as_str().map(|s| s.to_string())
+fn installed(lang: &str) -> Option<Value> {
+    let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let text = std::fs::read_to_string(dir.join("locales").join(lang).join("cli.json")).ok()?;
+    serde_json::from_str(&text).ok()
 }
 
-fn load_locale(lang: &str) -> Option<Value> {
-    // 1. 프로젝트 루트/locales/{lang}/cli.json (개발용)
-    if let Ok(root) = crate::process::find_project_root() {
-        let path = root.join("locales").join(lang).join("cli.json");
-        if let Some(v) = read_json(&path) {
-            return Some(v);
-        }
-    }
-
-    // 2. 실행 파일 옆의 locales/{lang}/cli.json (배포용)
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let path = dir.join("locales").join(lang).join("cli.json");
-            if let Some(v) = read_json(&path) {
-                return Some(v);
-            }
-        }
-    }
-
-    None
+fn embedded(lang: &str) -> Option<Value> {
+    EMBEDDED
+        .iter()
+        .find(|(l, _)| *l == lang)
+        .and_then(|(_, text)| serde_json::from_str(text).ok())
 }
 
-fn read_json(path: &PathBuf) -> Option<Value> {
-    let content = fs::read_to_string(path).ok()?;
-    serde_json::from_str(&content).ok()
+fn load(lang: &str) -> Value {
+    installed(lang).or_else(|| embedded(lang)).unwrap_or(Value::Null)
+}
+
+/// 한 번만 부른다. 두 번째부터는 무시된다.
+pub fn init(lang: &str) {
+    let lang = normalize(lang);
+    let _ = CATALOG.set(Catalog {
+        primary: load(&lang),
+        fallback: load("en"),
+        lang,
+    });
+}
+
+pub fn lang() -> &'static str {
+    CATALOG.get().map(|c| c.lang.as_str()).unwrap_or("en")
+}
+
+/// 점으로 나눠 찾는다. 남은 부분이 통째로 키인 경우도 본다 (`help.cmd`의 "server.start" 같은 키)
+fn lookup<'v>(root: &'v Value, key: &str) -> Option<&'v str> {
+    if let Some(s) = root.get(key).and_then(Value::as_str) {
+        return Some(s);
+    }
+    let (head, rest) = key.split_once('.')?;
+    lookup(root.get(head)?, rest)
+}
+
+pub fn t(key: &str) -> String {
+    let Some(cat) = CATALOG.get() else {
+        return key.to_string();
+    };
+    lookup(&cat.primary, key)
+        .or_else(|| lookup(&cat.fallback, key))
+        .map(str::to_string)
+        .unwrap_or_else(|| key.to_string())
+}
+
+/// 키가 없으면 None (도움말처럼 없으면 원래 문구를 쓰는 곳용)
+pub fn try_t(key: &str) -> Option<String> {
+    let cat = CATALOG.get()?;
+    lookup(&cat.primary, key)
+        .or_else(|| lookup(&cat.fallback, key))
+        .map(str::to_string)
+}
+
+/// `{{name}}` 자리를 채운다
+pub fn fill(template: &str, vars: &[(&str, String)]) -> String {
+    vars.iter().fold(template.to_string(), |s, (k, v)| {
+        s.replace(&format!("{{{{{}}}}}", k), v)
+    })
+}
+
+pub fn tf(key: &str, vars: &[(&str, String)]) -> String {
+    fill(&t(key), vars)
+}
+
+#[macro_export]
+macro_rules! t {
+    ($key:expr) => {
+        $crate::i18n::t($key)
+    };
+    ($key:expr, $($k:ident = $v:expr),+ $(,)?) => {
+        $crate::i18n::tf($key, &[$((stringify!($k), ($v).to_string())),+])
+    };
 }
 
 #[cfg(test)]
@@ -83,54 +117,46 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_resolve_dotted_simple() {
-        let data: Value = serde_json::json!({
-            "welcome": "Hello",
-            "status": {
-                "daemon_on": "Running",
-                "daemon_off": "Stopped"
+    fn normalizes_system_locales() {
+        assert_eq!(normalize("ko_KR.UTF-8"), "ko");
+        assert_eq!(normalize("en-US"), "en");
+        assert_eq!(normalize("zh_CN"), "zh-CN");
+        assert_eq!(normalize("pt-br"), "pt-BR");
+        assert_eq!(normalize("C"), "en");
+    }
+
+    #[test]
+    fn fills_placeholders() {
+        assert_eq!(
+            fill("{{a}} and {{b}}", &[("a", "1".into()), ("b", "2".into())]),
+            "1 and 2"
+        );
+    }
+
+    #[test]
+    fn embedded_catalogs_parse_and_share_keys() {
+        fn keys(v: &Value, prefix: &str, out: &mut Vec<String>) {
+            if let Some(map) = v.as_object() {
+                for (k, child) in map {
+                    let path = if prefix.is_empty() {
+                        k.clone()
+                    } else {
+                        format!("{}.{}", prefix, k)
+                    };
+                    if child.is_object() {
+                        keys(child, &path, out)
+                    } else {
+                        out.push(path)
+                    }
+                }
             }
-        });
-        assert_eq!(resolve_dotted(&data, "welcome"), Some("Hello".into()));
-        assert_eq!(resolve_dotted(&data, "status.daemon_on"), Some("Running".into()));
-        assert_eq!(resolve_dotted(&data, "status.daemon_off"), Some("Stopped".into()));
-        assert_eq!(resolve_dotted(&data, "nonexistent"), None);
-        assert_eq!(resolve_dotted(&data, "status.unknown"), None);
-    }
-
-    #[test]
-    fn test_i18n_fallback() {
-        let data: Value = serde_json::json!({
-            "local_only": "로컬 전용"
-        });
-        let fallback: Value = serde_json::json!({
-            "local_only": "Local Only",
-            "fallback_key": "From English"
-        });
-        let i18n = I18n { data, fallback };
-
-        // 현재 로케일에 있으면 그것을 사용
-        assert_eq!(i18n.t("local_only"), "로컬 전용");
-        // 없으면 폴백
-        assert_eq!(i18n.t("fallback_key"), "From English");
-        // 둘 다 없으면 키 이름 그대로
-        assert_eq!(i18n.t("missing.key"), "missing.key");
-    }
-
-    #[test]
-    fn test_i18n_load_en() {
-        // 프로젝트 루트에 locales/en/cli.json이 있으면 로드
-        let i18n = I18n::load("en");
-        let welcome = i18n.t("welcome");
-        // en 로케일이 있으면 실제 번역, 없거나 키 없으면 "welcome" 반환
-        assert!(!welcome.is_empty());
-    }
-
-    #[test]
-    fn test_i18n_load_nonexistent_locale() {
-        let i18n = I18n::load("zz-FAKE");
-        // 존재하지 않는 로케일이면 폴백(en)이나 키 이름 반환
-        let result = i18n.t("welcome");
-        assert!(!result.is_empty());
+        }
+        let en = embedded("en").expect("en parses");
+        let ko = embedded("ko").expect("ko parses");
+        let (mut a, mut b) = (vec![], vec![]);
+        keys(&en, "", &mut a);
+        keys(&ko, "", &mut b);
+        let missing: Vec<_> = a.iter().filter(|k| !b.contains(k)).collect();
+        assert!(missing.is_empty(), "ko is missing keys: {:?}", missing);
     }
 }

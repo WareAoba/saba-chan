@@ -1,15 +1,73 @@
-mod cli_config;
-mod client;
-mod config;
-mod i18n;
-mod module_registry;
-mod process;
-mod tui;
+//! saba-chan-cli — 사바쨩 데몬을 다루는 명령줄 도구
+//!
+//! 모든 동작은 데몬 API로 한다. 이 프로그램이 직접 만지는 로컬 파일은
+//! `bootstrap`(포트·언어·토큰 위치, 데몬 실행 파일 찾기)뿐이다.
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // settings.json에서 IPC 포트를 읽어 사용 (GUI와 포트 설정 일치)
-    let base_url = config::get_ipc_base_url();
-    let client = client::DaemonClient::new(Some(&base_url));
-    tui::run(client).await
+#[macro_use]
+mod i18n;
+
+mod bootstrap;
+mod catalog;
+mod cli;
+mod client;
+mod cmd;
+mod ctx;
+mod error;
+mod output;
+mod progress;
+mod prompt;
+mod resolve;
+mod shell;
+mod slots;
+
+use clap::FromArgMatches;
+use std::io::IsTerminal;
+
+/// `--lang`은 도움말 번역 전에 알아야 하므로 먼저 훑는다
+fn lang_flag() -> Option<String> {
+    let args: Vec<String> = std::env::args().collect();
+    args.iter().enumerate().find_map(|(i, a)| {
+        a.strip_prefix("--lang=")
+            .map(str::to_string)
+            .or_else(|| (a == "--lang").then(|| args.get(i + 1).cloned()).flatten())
+    })
+}
+
+#[tokio::main(flavor = "multi_thread")]
+async fn main() {
+    // `| head`처럼 파이프가 먼저 닫혀도 패닉 대신 조용히 끝나게
+    #[cfg(unix)]
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+    i18n::init(&bootstrap::language(lang_flag().as_deref()));
+
+    let matches = match cli::localized().try_get_matches() {
+        Ok(m) => m,
+        Err(e) => e.exit(),
+    };
+    let parsed = match cli::Cli::from_arg_matches(&matches) {
+        Ok(c) => c,
+        Err(e) => e.exit(),
+    };
+    let g = parsed.global;
+    let color = !g.no_color && std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal();
+    let ctx = ctx::Ctx {
+        api: client::Api::new(g.port.unwrap_or_else(bootstrap::ipc_port)),
+        out: output::Out::new(g.json, color),
+        ask: prompt::Prompt::new(g.json, g.yes),
+        in_shell: false,
+    };
+
+    let cmd = match parsed.cmd {
+        Some(c) => c,
+        // 인자 없이 터미널에서 열면 셸, 아니면 상태 한 번
+        None if ctx.ask.enabled && std::io::stdout().is_terminal() => cli::Cmd::Shell,
+        None => cli::Cmd::Status,
+    };
+    if let Err(e) = cmd::dispatch(&ctx, cmd).await {
+        let err = error::classify(&e);
+        ctx.out.error(&err);
+        std::process::exit(err.exit_code());
+    }
 }
