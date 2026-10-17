@@ -3,7 +3,7 @@
 //! 1. GUI(`saba-chan-gui/main.js`)와 CLI(`saba-chan-cli/src`)가 부르는 데몬 API가
 //!    라우트 표(`src/ipc/mod.rs`, `src/ipc/updates.rs`)에 있고 메서드도 맞는지
 //!    소스에서 대조한다. 없는 라우트·틀린 메서드(404/405) 호출을 CI에서 잡는다.
-//! 2. 실제로 IPC 서버를 띄워 모든 라우트가 토큰 없이는 401인지 확인한다.
+//! 2. 실제로 IPC 서버를 띄워 모든 라우트가 토큰 없이는 401인지(`/health`만 200) 확인한다.
 //! 3. 표의 모든 경로가 실제 라우터에 등록됐는지 확인한다(등록 안 된 메서드 → 405).
 //!
 //! 인증을 켜야 하므로 `SABA_AUTH_DISABLED`를 쓰는 다른 테스트와 다른 바이너리로 둔다.
@@ -184,7 +184,9 @@ async fn every_route_is_registered_and_requires_the_token() {
                 _ => client.delete(&url),
             };
             let status = req.json(&serde_json::json!({})).send().await.unwrap().status();
-            if status != reqwest::StatusCode::UNAUTHORIZED {
+            // `/health`만 토큰 없이 답한다 (A6)
+            let expected = if route.path == "/health" { reqwest::StatusCode::OK } else { reqwest::StatusCode::UNAUTHORIZED };
+            if status != expected {
                 problems.push(format!("{} {} without token -> {}", method.to_uppercase(), route.path, status));
             }
         }

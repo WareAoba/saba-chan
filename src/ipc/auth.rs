@@ -67,6 +67,25 @@ pub fn read_token_from_file() -> Option<String> {
     std::fs::read_to_string(&path).ok().map(|s| s.trim().to_string())
 }
 
+/// 데몬이 기대하는 토큰. generate_and_save_token()이 넣은 캐시를 먼저 쓰고,
+/// 캐시가 없으면(외부 데몬 등) 파일에서 읽는다
+fn expected_token() -> Option<String> {
+    let cached = CACHED_TOKEN.read().unwrap_or_else(|e| e.into_inner()).clone();
+    cached.or_else(read_token_from_file)
+}
+
+/// 요청의 `X-Saba-Token`이 맞는지: `"valid"` | `"invalid"` | `"missing"`. 토큰 값은 드러내지 않는다
+pub fn token_status(headers: &axum::http::HeaderMap) -> &'static str {
+    let provided = headers.get("X-Saba-Token").and_then(|v| v.to_str().ok()).unwrap_or("");
+    if provided.is_empty() {
+        return "missing";
+    }
+    match expected_token() {
+        Some(expected) if !expected.is_empty() && constant_time_eq(provided.as_bytes(), expected.as_bytes()) => "valid",
+        _ => "invalid",
+    }
+}
+
 /// 인증 실패 로그 스팸을 억제하기 위한 rate-limiter
 static AUTH_FAIL_LAST_LOG: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
 static AUTH_FAIL_SUPPRESSED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -105,23 +124,15 @@ pub async fn auth_middleware(
         return Ok(next.run(req).await);
     }
 
-    // 메모리 캐시된 토큰 사용 (파일 I/O 제거)
-    // generate_and_save_token()에서 설정한 캐시를 우선 사용하고,
-    // 캐시가 없으면(외부 데몬 등) 파일에서 읽기
-    let expected = {
-        let cached = CACHED_TOKEN.read().unwrap_or_else(|e| e.into_inner());
-        cached.clone()
-    };
-    let expected = match expected {
-        Some(t) => t,
-        None => match read_token_from_file() {
-            Some(t) => t,
-            None => {
-                // 토큰이 없으면 아무도 통과시키지 않는다 (데몬은 기동할 때 늘 만든다)
-                tracing::warn!("No IPC token at {} — rejecting request", token_file_path());
-                return Err(StatusCode::UNAUTHORIZED);
-            }
-        }
+    // 최소 상태(`/health`)는 토큰 없이: 토큰이 어긋났을 때도 클라이언트가 데몬이 떠 있는지 알 수 있게 (A6)
+    if req.uri().path() == "/health" {
+        return Ok(next.run(req).await);
+    }
+
+    let Some(expected) = expected_token() else {
+        // 토큰이 없으면 아무도 통과시키지 않는다 (데몬은 기동할 때 늘 만든다)
+        tracing::warn!("No IPC token at {} — rejecting request", token_file_path());
+        return Err(StatusCode::UNAUTHORIZED);
     };
 
     // 헤더에서 토큰 추출
@@ -187,6 +198,29 @@ mod tests {
 
     fn with_host(host: &str) -> Request<Body> {
         Request::builder().uri("/api/servers").header("host", host).body(Body::empty()).unwrap()
+    }
+
+    /// A6: 토큰 없이도 `/health`만은 답한다. 나머지는 그대로 막는다
+    #[tokio::test]
+    async fn health_answers_without_a_token_but_nothing_else_does() {
+        use tower::ServiceExt;
+        let app = axum::Router::new()
+            .route("/health", axum::routing::get(|| async { "ok" }))
+            .route("/api/servers", axum::routing::get(|| async { "secret" }))
+            .layer(axum::middleware::from_fn(auth_middleware));
+        let get = |path: &str| {
+            Request::builder().uri(path).header("host", "127.0.0.1:57474").header("X-Saba-Token", "wrong").body(Body::empty()).unwrap()
+        };
+        assert_eq!(app.clone().oneshot(get("/health")).await.unwrap().status(), StatusCode::OK);
+        assert_eq!(app.clone().oneshot(get("/api/servers")).await.unwrap().status(), StatusCode::UNAUTHORIZED);
+        // 루프백 검사는 /health에도 그대로
+        let rebound = Request::builder().uri("/health").header("host", "evil.example").body(Body::empty()).unwrap();
+        assert_eq!(app.oneshot(rebound).await.unwrap().status(), StatusCode::FORBIDDEN);
+
+        let mut headers = axum::http::HeaderMap::new();
+        assert_eq!(token_status(&headers), "missing");
+        headers.insert("X-Saba-Token", "wrong".parse().unwrap());
+        assert_eq!(token_status(&headers), "invalid");
     }
 
     #[test]

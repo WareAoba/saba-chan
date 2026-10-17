@@ -609,9 +609,11 @@ impl IPCServer {
             .skip_port_check
             .store(!check_ports, std::sync::atomic::Ordering::Relaxed);
 
+        handlers::diagnostics::mark_started();
         let router = Router::new()
             // ── 경량 ping (lock / 디스크 I/O 없음) ──
             .route("/health", get(handlers::server::health_check))
+            .route("/api/diagnostics", get(handlers::diagnostics::diagnostics))
             // ── Server query/control ──
             .route("/api/servers", get(handlers::server::list_servers))
             .route("/api/server/:name/status", get(handlers::server::get_server_status))
@@ -674,6 +676,9 @@ impl IPCServer {
             .route("/api/config/client/:kind", get(handlers::config::get_client_config).put(handlers::config::save_client_config))
             .route("/api/config/:kind/defaults", get(handlers::config::get_config_defaults))
             .route("/api/config/:kind/reset", post(handlers::config::reset_config))
+            // ── 설정·인스턴스 내보내기/가져오기 (A9) ──
+            .route("/api/migration/export", post(handlers::migration::export))
+            .route("/api/migration/import", post(handlers::migration::import))
             // ── Node token (cloud relay auth) ──
             .route("/api/config/node-token", get(handlers::config::get_node_token).put(handlers::config::save_node_token).delete(handlers::config::delete_node_token))
             // ── Module locales ──
@@ -714,6 +719,10 @@ impl IPCServer {
             .route("/api/relay/host/:host_id/status", get(handlers::relay::check_host_status))
             .route("/api/relay/host/:host_id/nodes", get(handlers::relay::list_host_nodes))
             .route("/api/relay/node/:guild_id/members", get(handlers::relay::list_node_members))
+            .route(
+                "/api/relay/node/:guild_id/channels",
+                get(handlers::relay::get_node_channels).put(handlers::relay::put_node_channels),
+            )
             .route("/api/relay/bot-invite", get(handlers::relay::get_bot_invite))
             .route("/api/relay/pair/initiate", post(handlers::relay::initiate_pairing))
             .route("/api/relay/pair/:code/status", get(handlers::relay::poll_pairing_status))

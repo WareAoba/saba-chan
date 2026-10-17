@@ -20,7 +20,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | IPC 토큰 인증 | main.js:58-212 | `.ipc_token` 파일을 **직접 읽어** `X-Saba-Token` 헤더에 넣는다. axios 인터셉터(104-117)가 데몬으로 가는 요청에만 토큰을 붙이고 리다이렉트를 따라가지 않는다(`isDaemonRequest` 93-101). Node 전역 `http.request`는 건드리지 않는다. 종료 시 unregister만 `http.request`를 직접 쓰며 토큰을 그 자리에서 붙인다. 401을 받으면 토큰 파일을 다시 읽고 1회 재시도한다(124-174). 단 `/api/relay/` 요청은 재시도하지 않는다 |
 | 렌더러 격리 | `rendererWebPreferences()` main.js:1038-1045, `lockNavigation()` 1058-1072 | 모든 창이 `nodeIntegration:false, contextIsolation:true, sandbox:true`로 뜬다. 앱 밖 주소로의 이동과 새 창은 막고, http(s) 링크만 바깥 브라우저로 연다 |
 | **Daemon spawn** | `startDaemon()` main.js:549-657 | dev 모드는 `target/release/saba-core(.exe)`, prod 모드는 `getInstallRoot()/saba-core(.exe)`를 `--spawned` 인자로 실행한다(608). env는 `RUST_LOG=info, SABA_LANG, SABA_IPC_PORT, SABA_INSTANCES_PATH=<userData>/instances, SABA_MODULES_PATH`. stdout/stderr는 GUI 로그로 넘긴다 |
-| Daemon 재사용/기동 판단 | `ensureDaemon()` main.js:772-851 | `GET /health`가 200이면 기존 daemon을 재사용한다. 401이면 토큰을 다시 읽으며 최대 3회 재시도한다. ECONNREFUSED/timeout이면 `startDaemon()`을 호출하고 500ms 간격으로 최대 8회 폴링한다 |
+| Daemon 재사용/기동 판단 | `ensureDaemon()` main.js:772-851 | `GET /health`가 200이면 기존 daemon을 재사용한다. 응답의 `token`이 `valid`가 아니거나(A6) 예전 데몬이 401을 주면 토큰을 다시 읽으며 최대 3회 재시도한다(`reloadTokenUntilValid`). ECONNREFUSED/timeout이면 `startDaemon()`을 호출하고 500ms 간격으로 최대 8회 폴링한다 |
 | Daemon 종료 | `stopDaemon()` main.js:660-675, `forceKillDaemon()` 688-704, `cleanQuit()` 736-769 | 먼저 `POST /api/daemon/shutdown`을 보내고 최대 15초 기다린다. 그래도 안 끝나면 **이 GUI가 띄운 PID만** 강제 종료한다(Windows `taskkill /PID … /F`, `/T` 없음. Unix SIGKILL). 이름 기반 kill은 하지 않는다(659 주석) |
 | 클라이언트 등록/heartbeat | main.js:874-917 | `POST /api/client/register {kind:'gui'}`, 이후 30초마다 `POST /api/client/:id/heartbeat`를 보낸다. 종료 시 `DELETE /api/client/:id/unregister[?shutdown=true]`를 호출한다 |
 | install_root 동기화 | `syncInstallRoot()` main.js:854-868 | `PUT /api/updates/config {install_root}` |
@@ -35,7 +35,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | 로그 | main.js:245-305 | `<userData>/logs/saba-chan-<ts>.log`에 직접 쓴다 |
 | 메인 프로세스 i18n | main.js:308-333 | `<installRoot>/locales/<lang>/common.json`을 직접 읽는다 |
 
-**인증 방식 요약**: 데몬이 시작할 때 UUID 토큰을 만들어 `<dataDir>/.ipc_token`(Unix 0600)에 쓰고(`src/ipc/auth.rs:27-63`), 모든 클라이언트는 이 파일을 읽어 `X-Saba-Token`을 보낸다. `Host`가 루프백이 아니면 403으로 막는다(`auth.rs:75-84, 98-101`). `SABA_AUTH_DISABLED=1`은 개발 빌드(`debug_assertions`)에서만 통하고, 토큰이 없으면 아무 요청도 통과시키지 않는다(`auth.rs:104-125`). 토큰은 바이트를 끝까지 비교하는 상수 시간 비교로 맞춘다(`auth.rs:86-89, 134`). `/health`와 `/api/updates/*`도 auth layer 안에 있어 인증 대상이다(`mod.rs:642, 756-758`).
+**인증 방식 요약**: 데몬이 시작할 때 UUID 토큰을 만들어 `<dataDir>/.ipc_token`(Unix 0600)에 쓰고(`src/ipc/auth.rs:27-63`), 모든 클라이언트는 이 파일을 읽어 `X-Saba-Token`을 보낸다. `Host`가 루프백이 아니면 403으로 막는다(`auth.rs:75-84, 98-101`). `SABA_AUTH_DISABLED=1`은 개발 빌드(`debug_assertions`)에서만 통하고, 토큰이 없으면 아무 요청도 통과시키지 않는다(`auth.rs:104-125`). 토큰은 바이트를 끝까지 비교하는 상수 시간 비교로 맞춘다(`auth.rs:86-89, 134`). `/api/updates/*`도 auth layer 안에 있어 인증 대상이다. `/health`만 토큰 없이 답하고, 보낸 토큰이 맞는지(`token: valid|invalid|missing`)를 알려 준다(A6).
 
 ### 1.2 preload 채널 전수표 (`preload.js` → `ipcMain` → daemon endpoint)
 
@@ -94,7 +94,9 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | botConfigLoad (96) | botConfig:load | 2794 | GET /api/config/bot | ✓ 698 |
 | botConfigSave (97) | botConfig:save | 2857 | PUT /api/config/bot(최상위 키 단위 병합). 릴레이 동기화는 에이전트 하트비트가 맡는다 | ✓ 698 |
 | saveNodeToken / loadNodeToken / deleteNodeToken (100-102) | nodeToken:* | 2799/2803/2808 | PUT/GET/DELETE /api/config/node-token. DELETE는 데몬이 에이전트를 멈추고 토큰을 지운다 | ✓ 705 |
+| dataExport / dataImport (105-106) | dataTransfer:export/import | 2800/2809 | 저장·열기 다이얼로그로 경로를 고른 뒤 POST /api/migration/export `{path, secrets}` · /api/migration/import `{path, dryRun, overwrite}`. 취소하면 `{canceled:true}`. 가져오기 결과에는 `path`를 붙여 미리보기(`dryRun`) 뒤 같은 파일로 다시 부를 수 있다 | ✓ (A9) |
 | relayCheckHostStatus… relayBotInvite (104-107) | relay:* | 2296-2344 | GET /api/relay/host/:id/status, /nodes, GET /api/relay/node/:guild/members, GET /api/relay/bot-invite | ✓ 740-743 |
+| relayNodeChannels / relayNodeChannelsSave (113-114) | relay:nodeChannels/nodeChannelsSave | 2320/2323 | GET/PUT /api/relay/node/:guild/channels. 실패하면 데몬 본문(`{error, channelId?}`)을 그대로 돌려준다 | ✓ |
 | instanceAcceptEula (108) | instance:acceptEula | 2358 | POST /api/instance/:id/accept-eula | ✓ 685 (미사용) |
 | instanceBackups…instanceScheduleSave (109-114) | instance:backup*/schedule* | 2359-2368 | GET/POST …/backups, DELETE …/backups/:name, POST …/backups/:name/restore(만들기·복원은 10분 timeout), GET/PUT …/schedule | ✓ 688-691 (미사용) |
 | chatbotGet/Save/Clear/ClearMemory (115-118) | chatbot:* | 2370-2375 | GET/PUT/DELETE /api/chatbot, DELETE /api/chatbot/memory?guildId | ✓ 753-754 (미사용) |
@@ -192,6 +194,9 @@ Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `u
 - `slots.rs`: 익스텐션 manifest의 `cli.slots`(데이터만, 코드 실행 없음). 지원 자리는 `InstanceList.badge`, `InstanceDetail.status`, `CreateInstance.options`.
 - `i18n.rs`: 설치 폴더의 `locales/<lang>/cli.json`을 먼저 읽고, 없으면 바이너리에 넣어 둔 en/ko를 쓴다(`:11-12, 36-45`). clap 도움말은 `help.cmd.*`·`help.arg.*` 키가 있으면 그 문구로 바꿔 끼운다(`cli.rs:617-645`).
 - `cmd/`: 명령 갈래마다 파일 하나(backup, bot, chatbot, config, console, daemon, extension, module, schedule, server, status, update).
+
+- `bot channels GUILD [--chatbot 이름,…] [--no-chatbot] [--music 이름] [--no-music]`: 채널 이름이나 id를 GET 응답의 `channels`로 id로 바꿔 PUT한다. 음악 채널을 새로 정할 때는 메시지가 지워진다고 확인을 받는다.
+- `config export FILE [--secrets]`·`config import FILE [--dry-run] [--overwrite]`(A9): 경로를 절대 경로로 바꿔 `/api/migration/*`에 넘긴다. 파일은 데몬이 읽고 쓴다.
 
 사용자 안내서는 `saba-chan-cli/README.md`에 있다.
 

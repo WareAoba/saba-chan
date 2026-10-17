@@ -230,6 +230,45 @@ pub async fn list_host_nodes(
     signed_get(&base, &path, empty_list).await
 }
 
+// ── GET/PUT /api/relay/node/:guild_id/channels ──
+// 챗봇 채널(여럿)·음악 채널(하나) 배정. 디스코드 채널 상태라 원본은 릴레이다 (/mnt/project-files/assign/contract.md).
+// 본문과 응답은 릴레이 것을 그대로 전달한다 (오류는 `{error: CODE, channelId?}`)
+
+pub async fn get_node_channels(
+    Path(guild_id): Path<String>,
+    Query(params): Query<RelayQueryParams>,
+    State(state): State<IPCServer>,
+) -> Response {
+    let base = signed_base(&state, params.relay_url.as_deref()).await;
+    signed_get(&base, &format!("/api/nodes/{}/channels", encode_path_segment(&guild_id)), invalid_response).await
+}
+
+pub async fn put_node_channels(
+    Path(guild_id): Path<String>,
+    Query(params): Query<RelayQueryParams>,
+    State(state): State<IPCServer>,
+    Json(body): Json<Value>,
+) -> Response {
+    if !body.is_object() {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "INVALID_BODY" }))).into_response();
+    }
+    let base = signed_base(&state, params.relay_url.as_deref()).await;
+    let client = match client() {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
+    let path = format!("/api/nodes/{}/channels", encode_path_segment(&guild_id));
+    let text = body.to_string();
+    let req = apply_signed_headers(client.put(format!("{}{}", base, path)), "PUT", &path, Some(&text))
+        .header("Content-Type", "application/json")
+        .body(text);
+    match send(req).await {
+        Ok((code, Some(data))) => (code, Json(data)).into_response(),
+        Ok((code, None)) => invalid_response(code),
+        Err(r) => r,
+    }
+}
+
 // ── GET /api/relay/node/:guild_id/members ──
 // Try discord-members first; fall back to permission-based members on 503
 

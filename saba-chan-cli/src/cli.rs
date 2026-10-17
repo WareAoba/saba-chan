@@ -550,6 +550,22 @@ pub enum BotCmd {
     Nodes,
     /// Members of a paired Discord server
     Members { guild: String },
+    /// Chatbot channels (several) and the music channel (one) of a paired Discord server. No options: show
+    Channels {
+        guild: String,
+        /// Channels the chatbot talks in, by name or id (comma-separated). Replaces the current list
+        #[arg(long, value_delimiter = ',', conflicts_with = "no_chatbot")]
+        chatbot: Vec<String>,
+        /// Unassign every chatbot channel
+        #[arg(long)]
+        no_chatbot: bool,
+        /// The music player channel, by name or id. Other messages in it get deleted
+        #[arg(long, conflicts_with = "no_music")]
+        music: Option<String>,
+        /// Unassign the music channel
+        #[arg(long)]
+        no_music: bool,
+    },
     /// Link to invite the Saba-chan bot to a Discord server
     Invite,
     /// Chat names for one server (e.g. "크리" for a second Minecraft server). No names: show
@@ -628,6 +644,23 @@ pub enum ConfigCmd {
     Defaults,
     /// Back to the default values (all settings when no key is named)
     Reset { keys: Vec<String> },
+    /// Save settings and the server list to a zip, to move to another PC (game files not included)
+    Export {
+        file: std::path::PathBuf,
+        /// Also save passwords, the chatbot API key and the bot pairing
+        #[arg(long)]
+        secrets: bool,
+    },
+    /// Bring in settings and servers from an export zip
+    Import {
+        file: std::path::PathBuf,
+        /// Only show what would change
+        #[arg(long)]
+        dry_run: bool,
+        /// Replace servers that already exist (running ones are skipped)
+        #[arg(long)]
+        overwrite: bool,
+    },
 }
 
 /// 번역된 도움말을 끼운 clap 명령

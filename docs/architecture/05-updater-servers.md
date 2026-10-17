@@ -276,6 +276,7 @@ Tauri 커맨드(`lib.rs:108-730`): `get_installer_state`, `set_install_path`, `s
 | GET | `/api/hosts/:hostId/nodes` | node(자기 host)/internal | — | node[] | `node.ts:124-145` |
 | GET | `/api/nodes/:guildId/members` | node(자기 host의 길드)/internal | — | `[{id,username,displayName,level}]` (node_permissions) | `node.ts:148-184` |
 | GET | `/api/nodes/:guildId/discord-members` | node/internal | — | bot이 실시간으로 조회한 길드 멤버. bot이 없으면 503 `BOT_UNAVAILABLE` | `node.ts:187-214` |
+| GET/PUT | `/api/nodes/:guildId/channels` | node/internal | PUT `{chatbot?: string[](≤20), music?: string\|null}` | `{guildId, chatbot, music, botAvailable, channels:[{id,name,category}]}`. 400 `INVALID_BODY`·`CHANNEL_CONFLICT`·`UNKNOWN_CHANNEL`(`channelId` 포함), 배정할 때 봇이 없으면 503 `BOT_UNAVAILABLE`. 한 채널은 한 종류만, 챗봇은 배정 채널에서만 답하고 음악 채널의 일반 메시지는 지운다 (server-chan PR #23) | `node.ts` |
 | DELETE | `/api/nodes/:guildId` | internal | `{discordId}`(owner) | `{status:'deleted'}` | `node.ts:217-237` |
 | POST | `/api/command` | internal | `{hostId?, guildId?, payload(1–50 keys), requestedBy?, channelId?, interactionToken?, requestId?}` | `{requestId, status:'queued'}`. host가 offline이거나 heartbeat가 3분 넘게 없으면 503 `HOST_OFFLINE` | `routes/command.ts:20-99` |
 | GET | `/api/command/:requestId/status` | internal | — | `{id,status,result,createdAt,completedAt}` | `command.ts:102-122` |
