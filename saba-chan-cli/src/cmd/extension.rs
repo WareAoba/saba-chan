@@ -17,6 +17,7 @@ pub async fn run(ctx: &Ctx, cmd: ExtCmd) -> Result<()> {
             let id = s(&e, "id").to_string();
             let r = ctx.api.enable_extension(&id).await?;
             ctx.out.done(&t!("ext.enabled", id = id), &r);
+            super::print_trust_warnings(ctx, &r);
             Ok(())
         }
         ExtCmd::Disable { extension } => {

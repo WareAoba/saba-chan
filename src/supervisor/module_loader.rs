@@ -331,7 +331,7 @@ pub struct CommandInput {
     pub options: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SettingField {
     pub name: String,
     pub field_type: String,  // "text", "number", "password", "file", "select", etc.
@@ -351,7 +351,37 @@ pub struct SettingField {
     /// GUI·CLI가 만들기 화면에서 묻고 `POST /api/instances`의 `module_settings`로 보낸다
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub install: bool,
+    /// 이 값이 실행 인자로 들어가는 모양 (예: `-port={value}`, `-servername {value}`). `{value}`가 없으면
+    /// boolean 플래그. 실행 인자 미리보기가 사용자가 친 인자를 이 필드로 되돌릴 때 쓴다 (`crate::launch_args`)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub arg: Vec<String>,
+    /// 값 형식: "memory_size"(4G·1024M) | "port" | "integer" | "path" (`crate::validator`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
+    /// 값 전체가 맞아야 하는 정규식
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pattern: Option<String>,
 }
+
+/// 문자열 하나 또는 여럿 (`arg = "-x"` / `arg = ["-a", "-b"]`)
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(untagged)]
+enum OneOrMany {
+    One(String),
+    Many(Vec<String>),
+}
+
+impl OneOrMany {
+    fn into_vec(self) -> Vec<String> {
+        match self {
+            Self::One(s) => vec![s],
+            Self::Many(v) => v,
+        }
+    }
+}
+
+/// 설정 값 형식 이름 (`format`)
+pub const SETTING_FORMATS: &[&str] = &["memory_size", "port", "integer", "path"];
 
 /// 인스턴스 필드로도 저장되는 포트 설정 이름 (`ServerInstance::port` 등)
 pub const CORE_PORT_FIELDS: &[&str] = &["port", "rest_port"];
@@ -669,6 +699,13 @@ struct SettingFieldToml {
     /// 서버를 만들 때 고르는 설정이면 true (설치할 파일이 달라지는 값)
     #[serde(default)]
     install: bool,
+    /// 실행 인자 모양. 문자열 하나나 배열 (`SettingField::arg`)
+    #[serde(default)]
+    arg: Option<OneOrMany>,
+    #[serde(default)]
+    format: Option<String>,
+    #[serde(default)]
+    pattern: Option<String>,
 }
 
 fn default_field_type() -> String { "text".to_string() }
@@ -884,6 +921,9 @@ impl ModuleToml {
                 group: f.group,
                 port: f.port,
                 install: f.install,
+                arg: f.arg.map(OneOrMany::into_vec).unwrap_or_default(),
+                format: f.format,
+                pattern: f.pattern,
             }).collect();
             if fields.is_empty() { None } else { Some(ModuleSettings { fields }) }
         } else {
@@ -1071,6 +1111,24 @@ impl ModuleToml {
             || entry.components().any(|c| !matches!(c, std::path::Component::Normal(_)))
         {
             problems.push(format!("module.entry '{}' must be a path inside the module folder", self.module.entry));
+        }
+        for field in self.settings.iter().flat_map(|s| &s.fields) {
+            if let Some(format) = field.format.as_deref().filter(|f| !SETTING_FORMATS.contains(f)) {
+                problems.push(format!("settings field '{}': unknown format '{}' (one of {})", field.name, format, SETTING_FORMATS.join(", ")));
+            }
+            if let Some(Err(e)) = field.pattern.as_deref().map(regex::Regex::new) {
+                problems.push(format!("settings field '{}': pattern is not a valid regex: {}", field.name, e));
+            }
+            let args = match &field.arg {
+                Some(OneOrMany::One(s)) => std::slice::from_ref(s),
+                Some(OneOrMany::Many(v)) => v.as_slice(),
+                None => &[],
+            };
+            for arg in args {
+                if let Err(e) = crate::launch_args::ArgPattern::parse(arg) {
+                    problems.push(format!("settings field '{}': arg '{}' {}", field.name, arg, e));
+                }
+            }
         }
         for cmd in self.commands.iter().flat_map(|c| &c.fields) {
             if let Some(risk) = &cmd.risk {

@@ -23,7 +23,6 @@ import { SabaToggle } from '../ui/SabaUI';
 import { AuditLog, auditAvailable } from '../servers/AuditTab';
 import { DataTransferSection, dataTransferAvailable } from './DataTransferSection';
 import SabaStorage from './SabaStorage';
-import { TOKEN_COLORS } from '../../utils/syntaxHighlight';
 
 function SettingsModal({
     isOpen,
@@ -685,10 +684,27 @@ function SettingsModal({
                                     fontSize: `calc(12.5px * ${customTheme.consoleFontScale / 100})`,
                                 }}
                             >
-                                <div className="console-preview-line">[12:34:56] Server started on port 25565</div>
-                                <div className="console-preview-line" style={{ color: TOKEN_COLORS.success }}>[12:34:57] Loading world "Overworld"...</div>
-                                <div className="console-preview-line" style={{ color: TOKEN_COLORS.warn }}>[12:34:58] WARN: Low memory detected</div>
-                                <div className="console-preview-line" style={!customTheme.consoleSyntaxHighlight ? { color: customTheme.consoleTextColor } : { color: TOKEN_COLORS.error }}>[12:34:59] ERROR: Connection timeout</div>
+                                {(() => {
+                                    // 하이라이트가 켜져 있으면 실제 콘솔과 같은 토큰 색으로 (테마 --tok-*)
+                                    const tok = (token, text) =>
+                                        customTheme.consoleSyntaxHighlight ? <span className={`tok-${token}`}>{text}</span> : text;
+                                    return (
+                                        <>
+                                            <div className="console-preview-line">
+                                                {tok('timestamp', '[12:34:56]')} Server started on port {tok('number', '25565')}
+                                            </div>
+                                            <div className="console-preview-line">
+                                                {tok('timestamp', '[12:34:57]')} {tok('player', 'Steve')} joined the game
+                                            </div>
+                                            <div className="console-preview-line">
+                                                {tok('timestamp', '[12:34:58]')} {tok('warn', 'WARN')}: Low memory detected
+                                            </div>
+                                            <div className="console-preview-line">
+                                                {tok('timestamp', '[12:34:59]')} {tok('error', 'ERROR')}: Connection timeout
+                                            </div>
+                                        </>
+                                    );
+                                })()}
                             </div>
 
                             {/* ── 초기화 버튼 ── */}

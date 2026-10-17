@@ -25,6 +25,8 @@ pub enum ValidationErrorType {
     TypeMismatch,
     OutOfRange,
     InvalidOption,
+    /// 모듈이 정한 형식(`format`·`pattern`)과 다르다
+    InvalidFormat,
 }
 
 impl std::fmt::Display for ValidationError {
@@ -108,7 +110,64 @@ pub fn validate_setting_value(
         "select" => validate_select(field, val),
         "text" | "password" | "file" => validate_string(field, val),
         _ => Ok(()), // 알 수 없는 타입은 통과
+    }?;
+
+    // 3. 형식 (`format`·`pattern`)
+    validate_format(field, val)
+}
+
+/// 이 필드가 받는 값의 종류 (오류의 `expected`). 형식이 있으면 그 이름
+pub fn expected_of(field: &SettingField) -> &str {
+    if let Some(format) = field.format.as_deref() {
+        return format;
     }
+    if field.pattern.is_some() {
+        return "pattern";
+    }
+    match field.field_type.as_str() {
+        "number" if field.step.is_some_and(|s| s.fract() == 0.0) => "integer",
+        "number" => "number",
+        "boolean" => "boolean",
+        "select" => "enum",
+        "file" => "path",
+        _ => "text",
+    }
+}
+
+fn format_ok(format: &str, s: &str) -> bool {
+    let digits = |t: &str| !t.is_empty() && t.bytes().all(|b| b.is_ascii_digit());
+    match format {
+        // 4G, 1024M, 512k: 숫자 뒤에 단위 한 글자. 4096·4GB·"4 G"는 아니다
+        "memory_size" => s.len() > 1 && digits(&s[..s.len() - 1]) && s.ends_with(['K', 'M', 'G', 'k', 'm', 'g']),
+        "port" => digits(s) && s.parse::<u32>().is_ok_and(|p| (1..=65535).contains(&p)),
+        "integer" => digits(s.strip_prefix('-').unwrap_or(s)),
+        "path" => !s.trim().is_empty() && !s.contains(['\r', '\n', '\0']),
+        _ => true,
+    }
+}
+
+/// 모듈이 정한 형식: 이름 붙은 형식과 정규식. 둘 다 값 전체가 맞아야 한다
+fn validate_format(field: &SettingField, value: &Value) -> Result<(), ValidationError> {
+    let s = match value {
+        Value::String(s) => s.clone(),
+        Value::Number(n) => n.to_string(),
+        Value::Bool(b) => b.to_string(),
+        _ => return Ok(()),
+    };
+    let format_bad = field.format.as_deref().is_some_and(|f| !format_ok(f, &s));
+    let pattern_bad = field
+        .pattern
+        .as_deref()
+        .and_then(|p| regex::Regex::new(&format!("^(?:{})$", p)).ok())
+        .is_some_and(|re| !re.is_match(&s));
+    if format_bad || pattern_bad {
+        return Err(ValidationError {
+            field: field.name.clone(),
+            message: format!("'{}' value '{}' is not in the expected format ({})", field.name, s, expected_of(field)),
+            error_type: ValidationErrorType::InvalidFormat,
+        });
+    }
+    Ok(())
 }
 
 /// 숫자 타입 검증: 파싱 가능 여부, min/max 범위
@@ -392,8 +451,32 @@ mod tests {
             options: None,
             group: None,
             port: false,
-            install: false,
+            ..Default::default()
         }
+    }
+
+    #[test]
+    fn values_must_match_the_declared_format() {
+        let mut ram = make_field("ram", "text");
+        ram.format = Some("memory_size".into());
+        for ok in ["4G", "1024M", "512k"] {
+            assert!(validate_setting_value(&ram, Some(&Value::from(ok))).is_ok(), "{}", ok);
+        }
+        for bad in ["4096", "4GB", "4 G", "G", "-4G"] {
+            let err = validate_setting_value(&ram, Some(&Value::from(bad))).unwrap_err();
+            assert_eq!(err.error_type, ValidationErrorType::InvalidFormat, "{}", bad);
+        }
+        let mut port = make_field("port", "number");
+        port.format = Some("port".into());
+        assert!(validate_setting_value(&port, Some(&serde_json::json!(8211))).is_ok());
+        assert!(validate_setting_value(&port, Some(&serde_json::json!(70000))).is_err());
+        assert!(validate_setting_value(&port, Some(&serde_json::json!(1.5))).is_err());
+        let mut name = make_field("server_name", "text");
+        name.pattern = Some("[A-Za-z0-9_]+".into());
+        assert!(validate_setting_value(&name, Some(&Value::from("my_srv"))).is_ok());
+        assert!(validate_setting_value(&name, Some(&Value::from("my srv"))).is_err());
+        assert_eq!(expected_of(&name), "pattern");
+        assert_eq!(expected_of(&ram), "memory_size");
     }
 
     #[test]

@@ -175,6 +175,8 @@ fn instance_commands_come_after_module_commands_and_bind_like_them() {
             // 모양이 틀린 항목은 건너뛴다
             { "name": "two words", "label": "x" },
             { "label": "no name" },
+            { "name": "nul\u{0}x", "label": "x", "method": "console", "console_template": "x" },
+            { "name": "split", "label": "x", "method": "console", "console_template": "say a\nstop" },
         ],
         "components": [{ "id": "LuckPerms", "kind": "paper" }],
     }));

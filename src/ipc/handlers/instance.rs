@@ -90,7 +90,9 @@ pub async fn create_instance(
         let mut instance = crate::instance::ServerInstance::new(name, module);
 
         // 모듈 정보에서 process_name, default_port, install 설정 가져오기
+        let mut module_trust = None;
         let module_install = if let Ok(loaded_module) = supervisor.module_loader.get_module(module) {
+            module_trust = Some(super::server::module_trust(&loaded_module.path));
             instance.process_name = loaded_module.metadata.process_name.clone();
             if instance.port.is_none() {
                 instance.port = loaded_module.metadata.default_port;
@@ -114,7 +116,7 @@ pub async fn create_instance(
                         (Some(_), None) => false,
                         (None, _) => !value.is_object() && !value.is_array(),
                     };
-                    if allowed {
+                    if allowed && crate::validator::validate_setting_value(field, Some(value)).is_ok() {
                         instance.module_settings.insert(field.name.clone(), value.clone());
                     }
                 }
@@ -253,6 +255,15 @@ pub async fn create_instance(
         }
 
         let id = instance.id.clone();
+        // 미검증·변경된 모듈로 만들면 알림만 싣는다 (`module_trust`, `warnings`)
+        let module_name_owned = instance.module_name.clone();
+        let created = move |mut body: Value| {
+            if let Some(trust) = module_trust {
+                body["module_trust"] = json!(trust);
+                body["warnings"] = json!(super::server::trust_warnings("module", &module_name_owned, trust));
+            }
+            (StatusCode::CREATED, Json(body)).into_response()
+        };
         let instance_name = instance.name.clone();
         let module_name_owned = module.to_string();
         let instance_dir = supervisor.instance_store.instance_dir(&id);
@@ -513,10 +524,9 @@ pub async fn create_instance(
                             "id": id,
                             "provisioning": true,
                         });
-                        (StatusCode::CREATED, Json(response)).into_response()
+                        created(response)
                     } else {
-                        let response = json!({ "success": true, "id": id });
-                        (StatusCode::CREATED, Json(response)).into_response()
+                        created(json!({ "success": true, "id": id }))
                     }
                 } else {
                     // 마이그레이션: 기존 디렉토리에 직접 연결, 추가 설치 없음
@@ -563,8 +573,13 @@ pub async fn create_instance(
                                         result.get("executable_path").and_then(|v| v.as_str()),
                                         instance.working_dir.as_deref(),
                                     ) {
+                                        // `..`·심볼릭 링크로 폴더 밖을 가리키지 않게 정규화한 경로로 비교한다
                                         let resolved = std::path::Path::new(dir).join(rel);
-                                        if resolved.is_file() && resolved.starts_with(dir) {
+                                        let inside = match (resolved.canonicalize(), std::path::Path::new(dir).canonicalize()) {
+                                            (Ok(file), Ok(root)) => file.starts_with(root),
+                                            _ => false,
+                                        };
+                                        if resolved.is_file() && inside {
                                             instance.executable_path = Some(resolved.to_string_lossy().to_string());
                                         }
                                     }
@@ -583,7 +598,7 @@ pub async fn create_instance(
                     if let Some(detected) = detected {
                         response["detected"] = detected;
                     }
-                    (StatusCode::CREATED, Json(response)).into_response()
+                    created(response)
                 }
             }
             Err(e) => {
@@ -792,6 +807,46 @@ pub async fn rename_instance(
     Json(json!({ "success": true, "id": id, "name": new_name, "previous": previous })).into_response()
 }
 
+/// POST /api/instance/:id/launch-preview — 실행 인자 미리보기 `{settings?, extra_args?}`.
+/// 서버를 띄우지도 파일을 고치지도 않는다. 응답 모양은 `Supervisor::launch_preview`
+pub async fn launch_preview(
+    State(state): State<IPCServer>,
+    Path(id): Path<String>,
+    body: Option<Json<Value>>,
+) -> impl IntoResponse {
+    let body = body.map(|Json(b)| b).unwrap_or(Value::Null);
+    let draft = match body.get("settings") {
+        None | Some(Value::Null) => serde_json::Map::new(),
+        Some(Value::Object(m)) => m.clone(),
+        Some(_) => return (StatusCode::BAD_REQUEST, Json(json!({ "error": "invalid_body", "message": "settings must be an object" }))).into_response(),
+    };
+    // 보내지 않으면 저장된 추가 인자로 본다
+    let extra = match body.get("extra_args").map(extra_args_from) {
+        None => None,
+        Some(Some(args)) => Some(args),
+        Some(None) => {
+            return (StatusCode::BAD_REQUEST, Json(json!({ "error": "invalid_format", "error_code": "invalid_format", "message": "extra_args must be a string or an array of strings" }))).into_response()
+        }
+    };
+    match crate::supervisor::Supervisor::launch_preview(&state.supervisor, &id, &draft, extra.as_deref()).await {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err(e) if e.to_string().contains("not found") => (StatusCode::NOT_FOUND, Json(json!({ "error": e.to_string() }))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": "preview_failed", "message": e.to_string() }))).into_response(),
+    }
+}
+
+/// 추가 실행 인자 입력: 문자열이면 `chat::split_quoted`로 나누고, 배열이면 문자열만. null은 비우기.
+/// 줄바꿈·NUL이 든 인자는 받지 않는다
+pub(crate) fn extra_args_from(value: &Value) -> Option<Vec<String>> {
+    let args: Vec<String> = match value {
+        Value::Null => Vec::new(),
+        Value::String(s) => crate::chat::split_quoted(s),
+        Value::Array(items) => items.iter().map(|v| v.as_str().map(str::to_string)).collect::<Option<_>>()?,
+        _ => return None,
+    };
+    (!args.iter().any(|a| a.contains(['\r', '\n', '\0']))).then_some(args)
+}
+
 /// PATCH /api/instance/:id - 인스턴스 설정 업데이트
 pub async fn update_instance_settings(
     State(state): State<IPCServer>,
@@ -828,9 +883,15 @@ pub async fn update_instance_settings(
                         "Settings validation failed for instance {}: {:?}",
                         id, error_details
                     );
+                    // 형식(`format`·`pattern`)이 틀렸으면 GUI가 "잘못된 형식입니다"를 띄운다
+                    let code = if errors.iter().any(|e| e.error_type == crate::validator::ValidationErrorType::InvalidFormat) {
+                        "invalid_format"
+                    } else {
+                        "validation_failed"
+                    };
                     let error = json!({
-                        "error": "validation_failed",
-                        "error_code": "validation_failed",
+                        "error": code,
+                        "error_code": code,
                         "message": "Settings validation failed",
                         "details": error_details,
                         "fields": fields,
@@ -872,6 +933,7 @@ pub async fn update_instance_settings(
         "protocol_mode",
         "server_version",
         "extension_data",
+        "extra_args",
     ]
     .iter()
     .cloned()
@@ -920,6 +982,16 @@ pub async fn update_instance_settings(
     }
     if let Some(rest_password) = settings.get("rest_password").and_then(|v| v.as_str()) {
         updated.rest_password = Some(rest_password.to_string());
+    }
+    // 설정 필드에 없는 추가 실행 인자: 문자열(따옴표로 묶기)이나 문자열 배열
+    if let Some(extra) = settings.get("extra_args") {
+        match extra_args_from(extra) {
+            Some(args) => updated.extra_args = args,
+            None => {
+                let error = json!({ "error": "invalid_format", "error_code": "invalid_format", "message": "extra_args must be a string or an array of strings", "fields": [{"field": "extra_args"}] });
+                return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+            }
+        }
     }
     // credential_map 범용 역동기화: module_settings 키 → daemon first-class 필드
     // 예: Palworld credential_map { rest_password = "AdminPassword" }

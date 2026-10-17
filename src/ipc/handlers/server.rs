@@ -40,6 +40,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
         module_settings: std::collections::HashMap<String, serde_json::Value>,
         server_version: Option<String>,
         extension_data: std::collections::HashMap<String, serde_json::Value>,
+        extra_args: Vec<String>,
         instance_dir: String,
         process_patterns: Vec<String>,
         // Native 모드 데이터
@@ -78,6 +79,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
                 module_settings: instance.module_settings.clone(),
                 server_version: instance.server_version.clone(),
                 extension_data: instance.extension_data.clone(),
+                extra_args: instance.extra_args.clone(),
                 instance_dir: supervisor.instance_store.instance_dir(&instance.id).to_string_lossy().to_string(),
                 process_patterns,
                 managed: supervisor.uses_managed_start(instance),
@@ -169,6 +171,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
                     managed: instance.managed,
                     extension_status,
                     extension_data: instance.extension_data.clone(),
+                    extra_args: instance.extra_args.clone(),
                     port_conflicts: vec![],
                 });
                 ext_handled = true;
@@ -219,6 +222,7 @@ pub async fn list_servers(State(state): State<IPCServer>) -> impl IntoResponse {
             managed: instance.managed,
             extension_status: std::collections::HashMap::new(),
             extension_data: instance.extension_data.clone(),
+            extra_args: instance.extra_args.clone(),
             port_conflicts: vec![],
         });
     }
@@ -285,6 +289,26 @@ pub async fn version_handler(State(state): State<IPCServer>) -> impl IntoRespons
     }))
 }
 
+/// 모듈 폴더의 신뢰 표시 (설치 기록의 키는 폴더 이름)
+pub(crate) fn module_trust(path: &str) -> saba_chan_updater_lib::integrity::Trust {
+    let folder = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    saba_chan_updater_lib::integrity::trust_of(
+        &format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, folder),
+        std::path::Path::new(path),
+    )
+}
+
+/// 서명된 카탈로그에서 받지 않았거나 받은 뒤 바뀐 구성요소를 쓸 때 응답에 싣는 알림 (실행은 막지 않는다)
+pub(crate) fn trust_warnings(kind: &str, id: &str, trust: saba_chan_updater_lib::integrity::Trust) -> Vec<serde_json::Value> {
+    use saba_chan_updater_lib::integrity::Trust;
+    let code = match trust {
+        Trust::Verified => return Vec::new(),
+        Trust::Modified => format!("{}_modified", kind),
+        Trust::Unverified => format!("{}_unverified", kind),
+    };
+    vec![json!({ "code": code, kind: id })]
+}
+
 fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std::collections::BTreeMap<String, String>) -> ExtensionInfo {
     let installed: std::collections::HashMap<String, String> = versions.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     let unmet_dependencies = m
@@ -300,11 +324,7 @@ fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std
             format!("data:image/png;base64,{}", general_purpose::STANDARD.encode(&data))
         })
     });
-    let folder = std::path::Path::new(&m.path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    let trust = saba_chan_updater_lib::integrity::trust_of(
-        &format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, folder),
-        std::path::Path::new(&m.path),
-    );
+    let trust = module_trust(&m.path);
     let meta = m.metadata;
     ExtensionInfo {
         name: meta.name,
@@ -497,6 +517,11 @@ pub async fn install_module_from_manifest(
     else {
         return fail(format!("Module '{}' is not in the latest release", module_id));
     };
+    // 설치된 것보다 낮은 버전은 받지 않는다
+    let installed = state.supervisor.read().await.module_loader.get_module(&module_id).ok().map(|m| m.metadata.version.clone());
+    if let Some(installed) = installed.filter(|v| saba_chan_updater_lib::version::is_downgrade(v, &comp.version)) {
+        return fail(format!("Module '{}' {} is older than the installed {}", module_id, comp.version, installed));
+    }
 
     let modules_dir = {
         let supervisor = state.supervisor.read().await;
@@ -968,6 +993,14 @@ mod tests {
     use super::*;
     use std::sync::Arc;
     use tokio::sync::RwLock;
+
+    #[test]
+    fn only_unofficial_or_changed_components_get_a_notice() {
+        use saba_chan_updater_lib::integrity::Trust;
+        assert!(trust_warnings("module", "m", Trust::Verified).is_empty());
+        assert_eq!(trust_warnings("module", "m", Trust::Unverified), [json!({"code": "module_unverified", "module": "m"})]);
+        assert_eq!(trust_warnings("extension", "e", Trust::Modified), [json!({"code": "extension_modified", "extension": "e"})]);
+    }
 
     #[tokio::test]
     async fn server_list_says_which_servers_the_runner_manages() {

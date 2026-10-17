@@ -50,7 +50,12 @@ impl InstanceCommands {
             else {
                 continue;
             };
-            if field.name.trim().is_empty() || field.name.contains(char::is_whitespace) {
+            // 이름·템플릿이 콘솔 한 줄을 넘으면 뺀다 (NUL은 공백이 아니라 따로 본다)
+            if field.name.trim().is_empty()
+                || field.name.contains(char::is_whitespace)
+                || has_line_break(&field.name)
+                || field.console_template.as_deref().is_some_and(has_line_break)
+            {
                 continue;
             }
             if field.method.as_deref() == Some("rcon") {

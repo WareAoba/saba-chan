@@ -2,6 +2,7 @@ pub mod process;
 pub mod module_loader;
 pub mod managed_process;
 pub mod crash;
+pub mod highlight;
 
 use anyhow::Result;
 use process::ProcessTracker;
@@ -90,6 +91,35 @@ fn setting_flag(instance: &crate::instance::ServerInstance, key: &str, default: 
         Some(Value::String(s)) if s == "false" => false,
         _ => default,
     }
+}
+
+/// `get_launch_command` 결과의 실행 인자. 모듈이 추가 인자를 넣지 않았으면 끝에 붙인다
+pub(crate) fn launch_args(launch_result: &Value, instance: &crate::instance::ServerInstance) -> Vec<String> {
+    let mut args: Vec<String> = launch_result
+        .get("args")
+        .and_then(|a| a.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    if launch_result.get("extra_args_placed").and_then(Value::as_bool) != Some(true) {
+        args.extend(instance.extra_args.iter().cloned());
+    }
+    args
+}
+
+/// 모듈 함수가 성공을 알리지 않았을 때 사용자에게 보일 이유. 모듈이 준 `message`·`error`를 쓰고,
+/// 둘 다 없으면 계약 위반(예: `success`·`program` 없이 옛 키만 돌려줌)을 그대로 알린다
+pub(crate) fn module_failure(result: &Value, module: &str, function: &str) -> String {
+    let field = |k: &str| result.get(k).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
+    if let Some(msg) = field("message").or_else(|| field("error")) {
+        return msg.to_string();
+    }
+    let keys: Vec<&str> = result.as_object().map(|o| o.keys().map(String::as_str).collect()).unwrap_or_default();
+    format!(
+        "Module '{}' {}() did not report success (returned: {})",
+        module,
+        function,
+        if keys.is_empty() { "nothing".to_string() } else { keys.join(", ") }
+    )
 }
 
 impl Supervisor {
@@ -270,6 +300,95 @@ impl Supervisor {
         None
     }
 
+    /// 실행 인자 미리보기: 저장된 설정 위에 초안(`draft`)을, 그 위에 추가 인자(`extra`, 없으면 저장된 것)에서 읽은 필드를 얹어
+    /// `get_launch_command`를 `preview: true`로 부른다. 익스텐션 hook·서버 시작·파일 쓰기는 없다
+    /// (모듈은 `preview`이면 설정 파일을 고치지 않는다). 응답 모양은 `docs/architecture/01-daemon-core.md`
+    pub async fn launch_preview(
+        sup: &tokio::sync::RwLock<Self>,
+        instance_id: &str,
+        draft: &serde_json::Map<String, Value>,
+        extra: Option<&[String]>,
+    ) -> Result<Value> {
+        let (call, fields, settings, preview_instance) = {
+            let s = sup.read().await;
+            let instance = s
+                .instance_store
+                .get(instance_id)
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("Instance '{}' not found", instance_id))?;
+            let module = s.module_loader.get_module(&instance.module_name)?;
+            let fields = module.metadata.settings.as_ref().map(|m| m.fields.clone()).unwrap_or_default();
+
+            let draft_errors = crate::launch_args::draft_errors(&fields, draft);
+            // 추가 인자를 보내지 않았으면 저장된 것으로
+            let bound = crate::launch_args::bind(&fields, extra.unwrap_or(&instance.extra_args));
+            let mut settings: serde_json::Map<String, Value> = instance.module_settings.clone().into_iter().collect();
+            for (k, v) in draft {
+                if !draft_errors.iter().any(|e| &e.field == k) {
+                    settings.insert(k.clone(), v.clone());
+                }
+            }
+            settings.extend(bound.settings.clone());
+
+            let mut preview_instance = instance.clone();
+            preview_instance.module_settings = settings.clone().into_iter().collect();
+            preview_instance.extra_args = bound.extra.clone();
+            let mut cfg = serde_json::Map::new();
+            s.insert_resolved_exe(&mut cfg, &preview_instance, &instance.module_name);
+            if let Some(port) = settings.get("port").cloned().or_else(|| instance.port.map(|p| json!(p))) {
+                cfg.insert("port".to_string(), port);
+            }
+            Self::insert_instance_fields(&mut cfg, &preview_instance);
+            cfg.insert("managed".to_string(), json!(s.uses_managed_start(&preview_instance)));
+            cfg.insert("preview".to_string(), json!(true));
+            let call = crate::plugin::PluginCall::new(module.entry_path(), "get_launch_command", Value::Object(cfg));
+
+            let mut errors = draft_errors;
+            errors.extend(bound.errors.clone());
+            let base = json!({
+                "has_launch_args": crate::launch_args::has_launch_args(&fields),
+                "settings_from_args": bound.settings,
+                "extra_args": bound.extra,
+                "extra_args_text": crate::launch_args::join_args(&bound.extra),
+                "errors": errors,
+            });
+            ((call, base), fields, settings, preview_instance)
+        };
+        let (call, mut out) = call;
+        // 실행 인자로 들어가는 설정이 없는 모듈은 부르지 않는다 (preview를 모르는 모듈이 파일을 고칠 수 있다)
+        if !crate::launch_args::has_launch_args(&fields) {
+            out.as_object_mut().expect("object").insert("success".into(), json!(true));
+            return Ok(out);
+        }
+        let launch_result = call.run().await?;
+        let obj = out.as_object_mut().expect("object");
+        if launch_result.get("success").and_then(Value::as_bool) != Some(true) {
+            obj.insert("success".into(), json!(false));
+            if let Some(action) = launch_result.get("action_required") {
+                obj.insert("action_required".into(), action.clone());
+            } else {
+                obj.insert("error".into(), json!("launch_command_failed"));
+            }
+            let message = launch_result.get("message").and_then(Value::as_str).map(str::to_string);
+            let message = message.or_else(|| {
+                launch_result.get("action_required").is_none().then(|| module_failure(&launch_result, &preview_instance.module_name, "get_launch_command"))
+            });
+            if let Some(m) = message {
+                obj.insert("message".into(), json!(m));
+            }
+            return Ok(out);
+        }
+        let program = launch_result.get("program").and_then(Value::as_str).unwrap_or("").to_string();
+        let mut args = launch_args(&launch_result, &preview_instance);
+        let rest_password = preview_instance.rest_password.as_deref().unwrap_or("");
+        crate::launch_args::mask_secrets(&fields, &settings, &[rest_password], &mut args);
+        obj.insert("success".into(), json!(true));
+        obj.insert("command_line".into(), json!(crate::launch_args::command_line(&program, &args)));
+        obj.insert("program".into(), json!(program));
+        obj.insert("args".into(), json!(args));
+        Ok(out)
+    }
+
     /// 해석된 실행 파일 경로를 config map에 삽입합니다.
     fn insert_resolved_exe(&self, config: &mut serde_json::Map<String, Value>, instance: &crate::instance::ServerInstance, module_name: &str) {
         if let Some(exe_path) = self.resolve_executable(instance, module_name) {
@@ -298,6 +417,8 @@ impl Supervisor {
         if let Some(v) = &instance.server_version { put("server_version", json!(v)); }
         // 모듈 도우미(daemon_stdin_command 등)가 데몬 API로 이 인스턴스를 가리킬 때 쓴다
         put("instance_id", json!(&instance.id));
+        // 사용자가 더한 실행 인자. 넣을 자리를 아는 모듈은 직접 넣고 `extra_args_placed: true`를 돌려준다
+        put("extra_args", json!(&instance.extra_args));
     }
 
     /// 모듈 `[module.dependencies]`를 못 맞추면 시작을 막는 응답. 다 맞으면 None
@@ -608,18 +729,14 @@ impl Supervisor {
         }
 
         if launch_result.get("success").and_then(|s| s.as_bool()) != Some(true) {
-            let msg = launch_result.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-            return Err(anyhow::anyhow!("{}", msg));
+            return Err(anyhow::anyhow!("{}", module_failure(&launch_result, module_name, "get_launch_command")));
         }
 
         let program = launch_result.get("program")
             .and_then(|p| p.as_str())
             .ok_or_else(|| anyhow::anyhow!("Module did not return program"))?;
 
-        let args: Vec<String> = launch_result.get("args")
-            .and_then(|a| a.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-            .unwrap_or_default();
+        let args = launch_args(&launch_result, &instance);
 
         let working_dir = launch_result.get("working_dir")
             .and_then(|w| w.as_str())
@@ -1339,18 +1456,14 @@ impl Supervisor {
         }
 
         if launch_result.get("success").and_then(|s| s.as_bool()) != Some(true) {
-            let msg = launch_result.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-            return Err(anyhow::anyhow!("{}", msg));
+            return Err(anyhow::anyhow!("{}", module_failure(&launch_result, module_name, "get_launch_command")));
         }
 
         let program = launch_result.get("program")
             .and_then(|p| p.as_str())
             .ok_or_else(|| anyhow::anyhow!("Module did not return program"))?;
 
-        let args: Vec<String> = launch_result.get("args")
-            .and_then(|a| a.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-            .unwrap_or_default();
+        let args = launch_args(&launch_result, &instance);
 
         let working_dir = launch_result.get("working_dir")
             .and_then(|w| w.as_str())
@@ -1575,6 +1688,32 @@ impl Supervisor {
         }
         // 한 번도 시작하지 않은 서버: 빈 콘솔
         Ok(json!({ "success": true, "lines": [], "running": false, "source": "none" }))
+    }
+
+    /// `get_console_output`에 줄마다 `spans`(의미 토큰 구간, UTF-16 오프셋)를 붙인다 (`?spans=1`)
+    pub async fn get_console_output_with_spans(
+        &self,
+        instance_id: &str,
+        since_id: Option<u64>,
+        count: Option<usize>,
+    ) -> Result<Value> {
+        let mut result = self.get_console_output(instance_id, since_id, count).await?;
+        let module = self.instance_store.get(instance_id).map(|i| i.module_name.clone()).unwrap_or_default();
+        let loaded = self.module_loader.get_module(&module).ok();
+        let hl = highlight::for_module(&module, loaded.as_ref().and_then(|m| m.metadata.syntax_highlight.as_ref()));
+        if let Some(lines) = result.get_mut("lines").and_then(Value::as_array_mut) {
+            for line in lines {
+                let spans: Vec<Value> = line
+                    .get("content")
+                    .and_then(Value::as_str)
+                    .map(|c| hl.spans(c).into_iter().map(|(s, e, t)| json!([s, e, t])).collect())
+                    .unwrap_or_default();
+                if let Some(obj) = line.as_object_mut() {
+                    obj.insert("spans".to_string(), Value::Array(spans));
+                }
+            }
+        }
+        Ok(result)
     }
 
     /// Run validation on an instance (via module's validate function)
@@ -2416,6 +2555,15 @@ mod tests {
 
     /// 시작 경로 정책 (C8): 인스턴스 설정 > 모듈이 콘솔 없음을 밝혔는지 > managed 기본
     #[test]
+    fn a_module_failure_says_why_instead_of_unknown_error() {
+        assert_eq!(module_failure(&json!({"success": false, "message": "jar missing"}), "mc", "get_launch_command"), "jar missing");
+        assert_eq!(module_failure(&json!({"success": false, "error": "bad port"}), "mc", "get_launch_command"), "bad port");
+        let legacy = module_failure(&json!({"command": "sh", "args": []}), "e2e-mock", "get_launch_command");
+        assert!(legacy.contains("e2e-mock") && legacy.contains("command") && legacy.contains("args"), "{}", legacy);
+        assert!(module_failure(&Value::Null, "m", "f").contains("nothing"));
+    }
+
+    #[test]
     fn managed_start_policy() {
         let tmp = tempfile::tempdir().unwrap();
         let modules_dir = tmp.path().join("modules");
@@ -2606,6 +2754,39 @@ mod tests {
         assert!(started.elapsed() < std::time::Duration::from_secs(10), "it exited on its own, not after the kill timeout");
     }
 
+    /// `?spans=1`: 디스크 로그 줄에도 모듈 규칙의 토큰 구간이 붙고, 없는 요청에는 안 붙는다
+    #[tokio::test]
+    async fn console_spans_use_module_rules() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules_dir = tmp.path().join("modules");
+        let dir = modules_dir.join("hl-game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nname = \"hl-game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[syntax_highlight.rules]]\nname = \"join\"\npattern = '(?P<hl>\\w+) joined'\ncolor = \"player\"\n",
+        )
+        .unwrap();
+        let supervisor = Supervisor::new_with_instances_dir(
+            modules_dir.to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        let mut inst = crate::instance::ServerInstance::new("srv", "hl-game");
+        inst.id = "srv".into();
+        let mut supervisor = supervisor;
+        supervisor.instance_store.add(inst).unwrap();
+        let log = managed_process::console_log_path(&supervisor.instance_store.instance_dir("srv"));
+        std::fs::create_dir_all(log.parent().unwrap()).unwrap();
+        std::fs::write(&log, "[2026-10-17 10:00:00] [STDOUT/INFO] Steve joined the game\n").unwrap();
+
+        let with = supervisor.get_console_output_with_spans("srv", None, Some(10)).await.unwrap();
+        assert_eq!(with["source"], "disk");
+        assert_eq!(with["lines"][0]["spans"], json!([[0, 5, "player"]]));
+        let without = supervisor.get_console_output("srv", None, Some(10)).await.unwrap();
+        assert!(without["lines"][0].get("spans").is_none());
+    }
+
     /// start_managed_server()가 이미 실행 중인 managed 프로세스를 감지하여
     /// 중복 프로세스 생성을 방지하는지 검증
     #[tokio::test]
@@ -2637,6 +2818,7 @@ mod tests {
             required_extensions: Vec::new(),
             schedule: Vec::new(),
             backup_keep: None,
+            extra_args: Vec::new(),
         };
         supervisor.instance_store.add(inst).unwrap();
 
@@ -2693,6 +2875,7 @@ mod tests {
             required_extensions: Vec::new(),
             schedule: Vec::new(),
             backup_keep: None,
+            extra_args: Vec::new(),
         };
         let inst_dir = instances_dir.join("test-tracker-guard");
         let _ = std::fs::create_dir_all(&inst_dir);

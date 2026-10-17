@@ -22,7 +22,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | **Daemon spawn** | `startDaemon()` main.js:549-657 | dev 모드는 `target/release/saba-core(.exe)`, prod 모드는 `getInstallRoot()/saba-core(.exe)`를 `--spawned` 인자로 실행한다(608). env는 `RUST_LOG=info, SABA_LANG, SABA_IPC_PORT, SABA_INSTANCES_PATH=<userData>/instances, SABA_MODULES_PATH`. stdout/stderr는 GUI 로그로 넘긴다 |
 | Daemon 재사용/기동 판단 | `ensureDaemon()` main.js:772-851 | `GET /health`가 200이면 기존 daemon을 재사용한다. 응답의 `token`이 `valid`가 아니거나(A6) 예전 데몬이 401을 주면 토큰을 다시 읽으며 최대 3회 재시도한다(`reloadTokenUntilValid`). ECONNREFUSED/timeout이면 `startDaemon()`을 호출하고 500ms 간격으로 최대 8회 폴링한다 |
 | Daemon 종료 | `stopDaemon()` main.js:660-675, `forceKillDaemon()` 688-704, `cleanQuit()` 736-769 | 먼저 `POST /api/daemon/shutdown`을 보내고 최대 15초 기다린다. 그래도 안 끝나면 **이 GUI가 띄운 PID만** 강제 종료한다(Windows `taskkill /PID … /F`, `/T` 없음. Unix SIGKILL). 이름 기반 kill은 하지 않는다(659 주석) |
-| 클라이언트 등록/heartbeat | main.js:874-917 | `POST /api/client/register {kind:'gui'}`, 이후 30초마다 `POST /api/client/:id/heartbeat`를 보낸다. 종료 시 `DELETE /api/client/:id/unregister[?shutdown=true]`를 호출한다 |
+| 클라이언트 등록/heartbeat | main.js:874-917 | `POST /api/client/register {kind:'gui', pid, installRoot}`(인스톨러가 이 설치의 GUI를 찾는 데 쓴다), 이후 30초마다 `POST /api/client/:id/heartbeat`를 보낸다. 종료 시 `DELETE /api/client/:id/unregister[?shutdown=true]`를 호출한다 |
 | install_root 동기화 | `syncInstallRoot()` main.js:854-868 | `PUT /api/updates/config {install_root}` |
 | 업데이트 알림 | main.js:939-1035 | 확인 주기는 데몬이 정한다. GUI는 10분마다 데몬이 캐시한 `GET /api/updates/status`를 읽어, 새 업데이트 목록일 때만 OS Notification을 띄우고 renderer에 `updates:available`을 보낸다. Locales는 알림에서 뺀다. 적용은 사용자가 고르고, `auto_download`이면 데몬이 미리 받아 둔다(1015) |
 | **업데이트 적용 시작** | `updater:launchApply` main.js:2461-2482 | `POST /api/updates/launch-updater {relaunch:[<gui exe>]}`만 보내고 `cleanQuit()`한다. 업데이터는 데몬이 띄운다(`src/ipc/updates.rs:570-639`, 실행 파일은 `saba-chan-updater{EXE_SUFFIX}`, 642-649) |
@@ -65,7 +65,8 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | instanceApplyUpdate (25) | instance:applyUpdate | 1921 | POST /api/instance/:id/apply-update | ✓ 670 |
 | instanceDelete (26) | instance:delete | 1933 | DELETE /api/instance/:id | ✓ 665 |
 | instanceReorder (27) | instance:reorder | 1962 | PUT /api/instances/reorder {order} | ✓ 663 |
-| instanceUpdateSettings (28) | instance:updateSettings | 1974 | PATCH /api/instance/:id | ✓ 665 |
+| instanceUpdateSettings (28) | instance:updateSettings | 1982 | PATCH /api/instance/:id. 400이면 `{status, error, error_code, details, fields}`를 그대로 넘긴다(`invalid_format`이면 형식 오류 알림) | ✓ 665 |
+| instanceLaunchPreview (31) | instance:launchPreview | 1966 | POST /api/instance/:id/launch-preview `{settings, extra_args?}` (extra_args를 안 넘기면 저장된 것) | ✓ (LaunchPreview.js) |
 | instanceResetServer (29) | instance:resetServer | 1573 | POST /api/instance/:id/server/reset | ✓ 684 |
 | executeCommand (30) | instance:executeCommand | 2014 | POST /api/instance/:id/command {command, args}. 명령 해석과 라우팅(REST·stdin·모듈)은 데몬이 한다(2012 주석). GUI는 `…/rcon`, `…/rest`를 직접 부르지 않는다 | ✓ 672 |
 | instanceStop/Restart/Rename/Commands (31-34) | instance:stop/restart/rename/commands | 2054-2065 | POST …/stop·…/restart {force}(restart는 150초 timeout), POST …/rename {name}, GET …/commands | ✓ 649, 650, 664, 673 (미사용) |
@@ -73,9 +74,11 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | runtimePreflight (36) | runtime:preflight | 2072 | GET /api/runtime/preflight | ✓ 723 (미사용) |
 | configDefaults / configReset (37-38) | config:defaults/reset | 2074-2079 | GET /api/config/:kind/defaults, POST /api/config/:kind/reset {keys?} | ✓ 702-703 (미사용) |
 | extensionList…extensionInitStatus (40-53) | extension:* | 2084-2263 | /api/extensions, /:id/enable, /disable, /i18n/:locale, /gui, /gui/styles, /icon, /manifest, /:id/install, DELETE /:id, /updates, /rescan, /init-status | ✓ 721-737 (확장 UI 로딩은 다른 문서에서 다룸) |
-| managedConsole (55) | managed:console | 1588 | GET /api/instance/:id/console?since&count | ✓ 678 |
+| managedConsole (55) | managed:console | 1588 | GET /api/instance/:id/console?since&count (4번째 인자 `{spans:true}`면 `&spans=1`) | ✓ 678 |
 | managedStdin (56) | managed:stdin | 1599 | POST /api/instance/:id/stdin | ✓ 679 |
 | consolePopout/FocusPopout/Popin/ToggleAlwaysOnTop (58-61) | console:* | 1611-1721 | Electron 창 조작만 (daemon 호출 없음) | n/a |
+| daemonConsole (67) | daemon:console | 1600 | GET /api/daemon/console?since&count. `{lines:[{id, timestamp, level, target, message}], count}` 그대로 | ✓ |
+| consolePopoutList (65) | console:popoutList | 1600 | 열린(파괴되지 않은) 팝아웃 창의 instanceId 배열. daemon 호출 없음 | n/a |
 | updaterCheck (69) | updater:check | 2267 | POST /api/updates/check | ✓ updates.rs:101 |
 | updaterStatus (70) | updater:status | 2405 | GET /api/updates/status | ✓ 100 |
 | updaterDownload (71) | updater:download | 2416 | POST /api/updates/download (본문이 없으면 전부) | ✓ 102 |
@@ -195,8 +198,10 @@ Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `u
 - `slots.rs`: 익스텐션 manifest의 `cli.slots`(데이터만, 코드 실행 없음). 지원 자리는 `InstanceList.badge`, `InstanceDetail.status`, `CreateInstance.options`.
 - `i18n.rs`: 설치 폴더의 `locales/<lang>/cli.json`을 먼저 읽고, 없으면 바이너리에 넣어 둔 en/ko를 쓴다(`:11-12, 36-45`). clap 도움말은 `help.cmd.*`·`help.arg.*` 키가 있으면 그 문구로 바꿔 끼운다(`cli.rs:617-645`).
 - `cmd/`: 명령 갈래마다 파일 하나(backup, bot, chatbot, config, console, daemon, extension, module, schedule, server, status, update).
+- 콘솔 색: 터미널이 색을 쓸 때만 `?spans=1`을 붙여(`client.rs` `console`) 데몬이 준 토큰 구간을 토큰별 ANSI 스타일로 칠하고, 나머지는 줄 `level` 색을 쓴다(`cmd/console.rs` `format_line`, `token_style`). 토큰은 02 §`HighlightRuleToml`.
 
 - `bot channels GUILD [--chatbot 이름,…] [--no-chatbot] [--music 이름] [--no-music]`: 채널 이름이나 id를 GET 응답의 `channels`로 id로 바꿔 PUT한다. 음악 채널을 새로 정할 때는 메시지가 지워진다고 확인을 받는다.
+- `server launch-preview [SERVER] [--args "..."]`: `POST /api/instance/:id/launch-preview`의 `command_line`을 보여 주고, 형식이 틀린 인자는 "잘못된 형식입니다"로 알린다. `--args`가 없으면 저장된 추가 인자로 본다.
 - `audit [SERVER] [--limit N]`(A10): `GET /api/audit`를 표로 보여 준다. CLI 요청에는 `X-Saba-Client: cli`가 붙는다.
 - `config export FILE [--secrets]`·`config import FILE [--dry-run] [--overwrite]`(A9): 경로를 절대 경로로 바꿔 `/api/migration/*`에 넘긴다. 파일은 데몬이 읽고 쓴다.
 

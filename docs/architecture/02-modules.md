@@ -125,6 +125,9 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `group` | String | 관례상 `saba-chan` / `advanced` / 없음(basic) |
 | `port` | bool | `false`. 네트워크 포트 값이면 true. 같은 게임 인스턴스를 여럿 만들 때 데몬이 겹치지 않게 옮긴다 |
 | `install` | bool | `false`. 서버를 만들 때 고르는 설정(받을 서버 파일이 달라지는 값). GUI 새 서버 화면과 CLI `server add`가 묻고 `POST /api/instances`의 `module_settings`로 보낸다. GUI는 select만 보인다 |
+| `arg` | String 또는 Vec<String> | — 이 값이 실행 인자로 들어가는 모양. 공백으로 나눈 토큰, `{value}`는 많아야 한 번(`"-port={value}"`, `"-servername {value}"`, `["-Xmx{value}", "-Xms{value}"]`). `{value}`가 없으면 boolean 플래그(있으면 true). `{value}`뿐인 모양은 로드 오류. 실행 인자 미리보기가 사용자가 친 추가 인자를 이 필드로 되돌릴 때 쓴다(`src/launch_args.rs`). 실제 실행 줄은 여전히 `get_launch_command`가 만든다 |
+| `format` | String | — 값 형식: `memory_size`(숫자+K/M/G 한 글자, `4G`·`1024M`), `port`(1~65535 정수), `integer`, `path`(비어 있지 않고 줄바꿈 없음). 모르는 이름은 로드 오류 |
+| `pattern` | String | — 값 전체가 맞아야 하는 정규식(잘못된 정규식은 로드 오류). `format`과 함께 PATCH 저장과 미리보기에서 검사한다(`validator::validate_format`) |
 
 - `fields`가 비어 있으면 `settings = None`이 된다.
 - 데몬이 직접 의미를 부여하는 setting 이름은 `rest_port`(기본 8212), `rest_host`(기본 127.0.0.1) (`:158-166`), 시작 경로를 고르는 `managed_start`(`mod.rs:1479-1489`), 자동 재시작의 `auto_restart`·`restart_on_unknown_exit`(`mod.rs:1993-1994`), 세션 로그 보관 수 `log_sessions_keep`(`mod.rs:1436-1439`)이다.
@@ -150,7 +153,12 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 `[[commands.fields.inputs]]` (`CommandInputToml` `:738-757`)의 허용 키: `name`✔, `label`, `type`, `required`, `placeholder`, `default`, `min`, `max`, `options`. 데몬이 입력을 묶고 검사할 때 이 값을 쓴다 (`commands/mod.rs:133-`).
 
 #### `[[syntax_highlight.rules]]` (`HighlightRuleToml` `:768-784`)
-`name`✔, `pattern`✔(regex, `(?P<hl>…)` 선택), `color`✔(CSS 색 또는 시맨틱 토큰), `background`, `bold`=false, `italic`=false, `underline`=false, `priority`=0. GUI에 그대로 전달되고 데몬은 Python 전용 정규식 문법에 경고만 남긴다 (`:786-804`).
+`name`✔, `pattern`✔(regex, `(?P<hl>…)` 선택), `color`✔(시맨틱 토큰), `background`, `bold`=false, `italic`=false, `underline`=false, `priority`=0. `/api/modules`로 GUI에 그대로 전달되고, 데몬은 Python 전용 정규식 문법에 경고만 남긴다 (`:786-804`).
+- 데몬 토큰화(`src/supervisor/highlight.rs`): `GET /api/instance/:id/console?spans=1`이면 줄마다 `spans: [[start, end, token]]`를 붙인다. 오프셋은 `content`의 UTF-16 코드 단위, 오름차순·겹침 없음, 칠할 곳만 들어 있다. 디스크 폴백 줄에도 붙고, 4096바이트를 넘는 줄은 앞부분만 본다.
+  - 토큰은 16개로 고정: `error, warn, info, debug, success, string, number, keyword, timestamp, player, command, selector, ip, uuid, path, dim` (`TOKENS`). `warning`→`warn`, `trace`→`debug`, `comment`→`dim`으로 바꾸고, 색 값(`#hex`)이나 모르는 이름의 규칙은 경고를 남기고 뺀다. `bold`·`italic`·`background`·`underline`은 spans에 싣지 않는다(굵기·색은 클라이언트 테마가 토큰별로 정한다).
+  - 엔진은 Rust `regex`(선형 시간). lookaround(`(?=`, `(?!`, `(?<=`, `(?<!`)는 컴파일되지 않아 그 규칙은 빠진다. 모듈 적합성 검사가 이를 막는다(saba-chan-modules `conformance`).
+  - 겹치면 priority가 큰 규칙, 같으면 먼저 선언된 규칙이 이긴다. 모듈 규칙 뒤에 공통 규칙(스택 프레임·`... N more`→dim, `Caused by:`→error, IPv4[:포트]→ip, UUID→uuid, 따옴표 문자열→string, 퍼센트→number)이 남은 칸만 칠한다.
+  - 컴파일 결과는 모듈 이름별로 캐시하고, 규칙 지문이 바뀌면(모듈 업데이트) 다시 만든다.
 
 #### `[install]` (`InstallSectionToml` `:618-640` → `ModuleInstallConfig` `:643-661`)
 | 키 | 타입 | 기본값 |
@@ -223,6 +231,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 - `get_launch_command` 성공: `program`, `args[]`, `working_dir`, `env_vars{}`. 그 밖의 선택 키:
   - `rest_credentials{rest_username, rest_password}`
   - credential_map의 게임 키(예: palworld의 `"AdminPassword"`)를 최상위나 `module_settings{}` 아래에 둔다.
+  - `extra_args_placed: true`: 받은 `extra_args`를 모듈이 알맞은 자리(예: JVM 인자는 `-jar` 앞)에 넣었다. 없으면 데몬이 `args` 끝에 붙인다(`supervisor::launch_args`).
 - `get_launch_command` 사용자 조치 필요: `action_required: "<code>"`를 넣으면 데몬이 결과를 그대로 GUI에 넘긴다 (`mod.rs:602-606, 1334-1337`). minecraft는 `server_jar_not_found` + `options:["update_path","install_new"]`를 쓴다.
 - 익스텐션 누락: `error_code: "extension_required"`, `missing_extensions[]`.
 - `status`: `status` 문자열과 `pid`를 데몬이 읽는다. 나머지 키는 버린다 (`mod.rs:986-1001`).
@@ -239,7 +248,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 
 | 함수 | 호출 지점 | 데몬이 넣는 config 키 |
 |---|---|---|
-| `get_launch_command` | managed 시작 `mod.rs:1310-1330`, non-managed 시작 `mod.rs:580-599` | (요청 payload.config) + `server_executable`, `server_jar`(없을 때), `working_dir`, `port`, **`module_settings`를 최상위로 펼침**, `rest_host`, `rest_port`, `rest_username`, `rest_password`, `protocol_mode`, `server_version`, `managed: true/false` (`insert_instance_fields` `mod.rs:286-299`). **`instance_id`는 없음** |
+| `get_launch_command` | managed 시작 `mod.rs:1310-1330`, non-managed 시작 `mod.rs:580-599`, 실행 인자 미리보기(`Supervisor::launch_preview`) | (요청 payload.config) + `server_executable`, `server_jar`(없을 때), `working_dir`, `port`, **`module_settings`를 최상위로 펼침**, `rest_host`, `rest_port`, `rest_username`, `rest_password`, `protocol_mode`, `server_version`, `instance_id`, `extra_args`(사용자가 더한 인자, 문자열 배열), `managed: true/false` (`insert_instance_fields`). 미리보기에서는 `preview: true`도 온다: 이때 모듈은 설정 파일을 쓰는 등 부작용을 내지 않는다 |
 | `stop` | non-managed 정지 `mod.rs:874-883`, stdin을 쓸 수 없는 managed 서버(REST 전용, stdin 없는 재부착)의 정지 `mod.rs:778-789` | `server_executable`, `server_jar`, `working_dir`, `module_settings`(펼침), `rest_*`, `protocol_mode`, `server_version`, `instance_id`(`insert_instance_fields`, `mod.rs:286-297`), `pid`, `force`, `managed`. 추적 중인 PID가 없으면 non-managed에서는 부르지 않는다 (`mod.rs:863-872`). 콘솔이 있는 managed 서버는 이 함수를 부르지 않고 데몬이 `stop_command`를 stdin으로 보낸 뒤 기다린다 (`mod.rs:756-776`) |
 | `status` | non-managed 상태 조회 `mod.rs:964-982` | `server_executable`, `server_jar`, `working_dir`, `pid`, `module_settings`(펼침) |
 | `command` | `POST /api/instance/:id/command`에서 명령의 `method`가 `module`일 때 → `mod.rs:1024-1083` | `command`, `args`, `protocol_mode`, `working_dir`, `rest_host`, `rest_port`, `pid`, `instance_id` |
@@ -411,7 +420,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 | 설정 | `ServerPropertiesManager`가 `server.properties`를 읽고 쓴다. 모듈 폴더에 동봉된 `server.properties`를 기본값으로 쓴다 (`_load_default_properties` `:507`). settings 66개(saba-chan 5 / advanced 40 / basic 21) |
 | 명령 | `[commands] hook = true`(설치된 플러그인·모드 명령은 위 행). module.toml에는 17개, 전부 `method="console"`(콘솔 stdin): say, give, save-all, list, weather, difficulty, gamemode, time, tp, kick, ban, pardon, op, deop, whitelist, seed, stop |
 | 정지 | managed는 데몬이 stdin으로 `stop`을 보낸다. 모듈 `stop()`은 force가 아니면 콘솔 `stop`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고 30초 기다린 뒤에만 `force_kill`한다 (`:1266-1318`). ~~RCON `stop` 시도 후 실패하면 바로 강제 종료~~ → 해결. `command()`도 `daemon_stdin_command`로 콘솔에 보낸다 (`:1425-`) |
-| 기타 | `EulaManager`(accept_eula), `ErrorDetector`(diagnose_log), `MinecraftPing`(SLP 기반 status), `get_installed_version`(jar 내부 `version.json` 파싱), syntax_highlight 규칙 36개. 색은 모두 GUI 팔레트 토큰이다(`saba-chan-gui/src/utils/syntaxHighlight.js:16-36`). ~~팔레트에 없는 `notice`·`critical`을 써서 색이 안 나왔다~~ → 해결: `info`·`error`로 바꿨다 (zomboid의 `duration`도 `number`로) |
+| 기타 | `EulaManager`(accept_eula), `ErrorDetector`(diagnose_log), `MinecraftPing`(SLP 기반 status), `get_installed_version`(jar 내부 `version.json` 파싱), syntax_highlight 규칙 40개(Vanilla·Forge `[시각] [스레드/레벨]`과 Paper 콘솔 `[시각 레벨]`을 모두 받는다). 색은 모두 GUI 팔레트 토큰이다(`saba-chan-gui/src/utils/syntaxHighlight.js:16-36`). ~~팔레트에 없는 `notice`·`critical`을 써서 색이 안 나왔다~~ → 해결: `info`·`error`로 바꿨다 (zomboid의 `duration`도 `number`로) |
 | 미등록 | `get_credentials`만 없다(RCON 값만 돌려주던 것이라 지웠다). `import_settings`, `reset_properties`, `reset_server`는 등록됨 |
 | 동봉 파일 | `_sample_log.txt`, `test_lifecycle.py`가 리포에 있고 zip에도 들어간다. 패키저는 `__pycache__`·`tests` 폴더와 `.pyc`만 뺀다 (`D:scripts/versions.py:195-207`) |
 
@@ -472,9 +481,11 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 - **`POST /api/modules/manifest/:id/install`** (`server.rs:452-505`):
   1. `id`에 `..`, `/`, `\`가 있으면 거부한다.
   2. manifest의 `module-<id>`가 없으면 실패한다.
+  - 설치된 모듈 버전이 manifest 버전보다 높으면 받지 않는다(`version::is_downgrade`). 릴레이가 예전 서명 manifest를 다시 보내 옛 버전을 깔게 하는 것을 막는다.
   3. R2 URL에서 `<modules>/_tmp_module_<id>.zip`로 받으며 SHA-256을 확인한다(`download_verified`).
   4. `.staging-<id>`에 풀고 `module.toml`이 있을 때만 기존 `<modules>/<id>`를 지우고 바꾼다. 그래서 업데이트해도 지워진 파일이 남지 않는다.
   - 실패도 HTTP 200 `{ok:false, error}`로 돌려준다.
+- **신뢰 표시 알림**: 서명된 카탈로그에서 받지 않았거나(`unverified`) 받은 뒤 바뀐(`modified`) 모듈로 인스턴스를 만들면 `POST /api/instances` 응답에 `module_trust`와 `warnings[{code, module}]`가 실린다. 알림일 뿐 만들기·실행은 막지 않는다(`server.rs` `trust_warnings`). CLI는 경고 줄로 보인다.
 - **`DELETE /api/modules/:id`**: `..`·`/`·`\`가 든 `id`는 거부하고, `<modules>/<id>`를 `remove_dir_all`로 지운다. 여기서 `id`는 **디렉터리명**이다 (`server.rs:508-531`).
 
 ### 5.3 업데이터

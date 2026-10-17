@@ -80,6 +80,17 @@ fn plain(md: &str) -> String {
     md.replace("**", "").replace('`', "")
 }
 
+/// 응답의 `warnings[{code, module|extension}]` (미검증·변경된 구성요소 알림)을 경고로 보인다
+pub fn print_trust_warnings(ctx: &Ctx, r: &Value) {
+    for w in r.get("warnings").and_then(Value::as_array).into_iter().flatten() {
+        let code = w.get("code").and_then(Value::as_str).unwrap_or_default();
+        let id = w.get("module").or_else(|| w.get("extension")).and_then(Value::as_str).unwrap_or_default();
+        if let Some(text) = crate::i18n::try_t(&format!("trust.notice.{}", code)) {
+            ctx.out.warn(&text.replace("{{id}}", id));
+        }
+    }
+}
+
 /// 코드 검사 결과: 선언한 권한, 찾은 사용처(선언 안 한 것은 빨갛게)
 /// `declared`는 `{권한: bool}`, `findings`·`undeclared`는 `[{permission, file, line, detail}]`
 pub fn print_audit(ctx: &Ctx, label: &str, r: &Value) {

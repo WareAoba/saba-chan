@@ -171,7 +171,7 @@
 |---|---|---|---|---|
 | GET | `/health` | `server.rs:19` `health_check` | - | `{ok:true, version, pid, token}`. 토큰 없이 부를 수 있다. `token`은 보낸 `X-Saba-Token`이 `valid`·`invalid`·`missing` 중 무엇인지(값은 드러내지 않는다) |
 | GET | `/api/diagnostics` | `diagnostics.rs:20` | - | A6, 인증 필요. `{ok, version, pid, uptime_secs, listen_addr, data_dir, token_file:{path, exists}, audit_log, extensions:{enabled, enabled_but_missing}, modules:{count}\|{error}, recent_problems:[최근 경고·오류 20개, 오래된 순]}` |
-| GET | `/api/audit` | `diagnostics.rs` `audit` | `?limit=`(기본 100, 최대 1000)`&instance=<id>` | A10 감사 로그, 최신이 먼저: `{entries:[{ts, source, user?, guild?, action, instanceId, instance?, command?, args?, ok, status}]}`. `action`은 `start`·`stop`·`restart`·`command`·`stdin` |
+| GET | `/api/audit` | `diagnostics.rs` `audit` | `?limit=`(기본 100, 최대 1000)`&instance=<id>` | A10 감사 로그, 최신이 먼저: `{entries:[{ts, source, user?, userName?, guild?, guildName?, action, instanceId, instance?, command?, args?, ok, status}]}`. 비밀은 `***`로 가린다(아래 `audit.rs`). `action`은 `start`·`stop`·`restart`·`command`·`stdin` |
 | GET | `/api/version` | `server.rs:279` | - | `{version, components:{saba-core, module-<이름>, ext-<id>, ...}}` |
 | GET | `/api/servers` | `server.rs:24` `list_servers` | - | `{servers:[ServerInfo], port_conflict_stops?:[...]}` (아래 설명) |
 | GET | `/api/server/:name/status` | `server.rs:534` | - | supervisor 결과 JSON 그대로. 404 시 `{error, error_code:"instance_not_found"}` |
@@ -207,7 +207,7 @@
 | GET | `/api/modules/schema` | `server.rs:366` | - | module.toml JSON Schema |
 | POST | `/api/modules/detect` | `server.rs:372` | `{path}` | `{matches:[{name, display_name}]}` (`dir_signatures`가 맞는 모듈) / 400 / 404 |
 | GET | `/api/modules/manifest` | `server.rs:429` | - | `{ok, manifest}` 또는 `{ok:false,error}`. 항상 200 |
-| POST | `/api/modules/manifest/:id/install` | `server.rs:452` | - | `{ok, module_id, version}` 또는 `{ok:false,error}`. 항상 200 |
+| POST | `/api/modules/manifest/:id/install` | `server.rs:452` | - | `{ok, module_id, version}` 또는 `{ok:false,error}`. 항상 200. 카탈로그 버전이 설치된 버전보다 낮으면 받지 않는다 |
 | DELETE | `/api/modules/:id` | `server.rs:508` | - | `{ok, id}`. 항상 200 |
 | GET | `/api/module/:name` | `server.rs:394` | - | `{name, version, description, path, metadata}` / 404 |
 | GET | `/api/module/:name/versions` | `managed.rs:242` | query `include_snapshots, page=1, per_page=25` | supervisor 결과 |
@@ -224,11 +224,12 @@
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
 | GET | `/api/instances` | `instance.rs:12` | - | `[ServerInstance]` (§4.1, REST 비밀번호 평문 포함) |
-| POST | `/api/instances` | `instance.rs:71` | `{name*, module_name*, executable_path?, working_dir?, migration_source?, port?}` | 201 `{success, id, provisioning?}`. 409 `working_dir_in_use`, 422 `extension_required`, 400/500 |
+| POST | `/api/instances` | `instance.rs:71` | `{name*, module_name*, executable_path?, working_dir?, migration_source?, port?}` | 201 `{success, id, provisioning?, module_trust, warnings[]}`. 모듈이 `verified`가 아니면 `warnings`에 `{code:"module_unverified"\|"module_modified", module}` 한 건(알림일 뿐 만들기는 막지 않는다). 409 `working_dir_in_use`, 422 `extension_required`, 400/500 |
 | PUT | `/api/instances/reorder` | `instance.rs:19` | `{order:[id]}` | `{success:true}` / 400 |
 | GET | `/api/instance/:id` | `instance.rs:49` | - | `ServerInstance` / 404 `{error, error_code}` |
 | DELETE | `/api/instance/:id` | `instance.rs:635` | - | `{success}` / 404 / 500 |
-| PATCH | `/api/instance/:id` | `instance.rs:758` | 임의 키-값 객체 | `{success:true}` / 400 `validation_failed{details, fields}` / 404 / 500 |
+| PATCH | `/api/instance/:id` | `instance.rs` `update_instance_settings` | 임의 키-값 객체. `extra_args`(문자열은 `chat::split_quoted`로 나눔, 또는 문자열 배열, null은 비우기)는 인스턴스의 추가 실행 인자로 | `{success:true}` / 400 `validation_failed`·`invalid_format`(모듈 `format`·`pattern`과 다름)`{details, fields}` / 404 / 500 |
+| POST | `/api/instance/:id/launch-preview` | `instance.rs` `launch_preview` → `Supervisor::launch_preview` | `{settings?:{필드:값}, extra_args?: string\|string[]}` (extra_args가 없으면 저장된 것) | 실행 인자 미리보기. 서버를 띄우지 않고 익스텐션 hook도 부르지 않는다. 저장된 설정 위에 초안, 그 위에 추가 인자를 필드 `arg` 모양으로 읽은 값을 얹어 `get_launch_command`(`preview:true`)를 부른다. 필드에 `arg`를 선언하지 않은 모듈이면 모듈을 부르지 않고 `{success:true, has_launch_args:false, ...}`(command_line 없음)를 돌려준다. 성공 `{success:true, has_launch_args, command_line, program, args[], settings_from_args{}, extra_args[], extra_args_text(큰따옴표가 든 인자가 있으면 null: 배열로 저장), errors[{arg\|null, field, expected, got}]}`. password 필드 값과 인스턴스 `rest_password`는 `***`. 모듈 실패 `{success:false, error:"launch_command_failed"\|action_required, message?, ...같은 키}` / 404 / 500 `preview_failed`. `expected`는 `validator::expected_of` 코드(`memory_size`·`port`·`integer`·`path`·`pattern`·`number`·`boolean`·`enum`·`text`) |
 | POST | `/api/instance/:id/rename` | `instance.rs:724` | `{name}` | `{success, id, name, previous}` / 409 `name_taken`·`server_running` / 404 |
 | GET | `/api/provision-progress/:name` | `instance.rs:606` | - | `{active:false}` 또는 `{active:true, step,total,label,message,done,error,percent?,steps?}` |
 | DELETE | `/api/provision-progress/:name` | `instance.rs:565` | - | `{success, rolled_back}`. **신규 생성**의 프로비저닝이 실패한 상태였을 때만 인스턴스를 삭제한다 |
@@ -264,7 +265,7 @@
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
 | POST | `/api/instance/:id/managed/start` | `managed.rs:14` | 선택 `{config?}` | supervisor 결과 / 404 / 500 |
-| GET | `/api/instance/:id/console` | `managed.rs:69` | query `since, count` | supervisor 결과 (`lines[{id,content,level}]`) / 404 |
+| GET | `/api/instance/:id/console` | `managed.rs:69` | query `since, count, spans` | supervisor 결과 (`lines[{id,content,level}]`, `spans=1`이면 줄마다 `spans`, 02 §3.3) / 404 |
 | POST | `/api/instance/:id/stdin` | `managed.rs:90` | `{command*}` | `/rcon`과 같은 응답(`via_stdin`) / 400 / 500 |
 | POST | `/api/instance/:id/validate` | `managed.rs:100` | - | supervisor 결과 |
 | GET | `/api/instance/:id/properties` | `managed.rs:115` | - | `manage_properties("read")` |
@@ -309,7 +310,8 @@
 
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
-| POST | `/api/client/register` | `client.rs:21` | `{kind:"gui"\|"cli"}` | `{client_id, kind, heartbeat_interval_ms:30000, timeout_ms:90000}` |
+| POST | `/api/client/register` | `client.rs:21` | `{kind:"gui"\|"cli", pid?, installRoot?}` | `{client_id, kind, heartbeat_interval_ms:30000, timeout_ms:90000}` |
+| GET | `/api/clients` | `client.rs` `client_list` | - | `{clients:[{id, kind, pid, installRoot}]}`. 인스톨러·제거기가 데몬을 끄기 전에 이 설치(`installRoot`)의 GUI PID를 받아, 임시 폴더에 풀린 포터블 GUI까지 끈다 |
 | POST | `/api/client/:id/heartbeat` | `client.rs:51` | 본문은 무시 | `{ok}` / 404 |
 | DELETE | `/api/client/:id/unregister` | `client.rs:69` | query `shutdown=true\|false` | `{ok}` / 404 |
 | POST | `/api/daemon/shutdown` | `client.rs:12` | - | `{ok, message}`. 200ms 뒤 `stop_requested` cancel |
@@ -326,11 +328,11 @@
 | POST | `/api/extensions/rescan` | `extension.rs:170` | `{success, newly_found}` |
 | GET | `/api/extensions/manifest` | `extension.rs:313` | `{success, extensions, updates}` (원격) |
 | GET | `/api/extensions/updates` | `extension.rs:410` | `{success, updates, count}` |
-| POST | `/api/extensions/:id/enable` | `extension.rs:96` | `{success,id,startup_dispatched}`. `daemon.startup` 훅을 비동기 실행 |
+| POST | `/api/extensions/:id/enable` | `extension.rs:96` | `{success,id,startup_dispatched,trust,warnings[]}`. `warnings`는 `verified`가 아닐 때 `{code:"extension_unverified"\|"extension_modified", extension}`(막지 않는다). `daemon.startup` 훅을 비동기 실행 |
 | POST | `/api/extensions/:id/disable` | `extension.rs:150` | 실행 중인 managed 인스턴스 참조 검사 |
 | POST | `/api/extensions/:id/mount` | `extension.rs:187` | |
 | POST | `/api/extensions/:id/unmount` | `extension.rs:199` | |
-| POST | `/api/extensions/:id/install` | `extension.rs:352` | 선택 `{download_url, sha256}`. 없으면 manifest에서 찾는다. 빠진 의존성도 함께 설치, `{success, id, installed}` |
+| POST | `/api/extensions/:id/install` | `extension.rs:352` | 선택 `{download_url, sha256}`. 없으면 manifest에서 찾는다. 빠진 의존성도 함께 설치, `{success, id, installed}`. manifest 버전이 설치된 버전보다 낮으면 `older_than_installed` |
 | DELETE | `/api/extensions/:id` | `extension.rs:432` | |
 | GET/PUT | `/api/extensions/:id/config` | `extension.rs:491/504` | `{config}` / 객체 머지(null이면 키 삭제) |
 | GET | `/api/extensions/:id/gui` | `extension.rs:228` | UMD JS 번들 (application/javascript) |
@@ -393,7 +395,7 @@ Relay 서명 방식(`relay.rs:100-137`):
 - **검증**: 헤더 `X-Saba-Token` 값과 정확히 일치하는지 비교한다(`auth.rs:134`).
   - 상수 시간 비교다(`constant_time_eq`, `auth.rs:86-89`). 길이 차이는 숨기지 않는다(UUID 고정 길이).
   - 불일치하면 본문 없이 401을 돌려준다.
-  - 실패 로그는 30초에 한 번으로 제한하고, 토큰 앞 8자를 로그에 남긴다.
+  - 실패 로그는 30초에 한 번으로 제한하고, 토큰은 남기지 않는다(헤더가 없었는지 틀렸는지만).
 - **우회 경로**
   - `SABA_AUTH_DISABLED=1`이면 토큰 검사를 건너뛴다. **디버그 빌드에서만** 동작하며(`auth.rs:103-106`), 통합 테스트가 이 방식을 쓴다(`tests/daemon_integration.rs:111`).
   - 캐시도 없고 토큰 파일도 없으면 **거부한다**(fail-closed).
@@ -503,7 +505,7 @@ Relay 서명 방식(`relay.rs:100-137`):
 - `ureq`(동기)를 쓰고 timeout은 10초다. Basic Auth를 지원한다.
 - 연결이 EOF나 reset으로 끊기면 성공으로 간주한다. Palworld 대응 코드다(`rest.rs:100-119`).
 - `verify_connection`은 실제 연결 없이 host와 port 유효성만 본다(`rest.rs:42-48`).
-- Basic 토큰 앞 8자와 비밀번호 길이를 **info 레벨로 로그에 남긴다**(`rest.rs:86`).
+- 인증 로그에는 사용자 이름만 debug 레벨로 남긴다(`rest.rs:86`). 토큰·비밀번호 길이는 남기지 않는다.
 
 ### 5.3 ProtocolClient (`protocol/client.rs`)
 
@@ -590,7 +592,7 @@ Relay 서명 방식(`relay.rs:100-137`):
 
 - `process_monitor.rs`는 `sysinfo` 0.30으로 전체 프로세스 스냅샷(`pid,name,exe,cmd`)을 만든다. `spawn_blocking`으로 감싼 async 버전도 있다.
 - `daemon_log.rs`는 tracing Layer와 링 버퍼(10k)를 제공하고, `get_since(since,count=200)`로 조회한다.
-- `audit.rs`(A10): 서버 시작·정지·재시작(`/api/instance/:id/*`, `/api/server/:name/*`), 게임 명령(`execute_command`), 콘솔 입력(`/stdin`)을 `<data_dir>/audit.log`에 한 줄 JSON으로 남긴다(1 MiB에서 `audit.log.1`로 넘김, 인자·줄은 300자까지). 출처는 task-local `Origin`: HTTP 요청은 미들웨어가 `X-Saba-Client`(GUI `gui`, CLI `cli`, 없으면 `api`)로, 릴레이 에이전트는 `discord`+요청자·길드 id로, 예약 작업은 `schedule`로 정한다. 재시작 안의 정지·시작은 `quietly`로 따로 남기지 않는다. 로컬 클라이언트는 같은 토큰을 쓰므로 출처는 기록용이지 보안 경계가 아니다.
+- `audit.rs`(A10): 서버 시작·정지·재시작(`/api/instance/:id/*`, `/api/server/:name/*`), 게임 명령(`execute_command`), 콘솔 입력(`/stdin`)을 `<data_dir>/audit.log`에 한 줄 JSON으로 남긴다(1 MiB에서 `audit.log.1`로 넘김, 인자·줄은 300자까지). 출처는 task-local `Origin`: HTTP 요청은 미들웨어가 `X-Saba-Client`(GUI `gui`, CLI `cli`, 없으면 `api`)로, 릴레이 에이전트는 `discord`+요청자·길드 id(릴레이가 `payload.userName`·`payload.guildName`을 보내면 그 이름도)로, 예약 작업은 `schedule`로 정한다. `discord`·`schedule`·`daemon`은 헤더로 받지 않고 `api`로 본다. 기록 전에 `audit::redact`가 비밀을 가린다: 모듈이 `password`로 선언했거나 이름에 pass·pwd·token·secret·apikey가 든 명령 인자, 그런 인자를 받는 명령의 콘솔 줄(첫 낱말이 이름·별명·`console_template` 첫 낱말과 같거나 이름부터 비밀스러운 줄)은 첫 낱말 뒤 전체, 인스턴스의 `password` 설정값·REST 비밀번호(4자 이상)는 어디에 나오든. 넘기기(rename)에 실패해도 기록은 이어서 남긴다. 재시작 안의 정지·시작은 `quietly`로 따로 남기지 않는다. 로컬 클라이언트는 같은 토큰을 쓰므로 출처는 기록용이지 보안 경계가 아니다.
 - 콘솔 프로그램을 부를 때는 창을 숨긴다: 데몬은 `utils::apply_creation_flags`(tokio), 업데이터·인스톨러와 std `Command`는 `saba_chan_updater_lib::process::hide_console`. 분리 실행(`DETACHED_PROCESS`)된 데몬이나 GUI 프로그램(인스톨러·업데이터)이 콘솔 프로그램을 플래그 없이 부르면 부를 때마다 검은 창이 뜬다.
 - `utils.rs`는 Windows `CREATE_NO_WINDOW` 플래그와 경로 한 칸 이름 검사(`is_single_path_component`)를 다룬다(`utils.rs:8-20`).
 
@@ -641,7 +643,7 @@ Relay 서명 방식(`relay.rs:100-137`):
 5. ~~`/api/ext-process/:name/start`는 임의 명령을 실행~~(라우트 삭제). ~~`/api/fs/scan-dir`는 임의 디렉토리를 열람한다~~ → 해결: 지웠다. 마이그레이션은 게임 폴더 판정(`POST /api/modules/detect`)만 쓴다(D2).
 6. ~~**relay 토큰 유출 가능성**: `?relayUrl=`로 임의 호스트에 `Authorization: Bearer <node_token>`을 보낼 수 있다~~ → 해결: 서명 요청(host status·nodes·members)은 `signed_relay_url`로 설정한 릴레이(없으면 기본)만 쓰고, 요청 주소가 그와 같거나 루프백(모의 릴레이)일 때만 따른다(`relay.rs:45-67, 211-241`). 챗봇 동기화도 설정한 릴레이만 쓴다(`chatbot.rs:150-153`). ~~서명 없는 bot-invite·pair는 `relayUrl`을 그대로 따른다~~ → 해결: 페어링(시작·상태)과 bot-invite도 같은 규칙을 쓴다(`relay.rs:271, 299, 327`, 59a93b8).
 7. ~~**`POST /api/modules/manifest/:id/install`에 경로 검사가 없다**~~ → 해결: `..`, `/`, `\`를 거부한다(`server.rs:457-459`). `get_module_locales`는 여전히 이름을 그대로 `join`한다(`config.rs:201-203`).
-8. **비밀값이 평문으로 응답에 실린다.** `GET /api/instances`, `/api/servers`에는 REST 비밀번호가 들어 있다. ~~`/api/config/bot`의 Discord 토큰~~(BotConfig에서 `token` 삭제). REST Basic 토큰 앞부분과 비밀번호 길이는 로그에 남는다(`rest.rs:86`).
+8. **비밀값이 평문으로 응답에 실린다.** `GET /api/instances`, `/api/servers`에는 REST 비밀번호가 들어 있다. ~~`/api/config/bot`의 Discord 토큰~~(BotConfig에서 `token` 삭제).
 9. **익스텐션 설치에 사용자 지정 `download_url`을 허용하고 sha256은 선택**이다(`extension.rs:357-375`). ~~포터블 Python/Node 다운로드에 체크섬 검증이 없다~~ → 해결: Python은 고정 해시로 검사하고(§6.1), Node 다운로드는 지워졌다.
 10. ~~**프로비저닝 dismiss 롤백 경쟁**~~ → 해결: 롤백은 신규 생성으로 표시된 이름(`mark_creating`)일 때만 한다. 기존 인스턴스의 업데이트 실패는 진행 표시만 지운다(`instance.rs:565-603`, `ipc/mod.rs:379-410`).
 11. ~~**`/api/daemon/shutdown`과 `unregister?shutdown=true`는 토큰만 cancel한다**~~ → 해결: 둘 다 `stop_requested`를 cancel하고, main의 단일 종료 경로가 `daemon.shutdown` 훅과 클라이언트 정리를 거친다(`ipc/mod.rs:621-627`, `main.rs:533-599`).

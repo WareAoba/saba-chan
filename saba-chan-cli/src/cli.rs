@@ -292,6 +292,13 @@ pub enum ServerCmd {
     Validate { server: Option<String> },
     /// Look for known problems in the logs
     Diagnose { server: Option<String> },
+    /// Show the exact launch line the daemon would run (starts nothing)
+    LaunchPreview {
+        server: Option<String>,
+        /// Extra launch args to try (quoted like a shell); saved ones are used when omitted
+        #[arg(long = "args", allow_hyphen_values = true)]
+        extra_args: Option<String>,
+    },
     /// Accept the game's EULA
     AcceptEula { server: Option<String> },
     /// Wipe the server files and start fresh

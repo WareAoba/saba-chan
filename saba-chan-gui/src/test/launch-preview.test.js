@@ -67,6 +67,34 @@ describe('LaunchPreview', () => {
         expect(window.showToast).not.toHaveBeenCalled();
     });
 
+    it('입력칸을 아직 모르면 저장된 추가 인자로 묻고, 돌려받은 글자로 칸을 채운다 (설정 칸은 건드리지 않는다)', async () => {
+        window.api.instanceLaunchPreview = vi.fn().mockResolvedValue({
+            success: true,
+            has_launch_args: true,
+            command_line: 'java -Xmx4G -jar server.jar "two words"',
+            settings_from_args: { ram: '4G' },
+            extra_args: ['two words'],
+            extra_args_text: '-Xmx4G "two words"',
+            errors: [],
+        });
+        const onLoaded = vi.fn();
+        const onSettings = vi.fn();
+        render(
+            <LaunchPreview
+                serverId="s1"
+                fields={fields}
+                values={{}}
+                onExtraArgsChange={() => {}}
+                onExtraArgsLoaded={onLoaded}
+                onSettingsFromArgs={onSettings}
+            />,
+        );
+        await settle();
+        expect(window.api.instanceLaunchPreview).toHaveBeenCalledWith('s1', { nogui: false }, undefined);
+        expect(onLoaded).toHaveBeenCalledWith('-Xmx4G "two words"');
+        expect(onSettings).not.toHaveBeenCalled();
+    });
+
     it('형식이 틀리면 토스트 하나만 띄우고, 같은 오류로는 다시 띄우지 않는다', async () => {
         const bad = {
             success: true,
@@ -100,5 +128,7 @@ describe('LaunchPreview', () => {
         expect(res).toEqual({ extra_args: ['-fast'], settings: { ram: '6G' } });
         window.api.instanceLaunchPreview = vi.fn().mockResolvedValue({ success: true, has_launch_args: false });
         expect(await settleLaunchArgs('s1', fields, {})).toBeNull();
+        // 입력칸을 받기 전이면 데몬이 저장된 추가 인자로 나누게 undefined를 넘긴다
+        expect(window.api.instanceLaunchPreview).toHaveBeenCalledWith('s1', { nogui: false }, undefined);
     });
 });
