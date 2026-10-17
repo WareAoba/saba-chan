@@ -1,5 +1,6 @@
 //! 명령 처리 — 갈래마다 파일 하나
 
+pub mod audit;
 pub mod backup;
 pub mod bot;
 pub mod chatbot;
@@ -27,6 +28,7 @@ pub async fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
         Cmd::Status => status::run(ctx).await,
         Cmd::Version => status::version(ctx).await,
         Cmd::Monitor(a) => monitor::run(ctx, a).await,
+        Cmd::Audit { server, limit } => audit::run(ctx, server.as_deref(), limit).await,
         Cmd::Server(c) => server::run(ctx, c).await,
         Cmd::Start(a) => server::start(ctx, a).await,
         Cmd::Stop(a) => server::stop(ctx, a).await,

@@ -93,7 +93,9 @@ pub async fn send_stdin_handler(
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     // 명령 경로와 같은 응답: 보낸 뒤 찍힌 콘솔 줄을 data.response로
-    super::command::via_stdin(&state, &id, &payload).await
+    let resp = super::command::via_stdin(&state, &id, &payload).await.into_response();
+    let line = payload.get("command").or_else(|| payload.get("line")).and_then(|v| v.as_str()).map(str::to_string);
+    super::audited(&state, "stdin", &id, line.as_deref(), None, resp).await
 }
 
 /// POST /api/instance/:id/validate — Validate prerequisites

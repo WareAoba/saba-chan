@@ -17,7 +17,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | 책임 | 위치 | 설명 |
 |---|---|---|
 | userData 경로 고정 | main.js:32 | `app.setPath('userData', getSabaDataDir())`. Windows는 `%APPDATA%/saba-chan`, Unix는 `$HOME/.config/saba-chan`, `SABA_DATA_DIR`가 있으면 그 값을 쓴다 |
-| IPC 토큰 인증 | main.js:58-212 | `.ipc_token` 파일을 **직접 읽어** `X-Saba-Token` 헤더에 넣는다. axios 인터셉터(104-117)가 데몬으로 가는 요청에만 토큰을 붙이고 리다이렉트를 따라가지 않는다(`isDaemonRequest` 93-101). Node 전역 `http.request`는 건드리지 않는다. 종료 시 unregister만 `http.request`를 직접 쓰며 토큰을 그 자리에서 붙인다. 401을 받으면 토큰 파일을 다시 읽고 1회 재시도한다(124-174). 단 `/api/relay/` 요청은 재시도하지 않는다 |
+| IPC 토큰 인증 | main.js:58-212 | `.ipc_token` 파일을 **직접 읽어** `X-Saba-Token` 헤더에 넣는다. axios 인터셉터(104-117)가 데몬으로 가는 요청에만 토큰을 붙이고 리다이렉트를 따라가지 않는다(`isDaemonRequest` 93-101). 같은 인터셉터가 감사 로그 출처 `X-Saba-Client: gui`도 붙인다(A10). Node 전역 `http.request`는 건드리지 않는다. 종료 시 unregister만 `http.request`를 직접 쓰며 토큰을 그 자리에서 붙인다. 401을 받으면 토큰 파일을 다시 읽고 1회 재시도한다(124-174). 단 `/api/relay/` 요청은 재시도하지 않는다 |
 | 렌더러 격리 | `rendererWebPreferences()` main.js:1038-1045, `lockNavigation()` 1058-1072 | 모든 창이 `nodeIntegration:false, contextIsolation:true, sandbox:true`로 뜬다. 앱 밖 주소로의 이동과 새 창은 막고, http(s) 링크만 바깥 브라우저로 연다 |
 | **Daemon spawn** | `startDaemon()` main.js:549-657 | dev 모드는 `target/release/saba-core(.exe)`, prod 모드는 `getInstallRoot()/saba-core(.exe)`를 `--spawned` 인자로 실행한다(608). env는 `RUST_LOG=info, SABA_LANG, SABA_IPC_PORT, SABA_INSTANCES_PATH=<userData>/instances, SABA_MODULES_PATH`. stdout/stderr는 GUI 로그로 넘긴다 |
 | Daemon 재사용/기동 판단 | `ensureDaemon()` main.js:772-851 | `GET /health`가 200이면 기존 daemon을 재사용한다. 응답의 `token`이 `valid`가 아니거나(A6) 예전 데몬이 401을 주면 토큰을 다시 읽으며 최대 3회 재시도한다(`reloadTokenUntilValid`). ECONNREFUSED/timeout이면 `startDaemon()`을 호출하고 500ms 간격으로 최대 8회 폴링한다 |
@@ -196,6 +196,7 @@ Main에서 renderer로 가는 push 이벤트: `status:update`(로딩 단계), `u
 - `cmd/`: 명령 갈래마다 파일 하나(backup, bot, chatbot, config, console, daemon, extension, module, schedule, server, status, update).
 
 - `bot channels GUILD [--chatbot 이름,…] [--no-chatbot] [--music 이름] [--no-music]`: 채널 이름이나 id를 GET 응답의 `channels`로 id로 바꿔 PUT한다. 음악 채널을 새로 정할 때는 메시지가 지워진다고 확인을 받는다.
+- `audit [SERVER] [--limit N]`(A10): `GET /api/audit`를 표로 보여 준다. CLI 요청에는 `X-Saba-Client: cli`가 붙는다.
 - `config export FILE [--secrets]`·`config import FILE [--dry-run] [--overwrite]`(A9): 경로를 절대 경로로 바꿔 `/api/migration/*`에 넘긴다. 파일은 데몬이 읽고 쓴다.
 
 사용자 안내서는 `saba-chan-cli/README.md`에 있다.

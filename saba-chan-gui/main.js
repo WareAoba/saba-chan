@@ -106,12 +106,11 @@ axios.interceptors.request.use((config) => {
     if (!isDaemonRequest(config)) return config;
     config.maxRedirects = 0;
     const token = getIpcToken();
-    if (token && config.headers) {
-        if (typeof config.headers.set === 'function') {
-            config.headers.set('X-Saba-Token', token);
-        } else {
-            config.headers['X-Saba-Token'] = token;
-        }
+    if (config.headers) {
+        // 감사 로그의 출처 (A10)
+        const put = (k, v) => (typeof config.headers.set === 'function' ? config.headers.set(k, v) : (config.headers[k] = v));
+        if (token) put('X-Saba-Token', token);
+        put('X-Saba-Client', 'gui');
     }
     return config;
 });

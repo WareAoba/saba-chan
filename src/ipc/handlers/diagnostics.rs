@@ -43,6 +43,7 @@ pub async fn diagnostics(State(state): State<IPCServer>) -> impl IntoResponse {
         "listen_addr": state.listen_addr,
         "data_dir": data_dir,
         "token_file": { "path": token_file, "exists": token_file.is_file() },
+        "audit_log": crate::audit::log().path(),
         "extensions": { "enabled": enabled, "enabled_but_missing": missing },
         "modules": match modules {
             Ok(count) => json!({ "count": count }),
@@ -50,4 +51,22 @@ pub async fn diagnostics(State(state): State<IPCServer>) -> impl IntoResponse {
         },
         "recent_problems": problems,
     }))
+}
+
+#[derive(serde::Deserialize)]
+pub struct AuditQuery {
+    #[serde(default)]
+    pub limit: Option<usize>,
+    /// 이 인스턴스 id의 기록만
+    #[serde(default)]
+    pub instance: Option<String>,
+}
+
+/// GET /api/audit?limit=&instance= — 감사 로그 (A10), 최신이 먼저. 기본 100건, 최대 1000건
+pub async fn audit(axum::extract::Query(q): axum::extract::Query<AuditQuery>) -> impl IntoResponse {
+    let limit = q.limit.unwrap_or(100).clamp(1, 1000);
+    let entries = tokio::task::spawn_blocking(move || crate::audit::log().recent(limit, q.instance.as_deref()))
+        .await
+        .unwrap_or_default();
+    Json(json!({ "entries": entries }))
 }

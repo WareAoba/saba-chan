@@ -263,6 +263,10 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
         Ok(b) => b,
         Err(e) => return error(StatusCode::BAD_REQUEST, "INVALID_ARCHIVE", e.to_string()),
     };
+    // 설정이 잘못된 zip이면 인스턴스·노드 토큰을 바꾸기 전에 멈춘다
+    if let Err(e) = state.config_store.check_sections(&bundle.config).await {
+        return error(StatusCode::BAD_REQUEST, "INVALID_CONFIG", e.to_string());
+    }
 
     let running: HashSet<String> = {
         let sup = state.supervisor.read().await;
