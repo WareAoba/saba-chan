@@ -229,7 +229,7 @@
 - 익스텐션 간 의존성: docker는 `{"steamcmd": ">=0.1.0"}`을 가진다. 그래서 steamcmd를 먼저 enable해야 docker를 enable할 수 있고, docker가 enabled인 동안 steamcmd를 disable할 수 없다. 런타임에서는 `compose_manager.provision`이 `../steamcmd/steamcmd.py`를 `importlib`로 **파일 경로로 직접 로드**한다(`compose_manager.py:808-825`).
 - music: `daemon.startup` → `music_deps.check_dependencies`가 npm 패키지(`EXT/music/package.json`)를 `npm install`하고 ffmpeg/yt-dlp/opus를 확인한 뒤 결과를 `.deps-resolved.json`에 기록한다(`music_deps.py:91-160`). portable npm/ffmpeg는 data_dir 아래에서 탐색한다(`:40-90`).
   - 실제 음악 기능 코드는 이 익스텐션 패키지에 **없고**, `saba-chan/discord_bot/extensions/music.js`에 있다. music.js는 `.deps-resolved.json`을 읽거나, 없으면 **Node 봇이 Python `music_deps.py`를 직접 spawn한다**(`discord_bot/extensions/music.js:33-100`). daemon을 우회하는 경로다. 또 `../../../saba-chan-extensions/music/music_deps.py`라는 개발 리포 경로까지 후보로 둔다(`:40`).
-- node: daemon에 `node_env::find_or_bootstrap()`(`src/main.rs:711`)과 `/api/node-env/setup`이 있다. 익스텐션 manifest에는 node 의존성을 선언할 방법이 없다.
+- node: 데몬에는 Node 런타임 관리가 없다(L1에서 `node_env` 삭제). 익스텐션 manifest에도 node 의존성을 선언할 방법이 없다.
 - Python 의존성: 익스텐션별 requirements 선언이 없다. 공용 venv를 쓴다.
 
 ---
