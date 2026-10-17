@@ -9,8 +9,8 @@
 
 | 저장소 | 브랜치 · 커밋 | 커밋 날짜 |
 |---|---|---|
-| WareAoba/saba-chan | `claude/project-thread-qcza9f` `97ec625` (CLI 절은 `claude/cli-remake-b1wszk`) | 2026-10-17 |
-| WareAoba/saba-chan-modules | `claude/project-thread-qcza9f` `1c63b6f` | 2026-10-17 |
+| WareAoba/saba-chan | `claude/project-thread-qcza9f` `1df6770` (CLI 절은 `claude/cli-remake-b1wszk`) | 2026-10-17 |
+| WareAoba/saba-chan-modules | `claude/project-thread-qcza9f` `a8b6c29` | 2026-10-17 |
 | WareAoba/saba-chan-extensions | `claude/project-thread-qcza9f` `359741f` | 2026-10-17 |
 | WareAoba/server-chan | `main` `4c423e8` (릴레이 쪽은 다시 만드는 중이라 갱신하지 않았다) | 2026-04-14 |
 
@@ -80,7 +80,7 @@
 | 설정 | 사용자 설정은 `<data_dir>/config.json` 하나(네임스페이스 `gui`, `relay`, `updates`, `boot`, `extensions`, `chatbot`, 클라이언트별 영역). 원자적 저장과 `.bak` 복구, 예전 개별 파일은 한 번 이관하고 `.migrated` 사본을 남긴다 | 01 §4.4 |
 | 데몬 → 모듈 | `python lifecycle.py <fn>`, stdin JSON(config) → stdout JSON(전체 또는 마지막 줄), stderr `PROGRESS:` 진행 보고. 데몬이 부르는 함수 17종. 환경변수 `SABA_IPC_URL`, `SABA_TOKEN_PATH`, `SABA_LANG`, `SABA_ENABLED_EXTENSIONS` | 02 §2 |
 | 모듈 정의 | `module.toml`: `[module]`(필수) `[protocols]` `[config]` `[detection]` `[launch]` `[backup]` `[errors]` `[extensions.<id>]` `[[settings.fields]]` `[[commands.fields]]` `[install]`. `schema_version = 1`이면 모르는 키와 잘못된 값에서 로드가 실패하고, 같은 구조체에서 JSON Schema를 내보낸다 | 02 §1.2 |
-| 게임 명령 | 모두 stdin(서버 콘솔). `/api/instance/:id/rcon`은 이름만 남은 호환 경로로 콘솔 출력을 잠깐 모아 돌려준다. 콘솔 없는 서버는 409 `no_command_path`. palworld는 REST(`/rest`)만 쓴다. 정지도 RCON 없이 콘솔 명령이나 REST로 한다 | 01 §5.4, 02 RCON 정책 |
+| 게임 명령 | 모두 stdin(서버 콘솔). 모듈의 콘솔 명령은 `method = "console"` + `console_template`(예전 이름 `rcon`은 별칭). `/api/instance/:id/rcon`은 이름만 남은 호환 경로로 콘솔 출력을 잠깐 모아 돌려준다. 콘솔 없는 서버는 409 `no_command_path`. palworld는 REST(`/rest`)만 쓴다. 정지도 RCON 없이 콘솔 명령이나 REST로 한다 | 01 §5.4, 02 RCON 정책 |
 | 데몬 → 플러그인 | 같은 실행기로 hook 함수 호출. `FIRED_HOOKS` 목록(`daemon.startup/shutdown`, `server.pre_start/stop/status/list_enrich/post_create/pre_delete/settings_changed/check_update`, 익스텐션 명령 `command.<name>`). 목록의 hook이 모두 발화되는지 테스트가 확인한다. 순서는 `priority`, id 순 | 03 §2 |
 | 플러그인 → GUI | GUI가 `/api/extensions/:id/gui` 번들을 로드, 전역 `window.SabaExt<Pascal>`의 `registerSlots()`로 slot에 컴포넌트 주입 | 03 §4 |
 | 데몬 ↔ relay | 데몬 안의 relay_agent가 바깥으로 롱폴링하고 HMAC 서명으로 요청한다. 페어링·봇 초대·노드 조회는 데몬 `/api/relay/*` 프록시 | 04 §4, 05 §4 |

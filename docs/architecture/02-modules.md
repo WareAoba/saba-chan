@@ -76,7 +76,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `default` | String | GUI로 전달만 함 (`ProtocolsInfo`) |
 | `interaction_mode` | String | `console` 또는 `commands`. GUI가 콘솔 버튼 같은 UI를 고르는 데 쓴다 (`saba-chan-gui/src/components/ServerCard.js:417-421`, `App.js:494-500`). 데몬은 해석하지 않는다. 데몬은 모든 모듈을 기본 managed로 시작하고(`mod.rs:1479-1489`), 그 판정을 `GET /api/servers`의 `ServerInfo.managed`로 알려 준다(`D:src/ipc/mod.rs:208-210`, `server.rs:81`). 그런데 GUI는 이 값을 쓰지 않고 아직 `managed_start`가 없으면 `console`만 managed로 본다(`ServerCard.js:418-421`, `App.js:494-500`). 그래서 palworld 같은 `commands` 모듈은 데몬은 managed로, GUI(콘솔 버튼·종료 확인)는 non-managed로 다룬다 |
 
-> **RCON 정책**: 보안상 saba-chan은 RCON을 쓰지 않는다. 데몬에는 RCON 클라이언트가 없고, 게임 명령은 모두 서버 콘솔(stdin)로 간다. `/api/instance/:id/rcon`은 이름만 남은 호환 경로로, 한 줄을 stdin에 쓰고 콘솔 출력을 약 1.5초 모아 `data.response`로 돌려준다(`D:src/ipc/handlers/command.rs:263-307`). 콘솔이 없는 서버(관리하지 않는 모드, runner 없이 붙은 프로세스)는 409 `no_command_path`를 받으므로 saba-chan에서 명령을 보낼 수 없다. 데몬이 재시작해도 saba-runner에 다시 붙어 stdin을 유지한다. minecraft는 모든 모드와 설치 시점에 `enable-rcon=false`를 강제하고, zomboid는 `RCONPassword`를 비운다. 두 모듈의 RCON 설정 항목, RCON 폴백(stop·status·command), `get_credentials`는 지워졌고 `supported = ["stdin"]`이다. palworld도 RCON 명령 경로(RCON 클라이언트, `protocol_mode=rcon` 분기, `rcon_enabled`·`rcon_port` 키 매핑, `rcon_password` 반환)를 지웠다. 명령은 늘 데몬 REST 경로로 가고, `configure()`는 저장할 때마다 `RCONEnabled=False`를 쓴다 (`M:palworld/lifecycle.py:933, 1224-`). `method = "rcon"`은 명령 정의에 남아 있지만 실제 전송은 stdin이다.
+> **RCON 정책**: 보안상 saba-chan은 RCON을 쓰지 않는다. 데몬에는 RCON 클라이언트가 없고, 게임 명령은 모두 서버 콘솔(stdin)로 간다. `/api/instance/:id/rcon`은 이름만 남은 호환 경로로, 한 줄을 stdin에 쓰고 콘솔 출력을 약 1.5초 모아 `data.response`로 돌려준다(`D:src/ipc/handlers/command.rs:263-307`). 콘솔이 없는 서버(관리하지 않는 모드, runner 없이 붙은 프로세스)는 409 `no_command_path`를 받으므로 saba-chan에서 명령을 보낼 수 없다. 데몬이 재시작해도 saba-runner에 다시 붙어 stdin을 유지한다. minecraft는 모든 모드와 설치 시점에 `enable-rcon=false`를 강제하고, zomboid는 `RCONPassword`를 비운다. 두 모듈의 RCON 설정 항목, RCON 폴백(stop·status·command), `get_credentials`는 지워졌고 `supported = ["stdin"]`이다. palworld도 RCON 명령 경로(RCON 클라이언트, `protocol_mode=rcon` 분기, `rcon_enabled`·`rcon_port` 키 매핑, `rcon_password` 반환)를 지웠다. 명령은 늘 데몬 REST 경로로 가고, `configure()`는 저장할 때마다 `RCONEnabled=False`를 쓴다 (`M:palworld/lifecycle.py:933, 1224-`). 콘솔 명령은 `method = "console"` + `console_template`이다(예전 이름 `rcon`·`rcon_template`도 별칭으로 읽힌다).
 
 #### `[config]` (`ConfigSection` `:537-554`)
 | 키 | 타입 | 사용처 |
@@ -135,10 +135,10 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `name` | String ✔ | |
 | `label` | String | 없으면 `name` |
 | `description` | String | |
-| `method` | String | `rcon`(템플릿을 채워 콘솔 stdin으로) / `rest` / `module`(lifecycle `command()`, 예전 이름 `dual`·`both`도 받음) / 생략(=`module`). 해석은 데몬 `crate::commands`가 한다 (`D:src/commands/mod.rs:104-128`) |
+| `method` | String | `console`(템플릿을 채워 콘솔 stdin으로. 예전 이름 `rcon`은 읽을 때 `console`로 바뀐다, `D:src/supervisor/module_loader.rs:836`) / `rest` / `module`(lifecycle `command()`, 예전 이름 `dual`·`both`도 받음) / 생략(=`module`). 해석은 데몬 `crate::commands`가 한다 (`D:src/commands/mod.rs:104-128`) |
 | `http_method` | String | REST 전용. 기본 `GET` |
 | `endpoint_template` | String | REST 전용. 없으면 `/<name>` |
-| `rcon_template` | String | 예: `"kick {player}"` |
+| `console_template` | String | 예: `"kick {player}"`. 예전 이름 `rcon_template`도 별칭으로 읽는다 (`D:src/supervisor/module_loader.rs:256-257, 730`) |
 | `risk` | String | `safe` / `caution` / `danger`, 없으면 caution |
 | `inputs` | Vec<CommandInput> | |
 
@@ -202,7 +202,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
     - 데몬은 첫 실행 때 자기 안에 든 `i18n.py`·`daemon_rcon.py`를 modules 폴더에 맞춰 쓴다 (`ensure_shared_modules` `:100-117`).
   - `SABA_ENABLED_EXTENSIONS` = 활성 익스텐션 ID를 콤마로 연결한 문자열. `<data_dir>/config.json`의 `extensions.enabled`에서 읽는다 (`:198-205`). 목록이 없으면 빈 값이다.
   - `SABA_IPC_PORT`, `SABA_IPC_URL`(데몬 API 주소), `SABA_TOKEN_PATH`(`X-Saba-Token` 값이 든 파일), `SABA_LANG`(`config.json`의 `gui.language`, 실행마다 다시 읽음)을 넣는다 (`daemon_env` `:18-37`).
-    - 문서(`M:docs/module-development-guide.md:1711-1719`)는 `DAEMON_API_URL`을 주입한다고 하는데, 데몬이 넣는 것은 `SABA_IPC_URL`이다. `daemon_rcon.py`는 `DAEMON_API_URL`이 있으면 그것을, 없으면 `SABA_IPC_URL`을, 둘 다 없으면 `http://127.0.0.1:57474`를 쓴다 (`D:modules/daemon_rcon.py:53-59`).
+    - ~~문서는 `DAEMON_API_URL`을 주입한다고 한다~~ → 해결: 다시 쓴 개발 가이드는 `SABA_IPC_URL`, `SABA_TOKEN_PATH`, `SABA_LANG`이라고 적는다(`M:docs/module-development-guide.md:31`). `daemon_rcon.py`는 `DAEMON_API_URL`이 있으면 그것을, 없으면 `SABA_IPC_URL`을, 둘 다 없으면 `http://127.0.0.1:57474`를 쓴다 (`D:modules/daemon_rcon.py:53-59`).
 
 ### 2.2 모듈 측 디스패치 관례
 
@@ -255,10 +255,10 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 
 모듈의 `start` 함수는 모든 모듈에서 지워졌다(FUNCTIONS에 없음). non-managed 모드도 `get_launch_command`로 데몬이 직접 spawn한다 (`mod.rs:580-652`).
 
-**문서의 "호출 순서"와 다른 점** (`M:docs/module-development-guide.md:94-126`, `__example__lifecycle.py:36-50`):
+**예전 개발 가이드의 "호출 순서"와 다른 점** (가이드는 a8b6c29에서 현재 데몬 기준으로 다시 쓰였다. 아래는 `__example__lifecycle.py:36-50` 주석에 남은 차이다):
 - "시작 시 `validate → configure → get_launch_command`"라고 되어 있다. 실제로는 `POST /api/instance/:id/start`가 `validate`를 시작 전 점검으로 부르고(critical 문제만 막고, 점검이 실패하면 막지 않는다) 이어서 `get_launch_command`를 부른다. `configure`는 시작 때 부르지 않는다. `/managed/start`와 `/server/:name/start`를 직접 부르면 점검도 없다.
 - "status 주기적 호출"이라고 되어 있지만, 실제로는 non-managed 인스턴스의 status API 요청 때만 호출된다. 모니터 루프는 PID 스냅샷만 본다.
-- "rcon_template이 있으면 데몬이 직접 RCON을 보낸다"고 되어 있다. 실제로는 데몬(`crate::commands`)이 템플릿을 채워 서버 콘솔(stdin)로 보낸다 (`D:src/commands/mod.rs:110-112`). RCON은 쓰지 않는다. `__example__lifecycle.py`는 이제 반대로 `method="stdin"` + `input_template`이라고 적는데(`:44, 355-356`), 데몬은 `stdin` method를 `unsupported_method`로 거부하고(`commands/mod.rs:123-127`) `input_template`은 schema v1에서 모르는 키다. 같은 폴더의 toml은 맞게 `method = "rcon"` + `rcon_template`을 쓴다.
+- ~~"rcon_template이 있으면 데몬이 직접 RCON을 보낸다"~~ → 해결: 개발 가이드가 다시 쓰여 `method = "console"` + `console_template`을 콘솔(stdin)로 보낸다고 적는다(`M:docs/module-development-guide.md:182-200`, `D:src/commands/mod.rs:111-112`). 다만 `__example__lifecycle.py` 주석은 아직 `method="stdin"` + `input_template`이라고 적는데(`:44, 355-356`), 데몬은 `stdin` method를 `unsupported_method`로 거부하고(`D:src/commands/mod.rs:125`) `input_template`은 schema v1에서 모르는 키다. 같은 폴더의 toml은 맞게 `method = "console"` + `console_template`을 쓴다.
 - "config에 `instance_id`, `settings{}` 항상 포함"이라고 되어 있지만, `instance_id`는 `command`에만 들어가고 `settings{}`는 `configure`에만 들어간다. 그 외 함수에서는 `module_settings`가 **최상위로 펼쳐져** 들어간다.
 
 ### 2.4 함수 구현 매트릭스 (FUNCTIONS 딕셔너리 기준)
@@ -401,7 +401,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 | 설치 | `install.method="download"`. `ServerInstaller`(`:1480-1750`)가 Mojang `version_manifest_v2`(`:1477`)에서 버전 목록을 받아 jar를 내려받는다. Java는 `JavaDetector`와 `JavaDownloader`(Adoptium API `:284`)로 감지하거나 `<working_dir>/java/`에 번들로 받는다 |
 | 실행 | `get_launch_command`가 `java -Xmx/-Xms{ram}`, 선택적 Aikar flags, `jvm_args`, `-jar server.jar nogui`를 만든다. 시작 전에 `enable-rcon=false`를 강제한다(모든 모드) |
 | 설정 | `ServerPropertiesManager`가 `server.properties`를 읽고 쓴다. 모듈 폴더에 동봉된 `server.properties`를 기본값으로 쓴다 (`_load_default_properties` `:507`). settings 66개(saba-chan 5 / advanced 40 / basic 21) |
-| 명령 | 17개, 정의는 `method="rcon"`이지만 전송은 stdin: say, give, save-all, list, weather, difficulty, gamemode, time, tp, kick, ban, pardon, op, deop, whitelist, seed, stop |
+| 명령 | 17개, 전부 `method="console"`(콘솔 stdin): say, give, save-all, list, weather, difficulty, gamemode, time, tp, kick, ban, pardon, op, deop, whitelist, seed, stop |
 | 정지 | managed는 데몬이 stdin으로 `stop`을 보낸다. 모듈 `stop()`은 force가 아니면 콘솔 `stop`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고 30초 기다린 뒤에만 `force_kill`한다 (`:1266-1318`). ~~RCON `stop` 시도 후 실패하면 바로 강제 종료~~ → 해결. `command()`도 `daemon_stdin_command`로 콘솔에 보낸다 (`:1425-`) |
 | 기타 | `EulaManager`(accept_eula), `ErrorDetector`(diagnose_log), `MinecraftPing`(SLP 기반 status), `get_installed_version`(jar 내부 `version.json` 파싱), syntax_highlight 규칙 36개. 색은 모두 GUI 팔레트 토큰이다(`saba-chan-gui/src/utils/syntaxHighlight.js:16-36`). ~~팔레트에 없는 `notice`·`critical`을 써서 색이 안 나왔다~~ → 해결: `info`·`error`로 바꿨다 (zomboid의 `duration`도 `number`로) |
 | 미등록 | `get_credentials`만 없다(RCON 값만 돌려주던 것이라 지웠다). `import_settings`, `reset_properties`, `reset_server`는 등록됨 |
@@ -429,7 +429,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 | 설치 | `steamcmd`, app_id 380870. steamcmd 익스텐션이 켜져 있지 않으면 `extension_required`를 돌려준다(`:1255-1261`). 익스텐션을 쓰고, 없으면 시스템 steamcmd(`_find_steamcmd`)로 대체한다 |
 | 실행 | `StartServer64.bat`나 `start-server.sh`를 **파싱**해서(`_parse_bat`, `_parse_sh`, `_parse_java_cmdline` `:607-741`) 번들 Java, classpath, native lib을 찾는다. 그다음 `java ... zombie.network.GameServer -servername <name> -cachedir=...`를 직접 구성한다 |
 | 설정 | `IniManager`가 `Zomboid/Server/<servername>.ini`를 다룬다. `_INI_KEY_MAP`(saba 키 → INI 키). settings 117개. `[backup] hook = true`라 `backup_paths()`가 세이브 위치를 계산한다 |
-| 명령 | 23개, 정의는 rcon이지만 전송은 stdin: servermsg, players, save, kick, banuser, unbanuser, adduser, setaccesslevel, teleport, teleportto, createhorde, godmod, invisible, startrain, stoprain, chopper, gunshot, additem, addxp, showoptions, reloadoptions, changeoption, quit |
+| 명령 | 23개, 전부 `console`(콘솔 stdin): servermsg, players, save, kick, banuser, unbanuser, adduser, setaccesslevel, teleport, teleportto, createhorde, godmod, invisible, startrain, stoprain, chopper, gunshot, additem, addxp, showoptions, reloadoptions, changeoption, quit |
 | 정지 | managed는 데몬이 stdin으로 `quit`을 보낸다. 모듈 `stop()`(non-managed, stdin 없는 managed)은 force가 아니면 콘솔 `save`→`quit`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고 30초 기다린 뒤에만 강제 종료한다. PID 확인·종료는 공용 헬퍼를 쓰고, `status()`는 PID 생존만 본다 (`:1020-1092`). ~~예전 버그(managed 기본 True, `input` 키, 토큰 없음)~~ → 해결. ~~`tasklist`·`os.kill`로 직접 확인·종료, RCON 폴백(stop·status·command)~~ → 해결: 지워졌다 |
 | 미구현 | `accept_eula`, `list_versions`, `get_version_details`, `get_installed_version`, `reset_properties` |
 
@@ -483,7 +483,7 @@ zomboid의 `beta_branch` 키는 지워졌다. 베타 설치는 lifecycle이 `use
 1. ~~`[module].entry`가 쓰이지 않는다~~ 해결됨: 데몬이 `entry_path()`로 쓰고 로드 때 파일 존재를 확인한다 (§1.1).
 2. ~~command `inputs`의 `options`, `min`, `max`가 버려진다~~ → 해결: `CommandInputToml`·`CommandInput`이 받고 데몬이 입력 검사에 쓴다 (`module_loader.rs:264-281, 738-757`).
 3. ~~`[detection.linux]`, `install.beta_branch`, `detection.common_paths`, `config.*` 추가 키, `[errors]`, `game_name`, `display_name`이 무시된다~~ → 해결: schema v1이 모르는 키를 로드 오류로 내고, 모듈에서 그 키들이 지워졌다. `[errors]`·`game_name`·`display_name`은 메타데이터에 실린다 (`module_loader.rs:957-997`).
-4. ~~`CommandField.method` 주석은 `both`인데 인터페이스 분기는 `dual`이다~~ → 해결: 데몬 `crate::commands`가 `rcon`/`rest`/`module`(`dual`·`both` 별칭)을 해석하고 인터페이스는 분기하지 않는다 (`D:src/commands/mod.rs:104-128`).
+4. ~~`CommandField.method` 주석은 `both`인데 인터페이스 분기는 `dual`이다~~ → 해결: 데몬 `crate::commands`가 `console`/`rest`/`module`(`rcon`·`dual`·`both` 별칭)을 해석하고 인터페이스는 분기하지 않는다 (`D:src/commands/mod.rs:104-128`).
 5. ~~`/api/modules` 응답에 `game_name`과 `display_name`이 없다~~ → 해결: `ExtensionInfo`에 둘 다 있다 (`D:src/ipc/mod.rs:255-258`).
 6. ~~ZIP 로딩에서 `ends_with("module.toml")`로 첫 엔트리를 고른다~~ → 해결: 이름이 정확히 `module.toml`인 가장 얕은 엔트리를 고른다 (`module_loader.rs:1164-1175`). `.extracted` 재추출 문제와, locales·설치 경로가 `<modules>/<name>`을 가정하는 문제는 남았다 (§1.1, §4.5).
 
