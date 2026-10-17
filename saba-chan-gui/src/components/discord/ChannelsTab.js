@@ -30,6 +30,7 @@ export function channelsErrorText(res, t, nameOf) {
         case 'BOT_UNAVAILABLE':
             return t('discord.channels_err_bot');
         case 'INVALID_BODY':
+        case 'VALIDATION_ERROR':
             return t('discord.channels_err_generic');
         default:
             return res?.message || res?.error || t('discord.channels_err_generic');

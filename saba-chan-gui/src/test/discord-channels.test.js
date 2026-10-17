@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ChannelsTab, channelsPatch } from '../components/discord/ChannelsTab';
+import { ChannelsTab, channelsErrorText, channelsPatch } from '../components/discord/ChannelsTab';
 
 const node = { guildId: 'g1', guildName: 'My Guild' };
 const base = {
@@ -19,6 +19,14 @@ describe('채널 배정 변환', () => {
         const saved = { chatbot: ['1', '2'], music: '3' };
         expect(channelsPatch(saved, { chatbot: ['2', '1'], music: '3' })).toEqual({});
         expect(channelsPatch(saved, { chatbot: [], music: null })).toEqual({ chatbot: [], music: null });
+    });
+
+    it('데몬·릴레이 검증 오류는 코드 대신 일반 문구로 보인다', () => {
+        const t = (k) => k;
+        expect(channelsErrorText({ error: 'VALIDATION_ERROR', details: [] }, t, String)).toBe(
+            'discord.channels_err_generic',
+        );
+        expect(channelsErrorText({ error: 'INVALID_BODY' }, t, String)).toBe('discord.channels_err_generic');
     });
 });
 
