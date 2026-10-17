@@ -1,6 +1,7 @@
 //! 확인되지 않은 모듈·익스텐션의 Python을 AppContainer 안에서 돌린다 (Windows)
 //!
-//! - 프로필 `saba-chan.untrusted` 하나를 모두 같이 쓴다. 능력은 `internetClient`(밖으로 내려받기)만 준다.
+//! - 프로필은 구성요소마다 따로 둔다(`profile_for`). 폴더 권한이 프로필 SID에 남으므로, 한 구성요소가 받은
+//!   권한을 다른 구성요소가 쓰지 못하게 하려면 SID가 달라야 한다. 능력은 `internetClient`(밖으로 내려받기)만 준다.
 //!   그래서 안에서는 포트를 열 수 없고, LAN과 루프백(데몬 API)에도 닿지 않는다.
 //! - 폴더 권한: Python 설치·구성요소·공용 유틸리티는 읽기, 그 인스턴스 폴더·바이트코드 캐시·임시 폴더는
 //!   읽기/쓰기. 데이터 폴더 자체(토큰·`config.json`)와 그 위, 드라이브 루트, 사용자 폴더 루트에는 주지 않는다.
@@ -12,9 +13,19 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-/// AppContainer 프로필 이름
-#[cfg_attr(not(windows), allow(dead_code))]
-pub const PROFILE: &str = "saba-chan.untrusted";
+/// AppContainer 프로필 이름 접두어. 예전의 공용 프로필 `saba-chan.untrusted`는 더 쓰지 않는다
+const PROFILE_PREFIX: &str = "saba-chan.untrusted.";
+
+/// 구성요소 키(`module-<이름>`·`ext-<이름>`)를 짧게 줄인 꼬리표 (프로필 이름 64자 한도, 폴더 이름에도 쓴다)
+pub fn component_tag(key: &str) -> String {
+    use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(key.as_bytes()))[..16].to_string()
+}
+
+/// 그 구성요소의 AppContainer 프로필 이름
+pub fn profile_for(key: &str) -> String {
+    format!("{PROFILE_PREFIX}{}", component_tag(key))
+}
 
 /// 폴더에 줄 권한
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -120,7 +131,7 @@ pub use imp::{spawn, Contained};
 
 #[cfg(windows)]
 mod imp {
-    use super::{Access, Grants, PROFILE};
+    use super::{Access, Grants};
     use std::ffi::{OsStr, OsString};
     use winapi::ctypes::c_void;
     use std::os::windows::ffi::OsStrExt;
@@ -178,9 +189,13 @@ mod imp {
     type DeriveSid = unsafe extern "system" fn(*const u16, *mut PSID) -> i32;
 
     /// 프로필 SID. userenv의 함수는 실행 중에 찾는다 (없는 Windows에서는 `sandbox_unavailable`)
-    fn container_sid() -> Result<PSID, String> {
-        static SID: std::sync::OnceLock<Result<Sid, String>> = std::sync::OnceLock::new();
-        SID.get_or_init(|| unsafe {
+    fn container_sid(profile: &str) -> Result<PSID, String> {
+        static SIDS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, Sid>>> = std::sync::OnceLock::new();
+        let mut sids = SIDS.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(sid) = sids.get(profile) {
+            return Ok(sid.0);
+        }
+        let sid = unsafe {
             let lib = LoadLibraryW(wide(OsStr::new("userenv.dll")).as_ptr());
             if lib.is_null() {
                 return Err(last_error("userenv.dll"));
@@ -192,8 +207,8 @@ mod imp {
             }
             let create: CreateProfile = std::mem::transmute(create);
             let derive: DeriveSid = std::mem::transmute(derive);
-            let name = wide(OsStr::new(PROFILE));
-            let desc = wide(OsStr::new("saba-chan unverified modules and extensions"));
+            let name = wide(OsStr::new(profile));
+            let desc = wide(OsStr::new("saba-chan unverified module or extension"));
             let mut sid: PSID = null_mut();
             let hr = create(name.as_ptr(), name.as_ptr(), desc.as_ptr(), null_mut(), 0, &mut sid);
             if hr < 0 || sid.is_null() {
@@ -204,11 +219,10 @@ mod imp {
                     return Err(format!("AppContainer profile: 0x{:08x} / 0x{:08x}", hr as u32, hr2 as u32));
                 }
             }
-            Ok(Sid(sid))
-        })
-        .as_ref()
-        .map(|s| s.0)
-        .map_err(Clone::clone)
+            sid
+        };
+        sids.insert(profile.to_string(), Sid(sid));
+        Ok(sid)
     }
 
     /// S-1-15-3-1 (internetClient), S-1-15-2-1 (ALL APPLICATION PACKAGES)
@@ -304,8 +318,8 @@ mod imp {
         Ok(())
     }
 
-    fn apply(grants: &Grants) -> Result<PSID, String> {
-        let sid = container_sid()?;
+    fn apply(profile: &str, grants: &Grants) -> Result<PSID, String> {
+        let sid = container_sid(profile)?;
         let everyone = all_app_packages()?;
         for (path, access) in &grants.entries {
             grant_one(path, sid, everyone, *access)?;
@@ -362,9 +376,16 @@ mod imp {
         }
     }
 
-    /// 폴더 권한을 주고 AppContainer 안에서 띄운다. 표준 입출력은 파이프로 잇는다
-    pub fn spawn(program: &OsStr, args: &[OsString], cwd: Option<&Path>, env: &[(OsString, OsString)], grants: &Grants) -> Result<Contained, String> {
-        let sid = apply(grants)?;
+    /// `profile`의 SID에 폴더 권한을 주고 그 AppContainer 안에서 띄운다. 표준 입출력은 파이프로 잇는다
+    pub fn spawn(
+        program: &OsStr,
+        args: &[OsString],
+        cwd: Option<&Path>,
+        env: &[(OsString, OsString)],
+        profile: &str,
+        grants: &Grants,
+    ) -> Result<Contained, String> {
+        let sid = apply(profile, grants)?;
         let internet = internet_client()?;
 
         let (in_r, in_w) = pipe()?;

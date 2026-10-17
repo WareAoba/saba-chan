@@ -256,6 +256,9 @@ pub struct Isolation {
     /// 설치 기록 키 (`module-<이름>`·`ext-<이름>`). 모듈·익스텐션 폴더 밖이면 그 폴더 경로
     pub key: String,
     pub dir: PathBuf,
+    /// 이 구성요소만 쓰는 AppContainer 프로필 (`appcontainer::profile_for`)
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub profile: String,
     #[cfg_attr(not(windows), allow(dead_code))]
     pub grants: appcontainer::Grants,
     pub pycache: PathBuf,
@@ -301,8 +304,10 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
     let data_dir = std::fs::canonicalize(&raw_data_dir).unwrap_or_else(|_| raw_data_dir.clone());
     let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).and_then(|h| std::fs::canonicalize(h).ok());
     let home = home.as_deref();
-    let pycache = raw_data_dir.join("pycache-sandbox");
-    let temp = raw_data_dir.join("sandbox-temp");
+    // 바이트코드 캐시와 임시 폴더도 구성요소마다 따로 (다른 구성요소가 넣어 둔 .pyc를 읽지 않게)
+    let tag = appcontainer::component_tag(&key);
+    let pycache = raw_data_dir.join("pycache-sandbox").join(&tag);
+    let temp = raw_data_dir.join("sandbox-temp").join(&tag);
     for d in [&pycache, &temp] {
         let _ = std::fs::create_dir_all(d);
     }
@@ -340,7 +345,8 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
         let _ = std::fs::create_dir_all(d);
         add(d, Access::Write);
     }
-    Some(Isolation { key, dir, grants, pycache, temp, data })
+    let profile = appcontainer::profile_for(&key);
+    Some(Isolation { key, dir, profile, grants, pycache, temp, data })
 }
 
 /// 격리 실행을 띄운 결과
@@ -360,8 +366,8 @@ pub async fn spawn_isolated(cmd: &std::process::Command, iso: &Isolation) -> Res
         let cwd = cmd.get_current_dir().map(Path::to_path_buf);
         let changes = cmd.get_envs().map(|(k, v)| (k.to_os_string(), v.map(|v| v.to_os_string()))).collect();
         let env = appcontainer::merge_env(std::env::vars_os().collect(), changes);
-        let grants = iso.grants.clone();
-        let started = tokio::task::spawn_blocking(move || appcontainer::spawn(&program, &args, cwd.as_deref(), &env, &grants))
+        let (profile, grants) = (iso.profile.clone(), iso.grants.clone());
+        let started = tokio::task::spawn_blocking(move || appcontainer::spawn(&program, &args, cwd.as_deref(), &env, &profile, &grants))
             .await
             .unwrap_or_else(|e| Err(e.to_string()));
         match started {
@@ -574,6 +580,18 @@ mod tests {
         for key in ["module-minecraft", "ext-", "ext-../x", "ext-.hidden", "ext-a/b", "/somewhere/else"] {
             assert_eq!(extension_data_dir(data, key), None, "{key}");
         }
+    }
+
+    /// 폴더 권한은 프로필 SID에 남는다: 구성요소마다 프로필·캐시·임시 폴더가 달라야 서로의 권한을 쓰지 못한다
+    #[test]
+    fn each_component_gets_its_own_profile() {
+        let a = appcontainer::profile_for("module-minecraft");
+        let b = appcontainer::profile_for("ext-steamcmd");
+        assert_ne!(a, b);
+        assert_eq!(a, appcontainer::profile_for("module-minecraft"));
+        assert_ne!(a, "saba-chan.untrusted");
+        assert!(a.len() <= 64 && b.len() <= 64);
+        assert_ne!(appcontainer::component_tag("module-minecraft"), appcontainer::component_tag("ext-steamcmd"));
     }
 
     #[test]
