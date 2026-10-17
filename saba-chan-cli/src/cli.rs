@@ -529,6 +529,11 @@ pub fn localized() -> clap::Command {
         if let Some(about) = crate::i18n::try_t(&format!("help.cmd.{}", if path.is_empty() { "_root" } else { path })) {
             cmd = cmd.about(about);
         }
+        // mut_arg는 인자를 맨 뒤로 옮긴다. 위치 인자는 순서가 곧 뜻이라 번호를 먼저 박아 둔다.
+        let positionals: Vec<String> = cmd.get_positionals().map(|a| a.get_id().to_string()).collect();
+        for (i, id) in positionals.iter().enumerate() {
+            cmd = cmd.mut_arg(id.as_str(), |a| a.index(i + 1));
+        }
         let ids: Vec<String> = cmd.get_arguments().map(|a| a.get_id().to_string()).collect();
         for id in ids {
             let text = crate::i18n::try_t(&format!("help.arg.{}.{}", path, id))
@@ -587,6 +592,8 @@ mod tests {
     #[test]
     fn clap_definition_is_valid() {
         Cli::command().debug_assert();
+        // 도움말을 바꿔 끼워도 위치 인자 순서가 그대로여야 한다
+        localized().debug_assert();
     }
 
     #[test]
