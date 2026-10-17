@@ -22,19 +22,19 @@ pub struct Cli {
 #[derive(Args, Debug, Clone, Default)]
 pub struct Global {
     /// Print machine-readable JSON instead of text
-    #[arg(long, global = true)]
+    #[arg(long, global = true, display_order = 900)]
     pub json: bool,
     /// Answer yes to confirmation questions
-    #[arg(short = 'y', long, global = true)]
+    #[arg(short = 'y', long, global = true, display_order = 900)]
     pub yes: bool,
     /// Disable colors
-    #[arg(long, global = true)]
+    #[arg(long, global = true, display_order = 900)]
     pub no_color: bool,
     /// Language for messages (en, ko, ...)
-    #[arg(long, global = true, value_name = "LANG")]
+    #[arg(long, global = true, display_order = 900, value_name = "LANG")]
     pub lang: Option<String>,
     /// Daemon port (default: from settings)
-    #[arg(long, global = true, value_name = "PORT")]
+    #[arg(long, global = true, display_order = 900, value_name = "PORT")]
     pub port: Option<u16>,
 }
 
@@ -67,6 +67,15 @@ pub enum Cmd {
     /// Discord bot connection (cloud relay)
     #[command(subcommand, visible_alias = "discord")]
     Bot(BotCmd),
+    /// World backups of a server
+    #[command(subcommand, visible_alias = "backups")]
+    Backup(BackupCmd),
+    /// Scheduled tasks of a server (backup, restart, announce, update)
+    #[command(subcommand, visible_alias = "schedules")]
+    Schedule(ScheduleCmd),
+    /// AI chatbot for Discord (API key, settings, memory)
+    #[command(subcommand, visible_alias = "ai")]
+    Chatbot(ChatbotCmd),
     /// Saba-chan updates
     #[command(subcommand, visible_alias = "updates")]
     Update(UpdateCmd),
@@ -91,6 +100,86 @@ pub enum Cmd {
     Completions {
         #[arg(value_name = "SHELL")]
         shell: clap_complete::Shell,
+    },
+}
+
+// ── backup / schedule / chatbot ──
+
+#[derive(Subcommand, Debug)]
+pub enum BackupCmd {
+    /// Backups of a server, newest first
+    #[command(visible_alias = "ls")]
+    List { server: Option<String> },
+    /// Back up now
+    #[command(visible_alias = "new")]
+    Create { server: Option<String> },
+    /// Delete one backup
+    #[command(visible_alias = "rm")]
+    Delete { server: String, backup: String },
+    /// Put a backup back (the server must be stopped; asks to stop it)
+    Restore { server: String, backup: String },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ScheduleCmd {
+    /// Show the schedule
+    #[command(visible_alias = "ls")]
+    Show { server: Option<String> },
+    /// Add a task: backup, restart, announce or update
+    Add {
+        server: String,
+        /// backup | restart | announce | update
+        action: String,
+        /// Repeat every N minutes (30, 30m, 2h)
+        #[arg(long, value_name = "TIME")]
+        every: Option<String>,
+        /// Every day at this time (HH:MM, this PC's clock)
+        #[arg(long, value_name = "HH:MM")]
+        at: Option<String>,
+        /// Warn players this many minutes before (restart/update), e.g. 10,5,1
+        #[arg(long, value_name = "MINUTES", value_delimiter = ',')]
+        warn: Vec<u32>,
+        /// Message to announce
+        #[arg(long)]
+        message: Option<String>,
+    },
+    /// Remove task number N (see `schedule show`)
+    #[command(visible_alias = "rm")]
+    Remove { server: String, number: usize },
+    /// Turn task N on
+    On { server: String, number: usize },
+    /// Turn task N off
+    Off { server: String, number: usize },
+    /// How many scheduled backups to keep
+    Keep { server: String, count: u32 },
+    /// Remove every task
+    Clear { server: String },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ChatbotCmd {
+    /// Settings and whether an API key is saved
+    Show,
+    /// Change settings: KEY=VALUE ... (empty value = default, [a,b] = list, @FILE = file text)
+    Set {
+        #[arg(value_name = "KEY=VALUE", required = true)]
+        pairs: Vec<String>,
+        /// Only for this Discord server (guild id)
+        #[arg(long)]
+        guild: Option<String>,
+    },
+    /// Save the API key (asked for without showing it; never pass it as an argument)
+    Key {
+        /// Delete the saved key instead
+        #[arg(long)]
+        delete: bool,
+    },
+    /// Delete all chatbot settings and the key
+    Clear,
+    /// Forget what the chatbot remembers (all Discord servers, or one)
+    Forget {
+        #[arg(long)]
+        guild: Option<String>,
     },
 }
 

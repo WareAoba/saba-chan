@@ -146,7 +146,10 @@
       "server_running": "Stop the server first: saba-chan-cli stop NAME",
       "update_unsupported": "This server can't be updated from Saba-chan. Update its files yourself.",
       "dependency_outdated": "Update to newer versions: saba-chan-cli update check",
-      "port_conflict": "Give one of them other ports: saba-chan-cli server set NAME port=PORT"
+      "port_conflict": "Give one of them other ports: saba-chan-cli server set NAME port=PORT",
+      "backup_unsupported": "This game's module does not say what to back up. A newer module may: saba-chan-cli update check",
+      "nothing_to_back_up": "The world does not exist yet. Start the server once to create it.",
+      "backup_busy": "A backup or restore of this server is already running. Try again when it finishes."
     },
     "not_a_bool": "\"{{value}}\" is not yes/no (use true or false).",
     "not_a_number": "\"{{value}}\" is not a number.",
@@ -222,7 +225,8 @@
     "game": "game",
     "module": "module",
     "server": "server",
-    "setting": "setting"
+    "setting": "setting",
+    "backup": "backup"
   },
   "progress": {
     "dismissed": "Cleared the progress of {{name}}.",
@@ -410,5 +414,86 @@
   "version": {
     "release": "Release",
     "last_updated": "Last updated"
+  },
+  "backup": {
+    "col": {
+      "name": "Backup",
+      "kind": "Kind",
+      "when": "When",
+      "size": "Size"
+    },
+    "kind": {
+      "manual": "manual",
+      "scheduled": "scheduled",
+      "pre-update": "before update",
+      "pre-restore": "before restore"
+    },
+    "none": "{{name}} has no backups yet.",
+    "creating": "Backing up {{name}}...",
+    "created": "Backup {{backup}} made.",
+    "confirm_delete": "Delete backup {{backup}} of {{name}}? This cannot be undone.",
+    "deleted": "Backup {{backup}} deleted.",
+    "confirm_restore": "Put {{name}} back to backup {{backup}}? The current world is saved as a backup first.",
+    "confirm_restore_running": "{{name}} is running. Stop it and put it back to backup {{backup}}? The current world is saved as a backup first.",
+    "restoring": "Restoring {{backup}}...",
+    "restored": "{{name}} is back to {{backup}}.",
+    "pre_restore": "The world from before is kept as backup {{backup}}.",
+    "start_again": "Start {{name}} again?"
+  },
+  "schedule": {
+    "col": {
+      "task": "Task",
+      "when": "When",
+      "on": "On"
+    },
+    "action": {
+      "backup": "Back up",
+      "restart": "Restart",
+      "announce": "Announce",
+      "update": "Update"
+    },
+    "none": "{{name}} has no scheduled tasks.",
+    "warns": "warns {{minutes}} min before",
+    "every_minutes": "every {{n}} min",
+    "every_hours": "every {{n}} h",
+    "daily_at": "daily at {{at}}",
+    "keep": "Scheduled backups kept: {{count}}",
+    "no_backup": "This game does not support backups.",
+    "no_announce": "This game has no announce command, so announcements and warnings are not available.",
+    "added": "Scheduled: {{task}}",
+    "removed": "Removed: {{task}}",
+    "enabled": "Turned on: {{task}}",
+    "disabled": "Turned off: {{task}}",
+    "no_such": "There is no task {{number}} (there are {{count}}).",
+    "keep_zero": "Keep at least 1 backup.",
+    "keep_set": "Keeping the last {{count}} scheduled backups.",
+    "confirm_clear": "Remove every scheduled task of {{name}}?",
+    "cleared": "{{name}} has no scheduled tasks now.",
+    "bad_action": "\"{{got}}\" is not a task. Use one of: {{actions}}.",
+    "warn_only_restart": "--warn only works with restart and update.",
+    "message_required": "An announcement needs --message.",
+    "every_or_at": "Give either --every (e.g. 30m, 2h) or --at (e.g. 04:00), not both.",
+    "bad_every": "\"{{got}}\" is not a time. Use minutes or units, e.g. 30, 30m, 2h, 1h30m.",
+    "bad_at": "\"{{got}}\" is not a time of day. Use HH:MM, e.g. 04:00."
+  },
+  "chatbot": {
+    "api_key": "API key saved",
+    "common": "Settings for every Discord server",
+    "guild": "Discord server {{guild}}",
+    "defaults": "(defaults)",
+    "saved": "Chatbot settings saved.",
+    "ask_key": "API key (hidden)",
+    "key_required": "No API key given. Type it at the prompt, or pipe it in: cat key.txt | saba-chan-cli chatbot key",
+    "key_saved": "API key saved. It is never shown again.",
+    "confirm_delete_key": "Delete the saved API key? The chatbot stops answering until a new key is saved.",
+    "key_deleted": "API key deleted.",
+    "confirm_clear": "Delete all chatbot settings and the API key?",
+    "cleared": "Chatbot settings and key deleted.",
+    "confirm_forget": "Make the chatbot forget what it remembers in every Discord server?",
+    "confirm_forget_guild": "Make the chatbot forget what it remembers in Discord server {{guild}}?",
+    "forgot": "The chatbot's memory is cleared.",
+    "not_synced": "Saved on this PC. It reaches Discord once the bot is connected (saba-chan-cli bot status).",
+    "sync_failed": "Discord server {{guild}} did not get the change: {{error}}",
+    "read_failed": "Could not read {{path}}: {{error}}"
   }
 }

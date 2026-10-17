@@ -1,11 +1,14 @@
 //! 명령 처리 — 갈래마다 파일 하나
 
+pub mod backup;
 pub mod bot;
+pub mod chatbot;
 pub mod config;
 pub mod console;
 pub mod daemon;
 pub mod extension;
 pub mod module;
+pub mod schedule;
 pub mod server;
 pub mod status;
 pub mod update;
@@ -32,6 +35,9 @@ pub async fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
         Cmd::Module(c) => module::run(ctx, c).await,
         Cmd::Extension(c) => extension::run(ctx, c).await,
         Cmd::Bot(c) => bot::run(ctx, c).await,
+        Cmd::Backup(c) => backup::run(ctx, c).await,
+        Cmd::Schedule(c) => schedule::run(ctx, c).await,
+        Cmd::Chatbot(c) => chatbot::run(ctx, c).await,
         Cmd::Update(c) => update::run(ctx, c).await,
         Cmd::Config(c) => config::run(ctx, c).await,
         Cmd::Chat { text } => chat(ctx, &text.join(" ")).await,

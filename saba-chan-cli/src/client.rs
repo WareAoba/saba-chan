@@ -127,6 +127,9 @@ impl Api {
     async fn put(&self, path: &str, body: Value) -> Result<Value> {
         self.call(Method::PUT, path, Some(body), QUICK).await
     }
+    async fn put_slow(&self, path: &str, body: Value) -> Result<Value> {
+        self.call(Method::PUT, path, Some(body), SLOW).await
+    }
     async fn patch(&self, path: &str, body: Value) -> Result<Value> {
         self.call(Method::PATCH, path, Some(body), SLOW).await
     }
@@ -527,6 +530,61 @@ impl Api {
         ))
         .await
     }
+    // ── 백업·예약 ──
+
+    /// GET /api/instance/:id/backups — `{backups: [{name, kind, created, size}]}`
+    pub async fn backups(&self, id: &str) -> Result<Value> {
+        self.get(&format!("/api/instance/{}/backups", seg(id))).await
+    }
+    /// POST /api/instance/:id/backups — `{backup}`
+    pub async fn create_backup(&self, id: &str) -> Result<Value> {
+        self.post_long(&format!("/api/instance/{}/backups", seg(id)), json!({}))
+            .await
+    }
+    pub async fn delete_backup(&self, id: &str, name: &str) -> Result<Value> {
+        self.delete(&format!("/api/instance/{}/backups/{}", seg(id), seg(name)))
+            .await
+    }
+    /// POST …/backups/:name/restore — 켜져 있으면 409 `server_running`
+    pub async fn restore_backup(&self, id: &str, name: &str) -> Result<Value> {
+        self.post_long(
+            &format!("/api/instance/{}/backups/{}/restore", seg(id), seg(name)),
+            json!({}),
+        )
+        .await
+    }
+    /// GET /api/instance/:id/schedule — `{schedule, backup_keep, backup_supported, announce_supported}`
+    pub async fn schedule(&self, id: &str) -> Result<Value> {
+        self.get(&format!("/api/instance/{}/schedule", seg(id))).await
+    }
+    /// PUT /api/instance/:id/schedule — `{schedule: [...], backup_keep?}` (목록 전체를 바꾼다)
+    pub async fn save_schedule(&self, id: &str, body: Value) -> Result<Value> {
+        self.put(&format!("/api/instance/{}/schedule", seg(id)), body).await
+    }
+
+    // ── AI 챗봇 ──
+
+    /// GET /api/chatbot — `{settings, guilds, hasApiKey}` (키 자체는 오지 않는다)
+    pub async fn chatbot(&self) -> Result<Value> {
+        self.get("/api/chatbot").await
+    }
+    /// PUT /api/chatbot — `{settings?, guilds?, apiKey?: string|null}` (apiKey를 빼면 그대로)
+    pub async fn save_chatbot(&self, patch: Value) -> Result<Value> {
+        self.put_slow("/api/chatbot", patch).await
+    }
+    /// DELETE /api/chatbot — 설정과 키를 모두 지운다
+    pub async fn clear_chatbot(&self) -> Result<Value> {
+        self.delete("/api/chatbot").await
+    }
+    /// DELETE /api/chatbot/memory?guildId= — 장기 기억 (없으면 모든 길드)
+    pub async fn forget_chatbot(&self, guild: Option<&str>) -> Result<Value> {
+        self.delete(&with_query(
+            "/api/chatbot/memory",
+            &[("guildId", guild.map(str::to_string))],
+        ))
+        .await
+    }
+
     /// GET /api/relay/bot-invite — 봇 초대 URL `{url}`
     pub async fn bot_invite(&self, relay_url: Option<&str>) -> Result<Value> {
         self.get(&with_query(
@@ -610,7 +668,7 @@ pub fn check(status: u16, body: Value) -> Result<Value> {
     let generic = code.as_deref() == Some("internal_server_error") && pick("error").is_some();
     let message = pick("error_message")
         .filter(|_| !generic)
-        .or_else(|| pick("error").filter(|e| Some(e) != code.as_ref()).map(|e| e))
+        .or_else(|| pick("error").filter(|e| Some(e) != code.as_ref()))
         .or_else(|| pick("message"))
         .or_else(|| pick("error"))
         .or_else(|| body.as_str().map(str::to_string))

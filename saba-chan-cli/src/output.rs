@@ -87,17 +87,14 @@ impl Out {
     }
 }
 
-/// 설정 검증 실패(`fields`)를 한 줄씩
+/// 검증 실패를 한 줄씩: `fields: [{field, message}]` 또는 `details: ["..."]`
 fn validation_lines(body: &Value) -> Vec<String> {
-    body.get("fields")
-        .and_then(Value::as_array)
-        .map(|fields| {
-            fields
-                .iter()
-                .map(|f| format!("{}: {}", s(f, "field"), s(f, "message")))
-                .collect()
-        })
-        .unwrap_or_default()
+    let fields = body.get("fields").and_then(Value::as_array).into_iter().flatten();
+    let details = body.get("details").and_then(Value::as_array).into_iter().flatten();
+    fields
+        .map(|f| format!("{}: {}", s(f, "field"), s(f, "message")))
+        .chain(details.filter_map(|d| d.as_str().map(str::to_string)))
+        .collect()
 }
 
 // ── 표·값 도우미 ──

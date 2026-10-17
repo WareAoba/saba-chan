@@ -50,7 +50,7 @@ pub async fn run(ctx: &Ctx, cmd: ServerCmd) -> Result<()> {
 // ── 공용 도우미 ──
 
 /// `/api/servers`에서 이 서버의 실행 상태
-async fn runtime(ctx: &Ctx, sv: &Server) -> Result<Value> {
+pub async fn runtime(ctx: &Ctx, sv: &Server) -> Result<Value> {
     let list = ctx.api.servers().await?;
     Ok(list
         .get("servers")
@@ -59,7 +59,7 @@ async fn runtime(ctx: &Ctx, sv: &Server) -> Result<Value> {
         .unwrap_or(Value::Null))
 }
 
-fn status_of(rt: &Value) -> &str {
+pub fn status_of(rt: &Value) -> &str {
     let st = s(rt, "status");
     if st.is_empty() {
         "stopped"
@@ -293,7 +293,7 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     if from.is_none() && ctx.ask.enabled && a.name.is_none() {
         let installs = given
             .as_ref()
-            .map_or(true, |m| m.get("install").is_some_and(|i| !i.is_null()));
+            .is_none_or(|m| m.get("install").is_some_and(|i| !i.is_null()));
         let choices = [t!("add.fresh_install"), t!("add.use_existing")];
         if ctx
             .ask
@@ -498,7 +498,7 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
 }
 
 /// 이름에 공백이 있으면 따옴표
-fn shell_word(s: &str) -> String {
+pub fn shell_word(s: &str) -> String {
     if s.contains(char::is_whitespace) {
         format!("\"{}\"", s)
     } else {
@@ -695,7 +695,7 @@ pub async fn stop(ctx: &Ctx, a: StopArgs) -> Result<()> {
     stop_server(ctx, &sv, a.force, a.no_wait).await
 }
 
-async fn stop_server(ctx: &Ctx, sv: &Server, force: bool, no_wait: bool) -> Result<()> {
+pub async fn stop_server(ctx: &Ctx, sv: &Server, force: bool, no_wait: bool) -> Result<()> {
     if status_of(&runtime(ctx, sv).await?) == "stopped" {
         ctx.out.done(
             &t!("stop.already", name = sv.name),

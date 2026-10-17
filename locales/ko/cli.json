@@ -146,7 +146,10 @@
       "server_running": "먼저 서버를 끄세요: saba-chan-cli stop 이름",
       "update_unsupported": "이 서버는 사바쨩에서 업데이트할 수 없어요. 파일을 직접 업데이트하세요.",
       "dependency_outdated": "새 버전으로 업데이트하세요: saba-chan-cli update check",
-      "port_conflict": "둘 중 하나의 포트를 바꾸세요: saba-chan-cli server set 이름 port=포트"
+      "port_conflict": "둘 중 하나의 포트를 바꾸세요: saba-chan-cli server set 이름 port=포트",
+      "backup_unsupported": "이 게임 모듈에는 무엇을 백업할지 적혀 있지 않아요. 새 모듈에는 있을 수 있어요: saba-chan-cli update check",
+      "nothing_to_back_up": "아직 월드가 없어요. 서버를 한 번 켜면 만들어져요.",
+      "backup_busy": "이 서버의 백업이나 되돌리기가 이미 진행 중이에요. 끝난 뒤 다시 해 주세요."
     },
     "not_a_bool": "\"{{value}}\"는 예/아니오 값이 아니에요 (true 또는 false).",
     "not_a_number": "\"{{value}}\"는 숫자가 아니에요.",
@@ -222,7 +225,8 @@
     "game": "게임",
     "module": "모듈",
     "server": "서버",
-    "setting": "설정"
+    "setting": "설정",
+    "backup": "백업"
   },
   "progress": {
     "dismissed": "{{name}}의 진행 기록을 지웠어요.",
@@ -494,7 +498,26 @@
       "bot.reset": "봇 설정을 기본값으로 (키가 없으면 전부)",
       "config.defaults": "모든 설정의 기본값",
       "bot.invite": "디스코드 서버에 봇을 초대하는 링크",
-      "bot.server-alias": "서버 하나의 채팅 별명 (예: 두 번째 마인크래프트 서버를 \"크리\"로). 이름 없이: 보기"
+      "bot.server-alias": "서버 하나의 채팅 별명 (예: 두 번째 마인크래프트 서버를 \"크리\"로). 이름 없이: 보기",
+      "backup": "서버 월드 백업",
+      "backup.list": "백업 목록 (최근 것부터)",
+      "backup.create": "지금 백업하기",
+      "backup.delete": "백업 하나 지우기",
+      "backup.restore": "백업으로 되돌리기 (켜져 있으면 끌지 물어봐요)",
+      "schedule": "서버 예약 작업 (백업, 재시작, 공지, 업데이트)",
+      "schedule.show": "예약 보기",
+      "schedule.add": "작업 예약: backup, restart, announce, update",
+      "schedule.remove": "N번 작업 지우기 (schedule show 참고)",
+      "schedule.on": "N번 작업 켜기",
+      "schedule.off": "N번 작업 끄기",
+      "schedule.keep": "예약 백업을 몇 개 남길지",
+      "schedule.clear": "예약 작업 모두 지우기",
+      "chatbot": "디스코드 AI 챗봇 설정과 API 키",
+      "chatbot.show": "설정과 API 키 저장 여부",
+      "chatbot.set": "설정 바꾸기: 키=값 ... (빈 값 = 기본값, [a,b] = 목록, @파일 = 파일 내용)",
+      "chatbot.key": "API 키 저장 (숨겨서 물어봐요. 인자로 넘기지 마세요)",
+      "chatbot.clear": "챗봇 설정과 키 모두 지우기",
+      "chatbot.forget": "챗봇이 기억하는 내용 지우기 (모든 디스코드 서버 또는 하나)"
     },
     "arg": {
       "json": "글 대신 기계가 읽는 JSON으로 출력",
@@ -550,7 +573,18 @@
       "server.rename.name": "새 이름",
       "ids": "익스텐션 ID (여러 개 가능)",
       "names": "새 별명 (기존 별명을 바꿈)",
-      "bot.server-alias.clear": "이 서버의 별명 지우기"
+      "bot.server-alias.clear": "이 서버의 별명 지우기",
+      "backup": "백업 이름 (앞부분만 적거나 latest)",
+      "number": "작업 번호",
+      "count": "남길 개수",
+      "action": "backup | restart | announce | update",
+      "every": "N분마다 (30, 30m, 2h)",
+      "at": "매일 이 시각 (HH:MM, 이 PC 시계)",
+      "warn": "몇 분 전에 예고할지 (restart/update), 예: 10,5,1",
+      "message": "공지할 말",
+      "delete": "저장된 키를 지우기",
+      "chatbot.set.guild": "이 디스코드 서버에만 (서버 id)",
+      "chatbot.forget.guild": "이 디스코드 서버만 (서버 id)"
     },
     "after": "이름은 일부만 적어도 돼요 (예: start pal). 인자 없이 실행하면 대화형 셸이 열려요.\n스크립트에서는 --json과 --yes를 쓰세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 안 됨 · 4 없음 · 130 취소"
   },
@@ -564,5 +598,86 @@
   "version": {
     "release": "릴리스",
     "last_updated": "마지막 업데이트"
+  },
+  "backup": {
+    "col": {
+      "name": "백업",
+      "kind": "종류",
+      "when": "만든 때",
+      "size": "크기"
+    },
+    "kind": {
+      "manual": "직접",
+      "scheduled": "예약",
+      "pre-update": "업데이트 전",
+      "pre-restore": "되돌리기 전"
+    },
+    "none": "{{name}}에는 아직 백업이 없어요.",
+    "creating": "{{name}} 백업하는 중...",
+    "created": "백업 {{backup}}을(를) 만들었어요.",
+    "confirm_delete": "{{name}}의 백업 {{backup}}을(를) 지울까요? 되돌릴 수 없어요.",
+    "deleted": "백업 {{backup}}을(를) 지웠어요.",
+    "confirm_restore": "{{name}}을(를) 백업 {{backup}}으로 되돌릴까요? 지금 월드는 먼저 백업해 둬요.",
+    "confirm_restore_running": "{{name}}이(가) 켜져 있어요. 끄고 백업 {{backup}}으로 되돌릴까요? 지금 월드는 먼저 백업해 둬요.",
+    "restoring": "{{backup}} 되돌리는 중...",
+    "restored": "{{name}}을(를) {{backup}}으로 되돌렸어요.",
+    "pre_restore": "되돌리기 전 월드는 백업 {{backup}}으로 남겨 뒀어요.",
+    "start_again": "{{name}}을(를) 다시 켤까요?"
+  },
+  "schedule": {
+    "col": {
+      "task": "작업",
+      "when": "언제",
+      "on": "켜짐"
+    },
+    "action": {
+      "backup": "백업",
+      "restart": "재시작",
+      "announce": "공지",
+      "update": "업데이트"
+    },
+    "none": "{{name}}에는 예약된 작업이 없어요.",
+    "warns": "{{minutes}}분 전 예고",
+    "every_minutes": "{{n}}분마다",
+    "every_hours": "{{n}}시간마다",
+    "daily_at": "매일 {{at}}",
+    "keep": "예약 백업 보관 개수: {{count}}",
+    "no_backup": "이 게임은 백업을 지원하지 않아요.",
+    "no_announce": "이 게임에는 공지 명령이 없어서 공지·예고를 쓸 수 없어요.",
+    "added": "예약했어요: {{task}}",
+    "removed": "지웠어요: {{task}}",
+    "enabled": "켰어요: {{task}}",
+    "disabled": "껐어요: {{task}}",
+    "no_such": "{{number}}번 작업이 없어요 (모두 {{count}}개).",
+    "keep_zero": "백업은 1개 이상 남겨야 해요.",
+    "keep_set": "예약 백업을 최근 {{count}}개만 남겨요.",
+    "confirm_clear": "{{name}}의 예약 작업을 모두 지울까요?",
+    "cleared": "{{name}}의 예약 작업을 모두 지웠어요.",
+    "bad_action": "\"{{got}}\"은(는) 작업이 아니에요. 다음 중 하나를 쓰세요: {{actions}}.",
+    "warn_only_restart": "--warn은 restart와 update에만 쓸 수 있어요.",
+    "message_required": "공지에는 --message가 필요해요.",
+    "every_or_at": "--every(예: 30m, 2h)와 --at(예: 04:00) 중 하나만 주세요.",
+    "bad_every": "\"{{got}}\"은(는) 시간 간격이 아니에요. 30, 30m, 2h, 1h30m처럼 써 주세요.",
+    "bad_at": "\"{{got}}\"은(는) 시각이 아니에요. 04:00처럼 HH:MM으로 써 주세요."
+  },
+  "chatbot": {
+    "api_key": "API 키 저장됨",
+    "common": "모든 디스코드 서버 공통 설정",
+    "guild": "디스코드 서버 {{guild}}",
+    "defaults": "(기본값)",
+    "saved": "챗봇 설정을 저장했어요.",
+    "ask_key": "API 키 (화면에 안 보여요)",
+    "key_required": "API 키가 없어요. 입력 창에 치거나 파이프로 넘겨 주세요: cat key.txt | saba-chan-cli chatbot key",
+    "key_saved": "API 키를 저장했어요. 다시는 화면에 보여 주지 않아요.",
+    "confirm_delete_key": "저장된 API 키를 지울까요? 새 키를 넣을 때까지 챗봇이 답하지 않아요.",
+    "key_deleted": "API 키를 지웠어요.",
+    "confirm_clear": "챗봇 설정과 API 키를 모두 지울까요?",
+    "cleared": "챗봇 설정과 키를 지웠어요.",
+    "confirm_forget": "모든 디스코드 서버에서 챗봇이 기억하는 내용을 지울까요?",
+    "confirm_forget_guild": "디스코드 서버 {{guild}}에서 챗봇이 기억하는 내용을 지울까요?",
+    "forgot": "챗봇의 기억을 지웠어요.",
+    "not_synced": "이 PC에 저장했어요. 봇이 연결되면 디스코드에 반영돼요 (saba-chan-cli bot status).",
+    "sync_failed": "디스코드 서버 {{guild}}에 반영하지 못했어요: {{error}}",
+    "read_failed": "{{path}}을(를) 읽지 못했어요: {{error}}"
   }
 }
