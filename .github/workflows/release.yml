@@ -182,6 +182,16 @@ jobs:
         if: steps.r2.outputs.enabled == 'true'
         uses: dtolnay/rust-toolchain@stable
 
+      # 선언하지 않은 능력을 쓰는 모듈·익스텐션은 싣지 않는다 (M12)
+      - name: Audit modules and extensions
+        if: steps.r2.outputs.enabled == 'true'
+        run: |
+          mods=$(for d in addons/modules/*/; do [ -f "$d/module.toml" ] && echo "$d"; done)
+          exts=$(for d in addons/extensions/*/; do [ -f "$d/manifest.json" ] && echo "$d"; done)
+          cargo build --quiet --bin saba-core
+          ./target/debug/saba-core module audit $mods
+          ./target/debug/saba-core extension audit $exts
+
       - name: Build and sign manifest
         if: steps.r2.outputs.enabled == 'true'
         env:
