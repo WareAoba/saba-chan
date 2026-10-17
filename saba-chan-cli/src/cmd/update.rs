@@ -120,6 +120,9 @@ fn print_status(r: &Value) {
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
+    if comps.is_empty() {
+        println!("{}", output::dim(&t!("update.not_checked")));
+    }
     let mut t = output::table(&[
         t!("col.name"),
         t!("update.current"),
@@ -149,7 +152,9 @@ fn print_status(r: &Value) {
             state,
         ]);
     }
-    output::print_table(t);
+    if !comps.is_empty() {
+        output::print_table(t);
+    }
     let err = s(r, "error");
     if !err.is_empty() {
         eprintln!("{} {}", console::style("!").yellow().bold(), err);

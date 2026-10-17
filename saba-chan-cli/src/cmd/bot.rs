@@ -73,6 +73,16 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             ctx.out.data(&r, |r| print_list(r, "members"));
             Ok(())
         }
+        BotCmd::Invite => {
+            let cfg = ctx.api.bot_config().await?;
+            let r = ctx.api.bot_invite(relay_of(&cfg)).await?;
+            ctx.out.data(&r, |r| {
+                println!("{}", t!("bot.invite"));
+                println!("  {}", console::style(s(r, "url")).cyan().underlined());
+            });
+            Ok(())
+        }
+        BotCmd::ServerAlias { server, names, clear } => server_alias(ctx, server.as_deref(), &names, clear).await,
         BotCmd::Reset { keys } => {
             let q = if keys.is_empty() {
                 t!("config.confirm_reset_all")
@@ -247,6 +257,66 @@ async fn alias(ctx: &Ctx, action: AliasCmd) -> Result<()> {
             ctx.out.done(&t!("bot.alias_removed", alias = alias), &r);
         }
     }
+    Ok(())
+}
+
+/// `instanceAliases`: 서버 id → "별명1, 별명2" (같은 게임 서버가 여럿일 때 채팅에서 고르는 이름)
+async fn server_alias(ctx: &Ctx, query: Option<&str>, names: &[String], clear: bool) -> Result<()> {
+    let cfg = ctx.api.bot_config().await?;
+    let mut map: Map<String, Value> = cfg
+        .get("instanceAliases")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    let Some(q) = query else {
+        // 목록: id 대신 서버 이름으로
+        let servers = crate::resolve::servers(ctx).await.unwrap_or_default();
+        let rows: Vec<(String, String)> = map
+            .iter()
+            .map(|(id, v)| {
+                let name = servers
+                    .iter()
+                    .find(|s| &s.id == id)
+                    .map_or(id.clone(), |s| s.name.clone());
+                (name, output::show(v))
+            })
+            .collect();
+        ctx.out.data(&Value::Object(map.clone()), |_| {
+            if rows.is_empty() {
+                println!("{}", output::dim(&t!("bot.no_server_aliases")));
+            } else {
+                output::print_kv(&rows);
+            }
+        });
+        return Ok(());
+    };
+    let sv = crate::resolve::server(ctx, Some(q)).await?;
+    if names.is_empty() && !clear {
+        let v = map.get(&sv.id).cloned().unwrap_or(Value::Null);
+        ctx.out.data(&json!({ "server": sv.name, "aliases": v }), |_| {
+            println!("{}", output::show(&v))
+        });
+        return Ok(());
+    }
+    if clear {
+        map.remove(&sv.id);
+    } else {
+        let joined = names
+            .iter()
+            .flat_map(|n| n.split(','))
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+            .collect::<Vec<_>>()
+            .join(", ");
+        map.insert(sv.id.clone(), Value::String(joined));
+    }
+    let r = ctx.api.save_bot_config(json!({ "instanceAliases": map })).await?;
+    let msg = if clear {
+        t!("bot.server_alias_cleared", name = sv.name)
+    } else {
+        t!("bot.server_alias_set", name = sv.name, aliases = names.join(", "))
+    };
+    ctx.out.done(&msg, &r);
     Ok(())
 }
 

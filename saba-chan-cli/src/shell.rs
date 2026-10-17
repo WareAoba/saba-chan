@@ -105,8 +105,12 @@ async fn names(ctx: &Ctx) -> Vec<String> {
             if let Some(n) = m.get("name").and_then(|v| v.as_str()) {
                 out.push(n.to_string());
             }
+            // `run 서버 li<Tab>` → list (게임 명령도 채운다)
+            out.extend(crate::catalog::Catalog::from_module(m, None).names());
         }
     }
+    out.sort();
+    out.dedup();
     out
 }
 

@@ -125,6 +125,18 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
             }
             (!hints.is_empty()).then(|| hints.join("\n  "))
         }
+        "port_conflict" => {
+            let mut lines: Vec<String> = body
+                .get("conflicts")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect();
+            lines.push(t!("err.hint.port_conflict"));
+            Some(lines.join("\n  "))
+        }
         "server_not_running" => Some(t!("err.hint.server_not_running")),
         "server_running" => Some(t!("err.hint.server_running")),
         "node_token_missing" => Some(t!("err.hint.node_token_missing")),

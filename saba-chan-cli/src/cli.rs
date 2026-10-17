@@ -456,6 +456,18 @@ pub enum BotCmd {
     Nodes,
     /// Members of a paired Discord server
     Members { guild: String },
+    /// Link to invite the Saba-chan bot to a Discord server
+    Invite,
+    /// Chat names for one server (e.g. "크리" for a second Minecraft server). No names: show
+    #[command(name = "server-alias")]
+    ServerAlias {
+        server: Option<String>,
+        /// New names (replace the old ones)
+        names: Vec<String>,
+        /// Remove this server's names
+        #[arg(long)]
+        clear: bool,
+    },
     /// Bot settings back to their defaults (all when no key is named)
     Reset { keys: Vec<String> },
     /// Show or change any bot setting: KEY=VALUE (dotted keys, JSON values)

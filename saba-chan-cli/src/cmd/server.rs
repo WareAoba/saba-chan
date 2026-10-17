@@ -141,6 +141,21 @@ async fn wait_status(ctx: &Ctx, sv: &Server, want: &[&str], timeout: Duration, m
     Ok(last)
 }
 
+/// 상태가 `window` 동안 running으로 버티는지 본다. 꺼지면 그 상태를 돌려준다.
+async fn settle(ctx: &Ctx, sv: &Server, window: Duration) -> String {
+    let deadline = Instant::now() + window;
+    while Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        if let Ok(rt) = runtime(ctx, sv).await {
+            let st = status_of(&rt);
+            if st != "running" && st != "starting" {
+                return st.to_string();
+            }
+        }
+    }
+    "running".to_string()
+}
+
 // ── 목록·정보 ──
 
 async fn list(ctx: &Ctx) -> Result<()> {
@@ -289,6 +304,22 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
         }
     }
 
+    // 이미 다른 서버가 쓰는 폴더면 막는다 (두 서버가 같은 파일을 덮어쓴다)
+    if let Some(dir) = from.as_deref() {
+        let norm = |p: &str| {
+            std::fs::canonicalize(p)
+                .map(|x| x.display().to_string())
+                .unwrap_or_else(|_| p.trim_end_matches(['/', '\\']).to_string())
+        };
+        let want = norm(dir);
+        for other in resolve::servers(ctx).await.unwrap_or_default() {
+            let wd = s(&other.raw, "working_dir");
+            if !wd.is_empty() && norm(wd) == want {
+                return Err(usage(t!("add.folder_in_use", dir = dir, name = other.name)));
+            }
+        }
+    }
+
     // 2) 게임
     let module = match (given, from.as_deref()) {
         (Some(m), Some(dir)) => {
@@ -312,7 +343,7 @@ async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
                 0 => {
                     ctx.out.warn(&t!("add.folder_unrecognized", dir = dir));
                     if !ctx.ask.enabled {
-                        return Err(usage(t!("add.module_required")));
+                        return Err(usage(t!("add.pick_game")));
                     }
                     resolve::choose(ctx, &t!("noun.game"), all.clone(), resolve::module_label)?
                 }
@@ -598,6 +629,13 @@ pub async fn start(ctx: &Ctx, a: StartArgs) -> Result<()> {
         }
         "provisioning" => return Err(failed(t!("start.provisioning", name = sv.name))),
         _ => {
+            // 켜기 전에 점검한다 (약관 미동의 등). 막히는 문제면 보여 주고 멈춘다.
+            if let Err(e) = ctx.api.validate(&sv.id).await {
+                let blocked = matches!(e.downcast_ref::<CliError>(), Some(CliError::Api { body, .. }) if body.get("issues").is_some());
+                if blocked {
+                    return checkup(ctx, Err(e), "", &sv.name).await;
+                }
+            }
             let r = ctx.api.start(&sv.id).await?;
             if a.no_wait {
                 ctx.out.done(&t!("start.requested", name = sv.name), &r);
@@ -610,8 +648,24 @@ pub async fn start(ctx: &Ctx, a: StartArgs) -> Result<()> {
                     &t!("start.waiting", name = sv.name),
                 )
                 .await?;
+                // 프로세스가 떴다가 바로 꺼지는 경우를 잡는다 (설정 오류, 약관 등)
+                let st = if st == "running" {
+                    settle(ctx, &sv, Duration::from_secs(3)).await
+                } else {
+                    st
+                };
                 if st == "running" {
                     ctx.out.done(&t!("start.done", name = sv.name), &r);
+                } else if matches!(st.as_str(), "stopped" | "crashed") {
+                    if !ctx.out.json {
+                        let tail = ctx.api.console(&sv.id, None, Some(6)).await.unwrap_or(Value::Null);
+                        for l in tail.get("lines").and_then(Value::as_array).into_iter().flatten() {
+                            eprintln!("  {}", crate::cmd::console::format_line(l));
+                        }
+                    }
+                    ctx.out
+                        .hint(&format!("saba-chan-cli server history {}", shell_word(&sv.name)));
+                    return Err(CliError::Failed(t!("start.exited", name = sv.name)).into());
                 } else {
                     ctx.out.warn(&t!("start.not_yet", name = sv.name, status = st));
                     ctx.out.hint(&format!("saba-chan-cli console {}", shell_word(&sv.name)));
@@ -752,8 +806,10 @@ pub async fn exec(ctx: &Ctx, sv: &Server, cat: &Catalog, name: &str, words: &[St
             .chain(words.iter().cloned())
             .collect::<Vec<_>>()
             .join(" ");
+        let at = crate::cmd::console::mark(ctx, sv).await;
         let r = ctx.api.command(&sv.id, &line, Value::Null).await?;
         print_result(ctx, &r);
+        crate::cmd::console::echo_reply(ctx, sv, at).await;
         return Ok(());
     };
     let (mut args, missing) = def.bind(words).map_err(usage)?;
@@ -765,8 +821,10 @@ pub async fn exec(ctx: &Ctx, sv: &Server, cat: &Catalog, name: &str, words: &[St
         ctx.ask
             .ensure(&t!("run.confirm_danger", label = def.label, name = sv.name))?;
     }
+    let at = crate::cmd::console::mark(ctx, sv).await;
     let r = ctx.api.command(&sv.id, &def.name, Value::Object(args)).await?;
     print_result(ctx, &r);
+    crate::cmd::console::echo_reply(ctx, sv, at).await;
     Ok(())
 }
 
@@ -904,8 +962,10 @@ pub fn print_commands(ctx: &Ctx, module: &str, cat: &Catalog) -> Result<()> {
 
 async fn send(ctx: &Ctx, query: &str, line: &str) -> Result<()> {
     let sv = resolve::server(ctx, Some(query)).await?;
+    let at = crate::cmd::console::mark(ctx, &sv).await;
     let r = ctx.api.stdin(&sv.id, line).await?;
     print_result(ctx, &r);
+    crate::cmd::console::echo_reply(ctx, &sv, at).await;
     Ok(())
 }
 
@@ -952,6 +1012,26 @@ const COMMON: &[(&str, &str)] = &[
 ];
 
 /// KEY=VALUE 하나를 PATCH 키와 형식 맞춘 값으로. `ext.키`는 extension_data, 빈 값은 지우기(null).
+/// 모듈 정의에도, 공통 칸에도, 지금 값에도 없는 키 (오타일 가능성이 높다)
+fn unknown_setting(fields: &[Value], key: &str) -> anyhow::Error {
+    let names: Vec<String> = fields
+        .iter()
+        .map(|f| s(f, "name").to_string())
+        .chain(COMMON.iter().map(|(k, _)| k.to_string()))
+        .collect();
+    let suggestions = match resolve::find(&names, key, |n| vec![n.clone()], |n| n.clone()) {
+        resolve::Found::None(s) => s,
+        resolve::Found::One(n) => vec![n],
+        resolve::Found::Many(v) => v.into_iter().take(3).collect(),
+    };
+    CliError::NotFound {
+        what: t!("noun.setting"),
+        query: key.into(),
+        suggestions,
+    }
+    .into()
+}
+
 fn typed_setting(fields: &[Value], instance: &Value, key: &str, raw: &str) -> Result<(String, Value)> {
     if let Some(ext_key) = key.strip_prefix("ext.") {
         let v = if raw.is_empty() {
@@ -977,7 +1057,7 @@ fn typed_setting(fields: &[Value], instance: &Value, key: &str, raw: &str) -> Re
                 _ => "text".into(),
             })
         })
-        .unwrap_or_else(|| "text".into());
+        .ok_or_else(|| unknown_setting(fields, key))?;
     let field = fields.iter().find(|f| s(f, "name") == key);
     if let Some(opts) = field.and_then(|f| f.get("options")).and_then(Value::as_array) {
         let opts: Vec<&str> = opts.iter().filter_map(Value::as_str).collect();

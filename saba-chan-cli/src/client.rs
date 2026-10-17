@@ -527,6 +527,14 @@ impl Api {
         ))
         .await
     }
+    /// GET /api/relay/bot-invite — 봇 초대 URL `{url}`
+    pub async fn bot_invite(&self, relay_url: Option<&str>) -> Result<Value> {
+        self.get(&with_query(
+            "/api/relay/bot-invite",
+            &[("relayUrl", relay_url.map(str::to_string))],
+        ))
+        .await
+    }
     /// POST /api/chat/command — 디스코드와 같은 텍스트 명령 처리 (`{reply}`)
     pub async fn chat(&self, text: &str) -> Result<Value> {
         self.post("/api/chat/command", json!({ "text": text })).await
@@ -598,7 +606,10 @@ pub fn check(status: u16, body: Value) -> Result<Value> {
             .map(str::to_string)
     };
     let code = pick("error_code");
+    // 내부 오류일 때 error_message는 뭉뚱그린 문구라 구체적인 error가 낫다
+    let generic = code.as_deref() == Some("internal_server_error") && pick("error").is_some();
     let message = pick("error_message")
+        .filter(|_| !generic)
         .or_else(|| pick("error").filter(|e| Some(e) != code.as_ref()).map(|e| e))
         .or_else(|| pick("message"))
         .or_else(|| pick("error"))
@@ -619,6 +630,18 @@ mod tests {
 
     fn api_err(r: Result<Value>) -> CliError {
         r.unwrap_err().downcast::<CliError>().unwrap()
+    }
+
+    #[test]
+    fn internal_error_shows_the_specific_cause() {
+        let e = api_err(check(
+            500,
+            json!({ "error": "RCON execution failed: refused", "error_code": "internal_server_error", "error_message": "Internal server error occurred" }),
+        ));
+        match e {
+            CliError::Api { message, .. } => assert_eq!(message, "RCON execution failed: refused"),
+            _ => panic!(),
+        }
     }
 
     #[test]

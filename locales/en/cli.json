@@ -10,7 +10,7 @@
     "install_failed": "Install failed: {{error}}",
     "install_failed_removed": "Install failed and the new server was removed: {{error}}",
     "installing": "Installing",
-    "module_required": "Pick a game with --module (for an existing folder, --from alone is enough).",
+    "module_required": "Pick a game with --module, or give an existing server folder with --from.",
     "name_empty": "The name can't be empty.",
     "name_taken": "A server named {{name}} already exists.",
     "needs_extensions": "This game needs these extensions: {{ids}}. Install and turn them on now?",
@@ -21,7 +21,9 @@
     "still_installing": "{{name}} is still installing in the background.",
     "use_anyway": "Use it anyway?",
     "use_existing": "Use an existing server folder",
-    "folder_is": "{{dir}} looks like a {{game}} server."
+    "folder_is": "{{dir}} looks like a {{game}} server.",
+    "pick_game": "Pick the game with --module.",
+    "folder_in_use": "{{dir}} is already used by {{name}}. Two servers in one folder would overwrite each other."
   },
   "bot": {
     "alias": "Alias",
@@ -51,7 +53,11 @@
     "stopped": "Disconnected from the relay.",
     "token_required": "A token is required.",
     "token_saved": "Node token saved.",
-    "unpaired": "Pairing removed."
+    "unpaired": "Pairing removed.",
+    "invite": "Invite the bot to your Discord server with this link:",
+    "no_server_aliases": "No server names set. Example: saba-chan-cli bot server-alias NAME 크리",
+    "server_alias_set": "In chat, {{name}} can now be called: {{aliases}}",
+    "server_alias_cleared": "Removed the chat names of {{name}}."
   },
   "col": {
     "aliases": "Aliases",
@@ -139,7 +145,8 @@
       "server_not_running": "Start the server first: saba-chan-cli start NAME",
       "server_running": "Stop the server first: saba-chan-cli stop NAME",
       "update_unsupported": "This server can't be updated from Saba-chan. Update its files yourself.",
-      "dependency_outdated": "Update to newer versions: saba-chan-cli update check"
+      "dependency_outdated": "Update to newer versions: saba-chan-cli update check",
+      "port_conflict": "Give one of them other ports: saba-chan-cli server set NAME port=PORT"
     },
     "not_a_bool": "\"{{value}}\" is not yes/no (use true or false).",
     "not_a_number": "\"{{value}}\" is not a number.",
@@ -184,7 +191,10 @@
     "unmounted": "{{id}} unloaded.",
     "up_to_date": "All extensions are up to date.",
     "updated": "{{id}} updated to {{version}}.",
-    "url_one_id": "--url and --sha256 work with one extension id at a time."
+    "url_one_id": "--url and --sha256 work with one extension id at a time.",
+    "no_config": "{{id}} has no settings.",
+    "status_busy": "Starting up: {{list}}",
+    "status_done": "Ready: {{list}}"
   },
   "history": {
     "none": "No stops recorded yet."
@@ -303,7 +313,8 @@
     "not_yet": "{{name}} is not running yet ({{status}}). Check: saba-chan-cli console {{name}}",
     "provisioning": "{{name}} is still installing.",
     "requested": "Start requested for {{name}}.",
-    "waiting": "Starting {{name}}..."
+    "waiting": "Starting {{name}}...",
+    "exited": "{{name}} exited right after starting. Last lines above."
   },
   "status": {
     "commands_handled": "{{count}} commands handled",
@@ -370,7 +381,8 @@
     "int_verified": "intact",
     "int_missing": "file missing",
     "int_changed": "changed",
-    "int_error": "unreadable"
+    "int_error": "unreadable",
+    "not_checked": "No update information yet. Check now: saba-chan-cli update check"
   },
   "validate": {
     "blocked": "The server can't start until these are fixed.",

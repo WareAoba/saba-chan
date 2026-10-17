@@ -46,17 +46,25 @@ pub async fn run(ctx: &Ctx, cmd: ExtCmd) -> Result<()> {
         ExtCmd::Status => {
             let r = ctx.api.extension_init_status().await?;
             ctx.out.data(&r, |r| {
-                let mut rows = Vec::new();
-                crate::cmd::flatten(r, "", &mut rows);
-                if rows.is_empty() {
+                // {initializing, in_progress: {id: 단계}, completed: [...]}
+                let busy: Vec<String> = r
+                    .get("in_progress")
+                    .and_then(Value::as_object)
+                    .into_iter()
+                    .flatten()
+                    .map(|(id, v)| format!("{} ({})", id, output::show(v)))
+                    .collect();
+                if busy.is_empty() {
                     println!("{}", output::dim(&t!("ext.status_idle")));
+                } else {
+                    println!("{}", t!("ext.status_busy", list = busy.join(", ")));
                 }
-                output::print_kv(
-                    &rows
-                        .iter()
-                        .map(|(k, v)| (k.clone(), output::show(v)))
-                        .collect::<Vec<_>>(),
-                );
+                if let Some(done) = r
+                    .get("completed")
+                    .filter(|d| d.as_array().is_some_and(|a| !a.is_empty()))
+                {
+                    println!("{}", output::dim(&t!("ext.status_done", list = output::show(done))));
+                }
             });
             Ok(())
         }
@@ -182,7 +190,8 @@ async fn info(ctx: &Ctx, q: Option<&str>) -> Result<()> {
 }
 
 /// 설정 칸(config_fields)과 저장된 값을 같이 보인다
-fn print_config(ext: &Value, values: &Value) {
+/// 설정 칸이 하나도 없으면 false
+fn print_config(ext: &Value, values: &Value) -> bool {
     let fields = ext
         .get("config_fields")
         .and_then(Value::as_object)
@@ -193,7 +202,7 @@ fn print_config(ext: &Value, values: &Value) {
         keys.extend(map.keys().filter(|k| !fields.contains_key(*k)).cloned());
     }
     if keys.is_empty() {
-        return;
+        return false;
     }
     println!();
     output::heading(&t!("ext.config"));
@@ -215,6 +224,7 @@ fn print_config(ext: &Value, values: &Value) {
         })
         .collect();
     output::print_kv(&rows);
+    true
 }
 
 async fn available(ctx: &Ctx) -> Result<()> {
@@ -367,7 +377,11 @@ async fn config(ctx: &Ctx, q: Option<&str>, pairs: &[String]) -> Result<()> {
     if pairs.is_empty() {
         let r = ctx.api.extension_config(&id).await?;
         let values = r.get("config").cloned().unwrap_or(Value::Null);
-        ctx.out.data(&values, |v| print_config(&e, v));
+        ctx.out.data(&values, |v| {
+            if !print_config(&e, v) {
+                println!("{}", output::dim(&t!("ext.no_config", id = id)));
+            }
+        });
         return Ok(());
     }
     let fields = e

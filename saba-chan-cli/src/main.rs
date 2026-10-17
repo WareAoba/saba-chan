@@ -58,6 +58,7 @@ async fn main() {
         out: output::Out::new(g.json, color),
         ask: prompt::Prompt::new(g.json, g.yes),
         in_shell: false,
+        attached: false,
     };
 
     let cmd = match parsed.cmd {
