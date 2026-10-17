@@ -316,15 +316,14 @@ async fn download_file(url: &str, dest: &Path) -> Result<()> {
         #[cfg(target_os = "windows")]
         {
             // PowerShell .NET WebClient — 진행률 비활성화로 최대 속도
-            let script = format!(
-                "$ProgressPreference = 'SilentlyContinue'; \
+            // URL·경로는 스크립트에 끼우지 않고 환경변수로 넘긴다 (따옴표가 든 경로도 그대로)
+            let script = "$ProgressPreference = 'SilentlyContinue'; \
                  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; \
-                 Invoke-WebRequest -Uri '{}' -OutFile '{}' -UseBasicParsing",
-                url,
-                dest.to_string_lossy()
-            );
+                 Invoke-WebRequest -Uri $env:SABA_DL_URL -OutFile $env:SABA_DL_DEST -UseBasicParsing";
             let mut cmd = Command::new("powershell");
-            cmd.args(["-NoProfile", "-NonInteractive", "-Command", &script]);
+            cmd.args(["-NoProfile", "-NonInteractive", "-Command", script])
+                .env("SABA_DL_URL", url)
+                .env("SABA_DL_DEST", dest);
             apply_creation_flags(&mut cmd);
             cmd.output().await?
         }

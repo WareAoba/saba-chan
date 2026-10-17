@@ -45,6 +45,12 @@ impl SemVer {
     }
 }
 
+/// 카탈로그가 내민 `offered`가 설치된 `installed`보다 낮은가. 둘 다 읽혀야 참이다
+/// (예전 서명 manifest를 다시 보내 옛 버전을 깔게 하는 것을 막는다)
+pub fn is_downgrade(installed: &str, offered: &str) -> bool {
+    matches!((SemVer::parse(installed), SemVer::parse(offered)), (Some(i), Some(o)) if i > o)
+}
+
 impl fmt::Display for SemVer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}.{}.{}", self.major, self.minor, self.patch)?;
@@ -120,6 +126,15 @@ mod tests {
 
         let v3 = SemVer::parse("2.0.0").unwrap();
         assert!(v3.is_newer_than(&v2));
+    }
+
+    #[test]
+    fn older_catalog_versions_are_downgrades() {
+        assert!(is_downgrade("1.2.0", "1.1.9"));
+        assert!(!is_downgrade("1.2.0", "1.2.0"));
+        assert!(!is_downgrade("1.2.0", "1.3.0"));
+        // 읽히지 않는 버전은 막지 않는다
+        assert!(!is_downgrade("dev", "1.0.0"));
     }
 
     #[test]

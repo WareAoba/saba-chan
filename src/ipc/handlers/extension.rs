@@ -144,7 +144,18 @@ pub async fn enable_extension(
         });
     }
 
-    Ok(Json(json!({ "success": true, "id": ext_id, "startup_dispatched": has_startup_hook })))
+    // 미검증·변경된 익스텐션을 켜면 알림만 싣는다 (실행은 막지 않는다)
+    let trust = state.extension_manager.read().await.discovered(&ext_id).map(|ext| {
+        saba_chan_updater_lib::integrity::trust_of(&format!("ext-{}", ext_id), &ext.dir)
+    });
+    let warnings = trust.map(|t| super::server::trust_warnings("extension", &ext_id, t)).unwrap_or_default();
+    Ok(Json(json!({
+        "success": true,
+        "id": ext_id,
+        "startup_dispatched": has_startup_hook,
+        "trust": trust,
+        "warnings": warnings,
+    })))
 }
 
 /// POST /api/extensions/:id/disable — 익스텐션 비활성화
@@ -380,6 +391,14 @@ pub async fn install_extension(
                 (None, Err(e)) => return fail(format!("Manifest fetch failed: {}", e), "manifest_fetch_failed"),
             }
         };
+
+        // 카탈로그가 설치된 것보다 낮은 버전을 주면 받지 않는다
+        if let Some(e) = entry.as_ref().filter(|e| e.download_url == url) {
+            let installed = state.extension_manager.read().await.discovered(&id).map(|d| d.manifest.version.clone());
+            if let Some(installed) = installed.filter(|v| saba_chan_updater_lib::version::is_downgrade(v, &e.version)) {
+                return fail(format!("Extension '{}' {} is older than the installed {}", id, e.version, installed), "older_than_installed");
+            }
+        }
 
         let staged = match ExtensionManager::download_package(&url).await.and_then(|bytes| {
             ExtensionManager::stage_package(&extensions_dir, &id, &bytes, sha.as_deref())

@@ -735,7 +735,13 @@
   "trust": {
     "verified": "확인됨",
     "modified": "바뀜",
-    "unverified": "확인 안 됨"
+    "unverified": "확인 안 됨",
+    "notice": {
+      "module_unverified": "공식 카탈로그에서 받지 않은 모듈({{id}})로 만들었어요. 믿을 수 있는 곳에서 받은 것인지 확인해 주세요.",
+      "module_modified": "모듈({{id}})의 파일이 설치한 뒤 바뀌었어요. 직접 고친 것이 아니라면 다시 설치해 주세요.",
+      "extension_unverified": "공식 카탈로그에서 받지 않은 익스텐션({{id}})을 켰어요. 믿을 수 있는 곳에서 받은 것인지 확인해 주세요.",
+      "extension_modified": "익스텐션({{id}})의 파일이 설치한 뒤 바뀌었어요. 직접 고친 것이 아니라면 다시 설치해 주세요."
+    }
   },
   "audit": {
     "empty": "아직 기록이 없어요.",

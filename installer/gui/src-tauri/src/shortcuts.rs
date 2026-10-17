@@ -117,13 +117,16 @@ fn create_shortcut_via_powershell(
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
 
-    let ps_script = format!(
-        r#"$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut('{}'); $sc.TargetPath = '{}'; $sc.WorkingDirectory = '{}'; $sc.Description = '{}'; $sc.Save()"#,
-        lnk_str, target_str, working_dir, description,
-    );
+    // 경로는 스크립트에 끼우지 않고 환경변수로 넘긴다 (따옴표가 든 경로도 그대로)
+    let ps_script = r#"$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut($env:SABA_LNK); $sc.TargetPath = $env:SABA_TARGET; $sc.WorkingDirectory = $env:SABA_WORKDIR; $sc.Description = $env:SABA_DESC; $sc.Save()"#;
 
     let output = saba_chan_updater_lib::process::hide_console(
-        std::process::Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-Command", &ps_script]),
+        std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", ps_script])
+            .env("SABA_LNK", lnk_str.as_ref())
+            .env("SABA_TARGET", target_str.as_ref())
+            .env("SABA_WORKDIR", &working_dir)
+            .env("SABA_DESC", description),
     )
     .output()?;
 
