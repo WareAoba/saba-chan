@@ -141,20 +141,45 @@ def create_exe_zip(exe_path: Path, output_zip: Path, inner_name: str,
     print(f"    → {output_zip.name} ({output_zip.stat().st_size / 1024 / 1024:.2f} MB)")
 
 
+# 다른 컴포넌트가 따로 배포하는 실행 파일: GUI zip 등에 섞여 있으면 뺀다 (GUI만 업데이트해도 데몬이 옛 판으로 덮이지 않게)
+OTHER_COMPONENT_EXES = {"saba-core.exe", "saba-runner.exe", "saba-chan-updater.exe", "saba-chan-cli.exe"}
+
+
+def repack_zip(raw_file: Path, output_zip: Path, exe_name: str | None,
+               extra_files: list[str] | None = None):
+    """zip을 표준 형태로 다시 담는다: 경로 구분자 `/`, 루트의 앱 exe(예: Electron의 Saba-chan.exe)는
+    `exe_name`으로, 다른 컴포넌트의 exe는 뺀다."""
+    with zipfile.ZipFile(raw_file) as src, zipfile.ZipFile(output_zip, "w", zipfile.ZIP_DEFLATED) as dst:
+        root_exes = [i.filename.replace("\\", "/") for i in src.infolist()
+                     if i.filename.lower().endswith(".exe") and "/" not in i.filename.replace("\\", "/")]
+        app_exes = [n for n in root_exes if n.lower() not in OTHER_COMPONENT_EXES]
+        has_exe = exe_name and exe_name.lower() in {n.lower() for n in root_exes}
+        rename = app_exes[0] if exe_name and not has_exe and len(app_exes) == 1 else None
+        for info in src.infolist():
+            name = info.filename.replace("\\", "/")
+            if name.lower() in OTHER_COMPONENT_EXES and exe_name and name.lower() != exe_name.lower():
+                print(f"    - {name} (shipped by its own component)")
+                continue
+            if name == rename:
+                print(f"    ~ {name} -> {exe_name}")
+                name = exe_name
+            entry = zipfile.ZipInfo(name, info.date_time)
+            entry.external_attr = info.external_attr
+            entry.compress_type = zipfile.ZIP_DEFLATED
+            dst.writestr(entry, src.read(info))
+        for rel in (extra_files or []):
+            extra = Path(rel)
+            if extra.exists():
+                dst.write(extra, extra.name)
+                print(f"    + {extra.name} (shared module)")
+    print(f"    → {output_zip.name} (repacked from {raw_file.name})")
+
+
 def copy_or_repackage(raw_file: Path, output_zip: Path, exe_name: str | None,
                       extra_files: list[str] | None = None):
-    """raw 파일이 exe면 zip으로 감싸고, 이미 zip이면 표준 이름으로 복사"""
+    """raw 파일이 exe면 zip으로 감싸고, 이미 zip이면 표준 형태로 다시 담는다"""
     if raw_file.suffix.lower() == ".zip":
-        # 기존 zip에 extra_files 추가
-        shutil.copy2(raw_file, output_zip)
-        if extra_files:
-            with zipfile.ZipFile(output_zip, "a", zipfile.ZIP_DEFLATED) as zf:
-                for rel in extra_files:
-                    src = Path(rel)
-                    if src.exists():
-                        zf.write(src, src.name)
-                        print(f"    + {src.name} (shared module)")
-        print(f"    → {output_zip.name} (copied from {raw_file.name})")
+        repack_zip(raw_file, output_zip, exe_name, extra_files)
     elif raw_file.suffix.lower() == ".exe" and exe_name:
         create_exe_zip(raw_file, output_zip, exe_name, extra_files)
     else:

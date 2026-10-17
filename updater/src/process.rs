@@ -68,14 +68,7 @@ impl ProcessChecker {
 
     /// 사바쨩 GUI가 실행 중인지 확인
     pub fn is_gui_running() -> bool {
-        #[cfg(target_os = "windows")]
-        {
-            Self::is_running("saba-chan-gui.exe")
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            Self::is_running("saba-chan-gui")
-        }
+        crate::GUI_EXE_NAMES.iter().any(|n| Self::is_running(n))
     }
 
     /// 사바쨩 CLI가 실행 중인지 확인

@@ -113,19 +113,7 @@
           ]
         }
       ],
-      "icon": "build/icon.png",
-      "certificateFile": null,
-      "certificatePassword": null,
-      "extraFiles": [
-        {
-          "from": "../target/release/saba-core.exe",
-          "to": "."
-        },
-        {
-          "from": "../target/release/saba-chan-updater.exe",
-          "to": "."
-        }
-      ]
+      "icon": "build/icon.png"
     },
     "linux": {
       "target": [
@@ -134,20 +122,10 @@
       ],
       "icon": "build/icon.png",
       "category": "Game",
-      "artifactName": "${productName}-${version}-linux-${arch}.${ext}",
-      "extraFiles": [
-        {
-          "from": "../target/release/saba-core",
-          "to": "."
-        },
-        {
-          "from": "../target/release/saba-chan-updater",
-          "to": "."
-        }
-      ]
+      "artifactName": "${productName}-${version}-linux-${arch}.${ext}"
     },
     "portable": {
-      "artifactName": "${productName}.exe"
+      "artifactName": "saba-chan-gui.exe"
     },
     "nsis": {
       "oneClick": false,

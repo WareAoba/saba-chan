@@ -749,3 +749,29 @@ fn extension_versions_come_from_manifest_json() {
     std::fs::write(ext.join("manifest.json"), r#"{"id": "ue4-ini", "version": "0.2.0"}"#).unwrap();
     assert_eq!(super::read_extension_version(&ext.join("manifest.json")), Some(("ue4-ini".into(), "0.2.0".into())));
 }
+
+// 업데이트가 끝나면 (실패한 것까지) 받아 둔 압축 파일과 .exe.old 백업이 남지 않는다
+#[test]
+fn finished_update_leaves_no_staged_archives_or_old_binaries() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.path().join("staging");
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.staging_dir).unwrap();
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    for f in ["pending.json", "saba-chan-gui-windows-x64.zip", "locales.zip.part"] {
+        std::fs::write(manager.staging_dir.join(f), b"x").unwrap();
+    }
+    for f in ["saba-core.exe.old", "saba-chan-gui.exe.old", "notepad.exe.old", "saba-core.exe"] {
+        std::fs::write(manager.install_root.join(f), b"x").unwrap();
+    }
+
+    manager.clear_pending_manifest();
+    manager.cleanup_old_files();
+
+    assert_eq!(std::fs::read_dir(&manager.staging_dir).unwrap().count(), 0);
+    let mut left: Vec<_> = std::fs::read_dir(&manager.install_root).unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    left.sort();
+    assert_eq!(left, vec!["notepad.exe.old", "saba-core.exe"]);
+}

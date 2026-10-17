@@ -91,6 +91,34 @@ fn extension_tool(args: &[String]) -> i32 {
     i32::from(failed > 0)
 }
 
+const DAEMON_USAGE: &str = "Usage: saba-core [--spawned]
+       saba-core module schema | module validate <dir>...
+       saba-core extension validate <dir>...
+       saba-core --version | --help
+
+  --spawned   started by the GUI/CLI (skips the boot selector)";
+
+enum DaemonArgs {
+    Run,
+    Version,
+    Help,
+}
+
+/// 데몬 실행 인자. 알 수 있는 것만 받고, 나머지는 그 인자를 돌려준다
+fn daemon_args(args: &[String]) -> Result<DaemonArgs, String> {
+    let mut mode = DaemonArgs::Run;
+    for arg in args {
+        match arg.as_str() {
+            "--version" | "-V" => return Ok(DaemonArgs::Version),
+            "--help" | "-h" => mode = DaemonArgs::Help,
+            // --after-update: 업데이터가 다시 띄울 때 붙인다
+            "--spawned" | "--after-update" => {}
+            other => return Err(other.to_string()),
+        }
+    }
+    Ok(mode)
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // ── Boot Mode Determination ────────────────────────────────
@@ -102,6 +130,22 @@ async fn main() -> anyhow::Result<()> {
     }
     if args.get(1).map(String::as_str) == Some("extension") {
         std::process::exit(extension_tool(&args[2..]));
+    }
+    // 데이터 폴더를 건드리기 전에 인자를 본다: 모르는 인자로 데몬이 떠서 설정을 이관하면 안 된다
+    match daemon_args(&args[1..]) {
+        Ok(DaemonArgs::Run) => {}
+        Ok(DaemonArgs::Version) => {
+            println!("saba-core {}", env!("CARGO_PKG_VERSION"));
+            return Ok(());
+        }
+        Ok(DaemonArgs::Help) => {
+            println!("{}", DAEMON_USAGE);
+            return Ok(());
+        }
+        Err(bad) => {
+            eprintln!("saba-core: unknown argument '{}'\n\n{}", bad, DAEMON_USAGE);
+            std::process::exit(2);
+        }
     }
     let spawned = args.iter().any(|a| a == "--spawned");
     let interactive =
@@ -661,3 +705,22 @@ async fn try_restart_renderer() -> bool {
     false
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(args: &[&str]) -> Result<DaemonArgs, String> {
+        daemon_args(&args.iter().map(|a| a.to_string()).collect::<Vec<_>>())
+    }
+
+    #[test]
+    fn unknown_arguments_never_start_the_daemon() {
+        assert!(matches!(parse(&[]), Ok(DaemonArgs::Run)));
+        assert!(matches!(parse(&["--spawned"]), Ok(DaemonArgs::Run)));
+        assert!(matches!(parse(&["--version"]), Ok(DaemonArgs::Version)));
+        assert!(matches!(parse(&["--spawned", "--help"]), Ok(DaemonArgs::Help)));
+        assert_eq!(parse(&["--verison"]).err().as_deref(), Some("--verison"));
+        assert_eq!(parse(&["serve"]).err().as_deref(), Some("serve"));
+    }
+}

@@ -30,8 +30,6 @@ pub struct ServerInstance {
     pub auto_detect: bool,
     pub process_name: Option<String>,
     pub port: Option<u16>,
-    pub rcon_port: Option<u16>,
-    pub rcon_password: Option<String>,
     #[serde(default)]
     pub rest_host: Option<String>,
     #[serde(default)]
@@ -86,8 +84,6 @@ impl ServerInstance {
             auto_detect: true,
             process_name: None,
             port: None,
-            rcon_port: None,
-            rcon_password: None,
             rest_host: None,
             rest_port: None,
             rest_username: None,
@@ -151,9 +147,9 @@ impl ServerInstance {
     }
 
     /// 게임 설정 파일에서 읽어 온 값(`import_settings` 결과)을 반영한다: `module_settings`에 넣고,
-    /// 같은 값을 가리키는 인스턴스 필드(포트·RCON/REST 비밀번호)도 맞춘다. 안 그러면 인스턴스 필드가
+    /// 같은 값을 가리키는 인스턴스 필드(포트·REST 비밀번호)도 맞춘다. 안 그러면 인스턴스 필드가
     /// 옛 값으로 남아 다음 저장에서 파일을 되돌린다.
-    /// `credential_map`: 데몬 키(`rcon_password` 등) → 게임 키(`AdminPassword` 등)
+    /// `credential_map`: 데몬 키(`rest_password` 등) → 게임 키(`AdminPassword` 등)
     /// `types`: 설정 이름 → module.toml 필드 타입. 값은 그 타입으로 저장한다(문자열 필드는 문자열 그대로)
     pub fn apply_imported_settings(
         &mut self,
@@ -174,9 +170,9 @@ impl ServerInstance {
             }).and_then(|p| u16::try_from(p).ok())
         };
         if let Some(p) = port("port") { self.port = Some(p); }
-        if let Some(p) = port("rcon_port") { self.rcon_port = Some(p); }
         if let Some(p) = port("rest_port") { self.rest_port = Some(p); }
-        for daemon_key in ["rcon_password", "rest_password"] {
+        {
+            let daemon_key = "rest_password";
             let game_key = credential_map.get(daemon_key).map(String::as_str).unwrap_or(daemon_key);
             let value = self.module_settings.iter()
                 .find(|(k, _)| settings.contains_key(k.as_str()) && (k.eq_ignore_ascii_case(game_key) || k.as_str() == daemon_key))
@@ -184,24 +180,15 @@ impl ServerInstance {
                 .map(str::to_string);
             // 파일이 비어 있으면 비어 있는 것이 사실이다: 옛 캐시 값을 남기지 않는다
             if let Some(pwd) = value {
-                match daemon_key {
-                    "rcon_password" => self.rcon_password = Some(pwd),
-                    _ => self.rest_password = Some(pwd),
-                }
+                self.rest_password = Some(pwd);
             }
         }
     }
 
-    /// RCON/REST 비밀번호가 비어있으면 랜덤 비밀번호로 채웁니다.
+    /// REST 비밀번호가 비어있으면 랜덤 비밀번호로 채웁니다.
     /// 변경이 발생하면 true를 반환합니다.
     pub fn ensure_passwords(&mut self) -> bool {
         let mut changed = false;
-        if self.rcon_password.as_deref().unwrap_or("").is_empty() {
-            let pw = generate_random_password();
-            tracing::info!("Auto-generated RCON password for instance {}", self.id);
-            self.rcon_password = Some(pw);
-            changed = true;
-        }
         if self.rest_password.as_deref().unwrap_or("").is_empty() {
             let pw = generate_random_password();
             tracing::info!("Auto-generated REST password for instance {}", self.id);
@@ -502,7 +489,7 @@ mod tests {
     fn imported_settings_refresh_instance_fields() {
         let mut inst = ServerInstance::new("a", "palworld");
         inst.port = Some(27015);
-        let settings = serde_json::json!({"port": "28015", "rcon_port": 25575, "AdminPassword": "pw", "Other": 1});
+        let settings = serde_json::json!({"port": "28015", "AdminPassword": "pw", "Other": 1});
         let map: std::collections::HashMap<String, String> = [("rest_password".to_string(), "adminpassword".to_string())].into();
         let types: std::collections::HashMap<String, String> =
             [("port", "number"), ("AdminPassword", "password")].map(|(k, t)| (k.to_string(), t.to_string())).into();
@@ -515,7 +502,7 @@ mod tests {
         assert_eq!(inst.module_settings.get("AdminPassword"), Some(&serde_json::json!("000123")));
         assert_eq!(inst.rest_password.as_deref(), Some("000123"));
         inst.apply_imported_settings(serde_json::json!({"AdminPassword": "pw"}).as_object().unwrap(), &map, &types);
-        assert_eq!((inst.port, inst.rcon_port), (Some(28015), Some(25575)));
+        assert_eq!(inst.port, Some(28015));
         assert_eq!(inst.rest_password.as_deref(), Some("pw"));
         assert_eq!(inst.module_settings.get("Other"), Some(&serde_json::json!(1)));
     }
@@ -629,7 +616,7 @@ mod tests {
 
         let mut inst = make_test_instance("struct-test", "minecraft");
         inst.module_settings.insert("ram".to_string(), serde_json::json!(4));
-        inst.rcon_password = Some("secret123".to_string());
+        inst.rest_password = Some("secret123".to_string());
         let id = inst.id.clone();
         store.add(inst).unwrap();
 

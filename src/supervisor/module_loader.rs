@@ -154,11 +154,6 @@ impl ModuleMetadata {
         })
     }
     
-    /// RCON 기본 포트를 가져옵니다 (모듈에 정의되지 않으면 25575)
-    pub fn default_rcon_port(&self) -> u16 {
-        self.get_setting_default("rcon_port").unwrap_or(25575)
-    }
-    
     /// REST API 기본 포트를 가져옵니다 (모듈에 정의되지 않으면 8212)
     pub fn default_rest_port(&self) -> u16 {
         self.get_setting_default("rest_port").unwrap_or(8212)
@@ -304,7 +299,7 @@ pub struct SettingField {
 }
 
 /// 인스턴스 필드로도 저장되는 포트 설정 이름 (`ServerInstance::port` 등)
-pub const CORE_PORT_FIELDS: &[&str] = &["port", "rcon_port", "rest_port"];
+pub const CORE_PORT_FIELDS: &[&str] = &["port", "rest_port"];
 
 impl ModuleSettings {
     /// 포트로 표시된 설정 이름 (`port = true`)
