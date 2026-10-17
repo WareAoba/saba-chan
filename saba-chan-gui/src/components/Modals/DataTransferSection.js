@@ -73,7 +73,8 @@ export function DataTransferSection() {
     // 덮어쓰기를 바꾸면 추가·교체·건너뜀이 달라진다: 같은 파일로 미리보기를 다시 받는다
     const changeOverwrite = async (ow) => {
         setOverwrite(ow);
-        if (preview) await loadPreview(preview.path, ow);
+        // 다시 받지 못하면 보이는 미리보기와 토글이 어긋나지 않게 되돌린다
+        if (preview && !(await loadPreview(preview.path, ow))) setOverwrite(!ow);
     };
 
     const doImport = async () => {
@@ -162,9 +163,14 @@ export function DataTransferSection() {
                         {summary.config?.length > 0 && (
                             <li>{t('data_transfer.config', { sections: summary.config.join(', ') })}</li>
                         )}
-                        {summary.nodeToken && <li>{t(`data_transfer.node_token_${summary.nodeToken}`)}</li>}
+                        {['imported', 'kept'].includes(summary.nodeToken) && (
+                            <li>{t(`data_transfer.node_token_${summary.nodeToken}`)}</li>
+                        )}
                         {summary.secrets && <li>{t('data_transfer.includes_secrets')}</li>}
                     </ul>
+                    {imported?.config?.includes('gui') && (
+                        <p className="setting-description">{t('data_transfer.restart_hint')}</p>
+                    )}
                     {summary.missingModules?.length > 0 && (
                         <div className="notice tone-warn" role="status">
                             <Icon name="alertTriangle" size="sm" />

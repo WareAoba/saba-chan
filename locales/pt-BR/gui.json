@@ -1011,6 +1011,7 @@
     "err_invalid_archive": "Não é um arquivo de exportação do Saba-chan, ou está danificado.",
     "err_invalid_config": "Não foi possível ler as configurações do arquivo.",
     "err_write_failed": "Não foi possível gravar o arquivo. Verifique o local e as permissões.",
-    "err_generic": "Algo deu errado. Tente novamente."
+    "err_generic": "Algo deu errado. Tente novamente.",
+    "restart_hint": "As configurações do app importadas valem depois de reiniciar o Saba-chan."
   }
 }

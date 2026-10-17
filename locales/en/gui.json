@@ -1011,6 +1011,7 @@
     "err_invalid_archive": "This isn't a Saba-chan export file, or it's damaged.",
     "err_invalid_config": "The settings in the file can't be read.",
     "err_write_failed": "Couldn't write the file. Check the location and permissions.",
-    "err_generic": "Something went wrong. Please try again."
+    "err_generic": "Something went wrong. Please try again.",
+    "restart_hint": "Imported app settings take effect after restarting Saba-chan."
   }
 }

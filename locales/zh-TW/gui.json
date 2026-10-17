@@ -1011,6 +1011,7 @@
     "err_invalid_archive": "這不是 Saba-chan 匯出檔案，或檔案已損壞。",
     "err_invalid_config": "無法讀取檔案中的設定。",
     "err_write_failed": "無法寫入檔案。請檢查儲存位置和權限。",
-    "err_generic": "處理失敗，請稍後再試。"
+    "err_generic": "處理失敗，請稍後再試。",
+    "restart_hint": "匯入的介面設定將在重新啟動 Saba-chan 後生效。"
   }
 }

@@ -1011,6 +1011,7 @@
     "err_invalid_archive": "Ce n'est pas un fichier d'export Saba-chan, ou il est endommagé.",
     "err_invalid_config": "Impossible de lire les paramètres du fichier.",
     "err_write_failed": "Impossible d'écrire le fichier. Vérifiez l'emplacement et les autorisations.",
-    "err_generic": "Une erreur s'est produite. Veuillez réessayer."
+    "err_generic": "Une erreur s'est produite. Veuillez réessayer.",
+    "restart_hint": "Les paramètres de l'app importés s'appliquent après le redémarrage de Saba-chan."
   }
 }

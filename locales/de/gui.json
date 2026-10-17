@@ -1011,6 +1011,7 @@
     "err_invalid_archive": "Das ist keine Saba-chan-Exportdatei oder sie ist beschädigt.",
     "err_invalid_config": "Die Einstellungen in der Datei können nicht gelesen werden.",
     "err_write_failed": "Datei konnte nicht geschrieben werden. Prüfe Speicherort und Berechtigungen.",
-    "err_generic": "Etwas ist schiefgelaufen. Bitte versuche es erneut."
+    "err_generic": "Etwas ist schiefgelaufen. Bitte versuche es erneut.",
+    "restart_hint": "Importierte App-Einstellungen gelten nach einem Neustart von Saba-chan."
   }
 }

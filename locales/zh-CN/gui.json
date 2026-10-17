@@ -1011,6 +1011,7 @@
     "err_invalid_archive": "这不是 Saba-chan 导出文件，或文件已损坏。",
     "err_invalid_config": "无法读取文件中的设置。",
     "err_write_failed": "无法写入文件。请检查保存位置和权限。",
-    "err_generic": "处理失败，请稍后重试。"
+    "err_generic": "处理失败，请稍后重试。",
+    "restart_hint": "导入的界面设置将在重启 Saba-chan 后生效。"
   }
 }

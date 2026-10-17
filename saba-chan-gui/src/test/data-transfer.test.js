@@ -32,8 +32,14 @@ describe('DataTransferSection', () => {
         render(<DataTransferSection />);
         fireEvent.click(screen.getByRole('button', { name: /Choose file to import/ }));
         expect(await screen.findByText(/Skip Beta \(a server with this ID already exists\)/)).toBeTruthy();
+
+        // 재미리보기가 실패하면 토글을 되돌린다
+        window.api.dataImport.mockResolvedValueOnce({ success: false, error_code: 'INVALID_ARCHIVE' });
+        fireEvent.click(screen.getByLabelText('Overwrite existing servers'));
+        expect(await screen.findByText(/isn't a Saba-chan export file/)).toBeTruthy();
+        expect(screen.getByLabelText('Overwrite existing servers').checked).toBe(false);
         expect(screen.getByText(/Some modules aren't on this PC: zomboid/)).toBeTruthy();
-        expect(window.api.dataImport).toHaveBeenLastCalledWith({ path: undefined, dryRun: true, overwrite: false });
+        expect(window.api.dataImport).toHaveBeenNthCalledWith(1, { path: undefined, dryRun: true, overwrite: false });
 
         fireEvent.click(screen.getByLabelText('Overwrite existing servers'));
         expect(await screen.findByText(/Overwrite: Beta/)).toBeTruthy();
