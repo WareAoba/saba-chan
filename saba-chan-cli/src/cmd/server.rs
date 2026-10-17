@@ -1287,7 +1287,7 @@ async fn history(ctx: &Ctx, query: Option<&str>) -> Result<()> {
 // ── 점검·초기화 ──
 
 /// 실패여도 issues가 있으면 결과로 보여 준다 (validate는 치명 문제가 있으면 success:false)
-async fn checkup(ctx: &Ctx, r: Result<Value>, ok_msg: &str) -> Result<()> {
+async fn checkup(ctx: &Ctx, r: Result<Value>, ok_msg: &str, server: &str) -> Result<()> {
     let (value, failed_flag) = match r {
         Ok(v) => (v, false),
         Err(e) => match e.downcast_ref::<CliError>() {
@@ -1300,6 +1300,16 @@ async fn checkup(ctx: &Ctx, r: Result<Value>, ok_msg: &str) -> Result<()> {
             println!("{} {}", console::style("✓").green().bold(), ok_msg);
         }
     });
+    // 약관 동의가 걸린 문제면 바로 풀 수 있는 명령을 알려 준다
+    let mentions_eula = value
+        .get("issues")
+        .is_some_and(|i| i.to_string().to_ascii_lowercase().contains("eula"));
+    if mentions_eula {
+        ctx.out.hint(&format!(
+            "saba-chan-cli server accept-eula {}",
+            shlex::try_quote(server).unwrap_or_else(|_| server.into())
+        ));
+    }
     if failed_flag {
         return Err(CliError::Failed(t!("validate.blocked")).into());
     }
@@ -1309,13 +1319,13 @@ async fn checkup(ctx: &Ctx, r: Result<Value>, ok_msg: &str) -> Result<()> {
 async fn validate(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     let sv = resolve::server(ctx, query).await?;
     let r = ctx.api.validate(&sv.id).await;
-    checkup(ctx, r, &t!("validate.ok", name = sv.name)).await
+    checkup(ctx, r, &t!("validate.ok", name = sv.name), &sv.name).await
 }
 
 async fn diagnose(ctx: &Ctx, query: Option<&str>) -> Result<()> {
     let sv = resolve::server(ctx, query).await?;
     let r = ctx.api.diagnose(&sv.id).await;
-    checkup(ctx, r, &t!("diagnose.ok", name = sv.name)).await
+    checkup(ctx, r, &t!("diagnose.ok", name = sv.name), &sv.name).await
 }
 
 async fn accept_eula(ctx: &Ctx, query: Option<&str>) -> Result<()> {

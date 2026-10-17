@@ -308,7 +308,7 @@
     "connected": "연결됨",
     "crashed": "크래시",
     "daemon": "데몬",
-    "daemon_off": "데몬",
+    "daemon_off": "꺼져 있음",
     "disconnected": "연결 안 됨",
     "discord": "디스코드",
     "modules_failed": "모듈 {{count}}개를 불러오지 못했어요",
@@ -533,5 +533,9 @@
   },
   "rename": {
     "done": "{{old}}의 이름을 {{name}}(으)로 바꿨어요."
+  },
+  "version": {
+    "release": "릴리스",
+    "last_updated": "마지막 업데이트"
   }
 }

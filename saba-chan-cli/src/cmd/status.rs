@@ -214,10 +214,15 @@ pub fn print_server_table(servers: &[Value], modules: &Value, slots: &Slots) {
 
 pub async fn version(ctx: &Ctx) -> Result<()> {
     let cli = env!("CARGO_PKG_VERSION");
-    let daemon = ctx.api.version().await.ok();
-    let v = json!({ "cli": cli, "daemon": daemon });
+    let (daemon, installed) = tokio::join!(ctx.api.version(), ctx.api.system_components());
+    let (daemon, installed) = (daemon.ok(), installed.ok());
+    let v = json!({ "cli": cli, "daemon": daemon, "installed": installed });
     ctx.out.data(&v, |_| {
-        let mut rows = vec![("saba-chan-cli".to_string(), cli.to_string())];
+        let mut rows = Vec::new();
+        if let Some(rel) = installed.as_ref().map(|i| s(i, "version")).filter(|r| !r.is_empty()) {
+            rows.push((t!("version.release"), console::style(rel).bold().to_string()));
+        }
+        rows.push(("saba-chan-cli".to_string(), cli.to_string()));
         match &daemon {
             Some(d) => {
                 if let Some(map) = d.get("components").and_then(Value::as_object) {
@@ -225,6 +230,27 @@ pub async fn version(ctx: &Ctx) -> Result<()> {
                 }
             }
             None => rows.push(("saba-core".into(), output::dim(&t!("status.daemon_off")))),
+        }
+        // 업데이터가 기록한 구성요소 중 위에 없는 것 (GUI·업데이터 등)
+        if let Some(map) = installed
+            .as_ref()
+            .and_then(|i| i.get("components"))
+            .and_then(Value::as_object)
+        {
+            for (k, v) in map {
+                // "cli"는 위의 saba-chan-cli 줄과 같다
+                if k != "cli" && !rows.iter().any(|(n, _)| n == k) {
+                    rows.push((k.clone(), output::show(v)));
+                }
+            }
+        }
+        if let Some(at) = installed
+            .as_ref()
+            .and_then(|i| i.get("lastUpdated"))
+            .and_then(Value::as_str)
+            .and_then(|t| t.parse::<u64>().ok())
+        {
+            rows.push((t!("version.last_updated"), output::ago(at)));
         }
         output::print_kv(&rows);
     });

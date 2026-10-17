@@ -144,6 +144,10 @@ impl Api {
     pub async fn version(&self) -> Result<Value> {
         self.get("/api/version").await
     }
+    /// GET /api/system/components — 릴리스 버전과 설치된 구성요소 `{version, components, lastUpdated}`
+    pub async fn system_components(&self) -> Result<Value> {
+        self.get("/api/system/components").await
+    }
     /// POST /api/daemon/shutdown
     pub async fn shutdown(&self) -> Result<Value> {
         self.post("/api/daemon/shutdown", json!({})).await

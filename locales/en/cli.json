@@ -308,7 +308,7 @@
     "connected": "connected",
     "crashed": "crashed",
     "daemon": "Daemon",
-    "daemon_off": "Daemon",
+    "daemon_off": "not running",
     "disconnected": "disconnected",
     "discord": "Discord",
     "modules_failed": "{{count}} module(s) failed to load",
@@ -383,5 +383,9 @@
   },
   "rename": {
     "done": "Renamed {{old}} to {{name}}."
+  },
+  "version": {
+    "release": "Release",
+    "last_updated": "Last updated"
   }
 }
