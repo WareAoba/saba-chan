@@ -125,6 +125,11 @@ pub fn task_key(instance_id: &str, task: &ScheduledTask) -> String {
     format!("{}:{}", instance_id, serde_json::to_string(task).unwrap_or_default())
 }
 
+/// 예고를 시작한 작업이 아직 그대로 예약돼 있는지. 지웠거나 껐거나 고쳤으면 키가 달라진다
+pub fn still_scheduled(instance_id: &str, schedule: &[ScheduledTask], key: &str) -> bool {
+    schedule.iter().any(|t| t.enabled && task_key(instance_id, t) == key)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,5 +193,18 @@ mod tests {
         let ok = task(serde_json::json!({"action": "announce", "every_minutes": 60, "message": "hi"}));
         assert!(ok.problems().is_empty());
         assert!(ok.enabled);
+    }
+
+    #[test]
+    fn a_deleted_disabled_or_edited_task_is_no_longer_scheduled() {
+        let job = task(serde_json::json!({"action": "restart", "at": "04:00", "warn_minutes": [10]}));
+        let key = task_key("srv", &job);
+        assert!(still_scheduled("srv", std::slice::from_ref(&job), &key));
+        assert!(!still_scheduled("srv", &[], &key), "deleted");
+        let off = ScheduledTask { enabled: false, ..job.clone() };
+        assert!(!still_scheduled("srv", &[off], &key), "disabled");
+        let moved = ScheduledTask { at: Some("05:00".into()), ..job.clone() };
+        assert!(!still_scheduled("srv", &[moved], &key), "edited");
+        assert!(!still_scheduled("other", std::slice::from_ref(&job), &key));
     }
 }
