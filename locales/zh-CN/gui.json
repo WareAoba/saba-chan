@@ -1125,5 +1125,21 @@
     "console_title": "守护进程控制台",
     "console_empty": "暂无守护进程日志。",
     "console_failed": "无法加载守护进程日志。"
+  },
+  "palette": {
+    "title": "命令面板",
+    "placeholder": "搜索操作…",
+    "loading": "正在加载操作…",
+    "empty": "没有匹配的操作。",
+    "failed": "无法加载或执行该操作。",
+    "need_server": "请先选择服务器。",
+    "invalid_input": "请检查 {{field}}：{{reason}}",
+    "plan_expired": "确认已过期，请重试。",
+    "back": "返回",
+    "next": "下一步",
+    "confirm_title": "执行 {{action}}？",
+    "confirm_run": "执行",
+    "done": "完成：{{action}}",
+    "hint": "↑↓ 移动 · Enter 执行 · Esc 关闭"
   }
 }

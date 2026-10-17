@@ -2586,3 +2586,159 @@ button.appbar-preflight {
     font-size: var(--fs-xs);
     color: var(--text-3);
 }
+
+/* 명령 팔레트 (Ctrl+K) */
+.palette-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9500;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 12vh;
+    background: var(--bg-overlay);
+}
+.palette {
+    width: min(620px, calc(100vw - 32px));
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--r-lg);
+    border: 1px solid var(--line);
+    background: var(--bg-1);
+    box-shadow: var(--shadow-raised);
+    overflow: hidden;
+}
+.palette-search {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-4);
+    border-bottom: 1px solid var(--line);
+    color: var(--text-3);
+}
+.palette-search input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--text-1);
+    font: inherit;
+    font-size: var(--fs-md, 15px);
+}
+.palette-scope {
+    flex: none;
+    padding: 2px 10px;
+    border-radius: var(--r-pill);
+    font-size: var(--fs-xs);
+    color: var(--text-2);
+    background: var(--inset);
+}
+.palette-list {
+    list-style: none;
+    margin: 0;
+    padding: var(--sp-1);
+    overflow-y: auto;
+}
+.palette-item {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: 8px var(--sp-3);
+    border-radius: var(--r-sm);
+    cursor: pointer;
+}
+.palette-item.active {
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.palette-item-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.palette-item-sub {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+}
+.palette-item-warn {
+    display: inline-flex;
+    color: var(--warn);
+}
+.palette-empty,
+.palette-error {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    margin: 0;
+    padding: var(--sp-3) var(--sp-4);
+    font-size: var(--fs-sm);
+    color: var(--text-3);
+}
+.palette-error {
+    color: var(--stop);
+}
+.palette-step {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    padding: var(--sp-4);
+    overflow-y: auto;
+}
+.palette-step h3 {
+    font-size: var(--fs-lg);
+    font-weight: 700;
+}
+.palette-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+}
+.palette-required {
+    color: var(--stop);
+}
+.palette-summary {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+}
+.palette-summary div {
+    display: flex;
+    gap: var(--sp-3);
+    font-size: var(--fs-sm);
+}
+.palette-summary dt {
+    flex: 0 0 35%;
+    color: var(--text-3);
+}
+.palette-summary dd {
+    margin: 0;
+    color: var(--text-1);
+    word-break: break-word;
+}
+.palette-result {
+    max-height: 40vh;
+    overflow: auto;
+    margin: 0;
+    padding: var(--sp-3);
+    border-radius: var(--r-sm);
+    background: var(--inset);
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    white-space: pre-wrap;
+}
+.palette-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--sp-2);
+}
+.palette-foot {
+    padding: 6px var(--sp-4);
+    border-top: 1px solid var(--line);
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+}

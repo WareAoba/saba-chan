@@ -1125,5 +1125,21 @@
     "console_title": "Console du démon",
     "console_empty": "Pas encore de journaux du démon.",
     "console_failed": "Impossible de charger les journaux du démon."
+  },
+  "palette": {
+    "title": "Palette de commandes",
+    "placeholder": "Rechercher des actions…",
+    "loading": "Chargement des actions…",
+    "empty": "Aucune action correspondante.",
+    "failed": "Impossible de charger ou d'exécuter l'action.",
+    "need_server": "Choisissez d'abord un serveur.",
+    "invalid_input": "Vérifiez {{field}} : {{reason}}",
+    "plan_expired": "La confirmation a expiré. Réessayez.",
+    "back": "Retour",
+    "next": "Suivant",
+    "confirm_title": "Exécuter {{action}} ?",
+    "confirm_run": "Exécuter",
+    "done": "Terminé : {{action}}",
+    "hint": "↑↓ déplacer · Entrée exécuter · Échap fermer"
   }
 }

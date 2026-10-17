@@ -1155,5 +1155,21 @@
     "console_title": "데몬 콘솔",
     "console_empty": "데몬 로그가 아직 없어요.",
     "console_failed": "데몬 로그를 불러오지 못했어요."
+  },
+  "palette": {
+    "title": "명령 팔레트",
+    "placeholder": "액션 검색…",
+    "loading": "액션을 불러오는 중…",
+    "empty": "맞는 액션이 없어요.",
+    "failed": "액션을 불러오거나 실행하지 못했어요.",
+    "need_server": "먼저 서버를 골라 주세요.",
+    "invalid_input": "{{field}}을(를) 확인해 주세요: {{reason}}",
+    "plan_expired": "확인 시간이 지났어요. 다시 해 주세요.",
+    "back": "뒤로",
+    "next": "다음",
+    "confirm_title": "‘{{action}}’ 실행할까요?",
+    "confirm_run": "실행",
+    "done": "완료: {{action}}",
+    "hint": "↑↓ 이동 · Enter 실행 · Esc 닫기"
   }
 }
