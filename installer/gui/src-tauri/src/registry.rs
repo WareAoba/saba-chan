@@ -1,14 +1,14 @@
 //! Windows 레지스트리 관리 — 프로그램 추가/제거 등록
 //!
-//! `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Saba-chan` 키에
+//! `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Saba-chan*` 키에
 //! 인스톨러 정보를 등록하여 [설정 > 앱 > 설치된 앱] 목록에 표시합니다.
+//! 키는 설치 폴더마다 따로다 (`saba_chan_updater_lib::uninstall_entry`): 다른 설치본의 항목을 덮거나 지우지 않는다.
 
 #[cfg(target_os = "windows")]
 use std::path::Path;
 
 #[cfg(target_os = "windows")]
-const UNINSTALL_KEY: &str =
-    r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Saba-chan";
+use saba_chan_updater_lib::uninstall_entry;
 
 /// 프로그램 추가/제거 레지스트리 등록
 #[cfg(target_os = "windows")]
@@ -20,9 +20,15 @@ pub fn register_uninstall_entry(
     use winreg::RegKey;
 
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let (key, _) = hkcu.create_subkey(UNINSTALL_KEY)?;
+    let key_name = uninstall_entry::pick_key_name(&uninstall_entry::entries(), install_dir);
+    let (key, _) = hkcu.create_subkey(uninstall_entry::key_path(&key_name))?;
 
-    let display_name = "Saba-chan";
+    // 두 번째 설치본부터는 목록에서 구분되게 폴더를 붙인다
+    let display_name = if key_name == uninstall_entry::BASE_KEY {
+        "Saba-chan".to_string()
+    } else {
+        format!("Saba-chan ({})", install_dir.display())
+    };
     let install_location = install_dir.to_string_lossy().to_string();
 
     // 인스톨러 자체 경로 (언인스톨에 사용)
@@ -48,7 +54,8 @@ pub fn register_uninstall_entry(
     key.set_value("Publisher", &saba_chan_updater_lib::constants::PUBLISHER)?;
     key.set_value("InstallLocation", &install_location)?;
     key.set_value("UninstallString", &uninstall_cmd)?;
-    key.set_value("DisplayIcon", &format!("{}", install_dir.join("saba-chan-gui.exe").to_string_lossy()))?;
+    let icon = saba_chan_updater_lib::find_gui_exe(install_dir).unwrap_or_else(|| install_dir.join("saba-chan-gui.exe"));
+    key.set_value("DisplayIcon", &icon.to_string_lossy().to_string())?;
     key.set_value("NoModify", &1u32)?;
     key.set_value("NoRepair", &1u32)?;
 
@@ -59,7 +66,8 @@ pub fn register_uninstall_entry(
     }
 
     tracing::info!(
-        "[Registry] Registered uninstall entry: {} at {}",
+        "[Registry] Registered uninstall entry {} ({}) at {}",
+        key_name,
         display_name,
         install_location
     );
@@ -67,50 +75,21 @@ pub fn register_uninstall_entry(
     Ok(())
 }
 
-/// 레지스트리에서 설치 경로 읽기
+/// 이 설치 폴더의 프로그램 추가/제거 항목 삭제 (다른 설치본 항목은 그대로)
 #[cfg(target_os = "windows")]
-pub fn get_install_location() -> Option<String> {
+pub fn remove_uninstall_entry(install_dir: &Path) -> anyhow::Result<()> {
     use winreg::enums::*;
     use winreg::RegKey;
 
-    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let key = hkcu.open_subkey(UNINSTALL_KEY).ok()?;
-    key.get_value::<String, _>("InstallLocation").ok()
-}
-
-/// 레지스트리에서 표시 버전 읽기
-#[cfg(target_os = "windows")]
-pub fn get_installed_version() -> Option<String> {
-    use winreg::enums::*;
-    use winreg::RegKey;
-
-    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let key = hkcu.open_subkey(UNINSTALL_KEY).ok()?;
-    key.get_value::<String, _>("DisplayVersion").ok()
-}
-
-/// 프로그램 추가/제거 레지스트리 삭제
-#[cfg(target_os = "windows")]
-pub fn remove_uninstall_entry() -> anyhow::Result<()> {
-    use winreg::enums::*;
-    use winreg::RegKey;
-
-    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    match hkcu.delete_subkey_all(UNINSTALL_KEY) {
-        Ok(_) => {
-            tracing::info!("[Registry] Removed uninstall entry");
-            Ok(())
-        }
-        Err(e) => {
-            // 키가 존재하지 않으면 무시
-            if e.kind() == std::io::ErrorKind::NotFound {
-                tracing::info!("[Registry] Uninstall entry not found (already clean)");
-                Ok(())
-            } else {
-                Err(anyhow::anyhow!("Failed to remove registry key: {}", e))
-            }
-        }
-    }
+    let Some(name) = uninstall_entry::find_key_name(&uninstall_entry::entries(), install_dir) else {
+        tracing::info!("[Registry] No uninstall entry for {} (already clean)", install_dir.display());
+        return Ok(());
+    };
+    RegKey::predef(HKEY_CURRENT_USER)
+        .delete_subkey_all(uninstall_entry::key_path(&name))
+        .map_err(|e| anyhow::anyhow!("Failed to remove registry key {}: {}", name, e))?;
+    tracing::info!("[Registry] Removed uninstall entry {}", name);
+    Ok(())
 }
 
 /// 인스톨러를 설치 디렉토리에 복사 (언인스톨 시 사용)
@@ -152,16 +131,6 @@ pub fn register_uninstall_entry(
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn get_install_location() -> Option<String> {
-    None
-}
-
-#[cfg(not(target_os = "windows"))]
-pub fn get_installed_version() -> Option<String> {
-    None
-}
-
-#[cfg(not(target_os = "windows"))]
-pub fn remove_uninstall_entry() -> anyhow::Result<()> {
+pub fn remove_uninstall_entry(_install_dir: &std::path::Path) -> anyhow::Result<()> {
     Ok(())
 }

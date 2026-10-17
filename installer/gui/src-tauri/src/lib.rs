@@ -274,6 +274,15 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         app.emit("install:progress", &p).ok();
     };
 
+    // 설치는 계속하되 사용자가 알아야 하는 실패 (로그 파일과 완료 화면에 남는다)
+    let warnings = std::sync::Mutex::new(Vec::<String>::new());
+    let warn = |msg: String| {
+        tracing::warn!("{}", msg);
+        if let Ok(mut w) = warnings.lock() {
+            w.push(msg);
+        }
+    };
+
     // Step 1: 설치 디렉토리 생성 + 쓰기 권한 확인 (0-5%)
     emit("prepare", "Creating install directory...", 2);
     let install_dir = PathBuf::from(&config.install_path);
@@ -403,13 +412,13 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
         for module_id in &config.selected_modules {
             let key = format!("{}{}", relay::MODULE_PREFIX, module_id);
             let Some(info) = manifest.components.get(&key) else {
-                tracing::warn!("Module '{}' is not in the release", module_id);
+                warn(format!("Module '{}' is not in the release", module_id));
                 continue;
             };
             emit("modules-download", &format!("Installing module: {}...", module_id), 49);
             match release::install_addon(info, &data_dir.join("modules").join(module_id)).await {
                 Ok(()) => installed.push(format!("module:{}", module_id)),
-                Err(e) => tracing::warn!("Failed to install module '{}': {}", module_id, e),
+                Err(e) => warn(format!("Failed to install module '{}': {}", module_id, e)),
             }
         }
 
@@ -434,7 +443,7 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
                     }
                 }
                 Err(e) => {
-                    tracing::warn!("익스텐션 자동 설치 일부 실패: {}", e);
+                    warn(format!("Some required extensions failed to install: {}", e));
                 }
             }
         }
@@ -470,7 +479,7 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
     #[cfg(target_os = "windows")]
     {
         if let Err(e) = registry::register_uninstall_entry(&install_dir, &manifest.version) {
-            tracing::warn!("Failed to create registry entry: {}", e);
+            warn(format!("Failed to register in Installed apps: {}", e));
         }
     }
 
@@ -478,7 +487,7 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
     emit("shortcuts", "Creating shortcuts...", 96);
     #[cfg(target_os = "windows")]
     {
-        let gui_exe = install_dir.join("saba-chan-gui.exe");
+        let gui_exe = saba_chan_updater_lib::find_gui_exe(&install_dir);
         let app_name = localized_app_name(&config.language);
 
         // 기존 바로가기 제거 (언어 변경 시 이전 이름의 잔재 방지)
@@ -488,30 +497,43 @@ async fn do_install(app: AppHandle, state: SharedState, config: InstallConfig) {
             let _ = shortcuts::remove_start_menu_shortcut(old_name);
         }
 
-        if gui_exe.exists() {
-            if config.create_desktop_shortcut {
-                if let Err(e) = shortcuts::create_desktop_shortcut(&gui_exe, app_name) {
-                    tracing::warn!("Desktop shortcut failed: {}", e);
+        match &gui_exe {
+            Some(gui_exe) => {
+                if config.create_desktop_shortcut {
+                    if let Err(e) = shortcuts::create_desktop_shortcut(gui_exe, app_name) {
+                        warn(format!("Desktop shortcut failed: {}", e));
+                    }
+                }
+                if config.create_start_menu_shortcut {
+                    if let Err(e) = shortcuts::create_start_menu_shortcut(gui_exe, app_name) {
+                        warn(format!("Start menu shortcut failed: {}", e));
+                    }
                 }
             }
-            if config.create_start_menu_shortcut {
-                if let Err(e) = shortcuts::create_start_menu_shortcut(&gui_exe, app_name) {
-                    tracing::warn!("Start menu shortcut failed: {}", e);
-                }
-            }
+            None => warn(format!("No GUI executable in {}; shortcuts not created", install_dir.display())),
         }
     }
 
     // Step 10.5: 설치한 버전 기록 (업데이터가 같은 파일을 읽는다)
     emit("manifest", "Recording installed versions...", 98);
     if let Err(e) = UpdateManager::save_installed_manifest(&installed_versions) {
-        tracing::warn!("Failed to write installed manifest: {}", e);
+        warn(format!("Failed to write installed manifest: {}", e));
     }
 
-    // 완료
+    // 완료. 레지스트리·바로가기 등 실패한 단계는 숨기지 않고 완료 화면에 함께 보여 준다
+    let warnings = warnings.into_inner().unwrap_or_default();
     let final_progress = InstallProgress {
         step: "complete".into(),
-        message: format!("{} components installed!", installed.len()),
+        message: if warnings.is_empty() {
+            format!("{} components installed!", installed.len())
+        } else {
+            format!(
+                "{} components installed, with problems:\n{}\nLog: {}",
+                installed.len(),
+                warnings.join("\n"),
+                log_file_path().display()
+            )
+        },
         percent: 100,
         complete: true,
         error: None,
@@ -567,16 +589,14 @@ async fn get_app_mode(mode: State<'_, AppMode>) -> Result<serde_json::Value, Str
 #[tauri::command]
 async fn launch_app(state: State<'_, SharedState>) -> Result<(), String> {
     let install_path = state.read().await.install_path.clone();
-    let exe = PathBuf::from(&install_path)
-        .join(if cfg!(windows) { "saba-chan-gui.exe" } else { "saba-chan-gui" });
-    if exe.exists() {
+    if let Some(exe) = saba_chan_updater_lib::find_gui_exe(Path::new(&install_path)) {
         std::process::Command::new(&exe)
             .current_dir(&install_path)
             .spawn()
             .map_err(|e| format!("Failed to launch Saba-chan: {}", e))?;
         Ok(())
     } else {
-        Err(format!("Executable not found: {}", exe.display()))
+        Err(format!("Executable not found in {}", install_path))
     }
 }
 
@@ -931,6 +951,23 @@ async fn install_required_extensions(
 // 엔트리
 // ═══════════════════════════════════════════════════════
 
+/// 로그 파일: GUI 앱이라 stderr는 보이지 않는다. 실패한 단계를 나중에 확인할 수 있게 파일에도 남긴다
+pub fn log_file_path() -> PathBuf {
+    std::env::temp_dir().join("saba-chan-installer.log")
+}
+
+fn init_logging() {
+    use tracing_subscriber::fmt::writer::MakeWriterExt;
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+    let builder = tracing_subscriber::fmt().with_env_filter(filter).with_target(false).with_ansi(false);
+    match std::fs::OpenOptions::new().create(true).append(true).open(log_file_path()) {
+        Ok(file) => builder.with_writer(std::io::stderr.and(std::sync::Mutex::new(file))).init(),
+        Err(_) => builder.with_writer(std::io::stderr).init(),
+    }
+    tracing::info!("Saba-chan installer {} started", env!("CARGO_PKG_VERSION"));
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let args: Vec<String> = std::env::args().collect();
@@ -1000,14 +1037,7 @@ pub fn run() {
             }
         }
 
-        tracing_subscriber::fmt()
-            .with_writer(std::io::stderr)
-            .with_env_filter(
-                tracing_subscriber::EnvFilter::try_from_default_env()
-                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-            )
-            .with_target(false)
-            .init();
+        init_logging();
 
         let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
         rt.block_on(async {
@@ -1017,20 +1047,19 @@ pub fn run() {
     }
 
     // GUI 모드
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .with_target(false)
-        .init();
+    init_logging();
 
     let app_mode = AppMode {
         uninstall: is_uninstall,
         silent: is_silent,
     };
 
-    let installer_state: SharedState = Arc::new(RwLock::new(InstallerState::default()));
+    let mut initial = InstallerState::default();
+    if is_uninstall {
+        // 제거 화면에 보이는 경로 = 실제로 지울 폴더 (제거기 자신이 든 설치 폴더)
+        initial.install_path = uninstall::target_dir().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
+    }
+    let installer_state: SharedState = Arc::new(RwLock::new(initial));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())

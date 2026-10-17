@@ -13,8 +13,12 @@
  *   pwsh scripts/build-core.ps1 -Debug -MockRelay   (또는 cargo build -p saba-core --features mock-relay)
  *
  * ## 사용법
- *   node scripts/mock-release-server.js [--port 9876] [--version 0.2.0]
+ *   node scripts/mock-release-server.js [--port 9876] [--version 0.2.0] [--bin-dir target/release]
  *   그다음 업데이트 설정: source = "relay", relay_url = "http://127.0.0.1:9876"
+ *
+ * 실행 파일 컴포넌트(saba-core, cli, updater, gui)는 --bin-dir(기본 target/release)에 실제 빌드가 있으면
+ * 그 파일을 담는다. 그래야 적용 뒤 데몬·GUI가 다시 떠서 "재시작"까지 시험할 수 있다.
+ * 없으면 글자 파일을 담고 경고한다 (확인·다운로드·적용까지만 시험 가능).
  *
  * 에셋은 scripts/.mock-assets/ 에 만들어진다 (git에 넣지 않는다).
  */
@@ -34,6 +38,7 @@ function getArg(name, defaultVal) {
 const PORT = parseInt(getArg('--port', '9876'), 10);
 const MOCK_VERSION = getArg('--version', '0.2.0');
 const ASSETS_DIR = path.join(__dirname, '.mock-assets');
+const BIN_DIR = path.resolve(getArg('--bin-dir', path.join(__dirname, '..', 'target', 'release')));
 
 // ─── 서명 ───────────────────────────────────────────
 // 공개된 시험용 seed. 운영 키가 아니다: 릴리즈 빌드는 이 키를 믿지 않는다
@@ -66,7 +71,7 @@ function signManifest(manifest) {
 function createMiniZip(innerFileName, innerContent) {
     // ZIP local file header + central directory + end-of-central-directory
     const fnBuf = Buffer.from(innerFileName, 'utf-8');
-    const dataBuf = Buffer.from(innerContent, 'utf-8');
+    const dataBuf = Buffer.isBuffer(innerContent) ? innerContent : Buffer.from(innerContent, 'utf-8');
     const crc = crc32(dataBuf);
 
     // Local file header
@@ -138,15 +143,31 @@ function crc32(buf) {
 
 // ─── 에셋 ───────────────────────────────────────────
 
-// manifest 컴포넌트 키 → (에셋 이름, 안에 든 파일, 설치 폴더)
+// manifest 컴포넌트 키 → (에셋 이름, 안에 든 파일, 설치 폴더, 실제 빌드 파일 이름)
 function componentSpecs(platform) {
     const exe = platform.startsWith('windows') ? '.exe' : '';
     return {
-        'saba-core': { asset: `saba-core-${platform}.zip`, inner: `saba-core${exe}`, install_dir: '.' },
-        cli: { asset: `saba-chan-cli-${platform}.zip`, inner: `saba-chan-cli${exe}`, install_dir: '.' },
-        gui: { asset: `saba-chan-gui-${platform}.zip`, inner: 'index.html', install_dir: 'saba-chan-gui' },
+        'saba-core': { asset: `saba-core-${platform}.zip`, inner: `saba-core${exe}`, install_dir: '.', bin: `saba-core${exe}` },
+        cli: { asset: `saba-chan-cli-${platform}.zip`, inner: `saba-chan-cli${exe}`, install_dir: '.', bin: `saba-chan-cli${exe}` },
+        updater: { asset: `saba-chan-updater-${platform}.zip`, inner: `saba-chan-updater${exe}`, install_dir: '.', bin: `saba-chan-updater${exe}` },
+        gui: { asset: `saba-chan-gui-${platform}.zip`, inner: `saba-chan-gui${exe}`, install_dir: '.', bin: `saba-chan-gui${exe}` },
         'module-minecraft': { asset: 'module-minecraft.zip', inner: 'module.toml', install_dir: 'modules/minecraft' },
     };
+}
+
+/** 에셋 안에 담을 내용: 실제 빌드가 있으면 그 바이트, 없으면 글자 */
+function assetContent(key, spec) {
+    if (spec.inner === 'module.toml') {
+        return `[module]\nname = "minecraft"\nversion = "${MOCK_VERSION}"\n`;
+    }
+    const built = spec.bin && path.join(BIN_DIR, spec.bin);
+    if (built && fs.existsSync(built)) {
+        return fs.readFileSync(built);
+    }
+    if (spec.bin) {
+        console.warn(`  ! ${spec.bin} not found in ${BIN_DIR}: shipping a text placeholder (it cannot restart after apply)`);
+    }
+    return `MOCK ${key} v${MOCK_VERSION}`;
 }
 
 /** 플랫폼별 에셋을 만들고 manifest를 돌려준다 (요청이 처음 올 때 한 번) */
@@ -156,10 +177,7 @@ function manifestFor(platform, baseUrl) {
     fs.mkdirSync(ASSETS_DIR, { recursive: true });
     const components = {};
     for (const [key, spec] of Object.entries(componentSpecs(platform))) {
-        const content = spec.inner === 'module.toml'
-            ? `[module]\nname = "minecraft"\nversion = "${MOCK_VERSION}"\n`
-            : `MOCK ${key} v${MOCK_VERSION}`;
-        const zip = createMiniZip(spec.inner, content);
+        const zip = createMiniZip(spec.inner, assetContent(key, spec));
         fs.writeFileSync(path.join(ASSETS_DIR, spec.asset), zip);
         components[key] = {
             version: MOCK_VERSION,
