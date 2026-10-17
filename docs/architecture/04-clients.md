@@ -74,7 +74,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:640-758`(인증 미들웨어 
 | runtimePreflight (36) | runtime:preflight | 2072 | GET /api/runtime/preflight | ✓ 723 (미사용) |
 | configDefaults / configReset (37-38) | config:defaults/reset | 2074-2079 | GET /api/config/:kind/defaults, POST /api/config/:kind/reset {keys?} | ✓ 702-703 (미사용) |
 | extensionList…extensionInitStatus (40-53) | extension:* | 2084-2263 | /api/extensions, /:id/enable, /disable, /i18n/:locale, /gui, /gui/styles, /icon, /manifest, /:id/install, DELETE /:id, /updates, /rescan, /init-status | ✓ 721-737 (확장 UI 로딩은 다른 문서에서 다룸) |
-| managedConsole (55) | managed:console | 1588 | GET /api/instance/:id/console?since&count | ✓ 678 |
+| managedConsole (55) | managed:console | 1588 | GET /api/instance/:id/console?since&count (4번째 인자 `{spans:true}`면 `&spans=1`) | ✓ 678 |
 | managedStdin (56) | managed:stdin | 1599 | POST /api/instance/:id/stdin | ✓ 679 |
 | consolePopout/FocusPopout/Popin/ToggleAlwaysOnTop (58-61) | console:* | 1611-1721 | Electron 창 조작만 (daemon 호출 없음) | n/a |
 | daemonConsole (67) | daemon:console | 1600 | GET /api/daemon/console?since&count. `{lines:[{id, timestamp, level, target, message}], count}` 그대로 | ✓ |

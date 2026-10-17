@@ -57,7 +57,7 @@ contextBridge.exposeInMainWorld('api', {
     extensionRescan: () => ipcRenderer.invoke('extension:rescan'),
     extensionInitStatus: () => ipcRenderer.invoke('extension:initStatus'),
     // Managed Process API (console capture)
-    managedConsole: (instanceId, since, count) => ipcRenderer.invoke('managed:console', instanceId, since, count),
+    managedConsole: (instanceId, since, count, opts) => ipcRenderer.invoke('managed:console', instanceId, since, count, opts),
     managedStdin: (instanceId, command) => ipcRenderer.invoke('managed:stdin', instanceId, command),
     // Console Popout (PiP)
     consolePopout: (instanceId, serverName) => ipcRenderer.invoke('console:popout', instanceId, serverName),

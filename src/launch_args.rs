@@ -177,20 +177,27 @@ pub fn command_line(program: &str, args: &[String]) -> String {
 }
 
 /// 추가 인자 입력칸에 다시 보여 줄 문자열. `chat::split_quoted`로 나누면 같은 인자들이 된다:
-/// 공백이 든 (또는 빈) 인자만 큰따옴표로 감싼다 (`\"` 이스케이프는 없다)
-pub fn join_args(args: &[String]) -> String {
-    args.iter()
-        .map(|a| if a.is_empty() || a.contains(char::is_whitespace) { format!("\"{}\"", a) } else { a.clone() })
-        .collect::<Vec<_>>()
-        .join(" ")
+/// 공백이 든 (또는 빈) 인자만 큰따옴표로 감싼다. `split_quoted`에는 `\"` 이스케이프가 없어
+/// 큰따옴표가 든 인자는 글로 되돌릴 수 없으니 None (호출자는 배열로 저장한다)
+pub fn join_args(args: &[String]) -> Option<String> {
+    if args.iter().any(|a| a.contains('"')) {
+        return None;
+    }
+    Some(
+        args.iter()
+            .map(|a| if a.is_empty() || a.contains(char::is_whitespace) { format!("\"{}\"", a) } else { a.clone() })
+            .collect::<Vec<_>>()
+            .join(" "),
+    )
 }
 
-/// password 필드 값은 미리보기에 내보내지 않는다
-pub fn mask_secrets(fields: &[SettingField], settings: &Map<String, Value>, args: &mut [String]) {
+/// password 필드 값과 `extra_secrets`(인스턴스 `rest_password` 등)는 미리보기에 내보내지 않는다
+pub fn mask_secrets(fields: &[SettingField], settings: &Map<String, Value>, extra_secrets: &[&str], args: &mut [String]) {
     let mut secrets: Vec<String> = fields
         .iter()
         .filter(|f| f.field_type == "password")
         .filter_map(|f| settings.get(&f.name).and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string))
+        .chain(extra_secrets.iter().filter(|s| !s.is_empty()).map(|s| s.to_string()))
         .collect();
     secrets.sort_by_key(|s| std::cmp::Reverse(s.len()));
     for arg in args.iter_mut() {
@@ -256,8 +263,10 @@ mod tests {
     fn joined_extra_args_split_back_the_same() {
         let args: Vec<String> = ["-XX:+UseG1GC", "--motd", "My Server", "nogui"].map(String::from).to_vec();
         let text = join_args(&args);
-        assert_eq!(text, "-XX:+UseG1GC --motd \"My Server\" nogui");
-        assert_eq!(crate::chat::split_quoted(&text), args);
+        assert_eq!(text.as_deref(), Some("-XX:+UseG1GC --motd \"My Server\" nogui"));
+        assert_eq!(crate::chat::split_quoted(&text.unwrap()), args);
+        // 큰따옴표가 든 인자는 글로 되돌릴 수 없다
+        assert_eq!(join_args(&["a\" b".to_string()]), None);
     }
 
     #[test]
@@ -273,8 +282,8 @@ mod tests {
     fn the_preview_line_quotes_and_masks() {
         let pw = field("admin_password", "password", &["-adminpassword {value}"]);
         let settings = json!({"admin_password": "hunter22"}).as_object().unwrap().clone();
-        let mut args = vec!["-adminpassword".to_string(), "hunter22".to_string(), "C:\\My Server".to_string()];
-        mask_secrets(&[pw], &settings, &mut args);
-        assert_eq!(command_line("java", &args), "java -adminpassword *** \"C:\\My Server\"");
+        let mut args = vec!["-adminpassword".to_string(), "hunter22".to_string(), "C:\\My Server".to_string(), "-rest=resty9".to_string()];
+        mask_secrets(&[pw], &settings, &["resty9"], &mut args);
+        assert_eq!(command_line("java", &args), "java -adminpassword *** \"C:\\My Server\" -rest=***");
     }
 }

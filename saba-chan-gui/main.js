@@ -1574,11 +1574,12 @@ ipcMain.handle('instance:resetServer', async (_event, instanceId) => {
 
 // ── Managed Process API (stdin/stdout capture) ───────────────
 
-ipcMain.handle('managed:console', async (_event, instanceId, since = 0, count = 200) => {
+// opts.spans: 데몬이 나눈 하이라이트 조각도 받는다 (모르는 데몬은 무시)
+ipcMain.handle('managed:console', async (_event, instanceId, since = 0, count = 200, opts = {}) => {
     try {
-        const response = await axios.get(`${IPC_BASE}/api/instance/${instanceId}/console`, {
-            params: { since, count },
-        });
+        const params = { since, count };
+        if (opts?.spans) params.spans = 1;
+        const response = await axios.get(`${IPC_BASE}/api/instance/${instanceId}/console`, { params });
         return response.data;
     } catch (error) {
         return errorBody(error);
@@ -1597,7 +1598,6 @@ ipcMain.handle('managed:stdin', async (_event, instanceId, command) => {
 // ── Console Popout (PiP) Window ──────────────────────────────
 const consolePopoutWindows = new Map(); // instanceId → BrowserWindow
 
-// 열린 팝아웃 목록: 메인 창을 다시 불러오면 renderer가 이것으로 상태를 맞춘다
 // 데몬 로그 버퍼 (GET /api/daemon/console): 하단 활동 줄·데몬 콘솔 창용
 ipcMain.handle('daemon:console', (_event, opts) => {
     const { since, count } = opts || {};
@@ -1608,6 +1608,7 @@ ipcMain.handle('daemon:console', (_event, opts) => {
     return daemonCall('get', `/api/daemon/console${qs ? `?${qs}` : ''}`, undefined, 10000);
 });
 
+// 열린 팝아웃 목록: 메인 창을 다시 불러오면 renderer가 이것으로 상태를 맞춘다
 ipcMain.handle('console:popoutList', () =>
     [...consolePopoutWindows.entries()].filter(([, win]) => win && !win.isDestroyed()).map(([id]) => id),
 );

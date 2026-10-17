@@ -92,8 +92,6 @@ fn setting_flag(instance: &crate::instance::ServerInstance, key: &str, default: 
     }
 }
 
-/// 모듈 함수가 성공을 알리지 않았을 때 사용자에게 보일 이유. 모듈이 준 `message`·`error`를 쓰고,
-/// 둘 다 없으면 계약 위반(예: `success`·`program` 없이 옛 키만 돌려줌)을 그대로 알린다
 /// `get_launch_command` 결과의 실행 인자. 모듈이 추가 인자를 넣지 않았으면 끝에 붙인다
 pub(crate) fn launch_args(launch_result: &Value, instance: &crate::instance::ServerInstance) -> Vec<String> {
     let mut args: Vec<String> = launch_result
@@ -107,6 +105,8 @@ pub(crate) fn launch_args(launch_result: &Value, instance: &crate::instance::Ser
     args
 }
 
+/// 모듈 함수가 성공을 알리지 않았을 때 사용자에게 보일 이유. 모듈이 준 `message`·`error`를 쓰고,
+/// 둘 다 없으면 계약 위반(예: `success`·`program` 없이 옛 키만 돌려줌)을 그대로 알린다
 pub(crate) fn module_failure(result: &Value, module: &str, function: &str) -> String {
     let field = |k: &str| result.get(k).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
     if let Some(msg) = field("message").or_else(|| field("error")) {
@@ -354,6 +354,11 @@ impl Supervisor {
             ((call, base), fields, settings, preview_instance)
         };
         let (call, mut out) = call;
+        // 실행 인자로 들어가는 설정이 없는 모듈은 부르지 않는다 (preview를 모르는 모듈이 파일을 고칠 수 있다)
+        if !crate::launch_args::has_launch_args(&fields) {
+            out.as_object_mut().expect("object").insert("success".into(), json!(true));
+            return Ok(out);
+        }
         let launch_result = call.run().await?;
         let obj = out.as_object_mut().expect("object");
         if launch_result.get("success").and_then(Value::as_bool) != Some(true) {
@@ -374,7 +379,8 @@ impl Supervisor {
         }
         let program = launch_result.get("program").and_then(Value::as_str).unwrap_or("").to_string();
         let mut args = launch_args(&launch_result, &preview_instance);
-        crate::launch_args::mask_secrets(&fields, &settings, &mut args);
+        let rest_password = preview_instance.rest_password.as_deref().unwrap_or("");
+        crate::launch_args::mask_secrets(&fields, &settings, &[rest_password], &mut args);
         obj.insert("success".into(), json!(true));
         obj.insert("command_line".into(), json!(crate::launch_args::command_line(&program, &args)));
         obj.insert("program".into(), json!(program));
