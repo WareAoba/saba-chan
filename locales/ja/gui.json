@@ -877,7 +877,9 @@
     "perm_owner_change": "変更",
     "perm_owner_save": "保存",
     "perm_owner_mismatch": "リレーが別のオーナー（{{relay}}）を報告しました。ここではオーナーは {{owner}} のままです。リレーが正しければオーナーを変更してください。",
-    "perm_owner_use_relay": "このオーナーにする"
+    "perm_owner_use_relay": "このオーナーにする",
+    "perm_owner_use_relay_confirm": "本当にオーナーを変更",
+    "perm_commands_help_hint": "help と list は禁止以外のすべてのレベルで使え、変更できません。"
   },
   "maintenance": {
     "load_failed": "バックアップ・予約の情報を読み込めませんでした。",

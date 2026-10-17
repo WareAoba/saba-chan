@@ -877,7 +877,9 @@
     "perm_owner_change": "Изменить",
     "perm_owner_save": "Сохранить",
     "perm_owner_mismatch": "Релей сообщил о другом владельце ({{relay}}). Здесь владельцем остаётся {{owner}}. Если релей прав, смените владельца.",
-    "perm_owner_use_relay": "Сделать владельцем"
+    "perm_owner_use_relay": "Сделать владельцем",
+    "perm_owner_use_relay_confirm": "Точно сменить владельца",
+    "perm_commands_help_hint": "help и list доступны всем уровням, кроме запрещённого, и их нельзя изменить."
   },
   "maintenance": {
     "load_failed": "Не удалось загрузить бэкапы и расписание.",

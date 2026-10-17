@@ -877,7 +877,9 @@
     "perm_owner_change": "Cambiar",
     "perm_owner_save": "Guardar",
     "perm_owner_mismatch": "El relay informó otro propietario ({{relay}}). Aquí el propietario sigue siendo {{owner}}. Si el relay tiene razón, cambia el propietario.",
-    "perm_owner_use_relay": "Usar este propietario"
+    "perm_owner_use_relay": "Usar este propietario",
+    "perm_owner_use_relay_confirm": "Cambiar el propietario de verdad",
+    "perm_commands_help_hint": "help y list están abiertos a todos los niveles salvo bloqueado y no se pueden cambiar."
   },
   "maintenance": {
     "load_failed": "No se pudieron cargar las copias de seguridad ni las programaciones.",

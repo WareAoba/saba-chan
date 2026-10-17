@@ -134,13 +134,16 @@ describe('권한 화면', () => {
         );
         fireEvent.click(screen.getByRole('button', { name: 'Use this owner' }));
         await flush();
+        expect(window.api.permissionsUpdate).not.toHaveBeenCalled(); // 한 번 더 눌러야 바꾼다
+        fireEvent.click(screen.getByRole('button', { name: 'Really change the owner' }));
+        await flush();
         expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', { ownerDiscordId: '1002' });
 
         fireEvent.click(screen.getByRole('button', { name: 'Change' }));
-        fireEvent.change(screen.getByRole('textbox', { name: 'Owner' }), { target: { value: '123456789' } });
+        fireEvent.change(screen.getByRole('textbox', { name: 'Owner' }), { target: { value: '123456789012345678' } });
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await flush();
-        expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', { ownerDiscordId: '123456789' });
+        expect(window.api.permissionsUpdate).toHaveBeenCalledWith('g1', { ownerDiscordId: '123456789012345678' });
     });
 
     it('명령 탭: 기본은 프리셋을 따르고, 고르면 그 명령만 덮어쓰며, 프리셋으로 되돌리면 지운다', async () => {

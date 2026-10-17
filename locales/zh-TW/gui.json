@@ -877,7 +877,9 @@
     "perm_owner_change": "變更",
     "perm_owner_save": "儲存",
     "perm_owner_mismatch": "中繼回報了另一位擁有者（{{relay}}）。此處擁有者仍為 {{owner}}。如果中繼是對的，請變更擁有者。",
-    "perm_owner_use_relay": "改用此擁有者"
+    "perm_owner_use_relay": "改用此擁有者",
+    "perm_owner_use_relay_confirm": "確認變更擁有者",
+    "perm_commands_help_hint": "help 與 list 對禁止以外的所有等級開放，且無法變更。"
   },
   "maintenance": {
     "load_failed": "無法載入備份與排程資訊。",

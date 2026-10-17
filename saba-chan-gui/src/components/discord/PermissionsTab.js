@@ -139,6 +139,7 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
     const [newLevel, setNewLevel] = useState(2);
     const [picked, setPicked] = useState([]);
     const [ownerDraft, setOwnerDraft] = useState(null); // null = 편집 안 함
+    const [ownerArmed, setOwnerArmed] = useState(false); // 릴레이 값은 덜 믿으므로 한 번 더 누르게 한다
 
     const byId = useMemo(() => new Map((members || []).map((m) => [String(m.id), m])), [members]);
     const candidates = useMemo(() => L.importCandidates(perm, members), [perm, members]);
@@ -157,7 +158,7 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
     const owner = perm.ownerDiscordId ? String(perm.ownerDiscordId) : null;
     // 데몬은 처음 받은 소유자를 고정하고, 릴레이가 다른 값을 보내면 무시한 채 알려 준다
     const relayOwner = L.ownerMismatch(perm);
-    const isId = (v) => /^\d{5,25}$/.test(v);
+    const isId = (v) => /^\d{17,20}$/.test(v); // 디스코드 snowflake
     const saveOwner = async (id) => {
         if (await update({ ownerDiscordId: id })) setOwnerDraft(null);
     };
@@ -177,9 +178,13 @@ export function MemberLevelsTab({ node, members, membersLoading, onRefreshMember
                         type="button"
                         className="btn btn-ghost btn-sm"
                         disabled={busy}
-                        onClick={() => saveOwner(relayOwner)}
+                        onClick={async () => {
+                            if (!ownerArmed) return setOwnerArmed(true);
+                            setOwnerArmed(false);
+                            await saveOwner(relayOwner);
+                        }}
                     >
-                        {t('discord.perm_owner_use_relay')}
+                        {ownerArmed ? t('discord.perm_owner_use_relay_confirm') : t('discord.perm_owner_use_relay')}
                     </button>
                 </div>
             )}
@@ -449,6 +454,7 @@ export function CommandLevelsTab({ node, servers, commandsFor, riskOf, permissio
     return (
         <div className="dc-tab">
             <p className="dc-hint">{t('discord.perm_commands_hint')}</p>
+            <p className="dc-hint">{t('discord.perm_commands_help_hint')}</p>
             {servers.length === 0 && <p className="muted pad">{t('discord.member_no_instances')}</p>}
             {servers.map((srv) => {
                 const cmds = [
