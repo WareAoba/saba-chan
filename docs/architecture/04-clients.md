@@ -10,6 +10,8 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:572-668`(인증 미들웨어 
 
 ## 1. GUI (saba-chan-gui, Electron)
 
+> 2026-10-17 기준 Electron 44, electron-builder 26, Vite 6.4, Vitest 5. 빌드에는 Node `>=22.12`가 필요하다(`saba-chan-gui/package.json` `engines`, 커밋 4ba8d26).
+
 ### 1.1 Main process가 맡는 일 (`saba-chan-gui/main.js`, 3451줄)
 
 | 책임 | 위치 | 설명 |

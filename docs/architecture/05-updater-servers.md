@@ -214,8 +214,7 @@ Tauri 커맨드(`lib.rs:109-1015`): `get_installer_state`, `set_install_path`, `
 
 | 파일 | 트리거 | 내용 |
 |---|---|---|
-| `ci.yml` | push/PR to main, develop | Rust matrix(os): fixture 모듈 생성 → `cargo clippy --workspace -D warnings` → build → test. JS: GUI vitest, discord_bot test |
-| `test.yml` | push/PR to main, develop | `ci.yml`과 거의 중복(`cargo build --release`, `cargo test --workspace`, vitest, npm test, artifact 업로드) |
+| `ci.yml` | push/PR to main, develop, tag `v*` | 하나뿐인 검사 워크플로(옛 `test.yml`은 중복이라 b0b5631에서 지웠다). Rust matrix(os): `versions.py check` → fixture 모듈 생성 → `cargo clippy --workspace -D warnings` → build → test. JS(Node 22): GUI `npm ci` → vitest → `vite build`, 그리고 main/preload/updater/installer 스크립트 `node --check` |
 | `release.yml` | `release: [published, edited]`, `workflow_dispatch(tag_name)` | **빌드는 하지 않는다.** 사람이 Draft Release에 올린 raw exe/zip을 `gh release download` → `package-release.py`로 표준 zip 재패키징 → `locales.zip`. 그다음 R2 단계: modules·extensions 저장소 `main`을 checkout → `scripts/versions.py manifest`가 모듈·익스텐션 zip까지 묶어 manifest 생성 → `release_signing` 예제로 `saba-updater-v1` 키 서명(번들 공개키로 검증까지) → R2 `releases/<version>/` 업로드 → 릴레이 `POST /admin/releases` 등록. 이미 R2에 있거나 등록된 버전이면 덮어쓰지 않고 실패한다(`release.yml:1-49, 120-232`) |
 
 - GitHub Release는 사람이 raw 파일을 올리는 **입력 칸**으로만 쓴다. 업데이터·설치기는 GitHub를 보지 않는다.
