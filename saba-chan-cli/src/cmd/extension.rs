@@ -38,6 +38,14 @@ pub async fn run(ctx: &Ctx, cmd: ExtCmd) -> Result<()> {
             Ok(())
         }
         ExtCmd::Config { extension, pairs } => config(ctx, extension.as_deref(), &pairs).await,
+        ExtCmd::Audit { extension } => {
+            let e = resolve::extension(ctx, extension.as_deref()).await?;
+            let spin = crate::progress::spinner(&t!("audit.scanning", name = s(&e, "id")));
+            let r = ctx.api.extension_audit(s(&e, "id")).await;
+            spin.finish_and_clear();
+            crate::cmd::print_audit(ctx, &resolve::extension_label(&e), &r?);
+            Ok(())
+        }
         ExtCmd::Rescan => {
             let r = ctx.api.rescan_extensions().await?;
             ctx.out.done(&t!("ext.rescanned"), &r);
@@ -92,7 +100,13 @@ async fn list(ctx: &Ctx) -> Result<()> {
         if list.is_empty() {
             println!("{}", output::dim(&t!("ext.none")));
         } else {
-            let mut t = output::table(&[t!("col.name"), t!("col.version"), t!("col.state"), t!("col.what")]);
+            let mut t = output::table(&[
+                t!("col.name"),
+                t!("col.version"),
+                t!("col.state"),
+                t!("col.trust"),
+                t!("col.what"),
+            ]);
             for e in &list {
                 let on = e.get("enabled").and_then(Value::as_bool) == Some(true);
                 let state = if !s(e, "incompatible").is_empty() {
@@ -106,6 +120,7 @@ async fn list(ctx: &Ctx) -> Result<()> {
                     resolve::extension_label(e),
                     s(e, "version").to_string(),
                     state,
+                    output::trust_badge(s(e, "trust")),
                     s(e, "description").to_string(),
                 ]);
             }
@@ -158,6 +173,9 @@ async fn info(ctx: &Ctx, q: Option<&str>) -> Result<()> {
         (t!("ext.author"), s(&e, "author").to_string()),
         (t!("col.what"), s(&e, "description").to_string()),
     ];
+    if !s(&e, "trust").is_empty() {
+        rows.push((t!("col.trust"), output::trust_badge(s(&e, "trust"))));
+    }
     let hooks: Vec<&str> = e
         .get("hooks")
         .and_then(Value::as_array)

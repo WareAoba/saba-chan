@@ -51,6 +51,15 @@ pub async fn run(ctx: &Ctx, cmd: ModuleCmd) -> Result<()> {
             ctx.out.done(&t!("module.removed", id = name), &r);
             Ok(())
         }
+        ModuleCmd::Audit { module } => {
+            let m = resolve::module(ctx, module.as_deref()).await?;
+            let name = s(&m, "name").to_string();
+            let spin = crate::progress::spinner(&t!("audit.scanning", name = name));
+            let r = ctx.api.module_audit(&name).await;
+            spin.finish_and_clear();
+            crate::cmd::print_audit(ctx, &resolve::module_label(&m), &r?);
+            Ok(())
+        }
         ModuleCmd::Refresh => {
             let r = ctx.api.refresh_modules().await?;
             ctx.out.done(&t!("module.refreshed"), &r);
@@ -103,7 +112,13 @@ async fn list(ctx: &Ctx) -> Result<()> {
         if mods.is_empty() {
             println!("{}", output::dim(&t!("module.none")));
         } else {
-            let mut t = output::table(&[t!("col.name"), t!("col.game"), t!("col.version"), t!("col.aliases")]);
+            let mut t = output::table(&[
+                t!("col.name"),
+                t!("col.game"),
+                t!("col.version"),
+                t!("col.trust"),
+                t!("col.aliases"),
+            ]);
             for m in &mods {
                 let mut ver = s(m, "version").to_string();
                 if m.get("warnings")
@@ -124,6 +139,7 @@ async fn list(ctx: &Ctx) -> Result<()> {
                     s(m, "name").to_string(),
                     s(m, "display_name").to_string(),
                     ver,
+                    output::trust_badge(s(m, "trust")),
                     output::dim(&aliases),
                 ]);
             }
@@ -153,6 +169,9 @@ async fn info(ctx: &Ctx, q: Option<&str>) -> Result<()> {
             println!("{}", desc);
         }
         let mut rows = vec![(t!("col.version"), s(m, "version").to_string())];
+        if !s(m, "trust").is_empty() {
+            rows.push((t!("col.trust"), output::trust_badge(s(m, "trust"))));
+        }
         for (k, label) in [
             ("game_name", "col.game"),
             ("author", "col.author"),

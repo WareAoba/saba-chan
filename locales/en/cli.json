@@ -83,7 +83,8 @@
     "rcon_port": "RCON port",
     "rest_port": "REST port",
     "author": "Author",
-    "mode": "Mode"
+    "mode": "Mode",
+    "trust": "Source"
   },
   "common": {
     "fetching": "Fetching...",
@@ -496,5 +497,23 @@
     "not_synced": "Saved on this PC. It reaches Discord once the bot is connected (saba-chan-cli bot status).",
     "sync_failed": "Discord server {{guild}} did not get the change: {{error}}",
     "read_failed": "Could not read {{path}}: {{error}}"
+  },
+  "trust": {
+    "verified": "verified",
+    "modified": "modified",
+    "unverified": "unverified"
+  },
+  "audit": {
+    "scanning": "Checking the code of {{name}}...",
+    "declared": "Declared",
+    "none_declared": "(nothing)",
+    "no_findings": "The code uses none of the checked abilities.",
+    "clean": "Everything the code uses is declared.",
+    "undeclared": "{{count}} use(s) not declared: {{permissions}}. Only keep it if you trust where it came from.",
+    "col": {
+      "permission": "Ability",
+      "where": "Where",
+      "what": "Code"
+    }
   }
 }

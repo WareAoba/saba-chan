@@ -343,6 +343,14 @@ impl Api {
         self.post("/api/modules/refresh", json!({})).await
     }
     /// GET /api/modules/schema — module.toml JSON Schema
+    /// GET /api/module/:name/audit — 코드 검사 `{declared, findings, undeclared}`
+    pub async fn module_audit(&self, name: &str) -> Result<Value> {
+        self.get_slow(&format!("/api/module/{}/audit", seg(name))).await
+    }
+    /// GET /api/extensions/:id/audit — 모듈 검사와 같은 모양
+    pub async fn extension_audit(&self, id: &str) -> Result<Value> {
+        self.get_slow(&format!("/api/extensions/{}/audit", seg(id))).await
+    }
     pub async fn module_schema(&self) -> Result<Value> {
         self.get("/api/modules/schema").await
     }

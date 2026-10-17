@@ -83,7 +83,8 @@
     "rcon_port": "RCON 포트",
     "rest_port": "REST 포트",
     "author": "만든이",
-    "mode": "방식"
+    "mode": "방식",
+    "trust": "출처"
   },
   "common": {
     "fetching": "가져오는 중...",
@@ -517,7 +518,9 @@
       "chatbot.set": "설정 바꾸기: 키=값 ... (빈 값 = 기본값, [a,b] = 목록, @파일 = 파일 내용, 예: memo=@메모.txt)",
       "chatbot.key": "API 키 저장 (숨겨서 물어봐요. 인자로 넘기지 마세요)",
       "chatbot.clear": "챗봇 설정과 키 모두 지우기",
-      "chatbot.forget": "챗봇이 기억하는 내용 지우기 (모든 디스코드 서버 또는 하나)"
+      "chatbot.forget": "챗봇이 기억하는 내용 지우기 (모든 디스코드 서버 또는 하나)",
+      "module.audit": "모듈의 Python 코드가 하는 일을 선언한 권한과 비교",
+      "extension.audit": "익스텐션의 Python 코드가 하는 일을 선언한 권한과 비교"
     },
     "arg": {
       "json": "글 대신 기계가 읽는 JSON으로 출력",
@@ -679,5 +682,23 @@
     "not_synced": "이 PC에 저장했어요. 봇이 연결되면 디스코드에 반영돼요 (saba-chan-cli bot status).",
     "sync_failed": "디스코드 서버 {{guild}}에 반영하지 못했어요: {{error}}",
     "read_failed": "{{path}}을(를) 읽지 못했어요: {{error}}"
+  },
+  "trust": {
+    "verified": "확인됨",
+    "modified": "바뀜",
+    "unverified": "확인 안 됨"
+  },
+  "audit": {
+    "scanning": "{{name}} 코드 검사하는 중...",
+    "declared": "선언한 권한",
+    "none_declared": "(없음)",
+    "no_findings": "검사하는 능력은 코드에서 하나도 쓰지 않아요.",
+    "clean": "코드가 쓰는 능력은 모두 선언돼 있어요.",
+    "undeclared": "선언하지 않은 사용 {{count}}곳: {{permissions}}. 출처를 믿을 수 있을 때만 쓰세요.",
+    "col": {
+      "permission": "능력",
+      "where": "위치",
+      "what": "코드"
+    }
   }
 }

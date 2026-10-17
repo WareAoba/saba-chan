@@ -83,7 +83,8 @@
     "rcon_port": "Port RCON",
     "rest_port": "Port REST",
     "author": "Auteur",
-    "mode": "Mode"
+    "mode": "Mode",
+    "trust": "Origine"
   },
   "common": {
     "fetching": "Récupération...",
@@ -496,5 +497,23 @@
     "not_synced": "Enregistré sur ce PC. Le changement atteindra Discord une fois le bot connecté (saba-chan-cli bot status).",
     "sync_failed": "Le serveur Discord {{guild}} n'a pas reçu le changement : {{error}}",
     "read_failed": "Impossible de lire {{path}} : {{error}}"
+  },
+  "trust": {
+    "verified": "vérifié",
+    "modified": "modifié",
+    "unverified": "non vérifié"
+  },
+  "audit": {
+    "scanning": "Vérification du code de {{name}}...",
+    "declared": "Déclaré",
+    "none_declared": "(rien)",
+    "no_findings": "Le code n'utilise aucune des capacités vérifiées.",
+    "clean": "Tout ce que le code utilise est déclaré.",
+    "undeclared": "{{count}} utilisation(s) non déclarée(s) : {{permissions}}. Ne le gardez que si vous faites confiance à sa source.",
+    "col": {
+      "permission": "Capacité",
+      "where": "Emplacement",
+      "what": "Code"
+    }
   }
 }

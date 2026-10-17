@@ -76,6 +76,78 @@ fn plain(md: &str) -> String {
     md.replace("**", "").replace('`', "")
 }
 
+/// 코드 검사 결과: 선언한 권한, 찾은 사용처(선언 안 한 것은 빨갛게)
+/// `declared`는 `{권한: bool}`, `findings`·`undeclared`는 `[{permission, file, line, detail}]`
+pub fn print_audit(ctx: &Ctx, label: &str, r: &Value) {
+    ctx.out.data(r, |r| {
+        let declared: Vec<&str> = r
+            .get("declared")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+            .filter(|(_, v)| v.as_bool() == Some(true))
+            .map(|(k, _)| k.as_str())
+            .collect();
+        let findings = r.get("findings").and_then(Value::as_array).cloned().unwrap_or_default();
+        let undeclared = r
+            .get("undeclared")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let key = |f: &Value| {
+            format!(
+                "{}|{}|{}",
+                crate::output::s(f, "permission"),
+                crate::output::s(f, "file"),
+                f.get("line").map(|l| l.to_string()).unwrap_or_default()
+            )
+        };
+        let bad: std::collections::HashSet<String> = undeclared.iter().map(key).collect();
+        crate::output::heading(label);
+        let declared_text = if declared.is_empty() {
+            crate::output::dim(&t!("audit.none_declared"))
+        } else {
+            declared.join(", ")
+        };
+        crate::output::print_kv(&[(t!("audit.declared"), declared_text)]);
+        println!();
+        if findings.is_empty() {
+            println!("{}", crate::output::dim(&t!("audit.no_findings")));
+        } else {
+            let mut t =
+                crate::output::table(&[t!("audit.col.permission"), t!("audit.col.where"), t!("audit.col.what")]);
+            for f in &findings {
+                let perm = crate::output::s(f, "permission");
+                let perm = if bad.contains(&key(f)) {
+                    ::console::style(format!("✗ {}", perm)).red().to_string()
+                } else {
+                    format!("  {}", perm)
+                };
+                let line = f.get("line").and_then(Value::as_u64).unwrap_or(0);
+                t.add_row(vec![
+                    perm,
+                    format!("{}:{}", crate::output::s(f, "file"), line),
+                    crate::output::s(f, "detail").to_string(),
+                ]);
+            }
+            crate::output::print_table(t);
+            println!();
+        }
+        if undeclared.is_empty() {
+            println!("{} {}", ::console::style("✓").green().bold(), t!("audit.clean"));
+        } else {
+            let mut perms: Vec<&str> = undeclared.iter().map(|f| crate::output::s(f, "permission")).collect();
+            perms.sort_unstable();
+            perms.dedup();
+            ctx.out.warn(&t!(
+                "audit.undeclared",
+                count = undeclared.len(),
+                permissions = perms.join(", ")
+            ));
+        }
+    });
+}
+
 // ── KEY=VALUE 도우미 ──
 
 pub fn split_pairs(pairs: &[String]) -> Result<Vec<(String, String)>> {

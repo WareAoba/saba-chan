@@ -83,7 +83,8 @@
     "rcon_port": "RCON 連接埠",
     "rest_port": "REST 連接埠",
     "author": "作者",
-    "mode": "模式"
+    "mode": "模式",
+    "trust": "來源"
   },
   "common": {
     "fetching": "正在取得...",
@@ -496,5 +497,23 @@
     "not_synced": "已儲存在這台電腦上。機器人連線後會同步到 Discord（saba-chan-cli bot status）。",
     "sync_failed": "Discord 伺服器 {{guild}} 沒有收到此變更：{{error}}",
     "read_failed": "無法讀取 {{path}}：{{error}}"
+  },
+  "trust": {
+    "verified": "已驗證",
+    "modified": "已修改",
+    "unverified": "未驗證"
+  },
+  "audit": {
+    "scanning": "正在檢查 {{name}} 的程式碼...",
+    "declared": "已宣告",
+    "none_declared": "(無)",
+    "no_findings": "程式碼沒有使用任何受檢查的能力。",
+    "clean": "程式碼使用的能力都已宣告。",
+    "undeclared": "{{count}} 處未宣告的使用：{{permissions}}。只有信任其來源時才保留。",
+    "col": {
+      "permission": "能力",
+      "where": "位置",
+      "what": "程式碼"
+    }
   }
 }

@@ -149,6 +149,19 @@ pub fn status_badge(status: &str) -> String {
     format!("{} {}", dot, label)
 }
 
+/// 모듈·익스텐션 출처 표시 (`trust`). 새 값이 와도 그대로 보인다.
+pub fn trust_badge(trust: &str) -> String {
+    if trust.is_empty() {
+        return String::new();
+    }
+    let label = crate::i18n::try_t(&format!("trust.{}", trust)).unwrap_or_else(|| trust.to_string());
+    match trust {
+        "verified" => style(format!("✓ {}", label)).green().to_string(),
+        "modified" => style(format!("! {}", label)).yellow().to_string(),
+        _ => style(format!("? {}", label)).dim().to_string(),
+    }
+}
+
 pub fn yes_no(v: bool) -> String {
     if v {
         style(t!("common.yes")).green().to_string()

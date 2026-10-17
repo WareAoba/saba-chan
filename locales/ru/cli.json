@@ -83,7 +83,8 @@
     "rcon_port": "Порт RCON",
     "rest_port": "Порт REST",
     "author": "Автор",
-    "mode": "Режим"
+    "mode": "Режим",
+    "trust": "Источник"
   },
   "common": {
     "fetching": "Получение...",
@@ -496,5 +497,23 @@
     "not_synced": "Сохранено на этом ПК. Изменения попадут в Discord, когда бот подключится (saba-chan-cli bot status).",
     "sync_failed": "Сервер Discord {{guild}} не получил изменение: {{error}}",
     "read_failed": "Не удалось прочитать {{path}}: {{error}}"
+  },
+  "trust": {
+    "verified": "проверено",
+    "modified": "изменено",
+    "unverified": "не проверено"
+  },
+  "audit": {
+    "scanning": "Проверка кода {{name}}...",
+    "declared": "Объявлено",
+    "none_declared": "(ничего)",
+    "no_findings": "Код не использует ни одну из проверяемых возможностей.",
+    "clean": "Всё, что использует код, объявлено.",
+    "undeclared": "Необъявленных использований: {{count}} ({{permissions}}). Оставляйте, только если доверяете источнику.",
+    "col": {
+      "permission": "Возможность",
+      "where": "Где",
+      "what": "Код"
+    }
   }
 }

@@ -442,6 +442,8 @@ pub enum ModuleCmd {
     Detect { dir: String },
     /// JSON Schema for module.toml (for module authors)
     Schema,
+    /// Check what a module's Python code can do against what it declares
+    Audit { module: Option<String> },
     /// Download server files only, into a folder you choose
     InstallFiles {
         module: String,
@@ -496,6 +498,8 @@ pub enum ExtCmd {
     },
     /// Look for new extension folders
     Rescan,
+    /// Check what an extension's Python code can do against what it declares
+    Audit { extension: Option<String> },
     /// Startup progress of extensions
     Status,
     /// Load one extension folder from disk

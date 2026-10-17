@@ -83,7 +83,8 @@
     "rcon_port": "RCON ポート",
     "rest_port": "REST ポート",
     "author": "作者",
-    "mode": "モード"
+    "mode": "モード",
+    "trust": "出所"
   },
   "common": {
     "fetching": "取得中...",
@@ -496,5 +497,23 @@
     "not_synced": "この PC に保存しました。ボットが接続されると Discord に反映されます（saba-chan-cli bot status）。",
     "sync_failed": "Discord サーバー {{guild}} に変更が反映されませんでした: {{error}}",
     "read_failed": "{{path}} を読み込めませんでした: {{error}}"
+  },
+  "trust": {
+    "verified": "確認済み",
+    "modified": "変更あり",
+    "unverified": "未確認"
+  },
+  "audit": {
+    "scanning": "{{name}} のコードを検査中...",
+    "declared": "宣言済み",
+    "none_declared": "(なし)",
+    "no_findings": "検査対象の機能はコード内で使われていません。",
+    "clean": "コードが使う機能はすべて宣言されています。",
+    "undeclared": "宣言されていない使用 {{count}} 件: {{permissions}}。出所を信頼できる場合のみ使ってください。",
+    "col": {
+      "permission": "機能",
+      "where": "場所",
+      "what": "コード"
+    }
   }
 }
