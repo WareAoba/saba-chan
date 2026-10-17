@@ -21,7 +21,7 @@
 
 | 파일 | 다루는 것 |
 |---|---|
-| [01-daemon-core.md](01-daemon-core.md) | 데몬 기동, **IPC HTTP API 전체 라우트 표(약 95개)**, 인증, 인스턴스 모델·영속화, 전역 설정, RCON/REST, 내장 Python/Node, plugin 실행기 |
+| [01-daemon-core.md](01-daemon-core.md) | 데몬 기동, **IPC HTTP API 전체 라우트 표(약 95개)**, 인증, 인스턴스 모델·영속화, 전역 설정, 명령 경로(stdin/REST), 내장 Python/Node, plugin 실행기 |
 | [02-modules.md](02-modules.md) | `module.toml` 전체 스키마(Rust 역직렬화 기준), `lifecycle.py` 호출 프로토콜과 함수 매트릭스, managed process, 게임별 기능, 모듈 배포 |
 | [03-extensions.md](03-extensions.md) | 플러그인(코드상 extension) `manifest.json` 스키마, hook 전수 목록과 hook×익스텐션 매트릭스, 설치·활성화 수명주기, GUI 컴포넌트 주입(UMD/slot) 계약 |
 | [04-clients.md](04-clients.md) | GUI(Electron) preload 채널 전수표, CLI(하위 명령·대화형 셸·`--json`), Discord 봇, 공유 상수·로케일, **인터페이스가 데몬을 우회하는 지점 전수 목록(§7)** |
@@ -67,7 +67,7 @@
    └───────────────────────────────────────────────────────────┘
 ```
 
-- 게임 명령은 stdin으로 보낸다. 관리 모드(기본)에서는 RCON을 끄고, RCON은 관리하지 않는 모드에서만 쓰는 예비 경로다(02 RCON 정책).
+- 게임 명령은 언제나 stdin(서버 콘솔)으로 보낸다. 데몬에는 RCON 클라이언트가 없고, 모듈은 모든 모드에서 게임의 RCON을 끈다. 콘솔이 없는 서버(관리하지 않는 모드)에는 saba-chan이 명령을 보낼 수 없다(02 RCON 정책).
 - 로컬 Discord 봇은 L1에서 지웠다. 봇은 클라우드 릴레이에서만 돌고 데몬은 relay_agent로 붙는다(04 §4).
 - 릴레이 쪽 봇(게이트웨이·음악·챗봇)은 server-chan에서 다시 만드는 중이라 이 문서에서 다루지 않는다.
 
@@ -116,7 +116,7 @@
 - 모듈 → 데몬 역호출(`daemon_rcon` 등)이 토큰을 안 보내서 인증이 켜진 환경에서 401. Zomboid stdin 호출은 페이로드 키도 틀림(`input` vs `command`)(02 §5 요약).
 - minecraft `import_settings`/`reset_properties`, palworld `import_settings`가 정의만 되고 `FUNCTIONS` 디스패치 표에 없어 항상 "Unknown function"(02 §2.4).
 - Linux/macOS에서 `SABA_ENABLED_EXTENSIONS` 경로가 틀려 플러그인 활성 여부를 모듈이 못 읽는다(`src/plugin/mod.rs:140`).
-- 크래시 감지·자동 재시작 없음(상태 머신이 사실상 dead code). managed 모드에서 Minecraft·Zomboid는 RCON을 끄는데 명령은 RCON으로 보낸다(02 §3).
+- 크래시 감지·자동 재시작 없음(상태 머신이 사실상 dead code). ~~managed 모드에서 Minecraft·Zomboid는 RCON을 끄는데 명령은 RCON으로 보낸다~~ → 해결: 명령은 모두 stdin으로 간다(02 RCON 정책).
 - 업데이트 실패 직후 5초 안에 진행 표시를 닫으면 기존 인스턴스가 삭제될 수 있다(01 §9.B-10).
 - GUI 종료 시 봇 정지 요청이 스코프 오류로 전송되지 않는다(`main.js:1536/1559`).
 

@@ -66,7 +66,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:572-668`(인증 미들웨어 
 | instanceUpdateSettings (26) | instance:updateSettings | 2209 | PATCH /api/instance/:id | ✓ 589 |
 | instanceResetProperties (27) | instance:resetProperties | 1801 | POST /api/instance/:id/properties/reset | ✓ 605 (**renderer 미사용**) |
 | instanceResetServer (28) | instance:resetServer | 1814 | POST /api/instance/:id/server/reset | ✓ 606 |
-| executeCommand (29) | instance:executeCommand | 2281 | GET /api/instance/:id 후 method별로 POST …/rcon, …/rest, …/command 중 하나. 관리 모드(기본)에서는 RCON이 꺼져 있고 명령은 stdin으로 간다(02 RCON 정책) | ✓ 596-598 |
+| executeCommand (29) | instance:executeCommand | 2281 | GET /api/instance/:id 후 method별로 POST …/rcon, …/rest, …/command 중 하나. `…/rcon`은 이름만 남았고 언제나 stdin으로 가며, 콘솔이 없는 서버는 409 `no_command_path`(02 RCON 정책) | ✓ 596-598 |
 | extensionList…extensionInitStatus (31-44) | extension:* | 2408-2588 | /api/extensions, /:id/enable, /disable, /i18n/:locale, /gui, /gui/styles, /icon, /manifest, /:id/install, DELETE /:id, /updates, /rescan, /init-status | ✓ 641-656 (확장 UI 로딩은 다른 문서에서 다룸) |
 | managedStart (46) | managed:start | 1829 | POST /api/instance/:id/managed/start | ✓ 600 |
 | managedConsole (47) | managed:console | 1842 | GET /api/instance/:id/console?since&count | ✓ 601 |
