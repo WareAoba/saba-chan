@@ -27,10 +27,10 @@
 |---|---|---|
 | `crate::plugin` (`src/plugin/mod.rs`) | **개념이 아니라 실행기**다. "Python 파일 하나를 `python <file> <function>`로 띄우고 stdin JSON → stdout JSON을 주고받는 러너"일 뿐이다. **module의 `lifecycle.py`와 extension hook이 둘 다** 이 러너를 쓴다. | `plg/:168-317`. module 호출 예: `supervisor/mod.rs:598,881,982…`. extension 호출: `ext/:1583` |
 | `crate::extension` (`src/extension/mod.rs`) | 오너가 말하는 "plugin". manifest 기반이고, hook, 명령, GUI/CLI 슬롯, instance_fields, config_fields를 가진다. | `ext/:221-271` |
-| `ipc::ExtensionInfo` / `ExtensionListResponse { modules }` | 이름은 extension이지만 **실제로는 module 정보**다(명명 혼동). | `src/ipc/mod.rs:244-292`, `handlers/server.rs:10,282-335` |
+| `ipc::ExtensionInfo` / `ExtensionListResponse { modules }` | 이름은 extension이지만 **실제로는 module 정보**다(명명 혼동). | `src/ipc/mod.rs:247-295`, `handlers/server.rs:10,286-339` |
 | GUI `selectedExtension` | AddServer 모달에서 **module 이름**을 담는 상태다. | `saba-chan-gui/src/components/Modals/AddInstanceNewServer.js:24,69` |
 | ~~`discord_bot/extensions/*.js`~~ | → 해결: 로컬 Discord 봇이 저장소에서 빠져 제3의 "extension" 개념도 없다. | — |
-| updater의 extension 업데이트 | 릴리즈 manifest의 `ext-<id>` 항목. 로컬 버전은 `extensions/*/manifest.json`의 id·version으로 읽는다. 데몬의 익스텐션 목록(`fetch_remote`)과 같은 manifest를 본다. | `updater/src/lib.rs:279-282,589-601`, `src/extension/mod.rs:1283` |
+| updater의 extension 업데이트 | 릴리즈 manifest의 `ext-<id>` 항목. 로컬 버전은 `extensions/*/manifest.json`의 id·version으로 읽는다. 데몬의 익스텐션 목록(`fetch_remote`)과 같은 manifest를 본다. | `updater/src/lib.rs:267-270,578-590`, `src/extension/mod.rs:1283` |
 
 **결론**: 코드에서 "plugin"과 "extension"은 서로 다른 계층이다. `plugin`은 Python 프로세스 실행 프로토콜이고, `extension`은 그 위의 확장 시스템이다. 오너가 말하는 "plugin"은 코드의 `extension`에 해당하고, 코드의 `plugin` 모듈은 module과 extension이 공유하는 하위 런타임이다. 옛 레이아웃용 `run_extension`/`run_extension_with_progress`는 삭제되었다.
 
@@ -145,16 +145,16 @@
 | `server.pre_start` | `supervisor/mod.rs:463-480` (non-managed start), `:1191-1210` (managed start) | 서버 시작 | 동기, 120s | `instance_id, instance_dir, module, extension_data` (+managed 쪽에 `instance, config, managed:true`) | `handled:true` + `success!=true` → 에러를 반환한다. `success:true`이면 `log_follower{program,args,working_dir,description,interactive,strip_prefix,env_vars}`로 `ManagedProcess::spawn`(interactive) 또는 `spawn_log_follower`를 실행한다(`:502-560`, `:1232-1290`). 그 결과를 그대로 반환하고 기본 시작 로직을 건너뛴다. |
 | `server.stop` (옛 이름 `server.post_stop`) | `supervisor/mod.rs:713-737` | `stop_server` 진입 직후, 정지 전 | 동기, 120s | 위와 동일 | `handled:true`이면 cooldown을 기록하고 그대로 반환한다. 익스텐션이 Err이거나 `success:false`이면 실패를 반환한다 |
 | `server.status` | `supervisor/mod.rs:935-946` | `GET /api/server/:name/status` | 동기, 120s | + `process_patterns` | `handled:true`이면 그대로 반환한다 |
-| `server.list_enrich` | `handlers/server.rs:92-145` | `GET /api/servers`, `extension_data`가 비어 있지 않은 인스턴스마다 **순차** 실행 | 동기, **10s**, 결과를 30s TTL 캐시(`ipc/mod.rs:607`) | `instance_id, instance_name, module, extension_data, instance_dir, process_patterns` | `handled`와 무관하게 첫 번째 Ok를 캐시한다(실패는 캐시하지 않음). `handled:true`이면 `status`와 `extension_status[<res.extension_id or "default">]`를 채운다 |
-| `server.post_create` | **발화 위치 없음** | — | — | — | `FIRED_HOOKS`에는 있지만(`ext/:30`) 호출하는 코드가 없다. `handlers/instance.rs:244`에는 주석만 남아 있고 바로 네이티브 프로비저닝으로 넘어간다. |
-| `server.pre_delete` | `handlers/instance.rs:659-679` | 인스턴스 삭제 | 동기, 120s | `instance_id, instance_name, module, extension_data` | `handled`이면 2초 대기한다(파일 잠금 해제용) |
-| `server.settings_changed` | `handlers/instance.rs:1039-1053` | 인스턴스 설정 PATCH, `extension_data`가 비어 있지 않을 때 | 동기, 120s | `instance_id, instance_dir, instance, module_extensions(module.toml [extensions.*] 전체), extension_data, settings` | 결과를 버린다(`_results`) |
-| `server.check_update` | `handlers/instance.rs:1064-1150` | `GET /api/instance/:id/check-update` | 동기, 120s | `instance_id, instance_name, module, instance_dir, install_dir, app_id, extension_data` | 첫 번째 Ok를 그대로 응답한다. 없으면 `{update_available:false, reason:"no_hook_handled"}`. `app_id`는 `extension_data["<방식>_app_id"]`, 없으면 module.toml `[install].app_id`(`:1113-1117`) |
+| `server.list_enrich` | `handlers/server.rs:94-147` | `GET /api/servers`, `extension_data`가 비어 있지 않은 인스턴스마다 **순차** 실행 | 동기, **10s**, 결과를 30s TTL 캐시(`ipc/mod.rs:609`) | `instance_id, instance_name, module, extension_data, instance_dir, process_patterns` | `handled`와 무관하게 첫 번째 Ok를 캐시한다(실패는 캐시하지 않음). `handled:true`이면 `status`와 `extension_status[<res.extension_id or "default">]`를 채운다 |
+| `server.post_create` | `handlers/instance.rs:244-257` | 인스턴스 생성(`POST /api/instances`), `instance_store.add` 성공 직후 | `tokio::spawn` 백그라운드, 120s. 결과를 기다리지 않고 바로 네이티브 프로비저닝으로 넘어간다 | `instance_id, instance_dir, instance, module, migration` | 결과를 버린다. 프로비저닝과 동시에 돈다 |
+| `server.pre_delete` | `handlers/instance.rs:672-692` | 인스턴스 삭제 | 동기, 120s | `instance_id, instance_name, module, extension_data` | `handled`이면 2초 대기한다(파일 잠금 해제용) |
+| `server.settings_changed` | `handlers/instance.rs:1052-1066` | 인스턴스 설정 PATCH, `extension_data`가 비어 있지 않을 때 | 동기, 120s | `instance_id, instance_dir, instance, module_extensions(module.toml [extensions.*] 전체), extension_data, settings` | 결과를 버린다(`_results`) |
+| `server.check_update` | `handlers/instance.rs:1077-1163` | `GET /api/instance/:id/check-update` | 동기, 120s | `instance_id, instance_name, module, instance_dir, install_dir, app_id, extension_data` | 첫 번째 Ok를 그대로 응답한다. 없으면 `{update_available:false, reason:"no_hook_handled"}`. `app_id`는 `extension_data["<방식>_app_id"]`, 없으면 module.toml `[install].app_id`(`:1126-1130`) |
 | `command.<name>` (익스텐션 명령) | `handlers/command.rs:68-80` | `POST /api/instance/:id/command`에서 모듈에 없는 명령 | 동기, 120s | `instance_id, instance_name, module, extension_data, running, args` | 결과를 명령 응답으로 돌려준다 |
 
 ~~**manifest에 선언됐지만 daemon이 발화하지 않는 hook** 7종~~ → 해결: 현재 manifest에는 없고, 새로 선언하면 `parse_manifest`가 v1에서 거부, v0에서 경고한다(`ext/:387-390`).
 
-- 업데이트 적용(`POST /api/instance/:id/apply-update`, `handlers/instance.rs:1157-1436`)과 네이티브 프로비저닝(`:244-420`)은 hook을 거치지 않는다. **module의 `lifecycle.py install_server`를 직접 호출**하고, module이 `from extensions.steamcmd import SteamCMD`로 익스텐션을 Python 라이브러리처럼 import한다. apply-update는 `install_method_<방식>`이 켜진 인스턴스만 받는다(`:1227-1240`).
+- 업데이트 적용(`POST /api/instance/:id/apply-update`, `handlers/instance.rs:1170-1449`)과 네이티브 프로비저닝(`:258-433`)은 hook을 거치지 않는다. **module의 `lifecycle.py install_server`를 직접 호출**하고, module이 `from extensions.steamcmd import SteamCMD`로 익스텐션을 Python 라이브러리처럼 import한다. apply-update는 `install_method_<방식>`이 켜진 인스턴스만 받는다(`:1240-1253`).
 
 ### 2.4 hook × extension 매트릭스
 
@@ -191,7 +191,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 - `scan()`(`ext/:737-783`): 하위 디렉토리 중 `manifest.json`이 있는 것(`.`으로 시작하는 임시 폴더 제외)을 등록한다. **폴더 이름이 manifest.id(또는 하이픈→밑줄)와 다르면 건너뛰고**, 로드 실패와 함께 `load_errors`에 남긴다. 이 목록은 `GET /api/extensions`의 `failed`로 나간다(`handlers/extension.rs:84-89`).
 - `rescan()`(`ext/:792-796`): `scan()`과 같다. 기존 항목의 manifest를 다시 읽고 새 항목을 추가한다. 디스크에서 사라진 항목은 그대로 남긴다.
 - `mount(id)`(`ext/:800-821`): `ext_dir_on_disk`(discovered → id 그대로 → 하이픈을 언더스코어로 바꾼 이름)로 디렉토리를 찾고, `manifest.id == id`를 검사한다.
-- `IPCServer::new`(`src/ipc/mod.rs:582-590`)에서 discover를 한 번 실행한다. 상태에 enabled로 되어 있지만 디스크에 없는 익스텐션은 `enabled_but_not_installed()`로 구분한다(`ext/:1076`).
+- `IPCServer::new`(`src/ipc/mod.rs:584-592`)에서 discover를 한 번 실행한다. 상태에 enabled로 되어 있지만 디스크에 없는 익스텐션은 `enabled_but_not_installed()`로 구분한다(`ext/:1076`).
 
 ### 3.3 enable / disable / remove / unmount
 
@@ -313,8 +313,8 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 4. ~~`install_from_url`의 sha256 검증: 스텁이다.~~ → 해결: `stage_package`가 sha256을 비교한다(`ext/:1383-1389`).
 5. ~~`ExtensionUpdateInfo.downloaded/installed`: 항상 false다.~~ → 해결: 필드 삭제, 대신 `incompatible`(`ext/:524-531`).
 6. ~~`plugin::run_extension*`: 옛 레이아웃이다.~~ → 해결: 삭제.
-7. ~~updater의 `extension.toml` 기반 익스텐션 업데이트~~ → 해결: `manifest.json`의 id·version을 읽는다(`updater/src/lib.rs:279-282,589-601`).
-8. ~~발화되지 않는 hook 7종과 그 Python 함수들~~ → 해결: manifest에서 빠졌고 검증이 막는다. 대신 `server.post_create`는 `FIRED_HOOKS`에 있지만 발화하는 코드가 없다(`ext/:30`, `handlers/instance.rs:244`).
+7. ~~updater의 `extension.toml` 기반 익스텐션 업데이트~~ → 해결: `manifest.json`의 id·version을 읽는다(`updater/src/lib.rs:267-270,578-590`).
+8. ~~발화되지 않는 hook 7종과 그 Python 함수들~~ → 해결: manifest에서 빠졌고 검증이 막는다. ~~`server.post_create`는 `FIRED_HOOKS`에 있지만 발화하는 코드가 없다~~ → 해결: 인스턴스 저장 직후 백그라운드로 발화한다(`handlers/instance.rs:244-257`). `FIRED_HOOKS`의 이름마다 `src/` 어딘가에서 발화하는지 테스트가 검사한다(`ext/:1632-1649`).
 9. `ue4_ini_enabled` instance_field: 설정하는 경로가 없다.
 
 ### 7.2 버그 · 위험
@@ -326,7 +326,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 5. ~~긴 hook 동안 `extension_manager` read 락을 유지한다.~~ → 해결: 계획만 락 안에서, 실행은 락 밖에서(`ext/:1603-1617`).
 6. `daemon.startup` 120초 타임아웃(`main.rs:323` → `run_hook`)이 긴 설치 작업에는 짧을 수 있다.
 7. ~~`server.post_stop`이라는 이름과 실제 의미가 다르다.~~ → 해결: `server.stop`으로 바꾸고 옛 이름은 별칭으로 읽는다(`ext/:15-17`, `supervisor/mod.rs:713-716`).
-8. `server.list_enrich`는 인스턴스마다 순차로 Python을 실행한다(10초 × N). TTL 30초 캐시에 `handled:false`도 캐싱한다(`handlers/server.rs:111-120`).
+8. `server.list_enrich`는 인스턴스마다 순차로 Python을 실행한다(10초 × N). TTL 30초 캐시에 `handled:false`도 캐싱한다(`handlers/server.rs:113-122`).
 9. ~~`instances_using_ext`가 숫자 0, 빈 문자열도 "사용 중"으로 판정하고, 정지된 인스턴스가 있어도 remove할 수 있다.~~ → 해결: 빈 값은 미사용으로 보고(`ext/:891-898`), remove는 정지된 인스턴스까지 검사한다(`handlers/extension.rs:436-437`). disable은 여전히 실행 중인 인스턴스만 보므로, 정지된 인스턴스가 쓰는 익스텐션을 끈 뒤 시작하면 `extension_required` 에러가 난다.
 10. `save_extension_config` 주석은 "null을 전달하면 키 제거"라고 하지만, 실제로는 null 값을 저장한다(`handlers/extension.rs:503` vs `ext/:1490-1498`). 같은 핸들러 주석은 아직 `extensionConfig.json`이라고 적혀 있다(`:490`).
 11. ~~컴포넌트 의존성(`saba-core` 등)을 선언하면 HTTP enable이 불가능하다.~~ → 해결: `saba-core`는 데몬 버전으로 검사한다(`ext/:905-908`). 다른 컴포넌트 키는 여전히 버전을 쓰면 켤 수 없다.
@@ -338,7 +338,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 17. ~~리포에 런타임 산출물(`dockerd.pid`, `.deps-resolved.json`, Go 바이너리)이 커밋되어 있다.~~ → 해결: 해당 익스텐션이 제거되었고, 저장소에는 소스·테스트·`icon.png`만 있다.
 18. ~~릴리즈 워크플로가 기존 릴리즈를 모두 삭제한다.~~ → 해결: 익스텐션 저장소의 릴리즈 워크플로가 없어졌다(extensions 301ff2c). 배포는 코어 릴리즈가 맡는다(3.4).
 19. CLI 도움말은 `extension [...|registry|...]`라고 하지만 실제 서브커맨드는 `manifest`다(`saba-chan-cli/src/tui/commands.rs:652` vs `:132,906`).
-20. `server.post_create`가 `FIRED_HOOKS`에 있어 manifest 검증을 통과하지만 실제로는 발화되지 않는다(7.1-8).
+20. ~~`server.post_create`가 `FIRED_HOOKS`에 있어 manifest 검증을 통과하지만 실제로는 발화되지 않는다~~ → 해결: 생성 시 발화한다(7.1-8, `handlers/instance.rs:244-257`).
 
 ### 7.3 "daemon이 주인 / 플러그인은 자유롭게 커스터마이즈" 원칙 위반 (하드코딩된 플러그인 지식)
 
@@ -349,10 +349,10 @@ Core(daemon/GUI/CLI)가 특정 익스텐션을 이름으로 아는 곳들이다.
 | ~~`supervisor/mod.rs` `ext_enabled("docker_enabled")`~~ | → 해결: 삭제 |
 | ~~`handlers/server.rs` stop 후 `docker_enabled` untrack 생략~~ | → 해결: 삭제 |
 | ~~`handlers/instance.rs` `use_container` → `docker_enabled` 주입~~ | → 해결: 삭제 |
-| ~~`handlers/instance.rs` `metadata.extensions.get("docker")`~~ | → 해결: 모듈의 `[extensions.*]` 전체를 `module_extensions`로 넘긴다(`handlers/instance.rs:1014-1019`) |
+| ~~`handlers/instance.rs` `metadata.extensions.get("docker")`~~ | → 해결: 모듈의 `[extensions.*]` 전체를 `module_extensions`로 넘긴다(`handlers/instance.rs:1027-1032`) |
 | ~~`supervisor/module_loader.rs` `[docker]` 전용 구조체~~ | → 해결: 범용 `[extensions.<id>]`(`module_loader.rs:454-458`) |
 | ~~`src/instance/mod.rs` steamcmd instance_field 이름~~ | → 해결: `install_method_<방식>`, `<방식>_<이름>` 범용 규칙(`src/instance/mod.rs:124-148`) |
-| ~~`handlers/instance.rs` check_update에서 `steamcmd_app_id` 읽기~~ | → 해결: `<방식>_app_id`(`handlers/instance.rs:1113-1117`) |
+| ~~`handlers/instance.rs` check_update에서 `steamcmd_app_id` 읽기~~ | → 해결: `<방식>_app_id`(`handlers/instance.rs:1126-1130`) |
 | ~~GUI `DiscordBotModal.js` `e.id==='music'`~~ | → 해결: 삭제 |
 | ~~GUI `AddInstanceNewServer.js` `options.use_container` 계약~~ | → 해결: 슬롯이 `t`만 받는다(`AddInstanceNewServer.js:228`) |
 | ~~호스트 `locales/*/gui.json` docker UI 문자열~~ | → 해결: 삭제 |
