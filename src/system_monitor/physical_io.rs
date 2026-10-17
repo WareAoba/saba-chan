@@ -138,7 +138,8 @@ mod imp {
 
     unsafe fn value(counter: PDH_HCOUNTER) -> Option<u64> {
         let mut v: PDH_FMT_COUNTERVALUE = std::mem::zeroed();
-        if PdhGetFormattedCounterValue(counter, PDH_FMT_DOUBLE, null_mut(), &mut v) != 0 || v.CStatus != 0 {
+        // CStatus 0(VALID_DATA)·1(NEW_DATA)은 둘 다 쓸 수 있는 값이다
+        if PdhGetFormattedCounterValue(counter, PDH_FMT_DOUBLE, null_mut(), &mut v) != 0 || v.CStatus > 1 {
             return None;
         }
         Some(v.u.doubleValue().max(0.0) as u64)
