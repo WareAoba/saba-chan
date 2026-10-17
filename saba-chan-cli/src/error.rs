@@ -145,6 +145,7 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         "backup_unsupported" => Some(t!("err.hint.backup_unsupported")),
         "nothing_to_back_up" => Some(t!("err.hint.nothing_to_back_up")),
         "backup_busy" => Some(t!("err.hint.backup_busy")),
+        "no_command_path" => Some(t!("err.hint.no_command_path")),
         "validation_failed" => None,
         _ => None,
     }

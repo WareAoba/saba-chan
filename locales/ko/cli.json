@@ -149,7 +149,8 @@
       "port_conflict": "둘 중 하나의 포트를 바꾸세요: saba-chan-cli server set 이름 port=포트",
       "backup_unsupported": "이 게임 모듈에는 무엇을 백업할지 적혀 있지 않아요. 새 모듈에는 있을 수 있어요: saba-chan-cli update check",
       "nothing_to_back_up": "아직 월드가 없어요. 서버를 한 번 켜면 만들어져요.",
-      "backup_busy": "이 서버의 백업이나 되돌리기가 이미 진행 중이에요. 끝난 뒤 다시 해 주세요."
+      "backup_busy": "이 서버의 백업이나 되돌리기가 이미 진행 중이에요. 끝난 뒤 다시 해 주세요.",
+      "no_command_path": "이 서버는 사바쨩 밖에서 켜져서 명령을 받을 콘솔이 없어요. 사바쨩에서 다시 켜 주세요: saba-chan-cli restart <서버>"
     },
     "not_a_bool": "\"{{value}}\"는 예/아니오 값이 아니에요 (true 또는 false).",
     "not_a_number": "\"{{value}}\"는 숫자가 아니에요.",

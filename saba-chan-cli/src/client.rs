@@ -663,7 +663,13 @@ pub fn check(status: u16, body: Value) -> Result<Value> {
             .filter(|s| !s.is_empty())
             .map(str::to_string)
     };
-    let code = pick("error_code");
+    // `{error: "no_command_path", message}` 꼴: 코드가 error에 들어 있다
+    let code_like = |s: &str| {
+        !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+    };
+    let code = pick("error_code").or_else(|| pick("error").filter(|e| code_like(e) && pick("message").is_some()));
     // 내부 오류일 때 error_message는 뭉뚱그린 문구라 구체적인 error가 낫다
     let generic = code.as_deref() == Some("internal_server_error") && pick("error").is_some();
     let message = pick("error_message")
@@ -688,6 +694,21 @@ mod tests {
 
     fn api_err(r: Result<Value>) -> CliError {
         r.unwrap_err().downcast::<CliError>().unwrap()
+    }
+
+    #[test]
+    fn code_in_error_field() {
+        let e = api_err(check(
+            409,
+            json!({ "error": "no_command_path", "message": "'x' has no console" }),
+        ));
+        match e {
+            CliError::Api { code, message, .. } => {
+                assert_eq!(code.as_deref(), Some("no_command_path"));
+                assert_eq!(message, "'x' has no console");
+            }
+            _ => panic!(),
+        }
     }
 
     #[test]
