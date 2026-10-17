@@ -2,11 +2,12 @@ import { act, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HighlightedContent } from '../components/ConsoleView';
 import { RuntimePreflight } from '../components/shell/RuntimePreflight';
-import { getCachedRules, highlightLine } from '../utils/syntaxHighlight';
+import { getCachedRules, highlightLine, spanSegments } from '../utils/syntaxHighlight';
 
 let n = 0;
 const compile = (rules) => getCachedRules(`test-${n++}`, rules);
 const styleAt = (segs, text) => segs.find((s) => s.text === text)?.style;
+const tokenAt = (segs, text) => segs.find((s) => s.text === text)?.token;
 
 describe('콘솔 하이라이트 규칙 (C12)', () => {
     it('겹치면 priority 큰 규칙이 이기고, 같으면 먼저 선언된 규칙', () => {
@@ -17,7 +18,9 @@ describe('콘솔 하이라이트 규칙 (C12)', () => {
         ]);
         const segs = highlightLine('ERROR here', rules);
         expect(segs).toHaveLength(1);
-        expect(segs[0].style.color).toBe('#f38ba8');
+        // 색은 테마가 정한다: 토큰만 넘기고 인라인 색은 없다
+        expect(segs[0].token).toBe('error');
+        expect(segs[0].style).toBeNull();
     });
 
     it('배경·밑줄을 스타일로 낸다 (토큰 배경은 옅게)', () => {
@@ -26,14 +29,19 @@ describe('콘솔 하이라이트 규칙 (C12)', () => {
             { name: 'b', pattern: 'hex', color: '#fff', background: '#123456' },
         ]);
         const segs = highlightLine('warn hex', rules);
-        expect(styleAt(segs, 'warn')).toMatchObject({ backgroundColor: '#f9e2af33', textDecoration: 'underline' });
-        expect(styleAt(segs, 'hex')).toMatchObject({ backgroundColor: '#123456' });
+        expect(tokenAt(segs, 'warn')).toBe('warn');
+        expect(styleAt(segs, 'warn')).toMatchObject({
+            backgroundColor: 'color-mix(in srgb, var(--tok-warn) 20%, transparent)',
+            textDecoration: 'underline',
+        });
+        // 옛 모듈의 #hex는 그대로 칠한다
+        expect(styleAt(segs, 'hex')).toMatchObject({ color: '#fff', backgroundColor: '#123456' });
         expect(styleAt(segs, 'hex').textDecoration).toBeUndefined();
     });
 
     it('맨 앞 (?i) 단독 플래그는 JS 플래그로 바꿔 대소문자를 무시한다', () => {
         const rules = compile([{ name: 'i', pattern: '(?i)error', color: 'error' }]);
-        expect(styleAt(highlightLine('Error', rules), 'Error')).toBeTruthy();
+        expect(tokenAt(highlightLine('Error', rules), 'Error')).toBe('error');
     });
 });
 
@@ -43,6 +51,37 @@ describe('콘솔 줄 그리기', () => {
         render(<HighlightedContent text="ERROR here" compiledRules={rules} />);
         const span = [...document.querySelectorAll('span')].find((e) => e.textContent === 'ERROR here');
         expect(span.style.textDecoration).toBe('underline');
+        expect(span.className).toBe('tok-error');
+    });
+
+    it('데몬 spans가 있으면 규칙 대신 그것으로 칠한다 (UTF-16 오프셋, 모르는 토큰은 건너뜀)', () => {
+        const rules = compile([{ name: 'all', pattern: '.+', color: 'error' }]);
+        const text = '[12:00] 스티브 joined';
+        render(
+            <HighlightedContent
+                text={text}
+                spans={[
+                    [0, 7, 'timestamp'],
+                    [8, 11, 'player'],
+                    [12, 18, 'nope'],
+                ]}
+                compiledRules={rules}
+            />,
+        );
+        const spans = [...document.querySelectorAll('span')];
+        expect(spans.map((e) => [e.className, e.textContent])).toEqual([
+            ['tok-timestamp', '[12:00]'],
+            ['tok-player', '스티브'],
+        ]);
+        expect(document.body.textContent).toContain(text);
+    });
+
+    it('빈 spans면 칠하지 않고, 범위를 넘는 구간은 잘라 낸다', () => {
+        expect(spanSegments('abc', [])).toEqual([{ text: 'abc', token: null, style: null }]);
+        expect(spanSegments('abc', [[1, 99, 'warning']]).map((s) => [s.text, s.token])).toEqual([
+            ['a', null],
+            ['bc', 'warn'],
+        ]);
     });
 });
 
@@ -101,5 +140,15 @@ describe('실행 환경 준비 표시 (C5)', () => {
         window.api = {};
         await act(async () => render(<RuntimePreflight daemonStatus="running" />));
         expect(document.querySelector('.appbar-preflight')).toBeNull();
+    });
+});
+
+describe('콘솔 바탕 밝기 → 토큰 색 묶음', () => {
+    it('밝은 바탕을 고르면 data-console-tone=light, 어두우면 지운다', async () => {
+        const { applyCustomTheme, THEME_DEFAULTS } = await import('../utils/themeManager');
+        applyCustomTheme({ ...THEME_DEFAULTS, consoleBgColor: '#f5f5f5' });
+        expect(document.documentElement.getAttribute('data-console-tone')).toBe('light');
+        applyCustomTheme({ ...THEME_DEFAULTS, consoleBgColor: '#1e1e2e' });
+        expect(document.documentElement.hasAttribute('data-console-tone')).toBe(false);
     });
 });

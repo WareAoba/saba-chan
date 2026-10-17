@@ -320,6 +320,12 @@ export function applyCustomTheme(config) {
     // ── Console customization ──
     root.style.setProperty('--console-custom-bg', consoleBgColor);
     root.style.setProperty('--console-custom-text', consoleTextColor);
+    // 밝은 콘솔 바탕이면 조각 색 토큰을 진한 쪽으로 (tokens.css data-console-tone)
+    if (/^#[0-9a-f]{6}$/i.test(consoleBgColor || '') && relativeLuminance(consoleBgColor) > 0.4) {
+        root.setAttribute('data-console-tone', 'light');
+    } else {
+        root.removeAttribute('data-console-tone');
+    }
     root.style.setProperty('--console-syntax-highlight', consoleSyntaxHighlight ? '1' : '0');
     root.style.setProperty('--console-font-scale', `${consoleFontScale / 100}`);
 }
