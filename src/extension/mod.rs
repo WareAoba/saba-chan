@@ -1439,6 +1439,9 @@ impl ExtensionManager {
 
     /// i18n JSON 로드
     pub fn load_i18n(&self, ext_id: &str, locale: &str) -> Option<Value> {
+        if !crate::utils::is_single_path_component(locale) {
+            return None;
+        }
         let ext = self.discovered.get(ext_id)?;
         let i18n_dir = ext.manifest.i18n_dir.as_deref()?;
         let path = ext.dir.join(i18n_dir).join(format!("{}.json", locale));
