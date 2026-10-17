@@ -882,7 +882,7 @@ mod tests {
                         method: Some("rest".to_string()),
                         http_method: Some("GET".to_string()),
                         endpoint_template: Some("/v1/api/players".to_string()),
-                        rcon_template: None,
+                        console_template: None,
                         risk: None,
                         inputs: vec![],
                     },
@@ -966,7 +966,7 @@ mod tests {
                                 method: Some("rest".to_string()),
                                 http_method: Some("GET".to_string()),
                                 endpoint_template: Some("/v1/api/info".to_string()),
-                                rcon_template: None,
+                                console_template: None,
                                 risk: None,
                                 inputs: vec![],
                             },
@@ -977,7 +977,7 @@ mod tests {
                                 method: Some("rest".to_string()),
                                 http_method: Some("POST".to_string()),
                                 endpoint_template: Some("/v1/api/announce".to_string()),
-                                rcon_template: None,
+                                console_template: None,
                                 risk: None,
                                 inputs: vec![
                                     crate::supervisor::module_loader::CommandInput {

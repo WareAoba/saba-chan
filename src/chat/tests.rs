@@ -57,7 +57,7 @@ fn field(name: &str, method: &str) -> CommandField {
         method: Some(method.into()),
         http_method: None,
         endpoint_template: None,
-        rcon_template: None,
+        console_template: None,
         risk: None,
         inputs: vec![],
     }
@@ -65,10 +65,10 @@ fn field(name: &str, method: &str) -> CommandField {
 
 fn fixture() -> FakeDaemon {
     let mut kick = field("kick", "rcon");
-    kick.rcon_template = Some("kick {player} {reason}".into());
+    kick.console_template = Some("kick {player} {reason}".into());
     kick.inputs = vec![input("player", true), input("reason", false)];
-    let mut say = field("say", "rcon");
-    say.rcon_template = Some("say {message}".into());
+    let mut say = field("say", "console");
+    say.console_template = Some("say {message}".into());
     say.inputs = vec![input("message", true)];
     let mut players = field("players", "rest");
     players.endpoint_template = Some("/v1/api/players".into());
